@@ -1,0 +1,21 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*~
+.idea/
+.vscode/
+*.swp
+
+# Logs / temp
+*.log
+.cache/
+tmp/
+
+# Node (only if a dev static server / tooling is ever added; v1 has no build step)
+node_modules/
+
+# Saved simulation states downloaded during manual testing
+*.save.json
+
+# Claude Code local settings (machine-specific; shared settings.json may be tracked)
+.claude/settings.local.json
