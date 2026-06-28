@@ -32,6 +32,8 @@
     <script src="layers/instructor_layer.js"></script>
     <!-- Simulation Service (M5) — step loop, snapshot assembly, lifecycle, save/restore. -->
     <script src="layers/simulation_service.js"></script>
-    <!-- Test Runner (M7) and UI (M8) wiring added as those modules land. -->
+    <!-- Test Runner (M7) — DEV ONLY: exclude from production builds (M8 dev Test Panel drives it). -->
+    <script src="layers/test_runner.js"></script>
+    <!-- UI (M8) wiring added when that module lands. -->
 </body>
 </html>

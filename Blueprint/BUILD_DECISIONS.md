@@ -13,7 +13,7 @@ where the two differ or where judgment was exercised.
 - Update the **Open Flags** table at the top whenever a flag is opened or closed.
 - Keep it skimmable: tables and short bullets, not prose.
 
-**Status:** M1 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · (next: M7)
+**Status:** M1 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · M7 ✅ · (next: M8)
 
 ---
 
@@ -155,6 +155,36 @@ exact interface the real M6 will, so M6 replaces this file's internals with no c
 - **`connect(layer)` added** to the instructor (beyond the spec's constructor-injection) so M5 can
   re-point the slot at the rebuilt M4 on a plant change without reconstructing scenario state.
 
+## M7 — Test Runner Layer (dev-only)
+
+**File:** `layers/test_runner.js`
+**Validation:** `node test/run_m7.js` → positive 31/31 integration checks across 6 suites, **plus** a
+negative "teeth" test that sabotages HR1 (trips read true state) and confirms the protection-boundary
+suite catches it (3 failures reported). Exit 0 only when both hold.
+
+A synthetic operator driving the assembled stack through M5's command interface and reading the
+broadcast snapshots — validating WIRING, not physics (accident sequences are not re-run, per §2/§4).
+Suites: `data_contract`, `instrument_vs_truth`, `protection_boundary` (the two HR1 boundary checks —
+highest value), `command_flow`, `alarm_behavior`, `config_consistency`.
+
+### Decisions
+
+- **Config access for §3.6 is sanctioned, true-state access is not.** Assertions read only the
+  snapshot + command interface (no engine internals), **except** the config-consistency suite, which
+  reads `service.layer.config` (protection data) and `service.engine.cfg.instruments` (instrument
+  specs) — explicitly the spec's intent ("by reading the config"). The snapshot already carries
+  `true_state` (HR4), so the protection-boundary checks compare truth vs indication from the snapshot.
+- **"Trip warns first" is existence, not universality.** §3.6's "trip more extreme than the matching
+  alarm" is checked as *there exists* a less-extreme same-instrument/direction alarm — because a
+  critical `lo_lo` alarm legitimately **coincides** with the trip (e.g. PWR `pzr_pressure_lolo` 12.41
+  MPa == the low-pressure trip). The `lo`-level warning is what must precede the trip. `__true_flow__`
+  is exempt (no instrument-based alarm).
+- **Built-in negative self-test.** `run_m7.js` monkey-patches `_evalTrips` to read true state and
+  confirms the gate fails — a gate that can't fail proves nothing. (Lives in the harness, not the
+  shipped TestRunner.)
+- **Driving:** `advanceCycles`/`runSeconds` step the loop synchronously and read the returned/broadcast
+  snapshot — deterministic, timer-free, exactly what the UI would see.
+
 ## Change log
 
 - **M1** built and committed (`a18c85f`). Suite 11/11.
@@ -166,3 +196,6 @@ exact interface the real M6 will, so M6 replaces this file's internals with no c
 - **M6·PH** built. Tests 8/8. Real pass-through Instructor module in the slot; M5 aligned to the
   `setRegister` interface and prefers `RD.InstructorLayer`. Swap-invariant confirmed (free-play
   unchanged). All four suites (M1/M4/M5/M6·PH) green.
+- **M7** built. Positive 31/31 integration checks + negative teeth test (sabotaged HR1 → caught).
+  Validates the assembled stack's wiring through M5's interface. All five suites (M1/M4/M5/M6·PH/M7)
+  green. Physics gate (M1) + wiring gate (M7) both pass → the PWR system is correct per CONTEXT §9.
