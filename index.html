@@ -14,5 +14,17 @@
 <body>
     <!-- UI (M8) mounts here. -->
     <div id="app"></div>
+
+    <!-- Physics engines (global-namespace scripts, dependency order). -->
+    <!-- PWR (M1) — hosts Three Mile Island. -->
+    <script src="engines/pwr/pwr_config.js"></script>
+    <script src="engines/pwr/pwr_protection.js"></script>
+    <script src="engines/pwr/pwr_thermal.js"></script>
+    <script src="engines/pwr/pwr_pressurizer.js"></script>
+    <script src="engines/pwr/pwr_primary.js"></script>
+    <script src="engines/pwr/pwr_steam_generator.js"></script>
+    <script src="engines/pwr/pwr_instruments.js"></script>
+    <script src="engines/pwr/pwr_engine.js"></script>
+    <!-- layers (M4–M7) and UI (M8) wiring added as those modules land. -->
 </body>
 </html>
