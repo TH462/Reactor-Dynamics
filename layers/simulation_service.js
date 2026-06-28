@@ -28,8 +28,14 @@
   'use strict';
 
   var PHYSICS_DT = 0.02;            // 50 Hz physics (fixed; see deviation note)
-  var NORMAL_MS = 500;             // 2 Hz broadcast
-  var TRANSIENT_MS = 200;          // 5 Hz during an active transient (§7)
+  // Broadcast cadence. CONTEXT §4's stated cadence is 2 Hz / 5 Hz; we render
+  // faster (10 Hz normal, 20 Hz transient) for a smoother live UI — cheap, since
+  // the per-step work is tiny. The data is identical; only the frame rate changes.
+  // The transient thresholds (§7) are scaled by the interval so the *rate* that
+  // flips into transient mode is unchanged.
+  var NORMAL_MS = 100;             // 10 Hz broadcast
+  var TRANSIENT_MS = 50;           // 20 Hz during an active transient (§7)
+  var CADENCE_REF_MS = 500;        // thresholds were defined against this interval
   var DEFAULT_SEED = 0x1A2B3C4D;
 
   // Plant id → engine constructor. RBMK/BWR register when M2/M3 land.
@@ -185,8 +191,11 @@
   SimulationService.prototype._isActiveTransient = function (snap) {
     var prev = this._prevTrueState;
     if (!prev) return false;
-    if (Math.abs(snap.true_state.power_pct - prev.power_pct) > 1.0) return true;
-    if (Math.abs(primaryPressure(snap.true_state) - primaryPressure(prev)) > 0.14) return true;
+    // Scale the per-interval thresholds to the actual cadence so the rate that
+    // trips transient mode is independent of the broadcast frequency.
+    var k = this.broadcastMs / CADENCE_REF_MS;
+    if (Math.abs(snap.true_state.power_pct - prev.power_pct) > 1.0 * k) return true;
+    if (Math.abs(primaryPressure(snap.true_state) - primaryPressure(prev)) > 0.14 * k) return true;
     return this._anyAlarmNewlyFiring(snap.alarms, this._prevAlarms);
   };
 

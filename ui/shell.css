@@ -135,7 +135,8 @@ body {
 /* zone band: normal/caution/danger with a needle marker */
 .g-band { height: 5px; border-radius: 3px; position: relative; margin-top: 2px;
   background: linear-gradient(90deg, var(--normal) 0 55%, var(--caution) 55% 80%, var(--critical) 80% 100%); }
-.g-band .needle { position: absolute; top: -2px; width: 2px; height: 9px; background: var(--text); border-radius: 1px; }
+.g-band .needle { position: absolute; top: -2px; width: 2px; height: 9px; background: var(--text); border-radius: 1px;
+  transition: left .12s linear; }
 .g-band .trip { position: absolute; top: -3px; width: 0; height: 11px; border-left: 1px dashed var(--critical); }
 .g-spark { width: 100%; height: 14px; }
 
@@ -181,7 +182,7 @@ body {
 
 /* rod position bar */
 .rodbar { height: 10px; border-radius: 5px; background: #11151a; border: 1px solid var(--border); position: relative; overflow: hidden; }
-.rodbar > span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--normal); }
+.rodbar > span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--normal); transition: width .12s linear, background .2s ease; }
 .rodbar.shutdown > span { background: var(--running); }
 .rodbar .limit { position: absolute; top: -2px; bottom: -2px; width: 0; border-left: 1px dashed var(--caution); }
 

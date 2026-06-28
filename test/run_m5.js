@@ -56,11 +56,13 @@ T.push(test('Snapshot — complete, well-shaped, truth & indication both present
   ck('instructor block null for default slot', JSON.stringify(snap.instructor), snap.instructor.message === null, '{message:null,...}');
 }));
 
-T.push(test('Step loop — advances sim_time; 1× = 0.5 s/cycle', function (ck) {
+T.push(test('Step loop — advances sim_time by the broadcast cadence each cycle (1×)', function (ck) {
   var s = svc();
+  var dtCycle = s.broadcastMs / 1000;   // steady cadence at 1× (no transient)
   var t0 = s.simTime;
   s.advanceCycles(4);
-  ck('sim_time advanced 4×0.5 s', (s.simTime - t0).toFixed(3), Math.abs((s.simTime - t0) - 2.0) < 1e-9, '2.000 s');
+  var expect = 4 * dtCycle;
+  ck('sim_time advanced 4 cycles', (s.simTime - t0).toFixed(3), Math.abs((s.simTime - t0) - expect) < 1e-9, expect.toFixed(3) + ' s');
   ck('still ~100% power (steady, stable)', s.engine.getTrueState().power_pct.toFixed(2), Math.abs(s.engine.getTrueState().power_pct - 100) < 1.0, '~100%');
 }));
 
@@ -98,21 +100,24 @@ T.push(test('Lifecycle — play/pause gate the loop', function (ck) {
 T.push(test('Acceleration — more sim-time per cycle, physics stays stable (fixed-dt steps)', function (ck) {
   var s = svc();
   s.handleCommand({ action: 'set_speed', value: 60 });
+  var dtCycle = s.broadcastMs / 1000;
   var t0 = s.simTime;
   s.advanceCycles(2);
-  ck('60× advances 60 s sim time in 2 cycles', (s.simTime - t0).toFixed(1), Math.abs((s.simTime - t0) - 60.0) < 1e-6, '60.0 s');
+  var expect = 2 * 60 * dtCycle;        // 60× → 60 s of sim time per second of cadence
+  ck('60× advances ' + expect.toFixed(1) + ' s in 2 cycles', (s.simTime - t0).toFixed(2), Math.abs((s.simTime - t0) - expect) < 1e-6, expect.toFixed(1) + ' s');
   ck('power did NOT diverge (stable at 60×)', s.engine.getTrueState().power_pct.toFixed(2), Math.abs(s.engine.getTrueState().power_pct - 100) < 2, '~100%');
 }));
 
-T.push(test('Transient cadence — tightens to 5 Hz on a transient, relaxes when steady', function (ck) {
+T.push(test('Transient cadence — tightens on a transient, relaxes when steady', function (ck) {
   var s = svc();
   s.advanceCycles(3);
-  ck('normal cadence at steady state', s.broadcastMs, s.broadcastMs === 500, '500 ms');
+  var normalMs = s.broadcastMs;   // steady cadence
+  ck('normal cadence at steady state', normalMs + ' ms', normalMs > 0, 'normal');
   s.handleCommand({ action: 'scram' });
   s.advanceCycles(1);            // power drops sharply → transient
-  ck('cadence tightens to 200 ms on scram', s.broadcastMs, s.broadcastMs === 200, '200 ms');
-  s.advanceCycles(30);          // decay settles → power change per interval small again
-  ck('cadence relaxes to 500 ms once settled', s.broadcastMs, s.broadcastMs === 500, '500 ms');
+  ck('cadence tightens on scram', s.broadcastMs + ' ms', s.broadcastMs < normalMs, '< ' + normalMs + ' ms');
+  s.advanceCycles(60);          // decay settles → rate per interval small again
+  ck('cadence relaxes once settled', s.broadcastMs + ' ms', s.broadcastMs === normalMs, normalMs + ' ms');
 }));
 
 T.push(test('Plant selection / reset — rebuilds the stack and resets the run', function (ck) {

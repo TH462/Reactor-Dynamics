@@ -242,3 +242,8 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   low-profile x-axis, units/register/overlay, failures, save/load/reset. Tab switching no longer resizes
   the Instructor/Tools split (flex-basis 0 + scroll). New Flag F7 (alarm category belongs in profile).
   Engine/layer suites unaffected (all five green); UI field-contract spot-checked against a live snapshot.
+- **Broadcast cadence raised** to 10 Hz normal / 20 Hz transient (was 2 Hz / 5 Hz) for a smoother live
+  UI — cheap, data identical. Transient thresholds scaled by interval (constant rate sensitivity). Added
+  CSS tween on gauge needles + rod bars so they glide between frames. M5 cadence tests made
+  cadence-agnostic. (CONTEXT §4's 2/5 Hz is the *minimum* viable cadence; rendering faster is a display
+  choice that doesn't touch determinism.)
