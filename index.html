@@ -7,33 +7,14 @@
     <!--
       Reactor Dynamics — educational browser-based nuclear power plant simulator.
       Browser-only, vanilla JS, no build step, no server, no WebAssembly, no framework.
-      Scripts are loaded as ES modules / plain scripts in dependency order:
-      engines (M1-M3) -> layers (M4-M7) -> ui (M8). Wiring is added as modules land.
+
+      The control-room UI (M8, alpha) lives at ui/shell.html, which loads the
+      engine (M1) + layers (M4/M5/M6·PH) and wires them to the interface (app.js).
+      This root page just forwards there.
     -->
+    <meta http-equiv="refresh" content="0; url=ui/shell.html">
 </head>
 <body>
-    <!-- UI (M8) mounts here. -->
-    <div id="app"></div>
-
-    <!-- Physics engines (global-namespace scripts, dependency order). -->
-    <!-- PWR (M1) — hosts Three Mile Island. -->
-    <script src="engines/pwr/pwr_config.js"></script>
-    <script src="engines/pwr/pwr_protection.js"></script>
-    <script src="engines/pwr/pwr_thermal.js"></script>
-    <script src="engines/pwr/pwr_pressurizer.js"></script>
-    <script src="engines/pwr/pwr_primary.js"></script>
-    <script src="engines/pwr/pwr_steam_generator.js"></script>
-    <script src="engines/pwr/pwr_instruments.js"></script>
-    <script src="engines/pwr/pwr_engine.js"></script>
-
-    <!-- Control & Failure Layer (M4) — general machinery, consumes engine config. -->
-    <script src="layers/control_failure_layer.js"></script>
-    <!-- Instructor slot (M6·PH placeholder → M6) — loaded before M5 so it fills the slot. -->
-    <script src="layers/instructor_layer.js"></script>
-    <!-- Simulation Service (M5) — step loop, snapshot assembly, lifecycle, save/restore. -->
-    <script src="layers/simulation_service.js"></script>
-    <!-- Test Runner (M7) — DEV ONLY: exclude from production builds (M8 dev Test Panel drives it). -->
-    <script src="layers/test_runner.js"></script>
-    <!-- UI (M8) wiring added when that module lands. -->
+    <p>Opening the <a href="ui/shell.html">Reactor⚛️Dynamics control room…</a></p>
 </body>
 </html>

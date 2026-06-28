@@ -13,7 +13,7 @@ where the two differ or where judgment was exercised.
 - Update the **Open Flags** table at the top whenever a flag is opened or closed.
 - Keep it skimmable: tables and short bullets, not prose.
 
-**Status:** M1 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · M7 ✅ · M8 🔶 visual shell · (next: wire M8 to M5)
+**Status:** M1 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · M7 ✅ · M8 🟦 functional alpha (PWR) · (next: M2/M3 or M6)
 
 ---
 
@@ -27,6 +27,7 @@ where the two differ or where judgment was exercised.
 | F4 | M4 | `degraded_hpi` is typed `command_override` but its real effect is an engine HPI-flow multiplier (the spec itself flags this, M4 §7). Implemented via the engine hook. | taxonomy | **open** (spec-acknowledged) |
 | F5 | M1 | `fuel_damaged` (cladding failure at 1200 °C) is internal, not in the §6.3 `true_state` contract. Consumers must use `fuel_temp_c`/`melted`. | contract | **open** — confirm M6/M8 don't need it |
 | F6 | M5 | Acceleration is realized as fixed-0.02 s step **count**, not by scaling `dt` (CONTEXT §4's literal `dt_effective` diverges — verified). Every engine (M2/M3) must stay stable at 0.02 s; the service never hands them a larger dt. | deviation | **open** — applies to M2/M3 too |
+| F7 | M8 | Alarm system-category (left-bar color, M8 §8.5) is derived UI-side by keyword (`alarmCategory()`), because M1's alarm data has no `category`. Should move into the plant profile alongside `tile_label`/`scanner_hint`. | data | **open** — add to engine alarm config |
 
 ---
 
@@ -185,32 +186,41 @@ highest value), `command_flow`, `alarm_behavior`, `config_consistency`.
 - **Driving:** `advanceCycles`/`runSeconds` step the loop synchronously and read the returned/broadcast
   snapshot — deterministic, timer-free, exactly what the UI would see.
 
-## M8 — User Interface (visual shell only, so far)
+## M8 — User Interface (functional alpha, PWR)
 
-**Files:** `ui/shell.html` · `ui/shell.css` · `ui/shell.js`
-**Status:** a **static, mock-data visual prototype** for iterating on look & layout *before* wiring
-it to the live snapshot (M5). Not the real M8 — nothing is connected to the engine; every value is a
-placeholder. Open `ui/shell.html` directly in a browser (no server needed).
+**Files:** `ui/shell.html` (page) · `ui/app.js` (wiring) · `ui/shell.css` (look). Root `index.html`
+forwards here. **Open `ui/shell.html`** in a browser — it loads the engine + layers and runs live.
 
-### What it is / isn't
+**Status:** a **working control room wired to the live stack** (M1 + M4 + M5 + M6·PH). Started as a
+static mock (commit `308b133`); now `app.js` builds a `SimulationService`, `subscribe(render)`s, renders
+each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifications (below).
 
-- **Is:** the full M8 §2 region layout (vital-few gauge strip, four control sections, numeric-placeholder
-  synoptic, strip chart, alarm panel, sim controls, Instructor panel, Tools Block with all five tabs,
-  System Scanner), styled with the exact §15 palette and the five alarm-category hues, with light
-  interactivity (tab switching, the SCRAM guard-cover + 3 s countdown, Scanner hover, segmented toggles,
-  speed + fast-forward badge, live Failures-tab sliders).
-- **Isn't:** wired to M5; no `subscribe(render)`, no commands, no real plant profile. The fixed
-  aspect-ratio lock (M8 §2.2/§19) is approximated with flex for now (noted in `shell.css`).
-- **Separate from `index.html`** — the shell is a throwaway-style prototype kept apart from the real app
-  shell (which loads the engine + layers). The real M8 will live in `ui/app.js` + `diagram/` + `panels/`
-  per M8 §19 and render from the snapshot.
+### What works
+- **Gauges + numeric placeholder** read `snapshot.instruments` (HR1); needle/trend/sparkline live.
+- **Controls issue real commands** down the stack: SCRAM (guard-cover + 3 s arm), rods (raise/stop/lower/
+  ±1 nudge/speed), RCP (run=clear `rcp_trip` / stop=inject it), boron borate/dilute/off, ECCS `set_hpi`,
+  heaters/spray, feed `set_feedwater_flow`, AFW `set_afw`, breaker/turbine `set_steam_demand`.
+- **Alarms** render from `snapshot.alarms` (sorted critical-first, system-color bar + severity flash;
+  click to acknowledge; gauge-strip tint while unacked). **Failures tab** built from M4's catalog with
+  engineering-unit sliders; inject/clear reconcile off `active_failures` (never optimistic).
+- **Strip chart**: live rolling buffer, **Graph-tab parameter toggles**, low-profile time x-axis,
+  per-series auto-scale, window selector, CSV export. **Lifecycle**: play/pause, speed (1–3600×, FF
+  badge), reset to a chosen initial state, save/load JSON. **Settings**: register (`set_register`),
+  units (US↔SI display convert), true-state overlay (Instruments/True/Both).
 
-### Decisions
-
-- **Iterate-first approach** (user request): build the visuals as a standalone mock so layout/look can be
-  judged and changed rapidly, then replace placeholder values with snapshot bindings.
-- **Alarm-category palette** chosen here (data will drive it later): reactivity `#C084FC`, coolant
-  `#38BDF8`, power `#FBBF24`, instrument `#2DD4BF`, safety_system `#F472B6` — distinct/legible per §8.1.
+### Decisions / deviations (alpha)
+- **Layout fix (user):** Instructor and Tools boxes use `flex: 1 1 0` (basis 0), so switching tabs never
+  resizes either box; overflowing tab content scrolls inside a fixed-height `.tab-body`.
+- **Acceleration via the wired M5** uses fixed-dt step-count (Flag F6) — stable to 3600×.
+- **Alarm category is UI-side** (`alarmCategory()` keyword map) for the left-bar color, because M1's alarm
+  data carries no `category` (M8 §8.5 wants it in the profile). **→ new Flag F7.**
+- **A few controls are approximations** of CONTEXT §6.7: RCP run/stop maps to clear/inject `rcp_trip`
+  (no pump-start command exists); Heater/Spray/ECCS "Auto" are no-ops (the engine has no command to
+  *clear* a manual override back to auto); boron borate/dilute drive charging/letdown. EDG is visual.
+- **`ui/shell.html` is the entry** (self-contained, `../engines`/`../layers` paths). The §19 `diagram/`
+  `panels/` split is deferred — alpha keeps markup in one page driven by `app.js`.
+- **Alarm palette** (also used by Failures categories): reactivity `#C084FC`, coolant `#38BDF8`, power
+  `#FBBF24`, instrument `#2DD4BF`, safety_system `#F472B6`.
 
 ## Change log
 
@@ -226,3 +236,9 @@ placeholder. Open `ui/shell.html` directly in a browser (no server needed).
 - **M7** built. Positive 31/31 integration checks + negative teeth test (sabotaged HR1 → caught).
   Validates the assembled stack's wiring through M5's interface. All five suites (M1/M4/M5/M6·PH/M7)
   green. Physics gate (M1) + wiring gate (M7) both pass → the PWR system is correct per CONTEXT §9.
+- **M8 visual shell** (`308b133`): static mock-data prototype for layout iteration.
+- **M8 functional alpha**: wired `ui/app.js` to the live stack — gauges/numeric read instruments,
+  controls issue commands, alarms/instructor/strip-chart render from snapshots; Graph-tab param toggles,
+  low-profile x-axis, units/register/overlay, failures, save/load/reset. Tab switching no longer resizes
+  the Instructor/Tools split (flex-basis 0 + scroll). New Flag F7 (alarm category belongs in profile).
+  Engine/layer suites unaffected (all five green); UI field-contract spot-checked against a live snapshot.

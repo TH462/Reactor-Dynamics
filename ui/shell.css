@@ -304,7 +304,9 @@ body {
 .save-btn { flex: 0 0 auto; }
 
 /* ===================================================== right col: instructor */
-.instructor { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 120px; }
+/* flex-basis 0 + equal grow => the Instructor:Tools split is fixed by the window,
+   NOT by tab content, so switching tabs never resizes either box. */
+.instructor { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
 .instructor .persona { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .persona .icon { width: 26px; height: 26px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border);
   display: flex; align-items: center; justify-content: center; font-size: 14px; }
@@ -320,13 +322,14 @@ body {
   border-radius: 6px; color: var(--muted); font-weight: 700; cursor: not-allowed; }
 
 /* ===================================================== right col: tools block */
-.tools { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 160px; }
-.tabbar { display: flex; border-bottom: 1px solid var(--border); }
+.tools { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.tabbar { display: flex; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
 .tabbar button { flex: 1 1 0; background: transparent; border: none; color: var(--text-2);
   padding: 8px 4px; font-size: 11px; cursor: pointer; border-bottom: 2px solid transparent; }
 .tabbar button:hover { color: var(--text); }
 .tabbar button.on { color: var(--text); border-bottom-color: var(--normal); }
-.tab-body { flex: 1 1 auto; overflow: auto; padding: 10px; }
+/* fixed height (fills the tools box); overflowing tab content scrolls here */
+.tab-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 10px; }
 .tabpane { display: none; }
 .tabpane.on { display: block; }
 
@@ -356,3 +359,31 @@ body {
 .scanner .body { padding: 8px 10px; font-size: 12px; color: var(--text-2); line-height: 1.45; }
 .scanner .body strong { color: var(--text); }
 .scanner .idle { color: var(--muted); font-style: italic; }
+
+/* ===================================================== additions (wired UI) */
+.num-input {
+  background: var(--bg-plant); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 6px; font-size: 12px; width: 64px;
+}
+select.num-input { width: auto; }
+
+/* strip-chart low-profile x-axis (time ticks) */
+.chart-xaxis { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted);
+  padding: 1px 2px 0; line-height: 1.1; height: 12px; }
+
+/* Graph-tab parameter checklist */
+.g-section-title { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); margin: 0 0 6px; }
+.param-row { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); padding: 4px 0; cursor: pointer; }
+.param-row i { width: 12px; height: 3px; border-radius: 2px; display: inline-block; }
+.param-row input { accent-color: var(--normal); }
+
+/* numeric placeholder — overlay/true tags + boolean states */
+.true-tag { color: var(--caution); font-size: 11px; font-weight: 600; margin-left: 4px; }
+.hidden-true { color: var(--disabled); font-style: italic; font-size: 11px; }
+.nv.bool-off { color: var(--text-2); }
+
+/* failures-tab inject toggle */
+.fail-toggle { background: var(--bg-elevated); color: var(--text-2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 2px 8px; font-size: 10px; cursor: pointer; flex: 0 0 auto; min-width: 48px; }
+.fail-toggle:hover { color: var(--text); }
+.fail-row.active .fail-toggle { background: var(--critical); color: #fff; border-color: var(--critical); }
