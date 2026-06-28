@@ -68,8 +68,13 @@ pwr_steam_generator, pwr_instruments, pwr_engine}.js`
 - **PORV pressure vs mass decoupled:** `K_porv_relief=300` (large — the valve vents the *steam* space,
   big pressure effect) but `porv_flow_max=0.0035` (small — slow inventory loss, TMI-realistic). One
   `porv_flow` term, two gains.
-- **Decay heat only summed into `Q_total` when scrammed.** At power the fission term dominates; the
-  two-term decay model is initialized at scram. Simplification, adequate for in-scope scenarios.
+- **Decay heat tracks power continuously** (refined after alpha feedback). The two-term model gained a
+  production term toward the equilibrium fraction `H₀·P`, and is **pre-loaded at startup** to that
+  equilibrium — so an operating reactor already carries ~7% decay heat (3.5% at 50%, ~0 cold/subcritical),
+  and it persists/decays after scram exactly as before (6.85% at 60 s). Replaces the old "switch on only
+  at scram" form (which displayed 0% during operation). `Q_total` still embeds decay in `P` during
+  operation (rated = total) and adds it as the residual source once scrammed; steady state and the §14
+  suite are unchanged.
 - **Shutdown-group worth** added (`rod_worth_shutdown=0.10`) — the spec says "sum the shutdown group"
   but gives no worth; chosen for shutdown margin.
 - **Initial states** are built by computing the equilibrium temps analytically from the heat balance,
@@ -247,3 +252,8 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   CSS tween on gauge needles + rod bars so they glide between frames. M5 cadence tests made
   cadence-agnostic. (CONTEXT §4's 2/5 Hz is the *minimum* viable cadence; rendering faster is a display
   choice that doesn't touch determinism.)
+- **Two alpha-feedback fixes:** (1) decay heat now tracks power + is pre-loaded (see M1 modeling
+  decisions) so an operating reactor shows ~7%, not 0. (2) Strip-chart bug: `getInstruments()` returns
+  the engine's *live, mutated* reading object, so the chart was buffering one shared reference (every
+  point showed the latest value). The UI now copies instrument values into the buffer and plots each
+  series against a fixed range (auto-scaling had amplified steady-state noise to full height).

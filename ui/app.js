@@ -112,15 +112,17 @@
   function rodSteps(s, fn) { var g = s.control_state.rod_groups.filter(function (x) { return x.function === fn; })[0]; return g ? g.steps : 0; }
   function rodGroup(s, fn) { return s.control_state.rod_groups.filter(function (x) { return x.function === fn; })[0]; }
 
-  // Strip-chart series (charted in display units; each auto-scaled to its buffer).
+  // Strip-chart series: read raw instrument values from a buffered copy, plotted
+  // against a FIXED range each (so steady state reads flat and real transients
+  // show true movement — auto-scaling would amplify noise to full height).
   var SERIES = [
-    { id: 'power',    label: 'Power %',  color: '#FB923C', get: function (s) { return s.instruments.power_range; } },
-    { id: 'tavg',     label: 'Tavg',     color: '#67E8F9', get: function (s) { return conv(s.instruments.tavg, 'temp'); } },
-    { id: 'pressure', label: 'Pressure', color: '#22D3EE', get: function (s) { return conv(s.instruments.primary_pressure, 'pressure'); } },
-    { id: 'sg_level', label: 'SG Level', color: '#F472B6', get: function (s) { return s.instruments.sg_level; } },
-    { id: 'pzr_level',label: 'PZR Level',color: '#A855F7', get: function (s) { return s.instruments.pzr_level; } },
-    { id: 'subcool',  label: 'Subcool',  color: '#2DD4BF', get: function (s) { return conv(s.instruments.subcooling_margin, 'tempdiff'); } },
-    { id: 'mwe',      label: 'Output MW',color: '#22C55E', get: function (s) { return s.instruments.mwe_output; } },
+    { id: 'power',    label: 'Power %',  color: '#FB923C', get: function (i) { return i.power_range; }, range: [0, 120] },
+    { id: 'tavg',     label: 'Tavg',     color: '#67E8F9', get: function (i) { return i.tavg; }, range: [270, 330] },
+    { id: 'pressure', label: 'Pressure', color: '#22D3EE', get: function (i) { return i.primary_pressure; }, range: [10, 17] },
+    { id: 'sg_level', label: 'SG Level', color: '#F472B6', get: function (i) { return i.sg_level; }, range: [0, 100] },
+    { id: 'pzr_level',label: 'PZR Level',color: '#A855F7', get: function (i) { return i.pzr_level; }, range: [0, 100] },
+    { id: 'subcool',  label: 'Subcool',  color: '#2DD4BF', get: function (i) { return i.subcooling_margin; }, range: [-10, 60] },
+    { id: 'mwe',      label: 'Output MW',color: '#22C55E', get: function (i) { return i.mwe_output; }, range: [0, 1100] },
   ];
 
   // Map an alarm to a system category (alpha: UI-side; later from the profile).
@@ -225,8 +227,9 @@
     renderInstructor(s);
     renderFailures(s);
 
-    // strip-chart buffer
-    chartBuf.push({ t: s.metadata.sim_time, s: s });
+    // strip-chart buffer — copy the instrument VALUES (getInstruments returns the
+    // engine's live, mutated reading object, so we must not hold the reference).
+    chartBuf.push({ t: s.metadata.sim_time, ins: Object.assign({}, s.instruments) });
     var cutoff = s.metadata.sim_time - ui.window;
     while (chartBuf.length > 2 && chartBuf[0].t < cutoff) chartBuf.shift();
     drawChart();
@@ -367,11 +370,11 @@
     var html = '';
     [30, 60, 90].forEach(function (y) { html += '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#23272d"/>'; });
     active.forEach(function (ser) {
-      var vals = chartBuf.map(function (b) { return ser.get(b.s); });
-      var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals), rng = (mx - mn) || 1;
-      var pts = chartBuf.map(function (b, i) {
+      var lo = ser.range[0], hi = ser.range[1], rng = (hi - lo) || 1;
+      var pts = chartBuf.map(function (b) {
         var x = (b.t - t0) / span * W;
-        var y = H - 8 - (ser.get(b.s) - mn) / rng * (H - 16);
+        var f = Math.max(0, Math.min(1, (ser.get(b.ins) - lo) / rng));
+        var y = H - 8 - f * (H - 16);
         return x.toFixed(1) + ',' + y.toFixed(1);
       }).join(' ');
       html += '<polyline points="' + pts + '" fill="none" stroke="' + ser.color + '" stroke-width="1.5"/>';
@@ -545,7 +548,7 @@
   function exportCsv() {
     var cols = SERIES.filter(function (s) { return ui.series[s.id]; });
     var head = ['sim_time'].concat(cols.map(function (c) { return c.id; })).join(',');
-    var rows = chartBuf.map(function (b) { return [b.t.toFixed(2)].concat(cols.map(function (c) { return c.get(b.s).toFixed(3); })).join(','); });
+    var rows = chartBuf.map(function (b) { return [b.t.toFixed(2)].concat(cols.map(function (c) { return c.get(b.ins).toFixed(3); })).join(','); });
     var url = URL.createObjectURL(new Blob([head + '\n' + rows.join('\n')], { type: 'text/csv' }));
     var a = document.createElement('a'); a.href = url; a.download = 'reactor_trend.csv'; a.click();
   }

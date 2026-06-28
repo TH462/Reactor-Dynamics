@@ -99,11 +99,15 @@
     s.power_pct = s._P * 100;
   };
 
-  // Decay heat — two-term exponential, the source that persists after scram (§3).
+  // Decay heat — two-term model with a production term toward the equilibrium
+  // fraction for the CURRENT power (H_0·P), so it builds up while the reactor
+  // runs and persists/decays after scram. A reactor that has been at power a
+  // while therefore already carries ~7% decay heat; a just-started (subcritical)
+  // core carries ~none. Replaces the old "switch on only at scram" form (§3).
   PWREngine.prototype._stepDecay = function (dt) {
     var s = this.s, dc = this.cfg.kinetics.decay;
-    s._H1 += -dc.lambda_1 * s._H1 * dt;
-    s._H2 += -dc.lambda_2 * s._H2 * dt;
+    s._H1 += (dc.H1_0 * dc.lambda_1 * s._P - dc.lambda_1 * s._H1) * dt;
+    s._H2 += (dc.H2_0 * dc.lambda_2 * s._P - dc.lambda_2 * s._H2) * dt;
     s.decay_heat_pct = (s._H1 + s._H2) * 100;
   };
 
@@ -171,8 +175,10 @@
     this._stepKinetics(rho, dt);
     // 3. Xenon / iodine.
     this._stepXenon(dt);
-    // 4. Heat generation = fission power + decay heat.
-    if (s.scrammed) this._stepDecay(dt);
+    // 4. Heat generation. Decay heat tracks power continuously (above). During
+    //    operation it is embedded in P (rated = total thermal); after scram, as
+    //    the fission term collapses, decay heat is the residual source.
+    this._stepDecay(dt);
     s._Q_total = s._P + (s.scrammed ? (s._H1 + s._H2) : 0);
     // Emergency injection multiplier already on state; HPI flow computed in §9.
     // 5–6. Fuel and coolant temperatures (legs, true subcooling).
@@ -362,11 +368,8 @@
 
   PWREngine.prototype._scram = function () {
     this.s.scrammed = true;
-    if (!this.s._scram_decay_init) {
-      this.s._H1 = this.cfg.kinetics.decay.H1_0;
-      this.s._H2 = this.cfg.kinetics.decay.H2_0;
-      this.s._scram_decay_init = true;
-    }
+    // Decay heat is tracked continuously (it already holds the equilibrium value
+    // for the power just before scram); it now persists and decays as P collapses.
     this.rod_groups.forEach(function (g) {
       // A stuck control rod holds out; M4/§9.1 model the held worth in reactivity,
       // but the group still "scrams" (drives in) — the held worth is added back.
@@ -500,7 +503,11 @@
       sim_time: 0,
       _P: P0, power_pct: P0 * 100, _prev_power_pct: P0 * 100, _power_rate: 0, _rho: 0,
       _C: C, _I: init.subcritical ? 0 : this._I_eq(), _X: init.subcritical ? 0 : X_eq,
-      _H1: 0, _H2: 0, _scram_decay_init: false, decay_heat_pct: 0,
+      // Decay heat pre-loaded to the equilibrium fraction for this power (a
+      // reactor that has been running a while), ~0 for a subcritical cold start.
+      _H1: init.subcritical ? 0 : cfg.kinetics.decay.H1_0 * P0,
+      _H2: init.subcritical ? 0 : cfg.kinetics.decay.H2_0 * P0,
+      decay_heat_pct: init.subcritical ? 0 : (cfg.kinetics.decay.H1_0 + cfg.kinetics.decay.H2_0) * P0 * 100,
       xenon_pct_eq: init.subcritical ? 0 : 100,
       boron_ppm: 800,
 
