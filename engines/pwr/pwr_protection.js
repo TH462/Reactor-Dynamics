@@ -66,35 +66,36 @@
 
   // Failures (kind per HR7). physics_parameter → implemented in the engine;
   // command_override / block → intercepted in M4; instrument → applied by the
-  // instrument model (§8). severity_meta is the M4 slider metadata.
+  // instrument model (§8). severity_meta is the M4 slider metadata; category
+  // groups the failure for the UI Failures tab (M4 §10).
   var PWR_FAILURES = {
-    stuck_porv_open:             { type: 'command_override', intercepts: ['close_porv'], override: 'open_porv', display: 'PORV Stuck Open' },
-    porv_indicator_stuck_closed: { type: 'instrument', instrument_id: 'porv_indicator', mode: 'stuck', stuck_value: 'closed', display: 'PORV Indicator Stuck Closed' },
-    loss_of_feedwater:           { type: 'command_override', intercepts: ['set_feedwater_flow'], override_value: 0.0, display: 'Loss of Main Feedwater' },
-    turbine_trip:                { type: 'command_override', intercepts: ['set_steam_demand'], override_value: 0.0, display: 'Turbine Trip' },
-    loss_of_offsite_power:       { type: 'physics_parameter', effect: 'coast_down_pumps', display: 'Loss of Offsite Power' },
-    station_blackout:            { type: 'physics_parameter', effect: 'full_blackout', display: 'Station Blackout' },
-    sgtr:                        { type: 'physics_parameter', effect: 'primary_leak', severity_scales: 'leak_rate',
+    stuck_porv_open:             { type: 'command_override', category: 'coolant', intercepts: ['close_porv'], override: 'open_porv', display: 'PORV Stuck Open' },
+    porv_indicator_stuck_closed: { type: 'instrument', category: 'instrument', instrument_id: 'porv_indicator', mode: 'stuck', stuck_value: 'closed', display: 'PORV Indicator Stuck Closed' },
+    loss_of_feedwater:           { type: 'command_override', category: 'power', intercepts: ['set_feedwater_flow'], override_value: 0.0, display: 'Loss of Main Feedwater' },
+    turbine_trip:                { type: 'command_override', category: 'power', intercepts: ['set_steam_demand'], override_value: 0.0, display: 'Turbine Trip' },
+    loss_of_offsite_power:       { type: 'physics_parameter', category: 'power', effect: 'coast_down_pumps', display: 'Loss of Offsite Power' },
+    station_blackout:            { type: 'physics_parameter', category: 'power', effect: 'full_blackout', display: 'Station Blackout' },
+    sgtr:                        { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate',
                                    severity_meta: { label: 'Leak Rate', unit: '% rated flow', min: 0, max: 8, default: 3 }, display: 'Steam Generator Tube Rupture' },
-    rcp_trip:                    { type: 'physics_parameter', effect: 'stop_pump', display: 'RCP Trip' },
-    loss_of_condenser_vacuum:    { type: 'physics_parameter', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },
-    degraded_hpi:                { type: 'command_override', intercepts: ['set_hpi'], severity_scales: 'hpi_flow_multiplier',
+    rcp_trip:                    { type: 'physics_parameter', category: 'coolant', effect: 'stop_pump', display: 'RCP Trip' },
+    loss_of_condenser_vacuum:    { type: 'physics_parameter', category: 'power', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },
+    degraded_hpi:                { type: 'command_override', category: 'safety_system', intercepts: ['set_hpi'], severity_scales: 'hpi_flow_multiplier',
                                    severity_meta: { label: 'HPI Capacity', unit: '% rated', min: 0, max: 100, default: 50, invert: true }, display: 'Degraded HPI' },
-    afw_failure:                 { type: 'command_override', intercepts: ['set_afw'], override_value: false, display: 'Auxiliary Feedwater Failure' },
-    failure_to_scram:            { type: 'command_override', intercepts: ['scram'], effect: 'block', display: 'Failure to Scram (ATWS)' },
-    stuck_open_spray:            { type: 'command_override', intercepts: ['set_spray'], override_value: true, display: 'Pressurizer Spray Stuck Open' },
-    failed_pzr_heaters:          { type: 'command_override', intercepts: ['set_heater'], override_value: 0.0, display: 'Pressurizer Heaters Failed' },
-    sg_overfeed:                 { type: 'command_override', intercepts: ['set_feedwater_flow'], override_value: 1.2, display: 'SG Overfeed / Overcooling' },
-    large_loca:                  { type: 'physics_parameter', effect: 'primary_leak', severity_scales: 'leak_rate',
+    afw_failure:                 { type: 'command_override', category: 'safety_system', intercepts: ['set_afw'], override_value: false, display: 'Auxiliary Feedwater Failure' },
+    failure_to_scram:            { type: 'command_override', category: 'safety_system', intercepts: ['scram'], effect: 'block', display: 'Failure to Scram (ATWS)' },
+    stuck_open_spray:            { type: 'command_override', category: 'coolant', intercepts: ['set_spray'], override_value: true, display: 'Pressurizer Spray Stuck Open' },
+    failed_pzr_heaters:          { type: 'command_override', category: 'coolant', intercepts: ['set_heater'], override_value: 0.0, display: 'Pressurizer Heaters Failed' },
+    sg_overfeed:                 { type: 'command_override', category: 'power', intercepts: ['set_feedwater_flow'], override_value: 1.2, display: 'SG Overfeed / Overcooling' },
+    large_loca:                  { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate',
                                    severity_meta: { label: 'Break Size', unit: '% rated flow', min: 0, max: 50, default: 20 }, display: 'Large LOCA (Cold-Leg Break)' },
-    continuous_rod_withdrawal:   { type: 'physics_parameter', effect: 'rod_withdrawal_runaway', severity_scales: 'withdraw_rate',
+    continuous_rod_withdrawal:   { type: 'physics_parameter', category: 'reactivity', effect: 'rod_withdrawal_runaway', severity_scales: 'withdraw_rate',
                                    severity_meta: { label: 'Withdrawal Rate', unit: 'steps/s', min: 0, max: 6, default: 3 }, display: 'Continuous Rod Withdrawal' },
-    stuck_rod_on_scram:          { type: 'physics_parameter', effect: 'stuck_control_rod', severity_scales: 'worth_fraction_held',
+    stuck_rod_on_scram:          { type: 'physics_parameter', category: 'reactivity', effect: 'stuck_control_rod', severity_scales: 'worth_fraction_held',
                                    severity_meta: { label: 'Rod Worth Held', unit: '% of total', min: 0, max: 40, default: 20 }, display: 'Control Rod Stuck on Scram' },
-    steam_line_break:            { type: 'physics_parameter', effect: 'secondary_depressurize', severity_scales: 'break_size',
+    steam_line_break:            { type: 'physics_parameter', category: 'power', effect: 'secondary_depressurize', severity_scales: 'break_size',
                                    severity_meta: { label: 'Break Size', unit: '% effective area', min: 0, max: 100, default: 30 }, display: 'Main Steam Line Break' },
-    tavg_sensor_failure:         { type: 'instrument', instrument_id: 'tavg', mode: 'drift', display: 'Tavg Sensor Drifting' },
-    pzr_level_sensor_stuck:      { type: 'instrument', instrument_id: 'pzr_level', mode: 'stuck', display: 'Pressurizer Level Sensor Stuck' },
+    tavg_sensor_failure:         { type: 'instrument', category: 'instrument', instrument_id: 'tavg', mode: 'drift', display: 'Tavg Sensor Drifting' },
+    pzr_level_sensor_stuck:      { type: 'instrument', category: 'instrument', instrument_id: 'pzr_level', mode: 'stuck', display: 'Pressurizer Level Sensor Stuck' },
   };
 
   var PWR_PROTECTION = {
