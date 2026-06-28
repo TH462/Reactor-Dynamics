@@ -13,7 +13,7 @@ where the two differ or where judgment was exercised.
 - Update the **Open Flags** table at the top whenever a flag is opened or closed.
 - Keep it skimmable: tables and short bullets, not prose.
 
-**Status:** M1 ✅ · M4 ✅ · (next: M5)
+**Status:** M1 ✅ · M4 ✅ · M5 ✅ · (next: M6·PH)
 
 ---
 
@@ -26,6 +26,7 @@ where the two differ or where judgment was exercised.
 | F3 | M1/M4 | The M1/M4 seam: command-override failures' persistent effects live in the engine (M1), while interception lives in M4. M4 forwards *and* intercepts. M7 will scrutinize this. | seam | **open** — validate in M7 |
 | F4 | M4 | `degraded_hpi` is typed `command_override` but its real effect is an engine HPI-flow multiplier (the spec itself flags this, M4 §7). Implemented via the engine hook. | taxonomy | **open** (spec-acknowledged) |
 | F5 | M1 | `fuel_damaged` (cladding failure at 1200 °C) is internal, not in the §6.3 `true_state` contract. Consumers must use `fuel_temp_c`/`melted`. | contract | **open** — confirm M6/M8 don't need it |
+| F6 | M5 | Acceleration is realized as fixed-0.02 s step **count**, not by scaling `dt` (CONTEXT §4's literal `dt_effective` diverges — verified). Every engine (M2/M3) must stay stable at 0.02 s; the service never hands them a larger dt. | deviation | **open** — applies to M2/M3 too |
 
 ---
 
@@ -103,9 +104,40 @@ pwr_steam_generator, pwr_instruments, pwr_engine}.js`
 
 ---
 
+## M5 — Simulation Service & Runtime
+
+**File:** `layers/simulation_service.js`
+**Validation:** integration smoke test `node test/run_m5.js` → 12/12 suites, 35/35 checks
+(a **dev** check driving the full PWR stack; full validation is M7's job).
+
+### Deviations from the literal spec (with reason)
+
+| # | Spec said | Built instead | Why |
+|---|-----------|---------------|-----|
+| D1 | Engine handed `dt_effective = 0.02·time_acceleration`; loop runs a fixed step count of that dt (§3) | Engine always stepped at **fixed 0.02 s**; acceleration = **more steps per broadcast** | M1's Euler kinetics is only stable at 0.02 s and diverges at large dt (verified: 60× → dt 1.2 s blows up to 1e6 %). Step-count acceleration keeps every step stable and deterministic; at 1× it is identical to the spec (25 steps × 0.02 s / 500 ms). **→ Flag F6** (binds M2/M3). |
+| D2 | `stepsPerBroadcast = broadcastInterval / PHYSICS_DT` (§3) | `round(accel · (broadcastMs/1000) / 0.02)` | The literal formula is dimensionally off (500 ms / 0.02 s = 25000, not 25); converted ms→s and folded acceleration into the count per D1. |
+
+### Modeling decisions (spec left open)
+
+- **Default pass-through Instructor** built into M5 (`DefaultInstructor`) as the slot's default occupant
+  so the stack runs and is testable **before M6·PH lands**. It forwards commands to M4, runs no beats,
+  emits `{message:null}`, tracks the register. M6·PH/M6 replace it via `opts.instructor` with no change
+  to M5. (This is *not* M6·PH — that's a separate module/file.)
+- **`set_register` dispatch:** the service sends it directly to **both** the Instructor and M4 (each
+  consumes it; neither forwards it onward), and records `activeRegister` for the UI — per §5.
+- **Save/restore split:** `saveState()` returns the state object and `loadState(state)` consumes one;
+  the browser file-API wrappers (download / `<input type=file>`) are deferred to M8. Keeps the core
+  logic deterministic and headless-testable (and is what M7 drives).
+- **Loop mechanism:** a self-rescheduling `setTimeout` (so a cadence change applies on the next tick),
+  with `tick()` / `advanceCycles(n)` exposed for synchronous, timer-free, deterministic test driving.
+- **Transient detection** uses the plant's primary pressure field via a `primaryPressure()` helper
+  (`pressure_mpa` / `steam_pressure_mpa` / `vessel_pressure_mpa`), per §7's "pressure_like".
+
 ## Change log
 
 - **M1** built and committed (`a18c85f`). Suite 11/11.
 - **M4** built and committed (`1ae7245`). Smoke 10/10. Added `category` to PWR failure data;
   M1 suite re-confirmed green after the edit.
 - **This file** created after M1+M4 to capture the above; keep updating per "How to maintain".
+- **M5** built. Smoke 12/12. Fixed-dt step-count acceleration (Flag F6); default pass-through
+  Instructor slot; full stack (engine ↔ M4 ↔ instructor) runs end to end. M1/M4 re-confirmed green.
