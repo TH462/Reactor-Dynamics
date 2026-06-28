@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reactor⚛️Dynamics — UI Shell (M8 visual prototype)</title>
+  <link rel="stylesheet" href="shell.css">
+</head>
+<body>
+  <div class="shell-ribbon">Visual shell · mock data · not wired to the engine</div>
+
+  <div class="app">
+    <!-- ============================ LEFT: PLANT-CONTROL AREA ================ -->
+    <div class="plant-area">
+
+      <!-- Vital-few gauge strip (§4). Reactor Power + Grid Match lead. -->
+      <div class="gauge-strip" id="gaugeStrip">
+        <div class="gauge lead" data-scanner-hint="Reactor Power — fission power as a percent of rated thermal output. The headline operational metric.">
+          <div class="g-label"><span>Reactor Power</span><span class="g-trend trend-up">▲</span></div>
+          <div class="g-value">84.2<span class="g-units"> %</span></div>
+          <svg class="g-spark" viewBox="0 0 100 14" preserveAspectRatio="none"><polyline points="0,11 15,10 30,9 45,7 60,6 75,5 100,4" fill="none" stroke="#FB923C" stroke-width="1.5"/></svg>
+          <div class="g-band"><span class="needle" style="left:70%"></span><span class="trip" style="left:100%"></span></div>
+        </div>
+        <div class="gauge lead" data-scanner-hint="Grid Match — how closely the turbine/generator output matches the grid demand.">
+          <div class="g-label"><span>Grid Match</span><span class="g-trend trend-flat">▶</span></div>
+          <div class="g-value">99.1<span class="g-units"> %</span></div>
+          <svg class="g-spark" viewBox="0 0 100 14" preserveAspectRatio="none"><polyline points="0,5 20,6 40,5 60,5 80,6 100,5" fill="none" stroke="#67E8F9" stroke-width="1.5"/></svg>
+          <div class="g-band"><span class="needle" style="left:90%"></span></div>
+        </div>
+        <div class="gauge" data-scanner-hint="Primary Pressure — pressure of the primary coolant loop. Kept high so the water stays liquid (no boiling).">
+          <div class="g-label"><span>Primary Press</span><span class="g-trend trend-flat">▶</span></div>
+          <div class="g-value">2100<span class="g-units"> psi</span></div>
+          <svg class="g-spark" viewBox="0 0 100 14" preserveAspectRatio="none"><polyline points="0,6 25,6 50,7 75,6 100,6" fill="none" stroke="#67E8F9" stroke-width="1.5"/></svg>
+          <div class="g-band"><span class="needle" style="left:48%"></span></div>
+        </div>
+        <div class="gauge" data-scanner-hint="Tavg — average primary coolant temperature (hot + cold leg average).">
+          <div class="g-label"><span>Tavg</span><span class="g-trend trend-up">▲</span></div>
+          <div class="g-value">583<span class="g-units"> °F</span></div>
+          <svg class="g-spark" viewBox="0 0 100 14" preserveAspectRatio="none"><polyline points="0,8 30,7 60,6 100,5" fill="none" stroke="#FB923C" stroke-width="1.5"/></svg>
+          <div class="g-band"><span class="needle" style="left:52%"></span></div>
+        </div>
+        <div class="gauge" data-scanner-hint="Pressurizer (PZR) Level — water level in the pressurizer. Misleading during a stuck-PORV event (the TMI lesson).">
+          <div class="g-label"><span>PZR Level</span><span class="g-trend trend-flat">▶</span></div>
+          <div class="g-value">65<span class="g-units"> %</span></div>
+          <svg class="g-spark" viewBox="0 0 100 14" preserveAspectRatio="none"><polyline points="0,5 50,5 100,6" fill="none" stroke="#67E8F9" stroke-width="1.5"/></svg>
+          <div class="g-band"><span class="needle" style="left:65%"></span></div>
+        </div>
+        <div class="gauge" data-scanner-hint="Steam Generator (SG) Level — water level on the secondary side; low level threatens primary heat removal.">
+          <div class="g-label"><span>SG Level</span><span class="g-trend trend-down">▼</span></div>
+          <div class="g-value">25<span class="g-units"> %</span></div>
+          <svg class="g-spark" viewBox="0 0 100 14" preserveAspectRatio="none"><polyline points="0,3 30,5 60,8 100,10" fill="none" stroke="#67E8F9" stroke-width="1.5"/></svg>
+          <div class="g-band"><span class="needle" style="left:25%"></span></div>
+        </div>
+        <div class="gauge" data-scanner-hint="Subcooling Margin — how far the coolant is from boiling. The honest gauge at TMI while the PORV indicator lied.">
+          <div class="g-label"><span>Subcool</span><span class="g-trend trend-down">▼</span></div>
+          <div class="g-value">18<span class="g-units"> °F</span></div>
+          <svg class="g-spark" viewBox="0 0 100 14" preserveAspectRatio="none"><polyline points="0,3 40,5 70,8 100,11" fill="none" stroke="#67E8F9" stroke-width="1.5"/></svg>
+          <div class="g-band"><span class="needle" style="left:30%"></span></div>
+        </div>
+      </div>
+
+      <!-- Four control sections (§5) -->
+      <div class="control-sections">
+        <!-- 5.1 Reactor Core -->
+        <div class="section">
+          <h3>Reactor Core</h3>
+          <div class="scram-wrap" id="scramWrap" data-scanner-hint="Reactor SCRAM — emergency shutdown. Lift the guard cover, then press within 3 seconds to insert all rods.">
+            <div class="scram-cover" id="scramCover">REACTOR SCRAM</div>
+            <div class="scram-btn" id="scramBtn">SCRAM</div>
+          </div>
+          <div class="ctl-row">
+            <span class="ctl-label">Control Bank</span>
+            <span class="ctl-readout mono">210 / 228</span>
+          </div>
+          <div class="rodbar" data-scanner-hint="Control Bank position — the operable rod group. Cyan normal; amber near the insertion limit; red at/below it.">
+            <span style="width:92%"></span><span class="limit" style="left:80%"></span>
+          </div>
+          <div class="ctl-row">
+            <div class="seg" data-scanner-hint="Rod motion — hold RAISE/LOWER to drive the control bank; STOP halts it.">
+              <button>Raise</button><button>Stop</button><button>Lower</button>
+            </div>
+            <div class="seg" data-scanner-hint="Rod speed — slow / normal / fast drive rate.">
+              <button>Slow</button><button class="on">Norm</button><button>Fast</button>
+            </div>
+          </div>
+          <div class="ctl-row">
+            <span class="ctl-label">Shutdown Bank <span class="mono">(read-only)</span></span>
+            <span class="ctl-readout" style="color:var(--running)">228 / 228</span>
+          </div>
+          <div class="rodbar shutdown" data-scanner-hint="Shutdown Bank — read-only; fully withdrawn in normal operation, drives in only on scram."><span style="width:100%"></span></div>
+        </div>
+
+        <!-- 5.2 Primary Inventory -->
+        <div class="section">
+          <h3>Primary Inventory</h3>
+          <div class="ctl-row">
+            <span class="ctl-label">Reactor Coolant Pumps (RCP)</span>
+            <div class="seg"><button class="on run">Run</button><button>Stop</button></div>
+          </div>
+          <div class="ctl-row">
+            <span class="ctl-label">Chemical Shim (Boron)</span>
+            <span class="ctl-readout mono">812 ppm</span>
+          </div>
+          <div class="seg" data-scanner-hint="Chemical Shim — adjusts dissolved boron (a neutron absorber) to trim reactivity slowly.">
+            <button>Borate</button><button class="on">Off</button><button>Dilute</button><button>Auto</button>
+          </div>
+          <div class="emergency">
+            <div class="ctl-row">
+              <span class="ctl-label">Emergency Core Cooling (ECCS)</span>
+              <div class="seg" data-scanner-hint="Emergency Core Cooling — high-pressure injection to keep the core covered. AUTO actuates on low pressure.">
+                <button class="on warn">Auto</button><button>On</button><button>Off</button>
+              </div>
+            </div>
+          </div>
+          <div class="ctl-row">
+            <span class="ctl-label">PZR Heaters</span>
+            <div class="seg"><button class="on">Auto</button><button>On</button><button>Off</button></div>
+          </div>
+          <div class="ctl-row">
+            <span class="ctl-label">PZR Spray</span>
+            <div class="seg"><button class="on">Auto</button><button>Man</button></div>
+          </div>
+        </div>
+
+        <!-- 5.3 Steam Generators -->
+        <div class="section">
+          <h3>Steam Generators</h3>
+          <div class="ctl-row">
+            <span class="ctl-label">Feed Pumps</span>
+            <div class="seg"><button class="on run">Start</button><button>Stop</button></div>
+          </div>
+          <div class="emergency">
+            <div class="ctl-row">
+              <span class="ctl-label">Auxiliary Feed Water (AFW)</span>
+              <div class="seg" data-scanner-hint="Auxiliary Feed Water — backup feed available after a loss of main feedwater.">
+                <button>Start</button><button class="on">Stop</button>
+              </div>
+            </div>
+          </div>
+          <div class="ctl-row">
+            <span class="ctl-label">Feed Reg Valve</span>
+            <div class="seg"><button class="on">Auto</button><button>Man</button></div>
+          </div>
+          <div class="ctl-row">
+            <span class="ctl-label">Setpoint</span>
+            <span class="ctl-readout mono">100 %</span><button class="btn">Set</button>
+          </div>
+        </div>
+
+        <!-- 5.4 Turbine & Grid -->
+        <div class="section">
+          <h3>Turbine &amp; Grid</h3>
+          <div class="ctl-row">
+            <span class="ctl-label">Main Breaker</span>
+            <div class="seg" data-scanner-hint="Main Breaker — the grid connection. Opening it requires confirmation."><button class="on run">Closed</button><button>Open</button></div>
+          </div>
+          <div class="emergency">
+            <div class="ctl-row">
+              <span class="ctl-label">Diesel Generators (EDG)</span>
+              <div class="seg" data-scanner-hint="Emergency Diesel Generators — backup AC power during a station blackout."><button class="on">Stby</button><button>Run</button></div>
+            </div>
+          </div>
+          <div class="ctl-row">
+            <span class="ctl-label">Turbine Load Target</span>
+          </div>
+          <div class="ctl-row">
+            <span class="ctl-readout mono">820 MW</span><button class="btn">Set</button>
+            <span class="ctl-label" style="text-align:right">actual 812 MW</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Synoptic diagram — numeric placeholder (§6.2) -->
+      <div class="synoptic">
+        <div class="synoptic-head">
+          <div class="placeholder-note">SYNOPTIC DIAGRAM · numeric placeholder until the SVG ships (reads instruments — HR1)</div>
+          <div style="display:flex; gap:8px;">
+            <div class="seg" data-scanner-hint="Diagram mode — Education (full heat-gradient colors) vs Realistic (muted; color only on faults).">
+              <button class="on">Education</button><button>Realistic</button>
+            </div>
+            <div class="seg" data-scanner-hint="True-state overlay — off by default; reveals true values next to indicated ones for comparison.">
+              <button class="on">Instruments</button><button>True</button><button>Both</button>
+            </div>
+          </div>
+        </div>
+        <div class="numeric-grid">
+          <div class="num-col">
+            <h4>Reactor / Core</h4>
+            <div class="num-line"><span class="nk">Power</span><span class="nv">84.2 %</span></div>
+            <div class="num-line"><span class="nk">Fuel Temp</span><span class="nv">1180 °F</span></div>
+            <div class="num-line"><span class="nk">Control Bank</span><span class="nv">210 steps</span></div>
+            <div class="num-line"><span class="nk">Shutdown Bank</span><span class="nv">228 steps</span></div>
+            <div class="num-line"><span class="nk">Decay Heat</span><span class="nv">1.4 %</span></div>
+            <div class="num-line"><span class="nk">Scrammed</span><span class="nv bool-off">no</span></div>
+          </div>
+          <div class="num-col">
+            <h4>Primary &amp; PZR</h4>
+            <div class="num-line"><span class="nk">Pressure</span><span class="nv">2100 psi</span></div>
+            <div class="num-line"><span class="nk">Tavg</span><span class="nv">583 °F</span></div>
+            <div class="num-line"><span class="nk">T-hot / T-cold</span><span class="nv">601 / 565 °F</span></div>
+            <div class="num-line"><span class="nk">PZR Level</span><span class="nv">65 %</span></div>
+            <div class="num-line"><span class="nk">Subcooling</span><span class="nv">18 °F</span></div>
+            <div class="num-line"><span class="nk">PORV</span><span class="nv bool-off">closed</span></div>
+            <div class="num-line"><span class="nk">Boron</span><span class="nv">812 ppm</span></div>
+          </div>
+          <div class="num-col">
+            <h4>Steam Generators</h4>
+            <div class="num-line"><span class="nk">SG Level</span><span class="nv">25 %</span></div>
+            <div class="num-line"><span class="nk">Steam Press</span><span class="nv">820 psi</span></div>
+            <div class="num-line"><span class="nk">Steam Flow</span><span class="nv">98 %</span></div>
+            <div class="num-line"><span class="nk">Feedwater Flow</span><span class="nv">96 %</span></div>
+            <div class="num-line"><span class="nk">AFW</span><span class="nv bool-off">off</span></div>
+          </div>
+          <div class="num-col">
+            <h4>Turbine / Condenser</h4>
+            <div class="num-line"><span class="nk">Output</span><span class="nv">812 MW</span></div>
+            <div class="num-line"><span class="nk">Turbine RPM</span><span class="nv">1800</span></div>
+            <div class="num-line"><span class="nk">Cond. Vacuum</span><span class="nv">28.5 inHg</span></div>
+            <div class="num-line"><span class="nk">Main Breaker</span><span class="nv bool-on">closed</span></div>
+          </div>
+          <div class="num-col">
+            <h4>Emergency &amp; Inventory</h4>
+            <div class="num-line"><span class="nk">Core Inventory</span><span class="nv">100 %</span></div>
+            <div class="num-line"><span class="nk">RCP</span><span class="nv bool-on">running</span></div>
+            <div class="num-line"><span class="nk">HPI</span><span class="nv bool-off">standby</span></div>
+            <div class="num-line"><span class="nk">Station Blackout</span><span class="nv bool-off">no</span></div>
+            <div class="num-line"><span class="nk">EDG</span><span class="nv bool-off">standby</span></div>
+          </div>
+        </div>
+        <div class="ff-badge" style="display:none" id="ffBadge">⚡ 600×</div>
+      </div>
+
+      <!-- Bottom row: strip chart + alarm panel -->
+      <div class="bottom-row">
+        <div class="strip-chart" data-scanner-hint="Strip Chart — multi-parameter trend. Choose parameters and window in the Graph tab; scrub to replay.">
+          <div class="chart-legend">
+            <span><i style="background:#FB923C"></i>Power</span>
+            <span><i style="background:#67E8F9"></i>Tavg</span>
+            <span><i style="background:#22D3EE"></i>Pressure</span>
+            <span><i style="background:#F472B6"></i>SG Level</span>
+          </div>
+          <svg class="chart-canvas" viewBox="0 0 400 120" preserveAspectRatio="none">
+            <line x1="0" y1="30" x2="400" y2="30" stroke="#23272d"/>
+            <line x1="0" y1="60" x2="400" y2="60" stroke="#23272d"/>
+            <line x1="0" y1="90" x2="400" y2="90" stroke="#23272d"/>
+            <polyline points="0,40 60,38 120,36 180,33 240,30 300,28 400,26" fill="none" stroke="#FB923C" stroke-width="1.5"/>
+            <polyline points="0,70 60,69 120,68 180,66 240,64 300,63 400,61" fill="none" stroke="#67E8F9" stroke-width="1.5"/>
+            <polyline points="0,55 60,55 120,56 180,55 240,55 300,56 400,55" fill="none" stroke="#22D3EE" stroke-width="1.5"/>
+            <polyline points="0,80 60,84 120,90 180,96 240,100 300,104 400,108" fill="none" stroke="#F472B6" stroke-width="1.5"/>
+          </svg>
+          <div class="scrubber">
+            <span class="lbl mono">T-10:00</span>
+            <div class="track"><div class="head"></div></div>
+            <span class="lbl mono">LIVE</span>
+          </div>
+        </div>
+
+        <div class="alarm-panel">
+          <div class="alarm-head">
+            <span class="t">Alarms</span>
+            <button class="btn ghost" data-scanner-hint="Master Acknowledge — acknowledges every active alarm at once (prefer acknowledging individually).">Ack All</button>
+          </div>
+          <div class="alarm-stack" id="alarmStack">
+            <!-- mock active alarms to show styling; normally this is blank -->
+            <div class="alarm-tile crit unack cat-coolant" data-scanner-hint="Steam Generator (SG) Level Critical Low — water level risks losing primary heat removal. Restore feed.">
+              <div class="bar"></div>
+              <div class="body">
+                <div class="label">Steam Generator (SG) Level Critical Low</div>
+                <div class="meta">coolant · critical · unacknowledged</div>
+              </div>
+              <div class="glyph">⚠</div>
+            </div>
+            <div class="alarm-tile warn unack cat-power" data-scanner-hint="Turbine Trip / Low Steam Demand — the turbine is offline or demand has dropped.">
+              <div class="bar"></div>
+              <div class="body">
+                <div class="label">Turbine Trip / Low Steam Demand</div>
+                <div class="meta">power · warning · unacknowledged</div>
+              </div>
+              <div class="glyph">△</div>
+            </div>
+            <div class="alarm-tile cat-instrument" data-scanner-hint="Pressurizer Level Sensor — flagged as suspect.">
+              <div class="bar"></div>
+              <div class="body">
+                <div class="label">Pressurizer (PZR) Level High</div>
+                <div class="meta">instrument · caution · acknowledged</div>
+              </div>
+              <div class="glyph" style="color:var(--muted)">●</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================ RIGHT COLUMN =========================== -->
+    <div class="right-col">
+
+      <!-- Sim controls (§3) -->
+      <div class="sim-controls">
+        <div class="sim-top">
+          <div class="logo">R<span class="a">⚛️</span>D</div>
+          <div class="clock mono running" id="clock">T+00:12:34</div>
+        </div>
+        <div class="sim-row">
+          <button class="play" id="playBtn" data-scanner-hint="Play / Pause — starts or stops the simulation. Separate from the speed selector.">⏸</button>
+          <div class="speed" id="speed" data-scanner-hint="Speed — time acceleration. 1× real-time up to 3600×. No automatic dropout.">
+            <button class="on">1×</button><button>10×</button><button>60×</button><button>600×</button><button>3600×</button>
+          </div>
+          <button class="btn save-btn" data-scanner-hint="Save — downloads the full simulation state as JSON.">💾</button>
+        </div>
+      </div>
+
+      <!-- Instructor panel (§9) -->
+      <div class="panel instructor">
+        <div class="persona">
+          <div class="icon">🎓</div>
+          <div class="role">Shift Supervisor</div>
+        </div>
+        <div class="instr-body">
+          <div class="instr-prev">— no prior messages —</div>
+          <div class="instr-current instr-standby">Standing by…</div>
+        </div>
+        <div class="instr-nav">
+          <button class="btn">◀ Prev</button>
+          <button class="btn">Next ▶</button>
+          <button class="btn">↺</button>
+          <button class="btn">✕</button>
+          <button class="btn">?</button>
+        </div>
+        <div class="instr-ack"><button class="ack-btn">Acknowledge</button></div>
+      </div>
+
+      <!-- Tools Block (§10) -->
+      <div class="panel tools">
+        <div class="tabbar" id="tabbar">
+          <button class="on" data-tab="failures">Failures</button>
+          <button data-tab="graph">Graph</button>
+          <button data-tab="sim">Sim</button>
+          <button data-tab="settings">Settings</button>
+          <button data-tab="training">Training</button>
+        </div>
+        <div class="tab-body">
+          <!-- Failures tab -->
+          <div class="tabpane on" data-pane="failures">
+            <div class="fail-row active">
+              <div class="fail-head"><span class="fail-name">Steam Generator Tube Rupture</span><span class="fail-cat coolant">coolant</span></div>
+              <div class="fail-slider"><input type="range" min="0" max="8" value="3"><span class="sv mono">Leak Rate: 3 % rated</span></div>
+            </div>
+            <div class="fail-row">
+              <div class="fail-head"><span class="fail-name">PORV Stuck Open</span><span class="fail-cat coolant">coolant</span></div>
+            </div>
+            <div class="fail-row">
+              <div class="fail-head"><span class="fail-name">Degraded HPI</span><span class="fail-cat safety_system">safety</span></div>
+              <div class="fail-slider"><input type="range" min="0" max="100" value="50"><span class="sv mono">HPI Capacity: 50 % rated</span></div>
+            </div>
+            <div class="fail-row">
+              <div class="fail-head"><span class="fail-name">Continuous Rod Withdrawal</span><span class="fail-cat reactivity">reactivity</span></div>
+              <div class="fail-slider"><input type="range" min="0" max="6" value="3"><span class="sv mono">Withdrawal: 3 steps/s</span></div>
+            </div>
+            <div class="fail-row">
+              <div class="fail-head"><span class="fail-name">Tavg Sensor Drifting</span><span class="fail-cat instrument">instrument</span></div>
+            </div>
+            <div class="advanced-exp">▸ Advanced instrument failure (instrument × mode × value)</div>
+          </div>
+          <!-- Graph tab -->
+          <div class="tabpane" data-pane="graph">
+            <div class="set-row"><span class="k">Parameters</span><span class="mono">Power, Tavg, Pressure, SG Lvl</span></div>
+            <div class="set-row"><span class="k">Window</span>
+              <div class="seg"><button>1m</button><button class="on">5m</button><button>10m</button><button>30m</button></div>
+            </div>
+            <div class="set-row"><span class="k">Export</span><button class="btn">CSV ⭳</button></div>
+          </div>
+          <!-- Sim tab -->
+          <div class="tabpane" data-pane="sim">
+            <div class="set-row"><span class="k">Scenario</span><span class="mono">Free-play</span></div>
+            <div class="set-row"><span class="k">Elapsed</span><span class="mono">T+00:12:34</span></div>
+            <div class="set-row"><span class="k">Reset</span><button class="btn">Reset…</button></div>
+            <div class="set-row"><span class="k">Save / Load</span><span><button class="btn">Save</button> <button class="btn">Load</button></span></div>
+            <div class="set-row"><span class="k">Export history</span><button class="btn">⭳</button></div>
+          </div>
+          <!-- Settings tab -->
+          <div class="tabpane" data-pane="settings">
+            <div class="set-row"><span class="k">Diagram Mode</span><div class="seg"><button class="on">Education</button><button>Realistic</button></div></div>
+            <div class="set-row"><span class="k">Values Display</span><div class="seg"><button class="on">Instruments</button><button>True</button><button>Both</button></div></div>
+            <div class="set-row"><span class="k">Register</span><div class="seg"><button class="on">Learning</button><button>Industry</button></div></div>
+            <div class="set-row"><span class="k">Units</span><div class="seg"><button class="on">US</button><button>SI</button></div></div>
+            <div class="set-row"><span class="k">Audio</span><div class="seg"><button>On</button><button class="on">Off</button></div></div>
+          </div>
+          <!-- Training tab -->
+          <div class="tabpane" data-pane="training">
+            <div class="set-row"><span class="k" style="font-style:italic;color:var(--muted)">Reserved for the Instructor phase (M6).</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- System Scanner (§11) -->
+      <div class="panel scanner">
+        <div class="panel-title">System Scanner</div>
+        <div class="body" id="scanner"><span class="idle">Hover anything to see what it does.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="shell.js"></script>
+</body>
+</html>

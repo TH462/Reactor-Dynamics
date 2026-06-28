@@ -13,7 +13,7 @@ where the two differ or where judgment was exercised.
 - Update the **Open Flags** table at the top whenever a flag is opened or closed.
 - Keep it skimmable: tables and short bullets, not prose.
 
-**Status:** M1 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · M7 ✅ · (next: M8)
+**Status:** M1 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · M7 ✅ · M8 🔶 visual shell · (next: wire M8 to M5)
 
 ---
 
@@ -184,6 +184,33 @@ highest value), `command_flow`, `alarm_behavior`, `config_consistency`.
   shipped TestRunner.)
 - **Driving:** `advanceCycles`/`runSeconds` step the loop synchronously and read the returned/broadcast
   snapshot — deterministic, timer-free, exactly what the UI would see.
+
+## M8 — User Interface (visual shell only, so far)
+
+**Files:** `ui/shell.html` · `ui/shell.css` · `ui/shell.js`
+**Status:** a **static, mock-data visual prototype** for iterating on look & layout *before* wiring
+it to the live snapshot (M5). Not the real M8 — nothing is connected to the engine; every value is a
+placeholder. Open `ui/shell.html` directly in a browser (no server needed).
+
+### What it is / isn't
+
+- **Is:** the full M8 §2 region layout (vital-few gauge strip, four control sections, numeric-placeholder
+  synoptic, strip chart, alarm panel, sim controls, Instructor panel, Tools Block with all five tabs,
+  System Scanner), styled with the exact §15 palette and the five alarm-category hues, with light
+  interactivity (tab switching, the SCRAM guard-cover + 3 s countdown, Scanner hover, segmented toggles,
+  speed + fast-forward badge, live Failures-tab sliders).
+- **Isn't:** wired to M5; no `subscribe(render)`, no commands, no real plant profile. The fixed
+  aspect-ratio lock (M8 §2.2/§19) is approximated with flex for now (noted in `shell.css`).
+- **Separate from `index.html`** — the shell is a throwaway-style prototype kept apart from the real app
+  shell (which loads the engine + layers). The real M8 will live in `ui/app.js` + `diagram/` + `panels/`
+  per M8 §19 and render from the snapshot.
+
+### Decisions
+
+- **Iterate-first approach** (user request): build the visuals as a standalone mock so layout/look can be
+  judged and changed rapidly, then replace placeholder values with snapshot bindings.
+- **Alarm-category palette** chosen here (data will drive it later): reactivity `#C084FC`, coolant
+  `#38BDF8`, power `#FBBF24`, instrument `#2DD4BF`, safety_system `#F472B6` — distinct/legible per §8.1.
 
 ## Change log
 
