@@ -49,25 +49,28 @@
   }
 
   // ----- Default pass-through occupant of the Instructor slot ------------------
-  // A minimal stand-in so the service runs before M6·PH lands (and is replaced by
-  // M6·PH / M6 with no change here). It passes commands straight down to M4,
-  // runs no beats, emits an empty instructor block, and tracks the register.
-  function DefaultInstructor() { this.layer = null; this.register = 'learning'; }
-  DefaultInstructor.prototype.connect = function (layer) { this.layer = layer; };
-  DefaultInstructor.prototype.handleCommand = function (cmd) {
-    if (cmd.action === 'set_register') { this.register = cmd.value; return null; }
-    return this.layer.handleCommand(cmd);
-  };
+  // A dependency-free fallback mirroring M6·PH (RD.InstructorLayer), used only if
+  // instructor_layer.js is not loaded — so M5 runs and tests standalone without
+  // caring which implementation occupies the slot. When M6·PH/M6 is present it is
+  // preferred (see the constructor). Same interface either way.
+  function DefaultInstructor(below) { this.below = below || null; this.register = 'learning'; }
+  DefaultInstructor.prototype.connect = function (layer) { this.below = layer; };
+  DefaultInstructor.prototype.handleCommand = function (cmd) { return this.below.handleCommand(cmd); };
   DefaultInstructor.prototype.step = function () { /* no beats */ };
   DefaultInstructor.prototype.getMessage = function () { return { message: null, message_register: this.register }; };
+  DefaultInstructor.prototype.setRegister = function (v) { this.register = v; };
+  DefaultInstructor.prototype.load = function () { /* no-op */ };
   DefaultInstructor.prototype.saveState = function () { return { register: this.register }; };
-  DefaultInstructor.prototype.loadState = function (s) { if (s) this.register = s.register; };
+  DefaultInstructor.prototype.loadState = function (s) { this.register = (s && s.register != null) ? s.register : 'learning'; };
 
   // ============================================================ the service
   function SimulationService(opts) {
     opts = opts || {};
     this.seed = opts.seed != null ? opts.seed : DEFAULT_SEED;
-    this.instructor = opts.instructor || new DefaultInstructor();
+    // Prefer an injected instructor; else the real M6·PH (RD.InstructorLayer) if
+    // loaded; else the dependency-free fallback. M5 does not care which (§5).
+    this.instructor = opts.instructor
+      || (RD.InstructorLayer ? new RD.InstructorLayer(null) : new DefaultInstructor(null));
     this.subscribers = [];
 
     this.engine = null;
@@ -110,7 +113,7 @@
     this.broadcastMs = NORMAL_MS;
     // Restore the selected register into the rebuilt layer/instructor.
     this.layer.handleCommand({ action: 'set_register', value: this.activeRegister });
-    if (this.instructor.handleCommand) this.instructor.handleCommand({ action: 'set_register', value: this.activeRegister });
+    if (this.instructor.setRegister) this.instructor.setRegister(this.activeRegister);
 
     // Assemble + broadcast the initial snapshot so the UI renders the start state.
     var snap = this._assembleWithInstructor();
@@ -212,7 +215,7 @@
       case 'set_register':
         // Dispatched to both consuming layers; also recorded for the UI (§5).
         this.activeRegister = command.value;
-        if (this.instructor.handleCommand) this.instructor.handleCommand(command);
+        if (this.instructor.setRegister) this.instructor.setRegister(command.value);
         if (this.layer) this.layer.handleCommand(command);
         return null;
       default:

@@ -13,7 +13,7 @@ where the two differ or where judgment was exercised.
 - Update the **Open Flags** table at the top whenever a flag is opened or closed.
 - Keep it skimmable: tables and short bullets, not prose.
 
-**Status:** M1 ✅ · M4 ✅ · M5 ✅ · (next: M6·PH)
+**Status:** M1 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · (next: M7)
 
 ---
 
@@ -133,6 +133,28 @@ pwr_steam_generator, pwr_instruments, pwr_engine}.js`
 - **Transient detection** uses the plant's primary pressure field via a `primaryPressure()` helper
   (`pressure_mpa` / `steam_pressure_mpa` / `vessel_pressure_mpa`), per §7's "pressure_like".
 
+## M6·PH — Placeholder Instructor
+
+**File:** `layers/instructor_layer.js`
+**Validation:** `node test/run_m6ph.js` → 8/8 suites, 18/18 checks.
+
+A transparent pass-through occupying the Instructor slot (free-play): forwards commands straight
+down to M4 (no gating), runs no beats, emits `{message:null}`, tracks the register. Implements the
+exact interface the real M6 will, so M6 replaces this file's internals with no change to M4/M5/M7/M8.
+
+### Decisions
+
+- **`setRegister(value)` interface (vs routing `set_register` through `handleCommand`).** Per the
+  M6·PH §3 interface, M5 dispatches the register via `instructor.setRegister(value)` and separately to
+  M4. M5 was updated to this (it previously sent `set_register` through the instructor's
+  `handleCommand`). `handleCommand` is now purely transparent.
+- **M5's slot resolution:** injected instructor → else `RD.InstructorLayer` (M6·PH) if loaded → else
+  M5's built-in `DefaultInstructor` fallback. The fallback now mirrors M6·PH exactly and exists only so
+  M5 has zero hard dependency on the slot implementation (the swap-invariant test confirms identical
+  free-play either way). Load order: `instructor_layer.js` before `simulation_service.js`.
+- **`connect(layer)` added** to the instructor (beyond the spec's constructor-injection) so M5 can
+  re-point the slot at the rebuilt M4 on a plant change without reconstructing scenario state.
+
 ## Change log
 
 - **M1** built and committed (`a18c85f`). Suite 11/11.
@@ -141,3 +163,6 @@ pwr_steam_generator, pwr_instruments, pwr_engine}.js`
 - **This file** created after M1+M4 to capture the above; keep updating per "How to maintain".
 - **M5** built. Smoke 12/12. Fixed-dt step-count acceleration (Flag F6); default pass-through
   Instructor slot; full stack (engine ↔ M4 ↔ instructor) runs end to end. M1/M4 re-confirmed green.
+- **M6·PH** built. Tests 8/8. Real pass-through Instructor module in the slot; M5 aligned to the
+  `setRegister` interface and prefers `RD.InstructorLayer`. Swap-invariant confirmed (free-play
+  unchanged). All four suites (M1/M4/M5/M6·PH) green.
