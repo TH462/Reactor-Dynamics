@@ -76,8 +76,6 @@
       { k: 'Power', inst: function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }, truth: function (s) { return s.true_state.power_pct.toFixed(1) + ' %'; } },
       { k: 'Fuel Temp', inst: null, truth: function (s) { return dispT(s.true_state.fuel_temp_c); } },
       { k: 'Decay Heat', inst: null, truth: function (s) { return s.true_state.decay_heat_pct.toFixed(1) + ' %'; } },
-      { k: 'Control Bank', inst: function (s) { return rodSteps(s, 'control') + ' steps'; } },
-      { k: 'Shutdown Bank', inst: function (s) { return rodSteps(s, 'shutdown') + ' steps'; } },
       { k: 'Scrammed', inst: function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); } },
     ] },
     { title: 'Primary & PZR', rows: [
@@ -112,7 +110,6 @@
   function dispT(c) { return c == null ? '—' : conv(c, 'temp').toFixed(0) + ' ' + unit('temp'); }
   function dispTd(c) { return c == null ? '—' : conv(c, 'tempdiff').toFixed(0) + ' ' + unit('tempdiff'); }
   function dispV(kpa) { return kpa == null ? '—' : conv(kpa, 'vacuum').toFixed(1) + ' ' + unit('vacuum'); }
-  function rodSteps(s, fn) { var g = s.control_state.rod_groups.filter(function (x) { return x.function === fn; })[0]; return g ? g.steps : 0; }
   function rodGroup(s, fn) { return s.control_state.rod_groups.filter(function (x) { return x.function === fn; })[0]; }
 
   // Strip-chart series: read raw instrument values from a buffered copy, plotted
@@ -225,6 +222,7 @@
 
     renderGauges(s);
     renderNumeric(s);
+    renderRodBars(s);
     renderControls(s);
     renderAlarms(s);
     renderInstructor(s);
@@ -296,6 +294,19 @@
     if (/^(OPEN|STOPPED|YES)$/.test(word)) return 'bool-bad';
     if (/^(running|active|closed|on)$/i.test(word)) return 'bool-on';
     return 'bool-off';
+  }
+
+  // Rod-position bars live in the diagram block (information), not the control
+  // panel. Muted-teal fill normal; red at/below the insertion limit (salient).
+  function renderRodBars(s) {
+    var cg = rodGroup(s, 'control'), sg = rodGroup(s, 'shutdown');
+    if (cg) {
+      $('rodControlReadout').textContent = cg.steps + ' / ' + cg.max_steps;
+      $('rodControlFill').style.width = cg.position_pct + '%';
+      $('rodControlFill').style.background = cg.at_insertion_limit ? 'var(--critical)' : 'var(--running-muted)';
+      if (cg.insertion_limit_steps != null) $('rodControlLimit').style.left = (cg.insertion_limit_steps / cg.max_steps * 100) + '%';
+    }
+    if (sg) { $('rodShutdownReadout').textContent = sg.steps + ' / ' + sg.max_steps; $('rodShutdownFill').style.width = sg.position_pct + '%'; }
   }
 
   // Control panels are controls-only now (§ quiet-board): every readout they used

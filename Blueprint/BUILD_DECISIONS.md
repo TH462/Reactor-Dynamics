@@ -281,6 +281,12 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
     salient. Applied to `.seg button.on.run` and numeric `bool-on`.
   - All engine/wiring suites re-confirmed green (PWR 11/11·51, M7 31/31 + teeth). Snapshot contract is
     additive (three new `true_state` fields), so M7's data-contract suite is unaffected.
+- **Redesign follow-up (user):** (1) **Rod-position bars relocated into the diagram block** — a
+  `.rod-position` strip atop the synoptic shows both banks (bar + step readout); the duplicate Control
+  Bank/Shutdown Bank text rows were removed from the numeric grid. Keeps panels controls-only while
+  restoring the at-a-glance rod visual as *information* in the diagram. (2) **Color muting pushed
+  further:** generic selected `.seg button.on` cyan → muted teal-slate; gauge-band normal zone and rod
+  fills → muted; caution-amber and trip-red stay salient.
 - **Two alpha-feedback fixes:** (1) decay heat now tracks power + is pre-loaded (see M1 modeling
   decisions) so an operating reactor shows ~7%, not 0. (2) Strip-chart bug: `getInstruments()` returns
   the engine's *live, mutated* reading object, so the chart was buffering one shared reference (every

@@ -123,6 +123,23 @@
             </div>
           </div>
         </div>
+        <!-- Rod position — information lives in the diagram block, not the control panel -->
+        <div class="rod-position">
+          <div class="rodpos-row">
+            <span class="rodpos-label">Control Bank</span>
+            <div class="rodbar" data-scanner-hint="Control Bank position — the operable rod group. Muted teal normal; red at/below the insertion limit (dashed marker).">
+              <span id="rodControlFill" style="width:0%"></span><span class="limit" id="rodControlLimit" style="left:80%"></span>
+            </div>
+            <span class="rodpos-readout mono" id="rodControlReadout">— / 228</span>
+          </div>
+          <div class="rodpos-row">
+            <span class="rodpos-label">Shutdown Bank</span>
+            <div class="rodbar shutdown" data-scanner-hint="Shutdown Bank position — read-only; fully withdrawn in normal operation, drives in only on scram.">
+              <span id="rodShutdownFill" style="width:100%"></span>
+            </div>
+            <span class="rodpos-readout mono" id="rodShutdownReadout">— / 228</span>
+          </div>
+        </div>
         <div class="numeric-grid" id="numericGrid"></div>
         <div class="ff-badge" style="display:none" id="ffBadge">⚡ 600×</div>
       </div>
