@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BWR Engine — §18 Scenario Suite</title>
+  <style>
+    body { font: 14px/1.5 ui-monospace, Menlo, Consolas, monospace; background: #0f1115; color: #d8dee9; margin: 0; padding: 24px; }
+    h1 { font-size: 18px; }
+    .summary { font-size: 16px; padding: 8px 12px; border-radius: 6px; display: inline-block; margin: 8px 0 20px; }
+    .ok { background: #1b3a2b; color: #8ce0a6; }
+    .bad { background: #3a1b1b; color: #e08c8c; }
+    .note { color: #7a8290; font-size: 13px; }
+    .suite { margin: 0 0 14px; border-left: 3px solid #333; padding-left: 12px; }
+    .suite.pass { border-color: #3a7a52; }
+    .suite.fail { border-color: #a14040; }
+    .suite > .name { font-weight: bold; font-size: 15px; }
+    .check { padding-left: 18px; }
+    .check.pass::before { content: "✓ "; color: #8ce0a6; }
+    .check.fail::before { content: "✗ "; color: #e08c8c; }
+    .detail { color: #7a8290; }
+  </style>
+</head>
+<body>
+  <h1>Reactor⚛️Dynamics — BWR Engine (M3) · §18 Scenario Suite</h1>
+  <div id="summary" class="summary">running…</div>
+  <p class="note">The Fukushima flagship simulates ~17 h of plant time at the 0.02 s
+  timestep — it may take a few seconds.</p>
+  <div id="results"></div>
+
+  <!-- BWR engine, global-namespace scripts in dependency order -->
+  <script src="engines/bwr/bwr_config.js"></script>
+  <script src="engines/bwr/bwr_protection.js"></script>
+  <script src="engines/bwr/bwr_vessel.js"></script>
+  <script src="engines/bwr/bwr_recirculation.js"></script>
+  <script src="engines/bwr/bwr_safety_systems.js"></script>
+  <script src="engines/bwr/bwr_instruments.js"></script>
+  <script src="engines/bwr/bwr_engine.js"></script>
+  <script>
+    (function () {
+      var results = RD.BWRScenarioTests.runAll();
+      var root = document.getElementById('results');
+      var passed = 0, failed = 0, suitePass = 0;
+      results.forEach(function (r) {
+        if (r.pass) suitePass++;
+        var s = document.createElement('div');
+        s.className = 'suite ' + (r.pass ? 'pass' : 'fail');
+        s.innerHTML = '<div class="name">' + (r.pass ? 'PASS' : 'FAIL') + ' — ' + r.name + '</div>';
+        r.checks.forEach(function (c) {
+          if (c.pass) passed++; else failed++;
+          var d = document.createElement('div');
+          d.className = 'check ' + (c.pass ? 'pass' : 'fail');
+          d.innerHTML = c.desc + ' <span class="detail">' +
+            (c.pass ? '(' + c.observed + ')' : '[expected ' + c.expected + ', observed ' + c.observed + ']') + '</span>';
+          s.appendChild(d);
+        });
+        root.appendChild(s);
+      });
+      var sum = document.getElementById('summary');
+      sum.className = 'summary ' + (failed ? 'bad' : 'ok');
+      sum.textContent = 'Suites ' + suitePass + '/' + results.length +
+        '   ·   Checks ' + passed + ' passed' + (failed ? ', ' + failed + ' failed' : '');
+    })();
+  </script>
+</body>
+</html>

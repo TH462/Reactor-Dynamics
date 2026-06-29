@@ -13,7 +13,7 @@ where the two differ or where judgment was exercised.
 - Update the **Open Flags** table at the top whenever a flag is opened or closed.
 - Keep it skimmable: tables and short bullets, not prose.
 
-**Status:** M1 ✅ · M2 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · M7 ✅ · M8 🟦 functional alpha (PWR) · (next: M3 or M6)
+**Status:** M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · M7 ✅ · M8 🟦 functional alpha (PWR) · **all three engines proven — physics layer complete** · (next: M6, or extend M8/M4 to RBMK+BWR)
 
 ---
 
@@ -21,12 +21,12 @@ where the two differ or where judgment was exercised.
 
 | # | Module | Flag | Severity | Status |
 |---|--------|------|----------|--------|
-| F1 | M1 | Criticality uses an explicit `rho_excess` + operating-temp references instead of the spec's "set reference temps" mechanism (which yields non-physical refs). Will M2/M3 reuse this pattern? | design | **RESOLVED (M2)** — yes. M2 reuses it: rho_excess trimmed per-state to ρ=0, Doppler/graphite refs pinned at full-power temps, and `void_ref` likewise pinned at the operating void (see M2 D1). The RBMK has no boron, so an excess term is unavoidable. M3 expected to follow. |
+| F1 | M1 | Criticality uses an explicit `rho_excess` + operating-temp references instead of the spec's "set reference temps" mechanism (which yields non-physical refs). Will M2/M3 reuse this pattern? | design | **RESOLVED (M2, confirmed M3)** — yes, all three. M2 trims rho_excess per-state with pinned Doppler/graphite/void refs; M3 (also boron-free) pins Tf_ref/void_ref at full power and trims rho_excess ONCE as a fixed core constant (so post_scram_sbo comes out subcritical). The pattern is now the house style for boron-free criticality. |
 | F2 | M1 | `sg_overfeed` failure `override_value: 1.2` is applied to `set_feedwater_flow {pct}` (0–100), so it underfeeds (1.2%) rather than overfeeds (~120%). Untested, not flagship. | data bug | **open** |
 | F3 | M1/M4 | The M1/M4 seam: command-override failures' persistent effects live in the engine (M1), while interception lives in M4. M4 forwards *and* intercepts. M7 will scrutinize this. | seam | **open** — validate in M7 |
 | F4 | M4 | `degraded_hpi` is typed `command_override` but its real effect is an engine HPI-flow multiplier (the spec itself flags this, M4 §7). Implemented via the engine hook. | taxonomy | **open** (spec-acknowledged) |
 | F5 | M1 | `fuel_damaged` (cladding failure at 1200 °C) is internal, not in the §6.3 `true_state` contract. Consumers must use `fuel_temp_c`/`melted`. | contract | **open** — confirm M6/M8 don't need it |
-| F6 | M5 | Acceleration is realized as fixed-0.02 s step **count**, not by scaling `dt` (CONTEXT §4's literal `dt_effective` diverges — verified). Every engine (M2/M3) must stay stable at 0.02 s; the service never hands them a larger dt. | deviation | **open** — M2 confirmed stable at 0.02 s (suite + save/restore determinism green); the only divergence is the *intended* prompt excursion, which the §3 `MAX_PROMPT_GROWTH` cap bounds. Still applies to M3. |
+| F6 | M5 | Acceleration is realized as fixed-0.02 s step **count**, not by scaling `dt` (CONTEXT §4's literal `dt_effective` diverges — verified). Every engine (M2/M3) must stay stable at 0.02 s; the service never hands them a larger dt. | deviation | **RESOLVED** — all three stable at 0.02 s. M2 fine with explicit Euler. **M3 needed an IMPLICIT prompt term** (its Λ=5e-5 makes explicit Euler unstable at 0.02 s: dt·β/Λ=2.6>2 — see M3 D1); still first-order, so the fixed-0.02 s contract holds for every engine. The service never needs a smaller dt. |
 | F7 | M8 | Alarm system-category (left-bar color, M8 §8.5) is derived UI-side by keyword (`alarmCategory()`), because M1's alarm data has no `category`. Should move into the plant profile alongside `tile_label`/`scanner_hint`. | data | **open** — add to engine alarm config |
 | F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **open** — confirm vs M6 highlight system |
 
@@ -128,6 +128,70 @@ The pre/post divergence comes from **three** levers acting in sequence at `low_p
 ### Notes / open items
 - **F1 resolved** here (see flag table). **F6** confirmed for M2 (stable at 0.02 s).
 - The `low_power_xenon` precondition is *metastable*, not a stable equilibrium — it sits at ρ≈0 until perturbed, and a sufficiently large upward nudge (the scram, on pre) runs away. This is faithful to the physics but means scenario scripts (M6) must drive it deliberately; free-running it for very long will eventually drift (xenon burnout).
+
+---
+
+## M3 — BWR Engine
+
+**Files:** `engines/bwr/{bwr_config, bwr_protection, bwr_vessel, bwr_recirculation,
+bwr_safety_systems, bwr_instruments, bwr_engine}.js`
+**Acceptance:** `node test/run_bwr.js` → **9/9 suites, 47/47 checks**. Browser page
+`test_bwr.html`. Load order: `config → protection → vessel → recirculation → safety_systems →
+instruments → engine`. The Fukushima flagship runs ~17 h of plant time at 0.02 s (~3 M steps
+across its branches) — the whole suite runs in ~10 s.
+
+### Deviations from the literal spec (with reason)
+
+| # | Spec said | Built instead | Why |
+|---|-----------|---------------|-----|
+| D1 | "No prompt fast-path (standard Euler kinetics throughout)" (§3) | **Implicit (prompt-jump) Euler** for the prompt term: `P=(P+dt·ΣλC)/(1−dt·(ρ−β)/Λ)` | The BWR's Λ=5e-5 makes the prompt mode decay at β/Λ≈130 s⁻¹; **explicit** Euler is unstable at dt=0.02 (dt·β/Λ=2.6>2) — it blows up even at ρ=0, and even the scrammed `post_scram_sbo` diverged. The implicit form is still **first-order** (CONTEXT §11 forbids only *higher*-order methods) and is unconditionally stable for ρ<β — exactly the BWR's envelope (it never reaches prompt critical, §3). **Resolves Flag F6** for M3. |
+| D2 | `rho_total = ρ_rods+ρ_doppler+ρ_void+ρ_xenon` (no excess term); `void_ref=0.40` fixed; `K_vessel_pressure` 0.0172 (§6.1) / 2.5 (§19 table) | Added a trimmed **`rho_excess`** (fixed core constant, full-power-critical, no per-state retrim); Tf_ref/void_ref pinned at the full-power operating point; **`K_vessel_pressure=0.5`** | Same F1 boron-free criticality pattern as M1/M2 — but trimmed ONCE (not per-state) so `post_scram_sbo` (rods fully in) comes out genuinely subcritical. The §19 table's `K_vessel_pressure=2.5` made decay-heat steam pressurize so fast it pinned vessel pressure at the relief setpoint and **ADS could never depressurize against it** (the whole intervention branch failed); 0.5 lets ADS win while still giving a sharp turbine-trip transient. |
+| D3 | `ads_depressurization_tau=600 s`, `vessel_water_mass=1.0`, `rcic_flow_normalized=0.01` (§19) | `ads_tau=120 s`; `vessel_water_mass=7.0` (rcic stays 0.01) | All `[tune]`, arbitrated by §18. At 600 s ADS stalled ~3 MPa (decay steam out-vented it near the threshold) — a real ADS blows down in minutes, so 120 s. `vessel_water_mass=7` is the knob that sets the **uncovery timeline** (below); rcic_flow then matches early boiloff so RCIC holds. |
+
+### The Fukushima timeline — how the hours-scale story is tuned (the heart of M3)
+
+The §18 flagship is the acceptance centerpiece; the numbers were tuned so the timeline is
+*approximately* right (the spec's explicit goal):
+- **boiloff = `H_total/(latent·vessel_water_mass)`, gated to `scrammed`.** Gating off at power
+  keeps full-power level stable (the normal steam/feedwater balance holds it); after scram it
+  becomes the inventory threat. `vessel_water_mass=7` makes early-decay (7 %) boiloff ≈ the RCIC
+  flow (0.01), so **RCIC holds the core covered** (level pegs ~100 %) through the grace window.
+- **Battery: linear timer, `battery_duration_hours=8`** → at ~8 h depletes → RCIC (and HPCI) lose
+  DC control power and stop. Observed: level falls 100 %→20 % in **~3 h** (within the spec's 2–4 h),
+  then to 0; fuel then heats (h_fc collapses on uncovery) to the 1200 °C damage onset by ~14 h.
+- **Intervention branch:** after RCIC fails, ADS (`trigger_ads`, fast 120 s blowdown) drops vessel
+  pressure below the 1.03 MPa LPCI threshold in minutes; LPCI (0.05, large) then refills the
+  vessel → **core saved, no damage**. Same start, opposite outcome — the lesson.
+
+### Modeling decisions (spec left open)
+
+- **Engine never auto-starts the safety systems (HR2).** Auto-start (RCIC at level<50, HPCI<30,
+  ADS<15 gated `hpci_unavailable`, LPCI gated `ads_open`) is M4 **actuation data** (§13); the
+  flagship test emulates it in a `runActuated` helper (as M1's TMI test emulated RPS/PORV). The
+  engine computes only the running EFFECTS and the physical stop-limits (steam-pressure cutoff,
+  battery depletion).
+- **`K_vessel_pressure`-driven decay steam** sets vessel pressure post-scram; relief at 7.58 MPa
+  holds it there (SRVs cycling), which keeps RCIC's steam drive available — until ADS or a stuck
+  SRV pulls it down (and below `rcic_min_pressure` RCIC stops on its own, the §13.1 lesson).
+- **Recirc drive flow RAMPS toward the setpoint** (`tau_recirc=8 s`, pump inertia). An instantaneous
+  flow jump swung the void hard enough to push ρ→β in one step (numerically violent, physically
+  wrong); the ramp keeps flow maneuvering gradual. The BWR's flow→power coupling is genuinely
+  strong (it IS the control mechanism), so a full-range flow push moves power a lot — the test
+  asserts it *settles*, not a magnitude.
+- **Core-uncovery heat-transfer collapse:** below `uncover_level_pct=20`, `h_fc` fades as
+  `level²` toward a near-zero floor (`0.00005`), so once the core is uncovered decay heat
+  accumulates and fuel heats to damage — the only path the BWR reaches fuel damage (no prompt
+  excursion).
+- **Rods** are bottom-entry but use the standard contract convention (steps=withdrawn, SCRUVE
+  worth) like the PWR — only the 3 s fast hydraulic scram differs. PRNG / save-restore machinery
+  identical to M1/M2; save/restore verified bit-exact mid-blackout with `srv_stuck_open` +
+  degraded battery + an instrument drift.
+
+### Notes
+- **F1 confirmed, F6 resolved** here (see flag table).
+- The actuation-gate status readings (`ads_open`, `hpci_unavailable`) are surfaced for M4's
+  `evaluateCondition`; the `actuation_gates` test exercises the gate logic engine-side (ADS gated
+  on hpci_unavailable, LPCI on ads_open, and `ads_failure` blocking the chain).
 
 ---
 
@@ -272,6 +336,14 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
 ## Change log
 
 - **M1** built and committed (`a18c85f`). Suite 11/11.
+- **M3** built. Suite **9/9 · 47 checks** (`node test/run_bwr.js`, browser `test_bwr.html`).
+  Flow-controlled BWR with negative void feedback; vessel/boiling/recirc TH; the steam-driven
+  safety systems (RCIC/HPCI/ADS/LPCI) + the SBO battery timer; the **Fukushima** flagship runs the
+  full hold-then-uncover timeline (RCIC holds ~8 h, uncovery ~3 h after battery depletion, damage)
+  vs the ADS+LPCI intervention (core saved) — the comparison. Needed an **implicit prompt term**
+  (Λ=5e-5 → explicit Euler unstable at 0.02 s; resolves F6) and a faster ADS + lower vessel-pressure
+  gain so depressurization beats decay steam. **Physics layer complete — all three engines proven**
+  (PWR 11/11·51, RBMK 18/18·99, BWR 9/9·47, all re-confirmed green).
 - **M2** built. Suite **18/18 · 99 checks**, both versions (`node test/run_rbmk.js`, browser
   `test_rbmk.html`). Two versions in one engine via `design_version`; reuses the F1 excess/pinned-
   reference pattern (and extends it to `void_ref`, which proved load-bearing for low-power
