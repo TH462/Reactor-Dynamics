@@ -124,6 +124,9 @@ The pre/post divergence comes from **three** levers acting in sequence at `low_p
 - **`MAX_PROMPT_GROWTH`** caps per-step prompt growth (pre 80 / post 5) as the §3 numeric backstop; a `_P ≤ 1e9` clamp and freezing kinetics once `melted` prevent post-destruction NaNs.
 - **PRNG / save-restore** identical machinery to M1 (mulberry32, Box–Muller; lag buffers + failures + RNG state saved). Save/restore verified bit-exact mid-`channel_rupture` + mid-stall + instrument-drift, for both versions.
 - **Protection is version-specific data** (`forVersion`): pre has 3 trips, post adds the tighter power trip + void trip; ORM alarm setpoint 15 (pre) / 43 (post). No engineered-safety auto-actuation (RBMK is trip-to-scram in v1).
+- **`rho_excess` is trimmed PER-STATE** here (each named state, each version, trimmed to ρ=0 at its operating point) — both `full_power` and `low_power_xenon` start critical, which is correct (operators held criticality at low power before AZ-5). This differs from M3, which trims once (the BWR's `post_scram_sbo` must be *subcritical*). The pre/post trims differ because the rod/void terms differ by design.
+- **`K_drum_pressure = 0.0207`** — the spec gives two values (§8.3 inline `0.0207`, §20 table `3.0`); took the detailed-section value (the §20 table looks like leftover from a different scaling, same pattern as the BWR's `K_vessel_pressure`). Steady state is insensitive (balanced imbalance → 0); it only sets pressure-transient speed, and the reliefs/trip cap the excursion regardless.
+- **Contract addition — `reactivity_pcm`** in `true_state` (= `_rho·1e5`), additive beyond CONTEXT §6.3, mirroring M1's reactivity-computer field. Additive only, so M7's data-contract suite is unaffected; M8/M4 (when extended to RBMK) can surface it as a reactimeter reading, never a board gauge / never fed to protection (HR1).
 
 ### Notes / open items
 - **F1 resolved** here (see flag table). **F6** confirmed for M2 (stable at 0.02 s).
@@ -186,6 +189,20 @@ The §18 flagship is the acceptance centerpiece; the numbers were tuned so the t
   worth) like the PWR — only the 3 s fast hydraulic scram differs. PRNG / save-restore machinery
   identical to M1/M2; save/restore verified bit-exact mid-blackout with `srv_stuck_open` +
   degraded battery + an instrument drift.
+- **`full_blackout_bwr` also closes the MSIV** (sets `steam_flow=0`, `turbine_blocked`) — a
+  deliberate addition beyond the spec's "drop AC: lose recirc + main feedwater" (§13). Without it,
+  after scram the turbine kept drawing steam while the core only made decay steam, so vessel
+  pressure *crashed* below `rcic_min_pressure` and RCIC couldn't run. MSIV closure on loss of power
+  is real plant behavior and is what lets decay steam build pressure to keep RCIC's drive alive.
+  (`post_scram_sbo` already starts steam-isolated; this fixes the *injected* SBO path.)
+- **Recirc operating point + command band.** Full-power recirc setpoint is **40 %** drive (not
+  100): the 2.5× jet-pump multiplier makes core flow ≈ 100 % there (void ≈ 0.45). Because core flow
+  caps at 120 %, `set_recirc_flow` is **clamped to 0–48 %** (drive above 48 % is wasted) — the
+  operator's usable recirc band.
+- **Contract addition — `reactivity_pcm`** in `true_state` (additive, like M1/M2). **`mwe_rated`
+  (1100 MWe)** added to config so `set_turbine_load {mwe}` maps to a steam fraction (`mwe/mwe_rated`).
+- **Vessel-pressure steam source = `Q_total`** (fission + decay), so a scrammed core still boils
+  (decay) and pressurizes into the reliefs — the same `Q_total` that gates boiloff, kept consistent.
 
 ### Notes
 - **F1 confirmed, F6 resolved** here (see flag table).
