@@ -252,6 +252,35 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   CSS tween on gauge needles + rod bars so they glide between frames. M5 cadence tests made
   cadence-agnostic. (CONTEXT §4's 2/5 Hz is the *minimum* viable cadence; rendering faster is a display
   choice that doesn't touch determinism.)
+- **M8 quiet-board redesign pass (user, responsive + control-room HF):** based on the "dark/quiet
+  board" philosophy (EPRI 1003662, NUREG-0700, ISA-18.2) — mute the normal, surface the abnormal.
+  - **Equal-width control panels (the "Reactor Core too wide" bug):** `.control-sections` was
+    `repeat(4, 1fr)` = `repeat(4, minmax(auto,1fr))`; the dense rod cluster's intrinsic width refused
+    to shrink and stole space. Fixed to `repeat(4, minmax(0,1fr))` + `.section{min-width:0}` + wrap on
+    `.ctl-row`. Now genuinely equal regardless of content.
+  - **Responsive:** dropped the `.plant-area{min-width:760px}` floor at ≤1200px (it forced horizontal
+    scroll on mid-size monitors); gauge strip wraps; stacked column fallback at ≤860px. No media
+    queries existed before.
+  - **Controls-only panels:** stripped all five embedded readouts (control/shutdown bank steps, boron,
+    feed %, turbine MW) out of the panels — every one already exists in the diagram numeric grid, so no
+    info lost. `renderControls()` reduced to the SCRAM button + alarm tint. Rod position bars removed
+    from the panel (position still shown as steps in the numeric grid; can relocate a visual bar into
+    the diagram block if wanted).
+  - **Sidebar cards focus model:** instructor + tools are now expand/collapse cards — exactly one
+    expanded at a time. Collapsed instructor shows only its latest message; collapsed tools shows only
+    its tab strip (clicking a tab expands+selects). Clicking the supervisor header focuses it; a new
+    instructor message auto-pops it open. Replaces the old fixed 50/50 `flex:1 1 0` split.
+  - **Reactivity (user decision: "SUR on board + reactimeter tool"):** real PWRs have NO direct ρ gauge
+    (high-confidence research finding) — operators infer reactivity from neutron-flux trends. Engine
+    `getTrueState()` now exposes `reactivity_pcm` (= `_rho`·1e5), `startup_rate_dpm` (= 26.06·Ṗ/P) and
+    `reactor_period_s` (= P/Ṗ). Added a **Startup Rate** gauge to the vital bar (the authentic operator
+    proxy) and an explicitly-labeled **Reactivity Computer** (reactimeter, pcm/SUR/period) in the
+    Training tab — framed as a reactor-engineering tool, NOT a board gauge.
+  - **Quiet-board color (hybrid):** running/normal status muted (new `--running-muted` teal) so a calm
+    board reads "all normal"; amber caution and saturated/flashing red (alarms/trips) kept fully
+    salient. Applied to `.seg button.on.run` and numeric `bool-on`.
+  - All engine/wiring suites re-confirmed green (PWR 11/11·51, M7 31/31 + teeth). Snapshot contract is
+    additive (three new `true_state` fields), so M7's data-contract suite is unaffected.
 - **Two alpha-feedback fixes:** (1) decay heat now tracks power + is pre-loaded (see M1 modeling
   decisions) so an operating reactor shows ~7%, not 0. (2) Strip-chart bug: `getInstruments()` returns
   the engine's *live, mutated* reading object, so the chart was buffering one shared reference (every

@@ -25,26 +25,17 @@
           </div>
           <div class="ctl-row">
             <span class="ctl-label">Control Bank</span>
-            <span class="ctl-readout mono" id="rodControlReadout">— / 228</span>
-          </div>
-          <div class="rodbar" data-scanner-hint="Control Bank position — the operable rod group. Cyan normal; amber near the insertion limit; red at/below it.">
-            <span id="rodControlFill" style="width:0%"></span><span class="limit" id="rodControlLimit" style="left:80%"></span>
-          </div>
-          <div class="ctl-row">
             <div class="seg" data-scanner-hint="Rod motion — hold RAISE/LOWER to drive the control bank; STOP halts it.">
               <button data-act="rod-raise">Raise</button><button data-act="rod-stop">Stop</button><button data-act="rod-lower">Lower</button>
             </div>
+          </div>
+          <div class="ctl-row">
             <div class="seg" id="rodSpeed" data-scanner-hint="Rod speed — slow / normal / fast drive rate.">
               <button data-rodspeed="slow">Slow</button><button class="on" data-rodspeed="normal">Norm</button><button data-rodspeed="fast">Fast</button>
             </div>
             <button class="btn" data-act="rod-nudge-out" title="withdraw 1 step">+1</button>
             <button class="btn" data-act="rod-nudge-in" title="insert 1 step">−1</button>
           </div>
-          <div class="ctl-row">
-            <span class="ctl-label">Shutdown Bank <span class="mono">(read-only)</span></span>
-            <span class="ctl-readout" id="rodShutdownReadout" style="color:var(--running)">— / 228</span>
-          </div>
-          <div class="rodbar shutdown" data-scanner-hint="Shutdown Bank — read-only; fully withdrawn in normal operation, drives in only on scram."><span id="rodShutdownFill" style="width:100%"></span></div>
         </div>
 
         <!-- 5.2 Primary Inventory -->
@@ -56,10 +47,9 @@
           </div>
           <div class="ctl-row">
             <span class="ctl-label">Chemical Shim (Boron)</span>
-            <span class="ctl-readout mono" id="boronReadout">— ppm</span>
-          </div>
-          <div class="seg" data-scanner-hint="Chemical Shim — adjusts dissolved boron (a neutron absorber) to trim reactivity slowly.">
-            <button data-act="borate">Borate</button><button class="on" data-act="boron-off">Off</button><button data-act="dilute">Dilute</button>
+            <div class="seg" data-scanner-hint="Chemical Shim — adjusts dissolved boron (a neutron absorber) to trim reactivity slowly.">
+              <button data-act="borate">Borate</button><button class="on" data-act="boron-off">Off</button><button data-act="dilute">Dilute</button>
+            </div>
           </div>
           <div class="emergency">
             <div class="ctl-row">
@@ -96,11 +86,7 @@
           </div>
           <div class="ctl-row">
             <span class="ctl-label">Feed Reg Valve</span>
-            <span class="ctl-readout mono" id="feedReadout">— %</span>
-          </div>
-          <div class="ctl-row">
-            <span class="ctl-label">Setpoint</span>
-            <input class="num-input mono" id="feedSet" type="number" min="0" max="100" value="100"><button class="btn" data-act="feed-set">Set</button>
+            <input class="num-input mono" id="feedSet" type="number" min="0" max="100" value="100"><button class="btn" data-act="feed-set">Set %</button>
           </div>
         </div>
 
@@ -119,9 +105,6 @@
           </div>
           <div class="ctl-row">
             <span class="ctl-label">Turbine Load Target</span>
-            <span class="ctl-readout mono" id="mweReadout">— MW</span>
-          </div>
-          <div class="ctl-row">
             <input class="num-input mono" id="mweSet" type="number" min="0" max="1100" value="1000"><button class="btn" data-act="mwe-set">Set MW</button>
           </div>
         </div>
@@ -185,8 +168,8 @@
         </div>
       </div>
 
-      <!-- Instructor panel (§9) -->
-      <div class="panel instructor">
+      <!-- Instructor panel (§9) — collapsed by default; shows latest message only -->
+      <div class="panel instructor collapsed" id="instructorCard">
         <div class="persona">
           <div class="icon">🎓</div>
           <div class="role">Shift Supervisor</div>
@@ -205,8 +188,8 @@
         <div class="instr-ack"><button class="ack-btn" id="instrAck">Acknowledge</button></div>
       </div>
 
-      <!-- Tools Block (§10) -->
-      <div class="panel tools">
+      <!-- Tools Block (§10) — expanded by default; collapses to its tab strip -->
+      <div class="panel tools expanded" id="toolsCard">
         <div class="tabbar" id="tabbar">
           <button class="on" data-tab="failures">Failures</button>
           <button data-tab="graph">Graph</button>
@@ -254,7 +237,11 @@
           </div>
           <!-- Training tab -->
           <div class="tabpane" data-pane="training">
-            <div class="set-row"><span class="k" style="font-style:italic;color:var(--muted)">Reserved for the Instructor phase (M6).</span></div>
+            <div class="g-section-title" data-scanner-hint="Reactivity Computer — a reactor-engineering tool (reactimeter), NOT a real control-board gauge. Real PWR operators have no direct reactivity readout; they infer it from startup rate and reactor period.">Reactivity Computer <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· engineering tool, not a board gauge</span></div>
+            <div class="set-row"><span class="k">Net reactivity ρ</span><span class="mono" id="rxReactivity">— pcm</span></div>
+            <div class="set-row"><span class="k">Startup rate (SUR)</span><span class="mono" id="rxSur">— dpm</span></div>
+            <div class="set-row"><span class="k">Reactor period</span><span class="mono" id="rxPeriod">— s</span></div>
+            <div class="set-row"><span class="k" style="font-style:italic;color:var(--muted)">Instructor phase (M6) lands here.</span></div>
           </div>
         </div>
       </div>

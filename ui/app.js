@@ -57,6 +57,9 @@
   // Each gauge: native instrument range (for the needle) + display conversion.
   var GAUGES = [
     { id: 'power',   label: 'Reactor Power', lead: true, raw: function (s) { return s.instruments.power_range; }, dim: null, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
+    // Startup Rate — the authentic reactivity proxy (real boards have no ρ gauge).
+    // Derived from neutron-flux trend; ~0 at steady power, positive when supercritical.
+    { id: 'sur',     label: 'Startup Rate', raw: function (s) { return s.true_state.startup_rate_dpm; }, dim: null, units: 'dpm', min: -1, max: 3, caution: 1, danger: 2, dp: 2 },
     { id: 'grid',    label: 'Grid Match',    lead: true, raw: function (s) { return gridMatch(s); }, dim: null, units: '%', min: 0, max: 100, dp: 1 },
     { id: 'press',   label: 'Primary Press', raw: function (s) { return s.instruments.primary_pressure; }, dim: 'pressure', min: 0, max: 20.7, caution: 16.2, danger: 16.44, dp: 0 },
     { id: 'tavg',    label: 'Tavg',          raw: function (s) { return s.instruments.tavg; }, dim: 'temp', min: 250, max: 343, caution: 312, danger: 335, dp: 0 },
@@ -225,6 +228,7 @@
     renderControls(s);
     renderAlarms(s);
     renderInstructor(s);
+    renderReactimeter(s);
     renderFailures(s);
 
     // strip-chart buffer — copy the instrument VALUES (getInstruments returns the
@@ -294,18 +298,10 @@
     return 'bool-off';
   }
 
+  // Control panels are controls-only now (§ quiet-board): every readout they used
+  // to carry (control/shutdown bank steps, boron, feed %, turbine MW) lives in the
+  // vital bar + diagram numeric grid. Only live control affordances remain here.
   function renderControls(s) {
-    var cg = rodGroup(s, 'control'), sg = rodGroup(s, 'shutdown');
-    if (cg) {
-      $('rodControlReadout').textContent = cg.steps + ' / ' + cg.max_steps;
-      $('rodControlFill').style.width = cg.position_pct + '%';
-      $('rodControlFill').style.background = cg.at_insertion_limit ? 'var(--critical)' : 'var(--normal)';
-      if (cg.insertion_limit_steps != null) $('rodControlLimit').style.left = (cg.insertion_limit_steps / cg.max_steps * 100) + '%';
-    }
-    if (sg) { $('rodShutdownReadout').textContent = sg.steps + ' / ' + sg.max_steps; $('rodShutdownFill').style.width = sg.position_pct + '%'; }
-    $('boronReadout').textContent = s.true_state.boron_ppm.toFixed(0) + ' ppm';
-    $('feedReadout').textContent = (s.control_state.feedwater_flow_pct || 0).toFixed(0) + ' %';
-    $('mweReadout').textContent = (s.instruments.mwe_output).toFixed(0) + ' MW';
     // scram button reflects the actual reactor state (manual scram isn't an RPS trip)
     var btn = $('scramBtn');
     if (s.true_state.scrammed) { btn.classList.add('fired'); btn.textContent = 'SCRAMMED'; }
@@ -313,6 +309,17 @@
     // alarm tint
     var anyUnack = s.alarms.some(function (a) { return a.state === 'active_unacknowledged'; });
     $('gaugeStrip').classList.toggle('alarm-tint', anyUnack);
+  }
+
+  // Reactivity Computer (reactimeter) — an explicitly-labeled engineering tool in
+  // the Training tab, NOT a control-board gauge. Shows the engine's net reactivity
+  // (ρ, pcm) plus the operator proxies SUR and reactor period.
+  function renderReactimeter(s) {
+    var t = s.true_state, per = t.reactor_period_s;
+    var sgn = function (v) { return (v >= 0 ? '+' : '') + v; };
+    $('rxReactivity').textContent = sgn(t.reactivity_pcm.toFixed(0)) + ' pcm';
+    $('rxSur').textContent = sgn(t.startup_rate_dpm.toFixed(2)) + ' dpm';
+    $('rxPeriod').textContent = (!isFinite(per) || Math.abs(per) > 9999) ? '∞ (steady)' : per.toFixed(0) + ' s';
   }
 
   function renderAlarms(s) {
@@ -335,10 +342,25 @@
     }).join('');
   }
 
+  var lastInstrMsg = null;
   function renderInstructor(s) {
     var cur = $('instrCurrent');
-    if (s.instructor && s.instructor.message) { cur.textContent = s.instructor.message; cur.classList.remove('instr-standby'); }
+    var msg = (s.instructor && s.instructor.message) ? s.instructor.message : null;
+    if (msg) { cur.textContent = msg; cur.classList.remove('instr-standby'); }
     else { cur.textContent = 'Standing by…'; cur.classList.add('instr-standby'); }
+    // focus follows a new directive: a fresh message pops the supervisor card open
+    if (msg && msg !== lastInstrMsg) setFocus('instructor');
+    lastInstrMsg = msg;
+  }
+
+  // Sidebar cards focus model: exactly one of {instructor, tools} is expanded.
+  function setFocus(which) {
+    var instr = $('instructorCard'), tools = $('toolsCard');
+    if (!instr || !tools) return;
+    instr.classList.toggle('expanded', which === 'instructor');
+    instr.classList.toggle('collapsed', which !== 'instructor');
+    tools.classList.toggle('expanded', which === 'tools');
+    tools.classList.toggle('collapsed', which !== 'tools');
   }
 
   // Active rows come from the snapshot (never optimistic, §10.1).
@@ -469,12 +491,16 @@
 
   // ============================================================ lifecycle/UI
   function bindUI() {
-    // tabs (do not resize the tools box — tab-body scrolls; CSS holds the split)
+    // tabs: clicking any tab selects it AND expands the tools card (focus model)
     $('tabbar').addEventListener('click', function (e) {
       var b = e.target.closest('button[data-tab]'); if (!b) return;
       $('tabbar').querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
       document.querySelectorAll('.tabpane').forEach(function (p) { p.classList.toggle('on', p.getAttribute('data-pane') === b.getAttribute('data-tab')); });
+      setFocus('tools');
     });
+    // clicking the Shift Supervisor header brings that card into focus
+    var persona = document.querySelector('.instructor .persona');
+    if (persona) persona.addEventListener('click', function () { setFocus('instructor'); });
     // generic segmented active state
     document.querySelectorAll('.seg').forEach(function (seg) {
       seg.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; seg.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on'); });

@@ -24,6 +24,10 @@
   --caution: #F59E0B;
   --critical: #EF4444;
   --running: #22C55E;
+  /* Quiet-board (hybrid): normal/running status renders MUTED so a calm board
+     reads "all normal" at a glance; saturated color is reserved for abnormal
+     (amber caution) and trips (saturated/flashing red). */
+  --running-muted: #3E8E7E;
   --stopped: #6B7280;
   --trend-up: #FB923C;
   --trend-down: #67E8F9;
@@ -93,6 +97,23 @@ body {
   overflow: hidden;
 }
 
+/* Responsive: the layout must survive any monitor. The 760px plant-area floor
+   was what forced horizontal scroll on mid-size displays; relax it first, then
+   stack the columns on genuinely narrow windows. */
+@media (max-width: 1200px) {
+  .plant-area { min-width: 0; }
+  .right-col { flex-basis: 320px; min-width: 300px; }
+}
+@media (max-width: 860px) {
+  html, body { overflow: auto; }
+  .app { flex-direction: column; height: auto; min-height: 100vh; }
+  .plant-area, .right-col {
+    flex: 0 0 auto; min-width: 0; max-width: none; width: 100%; overflow: visible;
+  }
+  .synoptic { min-height: 220px; }
+  .bottom-row { flex: 0 0 auto; height: 240px; }
+}
+
 /* generic panel chrome */
 .panel {
   background: var(--bg-right);
@@ -107,7 +128,7 @@ body {
 /* ===================================================== vital-few gauge strip */
 .gauge-strip {
   flex: 0 0 auto;
-  display: flex; gap: var(--gap);
+  display: flex; gap: var(--gap); flex-wrap: wrap;
   background: var(--bg-strip);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -141,9 +162,12 @@ body {
 .g-spark { width: 100%; height: 14px; }
 
 /* ===================================================== control sections row */
+/* minmax(0,1fr) — NOT plain 1fr — forces genuinely equal columns. Plain 1fr is
+   minmax(auto,1fr): a column won't shrink below its content's intrinsic width,
+   so the dense Reactor-Core rod cluster used to steal width from the others. */
 .control-sections {
   flex: 0 0 auto;
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap);
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap);
 }
 .section {
   background: var(--bg-strip);
@@ -152,12 +176,15 @@ body {
   padding: 8px;
   display: flex; flex-direction: column; gap: 7px;
   min-height: 150px;
+  min-width: 0;          /* allow the grid track to shrink past content */
 }
 .section h3 {
   margin: 0 0 2px; font-size: 11px; letter-spacing: .07em; text-transform: uppercase;
   color: var(--text-2); font-weight: 700;
 }
-.ctl-row { display: flex; align-items: center; gap: 6px; }
+/* wrap so a control cluster (rod drive + speed + nudge) reflows instead of
+   forcing its column wider than the rest */
+.ctl-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .ctl-label { font-size: 11px; color: var(--text-2); flex: 1 1 auto; }
 .ctl-readout { font-size: 12px; font-weight: 600; }
 
@@ -170,7 +197,7 @@ body {
 .seg button:last-child { border-right: none; }
 .seg button:hover { color: var(--text); }
 .seg button.on { background: var(--normal); color: #06262b; font-weight: 700; }
-.seg button.on.run { background: var(--running); color: #052e12; }
+.seg button.on.run { background: var(--running-muted); color: #eafff7; }
 .seg button.on.warn { background: var(--caution); color: #2a1c00; }
 
 .btn {
@@ -229,7 +256,7 @@ body {
 .num-line { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; border-bottom: 1px dotted #23272d; }
 .num-line .nk { color: var(--text-2); }
 .num-line .nv { font-weight: 600; }
-.num-line .nv.bool-on { color: var(--running); }
+.num-line .nv.bool-on { color: var(--running-muted); }
 .num-line .nv.bool-bad { color: var(--critical); }
 .ff-badge { position: absolute; right: 10px; bottom: 8px; font-size: 11px; color: var(--caution);
   background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.4); border-radius: 4px; padding: 1px 6px; }
@@ -305,9 +332,30 @@ body {
 .save-btn { flex: 0 0 auto; }
 
 /* ===================================================== right col: instructor */
-/* flex-basis 0 + equal grow => the Instructor:Tools split is fixed by the window,
-   NOT by tab content, so switching tabs never resizes either box. */
-.instructor { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+/* Cards focus model (§ quiet-board "management by exception"): exactly one of
+   {instructor, tools} is EXPANDED (fills the column), the other COLLAPSED to a
+   minimal header. Collapsed instructor shows only its latest message; collapsed
+   tools shows only its tab strip. Clicking a collapsed card's header — or any
+   tool tab — brings it into focus (and collapses the other). */
+.instructor, .tools {
+  min-height: 0; display: flex; flex-direction: column;
+  transition: flex-grow .15s ease;
+}
+.instructor.expanded, .tools.expanded { flex: 1 1 0; }
+.instructor.collapsed, .tools.collapsed { flex: 0 0 auto; }
+.instructor .persona { cursor: pointer; }
+.instructor .persona::after {
+  content: '▸'; margin-left: auto; color: var(--muted); font-size: 11px;
+  transition: transform .15s ease;
+}
+.instructor.expanded .persona::after { transform: rotate(90deg); }
+.instructor.collapsed .instr-prev,
+.instructor.collapsed .instr-nav,
+.instructor.collapsed .instr-ack { display: none; }
+.instructor.collapsed .instr-current {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tools.collapsed .tab-body { display: none; }
 .instructor .persona { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .persona .icon { width: 26px; height: 26px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border);
   display: flex; align-items: center; justify-content: center; font-size: 14px; }
@@ -323,7 +371,6 @@ body {
   border-radius: 6px; color: var(--muted); font-weight: 700; cursor: not-allowed; }
 
 /* ===================================================== right col: tools block */
-.tools { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
 .tabbar { display: flex; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
 .tabbar button { flex: 1 1 0; background: transparent; border: none; color: var(--text-2);
   padding: 8px 4px; font-size: 11px; cursor: pointer; border-bottom: 2px solid transparent; }

@@ -233,6 +233,15 @@
   // ============================================================ contract surface
   PWREngine.prototype.getTrueState = function () {
     var s = this.s;
+    // Reactivity proxies. Real PWRs have no direct ρ gauge: operators infer it
+    // from neutron-flux trends (startup rate / reactor period). We expose the
+    // engine's net reactivity (ρ, pcm) for an explicitly-labeled "reactivity
+    // computer" (engineering tool), plus the operator-facing proxies SUR and
+    // period derived from the smoothed power rate. SUR(dpm) = 26.06·(Ṗ/P);
+    // period(s) = P/Ṗ. Both are well-defined only above a small power floor.
+    var p = s.power_pct, pr = s._power_rate || 0;
+    var sur = 0, period = Infinity;
+    if (p > 0.1) { sur = 26.06 * (pr / p); period = Math.abs(pr) > 1e-6 ? p / pr : Infinity; }
     return {
       power_pct: s.power_pct, tavg_c: s.tavg_c, thot_c: s.thot_c, tcold_c: s.tcold_c,
       pressure_mpa: s.pressure_mpa, pzr_level_pct: s.pzr_level_pct, sg_level_pct: s.sg_level_pct,
@@ -244,6 +253,7 @@
       pump_running: s.pump_running, pump_flow_pct: s.pump_flow_pct, station_blackout: s.station_blackout,
       turbine_rpm: s.turbine_rpm, condenser_vacuum_kpa: s.condenser_vacuum_kpa,
       scrammed: s.scrammed, melted: s.melted, steam_demand_mwe: s.steam_demand_mwe,
+      reactivity_pcm: (s._rho || 0) * 1e5, startup_rate_dpm: sur, reactor_period_s: period,
     };
   };
 
