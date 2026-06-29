@@ -29,6 +29,8 @@
   var service, latest = null;
   var chartBuf = [];        // { t, ins, ts }
   var gaugeHist = {};       // id -> [display values]
+  var smoothed = {};        // id -> display-damped instrument value (see dampInstruments)
+  var DISPLAY_DAMP_K = 0.18; // per-frame EMA factor; lower = calmer, slower needle
 
   // ----------------------------------------------------------- unit conversion
   function conv(v, dim) {
@@ -55,12 +57,12 @@
     return Math.min(100, (s.true_state.mwe_output / d) * 100);
   }
   // Each gauge: native instrument range (for the needle) + display conversion.
+  // Vital-few headline gauges (§4): the core parameters an operator scans
+  // continuously. Startup Rate and Grid Match moved to the diagram numeric grid
+  // (secondary readouts — SUR matters mainly on transients, Grid Match is a
+  // turbine/grid metric), keeping the strip to the six it must always show.
   var GAUGES = [
     { id: 'power',   label: 'Reactor Power', lead: true, raw: function (s) { return s.instruments.power_range; }, dim: null, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
-    // Startup Rate — the authentic reactivity proxy (real boards have no ρ gauge).
-    // Derived from neutron-flux trend; ~0 at steady power, positive when supercritical.
-    { id: 'sur',     label: 'Startup Rate', raw: function (s) { return s.true_state.startup_rate_dpm; }, dim: null, units: 'dpm', min: -1, max: 3, caution: 1, danger: 2, dp: 2 },
-    { id: 'grid',    label: 'Grid Match',    lead: true, raw: function (s) { return gridMatch(s); }, dim: null, units: '%', min: 0, max: 100, dp: 1 },
     { id: 'press',   label: 'Primary Press', raw: function (s) { return s.instruments.primary_pressure; }, dim: 'pressure', min: 0, max: 20.7, caution: 16.2, danger: 16.44, dp: 0 },
     { id: 'tavg',    label: 'Tavg',          raw: function (s) { return s.instruments.tavg; }, dim: 'temp', min: 250, max: 343, caution: 312, danger: 335, dp: 0 },
     { id: 'pzr',     label: 'PZR Level',     raw: function (s) { return s.instruments.pzr_level; }, dim: null, units: '%', min: 0, max: 100, dp: 0 },
@@ -74,6 +76,7 @@
   var NUMERIC = [
     { title: 'Reactor / Core', rows: [
       { k: 'Power', inst: function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }, truth: function (s) { return s.true_state.power_pct.toFixed(1) + ' %'; } },
+      { k: 'Startup Rate', inst: function (s) { return s.true_state.startup_rate_dpm.toFixed(2) + ' dpm'; } },
       { k: 'Fuel Temp', inst: null, truth: function (s) { return dispT(s.true_state.fuel_temp_c); } },
       { k: 'Decay Heat', inst: null, truth: function (s) { return s.true_state.decay_heat_pct.toFixed(1) + ' %'; } },
       { k: 'Scrammed', inst: function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); } },
@@ -94,6 +97,7 @@
       { k: 'AFW', inst: function (s) { return bool(s.true_state.afw_active, 'on', 'off'); } },
     ] },
     { title: 'Turbine / Condenser', rows: [
+      { k: 'Grid Match', inst: function (s) { return gridMatch(s).toFixed(1) + ' %'; } },
       { k: 'Output', inst: function (s) { return s.instruments.mwe_output.toFixed(0) + ' MW'; } },
       { k: 'Turbine RPM', inst: function (s) { return s.instruments.turbine_rpm.toFixed(0); } },
       { k: 'Cond. Vacuum', inst: function (s) { return dispV(s.instruments.condenser_vacuum); } },
@@ -115,14 +119,17 @@
   // Strip-chart series: read raw instrument values from a buffered copy, plotted
   // against a FIXED range each (so steady state reads flat and real transients
   // show true movement — auto-scaling would amplify noise to full height).
+  // Trace colors are TRACKING colors (muted, hue-distinct mid-tones), not status
+  // colors — so the chart reads calm at rest. A parameter in alarm brightens its
+  // trace (drawChart), and that contrast against the muted baseline is the signal.
   var SERIES = [
-    { id: 'power',    label: 'Power %',  color: '#FB923C', get: function (i) { return i.power_range; }, range: [0, 120] },
-    { id: 'tavg',     label: 'Tavg',     color: '#67E8F9', get: function (i) { return i.tavg; }, range: [270, 330] },
-    { id: 'pressure', label: 'Pressure', color: '#22D3EE', get: function (i) { return i.primary_pressure; }, range: [10, 17] },
-    { id: 'sg_level', label: 'SG Level', color: '#F472B6', get: function (i) { return i.sg_level; }, range: [0, 100] },
-    { id: 'pzr_level',label: 'PZR Level',color: '#A855F7', get: function (i) { return i.pzr_level; }, range: [0, 100] },
-    { id: 'subcool',  label: 'Subcool',  color: '#2DD4BF', get: function (i) { return i.subcooling_margin; }, range: [-10, 60] },
-    { id: 'mwe',      label: 'Output MW',color: '#22C55E', get: function (i) { return i.mwe_output; }, range: [0, 1100] },
+    { id: 'power',    label: 'Power %',  color: '#bf8f4d', get: function (i) { return i.power_range; }, range: [0, 120] },
+    { id: 'tavg',     label: 'Tavg',     color: '#6f93b8', get: function (i) { return i.tavg; }, range: [270, 330] },
+    { id: 'pressure', label: 'Pressure', color: '#5f93a6', get: function (i) { return i.primary_pressure; }, range: [10, 17] },
+    { id: 'sg_level', label: 'SG Level', color: '#a878b0', get: function (i) { return i.sg_level; }, range: [0, 100] },
+    { id: 'pzr_level',label: 'PZR Level',color: '#8580c4', get: function (i) { return i.pzr_level; }, range: [0, 100] },
+    { id: 'subcool',  label: 'Subcool',  color: '#6fa389', get: function (i) { return i.subcooling_margin; }, range: [-10, 60] },
+    { id: 'mwe',      label: 'Output MW',color: '#88a96a', get: function (i) { return i.mwe_output; }, range: [0, 1100] },
   ];
 
   // Map an alarm to a system category (alpha: UI-side; later from the profile).
@@ -145,13 +152,31 @@
       el.innerHTML =
         '<div class="g-label"><span>' + g.label + '</span><span class="g-trend trend-flat" data-trend></span></div>' +
         '<div class="g-value" data-val>—</div>' +
-        '<svg class="g-spark" viewBox="0 0 100 14" preserveAspectRatio="none"><polyline data-spark fill="none" stroke="' + (g.lead ? '#FB923C' : '#67E8F9') + '" stroke-width="1.5"/></svg>' +
+        '<svg class="g-spark" viewBox="0 0 100 14" preserveAspectRatio="none"><polyline data-spark fill="none" stroke="#56657a" stroke-width="1.5"/></svg>' +
         '<div class="g-band"><span class="needle" data-needle style="left:0%"></span></div>';
       el.id = 'gauge-' + g.id;
       strip.appendChild(el);
       gaugeHist[g.id] = [];
     });
   }
+
+  // Compact rod-bank indicator, appended under the Reactor/Core column (label +
+  // step readout over a thin position bar). Same ids renderRodBars() drives.
+  var ROD_MINI_HTML =
+    '<div class="rod-mini">' +
+      '<div class="rm-grp">' +
+        '<div class="rm-head"><span class="nk">Control Bank</span><span class="rm-val mono" id="rodControlReadout">— / 228</span></div>' +
+        '<div class="rodbar" data-scanner-hint="Control Bank position — the operable rod group. Calm green normal; red at/below the insertion limit (dashed marker).">' +
+          '<span id="rodControlFill" style="width:0%"></span><span class="limit" id="rodControlLimit" style="left:80%"></span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="rm-grp">' +
+        '<div class="rm-head"><span class="nk">Shutdown Bank</span><span class="rm-val mono" id="rodShutdownReadout">— / 228</span></div>' +
+        '<div class="rodbar shutdown" data-scanner-hint="Shutdown Bank position — read-only; fully withdrawn in normal operation, drives in only on scram.">' +
+          '<span id="rodShutdownFill" style="width:100%"></span>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 
   function buildNumeric() {
     var grid = $('numericGrid');
@@ -163,6 +188,7 @@
       col.rows.forEach(function (r, ri) {
         html += '<div class="num-line" data-num="' + ci + '-' + ri + '"><span class="nk">' + r.k + '</span><span class="nv" data-nv>—</span></div>';
       });
+      if (ci === 0) html += ROD_MINI_HTML;   // rod banks sit under Reactor/Core
       c.innerHTML = html;
       grid.appendChild(c);
     });
@@ -211,12 +237,36 @@
     });
   }
 
+  // Display damping. Real indicators (needle damping, digital filtering) smooth
+  // the high-frequency instrument noise; only the slower signal reaches the eye.
+  // We KEEP the noise in the data — a stuck/failed instrument must still mislead
+  // (HR1) and trips/alarms already read the raw reading engine-side — and damp
+  // only the DISPLAYED value with an exponential moving average, exactly like a
+  // real gauge. Skipped at high time-acceleration, where the signal moves faster
+  // than the noise and damping would just lag the true motion.
+  function dampInstruments(s) {
+    if (s.metadata.time_acceleration >= 60) { smoothed = {}; return; }
+    // s.instruments aliases the engine's LIVE reading object (M5 assembleSnapshot)
+    // — never mutate it; damp into a fresh copy and swap the snapshot's reference.
+    var src = s.instruments, out = {}, k = DISPLAY_DAMP_K;
+    for (var id in src) {
+      var v = src[id];
+      if (typeof v === 'number' && isFinite(v)) {
+        smoothed[id] = (smoothed[id] == null) ? v : smoothed[id] + k * (v - smoothed[id]);
+        out[id] = smoothed[id];
+      } else {
+        out[id] = v;   // strings/bools (e.g. porv_indicator) pass through unchanged
+      }
+    }
+    s.instruments = out;
+  }
+
   // ============================================================ render snapshot
   function render(s) {
     latest = s;
+    dampInstruments(s);   // smooth the displayed instrument values before any render/buffer
     // clock
     $('clock').textContent = 'T+' + hms(s.metadata.sim_time);
-    $('simElapsed').textContent = 'T+' + hms(s.metadata.sim_time);
     $('clock').classList.toggle('running', s.metadata.running);
     $('clock').classList.toggle('accel', s.metadata.time_acceleration > 1);
 
@@ -241,6 +291,13 @@
     GAUGES.forEach(function (g) {
       var root = $('gauge-' + g.id);
       var raw = g.raw(s);
+      // Value color IS the status: dim normal → amber caution → red+flash alarm.
+      // Thresholds come from the gauge config (never hardcoded here); gauges
+      // without thresholds stay dim/normal.
+      var st = (g.danger != null && raw >= g.danger) ? 'alarm'
+             : (g.caution != null && raw >= g.caution) ? 'warn' : 'normal';
+      root.classList.toggle('warn', st === 'warn');
+      root.classList.toggle('alarm', st === 'alarm');
       var disp = g.dim ? conv(raw, g.dim) : raw;
       var units = g.dim ? unit(g.dim) : g.units;
       root.querySelector('[data-val]').innerHTML = disp.toFixed(g.dp) + '<span class="g-units"> ' + units + '</span>';
@@ -313,10 +370,11 @@
   // to carry (control/shutdown bank steps, boron, feed %, turbine MW) lives in the
   // vital bar + diagram numeric grid. Only live control affordances remain here.
   function renderControls(s) {
-    // scram button reflects the actual reactor state (manual scram isn't an RPS trip)
-    var btn = $('scramBtn');
-    if (s.true_state.scrammed) { btn.classList.add('fired'); btn.textContent = 'SCRAMMED'; }
-    else { btn.classList.remove('fired'); btn.textContent = 'SCRAM'; }
+    // SCRAM box reflects the actual reactor state (a manual scram isn't an RPS trip).
+    // Scrammed → the wrap goes into the always-visible bright-red flashing state.
+    var btn = $('scramBtn'), wrap = $('scramWrap');
+    if (s.true_state.scrammed) { wrap.classList.add('scrammed'); btn.classList.add('fired'); btn.textContent = 'SCRAMMED'; }
+    else { wrap.classList.remove('scrammed'); btn.classList.remove('fired'); btn.textContent = 'SCRAM'; }
     // alarm tint
     var anyUnack = s.alarms.some(function (a) { return a.state === 'active_unacknowledged'; });
     $('gaugeStrip').classList.toggle('alarm-tint', anyUnack);
@@ -392,16 +450,37 @@
     });
   }
 
+  // A trace is "hot" when its parameter is in alarm — reuse the matching vital
+  // gauge's danger threshold (no separate hardcode; traces whose gauge has no
+  // threshold simply never brighten until thresholds land in the profile).
+  var SERIES_GAUGE = { power: 'power', tavg: 'tavg', pressure: 'press', sg_level: 'sg', pzr_level: 'pzr', subcool: 'subcool', mwe: null };
+  function gaugeById(id) { for (var i = 0; i < GAUGES.length; i++) if (GAUGES[i].id === id) return GAUGES[i]; return null; }
+  function seriesAlarmed(ser) {
+    if (!latest) return false;
+    var g = gaugeById(SERIES_GAUGE[ser.id]);
+    return !!(g && g.danger != null && g.raw(latest) >= g.danger);
+  }
+  function lighten(hex) { // pull a muted trace toward white when it goes hot
+    var n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    return 'rgb(' + Math.round(r + (255 - r) * 0.6) + ',' + Math.round(g + (255 - g) * 0.6) + ',' + Math.round(b + (255 - b) * 0.6) + ')';
+  }
+
   // ============================================================ strip chart
   function drawChart() {
     var svg = $('chartCanvas'), W = 400, H = 120;
     var active = SERIES.filter(function (s) { return ui.series[s.id]; });
-    // legend
-    $('chartLegend').innerHTML = active.map(function (s) { return '<span><i style="background:' + s.color + '"></i>' + s.label + '</span>'; }).join('');
+    // legend doubles as a minimal, color-coded per-parameter scale: each trace's
+    // label + its plot range [min–max], drawn in the trace's own color.
+    $('chartLegend').innerHTML = active.map(function (s) {
+      return '<span class="leg" style="color:' + s.color + '"><i style="background:' + s.color + '"></i>' +
+        s.label + ' <b>' + s.range[0] + '–' + s.range[1] + '</b></span>';
+    }).join('');
     if (chartBuf.length < 2) { svg.innerHTML = ''; return; }
     var t0 = chartBuf[0].t, t1 = chartBuf[chartBuf.length - 1].t, span = (t1 - t0) || 1;
     var html = '';
-    [30, 60, 90].forEach(function (y) { html += '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#23272d"/>'; });
+    // hairline gridlines (non-scaling so they stay thin under the stretched
+    // viewBox, and dim so they don't compete with the parameter traces)
+    [30, 60, 90].forEach(function (y) { html += '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#1b1f25" stroke-width="0.5" vector-effect="non-scaling-stroke"/>'; });
     active.forEach(function (ser) {
       var lo = ser.range[0], hi = ser.range[1], rng = (hi - lo) || 1;
       var pts = chartBuf.map(function (b) {
@@ -410,7 +489,8 @@
         var y = H - 8 - f * (H - 16);
         return x.toFixed(1) + ',' + y.toFixed(1);
       }).join(' ');
-      html += '<polyline points="' + pts + '" fill="none" stroke="' + ser.color + '" stroke-width="1.5"/>';
+      var hot = seriesAlarmed(ser);
+      html += '<polyline points="' + pts + '" fill="none" stroke="' + (hot ? lighten(ser.color) : ser.color) + '" stroke-width="' + (hot ? 2.4 : 1.5) + '" vector-effect="non-scaling-stroke"/>';
     });
     svg.innerHTML = html;
     // low-profile x-axis: time ticks across the window
@@ -544,8 +624,17 @@
     // load file
     $('loadFile').addEventListener('change', function (e) {
       var f = e.target.files[0]; if (!f) return; var r = new FileReader();
-      r.onload = function () { try { var st = JSON.parse(r.result); service.loadState(st); latest = service.assembleSnapshot(); render(latest); } catch (err) { alert('Bad save file'); } };
+      r.onload = function () { try { var st = JSON.parse(r.result); service.loadState(st); smoothed = {}; latest = service.assembleSnapshot(); render(latest); } catch (err) { alert('Bad save file'); } };
       r.readAsText(f);
+    });
+    // Control strip: tab bar selects which section's controls are shown
+    var ctlTabs = $('ctlTabs');
+    if (ctlTabs) ctlTabs.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-ctab]'); if (!b) return;
+      ctlTabs.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      document.querySelectorAll('.ctl-pane').forEach(function (p) {
+        p.classList.toggle('on', p.getAttribute('data-cpane') === b.getAttribute('data-ctab'));
+      });
     });
     // SCRAM guard cover
     setupScramCover();
@@ -571,7 +660,7 @@
     if (!confirm('Reset to ' + ui.initState + '? Current run is lost.')) return;
     service.stop();
     service.handleCommand({ action: 'reset', plant_id: 'pwr', initial_state: ui.initState });
-    chartBuf = []; Object.keys(gaugeHist).forEach(function (k) { gaugeHist[k] = []; });
+    chartBuf = []; smoothed = {}; Object.keys(gaugeHist).forEach(function (k) { gaugeHist[k] = []; });
     $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
     latest = service.assembleSnapshot(); render(latest);
     buildFailures();

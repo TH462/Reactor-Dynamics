@@ -28,6 +28,7 @@ where the two differ or where judgment was exercised.
 | F5 | M1 | `fuel_damaged` (cladding failure at 1200 °C) is internal, not in the §6.3 `true_state` contract. Consumers must use `fuel_temp_c`/`melted`. | contract | **open** — confirm M6/M8 don't need it |
 | F6 | M5 | Acceleration is realized as fixed-0.02 s step **count**, not by scaling `dt` (CONTEXT §4's literal `dt_effective` diverges — verified). Every engine (M2/M3) must stay stable at 0.02 s; the service never hands them a larger dt. | deviation | **open** — applies to M2/M3 too |
 | F7 | M8 | Alarm system-category (left-bar color, M8 §8.5) is derived UI-side by keyword (`alarmCategory()`), because M1's alarm data has no `category`. Should move into the plant profile alongside `tile_label`/`scanner_hint`. | data | **open** — add to engine alarm config |
+| F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **open** — confirm vs M6 highlight system |
 
 ---
 
@@ -287,6 +288,97 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   restoring the at-a-glance rod visual as *information* in the diagram. (2) **Color muting pushed
   further:** generic selected `.seg button.on` cyan → muted teal-slate; gauge-band normal zone and rod
   fills → muted; caution-amber and trip-red stay salient.
+- **Quiet-board palette pass + A/B layout harness (`develop` branch).** Per a user concept scan,
+  retuned the M8 §15 palette toward a stricter quiet board: near-black backgrounds
+  (`--bg-plant #0E1216`, body `#070A0C`), muted-by-default text, and color spent only on the
+  abnormal. Control toggles became **outline chips** (`.seg button.on` = thin ring, not a filled
+  block); **green = energized/armed** (`.on.run`: RCP run, feed start, breaker closed, and now the
+  AUTO/armed states for ECCS / PZR heaters / spray), **amber = caution**, **red = alarm/trip** only.
+  Speed selector de-saturated to a cyan outline (the clock still goes amber on time-accel).
+  - **Diagram vertical-shrink fix shipped as two switchable variants** (so the user can A/B live
+    before we commit): the synoptic was the lone `flex:1` shock-absorber in the plant column and got
+    crushed by greedy neighbors (gauge-strip wrap, `bottom-row 30%`, control `min-height:150`) plus
+    the relocated rod-position strip. **Layout A "Fit"** rebalances the budget (one-row gauges,
+    shorter panels, `synoptic flex:2 min-height:260`, trimmed bottom row) — fits the window, clips on
+    very short screens. **Layout B "Fixed"** implements M8 §2.2 (plant area holds `min-height:768`,
+    `.app` scrolls instead of squishing) — synoptic always full height. Selected by a class on `.app`.
+  - **A, B, and C all rejected (user) and REMOVED** — the whole variant harness (Dev-tab dropdown,
+    `.layout-*` CSS, `applyVariant`/localStorage) is gone. A/B only reshuffled the vertical budget; C
+    compacted the cards but still wasn't skinny enough, because four side-by-side sections are tall by
+    construction.
+  - **Final: TABBED CONTROL STRIP (`.control-strip`).** The four sections are stacked behind a tab bar
+    (`#ctlTabs`, panes `.ctl-pane[data-cpane]`); only one shows at a time, its controls laid out as
+    label-over-control groups (`.cg`) flowing horizontally across the **full** strip width. The band
+    drops to ~one row (~95 px), giving the synoptic (`min-height:280`) and the chart/alarm row room
+    without scroll or squish. **Deviates from M8 §5** ("always visible — not tabs, not collapsible") —
+    a deliberate, user-directed HMI change. **→ Flag F8.** The Dev tab itself stays (placeholder for
+    future dev tools); the §15 quiet-board palette and green-armed AUTO chips from this pass remain.
+  - **New "Dev" tab** in the Tools Block (§10, dev-only surface) hosting the first dev tool: a **UI
+    Layout (A/B) dropdown** (`#uiVariant`) that swaps the layout class and persists to `localStorage`
+    (`rd_ui_variant`, guarded for `file://` storage blocks). Restored before first paint in `init()`.
+  - All five suites (PWR/M4/M5/M6·PH/M7) re-confirmed green — UI-only change, no stack contact.
+- **Rod banks relocated + display damping (user feedback, `develop`).**
+  - **Rod-bank bars moved under the Reactor/Core numeric column** (was a full-width strip across the
+    top of the synoptic). `buildNumeric()` appends a compact `.rod-mini` block (label + step readout
+    over a thin bar) to column 0; same ids (`rodControlFill`/`Limit`/`Readout`, `rodShutdownFill`/
+    `Readout`) so `renderRodBars()` is unchanged. Also reclaims ~70 px of vertical space in the diagram.
+  - **Display damping for instrument jitter.** User noticed gauges/numbers/chart jump every frame —
+    correctly identified as the instrument noise (`pwr_config` noise sigmas, re-randomized each step
+    and shown at the 10–20 Hz broadcast cadence). The noise STAYS in the data (HR1 — a stuck/failed
+    instrument must still mislead; trips/alarms read the raw reading engine-side). The UI now damps only
+    the **displayed** value with a per-frame EMA (`DISPLAY_DAMP_K = 0.18`), exactly like real indicator
+    needle-damping / digital filtering. Done in `dampInstruments()` at the top of `render()`, into a
+    **copy** of `s.instruments` (which aliases the engine's live reading object — must not mutate;
+    would corrupt engine state and saves). Skipped at ≥60× (signal then outruns the noise; damping
+    would only lag). Reset on reset/load. Gauges, numeric grid, and strip chart all calm as a result.
+- **SCRAM pulled into its own always-visible box (user).** With the controls now tabbed (Flag F8),
+  SCRAM would vanish on non-Reactor tabs — unacceptable for an emergency control. Moved it out of the
+  reactor pane into a dedicated `.scram-box` pinned to the **right edge of the control strip**
+  (`.control-strip` is now `flex-direction:row` → `.ctl-main` tabs/panes + `.scram-box`), so it's
+  reachable from any tab. New quiet-board color states: cover-down = **dull green** stripes (calm,
+  armed/ready); cover lifted = **dull red** exposed button; **scrammed (manual or auto) = bright-red
+  flashing** via a `.scram-wrap.scrammed` class (forces the indicator visible regardless of cover
+  state) + `scram-flash` keyframes. Cover lift/3 s-arm/timeout behavior unchanged.
+- **"Color is reserved" palette pass (user directive).** The board was equally bright everywhere, so
+  an alarm had nowhere louder to go. Reworked so DIM is the resting state and color = status:
+  - **Vital gauges:** value is dim blue-white `#a8b8c8` over dim labels `#4a5a6a` at rest; the renderer
+    adds `.warn` (amber) / `.alarm` (red + `gauge-alarm-flash`) from each gauge's own
+    `caution`/`danger` config thresholds (not hardcoded; gauges without thresholds stay dim). Sparkline
+    muted to `#56657a`.
+  - **SCRAM guard cover:** now nearly invisible at rest (dark `#10151a` bg, dim-green border/text) — no
+    siren — and only the *fired* state is the bright-red flash (unchanged).
+  - **Strip-chart traces:** recolored to muted, hue-distinct TRACKING tones (amber/blue/steel/purple/
+    violet/green/olive). A trace **brightens + thickens when its parameter hits alarm** (`seriesAlarmed`
+    reuses the mapped vital gauge's `danger` threshold; `lighten()` pulls the muted hue toward white) —
+    the contrast against the calm baseline is the signal.
+  - **Failure category pills:** dropped the saturated fills for low-saturation tinted backgrounds +
+    brighter hue text (they classify, they don't warn).
+  - **Diagram header decluttered:** removed the Education/Realistic and Instruments/True/Both segs from
+    the synoptic header; both remain under the Settings tab (the diagram one was `overlaySeg`; Settings
+    keeps `overlaySeg2`, bindUI tolerates the missing id).
+  - Alarm annunciator left as the (user-approved) dark-at-rest list; the four-state lifecycle styling is
+    already in place. All five suites green (UI-only).
+- **Legibility + info-hierarchy pass (user).**
+  - **Vital strip trimmed to the six headline gauges** (Reactor Power, Primary Pressure, Tavg, PZR
+    Level, SG Level, Subcool) — the parameters scanned continuously. **Startup Rate** moved to the
+    diagram's Reactor/Core column and **Grid Match** to the Turbine/Condenser column (both secondary:
+    SUR matters mainly on transients, Grid Match is a turbine/grid metric). Fewer gauges also lets the
+    strip breathe / read bigger.
+  - **Bigger text where it counts:** diagram numeric grid 12→13 px (headers 11→12, rod readout 11→12);
+    control-strip controls up (seg/btn 12 px, tabs 12 px, num-inputs 12 px, labels 11 px). General text
+    palette nudged a touch brighter (`--text` `#E4E9EE`, `--text-2` `#98A3AF`, `--muted` `#69757F`);
+    gauge dim value/label brightened slightly (`#b6c4d2` / `#5a6b7c`) while staying recessed.
+  - **Control strip now uniform height across tabs:** `.ctl-pane` is `flex-wrap:nowrap` + `min-height`
+    + vertically centered, so every section renders as one same-height row (overflow scrolls
+    horizontally rather than growing the strip) — switching tabs no longer resizes the strip.
+- **Strip-chart legibility + chrome (user).** (1) Legend now doubles as a **minimal, color-coded
+  per-parameter scale** — each entry shows the trace label + its plot range `[min–max]` in the trace's
+  own color (interpretation of "color-coded x-axis for each parameter"; ranges are the native plot
+  scale). (2) The three horizontal gridlines made **hairline + non-scaling** (`stroke-width:0.5`,
+  `vector-effect:non-scaling-stroke`, dim `#1b1f25`) so they stop competing with the parameter traces;
+  traces also got `non-scaling-stroke` for crisp, consistent weight under the stretched viewBox.
+  (3) Removed the **Elapsed** row from the Sim tab (the top-bar clock already shows sim time; dropped
+  the `simElapsed` render line too). (4) Top-right logo **spelled out** "Reactor⚛️Dynamics" (was R⚛️D).
 - **Two alpha-feedback fixes:** (1) decay heat now tracks power + is pre-loaded (see M1 modeling
   decisions) so an operating reactor shows ~7%, not 0. (2) Strip-chart bug: `getInstruments()` returns
   the engine's *live, mutated* reading object, so the chart was buffering one shared reference (every

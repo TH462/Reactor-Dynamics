@@ -14,98 +14,133 @@
       <!-- Vital-few gauge strip (§4) — built by app.js from the plant profile -->
       <div class="gauge-strip" id="gaugeStrip"></div>
 
-      <!-- Four control sections (§5) -->
-      <div class="control-sections">
-        <!-- 5.1 Reactor Core -->
-        <div class="section">
-          <h3>Reactor Core</h3>
+      <!-- Control sections (§5) — STACKED behind a tab bar (user-directed
+           deviation from §5's "always visible"): one section shown at a time,
+           spread across the full strip width so the band stays skinny. -->
+      <div class="control-strip">
+        <div class="ctl-main">
+        <div class="ctl-tabs" id="ctlTabs">
+          <button class="on" data-ctab="reactor">Reactor Core</button>
+          <button data-ctab="primary">Primary Inventory</button>
+          <button data-ctab="steam">Steam Generators</button>
+          <button data-ctab="turbine">Turbine &amp; Grid</button>
+        </div>
+        <div class="ctl-panes">
+
+          <!-- 5.1 Reactor Core -->
+          <div class="ctl-pane on" data-cpane="reactor">
+            <div class="cg">
+              <span class="cg-l">Control Bank</span>
+              <div class="cg-controls">
+                <div class="seg" data-scanner-hint="Rod motion — hold RAISE/LOWER to drive the control bank; STOP halts it.">
+                  <button data-act="rod-raise">Raise</button><button data-act="rod-stop">Stop</button><button data-act="rod-lower">Lower</button>
+                </div>
+              </div>
+            </div>
+            <div class="cg">
+              <span class="cg-l">Rod Speed</span>
+              <div class="cg-controls">
+                <div class="seg" id="rodSpeed" data-scanner-hint="Rod speed — slow / normal / fast drive rate.">
+                  <button data-rodspeed="slow">Slow</button><button class="on" data-rodspeed="normal">Norm</button><button data-rodspeed="fast">Fast</button>
+                </div>
+                <button class="btn" data-act="rod-nudge-out" title="withdraw 1 step">+1</button>
+                <button class="btn" data-act="rod-nudge-in" title="insert 1 step">−1</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5.2 Primary Inventory -->
+          <div class="ctl-pane" data-cpane="primary">
+            <div class="cg">
+              <span class="cg-l">Reactor Coolant Pumps (RCP)</span>
+              <div class="cg-controls">
+                <div class="seg" data-scanner-hint="Reactor Coolant Pumps — force primary flow. Stopping them (trip) collapses flow."><button class="on run" data-act="rcp-run">Run</button><button data-act="rcp-stop">Stop</button></div>
+              </div>
+            </div>
+            <div class="cg">
+              <span class="cg-l">Chemical Shim (Boron)</span>
+              <div class="cg-controls">
+                <div class="seg" data-scanner-hint="Chemical Shim — adjusts dissolved boron (a neutron absorber) to trim reactivity slowly.">
+                  <button data-act="borate">Borate</button><button class="on" data-act="boron-off">Off</button><button data-act="dilute">Dilute</button>
+                </div>
+              </div>
+            </div>
+            <div class="cg emergency">
+              <span class="cg-l">Emergency Core Cooling (ECCS)</span>
+              <div class="cg-controls">
+                <div class="seg" data-scanner-hint="Emergency Core Cooling — high-pressure injection to keep the core covered. AUTO actuates on low pressure.">
+                  <button class="on run" data-act="eccs-auto">Auto</button><button data-act="eccs-on">On</button><button data-act="eccs-off">Off</button>
+                </div>
+              </div>
+            </div>
+            <div class="cg">
+              <span class="cg-l">PZR Heaters</span>
+              <div class="cg-controls">
+                <div class="seg"><button class="on run" data-act="heat-auto">Auto</button><button data-act="heat-on">On</button><button data-act="heat-off">Off</button></div>
+              </div>
+            </div>
+            <div class="cg">
+              <span class="cg-l">PZR Spray</span>
+              <div class="cg-controls">
+                <div class="seg"><button class="on run" data-act="spray-auto">Auto</button><button data-act="spray-open">Open</button></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5.3 Steam Generators -->
+          <div class="ctl-pane" data-cpane="steam">
+            <div class="cg">
+              <span class="cg-l">Feed Pumps</span>
+              <div class="cg-controls">
+                <div class="seg"><button class="on run" data-act="feed-start">Start</button><button data-act="feed-stop">Stop</button></div>
+              </div>
+            </div>
+            <div class="cg emergency">
+              <span class="cg-l">Auxiliary Feed Water (AFW)</span>
+              <div class="cg-controls">
+                <div class="seg" data-scanner-hint="Auxiliary Feed Water — backup feed available after a loss of main feedwater.">
+                  <button data-act="afw-start">Start</button><button class="on" data-act="afw-stop">Stop</button>
+                </div>
+              </div>
+            </div>
+            <div class="cg">
+              <span class="cg-l">Feed Reg Valve</span>
+              <div class="cg-controls">
+                <input class="num-input mono" id="feedSet" type="number" min="0" max="100" value="100"><button class="btn" data-act="feed-set">Set %</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5.4 Turbine & Grid -->
+          <div class="ctl-pane" data-cpane="turbine">
+            <div class="cg">
+              <span class="cg-l">Main Breaker</span>
+              <div class="cg-controls">
+                <div class="seg" data-scanner-hint="Main Breaker — the grid connection."><button class="on run" data-act="breaker-close">Closed</button><button data-act="breaker-open">Open</button></div>
+              </div>
+            </div>
+            <div class="cg emergency">
+              <span class="cg-l">Diesel Generators (EDG)</span>
+              <div class="cg-controls">
+                <div class="seg" data-scanner-hint="Emergency Diesel Generators — backup AC power during a station blackout."><button class="on">Stby</button><button>Run</button></div>
+              </div>
+            </div>
+            <div class="cg">
+              <span class="cg-l">Turbine Load Target</span>
+              <div class="cg-controls">
+                <input class="num-input mono" id="mweSet" type="number" min="0" max="1100" value="1000"><button class="btn" data-act="mwe-set">Set MW</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+        </div><!-- /.ctl-main -->
+        <!-- SCRAM in its own box — always visible regardless of the active
+             control tab (emergency reachability). -->
+        <div class="scram-box">
           <div class="scram-wrap" id="scramWrap" data-scanner-hint="Reactor SCRAM — emergency shutdown. Lift the guard cover, then press within 3 seconds to insert all rods.">
             <div class="scram-cover" id="scramCover">REACTOR SCRAM</div>
             <div class="scram-btn" id="scramBtn" data-act="scram">SCRAM</div>
-          </div>
-          <div class="ctl-row">
-            <span class="ctl-label">Control Bank</span>
-            <div class="seg" data-scanner-hint="Rod motion — hold RAISE/LOWER to drive the control bank; STOP halts it.">
-              <button data-act="rod-raise">Raise</button><button data-act="rod-stop">Stop</button><button data-act="rod-lower">Lower</button>
-            </div>
-          </div>
-          <div class="ctl-row">
-            <div class="seg" id="rodSpeed" data-scanner-hint="Rod speed — slow / normal / fast drive rate.">
-              <button data-rodspeed="slow">Slow</button><button class="on" data-rodspeed="normal">Norm</button><button data-rodspeed="fast">Fast</button>
-            </div>
-            <button class="btn" data-act="rod-nudge-out" title="withdraw 1 step">+1</button>
-            <button class="btn" data-act="rod-nudge-in" title="insert 1 step">−1</button>
-          </div>
-        </div>
-
-        <!-- 5.2 Primary Inventory -->
-        <div class="section">
-          <h3>Primary Inventory</h3>
-          <div class="ctl-row">
-            <span class="ctl-label">Reactor Coolant Pumps (RCP)</span>
-            <div class="seg" data-scanner-hint="Reactor Coolant Pumps — force primary flow. Stopping them (trip) collapses flow."><button class="on run" data-act="rcp-run">Run</button><button data-act="rcp-stop">Stop</button></div>
-          </div>
-          <div class="ctl-row">
-            <span class="ctl-label">Chemical Shim (Boron)</span>
-            <div class="seg" data-scanner-hint="Chemical Shim — adjusts dissolved boron (a neutron absorber) to trim reactivity slowly.">
-              <button data-act="borate">Borate</button><button class="on" data-act="boron-off">Off</button><button data-act="dilute">Dilute</button>
-            </div>
-          </div>
-          <div class="emergency">
-            <div class="ctl-row">
-              <span class="ctl-label">Emergency Core Cooling (ECCS)</span>
-              <div class="seg" data-scanner-hint="Emergency Core Cooling — high-pressure injection to keep the core covered. AUTO actuates on low pressure.">
-                <button class="on warn" data-act="eccs-auto">Auto</button><button data-act="eccs-on">On</button><button data-act="eccs-off">Off</button>
-              </div>
-            </div>
-          </div>
-          <div class="ctl-row">
-            <span class="ctl-label">PZR Heaters</span>
-            <div class="seg"><button class="on" data-act="heat-auto">Auto</button><button data-act="heat-on">On</button><button data-act="heat-off">Off</button></div>
-          </div>
-          <div class="ctl-row">
-            <span class="ctl-label">PZR Spray</span>
-            <div class="seg"><button class="on" data-act="spray-auto">Auto</button><button data-act="spray-open">Open</button></div>
-          </div>
-        </div>
-
-        <!-- 5.3 Steam Generators -->
-        <div class="section">
-          <h3>Steam Generators</h3>
-          <div class="ctl-row">
-            <span class="ctl-label">Feed Pumps</span>
-            <div class="seg"><button class="on run" data-act="feed-start">Start</button><button data-act="feed-stop">Stop</button></div>
-          </div>
-          <div class="emergency">
-            <div class="ctl-row">
-              <span class="ctl-label">Auxiliary Feed Water (AFW)</span>
-              <div class="seg" data-scanner-hint="Auxiliary Feed Water — backup feed available after a loss of main feedwater.">
-                <button data-act="afw-start">Start</button><button class="on" data-act="afw-stop">Stop</button>
-              </div>
-            </div>
-          </div>
-          <div class="ctl-row">
-            <span class="ctl-label">Feed Reg Valve</span>
-            <input class="num-input mono" id="feedSet" type="number" min="0" max="100" value="100"><button class="btn" data-act="feed-set">Set %</button>
-          </div>
-        </div>
-
-        <!-- 5.4 Turbine & Grid -->
-        <div class="section">
-          <h3>Turbine &amp; Grid</h3>
-          <div class="ctl-row">
-            <span class="ctl-label">Main Breaker</span>
-            <div class="seg" data-scanner-hint="Main Breaker — the grid connection."><button class="on run" data-act="breaker-close">Closed</button><button data-act="breaker-open">Open</button></div>
-          </div>
-          <div class="emergency">
-            <div class="ctl-row">
-              <span class="ctl-label">Diesel Generators (EDG)</span>
-              <div class="seg" data-scanner-hint="Emergency Diesel Generators — backup AC power during a station blackout."><button class="on">Stby</button><button>Run</button></div>
-            </div>
-          </div>
-          <div class="ctl-row">
-            <span class="ctl-label">Turbine Load Target</span>
-            <input class="num-input mono" id="mweSet" type="number" min="0" max="1100" value="1000"><button class="btn" data-act="mwe-set">Set MW</button>
           </div>
         </div>
       </div>
@@ -114,32 +149,10 @@
       <div class="synoptic">
         <div class="synoptic-head">
           <div class="placeholder-note">SYNOPTIC DIAGRAM · numeric placeholder until the SVG ships (reads instruments — HR1)</div>
-          <div style="display:flex; gap:8px;">
-            <div class="seg" data-scanner-hint="Diagram mode — Education (full heat-gradient colors) vs Realistic (muted; color only on faults).">
-              <button class="on">Education</button><button>Realistic</button>
-            </div>
-            <div class="seg" id="overlaySeg" data-scanner-hint="True-state overlay — off by default; reveals true values next to indicated ones for comparison.">
-              <button class="on" data-overlay="instruments">Instruments</button><button data-overlay="true">True</button><button data-overlay="both">Both</button>
-            </div>
-          </div>
+          <!-- Diagram Mode and Values Display moved to the Settings tab. -->
         </div>
-        <!-- Rod position — information lives in the diagram block, not the control panel -->
-        <div class="rod-position">
-          <div class="rodpos-row">
-            <span class="rodpos-label">Control Bank</span>
-            <div class="rodbar" data-scanner-hint="Control Bank position — the operable rod group. Muted teal normal; red at/below the insertion limit (dashed marker).">
-              <span id="rodControlFill" style="width:0%"></span><span class="limit" id="rodControlLimit" style="left:80%"></span>
-            </div>
-            <span class="rodpos-readout mono" id="rodControlReadout">— / 228</span>
-          </div>
-          <div class="rodpos-row">
-            <span class="rodpos-label">Shutdown Bank</span>
-            <div class="rodbar shutdown" data-scanner-hint="Shutdown Bank position — read-only; fully withdrawn in normal operation, drives in only on scram.">
-              <span id="rodShutdownFill" style="width:100%"></span>
-            </div>
-            <span class="rodpos-readout mono" id="rodShutdownReadout">— / 228</span>
-          </div>
-        </div>
+        <!-- Rod-bank bars now live under the Reactor/Core column of the numeric
+             grid (injected by buildNumeric), not as a full-width strip. -->
         <div class="numeric-grid" id="numericGrid"></div>
         <div class="ff-badge" style="display:none" id="ffBadge">⚡ 600×</div>
       </div>
@@ -173,7 +186,7 @@
       <!-- Sim controls (§3) -->
       <div class="sim-controls">
         <div class="sim-top">
-          <div class="logo">R<span class="a">⚛️</span>D</div>
+          <div class="logo">Reactor<span class="a">⚛️</span>Dynamics</div>
           <div class="clock mono" id="clock">T+00:00:00</div>
         </div>
         <div class="sim-row">
@@ -213,6 +226,7 @@
           <button data-tab="sim">Sim</button>
           <button data-tab="settings">Settings</button>
           <button data-tab="training">Training</button>
+          <button data-tab="dev">Dev</button>
         </div>
         <div class="tab-body">
           <!-- Failures tab — built by app.js from M4's catalog -->
@@ -239,7 +253,6 @@
                 <option value="hot_zero_power">Hot Zero Power</option>
               </select>
             </div>
-            <div class="set-row"><span class="k">Elapsed</span><span class="mono" id="simElapsed">T+00:00:00</span></div>
             <div class="set-row"><span class="k">Reset</span><button class="btn" data-act="reset">Reset to initial state</button></div>
             <div class="set-row"><span class="k">Save / Load</span><span><button class="btn" data-act="save">Save</button> <button class="btn" data-act="load">Load</button></span></div>
             <input type="file" id="loadFile" accept="application/json" style="display:none">
@@ -259,6 +272,11 @@
             <div class="set-row"><span class="k">Startup rate (SUR)</span><span class="mono" id="rxSur">— dpm</span></div>
             <div class="set-row"><span class="k">Reactor period</span><span class="mono" id="rxPeriod">— s</span></div>
             <div class="set-row"><span class="k" style="font-style:italic;color:var(--muted)">Instructor phase (M6) lands here.</span></div>
+          </div>
+          <!-- Dev tab — development-only tools -->
+          <div class="tabpane" data-pane="dev">
+            <div class="g-section-title">Developer Tools <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· dev builds only</span></div>
+            <div class="set-row"><span class="k" style="font-style:italic;color:var(--muted)">More dev tools land here.</span></div>
           </div>
         </div>
       </div>

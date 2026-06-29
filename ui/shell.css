@@ -8,27 +8,31 @@
  * ========================================================================== */
 
 :root {
-  /* Backgrounds (§15) */
-  --bg-strip: #181B1F;
-  --bg-plant: #1C1F24;
-  --bg-right: #252A31;
-  --bg-elevated: #2F353D;
-  --border: #3A4049;
-  /* Text */
-  --text: #E8ECF1;
-  --text-2: #A8B0BB;
-  --muted: #6B7280;
-  --disabled: #4B5563;
+  /* QUIET-BOARD palette (concept-scan matched). The board reads near-black and
+     near-monochrome when normal; color is spent ONLY on the abnormal. Green =
+     equipment energized/armed (a calm, stable accent); amber = caution; red =
+     alarm/trip (the only saturated, attention-pulling color). EPRI 1003662 /
+     NUREG-0700 / ISA-18.2 "manage by exception". */
+  /* Backgrounds (darkest → lightest) */
+  --bg-strip: #0C0F12;
+  --bg-plant: #0E1216;
+  --bg-right: #0F1318;
+  --bg-elevated: #161B21;
+  --border: #232931;
+  /* Text — muted by default so readouts recede until something is wrong
+     (nudged a touch brighter across the board for legibility) */
+  --text: #E4E9EE;
+  --text-2: #98A3AF;
+  --muted: #69757F;
+  --disabled: #3A434D;
   /* Semantic state */
-  --normal: #22D3EE;
-  --caution: #F59E0B;
-  --critical: #EF4444;
-  --running: #22C55E;
-  /* Quiet-board (hybrid): normal/running status renders MUTED so a calm board
-     reads "all normal" at a glance; saturated color is reserved for abnormal
-     (amber caution) and trips (saturated/flashing red). */
-  --running-muted: #3E8E7E;
-  --stopped: #6B7280;
+  --normal: #5BB3C4;        /* calm cyan — subtle "selected/interactive" hint only */
+  --caution: #D9A441;       /* muted amber */
+  --critical: #E5484D;      /* scan red — reserved for alarms/trips */
+  --running: #46A35E;       /* energized green (scan): pumps running, breaker closed, armed */
+  /* Calmer green for steady information surfaces (rod fills) so they stay quiet. */
+  --running-muted: #35704A;
+  --stopped: #586673;
   --trend-up: #FB923C;
   --trend-down: #67E8F9;
   --core-glow: #00C4FF;
@@ -47,7 +51,7 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
-  background: #0F1115;
+  background: #070A0C;
   color: var(--text);
   font-family: ui-sans-serif, "Segoe UI", Roboto, system-ui, sans-serif;
   font-size: 14px;
@@ -146,9 +150,14 @@ body {
   display: flex; flex-direction: column; gap: 3px;
 }
 .gauge.lead { box-shadow: inset 0 2px 0 0 var(--normal); }
-.gauge .g-label { font-size: 10px; color: var(--text-2); letter-spacing: .03em; display:flex; justify-content:space-between; }
-.gauge .g-value { font-size: 22px; font-weight: 650; line-height: 1.05; }
-.gauge .g-units { font-size: 10px; color: var(--text-2); }
+/* Quiet board: a normal reading is the DIM resting state — the value's color is
+   its status. Normal = dim blue-white, Caution = amber, Alarm = red + flash. */
+.gauge .g-label { font-size: 10px; color: #5a6b7c; letter-spacing: .03em; display:flex; justify-content:space-between; }
+.gauge .g-value { font-size: 22px; font-weight: 650; line-height: 1.05; color: #b6c4d2; }
+.gauge .g-units { font-size: 10px; color: #5a6b7c; }
+.gauge.warn  .g-value { color: var(--caution); }
+.gauge.alarm .g-value { color: var(--critical); animation: gauge-alarm-flash .6s steps(1, end) infinite; }
+@keyframes gauge-alarm-flash { 50% { opacity: .4; } }
 .gauge .g-trend { font-size: 11px; }
 .trend-up { color: var(--trend-up); }
 .trend-down { color: var(--trend-down); }
@@ -156,7 +165,7 @@ body {
 /* zone band: normal/caution/danger with a needle marker */
 /* quiet board: the normal zone is muted; only caution/danger zones carry color */
 .g-band { height: 5px; border-radius: 3px; position: relative; margin-top: 2px;
-  background: linear-gradient(90deg, #2b4248 0 55%, var(--caution) 55% 80%, var(--critical) 80% 100%); }
+  background: linear-gradient(90deg, #28313a 0 55%, var(--caution) 55% 80%, var(--critical) 80% 100%); }
 .g-band .needle { position: absolute; top: -2px; width: 2px; height: 9px; background: var(--text); border-radius: 1px;
   transition: left .12s linear; }
 .g-band .trip { position: absolute; top: -3px; width: 0; height: 11px; border-left: 1px dashed var(--critical); }
@@ -197,11 +206,13 @@ body {
 }
 .seg button:last-child { border-right: none; }
 .seg button:hover { color: var(--text); }
-/* selected control state: muted teal-slate (quiet board) — clearly "on" without
-   neon. Caution (amber) and the running modifier override below. */
-.seg button.on { background: #2E4651; color: #D7EEF3; font-weight: 700; }
-.seg button.on.run { background: var(--running-muted); color: #eafff7; }
-.seg button.on.warn { background: var(--caution); color: #2a1c00; }
+/* selected control state (quiet board): OUTLINE chips, not filled blocks — a
+   thin colored ring + colored text marks the active option, the alternative
+   stays muted gray. Exactly one accented chip per control = a calm board.
+   .run = energized/armed (green), .warn = caution (amber). */
+.seg button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px #38424d; }
+.seg button.on.run { color: #6FD089; background: rgba(70,163,94,.08); box-shadow: inset 0 0 0 1px rgba(70,163,94,.65); }
+.seg button.on.warn { color: var(--caution); background: rgba(217,164,65,.10); box-shadow: inset 0 0 0 1px rgba(217,164,65,.65); }
 
 .btn {
   background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border);
@@ -220,21 +231,32 @@ body {
 .emergency { border: 1px dashed var(--caution); border-radius: 5px; padding: 6px; }
 .emergency .ctl-label { color: var(--caution); }
 
-/* SCRAM cover/button (§5.1) */
+/* SCRAM cover/button (§5.1) — quiet-board states:
+ *   not scrammed, cover down  → DULL GREEN striped guard (calm "armed/ready")
+ *   cover lifted (armed)      → DULL RED exposed SCRAM button
+ *   scrammed (manual or auto) → BRIGHT RED FLASHING indicator (always visible) */
 .scram-wrap { position: relative; height: 56px; }
 .scram-cover, .scram-btn {
   position: absolute; inset: 0; border-radius: 6px; display: flex; align-items: center; justify-content: center;
-  font-weight: 800; letter-spacing: .1em; cursor: pointer; user-select: none;
+  font-weight: 800; letter-spacing: .1em; cursor: pointer; user-select: none; text-align: center;
 }
+/* guard cover nearly invisible at rest: dark bg, dim green border, dark green text
+   (no siren). It only becomes vivid red once the scram has fired. */
 .scram-cover {
-  background: repeating-linear-gradient(45deg, #5b2630 0 10px, #3a1a20 10px 20px);
-  border: 2px solid #6b2d36; color: #b06a72; box-shadow: 0 2px 0 #2a1216, inset 0 1px 0 #7a3a44;
+  background: #10151a; border: 1px solid #2e5a3f; color: #3f7a55; box-shadow: none;
 }
-.scram-btn { background: #b91c1c; border: 2px solid #ef4444; color: #fff; display: none;
-  box-shadow: 0 0 16px rgba(239,68,68,.5); }
+/* dull red exposed button when the cover is lifted (armed, not yet fired) */
+.scram-btn { background: #7f2a2a; border: 2px solid #9e3b3b; color: #f1d6d6; display: none; }
 .scram-wrap.open .scram-cover { display: none; }
 .scram-wrap.open .scram-btn { display: flex; }
-.scram-btn.fired { background: #5b1a1a; border-color: #7a2a2a; color: #d39a9a; box-shadow: none; cursor: default; }
+/* SCRAMMED: force the bright-red flashing indicator regardless of cover state */
+.scram-wrap.scrammed .scram-cover { display: none; }
+.scram-wrap.scrammed .scram-btn { display: flex; }
+.scram-btn.fired { cursor: default; animation: scram-flash .7s steps(1, end) infinite; }
+@keyframes scram-flash {
+  0%   { background: #ef4444; border-color: #fca5a5; color: #fff; box-shadow: 0 0 20px rgba(239,68,68,.75); }
+  50%  { background: #7f1d1d; border-color: #ef4444; color: #ffd9d9; box-shadow: 0 0 6px rgba(239,68,68,.35); }
+}
 .scram-arc { position: absolute; inset: -2px; border-radius: 8px; border: 2px solid transparent;
   border-top-color: var(--critical); animation: scram-countdown 3s linear forwards; pointer-events: none; }
 @keyframes scram-countdown { from { transform: rotate(0deg); opacity: 1; } to { transform: rotate(360deg); opacity: .2; } }
@@ -246,26 +268,27 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 10px;
-  display: flex; flex-direction: column; min-height: 0;
+  display: flex; flex-direction: column; min-height: 280px;
   position: relative;
 }
 .synoptic-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .synoptic-head .seg { font-size: 10px; }
 .placeholder-note { font-size: 10px; color: var(--muted); }
-/* rod-position strip (relocated from the Reactor Core control panel) */
-.rod-position { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-.rodpos-row { display: flex; align-items: center; gap: 10px; }
-.rodpos-label { font-size: 11px; color: var(--text-2); flex: 0 0 100px; }
-.rodpos-row .rodbar { flex: 1 1 auto; }
-.rodpos-readout { font-size: 12px; font-weight: 600; flex: 0 0 64px; text-align: right; }
+/* rod-bank mini-indicator — sits under the Reactor/Core numeric column */
+.rod-mini { margin-top: 9px; padding-top: 9px; border-top: 1px dotted #23272d; display: flex; flex-direction: column; gap: 9px; }
+.rm-grp { display: flex; flex-direction: column; gap: 4px; }
+.rm-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; }
+.rm-head .nk { color: var(--text-2); }
+.rm-head .rm-val { font-weight: 600; }
+.rod-mini .rodbar { height: 9px; }
 .numeric-grid {
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; overflow: auto; min-height: 0;
 }
-.num-col h4 { margin: 0 0 6px; font-size: 11px; letter-spacing: .05em; color: var(--normal); text-transform: uppercase; }
-.num-line { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; border-bottom: 1px dotted #23272d; }
+.num-col h4 { margin: 0 0 6px; font-size: 12px; letter-spacing: .05em; color: var(--normal); text-transform: uppercase; }
+.num-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; border-bottom: 1px dotted #23272d; }
 .num-line .nk { color: var(--text-2); }
 .num-line .nv { font-weight: 600; }
-.num-line .nv.bool-on { color: var(--running-muted); }
+.num-line .nv.bool-on { color: var(--running); }
 .num-line .nv.bool-bad { color: var(--critical); }
 .ff-badge { position: absolute; right: 10px; bottom: 8px; font-size: 11px; color: var(--caution);
   background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.4); border-radius: 4px; padding: 1px 6px; }
@@ -279,6 +302,7 @@ body {
 .chart-legend { display: flex; gap: 12px; font-size: 11px; flex-wrap: wrap; }
 .chart-legend span { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); }
 .chart-legend i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+.chart-legend .leg b { font-weight: 600; opacity: .8; font-size: 10px; letter-spacing: .02em; }
 .chart-canvas { flex: 1 1 auto; min-height: 0; }
 .scrubber { height: 14px; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .scrubber .track { flex: 1 1 auto; height: 4px; background: #23272d; border-radius: 2px; position: relative; }
@@ -321,7 +345,7 @@ body {
   padding: 8px 10px; display: flex; flex-direction: column; gap: 8px;
 }
 .sim-top { display: flex; align-items: center; justify-content: space-between; }
-.logo { font-weight: 800; letter-spacing: .02em; font-size: 16px; }
+.logo { font-weight: 800; letter-spacing: .01em; font-size: 15px; white-space: nowrap; }
 .logo .a { color: var(--normal); }
 .clock { font-size: 15px; font-weight: 600; }
 .clock.running { animation: pulse 2s ease-in-out infinite; }
@@ -337,7 +361,9 @@ body {
 .speed button { flex: 1 1 0; background: var(--bg-right); color: var(--text-2); border: none; border-right: 1px solid var(--border);
   padding: 4px 0; font-size: 11px; cursor: pointer; }
 .speed button:last-child { border-right: none; }
-.speed button.on { background: var(--caution); color: #2a1c00; font-weight: 700; }
+/* selected speed: subtle cyan outline (not a saturated fill — the clock turns
+   amber to warn that time is accelerated; the selector itself stays quiet). */
+.speed button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--normal); }
 .save-btn { flex: 0 0 auto; }
 
 /* ===================================================== right col: instructor */
@@ -394,12 +420,14 @@ body {
 .fail-row { padding: 7px 0; border-bottom: 1px solid #23272d; }
 .fail-head { display: flex; align-items: center; gap: 8px; }
 .fail-name { flex: 1 1 auto; font-size: 12px; }
-.fail-cat { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 5px; border-radius: 3px; color: #0b0e12; }
-.fail-cat.reactivity { background: var(--cat-reactivity); }
-.fail-cat.coolant { background: var(--cat-coolant); }
-.fail-cat.power { background: var(--cat-power); }
-.fail-cat.instrument { background: var(--cat-instrument); }
-.fail-cat.safety_system { background: var(--cat-safety_system); }
+/* category LABELS — low-saturation tinted background + brighter hue text (they
+   classify a row; they are not warnings, so they don't get a saturated fill). */
+.fail-cat { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 5px; border-radius: 3px; }
+.fail-cat.reactivity    { background: rgba(192,132,252,.14); color: #c6a8e8; }
+.fail-cat.coolant       { background: rgba(56,189,248,.14);  color: #8fcde8; }
+.fail-cat.power         { background: rgba(251,191,36,.14);  color: #d8b46a; }
+.fail-cat.instrument    { background: rgba(45,212,191,.14);  color: #7fcdc0; }
+.fail-cat.safety_system { background: rgba(244,114,182,.14); color: #e0a0c4; }
 .fail-slider { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
 .fail-slider input[type=range] { flex: 1 1 auto; accent-color: var(--normal); }
 .fail-slider .sv { font-size: 11px; color: var(--text-2); min-width: 96px; text-align: right; }
@@ -444,3 +472,57 @@ select.num-input { width: auto; }
   border-radius: 4px; padding: 2px 8px; font-size: 10px; cursor: pointer; flex: 0 0 auto; min-width: 48px; }
 .fail-toggle:hover { color: var(--text); }
 .fail-row.active .fail-toggle { background: var(--critical); color: #fff; border-color: var(--critical); }
+
+/* ============================================================================
+ * TABBED CONTROL STRIP — the four control sections are stacked behind a tab bar
+ * so only ONE is shown at a time, spread across the FULL width of the plant
+ * area in a single low row. This makes the control band much skinnier, freeing
+ * vertical room for the synoptic and the chart/alarm row.
+ *
+ * NOTE: this deliberately departs from M8 §5 ("always visible — not tabs").
+ * User-directed design change; logged as a deviation in BUILD_DECISIONS.
+ * ========================================================================== */
+.control-strip {
+  flex: 0 0 auto;
+  background: var(--bg-strip);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex; flex-direction: row; align-items: stretch;
+  overflow: hidden;
+}
+/* the tabbed area takes the remaining width; SCRAM box is pinned to the right */
+.ctl-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.scram-box {
+  flex: 0 0 auto; width: 150px;
+  border-left: 1px solid var(--border);
+  display: flex; align-items: stretch; justify-content: center;
+  padding: 8px;
+}
+.scram-box .scram-wrap { width: 100%; height: auto; min-height: 60px; }
+.ctl-tabs { display: flex; border-bottom: 1px solid var(--border); }
+.ctl-tabs button {
+  background: transparent; border: none; color: var(--text-2);
+  padding: 7px 16px; font-size: 12px; letter-spacing: .05em; text-transform: uppercase;
+  font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap;
+}
+.ctl-tabs button:hover { color: var(--text); }
+.ctl-tabs button.on { color: var(--text); border-bottom-color: var(--normal); }
+
+.ctl-panes { padding: 9px 10px; }
+/* nowrap + a min-height floor → every tab's pane is the SAME height (one centered
+   row of control groups), so the strip never resizes when you switch tabs. A pane
+   with more groups than fit scrolls horizontally rather than growing taller. */
+.ctl-pane { display: none; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+  gap: 8px 18px; align-items: center; min-height: 64px; }
+.ctl-pane.on { display: flex; }
+
+/* one control = a label-over-control group; groups flow left-to-right */
+.cg { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; flex: 0 0 auto; }
+.cg-l { font-size: 11px; color: var(--text-2); letter-spacing: .02em; line-height: 1.1; white-space: nowrap; }
+.cg-controls { display: flex; align-items: center; gap: 6px; }
+/* slightly larger control affordances in the strip */
+.ctl-pane .seg button,
+.ctl-pane .btn { font-size: 12px; padding: 5px 10px; }
+.ctl-pane .num-input { font-size: 12px; padding: 3px 7px; width: 60px; }
+.cg.emergency { border: 1px dashed var(--caution); border-radius: 5px; padding: 4px 8px 6px; }
+.cg.emergency .cg-l { color: var(--caution); }
