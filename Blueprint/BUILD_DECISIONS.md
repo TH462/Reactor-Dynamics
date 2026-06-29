@@ -13,7 +13,7 @@ where the two differ or where judgment was exercised.
 - Update the **Open Flags** table at the top whenever a flag is opened or closed.
 - Keep it skimmable: tables and short bullets, not prose.
 
-**Status:** M1 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · M7 ✅ · M8 🟦 functional alpha (PWR) · (next: M2/M3 or M6)
+**Status:** M1 ✅ · M2 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · M7 ✅ · M8 🟦 functional alpha (PWR) · (next: M3 or M6)
 
 ---
 
@@ -21,12 +21,12 @@ where the two differ or where judgment was exercised.
 
 | # | Module | Flag | Severity | Status |
 |---|--------|------|----------|--------|
-| F1 | M1 | Criticality uses an explicit `rho_excess` + operating-temp references instead of the spec's "set reference temps" mechanism (which yields non-physical refs). Will M2/M3 reuse this pattern? | design | **open** — confirm before M2 |
+| F1 | M1 | Criticality uses an explicit `rho_excess` + operating-temp references instead of the spec's "set reference temps" mechanism (which yields non-physical refs). Will M2/M3 reuse this pattern? | design | **RESOLVED (M2)** — yes. M2 reuses it: rho_excess trimmed per-state to ρ=0, Doppler/graphite refs pinned at full-power temps, and `void_ref` likewise pinned at the operating void (see M2 D1). The RBMK has no boron, so an excess term is unavoidable. M3 expected to follow. |
 | F2 | M1 | `sg_overfeed` failure `override_value: 1.2` is applied to `set_feedwater_flow {pct}` (0–100), so it underfeeds (1.2%) rather than overfeeds (~120%). Untested, not flagship. | data bug | **open** |
 | F3 | M1/M4 | The M1/M4 seam: command-override failures' persistent effects live in the engine (M1), while interception lives in M4. M4 forwards *and* intercepts. M7 will scrutinize this. | seam | **open** — validate in M7 |
 | F4 | M4 | `degraded_hpi` is typed `command_override` but its real effect is an engine HPI-flow multiplier (the spec itself flags this, M4 §7). Implemented via the engine hook. | taxonomy | **open** (spec-acknowledged) |
 | F5 | M1 | `fuel_damaged` (cladding failure at 1200 °C) is internal, not in the §6.3 `true_state` contract. Consumers must use `fuel_temp_c`/`melted`. | contract | **open** — confirm M6/M8 don't need it |
-| F6 | M5 | Acceleration is realized as fixed-0.02 s step **count**, not by scaling `dt` (CONTEXT §4's literal `dt_effective` diverges — verified). Every engine (M2/M3) must stay stable at 0.02 s; the service never hands them a larger dt. | deviation | **open** — applies to M2/M3 too |
+| F6 | M5 | Acceleration is realized as fixed-0.02 s step **count**, not by scaling `dt` (CONTEXT §4's literal `dt_effective` diverges — verified). Every engine (M2/M3) must stay stable at 0.02 s; the service never hands them a larger dt. | deviation | **open** — M2 confirmed stable at 0.02 s (suite + save/restore determinism green); the only divergence is the *intended* prompt excursion, which the §3 `MAX_PROMPT_GROWTH` cap bounds. Still applies to M3. |
 | F7 | M8 | Alarm system-category (left-bar color, M8 §8.5) is derived UI-side by keyword (`alarmCategory()`), because M1's alarm data has no `category`. Should move into the plant profile alongside `tile_label`/`scanner_hint`. | data | **open** — add to engine alarm config |
 | F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **open** — confirm vs M6 highlight system |
 
@@ -87,6 +87,47 @@ pwr_steam_generator, pwr_instruments, pwr_engine}.js`
 ### Notes
 - `fuel_damaged` is internal (not a §6.3 field) — **Flag F5**.
 - `sg_overfeed` value units look wrong — **Flag F2**.
+
+---
+
+## M2 — RBMK Engine
+
+**Files:** `engines/rbmk/{rbmk_config, rbmk_protection, rbmk_kinetics, rbmk_thermal, rbmk_rods,
+rbmk_instruments, rbmk_engine}.js`
+**Acceptance:** `node test/run_rbmk.js` → **18/18 suites, 99/99 checks** (both versions). Browser
+page `test_rbmk.html`. Load order: `protection → config → kinetics → thermal → rods → instruments
+→ engine` (protection before config so `forVersion()` stitches the version protection in; engine
+captures `RD.rbmk*` helper namespaces at IIFE-eval, so they precede it).
+
+### Deviations from the literal spec (with reason)
+
+| # | Spec said | Built instead | Why |
+|---|-----------|---------------|-----|
+| D1 | `ρ_total = ρ_rods + ρ_doppler + ρ_void + ρ_xenon + ρ_graphite` (no excess term); `void_ref = 0.30` fixed | Added a trimmed **`rho_excess`** term; Doppler/graphite refs **pinned at full-power operating temps**; **`void_ref` pinned at each state's operating void** | Reuses the M1 D2 / **Flag F1** pattern (now resolved). The RBMK has no boron — with partially-inserted rods (negative) + equilibrium xenon (negative) and every feedback zero at its reference, nothing sums to critical; an excess term is unavoidable. **Pinning `void_ref` was also load-bearing for stability:** with the spec's fixed 0.30 vs the ~0.04 low-power operating void, ρ_void carries a large *negative* standing offset, and the power-dependent amplification shrinking that offset as power rises is itself a spurious positive feedback — the reactor ran away at `low_power_xenon` with no scram. Pinning makes the amplified coefficient act on the void *change* (the real accident mechanism). |
+| D2 | `energy_deposition_scale = 0.42`, `void_response_tau = 2.0`, `α_D = −1.0e−5`, `alpha_void_base` pre `0.005`, `k_disp` pre `0.008` | Retuned: `scale = 4.0`, `void_tau = 1.0`, `α_D = −3.0e−5`, `alpha_void_base` pre `0.0025`, `k_disp` pre `0.05` | All `[tune]`, arbitrated by §19. The literal starting set produced *either* a spontaneous low-power runaway *or* (after the D1 fix) a pre excursion that fizzled at ~16 % and a violently-oscillating full-power flow response. The retune (below) makes pre cross prompt critical and destroy by **steam explosion**, post shut down safely, and full-power maneuvering stable — for both versions. |
+| D3 | Internal rod `position` with `position↑ = inserted` (§9/§14.1) **and** contract `position_pct` with `100 = withdrawn` (CONTEXT §6.5) | Internal `steps` = **insertion** (0 withdrawn, max inserted); `getControlState` emits contract `position_pct = 100·(1−steps/max)` and a withdrawn-based `steps` | The two conventions are genuinely opposite (the spec says so). Keeping insertion internally makes ORM (`= inserted fraction · 211`), the displacer depth `z`, and the §14.1 runaway/stall signs all natural; the inversion happens only at the contract boundary. |
+
+### The accident-tuning chain (how pre excurses / post is safe — the heart of M2)
+
+The pre/post divergence comes from **three** levers acting in sequence at `low_power_xenon` (ORM ≈ 7.5, xenon 135 %, EPS bypassed); they were co-tuned until pre destroys and post does not:
+1. **Displacer trigger (`k_disp`).** Control rods sit nearly withdrawn (ORM low ⇒ `z ≈ 0.29 m`, inside the 1.25 m water column). On AZ-5 they insert *through* the column; the peak−start Δρ ≈ `k_disp·0.34` must clear β (0.0065) by enough to drive a **hard** prompt spike *before* ORM rises out of the high-amplification band and the rods exit the column (~1.5 s window). `k_disp = 0.05` (pre) / `0` (post) — the functional version difference.
+2. **Void sustain (amplified coefficient + faster `void_tau`).** The spike drives void up; the ORM-penalty × low-power × xenon amplification (here ~6× at ORM 12) makes rising void self-reinforcing. `void_tau` cut 2.0→1.0 so void catches the spike before the displacer fades.
+3. **Destruction (`energy_deposition_scale`).** The milder (post-stability-retune) excursion peaks ~37 000 % with fuel only ~1070 °C, so the **thermal-melt** path (2800 °C) never fires — destruction must come from the **steam-explosion** EMA. `scale = 4.0` lifts the peak EMA (~384) clear of the 280 threshold while non-accident energy stays ~4 and post stays negligible, so there is no melt/explosion race and post never triggers.
+- **Full-power stability** (the opposing constraint): `alpha_void_base` cut 0.005→0.0025 and `α_D` strengthened −1e−5→−3e−5 so a 20 % flow reduction settles ~+3 % instead of oscillating 285 %↔66 %. The accident still excurses because its amplification is ~6× and it is displacer-*triggered*, not base-coefficient-driven.
+
+### Modeling decisions (spec left open)
+
+- **Two rod groups, one carries the accident.** `control_rods` (function `control`, in ORM, version per-rod function incl. the displacer) + `shutdown_rods` (function `shutdown`, **pure absorber both versions**, not in ORM). The displacer/positive-scram effect lives only in the control rods (the historical graphite-tipped manual rods); the AZ emergency rods are clean absorbers — so a full-power scram (control rods already past the water column) is unconditionally safe, while a low-power scram (control rods in the column) triggers the excursion. `rod_count` is a lumped worth-scaling factor (control 1.0, shutdown 0.2), decoupled from the ORM `total_rod_count = 211`.
+- **Heat source** mirrors M1: fission embedded in `P` during operation, decay added as the residual once scrammed (`Q_total = P + (scrammed ? H : 0)`) — keeps rated fuel temp right and the post-scram fuel hot.
+- **`steam_to_turbine`** is a fixed load (= initial power), not power-tracking — so an excursion outruns the turbine draw and drum pressure rises into the reliefs / `steam_pressure` trip, rather than the load magically absorbing the spike.
+- **Coolant temp** is `T_sat(steam_pressure)` (the channel water boils at drum pressure, ~286 °C at 7.0 MPa), feeding fuel/graphite coupling.
+- **`MAX_PROMPT_GROWTH`** caps per-step prompt growth (pre 80 / post 5) as the §3 numeric backstop; a `_P ≤ 1e9` clamp and freezing kinetics once `melted` prevent post-destruction NaNs.
+- **PRNG / save-restore** identical machinery to M1 (mulberry32, Box–Muller; lag buffers + failures + RNG state saved). Save/restore verified bit-exact mid-`channel_rupture` + mid-stall + instrument-drift, for both versions.
+- **Protection is version-specific data** (`forVersion`): pre has 3 trips, post adds the tighter power trip + void trip; ORM alarm setpoint 15 (pre) / 43 (post). No engineered-safety auto-actuation (RBMK is trip-to-scram in v1).
+
+### Notes / open items
+- **F1 resolved** here (see flag table). **F6** confirmed for M2 (stable at 0.02 s).
+- The `low_power_xenon` precondition is *metastable*, not a stable equilibrium — it sits at ρ≈0 until perturbed, and a sufficiently large upward nudge (the scram, on pre) runs away. This is faithful to the physics but means scenario scripts (M6) must drive it deliberately; free-running it for very long will eventually drift (xenon burnout).
 
 ---
 
@@ -231,6 +272,12 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
 ## Change log
 
 - **M1** built and committed (`a18c85f`). Suite 11/11.
+- **M2** built. Suite **18/18 · 99 checks**, both versions (`node test/run_rbmk.js`, browser
+  `test_rbmk.html`). Two versions in one engine via `design_version`; reuses the F1 excess/pinned-
+  reference pattern (and extends it to `void_ref`, which proved load-bearing for low-power
+  stability). Accident co-tuned: pre crosses prompt critical via the displacer + amplified void →
+  **steam explosion**; post shuts down safely; full-power maneuvering stable. PWR suite re-confirmed
+  green (11/11 · 51 — no shared code touched). **F1 resolved**, **F6** confirmed for M2.
 - **M4** built and committed (`1ae7245`). Smoke 10/10. Added `category` to PWR failure data;
   M1 suite re-confirmed green after the edit.
 - **This file** created after M1+M4 to capture the above; keep updating per "How to maintain".
