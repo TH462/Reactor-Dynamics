@@ -31,6 +31,7 @@
     view: 'diagram',        // plant-display active view
     pdAck: {},              // operator-acknowledged auto-actuations (ECCS/AFW → green)
     pdOp: {},               // operator-initiated systems (start green directly)
+    ctlVals: {},            // last value typed into each control-bar number input (id → value), so the shared bar doesn't revert on view switch
   };
   var service, latest = null, lastScrammed = false;
   var chartBuf = [];        // { t, ins }
@@ -360,8 +361,8 @@
       inner += '</div>';
       (g.extra || []).forEach(function (b) { inner += '<button class="btn" data-act="' + b.act + '"' + (b.title ? ' title="' + esc(b.title) + '"' : '') + '>' + b.l + '</button>'; });
     } else if (g.num) {
-      var n = g.num;
-      inner += '<input class="num-input mono" id="' + n.id + '" type="number" min="' + n.min + '" max="' + n.max + '" value="' + n.value + '">' +
+      var n = g.num, cur = (ui.ctlVals[n.id] != null ? ui.ctlVals[n.id] : n.value);
+      inner += '<input class="num-input mono" id="' + n.id + '" type="number" min="' + n.min + '" max="' + n.max + '" value="' + cur + '">' +
         '<button class="btn" data-act="' + n.act + '">' + (n.setL || 'Set') + '</button>';
     }
     inner += '</div>';
@@ -700,6 +701,12 @@
       var h = HOLD[b.getAttribute('data-hold')]; if (!h) return;
       e.preventDefault(); holding = true; b.classList.add('holding'); h();
     });
+    // remember control-bar setpoints so the shared bar shows the live value (not the
+    // hardcoded default) when you leave and return to a view
+    document.body.addEventListener('input', function (e) {
+      var inp = e.target.closest('#pdCtlRow input.num-input'); if (!inp || !inp.id) return;
+      ui.ctlVals[inp.id] = inp.value;
+    });
     document.addEventListener('pointerup', endHold);
     document.addEventListener('pointercancel', endHold);
     window.addEventListener('blur', endHold);
@@ -778,7 +785,9 @@
       if (btn.classList.contains('fired')) return;
       if (btn.classList.contains('armed')) { btn.classList.remove('armed'); if (timer) clearTimeout(timer); btn.textContent = 'SCRAM'; cmd({ action: 'scram' }); return; }
       btn.classList.add('armed'); btn.textContent = 'CONFIRM';
-      timer = setTimeout(function () { btn.classList.remove('armed'); btn.textContent = 'SCRAM'; }, 3000);
+      // auto-disarm after 3 s — but don't overwrite a "SCRAMMED" label if the plant
+      // tripped from another cause while armed
+      timer = setTimeout(function () { if (btn.classList.contains('fired')) return; btn.classList.remove('armed'); btn.textContent = 'SCRAM'; }, 3000);
     });
   }
 
@@ -880,7 +889,7 @@
   // slider sim is dropped; sensor tspans + visuals are driven from the snapshot
   // by renderDiagram(). Wrapped in .pd-diagram so its CSS vars stay scoped.
   var PWR_DIAGRAM_SVG =
-    '<div class="pd-diagram"><svg class="loop" id="loop" viewBox="0 105 1180 390" preserveAspectRatio="xMidYMid meet">' +
+    '<div class="pd-diagram"><svg class="loop" id="loop" viewBox="40 108 821 360" preserveAspectRatio="xMidYMid meet">' +
       '<path class="pipe-case" d="M250,300 H670"/>' +
       '<path class="pipe-case thin" d="M430,300 V257"/>' +
       '<path class="pipe-case" d="M670,405 H250"/>' +
@@ -976,7 +985,7 @@
     // animation speed / stopped from flow
     var loop = document.getElementById('loop'); if (!loop) return;
     if (flow < 0.04) loop.classList.add('stopped');
-    else { loop.classList.remove('stopped'); loop.style.setProperty('--flow-dur', Math.max(0.35, Math.min(7, 1.05 / flow)).toFixed(3) + 's'); loop.style.setProperty('--spin-dur', Math.max(0.25, Math.min(4, 0.7 / flow)).toFixed(3) + 's'); }
+    else { loop.classList.remove('stopped'); setVarQ(loop, '--flow-dur', durS(1.05 / flow, 0.35, 7)); setVarQ(loop, '--spin-dur', durS(0.7 / flow, 0.25, 4)); }
     // warm tint by hot-leg temp (in °F)
     var thotF = ins.thot * 9 / 5 + 32, warmAmt = Math.min(1, Math.max(0, (thotF - 549) / 160));
     var warmCol = 'rgb(' + Math.round(180 + warmAmt * 55) + ',' + Math.round(135 - warmAmt * 35) + ',' + Math.round(88 - warmAmt * 18) + ')';
@@ -995,7 +1004,7 @@
   // prefixed `sec`/`sv` so they don't collide with the primary diagram (both cards
   // live in the DOM at once). Wired by renderSecDiagram().
   var PWR_SEC_DIAGRAM_SVG =
-    '<div class="pd-diagram"><svg class="loop" id="secLoop" viewBox="0 40 1180 450" preserveAspectRatio="xMidYMid meet">' +
+    '<div class="pd-diagram"><svg class="loop" id="secLoop" viewBox="40 40 1018 449" preserveAspectRatio="xMidYMid meet">' +
       '<path class="pipe-case" d="M210,150 V120 H700"/>' +
       '<path class="pipe-case" d="M820,200 V250"/>' +
       '<path class="pipe-case" d="M820,422 V450 H560"/>' +
@@ -1079,20 +1088,28 @@
     if (load < 0.04) loop.classList.add('stopped');
     else {
       loop.classList.remove('stopped');
-      loop.style.setProperty('--flow-dur', Math.max(0.35, Math.min(7, 1.05 / load)).toFixed(3) + 's');
-      loop.style.setProperty('--spin-dur', Math.max(0.2, Math.min(4, 0.6 / load)).toFixed(3) + 's');
-      loop.style.setProperty('--blade-dur', Math.max(0.12, Math.min(2, 0.32 / load)).toFixed(3) + 's');
+      setVarQ(loop, '--flow-dur', durS(1.05 / load, 0.35, 7));
+      setVarQ(loop, '--spin-dur', durS(0.6 / load, 0.2, 4));
+      setVarQ(loop, '--blade-dur', durS(0.32 / load, 0.12, 2));
     }
     var sg = Math.max(0, Math.min(1, ins.sg_level / 100)), sB = 413, sH = 261, sy = sB - sg * sH;
     setA('secSgWater', 'y', sy.toFixed(1)); setA('secSgWater', 'height', (sB - sy).toFixed(1)); setA('secSgSurface', 'd', 'M132,' + sy.toFixed(1) + ' q29,-2 58,0 t58,0');
   }
 
-  function durS(x, lo, hi) { return Math.max(lo, Math.min(hi, x)).toFixed(3) + 's'; }
+  function durS(x, lo, hi) { return Math.max(lo, Math.min(hi, x)).toFixed(2) + 's'; }
+  // Set a CSS custom property only when it actually changes. Re-setting an
+  // animation-duration var every broadcast restarts the keyframe clock and makes
+  // the flow dashes stutter; guarding the write keeps steady-state animations smooth.
+  function setVarQ(el, name, val) {
+    if (!el._vq) el._vq = {};
+    if (el._vq[name] === val) return;
+    el._vq[name] = val; el.style.setProperty(name, val);
+  }
 
   // PWR full-plant schematic (from pwr_full_plant_diagram_v2.html) for the Diagram
   // view. Ids prefixed `fp`/`fv` (a third diagram alongside primary/secondary).
   var PWR_FULL_DIAGRAM_SVG =
-    '<div class="pd-diagram"><svg class="loop" id="fpLoop" viewBox="0 95 1320 390" preserveAspectRatio="xMidYMid meet">' +
+    '<div class="pd-diagram"><svg class="loop" id="fpLoop" viewBox="40 92 1160 394" preserveAspectRatio="xMidYMid meet">' +
       '<line class="boundary" x1="600" y1="110" x2="600" y2="418"/>' +
       '<path class="pipe-case" d="M250,250 H540"/><path class="pipe-case thin" d="M400,250 V207"/><path class="pipe-case" d="M540,355 H205"/><path class="pipe-case" d="M250,250 H205"/><path class="pipe-case" d="M250,355 H205"/><path class="pipe-case" d="M180,345 V270" stroke-width="6"/>' +
       '<path class="flow pri" d="M180,345 V270" stroke="url(#fpGradCore)"/><path class="flow pri" d="M205,250 H540" stroke="var(--warm)"/><path class="flow pri" d="M400,250 V211" stroke="var(--warm)" style="animation-duration:3.4s;opacity:.5;"/><path class="flow pri" d="M540,355 H205" stroke="var(--cool)"/>' +
@@ -1102,7 +1119,7 @@
         '<linearGradient id="fpGradCore" x1="0" y1="345" x2="0" y2="270" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6a9dc0"/><stop offset="1" stop-color="#c98a5a"/></linearGradient>' +
         '<linearGradient id="fpGradTube" x1="0" y1="250" x2="0" y2="355" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#c98a5a" class="tubeWarmStop"/><stop offset="0.55" stop-color="#7a7a78"/><stop offset="1" stop-color="#6a9dc0"/></linearGradient>' +
         '<linearGradient id="fpGradCondTube" x1="0" y1="312" x2="0" y2="392" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#84a2b2"/><stop offset="0.6" stop-color="#6a8a9a"/><stop offset="1" stop-color="#5e92ac"/></linearGradient>' +
-        '<clipPath id="fpPzrClip"><rect x="372" y="142" width="56" height="66" rx="6"/></clipPath><clipPath id="fpSgClip"><rect x="542" y="172" width="116" height="218" rx="14"/></clipPath><clipPath id="fpCondClip"><rect x="842" y="292" width="236" height="130" rx="10"/></clipPath><clipPath id="fpTurbClip"><path d="M840,210 L960,196 L960,290 L840,276 Z"/></clipPath>' +
+        '<clipPath id="fpPzrClip"><rect x="372" y="142" width="56" height="66" rx="6"/></clipPath><clipPath id="fpSgClip"><rect x="542" y="172" width="116" height="218" rx="14"/></clipPath><clipPath id="fpCondClip"><rect x="842" y="292" width="236" height="130" rx="10"/></clipPath><clipPath id="fpTurbClip"><path d="M840,198 L960,184 L960,278 L840,264 Z"/></clipPath>' +
       '</defs>' +
       '<rect class="vessel" x="128" y="200" width="104" height="205" rx="24"/><rect class="vessel-inner" x="150" y="255" width="60" height="130" rx="3"/>' +
       '<line class="fuel" x1="160" y1="262" x2="160" y2="380"/><line class="fuel" x1="170" y1="262" x2="170" y2="380"/><line class="fuel" x1="180" y1="262" x2="180" y2="380"/><line class="fuel" x1="190" y1="262" x2="190" y2="380"/><line class="fuel" x1="200" y1="262" x2="200" y2="380"/>' +
@@ -1113,8 +1130,8 @@
       '<text class="comp-label" x="400" y="180" text-anchor="middle" style="fill:#5a7488;">PZR</text><path class="pipe-case thin" d="M400,140 V120" stroke-width="5"/><polygon class="valve" points="394,130 406,130 400,138"/><circle cx="400" cy="118" r="2.6" class="valve"/>' +
       '<rect class="vessel" x="540" y="170" width="120" height="222" rx="14"/><g clip-path="url(#fpSgClip)"><rect class="steam-space" x="542" y="172" width="116" height="218"/><rect class="water" id="fpSgWater" x="542" y="250" width="116" height="140"/><path class="surface" id="fpSgSurface" d="M542,250 H658"/></g>' +
       '<text class="comp-label" x="600" y="192" text-anchor="middle">Steam Gen</text><text class="comp-sub" x="600" y="430" text-anchor="middle">primary ⇄ secondary</text><g id="fpTubeBundle"></g>' +
-      '<path class="vessel" d="M840,210 L960,196 L960,290 L840,276 Z"/><line x1="840" y1="248" x2="960" y2="248" stroke="#3a5870" stroke-width="1.4"/><g clip-path="url(#fpTurbClip)"><g id="fpTurbineRotor"></g></g>' +
-      '<text class="comp-label" x="900" y="190" text-anchor="middle">Turbine</text><circle class="vessel" cx="1008" cy="252" r="20"/><text class="comp-sub" x="1008" y="255" text-anchor="middle" style="fill:#52687c;">GEN</text>' +
+      '<path class="vessel" d="M840,198 L960,184 L960,278 L840,264 Z"/><line x1="840" y1="236" x2="960" y2="236" stroke="#3a5870" stroke-width="1.4"/><g clip-path="url(#fpTurbClip)"><g id="fpTurbineRotor"></g></g>' +
+      '<text class="comp-label" x="900" y="176" text-anchor="middle">Turbine</text><circle class="vessel" cx="1008" cy="252" r="20"/><text class="comp-sub" x="1008" y="255" text-anchor="middle" style="fill:#52687c;">GEN</text>' +
       '<line class="pipe-case thin" x1="960" y1="252" x2="988" y2="252"/><path class="sec-arrow" d="M1028,252 H1062"/><polygon points="1056,248 1056,256 1064,252" fill="#46586a"/><text class="sec-label" x="1068" y="255" text-anchor="start">grid</text>' +
       '<rect class="vessel" x="840" y="290" width="240" height="135" rx="12"/><g clip-path="url(#fpCondClip)"><rect class="steam-space" x="842" y="292" width="236" height="131"/><rect class="water" id="fpCondWater" x="842" y="396" width="236" height="27"/><path class="surface" id="fpCondSurface" d="M842,396 H1078"/><g id="fpCondTubes"></g></g>' +
       '<text class="comp-label" x="888" y="306" text-anchor="middle">Condenser</text><path class="sec-arrow" d="M840,410 H812"/><polygon points="818,406 818,414 810,410" fill="#46586a"/><text class="sec-label" x="806" y="413" text-anchor="end">CW</text>' +
@@ -1131,14 +1148,14 @@
         '<g class="sensor"><line class="tap-tick" x1="364" y1="195" x2="376" y2="195"/><circle class="tap" cx="370" cy="195" r="2.2"/><path class="leader" d="M370,195 H336"/><rect class="lbl-box" x="258" y="190" width="78" height="28" rx="4"/><text class="lbl-name" x="265" y="200">PZR Level</text><text class="lbl-val" x="265" y="213"><tspan id="fvPzr">55</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
         '<g class="sensor"><circle class="tap" cx="400" cy="118" r="2.2"/><path class="leader" d="M400,118 H456"/><rect class="lbl-box" x="456" y="104" width="92" height="28" rx="4"/><text class="lbl-name" x="463" y="114">PORV / Block</text><text class="lbl-val" x="463" y="127"><tspan id="fvPorv">closed</tspan></text></g>' +
         '<g class="sensor"><line class="tap-tick" x1="490" y1="244" x2="490" y2="256"/><circle class="tap" cx="490" cy="250" r="2.2"/><path class="leader" d="M490,250 V272 H452"/><rect class="lbl-box" x="406" y="272" width="92" height="28" rx="4"/><text class="lbl-name" x="413" y="282">T-hot · hot leg</text><text class="lbl-val" x="413" y="295"><tspan id="fvThot">609</tspan><tspan class="lbl-unit" id="fvUThot"> °F</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="490" y1="349" x2="490" y2="361"/><circle class="tap" cx="490" cy="355" r="2.2"/><path class="leader" d="M490,355 V378 H452"/><rect class="lbl-box" x="452" y="378" width="96" height="28" rx="4"/><text class="lbl-name" x="459" y="388">T-cold · cold leg</text><text class="lbl-val" x="459" y="401"><tspan id="fvTcold">549</tspan><tspan class="lbl-unit" id="fvUTcold"> °F</tspan></text></g>' +
+        '<g class="sensor"><line class="tap-tick" x1="490" y1="349" x2="490" y2="361"/><circle class="tap" cx="490" cy="355" r="2.2"/><path class="leader" d="M490,355 V378"/><rect class="lbl-box" x="436" y="378" width="96" height="28" rx="4"/><text class="lbl-name" x="443" y="388">T-cold · cold leg</text><text class="lbl-val" x="443" y="401"><tspan id="fvTcold">549</tspan><tspan class="lbl-unit" id="fvUTcold"> °F</tspan></text></g>' +
         '<g class="sensor"><circle class="tap" cx="400" cy="372" r="2.2"/><path class="leader" d="M400,372 V392 H352"/><rect class="lbl-box" x="300" y="378" width="92" height="28" rx="4"/><text class="lbl-name" x="307" y="388">RCP Flow</text><text class="lbl-val" x="307" y="401"><tspan id="fvFlow">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
         '<g class="sensor"><line class="tap-tick" x1="534" y1="250" x2="546" y2="250"/><circle class="tap" cx="540" cy="250" r="2.2"/><path class="leader" d="M540,250 H516 V228"/><rect class="lbl-box" x="438" y="200" width="78" height="28" rx="4"/><text class="lbl-name" x="445" y="210">SG Level</text><text class="lbl-val" x="445" y="223"><tspan id="fvSg">65</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
         '<g class="sensor"><line class="tap-tick" x1="720" y1="134" x2="720" y2="146"/><circle class="tap" cx="720" cy="140" r="2.2"/><path class="leader" d="M720,140 V128"/><rect class="lbl-box" x="676" y="100" width="88" height="28" rx="4"/><text class="lbl-name" x="683" y="110">Steam Flow</text><text class="lbl-val" x="683" y="123"><tspan id="fvSteam">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-        '<g class="sensor"><circle class="tap" cx="900" cy="248" r="2.2"/><path class="leader" d="M900,248 V150 H942"/><rect class="lbl-box" x="934" y="136" width="86" height="28" rx="4"/><text class="lbl-name" x="941" y="146">Turbine RPM</text><text class="lbl-val" x="941" y="159"><tspan id="fvRpm">1800</tspan></text></g>' +
+        '<g class="sensor"><circle class="tap" cx="900" cy="236" r="2.2"/><path class="leader" d="M900,236 V150 H942"/><rect class="lbl-box" x="934" y="136" width="86" height="28" rx="4"/><text class="lbl-name" x="941" y="146">Turbine RPM</text><text class="lbl-val" x="941" y="159"><tspan id="fvRpm">1800</tspan></text></g>' +
         '<g class="sensor"><circle class="tap" cx="1008" cy="232" r="2.2"/><path class="leader" d="M1008,232 V218 H1068"/><rect class="lbl-box" x="1060" y="204" width="84" height="28" rx="4"/><text class="lbl-name" x="1067" y="214">Output</text><text class="lbl-val" x="1067" y="227"><tspan id="fvMw">1000</tspan><tspan class="lbl-unit"> MW</tspan></text></g>' +
         '<g class="sensor"><line class="tap-tick" x1="1040" y1="296" x2="1040" y2="308"/><circle class="tap" cx="1040" cy="302" r="2.2"/><path class="leader" d="M1040,302 V288 H1088"/><rect class="lbl-box" x="1088" y="274" width="96" height="28" rx="4"/><text class="lbl-name" x="1095" y="284">Cond. Vacuum</text><text class="lbl-val" x="1095" y="297"><tspan id="fvVac">28.5</tspan><tspan class="lbl-unit" id="fvUVac"> inHg</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="690" y1="320" x2="690" y2="332"/><circle class="tap" cx="690" cy="326" r="2.2"/><path class="leader" d="M690,326 V352 H648"/><rect class="lbl-box" x="600" y="352" width="96" height="28" rx="4"/><text class="lbl-name" x="607" y="362">Feedwater Flow</text><text class="lbl-val" x="607" y="375"><tspan id="fvFeed">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
+        '<g class="sensor"><line class="tap-tick" x1="690" y1="320" x2="690" y2="332"/><circle class="tap" cx="690" cy="326" r="2.2"/><path class="leader" d="M690,326 V440 H680"/><rect class="lbl-box" x="580" y="440" width="100" height="28" rx="4"/><text class="lbl-name" x="587" y="450">Feedwater Flow</text><text class="lbl-val" x="587" y="463"><tspan id="fvFeed">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
       '</g>' +
     '</svg></div>';
 
@@ -1159,7 +1176,7 @@
     }
     var rot = document.getElementById('fpTurbineRotor');
     if (rot && !rot.childNodes.length) {
-      for (var bx = 824; bx <= 980; bx += 15) { var ln = document.createElementNS(ns, 'line'); ln.setAttribute('class', 'turbine-blade'); var tt = Math.max(0, Math.min(1, (bx - 840) / 120)), half = 16 + tt * 20; ln.setAttribute('x1', bx); ln.setAttribute('y1', (248 - half).toFixed(0)); ln.setAttribute('x2', bx); ln.setAttribute('y2', (248 + half).toFixed(0)); rot.appendChild(ln); }
+      for (var bx = 824; bx <= 980; bx += 15) { var ln = document.createElementNS(ns, 'line'); ln.setAttribute('class', 'turbine-blade'); var tt = Math.max(0, Math.min(1, (bx - 840) / 120)), half = 16 + tt * 20; ln.setAttribute('x1', bx); ln.setAttribute('y1', (236 - half).toFixed(0)); ln.setAttribute('x2', bx); ln.setAttribute('y2', (236 + half).toFixed(0)); rot.appendChild(ln); }
     }
   }
 
@@ -1183,9 +1200,9 @@
     tx('fvFeed', Math.round((ins.fw_flow || 0) * 100));
     var loop = document.getElementById('fpLoop'); if (!loop) return;
     if (flow < 0.04) loop.classList.add('stopped-pri');
-    else { loop.classList.remove('stopped-pri'); loop.style.setProperty('--flow-dur', durS(1.05 / flow, 0.35, 7)); loop.style.setProperty('--spin-pri', durS(0.7 / flow, 0.25, 4)); }
+    else { loop.classList.remove('stopped-pri'); setVarQ(loop, '--flow-dur', durS(1.05 / flow, 0.35, 7)); setVarQ(loop, '--spin-pri', durS(0.7 / flow, 0.25, 4)); }
     if (load < 0.04) loop.classList.add('stopped-sec');
-    else { loop.classList.remove('stopped-sec'); loop.style.setProperty('--flow-dur-sec', durS(1.05 / load, 0.35, 7)); loop.style.setProperty('--spin-sec', durS(0.6 / load, 0.2, 4)); loop.style.setProperty('--blade-dur', durS(0.32 / load, 0.12, 2)); }
+    else { loop.classList.remove('stopped-sec'); setVarQ(loop, '--flow-dur-sec', durS(1.05 / load, 0.35, 7)); setVarQ(loop, '--spin-sec', durS(0.6 / load, 0.2, 4)); setVarQ(loop, '--blade-dur', durS(0.32 / load, 0.12, 2)); }
     var thotF = ins.thot * 9 / 5 + 32, warmAmt = Math.min(1, Math.max(0, (thotF - 549) / 160));
     var warmCol = 'rgb(' + Math.round(180 + warmAmt * 55) + ',' + Math.round(135 - warmAmt * 35) + ',' + Math.round(88 - warmAmt * 18) + ')';
     var dwrap = document.querySelector('[data-pdview="diagram"] .pd-diagram'); if (dwrap) dwrap.style.setProperty('--warm', warmCol);
@@ -1439,6 +1456,10 @@
   function populateControlBar() {
     var row = $('pdCtlRow'); if (!row) return; row.innerHTML = '';
     viewControls(ui.view).forEach(function (g) { row.appendChild(ctlGroup(g)); });
+    // re-assert persisted selections on the freshly built bar (rod speed seg)
+    row.querySelectorAll('[data-act^="rodspeed-"]').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-act') === 'rodspeed-' + ui.rodSpeed);
+    });
   }
   function buildViews() {
     var area = $('viewArea'); pdRows = {};
@@ -1459,6 +1480,7 @@
     if (pd().secondary.diagram) buildSecDiagramExtras();// condenser tubes + turbine blades (once)
     buildPdAll();
     populateControlBar();
+    syncSeg('[data-overlay]', ui.overlay, 'overlay');   // All-view overlay seg reflects ui.overlay after a rebuild
   }
   // The All view mirrors the classic numeric grid.
   function buildPdAll() {
@@ -1475,14 +1497,14 @@
     var rows = pdRows[viewKey]; if (!rows) return;
     rows.forEach(function (r, idx) {
       var el = document.querySelector('[data-pv="' + viewKey + '-' + idx + '"]'); if (!el) return;
-      var valEl = el.querySelector(r._cross ? '.cross-param-val' : '.pv');
+      var valEl = el.querySelector('.pv');
       if (r.subcool) { renderSubcool(valEl, r.get(s)); return; }
       var v = r.get(s), cls = '';
-      if (v && v.dim != null) { el.querySelector('.pv').className = 'pv'; valEl.innerHTML = '<span class="dim-info">' + v.dim + '</span>'; return; }
+      if (v && v.dim != null) { valEl.className = 'pv'; valEl.innerHTML = '<span class="dim-info">' + v.dim + '</span>'; return; }
       if (v && v.cls !== undefined) { valEl.textContent = v.t; cls = v.cls; }       // explicit severity
       else if (v && v.b !== undefined) { valEl.textContent = v.t; cls = boolClass(v.t); }
       else valEl.textContent = v;
-      if (!r._cross) valEl.className = 'pv ' + cls;
+      valEl.className = 'pv ' + cls;
     });
   }
   // Subcooling special treatment: bigger text, warn<22°C, alarm<11°C, SATURATED ≤0.

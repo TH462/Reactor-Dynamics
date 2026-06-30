@@ -700,7 +700,10 @@ select.num-input { width: auto; }
 .pd-diagram .comp-label { fill: var(--ddim); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .pd-diagram .comp-sub { fill: var(--vdim); font-size: 9px; letter-spacing: .04em; }
 .pd-diagram .water { fill: var(--water); opacity: .6; }
-.pd-diagram .surface { fill: none; stroke: #4e88a4; stroke-width: 1.4; opacity: .9; }
+/* smooth the level/rod motion between broadcasts (10-20 Hz) so geometry updates
+   interpolate instead of snapping — kills the per-frame jitter */
+.pd-diagram .water, .pd-diagram .rod-fill { transition: y .16s linear, height .16s linear; }
+.pd-diagram .surface { fill: none; stroke: #4e88a4; stroke-width: 1.4; opacity: .9; transition: d .16s linear; }
 .pd-diagram .steam-space { fill: #121a22; }
 .pd-diagram .valve { fill: #10171f; stroke: #4a6680; stroke-width: 1; }
 .pd-diagram .pump-body { fill: #10161f; stroke: #3a5870; stroke-width: 1.2; }

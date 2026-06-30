@@ -718,3 +718,26 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   `[data-pdview="primary"]` (three `.pd-diagram` now match). Default view is now **Diagram**. RBMK/BWR
   Diagram views keep the "SVG in development" placeholder (full-loop diagram is PWR-only). UI-only;
   PWR 11/11·51, RBMK 18/18·99, BWR 9/9·47 still green.
+- **UI review pass: diagram polish + control-bar state fixes (user, `develop`).** Thorough
+  correctness review of the plant-display UI (headless interaction harness + a read-only code audit).
+  Diagram changes (all three PWR schematics): (1) **smoother motion** — added `transition: y/height .16s`
+  on `.water`/`.rod-fill` and `transition: d .16s` on `.surface` so level/rod geometry interpolates
+  between the 10–20 Hz broadcasts instead of snapping; and a `setVarQ()` guard so animation-duration
+  CSS vars (`--flow-dur*`, `--spin*`, `--blade-dur`) are only rewritten when they actually change
+  (re-setting them every frame restarted the dash keyframes → stutter); `durS()` coarsened to 2 dp.
+  (2) **full-diagram layout** — turbine assembly raised 12 px so it no longer touches the condenser
+  (polygon/clip/shaft/blades/label/RPM-tap); **Feedwater Flow** label moved down clear of the SG;
+  **T-cold** label shifted left off the SG corner. (3) **tighter crop + centering** — viewBoxes set to
+  the measured content bounding boxes (via `getBBox`): primary `40 108 821 360`, secondary
+  `40 40 1018 449`, full `40 92 1160 394` — trims the dead side margins and centers each in its panel
+  (also renders ~13 % larger). Correctness fixes from the audit: (A) the shared control bar is rebuilt
+  per view, which **reverted typed setpoints** (Feed Reg/Turbine Load/recirc…) and the **rod-speed
+  selection** to their hardcoded defaults on every view switch — now persisted (`ui.ctlVals` keyed by
+  input id, re-applied in `ctlGroup`; rod-speed seg re-asserted in `populateControlBar`). (B) the
+  **All-view overlay segment** (Instruments/True/Both) desynced from `ui.overlay` after an engine
+  rebuild — `buildViews` now calls `syncSeg`. (C) removed the dead `_cross` branch in `renderPdRows`
+  (the cross-strip was already gone). (D) the SCRAM auto-disarm timer no longer clobbers a "SCRAMMED"
+  label if the plant trips from another cause while the button is armed. Verified by harness: view
+  switch repopulates the bar (3/7/7/0 groups), SCRAM arms→fires, all 3 engines switch (slots 7/4/8),
+  setpoint `42` + rod-speed Fast + overlay True all survive round-trips; no JS errors. UI-only;
+  PWR 11/11·51, RBMK 18/18·99, BWR 9/9·47 still green.
