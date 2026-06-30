@@ -43,13 +43,13 @@
       { id: 'control_rods', name: 'Control Rods', function: 'control',
         steps: 0, max_steps: r.max_steps, position_pct: 0,
         moving: false, direction: 0, speed: 'normal', scrammed: false,
-        velocity: 0, step_accumulator: 0, worth: this.cfg.reactivity.rod_worth_total,
+        velocity: 0, step_accumulator: 0, nudge_target: null, worth: this.cfg.reactivity.rod_worth_total,
         insertion_limit_steps: Math.round(r.insertion_limit_pct / 100 * r.max_steps),
         at_insertion_limit: false },
       { id: 'shutdown_rods', name: 'Shutdown Rods', function: 'shutdown',
         steps: r.max_steps, max_steps: r.max_steps, position_pct: 100,
         moving: false, direction: 0, speed: 'normal', scrammed: false,
-        velocity: 0, step_accumulator: 0, worth: this.cfg.reactivity.rod_worth_shutdown,
+        velocity: 0, step_accumulator: 0, nudge_target: null, worth: this.cfg.reactivity.rod_worth_shutdown,
         insertion_limit_steps: null, at_insertion_limit: false },
     ];
   };
@@ -148,7 +148,10 @@
       while (g.step_accumulator >= 1.0) {
         g.steps = clip(g.steps + dir, 0, g.max_steps);
         g.step_accumulator -= 1.0;
-        if (g.steps === 0 || g.steps === g.max_steps) { g.velocity = 0; g.moving = false; break; }
+        // A nudge drives toward its target at the rod speed, then stops (so a
+        // single-step nudge moves at the same rate as a held drive, not instantly).
+        if (g.nudge_target != null && g.steps === g.nudge_target) { g.velocity = 0; g.moving = false; g.nudge_target = null; break; }
+        if (g.steps === 0 || g.steps === g.max_steps) { g.velocity = 0; g.moving = false; g.nudge_target = null; break; }
       }
       this._updateRodDerived(g);
     }
@@ -272,11 +275,14 @@
     return {
       rod_groups: groups,
       porv_demand: s.porv_demand,
+      porv_block_open: s.block_valve_open,
       heater_power_pct: s.heater_power_frac * 100,
       spray_valve_pct: s.spray_flow_frac * 100,
       charging_flow_normalized: s.charging_flow,
       feedwater_flow_pct: s.feedwater_demand_frac * 100,
       steam_demand_mwe: s.steam_demand_mwe,
+      steam_dump_pct: s.steam_dump_frac * 100,
+      steam_dump_auto: s.steam_dump_override == null,
       hpi_active: s.hpi_active,
       pumps: [{ id: 'rcp', running: s.pump_running, flow_pct: s.pump_flow_pct }],
     };
@@ -290,16 +296,20 @@
     var s = this.s, g;
     switch (cmd.action) {
       case 'rod_nudge':
+        // Move `steps` at the selected rod speed (drives to a target), not instantly.
         g = this._group(cmd.group_id);
         if (g && !(g.id === 'control_rods' && s._fail.rod_runaway.active)) {
-          g.steps = clip(g.steps + cmd.steps, 0, g.max_steps);
-          this._updateRodDerived(g);
+          g.speed = cmd.speed || g.speed || 'normal';
+          g.nudge_target = clip(g.steps + cmd.steps, 0, g.max_steps);
+          var nv = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
+          g.velocity = (g.nudge_target >= g.steps ? 1 : -1) * nv;
+          g.moving = g.nudge_target !== g.steps;
         }
         break;
       case 'rod_start':
         g = this._group(cmd.group_id);
         if (g && !(g.id === 'control_rods' && s._fail.rod_runaway.active)) {
-          g.speed = cmd.speed || 'normal';
+          g.speed = cmd.speed || 'normal'; g.nudge_target = null;   // continuous (held) — no target
           var v = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
           g.velocity = (cmd.direction >= 0 ? 1 : -1) * v;
           g.moving = true;
@@ -307,10 +317,10 @@
         break;
       case 'rod_stop':
         g = this._group(cmd.group_id);
-        if (g && !g.scrammed) { g.velocity = 0; g.moving = false; }
+        if (g && !g.scrammed) { g.velocity = 0; g.moving = false; g.nudge_target = null; }
         break;
       case 'rod_stop_all':
-        this.rod_groups.forEach(function (gr) { if (!gr.scrammed) { gr.velocity = 0; gr.moving = false; } });
+        this.rod_groups.forEach(function (gr) { if (!gr.scrammed) { gr.velocity = 0; gr.moving = false; gr.nudge_target = null; } });
         break;
       case 'scram':
         if (!s.scram_blocked) this._scram();
@@ -335,11 +345,25 @@
       case 'close_porv':
         s.porv_demand = 'closed'; // ineffective while porv_stuck (relief() forces open)
         break;
+      case 'open_block_valve':
+        s.block_valve_open = true;
+        break;
+      case 'close_block_valve':
+        // Isolate the PORV line (stops flow even if the PORV is stuck open).
+        s.block_valve_open = false;
+        break;
       case 'set_hpi':
         s.hpi_active = !!cmd.active;
         break;
       case 'set_afw':
         if (!s.afw_blocked) s.afw_active = !!cmd.active;
+        break;
+      case 'set_steam_dump':
+        // mode: 'auto' (null override) | 'open' (full) | 'closed' | a manual pct.
+        if (cmd.mode === 'auto') s.steam_dump_override = null;
+        else if (cmd.mode === 'open') s.steam_dump_override = 1.0;
+        else if (cmd.mode === 'closed') s.steam_dump_override = 0.0;
+        else if (cmd.pct != null) s.steam_dump_override = clip(cmd.pct / 100, 0, 1);
         break;
       case 'set_dhr':
         s.dhr_active = !!cmd.active;
@@ -383,7 +407,7 @@
     this.rod_groups.forEach(function (g) {
       // A stuck control rod holds out; M4/§9.1 model the held worth in reactivity,
       // but the group still "scrams" (drives in) — the held worth is added back.
-      g.scrammed = true; g.moving = true;
+      g.scrammed = true; g.moving = true; g.nudge_target = null;
     });
   };
 
@@ -528,6 +552,7 @@
       pressure_mpa: cfg.pressurizer.P_equilibrium,
       heater_power_frac: 0, spray_flow_frac: 0, heater_override: null, spray_override: null,
       porv_demand: 'closed', porv_open: false, porv_stuck: false, safety_open: false,
+      block_valve_open: true,                 // PORV isolation/block valve (B1; default open)
       porv_flow: 0, safety_flow: 0,
       pzr_level_pct: cfg.pressurizer.pzr_level_nominal,
 
@@ -539,6 +564,7 @@
       sg_level_pct: cfg.steam_generator.sg_level_nominal,
       steam_pressure_mpa: cfg.steam_generator.steam_p_rated,
       steam_flow_normalized: P0, fw_flow_normalized: P0,
+      steam_dump_override: null, steam_dump_frac: 0,   // B2 (null = auto)
       feedwater_demand_frac: P0, feedwater_flow: P0, main_feedwater_available: true,
       afw_active: false, afw_blocked: false, dhr_active: false,
 

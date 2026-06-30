@@ -73,7 +73,7 @@
         steps: 0, max_steps: cfg.rods.max_steps,
         rod_count: def.rod_count, worth_pcm: def.worth_pcm, displacer: !!def.displacer,
         moving: false, direction: 0, speed: 'normal', scrammed: false,
-        velocity: 0, step_accumulator: 0,
+        velocity: 0, step_accumulator: 0, nudge_target: null,
         insertion_limit_steps: null, at_insertion_limit: false,
       };
     });

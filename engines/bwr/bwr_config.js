@@ -102,9 +102,18 @@
       // short [tune] (the spec's 600 s stalls above 1.03 MPa against decay steam).
       ads_depressurization_tau: 120.0, ads_level: 15.0,     // ADS auto at level<15 (gated hpci_unavailable)
       lpci_threshold_pressure: 1.03, lpci_flow_normalized: 0.05, // [tune]
+      lpcs_flow_normalized: 0.04,   // D4 core spray (LPCS) — low-pressure injection [tune]
+      // D6 manual SRV depressurization — controlled (slower than ADS's 120 s) but
+      // must still out-vent decay steam to reach the <1.03 MPa injection window. [tune]
+      srv_manual_tau: 150.0,
       battery_duration_hours: 8.0, battery_low_pct: 20.0,   // [tune]
       BATTERY_MAX_DEGRADE: 0.75,   // early_battery_failure max duration cut
       SRV_BLOWDOWN_COEFF: 0.5, SRV_INVENTORY_RATE: 0.02,    // stuck-relief blowdown [tune]
+      // Standby Liquid Control (D1) — sodium-pentaborate injection that shuts the
+      // reactor down via NEGATIVE reactivity even if the rods will not insert
+      // (the ATWS mitigation). Worth large enough to dominate; ramps in as boron
+      // mixes; the tank drains as it injects.
+      slc_worth: 0.09, slc_ramp_tau: 45.0, slc_tank_drain_s: 300.0,  // [tune]
     },
 
     // ------------------------------------------------------------------ rods

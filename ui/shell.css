@@ -150,24 +150,29 @@ body {
   display: flex; flex-direction: column; gap: 3px;
 }
 .gauge.lead { box-shadow: inset 0 2px 0 0 var(--normal); }
+/* gauge card background subtly tints with state (reinforces the value color) */
+.gauge.warn  { background: var(--gauge-bg-warn);  border-color: var(--gauge-border-warn); }
+.gauge.alarm { background: var(--gauge-bg-alarm); border-color: var(--gauge-border-alarm); }
 /* Quiet board: a normal reading is the DIM resting state — the value's color is
    its status. Normal = dim blue-white, Caution = amber, Alarm = red + flash. */
-.gauge .g-label { font-size: 10px; color: #5a6b7c; letter-spacing: .03em; display:flex; justify-content:space-between; }
-.gauge .g-value { font-size: 22px; font-weight: 650; line-height: 1.05; color: #b6c4d2; }
-.gauge .g-units { font-size: 10px; color: #5a6b7c; }
+.gauge .g-label { font-size: 10px; color: var(--clr-dim-label); letter-spacing: .03em; display:flex; justify-content:space-between; }
+.gauge .g-value { font-size: 22px; font-weight: 650; line-height: 1.05; color: var(--clr-normal-value); }
+.gauge .g-units { font-size: 10px; color: var(--clr-dim-label); }
+/* Quiet board: value color IS the status — dim normal, amber caution, red+flash alarm. */
 .gauge.warn  .g-value { color: var(--caution); }
 .gauge.alarm .g-value { color: var(--critical); animation: gauge-alarm-flash .6s steps(1, end) infinite; }
 @keyframes gauge-alarm-flash { 50% { opacity: .4; } }
-.gauge .g-trend { font-size: 11px; }
-.trend-up { color: var(--trend-up); }
-.trend-down { color: var(--trend-down); }
-.trend-flat { color: var(--text-2); }
-/* zone band: normal/caution/danger with a needle marker */
-/* quiet board: the normal zone is muted; only caution/danger zones carry color */
-.g-band { height: 5px; border-radius: 3px; position: relative; margin-top: 2px;
-  background: linear-gradient(90deg, #28313a 0 55%, var(--caution) 55% 80%, var(--critical) 80% 100%); }
+/* trend arrow: dim at rest; color (not direction) signals deviation */
+.gauge .g-trend { font-size: 11px; color: #2a3a4a; }
+.gauge.warn  .g-trend { color: #c09020; }
+.gauge.alarm .g-trend { color: #e05030; }
+.trend-up, .trend-down, .trend-flat { /* direction is the glyph; color is state (above) */ }
+/* range bar: a single DIM track; a colored fill (set by renderGauges) appears to
+   the needle ONLY when the value is in a warn/alarm band — never a rainbow. */
+.g-band { height: 5px; border-radius: 3px; position: relative; margin-top: 2px; background: var(--bar-track-normal); }
+.g-band .g-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
 .g-band .needle { position: absolute; top: -2px; width: 2px; height: 9px; background: var(--text); border-radius: 1px;
-  transition: left .12s linear; }
+  transition: left .12s linear; z-index: 1; }
 .g-band .trip { position: absolute; top: -3px; width: 0; height: 11px; border-left: 1px dashed var(--critical); }
 .g-spark { width: 100%; height: 14px; }
 
@@ -213,6 +218,8 @@ body {
 .seg button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px #38424d; }
 .seg button.on.run { color: #6FD089; background: rgba(70,163,94,.08); box-shadow: inset 0 0 0 1px rgba(70,163,94,.65); }
 .seg button.on.warn { color: var(--caution); background: rgba(217,164,65,.10); box-shadow: inset 0 0 0 1px rgba(217,164,65,.65); }
+/* press-and-hold (rod drive) active state */
+.seg button.holding { color: #6FD089; background: rgba(70,163,94,.16); box-shadow: inset 0 0 0 1px rgba(70,163,94,.7); }
 
 .btn {
   background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border);
@@ -252,23 +259,23 @@ body {
 /* SCRAMMED: force the bright-red flashing indicator regardless of cover state */
 .scram-wrap.scrammed .scram-cover { display: none; }
 .scram-wrap.scrammed .scram-btn { display: flex; }
-.scram-btn.fired { cursor: default; animation: scram-flash .7s steps(1, end) infinite; }
-@keyframes scram-flash {
-  0%   { background: #ef4444; border-color: #fca5a5; color: #fff; box-shadow: 0 0 20px rgba(239,68,68,.75); }
-  50%  { background: #7f1d1d; border-color: #ef4444; color: #ffd9d9; box-shadow: 0 0 6px rgba(239,68,68,.35); }
-}
+/* A4 — fired state: one red palette, 0.5s step-end opacity flash (no color cycling) */
+.scram-btn.fired { cursor: default; background: #1a0600; border: 2px solid #b03020; color: #e04020;
+  font-weight: 700; letter-spacing: .1em; animation: scram-flash .5s step-end infinite; }
+@keyframes scram-flash { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .3; } }
 .scram-arc { position: absolute; inset: -2px; border-radius: 8px; border: 2px solid transparent;
   border-top-color: var(--critical); animation: scram-countdown 3s linear forwards; pointer-events: none; }
 @keyframes scram-countdown { from { transform: rotate(0deg); opacity: 1; } to { transform: rotate(360deg); opacity: .2; } }
 
 /* ============================================================ synoptic area */
+/* Diagram block is FIXED height; the chart/alarm strip below takes the slack. */
 .synoptic {
-  flex: 1 1 auto;
+  flex: 0 0 340px;
   background: var(--bg-strip);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 10px;
-  display: flex; flex-direction: column; min-height: 280px;
+  display: flex; flex-direction: column;
   position: relative;
 }
 .synoptic-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -287,14 +294,18 @@ body {
 .num-col h4 { margin: 0 0 6px; font-size: 12px; letter-spacing: .05em; color: var(--normal); text-transform: uppercase; }
 .num-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; border-bottom: 1px dotted #23272d; }
 .num-line .nk { color: var(--text-2); }
-.num-line .nv { font-weight: 600; }
-.num-line .nv.bool-on { color: var(--running); }
-.num-line .nv.bool-bad { color: var(--critical); }
+.num-line .nv { font-weight: 600; color: var(--clr-status-normal); }
+/* Quiet board: status words are dim at normal; color is spent only on deviation. */
+.num-line .nv.q-normal  { color: var(--clr-status-normal); }
+.num-line .nv.q-caution { color: var(--caution); }
+.num-line .nv.q-alarm   { color: var(--critical); }
 .ff-badge { position: absolute; right: 10px; bottom: 8px; font-size: 11px; color: var(--caution);
   background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.4); border-radius: 4px; padding: 1px 6px; }
 
 /* ====================================================== bottom: chart+alarm */
-.bottom-row { flex: 0 0 30%; display: flex; gap: var(--gap); min-height: 150px; }
+/* the chart/alarm strip STRETCHES to fill the vertical slack below the fixed
+   diagram block (was a fixed 30%) */
+.bottom-row { flex: 1 1 auto; display: flex; gap: var(--gap); min-height: 150px; }
 .strip-chart {
   flex: 1 1 auto; background: var(--bg-strip); border: 1px solid var(--border); border-radius: var(--radius);
   display: flex; flex-direction: column; padding: 6px 8px;
@@ -303,7 +314,15 @@ body {
 .chart-legend span { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); }
 .chart-legend i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
 .chart-legend .leg b { font-weight: 600; opacity: .8; font-size: 10px; letter-spacing: .02em; }
-.chart-canvas { flex: 1 1 auto; min-height: 0; }
+/* plot wrapper holds the stretched SVG + the floating value-label overlay */
+.chart-plot { position: relative; flex: 1 1 auto; min-height: 0; }
+.chart-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.chart-floats { position: absolute; inset: 0; pointer-events: none; }
+.cfloat {
+  position: absolute; right: 3px; transform: translateY(-50%);
+  font: 600 10px ui-monospace, "Cascadia Mono", Consolas, monospace;
+  padding: 0 3px; border-radius: 2px; background: rgba(8, 11, 14, .72); white-space: nowrap;
+}
 .scrubber { height: 14px; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .scrubber .track { flex: 1 1 auto; height: 4px; background: #23272d; border-radius: 2px; position: relative; }
 .scrubber .head { position: absolute; right: 8%; top: -3px; width: 3px; height: 10px; background: var(--normal); border-radius: 2px; }
@@ -423,11 +442,12 @@ body {
 /* category LABELS — low-saturation tinted background + brighter hue text (they
    classify a row; they are not warnings, so they don't get a saturated fill). */
 .fail-cat { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 5px; border-radius: 3px; }
-.fail-cat.reactivity    { background: rgba(192,132,252,.14); color: #c6a8e8; }
-.fail-cat.coolant       { background: rgba(56,189,248,.14);  color: #8fcde8; }
-.fail-cat.power         { background: rgba(251,191,36,.14);  color: #d8b46a; }
-.fail-cat.instrument    { background: rgba(45,212,191,.14);  color: #7fcdc0; }
-.fail-cat.safety_system { background: rgba(244,114,182,.14); color: #e0a0c4; }
+/* E4 — desaturated category pills (they classify a row; they are not status). */
+.fail-cat.reactivity    { background: #180a18; color: #9050a0; }
+.fail-cat.coolant       { background: #0a1820; color: #4a90c0; }
+.fail-cat.power         { background: #180d00; color: #b07828; }
+.fail-cat.instrument    { background: #141020; color: #6858a0; }
+.fail-cat.safety_system { background: #0a1608; color: #508040; }
 .fail-slider { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
 .fail-slider input[type=range] { flex: 1 1 auto; accent-color: var(--normal); }
 .fail-slider .sv { font-size: 11px; color: var(--text-2); min-width: 96px; text-align: right; }
@@ -465,6 +485,8 @@ select.num-input { width: auto; }
 /* numeric placeholder — overlay/true tags + boolean states */
 .true-tag { color: var(--caution); font-size: 11px; font-weight: 600; margin-left: 4px; }
 .hidden-true { color: var(--disabled); font-style: italic; font-size: 11px; }
+/* E2 — near-invisible readout (e.g. SUR at steady power: carries no information) */
+.dim-info { color: #2c343d; }
 .nv.bool-off { color: var(--text-2); }
 
 /* failures-tab inject toggle */
@@ -526,3 +548,131 @@ select.num-input { width: auto; }
 .ctl-pane .num-input { font-size: 12px; padding: 3px 7px; width: 60px; }
 .cg.emergency { border: 1px dashed var(--caution); border-radius: 5px; padding: 4px 8px 6px; }
 .cg.emergency .cg-l { color: var(--caution); }
+
+/* ============================================================================
+ * QUIET-BOARD palette tokens (the board is now quiet-only — the old/“current”
+ * look and its A/B toggle were removed). Color is reserved for deviation: the
+ * gauge bars (single dim track + colored fill in-band), status words (dim
+ * normal), value text/card tint by state, and the muted trace palette all key
+ * off these. The state rules themselves live with their components above.
+ * ========================================================================== */
+:root {
+  --clr-normal-value:    #a8b8c8;
+  --clr-dim-label:       #4a5a6a;
+  --clr-status-normal:   #4a6070;
+  --clr-caution:         #d4a020;
+  --clr-alarm:           #e05030;
+  --clr-cleared:         #40a060;   /* green — cleared alarms ONLY */
+  --bar-track-normal:    #1a3040;
+  --bar-warn:            #7a5000;
+  --bar-alarm:           #7a2010;
+  --gauge-bg-normal:     #0d1017;
+  --gauge-bg-warn:       #0e0c00;
+  --gauge-bg-alarm:      #0e0600;
+  --gauge-border-normal: #1a2030;
+  --gauge-border-warn:   #3a2800;
+  --gauge-border-alarm:  #5a1800;
+  --scram-bg-normal:     #0a1208;
+  --scram-border-normal: #253a20;
+  --scram-text-normal:   #304828;
+}
+
+/* SCRAM guard cover — present but dim when armed (the fired state is the
+   existing bright-red scram-flash). */
+.scram-cover {
+  background: var(--scram-bg-normal);
+  border: 1.5px solid var(--scram-border-normal);
+  color: var(--scram-text-normal);
+  font-weight: 600; letter-spacing: .1em;
+}
+
+/* ============================================================================
+ * PLANT-DISPLAY layout (swappable variant — Dev tab -> "Plant Display").
+ * Status bar + 4-view switcher (Diagram / Primary / Secondary / All) replacing
+ * the classic tabbed control strip + synoptic table. Scoped so the classic board
+ * is untouched under layout-classic. Hexes per the redesign spec.
+ * ========================================================================== */
+:root {
+  --status-bar-bg: #060910;
+  --slot-dot-normal: #1a2a38; --slot-dot-caution: #c09020; --slot-dot-alarm: #e04020; --slot-dot-running: #3a9060;
+  --slot-name-normal: #1e2e3e; --slot-name-caution: #a07818; --slot-name-alarm: #c03818; --slot-name-running: #306848;
+  --slot-badge-alarm-bg: #1a0600; --slot-badge-alarm-color: #e04020; --slot-badge-alarm-border: #6a1808;
+  --slot-badge-warn-bg: #1e1800; --slot-badge-warn-color: #c09020; --slot-badge-warn-border: #4a3800;
+  --slot-badge-run-bg: #081a10; --slot-badge-run-color: #3a9060; --slot-badge-run-border: #1a4828;
+  --view-btn-color: #2a4050; --view-btn-hover: #4a6878; --view-btn-active-color: #7aabb8; --view-btn-active-line: #3a7080;
+  --cross-bg: #060910; --cross-label-color: #1a3040; --cross-name-color: #1e3040; --cross-val-color: #2e4a58;
+  --section-head-color: #2a4050; --section-head-border: #0e1520;
+}
+
+/* system status bar */
+.status-bar { flex: 0 0 auto; height: 22px; display: flex; align-items: center;
+  background: var(--status-bar-bg); border: 1px solid var(--border); border-top: none; padding: 0 10px; overflow: hidden; }
+.bar-sep { width: 0; align-self: stretch; margin: 4px 8px; border-left: 1px solid #131c28; }
+.sys-slot { display: flex; align-items: center; gap: 4px; padding: 0 7px; }
+.slot-dot { width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0; background: var(--slot-dot-normal); }
+.slot-name { font-size: 8px; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; color: var(--slot-name-normal); }
+.slot-badge { font-size: 7px; font-weight: 600; padding: 1px 4px; border-radius: 2px; letter-spacing: .04em; white-space: nowrap; display: none; }
+.sys-slot.state-running .slot-dot { background: var(--slot-dot-running); }
+.sys-slot.state-running .slot-name { color: var(--slot-name-running); }
+.sys-slot.state-running .slot-badge { display: inline; background: var(--slot-badge-run-bg); color: var(--slot-badge-run-color); border: .5px solid var(--slot-badge-run-border); }
+.sys-slot.state-caution .slot-dot { background: var(--slot-dot-caution); }
+.sys-slot.state-caution .slot-name { color: var(--slot-name-caution); }
+.sys-slot.state-caution .slot-badge { display: inline; background: var(--slot-badge-warn-bg); color: var(--slot-badge-warn-color); border: .5px solid var(--slot-badge-warn-border); }
+.sys-slot.state-alarm .slot-dot { background: var(--slot-dot-alarm); }
+.sys-slot.state-alarm .slot-name { color: var(--slot-name-alarm); }
+.sys-slot.state-alarm .slot-badge { display: inline; background: var(--slot-badge-alarm-bg); color: var(--slot-badge-alarm-color); border: .5px solid var(--slot-badge-alarm-border); }
+@keyframes status-flash { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .2; } }
+.sys-slot.state-alarm .slot-dot, .sys-slot.state-alarm .slot-badge { animation: status-flash .8s step-end infinite; }
+.scram-badge { margin-left: auto; font-size: 8px; font-weight: 700; padding: 2px 7px; border-radius: 2px;
+  background: #1a0600; color: #e04020; border: .5px solid #6a1808; letter-spacing: .06em; animation: status-flash .5s step-end infinite; display: none; }
+.scram-badge.on { display: inline-block; }
+
+/* view switcher */
+.view-switcher { flex: 0 0 auto; display: flex; align-items: stretch; border: 1px solid var(--border); border-top: none; background: #070a0f; padding: 0 10px; }
+.view-tabs { display: flex; flex: 1 1 auto; }
+.view-btn { font-size: 11px; font-weight: 500; color: var(--view-btn-color); padding: 7px 16px; background: transparent;
+  border: none; border-bottom: 2px solid transparent; cursor: pointer; letter-spacing: .03em; }
+.view-btn:hover { color: var(--view-btn-hover); }
+.view-btn.active { color: var(--view-btn-active-color); border-bottom-color: var(--view-btn-active-line); }
+.pd-scram { align-self: center; font-size: 10px; font-weight: 700; letter-spacing: .1em; cursor: pointer;
+  padding: 3px 12px; border-radius: 4px; background: #0a1208; border: 1.5px solid #253a20; color: #304828; }
+.pd-scram.armed { background: #7f2a2a; border-color: #9e3b3b; color: #f1d6d6; }
+.pd-scram.fired { background: #1a0600; border: 2px solid #b03020; color: #e04020; animation: scram-flash .5s step-end infinite; }
+
+/* view area + panels */
+.view-area { flex: 0 0 340px; min-height: 0; background: var(--bg-strip); border: 1px solid var(--border); border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius); overflow: hidden; display: flex; position: relative; }
+.pdview { display: none; width: 100%; overflow: auto; padding: 10px; }
+.pdview.on { display: block; }
+.view-placeholder { height: 100%; min-height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--muted); }
+.view-placeholder .placeholder-sub { font-size: 11px; color: #2a3a48; }
+.pd-diagram-controls { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 16px; }
+
+/* card sections + params */
+.pd-card { display: flex; flex-direction: column; gap: 12px; }
+.pd-sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 18px; }
+.pd-section h5 { margin: 0 0 5px; font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--section-head-color); border-bottom: 1px solid var(--section-head-border); padding-bottom: 3px; font-weight: 700; }
+.pd-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; border-bottom: 1px dotted #161d27; }
+.pd-row .pk { color: var(--text-2); }
+.pd-row .pv { font-weight: 600; color: var(--clr-status-normal); }
+.pd-row .pv.q-caution { color: var(--caution); }
+.pd-row .pv.q-alarm { color: var(--critical); }
+.pd-row.subcool { padding: 6px 0; border-top: 1px solid #141b24; border-bottom: 1px solid #141b24; }
+.pd-row.subcool .pv { font-size: 15px; }
+.pd-row.subcool .pv.warn { color: var(--caution); }
+.pd-row.subcool .pv.alarm { color: var(--critical); animation: gauge-alarm-flash .6s steps(1,end) infinite; }
+.sat-badge { font-size: 8px; font-weight: 700; color: var(--critical); border: .5px solid #6a1808; background: #1a0600;
+  border-radius: 2px; padding: 1px 4px; margin-left: 6px; letter-spacing: .05em; }
+.pd-controls { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: flex-end; padding-top: 6px; border-top: 1px solid var(--section-head-border); }
+
+/* cross-indication strip */
+.cross-strip { background: var(--cross-bg); border-top: .5px solid #0e1520; padding: 5px 10px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.cross-label { font-size: 8px; color: var(--cross-label-color); text-transform: uppercase; letter-spacing: .06em; }
+.cross-item { display: flex; gap: 5px; align-items: baseline; }
+.cross-param-name { font-size: 9px; color: var(--cross-name-color); }
+.cross-param-val { font-size: 11px; color: var(--cross-val-color); font-weight: 600; }
+
+/* All-params view */
+.pd-all-head { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.pd-all-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }

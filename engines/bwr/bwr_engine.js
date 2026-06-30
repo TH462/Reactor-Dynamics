@@ -45,11 +45,11 @@
     return [
       { id: 'control_rods', name: 'Control Rods', function: 'control',
         steps: 0, max_steps: r.max_steps, position_pct: 0, moving: false, direction: 0,
-        speed: 'normal', scrammed: false, velocity: 0, step_accumulator: 0,
+        speed: 'normal', scrammed: false, velocity: 0, step_accumulator: 0, nudge_target: null,
         worth: this.cfg.reactivity.rod_worth_total, insertion_limit_steps: null, at_insertion_limit: false },
       { id: 'shutdown_rods', name: 'Shutdown Rods', function: 'shutdown',
         steps: r.max_steps, max_steps: r.max_steps, position_pct: 100, moving: false, direction: 0,
-        speed: 'normal', scrammed: false, velocity: 0, step_accumulator: 0,
+        speed: 'normal', scrammed: false, velocity: 0, step_accumulator: 0, nudge_target: null,
         worth: this.cfg.reactivity.rod_worth_shutdown, insertion_limit_steps: null, at_insertion_limit: false },
     ];
   };
@@ -76,7 +76,10 @@
     var rho_doppler = rc.alpha_D * (s.fuel_temp_c - this.Tf_ref);
     var rho_void = rc.alpha_void * (s.core_void_fraction - this.void_ref);
     var rho_xenon = -this.cfg.kinetics.xenon.xenon_worth * (s._X / s._X_eq);
-    return (this.rho_excess || 0) + rho_rods + rho_doppler + rho_void + rho_xenon;
+    // Standby Liquid Control (D1): injected boron is a strong negative term that
+    // shuts the reactor down independently of the rods (ATWS mitigation).
+    var rho_slc = -this.cfg.safety.slc_worth * (s.slc_injected || 0);
+    return (this.rho_excess || 0) + rho_rods + rho_doppler + rho_void + rho_xenon + rho_slc;
   };
 
   // ----------------------------------------------------- point kinetics (§3)
@@ -132,7 +135,8 @@
       while (g.step_accumulator >= 1.0) {
         g.steps = clip(g.steps + dir, 0, g.max_steps);
         g.step_accumulator -= 1.0;
-        if (g.steps === 0 || g.steps === g.max_steps) { g.velocity = 0; g.moving = false; break; }
+        if (g.nudge_target != null && g.steps === g.nudge_target) { g.velocity = 0; g.moving = false; g.nudge_target = null; break; }
+        if (g.steps === 0 || g.steps === g.max_steps) { g.velocity = 0; g.moving = false; g.nudge_target = null; break; }
       }
       this._updateRodDerived(g);
     }
@@ -145,6 +149,13 @@
     var dt = dt_effective != null ? dt_effective : this.dt_nominal;
 
     this._stepRods(dt);
+    // SLC (D1): while initiated and the tank has charge, boron mixes in (ramps the
+    // injected fraction toward 1) and the tank drains. The injected boron's
+    // negative reactivity persists (it stays in the core).
+    if (s.slc_active && s.slc_tank_pct > 0) {
+      s.slc_injected += (1 - s.slc_injected) / cfg.safety.slc_ramp_tau * dt;
+      s.slc_tank_pct = Math.max(0, s.slc_tank_pct - 100 / cfg.safety.slc_tank_drain_s * dt);
+    }
     if (!s.melted) {
       var rho = this._totalReactivity(); s._rho = rho;
       this._stepKinetics(rho, dt);
@@ -199,7 +210,9 @@
       steam_flow_normalized: s.steam_flow_normalized, fw_flow_normalized: s.fw_flow_normalized,
       recirc_flow_pct: s.recirc_flow_pct, decay_heat_pct: s.decay_heat_pct, xenon_pct_eq: s.xenon_pct_eq,
       rcic_running: s.rcic_running, hpci_running: s.hpci_running, ads_open: s.ads_open, lpci_running: s.lpci_running,
+      lpcs_running: s.lpcs_running, srv_manual_open: s.srv_manual_open,
       station_blackout: s.station_blackout, battery_charge_pct: s.battery_charge_pct,
+      slc_active: s.slc_active, slc_tank_pct: s.slc_tank_pct,
       scrammed: s.scrammed, melted: s.melted, destruction_cause: s.destruction_cause,
       reactivity_pcm: (s._rho || 0) * 1e5,
     };
@@ -220,6 +233,7 @@
       rod_groups: groups,
       recirc_flow_setpoint_pct: s.recirc_setpoint_pct,
       ads_armed: s.ads_open,
+      slc_active: s.slc_active,
       feedwater_flow_pct: s.feedwater_normalized * 100,
     };
   };
@@ -233,22 +247,28 @@
     switch (cmd.action) {
       case 'rod_nudge':
         g = this._group(cmd.group_id);
-        if (g) { g.steps = clip(g.steps + cmd.steps, 0, g.max_steps); this._updateRodDerived(g); }
+        if (g) {
+          g.speed = cmd.speed || g.speed || 'normal';
+          g.nudge_target = clip(g.steps + cmd.steps, 0, g.max_steps);
+          var nv = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
+          g.velocity = (g.nudge_target >= g.steps ? 1 : -1) * nv;
+          g.moving = g.nudge_target !== g.steps;
+        }
         break;
       case 'rod_start':
         g = this._group(cmd.group_id);
         if (g) {
-          g.speed = cmd.speed || 'normal';
+          g.speed = cmd.speed || 'normal'; g.nudge_target = null;
           var v = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
           g.velocity = (cmd.direction >= 0 ? 1 : -1) * v; g.moving = true;
         }
         break;
       case 'rod_stop':
         g = this._group(cmd.group_id);
-        if (g && !g.scrammed) { g.velocity = 0; g.moving = false; }
+        if (g && !g.scrammed) { g.velocity = 0; g.moving = false; g.nudge_target = null; }
         break;
       case 'rod_stop_all':
-        this.rod_groups.forEach(function (gr) { if (!gr.scrammed) { gr.velocity = 0; gr.moving = false; } });
+        this.rod_groups.forEach(function (gr) { if (!gr.scrammed) { gr.velocity = 0; gr.moving = false; gr.nudge_target = null; } });
         break;
       case 'scram':
         if (!s.scram_blocked) this._scram();
@@ -268,6 +288,24 @@
         break;
       case 'start_lpci':
         if (!s.lpci_blocked) s.lpci_running = true;
+        break;
+      case 'initiate_slc':
+        s.slc_active = true;   // boron injection — shuts down even with rods stuck (ATWS)
+        break;
+      case 'stop_slc':
+        s.slc_active = false;  // stop further injection (already-injected boron persists)
+        break;
+      case 'start_lpcs':
+        if (!s.lpcs_blocked) s.lpcs_running = true;   // D4 core spray
+        break;
+      case 'stop_lpcs':
+        s.lpcs_running = false;
+        break;
+      case 'open_srv_manual':
+        s.srv_manual_open = true;    // D6 controlled manual depressurization
+        break;
+      case 'close_srv_manual':
+        s.srv_manual_open = false;
         break;
       case 'set_rcic':
         s.rcic_running = !!cmd.active;
@@ -298,7 +336,7 @@
 
   BWREngine.prototype._scram = function () {
     this.s.scrammed = true;
-    this.rod_groups.forEach(function (g) { g.scrammed = true; g.moving = true; });
+    this.rod_groups.forEach(function (g) { g.scrammed = true; g.moving = true; g.nudge_target = null; });
   };
 
   // ------------------------------------------------------- failure dispatch (§13)
@@ -454,7 +492,10 @@
       rcic_running: !!init.rcic_running, rcic_flow: 0, rcic_failed: false,
       hpci_running: false, hpci_flow: 0, hpci_failed: false,
       ads_open: false, ads_blocked: false, lpci_running: false, lpci_flow: 0, lpci_blocked: false,
+      lpcs_running: false, lpcs_flow: 0, lpcs_blocked: false,   // D4 core spray
+      srv_manual_open: false,                                    // D6 manual SRV
       station_blackout: sbo, sbo_elapsed: 0, battery_charge_pct: 100,
+      slc_active: false, slc_injected: 0, slc_tank_pct: 100,   // Standby Liquid Control (D1)
 
       scrammed: scrammed, melted: false, fuel_damaged: false, destruction_cause: 'none', scram_blocked: false,
       _fail: { srv_stuck_open: { active: false, area: 0 }, battery: { active: false, duration_factor: 1 } },

@@ -128,6 +128,8 @@
       steam_flow_rated: 1.0,       // [tune]
       sg_level_nominal: 65.0,      // % at hot_full_power
       afw_flow_frac: 0.15, afw_start_level: 20.0, // % [tune]
+      // B2 steam dump / turbine bypass (auto opens above setpoint, to condenser).
+      steam_dump_setpoint: 6.0, steam_dump_band: 0.45, steam_dump_max: 1.0, // [tune]
     },
 
     // ------------------------------------------------------ turbine / condenser

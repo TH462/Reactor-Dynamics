@@ -63,7 +63,7 @@
     var boiloff = s.scrammed ? (s._H1 + s._H2) / (v.latent_heat_bwr * v.vessel_water_mass) : 0.0;
     s._boiloff_rate = boiloff;
     var srv_sink = s._fail.srv_stuck_open.active ? cfg.safety.SRV_INVENTORY_RATE * s._fail.srv_stuck_open.area : 0.0;
-    var dLevel = (s.feedwater_normalized + s.rcic_flow + s.hpci_flow + s.lpci_flow
+    var dLevel = (s.feedwater_normalized + s.rcic_flow + s.hpci_flow + s.lpci_flow + (s.lpcs_flow || 0)
       - s.steam_flow_normalized - boiloff - srv_sink) * v.K_vessel_level;
     s.vessel_level_pct = clip(s.vessel_level_pct + dLevel * dt, 0, 100);
   }

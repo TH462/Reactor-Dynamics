@@ -520,3 +520,153 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   the engine's *live, mutated* reading object, so the chart was buffering one shared reference (every
   point showed the latest value). The UI now copies instrument values into the buffer and plots each
   series against a fixed range (auto-scaling had amplified steady-state noise to full height).
+- **Quiet-board color refactor as a swappable A/B variant (user, `develop`).** Per a supplied
+  color-refactor spec ("color is reserved exclusively for deviation from normal"), added a **Dev-tab
+  dropdown** (`#uiVariant`, Current ↔ "Quiet Board (new)") that swaps a `variant-quiet` class on
+  `.app`; persisted to `localStorage` (`rd_ui_variant`, guarded for `file://`), with a `?variant=`
+  URL override for sharing/screenshots. **This re-introduces a Dev-tab variant selector** (the layout
+  A/B harness was removed earlier — Flag F8 changelog); this one swaps *color treatment*, not layout.
+  Selecting "Current" applies zero overrides, so the existing board is untouched — true A/B. The new
+  variant implements the spec's six changes, almost entirely as CSS scoped under `.app.variant-quiet`
+  plus three small JS hooks:
+  - **(1) gauge bars** — the rainbow gradient track becomes a single dim track (`--bar-track-normal`);
+    a colored fill (`g-fill`, set in `renderGauges`) appears to the needle *only* in a warn/alarm band.
+    **(2) status words** — `classifyBool()` switches to `quietBoolClass()` in quiet mode: normal
+    (closed/running/no/off/standby) → dim `--clr-status-normal` (no more green), abnormal
+    (open/stopped/yes) → red, off-normal-but-not-failed (HPI active / AFW on) → amber. **(4) traces** —
+    each `SERIES` gained a `qcolor` (the spec `--trace-*` muted palette); `traceColor()` picks per
+    variant for the chart, legend, and Graph-tab swatches. **(3) SCRAM**, **(5) value text**,
+    **(6) card tint**, and trend-arrow coloring are pure CSS keyed off the existing `.gauge.warn/.alarm`
+    classes (same logic that already drove value-text color — so the deviation path is the proven one).
+  - Deliberately **not** done: the transient green-on-clear flash (spec's `--status-cleared`, lower
+    priority — the load-bearing rule "never green for currently-fine" is satisfied); the failure
+    category pills (spec marks them a separate task / DO NOT CHANGE). Verified by headless-Chrome
+    screenshots of both variants (quiet board reads calm at steady state; SCRAM fired → bright-red
+    flash). Engine/layer suites untouched (UI-only).
+- **Quiet board kept, A/B harness removed; multi-plant UI + layout/graph upgrades (user, `develop`).**
+  After approving the quiet board, the user asked to drop the old look and keep quiet only — so the
+  `variant-quiet` scoping was unscoped into the base rules, the Dev-tab variant dropdown / `localStorage`
+  / `?variant=` override were removed, and `boolClass()` now always returns the quiet `q-*` classes
+  (the old rainbow `.g-band` gradient and green `.nv.bool-on` are gone). The board is quiet-only.
+  - **Multi-plant, data-driven UI.** `app.js` was refactored from PWR-hardcoded to a `PROFILES`
+    table (pwr / rbmk / bwr) supplying each plant's gauges, numeric grid, strip-chart series, and
+    **controls** (the tabbed control strip is now built from the profile, not static HTML). An
+    **engine dropdown in the Sim tab** (`#engineSel`: PWR · RBMK pre-1986 · RBMK post-1986 · BWR)
+    calls `switchEngine()` → `service.selectPlant(plant, init, design_version)` and rebuilds every
+    plant-specific surface (gauges/numeric/controls/series/initial-states/failures). The M5 engine
+    registry + per-plant M4 rebuild already supported this; the UI just drives it. RBMK pre/post are
+    one plant with two `design_version`s. A `?engine=` URL override mirrors the old `?variant=` for
+    testing/sharing. Verified by headless screenshots of all three plants (correct gauges, numeric,
+    controls, and per-plant failure catalogs; AZ-5 label on the RBMK scram).
+  - **Per-plant indications/controls** map to each contract: RBMK gets the ORM gauge + Reactivity/ORM
+    column + MCP-flow/EPS-bypass controls; BWR gets vessel level/pressure + the RCIC/HPCI/ADS/LPCI
+    safety-system column and controls + battery. Rod commands are uniform across plants (+withdraw /
+    −insert), so one set of rod acts serves all three. `scram` works for all (the RBMK accepts it as
+    AZ-5). Gauge state logic gained **low-side** thresholds (`caution_lo`/`danger_lo`) for level/ORM,
+    and a display multiplier (`mul`) for void.
+  - **Layout:** the diagram block (`.synoptic`) is now **fixed height** (`flex:0 0 340px`) and the
+    chart/alarm strip (`.bottom-row`) **stretches** to fill the slack (was the reverse).
+  - **Graph:** horizontal gridlines darkened to near-background (`#0f1217`) so they recede; added
+    **live floating value labels** at the right edge — one per active trace, color-coded to the line,
+    positioned at the line's current y and **collision-spread** (min-gap pass + overflow push-up) so
+    they never overlap. Rendered as an HTML overlay (`.chart-floats`) over a new `.chart-plot` wrapper
+    (the SVG viewBox is stretched, so SVG text would distort). Engine/layer suites re-confirmed green
+    (UI-only; PWR 11/11, RBMK 18/18, BWR 9/9).
+- **Improvement-punchlist pass (user, `develop`).** Worked the supplied punchlist; status by group:
+  - **Group A (quiet-board color)** was already implemented in the prior two passes (A1 status words,
+    A2 single-track gauge bars, A3 muted traces, A5 trend arrows, A6 value text, A7 card tint). Only
+    **A4** needed alignment — the SCRAM fired state now uses the spec palette exactly (`#1a0600` /
+    `#b03020` / `#e04020`, `0.5 s step-end` opacity flash). **E2** (grey the Startup-Rate row to
+    near-invisible when `|SUR|<0.01` — no info at power) and **E4** (desaturated failure-category
+    pills, the exact spec hexes) also done.
+  - **B1 · PWR PORV block valve** (closed-loop gap, the key TMI recovery). **Engine extension:**
+    `pwr_pressurizer.relief()` gates all PORV flow on a new `block_valve_open` state (default open);
+    closing it zeroes relief AND inventory loss even while the PORV is stuck open. New commands
+    `open_block_valve` / `close_block_valve`; `porv_block_open` in `control_state`. UI control on the
+    Primary Inventory tab + a `PORV Block Valve` indication. Verified: stuck-PORV `porv_flow` 0.0025 →
+    0 on isolate, inventory stops falling. PWR suite still 11/11·51.
+  - **D1 · BWR Standby Liquid Control** (HIGH-priority ATWS mitigation). **Engine extension:** a
+    negative reactivity term `ρ_slc = −slc_worth·slc_injected` (worth 0.09) that ramps in (`slc_ramp_tau`)
+    and drains the tank; shuts the reactor down independently of the rods. New commands `initiate_slc`
+    / `stop_slc`; `slc_active`/`slc_tank_pct` in `true_state`+`control_state`. UI control on Safety
+    Systems + `SLC` / `SLC Tank` indications. Verified: with `failure_to_scram` active (rods stay
+    withdrawn at 148 steps), SLC drives power 100 % → 0.2 %. BWR suite still 9/9·47.
+  - **C1 · RBMK AZ-5 positive scram effect — VERIFIED MODELED (no change).** The graphite-displacer
+    positive spike IS the centerpiece of M2 (`k_disp=0.05`, `rho_displacer_pre`); from `low_power_xenon`
+    the AZ-5 insertion drives ρ from 0 to ~+0.017 (≈ 2.6 β) before the absorber arrives — squarely in
+    the punchlist's "~+2–3 β" — and is what makes the pre-1986 flagship excurse. Confirmed, not broken.
+  - **Command-contract extension note.** `open_block_valve`/`close_block_valve` (PWR) and
+    `initiate_slc`/`stop_slc` (BWR) are **new commands beyond CONTEXT §6.7** — added because the
+    punchlist explicitly requested the controls and the §6.7 set lacked them. Additive only (defaults
+    leave existing behavior unchanged; all suites green). Fold into §6.7 when the blueprint is updated.
+  - **DEFERRED TO v2 (user decision).** **B4** containment pressure, **D2** suppression-pool (torus)
+    temp, **D3** torus level, **D5** drywell pressure all require a containment / suppression-pool model
+    that **CONTEXT §8 explicitly excludes** ("No containment model … described in commentary, not
+    modeled"). Faking static gauges would violate the honesty principle; the user chose to defer these
+    to v2 rather than expand v1 scope.
+  - **B2 / D4 / D6 done (closed-loop controls, user "do these first").**
+    - **B2 · PWR steam dump / turbine bypass.** `pwr_steam_generator.stepSecondary` adds a dump path
+      that vents steam to the condenser (extra steam-out in the pressure + level balance): **Auto**
+      opens proportionally above `steam_dump_setpoint` (6.0 MPa) — a basic relief-to-condenser, the
+      same class as the allowed pzr heater/spray auto-control — with a manual override. New command
+      `set_steam_dump {mode:auto|open|closed | pct}`; `steam_dump_pct`/`steam_dump_auto` in
+      `control_state`. UI on Turbine & Grid + indication. Verified: after a turbine trip, auto dump caps
+      SG pressure at ~6.4 MPa vs ~12.2 MPa with the dump closed.
+    - **D4 · BWR Core Spray (LPCS).** Mirrors LPCI — injects below `lpci_threshold_pressure`; `lpcs_flow`
+      added to the vessel level balance. Command `start_lpcs`/`stop_lpcs`; `lpcs_running` in the contract.
+    - **D6 · BWR manual SRV.** Operator-opened controlled depressurization (`srv_manual_tau=150 s` —
+      slower than ADS's 120 s but fast enough to out-vent the decay steam below the 1.03 MPa injection
+      window). Commands `open_srv_manual`/`close_srv_manual`; `srv_manual_open` in the contract.
+      Verified end-to-end: with HPCI unavailable after RCIC fails, **manual SRV → LPCS** depressurizes
+      to 0.82 MPa, LPCS engages, and the core is saved — a second, operator-driven Fukushima recovery
+      path alongside ADS+LPCI. All suites still green (PWR 11/11, BWR 9/9, RBMK 18/18).
+    - These add more commands beyond §6.7 (`set_steam_dump`, `start_lpcs`/`stop_lpcs`,
+      `open_srv_manual`/`close_srv_manual`) — additive, defaults inert; fold into §6.7 on the next
+      blueprint update.
+  - **STILL queued (feasible, not yet done).** B3 MSIV, C2 per-trip EPS-bypass granularity, E1 ISA-18.1
+    "cleared-unacknowledged" alarm state (M4 lifecycle), and UI-only E3 CSF sublabels, C3 MCP-count
+    indicator (engine tracks `mcp_running` bool, not a count — would be an approximation), C4 AR-mode
+    indicator (v1 is manual-only; §8 excludes auto-control).
+- **Plant-Display layout — a second swappable UI variant (user spec, `develop`).** Per the "Plant
+  Display Redesign" spec, added a Dev-tab **UI Layout** selector (`#uiLayout`: "Control Room (current)"
+  ↔ "Plant Display (new)") that toggles a `layout-plantdisplay`/`layout-classic` class on `.app`;
+  persisted to `localStorage` (`rd_ui_layout`), with a `?layout=` URL override. The classic board is
+  untouched under `layout-classic`. The new layout keeps the CSF gauge bar, strip chart, alarm panel,
+  and right sidebar, and replaces the tabbed control strip + synoptic table with:
+  - **System Status Bar** — per-plant fixed slots (4 states: normal dim / running green / caution amber
+    / alarm red-flash) with badges and group separators, rebuilt on engine switch; a right-aligned
+    `SCRAMMED` badge. **ECCS/AFW auto-actuation reads ALARM (red) until the operator acknowledges it**
+    (click the slot → green) or RUNNING immediately if operator-initiated (`ui.pdAck`/`ui.pdOp`).
+  - **View switcher** — Diagram / Primary / Secondary / All, default **Primary**, **auto-switches to
+    Diagram on scram**; an always-visible compact 2-click-arm SCRAM at the right (emergency reach from
+    any view).
+  - **Diagram** view: placeholder until the SVG ships, plus the critical-only controls per §5 (rods,
+    ECCS/EPS/ADS, MSIV). **Primary/Secondary** cards: per-plant sections + full controls + a dim
+    cross-indication strip (the other side's heat-removal-relevant params). **All** view: the numeric
+    grid with its own Instruments/True/Both overlay toggle. **Subcooling** gets the §9 special treatment
+    (larger text, warn <22 °C / alarm <11 °C / `SATURATED` ≤0). PWR/RBMK/BWR all mapped.
+  - Implementation notes: views build once (controls via the shared `ctlGroup`; param value-slots
+    updated each frame) so number inputs keep focus. A `{t,cls}` row form was added for explicit
+    per-row severity (e.g. PORV-block "open" must NOT read as the PORV-open alarm). Unmodeled
+    slots/controls (MSIV on PWR/RBMK, Cont. Iso) stay dim/`normal` — no faked state (MSIV is wired
+    only on the BWR via `msiv_closure`). Engine/layer suites untouched (UI-only).
+- **Plant Display promoted to the ONLY UI; rod control reworked (user, `develop`).** The user approved
+  the Plant Display, so the classic Control Room was removed entirely: the tabbed control strip + the
+  synoptic numeric grid (and their `buildControls`/`buildNumeric`/`renderNumeric`/`renderRodBars`/
+  `renderControls`/`setupScramCover` functions, the `scram-box`/guard-cover, the Dev-tab UI-Layout
+  selector, and the `localStorage`/`?layout=` mechanism) are gone. Plant Display is now unconditional
+  (the `layout-*` classes were dropped). The Settings → Values Display toggle now drives the All view;
+  the FF badge moved into the view area.
+  - **Rod control — press-and-hold + smooth nudge (Flag F8-adjacent, ENGINE change).** Withdraw/Insert
+    are now **hold-to-move** (pointerdown → `rod_start` at the selected speed, release anywhere →
+    `rod_stop`); the Stop button is gone; rod speed (Slow/Norm/Fast) stays. The instant `+1/−1` was
+    replaced by a **rate-limited nudge**: `rod_nudge {steps,speed}` now sets a `nudge_target` and drives
+    toward it at the rod velocity instead of snapping, so a single step takes the same time as a held
+    drive and is **sim-time-correct under time acceleration** (a wall-clock UI timer would mis-fire).
+    Implemented identically in all three engines' `_stepRods`/`applyCommand` (RBMK keeps its inverted
+    insertion sign); `nudge_target` is cleared on scram/`rod_start`/`rod_stop` and round-trips in
+    save/restore (it lives on the rod group). Caveat: rods only move while the sim is **running** (no
+    time passes when paused) — acceptable since operating implies play. All scenario suites still green
+    (the `control_response`/`physics_failures` tests that nudge rods run long enough to reach the
+    target): PWR 11/11·51, RBMK 18/18·99, BWR 9/9·47. Verified the hold drives the bank (210→213 in 5 s
+    at normal speed, power 100→101.7 %).

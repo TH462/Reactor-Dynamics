@@ -114,7 +114,8 @@
       while (g.step_accumulator >= 1.0) {
         g.steps = clip(g.steps + dir, 0, g.max_steps);
         g.step_accumulator -= 1.0;
-        if (g.steps === 0 || g.steps === g.max_steps) { g.velocity = 0; g.moving = false; break; }
+        if (g.nudge_target != null && g.steps === g.nudge_target) { g.velocity = 0; g.moving = false; g.nudge_target = null; break; }
+        if (g.steps === 0 || g.steps === g.max_steps) { g.velocity = 0; g.moving = false; g.nudge_target = null; break; }
       }
       this._updateRodDerived(g);
     }
@@ -234,15 +235,18 @@
       case 'rod_nudge':
         g = this._group(cmd.group_id);
         if (g && !(g === this._controlGroup() && s._fail.rod_runaway.active)) {
-          // +steps = withdraw → DECREASE insertion (RBMK convention).
-          g.steps = clip(g.steps - cmd.steps, 0, g.max_steps);
-          this._updateRodDerived(g);
+          // +steps = withdraw → DECREASE insertion (RBMK convention); move at speed.
+          g.speed = cmd.speed || g.speed || 'normal';
+          g.nudge_target = clip(g.steps - cmd.steps, 0, g.max_steps);
+          var nv = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
+          g.velocity = (g.nudge_target >= g.steps ? 1 : -1) * nv;   // insertion velocity
+          g.moving = g.nudge_target !== g.steps;
         }
         break;
       case 'rod_start':
         g = this._group(cmd.group_id);
         if (g && !(g === this._controlGroup() && s._fail.rod_runaway.active)) {
-          g.speed = cmd.speed || 'normal';
+          g.speed = cmd.speed || 'normal'; g.nudge_target = null;
           var v = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
           // direction +1 = withdraw → negative insertion velocity.
           g.velocity = (cmd.direction >= 0 ? -1 : 1) * v;
@@ -251,10 +255,10 @@
         break;
       case 'rod_stop':
         g = this._group(cmd.group_id);
-        if (g && !g.scrammed) { g.velocity = 0; g.moving = false; }
+        if (g && !g.scrammed) { g.velocity = 0; g.moving = false; g.nudge_target = null; }
         break;
       case 'rod_stop_all':
-        this.rod_groups.forEach(function (gr) { if (!gr.scrammed) { gr.velocity = 0; gr.moving = false; } });
+        this.rod_groups.forEach(function (gr) { if (!gr.scrammed) { gr.velocity = 0; gr.moving = false; gr.nudge_target = null; } });
         break;
       case 'scram':
       case 'manual_scram':
@@ -292,7 +296,7 @@
 
   RBMKEngine.prototype._scram = function () {
     this.s.scrammed = true;
-    this.rod_groups.forEach(function (g) { g.scrammed = true; g.moving = true; });
+    this.rod_groups.forEach(function (g) { g.scrammed = true; g.moving = true; g.nudge_target = null; });
   };
 
   // ------------------------------------------------------- failure dispatch

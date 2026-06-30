@@ -54,10 +54,24 @@
       s.vessel_pressure_mpa = Math.max(cfg.vessel.P_ambient, s.vessel_pressure_mpa + dP * dt);
     }
 
+    // D6 — manual SRV(s): operator-opened controlled depressurization (slower than
+    // ADS) when HPCI/ADS are unavailable and the vessel must be brought down to the
+    // low-pressure-injection window.
+    if (s.srv_manual_open) {
+      var dPs = -(s.vessel_pressure_mpa - cfg.vessel.P_ambient) / sf.srv_manual_tau;
+      s.vessel_pressure_mpa = Math.max(cfg.vessel.P_ambient, s.vessel_pressure_mpa + dPs * dt);
+    }
+
     // §9.4 LPCI — low-pressure injection (works only after depressurization).
     s.lpci_flow = 0.0;
     if (s.lpci_running && s.vessel_pressure_mpa < sf.lpci_threshold_pressure) {
       s.lpci_flow = sf.lpci_flow_normalized;
+    }
+    // D4 — Core Spray (LPCS): low-pressure spray onto the fuel; same pressure
+    // window as LPCI, sprays from above rather than flooding from below.
+    s.lpcs_flow = 0.0;
+    if (s.lpcs_running && s.vessel_pressure_mpa < sf.lpci_threshold_pressure) {
+      s.lpcs_flow = sf.lpcs_flow_normalized;
     }
   }
 

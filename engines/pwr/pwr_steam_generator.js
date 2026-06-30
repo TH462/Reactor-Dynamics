@@ -30,12 +30,24 @@
       : cfg.thermal.h_sg * s.flow_frac * (s.tavg_c - s.t_secondary_c);
     var steam_generation_rate = Q_sg / sg.latent_heat_secondary;
 
+    // B2 — steam dump / turbine bypass: vents steam straight to the condenser,
+    // bypassing the turbine, to control SG pressure on a turbine trip / load
+    // rejection without overpressuring the secondary. AUTO opens proportionally
+    // above a pressure setpoint (a basic relief to condenser, like the pzr
+    // heater/spray auto-control); a manual override (0..1) wins. Removed steam is
+    // additional steam-out in the pressure + level balance.
+    var dump = (s.steam_dump_override != null)
+      ? s.steam_dump_override
+      : clip((s.steam_pressure_mpa - sg.steam_dump_setpoint) / sg.steam_dump_band, 0, 1) * sg.steam_dump_max;
+    s.steam_dump_frac = dump;
+    var steam_out = s.steam_flow_normalized + dump;
+
     // SG level (the true level; shrink/swell is added in the instrument model §8.4).
-    var dSGLevel = (feedwater_flow - s.steam_flow_normalized) * sg.K_sg_level;
+    var dSGLevel = (feedwater_flow - steam_out) * sg.K_sg_level;
     s.sg_level_pct = clip(s.sg_level_pct + dSGLevel * dt, 0, 100);
 
     // Secondary pressure and steam flow.
-    var dSteamP = (steam_generation_rate - s.steam_flow_normalized) * sg.K_steam_pressure;
+    var dSteamP = (steam_generation_rate - steam_out) * sg.K_steam_pressure;
     s.steam_pressure_mpa += dSteamP * dt;
 
     // §9.1 main steam line break: blows the secondary down (overcooling).

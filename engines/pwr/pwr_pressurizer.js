@@ -39,7 +39,12 @@
     // PORV actual position: commanded demand, unless stuck open (a command-level failure).
     s.porv_open = s.porv_stuck || (s.porv_demand === 'open');
     var dP_ratio = Math.sqrt(Math.max(0, (s.pressure_mpa - p.P_containment) / p.P_flow_ref));
-    s.porv_flow = s.porv_open ? p.porv_flow_max * dP_ratio : 0;
+    // The PORV block (isolation) valve is upstream of the PORV. Closing it stops
+    // ALL flow through the PORV line — relief AND inventory loss — regardless of
+    // PORV position. This is the key TMI recovery action (isolate a stuck-open
+    // PORV the indicator falsely reads "closed"). Default open.
+    var isolated = (s.block_valve_open === false);
+    s.porv_flow = (s.porv_open && !isolated) ? p.porv_flow_max * dP_ratio : 0;
 
     // Spring safety valves: purely mechanical — open at 17.13, reseat at 16.55 MPa.
     if (s.pressure_mpa > p.safety_open_mpa) s.safety_open = true;
