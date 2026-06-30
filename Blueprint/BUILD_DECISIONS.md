@@ -670,3 +670,51 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
     (the `control_response`/`physics_failures` tests that nudge rods run long enough to reach the
     target): PWR 11/11·51, RBMK 18/18·99, BWR 9/9·47. Verified the hold drives the bank (210→213 in 5 s
     at normal speed, power 100→101.7 %).
+- **PWR primary-loop SVG diagram wired into the Primary view (user, `develop`).** Took the animated
+  schematic from `pwr_primary_loop_diagram_v2.html` and embedded it in the **PWR** Primary view, above
+  the controls, **replacing the parameter sections** there (`buildCard` renders `pd.primary.diagram`
+  instead of `.pd-sections` when present; RBMK/BWR keep their sections — the diagram is PWR-only). The
+  source file's slider/`requestAnimationFrame` sim is dropped; instead `renderDiagram(s)` drives the
+  sensor `tspan`s (Power, Rod-ins, Subcool, Inventory, Press, PZR/SG level, PORV, T-hot/T-cold, RCP
+  flow — all from the snapshot, unit-toggle-aware), the rod-gauge fill, the PZR + SG water levels, the
+  flow-animation speed / `.stopped` state and pump spin (from `pump_flow_pct`), and the hot-leg warm
+  tint (from T-hot) — called each broadcast while the Primary view is active. The schematic's CSS is
+  scoped under `.pd-diagram` (its `--text`/`--border`/etc. vars clashed with the shell's), the SG tube
+  bundle is built once (`buildDiagramBundle`), and the SVG is height-capped (240 px) so the controls
+  fit below. UI-only; suites untouched.
+- **PWR secondary-loop SVG diagram wired into the Secondary view (user, `develop`).** Same treatment
+  for `pwr_secondary_loop_diagram_v2.html` → the **PWR** Secondary view (Steam Gen → turbine + generator
+  → condenser → condensate/feed pumps), replacing its parameter sections; `renderSecDiagram(s)` drives
+  Steam Flow, Steam Press, SG level, Turbine RPM, Output MW, Cond. Vacuum, Hotwell Temp (derived from
+  vacuum), Feedwater Flow, the SG water level, and the flow/turbine-blade/pump animation speed. Both
+  cards live in the DOM at once, so the secondary diagram's element ids are **prefixed `sec`/`sv`** to
+  avoid colliding with the primary diagram's (both use `#loop`, `#sgWater`, `vSg`, …). One additive
+  engine field: PWR `getTrueState()` now exposes **`steam_pressure_mpa`** (the engine computed it but
+  never surfaced it) — the data-contract is additive-only, PWR suite still 11/11·51. Both diagrams are
+  **PWR-only** (`pd.<view>.diagram` is set only on the PWR profile); RBMK/BWR Primary AND Secondary
+  views keep their parameter sections (verified — nothing to "revert", they were never given a
+  diagram). RBMK 18/18, BWR 9/9 untouched.
+- **Plant-display layout overhaul + PWR full-loop diagram in the Diagram view (user, `develop`).**
+  Restructured the plant-display so the **Diagram view stretches** to fill the vertical budget and the
+  schematic is large/legible with no scroll bar. Changes: (1) the view switcher moved from a horizontal
+  bar to a **vertical strip on the left** (`.view-switcher`, `flex:0 0 96px`, buttons stacked); (2) the
+  view stack (`.view-area` + a shared `.pd-controlbar`) is wrapped in `.main-area` (`flex:1`) so it
+  grows, with the chart/alarm `.bottom-row` now a fixed band (`flex:0 0 196px`); (3) the **SCRAM button
+  is pinned to the right of one shared control bar** that is always visible — `populateControlBar()`
+  rebuilds `#pdCtlRow` with the **active view's** controls on each `setView()` (Diagram→critical
+  controls, Primary/Secondary→their control sets, All→none), replacing the old per-card `.pd-controls`;
+  (4) per-view controls and the cross-check strip were removed from the cards (`buildCard` now returns
+  only the diagram or the `.pd-sections` grid, which flex-fills the panel); (5) diagram SVGs fill the
+  stretched area (`.pd-diagram svg.loop { height:100% }`, was a 240 px cap) and the scoped diagram
+  fonts were bumped (~+15–25 %, e.g. `.lbl-val` 13→15 px) for legibility; the right column was narrowed
+  (`flex 1 1 340`, max 380) to give the diagram more width. New file
+  `pwr_full_plant_diagram_v2.html` integrated as `PD.pwr.plantDiagram` (the full primary+secondary loop)
+  with **`fp`/`fv`-prefixed ids** (a third diagram coexisting with the primary/secondary ones, which
+  reuse `#loop`/`#sgWater`/`vPower`…); `buildFullDiagramExtras()` builds its SG tube bundle / condenser
+  tubes / turbine blades once, and `renderFullDiagram(s)` drives all 16 sensors (primary + secondary),
+  the rod/PZR/SG levels, the two independent flow domains (`stopped-pri`/`stopped-sec` + separate
+  `--flow-dur`/`--flow-dur-sec` + pump/blade speeds) and the warm tint — scoped to
+  `[data-pdview="diagram"]`. `renderDiagram`'s warm-tint query was likewise scoped to
+  `[data-pdview="primary"]` (three `.pd-diagram` now match). Default view is now **Diagram**. RBMK/BWR
+  Diagram views keep the "SVG in development" placeholder (full-loop diagram is PWR-only). UI-only;
+  PWR 11/11·51, RBMK 18/18·99, BWR 9/9·47 still green.

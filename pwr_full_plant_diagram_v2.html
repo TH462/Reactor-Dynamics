@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PWR Full Plant — Animated Diagram</title>
+<style>
+  :root{
+    --bg:#070a0f; --panel:#0a0e15; --border:#243040;
+    --pipe-case:#2a3744;
+    --warm:#c98a5a; --cool:#6a9dc0;
+    --steam:#b4c0cc; --wet:#84a2b2; --cond:#5e92ac;
+    --text:#bcccd8; --dim:#62768a; --vdim:#3a4e60;
+    --tap:#507893; --leader:#36485a; --water:#1e455c;
+    --rod:#4aa0c8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);font-family:'Segoe UI',system-ui,sans-serif;color:var(--text);padding:12px;}
+  .frame{max-width:1320px;margin:0 auto;}
+  .titlebar{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;}
+  .title{font-size:13px;font-weight:600;color:#8ab0c2;letter-spacing:.02em;}
+  .title span.p{color:var(--warm);} .title span.s{color:var(--steam);}
+  .subtitle{font-size:10px;color:var(--vdim);font-style:italic;}
+  .domain-tags{display:flex;margin-bottom:4px;font-size:9px;letter-spacing:.08em;text-transform:uppercase;}
+  .domain-tags .pri{color:#7a5a3a;flex:0 0 46%;padding-left:4px;}
+  .domain-tags .sec{color:#4a6470;flex:1;padding-left:6px;border-left:0.5px solid #1a2230;}
+
+  .diagram-wrap{background:radial-gradient(ellipse at 38% 45%, #0c1019 0%, #070a0f 84%);
+    border:0.5px solid var(--border);border-radius:10px;padding:6px;}
+  svg.loop{width:100%;height:auto;display:block;}
+
+  .pipe-case{fill:none;stroke:var(--pipe-case);stroke-width:8;stroke-linecap:round;stroke-linejoin:round;}
+  .pipe-case.thin{stroke-width:6;}
+  .flow{fill:none;stroke-width:3.6;stroke-linecap:butt;stroke-dasharray:5 11;
+        animation:flow var(--flow-dur,1.1s) linear infinite;}
+  .flow.steam-dash{stroke-dasharray:7 9;}
+  .flow.sec{animation:flow var(--flow-dur-sec,1.1s) linear infinite;}
+  @keyframes flow{ to{ stroke-dashoffset:-16; } }
+  .loop.stopped-pri .flow.pri{animation-play-state:paused;}
+  .loop.stopped-sec .flow.sec{animation-play-state:paused;}
+  .tube-flow{fill:none;stroke-width:2.8;stroke-linecap:butt;stroke-dasharray:4 8;
+        animation:flow var(--flow-dur,1.1s) linear infinite;}
+  .tube-flow.sec{animation:flow var(--flow-dur-sec,1.1s) linear infinite;}
+  .loop.stopped-pri .tube-flow.pri{animation-play-state:paused;}
+  .loop.stopped-sec .tube-flow.sec{animation-play-state:paused;}
+
+  .vessel{fill:#10171f;stroke:#3a5870;stroke-width:1.1;}
+  .vessel-inner{fill:#0e141c;stroke:#28384a;stroke-width:.7;}
+  .fuel{stroke:#34504e;stroke-width:1.2;}
+  .comp-label{fill:var(--dim);font-size:8px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;}
+  .comp-sub{fill:var(--vdim);font-size:6.5px;letter-spacing:.03em;}
+
+  .water{fill:var(--water);opacity:.6;}
+  .surface{fill:none;stroke:#4e88a4;stroke-width:1.2;opacity:.9;}
+  .steam-space{fill:#121a22;}
+
+  .valve{fill:#10171f;stroke:#4a6680;stroke-width:.9;}
+  .pump-body{fill:#10161f;stroke:#3a5870;stroke-width:1.1;}
+  .pump-vane{stroke:#4a7088;stroke-width:1.3;stroke-linecap:round;}
+  .turbine-blade{stroke:#4a7088;stroke-width:1.1;}
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .cw-tube{fill:none;stroke:#32505e;stroke-width:1.2;}
+
+  .rod-track{fill:#0c121a;stroke:#2c3e4e;stroke-width:1;}
+  .rod-fill{fill:var(--rod);opacity:.85;}
+  .rod-cap{fill:#5ab0d8;}
+
+  .sec-arrow{fill:none;stroke:#46586a;stroke-width:1.2;}
+  .sec-label{fill:var(--vdim);font-size:7.5px;letter-spacing:.03em;}
+  .boundary{stroke:#3a5042;stroke-width:.8;stroke-dasharray:3 4;fill:none;}
+
+  .tap{fill:var(--tap);}
+  .tap-tick{stroke:var(--tap);stroke-width:1.1;}
+  .leader{stroke:var(--leader);stroke-width:.7;stroke-dasharray:2 2;fill:none;}
+  .lbl-box{fill:#0e1620;stroke:#2c3e4e;stroke-width:.7;}
+  .lbl-name{fill:var(--dim);font-size:7.5px;letter-spacing:.03em;text-transform:uppercase;}
+  .lbl-val{fill:var(--text);font-size:11px;font-weight:600;}
+  .lbl-val.derived{fill:#7aa4b8;}
+  .lbl-unit{fill:var(--vdim);font-size:7px;}
+  .lbl-note{fill:var(--vdim);font-size:6px;font-style:italic;}
+  body.sensors-hidden .sensor{opacity:0;transition:opacity .25s;}
+  .sensor{transition:opacity .25s;}
+  .tmi .lbl-box{stroke:#3a5030;}
+  .tmi .lbl-name{fill:#7a8a4a;}
+
+  .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:10px;
+            background:var(--panel);border:0.5px solid var(--border);border-radius:8px;padding:10px 14px;}
+  .ctrl{display:flex;flex-direction:column;gap:3px;min-width:104px;}
+  .ctrl label{font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;display:flex;justify-content:space-between;}
+  .ctrl label b{color:#8ab0c2;font-weight:600;}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:3px;border-radius:2px;background:#22303c;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:#5a8aa6;border:0.5px solid #7aaac6;cursor:pointer;}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:#5a8aa6;cursor:pointer;border:none;}
+  .btn{font-size:9px;padding:5px 11px;border-radius:4px;border:0.5px solid #34485a;background:#101a24;color:#6a8a9a;cursor:pointer;letter-spacing:.04em;}
+  .btn:hover{border-color:#4a6a7a;color:#8aaaba;}
+  .btn.trip{border-color:#6a2c1e;background:#1a0a06;color:#c0664a;}
+  .toggle{font-size:9px;padding:5px 11px;border-radius:4px;border:0.5px solid #34485a;background:#101a24;color:#6a8a9a;cursor:pointer;}
+  .toggle.on{border-color:#2a6a54;background:#0a1a12;color:#5aaa84;}
+  .legend{display:flex;gap:10px;margin-left:auto;align-items:center;flex-wrap:wrap;}
+  .leg-item{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--dim);}
+  .leg-dash{width:16px;height:3px;border-radius:2px;}
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <div class="titlebar">
+    <div class="title">PWR Full Plant <span class="p">⚛</span> primary <span style="color:#2a3a4a;">·</span> <span class="s">♨</span> secondary</div>
+    <div class="subtitle">energy flows left → right · reactor to grid · sensors at read locations · physics illustrative</div>
+  </div>
+  <div class="domain-tags">
+    <div class="pri">⚛ Primary — nuclear island</div>
+    <div class="sec">♨ Secondary — conventional island</div>
+  </div>
+
+  <div class="diagram-wrap">
+    <svg class="loop" id="loop" viewBox="0 95 1320 390" preserveAspectRatio="xMidYMid meet">
+
+      <!-- domain boundary at the SG -->
+      <line class="boundary" x1="600" y1="110" x2="600" y2="418"/>
+
+      <!-- ════════ PRIMARY PIPE CASINGS ════════ -->
+      <path class="pipe-case" d="M250,250 H540"/>            <!-- hot leg rail -->
+      <path class="pipe-case thin" d="M400,250 V207"/>       <!-- surge line -->
+      <path class="pipe-case" d="M540,355 H205"/>            <!-- cold leg rail → RCP → RPV -->
+      <path class="pipe-case" d="M250,250 H205"/>            <!-- hot riser into RPV -->
+      <path class="pipe-case" d="M250,355 H205"/>            <!-- cold riser into RPV -->
+      <path class="pipe-case" d="M180,345 V270" stroke-width="6"/><!-- core upflow -->
+
+      <!-- ════════ PRIMARY FLOW ════════ -->
+      <path class="flow pri" d="M180,345 V270" stroke="url(#gradCore)"/>
+      <path class="flow pri" d="M205,250 H540" stroke="var(--warm)"/>
+      <path class="flow pri" d="M400,250 V211" stroke="var(--warm)" style="animation-duration:3.4s;opacity:.5;"/>
+      <path class="flow pri" d="M540,355 H205" stroke="var(--cool)"/>
+
+      <!-- ════════ SECONDARY PIPE CASINGS ════════ -->
+      <path class="pipe-case" d="M600,170 V140 H840 V220"/>  <!-- main steam rail: SG top → turbine inlet -->
+      <path class="pipe-case" d="M960,250 V290"/>            <!-- turbine exhaust → condenser -->
+      <path class="pipe-case" d="M960,420 V450 H720"/>       <!-- hotwell → cond pump → left -->
+      <path class="pipe-case thin" d="M720,450 V320 H600"/>  <!-- feed rail → SG -->
+
+      <!-- ════════ SECONDARY FLOW ════════ -->
+      <path class="flow sec steam-dash" d="M600,170 V140 H840 V220" stroke="var(--steam)"/>  <!-- steam -->
+      <path class="flow sec steam-dash" d="M960,250 V290" stroke="var(--wet)"/>
+      <path class="flow sec" d="M960,420 V450 H720" stroke="var(--cond)"/>
+      <path class="flow sec" d="M720,450 V320 H600" stroke="var(--cond)"/>
+
+      <defs>
+        <linearGradient id="gradCore" x1="0" y1="345" x2="0" y2="270" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#6a9dc0"/><stop offset="1" stop-color="#c98a5a"/>
+        </linearGradient>
+        <linearGradient id="gradTube" x1="0" y1="250" x2="0" y2="355" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#c98a5a" class="tubeWarmStop"/>
+          <stop offset="0.55" stop-color="#7a7a78"/>
+          <stop offset="1" stop-color="#6a9dc0"/>
+        </linearGradient>
+        <linearGradient id="gradCondTube" x1="0" y1="312" x2="0" y2="392" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#84a2b2"/><stop offset="0.6" stop-color="#6a8a9a"/><stop offset="1" stop-color="#5e92ac"/>
+        </linearGradient>
+        <clipPath id="pzrClip"><rect x="372" y="142" width="56" height="66" rx="6"/></clipPath>
+        <clipPath id="sgClip"><rect x="542" y="172" width="116" height="218" rx="14"/></clipPath>
+        <clipPath id="condClip"><rect x="842" y="292" width="236" height="130" rx="10"/></clipPath>
+        <clipPath id="turbClip"><path d="M840,210 L960,196 L960,290 L840,276 Z"/></clipPath>
+      </defs>
+
+      <!-- ════════ REACTOR VESSEL ════════ -->
+      <rect class="vessel" x="128" y="200" width="104" height="205" rx="24"/>
+      <rect class="vessel-inner" x="150" y="255" width="60" height="130" rx="3"/>
+      <line class="fuel" x1="160" y1="262" x2="160" y2="380"/>
+      <line class="fuel" x1="170" y1="262" x2="170" y2="380"/>
+      <line class="fuel" x1="180" y1="262" x2="180" y2="380"/>
+      <line class="fuel" x1="190" y1="262" x2="190" y2="380"/>
+      <line class="fuel" x1="200" y1="262" x2="200" y2="380"/>
+      <text class="comp-label" x="180" y="232" text-anchor="middle">Reactor</text>
+      <text class="comp-sub" x="180" y="243" text-anchor="middle">RPV / Core</text>
+      <rect x="112" y="290" width="9" height="40" rx="2" fill="#10171f" stroke="#3a5870" stroke-width=".7"/>
+
+      <!-- rod position gauge -->
+      <rect class="rod-track" x="172" y="120" width="16" height="84" rx="3"/>
+      <rect id="rodFill" class="rod-fill" x="174" y="126" width="12" height="40" rx="2"/>
+      <rect id="rodCap" class="rod-cap" x="172" y="120" width="16" height="6" rx="2"/>
+      <text class="comp-sub" x="180" y="114" text-anchor="middle" style="fill:#5a7488;">rods</text>
+
+      <!-- ════════ PRESSURIZER ════════ -->
+      <rect class="vessel" x="370" y="140" width="60" height="68" rx="8"/>
+      <g clip-path="url(#pzrClip)">
+        <rect class="steam-space" x="372" y="142" width="56" height="66"/>
+        <rect class="water" id="pzrWater" x="372" y="178" width="56" height="30"/>
+        <path class="surface" id="pzrSurface" d="M372,178 H428"/>
+      </g>
+      <text class="comp-label" x="400" y="180" text-anchor="middle" style="fill:#5a7488;">PZR</text>
+      <path class="pipe-case thin" d="M400,140 V120" stroke-width="5"/>
+      <polygon class="valve" points="394,130 406,130 400,138"/>
+      <circle cx="400" cy="118" r="2.6" class="valve"/>
+
+      <!-- ════════ STEAM GENERATOR (boundary, vertical-tube exchanger) ════════ -->
+      <rect class="vessel" x="540" y="170" width="120" height="222" rx="14"/>
+      <g clip-path="url(#sgClip)">
+        <rect class="steam-space" x="542" y="172" width="116" height="218"/>
+        <rect class="water" id="sgWater" x="542" y="250" width="116" height="140"/>
+        <path class="surface" id="sgSurface" d="M542,250 H658"/>
+      </g>
+      <text class="comp-label" x="600" y="192" text-anchor="middle">Steam Gen</text>
+      <text class="comp-sub" x="600" y="430" text-anchor="middle" style="background:#070a0f;">primary ⇄ secondary</text>
+      <g id="tubeBundle"></g>
+
+      <!-- ════════ TURBINE ════════ -->
+      <path class="vessel" d="M840,210 L960,196 L960,290 L840,276 Z"/>
+      <line x1="840" y1="248" x2="960" y2="248" stroke="#3a5870" stroke-width="1.4"/>
+      <g clip-path="url(#turbClip)"><g id="turbineRotor"></g></g>
+      <text class="comp-label" x="900" y="190" text-anchor="middle">Turbine</text>
+      <circle class="vessel" cx="1008" cy="252" r="20"/>
+      <text class="comp-sub" x="1008" y="255" text-anchor="middle" style="fill:#52687c;">GEN</text>
+      <line class="pipe-case thin" x1="960" y1="252" x2="988" y2="252"/>
+      <path class="sec-arrow" d="M1028,252 H1062"/>
+      <polygon points="1056,248 1056,256 1064,252" fill="#46586a"/>
+      <text class="sec-label" x="1068" y="255" text-anchor="start">grid</text>
+
+      <!-- ════════ CONDENSER (vertical-tube exchanger) ════════ -->
+      <rect class="vessel" x="840" y="290" width="240" height="135" rx="12"/>
+      <g clip-path="url(#condClip)">
+        <rect class="steam-space" x="842" y="292" width="236" height="131"/>
+        <rect class="water" id="condWater" x="842" y="396" width="236" height="27"/>
+        <path class="surface" id="condSurface" d="M842,396 H1078"/>
+        <g id="condTubes"></g>
+      </g>
+      <text class="comp-label" x="888" y="306" text-anchor="middle">Condenser</text>
+      <path class="sec-arrow" d="M840,410 H812"/>
+      <polygon points="818,406 818,414 810,410" fill="#46586a"/>
+      <text class="sec-label" x="806" y="413" text-anchor="end">CW</text>
+
+      <!-- ════════ PUMPS ════════ -->
+      <!-- RCP (on cold leg) -->
+      <circle class="pump-body" cx="400" cy="355" r="17"/>
+      <g id="rcp"><line class="pump-vane" x1="400" y1="355" x2="400" y2="341"/><line class="pump-vane" x1="400" y1="355" x2="412" y2="362"/><line class="pump-vane" x1="400" y1="355" x2="388" y2="362"/></g>
+      <circle cx="400" cy="355" r="3" fill="#3a5870"/>
+      <text class="comp-sub" x="400" y="384" text-anchor="middle" style="fill:#5a7488;">RCP</text>
+      <!-- condensate pump -->
+      <circle class="pump-body" cx="840" cy="450" r="15"/>
+      <g id="condPump"><line class="pump-vane" x1="840" y1="450" x2="840" y2="438"/><line class="pump-vane" x1="840" y1="450" x2="851" y2="456"/><line class="pump-vane" x1="840" y1="450" x2="829" y2="456"/></g>
+      <circle cx="840" cy="450" r="2.6" fill="#3a5870"/>
+      <text class="comp-sub" x="840" y="476" text-anchor="middle" style="fill:#52687c;">Cond Pump</text>
+      <!-- feed pump -->
+      <circle class="pump-body" cx="720" cy="385" r="13"/>
+      <g id="feedPump"><line class="pump-vane" x1="720" y1="385" x2="720" y2="375"/><line class="pump-vane" x1="720" y1="385" x2="729" y2="391"/><line class="pump-vane" x1="720" y1="385" x2="711" y2="391"/></g>
+      <circle cx="720" cy="385" r="2.4" fill="#3a5870"/>
+      <text class="comp-sub" x="720" y="408" text-anchor="middle" style="fill:#52687c;">Feed Pump</text>
+      <!-- FW heater -->
+      <rect class="vessel" x="640" y="308" width="38" height="22" rx="5"/>
+      <text class="comp-sub" x="659" y="323" text-anchor="middle" style="fill:#52687c;">FW Htr</text>
+
+      <!-- ════════ SENSORS ════════ -->
+      <g class="sensors">
+        <!-- Rod Position -->
+        <g class="sensor">
+          <rect class="lbl-box" x="56" y="108" width="92" height="38" rx="4"/>
+          <text class="lbl-name" x="63" y="119">Rod Position</text>
+          <text class="lbl-val" x="63" y="132"><tspan id="vRod">8</tspan><tspan class="lbl-unit"> % ins</tspan></text>
+          <text class="lbl-note" x="63" y="142">withdrawn = power up</text>
+        </g>
+        <!-- Reactor Power -->
+        <g class="sensor">
+          <circle class="tap" cx="116" cy="310" r="2.2"/>
+          <path class="leader" d="M102,186 V310 H116"/>
+          <rect class="lbl-box" x="56" y="156" width="92" height="30" rx="4"/>
+          <text class="lbl-name" x="63" y="167">Reactor Power</text>
+          <text class="lbl-val" x="63" y="181"><tspan id="vPower">100</tspan><tspan class="lbl-unit"> %</tspan></text>
+        </g>
+        <!-- Core Inventory (TMI) -->
+        <g class="sensor tmi">
+          <circle class="tap" cx="160" cy="300" r="2.2"/>
+          <path class="leader" d="M160,300 V286 H246"/>
+          <rect class="lbl-box" x="246" y="272" width="108" height="36" rx="4"/>
+          <text class="lbl-name" x="253" y="283">Core Inventory</text>
+          <text class="lbl-val" x="253" y="296"><tspan id="vInv">full</tspan></text>
+          <text class="lbl-note" x="253" y="305">reads at vessel — not PZR</text>
+        </g>
+        <!-- Subcooling -->
+        <g class="sensor">
+          <circle class="tap" cx="232" cy="315" r="2.2"/>
+          <path class="leader" d="M232,315 V330 H246"/>
+          <rect class="lbl-box" x="246" y="315" width="108" height="28" rx="4"/>
+          <text class="lbl-name" x="253" y="325">Subcooling</text>
+          <text class="lbl-val derived" x="253" y="338"><tspan id="vSub">74</tspan><tspan class="lbl-unit"> °F</tspan></text>
+          <text class="lbl-note" x="298" y="338">computed</text>
+        </g>
+        <!-- Primary Press -->
+        <g class="sensor">
+          <line class="tap-tick" x1="364" y1="170" x2="376" y2="170"/>
+          <circle class="tap" cx="370" cy="170" r="2.2"/>
+          <path class="leader" d="M370,170 H336"/>
+          <rect class="lbl-box" x="244" y="155" width="92" height="30" rx="4"/>
+          <text class="lbl-name" x="251" y="166">Primary Press</text>
+          <text class="lbl-val" x="251" y="180"><tspan id="vPress">2235</tspan><tspan class="lbl-unit"> psi</tspan></text>
+        </g>
+        <!-- PZR Level -->
+        <g class="sensor">
+          <line class="tap-tick" x1="364" y1="195" x2="376" y2="195"/>
+          <circle class="tap" cx="370" cy="195" r="2.2"/>
+          <path class="leader" d="M370,195 H336"/>
+          <rect class="lbl-box" x="258" y="190" width="78" height="28" rx="4"/>
+          <text class="lbl-name" x="265" y="200">PZR Level</text>
+          <text class="lbl-val" x="265" y="213"><tspan id="vPzr">55</tspan><tspan class="lbl-unit"> %</tspan></text>
+        </g>
+        <!-- PORV -->
+        <g class="sensor">
+          <circle class="tap" cx="400" cy="118" r="2.2"/>
+          <path class="leader" d="M400,118 H456"/>
+          <rect class="lbl-box" x="456" y="104" width="92" height="28" rx="4"/>
+          <text class="lbl-name" x="463" y="114">PORV / Block</text>
+          <text class="lbl-val" x="463" y="127"><tspan id="vPorv">closed</tspan></text>
+        </g>
+        <!-- T-hot -->
+        <g class="sensor">
+          <line class="tap-tick" x1="490" y1="244" x2="490" y2="256"/>
+          <circle class="tap" cx="490" cy="250" r="2.2"/>
+          <path class="leader" d="M490,250 V272 H452"/>
+          <rect class="lbl-box" x="406" y="272" width="92" height="28" rx="4"/>
+          <text class="lbl-name" x="413" y="282">T-hot · hot leg</text>
+          <text class="lbl-val" x="413" y="295"><tspan id="vThot">609</tspan><tspan class="lbl-unit"> °F</tspan></text>
+        </g>
+        <!-- T-cold -->
+        <g class="sensor">
+          <line class="tap-tick" x1="490" y1="349" x2="490" y2="361"/>
+          <circle class="tap" cx="490" cy="355" r="2.2"/>
+          <path class="leader" d="M490,355 V378 H452"/>
+          <rect class="lbl-box" x="452" y="378" width="96" height="28" rx="4"/>
+          <text class="lbl-name" x="459" y="388">T-cold · cold leg</text>
+          <text class="lbl-val" x="459" y="401"><tspan id="vTcold">549</tspan><tspan class="lbl-unit"> °F</tspan></text>
+        </g>
+        <!-- RCP Flow -->
+        <g class="sensor">
+          <circle class="tap" cx="400" cy="372" r="2.2"/>
+          <path class="leader" d="M400,372 V392 H352"/>
+          <rect class="lbl-box" x="300" y="378" width="92" height="28" rx="4"/>
+          <text class="lbl-name" x="307" y="388">RCP Flow</text>
+          <text class="lbl-val" x="307" y="401"><tspan id="vFlow">100</tspan><tspan class="lbl-unit"> %</tspan></text>
+        </g>
+        <!-- SG Level (left of SG, above hot leg) -->
+        <g class="sensor">
+          <line class="tap-tick" x1="534" y1="250" x2="546" y2="250"/>
+          <circle class="tap" cx="540" cy="250" r="2.2"/>
+          <path class="leader" d="M540,250 H516 V228"/>
+          <rect class="lbl-box" x="438" y="200" width="78" height="28" rx="4"/>
+          <text class="lbl-name" x="445" y="210">SG Level</text>
+          <text class="lbl-val" x="445" y="223"><tspan id="vSg">65</tspan><tspan class="lbl-unit"> %</tspan></text>
+        </g>
+        <!-- Steam Flow -->
+        <g class="sensor">
+          <line class="tap-tick" x1="720" y1="134" x2="720" y2="146"/>
+          <circle class="tap" cx="720" cy="140" r="2.2"/>
+          <path class="leader" d="M720,140 V128"/>
+          <rect class="lbl-box" x="676" y="100" width="88" height="28" rx="4"/>
+          <text class="lbl-name" x="683" y="110">Steam Flow</text>
+          <text class="lbl-val" x="683" y="123"><tspan id="vSteam">100</tspan><tspan class="lbl-unit"> %</tspan></text>
+        </g>
+        <!-- Turbine RPM -->
+        <g class="sensor">
+          <circle class="tap" cx="900" cy="248" r="2.2"/>
+          <path class="leader" d="M900,248 V150 H942"/>
+          <rect class="lbl-box" x="934" y="136" width="86" height="28" rx="4"/>
+          <text class="lbl-name" x="941" y="146">Turbine RPM</text>
+          <text class="lbl-val" x="941" y="159"><tspan id="vRpm">1800</tspan></text>
+        </g>
+        <!-- Output -->
+        <g class="sensor">
+          <circle class="tap" cx="1008" cy="232" r="2.2"/>
+          <path class="leader" d="M1008,232 V218 H1068"/>
+          <rect class="lbl-box" x="1060" y="204" width="84" height="28" rx="4"/>
+          <text class="lbl-name" x="1067" y="214">Output</text>
+          <text class="lbl-val" x="1067" y="227"><tspan id="vMw">1000</tspan><tspan class="lbl-unit"> MW</tspan></text>
+        </g>
+        <!-- Cond Vacuum -->
+        <g class="sensor">
+          <line class="tap-tick" x1="1040" y1="296" x2="1040" y2="308"/>
+          <circle class="tap" cx="1040" cy="302" r="2.2"/>
+          <path class="leader" d="M1040,302 V288 H1088"/>
+          <rect class="lbl-box" x="1088" y="274" width="96" height="28" rx="4"/>
+          <text class="lbl-name" x="1095" y="284">Cond. Vacuum</text>
+          <text class="lbl-val" x="1095" y="297"><tspan id="vVac">28.5</tspan><tspan class="lbl-unit"> inHg</tspan></text>
+        </g>
+        <!-- Feedwater Flow -->
+        <g class="sensor">
+          <line class="tap-tick" x1="690" y1="320" x2="690" y2="332"/>
+          <circle class="tap" cx="690" cy="326" r="2.2"/>
+          <path class="leader" d="M690,326 V352 H648"/>
+          <rect class="lbl-box" x="600" y="352" width="96" height="28" rx="4"/>
+          <text class="lbl-name" x="607" y="362">Feedwater Flow</text>
+          <text class="lbl-val" x="607" y="375"><tspan id="vFeed">100</tspan><tspan class="lbl-unit"> %</tspan></text>
+        </g>
+      </g>
+
+    </svg>
+  </div>
+
+  <div class="controls">
+    <div class="ctrl"><label>Reactor Power <b id="lblPower">100%</b></label><input type="range" id="power" min="0" max="100" value="100"></div>
+    <div class="ctrl"><label>RCP Flow <b id="lblFlow">100%</b></label><input type="range" id="flow" min="0" max="110" value="100"></div>
+    <div class="ctrl"><label>Rod Insertion <b id="lblRod">8%</b></label><input type="range" id="rod" min="0" max="100" value="8"></div>
+    <div class="ctrl"><label>Turbine Load <b id="lblLoad">100%</b></label><input type="range" id="load" min="0" max="100" value="100"></div>
+    <div class="ctrl"><label>Feedwater <b id="lblFeed">100%</b></label><input type="range" id="feed" min="0" max="100" value="100"></div>
+    <button class="btn trip" id="tripRcp">Trip RCP</button>
+    <button class="btn trip" id="tripTurb">Turbine Trip</button>
+    <button class="btn" id="reset">Reset</button>
+    <button class="toggle on" id="sensorsToggle">Sensors</button>
+    <div class="legend">
+      <div class="leg-item"><div class="leg-dash" style="background:var(--warm)"></div>hot</div>
+      <div class="leg-item"><div class="leg-dash" style="background:var(--cool)"></div>cooled</div>
+      <div class="leg-item"><div class="leg-dash" style="background:var(--steam)"></div>steam</div>
+      <div class="leg-item"><div class="leg-dash" style="background:var(--cond)"></div>condensate</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const loop=document.getElementById('loop');
+  const $=id=>document.getElementById(id);
+
+  // primary SG tube bundle (vertical), hot top → cool bottom
+  (function buildBundle(){
+    const ns='http://www.w3.org/2000/svg';
+    const b=$('tubeBundle');
+    const top=250, bot=355, xL=560, xR=640;
+    const xs=[]; for(let x=xL;x<=xR;x+=11.4) xs.push(Math.round(x));
+    xs.forEach(x=>{
+      const tc=document.createElementNS(ns,'path');
+      tc.setAttribute('fill','none'); tc.setAttribute('stroke','#243140');
+      tc.setAttribute('stroke-width','2.8'); tc.setAttribute('stroke-linecap','round');
+      tc.setAttribute('d',`M${x},${top} V${bot}`); b.appendChild(tc);
+    });
+    // dim inlet/outlet headers (stop short of SG right edge so they read as manifolds)
+    [['M540,250 H'+xR,'var(--warm)'],['M'+xR+',355 H540','var(--cool)']].forEach(([d,c])=>{
+      const hc=document.createElementNS(ns,'path');
+      hc.setAttribute('fill','none'); hc.setAttribute('stroke','#2a3744');
+      hc.setAttribute('stroke-width','4'); hc.setAttribute('stroke-linecap','round');
+      hc.setAttribute('d',d); b.appendChild(hc);
+      const hf=document.createElementNS(ns,'path');
+      hf.setAttribute('class','flow pri'); hf.setAttribute('d',d);
+      hf.setAttribute('stroke',c); hf.setAttribute('opacity','0.45'); b.appendChild(hf);
+    });
+    xs.forEach(x=>{
+      const f=document.createElementNS(ns,'path');
+      f.setAttribute('class','tube-flow pri'); f.setAttribute('d',`M${x},${top} V${bot}`);
+      f.setAttribute('stroke','url(#gradTube)'); f.setAttribute('stroke-dasharray','4 8'); b.appendChild(f);
+    });
+  })();
+
+  // condenser cooling-water tubes (vertical)
+  (function buildCondTubes(){
+    const ns='http://www.w3.org/2000/svg';
+    const g=$('condTubes');
+    for(let x=866;x<=1054;x+=24){
+      const t=document.createElementNS(ns,'path');
+      t.setAttribute('class','tube-flow sec'); t.setAttribute('d',`M${x},312 V392`);
+      t.setAttribute('stroke','url(#gradCondTube)'); t.setAttribute('stroke-dasharray','3 7'); g.appendChild(t);
+    }
+  })();
+
+  // turbine blades on horizontal shaft (sweep, not pinwheel)
+  (function buildBlades(){
+    const ns='http://www.w3.org/2000/svg';
+    const g=$('turbineRotor');
+    for(let x=824;x<=980;x+=15){
+      const ln=document.createElementNS(ns,'line');
+      ln.setAttribute('class','turbine-blade');
+      const t=Math.max(0,Math.min(1,(x-840)/120)); const half=16+t*20;
+      ln.setAttribute('x1',x); ln.setAttribute('y1',(248-half).toFixed(0));
+      ln.setAttribute('x2',x); ln.setAttribute('y2',(248+half).toFixed(0));
+      g.appendChild(ln);
+    }
+  })();
+
+  const st=document.createElement('style');
+  st.textContent=`@keyframes bladeSweep{to{transform:translateX(-15px)}}
+    #rcp{transform-origin:400px 355px;animation:spin var(--spin-pri,1s) linear infinite;}
+    #turbineRotor{animation:bladeSweep var(--blade-dur,.5s) linear infinite;}
+    #condPump{transform-origin:840px 450px;animation:spin var(--spin-sec,1s) linear infinite;}
+    #feedPump{transform-origin:720px 385px;animation:spin var(--spin-sec,1s) linear infinite;}
+    .loop.stopped-pri #rcp{animation-play-state:paused;}
+    .loop.stopped-sec #turbineRotor,.loop.stopped-sec #condPump,.loop.stopped-sec #feedPump{animation-play-state:paused;}`;
+  document.head.appendChild(st);
+
+  let power=1,flow=1,load=1,feed=1,rodIns=.08,phase=0,rcpTrip=false,turbTrip=false;
+  const E={power:$('power'),flow:$('flow'),load:$('load'),feed:$('feed'),rod:$('rod')};
+  E.power.oninput=()=>power=E.power.value/100;
+  E.flow.oninput=()=>{rcpTrip=false;flow=E.flow.value/100;};
+  E.load.oninput=()=>{turbTrip=false;load=E.load.value/100;};
+  E.feed.oninput=()=>feed=E.feed.value/100;
+  E.rod.oninput=()=>rodIns=E.rod.value/100;
+  $('tripRcp').onclick=()=>rcpTrip=true;
+  $('tripTurb').onclick=()=>turbTrip=true;
+  $('reset').onclick=()=>{rcpTrip=turbTrip=false;power=flow=load=feed=1;rodIns=.08;
+    E.power.value=E.flow.value=E.load.value=E.feed.value=100;E.rod.value=8;};
+  $('sensorsToggle').onclick=e=>document.body.classList.toggle('sensors-hidden',!e.target.classList.toggle('on'));
+
+  function tsat(p){return 560+(p-1000)*0.066;}
+  let last=performance.now();
+  function frame(now){
+    const dt=Math.min(0.05,(now-last)/1000);last=now;phase+=dt;
+    if(rcpTrip&&flow>0.02){flow*=Math.pow(0.45,dt);if(flow<0.02)flow=0;E.flow.value=Math.round(flow*100);}
+    if(turbTrip&&load>0.02){load*=Math.pow(0.4,dt);if(load<0.02)load=0;E.load.value=Math.round(load*100);}
+
+    if(flow<0.04){loop.classList.add('stopped-pri');}
+    else{loop.classList.remove('stopped-pri');
+      loop.style.setProperty('--flow-dur',Math.max(0.35,Math.min(7,1.05/flow)).toFixed(3)+'s');
+      loop.style.setProperty('--spin-pri',Math.max(0.25,Math.min(4,0.7/flow)).toFixed(3)+'s');}
+    if(load<0.04){loop.classList.add('stopped-sec');}
+    else{loop.classList.remove('stopped-sec');
+      loop.style.setProperty('--flow-dur-sec',Math.max(0.35,Math.min(7,1.05/load)).toFixed(3)+'s');
+      loop.style.setProperty('--spin-sec',Math.max(0.2,Math.min(4,0.6/load)).toFixed(3)+'s');
+      loop.style.setProperty('--blade-dur',Math.max(0.12,Math.min(2,0.32/load)).toFixed(3)+'s');}
+
+    const Tcold=549+Math.sin(phase*0.7)*0.4;
+    const Thot=Tcold+Math.min(160,60*(power/Math.max(0.12,flow)));
+    let press=2235+(Thot-609)*1.1+Math.sin(phase*1.3)*1.4;
+    const sub=(tsat(press)+113)-Thot;
+    const rpm=load<0.04?0:Math.round(1800*(0.6+load*0.4));
+    $('vPower').textContent=Math.round(power*100);
+    $('vThot').textContent=Math.round(Thot);
+    $('vTcold').textContent=Math.round(Tcold);
+    $('vPress').textContent=Math.round(press);
+    $('vSub').textContent=Math.max(0,Math.round(sub));
+    $('vPzr').textContent=55; $('vSg').textContent=65;
+    $('vFlow').textContent=Math.round(flow*100);
+    $('vSteam').textContent=Math.round(load*100);
+    $('vRpm').textContent=rpm;
+    $('vMw').textContent=Math.round(1000*load);
+    $('vVac').textContent=(28.8).toFixed(1);
+    $('vFeed').textContent=Math.round(feed*100);
+    $('vRod').textContent=Math.round(rodIns*100);
+    $('vInv').textContent=flow<0.04?'static':'full';
+    $('vPorv').textContent='closed';
+    $('lblPower').textContent=Math.round(power*100)+'%';
+    $('lblFlow').textContent=Math.round(flow*100)+'%';
+    $('lblLoad').textContent=Math.round(load*100)+'%';
+    $('lblFeed').textContent=Math.round(feed*100)+'%';
+    $('lblRod').textContent=Math.round(rodIns*100)+'%';
+
+    const warmAmt=Math.min(1,Math.max(0,(Thot-549)/160));
+    const warmCol=`rgb(${Math.round(180+warmAmt*55)},${Math.round(135-warmAmt*35)},${Math.round(88-warmAmt*18)})`;
+    document.documentElement.style.setProperty('--warm',warmCol);
+    document.querySelectorAll('.tubeWarmStop').forEach(s=>s.setAttribute('stop-color',warmCol));
+
+    // rod gauge
+    const fillH=12+rodIns*72;
+    $('rodFill').setAttribute('height',fillH.toFixed(1));
+    // PZR level
+    const pT=142,pB=208,pH=pB-pT, wy=pB-0.55*pH, bob=Math.sin(phase*2.2)*0.8;
+    $('pzrWater').setAttribute('y',(wy+bob).toFixed(1));
+    $('pzrWater').setAttribute('height',(pB-(wy+bob)).toFixed(1));
+    $('pzrSurface').setAttribute('d',`M372,${(wy+bob).toFixed(1)} q14,-1.6 28,0 t28,0`);
+    // SG level
+    let sg=0.65+(feed-load)*0.06; sg=Math.max(0.25,Math.min(0.9,sg));
+    const gT=172,gB=390,gH=gB-gT, gy=gB-sg*gH, gbob=Math.sin(phase*3)*1;
+    $('sgWater').setAttribute('y',(gy+gbob).toFixed(1));
+    $('sgWater').setAttribute('height',(gB-(gy+gbob)).toFixed(1));
+    $('sgSurface').setAttribute('d',`M542,${(gy+gbob).toFixed(1)} q29,-2 58,0 t58,0`);
+    // condenser hotwell bob
+    const cbob=Math.sin(phase*2.6)*0.7;
+    $('condSurface').setAttribute('d',`M842,${(396+cbob).toFixed(1)} q59,-1.4 118,0 t118,0`);
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

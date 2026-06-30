@@ -19,13 +19,19 @@
            class layout-plantdisplay; the classic control-strip + synoptic below
            are hidden then. Built/driven by app.js. -->
       <div class="status-bar" id="statusBar"></div>
-      <div class="view-switcher">
-        <div class="view-tabs" id="viewTabs"></div>
-        <!-- always-visible compact SCRAM (emergency reachability across views) -->
-        <button class="pd-scram" id="pdScram">SCRAM</button>
-      </div>
-      <div class="view-area" id="viewArea">
-        <div class="ff-badge" style="display:none" id="ffBadge">⚡ 600×</div>
+      <!-- main area: vertical view switcher (left) + view stack (view + control bar) -->
+      <div class="main-area">
+        <div class="view-switcher" id="viewTabs"></div>
+        <div class="view-stack">
+          <div class="view-area" id="viewArea">
+            <div class="ff-badge" style="display:none" id="ffBadge">⚡ 600×</div>
+          </div>
+          <!-- shared control bar: active view's controls + SCRAM (always at the right) -->
+          <div class="pd-controlbar">
+            <div class="pd-ctlrow" id="pdCtlRow"></div>
+            <button class="pd-scram" id="pdScram">SCRAM</button>
+          </div>
+        </div>
       </div>
 
       <!-- Bottom row: strip chart + alarm panel -->
