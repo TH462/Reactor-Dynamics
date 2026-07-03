@@ -1082,11 +1082,11 @@
     var btn = $('pdScram'), timer = null;
     btn.addEventListener('click', function () {
       if (btn.classList.contains('fired')) return;
-      if (btn.classList.contains('armed')) { btn.classList.remove('armed'); if (timer) clearTimeout(timer); btn.textContent = 'SCRAM'; cmd({ action: 'scram' }); return; }
+      if (btn.classList.contains('armed')) { btn.classList.remove('armed'); if (timer) clearTimeout(timer); btn.textContent = prof().scramShort; cmd({ action: 'scram' }); return; }
       btn.classList.add('armed'); btn.textContent = 'CONFIRM';
       // auto-disarm after 3 s — but don't overwrite a "SCRAMMED" label if the plant
       // tripped from another cause while armed
-      timer = setTimeout(function () { if (btn.classList.contains('fired')) return; btn.classList.remove('armed'); btn.textContent = 'SCRAM'; }, 3000);
+      timer = setTimeout(function () { if (btn.classList.contains('fired')) return; btn.classList.remove('armed'); btn.textContent = prof().scramShort; }, 3000);
     });
   }
 
@@ -1105,6 +1105,7 @@
     chartBuf = []; smoothed = {};
     buildGauges(); buildGraphParams(); buildInitStates(); buildFailures();
     buildPlantDisplay();
+    var ps = $('pdScram'); if (ps && !ps.classList.contains('fired') && !ps.classList.contains('armed')) ps.textContent = prof().scramShort;
     latest = service.assembleSnapshot(); render(latest);
     if (!$('manualOverlay').hidden) renderManual();   // keep the manual in sync on plant switch
   }
@@ -1861,7 +1862,7 @@
     if (ui.view === 'all') renderPdAll(s);
     // pd scram button mirrors the reactor state
     var ps = $('pdScram');
-    if (ps) { if (s.true_state.scrammed) { ps.classList.add('fired'); ps.classList.remove('armed'); ps.textContent = 'SCRAMMED'; } else if (!ps.classList.contains('armed')) { ps.classList.remove('fired'); ps.textContent = 'SCRAM'; } }
+    if (ps) { if (s.true_state.scrammed) { ps.classList.add('fired'); ps.classList.remove('armed'); ps.textContent = 'SCRAMMED'; } else if (!ps.classList.contains('armed')) { ps.classList.remove('fired'); ps.textContent = prof().scramShort; } }
   }
 
   function setView(v) {
