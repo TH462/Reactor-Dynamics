@@ -62,6 +62,21 @@
       s.vessel_pressure_mpa = Math.max(cfg.vessel.P_ambient, s.vessel_pressure_mpa + dPs * dt);
     }
 
+    // Isolation Condenser (IC) — passive heat sink (Fukushima Unit 1). Condenses
+    // reactor steam in an elevated pool and returns the condensate by gravity:
+    // removes decay heat with NO AC and NO fresh-water injection. Its valves are
+    // DC-powered, so loss of DC (battery depletion in a blackout) closes it — the
+    // Unit-1 failure. While condensing it lowers vessel pressure and its returned
+    // condensate offsets boiloff (holds level — see stepVesselLevel).
+    var dcLost = s.station_blackout && s.battery_charge_pct <= 0;
+    if (dcLost) s.ic_active = false;                 // DC lost → IC valves close
+    s.ic_condensing = false;
+    if (s.ic_active && s.vessel_pressure_mpa > cfg.vessel.P_ambient) {
+      s.ic_condensing = true;
+      s.vessel_pressure_mpa = Math.max(cfg.vessel.P_ambient,
+        s.vessel_pressure_mpa - sf.ic_condense_rate * (s.vessel_pressure_mpa - cfg.vessel.P_ambient) * dt);
+    }
+
     // §9.4 LPCI — low-pressure injection (works only after depressurization).
     s.lpci_flow = 0.0;
     if (s.lpci_running && s.vessel_pressure_mpa < sf.lpci_threshold_pressure) {

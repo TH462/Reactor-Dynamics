@@ -75,6 +75,8 @@
     pressure_tube_rupture: { type: 'physics_parameter', category: 'coolant', effect: 'channel_rupture', severity_scales: 'rupture_size',
                              severity_meta: { label: 'Break Size', unit: '% effective area', min: 0, max: 100, default: 30 }, display: 'Pressure Tube Rupture' },
     void_sensor_failure:   { type: 'instrument', category: 'instrument', instrument_id: 'void_fraction', mode: 'stuck', display: 'Void Fraction Sensor Stuck' },
+    turbine_trip:          { type: 'physics_parameter', category: 'power', effect: 'trip_turbine', display: 'Turbine Trip' },
+    loss_of_condenser_vacuum: { type: 'physics_parameter', category: 'power', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },
   };
 
   function forVersion(version) {

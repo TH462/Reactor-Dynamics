@@ -23,10 +23,18 @@
     return e.hpi_flow_max * frac * (s.hpi_flow_multiplier != null ? s.hpi_flow_multiplier : 1.0);
   }
 
-  // Step 9 — primary inventory and voiding.
+  // Step 9 — primary inventory and voiding (CVCS charging/letdown + HPI/SI − losses).
   function stepInventory(s, cfg, dt) {
     s.hpi_flow_normalized = hpiFlow(s, cfg);
-    var dm = (s.charging_flow + s.hpi_flow_normalized + s.safety_injection_flow)
+    var rc = cfg.reactivity;
+    // CVCS auto make-up (opt-in): charging tracks letdown + an inventory deficit, up
+    // to charging_max, to compensate identified leakage and hold inventory ~full.
+    if (s.cvcs_auto) {
+      s.charging_flow = clip((s.letdown_flow || 0) + (rc.cvcs_makeup_gain || 3) * (1.0 - s._mass), 0, rc.charging_max != null ? rc.charging_max : 0.06);
+    }
+    // Charging requires the charging pump.
+    var charging = (s.charging_pump_running === false) ? 0 : s.charging_flow;
+    var dm = (charging + s.hpi_flow_normalized + s.safety_injection_flow)
            - (s.letdown_flow + s.porv_flow + s.safety_flow + s.leak_flow);
     s._mass = clip(s._mass + dm * dt, 0.0, cfg.primary.mass_max);
     s.core_inventory_pct = s._mass * 100;

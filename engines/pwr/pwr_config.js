@@ -58,7 +58,14 @@
       // there and purely perturbative+stabilizing on a transient (M1 §4); boron
       // is then trimmed to make the net reactivity critical.
       rho_excess: 0.10,            // [tune]
-      boron_rate: 5.0,             // ppm/s per unit (charging-letdown) [tune]
+      boron_rate: 5.0,             // (legacy) [tune]
+      // Chemical & Volume Control System (CVCS). Boron chemistry is decoupled from
+      // net charging−letdown: borate/dilute change concentration at boron_adjust_rate
+      // (needs the charging pump). Charging/letdown control primary INVENTORY; auto
+      // mode makes up identified leakage by modulating charging up to charging_max.
+      boron_adjust_rate: 2.0,      // ppm/s while borating/diluting [tune]
+      cvcs_makeup_gain: 3.0,       // auto-charging response to an inventory deficit [tune]
+      charging_max: 0.06,          // max charging flow, normalized (normal makeup band) [tune]
     },
 
     // ------------------------------------------------------------------ thermal

@@ -287,6 +287,13 @@ safety_flow = safety_open ? safety_flow_max * Math.sqrt(Math.max(0,(P_MPa-15)/22
 ```
 `porv_flow_max = 0.04`, `safety_flow_max = 0.10`, `P_containment = 0.103` MPa **[tune]**.
 
+**PORV block/isolation valve (B1 — built, folded in).** A manually-operated block valve
+upstream of the PORV gates **all** PORV flow: `porv_flow` is zeroed (relief *and* inventory
+loss) when `block_valve_open` is false, even while the PORV itself is stuck open. This is the
+real TMI recovery action — isolating a stuck-open PORV. Commands `open_block_valve` /
+`close_block_valve`; `porv_block_open` in `control_state`. Default open (no effect until the
+operator closes it). The spring safety valves are unaffected (mechanical, HR7).
+
 **Pressurizer level — the TMI deception.** When the PORV is stuck open and the primary is
 boiling, steam pushes liquid *into* the pressurizer, raising its level **even as total
 inventory falls**. This is what misled the 1979 operators into throttling injection.
@@ -327,6 +334,19 @@ if (primary_mass < 0.50) h_fc_effective = h_fc * (primary_mass / 0.50);  // → 
 This is the damage endpoint of the TMI-without-injection branch (fuel temp rises toward
 melt).
 
+**Chemical & Volume Control System (CVCS) — built, folded in.** The charging/letdown terms
+above are the CVCS. **Charging** injects into the cold leg (inventory in, and it carries the
+boron); it requires the **charging pump** (`set_charging_pump {running}`) and is set manually
+(`set_charging_flow`) or by an **auto make-up** mode (`set_cvcs_auto {active}`) that modulates
+charging up to `charging_max` to hold inventory — compensating identified leakage (`cvcs_makeup_gain`).
+**Letdown** (`set_letdown_flow`) removes inventory. **Boron chemistry is decoupled** from the net
+charging−letdown flow (the earlier coupling was non-physical): borate/dilute change concentration
+directly via `set_boron_adjust {rate}` (ppm/s, + borate / − dilute), gated on the charging pump —
+`boron_ppm += boron_adjust·dt`. Safety injection is HPI (§6.9). Auto make-up defaults **off** so
+the flagship/TMI behavior is unchanged; `charging_max` (0.06) is sized to cover normal leakage but
+not a LOCA. Spray takes suction from the cold leg after the RCP (§6.4), so its effect scales with
+primary flow. Config: `boron_adjust_rate`, `cvcs_makeup_gain`, `charging_max` (§15).
+
 ### 6.6 Reactor coolant pumps and flow
 
 ```javascript
@@ -364,6 +384,14 @@ if (afw_active && sg_level_pct < afw_start_level) feedwater_flow += afw_flow_fra
 // AFW auto-start reads the INSTRUMENT (HR1) — actuation lives in M4; the engine exposes the effect
 ```
 `afw_flow_frac = 0.15`, `afw_start_level = 20` % **[tune]**.
+
+**Steam dump / turbine bypass (B2 — built, folded in).** A dump path vents steam straight to
+the condenser (bypassing the turbine) to control SG pressure on a turbine trip / load
+rejection. **Auto** opens proportionally above `steam_dump_setpoint` (6.0 MPa, band 0.45) — a
+basic relief-to-condenser, the same class as the pzr heater/spray auto-control (allowed by
+`CONTEXT §8`); a manual override wins. The dumped steam is additional steam-out in **both** the
+SG pressure and level balances (`steam_out = steam_flow + dump`). Command `set_steam_dump
+{mode: "auto"|"open"|"closed" | pct}`; `steam_dump_pct` / `steam_dump_auto` in `control_state`.
 
 ### 6.8 Turbine and condenser (behavioral)
 
@@ -533,6 +561,16 @@ Status readings the protection/alarm config also reads (booleans/states, no lag/
 The instrument model's internal state (every lag buffer, every active instrument failure, the
 PRNG state) is part of save/restore (§13).
 
+### 8.9 Reactivity proxies (reactivity computer / SUR / period — built, folded in)
+
+Real PWRs have **no direct reactivity gauge** — operators infer reactivity from neutron-flux
+trends. `getTrueState()` exposes three derived reactivity fields for an explicitly-labeled
+**reactivity computer** (an engineering tool, not a board gauge) and the operator-facing
+proxies: `reactivity_pcm` (= net ρ · 1e5), `startup_rate_dpm` (= 26.06 · Ṗ/P), and
+`reactor_period_s` (= P/Ṗ). SUR/period are well-defined only above a small power floor. These
+are **display/derived only and never fed to protection** (HR1) — additive to the §6.3
+contract, so M7's data-contract suite is unaffected.
+
 ---
 
 ## 9. Protection, Actuation, Alarms, Failures (data — read by M4)
@@ -606,6 +644,8 @@ PWR_FAILURES = {
   // command_override = intercepted in M4; physics_parameter = implemented in §9.1;
   // instrument = applied by the instrument model (§8); block = uses M4's command-block effect.
   // severity_meta (engineering-unit slider metadata, schema in M4) is inlined on every severity_scales failure.
+  // category ∈ reactivity|coolant|power|instrument|safety_system is carried on every failure
+  //   (built, folded in — M4 §10 needs it; per HR3 it is plant data, so it lives here, not in M4).
   stuck_porv_open:            { type:"command_override", intercepts:["close_porv"], override:"open_porv", display:"PORV Stuck Open" },
   porv_indicator_stuck_closed:{ type:"instrument", instrument_id:"porv_indicator", mode:"stuck", stuck_value:"closed", display:"PORV Indicator Stuck Closed" },
   loss_of_feedwater:          { type:"command_override", intercepts:["set_feedwater_flow"], override_value:0.0, display:"Loss of Main Feedwater" },

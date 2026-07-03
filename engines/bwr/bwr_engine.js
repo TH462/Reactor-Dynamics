@@ -125,7 +125,7 @@
       var g = this.rod_groups[i];
       if (g.scrammed) {
         var t_scram = g.function === 'shutdown' ? r.scram_time_shutdown_s : r.scram_time_control_s;
-        g.velocity = -(g.steps / t_scram);  // fast hydraulic insertion
+        g.velocity = -(g.max_steps / t_scram);  // fast hydraulic insertion — constant rate, reaches fully-in
       }
       if (!g.velocity) { g.moving = (g.velocity !== 0); this._updateRodDerived(g); continue; }
       g.moving = true;
@@ -170,6 +170,7 @@
     RC.stepCoreFlow(s, cfg, dt);
     V.stepVoid(s, cfg, dt);
     V.stepVesselPressure(s, cfg, dt);     // incl. turbine-trip void collapse + SRV blowdown
+    V.stepTurbine(s, cfg, dt);            // BOP: turbine / condenser / generator (electrical output)
     SS.stepSafety(s, cfg, dt);            // RCIC/HPCI/ADS/LPCI + battery; sets injection flows
     s.recirc_flow_pct = s.core_flow_pct;  // reported recirc/core flow
     if (s.feedwater_blocked) s.feedwater_normalized = 0;
@@ -204,6 +205,10 @@
   // ============================================================ contract surface (§16)
   BWREngine.prototype.getTrueState = function () {
     var s = this.s;
+    // Reactivity proxies (operator-facing, like the PWR): startup rate (dpm) and
+    // reactor period from the smoothed power rate — well-defined above a small floor.
+    var p = s.power_pct, pr = s._power_rate || 0, sur = 0, period = Infinity;
+    if (p > 0.1) { sur = 26.06 * (pr / p); period = Math.abs(pr) > 1e-6 ? p / pr : Infinity; }
     return {
       power_pct: s.power_pct, fuel_temp_c: s.fuel_temp_c, core_void_fraction: s.core_void_fraction,
       vessel_pressure_mpa: s.vessel_pressure_mpa, vessel_level_pct: s.vessel_level_pct,
@@ -211,10 +216,14 @@
       recirc_flow_pct: s.recirc_flow_pct, decay_heat_pct: s.decay_heat_pct, xenon_pct_eq: s.xenon_pct_eq,
       rcic_running: s.rcic_running, hpci_running: s.hpci_running, ads_open: s.ads_open, lpci_running: s.lpci_running,
       lpcs_running: s.lpcs_running, srv_manual_open: s.srv_manual_open,
+      ic_active: s.ic_active, ic_condensing: s.ic_condensing,
       station_blackout: s.station_blackout, battery_charge_pct: s.battery_charge_pct,
       slc_active: s.slc_active, slc_tank_pct: s.slc_tank_pct,
       scrammed: s.scrammed, melted: s.melted, destruction_cause: s.destruction_cause,
-      reactivity_pcm: (s._rho || 0) * 1e5,
+      reactivity_pcm: (s._rho || 0) * 1e5, startup_rate_dpm: sur, reactor_period_s: period,
+      // Balance-of-plant (additive): electrical output + turbine/condenser.
+      mwe_output: s.mwe_output, turbine_rpm: s.turbine_rpm,
+      condenser_vacuum_kpa: s.condenser_vacuum_kpa, turbine_tripped: s.turbine_tripped,
     };
   };
 
@@ -233,8 +242,12 @@
       rod_groups: groups,
       recirc_flow_setpoint_pct: s.recirc_setpoint_pct,
       ads_armed: s.ads_open,
-      slc_active: s.slc_active,
+      slc_active: s.slc_active, ic_active: s.ic_active,
       feedwater_flow_pct: s.feedwater_normalized * 100,
+      // Balance-of-plant controls.
+      turbine_load_mwe: s.turbine_load_frac * this.cfg.mwe_rated,
+      steam_dump_pct: (s.steam_dump_frac || 0) * 100,
+      steam_dump_auto: s.steam_dump_override == null,
     };
   };
 
@@ -282,6 +295,17 @@
       case 'set_turbine_load':
         s.turbine_load_frac = clip(cmd.mwe / this.cfg.mwe_rated, 0, 1.2);
         s.steam_flow_normalized = s.turbine_load_frac;
+        // Re-latch a vacuum/overspeed-tripped turbine when load is dialed back on
+        // (a genuine turbine_trip/msiv FAILURE keeps turbine_blocked until cleared).
+        if (s.turbine_load_frac > 0 && s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
+        break;
+      case 'set_steam_dump':
+        // mode: 'auto' (null override) | 'open' | 'closed' | a manual pct. (Only
+        // effective when the condenser is available — gated in stepVesselPressure.)
+        if (cmd.mode === 'auto') s.steam_dump_override = null;
+        else if (cmd.mode === 'open') s.steam_dump_override = 1.0;
+        else if (cmd.mode === 'closed') s.steam_dump_override = 0.0;
+        else if (cmd.pct != null) s.steam_dump_override = clip(cmd.pct / 100, 0, 1);
         break;
       case 'trigger_ads':
         if (!s.ads_blocked) s.ads_open = true;
@@ -309,6 +333,9 @@
         break;
       case 'set_rcic':
         s.rcic_running = !!cmd.active;
+        break;
+      case 'set_ic':
+        if (!s.ic_failed) s.ic_active = !!cmd.active;   // Isolation Condenser on/off
         break;
       case 'set_hpci':
         s.hpci_running = !!cmd.active;
@@ -360,12 +387,16 @@
       switch (def.effect) {
         case 'stop_rcic': s.rcic_running = false; s.rcic_failed = true; break;
         case 'stop_hpci': s.hpci_running = false; s.hpci_failed = true; break;
+        case 'stop_ic': s.ic_active = false; s.ic_failed = true; break;   // IC valves fail closed (U1)
         case 'full_blackout_bwr':
           s.station_blackout = true; s.recirc_pump_running = false;
           s.feedwater_blocked = true; s.feedwater_normalized = 0;
           // MSIV closes on loss of power — steam isolated, so decay steam builds
-          // vessel pressure (keeping RCIC's steam drive available).
-          s.turbine_load_frac = 0; s.steam_flow_normalized = 0; s.turbine_blocked = true; break;
+          // vessel pressure (keeping RCIC's steam drive available). No AC → the
+          // main condenser and its turbine-bypass dump are lost too.
+          s.turbine_load_frac = 0; s.steam_flow_normalized = 0; s.turbine_blocked = true;
+          s.condenser_cooling_available = false; break;
+        case 'vacuum_decay': s.condenser_cooling_available = false; break;
         case 'coast_down_recirc': s.recirc_pump_running = false; break;
         case 'stuck_relief_open': s._fail.srv_stuck_open = { active: true, area: severity }; break;
         case 'degrade_battery':
@@ -396,7 +427,9 @@
       switch (def.effect) {
         case 'stop_rcic': s.rcic_failed = false; break;       // stays stopped until restarted
         case 'stop_hpci': s.hpci_failed = false; break;
-        case 'full_blackout_bwr': s.station_blackout = false; s.feedwater_blocked = false; break;
+        case 'stop_ic': s.ic_failed = false; break;
+        case 'full_blackout_bwr': s.station_blackout = false; s.feedwater_blocked = false; s.condenser_cooling_available = true; break;
+        case 'vacuum_decay': s.condenser_cooling_available = true; break;
         case 'coast_down_recirc': s.recirc_pump_running = true; break;
         case 'stuck_relief_open': s._fail.srv_stuck_open = { active: false, area: 0 }; break;
         case 'degrade_battery': s._fail.battery = { active: false, duration_factor: 1 }; break;
@@ -409,9 +442,40 @@
     var name = (cmd && cmd.initial_state) || 'full_power';
     this.rod_groups = this._makeRodGroups();
     this.active_failures = [];
-    this._computeRefsAndExcess();
+    this._computeRefsAndExcess();          // full-power BASE refs + rho_excess
     this.s = this._buildState(name);
+    var init = this.cfg.initial_states[name] || {};
+    if (init.subcritical) {
+      // SUBCRITICAL STARTUP ONLY. The fixed full-power void_ref (0.45) imposes a
+      // large POSITIVE void reactivity at low void, so a low-power state would
+      // self-drive to the flow/void balance (no stable near-zero point). For the
+      // startup state alone, pin void_ref at its (low) operating void and trim to
+      // critical there — mirroring the RBMK's per-state pinning — then insert the
+      // control group a margin so it starts subcritical. Every other state
+      // (full_power / 50_percent / post_scram_sbo) keeps the base full-power trim
+      // unchanged, so all proven behaviors and the Fukushima flagship are intact.
+      this.void_ref = this.s.core_void_fraction;
+      this._trimToCritical();
+      if (init.subcrit_margin_steps) {
+        // No boron — the margin is rod position. BWR steps = WITHDRAWN (opposite
+        // of the RBMK), so inserting the control group means DECREASING steps; the
+        // operator withdraws (increases steps) to reach criticality and ascend.
+        var cg = this.rod_groups[0];
+        cg.steps = clip(cg.steps - init.subcrit_margin_steps, 0, cg.max_steps);
+        this._updateRodDerived(cg);
+        this.s._rho = this._totalReactivity();
+      }
+    }
     this.instruments.reset(this.getTrueState(), this._instrExtras());
+  };
+
+  // Trim the core excess reactivity so the current operating point is exactly
+  // critical (ρ_total = 0), like the RBMK. Used for non-scrammed states only.
+  BWREngine.prototype._trimToCritical = function () {
+    this.rho_excess = 0;
+    var partial = this._totalReactivity();
+    this.rho_excess = -partial;
+    this.s._rho = 0;
   };
 
   // References pinned at the full-power operating point (Flag F1 pattern); the
@@ -463,7 +527,9 @@
     // Flow / void initial: full power forced flow ~100% → void ~0.45; scrammed
     // SBO has pumps off and ~no power → ~no void.
     var recirc_pump = !sbo;
-    var recirc_setpoint = sbo ? 0 : cfg.recirc.recirc_op_setpoint_pct;
+    // Recirc setpoint: full-power default, or a state-specified value (the 50%
+    // state runs reduced flow so the negative void feedback settles power lower).
+    var recirc_setpoint = sbo ? 0 : (init.recirc_pct != null ? init.recirc_pct : cfg.recirc.recirc_op_setpoint_pct);
     var core_flow = recirc_pump ? clip(recirc_setpoint / 100 * (1 + cfg.recirc.jet_pump_m_ratio) * 100, 0, 120)
                                 : RC.naturalCircFlow(P0, cfg);
     var void0 = clip(P0 / Math.max(core_flow / 100, 1e-3) * v.void_scale_factor, 0, 0.95);
@@ -488,12 +554,23 @@
       feedwater_normalized: feed, fw_flow_normalized: feed, feedwater_blocked: sbo,
       _relief_flow: 0, _boiloff_rate: 0,
 
+      // Balance-of-plant (turbine / condenser / generator). Grid-synced at rated
+      // speed producing steam·rated MWe; condenser vacuum rated and cooling
+      // available unless in station blackout (no AC → no condenser/dump). Steam
+      // dump auto (override null).
+      steam_dump_frac: 0, steam_dump_override: null,
+      turbine_rpm: sbo ? 0 : cfg.turbine.rpm_rated, turbine_tripped: false,
+      condenser_vacuum_kpa: sbo ? cfg.turbine.vacuum_lost : cfg.turbine.vacuum_rated,
+      condenser_cooling_available: !sbo,
+      mwe_output: steam * cfg.mwe_rated,
+
       // safety systems
       rcic_running: !!init.rcic_running, rcic_flow: 0, rcic_failed: false,
       hpci_running: false, hpci_flow: 0, hpci_failed: false,
       ads_open: false, ads_blocked: false, lpci_running: false, lpci_flow: 0, lpci_blocked: false,
       lpcs_running: false, lpcs_flow: 0, lpcs_blocked: false,   // D4 core spray
       srv_manual_open: false,                                    // D6 manual SRV
+      ic_active: false, ic_condensing: false, ic_failed: false,  // Isolation Condenser (Fukushima U1)
       station_blackout: sbo, sbo_elapsed: 0, battery_charge_pct: 100,
       slc_active: false, slc_injected: 0, slc_tank_pct: 100,   // Standby Liquid Control (D1)
 
@@ -771,6 +848,90 @@
       });
     },
 
+    balance_of_plant: function () {
+      return test('Balance of plant — turbine / electrical output', function (ck) {
+        // (A) Steady full power: rated electrical output, synced turbine, rated vacuum.
+        var h = new Harness('full_power'); h.run(30);
+        var t = h.ts();
+        ck('full power ≈ rated MWe', t.mwe_output.toFixed(0), near(t.mwe_output, 1100, 40), '1100 ±40');
+        ck('turbine synced ≈ 1800 rpm', t.turbine_rpm.toFixed(0), near(t.turbine_rpm, 1800, 20), '1800 ±20');
+        ck('condenser vacuum ≈ rated', t.condenser_vacuum_kpa.toFixed(1), near(t.condenser_vacuum_kpa, 96.5, 2), '96.5 ±2');
+
+        // (B) Electrical output tracks the turbine load command (direct cycle).
+        var lb = new Harness('full_power'); lb.run(10);
+        lb.cmd({ action: 'set_turbine_load', mwe: 800 }); lb.run(15);
+        ck('MWe tracks turbine load command', lb.ts().mwe_output.toFixed(0), near(lb.ts().mwe_output, 800, 60), '800 ±60');
+
+        // (C) Turbine trip → electrical output collapses, turbine coasts down; the
+        //     steam bypass/dump opens (condenser available) to absorb rejected steam.
+        var tt = new Harness('full_power'); tt.run(10);
+        tt.cmd({ action: 'inject_failure', failure_id: 'turbine_trip' }); tt.run(20);
+        ck('turbine trip → ~no MWe', tt.ts().mwe_output.toFixed(0), tt.ts().mwe_output < 50, '< 50');
+        ck('turbine coasting down', tt.ts().turbine_rpm.toFixed(0), tt.ts().turbine_rpm < 1500, '< 1500');
+        ck('steam dump opened to absorb rejected steam', tt.eng.s.steam_dump_frac.toFixed(2), tt.eng.s.steam_dump_frac > 0.1, '> 0.1');
+
+        // (D) Partial-power operating state: stable at ~50%, ~half electrical output.
+        var hp = new Harness('50_percent'); hp.run(60);
+        ck('50% state holds ~50% power', hp.ts().power_pct.toFixed(1), near(hp.ts().power_pct, 50, 4), '50 ±4');
+        ck('50% state ≈ half MWe', hp.ts().mwe_output.toFixed(0), near(hp.ts().mwe_output, 550, 70), '550 ±70');
+        ck('50% state stable (not scrammed/melted)', hp.ts().scrammed + '/' + hp.ts().melted, !hp.ts().scrammed && !hp.ts().melted, 'false/false');
+
+        // (E) Loss of condenser vacuum → vacuum decays → turbine trips on low vacuum.
+        var lv = new Harness('full_power'); lv.run(5);
+        lv.cmd({ action: 'inject_failure', failure_id: 'loss_of_condenser_vacuum' }); lv.run(40);
+        ck('vacuum decayed below trip', lv.ts().condenser_vacuum_kpa.toFixed(1), lv.ts().condenser_vacuum_kpa < 74.5, '< 74.5');
+        ck('turbine tripped on low vacuum', String(lv.ts().turbine_tripped), lv.ts().turbine_tripped === true, 'true');
+        ck('electrical output collapsed', lv.ts().mwe_output.toFixed(0), lv.ts().mwe_output < 50, '< 50');
+
+        // (F) Station blackout gates the dump OFF (no AC/condenser) so the SRVs alone
+        //     hold pressure and keep RCIC's steam drive alive — the Fukushima story.
+        var sb = new Harness('post_scram_sbo'); sb.run(40);
+        ck('SBO: condenser/dump unavailable', String(sb.eng.s.condenser_cooling_available), sb.eng.s.condenser_cooling_available === false, 'false');
+        ck('SBO: steam dump inert (SRVs hold pressure)', sb.eng.s.steam_dump_frac.toFixed(2), sb.eng.s.steam_dump_frac === 0, '0');
+        ck('SBO: no electrical output', sb.ts().mwe_output.toFixed(0), sb.ts().mwe_output < 5, '< 5');
+      });
+    },
+
+    startup: function () {
+      return test('Startup — subcritical hold, then controlled ascension', function (ck) {
+        var h = new Harness('hot_startup');
+        h.run(20);
+        var a = h.ts();
+        ck('starts subcritical (ρ < 0)', a.reactivity_pcm.toFixed(0) + ' pcm', a.reactivity_pcm < 0, '< 0');
+        ck('near-zero power at hot standby', a.power_pct.toFixed(2) + '%', a.power_pct < 2, '< 2%');
+        ck('not melted', String(a.melted), a.melted === false, 'false');
+        // Withdraw the control group (BWR: increase steps) toward criticality.
+        var cg = h.eng.rod_groups[0];
+        h.cmd({ action: 'rod_start', group_id: cg.id, direction: 1, speed: 'normal' });
+        var pk = 0, sawSUR = false;
+        for (var i = 0; i < 9000; i++) {
+          h.eng.step(0.02);
+          var pw = h.ts().power_pct; if (pw > pk) pk = pw;
+          if (h.ts().startup_rate_dpm > 0) sawSUR = true;
+          if (pw > 12) { h.cmd({ action: 'rod_stop', group_id: cg.id }); break; }
+        }
+        var b = h.ts();
+        ck('rod withdrawal raises power (ascension)', pk.toFixed(1) + '%', pk > 5, 'rises > 5%');
+        ck('positive startup rate seen during ascension', String(sawSUR), sawSUR === true, 'true');
+        ck('controlled — no destruction on ascension', String(b.melted), b.melted === false, 'false');
+      });
+    },
+
+    isolation_condenser: function () {
+      return test('Isolation Condenser — passive core cover, lost on DC (Fukushima U1)', function (ck) {
+        var h = new Harness('post_scram_sbo');
+        h.cmd({ action: 'set_rcic', active: false });   // rely on the IC alone (no injection)
+        h.cmd({ action: 'set_ic', active: true });
+        h.run(2 * H);
+        ck('IC holds the core covered with no injection', h.ts().vessel_level_pct.toFixed(0) + '%', h.ts().vessel_level_pct > 40, '> 40%');
+        ck('IC condensing', String(h.ts().ic_condensing), h.ts().ic_condensing === true, 'true');
+        ck('not melted', String(h.ts().melted), h.ts().melted === false, 'false');
+        h.run(9 * H);   // batteries deplete → DC-powered IC valves close
+        ck('IC lost on battery depletion', String(h.ts().ic_active), h.ts().ic_active === false, 'false');
+        ck('core uncovers after IC is lost', h.ts().vessel_level_pct.toFixed(0) + '%', h.ts().vessel_level_pct < 20, '< 20%');
+      });
+    },
+
     save_restore: function () {
       return test('Save and restore — exact fidelity', function (ck) {
         // Mid-blackout, RCIC running, battery partly depleted, with failures active.
@@ -798,7 +959,7 @@
 
   BWRScenarioTests.runAll = function () {
     var order = ['steady_full_power', 'flow_control', 'natural_circ', 'turbine_trip', 'shutdown_scram',
-      'flagship_fukushima', 'physics_failures', 'actuation_gates', 'save_restore'];
+      'flagship_fukushima', 'physics_failures', 'actuation_gates', 'balance_of_plant', 'startup', 'isolation_condenser', 'save_restore'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(BWRScenarioTests[order[i]]());
     return results;

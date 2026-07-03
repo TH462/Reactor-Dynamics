@@ -26,7 +26,7 @@
       var err = p.P_setpoint - s.pressure_mpa;
       s.heater_power_frac = err > 0 ? clip(err / p.heater_band_mpa, 0, 1) : 0;
     }
-    if (s.spray_override != null) { s.spray_flow_frac = s.spray_override ? 1.0 : 0.0; }
+    if (s.spray_override != null) { s.spray_flow_frac = +s.spray_override; }  // fraction (or boolean → 0/1)
     else {
       var err2 = p.P_setpoint - s.pressure_mpa;
       s.spray_flow_frac = err2 < 0 ? clip(-err2 / p.spray_band_mpa, 0, 1) : 0;
@@ -57,8 +57,11 @@
     var p = cfg.pressurizer;
     autoControl(s, cfg);
     relief(s, cfg);
+    // Spray draws from the cold leg downstream of the Reactor Coolant Pump (RCP),
+    // so its effectiveness scales with primary flow — no flow, no spray.
+    var spray_eff = s.spray_flow_frac * clip(s.flow_frac != null ? s.flow_frac : 1, 0, 1);
     var dP = s.heater_power_frac * p.K_heater
-           - s.spray_flow_frac * p.K_spray
+           - spray_eff * p.K_spray
            - s.porv_flow * p.K_porv_relief
            - s.safety_flow * p.K_safety_relief
            + p.K_surge * (s._dTavg_dt || 0);              // thermal insurge raises pressure

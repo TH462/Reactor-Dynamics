@@ -159,10 +159,18 @@
     TH.stepDrumPressure(s, cfg, dt);
     if (s.feedwater_blocked) s.feedwater_normalized = 0;  // loss_of_feedwater persists
     TH.stepDrumLevel(s, cfg, dt);
+    // 8b. Balance-of-plant: turbine / condenser / generator (electrical output).
+    TH.stepTurbine(s, cfg, dt);
     // 9. Channel flow — MCP / coastdown.
     TH.stepChannelFlow(s, cfg, dt);
     // 9b. Channel rupture (after void / drum-level / flow updates, §14.1).
     TH.applyChannelRupture(s, cfg, dt);
+    // 9c. ECCS — emergency core cooling: makes up drum level and holds a cooling-flow
+    //     floor, arresting a pressure-tube-rupture drain / dryout.
+    if (s.eccs_active) {
+      s.drum_level_pct = clip(s.drum_level_pct + cfg.thermal.eccs_level_rate * dt, 0, 100);
+      if (s.channel_flow_pct < cfg.thermal.eccs_flow_floor) s.channel_flow_pct = cfg.thermal.eccs_flow_floor;
+    }
     // 10. ORM from rod positions.
     s.orm_equiv_rods = Rods.getOrm(this.rod_groups, cfg);
     s.orm_alarm_active = s.orm_equiv_rods < cfg.reactivity.orm_min;
@@ -170,6 +178,12 @@
     K.stepEnergyDeposition(s, cfg, dt);
     K.checkDestruction(s, cfg);
     if (s.melted) s._scram_complete = true;
+
+    // Smoothed power rate for the SUR / reactor-period proxies (§ getTrueState).
+    var raw_rate = (s.power_pct - (s._prev_power_pct != null ? s._prev_power_pct : s.power_pct)) / dt;
+    var a = dt / (2.0 + dt);
+    s._power_rate = (s._power_rate || 0) + a * (raw_rate - (s._power_rate || 0));
+    s._prev_power_pct = s.power_pct;
 
     // 12. Update instruments from the new true state (incl. computed orm_display).
     this.instruments.update(this.getTrueState(), dt, this._instrExtras());
@@ -190,15 +204,23 @@
   // ============================================================ contract surface
   RBMKEngine.prototype.getTrueState = function () {
     var s = this.s;
+    // Reactivity proxies (operator-facing, like the PWR): startup rate (dpm) and
+    // reactor period from the smoothed power rate — well-defined above a small floor.
+    var p = s.power_pct, pr = s._power_rate || 0, sur = 0, period = Infinity;
+    if (p > 0.1) { sur = 26.06 * (pr / p); period = Math.abs(pr) > 1e-6 ? p / pr : Infinity; }
     return {
       power_pct: s.power_pct, fuel_temp_c: s.fuel_temp_c, void_fraction_avg: s.void_fraction_avg,
       steam_pressure_mpa: s.steam_pressure_mpa, drum_level_pct: s.drum_level_pct, channel_flow_pct: s.channel_flow_pct,
       graphite_temp_avg_c: s.graphite_temp_avg_c, decay_heat_pct: s.decay_heat_pct, xenon_pct_eq: s.xenon_pct_eq,
-      orm_equiv_rods: s.orm_equiv_rods, orm_alarm_active: s.orm_alarm_active, eps_bypassed: s.eps_bypassed,
+      orm_equiv_rods: s.orm_equiv_rods, orm_alarm_active: s.orm_alarm_active, eps_bypassed: s.eps_bypassed, eccs_active: s.eccs_active,
       scrammed: s.scrammed, melted: s.melted, destruction_cause: s.destruction_cause,
       steam_explosion_occurred: s.steam_explosion_occurred, energy_deposition_rate: s.energy_deposition_rate,
       design_version: this.version,
-      reactivity_pcm: (s._rho || 0) * 1e5,
+      reactivity_pcm: (s._rho || 0) * 1e5, startup_rate_dpm: sur, reactor_period_s: period,
+      // Balance-of-plant (additive): turbine steam load + electrical output.
+      steam_to_turbine: s.steam_to_turbine, mwe_output: s.mwe_output,
+      turbine_rpm: s.turbine_rpm, condenser_vacuum_kpa: s.condenser_vacuum_kpa,
+      turbine_tripped: s.turbine_tripped,
     };
   };
 
@@ -221,7 +243,11 @@
       rod_groups: groups,
       channel_flow_setpoint_pct: s.mcp_speed_pct,
       feedwater_flow_pct: s.feedwater_normalized * 100,
-      eps_bypassed: s.eps_bypassed,
+      eps_bypassed: s.eps_bypassed, eccs_active: s.eccs_active,
+      // Balance-of-plant controls.
+      turbine_load_mwe: s.steam_to_turbine * this.cfg.turbine.mwe_rated,
+      steam_dump_pct: (s.steam_dump_frac || 0) * 100,
+      steam_dump_auto: s.steam_dump_override == null,
     };
   };
 
@@ -270,8 +296,24 @@
       case 'set_feedwater_flow':
         if (!s.feedwater_blocked) s.feedwater_normalized = clip(cmd.pct / 100, 0, 1.5);
         break;
+      case 'set_turbine_load':
+        // Operator turbine steam load, MWe → normalized (1.0 = rated). Re-latches
+        // a manually/vacuum-tripped turbine when a load is dialed back on.
+        s.steam_to_turbine = clip(cmd.mwe / this.cfg.turbine.mwe_rated, 0, 1.2);
+        if (s.steam_to_turbine > 0 && s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
+        break;
+      case 'set_steam_dump':
+        // mode: 'auto' (null override) | 'open' (full) | 'closed' | a manual pct.
+        if (cmd.mode === 'auto') s.steam_dump_override = null;
+        else if (cmd.mode === 'open') s.steam_dump_override = 1.0;
+        else if (cmd.mode === 'closed') s.steam_dump_override = 0.0;
+        else if (cmd.pct != null) s.steam_dump_override = clip(cmd.pct / 100, 0, 1);
+        break;
       case 'set_eps_bypass':
         s.eps_bypassed = !!cmd.active;
+        break;
+      case 'set_eccs':
+        s.eccs_active = !!cmd.active;   // emergency core cooling
         break;
       case 'inject_failure':
         this._injectFailure(cmd.failure_id, cmd.severity != null ? cmd.severity : 1.0);
@@ -338,6 +380,8 @@
         case 'channel_rupture':
           s._fail.channel_rupture = { active: true, size: severity };
           break;
+        case 'trip_turbine': TH.tripTurbine(s); break;
+        case 'vacuum_decay': s.condenser_cooling_available = false; break;
       }
       return;
     }
@@ -366,6 +410,8 @@
         case 'stuck_control_rod':  s._fail.stuck_rod = { active: false, frac: 0, z_stuck: 0 }; break;
         case 'rod_withdrawal_runaway': s._fail.rod_runaway = { active: false, rate: 0 }; break;
         case 'channel_rupture':    s._fail.channel_rupture = { active: false, size: 0 }; break;
+        case 'trip_turbine':       s.turbine_tripped = false; break; // re-latches on set_turbine_load
+        case 'vacuum_decay':       s.condenser_cooling_available = true; break;
       }
     }
   };
@@ -386,6 +432,18 @@
     // Pin the void reference at this state's operating void (see rhoVoid).
     this.void_ref = this.s.void_fraction_avg;
     this._trimToCritical();
+    // Subcritical startup states: trim to critical at orm_target, THEN insert the
+    // control group a fixed margin so it starts subcritical (no boron — the margin
+    // is rod position). The operator withdraws the margin to reach criticality.
+    var init = this.cfg.initial_states[name];
+    if (init && init.subcritical && init.subcrit_margin_steps) {
+      var cg = this._controlGroup();
+      cg.steps = clip(cg.steps + init.subcrit_margin_steps, 0, cg.max_steps);
+      this._updateRodDerived(cg);
+      this.s.orm_equiv_rods = Rods.getOrm(this.rod_groups, this.cfg);
+      this.s.orm_alarm_active = this.s.orm_equiv_rods < this.cfg.reactivity.orm_min;
+      this.s._rho = this._totalReactivity();
+    }
     this.instruments.reset(this.getTrueState(), this._instrExtras());
   };
 
@@ -419,6 +477,7 @@
     var s = {
       sim_time: 0,
       _P: P0, power_pct: P0 * 100, _rho: 0,
+      _prev_power_pct: P0 * 100, _power_rate: 0,
       _C: C, _X_eq: X_eq,
       _I: x.gamma_I * P0 / x.lambda_I,
       _X: init.xenon_factor * X_eq,
@@ -435,8 +494,16 @@
       steam_to_turbine: P0, feedwater_normalized: P0, feedwater_blocked: false,
       _h_fc_eff: t.h_fc_rbmk, _h_fc_dryout_factor: null, _Q_total: P0, _relief_flow: 0,
 
+      // Balance-of-plant (turbine / condenser / generator). Turbine load starts
+      // matched to power; the generator is grid-synced at rated speed producing
+      // P0·rated MWe; condenser vacuum at rated; steam dump auto (override null).
+      steam_dump_frac: 0, steam_dump_override: null,
+      turbine_rpm: cfg.turbine.rpm_rated, turbine_tripped: false,
+      condenser_vacuum_kpa: cfg.turbine.vacuum_rated, condenser_cooling_available: true,
+      mwe_output: P0 * cfg.turbine.mwe_rated,
+
       orm_equiv_rods: 0, orm_alarm_active: false,
-      eps_bypassed: false, scrammed: false, scram_blocked: false, _scram_complete: false,
+      eps_bypassed: false, eccs_active: false, scrammed: false, scram_blocked: false, _scram_complete: false,
       melted: false, destruction_cause: 'none', steam_explosion_occurred: false,
       energy_deposition_rate: P0 * cfg.destruction.energy_deposition_scale,
 
@@ -804,6 +871,70 @@
     });
   }
 
+  // Balance-of-plant: turbine load control, electrical output, steam dump, and
+  // the BOP failures — the full-scope-operation additions (parallel to the PWR).
+  function bopTest(version) {
+    return test('Balance of plant — turbine / electrical output (' + version + ')', function (ck) {
+      // (A) Steady full power: rated electrical output, synced turbine, rated vacuum.
+      var h = new Harness(version, 'full_power'); h.run(60);
+      var t = h.ts();
+      ck('full power ≈ rated MWe', t.mwe_output.toFixed(0), near(t.mwe_output, 1000, 30), '1000 ±30');
+      ck('turbine synced ≈ 3000 rpm', t.turbine_rpm.toFixed(0), near(t.turbine_rpm, 3000, 20), '3000 ±20');
+      ck('condenser vacuum ≈ rated', t.condenser_vacuum_kpa.toFixed(1), near(t.condenser_vacuum_kpa, 96.5, 2), '96.5 ±2');
+
+      // (B) Turbine load reduction at constant reactor power → electrical output
+      //     falls, and the steam dump absorbs the now-excess steam so drum pressure
+      //     is held below the relief/trip (8.0) instead of over-pressurizing. (The
+      //     drum-pressure gain is small, so this settles over minutes.)
+      var lb = new Harness(version, 'full_power'); lb.run(10);
+      lb.cmd({ action: 'set_turbine_load', mwe: 400 }); lb.run(120);
+      ck('reducing load lowers MWe', lb.ts().mwe_output.toFixed(0), lb.ts().mwe_output < 600, '< 600');
+      ck('steam dump opened to absorb excess', lb.eng.s.steam_dump_frac.toFixed(2), lb.eng.s.steam_dump_frac > 0.1, '> 0.1');
+      ck('drum pressure held below relief (no trip)', lb.ts().steam_pressure_mpa.toFixed(2), lb.ts().steam_pressure_mpa < 8.0, '< 8.0');
+
+      // (C) Turbine trip → electrical output collapses, turbine coasts down.
+      var tt = new Harness(version, 'full_power'); tt.run(10);
+      tt.cmd({ action: 'inject_failure', failure_id: 'turbine_trip' }); tt.run(30);
+      ck('turbine trip → ~no MWe', tt.ts().mwe_output.toFixed(0), tt.ts().mwe_output < 50, '< 50');
+      ck('turbine coasting down', tt.ts().turbine_rpm.toFixed(0), tt.ts().turbine_rpm < 2500, '< 2500');
+      ck('drum pressure held below relief (dump)', tt.ts().steam_pressure_mpa.toFixed(2), tt.ts().steam_pressure_mpa < 8.0, '< 8.0');
+
+      // (D) Partial-power operating state: stable at ~50%, ~half electrical output.
+      var hp = new Harness(version, '50_percent'); hp.run(60);
+      ck('50% state holds ~50% power', hp.ts().power_pct.toFixed(1), near(hp.ts().power_pct, 50, 4), '50 ±4');
+      ck('50% state ≈ half MWe', hp.ts().mwe_output.toFixed(0), near(hp.ts().mwe_output, 500, 60), '500 ±60');
+      ck('50% state stable (not scrammed/melted)', hp.ts().scrammed + '/' + hp.ts().melted, !hp.ts().scrammed && !hp.ts().melted, 'false/false');
+
+      // (E) Loss of condenser vacuum → vacuum decays → turbine trips on low vacuum.
+      var lv = new Harness(version, 'full_power'); lv.run(5);
+      lv.cmd({ action: 'inject_failure', failure_id: 'loss_of_condenser_vacuum' }); lv.run(40);
+      ck('vacuum decayed below trip', lv.ts().condenser_vacuum_kpa.toFixed(1), lv.ts().condenser_vacuum_kpa < 74.5, '< 74.5');
+      ck('turbine tripped on low vacuum', String(lv.ts().turbine_tripped), lv.ts().turbine_tripped === true, 'true');
+      ck('electrical output collapsed', lv.ts().mwe_output.toFixed(0), lv.ts().mwe_output < 50, '< 50');
+    });
+  }
+
+  // Approach-to-criticality / startup from the subcritical hot_startup state.
+  function startupTest(version) {
+    return test('Startup — subcritical hold, then controlled ascension (' + version + ')', function (ck) {
+      var h = new Harness(version, 'hot_startup');
+      h.run(20);
+      var a = h.ts();
+      ck('starts subcritical (ρ < 0)', a.reactivity_pcm.toFixed(0) + ' pcm', a.reactivity_pcm < 0, '< 0');
+      ck('near-zero power at hot standby', a.power_pct.toFixed(2) + '%', a.power_pct < 2, '< 2%');
+      ck('not melted', String(a.melted), a.melted === false, 'false');
+      // Withdraw the control group slowly toward/through criticality.
+      var cg = h.eng._controlGroup();
+      h.cmd({ action: 'rod_start', group_id: cg.id, direction: 1, speed: 'slow' });
+      var pk = 0;
+      for (var i = 0; i < 15000; i++) { h.eng.step(0.02); var pw = h.ts().power_pct; if (pw > pk) pk = pw; if (pw > 40) { h.cmd({ action: 'rod_stop', group_id: cg.id }); break; } }
+      var b = h.ts();
+      ck('rod withdrawal raises power (ascension)', b.power_pct.toFixed(1) + '%', pk > 5, 'rises > 5%');
+      ck('positive startup rate during ascension', b.startup_rate_dpm.toFixed(1) + ' dpm', b.startup_rate_dpm > 0, '> 0');
+      ck('controlled — no destruction on ascension', String(b.melted), b.melted === false, 'false');
+    });
+  }
+
   var RBMKScenarioTests = {
     near: near, Harness: Harness,
     steady_pre: function () { return steadyTest('pre_chernobyl'); },
@@ -822,6 +953,25 @@
     failures_pre: function () { return failuresTest('pre_chernobyl'); },
     failures_post: function () { return failuresTest('post_chernobyl'); },
     stuck_rod: stuckRodTest,
+    bop_pre: function () { return bopTest('pre_chernobyl'); },
+    bop_post: function () { return bopTest('post_chernobyl'); },
+    startup_pre: function () { return startupTest('pre_chernobyl'); },
+    startup_post: function () { return startupTest('post_chernobyl'); },
+    eccs: function () {
+      return test('ECCS — arrests a pressure-tube-rupture drain', function (ck) {
+        var h = new Harness('pre_chernobyl', 'full_power'); h.run(5);
+        var lvl0 = h.ts().drum_level_pct;
+        h.cmd({ action: 'inject_failure', failure_id: 'pressure_tube_rupture', severity: 0.5 });
+        h.run(8);
+        var drained = h.ts().drum_level_pct;
+        ck('rupture drains the steam drum', drained.toFixed(1) + '%', drained < lvl0, '< ' + lvl0.toFixed(1));
+        h.cmd({ action: 'set_eccs', active: true });
+        h.run(10);
+        ck('ECCS recovers drum level', h.ts().drum_level_pct.toFixed(1) + '%', h.ts().drum_level_pct > drained, '> ' + drained.toFixed(1));
+        ck('ECCS holds the cooling-flow floor', h.ts().channel_flow_pct.toFixed(1) + '%', h.ts().channel_flow_pct >= 44.5, '>= 45%');
+        ck('ECCS active', String(h.ts().eccs_active), h.ts().eccs_active === true, 'true');
+      });
+    },
     save_restore_pre: function () { return saveRestoreTest('pre_chernobyl'); },
     save_restore_post: function () { return saveRestoreTest('post_chernobyl'); },
   };
@@ -829,7 +979,8 @@
   RBMKScenarioTests.runAll = function () {
     var order = ['steady_pre', 'steady_post', 'control_pre', 'control_post', 'shutdown_pre', 'shutdown_post',
       'orm_pre', 'orm_post', 'rods_pre', 'rods_post', 'flagship_pre', 'flagship_post', 'flagship_comparison',
-      'failures_pre', 'failures_post', 'stuck_rod', 'save_restore_pre', 'save_restore_post'];
+      'failures_pre', 'failures_post', 'stuck_rod', 'bop_pre', 'bop_post', 'startup_pre', 'startup_post',
+      'eccs', 'save_restore_pre', 'save_restore_post'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(RBMKScenarioTests[order[i]]());
     return results;

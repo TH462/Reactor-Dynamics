@@ -32,6 +32,8 @@
     pdAck: {},              // operator-acknowledged auto-actuations (ECCS/AFW → green)
     pdOp: {},               // operator-initiated systems (start green directly)
     ctlVals: {},            // last value typed into each control-bar number input (id → value), so the shared bar doesn't revert on view switch
+    manualSection: 'overview', // active section in the Operator's Manual overlay
+    follow: null,           // { id, idx } — a procedure being followed in the Instructor block
   };
   var service, latest = null, lastScrammed = false;
   var chartBuf = [];        // { t, ins }
@@ -90,11 +92,11 @@
       defaultSeries: { power: true, tavg: true, pressure: true, sg_level: true },
       gauges: [
         { id: 'power',   label: 'Reactor Power', lead: true, raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
-        { id: 'press',   label: 'Primary Press', raw: function (s) { return s.instruments.primary_pressure; }, dim: 'pressure', min: 0, max: 20.7, caution: 16.2, danger: 16.44, dp: 0 },
-        { id: 'tavg',    label: 'Tavg',          raw: function (s) { return s.instruments.tavg; }, dim: 'temp', min: 250, max: 343, caution: 312, danger: 335, dp: 0 },
-        { id: 'pzr',     label: 'PZR Level',     raw: function (s) { return s.instruments.pzr_level; }, units: '%', min: 0, max: 100, caution_lo: 25, danger_lo: 12, dp: 0 },
-        { id: 'sg',      label: 'SG Level',      raw: function (s) { return s.instruments.sg_level; }, units: '%', min: 0, max: 100, caution_lo: 30, danger_lo: 12, dp: 0 },
-        { id: 'subcool', label: 'Subcool',       raw: function (s) { return s.instruments.subcooling_margin; }, dim: 'tempdiff', min: -28, max: 83, caution_lo: 11, danger_lo: 0, dp: 0 },
+        { id: 'press',   label: 'Primary Pressure', raw: function (s) { return s.instruments.primary_pressure; }, dim: 'pressure', min: 0, max: 20.7, caution: 16.2, danger: 16.44, dp: 0 },
+        { id: 'tavg',    label: 'Avg Coolant Temp (Tavg)', raw: function (s) { return s.instruments.tavg; }, dim: 'temp', min: 250, max: 343, caution: 312, danger: 335, dp: 0 },
+        { id: 'pzr',     label: 'Pressurizer Level (PZR)', raw: function (s) { return s.instruments.pzr_level; }, units: '%', min: 0, max: 100, caution_lo: 25, danger_lo: 12, dp: 0 },
+        { id: 'sg',      label: 'Steam Generator Level (SG)', raw: function (s) { return s.instruments.sg_level; }, units: '%', min: 0, max: 100, caution_lo: 30, danger_lo: 12, dp: 0 },
+        { id: 'subcool', label: 'Subcooling Margin', raw: function (s) { return s.instruments.subcooling_margin; }, dim: 'tempdiff', min: -28, max: 83, caution_lo: 11, danger_lo: 0, dp: 0 },
       ],
       series: [
         { id: 'power',    label: 'Power %',  c: '#6a90b0', get: function (i) { return i.power_range; }, range: [0, 120], dHi: 118, fmt: function (v) { return v.toFixed(0) + '%'; } },
@@ -116,32 +118,34 @@
         ] },
         { title: 'Primary & PZR', rows: [
           { k: 'Pressure', inst: function (s) { return dispP(s.instruments.primary_pressure); }, truth: function (s) { return dispP(s.true_state.pressure_mpa); } },
-          { k: 'Tavg', inst: function (s) { return dispT(s.instruments.tavg); }, truth: function (s) { return dispT(s.true_state.tavg_c); } },
-          { k: 'T-hot / T-cold', inst: function (s) { return dispT(s.instruments.thot) + ' / ' + dispT(s.instruments.tcold); } },
-          { k: 'PZR Level', inst: function (s) { return s.instruments.pzr_level.toFixed(0) + ' %'; }, truth: function (s) { return s.true_state.pzr_level_pct.toFixed(0) + ' %'; } },
+          { k: 'Avg Coolant Temp (Tavg)', inst: function (s) { return dispT(s.instruments.tavg); }, truth: function (s) { return dispT(s.true_state.tavg_c); } },
+          { k: 'Hot-Leg / Cold-Leg Temp', inst: function (s) { return dispT(s.instruments.thot) + ' / ' + dispT(s.instruments.tcold); } },
+          { k: 'Pressurizer Level (PZR)', inst: function (s) { return s.instruments.pzr_level.toFixed(0) + ' %'; }, truth: function (s) { return s.true_state.pzr_level_pct.toFixed(0) + ' %'; } },
           { k: 'Subcooling', inst: function (s) { return dispTd(s.instruments.subcooling_margin); }, truth: function (s) { return dispTd(s.true_state.subcooling_c); } },
-          { k: 'PORV', inst: function (s) { return bool(s.instruments.porv_indicator === 'open', 'OPEN', 'closed'); }, truth: function (s) { return bool(s.true_state.porv_open, 'OPEN', 'closed'); } },
-          { k: 'PORV Block Valve', inst: function (s) { return s.control_state.porv_block_open ? 'open' : 'isolated'; } },
+          { k: 'Relief Valve (PORV)', inst: function (s) { return bool(s.instruments.porv_indicator === 'open', 'OPEN', 'closed'); }, truth: function (s) { return bool(s.true_state.porv_open, 'OPEN', 'closed'); } },
+          { k: 'Relief Block Valve (PORV)', inst: function (s) { return s.control_state.porv_block_open ? 'open' : 'isolated'; } },
           { k: 'Boron', truth: function (s) { return s.true_state.boron_ppm.toFixed(0) + ' ppm'; } },
+          { k: 'Charging / Letdown (CVCS)', inst: function (s) { return (s.control_state.charging_flow_normalized * 100).toFixed(1) + ' / ' + ((s.control_state.letdown_flow_normalized || 0) * 100).toFixed(1) + ' %'; } },
+          { k: 'CVCS Mode', inst: function (s) { return (s.control_state.cvcs_auto ? 'AUTO make-up' : 'manual') + (s.control_state.charging_pump_running === false ? ' · pump OFF' : ''); } },
         ] },
         { title: 'Steam Generators', rows: [
-          { k: 'SG Level', inst: function (s) { return s.instruments.sg_level.toFixed(0) + ' %'; }, truth: function (s) { return s.true_state.sg_level_pct.toFixed(0) + ' %'; } },
+          { k: 'Steam Generator Level (SG)', inst: function (s) { return s.instruments.sg_level.toFixed(0) + ' %'; }, truth: function (s) { return s.true_state.sg_level_pct.toFixed(0) + ' %'; } },
           { k: 'Steam Flow', inst: function (s) { return pctOf(s.instruments.steam_flow); } },
           { k: 'Feedwater Flow', inst: function (s) { return pctOf(s.instruments.fw_flow); } },
-          { k: 'AFW', inst: function (s) { return bool(s.true_state.afw_active, 'on', 'off'); } },
+          { k: 'Aux Feedwater (AFW)', inst: function (s) { return bool(s.true_state.afw_active, 'on', 'off'); } },
         ] },
         { title: 'Turbine / Condenser', rows: [
           { k: 'Grid Match', inst: function (s) { return gridMatch(s).toFixed(1) + ' %'; } },
           { k: 'Output', inst: function (s) { return s.instruments.mwe_output.toFixed(0) + ' MW'; } },
           { k: 'Turbine RPM', inst: function (s) { return s.instruments.turbine_rpm.toFixed(0); } },
-          { k: 'Cond. Vacuum', inst: function (s) { return dispV(s.instruments.condenser_vacuum); } },
+          { k: 'Condenser Vacuum', inst: function (s) { return dispV(s.instruments.condenser_vacuum); } },
           { k: 'Steam Dump', inst: function (s) { return (s.control_state.steam_dump_auto ? 'auto ' : 'man ') + s.control_state.steam_dump_pct.toFixed(0) + ' %'; } },
           { k: 'Main Breaker', inst: function (s) { return bool(s.control_state.steam_demand_mwe > 1, 'closed', 'open'); } },
         ] },
         { title: 'Emergency & Inventory', rows: [
           { k: 'Core Inventory', truth: function (s) { return s.true_state.core_inventory_pct.toFixed(0) + ' %'; } },
-          { k: 'RCP', inst: function (s) { return bool(s.instruments.rcp_running, 'running', 'STOPPED'); } },
-          { k: 'HPI / ECCS', inst: function (s) { return bool(s.instruments.hpi_active, 'active', 'standby'); } },
+          { k: 'Reactor Coolant Pumps (RCP)', inst: function (s) { return bool(s.instruments.rcp_running, 'running', 'STOPPED'); } },
+          { k: 'High-Pressure Injection (HPI/ECCS)', inst: function (s) { return bool(s.instruments.hpi_active, 'active', 'standby'); } },
           { k: 'Station Blackout', inst: function (s) { return bool(s.instruments.station_blackout, 'YES', 'no'); } },
         ] },
       ],
@@ -152,8 +156,8 @@
           { l: 'Chemical Shim (Boron)', hint: 'Chemical Shim — adjusts dissolved boron (a neutron absorber) to trim reactivity slowly.', seg: [{ l: 'Borate', act: 'borate' }, { l: 'Off', act: 'boron-off', on: 1 }, { l: 'Dilute', act: 'dilute' }] },
           { l: 'PORV Block Valve', hint: 'PORV block (isolation) valve — closing it isolates a stuck-open PORV even when the indicator lies "closed". The key TMI recovery action.', seg: [{ l: 'Open', act: 'porv-block-open', on: 1 }, { l: 'Isolate', act: 'porv-block-close', warn: 1 }] },
           { l: 'Emergency Core Cooling (ECCS)', emergency: 1, hint: 'Emergency Core Cooling — high-pressure injection. AUTO actuates on low pressure.', seg: [{ l: 'Auto', act: 'eccs-auto', on: 1, run: 1 }, { l: 'On', act: 'eccs-on' }, { l: 'Off', act: 'eccs-off' }] },
-          { l: 'PZR Heaters', seg: [{ l: 'Auto', act: 'heat-auto', on: 1, run: 1 }, { l: 'On', act: 'heat-on' }, { l: 'Off', act: 'heat-off' }] },
-          { l: 'PZR Spray', seg: [{ l: 'Auto', act: 'spray-auto', on: 1, run: 1 }, { l: 'Open', act: 'spray-open' }] },
+          { l: 'Pressurizer Heaters (PZR)', hint: 'Pressurizer heaters raise primary pressure. Auto holds the setpoint; the slider is a manual power %.', num: { id: 'heatSet', min: 0, max: 100, value: 0, act: 'heat-set', setL: 'Set %' }, seg: [{ l: 'Auto', act: 'heat-auto', on: 1, run: 1 }] },
+          { l: 'Pressurizer Spray (PZR)', hint: 'Pressurizer spray lowers primary pressure. It draws from the cold leg after the Reactor Coolant Pump (RCP), so it needs RCP flow. Auto holds the setpoint; the slider is a manual valve %.', num: { id: 'spraySet', min: 0, max: 100, value: 0, act: 'spray-set', setL: 'Set %' }, seg: [{ l: 'Auto', act: 'spray-auto', on: 1, run: 1 }] },
         ] },
         { key: 'steam', label: 'Steam Generators', groups: [
           { l: 'Feed Pumps', seg: [{ l: 'Start', act: 'feed-start', on: 1, run: 1 }, { l: 'Stop', act: 'feed-stop' }] },
@@ -175,11 +179,11 @@
       defaultSeries: { power: true, void: true, steam_p: true, orm: true },
       gauges: [
         { id: 'power',   label: 'Reactor Power', lead: true, raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 110, danger: 120, dp: 1 },
-        { id: 'steam_p', label: 'Steam Press',   raw: function (s) { return s.instruments.steam_pressure; }, dim: 'pressure', min: 0, max: 10.3, caution: 7.6, danger: 8.0, dp: 1 },
-        { id: 'drum',    label: 'Drum Level',    raw: function (s) { return s.instruments.drum_level; }, units: '%', min: 0, max: 100, caution_lo: 20, danger_lo: 10, dp: 0 },
+        { id: 'steam_p', label: 'Steam Pressure',   raw: function (s) { return s.instruments.steam_pressure; }, dim: 'pressure', min: 0, max: 10.3, caution: 7.6, danger: 8.0, dp: 1 },
+        { id: 'drum',    label: 'Steam Drum Level',    raw: function (s) { return s.instruments.drum_level; }, units: '%', min: 0, max: 100, caution_lo: 20, danger_lo: 10, dp: 0 },
         { id: 'flow',    label: 'Channel Flow',  raw: function (s) { return s.instruments.channel_flow; }, units: '%', min: 0, max: 120, caution_lo: 50, dp: 0 },
-        { id: 'void',    label: 'Core Void',     raw: function (s) { return s.instruments.void_fraction; }, units: '%', mul: 100, min: 0, max: 1, caution: 0.7, danger: 0.8, dp: 0 },
-        { id: 'orm',     label: 'ORM (rods)',    raw: function (s) { return s.instruments.orm_display; }, units: '', min: 0, max: 80, caution_lo: 30, danger_lo: 15, dp: 0 },
+        { id: 'void',    label: 'Core Void Fraction', raw: function (s) { return s.instruments.void_fraction; }, units: '%', mul: 100, min: 0, max: 1, caution: 0.7, danger: 0.8, dp: 0 },
+        { id: 'orm',     label: 'Operating Reactivity Margin (ORM)', raw: function (s) { return s.instruments.orm_display; }, units: '', min: 0, max: 80, caution_lo: 30, danger_lo: 15, dp: 0 },
       ],
       series: [
         { id: 'power',   label: 'Power %',   c: '#6a90b0', get: function (i) { return i.power_range; }, range: [0, 120], dHi: 120, fmt: function (v) { return v.toFixed(0) + '%'; } },
@@ -199,7 +203,7 @@
           { k: 'Scrammed', inst: function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); } },
         ] },
         { title: 'Reactivity & ORM', rows: [
-          { k: 'ORM (indicated)', inst: function (s) { return s.instruments.orm_display.toFixed(1) + ' rods'; }, truth: function (s) { return s.true_state.orm_equiv_rods.toFixed(1) + ' rods'; } },
+          { k: 'Operating Reactivity Margin (ORM)', inst: function (s) { return s.instruments.orm_display.toFixed(1) + ' rods'; }, truth: function (s) { return s.true_state.orm_equiv_rods.toFixed(1) + ' rods'; } },
           { k: 'ORM Alarm', inst: function (s) { return bool(s.true_state.orm_alarm_active, 'YES', 'no'); } },
           { k: 'Void Fraction', inst: function (s) { return pctOf(s.instruments.void_fraction); }, truth: function (s) { return pctOf(s.true_state.void_fraction_avg); } },
           { k: 'Reactivity', truth: function (s) { return (s.true_state.reactivity_pcm >= 0 ? '+' : '') + s.true_state.reactivity_pcm.toFixed(0) + ' pcm'; } },
@@ -213,8 +217,8 @@
           { k: 'Channel Flow', inst: function (s) { return s.instruments.channel_flow.toFixed(0) + ' %'; }, truth: function (s) { return s.true_state.channel_flow_pct.toFixed(0) + ' %'; } },
         ] },
         { title: 'Protection & Status', rows: [
-          { k: 'EPS Bypassed', inst: function (s) { return bool(s.true_state.eps_bypassed, 'YES', 'no'); } },
-          { k: 'Energy Dep.', truth: function (s) { return s.true_state.energy_deposition_rate.toFixed(0) + ' cal/g/s'; } },
+          { k: 'Emergency Protection Bypassed (EPS)', inst: function (s) { return bool(s.true_state.eps_bypassed, 'YES', 'no'); } },
+          { k: 'Energy Deposition Rate', truth: function (s) { return s.true_state.energy_deposition_rate.toFixed(0) + ' cal/g/s'; } },
           { k: 'Destruction', truth: function (s) { return bool(s.true_state.melted, (s.true_state.destruction_cause || 'MELTED').toUpperCase().replace('_', ' '), 'none'); } },
         ] },
       ],
@@ -237,10 +241,10 @@
       defaultSeries: { power: true, level: true, vessel_p: true, recirc: true },
       gauges: [
         { id: 'power',    label: 'Reactor Power', lead: true, raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
-        { id: 'vessel_p', label: 'Vessel Press',  raw: function (s) { return s.instruments.vessel_pressure; }, dim: 'pressure', min: 0, max: 10.3, caution: 7.24, danger: 7.58, dp: 1 },
+        { id: 'vessel_p', label: 'Vessel Pressure',  raw: function (s) { return s.instruments.vessel_pressure; }, dim: 'pressure', min: 0, max: 10.3, caution: 7.24, danger: 7.58, dp: 1 },
         { id: 'level',    label: 'Vessel Level',  raw: function (s) { return s.instruments.vessel_level; }, units: '%', min: 0, max: 100, caution_lo: 30, danger_lo: 10, dp: 0 },
-        { id: 'recirc',   label: 'Recirc Flow',   raw: function (s) { return s.instruments.recirc_flow; }, units: '%', min: 0, max: 120, dp: 0 },
-        { id: 'void',     label: 'Core Void',     raw: function (s) { return s.instruments.core_void_fraction; }, units: '%', mul: 100, min: 0, max: 1, caution: 0.6, danger: 0.7, dp: 0 },
+        { id: 'recirc',   label: 'Recirculation Flow',   raw: function (s) { return s.instruments.recirc_flow; }, units: '%', min: 0, max: 120, dp: 0 },
+        { id: 'void',     label: 'Core Void Fraction',     raw: function (s) { return s.instruments.core_void_fraction; }, units: '%', mul: 100, min: 0, max: 1, caution: 0.6, danger: 0.7, dp: 0 },
         { id: 'steam',    label: 'Steam Flow',    raw: function (s) { return s.instruments.steam_flow; }, units: '%', mul: 100, min: 0, max: 1.2, dp: 0 },
       ],
       series: [
@@ -360,7 +364,8 @@
       });
       inner += '</div>';
       (g.extra || []).forEach(function (b) { inner += '<button class="btn" data-act="' + b.act + '"' + (b.title ? ' title="' + esc(b.title) + '"' : '') + '>' + b.l + '</button>'; });
-    } else if (g.num) {
+    }
+    if (g.num) {   // a control may have a slider AND buttons (e.g. a manual % + Auto)
       var n = g.num, cur = (ui.ctlVals[n.id] != null ? ui.ctlVals[n.id] : n.value);
       inner += '<input class="num-input mono" id="' + n.id + '" type="number" min="' + n.min + '" max="' + n.max + '" value="' + cur + '">' +
         '<button class="btn" data-act="' + n.act + '">' + (n.setL || 'Set') + '</button>';
@@ -520,12 +525,49 @@
 
   var lastInstrMsg = null;
   function renderInstructor(s) {
+    if (ui.follow) { renderFollow(s); return; }   // following a manual procedure
     var cur = $('instrCurrent');
     var msg = (s.instructor && s.instructor.message) ? s.instructor.message : null;
     if (msg) { cur.textContent = msg; cur.classList.remove('instr-standby'); }
     else { cur.textContent = 'Standing by…'; cur.classList.add('instr-standby'); }
     if (msg && msg !== lastInstrMsg) setFocus('instructor');
     lastInstrMsg = msg;
+  }
+
+  // ---- "Follow in Instructor": step through a manual procedure while operating ----
+  function curFollowProc() { return ui.follow ? ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ui.follow.id; })[0] : null; }
+  function accMet(ts, c) { var v = ts[c.p]; switch (c.op) { case '>': return v > c.v; case '<': return v < c.v; case '>=': return v >= c.v; case '<=': return v <= c.v; case '~': return Math.abs(v - c.v) <= (c.tol || 0); } return false; }
+  function followProcedure(id) {
+    var procs = (RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [];
+    if (!procs.filter(function (x) { return x.id === id; })[0]) return;
+    ui.follow = { id: id, idx: 0 };
+    closeManual(); setFocus('instructor'); renderFollow(latest);
+  }
+  function followNav(d) {
+    var pr = curFollowProc(); if (!pr) { ui.follow = null; return; }
+    if (d === 'stop') { ui.follow = null; renderInstructor(latest || { instructor: {} }); return; }
+    var n = pr.steps.length;
+    if (d === 'next') ui.follow.idx = Math.min(n - 1, ui.follow.idx + 1);
+    else if (d === 'prev') ui.follow.idx = Math.max(0, ui.follow.idx - 1);
+    else if (d === 'restart') ui.follow.idx = 0;
+    renderFollow(latest);
+  }
+  function renderFollow(s) {
+    var pr = curFollowProc(); if (!pr) { ui.follow = null; return; }
+    var n = pr.steps.length, st = pr.steps[ui.follow.idx] || {};
+    $('instrPrev').innerHTML = 'Following: <b>' + mesc(pr.title) + '</b> — step ' + (ui.follow.idx + 1) + ' of ' + n;
+    var meta = [];
+    if (st.control) meta.push('Control: <b>' + mesc(st.control) + '</b>');
+    if (st.target) meta.push('Target: ' + mesc(st.target));
+    var acc = '';
+    if (st.acc) {
+      var met = (s && s.true_state) ? accMet(s.true_state, st.acc) : false;
+      acc = '<div class="m-note">✓ when ' + mesc(st.acc.p) + ' ' + (OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) +
+        (met ? ' <span style="color:var(--running)">✓ met</span>' : ' <span class="muted">…not yet</span>') + '</div>';
+    }
+    var cur = $('instrCurrent'); cur.classList.remove('instr-standby');
+    cur.innerHTML = mesc(st.text) + (meta.length ? '<div class="m-note" style="margin-top:4px">' + meta.join(' &nbsp;·&nbsp; ') + '</div>' : '') + acc +
+      (st.note ? '<div class="m-note" style="color:var(--muted)">' + mesc(st.note) + '</div>' : '');
   }
   function setFocus(which) {
     var instr = $('instructorCard'), tools = $('toolsCard'); if (!instr || !tools) return;
@@ -640,12 +682,22 @@
     // PWR
     'rcp-run': function () { cmd({ action: 'clear_failure', failure_id: 'rcp_trip' }); },
     'rcp-stop': function () { cmd({ action: 'inject_failure', failure_id: 'rcp_trip', severity: 1 }); },
-    'borate': function () { cmd({ action: 'set_charging_flow', normalized: 0.15 }); cmd({ action: 'set_letdown_flow', normalized: 0 }); },
-    'dilute': function () { cmd({ action: 'set_letdown_flow', normalized: 0.15 }); cmd({ action: 'set_charging_flow', normalized: 0 }); },
-    'boron-off': function () { cmd({ action: 'set_charging_flow', normalized: 0 }); cmd({ action: 'set_letdown_flow', normalized: 0 }); },
+    // CVCS — boron chemistry (decoupled), charging pump, letdown valve, auto make-up
+    'borate': function () { cmd({ action: 'set_boron_adjust', rate: 2 }); },
+    'dilute': function () { cmd({ action: 'set_boron_adjust', rate: -2 }); },
+    'boron-hold': function () { cmd({ action: 'set_boron_adjust', rate: 0 }); },
+    'charge-pump-on': function () { cmd({ action: 'set_charging_pump', running: true }); },
+    'charge-pump-off': function () { cmd({ action: 'set_charging_pump', running: false }); },
+    'charge-set': function () { cmd({ action: 'set_charging_flow', normalized: inputVal('chargeSet') / 1000 }); },
+    'letdown-set': function () { cmd({ action: 'set_letdown_flow', normalized: inputVal('letdownSet') / 1000 }); },
+    'letdown-isolate': function () { cmd({ action: 'set_letdown_flow', normalized: 0 }); },
+    'cvcs-auto': function () { cmd({ action: 'set_cvcs_auto', active: true }); },
+    'cvcs-manual': function () { cmd({ action: 'set_cvcs_auto', active: false }); },
     'eccs-on': function () { ui.pdOp.eccs = true; cmd({ action: 'set_hpi', active: true }); }, 'eccs-off': function () { cmd({ action: 'set_hpi', active: false }); }, 'eccs-auto': function () {},
-    'heat-on': function () { cmd({ action: 'set_heater', power_pct: 100 }); }, 'heat-off': function () { cmd({ action: 'set_heater', power_pct: 0 }); }, 'heat-auto': function () {},
-    'spray-open': function () { cmd({ action: 'set_spray', open: true }); }, 'spray-auto': function () { cmd({ action: 'set_spray', open: false }); },
+    'heat-on': function () { cmd({ action: 'set_heater', power_pct: 100 }); }, 'heat-off': function () { cmd({ action: 'set_heater', power_pct: 0 }); },
+    'heat-auto': function () { cmd({ action: 'set_heater', auto: true }); }, 'heat-set': function () { cmd({ action: 'set_heater', power_pct: inputVal('heatSet') }); },
+    'spray-open': function () { cmd({ action: 'set_spray', open: true }); }, 'spray-auto': function () { cmd({ action: 'set_spray', auto: true }); },
+    'spray-set': function () { cmd({ action: 'set_spray', pct: inputVal('spraySet') }); },
     'feed-start': function () { cmd({ action: 'set_feedwater_flow', pct: 100 }); }, 'feed-stop': function () { cmd({ action: 'set_feedwater_flow', pct: 0 }); },
     'feed-set': function () { cmd({ action: 'set_feedwater_flow', pct: inputVal('feedSet') }); },
     'afw-start': function () { ui.pdOp.afw = true; cmd({ action: 'set_afw', active: true }); }, 'afw-stop': function () { cmd({ action: 'set_afw', active: false }); },
@@ -659,18 +711,24 @@
     'dump-auto': function () { cmd({ action: 'set_steam_dump', mode: 'auto' }); },
     'dump-open': function () { cmd({ action: 'set_steam_dump', mode: 'open' }); },
     'dump-close': function () { cmd({ action: 'set_steam_dump', mode: 'closed' }); },
+    'porv-open': function () { cmd({ action: 'open_porv' }); }, 'porv-close': function () { cmd({ action: 'close_porv' }); },
+    'dhr-on': function () { cmd({ action: 'set_dhr', active: true }); }, 'dhr-off': function () { cmd({ action: 'set_dhr', active: false }); },
     // RBMK
     'rbmk-flow-set': function () { cmd({ action: 'set_channel_flow', pct: inputVal('rbmkFlow') }); },
     'rbmk-feed-set': function () { cmd({ action: 'set_feedwater_flow', pct: inputVal('rbmkFeed') }); },
+    'rbmk-turbine-set': function () { cmd({ action: 'set_turbine_load', mwe: inputVal('rbmkMwe') }); },
     'eps-on': function () { cmd({ action: 'set_eps_bypass', active: true }); }, 'eps-off': function () { cmd({ action: 'set_eps_bypass', active: false }); },
+    'rbmk-eccs-on': function () { cmd({ action: 'set_eccs', active: true }); }, 'rbmk-eccs-off': function () { cmd({ action: 'set_eccs', active: false }); },
     // BWR
     'bwr-recirc-set': function () { cmd({ action: 'set_recirc_flow', pct: inputVal('bwrRecirc') }); },
     'rcic-on': function () { cmd({ action: 'set_rcic', active: true }); }, 'rcic-off': function () { cmd({ action: 'set_rcic', active: false }); },
+    'ic-on': function () { cmd({ action: 'set_ic', active: true }); }, 'ic-off': function () { cmd({ action: 'set_ic', active: false }); },
     'hpci-on': function () { cmd({ action: 'set_hpci', active: true }); }, 'hpci-off': function () { cmd({ action: 'set_hpci', active: false }); },
     'trigger-ads': function () { if (confirm('Actuate ADS — blow the vessel down to enable low-pressure injection?')) cmd({ action: 'trigger_ads' }); },
     'start-lpci': function () { cmd({ action: 'start_lpci' }); },
     'slc-initiate': function () { if (confirm('Initiate Standby Liquid Control (boron)? Shuts the reactor down even if the rods fail to insert.')) cmd({ action: 'initiate_slc' }); },
-    'start-lpcs': function () { cmd({ action: 'start_lpcs' }); },
+    'start-lpcs': function () { cmd({ action: 'start_lpcs' }); }, 'stop-lpcs': function () { cmd({ action: 'stop_lpcs' }); },
+    'slc-stop': function () { cmd({ action: 'stop_slc' }); },
     'srv-open': function () { cmd({ action: 'open_srv_manual' }); },
     'srv-close': function () { cmd({ action: 'close_srv_manual' }); },
     'bwr-turbine-set': function () { cmd({ action: 'set_turbine_load', mwe: inputVal('bwrMwe') }); },
@@ -770,6 +828,14 @@
     // All-view overlay seg
     $('viewArea').addEventListener('click', function (e) { var b = e.target.closest('#pdOverlaySeg [data-overlay]'); if (!b) return; ui.overlay = b.getAttribute('data-overlay'); syncSeg('[data-overlay]', ui.overlay, 'overlay'); if (latest) renderPdAll(latest); });
     setupPdScram();
+    // --- Operator's Manual overlay ---
+    $('manualBtn').addEventListener('click', openManual);
+    $('manualClose').addEventListener('click', closeManual);
+    $('manualOverlay').addEventListener('click', function (e) { if (e.target === $('manualOverlay')) closeManual(); });
+    $('manualNav').addEventListener('click', function (e) { var b = e.target.closest('[data-msec]'); if (!b) return; ui.manualSection = b.getAttribute('data-msec'); renderManual(); });
+    $('manualContent').addEventListener('click', function (e) { var b = e.target.closest('[data-follow]'); if (!b) return; followProcedure(b.getAttribute('data-follow')); });
+    document.querySelector('.instr-nav').addEventListener('click', function (e) { var b = e.target.closest('[data-fnav]'); if (!b) return; followNav(b.getAttribute('data-fnav')); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('manualOverlay').hidden) closeManual(); });
     document.body.addEventListener('mouseover', function (e) {
       var el = e.target.closest('[data-scanner-hint]'); if (!el) return;
       var hint = el.getAttribute('data-scanner-hint'), dash = hint.indexOf(' — ');
@@ -777,6 +843,201 @@
     });
   }
   function syncSeg(sel, val, attr) { document.querySelectorAll(sel).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-' + attr) === val); }); }
+
+  // ============================================================ Operator's Manual (Phase 3)
+  // Renders RD.MANUAL (generated reference + normal values) and RD.MANUAL_PROCEDURES
+  // (authored + engine-validated) for the active plant, register-aware.
+  var MANUAL_SECTIONS = [
+    { id: 'overview', label: 'Overview' }, { id: 'procedures', label: 'Procedures' },
+    { id: 'accidents', label: 'Accidents' }, { id: 'alarms', label: 'Alarm Response' },
+    { id: 'controls', label: 'Controls' }, { id: 'indications', label: 'Indications' },
+    { id: 'setpoints', label: 'Setpoints & Limits' }, { id: 'normal', label: 'Normal Values' },
+    { id: 'failures', label: 'Failures' }, { id: 'glossary', label: 'Glossary' },
+  ];
+  function mesc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function manualProfile() { return (RD.MANUAL || {})[ui.engineKey]; }
+  var OPSYM = { '>': '≥', '<': '≤', '>=': '≥', '<=': '≤', '~': '≈' };   // acceptance display
+  // Dimension of a dimensioned instrument-id / true_state field so the manual
+  // converts to the active unit setting (US/SI) like the board. Everything else
+  // (%, normalized, rods, MWe, RPM, cal/g/s) is unit-neutral and shown as-is.
+  var MDIM = {
+    primary_pressure: 'pressure', steam_pressure: 'pressure', vessel_pressure: 'pressure',
+    tavg: 'temp', thot: 'temp', tcold: 'temp', fuel_temp: 'temp', condenser_vacuum: 'vacuum', subcooling_margin: 'tempdiff',
+    pressure_mpa: 'pressure', steam_pressure_mpa: 'pressure', vessel_pressure_mpa: 'pressure',
+    tavg_c: 'temp', thot_c: 'temp', tcold_c: 'temp', fuel_temp_c: 'temp', graphite_temp_avg_c: 'temp',
+    condenser_vacuum_kpa: 'vacuum', subcooling_c: 'tempdiff',
+  };
+  function mval(key, val, dp) {   // → { v:displayString, u:unitLabel } converted to active units
+    var dim = MDIM[key];
+    if (dim == null || typeof val !== 'number') return { v: String(val), u: '' };
+    return { v: conv(val, dim).toFixed(dp == null ? 1 : dp), u: unit(dim) };
+  }
+
+  function openManual() { if (!manualProfile()) { alert('Manual data not loaded.'); return; } $('manualOverlay').hidden = false; renderManual(); }
+  function closeManual() { $('manualOverlay').hidden = true; }
+
+  function renderManual() {
+    var p = manualProfile(); if (!p) return;
+    $('manualTitle').textContent = "Operator’s Manual — " + p.name;
+    $('manualNav').innerHTML = MANUAL_SECTIONS.map(function (s) {
+      return '<button data-msec="' + s.id + '" class="' + (ui.manualSection === s.id ? 'on' : '') + '">' + s.label + '</button>';
+    }).join('');
+    var fn = { overview: mOverview, procedures: mProcedures, accidents: mAccidents, alarms: mAlarms,
+      controls: mControls, indications: mIndications, setpoints: mSetpoints, normal: mNormal, failures: mFailures,
+      glossary: mGlossary }[ui.manualSection] || mOverview;
+    $('manualContent').innerHTML = fn(p);
+    $('manualContent').scrollTop = 0;
+  }
+
+  // shared procedure step + card renderers (single integrated voice, rich steps)
+  function mStep(st, i) {
+    var h = '<div class="m-step"><div class="n">' + (i + 1) + '</div><div>';
+    h += '<div class="m-act">' + mesc(st.text) + '</div>';
+    var meta = [];
+    if (st.control) meta.push('<span class="m-pill">' + mesc(st.control) + '</span>');
+    if (st.target) meta.push('<span class="m-target">Target: ' + mesc(st.target) + '</span>');
+    if (st.acc) meta.push('<span class="m-acc">✓ when ' + mesc(st.acc.p) + ' ' + (OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) + '</span>');
+    if (st.saw) meta.push('<span class="m-acc">✓ observe ' + mesc(st.saw.p) + ' ' + (OPSYM[st.saw.op] || st.saw.op) + ' ' + mesc(st.saw.v) + '</span>');
+    if (meta.length) h += '<div class="m-meta">' + meta.join(' ') + '</div>';
+    if (st.note) h += '<div class="m-note">' + mesc(st.note) + '</div>';
+    return h + '</div></div>';
+  }
+  function mProcCard(pr) {
+    var h = '<div class="m-card"><div class="m-h">' + mesc(pr.title) + ' <span class="m-pill">' + mesc(pr.category) + '</span>' +
+      '<button class="btn m-follow" data-follow="' + mesc(pr.id) + '">▶ Follow in Instructor</button></div>';
+    h += '<div class="m-sub">Start from: ' + mesc(pr.from) + '</div>';
+    if (pr.purpose) h += '<p style="margin:8px 0">' + mesc(pr.purpose) + '</p>';
+    if (pr.prereq && pr.prereq.length) h += '<div class="m-sub2">Prerequisites</div><ul class="m-ul">' + pr.prereq.map(function (x) { return '<li>' + mesc(x) + '</li>'; }).join('') + '</ul>';
+    if (pr.cautions && pr.cautions.length) h += '<div class="m-caution">' + pr.cautions.map(function (c) { return '⚠ ' + mesc(c); }).join('<br>') + '</div>';
+    (pr.steps || []).forEach(function (st, i) { h += mStep(st, i); });
+    if (pr.outcome) h += '<div class="m-outcome">✔ Outcome: ' + mesc(pr.outcome) + '</div>';
+    return h + '</div>';
+  }
+
+  function mOverview(p) {
+    var h = '<h2>' + mesc(p.name) + '</h2>';
+    h += '<p class="one-liner">' + mesc(p.one_liner) + '</p>';
+    h += '<p>' + mesc(p.overview) + '</p>';
+    h += '<p class="muted">Units: ' + mesc(p.authentic_units) + '</p>';
+    h += '<h3>Operating states</h3><table class="m-table"><tr><th>State</th><th>Description</th></tr>';
+    for (var k in p.normal_values) h += '<tr><td class="mono">' + mesc(k) + '</td><td>' + mesc(p.normal_values[k].label) + '</td></tr>';
+    return h + '</table>';
+  }
+
+  function mProcedures(p) {
+    var procs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.category !== 'accident'; });
+    if (!procs.length) return '<p class="muted">No procedures authored for this plant yet.</p>';
+    var order = ['startup', 'power', 'control', 'shutdown', 'emergency'];
+    procs = procs.slice().sort(function (a, b) { return order.indexOf(a.category) - order.indexOf(b.category); });
+    var h = '<h2>Procedures</h2>';
+    procs.forEach(function (pr) { h += mProcCard(pr); });
+    return h;
+  }
+
+  function mAccidents(p) {
+    var accs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.category === 'accident'; });
+    if (!accs.length) return '<p class="muted">No accident walkthrough for this plant.</p>';
+    var h = '<h2>Accident Walkthroughs</h2>';
+    accs.forEach(function (pr) { h += mProcCard(pr); });
+    return h;
+  }
+
+  function mAlarms(p) {
+    var ar = p.alarm_response || [];
+    if (!ar.length) return '<p class="muted">No alarms for this plant.</p>';
+    var order = ['critical', 'warning', 'caution', 'status'], groups = {};
+    ar.forEach(function (a) { (groups[a.priority] = groups[a.priority] || []).push(a); });
+    var h = '<h2>Alarm Response</h2><p class="muted">What each annunciator means and what to do. Highest priority first.</p>';
+    order.forEach(function (pr) {
+      if (!groups[pr]) return;
+      h += '<h3><span class="m-pill m-prio-' + pr + '">' + pr + '</span></h3>';
+      h += '<table class="m-table"><tr><th>Alarm</th><th>What it means</th><th>Response</th></tr>';
+      groups[pr].forEach(function (a) {
+        h += '<tr><td>' + mesc(a.name) + '</td><td>' + mesc(a.means || '—') + '</td><td>' + mesc(a.response) + '</td></tr>';
+      });
+      h += '</table>';
+    });
+    return h;
+  }
+
+  function mControls(p) {
+    var groups = {}; p.controls.forEach(function (c) { (groups[c.group] = groups[c.group] || []).push(c); });
+    var h = '<h2>Controls</h2><p class="muted">The on-screen controls for this plant and what each does.</p>';
+    Object.keys(groups).forEach(function (g) {
+      h += '<h3>' + mesc(g) + '</h3><table class="m-table"><tr><th>Control</th><th>What it does</th></tr>';
+      groups[g].forEach(function (c) {
+        h += '<tr><td><b>' + mesc(c.control) + '</b></td><td>' + mesc(c.uses) + '</td></tr>';
+      });
+      h += '</table>';
+    });
+    return h;
+  }
+
+  function mIndications(p) {
+    var h = '<h2>Indications</h2><table class="m-table"><tr><th>Reading</th><th>What it shows</th><th>Unit</th><th>Range</th><th>Linked alarms</th></tr>';
+    p.indications.forEach(function (ind) {
+      var dim = MDIM[ind.id], unitStr = dim ? unit(dim) : (ind.unit || '');
+      var rng = '—';
+      if (ind.range) rng = dim ? (conv(ind.range[0], dim).toFixed(0) + '–' + conv(ind.range[1], dim).toFixed(0)) : (ind.range[0] + '–' + ind.range[1]);
+      h += '<tr><td><b>' + mesc(ind.name) + '</b></td><td>' + mesc(ind.measures) + (ind.derived ? ' <span class="muted">(derived)</span>' : '') + '</td><td>' + mesc(unitStr) + '</td><td class="mono">' + mesc(rng) + '</td><td class="muted">' + mesc((ind.alarms || []).join(', ')) + '</td></tr>';
+    });
+    return h + '</table>';
+  }
+
+  function mSetpoints(p) {
+    var s = p.setpoints, h = '<h2>Setpoints &amp; Limits</h2>';
+    h += '<h3>Reactor-protection trips (scram)</h3><table class="m-table"><tr><th>Instrument</th><th>Dir</th><th>Setpoint</th><th>Action</th></tr>';
+    s.trips.forEach(function (t) { var sp = mval(t.instrument, t.setpoint, 1); h += '<tr><td class="mono">' + mesc(t.instrument) + '</td><td>' + mesc(t.direction) + '</td><td class="mono">' + mesc(sp.v + (sp.u ? ' ' + sp.u : '')) + '</td><td>' + mesc(t.action) + '</td></tr>'; });
+    h += '</table>';
+    if (s.actuations && s.actuations.length) {
+      h += '<h3>Engineered-safety actuations</h3><table class="m-table"><tr><th>Instrument</th><th>Dir</th><th>Setpoint</th><th>Action</th><th>Condition</th></tr>';
+      s.actuations.forEach(function (a) { h += '<tr><td class="mono">' + mesc(a.instrument) + '</td><td>' + mesc(a.direction) + '</td><td class="mono">' + mesc(a.setpoint) + '</td><td>' + mesc(a.action) + '</td><td class="muted">' + mesc(a.condition || '') + '</td></tr>'; });
+      h += '</table>';
+    }
+    h += '<h3>Alarms</h3><table class="m-table"><tr><th>Alarm</th><th>Instrument</th><th>Setpoint</th><th>Priority</th></tr>';
+    s.alarms.forEach(function (a) { var sp = a.setpoint == null ? { v: '—', u: '' } : mval(a.instrument, a.setpoint, 1); h += '<tr><td>' + mesc(a.name) + '</td><td class="mono">' + mesc(a.instrument) + '</td><td class="mono">' + mesc(sp.v + (sp.u ? ' ' + sp.u : '')) + '</td><td><span class="m-pill m-prio-' + mesc(a.priority) + '">' + mesc(a.priority) + '</span></td></tr>'; });
+    h += '</table>';
+    h += '<h3>Safety limits</h3><table class="m-table"><tr><th>Limit</th><th>Value</th><th>Note</th></tr>';
+    (p.safety_limits || []).forEach(function (l) { h += '<tr><td>' + mesc(l.name) + '</td><td class="mono">' + mesc(l.v) + ' ' + mesc(l.u) + '</td><td class="muted">' + mesc(l.note) + '</td></tr>'; });
+    return h + '</table>';
+  }
+
+  function mGlossary(p) {
+    var h = '<h2>Glossary</h2><table class="m-table"><tr><th>Term</th><th>Meaning</th></tr>';
+    (p.glossary || []).forEach(function (g) { h += '<tr><td><b>' + mesc(g.acronym) + '</b></td><td>' + mesc(g.term) + '</td></tr>'; });
+    return h + '</table>';
+  }
+
+  function mNormal(p) {
+    var h = '<h2>Normal Values</h2><p class="muted">Representative readings captured from the engine at each state (operating states settled to steady; startup / accident states near their initial condition).</p>';
+    for (var k in p.normal_values) {
+      var nv = p.normal_values[k], ts = nv.true_state;
+      h += '<h3>' + mesc(k) + ' <span style="text-transform:none;letter-spacing:0;color:var(--muted)">— ' + mesc(nv.label) + '</span></h3>';
+      h += '<table class="m-table"><tr><th>Parameter (true state)</th><th>Value</th></tr>';
+      Object.keys(ts).forEach(function (f) {
+        if (typeof ts[f] === 'boolean') { h += '<tr><td class="mono">' + mesc(f) + '</td><td class="mono">' + mesc(ts[f]) + '</td></tr>'; return; }
+        if (typeof ts[f] !== 'number') return;
+        var m = mval(f, ts[f], 1);
+        h += '<tr><td class="mono">' + mesc(f) + '</td><td class="mono">' + mesc(m.v + (m.u ? ' ' + m.u : '')) + '</td></tr>';
+      });
+      h += '</table>';
+    }
+    return h;
+  }
+
+  function mFailures(p) {
+    var groups = {}; p.failures.forEach(function (f) { (groups[f.category || 'other'] = groups[f.category || 'other'] || []).push(f); });
+    var h = '<h2>Failures</h2><p class="muted">Injectable faults for abnormal / emergency training (Failures tab). Grouped by system category.</p>';
+    Object.keys(groups).forEach(function (g) {
+      h += '<h3>' + mesc(g) + '</h3><table class="m-table"><tr><th>Failure</th><th>id</th><th>Severity range</th></tr>';
+      groups[g].forEach(function (f) {
+        var sev = f.severity_meta ? (f.severity_meta.label + ': ' + f.severity_meta.min + '–' + f.severity_meta.max + ' ' + (f.severity_meta.unit || '')) : '—';
+        h += '<tr><td>' + mesc(f.display) + '</td><td class="mono">' + mesc(f.id) + '</td><td class="muted">' + mesc(sev) + '</td></tr>';
+      });
+      h += '</table>';
+    });
+    return h;
+  }
 
   // Plant-display SCRAM: 2-click arm (CONFIRM within 3 s), then fire.
   function setupPdScram() {
@@ -807,6 +1068,7 @@
     buildGauges(); buildGraphParams(); buildInitStates(); buildFailures();
     buildPlantDisplay();
     latest = service.assembleSnapshot(); render(latest);
+    if (!$('manualOverlay').hidden) renderManual();   // keep the manual in sync on plant switch
   }
 
   // After load: derive the plant from the restored snapshot, set the selector, rebuild.
@@ -1254,11 +1516,16 @@
           ] },
         ],
         controls: [ROD_DRIVE('control_rods'), ROD_SPEED(),
-          { l: 'Boron', seg: [{ l: 'Borate', act: 'borate' }, { l: 'Off', act: 'boron-off', on: 1 }, { l: 'Dilute', act: 'dilute' }] },
-          { l: 'PZR Heaters', seg: [{ l: 'Auto', act: 'heat-auto', on: 1, run: 1 }, { l: 'Off', act: 'heat-off' }] },
-          { l: 'PZR Spray', seg: [{ l: 'Auto', act: 'spray-auto', on: 1, run: 1 }, { l: 'On', act: 'spray-open' }] },
-          { l: 'RCP', seg: [{ l: 'Run', act: 'rcp-run', on: 1, run: 1 }, { l: 'Stop', act: 'rcp-stop' }] },
-          { l: 'PORV Block', seg: [{ l: 'Open', act: 'porv-block-open', on: 1 }, { l: 'Isolate', act: 'porv-block-close', warn: 1 }] }],
+          { l: 'Boron (Reactivity) — CVCS', hint: 'Chemical & Volume Control System boron: Borate adds boron (lowers power), Dilute removes it (raises power). Needs the charging pump running.', seg: [{ l: 'Borate', act: 'borate' }, { l: 'Hold', act: 'boron-hold', on: 1 }, { l: 'Dilute', act: 'dilute' }] },
+          { l: 'Charging Pump (CVCS)', hint: 'Charging pump — injects coolant into the cold leg (raises inventory; carries boron). Slider = manual %.', num: { id: 'chargeSet', min: 0, max: 100, value: 0, act: 'charge-set', setL: 'Set %' }, seg: [{ l: 'On', act: 'charge-pump-on', on: 1, run: 1 }, { l: 'Off', act: 'charge-pump-off' }] },
+          { l: 'Letdown Valve (CVCS)', hint: 'Letdown valve — removes coolant from the Reactor Coolant System (lowers inventory). Slider = manual %.', num: { id: 'letdownSet', min: 0, max: 100, value: 0, act: 'letdown-set', setL: 'Set %' }, seg: [{ l: 'Isolate', act: 'letdown-isolate', on: 1 }] },
+          { l: 'CVCS Inventory Control', hint: 'Auto makes up identified leakage by modulating charging to hold inventory; Manual = you set charging/letdown.', seg: [{ l: 'Auto', act: 'cvcs-auto', run: 1 }, { l: 'Manual', act: 'cvcs-manual', on: 1 }] },
+          { l: 'Pressurizer Heaters (PZR)', hint: 'Pressurizer heaters raise primary pressure. Auto holds the setpoint; the slider is a manual power %.', num: { id: 'heatSet', min: 0, max: 100, value: 0, act: 'heat-set', setL: 'Set %' }, seg: [{ l: 'Auto', act: 'heat-auto', on: 1, run: 1 }] },
+          { l: 'Pressurizer Spray (PZR)', hint: 'Pressurizer spray lowers primary pressure. It draws from the cold leg after the Reactor Coolant Pump (RCP), so it needs RCP flow. Auto holds the setpoint; the slider is a manual valve %.', num: { id: 'spraySet', min: 0, max: 100, value: 0, act: 'spray-set', setL: 'Set %' }, seg: [{ l: 'Auto', act: 'spray-auto', on: 1, run: 1 }] },
+          { l: 'Reactor Coolant Pumps (RCP)', seg: [{ l: 'Run', act: 'rcp-run', on: 1, run: 1 }, { l: 'Stop', act: 'rcp-stop' }] },
+          { l: 'Relief Valve (PORV)', hint: 'Manually open/close the Power-Operated Relief Valve to drop primary pressure. Its indicator shows the COMMANDED position, which can differ from reality (the TMI trap).', seg: [{ l: 'Open', act: 'porv-open', warn: 1 }, { l: 'Close', act: 'porv-close', on: 1 }] },
+          { l: 'PORV Block Valve', seg: [{ l: 'Open', act: 'porv-block-open', on: 1 }, { l: 'Isolate', act: 'porv-block-close', warn: 1 }] },
+          { l: 'Decay-Heat Removal (DHR)', emergency: 1, hint: 'Decay-Heat / Residual-Heat Removal — removes residual heat after shutdown, once cool and depressurized.', seg: [{ l: 'On', act: 'dhr-on', run: 1 }, { l: 'Off', act: 'dhr-off', on: 1 }] }],
         cross: [R('SG Level', function (s) { return s.instruments.sg_level.toFixed(0) + ' %'; }), R('Feedwater', function (s) { return pctOf(s.instruments.fw_flow); }),
           R('AFW', function (s) { return bool(s.true_state.afw_active, 'on', 'off'); }), R('Output', function (s) { return s.instruments.mwe_output.toFixed(0) + ' MW'; })],
       },
@@ -1290,13 +1557,14 @@
 
     rbmk: {
       slots: [
-        { id: 'mcp', label: 'MCP', group: 'nuclear' }, { id: 'eps', label: 'EPS', group: 'nuclear' },
+        { id: 'mcp', label: 'MCP', group: 'nuclear' }, { id: 'eccs', label: 'ECCS', group: 'nuclear' }, { id: 'eps', label: 'EPS', group: 'nuclear' },
         { id: 'afw', label: 'Feed', group: 'secondary' }, { id: 'station_pwr', label: 'Stn Pwr', group: 'power' },
       ],
       state: function (s) {
         var f = s.control_state.channel_flow_setpoint_pct != null ? s.true_state.channel_flow_pct : 100;
         return {
           mcp: f > 50 ? 'running' : (f > 10 ? 'caution' : 'alarm'),
+          eccs: s.true_state.eccs_active ? 'running' : 'normal',
           eps: s.true_state.eps_bypassed ? 'caution' : 'normal',
           afw: hasFail(s, 'loss_of_feedwater') ? 'alarm' : (s.control_state.feedwater_flow_pct > 5 ? 'running' : 'caution'),
           station_pwr: 'normal',
@@ -1317,10 +1585,12 @@
           ] },
           { title: 'Coolant Channels', rows: [
             R('Channel Flow', function (s) { return s.instruments.channel_flow.toFixed(0) + ' %'; }), R('EPS Bypassed', function (s) { return bool(s.true_state.eps_bypassed, 'YES', 'no'); }),
+            R('Emergency Core Cooling', function (s) { return bool(s.true_state.eccs_active, 'INJECTING', 'standby'); }),
           ] },
         ],
         controls: [ROD_DRIVE('control_rods'), ROD_SPEED(),
           { l: 'MCP / Channel Flow', num: { id: 'rbmkFlow', min: 0, max: 120, value: 100, act: 'rbmk-flow-set', setL: 'Set %' } },
+          { l: 'Emergency Core Cooling (ECCS)', emergency: 1, hint: 'Injects to the fuel channels on a pressure-tube rupture / loss of coolant — makes up steam-drum level and holds a cooling-flow floor to arrest dryout.', seg: [{ l: 'On', act: 'rbmk-eccs-on', run: 1 }, { l: 'Off', act: 'rbmk-eccs-off', on: 1 }] },
           { l: 'EPS', emergency: 1, seg: [{ l: 'Active', act: 'eps-off', on: 1, run: 1 }, { l: 'Bypass', act: 'eps-on', warn: 1 }] }],
         cross: [R('Drum Level', function (s) { return s.instruments.drum_level.toFixed(0) + ' %'; }), R('Steam Press', function (s) { return dispP(s.instruments.steam_pressure); }), R('Turbine', function (s) { return pctOf(s.instruments.power_range / 100); })],
       },
@@ -1329,16 +1599,22 @@
           { title: 'Steam Drum', rows: [
             R('Steam Pressure', function (s) { return dispP(s.instruments.steam_pressure); }), R('Drum Level', function (s) { return s.instruments.drum_level.toFixed(0) + ' %'; }),
           ] },
-          { title: 'Turbine', rows: [ R('Channel Flow', function (s) { return s.instruments.channel_flow.toFixed(0) + ' %'; }) ] },
+          { title: 'Turbine / Condenser', rows: [
+            R('Electrical Output', function (s) { return s.instruments.mwe_output.toFixed(0) + ' MW'; }), R('Turbine RPM', function (s) { return s.instruments.turbine_rpm.toFixed(0); }),
+            R('Cond. Vacuum', function (s) { return dispV(s.instruments.condenser_vacuum); }), R('Steam Dump', function (s) { return (s.control_state.steam_dump_auto ? 'auto ' : 'man ') + (s.control_state.steam_dump_pct || 0).toFixed(0) + ' %'; }),
+          ] },
         ],
-        controls: [{ l: 'Feedwater', num: { id: 'rbmkFeed', min: 0, max: 100, value: 100, act: 'rbmk-feed-set', setL: 'Set %' } }],
+        controls: [
+          { l: 'Feedwater', num: { id: 'rbmkFeed', min: 0, max: 100, value: 100, act: 'rbmk-feed-set', setL: 'Set %' } },
+          { l: 'Turbine Load', num: { id: 'rbmkMwe', min: 0, max: 1000, value: 1000, act: 'rbmk-turbine-set', setL: 'Set MW' } },
+          { l: 'Steam Dump', hint: 'Turbine bypass to the condenser — holds steam-drum pressure on a load rejection.', seg: [{ l: 'Auto', act: 'dump-auto', on: 1, run: 1 }, { l: 'Open', act: 'dump-open' }, { l: 'Closed', act: 'dump-close' }] }],
         cross: [R('Core Power', function (s) { return s.instruments.power_range.toFixed(0) + ' %'; }), R('Coolant Flow', function (s) { return s.instruments.channel_flow.toFixed(0) + ' %'; }), R('Void', function (s) { return pctOf(s.instruments.void_fraction); })],
       },
     },
 
     bwr: {
       slots: [
-        { id: 'recirc', label: 'Recirc', group: 'nuclear' }, { id: 'rcic', label: 'RCIC', group: 'nuclear' }, { id: 'hpci', label: 'HPCI', group: 'nuclear' },
+        { id: 'recirc', label: 'Recirc', group: 'nuclear' }, { id: 'rcic', label: 'RCIC', group: 'nuclear' }, { id: 'ic', label: 'IC', group: 'nuclear' }, { id: 'hpci', label: 'HPCI', group: 'nuclear' },
         { id: 'ads', label: 'ADS', group: 'nuclear' }, { id: 'lpci', label: 'LPCI', group: 'nuclear' }, { id: 'slc', label: 'SLC', group: 'nuclear' },
         { id: 'msiv', label: 'MSIV', group: 'secondary' }, { id: 'station_pwr', label: 'Stn Pwr', group: 'power' },
       ],
@@ -1346,6 +1622,7 @@
         return {
           recirc: s.true_state.recirc_flow_pct > 50 ? 'running' : (s.true_state.recirc_flow_pct > 5 ? 'caution' : 'alarm'),
           rcic: (s.true_state.rcic_running) ? 'running' : (hasFail(s, 'rcic_failure') ? 'alarm' : 'normal'),
+          ic: (s.true_state.ic_condensing) ? 'running' : (hasFail(s, 'ic_failure') ? 'alarm' : 'normal'),
           hpci: (s.true_state.hpci_running) ? 'running' : (hasFail(s, 'hpci_failure') ? 'alarm' : 'normal'),
           ads: s.true_state.ads_open ? 'running' : 'normal',
           lpci: s.true_state.lpci_running ? 'running' : 'normal',
@@ -1374,12 +1651,14 @@
       },
       secondary: {
         sections: [
-          { title: 'Turbine / Feedwater', rows: [
+          { title: 'Turbine / Condenser / Feedwater', rows: [
             R('Steam Flow', function (s) { return pctOf(s.instruments.steam_flow); }), R('Feedwater Flow', function (s) { return pctOf(s.instruments.fw_flow); }),
             R('Vessel Pressure', function (s) { return dispP(s.instruments.vessel_pressure); }),
+            R('Electrical Output', function (s) { return s.instruments.mwe_output.toFixed(0) + ' MW'; }), R('Turbine RPM', function (s) { return s.instruments.turbine_rpm.toFixed(0); }),
+            R('Cond. Vacuum', function (s) { return dispV(s.instruments.condenser_vacuum); }),
           ] },
           { title: 'Safety Systems', rows: [
-            R('RCIC', function (s) { return bool(s.true_state.rcic_running, 'running', 'off'); }), R('HPCI', function (s) { return bool(s.true_state.hpci_running, 'running', 'off'); }),
+            R('RCIC', function (s) { return bool(s.true_state.rcic_running, 'running', 'off'); }), R('Isolation Condenser', function (s) { return bool(s.true_state.ic_condensing, 'condensing', s.true_state.ic_active ? 'on' : 'off'); }), R('HPCI', function (s) { return bool(s.true_state.hpci_running, 'running', 'off'); }),
             R('ADS', function (s) { return bool(s.true_state.ads_open, 'OPEN', 'closed'); }), R('LPCI', function (s) { return bool(s.true_state.lpci_running, 'running', 'off'); }),
             R('Core Spray', function (s) { return bool(s.true_state.lpcs_running, 'running', 'off'); }), R('SLC', function (s) { return bool(s.true_state.slc_active, 'active', 'standby'); }),
             R('Battery', function (s) { return s.true_state.battery_charge_pct.toFixed(0) + ' %'; }),
@@ -1387,12 +1666,14 @@
         ],
         controls: [
           { l: 'RCIC', emergency: 1, seg: [{ l: 'On', act: 'rcic-on', run: 1 }, { l: 'Off', act: 'rcic-off', on: 1 }] },
+          { l: 'Isolation Condenser (IC)', emergency: 1, hint: 'Passive heat sink — condenses reactor steam and returns condensate by gravity; no AC needed (DC-powered valves). Holds the core covered on decay heat. Fukushima Unit 1 relied on one.', seg: [{ l: 'On', act: 'ic-on', run: 1 }, { l: 'Off', act: 'ic-off', on: 1 }] },
           { l: 'HPCI', emergency: 1, seg: [{ l: 'On', act: 'hpci-on', run: 1 }, { l: 'Off', act: 'hpci-off', on: 1 }] },
           { l: 'ADS', emergency: 1, seg: [{ l: 'Trigger', act: 'trigger-ads', warn: 1 }] },
           { l: 'LPCI', emergency: 1, seg: [{ l: 'Start', act: 'start-lpci', run: 1 }] },
-          { l: 'Core Spray', emergency: 1, seg: [{ l: 'Start', act: 'start-lpcs', run: 1 }] },
+          { l: 'Core Spray (LPCS)', emergency: 1, seg: [{ l: 'Start', act: 'start-lpcs', run: 1 }, { l: 'Stop', act: 'stop-lpcs', on: 1 }] },
           { l: 'Manual SRV', emergency: 1, seg: [{ l: 'Open', act: 'srv-open', warn: 1 }, { l: 'Close', act: 'srv-close', on: 1 }] },
-          { l: 'SLC', emergency: 1, seg: [{ l: 'Initiate', act: 'slc-initiate', warn: 1 }] },
+          { l: 'Standby Liquid Control (SLC)', emergency: 1, seg: [{ l: 'Initiate', act: 'slc-initiate', warn: 1 }, { l: 'Stop', act: 'slc-stop', on: 1 }] },
+          { l: 'Steam Dump', hint: 'Turbine bypass to the condenser (needs AC / condenser — inert in a station blackout).', seg: [{ l: 'Auto', act: 'dump-auto', on: 1, run: 1 }, { l: 'Open', act: 'dump-open' }, { l: 'Closed', act: 'dump-close' }] },
           { l: 'Turbine Load', num: { id: 'bwrMwe', min: 0, max: 1100, value: 1000, act: 'bwr-turbine-set', setL: 'Set MW' } },
           { l: 'Feedwater', num: { id: 'bwrFeed', min: 0, max: 100, value: 100, act: 'bwr-feed-set', setL: 'Set %' } }],
         cross: [R('Reactor Power', function (s) { return s.instruments.power_range.toFixed(0) + ' %'; }), R('Vessel Steam', function (s) { return pctOf(s.instruments.steam_flow); }), R('Core Void', function (s) { return pctOf(s.instruments.core_void_fraction); })],
@@ -1571,6 +1852,15 @@
     $('engineSel').value = startKey;
     service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render
     buildFailures();
+    // optional ?manual[=section] deep-link — opens the Operator's Manual on load
+    var mm = /[?&]manual(?:=([a-z]+))?/.exec(location.search || '');
+    if (mm) { if (mm[1]) ui.manualSection = mm[1]; openManual(); }
+    // optional ?view= deep-link (diagram | primary | secondary | all)
+    var vm = /[?&]view=(diagram|primary|secondary|all)/.exec(location.search || '');
+    if (vm) setView(vm[1]);
+    // optional ?follow=<procId> deep-link — loads a procedure into the Instructor block
+    var fm = /[?&]follow=([a-z0-9_]+)/.exec(location.search || '');
+    if (fm) followProcedure(fm[1]);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
