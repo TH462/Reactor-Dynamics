@@ -39,13 +39,24 @@
     s.fuel_temp_c += dTf * dt;
   }
 
+  // Secondary heat-sink demand: idle hot standby (near-zero power, no steam) has no SG load;
+  // at-power operation keeps full coupling (the pre-HZP-fix behavior).
+  function sgThermalLoad(s) {
+    var decay = (s._H1 || 0) + (s._H2 || 0);
+    if (!s.scrammed && s.power_pct < 1.0 && (s.steam_flow_normalized || 0) < 0.05 && decay < 0.01) return 0;
+    var load = Math.max(s.steam_flow_normalized || 0, s.feedwater_flow || 0, s.power_pct / 100);
+    if (s.scrammed) load = Math.max(load, decay);
+    if (s.afw_active) load = Math.max(load, 0.08);
+    return Math.max(load, 1.0);
+  }
+
   // Step 6 — coolant average temperature (two-node) and hot/cold legs.
   function stepCoolant(s, cfg, dt) {
     var t = cfg.thermal;
     var h_eff = s._h_fc_eff != null ? s._h_fc_eff : t.h_fc;
     var Q_fuel_to_coolant = h_eff * (s.fuel_temp_c - s.tavg_c);
     // Secondary temperature from the previous step (explicit coupling, CONTEXT §11).
-    var Q_coolant_to_sg = t.h_sg * s.flow_frac * (s.tavg_c - s.t_secondary_c);
+    var Q_coolant_to_sg = t.h_sg * s.flow_frac * sgThermalLoad(s) * (s.tavg_c - s.t_secondary_c);
     s._Q_coolant_to_sg = Q_coolant_to_sg;
     var dTavg = (Q_fuel_to_coolant - Q_coolant_to_sg) / t.coolant_heat_capacity;
     s.tavg_c += dTavg * dt;
@@ -72,6 +83,7 @@
     T_sat: T_sat,
     trueSubcooling: trueSubcooling,
     hFcEffective: hFcEffective,
+    sgThermalLoad: sgThermalLoad,
     stepFuel: stepFuel,
     stepCoolant: stepCoolant,
     checkDamage: checkDamage,

@@ -517,14 +517,37 @@
     }
   };
 
+  // Full-power equilibrium temperatures (P0=1) — reference for MTC/Doppler and HZP pinning.
+  PWREngine.prototype._computeEquilibriumTemps = function (P0) {
+    var cfg = this.cfg;
+    var Tsec = TH.T_sat(cfg.steam_generator.steam_p_rated);
+    var Tavg = Tsec + (P0 * cfg.thermal.heat_gen_coeff) / cfg.thermal.h_sg;
+    var delta_T = cfg.thermal.delta_T_rated * P0;
+    return {
+      Tavg: Tavg,
+      Tfuel: Tavg + P0 * cfg.thermal.heat_gen_coeff / cfg.thermal.h_fc,
+      Thot: Tavg + delta_T / 2,
+      Tcold: Tavg - delta_T / 2,
+      Tsec: Tsec,
+    };
+  };
+
+  PWREngine.prototype._ensureHfpRefs = function () {
+    if (this._hfp_refs) return;
+    var eq = this._computeEquilibriumTemps(1.0);
+    this._hfp_refs = { Tf: eq.Tfuel, Tavg: eq.Tavg };
+  };
+
   // ================================================================ initial state
   PWREngine.prototype.reset = function (cmd) {
     var name = (cmd && cmd.initial_state) || 'hot_full_power';
     this.rod_groups = this._makeRodGroups();
     this.active_failures = [];
     this.s = this._buildState(name);
-    // Reference temps = settled HFP temps (computed once, fixed thereafter).
-    if (this._hfp_refs) { this.T_fuel_ref = this._hfp_refs.Tf; this.T_coolant_ref = this._hfp_refs.Tavg; }
+    // Reference temps = full-power equilibrium (fixed for MTC/Doppler, M1 §10).
+    this._ensureHfpRefs();
+    this.T_fuel_ref = this._hfp_refs.Tf;
+    this.T_coolant_ref = this._hfp_refs.Tavg;
     this._trimToCritical(name);
     this.instruments.reset(this.getTrueState(), this._instrExtras());
   };
@@ -599,14 +622,32 @@
       },
     };
 
-    // Place the control group at its operating position (full-power states) or
-    // partly inserted (subcritical hot_zero_power).
+    // Place the control group at this state's operating position (% withdrawn),
+    // per-state data so the rods track the starting power; boron (below) closes
+    // the reactivity balance. Falls back to the plant operating position.
     var cg = this.rod_groups[0];
-    if (init.subcritical) { cg.steps = Math.round(0.45 * cg.max_steps); }
-    else { cg.steps = Math.round(cfg.rods.control_op_position_pct / 100 * cg.max_steps); }
+    var opPct = (init.rod_op_pct != null) ? init.rod_op_pct : cfg.rods.control_op_position_pct;
+    cg.steps = Math.round(opPct / 100 * cg.max_steps);
     this._updateRodDerived(cg);
 
-    // Capture HFP reference temps the first time we build full power.
+    // Hot standby: hold NOP temperature/pressure (M1 §10) — not the low-T power∝0 equilibrium.
+    if (init.at_operating_temp) {
+      var eq = this._computeEquilibriumTemps(1.0);
+      s.tavg_c = eq.Tavg;
+      s.thot_c = eq.Thot;
+      s.tcold_c = eq.Tcold;
+      s.t_secondary_c = eq.Tsec;
+      s.fuel_temp_c = eq.Tavg;   // negligible fission: fuel near coolant (decay preloaded below)
+      s.subcooling_c = TH.T_sat(cfg.pressurizer.P_equilibrium) - eq.Tavg;
+      s._Q_coolant_to_sg = 0;
+      s._dTavg_dt = 0;
+      // Recent-shutdown decay maintains hot loop while subcritical (not scrammed — HZP lineup).
+      var dh = cfg.kinetics.decay;
+      s._H1 = dh.H1_0 * 0.07;
+      s._H2 = dh.H2_0 * 0.07;
+      s.decay_heat_pct = (s._H1 + s._H2) * 100;
+    }
+
     if (name === 'hot_full_power' && !this._hfp_refs) {
       this._hfp_refs = { Tf: Tfuel, Tavg: Tavg };
     }
@@ -639,6 +680,7 @@
     } else {
       s.boron_ppm = Math.max(0, nonBoron / rc.boron_worth_per_ppm);
     }
+    s._rho = this._totalReactivity();
   };
 
   // ================================================================== save/restore
@@ -737,6 +779,20 @@
         ck('not scrammed', t.scrammed, t.scrammed === false, false);
         ck('reactivity ≈ critical', h.eng.s._rho.toExponential(2), Math.abs(h.eng.s._rho) < 5e-4, '|ρ|<5e-4');
         ck('no drift in power vs start', (t.power_pct - p0).toFixed(2), near(t.power_pct, p0, 1.5), '≈ start');
+      });
+    },
+
+    hot_zero_power_standby: function () {
+      return test('Hot zero power — NOP temperature (HZP)', function (ck) {
+        var h = new Harness('hot_zero_power');
+        var t0 = h.ts();
+        ck('subcritical', t0.reactivity_pcm.toFixed(0), t0.reactivity_pcm < 0, '< 0');
+        ck('Tavg ≈ 304 °C at reset', t0.tavg_c.toFixed(2), near(t0.tavg_c, 304, 3), '304 ±3');
+        ck('pressure ≈ 15.41 MPa', t0.pressure_mpa.toFixed(3), near(t0.pressure_mpa, 15.41, 0.25), '15.41 ±0.25');
+        h.run(100);
+        var t = h.ts();
+        ck('Tavg holds ~304 °C (idle HZP)', t.tavg_c.toFixed(2), near(t.tavg_c, 304, 4), '304 ±4');
+        ck('still subcritical', t.reactivity_pcm.toFixed(0), t.reactivity_pcm < 0, '< 0');
       });
     },
 
@@ -963,7 +1019,7 @@
   };
 
   PWRScenarioTests.runAll = function () {
-    var order = ['steady_full_power', 'steady_50_percent', 'control_response', 'shutdown_scram',
+    var order = ['steady_full_power', 'hot_zero_power_standby', 'steady_50_percent', 'control_response', 'shutdown_scram',
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore'];
     var results = [];

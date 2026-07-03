@@ -1074,6 +1074,10 @@
           "term": "A rapid full insertion of the control rods — emergency shutdown."
         },
         {
+          "acronym": "Shutdown bank",
+          "term": "The scram rods (the RBMK’s AZ / Emergency Protection group), normally parked fully withdrawn. Operable — hold Insert to add shutdown margin, Withdraw to park it back out — but a SCRAM always drives it fully in and overrides you."
+        },
+        {
           "acronym": "Decay heat",
           "term": "Heat from radioactive decay that continues after shutdown (~7% of rated, decaying)."
         },
@@ -1201,9 +1205,9 @@
           "settled_s": 5,
           "true_state": {
             "power_pct": 0.00000214,
-            "tavg_c": 271.476,
-            "thot_c": 271.476,
-            "tcold_c": 271.476,
+            "tavg_c": 303.893,
+            "thot_c": 303.893,
+            "tcold_c": 303.893,
             "pressure_mpa": 15.41,
             "pzr_level_pct": 55,
             "sg_level_pct": 65,
@@ -1211,12 +1215,12 @@
             "fw_flow_normalized": 0.000001,
             "steam_pressure_mpa": 5.65,
             "mwe_output": 0.0000214,
-            "subcooling_c": 73.57,
+            "subcooling_c": 41.153,
             "core_inventory_pct": 100,
-            "fuel_temp_c": 271.476,
-            "decay_heat_pct": 1.84e-9,
+            "fuel_temp_c": 303.893,
+            "decay_heat_pct": 0.489,
             "xenon_pct_eq": 1.39e-10,
-            "boron_ppm": 709.659,
+            "boron_ppm": 690.858,
             "porv_open": false,
             "porv_stuck": false,
             "hpi_active": false,
@@ -1236,9 +1240,9 @@
           },
           "instruments": {
             "power_range": 0.271,
-            "tavg": 271.348,
-            "thot": 271.522,
-            "tcold": 271.411,
+            "tavg": 303.765,
+            "thot": 308.681,
+            "tcold": 299.086,
             "primary_pressure": 15.42,
             "pzr_level": 55.466,
             "sg_level": 65.805,
@@ -1248,7 +1252,7 @@
             "turbine_rpm": 1799.4,
             "condenser_vacuum": 96.299,
             "porv_indicator": "closed",
-            "subcooling_margin": 73.752,
+            "subcooling_margin": 41.336,
             "rps_scrammed": false,
             "rcp_running": true,
             "hpi_active": false,
@@ -1277,7 +1281,7 @@
             "fuel_temp_c": 481.798,
             "decay_heat_pct": 3.5,
             "xenon_pct_eq": 100.054,
-            "boron_ppm": 805.308,
+            "boron_ppm": 754.395,
             "porv_open": false,
             "porv_stuck": false,
             "hpi_active": false,
@@ -1961,6 +1965,10 @@
           "term": "A rapid full insertion of the control rods — emergency shutdown."
         },
         {
+          "acronym": "Shutdown bank",
+          "term": "The scram rods (the RBMK’s AZ / Emergency Protection group), normally parked fully withdrawn. Operable — hold Insert to add shutdown margin, Withdraw to park it back out — but a SCRAM always drives it fully in and overrides you."
+        },
+        {
           "acronym": "Decay heat",
           "term": "Heat from radioactive decay that continues after shutdown (~7% of rated, decaying)."
         },
@@ -2067,7 +2075,7 @@
             "graphite_temp_avg_c": 288.24,
             "decay_heat_pct": 3.5,
             "xenon_pct_eq": 99.937,
-            "orm_equiv_rods": 70.333,
+            "orm_equiv_rods": 89.768,
             "orm_alarm_active": false,
             "eps_bypassed": false,
             "eccs_active": false,
@@ -2096,7 +2104,7 @@
             "turbine_rpm": 2997.305,
             "condenser_vacuum": 96.841,
             "mwe_output": 497.66,
-            "orm_display": 70.333,
+            "orm_display": 89.768,
             "rps_scrammed": false,
             "eps_bypassed": false,
             "orm_alarm_active": false
@@ -2853,6 +2861,10 @@
           "term": "A rapid full insertion of the control rods — emergency shutdown."
         },
         {
+          "acronym": "Shutdown bank",
+          "term": "The scram rods (the RBMK’s AZ / Emergency Protection group), normally parked fully withdrawn. Operable — hold Insert to add shutdown margin, Withdraw to park it back out — but a SCRAM always drives it fully in and overrides you."
+        },
+        {
           "acronym": "Decay heat",
           "term": "Heat from radioactive decay that continues after shutdown (~7% of rated, decaying)."
         },
@@ -2959,7 +2971,7 @@
             "graphite_temp_avg_c": 288.24,
             "decay_heat_pct": 3.5,
             "xenon_pct_eq": 99.937,
-            "orm_equiv_rods": 70.333,
+            "orm_equiv_rods": 89.768,
             "orm_alarm_active": false,
             "eps_bypassed": false,
             "eccs_active": false,
@@ -2988,7 +3000,7 @@
             "turbine_rpm": 2997.305,
             "condenser_vacuum": 96.841,
             "mwe_output": 497.66,
-            "orm_display": 70.333,
+            "orm_display": 89.768,
             "rps_scrammed": false,
             "eps_bypassed": false,
             "orm_alarm_active": false
@@ -3800,6 +3812,10 @@
         {
           "acronym": "SCRAM",
           "term": "A rapid full insertion of the control rods — emergency shutdown."
+        },
+        {
+          "acronym": "Shutdown bank",
+          "term": "The scram rods (the RBMK’s AZ / Emergency Protection group), normally parked fully withdrawn. Operable — hold Insert to add shutdown margin, Withdraw to park it back out — but a SCRAM always drives it fully in and overrides you."
         },
         {
           "acronym": "Decay heat",

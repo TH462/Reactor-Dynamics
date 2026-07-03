@@ -202,10 +202,16 @@
 
     // ---------------------------------------------------------- named init states
     // Target setpoints for the engine's initial-state builder (M1 §10).
+    // rod_op_pct = control-group operating position (% withdrawn, contract
+    // convention: 100 = fully out). Per-state so the starting rod position tracks
+    // the starting power: at 50 % the control bank sits visibly deeper than at
+    // full power (the balance of the trim is boron, re-solved per state). Falls
+    // back to rods.control_op_position_pct when omitted.
     initial_states: {
-      hot_full_power: { power: 1.0, scrammed: false },
-      hot_zero_power: { power: 1e-6, scrammed: false, subcritical: true },
-      '50_percent':   { power: 0.5, scrammed: false },
+      hot_full_power: { power: 1.0,  scrammed: false, rod_op_pct: 92.0 },
+      hot_zero_power: { power: 1e-6, scrammed: false, subcritical: true, rod_op_pct: 45.0,
+        at_operating_temp: true },   // HZP: NOP T/P (~304 °C), not power-proportional cooldown
+      '50_percent':   { power: 0.5,  scrammed: false, rod_op_pct: 78.0 },
     },
   };
 
