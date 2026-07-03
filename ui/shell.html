@@ -77,6 +77,7 @@
             <button class="on" data-speed="1">1×</button><button data-speed="10">10×</button><button data-speed="60">60×</button><button data-speed="600">600×</button><button data-speed="3600">3600×</button>
           </div>
           <button class="btn save-btn" data-act="save" data-scanner-hint="Save — downloads the full simulation state as JSON.">💾</button>
+          <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant.">📖 Manual</button>
         </div>
       </div>
 
@@ -91,11 +92,10 @@
           <div class="instr-current instr-standby" id="instrCurrent">Standing by…</div>
         </div>
         <div class="instr-nav">
-          <button class="btn">◀ Prev</button>
-          <button class="btn">Next ▶</button>
-          <button class="btn">↺</button>
-          <button class="btn">✕</button>
-          <button class="btn">?</button>
+          <button class="btn" data-fnav="prev">◀ Prev</button>
+          <button class="btn" data-fnav="next">Next ▶</button>
+          <button class="btn" data-fnav="restart" title="Restart procedure">↺</button>
+          <button class="btn" data-fnav="stop" title="Stop following">✕</button>
         </div>
         <div class="instr-ack"><button class="ack-btn" id="instrAck">Acknowledge</button></div>
       </div>
@@ -168,6 +168,23 @@
         </div>
       </div>
 
+      <!-- Operator's Manual overlay (Phase 3) — reference + procedures, register-aware,
+           driven by app.js from RD.MANUAL + RD.MANUAL_PROCEDURES for the active plant -->
+      <div class="manual-overlay" id="manualOverlay" hidden>
+        <div class="manual-modal">
+          <div class="manual-head">
+            <div class="manual-title" id="manualTitle">Operator's Manual</div>
+            <div class="manual-head-ctl">
+              <button class="btn" id="manualClose" aria-label="Close">✕ Close</button>
+            </div>
+          </div>
+          <div class="manual-body">
+            <div class="manual-nav" id="manualNav"></div>
+            <div class="manual-content" id="manualContent"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- System Scanner (§11) -->
       <div class="panel scanner">
         <div class="panel-title">System Scanner</div>
@@ -205,6 +222,9 @@
   <script src="../layers/control_failure_layer.js"></script>
   <script src="../layers/instructor_layer.js"></script>
   <script src="../layers/simulation_service.js"></script>
+  <!-- Operator's manual data (generated reference + authored procedures) -->
+  <script src="manual_data.js"></script>
+  <script src="manual_procedures.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -13,7 +13,7 @@ where the two differ or where judgment was exercised.
 - Update the **Open Flags** table at the top whenever a flag is opened or closed.
 - Keep it skimmable: tables and short bullets, not prose.
 
-**Status:** M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · M7 ✅ · M8 🟦 functional alpha (PWR) · **all three engines proven — physics layer complete** · (next: M6, or extend M8/M4 to RBMK+BWR)
+**Status:** M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · M7 ✅ · M8 🟦 functional alpha (PWR) · **all three engines proven — physics layer complete** · **RBMK+BWR now have full balance-of-plant (turbine/condenser/generator + electrical output) for PWR-parity full-scope operation** (RBMK 20/20·129, BWR 10/10·63) · **blueprint reconciled to code — CONTEXT + M1/M2/M3 now describe all built engine/contract additions (BOP, block valve, SLC/LPCS/SRV, reactivity proxies, 50% states); UI/[tune] deviations remain logged below** · (next: M6, or extend M8/M4 to RBMK+BWR)
 
 ---
 
@@ -28,6 +28,7 @@ where the two differ or where judgment was exercised.
 | F5 | M1 | `fuel_damaged` (cladding failure at 1200 °C) is internal, not in the §6.3 `true_state` contract. Consumers must use `fuel_temp_c`/`melted`. | contract | **open** — confirm M6/M8 don't need it |
 | F6 | M5 | Acceleration is realized as fixed-0.02 s step **count**, not by scaling `dt` (CONTEXT §4's literal `dt_effective` diverges — verified). Every engine (M2/M3) must stay stable at 0.02 s; the service never hands them a larger dt. | deviation | **RESOLVED** — all three stable at 0.02 s. M2 fine with explicit Euler. **M3 needed an IMPLICIT prompt term** (its Λ=5e-5 makes explicit Euler unstable at 0.02 s: dt·β/Λ=2.6>2 — see M3 D1); still first-order, so the fixed-0.02 s contract holds for every engine. The service never needs a smaller dt. |
 | F7 | M8 | Alarm system-category (left-bar color, M8 §8.5) is derived UI-side by keyword (`alarmCategory()`), because M1's alarm data has no `category`. Should move into the plant profile alongside `tile_label`/`scanner_hint`. | data | **open** — add to engine alarm config |
+| F9 | M5/M6·PH/M7 | Integration tests assert `rod_nudge` reaches the engine **instantly** (`210 → 200`), but the engine now does a **rate-limited nudge** (drives a `nudge_target` over sim time — the "rod control reworked" change). The one-step assertion sees `210→210` and fails. **Pre-existing** (reproduces on clean HEAD; unrelated to the BOP work) — the stale check needs to step the sim forward after nudging. | test | **open** — fix the 3 integration tests to run the sim after `rod_nudge` |
 | F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **open** — confirm vs M6 highlight system |
 
 ---
@@ -599,6 +600,7 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
     `initiate_slc`/`stop_slc` (BWR) are **new commands beyond CONTEXT §6.7** — added because the
     punchlist explicitly requested the controls and the §6.7 set lacked them. Additive only (defaults
     leave existing behavior unchanged; all suites green). Fold into §6.7 when the blueprint is updated.
+    **RESOLVED — folded into CONTEXT §6.7 + M1/M3 (see "Blueprint reconciliation" entry below).**
   - **DEFERRED TO v2 (user decision).** **B4** containment pressure, **D2** suppression-pool (torus)
     temp, **D3** torus level, **D5** drywell pressure all require a containment / suppression-pool model
     that **CONTEXT §8 explicitly excludes** ("No containment model … described in commentary, not
@@ -622,7 +624,8 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
       path alongside ADS+LPCI. All suites still green (PWR 11/11, BWR 9/9, RBMK 18/18).
     - These add more commands beyond §6.7 (`set_steam_dump`, `start_lpcs`/`stop_lpcs`,
       `open_srv_manual`/`close_srv_manual`) — additive, defaults inert; fold into §6.7 on the next
-      blueprint update.
+      blueprint update. **RESOLVED — folded into CONTEXT §6.7 + M1/M3 (see "Blueprint reconciliation"
+      entry below).**
   - **STILL queued (feasible, not yet done).** B3 MSIV, C2 per-trip EPS-bypass granularity, E1 ISA-18.1
     "cleared-unacknowledged" alarm state (M4 lifecycle), and UI-only E3 CSF sublabels, C3 MCP-count
     indicator (engine tracks `mcp_running` bool, not a count — would be an approximation), C4 AR-mode
@@ -741,3 +744,284 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   switch repopulates the bar (3/7/7/0 groups), SCRAM arms→fires, all 3 engines switch (slots 7/4/8),
   setpoint `42` + rod-speed Fast + overlay True all survive round-trips; no JS errors. UI-only;
   PWR 11/11·51, RBMK 18/18·99, BWR 9/9·47 still green.
+- **RBMK + BWR balance-of-plant / electrical output — PWR-parity full-scope operation (user, `develop`).**
+  Audit finding: both engines modeled reactor→coolant (+BWR safety systems) well but **stopped at the
+  steam boundary** — no turbine/generator/condenser, no `mwe_output`, so they couldn't be operated
+  full-scope like the PWR (which models turbine RPM+grid-sync, condenser vacuum, MWe, steam dump). The
+  RBMK's `steam_to_turbine` was a *fixed* load with no `set_turbine_load`; the BWR's `set_turbine_load`
+  set only a steam fraction. Added a behavioral turbine/condenser/generator to **both**, mirroring the
+  PWR §6.8, plus a partial-power operating state each. **Additive & inert by default** — every existing
+  suite re-confirmed green before new tests (RBMK 18/18, BWR 9/9), then extended.
+  - **Shared model (mirrors `pwr_steam_generator.stepTurbine`):** grid-synced turbine holds rated speed;
+    free-spinning it is driven by admitted steam and braked by windage (coasts down on a trip);
+    condenser vacuum restores/decays on `condenser_cooling_available`; low-vacuum & overspeed trips.
+    `mwe_output = steam_load · mwe_rated · (rpm/rated) · (vac/vac_rated)` — **electrical output tracks the
+    steam actually drawn by the turbine** (a direct/drum cycle: reactor power the turbine doesn't take is
+    dumped/relieved), so MWe follows load, not raw fission power. A **turbine bypass / steam dump** vents
+    excess steam to the condenser to hold pressure on a load rejection.
+  - **RBMK** (`rbmk_thermal.stepTurbine`/`tripTurbine`, `rbmk_config.turbine`): `steam_to_turbine` is
+    now the operator load (default = P0, so the accident physics is byte-identical when untouched — the
+    excursion still outruns the fixed draw). New commands `set_turbine_load {mwe}` / `set_steam_dump`;
+    `turbine`/`mwe_rated=1000`/3000 rpm (50 Hz); steam dump auto @7.5 MPa (ordered below the 7.6 alarm /
+    8.0 relief); instruments `turbine_rpm`/`condenser_vacuum`/`mwe_output`; new `50_percent` init state
+    (orm 70, flow 80); new failures `turbine_trip` (trip_turbine) + `loss_of_condenser_vacuum`
+    (vacuum_decay). **Suite 20/20 · 129** (was 18/18·99) — added `bop_pre`/`bop_post`.
+  - **BWR** (`bwr_vessel.stepTurbine`/`tripTurbine`, `bwr_config.turbine`): `steam_flow_normalized` is the
+    turbine draw; added rpm/vacuum/`mwe_output` (1800 rpm, `mwe_rated=1100`) and the steam dump — **gated
+    on `condenser_cooling_available`** so it is **inert in station blackout** (no AC → no condenser), which
+    is load-bearing: the SRVs alone hold vessel pressure and keep RCIC's steam drive alive → the
+    **Fukushima timeline is unchanged**. `condenser_cooling_available=false` set on `full_blackout_bwr` and
+    `post_scram_sbo`. New `50_percent` state runs reduced recirc (`recirc_pct:19` → power settles ~50% via
+    the negative void feedback; tuned). New failure `loss_of_condenser_vacuum`; `set_steam_dump` command;
+    dump setpoint 7.25 (above rated 7.03 so the §7.3 void-collapse transient still fires, below SRV 7.58).
+    **Suite 10/10 · 63** (was 9/9·47) — added `balance_of_plant`. §7.3 turbine-trip transient preserved.
+  - **New commands beyond CONTEXT §6.7** (additive; fold into §6.7 on next blueprint update, as with
+    the earlier B2/D4/D6 additions): RBMK `set_turbine_load` + `set_steam_dump`; BWR `set_steam_dump`
+    (`set_turbine_load` already existed). New `true_state`/`control_state` fields are additive-only, so
+    M7's data-contract suite is unaffected; M4 picks up the two new per-engine failures as data (HR3).
+  - **Discovered a pre-existing red gate → Flag F9.** M5/M6·PH/M7 each have one stale `rod_nudge`
+    integration check (expects instant nudge; engine now rate-limits) — reproduces on clean HEAD,
+    unrelated to this work. PWR 11/11·51 and M4 10/10 still green.
+- **Blueprint reconciliation — folded all built engine/contract additions into the specs (user, `develop`).**
+  Per "update the blueprint to match the code," folded every additive feature already built (and
+  previously only logged here) into the source-of-truth specs, so `CONTEXT.md` + `M1/M2/M3` now
+  describe what's actually built. **Scope:** engine + contract additions only; UI (M8) and pure `[tune]`
+  deviations stay recorded here (this log remains the history/rationale, per "keep as historical record").
+  - **CONTEXT.md** — `§6.3` true_state: PWR `steam_pressure_mpa` + reactivity proxies
+    (`reactivity_pcm`/`startup_rate_dpm`/`reactor_period_s`); RBMK `reactivity_pcm` + BOP
+    (`steam_to_turbine`/`mwe_output`/`turbine_rpm`/`condenser_vacuum_kpa`/`turbine_tripped`); BWR
+    `lpcs_running`/`srv_manual_open`/`slc_active`/`slc_tank_pct`/`reactivity_pcm` + the same BOP fields.
+    `§6.5` control_state: PWR `porv_block_open`/steam-dump; an RBMK-specific block; BWR `slc_active`; the
+    shared `turbine_load_mwe`/steam-dump. `§6.7` command catalog: PWR `open/close_block_valve`,
+    `set_steam_dump`; RBMK `set_turbine_load`, `set_steam_dump`; BWR `initiate/stop_slc`,
+    `start/stop_lpcs`, `open/close_srv_manual`, `set_steam_dump`. `§6.9` named states: RBMK + BWR
+    `50_percent`. **→ resolves the standing "fold into §6.7 on next blueprint update" note** for B1/B2
+    (PWR block valve/steam dump), D1/D4/D6 (BWR SLC/LPCS/SRV), and the RBMK/BWR BOP commands.
+  - **M1 (PWR)** — §6.4 PORV block/isolation valve (B1); §6.7 steam dump / turbine bypass (B2); new §8.9
+    reactivity proxies (reactivity computer / SUR / period); §9 note that every failure carries `category` (C7).
+  - **M2 (RBMK)** — §8.3 updated (`steam_to_turbine` = operator load, not fixed; steam-dump term); new §8.7
+    turbine/condenser/generator BOP; §13 instrument table (+turbine_rpm/condenser_vacuum/mwe_output); §14
+    `turbine_trip`/`loss_of_condenser_vacuum` failures + `category`; §15 `50_percent`; §17 contract list;
+    §19 BOP acceptance paragraph; §20 params (turbine block).
+  - **M3 (BWR)** — §6.1 steam-dump term; new §9.7 SLC (D1) / §9.8 LPCS (D4) / §9.9 manual SRV (D6); new
+    §12.1 turbine/condenser/generator BOP (condenser-gated dump — Fukushima-preserving); §11 instrument
+    table (+BOP); §13 `loss_of_condenser_vacuum`; §14 `50_percent`; §16 contract list; §17 save/restore
+    list; §18 BOP acceptance paragraph; §19 params (LPCS/SRV/SLC/BOP).
+  - **Not folded (by design):** `[tune]` value deviations (e.g. RBMK D2 retunes, BWR D2 `K_vessel_pressure`),
+    load-order/module-system notes, and all M8 UI changes — these remain here as the built-vs-intent record.
+    Flags F1–F8 unchanged; F9 (stale `rod_nudge` integration check) still open. No code changed; specs only.
+- **Operator-manual enablers — SUR/period + startup states (user, `develop`).** Groundwork for building
+  a full operator's manual per plant (data-driven: generated reference + engine-validated procedures).
+  - **SUR / reactor period on RBMK + BWR (Phase 0a).** `getTrueState()` now exposes `startup_rate_dpm`
+    (= 26.06·Ṗ/P) and `reactor_period_s` (= P/Ṗ) on all three engines (was PWR-only), from the smoothed
+    power rate. RBMK gained the `_power_rate`/`_prev_power_pct` tracking BWR already had. Additive to the
+    contract. Enables approach-to-criticality documentation.
+  - **RBMK `hot_startup` subcritical state (Phase 0b) — WORKS.** Low power, no xenon, flow established;
+    trimmed critical per-state at `orm_target`, then the control group is inserted `subcrit_margin_steps`
+    (25) further so it starts SUBCRITICAL (no boron — the margin is rod position). Slow rod withdrawal →
+    critical → controlled ascension to power, positive SUR, no runaway, **both versions**. Test-gated:
+    `startup_pre`/`startup_post` (RBMK suite now **22/22 · 141**). The per-state `void_ref` pinning is what
+    makes this clean (no standing void offset).
+  - **BWR `hot_startup` — NOT PROVIDED (physics-model limitation, honest omission).** The BWR pins a single
+    full-power `void_ref` (0.45); at startup (low void) the void reactivity is strongly positive, so the
+    reactor self-drives to the **~44 % flow/void balance regardless of rod position** — no stable
+    near-zero-power-with-flow point exists (verified across rod insertions 3–65 %). A real cold approach-to-
+    criticality would need a **power-dependent `void_ref`** — a deferred physics upgrade that would require
+    re-tuning against the flow-control + Fukushima suites. Documented in `bwr_config` and left out rather
+    than faked (honesty principle). **→ open decision: accept (BWR manual starts from an operating point +
+    a voiced simplification) vs. invest in the void-model upgrade.** BWR 10/10·63, PWR 11/11·51 green.
+  - **RESOLVED (user chose: invest in the void-model upgrade).** Implemented as a **targeted
+    per-state `void_ref` pinning scoped to the startup state only** — not a global tracking
+    reference (probing showed that destabilized the proven flow-control / 50 % behaviors). In
+    `BWREngine.reset()`: for a `subcritical` init state, pin `void_ref` at the state's low
+    operating void and trim critical there (RBMK pattern), then insert the control group a margin
+    (BWR `steps` = withdrawn → *decrease* steps). Every other state keeps the base full-power trim,
+    so `full_power` / `50_percent` / `post_scram_sbo` and the Fukushima flagship are byte-identical.
+    Added `hot_startup` to `bwr_config` + a `startup` acceptance test. **BWR now 11/11 · 69**; RBMK
+    22/22 · 141 (`startup_pre`/`startup_post`); PWR 11/11 · 51. Specs synced (CONTEXT §6.3/§6.9,
+    M2 §15/§19, M3 §14/§18).
+- **Operator's manual — reference generator (Phase 0c + 1, `develop`).** `tools/gen_manual_reference.js`
+  emits `ui/manual_data.js` (→ `RD.MANUAL`), the data-driven source for the coming in-sim help panel
+  (and a later printable). **Reference sections are GENERATED from the live engine configs + a settling
+  run so they can't drift:** setpoints/limits ← protection (trips/actuations/alarms); indications ←
+  instrument set (ranges/lag) + linked alarms; failures ← failure catalog (display/category/severity);
+  **normal values** ← running each named state and capturing true + indicated readings (operating states
+  settle 60 s; transient/subcritical states captured near their initial condition). A hand-authored
+  **both-register** (learning + industry) layer supplies control effects, indication meanings, plant
+  overviews, and safety limits. Keyed by profile: `pwr`, `rbmk_pre`, `rbmk_post`, `bwr` (mirrors the UI
+  engine selector). Re-run after any engine/config change. Verified: PWR full power reads 100 %/15.41
+  MPa/1000 MWe/747 ppm/ρ≈0; RBMK `hot_startup` reads subcritical; BWR 1100 MWe. Phase 2 (authored +
+  engine-validated procedures) and Phase 3 (M8 help panel) still to come.
+- **Operator's manual — normal procedures, authored + engine-validated (Phase 2 part 1, `develop`).**
+  `ui/manual_procedures.js` (→ `RD.MANUAL_PROCEDURES`, keyed pwr/rbmk_pre/rbmk_post/bwr) holds
+  **authored, both-register** procedures as structured steps (command + hold), each with a
+  **declarative `validate` block**. `test/run_procedures.js` drives every procedure through its engine
+  from the stated initial state and asserts the outcome — so nothing ships unproven. **12/12 · 34
+  checks**: per profile a startup / raise-power / shutdown. Validation supports `final` (end-state
+  predicates), `never_melted`, `saw` (a condition held at least once — e.g. SUR>0 during ascension),
+  and `never` (a condition that must never occur — e.g. `fuel_temp_c >= 1200`, proving no fuel damage).
+  - **Honest simplification surfaced (startup overshoot).** Approach-to-criticality can't be held at a
+    fine low power in the lumped models — RBMK/BWR climb gently (slow, per-state-pinned) but the **PWR
+    overshoots** (single lumped control group, Doppler-only prompt feedback, no fine trim), settling
+    high after a spike (fuel stays < 1200 °C — no damage). The procedure voices this plainly (real
+    approach-to-criticality is finer and neutron-source-driven) rather than faking a clean hold. The
+    validated claims are the robust, honest ones: subcritical start → positive SUR → power rises → no
+    fuel damage.
+  - **Phase 2 part 2 — emergency procedures, accident walkthroughs, alarm response (`develop`).**
+    Added to `ui/manual_procedures.js`: an **engine-validated emergency procedure per plant** (PWR loss
+    of main feedwater → trip + AFW; RBMK MCP trip → AZ-5; BWR station blackout → RCIC) and the **three
+    flagship accident walkthroughs** as *narrative* procedures (PWR TMI, RBMK Chernobyl pre/post
+    comparison, BWR Fukushima). The harness (`test/run_procedures.js`) skips `narrative` procedures
+    (marked `NARR`) — the accidents' physics is owned by each engine's flagship acceptance suite
+    (CONTEXT §9), not re-run through the manual harness. **Procedures 16/16 · 43 checks** (3 startup +
+    3 power + 4 shutdown... ) plus 4 narrative accidents. Alarm response: authored both-register
+    cause+action guidance in the generator (`ALARM_RESPONSE`, `buildAlarmResponse`), attached as
+    `RD.MANUAL[profile].alarm_response` (authored for key alarms; priority-based default otherwise).
+    Panel gained **Accidents** and **Alarm Response** sections (`mAccidents`, `mAlarms`); Procedures now
+    excludes accidents. Verified by headless-Edge screenshots (PWR Alarm Response, BWR Fukushima
+    walkthrough). Engine suites unaffected (PWR 11/11, RBMK 22/22, BWR 11/11). **The operator's manual
+    is now feature-complete for v1** (reference + normal + emergency + accidents + alarm response, both
+    registers, in-sim panel); only the printable export remains (deferred).
+- **Operator's manual — in-sim help panel (Phase 3, `develop`).** A full-screen **Operator's Manual**
+  overlay in M8, opened by a `📖 Manual` button in the sim controls (or the `?manual[=section]`
+  deep-link). Renders `RD.MANUAL` + `RD.MANUAL_PROCEDURES` for the **active engine profile**
+  (`ui.engineKey` → pwr/rbmk_pre/rbmk_post/bwr) and is **register-aware** (its Learning/Industry toggle
+  drives the global `set_register`). Left-nav sections: Overview, Procedures, Controls, Indications,
+  Setpoints & Limits, Normal Values, Failures. Procedures show the "validated by the engine" note,
+  per-step actions/notes/command hints; setpoints/alarms show color-coded priority pills; all tables
+  are generated from the live data. Re-renders on plant switch. Files: `ui/shell.html` (button +
+  overlay + script loads), `ui/shell.css` (`.manual-*` styles), `ui/app.js` (`openManual`/`renderManual`
+  + section renderers `mOverview`…`mFailures`, using local `mesc`/`mreg` to avoid clashing with the
+  existing attribute-only `esc`). Verified by headless-Edge screenshots (PWR overview/setpoints, RBMK
+  pre-1986 procedures) — renders correctly, on-theme, profile- and register-aware. UI-only; engine and
+  procedure suites unaffected (PWR 11/11, RBMK 22/22, BWR 11/11, procedures 12/12).
+  - **Remaining for the manual:** Phase 2 part 2 (alarm-response + abnormal/emergency + accident
+    walkthroughs), and a later printable export (deferred per user).
+- **Operator's manual v2 — single integrated voice + actionable, Instructor-grade procedures (`develop`).**
+  Per user feedback the manual was redesigned from a two-register toggle into ONE authoritative
+  operating manual, and made the **source of truth for the Instructor (M6)**. Plan: `Blueprint/
+  OPERATOR_MANUAL_PLAN.md`. Decisions (locked with the user): single integrated voice (spell out +
+  acronym, e.g. "Steam Generator (SG)"); on-screen control names in procedures with the internal
+  command API moved to a **Dev/Commands** appendix; **every step carries `control` + `target` +
+  a machine-checkable `acceptance` predicate** (the same predicate the harness asserts and M6 will
+  gate/grade on — one artifact); cold startup / RCP warmup / cooldown are **out of physics scope**
+  (engine starts hot) and marked narrative.
+  - **Generator (`tools/gen_manual_reference.js`)** rewritten to single voice: overviews, controls
+    (`control`/`uses`/`command`), indications (`name`/`measures`), alarm-response (`means`/`response`),
+    and a per-plant **Glossary**. No `_learning`/`_industry` split. Regenerated `ui/manual_data.js`.
+  - **Procedure schema (`ui/manual_procedures.js`)** rewritten: `{id,category,title,purpose,from,
+    prereq[],cautions[],steps[],guard,outcome}`; step `{text,control,target,cmd,hold,acc,saw,note}`.
+    **Harness (`test/run_procedures.js`)** checks each step's `acc`/`saw` + proc `guard` — **21/21 ·
+    73 checks (4 narrative)**. PWR authored richly as the template (startup w/ SUR ≤ 1 DPM & period
+    ≥ 30 s, raise/lower power, pressure & SG-level control, shutdown, loss-of-feedwater, RCP trip,
+    **stuck-PORV recovery via block valve**, TMI). RBMK/BWR ported to the new schema (rich authoring
+    of their full normal + failure sets is the next phase).
+  - **Panel refit (`ui/app.js`, `ui/shell.html`, `ui/shell.css`)**: dropped the manual register
+    toggle; renders integrated voice, rich steps (control chip + Target + "✓ when" acceptance +
+    cautions + outcome), controls-by-label, and added **Glossary** and **Dev/Commands** sections.
+    Verified by headless-Edge screenshots (Procedures, Controls, Glossary). Engine suites unaffected
+    (PWR 11/11, RBMK 22/22, BWR 11/11).
+  - **Next (phased):** rich RBMK & BWR normal procedures with targets/acceptance; full per-plant
+    failure procedures (decision: every modeled failure); humanize the `✓ when` param labels; then
+    the M6 Instructor consumes `acc`/`guard` directly.
+- **CONTEXT §12 + manual maintenance rule; manual polish; linear scram (`develop`).**
+  - **CONTEXT.md §12** added: documents the operator's manuals (single-voice; source of truth for
+    M6) and a **HARD MAINTENANCE RULE** — any sim change that affects the manual must re-run
+    `tools/gen_manual_reference.js`, update procedures, re-run `test/run_procedures.js`, and add new
+    UI acronyms to the glossary. The procedure suite + generator are part of the acceptance gate for
+    sim-facing changes.
+  - **Manual panel:** removed the meta/filler notes (accidents "validated by the acceptance suite…"
+    text, procedures dev note) and the **Dev/Commands tab** (coder-only; the command mapping stays in
+    `RD.MANUAL[*].controls[].command` data + the plan doc). Register toggle already gone (v2 single voice).
+  - **Scram made linear (PWR + BWR).** Reported "rods didn't go down on scram" — engine was correct
+    (rods DID insert, power fell) but PWR/BWR scram velocity was exponential (`steps/t`) so rods
+    asymptoted toward fully-in (crawl near the end) rather than reaching it. Changed to constant rate
+    (`max_steps/t`): PWR rods now reach fully-in in 2.5 s (92%→0%), decisive/visible. RBMK was already
+    linear. Suites green (PWR 11/11, RBMK 22/22, BWR 11/11, procedures 21/21). The diagram rod
+    indicator IS wired to `position_pct` (renderFullDiagram); a view-specific refresh check is folded
+    into the Group-A UI pass.
+  - **Plan for the batch (user-confirmed):** do **Group A UI fixes first** (scram rod-display verify,
+    PZR heater + manual spray sliders w/ cold-leg suction, acronym spell-out "Full Name (ACRONYM)"
+    across the UI, manual auto-units, glossary=all-acronyms, "Follow in Instructor" button on
+    procedures/accidents/failures), then a **control audit**, then **full CVCS** (charging pump +
+    letdown valve + boron + safety injection + leakage make-up), then **new aux systems** (BWR
+    Isolation Condenser, RBMK ECCS) + extra failure modes. Q&A on turbine/condenser/TCV/steam-dump/
+    behavior recorded in session.
+  - **Group A progress (`develop`):** **A1** scram made linear (done, above). **A3** acronym spell-out —
+    gauges (top bar) and numeric-grid labels across all plants now "Full Name (Acronym)" (e.g. "Avg
+    Coolant Temp (Tavg)", "Pressurizer Level (PZR)", "Operating Reactivity Margin (ORM)"); controls
+    already followed the convention. **A4** the manual now converts dimensioned values to the active
+    unit toggle (US/SI) — normal values, indication ranges, trip/alarm setpoints (via `MDIM`/`mval`
+    reusing the board's `conv`/`unit`); alarm names show "Learning (INDUSTRY)". **A5** glossary
+    expanded (added DPM, MWe/MWt, ECCS) to cover UI acronyms; regenerated. Suites green (PWR 11/11,
+    procedures 21/21). **Remaining Group A:** A2 (PZR heater + manual spray sliders, spray from the
+    cold leg) and A6 ("Follow in Instructor" button on procedures/accidents/failures).
+  - **Group A complete (`develop`).** **A6** — each procedure/accident card has a "▶ Follow in
+    Instructor" button; it loads the procedure into the Shift-Supervisor block and steps through it
+    (Prev/Next/Restart/Stop), showing each step's text, Control, Target, and a LIVE "✓ when … met /
+    not yet" acceptance check against the current snapshot — so the user follows it while operating.
+    `ui.follow` state; `renderInstructor` defers to `renderFollow` when following; `?follow=<id>`
+    deep-link. **A2** — Pressurizer Heaters and Pressurizer Spray are now manual **% sliders + Auto**
+    (ctlGroup renders slider AND buttons); `set_heater {auto}` / `set_spray {auto|pct}` engine
+    support; **spray draws from the cold leg after the RCP** — spray effectiveness scales with primary
+    `flow_frac` (no RCP flow → no spray). The live control bar lives in the **PD** per-view control
+    lists (PROFILES.controls is legacy); updated the PD Primary list. Suites green (PWR 11/11, RBMK
+    22/22, BWR 11/11, procedures 21/21). Added `?view=` deep-link. **Next:** control audit (B), then
+    full CVCS (C), then new aux systems (BWR Isolation Condenser, RBMK ECCS) + extra failures.
+  - **Group B — control audit (`develop`).** Cross-referenced each plant's engine operator commands
+    against the live PD control lists + the `ACTS` map. **Findings & fixes (modeled command with no UI
+    control, or BOP not surfaced):**
+    - **RBMK:** `set_turbine_load` and `set_steam_dump` had NO UI, and the BOP readouts (electrical
+      output, turbine RPM, condenser vacuum) weren't shown anywhere — the RBMK made 1000 MW invisibly.
+      Added a **Turbine / Condenser** readout section + **Turbine Load** and **Steam Dump** controls to
+      the secondary view.
+    - **BWR:** `set_steam_dump` had no UI; `stop_slc` / `stop_lpcs` had start-only controls; BOP
+      readouts not shown. Added **Steam Dump** control, **Stop** on Core Spray + SLC, and electrical
+      output / turbine RPM / condenser vacuum readouts to the secondary view.
+    - **PWR:** `set_dhr` (Decay-Heat Removal) and manual `open_porv`/`close_porv` had no UI. Added a
+      **Decay-Heat Removal (DHR)** control and a manual **Relief Valve (PORV)** Open/Close control to
+      the primary view; renamed RCP control to the spelled-out form.
+    - New `ACTS`: `rbmk-turbine-set`, `porv-open`/`porv-close`, `dhr-on`/`dhr-off`, `slc-stop`,
+      `stop-lpcs`. All map to existing engine commands. Verified by headless screenshots (RBMK/BWR
+      secondary, PWR primary). Suites green (PWR 11/11, RBMK 22/22, BWR 11/11, procedures 21/21).
+    - **Noted, not changed:** PWR "MSIV" is a labeled placeholder (MSIV not modeled on the PWR — only
+      the BWR has `msiv_closure`); left as-is with its "placeholder here" hint. A real PWR MSIV is a
+      candidate for the aux-systems phase.
+  - **Group C — full CVCS (PWR, `develop`).** Modeled the Chemical & Volume Control System as operator
+    systems. **Boron chemistry decoupled** from net charging−letdown (the old
+    `boron_ppm += boron_rate·(charging−letdown)` was non-physical): new `boron_adjust` (ppm/s) driven by
+    `set_boron_adjust {rate}` (+borate/−dilute/0 hold), gated on the charging pump. **Charging pump**
+    (`set_charging_pump {running}`, gates charging + boration), **letdown valve** (existing
+    `set_letdown_flow` + Isolate), and **auto make-up** (`set_cvcs_auto {active}`) that modulates
+    charging to hold primary inventory up to `charging_max` — leakage compensation. Config
+    `boron_adjust_rate`/`cvcs_makeup_gain`/`charging_max` (pwr_config); logic in `pwr_primary.stepInventory`;
+    `set_charging_flow` now also drops auto (manual override). Safety injection = HPI (existing). Spray
+    already draws from the cold leg after the RCP (Group A). **Auto make-up defaults OFF** and
+    `charging_max` (0.06) covers normal leakage but not a LOCA, so the flagship/TMI behavior is intact
+    (PWR 11/11). UI: PWR primary gains Boron (Borate/Hold/Dilute), Charging Pump (On/Off + slider),
+    Letdown Valve (slider + Isolate), and CVCS Inventory Control (Auto/Manual); numeric grid shows
+    Charging/Letdown + CVCS Mode. New commands beyond CONTEXT §6.7 (`set_charging_pump`,
+    `set_cvcs_auto`, `set_boron_adjust`) folded into §6.7 + M1 §6.5 + regenerated `RD.MANUAL` (per the
+    §12 maintenance rule). Verified: borate 747→807 ppm drops power to 39 %; auto make-up holds
+    inventory ~99 % against a leak that otherwise drains to 0 %. Suites green (PWR 11/11, RBMK 22/22,
+    BWR 11/11, procedures 21/21). **Next:** new aux systems — BWR Isolation Condenser, RBMK ECCS + extra
+    failure modes.
+  - **New auxiliary systems (`develop`).**
+    - **BWR Isolation Condenser (IC)** — the passive heat sink Fukushima Unit 1 relied on. `set_ic
+      {active}`; while condensing it lowers vessel pressure (`ic_condense_rate`) and conserves inventory
+      (`bwr_vessel.stepVesselLevel` zeroes boiloff), holding the core covered on decay heat with **no AC
+      and no injection**. DC-valve: on battery depletion in an SBO the IC closes (`ic_active→false`) and
+      boiloff resumes — the Unit-1 story. Failure `ic_failure` (valves shut). UI: control + readout +
+      status slot on the BWR secondary. New acceptance test `isolation_condenser` (BWR 12/12): level
+      held ~50 % for hours, then uncovers once DC is lost.
+    - **RBMK ECCS** — Emergency Core Cooling for a pressure-tube rupture. `set_eccs {active}` (engine
+      step 9c, after the rupture drain): makes up steam-drum level (`eccs_level_rate`) and holds a
+      cooling-flow floor (`eccs_flow_floor`), arresting the drain/dryout. UI: control + readout + status
+      slot on the RBMK primary. New acceptance test `eccs` (RBMK 23/23): rupture drains the drum, ECCS
+      recovers level and holds the flow floor.
+    - Specs updated per the §12 rule: config (`bwr_config.safety.ic_condense_rate`,
+      `rbmk_config.thermal.eccs_level_rate`/`eccs_flow_floor`); contracts; CONTEXT §6.7 (`set_ic`,
+      `set_eccs`); M2 §8 + M3 §6.2; regenerated `RD.MANUAL` (BWR 20 controls / 15 failures incl. IC;
+      RBMK gains ECCS control + glossary). Suites green (PWR 11/11, RBMK 23/23, BWR 12/12, procedures
+      21/21). The RBMK/BWR failure catalogs were already broad (14 / 15 modes); no further failures
+      added this pass beyond `ic_failure`.

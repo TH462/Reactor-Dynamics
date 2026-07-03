@@ -71,10 +71,38 @@
       steam_gen_per_power: 1.0,
       K_drum_pressure: 0.0207, drum_p_rated: 7.0, drum_relief_mpa: 8.0,  // MPa [tune]
       relief_gain: 2.0,                                       // relief vent gain [tune]
+      // Turbine bypass / steam dump: vents steam to the condenser to hold drum
+      // pressure on a load rejection / turbine trip. Auto opens proportionally
+      // between the setpoint and setpoint+band (ordered BELOW the 7.6 alarm / 8.0
+      // relief so it acts first); a manual override wins. [tune]
+      steam_dump_setpoint: 7.5, steam_dump_band: 0.4, steam_dump_max: 1.0,
       K_drum_level: 4.0, drum_level_nominal: 50.0,           // [tune]
       graphite_heat_frac: 0.05, h_graphite_coolant: 0.01, graphite_heat_capacity: 20.0, // [tune]
       h_fc_rbmk: 0.04, heat_gen_coeff_rbmk: 11.2,            // [tune] → ~565 °C fuel at rated
       dryout_void: 0.85, dryout_flow_pct: 30.0, dryout_h_fc_factor: 0.1, // §8.6
+      // Emergency Core Cooling System (ECCS) — injects to the channels on a
+      // pressure-tube rupture / loss of coolant: makes up drum level and holds a
+      // cooling-flow floor so dryout is arrested. [tune]
+      eccs_level_rate: 6.0,   // drum-level make-up, %/s when active
+      eccs_flow_floor: 45.0,  // minimum channel flow (%) ECCS maintains
+    },
+
+    // -------------------------------------------- turbine / condenser / generator
+    // Balance-of-plant so the RBMK can be operated full-scope (bring load on/off,
+    // read electrical output) like the PWR. RBMK-1000: two ~500 MWe turbogenerators
+    // (lumped to one here) on a 50 Hz grid → 3000 rpm. Behavioral model mirroring
+    // the PWR's §6.8: grid-synced turbine holds rated speed; free-spinning it is
+    // driven by admitted steam and braked by windage (coasts down on a trip).
+    // Electrical output tracks the steam ACTUALLY drawn by the turbine (a
+    // direct/drum cycle — steam the turbine doesn't take is dumped/relieved), so
+    // MWe follows load, not raw fission power. All [tune].
+    turbine: {
+      mwe_rated: 1000.0,           // MWe (2× 500 MWe turbogenerators, lumped)
+      rpm_rated: 3000.0, rpm_overspeed_trip: 3300.0,   // 50 Hz grid
+      torque_per_flow: 1.0, windage: 1.0, turbine_inertia: 50.0,
+      vacuum_rated: 96.5, vacuum_lost: 16.9,           // kPa
+      vacuum_restore_tau: 10.0, vacuum_decay_tau: 30.0, // s
+      vacuum_trip_kpa: 74.5,       // turbine trips below this
     },
 
     // -------------------------------------------------- destruction paths (§11)
@@ -129,6 +157,9 @@
       void_fraction:  { lag: 1.0, noise: 0.01,  range: [0, 1.0] },
       fuel_temp:      { lag: 4.0, noise: 5.0,   range: [0, 2000] },
       orm_display:    { lag: 0.0, noise: 0.0,   range: [0, 211], computed: true },
+      turbine_rpm:      { lag: 0.5, noise: 3.0,   range: [0, 3600] },   // BOP
+      condenser_vacuum: { lag: 5.0, noise: 0.34,  range: [0, 102] },    // kPa, BOP
+      mwe_output:       { lag: 0.5, noise: 2.0,   range: [0, 1200] },   // MWe, BOP
       status: ['rps_scrammed', 'eps_bypassed', 'orm_alarm_active'],
     },
 
@@ -137,6 +168,16 @@
     // (ORM ≈ orm_target). flow_pct = channel flow setpoint. xenon_factor = X/X_eq.
     initial_states: {
       full_power:     { power: 1.0,  orm_target: 70.0, flow_pct: 100.0, xenon_factor: 1.0 },
+      // A stable partial-power operating point for maneuvering practice (matches
+      // the PWR's 50_percent envelope). ORM stays healthy; flow reduced with power.
+      '50_percent':   { power: 0.5,  orm_target: 70.0, flow_pct: 80.0,  xenon_factor: 1.0 },
+      // Hot standby / approach-to-criticality start: low power, no xenon, flow
+      // established. Trimmed critical per-state at orm_target, then the control
+      // group is inserted `subcrit_margin_steps` further so it starts SUBCRITICAL;
+      // the operator withdraws rods (slowly!) to go critical and ascend. Works on
+      // both versions (per-state void_ref pinning avoids a standing void offset).
+      hot_startup:    { power: 0.02, orm_target: 55.0, flow_pct: 70.0,  xenon_factor: 0.0,
+                        subcritical: true, subcrit_margin_steps: 25 },
       low_power_xenon:{ power: 0.07, orm_target: 7.5,  flow_pct: 60.0,  xenon_factor: 1.35 },
     },
   };

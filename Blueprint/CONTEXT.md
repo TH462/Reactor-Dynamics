@@ -264,6 +264,8 @@ physical-quantity vocabulary.
     "pump_running": bool, "pump_flow_pct": number, "station_blackout": bool,
     "turbine_rpm": float, "condenser_vacuum_kpa": number,
     "scrammed": bool, "melted": bool, "steam_demand_mwe": float,
+    "steam_pressure_mpa": number,     // secondary/SG pressure (surfaced for the UI loop diagram)
+    "reactivity_pcm": float, "startup_rate_dpm": float, "reactor_period_s": float,  // reactivity proxies — reactivity computer / SUR / period; display/derived only, NEVER fed to protection (HR1)
 }
 ```
 
@@ -278,6 +280,10 @@ physical-quantity vocabulary.
     "destruction_cause": string,      // "none" | "thermal_melt" | "steam_explosion"
     "steam_explosion_occurred": bool, "energy_deposition_rate": number,  // cal/g/s
     "design_version": string,         // "pre_chernobyl" | "post_chernobyl"
+    "reactivity_pcm": float, "startup_rate_dpm": float, "reactor_period_s": float,  // reactivity proxies; display/derived only, never fed to protection (HR1)
+    // Balance of plant (turbine / condenser / generator — full-scope operation):
+    "steam_to_turbine": float,        // operator turbine steam load, normalized (1.0 = rated)
+    "mwe_output": float, "turbine_rpm": float, "condenser_vacuum_kpa": number, "turbine_tripped": bool,
 }
 ```
 
@@ -289,8 +295,14 @@ physical-quantity vocabulary.
     "steam_flow_normalized": float, "fw_flow_normalized": float, "recirc_flow_pct": float,
     "decay_heat_pct": float, "xenon_pct_eq": float,
     "rcic_running": bool, "hpci_running": bool, "ads_open": bool, "lpci_running": bool,
+    "lpcs_running": bool,              // low-pressure core spray (D4)
+    "srv_manual_open": bool,           // operator manual SRV depressurization (D6)
+    "slc_active": bool, "slc_tank_pct": number,   // Standby Liquid Control — boron ATWS mitigation (D1)
     "station_blackout": bool, "battery_charge_pct": number,
     "scrammed": bool, "melted": bool, "destruction_cause": string,
+    "reactivity_pcm": float, "startup_rate_dpm": float, "reactor_period_s": float,  // reactivity proxies; display/derived only, never fed to protection (HR1)
+    // Balance of plant (turbine / condenser / generator — full-scope operation):
+    "mwe_output": float, "turbine_rpm": float, "condenser_vacuum_kpa": number, "turbine_tripped": bool,
 }
 ```
 
@@ -312,11 +324,18 @@ physical-quantity vocabulary.
     ],
     // PWR-specific:
     "porv_demand": string,           // "open" | "closed"
+    "porv_block_open": bool,          // PORV block/isolation valve (B1 — TMI recovery)
     "heater_power_pct": float, "spray_valve_pct": float, "charging_flow_normalized": float,
     "feedwater_flow_pct": float, "steam_demand_mwe": float, "hpi_active": bool,
+    "steam_dump_pct": float, "steam_dump_auto": bool,   // steam dump / turbine bypass (B2)
     "pumps": [ { "id": string, "running": bool, "flow_pct": float } ],
+    // RBMK-specific:
+    "channel_flow_setpoint_pct": number, "eps_bypassed": bool,
     // BWR-specific:
-    "recirc_flow_setpoint_pct": number, "ads_armed": bool,
+    "recirc_flow_setpoint_pct": number, "ads_armed": bool, "slc_active": bool,
+    // RBMK + BWR balance-of-plant (turbine load + steam dump — full-scope operation):
+    "turbine_load_mwe": float, "steam_dump_pct": float, "steam_dump_auto": bool,
+    // Shared where applicable: "feedwater_flow_pct" (RBMK/BWR feedwater demand).
 }
 ```
 
@@ -366,15 +385,24 @@ close_porv
 set_hpi             { active }
 set_afw             { active }
 set_dhr             { active }
-set_charging_flow   { normalized }
-set_letdown_flow    { normalized }
+set_charging_flow   { normalized }             // CVCS charging (manual) — inventory in (cold leg)
+set_letdown_flow    { normalized }             // CVCS letdown — inventory out
+set_charging_pump   { running }                // CVCS charging pump on/off
+set_cvcs_auto       { active }                 // CVCS auto make-up (holds inventory / compensates leakage)
+set_boron_adjust    { rate }                   // CVCS boron: + borate, − dilute, 0 hold (ppm/s; needs charging pump)
+open_block_valve                               // PORV block/isolation valve (B1)
+close_block_valve                              // isolates a stuck-open PORV
+set_steam_dump      { mode: "auto"|"open"|"closed" | pct }   // turbine bypass to condenser (B2)
 ```
 **RBMK plant control:**
 ```
 set_channel_flow    { pct }                    // MCP flow setpoint
 set_feedwater_flow  { pct }
 set_eps_bypass      { active }
+set_eccs            { active }                 // Emergency Core Cooling — channel make-up on a pressure-tube rupture
 manual_scram                                   // AZ-5 equivalent
+set_turbine_load    { mwe }                    // turbine steam load → electrical output (BOP)
+set_steam_dump      { mode: "auto"|"open"|"closed" | pct }   // turbine bypass to condenser (BOP)
 ```
 **BWR plant control:**
 ```
@@ -384,7 +412,15 @@ set_turbine_load    { mwe }
 trigger_ads
 start_lpci
 set_rcic            { active }                 // manual override; auto-start is default
+set_ic              { active }                 // Isolation Condenser — passive heat sink, no AC (Fukushima U1); DC-valve, lost on battery depletion
 set_hpci            { active }                 // higher-capacity steam-driven injection; auto-actuated (no manual control in v1)
+initiate_slc                                   // Standby Liquid Control — boron shutdown (ATWS mitigation, D1)
+stop_slc
+start_lpcs                                      // low-pressure core spray (D4)
+stop_lpcs
+open_srv_manual                                // operator manual SRV depressurization (D6)
+close_srv_manual
+set_steam_dump      { mode: "auto"|"open"|"closed" | pct }   // turbine bypass to condenser (BOP; gated on condenser availability)
 ```
 **Failure injection:**
 ```
@@ -415,10 +451,13 @@ Errors return as `{ type: "error", code: "COMMAND_ERROR", message, received }`.
 
 - **PWR:** `hot_full_power` (100%, equilibrium) · `hot_zero_power` (subcritical, hot, at
   operating T/P) · `50_percent`.
-- **RBMK:** `full_power` (100%) · `low_power_xenon` (~7% power, xenon ≈ 135% of equilibrium,
-  ORM ≈ 7.5 — the Chernobyl precondition).
-- **BWR:** `full_power` (100%) · `post_scram_sbo` (scrammed, station blackout active, RCIC
-  just started — the Fukushima starting point).
+- **RBMK:** `full_power` (100%) · `50_percent` (stable partial-power maneuvering point,
+  healthy ORM) · `hot_startup` (subcritical hot standby — approach-to-criticality start) ·
+  `low_power_xenon` (~7% power, xenon ≈ 135% of equilibrium, ORM ≈ 7.5 — the Chernobyl
+  precondition).
+- **BWR:** `full_power` (100%) · `50_percent` (stable partial power at reduced recirc) ·
+  `hot_startup` (subcritical hot standby — approach-to-criticality start) · `post_scram_sbo`
+  (scrammed, station blackout active, RCIC just started — the Fukushima starting point).
 
 ---
 
@@ -666,3 +705,41 @@ scenario tests. There is no shared engine module and no shared engine code.
 - **Explicit coupling:** the kinetics use the reactivity computed at the start of the step
   (from the previous step's temperatures/states). Standard explicit coupling, stable at
   0.02 s.
+
+---
+
+## 12. The Operator's Manuals (and the rule that keeps them true)
+
+Each plant has an **operator's manual** — one authoritative, **single-voice** document (technical
+terms spelled out with their acronym, e.g. "Steam Generator (SG)", "Startup Rate (SUR)") that a
+user follows to operate the plant through every phase, plus alarm-response, per-failure emergency
+procedures, and the flagship accident walkthroughs. The manuals are **the source of truth for the
+Instructor (M6)**: every procedure step carries a machine-checkable **acceptance predicate** that
+both the validation harness and the Instructor gate/grade on — one artifact, no second copy.
+
+**Where it lives:**
+- `Blueprint/OPERATOR_MANUAL_PLAN.md` — the manual spec: content model, the procedure schema, the
+  full per-plant procedure list, and build status.
+- `tools/gen_manual_reference.js` → `ui/manual_data.js` (`RD.MANUAL`) — the **generated** reference
+  half (controls, indications, setpoints/limits, normal-value baselines, glossary), extracted from
+  the live engine configs + a settling run so it cannot drift.
+- `ui/manual_procedures.js` (`RD.MANUAL_PROCEDURES`) — the **authored, engine-validated** procedures.
+- `test/run_procedures.js` — validates every procedure step's acceptance against the engine.
+- `ui/app.js` (+ `shell.html`/`shell.css`) — the in-sim manual panel.
+
+**HARD MAINTENANCE RULE — if you change the sim, update the manuals.** Any change that affects what
+the manual states MUST update the manual in the same change:
+- Change a **config value** (setpoint, trip/alarm threshold, instrument range, operating point,
+  named state, safety limit) → **re-run `node tools/gen_manual_reference.js`** so `RD.MANUAL`
+  matches, and adjust any procedure target/acceptance that depended on it.
+- Add/rename/remove a **control, command, instrument, failure, or initial state** → update the
+  authored layer (control/indication/alarm text, glossary) in the generator and the affected
+  procedures; re-run the generator and **`node test/run_procedures.js`** (must stay green).
+- Change **physics/tuning** that moves a validated behavior (a procedure's target no longer
+  achievable, a new hazard) → update the affected procedures and their acceptance predicates and
+  re-validate.
+- Add a term/acronym anywhere in the **UI** → add it to that plant's **glossary**.
+
+A manual that disagrees with the running sim is a defect: the Instructor would gate on a false
+premise. Treat the procedure suite and the generator as part of the acceptance gate for any
+sim-facing change.

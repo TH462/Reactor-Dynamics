@@ -22,6 +22,7 @@
     power_range: 'power_pct', vessel_pressure: 'vessel_pressure_mpa', vessel_level: 'vessel_level_pct',
     recirc_flow: 'recirc_flow_pct', steam_flow: 'steam_flow_normalized', fw_flow: 'fw_flow_normalized',
     core_void_fraction: 'core_void_fraction',
+    turbine_rpm: 'turbine_rpm', condenser_vacuum: 'condenser_vacuum_kpa', mwe_output: 'mwe_output',
   };
 
   function BWRInstruments(config, seed) {

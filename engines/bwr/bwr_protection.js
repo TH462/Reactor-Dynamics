@@ -51,6 +51,7 @@
   var BWR_FAILURES = {
     rcic_failure:        { type: 'physics_parameter', category: 'safety_system', effect: 'stop_rcic', display: 'RCIC Failure' },
     hpci_failure:        { type: 'physics_parameter', category: 'safety_system', effect: 'stop_hpci', display: 'HPCI Failure' },
+    ic_failure:          { type: 'physics_parameter', category: 'safety_system', effect: 'stop_ic', display: 'Isolation Condenser Failure (valves shut)' },
     station_blackout:    { type: 'physics_parameter', category: 'power', effect: 'full_blackout_bwr', display: 'Station Blackout' },
     loss_of_feedwater:   { type: 'command_override', category: 'coolant', intercepts: ['set_feedwater_flow'], override_value: 0.0, display: 'Loss of Feedwater' },
     turbine_trip:        { type: 'command_override', category: 'power', intercepts: ['set_turbine_load'], override_value: 0.0, display: 'Turbine Trip' },
@@ -58,6 +59,7 @@
     ads_failure:         { type: 'command_override', category: 'safety_system', intercepts: ['trigger_ads'], effect: 'block', display: 'ADS Failure (won’t open)' },
     lpci_failure:        { type: 'command_override', category: 'safety_system', intercepts: ['start_lpci'], effect: 'block', display: 'LPCI Failure' },
     recirc_pump_trip:    { type: 'physics_parameter', category: 'coolant', effect: 'coast_down_recirc', display: 'Recirculation Pump Trip' },
+    loss_of_condenser_vacuum: { type: 'physics_parameter', category: 'power', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },
     srv_stuck_open:      { type: 'physics_parameter', category: 'coolant', effect: 'stuck_relief_open', severity_scales: 'relief_area',
                            severity_meta: { label: 'Break Size', unit: '% effective area', min: 0, max: 100, default: 30 }, display: 'Safety/Relief Valve Stuck Open' },
     early_battery_failure: { type: 'physics_parameter', category: 'power', effect: 'degrade_battery', severity_scales: 'battery_duration_fraction',

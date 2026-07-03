@@ -71,6 +71,13 @@
       void_scale_factor: 0.45,     // rated power at rated flow → ~45% void [tune]
       void_response_tau_bwr: 1.5,  // s [tune]
       void_collapse_coeff: 0.145,  // per MPa — turbine-trip void collapse (§7.3) [tune]
+      // Turbine bypass / steam dump to the main condenser — holds vessel pressure
+      // on a load rejection / turbine trip. Ordered ABOVE rated (7.03) so the §7.3
+      // void-collapse transient still fires, and BELOW the SRV relief (7.58) so it
+      // acts first. Only available when the condenser is (needs AC) — gated on
+      // condenser_cooling_available, so it is inert during station blackout and the
+      // SRVs hold pressure to keep RCIC's steam drive alive (Fukushima). [tune]
+      steam_dump_setpoint: 7.25, steam_dump_band: 0.30, steam_dump_max: 1.0,
       K_vessel_level: 5.0,         // [tune]
       latent_heat_bwr: 1.0, vessel_water_mass: 7.0,  // boiloff = H_total/(latent·mass) [tune]
       vessel_level_nominal: 50.0,  // % at full power / SBO start
@@ -80,6 +87,20 @@
       uncover_level_pct: 20.0, h_fc_uncover_floor: 0.00005,
       heat_gen_coeff_bwr: 15.0, h_fc_bwr: 0.05,  // → ~586 °C fuel at rated [tune]
       fuel_damage_c: 1200.0, fuel_melt_c: 2800.0, // fixed
+    },
+
+    // -------------------------------------------- turbine / condenser / generator
+    // Balance-of-plant so the BWR can be operated full-scope (electrical output,
+    // turbine trip/coastdown, condenser vacuum) like the PWR. Direct cycle: steam
+    // to the turbine IS steam_flow_normalized, so MWe tracks that steam draw. 1800
+    // rpm (mirrors the PWR turbine block). Electrical scale uses the top-level
+    // mwe_rated (1100). Behavioral model per PWR §6.8. All [tune].
+    turbine: {
+      rpm_rated: 1800.0, rpm_overspeed_trip: 1980.0,
+      torque_per_flow: 1.0, windage: 1.0, turbine_inertia: 50.0,
+      vacuum_rated: 96.5, vacuum_lost: 16.9,           // kPa
+      vacuum_restore_tau: 10.0, vacuum_decay_tau: 30.0, // s
+      vacuum_trip_kpa: 74.5,       // turbine trips below this
     },
 
     // ------------------------------------------------- recirculation (§7)
@@ -106,6 +127,10 @@
       // D6 manual SRV depressurization — controlled (slower than ADS's 120 s) but
       // must still out-vent decay steam to reach the <1.03 MPa injection window. [tune]
       srv_manual_tau: 150.0,
+      // Isolation Condenser (IC) — passive heat sink (Fukushima Unit 1): condenses
+      // reactor steam in an elevated pool and returns condensate by gravity. No AC,
+      // no fresh water; DC-powered valves (lost on battery depletion). [tune]
+      ic_condense_rate: 0.02,      // vessel-pressure condensing rate coefficient (/s)
       battery_duration_hours: 8.0, battery_low_pct: 20.0,   // [tune]
       BATTERY_MAX_DEGRADE: 0.75,   // early_battery_failure max duration cut
       SRV_BLOWDOWN_COEFF: 0.5, SRV_INVENTORY_RATE: 0.02,    // stuck-relief blowdown [tune]
@@ -142,6 +167,9 @@
       steam_flow:         { lag: 1.0, noise: 0.01,  range: [0, 1.2] },
       fw_flow:            { lag: 1.0, noise: 0.01,  range: [0, 1.2] },
       core_void_fraction: { lag: 1.0, noise: 0.01,  range: [0, 1.0] },
+      turbine_rpm:        { lag: 0.5, noise: 2.0,   range: [0, 2200] },   // BOP
+      condenser_vacuum:   { lag: 5.0, noise: 0.34,  range: [0, 102] },    // kPa, BOP
+      mwe_output:         { lag: 0.5, noise: 1.0,   range: [0, 1300] },   // MWe, BOP
       rcic_status:        { boolean: true },
       status: ['rps_scrammed', 'station_blackout', 'battery_pct', 'ads_open', 'hpci_unavailable'],
     },
@@ -149,6 +177,18 @@
     // ---------------------------------------------------------- named init states
     initial_states: {
       full_power:    { power: 1.0, scrammed: false },
+      // Stable partial-power operating point for maneuvering practice (matches the
+      // PWR's 50_percent envelope). Reduced recirc drive → the negative void
+      // feedback settles power near 50% (recirc_pct tuned so power holds ~50%).
+      '50_percent':  { power: 0.5, scrammed: false, recirc_pct: 19.0 },
+      // Hot standby / approach-to-criticality start: low power, flow established.
+      // Enabled by the per-state void_ref pinning (reset) — void_ref is pinned at
+      // the low startup void so there is no positive void offset. Trimmed critical
+      // at the operating rod position, then the control group is inserted
+      // subcrit_margin_steps further so it starts SUBCRITICAL; the operator
+      // withdraws the margin to go critical and ascend (raising recirc to climb).
+      hot_startup:   { power: 0.02, scrammed: false, recirc_pct: 40.0,
+                       subcritical: true, subcrit_margin_steps: 25 },
       post_scram_sbo:{ power: 1e-6, scrammed: true, station_blackout: true, rcic_running: true },
     },
   };

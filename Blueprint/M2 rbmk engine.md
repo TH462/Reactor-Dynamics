@@ -260,6 +260,13 @@ feedback dangerous.
 The critical runaway chain this models: reduced flow → more boiling → higher void → (positive
 coefficient) → more reactivity → more power → more boiling.
 
+**Emergency Core Cooling System (ECCS) — built.** `set_eccs {active}` (step 9c, after the
+channel-rupture drain). When active it makes up steam-drum level at `eccs_level_rate` (%/s) and
+holds a channel-flow floor at `eccs_flow_floor` (%), arresting a pressure-tube-rupture drain /
+dryout. Config in `thermal` (`eccs_level_rate`, `eccs_flow_floor`); contract `eccs_active`. Gated
+by the `eccs` acceptance test (rupture drains the drum; ECCS recovers level and holds the flow
+floor).
+
 ### 8.1 Channel flow and MCP coupling
 ```javascript
 if (mcp_running) channel_flow_pct += (mcp_speed_pct - channel_flow_pct) / mcp_spinup_tau   * dt;
@@ -281,11 +288,17 @@ s **[tune]**.
 ### 8.3 Steam-drum pressure (the RBMK's pressure-setting component)
 ```javascript
 steam_gen_rate = P * steam_gen_per_power;
-dDrumP_dt = (steam_gen_rate - steam_to_turbine - relief_flow) * K_drum_pressure;
+// steam_dump = turbine bypass to condenser (§8.7); auto above steam_dump_setpoint, manual override wins.
+dDrumP_dt = (steam_gen_rate - steam_to_turbine - steam_dump - relief_flow) * K_drum_pressure;
 steam_pressure_mpa += dDrumP_dt * dt;
 ```
 `steam_gen_per_power = 1.0`, `K_drum_pressure = 0.0207` MPa/imbalance, operating 7.0 MPa,
-relief valves open at 8.0 MPa **[tune]**.
+relief valves open at 8.0 MPa **[tune]**. **`steam_to_turbine` is the operator's turbine steam
+load** (normalized, 1.0 = rated), set by `set_turbine_load {mwe}` (§8.7) and defaulting to the
+state's initial power — it is **not** power-tracking, so an excursion outruns the fixed draw and
+pressure rises into the reliefs / the steam_pressure trip (the accident behavior is unchanged
+when the operator does not touch turbine load). The `steam_dump` term is condensed and returned,
+so it affects drum **pressure**, not drum level (§8.4 is unchanged).
 
 ### 8.4 Steam-drum level
 ```javascript
@@ -313,6 +326,35 @@ fuel_temp_c += dTf_dt * dt;
 `h_fc_rbmk = 0.04` s⁻¹, `heat_gen_coeff_rbmk` tuned so rated power gives an appropriate fuel
 temperature **[tune]**. Excessive flow reduction or the excursion itself drives dryout → fuel
 temperature rises sharply (the `channel_dryout` failure §14 forces this).
+
+### 8.7 Balance of plant — turbine / condenser / generator (built, folded in)
+
+So the RBMK can be operated **full-scope** (bring load on/off, generate electricity) like the
+PWR, the engine carries a behavioral turbine/condenser/generator, mirroring the PWR (`M1 §6.8`).
+RBMK-1000: two ~500 MWe turbogenerators (lumped to one) on a **50 Hz** grid → **3000 rpm**.
+
+```javascript
+// Condenser vacuum: restores toward rated when cooling available, else decays (realistic lag).
+condenser_vacuum_kpa += ((cooling_available ? vacuum_rated : vacuum_lost) - condenser_vacuum_kpa) / tau * dt;
+if (condenser_vacuum_kpa < vacuum_trip_kpa) tripTurbine();     // low-vacuum trip → steam_to_turbine = 0
+// Grid holds a synced machine at rated speed; a tripped/desynced one coasts on windage.
+synced = !turbine_tripped && steam_to_turbine > 0 && condenser_vacuum_kpa >= vacuum_trip_kpa;
+if (synced) turbine_rpm += (rpm_rated - turbine_rpm) / 0.5 * dt;
+else { turbine_rpm += (steam_to_turbine*torque_per_flow*rpm_rated - windage*turbine_rpm) / turbine_inertia * dt; }
+// Electrical output tracks the steam actually drawn by the turbine (drum cycle: steam the
+// turbine doesn't take is dumped/relieved), so MWe follows load, not raw fission power.
+mwe_output = steam_to_turbine * mwe_rated * (turbine_rpm/rpm_rated) * (condenser_vacuum_kpa/vacuum_rated);
+```
+`mwe_rated = 1000` MWe, `rpm_rated = 3000`, `rpm_overspeed_trip = 3300`, `turbine_inertia = 50`,
+`windage = 1.0`, `torque_per_flow = 1.0`, `vacuum_rated = 96.5` kPa, `vacuum_lost = 16.9`,
+`vacuum_restore_tau = 10` s, `vacuum_decay_tau = 30` s, `vacuum_trip_kpa = 74.5` **[tune]**.
+
+**Steam dump / turbine bypass:** auto-opens proportionally above `steam_dump_setpoint = 7.5` MPa
+(band 0.4, ordered below the 7.6 MPa alarm / 8.0 MPa relief so it acts first); a manual override
+wins; vents steam to the condenser (§8.3). Commands `set_turbine_load {mwe}` and `set_steam_dump
+{mode: "auto"|"open"|"closed" | pct}`; `turbine_load_mwe` / `steam_dump_pct` / `steam_dump_auto`
+in `control_state`; `steam_to_turbine`, `mwe_output`, `turbine_rpm`, `condenser_vacuum_kpa`,
+`turbine_tripped` added to `true_state` (additive to `CONTEXT §6.3`).
 
 ---
 
@@ -446,6 +488,9 @@ injection time** (stuck-at-current); `drift` carries a `rate` (units/s, sim time
 | `void_fraction` | fraction | 1.0 | 0.01 | 0–1.0 |
 | `fuel_temp` | °C | 4.0 | 5.0 °C | 0–2000 °C |
 | `orm_display` | equiv rods | 0.0 | 0.0 | 0–211 |
+| `turbine_rpm` | RPM | 0.5 | 3.0 RPM | 0–3600 | *(BOP §8.7)* |
+| `condenser_vacuum` | kPa | 5.0 | 0.34 kPa | 0–102 | *(BOP §8.7)* |
+| `mwe_output` | MWe | 0.5 | 2.0 MWe | 0–1200 | *(BOP §8.7)* |
 
 Status readings the protection/alarm config also reads: `rps_scrammed`, `eps_bypassed`,
 `orm_alarm_active`. Instrument internal state (lag buffers, active failures, PRNG state) is
@@ -500,8 +545,15 @@ RBMK_FAILURES = {
   pressure_tube_rupture: { type:"physics_parameter", effect:"channel_rupture", severity_scales:"rupture_size",
                            severity_meta:{ label:"Break Size", unit:"% effective area", min:0, max:100, default:30 }, display:"Pressure Tube Rupture" },
   void_sensor_failure:   { type:"instrument", instrument_id:"void_fraction", mode:"stuck", display:"Void Fraction Sensor Stuck" },
+  // Balance-of-plant failures (built, folded in — §8.7):
+  turbine_trip:             { type:"physics_parameter", effect:"trip_turbine", display:"Turbine Trip" },
+  loss_of_condenser_vacuum: { type:"physics_parameter", effect:"vacuum_decay", display:"Loss of Condenser Vacuum" },
 };
 ```
+Each failure also carries a `category` field (∈ `reactivity|coolant|power|instrument|safety_system`;
+built, folded in) for the M4/UI Failures catalog — plant data per HR3. The two BOP effects:
+`trip_turbine` (rejects load → `steam_to_turbine = 0`, turbine coasts down, §8.7) and `vacuum_decay`
+(`condenser_cooling_available = false` → vacuum decays → low-vacuum turbine trip).
 The engine exposes the hooks these need: an MCP-coastdown trigger (§8.1), the `eps_bypassed`
 flag that M4's trip evaluation respects, and an `h_fc` reduction for forced dryout (§8.6). The
 newer physics-parameter effects are implemented in §14.1; `failure_to_scram` uses M4's command-
@@ -583,6 +635,18 @@ instead of coasting to zero.) `clear_failure` reverses each effect.
 
 - **`full_power`** — 100 % power, all systems normal: rods at operating positions (ORM at its
   rated value), xenon at equilibrium, full channel flow, drums at 7.0 MPa / nominal level.
+- **`50_percent`** *(built, folded in)* — stable partial-power maneuvering point: 50 % power,
+  healthy ORM (~70), channel flow 80 %, equilibrium xenon. `rho_excess` is trimmed to critical
+  for this state (per-state trim, §14 notes), so it holds ~50 %. Matches the PWR's `50_percent`
+  envelope for full-scope operation.
+- **`hot_startup`** *(built, folded in)* — subcritical hot standby / approach-to-criticality
+  start: low power (~2 %), no xenon, channel flow established (70 %). Trimmed critical per-state
+  at `orm_target`, then the control group is inserted `subcrit_margin_steps` (25) further so it
+  starts **subcritical** (no boron — the margin is rod position). The operator withdraws the
+  margin to reach criticality and ascends (watching `startup_rate_dpm`). Works on both versions
+  (the per-state `void_ref` pinning avoids a standing void offset). The engine exposes the
+  operator reactivity proxies `startup_rate_dpm` (= 26.06·Ṗ/P) and `reactor_period_s` (= P/Ṗ)
+  in `true_state` (built, additive — like the PWR).
 - **`low_power_xenon`** — **the Chernobyl precondition**: ~7 % power, xenon at **135 % of
   equilibrium**, most rods withdrawn so **ORM ≈ 7.5** (far below either minimum), channel flow
   reduced (raising void). Ready to run the scenario. The version (`design_version`) is
@@ -615,10 +679,14 @@ reachable by selecting the version.
 
 `step(dt_effective)`; `getTrueState()` → the RBMK `true_state` block (`CONTEXT.md §6.3`, incl.
 `void_fraction_avg`, `orm_equiv_rods`, `orm_alarm_active`, `eps_bypassed`,
-`destruction_cause`, `steam_explosion_occurred`, `energy_deposition_rate`, `design_version`);
-`getInstruments()` → §13 (incl. computed `orm_display`); `getControlState()` →
-`CONTEXT.md §6.5` rod groups; `applyCommand(command)` for the RBMK commands in
-`CONTEXT.md §6.7` (`set_channel_flow`, `set_feedwater_flow`, `set_eps_bypass`, `manual_scram`,
+`destruction_cause`, `steam_explosion_occurred`, `energy_deposition_rate`, `design_version`,
+`reactivity_pcm`, and the BOP fields `steam_to_turbine`/`mwe_output`/`turbine_rpm`/
+`condenser_vacuum_kpa`/`turbine_tripped` — §8.7);
+`getInstruments()` → §13 (incl. computed `orm_display` + the BOP instruments);
+`getControlState()` → `CONTEXT.md §6.5` rod groups + `channel_flow_setpoint_pct`,
+`feedwater_flow_pct`, `eps_bypassed`, `turbine_load_mwe`, `steam_dump_pct`/`steam_dump_auto`;
+`applyCommand(command)` for the RBMK commands in `CONTEXT.md §6.7` (`set_channel_flow`,
+`set_feedwater_flow`, `set_eps_bypass`, `manual_scram`, `set_turbine_load`, `set_steam_dump`,
 rod commands); `saveState()`/`loadState()` (§18); the scenario suite (§19). The engine never
 evaluates trips/alarms or assembles the snapshot.
 
@@ -701,6 +769,18 @@ rise. *ORM indicator failure* — stick `orm_display` safe, drive true ORM low; 
 `orm_equiv_rods` drops and the void amplification (§5.3) still uses the true value. *partial MCP trip*
 — flow settles at a reduced level, not zero.
 
+**Startup / approach-to-criticality (§15 `hot_startup` — built, folded in; both versions).**
+From `hot_startup`: the reactor sits **subcritical** (ρ < 0) near zero power; withdrawing the
+control group slowly takes it critical and into a controlled power ascension (`startup_rate_dpm`
+positive) with no destruction. *(Suite: `startup_pre` / `startup_post`.)*
+
+**Balance of plant (§8.7 — built, folded in; run for both versions).** From `full_power`:
+electrical output ≈ rated MWe (1000) with the turbine synced at 3000 rpm and rated condenser
+vacuum; reducing `set_turbine_load` lowers MWe and the steam dump opens to hold drum pressure
+below the relief (no high-pressure trip); a `turbine_trip` failure collapses MWe and coasts the
+turbine down; `loss_of_condenser_vacuum` decays vacuum below the trip and trips the turbine; the
+`50_percent` state holds ~50 % power and ~half MWe, stable. *(Suite: `bop_pre` / `bop_post`.)*
+
 **Save and restore.** Save mid-excursion-buildup, restore into a fresh engine, confirm the run
 continues identically — including the energy-deposition EMA and instrument lag/noise state. Run this
 **with a failure active** (mid-`channel_rupture` and mid-stall) to confirm the §14.1 `_fail` state
@@ -744,7 +824,13 @@ the pre/post comparison — the RBMK physics is done and correct.
 | `energy_deposition_scale` | 0.42 | destruction path (co-tuned with threshold) |
 | `xenon_worth / sigma_phi` | 0.025 / 2.0e−5 | xenon transient |
 | `H1_0/λ1, H2_0/λ2` | 0.05/5e−4, 0.02/2e−5 | post-scram cooling |
+| **BOP (§8.7):** `mwe_rated / rpm_rated` | 1000 MWe / 3000 rpm | electrical output / 50 Hz |
+| `rpm_overspeed_trip / turbine_inertia / windage` | 3300 / 50 / 1.0 | turbine coastdown / overspeed |
+| `vacuum_rated / vacuum_lost / vacuum_trip_kpa` | 96.5 / 16.9 / 74.5 kPa | condenser |
+| `vacuum_restore_tau / vacuum_decay_tau` | 10 / 30 s | vacuum response/lag |
+| `steam_dump_setpoint / band / max` | 7.5 MPa / 0.4 / 1.0 | turbine bypass to condenser |
 
-**Operating points / fixed:** rated ≈ 3200 MWt, drum 7.0 MPa, drum relief 8.0 MPa;
+**Operating points / fixed:** rated ≈ 3200 MWt (≈ 1000 MWe), drum 7.0 MPa, drum relief 8.0 MPa;
 `total_rod_count` 211; `max_steps` 228; scram 18 s (pre) / 12 s (post); melt 2800 °C;
-trip/alarm setpoints per §14; `low_power_xenon` preset: ~7 % power, xenon 135 %, ORM ≈ 7.5.
+trip/alarm setpoints per §14; `low_power_xenon` preset: ~7 % power, xenon 135 %, ORM ≈ 7.5;
+`50_percent` preset: 50 % power, ORM ≈ 70, flow 80 %.

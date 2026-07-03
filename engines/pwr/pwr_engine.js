@@ -136,9 +136,10 @@
     for (var i = 0; i < this.rod_groups.length; i++) {
       var g = this.rod_groups[i];
       if (g.scrammed) {
-        // Scram: gravity insertion, velocity proportional to remaining position.
+        // Scram: constant-rate gravity insertion — rods reach fully-in within the
+        // scram time (linear, not asymptotic), so the motion is decisive/visible.
         var t_scram = g.function === 'shutdown' ? r.scram_time_shutdown_s : r.scram_time_control_s;
-        g.velocity = -(g.steps / t_scram);
+        g.velocity = -(g.max_steps / t_scram);
       }
       if (!g.velocity) { g.moving = (g.velocity !== 0); this._updateRodDerived(g); continue; }
       g.moving = true;
@@ -200,8 +201,9 @@
     SG.stepSecondary(s, this.cfg, dt);
     // 12. Turbine / condenser.
     SG.stepTurbine(s, this.cfg, dt);
-    // 13. Boron drift from CVCS charging/letdown.
-    s.boron_ppm += this.cfg.reactivity.boron_rate * (s.charging_flow - s.letdown_flow) * dt;
+    // 13. Boron chemistry (CVCS): borate/dilute change concentration directly (needs
+    //     the charging pump); decoupled from the net inventory balance.
+    if (s.charging_pump_running !== false) s.boron_ppm += (s.boron_adjust || 0) * dt;
     if (s.boron_ppm < 0) s.boron_ppm = 0;
     // 14. Fuel damage / melt.
     TH.checkDamage(s, this.cfg);
@@ -279,7 +281,8 @@
       porv_block_open: s.block_valve_open,
       heater_power_pct: s.heater_power_frac * 100,
       spray_valve_pct: s.spray_flow_frac * 100,
-      charging_flow_normalized: s.charging_flow,
+      charging_flow_normalized: s.charging_flow, letdown_flow_normalized: s.letdown_flow,
+      charging_pump_running: s.charging_pump_running, cvcs_auto: s.cvcs_auto, boron_adjust: s.boron_adjust,
       feedwater_flow_pct: s.feedwater_demand_frac * 100,
       steam_demand_mwe: s.steam_demand_mwe,
       steam_dump_pct: s.steam_dump_frac * 100,
@@ -335,10 +338,12 @@
         s.feedwater_demand_frac = clip(cmd.pct / 100, 0, 1.2);
         break;
       case 'set_heater':
-        s.heater_override = clip(cmd.power_pct / 100, 0, 1);
+        // {auto:true} returns to the proportional auto-control; {power_pct} is a manual override.
+        s.heater_override = cmd.auto ? null : clip(cmd.power_pct / 100, 0, 1);
         break;
       case 'set_spray':
-        s.spray_override = !!cmd.open;
+        // {auto:true} → auto; {pct} → manual valve %; {open} → back-compat boolean.
+        s.spray_override = cmd.auto ? null : (cmd.pct != null ? clip(cmd.pct / 100, 0, 1) : (cmd.open ? 1 : 0));
         break;
       case 'open_porv':
         s.porv_demand = 'open';
@@ -370,10 +375,20 @@
         s.dhr_active = !!cmd.active;
         break;
       case 'set_charging_flow':
-        s.charging_flow = cmd.normalized;
+        s.charging_flow = cmd.normalized; s.cvcs_auto = false;   // manual charging leaves auto make-up
         break;
       case 'set_letdown_flow':
         s.letdown_flow = cmd.normalized;
+        break;
+      case 'set_charging_pump':
+        s.charging_pump_running = !!cmd.running;
+        break;
+      case 'set_cvcs_auto':
+        s.cvcs_auto = !!cmd.active;   // auto make-up: charging modulates to hold inventory
+        break;
+      case 'set_boron_adjust':
+        // ppm/s: + borate, − dilute, 0 hold (needs the charging pump running)
+        s.boron_adjust = cmd.rate || 0;
         break;
       case 'inject_failure':
         this._injectFailure(cmd.failure_id, cmd.severity != null ? cmd.severity : 1.0);
@@ -559,6 +574,7 @@
 
       _mass: 1.0, core_inventory_pct: 100, primary_void_fraction: 0,
       charging_flow: 0, letdown_flow: 0, leak_flow: 0, safety_injection_flow: 0,
+      charging_pump_running: true, cvcs_auto: false, boron_adjust: 0,   // CVCS
       hpi_active: false, hpi_flow_normalized: 0, hpi_flow_multiplier: 1.0,
       flow_frac: 1.0, pump_flow_pct: 100, pump_running: true, station_blackout: false,
 

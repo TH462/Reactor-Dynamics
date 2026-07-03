@@ -52,7 +52,16 @@
     var relief_flow = s.steam_pressure_mpa > t.drum_relief_mpa
       ? (s.steam_pressure_mpa - t.drum_relief_mpa) * t.relief_gain : 0.0;
     s._relief_flow = relief_flow;
-    var dDrumP = (steam_gen_rate - s.steam_to_turbine - relief_flow) * t.K_drum_pressure;
+    // Turbine bypass / steam dump: vents steam straight to the condenser to hold
+    // drum pressure when the turbine can't take the full steam load (load
+    // rejection / turbine trip). AUTO opens proportionally above the setpoint (a
+    // basic relief-to-condenser, like the PWR's B2 dump); a manual override
+    // (0..1) wins. Dumped steam is condensed and returned to the feed system, so
+    // it affects drum PRESSURE, not drum level.
+    var dump = (s.steam_dump_override != null) ? s.steam_dump_override
+      : clip((s.steam_pressure_mpa - t.steam_dump_setpoint) / t.steam_dump_band, 0, 1) * t.steam_dump_max;
+    s.steam_dump_frac = dump;
+    var dDrumP = (steam_gen_rate - s.steam_to_turbine - dump - relief_flow) * t.K_drum_pressure;
     s.steam_pressure_mpa = Math.max(0.1, s.steam_pressure_mpa + dDrumP * dt);
   }
 
@@ -90,6 +99,49 @@
     s.fuel_temp_c += dTf * dt;
   }
 
+  // Balance-of-plant — turbine / condenser / generator (behavioral, mirroring the
+  // PWR §6.8). Called after the drum-pressure update. steam_to_turbine is the
+  // operator's turbine steam load (normalized, 1.0 = rated); the grid holds a
+  // synced machine at rated speed, and a tripped/desynced one coasts on windage.
+  function stepTurbine(s, cfg, dt) {
+    var tb = cfg.turbine;
+    if (!tb) return;
+    // Condenser vacuum: restores toward rated when cooling is available, else
+    // decays slowly toward the lost value (realistic lag).
+    var target = s.condenser_cooling_available ? tb.vacuum_rated : tb.vacuum_lost;
+    var tau = s.condenser_cooling_available ? tb.vacuum_restore_tau : tb.vacuum_decay_tau;
+    s.condenser_vacuum_kpa += (target - s.condenser_vacuum_kpa) / tau * dt;
+
+    // Turbine trips on low condenser vacuum.
+    if (s.condenser_vacuum_kpa < tb.vacuum_trip_kpa && !s.turbine_tripped) tripTurbine(s);
+
+    var load = s.steam_to_turbine;
+    var synced = !s.turbine_tripped && load > 1e-4 && s.condenser_vacuum_kpa >= tb.vacuum_trip_kpa;
+    if (synced) {
+      // Grid holds the synchronous generator at rated speed (3000 rpm, 50 Hz).
+      s.turbine_rpm += (tb.rpm_rated - s.turbine_rpm) / 0.5 * dt;
+    } else {
+      // Free-spinning: driven by any admitted steam, braked by windage → coasts
+      // down when steam is cut (trip), or drifts up if load is lost with steam on.
+      var drive = load * tb.torque_per_flow * tb.rpm_rated;
+      var brake = tb.windage * s.turbine_rpm;
+      s.turbine_rpm += (drive - brake) / tb.turbine_inertia * dt;
+      if (s.turbine_rpm < 0) s.turbine_rpm = 0;
+      if (s.turbine_rpm > tb.rpm_overspeed_trip && !s.turbine_tripped) tripTurbine(s);
+    }
+
+    // Electrical output tracks steam actually drawn by the turbine (direct/drum
+    // cycle: reactor power the turbine doesn't take is dumped/relieved).
+    s.mwe_output = load * tb.mwe_rated * (s.turbine_rpm / tb.rpm_rated)
+      * (s.condenser_vacuum_kpa / tb.vacuum_rated);
+    if (s.mwe_output < 0) s.mwe_output = 0;
+  }
+
+  function tripTurbine(s) {
+    s.turbine_tripped = true;
+    s.steam_to_turbine = 0;   // load rejected — steam now goes to dump/reliefs
+  }
+
   // §14.1 — channel (pressure-tube) rupture: local flashing → void up, inventory
   // lost → drum level down, coolant diverted → flow down. Applied AFTER the void,
   // drum-level, and channel-flow updates.
@@ -110,6 +162,8 @@
     stepDrumLevel: stepDrumLevel,
     stepGraphite: stepGraphite,
     stepFuel: stepFuel,
+    stepTurbine: stepTurbine,
+    tripTurbine: tripTurbine,
     applyChannelRupture: applyChannelRupture,
   };
 

@@ -35,7 +35,18 @@
     var relief_flow = s.vessel_pressure_mpa > v.relief_setpoint_mpa
       ? (s.vessel_pressure_mpa - v.relief_setpoint_mpa) * v.relief_gain : 0.0;
     s._relief_flow = relief_flow;
-    var dP = (steam_gen_rate - s.steam_flow_normalized - relief_flow) * v.K_vessel_pressure;
+    // Turbine bypass / steam dump to the main condenser: holds vessel pressure on
+    // a load rejection / turbine trip. AUTO opens proportionally above its setpoint
+    // (a manual override wins) — but ONLY when the condenser is available (needs
+    // AC), so it is inert during station blackout and the SRVs alone hold pressure
+    // (keeping RCIC's steam drive alive — the Fukushima story is unchanged).
+    var dump = 0;
+    if (s.condenser_cooling_available) {
+      dump = (s.steam_dump_override != null) ? s.steam_dump_override
+        : clip((s.vessel_pressure_mpa - v.steam_dump_setpoint) / v.steam_dump_band, 0, 1) * v.steam_dump_max;
+    }
+    s.steam_dump_frac = dump;
+    var dP = (steam_gen_rate - s.steam_flow_normalized - dump - relief_flow) * v.K_vessel_pressure;
     s.vessel_pressure_mpa = Math.max(v.P_ambient, s.vessel_pressure_mpa + dP * dt);
 
     // §13.1 stuck-relief blowdown (independent of ADS): continuous depressurize.
@@ -61,6 +72,9 @@
   function stepVesselLevel(s, cfg, dt) {
     var v = cfg.vessel;
     var boiloff = s.scrammed ? (s._H1 + s._H2) / (v.latent_heat_bwr * v.vessel_water_mass) : 0.0;
+    // Isolation Condenser returns its condensate by gravity, so while it condenses the
+    // vessel inventory is conserved (no net boiloff) — the passive core-cover path.
+    if (s.ic_condensing) boiloff = 0;
     s._boiloff_rate = boiloff;
     var srv_sink = s._fail.srv_stuck_open.active ? cfg.safety.SRV_INVENTORY_RATE * s._fail.srv_stuck_open.area : 0.0;
     var dLevel = (s.feedwater_normalized + s.rcic_flow + s.hpci_flow + s.lpci_flow + (s.lpcs_flow || 0)
@@ -94,10 +108,48 @@
     }
   }
 
+  // Balance-of-plant — turbine / condenser / generator (behavioral, mirroring the
+  // PWR §6.8). Direct cycle: steam_flow_normalized is the steam drawn by the
+  // turbine, so electrical output tracks it. Grid holds a synced machine at rated
+  // speed; a tripped/isolated one coasts down on windage.
+  function stepTurbine(s, cfg, dt) {
+    var tb = cfg.turbine;
+    if (!tb) return;
+    var target = s.condenser_cooling_available ? tb.vacuum_rated : tb.vacuum_lost;
+    var tau = s.condenser_cooling_available ? tb.vacuum_restore_tau : tb.vacuum_decay_tau;
+    s.condenser_vacuum_kpa += (target - s.condenser_vacuum_kpa) / tau * dt;
+
+    if (s.condenser_vacuum_kpa < tb.vacuum_trip_kpa && !s.turbine_tripped) tripTurbine(s);
+
+    var load = s.steam_flow_normalized;
+    var synced = !s.turbine_tripped && !s.turbine_blocked && load > 1e-4
+      && s.condenser_vacuum_kpa >= tb.vacuum_trip_kpa;
+    if (synced) {
+      s.turbine_rpm += (tb.rpm_rated - s.turbine_rpm) / 0.5 * dt;
+    } else {
+      var drive = load * tb.torque_per_flow * tb.rpm_rated;
+      var brake = tb.windage * s.turbine_rpm;
+      s.turbine_rpm += (drive - brake) / tb.turbine_inertia * dt;
+      if (s.turbine_rpm < 0) s.turbine_rpm = 0;
+      if (s.turbine_rpm > tb.rpm_overspeed_trip && !s.turbine_tripped) tripTurbine(s);
+    }
+
+    s.mwe_output = load * cfg.mwe_rated * (s.turbine_rpm / tb.rpm_rated)
+      * (s.condenser_vacuum_kpa / tb.vacuum_rated);
+    if (s.mwe_output < 0) s.mwe_output = 0;
+  }
+
+  function tripTurbine(s) {
+    s.turbine_tripped = true;
+    s.steam_flow_normalized = 0;
+    s.turbine_load_frac = 0;
+  }
+
   RD.bwrVessel = {
     T_sat: T_sat, coolantTemp: coolantTemp,
     stepVoid: stepVoid, stepVesselPressure: stepVesselPressure,
     stepVesselLevel: stepVesselLevel, stepFuel: stepFuel, checkDamage: checkDamage,
+    stepTurbine: stepTurbine, tripTurbine: tripTurbine,
   };
 
 })(globalThis.RD || (globalThis.RD = {}));
