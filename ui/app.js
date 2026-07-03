@@ -811,7 +811,7 @@
     var oseg = $('overlaySeg2');
     if (oseg) oseg.addEventListener('click', function (e) { var b = e.target.closest('[data-overlay]'); if (!b) return; ui.overlay = b.getAttribute('data-overlay'); syncSeg('[data-overlay]', ui.overlay, 'overlay'); if (latest) renderPdAll(latest); });
     $('registerSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-register]'); if (!b) return; ui.register = b.getAttribute('data-register'); cmd({ action: 'set_register', value: ui.register }); });
-    $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; ui.units = b.getAttribute('data-units'); if (latest) render(latest); });
+    $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
     $('graphParams').addEventListener('change', function (e) { var cb = e.target.closest('input[data-series]'); if (!cb) return; ui.series[cb.getAttribute('data-series')] = cb.checked; drawChart(); });
     $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); drawChart(); });
     $('initState').addEventListener('change', function () { ui.initState = $('initState').value; });
@@ -843,6 +843,12 @@
     });
   }
   function syncSeg(sel, val, attr) { document.querySelectorAll(sel).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-' + attr) === val); }); }
+  function applyUnitsMode(units) {
+    ui.units = units;
+    syncSeg('[data-units]', units, 'units');
+    if (latest) render(latest);
+    if ($('manualOverlay') && !$('manualOverlay').hidden) renderManual();
+  }
 
   // ============================================================ Operator's Manual (Phase 3)
   // Renders RD.MANUAL (generated reference + normal values) and RD.MANUAL_PROCEDURES
@@ -868,9 +874,38 @@
     condenser_vacuum_kpa: 'vacuum', subcooling_c: 'tempdiff',
   };
   function mval(key, val, dp) {   // → { v:displayString, u:unitLabel } converted to active units
-    var dim = MDIM[key];
-    if (dim == null || typeof val !== 'number') return { v: String(val), u: '' };
-    return { v: conv(val, dim).toFixed(dp == null ? 1 : dp), u: unit(dim) };
+    return fmtManualCell(key, val, dp);
+  }
+  var MANUAL_U_DIM = { '°C': 'temp', 'C': 'temp', '°F': 'temp', 'MPa': 'pressure', 'psi': 'pressure', 'psia': 'pressure', 'kPa': 'vacuum', 'inHg': 'vacuum' };
+  function unitStrToDim(u) { return MANUAL_U_DIM[u] || null; }
+  function fmtManualCell(instrumentOrDim, val, dp) {   // instrument id, dim name, or SI unit label (°C, MPa, …)
+    dp = dp == null ? 1 : dp;
+    if (val == null) return { v: '—', u: '' };
+    var dim = MDIM[instrumentOrDim] || unitStrToDim(instrumentOrDim);
+    if (dim == null || (typeof val !== 'number' && typeof val !== 'string')) return { v: String(val), u: '' };
+    if (typeof val === 'string') {
+      if (val.indexOf('/') >= 0) {
+        var parts = val.split('/').map(function (s) { return s.trim(); });
+        var cv = parts.map(function (p) {
+          var n = parseFloat(p);
+          return isNaN(n) ? p : conv(n, dim).toFixed(dp);
+        });
+        return { v: cv.join(' / '), u: unit(dim) };
+      }
+      var pref = /^([<>=]+)\s*([\d.]+)$/.exec(val.trim());
+      if (pref) {
+        var pn = parseFloat(pref[2]);
+        if (!isNaN(pn)) return { v: pref[1] + ' ' + conv(pn, dim).toFixed(dp), u: unit(dim) };
+      }
+      var lone = parseFloat(val);
+      if (!isNaN(lone) && String(lone) === val.trim()) return { v: conv(lone, dim).toFixed(dp), u: unit(dim) };
+      return { v: val, u: '' };
+    }
+    return { v: conv(val, dim).toFixed(dp), u: unit(dim) };
+  }
+  function fmtManualStr(instrumentOrDim, val, dp) {
+    var sp = fmtManualCell(instrumentOrDim, val, dp);
+    return sp.v + (sp.u ? ' ' + sp.u : '');
   }
 
   function openManual() { if (!manualProfile()) { alert('Manual data not loaded.'); return; } $('manualOverlay').hidden = false; renderManual(); }
@@ -987,18 +1022,21 @@
   function mSetpoints(p) {
     var s = p.setpoints, h = '<h2>Setpoints &amp; Limits</h2>';
     h += '<h3>Reactor-protection trips (scram)</h3><table class="m-table"><tr><th>Instrument</th><th>Dir</th><th>Setpoint</th><th>Action</th></tr>';
-    s.trips.forEach(function (t) { var sp = mval(t.instrument, t.setpoint, 1); h += '<tr><td class="mono">' + mesc(t.instrument) + '</td><td>' + mesc(t.direction) + '</td><td class="mono">' + mesc(sp.v + (sp.u ? ' ' + sp.u : '')) + '</td><td>' + mesc(t.action) + '</td></tr>'; });
+    s.trips.forEach(function (t) { h += '<tr><td class="mono">' + mesc(t.instrument) + '</td><td>' + mesc(t.direction) + '</td><td class="mono">' + mesc(fmtManualStr(t.instrument, t.setpoint, 1)) + '</td><td>' + mesc(t.action) + '</td></tr>'; });
     h += '</table>';
     if (s.actuations && s.actuations.length) {
       h += '<h3>Engineered-safety actuations</h3><table class="m-table"><tr><th>Instrument</th><th>Dir</th><th>Setpoint</th><th>Action</th><th>Condition</th></tr>';
-      s.actuations.forEach(function (a) { h += '<tr><td class="mono">' + mesc(a.instrument) + '</td><td>' + mesc(a.direction) + '</td><td class="mono">' + mesc(a.setpoint) + '</td><td>' + mesc(a.action) + '</td><td class="muted">' + mesc(a.condition || '') + '</td></tr>'; });
+      s.actuations.forEach(function (a) { h += '<tr><td class="mono">' + mesc(a.instrument) + '</td><td>' + mesc(a.direction) + '</td><td class="mono">' + mesc(fmtManualStr(a.instrument, a.setpoint, 1)) + '</td><td>' + mesc(a.action) + '</td><td class="muted">' + mesc(a.condition || '') + '</td></tr>'; });
       h += '</table>';
     }
     h += '<h3>Alarms</h3><table class="m-table"><tr><th>Alarm</th><th>Instrument</th><th>Setpoint</th><th>Priority</th></tr>';
-    s.alarms.forEach(function (a) { var sp = a.setpoint == null ? { v: '—', u: '' } : mval(a.instrument, a.setpoint, 1); h += '<tr><td>' + mesc(a.name) + '</td><td class="mono">' + mesc(a.instrument) + '</td><td class="mono">' + mesc(sp.v + (sp.u ? ' ' + sp.u : '')) + '</td><td><span class="m-pill m-prio-' + mesc(a.priority) + '">' + mesc(a.priority) + '</span></td></tr>'; });
+    s.alarms.forEach(function (a) { var spStr = a.setpoint == null ? '—' : fmtManualStr(a.instrument, a.setpoint, 1); h += '<tr><td>' + mesc(a.name) + '</td><td class="mono">' + mesc(a.instrument) + '</td><td class="mono">' + mesc(spStr) + '</td><td><span class="m-pill m-prio-' + mesc(a.priority) + '">' + mesc(a.priority) + '</span></td></tr>'; });
     h += '</table>';
     h += '<h3>Safety limits</h3><table class="m-table"><tr><th>Limit</th><th>Value</th><th>Note</th></tr>';
-    (p.safety_limits || []).forEach(function (l) { h += '<tr><td>' + mesc(l.name) + '</td><td class="mono">' + mesc(l.v) + ' ' + mesc(l.u) + '</td><td class="muted">' + mesc(l.note) + '</td></tr>'; });
+    (p.safety_limits || []).forEach(function (l) {
+      var dp = (l.u === '°C' || l.u === 'MPa') ? (typeof l.v === 'number' && l.v >= 100 ? 0 : 1) : 1;
+      h += '<tr><td>' + mesc(l.name) + '</td><td class="mono">' + mesc(fmtManualStr(l.u, l.v, dp)) + '</td><td class="muted">' + mesc(l.note) + '</td></tr>';
+    });
     return h + '</table>';
   }
 

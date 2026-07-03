@@ -86,6 +86,17 @@ async function screenshot(page, engine, view) {
   return controls;
 }
 
+function manualSetpointCell(page, instrument) {
+  return page.evaluate(function (inst) {
+    var rows = document.querySelectorAll('#manualContent tr');
+    for (var i = 0; i < rows.length; i++) {
+      var cells = rows[i].querySelectorAll('td.mono');
+      if (cells.length >= 2 && cells[0].textContent.trim() === inst) return cells[1].textContent.trim();
+    }
+    return null;
+  }, instrument);
+}
+
 async function testUnitsAndInstructor(page) {
   var log = [];
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&view=primary', { waitUntil: 'networkidle', timeout: 90000 });
@@ -95,12 +106,37 @@ async function testUnitsAndInstructor(page) {
   log.push('US gauge pressure: ' + usUnit);
   if (!/psi/i.test(usUnit)) throw new Error('US units expected psi in gauge, got: ' + usUnit);
 
-  await page.click('button[data-tab="settings"]');
-  await page.click('#unitsSeg button[data-units="SI"]');
+  await page.click('#manualBtn');
+  await page.click('#manualNav [data-msec="setpoints"]');
+  await page.waitForTimeout(400);
+  var usTrip = await manualSetpointCell(page, 'tavg');
+  log.push('US manual tavg trip: ' + usTrip);
+  if (!usTrip || !/°F/.test(usTrip)) throw new Error('US manual trip setpoint expected °F, got: ' + usTrip);
+  var usLimit = await page.locator('#manualContent tr:has-text("Fuel cladding damage") td.mono').first().textContent();
+  usLimit = (usLimit || '').trim();
+  log.push('US manual fuel limit: ' + usLimit);
+  if (!/°F/.test(usLimit) || !/2192/.test(usLimit)) throw new Error('US manual safety limit expected ~2192 °F, got: ' + usLimit);
+
+  // Toggle SI while manual overlay is open (DOM click — overlay blocks tab bar pointer events).
+  await page.evaluate(function () {
+    var b = document.querySelector('#unitsSeg button[data-units="SI"]');
+    if (b) b.click();
+  });
   await page.waitForTimeout(400);
   var siUnit = await page.locator('#gauge-press [data-val]').textContent();
   log.push('SI gauge pressure: ' + siUnit);
   if (!/MPa/i.test(siUnit)) throw new Error('SI units expected MPa, got: ' + siUnit);
+
+  var siTrip = await manualSetpointCell(page, 'tavg');
+  log.push('SI manual tavg trip: ' + siTrip);
+  if (!siTrip || !/°C/.test(siTrip) || !/335/.test(siTrip)) throw new Error('SI manual trip expected 335 °C, got: ' + siTrip);
+  var siLimit = await page.locator('#manualContent tr:has-text("Fuel cladding damage") td.mono').first().textContent();
+  siLimit = (siLimit || '').trim();
+  log.push('SI manual fuel limit: ' + siLimit);
+  if (!/°C/.test(siLimit) || !/1200/.test(siLimit)) throw new Error('SI manual safety limit expected 1200 °C, got: ' + siLimit);
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
 
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&follow=pwr_loss_of_feedwater', { waitUntil: 'networkidle', timeout: 90000 });
   await page.waitForFunction(function () {
