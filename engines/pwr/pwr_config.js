@@ -209,8 +209,8 @@
     // back to rods.control_op_position_pct when omitted.
     initial_states: {
       hot_full_power: { power: 1.0,  scrammed: false, rod_op_pct: 92.0 },
-      hot_zero_power: { power: 1e-6, scrammed: false, subcritical: true, rod_op_pct: 45.0,
-        at_operating_temp: true },   // HZP: NOP T/P (~304 °C), not power-proportional cooldown
+      hot_zero_power: { power: 1e-6, scrammed: false, subcritical: true, rod_op_pct: 0.0,
+        at_operating_temp: true },   // Hot standby: NOP T/P, control bank fully inserted
       '50_percent':   { power: 0.5,  scrammed: false, rod_op_pct: 78.0 },
     },
   };

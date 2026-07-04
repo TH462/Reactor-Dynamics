@@ -1201,7 +1201,7 @@
           }
         },
         "hot_zero_power": {
-          "label": "Hot Standby: subcritical, hot, at operating temperature/pressure — the approach-to-criticality start.",
+          "label": "Hot Standby: subcritical, hot, at NOP temperature/pressure — control bank fully inserted.",
           "settled_s": 5,
           "true_state": {
             "power_pct": 0.00000214,
@@ -1220,7 +1220,7 @@
             "fuel_temp_c": 303.893,
             "decay_heat_pct": 0.489,
             "xenon_pct_eq": 1.39e-10,
-            "boron_ppm": 690.858,
+            "boron_ppm": 347.25,
             "porv_open": false,
             "porv_stuck": false,
             "hpi_active": false,
@@ -1258,7 +1258,7 @@
             "hpi_active": false,
             "station_blackout": false,
             "steam_demand_low": true,
-            "rod_at_limit": false
+            "rod_at_limit": true
           }
         },
         "50_percent": {

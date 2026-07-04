@@ -646,6 +646,7 @@
       s._H1 = dh.H1_0 * 0.07;
       s._H2 = dh.H2_0 * 0.07;
       s.decay_heat_pct = (s._H1 + s._H2) * 100;
+      // Shutdown bank stays parked withdrawn at HZP (see SHUTDOWN_DRIVE hint); control bank is fully inserted.
     }
 
     if (name === 'hot_full_power' && !this._hfp_refs) {
@@ -788,6 +789,7 @@
         var t0 = h.ts();
         ck('subcritical', t0.reactivity_pcm.toFixed(0), t0.reactivity_pcm < 0, '< 0');
         ck('Tavg ≈ 304 °C at reset', t0.tavg_c.toFixed(2), near(t0.tavg_c, 304, 3), '304 ±3');
+        ck('control bank fully inserted', h.eng.getControlState().rod_groups[0].position_pct.toFixed(1), near(h.eng.getControlState().rod_groups[0].position_pct, 0, 1), '0 ±1');
         ck('pressure ≈ 15.41 MPa', t0.pressure_mpa.toFixed(3), near(t0.pressure_mpa, 15.41, 0.25), '15.41 ±0.25');
         h.run(100);
         var t = h.ts();

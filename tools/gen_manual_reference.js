@@ -197,6 +197,7 @@ var GLOSSARY_BASE = [
   ['MWe / MWt', 'Megawatts electric (grid output) / megawatts thermal (reactor heat).'],
   ['Reactor period', 'The time for power to change by a factor of e (~2.72); long period = slow change.'],
   ['SCRAM', 'A rapid full insertion of the control rods — emergency shutdown.'],
+  ['Shutdown bank', 'The scram rods (the RBMK’s AZ / Emergency Protection group), normally parked fully withdrawn. Operable — hold Insert to add shutdown margin, Withdraw to park it back out — but a SCRAM always drives it fully in and overrides you.'],
   ['Decay heat', 'Heat from radioactive decay that continues after shutdown (~7% of rated, decaying).'],
   ['Xenon', 'Xenon-135, a neutron-absorbing fission product that builds in after a power drop.'],
   ['Reactivity', 'The tendency of the chain reaction to grow (+) or shrink (−); critical = steady.'],
@@ -209,7 +210,7 @@ var GLOSSARY = {
 
 var STATE_SUMMARY = {
   hot_full_power: '100% power at equilibrium — the normal operating point.',
-  hot_zero_power: 'Hot Standby: subcritical, hot, at operating temperature/pressure — the approach-to-criticality start.',
+  hot_zero_power: 'Hot Standby: subcritical, hot, at NOP temperature/pressure — control bank fully inserted.',
   '50_percent': 'Stable partial power for maneuvering practice.',
   full_power: '100% power, all systems normal.',
   hot_startup: 'Hot Standby: subcritical, low power, flow established — the approach-to-criticality start.',

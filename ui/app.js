@@ -88,7 +88,7 @@
     // ------------------------------------------------------------------ PWR
     pwr: {
       scram: 'REACTOR SCRAM', scramShort: 'SCRAM',
-      initStates: [['hot_full_power', 'Hot Full Power'], ['50_percent', '50 % Power'], ['hot_zero_power', 'Hot Zero Power']],
+      initStates: [['hot_full_power', 'Hot Full Power'], ['50_percent', '50 % Power'], ['hot_zero_power', 'Hot Standby']],
       defaultSeries: { power: true, tavg: true, pressure: true, sg_level: true },
       gauges: [
         { id: 'power',   label: 'Reactor Power', lead: true, raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
@@ -150,7 +150,7 @@
         ] },
       ],
       controls: [
-        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED()] },
+        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods')] },
         { key: 'primary', label: 'Primary Inventory', groups: [
           { l: 'Reactor Coolant Pumps (RCP)', hint: 'Reactor Coolant Pumps — force primary flow. Stopping them collapses flow.', seg: [{ l: 'Run', act: 'rcp-run', on: 1, run: 1 }, { l: 'Stop', act: 'rcp-stop' }] },
           { l: 'Chemical Shim (Boron)', hint: 'Chemical Shim — adjusts dissolved boron (a neutron absorber) to trim reactivity slowly.', seg: [{ l: 'Borate', act: 'borate' }, { l: 'Off', act: 'boron-off', on: 1 }, { l: 'Dilute', act: 'dilute' }] },
@@ -223,7 +223,7 @@
         ] },
       ],
       controls: [
-        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED()] },
+        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods')] },
         { key: 'coolant', label: 'Coolant Circuit', groups: [
           { l: 'MCP / Channel Flow', hint: 'Main Circulation Pumps — channel flow setpoint. Lower flow ⇒ more void ⇒ (positive coefficient) more power.', num: { id: 'rbmkFlow', min: 0, max: 120, value: 100, act: 'rbmk-flow-set', setL: 'Set %' } },
           { l: 'Feedwater', num: { id: 'rbmkFeed', min: 0, max: 100, value: 100, act: 'rbmk-feed-set', setL: 'Set %' } },
@@ -290,7 +290,7 @@
         ] },
       ],
       controls: [
-        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED()] },
+        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods')] },
         { key: 'recirc', label: 'Recirculation', groups: [
           { l: 'Recirc Drive Flow', hint: 'Recirculation flow — the BWR\'s main power control. More flow sweeps out voids ⇒ more power.', num: { id: 'bwrRecirc', min: 0, max: 48, value: 40, act: 'bwr-recirc-set', setL: 'Set %' } },
         ] },
@@ -320,6 +320,14 @@
     return { l: 'Rod Speed', hint: 'Rod speed — slow / normal / fast drive rate.',
       seg: [{ l: 'Slow', act: 'rodspeed-slow' }, { l: 'Norm', act: 'rodspeed-normal', on: 1 }, { l: 'Fast', act: 'rodspeed-fast' }],
       extra: [{ l: '+1', act: 'rod-nudge-out', title: 'withdraw 1 step' }, { l: '−1', act: 'rod-nudge-in', title: 'insert 1 step' }] };
+  }
+  // The shutdown / emergency-protection bank — normally parked fully withdrawn and
+  // driven fully in automatically on a SCRAM. It IS operable (real startup pulls it
+  // out first, a controlled shutdown drives it in), but the scram always overrides.
+  function SHUTDOWN_DRIVE(group) {
+    return { l: 'Shutdown Bank', emergency: 1,
+      hint: 'Shutdown / scram bank — normally parked fully withdrawn. HOLD Insert to drive it in (adds shutdown margin, drops power), Withdraw to park it back out. A SCRAM drives it fully in automatically and overrides you.',
+      seg: [{ l: 'Withdraw', hold: 'srod-withdraw' }, { l: 'Insert', hold: 'srod-insert' }] };
   }
 
   function prof() { return PROFILES[ui.plant]; }
@@ -741,11 +749,14 @@
   // speed, release (anywhere) stops it. The rods then move as the sim steps — at
   // the same rate the smooth +1/−1 nudge uses.
   var HOLD = {
-    'rod-withdraw': function () { cmd({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: ui.rodSpeed }); },
-    'rod-insert': function () { cmd({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: ui.rodSpeed }); },
+    'rod-withdraw': function () { startHoldRod('control_rods', 1); },
+    'rod-insert': function () { startHoldRod('control_rods', -1); },
+    'srod-withdraw': function () { startHoldRod('shutdown_rods', 1); },
+    'srod-insert': function () { startHoldRod('shutdown_rods', -1); },
   };
-  var holding = false;
-  function endHold() { if (!holding) return; holding = false; cmd({ action: 'rod_stop', group_id: 'control_rods' }); document.querySelectorAll('.holding').forEach(function (x) { x.classList.remove('holding'); }); }
+  var holdingGroup = null;
+  function startHoldRod(group, direction) { holdingGroup = group; cmd({ action: 'rod_start', group_id: group, direction: direction, speed: ui.rodSpeed }); }
+  function endHold() { if (!holdingGroup) return; cmd({ action: 'rod_stop', group_id: holdingGroup }); holdingGroup = null; document.querySelectorAll('.holding').forEach(function (x) { x.classList.remove('holding'); }); }
 
   function bindCommands() {
     document.body.addEventListener('click', function (e) {
@@ -757,7 +768,7 @@
     document.body.addEventListener('pointerdown', function (e) {
       var b = e.target.closest('[data-hold]'); if (!b) return;
       var h = HOLD[b.getAttribute('data-hold')]; if (!h) return;
-      e.preventDefault(); holding = true; b.classList.add('holding'); h();
+      e.preventDefault(); b.classList.add('holding'); h();
     });
     // remember control-bar setpoints so the shared bar shows the live value (not the
     // hardcoded default) when you leave and return to a view
@@ -1178,6 +1189,16 @@
     return (ui.pdAck[id] || ui.pdOp[id]) ? 'running' : 'alarm';
   }
   function rg(s, fn) { var g = rodGroup(s, fn); return g ? (g.steps + ' / ' + g.max_steps) : '—'; }
+  // Rod-bank readout with motion/scram status — makes the shutdown bank's state
+  // (parked out, driving in, or scrammed) legible as it moves.
+  function bankStat(s, fn) {
+    var g = rodGroup(s, fn); if (!g) return '—';
+    var base = g.steps + ' / ' + g.max_steps;
+    if (g.scrammed) return base + ' · SCRAMMED';
+    if (g.moving) return base + (g.direction > 0 ? ' · withdrawing' : ' · inserting');
+    if (fn === 'shutdown' && g.position_pct >= 99.5) return base + ' · parked out';
+    return base;
+  }
   function sur(s) { var v = s.true_state.startup_rate_dpm; if (v == null) return '—'; return Math.abs(v) < 0.01 ? { dim: v.toFixed(2) + ' dpm' } : v.toFixed(2) + ' dpm'; }
 
   function R(k, get, opts) { var r = { k: k, get: get }; if (opts) for (var o in opts) r[o] = opts[o]; return r; }
@@ -1539,7 +1560,7 @@
         sections: [
           { title: 'Reactor Core', rows: [
             R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }),
-            R('Control Bank', function (s) { return rg(s, 'control'); }), R('Shutdown Bank', function (s) { return rg(s, 'shutdown'); }),
+            R('Control Bank', function (s) { return bankStat(s, 'control'); }), R('Shutdown Bank', function (s) { return bankStat(s, 'shutdown'); }),
             R('Startup Rate', sur), R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
             R('Decay Heat', function (s) { return s.true_state.decay_heat_pct.toFixed(1) + ' %'; }), R('Fuel Temp', function (s) { return dispT(s.true_state.fuel_temp_c); }),
           ] },
@@ -1554,7 +1575,7 @@
             R('PORV Block', function (s) { var o = s.control_state.porv_block_open; return { t: o ? 'open' : 'ISOLATED', cls: o ? 'q-normal' : 'q-caution' }; }),
           ] },
         ],
-        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(),
+        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods'),
           { l: 'Boron (Reactivity) — CVCS', hint: 'Chemical & Volume Control System boron: Borate adds boron (lowers power), Dilute removes it (raises power). Needs the charging pump running.', seg: [{ l: 'Borate', act: 'borate' }, { l: 'Hold', act: 'boron-hold', on: 1 }, { l: 'Dilute', act: 'dilute' }] },
           { l: 'Charging Pump (CVCS)', hint: 'Charging pump — injects coolant into the cold leg (raises inventory; carries boron). Slider = manual %.', num: { id: 'chargeSet', min: 0, max: 100, value: 0, act: 'charge-set', setL: 'Set %' }, seg: [{ l: 'On', act: 'charge-pump-on', on: 1, run: 1 }, { l: 'Off', act: 'charge-pump-off' }] },
           { l: 'Letdown Valve (CVCS)', hint: 'Letdown valve — removes coolant from the Reactor Coolant System (lowers inventory). Slider = manual %.', num: { id: 'letdownSet', min: 0, max: 100, value: 0, act: 'letdown-set', setL: 'Set %' }, seg: [{ l: 'Isolate', act: 'letdown-isolate', on: 1 }] },
@@ -1613,7 +1634,7 @@
       primary: {
         sections: [
           { title: 'Reactor Core', rows: [
-            R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }), R('Control Rods', function (s) { return rg(s, 'control'); }),
+            R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }), R('Control Rods', function (s) { return bankStat(s, 'control'); }), R('Shutdown Bank', function (s) { return bankStat(s, 'shutdown'); }),
             R('Fuel Temp', function (s) { return dispT(s.instruments.fuel_temp); }), R('Graphite Temp', function (s) { return dispT(s.true_state.graphite_temp_avg_c); }),
             R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
           ] },
@@ -1627,7 +1648,7 @@
             R('Emergency Core Cooling', function (s) { return bool(s.true_state.eccs_active, 'INJECTING', 'standby'); }),
           ] },
         ],
-        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(),
+        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods'),
           { l: 'MCP / Channel Flow', num: { id: 'rbmkFlow', min: 0, max: 120, value: 100, act: 'rbmk-flow-set', setL: 'Set %' } },
           { l: 'Emergency Core Cooling (ECCS)', emergency: 1, hint: 'Injects to the fuel channels on a pressure-tube rupture / loss of coolant — makes up steam-drum level and holds a cooling-flow floor to arrest dryout.', seg: [{ l: 'On', act: 'rbmk-eccs-on', run: 1 }, { l: 'Off', act: 'rbmk-eccs-off', on: 1 }] },
           { l: 'EPS', emergency: 1, seg: [{ l: 'Active', act: 'eps-off', on: 1, run: 1 }, { l: 'Bypass', act: 'eps-on', warn: 1 }] }],
@@ -1674,7 +1695,7 @@
       primary: {
         sections: [
           { title: 'Reactor Core', rows: [
-            R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }), R('Control Rods', function (s) { return rg(s, 'control'); }),
+            R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }), R('Control Rods', function (s) { return bankStat(s, 'control'); }), R('Shutdown Bank', function (s) { return bankStat(s, 'shutdown'); }),
             R('Core Void', function (s) { return pctOf(s.instruments.core_void_fraction); }), R('Fuel Temp', function (s) { return dispT(s.true_state.fuel_temp_c); }),
             R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
           ] },
@@ -1684,7 +1705,7 @@
           ] },
           { title: 'Recirculation', rows: [ R('Recirc / Core Flow', function (s) { return s.instruments.recirc_flow.toFixed(0) + ' %'; }) ] },
         ],
-        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(),
+        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods'),
           { l: 'Recirc Drive', num: { id: 'bwrRecirc', min: 0, max: 48, value: 40, act: 'bwr-recirc-set', setL: 'Set %' } }],
         cross: [R('Turbine Steam', function (s) { return pctOf(s.instruments.steam_flow); }), R('Feedwater', function (s) { return pctOf(s.instruments.fw_flow); }), R('Turbine Load', function (s) { return (s.control_state.feedwater_flow_pct).toFixed(0) + ' %'; })],
       },
