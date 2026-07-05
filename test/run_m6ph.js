@@ -80,6 +80,8 @@ T.push(test('Integration — commands still descend the full stack (HR5)', funct
   var s = svc();
   var before = s.engine.getControlState().rod_groups[0].steps;
   s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -10 });
+  // A nudge drives to its target at rod speed (M1 §7), not instantly — step until it arrives.
+  for (var i = 0; i < 400 && s.engine.getControlState().rod_groups[0].steps > before - 10; i++) s.advanceCycles(1);
   ck('rod_nudge reached the engine through the placeholder', s.engine.getControlState().rod_groups[0].steps, s.engine.getControlState().rod_groups[0].steps === before - 10, String(before - 10));
 }));
 

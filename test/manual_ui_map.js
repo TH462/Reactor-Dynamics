@@ -4,24 +4,24 @@
 
 var VIEW_CONTROLS = {
   pwr: {
-    primary: ['Control Bank', 'Rod Speed', 'Boron (Reactivity) — CVCS', 'Charging Pump (CVCS)', 'Letdown Valve (CVCS)',
+    primary: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'Boron (Reactivity) — CVCS', 'Charging Pump (CVCS)', 'Letdown Valve (CVCS)',
       'CVCS Inventory Control', 'Pressurizer Heaters (PZR)', 'Pressurizer Spray (PZR)', 'Reactor Coolant Pumps (RCP)',
       'Relief Valve (PORV)', 'PORV Block Valve', 'Decay-Heat Removal (DHR)'],
     secondary: ['Feed Pumps', 'AFW', 'Feed Reg', 'Steam Dump', 'MSIV', 'Turbine Load', 'Main Breaker'],
     scram: 'SCRAM',
   },
   rbmk_pre: {
-    primary: ['Control Bank', 'Rod Speed', 'MCP / Channel Flow', 'Emergency Core Cooling (ECCS)', 'EPS'],
+    primary: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'MCP / Channel Flow', 'Emergency Core Cooling (ECCS)', 'EPS'],
     secondary: ['Feedwater', 'Turbine Load', 'Steam Dump'],
     scram: 'AZ-5',
   },
   rbmk_post: {
-    primary: ['Control Bank', 'Rod Speed', 'MCP / Channel Flow', 'Emergency Core Cooling (ECCS)', 'EPS'],
+    primary: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'MCP / Channel Flow', 'Emergency Core Cooling (ECCS)', 'EPS'],
     secondary: ['Feedwater', 'Turbine Load', 'Steam Dump'],
     scram: 'AZ-5',
   },
   bwr: {
-    primary: ['Control Bank', 'Rod Speed', 'Recirc Drive'],
+    primary: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'Recirc Drive'],
     secondary: ['RCIC', 'Isolation Condenser (IC)', 'HPCI', 'ADS', 'LPCI', 'Core Spray (LPCS)', 'Manual SRV',
       'Standby Liquid Control (SLC)', 'Steam Dump', 'Turbine Load', 'Feedwater'],
     scram: 'SCRAM',

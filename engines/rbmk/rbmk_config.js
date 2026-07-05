@@ -169,8 +169,11 @@
     initial_states: {
       full_power:     { power: 1.0,  orm_target: 70.0, flow_pct: 100.0, xenon_factor: 1.0 },
       // A stable partial-power operating point for maneuvering practice (matches
-      // the PWR's 50_percent envelope). ORM stays healthy; flow reduced with power.
-      '50_percent':   { power: 0.5,  orm_target: 70.0, flow_pct: 80.0,  xenon_factor: 1.0 },
+      // the PWR's 50_percent envelope). At reduced power the control group sits
+      // deeper (higher ORM target) than at full power, so the starting rod position
+      // visibly tracks the starting power; flow reduced with power. rho_excess
+      // re-trims per state, so the point is still exactly critical.
+      '50_percent':   { power: 0.5,  orm_target: 90.0, flow_pct: 80.0,  xenon_factor: 1.0 },
       // Hot standby / approach-to-criticality start: low power, no xenon, flow
       // established. Trimmed critical per-state at orm_target, then the control
       // group is inserted `subcrit_margin_steps` further so it starts SUBCRITICAL;

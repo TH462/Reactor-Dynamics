@@ -70,6 +70,9 @@ T.push(test('Command routing — plant command descends the full stack to the en
   var s = svc();
   var before = s.engine.getControlState().rod_groups[0].steps;
   s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -10 }); // insert
+  // A nudge drives to its target at rod speed (M1 §7), not instantly — step the
+  // sim until the control group reaches before-10 (or a generous cycle cap).
+  for (var i = 0; i < 400 && s.engine.getControlState().rod_groups[0].steps > before - 10; i++) s.advanceCycles(1);
   var after = s.engine.getControlState().rod_groups[0].steps;
   ck('rod_nudge reached the engine via instructor→M4→engine', before + '→' + after, after === before - 10, String(before - 10));
 }));

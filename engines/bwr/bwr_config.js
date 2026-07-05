@@ -178,8 +178,12 @@
     initial_states: {
       full_power:    { power: 1.0, scrammed: false },
       // Stable partial-power operating point for maneuvering practice (matches the
-      // PWR's 50_percent envelope). Reduced recirc drive → the negative void
-      // feedback settles power near 50% (recirc_pct tuned so power holds ~50%).
+      // PWR's 50_percent envelope). DELIBERATELY recirc-controlled: the control
+      // group stays at the operating position and recirc flow is reduced, because a
+      // BWR maneuvers power with recirculation flow, not rods (CONTEXT §5) — so
+      // unlike the PWR/RBMK, the BWR's starting rod position is the SAME at 50 % as
+      // at full power by design. The negative void feedback settles power near 50 %
+      // (recirc_pct tuned so power holds ~50 %).
       '50_percent':  { power: 0.5, scrammed: false, recirc_pct: 19.0 },
       // Hot standby / approach-to-criticality start: low power, flow established.
       // Enabled by the per-state void_ref pinning (reset) — void_ref is pinned at

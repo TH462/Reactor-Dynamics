@@ -514,7 +514,10 @@
     var sbo = !!init.station_blackout;
     var scrammed = !!init.scrammed;
 
-    // Rod positions: operating (full power) or fully inserted (scrammed).
+    // Rod positions: operating (full power) or fully inserted (scrammed). The BWR
+    // keeps the control group at the operating position across power levels and
+    // maneuvers with recirc flow instead (CONTEXT §5), so there is no per-state rod
+    // position here — unlike the PWR/RBMK.
     var cg = this.rod_groups[0], sg = this.rod_groups[1];
     if (scrammed) { cg.steps = 0; sg.steps = 0; }
     else { cg.steps = Math.round(cfg.rods.control_op_position_pct / 100 * cg.max_steps); sg.steps = sg.max_steps; }

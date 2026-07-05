@@ -110,7 +110,6 @@
       numeric: [
         { title: 'Reactor / Core', rows: [
           { k: 'Power', inst: function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }, truth: function (s) { return s.true_state.power_pct.toFixed(1) + ' %'; } },
-          // E2 — SUR carries no information at steady power; grey it to near-invisible until it moves.
           { k: 'Startup Rate', inst: function (s) { var v = s.true_state.startup_rate_dpm; return Math.abs(v) < 0.01 ? '<span class="dim-info">' + v.toFixed(2) + ' dpm</span>' : v.toFixed(2) + ' dpm'; } },
           { k: 'Fuel Temp', truth: function (s) { return dispT(s.true_state.fuel_temp_c); } },
           { k: 'Decay Heat', truth: function (s) { return s.true_state.decay_heat_pct.toFixed(1) + ' %'; } },
@@ -507,7 +506,6 @@
     var t = s.true_state;
     var sgn = function (v) { return (v >= 0 ? '+' : '') + v; };
     $('rxReactivity').textContent = t.reactivity_pcm != null ? sgn(t.reactivity_pcm.toFixed(0)) + ' pcm' : '— pcm';
-    $('rxSur').textContent = t.startup_rate_dpm != null ? sgn(t.startup_rate_dpm.toFixed(2)) + ' dpm' : '— (PWR only)';
     var per = t.reactor_period_s;
     $('rxPeriod').textContent = per == null ? '— (PWR only)' : (!isFinite(per) || Math.abs(per) > 9999) ? '∞ (steady)' : per.toFixed(0) + ' s';
   }
@@ -1255,6 +1253,7 @@
       '<circle cx="440" cy="405" r="3" fill="#3a5870"/><text class="comp-sub" x="440" y="436" text-anchor="middle" style="fill:#5a7488;">RCP</text>' +
       '<g class="sensors">' +
         '<g class="sensor"><circle class="tap" cx="116" cy="380" r="2.4"/><path class="leader" d="M102,236 V380 H116"/><rect class="lbl-box" x="56" y="206" width="92" height="30" rx="4"/><text class="lbl-name" x="63" y="217">Reactor Power</text><text class="lbl-val" x="63" y="231"><tspan id="vPower">100.1</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
+        '<g class="sensor"><circle class="tap" cx="130" cy="272" r="2.4"/><path class="leader" d="M116,236 V272 H130"/><rect class="lbl-box" x="56" y="250" width="92" height="28" rx="4"/><text class="lbl-name" x="63" y="260">Startup Rate</text><text class="lbl-val" x="63" y="273"><tspan id="vSur">0.00</tspan><tspan class="lbl-unit"> dpm</tspan></text></g>' +
         '<g class="sensor"><rect class="lbl-box" x="56" y="150" width="92" height="42" rx="4"/><text class="lbl-name" x="63" y="161">Rod Position</text><text class="lbl-val" x="63" y="175"><tspan id="vRod">8</tspan><tspan class="lbl-unit"> % ins</tspan></text><text class="lbl-note" x="63" y="186">withdrawn = power up</text></g>' +
         '<g class="sensor"><circle class="tap" cx="232" cy="345" r="2.4"/><path class="leader" d="M232,345 V378 H246"/><rect class="lbl-box" x="246" y="364" width="112" height="30" rx="4"/><text class="lbl-name" x="253" y="375">Subcooling</text><text class="lbl-val derived" x="253" y="389"><tspan id="vSub">74</tspan><tspan class="lbl-unit" id="uSub"> °F</tspan></text><text class="lbl-note" x="300" y="389">computed</text></g>' +
         '<g class="sensor tmi"><circle class="tap" cx="160" cy="345" r="2.4"/><path class="leader" d="M160,345 H246 V332"/><rect class="lbl-box" x="246" y="320" width="112" height="40" rx="4"/><text class="lbl-name" x="253" y="331">Core Inventory</text><text class="lbl-val" x="253" y="345"><tspan id="vInv">full</tspan></text><text class="lbl-note" x="253" y="356">reads at vessel — not PZR</text></g>' +
@@ -1295,6 +1294,7 @@
     function tx(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
     tx('vPower', ins.power_range.toFixed(1));
     tx('vRod', Math.round(rodIns));
+    tx('vSur', t.startup_rate_dpm != null ? t.startup_rate_dpm.toFixed(2) : '—');
     tx('vSub', Math.max(0, Math.round(conv(ins.subcooling_margin, 'tempdiff')))); tx('uSub', ' ' + unit('tempdiff'));
     tx('vInv', flow < 0.04 ? 'static' : (t.core_inventory_pct >= 99 ? 'full' : Math.round(t.core_inventory_pct) + '%'));
     tx('vPress', Math.round(conv(ins.primary_pressure, 'pressure'))); tx('uPress', ' ' + unit('pressure'));
@@ -1464,6 +1464,7 @@
       '<g class="sensors">' +
         '<g class="sensor"><rect class="lbl-box" x="56" y="108" width="92" height="38" rx="4"/><text class="lbl-name" x="63" y="119">Rod Position</text><text class="lbl-val" x="63" y="132"><tspan id="fvRod">8</tspan><tspan class="lbl-unit"> % ins</tspan></text><text class="lbl-note" x="63" y="142">withdrawn = power up</text></g>' +
         '<g class="sensor"><circle class="tap" cx="116" cy="310" r="2.2"/><path class="leader" d="M102,186 V310 H116"/><rect class="lbl-box" x="56" y="156" width="92" height="30" rx="4"/><text class="lbl-name" x="63" y="167">Reactor Power</text><text class="lbl-val" x="63" y="181"><tspan id="fvPower">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
+        '<g class="sensor"><circle class="tap" cx="130" cy="248" r="2.2"/><path class="leader" d="M116,186 V248 H130"/><rect class="lbl-box" x="56" y="200" width="92" height="28" rx="4"/><text class="lbl-name" x="63" y="211">Startup Rate</text><text class="lbl-val" x="63" y="224"><tspan id="fvSur">0.00</tspan><tspan class="lbl-unit"> dpm</tspan></text></g>' +
         '<g class="sensor tmi"><circle class="tap" cx="160" cy="300" r="2.2"/><path class="leader" d="M160,300 V286 H246"/><rect class="lbl-box" x="246" y="272" width="108" height="36" rx="4"/><text class="lbl-name" x="253" y="283">Core Inventory</text><text class="lbl-val" x="253" y="296"><tspan id="fvInv">full</tspan></text><text class="lbl-note" x="253" y="305">reads at vessel — not PZR</text></g>' +
         '<g class="sensor"><circle class="tap" cx="232" cy="315" r="2.2"/><path class="leader" d="M232,315 V330 H246"/><rect class="lbl-box" x="246" y="315" width="108" height="28" rx="4"/><text class="lbl-name" x="253" y="325">Subcooling</text><text class="lbl-val derived" x="253" y="338"><tspan id="fvSub">74</tspan><tspan class="lbl-unit" id="fvUSub"> °F</tspan></text><text class="lbl-note" x="298" y="338">computed</text></g>' +
         '<g class="sensor"><line class="tap-tick" x1="364" y1="170" x2="376" y2="170"/><circle class="tap" cx="370" cy="170" r="2.2"/><path class="leader" d="M370,170 H336"/><rect class="lbl-box" x="244" y="155" width="92" height="30" rx="4"/><text class="lbl-name" x="251" y="166">Primary Press</text><text class="lbl-val" x="251" y="180"><tspan id="fvPress">2235</tspan><tspan class="lbl-unit" id="fvUPress"> psi</tspan></text></g>' +
@@ -1509,6 +1510,7 @@
     var flow = (t.pump_flow_pct || 0) / 100, load = Math.max(0, ins.steam_flow || 0);
     function tx(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
     tx('fvPower', Math.round(ins.power_range)); tx('fvRod', Math.round(rodIns));
+    tx('fvSur', t.startup_rate_dpm != null ? t.startup_rate_dpm.toFixed(2) : '—');
     tx('fvSub', Math.max(0, Math.round(conv(ins.subcooling_margin, 'tempdiff')))); tx('fvUSub', ' ' + unit('tempdiff'));
     tx('fvInv', flow < 0.04 ? 'static' : (t.core_inventory_pct >= 99 ? 'full' : Math.round(t.core_inventory_pct) + '%'));
     tx('fvPress', Math.round(conv(ins.primary_pressure, 'pressure'))); tx('fvUPress', ' ' + unit('pressure'));
@@ -1561,7 +1563,7 @@
           { title: 'Reactor Core', rows: [
             R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }),
             R('Control Bank', function (s) { return bankStat(s, 'control'); }), R('Shutdown Bank', function (s) { return bankStat(s, 'shutdown'); }),
-            R('Startup Rate', sur), R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
+            R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
             R('Decay Heat', function (s) { return s.true_state.decay_heat_pct.toFixed(1) + ' %'; }), R('Fuel Temp', function (s) { return dispT(s.true_state.fuel_temp_c); }),
           ] },
           { title: 'RCS', rows: [
@@ -1635,7 +1637,7 @@
         sections: [
           { title: 'Reactor Core', rows: [
             R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }), R('Control Rods', function (s) { return bankStat(s, 'control'); }), R('Shutdown Bank', function (s) { return bankStat(s, 'shutdown'); }),
-            R('Fuel Temp', function (s) { return dispT(s.instruments.fuel_temp); }), R('Graphite Temp', function (s) { return dispT(s.true_state.graphite_temp_avg_c); }),
+            R('Startup Rate', sur), R('Fuel Temp', function (s) { return dispT(s.instruments.fuel_temp); }), R('Graphite Temp', function (s) { return dispT(s.true_state.graphite_temp_avg_c); }),
             R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
           ] },
           { title: 'Reactivity & ORM', rows: [
@@ -1696,7 +1698,7 @@
         sections: [
           { title: 'Reactor Core', rows: [
             R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }), R('Control Rods', function (s) { return bankStat(s, 'control'); }), R('Shutdown Bank', function (s) { return bankStat(s, 'shutdown'); }),
-            R('Core Void', function (s) { return pctOf(s.instruments.core_void_fraction); }), R('Fuel Temp', function (s) { return dispT(s.true_state.fuel_temp_c); }),
+            R('Startup Rate', sur), R('Core Void', function (s) { return pctOf(s.instruments.core_void_fraction); }), R('Fuel Temp', function (s) { return dispT(s.true_state.fuel_temp_c); }),
             R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
           ] },
           { title: 'Vessel', rows: [
