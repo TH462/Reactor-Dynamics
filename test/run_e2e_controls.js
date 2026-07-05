@@ -66,8 +66,16 @@ console.log(B + 'PWR — recently-added controls' + X);
   ck('PORV block valve isolate', !s.engine.s.block_valve_open, s.engine.s.block_valve_open, false);
 
   s = svc('pwr', 'hot_full_power');
-  s.handleCommand({ action: 'set_dhr', active: true });
-  ck('DHR on', s.engine.s.dhr_active === true, s.engine.s.dhr_active, true);
+  s.handleCommand({ action: 'set_rhr', active: true });
+  ck('RHR on', s.engine.s.rhr_active === true, s.engine.s.rhr_active, true);
+
+  s = svc('pwr', 'hot_full_power');
+  s.handleCommand({ action: 'set_dhr', active: true });   // one-release alias → rhr_active
+  ck('set_dhr alias still maps to RHR', s.engine.s.rhr_active === true, s.engine.s.rhr_active, true);
+
+  s = svc('pwr', 'hot_full_power');
+  s.handleCommand({ action: 'set_lpi', active: true });
+  ck('LPI on (manual)', s.engine.s.lpi_active === true, s.engine.s.lpi_active, true);
 
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'set_charging_pump', running: false });
@@ -104,6 +112,22 @@ console.log(B + 'PWR — recently-added controls' + X);
   s.handleCommand({ action: 'set_cvcs_auto', active: true });
   step(s, 400);
   ck('CVCS auto make-up holds inventory vs leak', s.engine.s.core_inventory_pct >= inv0 - 5, s.engine.s.core_inventory_pct.toFixed(1), '>=' + (inv0 - 5).toFixed(1));
+  // §8.8: the charging_flow INDICATION (true modulated flow) rises above the operator
+  // SETPOINT under AUTO make-up — the two are distinct snapshot fields for the UI.
+  var snap = s.assembleSnapshot();
+  ck('charging_flow indication > setpoint under AUTO', snap.instruments.charging_flow > snap.control_state.charging_flow_normalized + 0.005,
+     'ind ' + snap.instruments.charging_flow.toFixed(4) + ' vs setpt ' + snap.control_state.charging_flow_normalized.toFixed(4), 'ind > setpt');
+
+  // §8.8: large-break LOCA drives the ECCS — LPI auto-start + passive accumulator discharge,
+  // both visible as snapshot.instruments status/flow (Animation HR1 inputs for the synoptic).
+  s = svc('pwr', 'hot_full_power');
+  s.handleCommand({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
+  var accumFired = false, lpiFired = false;
+  for (var i = 0; i < 600; i++) { s.advanceCycles(1); var sn = s.assembleSnapshot();
+    if (sn.instruments.accumulators_discharging && sn.instruments.accumulator_flow > 0) accumFired = true;
+    if (sn.instruments.lpi_active && sn.instruments.lpi_flow > 0.05) lpiFired = true; }
+  ck('large LOCA auto-starts LPI (lpi_active + flow)', lpiFired, lpiFired, true);
+  ck('large LOCA discharges accumulators (status + flow)', accumFired, accumFired, true);
 })();
 
 console.log('\n' + B + 'RBMK — recently-added controls' + X);

@@ -102,6 +102,12 @@
       // When the primary voids it is two-phase: pressure is pulled to the
       // saturation pressure of Tavg (so subcooling → 0). [tune]
       K_sat_pull: 1.5,
+      // Break blowdown: a primary break (LOCA/SGTR, s.leak_flow) vents the coolant
+      // to containment and depressurizes the RCS — unlike CVCS letdown, which is a
+      // controlled inventory bleed at pressure. This is what pushes a LARGE break
+      // below saturation (voiding → sat-pull takes over) and into the ECCS/accumulator
+      // band; a small PORV break floors higher (TMI). Zero when no break. [tune]
+      K_leak_depressurize: 10.0,
       // PORV: auto-open 16.20 MPa (2350 psia), command-close 15.86 MPa (2300 psia).
       porv_open_mpa: 16.20, porv_close_mpa: 15.86,
       porv_flow_max: 0.0035,       // normalized inventory loss (slow, TMI-realistic) [tune]
@@ -148,12 +154,42 @@
       vacuum_restore_tau: 10.0, vacuum_decay_tau: 30.0, // s [tune]
       vacuum_trip_kpa: 74.5,       // turbine trips below this
       mwe_rated: 1000.0,           // MWe [tune]
+      // Turbine governor / control valve: admission valve position (% open) tracks
+      // the load demand with a first-order response, then modulates steam flow
+      // together with SG pressure. Replaces the direct demand×pressure coupling. [tune]
+      governor_tau: 2.0,           // s valve response time constant
     },
 
     // ----------------------------------------------------------- emergency cool
     emergency: {
       hpi_flow_max: 0.06,          // normalized, falls as pressure rises [tune]
       hpi_pressure_ref: 16.44,     // MPa; HPI flow → 0 as P approaches this [tune]
+      // Low-Pressure Injection (LPI): high-volume, low shutoff head — flow falls to
+      // zero as primary pressure rises toward lpi_pressure_ref. lpi_flow_normalized
+      // is normalized to rated LPI (≈1.0 at design); lpi_inventory_gain converts it
+      // to a primary inventory-fraction rate for the mass balance. [tune]
+      lpi_pressure_ref: 4.5,       // MPa shutoff head
+      lpi_flow_max: 1.0,           // normalized rated LPI flow
+      lpi_inventory_gain: 0.10,    // inventory frac/s per unit normalized LPI flow
+      lpi_auto_pressure: 2.76,     // MPa — M4 auto-start permissive (≈400 psia)
+      // Accumulators: passive borated tanks that discharge into the cold leg once
+      // primary pressure falls below the arming pressure; finite capacity depletes.
+      // Same normalization convention as LPI. Real SIT cover gas is ~4.14 MPa, but
+      // this v1 single-pressure model over-depressurizes a SMALL break (the TMI
+      // sequence floors around 2.3 MPa / 1.8 MPa in the damage branch), so the arming
+      // pressure is tuned below that floor to reserve accumulator action for a genuine
+      // large-break LOCA (which crashes pressure to ~atmospheric) rather than spuriously
+      // refilling a small-break transient and masking the TMI inventory/void lesson. [tune]
+      accumulator_trip_mpa: 1.5,   // arming pressure (tuned; see note)
+      accumulator_flow_max: 1.0,   // normalized rated accumulator flow
+      accumulator_inventory_gain: 0.12, // inventory frac/s per unit normalized flow
+      accumulator_capacity: 2.5,   // total deliverable inventory fractions (finite)
+      // Residual Heat Removal (RHR, formerly DHR): low-pressure decay-heat cooldown
+      // loop, aligned only below rhr_permissive_mpa with condenser cooling available.
+      // Removes heat from the coolant node toward rhr_sink_c. Dormant at power. [tune]
+      rhr_permissive_mpa: 3.45,    // MPa — RHR alignable only below this
+      rhr_sink_c: 50.0,            // °C cooldown sink target
+      rhr_gain: 0.03,              // heat-removal gain (units of Q per °C above sink)
     },
 
     // ------------------------------------------------------------------ rods
@@ -193,11 +229,26 @@
       mwe_output:        { lag: 0.2, noise: 1.0,   range: [0, 1300] },
       turbine_rpm:       { lag: 0.5, noise: 2.0,   range: [0, 2000] },
       condenser_vacuum:  { lag: 5.0, noise: 0.34,  range: [0, 102] },
+      // §8.8 synoptic additions — CVCS flows, SG pressure, chemistry, governor, ECCS
+      // (LPI/accumulator), and Animation-HR1 helpers (steam dump, primary leak).
+      // Sources track TRUE sim quantities, not command setpoints (see pwr_instruments SOURCE).
+      charging_flow:     { lag: 2.0, noise: 0.001, range: [0, 0.12] },   // true CVCS charging (≠ setpoint under AUTO)
+      letdown_flow:      { lag: 2.0, noise: 0.001, range: [0, 0.12] },   // true CVCS letdown
+      steam_pressure:    { lag: 0.5, noise: 0.02,  range: [0, 8.0] },    // SG secondary pressure, MPa
+      boron_analyzer:    { lag: 45,  noise: 4.0,   range: [0, 2500] },   // chemistry sample — slow (Realistic-only boron readout)
+      governor_valve:    { lag: 0.3, noise: 0.3,   range: [0, 100] },    // turbine admission valve %
+      lpi_flow:          { lag: 1.0, noise: 0.005, range: [0, 1.2] },    // low-pressure injection line, normalized
+      accumulator_flow:  { lag: 0.5, noise: 0.005, range: [0, 1.2] },    // passive accumulator injection, normalized
+      steam_dump_valve:  { lag: 0.3, noise: 0.3,   range: [0, 100] },    // turbine bypass valve % (Animation HR1)
+      primary_leak_flow: { lag: 0.2, noise: 0.002, range: [0, 1.0] },    // LOCA/SGTR break flow, normalized (Animation HR1)
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running', 'hpi_active', 'station_blackout',
-               'steam_demand_low', 'rod_at_limit'],
+               'steam_demand_low', 'rod_at_limit',
+               // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
+               'afw_active', 'rhr_active', 'lpi_active', 'accumulators_discharging',
+               'condenser_cooling_available', 'safety_relief_active'],
     },
 
     // ---------------------------------------------------------- named init states

@@ -232,6 +232,13 @@
       station_blackout: s.station_blackout,
       steam_demand_low: s.turbine_tripped || s.turbine_demand_frac < 0.05,
       rod_at_limit: this._controlGroup().at_insertion_limit,
+      // §8.8 synoptic status — copied into instruments.reading each step (HR1).
+      afw_active: s.afw_active,
+      rhr_active: s.rhr_active,
+      lpi_active: s.lpi_active,
+      accumulators_discharging: s.accumulators_discharging,
+      condenser_cooling_available: s.condenser_cooling_available,
+      safety_relief_active: s.safety_open || s.safety_flow > 0,
     };
   };
 
@@ -258,8 +265,19 @@
       hpi_active: s.hpi_active, hpi_flow_normalized: s.hpi_flow_normalized, afw_active: s.afw_active,
       pump_running: s.pump_running, pump_flow_pct: s.pump_flow_pct, station_blackout: s.station_blackout,
       turbine_rpm: s.turbine_rpm, condenser_vacuum_kpa: s.condenser_vacuum_kpa,
+      condenser_cooling_available: s.condenser_cooling_available,
       scrammed: s.scrammed, melted: s.melted, steam_demand_mwe: s.steam_demand_mwe,
       reactivity_pcm: (s._rho || 0) * 1e5, startup_rate_dpm: sur, reactor_period_s: period,
+      // §8.8 instrument sources — TRUE sim flows/positions (indications ≠ command setpoints):
+      charging_flow_actual: (s.charging_pump_running === false ? 0 : s.charging_flow),
+      letdown_flow_actual: s.letdown_flow, steam_dump_valve_pct: s.steam_dump_frac * 100,
+      leak_flow: s.leak_flow,
+      // §7 true_state additions (governor / LPI / accumulators / RHR):
+      governor_valve_pct: s.governor_valve_pct,
+      lpi_active: s.lpi_active, lpi_flow_normalized: s.lpi_flow_normalized,
+      accumulators_discharging: s.accumulators_discharging,
+      accumulator_flow_normalized: s.accumulator_flow_normalized,
+      accumulator_volume_pct: s.accumulator_volume_pct, rhr_active: s.rhr_active,
     };
   };
 
@@ -281,13 +299,17 @@
       porv_block_open: s.block_valve_open,
       heater_power_pct: s.heater_power_frac * 100,
       spray_valve_pct: s.spray_flow_frac * 100,
-      charging_flow_normalized: s.charging_flow, letdown_flow_normalized: s.letdown_flow,
+      // CVCS commands: charging_flow_normalized is the operator SETPOINT (what the
+      // charging valve is commanded to), NOT the true flow — under AUTO make-up the
+      // true flow (instruments.charging_flow) modulates away from this setpoint.
+      charging_flow_normalized: s.charging_setpoint, letdown_flow_normalized: s.letdown_flow,
       charging_pump_running: s.charging_pump_running, cvcs_auto: s.cvcs_auto, boron_adjust: s.boron_adjust,
       feedwater_flow_pct: s.feedwater_demand_frac * 100,
       steam_demand_mwe: s.steam_demand_mwe,
       steam_dump_pct: s.steam_dump_frac * 100,
       steam_dump_auto: s.steam_dump_override == null,
-      hpi_active: s.hpi_active,
+      governor_valve_pct: s.governor_valve_pct,   // turbine admission valve (engine-driven; read-only)
+      hpi_active: s.hpi_active, rhr_active: s.rhr_active, lpi_active: s.lpi_active,
       pumps: [{ id: 'rcp', running: s.pump_running, flow_pct: s.pump_flow_pct }],
     };
   };
@@ -371,11 +393,18 @@
         else if (cmd.mode === 'closed') s.steam_dump_override = 0.0;
         else if (cmd.pct != null) s.steam_dump_override = clip(cmd.pct / 100, 0, 1);
         break;
-      case 'set_dhr':
-        s.dhr_active = !!cmd.active;
+      case 'set_rhr':
+      case 'set_dhr':   // set_dhr: one-release alias for save/restore compatibility (RHR was DHR)
+        s.rhr_active = !!cmd.active;
+        break;
+      case 'set_lpi':
+        // Low-Pressure Injection: manual ON/OFF; M4 also auto-starts it on low pressure.
+        s.lpi_active = !!cmd.active;
         break;
       case 'set_charging_flow':
-        s.charging_flow = cmd.normalized; s.cvcs_auto = false;   // manual charging leaves auto make-up
+        // Manual charging: set BOTH the operator setpoint and the true flow, and
+        // leave AUTO make-up (which would otherwise modulate the true flow).
+        s.charging_setpoint = cmd.normalized; s.charging_flow = cmd.normalized; s.cvcs_auto = false;
         break;
       case 'set_letdown_flow':
         s.letdown_flow = cmd.normalized;
@@ -596,9 +625,13 @@
       pzr_level_pct: cfg.pressurizer.pzr_level_nominal,
 
       _mass: 1.0, core_inventory_pct: 100, primary_void_fraction: 0,
-      charging_flow: 0, letdown_flow: 0, leak_flow: 0, safety_injection_flow: 0,
+      charging_flow: 0, charging_setpoint: 0, letdown_flow: 0, leak_flow: 0, safety_injection_flow: 0,
       charging_pump_running: true, cvcs_auto: false, boron_adjust: 0,   // CVCS
       hpi_active: false, hpi_flow_normalized: 0, hpi_flow_multiplier: 1.0,
+      // Low-Pressure Injection + passive accumulators (ECCS, §6.2/§6.3).
+      lpi_active: false, lpi_flow_normalized: 0,
+      accumulators_discharging: false, accumulator_flow_normalized: 0,
+      _accum_remaining: cfg.emergency.accumulator_capacity, accumulator_volume_pct: 100,
       flow_frac: 1.0, pump_flow_pct: 100, pump_running: true, station_blackout: false,
 
       sg_level_pct: cfg.steam_generator.sg_level_nominal,
@@ -606,10 +639,13 @@
       steam_flow_normalized: P0, fw_flow_normalized: P0,
       steam_dump_override: null, steam_dump_frac: 0,   // B2 (null = auto)
       feedwater_demand_frac: P0, feedwater_flow: P0, main_feedwater_available: true,
-      afw_active: false, afw_blocked: false, dhr_active: false,
+      afw_active: false, afw_blocked: false, rhr_active: false,
 
       turbine_rpm: cfg.turbine.rpm_rated, condenser_vacuum_kpa: cfg.turbine.vacuum_rated,
       generator_load: P0, turbine_demand_frac: P0, turbine_tripped: false,
+      // Turbine governor valve tracks load demand (% open); starts matched to P0 so
+      // steam_flow = (gov/100)·(P/Prated) reproduces the P0 steady state at reset.
+      governor_valve_pct: clip(P0, 0, 1) * 100,
       condenser_cooling_available: true, steam_demand_mwe: P0 * cfg.turbine.mwe_rated,
       mwe_output: P0 * cfg.turbine.mwe_rated,
 

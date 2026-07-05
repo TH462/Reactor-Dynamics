@@ -44,7 +44,7 @@
     switch (action) {
       case 'set_feedwater_flow': case 'set_recirc_flow': case 'set_channel_flow': return 'pct';
       case 'set_hpi': case 'set_afw': case 'set_rcic': case 'set_hpci':
-      case 'set_dhr': case 'set_eps_bypass': return 'active';
+      case 'set_dhr': case 'set_rhr': case 'set_lpi': case 'set_eps_bypass': return 'active';
       case 'set_charging_flow': case 'set_letdown_flow': return 'normalized';
       case 'set_steam_demand': case 'set_turbine_load': return 'mwe';
       case 'set_heater': return 'power_pct';

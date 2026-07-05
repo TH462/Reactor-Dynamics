@@ -58,7 +58,15 @@
     // Secondary temperature from the previous step (explicit coupling, CONTEXT §11).
     var Q_coolant_to_sg = t.h_sg * s.flow_frac * sgThermalLoad(s) * (s.tavg_c - s.t_secondary_c);
     s._Q_coolant_to_sg = Q_coolant_to_sg;
-    var dTavg = (Q_fuel_to_coolant - Q_coolant_to_sg) / t.coolant_heat_capacity;
+    // Residual Heat Removal (RHR, §6.1): a low-pressure decay-heat cooldown loop,
+    // alignable only below the permissive pressure with condenser cooling available.
+    // When active and permitted it draws heat from the coolant node toward the
+    // cooldown sink; dormant (no effect) at operating pressure.
+    var e = cfg.emergency, Q_rhr = 0;
+    if (s.rhr_active && s.pressure_mpa < e.rhr_permissive_mpa && s.condenser_cooling_available) {
+      Q_rhr = e.rhr_gain * Math.max(0, s.tavg_c - e.rhr_sink_c);
+    }
+    var dTavg = (Q_fuel_to_coolant - Q_coolant_to_sg - Q_rhr) / t.coolant_heat_capacity;
     s.tavg_c += dTavg * dt;
     s._dTavg_dt = dTavg; // pressurizer surge uses this (thermal expansion)
 
