@@ -265,7 +265,17 @@ physical-quantity vocabulary.
     "turbine_rpm": float, "condenser_vacuum_kpa": number,
     "scrammed": bool, "melted": bool, "steam_demand_mwe": float,
     "steam_pressure_mpa": number,     // secondary/SG pressure (surfaced for the UI loop diagram)
+    "condenser_cooling_available": bool,   // condenser heat-sink availability (also §8.8 status)
     "reactivity_pcm": float, "startup_rate_dpm": float, "reactor_period_s": float,  // reactivity proxies — reactivity computer / SUR / period; display/derived only, NEVER fed to protection (HR1)
+    // Synoptic additions (governor / ECCS / CVCS true flows — feed the §8.8 instruments; additive):
+    "governor_valve_pct": number,     // turbine admission valve position, 0–100 %
+    "charging_flow_actual": float,    // TRUE CVCS charging (0 with pump off; AUTO-modulated) — feeds instruments.charging_flow, ≠ setpoint
+    "letdown_flow_actual": float,     // TRUE CVCS letdown — feeds instruments.letdown_flow
+    "leak_flow": float,               // primary break flow, normalized (LOCA/SGTR) — feeds instruments.primary_leak_flow
+    "steam_dump_valve_pct": number,   // steam-dump/bypass valve position, 0–100 % — feeds instruments.steam_dump_valve
+    "lpi_active": bool, "lpi_flow_normalized": float,          // Low-Pressure Injection
+    "accumulators_discharging": bool, "accumulator_flow_normalized": float, "accumulator_volume_pct": number,  // passive accumulators (finite volume)
+    "rhr_active": bool,               // Residual Heat Removal (formerly DHR) aligned
 }
 ```
 
@@ -325,8 +335,12 @@ physical-quantity vocabulary.
     // PWR-specific:
     "porv_demand": string,           // "open" | "closed"
     "porv_block_open": bool,          // PORV block/isolation valve (B1 — TMI recovery)
-    "heater_power_pct": float, "spray_valve_pct": float, "charging_flow_normalized": float,
-    "feedwater_flow_pct": float, "steam_demand_mwe": float, "hpi_active": bool,
+    "heater_power_pct": float, "spray_valve_pct": float,
+    "charging_flow_normalized": float,   // CVCS charging SETPOINT (command) — under AUTO the true flow (instruments.charging_flow) modulates away from this
+    "letdown_flow_normalized": float,    // CVCS letdown setpoint
+    "feedwater_flow_pct": float, "steam_demand_mwe": float,
+    "hpi_active": bool, "rhr_active": bool, "lpi_active": bool,   // operator-actuated ECCS / cooldown (set_hpi / set_rhr / set_lpi)
+    "governor_valve_pct": float,     // turbine admission valve % (engine-driven; read-only readout)
     "steam_dump_pct": float, "steam_dump_auto": bool,   // steam dump / turbine bypass (B2)
     "pumps": [ { "id": string, "running": bool, "flow_pct": float } ],
     // RBMK-specific:
@@ -384,9 +398,11 @@ open_porv
 close_porv
 set_hpi             { active }
 set_afw             { active }
-set_dhr             { active }
-set_charging_flow   { normalized }             // CVCS charging (manual) — inventory in (cold leg)
-set_letdown_flow    { normalized }             // CVCS letdown — inventory out
+set_rhr             { active }                 // Residual Heat Removal — low-pressure decay-heat cooldown (was DHR)
+set_dhr             { active }                 // deprecated one-release alias for set_rhr (save-file compatibility)
+set_lpi             { active }                 // Low-Pressure Injection (also M4 auto-starts on low pressure)
+set_charging_flow   { normalized }             // CVCS charging SETPOINT (manual) — inventory in (cold leg); instruments.charging_flow shows the true flow
+set_letdown_flow    { normalized }             // CVCS letdown setpoint (Isolate = set 0)
 set_charging_pump   { running }                // CVCS charging pump on/off
 set_cvcs_auto       { active }                 // CVCS auto make-up (holds inventory / compensates leakage)
 set_boron_adjust    { rate }                   // CVCS boron: + borate, − dilute, 0 hold (ppm/s; needs charging pump)

@@ -89,6 +89,45 @@ pwr_steam_generator, pwr_instruments, pwr_engine}.js`
 - `fuel_damaged` is internal (not a §6.3 field) — **Flag F5**.
 - `sg_overfeed` value units look wrong — **Flag F2**.
 
+### Synoptic prerequisites (`develop`) — engine + instruments for the new PWR diagram
+Implements `Blueprint/pwr_synoptic_prerequisites.md` so Fable can wire the synoptic from
+`snapshot.instruments` + status booleans + `control_state` (no `true_state` on the Realistic board).
+- **9 new §8.8 instruments** (lagged): `charging_flow`, `letdown_flow`, `steam_pressure`,
+  `boron_analyzer`, `governor_valve`, `lpi_flow`, `accumulator_flow`, `steam_dump_valve`,
+  `primary_leak_flow`. New SOURCE keys are **appended** so existing instruments keep their PRNG
+  draw order — no perturbation to prior scenario/save-restore values.
+- **6 new status booleans** in `instruments.reading` (via `_instrExtras`/`_copyStatus`):
+  `afw_active`, `rhr_active`, `lpi_active`, `accumulators_discharging`,
+  `condenser_cooling_available`, `safety_relief_active` (= `safety_open || safety_flow>0`).
+- **CVCS setpoint vs indication split:** `s.charging_setpoint` (command) is separated from
+  `s.charging_flow` (TRUE flow). `control_state.charging_flow_normalized` = setpoint;
+  `instruments.charging_flow` ← true `charging_flow_actual` (0 with pump off; AUTO-modulated), so
+  indication ≠ setpoint under auto make-up.
+- **Governor** (`pwr_steam_generator.stepSecondary`): `governor_valve_pct` tracks load demand
+  (first-order, `turbine.governor_tau`) and modulates `steam_flow = (gov/100)·steam_flow_rated·
+  (P_sec/P_rated)`. At steady state gov/100 = demand, so rated flow is unchanged — no regression.
+- **RHR (was DHR):** `set_rhr {active}` (+ one-release `set_dhr` alias → `rhr_active`); real physics
+  in `stepCoolant` — a heat sink toward `rhr_sink_c`, gated on `pressure < rhr_permissive_mpa` +
+  condenser cooling (dormant at power). `s.dhr_active` renamed `s.rhr_active`.
+- **LPI:** `set_lpi {active}` + injection-vs-pressure curve (`lpiFlowNormalized`); M4 auto-starts on
+  low pressure. **Accumulators:** passive, discharge below `accumulator_trip_mpa` with finite
+  `accumulator_capacity` that depletes (`accumulator_volume_pct`). Both scale to inventory via
+  per-system gains.
+- **Break blowdown depressurization** (`pwr_pressurizer.stepPressure`, `K_leak_depressurize`): a
+  primary break (`s.leak_flow`) now depressurizes the RCS (previously leaks only bled inventory, per
+  the CONTEXT primary-pressure note). This brings **large LOCA into scope** — a large break crashes
+  pressure into the ECCS band so LPI + accumulators actuate; the small PORV break (TMI) is unaffected
+  (`leak_flow=0` there). **Accumulator arming pressure tuned to 1.5 MPa** (below realistic ~4.14 MPa):
+  this v1 single-pressure model over-depressurizes a *small* break (TMI floors ~2.3 MPa / ~1.8 MPa
+  in the damage branch), so a realistic setpoint would spuriously refill the TMI transient and mask
+  the inventory/void lesson; the low arming pressure reserves accumulator action for genuine large
+  breaks. Documented at the param.
+- **M4 auto-permissives** added: low-pressure LPI auto-start (2.76 MPa) and RHR auto-align
+  (3.45 MPa, gated on `rps_scrammed`). Safe setpoints — never reached in the existing suites.
+- Gate green: **PWR 12/12** (TMI not regressed), **M7 31/31 + teeth**, **E2E 25/25** (set_rhr/set_lpi
+  + CVCS indication + large-LOCA ECCS), **M4 10/10**; save/restore bit-exact mid-LOCA with LPI +
+  accumulators + CVCS-auto active. Contracts synced: CONTEXT §6.3/§6.5/§6.7, M1 §8.8.
+
 ---
 
 ## M2 — RBMK Engine
@@ -1025,3 +1064,34 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
       RBMK gains ECCS control + glossary). Suites green (PWR 11/11, RBMK 23/23, BWR 12/12, procedures
       21/21). The RBMK/BWR failure catalogs were already broad (14 / 15 modes); no further failures
       added this pass beyond `ic_failure`.
+  - **Rod control: per-state positions + operable shutdown bank (`develop`).** Fixes the report
+    "rods always start fully withdrawn no matter the starting state" and the ask to model the
+    shutdown group properly.
+    - **Per-state control-rod position.** The control-group operating position is now per-state
+      data (`initial_states[name].rod_op_pct`, % withdrawn) instead of one fixed
+      `control_op_position_pct` for every state, so the starting rod position tracks starting
+      power. **PWR:** 50 % now sits at 78 % withdrawn vs 92 % at full power (boron auto-re-trims
+      via `_trimToCritical`; 50 % holds ~50 % with sane boron ~696 ppm). **RBMK:** 50 %
+      `orm_target` 70→90 → 57.5 % withdrawn vs 66.7 % at full power, ORM healthy (89.8, above both
+      `orm_min`s), holds 50 % (both versions); `rho_excess` auto-re-trims per state. **BWR:
+      deliberately NOT changed** — a BWR maneuvers with recirc flow, not rods (CONTEXT §5), and its
+      `rho_excess` is a fixed full-power constant with a void-equilibrium 50 % point; deepening the
+      rods was both physically misleading and numerically fragile (per-state trim makes rod depth
+      cosmetic; no-trim needs a recirc knife-edge near runaway), so the BWR keeps rods at the
+      operating position and drops recirc to 19 %. Documented in `bwr_config`/`bwr_engine` comments.
+    - **Operable shutdown bank.** The shutdown / RBMK-AZ group (previously "not an operator
+      control", M1 §7) is now operable via the existing `rod_start`/`rod_stop`/`rod_nudge` with
+      `group_id: "shutdown_rods"` — the engines already routed to any group. A **scram always
+      overrides** (the per-step scram velocity re-asserts insertion every tick; verified the AZ bank
+      fully inserts over its 18 s scram despite the operator spamming Withdraw). UI: a "Shutdown
+      Bank" hold-pill (Withdraw/Insert) on every plant's Reactor Core + Plant-Display control bars;
+      the hold mechanism now tracks the held group so release stops the right one; Control/Shutdown
+      bank readouts show motion/scram status. M1 §7 note updated to reflect the deviation.
+    - **Other rod issue found + fixed.** The M5/M6·PH/M7 "rod_nudge reached the engine" checks were
+      **pre-existing failures** — they asserted an *instant* nudge, but a nudge drives to its target
+      at rod speed (M1 §7). Fixed the tests to step the sim until the target is reached (they now
+      pass; the engine was correct).
+    - Specs/manual per the §12 rule: `RD.MANUAL` regenerated (RBMK 50 % ORM baseline 70.3→89.8; new
+      "Shutdown bank" glossary term all plants); `test/manual_ui_map.js` mirror gains "Shutdown
+      Bank". Suites green (PWR 11/11, RBMK 23/23, BWR 12/12, M4 10/10, M5 12/12, M6·PH 8/8, M7
+      31/31, E2E 20/20, procedures 21/21, control audit + manual-follow PASS).

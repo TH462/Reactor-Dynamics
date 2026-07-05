@@ -39,15 +39,34 @@
     s.fuel_temp_c += dTf * dt;
   }
 
+  // Secondary heat-sink demand: idle hot standby (near-zero power, no steam) has no SG load;
+  // at-power operation keeps full coupling (the pre-HZP-fix behavior).
+  function sgThermalLoad(s) {
+    var decay = (s._H1 || 0) + (s._H2 || 0);
+    if (!s.scrammed && s.power_pct < 1.0 && (s.steam_flow_normalized || 0) < 0.05 && decay < 0.01) return 0;
+    var load = Math.max(s.steam_flow_normalized || 0, s.feedwater_flow || 0, s.power_pct / 100);
+    if (s.scrammed) load = Math.max(load, decay);
+    if (s.afw_active) load = Math.max(load, 0.08);
+    return Math.max(load, 1.0);
+  }
+
   // Step 6 — coolant average temperature (two-node) and hot/cold legs.
   function stepCoolant(s, cfg, dt) {
     var t = cfg.thermal;
     var h_eff = s._h_fc_eff != null ? s._h_fc_eff : t.h_fc;
     var Q_fuel_to_coolant = h_eff * (s.fuel_temp_c - s.tavg_c);
     // Secondary temperature from the previous step (explicit coupling, CONTEXT §11).
-    var Q_coolant_to_sg = t.h_sg * s.flow_frac * (s.tavg_c - s.t_secondary_c);
+    var Q_coolant_to_sg = t.h_sg * s.flow_frac * sgThermalLoad(s) * (s.tavg_c - s.t_secondary_c);
     s._Q_coolant_to_sg = Q_coolant_to_sg;
-    var dTavg = (Q_fuel_to_coolant - Q_coolant_to_sg) / t.coolant_heat_capacity;
+    // Residual Heat Removal (RHR, §6.1): a low-pressure decay-heat cooldown loop,
+    // alignable only below the permissive pressure with condenser cooling available.
+    // When active and permitted it draws heat from the coolant node toward the
+    // cooldown sink; dormant (no effect) at operating pressure.
+    var e = cfg.emergency, Q_rhr = 0;
+    if (s.rhr_active && s.pressure_mpa < e.rhr_permissive_mpa && s.condenser_cooling_available) {
+      Q_rhr = e.rhr_gain * Math.max(0, s.tavg_c - e.rhr_sink_c);
+    }
+    var dTavg = (Q_fuel_to_coolant - Q_coolant_to_sg - Q_rhr) / t.coolant_heat_capacity;
     s.tavg_c += dTavg * dt;
     s._dTavg_dt = dTavg; // pressurizer surge uses this (thermal expansion)
 
@@ -72,6 +91,7 @@
     T_sat: T_sat,
     trueSubcooling: trueSubcooling,
     hFcEffective: hFcEffective,
+    sgThermalLoad: sgThermalLoad,
     stepFuel: stepFuel,
     stepCoolant: stepCoolant,
     checkDamage: checkDamage,

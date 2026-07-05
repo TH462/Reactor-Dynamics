@@ -135,6 +135,9 @@
     this._reset('pwr', 'hot_full_power');
     var before = this.service.assembleSnapshot().control_state.rod_groups[0].steps;
     this._cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -10 });
+    // A nudge drives to its target at rod speed (M1 §7), not instantly — run the
+    // sim until the control group reaches before-10 (or a generous time cap).
+    for (var i = 0; i < 30 && this.service.assembleSnapshot().control_state.rod_groups[0].steps > before - 10; i++) this._runSeconds(1);
     var after = this.service.assembleSnapshot().control_state.rod_groups[0].steps;
     emit('plant command reaches the engine and takes effect', after === before - 10, String(before - 10), String(after), 'command not routed through M5→instructor→M4→engine');
 

@@ -32,6 +32,14 @@
       action: 'set_hpi', active: true, reset_action: 'set_hpi', reset_active: false },
     { instrument: 'sg_level',         direction: 'low',  setpoint: 20.0,
       action: 'set_afw', active: true },
+    // Low-Pressure Injection permissive — auto-starts LPI once primary pressure
+    // falls into the LPI band (large-break / late-LOCA territory; ≈400 psia).
+    { instrument: 'primary_pressure', direction: 'low',  setpoint: 2.76,
+      action: 'set_lpi', active: true },
+    // Residual Heat Removal permissive — auto-aligns RHR for cooldown once the
+    // reactor is tripped and depressurized into the RHR band.
+    { instrument: 'primary_pressure', direction: 'low',  setpoint: 3.45,
+      action: 'set_rhr', active: true, condition: 'rps_scrammed' },
   ];
 
   // Alarms — every alarm setpoint is less extreme than the matching trip so the

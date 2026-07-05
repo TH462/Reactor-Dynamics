@@ -19,3 +19,7 @@ node_modules/
 
 # Claude Code local settings (machine-specific; shared settings.json may be tracked)
 .claude/settings.local.json
+
+# Local harness / IDE artifacts (not part of the sim)
+mcps/
+terminals/

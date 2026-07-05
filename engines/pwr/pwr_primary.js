@@ -23,18 +23,56 @@
     return e.hpi_flow_max * frac * (s.hpi_flow_multiplier != null ? s.hpi_flow_multiplier : 1.0);
   }
 
-  // Step 9 — primary inventory and voiding (CVCS charging/letdown + HPI/SI − losses).
+  // Low-Pressure Injection: high-volume, low shutoff head. Normalized to rated LPI
+  // (≈1.0 near atmospheric), falling to zero as pressure rises toward lpi_pressure_ref.
+  // Manual (set_lpi) or M4 auto-start on low pressure. This is the exposed
+  // instrument/true_state quantity; its inventory effect is scaled below.
+  function lpiFlowNormalized(s, cfg) {
+    if (!s.lpi_active) return 0;
+    var e = cfg.emergency;
+    return e.lpi_flow_max * clip((e.lpi_pressure_ref - s.pressure_mpa) / e.lpi_pressure_ref, 0, 1);
+  }
+
+  // Passive accumulators: discharge into the cold leg once primary pressure drops
+  // below the N2 cover pressure; finite borated capacity depletes as they inject
+  // (accumulator_volume_pct → 0). No operator command — pressure-driven only.
+  function stepAccumulators(s, cfg, dt) {
+    var e = cfg.emergency;
+    var flow = 0;
+    if (s.pressure_mpa < e.accumulator_trip_mpa && s._accum_remaining > 1e-6) {
+      var frac = clip((e.accumulator_trip_mpa - s.pressure_mpa) / e.accumulator_trip_mpa, 0, 1);
+      flow = e.accumulator_flow_max * frac;
+      // Deplete finite capacity by the delivered inventory; do not overdraw the tank.
+      var delivered = flow * e.accumulator_inventory_gain * dt;
+      if (delivered > s._accum_remaining) { delivered = s._accum_remaining; flow = delivered / (e.accumulator_inventory_gain * dt); }
+      s._accum_remaining = Math.max(0, s._accum_remaining - delivered);
+    }
+    s.accumulator_flow_normalized = flow;
+    s.accumulators_discharging = flow > 1e-6;
+    s.accumulator_volume_pct = clip(s._accum_remaining / e.accumulator_capacity * 100, 0, 100);
+    return flow * e.accumulator_inventory_gain;   // inventory-fraction rate for the mass balance
+  }
+
+  // Step 9 — primary inventory and voiding (CVCS charging/letdown + HPI/LPI/accumulator/SI − losses).
   function stepInventory(s, cfg, dt) {
     s.hpi_flow_normalized = hpiFlow(s, cfg);
-    var rc = cfg.reactivity;
-    // CVCS auto make-up (opt-in): charging tracks letdown + an inventory deficit, up
-    // to charging_max, to compensate identified leakage and hold inventory ~full.
+    s.lpi_flow_normalized = lpiFlowNormalized(s, cfg);
+    var accum_inv = stepAccumulators(s, cfg, dt);
+    var rc = cfg.reactivity, e = cfg.emergency;
+    // CVCS charging: AUTO make-up (opt-in) modulates the TRUE flow to track letdown
+    // + an inventory deficit, up to charging_max, compensating identified leakage;
+    // MANUAL tracks the operator setpoint. Either way s.charging_flow is the true
+    // flow (what the charging_flow instrument reads); charging_setpoint is the command.
     if (s.cvcs_auto) {
       s.charging_flow = clip((s.letdown_flow || 0) + (rc.cvcs_makeup_gain || 3) * (1.0 - s._mass), 0, rc.charging_max != null ? rc.charging_max : 0.06);
+    } else {
+      s.charging_flow = s.charging_setpoint;
     }
-    // Charging requires the charging pump.
+    // Charging requires the charging pump; LPI/accumulator inventory gains scale their
+    // normalized flows into the same inventory-fraction units as the rest of the balance.
     var charging = (s.charging_pump_running === false) ? 0 : s.charging_flow;
-    var dm = (charging + s.hpi_flow_normalized + s.safety_injection_flow)
+    var lpi_inv = s.lpi_flow_normalized * e.lpi_inventory_gain;
+    var dm = (charging + s.hpi_flow_normalized + lpi_inv + accum_inv + s.safety_injection_flow)
            - (s.letdown_flow + s.porv_flow + s.safety_flow + s.leak_flow);
     s._mass = clip(s._mass + dm * dt, 0.0, cfg.primary.mass_max);
     s.core_inventory_pct = s._mass * 100;

@@ -88,7 +88,7 @@
     // ------------------------------------------------------------------ PWR
     pwr: {
       scram: 'REACTOR SCRAM', scramShort: 'SCRAM',
-      initStates: [['hot_full_power', 'Hot Full Power'], ['50_percent', '50 % Power'], ['hot_zero_power', 'Hot Zero Power']],
+      initStates: [['hot_full_power', 'Hot Full Power'], ['50_percent', '50 % Power'], ['hot_zero_power', 'Hot Standby']],
       defaultSeries: { power: true, tavg: true, pressure: true, sg_level: true },
       gauges: [
         { id: 'power',   label: 'Reactor Power', lead: true, raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
@@ -110,7 +110,6 @@
       numeric: [
         { title: 'Reactor / Core', rows: [
           { k: 'Power', inst: function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }, truth: function (s) { return s.true_state.power_pct.toFixed(1) + ' %'; } },
-          // E2 — SUR carries no information at steady power; grey it to near-invisible until it moves.
           { k: 'Startup Rate', inst: function (s) { var v = s.true_state.startup_rate_dpm; return Math.abs(v) < 0.01 ? '<span class="dim-info">' + v.toFixed(2) + ' dpm</span>' : v.toFixed(2) + ' dpm'; } },
           { k: 'Fuel Temp', truth: function (s) { return dispT(s.true_state.fuel_temp_c); } },
           { k: 'Decay Heat', truth: function (s) { return s.true_state.decay_heat_pct.toFixed(1) + ' %'; } },
@@ -150,7 +149,7 @@
         ] },
       ],
       controls: [
-        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED()] },
+        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods')] },
         { key: 'primary', label: 'Primary Inventory', groups: [
           { l: 'Reactor Coolant Pumps (RCP)', hint: 'Reactor Coolant Pumps — force primary flow. Stopping them collapses flow.', seg: [{ l: 'Run', act: 'rcp-run', on: 1, run: 1 }, { l: 'Stop', act: 'rcp-stop' }] },
           { l: 'Chemical Shim (Boron)', hint: 'Chemical Shim — adjusts dissolved boron (a neutron absorber) to trim reactivity slowly.', seg: [{ l: 'Borate', act: 'borate' }, { l: 'Off', act: 'boron-off', on: 1 }, { l: 'Dilute', act: 'dilute' }] },
@@ -223,7 +222,7 @@
         ] },
       ],
       controls: [
-        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED()] },
+        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods')] },
         { key: 'coolant', label: 'Coolant Circuit', groups: [
           { l: 'MCP / Channel Flow', hint: 'Main Circulation Pumps — channel flow setpoint. Lower flow ⇒ more void ⇒ (positive coefficient) more power.', num: { id: 'rbmkFlow', min: 0, max: 120, value: 100, act: 'rbmk-flow-set', setL: 'Set %' } },
           { l: 'Feedwater', num: { id: 'rbmkFeed', min: 0, max: 100, value: 100, act: 'rbmk-feed-set', setL: 'Set %' } },
@@ -290,7 +289,7 @@
         ] },
       ],
       controls: [
-        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED()] },
+        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods')] },
         { key: 'recirc', label: 'Recirculation', groups: [
           { l: 'Recirc Drive Flow', hint: 'Recirculation flow — the BWR\'s main power control. More flow sweeps out voids ⇒ more power.', num: { id: 'bwrRecirc', min: 0, max: 48, value: 40, act: 'bwr-recirc-set', setL: 'Set %' } },
         ] },
@@ -320,6 +319,14 @@
     return { l: 'Rod Speed', hint: 'Rod speed — slow / normal / fast drive rate.',
       seg: [{ l: 'Slow', act: 'rodspeed-slow' }, { l: 'Norm', act: 'rodspeed-normal', on: 1 }, { l: 'Fast', act: 'rodspeed-fast' }],
       extra: [{ l: '+1', act: 'rod-nudge-out', title: 'withdraw 1 step' }, { l: '−1', act: 'rod-nudge-in', title: 'insert 1 step' }] };
+  }
+  // The shutdown / emergency-protection bank — normally parked fully withdrawn and
+  // driven fully in automatically on a SCRAM. It IS operable (real startup pulls it
+  // out first, a controlled shutdown drives it in), but the scram always overrides.
+  function SHUTDOWN_DRIVE(group) {
+    return { l: 'Shutdown Bank', emergency: 1,
+      hint: 'Shutdown / scram bank — normally parked fully withdrawn. HOLD Insert to drive it in (adds shutdown margin, drops power), Withdraw to park it back out. A SCRAM drives it fully in automatically and overrides you.',
+      seg: [{ l: 'Withdraw', hold: 'srod-withdraw' }, { l: 'Insert', hold: 'srod-insert' }] };
   }
 
   function prof() { return PROFILES[ui.plant]; }
@@ -499,7 +506,6 @@
     var t = s.true_state;
     var sgn = function (v) { return (v >= 0 ? '+' : '') + v; };
     $('rxReactivity').textContent = t.reactivity_pcm != null ? sgn(t.reactivity_pcm.toFixed(0)) + ' pcm' : '— pcm';
-    $('rxSur').textContent = t.startup_rate_dpm != null ? sgn(t.startup_rate_dpm.toFixed(2)) + ' dpm' : '— (PWR only)';
     var per = t.reactor_period_s;
     $('rxPeriod').textContent = per == null ? '— (PWR only)' : (!isFinite(per) || Math.abs(per) > 9999) ? '∞ (steady)' : per.toFixed(0) + ' s';
   }
@@ -741,11 +747,14 @@
   // speed, release (anywhere) stops it. The rods then move as the sim steps — at
   // the same rate the smooth +1/−1 nudge uses.
   var HOLD = {
-    'rod-withdraw': function () { cmd({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: ui.rodSpeed }); },
-    'rod-insert': function () { cmd({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: ui.rodSpeed }); },
+    'rod-withdraw': function () { startHoldRod('control_rods', 1); },
+    'rod-insert': function () { startHoldRod('control_rods', -1); },
+    'srod-withdraw': function () { startHoldRod('shutdown_rods', 1); },
+    'srod-insert': function () { startHoldRod('shutdown_rods', -1); },
   };
-  var holding = false;
-  function endHold() { if (!holding) return; holding = false; cmd({ action: 'rod_stop', group_id: 'control_rods' }); document.querySelectorAll('.holding').forEach(function (x) { x.classList.remove('holding'); }); }
+  var holdingGroup = null;
+  function startHoldRod(group, direction) { holdingGroup = group; cmd({ action: 'rod_start', group_id: group, direction: direction, speed: ui.rodSpeed }); }
+  function endHold() { if (!holdingGroup) return; cmd({ action: 'rod_stop', group_id: holdingGroup }); holdingGroup = null; document.querySelectorAll('.holding').forEach(function (x) { x.classList.remove('holding'); }); }
 
   function bindCommands() {
     document.body.addEventListener('click', function (e) {
@@ -757,7 +766,7 @@
     document.body.addEventListener('pointerdown', function (e) {
       var b = e.target.closest('[data-hold]'); if (!b) return;
       var h = HOLD[b.getAttribute('data-hold')]; if (!h) return;
-      e.preventDefault(); holding = true; b.classList.add('holding'); h();
+      e.preventDefault(); b.classList.add('holding'); h();
     });
     // remember control-bar setpoints so the shared bar shows the live value (not the
     // hardcoded default) when you leave and return to a view
@@ -811,7 +820,7 @@
     var oseg = $('overlaySeg2');
     if (oseg) oseg.addEventListener('click', function (e) { var b = e.target.closest('[data-overlay]'); if (!b) return; ui.overlay = b.getAttribute('data-overlay'); syncSeg('[data-overlay]', ui.overlay, 'overlay'); if (latest) renderPdAll(latest); });
     $('registerSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-register]'); if (!b) return; ui.register = b.getAttribute('data-register'); cmd({ action: 'set_register', value: ui.register }); });
-    $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; ui.units = b.getAttribute('data-units'); if (latest) render(latest); });
+    $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
     $('graphParams').addEventListener('change', function (e) { var cb = e.target.closest('input[data-series]'); if (!cb) return; ui.series[cb.getAttribute('data-series')] = cb.checked; drawChart(); });
     $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); drawChart(); });
     $('initState').addEventListener('change', function () { ui.initState = $('initState').value; });
@@ -843,6 +852,12 @@
     });
   }
   function syncSeg(sel, val, attr) { document.querySelectorAll(sel).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-' + attr) === val); }); }
+  function applyUnitsMode(units) {
+    ui.units = units;
+    syncSeg('[data-units]', units, 'units');
+    if (latest) render(latest);
+    if ($('manualOverlay') && !$('manualOverlay').hidden) renderManual();
+  }
 
   // ============================================================ Operator's Manual (Phase 3)
   // Renders RD.MANUAL (generated reference + normal values) and RD.MANUAL_PROCEDURES
@@ -868,9 +883,38 @@
     condenser_vacuum_kpa: 'vacuum', subcooling_c: 'tempdiff',
   };
   function mval(key, val, dp) {   // → { v:displayString, u:unitLabel } converted to active units
-    var dim = MDIM[key];
-    if (dim == null || typeof val !== 'number') return { v: String(val), u: '' };
-    return { v: conv(val, dim).toFixed(dp == null ? 1 : dp), u: unit(dim) };
+    return fmtManualCell(key, val, dp);
+  }
+  var MANUAL_U_DIM = { '°C': 'temp', 'C': 'temp', '°F': 'temp', 'MPa': 'pressure', 'psi': 'pressure', 'psia': 'pressure', 'kPa': 'vacuum', 'inHg': 'vacuum' };
+  function unitStrToDim(u) { return MANUAL_U_DIM[u] || null; }
+  function fmtManualCell(instrumentOrDim, val, dp) {   // instrument id, dim name, or SI unit label (°C, MPa, …)
+    dp = dp == null ? 1 : dp;
+    if (val == null) return { v: '—', u: '' };
+    var dim = MDIM[instrumentOrDim] || unitStrToDim(instrumentOrDim);
+    if (dim == null || (typeof val !== 'number' && typeof val !== 'string')) return { v: String(val), u: '' };
+    if (typeof val === 'string') {
+      if (val.indexOf('/') >= 0) {
+        var parts = val.split('/').map(function (s) { return s.trim(); });
+        var cv = parts.map(function (p) {
+          var n = parseFloat(p);
+          return isNaN(n) ? p : conv(n, dim).toFixed(dp);
+        });
+        return { v: cv.join(' / '), u: unit(dim) };
+      }
+      var pref = /^([<>=]+)\s*([\d.]+)$/.exec(val.trim());
+      if (pref) {
+        var pn = parseFloat(pref[2]);
+        if (!isNaN(pn)) return { v: pref[1] + ' ' + conv(pn, dim).toFixed(dp), u: unit(dim) };
+      }
+      var lone = parseFloat(val);
+      if (!isNaN(lone) && String(lone) === val.trim()) return { v: conv(lone, dim).toFixed(dp), u: unit(dim) };
+      return { v: val, u: '' };
+    }
+    return { v: conv(val, dim).toFixed(dp), u: unit(dim) };
+  }
+  function fmtManualStr(instrumentOrDim, val, dp) {
+    var sp = fmtManualCell(instrumentOrDim, val, dp);
+    return sp.v + (sp.u ? ' ' + sp.u : '');
   }
 
   function openManual() { if (!manualProfile()) { alert('Manual data not loaded.'); return; } $('manualOverlay').hidden = false; renderManual(); }
@@ -987,18 +1031,21 @@
   function mSetpoints(p) {
     var s = p.setpoints, h = '<h2>Setpoints &amp; Limits</h2>';
     h += '<h3>Reactor-protection trips (scram)</h3><table class="m-table"><tr><th>Instrument</th><th>Dir</th><th>Setpoint</th><th>Action</th></tr>';
-    s.trips.forEach(function (t) { var sp = mval(t.instrument, t.setpoint, 1); h += '<tr><td class="mono">' + mesc(t.instrument) + '</td><td>' + mesc(t.direction) + '</td><td class="mono">' + mesc(sp.v + (sp.u ? ' ' + sp.u : '')) + '</td><td>' + mesc(t.action) + '</td></tr>'; });
+    s.trips.forEach(function (t) { h += '<tr><td class="mono">' + mesc(t.instrument) + '</td><td>' + mesc(t.direction) + '</td><td class="mono">' + mesc(fmtManualStr(t.instrument, t.setpoint, 1)) + '</td><td>' + mesc(t.action) + '</td></tr>'; });
     h += '</table>';
     if (s.actuations && s.actuations.length) {
       h += '<h3>Engineered-safety actuations</h3><table class="m-table"><tr><th>Instrument</th><th>Dir</th><th>Setpoint</th><th>Action</th><th>Condition</th></tr>';
-      s.actuations.forEach(function (a) { h += '<tr><td class="mono">' + mesc(a.instrument) + '</td><td>' + mesc(a.direction) + '</td><td class="mono">' + mesc(a.setpoint) + '</td><td>' + mesc(a.action) + '</td><td class="muted">' + mesc(a.condition || '') + '</td></tr>'; });
+      s.actuations.forEach(function (a) { h += '<tr><td class="mono">' + mesc(a.instrument) + '</td><td>' + mesc(a.direction) + '</td><td class="mono">' + mesc(fmtManualStr(a.instrument, a.setpoint, 1)) + '</td><td>' + mesc(a.action) + '</td><td class="muted">' + mesc(a.condition || '') + '</td></tr>'; });
       h += '</table>';
     }
     h += '<h3>Alarms</h3><table class="m-table"><tr><th>Alarm</th><th>Instrument</th><th>Setpoint</th><th>Priority</th></tr>';
-    s.alarms.forEach(function (a) { var sp = a.setpoint == null ? { v: '—', u: '' } : mval(a.instrument, a.setpoint, 1); h += '<tr><td>' + mesc(a.name) + '</td><td class="mono">' + mesc(a.instrument) + '</td><td class="mono">' + mesc(sp.v + (sp.u ? ' ' + sp.u : '')) + '</td><td><span class="m-pill m-prio-' + mesc(a.priority) + '">' + mesc(a.priority) + '</span></td></tr>'; });
+    s.alarms.forEach(function (a) { var spStr = a.setpoint == null ? '—' : fmtManualStr(a.instrument, a.setpoint, 1); h += '<tr><td>' + mesc(a.name) + '</td><td class="mono">' + mesc(a.instrument) + '</td><td class="mono">' + mesc(spStr) + '</td><td><span class="m-pill m-prio-' + mesc(a.priority) + '">' + mesc(a.priority) + '</span></td></tr>'; });
     h += '</table>';
     h += '<h3>Safety limits</h3><table class="m-table"><tr><th>Limit</th><th>Value</th><th>Note</th></tr>';
-    (p.safety_limits || []).forEach(function (l) { h += '<tr><td>' + mesc(l.name) + '</td><td class="mono">' + mesc(l.v) + ' ' + mesc(l.u) + '</td><td class="muted">' + mesc(l.note) + '</td></tr>'; });
+    (p.safety_limits || []).forEach(function (l) {
+      var dp = (l.u === '°C' || l.u === 'MPa') ? (typeof l.v === 'number' && l.v >= 100 ? 0 : 1) : 1;
+      h += '<tr><td>' + mesc(l.name) + '</td><td class="mono">' + mesc(fmtManualStr(l.u, l.v, dp)) + '</td><td class="muted">' + mesc(l.note) + '</td></tr>';
+    });
     return h + '</table>';
   }
 
@@ -1044,11 +1091,11 @@
     var btn = $('pdScram'), timer = null;
     btn.addEventListener('click', function () {
       if (btn.classList.contains('fired')) return;
-      if (btn.classList.contains('armed')) { btn.classList.remove('armed'); if (timer) clearTimeout(timer); btn.textContent = 'SCRAM'; cmd({ action: 'scram' }); return; }
+      if (btn.classList.contains('armed')) { btn.classList.remove('armed'); if (timer) clearTimeout(timer); btn.textContent = prof().scramShort; cmd({ action: 'scram' }); return; }
       btn.classList.add('armed'); btn.textContent = 'CONFIRM';
       // auto-disarm after 3 s — but don't overwrite a "SCRAMMED" label if the plant
       // tripped from another cause while armed
-      timer = setTimeout(function () { if (btn.classList.contains('fired')) return; btn.classList.remove('armed'); btn.textContent = 'SCRAM'; }, 3000);
+      timer = setTimeout(function () { if (btn.classList.contains('fired')) return; btn.classList.remove('armed'); btn.textContent = prof().scramShort; }, 3000);
     });
   }
 
@@ -1067,6 +1114,7 @@
     chartBuf = []; smoothed = {};
     buildGauges(); buildGraphParams(); buildInitStates(); buildFailures();
     buildPlantDisplay();
+    var ps = $('pdScram'); if (ps && !ps.classList.contains('fired') && !ps.classList.contains('armed')) ps.textContent = prof().scramShort;
     latest = service.assembleSnapshot(); render(latest);
     if (!$('manualOverlay').hidden) renderManual();   // keep the manual in sync on plant switch
   }
@@ -1139,6 +1187,16 @@
     return (ui.pdAck[id] || ui.pdOp[id]) ? 'running' : 'alarm';
   }
   function rg(s, fn) { var g = rodGroup(s, fn); return g ? (g.steps + ' / ' + g.max_steps) : '—'; }
+  // Rod-bank readout with motion/scram status — makes the shutdown bank's state
+  // (parked out, driving in, or scrammed) legible as it moves.
+  function bankStat(s, fn) {
+    var g = rodGroup(s, fn); if (!g) return '—';
+    var base = g.steps + ' / ' + g.max_steps;
+    if (g.scrammed) return base + ' · SCRAMMED';
+    if (g.moving) return base + (g.direction > 0 ? ' · withdrawing' : ' · inserting');
+    if (fn === 'shutdown' && g.position_pct >= 99.5) return base + ' · parked out';
+    return base;
+  }
   function sur(s) { var v = s.true_state.startup_rate_dpm; if (v == null) return '—'; return Math.abs(v) < 0.01 ? { dim: v.toFixed(2) + ' dpm' } : v.toFixed(2) + ' dpm'; }
 
   function R(k, get, opts) { var r = { k: k, get: get }; if (opts) for (var o in opts) r[o] = opts[o]; return r; }
@@ -1195,6 +1253,7 @@
       '<circle cx="440" cy="405" r="3" fill="#3a5870"/><text class="comp-sub" x="440" y="436" text-anchor="middle" style="fill:#5a7488;">RCP</text>' +
       '<g class="sensors">' +
         '<g class="sensor"><circle class="tap" cx="116" cy="380" r="2.4"/><path class="leader" d="M102,236 V380 H116"/><rect class="lbl-box" x="56" y="206" width="92" height="30" rx="4"/><text class="lbl-name" x="63" y="217">Reactor Power</text><text class="lbl-val" x="63" y="231"><tspan id="vPower">100.1</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
+        '<g class="sensor"><circle class="tap" cx="130" cy="272" r="2.4"/><path class="leader" d="M116,236 V272 H130"/><rect class="lbl-box" x="56" y="250" width="92" height="28" rx="4"/><text class="lbl-name" x="63" y="260">Startup Rate</text><text class="lbl-val" x="63" y="273"><tspan id="vSur">0.00</tspan><tspan class="lbl-unit"> dpm</tspan></text></g>' +
         '<g class="sensor"><rect class="lbl-box" x="56" y="150" width="92" height="42" rx="4"/><text class="lbl-name" x="63" y="161">Rod Position</text><text class="lbl-val" x="63" y="175"><tspan id="vRod">8</tspan><tspan class="lbl-unit"> % ins</tspan></text><text class="lbl-note" x="63" y="186">withdrawn = power up</text></g>' +
         '<g class="sensor"><circle class="tap" cx="232" cy="345" r="2.4"/><path class="leader" d="M232,345 V378 H246"/><rect class="lbl-box" x="246" y="364" width="112" height="30" rx="4"/><text class="lbl-name" x="253" y="375">Subcooling</text><text class="lbl-val derived" x="253" y="389"><tspan id="vSub">74</tspan><tspan class="lbl-unit" id="uSub"> °F</tspan></text><text class="lbl-note" x="300" y="389">computed</text></g>' +
         '<g class="sensor tmi"><circle class="tap" cx="160" cy="345" r="2.4"/><path class="leader" d="M160,345 H246 V332"/><rect class="lbl-box" x="246" y="320" width="112" height="40" rx="4"/><text class="lbl-name" x="253" y="331">Core Inventory</text><text class="lbl-val" x="253" y="345"><tspan id="vInv">full</tspan></text><text class="lbl-note" x="253" y="356">reads at vessel — not PZR</text></g>' +
@@ -1235,6 +1294,7 @@
     function tx(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
     tx('vPower', ins.power_range.toFixed(1));
     tx('vRod', Math.round(rodIns));
+    tx('vSur', t.startup_rate_dpm != null ? t.startup_rate_dpm.toFixed(2) : '—');
     tx('vSub', Math.max(0, Math.round(conv(ins.subcooling_margin, 'tempdiff')))); tx('uSub', ' ' + unit('tempdiff'));
     tx('vInv', flow < 0.04 ? 'static' : (t.core_inventory_pct >= 99 ? 'full' : Math.round(t.core_inventory_pct) + '%'));
     tx('vPress', Math.round(conv(ins.primary_pressure, 'pressure'))); tx('uPress', ' ' + unit('pressure'));
@@ -1404,6 +1464,7 @@
       '<g class="sensors">' +
         '<g class="sensor"><rect class="lbl-box" x="56" y="108" width="92" height="38" rx="4"/><text class="lbl-name" x="63" y="119">Rod Position</text><text class="lbl-val" x="63" y="132"><tspan id="fvRod">8</tspan><tspan class="lbl-unit"> % ins</tspan></text><text class="lbl-note" x="63" y="142">withdrawn = power up</text></g>' +
         '<g class="sensor"><circle class="tap" cx="116" cy="310" r="2.2"/><path class="leader" d="M102,186 V310 H116"/><rect class="lbl-box" x="56" y="156" width="92" height="30" rx="4"/><text class="lbl-name" x="63" y="167">Reactor Power</text><text class="lbl-val" x="63" y="181"><tspan id="fvPower">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
+        '<g class="sensor"><circle class="tap" cx="130" cy="248" r="2.2"/><path class="leader" d="M116,186 V248 H130"/><rect class="lbl-box" x="56" y="200" width="92" height="28" rx="4"/><text class="lbl-name" x="63" y="211">Startup Rate</text><text class="lbl-val" x="63" y="224"><tspan id="fvSur">0.00</tspan><tspan class="lbl-unit"> dpm</tspan></text></g>' +
         '<g class="sensor tmi"><circle class="tap" cx="160" cy="300" r="2.2"/><path class="leader" d="M160,300 V286 H246"/><rect class="lbl-box" x="246" y="272" width="108" height="36" rx="4"/><text class="lbl-name" x="253" y="283">Core Inventory</text><text class="lbl-val" x="253" y="296"><tspan id="fvInv">full</tspan></text><text class="lbl-note" x="253" y="305">reads at vessel — not PZR</text></g>' +
         '<g class="sensor"><circle class="tap" cx="232" cy="315" r="2.2"/><path class="leader" d="M232,315 V330 H246"/><rect class="lbl-box" x="246" y="315" width="108" height="28" rx="4"/><text class="lbl-name" x="253" y="325">Subcooling</text><text class="lbl-val derived" x="253" y="338"><tspan id="fvSub">74</tspan><tspan class="lbl-unit" id="fvUSub"> °F</tspan></text><text class="lbl-note" x="298" y="338">computed</text></g>' +
         '<g class="sensor"><line class="tap-tick" x1="364" y1="170" x2="376" y2="170"/><circle class="tap" cx="370" cy="170" r="2.2"/><path class="leader" d="M370,170 H336"/><rect class="lbl-box" x="244" y="155" width="92" height="30" rx="4"/><text class="lbl-name" x="251" y="166">Primary Press</text><text class="lbl-val" x="251" y="180"><tspan id="fvPress">2235</tspan><tspan class="lbl-unit" id="fvUPress"> psi</tspan></text></g>' +
@@ -1449,6 +1510,7 @@
     var flow = (t.pump_flow_pct || 0) / 100, load = Math.max(0, ins.steam_flow || 0);
     function tx(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
     tx('fvPower', Math.round(ins.power_range)); tx('fvRod', Math.round(rodIns));
+    tx('fvSur', t.startup_rate_dpm != null ? t.startup_rate_dpm.toFixed(2) : '—');
     tx('fvSub', Math.max(0, Math.round(conv(ins.subcooling_margin, 'tempdiff')))); tx('fvUSub', ' ' + unit('tempdiff'));
     tx('fvInv', flow < 0.04 ? 'static' : (t.core_inventory_pct >= 99 ? 'full' : Math.round(t.core_inventory_pct) + '%'));
     tx('fvPress', Math.round(conv(ins.primary_pressure, 'pressure'))); tx('fvUPress', ' ' + unit('pressure'));
@@ -1500,8 +1562,8 @@
         sections: [
           { title: 'Reactor Core', rows: [
             R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }),
-            R('Control Bank', function (s) { return rg(s, 'control'); }), R('Shutdown Bank', function (s) { return rg(s, 'shutdown'); }),
-            R('Startup Rate', sur), R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
+            R('Control Bank', function (s) { return bankStat(s, 'control'); }), R('Shutdown Bank', function (s) { return bankStat(s, 'shutdown'); }),
+            R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
             R('Decay Heat', function (s) { return s.true_state.decay_heat_pct.toFixed(1) + ' %'; }), R('Fuel Temp', function (s) { return dispT(s.true_state.fuel_temp_c); }),
           ] },
           { title: 'RCS', rows: [
@@ -1515,7 +1577,7 @@
             R('PORV Block', function (s) { var o = s.control_state.porv_block_open; return { t: o ? 'open' : 'ISOLATED', cls: o ? 'q-normal' : 'q-caution' }; }),
           ] },
         ],
-        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(),
+        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods'),
           { l: 'Boron (Reactivity) — CVCS', hint: 'Chemical & Volume Control System boron: Borate adds boron (lowers power), Dilute removes it (raises power). Needs the charging pump running.', seg: [{ l: 'Borate', act: 'borate' }, { l: 'Hold', act: 'boron-hold', on: 1 }, { l: 'Dilute', act: 'dilute' }] },
           { l: 'Charging Pump (CVCS)', hint: 'Charging pump — injects coolant into the cold leg (raises inventory; carries boron). Slider = manual %.', num: { id: 'chargeSet', min: 0, max: 100, value: 0, act: 'charge-set', setL: 'Set %' }, seg: [{ l: 'On', act: 'charge-pump-on', on: 1, run: 1 }, { l: 'Off', act: 'charge-pump-off' }] },
           { l: 'Letdown Valve (CVCS)', hint: 'Letdown valve — removes coolant from the Reactor Coolant System (lowers inventory). Slider = manual %.', num: { id: 'letdownSet', min: 0, max: 100, value: 0, act: 'letdown-set', setL: 'Set %' }, seg: [{ l: 'Isolate', act: 'letdown-isolate', on: 1 }] },
@@ -1574,8 +1636,8 @@
       primary: {
         sections: [
           { title: 'Reactor Core', rows: [
-            R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }), R('Control Rods', function (s) { return rg(s, 'control'); }),
-            R('Fuel Temp', function (s) { return dispT(s.instruments.fuel_temp); }), R('Graphite Temp', function (s) { return dispT(s.true_state.graphite_temp_avg_c); }),
+            R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }), R('Control Rods', function (s) { return bankStat(s, 'control'); }), R('Shutdown Bank', function (s) { return bankStat(s, 'shutdown'); }),
+            R('Startup Rate', sur), R('Fuel Temp', function (s) { return dispT(s.instruments.fuel_temp); }), R('Graphite Temp', function (s) { return dispT(s.true_state.graphite_temp_avg_c); }),
             R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
           ] },
           { title: 'Reactivity & ORM', rows: [
@@ -1588,7 +1650,7 @@
             R('Emergency Core Cooling', function (s) { return bool(s.true_state.eccs_active, 'INJECTING', 'standby'); }),
           ] },
         ],
-        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(),
+        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods'),
           { l: 'MCP / Channel Flow', num: { id: 'rbmkFlow', min: 0, max: 120, value: 100, act: 'rbmk-flow-set', setL: 'Set %' } },
           { l: 'Emergency Core Cooling (ECCS)', emergency: 1, hint: 'Injects to the fuel channels on a pressure-tube rupture / loss of coolant — makes up steam-drum level and holds a cooling-flow floor to arrest dryout.', seg: [{ l: 'On', act: 'rbmk-eccs-on', run: 1 }, { l: 'Off', act: 'rbmk-eccs-off', on: 1 }] },
           { l: 'EPS', emergency: 1, seg: [{ l: 'Active', act: 'eps-off', on: 1, run: 1 }, { l: 'Bypass', act: 'eps-on', warn: 1 }] }],
@@ -1635,8 +1697,8 @@
       primary: {
         sections: [
           { title: 'Reactor Core', rows: [
-            R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }), R('Control Rods', function (s) { return rg(s, 'control'); }),
-            R('Core Void', function (s) { return pctOf(s.instruments.core_void_fraction); }), R('Fuel Temp', function (s) { return dispT(s.true_state.fuel_temp_c); }),
+            R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }), R('Control Rods', function (s) { return bankStat(s, 'control'); }), R('Shutdown Bank', function (s) { return bankStat(s, 'shutdown'); }),
+            R('Startup Rate', sur), R('Core Void', function (s) { return pctOf(s.instruments.core_void_fraction); }), R('Fuel Temp', function (s) { return dispT(s.true_state.fuel_temp_c); }),
             R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
           ] },
           { title: 'Vessel', rows: [
@@ -1645,7 +1707,7 @@
           ] },
           { title: 'Recirculation', rows: [ R('Recirc / Core Flow', function (s) { return s.instruments.recirc_flow.toFixed(0) + ' %'; }) ] },
         ],
-        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(),
+        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods'),
           { l: 'Recirc Drive', num: { id: 'bwrRecirc', min: 0, max: 48, value: 40, act: 'bwr-recirc-set', setL: 'Set %' } }],
         cross: [R('Turbine Steam', function (s) { return pctOf(s.instruments.steam_flow); }), R('Feedwater', function (s) { return pctOf(s.instruments.fw_flow); }), R('Turbine Load', function (s) { return (s.control_state.feedwater_flow_pct).toFixed(0) + ' %'; })],
       },
@@ -1823,7 +1885,7 @@
     if (ui.view === 'all') renderPdAll(s);
     // pd scram button mirrors the reactor state
     var ps = $('pdScram');
-    if (ps) { if (s.true_state.scrammed) { ps.classList.add('fired'); ps.classList.remove('armed'); ps.textContent = 'SCRAMMED'; } else if (!ps.classList.contains('armed')) { ps.classList.remove('fired'); ps.textContent = 'SCRAM'; } }
+    if (ps) { if (s.true_state.scrammed) { ps.classList.add('fired'); ps.classList.remove('armed'); ps.textContent = 'SCRAMMED'; } else if (!ps.classList.contains('armed')) { ps.classList.remove('fired'); ps.textContent = prof().scramShort; } }
   }
 
   function setView(v) {

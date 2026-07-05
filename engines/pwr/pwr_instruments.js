@@ -29,12 +29,21 @@
   // here so the derived subcooling margin has no cross-file load dependency.
   function T_sat(P_MPa) { return 179.47 * Math.pow(Math.max(P_MPa, 1e-6), 0.239); }
 
-  // Mapping of instrument id → true_state field that feeds it.
+  // Mapping of instrument id → true_state field that feeds it. New §8.8 ids are
+  // APPENDED (JS preserves key-insertion order): the existing instruments still
+  // draw their noise first, so their PRNG sequences are unchanged. Flow sources
+  // are the TRUE sim quantities (e.g. charging_flow_actual is 0 with the pump off
+  // and the AUTO-modulated value, not the setpoint), so indications ≠ commands.
   var SOURCE = {
     power_range: 'power_pct', tavg: 'tavg_c', thot: 'thot_c', tcold: 'tcold_c',
     primary_pressure: 'pressure_mpa', pzr_level: 'pzr_level_pct', sg_level: 'sg_level_pct',
     steam_flow: 'steam_flow_normalized', fw_flow: 'fw_flow_normalized', mwe_output: 'mwe_output',
     turbine_rpm: 'turbine_rpm', condenser_vacuum: 'condenser_vacuum_kpa',
+    charging_flow: 'charging_flow_actual', letdown_flow: 'letdown_flow_actual',
+    steam_pressure: 'steam_pressure_mpa', boron_analyzer: 'boron_ppm',
+    governor_valve: 'governor_valve_pct', lpi_flow: 'lpi_flow_normalized',
+    accumulator_flow: 'accumulator_flow_normalized', steam_dump_valve: 'steam_dump_valve_pct',
+    primary_leak_flow: 'leak_flow',
   };
 
   function PWRInstruments(config, seed) {

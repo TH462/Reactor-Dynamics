@@ -64,6 +64,7 @@
            - spray_eff * p.K_spray
            - s.porv_flow * p.K_porv_relief
            - s.safety_flow * p.K_safety_relief
+           - (p.K_leak_depressurize || 0) * (s.leak_flow || 0)  // break blowdown depressurizes the RCS
            + p.K_surge * (s._dTavg_dt || 0);              // thermal insurge raises pressure
     if (s.primary_void_fraction > 0) {
       // Two-phase: pressure collapses toward the saturation pressure of Tavg.
