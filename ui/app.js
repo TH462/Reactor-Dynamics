@@ -650,6 +650,7 @@
   function followRetry() {
     var pr = curFollowProc(); if (!pr) return;
     chartBuf = []; smoothed = {};
+    autoStandDown();
     cmd({ action: 'start_follow', procedure_id: pr.id });
     setFocus('instructor');
   }
@@ -811,6 +812,12 @@
   // the snapshot's instructor.follow block; step text comes from the same
   // RD.MANUAL_PROCEDURES artifact the Instructor loaded.
   function curFollowProc() { return ui.follow ? ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ui.follow.id; })[0] : null; }
+  // Instructor content must start from a clean board: reset every automation
+  // channel to MANUAL (mode toggles keep reflecting the plant) so an engaged
+  // controller can't perform the player's steps or trip gate feedback. The
+  // scenario path gets this for free (startScenario → rebuildPlantUI); the
+  // walkthrough path resets the plant in place, so it needs it explicitly.
+  function autoStandDown() { if (autoCtl) { autoCtl.setPlant(ui.plant); buildAutomate(); } }
   function followProcedure(id) {
     var procs = (RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [];
     if (!procs.filter(function (x) { return x.id === id; })[0]) return;
@@ -818,6 +825,7 @@
     // ui.follow syncs from the resulting snapshot in renderInstructor. Fresh
     // timeline → fresh trend history and gauge smoothing.
     chartBuf = []; smoothed = {};
+    autoStandDown();
     cmd({ action: 'start_follow', procedure_id: id });
     resetInstrFlow();            // fresh walkthrough → fresh commentary queue
     closeManual(); setFocus('instructor');
