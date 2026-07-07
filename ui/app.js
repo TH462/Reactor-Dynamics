@@ -575,10 +575,17 @@
       if (ui.scenario) { startScenario(ui.scenario); return; }
       return;
     }
-    // continue — dismiss back to free play
+    // continue — if this was a campaign mission, chain straight into the next
+    // one (the Learn→Apply loop stays unbroken); otherwise dismiss to free play.
     lastLcKey = null;
+    var finished = ui.scenario || (ui.follow && ui.follow.id);
     if (ui.follow) { ui.follow = null; cmd({ action: 'stop_follow' }); }
     else { ui.scenario = null; cmd({ action: 'stop_scenario' }); }
+    var c = campaign();
+    if (c && finished && campaignMissions(c).some(function (m) { return m.id === finished; })) {
+      var nxt = campaignFrontier();
+      if (nxt) { startMission(nxt); buildTraining(); return; }
+    }
     if (latest) renderInstructor(latest);
   }
   // Retry a walkthrough — start_follow itself resets to the procedure's `from` state.
@@ -616,8 +623,89 @@
     buildTraining();
   }
 
+  // ---- Campaign (Path 3 wrapper — Blueprint/pwr_training_campaign.md) ----
+  // Missions reference scenarios / procedures by id; completion derives from
+  // the same rd_progress record recordCompletion() already writes. Sequential
+  // unlock; bonus missions unlock with the final act; ?campaign=unlock for dev.
+  function campaign() { return (RD.CAMPAIGNS || {})[ui.plant] || null; }
+  function campaignMissions(c) {
+    var out = [];
+    (c.acts || []).forEach(function (a) { a.missions.forEach(function (m) { out.push(m); }); });
+    return out;
+  }
+  function missionArtifact(m) {
+    if (m.kind === 'scenario') return (RD.SCENARIOS || {})[m.id] || null;
+    return (((RD.MANUAL_PROCEDURES || {})[ui.engineKey]) || []).filter(function (x) { return x.id === m.id; })[0] || null;
+  }
+  function missionDone(m, p) {
+    var list = m.kind === 'scenario' ? (p.completed_scenarios || []) : (p.completed_procedures || []);
+    return list.indexOf(m.id) !== -1;
+  }
+  function campaignUnlockAll() { return /[?&]campaign=unlock/.test(location.search || ''); }
+  function startMission(m) {
+    if (m.kind === 'scenario') startScenario(m.id); else followProcedure(m.id);
+  }
+  // The next incomplete mission (the "frontier"), or null when all complete.
+  function campaignFrontier() {
+    var c = campaign(); if (!c) return null;
+    var p = progress();
+    var ms = campaignMissions(c);
+    for (var i = 0; i < ms.length; i++) if (!missionDone(ms[i], p)) return ms[i];
+    return null;
+  }
+  function buildCampaign() {
+    var host = $('trainingCampaign');
+    if (!host) return;
+    var c = campaign();
+    if (!c) { host.innerHTML = '<div class="m-note">No campaign for this plant yet — try the PWR.</div>'; return; }
+    var p = progress(), unlockAll = campaignUnlockAll();
+    var ms = campaignMissions(c);
+    var doneCount = ms.filter(function (m) { return missionDone(m, p); }).length;
+    var frontier = null;
+    var h = '<div class="camp-head"><div class="camp-title">' + mesc(c.title) + '</div>' +
+      '<div class="m-note">' + mesc(c.tagline) + '</div>' +
+      '<div class="camp-progress"><span class="mono">' + doneCount + ' / ' + ms.length + ' missions</span>' +
+      '<div class="camp-bar"><div class="camp-fill" style="width:' + (ms.length ? Math.round(100 * doneCount / ms.length) : 0) + '%"></div></div></div>';
+    if (doneCount < ms.length) h += '<button class="btn camp-continue" data-camp-continue="1">▶ ' + (doneCount ? 'Continue campaign' : 'Begin campaign') + '</button>';
+    else h += '<div class="camp-done">🏆 Campaign complete — Senior Reactor Operator</div>';
+    h += '</div>';
+    (c.acts || []).forEach(function (a) {
+      h += '<div class="camp-act">' + mesc(a.title) + '</div>';
+      a.missions.forEach(function (m) {
+        var art = missionArtifact(m);
+        var title = m.title || (art && art.title) || m.id;
+        var done = missionDone(m, p);
+        var isFrontier = !done && !frontier; if (isFrontier) frontier = m;
+        var locked = !done && !isFrontier && !unlockAll;
+        var mark = done ? '✓' : (locked ? '🔒' : '▶');
+        h += '<div class="camp-mission' + (done ? ' done' : locked ? ' locked' : ' next') + '">' +
+          '<span class="camp-mark">' + mark + '</span>' +
+          '<span class="camp-mtitle">' + mesc(title) + '</span>' +
+          (m.teaches ? '<span class="camp-teaches">' + mesc(m.teaches) + '</span>' : '') +
+          (!locked ? '<button class="btn" data-camp-start="' + m.kind + ':' + m.id + '">' + (done ? '↺ Replay' : '▶ Start') + '</button>' : '') +
+          '</div>';
+      });
+    });
+    if (c.bonus && c.bonus.length) {
+      var actsDone = doneCount >= ms.length - (c.acts[c.acts.length - 1].missions.length);
+      h += '<div class="camp-act">Bonus</div>';
+      c.bonus.forEach(function (m) {
+        var art = missionArtifact(m);
+        var locked2 = !actsDone && !unlockAll;
+        h += '<div class="camp-mission' + (locked2 ? ' locked' : '') + '">' +
+          '<span class="camp-mark">' + (locked2 ? '🔒' : '★') + '</span>' +
+          '<span class="camp-mtitle">' + mesc((art && art.title) || m.id) + '</span>' +
+          (m.teaches ? '<span class="camp-teaches">' + mesc(m.teaches) + '</span>' : '') +
+          (!locked2 ? '<button class="btn" data-camp-start="' + m.kind + ':' + m.id + '">▶ Start</button>' : '') +
+          '</div>';
+      });
+    }
+    host.innerHTML = h;
+  }
+
   // ---- Training tab: scenario picker + walkthrough list (Gameplay §3.1) ----
   function buildTraining() {
+    buildCampaign();
     var sc = $('trainingScenarios'), pr = $('trainingProcedures');
     if (!sc) return;
     var p = progress();
@@ -1164,6 +1252,13 @@
     $('instructorCard').addEventListener('click', function (e) { var b = e.target.closest('[data-lc]'); if (!b) return; levelCompleteAction(b.getAttribute('data-lc')); });
     // Training tab: scenario Start/Stop + procedure Follow buttons.
     document.querySelector('[data-pane="training"]').addEventListener('click', function (e) {
+      var cc = e.target.closest('[data-camp-continue]');
+      if (cc) { var fm = campaignFrontier(); if (fm) { startMission(fm); buildTraining(); } return; }
+      var cs = e.target.closest('[data-camp-start]');
+      if (cs) {
+        var kv = cs.getAttribute('data-camp-start').split(':');
+        startMission({ kind: kv[0], id: kv[1] }); buildTraining(); return;
+      }
       var st = e.target.closest('[data-trstart]');
       if (st) { startScenario(st.getAttribute('data-trstart')); buildTraining(); return; }
       if (e.target.closest('[data-trstop]')) {

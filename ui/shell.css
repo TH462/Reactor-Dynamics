@@ -893,6 +893,33 @@ select.num-input { width: auto; }
 }
 .tr-ptitle { font-size: 12px; color: var(--text); }
 
+/* ---- Campaign (Path 3 wrapper): acts, mission rows, progress ---- */
+.camp-head {
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; margin-bottom: 8px; background: var(--bg-elevated);
+}
+.camp-title { font-weight: 700; font-size: 13px; color: var(--text); }
+.camp-progress { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--muted); }
+.camp-bar { flex: 1; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.camp-fill { height: 100%; background: rgba(122, 176, 255, 0.85); transition: width 300ms ease; }
+.camp-continue { margin-top: 8px; }
+.camp-done { margin-top: 8px; font-weight: 700; font-size: 12px; color: var(--text); }
+.camp-act {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); margin: 10px 0 4px;
+}
+.camp-mission {
+  display: grid; grid-template-columns: 18px 1fr auto; align-items: center;
+  column-gap: 8px; padding: 4px 2px; border-bottom: 1px dotted var(--border);
+}
+.camp-mission .camp-teaches { grid-column: 2 / 4; font-size: 11px; color: var(--muted); padding-bottom: 2px; }
+.camp-mark { font-size: 11px; text-align: center; }
+.camp-mtitle { font-size: 12px; color: var(--text); }
+.camp-mission.done .camp-mtitle { color: var(--muted); }
+.camp-mission.done .camp-mark { color: #79d297; }
+.camp-mission.locked { opacity: 0.55; }
+.camp-mission.next { background: rgba(122, 176, 255, 0.07); border-radius: 4px; }
+
 /* ---- First-run Hook invitation (prompted, never forced) ---- */
 .hook-prompt {
   position: fixed; inset: 0; z-index: 60;
@@ -922,4 +949,3 @@ select.num-input { width: auto; }
 .rewind-hint[hidden] { display: none; }
 .scrubber #chartRewindBtn { margin-left: 6px; padding: 0 8px; }
 .scrubber #chartRewindBtn:disabled { opacity: 0.35; }
-                                                   

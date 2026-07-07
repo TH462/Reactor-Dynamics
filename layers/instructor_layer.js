@@ -545,6 +545,8 @@
     return {
       message: base.message,
       message_register: base.message_register,
+      scenario_id: this.scenario ? this.scenario.id : null,
+      current_beat_id: this.currentBeatId,
       ui_policy: this.uiPolicy,
       highlight: this.mode === 'follow'
         ? (st && st.control ? { view: null, control_label: st.control, instrument_id: null } : null)

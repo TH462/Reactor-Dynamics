@@ -160,9 +160,11 @@
             <div class="set-row"><span class="k">Units</span><div class="seg" id="unitsSeg"><button class="on" data-units="US">US</button><button data-units="SI">SI</button></div></div>
             <div class="set-row"><span class="k">Audio</span><div class="seg"><button>On</button><button class="on">Off</button></div></div>
           </div>
-          <!-- Training tab — M6 scenario picker + walkthroughs + Reactivity Computer -->
+          <!-- Training tab — campaign + M6 scenario picker + walkthroughs + Reactivity Computer -->
           <div class="tabpane" data-pane="training">
-            <div class="g-section-title">Scenarios <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· Instructor (M6)</span></div>
+            <div class="g-section-title" data-scanner-hint="Campaign — the guided path from first scram to a full qualification. Missions unlock in order; completed ones stay replayable.">Campaign <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· zero to operator</span></div>
+            <div id="trainingCampaign"></div>
+            <div class="g-section-title">All Scenarios <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· Instructor (M6)</span></div>
             <div id="trainingScenarios"></div>
             <div class="g-section-title">Walkthroughs <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· follow a procedure</span></div>
             <div id="trainingProcedures"></div>
@@ -254,6 +256,15 @@
   <script src="../scenarios/pwr_hook.js"></script>
   <script src="../scenarios/pwr_tmi.js"></script>
   <script src="../scenarios/pwr_sg_flood.js"></script>
+  <script src="../scenarios/pwr_tour.js"></script>
+  <script src="../scenarios/pwr_chain_reaction.js"></script>
+  <script src="../scenarios/pwr_feedback.js"></script>
+  <script src="../scenarios/pwr_xenon.js"></script>
+  <script src="../scenarios/pwr_boron.js"></script>
+  <script src="../scenarios/pwr_load_follow.js"></script>
+  <script src="../scenarios/pwr_protection.js"></script>
+  <script src="../scenarios/pwr_qualify.js"></script>
+  <script src="campaign_data.js"></script>
   <!-- Operator's manual data (generated reference + authored procedures) -->
   <script src="manual_data.js"></script>
   <script src="manual_procedures.js"></script>

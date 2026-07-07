@@ -1417,3 +1417,31 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   notes, `rd_diag_<stamp>_<plant>.json` download. Session boundaries reset the recorder
   (init / plant_change / scenario / restore); rewind trims the recorded future. A wiring audit
   (every `data-act`/`data-hold`/`act:`/`hold:` reference vs handlers) now reports 79/79 wired.
+
+- **2026-07-07 — PWR training campaign "Zero to Operator" (Gameplay §8 step 7: Campaign
+  progression wrapper + curriculum).** Plan: `Blueprint/pwr_training_campaign.md`. Five acts,
+  19 missions + 1 bonus, mixing existing artifacts (hook, TMI, sg_flood, 9 walkthrough
+  procedures) with 8 new micro-scenarios: `pwr_tour` (energy journey), `pwr_chain_reaction`
+  (criticality at HZP on the neutron source), `pwr_feedback` (Doppler/MTC), `pwr_xenon`
+  (post-trip dead-time arc), `pwr_boron` (Tavg via dilute/borate), `pwr_load_follow` (manual
+  dispatch), `pwr_protection` (deliberate turbine trip + alarm triage), `pwr_qualify` (blind
+  stuck-PORV exam, three endpoints). Wrapper: `ui/campaign_data.js` (data-driven, per-plant),
+  Training-tab campaign section (sequential unlock, progress bar, Continue chains the next
+  mission on level-complete; `?campaign=unlock` dev override); completion derives from the
+  existing `rd_progress` record — no new persistence. Instructor snapshot block now exposes
+  `scenario_id` + `current_beat_id` (also fixes the diagnosis-export manifest's scenario id).
+  **Gate:** `test/run_campaign.js` — structural (missions resolve, trigger vocabulary, dual
+  registers, endpoints) + functional (every new scenario driven headlessly to level_complete
+  by a scripted operator; qualify win/early-win/fail paths) — 12/12, 391 checks.
+  **Physics findings honored (probed, not guessed):** manual load targets couple weakly
+  (1000→800 ask settles ~944 MWe, Tavg +9 °C — taught in-mission as "the slider asks, the
+  physics answers"); a large manual step (→500 MWe) trips on load rejection; post-trip Xe
+  crests ~113.6% eq at ~5 h (the xenon mission rides exactly that arc); HZP SUR blips during
+  rod motion are subcritical multiplication, not criticality (criticality detected at
+  power > 1%, matching `pwr_startup`); **an SBO is unsurvivable in current physics** (SG
+  pins at 20% under AFW, inventory drains via PORV by ~14 min) — exam redesigned off it,
+  logged here as an engine tuning target alongside the ops-report findings.
+  **Authoring gotchas (for the next scenario writer):** snapshot `current_beat_id` is the
+  PENDING beat (armed, not yet fired); the instructor clears operator-action memory on every
+  beat fire, so `operator_action` triggers only see commands issued while their own beat is
+  pending; composite triggers use `triggers:[...]`; gates persist until their `until` fires.
