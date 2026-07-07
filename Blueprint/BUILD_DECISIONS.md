@@ -1445,3 +1445,25 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   PENDING beat (armed, not yet fired); the instructor clears operator-action memory on every
   beat fire, so `operator_action` triggers only see commands issued while their own beat is
   pending; composite triggers use `triggers:[...]`; gates persist until their `until` fires.
+
+- **2026-07-07 — RBMK & BWR training campaigns (campaign wrapper now tri-plant).** Plan
+  addendum in `Blueprint/pwr_training_campaign.md`. Seven new scenarios: `rbmk_tour`,
+  `rbmk_void` (positive void coefficient by hand: flow 80→60 at 50% → power +3%, probed),
+  `rbmk_chernobyl` (01:23:40 witnessing — engine destroys pre-1986 `low_power_xenon` in
+  ~13 s regardless of AZ-5, so the flagship narrates the inevitability; aftermath beat
+  carries the causal chain), `rbmk_az5_fixed` (playable rematch: post-1986 design survives
+  the identical state given prompt AZ-5 — probed clean at t+3 s; hesitation loses, with the
+  post-86 steam-explosion tuning gap voiced in-mission), `bwr_tour`, `bwr_recirc` (probed
+  ladder: ask 22/25/28/32 → 63/71/79/89%), `bwr_isolation` (MSIV slam: trip, indicated-level
+  shrink to ~28%, steam-driven recovery — shrink/swell as the teaching point),
+  `bwr_fukushima` (from `post_scram_sbo` + `early_battery_failure`; IC decision branch buys
+  ~4 h, both branches end at uncovery — support-failure taxonomy capstone), `bwr_qualify`
+  (precision recirc maneuver 75–85% band, >95% fails; the unfireable high-flux trip is
+  briefed as the exam hazard). Probed findings: BWR `set_recirc_flow` pct is an internal
+  ~2.5× ask scale (ask 40 = 100% flow; big asks → sustained 110–130% overpower with no
+  trip); BWR failure injections (`rcic_failure`, `hpci_failure`) do not disable
+  auto-actuated systems, and BWR upsets self-recover — hence a maneuvering exam, not an
+  emergency one; `bwr_sbo_rcic`[P] excluded (finding B3). Gate: `run_campaign.js` 24/24
+  suites / 686 checks (structural for all three campaigns + functional happy/failure paths
+  for every new scenario). Regression: RBMK 23/23, BWR 12/12, M6 16/16, M5 17/17,
+  procedures 20/21 (pre-existing).

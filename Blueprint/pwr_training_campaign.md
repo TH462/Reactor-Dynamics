@@ -253,3 +253,39 @@ missions unlock with Act V. Dev override: `?campaign=unlock` query param unlocks
   a blind station blackout.
 - Each mission ≤ ~5 min wall clock; every physics term introduced by a task, not a lecture.
 - `run_campaign.js` proves every mission completable on current physics, in CI, forever.
+
+---
+
+## Addendum (2026-07-07) — RBMK "The Other Path" & BWR "One Loop" campaigns
+
+The same wrapper hosts per-plant campaigns (`RD.CAMPAIGNS.rbmk`, `RD.CAMPAIGNS.bwr`,
+selected by the active plant). Both assume the PWR campaign's fundamentals and run
+leaner (3 acts, 8 missions each), teaching by CONTRAST — the accident taxonomy across
+the three campaigns: **information (TMI) / design (Chernobyl) / support (Fukushima)**.
+
+**RBMK:** `rbmk_tour` (channels, graphite, void coefficient pointing the wrong way, ORM),
+`rbmk_startup`[P], `rbmk_void` (player cuts flow at 50% → power RISES ~+3%, probed),
+`rbmk_raise_power`[P], `rbmk_mcp_trip`[P], `rbmk_shutdown`[P], `rbmk_chernobyl`
+(01:23:40 witnessing from `low_power_xenon` — the engine destroys the pre-1986 core in
+~13 s with or without AZ-5, so the flagship is a narrated inevitability; the teaching is
+carried by the aftermath beat), `rbmk_az5_fixed` (playable rematch on the post-1986
+design: prompt AZ-5 from the identical state shuts down cleanly — probed; hesitation
+still loses, voiced honestly as the logged post-86 tuning gap).
+
+**BWR:** `bwr_tour` (direct cycle, negative void, level is king), `bwr_startup`[P],
+`bwr_recirc` (probed throttle ladder: recirc ask 22/25/28/32 → 63/71/79/89% power),
+`bwr_raise_power`[P], `bwr_isolation` (MSIV slam: trip, level SHRINK to ~28% indicated,
+steam-driven recovery), `bwr_shutdown`[P], `bwr_fukushima` (from `post_scram_sbo`:
+battery-failure injection kills RCIC; the one decision is the isolation condenser, which
+buys hours not salvation — both branches end at uncovery, honestly bounded),
+`bwr_qualify` (precision recirc maneuver to the 75–85% band; >95% fails — the unfireable
+high-flux trip doubles as the exam hazard, briefed).
+
+**Physics constraints honored:** `bwr_sbo_rcic`[P] excluded from the campaign (currently
+failing, finding B3); BWR emergencies self-recover via auto-actuation, so the exam tests
+maneuvering precision instead of emergency response; RBMK ORM/xenon-descent teaching is
+folded into the flagship's narration (the `low_power_xenon` state is not survivable to
+explore interactively on pre-1986).
+
+Gate: `test/run_campaign.js` covers all three campaigns — structural + functional, 24/24
+suites (686 checks).

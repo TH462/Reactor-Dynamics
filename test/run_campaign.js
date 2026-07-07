@@ -21,11 +21,18 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'engines/pwr/pwr_config.js', 'engines/pwr/pwr_protection.js', 'engines/pwr/pwr_thermal.js',
   'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js',
   'engines/pwr/pwr_instruments.js', 'engines/pwr/pwr_engine.js',
+  'engines/rbmk/rbmk_config.js', 'engines/rbmk/rbmk_protection.js', 'engines/rbmk/rbmk_kinetics.js',
+  'engines/rbmk/rbmk_thermal.js', 'engines/rbmk/rbmk_rods.js', 'engines/rbmk/rbmk_instruments.js', 'engines/rbmk/rbmk_engine.js',
+  'engines/bwr/bwr_config.js', 'engines/bwr/bwr_protection.js', 'engines/bwr/bwr_vessel.js',
+  'engines/bwr/bwr_recirculation.js', 'engines/bwr/bwr_safety_systems.js', 'engines/bwr/bwr_instruments.js', 'engines/bwr/bwr_engine.js',
   'layers/control_failure_layer.js', 'layers/instructor_layer.js', 'layers/simulation_service.js',
   'scenarios/pwr_hook.js', 'scenarios/pwr_tmi.js', 'scenarios/pwr_sg_flood.js',
   'scenarios/pwr_tour.js', 'scenarios/pwr_chain_reaction.js', 'scenarios/pwr_feedback.js',
   'scenarios/pwr_xenon.js', 'scenarios/pwr_boron.js', 'scenarios/pwr_load_follow.js',
   'scenarios/pwr_protection.js', 'scenarios/pwr_qualify.js',
+  'scenarios/rbmk_tour.js', 'scenarios/rbmk_void.js', 'scenarios/rbmk_chernobyl.js', 'scenarios/rbmk_az5_fixed.js',
+  'scenarios/bwr_tour.js', 'scenarios/bwr_recirc.js', 'scenarios/bwr_isolation.js',
+  'scenarios/bwr_fukushima.js', 'scenarios/bwr_qualify.js',
   'ui/manual_procedures.js', 'ui/campaign_data.js',
 ].forEach(load);
 var RD = globalThis.RD;
@@ -85,35 +92,44 @@ function settle(s, secs) { var end = s.simTime + secs; var sn; while (s.simTime 
 
 // ---------------------------------------------------------------- Part 1: structure
 var TRIGGERS = ['time', 'delay', 'instrument', 'true_state', 'operator_action', 'inaction', 'alarm', 'scram', 'manual', 'all', 'any'];
-var camp = RD.CAMPAIGNS.pwr;
+// campaign plant → the MANUAL_PROCEDURES engine keys its procedures must exist under
+var ENGINE_KEYS = { pwr: ['pwr'], rbmk: ['rbmk_pre', 'rbmk_post'], bwr: ['bwr'] };
+var EXPECTED_MISSIONS = { pwr: 19, rbmk: 8, bwr: 8 };
 
-test('campaign structure — missions resolve, ids unique', function (ck) {
-  var seen = {};
-  var missions = [];
-  camp.acts.forEach(function (a) { a.missions.forEach(function (m) { missions.push(m); }); });
-  (camp.bonus || []).forEach(function (m) { missions.push(m); });
-  ck('campaign has 5 acts', camp.acts.length, camp.acts.length === 5, '5');
-  ck('19 required missions', missions.length - (camp.bonus || []).length, missions.length - (camp.bonus || []).length === 19, '19');
-  missions.forEach(function (m) {
-    var key = m.kind + ':' + m.id;
-    ck('unique: ' + key, key, !seen[key], 'no duplicate');
-    seen[key] = true;
-    if (m.kind === 'scenario') {
-      var sc = RD.SCENARIOS[m.id];
-      ck('scenario exists: ' + m.id, !!sc, !!sc, 'defined in RD.SCENARIOS');
-      if (sc) ck(m.id + ' is a PWR scenario', sc.plant_id, sc.plant_id === 'pwr', 'pwr');
-    } else {
-      var pr = (RD.MANUAL_PROCEDURES.pwr || []).filter(function (x) { return x.id === m.id; })[0];
-      ck('procedure exists: ' + m.id, !!pr, !!pr, 'defined in MANUAL_PROCEDURES.pwr');
-      if (pr) ck(m.id + ' is followable (not narrative)', !pr.narrative, !pr.narrative, 'narrative:false');
-    }
-    ck(key + ' has a teaches line', !!m.teaches, !!m.teaches, 'teaches text');
+test('campaign structure — missions resolve, ids unique (all plants)', function (ck) {
+  Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
+    var camp = RD.CAMPAIGNS[cid];
+    var seen = {};
+    var missions = [];
+    camp.acts.forEach(function (a) { a.missions.forEach(function (m) { missions.push(m); }); });
+    var required = missions.length;
+    (camp.bonus || []).forEach(function (m) { missions.push(m); });
+    ck(cid + ': expected mission count', required, required === EXPECTED_MISSIONS[cid], String(EXPECTED_MISSIONS[cid]));
+    missions.forEach(function (m) {
+      var key = cid + '/' + m.kind + ':' + m.id;
+      ck('unique: ' + key, key, !seen[key], 'no duplicate');
+      seen[key] = true;
+      if (m.kind === 'scenario') {
+        var sc = RD.SCENARIOS[m.id];
+        ck('scenario exists: ' + m.id, !!sc, !!sc, 'defined in RD.SCENARIOS');
+        if (sc) ck(m.id + ' plant matches campaign', sc.plant_id, sc.plant_id === cid, cid);
+      } else {
+        ENGINE_KEYS[cid].forEach(function (ek) {
+          var pr = (RD.MANUAL_PROCEDURES[ek] || []).filter(function (x) { return x.id === m.id; })[0];
+          ck('procedure exists: ' + m.id + ' [' + ek + ']', !!pr, !!pr, 'defined in MANUAL_PROCEDURES.' + ek);
+          if (pr) ck(m.id + ' [' + ek + '] followable', !pr.narrative, !pr.narrative, 'narrative:false');
+        });
+      }
+      ck(key + ' has a teaches line', !!m.teaches, !!m.teaches, 'teaches text');
+    });
   });
 });
 
 test('campaign scenarios — beat vocabulary, registers, endpoints', function (ck) {
   var scenarioIds = [];
-  camp.acts.forEach(function (a) { a.missions.forEach(function (m) { if (m.kind === 'scenario') scenarioIds.push(m.id); }); });
+  Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
+    RD.CAMPAIGNS[cid].acts.forEach(function (a) { a.missions.forEach(function (m) { if (m.kind === 'scenario') scenarioIds.push(m.id); }); });
+  });
   scenarioIds.forEach(function (id) {
     var sc = RD.SCENARIOS[id]; if (!sc) return;
     var beatIds = {};
@@ -297,6 +313,129 @@ test('pwr_qualify — negligence fails (failure endpoint exists)', function (ck)
   snap = runUntil(s, function (sn) { return lc(sn); }, 2 * 3600);
   ck('reaches an endpoint without operator help', !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is a failure card', lc(snap).title, !/Qualified/i.test(lc(snap).title), 'not Qualified');
+});
+
+// ------------------------------------------------------------ RBMK campaign
+test('rbmk_tour — orientation chain completes', function (ck) {
+  var s = startScenario('rbmk_tour');
+  var snap = runUntil(s, function (sn) { return lc(sn); }, 300);
+  ck('tour completes on its own', !!snap, !!snap, 'level_complete');
+});
+
+test('rbmk_void — flow cut raises power, restore completes', function (ck) {
+  var s = startScenario('rbmk_void');
+  var snap = waitBeat(s, 'restore_task', 120);
+  ck('flow-cut prompt fires', !!snap, !!snap, 'restore_task pending');
+  if (!snap) return;
+  s.handleCommand({ action: 'set_channel_flow', pct: 60 });
+  snap = waitBeat(s, 'complete', 600);
+  ck('power rise observed → restore prompt', !!snap, !!snap, 'complete pending');
+  if (!snap) return;
+  s.handleCommand({ action: 'set_channel_flow', pct: 80 });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 600);
+  ck('restoration completes the mission', !!snap, !!snap, 'level_complete');
+});
+
+test('rbmk_chernobyl — the excursion is witnessed to its end', function (ck) {
+  var s = startScenario('rbmk_chernobyl');
+  var snap = runUntil(s, function (sn) { return sn.true_state.melted; }, 300);
+  ck('the excursion destroys the core', !!snap, !!snap, 'melted');
+  if (!snap) return;
+  snap = runUntil(s, function (sn) { return lc(sn); }, 120);
+  ck('aftermath completes the witnessing', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the witnessing card', lc(snap).title, /Witnessed/i.test(lc(snap).title), 'Witnessed card');
+});
+
+test('rbmk_az5_fixed — prompt AZ-5 saves the rebuilt core', function (ck) {
+  var s = startScenario('rbmk_az5_fixed');
+  var snap = waitBeat(s, 'act', 30);
+  ck('the decision beat arms', !!snap, !!snap, 'act pending');
+  if (!snap) return;
+  settle(s, 1.5);
+  s.handleCommand({ action: 'scram' });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 300);
+  ck('clean shutdown reaches an endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('outcome is the fix holding', lc(snap).title, /Held/i.test(lc(snap).title), 'Fix Held card');
+});
+
+test('rbmk_az5_fixed — hesitation loses the core (failure endpoint)', function (ck) {
+  var s = startScenario('rbmk_az5_fixed');
+  var snap = runUntil(s, function (sn) { return lc(sn); }, 300);
+  ck('inaction reaches an endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the failure card', lc(snap).title, /Slow/i.test(lc(snap).title), 'Too Slow card');
+});
+
+// ------------------------------------------------------------ BWR campaign
+test('bwr_tour — orientation chain completes', function (ck) {
+  var s = startScenario('bwr_tour');
+  var snap = runUntil(s, function (sn) { return lc(sn); }, 300);
+  ck('tour completes on its own', !!snap, !!snap, 'level_complete');
+});
+
+test('bwr_recirc — throttle up to ~70%, back to 50%', function (ck) {
+  var s = startScenario('bwr_recirc');
+  var snap = waitBeat(s, 'down_task', 120);
+  ck('throttle-up prompt fires', !!snap, !!snap, 'down_task pending');
+  if (!snap) return;
+  s.handleCommand({ action: 'set_recirc_flow', pct: 25 });
+  snap = waitBeat(s, 'complete', 600);
+  ck('power rise observed → throttle-down prompt', !!snap, !!snap, 'complete pending');
+  if (!snap) return;
+  s.handleCommand({ action: 'set_recirc_flow', pct: 19 });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 600);
+  ck('return to 50% completes the mission', !!snap, !!snap, 'level_complete');
+});
+
+test('bwr_isolation — MSIV slam, shrink, recovery witnessed', function (ck) {
+  var s = startScenario('bwr_isolation');
+  var snap = runUntil(s, function (sn) { return sn.rps_state.scrammed; }, 120);
+  ck('isolation trips the reactor', !!snap, !!snap, 'scrammed');
+  if (!snap) return;
+  snap = runUntil(s, function (sn) { return lc(sn); }, 900);
+  ck('shrink + recovery chain completes', !!snap, !!snap, 'level_complete');
+});
+
+test('bwr_fukushima — IC branch buys hours, ends at uncovery', function (ck) {
+  var s = startScenario('bwr_fukushima');
+  var snap = waitBeat(s, 'batteries_die', 600);
+  ck('the hold phase reaches the battery failure', !!snap, !!snap, 'batteries_die pending');
+  if (!snap) return;
+  settle(s, 250);                       // let the beat fire (delay 240) + a beat of thought
+  s.handleCommand({ action: 'set_ic', active: true });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 12 * 3600);
+  ck('IC path reaches the uncovery endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the IC card', lc(snap).title, /Hours/i.test(lc(snap).title), 'Hours You Bought card');
+});
+
+test('bwr_fukushima — bare branch (no IC) also completes', function (ck) {
+  var s = startScenario('bwr_fukushima');
+  var snap = runUntil(s, function (sn) { return lc(sn); }, 12 * 3600);
+  ck('bare path reaches the uncovery endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the long-night card', lc(snap).title, /Long Night/i.test(lc(snap).title), 'Long Night card');
+});
+
+test('bwr_qualify — careful ascension passes', function (ck) {
+  var s = startScenario('bwr_qualify');
+  var snap = waitBeat(s, 'exam', 60);
+  ck('exam window opens', !!snap, !!snap, 'exam pending');
+  if (!snap) return;
+  settle(s, 10);
+  s.handleCommand({ action: 'set_recirc_flow', pct: 28 });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 1200);
+  ck('band hold reaches an endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('outcome is qualification', lc(snap).title, /Qualified/i.test(lc(snap).title), 'Qualified card');
+});
+
+test('bwr_qualify — greedy ask overshoots and fails', function (ck) {
+  var s = startScenario('bwr_qualify');
+  var snap = waitBeat(s, 'exam', 60);
+  ck('exam window opens', !!snap, !!snap, 'exam pending');
+  if (!snap) return;
+  settle(s, 10);
+  s.handleCommand({ action: 'set_recirc_flow', pct: 40 });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 1200);
+  ck('overshoot reaches an endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the overpower card', lc(snap).title, /Overpower/i.test(lc(snap).title), 'Overpower card');
 });
 
 report();
