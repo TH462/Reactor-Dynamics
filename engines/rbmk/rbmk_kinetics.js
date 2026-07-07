@@ -67,7 +67,10 @@
     } else {
       var sumLC = 0;
       for (var i = 0; i < 6; i++) sumLC += d.lambda_i[i] * s._C[i];
-      var dP = ((rho - beta) / Lambda) * s._P + sumLC;
+      // Constant neutron source: subcritical multiplication (P_eq = S·Λ/(−ρ)) —
+      // the visible approach to criticality. Not applied on the prompt fast-path
+      // above (meaningless at excursion powers).
+      var dP = ((rho - beta) / Lambda) * s._P + sumLC + (cfg.kinetics.source || 0);
       s._P = Math.max(0.0, s._P + dP * dt);
     }
     for (var j = 0; j < 6; j++) {

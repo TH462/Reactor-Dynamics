@@ -37,6 +37,15 @@ function cgLabels(page) {
 }
 
 async function checkControlOnBar(page, prof, view, control) {
+  if (prof === 'pwr') {
+    // The PWR plant display is the full synoptic (no view bar): a control is
+    // "on the board" when the synoptic can reveal it (auto-switching the tab or
+    // section it hides behind — the same path Instructor highlights use).
+    return page.evaluate(function (label) {
+      var RD = globalThis.RD;
+      return !!(RD.PwrSynoptic && RD.PwrSynoptic.isMounted() && RD.PwrSynoptic.revealControl(label));
+    }, view === 'scram' ? map.VIEW_CONTROLS.pwr.scram : control);
+  }
   if (view === 'scram') {
     var txt = await page.locator('#pdScram').textContent();
     return txt.trim() === map.VIEW_CONTROLS[prof].scram;

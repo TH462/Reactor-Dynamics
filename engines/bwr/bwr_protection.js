@@ -23,8 +23,13 @@
   // Engineered-safety auto-actuation. Gated actuations carry a `condition` that
   // M4's evaluateCondition resolves against the engine's status readings (§11).
   var BWR_ACTUATIONS = [
-    { instrument: 'vessel_level',    direction: 'low', setpoint: 50.0, action: 'set_rcic',   active: true },
-    { instrument: 'fw_flow',         direction: 'low', setpoint: 5.0,  action: 'set_rcic',   active: true }, // nearly no feedwater
+    // RCIC level start sits BELOW the nominal 50% band: at 50.0 the instrument
+    // noise (σ 0.5) around the 50.0 operating level hair-triggered RCIC within
+    // seconds of every run (found by the ops suite — test/run_ops.js).
+    { instrument: 'vessel_level',    direction: 'low', setpoint: 45.0, action: 'set_rcic',   active: true },
+    // fw_flow is a NORMALIZED instrument (0–1.2 of rated): the old 5.0 setpoint
+    // was a %-units slip that made `flow < 5.0` always true — RCIC always on.
+    { instrument: 'fw_flow',         direction: 'low', setpoint: 0.05, action: 'set_rcic',   active: true }, // nearly no feedwater
     { instrument: 'vessel_level',    direction: 'low', setpoint: 30.0, action: 'set_hpci',   active: true },
     { instrument: 'vessel_level',    direction: 'low', setpoint: 15.0, action: 'trigger_ads', condition: 'hpci_unavailable' },
     { instrument: 'vessel_pressure', direction: 'low', setpoint: 1.03, action: 'start_lpci',  condition: 'ads_open' },
@@ -54,7 +59,7 @@
     ic_failure:          { type: 'physics_parameter', category: 'safety_system', effect: 'stop_ic', display: 'Isolation Condenser Failure (valves shut)' },
     station_blackout:    { type: 'physics_parameter', category: 'power', effect: 'full_blackout_bwr', display: 'Station Blackout' },
     loss_of_feedwater:   { type: 'command_override', category: 'coolant', intercepts: ['set_feedwater_flow'], override_value: 0.0, display: 'Loss of Feedwater' },
-    turbine_trip:        { type: 'command_override', category: 'power', intercepts: ['set_turbine_load'], override_value: 0.0, display: 'Turbine Trip' },
+    turbine_trip:        { type: 'command_override', category: 'power', intercepts: ['set_turbine_load', 'set_load_target', 'connect_grid'], override_value: 0.0, display: 'Turbine Trip' },
     failure_to_scram:    { type: 'command_override', category: 'safety_system', intercepts: ['scram'], effect: 'block', display: 'Failure to Scram (ATWS)' },
     ads_failure:         { type: 'command_override', category: 'safety_system', intercepts: ['trigger_ads'], effect: 'block', display: 'ADS Failure (won’t open)' },
     lpci_failure:        { type: 'command_override', category: 'safety_system', intercepts: ['start_lpci'], effect: 'block', display: 'LPCI Failure' },

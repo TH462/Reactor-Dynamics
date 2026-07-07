@@ -35,6 +35,12 @@
 
     kinetics: {
       delayed: DELAYED,
+      // Constant neutron source (normalized power/s) — subcritical multiplication,
+      // same treatment as the PWR: P_eq = source·Λ/(−ρ) so the hot_startup state
+      // holds a stable source-range level (~5e-5 rated at its rod margin) and the
+      // approach to criticality is visible 1/M behavior. Negligible at power
+      // (ρ-shift at rated ≈ 0.03 pcm; at low_power_xenon ≈ 0.4 pcm). [tune]
+      source: 6.0e-4,
       // Decay heat: two-term exponential, same form as the other engines (§3).
       decay: { H1_0: 0.05, H2_0: 0.02, lambda_1: 0.0005, lambda_2: 0.00002 }, // s^-1 [tune]
       // Xenon / iodine (§5.5). fixed γ/λ; sigma_phi & xenon_worth [tune].
@@ -150,7 +156,11 @@
     // orm_display is COMPUTED (no lag/noise) and routed through a failure override
     // (§13). Status booleans carry no lag/noise.
     instruments: {
-      power_range:    { lag: 0.5, noise: 0.5,   range: [0, 120] },
+      // power_range top-of-range must exceed the 120% trip setpoint: a reading
+      // pegged AT the setpoint can never strictly cross it (the pre-1986 power
+      // trip was unfireable with the old [0,120] cap). 200% also lets the meter
+      // show the front of an excursion before it pegs.
+      power_range:    { lag: 0.5, noise: 0.5,   range: [0, 200] },
       steam_pressure: { lag: 0.5, noise: 0.014, range: [0, 10.3] },
       drum_level:     { lag: 2.0, noise: 0.5,   range: [0, 100] },
       channel_flow:   { lag: 1.0, noise: 1.0,   range: [0, 120] },
@@ -160,6 +170,7 @@
       turbine_rpm:      { lag: 0.5, noise: 3.0,   range: [0, 3600] },   // BOP
       condenser_vacuum: { lag: 5.0, noise: 0.34,  range: [0, 102] },    // kPa, BOP
       mwe_output:       { lag: 0.5, noise: 2.0,   range: [0, 1200] },   // MWe, BOP
+      startup_rate:     { lag: 2.0, noise: 0.02,  range: [-5, 10] },    // SUR (dpm) — feeds the rod-withdrawal interlock
       status: ['rps_scrammed', 'eps_bypassed', 'orm_alarm_active'],
     },
 

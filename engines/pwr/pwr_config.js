@@ -31,6 +31,12 @@
     // ---------------------------------------------------------------- kinetics
     kinetics: {
       delayed: DELAYED,
+      // Constant neutron source (normalized power/s): gives the subcritical core
+      // its 1/M multiplication — P_eq = source·Λ/(−ρ) — so the approach to
+      // criticality is VISIBLE (power and SUR respond to every rod step) instead
+      // of silent until prompt-critical. Sized so the hot_zero_power margin
+      // (−1000 pcm) equilibrates at exactly the state's P0 = 1e-6. [tune]
+      source: 1.0e-6,
       // Decay heat: two-term exponential, initialized at scram (→ ~7% of rated).
       decay: {
         H1_0: 0.05, H2_0: 0.02,            // components at scram
@@ -117,7 +123,7 @@
       P_containment: 0.103,        // MPa backpressure [tune]
       P_flow_ref: 15.41,           // reference ΔP for relief-flow sqrt scaling, MPa
       // Pressurizer level (the TMI deception).
-      K_thermal_surge: 12.0, K_void_surge: 40.0, // strong: pzr level rises as voiding begins [tune]
+      K_thermal_surge: 2.0, K_void_surge: 40.0,    // thermal out-surge on cooldown; was 12 — too aggressive on rod maneuvers [tune]
       level_loss_per_flow: 8.0, K_level: 1.0,    // [tune]
       pzr_level_nominal: 55.0,     // % at hot_full_power
     },
@@ -142,7 +148,12 @@
       sg_level_nominal: 65.0,      // % at hot_full_power
       afw_flow_frac: 0.15, afw_start_level: 20.0, // % [tune]
       // B2 steam dump / turbine bypass (auto opens above setpoint, to condenser).
-      steam_dump_setpoint: 6.0, steam_dump_band: 0.45, steam_dump_max: 1.0, // [tune]
+      // The setpoint is the NO-LOAD secondary pressure (Tsat ≈ no-load Tavg
+      // ~303 °C): with no steam draw the secondary saturates up to it and the
+      // dump holds it there, so hot standby holds its own temperature — the real
+      // PWR steam-dump-in-pressure-mode behavior. On a turbine trip the pressure
+      // rise above the setpoint opens the dump proportionally across the band.
+      steam_dump_setpoint: 8.90, steam_dump_band: 0.25, steam_dump_max: 1.0, // [tune]
     },
 
     // ------------------------------------------------------ turbine / condenser
@@ -234,13 +245,14 @@
       // Sources track TRUE sim quantities, not command setpoints (see pwr_instruments SOURCE).
       charging_flow:     { lag: 2.0, noise: 0.001, range: [0, 0.12] },   // true CVCS charging (≠ setpoint under AUTO)
       letdown_flow:      { lag: 2.0, noise: 0.001, range: [0, 0.12] },   // true CVCS letdown
-      steam_pressure:    { lag: 0.5, noise: 0.02,  range: [0, 8.0] },    // SG secondary pressure, MPa
+      steam_pressure:    { lag: 0.5, noise: 0.02,  range: [0, 10.5] },   // SG secondary pressure, MPa (top of range = no-load saturation + margin)
       boron_analyzer:    { lag: 45,  noise: 4.0,   range: [0, 2500] },   // chemistry sample — slow (Realistic-only boron readout)
       governor_valve:    { lag: 0.3, noise: 0.3,   range: [0, 100] },    // turbine admission valve %
       lpi_flow:          { lag: 1.0, noise: 0.005, range: [0, 1.2] },    // low-pressure injection line, normalized
       accumulator_flow:  { lag: 0.5, noise: 0.005, range: [0, 1.2] },    // passive accumulator injection, normalized
       steam_dump_valve:  { lag: 0.3, noise: 0.3,   range: [0, 100] },    // turbine bypass valve % (Animation HR1)
       primary_leak_flow: { lag: 0.2, noise: 0.002, range: [0, 1.0] },    // LOCA/SGTR break flow, normalized (Animation HR1)
+      startup_rate:      { lag: 2.0, noise: 0.02,  range: [-5, 10] },    // SUR (dpm) — startup-range rate meter; feeds the rod-withdrawal interlock
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },

@@ -143,6 +143,8 @@
     s.turbine_tripped = true;
     s.steam_flow_normalized = 0;
     s.turbine_load_frac = 0;
+    s.load_mode = 'disconnected';
+    s.load_target_mwe = 0;
   }
 
   RD.bwrVessel = {

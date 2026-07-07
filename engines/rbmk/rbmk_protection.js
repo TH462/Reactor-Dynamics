@@ -40,6 +40,7 @@
         { id: 'reactor_trip',   instrument: 'rps_scrammed',  direction: 'is_true', setpoint: null,    priority: 'critical', panel: 'A', label_learning: 'Reactor Scram (AZ-5)',                 label_industry: 'AZ-5 SCRAM' },
         { id: 'high_power',     instrument: 'power_range',   direction: 'high',    setpoint: 110.0,   priority: 'critical', panel: 'A', label_learning: 'High Reactor Power',                    label_industry: 'HI POWER' },
         { id: 'orm_low',        instrument: 'orm_display',   direction: 'low',     setpoint: orm_min, priority: 'critical', panel: 'A', label_learning: 'Operating Reactivity Margin Too Low',   label_industry: 'ORM LO' },
+        { id: 'sur_high',       instrument: 'startup_rate',  direction: 'high',    setpoint: 3.0,     priority: 'caution',  panel: 'A', label_learning: 'Startup Rate High',                     label_industry: 'SUR HI' },
         { id: 'void_high',      instrument: 'void_fraction', direction: 'high',    setpoint: 0.70,    priority: 'warning',  panel: 'A', label_learning: 'High Coolant Voiding',                  label_industry: 'HI VOID' },
         { id: 'fuel_temp_high', instrument: 'fuel_temp',     direction: 'high',    setpoint: 1500.0,  priority: 'warning',  panel: 'A', label_learning: 'High Fuel Temperature',                 label_industry: 'HI FUEL T' },
       ],
@@ -79,6 +80,20 @@
     loss_of_condenser_vacuum: { type: 'physics_parameter', category: 'power', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },
   };
 
+  // Interlocks (M4 §4b) — condition-latched command blocks from instruments
+  // (HR1). The rod-withdrawal block on high startup rate mirrors the real RBMK's
+  // period protection, deliberately tuned LESS protective than the PWR's
+  // (engage 4.0 vs 2.5 DPM): the RBMK's instability is part of its curriculum,
+  // and the block exists to keep normal startups honest, not to sand off the
+  // design's character. Both versions carry it (period protection predates 1986).
+  var INTERLOCKS = [
+    { instrument: 'startup_rate', direction: 'high', setpoint: 4.0, clears_below: 2.5,
+      blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true,
+      on_engage: { action: 'rod_stop_all' },
+      message_learning: 'Rod withdrawal blocked — the reactor is speeding up too fast (startup rate high). Let the rate settle below 2.5 DPM, then continue. You can always insert.',
+      message_industry: 'ROD WITHDRAWAL BLOCK: SUR ≥ 4.0 DPM. Withdrawal inhibited until SUR < 2.5 DPM. Insertion available.' },
+  ];
+
   function forVersion(version) {
     var orm_min = (version === 'post_chernobyl') ? 43.0 : 15.0;
     var trips = (version === 'post_chernobyl') ? TRIPS_POST : TRIPS_PRE;
@@ -91,6 +106,7 @@
       alarms_panel_a: al.a,
       alarms_panel_b: al.b,
       failures: FAILURES,
+      interlocks: INTERLOCKS,
       orm_min: orm_min,
     };
   }

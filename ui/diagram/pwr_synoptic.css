@@ -1,0 +1,323 @@
+/* ============================================================================
+ * pwr_synoptic.css — PWR full-plant animated synoptic (new_diagram_controls.md).
+ *
+ * One integrated schematic + margin cards + diagram-embedded panels. Quiet-board
+ * palette from shell.css; color is spent on deviation, teaching layers only in
+ * Learning mode. All motion pauses under .paused (metadata.running === false).
+ * ========================================================================== */
+
+/* ------------------------------------------------------------ shell hooks */
+/* PWR-only: hide the legacy 4-view switcher / status bar / control row and give
+   the chart+alarm band its spec share (~38%, min 200px). RBMK/BWR untouched. */
+.app.pwr-synoptic .view-switcher,
+.app.pwr-synoptic .status-bar,
+.app.pwr-synoptic .pd-controlbar { display: none; }
+.app.pwr-synoptic .bottom-row { flex: 0 0 34%; min-height: 200px; }
+.app.pwr-synoptic .view-area { padding: 0; overflow: hidden; }
+
+/* ------------------------------------------------------------ stage */
+.synoptic-stage {
+  position: relative; width: 100%; height: 100%;
+  background: var(--bg-strip);
+  --syn-pipe: #2a3744; --syn-warm: #c98a5a; --syn-cool: #6a9dc0;
+  --syn-steam: #b4c0cc; --syn-cond: #5e92ac; --syn-cw: #4e90ae;
+  --syn-em: #d9a441;             /* emergency amber */
+  --syn-hl: #6ac0ff;             /* hover highlight */
+}
+.synoptic-stage svg.pw-loop { width: 100%; height: 100%; display: block; }
+
+/* ------------------------------------------------------------ SVG pieces */
+.pw-loop .vessel { fill: #10171f; stroke: #3a5870; stroke-width: 1.2; }
+.pw-loop .vessel-inner { fill: #0e141c; stroke: #28384a; stroke-width: .8; }
+.pw-loop .fuel { stroke: #46706c; stroke-width: 2; }
+.pw-loop .comp-label { fill: #62768a; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.pw-loop .comp-sub { fill: #3a4e60; font-size: 9px; letter-spacing: .04em; }
+.pw-loop .pipe { fill: none; stroke: var(--syn-pipe); stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
+.pw-loop .pipe.thin { stroke-width: 5; }
+.pw-loop .pipe.hair { stroke-width: 3.5; }
+
+/* flow dashes — run only with .on; per-line speed via --dur */
+@keyframes pwFlow { to { stroke-dashoffset: -16; } }
+.pw-loop .flow { fill: none; stroke-width: 3.5; stroke-linecap: butt; stroke-dasharray: 5 11;
+  animation: pwFlow var(--dur, 1.1s) linear infinite; animation-play-state: paused; opacity: .25; }
+.pw-loop .flow.on { animation-play-state: running; opacity: 1; }
+.pw-loop .flow.steam-dash { stroke-dasharray: 7 9; }
+.pw-loop .flow.em { stroke: var(--syn-em); stroke-dasharray: 4 8; opacity: 0; }
+.pw-loop .flow.em.on { opacity: .95; }
+
+/* water levels / surfaces */
+.pw-loop .steam-space { fill: #121a22; }
+.pw-loop .water { fill: #16303f; opacity: .85; transition: y .3s linear, height .3s linear; }
+.pw-loop .surface { fill: none; stroke: #4e88a4; stroke-width: 1.4; opacity: .9; }
+.pw-loop .band { fill: none; stroke-width: 3; opacity: .55; }
+
+/* pumps */
+.pw-loop .pump-body { fill: #10161f; stroke: #3a5870; stroke-width: 1.2; }
+.pw-loop .pump-vane { stroke: #4a7088; stroke-width: 1.5; stroke-linecap: round; }
+@keyframes pwSpin { to { transform: rotate(360deg); } }
+.pw-loop .rotor { transform-box: fill-box; transform-origin: center;
+  animation: pwSpin var(--spin, 1s) linear infinite; animation-play-state: paused; }
+.pw-loop .rotor.on { animation-play-state: running; }
+
+/* valves — bow-tie + circle; closed rotates 90° */
+.pw-loop .valve-sym { transform-box: fill-box; transform-origin: center; transition: transform .6s ease; }
+.pw-loop .valve-sym polygon { fill: #6e94ae; stroke: #4a6680; stroke-width: .8; transition: fill .4s; }
+.pw-loop .valve.closed .valve-sym { transform: rotate(90deg); }
+.pw-loop .valve.closed .valve-sym polygon { fill: #2c3c4a; }
+.pw-loop .valve circle.seat { fill: #0e141c; stroke: #4a6680; stroke-width: 1; }
+.pw-loop .valve .throttle { fill: #6e94ae; opacity: 0; }
+.pw-loop .valve.throttled .throttle { opacity: .9; }
+.pw-loop .valve-lbl { fill: #52687c; font-size: 8.5px; letter-spacing: .03em; }
+
+/* turbine blades */
+@keyframes pwBlades { to { transform: translateX(-14px); } }
+.pw-loop .turbine-blade { stroke: #4a7088; stroke-width: 1.2; }
+.pw-loop #pwTurbineRotor { animation: pwBlades var(--blade, .5s) linear infinite; animation-play-state: paused; }
+.pw-loop #pwTurbineRotor.on { animation-play-state: running; }
+
+/* rod banks (drawn above the vessel) */
+.pw-loop .rod-track { fill: #0c121a; stroke: #2c3e4e; stroke-width: 1; }
+.pw-loop .rod-fill { fill: var(--running-muted); transition: height .25s linear, y .25s linear; }
+.pw-loop .rod-fill.shut { fill: #6e5a8a; }
+
+/* glows (Learning only — hidden via [data-mode=realistic]) */
+.pw-loop .cherenkov { fill: var(--core-glow); opacity: 0; filter: blur(6px); transition: opacity .5s; }
+.pw-loop .fuel-glow { fill: #e08840; opacity: 0; filter: blur(8px); transition: opacity .5s; }
+.synoptic-stage[data-mode="realistic"] .cherenkov,
+.synoptic-stage[data-mode="realistic"] .fuel-glow { opacity: 0 !important; }
+
+/* heater / spray / relief effects */
+.pw-loop .heater-coil { stroke: #5a4630; stroke-width: 2.4; transition: stroke .4s; }
+.pw-loop .heater-coil.hot { stroke: #e5484d; filter: drop-shadow(0 0 3px #b34); }
+.pw-loop .spray-mist { stroke: #7ab8d8; stroke-width: 1; opacity: 0; transition: opacity .4s; }
+.pw-loop .spray-mist.on { opacity: .85; stroke-dasharray: 1.5 4; animation: pwFlow 0.7s linear infinite; }
+.pw-loop .relief-flow { stroke: #c8d4de; stroke-width: 2.5; stroke-dasharray: 3 6; fill: none;
+  opacity: 0; animation: pwFlow .5s linear infinite; animation-play-state: paused; }
+.pw-loop .relief-flow.on { opacity: .95; animation-play-state: running; }
+.pw-loop .relief-flow.ghost { stroke: #7a8894; opacity: 0; }
+.pw-loop .relief-flow.ghost.on { opacity: .5; }
+
+/* leak spray (break flow — instrument-driven) */
+.pw-loop .leak-spray { stroke: #7ab8d8; stroke-width: 1.6; fill: none; stroke-dasharray: 2 5;
+  opacity: 0; animation: pwFlow .45s linear infinite; animation-play-state: paused; }
+.pw-loop .leak-spray.on { opacity: .95; animation-play-state: running; }
+
+/* sensor taps */
+.pw-loop .sensor .tap { fill: #d0b060; }
+.pw-loop .sensor .tap-ring { fill: none; stroke: #d0b060; stroke-width: 1.2; opacity: 0; }
+.pw-loop .sensor .s-leader { stroke: #46586a; stroke-width: .8; stroke-dasharray: 2 2; fill: none; }
+.pw-loop .sensor .lbl-box { fill: #0e1620; stroke: #2c3e4e; stroke-width: .8; }
+.pw-loop .sensor .lbl-name { fill: #62768a; font-size: 9px; letter-spacing: .04em; text-transform: uppercase; }
+.pw-loop .sensor .lbl-val { fill: #bcccd8; font-size: 13px; font-weight: 600; }
+.pw-loop .sensor .lbl-unit { fill: #3a4e60; font-size: 8.5px; }
+@keyframes pwTapPulse { 0% { opacity: .9; r: 4; } 100% { opacity: 0; r: 12; } }
+.pw-loop .sensor.hl .tap-ring { animation: pwTapPulse 1s ease-out infinite; }
+
+/* hover / instructor highlight on diagram nodes */
+.pw-loop g.hl { filter: drop-shadow(0 0 5px var(--syn-hl)) brightness(1.4); }
+.pw-loop g.diagram-node { transition: filter .15s; }
+
+/* what-matters-now soft pulse */
+@keyframes pwWmSvg { 50% { filter: drop-shadow(0 0 7px var(--syn-em)) brightness(1.3); } }
+.pw-loop g.wm { animation: pwWmSvg 2.2s ease-in-out infinite; }
+
+/* ------------------------------------------------------------ overlays */
+.pw-card-overlay { position: absolute; inset: 0; pointer-events: none; }
+.pw-leaders { position: absolute; inset: 0; pointer-events: none; }
+.pw-leaders .lead { fill: none; stroke: #3d4c5c; stroke-width: 1; stroke-dasharray: 3 4; opacity: .55; }
+.pw-leaders .lead.em { stroke: var(--syn-em); opacity: .5; }
+@keyframes pwLead { to { stroke-dashoffset: -14; } }
+.pw-leaders .lead.hl { stroke: var(--syn-hl); stroke-width: 1.8; opacity: 1; animation: pwLead .6s linear infinite; }
+.pw-leaders .lead.em.hl { stroke: var(--syn-em); }
+.pw-leaders .lead.wm { stroke: var(--syn-em); opacity: .9; animation: pwLead 1.2s linear infinite; }
+
+/* ------------------------------------------------------------ margin cards */
+.plant-card {
+  position: absolute; pointer-events: auto;
+  width: 188px; background: rgba(13, 17, 22, .93);
+  border: 1px solid var(--border); border-radius: 5px;
+  font-size: 10.5px; color: var(--text-2);
+  box-shadow: 0 2px 10px rgba(0,0,0,.45);
+  transition: box-shadow .3s, border-color .3s;
+}
+.plant-card.narrow { width: 148px; }
+.plant-card:hover { border-color: #3d4c5c; }
+.plant-card .pc-head {
+  padding: 2px 6px; font-size: 9px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--border); display: flex;
+  justify-content: space-between; align-items: center; gap: 4px;
+}
+.plant-card .pc-body { padding: 3px 6px 4px; }
+.plant-card.emergency { border-color: #4a3c1c; background: rgba(20, 16, 8, .93); }
+.plant-card.emergency .pc-head { color: var(--caution); border-bottom-color: #4a3c1c; }
+
+.plant-card.hl-card { border-color: var(--syn-hl); }
+#pwSubcoolBar.wm-hint { outline: 1px solid var(--syn-hl); border-radius: 4px; }
+
+/* what-matters-now pulse on cards / panels */
+@keyframes pwWmCard { 50% { box-shadow: 0 0 0 2px rgba(217,164,65,.55), 0 2px 10px rgba(0,0,0,.45); } }
+.plant-card.wm, .diagram-panel.wm { animation: pwWmCard 2.2s ease-in-out infinite; }
+
+/* card rows */
+.plant-card .row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; padding: 1px 0; }
+.plant-card .row .k { color: var(--muted); font-size: 9.5px; }
+.plant-card .row .v { font-family: ui-monospace, Consolas, monospace; color: var(--text); font-size: 11px; white-space: nowrap; }
+.plant-card .row .v.big { font-size: 14px; font-weight: 600; }
+.plant-card .row .v.dim { color: var(--muted); }
+.plant-card .row .v.warn { color: var(--caution); }
+.plant-card .row .v.alarm { color: var(--critical); font-weight: 600; }
+.plant-card .row .v.run { color: var(--running); }
+.plant-card .sub { font-size: 8.5px; color: var(--muted); font-style: italic; }
+.plant-card .dual { font-size: 9px; color: var(--caution); font-family: ui-monospace, Consolas, monospace; }
+.plant-card .dual b { color: var(--critical); font-weight: 600; }
+
+/* compact controls inside cards / panels */
+.plant-card .seg, .diagram-panel .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.plant-card .seg button, .diagram-panel .seg button {
+  background: #12181f; color: var(--text-2); border: none; border-right: 1px solid var(--border);
+  font-size: 9px; padding: 1px 4px; cursor: pointer; font-family: inherit; letter-spacing: .02em;
+}
+.plant-card .seg button:last-child, .diagram-panel .seg button:last-child { border-right: none; }
+.plant-card .seg button:hover, .diagram-panel .seg button:hover { background: #1a2530; color: var(--text); }
+.plant-card .seg button.on { background: #1d2a38; color: var(--text); }
+.plant-card .seg button.on.run { color: var(--running); }
+.plant-card .seg button.warn { color: var(--caution); }
+.plant-card .seg button.holding { background: #24425a; color: #cfe6f5; }
+.plant-card .num-in, .diagram-panel .num-in {
+  width: 38px; background: #0b0f13; color: var(--text); border: 1px solid var(--border);
+  border-radius: 3px; font: 10px ui-monospace, Consolas, monospace; padding: 1px 3px;
+}
+/* spinner buttons ate the digits ("1000" rendered as "1…") — hide them */
+.plant-card .num-in::-webkit-inner-spin-button, .plant-card .num-in::-webkit-outer-spin-button,
+.diagram-panel .num-in::-webkit-inner-spin-button, .diagram-panel .num-in::-webkit-outer-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.plant-card .btn-set, .diagram-panel .btn-set {
+  background: #12181f; color: var(--text-2); border: 1px solid var(--border); border-radius: 3px;
+  font-size: 9px; padding: 1px 5px; cursor: pointer;
+}
+.plant-card .btn-set:hover, .diagram-panel .btn-set:hover { background: #1a2530; color: var(--text); }
+.plant-card .load-slider, .cg-controls .load-slider {
+  flex: 1; min-width: 60px; max-width: 120px; height: 4px; accent-color: var(--running);
+}
+.plant-card .load-slider-val, .cg-controls .load-slider-val {
+  font: 10px ui-monospace, Consolas, monospace; color: var(--text-2); min-width: 28px;
+}
+.plant-card .ctl { display: flex; align-items: center; justify-content: space-between; gap: 3px; padding: 1px 0; flex-wrap: wrap; }
+.plant-card .ctl .k { color: var(--muted); font-size: 9px; }
+.plant-card button:disabled { opacity: .4; cursor: default; }
+
+/* collapsible sections (PZR card) */
+.plant-card .sec-h {
+  display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+  font-size: 8.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  padding: 3px 0 1px; border-top: 1px solid var(--border); margin-top: 3px; user-select: none;
+}
+.plant-card .sec-h:first-child { border-top: none; margin-top: 0; }
+.plant-card .sec-h .car { transition: transform .2s; font-size: 8px; }
+.plant-card .sec-h .sec-v { margin-left: auto; font: 600 10px ui-monospace, Consolas, monospace; color: var(--text-2); }
+.plant-card .csec.open .sec-h .sec-v { display: none; }
+.plant-card .csec.open .sec-h .car { transform: rotate(90deg); }
+.plant-card .csec .sec-b { display: none; }
+.plant-card .csec.open .sec-b { display: block; }
+
+/* emergency card tabs */
+.plant-card .tabs { display: flex; gap: 2px; margin-bottom: 3px; }
+.plant-card .tabs button {
+  flex: 1; background: #141008; color: var(--muted); border: 1px solid #4a3c1c; border-radius: 3px;
+  font-size: 9px; padding: 2px 0; cursor: pointer; letter-spacing: .03em;
+}
+.plant-card .tabs button.on { background: #2a2210; color: var(--caution); }
+.plant-card .tabs button .dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--running); margin-left: 3px; vertical-align: 1px; }
+.plant-card .tabpane { display: none; }
+.plant-card .tabpane.on { display: block; }
+
+/* SCRAM two-step cover */
+.pw-scram { width: 100%; margin-top: 4px; border-radius: 4px; border: 1px solid #5a2326;
+  background: #2a1113; color: #e08c8c; font-weight: 700; font-size: 11px; letter-spacing: .1em;
+  padding: 4px 0; cursor: pointer; }
+.pw-scram.armed { background: #6e1a1e; color: #ffd9d9; animation: pwScramArm .5s step-end infinite alternate; }
+@keyframes pwScramArm { 50% { background: #8e2226; } }
+.pw-scram.fired { background: #3a0f11; color: #e5484d; cursor: default; }
+
+/* rod bank bars */
+.rodbank { display: flex; gap: 8px; align-items: stretch; }
+.rodbank .bank { flex: 1; }
+.rodbank .bar { position: relative; height: 38px; background: #0b1016; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+.rodbank .bar .fill { position: absolute; left: 0; right: 0; top: 0; background: var(--running-muted); transition: height .25s linear; }
+.rodbank .bar.shut .fill { background: #4e4266; }
+.rodbank .bar .lim { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--caution); opacity: .8; }
+.rodbank .blbl { font-size: 8.5px; color: var(--muted); text-align: center; margin-top: 1px; }
+.rodbank .bsteps { font: 10px ui-monospace, Consolas, monospace; color: var(--text); text-align: center; }
+.rodbank .bsteps.ok { color: var(--running); }
+.rodbank .bsteps.alarm { color: var(--critical); }
+
+/* subcooling margin bar (Power & Reactivity card) */
+.subcool-wrap { display: flex; gap: 7px; align-items: stretch; margin-top: 3px; }
+.subcool-bar { position: relative; width: 14px; height: 56px; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; background: #0b1016; }
+.subcool-bar .zone { position: absolute; left: 0; right: 0; }
+.subcool-bar .zone.g { background: rgba(70,163,94,.30); }
+.subcool-bar .zone.y { background: rgba(217,164,65,.30); }
+.subcool-bar .zone.r { background: rgba(229,72,77,.32); }
+.subcool-bar .zline { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid #7a8894; opacity: .8; }
+.subcool-bar .cursor { position: absolute; left: 0; right: 0; height: 3px; background: #e4e9ee;
+  box-shadow: 0 0 4px #9cc; transition: top 1s linear; }
+.subcool-bar .ghost { position: absolute; left: 0; right: 0; height: 2px; background: #7a8894; opacity: 0; transition: top 1s linear; }
+.subcool-bar .ghost.on { opacity: .75; }
+.subcool-info { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.subcool-info .scv { font: 600 15px ui-monospace, Consolas, monospace; color: var(--text); }
+.subcool-info .scv.warn { color: var(--caution); }
+.subcool-info .scv.alarm { color: var(--critical); }
+.subcool-info .scl { font-size: 8.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.subcool-info .sat { font-size: 8.5px; color: var(--critical); font-weight: 700; letter-spacing: .06em; }
+
+/* contextual chips (Learning) */
+.chip { display: inline-block; border-radius: 3px; padding: 1px 6px; font-size: 9px; margin: 2px 3px 0 0; border: 1px solid; }
+.chip.amber { color: var(--caution); border-color: #4a3c1c; background: rgba(217,164,65,.08); }
+.chip.yellow { color: #d9c341; border-color: #4a451c; background: rgba(217,195,65,.08); }
+.chip.green { color: var(--running); border-color: #1c4a2a; background: rgba(70,163,94,.08); }
+.chip.red { color: var(--critical); border-color: #4a1c1e; background: rgba(229,72,77,.10); }
+
+/* ------------------------------------------------------------ embedded panels */
+.diagram-panel {
+  position: absolute; pointer-events: auto;
+  background: rgba(10, 14, 18, .95); border: 1px solid #2c3e4e; border-radius: 4px;
+  font-size: 9.5px; color: var(--text-2); box-shadow: 0 2px 8px rgba(0,0,0,.5);
+}
+.diagram-panel .dp-head { padding: 1px 5px; font-size: 8.5px; letter-spacing: .07em; text-transform: uppercase;
+  color: #6a89a4; border-bottom: 1px solid #22303c; }
+.diagram-panel .dp-body { padding: 2px 5px 3px; }
+.diagram-panel .prow { display: flex; align-items: center; justify-content: space-between; gap: 3px; padding: 0; line-height: 12px; }
+.diagram-panel .num-in { height: 13px; padding: 0 2px; width: 34px; }
+.diagram-panel .btn-set { padding: 0 3px; font-size: 8px; }
+.diagram-panel .seg button { padding: 0 3px; font-size: 8px; }
+.diagram-panel .prow .k { color: var(--muted); font-size: 8px; }
+.diagram-panel .prow .v { font-family: ui-monospace, Consolas, monospace; color: var(--text); font-size: 9px; white-space: nowrap; }
+.diagram-panel .prow .v.run { color: var(--running); }
+.diagram-panel .prow .v.alarm { color: var(--critical); }
+.diagram-panel .dual { font-size: 8.5px; color: var(--caution); font-family: ui-monospace, Consolas, monospace; }
+.diagram-panel .ann { font-size: 9px; font-weight: 700; letter-spacing: .06em; color: var(--caution); }
+
+/* ------------------------------------------------------------ pause freeze */
+.synoptic-stage.paused .pw-loop *,
+.synoptic-stage.paused .pw-leaders .lead,
+.synoptic-stage.paused .plant-card,
+.synoptic-stage.paused .diagram-panel,
+.synoptic-stage.paused .subcool-bar .cursor,
+.synoptic-stage.paused .subcool-bar .ghost,
+.synoptic-stage.paused .rodbank .bar .fill { animation-play-state: paused !important; transition: none !important; }
+.pw-paused-overlay {
+  position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+  pointer-events: none; z-index: 30;
+}
+.synoptic-stage.paused .pw-paused-overlay { display: flex; }
+.pw-paused-overlay span {
+  background: rgba(8, 11, 14, .82); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-2); font-size: 15px; font-weight: 700; letter-spacing: .25em;
+  padding: 8px 22px; text-transform: uppercase;
+}
+
+/* physics-overlay-only rows (hidden unless overlay on — beats .row specificity) */
+.synoptic-stage:not([data-overlay="on"]) .ov-only { display: none !important; }
+/* learning-only elements */
+.synoptic-stage[data-mode="realistic"] .lrn-only { display: none !important; }

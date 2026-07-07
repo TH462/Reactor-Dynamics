@@ -16,6 +16,7 @@
  */
 'use strict';
 
+require('../engines/load_mode.js');
 [['pwr', ['pwr_config', 'pwr_protection', 'pwr_thermal', 'pwr_pressurizer', 'pwr_primary', 'pwr_steam_generator', 'pwr_instruments', 'pwr_engine']],
  ['rbmk', ['rbmk_protection', 'rbmk_config', 'rbmk_kinetics', 'rbmk_thermal', 'rbmk_rods', 'rbmk_instruments', 'rbmk_engine']],
  ['bwr', ['bwr_config', 'bwr_protection', 'bwr_vessel', 'bwr_recirculation', 'bwr_safety_systems', 'bwr_instruments', 'bwr_engine']]

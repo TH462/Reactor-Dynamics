@@ -161,12 +161,13 @@
         { key: 'steam', label: 'Steam Generators', groups: [
           { l: 'Feed Pumps', seg: [{ l: 'Start', act: 'feed-start', on: 1, run: 1 }, { l: 'Stop', act: 'feed-stop' }] },
           { l: 'Auxiliary Feed Water (AFW)', emergency: 1, hint: 'Auxiliary Feed Water — backup feed after a loss of main feedwater.', seg: [{ l: 'Start', act: 'afw-start' }, { l: 'Stop', act: 'afw-stop', on: 1 }] },
-          { l: 'Feed Reg Valve', num: { id: 'feedSet', min: 0, max: 100, value: 100, act: 'feed-set', setL: 'Set %' } },
+          { l: 'Feed Reg Valve (advanced)', hint: 'Manual feed demand — decouples from Load Mode.', num: { id: 'feedSet', min: 0, max: 100, value: 100, act: 'feed-set', setL: 'Set %' } },
         ] },
         { key: 'turbine', label: 'Turbine & Grid', groups: [
+          { l: 'Load Mode', hint: 'Follow tracks reactor power; Manual uses the slider; Off disconnects from grid.', seg: [{ l: 'Follow', act: 'load-follow', on: 1, run: 1 }, { l: 'Manual', act: 'load-manual' }, { l: 'Off', act: 'load-disconnect', warn: 1 }] },
+          { l: 'Turbine Load', hint: 'Generator load setpoint (MWe) — active in Manual mode.', slider: { id: 'mweSlider', min: 0, max: 1100, value: 1000, act: 'load-slider' } },
           { l: 'Main Breaker', hint: 'Main Breaker — the grid connection.', seg: [{ l: 'Closed', act: 'breaker-close', on: 1, run: 1 }, { l: 'Open', act: 'breaker-open' }] },
           { l: 'Steam Dump (to condenser)', hint: 'Steam dump / turbine bypass — vents steam to the condenser to control SG pressure on a turbine trip or load rejection. Auto opens above a pressure setpoint.', seg: [{ l: 'Auto', act: 'dump-auto', on: 1, run: 1 }, { l: 'Open', act: 'dump-open' }, { l: 'Closed', act: 'dump-close' }] },
-          { l: 'Turbine Load Target', num: { id: 'mweSet', min: 0, max: 1100, value: 1000, act: 'mwe-set', setL: 'Set MW' } },
         ] },
       ],
     },
@@ -225,7 +226,11 @@
         { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods')] },
         { key: 'coolant', label: 'Coolant Circuit', groups: [
           { l: 'MCP / Channel Flow', hint: 'Main Circulation Pumps — channel flow setpoint. Lower flow ⇒ more void ⇒ (positive coefficient) more power.', num: { id: 'rbmkFlow', min: 0, max: 120, value: 100, act: 'rbmk-flow-set', setL: 'Set %' } },
-          { l: 'Feedwater', num: { id: 'rbmkFeed', min: 0, max: 100, value: 100, act: 'rbmk-feed-set', setL: 'Set %' } },
+          { l: 'Feedwater (advanced)', hint: 'Manual feed — decouples from Load Mode.', num: { id: 'rbmkFeed', min: 0, max: 100, value: 100, act: 'rbmk-feed-set', setL: 'Set %' } },
+        ] },
+        { key: 'turbine', label: 'Turbine & Grid', groups: [
+          { l: 'Load Mode', seg: [{ l: 'Follow', act: 'rbmk-load-follow', on: 1, run: 1 }, { l: 'Manual', act: 'rbmk-load-manual' }, { l: 'Off', act: 'rbmk-load-disconnect', warn: 1 }] },
+          { l: 'Turbine Load', slider: { id: 'rbmkMwe', min: 0, max: 1000, value: 1000, act: 'rbmk-turbine-set' } },
         ] },
         { key: 'protection', label: 'Protection', groups: [
           { l: 'Emergency Protection (EPS)', emergency: 1, hint: 'EPS Bypass — disables the automatic trips (as during the test before the accident). AZ-5 still works.', seg: [{ l: 'Active', act: 'eps-off', on: 1, run: 1 }, { l: 'Bypassed', act: 'eps-on', warn: 1 }] },
@@ -303,8 +308,9 @@
           { l: 'Standby Liquid Control (SLC)', emergency: 1, hint: 'Standby Liquid Control — injects boron to shut the reactor down even if the rods will NOT insert (the ATWS mitigation).', seg: [{ l: 'Initiate', act: 'slc-initiate', warn: 1 }] },
         ] },
         { key: 'turbine', label: 'Turbine & Feed', groups: [
-          { l: 'Turbine Load Target', num: { id: 'bwrMwe', min: 0, max: 1100, value: 1000, act: 'bwr-turbine-set', setL: 'Set MW' } },
-          { l: 'Feedwater', num: { id: 'bwrFeed', min: 0, max: 100, value: 100, act: 'bwr-feed-set', setL: 'Set %' } },
+          { l: 'Load Mode', seg: [{ l: 'Follow', act: 'bwr-load-follow', on: 1, run: 1 }, { l: 'Manual', act: 'bwr-load-manual' }, { l: 'Off', act: 'bwr-load-disconnect', warn: 1 }] },
+          { l: 'Turbine Load', slider: { id: 'bwrMwe', min: 0, max: 1100, value: 1000, act: 'bwr-turbine-set' } },
+          { l: 'Feedwater (advanced)', num: { id: 'bwrFeed', min: 0, max: 100, value: 100, act: 'bwr-feed-set', setL: 'Set %' } },
         ] },
       ],
     },
@@ -371,6 +377,11 @@
       });
       inner += '</div>';
       (g.extra || []).forEach(function (b) { inner += '<button class="btn" data-act="' + b.act + '"' + (b.title ? ' title="' + esc(b.title) + '"' : '') + '>' + b.l + '</button>'; });
+    }
+    if (g.slider) {
+      var sl = g.slider, curS = (ui.ctlVals[sl.id] != null ? ui.ctlVals[sl.id] : sl.value);
+      inner += '<input class="load-slider mono" id="' + sl.id + '" type="range" min="' + sl.min + '" max="' + sl.max + '" value="' + curS + '" step="10" data-act="' + sl.act + '">' +
+        '<span class="load-slider-val mono" data-for="' + sl.id + '">' + curS + '</span>';
     }
     if (g.num) {   // a control may have a slider AND buttons (e.g. a manual % + Auto)
       var n = g.num, cur = (ui.ctlVals[n.id] != null ? ui.ctlVals[n.id] : n.value);
@@ -709,9 +720,13 @@
     'afw-start': function () { ui.pdOp.afw = true; cmd({ action: 'set_afw', active: true }); }, 'afw-stop': function () { cmd({ action: 'set_afw', active: false }); },
     'msiv-open': function () { if (ui.plant === 'bwr') cmd({ action: 'clear_failure', failure_id: 'msiv_closure' }); },
     'msiv-close': function () { if (ui.plant === 'bwr') cmd({ action: 'inject_failure', failure_id: 'msiv_closure' }); },
-    'breaker-close': function () { cmd({ action: 'set_steam_demand', mwe: 1000 }); },
-    'breaker-open': function () { if (confirm('Open the main breaker (disconnect from grid)?')) cmd({ action: 'set_steam_demand', mwe: 0 }); },
-    'mwe-set': function () { cmd({ action: 'set_steam_demand', mwe: inputVal('mweSet') }); },
+    'load-follow': function () { cmd({ action: 'set_load_mode', mode: 'follow' }); },
+    'load-manual': function () { cmd({ action: 'set_load_mode', mode: 'manual' }); },
+    'load-disconnect': function () { cmd({ action: 'disconnect_grid' }); },
+    'breaker-close': function () { cmd({ action: 'connect_grid' }); },
+    'breaker-open': function () { if (confirm('Open the main breaker (disconnect from grid)?')) cmd({ action: 'disconnect_grid' }); },
+    'mwe-set': function () { cmd({ action: 'set_load_target', mwe: inputVal('mweSet') }); },
+    'load-slider': function () { cmd({ action: 'set_load_target', mwe: inputVal('mweSlider') }); },
     'porv-block-open': function () { cmd({ action: 'open_block_valve' }); },
     'porv-block-close': function () { if (confirm('Isolate the PORV (close the block valve)? Stops all PORV flow.')) cmd({ action: 'close_block_valve' }); },
     'dump-auto': function () { cmd({ action: 'set_steam_dump', mode: 'auto' }); },
@@ -722,7 +737,10 @@
     // RBMK
     'rbmk-flow-set': function () { cmd({ action: 'set_channel_flow', pct: inputVal('rbmkFlow') }); },
     'rbmk-feed-set': function () { cmd({ action: 'set_feedwater_flow', pct: inputVal('rbmkFeed') }); },
-    'rbmk-turbine-set': function () { cmd({ action: 'set_turbine_load', mwe: inputVal('rbmkMwe') }); },
+    'rbmk-load-follow': function () { cmd({ action: 'set_load_mode', mode: 'follow' }); },
+    'rbmk-load-manual': function () { cmd({ action: 'set_load_mode', mode: 'manual' }); },
+    'rbmk-load-disconnect': function () { cmd({ action: 'disconnect_grid' }); },
+    'rbmk-turbine-set': function () { cmd({ action: 'set_load_target', mwe: inputVal('rbmkMwe') }); },
     'eps-on': function () { cmd({ action: 'set_eps_bypass', active: true }); }, 'eps-off': function () { cmd({ action: 'set_eps_bypass', active: false }); },
     'rbmk-eccs-on': function () { cmd({ action: 'set_eccs', active: true }); }, 'rbmk-eccs-off': function () { cmd({ action: 'set_eccs', active: false }); },
     // BWR
@@ -737,7 +755,10 @@
     'slc-stop': function () { cmd({ action: 'stop_slc' }); },
     'srv-open': function () { cmd({ action: 'open_srv_manual' }); },
     'srv-close': function () { cmd({ action: 'close_srv_manual' }); },
-    'bwr-turbine-set': function () { cmd({ action: 'set_turbine_load', mwe: inputVal('bwrMwe') }); },
+    'bwr-load-follow': function () { cmd({ action: 'set_load_mode', mode: 'follow' }); },
+    'bwr-load-manual': function () { cmd({ action: 'set_load_mode', mode: 'manual' }); },
+    'bwr-load-disconnect': function () { cmd({ action: 'disconnect_grid' }); },
+    'bwr-turbine-set': function () { cmd({ action: 'set_load_target', mwe: inputVal('bwrMwe') }); },
     'bwr-feed-set': function () { cmd({ action: 'set_feedwater_flow', pct: inputVal('bwrFeed') }); },
     // lifecycle
     'save': function () { downloadSave(); }, 'load': function () { $('loadFile').click(); }, 'reset': function () { doReset(); }, 'export-csv': function () { exportCsv(); },
@@ -773,6 +794,14 @@
     document.body.addEventListener('input', function (e) {
       var inp = e.target.closest('#pdCtlRow input.num-input'); if (!inp || !inp.id) return;
       ui.ctlVals[inp.id] = inp.value;
+    });
+    document.body.addEventListener('input', function (e) {
+      var sl = e.target.closest('#pdCtlRow input.load-slider'); if (!sl || !sl.id) return;
+      ui.ctlVals[sl.id] = sl.value;
+      var lab = document.querySelector('[data-for="' + sl.id + '"]');
+      if (lab) lab.textContent = sl.value;
+      var act = ACTS[sl.getAttribute('data-act')];
+      if (act) act();
     });
     document.addEventListener('pointerup', endHold);
     document.addEventListener('pointercancel', endHold);
@@ -1606,12 +1635,13 @@
           ] },
         ],
         controls: [
+          { l: 'Load Mode', seg: [{ l: 'Follow', act: 'load-follow', on: 1, run: 1 }, { l: 'Manual', act: 'load-manual' }, { l: 'Off', act: 'load-disconnect', warn: 1 }] },
+          { l: 'Turbine Load', slider: { id: 'mweSlider', min: 0, max: 1100, value: 1000, act: 'load-slider' } },
           { l: 'Feed Pumps', seg: [{ l: 'Start', act: 'feed-start', on: 1, run: 1 }, { l: 'Stop', act: 'feed-stop' }] },
           { l: 'AFW', emergency: 1, seg: [{ l: 'Start', act: 'afw-start' }, { l: 'Stop', act: 'afw-stop', on: 1 }] },
-          { l: 'Feed Reg', num: { id: 'feedSet', min: 0, max: 100, value: 100, act: 'feed-set', setL: 'Set %' } },
+          { l: 'Feed Reg (advanced)', num: { id: 'feedSet', min: 0, max: 100, value: 100, act: 'feed-set', setL: 'Set %' } },
           { l: 'Steam Dump', hint: 'Steam dump / turbine bypass to condenser.', seg: [{ l: 'Auto', act: 'dump-auto', on: 1, run: 1 }, { l: 'Open', act: 'dump-open' }, { l: 'Closed', act: 'dump-close' }] },
           CG_MSIV(),
-          { l: 'Turbine Load', num: { id: 'mweSet', min: 0, max: 1100, value: 1000, act: 'mwe-set', setL: 'Set MW' } },
           { l: 'Main Breaker', seg: [{ l: 'Closed', act: 'breaker-close', on: 1, run: 1 }, { l: 'Open', act: 'breaker-open' }] }],
         cross: [R('Reactor Power', function (s) { return s.instruments.power_range.toFixed(0) + ' %'; }), R('Tavg', function (s) { return dispT(s.instruments.tavg); }), R('Primary Press', function (s) { return dispP(s.instruments.primary_pressure); })],
       },
@@ -1667,8 +1697,9 @@
           ] },
         ],
         controls: [
-          { l: 'Feedwater', num: { id: 'rbmkFeed', min: 0, max: 100, value: 100, act: 'rbmk-feed-set', setL: 'Set %' } },
-          { l: 'Turbine Load', num: { id: 'rbmkMwe', min: 0, max: 1000, value: 1000, act: 'rbmk-turbine-set', setL: 'Set MW' } },
+          { l: 'Load Mode', seg: [{ l: 'Follow', act: 'rbmk-load-follow', on: 1, run: 1 }, { l: 'Manual', act: 'rbmk-load-manual' }, { l: 'Off', act: 'rbmk-load-disconnect', warn: 1 }] },
+          { l: 'Turbine Load', slider: { id: 'rbmkMwe', min: 0, max: 1000, value: 1000, act: 'rbmk-turbine-set' } },
+          { l: 'Feedwater (advanced)', num: { id: 'rbmkFeed', min: 0, max: 100, value: 100, act: 'rbmk-feed-set', setL: 'Set %' } },
           { l: 'Steam Dump', hint: 'Turbine bypass to the condenser — holds steam-drum pressure on a load rejection.', seg: [{ l: 'Auto', act: 'dump-auto', on: 1, run: 1 }, { l: 'Open', act: 'dump-open' }, { l: 'Closed', act: 'dump-close' }] }],
         cross: [R('Core Power', function (s) { return s.instruments.power_range.toFixed(0) + ' %'; }), R('Coolant Flow', function (s) { return s.instruments.channel_flow.toFixed(0) + ' %'; }), R('Void', function (s) { return pctOf(s.instruments.void_fraction); })],
       },
@@ -1735,9 +1766,10 @@
           { l: 'Core Spray (LPCS)', emergency: 1, seg: [{ l: 'Start', act: 'start-lpcs', run: 1 }, { l: 'Stop', act: 'stop-lpcs', on: 1 }] },
           { l: 'Manual SRV', emergency: 1, seg: [{ l: 'Open', act: 'srv-open', warn: 1 }, { l: 'Close', act: 'srv-close', on: 1 }] },
           { l: 'Standby Liquid Control (SLC)', emergency: 1, seg: [{ l: 'Initiate', act: 'slc-initiate', warn: 1 }, { l: 'Stop', act: 'slc-stop', on: 1 }] },
+          { l: 'Load Mode', seg: [{ l: 'Follow', act: 'bwr-load-follow', on: 1, run: 1 }, { l: 'Manual', act: 'bwr-load-manual' }, { l: 'Off', act: 'bwr-load-disconnect', warn: 1 }] },
+          { l: 'Turbine Load', slider: { id: 'bwrMwe', min: 0, max: 1100, value: 1000, act: 'bwr-turbine-set' } },
           { l: 'Steam Dump', hint: 'Turbine bypass to the condenser (needs AC / condenser — inert in a station blackout).', seg: [{ l: 'Auto', act: 'dump-auto', on: 1, run: 1 }, { l: 'Open', act: 'dump-open' }, { l: 'Closed', act: 'dump-close' }] },
-          { l: 'Turbine Load', num: { id: 'bwrMwe', min: 0, max: 1100, value: 1000, act: 'bwr-turbine-set', setL: 'Set MW' } },
-          { l: 'Feedwater', num: { id: 'bwrFeed', min: 0, max: 100, value: 100, act: 'bwr-feed-set', setL: 'Set %' } }],
+          { l: 'Feedwater (advanced)', num: { id: 'bwrFeed', min: 0, max: 100, value: 100, act: 'bwr-feed-set', setL: 'Set %' } }],
         cross: [R('Reactor Power', function (s) { return s.instruments.power_range.toFixed(0) + ' %'; }), R('Vessel Steam', function (s) { return pctOf(s.instruments.steam_flow); }), R('Core Void', function (s) { return pctOf(s.instruments.core_void_fraction); })],
       },
     },

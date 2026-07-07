@@ -29,6 +29,22 @@
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
   function scruve(pos_norm) { return pos_norm - Math.sin(2 * Math.PI * pos_norm) / (2 * Math.PI); }
 
+  function loadModeOpts(cfg) {
+    return {
+      mweRated: cfg.mwe_rated,
+      setLoad: function (s, mwe, rated) {
+        s.turbine_load_frac = clip(mwe / rated, 0, 1.2);
+        s.steam_flow_normalized = s.turbine_load_frac;
+        if (s.turbine_load_frac > 0 && !s.turbine_blocked
+            && s.condenser_vacuum_kpa >= cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
+      },
+      setFeed: function (s, frac) {
+        if (!s.feedwater_blocked) s.feedwater_normalized = frac;
+      },
+      tripFn: V.tripTurbine,
+    };
+  }
+
   // ====================================================================== engine
   function BWREngine(opts) {
     opts = opts || {};
@@ -96,7 +112,15 @@
     for (var i = 0; i < 6; i++) sumLC += d.lambda_i[i] * s._C[i];
     var denom = 1 - dt * (rho - d.beta) / d.Lambda;       // ρ<β ⇒ denom>1 (stable)
     if (denom < 0.1) denom = 0.1;
-    s._P = Math.max(0, (s._P + dt * sumLC) / denom);
+    // Neutron source enters the implicit prompt-jump form alongside the precursor
+    // term: subcritical multiplication (P_eq = S·Λ/(−ρ)) — the visible approach
+    // to criticality. The source fades out above ~1% power: physically it is
+    // swamped by fission there (a scale separation the normalized model cannot
+    // express with a constant — the BWR's tiny Λ would otherwise let it push
+    // full-power operation measurably).
+    var S = this.cfg.kinetics.source || 0;
+    if (S) S *= Math.max(0, 1 - s._P / 0.05);
+    s._P = Math.max(0, (s._P + dt * (sumLC + S)) / denom);
     for (var j = 0; j < 6; j++) {
       var dC = (d.beta_i[j] / d.Lambda) * s._P - d.lambda_i[j] * s._C[j];
       s._C[j] += dC * dt;
@@ -143,6 +167,11 @@
   };
   BWREngine.prototype._updateRodDerived = function (g) { g.position_pct = g.steps / g.max_steps * 100; };
 
+  BWREngine.prototype._loadModeOpts = function () { return loadModeOpts(this.cfg); };
+  BWREngine.prototype._stepLoadMode = function (dt) {
+    RD.LoadMode.step(this.s, dt, this._loadModeOpts());
+  };
+
   // ====================================================== the per-step compute (§5)
   BWREngine.prototype.step = function (dt_effective) {
     var s = this.s, cfg = this.cfg;
@@ -169,6 +198,7 @@
     V.stepFuel(s, cfg, dt);
     RC.stepCoreFlow(s, cfg, dt);
     V.stepVoid(s, cfg, dt);
+    this._stepLoadMode(dt);
     V.stepVesselPressure(s, cfg, dt);     // incl. turbine-trip void collapse + SRV blowdown
     V.stepTurbine(s, cfg, dt);            // BOP: turbine / condenser / generator (electrical output)
     SS.stepSafety(s, cfg, dt);            // RCIC/HPCI/ADS/LPCI + battery; sets injection flows
@@ -208,7 +238,9 @@
     // Reactivity proxies (operator-facing, like the PWR): startup rate (dpm) and
     // reactor period from the smoothed power rate — well-defined above a small floor.
     var p = s.power_pct, pr = s._power_rate || 0, sur = 0, period = Infinity;
-    if (p > 0.1) { sur = 26.06 * (pr / p); period = Math.abs(pr) > 1e-6 ? p / pr : Infinity; }
+    // Live down into the source range (with the neutron source the subcritical
+    // floor is ~1e-3 %), so SUR is defined through the approach to criticality.
+    if (p > 1e-6) { sur = 26.06 * (pr / p); period = Math.abs(pr) > 1e-8 ? p / pr : Infinity; }
     return {
       power_pct: s.power_pct, fuel_temp_c: s.fuel_temp_c, core_void_fraction: s.core_void_fraction,
       vessel_pressure_mpa: s.vessel_pressure_mpa, vessel_level_pct: s.vessel_level_pct,
@@ -224,6 +256,8 @@
       // Balance-of-plant (additive): electrical output + turbine/condenser.
       mwe_output: s.mwe_output, turbine_rpm: s.turbine_rpm,
       condenser_vacuum_kpa: s.condenser_vacuum_kpa, turbine_tripped: s.turbine_tripped,
+      load_mode: s.load_mode, load_target_mwe: s.load_target_mwe,
+      load_imbalance_mwe: s.load_imbalance_mwe, sg_imbalance_active: s.sg_imbalance_active,
     };
   };
 
@@ -244,6 +278,11 @@
       ads_armed: s.ads_open,
       slc_active: s.slc_active, ic_active: s.ic_active,
       feedwater_flow_pct: s.feedwater_normalized * 100,
+      feed_auto_coupled: s.feed_auto_coupled,
+      load_mode: s.load_mode,
+      load_target_mwe: s.load_target_mwe,
+      sg_imbalance: s.sg_imbalance_active
+        ? (s.load_imbalance_mwe > 0 ? 'filling' : 'draining') : 'balanced',
       // Balance-of-plant controls.
       turbine_load_mwe: s.turbine_load_frac * this.cfg.mwe_rated,
       steam_dump_pct: (s.steam_dump_frac || 0) * 100,
@@ -289,15 +328,31 @@
       case 'set_recirc_flow':
         s.recirc_setpoint_pct = clip(cmd.pct, 0, 48); s.recirc_pump_running = true;
         break;
+      case 'set_load_mode':
+        RD.LoadMode.setMode(s, cmd.mode, { tripFn: V.tripTurbine, rated: this.cfg.mwe_rated });
+        break;
+      case 'set_load_target':
+        s.load_mode = 'manual';
+        s.load_target_mwe = cmd.mwe;
+        break;
+      case 'disconnect_grid':
+        RD.LoadMode.disconnect(s, V.tripTurbine);
+        break;
+      case 'connect_grid':
+        RD.LoadMode.setMode(s, 'follow', { rated: this.cfg.mwe_rated });
+        if (s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa && !s.turbine_blocked) s.turbine_tripped = false;
+        break;
       case 'set_feedwater_flow':
+        s.feed_auto_coupled = false;
         if (!s.feedwater_blocked) s.feedwater_normalized = clip(cmd.pct / 100, 0, 1.5);
         break;
       case 'set_turbine_load':
+        s.load_mode = 'manual';
+        s.load_target_mwe = cmd.mwe;
         s.turbine_load_frac = clip(cmd.mwe / this.cfg.mwe_rated, 0, 1.2);
         s.steam_flow_normalized = s.turbine_load_frac;
-        // Re-latch a vacuum/overspeed-tripped turbine when load is dialed back on
-        // (a genuine turbine_trip/msiv FAILURE keeps turbine_blocked until cleared).
-        if (s.turbine_load_frac > 0 && s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
+        if (s.turbine_load_frac > 0 && !s.turbine_blocked
+            && s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
         break;
       case 'set_steam_dump':
         // mode: 'auto' (null override) | 'open' | 'closed' | a manual pct. (Only
@@ -363,6 +418,7 @@
 
   BWREngine.prototype._scram = function () {
     this.s.scrammed = true;
+    RD.LoadMode.disconnect(this.s, V.tripTurbine);
     this.rod_groups.forEach(function (g) { g.scrammed = true; g.moving = true; g.nudge_target = null; });
   };
 
@@ -376,7 +432,14 @@
     if (def.type === 'command_override') {
       switch (id) {
         case 'loss_of_feedwater': s.feedwater_blocked = true; s.feedwater_normalized = 0; break;
-        case 'turbine_trip': case 'msiv_closure': s.turbine_load_frac = 0; s.steam_flow_normalized = 0; s.turbine_blocked = true; break;
+        case 'turbine_trip':
+          V.tripTurbine(s);
+          s.turbine_blocked = true;
+          break;
+        case 'msiv_closure':
+          V.tripTurbine(s);
+          s.turbine_blocked = true;
+          break;
         case 'failure_to_scram': s.scram_blocked = true; break;
         case 'ads_failure': s.ads_blocked = true; break;
         case 'lpci_failure': s.lpci_blocked = true; break;
@@ -464,6 +527,28 @@
         cg.steps = clip(cg.steps - init.subcrit_margin_steps, 0, cg.max_steps);
         this._updateRodDerived(cg);
         this.s._rho = this._totalReactivity();
+      }
+      // Settle the kinetics on the SOURCE equilibrium for this margin
+      // (P = S·Λ/(−ρ), precursors to match) so the state holds its own level —
+      // the careful player is no longer punished by a decaying core. Decay heat
+      // is preloaded as a recent-shutdown residual: it, not fission, carries the
+      // vessel's hot-standby heat (boiloff holds pressure above the low-pressure
+      // trip), same treatment as the PWR's hot standby.
+      var d0 = this.cfg.kinetics.delayed, S0 = this.cfg.kinetics.source || 0;
+      if (S0 > 0 && this.s._rho < 0) {
+        var Peq = S0 * d0.Lambda / (-this.s._rho);
+        this.s._P = Peq; this.s.power_pct = Peq * 100; this.s._prev_power_pct = Peq * 100;
+        for (var ci = 0; ci < 6; ci++) this.s._C[ci] = (d0.beta_i[ci] / d0.lambda_i[ci]) * Peq / d0.Lambda;
+        var dh0 = this.cfg.kinetics.decay;
+        this.s._H1 = dh0.H1_0 * 0.07; this.s._H2 = dh0.H2_0 * 0.07;
+        this.s.decay_heat_pct = (this.s._H1 + this.s._H2) * 100;
+        // Turbine OFFLINE at hot startup (it synchronizes much later in a real
+        // ascension): no steam draw, no feed — decay boiloff vs the dump/SRVs
+        // holds the vessel, instead of a phantom 2% turbine load draining it
+        // into the low-pressure scram while the operator works the approach.
+        this.s.turbine_load_frac = 0;
+        this.s.steam_flow_normalized = 0;
+        this.s.feedwater_normalized = 0;
       }
     }
     this.instruments.reset(this.getTrueState(), this._instrExtras());
@@ -566,6 +651,10 @@
       condenser_vacuum_kpa: sbo ? cfg.turbine.vacuum_lost : cfg.turbine.vacuum_rated,
       condenser_cooling_available: !sbo,
       mwe_output: steam * cfg.mwe_rated,
+      load_mode: sbo ? 'disconnected' : 'follow',
+      load_target_mwe: steam * cfg.mwe_rated,
+      load_follow_tau: RD.LoadMode.DEFAULT_TAU, feed_auto_coupled: true,
+      load_imbalance_mwe: 0, sg_imbalance_active: false,
 
       // safety systems
       rcic_running: !!init.rcic_running, rcic_flow: 0, rcic_failed: false,

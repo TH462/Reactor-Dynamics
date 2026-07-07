@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reactor⚛️Dynamics — Control Room (alpha)</title>
   <link rel="stylesheet" href="shell.css">
+  <link rel="stylesheet" href="diagram/pwr_synoptic.css">
 </head>
 <body>
   <div class="app">
@@ -43,12 +44,15 @@
             <!-- live floating per-line value labels, color-coded, placed at the
                  right edge at each trace's current y (collision-spread) -->
             <div class="chart-floats" id="chartFloats"></div>
+            <div class="rewind-hint" id="rewindHint" hidden>⏪ Click a moment on the graph to rewind to it &nbsp;·&nbsp; Esc cancels</div>
           </div>
           <div class="chart-xaxis mono" id="chartXAxis"></div>
           <div class="scrubber">
             <span class="lbl mono" id="chartWindowLbl">−5:00</span>
             <div class="track"><div class="head"></div></div>
             <span class="lbl mono">LIVE</span>
+            <button class="btn ghost" id="chartRewindBtn" disabled
+              data-scanner-hint="Rewind — jump back to an earlier moment. In free play, pick the moment on the graph; in a scenario or walkthrough it steps back one checkpoint.">⏪</button>
           </div>
         </div>
 
@@ -94,6 +98,7 @@
         <div class="instr-nav">
           <button class="btn" data-fnav="prev">◀ Prev</button>
           <button class="btn" data-fnav="next">Next ▶</button>
+          <button class="btn" data-fnav="rewind" title="Rewind to the last checkpoint" disabled>⏪ Rewind</button>
           <button class="btn" data-fnav="restart" title="Restart procedure">↺</button>
           <button class="btn" data-fnav="stop" title="Stop following">✕</button>
         </div>
@@ -146,23 +151,46 @@
           </div>
           <!-- Settings tab -->
           <div class="tabpane" data-pane="settings">
-            <div class="set-row"><span class="k">Diagram Mode</span><div class="seg"><button class="on">Education</button><button>Realistic</button></div></div>
+            <div class="set-row" data-scanner-hint="Diagram Mode — Education (Learning) adds teaching layers to the synoptic; Realistic is indications and status only (HR1).">
+              <span class="k">Diagram Mode</span><div class="seg" id="modeSeg"><button class="on" data-mode="learning">Education</button><button data-mode="realistic">Realistic</button></div></div>
+            <div class="set-row" id="overlayRow" data-scanner-hint="Physics Overlay — Learning only. On shows the full physics layer (reactivity, period, inventory, void, P–S ΔT, ghosts); off keeps the quiet teaching board.">
+              <span class="k">Physics Overlay</span><div class="seg" id="physSeg"><button class="on" data-phys="off">Off</button><button data-phys="on">On</button></div></div>
             <div class="set-row"><span class="k">Values Display</span><div class="seg" id="overlaySeg2"><button class="on" data-overlay="instruments">Instruments</button><button data-overlay="true">True</button><button data-overlay="both">Both</button></div></div>
             <div class="set-row"><span class="k">Register</span><div class="seg" id="registerSeg"><button class="on" data-register="learning">Learning</button><button data-register="industry">Industry</button></div></div>
             <div class="set-row"><span class="k">Units</span><div class="seg" id="unitsSeg"><button class="on" data-units="US">US</button><button data-units="SI">SI</button></div></div>
             <div class="set-row"><span class="k">Audio</span><div class="seg"><button>On</button><button class="on">Off</button></div></div>
           </div>
-          <!-- Training tab -->
+          <!-- Training tab — M6 scenario picker + walkthroughs + Reactivity Computer -->
           <div class="tabpane" data-pane="training">
-            <div class="g-section-title" data-scanner-hint="Reactivity Computer — net reactivity and reactor period. Use during approach to criticality.">Reactivity Computer <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· Training tab</span></div>
+            <div class="g-section-title">Scenarios <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· Instructor (M6)</span></div>
+            <div id="trainingScenarios"></div>
+            <div class="g-section-title">Walkthroughs <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· follow a procedure</span></div>
+            <div id="trainingProcedures"></div>
+            <div class="g-section-title" data-scanner-hint="Reactivity Computer — net reactivity and reactor period. Use during approach to criticality.">Reactivity Computer</div>
             <div class="set-row"><span class="k">Net reactivity ρ</span><span class="mono" id="rxReactivity">— pcm</span></div>
             <div class="set-row"><span class="k">Reactor period</span><span class="mono" id="rxPeriod">— s</span></div>
-            <div class="set-row"><span class="k" style="font-style:italic;color:var(--muted)">Instructor phase (M6) lands here.</span></div>
           </div>
           <!-- Dev tab — development-only tools -->
           <div class="tabpane" data-pane="dev">
-            <div class="g-section-title">Developer Tools <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· dev builds only</span></div>
-            <div class="set-row"><span class="k" style="font-style:italic;color:var(--muted)">More dev tools land here.</span></div>
+            <div class="g-section-title">Session Diagnosis <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· AI / debug export</span></div>
+            <div class="set-row"><span class="k">Session</span><span class="mono" id="diagSessionInfo">—</span></div>
+            <div class="set-row" style="flex-direction:column;align-items:stretch;gap:6px">
+              <span class="k">Notes</span>
+              <textarea id="diagNotes" class="num-input mono" rows="3" placeholder="What were you testing? What looked wrong?" style="width:100%;resize:vertical;min-height:4em"></textarea>
+            </div>
+            <div class="set-row"><span class="k">Export</span><button class="btn" data-act="export-diag" data-scanner-hint="Export diagnosis — downloads a JSON bundle of this session (1 Hz samples, events, commands, replay state) for AI-assisted debugging.">Diagnosis JSON ⭳</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- First-run invitation (M6 Hook §7.1) — prompted, never forced -->
+      <div class="hook-prompt" id="hookPrompt" hidden>
+        <div class="hook-card">
+          <div class="hook-title">⚛️ First time in the control room?</div>
+          <div class="hook-body">Take the 60-second intro: something is about to go wrong, and you get to press the big red button — then rewind time and see what it protected. Replayable any time from the Training tab.</div>
+          <div class="hook-actions">
+            <button class="btn" id="hookStart">▶ Start the intro</button>
+            <button class="btn" id="hookSkip">Not now</button>
           </div>
         </div>
       </div>
@@ -194,6 +222,7 @@
 
   <!-- The simulation stack (all three engines + layers), then the UI app. The
        engine selector (Sim tab) switches between them at runtime. -->
+  <script src="../engines/load_mode.js"></script>
   <script src="../engines/pwr/pwr_config.js"></script>
   <script src="../engines/pwr/pwr_protection.js"></script>
   <script src="../engines/pwr/pwr_thermal.js"></script>
@@ -221,9 +250,15 @@
   <script src="../layers/control_failure_layer.js"></script>
   <script src="../layers/instructor_layer.js"></script>
   <script src="../layers/simulation_service.js"></script>
+  <!-- M6 scenarios (authored content — each registers into RD.SCENARIOS) -->
+  <script src="../scenarios/pwr_hook.js"></script>
+  <script src="../scenarios/pwr_tmi.js"></script>
+  <script src="../scenarios/pwr_sg_flood.js"></script>
   <!-- Operator's manual data (generated reference + authored procedures) -->
   <script src="manual_data.js"></script>
   <script src="manual_procedures.js"></script>
+  <!-- PWR full-plant synoptic (new_diagram_controls.md) — mounted by app.js when plant_id === 'pwr' -->
+  <script src="diagram/pwr_synoptic.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

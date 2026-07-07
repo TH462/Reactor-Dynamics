@@ -12,6 +12,7 @@
 var path = require('path');
 function load(p) { require(path.join(__dirname, '..', p)); }
 [
+  'engines/load_mode.js',
   'engines/pwr/pwr_config.js', 'engines/pwr/pwr_protection.js', 'engines/pwr/pwr_thermal.js',
   'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js',
   'engines/pwr/pwr_instruments.js', 'engines/pwr/pwr_engine.js',
@@ -192,6 +193,117 @@ T.push(test('subscribe — receives each broadcast snapshot', function (ck) {
   unsub();
   s.advanceCycles(1);
   ck('unsubscribe stops delivery', got.length, got.length === 3, 'still 3');
+}));
+
+// ======================= rewind ring (loads the real M6 AFTER the suites above,
+// so they keep exercising the DefaultInstructor fallback path) =======================
+load('layers/instructor_layer.js');
+
+T.push(test('Rewind — checkpoints pushed on instructor request; full scope is bit-exact', function (ck) {
+  RD.SCENARIOS = RD.SCENARIOS || {};
+  RD.SCENARIOS.__m5rw = {
+    id: '__m5rw', plant_id: 'pwr', initial_state: 'hot_full_power', design_version: null,
+    beats: [
+      { id: 'b1', trigger: { type: 'time', value: 0.3 }, commentary: { learning: 'one', industry: 'one' } },
+      { id: 'b2', trigger: { type: 'delay', value: 0.5 }, commentary: { learning: 'two', industry: 'two' } },
+    ],
+  };
+  var s = new RD.SimulationService({ seed: 7 });
+  s.selectPlant('pwr', 'hot_full_power', null);
+  ck('ring empty in free-play', s.checkpoints.length, s.checkpoints.length === 0, '0');
+  s.handleCommand({ action: 'start_scenario', scenario_id: '__m5rw' });
+  ck('checkpoint 0 pushed at scenario load', s.checkpoints.length, s.checkpoints.length === 1, '1');
+  var atB2 = null;
+  for (var i = 0; i < 40 && s.checkpoints.length < 3; i++) atB2 = s.advanceCycles(1);
+  ck('a checkpoint per beat fire', s.checkpoints.length, s.checkpoints.length === 3, '3');
+  var mark = physics(s.assembleSnapshot());
+  s.advanceCycles(20);                                   // drift well past the checkpoint
+  ck('state drifted past the checkpoint', 'changed', physics(s.assembleSnapshot()) !== mark, 'differs');
+  var back = s.handleCommand({ action: 'rewind', steps: 1 });
+  ck('full rewind restores bit-exact state (physics + PRNG + lag)', 'restored', physics(back) === mark, 'identical');
+  ck('rewound instructor still at beat two (retry semantics)', back.instructor.message, back.instructor.message === 'two', 'two');
+  ck('the target checkpoint stays on the ring', s.checkpoints.length, s.checkpoints.length === 3, '3');
+  var deeper = s.handleCommand({ action: 'rewind', steps: 3 });
+  ck('multi-step rewind reaches checkpoint 0', deeper.metadata.sim_time.toFixed(1), deeper.metadata.sim_time === 0, '0 s');
+  var none = s.handleCommand({ action: 'rewind', steps: 5 });
+  ck('rewind past the ring errors cleanly', JSON.stringify(none && none.type), none && none.type === 'error', 'error');
+  s.handleCommand({ action: 'stop_scenario' });
+  ck('stop_scenario clears the ring', s.checkpoints.length, s.checkpoints.length === 0, '0');
+  delete RD.SCENARIOS.__m5rw;
+}));
+
+T.push(test('Rewind — world scope rolls the plant back but the teacher remembers', function (ck) {
+  RD.SCENARIOS = RD.SCENARIOS || {};
+  RD.SCENARIOS.__m5w = {
+    id: '__m5w', plant_id: 'pwr', initial_state: 'hot_full_power', design_version: null,
+    beats: [
+      { id: 'b1', trigger: { type: 'time', value: 0.3 }, commentary: { learning: 'mark', industry: 'mark' } },
+      { id: 'b2', trigger: { type: 'delay', value: 1.0 }, rewind: { steps: 1 }, commentary: { learning: 'again', industry: 'again' } },
+      { id: 'b3', trigger: { type: 'delay', value: 0.5 }, commentary: { learning: 'after', industry: 'after' } },
+    ],
+  };
+  var s = new RD.SimulationService({ seed: 7 });
+  s.handleCommand({ action: 'start_scenario', scenario_id: '__m5w' });
+  var sn = null;
+  for (var i = 0; i < 60 && !s.instructor.firedBeats.has('b2'); i++) sn = s.advanceCycles(1);
+  ck('rewind beat fired', s.instructor.firedBeats.has('b2'), s.instructor.firedBeats.has('b2'), 'b2 fired');
+  ck('world rewind rolled sim time back to the b1 checkpoint', sn.metadata.sim_time.toFixed(2), sn.metadata.sim_time < 1.0, '< 1.0 s');
+  ck('instructor progress survived the rewind', Array.from(s.instructor.firedBeats).join(','), s.instructor.firedBeats.has('b1') && s.instructor.firedBeats.has('b2'), 'b1+b2 fired');
+  for (var j = 0; j < 40 && !s.instructor.firedBeats.has('b3'); j++) sn = s.advanceCycles(1);
+  ck('scenario continues past the rewind (rebased time anchors)', sn.instructor.message, sn.instructor.message === 'after', 'after');
+  s.handleCommand({ action: 'stop_scenario' });
+  delete RD.SCENARIOS.__m5w;
+}));
+
+T.push(test('Rewind — sandbox checkpoints tick on a sim-time cadence in free play only', function (ck) {
+  var s = new RD.SimulationService({ seed: 7 });
+  s.selectPlant('pwr', 'hot_full_power', null);
+  s.advanceCycles(1);
+  ck('first free-play tick lays checkpoint 0', s.checkpoints.length, s.checkpoints.length === 1, '1');
+  s.handleCommand({ action: 'set_speed', value: 60 });
+  s.advanceCycles(6);                                    // 6 s wall-equiv → 36 s sim at 60×
+  ck('spacing is sim-time (~15 s), not broadcast count', s.checkpoints.length + ' after ~36 sim-s', s.checkpoints.length === 3, '3');
+  var atRewind = s.checkpoints[1].metadata.sim_time;
+  var back = s.handleCommand({ action: 'rewind', steps: 2 });
+  ck('sandbox rewind restores a periodic checkpoint', back.metadata.sim_time.toFixed(1) + ' s', Math.abs(back.metadata.sim_time - atRewind) < 1e-9, atRewind.toFixed(1) + ' s');
+
+  // During a scenario the Instructor owns the ring: no periodic pushes.
+  RD.SCENARIOS = RD.SCENARIOS || {};
+  RD.SCENARIOS.__m5sb = { id: '__m5sb', plant_id: 'pwr', initial_state: 'hot_full_power', design_version: null,
+    beats: [{ id: 'b1', trigger: { type: 'time', value: 0.1 }, commentary: { learning: 'x', industry: 'x' } }] };
+  s.handleCommand({ action: 'start_scenario', scenario_id: '__m5sb' });
+  s.handleCommand({ action: 'set_speed', value: 60 });
+  s.advanceCycles(10);                                   // 60 s sim — would be ~4 periodic pushes
+  ck('no periodic checkpoints while a scenario owns the ring', s.checkpoints.length + ' (load + 1 beat)', s.checkpoints.length === 2, '2');
+  s.handleCommand({ action: 'stop_scenario' });
+  delete RD.SCENARIOS.__m5sb;
+}));
+
+T.push(test('Rewind — a beat can set time acceleration (fast-forward in, drop out at a set point)', function (ck) {
+  RD.SCENARIOS = RD.SCENARIOS || {};
+  RD.SCENARIOS.__m5sp = { id: '__m5sp', plant_id: 'pwr', initial_state: 'hot_full_power', design_version: null,
+    beats: [
+      { id: 'ff',   trigger: { type: 'time', value: 0.2 }, speed: 60, commentary: { learning: 'ff', industry: 'ff' } },
+      { id: 'drop', trigger: { type: 'delay', value: 30 }, speed: 1, commentary: { learning: 'drop', industry: 'drop' } },
+    ] };
+  var s = new RD.SimulationService({ seed: 7 });
+  s.handleCommand({ action: 'start_scenario', scenario_id: '__m5sp' });
+  var sn = null;
+  for (var i = 0; i < 20 && !s.instructor.firedBeats.has('ff'); i++) sn = s.advanceCycles(1);
+  ck('fast-forward beat raises acceleration', sn.metadata.time_acceleration, sn.metadata.time_acceleration === 60, '60');
+  for (var j = 0; j < 40 && !s.instructor.firedBeats.has('drop'); j++) sn = s.advanceCycles(1);
+  ck('set-point beat drops back to real time', sn.metadata.time_acceleration, s.instructor.firedBeats.has('drop') && sn.metadata.time_acceleration === 1, '1');
+  s.handleCommand({ action: 'stop_scenario' });
+  delete RD.SCENARIOS.__m5sp;
+}));
+
+T.push(test('Rewind — ring cap evicts the oldest checkpoint', function (ck) {
+  var s = new RD.SimulationService({ seed: 7 });
+  s.selectPlant('pwr', 'hot_full_power', null);
+  for (var i = 0; i < 40; i++) { s.advanceCycles(1); s._pushCheckpoint(); }
+  ck('ring capped at 32', s.checkpoints.length, s.checkpoints.length === 32, '32');
+  var oldest = s.checkpoints[0].metadata.sim_time;
+  ck('oldest entries evicted (FIFO)', oldest.toFixed(1) + ' s', oldest > 0.5, '> first pushes');
 }));
 
 // -------- report --------

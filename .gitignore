@@ -16,6 +16,10 @@ node_modules/
 
 # Saved simulation states downloaded during manual testing
 *.save.json
+exports/
+
+# Session diagnosis exports (Dev tab) — large transient debug dumps
+Diagnostic/rd_diag_*.json
 
 # Claude Code local settings (machine-specific; shared settings.json may be tracked)
 .claude/settings.local.json

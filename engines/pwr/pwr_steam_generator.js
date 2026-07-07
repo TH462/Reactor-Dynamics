@@ -107,6 +107,8 @@
     s.generator_load = 0;
     s.turbine_demand_frac = 0;
     s.steam_demand_mwe = 0;
+    s.load_mode = 'disconnected';
+    s.load_target_mwe = 0;
   }
 
   RD.pwrSteamGenerator = {

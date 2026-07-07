@@ -237,6 +237,25 @@ snapshot = {
     "instructor": {
         "message":           string | null,
         "message_register":  string | null,   // "learning" | "industry"
+        // M6 extensions — emitted whenever the real Instructor occupies the slot
+        // (fixed shape: keys always present, null when inactive). The message-only
+        // two-key block above is the minimal contract (M6·PH / fallback / mocks).
+        "ui_policy":  { "register": string, "highlights": bool } | null,
+        "highlight":  {                        // control/gauge the current beat or follow step points at
+            "view": string | null,             // owning view hint (RBMK/BWR plant display)
+            "control_label": string | null,    // the on-screen control-group label
+            "instrument_id": string | null     // gauge-strip highlight
+        } | null,
+        "follow": {                            // Path 2: active procedure walkthrough
+            "procedure_id": string, "step_index": int, "step_total": int,
+            "acc_met": bool,                   // acceptance graded instrument-first (HR1)
+            "graded_by": "instrument" | "true_state" | null,
+            "done": bool
+        } | null,
+        "level_complete": {                    // scenario / walkthrough finished
+            "title": string, "outcome": string,           // outcome in the selected register
+            "actions": [ "continue" | "retry" | "rewind" ]
+        } | null,
     },
 }
 ```
@@ -266,7 +285,7 @@ physical-quantity vocabulary.
     "scrammed": bool, "melted": bool, "steam_demand_mwe": float,
     "steam_pressure_mpa": number,     // secondary/SG pressure (surfaced for the UI loop diagram)
     "condenser_cooling_available": bool,   // condenser heat-sink availability (also §8.8 status)
-    "reactivity_pcm": float, "startup_rate_dpm": float, "reactor_period_s": float,  // reactivity proxies — reactivity computer / SUR / period; display/derived only, NEVER fed to protection (HR1)
+    "reactivity_pcm": float, "startup_rate_dpm": float, "reactor_period_s": float,  // reactivity proxies — reactivity computer / SUR / period; display/derived only, NEVER fed to trips (HR1). The PWR carries a startup_rate INSTRUMENT (lagged/noisy twin of the SUR proxy) that feeds the rod-withdrawal interlock — an M4 command block with its own annunciator, not a protection trip.
     // Synoptic additions (governor / ECCS / CVCS true flows — feed the §8.8 instruments; additive):
     "governor_valve_pct": number,     // turbine admission valve position, 0–100 %
     "charging_flow_actual": float,    // TRUE CVCS charging (0 with pump off; AUTO-modulated) — feeds instruments.charging_flow, ≠ setpoint
@@ -290,7 +309,7 @@ physical-quantity vocabulary.
     "destruction_cause": string,      // "none" | "thermal_melt" | "steam_explosion"
     "steam_explosion_occurred": bool, "energy_deposition_rate": number,  // cal/g/s
     "design_version": string,         // "pre_chernobyl" | "post_chernobyl"
-    "reactivity_pcm": float, "startup_rate_dpm": float, "reactor_period_s": float,  // reactivity proxies; display/derived only, never fed to protection (HR1)
+    "reactivity_pcm": float, "startup_rate_dpm": float, "reactor_period_s": float,  // reactivity proxies; display/derived only, never fed to trips (HR1). Like the PWR, a startup_rate INSTRUMENT twin feeds the rod-withdrawal interlock (an M4 command block, not a trip).
     // Balance of plant (turbine / condenser / generator — full-scope operation):
     "steam_to_turbine": float,        // operator turbine steam load, normalized (1.0 = rated)
     "mwe_output": float, "turbine_rpm": float, "condenser_vacuum_kpa": number, "turbine_tripped": bool,
@@ -379,6 +398,21 @@ set_speed           { value }                 // time acceleration factor
 save_state
 load_state          { state }
 set_register        { value: "learning" | "industry" }
+```
+**Instructor / training lifecycle (M6 — handled by M5's control plane):**
+```
+start_scenario      { scenario_id }           // resolve RD.SCENARIOS[id] → reset plant → instructor.load
+stop_scenario                                  // unload; clears the rewind ring
+start_follow        { procedure_id }          // Path 2: resets the plant to the procedure's `from` state,
+                                               // then the Instructor runs the RD.MANUAL_PROCEDURES procedure
+stop_follow                                    // unload; clears the rewind ring
+rewind              { steps?: 1, scope?: "full" | "world" }   // restore an in-memory checkpoint
+                                               // full = incl. instructor progress (retry a decision)
+                                               // world = plant only; the Instructor narrates on
+                                               // ring: authored checkpoints per beat/step while content is
+                                               // loaded; every 15 sim-s in free play (sandbox rewind)
+follow_nav          { dir: "next"|"prev"|"restart" }   // descends; consumed by the Instructor in a follow
+instructor_continue                            // the "Continue" click for `manual` beat triggers; consumed by the Instructor
 ```
 **Rod control (all plants):**
 ```

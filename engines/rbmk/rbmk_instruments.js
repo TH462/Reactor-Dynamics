@@ -24,6 +24,7 @@
     power_range: 'power_pct', steam_pressure: 'steam_pressure_mpa', drum_level: 'drum_level_pct',
     channel_flow: 'channel_flow_pct', void_fraction: 'void_fraction_avg', fuel_temp: 'fuel_temp_c',
     turbine_rpm: 'turbine_rpm', condenser_vacuum: 'condenser_vacuum_kpa', mwe_output: 'mwe_output',
+    startup_rate: 'startup_rate_dpm',   // SUR rate meter (appended last — PRNG draw order preserved)
   };
 
   function RBMKInstruments(config, seed) {
