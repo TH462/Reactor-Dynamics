@@ -48,6 +48,7 @@
         },
         inject_failures: ['early_battery_failure'],
         speed: 1,
+        highlight: { control_label: 'Isolation Condenser (IC)', instrument_id: null },
         branches: [
           { trigger: { type: 'operator_action', command: 'set_ic' }, goto: 'ic_path' },
           { trigger: { type: 'inaction', window: 150.0 }, goto: 'bare_path' },
@@ -89,8 +90,8 @@
       { id: 'bare_uncover',
         trigger: { type: 'true_state', field: 'vessel_level_pct', direction: 'below', value: 20.0 },
         commentary: {
-          learning: 'RCIC fought until its steam and its stubbornness ran out, and now the water line is sliding below the fuel — the moment the word "Fukushima" came to mean. Nothing here failed the way a valve sticks: every machine did its duty until its SUPPORT died — grid, diesels, batteries, in one hour. This simulation ends at uncovery; the hydrogen and the seawater and the long recovery belong to history. Three accidents, three lessons, one campaign: TMI — believe your margins, not one light. Chernobyl — physics does not negotiate, design must. Fukushima — the boring systems are the safety systems. Rewind if you want to see what the isolation condenser could have bought.',
-          industry: 'Uncovery on RCIC coastdown exhaustion. Model boundary as noted. Taxonomy: information / design / support. Rewind available to exercise the IC branch — recommended for the timeline comparison.',
+          learning: 'RCIC fought until its steam and its stubbornness ran out, and now the water line is sliding below the fuel — the moment the word "Fukushima" came to mean. Nothing here failed the way a valve sticks: every machine did its duty until its SUPPORT died — grid, diesels, batteries, in one hour. This simulation ends at uncovery; the hydrogen and the seawater and the long recovery belong to history. Three accidents, three lessons, one campaign: TMI — believe your margins, not one light. Chernobyl — physics does not negotiate, design must. Fukushima — the boring systems are the safety systems. Step Rewind back to the battery failure and see what the isolation condenser could have bought.',
+          industry: 'Uncovery on RCIC coastdown exhaustion. Model boundary as noted. Taxonomy: information / design / support. Rewind (back to the DC-loss checkpoint) exercises the IC branch — recommended for the timeline comparison.',
         },
         speed: 1,
         level_complete: {

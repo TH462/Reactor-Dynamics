@@ -35,6 +35,7 @@
           learning: 'Watch the VOID FRACTION gauge — around a third of the water in those channels is steam bubbles RIGHT NOW. In your PWR, boiling in the core was forbidden; here it is the whole idea: the water boils in the channels, steam drums separate it, and it drives the turbines directly. No steam generators, no second loop. Efficient — and it puts bubbles right next to the fuel, which is about to matter enormously.',
           industry: 'Direct-cycle boiling channels: ~30–40% exit void at power, steam separated in drums, direct to turbines. No SG barrier. Core void is a first-order reactivity actor — next beat.',
         },
+        highlight: { control_label: null, instrument_id: 'void' },
         advance: 'wait_for_trigger' },
 
       { id: 'roles',
@@ -51,6 +52,7 @@
           learning: 'One more gauge before your hands-on: the ORM — Operating Reactivity Margin. It counts how many control rods\' worth of shutdown authority you are holding in reserve, and right now it reads a healthy number. Soviet rules said never drop below 15 effective rods. Remember this gauge. At Chernobyl, in the small hours of April 26th, it read less than eight — and every one of those missing rods was a piece of the brake pedal the crew had already spent.',
           industry: 'ORM (operational reactivity margin, effective-rod units) — the RBMK\'s licensed shutdown-authority bookkeeping. Procedural floor: 15 rods (post-accident: hard interlock). ORM erosion via xenon compensation is the accident precondition to watch in Act III.',
         },
+        highlight: { control_label: null, instrument_id: 'orm' },
         advance: 'wait_for_trigger' },
 
       { id: 'complete',

@@ -28,6 +28,7 @@
           learning: 'Full power, one loop — which means one PIPE. Everything this reactor makes leaves through the main steam lines, and those lines have guillotine valves: the MSIVs, built to slam shut in seconds if the plant ever needs to wall itself off from the outside world. Closing them at full power is one of the roughest things you can do to a BWR. So naturally, I am about to do it. Eyes on POWER, PRESSURE, and especially the LEVEL gauge — it is going to lie to you, and I want you to catch it.',
           industry: 'MSIV isolation transient from rated power, demonstration. Watch sequence: isolation → pressure transient → reactor trip → level shrink (instrumentation artifact) → steam-driven makeup recovery. Level indication behavior is the teaching point.',
         },
+        highlight: { control_label: null, instrument_id: 'level' },
         advance: 'wait_for_trigger' },
 
       { id: 'slam',

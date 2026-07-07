@@ -1551,3 +1551,27 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   `dhr-on` missing) unchanged pre-existing reds. Known residual: headless probe scripts must
   `process.exit()` — a played SimulationService holds a live interval and the process never
   exits (nine zombie node processes were reaped this session).
+
+- **2026-07-07 — Playtest hardening, round 3 (RBMK/BWR parity pass).** The PWR lessons
+  applied systematically to the other two campaigns. **Softlocks confirmed and fixed** (both
+  made MORE reachable by round 1's gate additions of scram/ack): `rbmk_void` — a manual AZ-5
+  mid-experiment stranded the mission at `restore_task`, and a deep flow cut (probed: 40→30%
+  spikes the pre-1986 core to ~120% and TRIPS; 40%/20% spike ~113% without protection) either
+  stranded it at `complete` or, if the player touched flow again post-trip, showed the
+  SUCCESS card over a dead reactor; `bwr_recirc` — any scram stranded it at `down_task`.
+  Both now use the prompt-with-branches pattern: scram → authored failure cards
+  (`overpowered` "It Bit" / `tripped`), success composites as branches; `restore_task` text
+  acknowledges over-deep cuts. **Highlights added where the text names hardware** (RBMK/BWR
+  beats carried none): rbmk_tour boiling→`void` gauge, orm_intro→`orm`; rbmk_void tasks →
+  'MCP / Channel Flow'; rbmk_az5_fixed intro → 'AZ-5' + the two-press "arm then CONFIRM"
+  wording (seconds matter there); bwr_tour void/throttle/level → `void`/`recirc`/`level`
+  gauges; bwr_recirc tasks → 'Recirc Drive'; bwr_isolation intro → `level`;
+  bwr_fukushima batteries_die → 'Isolation Condenser (IC)' (auto-reveals the secondary view
+  at the decision). **Coverage gate extended**: `run_campaign`'s highlight check now
+  validates RBMK/BWR `control_label`s against the PD view-bar label mirror (`PD_LABELS`) —
+  note the legacy plant-display labels are 'Recirc Drive'/'RCIC' etc., NOT
+  `manual_ui_map`-style long forms; 'AZ-5'/'SCRAM' resolve via the status-bar button.
+  **bwr_fukushima bare card** now tells the player Rewind steps back to the DC-loss
+  checkpoint (3 presses). Gates: `run_campaign` 26/26 (773 checks — rbmk_void deep-cut and
+  bwr_recirc scram failure paths now CI), M5/M6/scenarios/RBMK/BWR/manual-follow green,
+  `run_procedures` 20/21 pre-existing. Persona re-verify (seed 11): 7/7.

@@ -28,9 +28,10 @@
       { id: 'intro',
         trigger: { type: 'time', value: 0.5 },
         commentary: {
-          learning: 'SAME BOARD — seven percent power, xenon pit, margin gone. But this is the RBMK they rebuilt after 1986: faster rods with the graphite tips cut off, extra absorbers bolted into the lattice, hotter fuel enrichment to blunt the void feedback. The runaway is already stirring. You have seconds. SLAM THE SCRAM BUTTON — NOW.',
-          industry: 'Post-1986 configuration in the identical low-power/xenon/low-ORM state: tip-less fast rods (~12 s vs 18 s), fixed absorbers, 2.4% enrichment, reduced void gain. Excursion onset imminent. Immediate manual AZ-5 required.',
+          learning: 'SAME BOARD — seven percent power, xenon pit, margin gone. But this is the RBMK they rebuilt after 1986: faster rods with the graphite tips cut off, extra absorbers bolted into the lattice, hotter fuel enrichment to blunt the void feedback. The runaway is already stirring. You have seconds. HIT AZ-5 — TWICE, arm then CONFIRM — NOW.',
+          industry: 'Post-1986 configuration in the identical low-power/xenon/low-ORM state: tip-less fast rods (~12 s vs 18 s), fixed absorbers, 2.4% enrichment, reduced void gain. Excursion onset imminent. Immediate manual AZ-5 (arm + confirm) required.',
         },
+        highlight: { control_label: 'AZ-5', instrument_id: null },
         advance: 'wait_for_trigger' },
 
       { id: 'act',

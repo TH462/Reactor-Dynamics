@@ -165,6 +165,15 @@ var GAUGE_IDS = {
   rbmk: ['power', 'steam_p', 'drum', 'flow', 'void', 'orm'],
   bwr:  ['power', 'vessel_p', 'level', 'recirc', 'void', 'steam'],
 };
+// RBMK/BWR highlights resolve through findPdControl against the plant-display
+// view-bar labels (mirrors app.js legacy PD controls + the scram button).
+var PD_LABELS = {
+  rbmk: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'MCP / Channel Flow',
+    'Emergency Core Cooling (ECCS)', 'EPS', 'Feedwater', 'Turbine Load', 'Steam Dump', 'AZ-5'],
+  bwr: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'Recirc Drive', 'RCIC',
+    'Isolation Condenser (IC)', 'HPCI', 'ADS', 'LPCI', 'Core Spray (LPCS)', 'Manual SRV',
+    'Standby Liquid Control (SLC)', 'Steam Dump', 'Turbine Load', 'Feedwater', 'SCRAM'],
+};
 test('campaign highlights — every named control/gauge resolves on the board', function (ck) {
   Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
     var missions = [];
@@ -175,10 +184,11 @@ test('campaign highlights — every named control/gauge resolves on the board', 
       var sc = RD.SCENARIOS[m.id]; if (!sc) return;
       (sc.beats || []).forEach(function (b) {
         if (!b.highlight) return;
-        if (b.highlight.control_label && cid === 'pwr') {
-          var known = RD.PwrSynoptic.highlightLabels.indexOf(b.highlight.control_label) !== -1;
+        if (b.highlight.control_label) {
+          var pool = cid === 'pwr' ? RD.PwrSynoptic.highlightLabels : (PD_LABELS[cid] || []);
+          var known = pool.indexOf(b.highlight.control_label) !== -1;
           ck(m.id + '.' + b.id + ' control highlight resolves (' + b.highlight.control_label + ')',
-            b.highlight.control_label, known, 'a SYN_CONTROL_MAP label');
+            b.highlight.control_label, known, cid === 'pwr' ? 'a SYN_CONTROL_MAP label' : 'a PD view-bar label');
         }
         if (b.highlight.instrument_id) {
           var ids = GAUGE_IDS[cid] || [];
@@ -418,16 +428,32 @@ test('rbmk_tour — orientation chain completes', function (ck) {
 
 test('rbmk_void — flow cut raises power, restore completes', function (ck) {
   var s = startScenario('rbmk_void');
-  var snap = waitBeat(s, 'restore_task', 120);
-  ck('flow-cut prompt fires', !!snap, !!snap, 'restore_task pending');
+  // cut_task carries the branch watch: settle past its delay-16 fire, then
+  // cut inside the watch.
+  var snap = waitBeat(s, 'cut_task', 120);
+  ck('flow-cut beat arms', !!snap, !!snap, 'cut_task pending');
   if (!snap) return;
+  settle(s, 18);
   s.handleCommand({ action: 'set_channel_flow', pct: 60 });
-  snap = waitBeat(s, 'complete', 600);
-  ck('power rise observed → restore prompt', !!snap, !!snap, 'complete pending');
+  snap = waitBeat(s, 'restore_task', 600);
+  ck('power rise observed → restore prompt', !!snap, !!snap, 'restore_task pending');
   if (!snap) return;
+  settle(s, 4);                         // restore_task fires (delay 2)
   s.handleCommand({ action: 'set_channel_flow', pct: 80 });
   snap = runUntil(s, function (sn) { return lc(sn); }, 600);
   ck('restoration completes the mission', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the felt card', lc(snap).title, /Felt/i.test(lc(snap).title), 'Wrong-Way Machine — Felt card');
+  // A trip mid-experiment (deep cut spikes ~120% and the protection acts, or
+  // a manual AZ-5) lands on the overpowered card, not a softlock (playtest).
+  var s2 = startScenario('rbmk_void');
+  snap = waitBeat(s2, 'cut_task', 120);
+  if (snap) {
+    settle(s2, 18);
+    s2.handleCommand({ action: 'set_channel_flow', pct: 30 });
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 600);
+  }
+  ck('deep cut reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the overpowered card', lc(snap).title, /Bit/i.test(lc(snap).title), 'It Bit card');
 });
 
 test('rbmk_chernobyl — the excursion is witnessed to its end', function (ck) {
@@ -468,16 +494,31 @@ test('bwr_tour — orientation chain completes', function (ck) {
 
 test('bwr_recirc — throttle up to ~70%, back to 50%', function (ck) {
   var s = startScenario('bwr_recirc');
-  var snap = waitBeat(s, 'down_task', 120);
-  ck('throttle-up prompt fires', !!snap, !!snap, 'down_task pending');
+  // up_task carries the branch watch: settle past its delay-18 fire, then
+  // throttle inside the watch.
+  var snap = waitBeat(s, 'up_task', 120);
+  ck('throttle-up beat arms', !!snap, !!snap, 'up_task pending');
   if (!snap) return;
+  settle(s, 20);
   s.handleCommand({ action: 'set_recirc_flow', pct: 25 });
-  snap = waitBeat(s, 'complete', 600);
-  ck('power rise observed → throttle-down prompt', !!snap, !!snap, 'complete pending');
+  snap = waitBeat(s, 'down_task', 600);
+  ck('power rise observed → throttle-down prompt', !!snap, !!snap, 'down_task pending');
   if (!snap) return;
+  settle(s, 4);                         // down_task fires (delay 2)
   s.handleCommand({ action: 'set_recirc_flow', pct: 19 });
   snap = runUntil(s, function (sn) { return lc(sn); }, 600);
   ck('return to 50% completes the mission', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the licensed card', lc(snap).title, /Licensed/i.test(lc(snap).title), 'Flow Throttle — Licensed card');
+  // A scram mid-maneuver lands on the tripped card, not a softlock (playtest).
+  var s2 = startScenario('bwr_recirc');
+  snap = waitBeat(s2, 'up_task', 120);
+  if (snap) {
+    settle(s2, 20);
+    s2.handleCommand({ action: 'scram' });
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 300);
+  }
+  ck('scram mid-maneuver reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the tripped card', lc(snap).title, /Tripped/i.test(lc(snap).title), 'Flow Throttle — Tripped card');
 });
 
 test('bwr_isolation — MSIV slam, shrink, recovery witnessed', function (ck) {
