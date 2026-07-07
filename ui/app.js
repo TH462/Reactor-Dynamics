@@ -38,6 +38,7 @@
     follow: null,           // { id, idx } — a procedure being followed in the Instructor block
   };
   var service, latest = null, lastScrammed = false;
+  var autoCtl = null;       // RD.AutoControl — operator automation (Automate tab)
   var chartBuf = [];        // { t, ins }
   var gaugeHist = {};       // id -> [raw values]
   var smoothed = {};        // id -> display-damped instrument value
@@ -64,6 +65,17 @@
   function dispT(c) { return c == null ? '—' : conv(c, 'temp').toFixed(0) + ' ' + unit('temp'); }
   function dispTd(c) { return c == null ? '—' : conv(c, 'tempdiff').toFixed(0) + ' ' + unit('tempdiff'); }
   function dispV(kpa) { return kpa == null ? '—' : conv(kpa, 'vacuum').toFixed(1) + ' ' + unit('vacuum'); }
+  // inverse of conv() — display units back to SI (Automate setpoint inputs)
+  function invConv(v, dim) {
+    if (v == null || ui.units === 'SI') return v;
+    switch (dim) {
+      case 'pressure': return v / 145.038;
+      case 'temp':     return (v - 32) * 5 / 9;
+      case 'tempdiff': return v * 5 / 9;
+      case 'vacuum':   return v / 0.2953;
+      default:         return v;
+    }
+  }
   function bool(v, onWord, offWord) { return { b: !!v, t: v ? (onWord || 'yes') : (offWord || 'no') }; }
   function pct(v, dp) { return v == null ? '—' : (v).toFixed(dp == null ? 0 : dp) + ' %'; }
   function pctOf(frac, dp) { return frac == null ? '—' : (frac * 100).toFixed(dp == null ? 0 : dp) + ' %'; }
@@ -1020,6 +1032,126 @@
     return els.length ? +els[els.length - 1].value : 0;
   }
 
+  // ============================================================ Automate tab
+  // Operator automation (layers/auto_control.js): per-control AUTO/MAN toggles.
+  // Controllers read the broadcast snapshot's instruments and send commands
+  // down the stack like any operator action — silently (no blocked-command UI
+  // feedback; a blocked auto command just shows as a note on its row).
+  function cmdAuto(c) {
+    var r = service.handleCommand(c);
+    if (diag) {
+      diag.commands.push({ t: latest && latest.metadata ? latest.metadata.sim_time : 0, command: c, auto: true, blocked: !!(r && r.type === 'blocked'), error: !!(r && r.type === 'error') });
+      if (diag.commands.length > 2000) diag.commands.shift();
+    }
+    return r;
+  }
+
+  function autoSnap() { return latest || service.assembleSnapshot(); }
+
+  function buildAutomate() {
+    var list = $('autoList'), master = $('autoMaster');
+    if (!list || !autoCtl) return;
+    master.innerHTML =
+      '<span class="k">Automatic control</span>' +
+      '<span><button class="btn" data-autoall="on" data-scanner-hint="All Auto — engages every automation channel for this plant (setpoints capture the current readings).">All auto</button> ' +
+      '<button class="btn" data-autoall="off" data-scanner-hint="All Manual — disengages every automation channel; each control freezes where automation left it.">All manual</button></span>';
+    var html = '', lastGroup = null;
+    autoCtl.channels().forEach(function (c) {
+      var d = c.def;
+      if (d.group !== lastGroup) { html += '<div class="g-section-title" style="margin-top:10px">' + mesc(d.group) + '</div>'; lastGroup = d.group; }
+      html += '<div class="auto-row" data-autorow="' + d.id + '" data-scanner-hint="' + esc(d.label + ' — ' + d.hint) + '">' +
+        '<button class="auto-tog" data-autotog="' + d.id + '">MAN</button>' +
+        '<div class="auto-main"><div class="auto-name">' + mesc(d.label) + '</div>' +
+        '<div class="auto-read mono" data-autoread="' + d.id + '">—</div></div>';
+      if (d.sp) {
+        html += '<div class="auto-spbox"><span class="auto-splbl">SP</span>' +
+          '<input class="num-input mono auto-sp" data-autosp="' + d.id + '" type="number" step="' + (d.sp.step || 1) + '" disabled>' +
+          '<span class="auto-spunit" data-autospu="' + d.id + '"></span></div>';
+      }
+      html += '</div>';
+    });
+    list.innerHTML = html;
+    if (latest) renderAutomate(latest);
+  }
+
+  function autoSpUnit(d) { return d.sp ? (d.sp.dim ? unit(d.sp.dim) : (d.sp.unit || '')) : ''; }
+  function autoFmtPv(d, v, dp) {
+    if (v == null || !isFinite(v)) return '—';
+    var dim = d.sp && d.sp.dim;
+    return (dim ? conv(v, dim) : v).toFixed(dp != null ? dp : (d.sp ? d.sp.dp : 0));
+  }
+
+  function renderAutomate(s) {
+    var list = $('autoList');
+    if (!list || !autoCtl || !list.firstChild) return;
+    autoCtl.channels().forEach(function (c) {
+      var d = c.def, on = autoCtl.isEngaged(c, s);
+      var row = list.querySelector('[data-autorow="' + d.id + '"]'); if (!row) return;
+      row.classList.toggle('on', on);
+      var tog = row.querySelector('[data-autotog]');
+      tog.textContent = on ? 'AUTO' : 'MAN';
+      tog.classList.toggle('on', on);
+      var read = row.querySelector('[data-autoread]');
+      if (d.kind === 'mode') {
+        read.textContent = on ? 'engaged (plant-side control)' : 'manual';
+      } else {
+        var pv = c.pvNow != null ? c.pvNow : (d.pv ? d.pv(s) : null);
+        var txt = d.kind === 'bang'
+          ? 'rods ' + autoFmtPv(d, pv, 0) + ' % out'
+          : autoFmtPv(d, pv) + (on && c.sp != null ? ' → ' + autoFmtPv(d, c.sp) : '') + ' ' + autoSpUnit(d);
+        if (on && c.note) txt += ' · ' + c.note;
+        read.textContent = txt;
+      }
+      if (d.sp) {
+        var inp = row.querySelector('[data-autosp]'), un = row.querySelector('[data-autospu]');
+        inp.disabled = !on;
+        un.textContent = autoSpUnit(d);
+        if (document.activeElement !== inp) {
+          inp.value = (on && c.sp != null) ? autoFmtPv(d, c.sp) : '';
+          // display-side bounds so the browser spinner respects the channel range
+          inp.min = autoFmtPv(d, d.sp.min); inp.max = autoFmtPv(d, d.sp.max);
+        }
+      }
+    });
+  }
+
+  function bindAutomate() {
+    var pane = document.querySelector('[data-pane="automate"]');
+    if (!pane) return;
+    pane.addEventListener('click', function (e) {
+      var all = e.target.closest('[data-autoall]');
+      if (all && autoCtl) {
+        if (all.getAttribute('data-autoall') === 'on') autoCtl.engageAll(autoSnap());
+        else autoCtl.disengageAll(autoSnap());
+        renderAutomate(autoSnap()); return;
+      }
+      var b = e.target.closest('[data-autotog]');
+      if (b && autoCtl) {
+        var id = b.getAttribute('data-autotog');
+        var c = autoCtl.get(id); if (!c) return;
+        var s = autoSnap();
+        autoCtl.toggle(id, !autoCtl.isEngaged(c, s), s);
+        renderAutomate(autoSnap());
+      }
+    });
+    pane.addEventListener('change', function (e) {
+      var inp = e.target.closest('[data-autosp]');
+      if (!inp || !autoCtl) return;
+      var id = inp.getAttribute('data-autosp'), c = autoCtl.get(id); if (!c) return;
+      var v = parseFloat(inp.value);
+      if (isNaN(v)) return;
+      autoCtl.setSetpoint(id, c.def.sp.dim ? invConv(v, c.def.sp.dim) : v);
+      renderAutomate(autoSnap());
+    });
+  }
+
+  // Per-broadcast hook: controllers act, then the tab's readouts refresh.
+  function autoTick(s) {
+    if (!autoCtl) return;
+    autoCtl.step(s);
+    renderAutomate(s);
+  }
+
   // ============================================================ session diagnosis (Dev tab)
   // Records the session at 1 Hz (true-state samples), plus alarm transitions,
   // scram edges, and every issued command; "Diagnosis JSON" bundles it all with
@@ -1605,6 +1737,7 @@
   function rebuildPlantUI() {
     chartBuf = []; smoothed = {};
     buildGauges(); buildGraphParams(); buildInitStates(); buildFailures();
+    if (autoCtl) { autoCtl.setPlant(ui.plant); buildAutomate(); }   // fresh plant → all channels back to manual
     buildPlantDisplay();
     var ps = $('pdScram'); if (ps && !ps.classList.contains('fired') && !ps.classList.contains('armed')) ps.textContent = prof().scramShort;
     buildTraining();   // walkthrough list follows the active plant
@@ -2010,7 +2143,9 @@
     service = new RD.SimulationService({ seed: 0x1234 });
     service.subscribe(render);
     service.subscribe(diagTick);
-    bindUI(); bindCommands();
+    autoCtl = RD.AutoControl ? new RD.AutoControl(cmdAuto) : null;
+    if (autoCtl) service.subscribe(autoTick);   // after render: `latest` is current when controllers act
+    bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)
     var em = /[?&]engine=(pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');
     var startKey = em ? em[1] : 'pwr', startEng = ENGINES[startKey];
@@ -2022,6 +2157,7 @@
     service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });
     buildFailures();
+    if (autoCtl) { autoCtl.setPlant(ui.plant); buildAutomate(); }
     // optional ?manual[=section] deep-link — opens the Operator's Manual on load
     var mm = /[?&]manual(?:=([a-z]+))?/.exec(location.search || '');
     if (mm) { if (mm[1]) ui.manualSection = mm[1]; openManual(); }
@@ -2044,6 +2180,17 @@
       service.handleCommand({ action: 'set_speed', value: 1 });
     }
     if (im || ffm) { latest = service.assembleSnapshot(); render(latest); }
+    // optional ?tab= deep-link — opens a Tools-Block tab (dev/screenshot convenience)
+    var tbm = /[?&]tab=(failures|automate|graph|sim|settings|training|dev)/.exec(location.search || '');
+    if (tbm) { var tbtn = document.querySelector('#tabbar [data-tab="' + tbm[1] + '"]'); if (tbtn) tbtn.click(); }
+    // optional ?auto=<id,id|all> deep-link — engages automation channels (dev convenience)
+    var am = /[?&]auto=([a-z_,]+|all)/.exec(location.search || '');
+    if (am && autoCtl) {
+      var asnap = service.assembleSnapshot();
+      if (am[1] === 'all') autoCtl.engageAll(asnap);
+      else am[1].split(',').forEach(function (id) { autoCtl.toggle(id, true, asnap); });
+      renderAutomate(asnap);
+    }
     if (/[?&]run=1/.test(location.search || '')) { service.start(); $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused'); }
     // optional ?follow=<procId> deep-link — loads a procedure into the Instructor block
     var fm = /[?&]follow=([a-z0-9_]+)/.exec(location.search || '');

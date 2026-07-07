@@ -87,17 +87,18 @@ var CTL = {
   stop_lpcs:         { g: 'Safety', c: 'Core Spray — Stop', u: 'Stops the core spray.', cmd: 'stop_lpcs', p: '' },
   open_srv_manual:   { g: 'Safety', c: 'Manual Relief Valve — Open', u: 'Opens a Safety/Relief Valve (SRV) by hand for a controlled depressurization (slower than ADS).', cmd: 'open_srv_manual', p: '' },
   close_srv_manual:  { g: 'Safety', c: 'Manual Relief Valve — Close', u: 'Closes the manually-opened relief valve.', cmd: 'close_srv_manual', p: '' },
+  automate:          { g: 'Automation', c: 'Automate Tab (per-control automation)', u: 'Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram.', cmd: '(issues the commands above)', p: '' },
 };
 var CONTROL_SETS = {
   pwr: ['rod_start', 'rod_nudge', 'rod_stop', 'rod_stop_all', 'scram', 'set_boron_adjust', 'set_charging_pump',
         'set_charging_flow', 'set_letdown_flow', 'set_cvcs_auto',
         'set_heater', 'set_spray', 'open_porv', 'close_porv', 'open_block_valve', 'close_block_valve',
-        'set_feedwater_flow', 'set_afw', 'set_steam_demand', 'set_steam_dump', 'set_hpi', 'set_dhr'],
+        'set_feedwater_flow', 'set_afw', 'set_steam_demand', 'set_steam_dump', 'set_hpi', 'set_dhr', 'automate'],
   rbmk: ['rod_start', 'rod_nudge', 'rod_stop', 'rod_stop_all', 'manual_scram', 'scram', 'set_channel_flow',
-         'set_feedwater_flow', 'set_turbine_load', 'set_steam_dump', 'set_eccs', 'set_eps_bypass'],
+         'set_feedwater_flow', 'set_turbine_load', 'set_steam_dump', 'set_eccs', 'set_eps_bypass', 'automate'],
   bwr: ['rod_start', 'rod_nudge', 'rod_stop', 'rod_stop_all', 'scram', 'set_recirc_flow', 'set_feedwater_flow',
         'set_turbine_load', 'set_steam_dump', 'set_rcic', 'set_ic', 'set_hpci', 'trigger_ads', 'start_lpci', 'start_lpcs',
-        'stop_lpcs', 'open_srv_manual', 'close_srv_manual', 'initiate_slc', 'stop_slc'],
+        'stop_lpcs', 'open_srv_manual', 'close_srv_manual', 'initiate_slc', 'stop_slc', 'automate'],
 };
 
 // Indications: n=display name, m=what it measures (integrated), u=unit.
@@ -202,6 +203,8 @@ var GLOSSARY_BASE = [
   ['Decay heat', 'Heat from radioactive decay that continues after shutdown (~7% of rated, decaying).'],
   ['Xenon', 'Xenon-135, a neutron-absorbing fission product that builds in after a power drop.'],
   ['Reactivity', 'The tendency of the chain reaction to grow (+) or shrink (−); critical = steady.'],
+  ['AUTO / MAN', 'Automatic / manual control of a plant control channel (Tools → Automate). AUTO reads the instruments and issues commands to hold a setpoint; MAN leaves the control to you.'],
+  ['Setpoint (SP)', 'The value an automatic controller holds its parameter at. Automate channels capture the current reading when engaged; edit it to maneuver on automatic.'],
 ];
 var GLOSSARY = {
   pwr: [['PWR', 'Pressurized Water Reactor.'], ['PZR', 'Pressurizer — sets primary pressure.'], ['SG', 'Steam Generator.'], ['PORV', 'Power-Operated Relief Valve.'], ['HPI', 'High-Pressure Injection.'], ['ECCS', 'Emergency Core Cooling System (here, high-pressure injection).'], ['AFW', 'Auxiliary Feedwater.'], ['CVCS', 'Chemical & Volume Control System (boron & inventory).'], ['MTC', 'Moderator Temperature Coefficient.'], ['RCP', 'Reactor Coolant Pump.'], ['DHR / RHR', 'Decay-Heat / Residual-Heat Removal.'], ['Tavg', 'Average coolant temperature.']],

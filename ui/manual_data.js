@@ -164,6 +164,13 @@
           "uses": "Decay-Heat Removal (DHR / RHR) — removes leftover heat after shutdown once cool and depressurized.",
           "command": "set_dhr",
           "params": "{active}"
+        },
+        {
+          "control": "Automate Tab (per-control automation)",
+          "group": "Automation",
+          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram.",
+          "command": "(issues the commands above)",
+          "params": ""
         }
       ],
       "indications": [
@@ -1262,6 +1269,14 @@
           "term": "The tendency of the chain reaction to grow (+) or shrink (−); critical = steady."
         },
         {
+          "acronym": "AUTO / MAN",
+          "term": "Automatic / manual control of a plant control channel (Tools → Automate). AUTO reads the instruments and issues commands to hold a setpoint; MAN leaves the control to you."
+        },
+        {
+          "acronym": "Setpoint (SP)",
+          "term": "The value an automatic controller holds its parameter at. Automate channels capture the current reading when engaged; edit it to maneuver on automatic."
+        },
+        {
           "acronym": "PWR",
           "term": "Pressurized Water Reactor."
         },
@@ -1334,6 +1349,7 @@
             "boron_ppm": 747.282,
             "porv_open": false,
             "porv_stuck": false,
+            "block_valve_open": true,
             "hpi_active": false,
             "hpi_flow_normalized": 0,
             "afw_active": false,
@@ -1427,6 +1443,7 @@
             "boron_ppm": 347.989,
             "porv_open": false,
             "porv_stuck": false,
+            "block_valve_open": true,
             "hpi_active": false,
             "hpi_flow_normalized": 0,
             "afw_active": false,
@@ -1520,6 +1537,7 @@
             "boron_ppm": 754.395,
             "porv_open": false,
             "porv_stuck": false,
+            "block_valve_open": true,
             "hpi_active": false,
             "hpi_flow_normalized": 0,
             "afw_active": false,
@@ -1684,6 +1702,13 @@
           "uses": "Disables the automatic Emergency Protection System (EPS) trips — as was done before Chernobyl. Dangerous; use only for an authorized test.",
           "command": "set_eps_bypass",
           "params": "{active}"
+        },
+        {
+          "control": "Automate Tab (per-control automation)",
+          "group": "Automation",
+          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram.",
+          "command": "(issues the commands above)",
+          "params": ""
         }
       ],
       "indications": [
@@ -2282,6 +2307,14 @@
           "term": "The tendency of the chain reaction to grow (+) or shrink (−); critical = steady."
         },
         {
+          "acronym": "AUTO / MAN",
+          "term": "Automatic / manual control of a plant control channel (Tools → Automate). AUTO reads the instruments and issues commands to hold a setpoint; MAN leaves the control to you."
+        },
+        {
+          "acronym": "Setpoint (SP)",
+          "term": "The value an automatic controller holds its parameter at. Automate channels capture the current reading when engaged; edit it to maneuver on automatic."
+        },
+        {
           "acronym": "RBMK",
           "term": "The Chernobyl-type graphite-moderated reactor."
         },
@@ -2621,6 +2654,13 @@
           "uses": "Disables the automatic Emergency Protection System (EPS) trips — as was done before Chernobyl. Dangerous; use only for an authorized test.",
           "command": "set_eps_bypass",
           "params": "{active}"
+        },
+        {
+          "control": "Automate Tab (per-control automation)",
+          "group": "Automation",
+          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram.",
+          "command": "(issues the commands above)",
+          "params": ""
         }
       ],
       "indications": [
@@ -3231,6 +3271,14 @@
           "term": "The tendency of the chain reaction to grow (+) or shrink (−); critical = steady."
         },
         {
+          "acronym": "AUTO / MAN",
+          "term": "Automatic / manual control of a plant control channel (Tools → Automate). AUTO reads the instruments and issues commands to hold a setpoint; MAN leaves the control to you."
+        },
+        {
+          "acronym": "Setpoint (SP)",
+          "term": "The value an automatic controller holds its parameter at. Automate channels capture the current reading when engaged; edit it to maneuver on automatic."
+        },
+        {
           "acronym": "RBMK",
           "term": "The Chernobyl-type graphite-moderated reactor."
         },
@@ -3625,6 +3673,13 @@
           "group": "Safety",
           "uses": "Stops further boron injection; the boron already injected stays in the core.",
           "command": "stop_slc",
+          "params": ""
+        },
+        {
+          "control": "Automate Tab (per-control automation)",
+          "group": "Automation",
+          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram.",
+          "command": "(issues the commands above)",
           "params": ""
         }
       ],
@@ -4202,6 +4257,14 @@
         {
           "acronym": "Reactivity",
           "term": "The tendency of the chain reaction to grow (+) or shrink (−); critical = steady."
+        },
+        {
+          "acronym": "AUTO / MAN",
+          "term": "Automatic / manual control of a plant control channel (Tools → Automate). AUTO reads the instruments and issues commands to hold a setpoint; MAN leaves the control to you."
+        },
+        {
+          "acronym": "Setpoint (SP)",
+          "term": "The value an automatic controller holds its parameter at. Automate channels capture the current reading when engaged; edit it to maneuver on automatic."
         },
         {
           "acronym": "BWR",

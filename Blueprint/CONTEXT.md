@@ -355,6 +355,8 @@ physical-quantity vocabulary.
     "porv_demand": string,           // "open" | "closed"
     "porv_block_open": bool,          // PORV block/isolation valve (B1 — TMI recovery)
     "heater_power_pct": float, "spray_valve_pct": float,
+    "heater_auto": bool, "spray_auto": bool,   // pressurizer controls in engine auto (override null) — Automate tab state
+
     "charging_flow_normalized": float,   // CVCS charging SETPOINT (command) — under AUTO the true flow (instruments.charging_flow) modulates away from this
     "letdown_flow_normalized": float,    // CVCS letdown setpoint
     "feedwater_flow_pct": float, "steam_demand_mwe": float,

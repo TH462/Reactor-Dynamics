@@ -109,6 +109,7 @@
       <div class="panel tools expanded" id="toolsCard">
         <div class="tabbar" id="tabbar">
           <button class="on" data-tab="failures">Failures</button>
+          <button data-tab="automate">Automate</button>
           <button data-tab="graph">Graph</button>
           <button data-tab="sim">Sim</button>
           <button data-tab="settings">Settings</button>
@@ -120,6 +121,12 @@
           <div class="tabpane on" data-pane="failures">
             <div id="failList"></div>
             <div class="advanced-exp">▸ Advanced instrument failure (instrument × mode × value)</div>
+          </div>
+          <!-- Automate tab — per-control automation toggles (layers/auto_control.js) -->
+          <div class="tabpane" data-pane="automate">
+            <div class="auto-master" id="autoMaster"></div>
+            <div id="autoList"></div>
+            <div class="m-note" style="margin-top:8px">Automation reads the <b>instruments</b> and issues normal commands — a failed sensor fools it, interlocks block it, and while a channel is engaged it will override your manual input for that control.</div>
           </div>
           <!-- Graph tab — parameter toggles for the strip chart -->
           <div class="tabpane" data-pane="graph">
@@ -252,6 +259,9 @@
   <script src="../layers/control_failure_layer.js"></script>
   <script src="../layers/instructor_layer.js"></script>
   <script src="../layers/simulation_service.js"></script>
+  <!-- Operator automation (Automate tab) — a synthetic operator beside the UI,
+       reading instruments (HR1) and sending commands down the stack (HR5) -->
+  <script src="../layers/auto_control.js"></script>
   <!-- M6 scenarios (authored content — each registers into RD.SCENARIOS) -->
   <script src="../scenarios/pwr_hook.js"></script>
   <script src="../scenarios/pwr_tmi.js"></script>

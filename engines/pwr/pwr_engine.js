@@ -331,6 +331,11 @@
       porv_block_open: s.block_valve_open,
       heater_power_pct: s.heater_power_frac * 100,
       spray_valve_pct: s.spray_flow_frac * 100,
+      // Auto/manual mode of the pressurizer pressure controls (null override =
+      // the engine's proportional auto) — surfaced for the UI's Automate tab,
+      // mirroring the steam_dump_auto precedent below.
+      heater_auto: s.heater_override == null,
+      spray_auto: s.spray_override == null,
       // CVCS commands: charging_flow_normalized is the operator SETPOINT (what the
       // charging valve is commanded to), NOT the true flow — under AUTO make-up the
       // true flow (instruments.charging_flow) modulates away from this setpoint.

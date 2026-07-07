@@ -1575,3 +1575,42 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   checkpoint (3 presses). Gates: `run_campaign` 26/26 (773 checks — rbmk_void deep-cut and
   bwr_recirc scram failure paths now CI), M5/M6/scenarios/RBMK/BWR/manual-follow green,
   `run_procedures` 20/21 pre-existing. Persona re-verify (seed 11): 7/7.
+
+- **2026-07-07 — Operator Automation layer (the Automate tab) — a deliberate v1-scope
+  extension.** CONTEXT §8 deferred "automatic control systems"; built now by user request
+  as `layers/auto_control.js` + a Tools-Block **Automate** tab: an AUTO/MAN toggle per
+  plant control, so any subset can run automatic while the player works the rest (e.g.
+  secondary on auto while hand-flying the primary, or everything auto except grid demand).
+  **Architecture:** a *synthetic operator*, NOT a stack layer — it subscribes to broadcast
+  snapshots beside the UI, reads **instruments only** (HR1: a stuck sensor fools it — CI'd:
+  stick `sg_level` high and the feed channel drains the real SG), and issues ordinary
+  commands from the top of the stack (HR5: Instructor gates and M4 interception apply;
+  blocked commands surface as a row note). Engines/M4/M5 untouched except one additive
+  `control_state` exposure (`heater_auto`/`spray_auto`, mirroring `steam_dump_auto`;
+  CONTEXT §6.5 updated). Channel kinds: **mode** (passthrough toggles for automation the
+  engine already carries — load-follow, steam-dump auto, PZR heater/spray auto, CVCS
+  make-up — displayed state derives from `control_state` each snapshot so the toggle never
+  fights the plant, e.g. scram → grid disconnect shows itself); **pid** (PI + feedforward,
+  bumpless-transfer integrator preload, anti-windup, PV low-pass, setpoint slew, deadband +
+  min-delta/period so the command stream stays sparse); **rods** (bounded `rod_nudge`
+  moves — acceleration-safe since the engine ramps to a target — with rate damping);
+  **bang** (PWR boron trim on rod position with hysteresis; requires the rod channel).
+  Setpoints capture the current reading on engage and are editable (unit-converted in the
+  tab). Rod/power channels disengage themselves on scram/meltdown, visibly. Automation
+  state is session-only (not in save files); a rewind resets controller dynamics.
+  **Control-design findings (probed, not guessed):** (1) a Tavg-dominant PWR rod loop
+  limit-cycles for minutes (Tavg integrates the power/draw mismatch) — the shipped
+  controller is **mismatch-dominant** (`1.25·(steam% − power%)` + Tavg trim), which glides;
+  the governor overdelivers at held Tavg (demand 700 → ~785 MWe, SG pressure 6.3 MPa) —
+  physics, asserted as such. (2) The RBMK's lumped rod group is worth ~4 %power/step at
+  50 % — single slow-speed steps, ±2 % deadband, kd 15 rate damping, or it limit-cycles.
+  (3) The BWR has **no pressure-restoring control** in load-follow: ANY sustained power
+  descent (even a bare-plant 40→34 % recirc trim) drains vessel pressure to the 5.52 MPa
+  LOCA trip — so the BWR's turbine channel is a **pressure-control PID** (`set_turbine_load`
+  holds `vessel_pressure`, the real BWR governor mode), and the recirc channel slews its
+  power setpoint (0.15 %/s). **Gates:** new `test/run_autoctl.js` 11/11 (all-auto holds ×3
+  plants, demand swing, SP maneuvers, manual+auto mix, HR1 probe, scram stand-down, rewind
+  reset, command-sparseness); engines 13/23/12, M4 11, M5 17, M6 16, M7, campaign 26/26
+  unchanged green; `run_procedures` 20/21 and `verify_e2e_ui` reds pre-existing. Manual:
+  `automate` control entry + AUTO/MAN + Setpoint glossary terms added to the generator and
+  regenerated. Dev deep-links added: `?tab=<tools-tab>` and `?auto=<id,…|all>`.
