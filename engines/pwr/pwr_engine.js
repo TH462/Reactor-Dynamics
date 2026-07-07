@@ -419,6 +419,11 @@
         s.feed_auto_coupled = false;
         s.feedwater_demand_frac = clip(cmd.pct / 100, 0, 1.2);
         break;
+      case 'set_feed_coupled':
+        // Re-couple feedwater to load (the init default; set_feedwater_flow
+        // uncouples). Used by the operator-automation layer during fast-forward.
+        s.feed_auto_coupled = !!cmd.active;
+        break;
       case 'set_heater':
         // {auto:true} returns to the proportional auto-control; {power_pct} is a manual override.
         s.heater_override = cmd.auto ? null : clip(cmd.power_pct / 100, 0, 1);

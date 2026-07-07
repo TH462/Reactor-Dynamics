@@ -346,6 +346,11 @@
         s.feed_auto_coupled = false;
         if (!s.feedwater_blocked) s.feedwater_normalized = clip(cmd.pct / 100, 0, 1.5);
         break;
+      case 'set_feed_coupled':
+        // Re-couple feedwater to load (the init default; set_feedwater_flow
+        // uncouples). Used by the operator-automation layer during fast-forward.
+        s.feed_auto_coupled = !!cmd.active;
+        break;
       case 'set_turbine_load':
         s.load_mode = 'manual';
         s.load_target_mwe = cmd.mwe;

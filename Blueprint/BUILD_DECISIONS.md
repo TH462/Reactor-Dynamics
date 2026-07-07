@@ -1614,3 +1614,28 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   unchanged green; `run_procedures` 20/21 and `verify_e2e_ui` reds pre-existing. Manual:
   `automate` control entry + AUTO/MAN + Setpoint glossary terms added to the generator and
   regenerated. Dev deep-links added: `?tab=<tools-tab>` and `?auto=<id,…|all>`.
+
+- **2026-07-07 — Automation under time acceleration (fast-forward handoff) + training
+  presets.** Probed all-auto holds at 60×/600×/3600× per plant. Findings: the BARE plants
+  are acceleration-invariant (per-step physics + engine-side coupling), but broadcast-rate
+  automation is not — above ~200× a broadcast is minutes of sim time and NO sampled
+  controller stabilizes the boiler loops (full-dt PI integration drained every level to its
+  low-level trip; clamped-dt under-integrated 36×; a dt-threshold flapped against the
+  normal/transient cadence flip; the dt-observed first step let one broadcast-rate command
+  slip out — a turbine left in manual for 6 sim-minutes trips low vessel pressure).
+  **Shipped design:** fast regime judged from `metadata.time_acceleration ≥ 200` (correct
+  on the first step). In fast: pid channels with a `fastFallback` hand their loop to the
+  ENGINE's per-step coupling — feed → the new `set_feed_coupled {active}` command (all
+  three engines; re-couples what `set_feedwater_flow` uncouples; CONTEXT §6.7), BWR
+  turbine → `set_load_mode follow`, recirc → hold — and re-assert broadcast-rate control on
+  slow-down (the next setpoint command uncouples again; integrator re-seeded). Rod
+  channels drop to SINGLE steps inside a widened `dbFast` (> per-step power worth) —
+  out-paces xenon drift, immune to the sampling-aliasing limit cycle probed at 3600×
+  (−1/+1/−2/+3/−5 divergence). Slow regime gains true-dt integration (per-action increment
+  capped at 3 design periods) and time-based PV filters (`pvTau`, pass-through at giant
+  dt). Result: 9/9 accel×plant holds green; `run_autoctl.js` now 15 suites (3600× holds ×3,
+  resume-on-slow-down transition). Engines/M4/M5/M6/M7/campaign/procedures unchanged-green.
+  **Training presets:** scenarios and procedures may declare `auto_channels: [ids]` —
+  startScenario/followProcedure engage them after the content's plant reset (on top of the
+  walkthrough stand-down), so a mission can hand the player one control and put the rest of
+  the plant on automatic. No authored content uses it yet (the training-update pass will).

@@ -219,6 +219,55 @@ test('Automation reads instruments, not truth (HR1 probe)', function (ck) {
   ck('controller chased the lying instrument (true level fell)', t.sg_level_pct.toFixed(1) + ' from ' + before.toFixed(1), t.sg_level_pct < before - 3, 'true level drops >3%');
 });
 
+// ============================================================ time acceleration
+// Above FAST_ACCEL (200×) pid channels hand their loop to the engine's per-step
+// coupling and rod channels drop to single steps in a widened deadband — a
+// sampled controller cannot stabilize the fast loops at minutes-per-broadcast
+// (probed: full-dt PI drained every boiler to its low-level trip).
+function fastHold(ck, plant, init, dv, channels, powerSp, tol) {
+  var r = rig(plant, init, dv);
+  r.engage(channels);
+  r.cmd({ action: 'set_speed', value: 3600 });
+  var cycles = 0;
+  while (r.snap().metadata.sim_time < 1800 && cycles++ < 100) r.service.advanceCycles(1);
+  var t = ts(r);
+  ck('no scram at 3600×', scrammed(r), !scrammed(r), 'false');
+  ck('power in band at 3600×', t.power_pct.toFixed(1), near(t.power_pct, powerSp, tol), powerSp + '±' + tol);
+  ck('sparse commands', r.sent.length, r.sent.length < 40, '<40 (plant-side control)');
+}
+test('PWR · all-auto survives 30 min at 3600×', function (ck) {
+  fastHold(ck, 'pwr', 'hot_full_power', null,
+    ['rods_tavg', 'boron_trim', 'pzr_pressure', 'cvcs_makeup', 'feed_sg', 'steam_dump', 'grid_follow'], 100, 6);
+});
+test('RBMK · all-auto survives 30 min at 3600× (xenon drift)', function (ck) {
+  fastHold(ck, 'rbmk', '50_percent', 'post_chernobyl',
+    ['rods_power', 'feed_drum', 'grid_follow', 'steam_dump'], 50, 6);
+});
+test('BWR · all-auto survives 30 min at 3600×', function (ck) {
+  fastHold(ck, 'bwr', 'full_power', null,
+    ['recirc_power', 'rods_trim', 'feed_level', 'turbine_pressure', 'steam_dump'], 100, 4);
+});
+
+test('Fast-forward handoff resumes broadcast-rate control on slow-down', function (ck) {
+  var r = rig('rbmk', '50_percent', 'post_chernobyl');
+  r.engage(['rods_power', 'feed_drum', 'grid_follow', 'steam_dump']);
+  r.cmd({ action: 'set_speed', value: 3600 });
+  var cycles = 0;
+  while (r.snap().metadata.sim_time < 600 && cycles++ < 40) r.service.advanceCycles(1);
+  ck('feed coupled during fast-forward', r.snap().control_state.feed_auto_coupled,
+    r.snap().control_state.feed_auto_coupled === true, 'true');
+  ck('feed channel notes plant-side control', r.auto.get('feed_drum').note,
+    /fast-forward/.test(r.auto.get('feed_drum').note), 'mentions fast-forward');
+  r.cmd({ action: 'set_speed', value: 10 });
+  r.run(300);
+  var t = ts(r);
+  ck('no scram after resume', scrammed(r), !scrammed(r), 'false');
+  ck('feed PID re-asserted (uncoupled again)', r.snap().control_state.feed_auto_coupled,
+    r.snap().control_state.feed_auto_coupled === false, 'false');
+  ck('power back in the tight band', t.power_pct.toFixed(1), near(t.power_pct, 50, 4), '50±4');
+  ck('drum level held', inst(r).drum_level.toFixed(1), near(inst(r).drum_level, r.auto.get('feed_drum').sp, 4), 'sp±4');
+});
+
 test('Rewind resets controller dynamics (no integrator ghost)', function (ck) {
   var r = rig('pwr', 'hot_full_power');
   r.engage(['feed_sg']);

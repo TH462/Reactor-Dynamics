@@ -36,11 +36,19 @@
  * themselves — holding power against a scrammed core would mean driving rods
  * back out. Level / pressure / BOP channels keep working post-scram.
  *
- * Time acceleration: controllers act on sim-time periods; at high acceleration
- * broadcasts are minutes of sim-time apart, so control is coarser — bounded
- * nudges and setpoint deadbands keep it stable, not optimal. Automation state
- * (toggles, integrators) is UI-session state: it is not part of save files,
- * and a rewind resets controller dynamics (integrators) while keeping toggles.
+ * Time acceleration: controllers work in sim time (true-dt integration, time-
+ * based PV filters). At/above FAST_ACCEL (≥200×, judged from the snapshot's
+ * time_acceleration so the very first step decides correctly) a broadcast is
+ * minutes of sim time and NO sampled controller can stabilize the fast loops —
+ * the boiler integrates a feed/steam mismatch to a trip inside one broadcast
+ * (probed) — so pid channels with a fastFallback hand their loop to the
+ * ENGINE's own per-step coupling (feed→load coupling, turbine load-follow) and
+ * re-assert broadcast-rate control when the player slows back down (their next
+ * setpoint command uncouples again). Rod channels drop to single steps inside
+ * a widened deadband (dbFast > per-step power worth) — enough to out-pace
+ * xenon, immune to sampling-aliasing limit cycles. Automation state (toggles,
+ * integrators) is UI-session state: it is not part of save files, and a rewind
+ * resets controller dynamics while keeping toggles.
  *
  * Attaches RD.AutoControl (browser <script> or Node require, like the engines).
  */
@@ -81,7 +89,7 @@
         // the Tavg error as a slow trim. Tavg integrates the mismatch, so a
         // Tavg-dominant loop limit-cycles for minutes; mismatch-dominant glides.
         trim: function (s) { return 1.25 * (s.instruments.steam_flow * 100 - s.instruments.power_range); },
-        gain: 0.4, db: 0.5, maxStep: 2, period: 5.0, fastAt: 4.0, kd: 5, spSlew: 0.05 },
+        gain: 0.4, db: 0.5, maxStep: 2, period: 5.0, fastAt: 4.0, kd: 5, spSlew: 0.05, dbFast: 1.0 },
 
       { id: 'boron_trim', kind: 'bang', group: 'Reactor',
         label: 'Boron → rod position trim',
@@ -112,7 +120,8 @@
         pv: function (s) { return s.instruments.sg_level; },
         ff: function (s) { return clip(s.instruments.steam_flow * 100, 0, 120); },
         cmd: function (u) { return { action: 'set_feedwater_flow', pct: u }; },
-        uMin: 0, uMax: 120, kp: 1.5, ki: 0.03, db: 0.3, minDelta: 1.0, period: 3.0, pvAlpha: 0.35,
+        uMin: 0, uMax: 120, kp: 1.5, ki: 0.03, db: 0.3, minDelta: 1.0, period: 3.0, pvTau: 1.5,
+        fastFallback: [{ action: 'set_feed_coupled', active: true }],
         sp: { capture: function (s) { return s.instruments.sg_level; }, min: 30, max: 80, unit: '%', dp: 0, step: 1 } },
 
       { id: 'steam_dump', kind: 'mode', group: 'Secondary',
@@ -140,7 +149,7 @@
         sp: { capture: function (s) { return s.instruments.power_range; }, min: 1, max: 110, unit: '%', dp: 1, step: 1 },
         // One lumped-group step is worth several % power — wide deadband, single
         // slow-speed steps, and strong rate damping or the channel limit-cycles.
-        gain: 0.5, db: 2.0, maxStep: 1, period: 8.0, fastAt: 8.0, kd: 15, spSlew: 0.08 },
+        gain: 0.5, db: 2.0, maxStep: 1, period: 8.0, fastAt: 8.0, kd: 15, spSlew: 0.08, dbFast: 5.0 },
 
       { id: 'feed_drum', kind: 'pid', group: 'Coolant Circuit',
         label: 'Feedwater → Drum level',
@@ -148,7 +157,8 @@
         pv: function (s) { return s.instruments.drum_level; },
         ff: function (s) { return clip(s.instruments.power_range, 0, 110); },
         cmd: function (u) { return { action: 'set_feedwater_flow', pct: u }; },
-        uMin: 0, uMax: 110, kp: 1.5, ki: 0.03, db: 0.3, minDelta: 1.0, period: 3.0, pvAlpha: 0.35,
+        uMin: 0, uMax: 110, kp: 1.5, ki: 0.03, db: 0.3, minDelta: 1.0, period: 3.0, pvTau: 1.5,
+        fastFallback: [{ action: 'set_feed_coupled', active: true }],
         sp: { capture: function (s) { return s.instruments.drum_level; }, min: 40, max: 90, unit: '%', dp: 0, step: 1 } },
 
       { id: 'grid_follow', kind: 'mode', group: 'Balance of Plant',
@@ -177,16 +187,28 @@
         init: function (s) { return s.control_state.recirc_flow_setpoint_pct; },
         // spSlew ramps power-setpoint changes (~0.15 %/s): an instant recirc step
         // collapses steam flow and trips the plant on low vessel pressure.
-        uMin: 0, uMax: 48, kp: 0.35, ki: 0.02, db: 0.3, minDelta: 0.2, period: 2.0, pvAlpha: 0.35, spSlew: 0.15,
+        uMin: 0, uMax: 48, kp: 0.35, ki: 0.02, db: 0.3, minDelta: 0.2, period: 2.0, pvTau: 1.5, spSlew: 0.15,
+        fastFallback: [],   // hold the current drive flow; negative void feedback self-stabilizes
         sp: { capture: function (s) { return s.instruments.power_range; }, min: 5, max: 110, unit: '%', dp: 1, step: 1 } },
 
       { id: 'rods_trim', kind: 'rods', group: 'Reactor',
         label: 'Control Rods → Power (coarse trim)',
-        hint: 'Slow, wide-deadband rod trim — only steps in when power is far from the setpoint (e.g. recirc saturated). Fine control belongs to recirculation.',
-        group_id: 'control_rods', offOnScram: true, follows: 'recirc_power',
+        hint: 'Slow, wide-deadband rod trim — steps in only when recirculation is saturated or off automatic (one BWR rod step is worth several % power). Fine control belongs to recirculation.',
+        group_id: 'control_rods', offOnScram: true,
         pv: function (s) { return s.instruments.power_range; },
         sp: { capture: function (s) { return s.instruments.power_range; }, min: 5, max: 110, unit: '%', dp: 1, step: 1 },
-        gain: 0.3, db: 3.0, maxStep: 1, period: 12.0, fastAt: 1e9, kd: 8 },
+        // One mid-travel BWR rod step ≈ several % power: while the engaged recirc
+        // channel still has drive-flow authority, the trim must NOT fire (probed:
+        // a single noise-triggered step at 600× ran power to 112% and the
+        // pressure controller chased it into the low-pressure trip).
+        standby: function (s, ac) {
+          var rc = ac.byId.recirc_power;
+          if (!rc || !rc.engaged) return false;
+          var u = s.control_state.recirc_flow_setpoint_pct;
+          return u > 2 && u < 46;
+        },
+        standbyNote: 'standing by — recirc has authority',
+        gain: 0.3, db: 5.0, maxStep: 1, period: 12.0, fastAt: 1e9, kd: 8, dbFast: 6.0 },
 
       { id: 'feed_level', kind: 'pid', group: 'Vessel',
         label: 'Feedwater → Vessel level',
@@ -194,7 +216,8 @@
         pv: function (s) { return s.instruments.vessel_level; },
         ff: function (s) { return clip(s.instruments.steam_flow * 100, 0, 120); },
         cmd: function (u) { return { action: 'set_feedwater_flow', pct: u }; },
-        uMin: 0, uMax: 120, kp: 2.0, ki: 0.04, db: 0.3, minDelta: 1.0, period: 3.0, pvAlpha: 0.35,
+        uMin: 0, uMax: 120, kp: 2.0, ki: 0.04, db: 0.3, minDelta: 1.0, period: 3.0, pvTau: 1.5,
+        fastFallback: [{ action: 'set_feed_coupled', active: true }],
         sp: { capture: function (s) { return s.instruments.vessel_level; }, min: 40, max: 90, unit: '%', dp: 0, step: 1 } },
 
       { id: 'turbine_pressure', kind: 'pid', group: 'Balance of Plant',
@@ -204,7 +227,8 @@
         cmd: function (u) { return { action: 'set_turbine_load', mwe: u }; },
         init: function (s) { return s.control_state.load_target_mwe; },
         // Reverse-acting (more load → pressure falls): negative gains.
-        uMin: 0, uMax: 1150, kp: -600, ki: -12, db: 0.015, minDelta: 6, period: 2.0, pvAlpha: 0.35,
+        uMin: 0, uMax: 1150, kp: -600, ki: -12, db: 0.015, minDelta: 12, period: 2.0, pvTau: 1.5,
+        fastFallback: [{ action: 'set_load_mode', mode: 'follow' }],
         sp: { capture: function (s) { return s.instruments.vessel_pressure; }, min: 6.0, max: 7.4, dim: 'pressure', unit: 'MPa', dp: 2, step: 0.05 } },
 
       { id: 'steam_dump', kind: 'mode', group: 'Balance of Plant',
@@ -267,7 +291,7 @@
       c.spEff = c.sp;                                // slewed working setpoint starts at the capture
       c.I = def.init ? (def.init(snap) || 0) : 0;   // bumpless transfer
       if (def.kind === 'pid' && def.init == null && def.ff == null) c.I = 0;
-      c.lastAct = null; c.lastSent = null; c.bangMode = 'idle';
+      c.lastAct = null; c.lastSent = null; c.bangMode = 'idle'; c.fastMode = false;
       c.pvF = null; c.rate = null;                   // PV filter + damped derivative
     } else {
       // leave the plant exactly where automation had it — plus safe stand-down
@@ -292,7 +316,7 @@
   AutoControl.prototype.resetDynamics = function () {
     for (var i = 0; i < this.chans.length; i++) {
       var c = this.chans[i];
-      c.lastAct = null; c.lastSent = null; c.note = '';
+      c.lastAct = null; c.lastSent = null; c.note = ''; c.fastMode = false;
       c.pvF = null; c.rate = null; c.spEff = c.sp;
       if (c.def.kind === 'pid') c.I = null;   // re-init from the plant on the next step
       if (c.def.kind === 'bang') c.bangMode = 'idle';
@@ -305,9 +329,11 @@
     if (!snap.instruments || !snap.control_state) return;
     var t = snap.metadata.sim_time;
     if (this._lastT != null && t < this._lastT - 1e-6) this.resetDynamics();  // rewind
-    // Integration dt is sim time, clamped so one giant accelerated broadcast
-    // can't slam the integrators.
-    var dt = this._lastT == null ? 0 : clip(t - this._lastT, 0, 10);
+    // TRUE sim-time dt — at high acceleration a broadcast is minutes of sim
+    // time, and every controller must integrate/filter/budget in sim time or
+    // it goes 36× too slow at 3600× (probed: level loops starved the boilers
+    // to the low-level trips). Anti-windup clamps make full-dt integration safe.
+    var dt = this._lastT == null ? 0 : Math.max(0, t - this._lastT);
     this._lastT = t;
 
     var dead = !!(snap.true_state && snap.true_state.melted);
@@ -331,10 +357,17 @@
       }
       this._track(c, snap, dt);
       if (def.kind === 'pid') this._stepPid(c, snap, t, dt);
-      else if (def.kind === 'rods') this._stepRods(c, snap, t);
+      else if (def.kind === 'rods') this._stepRods(c, snap, t, dt);
       else if (def.kind === 'bang') this._stepBang(c, snap, t);
     }
   };
+
+  // Fast-forward regime: decided from the snapshot's time acceleration (known
+  // on the very first step — judging by observed dt let one broadcast-rate
+  // action slip out before the handoff, and 6 sim-minutes of a frozen wrong
+  // output is a boiler drained / a turbine over-drawing to the trip; probed).
+  var FAST_ACCEL = 200;
+  function isFast(snap) { return (snap.metadata.time_acceleration || 1) >= FAST_ACCEL; }
 
   // Shared per-step tracking for pid/rods: slew the working setpoint toward the
   // user's, low-pass the PV against instrument noise, and keep a damped PV rate
@@ -352,9 +385,12 @@
       var pv = def.pv(snap);
       if (pv == null || !isFinite(pv)) return;
       c.pvNow = pv;
-      var a = def.pvAlpha != null ? def.pvAlpha : 1.0;
+      // Time-based low-pass (pvTau seconds): filters instrument noise at real
+      // time but passes through at accelerated dt — a per-sample alpha would
+      // hand the controller a reading minutes stale at 3600×.
+      var a = def.pvTau ? dt / (def.pvTau + dt) : 1.0;
       var prev = c.pvF;
-      c.pvF = prev == null ? pv : prev + a * (pv - prev);
+      c.pvF = (prev == null || a >= 1) ? pv : prev + a * (pv - prev);
       if (dt > 0 && prev != null) {
         var r = (c.pvF - prev) / dt;
         c.rate = c.rate == null ? r : c.rate + 0.5 * (r - c.rate);
@@ -365,11 +401,26 @@
   AutoControl.prototype._stepPid = function (c, snap, t, dt) {
     var def = c.def;
     if (c.pvF == null) return;
+    // Fast-forward handoff: above FAST_ACCEL a sampled controller cannot
+    // stabilize the fast loops (a broadcast is minutes of sim time), so hand
+    // the loop to the engine's own per-step coupling; resume (re-asserted,
+    // integrator re-seeded) when the player slows back down.
+    if (def.fastFallback && isFast(snap)) {
+      if (!c.fastMode) {
+        for (var fi = 0; fi < def.fastFallback.length; fi++) this.send(def.fastFallback[fi]);
+        c.fastMode = true;
+      }
+      c.note = 'fast-forward — plant-side control';
+      return;
+    }
+    if (c.fastMode) { c.fastMode = false; c.I = null; c.lastSent = null; c.pvF = c.pvNow; c.rate = null; }
     var pv = c.pvF;
     var ff = def.ff ? def.ff(snap) : 0;
     if (c.I == null) c.I = def.init ? (def.init(snap) || 0) : 0;   // post-rewind re-init
     var e = (c.spEff != null ? c.spEff : c.sp) - pv;
-    if (Math.abs(e) > def.db) c.I += (def.ki || 0) * e * dt;       // freeze in the deadband (no creep)
+    // Integrate in sim time, but never more than a few design periods per
+    // action — a single giant sample must not carry a giant integral kick.
+    if (Math.abs(e) > def.db) c.I += (def.ki || 0) * e * Math.min(dt, 3 * def.period);   // freeze in the deadband (no creep)
     c.I = clip(c.I, def.uMin - ff - def.kp * e, def.uMax - ff - def.kp * e);   // anti-windup
     var u = clip(ff + def.kp * e + c.I, def.uMin, def.uMax);
     c.outNow = u;
@@ -381,19 +432,29 @@
     c.lastSent = u; c.lastAct = t;
   };
 
-  AutoControl.prototype._stepRods = function (c, snap, t) {
+  AutoControl.prototype._stepRods = function (c, snap, t, dt) {
     var def = c.def;
     if (c.pvF == null) return;
+    if (def.standby && def.standby(snap, this)) { c.note = def.standbyNote || 'standing by'; return; }
     // Damped error: back off while the PV is already moving toward the setpoint
     // (kd seconds of anticipation, plus an optional plant-specific trim term) —
     // the lumped rod group is coarse and the instruments lag, so undamped
     // stepping limit-cycles.
+    var fast = isFast(snap);
+    // Fast-forward regime: a broadcast outlives the whole void/thermal response
+    // to a rod move, so rate damping is blind (aliasing) — take SINGLE steps
+    // inside a deadband wider than the per-step power worth (dbFast), which
+    // still out-paces xenon drift by an order of magnitude. Probed at 3600×:
+    // dt-scaled budgets produced a diverging −1/+1/−2/+3/−5 limit cycle.
+    var db = fast && def.dbFast ? def.dbFast : def.db;
     var e = (c.spEff != null ? c.spEff : c.sp) - c.pvF;
-    var eEff = e + (def.trim ? def.trim(snap) : 0) - (def.kd || 0) * (c.rate || 0);
-    if (Math.abs(e) <= def.db) { c.note = 'holding'; return; }
+    var eEff = e + (def.trim ? def.trim(snap) : 0) - (fast ? 0 : (def.kd || 0) * (c.rate || 0));
+    if (Math.abs(e) <= db) { c.note = 'holding'; return; }
     if (c.lastAct != null && t - c.lastAct < def.period) return;
     var g = rodGroup(snap, 'control');
-    var steps = clip(Math.round(def.gain * eEff), -def.maxStep, def.maxStep);
+    var budget = fast ? 1 : def.maxStep;
+    var steps = clip(Math.round(def.gain * eEff), -budget, budget);
+    if (!steps) steps = e > 0 ? (fast ? 1 : 0) : (fast ? -1 : 0);   // outside the deadband, fast mode always takes its one step
     if (!steps) return;
     if (steps > 0 !== e > 0) { c.note = 'damping'; return; }   // never step against the raw error
     if (g) {

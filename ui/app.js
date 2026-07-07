@@ -652,6 +652,7 @@
     chartBuf = []; smoothed = {};
     autoStandDown();
     cmd({ action: 'start_follow', procedure_id: pr.id });
+    autoPreset(pr.auto_channels);
     setFocus('instructor');
   }
 
@@ -800,6 +801,7 @@
     service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
     service.handleCommand({ action: 'start_scenario', scenario_id: id });
     afterPlantChange();          // the scenario may have switched the plant
+    autoPreset(sc.auto_channels);   // authored preset: put listed systems on auto so the mission can focus the player
     diagReset('scenario', { scenario_id: id });
     resetInstrFlow();            // fresh mission → fresh commentary queue
     setFocus('instructor');
@@ -818,6 +820,15 @@
   // scenario path gets this for free (startScenario → rebuildPlantUI); the
   // walkthrough path resets the plant in place, so it needs it explicitly.
   function autoStandDown() { if (autoCtl) { autoCtl.setPlant(ui.plant); buildAutomate(); } }
+  // Authored automation preset (scenario.auto_channels / procedure.auto_channels):
+  // engage the listed channels after the content's plant reset, so a mission can
+  // hand the player one or two controls and put the rest of the plant on auto.
+  function autoPreset(ids) {
+    if (!autoCtl || !ids || !ids.length) return;
+    var s = service.assembleSnapshot();
+    ids.forEach(function (cid) { if (autoCtl.get(cid)) autoCtl.toggle(cid, true, s); });
+    renderAutomate(service.assembleSnapshot());
+  }
   function followProcedure(id) {
     var procs = (RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [];
     if (!procs.filter(function (x) { return x.id === id; })[0]) return;
@@ -827,6 +838,7 @@
     chartBuf = []; smoothed = {};
     autoStandDown();
     cmd({ action: 'start_follow', procedure_id: id });
+    autoPreset((procs.filter(function (x) { return x.id === id; })[0] || {}).auto_channels);
     resetInstrFlow();            // fresh walkthrough → fresh commentary queue
     closeManual(); setFocus('instructor');
     if (latest) renderInstructor(latest);

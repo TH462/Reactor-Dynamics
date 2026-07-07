@@ -474,6 +474,13 @@ open_srv_manual                                // operator manual SRV depressuri
 close_srv_manual
 set_steam_dump      { mode: "auto"|"open"|"closed" | pct }   // turbine bypass to condenser (BOP; gated on condenser availability)
 ```
+**Shared plant control (all plants):**
+```
+set_feed_coupled    { active }                 // re-couple feedwater to load (the init default;
+                                               // set_feedwater_flow uncouples). Issued by the operator-
+                                               // automation layer when fast-forward makes broadcast-rate
+                                               // level control impossible; not a player-facing control.
+```
 **Failure injection:**
 ```
 inject_failure      { failure_id, severity }   // severity 0.0–1.0
