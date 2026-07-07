@@ -22,6 +22,8 @@
     units: 'US',            // 'US' | 'SI'
     register: 'learning',   // 'learning' | 'industry'
     overlay: 'instruments', // 'instruments' | 'true' | 'both'
+    diagMode: 'learning',   // synoptic: 'learning' (M8 Education) | 'realistic'
+    physOverlay: false,     // synoptic: Physics Overlay toggle (Learning only)
     rodSpeed: 'normal',
     window: 300,            // strip-chart seconds
     series: {},             // per-plant; defaults set on plant load
@@ -78,11 +80,6 @@
   // ====================================================================== profiles
   // Each plant supplies: gauges (vital strip), numeric (diagram grid), series
   // (strip-chart), controls (tabbed control strip), initStates, and a scram label.
-  function gridMatch(s) {
-    var d = s.control_state.steam_demand_mwe || 0;
-    if (d <= 1) return 0;
-    return Math.min(100, (s.true_state.mwe_output / d) * 100);
-  }
   var PROFILES = {
 
     // ------------------------------------------------------------------ PWR
@@ -106,69 +103,6 @@
         { id: 'pzr_level',label: 'PZR Level',c: '#507878', get: function (i) { return i.pzr_level; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'subcool',  label: 'Subcool',  c: '#707060', get: function (i) { return i.subcooling_margin; }, range: [-10, 60], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + '°'; } },
         { id: 'mwe',      label: 'Output MW',c: '#506880', get: function (i) { return i.mwe_output; }, range: [0, 1100], fmt: function (v) { return v.toFixed(0); } },
-      ],
-      numeric: [
-        { title: 'Reactor / Core', rows: [
-          { k: 'Power', inst: function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }, truth: function (s) { return s.true_state.power_pct.toFixed(1) + ' %'; } },
-          { k: 'Startup Rate', inst: function (s) { var v = s.true_state.startup_rate_dpm; return Math.abs(v) < 0.01 ? '<span class="dim-info">' + v.toFixed(2) + ' dpm</span>' : v.toFixed(2) + ' dpm'; } },
-          { k: 'Fuel Temp', truth: function (s) { return dispT(s.true_state.fuel_temp_c); } },
-          { k: 'Decay Heat', truth: function (s) { return s.true_state.decay_heat_pct.toFixed(1) + ' %'; } },
-          { k: 'Scrammed', inst: function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); } },
-        ] },
-        { title: 'Primary & PZR', rows: [
-          { k: 'Pressure', inst: function (s) { return dispP(s.instruments.primary_pressure); }, truth: function (s) { return dispP(s.true_state.pressure_mpa); } },
-          { k: 'Avg Coolant Temp (Tavg)', inst: function (s) { return dispT(s.instruments.tavg); }, truth: function (s) { return dispT(s.true_state.tavg_c); } },
-          { k: 'Hot-Leg / Cold-Leg Temp', inst: function (s) { return dispT(s.instruments.thot) + ' / ' + dispT(s.instruments.tcold); } },
-          { k: 'Pressurizer Level (PZR)', inst: function (s) { return s.instruments.pzr_level.toFixed(0) + ' %'; }, truth: function (s) { return s.true_state.pzr_level_pct.toFixed(0) + ' %'; } },
-          { k: 'Subcooling', inst: function (s) { return dispTd(s.instruments.subcooling_margin); }, truth: function (s) { return dispTd(s.true_state.subcooling_c); } },
-          { k: 'Relief Valve (PORV)', inst: function (s) { return bool(s.instruments.porv_indicator === 'open', 'OPEN', 'closed'); }, truth: function (s) { return bool(s.true_state.porv_open, 'OPEN', 'closed'); } },
-          { k: 'Relief Block Valve (PORV)', inst: function (s) { return s.control_state.porv_block_open ? 'open' : 'isolated'; } },
-          { k: 'Boron', truth: function (s) { return s.true_state.boron_ppm.toFixed(0) + ' ppm'; } },
-          { k: 'Charging / Letdown (CVCS)', inst: function (s) { return (s.control_state.charging_flow_normalized * 100).toFixed(1) + ' / ' + ((s.control_state.letdown_flow_normalized || 0) * 100).toFixed(1) + ' %'; } },
-          { k: 'CVCS Mode', inst: function (s) { return (s.control_state.cvcs_auto ? 'AUTO make-up' : 'manual') + (s.control_state.charging_pump_running === false ? ' · pump OFF' : ''); } },
-        ] },
-        { title: 'Steam Generators', rows: [
-          { k: 'Steam Generator Level (SG)', inst: function (s) { return s.instruments.sg_level.toFixed(0) + ' %'; }, truth: function (s) { return s.true_state.sg_level_pct.toFixed(0) + ' %'; } },
-          { k: 'Steam Flow', inst: function (s) { return pctOf(s.instruments.steam_flow); } },
-          { k: 'Feedwater Flow', inst: function (s) { return pctOf(s.instruments.fw_flow); } },
-          { k: 'Aux Feedwater (AFW)', inst: function (s) { return bool(s.true_state.afw_active, 'on', 'off'); } },
-        ] },
-        { title: 'Turbine / Condenser', rows: [
-          { k: 'Grid Match', inst: function (s) { return gridMatch(s).toFixed(1) + ' %'; } },
-          { k: 'Output', inst: function (s) { return s.instruments.mwe_output.toFixed(0) + ' MW'; } },
-          { k: 'Turbine RPM', inst: function (s) { return s.instruments.turbine_rpm.toFixed(0); } },
-          { k: 'Condenser Vacuum', inst: function (s) { return dispV(s.instruments.condenser_vacuum); } },
-          { k: 'Steam Dump', inst: function (s) { return (s.control_state.steam_dump_auto ? 'auto ' : 'man ') + s.control_state.steam_dump_pct.toFixed(0) + ' %'; } },
-          { k: 'Main Breaker', inst: function (s) { return bool(s.control_state.steam_demand_mwe > 1, 'closed', 'open'); } },
-        ] },
-        { title: 'Emergency & Inventory', rows: [
-          { k: 'Core Inventory', truth: function (s) { return s.true_state.core_inventory_pct.toFixed(0) + ' %'; } },
-          { k: 'Reactor Coolant Pumps (RCP)', inst: function (s) { return bool(s.instruments.rcp_running, 'running', 'STOPPED'); } },
-          { k: 'High-Pressure Injection (HPI/ECCS)', inst: function (s) { return bool(s.instruments.hpi_active, 'active', 'standby'); } },
-          { k: 'Station Blackout', inst: function (s) { return bool(s.instruments.station_blackout, 'YES', 'no'); } },
-        ] },
-      ],
-      controls: [
-        { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods')] },
-        { key: 'primary', label: 'Primary Inventory', groups: [
-          { l: 'Reactor Coolant Pumps (RCP)', hint: 'Reactor Coolant Pumps — force primary flow. Stopping them collapses flow.', seg: [{ l: 'Run', act: 'rcp-run', on: 1, run: 1 }, { l: 'Stop', act: 'rcp-stop' }] },
-          { l: 'Chemical Shim (Boron)', hint: 'Chemical Shim — adjusts dissolved boron (a neutron absorber) to trim reactivity slowly.', seg: [{ l: 'Borate', act: 'borate' }, { l: 'Off', act: 'boron-off', on: 1 }, { l: 'Dilute', act: 'dilute' }] },
-          { l: 'PORV Block Valve', hint: 'PORV block (isolation) valve — closing it isolates a stuck-open PORV even when the indicator lies "closed". The key TMI recovery action.', seg: [{ l: 'Open', act: 'porv-block-open', on: 1 }, { l: 'Isolate', act: 'porv-block-close', warn: 1 }] },
-          { l: 'Emergency Core Cooling (ECCS)', emergency: 1, hint: 'Emergency Core Cooling — high-pressure injection. AUTO actuates on low pressure.', seg: [{ l: 'Auto', act: 'eccs-auto', on: 1, run: 1 }, { l: 'On', act: 'eccs-on' }, { l: 'Off', act: 'eccs-off' }] },
-          { l: 'Pressurizer Heaters (PZR)', hint: 'Pressurizer heaters raise primary pressure. Auto holds the setpoint; the slider is a manual power %.', num: { id: 'heatSet', min: 0, max: 100, value: 0, act: 'heat-set', setL: 'Set %' }, seg: [{ l: 'Auto', act: 'heat-auto', on: 1, run: 1 }] },
-          { l: 'Pressurizer Spray (PZR)', hint: 'Pressurizer spray lowers primary pressure. It draws from the cold leg after the Reactor Coolant Pump (RCP), so it needs RCP flow. Auto holds the setpoint; the slider is a manual valve %.', num: { id: 'spraySet', min: 0, max: 100, value: 0, act: 'spray-set', setL: 'Set %' }, seg: [{ l: 'Auto', act: 'spray-auto', on: 1, run: 1 }] },
-        ] },
-        { key: 'steam', label: 'Steam Generators', groups: [
-          { l: 'Feed Pumps', seg: [{ l: 'Start', act: 'feed-start', on: 1, run: 1 }, { l: 'Stop', act: 'feed-stop' }] },
-          { l: 'Auxiliary Feed Water (AFW)', emergency: 1, hint: 'Auxiliary Feed Water — backup feed after a loss of main feedwater.', seg: [{ l: 'Start', act: 'afw-start' }, { l: 'Stop', act: 'afw-stop', on: 1 }] },
-          { l: 'Feed Reg Valve (advanced)', hint: 'Manual feed demand — decouples from Load Mode.', num: { id: 'feedSet', min: 0, max: 100, value: 100, act: 'feed-set', setL: 'Set %' } },
-        ] },
-        { key: 'turbine', label: 'Turbine & Grid', groups: [
-          { l: 'Load Mode', hint: 'Follow tracks reactor power; Manual uses the slider; Off disconnects from grid.', seg: [{ l: 'Follow', act: 'load-follow', on: 1, run: 1 }, { l: 'Manual', act: 'load-manual' }, { l: 'Off', act: 'load-disconnect', warn: 1 }] },
-          { l: 'Turbine Load', hint: 'Generator load setpoint (MWe) — active in Manual mode.', slider: { id: 'mweSlider', min: 0, max: 1100, value: 1000, act: 'load-slider' } },
-          { l: 'Main Breaker', hint: 'Main Breaker — the grid connection.', seg: [{ l: 'Closed', act: 'breaker-close', on: 1, run: 1 }, { l: 'Open', act: 'breaker-open' }] },
-          { l: 'Steam Dump (to condenser)', hint: 'Steam dump / turbine bypass — vents steam to the condenser to control SG pressure on a turbine trip or load rejection. Auto opens above a pressure setpoint.', seg: [{ l: 'Auto', act: 'dump-auto', on: 1, run: 1 }, { l: 'Open', act: 'dump-open' }, { l: 'Closed', act: 'dump-close' }] },
-        ] },
       ],
     },
 
@@ -226,11 +160,7 @@
         { key: 'reactor', label: 'Reactor Core', groups: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods')] },
         { key: 'coolant', label: 'Coolant Circuit', groups: [
           { l: 'MCP / Channel Flow', hint: 'Main Circulation Pumps — channel flow setpoint. Lower flow ⇒ more void ⇒ (positive coefficient) more power.', num: { id: 'rbmkFlow', min: 0, max: 120, value: 100, act: 'rbmk-flow-set', setL: 'Set %' } },
-          { l: 'Feedwater (advanced)', hint: 'Manual feed — decouples from Load Mode.', num: { id: 'rbmkFeed', min: 0, max: 100, value: 100, act: 'rbmk-feed-set', setL: 'Set %' } },
-        ] },
-        { key: 'turbine', label: 'Turbine & Grid', groups: [
-          { l: 'Load Mode', seg: [{ l: 'Follow', act: 'rbmk-load-follow', on: 1, run: 1 }, { l: 'Manual', act: 'rbmk-load-manual' }, { l: 'Off', act: 'rbmk-load-disconnect', warn: 1 }] },
-          { l: 'Turbine Load', slider: { id: 'rbmkMwe', min: 0, max: 1000, value: 1000, act: 'rbmk-turbine-set' } },
+          { l: 'Feedwater', num: { id: 'rbmkFeed', min: 0, max: 100, value: 100, act: 'rbmk-feed-set', setL: 'Set %' } },
         ] },
         { key: 'protection', label: 'Protection', groups: [
           { l: 'Emergency Protection (EPS)', emergency: 1, hint: 'EPS Bypass — disables the automatic trips (as during the test before the accident). AZ-5 still works.', seg: [{ l: 'Active', act: 'eps-off', on: 1, run: 1 }, { l: 'Bypassed', act: 'eps-on', warn: 1 }] },
@@ -308,9 +238,8 @@
           { l: 'Standby Liquid Control (SLC)', emergency: 1, hint: 'Standby Liquid Control — injects boron to shut the reactor down even if the rods will NOT insert (the ATWS mitigation).', seg: [{ l: 'Initiate', act: 'slc-initiate', warn: 1 }] },
         ] },
         { key: 'turbine', label: 'Turbine & Feed', groups: [
-          { l: 'Load Mode', seg: [{ l: 'Follow', act: 'bwr-load-follow', on: 1, run: 1 }, { l: 'Manual', act: 'bwr-load-manual' }, { l: 'Off', act: 'bwr-load-disconnect', warn: 1 }] },
-          { l: 'Turbine Load', slider: { id: 'bwrMwe', min: 0, max: 1100, value: 1000, act: 'bwr-turbine-set' } },
-          { l: 'Feedwater (advanced)', num: { id: 'bwrFeed', min: 0, max: 100, value: 100, act: 'bwr-feed-set', setL: 'Set %' } },
+          { l: 'Turbine Load Target', num: { id: 'bwrMwe', min: 0, max: 1100, value: 1000, act: 'bwr-turbine-set', setL: 'Set MW' } },
+          { l: 'Feedwater', num: { id: 'bwrFeed', min: 0, max: 100, value: 100, act: 'bwr-feed-set', setL: 'Set %' } },
         ] },
       ],
     },
@@ -377,11 +306,6 @@
       });
       inner += '</div>';
       (g.extra || []).forEach(function (b) { inner += '<button class="btn" data-act="' + b.act + '"' + (b.title ? ' title="' + esc(b.title) + '"' : '') + '>' + b.l + '</button>'; });
-    }
-    if (g.slider) {
-      var sl = g.slider, curS = (ui.ctlVals[sl.id] != null ? ui.ctlVals[sl.id] : sl.value);
-      inner += '<input class="load-slider mono" id="' + sl.id + '" type="range" min="' + sl.min + '" max="' + sl.max + '" value="' + curS + '" step="10" data-act="' + sl.act + '">' +
-        '<span class="load-slider-val mono" data-for="' + sl.id + '">' + curS + '</span>';
     }
     if (g.num) {   // a control may have a slider AND buttons (e.g. a manual % + Auto)
       var n = g.num, cur = (ui.ctlVals[n.id] != null ? ui.ctlVals[n.id] : n.value);
@@ -455,11 +379,16 @@
     renderAlarms(s); renderInstructor(s); renderReactimeter(s); renderFailures(s);
     // alarm tint on the CSF gauge strip while anything is unacknowledged
     $('gaugeStrip').classList.toggle('alarm-tint', s.alarms.some(function (a) { return a.state === 'active_unacknowledged'; }));
-    // auto-switch to Diagram the moment a scram fires, then render the plant display
-    if (s.true_state.scrammed && !lastScrammed && ui.view !== 'diagram') setView('diagram');
+    // auto-switch to Diagram the moment a scram fires (legacy views only)
+    if (ui.plant !== 'pwr' && s.true_state.scrammed && !lastScrammed && ui.view !== 'diagram') setView('diagram');
     renderPlantDisplay(s);
     lastScrammed = !!s.true_state.scrammed;
 
+    // Time moved backwards (a rewind, or a walkthrough/scenario reset): drop the
+    // branch of history that no longer exists and snap the gauge smoothing —
+    // easing a display value across a time jump shows numbers that were never real.
+    if (chartBuf.length && chartBuf[chartBuf.length - 1].t > s.metadata.sim_time + 1e-9) smoothed = {};
+    while (chartBuf.length && chartBuf[chartBuf.length - 1].t > s.metadata.sim_time + 1e-9) chartBuf.pop();
     chartBuf.push({ t: s.metadata.sim_time, ins: Object.assign({}, s.instruments) });
     var cutoff = s.metadata.sim_time - ui.window;
     while (chartBuf.length > 2 && chartBuf[0].t < cutoff) chartBuf.shift();
@@ -540,9 +469,38 @@
     }).join('');
   }
 
+  // The Instructor can change time acceleration (beat `speed` — fast-forward in,
+  // drop out at a set point); keep the speed seg + FF badge honest.
+  var lastSpeedSync = null;
+  function syncSpeedUI(s) {
+    var v = s && s.metadata ? s.metadata.time_acceleration : null;
+    if (v == null || v === lastSpeedSync) return;
+    lastSpeedSync = v;
+    var seg = $('speed');
+    if (seg) seg.querySelectorAll('[data-speed]').forEach(function (b) { b.classList.toggle('on', +b.getAttribute('data-speed') === v); });
+    var fb = $('ffBadge');
+    if (fb) { var fast = v >= 600; fb.style.display = fast ? 'block' : 'none'; if (fast) fb.textContent = '⚡ ' + v + '×'; }
+  }
+
   var lastInstrMsg = null;
   function renderInstructor(s) {
-    if (ui.follow) { renderFollow(s); return; }   // following a manual procedure
+    // Rewind is live whenever a checkpoint exists (beats / follow steps / sandbox).
+    var noCp = !(service && service.checkpoints && service.checkpoints.length);
+    var rw = document.querySelector('[data-fnav="rewind"]');
+    if (rw) rw.disabled = noCp;
+    var crw = $('chartRewindBtn');
+    if (crw) crw.disabled = noCp;
+    syncSpeedUI(s);
+    renderHighlight(s);
+    // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
+    // is just a synced mirror. This survives start_follow's internal plant reset,
+    // save/load restores, and anything else that broadcasts mid-transition.
+    var fb = s.instructor && s.instructor.follow;
+    if (fb) { ui.follow = { id: fb.procedure_id }; renderFollow(s); return; }
+    if (ui.follow) ui.follow = null;              // the snapshot says the follow ended
+    var lc = s.instructor && s.instructor.level_complete;
+    if (lc) { renderLevelComplete(s, lc); return; }
+    lastLcKey = null;
     var cur = $('instrCurrent');
     var msg = (s.instructor && s.instructor.message) ? s.instructor.message : null;
     if (msg) { cur.textContent = msg; cur.classList.remove('instr-standby'); }
@@ -551,39 +509,250 @@
     lastInstrMsg = msg;
   }
 
-  // ---- "Follow in Instructor": step through a manual procedure while operating ----
+  // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
+  // follow step points at, auto-revealing the tab or view that hides it (F8 fix).
+  var lastHighlightKey = null;
+  function renderHighlight(s) {
+    var hl = s && s.instructor && s.instructor.highlight;
+    var key = hl ? JSON.stringify(hl) : null;
+    if (key === lastHighlightKey) return;
+    lastHighlightKey = key;
+    document.querySelectorAll('.instr-glow').forEach(function (el) { el.classList.remove('instr-glow'); });
+    if (!hl) return;
+    var el = null;
+    if (hl.control_label) {
+      el = ui.plant === 'pwr'
+        ? (RD.PwrSynoptic && RD.PwrSynoptic.isMounted() ? RD.PwrSynoptic.revealControl(hl.control_label) : null)
+        : findPdControl(hl.control_label, hl.view);
+    }
+    if (!el && hl.instrument_id) el = $('gauge-' + hl.instrument_id);
+    if (el) el.classList.add('instr-glow');
+  }
+  // Locate a control group on the RBMK/BWR plant display by its .cg-l label,
+  // switching to the owning view tab when it is not on the active one.
+  function findPdControl(label, viewHint) {
+    if (label === 'SCRAM' || label === 'AZ-5') return $('pdScram');
+    function onBar() {
+      var els = document.querySelectorAll('#pdCtlRow .cg-l');
+      for (var i = 0; i < els.length; i++) if (els[i].textContent.trim() === label) return els[i].closest('.cg');
+      return null;
+    }
+    var el = onBar();
+    if (el) return el;
+    var views = viewHint ? [viewHint] : ['primary', 'secondary'];
+    for (var v = 0; v < views.length; v++) {
+      var groups = viewControls(views[v]);
+      for (var g = 0; g < groups.length; g++) {
+        if (groups[g].l === label) { setView(views[v]); return onBar(); }
+      }
+    }
+    return null;
+  }
+
+  // ---- Level Complete (Gameplay §7.3) — a scenario/walkthrough finished; offer
+  // Continue (dismiss) / Retry / Rewind per the beat's authored action set.
+  var lastLcKey = null;
+  function renderLevelComplete(s, lc) {
+    var key = lc.title + '|' + lc.outcome + '|' + (lc.actions || []).join(',');
+    if (key === lastLcKey) return;      // keep the buttons stable across renders
+    lastLcKey = key;
+    recordCompletion();                 // progression (hook flag, completed lists)
+    var btns = (lc.actions || []).map(function (a) {
+      var lbl = a === 'continue' ? 'Continue' : a === 'retry' ? '↺ Retry' : '⏪ Rewind';
+      return '<button class="btn" data-lc="' + a + '">' + lbl + '</button>';
+    }).join(' ');
+    var cur = $('instrCurrent'); cur.classList.remove('instr-standby');
+    cur.innerHTML = '<div class="lc-panel"><div class="lc-title">🏁 ' + mesc(lc.title) + '</div>' +
+      (lc.outcome ? '<div class="m-note">' + mesc(lc.outcome) + '</div>' : '') +
+      '<div class="lc-actions">' + btns + '</div></div>';
+    setFocus('instructor');
+  }
+  function levelCompleteAction(a) {
+    if (a === 'rewind') { lastLcKey = null; cmd({ action: 'rewind', steps: 1 }); return; }
+    if (a === 'retry') {
+      lastLcKey = null;
+      if (ui.follow) { followRetry(); return; }
+      if (ui.scenario) { startScenario(ui.scenario); return; }
+      return;
+    }
+    // continue — dismiss back to free play
+    lastLcKey = null;
+    if (ui.follow) { ui.follow = null; cmd({ action: 'stop_follow' }); }
+    else { ui.scenario = null; cmd({ action: 'stop_scenario' }); }
+    if (latest) renderInstructor(latest);
+  }
+  // Retry a walkthrough — start_follow itself resets to the procedure's `from` state.
+  function followRetry() {
+    var pr = curFollowProc(); if (!pr) return;
+    chartBuf = []; smoothed = {};
+    cmd({ action: 'start_follow', procedure_id: pr.id });
+    setFocus('instructor');
+  }
+
+  // ---- Progression persistence (Gameplay §7.5) — one localStorage key,
+  // guarded for file:// and storage-disabled environments.
+  function progress() {
+    try { return JSON.parse(localStorage.getItem('rd_progress')) || {}; } catch (e) { return {}; }
+  }
+  function saveProgress(patch) {
+    try {
+      var p = progress();
+      Object.keys(patch).forEach(function (k) { p[k] = patch[k]; });
+      localStorage.setItem('rd_progress', JSON.stringify(p));
+    } catch (e) { /* progression simply doesn't persist */ }
+  }
+  function recordCompletion() {
+    var p = progress();
+    if (ui.scenario) {
+      var cs = p.completed_scenarios || [];
+      if (cs.indexOf(ui.scenario) === -1) cs.push(ui.scenario);
+      var patch = { completed_scenarios: cs };
+      if (ui.scenario === 'pwr_hook') patch.hook_done = true;
+      saveProgress(patch);
+    } else if (ui.follow) {
+      var cp = p.completed_procedures || [];
+      if (cp.indexOf(ui.follow.id) === -1) { cp.push(ui.follow.id); saveProgress({ completed_procedures: cp }); }
+    }
+    buildTraining();
+  }
+
+  // ---- Training tab: scenario picker + walkthrough list (Gameplay §3.1) ----
+  function buildTraining() {
+    var sc = $('trainingScenarios'), pr = $('trainingProcedures');
+    if (!sc) return;
+    var p = progress();
+    var doneS = p.completed_scenarios || [];
+    var ids = Object.keys(RD.SCENARIOS || {});
+    sc.innerHTML = ids.length ? ids.map(function (id) {
+      var s = RD.SCENARIOS[id];
+      var badge = (s.plant_id || '').toUpperCase() + (s.design_version === 'pre_chernobyl' ? ' pre-86' : s.design_version === 'post_chernobyl' ? ' post-86' : '');
+      var active = ui.scenario === id;
+      return '<div class="tr-card' + (active ? ' active' : '') + '">' +
+        '<div class="tr-head"><span class="tr-title">' + (doneS.indexOf(id) !== -1 ? '✓ ' : '') + mesc(s.title) + '</span><span class="tr-badge">' + badge + '</span></div>' +
+        (s.description ? '<div class="m-note">' + mesc(s.description) + '</div>' : '') +
+        '<div class="tr-actions">' + (active
+          ? '<button class="btn" data-trstop="1">■ Stop scenario</button>'
+          : '<button class="btn" data-trstart="' + id + '">▶ Start</button>') + '</div></div>';
+    }).join('') : '<div class="m-note">No scenarios loaded.</div>';
+    if (pr) {
+      var procs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return !x.narrative; });
+      var doneP = p.completed_procedures || [];
+      pr.innerHTML = procs.map(function (x) {
+        return '<div class="tr-row"><span class="tr-ptitle">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(x.title) + '</span>' +
+          '<button class="btn" data-follow="' + x.id + '">▶ Follow</button></div>';
+      }).join('') || '<div class="m-note">No procedures for this plant.</div>';
+    }
+  }
+
+  // ---- Scenario lifecycle (Training tab / level-complete Retry / ?scenario=) ----
+  function startScenario(id) {
+    var sc = RD.SCENARIOS && RD.SCENARIOS[id];
+    if (!sc) return;
+    ui.follow = null;
+    ui.scenario = id;
+    service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
+    service.handleCommand({ action: 'start_scenario', scenario_id: id });
+    afterPlantChange();          // the scenario may have switched the plant
+    setFocus('instructor');
+    service.handleCommand({ action: 'play' });
+    $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused');
+  }
+
+  // ---- "Follow in Instructor" (Path 2): the Instructor (M6) runs the procedure —
+  // auto-advance, instrument-first grading, strict gating. The UI just renders
+  // the snapshot's instructor.follow block; step text comes from the same
+  // RD.MANUAL_PROCEDURES artifact the Instructor loaded.
   function curFollowProc() { return ui.follow ? ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ui.follow.id; })[0] : null; }
-  function accMet(ts, c) { var v = ts[c.p]; switch (c.op) { case '>': return v > c.v; case '<': return v < c.v; case '>=': return v >= c.v; case '<=': return v <= c.v; case '~': return Math.abs(v - c.v) <= (c.tol || 0); } return false; }
   function followProcedure(id) {
     var procs = (RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [];
     if (!procs.filter(function (x) { return x.id === id; })[0]) return;
-    ui.follow = { id: id, idx: 0 };
-    closeManual(); setFocus('instructor'); renderFollow(latest);
+    // start_follow resets the plant to the procedure's `from` state and loads it;
+    // ui.follow syncs from the resulting snapshot in renderInstructor. Fresh
+    // timeline → fresh trend history and gauge smoothing.
+    chartBuf = []; smoothed = {};
+    cmd({ action: 'start_follow', procedure_id: id });
+    closeManual(); setFocus('instructor');
+    if (latest) renderInstructor(latest);
   }
+  // Rewind entry point (Instructor card ⏪ + strip-chart ⏪): during instructed
+  // content it steps back one authored checkpoint; in free play it opens the
+  // pick-a-moment mode on the strip chart (sandbox checkpoints every 15 sim-s).
+  function rewindPressed() {
+    if (ui.follow || ui.scenario) { cmd({ action: 'rewind', steps: 1 }); return; }
+    toggleRewindPick();
+  }
+  function toggleRewindPick(on) {
+    ui.rewindPick = on != null ? !!on : !ui.rewindPick;
+    var chart = document.querySelector('.strip-chart');
+    if (chart) chart.classList.toggle('rewind-pick', ui.rewindPick);
+    var hint = $('rewindHint'); if (hint) hint.hidden = !ui.rewindPick;
+    if (ui.rewindPick) {
+      // Freeze the target: picking a moment on a moving graph is a carnival game.
+      service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
+      latest = service.assembleSnapshot(); render(latest);
+    } else if (latest) drawChart();
+  }
+  function rewindPickClick(e) {
+    if (!ui.rewindPick) return;
+    var cps = (service && service.checkpoints) || [];
+    if (!cps.length || chartBuf.length < 2) { toggleRewindPick(false); return; }
+    var rect = document.querySelector('.chart-plot').getBoundingClientRect();
+    var frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    var t0 = chartBuf[0].t, t1 = chartBuf[chartBuf.length - 1].t;
+    var tPick = t0 + frac * (t1 - t0);
+    var best = 0, bd = Infinity;
+    for (var i = 0; i < cps.length; i++) {
+      var d = Math.abs(cps[i].metadata.sim_time - tPick);
+      if (d < bd) { bd = d; best = i; }
+    }
+    toggleRewindPick(false);
+    cmd({ action: 'rewind', steps: cps.length - best });
+  }
+
   function followNav(d) {
-    var pr = curFollowProc(); if (!pr) { ui.follow = null; return; }
-    if (d === 'stop') { ui.follow = null; renderInstructor(latest || { instructor: {} }); return; }
-    var n = pr.steps.length;
-    if (d === 'next') ui.follow.idx = Math.min(n - 1, ui.follow.idx + 1);
-    else if (d === 'prev') ui.follow.idx = Math.max(0, ui.follow.idx - 1);
-    else if (d === 'restart') ui.follow.idx = 0;
-    renderFollow(latest);
+    // Rewind works in any context (walkthrough, scenario, or free play).
+    if (d === 'rewind') { rewindPressed(); return; }
+    if (!ui.follow) {
+      // Next outside a walkthrough = "Continue" for a scenario's manual beats.
+      if (d === 'next') cmd({ action: 'instructor_continue' });
+      return;
+    }
+    if (d === 'stop') { ui.follow = null; cmd({ action: 'stop_follow' }); renderInstructor(latest || { instructor: {} }); return; }
+    cmd({ action: 'follow_nav', dir: d });
+    if (latest) renderFollow(latest);
   }
   function renderFollow(s) {
-    var pr = curFollowProc(); if (!pr) { ui.follow = null; return; }
-    var n = pr.steps.length, st = pr.steps[ui.follow.idx] || {};
-    $('instrPrev').innerHTML = 'Following: <b>' + mesc(pr.title) + '</b> — step ' + (ui.follow.idx + 1) + ' of ' + n;
+    var f = s && s.instructor && s.instructor.follow;
+    if (!f) return;                       // renderInstructor only routes here when present
+    var pr = curFollowProc();
+    if (!pr) {                            // profile mismatch (e.g. mid plant-restore) — no recursion
+      $('instrPrev').innerHTML = 'Following: <b>' + mesc(f.procedure_id) + '</b> — step ' + (f.step_index + 1) + ' of ' + f.step_total;
+      return;
+    }
+    var n = f.step_total, st = pr.steps[f.step_index] || {};
+    $('instrPrev').innerHTML = 'Following: <b>' + mesc(pr.title) + '</b> — step ' + (f.step_index + 1) + ' of ' + n;
+    if (f.done) {
+      var lc = s.instructor.level_complete || { title: pr.title, outcome: pr.outcome || '', actions: ['continue', 'retry'] };
+      renderLevelComplete(s, lc);
+      return;
+    }
+    lastLcKey = null;
     var meta = [];
     if (st.control) meta.push('Control: <b>' + mesc(st.control) + '</b>');
     if (st.target) meta.push('Target: ' + mesc(st.target));
     var acc = '';
     if (st.acc) {
-      var met = (s && s.true_state) ? accMet(s.true_state, st.acc) : false;
+      var met = !!f.acc_met;   // graded by the Instructor — instruments first (HR1)
+      var via = f.graded_by === 'instrument' ? 'reading the instrument' : f.graded_by === 'true_state' ? 'no instrument twin — true value' : null;
       acc = '<div class="m-note">✓ when ' + mesc(st.acc.p) + ' ' + (OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) +
-        (met ? ' <span style="color:var(--running)">✓ met</span>' : ' <span class="muted">…not yet</span>') + '</div>';
+        (met ? ' <span style="color:var(--running)">✓ met</span>' : ' <span class="muted">…not yet</span>') +
+        (via ? ' <span class="muted">· ' + via + '</span>' : '') + '</div>';
     }
+    // Wrong-action commentary (strict gating): the Instructor's message during a
+    // follow is the gate feedback — shown under the step until the user complies.
+    var warn = s.instructor.message ? '<div class="m-note" style="color:var(--caution)">🎓 ' + mesc(s.instructor.message) + '</div>' : '';
     var cur = $('instrCurrent'); cur.classList.remove('instr-standby');
-    cur.innerHTML = mesc(st.text) + (meta.length ? '<div class="m-note" style="margin-top:4px">' + meta.join(' &nbsp;·&nbsp; ') + '</div>' : '') + acc +
+    cur.innerHTML = mesc(st.text) + (meta.length ? '<div class="m-note" style="margin-top:4px">' + meta.join(' &nbsp;·&nbsp; ') + '</div>' : '') + acc + warn +
       (st.note ? '<div class="m-note" style="color:var(--muted)">' + mesc(st.note) + '</div>' : '');
   }
   function setFocus(which) {
@@ -645,6 +814,16 @@
       html += '<polyline points="' + pts + '" fill="none" stroke="' + (hot ? lighten(ser.c) : ser.c) + '" stroke-width="' + (hot ? 2.4 : 1.5) + '" vector-effect="non-scaling-stroke"/>';
       lastY.push({ ser: ser, y: ly, hot: hot, val: ser.get(chartBuf[chartBuf.length - 1].ins) });
     });
+    // Rewind-pick mode: mark every checkpoint inside the window as a jump target.
+    if (ui.rewindPick && service && service.checkpoints) {
+      service.checkpoints.forEach(function (cp) {
+        var t = cp.metadata.sim_time;
+        if (t < t0 || t > t1) return;
+        var x = ((t - t0) / span * W).toFixed(1);
+        html += '<line class="cp-mark" x1="' + x + '" y1="0" x2="' + x + '" y2="' + H + '" stroke="#7ab0ff" stroke-width="1" stroke-dasharray="3,3" vector-effect="non-scaling-stroke"/>' +
+                '<circle cx="' + x + '" cy="6" r="2.5" fill="#7ab0ff"/>';
+      });
+    }
     svg.innerHTML = html;
     drawFloats(lastY, H);
     // low-profile x-axis
@@ -676,7 +855,19 @@
   }
 
   // ============================================================ commands
-  function cmd(c) { service.handleCommand(c); if (!service.running) { latest = service.assembleSnapshot(); render(latest); } }
+  function cmd(c) {
+    var r = service.handleCommand(c);
+    // The command was blocked, not executed — show why. Instructor gates focus
+    // the Instructor card (its commentary carries the message); plant interlocks
+    // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar.
+    if (r && r.type === 'blocked') {
+      if (r.code === 'INTERLOCK' && r.message) $('scanner').innerHTML = '<strong>⛔ ' + mesc(r.message) + '</strong>';
+      else setFocus('instructor');
+      latest = service.assembleSnapshot(); render(latest);
+    }
+    if (!service.running) { latest = service.assembleSnapshot(); render(latest); }
+    return r;
+  }
   // The classic control strip and the plant-display controls reuse the same input
   // ids (feedSet, mweSet, …) — read the VISIBLE one (the inactive layout's copy is
   // display:none, so its offsetParent is null).
@@ -720,13 +911,14 @@
     'afw-start': function () { ui.pdOp.afw = true; cmd({ action: 'set_afw', active: true }); }, 'afw-stop': function () { cmd({ action: 'set_afw', active: false }); },
     'msiv-open': function () { if (ui.plant === 'bwr') cmd({ action: 'clear_failure', failure_id: 'msiv_closure' }); },
     'msiv-close': function () { if (ui.plant === 'bwr') cmd({ action: 'inject_failure', failure_id: 'msiv_closure' }); },
+    'spray-off': function () { cmd({ action: 'set_spray', open: false }); },
+    // load mode (engines/load_mode.js) — Follow tracks reactor power; Manual uses the slider; Off drops the grid
     'load-follow': function () { cmd({ action: 'set_load_mode', mode: 'follow' }); },
     'load-manual': function () { cmd({ action: 'set_load_mode', mode: 'manual' }); },
     'load-disconnect': function () { cmd({ action: 'disconnect_grid' }); },
-    'breaker-close': function () { cmd({ action: 'connect_grid' }); },
-    'breaker-open': function () { if (confirm('Open the main breaker (disconnect from grid)?')) cmd({ action: 'disconnect_grid' }); },
-    'mwe-set': function () { cmd({ action: 'set_load_target', mwe: inputVal('mweSet') }); },
-    'load-slider': function () { cmd({ action: 'set_load_target', mwe: inputVal('mweSlider') }); },
+    'breaker-close': function () { cmd({ action: 'set_steam_demand', mwe: 1000 }); },
+    'breaker-open': function () { if (confirm('Open the main breaker (disconnect from grid)?')) cmd({ action: 'set_steam_demand', mwe: 0 }); },
+    'mwe-set': function () { cmd({ action: 'set_steam_demand', mwe: inputVal('mweSet') }); },
     'porv-block-open': function () { cmd({ action: 'open_block_valve' }); },
     'porv-block-close': function () { if (confirm('Isolate the PORV (close the block valve)? Stops all PORV flow.')) cmd({ action: 'close_block_valve' }); },
     'dump-auto': function () { cmd({ action: 'set_steam_dump', mode: 'auto' }); },
@@ -734,13 +926,14 @@
     'dump-close': function () { cmd({ action: 'set_steam_dump', mode: 'closed' }); },
     'porv-open': function () { cmd({ action: 'open_porv' }); }, 'porv-close': function () { cmd({ action: 'close_porv' }); },
     'dhr-on': function () { cmd({ action: 'set_dhr', active: true }); }, 'dhr-off': function () { cmd({ action: 'set_dhr', active: false }); },
+    // synoptic emergency card: RHR / LPI (AUTO = leave to the automatic actuation)
+    'rhr-auto': function () {}, 'rhr-on': function () { cmd({ action: 'set_rhr', active: true }); }, 'rhr-off': function () { cmd({ action: 'set_rhr', active: false }); },
+    'lpi-auto': function () {}, 'lpi-on': function () { cmd({ action: 'set_lpi', active: true }); }, 'lpi-off': function () { cmd({ action: 'set_lpi', active: false }); },
+    'dump-set': function () { cmd({ action: 'set_steam_dump', pct: inputVal('dumpSet') }); },
     // RBMK
     'rbmk-flow-set': function () { cmd({ action: 'set_channel_flow', pct: inputVal('rbmkFlow') }); },
     'rbmk-feed-set': function () { cmd({ action: 'set_feedwater_flow', pct: inputVal('rbmkFeed') }); },
-    'rbmk-load-follow': function () { cmd({ action: 'set_load_mode', mode: 'follow' }); },
-    'rbmk-load-manual': function () { cmd({ action: 'set_load_mode', mode: 'manual' }); },
-    'rbmk-load-disconnect': function () { cmd({ action: 'disconnect_grid' }); },
-    'rbmk-turbine-set': function () { cmd({ action: 'set_load_target', mwe: inputVal('rbmkMwe') }); },
+    'rbmk-turbine-set': function () { cmd({ action: 'set_turbine_load', mwe: inputVal('rbmkMwe') }); },
     'eps-on': function () { cmd({ action: 'set_eps_bypass', active: true }); }, 'eps-off': function () { cmd({ action: 'set_eps_bypass', active: false }); },
     'rbmk-eccs-on': function () { cmd({ action: 'set_eccs', active: true }); }, 'rbmk-eccs-off': function () { cmd({ action: 'set_eccs', active: false }); },
     // BWR
@@ -755,10 +948,7 @@
     'slc-stop': function () { cmd({ action: 'stop_slc' }); },
     'srv-open': function () { cmd({ action: 'open_srv_manual' }); },
     'srv-close': function () { cmd({ action: 'close_srv_manual' }); },
-    'bwr-load-follow': function () { cmd({ action: 'set_load_mode', mode: 'follow' }); },
-    'bwr-load-manual': function () { cmd({ action: 'set_load_mode', mode: 'manual' }); },
-    'bwr-load-disconnect': function () { cmd({ action: 'disconnect_grid' }); },
-    'bwr-turbine-set': function () { cmd({ action: 'set_load_target', mwe: inputVal('bwrMwe') }); },
+    'bwr-turbine-set': function () { cmd({ action: 'set_turbine_load', mwe: inputVal('bwrMwe') }); },
     'bwr-feed-set': function () { cmd({ action: 'set_feedwater_flow', pct: inputVal('bwrFeed') }); },
     // lifecycle
     'save': function () { downloadSave(); }, 'load': function () { $('loadFile').click(); }, 'reset': function () { doReset(); }, 'export-csv': function () { exportCsv(); },
@@ -794,14 +984,6 @@
     document.body.addEventListener('input', function (e) {
       var inp = e.target.closest('#pdCtlRow input.num-input'); if (!inp || !inp.id) return;
       ui.ctlVals[inp.id] = inp.value;
-    });
-    document.body.addEventListener('input', function (e) {
-      var sl = e.target.closest('#pdCtlRow input.load-slider'); if (!sl || !sl.id) return;
-      ui.ctlVals[sl.id] = sl.value;
-      var lab = document.querySelector('[data-for="' + sl.id + '"]');
-      if (lab) lab.textContent = sl.value;
-      var act = ACTS[sl.getAttribute('data-act')];
-      if (act) act();
     });
     document.addEventListener('pointerup', endHold);
     document.addEventListener('pointercancel', endHold);
@@ -845,9 +1027,25 @@
       var v = +b.getAttribute('data-speed'); cmd({ action: 'set_speed', value: v });
       var fast = v >= 600; $('ffBadge').style.display = fast ? 'block' : 'none'; if (fast) $('ffBadge').textContent = '⚡ ' + v + '×';
     });
-    // Settings → Values Display (Instruments / True / Both) drives the All view.
+    // Settings → Values Display (Instruments / True / Both) drives the legacy All view.
     var oseg = $('overlaySeg2');
-    if (oseg) oseg.addEventListener('click', function (e) { var b = e.target.closest('[data-overlay]'); if (!b) return; ui.overlay = b.getAttribute('data-overlay'); syncSeg('[data-overlay]', ui.overlay, 'overlay'); if (latest) renderPdAll(latest); });
+    if (oseg) oseg.addEventListener('click', function (e) { var b = e.target.closest('[data-overlay]'); if (!b) return; ui.overlay = b.getAttribute('data-overlay'); syncSeg('[data-overlay]', ui.overlay, 'overlay'); if (latest && ui.plant !== 'pwr') renderPdAll(latest); });
+    // Settings → Diagram Mode (Education = Learning | Realistic) + Physics Overlay (Learning only) — PWR synoptic
+    var mseg = $('modeSeg');
+    if (mseg) mseg.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-mode]'); if (!b) return;
+      ui.diagMode = b.getAttribute('data-mode');
+      if (ui.diagMode === 'realistic') ui.physOverlay = false;
+      syncOverlayRow();
+      if (latest) render(latest);
+    });
+    var pseg = $('physSeg');
+    if (pseg) pseg.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-phys]'); if (!b) return;
+      ui.physOverlay = b.getAttribute('data-phys') === 'on';
+      if (latest) render(latest);
+    });
+    syncOverlayRow();
     $('registerSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-register]'); if (!b) return; ui.register = b.getAttribute('data-register'); cmd({ action: 'set_register', value: ui.register }); });
     $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
     $('graphParams').addEventListener('change', function (e) { var cb = e.target.closest('input[data-series]'); if (!cb) return; ui.series[cb.getAttribute('data-series')] = cb.checked; drawChart(); });
@@ -873,7 +1071,30 @@
     $('manualNav').addEventListener('click', function (e) { var b = e.target.closest('[data-msec]'); if (!b) return; ui.manualSection = b.getAttribute('data-msec'); renderManual(); });
     $('manualContent').addEventListener('click', function (e) { var b = e.target.closest('[data-follow]'); if (!b) return; followProcedure(b.getAttribute('data-follow')); });
     document.querySelector('.instr-nav').addEventListener('click', function (e) { var b = e.target.closest('[data-fnav]'); if (!b) return; followNav(b.getAttribute('data-fnav')); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('manualOverlay').hidden) closeManual(); });
+    // Level Complete actions (Continue / Retry / Rewind) render inside the card.
+    $('instructorCard').addEventListener('click', function (e) { var b = e.target.closest('[data-lc]'); if (!b) return; levelCompleteAction(b.getAttribute('data-lc')); });
+    // Training tab: scenario Start/Stop + procedure Follow buttons.
+    document.querySelector('[data-pane="training"]').addEventListener('click', function (e) {
+      var st = e.target.closest('[data-trstart]');
+      if (st) { startScenario(st.getAttribute('data-trstart')); buildTraining(); return; }
+      if (e.target.closest('[data-trstop]')) {
+        ui.scenario = null; cmd({ action: 'stop_scenario' }); buildTraining();
+        if (latest) renderInstructor(latest); return;
+      }
+      var f = e.target.closest('[data-follow]');
+      if (f) { followProcedure(f.getAttribute('data-follow')); }
+    });
+    // First-run Hook invitation (prompted, never forced — Gameplay §7.1).
+    $('hookStart').addEventListener('click', function () { $('hookPrompt').hidden = true; startScenario('pwr_hook'); buildTraining(); });
+    $('hookSkip').addEventListener('click', function () { $('hookPrompt').hidden = true; saveProgress({ hook_done: true }); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (!$('manualOverlay').hidden) closeManual();
+      if (ui.rewindPick) toggleRewindPick(false);
+    });
+    // Strip-chart rewind: the ⏪ by the scrubber + click-to-pick on the plot.
+    $('chartRewindBtn').addEventListener('click', function () { rewindPressed(); });
+    document.querySelector('.chart-plot').addEventListener('click', rewindPickClick);
     document.body.addEventListener('mouseover', function (e) {
       var el = e.target.closest('[data-scanner-hint]'); if (!el) return;
       var hint = el.getAttribute('data-scanner-hint'), dash = hint.indexOf(' — ');
@@ -881,6 +1102,12 @@
     });
   }
   function syncSeg(sel, val, attr) { document.querySelectorAll(sel).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-' + attr) === val); }); }
+  // Physics Overlay control exists only in Learning (Education) mode — Realistic hides it entirely.
+  function syncOverlayRow() {
+    var row = $('overlayRow'); if (row) row.style.display = ui.diagMode === 'realistic' ? 'none' : '';
+    syncSeg('[data-mode]', ui.diagMode, 'mode');
+    syncSeg('[data-phys]', ui.physOverlay ? 'on' : 'off', 'phys');
+  }
   function applyUnitsMode(units) {
     ui.units = units;
     syncSeg('[data-units]', units, 'units');
@@ -1133,6 +1360,7 @@
   function switchEngine(key) {
     var e = ENGINES[key]; if (!e) return;
     ui.engineKey = key; ui.plant = e.plant; ui.initState = e.init;
+    ui.scenario = null; ui.follow = null;   // a manual plant switch ends instructed content
     ui.series = Object.assign({}, prof().defaultSeries);
     service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
     service.handleCommand({ action: 'reset', plant_id: e.plant, initial_state: e.init, design_version: e.dv });
@@ -1144,6 +1372,7 @@
     buildGauges(); buildGraphParams(); buildInitStates(); buildFailures();
     buildPlantDisplay();
     var ps = $('pdScram'); if (ps && !ps.classList.contains('fired') && !ps.classList.contains('armed')) ps.textContent = prof().scramShort;
+    buildTraining();   // walkthrough list follows the active plant
     latest = service.assembleSnapshot(); render(latest);
     if (!$('manualOverlay').hidden) renderManual();   // keep the manual in sync on plant switch
   }
@@ -1161,6 +1390,7 @@
 
   function doReset() {
     if (!confirm('Reset to ' + ui.initState + '? Current run is lost.')) return;
+    ui.scenario = null; ui.follow = null;   // a plant reset ends instructed content
     service.stop();
     service.handleCommand({ action: 'reset', plant_id: ui.plant, initial_state: ui.initState, design_version: ENGINES[ui.engineKey].dv });
     $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
@@ -1234,419 +1464,11 @@
   function CG_ECCS() { return { l: 'ECCS', emergency: 1, hint: 'Emergency Core Cooling — high-pressure injection. AUTO actuates on low pressure.', seg: [{ l: 'Auto', act: 'eccs-auto', on: 1, run: 1 }, { l: 'On', act: 'eccs-on' }, { l: 'Off', act: 'eccs-off' }] }; }
   function CG_MSIV() { return { l: 'MSIV', hint: 'Main Steam Isolation Valve' + (ui.plant === 'bwr' ? ' — isolates main steam (closes the turbine path).' : ' — (steam-line isolation; modeled on the BWR; placeholder here).'), seg: [{ l: 'Open', act: 'msiv-open', on: 1 }, { l: 'Close', act: 'msiv-close', warn: 1 }] }; }
 
-  // PWR primary-loop schematic (from pwr_primary_loop_diagram_v2.html) — its own
-  // slider sim is dropped; sensor tspans + visuals are driven from the snapshot
-  // by renderDiagram(). Wrapped in .pd-diagram so its CSS vars stay scoped.
-  var PWR_DIAGRAM_SVG =
-    '<div class="pd-diagram"><svg class="loop" id="loop" viewBox="40 108 821 360" preserveAspectRatio="xMidYMid meet">' +
-      '<path class="pipe-case" d="M250,300 H670"/>' +
-      '<path class="pipe-case thin" d="M430,300 V257"/>' +
-      '<path class="pipe-case" d="M670,405 H250"/>' +
-      '<path class="pipe-case" d="M250,300 H205"/>' +
-      '<path class="pipe-case" d="M250,405 H205"/>' +
-      '<path class="pipe-case" d="M180,405 V315" stroke-width="7"/>' +
-      '<path class="flow" d="M180,405 V315" stroke="url(#gradCore)"/>' +
-      '<path class="flow" d="M205,300 H670" stroke="var(--warm)"/>' +
-      '<path class="flow" d="M430,300 V259" stroke="var(--warm)" style="animation-duration:3.4s;opacity:.5;"/>' +
-      '<path class="flow" d="M670,405 H205" stroke="var(--cool)"/>' +
-      '<defs>' +
-        '<linearGradient id="gradCore" x1="0" y1="405" x2="0" y2="315" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6a9dc0"/><stop offset="1" stop-color="#c98a5a"/></linearGradient>' +
-        '<linearGradient id="gradTube" x1="0" y1="300" x2="0" y2="405" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#c98a5a" class="tubeWarmStop"/><stop offset="0.55" stop-color="#7a7a78"/><stop offset="1" stop-color="#6a9dc0"/></linearGradient>' +
-        '<clipPath id="pzrClip"><rect x="402" y="161" width="56" height="94" rx="8"/></clipPath>' +
-        '<clipPath id="sgClip"><rect x="672" y="172" width="116" height="261" rx="14"/></clipPath>' +
-      '</defs>' +
-      '<rect class="vessel" x="128" y="250" width="104" height="205" rx="24"/>' +
-      '<rect class="vessel-inner" x="150" y="305" width="60" height="130" rx="3"/>' +
-      '<line class="fuel" x1="160" y1="312" x2="160" y2="430"/><line class="fuel" x1="170" y1="312" x2="170" y2="430"/><line class="fuel" x1="180" y1="312" x2="180" y2="430"/><line class="fuel" x1="190" y1="312" x2="190" y2="430"/><line class="fuel" x1="200" y1="312" x2="200" y2="430"/>' +
-      '<text class="comp-label" x="180" y="282" text-anchor="middle">Reactor</text>' +
-      '<text class="comp-sub" x="180" y="293" text-anchor="middle">RPV / Core</text>' +
-      '<rect x="112" y="360" width="9" height="40" rx="2" fill="#10171f" stroke="#3a5870" stroke-width=".8"/>' +
-      '<rect class="rod-track" x="172" y="170" width="16" height="84" rx="3"/>' +
-      '<rect id="rodFill" class="rod-fill" x="174" y="176" width="12" height="40" rx="2"/>' +
-      '<rect id="rodCap" class="rod-cap" x="172" y="170" width="16" height="6" rx="2"/>' +
-      '<text class="comp-sub" x="180" y="164" text-anchor="middle" style="fill:#5a7488;">rods</text>' +
-      '<rect class="vessel" x="400" y="159" width="60" height="98" rx="10"/>' +
-      '<g clip-path="url(#pzrClip)"><rect class="steam-space" x="402" y="161" width="56" height="94"/><rect class="water" id="pzrWater" x="402" y="205" width="56" height="50"/><path class="surface" id="pzrSurface" d="M402,205 H458"/></g>' +
-      '<text class="comp-label" x="430" y="211" text-anchor="middle" style="fill:#5a7488;">PZR</text>' +
-      '<path class="pipe-case thin" d="M430,159 V137" stroke-width="5"/>' +
-      '<polygon class="valve" points="423,147 437,147 430,155"/><polygon class="valve" points="423,141 437,141 430,135"/><circle cx="430" cy="133" r="3" class="valve"/>' +
-      '<rect class="vessel" x="670" y="170" width="120" height="265" rx="16"/>' +
-      '<g clip-path="url(#sgClip)"><rect class="steam-space" x="672" y="172" width="116" height="261"/><rect class="water" id="sgWater" x="672" y="250" width="116" height="183"/><path class="surface" id="sgSurface" d="M672,250 H788"/></g>' +
-      '<text class="comp-label" x="730" y="200" text-anchor="middle">Steam Gen</text>' +
-      '<text class="comp-sub" x="730" y="211" text-anchor="middle">U-tube · heat exchanger</text>' +
-      '<g id="tubeBundle"></g>' +
-      '<path class="sec-arrow" d="M730,170 V140"/><polygon points="726,146 734,146 730,138" fill="#46586a"/><text class="sec-label" x="730" y="132" text-anchor="middle">steam → turbine</text>' +
-      '<path class="sec-arrow" d="M824,360 H792"/><polygon points="798,356 798,364 790,360" fill="#46586a"/><text class="sec-label" x="828" y="363" text-anchor="start">feed</text>' +
-      '<circle class="pump-body" cx="440" cy="405" r="18"/>' +
-      '<g id="pumpRotor"><line class="pump-vane" x1="440" y1="405" x2="440" y2="390"/><line class="pump-vane" x1="440" y1="405" x2="453" y2="413"/><line class="pump-vane" x1="440" y1="405" x2="427" y2="413"/></g>' +
-      '<circle cx="440" cy="405" r="3" fill="#3a5870"/><text class="comp-sub" x="440" y="436" text-anchor="middle" style="fill:#5a7488;">RCP</text>' +
-      '<g class="sensors">' +
-        '<g class="sensor"><circle class="tap" cx="116" cy="380" r="2.4"/><path class="leader" d="M102,236 V380 H116"/><rect class="lbl-box" x="56" y="206" width="92" height="30" rx="4"/><text class="lbl-name" x="63" y="217">Reactor Power</text><text class="lbl-val" x="63" y="231"><tspan id="vPower">100.1</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-        '<g class="sensor"><circle class="tap" cx="130" cy="272" r="2.4"/><path class="leader" d="M116,236 V272 H130"/><rect class="lbl-box" x="56" y="250" width="92" height="28" rx="4"/><text class="lbl-name" x="63" y="260">Startup Rate</text><text class="lbl-val" x="63" y="273"><tspan id="vSur">0.00</tspan><tspan class="lbl-unit"> dpm</tspan></text></g>' +
-        '<g class="sensor"><rect class="lbl-box" x="56" y="150" width="92" height="42" rx="4"/><text class="lbl-name" x="63" y="161">Rod Position</text><text class="lbl-val" x="63" y="175"><tspan id="vRod">8</tspan><tspan class="lbl-unit"> % ins</tspan></text><text class="lbl-note" x="63" y="186">withdrawn = power up</text></g>' +
-        '<g class="sensor"><circle class="tap" cx="232" cy="345" r="2.4"/><path class="leader" d="M232,345 V378 H246"/><rect class="lbl-box" x="246" y="364" width="112" height="30" rx="4"/><text class="lbl-name" x="253" y="375">Subcooling</text><text class="lbl-val derived" x="253" y="389"><tspan id="vSub">74</tspan><tspan class="lbl-unit" id="uSub"> °F</tspan></text><text class="lbl-note" x="300" y="389">computed</text></g>' +
-        '<g class="sensor tmi"><circle class="tap" cx="160" cy="345" r="2.4"/><path class="leader" d="M160,345 H246 V332"/><rect class="lbl-box" x="246" y="320" width="112" height="40" rx="4"/><text class="lbl-name" x="253" y="331">Core Inventory</text><text class="lbl-val" x="253" y="345"><tspan id="vInv">full</tspan></text><text class="lbl-note" x="253" y="356">reads at vessel — not PZR</text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="394" y1="195" x2="406" y2="195"/><circle class="tap" cx="400" cy="195" r="2.4"/><path class="leader" d="M400,195 V160 H366"/><rect class="lbl-box" x="274" y="145" width="92" height="30" rx="4"/><text class="lbl-name" x="281" y="156">Primary Press</text><text class="lbl-val" x="281" y="170"><tspan id="vPress">2235</tspan><tspan class="lbl-unit" id="uPress"> psi</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="394" y1="229" x2="406" y2="229"/><circle class="tap" cx="400" cy="229" r="2.4"/><path class="leader" d="M400,229 H352 V210"/><rect class="lbl-box" x="274" y="195" width="78" height="30" rx="4"/><text class="lbl-name" x="281" y="206">PZR Level</text><text class="lbl-val" x="281" y="220"><tspan id="vPzr">55</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-        '<g class="sensor"><circle class="tap" cx="430" cy="133" r="2.4"/><path class="leader" d="M430,133 H486"/><rect class="lbl-box" x="486" y="118" width="96" height="30" rx="4"/><text class="lbl-name" x="493" y="129">PORV / Block</text><text class="lbl-val" x="493" y="143"><tspan id="vPorv">closed</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="540" y1="294" x2="540" y2="306"/><circle class="tap" cx="540" cy="300" r="2.4"/><path class="leader" d="M540,300 V325 H516"/><rect class="lbl-box" x="424" y="320" width="92" height="30" rx="4"/><text class="lbl-name" x="431" y="331">T-hot · hot leg</text><text class="lbl-val" x="431" y="345"><tspan id="vThot">609</tspan><tspan class="lbl-unit" id="uThot"> °F</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="540" y1="399" x2="540" y2="411"/><circle class="tap" cx="540" cy="405" r="2.4"/><path class="leader" d="M540,405 V443 H500"/><rect class="lbl-box" x="500" y="428" width="96" height="30" rx="4"/><text class="lbl-name" x="507" y="439">T-cold · cold leg</text><text class="lbl-val" x="507" y="453"><tspan id="vTcold">549</tspan><tspan class="lbl-unit" id="uTcold"> °F</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="664" y1="250" x2="676" y2="250"/><circle class="tap" cx="670" cy="250" r="2.4"/><path class="leader" d="M670,250 H626 V236"/><rect class="lbl-box" x="572" y="236" width="78" height="30" rx="4"/><text class="lbl-name" x="579" y="247">SG Level</text><text class="lbl-val" x="579" y="261"><tspan id="vSg">65</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-        '<g class="sensor"><circle class="tap" cx="440" cy="423" r="2.4"/><path class="leader" d="M440,423 V443 H392"/><rect class="lbl-box" x="300" y="428" width="92" height="30" rx="4"/><text class="lbl-name" x="307" y="439">RCP Flow</text><text class="lbl-val" x="307" y="453"><tspan id="vFlow">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-      '</g>' +
-    '</svg></div>';
+  // (legacy PWR partial-loop diagrams retired — the synoptic in
+  //  ui/diagram/pwr_synoptic.js is the sole PWR plant display)
 
-  // Build the SG tube bundle (vertical heat-exchanger tubes) into #tubeBundle once.
-  function buildDiagramBundle() {
-    var bundle = document.getElementById('tubeBundle'); if (!bundle || bundle.childNodes.length) return;
-    var ns = 'http://www.w3.org/2000/svg', top = 300, bot = 405, xL = 690, xR = 752, xs = [];
-    for (var x = xL; x <= xR; x += 10.3) xs.push(Math.round(x));
-    function add(cls, d, stroke, sw, dash, op) {
-      var p = document.createElementNS(ns, 'path');
-      if (cls) p.setAttribute('class', cls); p.setAttribute('fill', 'none');
-      p.setAttribute('stroke', stroke); p.setAttribute('stroke-width', sw); p.setAttribute('stroke-linecap', 'round');
-      if (dash) p.setAttribute('stroke-dasharray', dash); if (op != null) p.setAttribute('opacity', op);
-      p.setAttribute('d', d); bundle.appendChild(p);
-    }
-    xs.forEach(function (x) { add('', 'M' + x + ',' + top + ' V' + bot, '#243140', '3.2'); });
-    add('', 'M670,300 H' + xR, '#2a3744', '4'); add('flow', 'M670,300 H' + xR, 'var(--warm)', '4', null, '0.45');
-    add('', 'M670,' + bot + ' H' + xR, '#2a3744', '4'); add('flow', 'M' + xR + ',' + bot + ' H670', 'var(--cool)', '4', null, '0.45');
-    xs.forEach(function (x) { add('tube-flow', 'M' + x + ',' + top + ' V' + bot, 'url(#gradTube)', '3', '4 8'); });
-  }
-
-  // Drive the diagram's sensor readouts + visuals from the snapshot.
-  function renderDiagram(s) {
-    var ins = s.instruments, t = s.true_state, cs = s.control_state;
-    var cg = cs.rod_groups.filter(function (g) { return g.function === 'control'; })[0];
-    var rodIns = cg ? Math.max(0, Math.min(100, 100 - cg.position_pct)) : 0;
-    var flow = (t.pump_flow_pct || 0) / 100;
-    function tx(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
-    tx('vPower', ins.power_range.toFixed(1));
-    tx('vRod', Math.round(rodIns));
-    tx('vSur', t.startup_rate_dpm != null ? t.startup_rate_dpm.toFixed(2) : '—');
-    tx('vSub', Math.max(0, Math.round(conv(ins.subcooling_margin, 'tempdiff')))); tx('uSub', ' ' + unit('tempdiff'));
-    tx('vInv', flow < 0.04 ? 'static' : (t.core_inventory_pct >= 99 ? 'full' : Math.round(t.core_inventory_pct) + '%'));
-    tx('vPress', Math.round(conv(ins.primary_pressure, 'pressure'))); tx('uPress', ' ' + unit('pressure'));
-    tx('vPzr', Math.round(ins.pzr_level));
-    tx('vPorv', ins.porv_indicator === 'open' ? 'OPEN' : (cs.porv_block_open ? 'closed' : 'isolated'));
-    tx('vThot', Math.round(conv(ins.thot, 'temp'))); tx('uThot', ' ' + unit('temp'));
-    tx('vTcold', Math.round(conv(ins.tcold, 'temp'))); tx('uTcold', ' ' + unit('temp'));
-    tx('vSg', Math.round(ins.sg_level));
-    tx('vFlow', Math.round(flow * 100));
-    // animation speed / stopped from flow
-    var loop = document.getElementById('loop'); if (!loop) return;
-    if (flow < 0.04) loop.classList.add('stopped');
-    else { loop.classList.remove('stopped'); setVarQ(loop, '--flow-dur', durS(1.05 / flow, 0.35, 7)); setVarQ(loop, '--spin-dur', durS(0.7 / flow, 0.25, 4)); }
-    // warm tint by hot-leg temp (in °F)
-    var thotF = ins.thot * 9 / 5 + 32, warmAmt = Math.min(1, Math.max(0, (thotF - 549) / 160));
-    var warmCol = 'rgb(' + Math.round(180 + warmAmt * 55) + ',' + Math.round(135 - warmAmt * 35) + ',' + Math.round(88 - warmAmt * 18) + ')';
-    var dwrap = document.querySelector('[data-pdview="primary"] .pd-diagram'); if (dwrap) dwrap.style.setProperty('--warm', warmCol);
-    document.querySelectorAll('[data-pdview="primary"] .tubeWarmStop').forEach(function (st) { st.setAttribute('stop-color', warmCol); });
-    // rod fill, PZR + SG water levels
-    var rf = document.getElementById('rodFill'); if (rf) rf.setAttribute('height', (12 + rodIns / 100 * 72).toFixed(1));
-    var pzr = Math.max(0, Math.min(1, ins.pzr_level / 100)), pB = 255, pH = 94, wy = pB - pzr * pH;
-    setA('pzrWater', 'y', wy.toFixed(1)); setA('pzrWater', 'height', (pB - wy).toFixed(1)); setA('pzrSurface', 'd', 'M402,' + wy.toFixed(1) + ' q14,-2 28,0 t28,0');
-    var sg = Math.max(0, Math.min(1, ins.sg_level / 100)), sB = 433, sH = 261, sy = sB - sg * sH;
-    setA('sgWater', 'y', sy.toFixed(1)); setA('sgWater', 'height', (sB - sy).toFixed(1)); setA('sgSurface', 'd', 'M672,' + sy.toFixed(1) + ' q29,-2 58,0 t58,0');
-  }
-  function setA(id, a, v) { var e = document.getElementById(id); if (e) e.setAttribute(a, v); }
-
-  // PWR secondary-loop schematic (from pwr_secondary_loop_diagram_v2.html). IDs are
-  // prefixed `sec`/`sv` so they don't collide with the primary diagram (both cards
-  // live in the DOM at once). Wired by renderSecDiagram().
-  var PWR_SEC_DIAGRAM_SVG =
-    '<div class="pd-diagram"><svg class="loop" id="secLoop" viewBox="40 40 1018 449" preserveAspectRatio="xMidYMid meet">' +
-      '<path class="pipe-case" d="M210,150 V120 H700"/>' +
-      '<path class="pipe-case" d="M820,200 V250"/>' +
-      '<path class="pipe-case" d="M820,422 V450 H560"/>' +
-      '<path class="pipe-case thin" d="M560,450 V330 H250"/>' +
-      '<path class="flow steam-dash" d="M210,150 V120 H700" stroke="var(--steam)"/>' +
-      '<path class="flow steam-dash" d="M820,200 V250" stroke="var(--wet)"/>' +
-      '<path class="flow" d="M820,422 V450 H560" stroke="var(--cond)"/>' +
-      '<path class="flow" d="M560,450 V330 H250" stroke="var(--cond)"/>' +
-      '<defs>' +
-        '<clipPath id="secSgClip"><rect x="132" y="152" width="116" height="261" rx="14"/></clipPath>' +
-        '<clipPath id="secCondClip"><rect x="702" y="252" width="236" height="170" rx="10"/></clipPath>' +
-        '<clipPath id="secTurbClip"><path d="M700,108 L820,92 L820,200 L700,184 Z"/></clipPath>' +
-        '<linearGradient id="secGradCondTube" x1="0" y1="298" x2="0" y2="382" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#84a2b2"/><stop offset="0.6" stop-color="#6a8a9a"/><stop offset="1" stop-color="#5e92ac"/></linearGradient>' +
-      '</defs>' +
-      '<rect class="vessel" x="130" y="150" width="120" height="265" rx="16"/>' +
-      '<g clip-path="url(#secSgClip)"><rect class="steam-space" x="132" y="152" width="116" height="261"/><rect class="water" id="secSgWater" x="132" y="250" width="116" height="163"/><path class="surface" id="secSgSurface" d="M132,250 H248"/>' +
-        '<line x1="160" y1="285" x2="160" y2="400" stroke="#2a3744" stroke-width="2" stroke-dasharray="3 6"/><line x1="176" y1="285" x2="176" y2="400" stroke="#2a3744" stroke-width="2" stroke-dasharray="3 6"/><line x1="192" y1="285" x2="192" y2="400" stroke="#2a3744" stroke-width="2" stroke-dasharray="3 6"/><line x1="208" y1="285" x2="208" y2="400" stroke="#2a3744" stroke-width="2" stroke-dasharray="3 6"/><line x1="224" y1="285" x2="224" y2="400" stroke="#2a3744" stroke-width="2" stroke-dasharray="3 6"/></g>' +
-      '<text class="comp-label" x="190" y="200" text-anchor="middle">Steam Gen</text><text class="comp-sub" x="190" y="211" text-anchor="middle">secondary side</text>' +
-      '<path class="pipe-case thin" d="M130,350 H100" stroke="#2a3744"/><text class="sec-label" x="94" y="353" text-anchor="end" style="fill:#52687c;">↤ primary</text>' +
-      '<path class="vessel" d="M700,108 L820,92 L820,200 L700,184 Z"/>' +
-      '<line x1="700" y1="146" x2="820" y2="146" stroke="#3a5870" stroke-width="1.4"/><g id="secTurbineRotor" clip-path="url(#secTurbClip)"></g>' +
-      '<text class="comp-label" x="760" y="86" text-anchor="middle">Turbine</text>' +
-      '<circle class="vessel" cx="868" cy="146" r="22"/><text class="comp-sub" x="868" y="150" text-anchor="middle" style="fill:#52687c;">GEN</text>' +
-      '<line class="pipe-case thin" x1="820" y1="146" x2="846" y2="146"/><path class="sec-arrow" d="M890,146 H924"/><polygon points="918,142 918,150 926,146" fill="#46586a"/><text class="sec-label" x="930" y="149" text-anchor="start">grid</text>' +
-      '<rect class="vessel" x="700" y="250" width="240" height="172" rx="12"/>' +
-      '<g clip-path="url(#secCondClip)"><rect class="steam-space" x="702" y="252" width="236" height="170"/><rect class="water" id="secCondWater" x="702" y="386" width="236" height="36"/><path class="surface" id="secCondSurface" d="M702,386 H938"/><g id="secCondTubes"></g></g>' +
-      '<text class="comp-label" x="820" y="272" text-anchor="middle">Condenser</text><text class="comp-sub" x="820" y="283" text-anchor="middle">heat exchanger</text>' +
-      '<path class="sec-arrow" d="M700,408 H668"/><polygon points="674,404 674,412 666,408" fill="#46586a"/><text class="sec-label" x="662" y="411" text-anchor="end">CW out</text>' +
-      '<path class="sec-arrow" d="M972,408 H940"/><polygon points="946,404 946,412 938,408" fill="#46586a"/><text class="sec-label" x="978" y="411" text-anchor="start">CW in</text>' +
-      '<circle class="pump-body" cx="700" cy="450" r="16"/><g id="secCondPump"><line class="pump-vane" x1="700" y1="450" x2="700" y2="437"/><line class="pump-vane" x1="700" y1="450" x2="711" y2="457"/><line class="pump-vane" x1="700" y1="450" x2="689" y2="457"/></g><circle cx="700" cy="450" r="2.6" fill="#3a5870"/><text class="comp-sub" x="700" y="476" text-anchor="middle" style="fill:#52687c;">Cond Pump</text>' +
-      '<rect class="vessel" x="392" y="318" width="40" height="24" rx="6"/><text class="comp-sub" x="412" y="334" text-anchor="middle" style="fill:#52687c;">FW Htr</text>' +
-      '<circle class="pump-body" cx="320" cy="330" r="15"/><g id="secFeedPump"><line class="pump-vane" x1="320" y1="330" x2="320" y2="318"/><line class="pump-vane" x1="320" y1="330" x2="331" y2="337"/><line class="pump-vane" x1="320" y1="330" x2="309" y2="337"/></g><circle cx="320" cy="330" r="2.6" fill="#3a5870"/><text class="comp-sub" x="320" y="358" text-anchor="middle" style="fill:#52687c;">Feed Pump</text>' +
-      '<g class="sensors">' +
-        '<g class="sensor"><line class="tap-tick" x1="430" y1="114" x2="430" y2="126"/><circle class="tap" cx="430" cy="120" r="2.4"/><path class="leader" d="M430,120 V80"/><rect class="lbl-box" x="386" y="50" width="88" height="30" rx="4"/><text class="lbl-name" x="393" y="61">Steam Flow</text><text class="lbl-val" x="393" y="75"><tspan id="svSteam">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="244" y1="190" x2="256" y2="190"/><circle class="tap" cx="250" cy="190" r="2.4"/><path class="leader" d="M250,190 H294"/><rect class="lbl-box" x="294" y="175" width="92" height="30" rx="4"/><text class="lbl-name" x="301" y="186">Steam Press</text><text class="lbl-val" x="301" y="200"><tspan id="svSteamP">850</tspan><tspan class="lbl-unit" id="svUSteamP"> psi</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="244" y1="290" x2="256" y2="290"/><circle class="tap" cx="250" cy="290" r="2.4"/><path class="leader" d="M250,290 H300"/><rect class="lbl-box" x="300" y="276" width="78" height="30" rx="4"/><text class="lbl-name" x="307" y="287">SG Level</text><text class="lbl-val" x="307" y="301"><tspan id="svSg">65</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-        '<g class="sensor"><circle class="tap" cx="760" cy="146" r="2.4"/><path class="leader" d="M760,146 V80 H810"/><rect class="lbl-box" x="802" y="50" width="86" height="30" rx="4"/><text class="lbl-name" x="809" y="61">Turbine RPM</text><text class="lbl-val" x="809" y="75"><tspan id="svRpm">1800</tspan></text></g>' +
-        '<g class="sensor"><circle class="tap" cx="868" cy="168" r="2.4"/><path class="leader" d="M868,168 V202 H928"/><rect class="lbl-box" x="920" y="188" width="84" height="30" rx="4"/><text class="lbl-name" x="927" y="199">Output</text><text class="lbl-val" x="927" y="213"><tspan id="svMw">1000</tspan><tspan class="lbl-unit"> MW</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="820" y1="256" x2="820" y2="268"/><circle class="tap" cx="820" cy="262" r="2.4"/><path class="leader" d="M820,262 V232 H952"/><rect class="lbl-box" x="944" y="240" width="98" height="30" rx="4"/><text class="lbl-name" x="951" y="251">Cond. Vacuum</text><text class="lbl-val" x="951" y="265"><tspan id="svVac">28.5</tspan><tspan class="lbl-unit" id="svUVac"> inHg</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="820" y1="404" x2="820" y2="416"/><circle class="tap" cx="820" cy="404" r="2.4"/><path class="leader" d="M820,404 V440 H952"/><rect class="lbl-box" x="944" y="440" width="96" height="30" rx="4"/><text class="lbl-name" x="951" y="451">Hotwell Temp</text><text class="lbl-val" x="951" y="465"><tspan id="svHot">102</tspan><tspan class="lbl-unit" id="svUHot"> °F</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="480" y1="324" x2="480" y2="336"/><circle class="tap" cx="480" cy="330" r="2.4"/><path class="leader" d="M480,330 V300 H440"/><rect class="lbl-box" x="394" y="276" width="98" height="30" rx="4"/><text class="lbl-name" x="401" y="287">Feedwater Flow</text><text class="lbl-val" x="401" y="301"><tspan id="svFeed">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-      '</g>' +
-    '</svg></div>';
-
-  function buildSecDiagramExtras() {
-    var ns = 'http://www.w3.org/2000/svg';
-    var tubes = document.getElementById('secCondTubes');
-    if (tubes && !tubes.childNodes.length) {
-      for (var x = 724; x <= 916; x += 24) {
-        var t = document.createElementNS(ns, 'path'); t.setAttribute('class', 'tube-flow');
-        t.setAttribute('d', 'M' + x + ',298 V382'); t.setAttribute('stroke', 'url(#secGradCondTube)'); t.setAttribute('stroke-dasharray', '3 7');
-        tubes.appendChild(t);
-      }
-    }
-    var rotor = document.getElementById('secTurbineRotor');
-    if (rotor && !rotor.childNodes.length) {
-      for (var bx = 684; bx <= 840; bx += 15) {
-        var ln = document.createElementNS(ns, 'line'); ln.setAttribute('class', 'turbine-blade');
-        var tt = Math.max(0, Math.min(1, (bx - 700) / 120)), half = 18 + tt * 22;
-        ln.setAttribute('x1', bx); ln.setAttribute('y1', (146 - half).toFixed(0)); ln.setAttribute('x2', bx); ln.setAttribute('y2', (146 + half).toFixed(0));
-        rotor.appendChild(ln);
-      }
-    }
-  }
-
-  function renderSecDiagram(s) {
-    var ins = s.instruments, t = s.true_state;
-    var load = Math.max(0, ins.steam_flow || 0);   // turbine steam flow (normalized)
-    function tx(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
-    tx('svSteam', Math.round(load * 100));
-    tx('svSteamP', Math.round(conv(t.steam_pressure_mpa, 'pressure'))); tx('svUSteamP', ' ' + unit('pressure'));
-    tx('svSg', Math.round(ins.sg_level));
-    tx('svRpm', Math.round(ins.turbine_rpm));
-    tx('svMw', Math.round(ins.mwe_output));
-    tx('svVac', conv(ins.condenser_vacuum, 'vacuum').toFixed(1)); tx('svUVac', ' ' + unit('vacuum'));
-    var vacFrac = Math.max(0, Math.min(1, ins.condenser_vacuum / 96.5));
-    var hotC = ((80 + (1 - vacFrac) * 60) - 32) * 5 / 9;   // derived hotwell temp
-    tx('svHot', Math.round(conv(hotC, 'temp'))); tx('svUHot', ' ' + unit('temp'));
-    tx('svFeed', Math.round((ins.fw_flow || 0) * 100));
-    var loop = document.getElementById('secLoop'); if (!loop) return;
-    if (load < 0.04) loop.classList.add('stopped');
-    else {
-      loop.classList.remove('stopped');
-      setVarQ(loop, '--flow-dur', durS(1.05 / load, 0.35, 7));
-      setVarQ(loop, '--spin-dur', durS(0.6 / load, 0.2, 4));
-      setVarQ(loop, '--blade-dur', durS(0.32 / load, 0.12, 2));
-    }
-    var sg = Math.max(0, Math.min(1, ins.sg_level / 100)), sB = 413, sH = 261, sy = sB - sg * sH;
-    setA('secSgWater', 'y', sy.toFixed(1)); setA('secSgWater', 'height', (sB - sy).toFixed(1)); setA('secSgSurface', 'd', 'M132,' + sy.toFixed(1) + ' q29,-2 58,0 t58,0');
-  }
-
-  function durS(x, lo, hi) { return Math.max(lo, Math.min(hi, x)).toFixed(2) + 's'; }
-  // Set a CSS custom property only when it actually changes. Re-setting an
-  // animation-duration var every broadcast restarts the keyframe clock and makes
-  // the flow dashes stutter; guarding the write keeps steady-state animations smooth.
-  function setVarQ(el, name, val) {
-    if (!el._vq) el._vq = {};
-    if (el._vq[name] === val) return;
-    el._vq[name] = val; el.style.setProperty(name, val);
-  }
-
-  // PWR full-plant schematic (from pwr_full_plant_diagram_v2.html) for the Diagram
-  // view. Ids prefixed `fp`/`fv` (a third diagram alongside primary/secondary).
-  var PWR_FULL_DIAGRAM_SVG =
-    '<div class="pd-diagram"><svg class="loop" id="fpLoop" viewBox="40 92 1160 394" preserveAspectRatio="xMidYMid meet">' +
-      '<line class="boundary" x1="600" y1="110" x2="600" y2="418"/>' +
-      '<path class="pipe-case" d="M250,250 H540"/><path class="pipe-case thin" d="M400,250 V207"/><path class="pipe-case" d="M540,355 H205"/><path class="pipe-case" d="M250,250 H205"/><path class="pipe-case" d="M250,355 H205"/><path class="pipe-case" d="M180,345 V270" stroke-width="6"/>' +
-      '<path class="flow pri" d="M180,345 V270" stroke="url(#fpGradCore)"/><path class="flow pri" d="M205,250 H540" stroke="var(--warm)"/><path class="flow pri" d="M400,250 V211" stroke="var(--warm)" style="animation-duration:3.4s;opacity:.5;"/><path class="flow pri" d="M540,355 H205" stroke="var(--cool)"/>' +
-      '<path class="pipe-case" d="M600,170 V140 H840 V220"/><path class="pipe-case" d="M960,250 V290"/><path class="pipe-case" d="M960,420 V450 H720"/><path class="pipe-case thin" d="M720,450 V320 H600"/>' +
-      '<path class="flow sec steam-dash" d="M600,170 V140 H840 V220" stroke="var(--steam)"/><path class="flow sec steam-dash" d="M960,250 V290" stroke="var(--wet)"/><path class="flow sec" d="M960,420 V450 H720" stroke="var(--cond)"/><path class="flow sec" d="M720,450 V320 H600" stroke="var(--cond)"/>' +
-      '<defs>' +
-        '<linearGradient id="fpGradCore" x1="0" y1="345" x2="0" y2="270" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6a9dc0"/><stop offset="1" stop-color="#c98a5a"/></linearGradient>' +
-        '<linearGradient id="fpGradTube" x1="0" y1="250" x2="0" y2="355" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#c98a5a" class="tubeWarmStop"/><stop offset="0.55" stop-color="#7a7a78"/><stop offset="1" stop-color="#6a9dc0"/></linearGradient>' +
-        '<linearGradient id="fpGradCondTube" x1="0" y1="312" x2="0" y2="392" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#84a2b2"/><stop offset="0.6" stop-color="#6a8a9a"/><stop offset="1" stop-color="#5e92ac"/></linearGradient>' +
-        '<clipPath id="fpPzrClip"><rect x="372" y="142" width="56" height="66" rx="6"/></clipPath><clipPath id="fpSgClip"><rect x="542" y="172" width="116" height="218" rx="14"/></clipPath><clipPath id="fpCondClip"><rect x="842" y="292" width="236" height="130" rx="10"/></clipPath><clipPath id="fpTurbClip"><path d="M840,198 L960,184 L960,278 L840,264 Z"/></clipPath>' +
-      '</defs>' +
-      '<rect class="vessel" x="128" y="200" width="104" height="205" rx="24"/><rect class="vessel-inner" x="150" y="255" width="60" height="130" rx="3"/>' +
-      '<line class="fuel" x1="160" y1="262" x2="160" y2="380"/><line class="fuel" x1="170" y1="262" x2="170" y2="380"/><line class="fuel" x1="180" y1="262" x2="180" y2="380"/><line class="fuel" x1="190" y1="262" x2="190" y2="380"/><line class="fuel" x1="200" y1="262" x2="200" y2="380"/>' +
-      '<text class="comp-label" x="180" y="232" text-anchor="middle">Reactor</text><text class="comp-sub" x="180" y="243" text-anchor="middle">RPV / Core</text>' +
-      '<rect x="112" y="290" width="9" height="40" rx="2" fill="#10171f" stroke="#3a5870" stroke-width=".7"/>' +
-      '<rect class="rod-track" x="172" y="120" width="16" height="84" rx="3"/><rect id="fpRodFill" class="rod-fill" x="174" y="126" width="12" height="40" rx="2"/><rect id="fpRodCap" class="rod-cap" x="172" y="120" width="16" height="6" rx="2"/><text class="comp-sub" x="180" y="114" text-anchor="middle" style="fill:#5a7488;">rods</text>' +
-      '<rect class="vessel" x="370" y="140" width="60" height="68" rx="8"/><g clip-path="url(#fpPzrClip)"><rect class="steam-space" x="372" y="142" width="56" height="66"/><rect class="water" id="fpPzrWater" x="372" y="178" width="56" height="30"/><path class="surface" id="fpPzrSurface" d="M372,178 H428"/></g>' +
-      '<text class="comp-label" x="400" y="180" text-anchor="middle" style="fill:#5a7488;">PZR</text><path class="pipe-case thin" d="M400,140 V120" stroke-width="5"/><polygon class="valve" points="394,130 406,130 400,138"/><circle cx="400" cy="118" r="2.6" class="valve"/>' +
-      '<rect class="vessel" x="540" y="170" width="120" height="222" rx="14"/><g clip-path="url(#fpSgClip)"><rect class="steam-space" x="542" y="172" width="116" height="218"/><rect class="water" id="fpSgWater" x="542" y="250" width="116" height="140"/><path class="surface" id="fpSgSurface" d="M542,250 H658"/></g>' +
-      '<text class="comp-label" x="600" y="192" text-anchor="middle">Steam Gen</text><text class="comp-sub" x="600" y="430" text-anchor="middle">primary ⇄ secondary</text><g id="fpTubeBundle"></g>' +
-      '<path class="vessel" d="M840,198 L960,184 L960,278 L840,264 Z"/><line x1="840" y1="236" x2="960" y2="236" stroke="#3a5870" stroke-width="1.4"/><g clip-path="url(#fpTurbClip)"><g id="fpTurbineRotor"></g></g>' +
-      '<text class="comp-label" x="900" y="176" text-anchor="middle">Turbine</text><circle class="vessel" cx="1008" cy="252" r="20"/><text class="comp-sub" x="1008" y="255" text-anchor="middle" style="fill:#52687c;">GEN</text>' +
-      '<line class="pipe-case thin" x1="960" y1="252" x2="988" y2="252"/><path class="sec-arrow" d="M1028,252 H1062"/><polygon points="1056,248 1056,256 1064,252" fill="#46586a"/><text class="sec-label" x="1068" y="255" text-anchor="start">grid</text>' +
-      '<rect class="vessel" x="840" y="290" width="240" height="135" rx="12"/><g clip-path="url(#fpCondClip)"><rect class="steam-space" x="842" y="292" width="236" height="131"/><rect class="water" id="fpCondWater" x="842" y="396" width="236" height="27"/><path class="surface" id="fpCondSurface" d="M842,396 H1078"/><g id="fpCondTubes"></g></g>' +
-      '<text class="comp-label" x="888" y="306" text-anchor="middle">Condenser</text><path class="sec-arrow" d="M840,410 H812"/><polygon points="818,406 818,414 810,410" fill="#46586a"/><text class="sec-label" x="806" y="413" text-anchor="end">CW</text>' +
-      '<circle class="pump-body" cx="400" cy="355" r="17"/><g id="fpRcp"><line class="pump-vane" x1="400" y1="355" x2="400" y2="341"/><line class="pump-vane" x1="400" y1="355" x2="412" y2="362"/><line class="pump-vane" x1="400" y1="355" x2="388" y2="362"/></g><circle cx="400" cy="355" r="3" fill="#3a5870"/><text class="comp-sub" x="400" y="384" text-anchor="middle" style="fill:#5a7488;">RCP</text>' +
-      '<circle class="pump-body" cx="840" cy="450" r="15"/><g id="fpCondPump"><line class="pump-vane" x1="840" y1="450" x2="840" y2="438"/><line class="pump-vane" x1="840" y1="450" x2="851" y2="456"/><line class="pump-vane" x1="840" y1="450" x2="829" y2="456"/></g><circle cx="840" cy="450" r="2.6" fill="#3a5870"/><text class="comp-sub" x="840" y="476" text-anchor="middle" style="fill:#52687c;">Cond Pump</text>' +
-      '<circle class="pump-body" cx="720" cy="385" r="13"/><g id="fpFeedPump"><line class="pump-vane" x1="720" y1="385" x2="720" y2="375"/><line class="pump-vane" x1="720" y1="385" x2="729" y2="391"/><line class="pump-vane" x1="720" y1="385" x2="711" y2="391"/></g><circle cx="720" cy="385" r="2.4" fill="#3a5870"/><text class="comp-sub" x="720" y="408" text-anchor="middle" style="fill:#52687c;">Feed Pump</text>' +
-      '<rect class="vessel" x="640" y="308" width="38" height="22" rx="5"/><text class="comp-sub" x="659" y="323" text-anchor="middle" style="fill:#52687c;">FW Htr</text>' +
-      '<g class="sensors">' +
-        '<g class="sensor"><rect class="lbl-box" x="56" y="108" width="92" height="38" rx="4"/><text class="lbl-name" x="63" y="119">Rod Position</text><text class="lbl-val" x="63" y="132"><tspan id="fvRod">8</tspan><tspan class="lbl-unit"> % ins</tspan></text><text class="lbl-note" x="63" y="142">withdrawn = power up</text></g>' +
-        '<g class="sensor"><circle class="tap" cx="116" cy="310" r="2.2"/><path class="leader" d="M102,186 V310 H116"/><rect class="lbl-box" x="56" y="156" width="92" height="30" rx="4"/><text class="lbl-name" x="63" y="167">Reactor Power</text><text class="lbl-val" x="63" y="181"><tspan id="fvPower">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-        '<g class="sensor"><circle class="tap" cx="130" cy="248" r="2.2"/><path class="leader" d="M116,186 V248 H130"/><rect class="lbl-box" x="56" y="200" width="92" height="28" rx="4"/><text class="lbl-name" x="63" y="211">Startup Rate</text><text class="lbl-val" x="63" y="224"><tspan id="fvSur">0.00</tspan><tspan class="lbl-unit"> dpm</tspan></text></g>' +
-        '<g class="sensor tmi"><circle class="tap" cx="160" cy="300" r="2.2"/><path class="leader" d="M160,300 V286 H246"/><rect class="lbl-box" x="246" y="272" width="108" height="36" rx="4"/><text class="lbl-name" x="253" y="283">Core Inventory</text><text class="lbl-val" x="253" y="296"><tspan id="fvInv">full</tspan></text><text class="lbl-note" x="253" y="305">reads at vessel — not PZR</text></g>' +
-        '<g class="sensor"><circle class="tap" cx="232" cy="315" r="2.2"/><path class="leader" d="M232,315 V330 H246"/><rect class="lbl-box" x="246" y="315" width="108" height="28" rx="4"/><text class="lbl-name" x="253" y="325">Subcooling</text><text class="lbl-val derived" x="253" y="338"><tspan id="fvSub">74</tspan><tspan class="lbl-unit" id="fvUSub"> °F</tspan></text><text class="lbl-note" x="298" y="338">computed</text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="364" y1="170" x2="376" y2="170"/><circle class="tap" cx="370" cy="170" r="2.2"/><path class="leader" d="M370,170 H336"/><rect class="lbl-box" x="244" y="155" width="92" height="30" rx="4"/><text class="lbl-name" x="251" y="166">Primary Press</text><text class="lbl-val" x="251" y="180"><tspan id="fvPress">2235</tspan><tspan class="lbl-unit" id="fvUPress"> psi</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="364" y1="195" x2="376" y2="195"/><circle class="tap" cx="370" cy="195" r="2.2"/><path class="leader" d="M370,195 H336"/><rect class="lbl-box" x="258" y="190" width="78" height="28" rx="4"/><text class="lbl-name" x="265" y="200">PZR Level</text><text class="lbl-val" x="265" y="213"><tspan id="fvPzr">55</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-        '<g class="sensor"><circle class="tap" cx="400" cy="118" r="2.2"/><path class="leader" d="M400,118 H456"/><rect class="lbl-box" x="456" y="104" width="92" height="28" rx="4"/><text class="lbl-name" x="463" y="114">PORV / Block</text><text class="lbl-val" x="463" y="127"><tspan id="fvPorv">closed</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="490" y1="244" x2="490" y2="256"/><circle class="tap" cx="490" cy="250" r="2.2"/><path class="leader" d="M490,250 V272 H452"/><rect class="lbl-box" x="406" y="272" width="92" height="28" rx="4"/><text class="lbl-name" x="413" y="282">T-hot · hot leg</text><text class="lbl-val" x="413" y="295"><tspan id="fvThot">609</tspan><tspan class="lbl-unit" id="fvUThot"> °F</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="490" y1="349" x2="490" y2="361"/><circle class="tap" cx="490" cy="355" r="2.2"/><path class="leader" d="M490,355 V378"/><rect class="lbl-box" x="436" y="378" width="96" height="28" rx="4"/><text class="lbl-name" x="443" y="388">T-cold · cold leg</text><text class="lbl-val" x="443" y="401"><tspan id="fvTcold">549</tspan><tspan class="lbl-unit" id="fvUTcold"> °F</tspan></text></g>' +
-        '<g class="sensor"><circle class="tap" cx="400" cy="372" r="2.2"/><path class="leader" d="M400,372 V392 H352"/><rect class="lbl-box" x="300" y="378" width="92" height="28" rx="4"/><text class="lbl-name" x="307" y="388">RCP Flow</text><text class="lbl-val" x="307" y="401"><tspan id="fvFlow">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="534" y1="250" x2="546" y2="250"/><circle class="tap" cx="540" cy="250" r="2.2"/><path class="leader" d="M540,250 H516 V228"/><rect class="lbl-box" x="438" y="200" width="78" height="28" rx="4"/><text class="lbl-name" x="445" y="210">SG Level</text><text class="lbl-val" x="445" y="223"><tspan id="fvSg">65</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="720" y1="134" x2="720" y2="146"/><circle class="tap" cx="720" cy="140" r="2.2"/><path class="leader" d="M720,140 V128"/><rect class="lbl-box" x="676" y="100" width="88" height="28" rx="4"/><text class="lbl-name" x="683" y="110">Steam Flow</text><text class="lbl-val" x="683" y="123"><tspan id="fvSteam">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-        '<g class="sensor"><circle class="tap" cx="900" cy="236" r="2.2"/><path class="leader" d="M900,236 V150 H942"/><rect class="lbl-box" x="934" y="136" width="86" height="28" rx="4"/><text class="lbl-name" x="941" y="146">Turbine RPM</text><text class="lbl-val" x="941" y="159"><tspan id="fvRpm">1800</tspan></text></g>' +
-        '<g class="sensor"><circle class="tap" cx="1008" cy="232" r="2.2"/><path class="leader" d="M1008,232 V218 H1068"/><rect class="lbl-box" x="1060" y="204" width="84" height="28" rx="4"/><text class="lbl-name" x="1067" y="214">Output</text><text class="lbl-val" x="1067" y="227"><tspan id="fvMw">1000</tspan><tspan class="lbl-unit"> MW</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="1040" y1="296" x2="1040" y2="308"/><circle class="tap" cx="1040" cy="302" r="2.2"/><path class="leader" d="M1040,302 V288 H1088"/><rect class="lbl-box" x="1088" y="274" width="96" height="28" rx="4"/><text class="lbl-name" x="1095" y="284">Cond. Vacuum</text><text class="lbl-val" x="1095" y="297"><tspan id="fvVac">28.5</tspan><tspan class="lbl-unit" id="fvUVac"> inHg</tspan></text></g>' +
-        '<g class="sensor"><line class="tap-tick" x1="690" y1="320" x2="690" y2="332"/><circle class="tap" cx="690" cy="326" r="2.2"/><path class="leader" d="M690,326 V440 H680"/><rect class="lbl-box" x="580" y="440" width="100" height="28" rx="4"/><text class="lbl-name" x="587" y="450">Feedwater Flow</text><text class="lbl-val" x="587" y="463"><tspan id="fvFeed">100</tspan><tspan class="lbl-unit"> %</tspan></text></g>' +
-      '</g>' +
-    '</svg></div>';
-
-  function buildFullDiagramExtras() {
-    var ns = 'http://www.w3.org/2000/svg';
-    var b = document.getElementById('fpTubeBundle');
-    if (b && !b.childNodes.length) {
-      var xs = []; for (var x = 560; x <= 640; x += 11.4) xs.push(Math.round(x));
-      function add(p, cls, d, stroke, sw, dash, op) { var e = document.createElementNS(ns, 'path'); if (cls) e.setAttribute('class', cls); e.setAttribute('fill', 'none'); e.setAttribute('stroke', stroke); e.setAttribute('stroke-width', sw); e.setAttribute('stroke-linecap', 'round'); if (dash) e.setAttribute('stroke-dasharray', dash); if (op != null) e.setAttribute('opacity', op); e.setAttribute('d', d); p.appendChild(e); }
-      xs.forEach(function (x) { add(b, '', 'M' + x + ',250 V355', '#243140', '2.8'); });
-      add(b, '', 'M540,250 H640', '#2a3744', '4'); add(b, 'flow pri', 'M540,250 H640', 'var(--warm)', '4', null, '0.45');
-      add(b, '', 'M640,355 H540', '#2a3744', '4'); add(b, 'flow pri', 'M640,355 H540', 'var(--cool)', '4', null, '0.45');
-      xs.forEach(function (x) { add(b, 'tube-flow pri', 'M' + x + ',250 V355', 'url(#fpGradTube)', '2.8', '4 8'); });
-    }
-    var ct = document.getElementById('fpCondTubes');
-    if (ct && !ct.childNodes.length) {
-      for (var cx = 866; cx <= 1054; cx += 24) { var t = document.createElementNS(ns, 'path'); t.setAttribute('class', 'tube-flow sec'); t.setAttribute('d', 'M' + cx + ',312 V392'); t.setAttribute('stroke', 'url(#fpGradCondTube)'); t.setAttribute('stroke-dasharray', '3 7'); ct.appendChild(t); }
-    }
-    var rot = document.getElementById('fpTurbineRotor');
-    if (rot && !rot.childNodes.length) {
-      for (var bx = 824; bx <= 980; bx += 15) { var ln = document.createElementNS(ns, 'line'); ln.setAttribute('class', 'turbine-blade'); var tt = Math.max(0, Math.min(1, (bx - 840) / 120)), half = 16 + tt * 20; ln.setAttribute('x1', bx); ln.setAttribute('y1', (236 - half).toFixed(0)); ln.setAttribute('x2', bx); ln.setAttribute('y2', (236 + half).toFixed(0)); rot.appendChild(ln); }
-    }
-  }
-
-  function renderFullDiagram(s) {
-    var ins = s.instruments, t = s.true_state, cs = s.control_state;
-    var cg = cs.rod_groups.filter(function (g) { return g.function === 'control'; })[0];
-    var rodIns = cg ? Math.max(0, Math.min(100, 100 - cg.position_pct)) : 0;
-    var flow = (t.pump_flow_pct || 0) / 100, load = Math.max(0, ins.steam_flow || 0);
-    function tx(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
-    tx('fvPower', Math.round(ins.power_range)); tx('fvRod', Math.round(rodIns));
-    tx('fvSur', t.startup_rate_dpm != null ? t.startup_rate_dpm.toFixed(2) : '—');
-    tx('fvSub', Math.max(0, Math.round(conv(ins.subcooling_margin, 'tempdiff')))); tx('fvUSub', ' ' + unit('tempdiff'));
-    tx('fvInv', flow < 0.04 ? 'static' : (t.core_inventory_pct >= 99 ? 'full' : Math.round(t.core_inventory_pct) + '%'));
-    tx('fvPress', Math.round(conv(ins.primary_pressure, 'pressure'))); tx('fvUPress', ' ' + unit('pressure'));
-    tx('fvPzr', Math.round(ins.pzr_level));
-    tx('fvPorv', ins.porv_indicator === 'open' ? 'OPEN' : (cs.porv_block_open ? 'closed' : 'isolated'));
-    tx('fvThot', Math.round(conv(ins.thot, 'temp'))); tx('fvUThot', ' ' + unit('temp'));
-    tx('fvTcold', Math.round(conv(ins.tcold, 'temp'))); tx('fvUTcold', ' ' + unit('temp'));
-    tx('fvFlow', Math.round(flow * 100)); tx('fvSg', Math.round(ins.sg_level));
-    tx('fvSteam', Math.round(load * 100)); tx('fvRpm', Math.round(ins.turbine_rpm)); tx('fvMw', Math.round(ins.mwe_output));
-    tx('fvVac', conv(ins.condenser_vacuum, 'vacuum').toFixed(1)); tx('fvUVac', ' ' + unit('vacuum'));
-    tx('fvFeed', Math.round((ins.fw_flow || 0) * 100));
-    var loop = document.getElementById('fpLoop'); if (!loop) return;
-    if (flow < 0.04) loop.classList.add('stopped-pri');
-    else { loop.classList.remove('stopped-pri'); setVarQ(loop, '--flow-dur', durS(1.05 / flow, 0.35, 7)); setVarQ(loop, '--spin-pri', durS(0.7 / flow, 0.25, 4)); }
-    if (load < 0.04) loop.classList.add('stopped-sec');
-    else { loop.classList.remove('stopped-sec'); setVarQ(loop, '--flow-dur-sec', durS(1.05 / load, 0.35, 7)); setVarQ(loop, '--spin-sec', durS(0.6 / load, 0.2, 4)); setVarQ(loop, '--blade-dur', durS(0.32 / load, 0.12, 2)); }
-    var thotF = ins.thot * 9 / 5 + 32, warmAmt = Math.min(1, Math.max(0, (thotF - 549) / 160));
-    var warmCol = 'rgb(' + Math.round(180 + warmAmt * 55) + ',' + Math.round(135 - warmAmt * 35) + ',' + Math.round(88 - warmAmt * 18) + ')';
-    var dwrap = document.querySelector('[data-pdview="diagram"] .pd-diagram'); if (dwrap) dwrap.style.setProperty('--warm', warmCol);
-    document.querySelectorAll('[data-pdview="diagram"] .tubeWarmStop').forEach(function (st) { st.setAttribute('stop-color', warmCol); });
-    setA('fpRodFill', 'height', (12 + rodIns / 100 * 72).toFixed(1));
-    var pzr = Math.max(0, Math.min(1, ins.pzr_level / 100)), pB = 208, pH = 66, wy = pB - pzr * pH;
-    setA('fpPzrWater', 'y', wy.toFixed(1)); setA('fpPzrWater', 'height', (pB - wy).toFixed(1)); setA('fpPzrSurface', 'd', 'M372,' + wy.toFixed(1) + ' q14,-1.6 28,0 t28,0');
-    var sg = Math.max(0, Math.min(1, ins.sg_level / 100)), gB = 390, gH = 218, gy = gB - sg * gH;
-    setA('fpSgWater', 'y', gy.toFixed(1)); setA('fpSgWater', 'height', (gB - gy).toFixed(1)); setA('fpSgSurface', 'd', 'M542,' + gy.toFixed(1) + ' q29,-2 58,0 t58,0');
-  }
 
   var PD = {
-    pwr: {
-      slots: [
-        { id: 'rcp', label: 'RCP', group: 'nuclear' }, { id: 'eccs', label: 'ECCS', group: 'nuclear' }, { id: 'porv_block', label: 'PORV Blk', group: 'nuclear' },
-        { id: 'afw', label: 'AFW', group: 'secondary' }, { id: 'msiv', label: 'MSIV', group: 'secondary' }, { id: 'cont_iso', label: 'Cont. Iso', group: 'secondary' },
-        { id: 'station_pwr', label: 'Stn Pwr', group: 'power' },
-      ],
-      state: function (s) {
-        return {
-          rcp: s.instruments.rcp_running ? 'running' : 'alarm',
-          eccs: hasFail(s, 'degraded_hpi') ? 'caution' : actuated(s, 'eccs', s.instruments.hpi_active),
-          porv_block: s.true_state.porv_stuck ? 'alarm' : (s.true_state.porv_open ? 'caution' : 'normal'),
-          afw: hasFail(s, 'afw_failure') ? 'alarm' : actuated(s, 'afw', s.true_state.afw_active),
-          msiv: 'normal', cont_iso: 'normal',
-          station_pwr: s.instruments.station_blackout ? 'alarm' : 'normal',
-        };
-      },
-      diagram: [ROD_DRIVE('control_rods'), CG_ECCS(), CG_MSIV()],
-      plantDiagram: PWR_FULL_DIAGRAM_SVG,   // full-loop schematic for the Diagram view
-      primary: {
-        diagram: PWR_DIAGRAM_SVG,   // SVG primary-loop schematic replaces the param sections
-        sections: [
-          { title: 'Reactor Core', rows: [
-            R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }),
-            R('Control Bank', function (s) { return bankStat(s, 'control'); }), R('Shutdown Bank', function (s) { return bankStat(s, 'shutdown'); }),
-            R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
-            R('Decay Heat', function (s) { return s.true_state.decay_heat_pct.toFixed(1) + ' %'; }), R('Fuel Temp', function (s) { return dispT(s.true_state.fuel_temp_c); }),
-          ] },
-          { title: 'RCS', rows: [
-            R('T-hot', function (s) { return dispT(s.instruments.thot); }), R('T-cold', function (s) { return dispT(s.instruments.tcold); }), R('Tavg', function (s) { return dispT(s.instruments.tavg); }),
-            R('RCP', function (s) { return bool(s.instruments.rcp_running, 'running', 'STOPPED'); }), R('Boron', function (s) { return s.true_state.boron_ppm.toFixed(0) + ' ppm'; }),
-          ] },
-          { title: 'Pressurizer', rows: [
-            R('Pressure', function (s) { return dispP(s.instruments.primary_pressure); }), R('PZR Level', function (s) { return s.instruments.pzr_level.toFixed(0) + ' %'; }),
-            R('Subcooling', function (s) { return s.instruments.subcooling_margin; }, { subcool: 1 }),
-            R('PORV', function (s) { return bool(s.instruments.porv_indicator === 'open', 'OPEN', 'closed'); }),
-            R('PORV Block', function (s) { var o = s.control_state.porv_block_open; return { t: o ? 'open' : 'ISOLATED', cls: o ? 'q-normal' : 'q-caution' }; }),
-          ] },
-        ],
-        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods'),
-          { l: 'Boron (Reactivity) — CVCS', hint: 'Chemical & Volume Control System boron: Borate adds boron (lowers power), Dilute removes it (raises power). Needs the charging pump running.', seg: [{ l: 'Borate', act: 'borate' }, { l: 'Hold', act: 'boron-hold', on: 1 }, { l: 'Dilute', act: 'dilute' }] },
-          { l: 'Charging Pump (CVCS)', hint: 'Charging pump — injects coolant into the cold leg (raises inventory; carries boron). Slider = manual %.', num: { id: 'chargeSet', min: 0, max: 100, value: 0, act: 'charge-set', setL: 'Set %' }, seg: [{ l: 'On', act: 'charge-pump-on', on: 1, run: 1 }, { l: 'Off', act: 'charge-pump-off' }] },
-          { l: 'Letdown Valve (CVCS)', hint: 'Letdown valve — removes coolant from the Reactor Coolant System (lowers inventory). Slider = manual %.', num: { id: 'letdownSet', min: 0, max: 100, value: 0, act: 'letdown-set', setL: 'Set %' }, seg: [{ l: 'Isolate', act: 'letdown-isolate', on: 1 }] },
-          { l: 'CVCS Inventory Control', hint: 'Auto makes up identified leakage by modulating charging to hold inventory; Manual = you set charging/letdown.', seg: [{ l: 'Auto', act: 'cvcs-auto', run: 1 }, { l: 'Manual', act: 'cvcs-manual', on: 1 }] },
-          { l: 'Pressurizer Heaters (PZR)', hint: 'Pressurizer heaters raise primary pressure. Auto holds the setpoint; the slider is a manual power %.', num: { id: 'heatSet', min: 0, max: 100, value: 0, act: 'heat-set', setL: 'Set %' }, seg: [{ l: 'Auto', act: 'heat-auto', on: 1, run: 1 }] },
-          { l: 'Pressurizer Spray (PZR)', hint: 'Pressurizer spray lowers primary pressure. It draws from the cold leg after the Reactor Coolant Pump (RCP), so it needs RCP flow. Auto holds the setpoint; the slider is a manual valve %.', num: { id: 'spraySet', min: 0, max: 100, value: 0, act: 'spray-set', setL: 'Set %' }, seg: [{ l: 'Auto', act: 'spray-auto', on: 1, run: 1 }] },
-          { l: 'Reactor Coolant Pumps (RCP)', seg: [{ l: 'Run', act: 'rcp-run', on: 1, run: 1 }, { l: 'Stop', act: 'rcp-stop' }] },
-          { l: 'Relief Valve (PORV)', hint: 'Manually open/close the Power-Operated Relief Valve to drop primary pressure. Its indicator shows the COMMANDED position, which can differ from reality (the TMI trap).', seg: [{ l: 'Open', act: 'porv-open', warn: 1 }, { l: 'Close', act: 'porv-close', on: 1 }] },
-          { l: 'PORV Block Valve', seg: [{ l: 'Open', act: 'porv-block-open', on: 1 }, { l: 'Isolate', act: 'porv-block-close', warn: 1 }] },
-          { l: 'Decay-Heat Removal (DHR)', emergency: 1, hint: 'Decay-Heat / Residual-Heat Removal — removes residual heat after shutdown, once cool and depressurized.', seg: [{ l: 'On', act: 'dhr-on', run: 1 }, { l: 'Off', act: 'dhr-off', on: 1 }] }],
-        cross: [R('SG Level', function (s) { return s.instruments.sg_level.toFixed(0) + ' %'; }), R('Feedwater', function (s) { return pctOf(s.instruments.fw_flow); }),
-          R('AFW', function (s) { return bool(s.true_state.afw_active, 'on', 'off'); }), R('Output', function (s) { return s.instruments.mwe_output.toFixed(0) + ' MW'; })],
-      },
-      secondary: {
-        diagram: PWR_SEC_DIAGRAM_SVG,   // SVG secondary-loop schematic replaces the param sections
-        sections: [
-          { title: 'Steam Generators / Feedwater', rows: [
-            R('SG Level', function (s) { return s.instruments.sg_level.toFixed(0) + ' %'; }), R('Steam Flow', function (s) { return pctOf(s.instruments.steam_flow); }),
-            R('Feedwater Flow', function (s) { return pctOf(s.instruments.fw_flow); }), R('AFW', function (s) { return bool(s.true_state.afw_active, 'running', 'standby'); }),
-            R('Feed Reg', function (s) { return s.control_state.feedwater_flow_pct.toFixed(0) + ' %'; }),
-          ] },
-          { title: 'Turbine / Condenser', rows: [
-            R('Output', function (s) { return s.instruments.mwe_output.toFixed(0) + ' MW'; }), R('Turbine RPM', function (s) { return s.instruments.turbine_rpm.toFixed(0); }),
-            R('Cond. Vacuum', function (s) { return dispV(s.instruments.condenser_vacuum); }), R('Main Breaker', function (s) { return bool(s.control_state.steam_demand_mwe > 1, 'closed', 'open'); }),
-            R('Grid Match', function (s) { return gridMatch(s).toFixed(1) + ' %'; }), R('Steam Dump', function (s) { return (s.control_state.steam_dump_auto ? 'auto ' : 'man ') + s.control_state.steam_dump_pct.toFixed(0) + ' %'; }),
-          ] },
-        ],
-        controls: [
-          { l: 'Load Mode', seg: [{ l: 'Follow', act: 'load-follow', on: 1, run: 1 }, { l: 'Manual', act: 'load-manual' }, { l: 'Off', act: 'load-disconnect', warn: 1 }] },
-          { l: 'Turbine Load', slider: { id: 'mweSlider', min: 0, max: 1100, value: 1000, act: 'load-slider' } },
-          { l: 'Feed Pumps', seg: [{ l: 'Start', act: 'feed-start', on: 1, run: 1 }, { l: 'Stop', act: 'feed-stop' }] },
-          { l: 'AFW', emergency: 1, seg: [{ l: 'Start', act: 'afw-start' }, { l: 'Stop', act: 'afw-stop', on: 1 }] },
-          { l: 'Feed Reg (advanced)', num: { id: 'feedSet', min: 0, max: 100, value: 100, act: 'feed-set', setL: 'Set %' } },
-          { l: 'Steam Dump', hint: 'Steam dump / turbine bypass to condenser.', seg: [{ l: 'Auto', act: 'dump-auto', on: 1, run: 1 }, { l: 'Open', act: 'dump-open' }, { l: 'Closed', act: 'dump-close' }] },
-          CG_MSIV(),
-          { l: 'Main Breaker', seg: [{ l: 'Closed', act: 'breaker-close', on: 1, run: 1 }, { l: 'Open', act: 'breaker-open' }] }],
-        cross: [R('Reactor Power', function (s) { return s.instruments.power_range.toFixed(0) + ' %'; }), R('Tavg', function (s) { return dispT(s.instruments.tavg); }), R('Primary Press', function (s) { return dispP(s.instruments.primary_pressure); })],
-      },
-    },
-
     rbmk: {
       slots: [
         { id: 'mcp', label: 'MCP', group: 'nuclear' }, { id: 'eccs', label: 'ECCS', group: 'nuclear' }, { id: 'eps', label: 'EPS', group: 'nuclear' },
@@ -1697,9 +1519,8 @@
           ] },
         ],
         controls: [
-          { l: 'Load Mode', seg: [{ l: 'Follow', act: 'rbmk-load-follow', on: 1, run: 1 }, { l: 'Manual', act: 'rbmk-load-manual' }, { l: 'Off', act: 'rbmk-load-disconnect', warn: 1 }] },
-          { l: 'Turbine Load', slider: { id: 'rbmkMwe', min: 0, max: 1000, value: 1000, act: 'rbmk-turbine-set' } },
-          { l: 'Feedwater (advanced)', num: { id: 'rbmkFeed', min: 0, max: 100, value: 100, act: 'rbmk-feed-set', setL: 'Set %' } },
+          { l: 'Feedwater', num: { id: 'rbmkFeed', min: 0, max: 100, value: 100, act: 'rbmk-feed-set', setL: 'Set %' } },
+          { l: 'Turbine Load', num: { id: 'rbmkMwe', min: 0, max: 1000, value: 1000, act: 'rbmk-turbine-set', setL: 'Set MW' } },
           { l: 'Steam Dump', hint: 'Turbine bypass to the condenser — holds steam-drum pressure on a load rejection.', seg: [{ l: 'Auto', act: 'dump-auto', on: 1, run: 1 }, { l: 'Open', act: 'dump-open' }, { l: 'Closed', act: 'dump-close' }] }],
         cross: [R('Core Power', function (s) { return s.instruments.power_range.toFixed(0) + ' %'; }), R('Coolant Flow', function (s) { return s.instruments.channel_flow.toFixed(0) + ' %'; }), R('Void', function (s) { return pctOf(s.instruments.void_fraction); })],
       },
@@ -1766,10 +1587,9 @@
           { l: 'Core Spray (LPCS)', emergency: 1, seg: [{ l: 'Start', act: 'start-lpcs', run: 1 }, { l: 'Stop', act: 'stop-lpcs', on: 1 }] },
           { l: 'Manual SRV', emergency: 1, seg: [{ l: 'Open', act: 'srv-open', warn: 1 }, { l: 'Close', act: 'srv-close', on: 1 }] },
           { l: 'Standby Liquid Control (SLC)', emergency: 1, seg: [{ l: 'Initiate', act: 'slc-initiate', warn: 1 }, { l: 'Stop', act: 'slc-stop', on: 1 }] },
-          { l: 'Load Mode', seg: [{ l: 'Follow', act: 'bwr-load-follow', on: 1, run: 1 }, { l: 'Manual', act: 'bwr-load-manual' }, { l: 'Off', act: 'bwr-load-disconnect', warn: 1 }] },
-          { l: 'Turbine Load', slider: { id: 'bwrMwe', min: 0, max: 1100, value: 1000, act: 'bwr-turbine-set' } },
           { l: 'Steam Dump', hint: 'Turbine bypass to the condenser (needs AC / condenser — inert in a station blackout).', seg: [{ l: 'Auto', act: 'dump-auto', on: 1, run: 1 }, { l: 'Open', act: 'dump-open' }, { l: 'Closed', act: 'dump-close' }] },
-          { l: 'Feedwater (advanced)', num: { id: 'bwrFeed', min: 0, max: 100, value: 100, act: 'bwr-feed-set', setL: 'Set %' } }],
+          { l: 'Turbine Load', num: { id: 'bwrMwe', min: 0, max: 1100, value: 1000, act: 'bwr-turbine-set', setL: 'Set MW' } },
+          { l: 'Feedwater', num: { id: 'bwrFeed', min: 0, max: 100, value: 100, act: 'bwr-feed-set', setL: 'Set %' } }],
         cross: [R('Reactor Power', function (s) { return s.instruments.power_range.toFixed(0) + ' %'; }), R('Vessel Steam', function (s) { return pctOf(s.instruments.steam_flow); }), R('Core Void', function (s) { return pctOf(s.instruments.core_void_fraction); })],
       },
     },
@@ -1838,9 +1658,10 @@
   }
   function buildViews() {
     var area = $('viewArea'); pdRows = {};
-    // Diagram view: full-loop schematic where available, else a placeholder
-    var diagHtml = pd().plantDiagram ? pd().plantDiagram :
-      '<div class="view-placeholder"><span>Plant diagram — SVG in development</span><span class="placeholder-sub">Energy flow: Reactor → ' + (ui.plant === 'bwr' ? 'Vessel → Turbine' : (ui.plant === 'rbmk' ? 'Drums → Turbine' : 'SGs → Turbine → Condenser')) + '</span></div>';
+    // Diagram view placeholder (RBMK/BWR keep the legacy plant display until
+    // their own synoptic specs exist; the PWR mounts ui/diagram/pwr_synoptic.js)
+    var diagHtml =
+      '<div class="view-placeholder"><span>Plant diagram — SVG in development</span><span class="placeholder-sub">Energy flow: Reactor → ' + (ui.plant === 'bwr' ? 'Vessel → Turbine' : 'Drums → Turbine') + '</span></div>';
     var html = '';
     html += '<div class="pdview' + (ui.view === 'diagram' ? ' on' : '') + '" data-pdview="diagram">' + diagHtml + '</div>';
     html += '<div class="pdview' + (ui.view === 'primary' ? ' on' : '') + '" data-pdview="primary">' + buildCard('primary') + '</div>';
@@ -1850,9 +1671,6 @@
       '<div class="pd-all-grid" id="pdAllGrid"></div></div>';
     html += '<div class="ff-badge" style="display:none" id="ffBadge">⚡ 600×</div>';
     area.innerHTML = html;
-    if (pd().plantDiagram) buildFullDiagramExtras();   // full-loop tube bundle / blades (once)
-    if (pd().primary.diagram) buildDiagramBundle();    // SG tube bundle (once)
-    if (pd().secondary.diagram) buildSecDiagramExtras();// condenser tubes + turbine blades (once)
     buildPdAll();
     populateControlBar();
     syncSeg('[data-overlay]', ui.overlay, 'overlay');   // All-view overlay seg reflects ui.overlay after a rebuild
@@ -1909,11 +1727,9 @@
   }
 
   function renderPlantDisplay(s) {
+    if (ui.plant === 'pwr') { RD.PwrSynoptic.render(s); return; }   // one synoptic stage — no views
     renderStatusBar(s);
     if (ui.view === 'primary' || ui.view === 'secondary') renderPdRows(ui.view, s);
-    if (ui.view === 'diagram' && pd().plantDiagram) renderFullDiagram(s);
-    if (ui.view === 'primary' && pd().primary.diagram) renderDiagram(s);
-    if (ui.view === 'secondary' && pd().secondary.diagram) renderSecDiagram(s);
     if (ui.view === 'all') renderPdAll(s);
     // pd scram button mirrors the reactor state
     var ps = $('pdScram');
@@ -1928,7 +1744,25 @@
     if (latest) renderPlantDisplay(latest);
   }
 
-  function buildPlantDisplay() { buildStatusBar(); buildViewSwitcher(); buildViews(); }
+  // PWR: single full-plant synoptic (Blueprint/new_diagram_controls.md) replaces
+  // the 4-view plant display. RBMK/BWR keep the legacy display until their own
+  // diagram specs exist.
+  function buildPlantDisplay() {
+    var syn = ui.plant === 'pwr';
+    document.querySelector('.app').classList.toggle('pwr-synoptic', syn);
+    if (!syn && RD.PwrSynoptic && RD.PwrSynoptic.isMounted()) RD.PwrSynoptic.unmount();
+    if (syn) {
+      $('statusBar').innerHTML = ''; $('viewTabs').innerHTML = ''; $('pdCtlRow').innerHTML = '';
+      RD.PwrSynoptic.mount($('viewArea'), {
+        cmd: cmd, conv: conv, unit: unit,
+        dispP: dispP, dispT: dispT, dispTd: dispTd, dispV: dispV,
+        mode: function () { return ui.diagMode; },
+        overlay: function () { return ui.physOverlay; },
+      });
+      return;
+    }
+    buildStatusBar(); buildViewSwitcher(); buildViews();
+  }
 
   // ============================================================ init
   function init() {
@@ -1949,12 +1783,38 @@
     // optional ?manual[=section] deep-link — opens the Operator's Manual on load
     var mm = /[?&]manual(?:=([a-z]+))?/.exec(location.search || '');
     if (mm) { if (mm[1]) ui.manualSection = mm[1]; openManual(); }
-    // optional ?view= deep-link (diagram | primary | secondary | all)
+    // optional ?view= deep-link (diagram | primary | secondary | all — legacy plants only)
     var vm = /[?&]view=(diagram|primary|secondary|all)/.exec(location.search || '');
-    if (vm) setView(vm[1]);
+    if (vm && ui.plant !== 'pwr') setView(vm[1]);
+    // dev conveniences for the synoptic (screenshots / acceptance checks):
+    // ?mode=realistic|learning  ?phys=1  ?inject=id,id  ?ff=<sim seconds>  ?run=1
+    var dm = /[?&]mode=(realistic|learning|education)/.exec(location.search || '');
+    if (dm) { ui.diagMode = dm[1] === 'realistic' ? 'realistic' : 'learning'; }
+    if (/[?&]phys=1/.test(location.search || '') && ui.diagMode !== 'realistic') ui.physOverlay = true;
+    syncOverlayRow();
+    var im = /[?&]inject=([a-z0-9_,]+)/.exec(location.search || '');
+    if (im) im[1].split(',').forEach(function (id) { service.handleCommand({ action: 'inject_failure', failure_id: id, severity: 1 }); });
+    var ffm = /[?&]ff=(\d+)/.exec(location.search || '');
+    if (ffm) {
+      var secs = Math.min(7200, +ffm[1]);
+      service.handleCommand({ action: 'set_speed', value: 60 });
+      service.advanceCycles(Math.ceil(secs / (60 * service.broadcastMs / 1000)));
+      service.handleCommand({ action: 'set_speed', value: 1 });
+    }
+    if (im || ffm) { latest = service.assembleSnapshot(); render(latest); }
+    if (/[?&]run=1/.test(location.search || '')) { service.start(); $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused'); }
     // optional ?follow=<procId> deep-link — loads a procedure into the Instructor block
     var fm = /[?&]follow=([a-z0-9_]+)/.exec(location.search || '');
     if (fm) followProcedure(fm[1]);
+    buildTraining();
+    // optional ?scenario=<id> deep-link — starts an M6 scenario directly
+    var scm = /[?&]scenario=([a-z0-9_]+)/.exec(location.search || '');
+    if (scm && RD.SCENARIOS && RD.SCENARIOS[scm[1]]) { startScenario(scm[1]); buildTraining(); }
+    // First-run Hook invitation (Gameplay §7.1): plain loads only — any deep link
+    // (search string) or a completed/declined hook suppresses it.
+    if (!location.search && !progress().hook_done && RD.SCENARIOS && RD.SCENARIOS.pwr_hook) {
+      $('hookPrompt').hidden = false;
+    }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

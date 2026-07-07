@@ -1389,3 +1389,18 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   and melts at pressure with no auto-SI; a by-the-book PWR shutdown cannot avoid the pzr-level
   trip (partial-load Tavg/SG-pressure program inverted); protection latency grows with time
   acceleration; no RPS reset path after any trip (forgiveness gap).
+
+- **2026-07-07 — Working-tree regression recovered from session checkpoints.** On the evening of
+  Jul 6 (≈21:40–21:44), a bulk file drop delivered the load-mode feature (`engines/load_mode.js`,
+  Turbine-Generator card Mode seg + load slider, feed auto-coupling, `pwr_sg_flood` scenario,
+  Dev-tab diagnosis-export markup) but replaced `ui/app.js` with a pre-synoptic snapshot of the
+  profile architecture — silently reverting the synoptic mount, the M6 training tab, rewind, and
+  Diagram Mode / Physics Overlay. Commit `cf480f9` unknowingly captured that regressed app.js.
+  Recovery: `ui/app.js` restored from the Claude Code file-history checkpoint of the M6 training
+  session (post-edit snapshot, verified against transcript edit replay), plus four ACTS additions
+  so the batch's synoptic load-mode card is live (`load-follow`, `load-manual`,
+  `load-disconnect`, `spray-off`). All other batch files were confirmed to be the good versions
+  plus genuine improvements and were kept. Verified: M6 16/16 suites, synoptic + cards render,
+  training tab lists 3 scenarios + 9 walkthroughs. Known gaps: Dev-tab "Diagnosis JSON" button
+  has no handler yet (was never wired in any surviving app.js); scenario suite 2/3 — TMI-recovery
+  "Averted" beat no longer fires after the Jul 6 engine retuning (tuning target, not UI).
