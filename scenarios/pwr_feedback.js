@@ -76,10 +76,19 @@
         speed: 10,
         advance: 'wait_for_trigger' },
 
+      // Completes on the climb being visibly banked (585 MWe after a 200-s
+      // dwell) OR on a 600-s fallback: the settle point depends on how many
+      // rod steps the player actually inserted earlier (probed: three +1
+      // presses land ~560 MWe, a single 3-step nudge ~600), and a physics
+      // demonstration must never soft-wait on a threshold the player's own
+      // earlier caution moved out of reach.
       { id: 'complete',
-        trigger: { type: 'all', triggers: [
-          { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 585 },
-          { type: 'delay', value: 200.0 },
+        trigger: { type: 'any', triggers: [
+          { type: 'all', triggers: [
+            { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 585 },
+            { type: 'delay', value: 200.0 },
+          ] },
+          { type: 'delay', value: 600.0 },
         ] },
         commentary: {
           learning: 'There it is — output climbed to meet the ask, and the control rods never moved. (It settles short of the full 650: the loop cools as it works harder, and the physics strikes its bargain partway — the same negotiation you saw with the rods, running in reverse.) One honest note: this simulator treats the whole core as one lump, so feedback looks perfectly smooth; in a real core it varies region by region. But the principle you just proved twice is exactly real, and it is the reason a PWR is one of the most stable machines humans have built: push it, and it pushes back.',
