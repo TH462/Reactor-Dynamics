@@ -653,6 +653,7 @@
     service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
     service.handleCommand({ action: 'start_scenario', scenario_id: id });
     afterPlantChange();          // the scenario may have switched the plant
+    diagReset('scenario', { scenario_id: id });
     setFocus('instructor');
     service.handleCommand({ action: 'play' });
     $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused');
@@ -857,6 +858,10 @@
   // ============================================================ commands
   function cmd(c) {
     var r = service.handleCommand(c);
+    if (diag) {
+      diag.commands.push({ t: latest && latest.metadata ? latest.metadata.sim_time : 0, command: c, blocked: !!(r && r.type === 'blocked'), error: !!(r && r.type === 'error') });
+      if (diag.commands.length > 2000) diag.commands.shift();
+    }
     // The command was blocked, not executed — show why. Instructor gates focus
     // the Instructor card (its commentary carries the message); plant interlocks
     // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar.
@@ -877,8 +882,92 @@
     return els.length ? +els[els.length - 1].value : 0;
   }
 
+  // ============================================================ session diagnosis (Dev tab)
+  // Records the session at 1 Hz (true-state samples), plus alarm transitions,
+  // scram edges, and every issued command; "Diagnosis JSON" bundles it all with
+  // a full service.saveState() so an AI (or a human) can replay what happened.
+  // Schema matches the Diagnostic/rd_diag_*.json exports (schema_version 1.0).
+  var DIAG_FIELDS = {
+    pwr: ['power_pct', 'tavg_c', 'thot_c', 'tcold_c', 'pressure_mpa', 'pzr_level_pct', 'sg_level_pct', 'steam_flow_normalized', 'fw_flow_normalized', 'steam_pressure_mpa'],
+    rbmk: ['power_pct', 'fuel_temp_c', 'graphite_temp_avg_c', 'void_fraction_avg', 'reactivity_pcm', 'xenon_pct_eq', 'steam_pressure_mpa', 'drum_level_pct', 'channel_flow_pct'],
+    bwr: ['power_pct', 'fuel_temp_c', 'vessel_pressure_mpa', 'vessel_level_pct', 'core_void_fraction', 'recirc_flow_pct', 'decay_heat_pct']
+  };
+  var diag = null;
+  function diagEvent(t, type, detail) {
+    diag.events.push({ t: t, type: type, detail: detail });
+    if (diag.events.length > 5000) diag.events.shift();
+  }
+  function diagReset(reason, meta) {
+    var t = latest && latest.metadata ? latest.metadata.sim_time : 0;
+    diag = { reason: reason, meta: meta || null, startSim: t, lastT: t, nextT: Math.floor(t), samples: [], events: [], commands: [], lastAlarms: null, lastScrammed: false };
+    diagEvent(t, 'session_start', { reason: reason, meta: meta || null });
+  }
+  function diagSample(s, t) {
+    var ts = s.true_state || {}, row = { t: t, accel: s.metadata.time_acceleration };
+    var F = DIAG_FIELDS[ui.plant] || DIAG_FIELDS.pwr;
+    for (var i = 0; i < F.length; i++) if (typeof ts[F[i]] === 'number') row['true_' + F[i]] = ts[F[i]];
+    diag.samples.push(row);
+    if (diag.samples.length > 14400) diag.samples.shift();   // ~4 h at 1 Hz
+  }
+  function diagTick(s) {
+    if (!diag || !s || !s.metadata) return;
+    var t = s.metadata.sim_time;
+    if (t < diag.lastT - 0.001) {          // rewind / replay — drop the recorded future
+      var keep = function (e) { return e.t <= t + 0.001; };
+      diag.samples = diag.samples.filter(keep); diag.events = diag.events.filter(keep); diag.commands = diag.commands.filter(keep);
+      diag.nextT = Math.floor(t);
+      diagEvent(t, 'time_rewind', { to: t });
+    }
+    diag.lastT = t;
+    var byId = {};
+    for (var i = 0; i < s.alarms.length; i++) {
+      var a = s.alarms[i]; byId[a.id] = a.state;
+      var was = diag.lastAlarms ? diag.lastAlarms[a.id] : a.state;
+      if (diag.lastAlarms === null || was !== a.state) diagEvent(t, 'alarm', { id: a.id, state: a.state, was: was });
+    }
+    diag.lastAlarms = byId;
+    var sc = !!(s.rps_state && s.rps_state.scrammed);
+    if (sc && !diag.lastScrammed) {
+      var reason = (s.rps_state.last_trip_reason || 'unknown');
+      diagEvent(t, 'scram', { trip_reason: reason }); diagEvent(t, 'trip_reason', { reason: reason });
+    }
+    diag.lastScrammed = sc;
+    if (t >= diag.nextT || !diag.samples.length) { diagSample(s, t); diag.nextT = Math.floor(t) + 1; }
+    var el = $('diagSessionInfo');
+    if (el) el.textContent = ui.plant + ' · ' + diag.reason + ' · ' + t.toFixed(0) + ' s · ' + diag.samples.length + ' samples';
+  }
+  function exportDiag() {
+    if (!diag) return;
+    var s = latest || service.assembleSnapshot(); var t = s.metadata.sim_time;
+    diagSample(s, t);                                        // final partial-second sample
+    var iso = new Date().toISOString();
+    var bundle = {
+      schema_version: '1.0', kind: 'reactor_dynamics_diagnosis', exported_at: iso,
+      manifest: {
+        plant_id: ui.plant, design_version: s.metadata.design_version || null, engine_key: ui.engineKey,
+        initial_state: ui.initState,
+        scenario_id: (s.instructor && s.instructor.scenario_id) || null,
+        follow_procedure_id: (s.instructor && s.instructor.follow && s.instructor.follow.procedure_id) || null,
+        session_start_reason: diag.reason, session_start_meta: diag.meta,
+        session_start_sim_time: diag.startSim, exported_sim_time: t,
+        seed: service.seed, sample_hz: 1
+      },
+      timeseries: diag.samples, events: diag.events, commands: diag.commands,
+      snapshot_end: service.saveState()
+    };
+    var notesEl = $('diagNotes'), notes = notesEl && notesEl.value.trim();
+    if (notes) bundle.notes = notes;
+    var stamp = iso.slice(0, 16).replace(/:/g, '');          // 2026-07-07T0046
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(bundle)], { type: 'application/json' }));
+    a.download = 'rd_diag_' + stamp + '_' + ui.plant + '.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  }
+
   var ACTS = {
     scram: function () { cmd({ action: 'scram' }); },
+    'export-diag': function () { exportDiag(); },
     'ack-all': function () { cmd({ action: 'acknowledge_all_alarms' }); },
     // rods — uniform across plants (+withdraw / −insert)
     'rod-raise': function () { cmd({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: ui.rodSpeed }); },
@@ -1054,7 +1143,7 @@
     $('engineSel').addEventListener('change', function () { switchEngine($('engineSel').value); });
     $('loadFile').addEventListener('change', function (e) {
       var f = e.target.files[0]; if (!f) return; var r = new FileReader();
-      r.onload = function () { try { var st = JSON.parse(r.result); service.loadState(st); afterPlantChange(); } catch (err) { alert('Bad save file'); } };
+      r.onload = function () { try { var st = JSON.parse(r.result); service.loadState(st); afterPlantChange(); diagReset('restore', { engine_key: ui.engineKey }); } catch (err) { alert('Bad save file'); } };
       r.readAsText(f);
     });
     // --- plant-display wiring ---
@@ -1365,6 +1454,7 @@
     service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
     service.handleCommand({ action: 'reset', plant_id: e.plant, initial_state: e.init, design_version: e.dv });
     rebuildPlantUI();
+    diagReset('plant_change', { engine_key: key, initial_state: e.init });
   }
 
   function rebuildPlantUI() {
@@ -1769,6 +1859,7 @@
     ui.series = Object.assign({}, PROFILES.pwr.defaultSeries);
     service = new RD.SimulationService({ seed: 0x1234 });
     service.subscribe(render);
+    service.subscribe(diagTick);
     bindUI(); bindCommands();
     // optional ?engine= override (dev convenience / sharing)
     var em = /[?&]engine=(pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');
@@ -1779,6 +1870,7 @@
     buildPlantDisplay();
     $('engineSel').value = startKey;
     service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render
+    diagReset('init', { engine_key: startKey, initial_state: ui.initState });
     buildFailures();
     // optional ?manual[=section] deep-link — opens the Operator's Manual on load
     var mm = /[?&]manual(?:=([a-z]+))?/.exec(location.search || '');

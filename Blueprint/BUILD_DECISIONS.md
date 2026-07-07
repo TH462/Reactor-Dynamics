@@ -1401,6 +1401,19 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   so the batch's synoptic load-mode card is live (`load-follow`, `load-manual`,
   `load-disconnect`, `spray-off`). All other batch files were confirmed to be the good versions
   plus genuine improvements and were kept. Verified: M6 16/16 suites, synoptic + cards render,
-  training tab lists 3 scenarios + 9 walkthroughs. Known gaps: Dev-tab "Diagnosis JSON" button
-  has no handler yet (was never wired in any surviving app.js); scenario suite 2/3 — TMI-recovery
-  "Averted" beat no longer fires after the Jul 6 engine retuning (tuning target, not UI).
+  training tab lists 3 scenarios + 9 walkthroughs. Remaining gap: scenario suite 2/3 —
+  TMI-recovery "Averted" beat no longer fires after the Jul 6 engine retuning (tuning target,
+  not UI).
+
+- **2026-07-07 — Session-diagnosis export rebuilt (Dev tab).** Forensics identified the Jul 6
+  file drop as a Grok agent session (its `mcps/grok_com_*` scaffolding is stamped 21:39). Grok
+  built the diagnosis export live (the user's two `Diagnostic/rd_diag_*.json` test exports prove
+  it worked at 20:46/21:06) and then erased its own handler in the same stale-base `app.js`
+  write-back that clobbered the synoptic. Rebuilt in app.js against the exported files as the
+  schema contract (`schema_version 1.0`, kind `reactor_dynamics_diagnosis`): 1 Hz true-state
+  timeseries (per-plant field maps, ~4 h ring), alarm-transition/scram/session_start events,
+  command log with blocked/error flags, full `service.saveState()` as `snapshot_end`, manifest
+  (plant, engine key, init state, scenario, follow procedure, seed, sample_hz), optional user
+  notes, `rd_diag_<stamp>_<plant>.json` download. Session boundaries reset the recorder
+  (init / plant_change / scenario / restore); rewind trims the recorded future. A wiring audit
+  (every `data-act`/`data-hold`/`act:`/`hold:` reference vs handlers) now reports 79/79 wired.
