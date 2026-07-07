@@ -1320,5 +1320,8 @@
     isMounted: function () { return mounted; },
     refreshLayout: function () { if (mounted) { positionCards(); positionPanels(); drawLeaders(); } },
     revealControl: revealControl,
+    // Test hook (run_campaign structural check): the labels revealControl can
+    // resolve — every PWR beat highlight must name one, or nothing will glow.
+    highlightLabels: Object.keys(SYN_CONTROL_MAP),
   };
 })(globalThis.RD || (globalThis.RD = {}));

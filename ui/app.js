@@ -375,6 +375,14 @@
     $('clock').classList.toggle('running', s.metadata.running);
     $('clock').classList.toggle('accel', s.metadata.time_acceleration > 1);
 
+    // Cross-plant transition guard: when a scenario switches the plant (e.g.
+    // a ?scenario= deep link), the new plant's first snapshots can land while
+    // ui.plant / the gauge-chart profile still describe the old one — every
+    // profile-bound reader would throw on the foreign instrument set. Catch
+    // up the UI instead of rendering the mismatch.
+    var snapPlant = s.metadata.plant_id;
+    if (snapPlant && ui.plant && snapPlant !== ui.plant) { afterPlantChange(); return; }
+
     renderGauges(s);
     renderAlarms(s); renderInstructor(s); renderReactimeter(s); renderFailures(s);
     // alarm tint on the CSF gauge strip while anything is unacknowledged
@@ -405,7 +413,12 @@
   function renderGauges(s) {
     prof().gauges.forEach(function (g) {
       var root = $('gauge-' + g.id); if (!root) return;
-      var raw = g.raw(s);
+      var raw;
+      // A cross-plant transition (e.g. a ?scenario= deep link that switches
+      // the plant) can deliver one snapshot from the NEW plant to the OLD
+      // profile's gauges — read defensively or the whole render pass dies.
+      try { raw = g.raw(s); } catch (e) { raw = null; }
+      if (raw == null || isNaN(raw)) { root.querySelector('[data-val]').textContent = '—'; return; }
       var st = gaugeState(g, raw);
       root.classList.toggle('warn', st === 'warn');
       root.classList.toggle('alarm', st === 'alarm');
@@ -483,6 +496,15 @@
   }
 
   var lastInstrMsg = null;
+  // Commentary min-dwell (playtest fix): the instructor layer keeps only its
+  // LATEST message, so a fast beat sequence used to replace a card mid-read
+  // and the text was gone for good. The UI now holds each card until a
+  // ~220 wpm reader could finish it (capped at 16 s) and queues later cards
+  // in arrival order. Blocked-command feedback bypasses the dwell — the
+  // player just clicked and the answer must be immediate.
+  var msgHold = { shown: null, at: 0, queue: [], bypass: false };
+  function msgDwellS(t) { return Math.min(16, String(t).trim().split(/\s+/).length / 3.7 + 0.8); }
+  function resetInstrFlow() { msgHold.shown = null; msgHold.at = 0; msgHold.queue = []; msgHold.bypass = false; lastInstrMsg = null; }
   function renderInstructor(s) {
     // Rewind is live whenever a checkpoint exists (beats / follow steps / sandbox).
     var noCp = !(service && service.checkpoints && service.checkpoints.length);
@@ -499,14 +521,31 @@
     if (fb) { ui.follow = { id: fb.procedure_id }; renderFollow(s); return; }
     if (ui.follow) ui.follow = null;              // the snapshot says the follow ended
     var lc = s.instructor && s.instructor.level_complete;
-    if (lc) { renderLevelComplete(s, lc); return; }
+    if (lc) { msgHold.queue = []; msgHold.shown = null; renderLevelComplete(s, lc); return; }
     lastLcKey = null;
     var cur = $('instrCurrent');
     var msg = (s.instructor && s.instructor.message) ? s.instructor.message : null;
-    if (msg) { cur.textContent = msg; cur.classList.remove('instr-standby'); }
-    else { cur.textContent = 'Standing by…'; cur.classList.add('instr-standby'); }
-    if (msg && msg !== lastInstrMsg) setFocus('instructor');
+    if (msg && msg !== lastInstrMsg) {
+      if (msgHold.bypass) { msgHold.queue = []; msgHold.shown = null; msgHold.bypass = false; }
+      if (msg !== msgHold.shown && msgHold.queue.indexOf(msg) === -1) {
+        msgHold.queue.push(msg);
+        if (msgHold.queue.length > 3) msgHold.queue.shift();   // never lag reality by more than 3 cards
+      }
+    }
     lastInstrMsg = msg;
+    var now = Date.now() / 1000;
+    var dwellMet = !msgHold.shown || (now - msgHold.at) >= msgDwellS(msgHold.shown);
+    if (msgHold.queue.length && dwellMet) {
+      msgHold.shown = msgHold.queue.shift();
+      msgHold.at = now;
+      cur.textContent = msgHold.shown; cur.classList.remove('instr-standby');
+      setFocus('instructor');
+    } else if (!msg && !msgHold.queue.length && dwellMet) {
+      if (msgHold.shown !== null || cur.textContent !== 'Standing by…') {
+        msgHold.shown = null;
+        cur.textContent = 'Standing by…'; cur.classList.add('instr-standby');
+      }
+    }
   }
 
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
@@ -561,8 +600,12 @@
       var lbl = a === 'continue' ? 'Continue' : a === 'retry' ? '↺ Retry' : '⏪ Rewind';
       return '<button class="btn" data-lc="' + a + '">' + lbl + '</button>';
     }).join(' ');
+    // The endpoint beat's commentary used to be covered instantly by this
+    // panel — every mission's payoff paragraph went unread (playtest fix).
+    var msg = s && s.instructor && s.instructor.message;
     var cur = $('instrCurrent'); cur.classList.remove('instr-standby');
-    cur.innerHTML = '<div class="lc-panel"><div class="lc-title">🏁 ' + mesc(lc.title) + '</div>' +
+    cur.innerHTML = (msg ? '<div class="lc-msg">' + mesc(msg) + '</div>' : '') +
+      '<div class="lc-panel"><div class="lc-title">🏁 ' + mesc(lc.title) + '</div>' +
       (lc.outcome ? '<div class="m-note">' + mesc(lc.outcome) + '</div>' : '') +
       '<div class="lc-actions">' + btns + '</div></div>';
     setFocus('instructor');
@@ -742,6 +785,7 @@
     service.handleCommand({ action: 'start_scenario', scenario_id: id });
     afterPlantChange();          // the scenario may have switched the plant
     diagReset('scenario', { scenario_id: id });
+    resetInstrFlow();            // fresh mission → fresh commentary queue
     setFocus('instructor');
     service.handleCommand({ action: 'play' });
     $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused');
@@ -760,6 +804,7 @@
     // timeline → fresh trend history and gauge smoothing.
     chartBuf = []; smoothed = {};
     cmd({ action: 'start_follow', procedure_id: id });
+    resetInstrFlow();            // fresh walkthrough → fresh commentary queue
     closeManual(); setFocus('instructor');
     if (latest) renderInstructor(latest);
   }
@@ -795,7 +840,9 @@
       if (d < bd) { bd = d; best = i; }
     }
     toggleRewindPick(false);
-    cmd({ action: 'rewind', steps: cps.length - best });
+    // exact: the pick names a specific checkpoint — M5 must not apply the
+    // repeated-press walk-back clamp to it (playtest follow-up).
+    cmd({ action: 'rewind', steps: cps.length - best, exact: true });
   }
 
   function followNav(d) {
@@ -955,7 +1002,7 @@
     // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar.
     if (r && r.type === 'blocked') {
       if (r.code === 'INTERLOCK' && r.message) $('scanner').innerHTML = '<strong>⛔ ' + mesc(r.message) + '</strong>';
-      else setFocus('instructor');
+      else { msgHold.bypass = true; setFocus('instructor'); }   // gate feedback jumps the dwell queue
       latest = service.assembleSnapshot(); render(latest);
     }
     if (!service.running) { latest = service.assembleSnapshot(); render(latest); }
@@ -1912,6 +1959,11 @@
   }
 
   function renderPlantDisplay(s) {
+    // Cross-plant transition guard: a ?scenario= deep link (or any scenario
+    // that switches the plant) can broadcast the NEW plant's snapshot before
+    // ui.plant catches up — never feed a foreign snapshot to a display.
+    var snapPlant = s && s.metadata && s.metadata.plant_id;
+    if (snapPlant && snapPlant !== ui.plant) return;
     if (ui.plant === 'pwr') { RD.PwrSynoptic.render(s); return; }   // one synoptic stage — no views
     renderStatusBar(s);
     if (ui.view === 'primary' || ui.view === 'secondary') renderPdRows(ui.view, s);

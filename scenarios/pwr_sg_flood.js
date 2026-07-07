@@ -38,13 +38,18 @@
         },
         advance: 'wait_for_trigger' },
 
+      // Trigger repaired (playtest follow-up): the original used a malformed
+      // shape (instrument_id/high/setpoint — not M6 vocabulary), so this beat
+      // could never fire and the mission softlocked at 'imbalance'. Probed:
+      // rod insertion with load pinned at 1000 MWe floods the SGs to ~100%
+      // within ~2 sim-minutes.
       { id: 'imbalance',
-        trigger: { type: 'instrument', instrument_id: 'sg_level', direction: 'high', setpoint: 75 },
+        trigger: { type: 'instrument', instrument: 'sg_level', direction: 'above', value: 75 },
         commentary: {
           learning: 'SG level is climbing. Reactor power fell but you never reduced turbine load — or switched back to Follow Reactor. What control did you forget?',
           industry: 'SG level high with reduced core power — load rejection / turbine load not matched to generation. Correct: Follow mode or reduce manual load.',
         },
-        highlight: { view: null, control_label: 'Turbine Load', instrument_id: 'sg_level' },
+        highlight: { view: null, control_label: 'Turbine Load', instrument_id: 'sg' },
         advance: 'wait_for_trigger' },
 
       { id: 'fix',

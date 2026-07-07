@@ -1516,3 +1516,38 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   (TMI rewind→decision→Averted in 2 presses; honest reader reaches the Fukushima IC card;
   boron fumble completes; early ack proceeds; az5 rewind rematch wins; feedback demo holds
   20 s; frozen exam fails at 6.2 min).
+
+- **2026-07-07 — Playtest hardening, round 2 (confidence-list follow-ups).** The residual
+  uncertainties from the playtest pass, closed with fixes rather than caveats:
+  **UI commentary min-dwell queue** (`app.js renderInstructor`): the instructor layer keeps
+  only its latest message, so any beat cascade faster than reading speed destroyed text
+  forever; the UI now holds each card ≥ words/3.7 s (capped 16 s) and queues successors
+  (depth 3). Blocked-command feedback bypasses the queue (the player just clicked);
+  `level_complete` flushes it. **Endpoint commentary was never displayed at all** — the LC
+  panel painted over the completing beat's card in the same broadcast; `renderLevelComplete`
+  now renders the message (`.lc-msg`) above the panel. **Rewind-pick exactness**: strip-chart
+  picks send `{rewind, steps, exact:true}`; M5 skips the press-semantics guards for exact
+  picks (a second pick while paused could otherwise land one checkpoint early).
+  **Cross-plant snapshot race fixed** (pre-existing): a `?scenario=` deep link that switches
+  the plant let the new plant's snapshots reach the old profile's gauges/chart/synoptic —
+  three distinct `.toFixed` crashes killed the whole render pass; `render()` now detects the
+  plant mismatch and runs `afterPlantChange()` catch-up, plus a defensive read in
+  `renderGauges`. **`pwr_sg_flood` was unwinnable since authoring** (caught by the new
+  coverage guard): its `imbalance` trigger used a malformed shape (`instrument_id`/`high`/
+  `setpoint` — not M6 vocabulary) and could never fire; repaired to
+  `instrument sg_level above 75` (probed: floods to ~100% in ~2 sim-min) and its gauge
+  highlight `sg_level`→`sg`. Now functionally tested. **Highlight coverage is a structural
+  gate**: `pwr_synoptic.js` exports `highlightLabels`; `run_campaign` asserts every campaign
+  beat's `control_label` (PWR) and `instrument_id` (all plants) resolves to a real target.
+  **Seed sweep**: tour (happy+greedy), boron, feedback (real three-press pattern), qualify
+  win, load_follow shift, sg_flood — 35/35 across seeds 1/7/13/42/99. **synoptic_check.html
+  resurrected**: it wasn't Edge drift — the harness never got a script tag for
+  `engines/load_mode.js` when Load Mode landed, so `pwr_engine.js` threw at load; one tag
+  restores 55/55 (`SYNOPTIC-OK`). Also: `pwr_feedback.complete` gained a 600-sim-s fallback
+  (three separate +1 presses settle ~560 MWe, under the 585 threshold the single steps:3
+  harness command reaches — a demo must not soft-wait on the player's earlier caution).
+  Gates: `run_campaign` 26/26 (739), M5 17/17, M6 16/16, scenarios 3/3, PWR 13/13, M4 11/11,
+  manual-follow 81, synoptic 55/55; `run_procedures` 20/21 and `verify_e2e_ui` (pwr/primary
+  `dhr-on` missing) unchanged pre-existing reds. Known residual: headless probe scripts must
+  `process.exit()` — a played SimulationService holds a live interval and the process never
+  exits (nine zombie node processes were reaped this session).

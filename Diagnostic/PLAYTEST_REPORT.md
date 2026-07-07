@@ -527,3 +527,30 @@ M5 17/17; M6 16/16; scenarios 3/3; PWR 13/13; RBMK 23/23; BWR 12/12; M4 11/11;
 manual-follow 81 ✓. `run_procedures` 20/21 and `run_e2e_controls` 23/25 are unchanged from
 HEAD (pre-existing engine findings B3 and LPI/accumulator, both already logged). Persona
 re-verification suite: 17/17.
+
+### Round 2 (same day) — residual-confidence items closed
+
+The post-fix review flagged four remaining uncertainties; all are now fixes, not caveats
+(decision record: BUILD_DECISIONS round-2 entry):
+
+- **Reading-pace robustness**: the UI now enforces a per-card minimum dwell (words ÷ 3.7 s,
+  capped 16 s) with a 3-deep queue, so no beat cascade can destroy text at ANY reading
+  speed; blocked-command feedback bypasses the queue, completion cards flush it. Bonus find:
+  the level-complete panel had been painting over every mission's final commentary in the
+  same broadcast — endpoint text is now rendered above the panel.
+- **Rewind-pick precision**: strip-chart picks are `exact` — M5 skips the repeated-press
+  walk-back for them.
+- **Threshold margins**: swept seeds 1/7/13/42/99 over tour (both paths), boron, feedback
+  (real three-press pattern — which exposed and fixed a soft-wait: `complete` now has a
+  600-sim-s fallback), qualify win, load_follow, sg_flood: **35/35**.
+- **Live-UI verification**: `synoptic_check.html` was dead because it never loaded
+  `engines/load_mode.js` (not Edge drift) — repaired, **55/55 SYNOPTIC-OK**; a highlight
+  coverage check is now a structural gate in `run_campaign` (it immediately caught
+  `pwr_sg_flood`'s malformed `imbalance` trigger — the bonus mission had been unwinnable
+  since authoring — and its dead gauge highlight; both repaired and now functionally
+  tested); the `?scenario=` deep link's cross-plant render crash (pre-existing, three
+  `.toFixed` throws) is fixed, restoring headless live-UI verification for all plants.
+
+Final gates: `run_campaign` **26/26 (739 checks)**, synoptic harness 55/55, everything else
+as above; `verify_e2e_ui`'s pwr/primary `dhr-on` failure is pre-existing at HEAD (classic
+view, unrelated) and remains logged.

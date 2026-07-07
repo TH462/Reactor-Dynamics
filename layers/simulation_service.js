@@ -209,19 +209,23 @@
   // Instructor progress (RETRY a decision — its beats re-arm); scope 'world'
   // restores the plant but the teacher remembers (narrated "watch that again").
   // The target checkpoint stays on the ring so it can be rewound to again.
-  SimulationService.prototype._rewind = function (steps, scope) {
+  // `exact` (rewind-pick): the caller names a specific checkpoint — skip both
+  // press-semantics guards below and restore precisely what was asked for.
+  SimulationService.prototype._rewind = function (steps, scope, exact) {
     var idx = this.checkpoints.length - steps;
-    // If the newest checkpoint IS the current moment (a beat just fired here, or
-    // we already rewound to it in this same broadcast), rewinding must reach
-    // strictly earlier state.
-    if (idx === this.checkpoints.length - 1 && idx >= 0 &&
-        Math.abs(this.checkpoints[idx].metadata.sim_time - this.simTime) < 1e-9) idx--;
-    // Repeated presses with no new progress since the last rewind (no checkpoint
-    // pushed) walk back one boundary each. Without this, the broadcasts that tick
-    // between two ⏪ presses defeat the exact-time guard above and every press
-    // restores the same newest checkpoint — a failure card could never be escaped
-    // back to its decision point (playtest finding).
-    if (this._rewindCursor != null && idx >= this._rewindCursor) idx = this._rewindCursor - 1;
+    if (!exact) {
+      // If the newest checkpoint IS the current moment (a beat just fired here,
+      // or we already rewound to it in this same broadcast), rewinding must
+      // reach strictly earlier state.
+      if (idx === this.checkpoints.length - 1 && idx >= 0 &&
+          Math.abs(this.checkpoints[idx].metadata.sim_time - this.simTime) < 1e-9) idx--;
+      // Repeated presses with no new progress since the last rewind (no
+      // checkpoint pushed) walk back one boundary each. Without this, the
+      // broadcasts that tick between two ⏪ presses defeat the exact-time guard
+      // above and every press restores the same newest checkpoint — a failure
+      // card could never be escaped back to its decision point (playtest).
+      if (this._rewindCursor != null && idx >= this._rewindCursor) idx = this._rewindCursor - 1;
+    }
     var target = idx >= 0 ? this.checkpoints[idx] : null;
     if (!target) return null;
     this.checkpoints.length = idx + 1;
@@ -361,7 +365,7 @@
       // Rewind (Gameplay §7.2): pop back to an in-memory checkpoint. Distinct
       // from file save/load — this is the constructive-failure loop.
       case 'rewind': {
-        var rsnap = this._rewind(command.steps || 1, command.scope || 'full');
+        var rsnap = this._rewind(command.steps || 1, command.scope || 'full', !!command.exact);
         if (!rsnap) return { type: 'error', code: 'COMMAND_ERROR', message: 'no checkpoint to rewind to', received: command };
         return rsnap;
       }

@@ -34,6 +34,7 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'scenarios/bwr_tour.js', 'scenarios/bwr_recirc.js', 'scenarios/bwr_isolation.js',
   'scenarios/bwr_fukushima.js', 'scenarios/bwr_qualify.js',
   'ui/manual_procedures.js', 'ui/campaign_data.js',
+  'ui/diagram/pwr_synoptic.js',   // safe headless: top level only defines functions/data
 ].forEach(load);
 var RD = globalThis.RD;
 
@@ -151,6 +152,41 @@ test('campaign scenarios — beat vocabulary, registers, endpoints', function (c
       if (b.level_complete) hasLc = true;
     });
     ck(id + ' has a level_complete endpoint', hasLc, hasLc, '≥1 level_complete beat');
+  });
+});
+
+// Every highlight a campaign beat names must resolve to something that can
+// actually glow: PWR control labels against the synoptic's SYN_CONTROL_MAP
+// (exported as highlightLabels), gauge ids against the per-plant gauge strip
+// (mirrors app.js PROFILES). Playtest finding: four PWR beats named labels
+// the map did not know, and pwr_sg_flood pointed at a nonexistent gauge id.
+var GAUGE_IDS = {
+  pwr:  ['power', 'press', 'tavg', 'pzr', 'sg', 'subcool'],
+  rbmk: ['power', 'steam_p', 'drum', 'flow', 'void', 'orm'],
+  bwr:  ['power', 'vessel_p', 'level', 'recirc', 'void', 'steam'],
+};
+test('campaign highlights — every named control/gauge resolves on the board', function (ck) {
+  Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
+    var missions = [];
+    RD.CAMPAIGNS[cid].acts.forEach(function (a) { a.missions.forEach(function (m) { missions.push(m); }); });
+    (RD.CAMPAIGNS[cid].bonus || []).forEach(function (m) { missions.push(m); });
+    missions.forEach(function (m) {
+      if (m.kind !== 'scenario') return;
+      var sc = RD.SCENARIOS[m.id]; if (!sc) return;
+      (sc.beats || []).forEach(function (b) {
+        if (!b.highlight) return;
+        if (b.highlight.control_label && cid === 'pwr') {
+          var known = RD.PwrSynoptic.highlightLabels.indexOf(b.highlight.control_label) !== -1;
+          ck(m.id + '.' + b.id + ' control highlight resolves (' + b.highlight.control_label + ')',
+            b.highlight.control_label, known, 'a SYN_CONTROL_MAP label');
+        }
+        if (b.highlight.instrument_id) {
+          var ids = GAUGE_IDS[cid] || [];
+          ck(m.id + '.' + b.id + ' gauge highlight resolves (' + b.highlight.instrument_id + ')',
+            b.highlight.instrument_id, ids.indexOf(b.highlight.instrument_id) !== -1, ids.join('|'));
+        }
+      });
+    });
   });
 });
 
@@ -356,6 +392,21 @@ test('pwr_qualify — negligence fails (failure endpoint exists)', function (ck)
   snap = runUntil(s, function (sn) { return lc(sn); }, 2 * 3600);
   ck('reaches an endpoint without operator help', !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is a failure card', lc(snap).title, !/Qualified/i.test(lc(snap).title), 'not Qualified');
+});
+
+test('pwr_sg_flood — bonus mission completes (imbalance trigger repaired)', function (ck) {
+  // Playtest follow-up: the original trigger was malformed (instrument_id/
+  // high/setpoint) and the mission softlocked at 'imbalance' forever.
+  var s = startScenario('pwr_sg_flood');
+  var snap = waitBeat(s, 'imbalance', 60);
+  ck('rod-insert prompt fires', !!snap, !!snap, 'imbalance pending');
+  if (!snap) return;
+  s.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'normal' });
+  settle(s, 30);
+  s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 600);
+  ck('SG flood recognized → mission completes', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the load-mode card', lc(snap).title, /Load Mode/i.test(lc(snap).title), 'Load Mode card');
 });
 
 // ------------------------------------------------------------ RBMK campaign
