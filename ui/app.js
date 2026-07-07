@@ -611,7 +611,10 @@
     setFocus('instructor');
   }
   function levelCompleteAction(a) {
-    if (a === 'rewind') { lastLcKey = null; cmd({ action: 'rewind', steps: 1 }); return; }
+    // Reset the commentary queue on rewind: without this, cards from the
+    // abandoned timeline churn through the dwell queue after each press
+    // (seen in the az5 rematch playthrough).
+    if (a === 'rewind') { lastLcKey = null; resetInstrFlow(); cmd({ action: 'rewind', steps: 1 }); return; }
     if (a === 'retry') {
       lastLcKey = null;
       if (ui.follow) { followRetry(); return; }
@@ -812,7 +815,7 @@
   // content it steps back one authored checkpoint; in free play it opens the
   // pick-a-moment mode on the strip chart (sandbox checkpoints every 15 sim-s).
   function rewindPressed() {
-    if (ui.follow || ui.scenario) { cmd({ action: 'rewind', steps: 1 }); return; }
+    if (ui.follow || ui.scenario) { resetInstrFlow(); cmd({ action: 'rewind', steps: 1 }); return; }
     toggleRewindPick();
   }
   function toggleRewindPick(on) {

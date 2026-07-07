@@ -555,6 +555,73 @@ Final gates: `run_campaign` **26/26 (739 checks)**, synoptic harness 55/55, ever
 as above; `verify_e2e_ui`'s pwr/primary `dhr-on` failure is pre-existing at HEAD (classic
 view, unrelated) and remains logged.
 
+## Post-fix playthrough — RBMK "The Other Path" and BWR "One Loop"
+
+**Method:** same persona, same wall-clock model as the PWR playtest — but the driver now
+models the UI's commentary min-dwell queue (dwell = words ÷ 3.7 s capped 16 s, depth 3,
+level-complete flushes and re-renders the endpoint text above the panel), so read-time is
+measured against what the *screen* shows and the persona reacts to displayed cards, not
+upstream state. Fresh seed (5). One fumble per act as before. Log:
+`playtest_rbmk_bwr_log.json` (session scratchpad).
+
+**Headline:** all 19 mission-runs reach authored endings; every displayed card met (or came
+within the 16-s cap of) its read time; every fumble landed on a teaching card. RBMK campaign:
+~10 min of wall time including both retries; BWR: ~16 min including the failed exam attempt
+and the 4.6-min passing exam. No softlocks, no silent states.
+
+### RBMK — mission verdicts
+
+1. **rbmk_tour** · 1.9 min · Every card readable in full (the 93-word intro got its 26 s).
+   The ORM card — the Act III setup — displayed 20.1 s of a 22.1-s read: the cap trims the
+   longest cards by a hair. Acceptable.
+2. **rbmk_startup [P]** · **1.7 min** (was 6.8) · The rewritten note works exactly as
+   intended: Norm bursts, SUR stirred on the first burst, dropped to Slow, critical in 11
+   bursts. The 5-minute budget breach is gone.
+3. **rbmk_void** · fumble run 1.2 min + clean run 1.6 min · The greedy 30% cut spikes the
+   core, the protection trips it, and "It Bit" lands with the Chernobyl foreshadow —
+   honestly the best failure card in the product now. Sequencing note: the "THERE. Less
+   water…" praise card displays briefly before the trip card arrives (power really did
+   rise first, then trip — the timeline is honest; the failure card re-frames it). Clean
+   run: everything readable, "Felt" endpoint with its commentary above the panel.
+4. **rbmk_raise_power [P]** · 0.3 min · fine.
+5. **rbmk_mcp_trip [P]** · 0.5 min · Reading the card first let power spike to **120%**
+   before the RPS acted — the new "(the protection may beat you to it…)" note is doing
+   real work. Completed normally.
+6. **rbmk_shutdown [P]** · 0.4 min · fine; teaches the two-press AZ-5 before Act III needs it.
+7. **rbmk_chernobyl** · 1.4 min · Intro fully readable (16 s), then the excursion: the two
+   flash cards ("It begins—", "AZ-5!") are consumed by the level-complete flush — by
+   design, since round 1 moved their teaching into the 243-word aftermath, which renders
+   above the panel and stays. The jump-cut from "It begins—" to the explosion essay is
+   dramatically right for a 13-second catastrophe.
+8. **rbmk_az5_fixed** · loss 0.6 min + rewind-win 0.5 min · The honest reader loses run 1
+   (by design; the card plans for it). **The card's own Rewind path now works**: two
+   presses land pre-excursion (power 6.7%, core intact), AZ-5 → "The Fix Held". One
+   cosmetic defect found: stale cards from the lost timeline churned through the dwell
+   queue during the rewind presses — fixed in this commit (`resetInstrFlow()` on rewind).
+
+### BWR — mission verdicts
+
+1. **bwr_tour** · 1.9 min · all four cards readable in full; gauge highlights (void/recirc/
+   level) now point where the text looks.
+2. **bwr_startup [P]** · 1.2 min · 8 Norm bursts to criticality; fine.
+3. **bwr_recirc** · 2.1 min incl. greedy fumble · Dial 32 → the praise card arrives at
+   power ~75% and still climbing toward its ~85% park — the card's "(Asked for more than
+   25? Then it parked higher)" hedge covers it. Dial-vs-gauge units note reads well in
+   sequence. Completed "Licensed".
+4. **bwr_raise_power [P]** · 0.6 min · The retargeted procedure settles at **78.9%** —
+   inside the exam's own band, guard clean. The malpractice contradiction is gone.
+5. **bwr_isolation** · 2.4 min · The shrink lesson paces itself off the plant and every
+   card got generous display time (the shrink card: 50 s). Still the best teaching beat in
+   the BWR arc.
+6. **bwr_shutdown [P]** · 0.2 min · fine.
+7. **bwr_fukushima** · 2.3 min · **The decision works at reading speed now**: intro
+   displayed 40 s, the battery/IC decision card 37.8 s — read fully, IC found (highlight
+   reveals the secondary view), opened, "The Hours You Bought." The mission this campaign
+   was built around finally plays as written.
+8. **bwr_qualify** · fail 1.0 min + pass 4.6 min · Greedy 40 fails exactly as briefed;
+   the careful 24 → settle → 28 ascension passes with the briefing card correctly
+   persisting through the silent 4-minute hold. The best exam remains the best exam.
+
 ### Round 3 (same day) — RBMK/BWR parity pass
 
 The PWR lessons applied to the other two campaigns (probes + fixes, BUILD_DECISIONS round-3
