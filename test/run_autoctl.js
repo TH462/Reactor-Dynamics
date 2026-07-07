@@ -141,29 +141,50 @@ test('PWR · rod channel disengages itself on scram', function (ck) {
 });
 
 // ================================================================== RBMK
-test('RBMK · rods+feed+BOP hold 50% power (10 min)', function (ck) {
+// The rod channel drives the Automatic Regulator (AR) group — fine steps
+// (~2 pcm vs the manual bank's ~35), so the hold band is tight; the re-center
+// channel hands the standing burden back to the manual bank when the AR nears
+// its travel limits (real RBMK practice).
+test('RBMK · AR+feed+BOP hold 50% power (10 min)', function (ck) {
   var r = rig('rbmk', '50_percent', 'post_chernobyl');
-  r.engage(['rods_power', 'feed_drum', 'grid_follow', 'steam_dump']);
+  r.engage(['rods_power', 'ar_recenter', 'feed_drum', 'grid_follow', 'steam_dump']);
   var sp = r.auto.get('rods_power').sp;
   r.run(600);
   var t = ts(r), i = inst(r);
   ck('no scram', scrammed(r), !scrammed(r), 'false');
-  // One lumped-group rod step is worth several % power — the channel holds a
-  // band around the setpoint, not a hairline.
-  ck('power at setpoint', t.power_pct.toFixed(1) + ' vs sp ' + sp.toFixed(1), near(t.power_pct, sp, 4), 'sp±4');
+  ck('power at setpoint', t.power_pct.toFixed(1) + ' vs sp ' + sp.toFixed(1), near(t.power_pct, sp, 1.5), 'sp±1.5');
+  ck('manual bank untouched (AR does the fine work)',
+    r.sent.filter(function (c) { return c.action === 'rod_nudge' && c.group_id === 'control_rods'; }).length,
+    r.sent.filter(function (c) { return c.action === 'rod_nudge' && c.group_id === 'control_rods'; }).length === 0, '0 manual-bank nudges');
   ck('drum level at setpoint', i.drum_level.toFixed(1), near(i.drum_level, r.auto.get('feed_drum').sp, 4), 'sp±4');
-  ck('sparse commands', r.sent.length, r.sent.length < 300, '<300');
 });
 
-test('RBMK · auto power maneuver 50→60% on the setpoint', function (ck) {
+test('RBMK · auto power maneuver 50→60% on the AR setpoint', function (ck) {
   var r = rig('rbmk', '50_percent', 'post_chernobyl');
-  r.engage(['rods_power', 'feed_drum', 'grid_follow', 'steam_dump']);
+  r.engage(['rods_power', 'ar_recenter', 'feed_drum', 'grid_follow', 'steam_dump']);
   r.run(60);
   r.auto.setSetpoint('rods_power', 60);
   r.run(800);
   var t = ts(r);
   ck('no scram', scrammed(r), !scrammed(r), 'false');
-  ck('power reached 60%', t.power_pct.toFixed(1), near(t.power_pct, 60, 4), '60±4');
+  ck('power reached 60%', t.power_pct.toFixed(1), near(t.power_pct, 60, 2), '60±2');
+});
+
+test('RBMK · AR re-center: manual bank takes the burden at the travel limit', function (ck) {
+  // Drive the AR toward its limit with a big setpoint swing and confirm the
+  // re-center channel moves the MANUAL bank so the AR recovers authority.
+  var r = rig('rbmk', '50_percent', 'post_chernobyl');
+  r.engage(['rods_power', 'ar_recenter', 'feed_drum', 'grid_follow', 'steam_dump']);
+  r.run(30);
+  r.auto.setSetpoint('rods_power', 75);   // pulls the AR past its re-center band
+  r.run(1500);
+  var mb = r.sent.filter(function (c) { return c.action === 'rod_nudge' && c.group_id === 'control_rods'; });
+  var ar = r.snap().control_state.rod_groups.filter(function (g) { return g.id === 'auto_rods'; })[0];
+  ck('no scram', scrammed(r), !scrammed(r), 'false');
+  ck('manual bank stepped in', mb.length, mb.length > 0, '>0 manual-bank nudges');
+  ck('AR back inside its authority band', (100 - ar.position_pct).toFixed(0) + '% inserted',
+    (100 - ar.position_pct) > 20 && (100 - ar.position_pct) < 80, '20–80% inserted');
+  ck('power reached 75%', ts(r).power_pct.toFixed(1), near(ts(r).power_pct, 75, 2.5), '75±2.5');
 });
 
 // ================================================================== BWR
@@ -241,7 +262,7 @@ test('PWR · all-auto survives 30 min at 3600×', function (ck) {
 });
 test('RBMK · all-auto survives 30 min at 3600× (xenon drift)', function (ck) {
   fastHold(ck, 'rbmk', '50_percent', 'post_chernobyl',
-    ['rods_power', 'feed_drum', 'grid_follow', 'steam_dump'], 50, 6);
+    ['rods_power', 'ar_recenter', 'feed_drum', 'grid_follow', 'steam_dump'], 50, 6);
 });
 test('BWR · all-auto survives 30 min at 3600×', function (ck) {
   fastHold(ck, 'bwr', 'full_power', null,
@@ -250,7 +271,7 @@ test('BWR · all-auto survives 30 min at 3600×', function (ck) {
 
 test('Fast-forward handoff resumes broadcast-rate control on slow-down', function (ck) {
   var r = rig('rbmk', '50_percent', 'post_chernobyl');
-  r.engage(['rods_power', 'feed_drum', 'grid_follow', 'steam_dump']);
+  r.engage(['rods_power', 'ar_recenter', 'feed_drum', 'grid_follow', 'steam_dump']);
   r.cmd({ action: 'set_speed', value: 3600 });
   var cycles = 0;
   while (r.snap().metadata.sim_time < 600 && cycles++ < 40) r.service.advanceCycles(1);

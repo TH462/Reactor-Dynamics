@@ -135,6 +135,18 @@
       // worth_pcm feeds the ORM rod-equivalent ratio (control/manual only).
       groups: [
         { id: 'control_rods',  name: 'Control Rods',  function: 'control',  rod_count: 1.0, worth_pcm: 8000, displacer: true },
+        // Automatic Regulator (AR) — the RBMK's fine power-regulation rods (the
+        // real ~12 AR/LAR rods vs ~200 manual). Small worth via rod_count
+        // scaling (0.06 × k_abs ≈ 510 pcm full travel, ~2 pcm/step vs the
+        // manual bank's ~35), NO displacer (function 'auto' takes the
+        // pure-absorber branch — the positive scram effect stays exclusively on
+        // the manual bank), EXCLUDED from ORM (getOrm counts control/manual
+        // only, so ORM remains the MANUAL-bank margin and the authored
+        // orm_target states — incl. the Chernobyl precondition — and the
+        // ORM-driven void amplification are untouched). Normally driven by the
+        // operator-automation layer; overridable to manual (the pre-accident
+        // condition). Initial insertion per state: initial_states.ar_inserted_frac.
+        { id: 'auto_rods',     name: 'Automatic Regulator (AR)', function: 'auto', rod_count: 0.06, worth_pcm: 500, displacer: false },
         { id: 'shutdown_rods', name: 'Emergency Protection (AZ)', function: 'shutdown', rod_count: 0.2, worth_pcm: 0, displacer: false },
       ],
     },
@@ -177,22 +189,26 @@
     // ---------------------------------------------------------- named init states
     // power normalized (1.0 = rated). orm_target sets the control-group insertion
     // (ORM ≈ orm_target). flow_pct = channel flow setpoint. xenon_factor = X/X_eq.
+    // ar_inserted_frac = Automatic Regulator initial insertion (0 = withdrawn,
+    // 0.5 = mid-range, authority both ways). Stable operating states park the AR
+    // mid-range; startup and the accident precondition start it fully WITHDRAWN
+    // (historically the ARs had been pulled out trying to hold power at Chernobyl).
     initial_states: {
-      full_power:     { power: 1.0,  orm_target: 70.0, flow_pct: 100.0, xenon_factor: 1.0 },
+      full_power:     { power: 1.0,  orm_target: 70.0, flow_pct: 100.0, xenon_factor: 1.0, ar_inserted_frac: 0.5 },
       // A stable partial-power operating point for maneuvering practice (matches
       // the PWR's 50_percent envelope). At reduced power the control group sits
       // deeper (higher ORM target) than at full power, so the starting rod position
       // visibly tracks the starting power; flow reduced with power. rho_excess
       // re-trims per state, so the point is still exactly critical.
-      '50_percent':   { power: 0.5,  orm_target: 90.0, flow_pct: 80.0,  xenon_factor: 1.0 },
+      '50_percent':   { power: 0.5,  orm_target: 90.0, flow_pct: 80.0,  xenon_factor: 1.0, ar_inserted_frac: 0.5 },
       // Hot standby / approach-to-criticality start: low power, no xenon, flow
       // established. Trimmed critical per-state at orm_target, then the control
       // group is inserted `subcrit_margin_steps` further so it starts SUBCRITICAL;
       // the operator withdraws rods (slowly!) to go critical and ascend. Works on
       // both versions (per-state void_ref pinning avoids a standing void offset).
       hot_startup:    { power: 0.02, orm_target: 55.0, flow_pct: 70.0,  xenon_factor: 0.0,
-                        subcritical: true, subcrit_margin_steps: 25 },
-      low_power_xenon:{ power: 0.07, orm_target: 7.5,  flow_pct: 60.0,  xenon_factor: 1.35 },
+                        subcritical: true, subcrit_margin_steps: 25, ar_inserted_frac: 0.0 },
+      low_power_xenon:{ power: 0.07, orm_target: 7.5,  flow_pct: 60.0,  xenon_factor: 1.35, ar_inserted_frac: 0.0 },
     },
   };
 

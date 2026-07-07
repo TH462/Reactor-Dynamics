@@ -143,6 +143,7 @@
       numeric: [
         { title: 'Reactor / Core', rows: [
           { k: 'Power', inst: function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }, truth: function (s) { return s.true_state.power_pct.toFixed(1) + ' %'; } },
+          { k: 'AR Rods (auto group)', inst: function (s) { return bankStat(s, 'auto'); } },
           { k: 'Fuel Temp', inst: function (s) { return dispT(s.instruments.fuel_temp); }, truth: function (s) { return dispT(s.true_state.fuel_temp_c); } },
           { k: 'Graphite Temp', truth: function (s) { return dispT(s.true_state.graphite_temp_avg_c); } },
           { k: 'Decay Heat', truth: function (s) { return s.true_state.decay_heat_pct.toFixed(1) + ' %'; } },
@@ -275,6 +276,16 @@
       hint: 'Shutdown / scram bank — normally parked fully withdrawn. HOLD Insert to drive it in (adds shutdown margin, drops power), Withdraw to park it back out. A SCRAM drives it fully in automatically and overrides you.',
       seg: [{ l: 'Withdraw', hold: 'srod-withdraw' }, { l: 'Insert', hold: 'srod-insert' }] };
   }
+  // RBMK Automatic Regulator (AR) — the fine power-regulation group, normally
+  // run by the Automate channel; AUTO/MAN here mirrors that channel, and taking
+  // the drive buttons switches it to MAN (manual control — the pre-Chernobyl
+  // condition). The seg's on-state is synced from the channel each broadcast.
+  function AR_DRIVE() {
+    return { l: 'AR Rods (Auto Regulator)',
+      hint: 'Automatic Regulator — the RBMK\'s fine power-control rods (~2 pcm/step vs the manual bank\'s ~35). AUTO holds power at the Automate-tab setpoint; MAN (or holding a drive button) is taking manual control, as the operators had before the Chernobyl test.',
+      seg: [{ l: 'Auto', act: 'ar-auto', arsync: 'on' }, { l: 'Man', act: 'ar-man', arsync: 'off' },
+            { l: 'Withdraw', hold: 'arod-withdraw' }, { l: 'Insert', hold: 'arod-insert' }] };
+  }
 
   function prof() { return PROFILES[ui.plant]; }
   function rodGroup(s, fn) { return s.control_state.rod_groups.filter(function (x) { return x.function === fn; })[0]; }
@@ -314,6 +325,7 @@
       inner += '<div class="seg"' + (g.hint ? ' data-scanner-hint="' + esc(g.hint) + '"' : '') + '>';
       g.seg.forEach(function (b) {
         var attr = b.hold ? ' data-hold="' + b.hold + '"' : ' data-act="' + b.act + '"';   // hold = momentary (press-and-hold)
+        if (b.arsync) attr += ' data-arsync="' + b.arsync + '"';   // AUTO/MAN mirror of an Automate channel (synced per broadcast)
         inner += '<button class="' + (b.on ? 'on ' : '') + (b.run ? 'run' : b.warn ? 'warn' : '') + '"' + attr + '>' + b.l + '</button>';
       });
       inner += '</div>';
@@ -1104,6 +1116,16 @@
   function renderAutomate(s) {
     var list = $('autoList');
     if (!list || !autoCtl || !list.firstChild) return;
+    // Sync any AUTO/MAN mirror segs on the plant display (RBMK AR card) to the
+    // rod channel's true state — the seg is a second face of the same channel.
+    var arc = autoCtl.get('rods_power');
+    if (arc) {
+      var on = autoCtl.isEngaged(arc, s);
+      document.querySelectorAll('[data-arsync]').forEach(function (b) {
+        b.classList.toggle('on', (b.getAttribute('data-arsync') === 'on') === on);
+        b.classList.toggle('run', b.getAttribute('data-arsync') === 'on' && on);
+      });
+    }
     autoCtl.channels().forEach(function (c) {
       var d = c.def, on = autoCtl.isEngaged(c, s);
       var row = list.querySelector('[data-autorow="' + d.id + '"]'); if (!row) return;
@@ -1314,6 +1336,9 @@
     'rbmk-feed-set': function () { cmd({ action: 'set_feedwater_flow', pct: inputVal('rbmkFeed') }); },
     'rbmk-turbine-set': function () { cmd({ action: 'set_turbine_load', mwe: inputVal('rbmkMwe') }); },
     'eps-on': function () { cmd({ action: 'set_eps_bypass', active: true }); }, 'eps-off': function () { cmd({ action: 'set_eps_bypass', active: false }); },
+    // AR AUTO/MAN — mirrors the Automate tab's 'AR Rods → Power' channel
+    'ar-auto': function () { if (autoCtl) { autoCtl.toggle('rods_power', true, autoSnap()); renderAutomate(autoSnap()); } },
+    'ar-man': function () { arManual(); if (autoCtl) cmd({ action: 'rod_stop', group_id: 'auto_rods' }); },
     'rbmk-eccs-on': function () { cmd({ action: 'set_eccs', active: true }); }, 'rbmk-eccs-off': function () { cmd({ action: 'set_eccs', active: false }); },
     // BWR
     'bwr-recirc-set': function () { cmd({ action: 'set_recirc_flow', pct: inputVal('bwrRecirc') }); },
@@ -1341,7 +1366,16 @@
     'rod-insert': function () { startHoldRod('control_rods', -1); },
     'srod-withdraw': function () { startHoldRod('shutdown_rods', 1); },
     'srod-insert': function () { startHoldRod('shutdown_rods', -1); },
+    // RBMK AR rods: manual drive first takes the channel to MAN (touching the
+    // AR in manual IS taking manual control), then drives the group.
+    'arod-withdraw': function () { arManual(); startHoldRod('auto_rods', 1); },
+    'arod-insert': function () { arManual(); startHoldRod('auto_rods', -1); },
   };
+  function arManual() {
+    if (!autoCtl) return;
+    var c = autoCtl.get('rods_power');
+    if (c && c.engaged) { autoCtl.toggle('rods_power', false, autoSnap()); renderAutomate(autoSnap()); }
+  }
   var holdingGroup = null;
   function startHoldRod(group, direction) { holdingGroup = group; cmd({ action: 'rod_start', group_id: group, direction: direction, speed: ui.rodSpeed }); }
   function endHold() { if (!holdingGroup) return; cmd({ action: 'rod_stop', group_id: holdingGroup }); holdingGroup = null; document.querySelectorAll('.holding').forEach(function (x) { x.classList.remove('holding'); }); }
@@ -1872,11 +1906,11 @@
           station_pwr: 'normal',
         };
       },
-      diagram: [ROD_DRIVE('control_rods'), { l: 'EPS', emergency: 1, hint: 'Emergency Protection bypass.', seg: [{ l: 'Active', act: 'eps-off', on: 1, run: 1 }, { l: 'Bypass', act: 'eps-on', warn: 1 }] }],
+      diagram: [ROD_DRIVE('control_rods'), AR_DRIVE(), { l: 'EPS', emergency: 1, hint: 'Emergency Protection bypass.', seg: [{ l: 'Active', act: 'eps-off', on: 1, run: 1 }, { l: 'Bypass', act: 'eps-on', warn: 1 }] }],
       primary: {
         sections: [
           { title: 'Reactor Core', rows: [
-            R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }), R('Control Rods', function (s) { return bankStat(s, 'control'); }), R('Shutdown Bank', function (s) { return bankStat(s, 'shutdown'); }),
+            R('Power', function (s) { return s.instruments.power_range.toFixed(1) + ' %'; }), R('Control Rods', function (s) { return bankStat(s, 'control'); }), R('AR Rods', function (s) { return bankStat(s, 'auto'); }), R('Shutdown Bank', function (s) { return bankStat(s, 'shutdown'); }),
             R('Startup Rate', sur), R('Fuel Temp', function (s) { return dispT(s.instruments.fuel_temp); }), R('Graphite Temp', function (s) { return dispT(s.true_state.graphite_temp_avg_c); }),
             R('Scrammed', function (s) { return bool(s.rps_state.scrammed, 'YES', 'no'); }),
           ] },
@@ -1890,7 +1924,7 @@
             R('Emergency Core Cooling', function (s) { return bool(s.true_state.eccs_active, 'INJECTING', 'standby'); }),
           ] },
         ],
-        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(), SHUTDOWN_DRIVE('shutdown_rods'),
+        controls: [ROD_DRIVE('control_rods'), ROD_SPEED(), AR_DRIVE(), SHUTDOWN_DRIVE('shutdown_rods'),
           { l: 'MCP / Channel Flow', num: { id: 'rbmkFlow', min: 0, max: 120, value: 100, act: 'rbmk-flow-set', setL: 'Set %' } },
           { l: 'Emergency Core Cooling (ECCS)', emergency: 1, hint: 'Injects to the fuel channels on a pressure-tube rupture / loss of coolant — makes up steam-drum level and holds a cooling-flow floor to arrest dryout.', seg: [{ l: 'On', act: 'rbmk-eccs-on', run: 1 }, { l: 'Off', act: 'rbmk-eccs-off', on: 1 }] },
           { l: 'EPS', emergency: 1, seg: [{ l: 'Active', act: 'eps-off', on: 1, run: 1 }, { l: 'Bypass', act: 'eps-on', warn: 1 }] }],

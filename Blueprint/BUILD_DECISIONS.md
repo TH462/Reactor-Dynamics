@@ -30,7 +30,7 @@ where the two differ or where judgment was exercised.
 | F7 | M8 | Alarm system-category (left-bar color, M8 §8.5) is derived UI-side by keyword (`alarmCategory()`), because M1's alarm data has no `category`. Should move into the plant profile alongside `tile_label`/`scanner_hint`. | data | **open** — add to engine alarm config |
 | F9 | M5/M6·PH/M7 | Integration tests assert `rod_nudge` reaches the engine **instantly** (`210 → 200`), but the engine now does a **rate-limited nudge** (drives a `nudge_target` over sim time — the "rod control reworked" change). The one-step assertion sees `210→210` and fails. **Pre-existing** (reproduces on clean HEAD; unrelated to the BOP work) — the stale check needs to step the sim forward after nudging. | test | **open** — fix the 3 integration tests to run the sim after `rod_nudge` |
 | F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **RESOLVED (M6)** — highlights auto-reveal hidden controls on both mechanisms: RBMK/BWR `findPdControl()` switches the owning view tab (`app.js`); PWR `RD.PwrSynoptic.revealControl(label)` opens the owning card tab/section via the data-driven `SYN_CONTROL_MAP` (`pwr_synoptic.js`). `verify_manual_follow.js` now checks PWR controls through the same reveal path. |
-| F10 | M2/M8 | **RBMK automatic-regulator (AR) rod group** (user-directed): add a third, small-worth (~5–8% of the manual bank, no displacer), fine-step group — the authentic RBMK AR. The Automate rod channel drives IT (fixes the ±4%/step hold granularity); its diagram/control card carries its own AUTO/MAN selector mirroring the Automate channel; disengaging = taking manual control (the pre-Chernobyl condition — scenario beat material). Include AR in ORM; scram drives it in; keep the positive-scram displacer exclusively on the manual bank so the Chernobyl acceptance suite stays green. NO second manual group — the AR under manual override IS the fine manual bank. | planned | **open** |
+| F10 | M2/M8 | **RBMK automatic-regulator (AR) rod group** (user-directed): add a third, small-worth (~5–8% of the manual bank, no displacer), fine-step group — the authentic RBMK AR. The Automate rod channel drives IT (fixes the ±4%/step hold granularity); its diagram/control card carries its own AUTO/MAN selector mirroring the Automate channel; disengaging = taking manual control (the pre-Chernobyl condition — scenario beat material). Include AR in ORM; scram drives it in; keep the positive-scram displacer exclusively on the manual bank so the Chernobyl acceptance suite stays green. NO second manual group — the AR under manual override IS the fine manual bank. | planned | **RESOLVED (2026-07-07)** — built as specced (see the dated entry); the Chernobyl AR scenario beat is authored under F11. |
 | F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **open** |
 
 ---
@@ -1641,3 +1641,30 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   startScenario/followProcedure engage them after the content's plant reset (on top of the
   walkthrough stand-down), so a mission can hand the player one control and put the rest of
   the plant on automatic. No authored content uses it yet (the training-update pass will).
+
+- **2026-07-07 — RBMK Automatic Regulator rod group (resolves F10).** Third RBMK rod group
+  `auto_rods` ("Automatic Regulator (AR)") — the authentic RBMK arrangement: manual bank
+  (coarse, carries the pre-1986 displacer), AR (fine, normally automatic, overridable), AZ
+  shutdown. **Engine:** function `'auto'` takes the pure-absorber branch (NO displacer — the
+  positive scram effect stays exclusively on the manual bank); worth via rod_count 0.06 ≈
+  510 pcm full travel (~2.2 pcm/step vs the manual bank's ~35); **excluded from ORM**
+  (getOrm counts control/manual only) so ORM remains the manual-bank margin — the authored
+  orm_target states (incl. the Chernobyl precondition) and the ORM-driven void amplification
+  are byte-identical; per-state initial insertion `ar_inserted_frac` (mid-range at
+  full_power/50_percent, fully WITHDRAWN at hot_startup/low_power_xenon — historically the
+  ARs had been pulled at Chernobyl); scram drives it in like every group; per-state critical
+  trim absorbs its initial reactivity. RBMK suite 23/23 untouched, Chernobyl comparison
+  green. **Automation:** the `rods_power` channel drives the AR — hold tightens from ±4-5%
+  (one manual step ≈ 4% power) to ±1% at 10× (PV low-pass added: power noise σ0.5 ≈ the AR's
+  per-step worth), maneuvers land ±2; fast regime gets `fastBudget: 8` (single 2 pcm steps
+  lose to xenon at 3600× — probed 0.1%/min behind). New `ar_recenter` channel (real RBMK
+  practice): single manual-bank steps when the AR leaves ±25 of mid-insertion, handing the
+  standing burden back to the coarse rods (CI'd: a 50→75% swing exhausts the AR, the manual
+  bank steps in, the AR recovers 20–80%). **UI:** AR card (Auto/Man/Withdraw/Insert) on the
+  RBMK diagram + primary control bars — Auto/Man mirrors the Automate channel (synced per
+  broadcast via data-arsync); touching the drive buttons or Man IS taking manual control
+  (the pre-accident condition — the Chernobyl beat hook, authored under F11); AR position
+  rows in primary/All views. Manual: `ar_rods` control entry + AR glossary; regenerated.
+  Gates: autoctl 16/16, engines 13/23/12, M4-M7, campaign 26/26, control audits green;
+  `run_procedures` 20/21 pre-existing. **No second manual group** — the AR under manual
+  override IS the fine manual bank (user decision).

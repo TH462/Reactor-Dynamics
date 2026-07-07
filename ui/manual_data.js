@@ -168,7 +168,7 @@
         {
           "control": "Automate Tab (per-control automation)",
           "group": "Automation",
-          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram.",
+          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram. At high time acceleration the fast loops hand over to plant-side control and resume when you slow down.",
           "command": "(issues the commands above)",
           "params": ""
         }
@@ -1648,6 +1648,13 @@
           "params": ""
         },
         {
+          "control": "AR Rods — Automatic Regulator",
+          "group": "Reactivity",
+          "uses": "The RBMK’s fine power-regulation rod group (~2 pcm/step vs the manual bank’s ~35). AUTO holds power at the Automate-tab setpoint; MAN (or holding its drive buttons) takes manual control — the condition the Chernobyl operators were in. When it nears either travel limit, re-center it with the manual bank (or engage the re-center channel). Excluded from ORM: the margin you watch is the manual bank.",
+          "command": "rod_start / rod_nudge",
+          "params": "{group_id: \"auto_rods\", …}"
+        },
+        {
           "control": "AZ-5 (SCRAM)",
           "group": "Safety",
           "uses": "The RBMK emergency-shutdown button (the one pressed at Chernobyl) — full rod insertion.",
@@ -1706,7 +1713,7 @@
         {
           "control": "Automate Tab (per-control automation)",
           "group": "Automation",
-          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram.",
+          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram. At high time acceleration the fast loops hand over to plant-side control and resume when you slow down.",
           "command": "(issues the commands above)",
           "params": ""
         }
@@ -2320,7 +2327,11 @@
         },
         {
           "acronym": "ORM",
-          "term": "Operating Reactivity Margin — shutdown capacity in hand."
+          "term": "Operating Reactivity Margin — shutdown capacity in hand (counts the MANUAL bank; the AR group is excluded)."
+        },
+        {
+          "acronym": "AR",
+          "term": "Automatic Regulator — the small, fine-stepped rod group that holds power automatically; switchable to manual (as the Chernobyl operators had it)."
         },
         {
           "acronym": "MCP",
@@ -2600,6 +2611,13 @@
           "params": ""
         },
         {
+          "control": "AR Rods — Automatic Regulator",
+          "group": "Reactivity",
+          "uses": "The RBMK’s fine power-regulation rod group (~2 pcm/step vs the manual bank’s ~35). AUTO holds power at the Automate-tab setpoint; MAN (or holding its drive buttons) takes manual control — the condition the Chernobyl operators were in. When it nears either travel limit, re-center it with the manual bank (or engage the re-center channel). Excluded from ORM: the margin you watch is the manual bank.",
+          "command": "rod_start / rod_nudge",
+          "params": "{group_id: \"auto_rods\", …}"
+        },
+        {
           "control": "AZ-5 (SCRAM)",
           "group": "Safety",
           "uses": "The RBMK emergency-shutdown button (the one pressed at Chernobyl) — full rod insertion.",
@@ -2658,7 +2676,7 @@
         {
           "control": "Automate Tab (per-control automation)",
           "group": "Automation",
-          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram.",
+          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram. At high time acceleration the fast loops hand over to plant-side control and resume when you slow down.",
           "command": "(issues the commands above)",
           "params": ""
         }
@@ -3284,7 +3302,11 @@
         },
         {
           "acronym": "ORM",
-          "term": "Operating Reactivity Margin — shutdown capacity in hand."
+          "term": "Operating Reactivity Margin — shutdown capacity in hand (counts the MANUAL bank; the AR group is excluded)."
+        },
+        {
+          "acronym": "AR",
+          "term": "Automatic Regulator — the small, fine-stepped rod group that holds power automatically; switchable to manual (as the Chernobyl operators had it)."
         },
         {
           "acronym": "MCP",
@@ -3678,7 +3700,7 @@
         {
           "control": "Automate Tab (per-control automation)",
           "group": "Automation",
-          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram.",
+          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram. At high time acceleration the fast loops hand over to plant-side control and resume when you slow down.",
           "command": "(issues the commands above)",
           "params": ""
         }

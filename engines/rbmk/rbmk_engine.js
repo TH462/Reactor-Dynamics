@@ -534,6 +534,16 @@
     cg.steps = clip(cg.steps, 0, cg.max_steps);
     this._updateRodDerived(cg);
 
+    // Position the Automatic Regulator (AR) per state (0 = withdrawn when the
+    // state omits it — startup / accident states). The AR is excluded from ORM
+    // and its initial reactivity is absorbed by the per-state critical trim.
+    for (var gi = 0; gi < this.rod_groups.length; gi++) {
+      var ag = this.rod_groups[gi];
+      if (ag.function !== 'auto') continue;
+      ag.steps = clip(Math.round((init.ar_inserted_frac || 0) * ag.max_steps), 0, ag.max_steps);
+      this._updateRodDerived(ag);
+    }
+
     var C = [];
     for (var i = 0; i < 6; i++) C[i] = (d.beta_i[i] / d.lambda_i[i]) * P0 / d.Lambda;
 

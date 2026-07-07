@@ -61,6 +61,11 @@
     for (var i = 0; i < gs.length; i++) if (gs[i].function === fn) return gs[i];
     return null;
   }
+  function rodGroupById(snap, id) {
+    var gs = snap.control_state && snap.control_state.rod_groups || [];
+    for (var i = 0; i < gs.length; i++) if (gs[i].id === id) return gs[i];
+    return null;
+  }
 
   // =================================================================== catalog
   // Per-plant automation channels (HR3 spirit: plant-specific behavior as data;
@@ -142,14 +147,27 @@
     // ------------------------------------------------------------------ RBMK
     rbmk: [
       { id: 'rods_power', kind: 'rods', group: 'Reactor',
-        label: 'Control Rods → Power',
-        hint: 'Rod power control — nudges the control bank to hold indicated power at the setpoint. It will fight xenon and void for you; watch the ORM while it does.',
-        group_id: 'control_rods', offOnScram: true,
+        label: 'AR Rods → Power (automatic regulator)',
+        hint: 'The RBMK\'s Automatic Regulator — a small, fine-stepped rod group (~2 pcm/step vs the manual bank\'s ~35) holding indicated power at the setpoint. Switching it to MAN is taking manual control — the pre-accident condition at Chernobyl. When it runs out of travel, re-center it with the manual bank (or engage the re-center channel).',
+        group_id: 'auto_rods', offOnScram: true,
         pv: function (s) { return s.instruments.power_range; },
         sp: { capture: function (s) { return s.instruments.power_range; }, min: 1, max: 110, unit: '%', dp: 1, step: 1 },
-        // One lumped-group step is worth several % power — wide deadband, single
-        // slow-speed steps, and strong rate damping or the channel limit-cycles.
-        gain: 0.5, db: 2.0, maxStep: 1, period: 8.0, fastAt: 8.0, kd: 15, spSlew: 0.08, dbFast: 5.0 },
+        pvTau: 2.0,   // power_range noise σ0.5 ≈ the AR's per-step worth — filter or it hunts noise
+        gain: 4.0, db: 0.5, maxStep: 6, period: 3.0, fastAt: 2.0, kd: 6, spSlew: 0.1, dbFast: 2.0, fastBudget: 8 },
+
+      { id: 'ar_recenter', kind: 'rods', group: 'Reactor',
+        label: 'Manual bank → AR re-center',
+        hint: 'Re-centers the Automatic Regulator with the manual bank (real RBMK practice): when the AR nears either end of its travel, single manual-bank steps hand the standing reactivity burden back to the coarse rods so the AR keeps fine authority. Watch the ORM — the manual bank is what it counts.',
+        group_id: 'control_rods', offOnScram: true, requires: 'rods_power',
+        // PV = AR INSERTED % (100 − position_pct): mid-range = 50. Only acts
+        // outside ±25 of mid (the deadband), one slow step per period.
+        pv: function (s) {
+          var gs = s.control_state.rod_groups;
+          for (var i = 0; i < gs.length; i++) if (gs[i].id === 'auto_rods') return 100 - gs[i].position_pct;
+          return null;
+        },
+        sp: { capture: function () { return 50; }, min: 30, max: 70, unit: '% ins', dp: 0, step: 5 },
+        gain: 0.04, db: 25.0, maxStep: 1, period: 15.0, fastAt: 1e9, kd: 0, dbFast: 25.0 },
 
       { id: 'feed_drum', kind: 'pid', group: 'Coolant Circuit',
         label: 'Feedwater → Drum level',
@@ -451,8 +469,11 @@
     var eEff = e + (def.trim ? def.trim(snap) : 0) - (fast ? 0 : (def.kd || 0) * (c.rate || 0));
     if (Math.abs(e) <= db) { c.note = 'holding'; return; }
     if (c.lastAct != null && t - c.lastAct < def.period) return;
-    var g = rodGroup(snap, 'control');
-    var budget = fast ? 1 : def.maxStep;
+    var g = rodGroupById(snap, def.group_id) || rodGroup(snap, 'control');
+    // Fast budget: coarse groups take 1 careful step per broadcast; fine groups
+    // (RBMK AR, ~2 pcm/step) may take a small burst (fastBudget) or they lose
+    // to xenon drift at 3600× (probed: single steps fell 0.1 %/min behind).
+    var budget = fast ? (def.fastBudget || 1) : def.maxStep;
     var steps = clip(Math.round(def.gain * eEff), -budget, budget);
     if (!steps) steps = e > 0 ? (fast ? 1 : 0) : (fast ? -1 : 0);   // outside the deadband, fast mode always takes its one step
     if (!steps) return;
