@@ -62,8 +62,8 @@
         },
         level_complete: {
           title: 'The Rebuilt Machine — Too Slow',
-          outcome_learning: 'The fix needs a hand on the button. Rewind — you know which one.',
-          outcome_industry: 'Manual trip not issued within the excursion window. Retry via Rewind.',
+          outcome_learning: 'The fix needs a hand on the button. Retry — or step Rewind back past the explosion. You know which button.',
+          outcome_industry: 'Manual trip not issued within the excursion window. Retry, or Rewind back to the pre-excursion checkpoint.',
           actions: ['continue', 'retry', 'rewind'],
         },
         advance: 'end' },

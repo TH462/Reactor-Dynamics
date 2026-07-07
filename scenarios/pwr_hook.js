@@ -29,8 +29,8 @@
       { id: 'press_it',
         trigger: { type: 'time', value: 1.5 },
         commentary: {
-          learning: 'This is a nuclear power plant at full power — and something is about to go wrong. You have one job: press the big red SCRAM button. Now.',
-          industry: 'PWR at 100%. Initiate a manual reactor trip: SCRAM. Now.',
+          learning: 'This is a nuclear power plant at full power — and something is about to go wrong. You have one job: press the big red SCRAM button, twice — it asks you to CONFIRM. Now.',
+          industry: 'PWR at 100%. Initiate a manual reactor trip: SCRAM (arm, then confirm). Now.',
         },
         highlight: { view: null, control_label: 'SCRAM', instrument_id: null },
         // Everything except the trip (and alarm acks) is gated off — one button.
@@ -46,7 +46,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'what_happened',
-        trigger: { type: 'delay', value: 10.0 },
+        trigger: { type: 'delay', value: 14.0 },
         commentary: {
           learning: 'The reactor is shut down, but look — it is still making heat. That glow is decay heat: a few percent of full power that no button can turn off. Everything else in this control room exists to keep carrying that heat away. That is the whole game.',
           industry: 'Post-trip state: decay heat on the primary, ~2% and falling. Heat-sink management is now the mission — as it always is.',
@@ -54,7 +54,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'rewind_time',
-        trigger: { type: 'delay', value: 10.0 },
+        trigger: { type: 'delay', value: 14.0 },
         rewind: { steps: 3 },   // → cp1: the moment before the press
         commentary: {
           learning: 'Now watch this: we just REWOUND TIME. The reactor is running again — it is a second before you pressed the button. In here, mistakes are never final: the ⏪ Rewind button takes you back to any decision. Experiment. Break things. Rewind.',
@@ -63,7 +63,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'go_play',
-        trigger: { type: 'delay', value: 8.0 },
+        trigger: { type: 'delay', value: 12.0 },
         commentary: {
           learning: 'You are free. Press SCRAM again, or just watch it run. When you want more: the Training tab has scenarios — including the night at Three Mile Island — and the Operator\'s Manual walks you through running this plant for real.',
           industry: 'Free play. Training tab: authored scenarios (TMI flagship). Manual: validated operating procedures with Instructor follow.',

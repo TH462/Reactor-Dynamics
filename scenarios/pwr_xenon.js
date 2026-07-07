@@ -38,13 +38,15 @@
         advance: 'wait_for_trigger' },
 
       { id: 'shutdown',
-        trigger: { type: 'delay', value: 12.0 },
+        trigger: { type: 'delay', value: 20.0 },
         commentary: {
           learning: 'SCRAM. The chain reaction is dead — but the fission fragments from the last weeks of operation are still in the fuel, still decaying, and a river of them decays INTO xenon. The furnace that used to burn the xenon off is out. Production continues; destruction has stopped. The poison can only rise. I am compressing hours into moments — watch.',
           industry: 'Manual trip. Xe burnup term → 0 with flux; I-135 inventory (6.6 h half-life) continues feeding Xe-135 production. Net accumulation is now unavoidable. Time compression engaged for the multi-hour transient.',
         },
         commands: [{ action: 'scram' }],
-        speed: 300,
+        // 150× (not 300): the first hour of xenon build is this card's reading
+        // window — at 300× it lasted ~12 s against a ~17 s read (playtest).
+        speed: 150,
         advance: 'wait_for_trigger' },
 
       { id: 'xenon_builds',
@@ -62,7 +64,9 @@
           learning: 'Five hours after shutdown, the poison crests — nearly a seventh more xenon than the reactor ran with. This valley of time is called the XENON DEAD TIME: for many hours, restarting is somewhere between hard and forbidden. In 1986, the crew at Chernobyl found their reactor deep in this pit — and instead of waiting, they pulled almost every rod to fight it. Hold that thought for Act V of your training. Now watch the other side of the mountain: with no flux making iodine, the supply line starves, and the xenon begins to decay away on its own clock.',
           industry: 'Xe peak (~113–114% eq, ~5 h post-trip in this model). Classic dead-time window: restart reactivity requirements may exceed available margin. Historical anchor: the Chernobyl xenon pit and rod-bank withdrawal. Post-peak: I-135 supply decaying, net Xe decay begins.',
         },
-        speed: 600,
+        // 300× (not 600): the crest-and-turn is the longest card in the mission
+        // — hold it on screen long enough to actually read (playtest).
+        speed: 300,
         advance: 'wait_for_trigger' },
 
       { id: 'complete',

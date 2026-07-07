@@ -131,7 +131,9 @@ T.push(test('TMI damage — inaction at the decision point reproduces 1979', fun
   var dmg = runUntil(s, function () { return s.instructor.firedBeats.has('damage_path'); }, 600);
   ck('inaction branch → damage_path after the window', dmg ? 't=' + dmg.metadata.sim_time.toFixed(0) + 's' : 'never (fired: ' + firedIds(s) + ')', !!dmg, 'damage_path');
   if (!dmg) return;
-  ck('damage phase fast-forwards (beat speed 30×)', dmg.metadata.time_acceleration, dmg.metadata.time_acceleration === 30, '30');
+  // 10× since the playtest pacing pass — the damage_path card explains the
+  // 1979 operator error and needs its reading window.
+  ck('damage phase fast-forwards (beat speed 10×)', dmg.metadata.time_acceleration, dmg.metadata.time_acceleration === 10, '10');
   var invAtDamage = dmg.true_state.core_inventory_pct;
   var later = runUntil(s, function (sn) { return sn.metadata.sim_time - dmg.metadata.sim_time > 120; }, 300);
   ck('with HPI secured, inventory drains through the stuck PORV',

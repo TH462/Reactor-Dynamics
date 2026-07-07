@@ -30,7 +30,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'boiling',
-        trigger: { type: 'delay', value: 18.0 },
+        trigger: { type: 'delay', value: 26.0 },
         commentary: {
           learning: 'Watch the VOID FRACTION gauge — around a third of the water in those channels is steam bubbles RIGHT NOW. In your PWR, boiling in the core was forbidden; here it is the whole idea: the water boils in the channels, steam drums separate it, and it drives the turbines directly. No steam generators, no second loop. Efficient — and it puts bubbles right next to the fuel, which is about to matter enormously.',
           industry: 'Direct-cycle boiling channels: ~30–40% exit void at power, steam separated in drums, direct to turbines. No SG barrier. Core void is a first-order reactivity actor — next beat.',
@@ -38,7 +38,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'roles',
-        trigger: { type: 'delay', value: 18.0 },
+        trigger: { type: 'delay', value: 28.0 },
         commentary: {
           learning: 'Here is the sentence that explains 1986 — read it twice. In your PWR, water did TWO jobs: it slowed neutrons down (making fission possible) and it carried heat. Lose the water there, and the chain reaction starves. In the RBMK, the GRAPHITE does the slowing — the water mostly just carries heat... and absorbs a few neutrons while doing it. So when RBMK water turns to steam bubbles, the reactor does not lose its moderator. It loses an ABSORBER. Less absorber means MORE power. More power boils MORE water. In the wrong conditions, that circle feeds itself.',
           industry: 'The defining physics: graphite moderation decouples moderation from coolant. Coolant is a parasitic absorber → void displaces absorption → positive void coefficient of reactivity. Void→power→void loop is conditionally stable (strongly power- and configuration-dependent).',
@@ -46,7 +46,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'orm_intro',
-        trigger: { type: 'delay', value: 16.0 },
+        trigger: { type: 'delay', value: 24.0 },
         commentary: {
           learning: 'One more gauge before your hands-on: the ORM — Operating Reactivity Margin. It counts how many control rods\' worth of shutdown authority you are holding in reserve, and right now it reads a healthy number. Soviet rules said never drop below 15 effective rods. Remember this gauge. At Chernobyl, in the small hours of April 26th, it read less than eight — and every one of those missing rods was a piece of the brake pedal the crew had already spent.',
           industry: 'ORM (operational reactivity margin, effective-rod units) — the RBMK\'s licensed shutdown-authority bookkeeping. Procedural floor: 15 rods (post-accident: hard interlock). ORM erosion via xenon compensation is the accident precondition to watch in Act III.',
@@ -54,7 +54,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'complete',
-        trigger: { type: 'delay', value: 14.0 },
+        trigger: { type: 'delay', value: 20.0 },
         commentary: {
           learning: 'That is the machine: seventeen hundred boiling tubes in a graphite mountain, no second loop, a reactivity coefficient pointing the wrong way, and a margin gauge that is really a promise. Next mission, you will push on that wrong-way physics with your own hands — gently, and at a power level where it is tame.',
           industry: 'Orientation complete: channel design, direct cycle, positive void coefficient, ORM discipline. Proceed to the interactive void-coefficient demonstration.',

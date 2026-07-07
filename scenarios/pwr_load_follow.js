@@ -30,22 +30,28 @@
         highlight: { control_label: 'Mode', instrument_id: null },
         advance: 'wait_for_trigger' },
 
+      // Prompt + branch watch: the gentle 800 MW step leads on; a step big
+      // enough to trip on load rejection lands on grid_lost (playtest fix —
+      // a trip previously softlocked the shift under a stale prompt).
       { id: 'ramp_down',
-        trigger: { type: 'delay', value: 10.0 },
+        trigger: { type: 'delay', value: 14.0 },
         commentary: {
-          learning: 'Switch Load to MANUAL and bring the slider down to 800 MW. Then watch the machine reorganize itself: the governor throttles steam, the reactor eases off (feedback again — no rods), and the FEEDWATER follows the steam all by itself. The card says "auto (tracks load)" — one slider is really moving half the plant.',
-          industry: 'Manual mode, target 800 MWe. Observe coupled response: governor → steam flow → reactor power via MTC; feedwater auto-coupled to load (feed demand hidden while coupled). Single-input dispatch.',
+          learning: 'Switch Load to MANUAL and bring the slider down to 800 MW — one step, not a plunge; the grid dims gently and so should you. (If you forget the mode switch, the slider engages Manual by itself.) Then watch the machine reorganize: the governor throttles steam, the reactor eases off (feedback again — no rods), and the FEEDWATER follows the steam all by itself. The card says "auto (tracks load)" — one slider is really moving half the plant.',
+          industry: 'Manual mode, target 800 MWe (bounded step; large rejections trip the unit). Observe coupled response: governor → steam flow → reactor power via MTC; feedwater auto-coupled to load. Single-input dispatch.',
         },
-        advance: 'wait_for_trigger' },
+        branches: [
+          { trigger: { type: 'scram' }, goto: 'grid_lost' },
+          { trigger: { type: 'all', triggers: [
+              { type: 'operator_action', command: 'set_load_target' },
+              { type: 'instrument', instrument: 'mwe_output', direction: 'below', value: 955 },
+            ] }, goto: 'hold' },
+        ] },
 
       { id: 'hold',
-        trigger: { type: 'all', triggers: [
-          { type: 'operator_action', command: 'set_load_target' },
-          { type: 'instrument', instrument: 'mwe_output', direction: 'below', value: 955 },
-        ] },
+        trigger: { type: 'delay', value: 2.0 },
         commentary: {
-          learning: 'Settling out — and notice it will not reach 800 exactly: the loop warms up several degrees and holds the output in the 940s. Your slider ASKS; the physics ANSWERS; going all the way to 800 would take rods or boron alongside. Night watch now: do NOTHING, but stay awake to two indications — the SG BALANCE light (steam vs feed) and T-avg. I will run the night at 10× — watch your board.',
-          industry: 'Output settling ~940 MWe against an 800 target — Tavg rises ~+9 °C absorbing the mismatch; full reduction requires coordinated reactivity control (out of scope tonight). Monitoring phase: SG balance annunciator and Tavg. Night compressed 10×.',
+          learning: 'Settling out — and notice it will not reach 800 exactly: the loop warms up several degrees and holds the output in the 940s. Your slider ASKS; the physics ANSWERS; going all the way to 800 would take rods or boron alongside. Night watch now: do NOTHING, but stay awake to two indications — the Balance readout on the Steam card (steam vs feed) and T-avg. I will run the night at 10× — watch your board.',
+          industry: 'Output settling ~940 MWe against an 800 target — Tavg rises ~+9 °C absorbing the mismatch; full reduction requires coordinated reactivity control (out of scope tonight). Monitoring phase: Balance readout (Steam card) and Tavg. Night compressed 10×.',
         },
         speed: 10,
         advance: 'wait_for_trigger' },
@@ -57,13 +63,16 @@
           industry: 'Morning pickup: target 1000 MWe. Reverse coupling: increased steam draw → cooler return → +ρ via MTC → power ascension to rated. Ramp, don’t step, in real practice.',
         },
         speed: 1,
-        advance: 'wait_for_trigger' },
+        branches: [
+          { trigger: { type: 'scram' }, goto: 'grid_lost' },
+          { trigger: { type: 'all', triggers: [
+              { type: 'operator_action', command: 'set_load_target' },
+              { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 990 },
+            ] }, goto: 'restore_follow' },
+        ] },
 
       { id: 'restore_follow',
-        trigger: { type: 'all', triggers: [
-          { type: 'operator_action', command: 'set_load_target' },
-          { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 990 },
-        ] },
+        trigger: { type: 'delay', value: 2.0 },
         commentary: {
           learning: 'Full output. Last move of the shift: put Load mode back to FOLLOW — hand the wheel back to the plant. A day of dispatching, and you never touched a control rod.',
           industry: 'Rated output restored. Return load mode to FOLLOW to close out the manual dispatch window.',
@@ -82,6 +91,21 @@
           outcome_learning: 'Down for the night, up for the dawn — one slider, zero rod motion, a city kept lit.',
           outcome_industry: 'Manual dispatch cycle 1000→800→1000 MWe executed with coupled feed and stable SG balance.',
           actions: ['continue', 'retry'],
+        },
+        advance: 'end' },
+
+      { id: 'grid_lost',
+        trigger: { type: 'delay', value: 1.5 },
+        speed: 1,
+        commentary: {
+          learning: 'The plant tripped — the dispatch step was too big and the turbine rejected the load rather than ride the shock. The city is fine; the grid has other plants. But your shift just got a lot longer. Rewind (or Retry) and move the slider the way the machine likes it: one modest step, then let it settle.',
+          industry: 'Reactor trip on load rejection during manual dispatch — step size exceeded transient capability. Protection response nominal. Rewind/Retry with bounded steps (~100–200 MWe).',
+        },
+        level_complete: {
+          title: 'Follow the Grid — Load Rejected',
+          outcome_learning: 'The grid asks gently, and so must you. Smaller steps.',
+          outcome_industry: 'Dispatch step tripped the unit. Re-run with bounded load steps.',
+          actions: ['continue', 'retry', 'rewind'],
         },
         advance: 'end' },
     ],

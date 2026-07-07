@@ -36,20 +36,26 @@
       { id: 'briefing',
         trigger: { type: 'time', value: 2.0 },
         commentary: {
-          learning: 'Final exam. Some time in the next few minutes, something on this plant will fail — and no one will announce it. Your instruments are your only truth; you have every control and every lesson from this campaign. Success means one thing: find it, stop it, and restore your margins. I will not speak again until it is over. Good luck, operator.',
-          industry: 'Qualification scenario: unannounced malfunction, full board authority, no prompts. Success criteria: correct diagnosis, isolation of the fault, subcooling margin restored and held. Commencing.',
+          learning: 'Final exam. The board is verified in its normal lineup as the exam begins. Some time in the next few minutes, something on this plant will fail — and no one will announce it. Your instruments are your only truth; you have every control and every lesson from this campaign. Success means one thing: find it, stop it, and restore your margins. I will not speak again until it is over. Good luck, operator.',
+          industry: 'Qualification scenario: board restored to normal lineup at commencement; unannounced malfunction, full board authority, no prompts. Success criteria: correct diagnosis, isolation of the fault, subcooling margin restored and held. Commencing.',
         },
         advance: 'wait_for_trigger' },
 
       // The fault: TMI mechanics, unannounced — the relief valve sticks open
       // while its indicator lies CLOSED. A sharp candidate may isolate on the
       // pressure trend alone (early branch); otherwise the eroding subcooling
-      // margin arms the graded challenge.
+      // margin arms the graded challenge. The isolation branches grade the
+      // block valve's true STATE (block_valve_open), not the command — a press
+      // made before this beat fires would be wiped from the instructor's
+      // action memory and previously left the exam unfinishable (playtest).
+      // `open_block_valve` at injection enforces the briefed normal lineup, so
+      // pre-emptively isolating during the briefing cannot cheese the exam.
       { id: 'fault',
         trigger: { type: 'delay', value: 25.0 },
+        commands: [{ action: 'open_block_valve' }],
         inject_failures: ['stuck_porv_open', 'porv_indicator_stuck_closed'],
         branches: [
-          { trigger: { type: 'operator_action', command: 'close_block_valve' }, goto: 'verify_early' },
+          { trigger: { type: 'true_state', field: 'block_valve_open', direction: 'is_false' }, goto: 'verify_early' },
           { trigger: { type: 'alarm', alarm_id: 'subcooling_low' }, goto: 'challenge' },
         ] },
 
@@ -64,16 +70,22 @@
           { trigger: { type: 'alarm', alarm_id: 'subcooling_low' }, goto: 'challenge' },
         ] },
 
-      // Margin eroding — the graded window is open.
+      // Margin eroding — the graded window is open. Pass = valve isolated
+      // (true state) AND margin restored, in either order; frozen = five
+      // minutes with the relief path still open (was ten — playtest: the
+      // silent fail ran 11+ real minutes past the mission budget).
       { id: 'challenge',
         trigger: { type: 'delay', value: 2.0 },
         branches: [
           { trigger: { type: 'true_state', field: 'core_inventory_pct', direction: 'below', value: 70.0 }, goto: 'failed_uncovered' },
-          { trigger: { type: 'inaction', window: 600.0 }, goto: 'failed_frozen' },
           { trigger: { type: 'all', triggers: [
-              { type: 'operator_action', command: 'close_block_valve' },
+              { type: 'true_state', field: 'block_valve_open', direction: 'is_false' },
               { type: 'instrument', instrument: 'subcooling_margin', direction: 'above', value: 11.5 },
             ] }, goto: 'passed' },
+          { trigger: { type: 'all', triggers: [
+              { type: 'inaction', window: 300.0 },
+              { type: 'true_state', field: 'block_valve_open', direction: 'is_true' },
+            ] }, goto: 'failed_frozen' },
         ] },
 
       { id: 'passed',
@@ -94,7 +106,7 @@
       { id: 'failed_frozen',
         trigger: { type: 'delay', value: 2.0 },
         commentary: {
-          learning: 'Time. The board had been telling you for ten minutes: pressure sagging, subcooling margin bleeding away, a pressurizer behaving strangely — while one little light said CLOSED. You have seen this exact trap before, at Three Mile Island. Rewind, look at what the pressure did right after the fault, and act on the physics this time.',
+          learning: 'Time. The board had been telling you for five minutes: pressure sagging, subcooling margin bleeding away, a pressurizer behaving strangely — while one little light said CLOSED. You have seen this exact trap before, at Three Mile Island. Rewind, look at what the pressure did right after the fault, and act on the physics this time.',
           industry: 'No corrective action within the graded window despite converging indications of an open relief path. Review: PZR pressure trend, subcooling margin, PORV discharge indications. Rewind available.',
         },
         clear_failures: ['stuck_porv_open', 'porv_indicator_stuck_closed'],

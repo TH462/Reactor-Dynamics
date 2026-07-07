@@ -97,6 +97,7 @@
     // Each entry is a full saveState() — engine + instruments (lag/PRNG) + M4 +
     // instructor progress — so a rewind is a bit-exact, deterministic restore.
     this.checkpoints = [];
+    this._rewindCursor = null;         // last rewound-to index; walks repeated ⏪ presses back
 
     if (opts.plant_id) {
       this.selectPlant(opts.plant_id, opts.initial_state || 'hot_full_power', opts.design_version || null);
@@ -126,6 +127,7 @@
     this._prevAlarms = null;
     this.broadcastMs = NORMAL_MS;
     this.checkpoints = [];             // a fresh plant invalidates the rewind ring
+    this._rewindCursor = null;
     // Restore the selected register into the rebuilt layer/instructor.
     this.layer.handleCommand({ action: 'set_register', value: this.activeRegister });
     if (this.instructor.setRegister) this.instructor.setRegister(this.activeRegister);
@@ -200,6 +202,7 @@
     if (!this.engine) return;
     this.checkpoints.push(this.saveState());
     if (this.checkpoints.length > REWIND_CAP) this.checkpoints.shift();
+    this._rewindCursor = null;         // new progress resets the repeated-press walk-back
   };
 
   // Rewind `steps` checkpoints back. scope 'full' restores everything including
@@ -209,13 +212,20 @@
   SimulationService.prototype._rewind = function (steps, scope) {
     var idx = this.checkpoints.length - steps;
     // If the newest checkpoint IS the current moment (a beat just fired here, or
-    // we already rewound to it), rewinding must reach strictly earlier state —
-    // this is what makes repeated Rewind presses walk back one boundary each.
+    // we already rewound to it in this same broadcast), rewinding must reach
+    // strictly earlier state.
     if (idx === this.checkpoints.length - 1 && idx >= 0 &&
         Math.abs(this.checkpoints[idx].metadata.sim_time - this.simTime) < 1e-9) idx--;
+    // Repeated presses with no new progress since the last rewind (no checkpoint
+    // pushed) walk back one boundary each. Without this, the broadcasts that tick
+    // between two ⏪ presses defeat the exact-time guard above and every press
+    // restores the same newest checkpoint — a failure card could never be escaped
+    // back to its decision point (playtest finding).
+    if (this._rewindCursor != null && idx >= this._rewindCursor) idx = this._rewindCursor - 1;
     var target = idx >= 0 ? this.checkpoints[idx] : null;
     if (!target) return null;
     this.checkpoints.length = idx + 1;
+    this._rewindCursor = idx;
     return this._restore(target, scope === 'world');
   };
 
@@ -343,6 +353,7 @@
       case 'stop_follow': {
         if (this.instructor.unload) this.instructor.unload();
         this.checkpoints = [];
+        this._rewindCursor = null;
         var snap2 = this._assembleWithInstructor();
         this._broadcast(snap2);
         return snap2;
@@ -409,6 +420,7 @@
     if (!state || !state.metadata) return { type: 'error', code: 'COMMAND_ERROR', message: 'bad save state', received: state };
     if (!engineCtor(state.metadata.plant_id)) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown plant_id in save', received: state.metadata.plant_id };
     this.checkpoints = [];             // a user file-load invalidates the rewind ring
+    this._rewindCursor = null;
     return this._restore(state, false);
   };
 

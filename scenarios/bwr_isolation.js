@@ -31,7 +31,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'slam',
-        trigger: { type: 'delay', value: 12.0 },
+        trigger: { type: 'delay', value: 20.0 },
         commentary: {
           learning: 'MSIVs CLOSED. A gigawatt of steam just hit a wall. Watch the dominoes — pressure kicks up, and the protection system does not wait to see how it ends.',
           industry: 'MSIV closure injected. Anticipate immediate scram (isolation trip) and pressure transient bounded by relief capacity.',

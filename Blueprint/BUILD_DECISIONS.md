@@ -1467,3 +1467,52 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   suites / 686 checks (structural for all three campaigns + functional happy/failure paths
   for every new scenario). Regression: RBMK 23/23, BWR 12/12, M6 16/16, M5 17/17,
   procedures 20/21 (pre-existing).
+
+- **2026-07-07 — Playtest hardening pass (all three campaigns + M5 rewind).** A persona
+  playtest (`Diagnostic/PLAYTEST_REPORT.md`: first-timer, ~220 wpm, one fumble per act,
+  real headless stack at UI cadence) found systemic pacing and softlock defects; all fixed:
+  **M5 rewind walk-back** — repeated ⏪ presses now walk back one checkpoint each via a
+  `_rewindCursor` (cleared on every checkpoint push); previously the broadcasts between two
+  presses defeated the exact-time guard and every press restored the same newest checkpoint,
+  so failure cards ("Rewind to the decision") could never be escaped. **Trip-catch branches**
+  — `pwr_tour` (`load_lost`), `pwr_load_follow` (`grid_lost`), `pwr_boron` (`overdone`):
+  guided missions that leave the throttle/chemistry unlocked now land on a failure card with
+  Rewind instead of softlocking under a stale prompt (greedy 500 MW ask trips at ~71 s;
+  boron mis-press at 30× high-flux-tripped the plant). Pattern: the PROMPT beat itself
+  carries `branches` (scram catch + success condition) — `current_beat_id` stays on the
+  watcher, so scripted drivers `settle()` past the prompt's fire before acting.
+  **pwr_boron** re-paced 30×→8× with `set_boron_adjust rate:0` commands on each prompt
+  (reading time is never penalized). **bwr_fukushima decision beat at REAL TIME** — the IC
+  decision was unreachable for a first-time reader (60× + 300 sim-s window = 5 wall-s under
+  a 105-word card); now: hold phase delay 2400 at 60× (~40 wall-s), `batteries_die`
+  `speed:1` + `inaction:150` real seconds. **pwr_feedback re-anchored** — `setup_commands`
+  pin demand at 500 MWe (in Follow, the rod nudge dragged output 498→574 and the demand
+  demo fired 0.1 s after arming); demo now `set_steam_demand 650`, complete at
+  `all[mwe>585, delay 200]` — probed visible ~20 wall-s climb with Tavg falling on cue.
+  **pwr_tmi recovery closes the block valve** (beat command; the historical ~06:22 action)
+  — HPI alone plateaus below the 11.1 °C restoration setpoint, so the "Averted" ending was
+  unreachable at HEAD (pre-existing red check in `run_scenarios`, now 3/3); `damage_path`
+  30×→10×. **pwr_qualify** — isolation branches grade `block_valve_open` true-state (added
+  to PWR `getTrueState`, additive) instead of `operator_action` (a press before `fault`
+  fired was wiped from action memory → exam never ended); `fault` issues
+  `open_block_valve` (briefed "normal lineup") so pre-isolating during the briefing neither
+  cheeses nor softlocks; frozen window 600→300 s. **pwr_protection** `stabilizing` accepts
+  `any[ack, delay 60]` (an ack during the 12-s flood window stalled the mission).
+  **Read-pacing bumps** (220 wpm rule: delay ≥ words/3.7 + margin) across `pwr_hook`,
+  tours ×3, `pwr_xenon` (shutdown 300×→150×, peak 600×→300×), `pwr_chain_reaction`
+  (`critical` 5×→1× — the climax card lasted 3.6 s), `rbmk_chernobyl` (`az5` text moved to
+  the aftermath card — it lived 1.0 s), `bwr_isolation`. **Procedures** — startup notes now
+  advise Norm-until-SUR-stirs (Slow-throughout measured 13.7 min PWR / never-in-10 min for
+  burst play vs 3.2 min at Norm), SUR caution admits the coarse bank reads ~2 DPM;
+  `bwr_raise_power` retargeted pct 40→28 with a >=95% guard (pct 40 parked the plant at
+  114% sustained — contradicting `bwr_qualify`'s >95% fail rule); `rbmk_mcp_trip` notes the
+  RPS may trip first. **Findability** — `SYN_CONTROL_MAP` aliases (Mode/Load/Rod
+  motion/Nudge/Boron — these beat highlight labels glowed nothing), DIL/BOR named as
+  labeled, two-press SCRAM taught in `pwr_hook`. Gate: `run_campaign` 24/24 (723 checks —
+  failure paths for tour/boron/qualify-pre-isolation added); `run_scenarios` 3/3 (was 2/3
+  at HEAD); M5 17/17, M6 16/16, PWR 13/13, RBMK 23/23, BWR 12/12, M4 11/11,
+  `verify_manual_follow` 81; `run_procedures` 20/21 and `run_e2e_controls` 23/25 unchanged
+  from HEAD (pre-existing findings B3 / LPI-accumulator). Persona re-verification: 17/17
+  (TMI rewind→decision→Averted in 2 presses; honest reader reaches the Fukushima IC card;
+  boron fumble completes; early ack proceeds; az5 rewind rematch wins; feedback demo holds
+  20 s; frozen exam fails at 6.2 min).

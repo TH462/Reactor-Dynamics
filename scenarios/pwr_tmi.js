@@ -85,11 +85,16 @@
         ] },
 
       // ---- recovery branch --------------------------------------------------
+      // The beat also closes the PORV block valve — the action that actually
+      // terminated the 1979 event (~06:22). HPI alone cannot outrun the open
+      // relief path in this engine (margin plateaus below the restoration
+      // setpoint), so isolation is both the honest history and the physics.
       { id: 'recovery_path',
         trigger: { type: 'delay', value: 5.0 },
+        commands: [{ action: 'close_block_valve' }],
         commentary: {
-          learning: 'You started injection. Cold water is replacing what drains through the stuck valve, and the core stays covered. Recovery takes a while, so I am running time at 30× — watch the subcooling margin climb back, and I will drop us to real time when it is restored. (You can adjust the speed control yourself any time.)',
-          industry: 'HPI injecting. Makeup exceeds PORV losses; subcooling recovering. Time acceleration 30× for the recovery phase — reverts to 1× on margin restoration. Speed control remains available.',
+          learning: 'You started injection — and now that the crew believes the physics, they finish the job: the PORV BLOCK VALVE, the backup gate behind the stuck valve, is driven CLOSED. The leak is plugged; cold water refills what drained away. Recovery takes a while, so I am running time at 30× — watch the subcooling margin climb back, and I will drop us to real time when it is restored. (You can adjust the speed control yourself any time.)',
+          industry: 'HPI injecting; PORV block valve closed — the historical terminating action (~06:22). Makeup now exceeds losses; subcooling recovering. Time acceleration 30× for the recovery phase — reverts to 1× on margin restoration. Speed control remains available.',
         },
         speed: 30,
         advance: 'wait_for_trigger' },
@@ -122,14 +127,16 @@
           industry: 'Auto-HPI initiated on low pressure, as in 1979. PZR level reads high — the classic misleading indication with a stuck-open PORV. Replaying the historical action: HPI secured. Time acceleration 30× through the boil-off; reverts to 1× at core uncovery.',
         },
         commands: [{ action: 'set_hpi', active: false }],
-        speed: 30,
+        // 10× (not 30): this card explains WHY the operators secured injection
+        // — at 30× it was replaced in ~7 s, well under its read time (playtest).
+        speed: 10,
         advance: 'wait_for_trigger' },
 
       { id: 'core_damage',
         trigger: { type: 'true_state', field: 'core_inventory_pct', direction: 'below', value: 70.0 },
         commentary: {
-          learning: 'Back to real time: the core is uncovering and overheating — this is what happened in 1979. Two honest notes: in the real plant a single stuck indicator would be cross-checked against redundant sensors that this simulator deliberately does not model, and this simulation ends at fuel damage — the containment consequences that followed are described, not simulated. Use Rewind to go back to the decision and change history.',
-          industry: 'Time 1×. Core uncovery in progress — the 1979 outcome. Model notes: single-sensor indication (no redundancy/voting modeled) makes the failure starker than a real voted plant; simulation terminates at fuel damage, containment response not modeled. Rewind is available to retry the decision point.',
+          learning: 'Back to real time: the core is uncovering and overheating — this is what happened in 1979. Two honest notes: in the real plant a single stuck indicator would be cross-checked against redundant sensors that this simulator deliberately does not model, and this simulation ends at fuel damage — the containment consequences that followed are described, not simulated. Press Rewind — each press steps one checkpoint further back; walk it to the injection decision and change history.',
+          industry: 'Time 1×. Core uncovery in progress — the 1979 outcome. Model notes: single-sensor indication (no redundancy/voting modeled) makes the failure starker than a real voted plant; simulation terminates at fuel damage, containment response not modeled. Rewind steps back one checkpoint per press — return to the injection decision to retry.',
         },
         speed: 1,
         level_complete: {

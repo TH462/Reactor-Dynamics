@@ -159,19 +159,34 @@ test('campaign scenarios — beat vocabulary, registers, endpoints', function (c
 
 test('pwr_tour — energy journey completes', function (ck) {
   var s = startScenario('pwr_tour');
-  // act_restore pending ⇒ the act_load prompt has fired: throttle now.
-  var snap = waitBeat(s, 'act_restore', 300);
-  ck('load-throttle prompt fires', !!snap, !!snap, 'act_restore pending');
+  // act_load carries the branch watch: wait for it to arm, settle past its
+  // delay-20 fire, then act inside the watch (action memory clears on fire).
+  var snap = waitBeat(s, 'act_load', 300);
+  ck('load-throttle beat arms', !!snap, !!snap, 'act_load pending');
   if (!snap) return;
+  settle(s, 22);
   s.handleCommand({ action: 'set_load_mode', mode: 'manual' });
   s.handleCommand({ action: 'set_load_target', mwe: 900 });
-  snap = waitBeat(s, 'complete', 400);
-  ck('load reduction observed → restore prompt', !!snap, !!snap, 'complete pending');
+  snap = waitBeat(s, 'act_restore', 400);
+  ck('load reduction observed → restore prompt', !!snap, !!snap, 'act_restore pending');
   if (!snap) return;
+  settle(s, 4);                         // act_restore fires (delay 2), watch opens
   s.handleCommand({ action: 'set_load_mode', mode: 'follow' });
   snap = runUntil(s, function (sn) { return lc(sn); }, 600);
   ck('tour completes', !!snap, !!snap, 'level_complete');
-  if (snap) ck('completion is the tour endpoint', lc(snap).title, /Journey/i.test(lc(snap).title), 'Energy Journey card');
+  if (snap) ck('completion is the tour endpoint', lc(snap).title, /Complete/i.test(lc(snap).title), 'Energy Journey — Complete card');
+  // Greedy ask (500 MW) trips on load rejection → the trip-catch card, not a
+  // softlock (playtest fix).
+  var s2 = startScenario('pwr_tour');
+  snap = waitBeat(s2, 'act_load', 300);
+  if (snap) {
+    settle(s2, 22);
+    s2.handleCommand({ action: 'set_load_mode', mode: 'manual' });
+    s2.handleCommand({ action: 'set_load_target', mwe: 500 });
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 600);
+  }
+  ck('greedy ask reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the load-rejection card', lc(snap).title, /Rejected/i.test(lc(snap).title), 'Load Rejected card');
 });
 
 test('pwr_chain_reaction — pull to critical, then back below', function (ck) {
@@ -225,37 +240,57 @@ test('pwr_xenon — post-trip build, peak, and decay observed', function (ck) {
 
 test('pwr_boron — dilute up, borate back', function (ck) {
   var s = startScenario('pwr_boron');
-  // borate_task pending ⇒ dilute prompt fired: dilute now.
-  var snap = waitBeat(s, 'borate_task', 120);
-  ck('dilution prompt fires', !!snap, !!snap, 'borate_task pending');
+  // dilute_task carries the branch watch: settle past its delay-24 fire, then
+  // dilute inside the watch.
+  var snap = waitBeat(s, 'dilute_task', 120);
+  ck('dilution beat arms', !!snap, !!snap, 'dilute_task pending');
   if (!snap) return;
+  settle(s, 28);
   s.handleCommand({ action: 'set_boron_adjust', rate: -2 });
-  snap = waitBeat(s, 'complete', 2400);
-  ck('Tavg rise on dilution → borate prompt', !!snap, !!snap, 'complete pending');
+  snap = waitBeat(s, 'borate_task', 2400);
+  ck('Tavg rise on dilution → borate prompt', !!snap, !!snap, 'borate_task pending');
   if (!snap) return;
+  settle(s, 4);                         // borate_task fires (delay 2; parks CVCS on HOLD)
   s.handleCommand({ action: 'set_boron_adjust', rate: 2 });
   snap = runUntil(s, function (sn) { return lc(sn); }, 3600);
   ck('Tavg restored with boration → complete', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the round trip', lc(snap).title, /Played/i.test(lc(snap).title), 'Long Game — Played card');
+  // A reactor trip during the evolution lands on the failure card (playtest
+  // fix — previously the mission softlocked under a stale prompt).
+  var s2 = startScenario('pwr_boron');
+  snap = waitBeat(s2, 'dilute_task', 120);
+  if (snap) {
+    settle(s2, 28);
+    s2.handleCommand({ action: 'scram' });
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 300);
+  }
+  ck('trip during the evolution reaches the failure card', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the chemistry-trip card', lc(snap).title, /Tripped/i.test(lc(snap).title), 'Tripped on Chemistry card');
 });
 
 test('pwr_load_follow — evening ramp and morning pickup', function (ck) {
   var s = startScenario('pwr_load_follow');
-  // hold pending ⇒ ramp_down prompt fired: go to manual 800.
-  var snap = waitBeat(s, 'hold', 120);
-  ck('ramp prompt fires', !!snap, !!snap, 'hold pending');
+  // ramp_down carries the branch watch: settle past its delay-14 fire, then
+  // dispatch inside the watch.
+  var snap = waitBeat(s, 'ramp_down', 120);
+  ck('ramp beat arms', !!snap, !!snap, 'ramp_down pending');
   if (!snap) return;
+  settle(s, 16);
   s.handleCommand({ action: 'set_load_mode', mode: 'manual' });
   s.handleCommand({ action: 'set_load_target', mwe: 800 });
-  snap = waitBeat(s, 'restore_follow', 1800);
-  ck('night hold + morning prompt', !!snap, !!snap, 'restore_follow pending');
+  snap = waitBeat(s, 'ramp_up', 1800);
+  ck('night hold reached (dawn beat armed)', !!snap, !!snap, 'ramp_up pending');
   if (!snap) return;
+  settle(s, 305);                       // ramp_up fires at delay 300, watch opens
   s.handleCommand({ action: 'set_load_target', mwe: 1000 });
-  snap = waitBeat(s, 'complete', 1200);
-  ck('back at full output → restore prompt', !!snap, !!snap, 'complete pending');
+  snap = waitBeat(s, 'restore_follow', 1200);
+  ck('back at full output → restore prompt', !!snap, !!snap, 'restore_follow pending');
   if (!snap) return;
+  settle(s, 4);                         // restore_follow fires (delay 2)
   s.handleCommand({ action: 'set_load_mode', mode: 'follow' });
   snap = runUntil(s, function (sn) { return lc(sn); }, 400);
   ck('load-follow mission completes', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the shift card', lc(snap).title, /Shift Complete/i.test(lc(snap).title), 'Shift Complete card');
 });
 
 test('pwr_protection — turbine trip, scram, acknowledge, stabilize', function (ck) {
@@ -302,6 +337,14 @@ test('pwr_qualify — early isolation on the pressure trend also passes', functi
   snap = runUntil(s, function (sn) { return lc(sn); }, 1200);
   ck('early isolation reaches an endpoint', !!snap, !!snap, 'level_complete');
   if (snap) ck('outcome is qualification', lc(snap).title, /Qualified/i.test(lc(snap).title), 'Qualified card');
+  // Isolating DURING the briefing can neither cheese nor softlock the exam:
+  // the fault beat restores the normal lineup at injection (playtest fix —
+  // previously this left the exam unfinishable).
+  var s2 = startScenario('pwr_qualify');
+  settle(s2, 10);
+  s2.handleCommand({ action: 'close_block_valve' });
+  var snap2 = runUntil(s2, function (sn) { return lc(sn); }, 2 * 3600);
+  ck('pre-briefing isolation still ends the exam', !!snap2, !!snap2, 'level_complete');
 });
 
 test('pwr_qualify — negligence fails (failure endpoint exists)', function (ck) {
@@ -400,7 +443,7 @@ test('bwr_fukushima — IC branch buys hours, ends at uncovery', function (ck) {
   var snap = waitBeat(s, 'batteries_die', 600);
   ck('the hold phase reaches the battery failure', !!snap, !!snap, 'batteries_die pending');
   if (!snap) return;
-  settle(s, 250);                       // let the beat fire (delay 240) + a beat of thought
+  settle(s, 2450);                      // let the beat fire (delay 2400) + a beat of thought
   s.handleCommand({ action: 'set_ic', active: true });
   snap = runUntil(s, function (sn) { return lc(sn); }, 12 * 3600);
   ck('IC path reaches the uncovery endpoint', !!snap, !!snap, 'level_complete');

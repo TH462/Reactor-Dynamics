@@ -1271,6 +1271,11 @@
   var SYN_CONTROL_MAP = {
     'Control Bank':                { card: 'rod' },
     'Rod Speed':                   { card: 'rod' },
+    'Rod motion':                  { card: 'rod' },       // campaign-beat aliases (playtest:
+    'Nudge':                       { card: 'rod' },       // these labels glowed nothing)
+    'Mode':                        { card: 'turbgen' },
+    'Load':                        { card: 'turbgen' },
+    'Boron':                       { panel: 'pwCvcsPanel' },
     'Shutdown Bank':               { card: 'rod' },
     'SCRAM':                       { card: 'rod', sel: '[data-syn="scram"]' },
     'Boron (Reactivity) — CVCS':   { panel: 'pwCvcsPanel' },

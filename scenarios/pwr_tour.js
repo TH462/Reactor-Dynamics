@@ -34,7 +34,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'boundary',
-        trigger: { type: 'delay', value: 18.0 },
+        trigger: { type: 'delay', value: 24.0 },
         commentary: {
           learning: 'The hot water flows into the Steam Generator — thousands of thin tubes in a tall shell. On the other side of those tube walls is a second, completely separate water system at lower pressure, and THAT water boils. The two never mix: reactor water stays in its loop, and only clean steam leaves the building. This barrier is the whole reason a PWR has two loops.',
           industry: 'SG = primary/secondary boundary. Primary stays liquid inside the U-tubes; secondary boils on the shell side at ~6.9 MPa. Radiological barrier and the plant’s defining design decision.',
@@ -42,7 +42,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'turbine',
-        trigger: { type: 'delay', value: 16.0 },
+        trigger: { type: 'delay', value: 22.0 },
         commentary: {
           learning: 'The steam crosses the hall and spins the turbine — that spinning shaft IS the thousand megawatts, handed to the generator and out to the grid. Below it, the condenser turns the used steam back into water so the feed pumps can send it to the steam generators again. One loop of heat, around and around.',
           industry: 'Steam → HP/LP turbine → generator (1000 MWe nominal) → condenser at vacuum → condensate/feed back to the SGs. Closed secondary cycle.',
@@ -50,7 +50,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'pressurizer',
-        trigger: { type: 'delay', value: 16.0 },
+        trigger: { type: 'delay', value: 22.0 },
         commentary: {
           learning: 'One more stop: the tank standing on the hot leg — the pressurizer. It is half water, half steam, and it sets the pressure for the entire primary loop with electric heaters and a cold-water spray. Find the SUBCOOLING MARGIN readout: it says how many degrees the primary water is below boiling. That number is the plant’s life insurance. If it ever reaches zero, the reactor water starts boiling around the fuel.',
           industry: 'PZR: two-phase vessel on the hot leg; heaters raise pressure, spray lowers it. Subcooling margin = Tsat(P) − Thot: the single most safety-significant derived indication on the board.',
@@ -58,31 +58,41 @@
         highlight: { control_label: null, instrument_id: 'subcool' },
         advance: 'wait_for_trigger' },
 
+      // The hands-on proof. The beat fires (prompt), then its branches watch:
+      // the gentle 900 MW ask leads on; a greedy ask big enough to trip the
+      // plant on load rejection lands on the load_lost card (playtest fix —
+      // previously the mission had no trip path and softlocked).
       { id: 'act_load',
-        trigger: { type: 'delay', value: 14.0 },
+        trigger: { type: 'delay', value: 20.0 },
         commentary: {
-          learning: 'Your turn. Prove the chain is real: on the Turbine-Generator card, switch Load to MANUAL and slide the target down to 900 MW. You are asking the grid side for less power — watch what happens upstream: steam flow drops, and the reactor quietly follows. Go ahead.',
-          industry: 'Operator action: Turbine-Generator card → Load mode MANUAL, target 900 MWe. Observe steam flow and reactor power tracking the reduced demand — no rod motion required.',
+          learning: 'Your turn. Prove the chain is real: on the Turbine-Generator card, switch Load to MANUAL and slide the target down to 900 MW — one modest step; big cuts shock the machine. You are asking the grid side for less power — watch what happens upstream: steam flow drops, and the reactor quietly follows. Go ahead.',
+          industry: 'Operator action: Turbine-Generator card → Load mode MANUAL, target 900 MWe (limit dispatch steps ~100 MWe). Observe steam flow and reactor power tracking the reduced demand — no rod motion required.',
         },
         highlight: { control_label: 'Mode', instrument_id: null },
-        advance: 'wait_for_trigger' },
+        branches: [
+          { trigger: { type: 'scram' }, goto: 'load_lost' },
+          { trigger: { type: 'all', triggers: [
+              { type: 'operator_action', command: 'set_load_target' },
+              { type: 'instrument', instrument: 'mwe_output', direction: 'below', value: 985 },
+            ] }, goto: 'act_restore' },
+        ] },
 
       { id: 'act_restore',
-        trigger: { type: 'all', triggers: [
-          { type: 'operator_action', command: 'set_load_target' },
-          { type: 'instrument', instrument: 'mwe_output', direction: 'below', value: 985 },
-        ] },
+        trigger: { type: 'delay', value: 2.0 },
         commentary: {
           learning: 'See it? Less steam drawn, and the reactor answered by making less heat — nobody touched the control rods. Notice it did not fall all the way to your 900: the loop warmed a few degrees and the physics found its own bargain in the 970s. To go lower a crew would bring in rods or boron — the sliders ask, the reactor negotiates. Now hand control back: set Load mode to FOLLOW and the plant returns to full power on its own.',
           industry: 'Demand reduction propagated up the chain: governor → steam flow → primary ΔT → power, rods untouched. Note the equilibrium lands above the target (Tavg rises ~+5 °C absorbing the difference) — full reduction requires reactivity support. Restore load mode FOLLOW; expect ~1000 MWe.',
         },
-        advance: 'wait_for_trigger' },
+        branches: [
+          { trigger: { type: 'scram' }, goto: 'load_lost' },
+          { trigger: { type: 'all', triggers: [
+              { type: 'operator_action', command: 'set_load_mode', params: { mode: 'follow' } },
+              { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 990 },
+            ] }, goto: 'complete' },
+        ] },
 
       { id: 'complete',
-        trigger: { type: 'all', triggers: [
-          { type: 'operator_action', command: 'set_load_mode', params: { mode: 'follow' } },
-          { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 990 },
-        ] },
+        trigger: { type: 'delay', value: 1.5 },
         commentary: {
           learning: 'Full power again. You now know the whole journey: fission heat, a sealed hot loop that must never boil, a boundary where clean steam is made, a turbine that turns heat into electricity, and a pressurizer standing guard over it all.',
           industry: 'Back at rated output in Follow. Energy path, two-loop rationale, and subcooling significance covered.',
@@ -92,6 +102,21 @@
           outcome_learning: 'You traced a watt from a splitting atom to the grid, and bent the whole chain with one slider.',
           outcome_industry: 'Energy path and load-demand coupling demonstrated end to end at rated power.',
           actions: ['continue', 'retry'],
+        },
+        advance: 'end' },
+
+      { id: 'load_lost',
+        trigger: { type: 'delay', value: 1.5 },
+        speed: 1,
+        commentary: {
+          learning: 'BANG — that was the plant protecting itself. You asked the grid side for a huge cut all at once; the turbine rejected the load and the reactor tripped rather than ride the shock. No harm done — refusing to be hurried is exactly what the protection is for. Rewind (or Retry) and try the gentler ask: 900 megawatts, one step.',
+          industry: 'Reactor trip on load rejection — the manual load step exceeded transient capability. Protection response nominal. Rewind/Retry and limit dispatch steps to ~100 MWe.',
+        },
+        level_complete: {
+          title: 'The Energy Journey — Load Rejected',
+          outcome_learning: 'The chain is real — and it has a speed limit. Ask again, gently.',
+          outcome_industry: 'Load-rejection trip from an oversized manual step. Re-run the demand demonstration with a bounded step.',
+          actions: ['continue', 'retry', 'rewind'],
         },
         advance: 'end' },
     ],

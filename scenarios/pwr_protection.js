@@ -30,7 +30,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'trip_it',
-        trigger: { type: 'delay', value: 14.0 },
+        trigger: { type: 'delay', value: 22.0 },
         commentary: {
           learning: 'HANDS OFF THE BOARD. The turbine just tripped — its valves slammed shut and a thousand megawatts of steam suddenly has nowhere to go. Watch the dominoes: steam pressure spikes, the reactor loses its heat sink, and the protection system decides. You could not react this fast. Nobody could. That is the point.',
           industry: 'Turbine trip injected at 100%: load rejection, steam pressure transient, heat sink degradation. Anticipate reactor trip via the protection chain. Observe only.',
@@ -47,7 +47,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'ack_task',
-        trigger: { type: 'delay', value: 12.0 },
+        trigger: { type: 'delay', value: 18.0 },
         commentary: {
           learning: 'Your move: press ACK ALL to acknowledge the flood — that silences the noise, but every light stays lit until its cause is actually gone. Acknowledging is not fixing; it is saying "I have read you." Then look at what the plant is doing all by itself: decay heat is still coming (it never stops instantly), and the steam dump is quietly carrying it to the condenser.',
           industry: 'Acknowledge the annunciators (Ack All). Note post-trip automatic lineup: decay heat removal via steam dump to condenser, feed maintaining SG level. Acknowledgment ≠ clearance.',
@@ -55,8 +55,15 @@
         highlight: { control_label: null, instrument_id: null },
         advance: 'wait_for_trigger' },
 
+      // Accepts the ack whenever it comes: a player who silenced the flood
+      // BEFORE being asked would otherwise stall here forever (the instructor
+      // clears its action memory on every beat fire — playtest fix). The
+      // 60-s fallback keeps the demonstration moving either way.
       { id: 'stabilizing',
-        trigger: { type: 'operator_action', command: 'acknowledge_all_alarms' },
+        trigger: { type: 'any', triggers: [
+          { type: 'operator_action', command: 'acknowledge_all_alarms' },
+          { type: 'delay', value: 60.0 },
+        ] },
         commentary: {
           learning: 'Board read and acknowledged. Now watch the plant settle into HOT STANDBY: power down to decay-heat levels, temperature and pressure drifting to their shutdown resting points, steam generators sipping just enough feed. The protection system bought the plant a safe outcome; the automatics are keeping it. Give it a minute at fast clock.',
           industry: 'Flood acknowledged. Plant stabilizing to hot standby: decay-heat power, no-load Tavg, SG levels recovering under auto feed. Time compressed through the settling phase.',

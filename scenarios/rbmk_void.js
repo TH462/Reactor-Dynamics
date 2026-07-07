@@ -27,12 +27,12 @@
           learning: 'Time to feel the wrong-way physics yourself. The experiment: you will REDUCE the cooling water flowing through the channels. Think like a PWR operator first — less cooling should mean the reactor winds DOWN, right? Hotter water, worse moderation, power falls. That is what your instincts say. Now watch what THIS machine does with the same move.',
           industry: 'Interactive void-coefficient demonstration at 50% (tame regime). Planned evolution: channel flow reduction 80→~60%. PWR-trained expectation (negative MTC response) is about to be inverted.',
         },
-        gate: { allow_actions: ['set_channel_flow'],
+        gate: { allow_actions: ['set_channel_flow', 'scram', 'manual_scram', 'acknowledge_alarm', 'acknowledge_all_alarms'],
                 message: 'Channel flow only for this experiment — the point is what the reactor does on its own.' },
         advance: 'wait_for_trigger' },
 
       { id: 'cut_task',
-        trigger: { type: 'delay', value: 12.0 },
+        trigger: { type: 'delay', value: 16.0 },
         commentary: {
           learning: 'Take the CHANNEL FLOW down from 80% to 60%. Then hands off — and watch two gauges: VOID FRACTION and POWER.',
           industry: 'Reduce channel flow to ~60%. Observe void fraction and power response; no other action.',

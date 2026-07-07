@@ -44,9 +44,12 @@
 
       { id: 'az5',
         trigger: { type: 'true_state', field: 'power_pct', direction: 'above', value: 40.0 },
+        // Deliberately terse: this card lives ~1 second before the explosion
+        // replaces it (playtest). The graphite-tip mechanism is taught in the
+        // aftermath card, which stays on screen.
         commentary: {
-          learning: 'AZ-5! — the operator slams the scram button. And the design plays its final card: these rods enter GRAPHITE TIP FIRST, displacing water — adding reactivity — in the bottom of the core before any boron arrives. The brake pedal is, for two seconds, an accelerator.',
-          industry: 'AZ-5 at 01:23:40. Positive scram effect: graphite displacers insert ahead of absorber, net +ρ insertion into an already-divergent core. Terminal.',
+          learning: 'AZ-5! — the operator slams the scram button. Watch the power JUMP.',
+          industry: 'AZ-5 at 01:23:40. Positive scram effect initiating — see aftermath analysis.',
         },
         commands: [{ action: 'scram' }],
         advance: 'wait_for_trigger' },
@@ -54,7 +57,7 @@
       { id: 'destroyed',
         trigger: { type: 'true_state', field: 'melted', direction: 'is_true' },
         commentary: {
-          learning: 'Steam explosion. The core is gone — power spiked to something like a hundred times rated in under four seconds, the water flashed, and the reactor tore itself apart. Now breathe, and understand what you watched. The explosion took seconds, but it was BUILT over hours: a test delayed into the night shift; power allowed to slump into the xenon pit; rods pulled far past the ORM floor to drag it back; safety systems disabled one by one because each seemed to stand in the test\'s way. Every step made the next one look reasonable. Two honest notes about this simulation: it treats the core as one lump — the real excursion began in one corner of a 7-meter core, which is worse; and it ends at the destruction — the graphite fire, the releases, the human cost that followed are history\'s to tell, not this trainer\'s. There is no Rewind that saves Unit 4 from 01:23. The rescue happened — or did not — at 00:28, when the ORM crossed fifteen rods. Machines fail at the speed of physics, but they are doomed at the speed of decisions. Continue: the next machine you stand in front of is the one they rebuilt.',
+          learning: 'Steam explosion. The core is gone — power spiked to something like a hundred times rated in under four seconds, the water flashed, and the reactor tore itself apart. And the trigger was the shutdown button itself: the pre-1986 rods enter GRAPHITE TIP FIRST, displacing water — adding reactivity — at the bottom of the core before any boron arrives. For two seconds, the brake pedal was an accelerator. Now breathe, and understand what you watched. The explosion took seconds, but it was BUILT over hours: a test delayed into the night shift; power allowed to slump into the xenon pit; rods pulled far past the ORM floor to drag it back; safety systems disabled one by one because each seemed to stand in the test\'s way. Every step made the next one look reasonable. Two honest notes about this simulation: it treats the core as one lump — the real excursion began in one corner of a 7-meter core, which is worse; and it ends at the destruction — the graphite fire, the releases, the human cost that followed are history\'s to tell, not this trainer\'s. There is no Rewind that saves Unit 4 from 01:23. The rescue happened — or did not — at 00:28, when the ORM crossed fifteen rods. Machines fail at the speed of physics, but they are doomed at the speed of decisions. Continue: the next machine you stand in front of is the one they rebuilt.',
           industry: 'Prompt-critical excursion, ~100× rated in <4 s, steam explosion, core destroyed. Causal chain: schedule pressure → xenon pit entry → ORM violation (<8 vs 15) → EPS/protection defeats → maximum-void-gain configuration → positive scram effect as initiator-of-record. Model notes: point kinetics (real event was spatially localized — more severe), simulation terminates at destruction (fire/release/consequence not modeled). No recovery branch exists by design; the decision surface closed at the ORM floor. Post-1986 design review follows.',
         },
         level_complete: {

@@ -3,13 +3,13 @@
  *
  * March 11, 2011, from the engine's post_scram_sbo state: reactor tripped,
  * station blacked out, RCIC alone holding the level line. The instructor
- * compresses hours; the batteries fail (injected — historically the
- * tsunami drowned the DC rooms); RCIC coasts and dies; the player gets the
- * one decision the Unit 1 crew had — the isolation condenser — which buys
- * hours, not salvation (measured: IC path uncovers ~4 h later than the
- * bare path). Both branches end at core uncovery: this is a witnessing of
- * a SUPPORT failure, the third and final kind of accident. Honesty beats
- * cover the model boundary (no venting/hydrogen/seawater phase).
+ * compresses the 40-minute hold phase at 60×; the batteries fail (injected —
+ * historically the tsunami drowned the DC rooms); time then drops to REAL
+ * TIME for the one decision the Unit 1 crew had — the isolation condenser —
+ * which buys hours, not salvation (measured: IC path uncovers ~4 h later
+ * than the bare path). Both branches end at core uncovery: this is a
+ * witnessing of a SUPPORT failure, the third and final kind of accident.
+ * Honesty beats cover the model boundary (no venting/hydrogen/seawater).
  */
 ;(function (RD) {
   'use strict';
@@ -34,17 +34,23 @@
         speed: 60,
         advance: 'wait_for_trigger' },
 
+      // THE decision of the mission — run at REAL TIME. At the old 60× the
+      // inaction window closed ~5 wall-seconds after this 105-word card
+      // appeared: a first-time reader always lost the choice to the bare
+      // branch (playtest). The hold phase above compresses 40 sim-minutes
+      // into ~40 s; here the clock drops to 1× and the window is 150 real
+      // seconds — the night waits while the operator decides.
       { id: 'batteries_die',
-        trigger: { type: 'delay', value: 240.0 },
+        trigger: { type: 'delay', value: 2400.0 },
         commentary: {
           learning: 'The battery rooms flooded. DC power — the thread steering RCIC — is dying. The pump will coast on stubbornness for a while, and then the level line will be on its own. In the real dark of that night the operators read gauges by flashlight and car batteries scavenged from the parking lot. You have one card they had at Unit 1: the ISOLATION CONDENSER — an ancient, beautiful device that needs NO power at all, just valves: reactor steam rises to a rooftop water tank, condenses, and falls back as cool water. Open it — or hold it in reserve. Your call, operator.',
-          industry: 'DC exhaustion injected (historically: tsunami inundation of DC distribution). RCIC control degrading toward failure. Available action: isolation condenser initiation (passive, valve-alignment only — the Unit 1 IC). Decision window open.',
+          industry: 'DC exhaustion injected (historically: tsunami inundation of DC distribution). RCIC control degrading toward failure. Available action: isolation condenser initiation (passive, valve-alignment only — the Unit 1 IC). Decision window open; time compression released.',
         },
         inject_failures: ['early_battery_failure'],
-        speed: 60,
+        speed: 1,
         branches: [
           { trigger: { type: 'operator_action', command: 'set_ic' }, goto: 'ic_path' },
-          { trigger: { type: 'inaction', window: 300.0 }, goto: 'bare_path' },
+          { trigger: { type: 'inaction', window: 150.0 }, goto: 'bare_path' },
         ] },
 
       { id: 'ic_path',

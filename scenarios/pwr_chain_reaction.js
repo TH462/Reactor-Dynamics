@@ -32,17 +32,17 @@
           learning: 'The reactor is shut down — and yet your power meter is not reading zero. Look closely: a tiny trickle. A built-in neutron source keeps a faint drizzle of neutrons alive in the core, and each one triggers a short, dying family of fissions. That floor of activity is deliberate: it means the instruments can always see the core, and a startup is never a blind leap.',
           industry: 'Hot zero power, subcritical. Indicated flux is source-driven subcritical multiplication (P ≈ S·Λ/−ρ) — the design guarantee that startup is instrumented, never source-blind. Note the startup-rate meter at zero.',
         },
-        gate: { allow_actions: ['rod_start', 'rod_stop', 'rod_nudge'],
+        gate: { allow_actions: ['rod_start', 'rod_stop', 'rod_nudge', 'scram', 'manual_scram', 'acknowledge_alarm', 'acknowledge_all_alarms'],
                 message: 'Rods only for this lesson — everything else is locked.' },
         advance: 'wait_for_trigger' },
 
       { id: 'pull_rods',
         trigger: { type: 'delay', value: 12.0 },
         commentary: {
-          learning: 'The control rods are neutron sponges pushed down into the core. HOLD the rod WITHDRAW control and keep it held. As the sponges lift out, each neutron family lives a little longer, and the trickle multiplies. Watch two gauges while you pull: POWER, and STARTUP RATE — the second one tells you how fast power is changing. When it swings clearly positive, the chain reaction has become self-sustaining. That moment is called criticality.',
-          industry: 'Withdraw the control bank continuously. Monitor SUR: subcritical multiplication lengthens as ρ → 0; sustained positive SUR marks criticality. Target a controlled positive SUR, not a step.',
+          learning: 'The control rods are neutron sponges pushed down into the core. HOLD the rod WITHDRAW control (on the Reactor card) and keep it held. As the sponges lift out, each neutron family lives a little longer, and the trickle multiplies. Watch two readings while you pull: POWER, and STARTUP RATE — the small readout on the Reactor card that tells you how fast power is changing. When it swings clearly positive, the chain reaction has become self-sustaining. That moment is called criticality.',
+          industry: 'Withdraw the control bank continuously. Monitor SUR (Reactor card readout, or Tools → Reactivity Computer): subcritical multiplication lengthens as ρ → 0; sustained positive SUR marks criticality. Target a controlled positive SUR, not a step.',
         },
-        highlight: { control_label: 'Rod motion', instrument_id: null },
+        highlight: { control_label: 'Control Bank', instrument_id: null },
         advance: 'wait_for_trigger' },
 
       { id: 'critical',
@@ -51,7 +51,9 @@
           learning: 'THERE — the power meter just came alive and crossed one percent, and it is CLIMBING. While the rods were rising you saw little blips on the startup-rate meter — the source trickle multiplying, then dying back each time you stopped. This is different: the chain reaction is feeding itself now. You just took a nuclear reactor critical. STOP the rods and watch — the climb continues without you.',
           industry: 'Power through 1% and rising on its own period — critical (with the coarse lumped bank, expect overshoot; a real approach uses fine control near ρ=0). Stop rod motion and observe the self-sustained rise.',
         },
-        speed: 5,
+        // Real time here on purpose: this is the mission's climax card, and the
+        // 1% → 3% climb is its reading window (playtest: at 5× it lasted ~4 s).
+        speed: 1,
         advance: 'wait_for_trigger' },
 
       { id: 'reinsert',

@@ -11,10 +11,14 @@
  *      power RISES to meet the demand, because colder return water adds
  *      reactivity. The reactor follows steam demand.
  *
- * Observables are chosen for the load-follow reality: steady-state power is
- * slaved to steam demand, so reactivity moves show up in Tavg; demand moves
- * show up in power. Honesty: lumped kinetics — feedback is real but has
- * spatial structure this model deliberately averages away.
+ * The mission anchors steam demand in Manual at 500 MWe (setup_commands), so
+ * the two demonstrations are clean: the rod nudge shows a prompt jump that the
+ * feedback wrestles most of the way back down (probed: 50% → spike ~63% →
+ * settle ~56%, Tavg +4 °C) against a FIXED demand, and the demand step
+ * (set_steam_demand 650) shows power climbing to meet the ask with rods
+ * untouched (probed: mwe ~560 → ~600+ over ~4 sim-minutes). Honesty: lumped
+ * kinetics — feedback is real but has spatial structure this model
+ * deliberately averages away.
  */
 ;(function (RD) {
   'use strict';
@@ -28,18 +32,22 @@
     initial_state: '50_percent',
     mode: 'guided',
     description: 'Poke the core and watch it push back — the negative feedback that makes a PWR self-stabilizing.',
+    // Pin the steam side: with demand fixed at 500 MWe the rod-nudge story is
+    // clean (the spike is wrestled back; the surplus becomes temperature), and
+    // the demand demo has headroom to climb visibly.
+    setup_commands: [{ action: 'set_steam_demand', mwe: 500 }],
     beats: [
 
       { id: 'intro',
         trigger: { type: 'time', value: 2.0 },
         commentary: {
           learning: 'Half power, everything steady. Here is the deepest fact about this machine: it fights back. Make it hotter and it makes itself less reactive — hot fuel soaks up more neutrons before they can cause fissions (the Doppler effect), and hot water is a worse neutron slower-downer (the moderator effect). Both push AGAINST whatever you did. You are about to feel that push.',
-          industry: '50% steady state. Lesson: net negative reactivity coefficients — Doppler broadening of U-238 resonance capture plus negative MTC. Both oppose power/temperature excursions; you will demonstrate each.',
+          industry: '50% steady state, turbine demand held at 500 MWe. Lesson: net negative reactivity coefficients — Doppler broadening of U-238 resonance capture plus negative MTC. Both oppose power/temperature excursions; you will demonstrate each.',
         },
         advance: 'wait_for_trigger' },
 
       { id: 'nudge_task',
-        trigger: { type: 'delay', value: 12.0 },
+        trigger: { type: 'delay', value: 18.0 },
         commentary: {
           learning: 'Give the core a shove: NUDGE the rods OUT a few steps (the +1 button — press it three times). That adds reactivity, so power will rise... but watch what happens next. Keep your eyes on POWER and on T-avg, the loop temperature.',
           industry: 'Insert +ρ: three outward nudges on the control bank. Anticipate: prompt power rise, then feedback arrest. Track power and Tavg through the transient.',
@@ -53,29 +61,29 @@
           { type: 'delay', value: 75.0 },
         ] },
         commentary: {
-          learning: 'Watch the story the gauges just told: power jumped when you pulled the rods — then slid back close to where it started, all by itself. Nobody pushed the rods back in. The extra reactivity got spent making the loop a little HOTTER: look at T-avg sitting slightly above where it was. The steam side is still taking the same megawatts, so power returns to match it — your rod pull bought temperature, not lasting power. That self-arrest is Doppler and the moderator effect doing their silent job, every second, forever.',
-          industry: 'Classic PWR response: prompt jump, feedback arrest, power re-converges to steam demand; the added ρ is absorbed as a higher Tavg equilibrium. Rods position the temperature program; demand positions power.',
+          learning: 'Watch the story the gauges just told: power LEAPT when you pulled the rods — and then, with nobody touching anything, the plant wrestled most of that spike back down. What survived of your shove is smaller and quieter: a modestly higher power line, and a T-avg sitting a few degrees hotter — the loop banked part of your reactivity as heat. That self-arrest is Doppler and the moderator effect doing their silent job, every second, forever: the harder you push this core, the harder it pushes back.',
+          industry: 'Classic PWR response: prompt jump, then feedback arrest to a much smaller net rise; part of the added ρ is absorbed as a higher Tavg equilibrium. The coefficients bound the excursion — they do not erase the input.',
         },
         advance: 'wait_for_trigger' },
 
       { id: 'demand_demo',
-        trigger: { type: 'delay', value: 10.0 },
+        trigger: { type: 'delay', value: 30.0 },
         commentary: {
-          learning: 'Now the reverse experiment — I will ask the turbine for 100 more megawatts and NOBODY will touch the rods. Watch power climb to meet the demand on its own: drawing more steam cools the return water, cooler water slows neutrons better, reactivity appears exactly where needed. The reactor follows steam demand. This is why operators say the turbine drives the reactor in a PWR.',
-          industry: 'Demand step: +100 MWe via load target, rods untouched. Colder cold-leg return adds ρ (negative MTC working in your favor); power rises to the new demand. Demonstrates demand-following without control action.',
+          learning: 'Now the reverse experiment — I will ask the turbine for MORE steam (650 megawatts of demand) and NOBODY will touch the rods. Watch two gauges tell the story: output climbing to meet the ask, and T-avg FALLING — drawing more steam cools the return water, cooler water slows neutrons better, and reactivity appears exactly where needed. The reactor follows steam demand. This is why operators say the turbine drives the reactor in a PWR.',
+          industry: 'Demand step: 650 MWe via turbine demand, rods untouched. Colder cold-leg return adds ρ (negative MTC working in your favor); power rises toward the new demand, Tavg falls. Demonstrates demand-following without control action.',
         },
-        commands: [
-          { action: 'set_load_mode', mode: 'manual' },
-          { action: 'set_load_target', mwe: 600 },
-        ],
+        commands: [{ action: 'set_steam_demand', mwe: 650 }],
         speed: 10,
         advance: 'wait_for_trigger' },
 
       { id: 'complete',
-        trigger: { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 520 },
+        trigger: { type: 'all', triggers: [
+          { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 585 },
+          { type: 'delay', value: 200.0 },
+        ] },
         commentary: {
-          learning: 'There it is — output climbing to meet the ask, and the control rods never moved. (It will settle short of the full 600: the loop cools as it works harder, and the physics strikes its bargain partway — the same negotiation you saw with the rods, running in reverse.) One honest note: this simulator treats the whole core as one lump, so feedback looks perfectly smooth; in a real core it varies region by region. But the principle you just proved twice is exactly real, and it is the reason a PWR is one of the most stable machines humans have built: push it, and it pushes back.',
-          industry: 'Power converged to the raised demand with zero rod motion. Model note: point kinetics — no spatial flux/feedback distribution. Negative-coefficient stability demonstrated in both directions.',
+          learning: 'There it is — output climbed to meet the ask, and the control rods never moved. (It settles short of the full 650: the loop cools as it works harder, and the physics strikes its bargain partway — the same negotiation you saw with the rods, running in reverse.) One honest note: this simulator treats the whole core as one lump, so feedback looks perfectly smooth; in a real core it varies region by region. But the principle you just proved twice is exactly real, and it is the reason a PWR is one of the most stable machines humans have built: push it, and it pushes back.',
+          industry: 'Power converged toward the raised demand with zero rod motion. Model note: point kinetics — no spatial flux/feedback distribution. Negative-coefficient stability demonstrated in both directions.',
         },
         speed: 1,
         commands: [{ action: 'set_load_mode', mode: 'follow' }],
