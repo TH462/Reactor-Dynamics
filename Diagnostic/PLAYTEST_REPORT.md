@@ -554,3 +554,17 @@ The post-fix review flagged four remaining uncertainties; all are now fixes, not
 Final gates: `run_campaign` **26/26 (739 checks)**, synoptic harness 55/55, everything else
 as above; `verify_e2e_ui`'s pwr/primary `dhr-on` failure is pre-existing at HEAD (classic
 view, unrelated) and remains logged.
+
+### Round 3 (same day) — RBMK/BWR parity pass
+
+The PWR lessons applied to the other two campaigns (probes + fixes, BUILD_DECISIONS round-3
+entry): `rbmk_void` could softlock on a manual AZ-5 or a deep flow cut — probed: a 30% cut
+spikes the pre-1986 core to **~120% and trips**, after which touching flow again showed the
+*success* card over a dead reactor; `bwr_recirc` softlocked on any scram. Both now use the
+prompt-with-branches pattern with authored failure cards ("It Bit" / "Tripped"), CI-checked.
+Highlights added wherever RBMK/BWR beat text names hardware (there were none): tour gauges
+(void/ORM/level/recirc), task controls (MCP / Channel Flow, Recirc Drive), the Isolation
+Condenser at the Fukushima decision, and AZ-5 on the rematch intro — which now also carries
+the two-press "arm then CONFIRM" wording. The highlight coverage gate now validates RBMK/BWR
+labels too (`PD_LABELS` mirror). Gates: `run_campaign` 26/26 — **773 checks**; persona
+re-verification on a fresh seed: 7/7.
