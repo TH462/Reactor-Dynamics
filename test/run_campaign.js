@@ -31,7 +31,7 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'scenarios/pwr_tour.js', 'scenarios/pwr_chain_reaction.js', 'scenarios/pwr_feedback.js',
   'scenarios/pwr_xenon.js', 'scenarios/pwr_boron.js', 'scenarios/pwr_load_follow.js',
   'scenarios/pwr_automation.js',
-  'scenarios/pwr_protection.js', 'scenarios/pwr_qualify.js',
+  'scenarios/pwr_protection.js', 'scenarios/pwr_slb.js', 'scenarios/pwr_qualify.js',
   'scenarios/rbmk_tour.js', 'scenarios/rbmk_void.js', 'scenarios/rbmk_ar.js',
   'scenarios/rbmk_chernobyl.js', 'scenarios/rbmk_az5_fixed.js',
   'scenarios/bwr_tour.js', 'scenarios/bwr_recirc.js', 'scenarios/bwr_isolation.js',
@@ -113,7 +113,7 @@ function settle(s, secs) { var end = s.simTime + secs; var sn; while (s.simTime 
 var TRIGGERS = ['time', 'delay', 'instrument', 'true_state', 'operator_action', 'inaction', 'alarm', 'scram', 'manual', 'all', 'any'];
 // campaign plant → the MANUAL_PROCEDURES engine keys its procedures must exist under
 var ENGINE_KEYS = { pwr: ['pwr'], rbmk: ['rbmk_pre', 'rbmk_post'], bwr: ['bwr'] };
-var EXPECTED_MISSIONS = { pwr: 20, rbmk: 9, bwr: 8 };
+var EXPECTED_MISSIONS = { pwr: 21, rbmk: 9, bwr: 8 };
 
 test('campaign structure — missions resolve, ids unique (all plants)', function (ck) {
   Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
@@ -442,6 +442,29 @@ test('pwr_qualify — negligence fails (failure endpoint exists)', function (ck)
   snap = runUntil(s, function (sn) { return lc(sn); }, 2 * 3600);
   ck('reaches an endpoint without operator help', !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is a failure card', lc(snap).title, !/Qualified/i.test(lc(snap).title), 'not Qualified');
+});
+
+test('pwr_slb — steam line break: both branches reach an endpoint', function (ck) {
+  // Craft branch: recognize the MTC-driven power rise and trip manually.
+  var s = startScenario('pwr_slb');
+  var dec = runUntil(s, function () { return s.instructor.firedBeats.has('reactivity_event'); }, 120);
+  ck('decision beat fires as power rises past 103% (overcooling → +reactivity)', !!dec, !!dec, 'reactivity_event fired');
+  if (dec) {
+    s.handleCommand({ action: 'scram' });
+    var doneA = runUntil(s, function (sn) { return lc(sn); }, 120);
+    ck('manual trip → Controlled endpoint', doneA ? lc(doneA).title : 'never', !!doneA && /Controlled/.test(lc(doneA).title), 'Controlled');
+    if (doneA) ck('core stayed safe (never melted)', doneA.true_state.melted, doneA.true_state.melted === false, 'false');
+  }
+
+  // Automatics branch: do nothing — the RPS trips on low pzr level.
+  var s2 = startScenario('pwr_slb');
+  var dec2 = runUntil(s2, function () { return s2.instructor.firedBeats.has('reactivity_event'); }, 120);
+  ck('decision beat fires (automatics run)', !!dec2, !!dec2, 'reactivity_event fired');
+  if (dec2) {
+    var doneB = runUntil(s2, function (sn) { return lc(sn); }, 600);
+    ck('inaction → automatics catch it (low pzr level trip)', doneB ? lc(doneB).title : 'never (fired: ' + Array.from(s2.instructor.firedBeats) + ')', !!doneB && /Automatics/.test(lc(doneB).title), 'Caught by the Automatics');
+    if (doneB) ck('endpoint arrives scrammed and safe', 'scram=' + doneB.rps_state.scrammed + ' melted=' + doneB.true_state.melted, doneB.rps_state.scrammed === true && doneB.true_state.melted === false, 'scrammed, not melted');
+  }
 });
 
 test('pwr_sg_flood — bonus mission completes (imbalance trigger repaired)', function (ck) {

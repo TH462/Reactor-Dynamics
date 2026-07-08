@@ -1773,3 +1773,22 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   its hazard is reactivity/PTS, not hot-leg DNB). Manual reference regenerated: no content
   diff (these are internal coefficients, not manual-surfaced). Gates: PWR 13/13, scenarios
   3/3, M7 green, procedures 20/21 (the 1 red is pre-existing bwr_sbo_rcic).
+
+- **2026-07-08 — Steam Line Break scenario (`pwr_slb`, PWR campaign Act IV).** First
+  at-power accident scenario, built on the hot-leg DNB / core-voiding physics above. The
+  lesson is counterintuitive: a broken *steam* line raises *reactor* power — the secondary
+  blows down, the primary overcools, and the negative MTC turns the cooldown into positive
+  reactivity, so power climbs with no rod motion. Probed full-stack trajectory (seed 42,
+  severity 1.0): power 100→113% over ~60 s as Tavg falls 304→284 °C; subcooling margin
+  WIDENS (overcooling, not DNB — `core_void` stays 0, confirming the steam break reads as an
+  overcooling event, its hazard reactivity/PTS not hot-leg boiling); RPS auto-trips on
+  **pzr-level-low at ~66 s** as the contracting primary drains the pressurizer (not high
+  flux — peak 113% is under the 120% trip; and no SI — primary pressure holds ~15.3). Two
+  branches at the decision point: manual trip (the craft — recognize the reactivity event and
+  scram) → *Controlled*; inaction → the automatics catch it → *Caught by the Automatics*.
+  Both safe by design — in this lumped model the scram dominates the cooldown, so there is no
+  return-to-power to reproduce; that, plus borated-SI and PTS being unmodeled, is voiced as
+  M6 §13 honesty in both endpoints. Wired: `scenarios/pwr_slb.js`, `shell.html` script tag,
+  `campaign_data.js` Act IV (PWR missions 20→21), `run_campaign.js` load + count + a
+  both-branches functional test. Headless UI boots with the mission under "When Things Go
+  Wrong". Gates: campaign 30/30 (919), scenarios 3/3, PWR 13/13, M7 green, procedures 20/21.
