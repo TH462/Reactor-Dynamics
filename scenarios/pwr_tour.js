@@ -80,22 +80,22 @@
       { id: 'act_restore',
         trigger: { type: 'delay', value: 2.0 },
         commentary: {
-          learning: 'See it? Less steam drawn, and the reactor answered by making less heat — nobody touched the control rods. Notice it did not fall all the way to your 900: the loop warmed a few degrees and the physics found its own bargain in the 970s. To go lower a crew would bring in rods or boron — the sliders ask, the reactor negotiates. Now hand control back: set Load mode to FOLLOW and the plant returns to full power on its own.',
-          industry: 'Demand reduction propagated up the chain: governor → steam flow → primary ΔT → power, rods untouched. Note the equilibrium lands above the target (Tavg rises ~+5 °C absorbing the difference) — full reduction requires reactivity support. Restore load mode FOLLOW; expect ~1000 MWe.',
+          learning: 'See it? Less steam drawn, and the reactor answered by making less heat — nobody touched the control rods. Output reads your 900 almost exactly: the governor is a real regulator, opening its valve as the loop warms so the grid gets precisely what was asked. The reactor paid for it upstream — Tavg is riding about fifteen degrees hotter, the loop absorbing the mismatch a crew would trim away with rods or boron. Now ask it back: slide the target up to 1000 MW, and once output reads full power, set Load mode to FOLLOW to hand the plant back to the grid.',
+          industry: 'Demand reduction propagated up the chain: governor (pressure-compensated — delivered ≈ demand) → steam flow → primary ΔT → power, rods untouched; Tavg rises ~+15 °C absorbing the mismatch pending reactivity support. Restore: target 1000 MWe, then load mode FOLLOW once at rated.',
         },
         branches: [
           { trigger: { type: 'scram' }, goto: 'load_lost' },
           { trigger: { type: 'all', triggers: [
-              { type: 'operator_action', command: 'set_load_mode', params: { mode: 'follow' } },
-              { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 990 },
+              { type: 'operator_action', command: 'set_load_target' },
+              { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 985 },
             ] }, goto: 'complete' },
         ] },
 
       { id: 'complete',
         trigger: { type: 'delay', value: 1.5 },
         commentary: {
-          learning: 'Full power again. You now know the whole journey: fission heat, a sealed hot loop that must never boil, a boundary where clean steam is made, a turbine that turns heat into electricity, and a pressurizer standing guard over it all.',
-          industry: 'Back at rated output in Follow. Energy path, two-loop rationale, and subcooling significance covered.',
+          learning: 'Full power again — and you rode the whole chain both ways with one slider. You now know the journey: fission heat, a sealed hot loop that must never boil, a boundary where clean steam is made, a turbine whose governor delivers exactly what the grid asks, and a pressurizer standing guard over it all.',
+          industry: 'Back at rated output. Energy path, two-loop rationale, governor load control, and subcooling significance covered.',
         },
         level_complete: {
           title: 'The Energy Journey — Complete',

@@ -253,7 +253,11 @@ test('pwr_tour — energy journey completes', function (ck) {
   ck('load reduction observed → restore prompt', !!snap, !!snap, 'act_restore pending');
   if (!snap) return;
   settle(s, 4);                         // act_restore fires (delay 2), watch opens
-  s.handleCommand({ action: 'set_load_mode', mode: 'follow' });
+  // Compensated governor: follow mode holds power where it IS (no overdelivery
+  // pulling it home) — the restore is an explicit ask back to 1000. (Switching
+  // to follow right away would snap the target to current power; the mission
+  // has the player set FOLLOW only after output recovers.)
+  s.handleCommand({ action: 'set_load_target', mwe: 1000 });
   snap = runUntil(s, function (sn) { return lc(sn); }, 600);
   ck('tour completes', !!snap, !!snap, 'level_complete');
   if (snap) ck('completion is the tour endpoint', lc(snap).title, /Complete/i.test(lc(snap).title), 'Energy Journey — Complete card');

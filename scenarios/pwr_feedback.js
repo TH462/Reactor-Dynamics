@@ -12,13 +12,14 @@
  *      reactivity. The reactor follows steam demand.
  *
  * The mission anchors steam demand in Manual at 500 MWe (setup_commands), so
- * the two demonstrations are clean: the rod nudge shows a prompt jump that the
- * feedback wrestles most of the way back down (probed: 50% → spike ~63% →
- * settle ~56%, Tavg +4 °C) against a FIXED demand, and the demand step
- * (set_steam_demand 650) shows power climbing to meet the ask with rods
- * untouched (probed: mwe ~560 → ~600+ over ~4 sim-minutes). Honesty: lumped
- * kinetics — feedback is real but has spatial structure this model
- * deliberately averages away.
+ * the two demonstrations are clean under the pressure-compensated governor
+ * (which pins the steam draw at the demand): the rod nudge shows a prompt jump
+ * that the feedback wrestles ALL the way back down (probed: 50% → spike ~58% →
+ * settle ~50%, the entire shove banked as Tavg +8 °C) against the fixed draw,
+ * and the demand step (set_steam_demand 650) shows power climbing to MEET the
+ * ask with rods untouched (probed: ~643 MWe, Tavg −25 °C paying for it).
+ * Honesty: lumped kinetics — feedback is real but has spatial structure this
+ * model deliberately averages away.
  */
 ;(function (RD) {
   'use strict';
@@ -61,8 +62,8 @@
           { type: 'delay', value: 75.0 },
         ] },
         commentary: {
-          learning: 'Watch the story the gauges just told: power LEAPT when you pulled the rods — and then, with nobody touching anything, the plant wrestled most of that spike back down. What survived of your shove is smaller and quieter: a modestly higher power line, and a T-avg sitting a few degrees hotter — the loop banked part of your reactivity as heat. That self-arrest is Doppler and the moderator effect doing their silent job, every second, forever: the harder you push this core, the harder it pushes back.',
-          industry: 'Classic PWR response: prompt jump, then feedback arrest to a much smaller net rise; part of the added ρ is absorbed as a higher Tavg equilibrium. The coefficients bound the excursion — they do not erase the input.',
+          learning: 'Watch the story the gauges just told: power LEAPT when you pulled the rods — and then, with nobody touching anything, the plant wrestled the spike ALL the way back to where it started. The turbine is only taking 500 megawatts of steam, so steady power had nowhere else to be — and your entire shove went somewhere quieter: T-avg is sitting about eight degrees hotter. The loop banked your reactivity as heat, one-for-one. That self-arrest is Doppler and the moderator effect doing their silent job, every second, forever: the harder you push this core, the harder it pushes back.',
+          industry: 'Classic PWR response under fixed steam draw: prompt jump, feedback arrest fully back to the demand-set power; the added ρ is absorbed entirely as a higher Tavg equilibrium (~+8 °C). The coefficients convert the input to temperature — they do not let it become power.',
         },
         advance: 'wait_for_trigger' },
 
@@ -91,8 +92,8 @@
           { type: 'delay', value: 600.0 },
         ] },
         commentary: {
-          learning: 'There it is — output climbed to meet the ask, and the control rods never moved. (It settles short of the full 650: the loop cools as it works harder, and the physics strikes its bargain partway — the same negotiation you saw with the rods, running in reverse.) One honest note: this simulator treats the whole core as one lump, so feedback looks perfectly smooth; in a real core it varies region by region. But the principle you just proved twice is exactly real, and it is the reason a PWR is one of the most stable machines humans have built: push it, and it pushes back.',
-          industry: 'Power converged toward the raised demand with zero rod motion. Model note: point kinetics — no spatial flux/feedback distribution. Negative-coefficient stability demonstrated in both directions.',
+          learning: 'There it is — output climbed to the full ask, and the control rods never moved. The price appears on the other gauge: T-avg dropped some twenty-five degrees, because the extra steam is pulled from the loop\'s own warmth — cooler water moderates better, reactivity appears, power rises until it pays the bill. The same negotiation you saw with the rods, running in reverse: there, power came back and temperature rose; here, power rose and temperature came down. One honest note: this simulator treats the whole core as one lump, so feedback looks perfectly smooth; in a real core it varies region by region. But the principle you just proved twice is exactly real, and it is the reason a PWR is one of the most stable machines humans have built: push it, and it pushes back.',
+          industry: 'Power converged to the raised demand with zero rod motion; Tavg fell ~25 °C supplying the reactivity (negative MTC). Model note: point kinetics — no spatial flux/feedback distribution. Negative-coefficient stability demonstrated in both directions.',
         },
         speed: 1,
         commands: [{ action: 'set_load_mode', mode: 'follow' }],

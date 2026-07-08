@@ -165,9 +165,11 @@
       vacuum_restore_tau: 10.0, vacuum_decay_tau: 30.0, // s [tune]
       vacuum_trip_kpa: 74.5,       // turbine trips below this
       mwe_rated: 1000.0,           // MWe [tune]
-      // Turbine governor / control valve: admission valve position (% open) tracks
-      // the load demand with a first-order response, then modulates steam flow
-      // together with SG pressure. Replaces the direct demand×pressure coupling. [tune]
+      // Turbine governor / control valve: EHC load-control mode — the valve
+      // TARGET is pressure-compensated (demand ÷ P/P_rated, clamped fully open)
+      // so steady-state delivered steam equals the load demand at any secondary
+      // pressure; the position itself strokes with a first-order lag and
+      // modulates steam flow together with SG pressure. [tune]
       governor_tau: 2.0,           // s valve response time constant
     },
 

@@ -104,10 +104,10 @@ test('PWR · all-auto except grid: demand swing 1000→700→1000', function (ck
   r.run(900);
   var t = ts(r), i = inst(r);
   ck('no scram at 700 MW', scrammed(r), !scrammed(r), 'false');
-  // The governor passes demand × (SG pressure / rated): holding Tavg at the
-  // full-power value keeps secondary pressure high, so a 700 MW demand delivers
-  // ~785 MW — settled power tracks DELIVERED steam, not the raw setpoint.
-  ck('power followed demand down', t.power_pct.toFixed(1), near(t.power_pct, 78, 7), '78±7 (governor overdelivers at held Tavg)');
+  // Pressure-compensated governor (EHC load control): delivered steam tracks
+  // the demand nearly 1:1 at any SG pressure — 700 MW asked settles ~725
+  // (small residual from the rod-channel deadband / loop interplay).
+  ck('power followed demand down', t.power_pct.toFixed(1), near(t.power_pct, 72, 5), '72±5 (compensated governor delivers the ask)');
   ck('tavg restored', i.tavg.toFixed(2) + ' vs sp ' + sp.toFixed(2), near(i.tavg, sp, 1.5), 'sp±1.5');
   ck('SG level held', i.sg_level.toFixed(1), near(i.sg_level, r.auto.get('feed_sg').sp, 4), 'sp±4');
   r.cmd({ action: 'set_steam_demand', mwe: 1000 });

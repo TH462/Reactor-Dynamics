@@ -50,8 +50,8 @@
       { id: 'hold',
         trigger: { type: 'delay', value: 2.0 },
         commentary: {
-          learning: 'Settling out — and notice it will not reach 800 exactly: the loop warms up several degrees and holds the output in the 940s. Your slider ASKS; the physics ANSWERS; going all the way to 800 would take rods or boron alongside. Night watch now: do NOTHING, but stay awake to two indications — the Balance readout on the Steam card (steam vs feed) and T-avg. I will run the night at 10× — watch your board.',
-          industry: 'Output settling ~940 MWe against an 800 target — Tavg rises ~+9 °C absorbing the mismatch; full reduction requires coordinated reactivity control (out of scope tonight). Monitoring phase: Balance readout (Steam card) and Tavg. Night compressed 10×.',
+          learning: 'Settling out — read your board carefully, because the plant is talking. The governor DELIVERED most of your cut: output parks in the 840s. But look at T-avg — it climbed over twenty degrees to carry the mismatch, the steam generators warmed with it, and at the top of that climb the STEAM DUMP lifted, quietly venting the last of the excess to the condenser. And there — the HI TAVG annunciator, amber. Acknowledge it, and understand it: nothing is broken. The plant is telling you, in lights, that a cut this deep wants RODS or BORON alongside the slider — and tonight, deliberately, we gave it neither. Night watch now: do NOTHING more, but stay awake to the Balance readout on the Steam card and to T-avg. I will run the night at 10× — watch your board.',
+          industry: 'Output holds ~840 MWe against the 800 target: Tavg rises ~+22 °C absorbing the mismatch until secondary pressure reaches the steam-dump setpoint (dump modulating; HI TAVG warning annunciates at 312 °C — acknowledge). Full reduction requires coordinated reactivity control, deliberately withheld tonight. Monitoring: Balance readout and Tavg. Night compressed 10×.',
         },
         speed: 10,
         advance: 'wait_for_trigger' },

@@ -1718,3 +1718,28 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   dev override are retired (`buildCampaign()` simplification; campaign_data.js header and
   the plan doc updated). Completion tracking unchanged. Campaign gate 29/29; headless UI:
   zero locks, 21/21 PWR entries carry Start/Replay.
+
+- **2026-07-07 — PWR turbine governor: pressure-compensated load control.** The governor
+  moves from open-loop (valve = demand; delivered = valve × P_sg/P_rated, overdelivering
+  ~12% at held Tavg — a 700 MWe ask ran the SG to 6.3 MPa and delivered ~785) to **EHC
+  load-control**: the valve TARGET is pressure-compensated (demand ÷ P/P_rated, clamped
+  fully open; 0.5 MPa floor), so steady-state delivered steam ≈ demand at any secondary
+  pressure — the valve strokes open as pressure falls, like a real governor holding load.
+  Identical at rated pressure; valve lag unchanged. One-line engine change
+  (`pwr_steam_generator.js`); PWR suite 13/13 first run (TMI/steam-break/trip untouched);
+  ops probes IMPROVED (51/66→52/66, 18→16 failed checks). **The load-coupling physics
+  changed character** — recalibrated content: bare-plant demand map is now 900→90.0%
+  exact; 800/700 → ~84% at the STEAM-DUMP ceiling (Tavg climbs ~+22–25 °C to the dump
+  setpoint, HI TAVG warning annunciates — 5 °C real margin to the 335 trip, 25σ through
+  the instrument); 500 still trips (sg_level low). Follow mode lost its accidental
+  restoring force (the overdelivery), so `pwr_tour`'s restore is now an explicit ask back
+  to 1000 then FOLLOW (beat + scripted test updated). `pwr_load_follow`'s night watch now
+  OWNS the amber (dump lifting + HI TAVG acknowledged — a better lesson: the plant asking
+  for reactivity support in lights). `pwr_feedback`'s two demos got CLEANER: with the draw
+  truly pinned, the rod shove is wrestled ALL the way back (spike 58% → settle 50.2%,
+  entire +ρ banked as Tavg +8 °C) and the 650 ask is fully delivered (643 MWe, Tavg
+  −25 °C paying for it) — both registers rewritten to the probed numbers. All-auto demand
+  700 now settles 725 (was 785); autoctl assertion updated (72±5). Manual regenerated
+  (noise-level diffs only). RBMK/BWR turbines unchanged (they already deliver the ask;
+  the BWR's pressure control lives in the automation channel). Gates: PWR 13/13, campaign
+  29/29 (882), autoctl 17/17, procedures 20/21 + e2e reds pre-existing, M4–M7 green.
