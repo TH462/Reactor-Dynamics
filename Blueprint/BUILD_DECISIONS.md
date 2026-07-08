@@ -1792,3 +1792,26 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   `campaign_data.js` Act IV (PWR missions 20→21), `run_campaign.js` load + count + a
   both-branches functional test. Headless UI boots with the mission under "When Things Go
   Wrong". Gates: campaign 30/30 (919), scenarios 3/3, PWR 13/13, M7 green, procedures 20/21.
+
+- **2026-07-08 — Loss of Coolant Flow scenario (`pwr_lof`, PWR campaign Act IV).** The
+  scenario that actually exercises the hot-leg DNB / core-boiling physics (the steam break is
+  an overcooling event; loss of flow is the DNB event). An RCP trips at power; forced flow
+  coasts down (rcp_trip → stop_pump, coastdown τ 8 s); as flow falls the core ΔT (∝ power/flow)
+  drives the exit to saturation → DNB. Probed full-stack (seed 42): with no action thot pins at
+  Tsat ~9 s in, `core_void_fraction` peaks 0.063, fuel 693→786 °C, and the **`__true_flow__`
+  low-flow trip scrams at ~11 s** (fuel recovers, no damage). A manual scram inside ~6 s
+  collapses power before saturation — **DNB is avoided entirely** (fuel stays 693 °C, core_void
+  0). That asymmetry is the interactive lesson (trip FIRST — early action prevents the
+  phenomenon, unlike the steam break where both branches reach the same safe place). Branches:
+  operator_action scram → *Tripped in Time*; `true_state core_void_fraction > 0.02` (a
+  true-state author hook — the PWR has no void gauge) → *boiling* → low-flow trip → *Caught by
+  the Low-Flow Trip*. Teaches the true-flow trip (HR1 exception, reads real flow — a laggy
+  meter would be too slow at coastdown speed) and voices the natural-circulation simplification
+  (M6 §13: flow reads 0 with pumps off; v1 doesn't credit buoyancy-driven flow). Probed
+  findings not built on: an ATWS (rcp_trip + failure_to_scram) self-limits at ~900 °C via
+  Doppler — NO fuel damage — and shows a `scram=Y` flag anomaly under failure_to_scram; loss of
+  flow is a survivable event in this model, so no meltdown branch is honest. Wired:
+  `scenarios/pwr_lof.js`, shell.html, campaign_data.js Act IV (after the pwr_rcp_trip
+  procedure; PWR 21→22 missions), run_campaign.js load + count + a both-branches functional test
+  that asserts peak core_void > 0.02 (DNB genuinely engaged). Headless UI boots with the
+  mission. Gates: campaign 31/31 (954), scenarios 3/3, PWR 13/13, M7 green, procedures 20/21.

@@ -31,7 +31,7 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'scenarios/pwr_tour.js', 'scenarios/pwr_chain_reaction.js', 'scenarios/pwr_feedback.js',
   'scenarios/pwr_xenon.js', 'scenarios/pwr_boron.js', 'scenarios/pwr_load_follow.js',
   'scenarios/pwr_automation.js',
-  'scenarios/pwr_protection.js', 'scenarios/pwr_slb.js', 'scenarios/pwr_qualify.js',
+  'scenarios/pwr_protection.js', 'scenarios/pwr_slb.js', 'scenarios/pwr_lof.js', 'scenarios/pwr_qualify.js',
   'scenarios/rbmk_tour.js', 'scenarios/rbmk_void.js', 'scenarios/rbmk_ar.js',
   'scenarios/rbmk_chernobyl.js', 'scenarios/rbmk_az5_fixed.js',
   'scenarios/bwr_tour.js', 'scenarios/bwr_recirc.js', 'scenarios/bwr_isolation.js',
@@ -113,7 +113,7 @@ function settle(s, secs) { var end = s.simTime + secs; var sn; while (s.simTime 
 var TRIGGERS = ['time', 'delay', 'instrument', 'true_state', 'operator_action', 'inaction', 'alarm', 'scram', 'manual', 'all', 'any'];
 // campaign plant → the MANUAL_PROCEDURES engine keys its procedures must exist under
 var ENGINE_KEYS = { pwr: ['pwr'], rbmk: ['rbmk_pre', 'rbmk_post'], bwr: ['bwr'] };
-var EXPECTED_MISSIONS = { pwr: 21, rbmk: 9, bwr: 8 };
+var EXPECTED_MISSIONS = { pwr: 22, rbmk: 9, bwr: 8 };
 
 test('campaign structure — missions resolve, ids unique (all plants)', function (ck) {
   Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
@@ -464,6 +464,37 @@ test('pwr_slb — steam line break: both branches reach an endpoint', function (
     var doneB = runUntil(s2, function (sn) { return lc(sn); }, 600);
     ck('inaction → automatics catch it (low pzr level trip)', doneB ? lc(doneB).title : 'never (fired: ' + Array.from(s2.instructor.firedBeats) + ')', !!doneB && /Automatics/.test(lc(doneB).title), 'Caught by the Automatics');
     if (doneB) ck('endpoint arrives scrammed and safe', 'scram=' + doneB.rps_state.scrammed + ' melted=' + doneB.true_state.melted, doneB.rps_state.scrammed === true && doneB.true_state.melted === false, 'scrammed, not melted');
+  }
+});
+
+test('pwr_lof — loss of flow: both branches reach an endpoint, DNB physics fires', function (ck) {
+  // Craft branch: trip immediately on the pump loss — DNB is avoided entirely.
+  var s = startScenario('pwr_lof');
+  var dec = runUntil(s, function () { return s.instructor.firedBeats.has('pump_trips'); }, 120);
+  ck('pump-trip decision beat fires', !!dec, !!dec, 'pump_trips fired');
+  if (dec) {
+    s.handleCommand({ action: 'scram' });
+    var doneA = runUntil(s, function (sn) { return lc(sn); }, 120);
+    ck('immediate trip → Tripped in Time endpoint', doneA ? lc(doneA).title : 'never', !!doneA && /Tripped in Time/.test(lc(doneA).title), 'Tripped in Time');
+    if (doneA) {
+      ck('DNB avoided (took the no-boil branch)', s.instructor.firedBeats.has('tripped_fast') && !s.instructor.firedBeats.has('boiling'), s.instructor.firedBeats.has('tripped_fast') && !s.instructor.firedBeats.has('boiling'), 'tripped_fast, not boiling');
+      ck('core exit stayed subcooled (no core void)', doneA.true_state.core_void_fraction.toFixed(3), doneA.true_state.core_void_fraction < 0.01, '< 0.01');
+    }
+  }
+
+  // Automatics branch: do nothing — the hot channel boils (DNB), then the
+  // __true_flow__ low-flow trip scrams the reactor. Track peak core void to
+  // prove the new DNB physics actually engaged.
+  var s2 = startScenario('pwr_lof');
+  var peakVoid = 0;
+  s2.subscribe(function (sn) { if (sn.true_state.core_void_fraction > peakVoid) peakVoid = sn.true_state.core_void_fraction; });
+  var dec2 = runUntil(s2, function () { return s2.instructor.firedBeats.has('pump_trips'); }, 120);
+  ck('decision beat fires (automatics run)', !!dec2, !!dec2, 'pump_trips fired');
+  if (dec2) {
+    var doneB = runUntil(s2, function (sn) { return lc(sn); }, 300);
+    ck('inaction → DNB then low-flow trip endpoint', doneB ? lc(doneB).title : 'never (fired: ' + Array.from(s2.instructor.firedBeats) + ')', !!doneB && /Low-Flow Trip/.test(lc(doneB).title), 'Caught by the Low-Flow Trip');
+    ck('the hot channel actually boiled (DNB / core_void engaged)', 'peak core_void=' + peakVoid.toFixed(3), peakVoid > 0.02, '> 0.02');
+    if (doneB) ck('endpoint arrives scrammed and undamaged', 'scram=' + doneB.rps_state.scrammed + ' melted=' + doneB.true_state.melted, doneB.rps_state.scrammed === true && doneB.true_state.melted === false, 'scrammed, not melted');
   }
 });
 

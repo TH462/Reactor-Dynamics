@@ -44,6 +44,7 @@
         { kind: 'scenario', id: 'pwr_protection', teaches: 'The reactor protection system, and how to read an alarm flood.' },
         { kind: 'procedure', id: 'pwr_loss_of_feedwater', teaches: 'Losing the heat sink — AFW to the rescue.' },
         { kind: 'procedure', id: 'pwr_rcp_trip', teaches: 'Losing forced flow — natural circulation.' },
+        { kind: 'scenario', id: 'pwr_lof', teaches: 'Loss of flow: the hot channel boils, and the trip that has to be fast.' },
         { kind: 'scenario', id: 'pwr_slb', teaches: 'A steam line break — why cooling the plant can raise its power.' },
         { kind: 'procedure', id: 'pwr_stuck_porv', teaches: 'The stuck relief valve — your TMI rehearsal.' },
       ] },
