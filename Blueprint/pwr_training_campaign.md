@@ -43,7 +43,7 @@ minutes of wall-clock attention (time acceleration handles slow physics like xen
 ## 3. Curriculum — five acts, 18 missions
 
 Legend: `[S]` = authored scenario (`scenarios/*.js`), `[P]` = walkthrough procedure
-(`RD.MANUAL_PROCEDURES.pwr`), **NEW** = built by this plan. Sequential unlock, top to bottom.
+(`RD.MANUAL_PROCEDURES.pwr`), **NEW** = built by this plan. Top-to-bottom is the recommended order (all missions open from the start — revised 2026-07-07).
 
 ### Act I — The Machine (how a nuclear plant works)
 | # | Mission | Kind | Teaches |
@@ -208,9 +208,10 @@ source of truth); `teaches` is the one-line curriculum hook shown in the campaig
 ### 5.3 Progression
 Existing `rd_progress` localStorage (`completed_scenarios`, `completed_procedures`) is
 already written by `recordCompletion()` — the campaign **derives** state from it; no new
-persistence. Unlock rule: mission N unlocks when missions 1…N-1 are complete. Bonus
-missions unlock with Act V. Dev override: `?campaign=unlock` query param unlocks all
-(testing).
+persistence. Unlock rule (revised 2026-07-07, user direction): **every mission is playable
+from the start** — the act ordering is a recommended path with progress markers (✓ done,
+▶ frontier, ○ not yet), not a gate. The original sequential-unlock rule and its
+`?campaign=unlock` dev override are retired.
 
 ### 5.4 Files touched
 | File | Change |
@@ -235,8 +236,8 @@ missions unlock with Act V. Dev override: `?campaign=unlock` query param unlocks
    plus one failure endpoint spot-check (qualify: inaction → failure beat).
 3. **Regression gates stay green:** `run_m6` 16/16, `run_scenarios`, `run_procedures`
    21/21, PWR engine suite, `verify_manual_follow`.
-4. **Headless UI check:** Training tab DOM shows campaign acts, lock states, progress
-   line; `?campaign=unlock` reveals all.
+4. **Headless UI check:** Training tab DOM shows campaign acts, progress markers, progress
+   line; all missions carry Start/Replay buttons (no locks — revised 2026-07-07).
 
 ## 7. Out of scope (v1 campaign)
 - RBMK / BWR campaigns (same wrapper will host them later — data-driven by design).

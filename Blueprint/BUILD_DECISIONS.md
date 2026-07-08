@@ -1710,3 +1710,11 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   both new missions are UNGATED (the automation issues commands down the gated path; a
   gate that admits the player must admit the machine). Gates: campaign 29/29 (882),
   autoctl 17/17, M5/M6/M7/scenarios/manual-follow green; procedures 20/21 pre-existing.
+
+- **2026-07-07 — Campaign fully unlocked (user direction).** Every mission in every
+  campaign is playable from the start: the act ordering is a recommended PATH with
+  progress markers (✓ done, ▶ frontier, ○ not yet — the frontier still drives the
+  "Continue campaign" button), not a gate. Sequential unlock and its `?campaign=unlock`
+  dev override are retired (`buildCampaign()` simplification; campaign_data.js header and
+  the plan doc updated). Completion tracking unchanged. Campaign gate 29/29; headless UI:
+  zero locks, 21/21 PWR entries carry Start/Replay.

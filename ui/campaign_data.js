@@ -5,8 +5,9 @@
  * missions reference scenarios (RD.SCENARIOS) or walkthrough procedures
  * (RD.MANUAL_PROCEDURES) by id — titles and descriptions live on those
  * artifacts (single source of truth); `teaches` is the one-line curriculum
- * hook shown in the campaign syllabus. Missions unlock sequentially; bonus
- * missions unlock with the final act. Completion state derives from the
+ * hook shown in the campaign syllabus. Every mission is playable from the
+ * start (user direction, 2026-07-07) — the act ordering is a recommended
+ * path with progress markers, not a gate. Completion state derives from the
  * rd_progress localStorage record written by recordCompletion() in app.js.
  */
 ;(function (RD) {

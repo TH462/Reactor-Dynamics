@@ -697,8 +697,9 @@
 
   // ---- Campaign (Path 3 wrapper — Blueprint/pwr_training_campaign.md) ----
   // Missions reference scenarios / procedures by id; completion derives from
-  // the same rd_progress record recordCompletion() already writes. Sequential
-  // unlock; bonus missions unlock with the final act; ?campaign=unlock for dev.
+  // the same rd_progress record recordCompletion() already writes. Every
+  // mission is playable from the start (user direction, 2026-07-07): the
+  // campaign is a recommended ORDER with progress markers, not a gate.
   function campaign() { return (RD.CAMPAIGNS || {})[ui.plant] || null; }
   function campaignMissions(c) {
     var out = [];
@@ -713,7 +714,6 @@
     var list = m.kind === 'scenario' ? (p.completed_scenarios || []) : (p.completed_procedures || []);
     return list.indexOf(m.id) !== -1;
   }
-  function campaignUnlockAll() { return /[?&]campaign=unlock/.test(location.search || ''); }
   function startMission(m) {
     if (m.kind === 'scenario') startScenario(m.id); else followProcedure(m.id);
   }
@@ -730,7 +730,7 @@
     if (!host) return;
     var c = campaign();
     if (!c) { host.innerHTML = '<div class="m-note">No campaign for this plant yet — try the PWR.</div>'; return; }
-    var p = progress(), unlockAll = campaignUnlockAll();
+    var p = progress();
     var ms = campaignMissions(c);
     var doneCount = ms.filter(function (m) { return missionDone(m, p); }).length;
     var frontier = null;
@@ -747,28 +747,28 @@
         var art = missionArtifact(m);
         var title = m.title || (art && art.title) || m.id;
         var done = missionDone(m, p);
+        // Everything is playable from the start (user direction): the campaign
+        // is a recommended ORDER, not a gate. The frontier marker (▶) still
+        // shows "you are here"; undone later missions get ○.
         var isFrontier = !done && !frontier; if (isFrontier) frontier = m;
-        var locked = !done && !isFrontier && !unlockAll;
-        var mark = done ? '✓' : (locked ? '🔒' : '▶');
-        h += '<div class="camp-mission' + (done ? ' done' : locked ? ' locked' : ' next') + '">' +
+        var mark = done ? '✓' : (isFrontier ? '▶' : '○');
+        h += '<div class="camp-mission' + (done ? ' done' : isFrontier ? ' next' : '') + '">' +
           '<span class="camp-mark">' + mark + '</span>' +
           '<span class="camp-mtitle">' + mesc(title) + '</span>' +
           (m.teaches ? '<span class="camp-teaches">' + mesc(m.teaches) + '</span>' : '') +
-          (!locked ? '<button class="btn" data-camp-start="' + m.kind + ':' + m.id + '">' + (done ? '↺ Replay' : '▶ Start') + '</button>' : '') +
+          '<button class="btn" data-camp-start="' + m.kind + ':' + m.id + '">' + (done ? '↺ Replay' : '▶ Start') + '</button>' +
           '</div>';
       });
     });
     if (c.bonus && c.bonus.length) {
-      var actsDone = doneCount >= ms.length - (c.acts[c.acts.length - 1].missions.length);
       h += '<div class="camp-act">Bonus</div>';
       c.bonus.forEach(function (m) {
         var art = missionArtifact(m);
-        var locked2 = !actsDone && !unlockAll;
-        h += '<div class="camp-mission' + (locked2 ? ' locked' : '') + '">' +
-          '<span class="camp-mark">' + (locked2 ? '🔒' : '★') + '</span>' +
+        h += '<div class="camp-mission">' +
+          '<span class="camp-mark">★</span>' +
           '<span class="camp-mtitle">' + mesc((art && art.title) || m.id) + '</span>' +
           (m.teaches ? '<span class="camp-teaches">' + mesc(m.teaches) + '</span>' : '') +
-          (!locked2 ? '<button class="btn" data-camp-start="' + m.kind + ':' + m.id + '">▶ Start</button>' : '') +
+          '<button class="btn" data-camp-start="' + m.kind + ':' + m.id + '">▶ Start</button>' +
           '</div>';
       });
     }
