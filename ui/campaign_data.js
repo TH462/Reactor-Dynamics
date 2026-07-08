@@ -35,6 +35,7 @@
         { kind: 'procedure', id: 'pwr_pressure_control', teaches: 'Heaters and spray: pressure is the subcooling guarantee.' },
         { kind: 'procedure', id: 'pwr_sg_level', teaches: 'Feeding the boilers; shrink and swell.' },
         { kind: 'scenario', id: 'pwr_load_follow', teaches: 'Follow the grid with the load-mode controls.' },
+        { kind: 'scenario', id: 'pwr_automation', teaches: 'The Automate tab: put the plant on automatic and be the dispatcher.' },
         { kind: 'procedure', id: 'pwr_lower_power', teaches: 'Coming down under control.' },
         { kind: 'procedure', id: 'pwr_shutdown', teaches: 'To Hot Standby — decay heat never sleeps.' },
       ] },
@@ -65,6 +66,7 @@
         { kind: 'scenario', id: 'rbmk_void', teaches: 'Cut the water, watch power RISE: the positive void coefficient, felt by hand.' },
       ] },
       { id: 'act2', title: 'Act II — The Knife\'s Edge', missions: [
+        { kind: 'scenario', id: 'rbmk_ar', teaches: 'The Automatic Regulator: the rods that hold power for you — and what taking manual control means.' },
         { kind: 'procedure', id: 'rbmk_raise_power', teaches: 'Raise power the RBMK way — by reducing coolant flow.' },
         { kind: 'procedure', id: 'rbmk_mcp_trip', teaches: 'Losing a main circulation pump — the wrong-way physics under stress.' },
         { kind: 'procedure', id: 'rbmk_shutdown', teaches: 'A normal AZ-5 shutdown — the button, used the way it was meant.' },

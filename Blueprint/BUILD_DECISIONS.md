@@ -31,7 +31,7 @@ where the two differ or where judgment was exercised.
 | F9 | M5/M6·PH/M7 | Integration tests assert `rod_nudge` reaches the engine **instantly** (`210 → 200`), but the engine now does a **rate-limited nudge** (drives a `nudge_target` over sim time — the "rod control reworked" change). The one-step assertion sees `210→210` and fails. **Pre-existing** (reproduces on clean HEAD; unrelated to the BOP work) — the stale check needs to step the sim forward after nudging. | test | **open** — fix the 3 integration tests to run the sim after `rod_nudge` |
 | F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **RESOLVED (M6)** — highlights auto-reveal hidden controls on both mechanisms: RBMK/BWR `findPdControl()` switches the owning view tab (`app.js`); PWR `RD.PwrSynoptic.revealControl(label)` opens the owning card tab/section via the data-driven `SYN_CONTROL_MAP` (`pwr_synoptic.js`). `verify_manual_follow.js` now checks PWR controls through the same reveal path. |
 | F10 | M2/M8 | **RBMK automatic-regulator (AR) rod group** (user-directed): add a third, small-worth (~5–8% of the manual bank, no displacer), fine-step group — the authentic RBMK AR. The Automate rod channel drives IT (fixes the ±4%/step hold granularity); its diagram/control card carries its own AUTO/MAN selector mirroring the Automate channel; disengaging = taking manual control (the pre-Chernobyl condition — scenario beat material). Include AR in ORM; scram drives it in; keep the positive-scram displacer exclusively on the manual bank so the Chernobyl acceptance suite stays green. NO second manual group — the AR under manual override IS the fine manual bank. | planned | **RESOLVED (2026-07-07)** — built as specced (see the dated entry); the Chernobyl AR scenario beat is authored under F11. |
-| F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **open** |
+| F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **RESOLVED (2026-07-07)** — rbmk_ar + pwr_automation missions, auto_channels presets exercised end-to-end (startScenarioAuto gate harness), Chernobyl AR tie-in. Pre-existing missions deliberately left bare (triggers tuned against bare-plant trajectories). |
 
 ---
 
@@ -1683,3 +1683,30 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   Gates: autoctl 17/17 (default-lineup suite incl. scram guard + capture check), RBMK
   23/23, M6 16/16, campaign 26/26; headless UI confirms RBMK loads AR=AUTO (card synced
   green) and the PWR still loads rods=MAN.
+
+- **2026-07-07 — Training pass for automation + the AR (resolves F11).** Two new campaign
+  missions and the Chernobyl tie-in. **`rbmk_ar` "The Steady Hand"** (RBMK Act II opener,
+  pre-1986 at 50%): the auto_channels preset (`rods_power`,`ar_recenter`) has the AR
+  holding power from the first second; the player takes MANUAL control (driving the AR
+  disengages its channel), feels the uncorrected sag, restores 50% by hand, and hands it
+  back with AUTO — graded via `operator_action {group_id:'auto_rods'}` + power thresholds,
+  Continue via a `manual`-trigger BRANCH (house semantics learned the hard way: when a beat
+  has branches, branches are its ONLY exits — a sequential `manual` beat never fires).
+  Closing card and the trip-catch card both point at Act III. **`pwr_automation` "Hands
+  Off"** (PWR Act III closer): everything on auto except the grid (preset = 6 channels);
+  the player is the dispatcher — 1000→700→1000 MWe on the load slider alone, with an
+  honest attribution card (physics does the coarse follow, channels trim) and an HR1
+  warning (automation trusts the same lying gauges). **The bare plant TRIPS on the 700
+  swing** (Tavg → ~319 °C with nobody trimming; probed) — the mission genuinely needs its
+  preset, so the campaign gate gained `startScenarioAuto()`: a UI-faithful harness that
+  attaches an AutoControl and engages the scenario's auto_channels (first real exercise of
+  the preset mechanism end-to-end). **rbmk_chernobyl intro** now reads the AR card too —
+  regulators spent, crew flying manual, "the seat you sat in for three minutes at an easy
+  fifty percent" — with the AR card highlighted (PD_LABELS gained the label). **Gate
+  additions:** mission counts pwr 20 / rbmk 9; auto_channels ids validated against the
+  AutoControl catalog; functional playthroughs for both missions incl. scram-catch
+  branches. Deliberately NOT done: presets on pre-existing missions (their triggers are
+  tuned against bare-plant trajectories — TMI/Fukushima/qualify stay bare by design), and
+  both new missions are UNGATED (the automation issues commands down the gated path; a
+  gate that admits the player must admit the machine). Gates: campaign 29/29 (882),
+  autoctl 17/17, M5/M6/M7/scenarios/manual-follow green; procedures 20/21 pre-existing.

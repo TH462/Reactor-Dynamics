@@ -26,11 +26,14 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'engines/bwr/bwr_config.js', 'engines/bwr/bwr_protection.js', 'engines/bwr/bwr_vessel.js',
   'engines/bwr/bwr_recirculation.js', 'engines/bwr/bwr_safety_systems.js', 'engines/bwr/bwr_instruments.js', 'engines/bwr/bwr_engine.js',
   'layers/control_failure_layer.js', 'layers/instructor_layer.js', 'layers/simulation_service.js',
+  'layers/auto_control.js',
   'scenarios/pwr_hook.js', 'scenarios/pwr_tmi.js', 'scenarios/pwr_sg_flood.js',
   'scenarios/pwr_tour.js', 'scenarios/pwr_chain_reaction.js', 'scenarios/pwr_feedback.js',
   'scenarios/pwr_xenon.js', 'scenarios/pwr_boron.js', 'scenarios/pwr_load_follow.js',
+  'scenarios/pwr_automation.js',
   'scenarios/pwr_protection.js', 'scenarios/pwr_qualify.js',
-  'scenarios/rbmk_tour.js', 'scenarios/rbmk_void.js', 'scenarios/rbmk_chernobyl.js', 'scenarios/rbmk_az5_fixed.js',
+  'scenarios/rbmk_tour.js', 'scenarios/rbmk_void.js', 'scenarios/rbmk_ar.js',
+  'scenarios/rbmk_chernobyl.js', 'scenarios/rbmk_az5_fixed.js',
   'scenarios/bwr_tour.js', 'scenarios/bwr_recirc.js', 'scenarios/bwr_isolation.js',
   'scenarios/bwr_fukushima.js', 'scenarios/bwr_qualify.js',
   'ui/manual_procedures.js', 'ui/campaign_data.js',
@@ -82,6 +85,21 @@ function startScenario(id) {
   s.handleCommand({ action: 'play' });
   return s;
 }
+// UI-faithful start for missions with an auto_channels preset: attach an
+// AutoControl exactly the way app.js does (step per broadcast, commands down
+// the stack) and engage the scenario's authored channels. Missions like
+// pwr_automation NEED their preset — the bare plant trips on the demand swing
+// the automation is there to carry (probed).
+function startScenarioAuto(id) {
+  var s = startScenario(id);
+  var auto = new RD.AutoControl(function (c) { return s.handleCommand(c); });
+  auto.setPlant(RD.SCENARIOS[id].plant_id);
+  s.subscribe(function (snap) { auto.step(snap); });
+  var snap0 = s.assembleSnapshot();
+  (RD.SCENARIOS[id].auto_channels || []).forEach(function (cid) { auto.toggle(cid, true, snap0); });
+  s._auto = auto;
+  return s;
+}
 function lc(snap) { return snap.instructor && snap.instructor.level_complete; }
 // current_beat_id is the PENDING beat (armed, waiting on its trigger). A beat
 // prompts when it FIRES — i.e. when its successor becomes pending. Scripted
@@ -95,7 +113,7 @@ function settle(s, secs) { var end = s.simTime + secs; var sn; while (s.simTime 
 var TRIGGERS = ['time', 'delay', 'instrument', 'true_state', 'operator_action', 'inaction', 'alarm', 'scram', 'manual', 'all', 'any'];
 // campaign plant → the MANUAL_PROCEDURES engine keys its procedures must exist under
 var ENGINE_KEYS = { pwr: ['pwr'], rbmk: ['rbmk_pre', 'rbmk_post'], bwr: ['bwr'] };
-var EXPECTED_MISSIONS = { pwr: 19, rbmk: 8, bwr: 8 };
+var EXPECTED_MISSIONS = { pwr: 20, rbmk: 9, bwr: 8 };
 
 test('campaign structure — missions resolve, ids unique (all plants)', function (ck) {
   Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
@@ -168,7 +186,7 @@ var GAUGE_IDS = {
 // RBMK/BWR highlights resolve through findPdControl against the plant-display
 // view-bar labels (mirrors app.js legacy PD controls + the scram button).
 var PD_LABELS = {
-  rbmk: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'MCP / Channel Flow',
+  rbmk: ['Control Bank', 'Rod Speed', 'AR Rods (Auto Regulator)', 'Shutdown Bank', 'MCP / Channel Flow',
     'Emergency Core Cooling (ECCS)', 'EPS', 'Feedwater', 'Turbine Load', 'Steam Dump', 'AZ-5'],
   bwr: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'Recirc Drive', 'RCIC',
     'Isolation Condenser (IC)', 'HPCI', 'ADS', 'LPCI', 'Core Spray (LPCS)', 'Manual SRV',
@@ -195,6 +213,24 @@ test('campaign highlights — every named control/gauge resolves on the board', 
           ck(m.id + '.' + b.id + ' gauge highlight resolves (' + b.highlight.instrument_id + ')',
             b.highlight.instrument_id, ids.indexOf(b.highlight.instrument_id) !== -1, ids.join('|'));
         }
+      });
+    });
+  });
+});
+
+// Authored automation presets must name real channels: every auto_channels id
+// on a campaign scenario resolves in the AutoControl catalog for its plant.
+test('campaign scenarios — auto_channels resolve to automation channels', function (ck) {
+  Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
+    var chanIds = (RD.AutoControl.CATALOG[cid] || []).map(function (d) { return d.id; });
+    RD.CAMPAIGNS[cid].acts.forEach(function (a) {
+      a.missions.forEach(function (m) {
+        if (m.kind !== 'scenario') return;
+        var sc = RD.SCENARIOS[m.id];
+        if (!sc || !sc.auto_channels) return;
+        sc.auto_channels.forEach(function (id) {
+          ck(m.id + ' auto_channels: ' + id, id, chanIds.indexOf(id) !== -1, 'a ' + cid + ' channel (' + chanIds.join('|') + ')');
+        });
       });
     });
   });
@@ -456,6 +492,43 @@ test('rbmk_void — flow cut raises power, restore completes', function (ck) {
   if (snap) ck('endpoint is the overpowered card', lc(snap).title, /Bit/i.test(lc(snap).title), 'It Bit card');
 });
 
+test('rbmk_ar — take the AR manual, sag, restore, hand back', function (ck) {
+  // Headless there is no UI automation, so the AR simply sits where the state
+  // parked it (50% inserted) — the mission's triggers depend only on the
+  // player's own AR motion and the power response, by design.
+  var s = startScenario('rbmk_ar');
+  var snap = waitBeat(s, 'take_manual', 60);
+  ck('take-manual beat arms', !!snap, !!snap, 'take_manual pending');
+  if (!snap) return;
+  settle(s, 16);                        // its delay-14 fires; branch watch opens
+  s.handleCommand({ action: 'rod_start', group_id: 'auto_rods', direction: -1, speed: 'normal' });
+  snap = waitBeat(s, 'sag_observed', 300);
+  s.handleCommand({ action: 'rod_stop', group_id: 'auto_rods' });
+  ck('insertion + sag observed → restore prompt', !!snap, !!snap, 'sag_observed pending');
+  if (!snap) return;
+  settle(s, 4);                         // sag_observed fires (delay 2)
+  s.handleCommand({ action: 'rod_start', group_id: 'auto_rods', direction: 1, speed: 'normal' });
+  snap = waitBeat(s, 'hand_back', 400);
+  s.handleCommand({ action: 'rod_stop', group_id: 'auto_rods' });
+  ck('withdrawal + recovery observed → hand-back prompt', !!snap, !!snap, 'hand_back pending');
+  if (!snap) return;
+  settle(s, 4);                         // hand_back fires (delay 2); manual trigger waits
+  s.handleCommand({ action: 'instructor_continue' });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 120);
+  ck('continue completes the mission', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the met card', lc(snap).title, /Met/i.test(lc(snap).title), 'Steady Hand — Met card');
+  // A scram mid-exercise lands on the fumbled card, not a softlock.
+  var s2 = startScenario('rbmk_ar');
+  snap = waitBeat(s2, 'take_manual', 60);
+  if (snap) {
+    settle(s2, 16);
+    s2.handleCommand({ action: 'manual_scram' });
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 300);
+  }
+  ck('scram mid-exercise reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the fumbled card', lc(snap).title, /Fumbled/i.test(lc(snap).title), 'Fumbled card');
+});
+
 test('rbmk_chernobyl — the excursion is witnessed to its end', function (ck) {
   var s = startScenario('rbmk_chernobyl');
   var snap = runUntil(s, function (sn) { return sn.true_state.melted; }, 300);
@@ -483,6 +556,38 @@ test('rbmk_az5_fixed — hesitation loses the core (failure endpoint)', function
   var snap = runUntil(s, function (sn) { return lc(sn); }, 300);
   ck('inaction reaches an endpoint', !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is the failure card', lc(snap).title, /Slow/i.test(lc(snap).title), 'Too Slow card');
+});
+
+// ------------------------------------------------------------ PWR automation
+test('pwr_automation — dispatcher swing completes under the authored preset', function (ck) {
+  // UI-faithful: the preset channels are engaged (startScenarioAuto), because
+  // the mission NEEDS them — the bare plant trips on a 1000→700 swing (Tavg
+  // runs away with nobody trimming rods; probed). That trip is the authored
+  // failure card, covered below by the scram branch check.
+  var s = startScenarioAuto('pwr_automation');
+  var snap = waitBeat(s, 'drop_load', 60);
+  ck('drop-load beat arms', !!snap, !!snap, 'drop_load pending');
+  if (!snap) return;
+  settle(s, 16);                        // its delay-14 fires; branch watch opens
+  s.handleCommand({ action: 'set_load_target', mwe: 700 });
+  snap = waitBeat(s, 'watch_settle', 600);
+  ck('power followed demand down → settle card', !!snap, !!snap, 'watch_settle pending');
+  if (!snap) return;
+  settle(s, 34);                        // watch_settle fires (delay 30); raise watch opens
+  s.handleCommand({ action: 'set_load_target', mwe: 1000 });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 900);
+  ck('ramp back up completes the mission', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the dispatched card', lc(snap).title, /Dispatched/i.test(lc(snap).title), 'Hands Off — Dispatched card');
+  // A scram lands on the tripped card, not a softlock.
+  var s2 = startScenario('pwr_automation');
+  snap = waitBeat(s2, 'drop_load', 60);
+  if (snap) {
+    settle(s2, 16);
+    s2.handleCommand({ action: 'scram' });
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 300);
+  }
+  ck('scram reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the tripped card', lc(snap).title, /Tripped/i.test(lc(snap).title), 'Tripped card');
 });
 
 // ------------------------------------------------------------ BWR campaign

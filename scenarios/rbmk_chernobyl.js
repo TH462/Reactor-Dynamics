@@ -29,9 +29,10 @@
       { id: 'intro',
         trigger: { type: 'time', value: 0.6 },
         commentary: {
-          learning: 'Unit 4, 01:23 AM. Look at your board and read the trap: power seven percent, the core drowning in xenon, and the ORM gauge — under eight rods, half the legal minimum, because the crew pulled almost everything out to fight the poison. The turbine test has begun; pump flow is falling; the bubbles are growing. Everything you have learned is on this board. There is nothing anyone can do from here. Watch.',
-          industry: '01:23:04–01:23:40 reconstruction: ~200 MWt (7%), deep xenon pit, ORM < 8 rods (limit 15), rundown test in progress, coolant flow decaying, void gain at maximum. No recovery exists from this configuration. Observe.',
+          learning: 'Unit 4, 01:23 AM. Look at your board and read the trap: power seven percent, the core drowning in xenon, and the ORM gauge — under eight rods, half the legal minimum, because the crew pulled almost everything out to fight the poison. Look at the AR card too: the Automatic Regulator you once handed a calm reactor to is spent — its rods withdrawn to the stops, its steady hand pushed off the wheel. The crew is flying this machine BY HAND, the seat you sat in for three minutes at an easy fifty percent — now at seven, in the pit, on the twitchiest core ever built. The turbine test has begun; pump flow is falling; the bubbles are growing. Everything you have learned is on this board. There is nothing anyone can do from here. Watch.',
+          industry: '01:23:04–01:23:40 reconstruction: ~200 MWt (7%), deep xenon pit, ORM < 8 rods (limit 15), automatic regulators saturated/withdrawn — power regulation in MANUAL, rundown test in progress, coolant flow decaying, void gain at maximum. No recovery exists from this configuration. Observe.',
         },
+        highlight: { control_label: 'AR Rods (Auto Regulator)', instrument_id: null },
         advance: 'wait_for_trigger' },
 
       { id: 'runaway',
