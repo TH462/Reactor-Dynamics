@@ -46,7 +46,8 @@
       case 'set_hpi': case 'set_afw': case 'set_rcic': case 'set_hpci':
       case 'set_dhr': case 'set_rhr': case 'set_lpi': case 'set_eps_bypass': return 'active';
       case 'set_charging_flow': case 'set_letdown_flow': return 'normalized';
-      case 'set_steam_demand': case 'set_turbine_load': return 'mwe';
+      case 'set_steam_demand': case 'set_turbine_load': case 'set_load_target': return 'mwe';
+      case 'set_load_mode': return 'mode';
       case 'set_heater': return 'power_pct';
       case 'set_spray': return 'open';
       case 'rod_nudge': return 'steps';
@@ -63,6 +64,7 @@
     this.lastInstruments = {};
     this._buildAlarmModel();
     this.actuationFired = (this.config.actuations || []).map(function () { return false; });
+    this.interlockActive = (this.config.interlocks || []).map(function () { return false; });
   }
 
   // Precompute alarm lifecycle slots and lo/lo_lo escalation pairs (§5).
@@ -98,6 +100,16 @@
       case 'set_register':             this.register = command.value; return null;
       case 'set_instrument_failure':
       case 'clear_instrument_failure': return this.engine.applyCommand(command);
+    }
+
+    // Interlocks (§4b): condition-latched command blocks that read instruments
+    // (HR1) and are pure config data (HR3) — e.g. the PWR rod-withdrawal block
+    // on high startup rate. Distinct from failures: the plant is protecting
+    // itself, not malfunctioning, so the caller gets a labelled refusal.
+    var il = this._interlockBlocking(command);
+    if (il) {
+      return { type: 'blocked', code: 'INTERLOCK',
+               message: (this.register === 'industry' ? il.message_industry : il.message_learning) || 'Blocked by a plant interlock.' };
     }
 
     // Plant commands pass through interception — at most ONE command_override
@@ -170,6 +182,7 @@
     this.lastInstruments = instruments || this.engine.getInstruments();
     this._evalTrips(this.lastInstruments);
     this._evalActuations(this.lastInstruments);
+    this._evalInterlocks(this.lastInstruments);
     this._evalAlarms(this.lastInstruments);
     return this.getSnapshotSections();
   };
@@ -203,11 +216,56 @@
         this.actuationFired[i] = true;
         this.handleCommand(this._actuationCommand(act, false));
       }
-      if (act.reset_below !== undefined && this.actuationFired[i] && value != null && value > act.reset_below) {
-        this.actuationFired[i] = false;
-        if (act.reset_action) this.handleCommand(this._actuationCommand(act, true));
+      // Reset when the value returns to the SAFE side of reset_below: below it
+      // for a high-direction actuation, above it for a low one. (Was inverted —
+      // `value > reset_below` made the PORV actuation fire-and-reset in the same
+      // pass, flapping open/close every evaluate while pressure stayed high.)
+      if (act.reset_below !== undefined && this.actuationFired[i] && value != null) {
+        var safe = act.direction === 'high' ? value < act.reset_below : value > act.reset_below;
+        if (safe) {
+          this.actuationFired[i] = false;
+          if (act.reset_action) this.handleCommand(this._actuationCommand(act, true));
+        }
       }
     }
+  };
+
+  // Responsibility 2b — interlocks (§4b). Condition-latched (with hysteresis)
+  // blocks on operator commands, from config data: engage when the INSTRUMENT
+  // (HR1) crosses the setpoint, clear when it returns past clears_below/above.
+  // `withdrawal_only` blocks only outward rod motion — insertion always works.
+  ControlFailureLayer.prototype._evalInterlocks = function (ins) {
+    var ils = this.config.interlocks || [];
+    for (var i = 0; i < ils.length; i++) {
+      var il = ils[i], v = ins[il.instrument];
+      if (v == null) continue;
+      if (!this.interlockActive[i]) {
+        if (crossed(v, il.direction, il.setpoint)) {
+          this.interlockActive[i] = true;
+          if (il.on_engage) this.handleCommand(il.on_engage);   // e.g. stop rods already in motion
+        }
+      } else {
+        var cleared = il.direction === 'high'
+          ? v < (il.clears_below != null ? il.clears_below : il.setpoint)
+          : v > (il.clears_above != null ? il.clears_above : il.setpoint);
+        if (cleared) this.interlockActive[i] = false;
+      }
+    }
+  };
+
+  ControlFailureLayer.prototype._interlockBlocking = function (cmd) {
+    var ils = this.config.interlocks || [];
+    for (var i = 0; i < ils.length; i++) {
+      if (!this.interlockActive[i]) continue;
+      var il = ils[i];
+      if (!il.blocks || il.blocks.indexOf(cmd.action) === -1) continue;
+      if (il.withdrawal_only) {
+        if (cmd.action === 'rod_start' && !(cmd.direction > 0)) continue;
+        if (cmd.action === 'rod_nudge' && !(cmd.steps > 0)) continue;
+      }
+      return il;
+    }
+    return null;
   };
 
   ControlFailureLayer.prototype._actuationCommand = function (act, isReset) {
@@ -323,6 +381,7 @@
       activeFailures: this.activeFailures.map(function (f) { return { id: f.id, severity: f.severity }; }),
       alarmStates: Object.assign({}, this.alarmStates),
       actuationFired: this.actuationFired.slice(),
+      interlockActive: this.interlockActive.slice(),
     };
   };
   ControlFailureLayer.prototype.loadState = function (st) {
@@ -335,6 +394,7 @@
     }
     this.alarmStates = Object.assign({}, st.alarmStates);
     this.actuationFired = st.actuationFired.slice();
+    this.interlockActive = (st.interlockActive || (this.config.interlocks || []).map(function () { return false; })).slice();
   };
 
   RD.ControlFailureLayer = ControlFailureLayer;

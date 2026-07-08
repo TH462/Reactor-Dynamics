@@ -140,6 +140,8 @@
   function tripTurbine(s) {
     s.turbine_tripped = true;
     s.steam_to_turbine = 0;   // load rejected — steam now goes to dump/reliefs
+    s.load_mode = 'disconnected';
+    s.load_target_mwe = 0;
   }
 
   // §14.1 — channel (pressure-tube) rupture: local flashing → void up, inventory

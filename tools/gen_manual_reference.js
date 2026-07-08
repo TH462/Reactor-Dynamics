@@ -16,6 +16,7 @@
  */
 'use strict';
 
+require('../engines/load_mode.js');
 [['pwr', ['pwr_config', 'pwr_protection', 'pwr_thermal', 'pwr_pressurizer', 'pwr_primary', 'pwr_steam_generator', 'pwr_instruments', 'pwr_engine']],
  ['rbmk', ['rbmk_protection', 'rbmk_config', 'rbmk_kinetics', 'rbmk_thermal', 'rbmk_rods', 'rbmk_instruments', 'rbmk_engine']],
  ['bwr', ['bwr_config', 'bwr_protection', 'bwr_vessel', 'bwr_recirculation', 'bwr_safety_systems', 'bwr_instruments', 'bwr_engine']]
@@ -86,17 +87,19 @@ var CTL = {
   stop_lpcs:         { g: 'Safety', c: 'Core Spray — Stop', u: 'Stops the core spray.', cmd: 'stop_lpcs', p: '' },
   open_srv_manual:   { g: 'Safety', c: 'Manual Relief Valve — Open', u: 'Opens a Safety/Relief Valve (SRV) by hand for a controlled depressurization (slower than ADS).', cmd: 'open_srv_manual', p: '' },
   close_srv_manual:  { g: 'Safety', c: 'Manual Relief Valve — Close', u: 'Closes the manually-opened relief valve.', cmd: 'close_srv_manual', p: '' },
+  automate:          { g: 'Automation', c: 'Automate Tab (per-control automation)', u: 'Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram. At high time acceleration the fast loops hand over to plant-side control and resume when you slow down.', cmd: '(issues the commands above)', p: '' },
+  ar_rods:           { g: 'Reactivity', c: 'AR Rods — Automatic Regulator', u: 'The RBMK’s fine power-regulation rod group (~2 pcm/step vs the manual bank’s ~35). AUTO holds power at the Automate-tab setpoint; MAN (or holding its drive buttons) takes manual control — the condition the Chernobyl operators were in. When it nears either travel limit, re-center it with the manual bank (or engage the re-center channel). Excluded from ORM: the margin you watch is the manual bank.', cmd: 'rod_start / rod_nudge', p: '{group_id: "auto_rods", …}' },
 };
 var CONTROL_SETS = {
   pwr: ['rod_start', 'rod_nudge', 'rod_stop', 'rod_stop_all', 'scram', 'set_boron_adjust', 'set_charging_pump',
         'set_charging_flow', 'set_letdown_flow', 'set_cvcs_auto',
         'set_heater', 'set_spray', 'open_porv', 'close_porv', 'open_block_valve', 'close_block_valve',
-        'set_feedwater_flow', 'set_afw', 'set_steam_demand', 'set_steam_dump', 'set_hpi', 'set_dhr'],
-  rbmk: ['rod_start', 'rod_nudge', 'rod_stop', 'rod_stop_all', 'manual_scram', 'scram', 'set_channel_flow',
-         'set_feedwater_flow', 'set_turbine_load', 'set_steam_dump', 'set_eccs', 'set_eps_bypass'],
+        'set_feedwater_flow', 'set_afw', 'set_steam_demand', 'set_steam_dump', 'set_hpi', 'set_dhr', 'automate'],
+  rbmk: ['rod_start', 'rod_nudge', 'rod_stop', 'rod_stop_all', 'ar_rods', 'manual_scram', 'scram', 'set_channel_flow',
+         'set_feedwater_flow', 'set_turbine_load', 'set_steam_dump', 'set_eccs', 'set_eps_bypass', 'automate'],
   bwr: ['rod_start', 'rod_nudge', 'rod_stop', 'rod_stop_all', 'scram', 'set_recirc_flow', 'set_feedwater_flow',
         'set_turbine_load', 'set_steam_dump', 'set_rcic', 'set_ic', 'set_hpci', 'trigger_ads', 'start_lpci', 'start_lpcs',
-        'stop_lpcs', 'open_srv_manual', 'close_srv_manual', 'initiate_slc', 'stop_slc'],
+        'stop_lpcs', 'open_srv_manual', 'close_srv_manual', 'initiate_slc', 'stop_slc', 'automate'],
 };
 
 // Indications: n=display name, m=what it measures (integrated), u=unit.
@@ -201,10 +204,12 @@ var GLOSSARY_BASE = [
   ['Decay heat', 'Heat from radioactive decay that continues after shutdown (~7% of rated, decaying).'],
   ['Xenon', 'Xenon-135, a neutron-absorbing fission product that builds in after a power drop.'],
   ['Reactivity', 'The tendency of the chain reaction to grow (+) or shrink (−); critical = steady.'],
+  ['AUTO / MAN', 'Automatic / manual control of a plant control channel (Tools → Automate). AUTO reads the instruments and issues commands to hold a setpoint; MAN leaves the control to you.'],
+  ['Setpoint (SP)', 'The value an automatic controller holds its parameter at. Automate channels capture the current reading when engaged; edit it to maneuver on automatic.'],
 ];
 var GLOSSARY = {
   pwr: [['PWR', 'Pressurized Water Reactor.'], ['PZR', 'Pressurizer — sets primary pressure.'], ['SG', 'Steam Generator.'], ['PORV', 'Power-Operated Relief Valve.'], ['HPI', 'High-Pressure Injection.'], ['ECCS', 'Emergency Core Cooling System (here, high-pressure injection).'], ['AFW', 'Auxiliary Feedwater.'], ['CVCS', 'Chemical & Volume Control System (boron & inventory).'], ['MTC', 'Moderator Temperature Coefficient.'], ['RCP', 'Reactor Coolant Pump.'], ['DHR / RHR', 'Decay-Heat / Residual-Heat Removal.'], ['Tavg', 'Average coolant temperature.']],
-  rbmk: [['RBMK', 'The Chernobyl-type graphite-moderated reactor.'], ['ORM', 'Operating Reactivity Margin — shutdown capacity in hand.'], ['MCP', 'Main Circulation Pump.'], ['AZ-5', 'The emergency-shutdown button.'], ['EPS', 'Emergency Protection System (auto-trips).'], ['ECCS', 'Emergency Core Cooling System — injects to the channels on a rupture / loss of coolant.'], ['Void', 'Steam bubbles in the coolant; in an RBMK they raise power.'], ['Positive scram effect', 'Pre-1986 rods briefly added reactivity as they began inserting.']],
+  rbmk: [['RBMK', 'The Chernobyl-type graphite-moderated reactor.'], ['ORM', 'Operating Reactivity Margin — shutdown capacity in hand (counts the MANUAL bank; the AR group is excluded).'], ['AR', 'Automatic Regulator — the small, fine-stepped rod group that holds power automatically; switchable to manual (as the Chernobyl operators had it).'], ['MCP', 'Main Circulation Pump.'], ['AZ-5', 'The emergency-shutdown button.'], ['EPS', 'Emergency Protection System (auto-trips).'], ['ECCS', 'Emergency Core Cooling System — injects to the channels on a rupture / loss of coolant.'], ['Void', 'Steam bubbles in the coolant; in an RBMK they raise power.'], ['Positive scram effect', 'Pre-1986 rods briefly added reactivity as they began inserting.']],
   bwr: [['BWR', 'Boiling Water Reactor.'], ['RCIC', 'Reactor Core Isolation Cooling (steam-driven, no AC).'], ['IC', 'Isolation Condenser — passive heat sink (condenses steam, returns condensate; no AC). Fukushima Unit 1.'], ['HPCI', 'High-Pressure Coolant Injection (steam-driven, no AC).'], ['ADS', 'Automatic Depressurization System.'], ['LPCI', 'Low-Pressure Coolant Injection.'], ['LPCS', 'Low-Pressure Core Spray.'], ['SLC', 'Standby Liquid Control (boron; failure-to-scram backup).'], ['SRV', 'Safety/Relief Valve.'], ['MSIV', 'Main Steam Isolation Valve.'], ['Recirc', 'Recirculation flow — the main BWR power control.']],
 };
 

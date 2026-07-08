@@ -92,6 +92,12 @@
     this._prevTrueState = null;
     this._prevAlarms = null;
     this._timer = null;
+    // Rewind ring (Gameplay §7.2): in-memory checkpoints pushed when the
+    // Instructor requests one (scenario load, beat fire, follow-step advance).
+    // Each entry is a full saveState() — engine + instruments (lag/PRNG) + M4 +
+    // instructor progress — so a rewind is a bit-exact, deterministic restore.
+    this.checkpoints = [];
+    this._rewindCursor = null;         // last rewound-to index; walks repeated ⏪ presses back
 
     if (opts.plant_id) {
       this.selectPlant(opts.plant_id, opts.initial_state || 'hot_full_power', opts.design_version || null);
@@ -103,6 +109,9 @@
     var Ctor = engineCtor(plantId);
     if (!Ctor) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown plant_id', received: plantId };
 
+    // 0. A plant reset ends any running scenario/walkthrough — stale Instructor
+    //    progress must not outlive its plant. (start_scenario loads AFTER this.)
+    if (this.instructor.unload) this.instructor.unload();
     // 1. Construct the engine and extract its protection config.
     this.engine = new Ctor({ initial_state: initialState, design_version: designVersion || null, seed: this.seed });
     var config = this.engine.getProtectionConfig();
@@ -117,6 +126,8 @@
     this._prevTrueState = null;
     this._prevAlarms = null;
     this.broadcastMs = NORMAL_MS;
+    this.checkpoints = [];             // a fresh plant invalidates the rewind ring
+    this._rewindCursor = null;
     // Restore the selected register into the rebuilt layer/instructor.
     this.layer.handleCommand({ action: 'set_register', value: this.activeRegister });
     if (this.instructor.setRegister) this.instructor.setRegister(this.activeRegister);
@@ -139,7 +150,19 @@
     var snap = this._assembleWithInstructor();
     this._broadcast(snap);
     this._updateCadence(snap);
+    this._maybeSandboxCheckpoint();
     return snap;
+  };
+
+  // Sandbox rewind (free play): with no scenario/walkthrough loaded the ring
+  // fills on a fixed sim-time cadence instead of beat boundaries, so the player
+  // can always jump back. Never runs while the Instructor owns the ring — an
+  // authored rewind's step arithmetic depends on exact ring contents.
+  var SANDBOX_CP_SPACING_S = 15;
+  SimulationService.prototype._maybeSandboxCheckpoint = function () {
+    if (this.instructor && this.instructor.mode) return;
+    var last = this.checkpoints[this.checkpoints.length - 1];
+    if (!last || this.simTime - last.metadata.sim_time >= SANDBOX_CP_SPACING_S) this._pushCheckpoint();
   };
 
   SimulationService.prototype._stepsPerBroadcast = function () {
@@ -152,8 +175,71 @@
   SimulationService.prototype._assembleWithInstructor = function () {
     var snap = this.assembleSnapshot();
     if (this.instructor.step) this.instructor.step(snap, this.simTime);
-    snap.instructor = this.instructor.getMessage();
+    // Service the Instructor's consume-flags (no upward callbacks — M5 polls).
+    // A beat-driven world rewind rebuilds the plant, so reassemble afterwards.
+    if (this._serviceInstructorRequests()) snap = this.assembleSnapshot();
+    // A beat's speed request takes effect from THIS broadcast — keep it honest.
+    snap.metadata.time_acceleration = this.timeAcceleration;
+    snap.instructor = this._instructorBlock();
     return snap;
+  };
+
+  SimulationService.prototype._serviceInstructorRequests = function () {
+    var i = this.instructor;
+    if (i.consumeCheckpointRequest && i.consumeCheckpointRequest()) this._pushCheckpoint();
+    var rewound = false;
+    var rw = i.consumeRewindRequest ? i.consumeRewindRequest() : null;
+    if (rw) rewound = !!this._rewind(rw.steps || 1, rw.scope || 'world');
+    // Speed applies AFTER a rewind so a beat's speed wins over the checkpoint's
+    // stored acceleration (fast-forward in, snap back to real time at set points).
+    var sp = i.consumeSpeedRequest ? i.consumeSpeedRequest() : null;
+    if (sp != null) this.timeAcceleration = sp;
+    return rewound;
+  };
+
+  var REWIND_CAP = 32;
+  SimulationService.prototype._pushCheckpoint = function () {
+    if (!this.engine) return;
+    this.checkpoints.push(this.saveState());
+    if (this.checkpoints.length > REWIND_CAP) this.checkpoints.shift();
+    this._rewindCursor = null;         // new progress resets the repeated-press walk-back
+  };
+
+  // Rewind `steps` checkpoints back. scope 'full' restores everything including
+  // Instructor progress (RETRY a decision — its beats re-arm); scope 'world'
+  // restores the plant but the teacher remembers (narrated "watch that again").
+  // The target checkpoint stays on the ring so it can be rewound to again.
+  // `exact` (rewind-pick): the caller names a specific checkpoint — skip both
+  // press-semantics guards below and restore precisely what was asked for.
+  SimulationService.prototype._rewind = function (steps, scope, exact) {
+    var idx = this.checkpoints.length - steps;
+    if (!exact) {
+      // If the newest checkpoint IS the current moment (a beat just fired here,
+      // or we already rewound to it in this same broadcast), rewinding must
+      // reach strictly earlier state.
+      if (idx === this.checkpoints.length - 1 && idx >= 0 &&
+          Math.abs(this.checkpoints[idx].metadata.sim_time - this.simTime) < 1e-9) idx--;
+      // Repeated presses with no new progress since the last rewind (no
+      // checkpoint pushed) walk back one boundary each. Without this, the
+      // broadcasts that tick between two ⏪ presses defeat the exact-time guard
+      // above and every press restores the same newest checkpoint — a failure
+      // card could never be escaped back to its decision point (playtest).
+      if (this._rewindCursor != null && idx >= this._rewindCursor) idx = this._rewindCursor - 1;
+    }
+    var target = idx >= 0 ? this.checkpoints[idx] : null;
+    if (!target) return null;
+    this.checkpoints.length = idx + 1;
+    this._rewindCursor = idx;
+    return this._restore(target, scope === 'world');
+  };
+
+  // The snapshot's instructor block: the extended shape (M6 getSnapshotBlock —
+  // ui_policy/highlight/follow/level_complete) when the occupant provides it,
+  // else the classic message-only block (placeholder / DefaultInstructor / mocks).
+  SimulationService.prototype._instructorBlock = function () {
+    return this.instructor.getSnapshotBlock
+      ? this.instructor.getSnapshotBlock()
+      : this.instructor.getMessage();
   };
 
   // ------------------------------------------------------------- snapshot (§4)
@@ -175,7 +261,7 @@
       rps_state: this.layer.getRpsState(),
       alarms: this.layer.getAlarms(),
       active_failures: this.layer.getActiveFailures(),
-      instructor: this.instructor.getMessage(),
+      instructor: this._instructorBlock(),
     };
   };
 
@@ -227,6 +313,62 @@
         if (this.instructor.setRegister) this.instructor.setRegister(command.value);
         if (this.layer) this.layer.handleCommand(command);
         return null;
+      // ---- scenario lifecycle (M6 §2): reset to the scenario's plant/state,
+      // then hand the scenario to the Instructor. Beats fire on later ticks.
+      case 'start_scenario': {
+        var sc = RD.SCENARIOS ? RD.SCENARIOS[command.scenario_id] : null;
+        if (!sc) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown scenario_id', received: command };
+        var reset = this.selectPlant(sc.plant_id, sc.initial_state, sc.design_version || null);
+        if (reset && reset.type === 'error') return reset;
+        if (this.instructor.load) this.instructor.load(sc);
+        if (sc.setup_commands) {
+          for (var si = 0; si < sc.setup_commands.length; si++) this.handleCommand(sc.setup_commands[si]);
+        }
+        var snap = this._assembleWithInstructor();
+        this._broadcast(snap);
+        return snap;
+      }
+      // ---- Path 2 walkthroughs: the Instructor runs a manual procedure from
+      // RD.MANUAL_PROCEDURES (the single validated artifact — CONTEXT §12).
+      // M5 resolves the profile key because only it knows the active plant, and
+      // resets the plant to the procedure's authored `from` state — every
+      // walkthrough starts where its steps (and the validation harness) assume.
+      case 'start_follow': {
+        if (!this.engine) return { type: 'error', code: 'COMMAND_ERROR', message: 'no active plant', received: command };
+        var key = this.activePlantId === 'rbmk'
+          ? (this.activeDesignVersion === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre')
+          : this.activePlantId;
+        var pool = (RD.MANUAL_PROCEDURES || {})[key] || [];
+        var proc = null;
+        for (var pi = 0; pi < pool.length; pi++) if (pool[pi].id === command.procedure_id) { proc = pool[pi]; break; }
+        if (!proc || !this.instructor.loadProcedure) {
+          return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown procedure_id', received: command };
+        }
+        if (proc.from) {
+          var reset2 = this.selectPlant(this.activePlantId, proc.from, this.activeDesignVersion);
+          if (reset2 && reset2.type === 'error') return reset2;
+        }
+        this.instructor.loadProcedure(proc, { procedure_id: proc.id, profile_key: key });
+        var fsnap = this._assembleWithInstructor();
+        this._broadcast(fsnap);
+        return fsnap;
+      }
+      case 'stop_scenario':
+      case 'stop_follow': {
+        if (this.instructor.unload) this.instructor.unload();
+        this.checkpoints = [];
+        this._rewindCursor = null;
+        var snap2 = this._assembleWithInstructor();
+        this._broadcast(snap2);
+        return snap2;
+      }
+      // Rewind (Gameplay §7.2): pop back to an in-memory checkpoint. Distinct
+      // from file save/load — this is the constructive-failure loop.
+      case 'rewind': {
+        var rsnap = this._rewind(command.steps || 1, command.scope || 'full', !!command.exact);
+        if (!rsnap) return { type: 'error', code: 'COMMAND_ERROR', message: 'no checkpoint to rewind to', received: command };
+        return rsnap;
+      }
       default:
         // Plant / operator commands descend the stack from the Instructor slot (HR5).
         if (!this.engine) return { type: 'error', code: 'COMMAND_ERROR', message: 'no active plant', received: command };
@@ -280,26 +422,39 @@
 
   SimulationService.prototype.loadState = function (state) {
     if (!state || !state.metadata) return { type: 'error', code: 'COMMAND_ERROR', message: 'bad save state', received: state };
+    if (!engineCtor(state.metadata.plant_id)) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown plant_id in save', received: state.metadata.plant_id };
+    this.checkpoints = [];             // a user file-load invalidates the rewind ring
+    this._rewindCursor = null;
+    return this._restore(state, false);
+  };
+
+  // Shared restore core (file load + rewind). skipInstructor = the 'world'
+  // rewind scope: the plant rolls back, the Instructor keeps its progress —
+  // its time anchors are rebased so delay/time triggers don't chase a future
+  // timestamp.
+  SimulationService.prototype._restore = function (state, skipInstructor) {
     var m = state.metadata;
-    // Reconstruct the right engine + config for this plant, then restore each layer.
     var Ctor = engineCtor(m.plant_id);
-    if (!Ctor) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown plant_id in save', received: m.plant_id };
+    // Reconstruct the right engine + config for this plant, then restore each layer.
     this.engine = new Ctor({ initial_state: 'hot_full_power', design_version: m.design_version || null, seed: this.seed });
     this.layer = new RD.ControlFailureLayer(this.engine, this.engine.getProtectionConfig());
     if (this.instructor.connect) this.instructor.connect(this.layer);
 
     this.engine.loadState(state.engine);
     this.layer.loadState(state.control_failure);
-    this.instructor.loadState(state.instructor);
+    if (!skipInstructor) {
+      this.instructor.loadState(state.instructor);
+      this.activeRegister = m.register || 'learning';
+    }
 
     this.activePlantId = m.plant_id;
     this.activeDesignVersion = m.design_version || null;
-    this.activeRegister = m.register || 'learning';
     this.simTime = m.sim_time;
     this.timeAcceleration = m.time_acceleration;
     this._prevTrueState = null;
     this._prevAlarms = null;
     this.broadcastMs = NORMAL_MS;
+    if (skipInstructor && this.instructor.rebaseTime) this.instructor.rebaseTime(this.simTime);
 
     var snap = this._assembleWithInstructor();
     this._broadcast(snap);

@@ -56,13 +56,17 @@
     }
     s.steam_pressure_mpa = Math.max(0.1, s.steam_pressure_mpa);
 
-    // Turbine governor / control valve (§6.4). The admission valve position (% open)
-    // tracks the load demand (clamped to fully open) with a first-order response,
-    // then modulates steam admission together with SG pressure — the real mechanism
-    // for matching steam flow to generator load. At steady state gov/100 = demand,
-    // so the rated steady flow is unchanged; on a load change or turbine trip the
-    // valve stroke lags, and instruments.governor_valve follows the position.
-    var gov_target = clip(s.turbine_demand_frac, 0, 1) * 100;
+    // Turbine governor / control valve (§6.4) — EHC LOAD-CONTROL mode. The valve
+    // target is PRESSURE-COMPENSATED (demand ÷ upstream pressure ratio, clamped
+    // to fully open), so at steady state the delivered steam equals the demand
+    // at ANY secondary pressure — the valve strokes open as pressure falls and
+    // closes down as it rises, like a real governor holding load. (The previous
+    // open-loop valve = demand overdelivered by P/P_rated: a 700 MWe ask at held
+    // Tavg ran the SG to ~6.3 MPa and delivered ~785 MWe.) At rated pressure the
+    // two forms are identical. The valve stroke keeps its first-order lag, and
+    // instruments.governor_valve follows the position.
+    var p_comp = sg.steam_p_rated / Math.max(s.steam_pressure_mpa, 0.5);
+    var gov_target = clip(clip(s.turbine_demand_frac, 0, 1) * p_comp, 0, 1) * 100;
     var galpha = dt / (cfg.turbine.governor_tau + dt);
     s.governor_valve_pct += galpha * (gov_target - s.governor_valve_pct);
     s.steam_flow_normalized = (s.governor_valve_pct / 100) * sg.steam_flow_rated
@@ -107,6 +111,8 @@
     s.generator_load = 0;
     s.turbine_demand_frac = 0;
     s.steam_demand_mwe = 0;
+    s.load_mode = 'disconnected';
+    s.load_target_mwe = 0;
   }
 
   RD.pwrSteamGenerator = {

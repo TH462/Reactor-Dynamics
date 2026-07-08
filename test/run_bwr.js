@@ -13,6 +13,7 @@ var path = require('path');
 function load(p) { require(path.join(__dirname, '..', p)); }
 
 [
+  'engines/load_mode.js',
   'engines/bwr/bwr_config.js',
   'engines/bwr/bwr_protection.js',
   'engines/bwr/bwr_vessel.js',

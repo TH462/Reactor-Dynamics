@@ -32,6 +32,12 @@
     // ---------------------------------------------------------------- kinetics
     kinetics: {
       delayed: DELAYED,
+      // Constant neutron source (normalized power/s) — subcritical multiplication,
+      // same treatment as the PWR/RBMK: P_eq = source·Λ/(−ρ), so hot_startup holds
+      // a stable source-range level (~1e-5 rated at its rod margin) instead of
+      // decaying away under the careful player. Negligible at power (ρ-shift at
+      // rated ≈ 0.02 pcm). [tune]
+      source: 4.0e-3,
       // Decay heat: two-term exponential — the source that drives Fukushima after
       // scram. Getting its hours-scale magnitude roughly right is part of the
       // uncovery timeline.

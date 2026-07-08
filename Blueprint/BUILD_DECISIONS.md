@@ -13,7 +13,7 @@ where the two differ or where judgment was exercised.
 - Update the **Open Flags** table at the top whenever a flag is opened or closed.
 - Keep it skimmable: tables and short bullets, not prose.
 
-**Status:** M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ · M5 ✅ · M6·PH ✅ · M7 ✅ · M8 🟦 functional alpha (PWR) · **all three engines proven — physics layer complete** · **RBMK+BWR now have full balance-of-plant (turbine/condenser/generator + electrical output) for PWR-parity full-scope operation** (RBMK 20/20·129, BWR 10/10·63) · **blueprint reconciled to code — CONTEXT + M1/M2/M3 now describe all built engine/contract additions (BOP, block valve, SLC/LPCS/SRV, reactivity proxies, 50% states); UI/[tune] deviations remain logged below** · (next: M6, or extend M8/M4 to RBMK+BWR)
+**Status:** M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ · M5 ✅ (+ rewind ring) · M6·PH ✅ · **M6 ✅ steps 1–6 (beat engine · Path 2 follow · TMI flagship · rewind · highlights/F8 · Hook + Training tab)** · M7 ✅ · M8 🟦 functional alpha (PWR) · **all three engines proven — physics layer complete** · **RBMK+BWR now have full balance-of-plant (turbine/condenser/generator + electrical output) for PWR-parity full-scope operation** (RBMK 20/20·129, BWR 10/10·63) · **blueprint reconciled to code — CONTEXT + M1/M2/M3 now describe all built engine/contract additions (BOP, block valve, SLC/LPCS/SRV, reactivity proxies, 50% states); UI/[tune] deviations remain logged below** · (next: Chernobyl/Fukushima flagships + Campaign wrapper, Qualification hints, or extend M8/M4 to RBMK+BWR)
 
 ---
 
@@ -29,7 +29,9 @@ where the two differ or where judgment was exercised.
 | F6 | M5 | Acceleration is realized as fixed-0.02 s step **count**, not by scaling `dt` (CONTEXT §4's literal `dt_effective` diverges — verified). Every engine (M2/M3) must stay stable at 0.02 s; the service never hands them a larger dt. | deviation | **RESOLVED** — all three stable at 0.02 s. M2 fine with explicit Euler. **M3 needed an IMPLICIT prompt term** (its Λ=5e-5 makes explicit Euler unstable at 0.02 s: dt·β/Λ=2.6>2 — see M3 D1); still first-order, so the fixed-0.02 s contract holds for every engine. The service never needs a smaller dt. |
 | F7 | M8 | Alarm system-category (left-bar color, M8 §8.5) is derived UI-side by keyword (`alarmCategory()`), because M1's alarm data has no `category`. Should move into the plant profile alongside `tile_label`/`scanner_hint`. | data | **open** — add to engine alarm config |
 | F9 | M5/M6·PH/M7 | Integration tests assert `rod_nudge` reaches the engine **instantly** (`210 → 200`), but the engine now does a **rate-limited nudge** (drives a `nudge_target` over sim time — the "rod control reworked" change). The one-step assertion sees `210→210` and fails. **Pre-existing** (reproduces on clean HEAD; unrelated to the BOP work) — the stale check needs to step the sim forward after nudging. | test | **open** — fix the 3 integration tests to run the sim after `rod_nudge` |
-| F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **open** — confirm vs M6 highlight system |
+| F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **RESOLVED (M6)** — highlights auto-reveal hidden controls on both mechanisms: RBMK/BWR `findPdControl()` switches the owning view tab (`app.js`); PWR `RD.PwrSynoptic.revealControl(label)` opens the owning card tab/section via the data-driven `SYN_CONTROL_MAP` (`pwr_synoptic.js`). `verify_manual_follow.js` now checks PWR controls through the same reveal path. |
+| F10 | M2/M8 | **RBMK automatic-regulator (AR) rod group** (user-directed): add a third, small-worth (~5–8% of the manual bank, no displacer), fine-step group — the authentic RBMK AR. The Automate rod channel drives IT (fixes the ±4%/step hold granularity); its diagram/control card carries its own AUTO/MAN selector mirroring the Automate channel; disengaging = taking manual control (the pre-Chernobyl condition — scenario beat material). Include AR in ORM; scram drives it in; keep the positive-scram displacer exclusively on the manual bank so the Chernobyl acceptance suite stays green. NO second manual group — the AR under manual override IS the fine manual bank. | planned | **RESOLVED (2026-07-07)** — built as specced (see the dated entry); the Chernobyl AR scenario beat is authored under F11. |
+| F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **RESOLVED (2026-07-07)** — rbmk_ar + pwr_automation missions, auto_channels presets exercised end-to-end (startScenarioAuto gate harness), Chernobyl AR tie-in. Pre-existing missions deliberately left bare (triggers tuned against bare-plant trajectories). |
 
 ---
 
@@ -255,7 +257,7 @@ The §18 flagship is the acceptance centerpiece; the numbers were tuned so the t
 ## M4 — Control & Failure Layer
 
 **File:** `layers/control_failure_layer.js`
-**Validation:** integration smoke test `node test/run_m4.js` → 10/10 suites, 31/31 checks
+**Validation:** integration smoke test `node test/run_m4.js` → 11/11 suites, 37/37 checks
 (a **dev** check; full validation is M7's job, per M4 §2).
 
 ### Decisions & deviations
@@ -270,6 +272,8 @@ The §18 flagship is the acceptance centerpiece; the numbers were tuned so the t
 | C6 | **`evaluateCondition` default** | Unknown gate conditions evaluate **true** (permissive) | The PWR uses no actuation gate conditions; the evaluator is built generic for the BWR's `ads_open`/`hpci_unavailable` (M3). |
 | C7 | **Failure `category`** | Added a `category` field to the PWR failure **data** (`pwr_protection.js`) | M4 §10's catalog needs `category ∈ reactivity\|coolant\|power\|instrument\|safety_system`; per HR3 it is plant data, so it lives in the engine config, not in M4. |
 | C8 | **`degraded_hpi`** | Routed to the engine's `hpi_flow_multiplier` hook; its `set_hpi` interception is a pass-through | The spec (M4 §7) flags it as "really physics_parameter". **→ Flag F4.** |
+| C9 | **Interlocks (§4b, added with the PWR startup-forgiveness pass)** | New config-driven machinery: `config.interlocks[]` — condition-latched command blocks with hysteresis (`setpoint` engages + optional `on_engage` command, `clears_below/above` disengages), reading INSTRUMENTS (HR1). `withdrawal_only` blocks outward rod motion but never insertion. Blocked commands return `{type:'blocked', code:'INTERLOCK', message}` (register-aware). State in save/restore. | Real plants have rod stops / withdrawal inhibits that are neither trips nor failures — the plant refusing an unsafe command while telling you why. PWR instance: rod-withdrawal block at SUR ≥ 2.5 DPM (clears < 1.5), the guard that keeps a hasty trainee out of prompt-critical territory. Pure data per HR3. |
+| C10 | **Actuation `reset_below` comparison fixed** | Reset fires when the value returns to the SAFE side (`< reset_below` for high-direction, `>` for low) | Was inverted (`value > reset_below`): the PORV auto-actuation fired open and "reset" (close) in the same evaluate, flapping every cycle while pressure stayed high. Masked in practice (nothing reached 16.2 MPa in normal ops; TMI's stick intercepts the closes) — exposed when the steam-dump rework let a turbine trip actually reach the PORV band. |
 
 ---
 
@@ -323,6 +327,120 @@ exact interface the real M6 will, so M6 replaces this file's internals with no c
   free-play either way). Load order: `instructor_layer.js` before `simulation_service.js`.
 - **`connect(layer)` added** to the instructor (beyond the spec's constructor-injection) so M5 can
   re-point the slot at the rebuilt M4 on a plant change without reconstructing scenario state.
+
+## M6 — Instructor Layer (real) + Training UI
+
+**Files:** `layers/instructor_layer.js` (the engine, replacing M6·PH's internals in place) ·
+`scenarios/pwr_tmi.js`, `scenarios/pwr_hook.js` (authored content, `RD.SCENARIOS` registry) ·
+M5 additions (`layers/simulation_service.js`) · UI (`ui/app.js`, `ui/shell.html`, `ui/shell.css`,
+`ui/diagram/pwr_synoptic.js`).
+**Validation:** `node test/run_m6.js` → 16/16 (beat engine, triggers, gating, branching, follow,
+grading, save/restore, swap invariant) · `node test/run_scenarios.js` → 3/3 (TMI both branches,
+Hook incl. world rewind) · `run_m6ph.js` **unmodified** 8/8 · `run_m5.js` 15/15 (12 original + 3
+rewind) · procedures 21/21 · `verify_manual_follow.js` 81 checks · M7/M4/engine suites green.
+
+### Decisions
+
+- **Scenario lifecycle = M5 control-plane commands + registry.** `start_scenario {scenario_id}`
+  resolves `RD.SCENARIOS[id]`, resets the plant to the scenario's `(plant_id, initial_state,
+  design_version)`, then `instructor.load(sc)`. `stop_scenario`/`stop_follow` unload and clear the
+  rewind ring. A plain `reset` (selectPlant) also unloads — stale progress can't outlive its plant.
+  Instructor `saveState()` stores content **ids** only; `loadState` re-resolves from the registries
+  and degrades to free-play with a console warning if missing.
+- **Path 2 = a follow-runner mode on the same engine object** (procedures are NOT converted to
+  beats — one artifact, per Gameplay §4.1). `start_follow {procedure_id}`: M5 maps active
+  plant+design → profile key (`pwr|rbmk_pre|rbmk_post|bwr`) and hands the procedure to
+  `loadProcedure`. Auto-advance when `(no cmd || cmdSeen) && (no saw || sawSeen) && (no acc ||
+  accMetNow)`; observation steps wait for manual Next; `saw` is latched live (previously never
+  evaluated in the UI). **Acceptance debounce:** acc must hold for 5 consecutive broadcasts so a
+  parameter sweeping through its band doesn't advance the step in passing.
+- **Strict gating (user decision) with a distinct return shape.** Off-script commands in a follow
+  are blocked with `{type:'blocked', code:'GATED_BY_INSTRUCTOR', message}` (distinguishable from
+  M4's `null`/error) + two-register wrong-action commentary (generic template; per-step `wrong`
+  override supported). Allowed set = step's command family (rod steps allow the whole
+  `rod_nudge/rod_start/rod_stop/rod_stop_all` family; `inject_failure` only with matching id) + a
+  safety set (`scram`, `manual_scram`, alarm acks). Scenario beat gates additionally support
+  `allow_actions` (allow-list) alongside the spec's `block_actions` — the Hook needs "everything
+  but SCRAM".
+- **Instrument-first grading (HR1) with the documented fallback.** `PARAM_INSTRUMENT` map in
+  `instructor_layer.js` (param → instrument id per plant, verified against each engine's
+  instrument set); params with no twin (`core_inventory_pct`, `melted`, …) grade on `true_state`
+  per Gameplay §6's exception, reported as `graded_by` in the snapshot. The map is data (HR3);
+  extract to engine configs if it grows.
+- **Rewind ring lives in M5; the instructor requests via consume-flags** (no upward callbacks —
+  M5 polls `consumeCheckpointRequest()`/`consumeRewindRequest()` after `step()`). Checkpoints =
+  full `saveState()` (bit-exact: PRNG + lag buffers), pushed on scenario load / beat fire /
+  follow-step auto-advance, cap 32. `rewind {steps, scope}`: **full** restores instructor progress
+  too (retry — decision beats re-arm); **world** restores the plant only (the teacher remembers —
+  the Hook's narrated rewind; beat field `rewind:{steps}`), with `rebaseTime()` clamping trigger
+  anchors after time moves backward. Repeated Rewind presses walk back one boundary each (a target
+  equal to "now" skips one further). A beat that carries `rewind` does not also checkpoint (keeps
+  the author's step arithmetic sane). `loadState` (user file load) clears the ring.
+- **Snapshot extensions via `getSnapshotBlock()`** with an M5 fallback to `getMessage()` (mocks &
+  the DefaultInstructor keep working). Fixed shape, keys always present, null when inactive:
+  `message, message_register, ui_policy, highlight, follow, level_complete`. Follow mode derives
+  `highlight` from the step's `control` label. `ui_policy` v1 carries `{register, highlights}`
+  only (layout/hint_level deferred with Qualification).
+- **Beat-schema additions over M6 §4** (all additive): `gate.allow_actions`, `advance:'end'`
+  (branch endpoints must not fall through into the other branch's beats — beats are one flat
+  list), `highlight`, `level_complete {title, outcome_learning/industry, actions}`, `rewind
+  {steps}`, `speed` (instructor-driven time acceleration — see the dedicated bullet below).
+  `instructor_continue` is an instructor-internal command (consumed, never descends) — the Next
+  button doubles as the spec's `manual`-trigger Continue.
+- **TMI authoring vs the physics (the honest compromises).** (1) The engine's own flagship suite
+  never verifies its `runUntil(P≥16.20)` (silently times out) and **commands** the PORV open — the
+  lumped physics does not produce the brief post-trip pressure spike (AFW auto-start and the steam
+  dump correctly hold the heat sink). The scenario does the same play: `porv_sticks` fires on
+  `delay 10` post-trip and the `stuck_porv_open` injection itself opens-and-holds the valve
+  (pressurizer models "stuck" as held open). (2) `afw_failure` is injected with the LOFW (the
+  historical closed discharge valves) and cleared at `porv_sticks` (crew found them, ~8 min) with a
+  beat-commanded `set_afw` — M4's AFW actuation is latched-once and won't re-fire after a clear.
+  (3) The damage branch replays the **real 1979 error**: M4's auto-HPI starts on low pressure and
+  *rescues* the plant (inventory reached 120%!), so hesitating at the decision point has the beat
+  narrate-and-enact the operators' securing of HPI (`set_hpi false`; the latched actuation stays
+  quiet). Subcooling-margin truth vs the lying PORV indicator is asserted live in the harness.
+- **The Hook (user decision: prompted, not forced).** First **plain** load (no query string) with
+  `hook_done` unset shows an invitation overlay; declining sets the flag. The hook is a normal
+  scenario (`pwr_hook`) — allow-only-SCRAM gate, highlight, world-scope rewind back to pre-scram,
+  `level_complete` pointing at the Training tab. Replayable from the picker.
+- **Progression: one localStorage key `rd_progress`** `{hook_done, completed_scenarios[],
+  completed_procedures[]}` (deviation from Gameplay §7.1's separate `rd_hook_completed` key — one
+  source of truth), try/catch-guarded for `file://`. Recorded when a `level_complete` first
+  renders.
+- **Training tab** (the M8 placeholder pane): scenario cards from `RD.SCENARIOS` (Start/Stop,
+  ✓ done) + per-plant `[sim]` walkthrough list with Follow buttons + the Reactivity Computer.
+  `?scenario=<id>` deep link starts a scenario directly (and, being a query string, suppresses the
+  hook prompt).
+- **UI follow rewired to the instructor.** `renderFollow` renders the snapshot's `follow` block
+  (acc ✓ from the instructor's grading, `via instrument / true value` tag) instead of running its
+  own true_state check — Gameplay §6's "fix required". Markup preserved for
+  `verify_manual_follow.js`; paused-nav stays synchronous via `cmd()`'s reassemble-on-paused path.
+  `ui.follow` is a mirror **synced from the snapshot** each render (never set optimistically) —
+  start_follow's internal plant reset broadcasts an intermediate free-play snapshot that would
+  otherwise clear it mid-transition.
+- **`start_follow` resets the plant to the procedure's `from` state** (post-review fix). Without
+  it, a walkthrough started from the wrong state could be trivially completable (e.g.
+  `pwr_raise_power`, from `50_percent`, "completes" instantly at full power because its
+  acceptance is already true). All 20 authored `from` values are valid §6.9 named states — no new
+  states were needed. Retry uses the same path. UI clears trend history + gauge smoothing on
+  start (fresh timeline; smoothing across a reset displays values that were never real).
+- **Beat `speed` field — instructor-driven time acceleration** (additive schema extension). A
+  beat can set `speed: N`; the drop-out device is authoring the NEXT beat's trigger on the set
+  point and giving it `speed: 1` ("fast-forward and watch — I'll snap us back when it matters").
+  Serviced by M5 via a `consumeSpeedRequest()` consume-flag, applied AFTER any rewind so it wins
+  over a checkpoint's stored speed; the broadcast's `metadata.time_acceleration` is re-stamped so
+  the snapshot is honest on the fire broadcast. TMI uses it for both slow phases (30× through
+  recovery/boil-off, 1× at margin-restored / core-uncovery); the UI speed seg + FF badge sync
+  from the snapshot.
+- **Sandbox rewind: periodic checkpoints + pick-a-moment on the strip chart.** In free play (no
+  scenario/follow — gated on the instructor owning no content, so authored rewind arithmetic is
+  never disturbed) M5 pushes a checkpoint every 15 sim-seconds (`SANDBOX_CP_SPACING_S`, ring cap
+  32 ≈ the last 8 sim-minutes). The strip chart gets a ⏪ button on the scrubber row: in free
+  play it enters a picker mode (sim pauses, checkpoint markers drawn on the chart, click a moment
+  → `rewind {steps: n}` to the nearest checkpoint, Esc cancels, stays paused after the jump);
+  during instructed content the same button keeps the one-boundary-per-press behavior. On any
+  backwards time jump the UI drops the now-nonexistent branch of trend history and snaps gauge
+  smoothing.
 
 ## M7 — Test Runner Layer (dev-only)
 
@@ -415,6 +533,75 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
 - **M6·PH** built. Tests 8/8. Real pass-through Instructor module in the slot; M5 aligned to the
   `setRegister` interface and prefers `RD.InstructorLayer`. Swap-invariant confirmed (free-play
   unchanged). All four suites (M1/M4/M5/M6·PH) green.
+- **M6 alpha + steps 5–6** built (beat engine per `M6_instructor.md`, Path 2 follow with strict
+  gating + instrument-first grading, `pwr_tmi` flagship both branches validated headless, M5
+  rewind ring with full/world scopes, snapshot instructor-block extensions
+  (ui_policy/highlight/follow/level_complete), highlight rendering with the F8 auto-reveal on both
+  control mechanisms, the prompted first-run Hook (`pwr_hook`), Training-tab scenario picker +
+  walkthrough list, `rd_progress` persistence, `?scenario=` deep link). New gates:
+  `test/run_m6.js` 16/16 · `test/run_scenarios.js` 3/3. All prior gates green, `run_m6ph.js`
+  untouched (swap invariant holds). **Flag F8 resolved.** See the M6 section above.
+- **M6 player-review fixes** (post-build review): `start_follow` resets to the procedure's
+  `from` state (kills trivially-completable walkthroughs); beat `speed` field for
+  instructor-driven fast-forward with automatic drop-out at set points (TMI uses it through both
+  slow phases); sandbox rewind — periodic free-play checkpoints (15 sim-s) + a pick-a-moment
+  picker on the strip chart (⏪ on the scrubber, markers on the plot, click to jump). UI follow
+  state now derives from the snapshot (fixes a mid-reset race). Gates: run_m6 16/16 (94 checks),
+  run_m5 17/17, run_scenarios 3/3, all others green.
+- **PWR startup-forgiveness tuning pass** (user report: "too touchy — pull rods halfway, nothing,
+  then runaway + scram"). Diagnosis confirmed by trace: (1) NO neutron source — a subcritical
+  core showed nothing (power decayed 1e-4→1e-7 %) until well past critical, and SUR was floored
+  at 0.1% power, so the first visible sign was a 2$-supercritical excursion; (2) the SG thermal
+  load was a BINARY gate — 0 below 1% power, full rated coupling above — so crossing the point of
+  adding heat slammed a rated-capacity heat sink onto a 2% core (5 °C quench → pressurizer
+  drained → `pzr_level low` trip: the "booby-trapped startup"). Fixes, all [tune]/data:
+  **M1 physics** — constant neutron source (`kinetics.source = 1e-6`, P_eq = S·Λ/(−ρ): the
+  approach to criticality is now visible 1/M behavior, SUR live from the first rod steps);
+  SUR/period floor lowered to source range (1e-6 %); subcritical precursors initialized at
+  source equilibrium; SG coupling is now pure h·ΔT with the secondary finding its natural
+  NO-LOAD equilibrium (steam dump setpoint moved to the no-load pressure 8.90 MPa ≈
+  Psat(no-load Tavg) with a 0.25 MPa band — the real steam-dump-in-pressure-mode behavior);
+  hot-standby init made self-consistent (tavg = tcold = thot = Tsat(dump setpoint), sgP =
+  setpoint → zero reset drift); `startup_rate` instrument added (lag 2 s, appended last —
+  PRNG order preserved; instruments steam_pressure range → 10.5). **M4 data** — `sur_high`
+  caution alarm (2.0 DPM) + rod-withdrawal interlock (≥ 2.5 DPM, clears < 1.5; see M4 C9/C10).
+  **Outcome (traced):** attentive pull → SUR builds smoothly, release at 1 DPM while still
+  −265 pcm subcritical, core settles gently; hands-off continuous pull → withdrawal blocked at
+  +343 pcm (0.53 $), Doppler rolls the rise over, plant SELF-STABILIZES at ~29% power, and the
+  only eventual trip is the honest `sg_level low` (nobody fed the boiling SG). Engine suite
+  12/12 UNCHANGED, procedures 21/21, TMI/Hook 3/3, M7 protection boundary green;
+  `gen_manual_reference` re-run (PWR 23 alarms). Note: RBMK/BWR startups still lack a source
+  term — same treatment is a candidate follow-up.
+- **RBMK + BWR startup-forgiveness pass** (the PWR recipe applied; user-approved follow-up).
+  **M2** — `kinetics.source = 6e-4` (subcritical floor ~5e-5/3e-5 rated at the pre/post rod
+  margins; ρ-shift ≤ 0.4 pcm even at `low_power_xenon`, so the Chernobyl preconditions are
+  untouched); source enters the delayed branch only (never the prompt fast-path); hot_startup
+  settles kinetics on the source equilibrium (P = S·Λ/(−ρ), precursors matched, decay preloaded
+  ×0.07 recent-shutdown) — no reset free-fall; SUR floor → source range; `startup_rate`
+  instrument (appended last, PRNG order preserved) + `sur_high` caution alarm (3.0 DPM) +
+  rod-withdrawal interlock at **4.0 DPM / clears 2.5** — deliberately less protective than the
+  PWR's 2.5/1.5: the RBMK's instability is curriculum, and in the continuous-pull trace the
+  void feedback still drives ρ past the rod stop (its character intact) with the trip ending it.
+  **Latent bug found & fixed:** the pre-1986 `power_range high 120%` trip could NEVER fire —
+  the instrument range capped at exactly 120, and a pegged reading never strictly crosses the
+  setpoint. Range → [0, 200]; the trip now catches the startup excursion at ~176%.
+  **M3** — `kinetics.source = 4e-3` with a **fade above ~1% power** (`×max(0, 1 − P/0.05)`):
+  the BWR's tiny Λ (5e-5) means a source big enough for a useful floor otherwise pushes
+  full-power operation (+11% drift observed) — physically the source is swamped by fission at
+  power, a scale separation the normalized lumped model can't express with a constant. Source
+  enters the implicit prompt-jump form alongside ΣλC. Same equilibrium settle + decay preload;
+  SUR floor → source range. **Latent bug found & fixed:** hot_startup seeded a phantom 2%
+  TURBINE STEAM DRAW (from the config's placeholder power) against ~0.5% decay boiloff — the
+  vessel depressurized into the 5.52 MPa low-pressure scram in ~2 minutes, punishing exactly
+  the careful player who paused the approach. The subcritical settle now parks the turbine
+  offline (no draw, no feed), and the state holds indefinitely. No BWR interlock — the negative
+  void coefficient already self-limits (rods fully out from hot_startup settles at ~48% power).
+  **Traced outcomes:** all three attentive pulls now show stable 1/M multiplication (release →
+  power settles at a HIGHER stable level, no decay-death, no trip); RBMK continuous pulls are
+  rod-blocked then either self-stabilize (~47-58%) or trip properly on the fixed flux trip
+  (pre, ~176%); BWR continuous self-stabilizes at ~48%, no trip. Gates: PWR 12/12 · RBMK 23/23 ·
+  BWR 12/12 all UNCHANGED, procedures 21/21, all 13 gates green; `gen_manual_reference` re-run
+  (RBMK 12 alarms / 11 indications).
 - **M7** built. Positive 31/31 integration checks + negative teeth test (sabotaged HR1 → caught).
   Validates the assembled stack's wiring through M5's interface. All five suites (M1/M4/M5/M6·PH/M7)
   green. Physics gate (M1) + wiring gate (M7) both pass → the PWR system is correct per CONTEXT §9.
@@ -1095,3 +1282,464 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
       "Shutdown bank" glossary term all plants); `test/manual_ui_map.js` mirror gains "Shutdown
       Bank". Suites green (PWR 11/11, RBMK 23/23, BWR 12/12, M4 10/10, M5 12/12, M6·PH 8/8, M7
       31/31, E2E 20/20, procedures 21/21, control audit + manual-follow PASS).
+- **PWR full-plant synoptic + margin cards (`develop`)** — implements
+  `Blueprint/new_diagram_controls.md` Appendix A (spec authority; engine handoff
+  `inbox/pwr_synoptic_handoff.md`, prerequisites already gate-green).
+  - **New module `ui/diagram/pwr_synoptic.js` + `pwr_synoptic.css`.** One integrated schematic
+    (viewBox 1200×640, reactor → SG → turbine-over-condenser → cooling tower per the reference
+    image; steam leaves the SG top-right and runs right-then-down to the governor). 12 margin
+    cards in tuned anchor zones (left column: Power & Reactivity / Rod / Emergency; top strip:
+    Relief / PZR / Steam & Flow; right column: Plant Status / Turbine-Gen / Condenser / Primary
+    Flow & Inventory; mid slots: SG Heat & Level and RCP between the legs), plus the two
+    **embedded panels** (`pwCvcsPanel` on the CVCS box face, `pwAccumulatorPanel` on the tanks —
+    not margin cards). Leaders are drawn in a stage-pixel overlay SVG from each card edge to its
+    `pw*Anchor` and reconnect on resize (ResizeObserver); prominent + dash-animated on hover.
+  - **HR1 / Animation HR1 enforced in code paths, verified by harness.** Realistic mode reads only
+    `snapshot.instruments`, §8.8 status booleans, and `control_state` commanded pose (block valve,
+    heater/spray %, rod banks). Loop dashes/RCP impeller run from `rcp_running` status at fixed
+    speed (4 s coastdown on the true→false edge — no `pump_flow_pct`); relief animation keys off
+    `porv_indicator` (+ block open); dump/governor/charging/letdown/LPI/accumulator animation off
+    their instruments. Learning adds SUR, deception duals (PORV, boron, active instrument
+    failures), contextual xenon/fuel text chips (no raw `fuel_temp_c`), Cherenkov/fuel glows, and
+    a true-position relief ghost during TMI; Physics Overlay (Learning-only toggle in Settings,
+    hidden in Realistic) adds ρ/period, inventory/void, P–S ΔT, loop flow, and the subcool ghost
+    cursor (overlay + failed-P/T-sensor lesson only).
+  - **PZR card = strict accordion** (pressure ↔ level, headline value shown in the collapsed
+    header). Deviation from a literal "both sections expand": bounds the card height so the
+    auto-expanding level section (TMI / level extremes) can never slide over the SG card below —
+    the collapsed section still shows its headline number, so nothing is lost. User clicks pin the
+    section until the priority episode changes.
+  - **"What matters now"**: TMI combo (`stuck_porv_open` + `porv_indicator_stuck_closed`) pulses
+    the subcool bar, PZR card (level section auto-selected), Relief card + `gRelief`, and their
+    leaders — not the whole board. ECCS actuation auto-selects the matching Emergency tab
+    (HPI | AFW | RHR/LPI) and dots the tab. Alarm-tile hover highlights the mapped diagram node +
+    card + leader (M1 §9 table).
+  - **Legacy PWR plant display retired** in `ui/app.js`: 4-view switcher, `fp*`/`sec*`/`loop`
+    partial SVGs + their renderers, PD control rows, PD.pwr, and the PWR numeric/controls profile
+    blocks are deleted (~470 lines); `plant_id === 'pwr'` mounts the synoptic in the view area
+    (`.app.pwr-synoptic` hides the legacy chrome; chart+alarms keep ~34–38 % of the column).
+    RBMK/BWR keep the legacy display unchanged (screenshot-verified). New ACTS: `rhr-on/off`,
+    `lpi-on/off` (`set_rhr`/`set_lpi`), `dump-set` (`set_steam_dump {pct}`); every synoptic
+    `data-act`/`data-hold` cross-checked against the ACTS/HOLD maps. Two-step SCRAM cover lives on
+    the Rod card. Pause (`metadata.running === false`) freezes all diagram motion via CSS and
+    shows the centered `SIMULATION PAUSED` overlay.
+  - **Dev conveniences** (`?mode= ?phys=1 ?inject=a,b ?ff=secs ?run=1` URL params) added for
+    headless screenshot/acceptance work. **`ui/test_panel/synoptic_check.html`**: 55-check DOM
+    acceptance harness (manifest ids + anchors live, mode gating, TMI Realistic = lying indicator
+    with NO relief animation + auto-expanded level section + pulses, Learning dual + ghost,
+    spray-needs-RCP, accumulator idle/active UI, pause freeze, two-step SCRAM, hover contract,
+    chips) — 55/55 green headless.
+  - **Known deferrals:** click-popover fallback for crowded components (panels are always visible
+    at 1280×800, so nothing is unreachable); `primary_void_fraction` is not exported by
+    `getTrueState` today, so the overlay Void row guards to `—` (engine addition deliberately not
+    made — no engine work in this pass); `pwTapSteamFlow`/`pwTapVac` optional taps omitted (their
+    readings live on the Steam & Flow / Condenser cards per A.2c "optional").
+  - Suites green after the change: PWR 12/12·57, M7 OK + teeth, E2E 25/25, M4 10/10 — engines
+    untouched.
+- **Synoptic v3 — screenshot review fixes (`develop`).** User review at ~2000×1220 exposed that
+  stage-percentage card placement scattered cards into letterbox space and onto equipment at
+  larger windows, the CVCS panel drifted off its box, vessels didn't match the reference
+  schematic, and number inputs clipped ("1000" → "1…").
+  - **Cards/panels are now anchored in SVG user units** (`PLACE {sx, sy}` + `positionCards()`
+    mapped through the same viewBox transform as the diagram, clamped to the stage) — cards hug
+    their equipment at any window size; leaders stay short. The CVCS panel sits on the box face
+    (clamped up only on short stages).
+  - **Reference-shaped vessels** (`inbox/Schematic-diagram-of-a-pressurized-water-reactor.png`):
+    domed RPV with hemispherical bottom, prominent fuel rods in the core barrel, and control/
+    shutdown rod drives entering through the head — rod length below the drive bridge animates
+    with inserted depth (green control bank, violet shutdown bank). SG is a domed shell with a
+    **nested inverted-U tube bundle** (4 concentric U's with flow dashes), tube sheet, and a
+    divided bottom plenum; U-tube-top reference line retained. PZR is a capsule on the hot leg.
+  - **Relief tank relocated** into the RPV↔PZR gap — it previously overlapped the reactor vessel
+    (visible in the user's screenshot). T-hot tap label moved below the hot leg; tap labels are
+    compact backed boxes; steam header re-routed (SG shoulder → right → down through governor).
+  - **CVCS panel slimmed to 4 rows**: charging/letdown setpoints now apply on change/Enter
+    (no Set buttons — synoptic `change` listener issues `set_charging_flow`/`set_letdown_flow`),
+    so the panel fits the box even at 1280×800 with the charging pump visible. Number-input
+    spinner buttons hidden (they ate the digits); inputs widened.
+  - Verified at 1280×800 and 2000×1220 (steady + TMI); DOM harness 55/55; PWR 12/12·57, M7 OK,
+    E2E 25/25, M4 10/10.
+- **Load Mode — turbine/feed simplification (all plants).** Replaced decoupled MW load +
+  feedwater % knobs with one mental model: **Follow Reactor** (default), **Manual** (MWe slider),
+  **Disconnected** (0 MWe). Shared `engines/load_mode.js`; PWR/RBMK/BWR engines call it each
+  step; feed auto-couples unless `set_feedwater_flow` decouples. **SCRAM → disconnected + turbine
+  trip** (realistic load rejection). UI: PWR synoptic Turbine-Generator card (mode seg + slider),
+  SG imbalance annunciator; RBMK/BWR control bands match. Phase C: `scenarios/pwr_sg_flood.js` +
+  `setup_commands` on scenario load. Spec: `Blueprint/load_mode_spec.md`. Legacy
+  `set_steam_demand` / `set_turbine_load` retained (force manual + set target).
+- **Operations test suites (external, all plants) + first tuning harvest (`develop`).** New
+  `test/ops_harness.js` + `test/ops_{pwr,rbmk,bwr}.js` + `test/run_ops.js`: 66 scenarios that run
+  each engine UNDER the real M4 layer (trips/actuation/interlocks/interception live, protection
+  evaluated at M5 broadcast cadence — including its scaling with time acceleration). Two families:
+  `ops_*` (realistic evolutions, scripted operator: load-follow, startup, shutdown, paced cooldown,
+  xenon hold, LOFW/SGTR/SBO/ATWS) and `abuse_*` (player behavior: yanks, walk-aways, command spam,
+  256× acceleration, un-scram attempts). RBMK scenarios run for BOTH design versions. Failing
+  checks are deliberate tuning targets; findings + priority list in
+  `Diagnostic/OPS_TUNING_REPORT.md`, raw data in `Diagnostic/ops_results.json`.
+  **Fixed during the harvest:** (1) BWR RCIC auto-actuation unit bug — `fw_flow low 5.0` compared a
+  normalized (0–1.2) instrument against 5.0 → RCIC always on, vessel flooded, spurious 5.52 MPa
+  low-pressure trips on every assembled-stack BWR run (engine suites bypass M4, so only the ops
+  suite could see it); setpoint → 0.05, and the RCIC level start moved 50.0 → 45.0 (σ=0.5 noise at
+  the nominal 50.0 level hair-triggered it). Manual regenerated; BWR/M4/M5/M7 suites green.
+  (2) `tools/gen_manual_reference.js` and `test/run_procedures.js` crashed on load (missing
+  `engines/load_mode.js` require) — both fixed; procedures 20/21 (the `bwr_sbo_rcic` failure is
+  report finding B3: RCIC capacity loses to post-trip boiloff, pre-existing physics tuning).
+  **Headline open findings:** PWR/BWR high-flux trips unfireable (power_range meter caps at the
+  120 setpoint; RBMK precedent says widen to 200); post-1986 RBMK can still steam-explode from the
+  xenon pit (violates the comparison lesson's design intent); BWR lacks a pressure regulator so
+  any uncoordinated power drop trips vessel-pressure-low; PWR SGTR drains inventory ~30× too fast
+  and melts at pressure with no auto-SI; a by-the-book PWR shutdown cannot avoid the pzr-level
+  trip (partial-load Tavg/SG-pressure program inverted); protection latency grows with time
+  acceleration; no RPS reset path after any trip (forgiveness gap).
+
+- **2026-07-07 — Working-tree regression recovered from session checkpoints.** On the evening of
+  Jul 6 (≈21:40–21:44), a bulk file drop delivered the load-mode feature (`engines/load_mode.js`,
+  Turbine-Generator card Mode seg + load slider, feed auto-coupling, `pwr_sg_flood` scenario,
+  Dev-tab diagnosis-export markup) but replaced `ui/app.js` with a pre-synoptic snapshot of the
+  profile architecture — silently reverting the synoptic mount, the M6 training tab, rewind, and
+  Diagram Mode / Physics Overlay. Commit `cf480f9` unknowingly captured that regressed app.js.
+  Recovery: `ui/app.js` restored from the Claude Code file-history checkpoint of the M6 training
+  session (post-edit snapshot, verified against transcript edit replay), plus four ACTS additions
+  so the batch's synoptic load-mode card is live (`load-follow`, `load-manual`,
+  `load-disconnect`, `spray-off`). All other batch files were confirmed to be the good versions
+  plus genuine improvements and were kept. Verified: M6 16/16 suites, synoptic + cards render,
+  training tab lists 3 scenarios + 9 walkthroughs. Remaining gap: scenario suite 2/3 —
+  TMI-recovery "Averted" beat no longer fires after the Jul 6 engine retuning (tuning target,
+  not UI).
+
+- **2026-07-07 — Session-diagnosis export rebuilt (Dev tab).** Forensics identified the Jul 6
+  file drop as a Grok agent session (its `mcps/grok_com_*` scaffolding is stamped 21:39). Grok
+  built the diagnosis export live (the user's two `Diagnostic/rd_diag_*.json` test exports prove
+  it worked at 20:46/21:06) and then erased its own handler in the same stale-base `app.js`
+  write-back that clobbered the synoptic. Rebuilt in app.js against the exported files as the
+  schema contract (`schema_version 1.0`, kind `reactor_dynamics_diagnosis`): 1 Hz true-state
+  timeseries (per-plant field maps, ~4 h ring), alarm-transition/scram/session_start events,
+  command log with blocked/error flags, full `service.saveState()` as `snapshot_end`, manifest
+  (plant, engine key, init state, scenario, follow procedure, seed, sample_hz), optional user
+  notes, `rd_diag_<stamp>_<plant>.json` download. Session boundaries reset the recorder
+  (init / plant_change / scenario / restore); rewind trims the recorded future. A wiring audit
+  (every `data-act`/`data-hold`/`act:`/`hold:` reference vs handlers) now reports 79/79 wired.
+
+- **2026-07-07 — PWR training campaign "Zero to Operator" (Gameplay §8 step 7: Campaign
+  progression wrapper + curriculum).** Plan: `Blueprint/pwr_training_campaign.md`. Five acts,
+  19 missions + 1 bonus, mixing existing artifacts (hook, TMI, sg_flood, 9 walkthrough
+  procedures) with 8 new micro-scenarios: `pwr_tour` (energy journey), `pwr_chain_reaction`
+  (criticality at HZP on the neutron source), `pwr_feedback` (Doppler/MTC), `pwr_xenon`
+  (post-trip dead-time arc), `pwr_boron` (Tavg via dilute/borate), `pwr_load_follow` (manual
+  dispatch), `pwr_protection` (deliberate turbine trip + alarm triage), `pwr_qualify` (blind
+  stuck-PORV exam, three endpoints). Wrapper: `ui/campaign_data.js` (data-driven, per-plant),
+  Training-tab campaign section (sequential unlock, progress bar, Continue chains the next
+  mission on level-complete; `?campaign=unlock` dev override); completion derives from the
+  existing `rd_progress` record — no new persistence. Instructor snapshot block now exposes
+  `scenario_id` + `current_beat_id` (also fixes the diagnosis-export manifest's scenario id).
+  **Gate:** `test/run_campaign.js` — structural (missions resolve, trigger vocabulary, dual
+  registers, endpoints) + functional (every new scenario driven headlessly to level_complete
+  by a scripted operator; qualify win/early-win/fail paths) — 12/12, 391 checks.
+  **Physics findings honored (probed, not guessed):** manual load targets couple weakly
+  (1000→800 ask settles ~944 MWe, Tavg +9 °C — taught in-mission as "the slider asks, the
+  physics answers"); a large manual step (→500 MWe) trips on load rejection; post-trip Xe
+  crests ~113.6% eq at ~5 h (the xenon mission rides exactly that arc); HZP SUR blips during
+  rod motion are subcritical multiplication, not criticality (criticality detected at
+  power > 1%, matching `pwr_startup`); **an SBO is unsurvivable in current physics** (SG
+  pins at 20% under AFW, inventory drains via PORV by ~14 min) — exam redesigned off it,
+  logged here as an engine tuning target alongside the ops-report findings.
+  **Authoring gotchas (for the next scenario writer):** snapshot `current_beat_id` is the
+  PENDING beat (armed, not yet fired); the instructor clears operator-action memory on every
+  beat fire, so `operator_action` triggers only see commands issued while their own beat is
+  pending; composite triggers use `triggers:[...]`; gates persist until their `until` fires.
+
+- **2026-07-07 — RBMK & BWR training campaigns (campaign wrapper now tri-plant).** Plan
+  addendum in `Blueprint/pwr_training_campaign.md`. Seven new scenarios: `rbmk_tour`,
+  `rbmk_void` (positive void coefficient by hand: flow 80→60 at 50% → power +3%, probed),
+  `rbmk_chernobyl` (01:23:40 witnessing — engine destroys pre-1986 `low_power_xenon` in
+  ~13 s regardless of AZ-5, so the flagship narrates the inevitability; aftermath beat
+  carries the causal chain), `rbmk_az5_fixed` (playable rematch: post-1986 design survives
+  the identical state given prompt AZ-5 — probed clean at t+3 s; hesitation loses, with the
+  post-86 steam-explosion tuning gap voiced in-mission), `bwr_tour`, `bwr_recirc` (probed
+  ladder: ask 22/25/28/32 → 63/71/79/89%), `bwr_isolation` (MSIV slam: trip, indicated-level
+  shrink to ~28%, steam-driven recovery — shrink/swell as the teaching point),
+  `bwr_fukushima` (from `post_scram_sbo` + `early_battery_failure`; IC decision branch buys
+  ~4 h, both branches end at uncovery — support-failure taxonomy capstone), `bwr_qualify`
+  (precision recirc maneuver 75–85% band, >95% fails; the unfireable high-flux trip is
+  briefed as the exam hazard). Probed findings: BWR `set_recirc_flow` pct is an internal
+  ~2.5× ask scale (ask 40 = 100% flow; big asks → sustained 110–130% overpower with no
+  trip); BWR failure injections (`rcic_failure`, `hpci_failure`) do not disable
+  auto-actuated systems, and BWR upsets self-recover — hence a maneuvering exam, not an
+  emergency one; `bwr_sbo_rcic`[P] excluded (finding B3). Gate: `run_campaign.js` 24/24
+  suites / 686 checks (structural for all three campaigns + functional happy/failure paths
+  for every new scenario). Regression: RBMK 23/23, BWR 12/12, M6 16/16, M5 17/17,
+  procedures 20/21 (pre-existing).
+
+- **2026-07-07 — Playtest hardening pass (all three campaigns + M5 rewind).** A persona
+  playtest (`Diagnostic/PLAYTEST_REPORT.md`: first-timer, ~220 wpm, one fumble per act,
+  real headless stack at UI cadence) found systemic pacing and softlock defects; all fixed:
+  **M5 rewind walk-back** — repeated ⏪ presses now walk back one checkpoint each via a
+  `_rewindCursor` (cleared on every checkpoint push); previously the broadcasts between two
+  presses defeated the exact-time guard and every press restored the same newest checkpoint,
+  so failure cards ("Rewind to the decision") could never be escaped. **Trip-catch branches**
+  — `pwr_tour` (`load_lost`), `pwr_load_follow` (`grid_lost`), `pwr_boron` (`overdone`):
+  guided missions that leave the throttle/chemistry unlocked now land on a failure card with
+  Rewind instead of softlocking under a stale prompt (greedy 500 MW ask trips at ~71 s;
+  boron mis-press at 30× high-flux-tripped the plant). Pattern: the PROMPT beat itself
+  carries `branches` (scram catch + success condition) — `current_beat_id` stays on the
+  watcher, so scripted drivers `settle()` past the prompt's fire before acting.
+  **pwr_boron** re-paced 30×→8× with `set_boron_adjust rate:0` commands on each prompt
+  (reading time is never penalized). **bwr_fukushima decision beat at REAL TIME** — the IC
+  decision was unreachable for a first-time reader (60× + 300 sim-s window = 5 wall-s under
+  a 105-word card); now: hold phase delay 2400 at 60× (~40 wall-s), `batteries_die`
+  `speed:1` + `inaction:150` real seconds. **pwr_feedback re-anchored** — `setup_commands`
+  pin demand at 500 MWe (in Follow, the rod nudge dragged output 498→574 and the demand
+  demo fired 0.1 s after arming); demo now `set_steam_demand 650`, complete at
+  `all[mwe>585, delay 200]` — probed visible ~20 wall-s climb with Tavg falling on cue.
+  **pwr_tmi recovery closes the block valve** (beat command; the historical ~06:22 action)
+  — HPI alone plateaus below the 11.1 °C restoration setpoint, so the "Averted" ending was
+  unreachable at HEAD (pre-existing red check in `run_scenarios`, now 3/3); `damage_path`
+  30×→10×. **pwr_qualify** — isolation branches grade `block_valve_open` true-state (added
+  to PWR `getTrueState`, additive) instead of `operator_action` (a press before `fault`
+  fired was wiped from action memory → exam never ended); `fault` issues
+  `open_block_valve` (briefed "normal lineup") so pre-isolating during the briefing neither
+  cheeses nor softlocks; frozen window 600→300 s. **pwr_protection** `stabilizing` accepts
+  `any[ack, delay 60]` (an ack during the 12-s flood window stalled the mission).
+  **Read-pacing bumps** (220 wpm rule: delay ≥ words/3.7 + margin) across `pwr_hook`,
+  tours ×3, `pwr_xenon` (shutdown 300×→150×, peak 600×→300×), `pwr_chain_reaction`
+  (`critical` 5×→1× — the climax card lasted 3.6 s), `rbmk_chernobyl` (`az5` text moved to
+  the aftermath card — it lived 1.0 s), `bwr_isolation`. **Procedures** — startup notes now
+  advise Norm-until-SUR-stirs (Slow-throughout measured 13.7 min PWR / never-in-10 min for
+  burst play vs 3.2 min at Norm), SUR caution admits the coarse bank reads ~2 DPM;
+  `bwr_raise_power` retargeted pct 40→28 with a >=95% guard (pct 40 parked the plant at
+  114% sustained — contradicting `bwr_qualify`'s >95% fail rule); `rbmk_mcp_trip` notes the
+  RPS may trip first. **Findability** — `SYN_CONTROL_MAP` aliases (Mode/Load/Rod
+  motion/Nudge/Boron — these beat highlight labels glowed nothing), DIL/BOR named as
+  labeled, two-press SCRAM taught in `pwr_hook`. Gate: `run_campaign` 24/24 (723 checks —
+  failure paths for tour/boron/qualify-pre-isolation added); `run_scenarios` 3/3 (was 2/3
+  at HEAD); M5 17/17, M6 16/16, PWR 13/13, RBMK 23/23, BWR 12/12, M4 11/11,
+  `verify_manual_follow` 81; `run_procedures` 20/21 and `run_e2e_controls` 23/25 unchanged
+  from HEAD (pre-existing findings B3 / LPI-accumulator). Persona re-verification: 17/17
+  (TMI rewind→decision→Averted in 2 presses; honest reader reaches the Fukushima IC card;
+  boron fumble completes; early ack proceeds; az5 rewind rematch wins; feedback demo holds
+  20 s; frozen exam fails at 6.2 min).
+
+- **2026-07-07 — Playtest hardening, round 2 (confidence-list follow-ups).** The residual
+  uncertainties from the playtest pass, closed with fixes rather than caveats:
+  **UI commentary min-dwell queue** (`app.js renderInstructor`): the instructor layer keeps
+  only its latest message, so any beat cascade faster than reading speed destroyed text
+  forever; the UI now holds each card ≥ words/3.7 s (capped 16 s) and queues successors
+  (depth 3). Blocked-command feedback bypasses the queue (the player just clicked);
+  `level_complete` flushes it. **Endpoint commentary was never displayed at all** — the LC
+  panel painted over the completing beat's card in the same broadcast; `renderLevelComplete`
+  now renders the message (`.lc-msg`) above the panel. **Rewind-pick exactness**: strip-chart
+  picks send `{rewind, steps, exact:true}`; M5 skips the press-semantics guards for exact
+  picks (a second pick while paused could otherwise land one checkpoint early).
+  **Cross-plant snapshot race fixed** (pre-existing): a `?scenario=` deep link that switches
+  the plant let the new plant's snapshots reach the old profile's gauges/chart/synoptic —
+  three distinct `.toFixed` crashes killed the whole render pass; `render()` now detects the
+  plant mismatch and runs `afterPlantChange()` catch-up, plus a defensive read in
+  `renderGauges`. **`pwr_sg_flood` was unwinnable since authoring** (caught by the new
+  coverage guard): its `imbalance` trigger used a malformed shape (`instrument_id`/`high`/
+  `setpoint` — not M6 vocabulary) and could never fire; repaired to
+  `instrument sg_level above 75` (probed: floods to ~100% in ~2 sim-min) and its gauge
+  highlight `sg_level`→`sg`. Now functionally tested. **Highlight coverage is a structural
+  gate**: `pwr_synoptic.js` exports `highlightLabels`; `run_campaign` asserts every campaign
+  beat's `control_label` (PWR) and `instrument_id` (all plants) resolves to a real target.
+  **Seed sweep**: tour (happy+greedy), boron, feedback (real three-press pattern), qualify
+  win, load_follow shift, sg_flood — 35/35 across seeds 1/7/13/42/99. **synoptic_check.html
+  resurrected**: it wasn't Edge drift — the harness never got a script tag for
+  `engines/load_mode.js` when Load Mode landed, so `pwr_engine.js` threw at load; one tag
+  restores 55/55 (`SYNOPTIC-OK`). Also: `pwr_feedback.complete` gained a 600-sim-s fallback
+  (three separate +1 presses settle ~560 MWe, under the 585 threshold the single steps:3
+  harness command reaches — a demo must not soft-wait on the player's earlier caution).
+  Gates: `run_campaign` 26/26 (739), M5 17/17, M6 16/16, scenarios 3/3, PWR 13/13, M4 11/11,
+  manual-follow 81, synoptic 55/55; `run_procedures` 20/21 and `verify_e2e_ui` (pwr/primary
+  `dhr-on` missing) unchanged pre-existing reds. Known residual: headless probe scripts must
+  `process.exit()` — a played SimulationService holds a live interval and the process never
+  exits (nine zombie node processes were reaped this session).
+
+- **2026-07-07 — Playtest hardening, round 3 (RBMK/BWR parity pass).** The PWR lessons
+  applied systematically to the other two campaigns. **Softlocks confirmed and fixed** (both
+  made MORE reachable by round 1's gate additions of scram/ack): `rbmk_void` — a manual AZ-5
+  mid-experiment stranded the mission at `restore_task`, and a deep flow cut (probed: 40→30%
+  spikes the pre-1986 core to ~120% and TRIPS; 40%/20% spike ~113% without protection) either
+  stranded it at `complete` or, if the player touched flow again post-trip, showed the
+  SUCCESS card over a dead reactor; `bwr_recirc` — any scram stranded it at `down_task`.
+  Both now use the prompt-with-branches pattern: scram → authored failure cards
+  (`overpowered` "It Bit" / `tripped`), success composites as branches; `restore_task` text
+  acknowledges over-deep cuts. **Highlights added where the text names hardware** (RBMK/BWR
+  beats carried none): rbmk_tour boiling→`void` gauge, orm_intro→`orm`; rbmk_void tasks →
+  'MCP / Channel Flow'; rbmk_az5_fixed intro → 'AZ-5' + the two-press "arm then CONFIRM"
+  wording (seconds matter there); bwr_tour void/throttle/level → `void`/`recirc`/`level`
+  gauges; bwr_recirc tasks → 'Recirc Drive'; bwr_isolation intro → `level`;
+  bwr_fukushima batteries_die → 'Isolation Condenser (IC)' (auto-reveals the secondary view
+  at the decision). **Coverage gate extended**: `run_campaign`'s highlight check now
+  validates RBMK/BWR `control_label`s against the PD view-bar label mirror (`PD_LABELS`) —
+  note the legacy plant-display labels are 'Recirc Drive'/'RCIC' etc., NOT
+  `manual_ui_map`-style long forms; 'AZ-5'/'SCRAM' resolve via the status-bar button.
+  **bwr_fukushima bare card** now tells the player Rewind steps back to the DC-loss
+  checkpoint (3 presses). Gates: `run_campaign` 26/26 (773 checks — rbmk_void deep-cut and
+  bwr_recirc scram failure paths now CI), M5/M6/scenarios/RBMK/BWR/manual-follow green,
+  `run_procedures` 20/21 pre-existing. Persona re-verify (seed 11): 7/7.
+
+- **2026-07-07 — Operator Automation layer (the Automate tab) — a deliberate v1-scope
+  extension.** CONTEXT §8 deferred "automatic control systems"; built now by user request
+  as `layers/auto_control.js` + a Tools-Block **Automate** tab: an AUTO/MAN toggle per
+  plant control, so any subset can run automatic while the player works the rest (e.g.
+  secondary on auto while hand-flying the primary, or everything auto except grid demand).
+  **Architecture:** a *synthetic operator*, NOT a stack layer — it subscribes to broadcast
+  snapshots beside the UI, reads **instruments only** (HR1: a stuck sensor fools it — CI'd:
+  stick `sg_level` high and the feed channel drains the real SG), and issues ordinary
+  commands from the top of the stack (HR5: Instructor gates and M4 interception apply;
+  blocked commands surface as a row note). Engines/M4/M5 untouched except one additive
+  `control_state` exposure (`heater_auto`/`spray_auto`, mirroring `steam_dump_auto`;
+  CONTEXT §6.5 updated). Channel kinds: **mode** (passthrough toggles for automation the
+  engine already carries — load-follow, steam-dump auto, PZR heater/spray auto, CVCS
+  make-up — displayed state derives from `control_state` each snapshot so the toggle never
+  fights the plant, e.g. scram → grid disconnect shows itself); **pid** (PI + feedforward,
+  bumpless-transfer integrator preload, anti-windup, PV low-pass, setpoint slew, deadband +
+  min-delta/period so the command stream stays sparse); **rods** (bounded `rod_nudge`
+  moves — acceleration-safe since the engine ramps to a target — with rate damping);
+  **bang** (PWR boron trim on rod position with hysteresis; requires the rod channel).
+  Setpoints capture the current reading on engage and are editable (unit-converted in the
+  tab). Rod/power channels disengage themselves on scram/meltdown, visibly. Automation
+  state is session-only (not in save files); a rewind resets controller dynamics.
+  **Control-design findings (probed, not guessed):** (1) a Tavg-dominant PWR rod loop
+  limit-cycles for minutes (Tavg integrates the power/draw mismatch) — the shipped
+  controller is **mismatch-dominant** (`1.25·(steam% − power%)` + Tavg trim), which glides;
+  the governor overdelivers at held Tavg (demand 700 → ~785 MWe, SG pressure 6.3 MPa) —
+  physics, asserted as such. (2) The RBMK's lumped rod group is worth ~4 %power/step at
+  50 % — single slow-speed steps, ±2 % deadband, kd 15 rate damping, or it limit-cycles.
+  (3) The BWR has **no pressure-restoring control** in load-follow: ANY sustained power
+  descent (even a bare-plant 40→34 % recirc trim) drains vessel pressure to the 5.52 MPa
+  LOCA trip — so the BWR's turbine channel is a **pressure-control PID** (`set_turbine_load`
+  holds `vessel_pressure`, the real BWR governor mode), and the recirc channel slews its
+  power setpoint (0.15 %/s). **Gates:** new `test/run_autoctl.js` 11/11 (all-auto holds ×3
+  plants, demand swing, SP maneuvers, manual+auto mix, HR1 probe, scram stand-down, rewind
+  reset, command-sparseness); engines 13/23/12, M4 11, M5 17, M6 16, M7, campaign 26/26
+  unchanged green; `run_procedures` 20/21 and `verify_e2e_ui` reds pre-existing. Manual:
+  `automate` control entry + AUTO/MAN + Setpoint glossary terms added to the generator and
+  regenerated. Dev deep-links added: `?tab=<tools-tab>` and `?auto=<id,…|all>`.
+
+- **2026-07-07 — Automation under time acceleration (fast-forward handoff) + training
+  presets.** Probed all-auto holds at 60×/600×/3600× per plant. Findings: the BARE plants
+  are acceleration-invariant (per-step physics + engine-side coupling), but broadcast-rate
+  automation is not — above ~200× a broadcast is minutes of sim time and NO sampled
+  controller stabilizes the boiler loops (full-dt PI integration drained every level to its
+  low-level trip; clamped-dt under-integrated 36×; a dt-threshold flapped against the
+  normal/transient cadence flip; the dt-observed first step let one broadcast-rate command
+  slip out — a turbine left in manual for 6 sim-minutes trips low vessel pressure).
+  **Shipped design:** fast regime judged from `metadata.time_acceleration ≥ 200` (correct
+  on the first step). In fast: pid channels with a `fastFallback` hand their loop to the
+  ENGINE's per-step coupling — feed → the new `set_feed_coupled {active}` command (all
+  three engines; re-couples what `set_feedwater_flow` uncouples; CONTEXT §6.7), BWR
+  turbine → `set_load_mode follow`, recirc → hold — and re-assert broadcast-rate control on
+  slow-down (the next setpoint command uncouples again; integrator re-seeded). Rod
+  channels drop to SINGLE steps inside a widened `dbFast` (> per-step power worth) —
+  out-paces xenon drift, immune to the sampling-aliasing limit cycle probed at 3600×
+  (−1/+1/−2/+3/−5 divergence). Slow regime gains true-dt integration (per-action increment
+  capped at 3 design periods) and time-based PV filters (`pvTau`, pass-through at giant
+  dt). Result: 9/9 accel×plant holds green; `run_autoctl.js` now 15 suites (3600× holds ×3,
+  resume-on-slow-down transition). Engines/M4/M5/M6/M7/campaign/procedures unchanged-green.
+  **Training presets:** scenarios and procedures may declare `auto_channels: [ids]` —
+  startScenario/followProcedure engage them after the content's plant reset (on top of the
+  walkthrough stand-down), so a mission can hand the player one control and put the rest of
+  the plant on automatic. No authored content uses it yet (the training-update pass will).
+
+- **2026-07-07 — RBMK Automatic Regulator rod group (resolves F10).** Third RBMK rod group
+  `auto_rods` ("Automatic Regulator (AR)") — the authentic RBMK arrangement: manual bank
+  (coarse, carries the pre-1986 displacer), AR (fine, normally automatic, overridable), AZ
+  shutdown. **Engine:** function `'auto'` takes the pure-absorber branch (NO displacer — the
+  positive scram effect stays exclusively on the manual bank); worth via rod_count 0.06 ≈
+  510 pcm full travel (~2.2 pcm/step vs the manual bank's ~35); **excluded from ORM**
+  (getOrm counts control/manual only) so ORM remains the manual-bank margin — the authored
+  orm_target states (incl. the Chernobyl precondition) and the ORM-driven void amplification
+  are byte-identical; per-state initial insertion `ar_inserted_frac` (mid-range at
+  full_power/50_percent, fully WITHDRAWN at hot_startup/low_power_xenon — historically the
+  ARs had been pulled at Chernobyl); scram drives it in like every group; per-state critical
+  trim absorbs its initial reactivity. RBMK suite 23/23 untouched, Chernobyl comparison
+  green. **Automation:** the `rods_power` channel drives the AR — hold tightens from ±4-5%
+  (one manual step ≈ 4% power) to ±1% at 10× (PV low-pass added: power noise σ0.5 ≈ the AR's
+  per-step worth), maneuvers land ±2; fast regime gets `fastBudget: 8` (single 2 pcm steps
+  lose to xenon at 3600× — probed 0.1%/min behind). New `ar_recenter` channel (real RBMK
+  practice): single manual-bank steps when the AR leaves ±25 of mid-insertion, handing the
+  standing burden back to the coarse rods (CI'd: a 50→75% swing exhausts the AR, the manual
+  bank steps in, the AR recovers 20–80%). **UI:** AR card (Auto/Man/Withdraw/Insert) on the
+  RBMK diagram + primary control bars — Auto/Man mirrors the Automate channel (synced per
+  broadcast via data-arsync); touching the drive buttons or Man IS taking manual control
+  (the pre-accident condition — the Chernobyl beat hook, authored under F11); AR position
+  rows in primary/All views. Manual: `ar_rods` control entry + AR glossary; regenerated.
+  Gates: autoctl 16/16, engines 13/23/12, M4-M7, campaign 26/26, control audits green;
+  `run_procedures` 20/21 pre-existing. **No second manual group** — the AR under manual
+  override IS the fine manual bank (user decision).
+
+- **2026-07-07 — AR defaults to AUTO (the plant's normal lineup).** The RBMK's Automatic
+  Regulator channel engages by DEFAULT on plant load / reset / file load, capturing the
+  CURRENT indicated power as its setpoint — never an authored number, which would fight
+  every non-full-power state (at the Chernobyl precondition it would try to drag a poisoned
+  core from 7% back up). Guard: `defaultOn(snapshot)` engages only where the state parks
+  the AR with authority (20–80% inserted → full_power / 50_percent) and never on a
+  scrammed/melted plant — hot_startup and low_power_xenon start the AR withdrawn, so they
+  stay MAN (historical, and automation must not run the startup or fight the accident
+  setup). Instructed content is unaffected: startScenario now stands automation down
+  explicitly after the rebuild (then applies its authored `auto_channels`), walkthroughs
+  already did. Machinery is general (`AutoControl.engageDefaults`), data per channel.
+  Gates: autoctl 17/17 (default-lineup suite incl. scram guard + capture check), RBMK
+  23/23, M6 16/16, campaign 26/26; headless UI confirms RBMK loads AR=AUTO (card synced
+  green) and the PWR still loads rods=MAN.
+
+- **2026-07-07 — Training pass for automation + the AR (resolves F11).** Two new campaign
+  missions and the Chernobyl tie-in. **`rbmk_ar` "The Steady Hand"** (RBMK Act II opener,
+  pre-1986 at 50%): the auto_channels preset (`rods_power`,`ar_recenter`) has the AR
+  holding power from the first second; the player takes MANUAL control (driving the AR
+  disengages its channel), feels the uncorrected sag, restores 50% by hand, and hands it
+  back with AUTO — graded via `operator_action {group_id:'auto_rods'}` + power thresholds,
+  Continue via a `manual`-trigger BRANCH (house semantics learned the hard way: when a beat
+  has branches, branches are its ONLY exits — a sequential `manual` beat never fires).
+  Closing card and the trip-catch card both point at Act III. **`pwr_automation` "Hands
+  Off"** (PWR Act III closer): everything on auto except the grid (preset = 6 channels);
+  the player is the dispatcher — 1000→700→1000 MWe on the load slider alone, with an
+  honest attribution card (physics does the coarse follow, channels trim) and an HR1
+  warning (automation trusts the same lying gauges). **The bare plant TRIPS on the 700
+  swing** (Tavg → ~319 °C with nobody trimming; probed) — the mission genuinely needs its
+  preset, so the campaign gate gained `startScenarioAuto()`: a UI-faithful harness that
+  attaches an AutoControl and engages the scenario's auto_channels (first real exercise of
+  the preset mechanism end-to-end). **rbmk_chernobyl intro** now reads the AR card too —
+  regulators spent, crew flying manual, "the seat you sat in for three minutes at an easy
+  fifty percent" — with the AR card highlighted (PD_LABELS gained the label). **Gate
+  additions:** mission counts pwr 20 / rbmk 9; auto_channels ids validated against the
+  AutoControl catalog; functional playthroughs for both missions incl. scram-catch
+  branches. Deliberately NOT done: presets on pre-existing missions (their triggers are
+  tuned against bare-plant trajectories — TMI/Fukushima/qualify stay bare by design), and
+  both new missions are UNGATED (the automation issues commands down the gated path; a
+  gate that admits the player must admit the machine). Gates: campaign 29/29 (882),
+  autoctl 17/17, M5/M6/M7/scenarios/manual-follow green; procedures 20/21 pre-existing.
+
+- **2026-07-07 — Campaign fully unlocked (user direction).** Every mission in every
+  campaign is playable from the start: the act ordering is a recommended PATH with
+  progress markers (✓ done, ▶ frontier, ○ not yet — the frontier still drives the
+  "Continue campaign" button), not a gate. Sequential unlock and its `?campaign=unlock`
+  dev override are retired (`buildCampaign()` simplification; campaign_data.js header and
+  the plan doc updated). Completion tracking unchanged. Campaign gate 29/29; headless UI:
+  zero locks, 21/21 PWR entries carry Start/Replay.
+
+- **2026-07-07 — PWR turbine governor: pressure-compensated load control.** The governor
+  moves from open-loop (valve = demand; delivered = valve × P_sg/P_rated, overdelivering
+  ~12% at held Tavg — a 700 MWe ask ran the SG to 6.3 MPa and delivered ~785) to **EHC
+  load-control**: the valve TARGET is pressure-compensated (demand ÷ P/P_rated, clamped
+  fully open; 0.5 MPa floor), so steady-state delivered steam ≈ demand at any secondary
+  pressure — the valve strokes open as pressure falls, like a real governor holding load.
+  Identical at rated pressure; valve lag unchanged. One-line engine change
+  (`pwr_steam_generator.js`); PWR suite 13/13 first run (TMI/steam-break/trip untouched);
+  ops probes IMPROVED (51/66→52/66, 18→16 failed checks). **The load-coupling physics
+  changed character** — recalibrated content: bare-plant demand map is now 900→90.0%
+  exact; 800/700 → ~84% at the STEAM-DUMP ceiling (Tavg climbs ~+22–25 °C to the dump
+  setpoint, HI TAVG warning annunciates — 5 °C real margin to the 335 trip, 25σ through
+  the instrument); 500 still trips (sg_level low). Follow mode lost its accidental
+  restoring force (the overdelivery), so `pwr_tour`'s restore is now an explicit ask back
+  to 1000 then FOLLOW (beat + scripted test updated). `pwr_load_follow`'s night watch now
+  OWNS the amber (dump lifting + HI TAVG acknowledged — a better lesson: the plant asking
+  for reactivity support in lights). `pwr_feedback`'s two demos got CLEANER: with the draw
+  truly pinned, the rod shove is wrestled ALL the way back (spike 58% → settle 50.2%,
+  entire +ρ banked as Tavg +8 °C) and the 650 ask is fully delivered (643 MWe, Tavg
+  −25 °C paying for it) — both registers rewritten to the probed numbers. All-auto demand
+  700 now settles 725 (was 785); autoctl assertion updated (72±5). Manual regenerated
+  (noise-level diffs only). RBMK/BWR turbines unchanged (they already deliver the ask;
+  the BWR's pressure control lives in the automation channel). Gates: PWR 13/13, campaign
+  29/29 (882), autoctl 17/17, procedures 20/21 + e2e reds pre-existing, M4–M7 green.

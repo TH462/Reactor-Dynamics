@@ -90,7 +90,11 @@
     var s = this.s, d = this.cfg.kinetics.delayed;
     var sumLC = 0;
     for (var i = 0; i < 6; i++) sumLC += d.lambda_i[i] * s._C[i];
-    var dP = ((rho - d.beta) / d.Lambda) * s._P + sumLC;
+    // The constant neutron source gives the subcritical core its 1/M behavior:
+    // P_eq = S·Λ/(−ρ), so power visibly climbs as the operator approaches
+    // criticality instead of sitting dark until it is too late (the teaching cue
+    // real source-range instruments provide). Negligible at power.
+    var dP = ((rho - d.beta) / d.Lambda) * s._P + sumLC + (this.cfg.kinetics.source || 0);
     for (var j = 0; j < 6; j++) {
       var dC = (d.beta_i[j] / d.Lambda) * s._P - d.lambda_i[j] * s._C[j];
       s._C[j] += dC * dt;
@@ -165,6 +169,26 @@
     }
   };
 
+  PWREngine.prototype._loadModeOpts = function () {
+    var cfg = this.cfg;
+    return {
+      mweRated: cfg.turbine.mwe_rated,
+      setLoad: function (s, mwe, rated) {
+        s.steam_demand_mwe = mwe;
+        s.turbine_demand_frac = clip(mwe / rated, 0, 1.2);
+        s.generator_load = s.turbine_demand_frac;
+      },
+      setFeed: function (s, frac) {
+        if (s.main_feedwater_available) s.feedwater_demand_frac = frac;
+      },
+      tripFn: SG.tripTurbine,
+    };
+  };
+
+  PWREngine.prototype._stepLoadMode = function (dt) {
+    RD.LoadMode.step(this.s, dt, this._loadModeOpts());
+  };
+
   // ====================================================== the per-step compute
   PWREngine.prototype.step = function (dt_effective) {
     var s = this.s;
@@ -197,6 +221,8 @@
     PZ.stepLevel(s, this.cfg, dt);
     // 10. Flows — pumps, coastdown.
     PR.stepFlow(s, this.cfg, dt);
+    // 10b. Load mode — turbine load + coupled feedwater track reactor (or manual/disconnected).
+    this._stepLoadMode(dt);
     // 11. SG steam pressure/flow, feedwater/AFW.
     SG.stepSecondary(s, this.cfg, dt);
     // 12. Turbine / condenser.
@@ -253,7 +279,10 @@
     // period(s) = P/Ṗ. Both are well-defined only above a small power floor.
     var p = s.power_pct, pr = s._power_rate || 0;
     var sur = 0, period = Infinity;
-    if (p > 0.1) { sur = 26.06 * (pr / p); period = Math.abs(pr) > 1e-6 ? p / pr : Infinity; }
+    // Live down into the source range (the startup teaching band): with the
+    // neutron source the subcritical floor is ~1e-4 %, so a 1e-6 % floor keeps
+    // SUR defined through the whole approach to criticality.
+    if (p > 1e-6) { sur = 26.06 * (pr / p); period = Math.abs(pr) > 1e-8 ? p / pr : Infinity; }
     return {
       power_pct: s.power_pct, tavg_c: s.tavg_c, thot_c: s.thot_c, tcold_c: s.tcold_c,
       pressure_mpa: s.pressure_mpa, pzr_level_pct: s.pzr_level_pct, sg_level_pct: s.sg_level_pct,
@@ -262,11 +291,14 @@
       mwe_output: s.mwe_output, subcooling_c: s.subcooling_c, core_inventory_pct: s.core_inventory_pct,
       fuel_temp_c: s.fuel_temp_c, decay_heat_pct: s.decay_heat_pct, xenon_pct_eq: s.xenon_pct_eq,
       boron_ppm: s.boron_ppm, porv_open: s.porv_open, porv_stuck: s.porv_stuck,
+      block_valve_open: s.block_valve_open,   // scenario-trigger hook (memory-free isolation grading)
       hpi_active: s.hpi_active, hpi_flow_normalized: s.hpi_flow_normalized, afw_active: s.afw_active,
       pump_running: s.pump_running, pump_flow_pct: s.pump_flow_pct, station_blackout: s.station_blackout,
       turbine_rpm: s.turbine_rpm, condenser_vacuum_kpa: s.condenser_vacuum_kpa,
       condenser_cooling_available: s.condenser_cooling_available,
       scrammed: s.scrammed, melted: s.melted, steam_demand_mwe: s.steam_demand_mwe,
+      load_mode: s.load_mode, load_target_mwe: s.load_target_mwe,
+      load_imbalance_mwe: s.load_imbalance_mwe, sg_imbalance_active: s.sg_imbalance_active,
       reactivity_pcm: (s._rho || 0) * 1e5, startup_rate_dpm: sur, reactor_period_s: period,
       // §8.8 instrument sources — TRUE sim flows/positions (indications ≠ command setpoints):
       charging_flow_actual: (s.charging_pump_running === false ? 0 : s.charging_flow),
@@ -299,13 +331,23 @@
       porv_block_open: s.block_valve_open,
       heater_power_pct: s.heater_power_frac * 100,
       spray_valve_pct: s.spray_flow_frac * 100,
+      // Auto/manual mode of the pressurizer pressure controls (null override =
+      // the engine's proportional auto) — surfaced for the UI's Automate tab,
+      // mirroring the steam_dump_auto precedent below.
+      heater_auto: s.heater_override == null,
+      spray_auto: s.spray_override == null,
       // CVCS commands: charging_flow_normalized is the operator SETPOINT (what the
       // charging valve is commanded to), NOT the true flow — under AUTO make-up the
       // true flow (instruments.charging_flow) modulates away from this setpoint.
       charging_flow_normalized: s.charging_setpoint, letdown_flow_normalized: s.letdown_flow,
       charging_pump_running: s.charging_pump_running, cvcs_auto: s.cvcs_auto, boron_adjust: s.boron_adjust,
       feedwater_flow_pct: s.feedwater_demand_frac * 100,
+      feed_auto_coupled: s.feed_auto_coupled,
       steam_demand_mwe: s.steam_demand_mwe,
+      load_mode: s.load_mode,
+      load_target_mwe: s.load_target_mwe,
+      sg_imbalance: s.sg_imbalance_active
+        ? (s.load_imbalance_mwe > 0 ? 'filling' : 'draining') : 'balanced',
       steam_dump_pct: s.steam_dump_frac * 100,
       steam_dump_auto: s.steam_dump_override == null,
       governor_valve_pct: s.governor_valve_pct,   // turbine admission valve (engine-driven; read-only)
@@ -351,13 +393,36 @@
       case 'scram':
         if (!s.scram_blocked) this._scram();
         break;
+      case 'set_load_mode':
+        RD.LoadMode.setMode(s, cmd.mode, { tripFn: SG.tripTurbine, rated: this.cfg.turbine.mwe_rated });
+        break;
+      case 'set_load_target':
+        s.load_mode = 'manual';
+        s.load_target_mwe = cmd.mwe;
+        break;
+      case 'disconnect_grid':
+        RD.LoadMode.disconnect(s, SG.tripTurbine);
+        break;
+      case 'connect_grid':
+        RD.LoadMode.setMode(s, 'follow', { rated: this.cfg.turbine.mwe_rated });
+        if (s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
+        break;
       case 'set_steam_demand':
+        s.load_mode = 'manual';
+        s.load_target_mwe = cmd.mwe;
         s.steam_demand_mwe = cmd.mwe;
         s.turbine_demand_frac = clip(cmd.mwe / this.cfg.turbine.mwe_rated, 0, 1.2);
         s.generator_load = s.turbine_demand_frac;
+        if (s.turbine_demand_frac > 0 && s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
         break;
       case 'set_feedwater_flow':
+        s.feed_auto_coupled = false;
         s.feedwater_demand_frac = clip(cmd.pct / 100, 0, 1.2);
+        break;
+      case 'set_feed_coupled':
+        // Re-couple feedwater to load (the init default; set_feedwater_flow
+        // uncouples). Used by the operator-automation layer during fast-forward.
+        s.feed_auto_coupled = !!cmd.active;
         break;
       case 'set_heater':
         // {auto:true} returns to the proportional auto-control; {power_pct} is a manual override.
@@ -447,6 +512,8 @@
 
   PWREngine.prototype._scram = function () {
     this.s.scrammed = true;
+    // Reactor trip → turbine trip / load rejection (realistic interlock).
+    RD.LoadMode.disconnect(this.s, SG.tripTurbine);
     // Decay heat is tracked continuously (it already holds the equilibrium value
     // for the power just before scram); it now persists and decays as P collapses.
     this.rod_groups.forEach(function (g) {
@@ -599,7 +666,10 @@
 
     var d = cfg.kinetics.delayed;
     var C = [];
-    for (var i = 0; i < 6; i++) C[i] = init.subcritical ? 0 : (d.beta_i[i] / d.lambda_i[i]) * P0 / d.Lambda;
+    // Precursors at equilibrium with P0 for every state — a subcritical core
+    // holding source equilibrium included (with the source term, HZP's P0 IS the
+    // −margin equilibrium: P_eq = S·Λ/margin), so nothing drifts at reset.
+    for (var i = 0; i < 6; i++) C[i] = (d.beta_i[i] / d.lambda_i[i]) * P0 / d.Lambda;
 
     var s = {
       sim_time: 0,
@@ -648,6 +718,9 @@
       governor_valve_pct: clip(P0, 0, 1) * 100,
       condenser_cooling_available: true, steam_demand_mwe: P0 * cfg.turbine.mwe_rated,
       mwe_output: P0 * cfg.turbine.mwe_rated,
+      load_mode: 'follow', load_target_mwe: P0 * cfg.turbine.mwe_rated,
+      load_follow_tau: RD.LoadMode.DEFAULT_TAU, feed_auto_coupled: true,
+      load_imbalance_mwe: 0, sg_imbalance_active: false,
 
       scrammed: false, melted: false, fuel_damaged: false, destruction_cause: 'none',
       scram_blocked: false,
@@ -666,15 +739,20 @@
     cg.steps = Math.round(opPct / 100 * cg.max_steps);
     this._updateRodDerived(cg);
 
-    // Hot standby: hold NOP temperature/pressure (M1 §10) — not the low-T power∝0 equilibrium.
+    // Hot standby: hold no-load temperature/pressure (M1 §10) — the SELF-
+    // CONSISTENT no-load equilibrium: the secondary saturates at the steam-dump
+    // setpoint (its pressure-mode no-load point), tavg sits at that saturation
+    // temperature with no hot/cold split (no power), and heat transfer is ~zero.
+    // Starting exactly here means no reset transient — nothing drifts.
     if (init.at_operating_temp) {
-      var eq = this._computeEquilibriumTemps(1.0);
-      s.tavg_c = eq.Tavg;
-      s.thot_c = eq.Thot;
-      s.tcold_c = eq.Tcold;
-      s.t_secondary_c = eq.Tsec;
-      s.fuel_temp_c = eq.Tavg;   // negligible fission: fuel near coolant (decay preloaded below)
-      s.subcooling_c = TH.T_sat(cfg.pressurizer.P_equilibrium) - eq.Tavg;
+      var Tnl = TH.T_sat(cfg.steam_generator.steam_dump_setpoint);
+      s.tavg_c = Tnl;
+      s.thot_c = Tnl;
+      s.tcold_c = Tnl;
+      s.t_secondary_c = Tnl;
+      s.steam_pressure_mpa = cfg.steam_generator.steam_dump_setpoint;
+      s.fuel_temp_c = Tnl;       // negligible fission: fuel near coolant (decay preloaded below)
+      s.subcooling_c = TH.T_sat(cfg.pressurizer.P_equilibrium) - Tnl;
       s._Q_coolant_to_sg = 0;
       s._dTavg_dt = 0;
       // Recent-shutdown decay maintains hot loop while subcritical (not scrammed — HZP lineup).
@@ -878,6 +956,23 @@
         ck('fission collapsed', t.power_pct.toFixed(3), t.power_pct < 5, '< 5%');
         ck('decay heat persists ~7%→', t.decay_heat_pct.toFixed(2), t.decay_heat_pct > 4 && t.decay_heat_pct < 8, '4..8%');
         ck('rods inserted', h.eng.s.power_pct >= 0, h.eng._controlGroup().steps < 30, 'control rods in');
+        ck('load disconnected on scram', h.eng.s.load_mode, h.eng.s.load_mode === 'disconnected', 'disconnected');
+        ck('steam demand zero', t.steam_demand_mwe.toFixed(0), t.steam_demand_mwe === 0, '0');
+      });
+    },
+
+    load_mode_follow: function () {
+      return test('Load mode — follow reactor keeps SG balanced on rod insert', function (ck) {
+        var h = new Harness('hot_full_power');
+        h.run(10);
+        ck('default follow mode', h.eng.s.load_mode, h.eng.s.load_mode === 'follow', 'follow');
+        ck('feed coupled', h.eng.s.feed_auto_coupled, h.eng.s.feed_auto_coupled === true, 'true');
+        h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -15 });
+        h.run(180);
+        var t = h.ts();
+        ck('power fell', t.power_pct.toFixed(1), t.power_pct < 90, '< 90%');
+        ck('load target tracked down', h.eng.s.load_target_mwe.toFixed(0), h.eng.s.load_target_mwe < 950, '< 950 MWe');
+        ck('SG level stable (no runaway fill)', t.sg_level_pct.toFixed(0), t.sg_level_pct < 88, '< 88%');
       });
     },
 
@@ -1058,6 +1153,7 @@
 
   PWRScenarioTests.runAll = function () {
     var order = ['steady_full_power', 'hot_zero_power_standby', 'steady_50_percent', 'control_response', 'shutdown_scram',
+      'load_mode_follow',
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore'];
     var results = [];

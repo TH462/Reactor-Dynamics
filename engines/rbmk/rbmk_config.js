@@ -35,6 +35,12 @@
 
     kinetics: {
       delayed: DELAYED,
+      // Constant neutron source (normalized power/s) — subcritical multiplication,
+      // same treatment as the PWR: P_eq = source·Λ/(−ρ) so the hot_startup state
+      // holds a stable source-range level (~5e-5 rated at its rod margin) and the
+      // approach to criticality is visible 1/M behavior. Negligible at power
+      // (ρ-shift at rated ≈ 0.03 pcm; at low_power_xenon ≈ 0.4 pcm). [tune]
+      source: 6.0e-4,
       // Decay heat: two-term exponential, same form as the other engines (§3).
       decay: { H1_0: 0.05, H2_0: 0.02, lambda_1: 0.0005, lambda_2: 0.00002 }, // s^-1 [tune]
       // Xenon / iodine (§5.5). fixed γ/λ; sigma_phi & xenon_worth [tune].
@@ -129,6 +135,18 @@
       // worth_pcm feeds the ORM rod-equivalent ratio (control/manual only).
       groups: [
         { id: 'control_rods',  name: 'Control Rods',  function: 'control',  rod_count: 1.0, worth_pcm: 8000, displacer: true },
+        // Automatic Regulator (AR) — the RBMK's fine power-regulation rods (the
+        // real ~12 AR/LAR rods vs ~200 manual). Small worth via rod_count
+        // scaling (0.06 × k_abs ≈ 510 pcm full travel, ~2 pcm/step vs the
+        // manual bank's ~35), NO displacer (function 'auto' takes the
+        // pure-absorber branch — the positive scram effect stays exclusively on
+        // the manual bank), EXCLUDED from ORM (getOrm counts control/manual
+        // only, so ORM remains the MANUAL-bank margin and the authored
+        // orm_target states — incl. the Chernobyl precondition — and the
+        // ORM-driven void amplification are untouched). Normally driven by the
+        // operator-automation layer; overridable to manual (the pre-accident
+        // condition). Initial insertion per state: initial_states.ar_inserted_frac.
+        { id: 'auto_rods',     name: 'Automatic Regulator (AR)', function: 'auto', rod_count: 0.06, worth_pcm: 500, displacer: false },
         { id: 'shutdown_rods', name: 'Emergency Protection (AZ)', function: 'shutdown', rod_count: 0.2, worth_pcm: 0, displacer: false },
       ],
     },
@@ -150,7 +168,11 @@
     // orm_display is COMPUTED (no lag/noise) and routed through a failure override
     // (§13). Status booleans carry no lag/noise.
     instruments: {
-      power_range:    { lag: 0.5, noise: 0.5,   range: [0, 120] },
+      // power_range top-of-range must exceed the 120% trip setpoint: a reading
+      // pegged AT the setpoint can never strictly cross it (the pre-1986 power
+      // trip was unfireable with the old [0,120] cap). 200% also lets the meter
+      // show the front of an excursion before it pegs.
+      power_range:    { lag: 0.5, noise: 0.5,   range: [0, 200] },
       steam_pressure: { lag: 0.5, noise: 0.014, range: [0, 10.3] },
       drum_level:     { lag: 2.0, noise: 0.5,   range: [0, 100] },
       channel_flow:   { lag: 1.0, noise: 1.0,   range: [0, 120] },
@@ -160,28 +182,33 @@
       turbine_rpm:      { lag: 0.5, noise: 3.0,   range: [0, 3600] },   // BOP
       condenser_vacuum: { lag: 5.0, noise: 0.34,  range: [0, 102] },    // kPa, BOP
       mwe_output:       { lag: 0.5, noise: 2.0,   range: [0, 1200] },   // MWe, BOP
+      startup_rate:     { lag: 2.0, noise: 0.02,  range: [-5, 10] },    // SUR (dpm) — feeds the rod-withdrawal interlock
       status: ['rps_scrammed', 'eps_bypassed', 'orm_alarm_active'],
     },
 
     // ---------------------------------------------------------- named init states
     // power normalized (1.0 = rated). orm_target sets the control-group insertion
     // (ORM ≈ orm_target). flow_pct = channel flow setpoint. xenon_factor = X/X_eq.
+    // ar_inserted_frac = Automatic Regulator initial insertion (0 = withdrawn,
+    // 0.5 = mid-range, authority both ways). Stable operating states park the AR
+    // mid-range; startup and the accident precondition start it fully WITHDRAWN
+    // (historically the ARs had been pulled out trying to hold power at Chernobyl).
     initial_states: {
-      full_power:     { power: 1.0,  orm_target: 70.0, flow_pct: 100.0, xenon_factor: 1.0 },
+      full_power:     { power: 1.0,  orm_target: 70.0, flow_pct: 100.0, xenon_factor: 1.0, ar_inserted_frac: 0.5 },
       // A stable partial-power operating point for maneuvering practice (matches
       // the PWR's 50_percent envelope). At reduced power the control group sits
       // deeper (higher ORM target) than at full power, so the starting rod position
       // visibly tracks the starting power; flow reduced with power. rho_excess
       // re-trims per state, so the point is still exactly critical.
-      '50_percent':   { power: 0.5,  orm_target: 90.0, flow_pct: 80.0,  xenon_factor: 1.0 },
+      '50_percent':   { power: 0.5,  orm_target: 90.0, flow_pct: 80.0,  xenon_factor: 1.0, ar_inserted_frac: 0.5 },
       // Hot standby / approach-to-criticality start: low power, no xenon, flow
       // established. Trimmed critical per-state at orm_target, then the control
       // group is inserted `subcrit_margin_steps` further so it starts SUBCRITICAL;
       // the operator withdraws rods (slowly!) to go critical and ascend. Works on
       // both versions (per-state void_ref pinning avoids a standing void offset).
       hot_startup:    { power: 0.02, orm_target: 55.0, flow_pct: 70.0,  xenon_factor: 0.0,
-                        subcritical: true, subcrit_margin_steps: 25 },
-      low_power_xenon:{ power: 0.07, orm_target: 7.5,  flow_pct: 60.0,  xenon_factor: 1.35 },
+                        subcritical: true, subcrit_margin_steps: 25, ar_inserted_frac: 0.0 },
+      low_power_xenon:{ power: 0.07, orm_target: 7.5,  flow_pct: 60.0,  xenon_factor: 1.35, ar_inserted_frac: 0.0 },
     },
   };
 

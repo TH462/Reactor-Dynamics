@@ -11,6 +11,7 @@
 var path = require('path');
 function load(p) { require(path.join(__dirname, '..', p)); }
 [
+  'engines/load_mode.js',
   'engines/pwr/pwr_config.js', 'engines/pwr/pwr_protection.js', 'engines/pwr/pwr_thermal.js',
   'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js',
   'engines/pwr/pwr_instruments.js', 'engines/pwr/pwr_engine.js',
@@ -173,6 +174,32 @@ T.push(test('Save / restore — layer runtime state round-trips', function (ck) 
   ck('register restored', s.layer.register, s.layer.register === 'learning', 'learning');
   ck('active failure + severity restored', JSON.stringify(s.layer.getActiveFailures()), s.layer.getActiveFailures().length === 1 && Math.abs(s.layer.getActiveFailures()[0].severity - 0.4) < 1e-9, '[{sgtr,0.4}]');
   ck('alarm ack state restored', s.alarm('high_tavg').state, s.alarm('high_tavg').state === 'active_acknowledged', 'active_acknowledged');
+}));
+
+T.push(test('Interlock — rod withdrawal blocked on high startup rate (HR1: reads the instrument)', function (ck) {
+  var s = new Stack('hot_full_power');
+  s.run(1);
+  var ok = s.cmd({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'slow' });
+  ck('withdrawal free with SUR normal', JSON.stringify(ok), !(ok && ok.type === 'blocked'), 'not blocked');
+  s.cmd({ action: 'rod_stop_all' });
+  // Force the SUR INSTRUMENT high (truth stays calm) — the interlock must follow
+  // the indication, like every other automatic decision (HR1).
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'startup_rate', mode: 'stuck', value: 4.0 });
+  s.run(0.5);
+  var b1 = s.cmd({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'slow' });
+  ck('withdrawal blocked with a labelled refusal', JSON.stringify(b1), b1 && b1.type === 'blocked' && b1.code === 'INTERLOCK', '{type:blocked, code:INTERLOCK}');
+  var b2 = s.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 5 });
+  ck('outward nudge blocked too', JSON.stringify(b2), b2 && b2.type === 'blocked', 'blocked');
+  var ins = s.cmd({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'slow' });
+  ck('INSERTION always works (withdrawal_only)', JSON.stringify(ins), !(ins && ins.type === 'blocked'), 'not blocked');
+  s.cmd({ action: 'rod_stop_all' });
+  var alarm = s.alarm('sur_high');
+  ck('SUR HIGH annunciator explains the block', alarm && alarm.state, alarm && alarm.state !== 'clear', 'active');
+  s.cmd({ action: 'clear_instrument_failure', instrument_id: 'startup_rate' });
+  s.run(3);   // reading lags back below clears_below (1.5)
+  var ok2 = s.cmd({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'slow' });
+  ck('interlock clears when the rate settles', JSON.stringify(ok2), !(ok2 && ok2.type === 'blocked'), 'not blocked');
+  s.cmd({ action: 'rod_stop_all' });
 }));
 
 // -------- report --------

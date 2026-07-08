@@ -10,6 +10,7 @@
 'use strict';
 var C = '\x1b[36m', G = '\x1b[32m', R = '\x1b[31m', B = '\x1b[1m', D = '\x1b[2m', X = '\x1b[0m';
 
+require('../engines/load_mode.js');
 [['pwr', ['pwr_config', 'pwr_protection', 'pwr_thermal', 'pwr_pressurizer', 'pwr_primary', 'pwr_steam_generator', 'pwr_instruments', 'pwr_engine']],
  ['rbmk', ['rbmk_protection', 'rbmk_config', 'rbmk_kinetics', 'rbmk_thermal', 'rbmk_rods', 'rbmk_instruments', 'rbmk_engine']],
  ['bwr', ['bwr_config', 'bwr_protection', 'bwr_vessel', 'bwr_recirculation', 'bwr_safety_systems', 'bwr_instruments', 'bwr_engine']]
