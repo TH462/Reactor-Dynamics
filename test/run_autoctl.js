@@ -170,6 +170,31 @@ test('RBMK · auto power maneuver 50→60% on the AR setpoint', function (ck) {
   ck('power reached 60%', t.power_pct.toFixed(1), near(t.power_pct, 60, 2), '60±2');
 });
 
+test('RBMK · AR defaults to AUTO where the state parks it with authority', function (ck) {
+  // The plant's normal lineup (free play / reset / file load): AR in AUTO,
+  // capturing the CURRENT power as its setpoint — never an authored number,
+  // which would fight every non-full-power state.
+  [['full_power', true], ['50_percent', true], ['hot_startup', false], ['low_power_xenon', false]]
+    .forEach(function (tc) {
+      var r = rig('rbmk', tc[0], tc[0] === 'low_power_xenon' ? 'pre_chernobyl' : 'post_chernobyl');
+      r.auto.engageDefaults(r.snap());
+      var c = r.auto.get('rods_power');
+      ck(tc[0] + ' → AR ' + (tc[1] ? 'AUTO' : 'MAN'), c.engaged, c.engaged === tc[1], String(tc[1]));
+      if (tc[1]) {
+        ck(tc[0] + ' setpoint captured from current power', c.sp.toFixed(1),
+          near(c.sp, r.snap().instruments.power_range, 2), 'current power ±2');
+      }
+    });
+  // Scrammed plant: the default must NOT engage (nothing to hold).
+  var rs = rig('rbmk', 'full_power', 'post_chernobyl');
+  rs.cmd({ action: 'manual_scram' });
+  rs.run(10);
+  rs.auto.setPlant('rbmk');
+  rs.auto.engageDefaults(rs.snap());
+  ck('scrammed plant → AR stays MAN', rs.auto.get('rods_power').engaged,
+    !rs.auto.get('rods_power').engaged, 'false');
+});
+
 test('RBMK · AR re-center: manual bank takes the burden at the travel limit', function (ck) {
   // Drive the AR toward its limit with a big setpoint swing and confirm the
   // re-center channel moves the MANUAL bank so the AR recovers authority.

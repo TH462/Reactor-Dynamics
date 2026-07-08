@@ -1668,3 +1668,18 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   Gates: autoctl 16/16, engines 13/23/12, M4-M7, campaign 26/26, control audits green;
   `run_procedures` 20/21 pre-existing. **No second manual group** — the AR under manual
   override IS the fine manual bank (user decision).
+
+- **2026-07-07 — AR defaults to AUTO (the plant's normal lineup).** The RBMK's Automatic
+  Regulator channel engages by DEFAULT on plant load / reset / file load, capturing the
+  CURRENT indicated power as its setpoint — never an authored number, which would fight
+  every non-full-power state (at the Chernobyl precondition it would try to drag a poisoned
+  core from 7% back up). Guard: `defaultOn(snapshot)` engages only where the state parks
+  the AR with authority (20–80% inserted → full_power / 50_percent) and never on a
+  scrammed/melted plant — hot_startup and low_power_xenon start the AR withdrawn, so they
+  stay MAN (historical, and automation must not run the startup or fight the accident
+  setup). Instructed content is unaffected: startScenario now stands automation down
+  explicitly after the rebuild (then applies its authored `auto_channels`), walkthroughs
+  already did. Machinery is general (`AutoControl.engageDefaults`), data per channel.
+  Gates: autoctl 17/17 (default-lineup suite incl. scram guard + capture check), RBMK
+  23/23, M6 16/16, campaign 26/26; headless UI confirms RBMK loads AR=AUTO (card synced
+  green) and the PWR still loads rods=MAN.

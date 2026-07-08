@@ -148,8 +148,23 @@
     rbmk: [
       { id: 'rods_power', kind: 'rods', group: 'Reactor',
         label: 'AR Rods → Power (automatic regulator)',
-        hint: 'The RBMK\'s Automatic Regulator — a small, fine-stepped rod group (~2 pcm/step vs the manual bank\'s ~35) holding indicated power at the setpoint. Switching it to MAN is taking manual control — the pre-accident condition at Chernobyl. When it runs out of travel, re-center it with the manual bank (or engage the re-center channel).',
+        hint: 'The RBMK\'s Automatic Regulator — a small, fine-stepped rod group (~2 pcm/step vs the manual bank\'s ~35) holding indicated power at the setpoint. Starts in AUTO (the plant\'s normal lineup), capturing the current power; switching it to MAN is taking manual control — the pre-accident condition at Chernobyl. When it runs out of travel, re-center it with the manual bank (or engage the re-center channel).',
         group_id: 'auto_rods', offOnScram: true,
+        // AUTO by default (free play / plant load) — but only where the state
+        // parks the AR with authority (mid-range). Startup and the Chernobyl
+        // precondition start it fully withdrawn → stays MAN (historical, and
+        // automation must not run the startup or fight the accident setup).
+        defaultOn: function (s) {
+          if (s.rps_state && s.rps_state.scrammed) return false;
+          if (s.true_state && (s.true_state.scrammed || s.true_state.melted)) return false;
+          var gs = s.control_state.rod_groups;
+          for (var i = 0; i < gs.length; i++) {
+            if (gs[i].id !== 'auto_rods') continue;
+            var ins = 100 - gs[i].position_pct;
+            return ins >= 20 && ins <= 80;
+          }
+          return false;
+        },
         pv: function (s) { return s.instruments.power_range; },
         sp: { capture: function (s) { return s.instruments.power_range; }, min: 1, max: 110, unit: '%', dp: 1, step: 1 },
         pvTau: 2.0,   // power_range noise σ0.5 ≈ the AR's per-step worth — filter or it hunts noise
@@ -315,6 +330,18 @@
       // leave the plant exactly where automation had it — plus safe stand-down
       if (def.kind === 'rods') this.send({ action: 'rod_stop', group_id: def.group_id });
       if (def.kind === 'bang') { this.send({ action: 'set_boron_adjust', rate: 0 }); c.bangMode = 'idle'; }
+    }
+  };
+
+  // Default lineup for a freshly loaded plant (free play / reset / file load —
+  // NOT instructed content, which stands automation down and uses authored
+  // auto_channels presets): engage every channel whose defaultOn(snapshot)
+  // says the plant normally runs it automatic in this state.
+  AutoControl.prototype.engageDefaults = function (snap) {
+    if (!snap || !snap.metadata || snap.metadata.plant_id !== this.plantId) return;
+    for (var i = 0; i < this.chans.length; i++) {
+      var c = this.chans[i];
+      if (c.def.defaultOn && !c.engaged && c.def.defaultOn(snap)) this.toggle(c.def.id, true, snap);
     }
   };
 

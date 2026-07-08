@@ -813,6 +813,7 @@
     service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
     service.handleCommand({ action: 'start_scenario', scenario_id: id });
     afterPlantChange();          // the scenario may have switched the plant
+    autoStandDown();             // clean board for gating (rebuild engaged the free-play defaults)
     autoPreset(sc.auto_channels);   // authored preset: put listed systems on auto so the mission can focus the player
     diagReset('scenario', { scenario_id: id });
     resetInstrFlow();            // fresh mission → fresh commentary queue
@@ -1791,7 +1792,14 @@
   function rebuildPlantUI() {
     chartBuf = []; smoothed = {};
     buildGauges(); buildGraphParams(); buildInitStates(); buildFailures();
-    if (autoCtl) { autoCtl.setPlant(ui.plant); buildAutomate(); }   // fresh plant → all channels back to manual
+    if (autoCtl) {
+      // Fresh plant → channels reset, then the plant's NORMAL lineup engages
+      // (e.g. the RBMK AR in AUTO holding current power). Instructed content
+      // stands this down again right after (startScenario / followProcedure).
+      autoCtl.setPlant(ui.plant);
+      autoCtl.engageDefaults(service.assembleSnapshot());
+      buildAutomate();
+    }
     buildPlantDisplay();
     var ps = $('pdScram'); if (ps && !ps.classList.contains('fired') && !ps.classList.contains('armed')) ps.textContent = prof().scramShort;
     buildTraining();   // walkthrough list follows the active plant
@@ -2211,7 +2219,7 @@
     service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });
     buildFailures();
-    if (autoCtl) { autoCtl.setPlant(ui.plant); buildAutomate(); }
+    if (autoCtl) { autoCtl.setPlant(ui.plant); autoCtl.engageDefaults(service.assembleSnapshot()); buildAutomate(); }
     // optional ?manual[=section] deep-link — opens the Operator's Manual on load
     var mm = /[?&]manual(?:=([a-z]+))?/.exec(location.search || '');
     if (mm) { if (mm[1]) ui.manualSection = mm[1]; openManual(); }
