@@ -77,11 +77,29 @@
     s._mass = clip(s._mass + dm * dt, 0.0, cfg.primary.mass_max);
     s.core_inventory_pct = s._mass * 100;
 
-    // Voiding forms when the primary reaches saturation (TRUE values) and
-    // inventory is dropping (§6.5).
+    // Two void mechanisms, kept in SEPARATE state (they have different physical effects
+    // and calibrations, and TMI's erosion phase transiently drives the exit to saturation
+    // — so combining them would let the flux term corrupt the TMI pressurizer deception):
+    //
+    //  (1) Inventory-driven (TMI) — primary_void_fraction: the bulk reaches saturation as
+    //      inventory is lost (post-scram, low power). Void scales with the inventory deficit.
+    //      This is the SOLE driver of the pressurizer sat-pull / void-surge (pwr_pressurizer),
+    //      the calibrated TMI deception.
     var true_subcooling = T_sat(s.pressure_mpa) - s.tavg_c;
     s.primary_void_fraction = (true_subcooling <= 0 && s._mass < 1.0)
       ? clip((1.0 - s._mass) * cfg.primary.void_gain, 0, 1) : 0;
+    //  (2) Flux-driven core boiling (steam-line-break / loss-of-flow AT POWER) —
+    //      core_void_fraction: the core exit passes saturation and boils even at full
+    //      inventory. Driven by the raw exit overshoot (pwr_thermal), relaxed with a time
+    //      constant. Its physical bite is the DNB heat-transfer collapse (pwr_thermal
+    //      hFcEffective); it is deliberately NOT wired into the pressurizer couplings above.
+    //      Exposed for indication / scenario triggers; a dedicated pressure coupling is
+    //      deferred to at-power-scenario tuning.
+    var th = cfg.thermal;
+    var overshoot = -(s._subcool_hot_c != null ? s._subcool_hot_c : 1);   // °C past saturation at the exit
+    var core_void_eq = clip(overshoot * (th.void_flux_gain || 0), 0, th.void_flux_max != null ? th.void_flux_max : 0.8);
+    s.core_void_fraction = clip((s.core_void_fraction || 0)
+      + (core_void_eq - (s.core_void_fraction || 0)) / (th.void_flux_tau || 3.0) * dt, 0, 1);
   }
 
   // Step 10 — reactor coolant pumps and flow.

@@ -86,6 +86,18 @@
       coolant_heat_capacity: 20.0, // sets the coolant thermal time constant [tune]
       delta_T_rated: 33.0,         // hot/cold leg split at rated, °C [tune]
       flow_floor: 0.1,             // delta_T saturates: max(flow_frac, 0.1)
+      // DNB / core-exit boiling (steam-line-break / loss-of-flow AT POWER). The hot
+      // leg (core exit) is the DNB datum: subcooled liquid cannot superheat, so thot
+      // is clamped at Tsat and the raw enthalpy rise beyond saturation drives core
+      // boiling instead of more sensible temperature. Heat transfer collapses to
+      // h_fc_dnb once the exit margin to saturation falls to dnb_margin_c (real DNB
+      // — DNBR<1.3 — occurs subcooled, before bulk boiling). Distinct regime from the
+      // inventory-driven void (post-scram, primary.void_gain); combined by max, so
+      // neither perturbs the other. All [tune] — the at-power scenarios arbitrate.
+      dnb_margin_c: 8.0,           // hot-leg subcooling (°C) at which DNB begins [tune]
+      void_flux_gain: 0.02,        // equilibrium core void per °C of exit overshoot [tune]
+      void_flux_max: 0.8,          // ceiling on flux-driven void fraction [tune]
+      void_flux_tau: 3.0,          // s — flux void grows/recovers with this tau [tune]
       fuel_damage_c: 1200.0,       // cladding failure (fixed)
       fuel_melt_c: 2800.0,         // melt (fixed)
     },

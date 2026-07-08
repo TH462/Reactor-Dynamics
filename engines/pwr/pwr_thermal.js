@@ -18,9 +18,14 @@
   function trueSubcooling(s) { return T_sat(s.pressure_mpa) - s.tavg_c; }
 
   // Effective fuel→coolant coupling: degrades on DNB and on core uncovery (§6.1, §6.5).
+  // DNB is judged at the HOT LEG (core exit) — the hot channel dries out first — using
+  // the exit margin computed last step (explicit coupling, CONTEXT §11); this is what
+  // makes DNB reachable at power (steam-line-break / loss-of-flow), where the bulk Tavg
+  // never approaches saturation. Falls back to the bulk margin before the first step.
   function hFcEffective(s, cfg) {
     var t = cfg.thermal;
-    var h = (trueSubcooling(s) <= 0) ? t.h_fc_dnb : t.h_fc;       // DNB at saturation
+    var margin = (s._subcool_hot_c != null) ? s._subcool_hot_c : trueSubcooling(s);
+    var h = (margin <= t.dnb_margin_c) ? t.h_fc_dnb : t.h_fc;     // DNB near the exit saturation
     var mass = s.core_inventory_pct / 100;
     if (mass < cfg.primary.significant_uncover) {                  // < 0.50: heat transfer collapses → 0
       h = Math.min(h, t.h_fc * (mass / cfg.primary.significant_uncover));
@@ -65,11 +70,20 @@
     s.tavg_c += dTavg * dt;
     s._dTavg_dt = dTavg; // pressurizer surge uses this (thermal expansion)
 
-    var delta_T = t.delta_T_rated * s.power_pct / 100 / Math.max(s.flow_frac, t.flow_floor);
-    s.thot_c = s.tavg_c + delta_T / 2.0;
+    // Hot/cold leg split. The RAW enthalpy rise (∝ power/flow) can exceed what
+    // subcooled liquid can carry — at very low flow it is nonphysically large. The
+    // core exit therefore pins at saturation (Tsat): the split is capped at the value
+    // that puts thot exactly there, keeping both legs consistent around tavg, while the
+    // raw exit overshoot (below) is carried as the DNB / core-boiling driver.
+    var Tsat = T_sat(s.pressure_mpa);
+    var delta_T_raw = t.delta_T_rated * s.power_pct / 100 / Math.max(s.flow_frac, t.flow_floor);
+    var thot_raw = s.tavg_c + delta_T_raw / 2.0;
+    s._subcool_hot_c = Tsat - thot_raw;                     // exit margin to saturation (may go < 0)
+    var delta_T = Math.min(delta_T_raw, Math.max(2 * (Tsat - s.tavg_c), 0));
+    s.thot_c = s.tavg_c + delta_T / 2.0;                    // = min(thot_raw, Tsat)
     s.tcold_c = s.tavg_c - delta_T / 2.0;
 
-    s.subcooling_c = trueSubcooling(s); // true diagnostic value
+    s.subcooling_c = trueSubcooling(s); // true diagnostic value (bulk; mirrors the instrument)
   }
 
   // Step 14 — fuel damage / melt endpoint (thresholds fixed).

@@ -1743,3 +1743,33 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   (noise-level diffs only). RBMK/BWR turbines unchanged (they already deliver the ask;
   the BWR's pressure control lives in the automation channel). Gates: PWR 13/13, campaign
   29/29 (882), autoctl 17/17, procedures 20/21 + e2e reds pre-existing, M4–M7 green.
+
+- **2026-07-08 — PWR hot-leg DNB + core voiding (enables steam-line-break / loss-of-flow
+  AT POWER).** Prep for at-power accident scenarios. Two coupled defects in the lumped
+  thermal model: (a) `thot = tavg + ΔT/2` with `ΔT ∝ power/flow` was **unbounded** — at the
+  0.1 flow floor / full power it read `tavg+165` (a subcooled leg at 470 °C, nonphysical);
+  (b) the DNB heat-transfer collapse (`h_fc_dnb`) was gated on **bulk** `trueSubcooling(tavg)
+  ≤ 0`, which needs `tavg=345 °C` — never reached at power, so DNB was **unreachable** and a
+  steam-break/LOFA couldn't bite. Fix, grounded in "subcooled liquid pins at saturation":
+  **thot clamps at Tsat** (leg split capped symmetrically around tavg, killing the artifact);
+  **DNB is judged at the hot leg (core exit)** via a new `_subcool_hot_c` margin and config
+  `dnb_margin_c` (8 °C — real DNBR<1.3 occurs subcooled). Normal full-power hot-leg margin is
+  24.7 °C, so no false trigger; all accident scenarios are post-scram where `thot≈tavg`, so
+  the existing suite is untouched. **Trap found & fixed:** a first cut fed the new flux void
+  into the shared `primary_void_fraction`, whose sat-pull / void-surge couplings are
+  calibrated for the TMI deception — TMI's erosion phase transiently saturates the exit, so
+  the flux term hijacked those couplings and locked the plant into a false saturated
+  equilibrium (TMI recovery stalled at 3.5 °C margin vs the >11.1 target; caught by
+  run_scenarios, NOT the engine suite — the M6 gate earning its keep). Resolution: flux
+  boiling gets its **own** `core_void_fraction` (relaxed, exposed in true_state for
+  indication/triggers), and does **NOT** touch the pressurizer couplings — `primary_void_fraction`
+  is inventory-only again, so TMI is byte-identical. Its physical bite is the DNB
+  heat-transfer collapse alone; a dedicated core-void→pressure coupling is deferred to
+  at-power-scenario tuning (an unscrammed LOFA/ATWS wants heatup-pressurization, the
+  opposite of the TMI sat-pull — do not reuse it). New config: `dnb_margin_c`,
+  `void_flux_gain`, `void_flux_max`, `void_flux_tau` (all `[tune]`, thermal). Probed: LOFA
+  at power now drives thot→Tsat, DNB (h_fc 0.05→0.004), core_void→growth, fuel heatup; a
+  steam-break correctly reads as an OVERCOOLING event (margin widens, power rises via MTC —
+  its hazard is reactivity/PTS, not hot-leg DNB). Manual reference regenerated: no content
+  diff (these are internal coefficients, not manual-surfaced). Gates: PWR 13/13, scenarios
+  3/3, M7 green, procedures 20/21 (the 1 red is pre-existing bwr_sbo_rcic).

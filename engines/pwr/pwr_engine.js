@@ -289,6 +289,8 @@
       steam_flow_normalized: s.steam_flow_normalized, fw_flow_normalized: s.fw_flow_normalized,
       steam_pressure_mpa: s.steam_pressure_mpa,   // secondary SG pressure (additive; for the UI diagram)
       mwe_output: s.mwe_output, subcooling_c: s.subcooling_c, core_inventory_pct: s.core_inventory_pct,
+      core_void_fraction: s.core_void_fraction,   // flux-driven core boiling (DNB at power); 0 in TMI/normal ops
+
       fuel_temp_c: s.fuel_temp_c, decay_heat_pct: s.decay_heat_pct, xenon_pct_eq: s.xenon_pct_eq,
       boron_ppm: s.boron_ppm, porv_open: s.porv_open, porv_stuck: s.porv_stuck,
       block_valve_open: s.block_valve_open,   // scenario-trigger hook (memory-free isolation grading)
@@ -685,6 +687,7 @@
 
       fuel_temp_c: Tfuel, tavg_c: Tavg, thot_c: Tavg + delta_T / 2, tcold_c: Tavg - delta_T / 2,
       t_secondary_c: Tsec, subcooling_c: TH.T_sat(cfg.pressurizer.P_equilibrium) - Tavg,
+      _subcool_hot_c: TH.T_sat(cfg.pressurizer.P_equilibrium) - (Tavg + delta_T / 2), core_void_fraction: 0,
       _Q_total: P0, _Q_coolant_to_sg: P0 * cfg.thermal.heat_gen_coeff, _dTavg_dt: 0, _h_fc_eff: cfg.thermal.h_fc,
 
       pressure_mpa: cfg.pressurizer.P_equilibrium,
@@ -753,6 +756,7 @@
       s.steam_pressure_mpa = cfg.steam_generator.steam_dump_setpoint;
       s.fuel_temp_c = Tnl;       // negligible fission: fuel near coolant (decay preloaded below)
       s.subcooling_c = TH.T_sat(cfg.pressurizer.P_equilibrium) - Tnl;
+      s._subcool_hot_c = TH.T_sat(cfg.pressurizer.P_equilibrium) - Tnl; // no hot/cold split at no load
       s._Q_coolant_to_sg = 0;
       s._dTavg_dt = 0;
       // Recent-shutdown decay maintains hot loop while subcritical (not scrammed — HZP lineup).
