@@ -270,6 +270,7 @@
 
       // The historical identification (~06:20), if the player let it ride.
       { id: 'p3_b15_ident',
+        time_skip: true,   // authored compressed stretch -- the ONLY place the elapsed-time divider renders
         story_min: 147,
         trigger: { type: 'delay', value: 1.0 },
         speed: 1,

@@ -195,7 +195,7 @@
     // Lines land in the persistent chat log (the UI renders a scrolling
     // transcript); commentary remains the single-slot fallback for non-chat
     // scenarios and for gate feedback.
-    if (beat.dialogue && beat.dialogue.length) this._appendChat(beat.dialogue, simTime, beat.story_min != null ? beat.story_min : null);
+    if (beat.dialogue && beat.dialogue.length) this._appendChat(beat.dialogue, simTime, beat.story_min != null ? beat.story_min : null, !!beat.time_skip);
 
     // Scenario actions descend as commands through M4, which places failures
     // correctly (HR7) and applies command interception.
@@ -286,7 +286,10 @@
   // opening). The sim compresses the real accident's hours into minutes; the
   // authored story clock keeps the HISTORICAL durations visible (the "it took
   // 80 minutes" numbers are part of the lesson — Spec §2.2 guardrail).
-  InstructorLayer.prototype._appendChat = function (lines, simTime, storyMin) {
+  // timeSkip — set only by beats that deliberately compress a stretch (the
+  // authored `time_skip: true`): the UI draws its elapsed-time divider ONLY on
+  // these, so an ordinary continuous conversation never shows a time jump.
+  InstructorLayer.prototype._appendChat = function (lines, simTime, storyMin, timeSkip) {
     for (var i = 0; i < lines.length; i++) {
       var l = lines[i];
       if (!l) continue;
@@ -296,6 +299,7 @@
         industry: l.industry || l.learning || '',
         t: simTime != null ? simTime : this._lastSimTime,
         story: (i === 0 && storyMin != null) ? storyMin : null,
+        skip: (i === 0 && timeSkip) ? true : null,
       });
     }
     while (this.chatLog.length > CHAT_LOG_CAP) this.chatLog.shift();

@@ -1873,3 +1873,16 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   dialogue registers, chat_button styles, and interaction tables), scenarios 3/3, procedures
   20/21 (the one FAIL is the pre-existing bwr_sbo_rcic step-3 tuning gap — unchanged by this
   build), manual regenerated (PWR 25 indications).
+
+- **2026-07-09 — TMI-2 chat pacing (playtest feedback).** (1) Transcript lines now REVEAL ONE
+  AT A TIME on a real-time reading cadence (~220 wpm, clamped 1–7 s; display-only — the
+  engine's log/determinism untouched). Chat buttons and the level-complete panel are held back
+  until the exchange has fully revealed; player-outgoing bubbles show immediately; an ack/tag
+  click releases the current reading dwell ("I've read it"); a rebuild over existing history
+  (register switch, restored save) shows the backlog instantly and paces only what follows.
+  (2) Elapsed-time dividers are now OPT-IN per beat (`time_skip: true`, stamped onto the chat
+  entry by the instructor layer): only the authored compressed stretches show "⏱ about N pass"
+  (P1 b14_ident ~2 h; P2 p2_b6/b7/b8; P3 p3_b15_ident). A continuous conversation never shows
+  an artificial time jump — the story-clock timestamps carry the drift silently. Gates re-run
+  green (campaign 36/36, M6 16/16, M6PH 8/8) + browser check: first paint = 1 line, button
+  held during reveal, zero dividers in the lead-in.

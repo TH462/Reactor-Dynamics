@@ -610,11 +610,13 @@
 
   // ============================================================ chat mode (TMI-2 M5)
   // Renders instructor.chat: a persistent multi-speaker transcript with an
-  // in-fiction shift clock, elapsed-time dividers on compressed stretches, and
-  // the pending beat's authored chat button (acknowledge or fast-forward).
-  var chatState = { sid: null, len: 0, rev: -1, reg: null, storySec: null, lastT: null, btnKey: null, skipBid: null, lcKey: null };
+  // in-fiction shift clock, elapsed-time dividers on AUTHORED time skips only,
+  // and the pending beat's chat button (acknowledge or fast-forward).
+  // Lines REVEAL ONE AT A TIME on a real-time reading cadence (conversation,
+  // not a dump) — display-only pacing; the engine's log is untouched.
+  var chatState = { sid: null, shown: 0, nextAt: 0, instantThrough: 0, rev: -1, reg: null, storySec: null, lastT: null, btnKey: null, skipBid: null, lcKey: null };
   function resetChat() {
-    chatState = { sid: null, len: 0, rev: -1, reg: null, storySec: null, lastT: null, btnKey: null, skipBid: null, lcKey: null };
+    chatState = { sid: null, shown: 0, nextAt: 0, instantThrough: 0, rev: -1, reg: null, storySec: null, lastT: null, btnKey: null, skipBid: null, lcKey: null };
     var card = $('instructorCard');
     if (card) card.classList.remove('chat-mode');
   }
@@ -657,13 +659,22 @@
     var prevStory = chatState.storySec;
     var story = chatStorySec(e);
     var h = '';
-    if (prevStory != null && (story - prevStory) > 90) {
+    // Elapsed-time dividers ONLY on authored skips (beat `time_skip: true`) —
+    // an ordinary continuous conversation never shows an artificial time jump,
+    // however far the story clock drifts (the timestamps carry the drift).
+    if (e.skip && prevStory != null && (story - prevStory) > 90) {
       h += '<div class="chat-gap">⏱ ' + mesc(chatGapText(story - prevStory)) + '</div>';
     }
     h += '<div class="chat-line chat-' + mesc(e.speaker) + '">' +
       '<span class="chat-meta">' + chatClock(story) + ' · ' + mesc(CHAT_SPEAKERS[e.speaker] || e.speaker) + '</span>' +
       '<span class="chat-txt">' + mesc(txt) + '</span></div>';
     return h;
+  }
+  // Reading cadence for the one-at-a-time reveal (~220 wpm), clamped so short
+  // annunciator callouts don't flash past and long lines don't stall the flow.
+  function chatDwellS(e) {
+    var w = String(e.learning || '').trim().split(/\s+/).length;
+    return Math.min(7, Math.max(1.0, w / 3.7 + 0.4));
   }
   function chatPendingBeat(s) {
     var sid = s.instructor.scenario_id, bid = s.instructor.current_beat_id;
@@ -679,30 +690,47 @@
     var card = $('instructorCard');
     var cur = $('instrCurrent');
     var rebuild = chatState.sid !== sid || chatState.reg !== ui.register ||
-      chat.log.length < chatState.len || !$('chatLog');
+      chat.log.length < chatState.shown || !$('chatLog');
     if (rebuild) {
+      var freshConversation = chatState.sid !== sid && chat.log.length <= 4;
       resetChat();
       chatState.sid = sid; chatState.reg = ui.register;
+      // Backlog policy: a rebuild over existing history (register switch, a
+      // restored save) shows the past instantly and paces only what follows;
+      // a genuinely new conversation paces from its first line.
+      chatState.instantThrough = freshConversation ? 0 : Math.max(0, chat.log.length - 1);
       cur.classList.remove('instr-standby');
       cur.innerHTML = '<div class="chat-log" id="chatLog"></div><div class="chat-btns" id="chatBtns"></div>';
       if (card) card.classList.add('chat-mode');
     }
     var logEl = $('chatLog');
-    if (chat.rev !== chatState.rev || rebuild) {
-      var h = '';
-      for (var i = chatState.len; i < chat.log.length; i++) {
-        h += chatLineHtml(chat.log[i]);
-      }
-      if (h) {
-        logEl.insertAdjacentHTML('beforeend', h);
-        logEl.scrollTop = logEl.scrollHeight;
-        setFocus('instructor');
-      }
-      chatState.len = chat.log.length;
-      chatState.rev = chat.rev;
+    // One-at-a-time reveal on a real-time reading cadence. Player-outgoing
+    // bubbles appear immediately (they ARE the player's click); everything
+    // else waits its turn behind the line being read.
+    var now = Date.now() / 1000;
+    var revealed = false;
+    while (chatState.shown < chat.log.length) {
+      var e = chat.log[chatState.shown];
+      var instant = chatState.shown < chatState.instantThrough || e.speaker === 'player';
+      if (!instant && now < chatState.nextAt) break;
+      logEl.insertAdjacentHTML('beforeend', chatLineHtml(e));
+      chatState.shown++;
+      chatState.nextAt = now + (instant ? 0.8 : chatDwellS(e));
+      revealed = true;
     }
-    // Buttons / level-complete zone under the transcript.
+    if (revealed) {
+      logEl.scrollTop = logEl.scrollHeight;
+      setFocus('instructor');
+    }
+    chatState.rev = chat.rev;
+    var unrevealed = chatState.shown < chat.log.length;
+    // Buttons / level-complete zone under the transcript — held back until the
+    // conversation has fully played out (no acknowledging unread dialogue).
     var btns = $('chatBtns');
+    if (unrevealed) {
+      if (chatState.btnKey !== '__revealing__') { chatState.btnKey = '__revealing__'; btns.innerHTML = ''; }
+      return;
+    }
     var lc = s.instructor.level_complete;
     if (lc) {
       var lcKey = lc.title + '|' + lc.outcome + '|' + (lc.actions || []).join(',');
@@ -739,6 +767,7 @@
       mesc(label) + '</button>';
   }
   function chatButtonAction(style, speed) {
+    chatState.nextAt = 0;   // the click says "read" — release the reveal queue
     if (style === 'skip') {
       var s = latest, beat = s && s.instructor && chatPendingBeat(s);
       chatState.skipBid = beat ? beat.id : null;
@@ -1219,6 +1248,9 @@
 
   // ============================================================ commands
   function cmd(c) {
+    // A chat interaction click (e.g. the maintenance tag) is the player acting —
+    // release the transcript's reading dwell so the exchange answers promptly.
+    if (c && c.action === 'instructor_interact') chatState.nextAt = 0;
     var r = service.handleCommand(c);
     if (diag) {
       diag.commands.push({ t: latest && latest.metadata ? latest.metadata.sim_time : 0, command: c, blocked: !!(r && r.type === 'blocked'), error: !!(r && r.type === 'error') });

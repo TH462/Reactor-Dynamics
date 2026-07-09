@@ -147,6 +147,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'p2_b6',
+        time_skip: true,   // authored compressed stretch -- the ONLY place the elapsed-time divider renders
         story_min: 60,
         trigger: { type: 'true_state', field: 'core_inventory_pct', direction: 'below', value: 50.0 },
         clear_failures: PHYS.afwRestore.clear_failures,
@@ -162,6 +163,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'p2_b7',
+        time_skip: true,   // authored compressed stretch -- the ONLY place the elapsed-time divider renders
         story_min: 120,
         trigger: TRIG.fuelDamaged,
         speed: 1,
@@ -173,6 +175,7 @@
         advance: 'wait_for_trigger' },
 
       { id: 'p2_b8',
+        time_skip: true,   // authored compressed stretch -- the ONLY place the elapsed-time divider renders
         story_min: 147,
         trigger: ack(),
         chat_button: { style: 'ack', label_learning: 'And the catch?', label_industry: 'Show the termination.' },

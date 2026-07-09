@@ -213,6 +213,7 @@
 
       // ---------------------------------------------- identification (~2 hrs in-story)
       { id: 'b14_ident',
+        time_skip: true,   // authored compressed stretch — the ONLY place the elapsed-time divider renders
         story_min: 147,   // in-fiction clock anchor (03:53 + N min — historical timing)
         trigger: TRIG.identification,
         chat_button: { style: 'skip', label_learning: 'Wait', label_industry: 'Stand by', speed: 60 },
