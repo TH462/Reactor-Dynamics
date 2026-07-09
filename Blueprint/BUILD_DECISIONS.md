@@ -1815,3 +1815,61 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   procedure; PWR 21→22 missions), run_campaign.js load + count + a both-branches functional test
   that asserts peak core_void > 0.02 (DNB genuinely engaged). Headless UI boots with the
   mission. Gates: campaign 31/31 (954), scenarios 3/3, PWR 13/13, M7 green, procedures 20/21.
+
+- **2026-07-09 — TMI-2 three-part training module (M5 TMI2 Spec): `pwr_tmi2_p1/p2/p3` + chat-mode
+  instructor.** Built the full Fog of War / Under a Microscope / Second Watch module as three
+  chained campaign missions (new PWR "Act V — Three Mile Island"; old Act V retitled Act VI;
+  PWR 22→25 missions). One master timeline lives in `scenarios/pwr_tmi2_common.js` (physics
+  fragments + calibrated triggers + the Part 1/Part 3 parity dialogue — lead-in AND the shared
+  accident exchanges are single-sourced per Spec §6/§9; probed full-stack seed 42: scram T+14 s
+  on SG level, PORV lift enacted at the scram, stick+lie at reseat+12 s, auto-HPI T+44, PZR LVL
+  HI T+55, fuel 1200 °C ≈ T+19 min with HPI secured; isolation+HPI recovers fully even from
+  1300 °C, with `fuel_damaged` latched).
+  **Engine additions (PWR):** (1) `porv_tailpipe_temp_c` true state + `porv_tailpipe_temp`
+  instrument (lag 10 s, range 0–250 °C; warm ~82 °C baseline = historical seat leakage, ~150 °C
+  flowing, slow 900 s cooldown after isolation) — the spec's identification beat and deviation
+  point 2 had no signal without it; deliberately UNALARMED (the not-being-looked-at is the
+  lesson). (2) AFW pump-demand/delivered-flow split: `set_afw` latches `afw_pump_demand`
+  through a block; `afw_active` = demand && !blocked; new `afw_pump_running` status instrument
+  drives the synoptic run light (honest RUNNING over zero flow — the 1979 read). The
+  `afw_failure` M4 interception was REMOVED (the block is the engine's `afw_blocked` state;
+  interception would have eaten the pump-demand latch); no test depended on it. (3)
+  `fuel_damaged` surfaced in true_state (outcome grading). Instrument SOURCE entries appended
+  last — PRNG sequences unchanged (save/restore suite still exact).
+  **Instructor layer (generic, data-driven):** beat `dialogue` arrays (speaker + two registers)
+  → persistent `chatLog` (cap 300) surfaced as `instructor.chat {log, rev, interactions}`
+  (chat-mode scenarios only; `null` otherwise — free-play invariant intact, m6ph green);
+  `instructor_interact` internal action + scenario `interactions` tables (request/responses/
+  repeat variants/clear_failures — the tag mechanic; recorded for operator_action triggers);
+  gate denials echo into the chat in character (deduped); beat `story_min` anchors an
+  in-fiction story clock. Save/restore carries chat state.
+  **UI:** chat transcript renderer in the instructor card (speaker-styled bubbles, PLAYER
+  right-aligned, SYS annunciator style; ack + skip buttons from the pending beat's
+  `chat_button`; skip = set_speed 60, the target beat's `speed:1` snaps back); the story clock
+  runs on `story_min` anchors so the HISTORICAL durations survive the sim's ~7:1 compression
+  (dividers literally teach "about 2 hours pass" — Spec §2.2 guardrail); `ui_policy` is now
+  consumed (scenario drives Realistic/Learning synoptic + physics overlay, player settings
+  saved/restored); synoptic gains the clickable maintenance tag (`setTag`, occludes the new
+  `pwAfwValve` glyph, `instructor_interact` on click) and a Tailpipe-temp row on the Relief
+  card.
+  **Decisions / open questions resolved (Spec §7):** Part 3 title kept "Second Watch"; ONE
+  representative AFW discharge valve/tag (spec's own recommendation); AUX formalized as a named
+  character ("Marty") with the chip label kept generic "Aux Operator". Part 1 pacing acks are
+  `any(manual, delay 90–120 s)` — softlock-proof and headless-drivable. Part 3 outcome tiers
+  grade the PLANT (subcooling restored / fuel_damaged latch / inventory refilled), not a
+  deviation checklist: Eventful Shift (full), Plugged-Not-Refilled (isolation w/o make-up),
+  Caught Late (damage then player termination), Holding-Not-Won (HPI tug-of-war, never
+  isolated; 600 s watch branch prevents the softlock — with HPI defended, fuel never reaches
+  the identification threshold), History Repeated (crew terminates at the historical mark).
+  `afw_failure` is injected at scenario START (setup_commands — the tag was hung last shift,
+  true to history) so a pre-accident tag pull works. Known minor edge: pulling the tag AFTER
+  the scripted 8-min discovery replays "found them shut" dialogue against already-open valves
+  (accepted, logged). Historical trip cause differs (sim trips on SG level; 1979 on high
+  pressure) — Part 2's Chief owns the compression/honesty notes (single-sensor, containment,
+  7:1 timeline).
+  **Gates:** PWR 13/13 (PRNG-exact), M4 11/11, M5 17/17, M6 16/16, M6PH 8/8, M7 green,
+  campaign 36/36 (1313 checks — incl. 5 new TMI-2 functional playthroughs: P1 historical +
+  gate-block, P2 replay, P3 full-save + graceful-history; structural gate now also validates
+  dialogue registers, chat_button styles, and interaction tables), scenarios 3/3, procedures
+  20/21 (the one FAIL is the pre-existing bwr_sbo_rcic step-3 tuning gap — unchanged by this
+  build), manual regenerated (PWR 25 indications).

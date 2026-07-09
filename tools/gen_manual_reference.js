@@ -118,6 +118,7 @@ var IND = {
   condenser_vacuum: { n: 'Condenser Vacuum', m: 'Condenser vacuum — needed for the turbine to run.', u: 'kPa' },
   subcooling_margin:{ n: 'Subcooling Margin', m: 'How far the coolant is from boiling (from indicated pressure & temperature). The truth-teller at TMI.', u: '°C' },
   porv_indicator:   { n: 'PORV Position Light', m: 'Relief-valve indicator. Shows the COMMANDED position, which can differ from reality (TMI).', u: '' },
+  porv_tailpipe_temp:{ n: 'PORV Tailpipe Temperature', m: 'Temperature of the relief-valve discharge line. Runs warm (~80 °C) on normal seat leakage; a HOT line (~150 °C) behind a "closed" PORV means the valve is passing steam — the indication that finally revealed TMI.', u: '°C' },
   steam_pressure:   { n: 'Steam-Drum Pressure', m: 'Steam-drum pressure.', u: 'MPa' },
   drum_level:       { n: 'Steam-Drum Level', m: 'Water level in the steam drum.', u: '%' },
   channel_flow:     { n: 'Channel Flow', m: 'Coolant flow through the fuel channels, percent of rated.', u: '%' },

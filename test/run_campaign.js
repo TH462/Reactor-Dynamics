@@ -28,6 +28,7 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'layers/control_failure_layer.js', 'layers/instructor_layer.js', 'layers/simulation_service.js',
   'layers/auto_control.js',
   'scenarios/pwr_hook.js', 'scenarios/pwr_tmi.js', 'scenarios/pwr_sg_flood.js',
+  'scenarios/pwr_tmi2_common.js', 'scenarios/pwr_tmi2_p1.js', 'scenarios/pwr_tmi2_p2.js', 'scenarios/pwr_tmi2_p3.js',
   'scenarios/pwr_tour.js', 'scenarios/pwr_chain_reaction.js', 'scenarios/pwr_feedback.js',
   'scenarios/pwr_xenon.js', 'scenarios/pwr_boron.js', 'scenarios/pwr_load_follow.js',
   'scenarios/pwr_automation.js',
@@ -113,7 +114,7 @@ function settle(s, secs) { var end = s.simTime + secs; var sn; while (s.simTime 
 var TRIGGERS = ['time', 'delay', 'instrument', 'true_state', 'operator_action', 'inaction', 'alarm', 'scram', 'manual', 'all', 'any'];
 // campaign plant → the MANUAL_PROCEDURES engine keys its procedures must exist under
 var ENGINE_KEYS = { pwr: ['pwr'], rbmk: ['rbmk_pre', 'rbmk_post'], bwr: ['bwr'] };
-var EXPECTED_MISSIONS = { pwr: 22, rbmk: 9, bwr: 8 };
+var EXPECTED_MISSIONS = { pwr: 25, rbmk: 9, bwr: 8 };
 
 test('campaign structure — missions resolve, ids unique (all plants)', function (ck) {
   Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
@@ -167,7 +168,26 @@ test('campaign scenarios — beat vocabulary, registers, endpoints', function (c
         ck(id + '.' + b.id + ' has learning register', !!b.commentary.learning, !!b.commentary.learning, 'learning text');
         ck(id + '.' + b.id + ' has industry register', !!b.commentary.industry, !!b.commentary.industry, 'industry text');
       }
+      // Chat-mode dialogue (TMI-2 M5): every line needs a speaker + both registers.
+      (b.dialogue || []).forEach(function (dl, di) {
+        var ok = !!(dl && dl.speaker && dl.learning && dl.industry);
+        ck(id + '.' + b.id + ' dialogue[' + di + '] speaker+registers', ok, ok, 'speaker, learning, industry');
+      });
+      if (b.chat_button) {
+        var cb = b.chat_button;
+        ck(id + '.' + b.id + ' chat_button style legal', cb.style, cb.style === 'ack' || cb.style === 'skip', 'ack|skip');
+      }
       if (b.level_complete) hasLc = true;
+    });
+    // Interaction tables (chat-mode props): request + responses in both registers.
+    Object.keys(sc.interactions || {}).forEach(function (iid) {
+      var it = sc.interactions[iid];
+      var reqOk = !!(it.request && it.request.learning && it.request.industry);
+      ck(id + ' interaction ' + iid + ' request registers', reqOk, reqOk, 'learning+industry');
+      (it.responses || []).concat(it.repeat || []).forEach(function (r, ri) {
+        var rOk = !!(r && r.speaker && r.learning && r.industry);
+        ck(id + ' interaction ' + iid + ' line[' + ri + '] registers', rOk, rOk, 'speaker, learning, industry');
+      });
     });
     ck(id + ' has a level_complete endpoint', hasLc, hasLc, '≥1 level_complete beat');
   });
@@ -734,6 +754,92 @@ test('bwr_qualify — greedy ask overshoots and fails', function (ck) {
   snap = runUntil(s, function (sn) { return lc(sn); }, 1200);
   ck('overshoot reaches an endpoint', !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is the overpower card', lc(snap).title, /Overpower/i.test(lc(snap).title), 'Overpower card');
+});
+
+// ---------------------------------------------------------------- TMI-2 module (M5)
+// Chat-mode scenarios: pacing gates are any(manual, delay) so a periodic
+// Continue (or plain patience) drives them; decision points are plant actions.
+function ackThrough(s, pred, simBudget, actions) {
+  var start = s.simTime, lastAck = s.simTime, snap = null, done = {};
+  for (var guard = 0; guard < 600000; guard++) {
+    snap = s.advanceCycles(1);
+    if (pred(snap)) return snap;
+    if (s.simTime - start > simBudget) return null;
+    if (s.simTime - lastAck > 4) { s.handleCommand({ action: 'instructor_continue' }); lastAck = s.simTime; }
+    (actions || []).forEach(function (a, i) {
+      if (!done[i] && a.when(snap)) { done[i] = true; a.act(s); }
+    });
+  }
+  return null;
+}
+
+test('pwr_tmi2_p1 — Fog of War plays to the historical outcome', function (ck) {
+  var s = startScenario('pwr_tmi2_p1');
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 4000, []);
+  ck('reaches level_complete', !!snap, !!snap, 'level_complete');
+  if (!snap) return;
+  ck('endpoint is the Fog of War card', lc(snap).title, /Fog of War/.test(lc(snap).title), 'Part 1 card');
+  ck('core damage latched (unsoftened ending)', snap.true_state.fuel_damaged, snap.true_state.fuel_damaged === true, 'fuel_damaged true');
+  ck('plant recovered post-isolation', snap.instruments.subcooling_margin,
+    snap.instruments.subcooling_margin > 11.1, '> 11.1 °C');
+  var chat = snap.instructor.chat;
+  ck('chat transcript accumulated', chat && chat.log.length, !!chat && chat.log.length > 40, '> 40 lines');
+  // The tag denial: interaction responds but never grants in Part 1.
+  s.handleCommand({ action: 'instructor_interact', interaction_id: 'afw_tag' });
+  var sn2 = s.advanceCycles(1);
+  var it = sn2.instructor.chat.interactions.afw_tag;
+  ck('Part 1 tag click is denied (never granted)', JSON.stringify(it), it && it.clicks === 1 && !it.granted, 'clicks:1 granted:false');
+});
+
+test('pwr_tmi2_p1 — Part 1 gate blocks plant actions in character', function (ck) {
+  var s = startScenario('pwr_tmi2_p1');
+  var snap = waitBeat(s, 'b1_turnover', 60);
+  ck('lead-in armed', !!snap, !!snap, 'b1 pending');
+  var r = s.handleCommand({ action: 'set_hpi', active: true });
+  ck('plant command blocked by the watch-only gate', r && r.code, !!r && r.code === 'GATED_BY_INSTRUCTOR', 'GATED_BY_INSTRUCTOR');
+  var r2 = s.handleCommand({ action: 'acknowledge_all_alarms' });
+  ck('alarm acknowledge still allowed', r2 == null || r2.type !== 'blocked', r2 == null || r2.type !== 'blocked', 'not blocked');
+});
+
+test('pwr_tmi2_p2 — Under a Microscope replay completes', function (ck) {
+  var s = startScenario('pwr_tmi2_p2');
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 5000, []);
+  ck('reaches level_complete', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the Part 2 card', lc(snap).title, /Microscope/.test(lc(snap).title), 'Part 2 card');
+  if (snap) ck('replay reproduced the damage (truth shown)', snap.true_state.fuel_damaged, snap.true_state.fuel_damaged === true, 'fuel_damaged true');
+});
+
+test('pwr_tmi2_p3 — full save: tag + defended HPI + early isolation', function (ck) {
+  var s = startScenario('pwr_tmi2_p3');
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 4000, [
+    { when: function (sn) { return sn.metadata.sim_time > 20; },
+      act: function (s2) { s2.handleCommand({ action: 'instructor_interact', interaction_id: 'afw_tag' }); } },
+    { when: function (sn) { return sn.metadata.sim_time > 320 && sn.true_state.porv_stuck; },
+      act: function (s2) { s2.handleCommand({ action: 'close_block_valve' }); } },
+  ]);
+  ck('reaches level_complete', !!snap, !!snap, 'level_complete');
+  if (!snap) return;
+  ck('best ending: Eventful Shift', lc(snap).title, /Eventful Shift/.test(lc(snap).title), 'full-save card');
+  ck('no core damage', snap.true_state.fuel_damaged, snap.true_state.fuel_damaged === false, 'fuel_damaged false');
+  ck('tag interaction granted (valves reopened)', snap.instructor.chat.interactions.afw_tag.granted,
+    snap.instructor.chat.interactions.afw_tag.granted === true, 'granted true');
+});
+
+test('pwr_tmi2_p3 — no deviations: history repeats gracefully', function (ck) {
+  var s = startScenario('pwr_tmi2_p3');
+  var complied = { done: false, alarmAt: null };
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 6000, [
+    { when: function (sn) {
+        var al = (sn.alarms || []).some(function (a) { return a.id === 'pzr_level_high' && a.state !== 'clear'; });
+        if (al && complied.alarmAt == null) complied.alarmAt = sn.metadata.sim_time;
+        return complied.alarmAt != null && sn.metadata.sim_time - complied.alarmAt > 6;
+      },
+      act: function (s2) { s2.handleCommand({ action: 'set_hpi', active: false }); } },
+  ]);
+  ck('reaches level_complete', !!snap, !!snap, 'level_complete');
+  if (!snap) return;
+  ck('graceful historical ending', lc(snap).title, /History Repeated/.test(lc(snap).title), 'History Repeated card');
+  ck('core damage (as in 1979)', snap.true_state.fuel_damaged, snap.true_state.fuel_damaged === true, 'fuel_damaged true');
 });
 
 report();

@@ -321,3 +321,11 @@
 .synoptic-stage:not([data-overlay="on"]) .ov-only { display: none !important; }
 /* learning-only elements */
 .synoptic-stage[data-mode="realistic"] .lrn-only { display: none !important; }
+
+/* maintenance tag (TMI-2 M5 scenario prop) — clickable, occludes the AFW valve */
+.pw-loop .pw-tag { cursor: pointer; }
+.pw-loop .pw-tag .tag-body { fill: #b98f2e; stroke: #7a5c14; stroke-width: 1; }
+.pw-loop .pw-tag .tag-hole { fill: #0e1620; stroke: #7a5c14; stroke-width: .8; }
+.pw-loop .pw-tag .tag-cord { stroke: #8a7a4a; stroke-width: 1; }
+.pw-loop .pw-tag .tag-txt { fill: #241a04; font-size: 6px; font-weight: 700; letter-spacing: .04em; }
+.pw-loop .pw-tag:hover .tag-body { fill: #d0a53c; }

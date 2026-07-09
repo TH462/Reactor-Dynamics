@@ -75,6 +75,21 @@
     s.pressure_mpa = Math.max(0.1, s.pressure_mpa + dP * dt);
   }
 
+  // PORV tailpipe / quench-tank line temperature. First-order pull toward the
+  // flowing-discharge temperature while ANY relief flow passes (PORV or code
+  // safeties share the discharge header), and a slow decay back toward the
+  // warm-baseline (leaky-seat) temperature once the line is isolated or the
+  // valve reseats. This is the honest-but-unalarmed indication that revealed
+  // the stuck-open PORV at TMI-2 (~80 min) and Davis-Besse (~20 min).
+  function stepTailpipe(s, cfg, dt) {
+    var p = cfg.pressurizer;
+    if (s.tailpipe_temp_c == null) s.tailpipe_temp_c = p.tailpipe_ambient_c;
+    var flowing = (s.porv_flow + s.safety_flow) > 1e-6;
+    var target = flowing ? p.tailpipe_hot_c : p.tailpipe_ambient_c;
+    var tau = flowing ? p.tailpipe_heat_tau : p.tailpipe_cool_tau;
+    s.tailpipe_temp_c += (target - s.tailpipe_temp_c) * (dt / (tau + dt));
+  }
+
   // Step 8 (pzr part) — pressurizer level. void_surge pushes liquid INTO the
   // pressurizer as the primary voids, raising indicated level even as total
   // inventory falls: the TMI deception (§6.4).
@@ -95,6 +110,7 @@
     relief: relief,
     stepPressure: stepPressure,
     stepLevel: stepLevel,
+    stepTailpipe: stepTailpipe,
   };
 
 })(globalThis.RD || (globalThis.RD = {}));

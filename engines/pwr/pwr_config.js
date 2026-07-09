@@ -138,6 +138,15 @@
       K_thermal_surge: 2.0, K_void_surge: 40.0,    // thermal out-surge on cooldown; was 12 — too aggressive on rod maneuvers [tune]
       level_loss_per_flow: 8.0, K_level: 1.0,    // [tune]
       pzr_level_nominal: 55.0,     // % at hot_full_power
+      // PORV tailpipe / quench-tank temperature (the discharge line downstream of
+      // the PORV and code safeties). Reads WARM at baseline — the seat has always
+      // leaked a little (historically true at TMI-2, and why the crew discounted a
+      // hot tailpipe) — and heats toward the flowing-discharge temperature whenever
+      // relief flow passes. Cools slowly after isolation (a hot pipe stays hot).
+      tailpipe_ambient_c: 82.0,    // baseline with seat leakage [tune]
+      tailpipe_hot_c: 150.0,       // flowing-discharge temperature [tune]
+      tailpipe_heat_tau: 30.0,     // s — heats fast once flow starts [tune]
+      tailpipe_cool_tau: 900.0,    // s — cools slowly after the line is isolated [tune]
     },
 
     // ------------------------------------------------------------------ primary
@@ -267,13 +276,14 @@
       steam_dump_valve:  { lag: 0.3, noise: 0.3,   range: [0, 100] },    // turbine bypass valve % (Animation HR1)
       primary_leak_flow: { lag: 0.2, noise: 0.002, range: [0, 1.0] },    // LOCA/SGTR break flow, normalized (Animation HR1)
       startup_rate:      { lag: 2.0, noise: 0.02,  range: [-5, 10] },    // SUR (dpm) — startup-range rate meter; feeds the rod-withdrawal interlock
+      porv_tailpipe_temp:{ lag: 10.0, noise: 1.5,  range: [0, 250] },    // PORV discharge/quench-tank line temperature — the unalarmed indication that reveals a stuck-open PORV (TMI-2)
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running', 'hpi_active', 'station_blackout',
                'steam_demand_low', 'rod_at_limit',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
-               'afw_active', 'rhr_active', 'lpi_active', 'accumulators_discharging',
+               'afw_active', 'afw_pump_running', 'rhr_active', 'lpi_active', 'accumulators_discharging',
                'condenser_cooling_available', 'safety_relief_active'],
     },
 

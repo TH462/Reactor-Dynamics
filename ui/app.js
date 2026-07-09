@@ -407,6 +407,7 @@
     var snapPlant = s.metadata.plant_id;
     if (snapPlant && ui.plant && snapPlant !== ui.plant) { afterPlantChange(); return; }
 
+    applyUiPolicy(s);
     renderGauges(s);
     renderAlarms(s); renderInstructor(s); renderReactimeter(s); renderFailures(s);
     // alarm tint on the CSF gauge strip while anything is unacknowledged
@@ -519,6 +520,37 @@
     if (fb) { var fast = v >= 600; fb.style.display = fast ? 'block' : 'none'; if (fast) fb.textContent = '⚡ ' + v + '×'; }
   }
 
+  // ---- Scenario ui_policy (TMI-2 M5) — a scenario may drive the synoptic mode
+  // (Realistic quiet board vs Learning full-color), the physics overlay, and the
+  // maintenance-tag prop. The player's own Settings choices are saved on entry
+  // and restored when the scenario unloads.
+  var uiPolicyPrev = null;
+  function applyUiPolicy(s) {
+    var active = s.instructor && s.instructor.scenario_id;
+    var ip = active ? s.instructor.ui_policy : null;
+    var syn = ip && ip.synoptic;
+    if (syn) {
+      if (!uiPolicyPrev) uiPolicyPrev = { diagMode: ui.diagMode, physOverlay: ui.physOverlay };
+      var want = syn === 'realistic' ? 'realistic' : 'learning';
+      var wantOv = want === 'learning' && !!ip.overlay;
+      if (ui.diagMode !== want || ui.physOverlay !== wantOv) {
+        ui.diagMode = want; ui.physOverlay = wantOv; syncOverlayRow();
+      }
+    } else if (uiPolicyPrev) {
+      ui.diagMode = uiPolicyPrev.diagMode; ui.physOverlay = uiPolicyPrev.physOverlay;
+      uiPolicyPrev = null; syncOverlayRow();
+    }
+    // Scenario prop: the maintenance tag over the AFW valve indication. Hidden
+    // once its interaction is granted (the tag comes off the valve).
+    if (RD.PwrSynoptic && RD.PwrSynoptic.setTag) {
+      var tagId = ip && ip.tag;
+      var chat = s.instructor && s.instructor.chat;
+      var granted = !!(tagId && chat && chat.interactions && chat.interactions[tagId] &&
+                       chat.interactions[tagId].granted);
+      RD.PwrSynoptic.setTag(tagId || null, !!tagId && !granted);
+    }
+  }
+
   var lastInstrMsg = null;
   // Commentary min-dwell (playtest fix): the instructor layer keeps only its
   // LATEST message, so a fast beat sequence used to replace a card mid-read
@@ -544,6 +576,10 @@
     var fb = s.instructor && s.instructor.follow;
     if (fb) { ui.follow = { id: fb.procedure_id }; renderFollow(s); return; }
     if (ui.follow) ui.follow = null;              // the snapshot says the follow ended
+    // Chat-mode scenarios (TMI-2 M5): a scrolling multi-speaker transcript
+    // replaces the single-slot commentary card. Level-complete renders inline.
+    if (s.instructor && s.instructor.chat) { renderChat(s); return; }
+    if (chatState.sid) resetChat();
     var lc = s.instructor && s.instructor.level_complete;
     if (lc) { msgHold.queue = []; msgHold.shown = null; renderLevelComplete(s, lc); return; }
     lastLcKey = null;
@@ -570,6 +606,148 @@
         cur.textContent = 'Standing by…'; cur.classList.add('instr-standby');
       }
     }
+  }
+
+  // ============================================================ chat mode (TMI-2 M5)
+  // Renders instructor.chat: a persistent multi-speaker transcript with an
+  // in-fiction shift clock, elapsed-time dividers on compressed stretches, and
+  // the pending beat's authored chat button (acknowledge or fast-forward).
+  var chatState = { sid: null, len: 0, rev: -1, reg: null, storySec: null, lastT: null, btnKey: null, skipBid: null, lcKey: null };
+  function resetChat() {
+    chatState = { sid: null, len: 0, rev: -1, reg: null, storySec: null, lastT: null, btnKey: null, skipBid: null, lcKey: null };
+    var card = $('instructorCard');
+    if (card) card.classList.remove('chat-mode');
+  }
+  var CHAT_SPEAKERS = {
+    sup: 'Shift Supervisor', supx: 'Shift Supervisor', aux: 'Aux Operator',
+    chief: 'Chief', sys: 'ANNUNCIATOR', player: 'You',
+  };
+  // In-fiction wall clock: the shift picks up at 03:53 — the real TMI-2 turbine
+  // trip landed at 04:00:37, seven minutes into anyone's coffee. The clock runs
+  // on the authored STORY timeline (beat `story_min` anchors) so the historical
+  // durations survive the sim's compression — the "it took 80 minutes" numbers
+  // are part of the lesson (Spec §2.2 guardrail). Entries without an anchor
+  // advance the story clock by elapsed sim time since the previous entry.
+  function chatStorySec(e) {
+    if (e.story != null) {
+      chatState.storySec = e.story * 60;
+    } else if (chatState.storySec != null && chatState.lastT != null) {
+      chatState.storySec += Math.max(0, e.t - chatState.lastT);
+    } else {
+      chatState.storySec = 0;
+    }
+    chatState.lastT = e.t;
+    return chatState.storySec;
+  }
+  function chatClock(storySec) {
+    var secs = 3 * 3600 + 53 * 60 + Math.max(0, storySec);
+    var h = Math.floor(secs / 3600) % 24, m = Math.floor((secs % 3600) / 60);
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+  }
+  function chatGapText(gapSec) {
+    var min = Math.round(gapSec / 60);
+    if (min >= 55) {
+      var hr = Math.round(min / 30) / 2;
+      return 'about ' + (hr === Math.floor(hr) ? hr : hr.toFixed(1)) + ' hour' + (hr > 1 ? 's' : '') + ' pass' + (hr > 1 ? '' : 'es');
+    }
+    return min < 2 ? 'a couple of minutes pass' : 'about ' + min + ' minutes pass';
+  }
+  function chatLineHtml(e) {
+    var txt = e[ui.register] || e.learning || '';
+    var prevStory = chatState.storySec;
+    var story = chatStorySec(e);
+    var h = '';
+    if (prevStory != null && (story - prevStory) > 90) {
+      h += '<div class="chat-gap">⏱ ' + mesc(chatGapText(story - prevStory)) + '</div>';
+    }
+    h += '<div class="chat-line chat-' + mesc(e.speaker) + '">' +
+      '<span class="chat-meta">' + chatClock(story) + ' · ' + mesc(CHAT_SPEAKERS[e.speaker] || e.speaker) + '</span>' +
+      '<span class="chat-txt">' + mesc(txt) + '</span></div>';
+    return h;
+  }
+  function chatPendingBeat(s) {
+    var sid = s.instructor.scenario_id, bid = s.instructor.current_beat_id;
+    var sc = sid && RD.SCENARIOS ? RD.SCENARIOS[sid] : null;
+    if (!sc || bid == null) return null;
+    var beats = sc.beats || [];
+    for (var i = 0; i < beats.length; i++) if (beats[i].id === bid) return beats[i];
+    return null;
+  }
+  function renderChat(s) {
+    var chat = s.instructor.chat;
+    var sid = s.instructor.scenario_id;
+    var card = $('instructorCard');
+    var cur = $('instrCurrent');
+    var rebuild = chatState.sid !== sid || chatState.reg !== ui.register ||
+      chat.log.length < chatState.len || !$('chatLog');
+    if (rebuild) {
+      resetChat();
+      chatState.sid = sid; chatState.reg = ui.register;
+      cur.classList.remove('instr-standby');
+      cur.innerHTML = '<div class="chat-log" id="chatLog"></div><div class="chat-btns" id="chatBtns"></div>';
+      if (card) card.classList.add('chat-mode');
+    }
+    var logEl = $('chatLog');
+    if (chat.rev !== chatState.rev || rebuild) {
+      var h = '';
+      for (var i = chatState.len; i < chat.log.length; i++) {
+        h += chatLineHtml(chat.log[i]);
+      }
+      if (h) {
+        logEl.insertAdjacentHTML('beforeend', h);
+        logEl.scrollTop = logEl.scrollHeight;
+        setFocus('instructor');
+      }
+      chatState.len = chat.log.length;
+      chatState.rev = chat.rev;
+    }
+    // Buttons / level-complete zone under the transcript.
+    var btns = $('chatBtns');
+    var lc = s.instructor.level_complete;
+    if (lc) {
+      var lcKey = lc.title + '|' + lc.outcome + '|' + (lc.actions || []).join(',');
+      if (lcKey !== chatState.lcKey) {
+        chatState.lcKey = lcKey; chatState.btnKey = null;
+        recordCompletion();
+        var ab = (lc.actions || []).map(function (a) {
+          var lbl = a === 'continue' ? 'Continue' : a === 'retry' ? '↺ Retry' : '⏪ Rewind';
+          return '<button class="btn" data-lc="' + a + '">' + lbl + '</button>';
+        }).join(' ');
+        btns.innerHTML = '<div class="lc-panel"><div class="lc-title">🏁 ' + mesc(lc.title) + '</div>' +
+          (lc.outcome ? '<div class="m-note">' + mesc(lc.outcome) + '</div>' : '') +
+          '<div class="lc-actions">' + ab + '</div></div>';
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+      return;
+    }
+    chatState.lcKey = null;
+    var beat = chatPendingBeat(s);
+    var cb = beat && beat.chat_button;
+    var bid = beat ? beat.id : null;
+    if (chatState.skipBid && chatState.skipBid !== bid) chatState.skipBid = null;
+    var key = bid + '|' + (cb ? cb.style : '') + '|' + ui.register + '|' + (chatState.skipBid === bid);
+    if (key === chatState.btnKey) return;
+    chatState.btnKey = key;
+    if (!cb || (cb.style === 'skip' && chatState.skipBid === bid)) {
+      btns.innerHTML = (cb && cb.style === 'skip')
+        ? '<div class="chat-ff">⏩ running ahead — the board will pull us back</div>' : '';
+      return;
+    }
+    var label = cb['label_' + ui.register] || cb.label || (cb.style === 'skip' ? 'Wait' : 'Ready');
+    btns.innerHTML = '<button class="btn chat-btn chat-btn-' + mesc(cb.style || 'ack') +
+      '" data-chatbtn="' + mesc(cb.style || 'ack') + '" data-chatspeed="' + (cb.speed || 60) + '">' +
+      mesc(label) + '</button>';
+  }
+  function chatButtonAction(style, speed) {
+    if (style === 'skip') {
+      var s = latest, beat = s && s.instructor && chatPendingBeat(s);
+      chatState.skipBid = beat ? beat.id : null;
+      chatState.btnKey = null;
+      cmd({ action: 'set_speed', value: speed || 60 });
+      if (latest) renderChat(latest);
+      return;
+    }
+    cmd({ action: 'instructor_continue' });
   }
 
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
@@ -817,6 +995,7 @@
     autoPreset(sc.auto_channels);   // authored preset: put listed systems on auto so the mission can focus the player
     diagReset('scenario', { scenario_id: id });
     resetInstrFlow();            // fresh mission → fresh commentary queue
+    resetChat();                 // fresh transcript state (chat-mode scenarios)
     setFocus('instructor');
     service.handleCommand({ action: 'play' });
     $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused');
@@ -1486,7 +1665,11 @@
     $('manualContent').addEventListener('click', function (e) { var b = e.target.closest('[data-follow]'); if (!b) return; followProcedure(b.getAttribute('data-follow')); });
     document.querySelector('.instr-nav').addEventListener('click', function (e) { var b = e.target.closest('[data-fnav]'); if (!b) return; followNav(b.getAttribute('data-fnav')); });
     // Level Complete actions (Continue / Retry / Rewind) render inside the card.
-    $('instructorCard').addEventListener('click', function (e) { var b = e.target.closest('[data-lc]'); if (!b) return; levelCompleteAction(b.getAttribute('data-lc')); });
+    $('instructorCard').addEventListener('click', function (e) {
+      var cb = e.target.closest('[data-chatbtn]');
+      if (cb) { chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return; }
+      var b = e.target.closest('[data-lc]'); if (!b) return; levelCompleteAction(b.getAttribute('data-lc'));
+    });
     // Training tab: scenario Start/Stop + procedure Follow buttons.
     document.querySelector('[data-pane="training"]').addEventListener('click', function (e) {
       var cc = e.target.closest('[data-camp-continue]');

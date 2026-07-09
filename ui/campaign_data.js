@@ -48,8 +48,13 @@
         { kind: 'scenario', id: 'pwr_slb', teaches: 'A steam line break — why cooling the plant can raise its power.' },
         { kind: 'procedure', id: 'pwr_stuck_porv', teaches: 'The stuck relief valve — your TMI rehearsal.' },
       ] },
-      { id: 'act5', title: 'Act V — The Reckoning', missions: [
-        { kind: 'scenario', id: 'pwr_tmi', teaches: 'Three Mile Island. Believe the physics, not one light.' },
+      { id: 'act5_tmi2', title: 'Act V — Three Mile Island', missions: [
+        { kind: 'scenario', id: 'pwr_tmi2_p1', teaches: 'Live the 1979 night shift exactly as the crew did — no hindsight, no mercy.' },
+        { kind: 'scenario', id: 'pwr_tmi2_p2', teaches: 'The replay: what the board said, what the plant did, and why they differed.' },
+        { kind: 'scenario', id: 'pwr_tmi2_p3', teaches: 'Same shift, same board — but this time you know. Change history.' },
+      ] },
+      { id: 'act5', title: 'Act VI — The Reckoning', missions: [
+        { kind: 'scenario', id: 'pwr_tmi', teaches: 'Three Mile Island, compressed: believe the physics, not one light.' },
         { kind: 'scenario', id: 'pwr_qualify', teaches: 'Station blackout, no hints. Qualify.' },
       ] },
     ],

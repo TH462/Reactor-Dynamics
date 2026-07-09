@@ -44,7 +44,8 @@
     governor_valve: 'governor_valve_pct', lpi_flow: 'lpi_flow_normalized',
     accumulator_flow: 'accumulator_flow_normalized', steam_dump_valve: 'steam_dump_valve_pct',
     primary_leak_flow: 'leak_flow',
-    startup_rate: 'startup_rate_dpm',   // SUR rate meter (appended last — PRNG order preserved)
+    startup_rate: 'startup_rate_dpm',   // SUR rate meter (appended — PRNG order preserved)
+    porv_tailpipe_temp: 'porv_tailpipe_temp_c',   // PORV discharge/quench-tank line temp (appended last — PRNG order preserved)
   };
 
   function PWRInstruments(config, seed) {

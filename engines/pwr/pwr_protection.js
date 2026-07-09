@@ -90,7 +90,11 @@
     loss_of_condenser_vacuum:    { type: 'physics_parameter', category: 'power', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },
     degraded_hpi:                { type: 'command_override', category: 'safety_system', intercepts: ['set_hpi'], severity_scales: 'hpi_flow_multiplier',
                                    severity_meta: { label: 'HPI Capacity', unit: '% rated', min: 0, max: 100, default: 50, invert: true }, display: 'Degraded HPI' },
-    afw_failure:                 { type: 'command_override', category: 'safety_system', intercepts: ['set_afw'], override_value: false, display: 'Auxiliary Feedwater Failure' },
+    // afw_failure carries NO command interception: the block is the engine's
+    // afw_blocked state (the tagged-shut discharge valves, HR7 physics-side).
+    // set_afw still descends so the PUMP demand latches — the run lights honestly
+    // show the pumps running while the shut valves deliver zero flow (TMI-2).
+    afw_failure:                 { type: 'command_override', category: 'safety_system', display: 'Auxiliary Feedwater Failure' },
     failure_to_scram:            { type: 'command_override', category: 'safety_system', intercepts: ['scram'], effect: 'block', display: 'Failure to Scram (ATWS)' },
     stuck_open_spray:            { type: 'command_override', category: 'coolant', intercepts: ['set_spray'], override_value: true, display: 'Pressurizer Spray Stuck Open' },
     failed_pzr_heaters:          { type: 'command_override', category: 'coolant', intercepts: ['set_heater'], override_value: 0.0, display: 'Pressurizer Heaters Failed' },

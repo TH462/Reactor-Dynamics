@@ -219,6 +219,8 @@
     PR.stepInventory(s, this.cfg, dt);
     // 8. Pressurizer level (the TMI deception) and SG level (in §11).
     PZ.stepLevel(s, this.cfg, dt);
+    // 8b. PORV tailpipe / quench-tank line temperature (relief-flow tell).
+    PZ.stepTailpipe(s, this.cfg, dt);
     // 10. Flows — pumps, coastdown.
     PR.stepFlow(s, this.cfg, dt);
     // 10b. Load mode — turbine load + coupled feedwater track reactor (or manual/disconnected).
@@ -260,6 +262,7 @@
       rod_at_limit: this._controlGroup().at_insertion_limit,
       // §8.8 synoptic status — copied into instruments.reading each step (HR1).
       afw_active: s.afw_active,
+      afw_pump_running: !!s.afw_pump_demand,
       rhr_active: s.rhr_active,
       lpi_active: s.lpi_active,
       accumulators_discharging: s.accumulators_discharging,
@@ -294,7 +297,10 @@
       fuel_temp_c: s.fuel_temp_c, decay_heat_pct: s.decay_heat_pct, xenon_pct_eq: s.xenon_pct_eq,
       boron_ppm: s.boron_ppm, porv_open: s.porv_open, porv_stuck: s.porv_stuck,
       block_valve_open: s.block_valve_open,   // scenario-trigger hook (memory-free isolation grading)
+      porv_tailpipe_temp_c: s.tailpipe_temp_c,   // PORV discharge-line temperature (feeds instruments.porv_tailpipe_temp)
+      fuel_damaged: s.fuel_damaged,              // latched at fuel_damage_c — scenario outcome-grading hook
       hpi_active: s.hpi_active, hpi_flow_normalized: s.hpi_flow_normalized, afw_active: s.afw_active,
+      afw_pump_running: !!s.afw_pump_demand,   // pump demand (run lights) — distinct from delivered flow (TMI-2)
       pump_running: s.pump_running, pump_flow_pct: s.pump_flow_pct, station_blackout: s.station_blackout,
       turbine_rpm: s.turbine_rpm, condenser_vacuum_kpa: s.condenser_vacuum_kpa,
       condenser_cooling_available: s.condenser_cooling_available,
@@ -451,7 +457,13 @@
         s.hpi_active = !!cmd.active;
         break;
       case 'set_afw':
-        if (!s.afw_blocked) s.afw_active = !!cmd.active;
+        // Pump demand vs delivered flow (TMI-2): the AFW PUMPS start on demand —
+        // and their run indication is honest — but flow reaches the SGs only if
+        // the discharge valves are open (afw_blocked models the tagged-shut
+        // valves). Demand latches through a block so clearing the block restores
+        // flow with the pumps already running, as in 1979.
+        s.afw_pump_demand = !!cmd.active;
+        s.afw_active = s.afw_pump_demand && !s.afw_blocked;
         break;
       case 'set_steam_dump':
         // mode: 'auto' (null override) | 'open' (full) | 'closed' | a manual pct.
@@ -541,7 +553,7 @@
         case 'loss_of_feedwater': s.main_feedwater_available = false; break;
         case 'turbine_trip': SG.tripTurbine(s); break;
         case 'degraded_hpi': s.hpi_flow_multiplier = clip(1 - severity, 0, 1); break;
-        case 'afw_failure': s.afw_blocked = true; s.afw_active = false; break;
+        case 'afw_failure': s.afw_blocked = true; s.afw_active = false; break;   // pump demand persists (run lights stay honest)
         case 'failure_to_scram': s.scram_blocked = true; break;
         case 'stuck_open_spray': s.spray_override = true; break;
         case 'failed_pzr_heaters': s.heater_override = 0; break;
@@ -595,7 +607,7 @@
         case 'stuck_porv_open': s.porv_stuck = false; break;
         case 'loss_of_feedwater': s.main_feedwater_available = true; break;
         case 'degraded_hpi': s.hpi_flow_multiplier = 1.0; break;
-        case 'afw_failure': s.afw_blocked = false; break;
+        case 'afw_failure': s.afw_blocked = false; s.afw_active = !!s.afw_pump_demand; break;   // valves reopened: flow resumes if the pumps are demanded
         case 'failure_to_scram': s.scram_blocked = false; break;
         case 'stuck_open_spray': s.spray_override = null; break;
         case 'failed_pzr_heaters': s.heater_override = null; break;
@@ -695,6 +707,7 @@
       porv_demand: 'closed', porv_open: false, porv_stuck: false, safety_open: false,
       block_valve_open: true,                 // PORV isolation/block valve (B1; default open)
       porv_flow: 0, safety_flow: 0,
+      tailpipe_temp_c: cfg.pressurizer.tailpipe_ambient_c,   // PORV discharge line (warm baseline: leaky seat)
       pzr_level_pct: cfg.pressurizer.pzr_level_nominal,
 
       _mass: 1.0, core_inventory_pct: 100, primary_void_fraction: 0,
@@ -712,7 +725,7 @@
       steam_flow_normalized: P0, fw_flow_normalized: P0,
       steam_dump_override: null, steam_dump_frac: 0,   // B2 (null = auto)
       feedwater_demand_frac: P0, feedwater_flow: P0, main_feedwater_available: true,
-      afw_active: false, afw_blocked: false, rhr_active: false,
+      afw_active: false, afw_pump_demand: false, afw_blocked: false, rhr_active: false,
 
       turbine_rpm: cfg.turbine.rpm_rated, condenser_vacuum_kpa: cfg.turbine.vacuum_rated,
       generator_load: P0, turbine_demand_frac: P0, turbine_tripped: false,

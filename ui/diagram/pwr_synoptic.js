@@ -212,6 +212,7 @@
     h += '<g id="gAfw" class="diagram-node" data-highlight-id="emergency-cooling" data-scanner-hint="Auxiliary feedwater — emergency feed to the SG after a loss of main feedwater.">' +
       '<path id="pwAfwLine" class="pipe hair" d="M862,578 V560" stroke="#4a3c1c"/>' +
       '<path id="pwAfwFlow" class="flow em" d="M862,578 V560"/>' +
+      valve('pwAfwValve', 862, 566, '', { hint: 'AFW discharge valve — pump flow reaches the SG only when this valve is open.' }) +
       '<rect class="vessel" x="846" y="578" width="32" height="26" rx="4"/>' +
       '<text class="comp-sub" x="862" y="617" text-anchor="middle" style="fill:#7a6a3a">AFW</text></g>';
 
@@ -279,6 +280,19 @@
     // ---- leak sprays (break-flow instrument drives visibility) ----
     h += '<g id="pwLeakLoca" class="leak-site"><path class="leak-spray" d="M420,478 q-6,14 -14,20 M425,478 q0,16 -4,24 M430,478 q6,14 12,22"/></g>';
     h += '<g id="pwLeakSgtr" class="leak-site"><path class="leak-spray" d="M715,390 q-8,10 -16,14 M721,394 q-2,14 -8,20"/></g>';
+
+    // ---- maintenance tag (scenario prop, hidden unless a scenario shows it) ----
+    // Hangs over the AFW discharge valve, occluding its position indication —
+    // the pump run lights stay visible and normal (TMI-2 M5). Clickable.
+    h += '<g id="pwMaintTag" class="pw-tag" data-syn="tmitag" style="display:none" ' +
+      'data-scanner-hint="Maintenance tag — hung during last shift\'s surveillance test. It covers the valve position indication.">' +
+      '<path class="tag-cord" d="M862,560 q4,6 1,12" fill="none"/>' +
+      '<g transform="rotate(7 866 572)">' +
+      '<rect class="tag-body" x="848" y="556" width="36" height="26" rx="3"/>' +
+      '<circle class="tag-hole" cx="866" cy="561" r="1.8"/>' +
+      '<text class="tag-txt" x="866" y="569" text-anchor="middle">DO NOT</text>' +
+      '<text class="tag-txt" x="866" y="577" text-anchor="middle">OPERATE</text>' +
+      '</g></g>';
 
     h += '</svg>';
     return h;
@@ -437,8 +451,9 @@
       '<div class="ctl"><span class="k">Block</span>' + seg([{ l: 'Open', act: 'porv-block-open', on: 1, f: 'blkOpen' }, { l: 'Isolate', act: 'porv-block-close', warn: 1, f: 'blkIso' }],
         'PORV block valve — upstream isolation. Closing it stops a stuck-open PORV even when the indicator lies.') + '</div>' +
       row('Block valve', 'porvBlk', { hl: 'pwPorvBlock' }) +
-      row('Safety valves', 'safety', { hl: 'pwSafetyValve', hint: 'Code safety valves — mechanical lift/reseat on pressure setpoints; no operator command.' }),
-      { anchor: 'pwPorvAnchor', hint: 'Relief Valves — PORV (indicator reads commanded), upstream block valve, mechanical safeties.' });
+      row('Safety valves', 'safety', { hl: 'pwSafetyValve', hint: 'Code safety valves — mechanical lift/reseat on pressure setpoints; no operator command.' }) +
+      row('Tailpipe temp', 'tailT', { hl: 'gRelief', hint: 'PORV discharge-line temperature — steam passing the relief valves heats this pipe. Runs a little warm on normal seat leakage.' }),
+      { anchor: 'pwPorvAnchor', hint: 'Relief Valves — PORV (indicator reads commanded), upstream block valve, mechanical safeties, discharge-line temperature.' });
 
     // -- Steam & Flow -----------------------------------------------------------
     h += card('steam', 'sg-steam', 'Steam &amp; Flow',
@@ -675,6 +690,8 @@
     stage.addEventListener('click', function (e) {
       var scram = e.target.closest('[data-syn="scram"]');
       if (scram) { scramClick(scram); return; }
+      var mtag = e.target.closest('[data-syn="tmitag"]');
+      if (mtag && tagState.id && ctx) { ctx.cmd({ action: 'instructor_interact', interaction_id: tagState.id }); return; }
       var tab = e.target.closest('[data-syn="emtab"]');
       if (tab) { emTabUser = tab.getAttribute('data-tab'); setEmTab(emTabUser); drawLeaders(); return; }
       var sec = e.target.closest('[data-syn="sec"]');
@@ -924,7 +941,11 @@
 
     // ---- Emergency card ----
     txt('emHpi', ins.hpi_active ? 'INJECTING' : 'standby'); vcls('emHpi', ins.hpi_active ? 'run' : 'dim');
-    txt('emAfw', ins.afw_active ? 'RUNNING' : 'off'); vcls('emAfw', ins.afw_active ? 'run' : 'dim');
+    // AFW row shows the PUMP run status (honest: the pumps really start); the
+    // pipe-flow animation below keys off delivered flow — at TMI-2 the two
+    // disagree behind the tagged-shut discharge valve.
+    var afwPump = ins.afw_pump_running != null ? ins.afw_pump_running : ins.afw_active;
+    txt('emAfw', afwPump ? 'RUNNING' : 'off'); vcls('emAfw', afwPump ? 'run' : 'dim');
     txt('emRhr', ins.rhr_active ? 'COOLING' : 'off'); vcls('emRhr', ins.rhr_active ? 'run' : 'dim');
     txt('emLpi', ins.lpi_active ? 'INJECTING' : 'standby'); vcls('emLpi', ins.lpi_active ? 'run' : 'dim');
     ['tabHpi', 'tabAfw', 'tabRhr'].forEach(function (f, i) {
@@ -950,6 +971,9 @@
     segSync('blkOpen', blk); segSync('blkIso', !blk);
     var sfty = !!ins.safety_relief_active;
     txt('safety', sfty ? 'LIFTED' : 'seated'); vcls('safety', sfty ? 'alarm' : 'dim');
+    if (ins.porv_tailpipe_temp != null) {
+      txt('tailT', Math.round(ctx.conv(ins.porv_tailpipe_temp, 'temp')) + ' ' + ctx.unit('temp'));
+    }
 
     // ---- SG / steam / turbine / condenser cards ----
     txt('sgL', ins.sg_level.toFixed(0) + ' %');
@@ -1171,6 +1195,7 @@
     // emergency paths: status booleans + flow instruments only
     flowOn('pwHpiFlow', !!ins.hpi_active, 0.9);
     flowOn('pwAfwFlow', !!ins.afw_active, 0.9);
+    valvePose('pwAfwValve', !!ins.afw_active);
     flowOn('pwRhrFlow', !!ins.rhr_active, 1.2);
     flowOn('pwLpiFlow', !!ins.lpi_active && ins.lpi_flow > 0.02, clamp(0.8 / Math.max(ins.lpi_flow, 0.1), 0.4, 3));
     var accOn = !!ins.accumulators_discharging;
@@ -1312,6 +1337,19 @@
     return el || null;
   }
 
+  // ------------------------------------------------------------ scenario props
+  // The maintenance tag (TMI-2 M5): a scenario-driven clickable prop that
+  // occludes the AFW discharge-valve indication. setTag is idempotent — the
+  // app calls it every render with the scenario's ui_policy state.
+  var tagState = { id: null, visible: false };
+  function setTag(interactionId, visible) {
+    tagState.id = interactionId || null;
+    tagState.visible = !!(interactionId && visible);
+    if (!mounted || !svgEl) return;
+    var el = svgEl.querySelector('#pwMaintTag');
+    if (el) el.style.display = tagState.visible ? '' : 'none';
+  }
+
   // ------------------------------------------------------------ export
   RD.PwrSynoptic = {
     mount: mount,
@@ -1320,6 +1358,7 @@
     isMounted: function () { return mounted; },
     refreshLayout: function () { if (mounted) { positionCards(); positionPanels(); drawLeaders(); } },
     revealControl: revealControl,
+    setTag: setTag,
     // Test hook (run_campaign structural check): the labels revealControl can
     // resolve — every PWR beat highlight must name one, or nothing will glow.
     highlightLabels: Object.keys(SYN_CONTROL_MAP),

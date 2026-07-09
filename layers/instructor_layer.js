@@ -90,6 +90,10 @@
     this._actionsSinceBeat = [];      // forwarded operator commands since last beat fire
     this._lastSimTime = 0;
     this._continueRequested = false;  // instructor_continue → `manual` trigger
+    // Chat-mode state (scenarios with `chat: true` — dialogue log + interactions).
+    this.chatLog = [];                // [{speaker, learning, industry, t}] capped at CHAT_LOG_CAP
+    this._chatRev = 0;                // bumped on every append — the UI's cheap re-render key
+    this._interact = {};              // interaction_id → { clicks, granted }
     this._checkpointRequested = false;
     this._rewindRequested = null;     // { steps, scope } — beat-driven world rewind
     this._speedRequested = null;      // beat-driven time acceleration (number)
@@ -187,6 +191,11 @@
 
   InstructorLayer.prototype._fireBeat = function (beat, simTime) {
     if (beat.commentary) this.pendingMessage = beat.commentary;
+    // Chat-mode dialogue: a beat may carry a multi-line, multi-speaker exchange.
+    // Lines land in the persistent chat log (the UI renders a scrolling
+    // transcript); commentary remains the single-slot fallback for non-chat
+    // scenarios and for gate feedback.
+    if (beat.dialogue && beat.dialogue.length) this._appendChat(beat.dialogue, simTime, beat.story_min != null ? beat.story_min : null);
 
     // Scenario actions descend as commands through M4, which places failures
     // correctly (HR7) and applies command interception.
@@ -265,6 +274,66 @@
     this.currentBeatId = branch.goto;
     this.lastBeatFireTime = simTime;      // delay triggers on the target measure from the decision
     this._actionsSinceBeat = [];
+  };
+
+  // ------------------------------------------------------------ chat (TMI-2 M5)
+  // Dialogue lines and player interactions for chat-mode scenarios. All content
+  // is scenario DATA (speakers, two-register text, interaction tables) — this
+  // engine only appends, counts, and surfaces (M6 §16 authoring boundary).
+  var CHAT_LOG_CAP = 300;
+
+  // storyMin — optional in-fiction timeline anchor (minutes since the story's
+  // opening). The sim compresses the real accident's hours into minutes; the
+  // authored story clock keeps the HISTORICAL durations visible (the "it took
+  // 80 minutes" numbers are part of the lesson — Spec §2.2 guardrail).
+  InstructorLayer.prototype._appendChat = function (lines, simTime, storyMin) {
+    for (var i = 0; i < lines.length; i++) {
+      var l = lines[i];
+      if (!l) continue;
+      this.chatLog.push({
+        speaker: l.speaker || 'sup',
+        learning: l.learning || l.industry || '',
+        industry: l.industry || l.learning || '',
+        t: simTime != null ? simTime : this._lastSimTime,
+        story: (i === 0 && storyMin != null) ? storyMin : null,
+      });
+    }
+    while (this.chatLog.length > CHAT_LOG_CAP) this.chatLog.shift();
+    this._chatRev++;
+  };
+
+  // instructor_interact — a click on a scenario object (e.g. the TMI-2
+  // maintenance tag). The player never types: the interaction table supplies
+  // the outgoing request bubble and the scripted response(s). First activation
+  // may carry commands/clear_failures (a granted request acts on the plant);
+  // repeats cycle authored variants. Recorded for operator_action triggers.
+  InstructorLayer.prototype._handleInteract = function (command) {
+    if (this.mode !== 'scenario' || !this.scenario) return null;
+    var table = this.scenario.interactions || {};
+    var def = table[command.interaction_id];
+    if (!def) return null;
+    var st = this._interact[command.interaction_id] ||
+      (this._interact[command.interaction_id] = { clicks: 0, granted: false });
+    st.clicks++;
+    var t = this._lastSimTime;
+    var i;
+    if (st.clicks === 1) {
+      if (def.request) this._appendChat([{ speaker: 'player', learning: def.request.learning, industry: def.request.industry }], t);
+      if (def.responses) this._appendChat(def.responses, t);
+      var clr = def.clear_failures || [];
+      for (i = 0; i < clr.length; i++) this.below.handleCommand({ action: 'clear_failure', failure_id: clr[i] });
+      var cmds = def.commands || [];
+      for (i = 0; i < cmds.length; i++) this.below.handleCommand(cmds[i]);
+      if (clr.length || cmds.length || def.grants) st.granted = true;
+    } else if (def.repeat && def.repeat.length) {
+      var rq = def.request_repeat || def.request;
+      if (rq) this._appendChat([{ speaker: 'player', learning: rq.learning, industry: rq.industry }], t);
+      this._appendChat([def.repeat[(st.clicks - 2) % def.repeat.length]], t);
+    }
+    // Visible to operator_action triggers: { command:'instructor_interact',
+    // params:{ interaction_id: ... } } matches this record.
+    this._actionsSinceBeat.push({ action: 'instructor_interact', interaction_id: command.interaction_id });
+    return null;
   };
 
   // ---------------------------------------------------------------- gates (§11)
@@ -446,6 +515,9 @@
       this._continueRequested = true;
       return null;
     }
+    if (command && command.action === 'instructor_interact') {
+      return this._handleInteract(command);
+    }
     if (command && command.action === 'follow_nav' && this.mode === 'follow') {
       return this._handleFollowNav(command);
     }
@@ -526,6 +598,14 @@
   InstructorLayer.prototype._blocked = function (msg) {
     if (msg) this.pendingMessage = msg;
     var text = msg ? (msg[this.register] || msg.learning) : 'The Instructor has restricted this action for now.';
+    // Chat-mode scenarios voice the gate denial in the transcript (in-character
+    // supervisor line), deduped so repeated blocked clicks don't spam the log.
+    if (msg && this.mode === 'scenario' && this.scenario && this.scenario.chat) {
+      var last = this.chatLog[this.chatLog.length - 1];
+      if (!last || last.learning !== (msg.learning || msg.industry)) {
+        this._appendChat([{ speaker: msg.speaker || 'sup', learning: msg.learning, industry: msg.industry }], this._lastSimTime);
+      }
+    }
     return { type: 'blocked', code: 'GATED_BY_INSTRUCTOR', message: text };
   };
 
@@ -563,6 +643,14 @@
         title: this.levelComplete.title,
         outcome: this.levelComplete['outcome_' + this.register] || this.levelComplete.outcome,
         actions: this.levelComplete.actions,
+      } : null,
+      // Chat transcript (chat-mode scenarios only; null otherwise — fixed shape).
+      // The log is passed by reference for per-broadcast economy; consumers
+      // treat it as read-only. `rev` is the cheap change key.
+      chat: (this.mode === 'scenario' && this.scenario && this.scenario.chat) ? {
+        log: this.chatLog,
+        rev: this._chatRev,
+        interactions: this._interact,
       } : null,
     };
   };
@@ -603,6 +691,9 @@
       last_beat_fire_time: this.lastBeatFireTime,
       active_gates: JSON.parse(JSON.stringify(this.activeGates)),
       pending_message: this.pendingMessage ? JSON.parse(JSON.stringify(this.pendingMessage)) : null,
+      chat_log: this.chatLog.length ? JSON.parse(JSON.stringify(this.chatLog)) : null,
+      chat_rev: this._chatRev,
+      interact: JSON.parse(JSON.stringify(this._interact)),
       ui_policy: this.uiPolicy ? JSON.parse(JSON.stringify(this.uiPolicy)) : null,
       highlight: this.highlight ? JSON.parse(JSON.stringify(this.highlight)) : null,
       level_complete: this.levelComplete ? JSON.parse(JSON.stringify(this.levelComplete)) : null,
@@ -640,6 +731,9 @@
       this.lastBeatFireTime = state.last_beat_fire_time;
       this.activeGates = state.active_gates || [];
       this.pendingMessage = state.pending_message || null;
+      this.chatLog = state.chat_log || [];
+      this._chatRev = state.chat_rev || 0;
+      this._interact = state.interact || {};
       this.uiPolicy = state.ui_policy || null;
       this.highlight = state.highlight || null;
       this.levelComplete = state.level_complete || null;

@@ -968,3 +968,41 @@ select.num-input { width: auto; }
 .rewind-hint[hidden] { display: none; }
 .scrubber #chartRewindBtn { margin-left: 6px; padding: 0 8px; }
 .scrubber #chartRewindBtn:disabled { opacity: 0.35; }
+
+/* ============================================================ chat mode (TMI-2 M5)
+   Multi-speaker transcript in the Instructor card. Bubbles stay quiet-board
+   muted; color marks WHO is speaking, not urgency (SYS lines borrow caution). */
+.instructor.chat-mode .persona,
+#instructorCard.chat-mode .persona,
+#instructorCard.chat-mode .instr-prev { display: none; }
+.chat-log {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 48vh; overflow-y: auto; padding-right: 4px; margin-bottom: 8px;
+}
+.chat-line { display: flex; flex-direction: column; gap: 2px; max-width: 94%; }
+.chat-meta { font-size: 10px; letter-spacing: .05em; color: var(--muted); text-transform: uppercase; }
+.chat-txt {
+  font-size: 13px; line-height: 1.45; color: var(--text);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 9px; white-space: pre-line;
+}
+.chat-sup  .chat-txt { border-left: 3px solid var(--stopped); }
+.chat-supx .chat-txt { border-left: 3px solid var(--normal); }      /* supervisor reacting to the player */
+.chat-aux  .chat-txt { border-left: 3px solid var(--border); color: var(--text-2); }
+.chat-chief .chat-txt { border-left: 3px solid var(--cat-reactivity, #C084FC); }
+.chat-sys  .chat-txt {
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px;
+  color: var(--caution); border-left: 3px solid var(--caution); background: rgba(217,164,65,.06);
+}
+.chat-player { align-self: flex-end; align-items: flex-end; }
+.chat-player .chat-txt { border-right: 3px solid var(--normal); border-left: 1px solid var(--border);
+  background: rgba(91,179,196,.08); }
+.chat-gap {
+  text-align: center; color: var(--muted); font-size: 11px; font-style: italic;
+  border-top: 1px dashed var(--border); margin-top: 4px; padding-top: 6px;
+}
+.chat-btns { display: flex; flex-direction: column; gap: 6px; }
+.chat-btn { width: 100%; padding: 7px 10px; font-weight: 700; }
+.chat-btn-ack { border-color: var(--stopped); }
+.chat-btn-skip { border-color: var(--caution); color: var(--caution); }
+.chat-ff { text-align: center; color: var(--caution); font-size: 11px; font-style: italic; }
