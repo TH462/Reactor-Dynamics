@@ -1886,3 +1886,65 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   an artificial time jump — the story-clock timestamps carry the drift silently. Gates re-run
   green (campaign 36/36, M6 16/16, M6PH 8/8) + browser check: first paint = 1 line, button
   held during reveal, zero dividers in the lead-in.
+
+- **2026-07-10 — Plant & Mission window (Training tab retired).** Plant selection + start-mode
+  selection moved from the sidebar into a proper modal (`#missionOverlay`, Sim tab →
+  "⚛️ Plant & Mission…"): a plant column (PWR / RBMK pre / RBMK post / BWR cards, the active
+  one badged) then four nested mode tabs — Free Play (starting-condition picker + start
+  button), Campaign, Scenarios (now FILTERED to the selected plant/design version; the old
+  tab listed all plants), Walkthroughs. Nothing touches the running sim until a start button
+  is pressed. The Training tab is gone from the tool box; the Sim tab now shows a read-only
+  Plant/Mode summary (live via `updateSimSummary()` in render) and inherits the Reactivity
+  Computer rows. `engineSel`/`initState` selectors deleted; `switchEngine(key, init?)` takes
+  the chosen starting condition; campaign helpers (`campaign`, `missionArtifact`,
+  `campaignFrontier`, `campaignHtml`) take an optional engine key so the window can browse a
+  non-active plant; plant-bound starts (`walkthrough`/`procedure` missions) `ensureEngine()`
+  first, scenarios reset to their own plant as before. Deep links: `?missions=1` opens the
+  window, `?mmode=<mode>` picks the tab, `?tab=training` kept as a compat alias that opens
+  the window. Gotcha re-hit: `.plant-card` is owned by the PWR synoptic CSS — modal uses
+  `.mplant-*`. Verified headless (window all 4 modes, Sim tab, cross-plant `?scenario=`
+  deep link) + synoptic harness 55/55.
+
+- **2026-07-10 — Shell UX refinement (full review pass, synoptic excluded).** A four-tier UX
+  review of every shell surface (diagram + its controls excluded — new_diagram_controls.md owns
+  those). (1) **Dead/dishonest controls fixed:** the instructor "Acknowledge" button is now the
+  real scenario Continue (`instructor_continue`, releases the reading dwell; M8 §9 intent) and
+  the walkthrough nav (Prev/Next/Rewind/↺/✕) vs Acknowledge+Rewind rows are CONTEXTUAL
+  (`syncInstrNav`: follow / scenario / chat / lc / idle — a button that can't act isn't shown);
+  ↺ Restart works via the existing `follow_nav {dir:'restart'}` pass-through (it was only dead
+  outside follows); the dead Audio toggle row was REMOVED (returns with the audio pass); the
+  "Advanced instrument failure" teaser now opens a real panel (instrument × stuck/drift/noisy/
+  dead × value → `set_instrument_failure`; instrument names from RD.MANUAL indications; applied
+  list tracked UI-side); Values Display is hidden for the PWR (synoptic owns truth presentation
+  — an inert setting must not render); the strip-chart scrubber is honest (head pinned at LIVE,
+  track click = rewind-pick mode, ⏪ labeled "Rewind"); duplicate static `#ffBadge` removed from
+  shell.html (buildViews and the synoptic each inject one); dead `.shell-ribbon` CSS deleted;
+  page title de-alpha'd. (2) **Discoverability:** an always-visible STATUS LINE under the sim
+  controls (`#simStatus` — "PWR · Free Play — Hot Full Power", click → Plant & Mission;
+  change-guarded `updateSimSummary()` runs every instructor render) fixes "nothing says what's
+  running / the campaign is invisible"; a `?` help button + one-screen guide (`#helpOverlay`,
+  `?help=1` deep link) covers the quiet-board color language, instruments-can-lie, where things
+  live, and shortcuts; the System Scanner now answers CLICK/TAP as well as hover (touch), idle
+  text says so. (3) **Focus model:** strict accordion in free play, SPLIT VIEW during live
+  content — `setFocus(which, user)`: opening a tools tab mid-mission no longer collapses live
+  guidance, a chat reveal no longer slams a tool shut; persona click still maximizes the
+  instructor. This supersedes the planned unread-dot (no reachable collapsed-with-unread state
+  remains). (4) **Consistency:** Diagram Mode reads Teaching/Realistic and Register reads
+  Terminology — Plain language/Industry (display labels only; `learning`/`industry` values and
+  URL params unchanged); "Free Play" standardized (was Free play/Sandbox); destructive plant
+  actions (ADS, SLC, breaker open, PORV isolate) use the SCRAM two-press arm idiom
+  (`armedConfirm` — CONFIRM? for 3 s) instead of native `confirm()` (Reset keeps `confirm` —
+  sim lifecycle, not plant); app-level feedback is a toast (`showToast` — save/load/bad-file;
+  replaces `alert`); alarm header counts unacknowledged ("Alarms (3)") and unack tiles carry an
+  explicit ACK chip; manual Normal Values speak board language via generated `ts_labels`
+  (TS_LABELS in gen_manual_reference.js — labels only, mval/tsCell add units; normalized flows
+  ×100 %, _pct %, pcm/DPM/RPM/MWe/ppm/rods per convention) and Glossary/Indications get a
+  client-side filter box. (5) **Input:** global shortcuts (Space play/pause, 1–5 speeds, A
+  ack-all, M manual, ? help, Esc close — skipped in fields/modifiers; Space defers to focused
+  buttons), keydown/keyup drive the press-and-hold rod buttons (was pointer-only), global
+  `:focus-visible` outline + `button:disabled` styling. Gates: gen_manual_reference re-run;
+  procedures 20/21 (known bwr_sbo_rcic step-3 gap); campaign 36/36 (1313 checks); synoptic
+  harness 55/55; verify_e2e_ui still fails only the pre-existing stale `dhr-on` expectation;
+  PLUS a new playwright-core interactive harness (scratchpad) — 36/36 (ack/continue, restart,
+  split view, adv-failure inject, scrub pick, two-press ADS arm+timeout, shortcuts, filter,
+  alarm ack chips/count, toasts wiring).

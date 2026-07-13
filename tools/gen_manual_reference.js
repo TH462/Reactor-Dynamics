@@ -224,6 +224,49 @@ var STATE_SUMMARY = {
   post_scram_sbo: 'The Fukushima start: scrammed with a station blackout, RCIC just started.',
 };
 
+// Display labels for true_state fields (the CONTEXT §6.3 vocabulary): the
+// manual's Normal Values tables must speak the board's language, not the
+// snapshot's — raw field ids are internal. Units are NOT included; the UI's
+// mval() converts and appends them per the active units setting. An unmapped
+// field falls back to its raw id in the UI, so a new field without a label
+// stays visible rather than vanishing.
+var TS_LABELS = {
+  // shared
+  power_pct: 'Reactor power', fuel_temp_c: 'Fuel temperature', decay_heat_pct: 'Decay heat',
+  xenon_pct_eq: 'Xenon (vs equilibrium)', mwe_output: 'Electrical output', turbine_rpm: 'Turbine speed',
+  condenser_vacuum_kpa: 'Condenser vacuum', scrammed: 'Reactor scrammed', melted: 'Core destroyed',
+  reactivity_pcm: 'Net reactivity', startup_rate_dpm: 'Startup Rate (SUR)', reactor_period_s: 'Reactor period',
+  station_blackout: 'Station blackout', turbine_tripped: 'Turbine tripped',
+  steam_flow_normalized: 'Steam flow', fw_flow_normalized: 'Feedwater flow',
+  steam_pressure_mpa: 'Steam pressure', destruction_cause: 'Destruction cause',
+  // PWR
+  tavg_c: 'Average coolant temperature (Tavg)', thot_c: 'Hot-leg temperature', tcold_c: 'Cold-leg temperature',
+  pressure_mpa: 'Primary pressure', pzr_level_pct: 'Pressurizer (PZR) level', sg_level_pct: 'Steam Generator (SG) level',
+  subcooling_c: 'Subcooling margin', core_inventory_pct: 'Primary coolant inventory', boron_ppm: 'Boron concentration',
+  porv_open: 'PORV open (actual)', porv_stuck: 'PORV stuck', porv_tailpipe_temp_c: 'PORV tailpipe temperature',
+  hpi_active: 'High-Pressure Injection (HPI) delivering', hpi_flow_normalized: 'HPI flow',
+  afw_active: 'Auxiliary Feedwater (AFW) delivering', afw_pump_running: 'AFW pump running',
+  fuel_damaged: 'Fuel damaged', pump_running: 'Reactor Coolant Pump (RCP) running', pump_flow_pct: 'RCP flow',
+  steam_demand_mwe: 'Steam demand', condenser_cooling_available: 'Condenser cooling available',
+  governor_valve_pct: 'Turbine governor valve', charging_flow_actual: 'CVCS charging flow (actual)',
+  letdown_flow_actual: 'CVCS letdown flow (actual)', leak_flow: 'Primary leak flow',
+  steam_dump_valve_pct: 'Steam dump valve', lpi_active: 'Low-Pressure Injection (LPI) delivering',
+  lpi_flow_normalized: 'LPI flow', accumulators_discharging: 'Accumulators discharging',
+  accumulator_flow_normalized: 'Accumulator flow', accumulator_volume_pct: 'Accumulator volume',
+  rhr_active: 'Residual Heat Removal (RHR) aligned',
+  // RBMK
+  void_fraction_avg: 'Core void fraction', drum_level_pct: 'Steam drum level', channel_flow_pct: 'Channel flow',
+  graphite_temp_avg_c: 'Graphite temperature', orm_equiv_rods: 'Operational Reactivity Margin (ORM)',
+  orm_alarm_active: 'ORM alarm', eps_bypassed: 'EPS bypassed', steam_explosion_occurred: 'Steam explosion occurred',
+  energy_deposition_rate: 'Energy deposition rate', design_version: 'Design version', steam_to_turbine: 'Turbine steam load',
+  // BWR
+  core_void_fraction: 'Core void fraction', vessel_pressure_mpa: 'Vessel pressure', vessel_level_pct: 'Vessel water level',
+  recirc_flow_pct: 'Recirculation flow', rcic_running: 'RCIC running', hpci_running: 'HPCI running',
+  ads_open: 'ADS open', lpci_running: 'LPCI running', lpcs_running: 'Core spray (LPCS) running',
+  srv_manual_open: 'SRV manually open', slc_active: 'Standby Liquid Control (SLC) injecting', slc_tank_pct: 'SLC tank level',
+  battery_charge_pct: 'Battery charge',
+};
+
 // ============================================================ extraction
 function round(x) { if (typeof x !== 'number' || !isFinite(x)) return (typeof x === 'number' ? null : x); var a = Math.abs(x); if (a !== 0 && a < 0.01) return Number(x.toExponential(2)); return Math.round(x * 1000) / 1000; }
 function sanitize(o) { var out = {}; for (var k in o) { var v = o[k]; if (typeof v === 'number') out[k] = round(v); else if (typeof v === 'boolean' || typeof v === 'string') out[k] = v; } return out; }
@@ -282,6 +325,7 @@ function buildProfile(plant, Ctor, dv) {
     safety_limits: SAFETY[plant] || [], alarm_response: buildAlarmResponse(plant, prot), failures: buildFailures(prot),
     glossary: GLOSSARY_BASE.concat(GLOSSARY[plant] || []).map(function (g) { return { acronym: g[0], term: g[1] }; }),
     normal_values: captureNormals(function () { return new Ctor(dv ? { design_version: dv } : {}); }, cfg, plant, dv),
+    ts_labels: TS_LABELS,
   };
 }
 

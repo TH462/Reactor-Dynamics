@@ -4,8 +4,10 @@
  * Builds a SimulationService (M5) and renders each broadcast snapshot. The UI is
  * PLANT-DRIVEN: a profile (PROFILES[plant]) supplies the gauges, numeric grid,
  * strip-chart series, and controls for the active reactor, so the same shell
- * drives the PWR, the RBMK (pre/post-1986), and the BWR. The engine selector
- * (Sim tab) calls service.selectPlant() and rebuilds the plant-specific UI.
+ * drives the PWR, the RBMK (pre/post-1986), and the BWR. The Plant & Mission
+ * window (Sim tab) picks the plant + mode (free play / campaign / scenario /
+ * walkthrough); switching calls service.selectPlant() and rebuilds the
+ * plant-specific UI.
  *
  * Gauges/numeric read snapshot.instruments (HR1); controls issue commands down
  * the stack (HR5); alarms render from snapshot.alarms; the true-state overlay
@@ -81,12 +83,21 @@
   function pctOf(frac, dp) { return frac == null ? '—' : (frac * 100).toFixed(dp == null ? 0 : dp) + ' %'; }
 
   // ====================================================================== engines
-  // Selector key → plant + design_version + default initial state.
+  // Selector key → plant + design_version + default initial state, plus the
+  // display copy for the Plant & Mission window's plant cards.
   var ENGINES = {
-    pwr:       { plant: 'pwr',  dv: null,              init: 'hot_full_power' },
-    rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power' },
-    rbmk_post: { plant: 'rbmk', dv: 'post_chernobyl',  init: 'full_power' },
-    bwr:       { plant: 'bwr',  dv: null,              init: 'full_power' },
+    pwr:       { plant: 'pwr',  dv: null,              init: 'hot_full_power',
+                 label: 'PWR', sub: 'Pressurized Water Reactor',
+                 desc: 'The stable, self-regulating starting point. Separate primary and steam loops. Home of the Three Mile Island story.' },
+    rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power',
+                 label: 'RBMK pre-1986', sub: 'Chernobyl-type · original design',
+                 desc: 'Graphite-moderated, positive void coefficient, graphite-tipped rods — the design that failed at Chernobyl.' },
+    rbmk_post: { plant: 'rbmk', dv: 'post_chernobyl',  init: 'full_power',
+                 label: 'RBMK post-1986', sub: 'Chernobyl-type · retrofitted',
+                 desc: 'The same machine after the post-accident fixes. Run the same transient here and compare the outcome.' },
+    bwr:       { plant: 'bwr',  dv: null,              init: 'full_power',
+                 label: 'BWR', sub: 'Boiling Water Reactor',
+                 desc: 'Boils water right in the core, steam straight to the turbine. Steam-driven safety systems — home of the Fukushima story.' },
   };
 
   // ====================================================================== profiles
@@ -371,10 +382,100 @@
     });
   }
 
-  function buildInitStates() {
-    var sel = $('initState'); if (!sel) return;
-    sel.innerHTML = prof().initStates.map(function (s) { return '<option value="' + s[0] + '">' + s[1] + '</option>'; }).join('');
-    sel.value = ui.initState;
+  // ---- Advanced instrument failure (Failures tab) — fail any single instrument
+  // while the plant behind it stays real (the HR1 teaching tool): stuck / drift /
+  // noisy / dead via set_instrument_failure {instrument_id, mode, value}. The
+  // snapshot doesn't surface per-instrument failure state, so the applied list is
+  // tracked UI-side and reset with the plant (an engine reset clears them anyway).
+  var advFailed = {};
+  var ADV_MODES = {
+    stuck: { vlabel: 'Freeze at', note: 'instrument units — blank = freeze at the current reading' },
+    drift: { vlabel: 'Rate', note: 'instrument units per second (e.g. 0.05)', def: 0.05 },
+    noisy: { vlabel: 'Multiplier', note: '× normal sensor noise (e.g. 5)', def: 5 },
+    dead: null,   // no value — the reading bottoms out at range minimum
+  };
+  function buildAdvFail() {
+    advFailed = {};
+    var p = $('advFailPanel'); if (!p) return;
+    var mp = manualProfile();
+    var inds = (mp && mp.indications && mp.indications.length)
+      ? mp.indications
+      : Object.keys((latest && latest.instruments) || {}).map(function (k) { return { id: k, name: k }; });
+    var opts = inds.map(function (i) { return '<option value="' + esc(i.id) + '">' + mesc(i.name || i.id) + '</option>'; }).join('');
+    p.innerHTML =
+      '<div class="row"><span class="k">Instrument</span><select id="advInstr">' + opts + '</select></div>' +
+      '<div class="row"><span class="k">Mode</span><select id="advMode">' +
+        '<option value="stuck">Stuck — frozen at a value</option>' +
+        '<option value="drift">Drift — creeps away from truth</option>' +
+        '<option value="noisy">Noisy — jitters around truth</option>' +
+        '<option value="dead">Dead — bottoms out</option></select></div>' +
+      '<div class="row" id="advValRow"><span class="k" id="advValLbl">Freeze at</span>' +
+        '<input class="num-input mono" id="advVal" type="number" step="any"><span class="note" id="advValNote"></span></div>' +
+      '<div class="actions"><button class="btn" id="advApply">Inject</button><button class="btn" id="advClearOne">Clear this instrument</button></div>' +
+      '<div class="active-list" id="advActive"></div>';
+    syncAdvVal();
+  }
+  function syncAdvVal() {
+    var mode = $('advMode') ? $('advMode').value : 'stuck';
+    var m = ADV_MODES[mode], row = $('advValRow');
+    if (!row) return;
+    row.style.display = m ? '' : 'none';
+    if (m) {
+      $('advValLbl').textContent = m.vlabel;
+      $('advValNote').textContent = m.note;
+      $('advVal').value = m.def != null ? m.def : '';
+    }
+  }
+  function renderAdvActive() {
+    var el = $('advActive'); if (!el) return;
+    var ids = Object.keys(advFailed);
+    el.textContent = ids.length
+      ? '⚠ Failed: ' + ids.map(function (id) { return id + ' (' + advFailed[id] + ')'; }).join(', ')
+      : '';
+  }
+  function advFailAction(apply) {
+    var id = $('advInstr') && $('advInstr').value; if (!id) return;
+    if (!apply) {
+      cmd({ action: 'clear_instrument_failure', instrument_id: id });
+      delete advFailed[id]; renderAdvActive(); return;
+    }
+    var mode = $('advMode').value, m = ADV_MODES[mode];
+    var c = { action: 'set_instrument_failure', instrument_id: id, mode: mode };
+    if (m) {
+      var v = parseFloat($('advVal').value);
+      if (!isNaN(v)) c.value = v;
+      else if (mode !== 'stuck') c.value = m.def;   // stuck: blank = current reading
+    }
+    cmd(c);
+    advFailed[id] = mode; renderAdvActive();
+  }
+
+  // What's running now (plant + free-play/scenario/walkthrough) — shown in the
+  // Sim tab summary AND the always-visible status line under the sim controls
+  // (the main-screen entry point to the Plant & Mission window). Called every
+  // instructor render, so it's guarded to touch the DOM only on change.
+  var lastSimSummary = null;
+  function updateSimSummary() {
+    var lbl = $('simPlantLbl'); if (!lbl) return;
+    var e = ENGINES[ui.engineKey] || {};
+    var plant = e.label || ui.engineKey;
+    var mode;
+    if (ui.scenario) {
+      var sc = (RD.SCENARIOS || {})[ui.scenario];
+      mode = 'Scenario — ' + ((sc && sc.title) || ui.scenario);
+    } else if (ui.follow) {
+      var pr = curFollowProc();
+      mode = 'Walkthrough — ' + ((pr && pr.title) || ui.follow.id);
+    } else {
+      var st = (prof().initStates.filter(function (s) { return s[0] === ui.initState; })[0] || [])[1] || ui.initState;
+      mode = 'Free Play — ' + st;
+    }
+    var key = plant + '|' + mode;
+    if (key === lastSimSummary) return;
+    lastSimSummary = key;
+    lbl.textContent = plant;
+    $('simModeLbl').textContent = mode;
+    var st2 = $('simStatusText'); if (st2) st2.textContent = plant + ' · ' + mode;
   }
 
   // ============================================================ display damping
@@ -410,6 +511,7 @@
     applyUiPolicy(s);
     renderGauges(s);
     renderAlarms(s); renderInstructor(s); renderReactimeter(s); renderFailures(s);
+    updateSimSummary();
     // alarm tint on the CSF gauge strip while anything is unacknowledged
     $('gaugeStrip').classList.toggle('alarm-tint', s.alarms.some(function (a) { return a.state === 'active_unacknowledged'; }));
     // auto-switch to Diagram the moment a scram fires (legacy views only)
@@ -493,17 +595,23 @@
     var active = s.alarms.filter(function (a) { return a.state !== 'clear'; });
     var prio = { critical: 0, warning: 1, caution: 2, status: 3 };
     active.sort(function (a, b) { return (prio[a.priority] - prio[b.priority]); });
+    var nUnack = active.filter(function (a) { return a.state === 'active_unacknowledged'; }).length;
+    var title = $('alarmTitle');
+    if (title) title.textContent = nUnack ? 'Alarms (' + nUnack + ')' : 'Alarms';
     if (!active.length) { stack.innerHTML = '<div class="alarm-empty">— no active alarms —</div>'; return; }
     stack.innerHTML = active.map(function (a) {
       var cat = alarmCategory(a.id);
       var sev = a.priority === 'critical' ? 'crit' : a.priority === 'warning' ? 'warn' : '';
       var unack = a.state === 'active_unacknowledged' ? ' unack' : '';
       var glyph = a.priority === 'critical' ? '⚠' : a.priority === 'warning' ? '△' : '●';
+      // Unacknowledged tiles carry an explicit ACK chip — the whole tile is the
+      // click target, but the affordance must be visible without the scanner.
+      var chip = unack ? '<span class="ack-chip">ACK</span>' : '';
       return '<div class="alarm-tile ' + sev + unack + ' cat-' + cat + '" data-ack="' + a.id +
         '" data-scanner-hint="' + esc(a.tile_label) + ' — ' + a.priority + ' alarm (' + cat + '). Reads the instrument; click to acknowledge.">' +
         '<div class="bar"></div><div class="body"><div class="label">' + a.tile_label +
         '</div><div class="meta">' + cat + ' · ' + a.priority + ' · ' + a.state.replace('active_', '') + '</div></div>' +
-        '<div class="glyph">' + glyph + '</div></div>';
+        chip + '<div class="glyph">' + glyph + '</div></div>';
     }).join('');
   }
 
@@ -561,27 +669,38 @@
   var msgHold = { shown: null, at: 0, queue: [], bypass: false };
   function msgDwellS(t) { return Math.min(16, String(t).trim().split(/\s+/).length / 3.7 + 0.8); }
   function resetInstrFlow() { msgHold.shown = null; msgHold.at = 0; msgHold.queue = []; msgHold.bypass = false; lastInstrMsg = null; }
+  // The instructor card's button rows are contextual — a button that can act is
+  // shown, one that can't doesn't exist on screen (no false affordances):
+  //   follow   → the walkthrough nav row (Prev / Next / Rewind / ↺ / ✕)
+  //   scenario → the Acknowledge (continue) + Rewind row
+  //   chat / level-complete / free play → neither (those render their own buttons)
+  function syncInstrNav(mode) {
+    var nav = $('instrNav'), ack = $('instrAckRow');
+    if (nav) nav.hidden = mode !== 'follow';
+    if (ack) ack.hidden = mode !== 'scenario';
+  }
   function renderInstructor(s) {
     // Rewind is live whenever a checkpoint exists (beats / follow steps / sandbox).
     var noCp = !(service && service.checkpoints && service.checkpoints.length);
-    var rw = document.querySelector('[data-fnav="rewind"]');
-    if (rw) rw.disabled = noCp;
+    document.querySelectorAll('[data-fnav="rewind"]').forEach(function (rw) { rw.disabled = noCp; });
     var crw = $('chartRewindBtn');
     if (crw) crw.disabled = noCp;
     syncSpeedUI(s);
     renderHighlight(s);
+    updateSimSummary();   // status line follows scenario/walkthrough transitions (change-guarded)
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
     // save/load restores, and anything else that broadcasts mid-transition.
     var fb = s.instructor && s.instructor.follow;
-    if (fb) { ui.follow = { id: fb.procedure_id }; renderFollow(s); return; }
+    if (fb) { ui.follow = { id: fb.procedure_id }; syncInstrNav('follow'); renderFollow(s); return; }
     if (ui.follow) ui.follow = null;              // the snapshot says the follow ended
     // Chat-mode scenarios (TMI-2 M5): a scrolling multi-speaker transcript
     // replaces the single-slot commentary card. Level-complete renders inline.
-    if (s.instructor && s.instructor.chat) { renderChat(s); return; }
+    if (s.instructor && s.instructor.chat) { syncInstrNav('chat'); renderChat(s); return; }
     if (chatState.sid) resetChat();
     var lc = s.instructor && s.instructor.level_complete;
-    if (lc) { msgHold.queue = []; msgHold.shown = null; renderLevelComplete(s, lc); return; }
+    if (lc) { syncInstrNav('lc'); msgHold.queue = []; msgHold.shown = null; renderLevelComplete(s, lc); return; }
+    syncInstrNav(ui.scenario ? 'scenario' : 'idle');
     lastLcKey = null;
     var cur = $('instrCurrent');
     var msg = (s.instructor && s.instructor.message) ? s.instructor.message : null;
@@ -872,7 +991,7 @@
     autoStandDown();
     cmd({ action: 'start_follow', procedure_id: pr.id });
     autoPreset(pr.auto_channels);
-    setFocus('instructor');
+    setFocus('instructor', true);
   }
 
   // ---- Progression persistence (Gameplay §7.5) — one localStorage key,
@@ -907,15 +1026,17 @@
   // the same rd_progress record recordCompletion() already writes. Every
   // mission is playable from the start (user direction, 2026-07-07): the
   // campaign is a recommended ORDER with progress markers, not a gate.
-  function campaign() { return (RD.CAMPAIGNS || {})[ui.plant] || null; }
+  // Helpers take an optional engine key so the Plant & Mission window can show
+  // a plant that isn't the active one; default is the running engine.
+  function campaign(key) { return (RD.CAMPAIGNS || {})[ENGINES[key || ui.engineKey].plant] || null; }
   function campaignMissions(c) {
     var out = [];
     (c.acts || []).forEach(function (a) { a.missions.forEach(function (m) { out.push(m); }); });
     return out;
   }
-  function missionArtifact(m) {
+  function missionArtifact(m, key) {
     if (m.kind === 'scenario') return (RD.SCENARIOS || {})[m.id] || null;
-    return (((RD.MANUAL_PROCEDURES || {})[ui.engineKey]) || []).filter(function (x) { return x.id === m.id; })[0] || null;
+    return (((RD.MANUAL_PROCEDURES || {})[key || ui.engineKey]) || []).filter(function (x) { return x.id === m.id; })[0] || null;
   }
   function missionDone(m, p) {
     var list = m.kind === 'scenario' ? (p.completed_scenarios || []) : (p.completed_procedures || []);
@@ -925,18 +1046,16 @@
     if (m.kind === 'scenario') startScenario(m.id); else followProcedure(m.id);
   }
   // The next incomplete mission (the "frontier"), or null when all complete.
-  function campaignFrontier() {
-    var c = campaign(); if (!c) return null;
+  function campaignFrontier(key) {
+    var c = campaign(key); if (!c) return null;
     var p = progress();
     var ms = campaignMissions(c);
     for (var i = 0; i < ms.length; i++) if (!missionDone(ms[i], p)) return ms[i];
     return null;
   }
-  function buildCampaign() {
-    var host = $('trainingCampaign');
-    if (!host) return;
-    var c = campaign();
-    if (!c) { host.innerHTML = '<div class="m-note">No campaign for this plant yet — try the PWR.</div>'; return; }
+  function campaignHtml(key) {
+    var c = campaign(key);
+    if (!c) return '<div class="m-note">No campaign for this plant yet — try the PWR.</div>';
     var p = progress();
     var ms = campaignMissions(c);
     var doneCount = ms.filter(function (m) { return missionDone(m, p); }).length;
@@ -951,7 +1070,7 @@
     (c.acts || []).forEach(function (a) {
       h += '<div class="camp-act">' + mesc(a.title) + '</div>';
       a.missions.forEach(function (m) {
-        var art = missionArtifact(m);
+        var art = missionArtifact(m, key);
         var title = m.title || (art && art.title) || m.id;
         var done = missionDone(m, p);
         // Everything is playable from the start (user direction): the campaign
@@ -970,7 +1089,7 @@
     if (c.bonus && c.bonus.length) {
       h += '<div class="camp-act">Bonus</div>';
       c.bonus.forEach(function (m) {
-        var art = missionArtifact(m);
+        var art = missionArtifact(m, key);
         h += '<div class="camp-mission">' +
           '<span class="camp-mark">★</span>' +
           '<span class="camp-mtitle">' + mesc((art && art.title) || m.id) + '</span>' +
@@ -979,37 +1098,107 @@
           '</div>';
       });
     }
-    host.innerHTML = h;
+    return h;
   }
 
-  // ---- Training tab: scenario picker + walkthrough list (Gameplay §3.1) ----
+  // ============================================== Plant & Mission window
+  // The plant + mode selector (Sim tab → ⚛️ Plant & Mission…). Selection order:
+  // pick the plant (left column), then the mode (Free Play / Campaign /
+  // Scenarios / Walkthroughs), then the specific start. Nothing changes in the
+  // running sim until a start button is pressed.
+  var msel = { engine: 'pwr', mode: 'free', init: null };
+  function openMissionSelect() {
+    msel.engine = ui.engineKey;
+    msel.init = ui.initState;
+    renderMissionSelect();
+    $('missionOverlay').hidden = false;
+  }
+  function closeMissionSelect() { $('missionOverlay').hidden = true; }
+  // Legacy name, still the "training lists changed" refresh hook (completion
+  // marks, active-scenario card): re-render the window if it's open.
   function buildTraining() {
-    buildCampaign();
-    var sc = $('trainingScenarios'), pr = $('trainingProcedures');
-    if (!sc) return;
+    if (!$('missionOverlay').hidden) renderMissionSelect();
+  }
+  function scenariosFor(key) {
+    var e = ENGINES[key];
+    return Object.keys(RD.SCENARIOS || {}).filter(function (id) {
+      var s = RD.SCENARIOS[id];
+      if (s.plant_id !== e.plant) return false;
+      // RBMK scenarios pin a design version; show each under its own card only
+      if (e.plant === 'rbmk' && s.design_version && s.design_version !== e.dv) return false;
+      return true;
+    });
+  }
+  function procsFor(key) {
+    return ((RD.MANUAL_PROCEDURES || {})[key] || []).filter(function (x) { return !x.narrative; });
+  }
+  function renderMissionSelect() {
+    // Step 1 — the plant column
+    $('mpPlants').innerHTML = Object.keys(ENGINES).map(function (k) {
+      var e = ENGINES[k];
+      return '<div class="mplant-card' + (k === msel.engine ? ' on' : '') + '" data-mplant="' + k + '">' +
+        '<div class="mplant-name">' + mesc(e.label) + (k === ui.engineKey ? ' <span class="mplant-live">● active</span>' : '') + '</div>' +
+        '<div class="mplant-sub">' + mesc(e.sub) + '</div>' +
+        '<div class="mplant-desc">' + mesc(e.desc) + '</div></div>';
+    }).join('');
+    // Step 2 — the mode tabs
+    var modes = [['free', 'Free Play'], ['campaign', 'Campaign'], ['scenarios', 'Scenarios'], ['walkthroughs', 'Walkthroughs']];
+    $('mpModes').innerHTML = modes.map(function (m) {
+      return '<button class="' + (msel.mode === m[0] ? 'on' : '') + '" data-mmode="' + m[0] + '">' + m[1] + '</button>';
+    }).join('');
+    // Step 3 — the mode's content
+    $('mpContent').innerHTML =
+      msel.mode === 'free'      ? mpFree() :
+      msel.mode === 'campaign'  ? mpCampaign() :
+      msel.mode === 'scenarios' ? mpScenarios() : mpWalkthroughs();
+  }
+  function mpFree() {
+    var e = ENGINES[msel.engine];
+    var states = PROFILES[e.plant].initStates;
+    if (!states.some(function (s) { return s[0] === msel.init; })) msel.init = e.init;
+    var h = '<div class="m-note">Free Play — the plant is yours: no script, no grading, every control live. Pick the starting condition.</div>' +
+      '<div class="g-section-title" style="margin-top:12px">Starting condition</div>';
+    h += states.map(function (s) {
+      return '<div class="init-row' + (s[0] === msel.init ? ' on' : '') + '" data-minit="' + s[0] + '">' +
+        '<span class="init-dot">' + (s[0] === msel.init ? '◉' : '○') + '</span><span>' + mesc(s[1]) + '</span></div>';
+    }).join('');
+    h += '<button class="btn mp-start" data-mfree="1">▶ Start Free Play — ' + mesc(e.label) + '</button>';
+    return h;
+  }
+  function mpCampaign() {
+    return '<div class="m-note" data-scanner-hint="Campaign — the guided path from first scram to a full qualification, in the recommended order. Completed missions stay replayable.">The guided path — zero to operator, in order. Every mission stays replayable.</div>' +
+      campaignHtml(msel.engine);
+  }
+  function mpScenarios() {
     var p = progress();
     var doneS = p.completed_scenarios || [];
-    var ids = Object.keys(RD.SCENARIOS || {});
-    sc.innerHTML = ids.length ? ids.map(function (id) {
+    var ids = scenariosFor(msel.engine);
+    var h = '<div class="m-note">Instructor-led situations — one lesson each, played on this plant.</div>';
+    return h + (ids.length ? ids.map(function (id) {
       var s = RD.SCENARIOS[id];
-      var badge = (s.plant_id || '').toUpperCase() + (s.design_version === 'pre_chernobyl' ? ' pre-86' : s.design_version === 'post_chernobyl' ? ' post-86' : '');
       var active = ui.scenario === id;
       return '<div class="tr-card' + (active ? ' active' : '') + '">' +
-        '<div class="tr-head"><span class="tr-title">' + (doneS.indexOf(id) !== -1 ? '✓ ' : '') + mesc(s.title) + '</span><span class="tr-badge">' + badge + '</span></div>' +
+        '<div class="tr-head"><span class="tr-title">' + (doneS.indexOf(id) !== -1 ? '✓ ' : '') + mesc(s.title) + '</span></div>' +
         (s.description ? '<div class="m-note">' + mesc(s.description) + '</div>' : '') +
         '<div class="tr-actions">' + (active
           ? '<button class="btn" data-trstop="1">■ Stop scenario</button>'
           : '<button class="btn" data-trstart="' + id + '">▶ Start</button>') + '</div></div>';
-    }).join('') : '<div class="m-note">No scenarios loaded.</div>';
-    if (pr) {
-      var procs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return !x.narrative; });
-      var doneP = p.completed_procedures || [];
-      pr.innerHTML = procs.map(function (x) {
-        return '<div class="tr-row"><span class="tr-ptitle">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(x.title) + '</span>' +
-          '<button class="btn" data-follow="' + x.id + '">▶ Follow</button></div>';
-      }).join('') || '<div class="m-note">No procedures for this plant.</div>';
-    }
+    }).join('') : '<div class="m-note">No scenarios for this plant yet.</div>');
   }
+  function mpWalkthroughs() {
+    var p = progress();
+    var procs = procsFor(msel.engine);
+    var doneP = p.completed_procedures || [];
+    var h = '<div class="m-note">Follow a real procedure step by step — the Instructor checks each step off the instruments.</div>';
+    return h + (procs.map(function (x) {
+      return '<div class="tr-row"><span class="tr-ptitle">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(x.title) + '</span>' +
+        '<button class="btn" data-follow="' + x.id + '">▶ Follow</button></div>';
+    }).join('') || '<div class="m-note">No procedures for this plant.</div>');
+  }
+  // Starting a plant-bound mission (campaign mission / walkthrough) from the
+  // window may first need the window's plant to become the active one.
+  // Scenarios don't: start_scenario resets to its own plant.
+  function ensureEngine(key) { if (ui.engineKey !== key) switchEngine(key); }
 
   // ---- Scenario lifecycle (Training tab / level-complete Retry / ?scenario=) ----
   function startScenario(id) {
@@ -1025,7 +1214,7 @@
     diagReset('scenario', { scenario_id: id });
     resetInstrFlow();            // fresh mission → fresh commentary queue
     resetChat();                 // fresh transcript state (chat-mode scenarios)
-    setFocus('instructor');
+    setFocus('instructor', true);
     service.handleCommand({ action: 'play' });
     $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused');
   }
@@ -1061,7 +1250,7 @@
     cmd({ action: 'start_follow', procedure_id: id });
     autoPreset((procs.filter(function (x) { return x.id === id; })[0] || {}).auto_channels);
     resetInstrFlow();            // fresh walkthrough → fresh commentary queue
-    closeManual(); setFocus('instructor');
+    closeManual(); setFocus('instructor', true);
     if (latest) renderInstructor(latest);
   }
   // Rewind entry point (Instructor card ⏪ + strip-chart ⏪): during instructed
@@ -1147,12 +1336,27 @@
     cur.innerHTML = mesc(st.text) + (meta.length ? '<div class="m-note" style="margin-top:4px">' + meta.join(' &nbsp;·&nbsp; ') + '</div>' : '') + acc + warn +
       (st.note ? '<div class="m-note" style="color:var(--muted)">' + mesc(st.note) + '</div>' : '');
   }
-  function setFocus(which) {
+  // Focus model: a strict accordion in free play (exactly one of instructor /
+  // tools expanded), but while instructed content is live (scenario, walkthrough,
+  // chat) the two SPLIT the column instead of stealing from each other — live
+  // guidance must never vanish because the player opened the Graph tab, and a
+  // new chat line must not slam a tool shut mid-use. `user` marks an explicit
+  // click (persona header), which still maximizes the instructor.
+  function setFocus(which, user) {
     var instr = $('instructorCard'), tools = $('toolsCard'); if (!instr || !tools) return;
-    instr.classList.toggle('expanded', which === 'instructor');
-    instr.classList.toggle('collapsed', which !== 'instructor');
-    tools.classList.toggle('expanded', which === 'tools');
-    tools.classList.toggle('collapsed', which !== 'tools');
+    var live = !!(ui.scenario || ui.follow || chatState.sid);
+    var iExp, tExp;
+    if (which === 'instructor') {
+      iExp = true;
+      tExp = (live && !user) ? tools.classList.contains('expanded') : false;
+    } else {
+      tExp = true;
+      iExp = live;
+    }
+    instr.classList.toggle('expanded', iExp);
+    instr.classList.toggle('collapsed', !iExp);
+    tools.classList.toggle('expanded', tExp);
+    tools.classList.toggle('collapsed', !tExp);
   }
 
   function renderFailures(s) {
@@ -1530,10 +1734,10 @@
     'load-manual': function () { cmd({ action: 'set_load_mode', mode: 'manual' }); },
     'load-disconnect': function () { cmd({ action: 'disconnect_grid' }); },
     'breaker-close': function () { cmd({ action: 'set_steam_demand', mwe: 1000 }); },
-    'breaker-open': function () { if (confirm('Open the main breaker (disconnect from grid)?')) cmd({ action: 'set_steam_demand', mwe: 0 }); },
+    'breaker-open': function (b) { armedConfirm(b, function () { cmd({ action: 'set_steam_demand', mwe: 0 }); }); },
     'mwe-set': function () { cmd({ action: 'set_steam_demand', mwe: inputVal('mweSet') }); },
     'porv-block-open': function () { cmd({ action: 'open_block_valve' }); },
-    'porv-block-close': function () { if (confirm('Isolate the PORV (close the block valve)? Stops all PORV flow.')) cmd({ action: 'close_block_valve' }); },
+    'porv-block-close': function (b) { armedConfirm(b, function () { cmd({ action: 'close_block_valve' }); }); },
     'dump-auto': function () { cmd({ action: 'set_steam_dump', mode: 'auto' }); },
     'dump-open': function () { cmd({ action: 'set_steam_dump', mode: 'open' }); },
     'dump-close': function () { cmd({ action: 'set_steam_dump', mode: 'closed' }); },
@@ -1557,9 +1761,9 @@
     'rcic-on': function () { cmd({ action: 'set_rcic', active: true }); }, 'rcic-off': function () { cmd({ action: 'set_rcic', active: false }); },
     'ic-on': function () { cmd({ action: 'set_ic', active: true }); }, 'ic-off': function () { cmd({ action: 'set_ic', active: false }); },
     'hpci-on': function () { cmd({ action: 'set_hpci', active: true }); }, 'hpci-off': function () { cmd({ action: 'set_hpci', active: false }); },
-    'trigger-ads': function () { if (confirm('Actuate ADS — blow the vessel down to enable low-pressure injection?')) cmd({ action: 'trigger_ads' }); },
+    'trigger-ads': function (b) { armedConfirm(b, function () { cmd({ action: 'trigger_ads' }); }); },
     'start-lpci': function () { cmd({ action: 'start_lpci' }); },
-    'slc-initiate': function () { if (confirm('Initiate Standby Liquid Control (boron)? Shuts the reactor down even if the rods fail to insert.')) cmd({ action: 'initiate_slc' }); },
+    'slc-initiate': function (b) { armedConfirm(b, function () { cmd({ action: 'initiate_slc' }); }); },
     'start-lpcs': function () { cmd({ action: 'start_lpcs' }); }, 'stop-lpcs': function () { cmd({ action: 'stop_lpcs' }); },
     'slc-stop': function () { cmd({ action: 'stop_slc' }); },
     'srv-open': function () { cmd({ action: 'open_srv_manual' }); },
@@ -1592,10 +1796,49 @@
   function startHoldRod(group, direction) { holdingGroup = group; cmd({ action: 'rod_start', group_id: group, direction: direction, speed: ui.rodSpeed }); }
   function endHold() { if (!holdingGroup) return; cmd({ action: 'rod_stop', group_id: holdingGroup }); holdingGroup = null; document.querySelectorAll('.holding').forEach(function (x) { x.classList.remove('holding'); }); }
 
+  // Two-press confirm for destructive plant actions (the SCRAM idiom): first
+  // press arms the button — it reads CONFIRM? for 3 s — second press fires.
+  // One confirmation language board-wide; replaces the native confirm() popups.
+  var armedBtn = null, armedTimer = null;
+  function disarmConfirm() {
+    if (armedTimer) { clearTimeout(armedTimer); armedTimer = null; }
+    if (armedBtn) {
+      armedBtn.classList.remove('armed');
+      if (armedBtn.hasAttribute('data-armlabel')) armedBtn.textContent = armedBtn.getAttribute('data-armlabel');
+      armedBtn.removeAttribute('data-armlabel');
+    }
+    armedBtn = null;
+  }
+  function armedConfirm(btn, fn) {
+    if (!btn) { fn(); return; }                       // no button context — act directly
+    if (armedBtn === btn) { disarmConfirm(); fn(); return; }
+    disarmConfirm();
+    armedBtn = btn;
+    btn.setAttribute('data-armlabel', btn.textContent);
+    btn.textContent = 'CONFIRM?'; btn.classList.add('armed');
+    armedTimer = setTimeout(disarmConfirm, 3000);
+  }
+
+  // App-level feedback toast (save confirmations, bad file errors) — transient,
+  // top of the plant area. Plant/instructor feedback keeps its own channels
+  // (scanner = interlocks, instructor card = gate feedback).
+  var toastTimer = null;
+  function showToast(msg, kind) {
+    var t = $('appToast');
+    if (!t) {
+      t = document.createElement('div'); t.id = 'appToast'; t.className = 'app-toast';
+      document.querySelector('.plant-area').appendChild(t);
+    }
+    t.textContent = msg;
+    t.className = 'app-toast show' + (kind === 'error' ? ' error' : '');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, kind === 'error' ? 5000 : 2500);
+  }
+
   function bindCommands() {
     document.body.addEventListener('click', function (e) {
       var b = e.target.closest('[data-act]');
-      if (b && ACTS[b.getAttribute('data-act')]) { ACTS[b.getAttribute('data-act')](); return; }
+      if (b && ACTS[b.getAttribute('data-act')]) { ACTS[b.getAttribute('data-act')](b); return; }
       var ack = e.target.closest('[data-ack]');
       if (ack) cmd({ action: 'acknowledge_alarm', alarm_id: ack.getAttribute('data-ack') });
     });
@@ -1603,6 +1846,19 @@
       var b = e.target.closest('[data-hold]'); if (!b) return;
       var h = HOLD[b.getAttribute('data-hold')]; if (!h) return;
       e.preventDefault(); b.classList.add('holding'); h();
+    });
+    // Keyboard path for the press-and-hold controls (rod drive): Space/Enter on
+    // a focused hold button drives while held, releases on keyup — mirrors the
+    // pointer handlers, which never fire for keyboard users.
+    document.body.addEventListener('keydown', function (e) {
+      if (e.repeat || (e.key !== ' ' && e.key !== 'Enter')) return;
+      var b = e.target.closest && e.target.closest('[data-hold]'); if (!b) return;
+      var h = HOLD[b.getAttribute('data-hold')]; if (!h) return;
+      e.preventDefault(); b.classList.add('holding'); h();
+    });
+    document.body.addEventListener('keyup', function (e) {
+      if (e.key !== ' ' && e.key !== 'Enter') return;
+      if (e.target.closest && e.target.closest('[data-hold]')) endHold();
     });
     // remember control-bar setpoints so the shared bar shows the live value (not the
     // hardcoded default) when you leave and return to a view
@@ -1625,6 +1881,18 @@
       row.querySelector('[data-svlabel="' + id + '"]').textContent = m.label + ': ' + Math.round(m.min + (+sl.value / 100) * (m.max - m.min)) + ' ' + m.unit;
       if (row.classList.contains('active')) cmd({ action: 'inject_failure', failure_id: id, severity: sevOf(id) });
     });
+    // Advanced instrument failure — the expander + its panel actions.
+    $('advExpToggle').addEventListener('click', function () {
+      var p = $('advFailPanel'); p.hidden = !p.hidden;
+      this.classList.toggle('open', !p.hidden);
+      this.textContent = (p.hidden ? '▸' : '▾') + ' Advanced instrument failure (instrument × mode × value)';
+      if (!p.hidden && !p.innerHTML) buildAdvFail();
+    });
+    $('advFailPanel').addEventListener('change', function (e) { if (e.target.id === 'advMode') syncAdvVal(); });
+    $('advFailPanel').addEventListener('click', function (e) {
+      if (e.target.id === 'advApply') advFailAction(true);
+      else if (e.target.id === 'advClearOne') advFailAction(false);
+    });
   }
   function sevOf(id) { var sl = document.querySelector('[data-sevfor="' + id + '"]'); return sl ? +sl.value / 100 : 1; }
 
@@ -1637,7 +1905,7 @@
       setFocus('tools');
     });
     var persona = document.querySelector('.instructor .persona');
-    if (persona) persona.addEventListener('click', function () { setFocus('instructor'); });
+    if (persona) persona.addEventListener('click', function () { setFocus('instructor', true); });
     // generic segmented active state (delegated so rebuilt controls keep working)
     document.body.addEventListener('click', function (e) {
       var btn = e.target.closest('.seg button'); if (!btn) return;
@@ -1675,11 +1943,9 @@
     $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
     $('graphParams').addEventListener('change', function (e) { var cb = e.target.closest('input[data-series]'); if (!cb) return; ui.series[cb.getAttribute('data-series')] = cb.checked; drawChart(); });
     $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); drawChart(); });
-    $('initState').addEventListener('change', function () { ui.initState = $('initState').value; });
-    $('engineSel').addEventListener('change', function () { switchEngine($('engineSel').value); });
     $('loadFile').addEventListener('change', function (e) {
       var f = e.target.files[0]; if (!f) return; var r = new FileReader();
-      r.onload = function () { try { var st = JSON.parse(r.result); service.loadState(st); afterPlantChange(); diagReset('restore', { engine_key: ui.engineKey }); } catch (err) { alert('Bad save file'); } };
+      r.onload = function () { try { var st = JSON.parse(r.result); service.loadState(st); afterPlantChange(); diagReset('restore', { engine_key: ui.engineKey }); showToast('State loaded — ' + f.name); } catch (err) { showToast('Not a valid save file: ' + f.name, 'error'); } };
       r.readAsText(f);
     });
     // --- plant-display wiring ---
@@ -1695,52 +1961,129 @@
     $('manualOverlay').addEventListener('click', function (e) { if (e.target === $('manualOverlay')) closeManual(); });
     $('manualNav').addEventListener('click', function (e) { var b = e.target.closest('[data-msec]'); if (!b) return; ui.manualSection = b.getAttribute('data-msec'); renderManual(); });
     $('manualContent').addEventListener('click', function (e) { var b = e.target.closest('[data-follow]'); if (!b) return; followProcedure(b.getAttribute('data-follow')); });
-    document.querySelector('.instr-nav').addEventListener('click', function (e) { var b = e.target.closest('[data-fnav]'); if (!b) return; followNav(b.getAttribute('data-fnav')); });
+    // Manual table filter (glossary / indications) — hides non-matching rows.
+    $('manualContent').addEventListener('input', function (e) {
+      if (e.target.id !== 'mFilter') return;
+      var q = e.target.value.trim().toLowerCase();
+      $('manualContent').querySelectorAll('.m-table tr').forEach(function (tr) {
+        if (tr.querySelector('th')) return;   // keep header rows
+        tr.style.display = (!q || tr.textContent.toLowerCase().indexOf(q) !== -1) ? '' : 'none';
+      });
+    });
+    // Both button rows (walkthrough nav + scenario Acknowledge/Rewind) carry
+    // data-fnav buttons — listen at the card so one handler covers them.
+    $('instructorCard').addEventListener('click', function (e) { var b = e.target.closest('[data-fnav]'); if (!b) return; followNav(b.getAttribute('data-fnav')); });
+    // Acknowledge = the scenario "Continue" (a manual beat trigger). Clicking it
+    // also releases the commentary dwell — the reader said they're done reading.
+    $('instrAck').addEventListener('click', function () { msgHold.at = 0; cmd({ action: 'instructor_continue' }); });
     // Level Complete actions (Continue / Retry / Rewind) render inside the card.
     $('instructorCard').addEventListener('click', function (e) {
       var cb = e.target.closest('[data-chatbtn]');
       if (cb) { chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return; }
       var b = e.target.closest('[data-lc]'); if (!b) return; levelCompleteAction(b.getAttribute('data-lc'));
     });
-    // Training tab: scenario Start/Stop + procedure Follow buttons.
-    document.querySelector('[data-pane="training"]').addEventListener('click', function (e) {
+    // Plant & Mission window: plant / mode / start-condition picks re-render in
+    // place; the start buttons close the window and launch.
+    $('missionBtn').addEventListener('click', openMissionSelect);
+    $('simStatus').addEventListener('click', openMissionSelect);   // the always-visible entry point
+    $('missionClose').addEventListener('click', closeMissionSelect);
+    // Help overlay — the one-screen "how this control room works" guide.
+    $('helpBtn').addEventListener('click', function () { $('helpOverlay').hidden = false; });
+    $('helpClose').addEventListener('click', function () { $('helpOverlay').hidden = true; });
+    $('helpOverlay').addEventListener('click', function (e) { if (e.target === $('helpOverlay')) $('helpOverlay').hidden = true; });
+    $('missionOverlay').addEventListener('click', function (e) {
+      if (e.target === $('missionOverlay')) { closeMissionSelect(); return; }
+      var pc = e.target.closest('[data-mplant]');
+      if (pc) {
+        msel.engine = pc.getAttribute('data-mplant');
+        msel.init = ENGINES[msel.engine].init;
+        renderMissionSelect(); return;
+      }
+      var mm = e.target.closest('[data-mmode]');
+      if (mm) { msel.mode = mm.getAttribute('data-mmode'); renderMissionSelect(); return; }
+      var ir = e.target.closest('[data-minit]');
+      if (ir) { msel.init = ir.getAttribute('data-minit'); renderMissionSelect(); return; }
+      if (e.target.closest('[data-mfree]')) {
+        closeMissionSelect(); switchEngine(msel.engine, msel.init); return;
+      }
       var cc = e.target.closest('[data-camp-continue]');
-      if (cc) { var fm = campaignFrontier(); if (fm) { startMission(fm); buildTraining(); } return; }
+      if (cc) {
+        var fm = campaignFrontier(msel.engine);
+        if (fm) { closeMissionSelect(); if (fm.kind !== 'scenario') ensureEngine(msel.engine); startMission(fm); buildTraining(); }
+        return;
+      }
       var cs = e.target.closest('[data-camp-start]');
       if (cs) {
         var kv = cs.getAttribute('data-camp-start').split(':');
+        closeMissionSelect();
+        if (kv[0] !== 'scenario') ensureEngine(msel.engine);
         startMission({ kind: kv[0], id: kv[1] }); buildTraining(); return;
       }
       var st = e.target.closest('[data-trstart]');
-      if (st) { startScenario(st.getAttribute('data-trstart')); buildTraining(); return; }
+      if (st) { closeMissionSelect(); startScenario(st.getAttribute('data-trstart')); buildTraining(); return; }
       if (e.target.closest('[data-trstop]')) {
         ui.scenario = null; cmd({ action: 'stop_scenario' }); buildTraining();
         if (latest) renderInstructor(latest); return;
       }
       var f = e.target.closest('[data-follow]');
-      if (f) { followProcedure(f.getAttribute('data-follow')); }
+      if (f) { closeMissionSelect(); ensureEngine(msel.engine); followProcedure(f.getAttribute('data-follow')); }
     });
     // First-run Hook invitation (prompted, never forced — Gameplay §7.1).
     $('hookStart').addEventListener('click', function () { $('hookPrompt').hidden = true; startScenario('pwr_hook'); buildTraining(); });
     $('hookSkip').addEventListener('click', function () { $('hookPrompt').hidden = true; saveProgress({ hook_done: true }); });
+    // Global keyboard shortcuts (documented in the ? help card). Skipped while
+    // typing in a field or holding a modifier; Space is left alone when a
+    // button/control has focus so native activation (incl. rod hold) still works.
+    var SPEED_KEYS = { '1': 1, '2': 10, '3': 60, '4': 600, '5': 3600 };
     document.addEventListener('keydown', function (e) {
-      if (e.key !== 'Escape') return;
-      if (!$('manualOverlay').hidden) closeManual();
-      if (ui.rewindPick) toggleRewindPick(false);
+      if (e.key === 'Escape') {
+        if (!$('manualOverlay').hidden) closeManual();
+        if (!$('missionOverlay').hidden) closeMissionSelect();
+        if (!$('helpOverlay').hidden) $('helpOverlay').hidden = true;
+        if (ui.rewindPick) toggleRewindPick(false);
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      var t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (e.key === ' ') {
+        if (t && (t.tagName === 'BUTTON' || t.closest && t.closest('[data-hold]'))) return;   // native activation wins
+        e.preventDefault(); $('playBtn').click(); return;
+      }
+      if (SPEED_KEYS[e.key]) {
+        var sb = document.querySelector('#speed [data-speed="' + SPEED_KEYS[e.key] + '"]');
+        if (sb) sb.click(); return;
+      }
+      if (e.key === 'a' || e.key === 'A') { cmd({ action: 'acknowledge_all_alarms' }); return; }
+      if (e.key === 'm' || e.key === 'M') { $('manualOverlay').hidden ? openManual() : closeManual(); return; }
+      if (e.key === '?') { $('helpOverlay').hidden = !$('helpOverlay').hidden; return; }
     });
     // Strip-chart rewind: the ⏪ by the scrubber + click-to-pick on the plot.
+    // The scrubber track is the same affordance — clicking the timeline opens
+    // pick-a-moment mode (it used to be decoration that looked draggable).
     $('chartRewindBtn').addEventListener('click', function () { rewindPressed(); });
+    $('scrubTrack').addEventListener('click', function () {
+      if (service && service.checkpoints && service.checkpoints.length) toggleRewindPick();
+    });
     document.querySelector('.chart-plot').addEventListener('click', rewindPickClick);
-    document.body.addEventListener('mouseover', function (e) {
+    // System Scanner — hover OR tap (touch devices have no hover; a click on
+    // any hinted element also explains it, alongside whatever the click does).
+    function scannerShow(e) {
       var el = e.target.closest('[data-scanner-hint]'); if (!el) return;
       var hint = el.getAttribute('data-scanner-hint'), dash = hint.indexOf(' — ');
       $('scanner').innerHTML = dash > -1 ? '<strong>' + hint.slice(0, dash) + '</strong>' + hint.slice(dash) : hint;
-    });
+    }
+    document.body.addEventListener('mouseover', scannerShow);
+    document.body.addEventListener('click', scannerShow);
   }
   function syncSeg(sel, val, attr) { document.querySelectorAll(sel).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-' + attr) === val); }); }
   // Physics Overlay control exists only in Learning (Education) mode — Realistic hides it entirely.
+  // Values Display drives only the legacy RBMK/BWR All view — on the PWR the
+  // synoptic owns its truth presentation, so the row is hidden (an on-screen
+  // setting must never silently do nothing).
   function syncOverlayRow() {
     var row = $('overlayRow'); if (row) row.style.display = ui.diagMode === 'realistic' ? 'none' : '';
+    var vr = $('valuesRow'); if (vr) vr.style.display = ui.plant === 'pwr' ? 'none' : '';
     syncSeg('[data-mode]', ui.diagMode, 'mode');
     syncSeg('[data-phys]', ui.physOverlay ? 'on' : 'off', 'phys');
   }
@@ -1809,7 +2152,7 @@
     return sp.v + (sp.u ? ' ' + sp.u : '');
   }
 
-  function openManual() { if (!manualProfile()) { alert('Manual data not loaded.'); return; } $('manualOverlay').hidden = false; renderManual(); }
+  function openManual() { if (!manualProfile()) { showToast('Manual data not loaded.', 'error'); return; } $('manualOverlay').hidden = false; renderManual(); }
   function closeManual() { $('manualOverlay').hidden = true; }
 
   function renderManual() {
@@ -1910,7 +2253,8 @@
   }
 
   function mIndications(p) {
-    var h = '<h2>Indications</h2><table class="m-table"><tr><th>Reading</th><th>What it shows</th><th>Unit</th><th>Range</th><th>Linked alarms</th></tr>';
+    var h = '<h2>Indications</h2>' + mFilterBox('Filter readings…') +
+      '<table class="m-table"><tr><th>Reading</th><th>What it shows</th><th>Unit</th><th>Range</th><th>Linked alarms</th></tr>';
     p.indications.forEach(function (ind) {
       var dim = MDIM[ind.id], unitStr = dim ? unit(dim) : (ind.unit || '');
       var rng = '—';
@@ -1942,22 +2286,46 @@
   }
 
   function mGlossary(p) {
-    var h = '<h2>Glossary</h2><table class="m-table"><tr><th>Term</th><th>Meaning</th></tr>';
+    var h = '<h2>Glossary</h2>' + mFilterBox('Filter terms…') + '<table class="m-table"><tr><th>Term</th><th>Meaning</th></tr>';
     (p.glossary || []).forEach(function (g) { h += '<tr><td><b>' + mesc(g.acronym) + '</b></td><td>' + mesc(g.term) + '</td></tr>'; });
     return h + '</table>';
   }
+  // Client-side row filter for the manual's long tables (glossary, indications).
+  function mFilterBox(placeholder) {
+    return '<input class="num-input m-filter" id="mFilter" type="text" placeholder="' + esc(placeholder) + '">';
+  }
 
+  // Value formatting for the Normal Values tables, per the CONTEXT display
+  // conventions: normalized flows and void fractions show ×100 with a % sign,
+  // _pct fields get their % sign, and the reactivity/BOP proxies get their
+  // domain units. Dimensioned fields (pressure/temp/vacuum) convert via mval.
+  function tsCell(f, x) {
+    if (/_normalized$/.test(f) || /^(leak_flow|charging_flow_actual|letdown_flow_actual|steam_to_turbine)$/.test(f) ||
+        f === 'void_fraction_avg' || f === 'core_void_fraction') return Math.round(x * 100) + ' %';
+    if (/_pct(_eq)?$/.test(f)) return Math.round(x * 10) / 10 + ' %';
+    if (/_pcm$/.test(f)) return Math.round(x) + ' pcm';
+    if (/_dpm$/.test(f)) return Math.round(x * 100) / 100 + ' DPM';
+    if (f === 'reactor_period_s') return (!isFinite(x) || Math.abs(x) >= 1e6) ? 'steady' : Math.round(x * 10) / 10 + ' s';
+    if (f === 'turbine_rpm') return Math.round(x) + ' RPM';
+    if (f === 'mwe_output' || /_mwe$/.test(f)) return Math.round(x) + ' MWe';
+    if (/_ppm$/.test(f)) return Math.round(x) + ' ppm';
+    if (f === 'orm_equiv_rods') return Math.round(x * 10) / 10 + ' rods';
+    var m = mval(f, x, 1); return m.v + (m.u ? ' ' + m.u : '');
+  }
   function mNormal(p) {
     var h = '<h2>Normal Values</h2><p class="muted">Representative readings captured from the engine at each state (operating states settled to steady; startup / accident states near their initial condition).</p>';
+    // Board-language labels for the raw true_state field ids (generated with the
+    // manual). An unlabelled field shows its raw id — visible, not hidden.
+    var labels = p.ts_labels || {};
     for (var k in p.normal_values) {
       var nv = p.normal_values[k], ts = nv.true_state;
       h += '<h3>' + mesc(k) + ' <span style="text-transform:none;letter-spacing:0;color:var(--muted)">— ' + mesc(nv.label) + '</span></h3>';
-      h += '<table class="m-table"><tr><th>Parameter (true state)</th><th>Value</th></tr>';
+      h += '<table class="m-table"><tr><th>Parameter</th><th>Value</th></tr>';
       Object.keys(ts).forEach(function (f) {
-        if (typeof ts[f] === 'boolean') { h += '<tr><td class="mono">' + mesc(f) + '</td><td class="mono">' + mesc(ts[f]) + '</td></tr>'; return; }
+        var lbl = labels[f] ? '<td>' + mesc(labels[f]) + '</td>' : '<td class="mono">' + mesc(f) + '</td>';
+        if (typeof ts[f] === 'boolean') { h += '<tr>' + lbl + '<td class="mono">' + (ts[f] ? 'yes' : 'no') + '</td></tr>'; return; }
         if (typeof ts[f] !== 'number') return;
-        var m = mval(f, ts[f], 1);
-        h += '<tr><td class="mono">' + mesc(f) + '</td><td class="mono">' + mesc(m.v + (m.u ? ' ' + m.u : '')) + '</td></tr>';
+        h += '<tr>' + lbl + '<td class="mono">' + mesc(tsCell(f, ts[f])) + '</td></tr>';
       });
       h += '</table>';
     }
@@ -1992,21 +2360,22 @@
   }
 
   // Switch engine (PWR / RBMK pre / RBMK post / BWR): select the plant + version,
-  // then rebuild every plant-specific surface.
-  function switchEngine(key) {
+  // then rebuild every plant-specific surface. `init` is the optional starting
+  // condition (Plant & Mission → Free Play); default is the engine's own.
+  function switchEngine(key, init) {
     var e = ENGINES[key]; if (!e) return;
-    ui.engineKey = key; ui.plant = e.plant; ui.initState = e.init;
+    ui.engineKey = key; ui.plant = e.plant; ui.initState = init || e.init;
     ui.scenario = null; ui.follow = null;   // a manual plant switch ends instructed content
     ui.series = Object.assign({}, prof().defaultSeries);
     service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
-    service.handleCommand({ action: 'reset', plant_id: e.plant, initial_state: e.init, design_version: e.dv });
+    service.handleCommand({ action: 'reset', plant_id: e.plant, initial_state: ui.initState, design_version: e.dv });
     rebuildPlantUI();
-    diagReset('plant_change', { engine_key: key, initial_state: e.init });
+    diagReset('plant_change', { engine_key: key, initial_state: ui.initState });
   }
 
   function rebuildPlantUI() {
     chartBuf = []; smoothed = {};
-    buildGauges(); buildGraphParams(); buildInitStates(); buildFailures();
+    buildGauges(); buildGraphParams(); updateSimSummary(); buildFailures();
     if (autoCtl) {
       // Fresh plant → channels reset, then the plant's NORMAL lineup engages
       // (e.g. the RBMK AR in AUTO holding current power). Instructed content
@@ -2016,6 +2385,8 @@
       buildAutomate();
     }
     buildPlantDisplay();
+    syncOverlayRow();   // per-plant settings rows (Values Display is legacy-view only)
+    buildAdvFail();     // advanced instrument-failure panel follows the active plant
     var ps = $('pdScram'); if (ps && !ps.classList.contains('fired') && !ps.classList.contains('armed')) ps.textContent = prof().scramShort;
     buildTraining();   // walkthrough list follows the active plant
     latest = service.assembleSnapshot(); render(latest);
@@ -2029,7 +2400,6 @@
     var dv = snap.metadata.design_version;
     ui.engineKey = ui.plant === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : ui.plant;
     ui.series = Object.assign({}, prof().defaultSeries);
-    $('engineSel').value = ui.engineKey;
     rebuildPlantUI();
   }
 
@@ -2046,6 +2416,7 @@
     var url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
     var a = document.createElement('a'); a.href = url; a.download = 'reactor_save.json'; a.click();
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    showToast('State saved — reactor_save.json');
   }
   function exportCsv() {
     var cols = prof().series.filter(function (s) { return ui.series[s.id]; });
@@ -2428,9 +2799,8 @@
     var startKey = em ? em[1] : 'pwr', startEng = ENGINES[startKey];
     ui.engineKey = startKey; ui.plant = startEng.plant; ui.initState = startEng.init;
     ui.series = Object.assign({}, prof().defaultSeries);
-    buildGauges(); buildGraphParams(); buildInitStates();
+    buildGauges(); buildGraphParams(); updateSimSummary();
     buildPlantDisplay();
-    $('engineSel').value = startKey;
     service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });
     buildFailures();
@@ -2457,9 +2827,20 @@
       service.handleCommand({ action: 'set_speed', value: 1 });
     }
     if (im || ffm) { latest = service.assembleSnapshot(); render(latest); }
-    // optional ?tab= deep-link — opens a Tools-Block tab (dev/screenshot convenience)
+    // optional ?tab= deep-link — opens a Tools-Block tab (dev/screenshot convenience).
+    // ?tab=training (the retired tab) opens the Plant & Mission window instead.
     var tbm = /[?&]tab=(failures|automate|graph|sim|settings|training|dev)/.exec(location.search || '');
-    if (tbm) { var tbtn = document.querySelector('#tabbar [data-tab="' + tbm[1] + '"]'); if (tbtn) tbtn.click(); }
+    if (tbm) {
+      if (tbm[1] === 'training') openMissionSelect();
+      else { var tbtn = document.querySelector('#tabbar [data-tab="' + tbm[1] + '"]'); if (tbtn) tbtn.click(); }
+    }
+    // optional ?missions=1 deep-link — opens the Plant & Mission window
+    // (?mmode=free|campaign|scenarios|walkthroughs picks the mode — dev/screenshots)
+    var mmm = /[?&]mmode=(free|campaign|scenarios|walkthroughs)/.exec(location.search || '');
+    if (mmm) msel.mode = mmm[1];
+    if (/[?&]missions=1/.test(location.search || '')) openMissionSelect();
+    // optional ?help=1 deep-link — opens the help guide (dev/screenshots)
+    if (/[?&]help=1/.test(location.search || '')) $('helpOverlay').hidden = false;
     // optional ?auto=<id,id|all> deep-link — engages automation channels (dev convenience)
     var am = /[?&]auto=([a-z_,]+|all)/.exec(location.search || '');
     if (am && autoCtl) {

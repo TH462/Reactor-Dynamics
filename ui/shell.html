@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reactor⚛️Dynamics — Control Room (alpha)</title>
+  <title>Reactor⚛️Dynamics — Control Room</title>
   <link rel="stylesheet" href="shell.css">
   <link rel="stylesheet" href="diagram/pwr_synoptic.css">
 </head>
@@ -24,9 +24,9 @@
       <div class="main-area">
         <div class="view-switcher" id="viewTabs"></div>
         <div class="view-stack">
-          <div class="view-area" id="viewArea">
-            <div class="ff-badge" style="display:none" id="ffBadge">⚡ 600×</div>
-          </div>
+          <!-- #ffBadge is injected by whichever plant display builds into this
+               area (buildViews / the PWR synoptic) — no static copy here -->
+          <div class="view-area" id="viewArea"></div>
           <!-- shared control bar: active view's controls + SCRAM (always at the right) -->
           <div class="pd-controlbar">
             <div class="pd-ctlrow" id="pdCtlRow"></div>
@@ -49,16 +49,16 @@
           <div class="chart-xaxis mono" id="chartXAxis"></div>
           <div class="scrubber">
             <span class="lbl mono" id="chartWindowLbl">−5:00</span>
-            <div class="track"><div class="head"></div></div>
+            <div class="track" id="scrubTrack" data-scanner-hint="Timeline — you are at LIVE. Click the track (or the Rewind button) to pick an earlier moment to rewind to."><div class="head"></div></div>
             <span class="lbl mono">LIVE</span>
             <button class="btn ghost" id="chartRewindBtn" disabled
-              data-scanner-hint="Rewind — jump back to an earlier moment. In free play, pick the moment on the graph; in a scenario or walkthrough it steps back one checkpoint.">⏪</button>
+              data-scanner-hint="Rewind — jump back to an earlier moment. In free play, pick the moment on the graph; in a scenario or walkthrough it steps back one checkpoint.">⏪ Rewind</button>
           </div>
         </div>
 
         <div class="alarm-panel">
           <div class="alarm-head">
-            <span class="t">Alarms</span>
+            <span class="t" id="alarmTitle">Alarms</span>
             <button class="btn ghost" data-act="ack-all" data-scanner-hint="Master Acknowledge — acknowledges every active alarm at once (prefer acknowledging individually).">Ack All</button>
           </div>
           <div class="alarm-stack" id="alarmStack"></div>
@@ -82,7 +82,12 @@
           </div>
           <button class="btn save-btn" data-act="save" data-scanner-hint="Save — downloads the full simulation state as JSON.">💾</button>
           <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant.">📖 Manual</button>
+          <button class="btn help-btn" id="helpBtn" title="How this control room works" data-scanner-hint="Help — a one-screen guide to the board: the quiet-board colors, why instruments can lie, where the missions live, and the keyboard shortcuts.">?</button>
         </div>
+        <!-- What's running now — the always-visible mission entry point -->
+        <button class="sim-status" id="simStatus" data-scanner-hint="Current plant &amp; mission — click to switch reactors, start the training campaign, play a scenario, or follow a procedure walkthrough.">
+          <span class="ss-a">⚛️</span><span class="ss-txt" id="simStatusText">—</span><span class="ss-chev">›</span>
+        </button>
       </div>
 
       <!-- Instructor panel (§9) — collapsed by default; shows latest message only -->
@@ -95,14 +100,19 @@
           <div class="instr-prev" id="instrPrev">— no prior messages —</div>
           <div class="instr-current instr-standby" id="instrCurrent">Standing by…</div>
         </div>
-        <div class="instr-nav">
-          <button class="btn" data-fnav="prev">◀ Prev</button>
-          <button class="btn" data-fnav="next">Next ▶</button>
-          <button class="btn" data-fnav="rewind" title="Rewind to the last checkpoint" disabled>⏪ Rewind</button>
-          <button class="btn" data-fnav="restart" title="Restart procedure">↺</button>
-          <button class="btn" data-fnav="stop" title="Stop following">✕</button>
+        <!-- Walkthrough (follow) nav — shown only while following a procedure -->
+        <div class="instr-nav" id="instrNav" hidden>
+          <button class="btn" data-fnav="prev" data-scanner-hint="Previous step — go back one procedure step.">◀ Prev</button>
+          <button class="btn" data-fnav="next" data-scanner-hint="Next step — advance to the next procedure step.">Next ▶</button>
+          <button class="btn" data-fnav="rewind" title="Rewind to the last checkpoint" data-scanner-hint="Rewind — restore the checkpoint taken at the start of this step." disabled>⏪ Rewind</button>
+          <button class="btn" data-fnav="restart" title="Restart procedure" data-scanner-hint="Restart — start this procedure over from its initial state.">↺</button>
+          <button class="btn" data-fnav="stop" title="Stop following" data-scanner-hint="Stop — leave the walkthrough and return to free play.">✕</button>
         </div>
-        <div class="instr-ack"><button class="ack-btn" id="instrAck">Acknowledge</button></div>
+        <!-- Scenario continue — shown only when a scenario's commentary is on screen -->
+        <div class="instr-ack" id="instrAckRow" hidden>
+          <button class="ack-btn" id="instrAck" data-scanner-hint="Acknowledge — tell the Instructor you've read this and are ready to continue.">Acknowledge</button>
+          <button class="btn" data-fnav="rewind" title="Rewind to the last checkpoint" data-scanner-hint="Rewind — go back to the last checkpoint and try a different path." disabled>⏪ Rewind</button>
+        </div>
       </div>
 
       <!-- Tools Block (§10) — expanded by default; collapses to its tab strip -->
@@ -113,14 +123,14 @@
           <button data-tab="graph">Graph</button>
           <button data-tab="sim">Sim</button>
           <button data-tab="settings">Settings</button>
-          <button data-tab="training">Training</button>
           <button data-tab="dev">Dev</button>
         </div>
         <div class="tab-body">
           <!-- Failures tab — built by app.js from M4's catalog -->
           <div class="tabpane on" data-pane="failures">
             <div id="failList"></div>
-            <div class="advanced-exp">▸ Advanced instrument failure (instrument × mode × value)</div>
+            <div class="advanced-exp" id="advExpToggle" data-scanner-hint="Advanced instrument failure — fail any single instrument (stuck, drifting, noisy, or dead) while the plant behind it stays real. The board will lie to you (HR1).">▸ Advanced instrument failure (instrument × mode × value)</div>
+            <div class="adv-fail" id="advFailPanel" hidden></div>
           </div>
           <!-- Automate tab — per-control automation toggles (layers/auto_control.js) -->
           <div class="tabpane" data-pane="automate">
@@ -137,47 +147,28 @@
             </div>
             <div class="set-row"><span class="k">Export</span><button class="btn" data-act="export-csv">CSV ⭳</button></div>
           </div>
-          <!-- Sim tab -->
+          <!-- Sim tab — active plant/mode summary + the Plant & Mission window -->
           <div class="tabpane" data-pane="sim">
-            <div class="set-row"><span class="k">Scenario</span><span class="mono">Free-play</span></div>
-            <div class="set-row" data-scanner-hint="Engine — choose the reactor. The RBMK carries both its pre-1986 (Chernobyl) and post-1986 designs. Switching rebuilds the indications and controls for that plant.">
-              <span class="k">Engine</span>
-              <select id="engineSel" class="num-input mono">
-                <option value="pwr">PWR — Pressurized Water (TMI)</option>
-                <option value="rbmk_pre">RBMK pre-1986 (Chernobyl)</option>
-                <option value="rbmk_post">RBMK post-1986</option>
-                <option value="bwr">BWR — Boiling Water (Fukushima)</option>
-              </select>
-            </div>
-            <div class="set-row"><span class="k">Initial state</span>
-              <select id="initState" class="num-input mono"></select>
-            </div>
+            <div class="set-row"><span class="k">Plant</span><span class="mono" id="simPlantLbl">—</span></div>
+            <div class="set-row"><span class="k">Mode</span><span class="mono" id="simModeLbl">Free Play</span></div>
+            <div class="set-row" data-scanner-hint="Plant &amp; Mission — choose the reactor, then free play (with a starting condition), the training campaign, a scenario, or a procedure walkthrough.">
+              <span class="k">Change</span><button class="btn" id="missionBtn">⚛️ Plant &amp; Mission…</button></div>
             <div class="set-row"><span class="k">Reset</span><button class="btn" data-act="reset">Reset to initial state</button></div>
             <div class="set-row"><span class="k">Save / Load</span><span><button class="btn" data-act="save">Save</button> <button class="btn" data-act="load">Load</button></span></div>
             <input type="file" id="loadFile" accept="application/json" style="display:none">
+            <div class="g-section-title" style="margin-top:12px" data-scanner-hint="Reactivity Computer — net reactivity and reactor period. Use during approach to criticality.">Reactivity Computer</div>
+            <div class="set-row"><span class="k">Net reactivity ρ</span><span class="mono" id="rxReactivity">— pcm</span></div>
+            <div class="set-row"><span class="k">Reactor period</span><span class="mono" id="rxPeriod">— s</span></div>
           </div>
           <!-- Settings tab -->
           <div class="tabpane" data-pane="settings">
-            <div class="set-row" data-scanner-hint="Diagram Mode — Education (Learning) adds teaching layers to the synoptic; Realistic is indications and status only (HR1).">
-              <span class="k">Diagram Mode</span><div class="seg" id="modeSeg"><button class="on" data-mode="learning">Education</button><button data-mode="realistic">Realistic</button></div></div>
+            <div class="set-row" data-scanner-hint="Diagram Mode — Teaching adds labels, color, and physics annotations to the synoptic; Realistic is the quiet board: indications and status only (HR1).">
+              <span class="k">Diagram Mode</span><div class="seg" id="modeSeg"><button class="on" data-mode="learning">Teaching</button><button data-mode="realistic">Realistic</button></div></div>
             <div class="set-row" id="overlayRow" data-scanner-hint="Physics Overlay — Learning only. On shows the full physics layer (reactivity, period, inventory, void, P–S ΔT, ghosts); off keeps the quiet teaching board.">
               <span class="k">Physics Overlay</span><div class="seg" id="physSeg"><button class="on" data-phys="off">Off</button><button data-phys="on">On</button></div></div>
-            <div class="set-row"><span class="k">Values Display</span><div class="seg" id="overlaySeg2"><button class="on" data-overlay="instruments">Instruments</button><button data-overlay="true">True</button><button data-overlay="both">Both</button></div></div>
-            <div class="set-row"><span class="k">Register</span><div class="seg" id="registerSeg"><button class="on" data-register="learning">Learning</button><button data-register="industry">Industry</button></div></div>
+            <div class="set-row" id="valuesRow" data-scanner-hint="Values Display — the legacy RBMK/BWR All view can show instrument readings, true physical values, or both side by side."><span class="k">Values Display</span><div class="seg" id="overlaySeg2"><button class="on" data-overlay="instruments">Instruments</button><button data-overlay="true">True</button><button data-overlay="both">Both</button></div></div>
+            <div class="set-row" data-scanner-hint="Terminology — Plain language spells things out for learners; Industry uses real plant terms and acronyms."><span class="k">Terminology</span><div class="seg" id="registerSeg"><button class="on" data-register="learning">Plain language</button><button data-register="industry">Industry</button></div></div>
             <div class="set-row"><span class="k">Units</span><div class="seg" id="unitsSeg"><button class="on" data-units="US">US</button><button data-units="SI">SI</button></div></div>
-            <div class="set-row"><span class="k">Audio</span><div class="seg"><button>On</button><button class="on">Off</button></div></div>
-          </div>
-          <!-- Training tab — campaign + M6 scenario picker + walkthroughs + Reactivity Computer -->
-          <div class="tabpane" data-pane="training">
-            <div class="g-section-title" data-scanner-hint="Campaign — the guided path from first scram to a full qualification. Missions unlock in order; completed ones stay replayable.">Campaign <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· zero to operator</span></div>
-            <div id="trainingCampaign"></div>
-            <div class="g-section-title">All Scenarios <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· Instructor (M6)</span></div>
-            <div id="trainingScenarios"></div>
-            <div class="g-section-title">Walkthroughs <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· follow a procedure</span></div>
-            <div id="trainingProcedures"></div>
-            <div class="g-section-title" data-scanner-hint="Reactivity Computer — net reactivity and reactor period. Use during approach to criticality.">Reactivity Computer</div>
-            <div class="set-row"><span class="k">Net reactivity ρ</span><span class="mono" id="rxReactivity">— pcm</span></div>
-            <div class="set-row"><span class="k">Reactor period</span><span class="mono" id="rxPeriod">— s</span></div>
           </div>
           <!-- Dev tab — development-only tools -->
           <div class="tabpane" data-pane="dev">
@@ -196,10 +187,29 @@
       <div class="hook-prompt" id="hookPrompt" hidden>
         <div class="hook-card">
           <div class="hook-title">⚛️ First time in the control room?</div>
-          <div class="hook-body">Take the 60-second intro: something is about to go wrong, and you get to press the big red button — then rewind time and see what it protected. Replayable any time from the Training tab.</div>
+          <div class="hook-body">Take the 60-second intro: something is about to go wrong, and you get to press the big red button — then rewind time and see what it protected. Replayable any time — click the ⚛️ mission line above to open Plant &amp; Mission.</div>
           <div class="hook-actions">
             <button class="btn" id="hookStart">▶ Start the intro</button>
             <button class="btn" id="hookSkip">Not now</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Plant & Mission window — plant selection + free play / campaign /
+           scenarios / walkthroughs, nested in that order. Content built by
+           app.js; opened from the Sim tab (⚛️ Plant & Mission…). -->
+      <div class="mission-overlay" id="missionOverlay" hidden>
+        <div class="mission-modal">
+          <div class="mission-head">
+            <div class="mission-title">⚛️ Plant &amp; Mission</div>
+            <button class="btn" id="missionClose" aria-label="Close">✕ Close</button>
+          </div>
+          <div class="mission-body">
+            <div class="mp-plants" id="mpPlants"></div>
+            <div class="mp-right">
+              <div class="mp-modes" id="mpModes"></div>
+              <div class="mp-content" id="mpContent"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -221,10 +231,50 @@
         </div>
       </div>
 
+      <!-- Help overlay — a one-screen "how this control room works" guide -->
+      <div class="mission-overlay" id="helpOverlay" hidden>
+        <div class="mission-modal help-modal">
+          <div class="mission-head">
+            <div class="mission-title">❓ How this control room works</div>
+            <button class="btn" id="helpClose" aria-label="Close">✕ Close</button>
+          </div>
+          <div class="help-body">
+            <div class="help-sec">
+              <h4>The board is quiet on purpose</h4>
+              <p>A healthy plant is a dark board. Color appears only when something needs you: amber
+              means caution, red means alarm. An empty alarm panel is itself information.</p>
+            </div>
+            <div class="help-sec">
+              <h4>You operate through instruments — and instruments can lie</h4>
+              <p>Every number on this board comes from a sensor that lags, drifts, and can fail.
+              The plant's protection systems read the same sensors you do. At Three Mile Island a
+              valve indicator read <i>closed</i> while the valve was stuck open — this simulator will
+              do that to you, on purpose, with no visual tell. Cross-check your indications.</p>
+            </div>
+            <div class="help-sec">
+              <h4>Where everything lives</h4>
+              <p><b>⚛️ Mission line</b> (top right, under the clock) — switch reactors, start the
+              training campaign, scenarios, or procedure walkthroughs.<br>
+              <b>📖 Manual</b> — the Operator's Manual: controls, indications, setpoints, normal
+              values, and followable procedures.<br>
+              <b>⏪ Rewind</b> (by the strip chart) — go back in time. Failure is never Game Over;
+              rewind and try a different path.<br>
+              <b>System Scanner</b> (bottom right) — hover or tap anything on the board and the
+              scanner tells you what it is and what it's for.</p>
+            </div>
+            <div class="help-sec">
+              <h4>Keyboard shortcuts</h4>
+              <p class="mono help-keys">Space&nbsp;— play / pause · 1–5 — speed steps · A — acknowledge all alarms ·
+              M — manual · ? — this guide · Esc — close / cancel</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- System Scanner (§11) -->
       <div class="panel scanner">
         <div class="panel-title">System Scanner</div>
-        <div class="body" id="scanner"><span class="idle">Hover anything to see what it does.</span></div>
+        <div class="body" id="scanner"><span class="idle">Hover or tap anything to see what it does.</span></div>
       </div>
     </div>
   </div>

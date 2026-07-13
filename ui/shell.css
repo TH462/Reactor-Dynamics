@@ -59,14 +59,6 @@ body {
 }
 .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
 
-/* Shell banner so it's obviously a non-wired mock */
-.shell-ribbon {
-  position: fixed; top: 0; left: 50%; transform: translateX(-50%);
-  background: #3a2a00; color: #ffd98a; font-size: 11px; letter-spacing: .04em;
-  padding: 2px 12px; border: 1px solid #5a4400; border-top: none;
-  border-radius: 0 0 6px 6px; z-index: 1000; text-transform: uppercase;
-}
-
 /* ===================================================================== app */
 .app {
   display: flex;
@@ -88,6 +80,7 @@ body {
   border-radius: var(--radius);
   padding: var(--gap);
   overflow: hidden;
+  position: relative;   /* anchors the app toast */
 }
 
 /* Right column: sim controls + instructor + tools + scanner */
@@ -227,6 +220,12 @@ body {
 }
 .btn:hover { border-color: var(--text-2); }
 .btn.ghost { background: transparent; }
+/* A control that can't act right now must look it (honest affordances) */
+button:disabled { opacity: .45; cursor: not-allowed; }
+/* Keyboard focus must be visible board-wide (never for mouse clicks) */
+button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--normal); outline-offset: 1px;
+}
 
 /* rod position bar */
 .rodbar { height: 10px; border-radius: 5px; background: #11151a; border: 1px solid var(--border); position: relative; overflow: hidden; }
@@ -357,9 +356,25 @@ body {
   color: var(--text-1); opacity: .95;
 }
 .scrubber { height: 14px; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-.scrubber .track { flex: 1 1 auto; height: 4px; background: #23272d; border-radius: 2px; position: relative; }
-.scrubber .head { position: absolute; right: 8%; top: -3px; width: 3px; height: 10px; background: var(--normal); border-radius: 2px; }
+.scrubber .track { flex: 1 1 auto; height: 4px; background: #23272d; border-radius: 2px; position: relative; cursor: pointer; }
+.scrubber .track:hover { background: #2b3138; }
+/* The head marks the present: the chart always ends at LIVE (right edge). */
+.scrubber .head { position: absolute; right: 0; top: -3px; width: 3px; height: 10px; background: var(--normal); border-radius: 2px; pointer-events: none; }
 .scrubber .lbl { font-size: 10px; color: var(--muted); }
+
+/* App-level feedback toast (save / load / file errors) */
+.app-toast {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%) translateY(-6px);
+  background: var(--bg-elevated); border: 1px solid var(--normal); border-radius: 6px;
+  color: var(--text); font-size: 12px; padding: 7px 14px; z-index: 120;
+  opacity: 0; pointer-events: none; transition: opacity .18s ease, transform .18s ease;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+}
+.app-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.app-toast.error { border-color: var(--alarm, #e5484d); color: var(--alarm, #e5484d); }
+
+/* Two-press armed confirm (the SCRAM idiom, for destructive plant actions) */
+button.armed { background: #3a1618 !important; color: #ff9d9d !important; border-color: #a13a3a !important; animation: pulse 1s ease-in-out infinite; }
 
 .alarm-panel {
   flex: 0 0 33%; background: var(--bg-strip); border: 1px solid var(--border); border-radius: var(--radius);
@@ -374,6 +389,12 @@ body {
   background: var(--bg-elevated); border: 1px solid var(--border); position: relative;
 }
 .alarm-tile .bar { width: 4px; align-self: stretch; border-radius: 2px; background: var(--muted); flex: 0 0 auto; }
+.alarm-tile { cursor: pointer; }
+.alarm-tile .ack-chip {
+  flex: 0 0 auto; align-self: center; font-size: 9px; font-weight: 700; letter-spacing: .06em;
+  color: var(--text-2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 5px;
+}
+.alarm-tile:hover .ack-chip { color: var(--text); border-color: var(--normal); }
 .alarm-tile .body { flex: 1 1 auto; }
 .alarm-tile .label { font-size: 12px; font-weight: 600; line-height: 1.2; }
 .alarm-tile .meta { font-size: 10px; color: var(--text-2); margin-top: 2px; }
@@ -417,6 +438,26 @@ body {
    amber to warn that time is accelerated; the selector itself stays quiet). */
 .speed button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--normal); }
 .save-btn { flex: 0 0 auto; }
+.help-btn { flex: 0 0 auto; width: 26px; padding: 4px 0; font-weight: 700; }
+
+/* What's running now — the always-visible mission entry point (click → Plant & Mission) */
+.sim-status {
+  display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 8px;
+  padding: 5px 8px; background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text-2); font-size: 11px; cursor: pointer; text-align: left;
+}
+.sim-status:hover { color: var(--text); border-color: var(--normal); }
+.sim-status .ss-a { flex: 0 0 auto; }
+.sim-status .ss-txt { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sim-status .ss-chev { flex: 0 0 auto; color: var(--muted); font-size: 13px; }
+
+/* Help overlay — reuses the mission-modal chrome, narrower and content-sized */
+.help-modal { width: min(560px, 96vw); height: auto; max-height: min(84vh, 760px); }
+.help-body { padding: 14px 18px; overflow: auto; }
+.help-sec { margin-bottom: 14px; }
+.help-sec h4 { margin: 0 0 4px; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-2); }
+.help-sec p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); }
+.help-keys { font-size: 11px; color: var(--text-2); }
 
 /* ===================================================== right col: instructor */
 /* Cards focus model (§ quiet-board "management by exception"): exactly one of
@@ -452,10 +493,15 @@ body {
 .instr-current { color: var(--text); font-size: 13px; }
 .instr-standby { color: var(--muted); font-style: italic; }
 .instr-nav { display: flex; gap: 6px; padding: 0 10px 8px; }
+.instr-nav[hidden] { display: none; }
 .instr-nav .btn { padding: 4px 8px; }
-.instr-ack { margin: 0 10px 10px; }
-.ack-btn { width: 100%; padding: 8px; background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: 6px; color: var(--muted); font-weight: 700; cursor: not-allowed; }
+.instr-ack { margin: 0 10px 10px; display: flex; gap: 6px; align-items: stretch; }
+.instr-ack[hidden] { display: none; }
+.instr-ack .btn { flex: 0 0 auto; }
+/* The primary "I've read this, continue" action (M8 §9) — a real, live control. */
+.ack-btn { flex: 1 1 auto; padding: 8px; background: var(--bg-elevated); border: 1px solid var(--normal);
+  border-radius: 6px; color: var(--normal); font-weight: 700; cursor: pointer; }
+.ack-btn:hover { background: color-mix(in srgb, var(--normal) 12%, var(--bg-elevated)); }
 
 /* ===================================================== right col: tools block */
 .tabbar { display: flex; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
@@ -486,7 +532,20 @@ body {
 .fail-slider .sv { font-size: 11px; color: var(--text-2); min-width: 96px; text-align: right; }
 .fail-row.active { background: rgba(34,211,238,.05); }
 .fail-row.active .fail-name { color: var(--normal); }
-.advanced-exp { margin-top: 10px; font-size: 11px; color: var(--text-2); }
+.m-filter { display: block; width: 240px; margin: 6px 0 10px; }
+.advanced-exp { margin-top: 10px; font-size: 11px; color: var(--text-2); cursor: pointer; user-select: none; }
+.advanced-exp:hover { color: var(--text); }
+.advanced-exp.open { color: var(--text); }
+/* Advanced instrument failure panel (Failures tab) */
+.adv-fail { margin-top: 6px; padding: 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; gap: 6px; }
+.adv-fail[hidden] { display: none; }
+.adv-fail .row { display: flex; align-items: center; gap: 6px; }
+.adv-fail .row .k { flex: 0 0 76px; font-size: 11px; color: var(--text-2); }
+.adv-fail select { flex: 1 1 auto; min-width: 0; background: var(--bg-strip); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font-size: 12px; }
+.adv-fail .num-input { width: 90px; }
+.adv-fail .note { font-size: 10px; color: var(--muted); }
+.adv-fail .actions { display: flex; gap: 6px; justify-content: flex-end; }
+.adv-fail .active-list { font-size: 11px; color: var(--caution); }
 
 /* settings tab rows */
 .set-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #23272d; }
@@ -893,7 +952,7 @@ select.num-input { width: auto; }
 .lc-actions { display: flex; gap: 6px; margin-top: 4px; }
 .lc-actions .btn { flex: 0 0 auto; }
 
-/* ---- Training tab (M6): scenario picker + walkthrough list ---- */
+/* ---- Scenario cards + walkthrough rows (Plant & Mission window) ---- */
 .tr-card {
   border: 1px solid var(--border); border-radius: 6px;
   padding: 8px 10px; margin-bottom: 8px; background: var(--bg-elevated);
@@ -912,7 +971,7 @@ select.num-input { width: auto; }
 }
 .tr-ptitle { font-size: 12px; color: var(--text); }
 
-/* ---- Campaign (Path 3 wrapper): acts, mission rows, progress ---- */
+/* ---- Campaign (Plant & Mission window): acts, mission rows, progress ---- */
 .camp-head {
   border: 1px solid var(--border); border-radius: 6px;
   padding: 8px 10px; margin-bottom: 8px; background: var(--bg-elevated);
@@ -1006,3 +1065,66 @@ select.num-input { width: auto; }
 .chat-btn-ack { border-color: var(--stopped); }
 .chat-btn-skip { border-color: var(--caution); color: var(--caution); }
 .chat-ff { text-align: center; color: var(--caution); font-size: 11px; font-style: italic; }
+
+/* ============================ Plant & Mission window ======================
+   Sim tab → ⚛️ Plant & Mission… — plant column (left), then mode tabs +
+   nested content (right). Reuses the .tr-* / .camp-* blocks above. */
+.mission-overlay {
+  position: fixed; inset: 0; z-index: 210;
+  background: rgba(4, 7, 9, 0.78);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.mission-overlay[hidden] { display: none; }
+.mission-modal {
+  width: min(940px, 96vw); height: min(84vh, 760px);
+  display: flex; flex-direction: column;
+  background: var(--bg-plant); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 12px 48px rgba(0,0,0,0.6); overflow: hidden;
+}
+.mission-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+.mission-title { font-weight: 700; font-size: 14px; color: var(--text); }
+.mission-body { flex: 1; display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
+/* step 1 — plant column */
+.mp-plants {
+  border-right: 1px solid var(--border); overflow-y: auto;
+  padding: 10px; display: flex; flex-direction: column; gap: 8px;
+}
+/* NB: not ".plant-card" — that class belongs to the PWR synoptic (positioned) */
+.mplant-card {
+  border: 1px solid var(--border); border-radius: 6px; padding: 10px;
+  cursor: pointer; background: var(--bg-elevated);
+}
+.mplant-card:hover { border-color: rgba(122, 176, 255, 0.4); }
+.mplant-card.on { border-color: rgba(122, 176, 255, 0.7); background: rgba(122, 176, 255, 0.08); }
+.mplant-name { font-weight: 700; font-size: 13px; color: var(--text); }
+.mplant-live { font-size: 10px; color: #79d297; font-weight: 400; }
+.mplant-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+.mplant-desc { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+/* step 2 — mode tabs; step 3 — the nested content */
+.mp-right { display: flex; flex-direction: column; min-height: 0; }
+.mp-modes { display: flex; border-bottom: 1px solid var(--border); }
+.mp-modes button {
+  flex: 1; padding: 9px 4px; background: none; border: none;
+  border-bottom: 2px solid transparent; color: var(--text-2);
+  font: inherit; font-size: 12px; cursor: pointer;
+}
+.mp-modes button:hover { color: var(--text); }
+.mp-modes button.on { color: var(--text); border-bottom-color: rgba(122, 176, 255, 0.85); }
+.mp-content { flex: 1; overflow-y: auto; padding: 12px 14px; }
+/* campaign mission rows in the wide window: pin the Start button to the title
+   row (the teaches line spans beneath it), instead of wrapping to its own row */
+.mp-content .camp-mission > .btn { grid-column: 3; grid-row: 1; white-space: nowrap; }
+/* Free Play starting-condition rows */
+.init-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px;
+  cursor: pointer; font-size: 12px; color: var(--text); background: var(--bg-elevated);
+}
+.init-row:hover { border-color: rgba(122, 176, 255, 0.4); }
+.init-row.on { border-color: rgba(122, 176, 255, 0.7); background: rgba(122, 176, 255, 0.08); }
+.init-dot { color: rgba(122, 176, 255, 0.9); }
+.mp-start { display: block; width: 100%; margin-top: 12px; padding: 10px; font-weight: 700; }
