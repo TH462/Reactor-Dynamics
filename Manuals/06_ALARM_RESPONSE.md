@@ -1,0 +1,355 @@
+# 06 — Alarm Response Procedures
+
+**Document:** PWR-ARP-01  
+**Title:** Annunciator Response — PWR  
+**Revision:** 0  
+
+---
+
+## 1.0 Purpose
+
+Provide operator response for each modeled PWR annunciator. Alarms read **instruments** (or status booleans derived for the board). A failed sensor can suppress or falsely create alarms.
+
+**MODE note:** Most at-power alarms apply in **Mode One** (or Mode Two). **REACTOR TRIP** and post-trip recovery put the plant in **Mode Three**.
+
+## 2.0 Alarm philosophy
+
+| Priority | Meaning | Operator stance |
+|----------|---------|-----------------|
+| **Critical** | Trip or imminent core/heat-sink threat | Immediate actions; verify automatic protection |
+| **Warning** | Approaching trip or significant upset | Diagnose and correct promptly |
+| **Caution** | Off-normal; may not need immediate action | Monitor; correct if trend worsens |
+| **Status** | System state change (e.g. HPI running) | Verify expected vs unexpected |
+
+### Global immediate actions (any alarm flood)
+
+1. **Stop** what is making it worse (stop rod withdrawal, stop load step).  
+2. **Scan** vital-few strip: Power, Pressure, Tavg, PZR level, SG level, **Subcooling**.  
+3. **Acknowledge** (**A** key) after you have read the first-out story.  
+4. **Verify** automatic SCRAM / ESF if setpoints exceeded.  
+5. Enter the matching **PWR-A##** and, if a failure is active, **PWR-E##**.
+
+### Panel layout
+
+| Panel | Systems |
+|-------|---------|
+| **A** | Reactor / primary / nuclear |
+| **B** | Secondary / turbine / support systems |
+
+---
+
+## 3.0 Alarm index
+
+| ID | Annunciator | Priority | Panel |
+|----|-------------|----------|-------|
+| PWR-A01 | REACTOR TRIP | critical | A |
+| PWR-A02 | HI FLUX | critical | A |
+| PWR-A03 | HI TAVG | warning | A |
+| PWR-A04 | PZR PRESS HI | warning | A |
+| PWR-A05 | PZR PRESS LO | warning | A |
+| PWR-A06 | PZR PRESS LO LO | critical | A |
+| PWR-A07 | PORV OPEN | warning | A |
+| PWR-A08 | SUR HI | caution | A |
+| PWR-A09 | SR HI FLUX | caution | A |
+| PWR-A10 | LO SUBCOOL | warning | A |
+| PWR-A11 | SUBCOOL LOST | critical | A |
+| PWR-A12 | PZR LVL HI | caution | A |
+| PWR-A13 | PZR LVL LO | warning | A |
+| PWR-A14 | PZR LVL LO LO | critical | A |
+| PWR-A15 | ROD INS LIMIT | warning | A |
+| PWR-A16 | SG LVL HI | caution | B |
+| PWR-A17 | SG LVL LO | warning | B |
+| PWR-A18 | SG LVL LO LO | critical | B |
+| PWR-A19 | RCP TRIP | critical | B |
+| PWR-A20 | HPI/LPI ACTIVE | status | B |
+| PWR-A21 | SBO | critical | B |
+| PWR-A22 | TURB TRIP | warning | B |
+| PWR-A23 | MSIV SHUT | warning | B |
+| PWR-A24 | SG PRESS HI | caution | B |
+| PWR-A25 | COND VAC LO | caution | B |
+| PWR-A26 | COND VAC TRIP | warning | B |
+
+---
+
+## PWR-A01 — Reactor Trip (REACTOR TRIP)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint / logic** | `rps_scrammed` true |
+| **Means** | Reactor Protection System has shut the reactor down (or manual SCRAM completed). |
+| **Automatic actions** | Rods drive in; load → Disconnected |
+| **Immediate operator actions** | 1) Verify power falling and rods inserting. 2) Verify turbine load rejected. 3) Ensure heat sink (SG level / AFW). 4) Check pressure, inventory, subcooling. 5) Diagnose cause (first-out / failures). |
+| **If not expected** | Manual SCRAM if power not falling; treat as ATWS path (**PWR-E13**). |
+| **Recovery** | Stabilize Hot Shutdown (**PWR-T06**). Do not hasty restart. |
+
+---
+
+## PWR-A02 — High Neutron Flux (HI FLUX)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Power range ≥ **108 %** (alarm); trip at **120 %** |
+| **Means** | Neutron power high. |
+| **Actions** | 1) Stop withdrawal. 2) Insert rods. 3) Reduce turbine load if overcooling/power mismatch. 4) If rising through trip, expect/verify SCRAM. |
+| **Related** | Continuous rod withdrawal failure **PWR-E17** |
+
+---
+
+## PWR-A03 — High Coolant Temperature (HI TAVG)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Tavg ≥ **312.2 °C** (alarm); trip **335 °C** |
+| **Means** | Average coolant temperature high — often load rejection, loss of heat sink, or power high vs steam demand. |
+| **Actions** | 1) Check power vs MWe / steam flow. 2) Check SG level and feed. 3) Insert rods / reduce power. 4) Restore heat sink (AFW if needed). 5) Verify pressure not also high. |
+
+---
+
+## PWR-A04 — Pressurizer Pressure High (PZR PRESS HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≥ **15.86 MPa** |
+| **Means** | Primary pressure high — toward PORV. |
+| **Actions** | 1) Verify spray AUTO/manual available (RCP running). 2) Reduce heat input (rods in / power). 3) Check load rejection / loss of steam demand. 4) Expect PORV auto-open near **16.20 MPa**. |
+
+---
+
+## PWR-A05 — Pressurizer Pressure Low (PZR PRESS LO)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≤ **14.82 MPa** |
+| **Means** | Primary pressure low — subcooling at risk. |
+| **Actions** | 1) Energize heaters. 2) Secure excessive spray. 3) Check PORV/safety path and block valve. 4) Check leak / HPI need. 5) Watch subcooling. |
+
+---
+
+## PWR-A06 — Pressurizer Pressure Very Low (PZR PRESS LO LO)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≤ **12.41 MPa** (also low-pressure SCRAM) |
+| **Means** | Dangerously low RCS pressure. |
+| **Actions** | 1) Verify SCRAM. 2) Verify **HPI** actuation (~11.03 MPa AUTO if armed). 3) Isolate stuck PORV with **block valve** if indicated. 4) Stop spray. 5) Do not throttle HPI on PZR level alone. → **PWR-E07**, **E09** |
+
+---
+
+## PWR-A07 — Pressure Relief Valve Open (PORV OPEN)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `porv_indicator` shows open |
+| **Means** | PORV is **indicated** open. Indicator can **lie closed** when actually open. |
+| **Actions** | 1) If pressure still high, opening may be proper — wait for reseat ~**15.86 MPa**. 2) If should be shut: command **PORV Close**. 3) Cross-check **subcooling**, pressure trend, **tailpipe temperature**. 4) If leak continues → **Isolate block valve** (**PWR-E07**). |
+
+---
+
+## PWR-A08 — Startup Rate High (SUR HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | SUR ≥ **2 DPM** |
+| **Means** | Power rising quickly. |
+| **Actions** | 1) Stop withdrawal. 2) Insert if needed. 3) Expect withdrawal interlock at **2.5 DPM**. 4) Resume only when SUR &lt; **1.5 DPM**. |
+
+---
+
+## PWR-A09 — Source Range Count Rate High (SR HI FLUX)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Alarm **5e4 cps**; trip **1e5 cps** when SR energized |
+| **Means** | SR counts high — handoff overdue. |
+| **Actions** | 1) If IR on scale (P-6), **SR Off**. 2) If not on scale, stop power rise and diagnose. |
+
+---
+
+## PWR-A10 — Low Subcooling Margin (LO SUBCOOL)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Subcooling ≤ **11.1 °C** |
+| **Means** | Approaching boiling in primary. |
+| **Actions** | 1) Raise pressure (heaters) and/or lower temperature (power/load). 2) Check for leak / open relief. 3) Prepare HPI. 4) **Trust this over a single PORV light.** |
+
+---
+
+## PWR-A11 — Subcooling Lost (SUBCOOL LOST)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Subcooling ≤ **0 °C** |
+| **Means** | Coolant at/above saturation — boiling / voiding. |
+| **Actions** | 1) Verify SCRAM if not already. 2) **HPI On** — do not throttle on high PZR level. 3) Isolate stuck PORV path. 4) Restore heat sink. 5) Treat as LOCA-class event. → **PWR-E07**, **E09**, **X01** |
+
+---
+
+## PWR-A12 — Pressurizer Level High (PZR LVL HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≥ **75 %** |
+| **Means** | PZR level high — could be charging excess, heatup, **or void surge (TMI trap)**. |
+| **Actions** | 1) Check subcooling and pressure. 2) If subcooling OK: reduce charging / increase letdown. 3) If subcooling bad: **suspect LOCA/void** — do **not** secure HPI for level alone. |
+
+---
+
+## PWR-A13 — Pressurizer Level Low (PZR LVL LO)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≤ **25 %** |
+| **Means** | Inventory low or cooldown contraction. |
+| **Actions** | 1) Increase charging; isolate letdown if needed. 2) Check for leak. 3) Watch for LO-LO trip at **12 %**. |
+
+---
+
+## PWR-A14 — Pressurizer Level Very Low (PZR LVL LO LO)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≤ **12 %** (SCRAM) |
+| **Means** | Critical inventory indication. |
+| **Actions** | 1) Verify SCRAM. 2) Maximize charging / HPI. 3) Find inventory loss. |
+
+---
+
+## PWR-A15 — Control Rods — Insertion Limit (ROD INS LIMIT)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | Control bank at/below insertion limit |
+| **Means** | Rods too deep for current power — inadequate rod worth margin concept. |
+| **Actions** | 1) Borate or reduce power. 2) Withdraw only within procedures. 3) Do not ignore during power ops. |
+
+---
+
+## PWR-A16 — Steam Generator Level High (SG LVL HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≥ **75 %** |
+| **Means** | SG overfeed or load cut with feed high. |
+| **Actions** | 1) Reduce feed pump / verify three-element. 2) Match turbine load to power. 3) Avoid turbine water-induction risk mindset (even if not fully modeled). |
+
+---
+
+## PWR-A17 — Steam Generator Level Low (SG LVL LO)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≤ **30 %** |
+| **Means** | Heat sink degrading. |
+| **Actions** | 1) Raise feed. 2) Check main feed failures. 3) Prepare AFW. 4) Expect AFW AUTO ~**20 %** if armed. |
+
+---
+
+## PWR-A18 — Steam Generator Level Critical Low (SG LVL LO LO)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≤ **12 %** (SCRAM) |
+| **Means** | Heat sink critical. |
+| **Actions** | 1) Verify SCRAM. 2) **AFW Start** immediately. 3) Turbine load off. → **PWR-E01** |
+
+---
+
+## PWR-A19 — Reactor Coolant Pump Trip (RCP TRIP)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `rcp_running` false |
+| **Means** | Loss of forced primary flow. |
+| **Actions** | 1) Verify automatic low-flow SCRAM. 2) Manual SCRAM if not tripped. 3) Load off. 4) Natural circulation / AFW for decay heat. → **PWR-E02** |
+
+---
+
+## PWR-A20 — Emergency Injection Active (HPI/LPI ACTIVE)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `hpi_active` true |
+| **Means** | Emergency injection running (auto or manual). |
+| **Actions** | 1) If expected (low pressure / LOCA): leave running; monitor subcooling/inventory. 2) If unexpected: diagnose pressure instruments and ESF arm. 3) Do not secure early on rising PZR level alone during LOCA. |
+
+---
+
+## PWR-A21 — Station Blackout (SBO)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `station_blackout` true |
+| **Means** | AC power lost (as modeled). |
+| **Actions** | 1) Verify SCRAM / trip state. 2) Establish AFW if available. 3) Natural circulation mindset. 4) Recognize severe training challenge — see **PWR-E05**. |
+
+---
+
+## PWR-A22 — Turbine Trip / Low Steam Demand (TURB TRIP)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `steam_demand_low` true |
+| **Means** | Turbine not accepting load / tripped. |
+| **Actions** | 1) Expect reactor power/Tavg response. 2) Verify SCRAM if required by plant. 3) Steam dump for pressure. 4) Control SG level. → **PWR-E03** |
+
+---
+
+## PWR-A23 — Main Steam Isolated (MSIV SHUT)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `msiv_open` false |
+| **Means** | MSIV closed — SG bottled. |
+| **Actions** | 1) Expect turbine trip and SG pressure rise toward safeties. 2) Reactor trip if heat sink lost. 3) AFW for inventory. → MSIV transient **PWR-E19** related |
+
+---
+
+## PWR-A24 — Steam Generator Pressure High (SG PRESS HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≥ **9.0 MPa** (alarm); SG safeties ~**9.31 / 9.0 MPa** open/reseat |
+| **Means** | Secondary pressure high — often MSIV shut or loss of steam path. |
+| **Actions** | 1) Steam dump if available. 2) Reduce reactor power / verify trip. 3) Do not overfeed dry SG without procedure. |
+
+---
+
+## PWR-A25 — Condenser Vacuum Low (COND VAC LO)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≤ **84.7 kPa** |
+| **Means** | Vacuum degrading. |
+| **Actions** | 1) Reduce load. 2) Check vacuum failure injection. 3) Prepare for turbine trip. |
+
+---
+
+## PWR-A26 — Condenser Vacuum Trip Level (COND VAC TRIP)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≤ **74.5 kPa** |
+| **Means** | Turbine protection vacuum trip region. |
+| **Actions** | 1) Verify turbine trip. 2) Control reactor/SG. → **PWR-E10** |
+
+---
+
+## 4.0 Multi-alarm patterns (quick diagnosis)
+
+| Pattern | Suspect |
+|---------|---------|
+| SG LVL LO → LO LO + REACTOR TRIP | Loss of feed (**E01**) |
+| RCP TRIP + REACTOR TRIP | Loss of flow (**E02**) |
+| PORV OPEN or **no PORV alarm** + LO SUBCOOL + PZR LVL HI | Stuck PORV / TMI (**E07**, **X01**) |
+| TURB TRIP + HI TAVG + PZR PRESS HI | Load rejection (**E03**) |
+| PZR PRESS LO LO + HPI ACTIVE + inventory drop | LOCA (**E09**) |
+| COND VAC LO → TURB TRIP | Vacuum event (**E10**) |
+
+---
+
+## 5.0 Related documents
+
+- `07_ABNORMAL_EMERGENCY.md`  
+- `09_SETPOINTS_LIMITS.md`  
+- `08_ACCIDENT_TMI.md`  

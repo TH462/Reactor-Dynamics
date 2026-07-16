@@ -1,0 +1,525 @@
+# 04 — Normal Operating Procedures
+
+**Document:** PWR-NOP-01  
+**Plant:** Pressurized Water Reactor (PWR)  
+**Revision:** 0  
+
+---
+
+## 1.0 Purpose
+
+Provide step-followable **normal operating procedures** for the Reactor⚛️Dynamics PWR across commercial **plant MODES**. Fully simulated work centers on **Mode Three** (Hot Standby), **Mode Two** (Startup), and **Mode One** (Power Operation). **Mode Four** / **Mode Five** heatup and cooldown are **[narr]** only.
+
+**Master MODE paths:** `05_MODE_TRANSITIONS.md` — **PWR-T20** (Mode Five → Mode One), **PWR-T21** (Mode One → Mode Five).
+
+## 2.0 Procedure index
+
+| ID | Title | MODE focus | Scope |
+|----|-------|------------|-------|
+| PWR-N01 | Prerequisites & plant lineup (Mode Three) | Mode Three | [sim] |
+| PWR-N02 | Approach to criticality (Mode Three → Mode Two) | 3 → 2 | [sim] |
+| PWR-N03 | Heatup Mode Five → Mode Three | 5 → 4 → 3 | [narr] |
+| PWR-N04 | Mode Two low-power operation & POAH | Mode Two | [sim] |
+| PWR-N05 | Turbine roll & generator synchronization | Mode Two → One | [sim] |
+| PWR-N06 | Power ascension in Mode One to 100 % | Mode One | [sim] |
+| PWR-N07 | Power maneuvering — raise power (Mode One) | Mode One | [sim] |
+| PWR-N08 | Power maneuvering — lower power (Mode One) | Mode One | [sim] |
+| PWR-N09 | Boron & reactivity management (incl. xenon) | Mode One–Three | [sim] |
+| PWR-N10 | Pressurizer pressure control | Mode One–Three | [sim] |
+| PWR-N11 | Pressurizer level control (CVCS) | Mode One–Three | [sim] |
+| PWR-N12 | Steam Generator level & feedwater control | Mode One–Two | [sim] |
+| PWR-N13 | Reactor Coolant Pump (RCP) operation | Mode One–Three | [sim, approx] |
+| PWR-N14 | Normal shutdown Mode One → Mode Three | 1 → 3 | [sim] |
+| PWR-N15 | Cooldown Mode Three → Mode Five (DHR/RHR) | 3 → 4 → 5 | [narr] |
+
+**Related:** MODE transitions → `05_MODE_TRANSITIONS.md`. Control details → `03_CONTROLS_AND_INDICATIONS.md`. Setpoints → `09_SETPOINTS_LIMITS.md`.
+
+---
+
+## PWR-N01 — Prerequisites & plant lineup (Mode Three)
+
+### Purpose
+Verify the plant is correctly lined up in **Mode Three** (Hot Standby) before approach to criticality.
+
+### Applicability
+Initial condition **Hot Standby** (`hot_zero_power`) = **Mode Three**, or post-trip recovery to hot, subcritical conditions (still Mode Three by temperature class).
+
+### Prerequisites
+- Simulator running; plant = PWR.
+- Free Play or mission allowing operator control.
+
+### Precautions
+- Do not withdraw rods until N01 checks complete.
+- Confirm no unexpected active failures unless the drill requires them.
+
+### Procedure
+
+| Step | Action | Control / indication | Acceptance |
+|------|--------|----------------------|------------|
+| 1 | Confirm plant subcritical | Power & Reactivity / reactivity or power ~0 | Reactivity &lt; 0; power near source equilibrium |
+| 2 | Confirm hot operating temperature | Tavg ≈ **304 °C** | At operating T (NOP) |
+| 3 | Confirm primary pressure | Primary pressure ≈ **15.41 MPa** | Near PZR setpoint |
+| 4 | Confirm subcooling healthy | Subcooling bar | Typically tens of °C; green zone |
+| 5 | Confirm RCP running (forced flow) | RCP card / rcp_running | Pump running |
+| 6 | Confirm control bank fully inserted | Rod Control bar | Steps ≈ 0 withdrawn (inserted) |
+| 7 | Confirm shutdown bank parked out | Shutdown bank indication | Fully withdrawn (normal) |
+| 8 | Confirm boron high / plant held subcritical | Boron analyzer (slow) | Consistent with subcritical hold |
+| 9 | Confirm Source Range energized | SR detector On; SR counts | SR On; counts typically hundreds of cps class |
+| 10 | Confirm Intermediate Range on scale for handoff readiness | IR current | IR rising into view as power rises later; at HZP may be low |
+| 11 | Confirm SG available as heat sink | SG level ~nominal; feed available | Level not LO-LO |
+| 12 | Confirm turbine load disconnected or zero as expected at HZP | Turbine-Generator | ~0 MWe typical at standby |
+| 13 | Clear or acknowledge spurious alarms | Alarm panel; **A** | Board understood |
+| 14 | Set time acceleration **1×–10×** max for startup | Speed selector | Operator can follow SUR |
+
+### Outcome
+Plant verified in **Mode Three**; ready for **PWR-N02** (enter Mode Two).
+
+---
+
+## PWR-N02 — Approach to criticality (Mode Three → Mode Two)
+
+### Purpose
+Take the reactor from **Mode Three** (subcritical, hot) to **Mode Two** (critical, power ≤ 5 %) by withdrawing Control Rods, watching Startup Rate (SUR) and reactor period.
+
+### Applicability
+[sim] From **Mode Three**.
+
+### Prerequisites
+- **PWR-N01** complete (Mode Three lineup).
+- Control bank inserted; SR energized; RCP running.
+
+### Precautions
+| Type | Text |
+|------|------|
+| **CAUTION** | Withdraw in small increments. Target SUR ≤ **1 DPM**, reactor period ≥ **30 s**. |
+| **CAUTION** | This trainer’s single coarse bank may briefly read ~**2 DPM** at the criticality crossing. |
+| **CAUTION** | Power can **overshoot** the settling point (lumped Doppler-only fine structure). Stop rods early and let feedback settle. |
+| **WARNING** | Leave SR energized past ~1e5 cps → **SR high-flux trip**. Perform SR→IR handoff on time. |
+| **NOTE** | Rod withdrawal blocks if SUR ≥ **2.5 DPM** until SUR &lt; **1.5 DPM**. Insertion always works. |
+
+### Procedure
+
+| Step | Action | Control | Acceptance |
+|------|--------|---------|------------|
+| 1 | Confirm subcritical, hot: Tavg ≈ 304 °C, P ≈ 15.41 MPa | Observe | Reactivity &lt; 0 |
+| 2 | Confirm SR counting (hundreds of cps class); IR on scale when required for handoff | NIS / Power card | SR &gt; ~100 cps |
+| 3 | When IR ≥ **1e-10 A** (P-6), switch **SR detector OFF** | SR detector | SR de-energized; IR carries indication |
+| 4 | Set Rod Speed **Norm** for bulk withdrawal; **Slow** for final approach | Rod Speed | Speed selected |
+| 5 | Withdraw Control Bank in bursts; watch SUR | Control Bank Raise | SUR responds; period long |
+| 6 | If period short or SUR high: stop or insert | Stop / Lower | SUR under control |
+| 7 | Pass criticality; hold low power climb | Observe power, SUR | Power &gt; ~1 % with controlled rate |
+| 8 | Let Doppler / MTC settle; trim rods to hold | Rods | Stable low power, no trip |
+
+### Outcome
+Reactor in **Mode Two** (critical, controlled power ≤ 5 %); ready for **PWR-N04** / **PWR-N05**. When power later exceeds **5 %**, the plant enters **Mode One**.
+
+---
+
+## PWR-N03 — Heatup Mode Five → Mode Three **[narr]**
+
+### Purpose
+Describe commercial heatup from **Mode Five** (Cold Shutdown) through **Mode Four** (Hot Shutdown) to **Mode Three** (Hot Standby). **Not step-followable** in this trainer (no cold state, no modeled heatup rate). Part of master path **PWR-T20**.
+
+### Narrative (not simulated)
+
+| Step | MODE | Action |
+|------|------|--------|
+| 1 | **Mode Five** | Cold shutdown: subcritical, RCS cold; fill/vent as required |
+| 2 | Mode Five → **Mode Four** | Start RCPs when permitted; pump heat + controlled nuclear heat; draw PZR bubble |
+| 3 | **Mode Four** | Intermediate temperature; continue heatup/pressurization within commercial limits |
+| 4 | → **Mode Three** | Reach NOP T/P (≈ 304 °C, 15.41 MPa), subcritical, heat sink aligned |
+
+**Simulator note:** RCP pump heat **is** modeled at power/flow, but there is no Mode Five initial condition. Begin all [sim] startups at **Mode Three** (**PWR-N01**). Read this procedure, then continue **PWR-T20** Phase B on the board.
+
+### Outcome
+Operator can narrate Mode Five → Mode Three; sim work starts at Mode Three.
+
+---
+
+## PWR-N04 — Mode Two low-power operation & Point of Adding Heat (POAH)
+
+### Purpose
+Operate stably in **Mode Two** (critical, ≤ 5 %) and through the early climb; recognize when fission heat exceeds losses (POAH concept). Crossing **> 5 %** enters **Mode One**.
+
+### Prerequisites
+- **Mode Two** per **PWR-N02**.
+- Heat sink available (SG inventory).
+
+### Precautions
+- At very low power, instruments and controllers may be less “stiff”; prefer manual attention to rods and feed.
+- Do not rush IR/PR trip blocks until above **P-10** (10 %) — by then you are already in **Mode One**.
+
+### Procedure
+
+| Step | Action | Acceptance |
+|------|--------|------------|
+| 1 | Hold power in Mode Two band (≤ 5 %) with small rod trims | SUR near 0; power stable ≤ 5 % |
+| 2 | Confirm Tavg and pressure near NOP | P ≈ 15.41 MPa; Tavg near operating |
+| 3 | Confirm SG level held (manual feed or three-element AUTO if reliable) | SG level not LO |
+| 4 | When raising toward Mode One: above **10 %**, block IR high / PR low-setpoint as required | Blocks allowed only above P-10 |
+| 5 | Proceed to turbine roll (**PWR-N05**); declare **Mode One** when power > 5 % | Ready for load / Mode One |
+
+### Outcome
+Stable Mode Two; ready to roll turbine and enter Mode One.
+
+---
+
+## PWR-N05 — Turbine roll & generator synchronization (Mode Two → Mode One)
+
+### Purpose
+Place the turbine-generator on the grid and establish electrical output coordinated with reactor power while leaving **Mode Two** for **Mode One** (power > 5 %).
+
+### Prerequisites
+- Reactor critical (**Mode Two** or already **Mode One**).
+- Condenser vacuum healthy.
+- MSIV open.
+
+### Precautions
+| Type | Text |
+|------|------|
+| **CAUTION** | Large step load changes can trip on secondary/primary upset (load rejection). Step load modestly. |
+| **NOTE** | Load mode **Follow** tracks reactor power; **Manual** sets MWe directly. |
+
+### Procedure
+
+| Step | Action | Control | Acceptance |
+|------|--------|---------|------------|
+| 1 | Verify condenser vacuum above trip region | Condenser card | Vacuum healthy |
+| 2 | Verify MSIV **Open** | Steam & Flow | MSIV open |
+| 3 | Select load mode **Manual** (or Follow if already matching power) | Turbine-Generator | Mode set |
+| 4 | Raise Turbine Load in steps toward a low MWe target consistent with reactor power | Turbine Load | MWe rises; steam flow rises |
+| 5 | Match reactor power with rods (or Follow mode) so SG level stays controlled | Rods / Follow | No SG LO-LO / HI flood |
+| 6 | Place feed on **three-element AUTO** when stable | Automate → Feed | AUTO holding SG level |
+| 7 | Optionally engage **Rod AUTO (Tavg)** only after Tavg is where you want it | Automate → Rods | Holding without large drive |
+
+### Outcome
+Generator carrying load; plant in or entering **Mode One**; nuclear–electric coordinated.
+
+---
+
+## PWR-N06 — Power ascension in Mode One to 100 %
+
+### Purpose
+In **Mode One**, raise reactor power and electrical output to full-power Mode One (~**1000 MWe**) by coordinating rods, boron, and turbine load.
+
+### Prerequisites
+- **Mode One** (or completing entry via N05); turbine on line or load Follow available.
+- SG level control understood (**PWR-N12**).
+
+### Precautions
+- Keep power ramp modest (training guideline ~**10 %/min** class ceiling where achievable).
+- Secure SR before high count trip; manage IR/PR blocks above P-10.
+- Watch xenon: during sustained rise, xenon burns out (positive reactivity) — trim boron/rods.
+
+### Procedure
+
+| Step | Action | Control | Acceptance |
+|------|--------|---------|------------|
+| 1 | Establish target ladder (e.g. 25 → 50 → 75 → 100 %) | Plan | Targets known |
+| 2 | Withdraw Control Bank in small bursts **or** dilute slowly | Rods / CVCS Dilute | Power rising controlled |
+| 3 | Raise Turbine Load to match (Manual) **or** use Follow | Turbine Load / Follow | MWe tracks power |
+| 4 | Hold at each plateau; check Tavg, pressure, SG level, subcooling | Observe | Stable board |
+| 5 | Re-engage feed AUTO and PZR AUTO as needed | Automate | Controllers holding |
+| 6 | At ~92 % control bank withdrawn / HFP equilibrium, trim boron for critical hold | CVCS / rods | Power ~100 %; P ≈ 15.41 MPa; SG ~65 %; PZR ~55 % |
+| 7 | Optionally place Rod AUTO and load Follow for steady operation | Automate | Hands-off hold |
+
+### Outcome
+Full-power **Mode One** equilibrium ready for normal maneuvering or watchstanding.
+
+---
+
+## PWR-N07 — Power maneuvering — raise power (Mode One)
+
+### Purpose
+Increase reactor power and electrical output within **Mode One** from a partial-power plateau.
+
+### Prerequisites
+- **Mode One**: critical, power > 5 %, turbine on line, stable.
+
+### Precautions
+- Rods **lead** up; turbine **follows**.
+- Let temperatures and xenon follow; avoid SUR alarms.
+
+### Procedure
+
+| Step | Action | Control | Target / acceptance |
+|------|--------|---------|---------------------|
+| 1 | Withdraw Control Rods a few steps (short bursts) | Rod Speed + Raise | Small steady power rise |
+| 2 | Raise Turbine Load to the new electrical target | Turbine Load | e.g. higher MWe settled |
+| 3 | Verify SG level and PZR pressure/level | SG / PZR | Within normal bands |
+| 4 | Trim with rods or dilute if xenon/burnup requires | Rods / Dilute | Power holds |
+
+### Outcome
+Stable higher power and MWe.
+
+---
+
+## PWR-N08 — Power maneuvering — lower power (Mode One)
+
+### Purpose
+Reduce reactor power and load within **Mode One** (or down through Mode Two toward Mode Three).
+
+### Prerequisites
+- **Mode One** (or Mode Two), turbine on line.
+
+### Precautions
+| Type | Text |
+|------|------|
+| **CAUTION** | Turbine **leads** down; rods trim. |
+| **CAUTION** | SG level may **swell** on load drop — do not overfeed. |
+| **NOTE** | After a large down-power, xenon builds over hours (use time accel carefully). |
+
+### Procedure
+
+| Step | Action | Control | Target / acceptance |
+|------|--------|---------|---------------------|
+| 1 | Reduce Turbine Load to new MWe | Turbine Load | Lower MWe |
+| 2 | Insert Control Rods (bursts) and/or borate | Rods / Borate | Power falling to target |
+| 3 | Watch SG level; use feed AUTO or manual trim | Feed | Level ~65 % class |
+| 4 | Stabilize Tavg and pressure | PZR / rods | Quiet board |
+
+### Outcome
+Stable lower power plateau.
+
+---
+
+## PWR-N09 — Boron & reactivity management (including xenon)
+
+### Purpose
+Use Chemical & Volume Control System (CVCS) boron and rods for long- and short-term reactivity control; manage xenon transients.
+
+### Prerequisites
+- Charging pump available; CVCS panel accessible.
+
+### Precautions
+- Boron changes are **slow** relative to rods (analyzer lag ~**45 s**; chemistry still compressed vs real plant).
+- Charging pump must be **On** for borate/dilute.
+- Post-trip / post-downpower xenon peak can prevent easy restart (trainer honesty: no full RPS reset cold restart path).
+
+### Procedure — routine boron adjust
+
+| Step | Action | Acceptance |
+|------|--------|------------|
+| 1 | Charging pump **On** | Pump running |
+| 2 | Select **Borate** (power down / more margin) or **Dilute** (power up) | Chemistry changing |
+| 3 | Watch boron analyzer trend and power/Tavg | Expected direction |
+| 4 | **Hold** near target; finish with rod trim | Stable criticality |
+
+### Procedure — xenon awareness
+
+| Step | Action | Acceptance |
+|------|--------|------------|
+| 1 | After down-power or scram, note expected xenon **build** (hours) | Learning xenon chip / time |
+| 2 | Use time acceleration only if you can still manage the board | No surprise trip |
+| 3 | Compensate rising xenon with rods out or dilute **if** power ops continue | Power holds |
+| 4 | After peak, xenon decays; insert rods or borate to avoid power rise | No unplanned power increase |
+
+### Outcome
+Operator can balance rods (fast, local) vs boron (slow, bulk) and anticipate xenon.
+
+---
+
+## PWR-N10 — Pressurizer pressure control
+
+### Purpose
+Hold primary pressure near **15.41 MPa** using heaters (raise) and spray (lower).
+
+### Prerequisites
+- PZR at normal level band; RCP running for effective spray.
+
+### Precautions
+- Low pressure erodes **subcooling**.
+- High pressure approaches PORV (**16.20 MPa**) and safeties (**17.13 MPa**).
+
+### Procedure
+
+| Step | Action | Control | Acceptance |
+|------|--------|---------|------------|
+| 1 | Read primary pressure | PZR card | Know current P |
+| 2 | Prefer **AUTO** heaters/spray for steady ops | Heaters/Spray AUTO | Holding near 15.41 MPa |
+| 3 | To **lower** P: open spray (manual) briefly | PZR Spray | Pressure decreasing |
+| 4 | To **raise** P: energize heaters | PZR Heaters | Pressure increasing |
+| 5 | Return to AUTO | AUTO | Stable |
+
+### Outcome
+Pressure controllable; subcooling protected.
+
+---
+
+## PWR-N11 — Pressurizer level control (CVCS)
+
+### Purpose
+Control pressurizer level / primary inventory with charging and letdown.
+
+### Prerequisites
+- CVCS panel available.
+
+### Precautions
+- Do not chase TMI-like **false high level** during a LOCA — see emergency procedures.
+- AUTO make-up modulates charging to inventory; MANUAL for deliberate moves.
+
+### Procedure
+
+| Step | Action | Control | Acceptance |
+|------|--------|---------|------------|
+| 1 | Read PZR level (normal ~**55 %** at HFP) | PZR level | Known |
+| 2 | To **raise** level: increase charging and/or reduce letdown | CVCS | Level rising |
+| 3 | To **lower** level: increase letdown and/or reduce charging | CVCS | Level falling |
+| 4 | Place CVCS inventory **AUTO** for watchstanding | CVCS AUTO | Holding |
+
+### Outcome
+Level controllable under normal (non-voiding) conditions.
+
+---
+
+## PWR-N12 — Steam Generator level & feedwater control
+
+### Purpose
+Control SG water level with the feed pump; understand three-element AUTO as the normal driver.
+
+### Prerequisites
+- Main feed available; reactor at power preferred for three-element behavior.
+
+### Precautions
+| Type | Text |
+|------|------|
+| **CAUTION** | Shrink/swell — indicated level can move the wrong way briefly. |
+| **CAUTION** | Any manual Feed Pump command takes three-element to **MANUAL**. |
+| **CAUTION** | Power down with feed left high → **SG flood**. Match feed to load or re-engage AUTO. |
+
+### Procedure — manual skill
+
+| Step | Action | Control | Acceptance |
+|------|--------|---------|------------|
+| 1 | Read SG level (~**65 %**) and feed status line (AUTO vs MANUAL) | SG / Steam & Flow | Known driver |
+| 2 | Raise feed pump % to raise level; lower to reduce | Feed Pump Set % / nudge | Level responds |
+| 3 | Re-engage **Automate → Feed pump → SG level → AUTO** | Automate | AUTO holding |
+
+### Procedure — normal automatic
+
+| Step | Action | Acceptance |
+|------|--------|------------|
+| 1 | Engage three-element AUTO at stable power | Level ~65 % |
+| 2 | Maneuver load with Follow or matched Manual | No sustained filling/draining annunciator |
+
+### Outcome
+SG level controlled; operator understands MANUAL override semantics.
+
+---
+
+## PWR-N13 — Reactor Coolant Pump (RCP) operation **[approx]**
+
+### Purpose
+Describe RCP operation and limitations in this trainer.
+
+### Modeling note
+Single representative RCP. Start/stop maps approximately to clearing or injecting loss-of-flow conditions; full multi-loop outage procedures are simplified.
+
+### Precautions
+- **Do not** stop RCP at power except for drill/emergency direction — low flow trips the reactor.
+- Spray effectiveness requires flow.
+
+### Procedure — verify running (normal)
+
+| Step | Action | Acceptance |
+|------|--------|------------|
+| 1 | Confirm RCP running indication | rcp_running true |
+| 2 | Confirm primary ΔT and flow-related behavior normal | Thermal board OK |
+
+### Procedure — if RCP trips (see also PWR-E02)
+
+| Step | Action | Acceptance |
+|------|--------|------------|
+| 1 | Confirm automatic reactor trip on low flow | Scrammed |
+| 2 | Remove turbine load if not already disconnected | 0 MWe |
+| 3 | Establish decay heat removal (natural circulation / AFW as needed) | Core safe |
+
+### Outcome
+Operator treats RCP as critical for at-power forced flow.
+
+---
+
+## PWR-N14 — Normal shutdown Mode One → Mode Three
+
+### Purpose
+Shut the reactor down from **Mode One** (or Mode Two) to **Mode Three** (Hot Standby); maintain decay-heat removal. First half of **PWR-T21** (Mode One → Mode Five).
+
+### Prerequisites
+- **Mode One** or **Mode Two**.
+
+### Precautions
+| Type | Text |
+|------|------|
+| **WARNING** | Decay heat (~**7 %** of rated after a power run, decaying) continues after SCRAM — keep a heat sink. |
+| **NOTE** | SCRAM forces turbine load mode **Disconnected** (not a plant MODE number). |
+| **NOTE** | While power remains > 5 % and critical, you are still **Mode One**. After SCRAM, hot and subcritical → **Mode Three**. |
+
+### Procedure
+
+| Step | Action | Control | Acceptance |
+|------|--------|---------|------------|
+| 1 | Reduce Turbine Load toward 0 (optional controlled down-power first via N08) | Turbine Load | Load falling; may pass Mode Two if still critical ≤ 5 % |
+| 2 | Insert rods by SCRAM (or controlled full insertion then trip) | **SCRAM** | Power collapsing |
+| 3 | Confirm REACTOR TRIP; power &lt; ~5 % | Alarms / power | Shutdown nuclear |
+| 4 | Confirm turbine disconnected; steam demand ~0 | Turbine card | Disconnected |
+| 5 | Maintain SG level with feed or **AFW** as required | Feed / AFW | Heat sink present |
+| 6 | Hold PZR pressure/level; leave subcooling healthy | PZR / CVCS | **Mode Three** board |
+| 7 | Monitor decay heat indication if available (overlay / Learning) | Observe | Decay heat &gt; 0 |
+
+### Outcome
+**Mode Three** — reactor shut down, hot; decay heat being removed. Continue to Mode Five via **PWR-N15** / **PWR-T21** (narrative).
+
+---
+
+## PWR-N15 — Cooldown Mode Three → Mode Five (DHR/RHR) **[narr]**
+
+### Purpose
+Describe cooldown from **Mode Three** through **Mode Four** to **Mode Five** (Cold Shutdown). Full cold shutdown cooldown **rates** are not modeled. Completes master path **PWR-T21**.
+
+### What is [sim]
+- Decay heat model active after power history.
+- **AFW** for secondary heat sink when main feed unavailable.
+- **RHR/DHR** control exists for low-pressure residual heat removal when permissives met (scrammed + low pressure band ~**3.45 MPa** class for auto arm).
+- HPI/LPI and accumulators for inventory under low pressure / LOCA conditions.
+
+### Narrative commercial path (Mode Three → Mode Five)
+
+| Step | MODE | Action |
+|------|------|--------|
+| 1 | **Mode Three** | Hot standby/shutdown; borate to cold-shutdown margin |
+| 2 | → **Mode Four** | Cooldown/depressurize within limits (steam dump / AFW / secondary) |
+| 3 | **Mode Four** | Place **RHR** in service; continue cooldown |
+| 4 | → **Mode Five** | RCS cold (≤ ~93 °C class); cold shutdown lineup |
+| 5 | Mode Five | Refueling (**Mode Six**) is **out of scope** |
+
+### Simulator practice
+1. After **PWR-N14** (Mode Three), keep AFW/feed maintaining SG level.  
+2. If depressurized and RHR available, start **RHR** per Emergency card and re-arm AUTO if desired.  
+3. Do not expect a timed Mode Five end condition on the board.
+
+### Outcome
+Operator can narrate Mode Three → Mode Five; understands decay-heat obligation and trainer limits.
+
+---
+
+## 3.0 Quick reference — Mode One full-power band (HFP)
+
+| Parameter | Approx. normal | MODE |
+|-----------|----------------|------|
+| Power | 100 % | Mode One |
+| MWe | 1000 | Mode One |
+| Primary pressure | 15.41 MPa | Mode One–Three |
+| Tavg | ~304 °C | Mode One–Three (hot) |
+| PZR level | ~55 % | Mode One |
+| SG level | ~65 % | Mode One |
+| Subcooling | ~41 °C | Mode One |
+| Control bank | ~92 % withdrawn | Mode One |
+
+---
+
+## 4.0 Related documents
+
+- `05_MODE_TRANSITIONS.md`  
+- `03_CONTROLS_AND_INDICATIONS.md`  
+- `06_ALARM_RESPONSE.md`  
+- `07_ABNORMAL_EMERGENCY.md`  

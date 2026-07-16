@@ -1,0 +1,155 @@
+# 10 — Glossary
+
+**Document:** PWR-GL-01  
+**Revision:** 1  
+
+Terms used in the PWR manuals and on the simulator board. Acronym first, then plain meaning.
+
+---
+
+## Plant MODES (Mode One … Mode Six)
+
+| MODE | Spoken | Name | Short definition |
+|------|--------|------|------------------|
+| **1** | **Mode One** | Power Operation | Critical, thermal power **> 5 %**, RCS hot |
+| **2** | **Mode Two** | Startup | Critical, power **≤ 5 %**, RCS hot |
+| **3** | **Mode Three** | Hot Standby | Subcritical, RCS hot (NOP T/P) |
+| **4** | **Mode Four** | Hot Shutdown | Subcritical, intermediate RCS temperature |
+| **5** | **Mode Five** | Cold Shutdown | Subcritical, RCS cold |
+| **6** | **Mode Six** | Refueling | Cold, vessel head not fully tensioned (out of scope here) |
+
+**Mode Five → Mode One** and **Mode One → Mode Five** master procedures: `05_MODE_TRANSITIONS.md` (**PWR-T20**, **PWR-T21**).
+
+**Not plant MODES:** turbine load modes Follow / Manual / Disconnected.
+
+---
+
+## A
+
+| Term | Definition |
+|------|------------|
+| **AC / DC** | Alternating-current / direct-current electrical power. |
+| **AFW** | Auxiliary Feedwater — backup water supply to the Steam Generators when main feed is lost. |
+| **ATWS** | Anticipated Transient Without Scram — event where the reactor should trip but rods fail to insert fully. |
+| **AUTO / MAN** | Automatic / manual control of a plant channel. AUTO reads instruments and issues commands to hold a setpoint; MAN leaves control to the operator. |
+
+## B–C
+
+| Term | Definition |
+|------|------------|
+| **Borate / Dilute** | Raise / lower dissolved boron concentration via CVCS (adds / removes negative reactivity). |
+| **BOP** | Balance of Plant — turbine, condenser, feedwater, and related secondary systems. |
+| **CVCS** | Chemical & Volume Control System — charging, letdown, boron adjust, inventory make-up. |
+| **Critical / Criticality** | Steady chain reaction: reactivity ≈ 0; power neither grows nor dies away on its own. |
+| **Cold Shutdown** | Real-plant mode with RCS cool and depressurized — **[narr]** only in this trainer. |
+
+## D
+
+| Term | Definition |
+|------|------------|
+| **Decay heat** | Heat from radioactive decay after fission stops (~7 % of rated after a power run, then falling). |
+| **DHR / RHR** | Decay-Heat Removal / Residual Heat Removal — low-pressure systems that remove leftover heat after shutdown. |
+| **DNB** | Departure from Nucleate Boiling — heat-transfer crisis; fuel temperature rises sharply. |
+| **Doppler** | Negative reactivity feedback from hotter fuel absorbing more neutrons (prompt stabilizer). |
+| **DPM** | Decades Per Minute — unit of Startup Rate (one decade = factor of ten in power). |
+
+## E–F
+
+| Term | Definition |
+|------|------------|
+| **ECCS** | Emergency Core Cooling System — here, merged HPI/LPI plus passive accumulators. |
+| **ESF** | Engineered Safety Features — systems such as HPI and AFW with AUTO/MAN arms. |
+| **Follow (load mode)** | Turbine electrical load automatically tracks reactor power. |
+
+## H
+
+| Term | Definition |
+|------|------------|
+| **Heat sink** | Where core heat goes — primarily the Steam Generators (secondary water/steam). |
+| **Hot Full Power (HFP)** | ~100 % power, ~1000 MWe, equilibrium — full-power **Mode One**. |
+| **Hot Standby** | Subcritical, hot, at operating temperature and pressure — **Mode Three**. |
+| **Hot Shutdown** | Subcritical with RCS not yet cold — commercial **Mode Four** class; post-trip hot board in this trainer is still treated as Mode Three by temperature until cooldown **[narr]**. |
+| **Cold Shutdown** | Subcritical and cold — **Mode Five** **[narr]** only in this trainer. |
+| **HPI / LPI** | High- / Low-Pressure Injection — merged emergency injection with a two-segment pump curve. |
+| **HR1** | Simulator hard rule: protection and alarms read **instruments**, never true state. |
+
+## I–L
+
+| Term | Definition |
+|------|------------|
+| **Instrument / Indication** | What the operator sees — lagged, noisy, possibly failed — not necessarily truth. |
+| **IR** | Intermediate Range — compensated ion chamber (amperes) from SR handoff up to ~10 % power. |
+| **LOCA** | Loss-Of-Coolant Accident — primary coolant escaping the RCS. |
+| **LOFW** | Loss Of Feedwater — main feed to the SGs lost. |
+| **Load rejection** | Sudden loss of electrical load / turbine trip; steam demand collapses. |
+
+## M–O
+
+| Term | Definition |
+|------|------------|
+| **MSIV** | Main Steam Isolation Valve — isolates Steam Generators from the turbine. |
+| **MTC** | Moderator Temperature Coefficient — in a PWR, negative: hotter water → less reactivity. |
+| **MWe / MWt** | Megawatts electric (grid) / megawatts thermal (reactor heat). |
+| **Natural circulation** | Flow driven by density difference after pumps stop — weaker than forced RCP flow. |
+| **NOP** | Normal Operating Pressure/Temperature (hot operating conditions). |
+
+## P
+
+| Term | Definition |
+|------|------------|
+| **P-6** | Permissive: IR on scale (≥ 1e-10 A) — allows securing the Source Range detector. |
+| **P-10** | Nuclear at-power permissive (~10 %) — allows blocking certain startup trips. |
+| **pcm** | Percent millirho — unit of reactivity (1 pcm = 10⁻⁵ Δk/k). |
+| **POAH** | Point of Adding Heat — power level where fission heat exceeds system losses. |
+| **PORV** | Power-Operated Relief Valve — controllable RCS pressure relief on the pressurizer. |
+| **PORV block valve** | Isolation valve upstream of the PORV; closes the relief line if the PORV sticks open. |
+| **PR** | Power Range — main power % neutron channels at power. |
+| **Primary / RCS** | Reactor Coolant System — high-pressure water loop through the core. |
+| **PWR** | Pressurized Water Reactor. |
+| **PZR** | Pressurizer — steam/water vessel that sets primary pressure. |
+
+## R
+
+| Term | Definition |
+|------|------------|
+| **RCP** | Reactor Coolant Pump — forced circulation in the primary loop. |
+| **Reactivity (ρ)** | Tendency of the chain reaction to grow (+) or shrink (−); critical ≈ 0. |
+| **Reactor period** | Time for power to change by a factor of e (~2.72); long period = slow change. |
+| **RPS** | Reactor Protection System — automatic SCRAM logic. |
+| **Rod bank (control)** | Operable control rods for reactivity control. |
+| **Rod bank (shutdown)** | Scram rods, normally fully withdrawn; drive in on SCRAM. |
+
+## S
+
+| Term | Definition |
+|------|------------|
+| **SBLOCA** | Small-Break LOCA — e.g. stuck-open PORV. |
+| **SBO** | Station Blackout — loss of all AC power (as modeled). |
+| **SCRAM** | Rapid full insertion of control rods — emergency/automatic shutdown. |
+| **Secondary** | Steam side: SG secondary, turbine, condenser, feedwater. |
+| **Setpoint (SP)** | Value an automatic controller holds; often captured from the current reading when AUTO engages. |
+| **SG** | Steam Generator — heat exchanger boiling secondary water using primary heat. |
+| **SGTR** | Steam Generator Tube Rupture — primary-to-secondary leak. |
+| **Shrink and swell** | Indicated SG level moves “wrong way” briefly on fast power/load changes. |
+| **SR** | Source Range — startup neutron counter (counts per second). |
+| **Subcooling margin** | How far primary coolant is below boiling temperature at current pressure — TMI truth-teller. |
+| **SUR** | Startup Rate — how fast power is changing, in decades per minute (DPM). |
+
+## T–X
+
+| Term | Definition |
+|------|------------|
+| **Tavg** | Average primary coolant temperature. |
+| **Thot / Tcold** | Hot-leg / cold-leg temperatures. |
+| **TMI** | Three Mile Island (1979 accident). |
+| **True state** | Actual physics values in the model — hidden from normal operator view. |
+| **Void / void fraction** | Steam bubbles in the coolant; reduce heat transfer; affect inventory presentation. |
+| **Xenon (Xe-135)** | Strong neutron-absorbing fission product; builds after power drops; decays over hours. |
+
+---
+
+## Related documents
+
+- `01_GENERAL_DESCRIPTION.md`  
+- `09_SETPOINTS_LIMITS.md`  
+- In-product Manual → Glossary section  
