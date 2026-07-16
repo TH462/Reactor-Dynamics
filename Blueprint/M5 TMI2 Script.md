@@ -1,5 +1,23 @@
 # M5 — TMI-2 Training Scenario Script (v0.1 Skeleton)
 
+> ---
+>
+> ## ⚠ SUPERSEDED — historical scaffolding only
+>
+> This skeleton served its purpose and was **never filled in**. The actual dialogue was written
+> directly in the shipped scenario files and lives there as the single source of truth:
+> **`scenarios/pwr_tmi2_common.js`** (shared lead-in/event content) and
+> **`scenarios/pwr_tmi2_p1.js` / `_p2.js` / `_p3.js`**. Do **not** add lines to this file.
+>
+> Its open items were resolved in code: the aux operator is a named character (**"Marty"**,
+> introduced in the lead-in), **SYS** annunciator callouts are mirrored into the chat log as
+> their own speaker role, and first-mention term introduction (PORV, HPI, …) is handled by the
+> authored dialogue order in the scenario files.
+>
+> Kept for the record of beat intents (Spec §8) that shaped the authored dialogue.
+>
+> ---
+
 **Status:** Structured skeleton — beats, speakers, and intent defined; actual dialogue lines are TODO.
 **Companion to:** M5_TMI2_Scenario_Spec.md (the spec defines mechanics/structure; this file holds dialogue). When the two disagree, the spec wins — update this file to match.
 

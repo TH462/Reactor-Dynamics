@@ -137,7 +137,11 @@ would distort under acceleration — exactly when transients are being studied.
 physical parameter with no operator control (leak, tube rupture, loss of offsite power) is
 **physics** and lives in the **engine**. A failure that overrides/ignores a command (stuck
 valve, failed rod, tripped turbine) is **command-level** and lives in the **Control &
-Failure Layer**, where commands pass through.
+Failure Layer**, where commands pass through. *(as built — 2026-07-16 design ruling)*
+Mechanical relief-valve pop/reseat and turbine protection (low vacuum, overspeed) are
+implemented as **control-layer actuations** reading instruments and issuing commands; the
+engine keeps only valve state + flow hydraulics. So HR7's "stuck valve / tripped turbine =
+command-level" now applies **uniformly** — even the spring safeties are interceptable.
 
 **HR8 — In v1, plant parameters live in code, not external files.** Each plant's parameters
 are structured configuration **objects** in JavaScript. No config file system, loader, or
@@ -154,13 +158,24 @@ state. Then the Simulation Service assembles the snapshot from the post-step sta
 it up.
 
 - **Physics timestep:** `dt = 0.02 s` (50 Hz). **Integration:** first-order Euler
-  throughout (`x_new = x_old + (dx/dt)·dt`). Do not use higher-order methods.
-- **Time acceleration:** the engine is handed `dt_effective = dt · time_acceleration` and
-  uses it everywhere. The engine does **not** know or apply the acceleration factor itself.
-- **Snapshot cadence:** normally every 500 ms (2 Hz); during an active transient every
-  200 ms (5 Hz). "Active transient" = power change > 1%/interval, or pressure change
-  > 0.14 MPa/interval, or any alarm newly firing. Cadence affects how much sim-time passes
-  between snapshots, never the integrity of a snapshot.
+  throughout (`x_new = x_old + (dx/dt)·dt`). Do not use higher-order methods. *(As-built
+  refinement, Flag F6: still first-order everywhere, but the neutron-kinetics update deviates
+  where explicit Euler was numerically insufficient — the BWR uses an implicit prompt-jump
+  form (explicit Euler diverges at its Λ = 5e-5), and the RBMK applies an exponential
+  prompt-growth fast-path when ρ > β. The PWR and all non-kinetics physics remain plain
+  explicit Euler.)*
+- **Time acceleration:** realized as **more fixed-dt steps per broadcast**, never a larger dt.
+  *(As-built deviation, Flag F6: the original rule handed the engine
+  `dt_effective = dt · time_acceleration`, but explicit Euler is only proven stable at 0.02 s —
+  60× gave dt = 1.2 s and blew up. The engine still does **not** know or apply the acceleration
+  factor itself; HR6 holds because every time constant is sim-time.)*
+- **Snapshot cadence:** normally every 100 ms (10 Hz); during an active transient every
+  50 ms (20 Hz). "Active transient" = power change > 1%/interval, or pressure change
+  > 0.14 MPa/interval, or any alarm newly firing (thresholds scaled from their original
+  500 ms reference interval, so the *rate* that flips into transient mode is unchanged).
+  Cadence affects how much sim-time passes between snapshots, never the integrity of a
+  snapshot. *(Originally specified 500 ms / 200 ms; the build renders faster for a smoother
+  live UI — same data, higher frame rate.)*
 
 **Determinism:** given the same starting state and command sequence, the simulation produces
 the same result. The only permitted variation is instrument noise, from a **seedable** PRNG
@@ -459,7 +474,7 @@ close_porv
 set_hpi             { active }                 // the merged HPI/LPI system; manual use disarms its ESF auto
 set_afw             { active }                 // AFW pumps; manual use disarms the AFW ESF auto
 set_afw_flow        { pct }                    // AFW throttle, 0–100 % of capacity (also disarms the AFW auto)
-set_esf_auto        { system: "hpi"|"afw", auto }   // re-arm (or disarm) an ESF system's auto-actuation
+set_esf_auto        { system: "hpi"|"afw"|"rhr", auto }   // re-arm (or disarm) an ESF system's auto-actuation
 set_rhr             { active }                 // Residual Heat Removal — low-pressure decay-heat cooldown (was DHR)
 set_dhr             { active }                 // deprecated one-release alias for set_rhr (save-file compatibility)
 set_lpi             { active }                 // DEPRECATED alias for set_hpi (HPI+LPI merged into one system; save-file compatibility)
@@ -475,6 +490,10 @@ set_trip_block      { trip_id, blocked }       // block/unblock a blockable star
 open_msiv                                      // Main Steam Isolation Valve — restore the steam path
 close_msiv                                     // isolate main steam (trips a loaded turbine; SG bottles to its code safeties)
 set_steam_dump      { mode: "auto"|"open"|"closed" | pct }   // turbine bypass to condenser (B2)
+open_pzr_safety                                // pressurizer spring safeties — issued by the control-layer
+close_pzr_safety                               //   actuation (pop 17.13 / reseat 16.55 MPa); engine keeps hydraulics
+open_sg_safety                                 // SG code safeties — control-layer actuation
+close_sg_safety                                //   (pop 9.31 / reseat 9.0 MPa)
 ```
 **RBMK plant control:**
 ```
@@ -485,6 +504,8 @@ set_eccs            { active }                 // Emergency Core Cooling — cha
 manual_scram                                   // AZ-5 equivalent
 set_turbine_load    { mwe }                    // turbine steam load → electrical output (BOP)
 set_steam_dump      { mode: "auto"|"open"|"closed" | pct }   // turbine bypass to condenser (BOP)
+open_relief_valve                              // steam-drum relief — issued by the control-layer
+close_relief_valve                             //   actuation (pop 8.0 / reseat 7.8 MPa); engine keeps hydraulics
 ```
 **BWR plant control:**
 ```
@@ -503,9 +524,16 @@ stop_lpcs
 open_srv_manual                                // operator manual SRV depressurization (D6)
 close_srv_manual
 set_steam_dump      { mode: "auto"|"open"|"closed" | pct }   // turbine bypass to condenser (BOP; gated on condenser availability)
+open_relief_valve                              // SRV auto relief — issued by the control-layer
+close_relief_valve                             //   actuation (pop 7.58 / reseat 7.44 MPa); engine keeps hydraulics
 ```
 **Shared plant control (all plants):**
 ```
+trip_turbine                                   // turbine protection — issued by the control-layer low-vacuum /
+                                               // overspeed actuations (2026-07-16 ruling: relief pops and turbine
+                                               // trips are CONTROL decisions reading instruments; the engines
+                                               // keep valve state + flow hydraulics and expose these commands,
+                                               // so the protections can be manipulated and failed)
 set_feed_coupled    { active }                 // re-couple feedwater to load (the init default;
                                                // set_feedwater_flow uncouples).
 set_auto_channel    { channel_id, engaged }    // engage/disengage a Control Layer automation channel

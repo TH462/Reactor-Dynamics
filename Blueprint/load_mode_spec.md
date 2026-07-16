@@ -55,9 +55,14 @@ On **scram**: `LoadMode.disconnect(s, tripTurbine)`.
 | Concept | PWR | RBMK | BWR |
 |---------|-----|------|-----|
 | Load demand | `turbine_demand_frac`, `steam_demand_mwe`, `generator_load` | `steam_to_turbine` | `turbine_load_frac`, `steam_flow_normalized` |
-| Feed demand | `feedwater_demand_frac` | `feedwater_normalized` | `feedwater_normalized` |
+| Feed demand | `feed_pump_speed_pct` (commanded) → `feedwater_demand_frac` | `feedwater_normalized` | `feedwater_normalized` |
 | Rated MWe | `cfg.turbine.mwe_rated` | `cfg.turbine.mwe_rated` | `cfg.mwe_rated` |
 | Level instrument | `sg_level_pct` | `drum_level_pct` | `vessel_level_pct` |
+
+*(as built)* The PWR coupling no longer writes `feedwater_demand_frac` directly: `setFeed`
+(`_loadModeOpts`, `pwr_engine.js`) writes the feed pump's **commanded speed**
+`feed_pump_speed_pct`, and the first-order feed-pump inertia (`feed_pump_tau`,
+`pwr_steam_generator.js`) produces the delivered `feedwater_demand_frac` downstream.
 
 ## 7. Commands
 
@@ -76,7 +81,7 @@ On **scram**: `LoadMode.disconnect(s, tripTurbine)`.
 |---------|---------|
 | `set_steam_demand {mwe}` (PWR) | manual + `set_load_target` |
 | `set_turbine_load {mwe}` (RBMK/BWR) | manual + `set_load_target` |
-| `set_feedwater_flow {pct}` | direct feed; sets `feed_auto_coupled = false` |
+| `set_feedwater_flow {pct}` | feed-pump speed command (PWR, as built); sets `feed_auto_coupled = false` |
 | `breaker-open` / `breaker-close` (UI) | disconnect / connect_grid |
 
 ## 8. UI (Phase B)

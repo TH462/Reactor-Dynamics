@@ -23,12 +23,18 @@ Per `CONTEXT.md §7`, this module produces `engines/bwr/`:
 | File | Contents |
 |------|----------|
 | `bwr_engine.js` | The `BWREngine` class **and** `BWRScenarioTests` (§17) |
-| `bwr_config.js` | All BWR parameters as structured config (HR8) — every [tune] value, operating points, the trip/alarm/failure definitions of §13 |
+| `bwr_config.js` | All BWR parameters as structured config (HR8) — every [tune] value, operating points, the instrument set, the named initial states |
 | `bwr_instruments.js` | The BWR instrument model (§11) — instrument set, lag/noise/range/failure, vessel-level shrink-and-swell |
 | `bwr_vessel.js` | Vessel pressure, level + boiloff, boiling/void, fuel temperature, fuel-damage endpoint (§6) |
 | `bwr_recirculation.js` | Recirculation drive flow, jet pumps, natural circulation, the turbine-trip transient (§7) |
 | `bwr_safety_systems.js` | RCIC, HPCI, ADS, LPCI, the SBO battery limit, the uncovery timeline (§9) |
-| `bwr_protection.js` | BWR trip/actuation/alarm definitions as data (§13) — read by M4 |
+
+*(as built)* There is no `bwr_protection.js`, and `bwr_config.js` does not carry the §13 data:
+the trip/actuation/alarm/failure definitions (plus the automation channels) live in the Control
+Layer as `layers/control/bwr_control.js` (`BWR_TRIPS` / `BWR_ACTUATIONS` / `BWR_ALARMS_A/_B` /
+`BWR_FAILURES`), which bolts itself onto `BWR_CONFIG.protection` at load
+(`bwr_control.js:153`). The engine also integrates the shared grid/load model
+`engines/load_mode.js` (§12.2).
 
 The **contract surface** (consumed by M4/M5): step by `dt_effective`; report true state;
 produce instrument readings; accept the BWR commands from `CONTEXT.md §6.7`; save/restore
@@ -59,7 +65,7 @@ Contract fields use the BWR suffixes from `CONTEXT.md §6.3` — temperature in 
 
 The BWR carries its own copy of the six-group integrator — identical to the others **except**
 `Λ`. The BWR is stable and **never reaches prompt criticality** under any in-scope scenario,
-so it has **no prompt fast-path** (standard Euler kinetics throughout).
+so it has **no prompt fast-path**.
 
 **Six-group parameters** (U-235; fixed):
 
@@ -73,13 +79,32 @@ so it has **no prompt fast-path** (standard Euler kinetics throughout).
 | 6 | 0.000273 | 3.01 |
 
 **β = 0.006502** (fixed). **Λ = 0.00005 s** (BWR; fixed — shortest of the three, light-water
-moderated boiling core). Precursor init at equilibrium `Cᵢ = (βᵢ/λᵢ)·P₀/Λ`. Standard kinetics:
-`dP_dt = ((ρ−β)/Λ)·P + Σ λᵢCᵢ`; `P = max(0, P + dP_dt·dt)`.
+moderated boiling core). Precursor init at equilibrium `Cᵢ = (βᵢ/λᵢ)·P₀/Λ`.
+
+**Integrator *(as built — resolves Flag F6)*.** NOT plain explicit Euler: at Λ = 5e-5 the prompt
+mode decays at β/Λ ≈ 130 s⁻¹, so an explicit prompt term is unstable at dt = 0.02 s
+(dt·β/Λ = 2.6 > 2 — it blows up even at ρ = 0). The prompt term integrates **implicitly**
+(prompt-jump form) — still first-order Euler, unconditionally stable for ρ < β, which is the
+BWR's whole operating envelope:
+```javascript
+P = max(0, (P + dt·(Σ λᵢCᵢ + S)) / (1 − dt·(ρ−β)/Λ));   // denominator floored at 0.1
+```
+(`_stepKinetics`, `bwr_engine.js`). The floor keeps a transient ρ ≥ β from dividing by ~0.
+Precursors advance explicitly as before.
+
+**Neutron source *(as built)*.** A constant source `kinetics.source = 4.0e-3` (normalized
+power/s) **[tune]** enters the implicit form alongside the precursor sum — subcritical
+multiplication `P_eq = S·Λ/(−ρ)`, the visible approach to criticality. `hot_startup` settles its
+kinetics on this source equilibrium at reset (§14) so the state holds a stable source-range level
+instead of decaying away. The source fades out above ~1 % power (`S·max(0, 1 − P/0.05)`), so it
+is negligible at power (`bwr_config.js:40`; `bwr_engine.js`).
 
 ### Decay heat
 Two-term exponential, identical form (the heat source that drives Fukushima after scram):
 `H_total = H1 + H2`, at scram `H1_0 = 0.05`, `H2_0 = 0.02`, `lambda_1 = 0.0005`,
-`lambda_2 = 0.00002` s⁻¹ **[tune]**. `Q_total = P_fission + H_total`. **Decay heat is what
+`lambda_2 = 0.00002` s⁻¹ **[tune]**. *(as built)* `Q_total = P + (scrammed ? H1+H2 : 0)` —
+during operation the decay contribution is treated as embedded in P; the explicit decay term is
+added only once scrammed, as the post-scram source (`bwr_engine.js:196`). **Decay heat is what
 boils the vessel dry after RCIC fails — getting its hours-scale magnitude roughly right is part
 of getting the Fukushima timeline right.**
 
@@ -100,8 +125,12 @@ the opposite of the RBMK — which is what makes flow control stable and self-li
 
 **Void** (negative — the stabilizer and the basis of flow control):
 ```
-ρ_void = α_void · (void_fraction − void_ref)   α_void = −0.15, void_ref = 0.40   [tune]
+ρ_void = α_void · (void_fraction − void_ref)   α_void = −0.15, void_ref = 0.45   [tune]
 ```
+*(as built)* `void_ref` is **pinned at reset** to the full-power operating void
+`= void_scale_factor = 0.45` (`_computeRefsAndExcess`, `bwr_engine.js`), consistent with §14;
+`hot_startup` alone re-pins it per-state (§14). The dead config entry
+`reactivity.void_ref = 0.40` (never read) has been **removed** from `bwr_config.js`.
 As void rises (more boiling, or less flow), reactivity falls. Increase flow → sweep out voids →
 raise power → rising power makes more void → settles at a new balance. No runaway. This
 negative coefficient is what the steady/flow tests (§17) confirm.
@@ -150,10 +179,22 @@ steam_gen_rate = P * steam_gen_per_power_bwr;
 dVesselP_dt = (steam_gen_rate - steam_flow - steam_dump - relief_flow) * K_vessel_pressure;
 vessel_pressure_mpa += dVesselP_dt * dt;
 ```
-`steam_gen_per_power_bwr = 1.0`, `K_vessel_pressure = 0.0172` MPa/imbalance, operating 7.03 MPa,
-relief/safety valves open at 7.58 MPa **[tune]**. (Steam source is `Q_total` = fission + decay,
-so a scrammed core still boils and pressurizes into the reliefs. The `steam_dump` term — turbine
-bypass to the condenser — is only active when the condenser is available; §12.)
+`steam_gen_per_power_bwr = 1.0`, `K_vessel_pressure = 0.5` MPa/imbalance, operating 7.03 MPa
+**[tune]**. *(as built — 2026-07-16 design ruling)* SRV auto relief is **commanded**, not
+mechanical-in-engine: the control layer's actuation reads the `vessel_pressure` **instrument**
+and issues `open_relief_valve` above `relief_setpoint_mpa = 7.58` MPa / `close_relief_valve`
+below the new `vessel.relief_reseat_mpa = 7.44` (setpoints in the engine config — single
+source; `bwr_control.js`). The engine keeps the valve state (`relief_open`) and the flow
+hydraulics — proportional vent above the reseat pressure while commanded open,
+`relief_gain = 5.0` **[tune]** (`bwr_vessel.js`). The **manual SRV** path (§9.9
+`open_srv_manual` / `srv_manual_open`) is a separate operator depressurization path and is
+unchanged.
+*(as built)* `K_vessel_pressure` was reduced from 2.5: kept modest so decay-heat steam
+pressurizes slowly enough that ADS can actually depressurize against it (at 2.5 the decay steam
+outran ADS and pinned pressure at the relief setpoint) (`bwr_config.js:72`). (Steam source is
+`Q_total` — decay heat added only once scrammed, §3 — so a scrammed core still boils and
+pressurizes into the reliefs. The `steam_dump` term — turbine bypass to the condenser — is only
+active when the condenser is available; §12.)
 
 ### 6.2 Vessel water level (the central safety parameter) + boiloff
 ```javascript
@@ -162,9 +203,11 @@ dVesselLevel_dt = (feedwater_flow + rcic_flow + hpci_flow + lpci_flow
 vessel_level_pct = clip(vessel_level_pct + dVesselLevel_dt * dt, 0, 100);
 
 // Decay heat boils away inventory when injection cannot keep up:
-boiloff_rate = (H_total) / (latent_heat_bwr * vessel_water_mass);
+boiloff_rate = (H_total) / (latent_heat_bwr * vessel_water_mass);   // active once scrammed
 ```
-`K_vessel_level = 5.0`, `latent_heat_bwr = 1.0`, `vessel_water_mass = 1.0` **[tune]**. **Tune
+*(as built)* boiloff is gated on `scrammed` — at power the normal steam/feedwater balance holds
+level (`bwr_vessel.js:74`).
+`K_vessel_level = 5.0`, `latent_heat_bwr = 1.0`, `vessel_water_mass = 7.0` **[tune]**. **Tune
 `vessel_water_mass` together with `rcic_flow_normalized` (§9.1) so the Fukushima timeline is
 right: RCIC holds level for hours; after RCIC fails the core uncovers (level < 20 %) within
 2–4 hours.** Keeping the core covered is the whole safety story.
@@ -188,12 +231,17 @@ s **[tune]**.
 
 ### 6.4 Fuel temperature
 ```javascript
-dTf_dt = P * heat_gen_coeff_bwr - h_fc_bwr * (fuel_temp_c - coolant_temp_c);
+dTf_dt = Q_total * heat_gen_coeff_bwr - h_fc * (fuel_temp_c - coolant_temp_c);
 fuel_temp_c += dTf_dt * dt;
 ```
-`h_fc_bwr = 0.05` s⁻¹ (normal), `heat_gen_coeff_bwr` tuned for appropriate rated fuel temp
-**[tune]**. When the core uncovers (low vessel level), heat transfer degrades and fuel
-temperature rises toward damage — the uncovery endpoint.
+`h_fc_bwr = 0.05` s⁻¹ (normal), `heat_gen_coeff_bwr = 15.0` (→ ~586 °C fuel at rated)
+**[tune]**. *(as built)* the heat source is `Q_total` (fission + decay once scrammed, §3), not
+bare P — decay heat must keep heating uncovered fuel. When the core uncovers, the fuel→coolant
+coupling **collapses**: below `uncover_level_pct = 20 %`,
+`h_fc = h_fc_bwr · max(h_fc_uncover_floor, (level/uncover_level_pct)²)` with
+`h_fc_uncover_floor = 0.00005` (~0 when fully uncovered), so decay heat accumulates and fuel
+temperature rises toward damage — the uncovery endpoint (`bwr_vessel.js:91-96`,
+`bwr_config.js:93`).
 
 ### 6.5 Fuel damage / melt
 ```javascript
@@ -212,15 +260,22 @@ The recirculation pumps drive jet pumps; core flow exceeds the drive flow becaus
 entrain additional flow:
 ```javascript
 if (recirc_pump_running) {
-    drive_flow = recirc_pump_speed_pct / 100.0;        // operator setpoint (set_recirc_flow)
-    core_flow_pct = drive_flow * (1.0 + jet_pump_m_ratio) * 100.0;
+    // drive flow RAMPS toward the operator setpoint (set_recirc_flow) — pump/flow inertia
+    drive_flow_pct += (recirc_setpoint_pct - drive_flow_pct) / tau_recirc * dt;
+    core_flow_pct = drive_flow_pct / 100.0 * (1.0 + jet_pump_m_ratio) * 100.0;
 } else {
     core_flow_pct = natural_circ_flow_bwr(P, core_void_fraction);   // §7.2
 }
 core_flow_pct = clip(core_flow_pct, 0.0, 120.0);
 ```
-`jet_pump_m_ratio = 1.5` (core flow ≈ 2.5× drive) **[tune]**. Pump coastdown on loss of recirc
-uses `tau_coastdown = 6.0` s (then natural circulation takes over) **[tune]**.
+`jet_pump_m_ratio = 1.5` (core flow ≈ 2.5× drive) **[tune]**. *(as built)* drive flow is **not**
+instantaneous: it first-order-lags toward the setpoint over `tau_recirc = 8.0` s **[tune]** — an
+instant jump would swing the void hard enough to push ρ→β in one step (`bwr_recirculation.js`,
+`bwr_config.js`). Pump coastdown on loss of recirc uses `tau_coastdown = 6.0` s (then
+natural circulation sets the floor) **[tune]**. *(as built)* The `set_recirc_flow` setpoint
+cap is config `recirc.max_setpoint_pct = 48` — a single source read by **both** the engine's
+command clamp and the control layer's recirc automation channel authority (`uMax`,
+`bwr_control.js`); the `48` literals are gone.
 
 ### 7.2 Natural circulation (safety-relevant)
 The BWR sustains meaningful flow by natural convection even without pumps, at reduced power:
@@ -239,12 +294,14 @@ On turbine trip, steam flow drops to zero suddenly → vessel pressure rises →
 in reverse) → a brief power rise, before protection/relief respond:
 ```javascript
 if (vessel_pressure_mpa > vessel_p_rated) {
-    void_collapse = (vessel_pressure_mpa - vessel_p_rated) * void_collapse_coeff;
-    core_void_fraction = clip(core_void_fraction - void_collapse, 0.0, 0.95);
+    collapse_rate = (vessel_pressure_mpa - vessel_p_rated) * void_collapse_coeff;   // per second
+    core_void_fraction = clip(core_void_fraction - collapse_rate * dt, 0.0, 0.95);
     // the brief power rise emerges automatically through ρ_void (§4)
 }
 ```
-`void_collapse_coeff = 0.145` per MPa **[tune]**. The §17 test asserts this transient occurs.
+`void_collapse_coeff = 0.145` /MPa/s **[tune]**. *(as built)* the collapse is a **rate × dt**
+term (continuous while overpressure persists), not a one-shot subtraction (`bwr_vessel.js:64`).
+The §17 test asserts this transient occurs.
 
 ---
 
@@ -267,13 +324,20 @@ if (rcic_running && vessel_pressure_mpa > rcic_min_pressure) {
 }
 ```
 `rcic_flow_normalized ≈ 0.01`, `rcic_steam_consumption ≈ 0.002`, `rcic_min_pressure = 0.69`
-MPa **[tune]**. **Auto-starts** when `vessel_level < rcic_start_level = 50 %` and battery (DC)
-or AC power is available. **Stops** when vessel pressure < 0.69 MPa (steam too low to drive the
-turbine) **or** the battery is depleted (§9.4).
+MPa **[tune]**. **Auto-starts** on low vessel level — *(as built)* the actuation setpoint is
+**45 %**, not 50: at 50.0 the instrument noise (σ 0.5) around the 50 % nominal level
+hair-triggered RCIC within seconds of every run (§13; `bwr_control.js`). The setpoint lives
+**only** in the control layer now — the config's dead twin `safety.rcic_start_level = 50.0`
+is removed, and the in-engine test harness reads the shipping `bwr_control.js` actuation
+setpoint (45.0) for its emulation. **Stops** when
+vessel pressure < 0.69 MPa (steam too low to drive the turbine) **or** the battery is depleted
+(§9.4).
 
 ### 9.2 HPCI — higher-capacity steam-driven injection
 A larger version of the same idea for more demanding conditions; auto-starts on lower level
-(§13). Same no-AC property.
+(30 % — a `bwr_control.js` actuation setpoint; *(as built)* the config's dead
+`safety.hpci_start_level` twin is removed). Same no-AC property. `hpci_flow_normalized = 0.03`,
+`hpci_min_pressure = 0.69` MPa (steam-drive cutoff, parallel to `rcic_min_pressure`) **[tune]**.
 
 ### 9.3 ADS — automatic depressurization (the decision point's enabler)
 Relief valves that rapidly lower vessel pressure when actuated (`trigger_ads`). This matters
@@ -285,7 +349,12 @@ if (ads_open) {
     vessel_pressure_mpa += dVesselP_dt * dt;
 }
 ```
-`ads_depressurization_tau = 600` s (reaches the LPCI threshold in ~10 min) **[tune]**.
+`ads_depressurization_tau = 120` s **[tune]**. *(as built)* shortened from the spec's 600 s,
+which stalls above 1.03 MPa against decay steam — ADS blows the vessel down fast (multiple SRVs
+wide open) and must out-vent the decay-heat steam even near the LPCI threshold
+(`bwr_config.js`). The ADS auto-trigger level (15 %, gated `hpci_unavailable`) is a
+`bwr_control.js` actuation setpoint — *(as built)* the config's dead `safety.ads_level` twin
+is removed.
 
 ### 9.4 LPCI — low-pressure injection (works only after depressurization)
 ```javascript
@@ -305,12 +374,14 @@ ADS, this is the path that keeps the Fukushima core covered.
 if (station_blackout) {
     sbo_elapsed += dt;
     battery_charge_pct = clip(100.0 * (1.0 - sbo_elapsed / (battery_duration_hours * 3600.0)), 0, 100);
-    if (battery_charge_pct <= 0.0) rcic_running = false;   // battery depleted → RCIC fails, injection stops
+    if (battery_charge_pct <= 0.0) { rcic_running = false; hpci_running = false; }  // DC lost → steam-driven injection stops
 }
 ```
 `battery_duration_hours = 8.0` (the Fukushima-relevant figure) **[tune]**. (This is the
 deliberate v1 simplification — a fixed grace window, then loss of cooling. The `battery_low`
-alarm fires at 20 %.)
+alarm fires at 20 % — an alarm setpoint in `bwr_control.js`; *(as built)* the config's dead
+`safety.battery_low_pct` twin is removed.) *(as built)* depletion stops **both** RCIC and HPCI
+(both are DC-controlled; `bwr_safety_systems.js`), and closes the IC's DC-powered valves (§6.2).
 
 ### 9.6 Core uncovery and damage
 Once injection stops (RCIC failed, no ADS+LPCI), decay heat boils away inventory unopposed
@@ -363,6 +434,12 @@ Bottom-entry, hydraulically-driven control rods (unlike the top-entry PWR/RBMK).
 mechanics as `CONTEXT.md §6.5` (228 steps). Rod reactivity uses SCRUVE (§4). **Scram is fast —
 3.0 s full travel** (hydraulic drive, faster than the PWR's gravity drop) **[tune]**. Power
 falls sharply on scram.
+
+*(as built)* There are **two rod groups** (`_makeRodGroups`, `bwr_engine.js:66-69`): the
+`control_rods` group (worth `rod_worth_total = 0.10`, operating position
+`control_op_position_pct = 65 %` withdrawn) and a `shutdown_rods` group — normally fully
+withdrawn, with its own worth `rod_worth_shutdown = 0.10` **[tune]** — providing shutdown
+margin; both scram at 3.0 s. BWR `steps` = withdrawn.
 
 ---
 
@@ -436,15 +513,20 @@ PWR (`M1 §6.8`). Direct cycle: `steam_flow_normalized` **is** the steam drawn b
 electrical output tracks it (reactor power the turbine doesn't take is dumped/relieved). 1800 rpm.
 ```javascript
 condenser_vacuum_kpa += ((cooling_available ? vacuum_rated : vacuum_lost) - condenser_vacuum_kpa) / tau * dt;
-if (condenser_vacuum_kpa < vacuum_trip_kpa) tripTurbine();     // steam_flow_normalized = 0
-synced = !turbine_tripped && !turbine_blocked && steam_flow_normalized > 0 && condenser_vacuum_kpa >= vacuum_trip_kpa;
-if (synced) turbine_rpm += (rpm_rated - turbine_rpm) / 0.5 * dt;
+synced = !turbine_tripped && !turbine_blocked && steam_flow_normalized > 0;
+if (synced) turbine_rpm += (rpm_rated - turbine_rpm) / sync_tau * dt;   // sync_tau = 0.5 s (config)
 else        turbine_rpm += (steam_flow_normalized*torque_per_flow*rpm_rated - windage*turbine_rpm) / turbine_inertia * dt;
 mwe_output = steam_flow_normalized * mwe_rated * (turbine_rpm/rpm_rated) * (condenser_vacuum_kpa/vacuum_rated);
 ```
 `rpm_rated = 1800`, `rpm_overspeed_trip = 1980`, `turbine_inertia = 50`, `windage = 1.0`,
-`vacuum_rated = 96.5` kPa, `vacuum_lost = 16.9`, `vacuum_trip_kpa = 74.5`,
+`sync_tau = 0.5` s, `vacuum_rated = 96.5` kPa, `vacuum_lost = 16.9`, `vacuum_trip_kpa = 74.5`,
 `vacuum_restore_tau/decay_tau = 10/30` s; `mwe_rated = 1100` (top-level) **[tune]**.
+
+*(as built — 2026-07-16 design ruling)* Turbine **protection is a control decision**: the
+low-vacuum (< 74.5 kPa) and overspeed (> 1980 rpm) trips are control-layer actuations reading
+the `condenser_vacuum` / `turbine_rpm` **instruments** and issuing the `trip_turbine` command
+(`bwr_control.js`; setpoints from the engine config). The engine only spins the machine —
+the synced branch no longer gates on vacuum, and `bwr_vessel.js` trips nothing.
 
 **Steam dump / turbine bypass** (§6.1): auto-opens above `steam_dump_setpoint = 7.25` MPa
 (band 0.30 — ordered above rated 7.03 so the §7.3 void-collapse transient still fires, and below
@@ -455,11 +537,24 @@ is set false by `post_scram_sbo`, `full_blackout_bwr`, and `loss_of_condenser_va
 `set_steam_dump {mode: "auto"|"open"|"closed" | pct}`. Added to `true_state`: `mwe_output`,
 `turbine_rpm`, `condenser_vacuum_kpa`, `turbine_tripped` (additive to `CONTEXT §6.3`).
 
+### 12.2 Load Mode — grid model *(built, folded in)*
+
+The BWR integrates the shared grid/load model `engines/load_mode.js` (spec:
+`Blueprint/load_mode_spec.md`), stepped each tick (`_stepLoadMode`, `bwr_engine.js`). Summary:
+`load_mode` (`follow` / `manual` / `disconnected`), `load_target_mwe`, `load_imbalance_mwe`, and
+`sg_imbalance_active` appear in `true_state`; `feed_auto_coupled` (feedwater coupled to load —
+the init default; `set_feedwater_flow` uncouples) appears in `control_state`. Commands:
+`set_load_mode`, `set_load_target`, `disconnect_grid`, `connect_grid`, `set_feed_coupled`
+(`bwr_engine.js:331-353`); `set_turbine_load` now also drops the plant into `manual` load mode,
+and scram/turbine trip disconnect from the grid.
+
 ---
 
 ## 13. Protection, Actuation, Alarms, Failures (data — read by M4)
 
-All read instruments (HR1).
+All read instruments (HR1). *(as built)* This data lives in the Control Layer —
+`layers/control/bwr_control.js` — not in `engines/bwr/` (§1); it attaches onto
+`BWR_CONFIG.protection` at load and also carries the automation channels.
 ```javascript
 BWR_TRIPS = [
     ("power_range",     "high", 120.0,  "scram"),   // %
@@ -468,16 +563,29 @@ BWR_TRIPS = [
     ("vessel_level",    "low",  10.0,   "scram"),   // %
 ];
 BWR_ACTUATIONS = [
-    ("vessel_level",    "low", 50.0,  "set_rcic"),     // {action:"set_rcic", active:true}
-    ("fw_flow",         "low", 5.0,   "set_rcic"),     // nearly no feedwater
+    // 45.0 (as built, was 50.0): at 50.0 the instrument noise (σ 0.5) around the
+    // 50 % nominal level hair-triggered RCIC within seconds of every run.
+    ("vessel_level",    "low", 45.0,  "set_rcic"),     // {action:"set_rcic", active:true}
+    // 0.05 (as built, was 5.0): fw_flow is NORMALIZED (0–1.2 of rated) — the old
+    // 5.0 was a %-units slip that made the condition always true (RCIC always on).
+    ("fw_flow",         "low", 0.05,  "set_rcic"),     // nearly no feedwater
     ("vessel_level",    "low", 30.0,  "set_hpci"),     // {action:"set_hpci", active:true}
     ("vessel_level",    "low", 15.0,  "trigger_ads",  condition="hpci_unavailable"),
     ("vessel_pressure", "low", 1.03, "start_lpci",   condition="ads_open"),
+    // (as built — 2026-07-16 ruling) mechanical protections moved in-stack: SRV pop/reseat
+    // and the turbine trips are CONTROL decisions. Setpoints derive from the engine config
+    // (single source); commands descend through interception like everything else.
+    ("vessel_pressure",  "high", 7.58,  "open_relief_valve", reset_below=7.44, reset_action="close_relief_valve"),
+    ("condenser_vacuum", "low",  74.5,  "trip_turbine",      reset_below=84.7),   // re-arm only — a trip is one-way
+    ("turbine_rpm",      "high", 1980.0,"trip_turbine",      reset_below=1800.0),
 ];
 BWR_ALARMS = [
+    ("reactor_trip",       "rps_scrammed",    "is_true", null,   "critical","A","Reactor Scram","REACTOR SCRAM"),
     ("vessel_level_low",   "vessel_level",    "low",     30.0,   "warning", "A","Vessel Level Low","VESSEL LVL LO"),
     ("vessel_level_lo_lo", "vessel_level",    "low",     10.0,   "critical","A","Vessel Level Critical Low","VESSEL LVL LO LO"),
     ("vessel_press_hi",    "vessel_pressure", "high",    7.24, "warning", "A","Vessel Pressure High","VESSEL PRESS HI"),
+    ("vessel_press_lo",    "vessel_pressure", "low",     5.86, "warning", "A","Vessel Pressure Low","VESSEL PRESS LO"),
+    ("high_power",         "power_range",     "high",    108.0,  "critical","A","High Reactor Power","HI POWER"),
     ("rcic_running",       "rcic_status",     "is_true", null,   "status",  "B","RCIC Running","RCIC RUNNING"),
     ("sbo",                "station_blackout","is_true", null,   "critical","B","Station Blackout","SBO"),
     ("battery_low",        "battery_pct",     "low",     20.0,   "warning", "B","Battery Power Low","BATT LO"),
@@ -489,6 +597,7 @@ inlined on every `severity_scales` failure):
 BWR_FAILURES = {
   rcic_failure:     { type:"physics_parameter", effect:"stop_rcic", display:"RCIC Failure" },
   hpci_failure:     { type:"physics_parameter", effect:"stop_hpci", display:"HPCI Failure" },
+  ic_failure:       { type:"physics_parameter", effect:"stop_ic", display:"Isolation Condenser Failure (valves shut)" },  // §6.2 IC
   station_blackout: { type:"physics_parameter", effect:"full_blackout_bwr", display:"Station Blackout" },
   loss_of_feedwater:{ type:"command_override", intercepts:["set_feedwater_flow"], override_value:0.0, display:"Loss of Feedwater" },
   turbine_trip:     { type:"command_override", intercepts:["set_turbine_load"],   override_value:0.0, display:"Turbine Trip" },
@@ -506,7 +615,8 @@ BWR_FAILURES = {
   msiv_closure:     { type:"command_override", intercepts:["set_turbine_load"], override_value:0.0, display:"MSIV Closure" },
 };
 ```
-The engine implements the physics-parameter effects (`stop_rcic`, `stop_hpci`,
+The engine implements the physics-parameter effects (`stop_rcic`, `stop_hpci`, `stop_ic` — IC
+valves fail closed, `ic_failed` blocks `set_ic` until cleared (`bwr_engine.js`);
 `full_blackout_bwr` → drop AC: lose recirc + main feedwater, start the battery timer §9.5; and the
 newer effects in §13.1); M4 intercepts the command-override failures. `block`-tagged failures use
 M4's command-block effect (ADS/LPCI/scram dropped). `lpci_failure` blocks `start_lpci`, which carries
@@ -619,15 +729,23 @@ same start.
 
 `step(dt_effective)`; `getTrueState()` → the BWR `true_state` block (`CONTEXT.md §6.3`, incl.
 `core_void_fraction`, `rcic_running`, `hpci_running`, `ads_open`, `lpci_running`,
-`lpcs_running`, `srv_manual_open`, `slc_active`, `slc_tank_pct` (§9.7–9.9),
-`station_blackout`, `battery_charge_pct`, `destruction_cause`, `reactivity_pcm`, and the BOP
-fields `mwe_output`/`turbine_rpm`/`condenser_vacuum_kpa`/`turbine_tripped` (§12.1));
+`lpcs_running`, `srv_manual_open`, `ic_active`/`ic_condensing` (§6.2), `slc_active`,
+`slc_tank_pct` (§9.7–9.9), `station_blackout`, `battery_charge_pct`, `destruction_cause`,
+`reactivity_pcm`, the BOP fields
+`mwe_output`/`turbine_rpm`/`condenser_vacuum_kpa`/`turbine_tripped` (§12.1), and the Load Mode
+fields `load_mode`/`load_target_mwe`/`load_imbalance_mwe`/`sg_imbalance_active` (§12.2));
 `getInstruments()` → §11 (incl. the BOP instruments); `getControlState()` → `CONTEXT.md §6.5`
-(rod groups + `recirc_flow_setpoint_pct`, `ads_armed`, `slc_active`, `feedwater_flow_pct`,
+(rod groups + `recirc_flow_setpoint_pct`, `ads_armed`, `slc_active`, `ic_active`,
+`feedwater_flow_pct`, `feed_auto_coupled`, `load_mode`/`load_target_mwe`/`sg_imbalance`,
 `turbine_load_mwe`, `steam_dump_pct`/`steam_dump_auto`); `applyCommand(command)` for the BWR
 commands in `CONTEXT.md §6.7` (`set_recirc_flow`, `set_feedwater_flow`, `set_turbine_load`,
-`trigger_ads`, `start_lpci`, `set_rcic`, `set_hpci`, `initiate_slc`/`stop_slc`,
-`start_lpcs`/`stop_lpcs`, `open_srv_manual`/`close_srv_manual`, `set_steam_dump`, rod commands);
+`trigger_ads`, `start_lpci`, `set_rcic`, `set_hpci`, `set_ic` (§6.2 — refused while
+`ic_failure` is active), `initiate_slc`/`stop_slc`, `start_lpcs`/`stop_lpcs`,
+`open_srv_manual`/`close_srv_manual`, `set_steam_dump`, the mechanical-protection commands
+`open_relief_valve`/`close_relief_valve`/`trip_turbine` (§6.1/§12.1 — issued by the
+control layer's actuations per the 2026-07-16 ruling), the Load Mode commands
+`set_load_mode`/`set_load_target`/`disconnect_grid`/`connect_grid`/`set_feed_coupled` (§12.2),
+rod commands);
 `saveState()`/`loadState()` (§17); the scenario suite (§18). The engine never evaluates
 trips/alarms or assembles the snapshot.
 
@@ -638,8 +756,9 @@ trips/alarms or assembles the snapshot.
 `saveState()` captures everything affecting future behavior so a restore continues identically:
 kinetics (P, six Cᵢ), xenon/iodine, fuel temperature, vessel pressure/level, void, core/recirc
 flow, rod positions/motion, every safety-system state (`rcic_running`, `hpci_running`,
-`ads_open`, `lpci_running`, plus `lpcs_running`, `srv_manual_open`, and SLC `slc_active` /
-`slc_injected` / `slc_tank_pct`, §9.7–9.9), the BOP state (`turbine_rpm`, `condenser_vacuum_kpa`,
+`ads_open`, `lpci_running`, plus `lpcs_running`, `srv_manual_open`, the commanded SRV state
+`relief_open` — *(as built)* `loadState` defaults it `false` for pre-commanded-SRV saves —
+and SLC `slc_active` / `slc_injected` / `slc_tank_pct`, §9.7–9.9), the BOP state (`turbine_rpm`, `condenser_vacuum_kpa`,
 `turbine_tripped`, `condenser_cooling_available`, `steam_dump_override`; §12.1),
 `station_blackout` and the **SBO battery timer** (`sbo_elapsed` /
 `battery_charge_pct`), active failures — and the instrument model's internal state (lag
@@ -716,9 +835,13 @@ critical and into a controlled ascension (`startup_rate_dpm` goes positive) with
 MWe (1100) with the turbine synced at 1800 rpm and rated condenser vacuum; MWe tracks the
 `set_turbine_load` command; a `turbine_trip` collapses MWe and coasts the turbine down while the
 steam dump opens (condenser available); `loss_of_condenser_vacuum` decays vacuum below the trip
-and trips the turbine; the `50_percent` state holds ~50 % power and ~half MWe, stable; and — the
-Fukushima-preserving check — from `post_scram_sbo` the condenser/dump is **unavailable**
-(`steam_dump_frac == 0`) so the SRVs hold pressure. *(Suite: `balance_of_plant`.)*
+and the (emulated) control-layer actuation trips the turbine; the `50_percent` state holds
+~50 % power and ~half MWe, stable; and — the Fukushima-preserving check — from `post_scram_sbo`
+the condenser/dump is **unavailable** (`steam_dump_frac == 0`) so the SRVs hold pressure.
+*(Suite: `balance_of_plant`.)* *(as built)* The engine test `Harness` emulates M4's
+mechanical-protection actuations (`autoM4`, 0.1 s cadence, reads instruments — SRV pop/reseat
+and the turbine trips, moved in-stack per the 2026-07-16 ruling), and its `runActuated` RCIC
+emulation reads the shipping `bwr_control.js` auto-start setpoint (45.0).
 
 **Save and restore.** Save mid-blackout (RCIC running, battery partly depleted), restore into a
 fresh engine, confirm the run continues identically — including the battery timer and instrument
@@ -735,29 +858,37 @@ with/without-intervention comparison — the BWR physics is done and correct.
 | Parameter | Start | Tune against |
 |---|---|---|
 | `Λ` (BWR) | 0.00005 s | fixed |
+| `kinetics.source` | 4.0e−3 /s | hot-startup source equilibrium (§3; fades out >~1 % power) |
 | `α_D` (Doppler) | −2.0e−5 K⁻¹ | steady state |
 | `α_void` | −0.15 | flow-step test |
-| `void_ref` | 0.40 | steady void |
+| `void_ref` | 0.45 *(as built — pinned at reset = `void_scale_factor`; the dead config 0.40 entry is removed)* | steady void |
 | `rod_worth_total` | 0.10 | rod worth, criticality |
+| `rod_worth_shutdown` | 0.10 | shutdown-group margin (§10) |
 | `xenon_worth / sigma_phi` | 0.025 / 2.0e−5 | xenon transient |
 | `H1_0/λ1, H2_0/λ2` | 0.05/5e−4, 0.02/2e−5 | post-scram cooling, **Fukushima timeline** |
 | `h_fc_bwr` | 0.05 s⁻¹ | fuel temperature |
-| `heat_gen_coeff_bwr` | (→ appropriate fuel temp) | fuel temperature |
+| `heat_gen_coeff_bwr` | 15.0 (→ ~586 °C at rated) | fuel temperature |
+| `uncover_level_pct / h_fc_uncover_floor` | 20.0 % / 0.00005 | uncovery heat-transfer collapse (§6.4) |
 | `void_scale_factor` | 0.45 | void at rated conditions |
 | `void_response_tau_bwr` | 1.5 s | void lag |
-| `K_vessel_pressure` | 2.5 | vessel pressure |
+| `K_vessel_pressure` | 0.5 *(as built — was 2.5; §6.1)* | vessel pressure vs ADS |
+| `relief_gain` | 5.0 | SRV proportional vent while commanded open (§6.1) |
+| `relief_reseat_mpa` | 7.44 MPa | SRV reseat (control-layer actuation, §6.1) *(as built)* |
 | `K_vessel_level` | 5.0 | vessel level |
-| `latent_heat_bwr / vessel_water_mass` | 1.0 / 1.0 | **uncovery timeline** (with RCIC flow) |
+| `latent_heat_bwr / vessel_water_mass` | 1.0 / 7.0 *(as built — was 1.0)* | **uncovery timeline** (with RCIC flow) |
 | `jet_pump_m_ratio` | 1.5 | core flow vs drive flow |
 | `natural_circ_coeff` | 0.30 | natural circulation |
+| `tau_recirc` (drive-flow ramp) | 8.0 s | recirc setpoint lag (§7.1) |
 | `tau_coastdown` (recirc) | 6.0 s | pump trip transient |
-| `void_collapse_coeff` | 0.145 /MPa | turbine-trip transient |
+| `void_collapse_coeff` | 0.145 /MPa/s | turbine-trip transient (rate × dt, §7.3) |
 | `rcic_flow_normalized` | 0.01 | **core-coverage duration** |
-| `rcic_steam_consumption` | 0.002 | RCIC steam draw |
+| `rcic_steam_consumption / pressure_sensitivity` | 0.002 / 1.0 | RCIC/HPCI steam draw |
 | `rcic_min_pressure` | 0.69 MPa | RCIC steam cutoff |
-| `rcic_start_level` | 50 % | RCIC auto-start |
+| `rcic_start_level` | 45 % *(as built — a `bwr_control.js` actuation setpoint, §13; the config's dead 50.0 twin is removed and the test harness reads the control layer's 45.0)* | RCIC auto-start |
+| `hpci_flow_normalized / hpci_min_pressure` | 0.03 / 0.69 MPa | HPCI (§9.2; the 30 % start level is `bwr_control.js` actuation data) |
+| `ic_condense_rate` | 0.02 /s | Isolation Condenser depressurization (§6.2) |
 | `battery_duration_hours` | 8.0 h | **RCIC runtime / grace window** |
-| `ads_depressurization_tau` | 600 s | ADS depressurization timing |
+| `ads_depressurization_tau` | 120 s *(as built — spec's 600 s stalls above 1.03 MPa against decay steam; §9.3)* | ADS depressurization timing |
 | `lpci_threshold_pressure` | 1.03 MPa | ADS + LPCI intervention timing |
 | `lpci_flow_normalized` | 0.05 | LPCI injection |
 | `lpcs_flow_normalized` | 0.04 | LPCS core spray (D4, §9.8) |
@@ -766,10 +897,16 @@ with/without-intervention comparison — the BWR physics is done and correct.
 | `swell_factor` (vessel) | 1.2 | vessel level indication transient |
 | **BOP (§12.1):** `rpm_rated / rpm_overspeed_trip` | 1800 / 1980 rpm | turbine speed / overspeed |
 | `turbine_inertia / windage / torque_per_flow` | 50 / 1.0 / 1.0 | turbine coastdown |
+| `sync_tau` | 0.5 s | grid pull toward rated speed while synced *(as built)* |
+| `max_setpoint_pct` (recirc) | 48 % | `set_recirc_flow` clamp + recirc channel authority (§7.1) *(as built)* |
 | `vacuum_rated / vacuum_lost / vacuum_trip_kpa` | 96.5 / 16.9 / 74.5 kPa | condenser |
 | `vacuum_restore_tau / vacuum_decay_tau` | 10 / 30 s | vacuum response/lag |
 | `steam_dump_setpoint / band / max` | 7.25 MPa / 0.30 / 1.0 | turbine bypass (condenser-gated) |
 
-**Operating points / fixed:** vessel 7.03 MPa, relief 7.58 MPa; `max_steps` 228; scram 3.0 s;
-melt 2800 °C (damage onset 1200 °C); trip/alarm setpoints per §13; `post_scram_sbo` preset:
-scrammed + SBO + RCIC running.
+**Operating points / fixed:** `rated_mwt` 3293 / `mwe_rated` 1100; vessel 7.03 MPa, SRV pop
+7.58 / reseat 7.44 MPa and vacuum trip 74.5 kPa / overspeed 1980 rpm (control-layer actuation
+data since the 2026-07-16 ruling — the engine's SRV and turbine are command-driven:
+`open_relief_valve`/`close_relief_valve`, `trip_turbine`);
+`control_op_position_pct` 65 % withdrawn (control group operating position);
+`max_steps` 228; scram 3.0 s; melt 2800 °C (damage onset 1200 °C); trip/alarm setpoints per §13;
+`post_scram_sbo` preset: scrammed + SBO + RCIC running.

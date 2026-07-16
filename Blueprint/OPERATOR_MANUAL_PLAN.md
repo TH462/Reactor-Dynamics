@@ -29,9 +29,12 @@ entries; the generated reference data (`RD.MANUAL`) and validated-procedure mech
 3. **Every modeled failure gets a full step-by-step response procedure** (symptoms → immediate
    actions → recovery → acceptance). Built in phases, per plant.
 4. **Cold operations are out of physics scope** — every engine state starts hot; there is no
-   cold state, no RCP pump-heat warmup, and no modeled heatup/cooldown *rate*. So cold startup /
-   RCP warmup / cooldown are written as **clearly-marked narrative context (`[narr]`)**, not
-   step-followable. All step-followable (`[sim]`) procedures begin at **Hot Standby**.
+   cold state and no modeled heatup/cooldown *rate*. So cold startup / RCP warmup / cooldown
+   are written as **clearly-marked narrative context (`[narr]`)**, not step-followable. All
+   step-followable (`[sim]`) procedures begin at **Hot Standby**. *(Update 2026-07: RCP pump
+   heat itself IS now modeled — `pump_heat_frac` adds RCP heat to the primary at full flow —
+   but there is still no cold state to warm up from, so the narrative-only treatment of cold
+   ops stands.)*
 
 ---
 

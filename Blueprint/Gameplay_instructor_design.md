@@ -95,6 +95,23 @@ ui_policy: {
 
 **Terminology note:** "Learning Mode" in early drafts means the **Learning register** (plain labels + commentary), not a separate app mode. "Quiet Board" is the existing `variant-quiet` layout — acronym-heavy, minimal chrome.
 
+> ***(As built)*** the `ui_policy` fields actually shipped and consumed are **different from the
+> set above**. The TMI-2 scenarios carry:
+>
+> ```javascript
+> ui_policy: {
+>   synoptic: "realistic" | "learning",   // drives the synoptic mode (quiet board vs full-color)
+>   overlay: boolean,                     // physics overlay (honored only with synoptic:"learning")
+>   tag: "afw_tag"                        // scenario prop: the maintenance tag over the AFW valve
+> }
+> ```
+>
+> consumed by `applyUiPolicy()` in `ui/app.js` (`ip.synoptic` / `ip.overlay` / `ip.tag`,
+> app.js ~641): the player's own Settings are saved on scenario entry and restored on unload,
+> and the tag prop hides once its interaction is granted. The original set above
+> (`register` / `layout` / `diagnostics_allowed` / `failures_tab_allowed` / `hint_level`)
+> remains the design intent for Path 4 hinting and layout policy but is **not yet consumed**.
+
 ---
 
 ### 4. Content Architecture (one artifact, two containers)
@@ -237,6 +254,18 @@ checkpoints: [ saveState(), ... ]   // ring buffer, cap e.g. 32
 - `rewind` pops and `loadState()` — restores instrument lag buffers and PRNG (determinism).
 - UI: **Rewind** button in Instructor card + optional strip-chart scrub animation.
 - Distinct from **Save** (JSON download for persistence across sessions).
+
+***(As built)*** the Instructor↔M5 coupling is a **consume-flag API, polled by the Simulation
+Service right after each `step()`** — snapshots-up / commands-down holds; there are no upward
+callbacks:
+
+- `consumeCheckpointRequest()` — one-shot; every non-rewind beat fire (and follow-mode
+  auto-advance) sets it, so Rewind lands on beat/step boundaries.
+- `consumeRewindRequest()` — returns `{ steps, scope }` for beat-driven world-scope rewinds
+  (the "watch that again" device: the world rolls back, the Instructor keeps its progress).
+- `consumeSpeedRequest()` — beat-driven time acceleration (`speed` beat field).
+- `rebaseTime(newSimTime)` — called by M5 after a world-scope rewind so time/delay triggers
+  don't wait for time to re-elapse.
 
 #### 7.3 Micro-Scenarios
 

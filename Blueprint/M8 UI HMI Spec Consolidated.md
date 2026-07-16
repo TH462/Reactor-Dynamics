@@ -61,8 +61,8 @@ window size; everything else fills around it.
 │                                                                             ││ └─────────────────┘ │
 │                       SYNOPTIC DIAGRAM                                       │├─────────────────────┤
 │        animated SVG — v1 NUMERIC PLACEHOLDER until SVG ships                 ││ TOOLS BLOCK         │
-│        Education / Realistic mode · true-state overlay toggle               ││ Failures│Graph│Sim  │
-│        rod visualization = 2 bars (control + shutdown)                      ││ Settings│Training    │
+│        Teaching / Realistic mode · true-state overlay toggle                ││ Failures│Automate    │
+│        rod visualization = 2 bars (control + shutdown)                      ││ Graph│Sim│Settings│Dev│
 │                                                                             ││ ┌─────────────────┐ │
 │                                                                             ││ │ active tab      │ │
 │                                                                             ││ └─────────────────┘ │
@@ -73,6 +73,13 @@ window size; everything else fills around it.
 │                                               │  color-coded by system       │└─────────────────────┘
 └──────────────────────────────────────────────┴──────────────────────────────┘
 ```
+
+*(as built)* For the **PWR** the gauge strip remains, but the four control sections, the status bar,
+and the 4-view switcher are replaced by the single full-plant synoptic (`ui/diagram/pwr_synoptic.js`)
+whose margin cards and embedded panels are the sole control surface — see §5 and
+`new_diagram_controls.md`. RBMK/BWR retain the layout above. The Tools tab set as built is
+**Failures · Automate · Graph · Sim · Settings · Dev** (§10); the Training tab is retired in favor of
+the Plant & Mission window (§10.7).
 
 ### 2.1 Region inventory
 
@@ -113,10 +120,21 @@ Visually continuous with the gauge strip (same height band), slightly lighter ba
 - **Play / Pause** — a **dedicated button, separate from the speed selector** (so "paused" is never a
   speed step). Large enough to hit quickly under stress. Issues `play` / `pause`.
 - **Speed selector** — discrete steps **1× · 10× · 60× · 600× · 3600×**. Issues `set_speed { value }`.
-  **The user sets speed manually; there is no automatic fast-forward dropout in v1** (see §20). High-speed
-  animation behavior is in §6.6.
-- **Save** — quick `save_state` (downloads JSON). The full state operations (Load, Export history, Reset)
-  live in the SIM tab (§10).
+  **The user sets speed manually; there is no automatic transient-detect fast-forward dropout** (see
+  §20). *(as built)* One qualification: the **Instructor** can drive time acceleration — a scenario
+  beat's `speed` field fast-forwards in and drops back out at a set point; the speed segment and the
+  ⚡ FF badge track whatever `metadata.time_acceleration` reports (`syncSpeedUI`, `ui/app.js`).
+  High-speed animation behavior is in §6.6.
+- **Save** — quick `save_state` (downloads JSON). The full state operations (Load, Reset) live in the
+  SIM tab (§10).
+- **Operator's Manual (📖)** *(as built)* — top-bar button opening a full-screen reference overlay for
+  the active plant: ten sections (Overview, Procedures, Accidents, Alarm Response, Controls,
+  Indications, Setpoints & Limits, Normal Values, Failures, Glossary), register- and unit-aware,
+  rendered from `RD.MANUAL` / `RD.MANUAL_PROCEDURES` (`ui/app.js` `openManual`; keyboard shortcut `M`).
+- **Help (?)** *(as built)* — top-bar button toggling a one-screen guide to the board (quiet-board
+  colors, why instruments can lie, where the missions live, keyboard shortcuts).
+- **Mission status line** *(as built)* — an always-visible "what's running now" strip under the sim
+  controls (`#simStatus`: plant · mode); clicking it opens the Plant & Mission window (§10.7).
 
 ---
 
@@ -150,6 +168,14 @@ bands and trip markers come from plant config (§16), never hard-coded.
 Four horizontal sections spanning the width of the plant-control area, directly above the synoptic
 diagram, organized left-to-right by plant energy flow. Always visible — not tabs, not collapsible. Each
 control reflects `control_state` from the snapshot and issues commands from `CONTEXT.md §6.7`.
+
+*(as built)* This four-section arrangement now applies only to the **RBMK and BWR** (legacy
+status-bar + 4-view plant display). For the **PWR** the sole control surface is the synoptic
+diagram's **margin cards and diagram-embedded panels**: `buildPlantDisplay` (`ui/app.js`) mounts
+`RD.PwrSynoptic` and empties the status bar, view switcher, and control bar when `plant_id === 'pwr'`.
+The card-by-card control inventory lives in `new_diagram_controls.md`; the individual controls
+described below (SCRAM cover, rod drive, heaters/spray, ECCS, AFW, feed) survive on those cards with
+the same commands. See also §5.6 for PWR controls added since that spec.
 
 ### 5.1 Reactor Core
 
@@ -208,6 +234,13 @@ control reflects `control_state` from the snapshot and issues commands from `CON
 - **Turbine Load Target (MW)** — numeric setpoint with SET button; shows current target and actual
   output → `set_steam_demand` (PWR) / `set_turbine_load` (BWR).
 
+**Two-press "CONFIRM?" arming** *(as built)* — destructive controls never use native browser
+confirms. The first click arms the button: its label changes to **CONFIRM?** and it highlights; a
+second click within 3 seconds fires the command, otherwise it disarms back to its normal label
+(`armedConfirm`, `ui/app.js`). Applied to: breaker open, PWR MSIV close, PORV block-valve close
+(isolate), BWR ADS, and SLC injection. The SCRAM buttons use the same two-press arm/fire pattern with
+their own arming timers (§5.1; `pwr_synoptic.js` for the synoptic card).
+
 ### 5.5 Per-plant control variation
 
 The four sections are the PWR arrangement. For other plants the section contents follow the plant's
@@ -219,6 +252,36 @@ systems (`CONTEXT.md §6.7`):
   emergency systems RCIC (`set_rcic`) / ADS (`trigger_ads`) / LPCI (`start_lpci`).
 
 **Emergency systems are visually set apart** from normal controls in every plant.
+
+### 5.6 PWR synoptic controls added since the diagram spec *(as built)*
+
+Controls on the PWR synoptic cards beyond the `new_diagram_controls.md` v1 inventory
+(`ui/diagram/pwr_synoptic.js`):
+
+- **NIS startup section** (Power & Reactivity card) — a collapsible "NIS · startup ranges" block that
+  auto-opens on a startup lineup (SR detector energized) and stays put once the user toggles it:
+  Source Range counts (`instruments.source_range`, cps, log detector) with an **SR On | Off**
+  high-voltage switch (P-6 interlocked both ways), Intermediate Range chamber current
+  (`instruments.intermediate_range`, A), and **startup-trip blocks** for the IR high-flux and
+  power-range low-setpoint (25 %) trips (permitted above P-10, auto-reinstate below).
+- **1/M startup plot** (`ui/panels/one_over_m.js`) — a **draggable window** opened from the NIS
+  section: the operator's inverse-multiplication scratchpad. PLOT captures the source-range
+  **instrument** count (HR1) at the current rod position; a least-squares line through C0/C
+  extrapolates to the predicted critical rod position. Session tool only — not in save files; clears
+  on plant change, reset, or rewind past the last point.
+- **Rod AUTO/MAN** (Rod Control card) — AUTO engages the in-stack `rods_tavg` automation channel,
+  capturing **T-ref** from the current indicated Tavg and driving the bank to hold it (variable speed
+  on the mismatch); any manual rod motion drops it back to MAN. The captured T-ref is displayed on
+  the card.
+- **MSIV Open | Close** (Steam & Flow card) — `close_msiv` / open; Close carries the two-press
+  CONFIRM? arm (§5.4). Status readout shows SHUT and whether the SG safeties are lifting.
+- **Feed pump speed** (Steam & Flow card) — nudge ▼/▲ (`feed_pump_nudge { delta_pct }`) and a
+  numeric set (`set_feed_pump_speed { pct }`), plus a commanded-speed readout and a **"who's
+  driving"** line (three-element controller AUTO via the Automate tab, load coupling, or manual
+  speed).
+- **ESF AUTO/MAN arms** (Emergency Cooling card) — the HPI/LPI and AFW AUTO buttons issue
+  `set_esf_auto { system: 'hpi'|'afw', auto: true }` to re-arm the automatic actuation after a manual
+  override disarms it.
 
 ---
 
@@ -286,11 +349,15 @@ component states, starts/stops flow animations, and scales animation speed to fl
 
 ### 6.4 Two display modes (one SVG, CSS-class swap)
 
-Education and Realistic differ **only in colors and labels**, switched by adding/removing a CSS class on
+Teaching and Realistic differ **only in colors and labels**, switched by adding/removing a CSS class on
 the SVG root. **No shapes move between modes; no elements appear or disappear.** All component colors are
 CSS custom properties — mode switching requires no SVG changes.
 
-- **Education (default):** full heat-gradient coloring on pipes and fluids; Cherenkov glow scaling with
+*(as built)* The Settings labels are **Teaching (default) | Realistic** (`shell.html` `#modeSeg`); the
+internal `data-mode` value for Teaching is `learning` — the same mode `new_diagram_controls.md` calls
+Learning Mode. Earlier drafts said "Education"; that label is retired.
+
+- **Teaching (default):** full heat-gradient coloring on pipes and fluids; Cherenkov glow scaling with
   power; temperature-driven color throughout. Makes the physics intuitive.
 - **Realistic:** muted, desaturated colors during normal operation — things change color only when
   something is wrong, like a real control room. **Alarms and danger states always use full red/amber,
@@ -328,8 +395,13 @@ former two swappable MFD panels — see §20). The strip chart is pure display: 
 itself; the legend is the only label.
 
 - Multi-parameter time-series. Parameter selection and time window come from the **Graph tab** (§10).
-- **Time scrubber** at the bottom, video-player style. Scrubbing issues `seek { sim_time: T }`.
-- **Replay:** a Fork button appears in replay mode; a Back-to-Live button snaps to the current snapshot.
+- **Time scrubber** at the bottom, video-player style. *(as built)* There is **no `seek` command and no
+  Fork / Back-to-Live replay chrome** — the timeline is a **checkpoint rewind**, not a free seek.
+  Clicking the scrubber track, or the ⏪ button beside it, opens **rewind-pick mode**: the sim pauses,
+  the operator clicks a moment on the plot, and the UI rewinds to the **nearest checkpoint** by issuing
+  `rewind { steps, exact: true }` (`toggleRewindPick` / `rewindPickClick`, `ui/app.js`; sandbox
+  checkpoints every 15 sim-s in free play, authored checkpoints during instructed content — where the
+  Instructor-card ⏪ steps back one checkpoint instead).
 - Reads instruments by default; the overlay (§12) can add true values to plotted parameters where
   meaningful, in the same on-screen format.
 
@@ -437,6 +509,13 @@ Instructor needs real estate to be useful — and grows vertically with the wind
 - Previous messages shown above in muted text (not interactive); the current message is prominent.
 - Acknowledge button is full-width and hard to miss under stress.
 
+*(as built)* The panel starts **collapsed** (it expands when the Instructor has something to say, or on
+click) and the button rows are **contextual** — there is **no persistent `PREV / NEXT / ↺ / ✕ / ?`
+row**. A button that cannot act does not exist on screen (no false affordances, `syncInstrNav`,
+`ui/app.js`): the walkthrough nav row (Prev / Next / Rewind / ↺ / ✕) appears only during a procedure
+follow; the Acknowledge (+ Rewind) row only while a scenario's commentary is on screen; chat mode and
+level-complete render their own buttons (§9.4).
+
 ### 9.2 Highlight system (inert infrastructure in v1)
 
 The Instructor can highlight any UI element by its `data-highlight-id`. Highlight types:
@@ -463,12 +542,31 @@ visible and shows "Standing by…"** in muted text, all buttons present, Acknowl
 waits for the user (M6), it shows Continue; when waiting for an action or physical condition, it shows a
 subtle "waiting" indication — the panel only renders what the `instructor` block reports.
 
+### 9.4 Chat-mode pane *(as built — TMI-2 scenarios)*
+
+When a scenario reports `instructor.chat`, the single-slot commentary card is replaced by a scrolling
+**multi-speaker transcript** (Shift Supervisor, Aux Operator, Chief, ANNUNCIATOR, You — `renderChat`,
+`ui/app.js`):
+
+- **In-fiction shift clock** — every line is stamped with a wall-clock time (the shift picks up at
+  03:53) that runs on the **authored story timeline** (beat `story_min` anchors), so historical
+  durations survive the sim's time compression.
+- **One-line-at-a-time pacing** — lines reveal on a ~220 wpm reading cadence (conversation, not a
+  dump); player-outgoing lines appear immediately. Display-only pacing — the engine's log is untouched.
+- **Elapsed-time dividers** ("⏱ about 20 minutes pass") appear **only on authored `time_skip` beats**,
+  never from ordinary clock drift.
+- **Contextual buttons** — the pending beat's **acknowledge** or **fast-forward (skip)** button renders
+  under the transcript and is held back until the conversation has fully played out (no acknowledging
+  unread dialogue); level-complete renders inline in the same zone (`chatButtonAction`).
+
 ---
 
 ## 10. Tools Block
 
-Mid right column, tab-based, grows vertically. **Tabs: Failures · Graph · Sim · Settings · Training**
-(add tabs later if needed; these five are the starting set).
+Mid right column, tab-based, grows vertically. **Tabs *(as built)*: Failures · Automate · Graph · Sim ·
+Settings · Dev** (`ui/shell.html` `#tabbar`). The original five-tab starting set is superseded: the
+**Training tab is retired** in favor of the Plant & Mission window (§10.7), and the **Automate** (§10.5)
+and **Dev** (§10.6) tabs were added.
 
 ### 10.1 Tab: Failures
 
@@ -516,16 +614,22 @@ get right:
 ### 10.3 Tab: Sim
 
 Speed is **not** here — the top-bar selector (§3) is the single, always-visible speed control. This tab
-carries the scenario status and the full state operations.
+carries the mission status and the full state operations.
 
-- **Current scenario:** name and description; elapsed sim time.
-- **State operations:** Reset (with confirmation), Save State (download JSON), Load State (file picker →
-  `load_state`), Export Run History (download full history buffer).
-- (No fast-forward auto-dropout and no waypoints in v1 — §20.)
+- **Current plant / mode:** plant and mode readouts, plus the **⚛️ Plant & Mission…** button opening
+  the mission window (§10.7).
+- **State operations:** Reset, Save State (download JSON), Load State (file picker → `load_state`).
+  *(as built)* There is **no "Export Run History"** — data export lives elsewhere: CSV of the plotted
+  parameters in the **Graph** tab (§10.2), the diagnosis JSON bundle in the **Dev** tab (§10.6).
+- **Reactivity Computer** *(as built)* — net reactivity ρ (pcm) and reactor period readouts at the
+  bottom of this tab (`shell.html` `#rxReactivity` / `#rxPeriod`), for use during approach to
+  criticality.
+- (No fast-forward auto-dropout and no waypoints in v1 — §20, with the Instructor qualification in §3.)
 
 ### 10.4 Tab: Settings
 
-- **Diagram Mode** — Education (default) | Realistic (§6.4).
+- **Diagram Mode** — Teaching (default) | Realistic (§6.4; internal `data-mode` value for Teaching is
+  `learning` — the "Education" label is retired).
 - **Values Display** — Instruments (default) | True Values | Both. This is the control for the true-state
   overlay (§12). Applies to gauges, diagram, numeric placeholder, and (where meaningful) the strip
   chart. Independent of Diagram Mode — any combination is valid.
@@ -535,17 +639,67 @@ carries the scenario status and the full state operations.
 - **Audio** — on/off, volume (§17).
 - (Instructor verbosity / "chatty level" is deferred to the Instructor phase.)
 
-### 10.5 Tab: Training
+### 10.5 Tab: Automate *(as built — replaces the Training placeholder)*
 
-Reserved for the Instructor phase (M6); present in v1 as a placeholder. Will host: Instructor persona
-selector, Enable/Disable Instructor, manual hint trigger, and scenario progression controls.
+A pure **face over `snapshot.automation`** — the operator-automation channel runtime that runs
+**in-stack in the Control Layer** (`layers/control/`), not in the UI. The tab issues commands and
+renders state, nothing more (HR5); control laws and interlocks live below the UI.
 
-### 10.6 Test Panel (development builds only)
+- **Master row** — **All auto / All manual** buttons (`set_auto_channel { channel_id: 'all',
+  engaged }`; engaging captures setpoints from the current readings).
+- **Per-channel rows**, grouped by system, built from the snapshot's channel list (data-driven —
+  rebuilds per plant): a **MAN/AUTO toggle** (`set_auto_channel { channel_id, engaged }`), a live
+  process-value → setpoint readout, and — where the channel declares `setpoint_meta` — a **setpoint
+  input** issuing `set_auto_setpoint { channel_id, value }` (unit-converted for display, enabled only
+  while engaged). (`buildAutomate` / `renderAutomate` / `bindAutomate`, `ui/app.js`.)
+- **HR1 note (shown on the tab):** automation reads the **instruments** and issues normal commands —
+  a failed sensor fools it, interlocks block it, and an engaged channel overrides manual input for its
+  control.
 
-Not a Tools tab and **not part of the main layout.** In development builds a Test Panel is reachable as a
-toggle/overlay or separate view; it runs the Test Runner suites (M7) and streams results into a summary.
-**Absent from shipped builds** (the failures-tab spec references the same build flag). The true-state
-overlay, by contrast, ships — it is a learning feature, not a dev tool.
+### 10.6 Tab: Dev *(as built — supersedes the dev-only Test Panel)*
+
+The development surface is an ordinary Tools tab named **Dev**, hosting **Session Diagnosis**: a 1 Hz
+**true-state sampler** (per-plant field sets), an event log of alarm transitions, scram edges, and every
+issued command, a free-text notes field, and a **Diagnosis JSON export** bundling timeseries + events +
+commands with a full `service.saveState()` snapshot so a session can be replayed and analyzed
+(`diagTick` / `exportDiag`, `ui/app.js`; schema matches the `Diagnostic/rd_diag_*.json` exports).
+
+There is **no in-UI Test Panel running the M7 suites** — the M7 runner is driven by `test/run_m7.js`
+under Node. The true-state overlay, by contrast, ships — it is a learning feature, not a dev tool.
+
+### 10.7 Plant & Mission window *(as built — replaces the Training tab)*
+
+The Training tab's role moved to a full-screen **Plant & Mission window** (`openMissionSelect`,
+`ui/app.js`), opened from the Sim tab's **⚛️ Plant & Mission…** button, the mission status line (§3),
+or `?missions=1` (the retired `?tab=training` deep link redirects here). Selection order — nothing
+changes in the running sim until a start button is pressed:
+
+1. **Plant** — left-column cards (PWR · RBMK pre/post · BWR), the active plant marked.
+2. **Mode** — **Free Play** (starting-condition picker), **Campaign** (the guided mission path with
+   completion marks), **Scenarios** (instructor-led situations for the plant), **Walkthroughs**
+   (procedure follows).
+3. **The specific start** — initial state, mission, scenario, or procedure.
+
+### 10.8 URL parameters — deep links and dev conveniences *(as built)*
+
+Parsed once at `init` (`ui/app.js`); any deep link suppresses the first-run Hook prompt:
+
+| Param | Effect |
+|-------|--------|
+| `?engine=pwr\|rbmk_pre\|rbmk_post\|bwr` | Start on that plant/design version |
+| `?manual[=section]` | Open the Operator's Manual (optionally on a section) |
+| `?view=diagram\|primary\|secondary\|all` | Select a plant-display view (legacy RBMK/BWR only) |
+| `?mode=realistic\|learning` | Synoptic display mode |
+| `?phys=1` | Physics Overlay on (Learning mode only) |
+| `?inject=id,id` | Inject failures at severity 1 |
+| `?ff=<sim s>` | Fast-forward that many sim seconds (capped 7200), then back to 1× |
+| `?tab=<tools tab>` | Open a Tools tab (`?tab=training` → Plant & Mission window) |
+| `?missions=1`, `?mmode=<mode>` | Open the Plant & Mission window (optionally on a mode) |
+| `?help=1` | Open the Help overlay |
+| `?auto=<id,id\|all>` | Engage automation channels |
+| `?run=1` | Start the sim running |
+| `?follow=<procId>` | Start a procedure walkthrough |
+| `?scenario=<id>` | Start an M6 scenario directly |
 
 ---
 
@@ -601,8 +755,8 @@ and what is real. It reads `snapshot.true_state`.
 
 - **Off by default** — the operator's normal condition is to see only instruments. This is what makes a
   failed instrument able to mislead, which is the point.
-- **Ships in production** (unlike the dev-only Test Panel) — comparing indication to reality is part of
-  the education.
+- **Ships in production** (unlike the dev-only Dev-tab tooling, §10.6) — comparing indication to
+  reality is part of the education.
 - When on (Settings → Values Display = Both, or True Values), each gauge/readout shows the true value
   **alongside** the indicated one, in the **same on-screen format** (true PORV position next to the lying
   indicator; true subcooling next to indicated; true void as a %, true level as a %), so the divergence
@@ -725,6 +879,11 @@ profile `gauges` list.
   indicator (§12).
 - **Zone thresholds and trip markers are never hard-coded** — always from the plant profile, so they
   align with the alarms.
+- **Display damping** *(as built)* — a display-only low-pass (`dampInstruments`, `ui/app.js`;
+  k = 0.18 per broadcast) smooths every numeric instrument value before rendering so readouts don't
+  chatter at 1×; **disabled at ≥60× time acceleration** (values jump too far per snapshot to smooth
+  meaningfully). Strictly display-side: alarms, automation, and the layers below all see the raw
+  instrument values.
 
 ---
 
@@ -774,7 +933,7 @@ Per `CONTEXT.md §7`, this module produces `ui/`:
 | `app.js` | Wires the UI to the Simulation Service (M5): subscribes to snapshots, renders, issues commands. Owns top-level layout and register/overlay/units state. |
 | `diagram/` | The diagram region: the fixed numeric **placeholder** (§6.2), the SVG mount, and the animation layer written against the component manifest (§6.3). |
 | `panels/` | The vital-few gauge strip, control sections, strip chart, alarm panel, Instructor panel, Tools Block, System Scanner. |
-| `test_panel/` | The dev-only Test Panel that runs the Test Runner (M7) and streams results (§10.6). Absent from shipped builds. |
+| `test_panel/` | *(as built)* Dev-only harness pages (e.g. `synoptic_check.html`). The in-UI M7 Test Panel was not built — dev tooling is the Dev tab (§10.6) plus the Node runners (`test/run_m7.js`). |
 
 Plain `index.html` + CSS + vanilla JS; no framework, no build step. DOM manipulation throughout; all
 complexity lives below the UI.
@@ -797,7 +956,7 @@ complexity lives below the UI.
 | **Alarm ticker bar** | `08 §4` | Removed for screen real estate; the alarm panel (§8) is now the only alarm surface (normally blank, dynamic stack). |
 | **Multi-bank rods (A/B/C/D), shutdown banks SA/SB, overlap sequencing, PDIL-per-bank, Bank Overlap Unit, core map** | `08 §5.1` | This version has **one control bank + one shutdown bank** (`CONTEXT.md §5`, §8). The single control bank keeps a simple insertion limit. |
 | **WebSocket transport (`/ws`, reconnect)** | `08 §17` | No server in v1; the UI subscribes to M5's in-process broadcast via direct function calls (`CONTEXT.md §6.8`). |
-| **Fast-forward auto-dropout (drop triggers, waypoints, Instructor FF suppression)** | `08 §11` | No auto-dropout in v1; the user sets speed manually (`CONTEXT.md §8`). |
+| **Fast-forward auto-dropout (drop triggers, waypoints, Instructor FF suppression)** | `08 §11` | No **transient auto-detect** dropout; the user sets speed manually (`CONTEXT.md §8`). *(as built)* One qualification: the **Instructor** drives acceleration with automatic drop-out at set points (beat `speed`; §3). |
 | **Two swappable MFD panels + MFD content-selection (incl. Post-Mortem option)** | `08 §7`, `M8 §5.4` | Collapsed into a **single wide strip chart** (§7). Post-Mortem deferred. The Scanner is now its own block. |
 | **Old System Scanner (live physics/tutorial content on diagram components)** | `08 §7.1`, `M8 §5.2` | Replaced by the lightweight **UI-wide wayfinding helper** (§11): static description text, no live data, works on any element. |
 | **"MRS / Megawatt: Reactor Simulator" branding** | concept scan | Branding is **Reactor⚛️Dynamics (R⚛️D)**. |

@@ -4,15 +4,25 @@
 This is the scripted educational content engine — the layer that turns the simulator from a
 sandbox into a teaching tool. It runs **scenarios**: authored sequences that deliver commentary,
 inject failures on cue, and optionally gate operator actions to guide learning. This module
-builds the **engine** (built once) **and** the **three flagship scenarios** (authored content);
-the library of smaller scenarios grows over time without touching the engine.
+builds the **engine** (built once) **and** the flagship scenarios (authored content);
+the library of scenarios grows over time without touching the engine. *(As built, that growth
+has happened: `scenarios/` now holds ~28 files — the full PWR/RBMK/BWR training campaigns plus
+the three-part TMI-2 module — all running on the one engine, exactly per the authoring boundary
+in §16.)*
 
 This module **replaces the placeholder M6·PH** in the same slot (`layers/instructor_layer.js`).
 It implements the same interface M5 calls and M6·PH established (§3), so nothing above (M5/M8)
 or below (M4) changes — M6 only *adds* scripted behavior on top of a stack already proven
 correct by the Test Runner (M7). The Instructor is **not a person and not a conversational AI**;
 it is a content engine that delivers pre-authored material triggered by conditions in the
-running simulation.
+running simulation. *(Chat-mode scenarios, §19, present scripted multi-speaker dialogue — still
+pre-authored content, never generative.)*
+
+> **Format note *(as built)*:** the scenario code samples in this document use an
+> `export const scenario` ES-module shorthand for readability. The shipped scenarios are
+> IIFEs attaching to a global registry (no bundler):
+> `;(function (RD) { RD.SCENARIOS.<id> = { ... }; })(globalThis.RD || (globalThis.RD = {}));`
+> — see `scenarios/pwr_tmi.js` and Gameplay §4.3, which documents the as-built convention.
 
 `CONTEXT.md` defines the layer model, the command contract, the snapshot shape, HR5 (commands
 descend through the Instructor), HR7 (failures routed by the Control & Failure Layer), the two
@@ -28,8 +38,9 @@ Per `CONTEXT.md §7`, this module produces:
 |------|----------|
 | `layers/instructor_layer.js` | The `InstructorEngine` (built once): loads a scenario, evaluates beat triggers each step, delivers commentary, injects failures, issues commands, and gates operator actions. Replaces the M6·PH internals. |
 | `scenarios/pwr_tmi.js` | The Three Mile Island scenario (authored content) — §14.1 |
-| `scenarios/rbmk_chernobyl.js` | The Chernobyl scenario, **two instances** (pre / post) — §14.2 |
+| `scenarios/rbmk_chernobyl.js` | The Chernobyl scenario — §14.2 *(as built: a single pre-1986 witnessing; the post-1986 rematch is the separate mission `scenarios/rbmk_az5_fixed.js`)* |
 | `scenarios/bwr_fukushima.js` | The Fukushima scenario (with the intervention decision point) — §14.3 |
+| `scenarios/*.js` *(as built)* | The grown library: campaign scenarios for all three plants (tours, physics drills, upsets, qualification exams) and the three-part TMI-2 module (`pwr_tmi2_p1/p2/p3` + `pwr_tmi2_common`) — see `Blueprint/pwr_training_campaign.md` |
 
 **Engine and content are separate** (the authoring boundary, §16): the engine is built once; the
 scenarios are data it reads and grow over time. A scenario author needs to understand the plant
@@ -67,11 +78,17 @@ sim to `(plant_id, initial_state, design_version)` (M5's `reset`, M5 §6) and th
 
 | Method | Called by | Real M6 behavior |
 |--------|-----------|------------------|
-| `handleCommand(command)` | M5 (forwarding plant commands) | **Apply gating** — if an active gate blocks `command.action`, the command is blocked and does **not** descend (HR5). Otherwise forward to `controlFailureLayer.handleCommand(command)`. |
+| `handleCommand(command)` | M5 (forwarding plant commands) | **Apply gating** — if an active gate blocks `command.action`, the command is blocked and does **not** descend (HR5). Otherwise forward to `controlFailureLayer.handleCommand(command)`. Instructor-internal commands (`instructor_continue`, `instructor_interact`, `follow_nav`) are consumed here and never descend (§19). |
 | `step(snapshot, simTime)` | M5, each broadcast cycle | Evaluate the current beat's trigger (or branch triggers); fire beats; update gates (§11). |
-| `getMessage()` | M5 (snapshot assembly) | Return `{ message, message_register }` — the current commentary in the selected register, or `null` when none is pending. |
+| `getSnapshotBlock()` *(as built)* | M5 (snapshot assembly) | The extended instructor block: `message`/`message_register` plus `scenario_id`, `current_beat_id`, `ui_policy`, `highlight`, `follow`, `level_complete`, and `chat` — every key present, `null` when inactive (Gameplay §5). |
+| `getMessage()` | M5 (fallback when `getSnapshotBlock` is absent) | Return `{ message, message_register }` — the current commentary in the selected register, or `null` when none is pending. |
 | `setRegister(value)` | M5 (`set_register`) | Track `"learning"` \| `"industry"`. |
 | `load(scenario)` | M5 (scenario start) | Load the scenario, reset progress (§11). |
+| `loadProcedure(proc, meta)` *(as built)* | M5 (`start_follow`) | Load a manual procedure for a Path 2 walkthrough (§20). `meta` carries `{ procedure_id, profile_key }` for save/restore. |
+| `unload()` *(as built)* | M5 (`stop_scenario` / `stop_follow` / plain reset) | Back to free-play; preserves the register, clears everything else. |
+| `connect(controlFailureLayer)` *(as built)* | M5 (every plant rebuild) | Re-point `below` without clearing progress (loadState restores after). |
+| `consumeCheckpointRequest()` / `consumeRewindRequest()` / `consumeSpeedRequest()` *(as built)* | M5, polled right after `step()` | One-shot flags: beat-driven checkpoint pushes, world-scope rewinds (`{steps, scope}`), and time-acceleration requests — layering stays snapshots-up / commands-down, no upward callbacks. |
+| `rebaseTime(newSimTime)` *(as built)* | M5, after a world-scope rewind | Clamp `scenarioStartTime` / `lastBeatFireTime` so time/delay triggers don't wait for time to re-elapse. |
 | `saveState()` / `loadState(state)` | M5 (save/restore) | Serialize/restore scenario progress (§17). |
 
 The Instructor holds a handle to the Control & Failure Layer below it (to forward and to issue
@@ -99,18 +116,38 @@ flow control.
 
     // ACTIONS — all optional. Failures are injected by issuing commands down to the C&F layer (HR7).
     inject_failures: ["loss_of_feedwater"],   // → inject_failure commands, descend the stack
+                                              // (as built, an entry may also be an object: {failure_id, severity})
     clear_failures:  [],                       // → clear_failure commands
     commands:        [],                       // commands to issue automatically (e.g. {action:"manual_scram"})
 
     // GATING — restrict operator actions (optional). The gate persists until its 'until' trigger fires.
     gate: { block_actions: [], until: null },
+    // As built a gate also supports: allow_actions (a whitelist — anything NOT listed is blocked)
+    // and message ({learning, industry} voiced when a command is blocked).
 
     // FLOW CONTROL
     advance: "wait_for_trigger",   // "auto" = next beat may fire immediately; "wait_for_trigger" = next waits for its own trigger
+                                   // "end" (as built) = terminate the flat beat list here — used by every
+                                   // branch endpoint so a finished branch never falls through into the other's beats
 }
 ```
 
 A decision-point beat replaces linear `advance` with `branches` (§6).
+
+### 4.1 Additional beat fields *(as built)*
+
+The shipped engine (`layers/instructor_layer.js`) honors these optional beat fields beyond the
+core set above:
+
+| Field | Effect |
+|-------|--------|
+| `highlight` | `{ view, control_label, instrument_id }` — points the UI at a control or gauge; surfaced in the snapshot block. |
+| `level_complete` | End-of-mission card: `{ title, outcome_learning, outcome_industry, actions }` (`actions` defaults to `["continue","retry"]`; may include `"rewind"`). Both-register outcomes follow the §7 rule. |
+| `speed` | Beat-driven time acceleration (a number, e.g. `30`): fast-forward a slow phase, and — the key device — drop back to `1` on a beat whose trigger is the condition you were waiting for. Requested via the consume-flag API (§3). |
+| `rewind` | `{ steps }` — asks M5 to roll the *world* back while the Instructor keeps its progress (the "watch that again" device). A rewind beat does not also checkpoint. |
+| `dialogue`, `chat_button`, `story_min`, `time_skip` | Chat-mode fields — §19. |
+
+Every non-rewind beat fire also requests a checkpoint, so Rewind lands on beat boundaries.
 
 ---
 
@@ -163,6 +200,13 @@ jumps to the `goto` beat of whichever fires first. Beats are addressable by `id`
     ],
 }
 ```
+
+**The converge idiom *(as built)*.** Because beats are one flat ordered list, a side-branch beat
+that should re-merge into the main chain uses a single `{ type: "delay" }`-triggered branch as an
+unconditional jump: `branches: [{ trigger: { type: "delay", value: 2.5 }, goto: "main_chain_beat" }]`.
+The TMI-2 Part 3 scenario documents and uses this idiom (`scenarios/pwr_tmi2_p3.js` header — its
+`jump(target)` helper); side beats are placed after the endings so the linear chain never falls
+into them.
 
 ---
 
@@ -254,9 +298,11 @@ class InstructorEngine {
     }
 
     // Gating in the command path (HR5): called from handleCommand for descending operator commands.
+    // Blocked shape (as built): distinguishable from M4's success (null) and error shapes.
     handleCommand(command) {
         for (const gate of this.activeGates)
-            if (gate.block_actions.includes(command.action)) return { blocked: true };   // does not reach the engine
+            if (gate.block_actions.includes(command.action))                             // does not reach the engine
+                return { type: 'blocked', code: 'GATED_BY_INSTRUCTOR', message: text };
         return this.below.handleCommand(command);
     }
 
@@ -343,6 +389,13 @@ sticks while its indicator reads closed → subcooling erodes while the indicato
 point: run injection (recovery) or not (damage). It teaches the operator to distrust a single
 indication and read the parameters that reveal the true state.
 
+> ***(As built)*** the shipped `scenarios/pwr_tmi.js` supersedes the inline sketch below. It keeps
+> the same arc but adds the historical AFW blockage (injects `afw_failure` alongside
+> `loss_of_feedwater`, cleared at the ~8-minute discovery), isolation via `close_block_valve`,
+> beat-driven time acceleration (`speed: 30/10/1`) through the slow stretches, `level_complete`
+> cards on both endpoints with `advance: "end"`, and the §13 honesty/units notes. Read the file
+> for the authoritative beats; the sketch remains as the authoring illustration.
+
 ```javascript
 export const scenario = {
     id: "pwr_tmi", title: "Three Mile Island", plant_id: "pwr", design_version: null,
@@ -391,59 +444,32 @@ export const scenario = {
 };
 ```
 
-### 14.2 Chernobyl — `scenarios/rbmk_chernobyl.js` (two instances: pre / post)
-The pre/post comparison is run as **two scenario instances on the same plant** with different
-`design_version` (`CONTEXT.md` / doc-format: comparisons are two instances, not a special
-structure). The Instructor presents them back to back; the closing commentary of the second draws
-the contrast. The export provides both.
+### 14.2 Chernobyl — `scenarios/rbmk_chernobyl.js` *(as built: a witnessing, plus a separate rematch)*
+The pre/post comparison is still **two scenario instances on the same plant** with different
+`design_version` — but as built they are two separate campaign missions, not a paired export in
+one file:
 
-```javascript
-const sharedPreconditions = [
-    { id: "intro", trigger: { type: "time", value: 2.0 },
-      commentary: {
-        learning: "This RBMK reactor is in a dangerous state: very low power, xenon poisoning suppressing the reaction, most control rods withdrawn to compensate, and cooling flow reduced. The automatic protection has been switched off for a test. Every safeguard is compromised.",
-        industry: "RBMK at low power, peak xenon, ORM far below minimum, reduced coolant flow, EPS bypassed. Accident preconditions established." },
-      commands: [{ action: "set_eps_bypass", active: true }], advance: "wait_for_trigger" },
-    { id: "shutdown_initiated", trigger: { type: "manual" },
-      commentary: {
-        learning: "The operator presses AZ-5 — the emergency shutdown. In any safe reactor this ends the chain reaction. Watch what happens here.",
-        industry: "AZ-5 initiated. Full rod insertion begins." },
-      commands: [{ action: "manual_scram" }], advance: "wait_for_trigger" },
-];
+- **`rbmk_chernobyl`** (`design_version: "pre_chernobyl"`, from `low_power_xenon`) — the 01:23:40
+  reconstruction. Physics probing showed the validated `low_power_xenon` state is beyond saving on
+  the pre-1986 design: the engine runs away within seconds whether or not AZ-5 is pressed. The
+  scenario embraces that truth — **this is a WITNESSING, not a puzzle.** Four beats: the intro
+  reads the trap off the board (7% power, deep xenon, ORM under eight rods, AR saturated, manual
+  control); `runaway` and `az5` fire on `true_state.power_pct` thresholds (the AZ-5 beat issues
+  the `scram` command itself); and the `destruction` beat triggers on
+  `{ type: "true_state", field: "melted", direction: "is_true" }` — **not** a
+  `steam_explosion_occurred` field. The full teaching (graphite tips, the six hours of decisions,
+  the honesty notes below) is carried by the aftermath commentary on the destruction beat, which
+  stays on screen; it ends in a `level_complete` card ("Chernobyl — Witnessed") with
+  `advance: "end"`.
+- **`rbmk_az5_fixed`** (the next mission in the RBMK campaign, `ui/campaign_data.js`) — the
+  playable rematch on the `post_chernobyl` design: the identical trap state, but a prompt AZ-5
+  shuts the rebuilt machine down cleanly, and hesitation still loses. The contrast the original
+  pre/post pairing wanted is drawn across the two missions.
 
-export const scenarioPre = {
-    id: "rbmk_chernobyl_pre", title: "Chernobyl (1986 reactor)", plant_id: "rbmk",
-    design_version: "pre_chernobyl", initial_state: "low_power_xenon", mode: "demonstration",
-    description: "April 26, 1986 — a failure of design.",
-    beats: [
-        ...sharedPreconditions,
-        { id: "the_excursion", trigger: { type: "true_state", field: "power_pct", direction: "above", value: 20.0 },
-          commentary: {
-            learning: "The shutdown is making it WORSE. The graphite tips on the rods are adding reactivity at the bottom of the core, and the boiling is running away. Power is rising, not falling.",
-            industry: "Positive scram effect plus amplified void feedback at low ORM. Reactivity approaching prompt critical; power excursing." },
-          advance: "wait_for_trigger" },
-        { id: "destruction", trigger: { type: "true_state", field: "steam_explosion_occurred", direction: "is_true", value: true },
-          commentary: {
-            learning: "The core has been destroyed by a steam explosion. One honest note: the real excursion was larger and faster than this simplified model can show — the full three-dimensional physics is beyond what it represents. But the mechanism and the outcome are faithful. The shutdown action triggered the disaster. And the explosion and fire that followed in 1986 are beyond what this simulation models.",
-            industry: "Prompt energy excursion → steam explosion → core destruction. Note: lumped point-kinetics understates the historical magnitude; mechanism and outcome are faithful. Containment-breach consequences are not modeled." },
-          advance: "wait_for_trigger" },
-    ],
-};
-
-export const scenarioPost = {
-    id: "rbmk_chernobyl_post", title: "Chernobyl (post-1986 reactor)", plant_id: "rbmk",
-    design_version: "post_chernobyl", initial_state: "low_power_xenon", mode: "demonstration",
-    description: "The same conditions, the same action — on the fixed design.",
-    beats: [
-        ...sharedPreconditions,
-        { id: "safe_shutdown", trigger: { type: "true_state", field: "scrammed", direction: "is_true", value: true },
-          commentary: {
-            learning: "The same conditions. The same button, AZ-5, pressed at the same moment. But this is the post-1986 reactor — the rod tips fixed, the void coefficient reduced, more absorbers added. Power falls. The reactor shuts down safely. Nothing explodes. The same action, two outcomes — because the design was fixed. That is the lesson.",
-            industry: "Identical preconditions and AZ-5 initiation, post-1986 configuration: no positive scram effect, reduced void feedback. Controlled shutdown, no excursion. The design change is the entire difference." },
-          advance: "wait_for_trigger" },
-    ],
-};
-```
+The §13 honesty acknowledgments survive intact in the aftermath commentary: point kinetics
+understates the localized excursion (the real event began in one corner of a 7-meter core —
+worse), and the simulation ends at the destruction — fire, releases, and human cost are history's
+to tell, not this trainer's.
 
 ### 14.3 Fukushima — `scenarios/bwr_fukushima.js`
 Establishes the station blackout after a successful scram; RCIC holds the core covered for hours
@@ -544,3 +570,68 @@ Runner validated against the placeholder (command flow, interception, alarms, th
 boundary) remains valid — M6 only *adds* gating, commentary, and scenario-driven failure injection
 on top of a stack already proven correct. In free-play (no scenario loaded) the engine behaves
 exactly like the placeholder: it forwards commands, gates nothing, and reports a null message.
+
+---
+
+## 19. Chat Mode and Dialogue *(as built — the TMI-2 module)*
+
+Developed under the M5 TMI-2 module specs (`Blueprint/M5 TMI2 Scenario Spec.md`), chat mode turns
+the single-slot commentary card into a persistent, multi-speaker transcript. It is scenario data
+run by the same engine (`layers/instructor_layer.js`) — the authoring boundary (§16) holds.
+
+- **`chat: true`** at scenario level enables it; the snapshot block (§3) then carries
+  `chat: { log, rev, interactions }` (log capped at 300 lines; `rev` is the UI's cheap re-render
+  key). Non-chat scenarios carry `chat: null`.
+- **`dialogue` beats** — a beat may carry an array of lines
+  `{ speaker, learning, industry }`; lines land in the chat log. Speaker roles: `sup` (shift
+  supervisor, scripted), `supx` (supervisor reacting — visually distinct), `aux` (aux operator),
+  `sys` (annunciator callouts), `player` (contextual outgoing bubbles — the player never types),
+  `chief` (the out-of-fiction teaching voice). `commentary` remains the single-slot fallback for
+  non-chat scenarios and gate feedback; gate denials in chat scenarios are voiced in-transcript
+  (deduped, in-character).
+- **`interactions` table + instructor-internal commands** — a scenario-level table maps
+  `interaction_id` → `{ request, responses, repeat, request_repeat, clear_failures, commands }`.
+  The UI sends `instructor_interact { interaction_id }` on a click of a scenario object (e.g. the
+  TMI-2 maintenance tag): first activation posts the scripted request/response exchange and may
+  act on the plant (clear failures, issue commands — a granted request); repeats cycle authored
+  variants. `instructor_continue` is the Continue click behind the `manual` trigger. Both are
+  **consumed in the Instructor and never descend to M4** — they are not plant commands.
+  Interactions are visible to `operator_action` triggers as
+  `{ command: "instructor_interact", params: { interaction_id } }`.
+- **`setup_commands`** — scenario-level commands applied by the Simulation Service at scenario
+  start (before any beat fires), e.g. TMI-2's pre-existing `afw_failure`.
+- **Story clock** — per-beat `story_min` anchors (minutes since the story's opening) keep the
+  HISTORICAL durations visible while the sim compresses hours into minutes; `time_skip: true`
+  marks the deliberately compressed beats, and the UI draws its elapsed-time divider **only** on
+  those.
+- **`chat_button`** — the beat's outgoing pacing button:
+  `{ style: 'ack' | 'skip', label_learning, label_industry, speed }`. `ack` is the plain
+  acknowledge gate ("Ready" / "Go ahead"); `skip` is the diegetic fast-forward (its `speed`
+  applies until the next beat drops back to 1×).
+
+---
+
+## 20. Follow Mode *(as built — Path 2 procedures)*
+
+The same engine runs manual-procedure walkthroughs — Gameplay §§3–4 and §6 cover the concept;
+these are the shipped mechanisms (`layers/instructor_layer.js`):
+
+- **`loadProcedure(proc, meta)`** loads a `RD.MANUAL_PROCEDURES` procedure directly (started via
+  M5's `start_follow`) — procedures are **not** converted to beats; there is no second copy of the
+  content.
+- **Strict gating:** only the current step's command is allowed, expanded to its family so every
+  UI path to the same intent counts (`ROD_FAMILY` = rod_nudge/rod_start/rod_stop/rod_stop_all),
+  plus the always-allowed safety set (`ALWAYS_ALLOWED` = scram, manual_scram, acknowledge_alarm,
+  acknowledge_all_alarms). Observation steps (no cmd/acc/saw) allow nothing — look, don't touch.
+  Off-procedure commands return the §11 blocked shape with wrong-action commentary (a per-step
+  authored `wrong: {learning, industry}` overrides the generic template).
+- **Auto-advance with debounce:** a step completes when its obligations are met — `cmd` seen,
+  `saw` latched, and `acc` held for `ACC_STABLE_N` (= 5) consecutive broadcast evaluations, so a
+  parameter sweeping through its target band doesn't advance the procedure in passing.
+- **Instrument-first grading (HR1):** the `PARAM_INSTRUMENT` map (per plant) translates each
+  predicate's `true_state` param to the instrument the operator actually reads; grading falls back
+  to `true_state` only for params with no instrument twin (the documented Gameplay §6 exception).
+  The snapshot `follow` block reports `graded_by`.
+- **Navigation:** the UI's `follow_nav { dir: 'next' | 'prev' | 'restart' }` is instructor-internal
+  (never descends); auto-advance pushes a checkpoint so Rewind lands on step boundaries;
+  completion raises a `level_complete` card.

@@ -53,7 +53,10 @@ slot — the wiring it validates does not depend on scripted content.
 
 ### 3.1 The data contract
 The snapshot is complete and correctly shaped: every section present every cycle (metadata,
-true_state, instruments, control_state, rps_state, alarms, active_failures, instructor — HR4),
+true_state, instruments, control_state, rps_state, alarms, active_failures, automation,
+instructor — HR4; *(as built — resolved)* the suite asserts the `automation` section
+(`{channels: [...]}`) and `rps_state.trip_blocks` too, closing the gap noted after the
+control-layer rework),
 and for the active plant, every expected instrument, alarm, and control element accounted for
 and correctly typed (against the field vocabulary in `CONTEXT.md §6.3`/§6.5 and the plant's
 instrument set in its engine module). This catches assembly errors that would otherwise surface
@@ -120,7 +123,14 @@ These catch authoring mistakes before they manifest as confusing behavior:
 - For a shared parameter, the **trip setpoint is more extreme than the matching alarm setpoint**
   (the alarm warns before the trip fires).
 - `lo_lo` thresholds are more extreme than their `lo` siblings.
-- Gauge caution/danger zones (M8) align with the alarm setpoints.
+- *(as built)* Every trip/actuation **condition gate resolves to a status instrument**
+  (directly, or via the `*_unavailable` → `*_running` derivation) — the kernel evaluates
+  conditions from instruments ONLY, with no true-state fallback (M4 §2), so an unresolvable
+  condition would never arm.
+
+*(A gauge caution/danger-zone vs alarm-setpoint alignment check was originally listed here; it
+is not implemented — the built suite covers the five checks above. Reading the config for §3.6
+is the one sanctioned reach past the snapshot; see §6.)*
 
 ---
 
@@ -154,13 +164,28 @@ result = {
 
 ## 6. How It Is Driven
 
-Activated on request from the dev-only Test Panel (M8 §11). It drives the simulation through the
-**same command interface the UI uses** (the Simulation Service's command entry, M5 §10) and
-reads the **same snapshots** the UI receives. It does not reach into engine internals — every
-assertion is made against the snapshot and the command interface, which is what makes it a true
-full-stack test (and confirms the snapshot exposes everything a consumer needs). For checks that
-require a known starting condition, it issues `reset { plant_id, initial_state }` first, then
-drives the specific sequence.
+Activated on request (in the build, `test/run_m7.js` is the Node driver; there is no in-browser
+Test Panel — see the M8 notes). It drives the simulation through the **same command interface
+the UI uses** (the Simulation Service's command entry, M5 §10) and reads the **same snapshots**
+the UI receives. It does not reach into engine internals for behavioral assertions — every
+behavioral check is made against the snapshot and the command interface, which is what makes it
+a true full-stack test (and confirms the snapshot exposes everything a consumer needs). The one
+sanctioned exception is §3.6: the config-consistency suite reads the plant's protection config
+and instrument config directly (`service.layer.config`, `service.engine.cfg.instruments`),
+since those checks are about the *data*, not the wiring. For checks that require a known
+starting condition, it issues `reset { plant_id, initial_state }` first, then drives the
+specific sequence.
+
+### The wider test ecosystem (context, not part of this module)
+
+`layers/test_runner.js` is one gate among many. The `test/` directory holds the Node CLI
+harnesses that actually gate the build: the engine suites (`run_pwr` / `run_rbmk` / `run_bwr`),
+the layer suites (`run_m4` / `run_m5` / `run_m6` / `run_m6ph` / `run_m7` — the last drives this
+module), and the system suites (`run_ops` + `ops_*` operational probes, `run_autoctl` automation
+channels, `run_campaign`, `run_scenarios`, `run_e2e_controls`, `run_procedures`,
+`verify_e2e_ui` / `verify_manual_follow` headless-browser harnesses, `audit_manual_controls`).
+Those suites own physics, content, and UI verification; this module still owns only the
+integration wiring described above.
 
 ---
 

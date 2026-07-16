@@ -242,10 +242,10 @@ RPV cold outlet ── letdown branch ──► [CVCS box + panel]
   * **Accumulators** (`pwAccumulatorTanks`) — **tank vessel graphic** (not a box). **`pwAccumulatorPanel` — diagram-embedded only (not a margin card)** mounted on or beside the tanks: **discharging** annunciation + `instruments.accumulator_flow` **only when** `accumulators_discharging` (passive — no operator open/close). Discharge line → **check valve** (`pwAccumulatorCheckValve`) → **cold-leg tee** (`pwAccumulatorInjection`). Idle: static tanks, no flow UI. Active: dashes on discharge line per `instruments.accumulator_flow` (Animation HR1). ECCS **commands** for accumulators do not exist — status stays on the tanks, not the Emergency margin card.
 * **Emergency Cooling card** (margin card — **tabbed or accordion** to save vertical space; amber emergency chrome):
 
-  * **Tabs:** **HPI** | **AFW** | **RHR/LPI** (RHR and LPI share one tab with two sub-sections). Default tab = first system in “What matters now” priority, else last-used or HPI.
-  * **HPI tab:** AUTO | ON | OFF (`set_hpi`); `hpi_active` status.
-  * **AFW tab:** START | STOP (`set_afw`).
-  * **RHR/LPI tab:** RHR AUTO | ON | OFF (`set_rhr`); LPI AUTO | ON | OFF (`set_lpi`); `rhr_active` / `lpi_active` + flow instruments on diagram lines.
+  * **Tabs:** **HPI** | **AFW** | **RHR/LPI** (RHR and LPI share one tab with two sub-sections). Default tab = first system in “What matters now” priority, else last-used or HPI. *(as built: **HPI/LPI** | **AFW** | **RHR** — HPI and LPI are one merged injection system.)*
+  * **HPI tab:** AUTO | ON | OFF (`set_hpi`); `hpi_active` status. *(as built)* The **AUTO** arm issues `set_esf_auto { system: 'hpi', auto: true }` — re-arming the automatic low-pressure actuation after a manual On/Off override disarmed it.
+  * **AFW tab:** START | STOP (`set_afw`) + throttle. *(as built)* Its **AUTO** arm likewise issues `set_esf_auto { system: 'afw', auto: true }` to re-arm the low-SG-level auto-start.
+  * **RHR/LPI tab:** RHR AUTO | ON | OFF (`set_rhr`); LPI AUTO | ON | OFF (`set_lpi`); `rhr_active` / `lpi_active` + flow instruments on diagram lines. *(as built)* The RHR **Auto** button issues `set_esf_auto { system: 'rhr', auto: true }`, re-arming the RHR cooldown-permissive actuation after a manual On/Off disarmed it (a new `rhr` ESF arm in `pwr_control.js` — the button was previously a documented no-op).
   * Active tab/section **auto-selects** when that ECCS path is in priority tier or actuated. Hover HPI control → `pwHpiLine`, cold leg, Primary Flow card region.
 
 **RCP (Reactor Coolant Pumps)**
@@ -264,7 +264,9 @@ RPV cold outlet ── letdown branch ──► [CVCS box + panel]
 * Two cards:
 
   * **SG Heat Transfer & Level Card**: SG level (`sg_level` — animate to **indicated** level); secondary steam pressure (`instruments.steam_pressure`). Primary–secondary ΔT — **Physics Overlay only** (hidden by default).
-  * **Steam & Flow Card**: Steam flow (`steam_flow`); main feedwater flow (`fw_flow`); feedwater demand control (`set_feedwater_flow`).
+  * **Steam & Flow Card**: Steam flow (`steam_flow`); main feedwater flow (`fw_flow`); feedwater demand control (`set_feedwater_flow`). *(as built, additionally)*:
+    * **MSIV Open | Close** — `open_msiv` / `close_msiv`; Close carries the two-press CONFIRM? arm (M8 §5.4). Status readout shows SHUT and whether the SG safeties are lifting (`msiv_open`, `sg_safety_open`).
+    * **Feed pump speed** — nudge ▼/▲ (`feed_pump_nudge { delta_pct }`) and a numeric set (`set_feed_pump_speed { pct }`) alongside `set_feedwater_flow`; commanded-speed readout plus a **“who’s driving”** line (three-element controller AUTO via the Automate tab, load coupling, or manual speed).
 
 **Turbine-Generator**
 
@@ -436,10 +438,18 @@ Percentages are **approximate** relative to `.synoptic-stage`; adjust in CSS/JS 
 
 **Conventions**
 
-* **Prefix:** `pw` on all new-PWR diagram element IDs (replaces legacy `fp` / PD partial SVGs).
-* **Root:** `<svg id="pwLoop" data-plant="pwr">` inside `.synoptic-diagram`.
-* **Groups:** Each major component is a `<g id="pw…" data-highlight-id="…" class="diagram-node">` wrapper.
-* **Renderer:** `renderPwDiagram(snapshot)` in `ui/app.js` (or `ui/diagram/pwr_diagram.js`) — sole writer of diagram DOM state; respects **Animation HR1** and mode.
+* **Prefix** *(as built)*: **two prefixes**, not one. Component **group wrappers** use a `g*` prefix
+  (`gCore`, `gRods`, `gHotLeg`, `gColdLeg`, `gSpray`, `gPzr`, `gRelief`, `gSg`, `gSteamHeader`, `gGov`,
+  `gDump`, `gTurbine`, `gCondenser`, `gTower`, `gFeed`, `gAfw`, `gRhr`, `gHpi`, …); `pw*` is kept for
+  the **SVG root** (`pwLoop`) and the **inner animated/addressable elements** (`pwRodFill`,
+  `pwPzrWater`, `pwPorv`, `pwSgWater`, `pwHotLegFlow`, `pw*Anchor`, taps, …). Both replace the legacy
+  `fp` / PD partial-SVG IDs.
+* **Root:** `<svg id="pwLoop" data-plant="pwr">` inside the synoptic stage.
+* **Groups** *(as built)*: Each major component is a `<g id="g…" data-highlight-id="…" class="diagram-node">` wrapper.
+* **Renderer** *(as built)*: `ui/diagram/pwr_synoptic.js` — `ui/app.js` mounts it via
+  `RD.PwrSynoptic.mount(host, ctx)` and forwards every snapshot to `RD.PwrSynoptic.render(s)` — the
+  sole writer of diagram DOM state; respects **Animation HR1** and mode. (The earlier
+  `renderPwDiagram` / `pwr_diagram.js` naming was not built.)
 
 **Manifest table** — all rows **live** after `pwr_synoptic_prerequisites.md`; no placeholder styling.
 

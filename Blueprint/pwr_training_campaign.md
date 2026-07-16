@@ -40,10 +40,16 @@ minutes of wall-clock attention (time acceleration handles slow physics like xen
 - **Intellectual honesty.** Simplifications voiced in-beat at the moment they matter
   (point kinetics, single-sensor indications, no containment).
 
-## 3. Curriculum — five acts, 18 missions
+## 3. Curriculum — six acts, 25 missions *(as built)*
 
 Legend: `[S]` = authored scenario (`scenarios/*.js`), `[P]` = walkthrough procedure
 (`RD.MANUAL_PROCEDURES.pwr`), **NEW** = built by this plan. Top-to-bottom is the recommended order (all missions open from the start — revised 2026-07-07).
+
+> ***(As built)*** the campaign has grown past this plan's original five acts / 18 missions:
+> `ui/campaign_data.js` now defines **six acts, 25 missions** — Act III gained `pwr_automation`
+> (the Automate tab), Act IV gained `pwr_lof` and `pwr_slb`, and the three-part TMI-2 module
+> is its own **Act V — Three Mile Island** ahead of the retitled **Act VI — The Reckoning**.
+> The tables below reflect the shipped structure.
 
 ### Act I — The Machine (how a nuclear plant works)
 | # | Mission | Kind | Teaches |
@@ -67,24 +73,40 @@ Legend: `[S]` = authored scenario (`scenarios/*.js`), `[P]` = walkthrough proced
 | 9 | Holding the Pressure | [P] `pwr_pressure_control` | PZR heaters & spray; pressure = the subcooling guarantee |
 | 10 | Feeding the Boilers | [P] `pwr_sg_level` | SG level control; shrink & swell |
 | 11 | Follow the Grid | [S] `pwr_load_follow` **NEW** | Load mode (Follow/Manual/Off); turbine-reactor coupling; feed auto-tracking; SG balance |
-| 12 | Coming Down | [P] `pwr_lower_power` | Controlled power reduction |
-| 13 | Putting It to Bed | [P] `pwr_shutdown` | Normal shutdown to Hot Standby; decay heat is forever |
+| 12 | Hands Off | [S] `pwr_automation` *(as built)* | The Automate tab: put the plant on automatic channels and be the dispatcher |
+| 13 | Coming Down | [P] `pwr_lower_power` | Controlled power reduction |
+| 14 | Putting It to Bed | [P] `pwr_shutdown` | Normal shutdown to Hot Standby; decay heat is forever |
 
 ### Act IV — When Things Go Wrong (protection & upsets)
 | # | Mission | Kind | Teaches |
 |---|---------|------|---------|
-| 14 | The Plant Protects Itself | [S] `pwr_protection` **NEW** | RPS: trip logic, setpoints, alarms; a deliberate turbine trip → reactor response; acknowledging and reading an alarm flood |
-| 15 | Losing the Heat Sink | [P] `pwr_loss_of_feedwater` | LOFW response; AFW |
-| 16 | Losing the Flow | [P] `pwr_rcp_trip` | RCP trip; natural circulation |
-| 17 | The Hole That Lies | [P] `pwr_stuck_porv` | Stuck-open PORV (small-break LOCA) recovery — direct TMI rehearsal |
+| 15 | The Plant Protects Itself | [S] `pwr_protection` **NEW** | RPS: trip logic, setpoints, alarms; a deliberate turbine trip → reactor response; acknowledging and reading an alarm flood |
+| 16 | Losing the Heat Sink | [P] `pwr_loss_of_feedwater` | LOFW response; AFW |
+| 17 | Losing the Flow | [P] `pwr_rcp_trip` | RCP trip; natural circulation |
+| 18 | Loss of Coolant Flow | [S] `pwr_lof` *(as built)* | Loss of flow as an upset: the hot channel boils, and the trip that has to be fast |
+| 19 | Steam Line Break | [S] `pwr_slb` *(as built)* | A steam line break — why cooling the plant can raise its power |
+| 20 | The Hole That Lies | [P] `pwr_stuck_porv` | Stuck-open PORV (small-break LOCA) recovery — direct TMI rehearsal |
 
-### Act V — The Reckoning (boss fight & qualification)
+### Act V — Three Mile Island *(as built — the TMI-2 module, `act5_tmi2`)*
+The three-part chat-mode module (`Blueprint/M5 TMI2 Scenario Spec.md`) sits as its own act
+before the finale:
+
 | # | Mission | Kind | Teaches |
 |---|---------|------|---------|
-| 18 | Three Mile Island | [S] `pwr_tmi` (exists) | The 1979 accident of information; believe the physics, not one light |
-| 19 | Senior Operator Exam | [S] `pwr_qualify` **NEW** | Station blackout, no narration, instrument-graded: keep the core covered and cooled until power returns |
+| 21 | TMI-2 · Part 1 — The Fog of War | [S] `pwr_tmi2_p1` | Live the 1979 night shift exactly as the crew did — no hindsight, no mercy |
+| 22 | TMI-2 · Part 2 — Under a Microscope | [S] `pwr_tmi2_p2` | The replay: what the board said, what the plant did, and why they differed |
+| 23 | TMI-2 · Part 3 — Second Watch | [S] `pwr_tmi2_p3` | Same shift, same board — but this time you know. Change history |
 
-Bonus (unlocked with Act V, not required): `pwr_sg_flood` (exists) — "SG Flooded — What
+### Act VI — The Reckoning (boss fight & qualification)
+*(As built the display title is "Act VI — The Reckoning"; the code act id in
+`ui/campaign_data.js` remains `'act5'` — only the TMI-2 act got a new id, `'act5_tmi2'`.)*
+
+| # | Mission | Kind | Teaches |
+|---|---------|------|---------|
+| 24 | Three Mile Island | [S] `pwr_tmi` (exists) | The 1979 accident of information, compressed; believe the physics, not one light |
+| 25 | Senior Operator Exam | [S] `pwr_qualify` **NEW** | Station blackout, no narration, instrument-graded: keep the core covered and cooled until power returns |
+
+Bonus (outside the acts, not required): `pwr_sg_flood` (exists) — "SG Flooded — What
 Control Did You Forget?"
 
 ## 4. New scenario outlines (authoring spec)
@@ -196,7 +218,7 @@ source of truth); `teaches` is the one-line curriculum hook shown in the campaig
   "All scenarios" / "Walkthroughs", for sandbox users).
 - Act header + mission rows: `✓ done` / `▶ up next` (first incomplete; the only enabled
   start) / `🔒 locked`. Completed missions stay replayable. Progress line
-  "7 / 19 missions" + a thin bar.
+  "7 / 25 missions" + a thin bar.
 - **Continue button** at top: starts the first incomplete mission (scenario via
   `startScenario`, procedure via `followProcedure`).
 - `levelCompleteAction('continue')`: when the finished mission is the campaign's current
@@ -248,10 +270,11 @@ from the start** — the act ordering is a recommended path with progress marker
 - Cold startup / turbine roll (no cold states in engine — Gameplay §9).
 
 ## 8. Success criteria
-- A novice can click **Continue** nineteen times and arrive at "Qualified", having
+- A novice can click **Continue** twenty-five times and arrive at "Qualified", having
   personally: taken a reactor critical, watched it push back, fought xenon, traded boron
-  for rods, followed the grid, survived LOFW/RCP-trip/stuck-PORV, beaten TMI, and passed
-  a blind station blackout.
+  for rods, followed the grid, put the plant on automatic, survived
+  LOFW/RCP-trip/loss-of-flow/steam-line-break/stuck-PORV, lived TMI-2 three times over,
+  beaten TMI, and passed a blind station blackout.
 - Each mission ≤ ~5 min wall clock; every physics term introduced by a task, not a lecture.
 - `run_campaign.js` proves every mission completable on current physics, in CI, forever.
 
@@ -261,11 +284,14 @@ from the start** — the act ordering is a recommended path with progress marker
 
 The same wrapper hosts per-plant campaigns (`RD.CAMPAIGNS.rbmk`, `RD.CAMPAIGNS.bwr`,
 selected by the active plant). Both assume the PWR campaign's fundamentals and run
-leaner (3 acts, 8 missions each), teaching by CONTRAST — the accident taxonomy across
-the three campaigns: **information (TMI) / design (Chernobyl) / support (Fukushima)**.
+leaner (3 acts each; **9 missions RBMK, 8 BWR** *(as built)*), teaching by CONTRAST — the
+accident taxonomy across the three campaigns: **information (TMI) / design (Chernobyl) /
+support (Fukushima)**.
 
 **RBMK:** `rbmk_tour` (channels, graphite, void coefficient pointing the wrong way, ORM),
 `rbmk_startup`[P], `rbmk_void` (player cuts flow at 50% → power RISES ~+3%, probed),
+`rbmk_ar` *(as built, Act II — "The Steady Hand": the Automatic Regulator, the rods that
+hold power for you, and what taking manual control means)*,
 `rbmk_raise_power`[P], `rbmk_mcp_trip`[P], `rbmk_shutdown`[P], `rbmk_chernobyl`
 (01:23:40 witnessing from `low_power_xenon` — the engine destroys the pre-1986 core in
 ~13 s with or without AZ-5, so the flagship is a narrated inevitability; the teaching is

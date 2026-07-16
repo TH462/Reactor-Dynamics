@@ -28,12 +28,18 @@ Per `CONTEXT.md §7`, this module produces `engines/rbmk/`:
 | File | Contents |
 |------|----------|
 | `rbmk_engine.js` | The `RBMKEngine` class **and** `RBMKScenarioTests` (§19) |
-| `rbmk_config.js` | A shared base config + `pre_chernobyl` / `post_chernobyl` variants (§4, HR8) — every [tune] value, operating points, the trip/alarm/failure definitions of §14 |
+| `rbmk_config.js` | A shared base config + `pre_chernobyl` / `post_chernobyl` variants (§4, HR8) — every [tune] value, operating points; attaches the §14 trip/alarm/failure data from the control layer as `cfg.protection` *(as built — see note below)* |
 | `rbmk_kinetics.js` | Point-kinetics core + prompt fast-path (§3), the nonlinear void coefficient + ORM stability factor (§5), the displacer / positive scram effect (§5.4), prompt-excursion + destruction (§11) |
 | `rbmk_instruments.js` | The RBMK instrument model (§13) — instrument set, lag/noise/range/failure, ORM as a computed reading |
 | `rbmk_thermal.js` | Channel flow + MCP, void, steam-drum pressure/level, graphite temperature, fuel temperature + dryout, decay heat (§8) |
 | `rbmk_rods.js` | Rod system, the version-specific insertion behavior, scram, ORM computation (§9, §12) |
-| `rbmk_protection.js` | RBMK trip/actuation/alarm definitions as data (§14) — read by M4 |
+
+*(as built)* There is **no `rbmk_protection.js`** in the engine directory. The §14
+trip/actuation/alarm/failure definitions moved out of the engine into the **Control Layer**:
+`layers/control/rbmk_control.js` attaches `RD.RBMK_CONTROL` (legacy alias
+`RD.RBMK_PROTECTION`), and `rbmk_config.js` fetches the per-version data as
+`cfg.protection = RD.RBMK_PROTECTION.forVersion(design_version)`. The engine also uses the
+shared `engines/load_mode.js` grid model (§8.7).
 
 The **contract surface** the engine must expose (consumed by M4/M5): step by `dt_effective`;
 report true state; produce instrument readings; accept the RBMK commands from
@@ -102,6 +108,13 @@ violent excursion (pre) while keeping the post version — which must never reac
 critical under operator-accessible conditions — numerically tame. This cap is one of the
 levers that makes the pre version excurse and the post version not.
 
+### Constant neutron source *(as built)*
+A constant source term `kinetics.source = 6.0e-4` (normalized power/s) **[tune]** is added
+into the standard-kinetics `dP` (not on the prompt fast-path) — subcritical multiplication,
+`P_eq = S·Λ/(−ρ)`, so `hot_startup` holds a stable source-range level and the approach to
+criticality shows visible 1/M behavior. Negligible at power. (`rbmk_config.js`,
+`rbmk_kinetics.js`.)
+
 ### Decay heat
 Two-term exponential, identical form to the other engines (the post-scram heat source):
 `H_total = H1 + H2`, at scram `H1_0 = 0.05`, `H2_0 = 0.02`, `lambda_1 = 0.0005`,
@@ -143,8 +156,13 @@ Note what is **absent** vs the PWR: no moderator-temperature coefficient and no 
 
 ### 5.1 Doppler (prompt, negative — weaker than the PWR)
 ```
-ρ_doppler = α_D · (T_fuel − T_fuel_ref)        α_D = −1.0e−5 K⁻¹   [tune]
+ρ_doppler = α_D · (T_fuel − T_fuel_ref)        α_D = −3.0e−5 K⁻¹   [tune]
 ```
+*(as built)* `α_D` was strengthened from the −1.0e−5 starting value to −3.0e−5 — it
+stabilizes full-power maneuvering (`rbmk_config.js`). `T_fuel_ref` is not a config constant:
+it is **pinned at reset** to the full-power operating fuel temperature
+(`_computeRefs`, `rbmk_engine.js`), so Doppler nets to zero at the operating point and is
+purely perturbative on a transient.
 
 ### 5.2 Graphite temperature feedback (slow, slightly **positive**)
 The graphite has large thermal mass and its own — slightly destabilizing — feedback:
@@ -152,7 +170,10 @@ The graphite has large thermal mass and its own — slightly destabilizing — f
 ρ_graphite = α_graphite · (graphite_temp_avg_c − graphite_temp_ref)
 ```
 `α_graphite = +1.5e−4 K⁻¹`, `graphite_temp_ref = 500 °C` **[tune]**. (Graphite thermal
-dynamics in §8.5.)
+dynamics in §8.5.) *(as built)* Like the Doppler reference (§5.1), the graphite reference is
+**pinned at reset** to the operating graphite temperature (`_computeRefs`,
+`rbmk_engine.js`); the `graphite_temp_ref = 500` constant remains in `rbmk_config.js` for
+reference but is effectively inert.
 
 ### 5.3 Void coefficient — the central mechanism (nonlinear, state-dependent)
 As void rises, reactivity rises (positive coefficient). Critically, the **strength is not
@@ -160,10 +181,10 @@ constant** — it amplifies under exactly the accident conditions (low power, hi
 void), and these amplifications **compound**:
 ```javascript
 function alpha_void_effective(P, xenon_fraction, void_fraction, cfg) {
-    const alpha_base   = cfg.alpha_void_base;                                  // pre 0.005, post 0.001
+    const alpha_base   = cfg.alpha_void_base;                                  // pre 0.0025, post 0.001
     const power_factor = 1.0 + cfg.alpha_void_low_power_gain * Math.max(0, 0.20 - P) / 0.20;  // pre 2.5, post 0.8
     const xenon_factor = 1.0 + cfg.alpha_void_xenon_gain     * Math.max(0, xenon_fraction - 1.0); // pre 0.8, post 0.3
-    const void_factor  = 1.0 + cfg.alpha_void_high_void_gain * Math.max(0, void_fraction - 0.30);  // pre 1.2, post 0.4
+    const void_factor  = 1.0 + cfg.alpha_void_high_void_gain * Math.max(0, void_fraction - cfg.void_ref);  // pre 1.2, post 0.4
     return alpha_base * power_factor * xenon_factor * void_factor;
 }
 ```
@@ -183,7 +204,13 @@ function orm_stability_factor(orm, cfg) {
        * orm_stability_factor(orm, cfg)
        * (void_fraction - void_ref);
 ```
-`void_ref = 0.30` (reference operating void) **[tune]**; `orm_instability_gain = 1.5`,
+`void_ref` *(as built)* is **pinned per initial state** at reset —
+`this.void_ref = s.void_fraction_avg` (`rbmk_engine.js`) — so the void term is zero at the
+starting point of every named state (the §15 states, both versions, carry no standing void
+offset); the config's `void_ref = 0.30` **[tune]** remains as the reference constant but the
+pinned value is what the ρ_void term uses. *(as built)* The high-void amplification knee in
+`alpha_void_effective` reads `cfg.reactivity.void_ref` (the config constant, not the pinned
+value) — the literal `0.30` in `rbmk_kinetics.js` is gone. `orm_instability_gain = 1.5`,
 `orm_critical_gain = 0.8`, `orm_rated` ≈ the full-rod ORM, `orm_min` = 15 (pre) / 43 (post)
 **[tune]**. For **post**, `alpha_base` and the gains are far smaller (table above), so the
 same conditions do not run away. **This void feedback — especially its amplification at
@@ -201,14 +228,16 @@ before the absorber arrives to remove it:
 ```javascript
 function rho_displacer_pre(z, cfg) {           // per rod, pre-1986
     const z_water = cfg.z_water_m;             // lower water column ~1.25 m
-    const k_disp  = cfg.k_disp;                // [tune] 0.008
+    const k_disp  = cfg.k_disp;                // [tune] 0.05
     const L_abs   = cfg.L_abs_m;               // absorber length ~7.0 m
     if (z <= z_water) return  k_disp * Math.sin(Math.PI * z / z_water);   // POSITIVE region
     else              return -k_disp * (z - z_water) / L_abs;             // negative (absorber in core)
 }
 ```
 This is **the defining horror**: under the accident conditions, pressing emergency shutdown
-briefly *increases* reactivity at the bottom of the core. `k_disp = 0.008` **[tune]**.
+briefly *increases* reactivity at the bottom of the core. `k_disp = 0.05` **[tune]** *(as
+built — raised from the 0.008 starting value so the peak−start Δρ ≈ k_disp·0.34 clears β by
+enough to spike power hard while ORM is still low; `rbmk_config.js`)*.
 
 **post_chernobyl — no positive region.** Insertion is negative from the start (modified rods,
 added absorbers):
@@ -279,11 +308,13 @@ reactivity rises.
 
 ### 8.2 Void fraction
 ```javascript
-void_target = clip(P / (channel_flow_pct / 100.0) * void_scale_rbmk, 0.0, 0.90);
+void_target = clip(P / (channel_flow_pct / 100.0) * void_scale_rbmk, 0.0, void_max);
 void_fraction_avg += (void_target - void_fraction_avg) / void_response_tau * dt;
 ```
-`void_scale_rbmk = 0.35` (rated power at rated flow → ~30–35 % void), `void_response_tau = 2.0`
-s **[tune]**.
+`void_scale_rbmk = 0.35` (rated power at rated flow → ~30–35 % void), `void_response_tau = 1.0`
+s **[tune]** *(as built — shortened from 2.0 s so the void catches the excursion spike)*.
+*(as built)* The physical void ceiling is config `thermal.void_max = 0.90` — previously a
+`0.90` literal hardcoded in four places (`rbmk_thermal.js`, incl. the channel-rupture path).
 
 ### 8.3 Steam-drum pressure (the RBMK's pressure-setting component)
 ```javascript
@@ -292,8 +323,15 @@ steam_gen_rate = P * steam_gen_per_power;
 dDrumP_dt = (steam_gen_rate - steam_to_turbine - steam_dump - relief_flow) * K_drum_pressure;
 steam_pressure_mpa += dDrumP_dt * dt;
 ```
-`steam_gen_per_power = 1.0`, `K_drum_pressure = 0.0207` MPa/imbalance, operating 7.0 MPa,
-relief valves open at 8.0 MPa **[tune]**. **`steam_to_turbine` is the operator's turbine steam
+`steam_gen_per_power = 1.0`, `K_drum_pressure = 0.0207` MPa/imbalance, operating 7.0 MPa
+**[tune]**. *(as built — 2026-07-16 design ruling)* The drum relief valves are **commanded**,
+not mechanical-in-engine: the control layer's actuation reads the drum-pressure
+(`steam_pressure`) **instrument** and issues `open_relief_valve` above `drum_relief_mpa = 8.0`
+MPa / `close_relief_valve` below the new `drum_relief_reseat_mpa = 7.8` (setpoints in the
+engine config — single source; `rbmk_control.js` builds the actuation lazily at
+`forVersion()`, after the config loads). The engine keeps the valve state (`relief_open`) and
+the flow hydraulics — `relief_flow = max(0, P − drum_relief_mpa) · relief_gain` while open,
+`relief_gain = 2.0` **[tune]** (`rbmk_thermal.js`). **`steam_to_turbine` is the operator's turbine steam
 load** (normalized, 1.0 = rated), set by `set_turbine_load {mwe}` (§8.7) and defaulting to the
 state's initial power — it is **not** power-tracking, so an excursion outruns the fixed draw and
 pressure rises into the reliefs / the steam_pressure trip (the accident behavior is unchanged
@@ -336,18 +374,24 @@ RBMK-1000: two ~500 MWe turbogenerators (lumped to one) on a **50 Hz** grid → 
 ```javascript
 // Condenser vacuum: restores toward rated when cooling available, else decays (realistic lag).
 condenser_vacuum_kpa += ((cooling_available ? vacuum_rated : vacuum_lost) - condenser_vacuum_kpa) / tau * dt;
-if (condenser_vacuum_kpa < vacuum_trip_kpa) tripTurbine();     // low-vacuum trip → steam_to_turbine = 0
 // Grid holds a synced machine at rated speed; a tripped/desynced one coasts on windage.
-synced = !turbine_tripped && steam_to_turbine > 0 && condenser_vacuum_kpa >= vacuum_trip_kpa;
-if (synced) turbine_rpm += (rpm_rated - turbine_rpm) / 0.5 * dt;
+synced = !turbine_tripped && steam_to_turbine > 0;
+if (synced) turbine_rpm += (rpm_rated - turbine_rpm) / sync_tau * dt;   // sync_tau = 0.5 s (config)
 else { turbine_rpm += (steam_to_turbine*torque_per_flow*rpm_rated - windage*turbine_rpm) / turbine_inertia * dt; }
 // Electrical output tracks the steam actually drawn by the turbine (drum cycle: steam the
 // turbine doesn't take is dumped/relieved), so MWe follows load, not raw fission power.
 mwe_output = steam_to_turbine * mwe_rated * (turbine_rpm/rpm_rated) * (condenser_vacuum_kpa/vacuum_rated);
 ```
 `mwe_rated = 1000` MWe, `rpm_rated = 3000`, `rpm_overspeed_trip = 3300`, `turbine_inertia = 50`,
-`windage = 1.0`, `torque_per_flow = 1.0`, `vacuum_rated = 96.5` kPa, `vacuum_lost = 16.9`,
-`vacuum_restore_tau = 10` s, `vacuum_decay_tau = 30` s, `vacuum_trip_kpa = 74.5` **[tune]**.
+`windage = 1.0`, `torque_per_flow = 1.0`, `sync_tau = 0.5` s, `vacuum_rated = 96.5` kPa,
+`vacuum_lost = 16.9`, `vacuum_restore_tau = 10` s, `vacuum_decay_tau = 30` s,
+`vacuum_trip_kpa = 74.5` **[tune]**.
+
+*(as built — 2026-07-16 design ruling)* Turbine **protection is a control decision**: the
+low-vacuum and overspeed trips are control-layer actuations reading the `condenser_vacuum`
+(< 74.5 kPa) / `turbine_rpm` (> 3300 rpm) **instruments** and issuing the `trip_turbine`
+command (`rbmk_control.js`; setpoints from the engine config). The engine only spins the
+machine — the synced branch no longer gates on vacuum, and `rbmk_thermal.js` trips nothing.
 
 **Steam dump / turbine bypass:** auto-opens proportionally above `steam_dump_setpoint = 7.5` MPa
 (band 0.4, ordered below the 7.6 MPa alarm / 8.0 MPa relief so it acts first); a manual override
@@ -355,6 +399,13 @@ wins; vents steam to the condenser (§8.3). Commands `set_turbine_load {mwe}` an
 {mode: "auto"|"open"|"closed" | pct}`; `turbine_load_mwe` / `steam_dump_pct` / `steam_dump_auto`
 in `control_state`; `steam_to_turbine`, `mwe_output`, `turbine_rpm`, `condenser_vacuum_kpa`,
 `turbine_tripped` added to `true_state` (additive to `CONTEXT §6.3`).
+
+**Load Mode / grid model *(as built)*.** The RBMK is integrated with the shared grid model
+(`engines/load_mode.js`, spec in `Blueprint/load_mode_spec.md`): commands `set_load_mode`,
+`set_load_target`, `disconnect_grid`, `connect_grid`, `set_feed_coupled`; true-state
+`load_mode`, `load_target_mwe`, `load_imbalance_mwe`, `sg_imbalance_active`; control-state
+`feed_auto_coupled` (feedwater tracks load until `set_feedwater_flow` uncouples it).
+See `rbmk_engine.js` (command dispatch and state export).
 
 ---
 
@@ -365,10 +416,11 @@ rods. Low ORM means the reactor has lost much of its capacity to absorb an excur
 amplifies the void feedback (§5.3). At Chernobyl ORM was driven far below the minimum.
 ```javascript
 function get_orm(rod_groups, cfg) {
-    const total_worth = sum(g.worth_pcm for g of rod_groups if g.function in ("control","manual"));
+    // (as built) groups are control/auto/shutdown — the dead 'manual' branches are gone
+    const total_worth = sum(g.worth_pcm for g of rod_groups if g.function === "control");
     let orm = 0.0;
     for (const g of rod_groups) {
-        if (!["control","manual"].includes(g.function)) continue;
+        if (g.function !== "control") continue;
         const withdrawn_fraction = g.position / g.max_steps;
         const group_equiv_rods = (g.worth_pcm / total_worth) * cfg.total_rod_count;
         orm += withdrawn_fraction * group_equiv_rods;
@@ -415,13 +467,15 @@ function check_destruction(e, cfg) {
 Energy-deposition rate — a rolling 0.5 s exponential moving average of power (so only a
 *sustained, intense* spike trips it):
 ```javascript
-instant_rate = P * energy_deposition_scale;        // cal/g/s, [tune] scale 0.42 (folds in rated MWt)
+instant_rate = P * energy_deposition_scale;        // cal/g/s, [tune] scale 4.0 (folds in rated MWt)
 const tau = 0.5, alpha = dt / (tau + dt);
 energy_deposition_rate = alpha * instant_rate + (1 - alpha) * energy_deposition_rate;
 ```
 `energy_deposition_scale` and `steam_explosion_threshold` are **tuned together** so that the
 pre-1986 prompt excursion crosses the threshold (`destruction_cause = "steam_explosion"`)
-while the post-1986 version never does. **The pre-1986 accident must reach destruction by the
+while the post-1986 version never does. *(as built)* `energy_deposition_scale = 4.0` — raised
+from the 0.42 starting value so the pre excursion crosses the steam-explosion line a step
+**before** fuel reaches melt (`rbmk_config.js`; see BUILD_DECISIONS M2). **The pre-1986 accident must reach destruction by the
 prompt steam-explosion path; the post-1986 version must not.**
 
 **On magnitude and honesty (for the Instructor, M6).** A lumped point-kinetics model cannot
@@ -438,6 +492,17 @@ above its pre-shutdown level) and destruction — **not** the historical magnitu
 Control rods (operator-moved) and shutdown/emergency-protection rods (driven in on trip).
 Motion mechanics as in `CONTEXT.md §6.5` (228 steps, the same stepping accumulator). Rod
 reactivity uses §5.4 (version-specific), **not** SCRUVE.
+
+**Automatic Regulator (AR) group *(as built)*.** A third rod group `auto_rods`
+(function `'auto'`, `rod_count 0.06`, `worth_pcm 500`, **no displacer** — the positive scram
+effect stays exclusively on the manual bank) models the RBMK's fine power-regulation rods
+(~2 pcm/step vs the manual bank's ~35). It is **excluded from ORM** (§9 counts the
+`control` bank only — *(as built)* the dead `'manual'` function branches are removed; groups
+are `control`/`auto`/`shutdown`), so the authored `orm_target` states and the ORM-driven void
+amplification are untouched. Initial insertion is per-state via
+`initial_states.ar_inserted_frac` (stable states park it mid-range 0.5; startup and the
+accident precondition start it fully withdrawn, as historically). Normally driven by the
+operator-automation layer; overridable to manual. (`rbmk_config.js` rod groups.)
 
 **Scram / AZ-5.** The emergency shutdown (`manual_scram`, the historical AZ-5) initiates full
 insertion. Insertion time: **pre = 18.0 s** (slow magnetic jack), **post = 12.0 s** (improved
@@ -481,7 +546,7 @@ injection time** (stuck-at-current); `drift` carries a `rate` (units/s, sim time
 
 | instrument_id | measures | lag (s) | noise σ | range |
 |---|---|---|---|---|
-| `power_range` | power % | 0.5 | 0.5 % | 0–120 % |
+| `power_range` | power % | 0.5 | 0.5 % | 0–200 % |
 | `steam_pressure` | MPa | 0.5 | 0.014 MPa | 0–10.3 MPa |
 | `drum_level` | % | 2.0 | 0.5 % | 0–100 % |
 | `channel_flow` | % rated | 1.0 | 1.0 % | 0–120 % |
@@ -491,10 +556,21 @@ injection time** (stuck-at-current); `drift` carries a `rate` (units/s, sim time
 | `turbine_rpm` | RPM | 0.5 | 3.0 RPM | 0–3600 | *(BOP §8.7)* |
 | `condenser_vacuum` | kPa | 5.0 | 0.34 kPa | 0–102 | *(BOP §8.7)* |
 | `mwe_output` | MWe | 0.5 | 2.0 MWe | 0–1200 | *(BOP §8.7)* |
+| `startup_rate` | SUR (dpm) | 2.0 | 0.02 | −5–10 | *(as built)* |
+
+*(as built)* `power_range` top-of-range was raised from the original 0–120 % to **0–200 %**:
+a reading pegged *at* the 120 % trip setpoint can never strictly cross it, so the pre-1986
+power trip was unfireable with the old cap — and 200 % lets the meter show the front of an
+excursion before it pegs. The `startup_rate` instrument reads `startup_rate_dpm` (§15) and
+feeds the control layer's rod-withdrawal **interlock** (withdrawal blocked above 4.0 dpm,
+clears below 2.5; `rbmk_config.js`, `rbmk_instruments.js`, `layers/control/rbmk_control.js`).
 
 Status readings the protection/alarm config also reads: `rps_scrammed`, `eps_bypassed`,
-`orm_alarm_active`. Instrument internal state (lag buffers, active failures, PRNG state) is
-part of save/restore (§18).
+`orm_alarm_active`. *(as built)* The exported `orm_alarm_active` STATUS reading derives from
+the **`orm_display` instrument** (the previous step's reading vs `orm_min`), not from the
+true ORM — so the Chernobyl `orm_indicator_failure` fools the annunciator too, not just the
+gauge (HR1). `true_state.orm_alarm_active` stays the true version. Instrument internal state
+(lag buffers, active failures, PRNG state) is part of save/restore (§18).
 
 ---
 
@@ -502,6 +578,12 @@ part of save/restore (§18).
 
 RBMK protection is **version-specific** — the pre-1986 reactor historically had fewer
 automatic trips. All read instruments (HR1); when `eps_bypassed`, the auto-trips are disabled.
+
+*(as built)* This data no longer lives in the engine directory: it moved to the **Control
+Layer** — `layers/control/rbmk_control.js` (`RD.RBMK_CONTROL`, legacy alias
+`RD.RBMK_PROTECTION`), which `rbmk_config.js` attaches per-version as `cfg.protection` (§1).
+The definitions below remain the specification baseline; the control layer extends the alarm
+set (e.g. `sur_high` on the §13 `startup_rate` instrument, `void_high`, `fuel_temp_high`).
 
 ```javascript
 RBMK_TRIPS_PRE = [
@@ -522,6 +604,12 @@ RBMK_ALARMS = [
   ("eps_bypass", "eps_bypassed", "is_true", null, "warning", "A","Emergency Protection Bypassed","EPS BYPASS"),
 ];
 ```
+*(as built — 2026-07-16 design ruling)* The RBMK still has no PWR-style ECCS actuations, but
+`rbmk_control.js` now carries the **mechanical-protection actuations** moved in-stack: drum
+relief pop/reseat (`open_relief_valve` at 8.0 MPa / `close_relief_valve` below 7.8, on the
+`steam_pressure` instrument, §8.3) and the turbine low-vacuum (< 74.5 kPa) / overspeed
+(> 3300 rpm) trips issuing `trip_turbine` (§8.7) — setpoints derived from the engine config.
+
 Failures (kind per HR7 — physics-parameter effects are implemented in this engine; command-override
 are intercepted in M4; instrument by the instrument model (§13); `block` uses M4's command-block
 effect). `severity_meta` (engineering-unit slider metadata, schema in M4) is inlined on every
@@ -568,7 +656,7 @@ fully new term. `[tune]` arbitrated by §19.
 
 ```javascript
 this._fail = {
-  stuck_rod:       { active:false, frac:0, z_stuck:0 },   // frac of control/manual rods stalled; z_stuck in metres
+  stuck_rod:       { active:false, frac:0, z_stuck:0 },   // frac of control-bank rods stalled; z_stuck in metres
   rod_runaway:     { active:false, rate:0 },              // steps/s of withdrawal
   channel_rupture: { active:false, size:0 },              // 0..1
 };
@@ -583,7 +671,7 @@ applyPhysicsFailure(effect, severity = 1.0) {
 clearPhysicsFailure(effect) { /* .active = false; partial_mcp_trip → mcp_speed_pct = 100 */ }
 ```
 
-**`stuck_control_rod` — positional stall (§5.4).** Split the control/manual rod worth into a stalled
+**`stuck_control_rod` — positional stall (§5.4).** Split the control-bank rod worth into a stalled
 fraction pinned at `z_stuck` and the rest at live depth. The §5.4 per-rod function is
 version-specific, so the consequence diverges with no special-casing — on **pre**, rods pinned at
 `z_water/2` (the displacer-reactivity peak) each contribute `+k_disp` that AZ-5 cannot remove; on
@@ -592,7 +680,7 @@ version-specific, so the consequence diverges with no special-casing — on **pr
 function controlRodReactivity() {
     let rho = 0;
     const perRod = (this.version === "pre_chernobyl") ? rho_displacer_pre : rho_rod_post;   // §5.4
-    for (const g of controlAndManualGroups) {
+    for (const g of controlGroups) {   // function === 'control' (as built — no 'manual' groups)
         const z_live = depthFromPosition(g.position, this.cfg);
         if (this._fail.stuck_rod.active) {
             const stalled = this._fail.stuck_rod.frac * g.rod_count;
@@ -636,7 +724,9 @@ instead of coasting to zero.) `clear_failure` reverses each effect.
 - **`full_power`** — 100 % power, all systems normal: rods at operating positions (ORM at its
   rated value), xenon at equilibrium, full channel flow, drums at 7.0 MPa / nominal level.
 - **`50_percent`** *(built, folded in)* — stable partial-power maneuvering point: 50 % power,
-  healthy ORM (~70), channel flow 80 %, equilibrium xenon. `rho_excess` is trimmed to critical
+  `orm_target = 90` *(as built — at reduced power the control group sits deeper than the
+  full-power point's 70, so the starting rod position visibly tracks the starting power)*,
+  channel flow 80 %, equilibrium xenon. `rho_excess` is trimmed to critical
   for this state (per-state trim, §14 notes), so it holds ~50 %. Matches the PWR's `50_percent`
   envelope for full-scope operation.
 - **`hot_startup`** *(built, folded in)* — subcritical hot standby / approach-to-criticality
@@ -687,7 +777,10 @@ reachable by selecting the version.
 `feedwater_flow_pct`, `eps_bypassed`, `turbine_load_mwe`, `steam_dump_pct`/`steam_dump_auto`;
 `applyCommand(command)` for the RBMK commands in `CONTEXT.md §6.7` (`set_channel_flow`,
 `set_feedwater_flow`, `set_eps_bypass`, `manual_scram`, `set_turbine_load`, `set_steam_dump`,
-rod commands); `saveState()`/`loadState()` (§18); the scenario suite (§19). The engine never
+rod commands, plus the §8.7 load-mode commands `set_load_mode` / `set_load_target` /
+`disconnect_grid` / `connect_grid` / `set_feed_coupled`; `true_state` also carries
+`load_mode`, `load_target_mwe`, `load_imbalance_mwe`, `sg_imbalance_active`, and
+`control_state` carries `feed_auto_coupled`); `saveState()`/`loadState()` (§18); the scenario suite (§19). The engine never
 evaluates trips/alarms or assembles the snapshot.
 
 ---
@@ -778,8 +871,12 @@ positive) with no destruction. *(Suite: `startup_pre` / `startup_post`.)*
 electrical output ≈ rated MWe (1000) with the turbine synced at 3000 rpm and rated condenser
 vacuum; reducing `set_turbine_load` lowers MWe and the steam dump opens to hold drum pressure
 below the relief (no high-pressure trip); a `turbine_trip` failure collapses MWe and coasts the
-turbine down; `loss_of_condenser_vacuum` decays vacuum below the trip and trips the turbine; the
-`50_percent` state holds ~50 % power and ~half MWe, stable. *(Suite: `bop_pre` / `bop_post`.)*
+turbine down; `loss_of_condenser_vacuum` decays vacuum below the trip and the (emulated)
+control-layer actuation trips the turbine; the `50_percent` state holds ~50 % power and ~half
+MWe, stable. *(Suite: `bop_pre` / `bop_post`.)* *(as built)* The engine test `Harness`
+emulates M4's mechanical-protection actuations (`autoM4`, 0.1 s cadence, reads instruments —
+drum-relief pop/reseat and the turbine trips, moved in-stack per the 2026-07-16 ruling) so
+the engine-only suites keep the assembled plant's protections.
 
 **Save and restore.** Save mid-excursion-buildup, restore into a fresh engine, confirm the run
 continues identically — including the energy-deposition EMA and instrument lag/noise state. Run this
@@ -797,23 +894,28 @@ the pre/post comparison — the RBMK physics is done and correct.
 |---|---|---|
 | `Λ` (RBMK) | 0.0005 s | fixed |
 | `MAX_PROMPT_GROWTH` | 80.0 / 5.0 | excursion magnitude / post tameness |
-| `α_D` (Doppler) | −1.0e−5 K⁻¹ | steady state |
+| `kinetics.source` | 6.0e−4 | subcritical multiplication / `hot_startup` level *(as built, §3)* |
+| `α_D` (Doppler) | −3.0e−5 K⁻¹ | steady state / full-power maneuvering *(as built)* |
 | `α_graphite` | +1.5e−4 K⁻¹ | slow moderator feedback |
-| `graphite_temp_ref` | 500 °C | graphite feedback reference |
-| `alpha_void_base` | 0.005 / 0.001 | **Chernobyl excursion / post safe** |
+| `graphite_temp_ref` | 500 °C | inert *(as built — reference pinned at operating temp, §5.2)* |
+| `alpha_void_base` | 0.0025 / 0.001 | **Chernobyl excursion / post safe** *(as built)* |
 | `alpha_void_low_power_gain` | 2.5 / 0.8 | low-power amplification |
 | `alpha_void_xenon_gain` | 0.8 / 0.3 | high-xenon amplification |
 | `alpha_void_high_void_gain` | 1.2 / 0.4 | high-void amplification |
-| `void_ref` | 0.30 | steady void |
+| `void_ref` | 0.30 | steady void *(as built — pinned per initial state at reset, §5.3)* |
 | `orm_instability_gain / orm_critical_gain` | 1.5 / 0.8 | ORM stability penalty |
 | `min_orm_rods` | 15 / 43 | ORM alarm + penalty onset |
-| `k_disp` (displacer) | 0.008 / 0.0 | **positive scram effect** |
+| `k_disp` (displacer) | 0.05 / 0.0 | **positive scram effect** *(as built)* |
 | `z_water_m / L_abs_m` | ~1.25 / ~7.0 | displacer profile |
-| `k_abs` (post rod worth) | [tune] | post rod insertion worth |
+| `k_abs` (rod absorber worth) | 0.085 *(as built)* | rod insertion worth |
 | `void_scale_rbmk` | 0.35 | void at rated conditions |
-| `void_response_tau` | 2.0 s | void lag |
+| `void_response_tau` | 1.0 s *(as built)* | void lag (catches the spike) |
 | `mcp_spinup_tau / mcp_coastdown_tau` | 5.0 / 10.0 s | flow transients |
-| `K_drum_pressure / K_drum_level` | 3.0 / 4.0 | drum pressure / level |
+| `K_drum_pressure / K_drum_level` | 0.0207 / 4.0 | drum pressure / level |
+| `relief_gain` | 2.0 | relief vent flow above 8.0 MPa while commanded open *(as built, §8.3)* |
+| `drum_relief_reseat_mpa` | 7.8 MPa | relief reseat (control-layer actuation, §8.3) *(as built)* |
+| `void_max` | 0.90 | physical void ceiling (was hardcoded) *(as built)* |
+| `sync_tau` | 0.5 s | grid pull-in to rated speed when synced *(as built)* |
 | `steam_gen_per_power` | 1.0 | steam generation |
 | `graphite_heat_frac` | 0.05 | graphite heating |
 | `h_graphite_coolant` | 0.01 s⁻¹ | graphite cooling |
@@ -821,7 +923,7 @@ the pre/post comparison — the RBMK physics is done and correct.
 | `h_fc_rbmk` | 0.04 s⁻¹ | fuel temperature |
 | `heat_gen_coeff_rbmk` | (→ appropriate fuel temp) | fuel temperature |
 | `steam_explosion_threshold` | 280 cal/g/s | destruction path |
-| `energy_deposition_scale` | 0.42 | destruction path (co-tuned with threshold) |
+| `energy_deposition_scale` | 4.0 *(as built — raised from 0.42)* | destruction path (co-tuned with threshold) |
 | `xenon_worth / sigma_phi` | 0.025 / 2.0e−5 | xenon transient |
 | `H1_0/λ1, H2_0/λ2` | 0.05/5e−4, 0.02/2e−5 | post-scram cooling |
 | **BOP (§8.7):** `mwe_rated / rpm_rated` | 1000 MWe / 3000 rpm | electrical output / 50 Hz |
@@ -830,7 +932,10 @@ the pre/post comparison — the RBMK physics is done and correct.
 | `vacuum_restore_tau / vacuum_decay_tau` | 10 / 30 s | vacuum response/lag |
 | `steam_dump_setpoint / band / max` | 7.5 MPa / 0.4 / 1.0 | turbine bypass to condenser |
 
-**Operating points / fixed:** rated ≈ 3200 MWt (≈ 1000 MWe), drum 7.0 MPa, drum relief 8.0 MPa;
+**Operating points / fixed:** rated ≈ 3200 MWt (≈ 1000 MWe), drum 7.0 MPa, drum relief pop
+8.0 / reseat 7.8 MPa and vacuum trip 74.5 kPa / overspeed 3300 rpm (control-layer actuation
+data since the 2026-07-16 ruling — the engine's relief valve and turbine are command-driven:
+`open_relief_valve`/`close_relief_valve`, `trip_turbine`);
 `total_rod_count` 211; `max_steps` 228; scram 18 s (pre) / 12 s (post); melt 2800 °C;
 trip/alarm setpoints per §14; `low_power_xenon` preset: ~7 % power, xenon 135 %, ORM ≈ 7.5;
-`50_percent` preset: 50 % power, ORM ≈ 70, flow 80 %.
+`50_percent` preset: 50 % power, `orm_target` 90 *(as built, §15)*, flow 80 %.

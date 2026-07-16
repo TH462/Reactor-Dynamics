@@ -260,10 +260,14 @@ scope.*
 - **Browser-side physics is the target, not a deferral.** v1 runs the physics in vanilla JavaScript
   in the browser — no server, no downloads, no WebAssembly — so it opens in restricted institutional
   environments. There is nothing to defer here; this *is* the architecture.
-- **Automatic *control* systems.** Automatic *protection* (trips) and *safety actuation* (emergency
-  systems) are in scope. Closed-loop automatic *control* that holds setpoints during normal operation
-  (auto rod control, auto level/pressure control beyond basic relief and spray) is deferred — the
-  operator controls the plant manually.
+- **Automatic *control* systems.** *(Superseded 2026-07 — brought into scope as the control-layer
+  rework.)* Originally: automatic *protection* (trips) and *safety actuation* were in scope, but
+  closed-loop automatic *control* holding setpoints during normal operation was deferred and the
+  operator ran the plant manually. The build now includes **operator-selectable automation
+  channels** (auto rod / T-avg hold, three-element feedwater, pressure and level controllers,
+  the RBMK AR, and more) living in the Control Layer kernel as per-plant data, each individually
+  switchable AUTO/MAN — the operator can still run everything by hand. See `CONTEXT.md §8` and
+  `M4b_control_layer.md`.
 - **Multi-bank rod system & sequencing.** The PWR has one control group and one shutdown group. Real
   multi-bank systems (banks A/B/C/D in programmed overlap) are deferred, and with them the associated
   displays: the **Bank Overlap Unit (BOU)** readout, automatic bank-sequencing enforcement, and the
@@ -305,7 +309,7 @@ instructor must acknowledge them in commentary (these are wired into M6's scenar
 | 8.11 | **No sensor redundancy / voting** **[tell user, optional]** | Real plants use ~3 channels with 2-of-3 voting; one failed sensor can't trip or block a trip alone. | Makes instrument failures **more** impactful — acceptable and arguably more educational; the fallibility lesson is strengthened. | Three-channel redundancy with 2-of-3 voting; failures requiring two channels to fail. |
 | 8.12 | **No containment model** **[tell user]** | Containment pressure, hydrogen generation, fission-product release; the Chernobyl explosion and Fukushima hydrogen explosions. | Scenarios teach causes and core physics; containment consequences are **described in commentary**, not simulated (sim ends at fuel damage). | Simplified containment pressure + hydrogen model, enough to show the challenge. |
 | 8.13 | **No fuel burnup** | Cores age over a cycle — reactivity drifts, fission products build. | None for the flagships (all three accidents occurred during normal operation, not end-of-cycle). | Simple burnup tracking with cycle-averaged parameters that shift over a modeled cycle. |
-| 8.14 | **No low-pressure injection / accumulators — PWR** | Full ECCS for a large-break LOCA; HPI alone can't hold the core on a large break. | TMI is a small-break LOCA where HPI is the relevant system — exactly what v1 models; large breaks aren't in scope. | Accumulators (passive, pressure-triggered) + LPI, enabling large-break LOCA scenarios. |
+| 8.14 | **~~No low-pressure injection / accumulators — PWR~~** *(superseded 2026-07: the control-layer rework built both — a merged two-segment **HPI/LPI** injection curve and passive pressure-triggered **accumulators**; see `M4b_control_layer.md` and `engines/pwr/pwr_primary.js`)* | ~~Full ECCS for a large-break LOCA; HPI alone can't hold the core on a large break.~~ | The original rationale (TMI is a small-break LOCA where HPI suffices) still explains why v1 shipped without them. | Done — was: accumulators (passive, pressure-triggered) + LPI. |
 | 8.15 | **Turbine & condenser — behavioral, not thermodynamic** | Stage efficiencies, feedwater-heater trains, hotwell level, circulating-water temperature. | None: turbine trip and loss of condenser vacuum reproduced correctly; the thermodynamic detail isn't part of any lesson. | Multi-stage turbine with feedwater-heater extraction and detailed heat rejection. |
 | 8.16 | **Levels are geometric fill, not calibrated spans** **[tell user]** | Real plants display a calibrated **narrow-range** level (a band around the operating point) plus a separate wide range, with differential-pressure reference legs. v1 uses straight geometric fill (0 = empty, 100 = full). | The lessons that hinge on level read directly — the pressurizer rising during voiding (TMI), the vessel uncovering the core (Fukushima). **Shrink-and-swell is still modeled** (it lives in the instrument indication, not the calibration), so the reading can still move the wrong way on a pressure transient; only the narrow/wide-range calibration is simplified. | Calibrated narrow- and wide-range level instruments with reference-leg behavior. |
 

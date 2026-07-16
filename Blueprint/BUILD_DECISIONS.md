@@ -2186,3 +2186,55 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   baseline) · e2e 24/25 (accumulator blowdown gap) · procedures 20/21 (bwr_sbo_rcic) ·
   audit PASS · manual-follow PASS · synoptic 55/55. Browser smokes: TMI lie intact
   (indicator closed + hot tailpipe), BWR ?auto=all engages 5/5, TMI-2 P1 chat loads.
+- **2026-07-16 — Full Blueprint spec-sheet audit & as-built reconciliation (docs only).**
+  Eight parallel audits compared every spec against the code; 18 Blueprint docs updated
+  (~1300 lines) to as-built reality: M1/M2/M3 tuning tables & superseded models (decay-heat
+  production form, AFW proportional hold, feed pump, DNB criterion, BWR implicit kinetics,
+  ramped recirc), the protection-data move to layers/control/ in all three file maps, M4/M4b
+  (kernel names, generic failure forwarding, direction-aware reset, new §4b interlocks, NIS
+  trip net, ESF/HPI-LPI/RHR actuations), M5 (automation/trip_blocks/instructor snapshot
+  sections, fixed-dt loop, 10/20 Hz cadence, §6b rewind ring, training-lifecycle routing),
+  M7 (§3.6 reality, automation-check gap flagged, test/ ecosystem map), M8 + diagram docs
+  (Automate/Dev tabs, Plant & Mission window, synoptic-only PWR surface, chat pane, URL
+  params), M6/Gameplay/campaign/TMI2 (real interface + chat/follow/converge coverage, 6 acts
+  / 25 missions, six-ending outcome model, Script.md marked superseded), CONTEXT §4 (F6
+  deviation + cadence), DESIGN_COMPANION §7/§8.14 (auto-control & LPI/accumulator exclusions
+  superseded), OPERATOR_MANUAL_PLAN #4 (RCP heat). **Code findings reported, not fixed** —
+  see `Diagnostic/SPEC_AUDIT_2026-07-16.md`: UI-automation concern confirmed RESOLVED (no
+  residual control loops in ui/); open items include in-engine turbine trips on true state
+  (needs HR7 ruling), kernel `_evaluateCondition` true-state fallback (HR1 gap), two UI
+  schematic colorings from true_state, RBMK `orm_alarm_active` from true ORM, the inverted
+  severity_meta default bug, dead engine-side setpoint duplicates (BWR), and stale
+  manual_procedures text pointing at retired UI.
+- **2026-07-16 — Audit-fix pass: mechanical protections move in-stack (owner ruling) + HR1
+  closure.** Ruling: turbine trips and relief-valve pop/reseat are CONTROL decisions — moved
+  from all three engines into per-plant actuation data reading INSTRUMENTS (PWR pzr safeties
+  17.13/16.55 + SG safeties 9.31/9.0; RBMK drum relief 8.0/7.8; BWR SRV 7.58/7.44; turbine
+  low-vacuum 74.5 kPa + overspeed trips, all plants). Engines keep valve state + flow
+  hydraulics and new commands (trip_turbine, open/close_pzr_safety, open/close_sg_safety,
+  open/close_relief_valve); actuation setpoints derive from engine config (single source);
+  engine suites keep the protections via an instrument-reading autoM4 harness emulator
+  (0.1 s cadence, all three Harnesses; the PWR loss-of-vacuum test now waits out the 5 s
+  vacuum-instrument lag). Kernel: condition gates instruments-only (no true-state fallback;
+  unresolvable = NOT-met; M7 §3.6 asserts resolvability), severity default =
+  (default−min)/(max−min) matching the UI slider (inverted metas via min>max — degraded_hpi
+  meta flipped to 100→0 so its label reads true capacity), layer-held == engine-forwarded
+  severity, plant literals out of the kernel (busyNote callback), dead branches/set_lpi
+  vestiges removed. HR1 sweep: RBMK/BWR board schematics + status rows read instruments
+  (channel_flow, recirc_flow, rcic_status, ads_open, eps_bypassed, station_blackout,
+  orm_alarm_active); RBMK ORM annunciator derives from the orm_display reading (the
+  Chernobyl indicator failure now fools it too); PWR AFW level hold senses the sg_level
+  instrument; SG-imbalance annunciator reads indicated power; scram view-switch reads
+  rps_scrammed. Failures: degraded_hpi/afw_failure retyped physics_parameter (effects
+  degrade_hpi/block_afw — the fictitious command_override typing resolved). Instructor:
+  operator_action branches always evaluated before inaction siblings. Test runner: asserts
+  automation + trip_blocks + condition resolvability. Misc: RHR gained an ESF arm (synoptic
+  Auto button re-arms via set_esf_auto), RBMK void ceiling/knee + sync taus + BWR recirc cap
+  48 → config, BWR dead setpoints removed + RCIC harness aligned to the shipping 45.0,
+  boron_rate/safety_injection_flow/manual-rod-branch dead code removed, manual_procedures
+  startup text un-staled, verify_e2e_ui dhr-on expectation → rhr. Manual regenerated.
+  Full battery green at/above baseline: pwr 15/15 · rbmk 23/23 · bwr 12/12 · m4 15/15 ·
+  m5 17/17 · m6 16/16 · m6ph 8/8 · M7 OK (new checks + teeth) · autoctl 20/20 · scenarios
+  3/3 · campaign 36/36 (1313) · procedures 20/21 (bwr_sbo_rcic, pre-existing) · e2e 24/25
+  (accumulator gap, pre-existing) · ops 53/66 (baseline) · audit PASS · manual-follow PASS
+  (84) · verify_e2e_ui PASS (16 shots) · synoptic 55/55.

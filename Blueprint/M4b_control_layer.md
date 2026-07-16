@@ -49,6 +49,15 @@ InterlockDef += blocks_when? // { field, equals } — block only the matching fo
                              //   of the command (e.g. only set_sr_detector {on:false})
 ```
 
+**Mechanical-protection actuations** *(as built — 2026-07-16 design ruling)*: each per-plant
+module also carries the relief-valve pop/reseat and turbine low-vacuum/overspeed trip
+actuations moved out of the engines (PWR pzr + SG safeties; RBMK drum relief; BWR SRV; all
+three `trip_turbine`). They are ordinary `ActuationDef` data — `reset_below` hysteresis,
+setpoints derived from the engine config (single source), commands descending through
+interception like everything else, so a stuck-safety-valve failure is authorable. Full
+per-plant listing: M4 §4. Condition gates *(as built)* read instruments ONLY — no true-state
+fallback; unresolvable conditions evaluate NOT-met (M4 §2; M7 §3.6 asserts resolution).
+
 ## 3. The automation channel runtime
 
 Formerly `layers/auto_control.js` — a UI-side synthetic operator stepped once
@@ -100,10 +109,17 @@ engine: `{ instruments, control_state, true_state, rps_state, metadata }`.
   minDelta, period, pvTau?, spSlew?`, `ff(ctx)?` feedforward, `init(ctx)?`
   integrator preload (bumpless), `sp {capture(ctx), min, max, unit, dp, step, dim?}`.
 - `kind: 'rods'` — `group_id, pv(ctx), gain, db, maxStep, period, fastAt, kd?,
-  trim(ctx)?, standby(ctx, layer)?, standbyNote?, sp {…}`. Emits bounded
-  `rod_nudge`s; never steps against the raw error sign.
+  speeds?, trim(ctx)?, standby(ctx, layer)?, standbyNote?, sp {…}`. Emits bounded
+  `rod_nudge`s; never steps against the raw error sign. `speeds` *(as built)* is
+  an error-proportional variable-speed ladder — `[{above, speed}]`, ascending
+  (Westinghouse-style: bigger |error| → faster drive); when present it replaces
+  the two-speed `fastAt` threshold. The PWR `rods_tavg` channel uses
+  `[{0.8 slow}, {2.0 normal}, {4.0 fast}]` (pwr_control.js).
 - `kind: 'bang'` — boron trim: `hi/lo` engage and `hiStop/loStop` release
-  thresholds on control-rod position, `rate` (ppm/s), `requires`.
+  thresholds on control-rod position, `rate` (ppm/s), `requires`, and an
+  optional `busyNote(ctx)` data callback appended to the channel note while
+  borating/diluting *(as built — the charging-pump status suffix moved out of
+  the kernel into the PWR `boron_trim` def; HR3: no plant fields in the kernel)*.
 
 ### Commands (consumed by the kernel, never forwarded)
 
@@ -119,7 +135,7 @@ automation: { channels: [ { id, group, label, hint, kind, engaged,
                             setpoint, setpoint_meta?, pv, note, standby } ] }
 ```
 
-## 3b. ESF AUTO/MAN arms (§12 in code)
+## 3b. ESF AUTO/MAN arms ("M4b ESF arms" in code comments)
 
 `EsfSystemDef = { id, label, commands: [actions] }`. Each system starts ARMED;
 `arm`-tagged actuations evaluate only while armed. A **non-internal** command
@@ -129,7 +145,26 @@ auto:true}` re-arms and clears that system's `actuationFired` latches, so a
 STANDING start condition re-fires immediately — the point of re-arming.
 State: `automation.esf` in the snapshot, `esf` in the save (absent = armed).
 
-## 3c. Blockable startup trips (§13 in code)
+**The PWR ESF actuation set** *(as built, pwr_control.js)* — three arms:
+`hpi` (HPI/LPI emergency injection, over `set_hpi`/`set_lpi`), `afw`
+(auxiliary feedwater, over `set_afw`/`set_afw_flow`), and `rhr` (residual
+heat removal, over `set_rhr`/`set_dhr`).
+
+- **Merged HPI/LPI** — one actuation, primary pressure < 11.03 MPa →
+  `set_hpi {active:true}` (reset `{active:false}`), `arm: 'hpi'`. The old
+  separate 2.76 MPa `set_lpi` actuation is **deleted**: HPI/LPI is one merged
+  system, and the low-head/high-flow LPI regime follows physically from the
+  two-segment pump curve — no second actuation needed.
+- **AFW** — SG level < 20 % → `set_afw {active:true}`, `arm: 'afw'`.
+- **RHR cooldown permissive** — primary pressure < 3.45 MPa with
+  `condition: 'rps_scrammed'` auto-aligns residual heat removal
+  (`set_rhr {active:true}`) once the reactor is tripped and depressurized into
+  the RHR band. *(as built)* Now also armed, `arm: 'rhr'` — a manual
+  `set_rhr`/`set_dhr` flips the system to MANUAL, and the synoptic's RHR
+  **Auto** button re-arms it via `set_esf_auto {system:'rhr'}` (it was a
+  documented no-op before, see `new_diagram_controls.md`).
+
+## 3c. Blockable startup trips ("M4b trip blocks" in code comments)
 
 `set_trip_block {trip_id, blocked}` — refused (register-aware `blocked` result)
 unless `trip_block_permissive` is satisfied against the CURRENT instruments
@@ -140,6 +175,25 @@ trip blocked: the real at-power lineup (without it, every at-power state
 insta-trips on the startup net). State: `rps_state.trip_blocks` in the snapshot,
 `trip_blocks` in the save. M7's "each trip warns first" invariant exempts
 blockable trips (their warning is the blocking procedure).
+
+**The PWR startup NIS trip net** *(as built, pwr_control.js)* — the concrete
+data behind the mechanism above:
+
+- `sr_high` — source-range high flux, 1e5 cps (≈ 0.02 % power); gated
+  `condition: 'sr_energized'`, so it is live only while the SR detector is
+  energized (secure the SR during the SR→IR handoff — or trip). Not blockable.
+- `ir_high` — intermediate-range high flux, 1.67e-3 A (chamber current ≈ 20 %
+  power); `blockable`.
+- `pr_low_setpoint` — power-range LOW SETPOINT, 25 % (vs the 120 % full-power
+  trip); `blockable`. The at-power backstop of the net.
+- `trip_block_permissive` = power_range > 10 % (P-10). The net ladders
+  P-10 (10 %) < IR trip (20 %) < PR low setpoint (25 %): stop the ascent above
+  P-10, block both, then continue — miss the blocks and the net trips you.
+  Blocks auto-reinstate below P-10.
+- A companion actuation auto **re-energizes the SR** when the IR falls below
+  P-6 (1e-10 A): `set_sr_detector {on:true}` via `params` — deep in shutdown the
+  operator gets the count rate back. (The P-6 interlock pair guarding manual
+  `set_sr_detector` is M4 §4b.)
 
 ## 4. Lifecycle rules (M5)
 

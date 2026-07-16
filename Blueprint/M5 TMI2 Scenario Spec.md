@@ -79,6 +79,8 @@ Rather than a separate speed-step UI control, the skip is surfaced *inside the c
 
 **Design guardrail:** the compressed stretches should still surface the *actual elapsed duration* to the player somewhere (clock/timestamp in the chat log or synoptic), even if playtime is short — since the raw "it took 80 minutes" and "it took 2h20m" numbers are themselves part of what the scenario is teaching. Don't let compression erase the numbers just because it erases the wait.
 
+***(As built)*** the guardrail's concrete mechanism is the **story clock**: each beat may carry a `story_min` anchor (minutes since the story's opening — the *historical* clock, independent of compressed sim time), and beats that deliberately compress a stretch set `time_skip: true`. The UI draws its elapsed-time divider **only** on `time_skip` beats, so an ordinary continuous conversation never shows a time jump, while every skip visibly surfaces how much story time passed. The skip itself is the `chat_button: { style: 'skip', speed }` mechanic described above.
+
 | T+ | Event | True plant state |
 |---|---|---|
 | 0:00 | Condensate polisher trips (root cause: mispositioned valves from maintenance 2 days prior) | Normal operation ends |
@@ -169,13 +171,21 @@ Implementation note for coding AI: click handler resolves `(interactionId, curre
   2. **One or two caught** — supervisor reacts with genuine in-voice surprise/relief; accident contained faster, reduced core damage, shorter event.
   3. **All three caught** — best ending: incident averted to the level of "eventful shift" rather than a severe accident. Light non-fourth-wall-breaking acknowledgment from the supervisor that this isn't how it usually goes.
 
+  ***(As built)*** the shipped endings grade the **plant, not a deviation checklist** — the 3-tier sketch above became **six endings** (`scenarios/pwr_tmi2_p3.js`, ~lines 341–433), keyed on `subcool_restored` (subcooling margin recovered), the `fuel_damaged` latch, and `core_inventory_pct`:
+  - **`p3_end_full`** — "An Eventful Shift": subcooling restored, no fuel damage, inventory back above 85% — the full save.
+  - **`p3_end_plugged`** — "Plugged, Not Refilled": leak isolated pre-damage but inventory never restored — half of the terminating pair (isolate + inject).
+  - **`p3_end_late`** — "Caught Late": subcooling restored but the fuel-damage latch already set — terminated post-damage-onset.
+  - **`p3_end_bleed_watch`** — a router beat reached on the inaction timeout; it forwards to one of:
+  - **`p3_end_bleed`** — "Holding, Not Won": injection is winning but the relief path was never isolated — stable only on continuous make-up.
+  - **`p3_end_hist`** — "History Repeated": fuel damaged with the leak never isolated — the graceful historical outcome, Rewind offered.
+
 ---
 
-## 7. Open Questions for Tim
+## 7. Open Questions for Tim *(all resolved — as built)*
 
-1. **Part 3 title** — confirm "Second Watch" or pick an alternate.
-2. **Tag scope** — one representative AFW block valve, or all affected valves in the train? (Recommend one for a first-pass build, per earlier discussion.)
-3. **Aux operator naming/role** — formalize as a named character (e.g., "Auxiliary Operator — Dave") for consistency across dialogue trees, or keep generic ("Aux Operator")?
+1. **Part 3 title** — ~~confirm "Second Watch" or pick an alternate.~~ **Resolved: "Second Watch"** (`pwr_tmi2_p3.js`, title "TMI-2 · Part 3 — Second Watch").
+2. **Tag scope** — ~~one representative AFW block valve, or all affected valves in the train?~~ **Resolved: one representative valve** — the single `afw_tag` interaction/prop (`ui_policy.tag: 'afw_tag'`), per the first-pass recommendation.
+3. **Aux operator naming/role** — ~~formalize as a named character or keep generic?~~ **Resolved: named — "Marty"**, introduced in the shift-turnover chatter (`pwr_tmi2_common.js` lead-in) and used consistently across all three parts.
 
 ---
 
