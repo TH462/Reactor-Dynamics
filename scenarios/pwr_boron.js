@@ -77,7 +77,7 @@
       { id: 'complete',
         trigger: { type: 'delay', value: 1.5 },
         commentary: {
-          learning: 'Back where you started — via chemistry, both ways. Here is why this matters beyond today: as fuel burns up over a YEAR, the core slowly loses reactivity, and it is boron — diluted a little every day, thousands of ppm down to nearly zero — that pays that long bill. Rods stay parked near the top, ready for the fast moves. Hands for the moment, spine for the year. One honest note: real boration and dilution take hours per move; we ran your shift at 30× so you could feel the shape of it.',
+          learning: 'Back where you started — via chemistry, both ways. Here is why this matters beyond today: as fuel burns up over a YEAR, the core slowly loses reactivity, and it is boron — diluted a little every day, thousands of ppm down to nearly zero — that pays that long bill. Rods stay parked near the top, ready for the fast moves. Hands for the moment, spine for the year. One honest note: real boration and dilution take hours per move; we ran your shift at 8× so you could feel the shape of it.',
           industry: 'Tavg restored by boration. Operational context: boron letdown compensates cycle burnup (BOL ~1500+ ppm → EOL ~0), leaving rods for maneuvering and trip margin. Model note: CVCS chemistry time-compressed 8× here.',
         },
         speed: 1,

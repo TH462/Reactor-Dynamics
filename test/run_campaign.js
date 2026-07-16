@@ -30,8 +30,11 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'scenarios/pwr_tmi2_common.js', 'scenarios/pwr_tmi2_p1.js', 'scenarios/pwr_tmi2_p2.js', 'scenarios/pwr_tmi2_p3.js',
   'scenarios/pwr_tour.js', 'scenarios/pwr_chain_reaction.js', 'scenarios/pwr_feedback.js',
   'scenarios/pwr_xenon.js', 'scenarios/pwr_boron.js', 'scenarios/pwr_load_follow.js',
+  'scenarios/pwr_feed_pump.js', 'scenarios/pwr_rod_auto.js',
+  'scenarios/pwr_startup_challenge.js', 'scenarios/pwr_shift_exam.js',
   'scenarios/pwr_automation.js',
-  'scenarios/pwr_protection.js', 'scenarios/pwr_slb.js', 'scenarios/pwr_lof.js', 'scenarios/pwr_qualify.js',
+  'scenarios/pwr_protection.js', 'scenarios/pwr_esf.js', 'scenarios/pwr_msiv.js',
+  'scenarios/pwr_slb.js', 'scenarios/pwr_lof.js', 'scenarios/pwr_qualify.js',
   'scenarios/rbmk_tour.js', 'scenarios/rbmk_void.js', 'scenarios/rbmk_ar.js',
   'scenarios/rbmk_chernobyl.js', 'scenarios/rbmk_az5_fixed.js',
   'scenarios/bwr_tour.js', 'scenarios/bwr_recirc.js', 'scenarios/bwr_isolation.js',
@@ -106,7 +109,7 @@ function settle(s, secs) { var end = s.simTime + secs; var sn; while (s.simTime 
 var TRIGGERS = ['time', 'delay', 'instrument', 'true_state', 'operator_action', 'inaction', 'alarm', 'scram', 'manual', 'all', 'any'];
 // campaign plant → the MANUAL_PROCEDURES engine keys its procedures must exist under
 var ENGINE_KEYS = { pwr: ['pwr'], rbmk: ['rbmk_pre', 'rbmk_post'], bwr: ['bwr'] };
-var EXPECTED_MISSIONS = { pwr: 25, rbmk: 9, bwr: 8 };
+var EXPECTED_MISSIONS = { pwr: 31, rbmk: 9, bwr: 8 };
 
 test('campaign structure — missions resolve, ids unique (all plants)', function (ck) {
   Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
@@ -372,19 +375,21 @@ test('pwr_boron — dilute up, borate back', function (ck) {
   if (snap) ck('endpoint is the chemistry-trip card', lc(snap).title, /Tripped/i.test(lc(snap).title), 'Tripped on Chemistry card');
 });
 
-test('pwr_load_follow — evening ramp and morning pickup', function (ck) {
+test('pwr_load_follow — evening ramp and morning pickup (three-element feed)', function (ck) {
   var s = startScenario('pwr_load_follow');
-  // ramp_down carries the branch watch: settle past its delay-14 fire, then
+  // ramp_down carries the branch watch: settle past its delay-26 fire, then
   // dispatch inside the watch.
   var snap = waitBeat(s, 'ramp_down', 120);
   ck('ramp beat arms', !!snap, !!snap, 'ramp_down pending');
   if (!snap) return;
-  settle(s, 16);
+  settle(s, 28);
   s.handleCommand({ action: 'set_load_mode', mode: 'manual' });
   s.handleCommand({ action: 'set_load_target', mwe: 800 });
   snap = waitBeat(s, 'ramp_up', 1800);
   ck('night hold reached (dawn beat armed)', !!snap, !!snap, 'ramp_up pending');
   if (!snap) return;
+  ck('three-element feed held SG level through the cut', snap.instruments.sg_level.toFixed(1),
+    Math.abs(snap.instruments.sg_level - 65) < 8, '65 ±8 %');
   settle(s, 305);                       // ramp_up fires at delay 300, watch opens
   s.handleCommand({ action: 'set_load_target', mwe: 1000 });
   snap = waitBeat(s, 'restore_follow', 1200);
@@ -395,6 +400,215 @@ test('pwr_load_follow — evening ramp and morning pickup', function (ck) {
   snap = runUntil(s, function (sn) { return lc(sn); }, 400);
   ck('load-follow mission completes', !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is the shift card', lc(snap).title, /Shift Complete/i.test(lc(snap).title), 'Shift Complete card');
+  // Probed: with feed_sg engaged the unit rides even a 1000→0 load step, so
+  // the grid_lost branch is the scram catch — reach it with a manual trip.
+  var s2 = startScenario('pwr_load_follow');
+  snap = waitBeat(s2, 'ramp_down', 120);
+  if (snap) {
+    settle(s2, 28);
+    s2.handleCommand({ action: 'scram' });
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 300);
+  }
+  ck('a trip during the watch reaches the failure card', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the tripped-on-shift card', lc(snap).title, /Tripped/i.test(lc(snap).title), 'Tripped on Shift card');
+});
+
+test('pwr_feed_pump — manual level hold, then the three-element channel', function (ck) {
+  var s = startScenario('pwr_feed_pump');
+  // take_manual carries the branch watch: settle past its delay-30 fire, then
+  // take the pump by hand inside the watch.
+  var snap = waitBeat(s, 'take_manual', 60);
+  ck('take-manual beat arms', !!snap, !!snap, 'take_manual pending');
+  if (!snap) return;
+  settle(s, 32);
+  s.handleCommand({ action: 'set_feed_pump_speed', pct: 100 });
+  // load_drop fires (delay 3, load -> 950); level creeps ~0.25%/s (probed) to
+  // the 67% crossing, which opens the trim prompt.
+  snap = waitBeat(s, 'trim_now', 180);
+  ck('level creep observed -> trim prompt', !!snap, !!snap, 'trim_now pending');
+  if (!snap) return;
+  settle(s, 12);                        // trim_now fires (delay 1) + reading
+  s.handleCommand({ action: 'set_feed_pump_speed', pct: 91 });   // just under steam flow
+  snap = waitBeat(s, 'engage_auto', 300);
+  ck('band recaptured -> engage prompt', !!snap, !!snap, 'engage_auto pending');
+  if (!snap) return;
+  settle(s, 5);                         // engage_auto fires (delay 3); watch opens
+  s.handleCommand({ action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 900);
+  ck('AUTO carries the restore -> complete', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the level-held card', lc(snap).title, /Level Held/i.test(lc(snap).title), 'Level Held card');
+  if (snap) ck('SG level ends in band', snap.instruments.sg_level.toFixed(1), snap.instruments.sg_level > 55 && snap.instruments.sg_level < 75, '55-75%');
+  // No trim -> the 75% HI alarm lands on the overfed card (probed ~52 s).
+  var s2 = startScenario('pwr_feed_pump');
+  snap = waitBeat(s2, 'take_manual', 60);
+  if (snap) {
+    settle(s2, 32);
+    s2.handleCommand({ action: 'set_feed_pump_speed', pct: 100 });
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 600);
+  }
+  ck('inaction reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the overfed card', lc(snap).title, /Overfed/i.test(lc(snap).title), 'Overfed card');
+  // A scram lands on the tripped card, not a softlock.
+  var s3 = startScenario('pwr_feed_pump');
+  snap = waitBeat(s3, 'take_manual', 60);
+  if (snap) {
+    settle(s3, 32);
+    s3.handleCommand({ action: 'scram' });
+    snap = runUntil(s3, function (sn) { return lc(sn); }, 300);
+  }
+  ck('scram reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the tripped card', lc(snap).title, /Tripped/i.test(lc(snap).title), 'Tripped card');
+});
+
+test('pwr_rod_auto — manual Tavg trim, T-ref capture, override precedence', function (ck) {
+  var s = startScenario('pwr_rod_auto');
+  // off_program (delay 28) drops load to 900; trim_task fires as Tavg crosses
+  // 307 (~40 s later, probed) and carries the branch watch.
+  var snap = runUntil(s, function () { return s.instructor.firedBeats.has('trim_task'); }, 400);
+  ck('trim prompt fires on the excursion', !!snap, !!snap, 'trim_task fired');
+  if (!snap) return;
+  settle(s, 12);
+  // Paced trim (the UI press pattern): 3 single-step insertions, ~30 s settling
+  // between rounds — a burst overshoots (probed: 28 steps -> Tavg 298).
+  for (var round = 0; round < 12; round++) {
+    snap = s.advanceCycles(1);
+    if (snap.instruments.tavg <= 305.5) break;
+    for (var p2 = 0; p2 < 3; p2++) { s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -1, speed: 'normal' }); settle(s, 1.5); }
+    settle(s, 30);
+  }
+  snap = waitBeat(s, 'engage_auto', 300);
+  ck('trim accepted -> engage prompt', !!snap, !!snap, 'engage_auto pending');
+  if (!snap) return;
+  settle(s, 5);                         // engage_auto fires (delay 3); watch opens
+  s.handleCommand({ action: 'set_auto_channel', channel_id: 'rods_tavg', engaged: true });
+  snap = runUntil(s, function () { return s.instructor.firedBeats.has('override'); }, 600);
+  ck('AUTO rides the restore -> override lesson', !!snap, !!snap, 'override fired');
+  if (!snap) return;
+  settle(s, 4);                         // override fires (delay 2); watch opens
+  s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 1, speed: 'normal' });
+  var sn2 = s.advanceCycles(1);
+  var rc = null, chans = (sn2.automation && sn2.automation.channels) || [];
+  for (var ci = 0; ci < chans.length; ci++) if (chans[ci].id === 'rods_tavg') rc = chans[ci];
+  ck('manual nudge kicks the channel to MAN', rc && rc.engaged, !!rc && rc.engaged === false, 'engaged false');
+  settle(s, 3);
+  s.handleCommand({ action: 'set_auto_channel', channel_id: 'rods_tavg', engaged: true });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 300);
+  ck('re-engage completes the mission', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the handed-over card', lc(snap).title, /Handed Over/i.test(lc(snap).title), 'Handed Over card');
+  // A scram mid-trim lands on the tripped card, not a softlock.
+  var s2 = startScenario('pwr_rod_auto');
+  snap = runUntil(s2, function () { return s2.instructor.firedBeats.has('trim_task'); }, 400);
+  if (snap) {
+    settle(s2, 5);
+    s2.handleCommand({ action: 'scram' });
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 300);
+  }
+  ck('scram reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the tripped card', lc(snap).title, /Tripped/i.test(lc(snap).title), 'Tripped card');
+});
+
+test('pwr_startup_challenge — solo startup passes; forgotten handoff fails on the SR gate', function (ck) {
+  // Win line (probed): secure SR (P-6 already satisfied at HZP), pull to 1 %,
+  // reinsert to null SUR — power then holds ~[1.0, 3.5] % through the 120 s
+  // graded window. Commands land during the exam watch (no operator_action
+  // triggers in this scenario, so beat-fire memory clearing is moot).
+  var s = startScenario('pwr_startup_challenge');
+  var snap = waitBeat(s, 'exam', 60);
+  ck('exam watch arms', !!snap, !!snap, 'exam pending');
+  if (!snap) return;
+  settle(s, 2);
+  s.handleCommand({ action: 'set_sr_detector', on: false });
+  s.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'normal' });
+  snap = runUntil(s, function (sn) { return sn.instruments.power_range > 1.0 || sn.rps_state.scrammed; }, 1200);
+  s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
+  ck('criticality reached unscrammed', snap && !snap.rps_state.scrammed, snap && !snap.rps_state.scrammed, 'power > 1 %, no scram');
+  if (!snap || snap.rps_state.scrammed) return;
+  runUntil(s, function (sn) { return sn.instruments.power_range > 1.5; }, 300);
+  s.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'normal' });
+  runUntil(s, function (sn) { return sn.instruments.startup_rate <= 0.0; }, 300);
+  s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 900);
+  ck('band hold reaches an endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('outcome is the clean startup', lc(snap).title, /Clean Startup/i.test(lc(snap).title), 'Clean Startup card');
+  // Handoff forgotten: pull with the SR energized — its 1e5 cps gate ends the
+  // climb at ~0.02 % power (probed t≈120 s) and the diagnose beat names it.
+  var s2 = startScenario('pwr_startup_challenge');
+  settle(s2, 5);
+  s2.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'normal' });
+  snap = runUntil(s2, function (sn) { return lc(sn); }, 900);
+  s2.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
+  ck('SR-energized climb reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the source-range card', lc(snap).title, /Source Range/i.test(lc(snap).title), 'Source Range Trip card');
+});
+
+test('pwr_startup_challenge — runaway coast lands on the overshoot card, not a softlock', function (ck) {
+  // Stop-at-1 %-and-watch leaves the full pull's reactivity in: power coasts
+  // 1 % → ~19 % in ~42 s. power_range crosses the 12 % branch a probed ~7 s
+  // before the IR trip (1.67e-3 A ≈ 20 %), so the band-overshoot card wins
+  // the race deterministically and carries the excess-reactivity lesson.
+  var s = startScenario('pwr_startup_challenge');
+  settle(s, 5);
+  s.handleCommand({ action: 'set_sr_detector', on: false });
+  s.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'normal' });
+  var snap = runUntil(s, function (sn) { return sn.instruments.power_range > 1.0; }, 1200);
+  s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
+  ck('criticality reached', !!snap, !!snap, 'power > 1 %');
+  snap = runUntil(s, function (sn) { return lc(sn); }, 900);
+  ck('coast reaches an endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the overshoot card', lc(snap).title, /Overshot/i.test(lc(snap).title), 'Band Overshot card');
+});
+
+test('pwr_shift_exam — evening curve passes pure-manual AND on player-engaged channels', function (ck) {
+  // Manual route (fallback coupling, probed): the 850 ask undershoots through
+  // the 885 marker at ~265 s and wanders 868–899 under the 905 hold line;
+  // the return crosses 985 ~330 s after the ask; SG never leaves [61.8, 69.7].
+  var s = startScenario('pwr_shift_exam');
+  var snap = waitBeat(s, 'watch_down', 60);
+  ck('reduction watch arms', !!snap, !!snap, 'watch_down pending');
+  if (!snap) return;
+  settle(s, 46);                        // watch_down fires (delay 45)
+  s.handleCommand({ action: 'set_load_mode', mode: 'manual' });
+  s.handleCommand({ action: 'set_load_target', mwe: 850 });
+  snap = waitBeat(s, 'pickup_call', 1200);
+  ck('reduction + hold credited → pickup call', !!snap, !!snap, 'pickup_call pending');
+  if (!snap) return;
+  settle(s, 4);                         // pickup_call fires (delay 1)
+  s.handleCommand({ action: 'set_load_target', mwe: 1000 });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 1200);
+  ck('manual route reaches an endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('manual route earns full marks', lc(snap).title, /Full Marks/i.test(lc(snap).title), 'Full Marks card');
+  // Channels route: the board starts CLEAN — engaging rods_tavg + feed_sg is
+  // the player's own tool choice (probed: parks ~830 with no alarms, return
+  // crosses 985 in ~25 s, SG stays [59.3, 70.4]).
+  var s2 = startScenario('pwr_shift_exam');
+  settle(s2, 10);
+  s2.handleCommand({ action: 'set_auto_channel', channel_id: 'rods_tavg', engaged: true });
+  s2.handleCommand({ action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true });
+  settle(s2, 40);                       // past the watch_down fire
+  s2.handleCommand({ action: 'set_load_mode', mode: 'manual' });
+  s2.handleCommand({ action: 'set_load_target', mwe: 850 });
+  snap = waitBeat(s2, 'pickup_call', 1200);
+  ck('channels route credits the hold', !!snap, !!snap, 'pickup_call pending');
+  if (snap) {
+    settle(s2, 4);
+    s2.handleCommand({ action: 'set_load_target', mwe: 1000 });
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 1200);
+  }
+  ck('channels route reaches an endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('channels route earns full marks', lc(snap).title, /Full Marks/i.test(lc(snap).title), 'Full Marks card');
+});
+
+test('pwr_shift_exam — deep ask trips the unit (SG drains on the fallback feed)', function (ck) {
+  // Probed: a clean-board 1000→500 ask scrams at t≈180 s on SG LOW LEVEL
+  // (11.8 %) — the fallback coupling lets the SG drain on a deep step, so
+  // "forgot the feed" is the literal trip cause the failure card teaches.
+  var s = startScenario('pwr_shift_exam');
+  settle(s, 48);                        // watch_down fired; scram branch live
+  s.handleCommand({ action: 'set_load_mode', mode: 'manual' });
+  s.handleCommand({ action: 'set_load_target', mwe: 500 });
+  var snap = runUntil(s, function (sn) { return lc(sn); }, 900);
+  ck('deep ask reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the unit-trip card', lc(snap).title, /Unit Trip/i.test(lc(snap).title), 'Unit Trip card');
 });
 
 test('pwr_protection — turbine trip, scram, acknowledge, stabilize', function (ck) {
@@ -409,6 +623,91 @@ test('pwr_protection — turbine trip, scram, acknowledge, stabilize', function 
   s.handleCommand({ action: 'acknowledge_all_alarms' });
   snap = runUntil(s, function (sn) { return lc(sn); }, 1200);
   ck('stable shutdown → complete', !!snap, !!snap, 'level_complete');
+});
+
+test('pwr_esf — ESF arms: auto-fire, MAN drop, re-arm; starved branch', function (ck) {
+  // Main path: hands off through the AFW auto-start and low-SG trip, then the
+  // takeover drill at the post-trip hold. (Probed: AFW arm fires ~12 s after
+  // injection at 19 %, RPS trips at 12 % ~1.7 s later; hold ~24 % by ~195 s.)
+  var s = startScenario('pwr_esf');
+  var snap = runUntil(s, function () { return s.instructor.firedBeats.has('at_the_hold'); }, 600);
+  ck('AFW fired, trip witnessed, hold prompt opens', !!snap, !!snap, 'at_the_hold fired');
+  if (!snap) return;
+  ck('arrived scrammed (defense in depth beat ran)', snap.rps_state.scrammed, snap.rps_state.scrammed === true, 'scrammed');
+  settle(s, 2);                         // act inside the branch watch
+  s.handleCommand({ action: 'set_afw_flow', pct: 60 });
+  snap = runUntil(s, function () { return s.instructor.firedBeats.has('went_manual'); }, 60);
+  ck('throttle touch → MAN narration beat', !!snap, !!snap, 'went_manual fired');
+  if (!snap) return;
+  var arm = s.advanceCycles(1).automation.esf.afw;
+  ck('ESF arm dropped to MANUAL on the command', arm, arm === 'manual', 'manual');
+  settle(s, 2);
+  s.handleCommand({ action: 'set_esf_auto', system: 'afw', auto: true });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 300);
+  ck('re-arm → stable hold → complete', !!snap, !!snap, 'level_complete');
+  if (snap) {
+    ck('endpoint is the handed-back card', lc(snap).title, /Handed Back/i.test(lc(snap).title), 'Handed Back card');
+    ck('honest ending: level at the AFW hold', snap.instruments.sg_level.toFixed(1), snap.instruments.sg_level > 15, '> 15 %');
+  }
+  // Starved branch: a zeroed throttle on MANUAL drains the hold (<10 % in ~53 s,
+  // probed) — and re-arming does NOT reopen the operator's throttle, so this
+  // lands on the teaching card either way (softlock guard).
+  var s2 = startScenario('pwr_esf');
+  snap = runUntil(s2, function () { return s2.instructor.firedBeats.has('at_the_hold'); }, 600);
+  if (snap) {
+    settle(s2, 2);
+    s2.handleCommand({ action: 'set_afw_flow', pct: 0 });
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 400);
+  }
+  ck('zeroed throttle reaches the starved endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the starved card', lc(snap).title, /Starved/i.test(lc(snap).title), 'Starved on Manual card');
+});
+
+test('pwr_msiv — MSIV closure: reopen and bottled endpoints, cold-feet catch', function (ck) {
+  // Reopen branch: close at power, take the decision inside its ~21 s window
+  // (probed: decision fires 29 s post-closure, auto low-SG trip at ~50 s; the
+  // trip is unavoidable — reopening decides the post-trip heat path).
+  var s = startScenario('pwr_msiv');
+  var snap = runUntil(s, function () { return s.instructor.firedBeats.has('intro'); }, 30);
+  ck('closure prompt opens', !!snap, !!snap, 'intro fired');
+  if (!snap) return;
+  settle(s, 2);
+  s.handleCommand({ action: 'close_msiv' });
+  snap = runUntil(s, function () { return s.instructor.firedBeats.has('decision'); }, 120);
+  ck('slam → safeties → decision chain fires', !!snap, !!snap, 'decision fired');
+  if (!snap) return;
+  ck('safeties beat rode the sg_safety_open status', s.instructor.firedBeats.has('safeties'), s.instructor.firedBeats.has('safeties'), 'safeties fired');
+  settle(s, 3);                         // act inside the decision window (auto trip ~21 s away)
+  s.handleCommand({ action: 'open_msiv' });
+  snap = runUntil(s, function (sn) { return lc(sn); }, 600);
+  ck('reopen path completes', !!snap, !!snap, 'level_complete');
+  if (snap) {
+    ck('endpoint is the dump-path card', lc(snap).title, /Dump Path/i.test(lc(snap).title), 'Dump Path Restored card');
+    ck('trip still came (shrink-driven, probed unavoidable)', snap.rps_state.scrammed, snap.rps_state.scrammed === true, 'scrammed');
+    ck('safeties reseated with the dump carrying decay heat', snap.instruments.sg_safety_open, snap.instruments.sg_safety_open === false, 'sg_safety_open false');
+  }
+  // Bottled branch: ride it down — the automatic low-SG trip (~50 s) exits the
+  // decision via its scram branch; the SG stays bottled on cycling safeties.
+  var s2 = startScenario('pwr_msiv');
+  runUntil(s2, function () { return s2.instructor.firedBeats.has('intro'); }, 30);
+  settle(s2, 2);
+  s2.handleCommand({ action: 'close_msiv' });
+  snap = runUntil(s2, function () { return s2.instructor.firedBeats.has('decision'); }, 120);
+  if (snap) snap = runUntil(s2, function (sn) { return lc(sn); }, 600);
+  ck('inaction reaches the bottled endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) {
+    ck('endpoint is the riding-the-safeties card', lc(snap).title, /Riding/i.test(lc(snap).title), 'Riding the Safeties card');
+    ck('MSIV still shut at the end (the unfinished business)', snap.instruments.msiv_open, snap.instruments.msiv_open === false, 'msiv_open false');
+  }
+  // Cold-feet catch: a scram at the closure prompt lands on the retry card,
+  // not a softlock.
+  var s3 = startScenario('pwr_msiv');
+  runUntil(s3, function () { return s3.instructor.firedBeats.has('intro'); }, 30);
+  settle(s3, 2);
+  s3.handleCommand({ action: 'scram' });
+  snap = runUntil(s3, function (sn) { return lc(sn); }, 120);
+  ck('scram at the prompt reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the cold-feet card', lc(snap).title, /Cold Feet/i.test(lc(snap).title), 'Cold Feet card');
 });
 
 test('pwr_qualify — blind stuck PORV isolated and recovered (win path)', function (ck) {
@@ -516,19 +815,38 @@ test('pwr_lof — loss of flow: both branches reach an endpoint, DNB physics fir
   }
 });
 
-test('pwr_sg_flood — bonus mission completes (imbalance trigger repaired)', function (ck) {
-  // Playtest follow-up: the original trigger was malformed (instrument_id/
-  // high/setpoint) and the mission softlocked at 'imbalance' forever.
+test('pwr_sg_flood — bonus: both fixes work, inaction floods', function (ck) {
+  // Re-premised (2026-07): feed pump left in MANUAL at 100 % while a rod trim
+  // brings power down — nobody minding level. Fix window opens at 75 % and
+  // closes at 96 % (probed: 75 % @ ~63 s, 96 % @ ~132 s; no automatic trip
+  // ever comes — level parks at 100 %).
+  // Fix 1: re-engage the three-element channel inside the fix window.
   var s = startScenario('pwr_sg_flood');
-  var snap = waitBeat(s, 'imbalance', 60);
-  ck('rod-insert prompt fires', !!snap, !!snap, 'imbalance pending');
+  var snap = waitBeat(s, 'fix', 300);
+  ck('level watch fires (SG level > 75 %)', !!snap, !!snap, 'fix pending');
   if (!snap) return;
-  s.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'normal' });
-  settle(s, 30);
-  s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
+  settle(s, 15);                        // fix fires at delay 13, watch opens
+  s.handleCommand({ action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true });
   snap = runUntil(s, function (sn) { return lc(sn); }, 600);
-  ck('SG flood recognized → mission completes', !!snap, !!snap, 'level_complete');
-  if (snap) ck('endpoint is the load-mode card', lc(snap).title, /Load Mode/i.test(lc(snap).title), 'Load Mode card');
+  ck('channel re-engage → recovery endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the level-control card', lc(snap).title, /Level Control/i.test(lc(snap).title), 'What You Forgot — Level Control');
+
+  // Fix 2: a manual pump cut is accepted the same way.
+  var s2 = startScenario('pwr_sg_flood');
+  snap = waitBeat(s2, 'fix', 300);
+  if (snap) {
+    settle(s2, 15);
+    s2.handleCommand({ action: 'set_feed_pump_speed', pct: 20 });
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 600);
+  }
+  ck('manual pump cut → recovery endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the level-control card', lc(snap).title, /Level Control/i.test(lc(snap).title), 'What You Forgot — Level Control');
+
+  // Inaction: nobody minds the level — flooded card at the 96 % line.
+  var s3 = startScenario('pwr_sg_flood');
+  snap = runUntil(s3, function (sn) { return lc(sn); }, 600);
+  ck('inaction reaches the flooded endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) ck('endpoint is the flooded card', lc(snap).title, /Flooded/i.test(lc(snap).title), 'SG Flooded card');
 });
 
 // ------------------------------------------------------------ RBMK campaign

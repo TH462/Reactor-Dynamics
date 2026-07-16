@@ -7,7 +7,7 @@ var VIEW_CONTROLS = {
     primary: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'Boron (Reactivity) — CVCS', 'Charging Pump (CVCS)', 'Letdown Valve (CVCS)',
       'CVCS Inventory Control', 'Pressurizer Heaters (PZR)', 'Pressurizer Spray (PZR)', 'Reactor Coolant Pumps (RCP)',
       'Relief Valve (PORV)', 'PORV Block Valve', 'Decay-Heat Removal (DHR)', 'SR detector'],
-    secondary: ['Feed Pumps', 'AFW', 'Feed Reg', 'Steam Dump', 'MSIV', 'Turbine Load', 'Main Breaker'],
+    secondary: ['Feed Pumps', 'AFW', 'Feed Reg', 'Feed Pump', 'Steam Dump', 'MSIV', 'Turbine Load', 'Main Breaker'],
     scram: 'SCRAM',
   },
   rbmk_pre: {
@@ -34,7 +34,7 @@ var STEP_UI = {
   pwr_raise_power: [{ i: 0, view: 'primary', control: 'Rod Speed' }, { i: 1, view: 'secondary', control: 'Turbine Load' }],
   pwr_lower_power: [{ i: 0, view: 'secondary', control: 'Turbine Load' }, { i: 1, view: 'primary', control: 'Rod Speed' }],
   pwr_pressure_control: [{ i: 1, view: 'primary', control: 'Pressurizer Spray (PZR)' }],
-  pwr_sg_level: [{ i: 1, view: 'secondary', control: 'Feed Reg' }],
+  pwr_sg_level: [{ i: 1, view: 'secondary', control: 'Feed Pump' }],
   pwr_shutdown: [{ i: 0, view: 'secondary', control: 'Turbine Load' }, { i: 1, view: 'scram', control: 'SCRAM' }],
   pwr_loss_of_feedwater: [{ i: 1, view: 'scram', control: 'SCRAM' }, { i: 2, view: 'secondary', control: 'Turbine Load' }, { i: 3, view: 'secondary', control: 'AFW' }],
   pwr_rcp_trip: [{ i: 1, view: 'scram', control: 'SCRAM' }],

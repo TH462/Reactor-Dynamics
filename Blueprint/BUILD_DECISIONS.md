@@ -2238,3 +2238,36 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   3/3 · campaign 36/36 (1313) · procedures 20/21 (bwr_sbo_rcic, pre-existing) · e2e 24/25
   (accumulator gap, pre-existing) · ops 53/66 (baseline) · audit PASS · manual-follow PASS
   (84) · verify_e2e_ui PASS (16 shots) · synoptic 55/55.
+- **2026-07-16 — PWR training campaign v2 (user direction: current controls, logical
+  progression, periodic challenges).** The campaign taught the SUPERSEDED feed-follows-load
+  coupling as normal (pwr_load_follow "feedwater follows the steam all by itself",
+  pwr_sg_flood's coupled-feed premise, the sg_level procedure's dead "Feed Reg" control +
+  set_feedwater_flow, stale "Primary/Secondary view" references across seven procedures,
+  the qualify blurb still advertising the abandoned SBO exam). Rebuilt to 6 acts /
+  31 missions ("Act III — The Controls" now walks pressure → feed pump (manual → the
+  three-element channel) → rod AUTO T-avg → power escalation → grid dispatch → full
+  automation → a graded shift exam): NEW missions pwr_feed_pump, pwr_rod_auto,
+  pwr_startup_challenge (Act II checkpoint: solo criticality with the SR→IR handoff),
+  pwr_shift_exam (Act III checkpoint: free-form 1000→850→1000, both manual and channel
+  routes pass), pwr_esf (ESF AUTO/MAN arms: auto-fire, MAN drop, re-arm semantics),
+  pwr_msiv (closure at power: safeties, the drain clock, reopen-decides-the-heat-path);
+  REWRITTEN pwr_load_follow (three-element feed engaged; probed: the unit now rides even a
+  1000→0 step — grid_lost became the scram catch; steam dump never lifts; Tavg +18 °C) and
+  pwr_sg_flood (pump-left-in-MANUAL premise; both fixes accepted; no trip ever comes —
+  the 96 % line is the failure). Probed content facts (all seed 42, CLEAN scenario board —
+  start_scenario runs noDefaults, so probes must go through a stub scenario, NOT bare
+  selectPlant): AFW arm fires at ~19 % SG ~12 s into LOFW at power but the 12 % RPS trip
+  follows ~1.7 s later (no ~20 % pin at power — that's a post-trip number); post-trip AFW
+  hold parks ~24 %; re-arming an ESF does NOT reopen an operator-shut throttle; MSIV
+  closure at power: SG PRESS HI 5.4 s, safeties 7.2 s, low-SG trip ~50 s (NOT the stage-10
+  "~2 min" — that figure predates the feed-pump replumb), and NO reopen timing avoids the
+  trip (early = drain, late = shrink) — reopening decides whether decay heat rides the
+  dump (reseated safeties) or cycles the bottled safeties indefinitely; solo-startup coast
+  from a full pull runs 1 %→19 % in ~42 s with power_range crossing 12 % ~7 s before the
+  IR trip (deterministic overshoot card); clean-board 1000→500 still scrams at ~180 s on
+  SG LOW LEVEL. Procedures: sg_level rewritten to the Feed Pump + three-element reality
+  (control label swapped in manual_ui_map/STEP_UI), card-name language replaces view
+  references everywhere, LOFW step notes the AFW arm, boron 30×→8×. Campaign doc updated
+  (Blueprint/pwr_training_campaign.md v2 tables). Gates: campaign 44/44 (1730, was
+  36/36·1313) · scenarios 3/3 · m5 17/17 · m6 16/16 · procedures 20/21 (bwr_sbo_rcic,
+  pre-existing) · audit PASS · manual-follow PASS (84) · verify_e2e_ui PASS.

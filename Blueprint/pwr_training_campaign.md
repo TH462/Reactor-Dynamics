@@ -40,16 +40,24 @@ minutes of wall-clock attention (time acceleration handles slow physics like xen
 - **Intellectual honesty.** Simplifications voiced in-beat at the moment they matter
   (point kinetics, single-sensor indications, no containment).
 
-## 3. Curriculum — six acts, 25 missions *(as built)*
+## 3. Curriculum — six acts, 31 missions *(as built, v2 2026-07-16)*
 
 Legend: `[S]` = authored scenario (`scenarios/*.js`), `[P]` = walkthrough procedure
-(`RD.MANUAL_PROCEDURES.pwr`), **NEW** = built by this plan. Top-to-bottom is the recommended order (all missions open from the start — revised 2026-07-07).
+(`RD.MANUAL_PROCEDURES.pwr`), **NEW** = built by this plan, **v2** = added/rewritten in the
+2026-07-16 training overhaul. Top-to-bottom is the recommended order (all missions open from
+the start — revised 2026-07-07).
 
-> ***(As built)*** the campaign has grown past this plan's original five acts / 18 missions:
-> `ui/campaign_data.js` now defines **six acts, 25 missions** — Act III gained `pwr_automation`
-> (the Automate tab), Act IV gained `pwr_lof` and `pwr_slb`, and the three-part TMI-2 module
-> is its own **Act V — Three Mile Island** ahead of the retitled **Act VI — The Reckoning**.
-> The tables below reflect the shipped structure.
+> ***(As built, v2)*** the campaign has grown past this plan's original five acts / 18
+> missions twice: first to six acts / 25 missions (Act III gained `pwr_automation`, Act IV
+> gained `pwr_lof` + `pwr_slb`, the TMI-2 module became its own **Act V** ahead of the
+> retitled **Act VI — The Reckoning**), then the **2026-07-16 overhaul** brought it to
+> **six acts, 31 missions**: the curriculum now walks the CURRENT control surface (feed
+> pump + three-element feedwater, rod AUTO T-avg, ESF AUTO/MAN arms, MSIV + SG safeties,
+> NIS/1M startup tooling) in a logical progression, `pwr_load_follow` and `pwr_sg_flood`
+> were rewritten off the superseded feed-follows-load coupling, and two graded
+> **CHECKPOINT** challenges (solo criticality; the evening-shift exam) break up the
+> instruction so the player periodically performs instead of reading. The tables below
+> reflect the shipped structure.
 
 ### Act I — The Machine (how a nuclear plant works)
 | # | Mission | Kind | Teaches |
@@ -61,31 +69,37 @@ Legend: `[S]` = authored scenario (`scenarios/*.js`), `[P]` = walkthrough proced
 ### Act II — The Physics (reactor behavior in your hands)
 | # | Mission | Kind | Teaches |
 |---|---------|------|---------|
-| 4 | Critical! | [P] `pwr_startup` | The real approach-to-criticality procedure, end to end |
+| 4 | Critical! | [P] `pwr_startup` | The real approach-to-criticality procedure, end to end (SR/IR, the handoff, 1/M) |
 | 5 | The Reactor That Pushes Back | [S] `pwr_feedback` **NEW** | Doppler + moderator temperature coefficient; why a PWR is self-stabilizing; power follows steam demand |
 | 6 | Poisoned | [S] `pwr_xenon` **NEW** | Xenon-135: builds after power drops, chokes the core, decays away; why plants can't always restart immediately |
 | 7 | The Long Game | [S] `pwr_boron` **NEW** | Boron vs rods: coarse/slow chemistry vs fine/fast mechanics; CVCS borate/dilute |
+| 8 | Criticality, Solo | [S] `pwr_startup_challenge` **v2 CHECKPOINT** | Graded solo startup: shutdown → critical → stable in the 1–10 % band with the SR→IR handoff — no script, failure cards teach |
 
-### Act III — The Craft (operating procedures)
+### Act III — The Controls (the control surface, one system at a time)
 | # | Mission | Kind | Teaches |
 |---|---------|------|---------|
-| 8 | Raise Power | [P] `pwr_raise_power` | Coordinated rod/boron power escalation |
 | 9 | Holding the Pressure | [P] `pwr_pressure_control` | PZR heaters & spray; pressure = the subcooling guarantee |
-| 10 | Feeding the Boilers | [P] `pwr_sg_level` | SG level control; shrink & swell |
-| 11 | Follow the Grid | [S] `pwr_load_follow` **NEW** | Load mode (Follow/Manual/Off); turbine-reactor coupling; feed auto-tracking; SG balance |
-| 12 | Hands Off | [S] `pwr_automation` *(as built)* | The Automate tab: put the plant on automatic channels and be the dispatcher |
-| 13 | Coming Down | [P] `pwr_lower_power` | Controlled power reduction |
-| 14 | Putting It to Bed | [P] `pwr_shutdown` | Normal shutdown to Hot Standby; decay heat is forever |
+| 10 | Feeding the Boilers (by hand) | [P] `pwr_sg_level` **v2 rewrite** | The FEED PUMP as the manual level control; shrink & swell; the three-element controller named as the normal driver |
+| 11 | Feeding the Boilers (the specialist) | [S] `pwr_feed_pump` **v2** | Manual pump vs the three-element channel: who is minding the level; MAN-override semantics |
+| 12 | The Steady Hand | [S] `pwr_rod_auto` **v2** | Rod control in AUTO: T-avg hold, the T-ref-capture trap, the speed ladder, manual always wins |
+| 13 | Raise Power | [P] `pwr_raise_power` | Coordinated rod/turbine power escalation |
+| 14 | Follow the Grid | [S] `pwr_load_follow` **v2 rewrite** | Load mode (Follow/Manual); turbine-reactor coupling; the three-element feed minding the SGs; the Tavg cost of a rod-less cut |
+| 15 | Hands Off | [S] `pwr_automation` *(as built)* | The Automate tab: put the plant on automatic channels and be the dispatcher |
+| 16 | The Evening Shift — Checked Out | [S] `pwr_shift_exam` **v2 CHECKPOINT** | Graded free-form dispatch: down to 850, hold, back to 1000 — your tools, your call |
+| 17 | Coming Down | [P] `pwr_lower_power` | Controlled power reduction |
+| 18 | Putting It to Bed | [P] `pwr_shutdown` | Normal shutdown to Hot Standby; decay heat is forever |
 
 ### Act IV — When Things Go Wrong (protection & upsets)
 | # | Mission | Kind | Teaches |
 |---|---------|------|---------|
-| 15 | The Plant Protects Itself | [S] `pwr_protection` **NEW** | RPS: trip logic, setpoints, alarms; a deliberate turbine trip → reactor response; acknowledging and reading an alarm flood |
-| 16 | Losing the Heat Sink | [P] `pwr_loss_of_feedwater` | LOFW response; AFW |
-| 17 | Losing the Flow | [P] `pwr_rcp_trip` | RCP trip; natural circulation |
-| 18 | Loss of Coolant Flow | [S] `pwr_lof` *(as built)* | Loss of flow as an upset: the hot channel boils, and the trip that has to be fast |
-| 19 | Steam Line Break | [S] `pwr_slb` *(as built)* | A steam line break — why cooling the plant can raise its power |
-| 20 | The Hole That Lies | [P] `pwr_stuck_porv` | Stuck-open PORV (small-break LOCA) recovery — direct TMI rehearsal |
+| 19 | The Plant Protects Itself | [S] `pwr_protection` **NEW** | RPS: trip logic, setpoints, alarms; a deliberate turbine trip → reactor response; acknowledging and reading an alarm flood |
+| 20 | Armed and Automatic | [S] `pwr_esf` **v2** | The ESF AUTO/MAN arms: AFW fires itself on low SG level; touching a system disarms it; re-arming re-fires a standing condition |
+| 21 | Losing the Heat Sink | [P] `pwr_loss_of_feedwater` | LOFW response; AFW |
+| 22 | Losing the Flow | [P] `pwr_rcp_trip` | RCP trip; natural circulation |
+| 23 | Loss of Coolant Flow | [S] `pwr_lof` *(as built)* | Loss of flow as an upset: the hot channel boils, and the trip that has to be fast |
+| 24 | Steam Line Break | [S] `pwr_slb` *(as built)* | A steam line break — why cooling the plant can raise its power |
+| 25 | Bottle the Boiler | [S] `pwr_msiv` **v2** | The MSIV: closure at power trips the turbine, the SG bottles to its code safeties, and a two-minute drain clock starts |
+| 26 | The Hole That Lies | [P] `pwr_stuck_porv` | Stuck-open PORV (small-break LOCA) recovery — direct TMI rehearsal |
 
 ### Act V — Three Mile Island *(as built — the TMI-2 module, `act5_tmi2`)*
 The three-part chat-mode module (`Blueprint/M5 TMI2 Scenario Spec.md`) sits as its own act
@@ -93,9 +107,9 @@ before the finale:
 
 | # | Mission | Kind | Teaches |
 |---|---------|------|---------|
-| 21 | TMI-2 · Part 1 — The Fog of War | [S] `pwr_tmi2_p1` | Live the 1979 night shift exactly as the crew did — no hindsight, no mercy |
-| 22 | TMI-2 · Part 2 — Under a Microscope | [S] `pwr_tmi2_p2` | The replay: what the board said, what the plant did, and why they differed |
-| 23 | TMI-2 · Part 3 — Second Watch | [S] `pwr_tmi2_p3` | Same shift, same board — but this time you know. Change history |
+| 27 | TMI-2 · Part 1 — The Fog of War | [S] `pwr_tmi2_p1` | Live the 1979 night shift exactly as the crew did — no hindsight, no mercy |
+| 28 | TMI-2 · Part 2 — Under a Microscope | [S] `pwr_tmi2_p2` | The replay: what the board said, what the plant did, and why they differed |
+| 29 | TMI-2 · Part 3 — Second Watch | [S] `pwr_tmi2_p3` | Same shift, same board — but this time you know. Change history |
 
 ### Act VI — The Reckoning (boss fight & qualification)
 *(As built the display title is "Act VI — The Reckoning"; the code act id in
@@ -103,11 +117,12 @@ before the finale:
 
 | # | Mission | Kind | Teaches |
 |---|---------|------|---------|
-| 24 | Three Mile Island | [S] `pwr_tmi` (exists) | The 1979 accident of information, compressed; believe the physics, not one light |
-| 25 | Senior Operator Exam | [S] `pwr_qualify` **NEW** | Station blackout, no narration, instrument-graded: keep the core covered and cooled until power returns |
+| 30 | Three Mile Island | [S] `pwr_tmi` (exists) | The 1979 accident of information, compressed; believe the physics, not one light |
+| 31 | Senior Operator Exam | [S] `pwr_qualify` **NEW** | A blind stuck-PORV plant, no narration, instrument-graded: diagnose on subcooling, isolate, recover *(the SBO exam concept was abandoned — SBO is unsurvivable in current physics)* |
 
-Bonus (outside the acts, not required): `pwr_sg_flood` (exists) — "SG Flooded — What
-Control Did You Forget?"
+Bonus (outside the acts, not required): `pwr_sg_flood` **v2 rewrite** — "SG Flooded — What
+Control Did You Forget?" (re-premised: the feed pump left in MANUAL while power comes down —
+nobody minding level; fix by re-engaging the three-element channel or cutting the pump)
 
 ## 4. New scenario outlines (authoring spec)
 

@@ -30,22 +30,28 @@
         { kind: 'scenario', id: 'pwr_feedback', teaches: 'Doppler and moderator feedback: the reactor pushes back.' },
         { kind: 'scenario', id: 'pwr_xenon', teaches: 'Xenon-135: the poison that rises after shutdown — and the dead time it enforces.' },
         { kind: 'scenario', id: 'pwr_boron', teaches: 'Boron vs rods — chemistry for the long game.' },
+        { kind: 'scenario', id: 'pwr_startup_challenge', teaches: 'CHECKPOINT — criticality, solo: no script, just you and the neutrons.' },
       ] },
-      { id: 'act3', title: 'Act III — The Craft', missions: [
-        { kind: 'procedure', id: 'pwr_raise_power', teaches: 'Coordinated power escalation.' },
+      { id: 'act3', title: 'Act III — The Controls', missions: [
         { kind: 'procedure', id: 'pwr_pressure_control', teaches: 'Heaters and spray: pressure is the subcooling guarantee.' },
-        { kind: 'procedure', id: 'pwr_sg_level', teaches: 'Feeding the boilers; shrink and swell.' },
-        { kind: 'scenario', id: 'pwr_load_follow', teaches: 'Follow the grid with the load-mode controls.' },
+        { kind: 'procedure', id: 'pwr_sg_level', teaches: 'Feeding the boilers by hand; shrink and swell.' },
+        { kind: 'scenario', id: 'pwr_feed_pump', teaches: 'The feed pump and its three-element controller — who is minding the level?' },
+        { kind: 'scenario', id: 'pwr_rod_auto', teaches: 'Rod control in AUTO: T-avg hold, the T-ref capture trap, and manual override.' },
+        { kind: 'procedure', id: 'pwr_raise_power', teaches: 'Coordinated power escalation.' },
+        { kind: 'scenario', id: 'pwr_load_follow', teaches: 'Follow the grid with the load-mode controls — three-element feed minding the boilers.' },
         { kind: 'scenario', id: 'pwr_automation', teaches: 'The Automate tab: put the plant on automatic and be the dispatcher.' },
+        { kind: 'scenario', id: 'pwr_shift_exam', teaches: 'CHECKPOINT — the evening shift, your tools, your call. Graded.' },
         { kind: 'procedure', id: 'pwr_lower_power', teaches: 'Coming down under control.' },
         { kind: 'procedure', id: 'pwr_shutdown', teaches: 'To Hot Standby — decay heat never sleeps.' },
       ] },
       { id: 'act4', title: 'Act IV — When Things Go Wrong', missions: [
         { kind: 'scenario', id: 'pwr_protection', teaches: 'The reactor protection system, and how to read an alarm flood.' },
+        { kind: 'scenario', id: 'pwr_esf', teaches: 'The AUTO/MAN arms: safety systems that fire themselves — until you touch them.' },
         { kind: 'procedure', id: 'pwr_loss_of_feedwater', teaches: 'Losing the heat sink — AFW to the rescue.' },
         { kind: 'procedure', id: 'pwr_rcp_trip', teaches: 'Losing forced flow — natural circulation.' },
         { kind: 'scenario', id: 'pwr_lof', teaches: 'Loss of flow: the hot channel boils, and the trip that has to be fast.' },
         { kind: 'scenario', id: 'pwr_slb', teaches: 'A steam line break — why cooling the plant can raise its power.' },
+        { kind: 'scenario', id: 'pwr_msiv', teaches: 'Bottle the boiler: the MSIV, the code safeties, and a two-minute clock.' },
         { kind: 'procedure', id: 'pwr_stuck_porv', teaches: 'The stuck relief valve — your TMI rehearsal.' },
       ] },
       { id: 'act5_tmi2', title: 'Act V — Three Mile Island', missions: [
@@ -57,7 +63,7 @@
       // key saved campaign progress (rd_progress) — renaming would orphan it.
       { id: 'act5', title: 'Act VI — The Reckoning', missions: [
         { kind: 'scenario', id: 'pwr_tmi', teaches: 'Three Mile Island, compressed: believe the physics, not one light.' },
-        { kind: 'scenario', id: 'pwr_qualify', teaches: 'Station blackout, no hints. Qualify.' },
+        { kind: 'scenario', id: 'pwr_qualify', teaches: 'A leaking plant, a lying light, no hints. Qualify.' },
       ] },
     ],
     bonus: [
