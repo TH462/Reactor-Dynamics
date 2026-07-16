@@ -118,6 +118,45 @@ T.push(test('Engineered-safety actuation — low pressure auto-starts HPI', func
   ck('HPI auto-actuated on low pressure', s.ts().hpi_active, s.ts().hpi_active === true, true);
 }));
 
+T.push(test('ESF AUTO/MAN arms — operator action disarms; re-arm re-fires a standing condition', function (ck) {
+  var s = new Stack('hot_full_power');
+  s.run(1);
+  ck('HPI arm starts AUTO', s.layer.getAutomationState().esf.hpi, s.layer.getAutomationState().esf.hpi === 'auto', 'auto');
+  // Low pressure fires the actuation (a PLANT command — must NOT disarm).
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'primary_pressure', mode: 'stuck', value: 10.0 });
+  s.run(2);
+  ck('actuation fired with the arm still AUTO', s.layer.getAutomationState().esf.hpi, s.ts().hpi_active === true && s.layer.getAutomationState().esf.hpi === 'auto', 'fired + auto');
+  // Operator turns HPI off → the system goes MANUAL and stays off.
+  s.cmd({ action: 'set_hpi', active: false });
+  s.run(2);
+  ck('operator action disarmed the system', s.layer.getAutomationState().esf.hpi, s.layer.getAutomationState().esf.hpi === 'manual', 'manual');
+  ck('actuation does not re-fire while disarmed', s.ts().hpi_active, s.ts().hpi_active === false, false);
+  // Re-arm with the low condition STANDING → the actuation re-fires.
+  s.cmd({ action: 'set_esf_auto', system: 'hpi', auto: true });
+  s.run(2);
+  ck('re-arm restored AUTO', s.layer.getAutomationState().esf.hpi, s.layer.getAutomationState().esf.hpi === 'auto', 'auto');
+  ck('standing low pressure re-fired HPI', s.ts().hpi_active, s.ts().hpi_active === true, true);
+  // AFW arm: throttling is an operator action on the system too.
+  ck('AFW arm starts AUTO', s.layer.getAutomationState().esf.afw, s.layer.getAutomationState().esf.afw === 'auto', 'auto');
+  s.cmd({ action: 'set_afw_flow', pct: 50 });
+  ck('throttle command disarmed AFW', s.layer.getAutomationState().esf.afw, s.layer.getAutomationState().esf.afw === 'manual', 'manual');
+}));
+
+T.push(test('AFW throttle + level hold — delivered flow scales and tapers (engine)', function (ck) {
+  var s = new Stack('hot_full_power');
+  var es = s.engine.s, sg = s.engine.cfg.steam_generator;
+  s.run(1);
+  es.sg_level_pct = 10;                                     // well below the hold target
+  s.cmd({ action: 'set_afw', active: true });
+  s.engine.step(0.02);
+  ck('full capacity at low level', es.afw_flow_normalized.toFixed(3), Math.abs(es.afw_flow_normalized - sg.afw_flow_frac) < 1e-6, String(sg.afw_flow_frac));
+  s.cmd({ action: 'set_afw_flow', pct: 40 });
+  es.sg_level_pct = 10; s.engine.step(0.02);
+  ck('throttle scales delivered flow', es.afw_flow_normalized.toFixed(3), Math.abs(es.afw_flow_normalized - 0.4 * sg.afw_flow_frac) < 1e-6, (0.4 * sg.afw_flow_frac).toFixed(3));
+  es.sg_level_pct = sg.afw_level_target + sg.afw_level_band + 1; s.engine.step(0.02);
+  ck('level hold tapers to zero above the band', es.afw_flow_normalized.toFixed(4), es.afw_flow_normalized === 0, '0');
+}));
+
 T.push(test('Alarm lifecycle — clear → unack → ack → clear', function (ck) {
   var s = new Stack('hot_full_power');
   s.run(1);

@@ -55,7 +55,7 @@
   // Maps a value-bearing command to its parameter field (they differ by action).
   function valueFieldFor(action) {
     switch (action) {
-      case 'set_feedwater_flow': case 'set_recirc_flow': case 'set_channel_flow': return 'pct';
+      case 'set_feedwater_flow': case 'set_recirc_flow': case 'set_channel_flow': case 'set_afw_flow': return 'pct';
       case 'set_hpi': case 'set_afw': case 'set_rcic': case 'set_hpci':
       case 'set_dhr': case 'set_rhr': case 'set_lpi': case 'set_eps_bypass': return 'active';
       case 'set_charging_flow': case 'set_letdown_flow': return 'normalized';
@@ -91,6 +91,12 @@
       this.channels.push(ch);
       this.byId[chDefs[ci].id] = ch;
     }
+    // ESF AUTO/MAN arms (§12): each configured system starts ARMED for its
+    // auto-actuations; an OPERATOR command listed on the system flips it to
+    // MANUAL (the plant's own actuations are _internal and don't).
+    this.esfAuto = {};
+    var esf = this.config.esf_systems || [];
+    for (var ei = 0; ei < esf.length; ei++) this.esfAuto[esf[ei].id] = true;
   }
 
   // Precompute alarm lifecycle slots and lo/lo_lo escalation pairs (§5).
@@ -126,6 +132,7 @@
       case 'set_register':             this.register = command.value; return null;
       case 'set_auto_channel':         return this.setAutoChannel(command.channel_id, command.engaged);
       case 'set_auto_setpoint':        return this.setAutoSetpoint(command.channel_id, command.value);
+      case 'set_esf_auto':             return this.setEsfAuto(command.system, command.auto);
       case 'set_instrument_failure':
       case 'clear_instrument_failure': return this.engine.applyCommand(command);
     }
@@ -133,7 +140,8 @@
     // Manual override (§11): an OPERATOR command listed in a channel's
     // manual_overrides disengages that channel — taking the control by hand
     // kicks its automation to MAN (self-issued channel outputs are exempt).
-    if (!this._internal) this._manualOverrideScan(command);
+    // Likewise an operator command on an ESF system disarms its auto (§12).
+    if (!this._internal) { this._manualOverrideScan(command); this._esfManualScan(command); }
 
     // Interlocks (§4b): condition-latched command blocks that read instruments
     // (HR1) and are pure config data (HR3) — e.g. the PWR rod-withdrawal block
@@ -239,10 +247,13 @@
 
   // Responsibility 2 — engineered-safety actuation (§4). Each issues a command
   // through handleCommand, so a command-override failure intercepts it too.
+  // Actuations carrying an `arm` tag evaluate only while that ESF system is in
+  // AUTO (§12) — a disarmed system neither fires nor resets.
   ControlLayer.prototype._evalActuations = function (ins) {
     var acts = this.config.actuations || [];
     for (var i = 0; i < acts.length; i++) {
       var act = acts[i];
+      if (act.arm && this.esfAuto[act.arm] === false) continue;
       var value = ins[act.instrument];
       var gateOk = !act.condition || this._evaluateCondition(act.condition);
       if (gateOk && crossed(value, act.direction, act.setpoint) && !this.actuationFired[i]) {
@@ -454,6 +465,28 @@
   ControlLayer.prototype._isEngaged = function (c, ctx) {
     if (c.def.kind === 'mode') return ctx && ctx.control_state ? !!c.def.isOn(ctx.control_state) : c.engaged;
     return c.engaged;
+  };
+
+  // ESF AUTO/MAN (§12): systems as data — { id, label, commands:[actions] }.
+  // Operator action on a listed command → that system to MANUAL; set_esf_auto
+  // re-arms it (clearing its actuation latches so a STANDING condition
+  // re-fires — the point of re-arming).
+  ControlLayer.prototype._esfManualScan = function (cmd) {
+    var esf = this.config.esf_systems || [];
+    for (var i = 0; i < esf.length; i++) {
+      if (esf[i].commands && esf[i].commands.indexOf(cmd.action) !== -1) this.esfAuto[esf[i].id] = false;
+    }
+  };
+
+  ControlLayer.prototype.setEsfAuto = function (system, auto) {
+    if (!(system in this.esfAuto)) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown esf system', received: system };
+    this.esfAuto[system] = !!auto;
+    if (auto) {
+      // Re-arm: clear this system's fired latches so its actuations re-evaluate.
+      var acts = this.config.actuations || [];
+      for (var i = 0; i < acts.length; i++) if (acts[i].arm === system) this.actuationFired[i] = false;
+    }
+    return null;
   };
 
   ControlLayer.prototype._manualOverrideScan = function (cmd) {
@@ -701,7 +734,15 @@
       }
       out.push(entry);
     }
-    return { channels: out };
+    var result = { channels: out };
+    if ((this.config.esf_systems || []).length) {
+      result.esf = {};
+      for (var ei = 0; ei < this.config.esf_systems.length; ei++) {
+        var sys = this.config.esf_systems[ei];
+        result.esf[sys.id] = this.esfAuto[sys.id] ? 'auto' : 'manual';
+      }
+    }
+    return result;
   };
 
   ControlLayer.prototype._saveAutomation = function () {
@@ -711,7 +752,7 @@
       ch[c.def.id] = { engaged: c.engaged, sp: c.sp, spEff: c.spEff, I: c.I, lastAct: c.lastAct,
                        lastSent: c.lastSent, note: c.note, bangMode: c.bangMode, pvF: c.pvF, rate: c.rate };
     }
-    return { t: this._autoT, acc: this._autoAcc, channels: ch };
+    return { t: this._autoT, acc: this._autoAcc, channels: ch, esf: Object.assign({}, this.esfAuto) };
   };
 
   ControlLayer.prototype._loadAutomation = function (au) {
@@ -733,6 +774,9 @@
         c.lastSent = null; c.note = ''; c.bangMode = 'idle'; c.pvF = null; c.rate = null;
       }
       c.pvNow = null;
+    }
+    for (var id in this.esfAuto) {
+      this.esfAuto[id] = (au && au.esf && id in au.esf) ? !!au.esf[id] : true;   // absent = armed (the safe default)
     }
   };
 

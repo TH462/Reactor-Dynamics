@@ -17,8 +17,19 @@
 
     // Feedwater: lost on the loss_of_feedwater failure; AFW backs up low SG level
     // (auto-start reads the instrument in M4; the engine exposes the effect).
+    // AFW delivery = capacity × operator throttle (set_afw_flow) × a built-in
+    // proportional level hold: full flow below the hold target, tapering to zero
+    // across the band above it (replaces the old hard `level < 20` cutoff — the
+    // same equilibrium, without the on/off chatter, and the throttle lets the
+    // operator take the flow anywhere below that).
     var feedwater_flow = s.main_feedwater_available ? s.feedwater_demand_frac : 0.0;
-    if (s.afw_active && s.sg_level_pct < sg.afw_start_level) feedwater_flow += sg.afw_flow_frac;
+    var afw_flow = 0;
+    if (s.afw_active) {
+      var hold = clip((sg.afw_level_target + sg.afw_level_band - s.sg_level_pct) / sg.afw_level_band, 0, 1);
+      afw_flow = sg.afw_flow_frac * (s.afw_throttle_frac != null ? s.afw_throttle_frac : 1.0) * hold;
+    }
+    s.afw_flow_normalized = afw_flow;
+    feedwater_flow += afw_flow;
     s.feedwater_flow = feedwater_flow;
     s.fw_flow_normalized = feedwater_flow;
 

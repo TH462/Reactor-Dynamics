@@ -133,9 +133,23 @@
         {
           "control": "AFW (Aux Feedwater)",
           "group": "Secondary",
-          "uses": "Auxiliary Feedwater (AFW) — the backup water supply to the Steam Generators when main feedwater is lost.",
+          "uses": "Auxiliary Feedwater (AFW) — the backup water supply to the Steam Generators when main feedwater is lost. Delivered flow = capacity × throttle × a built-in level hold (full flow below the hold target, tapering to zero just above it).",
           "command": "set_afw",
           "params": "{active}"
+        },
+        {
+          "control": "AFW Throttle",
+          "group": "Secondary",
+          "uses": "Throttles Auxiliary Feedwater delivery, 0–100 % of capacity. Throttling by hand takes the AFW system off its automatic arm (press Auto to re-arm).",
+          "command": "set_afw_flow",
+          "params": "{pct}"
+        },
+        {
+          "control": "ESF Auto Re-arm (HPI/LPI, AFW)",
+          "group": "Safety",
+          "uses": "Returns an engineered-safety system to AUTOMATIC: the system re-arms for its auto-actuation, and a still-standing start condition fires immediately. Any manual action on the system (on/off/throttle) puts it in MANUAL.",
+          "command": "set_esf_auto",
+          "params": "{system, auto}"
         },
         {
           "control": "Turbine Load",
@@ -168,7 +182,7 @@
         {
           "control": "Automate Tab (per-control automation)",
           "group": "Automation",
-          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram. At high time acceleration the fast loops hand over to plant-side control and resume when you slow down.",
+          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram; controllers run inside the Control Layer at a fixed simulated-time cadence, so time acceleration does not change their behavior.",
           "command": "(issues the commands above)",
           "params": ""
         }
@@ -1365,6 +1379,7 @@
             "hpi_flow_normalized": 0,
             "afw_active": false,
             "afw_pump_running": false,
+            "afw_flow_normalized": 0,
             "pump_running": true,
             "pump_flow_pct": 100,
             "station_blackout": false,
@@ -1462,6 +1477,7 @@
             "hpi_flow_normalized": 0,
             "afw_active": false,
             "afw_pump_running": false,
+            "afw_flow_normalized": 0,
             "pump_running": true,
             "pump_flow_pct": 100,
             "station_blackout": false,
@@ -1559,6 +1575,7 @@
             "hpi_flow_normalized": 0,
             "afw_active": false,
             "afw_pump_running": false,
+            "afw_flow_normalized": 0,
             "pump_running": true,
             "pump_flow_pct": 100,
             "station_blackout": false,
@@ -1804,7 +1821,7 @@
         {
           "control": "Automate Tab (per-control automation)",
           "group": "Automation",
-          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram. At high time acceleration the fast loops hand over to plant-side control and resume when you slow down.",
+          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram; controllers run inside the Control Layer at a fixed simulated-time cadence, so time acceleration does not change their behavior.",
           "command": "(issues the commands above)",
           "params": ""
         }
@@ -2841,7 +2858,7 @@
         {
           "control": "Automate Tab (per-control automation)",
           "group": "Automation",
-          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram. At high time acceleration the fast loops hand over to plant-side control and resume when you slow down.",
+          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram; controllers run inside the Control Layer at a fixed simulated-time cadence, so time acceleration does not change their behavior.",
           "command": "(issues the commands above)",
           "params": ""
         }
@@ -3939,7 +3956,7 @@
         {
           "control": "Automate Tab (per-control automation)",
           "group": "Automation",
-          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram. At high time acceleration the fast loops hand over to plant-side control and resume when you slow down.",
+          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram; controllers run inside the Control Layer at a fixed simulated-time cadence, so time acceleration does not change their behavior.",
           "command": "(issues the commands above)",
           "params": ""
         }

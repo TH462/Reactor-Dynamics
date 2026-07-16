@@ -300,6 +300,7 @@
       fuel_damaged: s.fuel_damaged,              // latched at fuel_damage_c — scenario outcome-grading hook
       hpi_active: s.hpi_active, hpi_flow_normalized: s.hpi_flow_normalized, afw_active: s.afw_active,
       afw_pump_running: !!s.afw_pump_demand,   // pump demand (run lights) — distinct from delivered flow (TMI-2)
+      afw_flow_normalized: s.afw_flow_normalized || 0,   // TRUE delivered AFW flow (throttle × level hold; 0 when blocked)
       pump_running: s.pump_running, pump_flow_pct: s.pump_flow_pct, station_blackout: s.station_blackout,
       turbine_rpm: s.turbine_rpm, condenser_vacuum_kpa: s.condenser_vacuum_kpa,
       condenser_cooling_available: s.condenser_cooling_available,
@@ -358,6 +359,7 @@
       steam_dump_auto: s.steam_dump_override == null,
       governor_valve_pct: s.governor_valve_pct,   // turbine admission valve (engine-driven; read-only)
       hpi_active: s.hpi_active, rhr_active: s.rhr_active,
+      afw_throttle_pct: (s.afw_throttle_frac != null ? s.afw_throttle_frac : 1.0) * 100,
       pumps: [{ id: 'rcp', running: s.pump_running, flow_pct: s.pump_flow_pct }],
     };
   };
@@ -463,6 +465,10 @@
         // flow with the pumps already running, as in 1979.
         s.afw_pump_demand = !!cmd.active;
         s.afw_active = s.afw_pump_demand && !s.afw_blocked;
+        break;
+      case 'set_afw_flow':
+        // AFW throttle: scales delivered AFW flow (0–100 % of capacity).
+        s.afw_throttle_frac = clip((cmd.pct != null ? cmd.pct : 100) / 100, 0, 1);
         break;
       case 'set_steam_dump':
         // mode: 'auto' (null override) | 'open' (full) | 'closed' | a manual pct.
@@ -721,6 +727,7 @@
       steam_dump_override: null, steam_dump_frac: 0,   // B2 (null = auto)
       feedwater_demand_frac: P0, feedwater_flow: P0, main_feedwater_available: true,
       afw_active: false, afw_pump_demand: false, afw_blocked: false, rhr_active: false,
+      afw_throttle_frac: 1.0, afw_flow_normalized: 0,   // AFW throttle (set_afw_flow) + delivered flow
 
       turbine_rpm: cfg.turbine.rpm_rated, condenser_vacuum_kpa: cfg.turbine.vacuum_rated,
       generator_load: P0, turbine_demand_frac: P0, turbine_tripped: false,
@@ -837,6 +844,9 @@
     // HPI/LPI merge: lpi_active folded into the one hpi_active flag.
     if (s.lpi_active) { s.hpi_active = true; }
     delete s.lpi_active; delete s.lpi_flow_normalized;
+    // AFW throttle (added with the ESF AUTO/MAN arms).
+    if (s.afw_throttle_frac == null) s.afw_throttle_frac = 1.0;
+    if (s.afw_flow_normalized == null) s.afw_flow_normalized = 0;
   };
 
   RD.PWREngine = PWREngine;

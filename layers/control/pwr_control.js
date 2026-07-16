@@ -33,9 +33,9 @@
     { instrument: 'primary_pressure', direction: 'high', setpoint: 16.20,
       action: 'open_porv', reset_below: 15.86, reset_action: 'close_porv' },
     { instrument: 'primary_pressure', direction: 'low',  setpoint: 11.03,
-      action: 'set_hpi', active: true, reset_action: 'set_hpi', reset_active: false },
+      action: 'set_hpi', active: true, reset_action: 'set_hpi', reset_active: false, arm: 'hpi' },
     { instrument: 'sg_level',         direction: 'low',  setpoint: 20.0,
-      action: 'set_afw', active: true },
+      action: 'set_afw', active: true, arm: 'afw' },
     // (The old 2.76 MPa set_lpi actuation is gone: HPI/LPI is one merged system
     // armed by the 11.03 MPa set_hpi actuation above — the low-head/high-flow
     // regime follows physically from the two-segment pump curve.)
@@ -196,6 +196,14 @@
       disengage: function () { return [{ action: 'set_load_mode', mode: 'manual' }]; } },
   ];
 
+  // ESF AUTO/MAN arms (kernel §12): each system is ARMED for its auto-actuation
+  // by default; any of the listed OPERATOR commands flips it to MANUAL, and
+  // set_esf_auto re-arms it (a standing condition then re-fires).
+  var PWR_ESF_SYSTEMS = [
+    { id: 'hpi', label: 'HPI/LPI emergency injection', commands: ['set_hpi', 'set_lpi'] },
+    { id: 'afw', label: 'Auxiliary feedwater',         commands: ['set_afw', 'set_afw_flow'] },
+  ];
+
   var PWR_PROTECTION = {
     trips: PWR_TRIPS,
     actuations: PWR_ACTUATIONS,
@@ -205,6 +213,7 @@
     failures: PWR_FAILURES,
     interlocks: PWR_INTERLOCKS,
     channels: PWR_CHANNELS,
+    esf_systems: PWR_ESF_SYSTEMS,
   };
 
   RD.PWR_CONTROL = { protection: PWR_PROTECTION };

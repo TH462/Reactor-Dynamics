@@ -245,6 +245,7 @@ snapshot = {
             "note": string,                // controller status ("holding", "off — reactor scrammed", …)
             "standby": bool
         } ],
+        "esf": { "<system_id>": "auto" | "manual" } | absent,   // ESF AUTO/MAN arms (PWR: hpi, afw)
     },
     "instructor": {
         "message":           string | null,
@@ -293,6 +294,7 @@ physical-quantity vocabulary.
     "porv_open": bool,                // actual valve position
     "porv_stuck": bool, "hpi_active": bool, "hpi_flow_normalized": float, "afw_active": bool,   // hpi_* = the ONE merged HPI/LPI emergency-injection system (two-segment pump curve; flow normalized to combined rated)
     "afw_pump_running": bool,         // AFW PUMP demand (run lights, honest) — distinct from delivered flow afw_active; the TMI-2 pumps-running/valves-shut split
+    "afw_flow_normalized": float,     // TRUE delivered AFW flow (capacity × throttle × level hold; 0 when blocked)
     "porv_tailpipe_temp_c": number,   // PORV discharge/quench-tank line temperature — warm baseline (seat leakage), hot while relief flows; feeds instruments.porv_tailpipe_temp (the TMI-2 tell)
     "fuel_damaged": bool,             // latched when fuel exceeds fuel_damage_c — scenario outcome-grading hook
     "pump_running": bool, "pump_flow_pct": number, "station_blackout": bool,
@@ -375,6 +377,7 @@ physical-quantity vocabulary.
     "letdown_flow_normalized": float,    // CVCS letdown setpoint
     "feedwater_flow_pct": float, "steam_demand_mwe": float,
     "hpi_active": bool, "rhr_active": bool,   // operator-actuated ECCS / cooldown (set_hpi — the merged HPI/LPI — / set_rhr)
+    "afw_throttle_pct": float,                // AFW throttle position (set_afw_flow)
     "governor_valve_pct": float,     // turbine admission valve % (engine-driven; read-only readout)
     "steam_dump_pct": float, "steam_dump_auto": bool,   // steam dump / turbine bypass (B2)
     "pumps": [ { "id": string, "running": bool, "flow_pct": float } ],
@@ -446,8 +449,10 @@ set_heater          { power_pct }
 set_spray           { open }
 open_porv
 close_porv
-set_hpi             { active }
-set_afw             { active }
+set_hpi             { active }                 // the merged HPI/LPI system; manual use disarms its ESF auto
+set_afw             { active }                 // AFW pumps; manual use disarms the AFW ESF auto
+set_afw_flow        { pct }                    // AFW throttle, 0–100 % of capacity (also disarms the AFW auto)
+set_esf_auto        { system: "hpi"|"afw", auto }   // re-arm (or disarm) an ESF system's auto-actuation
 set_rhr             { active }                 // Residual Heat Removal — low-pressure decay-heat cooldown (was DHR)
 set_dhr             { active }                 // deprecated one-release alias for set_rhr (save-file compatibility)
 set_lpi             { active }                 // DEPRECATED alias for set_hpi (HPI+LPI merged into one system; save-file compatibility)

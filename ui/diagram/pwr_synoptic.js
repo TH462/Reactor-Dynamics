@@ -407,12 +407,13 @@
       '<button data-syn="emtab" data-tab="afw" data-f="tabAfw">AFW</button>' +
       '<button data-syn="emtab" data-tab="rhr" data-f="tabRhr">RHR</button></div>' +
       '<div class="tabpane" data-pane="hpi" data-hl="pwHpiLine pwLpiLine gColdLeg">' +
-      '<div class="ctl">' + seg([{ l: 'Auto', act: 'eccs-auto', on: 1 }, { l: 'On', act: 'eccs-on' }, { l: 'Off', act: 'eccs-off' }],
-        'Emergency injection (one merged HPI/LPI system) — AUTO actuates on low pressure; flow follows the two-segment pump curve: high-head trickle at pressure, high-volume once depressurized. On forces injection.') + '</div>' +
+      '<div class="ctl">' + seg([{ l: 'Auto', act: 'eccs-auto', on: 1, f: 'hpiAutoB' }, { l: 'On', act: 'eccs-on', f: 'hpiOnB' }, { l: 'Off', act: 'eccs-off', f: 'hpiOffB' }],
+        'Emergency injection (one merged HPI/LPI system) — AUTO arms the low-pressure actuation; taking it On/Off by hand disarms it (press Auto to re-arm). Flow follows the two-segment pump curve: high-head trickle at pressure, high volume once depressurized.') + '</div>' +
       row('HPI/LPI', 'emHpi', { hl: 'pwHpiLine pwLpiLine' }) + '</div>' +
       '<div class="tabpane" data-pane="afw" data-hl="pwAfwLine gSg">' +
-      '<div class="ctl">' + seg([{ l: 'Start', act: 'afw-start' }, { l: 'Stop', act: 'afw-stop' }],
-        'Auxiliary feedwater — backup feed to the SG after a loss of main feedwater.') + '</div>' +
+      '<div class="ctl">' + seg([{ l: 'Auto', act: 'afw-auto', on: 1, f: 'afwAutoB' }, { l: 'Start', act: 'afw-start', f: 'afwStartB' }, { l: 'Stop', act: 'afw-stop', f: 'afwStopB' }],
+        'Auxiliary feedwater — backup feed to the SG after a loss of main feedwater. AUTO arms the low-SG-level pump start; manual Start/Stop or throttling disarms it (press Auto to re-arm).') + '</div>' +
+      '<div class="ctl"><span class="k">Throttle</span><span data-hl="pwAfwValve">' + numSet('afwFlowSet', 0, 100, 100, 'afw-flow-set', '%') + '</span></div>' +
       row('AFW', 'emAfw', { hl: 'pwAfwLine' }) + '</div>' +
       '<div class="tabpane" data-pane="rhr" data-hl="pwRhrLoop">' +
       '<div class="ctl"><span class="k">RHR</span>' + seg([{ l: 'Auto', act: 'rhr-auto', on: 1 }, { l: 'On', act: 'rhr-on' }, { l: 'Off', act: 'rhr-off' }],
@@ -941,10 +942,19 @@
       ? 'INJECTING ' + Math.round((ins.hpi_flow || 0) * 100) + ' %'
       : 'standby');
     vcls('emHpi', ins.hpi_active ? 'run' : 'dim');
+    // ESF AUTO/MAN arms: the Auto lamp reads snapshot.automation.esf; On/Off
+    // (Start/Stop) light from the system's actual state when disarmed.
+    var esf = (s.automation && s.automation.esf) || {};
+    segSync('hpiAutoB', esf.hpi === 'auto');
+    segSync('hpiOnB', esf.hpi !== 'auto' && ins.hpi_active);
+    segSync('hpiOffB', esf.hpi !== 'auto' && !ins.hpi_active);
     // AFW row shows the PUMP run status (honest: the pumps really start); the
     // pipe-flow animation below keys off delivered flow — at TMI-2 the two
     // disagree behind the tagged-shut discharge valve.
     var afwPump = ins.afw_pump_running != null ? ins.afw_pump_running : ins.afw_active;
+    segSync('afwAutoB', esf.afw === 'auto');
+    segSync('afwStartB', esf.afw !== 'auto' && afwPump);
+    segSync('afwStopB', esf.afw !== 'auto' && !afwPump);
     txt('emAfw', afwPump ? 'RUNNING' : 'off'); vcls('emAfw', afwPump ? 'run' : 'dim');
     txt('emRhr', ins.rhr_active ? 'COOLING' : 'off'); vcls('emRhr', ins.rhr_active ? 'run' : 'dim');
     ['tabHpi', 'tabAfw', 'tabRhr'].forEach(function (f, i) {

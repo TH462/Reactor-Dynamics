@@ -2018,3 +2018,26 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   accumulator check stays red as the documented blowdown-model gap (tuning target).
   Gates: pwr 14/14, campaign 36/36·1313, ops 52/66 (same set), synoptic 55/55, manual
   regenerated + procedures 20/21.
+- **2026-07-15 — ESF AUTO/MAN arms + AFW throttle (stage 4).** Kernel §12: per-plant
+  `esf_systems` data ({id,label,commands}); actuation defs carry `arm:'hpi'|'afw'` and evaluate
+  only while armed; a non-`_internal` command listed on a system flips it to MANUAL (the
+  plant's own actuations are exempt — the stage-2 `_internal` flag pays off); `set_esf_auto`
+  re-arms AND clears that system's `actuationFired` latches so a STANDING condition re-fires
+  (the point of re-arming). State in `automation.esf` (snapshot + save; absent = armed).
+  **How each PWR auto is implemented:** HPI/LPI AUTO = armed for the 11.03 MPa actuation —
+  no controller needed, flow modulates physically along the merged pump curve; AFW AUTO =
+  armed for the 20 % SG-level pump start, and delivery = capacity × operator throttle
+  (`set_afw_flow`, new) × a built-in proportional LEVEL HOLD (full flow below
+  afw_level_target 20 %, tapering to zero across afw_level_band 8 %) — this REPLACES the old
+  hard `level < 20` cutoff with the same equilibrium minus the chatter, which is why every
+  TMI-2/LOFW scenario passed unchanged (campaign 36/36); CVCS make-up stays engine-internal
+  (`set_cvcs_auto`) surfaced as the cvcs_makeup channel — migrating a working 50 Hz
+  mass-balance loop buys nothing. **Deviation from plan:** the proposed `afw_level` PID
+  channel was dropped — the engine-side proportional hold at the AFW target does the same
+  job scenario-safely with zero new moving parts; a nominal-level AFW program is a v2 knob.
+  New fields: true `afw_flow_normalized`, control `afw_throttle_pct`. Synoptic: HPI/LPI and
+  AFW segs got real Auto lamps (snapshot.automation.esf) + an AFW throttle set-box;
+  `eccs-auto` is no longer a no-op. Gates: m4 13/13 (arm/disarm/refire + throttle probes),
+  pwr 14/14, campaign 36/36, ops 52/66 (same), synoptic 55/55, e2e 24/25, manual regenerated
+  (set_afw_flow / set_esf_auto entries; stale fast-forward wording in the Automate entry
+  fixed), procedures 20/21.
