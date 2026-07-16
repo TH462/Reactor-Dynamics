@@ -142,6 +142,47 @@ T.push(test('ESF AUTO/MAN arms — operator action disarms; re-arm re-fires a st
   ck('throttle command disarmed AFW', s.layer.getAutomationState().esf.afw, s.layer.getAutomationState().esf.afw === 'manual', 'manual');
 }));
 
+T.push(test('NIS startup net — conditioned SR trip, P-6 switch interlocks, blockable trips + P-10', function (ck) {
+  // Condition-gated SR trip: fires on high counts only while the detector is energized.
+  var s = new Stack('hot_zero_power');
+  s.run(1);
+  ck('SR energized at HZP', s.ts().sr_energized, s.ts().sr_energized === true, 'true');
+  ck('SR counting the source floor', s.ts().sr_counts_cps.toFixed(0), s.ts().sr_counts_cps > 100, '> 100 cps');
+  // P-6 (a): can't de-energize the SR until the IR is on scale — at HZP the IR
+  // IS on scale (8.3e-9 A), so securing it is permitted.
+  var r = s.cmd({ action: 'set_sr_detector', on: false });
+  ck('SR secure permitted at HZP (IR on scale)', r && r.type, !(r && r.type === 'blocked'), 'not blocked');
+  ck('SR de-energized', s.ts().sr_energized, s.ts().sr_energized === false, 'false');
+  s.cmd({ action: 'set_sr_detector', on: true });
+  // Stick the SR instrument past its 1e5 cps trip → scram (energized).
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'source_range', mode: 'stuck', value: 2e5 });
+  s.run(1);
+  ck('SR high flux scrams while energized', s.layer.rps.last_trip_reason, s.layer.rps.scrammed === true, 'scrammed');
+  // Same reading with the detector OFF: the condition gates the trip.
+  var s2 = new Stack('hot_zero_power');
+  s2.run(1);
+  s2.cmd({ action: 'set_sr_detector', on: false });
+  s2.cmd({ action: 'set_instrument_failure', instrument_id: 'source_range', mode: 'stuck', value: 2e5 });
+  s2.run(1);
+  ck('no SR trip with the detector secured', String(s2.layer.rps.scrammed), s2.layer.rps.scrammed === false, 'false');
+
+  // Blockable trips: a plant AT POWER starts with the startup trips blocked.
+  var p = new Stack('hot_full_power');
+  p.run(1);
+  ck('at-power lineup: IR + PR-25 blocked', JSON.stringify(p.layer.getRpsState().trip_blocks),
+    p.layer.tripBlocks.ir_high === true && p.layer.tripBlocks.pr_low_setpoint === true, 'both blocked');
+  ck('no spurious trip at 100 %', String(p.layer.rps.scrammed), p.layer.rps.scrammed === false, 'false');
+  // Unblocking the PR low setpoint at 100 % → it fires (the trip is real).
+  p.cmd({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: false });
+  p.run(1);
+  ck('unblocked PR-25 trips at power', p.layer.rps.last_trip_reason, p.layer.rps.scrammed === true, 'scrammed');
+  // P-10 gate: below 10 % the block command is refused; and blocks auto-reinstate.
+  var q = new Stack('hot_zero_power');
+  q.run(1);
+  var rb = q.cmd({ action: 'set_trip_block', trip_id: 'ir_high', blocked: true });
+  ck('trip block refused below P-10', rb && rb.type, rb && rb.type === 'blocked', 'blocked');
+}));
+
 T.push(test('AFW throttle + level hold — delivered flow scales and tapers (engine)', function (ck) {
   var s = new Stack('hot_full_power');
   var es = s.engine.s, sg = s.engine.cfg.steam_generator;

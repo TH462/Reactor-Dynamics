@@ -99,7 +99,22 @@
     this.esfAuto = {};
     var esf = this.config.esf_systems || [];
     for (var ei = 0; ei < esf.length; ei++) this.esfAuto[esf[ei].id] = true;
+    // Manual trip blocks (§13): trip id → true while blocked (P-10 gated).
+    // A plant AT POWER starts with the blockable startup trips already blocked
+    // (the real at-power lineup — they were blocked at P-10 on the way up);
+    // auto-reinstate re-arms them the moment power falls below the permissive.
+    this.tripBlocks = this._initialTripBlocks();
   }
+
+  ControlLayer.prototype._initialTripBlocks = function () {
+    var blocks = {};
+    var ins = (this.engine && this.engine.getInstruments) ? this.engine.getInstruments() : {};
+    if (this._permissiveSatisfied(ins)) {
+      var tps = this.config.trips || [];
+      for (var ti = 0; ti < tps.length; ti++) if (tps[ti].blockable && tps[ti].id) blocks[tps[ti].id] = true;
+    }
+    return blocks;
+  };
 
   // Precompute alarm lifecycle slots and lo/lo_lo escalation pairs (§5).
   ControlLayer.prototype._buildAlarmModel = function () {
@@ -135,6 +150,7 @@
       case 'set_auto_channel':         return this.setAutoChannel(command.channel_id, command.engaged);
       case 'set_auto_setpoint':        return this.setAutoSetpoint(command.channel_id, command.value);
       case 'set_esf_auto':             return this.setEsfAuto(command.system, command.auto);
+      case 'set_trip_block':           return this.setTripBlock(command.trip_id, command.blocked);
       case 'set_instrument_failure':
       case 'clear_instrument_failure': return this.engine.applyCommand(command);
     }
@@ -231,11 +247,19 @@
   };
 
   // Responsibility 1 — trips (§3). Any firing scrams; reads instruments (HR1)
-  // except the documented __true_flow__ exception.
+  // except the documented __true_flow__ exception. Extensions (§13):
+  //   condition  — the trip evaluates only while the condition holds (e.g. the
+  //                SR high-flux trip only while the detector is energized);
+  //   blockable  — the trip can be manually blocked (set_trip_block) while the
+  //                config's trip_block_permissive is satisfied (P-10); blocks
+  //                AUTO-CLEAR (reinstate) when the permissive drops.
   ControlLayer.prototype._evalTrips = function (ins) {
     var trips = this.config.trips || [];
+    this._autoReinstateTripBlocks(ins);
     for (var i = 0; i < trips.length; i++) {
       var t = trips[i];
+      if (t.condition && !this._evaluateCondition(t.condition)) continue;
+      if (t.blockable && t.id && this.tripBlocks[t.id]) continue;
       var value = (t.instrument === '__true_flow__')
         ? this.engine.getTrueState().pump_flow_pct / 100   // HR1 exception: no flow instrument
         : ins[t.instrument];
@@ -245,6 +269,41 @@
         this._sendInternal({ action: 'scram' });          // descends through interception (ATWS-aware)
       }
     }
+  };
+
+  ControlLayer.prototype._permissiveSatisfied = function (ins) {
+    var perm = this.config.trip_block_permissive;
+    if (!perm) return true;
+    return crossed(ins[perm.instrument], perm.direction, perm.setpoint);
+  };
+
+  // Westinghouse auto-reinstate: below the at-power permissive every manual
+  // trip block clears itself — the startup safety net re-arms on the way down.
+  ControlLayer.prototype._autoReinstateTripBlocks = function (ins) {
+    if (!this._anyTripBlocks()) return;
+    if (!this._permissiveSatisfied(ins)) this.tripBlocks = {};
+  };
+  ControlLayer.prototype._anyTripBlocks = function () {
+    for (var k in this.tripBlocks) return true;
+    return false;
+  };
+
+  ControlLayer.prototype.setTripBlock = function (tripId, blocked) {
+    var trips = this.config.trips || [], t = null;
+    for (var i = 0; i < trips.length; i++) if (trips[i].id === tripId && trips[i].blockable) { t = trips[i]; break; }
+    if (!t) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown or unblockable trip', received: tripId };
+    if (blocked) {
+      if (!this._permissiveSatisfied(this.lastInstruments)) {
+        return { type: 'blocked', code: 'INTERLOCK',
+                 message: this.register === 'industry'
+                   ? 'TRIP BLOCK REFUSED: at-power permissive (P-10) not satisfied.'
+                   : 'Trip block refused — the plant is below the at-power permissive; the startup trips stay armed until power is high enough (P-10).' };
+      }
+      this.tripBlocks[tripId] = true;
+    } else {
+      delete this.tripBlocks[tripId];
+    }
+    return null;
   };
 
   // Responsibility 2 — engineered-safety actuation (§4). Each issues a command
@@ -309,6 +368,9 @@
         if (cmd.action === 'rod_start' && !(cmd.direction > 0)) continue;
         if (cmd.action === 'rod_nudge' && !(cmd.steps > 0)) continue;
       }
+      // Parameter predicate (§13): block only a specific form of the command
+      // (e.g. only set_sr_detector {on:false} — de-energizing — is P-6 gated).
+      if (il.blocks_when && cmd[il.blocks_when.field] !== il.blocks_when.equals) continue;
       return il;
     }
     return null;
@@ -317,7 +379,10 @@
   ControlLayer.prototype._actuationCommand = function (act, isReset) {
     var cmd = { action: isReset ? act.reset_action : act.action };
     if (isReset) { if (act.reset_active !== undefined) cmd.active = act.reset_active; }
-    else { if (act.active !== undefined) cmd.active = act.active; }
+    else {
+      if (act.active !== undefined) cmd.active = act.active;
+      if (act.params) for (var k in act.params) cmd[k] = act.params[k];   // general parameter carry (§13)
+    }
     return cmd;
   };
 
@@ -394,7 +459,8 @@
   };
 
   ControlLayer.prototype.getRpsState = function () {
-    return { scrammed: this.rps.scrammed, last_trip_reason: this.rps.last_trip_reason };
+    return { scrammed: this.rps.scrammed, last_trip_reason: this.rps.last_trip_reason,
+             trip_blocks: Object.assign({}, this.tripBlocks) };
   };
 
   ControlLayer.prototype.getSnapshotSections = function () {
@@ -772,7 +838,8 @@
       ch[c.def.id] = { engaged: c.engaged, sp: c.sp, spEff: c.spEff, I: c.I, lastAct: c.lastAct,
                        lastSent: c.lastSent, note: c.note, bangMode: c.bangMode, pvF: c.pvF, rate: c.rate };
     }
-    return { t: this._autoT, acc: this._autoAcc, channels: ch, esf: Object.assign({}, this.esfAuto) };
+    return { t: this._autoT, acc: this._autoAcc, channels: ch, esf: Object.assign({}, this.esfAuto),
+             trip_blocks: Object.assign({}, this.tripBlocks) };
   };
 
   ControlLayer.prototype._loadAutomation = function (au) {
@@ -798,6 +865,9 @@
     for (var id in this.esfAuto) {
       this.esfAuto[id] = (au && au.esf && id in au.esf) ? !!au.esf[id] : true;   // absent = armed (the safe default)
     }
+    // Absent in an old save → re-derive the at-power lineup from the restored
+    // instruments (a pre-NIS save at full power must not insta-trip on load).
+    this.tripBlocks = (au && au.trip_blocks) ? Object.assign({}, au.trip_blocks) : this._initialTripBlocks();
   };
 
   // -------------------------------------------------------------- save / restore

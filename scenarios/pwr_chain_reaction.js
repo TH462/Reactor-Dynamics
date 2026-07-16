@@ -24,6 +24,11 @@
     initial_state: 'hot_zero_power',
     mode: 'guided',
     description: 'Take the core critical with your own hands — and learn why it is a balance, not a switch.',
+    // The instructor sets the board: the source-range counter is secured for
+    // this first lesson (its high-flux trip at 1e5 cps would end the climb at
+    // ~0.02 % power — the SR→IR handoff is a later skill; the startup ops
+    // procedure and the manual teach it). P-6 permits this at HZP.
+    setup_commands: [{ action: 'set_sr_detector', on: false }],
     beats: [
 
       { id: 'intro',
@@ -74,8 +79,8 @@
           { type: 'delay', value: 10.0 },
         ] },
         commentary: {
-          learning: 'Subcritical again — the families of fissions are dying out faster than they are born, and power is sliding back down toward that quiet source-fed floor. One honest note: a real control room watches a startup on dedicated source-range and intermediate-range detectors; this simulator shows you the same physics on a single wide-range meter. You have now seen the full heartbeat: source → critical → rise → shutdown.',
-          industry: 'Negative SUR confirmed; power decaying to the subcritical floor. Model note: source/intermediate/power ranges are collapsed into one wide-range channel here — the physics (1/M, period, SUR) is unchanged. Startup fundamentals complete.',
+          learning: 'Subcritical again — the families of fissions are dying out faster than they are born, and power is sliding back down toward that quiet source-fed floor. One honest note: a real startup is watched on dedicated source-range and intermediate-range detectors, with a handoff between them on the way up — this plant has both (the NIS block on the Power card), and I secured the source-range counter for you before this lesson so its protective trip would not cut your climb short. The full by-the-book startup, handoff included, is in the operating procedures. You have now seen the full heartbeat: source → critical → rise → shutdown.',
+          industry: 'Negative SUR confirmed; power decaying to the subcritical floor. Note: the SR counter was de-energized pre-lesson (its 1e5 cps high-flux trip sits at ~0.02 % power); the SR→IR handoff is covered in the startup procedure. Startup fundamentals complete.',
         },
         speed: 1,
         level_complete: {

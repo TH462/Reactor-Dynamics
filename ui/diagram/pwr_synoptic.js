@@ -362,6 +362,16 @@
       row('Leg ΔT', 'dt', { hl: 'gHotLeg gColdLeg', hint: 'Hot-leg minus cold-leg temperature — proportional to core power at flow.' }) +
       row('Reactivity ρ', 'rho', { ov: 1, hint: 'Net reactivity (physics overlay) — not a plant instrument.' }) +
       row('Period', 'period', { ov: 1, hint: 'Reactor period (physics overlay) — not a plant instrument.' }) +
+      // Nuclear instrumentation (startup ranges): SR counts + IR chamber current,
+      // the SR high-voltage switch (P-6 gated), and the startup-trip block lamps.
+      '<div class="g-section-title" data-scanner-hint="Nuclear instrumentation — the startup detector ranges. Source Range counts, Intermediate Range chamber current, and the startup-trip blocks.">NIS</div>' +
+      row('Source range', 'nisSr', { hint: 'Source Range (SR) counter, counts per second (log detector). Energized at shutdown/startup; secure it once the Intermediate Range is on scale (P-6) — its high-flux trip at 1e5 cps sits at ~0.02 % power.' }) +
+      '<div class="ctl"><span class="k">SR detector</span>' + seg([{ l: 'On', act: 'sr-on', f: 'srOnB' }, { l: 'Off', act: 'sr-off', f: 'srOffB' }],
+        'Source-range detector high voltage. P-6 interlocks: cannot de-energize until the IR is on scale (or you\'d go blind), cannot re-energize at high flux (detector protection).') + '</div>' +
+      row('Intermediate rng', 'nisIr', { hint: 'Intermediate Range (IR) compensated ion chamber, amperes (log). On scale from ~1e-10 A (P-6); tops out ~1e-3 A ≈ 12 % power — the power range takes over from there.' }) +
+      '<div class="ctl"><span class="k">Trip blocks</span>' + seg([
+        { l: 'IR', act: 'block-ir', f: 'blkIrB' }, { l: 'PR-25', act: 'block-pr25', f: 'blkPrB' },
+      ], 'Startup-net trip blocks (toggle) — block the IR high-flux and power-range low-setpoint (25 %) trips during the ascent. Permitted only above P-10 (10 % power); both auto-reinstate when power drops back below it.') + '</div>' +
       '<div class="subcool-wrap" id="pwSubcoolBar" data-hl="pwTapSubcool gHotLeg" data-scanner-hint="Subcooling margin — distance to saturation. Green &gt; 11 °C, yellow 11–0, red below 0 (boiling). THE TMI diagnostic.">' +
       '<div class="subcool-bar">' +
       '<div class="zone g" style="top:0;height:58%"></div><div class="zone y" style="top:58%;height:22%"></div><div class="zone r" style="top:80%;height:20%"></div>' +
@@ -907,6 +917,21 @@
       var per = ts.reactor_period_s;
       txt('period', (per == null || !isFinite(per) || Math.abs(per) > 9999) ? '∞' : per.toFixed(0) + ' s');
     }
+    // ---- NIS (startup ranges) ----
+    var srOn = !!ins.sr_energized;
+    if (!srOn) { txt('nisSr', 'de-energized'); vcls('nisSr', 'dim'); }
+    else {
+      var cps = ins.source_range || 0;
+      txt('nisSr', (cps >= 1e4 ? cps.toExponential(1) : Math.round(cps)) + ' cps');
+      vcls('nisSr', cps > 5e4 ? 'warn' : 'run');
+    }
+    segSync('srOnB', srOn); segSync('srOffB', !srOn);
+    var irA = ins.intermediate_range;
+    txt('nisIr', irA != null ? irA.toExponential(1) + ' A' : '—');
+    vcls('nisIr', irA != null && irA > 1e-10 ? 'run' : 'dim');
+    var blocks = (s.rps_state && s.rps_state.trip_blocks) || {};
+    segSync('blkIrB', !!blocks.ir_high); segSync('blkPrB', !!blocks.pr_low_setpoint);
+
     renderSubcool(s, learning, overlay);
     renderChips(s, learning);
 

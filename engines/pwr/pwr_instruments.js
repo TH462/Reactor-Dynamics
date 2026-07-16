@@ -46,7 +46,9 @@
     accumulator_flow: 'accumulator_flow_normalized', steam_dump_valve: 'steam_dump_valve_pct',
     primary_leak_flow: 'leak_flow',
     startup_rate: 'startup_rate_dpm',   // SUR rate meter (appended — PRNG order preserved)
-    porv_tailpipe_temp: 'porv_tailpipe_temp_c',   // PORV discharge/quench-tank line temp (appended last — PRNG order preserved)
+    porv_tailpipe_temp: 'porv_tailpipe_temp_c',   // PORV discharge/quench-tank line temp (appended — PRNG order preserved)
+    source_range: 'sr_counts_cps',          // SR proportional counter, cps (log; appended)
+    intermediate_range: 'ir_amps',          // IR compensated ion chamber, amps (log; appended last)
   };
 
   function PWRInstruments(config, seed) {
@@ -81,12 +83,15 @@
   };
 
   // Initialize every reading to the (noise-free) true value — no startup transient.
+  // Log instruments (spec.log — the source/intermediate-range nuclear detectors)
+  // keep their LAG BUFFER in log10 domain, so lag and noise act per decade.
   PWRInstruments.prototype.reset = function (trueState, extras) {
     this.lagged = {}; this.reading = {}; this.failed = {};
     for (var id in SOURCE) {
       var v = trueState[SOURCE[id]];
-      this.lagged[id] = v;
-      this.reading[id] = v;
+      var spec = this.specs[id];
+      this.lagged[id] = (spec && spec.log) ? Math.log10(Math.max(v, spec.range[0])) : v;
+      this.reading[id] = (spec && spec.log) ? clip(v, spec.range[0], spec.range[1]) : v;
     }
     this.reading.porv_indicator = (extras && extras.porv_commanded_open) ? 'open' : 'closed';
     this.reading.subcooling_margin = T_sat(this.reading.primary_pressure) - this.reading.tavg;
@@ -113,13 +118,24 @@
         trueVal = trueVal + this.swell_factor * (extras.power_rate || 0);
       }
 
-      // First-order lag (§8.1).
-      var alpha = dt / (spec.lag + dt);
-      this.lagged[id] += alpha * (trueVal - this.lagged[id]);
+      var val;
+      if (spec.log) {
+        // Log-scale detector (SR/IR): lag + noise act on log10(value) — a
+        // decade of lag is a decade at any level, noise sigma is in decades.
+        var lv = Math.log10(Math.max(trueVal, spec.range[0]));
+        if (this.lagged[id] == null || !isFinite(this.lagged[id])) this.lagged[id] = lv;
+        var alphaL = dt / (spec.lag + dt);
+        this.lagged[id] += alphaL * (lv - this.lagged[id]);
+        val = clip(Math.pow(10, this._gauss(this.lagged[id], spec.noise)), spec.range[0], spec.range[1]);
+      } else {
+        // First-order lag (§8.1).
+        var alpha = dt / (spec.lag + dt);
+        this.lagged[id] += alpha * (trueVal - this.lagged[id]);
 
-      // Noise (§8.2), then range peg (§8.3).
-      var val = this._gauss(this.lagged[id], spec.noise);
-      val = clip(val, spec.range[0], spec.range[1]);
+        // Noise (§8.2), then range peg (§8.3).
+        val = this._gauss(this.lagged[id], spec.noise);
+        val = clip(val, spec.range[0], spec.range[1]);
+      }
 
       // Apply an active instrument failure (§8.7) over the top.
       val = this._applyFailure(id, val, trueVal, spec, dt);
@@ -148,7 +164,9 @@
     switch (f.mode) {
       case 'stuck': return f.value;                      // frozen at injection value
       case 'drift': f.offset += f.rate * dt; return trueVal + f.offset; // sim-time correct (HR6)
-      case 'noisy': return clip(this._gauss(this.lagged[id], spec.noise * f.scale), spec.range[0], spec.range[1]);
+      case 'noisy': return spec.log
+        ? clip(Math.pow(10, this._gauss(this.lagged[id], spec.noise * f.scale)), spec.range[0], spec.range[1])
+        : clip(this._gauss(this.lagged[id], spec.noise * f.scale), spec.range[0], spec.range[1]);
       case 'dead':  return spec.range[0];                // bottoms out
       default:      return val;
     }

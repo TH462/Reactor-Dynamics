@@ -125,6 +125,14 @@
         var h = H('hot_zero_power');
         var t0 = h.ts();
         ck('starts subcritical', fmt(t0.reactivity_pcm, 0) + ' pcm', t0.reactivity_pcm < -500, '< -500');
+        // Phase 0: the NIS lineup — confirm the source-range counter is alive
+        // (counts at the source-driven floor), verify the intermediate range is
+        // on scale (P-6), then SECURE the SR before the ascent: its high-flux
+        // trip (1e5 cps ≈ 0.02 % power) would otherwise end the startup.
+        ck('SR counting at the subcritical floor', fmt(t0.sr_counts_cps, 0) + ' cps', t0.sr_counts_cps > 100 && t0.sr_counts_cps < 2000, '~500 cps');
+        ck('IR on scale (P-6 satisfied)', t0.ir_amps.toExponential(1) + ' A', t0.ir_amps > 1e-10, '> 1e-10 A');
+        h.cmd('set_sr_detector', { on: false });
+        ck('SR secured for the ascent (handoff to IR)', h.ts().sr_energized, h.ts().sr_energized === false, 'false');
         // Phase 1: bulk withdrawal toward criticality at normal speed.
         h.cmd('rod_start', { group_id: 'control_rods', direction: 1, speed: 'normal' });
         var t1 = h.runUntil(function (ts) { return ts.reactivity_pcm > -300; }, 600);

@@ -36,6 +36,13 @@
       cautions: ['Withdraw in small increments — target SUR ≤ 1 decade per minute (DPM) and reactor period ≥ 30 s. (This trainer\'s single coarse bank will read ~2 DPM at the crossing; a real plant creeps up with fine control.)', 'This trainer lumps all control rods into one coarse group with only Doppler feedback, so power OVERSHOOTS its settling point on the way up. A real plant approaches criticality far more finely (fine rod control + a neutron source, held just-critical).'],
       steps: [
         { text: 'Confirm the plant is subcritical and hot: reactivity below zero, average coolant temperature (Tavg) ≈ 304 °C, primary pressure ≈ 15.4 MPa.', control: '(observe)', target: 'subcritical, hot', hold: 2, acc: { p: 'reactivity_pcm', op: '<', v: 0 } },
+        { text: 'Check the nuclear instruments (NIS block, Power & Reactivity card): the Source Range (SR) counter reads a few hundred counts per second — the neutron source keeping the core visible — and the Intermediate Range (IR) chamber is on scale (above 1e-10 A, the P-6 permissive).',
+          control: '(observe)', target: 'SR counting, IR on scale', hold: 2,
+          acc: { p: 'sr_counts_cps', op: '>', v: 100 } },
+        { text: 'Perform the SR→IR handoff: with the IR on scale, switch the Source Range detector OFF (SR Off on the NIS block). The SR high-flux trip sits at 1e5 counts (~0.02 % power) — leaving the counter energized ends the startup with a reactor trip. The IR carries the indication from here.',
+          control: 'SR detector', target: 'SR de-energized',
+          cmd: { action: 'set_sr_detector', on: false }, hold: 2,
+          acc: { p: 'sr_energized', op: '<', v: 1 } },
         { text: 'On the Primary view: keep Rod Speed at Norm and hold Control Bank → Withdraw in bursts toward criticality; drop to Slow for the final approach once the Startup Rate (SUR) needle stirs. Power begins to climb once you pass critical; keep the SUR low and the reactor period long.',
           control: 'Control Bank', target: 'SUR ≤ 1 DPM, reactor period ≥ 30 s',
           note: 'Norm speed until SUR responds, then Slow to creep up on criticality; release Withdraw to stop motion. Watch SUR on Tools → Training (Reactivity Computer) or Primary → Reactor Core. From fully inserted rods this takes two to three minutes at Norm — Slow the whole way takes over ten. If the period drops below 30 s, stop or insert — the reactor is accelerating.',

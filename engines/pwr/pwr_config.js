@@ -288,11 +288,15 @@
       primary_leak_flow: { lag: 0.2, noise: 0.002, range: [0, 1.0] },    // LOCA/SGTR break flow, normalized (Animation HR1)
       startup_rate:      { lag: 2.0, noise: 0.02,  range: [-5, 10] },    // SUR (dpm) — startup-range rate meter; feeds the rod-withdrawal interlock
       porv_tailpipe_temp:{ lag: 10.0, noise: 1.5,  range: [0, 250] },    // PORV discharge/quench-tank line temperature — the unalarmed indication that reveals a stuck-open PORV (TMI-2)
+      // Nuclear instrumentation (startup ranges) — LOG-scale detectors (lag +
+      // noise act per decade; noise sigma in decades). Appended to SOURCE last.
+      source_range:      { lag: 0.5, noise: 0.02,  range: [1, 1e6],     log: true },   // proportional counter, counts/s; de-energized reads the range floor
+      intermediate_range:{ lag: 0.5, noise: 0.02,  range: [1e-11, 2e-3], log: true },  // compensated ion chamber, AMPS — calibrated band tops out ~1e-3 A (≈12 % power, "maxes out around 10 %"); physical over-range to 2e-3 so the high-flux trip (1.67e-3 ≈ 20 %) is reachable
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running', 'hpi_active', 'station_blackout',
-               'steam_demand_low', 'rod_at_limit',
+               'steam_demand_low', 'rod_at_limit', 'sr_energized',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
                'afw_active', 'afw_pump_running', 'rhr_active', 'accumulators_discharging',
                'condenser_cooling_available', 'safety_relief_active'],
@@ -305,10 +309,21 @@
     // the starting power: at 50 % the control bank sits visibly deeper than at
     // full power (the balance of the trim is boron, re-solved per state). Falls
     // back to rods.control_op_position_pct when omitted.
+    // ------------------------------------------ nuclear instrumentation scaling
+    // Detector currents/counts are proportional to normalized power P (1.0 = rated).
+    //   SR:  cps  = k_sr · P  → HZP source equilibrium (P = 1e-6) reads ~500 cps;
+    //        full scale 1e6 cps at ~0.2 % power (secure the SR before then).
+    //   IR:  amps = k_ir · P  → full scale 1e-3 A at ~12 % power ("maxes out ~10 %");
+    //        the P-6 threshold 1e-10 A ≈ 1.2e-8 normalized power.
+    nis: {
+      k_sr: 5.0e8,                 // cps per unit normalized power [tune]
+      k_ir: 8.333e-3,              // amps per unit normalized power [tune]
+    },
+
     initial_states: {
       hot_full_power: { power: 1.0,  scrammed: false, rod_op_pct: 92.0 },
       hot_zero_power: { power: 1e-6, scrammed: false, subcritical: true, rod_op_pct: 0.0,
-        at_operating_temp: true },   // Hot standby: NOP T/P, control bank fully inserted
+        at_operating_temp: true, sr_on: true },   // Hot standby: NOP T/P, control bank fully inserted, SR energized
       '50_percent':   { power: 0.5,  scrammed: false, rod_op_pct: 78.0 },
     },
   };

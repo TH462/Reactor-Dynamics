@@ -233,6 +233,7 @@ snapshot = {
     "rps_state": {
         "scrammed":          bool,
         "last_trip_reason":  string | null,
+        "trip_blocks":       { "<trip_id>": true },   // manually blocked startup trips (PWR: ir_high, pr_low_setpoint; P-10 gated, auto-reinstated below it)
     },
     "automation": {                        // the Control Layer's channel runtime (per-plant channels as data)
         "channels": [ {
@@ -303,6 +304,7 @@ physical-quantity vocabulary.
     "steam_pressure_mpa": number,     // secondary/SG pressure (surfaced for the UI loop diagram)
     "condenser_cooling_available": bool,   // condenser heat-sink availability (also §8.8 status)
     "reactivity_pcm": float, "startup_rate_dpm": float, "reactor_period_s": float,  // reactivity proxies — reactivity computer / SUR / period; display/derived only, NEVER fed to trips (HR1). The PWR carries a startup_rate INSTRUMENT (lagged/noisy twin of the SUR proxy) that feeds the rod-withdrawal interlock — an M4 command block with its own annunciator, not a protection trip.
+    "sr_counts_cps": float, "ir_amps": float, "sr_energized": bool,   // nuclear instrumentation: Source Range counts (0 when de-energized; feeds the log instrument source_range + the 1e5 cps startup trip), Intermediate Range chamber current (feeds intermediate_range), SR switch state
     // Synoptic additions (governor / ECCS / CVCS true flows — feed the §8.8 instruments; additive):
     "governor_valve_pct": number,     // turbine admission valve position, 0–100 %
     "charging_flow_actual": float,    // TRUE CVCS charging (0 with pump off; AUTO-modulated) — feeds instruments.charging_flow, ≠ setpoint
@@ -466,6 +468,8 @@ set_cvcs_auto       { active }                 // CVCS auto make-up (holds inven
 set_boron_adjust    { rate }                   // CVCS boron: + borate, − dilute, 0 hold (ppm/s; needs charging pump)
 open_block_valve                               // PORV block/isolation valve (B1)
 close_block_valve                              // isolates a stuck-open PORV
+set_sr_detector     { on }                     // Source Range detector high voltage (P-6 interlocked both ways)
+set_trip_block      { trip_id, blocked }       // block/unblock a blockable startup trip (P-10 gated; auto-reinstates below)
 set_steam_dump      { mode: "auto"|"open"|"closed" | pct }   // turbine bypass to condenser (B2)
 ```
 **RBMK plant control:**

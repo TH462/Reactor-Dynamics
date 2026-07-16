@@ -17,6 +17,8 @@
   'use strict';
 
   // Trips — { instrument, direction, setpoint, action }. Any trip scrams.
+  // Optional: id (referenced by set_trip_block), condition (evaluates only
+  // while it holds), blockable (manually blockable above the P-10 permissive).
   var PWR_TRIPS = [
     { instrument: 'power_range',      direction: 'high', setpoint: 120.0,  action: 'scram' }, // % rated
     { instrument: 'tavg',             direction: 'high', setpoint: 335.0,  action: 'scram' }, // °C
@@ -25,7 +27,27 @@
     { instrument: 'pzr_level',        direction: 'low',  setpoint: 12.0,   action: 'scram' }, // %
     { instrument: 'sg_level',         direction: 'low',  setpoint: 12.0,   action: 'scram' }, // %
     { instrument: '__true_flow__',    direction: 'low',  setpoint: 0.25,   action: 'scram' }, // HR1 exception
+    // Startup nuclear-instrumentation trips (the startup safety net):
+    // SR high flux at shutdown — 1e5 cps ≈ 0.02 % power; live only while the
+    // detector is energized (secure the SR during the SR→IR handoff or trip).
+    { id: 'sr_high',         instrument: 'source_range',       direction: 'high', setpoint: 1.0e5,
+      action: 'scram', condition: 'sr_energized' },
+    // IR high flux — chamber current equivalent to ~20 % power (the chamber's
+    // calibrated band tops out ~12 %; the trip sits in its over-range headroom).
+    // The startup net ladders P-10 (10 %) < IR trip (20 %) < PR low setpoint
+    // (25 %): stop the ascent above P-10, block both, then continue — miss the
+    // blocks and the net trips you. Auto-reinstated below P-10.
+    { id: 'ir_high',         instrument: 'intermediate_range', direction: 'high', setpoint: 1.67e-3,
+      action: 'scram', blockable: true },
+    // Power-range LOW SETPOINT — 25 % (vs the 120 % full-power trip); the
+    // at-power backstop of the startup net, blockable above P-10.
+    { id: 'pr_low_setpoint', instrument: 'power_range',        direction: 'high', setpoint: 25.0,
+      action: 'scram', blockable: true },
   ];
+
+  // P-10, the nuclear at-power permissive: manual trip blocks are allowed only
+  // above 10 % power-range power, and auto-clear (reinstate) below it.
+  var PWR_TRIP_BLOCK_PERMISSIVE = { instrument: 'power_range', direction: 'high', setpoint: 10.0 };
 
   // Auto-actuation — reads instruments, issues commands (which pass through M4
   // interception, so a stuck PORV defeats the reclose).
@@ -43,6 +65,10 @@
     // reactor is tripped and depressurized into the RHR band.
     { instrument: 'primary_pressure', direction: 'low',  setpoint: 3.45,
       action: 'set_rhr', active: true, condition: 'rps_scrammed' },
+    // SR auto re-energize: when the IR falls below P-6 (deep shutdown) the
+    // source-range detector comes back on so the operator keeps a count rate.
+    { instrument: 'intermediate_range', direction: 'low', setpoint: 1.0e-10,
+      action: 'set_sr_detector', params: { on: true } },
   ];
 
   // Alarms — every alarm setpoint is less extreme than the matching trip so the
@@ -57,6 +83,7 @@
     { id: 'pzr_pressure_lolo', instrument: 'primary_pressure', direction: 'low',     setpoint: 12.41, priority: 'critical', panel: 'A', label_learning: 'Pressurizer Pressure Very Low',   label_industry: 'PZR PRESS LO LO' },
     { id: 'porv_open',         instrument: 'porv_indicator',   direction: 'is_open', setpoint: null,  priority: 'warning',  panel: 'A', label_learning: 'Pressure Relief Valve Open',      label_industry: 'PORV OPEN' },
     { id: 'sur_high',          instrument: 'startup_rate',     direction: 'high',    setpoint: 2.0,   priority: 'caution',  panel: 'A', label_learning: 'Startup Rate High',               label_industry: 'SUR HI' },
+    { id: 'sr_high_flux',      instrument: 'source_range',     direction: 'high',    setpoint: 5.0e4, priority: 'caution',  panel: 'A', label_learning: 'Source Range Count Rate High',    label_industry: 'SR HI FLUX' },
     { id: 'subcooling_low',    instrument: 'subcooling_margin', direction: 'low',    setpoint: 11.1,  priority: 'warning',  panel: 'A', label_learning: 'Low Subcooling Margin',           label_industry: 'LO SUBCOOL' },
     { id: 'subcooling_lost',   instrument: 'subcooling_margin', direction: 'low',    setpoint: 0.0,   priority: 'critical', panel: 'A', label_learning: 'Subcooling Lost — Coolant Boiling', label_industry: 'SUBCOOL LOST' },
     { id: 'pzr_level_high',    instrument: 'pzr_level',        direction: 'high',    setpoint: 75.0,  priority: 'caution',  panel: 'A', label_learning: 'Pressurizer Level High',          label_industry: 'PZR LVL HI' },
@@ -126,6 +153,18 @@
       on_engage: { action: 'rod_stop_all' },
       message_learning: 'Rod withdrawal blocked — the reactor is already speeding up too fast (startup rate high). Let the rate settle below 1.5 DPM, then continue. You can always insert.',
       message_industry: 'ROD WITHDRAWAL BLOCK: SUR ≥ 2.5 DPM. Withdrawal inhibited until SUR < 1.5 DPM. Insertion available.' },
+    // P-6 pair on the source-range detector switch (blocks_when picks the
+    // guarded form of set_sr_detector):
+    // (a) can't DE-energize the SR until the IR is on scale — you'd go blind.
+    { instrument: 'intermediate_range', direction: 'low', setpoint: 1.0e-10,
+      blocks: ['set_sr_detector'], blocks_when: { field: 'on', equals: false },
+      message_learning: 'Source-range detector stays on — the intermediate range is not reading yet (below P-6). Switching it off now would leave you blind at low power.',
+      message_industry: 'SR DE-ENERGIZE BLOCKED: IR < 1e-10 A (P-6 not satisfied).' },
+    // (b) can't RE-energize the SR at high flux — it would damage the counter.
+    { instrument: 'intermediate_range', direction: 'high', setpoint: 1.0e-6, clears_below: 1.0e-10,
+      blocks: ['set_sr_detector'], blocks_when: { field: 'on', equals: true },
+      message_learning: 'Source-range detector stays off — the flux is far above its range (past P-6); energizing the counter here would burn it out.',
+      message_industry: 'SR ENERGIZE BLOCKED: IR ≥ 1e-6 A — flux above SR detector limits.' },
   ];
 
   // Automation channels (kernel §11) — operator-selectable controllers the
@@ -214,6 +253,7 @@
 
   var PWR_PROTECTION = {
     trips: PWR_TRIPS,
+    trip_block_permissive: PWR_TRIP_BLOCK_PERMISSIVE,
     actuations: PWR_ACTUATIONS,
     alarms: PWR_ALARMS_A.concat(PWR_ALARMS_B),
     alarms_panel_a: PWR_ALARMS_A,

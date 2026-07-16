@@ -6,7 +6,7 @@ var VIEW_CONTROLS = {
   pwr: {
     primary: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'Boron (Reactivity) — CVCS', 'Charging Pump (CVCS)', 'Letdown Valve (CVCS)',
       'CVCS Inventory Control', 'Pressurizer Heaters (PZR)', 'Pressurizer Spray (PZR)', 'Reactor Coolant Pumps (RCP)',
-      'Relief Valve (PORV)', 'PORV Block Valve', 'Decay-Heat Removal (DHR)'],
+      'Relief Valve (PORV)', 'PORV Block Valve', 'Decay-Heat Removal (DHR)', 'SR detector'],
     secondary: ['Feed Pumps', 'AFW', 'Feed Reg', 'Steam Dump', 'MSIV', 'Turbine Load', 'Main Breaker'],
     scram: 'SCRAM',
   },
@@ -30,7 +30,7 @@ var VIEW_CONTROLS = {
 
 /* Per-step: which view hosts the control group (scram = status-bar button, not pdCtlRow). */
 var STEP_UI = {
-  pwr_startup: [{ i: 1, view: 'primary', control: 'Control Bank' }],
+  pwr_startup: [{ i: 2, view: 'primary', control: 'SR detector' }, { i: 3, view: 'primary', control: 'Control Bank' }],
   pwr_raise_power: [{ i: 0, view: 'primary', control: 'Rod Speed' }, { i: 1, view: 'secondary', control: 'Turbine Load' }],
   pwr_lower_power: [{ i: 0, view: 'secondary', control: 'Turbine Load' }, { i: 1, view: 'primary', control: 'Rod Speed' }],
   pwr_pressure_control: [{ i: 1, view: 'primary', control: 'Pressurizer Spray (PZR)' }],

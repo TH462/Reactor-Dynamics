@@ -244,6 +244,13 @@
     s._power_rate = s._power_rate + a * (raw_rate - s._power_rate);
     s._prev_power_pct = s.power_pct;
 
+    // 14b. Nuclear instrumentation sources (startup ranges): detector signals
+    // proportional to normalized power. The SR counter only counts while its
+    // high voltage is energized (set_sr_detector).
+    var nis = this.cfg.nis;
+    s.sr_counts_cps = s.sr_energized ? nis.k_sr * s._P : 0;
+    s.ir_amps = nis.k_ir * s._P;
+
     // 15–16. Update instruments from the new true state (last), incl. derived
     // subcooling margin from instrument P and T.
     this.instruments.update(this.getTrueState(), dt, this._instrExtras());
@@ -262,6 +269,7 @@
       station_blackout: s.station_blackout,
       steam_demand_low: s.turbine_tripped || s.turbine_demand_frac < 0.05,
       rod_at_limit: this._controlGroup().at_insertion_limit,
+      sr_energized: !!s.sr_energized,
       // §8.8 synoptic status — copied into instruments.reading each step (HR1).
       afw_active: s.afw_active,
       afw_pump_running: !!s.afw_pump_demand,
@@ -310,6 +318,8 @@
       load_mode: s.load_mode, load_target_mwe: s.load_target_mwe,
       load_imbalance_mwe: s.load_imbalance_mwe, sg_imbalance_active: s.sg_imbalance_active,
       reactivity_pcm: (s._rho || 0) * 1e5, startup_rate_dpm: sur, reactor_period_s: period,
+      // Nuclear instrumentation (startup ranges): SR counts (0 when de-energized), IR chamber current.
+      sr_counts_cps: s.sr_counts_cps || 0, ir_amps: s.ir_amps || 0, sr_energized: !!s.sr_energized,
       // §8.8 instrument sources — TRUE sim flows/positions (indications ≠ command setpoints):
       charging_flow_actual: (s.charging_pump_running === false ? 0 : s.charging_flow),
       letdown_flow_actual: s.letdown_flow, steam_dump_valve_pct: s.steam_dump_frac * 100,
@@ -363,6 +373,7 @@
       governor_valve_pct: s.governor_valve_pct,   // turbine admission valve (engine-driven; read-only)
       hpi_active: s.hpi_active, rhr_active: s.rhr_active,
       afw_throttle_pct: (s.afw_throttle_frac != null ? s.afw_throttle_frac : 1.0) * 100,
+      sr_energized: !!s.sr_energized,   // SR detector switch position
       pumps: [{ id: 'rcp', running: s.pump_running, flow_pct: s.pump_flow_pct }],
     };
   };
@@ -478,6 +489,12 @@
       case 'set_afw_flow':
         // AFW throttle: scales delivered AFW flow (0–100 % of capacity).
         s.afw_throttle_frac = clip((cmd.pct != null ? cmd.pct : 100) / 100, 0, 1);
+        break;
+      case 'set_sr_detector':
+        // Source-range detector high voltage on/off. The P-6 interlock (control
+        // layer) refuses de-energizing until the IR is on scale, and refuses
+        // re-energizing at high flux (detector protection).
+        s.sr_energized = !!cmd.on;
         break;
       case 'set_steam_dump':
         // mode: 'auto' (null override) | 'open' (full) | 'closed' | a manual pct.
@@ -732,6 +749,10 @@
       accumulators_discharging: false, accumulator_flow_normalized: 0,
       _accum_remaining: cfg.emergency.accumulator_capacity, accumulator_volume_pct: 100,
       flow_frac: 1.0, pump_flow_pct: 100, pump_running: true, station_blackout: false,
+      // Nuclear instrumentation: SR energized only where the state says so (startup lineup).
+      sr_energized: !!init.sr_on,
+      sr_counts_cps: init.sr_on ? cfg.nis.k_sr * P0 : 0,
+      ir_amps: cfg.nis.k_ir * P0,
 
       sg_level_pct: cfg.steam_generator.sg_level_nominal,
       steam_pressure_mpa: cfg.steam_generator.steam_p_rated,
@@ -861,6 +882,10 @@
     if (s.afw_flow_normalized == null) s.afw_flow_normalized = 0;
     // Feed pump (replaced direct feedwater-flow demand).
     if (s.feed_pump_speed_pct == null) s.feed_pump_speed_pct = (s.feedwater_demand_frac || 0) * 100;
+    // Nuclear instrumentation (SR/IR detectors).
+    if (s.sr_energized == null) s.sr_energized = false;
+    if (s.sr_counts_cps == null) s.sr_counts_cps = 0;
+    if (s.ir_amps == null) s.ir_amps = 0;
   };
 
   RD.PWREngine = PWREngine;

@@ -2093,3 +2093,38 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   as SG blowdown/ambient losses — the lumped model has no other outlet); all primary-side
   effects unaffected. Gates: pwr 14/14, autoctl 20/20, campaign 36/36, ops 52/66 with the
   ORIGINAL failing set restored, manual regenerated (normal-value baselines shift ~0.2 °C).
+- **2026-07-16 — Source-range + intermediate-range nuclear instrumentation (stage 8, user
+  direction; setpoints researched from the NRC Westinghouse Tech Manuals).** Engine: detector
+  signals proportional to normalized power (`nis.k_sr 5e8` cps/unit → HZP source floor ~500
+  cps, SR full scale 1e6 cps ≈ 0.2 %; `nis.k_ir 8.333e-3` A/unit → IR calibrated band tops
+  ~1e-3 A ≈ 12 % — the user's "maxes out around 10 %" — with physical over-range to 2e-3);
+  `sr_energized` switch state (`set_sr_detector`, HZP starts energized); new true fields
+  sr_counts_cps / ir_amps / sr_energized. Instruments `source_range` (cps) and
+  `intermediate_range` (AMPS — the units question) appended LAST to the SOURCE map, with a
+  new **log-domain instrument mode** (`spec.log`: lag buffer + noise sigma live in log10 —
+  a decade of lag is a decade at any level). Kernel §13 extensions (all data-driven): trips
+  take `id`/`condition`/`blockable`, config `trip_block_permissive` (P-10 = power_range ≥
+  10 %), `set_trip_block` (refused below P-10, register-aware), **auto-reinstate** (blocks
+  self-clear when the permissive drops — Westinghouse convention), interlock `blocks_when`
+  param predicates, actuation `params` carry. PWR net: SR high-flux scram 1e5 cps
+  (condition: sr_energized), IR high-flux scram 1.67e-3 A ≈ 20 % (blockable; the ladder
+  P-10 10 % < IR 20 % < PR-25 gives a playable block window — the sim's power COASTS after
+  rod motion stops, so a 10–12 % window was a trap; deviation from the plan's "IR trip at
+  ~10 %" documented), PR LOW-SETPOINT scram 25 % (blockable), P-6 interlock pair on the SR
+  switch (can't secure until IR ≥ 1e-10 A; can't re-energize above 1e-6 A), SR auto
+  re-energize actuation when IR < P-6, `sr_high_flux` caution alarm 5e4 cps. **At-power
+  lineup:** a layer built (or an old save loaded) with the permissive already satisfied
+  starts with the blockable trips BLOCKED — real plants block them at P-10 on the way up;
+  without this every at-power state insta-tripped (probed). M7's "each trip warns first"
+  invariant now exempts `blockable` trips (their warning IS the blocking procedure; a
+  matching IR/PR alarm would sit lit at power). **The SR→IR handoff is now a real skill:**
+  ops "by-the-book startup" gained the handoff phase (verify SR floor + IR on scale, secure
+  the SR) and PASSES; the "startup yank" ABUSE scenario now trips on SR high flux — ops
+  52/66 → **53/66** (the trip fixed a tuning target). pwr_chain_reaction (Act I novice
+  mission, rods-only gate) secures the SR in setup_commands and its stale "one wide-range
+  meter" honesty notes now describe the real SR/IR + handoff; the manual's
+  approach-to-criticality procedure gained NIS-check + handoff steps (STEP_UI/audit map
+  updated). Synoptic: NIS block on Power & Reactivity (SR cps / IR amps readouts, SR On|Off,
+  IR + PR-25 block toggles with lamps from rps_state.trip_blocks). Gates: pwr 14/14,
+  m4 14/14 (conditioned/blockable/P-6/P-10 probes), m7 OK, campaign 36/36, procedures 20/21,
+  audit PASS, synoptic 55/55.

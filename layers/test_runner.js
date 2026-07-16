@@ -202,6 +202,10 @@
     var noWarn = [];
     trips.forEach(function (t) {
       if (t.instrument === '__true_flow__') return; // documented exception (no instrument-based alarm)
+      // BLOCKABLE startup trips (IR high flux, PR low setpoint) are exempt: the
+      // "warning" is the blocking procedure itself (block above P-10 before
+      // ascending), and a matching alarm would sit permanently lit at power.
+      if (t.blockable) return;
       var warns = alarms.some(function (a) {
         return a.instrument === t.instrument && a.direction === t.direction && a.setpoint != null &&
           (t.direction === 'high' ? a.setpoint < t.setpoint : a.setpoint > t.setpoint);

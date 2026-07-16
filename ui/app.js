@@ -1696,6 +1696,11 @@
     'eccs-auto': function () { cmd({ action: 'set_esf_auto', system: 'hpi', auto: true }); },
     'afw-auto': function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); },
     'afw-flow-set': function () { cmd({ action: 'set_afw_flow', pct: inputVal('afwFlowSet') }); },
+    // NIS: SR detector switch (P-6 interlocked) + startup-trip block toggles (P-10 gated)
+    'sr-on': function () { cmd({ action: 'set_sr_detector', on: true }); },
+    'sr-off': function () { cmd({ action: 'set_sr_detector', on: false }); },
+    'block-ir': function () { var b = (latest && latest.rps_state && latest.rps_state.trip_blocks) || {}; cmd({ action: 'set_trip_block', trip_id: 'ir_high', blocked: !b.ir_high }); },
+    'block-pr25': function () { var b = (latest && latest.rps_state && latest.rps_state.trip_blocks) || {}; cmd({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: !b.pr_low_setpoint }); },
     'heat-on': function () { cmd({ action: 'set_heater', power_pct: 100 }); }, 'heat-off': function () { cmd({ action: 'set_heater', power_pct: 0 }); },
     'heat-auto': function () { cmd({ action: 'set_heater', auto: true }); }, 'heat-set': function () { cmd({ action: 'set_heater', power_pct: inputVal('heatSet') }); },
     'spray-open': function () { cmd({ action: 'set_spray', open: true }); }, 'spray-auto': function () { cmd({ action: 'set_spray', auto: true }); },

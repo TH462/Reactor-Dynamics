@@ -72,6 +72,8 @@ var CTL = {
   set_hpi:           { g: 'Safety', c: 'HPI/LPI (Emergency Injection)', u: 'Emergency injection — one merged High-Pressure/Low-Pressure Injection (HPI/LPI) system. Flow follows a two-segment pump curve: a high-head trickle against operating pressure, high volume once the plant depressurizes below the low-head shutoff (~4.5 MPa).', cmd: 'set_hpi', p: '{active}' },
   set_afw:           { g: 'Secondary', c: 'AFW (Aux Feedwater)', u: 'Auxiliary Feedwater (AFW) — the backup water supply to the Steam Generators when main feedwater is lost. Delivered flow = capacity × throttle × a built-in level hold (full flow below the hold target, tapering to zero just above it).', cmd: 'set_afw', p: '{active}' },
   set_afw_flow:      { g: 'Secondary', c: 'AFW Throttle', u: 'Throttles Auxiliary Feedwater delivery, 0–100 % of capacity. Throttling by hand takes the AFW system off its automatic arm (press Auto to re-arm).', cmd: 'set_afw_flow', p: '{pct}' },
+  set_sr_detector:   { g: 'Reactivity', c: 'Source Range Detector On/Off', u: 'Energizes/secures the Source Range (SR) startup counter. P-6 interlocked: it cannot be switched OFF until the Intermediate Range is on scale (you would go blind), and cannot be switched ON at high flux (detector protection). Its 1e5 cps high-flux trip protects a startup — secure it during the SR→IR handoff.', cmd: 'set_sr_detector', p: '{on}' },
+  set_trip_block:    { g: 'Safety', c: 'Startup Trip Blocks (IR / PR low setpoint)', u: 'Blocks the Intermediate Range high-flux trip or the Power Range LOW-SETPOINT (25 %) trip during a power ascension. Permitted only above the P-10 at-power permissive (10 %); both blocks auto-reinstate when power falls back below it.', cmd: 'set_trip_block', p: '{trip_id, blocked}' },
   set_esf_auto:      { g: 'Safety', c: 'ESF Auto Re-arm (HPI/LPI, AFW)', u: 'Returns an engineered-safety system to AUTOMATIC: the system re-arms for its auto-actuation, and a still-standing start condition fires immediately. Any manual action on the system (on/off/throttle) puts it in MANUAL.', cmd: 'set_esf_auto', p: '{system, auto}' },
   set_dhr:           { g: 'Safety', c: 'Decay-Heat Removal', u: 'Decay-Heat Removal (DHR / RHR) — removes leftover heat after shutdown once cool and depressurized.', cmd: 'set_dhr', p: '{active}' },
   set_boron_adjust:  { g: 'Reactivity', c: 'Boron — Borate / Dilute (CVCS)', u: 'Chemical & Volume Control System (CVCS) boron: Borate raises boron (lowers power), Dilute lowers it (raises power). Needs the charging pump running.', cmd: 'set_boron_adjust', p: '{rate}' },
@@ -103,7 +105,7 @@ var CONTROL_SETS = {
   pwr: ['rod_start', 'rod_nudge', 'rod_stop', 'rod_stop_all', 'scram', 'set_boron_adjust', 'set_charging_pump',
         'set_charging_flow', 'set_letdown_flow', 'set_cvcs_auto',
         'set_heater', 'set_spray', 'open_porv', 'close_porv', 'open_block_valve', 'close_block_valve',
-        'set_feed_pump_speed', 'feed_pump_nudge', 'set_afw', 'set_afw_flow', 'set_esf_auto', 'set_steam_demand', 'set_steam_dump', 'set_hpi', 'set_dhr', 'automate'],
+        'set_feed_pump_speed', 'feed_pump_nudge', 'set_afw', 'set_afw_flow', 'set_esf_auto', 'set_steam_demand', 'set_steam_dump', 'set_hpi', 'set_dhr', 'set_sr_detector', 'set_trip_block', 'automate'],
   rbmk: ['rod_start', 'rod_nudge', 'rod_stop', 'rod_stop_all', 'ar_rods', 'manual_scram', 'scram', 'set_channel_flow',
          'set_feedwater_flow', 'set_turbine_load', 'set_steam_dump', 'set_eccs', 'set_eps_bypass', 'automate'],
   bwr: ['rod_start', 'rod_nudge', 'rod_stop', 'rod_stop_all', 'scram', 'set_recirc_flow', 'set_feedwater_flow',
@@ -114,6 +116,8 @@ var CONTROL_SETS = {
 // Indications: n=display name, m=what it measures (integrated), u=unit.
 var IND = {
   power_range:       { n: 'Reactor Power', m: 'Reactor power (from neutron flux), as a percent of rated.', u: '%' },
+  source_range:      { n: 'Source Range (SR) Counts', m: 'Startup neutron counter, counts per second on a log scale — the shutdown/startup flux indication. Reads the range floor when de-energized.', u: 'cps' },
+  intermediate_range:{ n: 'Intermediate Range (IR) Current', m: 'Compensated ion chamber current, amperes on a log scale — carries the indication from the SR handoff up to ~10 % power.', u: 'A' },
   tavg:             { n: 'Average Coolant Temp (Tavg)', m: 'Average primary-coolant temperature.', u: '°C' },
   thot:             { n: 'Hot-Leg Temp (Thot)', m: 'Coolant temperature leaving the core.', u: '°C' },
   tcold:            { n: 'Cold-Leg Temp (Tcold)', m: 'Coolant temperature returning to the core.', u: '°C' },
@@ -218,7 +222,7 @@ var GLOSSARY_BASE = [
   ['Setpoint (SP)', 'The value an automatic controller holds its parameter at. Automate channels capture the current reading when engaged; edit it to maneuver on automatic.'],
 ];
 var GLOSSARY = {
-  pwr: [['PWR', 'Pressurized Water Reactor.'], ['PZR', 'Pressurizer — sets primary pressure.'], ['SG', 'Steam Generator.'], ['PORV', 'Power-Operated Relief Valve.'], ['HPI/LPI', 'High-/Low-Pressure Injection — one merged emergency-injection system with a two-segment pump curve.'], ['ECCS', 'Emergency Core Cooling System (here, the merged HPI/LPI plus passive accumulators).'], ['AFW', 'Auxiliary Feedwater.'], ['CVCS', 'Chemical & Volume Control System (boron & inventory).'], ['MTC', 'Moderator Temperature Coefficient.'], ['RCP', 'Reactor Coolant Pump.'], ['DHR / RHR', 'Decay-Heat / Residual-Heat Removal.'], ['Tavg', 'Average coolant temperature.']],
+  pwr: [['PWR', 'Pressurized Water Reactor.'], ['PZR', 'Pressurizer — sets primary pressure.'], ['SG', 'Steam Generator.'], ['PORV', 'Power-Operated Relief Valve.'], ['HPI/LPI', 'High-/Low-Pressure Injection — one merged emergency-injection system with a two-segment pump curve.'], ['ECCS', 'Emergency Core Cooling System (here, the merged HPI/LPI plus passive accumulators).'], ['AFW', 'Auxiliary Feedwater.'], ['CVCS', 'Chemical & Volume Control System (boron & inventory).'], ['MTC', 'Moderator Temperature Coefficient.'], ['RCP', 'Reactor Coolant Pump.'], ['DHR / RHR', 'Decay-Heat / Residual-Heat Removal.'], ['Tavg', 'Average coolant temperature.'], ['SR', 'Source Range — the startup neutron counter (counts per second).'], ['IR', 'Intermediate Range — compensated ion chamber (amperes) carrying the indication to ~10 % power.'], ['P-6', 'Permissive: IR on scale (≥ 1e-10 A) — allows securing the SR detector.'], ['P-10', 'Nuclear at-power permissive (10 %) — allows blocking the startup trips; they auto-reinstate below it.']],
   rbmk: [['RBMK', 'The Chernobyl-type graphite-moderated reactor.'], ['ORM', 'Operating Reactivity Margin — shutdown capacity in hand (counts the MANUAL bank; the AR group is excluded).'], ['AR', 'Automatic Regulator — the small, fine-stepped rod group that holds power automatically; switchable to manual (as the Chernobyl operators had it).'], ['MCP', 'Main Circulation Pump.'], ['AZ-5', 'The emergency-shutdown button.'], ['EPS', 'Emergency Protection System (auto-trips).'], ['ECCS', 'Emergency Core Cooling System — injects to the channels on a rupture / loss of coolant.'], ['Void', 'Steam bubbles in the coolant; in an RBMK they raise power.'], ['Positive scram effect', 'Pre-1986 rods briefly added reactivity as they began inserting.']],
   bwr: [['BWR', 'Boiling Water Reactor.'], ['RCIC', 'Reactor Core Isolation Cooling (steam-driven, no AC).'], ['IC', 'Isolation Condenser — passive heat sink (condenses steam, returns condensate; no AC). Fukushima Unit 1.'], ['HPCI', 'High-Pressure Coolant Injection (steam-driven, no AC).'], ['ADS', 'Automatic Depressurization System.'], ['LPCI', 'Low-Pressure Coolant Injection.'], ['LPCS', 'Low-Pressure Core Spray.'], ['SLC', 'Standby Liquid Control (boron; failure-to-scram backup).'], ['SRV', 'Safety/Relief Valve.'], ['MSIV', 'Main Steam Isolation Valve.'], ['Recirc', 'Recirculation flow — the main BWR power control.']],
 };
@@ -254,6 +258,7 @@ var TS_LABELS = {
   subcooling_c: 'Subcooling margin', core_inventory_pct: 'Primary coolant inventory', boron_ppm: 'Boron concentration',
   porv_open: 'PORV open (actual)', porv_stuck: 'PORV stuck', porv_tailpipe_temp_c: 'PORV tailpipe temperature',
   hpi_active: 'Emergency injection (HPI/LPI) delivering', hpi_flow_normalized: 'HPI/LPI flow (of combined rated)',
+  sr_counts_cps: 'Source Range counts', ir_amps: 'Intermediate Range current', sr_energized: 'SR detector energized',
   afw_active: 'Auxiliary Feedwater (AFW) delivering', afw_pump_running: 'AFW pump running',
   fuel_damaged: 'Fuel damaged', pump_running: 'Reactor Coolant Pump (RCP) running', pump_flow_pct: 'RCP flow',
   steam_demand_mwe: 'Steam demand', condenser_cooling_available: 'Condenser cooling available',
