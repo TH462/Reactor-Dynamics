@@ -2128,3 +2128,26 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   IR + PR-25 block toggles with lamps from rps_state.trip_blocks). Gates: pwr 14/14,
   m4 14/14 (conditioned/blockable/P-6/P-10 probes), m7 OK, campaign 36/36, procedures 20/21,
   audit PASS, synoptic 55/55.
+- **2026-07-16 — 1/M startup plot (stage 9, user direction).** `ui/panels/one_over_m.js`:
+  the app's first DRAGGABLE window (`RD.makeDraggable(el, handle)` exported for reuse —
+  pointer-capture on the titlebar, viewport-clamped, z-index 250 above the modals' 210).
+  Procedure as specified: PLOT at shutdown captures the source-range INSTRUMENT (HR1) as
+  baseline C₀ (plotted as 1.0 at the current rod position); each later PLOT adds
+  (rod fraction withdrawn, C₀/C); ≥2 points → least-squares line extrapolated to y=0 with a
+  criticality marker + "predicted criticality ≈ N% withdrawn (≈ step S)" readout, shown only
+  when the slope is negative and the crossing lies beyond the last point (else "insufficient
+  trend"). Refusals: SR de-energized, no reading, counter pegged (>9e5 cps). SESSION TOOL by
+  design — not in save files (an operator's scratchpad, not plant state); self-clears on
+  plant change, reset, or a rewind past the last captured point (subscribes to broadcasts).
+  Opened from the NIS block's "1/M plot" button. **Layout finding:** the NIS block made the
+  Power card overflow under the Rod card (absolutely-placed margin cards) — fixed by (a)
+  compacting NIS to three lines inside a COLLAPSIBLE section (auto-opens when the SR is
+  energized = a startup lineup; user toggle wins) and (b) a generic
+  `.plant-card:hover { z-index: 5 }` hover-raise so an expanded card's controls stay
+  reachable over a neighbor. Verified interactively (playwright-core over headless Edge,
+  13 checks): open/drag/close, SR-off + pegged refusals, DOM-driven fit math (synthetic
+  startup predicts 60.0 % exactly), clear semantics; synoptic harness 55/55. Real-physics
+  probe: from HZP the source-range 1/M line falls 1.000 → 0.207 across the withdrawal and the
+  mid-approach all-points fit predicts 21.2 % withdrawn vs 27.6 % true criticality —
+  conservative-early and converging as points land, the genuine 1/M phenomenon (rod worth is
+  S-shaped); an un-secured SR correctly TRIPPED the same startup at criticality.

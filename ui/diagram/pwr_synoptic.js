@@ -27,6 +27,7 @@
   var prev = { rcp: null, xe: null, xeT: null, xeSlope: 0, fuelSeen: false };
   var emTabUser = null, emTabAuto = 'hpi';
   var secUser = {};            // section key -> user open/closed override
+  var nisUser = false, nisAutoOpen = null;   // NIS section: user toggle wins over the startup auto-open
   var armTimer = null;
   var resizeObs = null;
 
@@ -362,16 +363,21 @@
       row('Leg ΔT', 'dt', { hl: 'gHotLeg gColdLeg', hint: 'Hot-leg minus cold-leg temperature — proportional to core power at flow.' }) +
       row('Reactivity ρ', 'rho', { ov: 1, hint: 'Net reactivity (physics overlay) — not a plant instrument.' }) +
       row('Period', 'period', { ov: 1, hint: 'Reactor period (physics overlay) — not a plant instrument.' }) +
-      // Nuclear instrumentation (startup ranges): SR counts + IR chamber current,
-      // the SR high-voltage switch (P-6 gated), and the startup-trip block lamps.
-      '<div class="g-section-title" data-scanner-hint="Nuclear instrumentation — the startup detector ranges. Source Range counts, Intermediate Range chamber current, and the startup-trip blocks.">NIS</div>' +
-      row('Source range', 'nisSr', { hint: 'Source Range (SR) counter, counts per second (log detector). Energized at shutdown/startup; secure it once the Intermediate Range is on scale (P-6) — its high-flux trip at 1e5 cps sits at ~0.02 % power.' }) +
-      '<div class="ctl"><span class="k">SR detector</span>' + seg([{ l: 'On', act: 'sr-on', f: 'srOnB' }, { l: 'Off', act: 'sr-off', f: 'srOffB' }],
-        'Source-range detector high voltage. P-6 interlocks: cannot de-energize until the IR is on scale (or you\'d go blind), cannot re-energize at high flux (detector protection).') + '</div>' +
-      row('Intermediate rng', 'nisIr', { hint: 'Intermediate Range (IR) compensated ion chamber, amperes (log). On scale from ~1e-10 A (P-6); tops out ~1e-3 A ≈ 12 % power — the power range takes over from there.' }) +
-      '<div class="ctl"><span class="k">Trip blocks</span>' + seg([
+      // Nuclear instrumentation (startup ranges) — a collapsible section so the
+      // power card stays compact at power (it auto-opens at a startup lineup).
+      '<div class="csec" data-sec="nis" id="pwNisSec">' +
+      '<div class="sec-h" data-syn="nissec" data-scanner-hint="Nuclear instrumentation — the startup detector ranges: Source Range counts, Intermediate Range chamber current, the SR switch (P-6), the startup-trip blocks (P-10), and the 1/M plot."><span>NIS · startup ranges</span><span class="sec-v" data-f="nisHead"></span><span class="car">▸</span></div>' +
+      '<div class="sec-b">' +
+      '<div class="ctl" data-scanner-hint="Source Range (SR) counter, counts per second (log detector), and its high-voltage switch. Energized at shutdown/startup; secure it once the Intermediate Range is on scale (P-6) — its high-flux trip at 1e5 cps sits at ~0.02 % power. P-6 interlocks guard the switch both ways.">' +
+      '<span class="k">SR</span><span class="v mono" data-f="nisSr">—</span>' +
+      seg([{ l: 'On', act: 'sr-on', f: 'srOnB' }, { l: 'Off', act: 'sr-off', f: 'srOffB' }]) + '</div>' +
+      row('Intermediate rng', 'nisIr', { hint: 'Intermediate Range (IR) compensated ion chamber, amperes (log). On scale from ~1e-10 A (P-6); calibrated band tops out ~1e-3 A ≈ 12 % power — the power range takes over from there.' }) +
+      '<div class="ctl" data-scanner-hint="Startup-net trip blocks — block the IR high-flux and power-range low-setpoint (25 %) trips during the ascent (permitted only above P-10, 10 %; auto-reinstate below it) — and the 1/M startup plot, the inverse-multiplication scratchpad for predicting the critical rod position.">' +
+      '<span class="k">Blocks</span>' + seg([
         { l: 'IR', act: 'block-ir', f: 'blkIrB' }, { l: 'PR-25', act: 'block-pr25', f: 'blkPrB' },
-      ], 'Startup-net trip blocks (toggle) — block the IR high-flux and power-range low-setpoint (25 %) trips during the ascent. Permitted only above P-10 (10 % power); both auto-reinstate when power drops back below it.') + '</div>' +
+      ]) +
+      '<button class="btn" data-act="one-over-m">1/M plot</button></div>' +
+      '</div></div>' +
       '<div class="subcool-wrap" id="pwSubcoolBar" data-hl="pwTapSubcool gHotLeg" data-scanner-hint="Subcooling margin — distance to saturation. Green &gt; 11 °C, yellow 11–0, red below 0 (boiling). THE TMI diagnostic.">' +
       '<div class="subcool-bar">' +
       '<div class="zone g" style="top:0;height:58%"></div><div class="zone y" style="top:58%;height:22%"></div><div class="zone r" style="top:80%;height:20%"></div>' +
@@ -607,6 +613,7 @@
     if (host) host.innerHTML = '';
     mounted = false; refs = {}; cardEls = {}; stage = null; svgEl = null; leadersEl = null;
     emTabUser = null; secUser = {};
+    nisUser = false; nisAutoOpen = null;
   }
 
   function buildSgTubes() {
@@ -709,6 +716,14 @@
       if (mtag && tagState.id && ctx) { ctx.cmd({ action: 'instructor_interact', interaction_id: tagState.id }); return; }
       var tab = e.target.closest('[data-syn="emtab"]');
       if (tab) { emTabUser = tab.getAttribute('data-tab'); setEmTab(emTabUser); drawLeaders(); return; }
+      var nsec = e.target.closest('[data-syn="nissec"]');
+      if (nsec) {
+        var nc = nsec.closest('.csec');
+        nc.classList.toggle('open');
+        nisUser = true;   // user choice wins over the startup auto-open
+        drawLeaders();
+        return;
+      }
       var sec = e.target.closest('[data-syn="sec"]');
       if (sec) {
         var key = sec.getAttribute('data-sec');
@@ -919,9 +934,9 @@
     }
     // ---- NIS (startup ranges) ----
     var srOn = !!ins.sr_energized;
+    var cps = ins.source_range || 0;
     if (!srOn) { txt('nisSr', 'de-energized'); vcls('nisSr', 'dim'); }
     else {
-      var cps = ins.source_range || 0;
       txt('nisSr', (cps >= 1e4 ? cps.toExponential(1) : Math.round(cps)) + ' cps');
       vcls('nisSr', cps > 5e4 ? 'warn' : 'run');
     }
@@ -931,6 +946,13 @@
     vcls('nisIr', irA != null && irA > 1e-10 ? 'run' : 'dim');
     var blocks = (s.rps_state && s.rps_state.trip_blocks) || {};
     segSync('blkIrB', !!blocks.ir_high); segSync('blkPrB', !!blocks.pr_low_setpoint);
+    // Header summary + startup auto-open (once, unless the user has toggled it).
+    txt('nisHead', srOn ? Math.round(cps) + ' cps' : (irA != null ? irA.toExponential(0) + ' A' : ''));
+    var nisSec = stage.querySelector('#pwNisSec');
+    if (nisSec && !nisUser && srOn !== nisAutoOpen) {
+      nisSec.classList.toggle('open', srOn);   // SR energized = a startup lineup → show the block
+      nisAutoOpen = srOn;
+    }
 
     renderSubcool(s, learning, overlay);
     renderChips(s, learning);
