@@ -1,5 +1,11 @@
 # M4 — Control & Failure Layer
 
+> **Layout + automation update (2026-07): see `M4b_control_layer.md`.** The machinery
+> now lives at `layers/control/control_kernel.js` (`RD.ControlLayer`) with per-plant
+> data modules `layers/control/{pwr,rbmk,bwr}_control.js`, and additionally runs the
+> operator-automation channel runtime (formerly `layers/auto_control.js`). The
+> semantics specified in THIS file are unchanged and remain authoritative.
+
 **Build this module from `CONTEXT.md` + this file alone.** No other module is required.
 This is the complete specification for the layer that sits directly above the physics engine:
 the plant's automation (reactor protection, engineered-safety actuation, alarms) and the

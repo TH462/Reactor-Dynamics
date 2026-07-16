@@ -105,7 +105,10 @@
   }
 
   // ------------------------------------------------- plant selection / reset (§6)
-  SimulationService.prototype.selectPlant = function (plantId, initialState, designVersion) {
+  // opts.noDefaults: skip the plant's normal automation lineup (engageDefaults) —
+  // instructed content (start_scenario / start_follow) starts from a clean board
+  // and applies its own authored auto_channels preset instead.
+  SimulationService.prototype.selectPlant = function (plantId, initialState, designVersion, opts) {
     var Ctor = engineCtor(plantId);
     if (!Ctor) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown plant_id', received: plantId };
 
@@ -115,8 +118,8 @@
     // 1. Construct the engine and extract its protection config.
     this.engine = new Ctor({ initial_state: initialState, design_version: designVersion || null, seed: this.seed });
     var config = this.engine.getProtectionConfig();
-    // 2. (Re)build the Control & Failure Layer for this plant (M4 holds no plant state).
-    this.layer = new RD.ControlFailureLayer(this.engine, config);
+    // 2. (Re)build the Control Layer for this plant (the kernel holds no plant state).
+    this.layer = new RD.ControlLayer(this.engine, config);
     // 3. Wire the Instructor slot to the new layer.
     if (this.instructor.connect) this.instructor.connect(this.layer);
     // 4. Initial state already loaded by the engine constructor; reset run state.
@@ -131,6 +134,8 @@
     // Restore the selected register into the rebuilt layer/instructor.
     this.layer.handleCommand({ action: 'set_register', value: this.activeRegister });
     if (this.instructor.setRegister) this.instructor.setRegister(this.activeRegister);
+    // The plant's normal automation lineup (e.g. the RBMK AR in AUTO at power).
+    if (!(opts && opts.noDefaults) && this.layer.engageDefaults) this.layer.engageDefaults();
 
     // Assemble + broadcast the initial snapshot so the UI renders the start state.
     var snap = this._assembleWithInstructor();
@@ -143,7 +148,13 @@
   SimulationService.prototype.tick = function () {
     if (!this.running || !this.engine) return null;
     var steps = this._stepsPerBroadcast();
-    for (var i = 0; i < steps; i++) this.engine.step(PHYSICS_DT);
+    for (var i = 0; i < steps; i++) {
+      // Automation channels run in-stack at physics rate (fixed sim-time
+      // cadence inside), reading the previous step's instruments — so
+      // controllers behave identically at any time acceleration.
+      if (this.layer.stepAutomation) this.layer.stepAutomation(PHYSICS_DT);
+      this.engine.step(PHYSICS_DT);
+    }
     this.layer.evaluate(this.engine.getInstruments());      // trips/actuations/alarms on the new readings (HR1)
     this.simTime += steps * PHYSICS_DT;
 
@@ -195,6 +206,15 @@
     var sp = i.consumeSpeedRequest ? i.consumeSpeedRequest() : null;
     if (sp != null) this.timeAcceleration = sp;
     return rewound;
+  };
+
+  // Authored automation preset (scenario.auto_channels / procedure.auto_channels):
+  // engage the listed channels after the content's plant reset.
+  SimulationService.prototype._applyAutoPreset = function (ids) {
+    if (!ids || !ids.length || !this.layer) return;
+    for (var i = 0; i < ids.length; i++) {
+      this.layer.handleCommand({ action: 'set_auto_channel', channel_id: ids[i], engaged: true });
+    }
   };
 
   var REWIND_CAP = 32;
@@ -261,6 +281,7 @@
       rps_state: this.layer.getRpsState(),
       alarms: this.layer.getAlarms(),
       active_failures: this.layer.getActiveFailures(),
+      automation: this.layer.getAutomationState ? this.layer.getAutomationState() : { channels: [] },
       instructor: this._instructorBlock(),
     };
   };
@@ -318,12 +339,15 @@
       case 'start_scenario': {
         var sc = RD.SCENARIOS ? RD.SCENARIOS[command.scenario_id] : null;
         if (!sc) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown scenario_id', received: command };
-        var reset = this.selectPlant(sc.plant_id, sc.initial_state, sc.design_version || null);
+        // Clean automation board (noDefaults), then the authored preset:
+        // a mission hands the player one or two controls, the rest go on auto.
+        var reset = this.selectPlant(sc.plant_id, sc.initial_state, sc.design_version || null, { noDefaults: true });
         if (reset && reset.type === 'error') return reset;
         if (this.instructor.load) this.instructor.load(sc);
         if (sc.setup_commands) {
           for (var si = 0; si < sc.setup_commands.length; si++) this.handleCommand(sc.setup_commands[si]);
         }
+        this._applyAutoPreset(sc.auto_channels);
         var snap = this._assembleWithInstructor();
         this._broadcast(snap);
         return snap;
@@ -345,10 +369,13 @@
           return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown procedure_id', received: command };
         }
         if (proc.from) {
-          var reset2 = this.selectPlant(this.activePlantId, proc.from, this.activeDesignVersion);
+          var reset2 = this.selectPlant(this.activePlantId, proc.from, this.activeDesignVersion, { noDefaults: true });
           if (reset2 && reset2.type === 'error') return reset2;
+        } else if (this.layer.setAutoChannel) {
+          this.layer.setAutoChannel('all', false);   // clean board even without a plant reset
         }
         this.instructor.loadProcedure(proc, { procedure_id: proc.id, profile_key: key });
+        this._applyAutoPreset(proc.auto_channels);
         var fsnap = this._assembleWithInstructor();
         this._broadcast(fsnap);
         return fsnap;
@@ -437,7 +464,7 @@
     var Ctor = engineCtor(m.plant_id);
     // Reconstruct the right engine + config for this plant, then restore each layer.
     this.engine = new Ctor({ initial_state: 'hot_full_power', design_version: m.design_version || null, seed: this.seed });
-    this.layer = new RD.ControlFailureLayer(this.engine, this.engine.getProtectionConfig());
+    this.layer = new RD.ControlLayer(this.engine, this.engine.getProtectionConfig());
     if (this.instructor.connect) this.instructor.connect(this.layer);
 
     this.engine.loadState(state.engine);

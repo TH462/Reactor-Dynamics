@@ -234,6 +234,18 @@ snapshot = {
         "scrammed":          bool,
         "last_trip_reason":  string | null,
     },
+    "automation": {                        // the Control Layer's channel runtime (per-plant channels as data)
+        "channels": [ {
+            "id": string, "group": string, "label": string, "hint": string,
+            "kind": "mode" | "pid" | "rods" | "bang",
+            "engaged": bool,               // mode channels derive this from control_state (the plant's truth)
+            "setpoint": number | null,     // SI-internal; UI converts for display
+            "setpoint_meta": { "min", "max", "unit", "dp", "step", "dim" } | absent,
+            "pv": number | null,           // the channel's process variable (an instrument reading)
+            "note": string,                // controller status ("holding", "off — reactor scrammed", …)
+            "standby": bool
+        } ],
+    },
     "instructor": {
         "message":           string | null,
         "message_register":  string | null,   // "learning" | "industry"
@@ -480,9 +492,11 @@ set_steam_dump      { mode: "auto"|"open"|"closed" | pct }   // turbine bypass t
 **Shared plant control (all plants):**
 ```
 set_feed_coupled    { active }                 // re-couple feedwater to load (the init default;
-                                               // set_feedwater_flow uncouples). Issued by the operator-
-                                               // automation layer when fast-forward makes broadcast-rate
-                                               // level control impossible; not a player-facing control.
+                                               // set_feedwater_flow uncouples).
+set_auto_channel    { channel_id, engaged }    // engage/disengage a Control Layer automation channel
+                                               // (channel_id "all" = every channel). Engaging captures
+                                               // the setpoint from the current instrument reading.
+set_auto_setpoint   { channel_id, value }      // edit an engaged channel's setpoint (SI-internal units)
 ```
 **Failure injection:**
 ```

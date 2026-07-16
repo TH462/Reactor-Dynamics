@@ -40,6 +40,18 @@
     return false;
   }
 
+  function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
+  function rodGroup(ctx, fn) {
+    var gs = ctx.control_state && ctx.control_state.rod_groups || [];
+    for (var i = 0; i < gs.length; i++) if (gs[i].function === fn) return gs[i];
+    return null;
+  }
+  function rodGroupById(ctx, id) {
+    var gs = ctx.control_state && ctx.control_state.rod_groups || [];
+    for (var i = 0; i < gs.length; i++) if (gs[i].id === id) return gs[i];
+    return null;
+  }
+
   // Maps a value-bearing command to its parameter field (they differ by action).
   function valueFieldFor(action) {
     switch (action) {
@@ -66,6 +78,19 @@
     this._buildAlarmModel();
     this.actuationFired = (this.config.actuations || []).map(function () { return false; });
     this.interlockActive = (this.config.interlocks || []).map(function () { return false; });
+    // Automation channel runtime (§11): per-plant channel defs are config data.
+    this.channels = [];
+    this.byId = {};
+    this._autoT = 0;          // automation clock, sim-s since plant selection (saved)
+    this._autoAcc = 0;        // sim-s accumulated toward the next channel evaluation
+    this._internal = false;   // true while a channel/actuation output is descending
+    var chDefs = this.config.channels || [];
+    for (var ci = 0; ci < chDefs.length; ci++) {
+      var ch = { def: chDefs[ci], engaged: false, sp: null, spEff: null, I: 0, lastAct: null,
+                 lastSent: null, note: '', bangMode: 'idle', pvF: null, pvNow: null, rate: null };
+      this.channels.push(ch);
+      this.byId[chDefs[ci].id] = ch;
+    }
   }
 
   // Precompute alarm lifecycle slots and lo/lo_lo escalation pairs (§5).
@@ -99,9 +124,16 @@
       case 'clear_failure':            return this.clearFailure(command.failure_id);
       case 'clear_all_failures':       return this.clearAllFailures();
       case 'set_register':             this.register = command.value; return null;
+      case 'set_auto_channel':         return this.setAutoChannel(command.channel_id, command.engaged);
+      case 'set_auto_setpoint':        return this.setAutoSetpoint(command.channel_id, command.value);
       case 'set_instrument_failure':
       case 'clear_instrument_failure': return this.engine.applyCommand(command);
     }
+
+    // Manual override (§11): an OPERATOR command listed in a channel's
+    // manual_overrides disengages that channel — taking the control by hand
+    // kicks its automation to MAN (self-issued channel outputs are exempt).
+    if (!this._internal) this._manualOverrideScan(command);
 
     // Interlocks (§4b): condition-latched command blocks that read instruments
     // (HR1) and are pure config data (HR3) — e.g. the PWR rod-withdrawal block
@@ -200,7 +232,7 @@
       if (crossed(value, t.direction, t.setpoint) && !this.rps.scrammed) {
         this.rps.scrammed = true;
         this.rps.last_trip_reason = t.instrument + ' ' + t.direction;
-        this.handleCommand({ action: 'scram' });            // descends through interception (ATWS-aware)
+        this._sendInternal({ action: 'scram' });          // descends through interception (ATWS-aware)
       }
     }
   };
@@ -215,7 +247,7 @@
       var gateOk = !act.condition || this._evaluateCondition(act.condition);
       if (gateOk && crossed(value, act.direction, act.setpoint) && !this.actuationFired[i]) {
         this.actuationFired[i] = true;
-        this.handleCommand(this._actuationCommand(act, false));
+        this._sendInternal(this._actuationCommand(act, false));
       }
       // Reset when the value returns to the SAFE side of reset_below: below it
       // for a high-direction actuation, above it for a low one. (Was inverted —
@@ -225,7 +257,7 @@
         var safe = act.direction === 'high' ? value < act.reset_below : value > act.reset_below;
         if (safe) {
           this.actuationFired[i] = false;
-          if (act.reset_action) this.handleCommand(this._actuationCommand(act, true));
+          if (act.reset_action) this._sendInternal(this._actuationCommand(act, true));
         }
       }
     }
@@ -243,7 +275,7 @@
       if (!this.interlockActive[i]) {
         if (crossed(v, il.direction, il.setpoint)) {
           this.interlockActive[i] = true;
-          if (il.on_engage) this.handleCommand(il.on_engage);   // e.g. stop rods already in motion
+          if (il.on_engage) this._sendInternal(il.on_engage);   // e.g. stop rods already in motion
         }
       } else {
         var cleared = il.direction === 'high'
@@ -372,6 +404,338 @@
     return out;
   };
 
+  // ============================================================ automation (§11)
+  // The operator-automation channel runtime (formerly layers/auto_control.js, a
+  // UI-side synthetic operator stepped per broadcast). It runs INSIDE the
+  // control layer at a fixed sim-time cadence, so controllers behave identically
+  // at any time acceleration, and their state travels with the plant through
+  // save/restore and rewind. Channel definitions are per-plant DATA
+  // (config.channels — HR3); every controller reads INSTRUMENTS (HR1); every
+  // output descends through this.handleCommand, so failure interception and
+  // interlocks apply to automation exactly as to the operator (HR5) — a stuck
+  // sensor fools the automation just like it fools a human, which is the
+  // educational point.
+  //
+  // Channel kinds:
+  //   mode — passthrough toggle for automation the ENGINE carries (heater/spray
+  //          auto, CVCS make-up, steam-dump auto, load-follow). Engage/disengage
+  //          send the mode commands once; displayed state derives from
+  //          control_state, so the toggle follows the plant's truth.
+  //   pid  — PI controller on an instrument reading driving a setpoint command
+  //          (feedforward, bumpless transfer, anti-windup, deadband, min action
+  //          period + min output delta for a sparse command stream).
+  //   rods — discrete rod control: damped error → a bounded rod_nudge.
+  //   bang — boron trim (PWR): bang-bang with hysteresis on control-rod position.
+  //
+  // Channel-def callbacks (pv/ff/trim/isOn/engage/disengage/defaultOn/standby/
+  // init/sp.capture) receive a snapshot-shaped ctx assembled from the engine —
+  // { instruments, control_state, true_state, rps_state, metadata } — so the
+  // defs read the same vocabulary the UI does.
+  var AUTO_DT = 0.1;   // sim-s between channel evaluations (the 1× broadcast rate of the old UI-side layer)
+
+  ControlLayer.prototype._ctx = function () {
+    return {
+      instruments: this.engine.getInstruments(),
+      control_state: this.engine.getControlState(),
+      true_state: this.engine.getTrueState(),
+      rps_state: { scrammed: this.rps.scrammed },
+      metadata: { sim_time: this._autoT },
+    };
+  };
+
+  ControlLayer.prototype._sendInternal = function (cmd) {
+    var was = this._internal;
+    this._internal = true;
+    try { return this.handleCommand(cmd); }
+    finally { this._internal = was; }
+  };
+
+  // Engaged truth for display/master logic: mode channels read the plant.
+  ControlLayer.prototype._isEngaged = function (c, ctx) {
+    if (c.def.kind === 'mode') return ctx && ctx.control_state ? !!c.def.isOn(ctx.control_state) : c.engaged;
+    return c.engaged;
+  };
+
+  ControlLayer.prototype._manualOverrideScan = function (cmd) {
+    for (var i = 0; i < this.channels.length; i++) {
+      var c = this.channels[i], def = c.def;
+      if (!c.engaged || !def.manual_overrides) continue;
+      if (def.manual_overrides.indexOf(cmd.action) === -1) continue;
+      // Rod commands only override the channel driving that rod group.
+      if ((cmd.action === 'rod_nudge' || cmd.action === 'rod_start' || cmd.action === 'rod_stop') &&
+          def.group_id && cmd.group_id && cmd.group_id !== def.group_id) continue;
+      this._toggleChannel(c, false);
+      c.note = 'off — manual control taken';
+    }
+  };
+
+  ControlLayer.prototype.setAutoChannel = function (id, engaged) {
+    if (id === 'all') {
+      var ctx = this._ctx();
+      for (var i = 0; i < this.channels.length; i++) {
+        var c = this.channels[i];
+        if (this._isEngaged(c, ctx) !== !!engaged) this._toggleChannel(c, !!engaged, ctx);
+      }
+      return null;
+    }
+    var ch = this.byId[id];
+    if (!ch) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown channel_id', received: id };
+    this._toggleChannel(ch, !!engaged);
+    return null;
+  };
+
+  ControlLayer.prototype.setAutoSetpoint = function (id, value) {
+    var c = this.byId[id];
+    if (!c || !c.def.sp || value == null || !isFinite(value)) return null;
+    c.sp = clip(value, c.def.sp.min, c.def.sp.max);
+    return null;
+  };
+
+  ControlLayer.prototype._toggleChannel = function (c, on, ctx) {
+    ctx = ctx || this._ctx();
+    var def = c.def, i;
+    if (def.kind === 'mode') {
+      var cmds = on ? def.engage(ctx) : def.disengage(ctx);
+      for (i = 0; i < cmds.length; i++) this._sendInternal(cmds[i]);
+      c.engaged = !!on;
+      return;
+    }
+    c.engaged = !!on;
+    c.note = '';
+    if (on) {
+      // Setpoint captures the CURRENT reading (hold the plant where the
+      // operator had it); integrator preload = bumpless transfer.
+      if (def.sp) { var cap = def.sp.capture(ctx); c.sp = cap != null && isFinite(cap) ? clip(cap, def.sp.min, def.sp.max) : def.sp.min; }
+      c.spEff = c.sp;
+      c.I = def.init ? (def.init(ctx) || 0) : 0;
+      c.lastAct = null; c.lastSent = null; c.bangMode = 'idle';
+      c.pvF = null; c.rate = null;
+    } else {
+      // Leave the plant exactly where automation had it — plus safe stand-down.
+      if (def.kind === 'rods') this._sendInternal({ action: 'rod_stop', group_id: def.group_id });
+      if (def.kind === 'bang') { this._sendInternal({ action: 'set_boron_adjust', rate: 0 }); c.bangMode = 'idle'; }
+      c.pvNow = null;
+    }
+  };
+
+  // Default lineup for a freshly selected plant (free play / reset — NOT
+  // instructed content, which starts from a clean board and applies its own
+  // auto_channels preset): engage every channel whose defaultOn(ctx) says the
+  // plant normally runs it automatic in this state. M5 calls this.
+  ControlLayer.prototype.engageDefaults = function () {
+    if (!this.channels.length) return;
+    var ctx = this._ctx();
+    for (var i = 0; i < this.channels.length; i++) {
+      var c = this.channels[i];
+      if (c.def.defaultOn && !c.engaged && c.def.defaultOn(ctx)) this._toggleChannel(c, true, ctx);
+    }
+  };
+
+  // Called by M5 once per PHYSICS STEP (before engine.step). Channels evaluate
+  // on a fixed sim-time cadence (AUTO_DT) using the previous step's readings —
+  // standard explicit coupling; cheap early-return between evaluations.
+  ControlLayer.prototype.stepAutomation = function (dt) {
+    this._autoT += dt;
+    if (!this.channels.length) return;
+    this._autoAcc += dt;
+    if (this._autoAcc < AUTO_DT) return;
+    var step = this._autoAcc;
+    this._autoAcc = 0;
+    var ctx = this._ctx();
+    var t = this._autoT;
+    var dead = !!(ctx.true_state && ctx.true_state.melted);
+    // A protection trip latches rps; a MANUAL scram only shows in true_state —
+    // automation stands down on either.
+    var scrammed = !!(this.rps.scrammed || (ctx.true_state && ctx.true_state.scrammed));
+    for (var i = 0; i < this.channels.length; i++) {
+      var c = this.channels[i], def = c.def;
+      if (def.kind === 'mode') continue;                    // the engine runs these
+      if (!c.engaged) continue;
+      if (dead || (scrammed && def.offOnScram)) {           // stand down, visibly
+        this._toggleChannel(c, false, ctx);
+        c.note = dead ? 'off — core destroyed' : 'off — reactor scrammed';
+        continue;
+      }
+      if (def.requires && !(this.byId[def.requires] && this.byId[def.requires].engaged)) {
+        c.note = 'idle — needs ' + this.byId[def.requires].def.label;
+        continue;
+      }
+      this._trackChannel(c, ctx, step);
+      if (def.kind === 'pid') this._stepPid(c, ctx, t, step);
+      else if (def.kind === 'rods') this._stepRods(c, ctx, t, step);
+      else if (def.kind === 'bang') this._stepBang(c, ctx, t);
+    }
+  };
+
+  // Shared per-evaluation tracking for pid/rods: slew the working setpoint
+  // toward the user's, low-pass the PV against instrument noise, and keep a
+  // damped PV rate for derivative (anticipation) action.
+  ControlLayer.prototype._trackChannel = function (c, ctx, dt) {
+    var def = c.def;
+    if (def.sp && c.sp != null) {
+      if (c.spEff == null) c.spEff = c.sp;
+      if (def.spSlew && dt > 0) {
+        var d = c.sp - c.spEff;
+        c.spEff += clip(d, -def.spSlew * dt, def.spSlew * dt);
+      } else c.spEff = c.sp;
+    }
+    if (def.pv) {
+      var pv = def.pv(ctx);
+      if (pv == null || !isFinite(pv)) return;
+      c.pvNow = pv;
+      // Time-based low-pass (pvTau seconds of sim time): filters instrument
+      // noise without going stale under acceleration.
+      var a = def.pvTau ? dt / (def.pvTau + dt) : 1.0;
+      var prev = c.pvF;
+      c.pvF = (prev == null || a >= 1) ? pv : prev + a * (pv - prev);
+      if (dt > 0 && prev != null) {
+        // Time-based low-pass on the derivative too (~2 s): the raw
+        // difference quotient scales its noise with 1/dt, so a per-sample
+        // smoothing factor would make the damping term cadence-dependent
+        // (probed: at 0.1 s evaluation the kd term drowned the rod error).
+        var r = (c.pvF - prev) / dt;
+        var ar = dt / (2.0 + dt);
+        c.rate = c.rate == null ? r : c.rate + ar * (r - c.rate);
+      }
+    }
+  };
+
+  ControlLayer.prototype._stepPid = function (c, ctx, t, dt) {
+    var def = c.def;
+    if (c.pvF == null) return;
+    var pv = c.pvF;
+    var ff = def.ff ? def.ff(ctx) : 0;
+    if (c.I == null) c.I = def.init ? (def.init(ctx) || 0) : 0;   // post-restore re-init
+    var e = (c.spEff != null ? c.spEff : c.sp) - pv;
+    // Integrate in sim time, but never more than a few design periods per
+    // evaluation — a giant sample must not carry a giant integral kick.
+    if (Math.abs(e) > def.db) c.I += (def.ki || 0) * e * Math.min(dt, 3 * def.period);   // freeze in the deadband (no creep)
+    c.I = clip(c.I, def.uMin - ff - def.kp * e, def.uMax - ff - def.kp * e);   // anti-windup
+    var u = clip(ff + def.kp * e + c.I, def.uMin, def.uMax);
+    c.outNow = u;
+    if (c.lastSent != null && Math.abs(e) <= def.db) { c.note = 'holding'; return; }
+    if (c.lastAct != null && t - c.lastAct < def.period) return;
+    if (c.lastSent != null && Math.abs(u - c.lastSent) < (def.minDelta || 0)) return;
+    var r = this._sendInternal(def.cmd(u));
+    c.note = (r && r.type === 'blocked') ? '⛔ ' + (r.message || 'blocked') : '';
+    c.lastSent = u; c.lastAct = t;
+  };
+
+  ControlLayer.prototype._stepRods = function (c, ctx, t, dt) {
+    var def = c.def;
+    if (c.pvF == null) return;
+    if (def.standby && def.standby(ctx, this)) { c.note = def.standbyNote || 'standing by'; return; }
+    // Damped error: back off while the PV is already moving toward the setpoint
+    // (kd seconds of anticipation, plus an optional plant-specific trim term) —
+    // the lumped rod group is coarse and the instruments lag, so undamped
+    // stepping limit-cycles.
+    var e = (c.spEff != null ? c.spEff : c.sp) - c.pvF;
+    var eEff = e + (def.trim ? def.trim(ctx) : 0) - (def.kd || 0) * (c.rate || 0);
+    if (Math.abs(e) <= def.db) { c.note = 'holding'; return; }
+    if (c.lastAct != null && t - c.lastAct < def.period) return;
+    var g = rodGroupById(ctx, def.group_id) || rodGroup(ctx, 'control');
+    var steps = clip(Math.round(def.gain * eEff), -def.maxStep, def.maxStep);
+    if (!steps) return;
+    if (steps > 0 !== e > 0) { c.note = 'damping'; return; }   // never step against the raw error
+    if (g) {
+      if (steps < 0 && g.at_insertion_limit) { c.note = 'at insertion limit'; return; }
+      if (steps > 0 && g.steps >= g.max_steps) { c.note = 'rods fully withdrawn'; return; }
+      if (steps < 0 && g.steps <= 0) { c.note = 'rods fully inserted'; return; }
+    }
+    var speed = Math.abs(eEff) >= def.fastAt ? 'normal' : 'slow';
+    var r = this._sendInternal({ action: 'rod_nudge', group_id: def.group_id, steps: steps, speed: speed });
+    c.note = (r && r.type === 'blocked') ? '⛔ ' + (r.message || 'withdrawal blocked') : (steps > 0 ? 'withdrawing' : 'inserting');
+    c.lastAct = t;
+  };
+
+  // Boron trim: bang-bang with hysteresis on the control bank's position so the
+  // rod channel keeps authority. Dilute (−, +ρ) walks the rods back IN from the
+  // top of travel; borate (+, −ρ) lets them come back OUT of the deep band.
+  ControlLayer.prototype._stepBang = function (c, ctx, t) {
+    var def = c.def;
+    var g = rodGroup(ctx, 'control');
+    if (!g) return;
+    var pos = g.position_pct;
+    c.pvNow = pos;
+    var want = c.bangMode;
+    if (c.bangMode === 'idle') {
+      if (pos >= def.hi) want = 'dilute';
+      else if (pos <= def.lo) want = 'borate';
+    } else if (c.bangMode === 'dilute' && pos <= def.hiStop) want = 'idle';
+    else if (c.bangMode === 'borate' && pos >= def.loStop) want = 'idle';
+    if (want === c.bangMode) {
+      c.note = c.bangMode === 'idle' ? 'in band' : (c.bangMode + '…' +
+        (ctx.control_state.charging_pump_running === false ? ' (charging pump OFF)' : ''));
+      return;
+    }
+    var rate = want === 'borate' ? def.rate : want === 'dilute' ? -def.rate : 0;
+    var r = this._sendInternal({ action: 'set_boron_adjust', rate: rate });
+    if (r && r.type === 'blocked') { c.note = '⛔ ' + (r.message || 'blocked'); return; }
+    c.bangMode = want;
+    c.lastAct = t;
+    c.note = want === 'idle' ? 'in band' : want + '…';
+  };
+
+  // The snapshot's automation section (M5 assembles it every cycle): channel
+  // identity + live state, enough for the Automate tab to be a pure face.
+  ControlLayer.prototype.getAutomationState = function () {
+    if (!this.channels.length) return { channels: [] };
+    var ctx = this._ctx();
+    var out = [];
+    for (var i = 0; i < this.channels.length; i++) {
+      var c = this.channels[i], def = c.def;
+      var pv = c.pvNow != null ? c.pvNow : (def.pv ? def.pv(ctx) : null);
+      if (pv != null && !isFinite(pv)) pv = null;
+      var entry = {
+        id: def.id, group: def.group, label: def.label, hint: def.hint || '', kind: def.kind,
+        engaged: this._isEngaged(c, ctx),
+        setpoint: c.sp,
+        pv: pv,
+        note: c.note || '',
+        standby: !!(c.engaged && def.standby && def.standby(ctx, this)),
+      };
+      if (def.sp) {
+        entry.setpoint_meta = { min: def.sp.min, max: def.sp.max, unit: def.sp.unit || '',
+                                dp: def.sp.dp != null ? def.sp.dp : 0, step: def.sp.step || 1,
+                                dim: def.sp.dim || null };
+      }
+      out.push(entry);
+    }
+    return { channels: out };
+  };
+
+  ControlLayer.prototype._saveAutomation = function () {
+    var ch = {};
+    for (var i = 0; i < this.channels.length; i++) {
+      var c = this.channels[i];
+      ch[c.def.id] = { engaged: c.engaged, sp: c.sp, spEff: c.spEff, I: c.I, lastAct: c.lastAct,
+                       lastSent: c.lastSent, note: c.note, bangMode: c.bangMode, pvF: c.pvF, rate: c.rate };
+    }
+    return { t: this._autoT, acc: this._autoAcc, channels: ch };
+  };
+
+  ControlLayer.prototype._loadAutomation = function (au) {
+    this._autoT = au && au.t != null ? au.t : 0;
+    this._autoAcc = au && au.acc != null ? au.acc : 0;
+    for (var i = 0; i < this.channels.length; i++) {
+      var c = this.channels[i];
+      var sv = au && au.channels ? au.channels[c.def.id] : null;   // keyed by id — order-insensitive
+      if (sv) {
+        c.engaged = !!sv.engaged; c.sp = sv.sp != null ? sv.sp : null;
+        c.spEff = sv.spEff != null ? sv.spEff : c.sp;
+        c.I = sv.I != null ? sv.I : 0;
+        c.lastAct = sv.lastAct != null ? sv.lastAct : null;
+        c.lastSent = sv.lastSent != null ? sv.lastSent : null;
+        c.note = sv.note || ''; c.bangMode = sv.bangMode || 'idle';
+        c.pvF = sv.pvF != null ? sv.pvF : null; c.rate = sv.rate != null ? sv.rate : null;
+      } else {
+        c.engaged = false; c.sp = null; c.spEff = null; c.I = 0; c.lastAct = null;
+        c.lastSent = null; c.note = ''; c.bangMode = 'idle'; c.pvF = null; c.rate = null;
+      }
+      c.pvNow = null;
+    }
+  };
+
   // -------------------------------------------------------------- save / restore
   // Serializes this layer's runtime state only (the kernel holds no plant config
   // of its own; the engine restores its own failure effects). M5 coordinates both
@@ -387,6 +751,7 @@
       alarmStates: Object.assign({}, this.alarmStates),
       actuationFired: this.actuationFired.slice(),
       interlockActive: this.interlockActive.slice(),
+      automation: this._saveAutomation(),
     };
   };
   ControlLayer.prototype.loadState = function (st) {
@@ -406,6 +771,7 @@
     this.interlockActive = (st.interlockActive && st.interlockActive.length === nIls)
       ? st.interlockActive.slice()
       : (this.config.interlocks || []).map(function () { return false; });
+    this._loadAutomation(st.automation);   // absent in old saves → all channels MAN
   };
 
   RD.ControlLayer = ControlLayer;

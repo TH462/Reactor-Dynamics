@@ -98,6 +98,72 @@
       message_industry: 'ROD WITHDRAWAL BLOCK: SUR ≥ 4.0 DPM. Withdrawal inhibited until SUR < 2.5 DPM. Insertion available.' },
   ];
 
+  // Automation channels (kernel §11) — shared by both design versions.
+  function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
+
+  var CHANNELS = [
+    { id: 'rods_power', kind: 'rods', group: 'Reactor',
+      label: 'AR Rods → Power (automatic regulator)',
+      hint: 'The RBMK\'s Automatic Regulator — a small, fine-stepped rod group (~2 pcm/step vs the manual bank\'s ~35) holding indicated power at the setpoint. Starts in AUTO (the plant\'s normal lineup), capturing the current power; switching it to MAN is taking manual control — the pre-accident condition at Chernobyl. When it runs out of travel, re-center it with the manual bank (or engage the re-center channel).',
+      group_id: 'auto_rods', offOnScram: true,
+      // AUTO by default (free play / plant load) — but only where the state
+      // parks the AR with authority (mid-range). Startup and the Chernobyl
+      // precondition start it fully withdrawn → stays MAN (historical, and
+      // automation must not run the startup or fight the accident setup).
+      defaultOn: function (s) {
+        if (s.rps_state && s.rps_state.scrammed) return false;
+        if (s.true_state && (s.true_state.scrammed || s.true_state.melted)) return false;
+        var gs = s.control_state.rod_groups;
+        for (var i = 0; i < gs.length; i++) {
+          if (gs[i].id !== 'auto_rods') continue;
+          var ins = 100 - gs[i].position_pct;
+          return ins >= 20 && ins <= 80;
+        }
+        return false;
+      },
+      pv: function (s) { return s.instruments.power_range; },
+      sp: { capture: function (s) { return s.instruments.power_range; }, min: 1, max: 110, unit: '%', dp: 1, step: 1 },
+      pvTau: 2.0,   // power_range noise σ0.5 ≈ the AR's per-step worth — filter or it hunts noise
+      gain: 4.0, db: 0.5, maxStep: 6, period: 3.0, fastAt: 2.0, kd: 6, spSlew: 0.1 },
+
+    { id: 'ar_recenter', kind: 'rods', group: 'Reactor',
+      label: 'Manual bank → AR re-center',
+      hint: 'Re-centers the Automatic Regulator with the manual bank (real RBMK practice): when the AR nears either end of its travel, single manual-bank steps hand the standing reactivity burden back to the coarse rods so the AR keeps fine authority. Watch the ORM — the manual bank is what it counts.',
+      group_id: 'control_rods', offOnScram: true, requires: 'rods_power',
+      // PV = AR INSERTED % (100 − position_pct): mid-range = 50. Only acts
+      // outside ±25 of mid (the deadband), one slow step per period.
+      pv: function (s) {
+        var gs = s.control_state.rod_groups;
+        for (var i = 0; i < gs.length; i++) if (gs[i].id === 'auto_rods') return 100 - gs[i].position_pct;
+        return null;
+      },
+      sp: { capture: function () { return 50; }, min: 30, max: 70, unit: '% ins', dp: 0, step: 5 },
+      gain: 0.04, db: 25.0, maxStep: 1, period: 15.0, fastAt: 1e9, kd: 0 },
+
+    { id: 'feed_drum', kind: 'pid', group: 'Coolant Circuit',
+      label: 'Feedwater → Drum level',
+      hint: 'Feedwater controller — power feedforward plus level trim holds steam-drum level at the setpoint. Engaging takes feedwater off the load coupling.',
+      pv: function (s) { return s.instruments.drum_level; },
+      ff: function (s) { return clip(s.instruments.power_range, 0, 110); },
+      cmd: function (u) { return { action: 'set_feedwater_flow', pct: u }; },
+      uMin: 0, uMax: 110, kp: 1.5, ki: 0.03, db: 0.3, minDelta: 1.0, period: 3.0, pvTau: 1.5,
+      sp: { capture: function (s) { return s.instruments.drum_level; }, min: 40, max: 90, unit: '%', dp: 0, step: 1 } },
+
+    { id: 'grid_follow', kind: 'mode', group: 'Balance of Plant',
+      label: 'Turbine / grid (load follow)',
+      hint: 'Load-follow — turbine steam load tracks reactor power. Turn OFF to set turbine load yourself.',
+      isOn: function (cs) { return cs.load_mode === 'follow'; },
+      engage: function () { return [{ action: 'set_load_mode', mode: 'follow' }]; },
+      disengage: function () { return [{ action: 'set_load_mode', mode: 'manual' }]; } },
+
+    { id: 'steam_dump', kind: 'mode', group: 'Balance of Plant',
+      label: 'Steam dump (turbine bypass)',
+      hint: 'Automatic steam dump — holds drum pressure on a load rejection. Manual = freeze at the current valve position.',
+      isOn: function (cs) { return !!cs.steam_dump_auto; },
+      engage: function () { return [{ action: 'set_steam_dump', mode: 'auto' }]; },
+      disengage: function (s) { return [{ action: 'set_steam_dump', pct: s.control_state.steam_dump_pct || 0 }]; } },
+  ];
+
   function forVersion(version) {
     var orm_min = (version === 'post_chernobyl') ? 43.0 : 15.0;
     var trips = (version === 'post_chernobyl') ? TRIPS_POST : TRIPS_PRE;
@@ -112,6 +178,7 @@
       failures: FAILURES,
       interlocks: INTERLOCKS,
       orm_min: orm_min,
+      channels: CHANNELS,
     };
   }
 

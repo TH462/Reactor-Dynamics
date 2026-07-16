@@ -76,6 +76,68 @@
     msiv_closure:        { type: 'command_override', category: 'power', intercepts: ['set_turbine_load'], override_value: 0.0, display: 'MSIV Closure' },
   };
 
+  // Automation channels (kernel §11).
+  function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
+
+  var BWR_CHANNELS = [
+    { id: 'recirc_power', kind: 'pid', group: 'Reactor',
+      label: 'Recirculation → Power',
+      hint: 'Recirc flow controller — modulates drive flow to hold indicated power at the setpoint (the BWR\'s normal power control). Rods stay yours unless the trim channel is on.',
+      offOnScram: true,
+      pv: function (s) { return s.instruments.power_range; },
+      cmd: function (u) { return { action: 'set_recirc_flow', pct: u }; },
+      init: function (s) { return s.control_state.recirc_flow_setpoint_pct; },
+      // spSlew ramps power-setpoint changes (~0.15 %/s): an instant recirc step
+      // collapses steam flow and trips the plant on low vessel pressure.
+      uMin: 0, uMax: 48, kp: 0.35, ki: 0.02, db: 0.3, minDelta: 0.2, period: 2.0, pvTau: 1.5, spSlew: 0.15,
+      sp: { capture: function (s) { return s.instruments.power_range; }, min: 5, max: 110, unit: '%', dp: 1, step: 1 } },
+
+    { id: 'rods_trim', kind: 'rods', group: 'Reactor',
+      label: 'Control Rods → Power (coarse trim)',
+      hint: 'Slow, wide-deadband rod trim — steps in only when recirculation is saturated or off automatic (one BWR rod step is worth several % power). Fine control belongs to recirculation.',
+      group_id: 'control_rods', offOnScram: true,
+      pv: function (s) { return s.instruments.power_range; },
+      sp: { capture: function (s) { return s.instruments.power_range; }, min: 5, max: 110, unit: '%', dp: 1, step: 1 },
+      // One mid-travel BWR rod step ≈ several % power: while the engaged recirc
+      // channel still has drive-flow authority, the trim must NOT fire (probed:
+      // a single noise-triggered step at 600× ran power to 112% and the
+      // pressure controller chased it into the low-pressure trip).
+      standby: function (s, layer) {
+        var rc = layer.byId.recirc_power;
+        if (!rc || !rc.engaged) return false;
+        var u = s.control_state.recirc_flow_setpoint_pct;
+        return u > 2 && u < 46;
+      },
+      standbyNote: 'standing by — recirc has authority',
+      gain: 0.3, db: 5.0, maxStep: 1, period: 12.0, fastAt: 1e9, kd: 8 },
+
+    { id: 'feed_level', kind: 'pid', group: 'Vessel',
+      label: 'Feedwater → Vessel level',
+      hint: 'Feedwater controller — steam-flow feedforward plus level trim holds vessel water level at the setpoint. Engaging takes feedwater off the load coupling.',
+      pv: function (s) { return s.instruments.vessel_level; },
+      ff: function (s) { return clip(s.instruments.steam_flow * 100, 0, 120); },
+      cmd: function (u) { return { action: 'set_feedwater_flow', pct: u }; },
+      uMin: 0, uMax: 120, kp: 2.0, ki: 0.04, db: 0.3, minDelta: 1.0, period: 3.0, pvTau: 1.5,
+      sp: { capture: function (s) { return s.instruments.vessel_level; }, min: 40, max: 90, unit: '%', dp: 0, step: 1 } },
+
+    { id: 'turbine_pressure', kind: 'pid', group: 'Balance of Plant',
+      label: 'Turbine load → Vessel pressure',
+      hint: 'Turbine pressure control (the real BWR governor mode) — turbine load modulates to hold vessel pressure, so power maneuvers on recirc/rods don\'t drain the vessel into the low-pressure trip. Turn OFF to set turbine load yourself.',
+      pv: function (s) { return s.instruments.vessel_pressure; },
+      cmd: function (u) { return { action: 'set_turbine_load', mwe: u }; },
+      init: function (s) { return s.control_state.load_target_mwe; },
+      // Reverse-acting (more load → pressure falls): negative gains.
+      uMin: 0, uMax: 1150, kp: -600, ki: -12, db: 0.015, minDelta: 12, period: 2.0, pvTau: 1.5,
+      sp: { capture: function (s) { return s.instruments.vessel_pressure; }, min: 6.0, max: 7.4, dim: 'pressure', unit: 'MPa', dp: 2, step: 0.05 } },
+
+    { id: 'steam_dump', kind: 'mode', group: 'Balance of Plant',
+      label: 'Steam dump (turbine bypass)',
+      hint: 'Automatic steam dump — sheds excess steam to the condenser on a load rejection (needs AC / condenser). Manual = freeze at the current valve position.',
+      isOn: function (cs) { return !!cs.steam_dump_auto; },
+      engage: function () { return [{ action: 'set_steam_dump', mode: 'auto' }]; },
+      disengage: function (s) { return [{ action: 'set_steam_dump', pct: s.control_state.steam_dump_pct || 0 }]; } },
+  ];
+
   var BWR_PROTECTION = {
     trips: BWR_TRIPS,
     actuations: BWR_ACTUATIONS,
@@ -83,6 +145,7 @@
     alarms_panel_a: BWR_ALARMS_A,
     alarms_panel_b: BWR_ALARMS_B,
     failures: BWR_FAILURES,
+    channels: BWR_CHANNELS,
   };
 
   RD.BWR_CONTROL = { protection: BWR_PROTECTION };

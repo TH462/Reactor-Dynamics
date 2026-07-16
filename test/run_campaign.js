@@ -26,7 +26,6 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'engines/bwr/bwr_config.js', 'layers/control/bwr_control.js', 'engines/bwr/bwr_vessel.js',
   'engines/bwr/bwr_recirculation.js', 'engines/bwr/bwr_safety_systems.js', 'engines/bwr/bwr_instruments.js', 'engines/bwr/bwr_engine.js',
   'layers/control/control_kernel.js', 'layers/instructor_layer.js', 'layers/simulation_service.js',
-  'layers/auto_control.js',
   'scenarios/pwr_hook.js', 'scenarios/pwr_tmi.js', 'scenarios/pwr_sg_flood.js',
   'scenarios/pwr_tmi2_common.js', 'scenarios/pwr_tmi2_p1.js', 'scenarios/pwr_tmi2_p2.js', 'scenarios/pwr_tmi2_p3.js',
   'scenarios/pwr_tour.js', 'scenarios/pwr_chain_reaction.js', 'scenarios/pwr_feedback.js',
@@ -86,20 +85,13 @@ function startScenario(id) {
   s.handleCommand({ action: 'play' });
   return s;
 }
-// UI-faithful start for missions with an auto_channels preset: attach an
-// AutoControl exactly the way app.js does (step per broadcast, commands down
-// the stack) and engage the scenario's authored channels. Missions like
-// pwr_automation NEED their preset — the bare plant trips on the demand swing
-// the automation is there to carry (probed).
+// Missions with an auto_channels preset: M5's start_scenario now applies the
+// authored preset itself (the channel runtime runs in-stack in the control
+// layer), so this is just startScenario. Missions like pwr_automation NEED
+// their preset — the bare plant trips on the demand swing the automation is
+// there to carry (probed).
 function startScenarioAuto(id) {
-  var s = startScenario(id);
-  var auto = new RD.AutoControl(function (c) { return s.handleCommand(c); });
-  auto.setPlant(RD.SCENARIOS[id].plant_id);
-  s.subscribe(function (snap) { auto.step(snap); });
-  var snap0 = s.assembleSnapshot();
-  (RD.SCENARIOS[id].auto_channels || []).forEach(function (cid) { auto.toggle(cid, true, snap0); });
-  s._auto = auto;
-  return s;
+  return startScenario(id);
 }
 function lc(snap) { return snap.instructor && snap.instructor.level_complete; }
 // current_beat_id is the PENDING beat (armed, waiting on its trigger). A beat
@@ -239,10 +231,16 @@ test('campaign highlights — every named control/gauge resolves on the board', 
 });
 
 // Authored automation presets must name real channels: every auto_channels id
-// on a campaign scenario resolves in the AutoControl catalog for its plant.
+// on a campaign scenario resolves in that plant's control-layer channel list.
+function plantChannelIds(plant) {
+  var cfg = plant === 'pwr' ? RD.PWR_CONTROL.protection
+    : plant === 'bwr' ? RD.BWR_CONTROL.protection
+    : RD.RBMK_CONTROL.forVersion('post_chernobyl');
+  return (cfg.channels || []).map(function (d) { return d.id; });
+}
 test('campaign scenarios — auto_channels resolve to automation channels', function (ck) {
   Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
-    var chanIds = (RD.AutoControl.CATALOG[cid] || []).map(function (d) { return d.id; });
+    var chanIds = plantChannelIds(cid);
     RD.CAMPAIGNS[cid].acts.forEach(function (a) {
       a.missions.forEach(function (m) {
         if (m.kind !== 'scenario') return;

@@ -129,6 +129,74 @@
       message_industry: 'ROD WITHDRAWAL BLOCK: SUR ≥ 2.5 DPM. Withdrawal inhibited until SUR < 1.5 DPM. Insertion available.' },
   ];
 
+  // Automation channels (kernel §11) — operator-selectable controllers the
+  // control layer runs at physics rate. Kinds: mode (passthrough to an
+  // engine-internal auto), pid, rods, bang. Callbacks receive a snapshot-shaped
+  // ctx { instruments, control_state, true_state, rps_state, metadata }; all
+  // read INSTRUMENTS (HR1). Groups are display sections in the Automate tab.
+  function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
+
+  var PWR_CHANNELS = [
+    { id: 'rods_tavg', kind: 'rods', group: 'Reactor',
+      label: 'Control Rods → Tavg',
+      hint: 'Rod control — nudges the control bank to hold average coolant temperature at the setpoint (the real PWR rod-control variable). Raise steam demand and watch the rods withdraw to restore Tavg.',
+      group_id: 'control_rods', offOnScram: true,
+      pv: function (s) { return s.instruments.tavg; },
+      sp: { capture: function (s) { return s.instruments.tavg; }, min: 285, max: 315, dim: 'temp', unit: '°C', dp: 1, step: 0.5 },
+      // Two-term control like a real rod controller: a DOMINANT steam-vs-power
+      // mismatch term (power chases the turbine draw — fast, self-stable) with
+      // the Tavg error as a slow trim. Tavg integrates the mismatch, so a
+      // Tavg-dominant loop limit-cycles for minutes; mismatch-dominant glides.
+      trim: function (s) { return 1.25 * (s.instruments.steam_flow * 100 - s.instruments.power_range); },
+      gain: 0.4, db: 0.5, maxStep: 2, period: 5.0, fastAt: 4.0, kd: 5, spSlew: 0.05 },
+
+    { id: 'boron_trim', kind: 'bang', group: 'Reactor',
+      label: 'Boron → rod position trim',
+      hint: 'CVCS chemistry trim — borates when the auto rods sit too deep, dilutes when they run out of travel, so rod control keeps its authority through xenon and load drifts. Needs the rod channel engaged and the charging pump running.',
+      requires: 'rods_tavg', offOnScram: true,
+      hi: 96.0, lo: 55.0, hiStop: 90.0, loStop: 62.0, rate: 0.5 },
+
+    { id: 'pzr_pressure', kind: 'mode', group: 'Primary',
+      label: 'Pressurizer pressure (heaters + spray)',
+      hint: 'Returns the pressurizer heaters and spray to their proportional automatic control holding ~2235 psia. Manual = both freeze at their current output.',
+      isOn: function (cs) { return !!(cs.heater_auto && cs.spray_auto); },
+      engage: function () { return [{ action: 'set_heater', auto: true }, { action: 'set_spray', auto: true }]; },
+      disengage: function (s) {
+        var cs = s.control_state;
+        return [{ action: 'set_heater', power_pct: cs.heater_power_pct }, { action: 'set_spray', pct: cs.spray_valve_pct }];
+      } },
+
+    { id: 'cvcs_makeup', kind: 'mode', group: 'Primary',
+      label: 'CVCS make-up (inventory)',
+      hint: 'Automatic make-up — charging modulates to hold primary inventory (compensates letdown and identified leakage).',
+      isOn: function (cs) { return !!cs.cvcs_auto; },
+      engage: function () { return [{ action: 'set_cvcs_auto', active: true }]; },
+      disengage: function () { return [{ action: 'set_cvcs_auto', active: false }]; } },
+
+    { id: 'feed_sg', kind: 'pid', group: 'Secondary',
+      label: 'Feedwater → SG level',
+      hint: 'Feedwater controller — steam-flow feedforward plus level trim holds steam-generator level at the setpoint (three-element style). Engaging takes feedwater off the load coupling.',
+      pv: function (s) { return s.instruments.sg_level; },
+      ff: function (s) { return clip(s.instruments.steam_flow * 100, 0, 120); },
+      cmd: function (u) { return { action: 'set_feedwater_flow', pct: u }; },
+      uMin: 0, uMax: 120, kp: 1.5, ki: 0.03, db: 0.3, minDelta: 1.0, period: 3.0, pvTau: 1.5,
+      sp: { capture: function (s) { return s.instruments.sg_level; }, min: 30, max: 80, unit: '%', dp: 0, step: 1 } },
+
+    { id: 'steam_dump', kind: 'mode', group: 'Secondary',
+      label: 'Steam dump (turbine bypass)',
+      hint: 'Automatic pressure-mode steam dump — opens proportionally above the no-load setpoint (carries a load rejection). Manual = freeze at the current valve position.',
+      isOn: function (cs) { return !!cs.steam_dump_auto; },
+      engage: function () { return [{ action: 'set_steam_dump', mode: 'auto' }]; },
+      disengage: function (s) { return [{ action: 'set_steam_dump', pct: s.control_state.steam_dump_pct || 0 }]; } },
+
+    { id: 'grid_follow', kind: 'mode', group: 'Secondary',
+      label: 'Turbine / grid (load follow)',
+      hint: 'Load-follow — turbine demand tracks reactor power (feedwater couples to load). Turn OFF to set grid demand yourself and let the other channels chase it.',
+      isOn: function (cs) { return cs.load_mode === 'follow'; },
+      engage: function () { return [{ action: 'set_load_mode', mode: 'follow' }]; },
+      disengage: function () { return [{ action: 'set_load_mode', mode: 'manual' }]; } },
+  ];
+
   var PWR_PROTECTION = {
     trips: PWR_TRIPS,
     actuations: PWR_ACTUATIONS,
@@ -137,6 +205,7 @@
     alarms_panel_b: PWR_ALARMS_B,
     failures: PWR_FAILURES,
     interlocks: PWR_INTERLOCKS,
+    channels: PWR_CHANNELS,
   };
 
   RD.PWR_CONTROL = { protection: PWR_PROTECTION };

@@ -40,7 +40,9 @@
     follow: null,           // { id, idx } — a procedure being followed in the Instructor block
   };
   var service, latest = null, lastScrammed = false;
-  var autoCtl = null;       // RD.AutoControl — operator automation (Automate tab)
+  // Operator automation now lives IN-STACK (layers/control/control_kernel.js);
+  // the Automate tab is a pure face over snapshot.automation, issuing
+  // set_auto_channel / set_auto_setpoint commands like any operator action.
   var chartBuf = [];        // { t, ins }
   var gaugeHist = {};       // id -> [raw values]
   var smoothed = {};        // id -> display-damped instrument value
@@ -988,9 +990,8 @@
   function followRetry() {
     var pr = curFollowProc(); if (!pr) return;
     chartBuf = []; smoothed = {};
-    autoStandDown();
     cmd({ action: 'start_follow', procedure_id: pr.id });
-    autoPreset(pr.auto_channels);
+    buildAutomate();
     setFocus('instructor', true);
   }
 
@@ -1209,8 +1210,8 @@
     service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
     service.handleCommand({ action: 'start_scenario', scenario_id: id });
     afterPlantChange();          // the scenario may have switched the plant
-    autoStandDown();             // clean board for gating (rebuild engaged the free-play defaults)
-    autoPreset(sc.auto_channels);   // authored preset: put listed systems on auto so the mission can focus the player
+    // (M5's start_scenario starts from a clean automation board and applies the
+    // authored auto_channels preset itself — the channel runtime is in-stack.)
     diagReset('scenario', { scenario_id: id });
     resetInstrFlow();            // fresh mission → fresh commentary queue
     resetChat();                 // fresh transcript state (chat-mode scenarios)
@@ -1224,21 +1225,9 @@
   // the snapshot's instructor.follow block; step text comes from the same
   // RD.MANUAL_PROCEDURES artifact the Instructor loaded.
   function curFollowProc() { return ui.follow ? ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ui.follow.id; })[0] : null; }
-  // Instructor content must start from a clean board: reset every automation
-  // channel to MANUAL (mode toggles keep reflecting the plant) so an engaged
-  // controller can't perform the player's steps or trip gate feedback. The
-  // scenario path gets this for free (startScenario → rebuildPlantUI); the
-  // walkthrough path resets the plant in place, so it needs it explicitly.
-  function autoStandDown() { if (autoCtl) { autoCtl.setPlant(ui.plant); buildAutomate(); } }
-  // Authored automation preset (scenario.auto_channels / procedure.auto_channels):
-  // engage the listed channels after the content's plant reset, so a mission can
-  // hand the player one or two controls and put the rest of the plant on auto.
-  function autoPreset(ids) {
-    if (!autoCtl || !ids || !ids.length) return;
-    var s = service.assembleSnapshot();
-    ids.forEach(function (cid) { if (autoCtl.get(cid)) autoCtl.toggle(cid, true, s); });
-    renderAutomate(service.assembleSnapshot());
-  }
+  // Instructor content starts from a clean automation board and applies its own
+  // authored auto_channels preset — M5 handles both inside start_scenario /
+  // start_follow (the channel runtime lives in the control layer now).
   function followProcedure(id) {
     var procs = (RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [];
     if (!procs.filter(function (x) { return x.id === id; })[0]) return;
@@ -1246,9 +1235,8 @@
     // ui.follow syncs from the resulting snapshot in renderInstructor. Fresh
     // timeline → fresh trend history and gauge smoothing.
     chartBuf = []; smoothed = {};
-    autoStandDown();
     cmd({ action: 'start_follow', procedure_id: id });
-    autoPreset((procs.filter(function (x) { return x.id === id; })[0] || {}).auto_channels);
+    buildAutomate();
     resetInstrFlow();            // fresh walkthrough → fresh commentary queue
     closeManual(); setFocus('instructor', true);
     if (latest) renderInstructor(latest);
@@ -1481,40 +1469,36 @@
   }
 
   // ============================================================ Automate tab
-  // Operator automation (layers/auto_control.js): per-control AUTO/MAN toggles.
-  // Controllers read the broadcast snapshot's instruments and send commands
-  // down the stack like any operator action — silently (no blocked-command UI
-  // feedback; a blocked auto command just shows as a note on its row).
-  function cmdAuto(c) {
-    var r = service.handleCommand(c);
-    if (diag) {
-      diag.commands.push({ t: latest && latest.metadata ? latest.metadata.sim_time : 0, command: c, auto: true, blocked: !!(r && r.type === 'blocked'), error: !!(r && r.type === 'error') });
-      if (diag.commands.length > 2000) diag.commands.shift();
-    }
-    return r;
-  }
-
+  // A pure face over snapshot.automation (the in-stack channel runtime in the
+  // Control Layer): toggles and setpoint edits send set_auto_channel /
+  // set_auto_setpoint down the stack; readouts render from each broadcast.
   function autoSnap() { return latest || service.assembleSnapshot(); }
+  function autoChans(s) { return (s && s.automation && s.automation.channels) || []; }
+  function autoChan(s, id) {
+    var ch = autoChans(s);
+    for (var i = 0; i < ch.length; i++) if (ch[i].id === id) return ch[i];
+    return null;
+  }
 
   function buildAutomate() {
     var list = $('autoList'), master = $('autoMaster');
-    if (!list || !autoCtl) return;
+    if (!list) return;
+    var chans = autoChans(autoSnap());
     master.innerHTML =
       '<span class="k">Automatic control</span>' +
       '<span><button class="btn" data-autoall="on" data-scanner-hint="All Auto — engages every automation channel for this plant (setpoints capture the current readings).">All auto</button> ' +
       '<button class="btn" data-autoall="off" data-scanner-hint="All Manual — disengages every automation channel; each control freezes where automation left it.">All manual</button></span>';
     var html = '', lastGroup = null;
-    autoCtl.channels().forEach(function (c) {
-      var d = c.def;
-      if (d.group !== lastGroup) { html += '<div class="g-section-title" style="margin-top:10px">' + mesc(d.group) + '</div>'; lastGroup = d.group; }
-      html += '<div class="auto-row" data-autorow="' + d.id + '" data-scanner-hint="' + esc(d.label + ' — ' + d.hint) + '">' +
-        '<button class="auto-tog" data-autotog="' + d.id + '">MAN</button>' +
-        '<div class="auto-main"><div class="auto-name">' + mesc(d.label) + '</div>' +
-        '<div class="auto-read mono" data-autoread="' + d.id + '">—</div></div>';
-      if (d.sp) {
+    chans.forEach(function (c) {
+      if (c.group !== lastGroup) { html += '<div class="g-section-title" style="margin-top:10px">' + mesc(c.group) + '</div>'; lastGroup = c.group; }
+      html += '<div class="auto-row" data-autorow="' + c.id + '" data-scanner-hint="' + esc(c.label + ' — ' + c.hint) + '">' +
+        '<button class="auto-tog" data-autotog="' + c.id + '">MAN</button>' +
+        '<div class="auto-main"><div class="auto-name">' + mesc(c.label) + '</div>' +
+        '<div class="auto-read mono" data-autoread="' + c.id + '">—</div></div>';
+      if (c.setpoint_meta) {
         html += '<div class="auto-spbox"><span class="auto-splbl">SP</span>' +
-          '<input class="num-input mono auto-sp" data-autosp="' + d.id + '" type="number" step="' + (d.sp.step || 1) + '" disabled>' +
-          '<span class="auto-spunit" data-autospu="' + d.id + '"></span></div>';
+          '<input class="num-input mono auto-sp" data-autosp="' + c.id + '" type="number" step="' + (c.setpoint_meta.step || 1) + '" disabled>' +
+          '<span class="auto-spunit" data-autospu="' + c.id + '"></span></div>';
       }
       html += '</div>';
     });
@@ -1522,52 +1506,51 @@
     if (latest) renderAutomate(latest);
   }
 
-  function autoSpUnit(d) { return d.sp ? (d.sp.dim ? unit(d.sp.dim) : (d.sp.unit || '')) : ''; }
-  function autoFmtPv(d, v, dp) {
+  function autoSpUnit(c) { return c.setpoint_meta ? (c.setpoint_meta.dim ? unit(c.setpoint_meta.dim) : (c.setpoint_meta.unit || '')) : ''; }
+  function autoFmtPv(c, v, dp) {
     if (v == null || !isFinite(v)) return '—';
-    var dim = d.sp && d.sp.dim;
-    return (dim ? conv(v, dim) : v).toFixed(dp != null ? dp : (d.sp ? d.sp.dp : 0));
+    var dim = c.setpoint_meta && c.setpoint_meta.dim;
+    return (dim ? conv(v, dim) : v).toFixed(dp != null ? dp : (c.setpoint_meta ? c.setpoint_meta.dp : 0));
   }
 
   function renderAutomate(s) {
     var list = $('autoList');
-    if (!list || !autoCtl || !list.firstChild) return;
+    if (!list || !list.firstChild) return;
     // Sync any AUTO/MAN mirror segs on the plant display (RBMK AR card) to the
     // rod channel's true state — the seg is a second face of the same channel.
-    var arc = autoCtl.get('rods_power');
+    var arc = autoChan(s, 'rods_power');
     if (arc) {
-      var on = autoCtl.isEngaged(arc, s);
+      var on = arc.engaged;
       document.querySelectorAll('[data-arsync]').forEach(function (b) {
         b.classList.toggle('on', (b.getAttribute('data-arsync') === 'on') === on);
         b.classList.toggle('run', b.getAttribute('data-arsync') === 'on' && on);
       });
     }
-    autoCtl.channels().forEach(function (c) {
-      var d = c.def, on = autoCtl.isEngaged(c, s);
-      var row = list.querySelector('[data-autorow="' + d.id + '"]'); if (!row) return;
+    autoChans(s).forEach(function (c) {
+      var on = c.engaged;
+      var row = list.querySelector('[data-autorow="' + c.id + '"]'); if (!row) return;
       row.classList.toggle('on', on);
       var tog = row.querySelector('[data-autotog]');
       tog.textContent = on ? 'AUTO' : 'MAN';
       tog.classList.toggle('on', on);
       var read = row.querySelector('[data-autoread]');
-      if (d.kind === 'mode') {
+      if (c.kind === 'mode') {
         read.textContent = on ? 'engaged (plant-side control)' : 'manual';
       } else {
-        var pv = c.pvNow != null ? c.pvNow : (d.pv ? d.pv(s) : null);
-        var txt = d.kind === 'bang'
-          ? 'rods ' + autoFmtPv(d, pv, 0) + ' % out'
-          : autoFmtPv(d, pv) + (on && c.sp != null ? ' → ' + autoFmtPv(d, c.sp) : '') + ' ' + autoSpUnit(d);
+        var txt = c.kind === 'bang'
+          ? 'rods ' + autoFmtPv(c, c.pv, 0) + ' % out'
+          : autoFmtPv(c, c.pv) + (on && c.setpoint != null ? ' → ' + autoFmtPv(c, c.setpoint) : '') + ' ' + autoSpUnit(c);
         if (on && c.note) txt += ' · ' + c.note;
         read.textContent = txt;
       }
-      if (d.sp) {
+      if (c.setpoint_meta) {
         var inp = row.querySelector('[data-autosp]'), un = row.querySelector('[data-autospu]');
         inp.disabled = !on;
-        un.textContent = autoSpUnit(d);
+        un.textContent = autoSpUnit(c);
         if (document.activeElement !== inp) {
-          inp.value = (on && c.sp != null) ? autoFmtPv(d, c.sp) : '';
+          inp.value = (on && c.setpoint != null) ? autoFmtPv(c, c.setpoint) : '';
           // display-side bounds so the browser spinner respects the channel range
-          inp.min = autoFmtPv(d, d.sp.min); inp.max = autoFmtPv(d, d.sp.max);
+          inp.min = autoFmtPv(c, c.setpoint_meta.min); inp.max = autoFmtPv(c, c.setpoint_meta.max);
         }
       }
     });
@@ -1578,36 +1561,27 @@
     if (!pane) return;
     pane.addEventListener('click', function (e) {
       var all = e.target.closest('[data-autoall]');
-      if (all && autoCtl) {
-        if (all.getAttribute('data-autoall') === 'on') autoCtl.engageAll(autoSnap());
-        else autoCtl.disengageAll(autoSnap());
-        renderAutomate(autoSnap()); return;
+      if (all) {
+        cmd({ action: 'set_auto_channel', channel_id: 'all', engaged: all.getAttribute('data-autoall') === 'on' });
+        renderAutomate(service.assembleSnapshot()); return;
       }
       var b = e.target.closest('[data-autotog]');
-      if (b && autoCtl) {
+      if (b) {
         var id = b.getAttribute('data-autotog');
-        var c = autoCtl.get(id); if (!c) return;
-        var s = autoSnap();
-        autoCtl.toggle(id, !autoCtl.isEngaged(c, s), s);
-        renderAutomate(autoSnap());
+        var c = autoChan(autoSnap(), id); if (!c) return;
+        cmd({ action: 'set_auto_channel', channel_id: id, engaged: !c.engaged });
+        renderAutomate(service.assembleSnapshot());
       }
     });
     pane.addEventListener('change', function (e) {
       var inp = e.target.closest('[data-autosp]');
-      if (!inp || !autoCtl) return;
-      var id = inp.getAttribute('data-autosp'), c = autoCtl.get(id); if (!c) return;
+      if (!inp) return;
+      var id = inp.getAttribute('data-autosp'), c = autoChan(autoSnap(), id); if (!c) return;
       var v = parseFloat(inp.value);
       if (isNaN(v)) return;
-      autoCtl.setSetpoint(id, c.def.sp.dim ? invConv(v, c.def.sp.dim) : v);
-      renderAutomate(autoSnap());
+      cmd({ action: 'set_auto_setpoint', channel_id: id, value: (c.setpoint_meta && c.setpoint_meta.dim) ? invConv(v, c.setpoint_meta.dim) : v });
+      renderAutomate(service.assembleSnapshot());
     });
-  }
-
-  // Per-broadcast hook: controllers act, then the tab's readouts refresh.
-  function autoTick(s) {
-    if (!autoCtl) return;
-    autoCtl.step(s);
-    renderAutomate(s);
   }
 
   // ============================================================ session diagnosis (Dev tab)
@@ -1753,8 +1727,8 @@
     'rbmk-turbine-set': function () { cmd({ action: 'set_turbine_load', mwe: inputVal('rbmkMwe') }); },
     'eps-on': function () { cmd({ action: 'set_eps_bypass', active: true }); }, 'eps-off': function () { cmd({ action: 'set_eps_bypass', active: false }); },
     // AR AUTO/MAN — mirrors the Automate tab's 'AR Rods → Power' channel
-    'ar-auto': function () { if (autoCtl) { autoCtl.toggle('rods_power', true, autoSnap()); renderAutomate(autoSnap()); } },
-    'ar-man': function () { arManual(); if (autoCtl) cmd({ action: 'rod_stop', group_id: 'auto_rods' }); },
+    'ar-auto': function () { cmd({ action: 'set_auto_channel', channel_id: 'rods_power', engaged: true }); renderAutomate(service.assembleSnapshot()); },
+    'ar-man': function () { arManual(); cmd({ action: 'rod_stop', group_id: 'auto_rods' }); },
     'rbmk-eccs-on': function () { cmd({ action: 'set_eccs', active: true }); }, 'rbmk-eccs-off': function () { cmd({ action: 'set_eccs', active: false }); },
     // BWR
     'bwr-recirc-set': function () { cmd({ action: 'set_recirc_flow', pct: inputVal('bwrRecirc') }); },
@@ -1788,9 +1762,8 @@
     'arod-insert': function () { arManual(); startHoldRod('auto_rods', -1); },
   };
   function arManual() {
-    if (!autoCtl) return;
-    var c = autoCtl.get('rods_power');
-    if (c && c.engaged) { autoCtl.toggle('rods_power', false, autoSnap()); renderAutomate(autoSnap()); }
+    var c = autoChan(autoSnap(), 'rods_power');
+    if (c && c.engaged) { cmd({ action: 'set_auto_channel', channel_id: 'rods_power', engaged: false }); renderAutomate(service.assembleSnapshot()); }
   }
   var holdingGroup = null;
   function startHoldRod(group, direction) { holdingGroup = group; cmd({ action: 'rod_start', group_id: group, direction: direction, speed: ui.rodSpeed }); }
@@ -2376,14 +2349,9 @@
   function rebuildPlantUI() {
     chartBuf = []; smoothed = {};
     buildGauges(); buildGraphParams(); updateSimSummary(); buildFailures();
-    if (autoCtl) {
-      // Fresh plant → channels reset, then the plant's NORMAL lineup engages
-      // (e.g. the RBMK AR in AUTO holding current power). Instructed content
-      // stands this down again right after (startScenario / followProcedure).
-      autoCtl.setPlant(ui.plant);
-      autoCtl.engageDefaults(service.assembleSnapshot());
-      buildAutomate();
-    }
+    // The control layer already reset its channels and engaged the plant's
+    // normal lineup (M5 selectPlant → engageDefaults); the tab just rebuilds.
+    buildAutomate();
     buildPlantDisplay();
     syncOverlayRow();   // per-plant settings rows (Values Display is legacy-view only)
     buildAdvFail();     // advanced instrument-failure panel follows the active plant
@@ -2791,8 +2759,7 @@
     service = new RD.SimulationService({ seed: 0x1234 });
     service.subscribe(render);
     service.subscribe(diagTick);
-    autoCtl = RD.AutoControl ? new RD.AutoControl(cmdAuto) : null;
-    if (autoCtl) service.subscribe(autoTick);   // after render: `latest` is current when controllers act
+    service.subscribe(renderAutomate);   // channels run in-stack; the tab just re-renders per broadcast
     bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)
     var em = /[?&]engine=(pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');
@@ -2801,10 +2768,10 @@
     ui.series = Object.assign({}, prof().defaultSeries);
     buildGauges(); buildGraphParams(); updateSimSummary();
     buildPlantDisplay();
-    service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render
+    service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });
     buildFailures();
-    if (autoCtl) { autoCtl.setPlant(ui.plant); autoCtl.engageDefaults(service.assembleSnapshot()); buildAutomate(); }
+    buildAutomate();
     // optional ?manual[=section] deep-link — opens the Operator's Manual on load
     var mm = /[?&]manual(?:=([a-z]+))?/.exec(location.search || '');
     if (mm) { if (mm[1]) ui.manualSection = mm[1]; openManual(); }
@@ -2843,11 +2810,10 @@
     if (/[?&]help=1/.test(location.search || '')) $('helpOverlay').hidden = false;
     // optional ?auto=<id,id|all> deep-link — engages automation channels (dev convenience)
     var am = /[?&]auto=([a-z_,]+|all)/.exec(location.search || '');
-    if (am && autoCtl) {
-      var asnap = service.assembleSnapshot();
-      if (am[1] === 'all') autoCtl.engageAll(asnap);
-      else am[1].split(',').forEach(function (id) { autoCtl.toggle(id, true, asnap); });
-      renderAutomate(asnap);
+    if (am) {
+      if (am[1] === 'all') service.handleCommand({ action: 'set_auto_channel', channel_id: 'all', engaged: true });
+      else am[1].split(',').forEach(function (id) { service.handleCommand({ action: 'set_auto_channel', channel_id: id, engaged: true }); });
+      renderAutomate(service.assembleSnapshot());
     }
     if (/[?&]run=1/.test(location.search || '')) { service.start(); $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused'); }
     // optional ?follow=<procId> deep-link — loads a procedure into the Instructor block

@@ -1968,3 +1968,31 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   autoctl 17/17, scenarios 3/3, campaign 36/36 (1313), `gen_manual_reference` output
   byte-identical; pre-existing baselines unchanged (ops 52/66 tuning targets, e2e_controls 23/25
   — the two LOCA LPI/accumulator checks, procedures 20/21 — bwr_sbo_rcic step 3).
+- **2026-07-15 — Operator automation moved IN-STACK (stage 2 of the control-layer rework;
+  spec: `M4b_control_layer.md`).** The channel runtime (pid/rods/bang/mode machinery) ported
+  from the UI-side `layers/auto_control.js` into the Control Layer kernel; per-plant channel
+  CATALOGs moved into `layers/control/{pwr,rbmk,bwr}_control.js` as `channels:` data
+  (tuning unchanged). Channels now evaluate every **0.1 sim-s inside the physics loop**
+  (M5 tick calls `layer.stepAutomation(dt)` per step), so control is
+  **acceleration-independent** — the entire fast-forward apparatus (FAST_ACCEL 200×,
+  fastFallback plant-side handoff, dbFast widened deadbands, fastBudget bursts) is DELETED;
+  at 3600× the same PIDs hold the same bands with feed staying uncoupled (probed). Automation
+  state (engaged/setpoints/integrators) is now saved per channel **id** in the layer's
+  saveState — rewind restores controller dynamics exactly (strict improvement over the old
+  reset), old saves without the key restore all-MAN. New commands `set_auto_channel`
+  (id or "all") / `set_auto_setpoint` descend the stack (HR5 — Instructor can gate them);
+  channel outputs, trip scrams, ESF actuations, and interlock on_engage all go through
+  `_sendInternal` (an `_internal` flag distinguishing plant-issued from operator commands —
+  the hook the ESF AUTO/MAN arms and `manual_overrides` disengage build on). The clean-board
+  + authored `auto_channels` preset rule moved from app.js into M5's start_scenario /
+  start_follow; free-play selectPlant runs `engageDefaults()` (RBMK AR lineup preserved).
+  UI: Automate tab is a pure face over `snapshot.automation`; `autoCtl`/`AutoControl` gone.
+  One controller fix forced by the cadence change: the PV **derivative estimator** uses a
+  fixed ~2 s time constant instead of per-sample smoothing — the difference quotient's noise
+  scales 1/dt, and at 0.1 s sampling the kd damping term drowned the rod error (probed:
+  Tavg loop limit-cycled ±13% power; with the fix it glides). run_autoctl.js rewritten
+  (19 suites, incl. save/load round-trip + 3600× no-handoff probes); demand-swing power
+  checks now assert a 100-s MEAN (power breathes a few % inside the rod channel's ±0.5 °C
+  Tavg deadband — a point sample lands on an arbitrary phase). Gates: all green at baseline
+  (campaign 36/36·1313, ops 52/66 same set, synoptic 55/55, e2e 23/25 + procedures 20/21
+  pre-existing).
