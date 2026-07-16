@@ -2065,3 +2065,17 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   AUTO — three-element / coupled / MANUAL" status). Gates: pwr 14/14, autoctl 19/19, campaign
   36/36, ops 52/66 (same), synoptic 55/55, manual regenerated (Feed Pump Speed / Nudge
   entries), procedures 20/21, audit PASS.
+- **2026-07-15 — Rod auto mode: T-avg hold with variable speed (stage 6, user direction).**
+  The `rods_tavg` channel is now the full automatic rod controller the user specified: on
+  engage it captures **T-ref := the CURRENT indicated Tavg** (HR1 — the sp.capture idiom),
+  compares Tavg to T-ref, and a mismatch (e.g. after a turbine load change) computes rod
+  direction + a Westinghouse-style **variable speed ladder** (kernel `speeds:[{above,speed}]`
+  on |eEff|: >0.8 °C slow, >2 normal, >4 fast [tune]; falls back to the old two-speed fastAt
+  for the RBMK/BWR defs), locking up inside a **±0.8 °C (±1.5 °F) deadband** (db 0.5→0.8).
+  The power-mismatch trim term stays dominant (authentic anticipation + the anti-limit-cycle
+  finding). `manual_overrides: [rod_nudge, rod_start]` — operator motion on the CONTROL bank
+  drops it to MAN (kernel group_id matching; shutdown-bank motion doesn't). Synoptic Rod
+  Control card gained an Auto|Man seg + live T-ref readout (mirrors the channel like the
+  RBMK AR card). New autoctl probes: T-ref capture, deadband lockup (≤2 nudges/120 s steady),
+  manual-motion→MAN, other-group immunity — 20/20. Gates: campaign 36/36, ops 52/66 (same),
+  synoptic 55/55.

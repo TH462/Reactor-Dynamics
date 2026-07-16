@@ -1730,6 +1730,10 @@
     'rbmk-feed-set': function () { cmd({ action: 'set_feedwater_flow', pct: inputVal('rbmkFeed') }); },
     'rbmk-turbine-set': function () { cmd({ action: 'set_turbine_load', mwe: inputVal('rbmkMwe') }); },
     'eps-on': function () { cmd({ action: 'set_eps_bypass', active: true }); }, 'eps-off': function () { cmd({ action: 'set_eps_bypass', active: false }); },
+    // PWR rod control AUTO/MAN — mirrors the Automate tab's rods_tavg channel
+    // (T-ref captures the current indicated Tavg on engage).
+    'prod-auto': function () { cmd({ action: 'set_auto_channel', channel_id: 'rods_tavg', engaged: true }); renderAutomate(service.assembleSnapshot()); },
+    'prod-man': function () { cmd({ action: 'set_auto_channel', channel_id: 'rods_tavg', engaged: false }); renderAutomate(service.assembleSnapshot()); },
     // AR AUTO/MAN — mirrors the Automate tab's 'AR Rods → Power' channel
     'ar-auto': function () { cmd({ action: 'set_auto_channel', channel_id: 'rods_power', engaged: true }); renderAutomate(service.assembleSnapshot()); },
     'ar-man': function () { arManual(); cmd({ action: 'rod_stop', group_id: 'auto_rods' }); },

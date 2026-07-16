@@ -161,6 +161,30 @@ test('PWR · secondary-on-auto while the operator moves rods', function (ck) {
   ck('pressure held', ts(r).pressure_mpa.toFixed(2), near(ts(r).pressure_mpa, 15.41, 0.4), '15.41±0.4');
 });
 
+test('PWR · rod auto: T-ref captured at engage, deadband lockup, manual motion → MAN', function (ck) {
+  var r = rig('pwr', 'hot_full_power');
+  r.run(10);
+  var tavgAtEngage = inst(r).tavg;
+  r.engage(['rods_tavg']);
+  var c = r.chan('rods_tavg');
+  ck('T-ref := indicated Tavg at engage', c.setpoint.toFixed(2) + ' vs tavg ' + tavgAtEngage.toFixed(2),
+    near(c.setpoint, tavgAtEngage, 0.5), 'tavg ±0.5');
+  // Steady plant inside the ±0.8 °C deadband: the channel locks up (no nudges).
+  var before = r.sent.filter(function (x) { return x.action === 'rod_nudge'; }).length;
+  r.run(120);
+  var during = r.sent.filter(function (x) { return x.action === 'rod_nudge'; }).length - before;
+  ck('deadband lockup — no rod motion at steady state', during, during <= 2, '≤2 nudges in 120 s');
+  // Manual rod motion takes the channel to MAN (a rod command on its group).
+  r.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -2, speed: 'slow' });
+  c = r.chan('rods_tavg');
+  ck('manual rod motion disengaged the channel', c.engaged, c.engaged === false, 'false');
+  ck('note says manual control taken', c.note, /manual/.test(c.note), 'mentions manual');
+  // Motion on a DIFFERENT group must NOT disengage it.
+  r.engage(['rods_tavg']);
+  r.cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: -1, speed: 'slow' });
+  ck('other-group motion leaves it engaged', r.chan('rods_tavg').engaged, r.chan('rods_tavg').engaged === true, 'true');
+});
+
 test('PWR · rod channel disengages itself on scram', function (ck) {
   var r = rig('pwr', 'hot_full_power');
   r.engage(['rods_tavg']);

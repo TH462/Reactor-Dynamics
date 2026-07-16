@@ -137,17 +137,22 @@
 
   var PWR_CHANNELS = [
     { id: 'rods_tavg', kind: 'rods', group: 'Reactor',
-      label: 'Control Rods → Tavg',
-      hint: 'Rod control — nudges the control bank to hold average coolant temperature at the setpoint (the real PWR rod-control variable). Raise steam demand and watch the rods withdraw to restore Tavg.',
+      label: 'Rod control → Tavg (AUTO)',
+      hint: 'Automatic rod control — on engage it captures T-ref from the CURRENT indicated Tavg, then holds it: a Tavg−Tref mismatch (e.g. after a turbine load change) computes the required rod direction and a Westinghouse-style variable speed (bigger error → faster drive), locking up inside a ±0.8 °C (±1.5 °F) deadband. Any manual rod motion takes it back to MAN.',
       group_id: 'control_rods', offOnScram: true,
+      manual_overrides: ['rod_nudge', 'rod_start'],   // operator rod motion on this group → MAN
       pv: function (s) { return s.instruments.tavg; },
+      // T-ref := indicated Tavg at engage (HR1) — editable afterwards.
       sp: { capture: function (s) { return s.instruments.tavg; }, min: 285, max: 315, dim: 'temp', unit: '°C', dp: 1, step: 0.5 },
       // Two-term control like a real rod controller: a DOMINANT steam-vs-power
-      // mismatch term (power chases the turbine draw — fast, self-stable) with
-      // the Tavg error as a slow trim. Tavg integrates the mismatch, so a
-      // Tavg-dominant loop limit-cycles for minutes; mismatch-dominant glides.
+      // mismatch term (power chases the turbine draw — fast, self-stable, the
+      // real system's power-mismatch channel) with the Tavg−Tref error as the
+      // slow trim. Tavg integrates the mismatch, so a Tavg-dominant loop
+      // limit-cycles for minutes; mismatch-dominant glides.
       trim: function (s) { return 1.25 * (s.instruments.steam_flow * 100 - s.instruments.power_range); },
-      gain: 0.4, db: 0.5, maxStep: 2, period: 5.0, fastAt: 4.0, kd: 5, spSlew: 0.05 },
+      // ±0.8 °C (±1.5 °F) lockup band; error-proportional speed ladder [tune].
+      speeds: [{ above: 0.8, speed: 'slow' }, { above: 2.0, speed: 'normal' }, { above: 4.0, speed: 'fast' }],
+      gain: 0.4, db: 0.8, maxStep: 2, period: 5.0, fastAt: 4.0, kd: 5, spSlew: 0.05 },
 
     { id: 'boron_trim', kind: 'bang', group: 'Reactor',
       label: 'Boron → rod position trim',

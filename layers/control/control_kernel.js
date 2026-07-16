@@ -687,7 +687,15 @@
       if (steps > 0 && g.steps >= g.max_steps) { c.note = 'rods fully withdrawn'; return; }
       if (steps < 0 && g.steps <= 0) { c.note = 'rods fully inserted'; return; }
     }
-    var speed = Math.abs(eEff) >= def.fastAt ? 'normal' : 'slow';
+    // Variable rod speed: a `speeds` ladder ([{above, speed}], ascending —
+    // Westinghouse-style error-proportional drive) when the def carries one,
+    // else the two-speed fastAt threshold.
+    var speed = 'slow';
+    if (def.speeds) {
+      for (var si = 0; si < def.speeds.length; si++) {
+        if (Math.abs(eEff) >= def.speeds[si].above) speed = def.speeds[si].speed;
+      }
+    } else if (Math.abs(eEff) >= def.fastAt) speed = 'normal';
     var r = this._sendInternal({ action: 'rod_nudge', group_id: def.group_id, steps: steps, speed: speed });
     c.note = (r && r.type === 'blocked') ? '⛔ ' + (r.message || 'withdrawal blocked') : (steps > 0 ? 'withdrawing' : 'inserting');
     c.lastAct = t;

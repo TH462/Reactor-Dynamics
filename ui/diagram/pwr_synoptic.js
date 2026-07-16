@@ -381,13 +381,17 @@
       '<div class="bank" data-hl="gRods"><div class="bar shut"><div class="fill" data-f="sbFill"></div></div>' +
       '<div class="bsteps" data-f="sbSteps">—</div><div class="blbl">shutdown bank</div></div>' +
       '</div>' +
+      '<div class="ctl"><span class="k">Mode</span>' + seg([
+        { l: 'Auto', act: 'prod-auto', f: 'prodAutoB' }, { l: 'Man', act: 'prod-man', f: 'prodManB' },
+      ], 'Rod control mode — AUTO captures T-ref from the current Tavg and drives the bank to hold it (variable speed on the mismatch); any manual rod motion drops it back to MAN.') +
+      '<span class="v mono" data-f="prodTref"></span></div>' +
       '<div class="ctl">' + seg([
         { l: 'Raise', hold: 'rod-withdraw' }, { l: 'Stop', act: 'rod-stop' }, { l: 'Lower', hold: 'rod-insert' },
-      ], 'Rod motion — HOLD Raise / Lower to drive the control bank at the selected speed; release (or Stop) to halt.') +
+      ], 'Rod motion — HOLD Raise / Lower to drive the control bank at the selected speed; release (or Stop) to halt. Manual motion takes rod control to MAN.') +
       seg([{ l: '+1', act: 'rod-nudge-out' }, { l: '−1', act: 'rod-nudge-in' }], 'Nudge — move the control bank one step.') + '</div>' +
       '<div class="ctl"><span class="k">Speed</span>' + seg([
         { l: 'Slow', act: 'rodspeed-slow' }, { l: 'Norm', act: 'rodspeed-normal', on: 1 }, { l: 'Fast', act: 'rodspeed-fast' },
-      ], 'Rod speed — slow / normal / fast drive rate.') + '</div>' +
+      ], 'Rod speed — slow / normal / fast drive rate (manual drive; AUTO picks its own speed from the mismatch).') + '</div>' +
       row('Status', 'rodStat', { hint: 'Rod/trip status — REACTOR TRIP from the protection system, or rod insertion limit when the bank is too deep for this power.' }) +
       '<div class="sub lrn-only" data-f="rodLimNote"></div>' +
       '<button class="pw-scram" data-syn="scram" data-scanner-hint="SCRAM — two-step: first click arms (CONFIRM), second click trips the reactor.">SCRAM</button>',
@@ -924,6 +928,13 @@
     var tripped = !!ins.rps_scrammed;
     txt('rodStat', tripped ? 'REACTOR TRIP' : atLim ? 'ROD INS LIMIT' : 'normal');
     vcls('rodStat', tripped ? 'alarm' : atLim ? 'warn' : 'dim');
+    // Rod control AUTO/MAN — mirrors the rods_tavg channel (a second face of it).
+    var rodCh = null, chansR = (s.automation && s.automation.channels) || [];
+    for (var rci = 0; rci < chansR.length; rci++) if (chansR[rci].id === 'rods_tavg') { rodCh = chansR[rci]; break; }
+    var rodAuto = !!(rodCh && rodCh.engaged);
+    segSync('prodAutoB', rodAuto); segSync('prodManB', !rodAuto);
+    if (refs.prodTref) refs.prodTref.textContent =
+      rodAuto && rodCh.setpoint != null ? 'T-ref ' + ctx.dispT(rodCh.setpoint) : '';
     if (refs.cbLim) refs.cbLim.style.borderTopColor = atLim ? 'var(--critical)' : 'var(--caution)';
     if (refs.rodLimNote) refs.rodLimNote.textContent = atLim ? 'Bank too deep for this power — withdraw or borate.' : '';
     var scramBtn = stage.querySelector('[data-syn="scram"]');
