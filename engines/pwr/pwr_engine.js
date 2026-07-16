@@ -196,6 +196,14 @@
     var s = this.s;
     var dt = dt_effective != null ? dt_effective : this.dt_nominal;
 
+    // Stash the PREVIOUS step's instrument readings the in-plant regulators
+    // sense from (HR1): the AFW level-hold valve senses SG level through its
+    // level instrument, and the SG-imbalance annunciator reads indicated power.
+    // Explicit coupling — one step of lag, same as every other feedback.
+    var insPrev = this.instruments && this.instruments.reading;
+    s._ins_sg_level = insPrev && insPrev.sg_level != null ? insPrev.sg_level : null;
+    s._ins_power_pct = insPrev && insPrev.power_range != null ? insPrev.power_range : null;
+
     // 0. Rod motion (incl. runaway) before reactivity reads positions.
     this._stepRods(dt);
     // 1. Total reactivity from current (previous-step) state — explicit coupling.
@@ -495,6 +503,23 @@
         // AFW throttle: scales delivered AFW flow (0–100 % of capacity).
         s.afw_throttle_frac = clip((cmd.pct != null ? cmd.pct : 100) / 100, 0, 1);
         break;
+      case 'trip_turbine':
+        // Turbine protection lives in the control layer (low vacuum / overspeed
+        // actuations reading instruments); this is the command it lands on.
+        if (!s.turbine_tripped) SG.tripTurbine(s);
+        break;
+      case 'open_pzr_safety':
+        s.safety_open = true;
+        break;
+      case 'close_pzr_safety':
+        s.safety_open = false;
+        break;
+      case 'open_sg_safety':
+        s.sg_safety_open = true;
+        break;
+      case 'close_sg_safety':
+        s.sg_safety_open = false;
+        break;
       case 'open_msiv':
         s.msiv_open = true;
         break;
@@ -593,8 +618,6 @@
         case 'stuck_porv_open': s.porv_stuck = true; break;
         case 'loss_of_feedwater': s.main_feedwater_available = false; break;
         case 'turbine_trip': SG.tripTurbine(s); break;
-        case 'degraded_hpi': s.hpi_flow_multiplier = clip(1 - severity, 0, 1); break;
-        case 'afw_failure': s.afw_blocked = true; s.afw_active = false; break;   // pump demand persists (run lights stay honest)
         case 'failure_to_scram': s.scram_blocked = true; break;
         case 'stuck_open_spray': s.spray_override = true; break;
         case 'failed_pzr_heaters': s.heater_override = 0; break;
@@ -611,6 +634,8 @@
           s.condenser_cooling_available = false; s.main_feedwater_available = false;
           break;
         case 'vacuum_decay': s.condenser_cooling_available = false; break;
+        case 'degrade_hpi': s.hpi_flow_multiplier = clip(1 - severity, 0, 1); break;
+        case 'block_afw': s.afw_blocked = true; s.afw_active = false; break;   // pump demand persists (run lights stay honest)
         case 'primary_leak':
           var meta = def.severity_meta;
           s.leak_flow = severity * (meta ? meta.max / 100 : 0.05); // % rated flow → normalized
@@ -647,8 +672,6 @@
       switch (id) {
         case 'stuck_porv_open': s.porv_stuck = false; break;
         case 'loss_of_feedwater': s.main_feedwater_available = true; break;
-        case 'degraded_hpi': s.hpi_flow_multiplier = 1.0; break;
-        case 'afw_failure': s.afw_blocked = false; s.afw_active = !!s.afw_pump_demand; break;   // valves reopened: flow resumes if the pumps are demanded
         case 'failure_to_scram': s.scram_blocked = false; break;
         case 'stuck_open_spray': s.spray_override = null; break;
         case 'failed_pzr_heaters': s.heater_override = null; break;
@@ -660,6 +683,8 @@
         case 'coast_down_pumps': case 'stop_pump': break; // pumps stay off until restarted
         case 'full_blackout': s.station_blackout = false; s.condenser_cooling_available = true; s.main_feedwater_available = true; break;
         case 'vacuum_decay': s.condenser_cooling_available = true; break;
+        case 'degrade_hpi': s.hpi_flow_multiplier = 1.0; break;
+        case 'block_afw': s.afw_blocked = false; s.afw_active = !!s.afw_pump_demand; break;   // valves reopened: flow resumes if the pumps are demanded
         case 'primary_leak': s.leak_flow = 0; break;
         case 'rod_withdrawal_runaway': s._fail.rod_runaway = { active: false, rate: 0 }; break;
         case 'stuck_control_rod': s._fail.stuck_rod = { active: false, worth_held: 0 }; break;
@@ -755,7 +780,7 @@
       pzr_level_pct: cfg.pressurizer.pzr_level_nominal,
 
       _mass: 1.0, core_inventory_pct: 100, primary_void_fraction: 0,
-      charging_flow: 0, charging_setpoint: 0, letdown_flow: 0, leak_flow: 0, safety_injection_flow: 0,
+      charging_flow: 0, charging_setpoint: 0, letdown_flow: 0, leak_flow: 0,
       charging_pump_running: true, cvcs_auto: false, boron_adjust: 0,   // CVCS
       // Merged HPI/LPI emergency injection (one flag, two-segment pump curve)
       // + passive accumulators (ECCS, §6.2/§6.3).
@@ -920,16 +945,39 @@
   function Harness(initial, seed) {
     this.eng = new PWREngine({ initial_state: initial || 'hot_full_power', seed: seed });
     this.dt = 0.02;
+    // Emulate M4's mechanical-protection actuations (relief valves + turbine
+    // trips moved in-stack, 2026-07 ruling) so the engine-only physics tests
+    // keep the assembled plant's protections. Reads INSTRUMENTS, like M4.
+    this.autoM4 = true;
+    this._m4Acc = 0;
   }
+  Harness.prototype._stepM4 = function (dt) {
+    this._m4Acc += dt;
+    if (this._m4Acc < 0.1) return;          // M4-ish evaluation cadence
+    this._m4Acc = 0;
+    var eng = this.eng, cfg = eng.cfg, ins = eng.getInstruments(), s = eng.s;
+    var pz = cfg.pressurizer, sg = cfg.steam_generator, tb = cfg.turbine;
+    if (!s.safety_open && ins.primary_pressure > pz.safety_open_mpa) eng.applyCommand({ action: 'open_pzr_safety' });
+    else if (s.safety_open && ins.primary_pressure < pz.safety_reseat_mpa) eng.applyCommand({ action: 'close_pzr_safety' });
+    if (!s.sg_safety_open && ins.steam_pressure > sg.sg_safety_open_mpa) eng.applyCommand({ action: 'open_sg_safety' });
+    else if (s.sg_safety_open && ins.steam_pressure < sg.sg_safety_reseat_mpa) eng.applyCommand({ action: 'close_sg_safety' });
+    if (!s.turbine_tripped && (ins.condenser_vacuum < tb.vacuum_trip_kpa || ins.turbine_rpm > tb.rpm_overspeed_trip)) {
+      eng.applyCommand({ action: 'trip_turbine' });
+    }
+  };
   Harness.prototype.run = function (seconds) {
     var n = Math.round(seconds / this.dt);
-    for (var i = 0; i < n; i++) this.eng.step(this.dt);
+    for (var i = 0; i < n; i++) {
+      if (this.autoM4) this._stepM4(this.dt);
+      this.eng.step(this.dt);
+    }
     return this;
   };
   // Run until pred(true_state, instruments) is true or timeout; returns seconds elapsed.
   Harness.prototype.runUntil = function (pred, maxSeconds) {
     var n = Math.round(maxSeconds / this.dt), t = 0;
     for (var i = 0; i < n; i++) {
+      if (this.autoM4) this._stepM4(this.dt);
       this.eng.step(this.dt); t += this.dt;
       if (pred(this.eng.getTrueState(), this.eng.getInstruments())) return t;
     }
@@ -1109,8 +1157,10 @@
         h.cmd({ action: 'inject_failure', failure_id: 'loss_of_condenser_vacuum' });
         var t = h.runUntil(function (ts) { return ts.condenser_vacuum_kpa < 74.5; }, 120);
         ck('vacuum decays below trip level', t >= 0 ? t.toFixed(1) + 's' : 'never', t >= 0, '< 74.5 kPa');
-        h.run(2);
-        ck('turbine trips', h.ts().turbine_rpm.toFixed(0), h.eng.s.turbine_tripped === true, 'tripped');
+        // The trip actuation reads the vacuum INSTRUMENT (lag 5 s), so allow it
+        // to catch up to the truth before asserting.
+        var tt = h.runUntil(function (ts) { return ts.turbine_tripped; }, 30);
+        ck('turbine trips (via the control-layer actuation)', tt >= 0 ? tt.toFixed(1) + 's' : 'never', h.eng.s.turbine_tripped === true, 'tripped');
       });
     },
 

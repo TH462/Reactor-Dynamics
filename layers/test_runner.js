@@ -58,7 +58,7 @@
   TestRunner.prototype.data_contract = function (emit) {
     this._reset('pwr', 'hot_full_power');
     var s = this._step(1);
-    var top = ['type', 'schema_version', 'metadata', 'true_state', 'instruments', 'control_state', 'rps_state', 'alarms', 'active_failures', 'instructor'];
+    var top = ['type', 'schema_version', 'metadata', 'true_state', 'instruments', 'control_state', 'rps_state', 'alarms', 'active_failures', 'automation', 'instructor'];
     emit('all top-level sections present', top.every(function (k) { return k in s; }), top.join(','), Object.keys(s).join(','), 'M5 assembleSnapshot is dropping a section');
     var md = ['sim_time', 'running', 'time_acceleration', 'wall_time', 'plant_id', 'design_version'];
     emit('metadata complete', md.every(function (k) { return k in s.metadata; }), md.join(','), Object.keys(s.metadata).join(','), 'M5 metadata assembly');
@@ -72,7 +72,9 @@
     emit('instruments carry the PWR §8.8 ids (incl. derived)', missIns.length === 0, 'none missing', missIns.join(',') || 'none', 'engine.getInstruments / instrument model');
 
     emit('control_state has rod_groups[] + porv_demand', Array.isArray(s.control_state.rod_groups) && 'porv_demand' in s.control_state, 'rod_groups[], porv_demand', typeof s.control_state.rod_groups, 'engine.getControlState');
-    emit('rps_state shaped {scrammed,last_trip_reason}', typeof s.rps_state.scrammed === 'boolean' && 'last_trip_reason' in s.rps_state, 'bool + key', JSON.stringify(s.rps_state), 'M4.getRpsState');
+    emit('rps_state shaped {scrammed,last_trip_reason,trip_blocks}', typeof s.rps_state.scrammed === 'boolean' && 'last_trip_reason' in s.rps_state && typeof s.rps_state.trip_blocks === 'object', 'bool + key + object', JSON.stringify(s.rps_state), 'M4.getRpsState');
+    var autoOk = s.automation && Array.isArray(s.automation.channels);
+    emit('automation section {channels:[...]}', autoOk, 'channels array', autoOk ? s.automation.channels.length + ' channels' : typeof s.automation, 'M4.getAutomationState / M5 assembly');
     var alarmOk = Array.isArray(s.alarms) && s.alarms.every(function (a) { return a.id && a.state && a.priority && a.panel && 'tile_label' in a; });
     emit('alarms[] each {id,state,priority,panel,tile_label}', alarmOk, 'all well-shaped', s.alarms.length + ' alarms', 'M4.getAlarms');
     emit('active_failures is an array', Array.isArray(s.active_failures), 'array', typeof s.active_failures, 'M4.getActiveFailures');
@@ -213,6 +215,20 @@
       if (!warns) noWarn.push(t.instrument + ' ' + t.direction);
     });
     emit('each trip has an earlier-warning alarm', noWarn.length === 0, 'all trips warn first', noWarn.join(',') || 'none', 'a trip has no alarm warning before it fires');
+
+    // Every trip/actuation condition gate resolves to a status instrument —
+    // the kernel evaluates conditions from instruments ONLY (no true-state
+    // fallback), so an unresolvable condition would never arm.
+    var badCond = [];
+    function condOk(c) {
+      if (!c) return true;
+      if (ids[c]) return true;
+      if (/_unavailable$/.test(c)) return !!ids[c.replace(/_unavailable$/, '_running')];
+      return false;
+    }
+    trips.forEach(function (t) { if (!condOk(t.condition)) badCond.push('trip:' + t.condition); });
+    acts.forEach(function (a) { if (!condOk(a.condition)) badCond.push('act:' + a.condition); });
+    emit('every condition gate resolves to a status instrument', badCond.length === 0, 'all resolve', badCond.join(',') || 'none', 'a condition gate references no instrument — it can never arm (HR1: no true-state fallback)');
 
     // lo_lo more extreme than its lo sibling.
     var badLolo = [];

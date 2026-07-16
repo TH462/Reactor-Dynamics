@@ -62,14 +62,38 @@
     // armed by the 11.03 MPa set_hpi actuation above — the low-head/high-flow
     // regime follows physically from the two-segment pump curve.)
     // Residual Heat Removal permissive — auto-aligns RHR for cooldown once the
-    // reactor is tripped and depressurized into the RHR band.
+    // reactor is tripped and depressurized into the RHR band. Armed via the
+    // 'rhr' ESF system so the synoptic's RHR "Auto" button can re-arm it.
     { instrument: 'primary_pressure', direction: 'low',  setpoint: 3.45,
-      action: 'set_rhr', active: true, condition: 'rps_scrammed' },
+      action: 'set_rhr', active: true, condition: 'rps_scrammed', arm: 'rhr' },
     // SR auto re-energize: when the IR falls below P-6 (deep shutdown) the
     // source-range detector comes back on so the operator keeps a count rate.
     { instrument: 'intermediate_range', direction: 'low', setpoint: 1.0e-10,
       action: 'set_sr_detector', params: { on: true } },
   ];
+
+  // Mechanical protections moved in-stack (2026-07 ruling): relief-valve pops
+  // and turbine trips are CONTROL decisions reading instruments, so they can be
+  // manipulated and failed like every other actuation. Setpoints derive from
+  // the engine config (single source — the engine keeps the valve hydraulics).
+  var _pz = RD.PWR_CONFIG ? RD.PWR_CONFIG.pressurizer : {};
+  var _sg = RD.PWR_CONFIG ? RD.PWR_CONFIG.steam_generator : {};
+  var _tb = RD.PWR_CONFIG ? RD.PWR_CONFIG.turbine : {};
+  PWR_ACTUATIONS.push(
+    // Pressurizer spring safety valves: pop / reseat.
+    { instrument: 'primary_pressure', direction: 'high', setpoint: _pz.safety_open_mpa || 17.13,
+      action: 'open_pzr_safety', reset_below: _pz.safety_reseat_mpa || 16.55, reset_action: 'close_pzr_safety' },
+    // SG code safety valves: pop / reseat (the bottled-SG backstop).
+    { instrument: 'steam_pressure', direction: 'high', setpoint: _sg.sg_safety_open_mpa || 9.31,
+      action: 'open_sg_safety', reset_below: _sg.sg_safety_reseat_mpa || 9.0, reset_action: 'close_sg_safety' },
+    // Turbine protection: low condenser vacuum, and overspeed. reset_below
+    // re-arms the latch once the reading recovers (no reset command — a trip
+    // is one-way; the operator restores the machine via connect_grid).
+    { instrument: 'condenser_vacuum', direction: 'low', setpoint: _tb.vacuum_trip_kpa || 74.5,
+      action: 'trip_turbine', reset_below: 84.7 },
+    { instrument: 'turbine_rpm', direction: 'high', setpoint: _tb.rpm_overspeed_trip || 1980.0,
+      action: 'trip_turbine', reset_below: _tb.rpm_rated || 1800.0 }
+  );
 
   // Alarms — every alarm setpoint is less extreme than the matching trip so the
   // alarm warns first; lo_lo escalates lo. Panel A = reactor/primary, B = secondary/systems.
@@ -120,13 +144,20 @@
                                    severity_meta: { label: 'Leak Rate', unit: '% rated flow', min: 0, max: 8, default: 3 }, display: 'Steam Generator Tube Rupture' },
     rcp_trip:                    { type: 'physics_parameter', category: 'coolant', effect: 'stop_pump', display: 'RCP Trip' },
     loss_of_condenser_vacuum:    { type: 'physics_parameter', category: 'power', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },
-    degraded_hpi:                { type: 'command_override', category: 'safety_system', intercepts: ['set_hpi'], severity_scales: 'hpi_flow_multiplier',
-                                   severity_meta: { label: 'HPI Capacity', unit: '% rated', min: 0, max: 100, default: 50, invert: true }, display: 'Degraded HPI' },
-    // afw_failure carries NO command interception: the block is the engine's
-    // afw_blocked state (the tagged-shut discharge valves, HR7 physics-side).
+    // degraded_hpi and afw_failure are PHYSICS-side (HR7): both are persistent
+    // physical states in the engine (a degraded pump curve; tagged-shut AFW
+    // discharge valves), not command interceptions — the old command_override
+    // typing intercepted nothing (self-flagged in M4 §7, now resolved).
+    // severity_meta encodes the capacity↔severity inversion the way the BWR
+    // battery meta does (min > max): severity 0 → 100 % capacity, 1 → 0 %.
+    // The slider label then reads the true delivered capacity (was inverted —
+    // "HPI Capacity: 100" used to mean zero flow; the old `invert` flag was
+    // consumed by nothing).
+    degraded_hpi:                { type: 'physics_parameter', category: 'safety_system', effect: 'degrade_hpi', severity_scales: 'hpi_flow_multiplier',
+                                   severity_meta: { label: 'HPI Capacity', unit: '% rated', min: 100, max: 0, default: 50 }, display: 'Degraded HPI' },
     // set_afw still descends so the PUMP demand latches — the run lights honestly
     // show the pumps running while the shut valves deliver zero flow (TMI-2).
-    afw_failure:                 { type: 'command_override', category: 'safety_system', display: 'Auxiliary Feedwater Failure' },
+    afw_failure:                 { type: 'physics_parameter', category: 'safety_system', effect: 'block_afw', display: 'Auxiliary Feedwater Failure' },
     failure_to_scram:            { type: 'command_override', category: 'safety_system', intercepts: ['scram'], effect: 'block', display: 'Failure to Scram (ATWS)' },
     stuck_open_spray:            { type: 'command_override', category: 'coolant', intercepts: ['set_spray'], override_value: true, display: 'Pressurizer Spray Stuck Open' },
     failed_pzr_heaters:          { type: 'command_override', category: 'coolant', intercepts: ['set_heater'], override_value: 0.0, display: 'Pressurizer Heaters Failed' },
@@ -169,7 +200,7 @@
       message_industry: 'SR ENERGIZE BLOCKED: IR ≥ 1e-6 A — flux above SR detector limits.' },
   ];
 
-  // Automation channels (kernel §11) — operator-selectable controllers the
+  // Automation channels (M4b automation) — operator-selectable controllers the
   // control layer runs at physics rate. Kinds: mode (passthrough to an
   // engine-internal auto), pid, rods, bang. Callbacks receive a snapshot-shaped
   // ctx { instruments, control_state, true_state, rps_state, metadata }; all
@@ -199,6 +230,7 @@
       label: 'Boron → rod position trim',
       hint: 'CVCS chemistry trim — borates when the auto rods sit too deep, dilutes when they run out of travel, so rod control keeps its authority through xenon and load drifts. Needs the rod channel engaged and the charging pump running.',
       requires: 'rods_tavg', offOnScram: true,
+      busyNote: function (s) { return s.control_state.charging_pump_running === false ? ' (charging pump OFF)' : ''; },
       hi: 96.0, lo: 55.0, hiStop: 90.0, loStop: 62.0, rate: 0.5 },
 
     { id: 'pzr_pressure', kind: 'mode', group: 'Primary',
@@ -245,12 +277,13 @@
       disengage: function () { return [{ action: 'set_load_mode', mode: 'manual' }]; } },
   ];
 
-  // ESF AUTO/MAN arms (kernel §12): each system is ARMED for its auto-actuation
+  // ESF AUTO/MAN arms (M4b ESF arms): each system is ARMED for its auto-actuation
   // by default; any of the listed OPERATOR commands flips it to MANUAL, and
   // set_esf_auto re-arms it (a standing condition then re-fires).
   var PWR_ESF_SYSTEMS = [
     { id: 'hpi', label: 'HPI/LPI emergency injection', commands: ['set_hpi', 'set_lpi'] },
     { id: 'afw', label: 'Auxiliary feedwater',         commands: ['set_afw', 'set_afw_flow'] },
+    { id: 'rhr', label: 'Residual heat removal',       commands: ['set_rhr', 'set_dhr'] },
   ];
 
   var PWR_PROTECTION = {

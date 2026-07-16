@@ -199,14 +199,17 @@ T.push(test('AFW throttle + level hold — delivered flow scales and tapers (eng
   var s = new Stack('hot_full_power');
   var es = s.engine.s, sg = s.engine.cfg.steam_generator;
   s.run(1);
-  es.sg_level_pct = 10;                                     // well below the hold target
+  // The hold senses level through the SG LEVEL INSTRUMENT (HR1) — drive the
+  // SENSED level with a stuck-instrument injection, not the true state.
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'sg_level', mode: 'stuck', value: 10 });
   s.cmd({ action: 'set_afw', active: true });
-  s.engine.step(0.02);
-  ck('full capacity at low level', es.afw_flow_normalized.toFixed(3), Math.abs(es.afw_flow_normalized - sg.afw_flow_frac) < 1e-6, String(sg.afw_flow_frac));
+  s.engine.step(0.02); s.engine.step(0.02);   // reading sticks, then the stash sees it
+  ck('full capacity at low sensed level', es.afw_flow_normalized.toFixed(3), Math.abs(es.afw_flow_normalized - sg.afw_flow_frac) < 1e-6, String(sg.afw_flow_frac));
   s.cmd({ action: 'set_afw_flow', pct: 40 });
-  es.sg_level_pct = 10; s.engine.step(0.02);
+  s.engine.step(0.02);
   ck('throttle scales delivered flow', es.afw_flow_normalized.toFixed(3), Math.abs(es.afw_flow_normalized - 0.4 * sg.afw_flow_frac) < 1e-6, (0.4 * sg.afw_flow_frac).toFixed(3));
-  es.sg_level_pct = sg.afw_level_target + sg.afw_level_band + 1; s.engine.step(0.02);
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'sg_level', mode: 'stuck', value: sg.afw_level_target + sg.afw_level_band + 1 });
+  s.engine.step(0.02); s.engine.step(0.02);
   ck('level hold tapers to zero above the band', es.afw_flow_normalized.toFixed(4), es.afw_flow_normalized === 0, '0');
 }));
 

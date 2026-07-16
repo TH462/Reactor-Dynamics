@@ -4,7 +4,8 @@
  * All PWR parameters as a structured data object: the [tune] physics
  * coefficients, the operating points, the instrument set, and the named
  * initial states. The protection/alarm/failure definitions (also data) live
- * in pwr_protection.js and are attached onto PWR_CONFIG.protection here.
+ * in layers/control/pwr_control.js, which attaches them onto
+ * PWR_CONFIG.protection when it loads (after this file).
  *
  * Units are SI throughout (CONTEXT §11): pressure MPa, temperature °C, level
  * and power %, flows normalized to rated. Values marked [tune] are starting
@@ -64,7 +65,6 @@
       // there and purely perturbative+stabilizing on a transient (M1 §4); boron
       // is then trimmed to make the net reactivity critical.
       rho_excess: 0.10,            // [tune]
-      boron_rate: 5.0,             // (legacy) [tune]
       // Chemical & Volume Control System (CVCS). Boron chemistry is decoupled from
       // net charging−letdown: borate/dilute change concentration at boron_adjust_rate
       // (needs the charging pump). Charging/letdown control primary INVENTORY; auto
@@ -195,9 +195,10 @@
       torque_per_flow: 1.0, torque_per_load: 1.0,
       turbine_inertia: 50.0,       // coasts slowly [tune]
       rpm_rated: 1800.0, rpm_overspeed_trip: 1980.0,
+      sync_tau: 0.5,               // s grid pull-in to rated speed when synced
       vacuum_rated: 96.5, vacuum_lost: 16.9,   // kPa [tune]
       vacuum_restore_tau: 10.0, vacuum_decay_tau: 30.0, // s [tune]
-      vacuum_trip_kpa: 74.5,       // turbine trips below this
+      vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer)
       mwe_rated: 1000.0,           // MWe [tune]
       // Turbine governor / control valve: EHC load-control mode — the valve
       // TARGET is pressure-compensated (demand ÷ P/P_rated, clamped fully open)

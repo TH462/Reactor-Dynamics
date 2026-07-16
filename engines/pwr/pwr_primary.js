@@ -73,7 +73,7 @@
     // Charging requires the charging pump; the accumulator inventory gain scales its
     // normalized flow into the same inventory-fraction units as the rest of the balance.
     var charging = (s.charging_pump_running === false) ? 0 : s.charging_flow;
-    var dm = (charging + inj_inv + accum_inv + s.safety_injection_flow)
+    var dm = (charging + inj_inv + accum_inv)
            - (s.letdown_flow + s.porv_flow + s.safety_flow + s.leak_flow);
     s._mass = clip(s._mass + dm * dt, 0.0, cfg.primary.mass_max);
     s.core_inventory_pct = s._mass * 100;

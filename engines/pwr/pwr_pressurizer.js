@@ -5,8 +5,12 @@
  *
  * HR2: the engine makes no control decisions. The PORV reflects its COMMANDED
  * demand (set by open_porv/close_porv, which in the real stack come from M4's
- * actuation) and the stuck-open failure; only the spring safety valves act on
- * pressure directly, because they are purely mechanical (HR7 physics).
+ * actuation) and the stuck-open failure. The spring safety valves likewise
+ * reflect commanded state (open_pzr_safety/close_pzr_safety — M4's actuation
+ * reads the pressure INSTRUMENT against safety_open_mpa/safety_reseat_mpa):
+ * per the 2026-07 design ruling, even mechanical relief logic lives in the
+ * control layer so it can be manipulated and failed like everything else.
+ * The engine keeps only the valve hydraulics (flow while open).
  *
  * Attaches RD.pwrPressurizer.
  */
@@ -46,9 +50,9 @@
     var isolated = (s.block_valve_open === false);
     s.porv_flow = (s.porv_open && !isolated) ? p.porv_flow_max * dP_ratio : 0;
 
-    // Spring safety valves: purely mechanical — open at 17.13, reseat at 16.55 MPa.
-    if (s.pressure_mpa > p.safety_open_mpa) s.safety_open = true;
-    else if (s.pressure_mpa < p.safety_reseat_mpa) s.safety_open = false;
+    // Spring safety valves: COMMANDED state (open_pzr_safety/close_pzr_safety —
+    // the control layer's actuation pops them at safety_open_mpa and reseats at
+    // safety_reseat_mpa, reading the pressure instrument). Flow is hydraulics.
     s.safety_flow = s.safety_open ? p.safety_flow_max * dP_ratio : 0;
   }
 

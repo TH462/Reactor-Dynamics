@@ -159,12 +159,28 @@
     // Watching a decision beat's branches: first branch trigger to fire wins (§6).
     // A fired branch jumps to its goto beat, which is then evaluated in the SAME
     // pass below — the decision flows straight into its consequence beat.
+    // `inaction` branches are deferred to a second pass regardless of authored
+    // order: an inaction trigger is only elapsed time, so it must never beat a
+    // sibling operator_action that matched in the same pass ("no relevant
+    // action within the window" — the relevant actions are the siblings).
     if (this.branchWatch) {
       var brs = this.branchWatch.branches || [];
+      var fired = false;
       for (var i = 0; i < brs.length; i++) {
+        if (brs[i].trigger && brs[i].trigger.type === 'inaction') continue;
         if (this._evalTrigger(brs[i].trigger, snapshot, simTime)) {
           this._fireBranch(brs[i], simTime);
+          fired = true;
           break;
+        }
+      }
+      if (!fired && this.branchWatch) {
+        for (var j = 0; j < brs.length; j++) {
+          if (!(brs[j].trigger && brs[j].trigger.type === 'inaction')) continue;
+          if (this._evalTrigger(brs[j].trigger, snapshot, simTime)) {
+            this._fireBranch(brs[j], simTime);
+            break;
+          }
         }
       }
     }

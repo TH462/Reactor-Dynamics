@@ -50,13 +50,13 @@
     var total_worth = 0, i, g;
     for (i = 0; i < groups.length; i++) {
       g = groups[i];
-      if (g.function === 'control' || g.function === 'manual') total_worth += g.worth_pcm;
+      if (g.function === 'control') total_worth += g.worth_pcm;   // (no 'manual' group exists — RBMK groups are control/auto/shutdown)
     }
     if (total_worth <= 0) return 0;
     var orm = 0;
     for (i = 0; i < groups.length; i++) {
       g = groups[i];
-      if (g.function !== 'control' && g.function !== 'manual') continue;
+      if (g.function !== 'control') continue;
       var inserted_fraction = g.steps / g.max_steps;
       var group_equiv_rods = (g.worth_pcm / total_worth) * cfg.rods.total_rod_count;
       orm += inserted_fraction * group_equiv_rods;

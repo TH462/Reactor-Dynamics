@@ -33,7 +33,11 @@
     var feedwater_flow = s.main_feedwater_available ? s.feedwater_demand_frac : 0.0;
     var afw_flow = 0;
     if (s.afw_active) {
-      var hold = clip((sg.afw_level_target + sg.afw_level_band - s.sg_level_pct) / sg.afw_level_band, 0, 1);
+      // The hold senses level through the SG LEVEL INSTRUMENT (previous step's
+      // reading, stashed by the engine) — a failed level sensor fools the AFW
+      // regulator exactly as it fools the operator (HR1).
+      var lvl = s._ins_sg_level != null ? s._ins_sg_level : s.sg_level_pct;
+      var hold = clip((sg.afw_level_target + sg.afw_level_band - lvl) / sg.afw_level_band, 0, 1);
       afw_flow = sg.afw_flow_frac * (s.afw_throttle_frac != null ? s.afw_throttle_frac : 1.0) * hold;
     }
     s.afw_flow_normalized = afw_flow;
@@ -72,15 +76,13 @@
     s.steam_dump_frac = dump;
 
     // SG code safety valves — UPSTREAM of the MSIV, the relief that remains
-    // when the SG is bottled: pop above sg_safety_open_mpa, reseat below
-    // sg_safety_reseat_mpa, proportional in between once open. Above the
-    // 8.90 MPa no-load dump setpoint, so the dump handles normal duty and the
-    // safeties are the backstop.
-    if (s.sg_safety_open) {
-      if (s.steam_pressure_mpa < sg.sg_safety_reseat_mpa) s.sg_safety_open = false;
-    } else if (s.steam_pressure_mpa > sg.sg_safety_open_mpa) {
-      s.sg_safety_open = true;
-    }
+    // when the SG is bottled. COMMANDED state (open_sg_safety/close_sg_safety):
+    // the control layer's actuation pops them above sg_safety_open_mpa and
+    // reseats below sg_safety_reseat_mpa reading the steam_pressure INSTRUMENT
+    // (2026-07 ruling: relief logic lives in the control layer). The engine
+    // keeps the hydraulics — proportional flow between reseat and pop once
+    // open. Above the 8.90 MPa no-load dump setpoint, so the dump handles
+    // normal duty and the safeties are the backstop.
     var sg_relief = s.sg_safety_open
       ? sg.sg_safety_flow_max * clip((s.steam_pressure_mpa - sg.sg_safety_reseat_mpa)
           / (sg.sg_safety_open_mpa - sg.sg_safety_reseat_mpa), 0, 1)
@@ -131,14 +133,14 @@
     var tau = s.condenser_cooling_available ? tb.vacuum_restore_tau : tb.vacuum_decay_tau;
     s.condenser_vacuum_kpa += (target - s.condenser_vacuum_kpa) / tau * dt;
 
-    // Turbine trip on low condenser vacuum.
-    if (s.condenser_vacuum_kpa < tb.vacuum_trip_kpa && !s.turbine_tripped) tripTurbine(s);
-
-    var synced = !s.turbine_tripped && s.generator_load > 0
-      && s.condenser_vacuum_kpa >= tb.vacuum_trip_kpa;
+    // Turbine PROTECTION (low-vacuum trip, overspeed trip) lives in the control
+    // layer, which reads the condenser_vacuum / turbine_rpm INSTRUMENTS and
+    // issues trip_turbine (2026-07 ruling — HR7: a tripped turbine is a
+    // command-level event). The engine only spins the machine.
+    var synced = !s.turbine_tripped && s.generator_load > 0;
     if (synced) {
       // Grid holds the synchronous generator at rated speed.
-      s.turbine_rpm += (tb.rpm_rated - s.turbine_rpm) / 0.5 * dt;
+      s.turbine_rpm += (tb.rpm_rated - s.turbine_rpm) / (tb.sync_tau || 0.5) * dt;
     } else {
       // Free: coast down on lost steam, or spin up toward overspeed if steam
       // keeps flowing with the load gone.
@@ -146,7 +148,6 @@
                      - s.generator_load * tb.torque_per_load;
       s.turbine_rpm += (net_torque / tb.turbine_inertia) * dt;
       if (s.turbine_rpm < 0) s.turbine_rpm = 0;
-      if (s.turbine_rpm > tb.rpm_overspeed_trip && !s.turbine_tripped) tripTurbine(s);
     }
 
     s.mwe_output = (s.power_pct / 100) * tb.mwe_rated

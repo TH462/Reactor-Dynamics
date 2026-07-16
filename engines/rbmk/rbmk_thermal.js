@@ -38,19 +38,24 @@
   function stepVoid(s, cfg, dt) {
     var t = cfg.thermal;
     var flow_frac = Math.max(s.channel_flow_pct / 100.0, 1e-3);
-    var void_target = clip(s._P / flow_frac * t.void_scale_rbmk, 0.0, 0.90);
+    var void_target = clip(s._P / flow_frac * t.void_scale_rbmk, 0.0, t.void_max);
     s.void_fraction_avg += (void_target - s.void_fraction_avg) / t.void_response_tau * dt;
-    s.void_fraction_avg = clip(s.void_fraction_avg, 0.0, 0.90);
+    s.void_fraction_avg = clip(s.void_fraction_avg, 0.0, t.void_max);
   }
 
   // §8.3 — steam-drum pressure (the RBMK's pressure-setting component). Steam
   // generated tracks power; the turbine draw (steam_to_turbine) is a slower load,
   // so an excursion outruns it and pressure rises until the reliefs vent.
+  // Relief valve pop/reseat is a CONTROL decision (2026-07 ruling): the control
+  // layer's actuation reads the steam_pressure INSTRUMENT and commands
+  // open_relief_valve / close_relief_valve. The engine keeps only the valve
+  // state (s.relief_open) and the flow hydraulics — flow proportional to the
+  // overpressure above drum_relief_mpa (the hydraulic reference) while open.
   function stepDrumPressure(s, cfg, dt) {
     var t = cfg.thermal;
     var steam_gen_rate = s._P * t.steam_gen_per_power;
-    var relief_flow = s.steam_pressure_mpa > t.drum_relief_mpa
-      ? (s.steam_pressure_mpa - t.drum_relief_mpa) * t.relief_gain : 0.0;
+    var relief_flow = s.relief_open
+      ? Math.max(0, s.steam_pressure_mpa - t.drum_relief_mpa) * t.relief_gain : 0.0;
     s._relief_flow = relief_flow;
     // Turbine bypass / steam dump: vents steam straight to the condenser to hold
     // drum pressure when the turbine can't take the full steam load (load
@@ -112,14 +117,15 @@
     var tau = s.condenser_cooling_available ? tb.vacuum_restore_tau : tb.vacuum_decay_tau;
     s.condenser_vacuum_kpa += (target - s.condenser_vacuum_kpa) / tau * dt;
 
-    // Turbine trips on low condenser vacuum.
-    if (s.condenser_vacuum_kpa < tb.vacuum_trip_kpa && !s.turbine_tripped) tripTurbine(s);
-
+    // Turbine PROTECTION (low-vacuum trip, overspeed trip) lives in the control
+    // layer, which reads the condenser_vacuum / turbine_rpm INSTRUMENTS and
+    // issues trip_turbine (2026-07 ruling — a tripped turbine is a
+    // command-level event). The engine only spins the machine.
     var load = s.steam_to_turbine;
-    var synced = !s.turbine_tripped && load > 1e-4 && s.condenser_vacuum_kpa >= tb.vacuum_trip_kpa;
+    var synced = !s.turbine_tripped && load > 1e-4;
     if (synced) {
       // Grid holds the synchronous generator at rated speed (3000 rpm, 50 Hz).
-      s.turbine_rpm += (tb.rpm_rated - s.turbine_rpm) / 0.5 * dt;
+      s.turbine_rpm += (tb.rpm_rated - s.turbine_rpm) / (tb.sync_tau || 0.5) * dt;
     } else {
       // Free-spinning: driven by any admitted steam, braked by windage → coasts
       // down when steam is cut (trip), or drifts up if load is lost with steam on.
@@ -127,7 +133,6 @@
       var brake = tb.windage * s.turbine_rpm;
       s.turbine_rpm += (drive - brake) / tb.turbine_inertia * dt;
       if (s.turbine_rpm < 0) s.turbine_rpm = 0;
-      if (s.turbine_rpm > tb.rpm_overspeed_trip && !s.turbine_tripped) tripTurbine(s);
     }
 
     // Electrical output tracks steam actually drawn by the turbine (direct/drum
@@ -150,7 +155,7 @@
   function applyChannelRupture(s, cfg, dt) {
     if (!s._fail.channel_rupture.active) return;
     var pf = cfg.physics_failures, size = s._fail.channel_rupture.size;
-    s.void_fraction_avg = Math.min(0.90, s.void_fraction_avg + pf.RUPTURE_VOID_RATE * size * dt);
+    s.void_fraction_avg = Math.min(cfg.thermal.void_max, s.void_fraction_avg + pf.RUPTURE_VOID_RATE * size * dt);
     s.drum_level_pct    = Math.max(0, s.drum_level_pct - pf.RUPTURE_LEVEL_RATE * size * dt);
     s.channel_flow_pct  = Math.max(0, s.channel_flow_pct - pf.RUPTURE_FLOW_RATE * size * dt);
   }

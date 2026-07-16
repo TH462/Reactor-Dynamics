@@ -23,7 +23,7 @@
     var alpha_base   = r.alpha_void_base;
     var power_factor = 1.0 + r.alpha_void_low_power_gain * Math.max(0, 0.20 - P) / 0.20;
     var xenon_factor = 1.0 + r.alpha_void_xenon_gain     * Math.max(0, xenon_fraction - 1.0);
-    var void_factor  = 1.0 + r.alpha_void_high_void_gain * Math.max(0, void_fraction - 0.30);
+    var void_factor  = 1.0 + r.alpha_void_high_void_gain * Math.max(0, void_fraction - r.void_ref);
     return alpha_base * power_factor * xenon_factor * void_factor;
   }
 

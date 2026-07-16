@@ -49,7 +49,12 @@
       if (s.feed_auto_coupled) opts.setFeed(s, clip(s.load_target_mwe / rated, 0, 1.2));
     }
 
-    s.load_imbalance_mwe = powerMwe - s.load_target_mwe;
+    // The imbalance ANNUNCIATOR reads INDICATED power (the engine stashes the
+    // previous step's power_range reading as s._ins_power_pct) — HR1: an
+    // annunciator is an indication, not physics. The load-follow tracking
+    // above stays on true power: the turbine extracts what the reactor makes.
+    var indMwe = (s._ins_power_pct != null ? s._ins_power_pct / 100 : powerFrac(s)) * rated;
+    s.load_imbalance_mwe = indMwe - s.load_target_mwe;
     s.sg_imbalance_active = Math.abs(s.load_imbalance_mwe) > IMBALANCE_MW;
   }
 

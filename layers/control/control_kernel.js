@@ -59,7 +59,7 @@
       case 'set_feed_pump_speed': return 'pct';
       case 'feed_pump_nudge': return 'delta_pct';
       case 'set_hpi': case 'set_afw': case 'set_rcic': case 'set_hpci':
-      case 'set_dhr': case 'set_rhr': case 'set_lpi': case 'set_eps_bypass': return 'active';
+      case 'set_dhr': case 'set_rhr': case 'set_eps_bypass': return 'active';
       case 'set_charging_flow': case 'set_letdown_flow': return 'normalized';
       case 'set_steam_demand': case 'set_turbine_load': case 'set_load_target': return 'mwe';
       case 'set_load_mode': return 'mode';
@@ -80,7 +80,7 @@
     this._buildAlarmModel();
     this.actuationFired = (this.config.actuations || []).map(function () { return false; });
     this.interlockActive = (this.config.interlocks || []).map(function () { return false; });
-    // Automation channel runtime (§11): per-plant channel defs are config data.
+    // Automation channel runtime (M4b automation): per-plant channel defs are config data.
     this.channels = [];
     this.byId = {};
     this._autoT = 0;          // automation clock, sim-s since plant selection (saved)
@@ -93,13 +93,13 @@
       this.channels.push(ch);
       this.byId[chDefs[ci].id] = ch;
     }
-    // ESF AUTO/MAN arms (§12): each configured system starts ARMED for its
+    // ESF AUTO/MAN arms (M4b ESF arms): each configured system starts ARMED for its
     // auto-actuations; an OPERATOR command listed on the system flips it to
     // MANUAL (the plant's own actuations are _internal and don't).
     this.esfAuto = {};
     var esf = this.config.esf_systems || [];
     for (var ei = 0; ei < esf.length; ei++) this.esfAuto[esf[ei].id] = true;
-    // Manual trip blocks (§13): trip id → true while blocked (P-10 gated).
+    // Manual trip blocks (M4b trip blocks): trip id → true while blocked (P-10 gated).
     // A plant AT POWER starts with the blockable startup trips already blocked
     // (the real at-power lineup — they were blocked at P-10 on the way up);
     // auto-reinstate re-arms them the moment power falls below the permissive.
@@ -155,13 +155,13 @@
       case 'clear_instrument_failure': return this.engine.applyCommand(command);
     }
 
-    // Manual override (§11): an OPERATOR command listed in a channel's
+    // Manual override (M4b automation): an OPERATOR command listed in a channel's
     // manual_overrides disengages that channel — taking the control by hand
     // kicks its automation to MAN (self-issued channel outputs are exempt).
-    // Likewise an operator command on an ESF system disarms its auto (§12).
+    // Likewise an operator command on an ESF system disarms its auto (M4b ESF arms).
     if (!this._internal) { this._manualOverrideScan(command); this._esfManualScan(command); }
 
-    // Interlocks (§4b): condition-latched command blocks that read instruments
+    // Interlocks (M4 §4b): condition-latched command blocks that read instruments
     // (HR1) and are pure config data (HR3) — e.g. the PWR rod-withdrawal block
     // on high startup rate. Distinct from failures: the plant is protecting
     // itself, not malfunctioning, so the caller gets a labelled refusal.
@@ -180,8 +180,7 @@
       if (def.effect === 'block') return null;                          // DROP (ATWS / ADS-fail / LPCI-fail)
       if (def.override) { cmd = { action: def.override }; break; }      // e.g. close_porv → open_porv
       if ('override_value' in def) { cmd = this._withValue(cmd, f, def.override_value); break; }
-      if (def.effect) return this._applyFailureEffect(f);               // non-block effect (none in PWR)
-      break;                                                            // matched, no transform → pass through
+      break;   // matched, no transform → pass through ('block' is the only real override effect)
     }
     return this.engine.applyCommand(cmd);
   };
@@ -195,22 +194,28 @@
     return out;
   };
 
-  ControlLayer.prototype._applyFailureEffect = function (f) {
-    // command_override "block" is short-circuited above; any other effect is a no-op
-    // here for the PWR. (Engine-owned effects arrive as physics_parameter forwards.)
-    return null;
-  };
+  // Default severity from slider metadata — the SAME normalization the UI's
+  // slider uses ((default − min)/(max − min), clamped), so an unspecified
+  // severity means "the slider's default position" whether it arrives from the
+  // Failures tab or a bare inject_failure. Handles inverted metas (min > max).
+  function severityFromMeta(meta) {
+    if (!meta || meta.max === meta.min) return 1.0;
+    return clip((meta.default - meta.min) / (meta.max - meta.min), 0, 1);
+  }
 
   // ----------------------------------------------------------------- failures (§6)
   ControlLayer.prototype.injectFailure = function (command) {
     var id = command.failure_id, def = this.config.failures[id];
     if (!def) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown failure', received: command };
-    var sev = def.severity_scales ? (command.severity != null ? command.severity : (def.severity_meta ? def.severity_meta.default / (def.severity_meta.max || 1) : 1.0)) : null;
+    var sev = def.severity_scales ? (command.severity != null ? command.severity : severityFromMeta(def.severity_meta)) : null;
     var existing = this._findFailure(id);
     if (existing) { existing.severity = sev; }                      // re-inject = severity update (in place)
     else { this.activeFailures.push({ id: id, def: def, severity: sev }); }
     // Forward to the engine so its persistent effect takes hold (see seam note).
-    this.engine.applyCommand({ action: 'inject_failure', failure_id: id, severity: command.severity != null ? command.severity : 1.0 });
+    // The layer-held and engine-applied severity must be the SAME number — a
+    // defaulted severity used to forward 1.0 while the layer held default/max.
+    this.engine.applyCommand({ action: 'inject_failure', failure_id: id,
+                               severity: sev != null ? sev : (command.severity != null ? command.severity : 1.0) });
     return null;
   };
 
@@ -247,7 +252,7 @@
   };
 
   // Responsibility 1 — trips (§3). Any firing scrams; reads instruments (HR1)
-  // except the documented __true_flow__ exception. Extensions (§13):
+  // except the documented __true_flow__ exception. Extensions (M4b trip blocks):
   //   condition  — the trip evaluates only while the condition holds (e.g. the
   //                SR high-flux trip only while the detector is energized);
   //   blockable  — the trip can be manually blocked (set_trip_block) while the
@@ -309,7 +314,7 @@
   // Responsibility 2 — engineered-safety actuation (§4). Each issues a command
   // through handleCommand, so a command-override failure intercepts it too.
   // Actuations carrying an `arm` tag evaluate only while that ESF system is in
-  // AUTO (§12) — a disarmed system neither fires nor resets.
+  // AUTO (M4b ESF arms) — a disarmed system neither fires nor resets.
   ControlLayer.prototype._evalActuations = function (ins) {
     var acts = this.config.actuations || [];
     for (var i = 0; i < acts.length; i++) {
@@ -335,7 +340,7 @@
     }
   };
 
-  // Responsibility 2b — interlocks (§4b). Condition-latched (with hysteresis)
+  // Responsibility 2b — interlocks (M4 §4b). Condition-latched (with hysteresis)
   // blocks on operator commands, from config data: engage when the INSTRUMENT
   // (HR1) crosses the setpoint, clear when it returns past clears_below/above.
   // `withdrawal_only` blocks only outward rod motion — insertion always works.
@@ -368,7 +373,7 @@
         if (cmd.action === 'rod_start' && !(cmd.direction > 0)) continue;
         if (cmd.action === 'rod_nudge' && !(cmd.steps > 0)) continue;
       }
-      // Parameter predicate (§13): block only a specific form of the command
+      // Parameter predicate (M4b trip blocks): block only a specific form of the command
       // (e.g. only set_sr_detector {on:false} — de-energizing — is P-6 gated).
       if (il.blocks_when && cmd[il.blocks_when.field] !== il.blocks_when.equals) continue;
       return il;
@@ -381,20 +386,23 @@
     if (isReset) { if (act.reset_active !== undefined) cmd.active = act.reset_active; }
     else {
       if (act.active !== undefined) cmd.active = act.active;
-      if (act.params) for (var k in act.params) cmd[k] = act.params[k];   // general parameter carry (§13)
+      if (act.params) for (var k in act.params) cmd[k] = act.params[k];   // general parameter carry (M4b trip blocks)
     }
     return cmd;
   };
 
+  // Condition gates read INSTRUMENTS only (HR1) — a `*_unavailable` condition
+  // may derive from its `*_running` status instrument. There is NO true-state
+  // fallback: every condition a plant module references must be exposed as a
+  // status instrument (the M7 config-consistency suite asserts this), and an
+  // unresolvable condition evaluates NOT-met rather than silently arming.
   ControlLayer.prototype._evaluateCondition = function (cond) {
     if (cond in this.lastInstruments) return !!this.lastInstruments[cond];
-    var ts = this.engine.getTrueState();
-    if (cond in ts) return !!ts[cond];
     if (/_unavailable$/.test(cond)) {
       var base = cond.replace(/_unavailable$/, '_running');
-      if (base in ts) return !ts[base];
+      if (base in this.lastInstruments) return !this.lastInstruments[base];
     }
-    return true; // permissive default (PWR uses no gate conditions)
+    return false;
   };
 
   // Responsibility 3 — alarms (§5). Reads instruments; advances each lifecycle.
@@ -483,7 +491,7 @@
     return out;
   };
 
-  // ============================================================ automation (§11)
+  // ============================================================ automation (M4b automation)
   // The operator-automation channel runtime (formerly layers/auto_control.js, a
   // UI-side synthetic operator stepped per broadcast). It runs INSIDE the
   // control layer at a fixed sim-time cadence, so controllers behave identically
@@ -535,7 +543,7 @@
     return c.engaged;
   };
 
-  // ESF AUTO/MAN (§12): systems as data — { id, label, commands:[actions] }.
+  // ESF AUTO/MAN (M4b ESF arms): systems as data — { id, label, commands:[actions] }.
   // Operator action on a listed command → that system to MANUAL; set_esf_auto
   // re-arms it (clearing its actuation latches so a STANDING condition
   // re-fires — the point of re-arming).
@@ -783,8 +791,9 @@
     } else if (c.bangMode === 'dilute' && pos <= def.hiStop) want = 'idle';
     else if (c.bangMode === 'borate' && pos >= def.loStop) want = 'idle';
     if (want === c.bangMode) {
+      // busyNote: optional per-plant status suffix (HR3 — no plant fields here).
       c.note = c.bangMode === 'idle' ? 'in band' : (c.bangMode + '…' +
-        (ctx.control_state.charging_pump_running === false ? ' (charging pump OFF)' : ''));
+        (def.busyNote ? def.busyNote(ctx) : ''));
       return;
     }
     var rate = want === 'borate' ? def.rate : want === 'dilute' ? -def.rate : 0;

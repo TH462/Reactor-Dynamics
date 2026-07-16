@@ -248,6 +248,7 @@
       recirc_flow_pct: s.recirc_flow_pct, decay_heat_pct: s.decay_heat_pct, xenon_pct_eq: s.xenon_pct_eq,
       rcic_running: s.rcic_running, hpci_running: s.hpci_running, ads_open: s.ads_open, lpci_running: s.lpci_running,
       lpcs_running: s.lpcs_running, srv_manual_open: s.srv_manual_open,
+      relief_open: !!s.relief_open,
       ic_active: s.ic_active, ic_condensing: s.ic_condensing,
       station_blackout: s.station_blackout, battery_charge_pct: s.battery_charge_pct,
       slc_active: s.slc_active, slc_tank_pct: s.slc_tank_pct,
@@ -326,7 +327,22 @@
         if (!s.scram_blocked) this._scram();
         break;
       case 'set_recirc_flow':
-        s.recirc_setpoint_pct = clip(cmd.pct, 0, 48); s.recirc_pump_running = true;
+        s.recirc_setpoint_pct = clip(cmd.pct, 0, this.cfg.recirc.max_setpoint_pct);
+        s.recirc_pump_running = true;
+        break;
+      case 'trip_turbine':
+        // Turbine protection lives in the control layer (low vacuum / overspeed
+        // actuations reading instruments); this is the command it lands on.
+        if (!s.turbine_tripped) V.tripTurbine(s);
+        break;
+      case 'open_relief_valve':
+        // SRV pop/reseat is the control layer's actuation (vessel_pressure
+        // instrument vs relief_setpoint_mpa / relief_reseat_mpa); the engine
+        // keeps only the valve state + vent hydraulics.
+        s.relief_open = true;
+        break;
+      case 'close_relief_valve':
+        s.relief_open = false;
         break;
       case 'set_load_mode':
         RD.LoadMode.setMode(s, cmd.mode, { tripFn: V.tripTurbine, rated: this.cfg.mwe_rated });
@@ -645,6 +661,7 @@
       recirc_setpoint_pct: recirc_setpoint, recirc_pump_running: recirc_pump, recirc_flow_pct: core_flow,
       steam_flow_normalized: steam, turbine_load_frac: steam, turbine_blocked: false,
       feedwater_normalized: feed, fw_flow_normalized: feed, feedwater_blocked: sbo,
+      relief_open: false,          // commanded SRV state (control-layer pop/reseat)
       _relief_flow: 0, _boiloff_rate: 0,
 
       // Balance-of-plant (turbine / condenser / generator). Grid-synced at rated
@@ -690,6 +707,7 @@
   };
   BWREngine.prototype.loadState = function (st) {
     this.s = JSON.parse(JSON.stringify(st.s));
+    if (this.s.relief_open == null) this.s.relief_open = false;   // pre-commanded-SRV saves
     this.rod_groups = JSON.parse(JSON.stringify(st.rod_groups));
     this.active_failures = st.active_failures.slice();
     this.instruments.load(st.instruments);
@@ -708,10 +726,40 @@
   function Harness(initial, seed) {
     this.eng = new BWREngine({ initial_state: initial || 'full_power', seed: seed });
     this.dt = 0.02;
+    // Emulate M4's mechanical-protection actuations (SRV pop/reseat + turbine
+    // trips moved in-stack, 2026-07 ruling) so the engine-only physics tests
+    // keep the assembled plant's protections. Reads INSTRUMENTS, like M4.
+    this.autoM4 = true;
+    this._m4Acc = 0;
+    // RCIC auto-start level for runActuated = the SHIPPING control layer's
+    // actuation setpoint (bwr_control.js — 45.0; the config's old
+    // rcic_start_level: 50.0 was a dead twin and is gone).
+    var acts = (this.eng.cfg.protection && this.eng.cfg.protection.actuations) || [];
+    this._rcicStartLevel = 45.0;
+    for (var i = 0; i < acts.length; i++) {
+      if (acts[i].action === 'set_rcic' && acts[i].instrument === 'vessel_level') {
+        this._rcicStartLevel = acts[i].setpoint; break;
+      }
+    }
   }
+  Harness.prototype._stepM4 = function (dt) {
+    this._m4Acc += dt;
+    if (this._m4Acc < 0.1) return;          // M4-ish evaluation cadence
+    this._m4Acc = 0;
+    var eng = this.eng, cfg = eng.cfg, ins = eng.getInstruments(), s = eng.s;
+    var v = cfg.vessel, tb = cfg.turbine;
+    if (!s.relief_open && ins.vessel_pressure > v.relief_setpoint_mpa) eng.applyCommand({ action: 'open_relief_valve' });
+    else if (s.relief_open && ins.vessel_pressure < v.relief_reseat_mpa) eng.applyCommand({ action: 'close_relief_valve' });
+    if (!s.turbine_tripped && (ins.condenser_vacuum < tb.vacuum_trip_kpa || ins.turbine_rpm > tb.rpm_overspeed_trip)) {
+      eng.applyCommand({ action: 'trip_turbine' });
+    }
+  };
   Harness.prototype.run = function (seconds) {
     var n = Math.round(seconds / this.dt);
-    for (var i = 0; i < n; i++) this.eng.step(this.dt);
+    for (var i = 0; i < n; i++) {
+      if (this.autoM4) this._stepM4(this.dt);
+      this.eng.step(this.dt);
+    }
     return this;
   };
   // Emulate M4 auto-actuation while running for `seconds` (the engine makes no
@@ -720,9 +768,10 @@
     opts = opts || {};
     var n = Math.round(seconds / this.dt), e = this.eng, cfg = e.cfg, sf = cfg.safety;
     for (var i = 0; i < n; i++) {
+      if (this.autoM4) this._stepM4(this.dt);
       e.step(this.dt);
       var ins = e.getInstruments();
-      if (ins.vessel_level <= sf.rcic_start_level && !e.s.rcic_failed && e.s.battery_charge_pct > 0) {
+      if (ins.vessel_level <= this._rcicStartLevel && !e.s.rcic_failed && e.s.battery_charge_pct > 0) {
         if (!e.s.rcic_running) e.applyCommand({ action: 'set_rcic', active: true });
       }
       if (opts.intervene && e.s.rcic_running === false && e.s.battery_charge_pct <= 0) {

@@ -38,6 +38,26 @@
     { instrument: 'vessel_pressure', direction: 'low', setpoint: 1.03, action: 'start_lpci',  condition: 'ads_open' },
   ];
 
+  // Mechanical protections moved in-stack (2026-07 ruling): relief-valve pops
+  // and turbine trips are CONTROL decisions reading instruments, so they can be
+  // manipulated and failed like every other actuation. Setpoints derive from
+  // the engine config (single source — the engine keeps the valve hydraulics).
+  var _v = RD.BWR_CONFIG ? RD.BWR_CONFIG.vessel : {};
+  var _tb = RD.BWR_CONFIG ? RD.BWR_CONFIG.turbine : {};
+  BWR_ACTUATIONS.push(
+    // Safety/relief valves (SRVs): pop / reseat on vessel pressure.
+    { instrument: 'vessel_pressure', direction: 'high', setpoint: _v.relief_setpoint_mpa || 7.58,
+      action: 'open_relief_valve', reset_below: _v.relief_reseat_mpa || 7.44, reset_action: 'close_relief_valve' },
+    // Turbine protection: low condenser vacuum, and overspeed. reset_below
+    // re-arms the latch once the reading recovers (no reset command — a trip
+    // is one-way; the operator restores the machine via set_turbine_load /
+    // connect_grid).
+    { instrument: 'condenser_vacuum', direction: 'low', setpoint: _tb.vacuum_trip_kpa || 74.5,
+      action: 'trip_turbine', reset_below: 84.7 },
+    { instrument: 'turbine_rpm', direction: 'high', setpoint: _tb.rpm_overspeed_trip || 1980.0,
+      action: 'trip_turbine', reset_below: _tb.rpm_rated || 1800.0 }
+  );
+
   // Alarms — every alarm setpoint less extreme than the matching trip. Panel A =
   // reactor/vessel, B = systems.
   var BWR_ALARMS_A = [
@@ -89,7 +109,9 @@
       init: function (s) { return s.control_state.recirc_flow_setpoint_pct; },
       // spSlew ramps power-setpoint changes (~0.15 %/s): an instant recirc step
       // collapses steam flow and trips the plant on low vessel pressure.
-      uMin: 0, uMax: 48, kp: 0.35, ki: 0.02, db: 0.3, minDelta: 0.2, period: 2.0, pvTau: 1.5, spSlew: 0.15,
+      // uMax = the engine's set_recirc_flow clamp (single source in the config).
+      uMin: 0, uMax: (RD.BWR_CONFIG && RD.BWR_CONFIG.recirc.max_setpoint_pct) || 48,
+      kp: 0.35, ki: 0.02, db: 0.3, minDelta: 0.2, period: 2.0, pvTau: 1.5, spSlew: 0.15,
       sp: { capture: function (s) { return s.instruments.power_range; }, min: 5, max: 110, unit: '%', dp: 1, step: 1 } },
 
     { id: 'rods_trim', kind: 'rods', group: 'Reactor',

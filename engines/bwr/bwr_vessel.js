@@ -32,8 +32,14 @@
   function stepVesselPressure(s, cfg, dt) {
     var v = cfg.vessel;
     var steam_gen_rate = s._Q_total * v.steam_gen_per_power_bwr;
-    var relief_flow = s.vessel_pressure_mpa > v.relief_setpoint_mpa
-      ? (s.vessel_pressure_mpa - v.relief_setpoint_mpa) * v.relief_gain : 0.0;
+    // SRV pop/reseat is a CONTROL decision (2026-07 ruling): the control layer's
+    // actuation commands open_relief_valve above relief_setpoint_mpa and
+    // close_relief_valve below relief_reseat_mpa, reading the vessel_pressure
+    // INSTRUMENT. The engine keeps the hydraulics — proportional vent above the
+    // reseat pressure while commanded open. (The D6 manual SRV, srv_manual_open,
+    // is a separate operator depressurization path — bwr_safety_systems.js.)
+    var relief_flow = s.relief_open
+      ? Math.max(0, (s.vessel_pressure_mpa - v.relief_reseat_mpa) * v.relief_gain) : 0.0;
     s._relief_flow = relief_flow;
     // Turbine bypass / steam dump to the main condenser: holds vessel pressure on
     // a load rejection / turbine trip. AUTO opens proportionally above its setpoint
@@ -119,19 +125,22 @@
     var tau = s.condenser_cooling_available ? tb.vacuum_restore_tau : tb.vacuum_decay_tau;
     s.condenser_vacuum_kpa += (target - s.condenser_vacuum_kpa) / tau * dt;
 
-    if (s.condenser_vacuum_kpa < tb.vacuum_trip_kpa && !s.turbine_tripped) tripTurbine(s);
-
+    // Turbine PROTECTION (low-vacuum trip, overspeed trip) lives in the control
+    // layer, which reads the condenser_vacuum / turbine_rpm INSTRUMENTS and
+    // issues trip_turbine (2026-07 ruling — HR7: a tripped turbine is a
+    // command-level event). The engine only spins the machine.
     var load = s.steam_flow_normalized;
-    var synced = !s.turbine_tripped && !s.turbine_blocked && load > 1e-4
-      && s.condenser_vacuum_kpa >= tb.vacuum_trip_kpa;
+    var synced = !s.turbine_tripped && !s.turbine_blocked && load > 1e-4;
     if (synced) {
-      s.turbine_rpm += (tb.rpm_rated - s.turbine_rpm) / 0.5 * dt;
+      // Grid holds the synchronous generator at rated speed.
+      s.turbine_rpm += (tb.rpm_rated - s.turbine_rpm) / (tb.sync_tau || 0.5) * dt;
     } else {
+      // Free: coast down on lost steam, or spin up toward overspeed if steam
+      // keeps flowing with the load gone.
       var drive = load * tb.torque_per_flow * tb.rpm_rated;
       var brake = tb.windage * s.turbine_rpm;
       s.turbine_rpm += (drive - brake) / tb.turbine_inertia * dt;
       if (s.turbine_rpm < 0) s.turbine_rpm = 0;
-      if (s.turbine_rpm > tb.rpm_overspeed_trip && !s.turbine_tripped) tripTurbine(s);
     }
 
     s.mwe_output = load * cfg.mwe_rated * (s.turbine_rpm / tb.rpm_rated)

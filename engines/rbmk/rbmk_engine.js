@@ -61,7 +61,7 @@
   RBMKEngine.prototype._controlGroup = function () {
     for (var i = 0; i < this.rod_groups.length; i++) {
       var g = this.rod_groups[i];
-      if (g.function === 'control' || g.function === 'manual') return g;
+      if (g.function === 'control') return g;
     }
     return this.rod_groups[0];
   };
@@ -75,7 +75,7 @@
     for (var i = 0; i < this.rod_groups.length; i++) {
       var g = this.rod_groups[i];
       var z_live = Rods.depthFromSteps(g.steps, cfg);
-      if (g.function === 'control' || g.function === 'manual') {
+      if (g.function === 'control') {
         if (s._fail.stuck_rod.active) {
           var stalled = s._fail.stuck_rod.frac * g.rod_count;
           rho += stalled * perRod(s._fail.stuck_rod.z_stuck, cfg)
@@ -214,11 +214,17 @@
 
   RBMKEngine.prototype._instrExtras = function () {
     var s = this.s;
+    // The exported ORM annunciator reads the ORM DISPLAY instrument (previous
+    // step's reading): the Chernobyl orm_indicator_failure corrupts the
+    // display, and the annunciator must follow the lie (HR1), not bypass it
+    // with the truth. (true_state.orm_alarm_active stays the true version.)
+    var rd = this.instruments && this.instruments.reading;
+    var dispOrm = rd && rd.orm_display != null ? rd.orm_display : s.orm_equiv_rods;
     return {
       orm_true: s.orm_equiv_rods,
       rps_scrammed: s.scrammed,
       eps_bypassed: s.eps_bypassed,
-      orm_alarm_active: s.orm_alarm_active,
+      orm_alarm_active: dispOrm < this.cfg.reactivity.orm_min,
     };
   };
 
@@ -347,10 +353,26 @@
         s.feed_auto_coupled = !!cmd.active;
         break;
       case 'set_turbine_load':
+        // Two deliberate paths (parallel to the PWR's set_steam_demand vs
+        // set_load_target): this legacy command writes steam_to_turbine
+        // IMMEDIATELY (same-step effect; several suites and the UI rely on it),
+        // while set_load_target defers to LoadMode.step, which re-applies the
+        // manual target every step anyway — the two converge after one step.
         s.load_mode = 'manual';
         s.load_target_mwe = cmd.mwe;
         s.steam_to_turbine = clip(cmd.mwe / this.cfg.turbine.mwe_rated, 0, 1.2);
         if (s.steam_to_turbine > 0 && s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
+        break;
+      case 'trip_turbine':
+        // Turbine protection lives in the control layer (low vacuum / overspeed
+        // actuations reading instruments); this is the command it lands on.
+        if (!s.turbine_tripped) TH.tripTurbine(s);
+        break;
+      case 'open_relief_valve':
+        s.relief_open = true;    // drum relief — popped by the control layer's actuation
+        break;
+      case 'close_relief_valve':
+        s.relief_open = false;   // reseat
         break;
       case 'set_steam_dump':
         // mode: 'auto' (null override) | 'open' (full) | 'closed' | a manual pct.
@@ -547,7 +569,7 @@
     var C = [];
     for (var i = 0; i < 6; i++) C[i] = (d.beta_i[i] / d.lambda_i[i]) * P0 / d.Lambda;
 
-    var void0 = clip(P0 / (init.flow_pct / 100.0) * t.void_scale_rbmk, 0, 0.90);
+    var void0 = clip(P0 / (init.flow_pct / 100.0) * t.void_scale_rbmk, 0, t.void_max);
 
     var s = {
       sim_time: 0,
@@ -567,7 +589,8 @@
       steam_pressure_mpa: t.drum_p_rated, drum_level_pct: t.drum_level_nominal,
       channel_flow_pct: init.flow_pct, mcp_speed_pct: init.flow_pct, mcp_running: true,
       steam_to_turbine: P0, feedwater_normalized: P0, feedwater_blocked: false,
-      _h_fc_eff: t.h_fc_rbmk, _h_fc_dryout_factor: null, _Q_total: P0, _relief_flow: 0,
+      _h_fc_eff: t.h_fc_rbmk, _h_fc_dryout_factor: null, _Q_total: P0,
+      relief_open: false, _relief_flow: 0,   // drum relief: commanded state + flow hydraulics
 
       // Balance-of-plant (turbine / condenser / generator). Turbine load starts
       // matched to power; the generator is grid-synced at rated speed producing
@@ -645,16 +668,37 @@
   function Harness(version, initial, seed) {
     this.eng = new RBMKEngine({ design_version: version, initial_state: initial || 'full_power', seed: seed });
     this.dt = 0.02;
+    // Emulate M4's mechanical-protection actuations (drum relief valve + turbine
+    // trips moved in-stack, 2026-07 ruling) so the engine-only physics tests
+    // keep the assembled plant's protections. Reads INSTRUMENTS, like M4.
+    this.autoM4 = true;
+    this._m4Acc = 0;
   }
+  Harness.prototype._stepM4 = function (dt) {
+    this._m4Acc += dt;
+    if (this._m4Acc < 0.1) return;          // M4-ish evaluation cadence
+    this._m4Acc = 0;
+    var eng = this.eng, cfg = eng.cfg, ins = eng.getInstruments(), s = eng.s;
+    var th = cfg.thermal, tb = cfg.turbine;
+    if (!s.relief_open && ins.steam_pressure > th.drum_relief_mpa) eng.applyCommand({ action: 'open_relief_valve' });
+    else if (s.relief_open && ins.steam_pressure < th.drum_relief_reseat_mpa) eng.applyCommand({ action: 'close_relief_valve' });
+    if (!s.turbine_tripped && (ins.condenser_vacuum < tb.vacuum_trip_kpa || ins.turbine_rpm > tb.rpm_overspeed_trip)) {
+      eng.applyCommand({ action: 'trip_turbine' });
+    }
+  };
   Harness.prototype.run = function (seconds) {
     var n = Math.round(seconds / this.dt);
-    for (var i = 0; i < n; i++) this.eng.step(this.dt);
+    for (var i = 0; i < n; i++) {
+      if (this.autoM4) this._stepM4(this.dt);
+      this.eng.step(this.dt);
+    }
     return this;
   };
   // Run while tracking peak power; returns { peak, melted_at }.
   Harness.prototype.runTrack = function (seconds) {
     var n = Math.round(seconds / this.dt), peak = 0, melted_at = -1, t = 0;
     for (var i = 0; i < n; i++) {
+      if (this.autoM4) this._stepM4(this.dt);
       this.eng.step(this.dt); t += this.dt;
       var p = this.eng.s.power_pct; if (p > peak) peak = p;
       if (melted_at < 0 && this.eng.s.melted) melted_at = t;
@@ -664,6 +708,7 @@
   Harness.prototype.runUntil = function (pred, maxSeconds) {
     var n = Math.round(maxSeconds / this.dt), t = 0;
     for (var i = 0; i < n; i++) {
+      if (this.autoM4) this._stepM4(this.dt);
       this.eng.step(this.dt); t += this.dt;
       if (pred(this.eng.getTrueState(), this.eng.getInstruments())) return t;
     }

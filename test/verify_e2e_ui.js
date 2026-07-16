@@ -15,7 +15,7 @@ var VIEWS = ['diagram', 'primary', 'secondary', 'all'];
 
 /* Recently-added controls that must render on the shipped UI (data-act wiring). */
 var REQUIRED_ACTS = {
-  'pwr-primary': ['charge-pump-on', 'charge-pump-off', 'borate', 'heat-set', 'spray-set', 'porv-open', 'porv-block-close', 'dhr-on', 'cvcs-auto'],
+  'pwr-primary': ['charge-pump-on', 'charge-pump-off', 'borate', 'heat-set', 'spray-set', 'porv-open', 'porv-block-close', 'rhr-auto', 'rhr-on', 'cvcs-auto'],
   'pwr-secondary': ['dump-open', 'dump-auto'],
   'rbmk_pre-primary': ['rbmk-eccs-on'],
   'rbmk_pre-secondary': ['rbmk-turbine-set', 'dump-open'],

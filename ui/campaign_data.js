@@ -53,6 +53,8 @@
         { kind: 'scenario', id: 'pwr_tmi2_p2', teaches: 'The replay: what the board said, what the plant did, and why they differed.' },
         { kind: 'scenario', id: 'pwr_tmi2_p3', teaches: 'Same shift, same board — but this time you know. Change history.' },
       ] },
+      // id stays 'act5' although the TMI-2 act displaced it to Act VI: act ids
+      // key saved campaign progress (rd_progress) — renaming would orphan it.
       { id: 'act5', title: 'Act VI — The Reckoning', missions: [
         { kind: 'scenario', id: 'pwr_tmi', teaches: 'Three Mile Island, compressed: believe the physics, not one light.' },
         { kind: 'scenario', id: 'pwr_qualify', teaches: 'Station blackout, no hints. Qualify.' },

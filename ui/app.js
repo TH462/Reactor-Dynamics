@@ -164,7 +164,7 @@
         ] },
         { title: 'Reactivity & ORM', rows: [
           { k: 'Operating Reactivity Margin (ORM)', inst: function (s) { return s.instruments.orm_display.toFixed(1) + ' rods'; }, truth: function (s) { return s.true_state.orm_equiv_rods.toFixed(1) + ' rods'; } },
-          { k: 'ORM Alarm', inst: function (s) { return bool(s.true_state.orm_alarm_active, 'YES', 'no'); } },
+          { k: 'ORM Alarm', inst: function (s) { return bool(s.instruments.orm_alarm_active, 'YES', 'no'); } },
           { k: 'Void Fraction', inst: function (s) { return pctOf(s.instruments.void_fraction); }, truth: function (s) { return pctOf(s.true_state.void_fraction_avg); } },
           { k: 'Reactivity', truth: function (s) { return (s.true_state.reactivity_pcm >= 0 ? '+' : '') + s.true_state.reactivity_pcm.toFixed(0) + ' pcm'; } },
           { k: 'Xenon', truth: function (s) { return s.true_state.xenon_pct_eq.toFixed(0) + ' % eq'; } },
@@ -177,7 +177,7 @@
           { k: 'Channel Flow', inst: function (s) { return s.instruments.channel_flow.toFixed(0) + ' %'; }, truth: function (s) { return s.true_state.channel_flow_pct.toFixed(0) + ' %'; } },
         ] },
         { title: 'Protection & Status', rows: [
-          { k: 'Emergency Protection Bypassed (EPS)', inst: function (s) { return bool(s.true_state.eps_bypassed, 'YES', 'no'); } },
+          { k: 'Emergency Protection Bypassed (EPS)', inst: function (s) { return bool(s.instruments.eps_bypassed, 'YES', 'no'); } },
           { k: 'Energy Deposition Rate', truth: function (s) { return s.true_state.energy_deposition_rate.toFixed(0) + ' cal/g/s'; } },
           { k: 'Destruction', truth: function (s) { return bool(s.true_state.melted, (s.true_state.destruction_cause || 'MELTED').toUpperCase().replace('_', ' '), 'none'); } },
         ] },
@@ -234,9 +234,9 @@
           { k: 'Recirc / Core Flow', inst: function (s) { return s.instruments.recirc_flow.toFixed(0) + ' %'; }, truth: function (s) { return s.true_state.recirc_flow_pct.toFixed(0) + ' %'; } },
         ] },
         { title: 'Safety Systems', rows: [
-          { k: 'RCIC', inst: function (s) { return bool(s.true_state.rcic_running, 'running', 'off'); } },
+          { k: 'RCIC', inst: function (s) { return bool(s.instruments.rcic_status, 'running', 'off'); } },
           { k: 'HPCI', inst: function (s) { return bool(s.true_state.hpci_running, 'running', 'off'); } },
-          { k: 'ADS', inst: function (s) { return bool(s.true_state.ads_open, 'OPEN', 'closed'); } },
+          { k: 'ADS', inst: function (s) { return bool(s.instruments.ads_open, 'OPEN', 'closed'); } },
           { k: 'LPCI', inst: function (s) { return bool(s.true_state.lpci_running, 'running', 'off'); } },
           { k: 'Core Spray', inst: function (s) { return bool(s.true_state.lpcs_running, 'running', 'off'); } },
           { k: 'Manual SRV', inst: function (s) { return bool(s.true_state.srv_manual_open, 'OPEN', 'closed'); } },
@@ -245,7 +245,7 @@
           { k: 'Battery', truth: function (s) { return s.true_state.battery_charge_pct.toFixed(0) + ' %'; } },
         ] },
         { title: 'Status', rows: [
-          { k: 'Station Blackout', inst: function (s) { return bool(s.true_state.station_blackout, 'YES', 'no'); } },
+          { k: 'Station Blackout', inst: function (s) { return bool(s.instruments.station_blackout, 'YES', 'no'); } },
           { k: 'Destruction', truth: function (s) { return bool(s.true_state.melted, (s.true_state.destruction_cause || 'MELTED').toUpperCase().replace('_', ' '), 'none'); } },
         ] },
       ],
@@ -516,10 +516,13 @@
     updateSimSummary();
     // alarm tint on the CSF gauge strip while anything is unacknowledged
     $('gaugeStrip').classList.toggle('alarm-tint', s.alarms.some(function (a) { return a.state === 'active_unacknowledged'; }));
-    // auto-switch to Diagram the moment a scram fires (legacy views only)
-    if (ui.plant !== 'pwr' && s.true_state.scrammed && !lastScrammed && ui.view !== 'diagram') setView('diagram');
+    // auto-switch to Diagram the moment a scram fires (legacy views only).
+    // Reads the rps_scrammed STATUS INSTRUMENT (HR1) — it reflects manual
+    // scrams too, unlike rps_state.scrammed which latches only on trips.
+    var scramInd = !!(s.instruments.rps_scrammed != null ? s.instruments.rps_scrammed : s.rps_state.scrammed);
+    if (ui.plant !== 'pwr' && scramInd && !lastScrammed && ui.view !== 'diagram') setView('diagram');
     renderPlantDisplay(s);
-    lastScrammed = !!s.true_state.scrammed;
+    lastScrammed = scramInd;
 
     // Time moved backwards (a rewind, or a walkthrough/scenario reset): drop the
     // branch of history that no longer exists and snap the gauge smoothing —
@@ -1201,7 +1204,7 @@
   // Scenarios don't: start_scenario resets to its own plant.
   function ensureEngine(key) { if (ui.engineKey !== key) switchEngine(key); }
 
-  // ---- Scenario lifecycle (Training tab / level-complete Retry / ?scenario=) ----
+  // ---- Scenario lifecycle (Plant & Mission window / level-complete Retry / ?scenario=) ----
   function startScenario(id) {
     var sc = RD.SCENARIOS && RD.SCENARIOS[id];
     if (!sc) return;
@@ -1736,8 +1739,10 @@
     'dump-close': function () { cmd({ action: 'set_steam_dump', mode: 'closed' }); },
     'porv-open': function () { cmd({ action: 'open_porv' }); }, 'porv-close': function () { cmd({ action: 'close_porv' }); },
     'dhr-on': function () { cmd({ action: 'set_dhr', active: true }); }, 'dhr-off': function () { cmd({ action: 'set_dhr', active: false }); },
-    // synoptic emergency card: RHR / LPI (AUTO = leave to the automatic actuation)
-    'rhr-auto': function () {}, 'rhr-on': function () { cmd({ action: 'set_rhr', active: true }); }, 'rhr-off': function () { cmd({ action: 'set_rhr', active: false }); },
+    // synoptic emergency card: RHR — AUTO re-arms the ESF actuation (a manual
+    // On/Off flips it to MANUAL, like the HPI and AFW arms).
+    'rhr-auto': function () { cmd({ action: 'set_esf_auto', system: 'rhr', auto: true }); },
+    'rhr-on': function () { cmd({ action: 'set_rhr', active: true }); }, 'rhr-off': function () { cmd({ action: 'set_rhr', active: false }); },
     'dump-set': function () { cmd({ action: 'set_steam_dump', pct: inputVal('dumpSet') }); },
     // RBMK
     'rbmk-flow-set': function () { cmd({ action: 'set_channel_flow', pct: inputVal('rbmkFlow') }); },
@@ -2481,11 +2486,13 @@
         { id: 'afw', label: 'Feed', group: 'secondary' }, { id: 'station_pwr', label: 'Stn Pwr', group: 'power' },
       ],
       state: function (s) {
-        var f = s.control_state.channel_flow_setpoint_pct != null ? s.true_state.channel_flow_pct : 100;
+        // HR1: the board colors from the INSTRUMENT (lagging/failable) where a
+        // twin exists — a stuck flow channel must fool the schematic too.
+        var f = s.control_state.channel_flow_setpoint_pct != null ? s.instruments.channel_flow : 100;
         return {
           mcp: f > 50 ? 'running' : (f > 10 ? 'caution' : 'alarm'),
-          eccs: s.true_state.eccs_active ? 'running' : 'normal',
-          eps: s.true_state.eps_bypassed ? 'caution' : 'normal',
+          eccs: s.true_state.eccs_active ? 'running' : 'normal',   // no instrument twin
+          eps: s.instruments.eps_bypassed ? 'caution' : 'normal',
           afw: hasFail(s, 'loss_of_feedwater') ? 'alarm' : (s.control_state.feedwater_flow_pct > 5 ? 'running' : 'caution'),
           station_pwr: 'normal',
         };
@@ -2539,16 +2546,19 @@
         { id: 'msiv', label: 'MSIV', group: 'secondary' }, { id: 'station_pwr', label: 'Stn Pwr', group: 'power' },
       ],
       state: function (s) {
+        // HR1: color from INSTRUMENTS where twins exist (recirc_flow,
+        // rcic_status — the failable run light, ads_open, station_blackout);
+        // booleans with no twin read true_state as the only source.
         return {
-          recirc: s.true_state.recirc_flow_pct > 50 ? 'running' : (s.true_state.recirc_flow_pct > 5 ? 'caution' : 'alarm'),
-          rcic: (s.true_state.rcic_running) ? 'running' : (hasFail(s, 'rcic_failure') ? 'alarm' : 'normal'),
+          recirc: s.instruments.recirc_flow > 50 ? 'running' : (s.instruments.recirc_flow > 5 ? 'caution' : 'alarm'),
+          rcic: (s.instruments.rcic_status) ? 'running' : (hasFail(s, 'rcic_failure') ? 'alarm' : 'normal'),
           ic: (s.true_state.ic_condensing) ? 'running' : (hasFail(s, 'ic_failure') ? 'alarm' : 'normal'),
           hpci: (s.true_state.hpci_running) ? 'running' : (hasFail(s, 'hpci_failure') ? 'alarm' : 'normal'),
-          ads: s.true_state.ads_open ? 'running' : 'normal',
+          ads: s.instruments.ads_open ? 'running' : 'normal',
           lpci: s.true_state.lpci_running ? 'running' : 'normal',
           slc: s.true_state.slc_active ? 'running' : 'normal',
           msiv: hasFail(s, 'msiv_closure') ? 'alarm' : 'normal',
-          station_pwr: s.true_state.station_blackout ? (s.true_state.battery_charge_pct > 0 ? 'caution' : 'alarm') : 'normal',
+          station_pwr: s.instruments.station_blackout ? (s.true_state.battery_charge_pct > 0 ? 'caution' : 'alarm') : 'normal',
         };
       },
       diagram: [ROD_DRIVE('control_rods'), { l: 'ADS', emergency: 1, hint: 'Automatic Depressurization.', seg: [{ l: 'Trigger', act: 'trigger-ads', warn: 1 }] }, CG_MSIV()],

@@ -58,7 +58,8 @@
     reactivity: {
       alpha_D: -2.0e-5,            // Doppler, K^-1 [tune]
       alpha_void: -0.15,           // void coefficient (negative — stabilizing) [tune]
-      void_ref: 0.40,              // reference operating void [tune] (pinned at reset)
+      // (void_ref is pinned by the engine at reset — full-power void via
+      // vessel.void_scale_factor, per-state for hot_startup — no config entry.)
       rod_worth_total: 0.10,       // control-group worth [tune]
       rod_worth_shutdown: 0.10,    // shutdown-group worth (margin) [tune]
     },
@@ -71,7 +72,13 @@
       // decay steam outran ADS and pinned pressure at the relief setpoint).
       K_vessel_pressure: 0.5,
       vessel_p_rated: 7.03,        // MPa operating
-      relief_setpoint_mpa: 7.58,   // relief/safety valves open
+      // SRV pop/reseat is a CONTROL decision (2026-07 ruling): the control
+      // layer's actuation opens the valve above relief_setpoint_mpa and
+      // recloses it below relief_reseat_mpa, reading the vessel_pressure
+      // INSTRUMENT. The engine keeps only the hydraulics (relief_gain vent
+      // while commanded open).
+      relief_setpoint_mpa: 7.58,   // SRV pop (control-layer actuation setpoint)
+      relief_reseat_mpa: 7.44,     // SRV reseat (control-layer reset_below) [tune]
       relief_gain: 5.0,            // relief vent gain [tune]
       P_ambient: 0.103,            // MPa
       void_scale_factor: 0.45,     // rated power at rated flow → ~45% void [tune]
@@ -104,9 +111,10 @@
     turbine: {
       rpm_rated: 1800.0, rpm_overspeed_trip: 1980.0,
       torque_per_flow: 1.0, windage: 1.0, turbine_inertia: 50.0,
+      sync_tau: 0.5,               // s — grid pull toward rated speed while synced
       vacuum_rated: 96.5, vacuum_lost: 16.9,           // kPa
       vacuum_restore_tau: 10.0, vacuum_decay_tau: 30.0, // s
-      vacuum_trip_kpa: 74.5,       // turbine trips below this
+      vacuum_trip_kpa: 74.5,       // turbine trips below this (control-layer actuation)
     },
 
     // ------------------------------------------------- recirculation (§7)
@@ -117,17 +125,20 @@
       natural_circ_coeff: 0.30,    // √P natural circulation [tune]
       natural_circ_max: 40.0,      // % cap on natural circ
       recirc_op_setpoint_pct: 40.0, // full-power drive setpoint → core flow ~100%
+      max_setpoint_pct: 48.0,      // set_recirc_flow clamp / recirc channel authority
     },
 
     // ----------------------------------------------------- safety systems (§9)
     safety: {
       rcic_flow_normalized: 0.01, rcic_steam_consumption: 0.002, pressure_sensitivity: 1.0,
-      rcic_min_pressure: 0.69, rcic_start_level: 50.0,      // [tune]
-      hpci_flow_normalized: 0.03, hpci_min_pressure: 0.69, hpci_start_level: 30.0, // [tune]
+      rcic_min_pressure: 0.69,     // [tune]
+      // (RCIC/HPCI/ADS auto-start LEVELS are control-layer actuation setpoints —
+      // bwr_control.js — not engine physics; no config twins kept here.)
+      hpci_flow_normalized: 0.03, hpci_min_pressure: 0.69, // [tune]
       // ADS blows the vessel down fast (multiple SRVs wide open). Must out-vent the
       // decay-heat steam even near the LPCI threshold, so the characteristic time is
       // short [tune] (the spec's 600 s stalls above 1.03 MPa against decay steam).
-      ads_depressurization_tau: 120.0, ads_level: 15.0,     // ADS auto at level<15 (gated hpci_unavailable)
+      ads_depressurization_tau: 120.0,
       lpci_threshold_pressure: 1.03, lpci_flow_normalized: 0.05, // [tune]
       lpcs_flow_normalized: 0.04,   // D4 core spray (LPCS) — low-pressure injection [tune]
       // D6 manual SRV depressurization — controlled (slower than ADS's 120 s) but
@@ -137,7 +148,7 @@
       // reactor steam in an elevated pool and returns condensate by gravity. No AC,
       // no fresh water; DC-powered valves (lost on battery depletion). [tune]
       ic_condense_rate: 0.02,      // vessel-pressure condensing rate coefficient (/s)
-      battery_duration_hours: 8.0, battery_low_pct: 20.0,   // [tune]
+      battery_duration_hours: 8.0, // [tune] (low-battery ALARM setpoint lives in bwr_control.js)
       BATTERY_MAX_DEGRADE: 0.75,   // early_battery_failure max duration cut
       SRV_BLOWDOWN_COEFF: 0.5, SRV_INVENTORY_RATE: 0.02,    // stuck-relief blowdown [tune]
       // Standby Liquid Control (D1) — sodium-pentaborate injection that shuts the

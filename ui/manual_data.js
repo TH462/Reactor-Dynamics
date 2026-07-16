@@ -724,6 +724,34 @@
             "direction": "low",
             "setpoint": 1e-10,
             "action": "set_sr_detector"
+          },
+          {
+            "instrument": "primary_pressure",
+            "direction": "high",
+            "setpoint": 17.13,
+            "action": "open_pzr_safety",
+            "reset_below": 16.55
+          },
+          {
+            "instrument": "steam_pressure",
+            "direction": "high",
+            "setpoint": 9.31,
+            "action": "open_sg_safety",
+            "reset_below": 9
+          },
+          {
+            "instrument": "condenser_vacuum",
+            "direction": "low",
+            "setpoint": 74.5,
+            "action": "trip_turbine",
+            "reset_below": 84.7
+          },
+          {
+            "instrument": "turbine_rpm",
+            "direction": "high",
+            "setpoint": 1980,
+            "action": "trip_turbine",
+            "reset_below": 1800
           }
         ],
         "alarms": [
@@ -1279,21 +1307,20 @@
           "id": "degraded_hpi",
           "display": "Degraded HPI",
           "category": "safety_system",
-          "type": "command_override",
+          "type": "physics_parameter",
           "severity_meta": {
             "label": "HPI Capacity",
             "unit": "% rated",
-            "min": 0,
-            "max": 100,
-            "default": 50,
-            "invert": true
+            "min": 100,
+            "max": 0,
+            "default": 50
           }
         },
         {
           "id": "afw_failure",
           "display": "Auxiliary Feedwater Failure",
           "category": "safety_system",
-          "type": "command_override",
+          "type": "physics_parameter",
           "severity_meta": null
         },
         {
@@ -1553,7 +1580,7 @@
             "steam_demand_mwe": 1000.001,
             "load_mode": "follow",
             "load_target_mwe": 1000.001,
-            "load_imbalance_mwe": 0.000034,
+            "load_imbalance_mwe": 3.444,
             "sg_imbalance_active": false,
             "reactivity_pcm": -0.00101,
             "startup_rate_dpm": -3.85e-8,
@@ -1661,7 +1688,7 @@
             "steam_demand_mwe": 0.001,
             "load_mode": "follow",
             "load_target_mwe": 0.001,
-            "load_imbalance_mwe": -5.09e-8,
+            "load_imbalance_mwe": 1.388,
             "sg_imbalance_active": false,
             "reactivity_pcm": -1000.089,
             "startup_rate_dpm": -0.000289,
@@ -1769,7 +1796,7 @@
             "steam_demand_mwe": 499.354,
             "load_mode": "follow",
             "load_target_mwe": 499.354,
-            "load_imbalance_mwe": -0.758,
+            "load_imbalance_mwe": 2.689,
             "sg_imbalance_active": false,
             "reactivity_pcm": -0.348,
             "startup_rate_dpm": -0.00105,
@@ -2218,7 +2245,29 @@
             "action": "scram"
           }
         ],
-        "actuations": [],
+        "actuations": [
+          {
+            "instrument": "steam_pressure",
+            "direction": "high",
+            "setpoint": 8,
+            "action": "open_relief_valve",
+            "reset_below": 7.8
+          },
+          {
+            "instrument": "condenser_vacuum",
+            "direction": "low",
+            "setpoint": 74.5,
+            "action": "trip_turbine",
+            "reset_below": 84.7
+          },
+          {
+            "instrument": "turbine_rpm",
+            "direction": "high",
+            "setpoint": 3300,
+            "action": "trip_turbine",
+            "reset_below": 3000
+          }
+        ],
         "alarms": [
           {
             "id": "reactor_trip",
@@ -3272,7 +3321,29 @@
             "action": "scram"
           }
         ],
-        "actuations": [],
+        "actuations": [
+          {
+            "instrument": "steam_pressure",
+            "direction": "high",
+            "setpoint": 8,
+            "action": "open_relief_valve",
+            "reset_below": 7.8
+          },
+          {
+            "instrument": "condenser_vacuum",
+            "direction": "low",
+            "setpoint": 74.5,
+            "action": "trip_turbine",
+            "reset_below": 84.7
+          },
+          {
+            "instrument": "turbine_rpm",
+            "direction": "high",
+            "setpoint": 3300,
+            "action": "trip_turbine",
+            "reset_below": 3000
+          }
+        ],
         "alarms": [
           {
             "id": "reactor_trip",
@@ -4390,6 +4461,27 @@
             "setpoint": 1.03,
             "action": "start_lpci",
             "condition": "ads_open"
+          },
+          {
+            "instrument": "vessel_pressure",
+            "direction": "high",
+            "setpoint": 7.58,
+            "action": "open_relief_valve",
+            "reset_below": 7.44
+          },
+          {
+            "instrument": "condenser_vacuum",
+            "direction": "low",
+            "setpoint": 74.5,
+            "action": "trip_turbine",
+            "reset_below": 84.7
+          },
+          {
+            "instrument": "turbine_rpm",
+            "direction": "high",
+            "setpoint": 1980,
+            "action": "trip_turbine",
+            "reset_below": 1800
           }
         ],
         "alarms": [
@@ -4817,6 +4909,7 @@
             "lpci_running": false,
             "lpcs_running": false,
             "srv_manual_open": false,
+            "relief_open": false,
             "ic_active": false,
             "ic_condensing": false,
             "station_blackout": false,
@@ -4877,6 +4970,7 @@
             "lpci_running": false,
             "lpcs_running": false,
             "srv_manual_open": false,
+            "relief_open": false,
             "ic_active": false,
             "ic_condensing": false,
             "station_blackout": false,
@@ -4937,6 +5031,7 @@
             "lpci_running": false,
             "lpcs_running": false,
             "srv_manual_open": false,
+            "relief_open": false,
             "ic_active": false,
             "ic_condensing": false,
             "station_blackout": false,
@@ -4997,6 +5092,7 @@
             "lpci_running": false,
             "lpcs_running": false,
             "srv_manual_open": false,
+            "relief_open": false,
             "ic_active": false,
             "ic_condensing": false,
             "station_blackout": true,
@@ -5012,7 +5108,7 @@
             "mwe_output": 0,
             "turbine_rpm": 0,
             "condenser_vacuum_kpa": 16.9,
-            "turbine_tripped": true,
+            "turbine_tripped": false,
             "load_mode": "disconnected",
             "load_target_mwe": 0,
             "load_imbalance_mwe": 0.00205,

@@ -74,8 +74,14 @@
     thermal: {
       mcp_spinup_tau: 5.0, mcp_coastdown_tau: 10.0,         // s [tune]
       void_scale_rbmk: 0.35, void_response_tau: 1.0,         // [tune] (void catches the spike)
+      void_max: 0.90,                                        // physical void ceiling (was 4× hardcoded)
       steam_gen_per_power: 1.0,
+      // Drum relief valves: drum_relief_mpa is the hydraulic reference (flow ∝
+      // P − threshold while the valve is OPEN); pop/reseat are the control
+      // layer's actuation setpoints (2026-07 ruling — the engine keeps valve
+      // state + flow hydraulics only, rbmk_control.js reads these).
       K_drum_pressure: 0.0207, drum_p_rated: 7.0, drum_relief_mpa: 8.0,  // MPa [tune]
+      drum_relief_reseat_mpa: 7.8,                            // reseat (control-layer actuation)
       relief_gain: 2.0,                                       // relief vent gain [tune]
       // Turbine bypass / steam dump: vents steam to the condenser to hold drum
       // pressure on a load rejection / turbine trip. Auto opens proportionally
@@ -106,9 +112,10 @@
       mwe_rated: 1000.0,           // MWe (2× 500 MWe turbogenerators, lumped)
       rpm_rated: 3000.0, rpm_overspeed_trip: 3300.0,   // 50 Hz grid
       torque_per_flow: 1.0, windage: 1.0, turbine_inertia: 50.0,
+      sync_tau: 0.5,               // s grid pull-in to rated speed when synced
       vacuum_rated: 96.5, vacuum_lost: 16.9,           // kPa
       vacuum_restore_tau: 10.0, vacuum_decay_tau: 30.0, // s
-      vacuum_trip_kpa: 74.5,       // turbine trips below this
+      vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer)
     },
 
     // -------------------------------------------------- destruction paths (§11)

@@ -32,8 +32,33 @@
   ]);
 
   // RBMK has no engineered-safety auto-actuation in v1 (no PWR-style ECCS valves
-  // to sequence); protection is trip-to-scram only.
+  // to sequence); reactor protection is trip-to-scram only.
   var ACTUATIONS = [];
+
+  // Mechanical protections moved in-stack (2026-07 ruling): relief-valve pops
+  // and turbine trips are CONTROL decisions reading instruments, so they can be
+  // manipulated and failed like every other actuation. Setpoints derive from
+  // the engine config (single source — the engine keeps the valve hydraulics).
+  // Built lazily: this module loads BEFORE rbmk_config.js, but forVersion() is
+  // called at engine construction, after RD.RBMK_CONFIG exists. These values
+  // all live in the shared BASE (identical pre/post).
+  function mechanicalActuations() {
+    var base = (RD.RBMK_CONFIG && RD.RBMK_CONFIG.base) || {};
+    var th = base.thermal || {}, tb = base.turbine || {};
+    return [
+      // Steam-drum relief valves: pop / reseat on the drum-pressure instrument.
+      { instrument: 'steam_pressure', direction: 'high', setpoint: th.drum_relief_mpa || 8.0,
+        action: 'open_relief_valve', reset_below: th.drum_relief_reseat_mpa || 7.8,
+        reset_action: 'close_relief_valve' },
+      // Turbine protection: low condenser vacuum, and overspeed. reset_below
+      // re-arms the latch once the reading recovers (no reset command — a trip
+      // is one-way; the operator restores the machine via connect_grid).
+      { instrument: 'condenser_vacuum', direction: 'low', setpoint: tb.vacuum_trip_kpa || 74.5,
+        action: 'trip_turbine', reset_below: 84.7 },
+      { instrument: 'turbine_rpm', direction: 'high', setpoint: tb.rpm_overspeed_trip || 3300.0,
+        action: 'trip_turbine', reset_below: tb.rpm_rated || 3000.0 },
+    ];
+  }
 
   // Alarms — added to the standard reactor/primary set. The ORM threshold is the
   // version minimum. { id, instrument, direction, setpoint, priority, panel,
@@ -171,7 +196,7 @@
     return {
       design_version: version,
       trips: trips,
-      actuations: ACTUATIONS,
+      actuations: ACTUATIONS.concat(mechanicalActuations()),
       alarms: al.a.concat(al.b),
       alarms_panel_a: al.a,
       alarms_panel_b: al.b,
