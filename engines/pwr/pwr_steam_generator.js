@@ -66,8 +66,28 @@
     var dump = (s.steam_dump_override != null)
       ? s.steam_dump_override
       : clip((s.steam_pressure_mpa - sg.steam_dump_setpoint) / sg.steam_dump_band, 0, 1) * sg.steam_dump_max;
+    // MSIV: both downstream paths (turbine steam + dump-to-condenser) are
+    // behind the isolation valve; closing it bottles the steam generator.
+    if (s.msiv_open === false) dump = 0;
     s.steam_dump_frac = dump;
-    var steam_out = s.steam_flow_normalized + dump;
+
+    // SG code safety valves — UPSTREAM of the MSIV, the relief that remains
+    // when the SG is bottled: pop above sg_safety_open_mpa, reseat below
+    // sg_safety_reseat_mpa, proportional in between once open. Above the
+    // 8.90 MPa no-load dump setpoint, so the dump handles normal duty and the
+    // safeties are the backstop.
+    if (s.sg_safety_open) {
+      if (s.steam_pressure_mpa < sg.sg_safety_reseat_mpa) s.sg_safety_open = false;
+    } else if (s.steam_pressure_mpa > sg.sg_safety_open_mpa) {
+      s.sg_safety_open = true;
+    }
+    var sg_relief = s.sg_safety_open
+      ? sg.sg_safety_flow_max * clip((s.steam_pressure_mpa - sg.sg_safety_reseat_mpa)
+          / (sg.sg_safety_open_mpa - sg.sg_safety_reseat_mpa), 0, 1)
+      : 0;
+    s.sg_safety_flow = sg_relief;
+
+    var steam_out = s.steam_flow_normalized + dump + sg_relief;
 
     // SG level (the true level; shrink/swell is added in the instrument model §8.4).
     var dSGLevel = (feedwater_flow - steam_out) * sg.K_sg_level;
@@ -98,6 +118,7 @@
     s.governor_valve_pct += galpha * (gov_target - s.governor_valve_pct);
     s.steam_flow_normalized = (s.governor_valve_pct / 100) * sg.steam_flow_rated
       * (s.steam_pressure_mpa / sg.steam_p_rated);
+    if (s.msiv_open === false) s.steam_flow_normalized = 0;   // MSIV shut — no steam past it, whatever the governor asks
   }
 
   // Step 12 — turbine and condenser (behavioral).

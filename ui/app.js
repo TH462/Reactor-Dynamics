@@ -1711,8 +1711,16 @@
     'feed-nudge-up': function () { cmd({ action: 'feed_pump_nudge', delta_pct: 2 }); },
     'feed-nudge-dn': function () { cmd({ action: 'feed_pump_nudge', delta_pct: -2 }); },
     'afw-start': function () { ui.pdOp.afw = true; cmd({ action: 'set_afw', active: true }); }, 'afw-stop': function () { cmd({ action: 'set_afw', active: false }); },
-    'msiv-open': function () { if (ui.plant === 'bwr') cmd({ action: 'clear_failure', failure_id: 'msiv_closure' }); },
-    'msiv-close': function () { if (ui.plant === 'bwr') cmd({ action: 'inject_failure', failure_id: 'msiv_closure' }); },
+    // MSIV: a real PWR valve (open_msiv/close_msiv); on the BWR still the
+    // msiv_closure failure toggle (its engine models isolation as a failure).
+    'msiv-open': function () {
+      if (ui.plant === 'bwr') cmd({ action: 'clear_failure', failure_id: 'msiv_closure' });
+      else if (ui.plant === 'pwr') cmd({ action: 'open_msiv' });
+    },
+    'msiv-close': function (b) {
+      if (ui.plant === 'bwr') cmd({ action: 'inject_failure', failure_id: 'msiv_closure' });
+      else if (ui.plant === 'pwr') armedConfirm(b, function () { cmd({ action: 'close_msiv' }); });
+    },
     'spray-off': function () { cmd({ action: 'set_spray', open: false }); },
     // load mode (engines/load_mode.js) — Follow tracks reactor power; Manual uses the slider; Off drops the grid
     'load-follow': function () { cmd({ action: 'set_load_mode', mode: 'follow' }); },

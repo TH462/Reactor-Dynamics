@@ -172,6 +172,11 @@
       steam_flow_rated: 1.0,       // [tune]
       sg_level_nominal: 65.0,      // % at hot_full_power
       feed_pump_tau: 8.0,          // s — feed-pump speed→flow inertia (set_feed_pump_speed) [tune]
+      // SG code safety valves — upstream of the MSIV, above the 8.90 no-load
+      // dump setpoint: the backstop when the SG is bottled (MSIV shut). [tune]
+      sg_safety_open_mpa: 9.31,    // pop
+      sg_safety_reseat_mpa: 9.0,   // reseat
+      sg_safety_flow_max: 1.2,     // normalized relief capacity at full lift
       afw_flow_frac: 0.15,         // AFW capacity, normalized to rated feed [tune]
       afw_start_level: 20.0,       // % — M4 auto-start setpoint (pwr_control actuation reads the instrument)
       afw_level_target: 20.0,      // % — built-in proportional level hold: full flow below this... [tune]
@@ -296,7 +301,7 @@
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running', 'hpi_active', 'station_blackout',
-               'steam_demand_low', 'rod_at_limit', 'sr_energized',
+               'steam_demand_low', 'rod_at_limit', 'sr_energized', 'msiv_open', 'sg_safety_open',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
                'afw_active', 'afw_pump_running', 'rhr_active', 'accumulators_discharging',
                'condenser_cooling_available', 'safety_relief_active'],

@@ -270,6 +270,8 @@
       steam_demand_low: s.turbine_tripped || s.turbine_demand_frac < 0.05,
       rod_at_limit: this._controlGroup().at_insertion_limit,
       sr_energized: !!s.sr_energized,
+      msiv_open: s.msiv_open !== false,
+      sg_safety_open: !!s.sg_safety_open,
       // §8.8 synoptic status — copied into instruments.reading each step (HR1).
       afw_active: s.afw_active,
       afw_pump_running: !!s.afw_pump_demand,
@@ -320,6 +322,8 @@
       reactivity_pcm: (s._rho || 0) * 1e5, startup_rate_dpm: sur, reactor_period_s: period,
       // Nuclear instrumentation (startup ranges): SR counts (0 when de-energized), IR chamber current.
       sr_counts_cps: s.sr_counts_cps || 0, ir_amps: s.ir_amps || 0, sr_energized: !!s.sr_energized,
+      // Main steam isolation + SG code safeties (upstream of the MSIV).
+      msiv_open: s.msiv_open !== false, sg_safety_open: !!s.sg_safety_open,
       // §8.8 instrument sources — TRUE sim flows/positions (indications ≠ command setpoints):
       charging_flow_actual: (s.charging_pump_running === false ? 0 : s.charging_flow),
       letdown_flow_actual: s.letdown_flow, steam_dump_valve_pct: s.steam_dump_frac * 100,
@@ -374,6 +378,7 @@
       hpi_active: s.hpi_active, rhr_active: s.rhr_active,
       afw_throttle_pct: (s.afw_throttle_frac != null ? s.afw_throttle_frac : 1.0) * 100,
       sr_energized: !!s.sr_energized,   // SR detector switch position
+      msiv_open: s.msiv_open !== false, // main steam isolation valve position
       pumps: [{ id: 'rcp', running: s.pump_running, flow_pct: s.pump_flow_pct }],
     };
   };
@@ -489,6 +494,15 @@
       case 'set_afw_flow':
         // AFW throttle: scales delivered AFW flow (0–100 % of capacity).
         s.afw_throttle_frac = clip((cmd.pct != null ? cmd.pct : 100) / 100, 0, 1);
+        break;
+      case 'open_msiv':
+        s.msiv_open = true;
+        break;
+      case 'close_msiv':
+        // Isolating main steam with the turbine loaded trips it (real plants:
+        // MSIV closure = turbine trip) — the SG then bottles up to its safeties.
+        s.msiv_open = false;
+        if (!s.turbine_tripped && s.generator_load > 0) SG.tripTurbine(s);
         break;
       case 'set_sr_detector':
         // Source-range detector high voltage on/off. The P-6 interlock (control
@@ -756,6 +770,7 @@
 
       sg_level_pct: cfg.steam_generator.sg_level_nominal,
       steam_pressure_mpa: cfg.steam_generator.steam_p_rated,
+      msiv_open: true, sg_safety_open: false, sg_safety_flow: 0,   // main steam isolation + SG code safeties
       steam_flow_normalized: P0, fw_flow_normalized: P0,
       steam_dump_override: null, steam_dump_frac: 0,   // B2 (null = auto)
       feedwater_demand_frac: P0, feed_pump_speed_pct: P0 * 100, feedwater_flow: P0, main_feedwater_available: true,
@@ -886,6 +901,10 @@
     if (s.sr_energized == null) s.sr_energized = false;
     if (s.sr_counts_cps == null) s.sr_counts_cps = 0;
     if (s.ir_amps == null) s.ir_amps = 0;
+    // MSIV + SG safeties.
+    if (s.msiv_open == null) s.msiv_open = true;
+    if (s.sg_safety_open == null) s.sg_safety_open = false;
+    if (s.sg_safety_flow == null) s.sg_safety_flow = 0;
   };
 
   RD.PWREngine = PWREngine;
@@ -1220,6 +1239,37 @@
       });
     },
 
+    msiv_closure_at_power: function () {
+      return test('MSIV closure at power — SG bottles to its safeties, plant stabilizes', function (ck) {
+        var h = new Harness('hot_full_power');
+        var sg = h.eng.cfg.steam_generator;
+        h.run(10);
+        h.cmd({ action: 'close_msiv' });
+        var t0 = h.ts();
+        ck('turbine tripped on isolation', t0.msiv_open === false && h.eng.s.turbine_tripped, h.eng.s.turbine_tripped === true, 'tripped');
+        // Bottled SG: pressure climbs past the (isolated) dump toward the safeties.
+        var tLift = h.runUntil(function (ts) { return h.eng.s.sg_safety_open; }, 300);
+        ck('SG safeties lift', tLift >= 0 ? tLift.toFixed(0) + ' s' : 'never', tLift >= 0, 'within 300 s');
+        h.run(120);
+        var t = h.ts();
+        ck('secondary held in the safety band', t.steam_pressure_mpa.toFixed(2),
+          t.steam_pressure_mpa > sg.sg_safety_reseat_mpa - 0.3 && t.steam_pressure_mpa < sg.sg_safety_open_mpa + 0.4,
+          (sg.sg_safety_reseat_mpa - 0.3).toFixed(1) + '–' + (sg.sg_safety_open_mpa + 0.4).toFixed(1) + ' MPa');
+        ck('no steam past the MSIV', t.steam_flow_normalized.toFixed(3), t.steam_flow_normalized === 0, '0');
+        // With the turbine gone the coupling zeroes feed while the safeties keep
+        // drawing — the SG DRAINS. (In the assembled stack the low-SG-level trip
+        // then scrams the plant: the full-stack probe lives in test/run_m4.js.
+        // The engine alone finds a relief-fed equilibrium — that is physics, not
+        // protection, and protection is deliberately not in this suite.)
+        ck('SG draining toward the level trip', t.sg_level_pct.toFixed(1), t.sg_level_pct < 55, '< 55 % and falling');
+        ck('fuel intact', String(t.melted), t.melted === false, 'false');
+        // Reopen: the dump path is live again (relief no longer alone).
+        h.cmd({ action: 'open_msiv' });
+        h.run(60);
+        ck('reopen restores the dump path', h.eng.s.steam_dump_frac.toFixed(3), h.eng.s.steam_dump_frac > 0, '> 0');
+      });
+    },
+
     merged_injection_curve: function () {
       return test('Merged HPI/LPI — two-segment injection curve', function (ck) {
         var h = new Harness('hot_full_power');
@@ -1257,7 +1307,7 @@
       'load_mode_follow',
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',
-      'merged_injection_curve'];
+      'merged_injection_curve', 'msiv_closure_at_power'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(PWRScenarioTests[order[i]]());
     return results;

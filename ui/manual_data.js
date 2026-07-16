@@ -201,6 +201,20 @@
           "params": "{trip_id, blocked}"
         },
         {
+          "control": "MSIV — Open",
+          "group": "Secondary",
+          "uses": "Opens the Main Steam Isolation Valve, restoring the steam path from the Steam Generators to the turbine and the dump.",
+          "command": "open_msiv",
+          "params": ""
+        },
+        {
+          "control": "MSIV — Close",
+          "group": "Secondary",
+          "uses": "Isolates main steam. The turbine trips, the bottled Steam Generator pressurizes to its code safety valves, and with feed gone it boils down toward the low-level reactor trip — close it deliberately.",
+          "command": "close_msiv",
+          "params": ""
+        },
+        {
           "control": "Automate Tab (per-control automation)",
           "group": "Automation",
           "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram; controllers run inside the Control Layer at a fixed simulated-time cadence, so time acceleration does not change their behavior.",
@@ -436,7 +450,9 @@
           "lag_s": 0.5,
           "derived": false,
           "boolean": false,
-          "alarms": []
+          "alarms": [
+            "sg_press_high"
+          ]
         },
         {
           "id": "boron_analyzer",
@@ -575,7 +591,7 @@
           "unit": "A",
           "range": [
             1e-11,
-            0.001
+            0.002
           ],
           "lag_s": 0.5,
           "derived": false,
@@ -666,7 +682,7 @@
           {
             "instrument": "intermediate_range",
             "direction": "high",
-            "setpoint": 0.001,
+            "setpoint": 0.00167,
             "action": "scram"
           },
           {
@@ -910,6 +926,24 @@
             "panel": "B"
           },
           {
+            "id": "msiv_closed",
+            "name": "Main Steam Isolated (MSIV Shut) (MSIV SHUT)",
+            "instrument": "msiv_open",
+            "direction": "is_false",
+            "setpoint": null,
+            "priority": "warning",
+            "panel": "B"
+          },
+          {
+            "id": "sg_press_high",
+            "name": "Steam Generator Pressure High (SG PRESS HI)",
+            "instrument": "steam_pressure",
+            "direction": "high",
+            "setpoint": 9,
+            "priority": "caution",
+            "panel": "B"
+          },
+          {
             "id": "cond_vac_low",
             "name": "Condenser Vacuum Low (COND VAC LO)",
             "instrument": "condenser_vacuum",
@@ -1137,6 +1171,22 @@
           "panel": "B",
           "means": null,
           "response": "Investigate and correct the cause before it worsens."
+        },
+        {
+          "id": "msiv_closed",
+          "name": "Main Steam Isolated (MSIV Shut) (MSIV SHUT)",
+          "priority": "warning",
+          "panel": "B",
+          "means": null,
+          "response": "Investigate and correct the cause before it worsens."
+        },
+        {
+          "id": "sg_press_high",
+          "name": "Steam Generator Pressure High (SG PRESS HI)",
+          "priority": "caution",
+          "panel": "B",
+          "means": null,
+          "response": "Monitor; no immediate action required."
         },
         {
           "id": "cond_vac_low",
@@ -1453,6 +1503,10 @@
         {
           "acronym": "P-10",
           "term": "Nuclear at-power permissive (10 %) — allows blocking the startup trips; they auto-reinstate below it."
+        },
+        {
+          "acronym": "MSIV",
+          "term": "Main Steam Isolation Valve — isolates the Steam Generators from the turbine."
         }
       ],
       "normal_values": {
@@ -1507,6 +1561,8 @@
             "sr_counts_cps": 0,
             "ir_amps": 0.00833,
             "sr_energized": false,
+            "msiv_open": true,
+            "sg_safety_open": false,
             "charging_flow_actual": 0,
             "letdown_flow_actual": 0,
             "steam_dump_valve_pct": 0,
@@ -1542,7 +1598,7 @@
             "startup_rate": 0.000605,
             "porv_tailpipe_temp": 81.452,
             "source_range": 1.017,
-            "intermediate_range": 0.001,
+            "intermediate_range": 0.002,
             "porv_indicator": "closed",
             "subcooling_margin": 41.124,
             "rps_scrammed": false,
@@ -1552,6 +1608,8 @@
             "steam_demand_low": false,
             "rod_at_limit": false,
             "sr_energized": false,
+            "msiv_open": true,
+            "sg_safety_open": false,
             "afw_active": false,
             "afw_pump_running": false,
             "rhr_active": false,
@@ -1611,6 +1669,8 @@
             "sr_counts_cps": 499.973,
             "ir_amps": 8.33e-9,
             "sr_energized": true,
+            "msiv_open": true,
+            "sg_safety_open": false,
             "charging_flow_actual": 0,
             "letdown_flow_actual": 0,
             "steam_dump_valve_pct": 0,
@@ -1656,6 +1716,8 @@
             "steam_demand_low": true,
             "rod_at_limit": true,
             "sr_energized": true,
+            "msiv_open": true,
+            "sg_safety_open": false,
             "afw_active": false,
             "afw_pump_running": false,
             "rhr_active": false,
@@ -1715,6 +1777,8 @@
             "sr_counts_cps": 0,
             "ir_amps": 0.00415,
             "sr_energized": false,
+            "msiv_open": true,
+            "sg_safety_open": false,
             "charging_flow_actual": 0,
             "letdown_flow_actual": 0,
             "steam_dump_valve_pct": 0,
@@ -1750,7 +1814,7 @@
             "startup_rate": -0.000452,
             "porv_tailpipe_temp": 81.452,
             "source_range": 1.017,
-            "intermediate_range": 0.001,
+            "intermediate_range": 0.002,
             "porv_indicator": "closed",
             "subcooling_margin": 57.341,
             "rps_scrammed": false,
@@ -1760,6 +1824,8 @@
             "steam_demand_low": false,
             "rod_at_limit": false,
             "sr_energized": false,
+            "msiv_open": true,
+            "sg_safety_open": false,
             "afw_active": false,
             "afw_pump_running": false,
             "rhr_active": false,
@@ -1805,6 +1871,8 @@
         "sr_counts_cps": "Source Range counts",
         "ir_amps": "Intermediate Range current",
         "sr_energized": "SR detector energized",
+        "msiv_open": "MSIV open",
+        "sg_safety_open": "SG safety valves lifting",
         "afw_active": "Auxiliary Feedwater (AFW) delivering",
         "afw_pump_running": "AFW pump running",
         "fuel_damaged": "Fuel damaged",
@@ -2845,6 +2913,8 @@
         "sr_counts_cps": "Source Range counts",
         "ir_amps": "Intermediate Range current",
         "sr_energized": "SR detector energized",
+        "msiv_open": "MSIV open",
+        "sg_safety_open": "SG safety valves lifting",
         "afw_active": "Auxiliary Feedwater (AFW) delivering",
         "afw_pump_running": "AFW pump running",
         "fuel_damaged": "Fuel damaged",
@@ -3897,6 +3967,8 @@
         "sr_counts_cps": "Source Range counts",
         "ir_amps": "Intermediate Range current",
         "sr_energized": "SR detector energized",
+        "msiv_open": "MSIV open",
+        "sg_safety_open": "SG safety valves lifting",
         "afw_active": "Auxiliary Feedwater (AFW) delivering",
         "afw_pump_running": "AFW pump running",
         "fuel_damaged": "Fuel damaged",
@@ -5002,6 +5074,8 @@
         "sr_counts_cps": "Source Range counts",
         "ir_amps": "Intermediate Range current",
         "sr_energized": "SR detector energized",
+        "msiv_open": "MSIV open",
+        "sg_safety_open": "SG safety valves lifting",
         "afw_active": "Auxiliary Feedwater (AFW) delivering",
         "afw_pump_running": "AFW pump running",
         "fuel_damaged": "Fuel damaged",

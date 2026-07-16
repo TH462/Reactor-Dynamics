@@ -183,6 +183,18 @@ T.push(test('NIS startup net — conditioned SR trip, P-6 switch interlocks, blo
   ck('trip block refused below P-10', rb && rb.type, rb && rb.type === 'blocked', 'blocked');
 }));
 
+T.push(test('MSIV closure at power (full stack) — bottled SG drains to the level scram', function (ck) {
+  var s = new Stack('hot_full_power');
+  s.run(2);
+  s.cmd({ action: 'close_msiv' });
+  ck('MSIV shut + turbine tripped', s.ts().msiv_open, s.ts().msiv_open === false && s.engine.s.turbine_tripped, 'shut + tripped');
+  s.run(120);
+  ck('safeties lifted while bottled', String(s.ts().sg_safety_open), s.ts().sg_safety_open === true || s.layer.rps.scrammed, 'lifted (or already scrammed)');
+  ck('protection ended it — SG level scram', s.layer.rps.last_trip_reason, s.layer.rps.scrammed === true, 'scrammed');
+  var al = s.alarm('msiv_closed');
+  ck('MSIV SHUT annunciated', al && al.state, al && al.state !== 'clear', 'active');
+}));
+
 T.push(test('AFW throttle + level hold — delivered flow scales and tapers (engine)', function (ck) {
   var s = new Stack('hot_full_power');
   var es = s.engine.s, sg = s.engine.cfg.steam_generator;

@@ -99,6 +99,8 @@
     { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
     { id: 'sbo',            instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
     { id: 'turbine_trip',   instrument: 'steam_demand_low', direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Turbine Trip / Low Steam Demand', label_industry: 'TURB TRIP' },
+    { id: 'msiv_closed',    instrument: 'msiv_open',        direction: 'is_false', setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Main Steam Isolated (MSIV Shut)', label_industry: 'MSIV SHUT' },
+    { id: 'sg_press_high',  instrument: 'steam_pressure',   direction: 'high',     setpoint: 9.0,  priority: 'caution',  panel: 'B', label_learning: 'Steam Generator Pressure High',   label_industry: 'SG PRESS HI' },
     { id: 'cond_vac_low',   instrument: 'condenser_vacuum', direction: 'low',      setpoint: 84.7, priority: 'caution',  panel: 'B', label_learning: 'Condenser Vacuum Low',           label_industry: 'COND VAC LO' },
     { id: 'cond_vac_trip',  instrument: 'condenser_vacuum', direction: 'low',      setpoint: 74.5, priority: 'warning',  panel: 'B', label_learning: 'Condenser Vacuum Trip Level',    label_industry: 'COND VAC TRIP' },
   ];

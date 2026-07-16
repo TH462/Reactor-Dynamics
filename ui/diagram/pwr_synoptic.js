@@ -482,7 +482,11 @@
         'Feed pump manual control — nudge the commanded pump speed down/up (takes the pump off automatic).') +
       '<span data-hl="gFeed">' + numSet('feedSet', 0, 120, 100, 'feed-set', '%') + '</span></div>' +
       row('Pump speed', 'fwSpd', { hint: 'Commanded feed-pump speed — delivered flow follows it through the pump\'s inertia.' }) +
-      row('Feed control', 'fwCoupled', { hint: 'Who is driving the feed pump: the three-element controller (AUTO, Automate tab), the load coupling, or your manual speed.' }),
+      row('Feed control', 'fwCoupled', { hint: 'Who is driving the feed pump: the three-element controller (AUTO, Automate tab), the load coupling, or your manual speed.' }) +
+      '<div class="ctl"><span class="k">MSIV</span>' + seg([
+        { l: 'Open', act: 'msiv-open', f: 'msivOpenB' }, { l: 'Close', act: 'msiv-close', warn: 1, f: 'msivCloseB' },
+      ], 'Main Steam Isolation Valve — closing it bottles the steam generator (turbine trips; SG pressure rises to the code safeties; the SG then boils down toward the level scram). Two-press confirm on Close.') +
+      '<span class="v" data-f="msivStat"></span></div>',
       { anchor: 'pwSgSteamOutletAnchor', hint: 'Steam &amp; Flow — steam and feedwater flows, and the feed pump (manual nudge/set or three-element automatic).' });
 
     // -- Plant Status (compact corner card) ---------------------------------------
@@ -1063,6 +1067,11 @@
       : (cs.feed_auto_coupled !== false ? 'coupled (tracks load)' : 'MANUAL');
     txt('fwCoupled', feedMode);
     vcls('fwCoupled', (feedCh && feedCh.engaged) ? 'run' : (cs.feed_auto_coupled !== false ? '' : 'warn'));
+    // MSIV + SG safeties
+    var msivOpen = ins.msiv_open !== false;
+    segSync('msivOpenB', msivOpen); segSync('msivCloseB', !msivOpen);
+    txt('msivStat', msivOpen ? '' : (ins.sg_safety_open ? 'SHUT · safeties lifting' : 'SHUT'));
+    vcls('msivStat', msivOpen ? 'dim' : 'alarm');
     txt('rcpStat', ins.rcp_running ? 'running' : 'STOPPED'); vcls('rcpStat', ins.rcp_running ? 'run' : 'alarm');
     if (overlay) txt('rcpFlow', (ts.pump_flow_pct || 0).toFixed(0) + ' %');
     txt('tgRpm', ins.turbine_rpm.toFixed(0) + ' rpm');

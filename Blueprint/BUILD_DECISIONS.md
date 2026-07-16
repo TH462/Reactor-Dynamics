@@ -2151,3 +2151,22 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   mid-approach all-points fit predicts 21.2 % withdrawn vs 27.6 % true criticality —
   conservative-early and converging as points land, the genuine 1/M phenomenon (rod worth is
   S-shaped); an un-secured SR correctly TRIPPED the same startup at criticality.
+- **2026-07-16 — PWR MSIV + SG code safety valves (stage 10, user direction).** Engine:
+  `msiv_open` state with `open_msiv`/`close_msiv`; both downstream paths (turbine steam AND
+  dump-to-condenser) gate on it; closing with the generator loaded calls tripTurbine (real
+  MSIV closure = turbine trip). New SG code safeties UPSTREAM of the valve — pop 9.31 MPa /
+  reseat 9.0 / proportional to 1.2 rated [tune], above the 8.90 no-load dump setpoint so the
+  dump does normal duty and the safeties are the bottled-SG backstop. **Behavior finding:**
+  at power the bottled SG does NOT settle into a quiet hot standby — Tsat(9.3 MPa) ≈ 305 °C
+  barely exceeds normal Tavg, so the safeties keep drawing near-full core heat while the
+  tripped turbine's coupling zeroes feed: the SG DRAINS, and in the assembled stack the
+  low-SG-level trip scrams the plant (~2 min). That IS the teaching outcome; the engine
+  suite asserts the physics half (safeties lift ~7 s, band held, no steam past the valve,
+  SG draining, dump restored on reopen — `msiv_closure_at_power`, 15/15) and a full-stack
+  probe in run_m4 asserts the protection half (level scram + MSIV SHUT annunciator; the
+  alarm needed `msiv_open`/`sg_safety_open` added to the STATUS instrument list). Alarms:
+  MSIV SHUT (warning, B), SG PRESS HI (caution, 9.0). Synoptic: MSIV Open|Close on the
+  Steam & Flow card (two-press confirm on Close; SHUT · safeties-lifting status). ACTS
+  msiv-open/close now branch: PWR = the real valve, BWR = the legacy msiv_closure failure
+  toggle. Manual: MSIV command/glossary entries; regenerated. Gates: all green at baseline
+  (campaign 36/36, ops 53/66, synoptic 55/55).
