@@ -8,41 +8,41 @@
 
 ## 1.0 Purpose
 
-Provide step-followable **normal operating procedures** for the Reactor⚛️Dynamics PWR across commercial **plant MODES**. Fully simulated work centers on **Mode Three** (Hot Standby), **Mode Two** (Startup), and **Mode One** (Power Operation). **Mode Four** / **Mode Five** heatup and cooldown are **[narr]** only.
+Provide step-followable **normal operating procedures** for the Reactor⚛️Dynamics PWR across commercial **plant MODES**. Fully simulated work centers on **Mode 3, Hot Standby**, **Mode 2, Startup**, and **Mode 1, At Power**. **Mode 4, Hot Shutdown** / **Mode 5, Cold Shutdown** heatup and cooldown are **[narr]** only.
 
-**Master MODE paths:** `05_MODE_TRANSITIONS.md` — **PWR-T20** (Mode Five → Mode One), **PWR-T21** (Mode One → Mode Five).
+**Master MODE paths:** `05_MODE_TRANSITIONS.md` — **PWR-T20** (Mode 5, Cold Shutdown → Mode 1, At Power), **PWR-T21** (Mode 1, At Power → Mode 5, Cold Shutdown).
 
 ## 2.0 Procedure index
 
 | ID | Title | MODE focus | Scope |
 |----|-------|------------|-------|
-| PWR-N01 | Prerequisites & plant lineup (Mode Three) | Mode Three | [sim] |
-| PWR-N02 | Approach to criticality (Mode Three → Mode Two) | 3 → 2 | [sim] |
-| PWR-N03 | Heatup Mode Five → Mode Three | 5 → 4 → 3 | [narr] |
-| PWR-N04 | Mode Two low-power operation & POAH | Mode Two | [sim] |
-| PWR-N05 | Turbine roll & generator synchronization | Mode Two → One | [sim] |
-| PWR-N06 | Power ascension in Mode One to 100 % | Mode One | [sim] |
-| PWR-N07 | Power maneuvering — raise power (Mode One) | Mode One | [sim] |
-| PWR-N08 | Power maneuvering — lower power (Mode One) | Mode One | [sim] |
-| PWR-N09 | Boron & reactivity management (incl. xenon) | Mode One–Three | [sim] |
-| PWR-N10 | Pressurizer pressure control | Mode One–Three | [sim] |
-| PWR-N11 | Pressurizer level control (CVCS) | Mode One–Three | [sim] |
-| PWR-N12 | Steam Generator level & feedwater control | Mode One–Two | [sim] |
-| PWR-N13 | Reactor Coolant Pump (RCP) operation | Mode One–Three | [sim, approx] |
-| PWR-N14 | Normal shutdown Mode One → Mode Three | 1 → 3 | [sim] |
-| PWR-N15 | Cooldown Mode Three → Mode Five (DHR/RHR) | 3 → 4 → 5 | [narr] |
+| PWR-N01 | Prerequisites & plant lineup (Mode 3, Hot Standby) | Mode 3, Hot Standby | [sim] |
+| PWR-N02 | Approach to criticality (Mode 3, Hot Standby → Mode 2, Startup) | 3 → 2 | [sim] |
+| PWR-N03 | Heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby | 5 → 4 → 3 | [narr] |
+| PWR-N04 | Mode 2, Startup low-power operation & POAH | Mode 2, Startup | [sim] |
+| PWR-N05 | Turbine roll & generator synchronization | Mode 2, Startup → One | [sim] |
+| PWR-N06 | Power ascension in Mode 1, At Power to 100 % | Mode 1, At Power | [sim] |
+| PWR-N07 | Power maneuvering — raise power (Mode 1, At Power) | Mode 1, At Power | [sim] |
+| PWR-N08 | Power maneuvering — lower power (Mode 1, At Power) | Mode 1, At Power | [sim] |
+| PWR-N09 | Boron & reactivity management (incl. xenon) | Mode 1, At Power–Three | [sim] |
+| PWR-N10 | Pressurizer pressure control | Mode 1, At Power–Three | [sim] |
+| PWR-N11 | Pressurizer level control (CVCS) | Mode 1, At Power–Three | [sim] |
+| PWR-N12 | Steam Generator level & feedwater control | Mode 1, At Power–Two | [sim] |
+| PWR-N13 | Reactor Coolant Pump (RCP) operation | Mode 1, At Power–Three | [sim, approx] |
+| PWR-N14 | Normal shutdown Mode 1, At Power → Mode 3, Hot Standby | 1 → 3 | [sim] |
+| PWR-N15 | Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (DHR/RHR) | 3 → 4 → 5 | [narr] |
 
 **Related:** MODE transitions → `05_MODE_TRANSITIONS.md`. Control details → `03_CONTROLS_AND_INDICATIONS.md`. Setpoints → `09_SETPOINTS_LIMITS.md`.
 
 ---
 
-## PWR-N01 — Prerequisites & plant lineup (Mode Three)
+## PWR-N01 — Prerequisites & plant lineup (Mode 3, Hot Standby)
 
 ### Purpose
-Verify the plant is correctly lined up in **Mode Three** (Hot Standby) before approach to criticality.
+Verify the plant is correctly lined up in **Mode 3, Hot Standby** before approach to criticality.
 
 ### Applicability
-Initial condition **Hot Standby** (`hot_zero_power`) = **Mode Three**, or post-trip recovery to hot, subcritical conditions (still Mode Three by temperature class).
+Initial condition **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**, or post-trip recovery to hot, subcritical conditions (still Mode 3 by temperature class).
 
 ### Prerequisites
 - Simulator running; plant = PWR.
@@ -72,20 +72,20 @@ Initial condition **Hot Standby** (`hot_zero_power`) = **Mode Three**, or post-t
 | 14 | Set time acceleration **1×–10×** max for startup | Speed selector | Operator can follow SUR |
 
 ### Outcome
-Plant verified in **Mode Three**; ready for **PWR-N02** (enter Mode Two).
+Plant verified in **Mode 3, Hot Standby**; ready for **PWR-N02** (enter Mode 2, Startup).
 
 ---
 
-## PWR-N02 — Approach to criticality (Mode Three → Mode Two)
+## PWR-N02 — Approach to criticality (Mode 3, Hot Standby → Mode 2, Startup)
 
 ### Purpose
-Take the reactor from **Mode Three** (subcritical, hot) to **Mode Two** (critical, power ≤ 5 %) by withdrawing Control Rods, watching Startup Rate (SUR) and reactor period.
+Take the reactor from **Mode 3, Hot Standby** (subcritical, hot) to **Mode 2, Startup** (critical, power ≤ 5 %) by withdrawing Control Rods, watching Startup Rate (SUR) and reactor period.
 
 ### Applicability
-[sim] From **Mode Three**.
+[sim] From **Mode 3, Hot Standby**.
 
 ### Prerequisites
-- **PWR-N01** complete (Mode Three lineup).
+- **PWR-N01** complete (Mode 3, Hot Standby lineup).
 - Control bank inserted; SR energized; RCP running.
 
 ### Precautions
@@ -111,66 +111,66 @@ Take the reactor from **Mode Three** (subcritical, hot) to **Mode Two** (critica
 | 8 | Let Doppler / MTC settle; trim rods to hold | Rods | Stable low power, no trip |
 
 ### Outcome
-Reactor in **Mode Two** (critical, controlled power ≤ 5 %); ready for **PWR-N04** / **PWR-N05**. When power later exceeds **5 %**, the plant enters **Mode One**.
+Reactor in **Mode 2, Startup** (critical, controlled power ≤ 5 %); ready for **PWR-N04** / **PWR-N05**. When power later exceeds **5 %**, the plant enters **Mode 1, At Power**.
 
 ---
 
-## PWR-N03 — Heatup Mode Five → Mode Three **[narr]**
+## PWR-N03 — Heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby **[narr]**
 
 ### Purpose
-Describe commercial heatup from **Mode Five** (Cold Shutdown) through **Mode Four** (Hot Shutdown) to **Mode Three** (Hot Standby). **Not step-followable** in this trainer (no cold state, no modeled heatup rate). Part of master path **PWR-T20**.
+Describe commercial heatup from **Mode 5, Cold Shutdown** (Cold Shutdown) through **Mode 4, Hot Shutdown** (Hot Shutdown) to **Mode 3, Hot Standby** (Hot Standby). **Not step-followable** in this trainer (no cold state, no modeled heatup rate). Part of master path **PWR-T20**.
 
 ### Narrative (not simulated)
 
 | Step | MODE | Action |
 |------|------|--------|
-| 1 | **Mode Five** | Cold shutdown: subcritical, RCS cold; fill/vent as required |
-| 2 | Mode Five → **Mode Four** | Start RCPs when permitted; pump heat + controlled nuclear heat; draw PZR bubble |
-| 3 | **Mode Four** | Intermediate temperature; continue heatup/pressurization within commercial limits |
-| 4 | → **Mode Three** | Reach NOP T/P (≈ 304 °C, 15.41 MPa), subcritical, heat sink aligned |
+| 1 | **Mode 5, Cold Shutdown** | Cold shutdown: subcritical, RCS cold; fill/vent as required |
+| 2 | Mode 5, Cold Shutdown → **Mode 4, Hot Shutdown** | Start RCPs when permitted; pump heat + controlled nuclear heat; draw PZR bubble |
+| 3 | **Mode 4, Hot Shutdown** | Intermediate temperature; continue heatup/pressurization within commercial limits |
+| 4 | → **Mode 3, Hot Standby** | Reach NOP T/P (≈ 304 °C, 15.41 MPa), subcritical, heat sink aligned |
 
-**Simulator note:** RCP pump heat **is** modeled at power/flow, but there is no Mode Five initial condition. Begin all [sim] startups at **Mode Three** (**PWR-N01**). Read this procedure, then continue **PWR-T20** Phase B on the board.
+**Simulator note:** RCP pump heat **is** modeled at power/flow, but there is no Mode 5, Cold Shutdown initial condition. Begin all [sim] startups at **Mode 3, Hot Standby** (**PWR-N01**). Read this procedure, then continue **PWR-T20** Phase B on the board.
 
 ### Outcome
-Operator can narrate Mode Five → Mode Three; sim work starts at Mode Three.
+Operator can narrate Mode 5, Cold Shutdown → Mode 3, Hot Standby; sim work starts at Mode 3, Hot Standby.
 
 ---
 
-## PWR-N04 — Mode Two low-power operation & Point of Adding Heat (POAH)
+## PWR-N04 — Mode 2, Startup low-power operation & Point of Adding Heat (POAH)
 
 ### Purpose
-Operate stably in **Mode Two** (critical, ≤ 5 %) and through the early climb; recognize when fission heat exceeds losses (POAH concept). Crossing **> 5 %** enters **Mode One**.
+Operate stably in **Mode 2, Startup** (critical, ≤ 5 %) and through the early climb; recognize when fission heat exceeds losses (POAH concept). Crossing **> 5 %** enters **Mode 1, At Power**.
 
 ### Prerequisites
-- **Mode Two** per **PWR-N02**.
+- **Mode 2, Startup** per **PWR-N02**.
 - Heat sink available (SG inventory).
 
 ### Precautions
 - At very low power, instruments and controllers may be less “stiff”; prefer manual attention to rods and feed.
-- Do not rush IR/PR trip blocks until above **P-10** (10 %) — by then you are already in **Mode One**.
+- Do not rush IR/PR trip blocks until above **P-10** (10 %) — by then you are already in **Mode 1, At Power**.
 
 ### Procedure
 
 | Step | Action | Acceptance |
 |------|--------|------------|
-| 1 | Hold power in Mode Two band (≤ 5 %) with small rod trims | SUR near 0; power stable ≤ 5 % |
+| 1 | Hold power in Mode 2, Startup band (≤ 5 %) with small rod trims | SUR near 0; power stable ≤ 5 % |
 | 2 | Confirm Tavg and pressure near NOP | P ≈ 15.41 MPa; Tavg near operating |
 | 3 | Confirm SG level held (manual feed or three-element AUTO if reliable) | SG level not LO |
-| 4 | When raising toward Mode One: above **10 %**, block IR high / PR low-setpoint as required | Blocks allowed only above P-10 |
-| 5 | Proceed to turbine roll (**PWR-N05**); declare **Mode One** when power > 5 % | Ready for load / Mode One |
+| 4 | When raising toward Mode 1, At Power: above **10 %**, block IR high / PR low-setpoint as required | Blocks allowed only above P-10 |
+| 5 | Proceed to turbine roll (**PWR-N05**); declare **Mode 1, At Power** when power > 5 % | Ready for load / Mode 1, At Power |
 
 ### Outcome
-Stable Mode Two; ready to roll turbine and enter Mode One.
+Stable Mode 2, Startup; ready to roll turbine and enter Mode 1, At Power.
 
 ---
 
-## PWR-N05 — Turbine roll & generator synchronization (Mode Two → Mode One)
+## PWR-N05 — Turbine roll & generator synchronization (Mode 2, Startup → Mode 1, At Power)
 
 ### Purpose
-Place the turbine-generator on the grid and establish electrical output coordinated with reactor power while leaving **Mode Two** for **Mode One** (power > 5 %).
+Place the turbine-generator on the grid and establish electrical output coordinated with reactor power while leaving **Mode 2, Startup** for **Mode 1, At Power** (power > 5 %).
 
 ### Prerequisites
-- Reactor critical (**Mode Two** or already **Mode One**).
+- Reactor critical (**Mode 2, Startup** or already **Mode 1, At Power**).
 - Condenser vacuum healthy.
 - MSIV open.
 
@@ -193,17 +193,17 @@ Place the turbine-generator on the grid and establish electrical output coordina
 | 7 | Optionally engage **Rod AUTO (Tavg)** only after Tavg is where you want it | Automate → Rods | Holding without large drive |
 
 ### Outcome
-Generator carrying load; plant in or entering **Mode One**; nuclear–electric coordinated.
+Generator carrying load; plant in or entering **Mode 1, At Power**; nuclear–electric coordinated.
 
 ---
 
-## PWR-N06 — Power ascension in Mode One to 100 %
+## PWR-N06 — Power ascension in Mode 1, At Power to 100 %
 
 ### Purpose
-In **Mode One**, raise reactor power and electrical output to full-power Mode One (~**1000 MWe**) by coordinating rods, boron, and turbine load.
+In **Mode 1, At Power**, raise reactor power and electrical output to full-power Mode 1 (~**1000 MWe**) by coordinating rods, boron, and turbine load.
 
 ### Prerequisites
-- **Mode One** (or completing entry via N05); turbine on line or load Follow available.
+- **Mode 1, At Power** (or completing entry via N05); turbine on line or load Follow available.
 - SG level control understood (**PWR-N12**).
 
 ### Precautions
@@ -224,17 +224,17 @@ In **Mode One**, raise reactor power and electrical output to full-power Mode On
 | 7 | Optionally place Rod AUTO and load Follow for steady operation | Automate | Hands-off hold |
 
 ### Outcome
-Full-power **Mode One** equilibrium ready for normal maneuvering or watchstanding.
+Full-power **Mode 1, At Power** equilibrium ready for normal maneuvering or watchstanding.
 
 ---
 
-## PWR-N07 — Power maneuvering — raise power (Mode One)
+## PWR-N07 — Power maneuvering — raise power (Mode 1, At Power)
 
 ### Purpose
-Increase reactor power and electrical output within **Mode One** from a partial-power plateau.
+Increase reactor power and electrical output within **Mode 1, At Power** from a partial-power plateau.
 
 ### Prerequisites
-- **Mode One**: critical, power > 5 %, turbine on line, stable.
+- **Mode 1, At Power**: critical, power > 5 %, turbine on line, stable.
 
 ### Precautions
 - Rods **lead** up; turbine **follows**.
@@ -254,13 +254,13 @@ Stable higher power and MWe.
 
 ---
 
-## PWR-N08 — Power maneuvering — lower power (Mode One)
+## PWR-N08 — Power maneuvering — lower power (Mode 1, At Power)
 
 ### Purpose
-Reduce reactor power and load within **Mode One** (or down through Mode Two toward Mode Three).
+Reduce reactor power and load within **Mode 1, At Power** (or down through Mode 2, Startup toward Mode 3, Hot Standby).
 
 ### Prerequisites
-- **Mode One** (or Mode Two), turbine on line.
+- **Mode 1, At Power** (or Mode 2, Startup), turbine on line.
 
 ### Precautions
 | Type | Text |
@@ -439,42 +439,42 @@ Operator treats RCP as critical for at-power forced flow.
 
 ---
 
-## PWR-N14 — Normal shutdown Mode One → Mode Three
+## PWR-N14 — Normal shutdown Mode 1, At Power → Mode 3, Hot Standby
 
 ### Purpose
-Shut the reactor down from **Mode One** (or Mode Two) to **Mode Three** (Hot Standby); maintain decay-heat removal. First half of **PWR-T21** (Mode One → Mode Five).
+Shut the reactor down from **Mode 1, At Power** (or Mode 2, Startup) to **Mode 3, Hot Standby** (Hot Standby); maintain decay-heat removal. First half of **PWR-T21** (Mode 1, At Power → Mode 5, Cold Shutdown).
 
 ### Prerequisites
-- **Mode One** or **Mode Two**.
+- **Mode 1, At Power** or **Mode 2, Startup**.
 
 ### Precautions
 | Type | Text |
 |------|------|
 | **WARNING** | Decay heat (~**7 %** of rated after a power run, decaying) continues after SCRAM — keep a heat sink. |
 | **NOTE** | SCRAM forces turbine load mode **Disconnected** (not a plant MODE number). |
-| **NOTE** | While power remains > 5 % and critical, you are still **Mode One**. After SCRAM, hot and subcritical → **Mode Three**. |
+| **NOTE** | While power remains > 5 % and critical, you are still **Mode 1, At Power**. After SCRAM, hot and subcritical → **Mode 3, Hot Standby**. |
 
 ### Procedure
 
 | Step | Action | Control | Acceptance |
 |------|--------|---------|------------|
-| 1 | Reduce Turbine Load toward 0 (optional controlled down-power first via N08) | Turbine Load | Load falling; may pass Mode Two if still critical ≤ 5 % |
+| 1 | Reduce Turbine Load toward 0 (optional controlled down-power first via N08) | Turbine Load | Load falling; may pass Mode 2, Startup if still critical ≤ 5 % |
 | 2 | Insert rods by SCRAM (or controlled full insertion then trip) | **SCRAM** | Power collapsing |
 | 3 | Confirm REACTOR TRIP; power &lt; ~5 % | Alarms / power | Shutdown nuclear |
 | 4 | Confirm turbine disconnected; steam demand ~0 | Turbine card | Disconnected |
 | 5 | Maintain SG level with feed or **AFW** as required | Feed / AFW | Heat sink present |
-| 6 | Hold PZR pressure/level; leave subcooling healthy | PZR / CVCS | **Mode Three** board |
+| 6 | Hold PZR pressure/level; leave subcooling healthy | PZR / CVCS | **Mode 3, Hot Standby** board |
 | 7 | Monitor decay heat indication if available (overlay / Learning) | Observe | Decay heat &gt; 0 |
 
 ### Outcome
-**Mode Three** — reactor shut down, hot; decay heat being removed. Continue to Mode Five via **PWR-N15** / **PWR-T21** (narrative).
+**Mode 3, Hot Standby** — reactor shut down, hot; decay heat being removed. Continue to Mode 5, Cold Shutdown via **PWR-N15** / **PWR-T21** (narrative).
 
 ---
 
-## PWR-N15 — Cooldown Mode Three → Mode Five (DHR/RHR) **[narr]**
+## PWR-N15 — Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (DHR/RHR) **[narr]**
 
 ### Purpose
-Describe cooldown from **Mode Three** through **Mode Four** to **Mode Five** (Cold Shutdown). Full cold shutdown cooldown **rates** are not modeled. Completes master path **PWR-T21**.
+Describe cooldown from **Mode 3, Hot Standby** through **Mode 4, Hot Shutdown** to **Mode 5, Cold Shutdown** (Cold Shutdown). Full cold shutdown cooldown **rates** are not modeled. Completes master path **PWR-T21**.
 
 ### What is [sim]
 - Decay heat model active after power history.
@@ -482,38 +482,38 @@ Describe cooldown from **Mode Three** through **Mode Four** to **Mode Five** (Co
 - **RHR/DHR** control exists for low-pressure residual heat removal when permissives met (scrammed + low pressure band ~**3.45 MPa** class for auto arm).
 - HPI/LPI and accumulators for inventory under low pressure / LOCA conditions.
 
-### Narrative commercial path (Mode Three → Mode Five)
+### Narrative commercial path (Mode 3, Hot Standby → Mode 5, Cold Shutdown)
 
 | Step | MODE | Action |
 |------|------|--------|
-| 1 | **Mode Three** | Hot standby/shutdown; borate to cold-shutdown margin |
-| 2 | → **Mode Four** | Cooldown/depressurize within limits (steam dump / AFW / secondary) |
-| 3 | **Mode Four** | Place **RHR** in service; continue cooldown |
-| 4 | → **Mode Five** | RCS cold (≤ ~93 °C class); cold shutdown lineup |
-| 5 | Mode Five | Refueling (**Mode Six**) is **out of scope** |
+| 1 | **Mode 3, Hot Standby** | Hot standby/shutdown; borate to cold-shutdown margin |
+| 2 | → **Mode 4, Hot Shutdown** | Cooldown/depressurize within limits (steam dump / AFW / secondary) |
+| 3 | **Mode 4, Hot Shutdown** | Place **RHR** in service; continue cooldown |
+| 4 | → **Mode 5, Cold Shutdown** | RCS cold (≤ ~93 °C class); cold shutdown lineup |
+| 5 | Mode 5, Cold Shutdown | Refueling (**Mode 6, Refueling**) is **out of scope** |
 
 ### Simulator practice
-1. After **PWR-N14** (Mode Three), keep AFW/feed maintaining SG level.  
+1. After **PWR-N14** (Mode 3, Hot Standby), keep AFW/feed maintaining SG level.  
 2. If depressurized and RHR available, start **RHR** per Emergency card and re-arm AUTO if desired.  
-3. Do not expect a timed Mode Five end condition on the board.
+3. Do not expect a timed Mode 5, Cold Shutdown end condition on the board.
 
 ### Outcome
-Operator can narrate Mode Three → Mode Five; understands decay-heat obligation and trainer limits.
+Operator can narrate Mode 3, Hot Standby → Mode 5, Cold Shutdown; understands decay-heat obligation and trainer limits.
 
 ---
 
-## 3.0 Quick reference — Mode One full-power band (HFP)
+## 3.0 Quick reference — Mode 1, At Power full-power band (HFP)
 
 | Parameter | Approx. normal | MODE |
 |-----------|----------------|------|
-| Power | 100 % | Mode One |
-| MWe | 1000 | Mode One |
-| Primary pressure | 15.41 MPa | Mode One–Three |
-| Tavg | ~304 °C | Mode One–Three (hot) |
-| PZR level | ~55 % | Mode One |
-| SG level | ~65 % | Mode One |
-| Subcooling | ~41 °C | Mode One |
-| Control bank | ~92 % withdrawn | Mode One |
+| Power | 100 % | Mode 1, At Power |
+| MWe | 1000 | Mode 1, At Power |
+| Primary pressure | 15.41 MPa | Mode 1, At Power–Three |
+| Tavg | ~304 °C | Mode 1, At Power–Three (hot) |
+| PZR level | ~55 % | Mode 1, At Power |
+| SG level | ~65 % | Mode 1, At Power |
+| Subcooling | ~41 °C | Mode 1, At Power |
+| Control bank | ~92 % withdrawn | Mode 1, At Power |
 
 ---
 

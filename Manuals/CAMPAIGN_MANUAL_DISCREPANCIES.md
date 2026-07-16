@@ -2,9 +2,13 @@
 
 **Document:** PWR-MAN-CMP-01  
 **Date:** 2026-07-16  
+**Updated:** 2026-07-16 (manuals Rev 2)  
 **Purpose:** Record differences between the external operator manuals in `Manuals/` and the PWR training campaign (“Zero to Operator”) as shipped in `ui/campaign_data.js` / `Blueprint/pwr_training_campaign.md`, with in-product walkthroughs in `ui/manual_procedures.js`.  
 
-**Scope of this file:** Comparison only. No manuals, campaign, or code were changed to resolve the gaps listed here.
+**Scope of this file:** Comparison. Manuals Rev 2 aligned naming to **Mode N, Name** and added crosswalk + campaign **spec**; **campaign code is still unchanged**.
+
+**Handoff for campaign implementers:** `CAMPAIGN_MODE_ALIGNMENT_SPEC.md`  
+**Live map:** `11_CAMPAIGN_CROSSWALK.md`
 
 ---
 
@@ -12,7 +16,7 @@
 
 | Source | Role |
 |--------|------|
-| `Manuals/*.md` (Rev 0–1) | Commercial-style operator manuals (MODE One–Six, N/T/A/E/X procedures) |
+| `Manuals/*.md` (Rev 2) | Operator manuals (**Mode N, Name** convention, N/T/A/E/X procedures) |
 | `ui/campaign_data.js` → `RD.CAMPAIGNS.pwr` | As-built campaign syllabus (31 missions + 1 bonus) |
 | `Blueprint/pwr_training_campaign.md` | Campaign design / mission intent |
 | `ui/manual_procedures.js` → `RD.MANUAL_PROCEDURES.pwr` | In-product procedure walkthroughs used by campaign `[P]` missions |
@@ -24,13 +28,13 @@
 | Area | Assessment |
 |------|------------|
 | Physics & setpoints | Largely **aligned** (same plant, same engine numbers) |
-| Control surface topics | Campaign teaches more **UI-specific** skills; manuals more **ops-procedure** breadth |
+| Control surface topics | Campaign more UI-skill; manuals ops breadth + §17 campaign skills (Rev 2) |
 | Failure coverage | Manuals list **all** modeled failures; campaign drills a **subset** |
-| Plant MODE language | Manuals use **Mode One–Six**; campaign / in-product procedures still say **Hot Standby / at power** |
-| Startup path | Manuals emphasize **Mode Five → Mode One**; campaign never leaves the **hot** envelope |
-| Traceability | **No shared procedure IDs** (PWR-N02 vs `pwr_startup`) |
+| Plant MODE language | **Manuals:** Mode 1, At Power … Mode 5, Cold Shutdown. **Campaign:** still Hot Standby / at power → implement `CAMPAIGN_MODE_ALIGNMENT_SPEC.md` |
+| Startup path | Manuals Mode 5↔1; campaign hot-only until SPEC is coded |
+| Traceability | IDs still differ; **11_CAMPAIGN_CROSSWALK.md** maps them |
 
-They are complementary training products, not the same document set. A trainee using both will hit naming and coverage mismatches.
+Manuals Rev 2 closed naming + documentation gaps. Campaign code still needs the SPEC for Mode 5 path and Mode N strings.
 
 ---
 
@@ -38,9 +42,9 @@ They are complementary training products, not the same document set. A trainee u
 
 | Topic | Manuals | Campaign / in-product procedures | Severity |
 |-------|---------|----------------------------------|----------|
-| Plant state names | **Mode One** (power > 5 %), **Mode Two** (critical ≤ 5 %), **Mode Three** (Hot Standby), **Mode Four/Five** (cooldown/cold) | “Hot Standby,” “at power,” “full power,” “shutdown” — **no Mode One–Six** language | **H** |
-| Shutdown endpoint | **PWR-N14** / **PWR-T04**: Mode One → **Mode Three** | Mission 18 `pwr_shutdown`: “To **Hot Standby**” | **M** |
-| Post-trip state | Hot, subcritical = still **Mode Three** (by T class) | “Stable hot standby,” “shutdown board” | **L** |
+| Plant state names | **Mode 1, At Power**, **Mode 2, Startup**, **Mode 3, Hot Standby**, **Mode 4 / Mode 5** | “Hot Standby,” “at power,” “full power,” “shutdown” — no Mode N, Name yet | **H** (campaign pending SPEC) |
+| Shutdown endpoint | **PWR-N14** / **PWR-T04**: Mode 1, At Power → **Mode 3, Hot Standby** | Mission 18 `pwr_shutdown`: “To **Hot Standby**” | **M** |
+| Post-trip state | Hot, subcritical = still **Mode 3, Hot Standby** (by T class) | “Stable hot standby,” “shutdown board” | **L** |
 | Turbine load modes | Explicitly **not** plant MODES (Follow / Manual / Disconnected) | Same three load modes in `pwr_tour` / `pwr_load_follow` — consistent concept, different framing | **L** |
 | SCRAM | Two-press arm/confirm documented | Mission 1 teaches SCRAM; playtest noted two-press friction vs beat text | **M** (product/playtest; manuals clearer) |
 
@@ -50,8 +54,8 @@ They are complementary training products, not the same document set. A trainee u
 
 | Topic | Manuals | Campaign | Severity |
 |-------|---------|----------|----------|
-| Learning order | Recommends MODE table → controls → **Mode Five→One** master path → failures | Six acts: Machine → Physics → Controls → Upsets → TMI-2 → Qualify; **starts with SCRAM and HFP tour**, not cold startup | **H** |
-| Cold path (Mode Five) | Full narrative **PWR-T20 / T21**, N03, N15 | **Absent** — all missions use hot ICs (`hot_full_power`, `50_percent`, `hot_zero_power`) | **H** |
+| Learning order | Recommends MODE table → controls → **Mode 5, Cold Shutdown→One** master path → failures | Six acts: Machine → Physics → Controls → Upsets → TMI-2 → Qualify; **starts with SCRAM and HFP tour**, not cold startup | **H** |
+| Cold path (Mode 5, Cold Shutdown) | Full narrative **PWR-T20 / T21**, N03, N15 | **Absent** — all missions use hot ICs (`hot_full_power`, `50_percent`, `hot_zero_power`) | **H** |
 | Time budget | Commercial procedures can be long (esp. criticality) | Design goal: **~5 min wall-clock** per mission; `pwr_startup` walkthrough is known to exceed that | **M** |
 | Gating | Free Play + self-directed procedure following | All missions open; recommended act order only | **L** |
 | Checkpoints | None graded in manuals | Two graded: `pwr_startup_challenge`, `pwr_shift_exam` + `pwr_qualify` | **M** |
@@ -67,7 +71,7 @@ They are complementary training products, not the same document set. A trainee u
 |---|------------------|------|---------------------------|-------|
 | 1 | `pwr_hook` | [S] | `02` SCRAM / `03` SCRAM | Manuals don’t use a “hook” lesson format |
 | 2 | `pwr_tour` | [S] | `01` energy path | Campaign: Manual 900 MWe then Follow; manuals also use load examples |
-| 3 | `pwr_chain_reaction` | [S] | `01` / N02 concepts | Campaign starts subcritical; manuals Mode Three→Two |
+| 3 | `pwr_chain_reaction` | [S] | `01` / N02 concepts | Campaign starts subcritical; manuals Mode 3, Hot Standby→Two |
 | 4 | `pwr_startup` | [P] | **PWR-N02** (+ N01, T13) | Same intent; **IDs differ**; in-product steps shorter than N02 |
 | 5 | `pwr_feedback` | [S] | `01` Doppler/MTC | No dedicated N procedure |
 | 6 | `pwr_xenon` | [S] | **PWR-N09** | Campaign is post-scram xenon arc; N09 is broader chemistry/ops |
@@ -77,7 +81,7 @@ They are complementary training products, not the same document set. A trainee u
 | 13 | `pwr_raise_power` | [P] | **PWR-N07** / N06 | In-product from 50 % with fixed MWe targets |
 | 14 | `pwr_load_follow` | [S] | **PWR-T07/T08**, N07/N08 | Campaign story ~800 MWe ramp |
 | 17 | `pwr_lower_power` | [P] | **PWR-N08** | Aligned |
-| 18 | `pwr_shutdown` | [P] | **PWR-N14** | Endpoint naming: Hot Standby vs Mode Three |
+| 18 | `pwr_shutdown` | [P] | **PWR-N14** | Endpoint naming: Hot Standby vs Mode 3, Hot Standby |
 | 19 | `pwr_protection` | [S] | `06` + **PWR-E03** | Alarm flood + turbine trip |
 | 20 | `pwr_esf` | [S] | **PWR-T12**, AFW/HPI in `03` | Dedicated ESF arms lesson only in campaign |
 | 21 | `pwr_loss_of_feedwater` | [P] | **PWR-E01** | Aligned |
@@ -106,14 +110,14 @@ They are complementary training products, not the same document set. A trainee u
 
 | Manual ID | Title | Notes |
 |-----------|-------|-------|
-| PWR-N01 | Mode Three lineup | Implied by Free Play Hot Standby; not a campaign step |
-| PWR-N03 | Mode Five → Three heatup | **[narr]**; campaign never teaches cold path |
-| PWR-N04 | Mode Two / POAH | Partially inside startup/chain missions |
+| PWR-N01 | Mode 3, Hot Standby lineup | Implied by Free Play Hot Standby; not a campaign step |
+| PWR-N03 | Mode 5, Cold Shutdown → Three heatup | **[narr]**; campaign never teaches cold path |
+| PWR-N04 | Mode 2, Startup / POAH | Partially inside startup/chain missions |
 | PWR-N05 | Turbine roll & sync | Partially inside load/tour missions |
 | PWR-N11 | PZR level / CVCS inventory | Not a dedicated mission (boron mission touches CVCS) |
 | PWR-N13 | RCP operation (approx) | Only trip scenario, not normal ops |
-| PWR-N15 | Mode Three → Five cooldown | **[narr]**; no campaign equivalent |
-| PWR-T20 / T21 | Master Mode Five ↔ Mode One | **Absent** from campaign entirely |
+| PWR-N15 | Mode 3, Hot Standby → Five cooldown | **[narr]**; no campaign equivalent |
+| PWR-T20 / T21 | Master Mode 5, Cold Shutdown ↔ Mode 1, At Power | **Absent** from campaign entirely |
 | PWR-A01–A26 | Full alarm response set | Campaign teaches alarm *philosophy* (`pwr_protection`), not each ARP |
 | PWR-E04–E06, E09–E18, E20–E21 | Many failures | Not in campaign syllabus (see §6) |
 
@@ -164,7 +168,7 @@ They are complementary training products, not the same document set. A trainee u
 | D-01 | NIS honesty | Full SR / IR / PR model with P-6, P-10, SR handoff required | `pwr_chain_reaction` honesty beat: power_range “covers the whole span” (older simplicity framing) | **M** |
 | D-02 | Startup SUR target | SUR ≤ 1 DPM preferred; trainer may ~2 DPM at crossing | Procedure cautions similar; challenge mission holds 1–10 % band | **L** |
 | D-03 | Load step size | Warns against large Manual cuts (trip risk) | `pwr_tour` uses 900 MWe; playtest softlock if player cuts too deep | **M** |
-| D-04 | Raise-power targets | Generic Mode One escalation | In-product `pwr_raise_power`: rods then **≈ 700 MWe** from 50 % | **L** |
+| D-04 | Raise-power targets | Generic Mode 1, At Power escalation | In-product `pwr_raise_power`: rods then **≈ 700 MWe** from 50 % | **L** |
 | D-05 | Lower-power targets | Generic | In-product: **600 MWe** then rods | **L** |
 | D-06 | Load-follow story | T07/T08 general | Campaign: **800 MWe** evening ramp then back to 1000 + Follow | **L** |
 | D-07 | Shutdown method | N14 allows controlled down-power then SCRAM | In-product shutdown: load → 0 then **SCRAM** | **L** |
@@ -173,7 +177,7 @@ They are complementary training products, not the same document set. A trainee u
 | D-10 | Rewind | Mentioned as mission recovery | Central to campaign failure cards; playtest found rewind quirks | **M** (product) |
 | D-11 | Act id `act5` | Not discussed in depth | Act VI still keyed `act5` for progress persistence | **L** (dev only) |
 | D-12 | 1/M panel | Little/no 1/M scratchpad procedure in manuals | Campaign Act II / startup tooling emphasizes 1/M | **M** |
-| D-13 | Mode Five in Free Play | Explicitly no IC; narr only | Campaign never references Mode Five | **Aligned** on sim limits; manuals still sell Mode Five path as training story |
+| D-13 | Mode 5, Cold Shutdown in Free Play | Explicitly no IC; narr only | Campaign never references Mode 5, Cold Shutdown | **Aligned** on sim limits; manuals still sell Mode 5, Cold Shutdown path as training story |
 
 ---
 
@@ -182,14 +186,14 @@ They are complementary training products, not the same document set. A trainee u
 1. **“Do I use the Manuals or the campaign?”**  
    Campaign is the guided curriculum; manuals are the commercial reference. Manuals do not say “Mission 13 = N07.”
 
-2. **Hot Standby vs Mode Three**  
+2. **Hot Standby vs Mode 3, Hot Standby**  
    Same board state, two names. After Rev 1 manuals, campaign/in-product text will feel “old.”
 
 3. **Two loss-of-flow lessons** (`pwr_rcp_trip` vs `pwr_lof`) map to one emergency procedure (E02).
 
 4. **Four TMI experiences** (stuck_porv, tmi2×3, tmi, qualify) vs one **PWR-X01** chapter.
 
-5. **Mode Five → Mode One** is a manuals centerpiece; **zero campaign missions** exercise it. A reader of manuals may expect Free Play cold starts that do not exist.
+5. **Mode 5, Cold Shutdown → Mode 1, At Power** is a manuals centerpiece; **zero campaign missions** exercise it. A reader of manuals may expect Free Play cold starts that do not exist.
 
 6. **In-product Operator’s Manual (M key)** is generated from `manual_data` / `manual_procedures` — a **third** surface that matches the campaign walkthroughs better than the external `Manuals/` set.
 
@@ -211,7 +215,7 @@ They are complementary training products, not the same document set. A trainee u
 | Priority | Action |
 |----------|--------|
 | 1 | Add a **mission ↔ procedure crosswalk** table to manuals README (and/or campaign Blueprint) |
-| 2 | Adopt **Mode One / Mode Three** phrasing in campaign `teaches` strings and in-product procedure titles (e.g. shutdown “to Mode Three”) |
+| 2 | Adopt **Mode 1, At Power / Mode 3, Hot Standby** phrasing in campaign `teaches` strings and in-product procedure titles (e.g. shutdown “to Mode 3, Hot Standby”) |
 | 3 | Label manuals **PWR-T20/T21** clearly as “commercial story; campaign never leaves hot envelope” |
 | 4 | Either add campaign missions for high-value missing E-procedures or mark those E-procs “Free Play only” in manuals index |
 | 5 | Point manuals N02 explicitly at walkthrough id `pwr_startup` for dual use |
@@ -268,3 +272,4 @@ In-product procedures used by campaign:
 | Date | Change |
 |------|--------|
 | 2026-07-16 | Initial comparison of `Manuals/` Rev 1 vs campaign v2 (31 missions) and `manual_procedures.js` PWR set. |
+| 2026-07-16 | Manuals Rev 2: Mode N, Name convention; crosswalk; campaign alignment **spec** (code not changed). |

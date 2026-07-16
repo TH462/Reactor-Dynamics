@@ -13,7 +13,7 @@ Teach the TMI-2 sequence as hosted on this PWR trainer: how a **stuck-open Power
 
 This is an **accident of information**, not primarily of equipment unavailability.
 
-**MODE context:** The event begins in **Mode One** (power operation). After trip and recovery the plant is held in **Mode Three** (hot standby/shutdown class). Cooldown to **Mode Five** is outside the flagship lesson (**[narr]** via **PWR-T21** if desired).
+**MODE context:** The event begins in **Mode 1, At Power** (power operation). After trip and recovery the plant is held in **Mode 3, Hot Standby** (hot standby/shutdown class). Cooldown to **Mode 5, Cold Shutdown** is outside the flagship lesson (**[narr]** via **PWR-T21** if desired).
 
 ---
 

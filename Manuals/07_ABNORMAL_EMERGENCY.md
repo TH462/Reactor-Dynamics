@@ -10,7 +10,7 @@
 
 Provide symptoms, automatic response, immediate operator actions, recovery, and acceptance criteria for **every modeled PWR failure**. Inject from **Tools → Failures** in Free Play, or encounter via missions.
 
-**Typical applicability:** failures are injected in **Mode One** (at power). Successful trip recovery leaves the plant in **Mode Three** (hot, subcritical). See `05_MODE_TRANSITIONS.md` **PWR-T06**.
+**Typical applicability:** failures are injected in **Mode 1, At Power** (at power). Successful trip recovery leaves the plant in **Mode 3, Hot Standby** (hot, subcritical). See `05_MODE_TRANSITIONS.md` **PWR-T06**.
 
 ## 2.0 Failure index
 

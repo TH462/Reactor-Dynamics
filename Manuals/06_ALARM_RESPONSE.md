@@ -10,7 +10,7 @@
 
 Provide operator response for each modeled PWR annunciator. Alarms read **instruments** (or status booleans derived for the board). A failed sensor can suppress or falsely create alarms.
 
-**MODE note:** Most at-power alarms apply in **Mode One** (or Mode Two). **REACTOR TRIP** and post-trip recovery put the plant in **Mode Three**.
+**MODE note:** Most at-power alarms apply in **Mode 1, At Power** (or Mode 2, Startup). **REACTOR TRIP** and post-trip recovery put the plant in **Mode 3, Hot Standby**.
 
 ## 2.0 Alarm philosophy
 

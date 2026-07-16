@@ -97,27 +97,27 @@ FISSION HEAT (core)
 
 ---
 
-## 5.0 Plant MODES (Mode One through Mode Six)
+## 5.0 Plant MODES (Mode 1, At Power through Mode 6, Refueling)
 
-This trainer uses **commercial PWR MODE numbers**. In prose, say **Mode One**, **Mode Two**, … **Mode Six**.
+This trainer uses **commercial PWR MODE numbers**. In prose, say **Mode 1, At Power**, **Mode 2, Startup**, … **Mode 6, Refueling**.
 
 | MODE | Spoken name | Name | Definition (trainer) | Free Play / notes |
 |------|-------------|------|----------------------|-------------------|
-| **1** | **Mode One** | Power Operation | Critical, thermal power **> 5 %**, RCS hot | `hot_full_power`, `50_percent` **[sim]** |
-| **2** | **Mode Two** | Startup | Critical, power **≤ 5 %**, RCS hot | After approach to criticality **[sim]** |
-| **3** | **Mode Three** | Hot Standby | Subcritical, RCS hot at NOP T/P | `hot_zero_power` **[sim]** |
-| **4** | **Mode Four** | Hot Shutdown | Subcritical, intermediate RCS temperature | Cooldown path **[narr]** |
-| **5** | **Mode Five** | Cold Shutdown | Subcritical, RCS cold | **[narr]** only — no cold IC |
-| **6** | **Mode Six** | Refueling | Head detensioned / refueling | **Out of scope** |
+| **1** | **Mode 1, At Power** | Power Operation | Critical, thermal power **> 5 %**, RCS hot | `hot_full_power`, `50_percent` **[sim]** |
+| **2** | **Mode 2, Startup** | Startup | Critical, power **≤ 5 %**, RCS hot | After approach to criticality **[sim]** |
+| **3** | **Mode 3, Hot Standby** | Hot Standby | Subcritical, RCS hot at NOP T/P | `hot_zero_power` **[sim]** |
+| **4** | **Mode 4, Hot Shutdown** | Hot Shutdown | Subcritical, intermediate RCS temperature | Cooldown path **[narr]** |
+| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical, RCS cold | **[narr]** only — no cold IC |
+| **6** | **Mode 6, Refueling** | Refueling | Head detensioned / refueling | **Out of scope** |
 
 **Full commercial paths** (see `05_MODE_TRANSITIONS.md`):
 
-- **Mode Five → Mode One** — procedure **PWR-T20** (heatup narrative, then sim from Mode Three).  
-- **Mode One → Mode Five** — procedure **PWR-T21** (sim down to Mode Three, then cooldown narrative).  
+- **Mode 5, Cold Shutdown → Mode 1, At Power** — procedure **PWR-T20** (heatup narrative, then sim from Mode 3, Hot Standby).  
+- **Mode 1, At Power → Mode 5, Cold Shutdown** — procedure **PWR-T21** (sim down to Mode 3, Hot Standby, then cooldown narrative).  
 
-**Sim-only everyday path:** Mode Three ↔ Mode One (**PWR-T03** / **PWR-T04**).
+**Sim-only everyday path:** Mode 3, Hot Standby ↔ Mode 1, At Power (**PWR-T03** / **PWR-T04**).
 
-Post-trip with the plant still hot is still **Mode Three** by temperature class (subcritical, hot), even though crews often say “hot shutdown.”
+Post-trip with the plant still hot is still **Mode 3, Hot Standby** by temperature class (subcritical, hot), even though crews often say “hot shutdown.”
 
 ---
 
@@ -133,7 +133,7 @@ Independent of plant MODE, the generator has three **load modes**:
 
 **Rule of thumb:** Rods lead up; turbine leads down. Mismatch floods or drains the SG.
 
-These are **never** called Mode One / Mode Five.
+These are **never** called Mode 1, At Power / Mode 5, Cold Shutdown.
 
 ---
 
@@ -156,7 +156,7 @@ These are **never** called Mode One / Mode Five.
 |-------|------------|--------------|
 | Rod banks | Multiple banks + overlap | One control + one shutdown |
 | RCS loops | Multi-loop with individual RCPs | Single lumped loop |
-| Cold ops (Mode Five / Four) | Multi-hour heatup/cooldown | **[narr]** only — Free Play starts Mode Three |
+| Cold ops (Mode 5 / Mode 4) | Multi-hour heatup/cooldown | **[narr]** only — Free Play starts Mode 3, Hot Standby |
 | Containment / dose | Full models | Not modeled |
 | Instrument channels | Redundant trains | Single sensors (can fail) |
 | Point kinetics | Spatial power shape | Point model (lumped) |

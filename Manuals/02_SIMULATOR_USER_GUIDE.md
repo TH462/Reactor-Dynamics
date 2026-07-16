@@ -159,11 +159,11 @@ Entry: status line under sim controls, or **Sim** tab → Plant & Mission.
 
 | State ID | Label | Plant MODE | Board meaning |
 |----------|-------|------------|---------------|
-| `hot_full_power` | Hot Full Power | **Mode One** | Critical ~100 %, ~1000 MWe |
-| `50_percent` | 50 % Power | **Mode One** | Critical mid-power (> 5 %) |
-| `hot_zero_power` | Hot Standby | **Mode Three** | Subcritical, hot T/P, control bank in, SR on |
+| `hot_full_power` | Hot Full Power | **Mode 1, At Power** | Critical ~100 %, ~1000 MWe |
+| `50_percent` | 50 % Power | **Mode 1, At Power** | Critical mid-power (> 5 %) |
+| `hot_zero_power` | Hot Standby | **Mode 3, Hot Standby** | Subcritical, hot T/P, control bank in, SR on |
 
-**NOTE:** There is **no Mode Five (Cold Shutdown)** initial condition. Mode Five → Mode Three is **[narr]** only. To practice **Mode Five → Mode One**, read **PWR-T20** Phase A, then start Free Play in **Mode Three** and continue Phases B–E on the board. See `05_MODE_TRANSITIONS.md`.
+**NOTE:** There is **no Mode 5, Cold Shutdown** initial condition. Mode 5, Cold Shutdown → Mode 3, Hot Standby is **[narr]** only. To practice **Mode 5, Cold Shutdown → Mode 1, At Power**, read **PWR-T20** Phase A, then start Free Play in **Mode 3, Hot Standby** and continue Phases B–E on the board. See `05_MODE_TRANSITIONS.md`.
 
 ---
 
@@ -270,16 +270,16 @@ During missions:
 
 | # | Task | Reference |
 |---|------|-----------|
-| 1 | Launch PWR Free Play at Hot Full Power (**Mode One**) | §2, §5 |
+| 1 | Launch PWR Free Play at Hot Full Power (**Mode 1, At Power**) | §2, §5 |
 | 2 | Identify Power, Pressure, Tavg, Subcool, SG level | §3.1 |
 | 3 | Practice SCRAM arming on Rod card (do not fire yet) | §4.3 |
 | 4 | Set load mode Manual → 900 MWe; observe steam flow / Tavg | `03`, `05` |
 | 5 | Restore Follow | `05` |
 | 6 | Pause; open Manual (M); find trip setpoints | `09` |
-| 7 | Load Hot Standby (**Mode Three**); practice criticality → **Mode Two** | PWR-N02, **PWR-T03** |
-| 8 | Raise above 5 % into **Mode One**; then shut down to Mode Three | PWR-N06, N14 |
-| 9 | Read **PWR-T20** / **PWR-T21** for Mode Five ↔ Mode One full story | `05` |
-| 10 | Inject Loss of Feedwater in Mode One; practice AFW | PWR-E01 |
+| 7 | Load Hot Standby (**Mode 3, Hot Standby**); practice criticality → **Mode 2, Startup** | PWR-N02, **PWR-T03** |
+| 8 | Raise above 5 % into **Mode 1, At Power**; then shut down to Mode 3, Hot Standby | PWR-N06, N14 |
+| 9 | Read **PWR-T20** / **PWR-T21** for Mode 5, Cold Shutdown ↔ Mode 1, At Power full story | `05` |
+| 10 | Inject Loss of Feedwater in Mode 1, At Power; practice AFW | PWR-E01 |
 
 ---
 

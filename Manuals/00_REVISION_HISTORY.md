@@ -6,7 +6,8 @@
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
 | 0 | 2026-07-16 | Initial commercial-style manual set created from Blueprint specs, as-built PWR engine/control layer, and in-product procedure data. Covers simulator use, all controls, normal ops, mode transitions, alarms, failures, and TMI. Issues captured in `ISSUES_AND_FINDINGS.md`. | Manual build session |
-| 1 | 2026-07-16 | Plant states renumbered to commercial **Mode One–Six** (spoken Mode One … Mode Five). Master paths **PWR-T20** Mode Five→One and **PWR-T21** Mode One→Five. Turbine load modes kept distinct (Follow/Manual/Disconnected). | Manual build session |
+| 1 | 2026-07-16 | Plant MODES introduced; master paths **PWR-T20** / **PWR-T21**. | Manual build session |
+| 2 | 2026-07-16 | Naming locked to **Mode N, Name** (e.g. **Mode 1, At Power**). Campaign handoff: `CAMPAIGN_MODE_ALIGNMENT_SPEC.md`. Crosswalk: `11_CAMPAIGN_CROSSWALK.md`. Manuals only. | Manual build session |
 
 ## Source documents (authoritative for content)
 

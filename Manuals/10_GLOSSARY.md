@@ -1,24 +1,26 @@
 # 10 — Glossary
 
 **Document:** PWR-GL-01  
-**Revision:** 1  
+**Revision:** 2  
 
 Terms used in the PWR manuals and on the simulator board. Acronym first, then plain meaning.
 
 ---
 
-## Plant MODES (Mode One … Mode Six)
+## Plant MODES
 
-| MODE | Spoken | Name | Short definition |
-|------|--------|------|------------------|
-| **1** | **Mode One** | Power Operation | Critical, thermal power **> 5 %**, RCS hot |
-| **2** | **Mode Two** | Startup | Critical, power **≤ 5 %**, RCS hot |
-| **3** | **Mode Three** | Hot Standby | Subcritical, RCS hot (NOP T/P) |
-| **4** | **Mode Four** | Hot Shutdown | Subcritical, intermediate RCS temperature |
-| **5** | **Mode Five** | Cold Shutdown | Subcritical, RCS cold |
-| **6** | **Mode Six** | Refueling | Cold, vessel head not fully tensioned (out of scope here) |
+**Convention:** write **Mode N, Name** (example: **Mode 1, At Power**).
 
-**Mode Five → Mode One** and **Mode One → Mode Five** master procedures: `05_MODE_TRANSITIONS.md` (**PWR-T20**, **PWR-T21**).
+| MODE | Full form | Short definition |
+|------|-----------|------------------|
+| **1** | **Mode 1, At Power** | Critical, thermal power **> 5 %**, RCS hot |
+| **2** | **Mode 2, Startup** | Critical, power **≤ 5 %**, RCS hot |
+| **3** | **Mode 3, Hot Standby** | Subcritical, RCS hot (NOP T/P) |
+| **4** | **Mode 4, Hot Shutdown** | Subcritical, intermediate RCS temperature |
+| **5** | **Mode 5, Cold Shutdown** | Subcritical, RCS cold |
+| **6** | **Mode 6, Refueling** | Cold, vessel head not fully tensioned (out of scope here) |
+
+**Mode 5, Cold Shutdown → Mode 1, At Power** and **Mode 1, At Power → Mode 5, Cold Shutdown** master procedures: `05_MODE_TRANSITIONS.md` (**PWR-T20**, **PWR-T21**).
 
 **Not plant MODES:** turbine load modes Follow / Manual / Disconnected.
 
@@ -66,10 +68,10 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 | Term | Definition |
 |------|------------|
 | **Heat sink** | Where core heat goes — primarily the Steam Generators (secondary water/steam). |
-| **Hot Full Power (HFP)** | ~100 % power, ~1000 MWe, equilibrium — full-power **Mode One**. |
-| **Hot Standby** | Subcritical, hot, at operating temperature and pressure — **Mode Three**. |
-| **Hot Shutdown** | Subcritical with RCS not yet cold — commercial **Mode Four** class; post-trip hot board in this trainer is still treated as Mode Three by temperature until cooldown **[narr]**. |
-| **Cold Shutdown** | Subcritical and cold — **Mode Five** **[narr]** only in this trainer. |
+| **Hot Full Power (HFP)** | ~100 % power, ~1000 MWe, equilibrium — full-power **Mode 1, At Power**. |
+| **Hot Standby** | Subcritical, hot, at operating temperature and pressure — **Mode 3, Hot Standby**. |
+| **Hot Shutdown** | Subcritical with RCS not yet cold — commercial **Mode 4, Hot Shutdown** class; post-trip hot board in this trainer is still treated as Mode 3, Hot Standby by temperature until cooldown **[narr]**. |
+| **Cold Shutdown** | Subcritical and cold — **Mode 5, Cold Shutdown** **[narr]** only in this trainer. |
 | **HPI / LPI** | High- / Low-Pressure Injection — merged emergency injection with a two-segment pump curve. |
 | **HR1** | Simulator hard rule: protection and alarms read **instruments**, never true state. |
 

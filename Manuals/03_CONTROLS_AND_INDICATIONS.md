@@ -531,8 +531,63 @@ Not a plant control — **trainer control**.
 
 ---
 
-## 17.0 Related documents
+## 17.0 Campaign-aligned skills (manuals supplement)
+
+These topics appear as dedicated **campaign** missions; manuals cover them here so Free Play users have the same procedure-grade notes. Plant MODE: almost all are **Mode 1, At Power** unless noted.
+
+### 17.1 1/M and NIS handoff (Mode 3 → Mode 2)
+
+- Source Range counts show subcritical multiplication as rods withdraw (1/M idea: counts rise as you approach criticality).  
+- When Intermediate Range ≥ **1e-10 A** (P-6), secure **SR detector** — see **PWR-T13** / **PWR-N02**.  
+- Campaign mission `pwr_startup` / `pwr_startup_challenge` grade this path; manuals do not auto-grade.
+
+### 17.2 Rod AUTO — T-ref capture trap (Mode 1)
+
+1. Stabilize Tavg where you want it.  
+2. Engage **Automate → Rod control → Tavg (AUTO)** — setpoint **captures current indicated Tavg**.  
+3. If you engage with a large Tavg error vs desired plant, rods will drive hard.  
+4. Any manual rod motion → **MAN**.  
+5. Channel drops out on SCRAM.  
+
+See **PWR-T10** / **T11**. Campaign: `pwr_rod_auto`.
+
+### 17.3 Feed specialist — three-element vs MANUAL (Mode 1)
+
+| Driver | Who minds SG level |
+|--------|--------------------|
+| Three-element **AUTO** | Controller (normal) |
+| Load coupling | Feed tracks load when coupled |
+| **MANUAL** feed % | **You** — any Set % / nudge |
+
+Leaving feed MANUAL while reducing power floods the SG (campaign bonus `pwr_sg_flood`). Re-engage AUTO when done — **PWR-N12**.
+
+### 17.4 ESF AUTO / MAN arms (Mode 1)
+
+- **AUTO:** AFW / HPI can start themselves on setpoints.  
+- **Any manual** Start/Stop/throttle → that system **MANUAL** until you press **AUTO** re-arm.  
+- Re-arm with a standing start condition may **fire immediately**.  
+
+**PWR-T12**. Campaign: `pwr_esf`.
+
+### 17.5 MSIV — “bottle the boiler” (Mode 1)
+
+1. **MSIV Close** (CONFIRM?) isolates main steam.  
+2. Turbine load rejects; SG pressure rises toward **SG safeties** (~9.31 MPa open).  
+3. With feed lost or reduced, SG level can fall toward LO-LO trip on a short clock.  
+4. Establish **AFW** / trip reactor as required.  
+
+Campaign: `pwr_msiv`. Alarms: **PWR-A23**, A24.
+
+### 17.6 Checkpoints and exams
+
+Campaign grades solo criticality (`pwr_startup_challenge`), shift dispatch (`pwr_shift_exam`), and senior stuck-PORV exam (`pwr_qualify`). Manuals provide the underlying procedures (N02, N07/N08, E07/X01) but **not** the grading scripts.
+
+---
+
+## 18.0 Related documents
 
 - `04_NORMAL_OPERATIONS.md`  
 - `05_MODE_TRANSITIONS.md`  
 - `09_SETPOINTS_LIMITS.md`  
+- `11_CAMPAIGN_CROSSWALK.md`  
+- `CAMPAIGN_MODE_ALIGNMENT_SPEC.md`  

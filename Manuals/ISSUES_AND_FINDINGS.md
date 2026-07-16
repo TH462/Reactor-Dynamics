@@ -28,8 +28,8 @@
 
 | ID | Sev | Finding | Impact on manuals | Status |
 |----|-----|---------|-------------------|--------|
-| I-01 | — | **No cold plant state.** Engines start hot; heatup/cooldown *rates* not modeled. | **Mode Five** / **Mode Four** are **[narr]** only; Free Play starts **Mode Three**. PWR-T20/T21 document the full Mode Five↔One story with narr + sim segments. | Noted in manuals |
-| I-36 | L | Commercial **Mode Four** vs “hot shutdown after trip” naming: trainer post-trip board is still hot NOP class (**Mode Three** by Tech Spec temperature), not intermediate-temperature Mode Four. | Manuals treat post-trip hot as Mode Three; Mode Four reserved for cooldown narrative. | Noted in manuals |
+| I-01 | — | **No cold plant state.** Engines start hot; heatup/cooldown *rates* not modeled. | **Mode 5, Cold Shutdown** / **Mode 4, Hot Shutdown** are **[narr]** only; Free Play starts **Mode 3, Hot Standby**. PWR-T20/T21 document the full Mode 5, Cold Shutdown↔One story with narr + sim segments. | Noted in manuals |
+| I-36 | L | Commercial **Mode 4, Hot Shutdown** vs “hot shutdown after trip” naming: trainer post-trip board is still hot NOP class (**Mode 3, Hot Standby** by Tech Spec temperature), not intermediate-temperature Mode 4, Hot Shutdown. | Manuals treat post-trip hot as Mode 3, Hot Standby; Mode 4, Hot Shutdown reserved for cooldown narrative. | Noted in manuals |
 | I-02 | M | **Single lumped RCS loop** (one RCP/SG representation). No multi-loop isolation procedures. | RCP/SGTR procedures simplified vs commercial multi-loop EOPs. | Noted in manuals |
 | I-03 | M | **Single control bank + shutdown bank** (no overlap unit / multi-bank sequence). | Rod procedures use one operable bank. | Noted in manuals |
 | I-04 | M | **Point kinetics** — spatial xenon, flux tilts, and local DNB not resolved. | Xenon/power procedures are plant-average. | Noted in manuals |

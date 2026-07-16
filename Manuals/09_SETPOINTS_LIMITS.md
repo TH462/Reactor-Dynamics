@@ -7,28 +7,28 @@
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
 
-**Plant MODES:** Mode One = Power Operation (power > 5 %); Mode Two = Startup (critical ≤ 5 %); Mode Three = Hot Standby; Mode Four/Five = cooldown path **[narr]**. See `05_MODE_TRANSITIONS.md`.
+**Plant MODES:** Mode 1, At Power = Power Operation (power > 5 %); Mode 2, Startup = Startup (critical ≤ 5 %); Mode 3, Hot Standby = Hot Standby; Mode 4 / Mode 5 = cooldown path **[narr]**. See `05_MODE_TRANSITIONS.md`.
 
 ---
 
-## 1.0 Normal operating point — Mode One (Hot Full Power)
+## 1.0 Normal operating point — Mode 1, At Power (Hot Full Power)
 
 | Parameter | Nominal | MODE |
 |-----------|---------|------|
-| Reactor power | **100 %** | Mode One |
-| Electrical output | **≈ 1000 MWe** | Mode One |
-| Primary pressure | **15.41 MPa** | Mode One |
-| Tavg | **≈ 304 °C** | Mode One |
-| Thot / Tcold | **≈ 321 / 288 °C** (ΔT ≈ 33 °C) | Mode One |
-| Pressurizer level | **≈ 55 %** | Mode One |
-| Steam Generator level | **≈ 65 %** | Mode One |
-| Secondary steam pressure | **≈ 5.65 MPa** | Mode One |
-| Subcooling margin | **≈ 41 °C** | Mode One |
-| Control bank position | **≈ 92 %** withdrawn | Mode One |
-| Core inventory | **100 %** | Mode One |
+| Reactor power | **100 %** | Mode 1, At Power |
+| Electrical output | **≈ 1000 MWe** | Mode 1, At Power |
+| Primary pressure | **15.41 MPa** | Mode 1, At Power |
+| Tavg | **≈ 304 °C** | Mode 1, At Power |
+| Thot / Tcold | **≈ 321 / 288 °C** (ΔT ≈ 33 °C) | Mode 1, At Power |
+| Pressurizer level | **≈ 55 %** | Mode 1, At Power |
+| Steam Generator level | **≈ 65 %** | Mode 1, At Power |
+| Secondary steam pressure | **≈ 5.65 MPa** | Mode 1, At Power |
+| Subcooling margin | **≈ 41 °C** | Mode 1, At Power |
+| Control bank position | **≈ 92 %** withdrawn | Mode 1, At Power |
+| Core inventory | **100 %** | Mode 1, At Power |
 | Decay heat (after long power run) | **≈ 7 %** at scram instant | — |
 
-### Mode Three — Hot Standby (typical)
+### Mode 3, Hot Standby — Hot Standby (typical)
 
 | Parameter | Nominal |
 |-----------|---------|
@@ -36,7 +36,7 @@
 | Control bank | Fully inserted |
 | Subcritical margin | ~**−1000 pcm** class |
 | SR detector | Energized |
-| T/P | Operating (hot) — still **Mode Three**, not Mode Five |
+| T/P | Operating (hot) — still **Mode 3, Hot Standby**, not Mode 5, Cold Shutdown |
 | Free Play IC | `hot_zero_power` |
 
 ---
