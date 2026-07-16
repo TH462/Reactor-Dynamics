@@ -283,7 +283,7 @@
        engine selector (Sim tab) switches between them at runtime. -->
   <script src="../engines/load_mode.js"></script>
   <script src="../engines/pwr/pwr_config.js"></script>
-  <script src="../engines/pwr/pwr_protection.js"></script>
+  <script src="../layers/control/pwr_control.js"></script>
   <script src="../engines/pwr/pwr_thermal.js"></script>
   <script src="../engines/pwr/pwr_pressurizer.js"></script>
   <script src="../engines/pwr/pwr_primary.js"></script>
@@ -291,7 +291,7 @@
   <script src="../engines/pwr/pwr_instruments.js"></script>
   <script src="../engines/pwr/pwr_engine.js"></script>
   <!-- RBMK (M2): protection before config so forVersion() stitches it in -->
-  <script src="../engines/rbmk/rbmk_protection.js"></script>
+  <script src="../layers/control/rbmk_control.js"></script>
   <script src="../engines/rbmk/rbmk_config.js"></script>
   <script src="../engines/rbmk/rbmk_kinetics.js"></script>
   <script src="../engines/rbmk/rbmk_thermal.js"></script>
@@ -300,13 +300,13 @@
   <script src="../engines/rbmk/rbmk_engine.js"></script>
   <!-- BWR (M3) -->
   <script src="../engines/bwr/bwr_config.js"></script>
-  <script src="../engines/bwr/bwr_protection.js"></script>
+  <script src="../layers/control/bwr_control.js"></script>
   <script src="../engines/bwr/bwr_vessel.js"></script>
   <script src="../engines/bwr/bwr_recirculation.js"></script>
   <script src="../engines/bwr/bwr_safety_systems.js"></script>
   <script src="../engines/bwr/bwr_instruments.js"></script>
   <script src="../engines/bwr/bwr_engine.js"></script>
-  <script src="../layers/control_failure_layer.js"></script>
+  <script src="../layers/control/control_kernel.js"></script>
   <script src="../layers/instructor_layer.js"></script>
   <script src="../layers/simulation_service.js"></script>
   <!-- Operator automation (Automate tab) — a synthetic operator beside the UI,

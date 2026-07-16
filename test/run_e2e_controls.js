@@ -6,16 +6,16 @@ var path = require('path');
 function load(p) { require(path.join(__dirname, '..', p)); }
 [
   'engines/load_mode.js',
-  'engines/pwr/pwr_config.js', 'engines/pwr/pwr_protection.js', 'engines/pwr/pwr_thermal.js',
+  'engines/pwr/pwr_config.js', 'layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js',
   'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js',
   'engines/pwr/pwr_instruments.js', 'engines/pwr/pwr_engine.js',
-  'engines/rbmk/rbmk_protection.js', 'engines/rbmk/rbmk_config.js', 'engines/rbmk/rbmk_kinetics.js',
+  'layers/control/rbmk_control.js', 'engines/rbmk/rbmk_config.js', 'engines/rbmk/rbmk_kinetics.js',
   'engines/rbmk/rbmk_thermal.js', 'engines/rbmk/rbmk_rods.js', 'engines/rbmk/rbmk_instruments.js',
   'engines/rbmk/rbmk_engine.js',
-  'engines/bwr/bwr_config.js', 'engines/bwr/bwr_protection.js', 'engines/bwr/bwr_vessel.js',
+  'engines/bwr/bwr_config.js', 'layers/control/bwr_control.js', 'engines/bwr/bwr_vessel.js',
   'engines/bwr/bwr_recirculation.js', 'engines/bwr/bwr_safety_systems.js', 'engines/bwr/bwr_instruments.js',
   'engines/bwr/bwr_engine.js',
-  'layers/control_failure_layer.js', 'layers/instructor_layer.js', 'layers/simulation_service.js',
+  'layers/control/control_kernel.js', 'layers/instructor_layer.js', 'layers/simulation_service.js',
 ].forEach(load);
 var RD = globalThis.RD;
 

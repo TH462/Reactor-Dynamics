@@ -1,13 +1,13 @@
 /*
- * control_failure_layer.js — M4, the Control & Failure Layer.
+ * control_kernel.js — the Control Layer kernel (M4's general machinery).
  *
  * General machinery that sits directly above the physics engine: the plant's
  * automation (reactor protection trips, engineered-safety actuation, alarms) and
  * the scenario's failures (injection + command interception). It contains NO
  * plant-specific literals — every setpoint, threshold, and failure definition is
- * DATA it consumes from the active engine's protection config (HR3). Its rules
- * read INSTRUMENT readings, never true state (HR1), bar the documented
- * `__true_flow__` exception.
+ * DATA it consumes from the per-plant control module (layers/control/<plant>_control.js,
+ * reached through the engine's protection config; HR3). Its rules read INSTRUMENT
+ * readings, never true state (HR1), bar the documented `__true_flow__` exception.
  *
  * Commands descend through this layer (HR5): an auto-actuation or a trip scram is
  * issued through the SAME handleCommand path as an operator command, so a
@@ -16,7 +16,8 @@
  * scenario is built on.
  *
  * This layer has no scenario tests of its own; its correctness is integration
- * correctness, validated by the Test Runner (M7). Attaches RD.ControlFailureLayer.
+ * correctness, validated by the Test Runner (M7). Attaches RD.ControlLayer
+ * (and RD.ControlFailureLayer as a compatibility alias).
  *
  * --- M1/M4 seam note ----------------------------------------------------------
  * M1's engine implements the persistent STATE of every failure (physics flags,
@@ -55,7 +56,7 @@
     }
   }
 
-  function ControlFailureLayer(engine, config) {
+  function ControlLayer(engine, config) {
     this.engine = engine;
     this.config = config || (engine.getProtectionConfig && engine.getProtectionConfig());
     this.register = 'learning';
@@ -68,7 +69,7 @@
   }
 
   // Precompute alarm lifecycle slots and lo/lo_lo escalation pairs (§5).
-  ControlFailureLayer.prototype._buildAlarmModel = function () {
+  ControlLayer.prototype._buildAlarmModel = function () {
     var alarms = this.config.alarms || [];
     this.alarmStates = {};
     for (var i = 0; i < alarms.length; i++) this.alarmStates[alarms[i].id] = 'clear';
@@ -89,7 +90,7 @@
   };
 
   // ============================================================ command path (§7)
-  ControlFailureLayer.prototype.handleCommand = function (command) {
+  ControlLayer.prototype.handleCommand = function (command) {
     if (!command || !command.action) return { type: 'error', code: 'COMMAND_ERROR', message: 'no action', received: command };
     switch (command.action) {
       case 'acknowledge_alarm':        return this.acknowledgeAlarm(command.alarm_id);
@@ -127,7 +128,7 @@
     return this.engine.applyCommand(cmd);
   };
 
-  ControlFailureLayer.prototype._withValue = function (command, f, value) {
+  ControlLayer.prototype._withValue = function (command, f, value) {
     var field = valueFieldFor(command.action);
     var out = {}; for (var k in command) out[k] = command[k];
     var v = value;
@@ -136,14 +137,14 @@
     return out;
   };
 
-  ControlFailureLayer.prototype._applyFailureEffect = function (f) {
+  ControlLayer.prototype._applyFailureEffect = function (f) {
     // command_override "block" is short-circuited above; any other effect is a no-op
     // here for the PWR. (Engine-owned effects arrive as physics_parameter forwards.)
     return null;
   };
 
   // ----------------------------------------------------------------- failures (§6)
-  ControlFailureLayer.prototype.injectFailure = function (command) {
+  ControlLayer.prototype.injectFailure = function (command) {
     var id = command.failure_id, def = this.config.failures[id];
     if (!def) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown failure', received: command };
     var sev = def.severity_scales ? (command.severity != null ? command.severity : (def.severity_meta ? def.severity_meta.default / (def.severity_meta.max || 1) : 1.0)) : null;
@@ -155,7 +156,7 @@
     return null;
   };
 
-  ControlFailureLayer.prototype.clearFailure = function (id) {
+  ControlLayer.prototype.clearFailure = function (id) {
     var idx = -1;
     for (var i = 0; i < this.activeFailures.length; i++) if (this.activeFailures[i].id === id) { idx = i; break; }
     if (idx !== -1) this.activeFailures.splice(idx, 1);
@@ -163,22 +164,22 @@
     return null;
   };
 
-  ControlFailureLayer.prototype.clearAllFailures = function () {
+  ControlLayer.prototype.clearAllFailures = function () {
     var ids = this.activeFailures.map(function (f) { return f.id; });
     for (var i = 0; i < ids.length; i++) this.clearFailure(ids[i]);
     return null;
   };
 
-  ControlFailureLayer.prototype._findFailure = function (id) {
+  ControlLayer.prototype._findFailure = function (id) {
     for (var i = 0; i < this.activeFailures.length; i++) if (this.activeFailures[i].id === id) return this.activeFailures[i];
     return null;
   };
-  ControlFailureLayer.prototype._severityOf = function (id) {
+  ControlLayer.prototype._severityOf = function (id) {
     var f = this._findFailure(id); return f ? f.severity : null;
   };
 
   // ============================================================== evaluate (§9)
-  ControlFailureLayer.prototype.evaluate = function (instruments) {
+  ControlLayer.prototype.evaluate = function (instruments) {
     this.lastInstruments = instruments || this.engine.getInstruments();
     this._evalTrips(this.lastInstruments);
     this._evalActuations(this.lastInstruments);
@@ -189,7 +190,7 @@
 
   // Responsibility 1 — trips (§3). Any firing scrams; reads instruments (HR1)
   // except the documented __true_flow__ exception.
-  ControlFailureLayer.prototype._evalTrips = function (ins) {
+  ControlLayer.prototype._evalTrips = function (ins) {
     var trips = this.config.trips || [];
     for (var i = 0; i < trips.length; i++) {
       var t = trips[i];
@@ -206,7 +207,7 @@
 
   // Responsibility 2 — engineered-safety actuation (§4). Each issues a command
   // through handleCommand, so a command-override failure intercepts it too.
-  ControlFailureLayer.prototype._evalActuations = function (ins) {
+  ControlLayer.prototype._evalActuations = function (ins) {
     var acts = this.config.actuations || [];
     for (var i = 0; i < acts.length; i++) {
       var act = acts[i];
@@ -234,7 +235,7 @@
   // blocks on operator commands, from config data: engage when the INSTRUMENT
   // (HR1) crosses the setpoint, clear when it returns past clears_below/above.
   // `withdrawal_only` blocks only outward rod motion — insertion always works.
-  ControlFailureLayer.prototype._evalInterlocks = function (ins) {
+  ControlLayer.prototype._evalInterlocks = function (ins) {
     var ils = this.config.interlocks || [];
     for (var i = 0; i < ils.length; i++) {
       var il = ils[i], v = ins[il.instrument];
@@ -253,7 +254,7 @@
     }
   };
 
-  ControlFailureLayer.prototype._interlockBlocking = function (cmd) {
+  ControlLayer.prototype._interlockBlocking = function (cmd) {
     var ils = this.config.interlocks || [];
     for (var i = 0; i < ils.length; i++) {
       if (!this.interlockActive[i]) continue;
@@ -268,14 +269,14 @@
     return null;
   };
 
-  ControlFailureLayer.prototype._actuationCommand = function (act, isReset) {
+  ControlLayer.prototype._actuationCommand = function (act, isReset) {
     var cmd = { action: isReset ? act.reset_action : act.action };
     if (isReset) { if (act.reset_active !== undefined) cmd.active = act.reset_active; }
     else { if (act.active !== undefined) cmd.active = act.active; }
     return cmd;
   };
 
-  ControlFailureLayer.prototype._evaluateCondition = function (cond) {
+  ControlLayer.prototype._evaluateCondition = function (cond) {
     if (cond in this.lastInstruments) return !!this.lastInstruments[cond];
     var ts = this.engine.getTrueState();
     if (cond in ts) return !!ts[cond];
@@ -287,7 +288,7 @@
   };
 
   // Responsibility 3 — alarms (§5). Reads instruments; advances each lifecycle.
-  ControlFailureLayer.prototype._alarmRaw = function (alarm, ins) {
+  ControlLayer.prototype._alarmRaw = function (alarm, ins) {
     var v = ins[alarm.instrument];
     switch (alarm.direction) {
       case 'high':     return v > alarm.setpoint;
@@ -299,7 +300,7 @@
     }
   };
 
-  ControlFailureLayer.prototype._evalAlarms = function (ins) {
+  ControlLayer.prototype._evalAlarms = function (ins) {
     var alarms = this.config.alarms || [];
     for (var i = 0; i < alarms.length; i++) {
       var alarm = alarms[i];
@@ -318,17 +319,17 @@
     }
   };
 
-  ControlFailureLayer.prototype.acknowledgeAlarm = function (alarmId) {
+  ControlLayer.prototype.acknowledgeAlarm = function (alarmId) {
     if (this.alarmStates[alarmId] === 'active_unacknowledged') this.alarmStates[alarmId] = 'active_acknowledged';
     return null;
   };
-  ControlFailureLayer.prototype.acknowledgeAllAlarms = function () {
+  ControlLayer.prototype.acknowledgeAllAlarms = function () {
     for (var id in this.alarmStates) if (this.alarmStates[id] === 'active_unacknowledged') this.alarmStates[id] = 'active_acknowledged';
     return null;
   };
 
   // ------------------------------------------------------- snapshot sections (§9.5)
-  ControlFailureLayer.prototype.getAlarms = function () {
+  ControlLayer.prototype.getAlarms = function () {
     var alarms = this.config.alarms || [], out = [], reg = this.register;
     for (var i = 0; i < alarms.length; i++) {
       var a = alarms[i];
@@ -343,15 +344,15 @@
     return out;
   };
 
-  ControlFailureLayer.prototype.getActiveFailures = function () {
+  ControlLayer.prototype.getActiveFailures = function () {
     return this.activeFailures.map(function (f) { return { id: f.id, severity: f.severity }; });
   };
 
-  ControlFailureLayer.prototype.getRpsState = function () {
+  ControlLayer.prototype.getRpsState = function () {
     return { scrammed: this.rps.scrammed, last_trip_reason: this.rps.last_trip_reason };
   };
 
-  ControlFailureLayer.prototype.getSnapshotSections = function () {
+  ControlLayer.prototype.getSnapshotSections = function () {
     return {
       rps_state: this.getRpsState(),
       alarms: this.getAlarms(),
@@ -360,7 +361,7 @@
   };
 
   // Failure catalog for the UI Failures tab (§10): rebuilt per plant change.
-  ControlFailureLayer.prototype.getFailureCatalog = function () {
+  ControlLayer.prototype.getFailureCatalog = function () {
     var failures = this.config.failures || {}, out = [];
     for (var id in failures) {
       var def = failures[id];
@@ -372,9 +373,13 @@
   };
 
   // -------------------------------------------------------------- save / restore
-  // Serializes this layer's runtime state only (M4 holds no plant config of its
-  // own; the engine restores its own failure effects). M5 coordinates both (§10).
-  ControlFailureLayer.prototype.saveState = function () {
+  // Serializes this layer's runtime state only (the kernel holds no plant config
+  // of its own; the engine restores its own failure effects). M5 coordinates both
+  // (§10). The latch arrays are hardened against config-shape drift: a save made
+  // against an older actuation/interlock list restores to default-false latches
+  // (re-derivable from instrument state; worst case a one-shot actuation
+  // re-fires) rather than misaligning by index.
+  ControlLayer.prototype.saveState = function () {
     return {
       register: this.register,
       rps: { scrammed: this.rps.scrammed, last_trip_reason: this.rps.last_trip_reason },
@@ -384,7 +389,7 @@
       interlockActive: this.interlockActive.slice(),
     };
   };
-  ControlFailureLayer.prototype.loadState = function (st) {
+  ControlLayer.prototype.loadState = function (st) {
     this.register = st.register;
     this.rps = { scrammed: st.rps.scrammed, last_trip_reason: st.rps.last_trip_reason };
     this.activeFailures = [];
@@ -393,10 +398,17 @@
       if (def) this.activeFailures.push({ id: f.id, def: def, severity: f.severity });
     }
     this.alarmStates = Object.assign({}, st.alarmStates);
-    this.actuationFired = st.actuationFired.slice();
-    this.interlockActive = (st.interlockActive || (this.config.interlocks || []).map(function () { return false; })).slice();
+    var nActs = (this.config.actuations || []).length;
+    var nIls = (this.config.interlocks || []).length;
+    this.actuationFired = (st.actuationFired && st.actuationFired.length === nActs)
+      ? st.actuationFired.slice()
+      : (this.config.actuations || []).map(function () { return false; });
+    this.interlockActive = (st.interlockActive && st.interlockActive.length === nIls)
+      ? st.interlockActive.slice()
+      : (this.config.interlocks || []).map(function () { return false; });
   };
 
-  RD.ControlFailureLayer = ControlFailureLayer;
+  RD.ControlLayer = ControlLayer;
+  RD.ControlFailureLayer = ControlLayer;   // compatibility alias (pre-split name)
 
 })(globalThis.RD || (globalThis.RD = {}));

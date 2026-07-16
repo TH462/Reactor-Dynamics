@@ -11,10 +11,15 @@
 var C = '\x1b[36m', G = '\x1b[32m', R = '\x1b[31m', B = '\x1b[1m', D = '\x1b[2m', X = '\x1b[0m';
 
 require('../engines/load_mode.js');
-[['pwr', ['pwr_config', 'pwr_protection', 'pwr_thermal', 'pwr_pressurizer', 'pwr_primary', 'pwr_steam_generator', 'pwr_instruments', 'pwr_engine']],
- ['rbmk', ['rbmk_protection', 'rbmk_config', 'rbmk_kinetics', 'rbmk_thermal', 'rbmk_rods', 'rbmk_instruments', 'rbmk_engine']],
- ['bwr', ['bwr_config', 'bwr_protection', 'bwr_vessel', 'bwr_recirculation', 'bwr_safety_systems', 'bwr_instruments', 'bwr_engine']]
-].forEach(function (x) { x[1].forEach(function (f) { require('../engines/' + x[0] + '/' + f + '.js'); }); });
+// Per-plant control-layer data (trips/actuations/alarms/failures) lives in
+// layers/control/<plant>_control.js; RBMK's loads before its config (forVersion).
+['engines/pwr/pwr_config.js', 'layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js',
+ 'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js', 'engines/pwr/pwr_instruments.js', 'engines/pwr/pwr_engine.js',
+ 'layers/control/rbmk_control.js', 'engines/rbmk/rbmk_config.js', 'engines/rbmk/rbmk_kinetics.js', 'engines/rbmk/rbmk_thermal.js',
+ 'engines/rbmk/rbmk_rods.js', 'engines/rbmk/rbmk_instruments.js', 'engines/rbmk/rbmk_engine.js',
+ 'engines/bwr/bwr_config.js', 'layers/control/bwr_control.js', 'engines/bwr/bwr_vessel.js', 'engines/bwr/bwr_recirculation.js',
+ 'engines/bwr/bwr_safety_systems.js', 'engines/bwr/bwr_instruments.js', 'engines/bwr/bwr_engine.js'
+].forEach(function (f) { require('../' + f); });
 require('../ui/manual_procedures.js');
 var RD = globalThis.RD;
 

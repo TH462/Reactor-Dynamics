@@ -1948,3 +1948,23 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   PLUS a new playwright-core interactive harness (scratchpad) — 36/36 (ack/continue, restart,
   split view, adv-failure inject, scrub pick, two-press ADS arm+timeout, shortcuts, filter,
   alarm ack chips/count, toasts wiring).
+- **2026-07-15 — Control layer split: kernel + per-plant control modules (stage 1 of the
+  control-layer rework).** `layers/control_failure_layer.js` moved verbatim to
+  `layers/control/control_kernel.js` (class attached as `RD.ControlLayer` with
+  `RD.ControlFailureLayer` kept as a compatibility alias) and the three protection-data files
+  moved out of the engines into per-plant control modules: `engines/<p>/<p>_protection.js` →
+  `layers/control/{pwr,rbmk,bwr}_control.js`, each attaching `RD.<P>_CONTROL` plus the legacy
+  `RD.<P>_PROTECTION` / `cfg.protection` names (the engines' failure dispatch reads
+  `cfg.protection.failures`, and the RBMK module still loads before `rbmk_config.js` for
+  `forVersion()`). Rationale: the coming per-plant automation channels and new PWR systems make
+  the control layer a first-class per-plant artifact; the kernel stays generic (HR3), so the
+  split is a data relocation, not a fork. One behavior-adjacent hardening added now:
+  `loadState` rebuilds the `actuationFired`/`interlockActive` latch arrays to default-false when
+  a save's array length disagrees with the current config (old saves survive actuation-list
+  changes; a standing condition may re-fire one actuation, which is the safe direction).
+  Loaders updated (shell.html, test html pages, all `test/run_*.js`, `tools/gen_manual_reference.js`,
+  `test/run_procedures.js` — the two list-based loaders now take explicit repo-relative paths).
+  Gates: engine suites 13/13·23/23·12/12, m4 11/11, m5 17/17, m6 16/16, m6ph 8/8, M7 OK,
+  autoctl 17/17, scenarios 3/3, campaign 36/36 (1313), `gen_manual_reference` output
+  byte-identical; pre-existing baselines unchanged (ops 52/66 tuning targets, e2e_controls 23/25
+  — the two LOCA LPI/accumulator checks, procedures 20/21 — bwr_sbo_rcic step 3).

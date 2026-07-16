@@ -1,16 +1,20 @@
 /*
- * rbmk_protection.js — RBMK protection / alarm / failure definitions as data
- * (M2 §14; HR1/HR3/HR7/HR8). Consumed by the Control & Failure Layer (M4); the
- * engine acts on none of it — it only exposes the instruments these rules read
- * and the controls/hooks they drive.
+ * rbmk_control.js — the RBMK's control layer, as data (HR1/HR3/HR7/HR8).
+ *
+ * Everything plant-specific the Control Layer kernel (control_kernel.js) runs
+ * for the RBMK: protection trips, alarms, failure definitions, and interlocks
+ * (originally engines/rbmk/rbmk_protection.js, M2 §14). The engine acts on none
+ * of it — it only exposes the instruments these rules read and the
+ * controls/hooks they drive.
  *
  * RBMK protection is VERSION-SPECIFIC (the pre-1986 reactor historically had
  * fewer automatic trips, and the ORM minimum differs). forVersion() returns the
  * concrete pre/post protection block. All setpoints read INSTRUMENTS (HR1); when
- * `eps_bypassed`, M4 disables the auto-trips.
+ * `eps_bypassed`, the kernel disables the auto-trips.
  *
- * Attaches RD.RBMK_PROTECTION. Loads before rbmk_config.js so forVersion() can
- * stitch the protection block onto the version config.
+ * Attaches RD.RBMK_CONTROL (and the legacy RD.RBMK_PROTECTION). Loads before
+ * rbmk_config.js so forVersion() can stitch the protection block onto the
+ * version config.
  */
 ;(function (RD) {
   'use strict';
@@ -111,6 +115,7 @@
     };
   }
 
-  RD.RBMK_PROTECTION = { forVersion: forVersion, FAILURES: FAILURES };
+  RD.RBMK_CONTROL = { forVersion: forVersion, FAILURES: FAILURES };
+  RD.RBMK_PROTECTION = RD.RBMK_CONTROL;   // legacy name
 
 })(globalThis.RD || (globalThis.RD = {}));

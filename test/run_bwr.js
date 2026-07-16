@@ -15,7 +15,7 @@ function load(p) { require(path.join(__dirname, '..', p)); }
 [
   'engines/load_mode.js',
   'engines/bwr/bwr_config.js',
-  'engines/bwr/bwr_protection.js',
+  'layers/control/bwr_control.js',
   'engines/bwr/bwr_vessel.js',
   'engines/bwr/bwr_recirculation.js',
   'engines/bwr/bwr_safety_systems.js',

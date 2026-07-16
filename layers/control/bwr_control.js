@@ -1,13 +1,16 @@
 /*
- * bwr_protection.js — BWR protection / actuation / alarm / failure definitions
- * as data (M3 §13; HR1/HR3/HR7/HR8). Consumed by the Control & Failure Layer
- * (M4); the engine acts on none of it — it only exposes the instruments these
- * rules read, the controls they drive, and the actuation-gate status readings
- * (§11) M4's evaluateCondition resolves.
+ * bwr_control.js — the BWR's control layer, as data (HR1/HR3/HR7/HR8).
  *
- * All setpoints read INSTRUMENTS (HR1), SI units. Attaches
- * RD.BWR_CONFIG.protection (and RD.BWR_PROTECTION) once bwr_config.js has defined
- * RD.BWR_CONFIG.
+ * Everything plant-specific the Control Layer kernel (control_kernel.js) runs
+ * for the BWR: protection trips, engineered-safety actuation, alarms, and
+ * failure definitions (originally engines/bwr/bwr_protection.js, M3 §13). The
+ * engine acts on none of it — it only exposes the instruments these rules read,
+ * the controls they drive, and the actuation-gate status readings (§11) the
+ * kernel's evaluateCondition resolves.
+ *
+ * All setpoints read INSTRUMENTS (HR1), SI units. Attaches RD.BWR_CONTROL, plus
+ * the legacy names RD.BWR_PROTECTION and RD.BWR_CONFIG.protection; loads after
+ * bwr_config.js.
  */
 ;(function (RD) {
   'use strict';
@@ -82,7 +85,8 @@
     failures: BWR_FAILURES,
   };
 
-  RD.BWR_PROTECTION = BWR_PROTECTION;
+  RD.BWR_CONTROL = { protection: BWR_PROTECTION };
+  RD.BWR_PROTECTION = BWR_PROTECTION;                              // legacy name
   if (RD.BWR_CONFIG) RD.BWR_CONFIG.protection = BWR_PROTECTION;
 
 })(globalThis.RD || (globalThis.RD = {}));

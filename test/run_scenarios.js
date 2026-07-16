@@ -14,10 +14,10 @@ var path = require('path');
 function load(p) { require(path.join(__dirname, '..', p)); }
 [
   'engines/load_mode.js',
-  'engines/pwr/pwr_config.js', 'engines/pwr/pwr_protection.js', 'engines/pwr/pwr_thermal.js',
+  'engines/pwr/pwr_config.js', 'layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js',
   'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js',
   'engines/pwr/pwr_instruments.js', 'engines/pwr/pwr_engine.js',
-  'layers/control_failure_layer.js', 'layers/instructor_layer.js', 'layers/simulation_service.js',
+  'layers/control/control_kernel.js', 'layers/instructor_layer.js', 'layers/simulation_service.js',
   'scenarios/pwr_tmi.js', 'scenarios/pwr_hook.js',
 ].forEach(load);
 var RD = globalThis.RD;

@@ -546,13 +546,17 @@ reactor_dynamics/
 ├── engines/                                                                  // no shared engine module
 │   ├── pwr/      { pwr_engine.js, pwr_config.js, pwr_instruments.js,         ← M1
 │   │              pwr_thermal.js, pwr_pressurizer.js, pwr_primary.js,
-│   │              pwr_steam_generator.js, pwr_protection.js }
+│   │              pwr_steam_generator.js }
 │   ├── rbmk/     { rbmk_engine.js, rbmk_config.js, rbmk_instruments.js,      ← M2
-│   │              rbmk_kinetics.js, rbmk_thermal.js, rbmk_rods.js, rbmk_protection.js }
+│   │              rbmk_kinetics.js, rbmk_thermal.js, rbmk_rods.js }
 │   └── bwr/      { bwr_engine.js, bwr_config.js, bwr_instruments.js,         ← M3
-│                  bwr_vessel.js, bwr_recirculation.js, bwr_safety_systems.js, bwr_protection.js }
+│                  bwr_vessel.js, bwr_recirculation.js, bwr_safety_systems.js }
 ├── layers/
-│   ├── control_failure_layer.js                                              ← M4
+│   ├── control/                                                              ← M4
+│   │   ├── control_kernel.js   (generic trip/actuation/alarm/failure machinery)
+│   │   ├── pwr_control.js      (PWR trips/actuations/alarms/failures/interlocks — data)
+│   │   ├── rbmk_control.js     (RBMK, version-aware pre/post; loads before rbmk_config)
+│   │   └── bwr_control.js      (BWR)
 │   ├── simulation_service.js   (step loop, snapshot assembly, save/restore)  ← M5
 │   ├── instructor_layer.js     (M6·PH pass-through stub now; real M6 later)  ← M6·PH → M6
 │   └── test_runner.js          (dev only)                                    ← M7
@@ -673,7 +677,7 @@ scenario tests. There is no shared engine module and no shared engine code.
 | **M1** | `engines/pwr` | The PWR engine end to end: point-kinetics core, **its own instrument model** (PWR instrument set + lag/noise/range/failure behavior + derived subcooling), PWR physics (feedbacks, pressurizer, primary loop + inventory, steam generators, turbine/condenser, emergency cooling), PWR protection/alarm/failure config, save/restore, and the **Three Mile Island** acceptance suite. |
 | **M2** | `engines/rbmk` | The RBMK engine end to end: kinetics core + RBMK prompt-criticality fast-path, **its own instrument model** (incl. ORM as a computed reading), RBMK physics (nonlinear/amplified void coefficient, ORM, the pre-1986 positive scram effect, two destruction paths, pressure-tube TH + graphite), pre/post versions, config, save/restore, and the **Chernobyl** acceptance + comparison suite. |
 | **M3** | `engines/bwr` | The BWR engine end to end: kinetics core, **its own instrument model** (incl. vessel-level swell), BWR physics (negative void feedback, vessel + boiling, recirculation/jet pumps/natural circulation, the steam-driven safety systems RCIC/HPCI/ADS/LPCI, the timed battery limit, uncovery timeline), config, save/restore, and the **Fukushima** acceptance + comparison suite. |
-| **M4** | `layers/control_failure` | The general machinery for reactor protection, engineered-safety actuation, alarms (lifecycle), failure injection, and **command interception** — reading instruments (HR1), consuming each plant's config as data (HR3), routing failures by kind (HR7). Defines the config *schema*; consumes the per-plant *instances* from M1–M3. |
+| **M4** | `layers/control` | The Control Layer: a general **kernel** (`control_kernel.js`) for reactor protection, engineered-safety actuation, alarms (lifecycle), failure injection, and **command interception** — reading instruments (HR1), routing failures by kind (HR7) — plus **per-plant control modules** (`pwr_control.js`, `rbmk_control.js`, `bwr_control.js`) carrying each plant's trips/actuations/alarms/failures/interlocks as data (HR3). |
 | **M5** | `layers/simulation_service` | The step loop, snapshot assembly, lifecycle (play/pause/reset/speed), plant selection, and save/restore — including the per-engine instrument state (lag buffers, failure state, PRNG seed) for exact-fidelity restore and determinism. |
 | **M6·PH** | `layers/instructor_layer.js` | **Placeholder Instructor — temporary scaffold.** A transparent pass-through occupying the Instructor's slot so the stack can be wired and tested before the real Instructor is designed. Passes commands straight down (no gating), runs no beats, emits no commentary, tracks the selected register, and writes an empty `instructor` block (`message: null`). Same interface the real M6 implements, so M6 replaces it with no changes above or below. Built right after M5. |
 | **M6** | `layers/instructor` + `scenarios` | **The real Instructor (design pending).** The scenario engine (beats, triggers, branching, gating, two-register commentary) and the three flagship scenarios. Surfaces the **[tell user]** simplification acknowledgments. Drops into M6·PH's slot when ready. |
@@ -694,9 +698,10 @@ scenario tests. There is no shared engine module and no shared engine code.
 
 ### Cross-module dependencies (the only seams)
 
-- **M4 consumes each engine's protection config.** M4 holds the general machinery and the
-  config *schema*; the concrete per-plant trip/alarm/actuation/failure definitions live in
-  M1/M2/M3. M4 is built after M1, so the PWR config is its first fixture.
+- **M4 consumes each plant's protection config.** The kernel holds the general machinery and
+  the config *schema*; the concrete per-plant trip/alarm/actuation/failure definitions live
+  in `layers/control/<plant>_control.js` (authored against each engine's instrument set, and
+  attached onto that engine's config so `engine.getProtectionConfig()` serves them).
 - **Instrument IDs are defined alongside each plant's protection config** (an alarm
   referencing `subcooling_margin` requires that id to exist). The `true_state` vocabulary and
   snapshot *shape* are here in CONTEXT; the per-plant instrument-id lists are in M1–M3.

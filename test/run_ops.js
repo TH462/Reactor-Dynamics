@@ -19,7 +19,7 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'engines/load_mode.js',
   // PWR
   'engines/pwr/pwr_config.js',
-  'engines/pwr/pwr_protection.js',
+  'layers/control/pwr_control.js',
   'engines/pwr/pwr_thermal.js',
   'engines/pwr/pwr_pressurizer.js',
   'engines/pwr/pwr_primary.js',
@@ -27,7 +27,7 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'engines/pwr/pwr_instruments.js',
   'engines/pwr/pwr_engine.js',
   // RBMK (protection before config so forVersion() can stitch protection in)
-  'engines/rbmk/rbmk_protection.js',
+  'layers/control/rbmk_control.js',
   'engines/rbmk/rbmk_config.js',
   'engines/rbmk/rbmk_kinetics.js',
   'engines/rbmk/rbmk_thermal.js',
@@ -36,14 +36,14 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'engines/rbmk/rbmk_engine.js',
   // BWR
   'engines/bwr/bwr_config.js',
-  'engines/bwr/bwr_protection.js',
+  'layers/control/bwr_control.js',
   'engines/bwr/bwr_vessel.js',
   'engines/bwr/bwr_recirculation.js',
   'engines/bwr/bwr_safety_systems.js',
   'engines/bwr/bwr_instruments.js',
   'engines/bwr/bwr_engine.js',
   // M4 + harness + suites
-  'layers/control_failure_layer.js',
+  'layers/control/control_kernel.js',
   'test/ops_harness.js',
   'test/ops_pwr.js',
   'test/ops_rbmk.js',

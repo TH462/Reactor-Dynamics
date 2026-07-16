@@ -1,13 +1,17 @@
 /*
- * pwr_protection.js — PWR protection / actuation / alarm / failure definitions
- * as data (M1 §9; HR1/HR3/HR8). Consumed by the Control & Failure Layer (M4);
- * the engine itself acts on none of it — it only exposes the instruments these
+ * pwr_control.js — the PWR's control layer, as data (HR1/HR3/HR8).
+ *
+ * Everything plant-specific the Control Layer kernel (control_kernel.js) runs
+ * for the PWR: protection trips, engineered-safety actuation, alarms, failure
+ * definitions, and interlocks (originally engines/pwr/pwr_protection.js, M1 §9).
+ * The engine itself acts on none of it — it only exposes the instruments these
  * rules read and the controls they drive.
  *
  * All setpoints read INSTRUMENTS (HR1), in SI units (MPa / °C / % / normalized),
  * with the single documented exception `__true_flow__` (no flow instrument in v1).
- * Attaches RD.PWR_CONFIG.protection (and RD.PWR_PROTECTION) once pwr_config.js
- * has defined RD.PWR_CONFIG.
+ * Attaches RD.PWR_CONTROL, plus the legacy names RD.PWR_PROTECTION and
+ * RD.PWR_CONFIG.protection (the engine's failure dispatch reads the latter);
+ * loads after pwr_config.js.
  */
 ;(function (RD) {
   'use strict';
@@ -135,7 +139,8 @@
     interlocks: PWR_INTERLOCKS,
   };
 
-  RD.PWR_PROTECTION = PWR_PROTECTION;
-  if (RD.PWR_CONFIG) RD.PWR_CONFIG.protection = PWR_PROTECTION;
+  RD.PWR_CONTROL = { protection: PWR_PROTECTION };
+  RD.PWR_PROTECTION = PWR_PROTECTION;                              // legacy name
+  if (RD.PWR_CONFIG) RD.PWR_CONFIG.protection = PWR_PROTECTION;    // engine failure dispatch reads this
 
 })(globalThis.RD || (globalThis.RD = {}));

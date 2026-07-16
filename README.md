@@ -49,7 +49,7 @@ reactor_dynamics/
 │   ├── rbmk/     ← M2  RBMK engine, pre/post-1986 (hosts Chernobyl)
 │   └── bwr/      ← M3  BWR engine (hosts Fukushima)
 ├── layers/
-│   ├── control_failure_layer.js   ← M4
+│   ├── control/                   ← M4  kernel + per-plant control modules
 │   ├── simulation_service.js      ← M5
 │   ├── instructor_layer.js        ← M6·PH → M6
 │   └── test_runner.js             ← M7  (dev only)

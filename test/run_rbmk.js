@@ -15,7 +15,7 @@ function load(p) { require(path.join(__dirname, '..', p)); }
 
 [
   'engines/load_mode.js',
-  'engines/rbmk/rbmk_protection.js',
+  'layers/control/rbmk_control.js',
   'engines/rbmk/rbmk_config.js',
   'engines/rbmk/rbmk_kinetics.js',
   'engines/rbmk/rbmk_thermal.js',
