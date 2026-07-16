@@ -291,7 +291,7 @@ physical-quantity vocabulary.
     "core_inventory_pct": number,     // primary coolant mass
     "fuel_temp_c": number, "decay_heat_pct": number, "xenon_pct_eq": number, "boron_ppm": float,
     "porv_open": bool,                // actual valve position
-    "porv_stuck": bool, "hpi_active": bool, "hpi_flow_normalized": float, "afw_active": bool,
+    "porv_stuck": bool, "hpi_active": bool, "hpi_flow_normalized": float, "afw_active": bool,   // hpi_* = the ONE merged HPI/LPI emergency-injection system (two-segment pump curve; flow normalized to combined rated)
     "afw_pump_running": bool,         // AFW PUMP demand (run lights, honest) — distinct from delivered flow afw_active; the TMI-2 pumps-running/valves-shut split
     "porv_tailpipe_temp_c": number,   // PORV discharge/quench-tank line temperature — warm baseline (seat leakage), hot while relief flows; feeds instruments.porv_tailpipe_temp (the TMI-2 tell)
     "fuel_damaged": bool,             // latched when fuel exceeds fuel_damage_c — scenario outcome-grading hook
@@ -307,7 +307,6 @@ physical-quantity vocabulary.
     "letdown_flow_actual": float,     // TRUE CVCS letdown — feeds instruments.letdown_flow
     "leak_flow": float,               // primary break flow, normalized (LOCA/SGTR) — feeds instruments.primary_leak_flow
     "steam_dump_valve_pct": number,   // steam-dump/bypass valve position, 0–100 % — feeds instruments.steam_dump_valve
-    "lpi_active": bool, "lpi_flow_normalized": float,          // Low-Pressure Injection
     "accumulators_discharging": bool, "accumulator_flow_normalized": float, "accumulator_volume_pct": number,  // passive accumulators (finite volume)
     "rhr_active": bool,               // Residual Heat Removal (formerly DHR) aligned
 }
@@ -375,7 +374,7 @@ physical-quantity vocabulary.
     "charging_flow_normalized": float,   // CVCS charging SETPOINT (command) — under AUTO the true flow (instruments.charging_flow) modulates away from this
     "letdown_flow_normalized": float,    // CVCS letdown setpoint
     "feedwater_flow_pct": float, "steam_demand_mwe": float,
-    "hpi_active": bool, "rhr_active": bool, "lpi_active": bool,   // operator-actuated ECCS / cooldown (set_hpi / set_rhr / set_lpi)
+    "hpi_active": bool, "rhr_active": bool,   // operator-actuated ECCS / cooldown (set_hpi — the merged HPI/LPI — / set_rhr)
     "governor_valve_pct": float,     // turbine admission valve % (engine-driven; read-only readout)
     "steam_dump_pct": float, "steam_dump_auto": bool,   // steam dump / turbine bypass (B2)
     "pumps": [ { "id": string, "running": bool, "flow_pct": float } ],
@@ -451,7 +450,7 @@ set_hpi             { active }
 set_afw             { active }
 set_rhr             { active }                 // Residual Heat Removal — low-pressure decay-heat cooldown (was DHR)
 set_dhr             { active }                 // deprecated one-release alias for set_rhr (save-file compatibility)
-set_lpi             { active }                 // Low-Pressure Injection (also M4 auto-starts on low pressure)
+set_lpi             { active }                 // DEPRECATED alias for set_hpi (HPI+LPI merged into one system; save-file compatibility)
 set_charging_flow   { normalized }             // CVCS charging SETPOINT (manual) — inventory in (cold leg); instruments.charging_flow shows the true flow
 set_letdown_flow    { normalized }             // CVCS letdown setpoint (Isolate = set 0)
 set_charging_pump   { running }                // CVCS charging pump on/off

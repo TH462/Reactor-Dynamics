@@ -196,16 +196,19 @@
 
     // ----------------------------------------------------------- emergency cool
     emergency: {
-      hpi_flow_max: 0.06,          // normalized, falls as pressure rises [tune]
-      hpi_pressure_ref: 16.44,     // MPa; HPI flow → 0 as P approaches this [tune]
-      // Low-Pressure Injection (LPI): high-volume, low shutoff head — flow falls to
-      // zero as primary pressure rises toward lpi_pressure_ref. lpi_flow_normalized
-      // is normalized to rated LPI (≈1.0 at design); lpi_inventory_gain converts it
-      // to a primary inventory-fraction rate for the mass balance. [tune]
-      lpi_pressure_ref: 4.5,       // MPa shutoff head
-      lpi_flow_max: 1.0,           // normalized rated LPI flow
-      lpi_inventory_gain: 0.10,    // inventory frac/s per unit normalized LPI flow
-      lpi_auto_pressure: 2.76,     // MPa — M4 auto-start permissive (≈400 psia)
+      // Merged HPI/LPI emergency injection — ONE system, one command (set_hpi),
+      // a two-segment pump curve (pwr_primary.injectionFlowInv):
+      //   high-head/low-flow segment  — hpi_flow_max (inventory-frac/s at 0 MPa),
+      //                                 shutoff head hpi_pressure_ref;
+      //   low-head/high-flow segment  — lpi_flow_max × lpi_inventory_gain
+      //                                 (inventory-frac/s at 0 MPa), shutoff
+      //                                 head lpi_pressure_ref.
+      // s.hpi_flow_normalized = delivered / combined rated (0–1). [tune]
+      hpi_flow_max: 0.06,          // high-head segment, inventory-frac/s [tune]
+      hpi_pressure_ref: 16.44,     // MPa; high-head flow → 0 as P approaches this [tune]
+      lpi_pressure_ref: 4.5,       // MPa low-head shutoff head
+      lpi_flow_max: 1.0,           // normalized rated low-head flow
+      lpi_inventory_gain: 0.10,    // inventory frac/s per unit normalized low-head flow
       // Accumulators: passive borated tanks that discharge into the cold leg once
       // primary pressure falls below the arming pressure; finite capacity depletes.
       // Same normalization convention as LPI. Real SIT cover gas is ~4.14 MPa, but
@@ -271,7 +274,7 @@
       steam_pressure:    { lag: 0.5, noise: 0.02,  range: [0, 10.5] },   // SG secondary pressure, MPa (top of range = no-load saturation + margin)
       boron_analyzer:    { lag: 45,  noise: 4.0,   range: [0, 2500] },   // chemistry sample — slow (Realistic-only boron readout)
       governor_valve:    { lag: 0.3, noise: 0.3,   range: [0, 100] },    // turbine admission valve %
-      lpi_flow:          { lag: 1.0, noise: 0.005, range: [0, 1.2] },    // low-pressure injection line, normalized
+      hpi_flow:          { lag: 1.0, noise: 0.005, range: [0, 1.2] },    // merged HPI/LPI injection line, normalized to combined rated (renamed in place from lpi_flow — PRNG order preserved)
       accumulator_flow:  { lag: 0.5, noise: 0.005, range: [0, 1.2] },    // passive accumulator injection, normalized
       steam_dump_valve:  { lag: 0.3, noise: 0.3,   range: [0, 100] },    // turbine bypass valve % (Animation HR1)
       primary_leak_flow: { lag: 0.2, noise: 0.002, range: [0, 1.0] },    // LOCA/SGTR break flow, normalized (Animation HR1)
@@ -283,7 +286,7 @@
       status: ['rps_scrammed', 'rcp_running', 'hpi_active', 'station_blackout',
                'steam_demand_low', 'rod_at_limit',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
-               'afw_active', 'afw_pump_running', 'rhr_active', 'lpi_active', 'accumulators_discharging',
+               'afw_active', 'afw_pump_running', 'rhr_active', 'accumulators_discharging',
                'condenser_cooling_available', 'safety_relief_active'],
     },
 

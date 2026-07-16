@@ -152,9 +152,9 @@
           "params": "{mode|pct}"
         },
         {
-          "control": "HPI (Emergency Injection)",
+          "control": "HPI/LPI (Emergency Injection)",
           "group": "Safety",
-          "uses": "High-Pressure Injection (HPI) forces make-up coolant into the core against pressure.",
+          "uses": "Emergency injection — one merged High-Pressure/Low-Pressure Injection (HPI/LPI) system. Flow follows a two-segment pump curve: a high-head trickle against operating pressure, high volume once the plant depressurizes below the low-head shutoff (~4.5 MPa).",
           "command": "set_hpi",
           "params": "{active}"
         },
@@ -432,9 +432,9 @@
           "alarms": []
         },
         {
-          "id": "lpi_flow",
-          "name": "lpi_flow",
-          "measures": "lpi_flow",
+          "id": "hpi_flow",
+          "name": "hpi_flow",
+          "measures": "hpi_flow",
           "unit": "",
           "range": [
             0,
@@ -616,12 +616,6 @@
           {
             "instrument": "primary_pressure",
             "direction": "low",
-            "setpoint": 2.76,
-            "action": "set_lpi"
-          },
-          {
-            "instrument": "primary_pressure",
-            "direction": "low",
             "setpoint": 3.45,
             "action": "set_rhr",
             "condition": "rps_scrammed"
@@ -792,7 +786,7 @@
           },
           {
             "id": "hpi_active",
-            "name": "Emergency Cooling Active (HPI ACTIVE)",
+            "name": "Emergency Injection Active (HPI/LPI ACTIVE)",
             "instrument": "hpi_active",
             "direction": "is_true",
             "setpoint": null,
@@ -1016,7 +1010,7 @@
         },
         {
           "id": "hpi_active",
-          "name": "Emergency Cooling Active (HPI ACTIVE)",
+          "name": "Emergency Injection Active (HPI/LPI ACTIVE)",
           "priority": "status",
           "panel": "B",
           "means": null,
@@ -1307,12 +1301,12 @@
           "term": "Power-Operated Relief Valve."
         },
         {
-          "acronym": "HPI",
-          "term": "High-Pressure Injection."
+          "acronym": "HPI/LPI",
+          "term": "High-/Low-Pressure Injection — one merged emergency-injection system with a two-segment pump curve."
         },
         {
           "acronym": "ECCS",
-          "term": "Emergency Core Cooling System (here, high-pressure injection)."
+          "term": "Emergency Core Cooling System (here, the merged HPI/LPI plus passive accumulators)."
         },
         {
           "acronym": "AFW",
@@ -1392,8 +1386,6 @@
             "steam_dump_valve_pct": 0,
             "leak_flow": 0,
             "governor_valve_pct": 100,
-            "lpi_active": false,
-            "lpi_flow_normalized": 0,
             "accumulators_discharging": false,
             "accumulator_flow_normalized": 0,
             "accumulator_volume_pct": 100,
@@ -1417,7 +1409,7 @@
             "steam_pressure": 5.651,
             "boron_analyzer": 743.791,
             "governor_valve": 99.983,
-            "lpi_flow": 0.00697,
+            "hpi_flow": 0.00697,
             "accumulator_flow": 0,
             "steam_dump_valve": 0,
             "primary_leak_flow": 0.00057,
@@ -1434,7 +1426,6 @@
             "afw_active": false,
             "afw_pump_running": false,
             "rhr_active": false,
-            "lpi_active": false,
             "accumulators_discharging": false,
             "condenser_cooling_available": true,
             "safety_relief_active": false
@@ -1492,8 +1483,6 @@
             "steam_dump_valve_pct": 0,
             "leak_flow": 0,
             "governor_valve_pct": 0.0000665,
-            "lpi_active": false,
-            "lpi_flow_normalized": 0,
             "accumulators_discharging": false,
             "accumulator_flow_normalized": 0,
             "accumulator_volume_pct": 100,
@@ -1517,7 +1506,7 @@
             "steam_pressure": 8.898,
             "boron_analyzer": 347.18,
             "governor_valve": 0,
-            "lpi_flow": 0,
+            "hpi_flow": 0,
             "accumulator_flow": 0.0013,
             "steam_dump_valve": 0,
             "primary_leak_flow": 0.00227,
@@ -1534,7 +1523,6 @@
             "afw_active": false,
             "afw_pump_running": false,
             "rhr_active": false,
-            "lpi_active": false,
             "accumulators_discharging": false,
             "condenser_cooling_available": true,
             "safety_relief_active": false
@@ -1592,8 +1580,6 @@
             "steam_dump_valve_pct": 0,
             "leak_flow": 0,
             "governor_valve_pct": 49.932,
-            "lpi_active": false,
-            "lpi_flow_normalized": 0,
             "accumulators_discharging": false,
             "accumulator_flow_normalized": 0,
             "accumulator_volume_pct": 100,
@@ -1617,7 +1603,7 @@
             "steam_pressure": 5.652,
             "boron_analyzer": 750.905,
             "governor_valve": 49.916,
-            "lpi_flow": 0.00697,
+            "hpi_flow": 0.00697,
             "accumulator_flow": 0,
             "steam_dump_valve": 0,
             "primary_leak_flow": 0.00057,
@@ -1634,7 +1620,6 @@
             "afw_active": false,
             "afw_pump_running": false,
             "rhr_active": false,
-            "lpi_active": false,
             "accumulators_discharging": false,
             "condenser_cooling_available": true,
             "safety_relief_active": false
@@ -1672,8 +1657,8 @@
         "porv_open": "PORV open (actual)",
         "porv_stuck": "PORV stuck",
         "porv_tailpipe_temp_c": "PORV tailpipe temperature",
-        "hpi_active": "High-Pressure Injection (HPI) delivering",
-        "hpi_flow_normalized": "HPI flow",
+        "hpi_active": "Emergency injection (HPI/LPI) delivering",
+        "hpi_flow_normalized": "HPI/LPI flow (of combined rated)",
         "afw_active": "Auxiliary Feedwater (AFW) delivering",
         "afw_pump_running": "AFW pump running",
         "fuel_damaged": "Fuel damaged",
@@ -1686,8 +1671,6 @@
         "letdown_flow_actual": "CVCS letdown flow (actual)",
         "leak_flow": "Primary leak flow",
         "steam_dump_valve_pct": "Steam dump valve",
-        "lpi_active": "Low-Pressure Injection (LPI) delivering",
-        "lpi_flow_normalized": "LPI flow",
         "accumulators_discharging": "Accumulators discharging",
         "accumulator_flow_normalized": "Accumulator flow",
         "accumulator_volume_pct": "Accumulator volume",
@@ -2711,8 +2694,8 @@
         "porv_open": "PORV open (actual)",
         "porv_stuck": "PORV stuck",
         "porv_tailpipe_temp_c": "PORV tailpipe temperature",
-        "hpi_active": "High-Pressure Injection (HPI) delivering",
-        "hpi_flow_normalized": "HPI flow",
+        "hpi_active": "Emergency injection (HPI/LPI) delivering",
+        "hpi_flow_normalized": "HPI/LPI flow (of combined rated)",
         "afw_active": "Auxiliary Feedwater (AFW) delivering",
         "afw_pump_running": "AFW pump running",
         "fuel_damaged": "Fuel damaged",
@@ -2725,8 +2708,6 @@
         "letdown_flow_actual": "CVCS letdown flow (actual)",
         "leak_flow": "Primary leak flow",
         "steam_dump_valve_pct": "Steam dump valve",
-        "lpi_active": "Low-Pressure Injection (LPI) delivering",
-        "lpi_flow_normalized": "LPI flow",
         "accumulators_discharging": "Accumulators discharging",
         "accumulator_flow_normalized": "Accumulator flow",
         "accumulator_volume_pct": "Accumulator volume",
@@ -3762,8 +3743,8 @@
         "porv_open": "PORV open (actual)",
         "porv_stuck": "PORV stuck",
         "porv_tailpipe_temp_c": "PORV tailpipe temperature",
-        "hpi_active": "High-Pressure Injection (HPI) delivering",
-        "hpi_flow_normalized": "HPI flow",
+        "hpi_active": "Emergency injection (HPI/LPI) delivering",
+        "hpi_flow_normalized": "HPI/LPI flow (of combined rated)",
         "afw_active": "Auxiliary Feedwater (AFW) delivering",
         "afw_pump_running": "AFW pump running",
         "fuel_damaged": "Fuel damaged",
@@ -3776,8 +3757,6 @@
         "letdown_flow_actual": "CVCS letdown flow (actual)",
         "leak_flow": "Primary leak flow",
         "steam_dump_valve_pct": "Steam dump valve",
-        "lpi_active": "Low-Pressure Injection (LPI) delivering",
-        "lpi_flow_normalized": "LPI flow",
         "accumulators_discharging": "Accumulators discharging",
         "accumulator_flow_normalized": "Accumulator flow",
         "accumulator_volume_pct": "Accumulator volume",
@@ -4866,8 +4845,8 @@
         "porv_open": "PORV open (actual)",
         "porv_stuck": "PORV stuck",
         "porv_tailpipe_temp_c": "PORV tailpipe temperature",
-        "hpi_active": "High-Pressure Injection (HPI) delivering",
-        "hpi_flow_normalized": "HPI flow",
+        "hpi_active": "Emergency injection (HPI/LPI) delivering",
+        "hpi_flow_normalized": "HPI/LPI flow (of combined rated)",
         "afw_active": "Auxiliary Feedwater (AFW) delivering",
         "afw_pump_running": "AFW pump running",
         "fuel_damaged": "Fuel damaged",
@@ -4880,8 +4859,6 @@
         "letdown_flow_actual": "CVCS letdown flow (actual)",
         "leak_flow": "Primary leak flow",
         "steam_dump_valve_pct": "Steam dump valve",
-        "lpi_active": "Low-Pressure Injection (LPI) delivering",
-        "lpi_flow_normalized": "LPI flow",
         "accumulators_discharging": "Accumulators discharging",
         "accumulator_flow_normalized": "Accumulator flow",
         "accumulator_volume_pct": "Accumulator volume",

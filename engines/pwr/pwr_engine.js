@@ -264,7 +264,6 @@
       afw_active: s.afw_active,
       afw_pump_running: !!s.afw_pump_demand,
       rhr_active: s.rhr_active,
-      lpi_active: s.lpi_active,
       accumulators_discharging: s.accumulators_discharging,
       condenser_cooling_available: s.condenser_cooling_available,
       safety_relief_active: s.safety_open || s.safety_flow > 0,
@@ -312,9 +311,8 @@
       charging_flow_actual: (s.charging_pump_running === false ? 0 : s.charging_flow),
       letdown_flow_actual: s.letdown_flow, steam_dump_valve_pct: s.steam_dump_frac * 100,
       leak_flow: s.leak_flow,
-      // §7 true_state additions (governor / LPI / accumulators / RHR):
+      // §7 true_state additions (governor / accumulators / RHR):
       governor_valve_pct: s.governor_valve_pct,
-      lpi_active: s.lpi_active, lpi_flow_normalized: s.lpi_flow_normalized,
       accumulators_discharging: s.accumulators_discharging,
       accumulator_flow_normalized: s.accumulator_flow_normalized,
       accumulator_volume_pct: s.accumulator_volume_pct, rhr_active: s.rhr_active,
@@ -359,7 +357,7 @@
       steam_dump_pct: s.steam_dump_frac * 100,
       steam_dump_auto: s.steam_dump_override == null,
       governor_valve_pct: s.governor_valve_pct,   // turbine admission valve (engine-driven; read-only)
-      hpi_active: s.hpi_active, rhr_active: s.rhr_active, lpi_active: s.lpi_active,
+      hpi_active: s.hpi_active, rhr_active: s.rhr_active,
       pumps: [{ id: 'rcp', running: s.pump_running, flow_pct: s.pump_flow_pct }],
     };
   };
@@ -454,6 +452,7 @@
         s.block_valve_open = false;
         break;
       case 'set_hpi':
+      case 'set_lpi':   // set_lpi: deprecated alias — HPI and LPI are one merged "HPI/LPI" system
         s.hpi_active = !!cmd.active;
         break;
       case 'set_afw':
@@ -475,10 +474,6 @@
       case 'set_rhr':
       case 'set_dhr':   // set_dhr: one-release alias for save/restore compatibility (RHR was DHR)
         s.rhr_active = !!cmd.active;
-        break;
-      case 'set_lpi':
-        // Low-Pressure Injection: manual ON/OFF; M4 also auto-starts it on low pressure.
-        s.lpi_active = !!cmd.active;
         break;
       case 'set_charging_flow':
         // Manual charging: set BOTH the operator setpoint and the true flow, and
@@ -713,9 +708,9 @@
       _mass: 1.0, core_inventory_pct: 100, primary_void_fraction: 0,
       charging_flow: 0, charging_setpoint: 0, letdown_flow: 0, leak_flow: 0, safety_injection_flow: 0,
       charging_pump_running: true, cvcs_auto: false, boron_adjust: 0,   // CVCS
+      // Merged HPI/LPI emergency injection (one flag, two-segment pump curve)
+      // + passive accumulators (ECCS, §6.2/§6.3).
       hpi_active: false, hpi_flow_normalized: 0, hpi_flow_multiplier: 1.0,
-      // Low-Pressure Injection + passive accumulators (ECCS, §6.2/§6.3).
-      lpi_active: false, lpi_flow_normalized: 0,
       accumulators_discharging: false, accumulator_flow_normalized: 0,
       _accum_remaining: cfg.emergency.accumulator_capacity, accumulator_volume_pct: 100,
       flow_frac: 1.0, pump_flow_pct: 100, pump_running: true, station_blackout: false,
@@ -828,11 +823,20 @@
   };
   PWREngine.prototype.loadState = function (st) {
     this.s = JSON.parse(JSON.stringify(st.s));
+    this._migrateState(this.s);
     this.rod_groups = JSON.parse(JSON.stringify(st.rod_groups));
     this.active_failures = st.active_failures.slice();
     this.instruments.load(st.instruments);
     this.T_fuel_ref = st.refs.Tf; this.T_coolant_ref = st.refs.Tavg;
     this._X_eq = st.refs.X_eq; this._hfp_refs = st.refs.hfp;
+  };
+  // Fill defaults for state fields added after a save was written (each entry
+  // documents the release that introduced it). Old fields are left in place —
+  // extra keys in `s` are harmless.
+  PWREngine.prototype._migrateState = function (s) {
+    // HPI/LPI merge: lpi_active folded into the one hpi_active flag.
+    if (s.lpi_active) { s.hpi_active = true; }
+    delete s.lpi_active; delete s.lpi_flow_normalized;
   };
 
   RD.PWREngine = PWREngine;
@@ -1166,13 +1170,45 @@
         ck('noise sequence identical (PRNG)', ib.power_range.toFixed(6), near(ia.power_range, ib.power_range, 1e-9), ia.power_range.toFixed(6));
       });
     },
+
+    merged_injection_curve: function () {
+      return test('Merged HPI/LPI — two-segment injection curve', function (ck) {
+        var h = new Harness('hot_full_power');
+        var e = h.eng.cfg.emergency;
+        var rated = e.hpi_flow_max + e.lpi_flow_max * e.lpi_inventory_gain;
+        var s = h.eng.s;
+        // At operating pressure with injection OFF: zero.
+        ck('off → no flow', s.hpi_flow_normalized.toFixed(4), s.hpi_flow_normalized === 0, '0');
+        // High-head-only regime (TMI pressures): identical to the old standalone
+        // HPI — the low-head segment shuts off above 4.5 MPa.
+        h.cmd({ action: 'set_hpi', active: true });
+        s.pressure_mpa = 8.0; h.eng.step(0.02);
+        var expectHH = e.hpi_flow_max * (e.hpi_pressure_ref - 8.0) / e.hpi_pressure_ref / rated;
+        ck('8 MPa → high-head only', s.hpi_flow_normalized.toFixed(4), near(s.hpi_flow_normalized, expectHH, 0.01), expectHH.toFixed(4) + ' ±0.01');
+        // Low-head regime: combined flow approaches rated as pressure → 0.
+        s.pressure_mpa = 1.0; h.eng.step(0.02);
+        ck('1 MPa → low-head dominates', s.hpi_flow_normalized.toFixed(3), s.hpi_flow_normalized > 0.7, '>0.7 of combined rated');
+        // The set_lpi alias drives the same merged system.
+        h.cmd({ action: 'set_hpi', active: false });
+        h.cmd({ action: 'set_lpi', active: true });
+        ck('set_lpi alias → hpi_active', h.eng.s.hpi_active, h.eng.s.hpi_active === true, 'true');
+        // degraded_hpi scales the whole curve.
+        h.cmd({ action: 'inject_failure', failure_id: 'degraded_hpi', severity: 0.5 });
+        h.eng.step(0.02);
+        var full = e.lpi_flow_max * e.lpi_inventory_gain * (e.lpi_pressure_ref - 1.0) / e.lpi_pressure_ref
+                 + e.hpi_flow_max * (e.hpi_pressure_ref - 1.0) / e.hpi_pressure_ref;
+        ck('degraded_hpi scales the combined curve', s.hpi_flow_normalized.toFixed(3),
+          near(s.hpi_flow_normalized, 0.5 * full / rated, 0.02), (0.5 * full / rated).toFixed(3) + ' ±0.02');
+      });
+    },
   };
 
   PWRScenarioTests.runAll = function () {
     var order = ['steady_full_power', 'hot_zero_power_standby', 'steady_50_percent', 'control_response', 'shutdown_scram',
       'load_mode_follow',
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
-      'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore'];
+      'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',
+      'merged_injection_curve'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(PWRScenarioTests[order[i]]());
     return results;

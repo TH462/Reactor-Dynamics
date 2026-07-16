@@ -75,8 +75,8 @@ console.log(B + 'PWR — recently-added controls' + X);
   ck('set_dhr alias still maps to RHR', s.engine.s.rhr_active === true, s.engine.s.rhr_active, true);
 
   s = svc('pwr', 'hot_full_power');
-  s.handleCommand({ action: 'set_lpi', active: true });
-  ck('LPI on (manual)', s.engine.s.lpi_active === true, s.engine.s.lpi_active, true);
+  s.handleCommand({ action: 'set_lpi', active: true });   // deprecated alias → merged HPI/LPI
+  ck('set_lpi alias drives the merged HPI/LPI system', s.engine.s.hpi_active === true, s.engine.s.hpi_active, true);
 
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'set_charging_pump', running: false });
@@ -119,16 +119,20 @@ console.log(B + 'PWR — recently-added controls' + X);
   ck('charging_flow indication > setpoint under AUTO', snap.instruments.charging_flow > snap.control_state.charging_flow_normalized + 0.005,
      'ind ' + snap.instruments.charging_flow.toFixed(4) + ' vs setpt ' + snap.control_state.charging_flow_normalized.toFixed(4), 'ind > setpt');
 
-  // §8.8: large-break LOCA drives the ECCS — LPI auto-start + passive accumulator discharge,
-  // both visible as snapshot.instruments status/flow (Animation HR1 inputs for the synoptic).
+  // §8.8: large-break LOCA drives the ECCS — merged HPI/LPI auto-start at
+  // 11.03 MPa, delivering along the two-segment curve as pressure falls; the
+  // accumulator check documents a KNOWN physics gap: primary pressure floors
+  // at Tsat of the hot voided core (~5.5 MPa), so the 1.5 MPa accumulator
+  // arming pressure is unreachable in v1's blowdown model (tuning target).
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
-  var accumFired = false, lpiFired = false;
+  s.handleCommand({ action: 'set_speed', value: 10 });
+  var accumFired = false, injFired = false;
   for (var i = 0; i < 600; i++) { s.advanceCycles(1); var sn = s.assembleSnapshot();
     if (sn.instruments.accumulators_discharging && sn.instruments.accumulator_flow > 0) accumFired = true;
-    if (sn.instruments.lpi_active && sn.instruments.lpi_flow > 0.05) lpiFired = true; }
-  ck('large LOCA auto-starts LPI (lpi_active + flow)', lpiFired, lpiFired, true);
-  ck('large LOCA discharges accumulators (status + flow)', accumFired, accumFired, true);
+    if (sn.instruments.hpi_active && sn.instruments.hpi_flow > 0.2) injFired = true; }
+  ck('large LOCA auto-starts merged HPI/LPI (hpi_active + delivering)', injFired, injFired, true);
+  ck('large LOCA discharges accumulators (status + flow) [known blowdown-model gap]', accumFired, accumFired, true);
 })();
 
 console.log('\n' + B + 'RBMK — recently-added controls' + X);

@@ -67,7 +67,7 @@ var CTL = {
   close_porv:        { g: 'Pressurizer', c: 'PORV — Close', u: 'Commands the PORV shut. NOTE: it can stick open while its indicator reads closed (the TMI trap).', cmd: 'close_porv', p: '' },
   open_block_valve:  { g: 'Pressurizer', c: 'PORV Block Valve — Open', u: 'Opens the isolation (block) valve upstream of the PORV, restoring the relief path.', cmd: 'open_block_valve', p: '' },
   close_block_valve: { g: 'Pressurizer', c: 'PORV Block Valve — Close', u: 'Isolates the PORV line — stops the leak through a stuck-open PORV. The key TMI recovery action.', cmd: 'close_block_valve', p: '' },
-  set_hpi:           { g: 'Safety', c: 'HPI (Emergency Injection)', u: 'High-Pressure Injection (HPI) forces make-up coolant into the core against pressure.', cmd: 'set_hpi', p: '{active}' },
+  set_hpi:           { g: 'Safety', c: 'HPI/LPI (Emergency Injection)', u: 'Emergency injection — one merged High-Pressure/Low-Pressure Injection (HPI/LPI) system. Flow follows a two-segment pump curve: a high-head trickle against operating pressure, high volume once the plant depressurizes below the low-head shutoff (~4.5 MPa).', cmd: 'set_hpi', p: '{active}' },
   set_afw:           { g: 'Secondary', c: 'AFW (Aux Feedwater)', u: 'Auxiliary Feedwater (AFW) — the backup water supply to the Steam Generators when main feedwater is lost.', cmd: 'set_afw', p: '{active}' },
   set_dhr:           { g: 'Safety', c: 'Decay-Heat Removal', u: 'Decay-Heat Removal (DHR / RHR) — removes leftover heat after shutdown once cool and depressurized.', cmd: 'set_dhr', p: '{active}' },
   set_boron_adjust:  { g: 'Reactivity', c: 'Boron — Borate / Dilute (CVCS)', u: 'Chemical & Volume Control System (CVCS) boron: Borate raises boron (lowers power), Dilute lowers it (raises power). Needs the charging pump running.', cmd: 'set_boron_adjust', p: '{rate}' },
@@ -214,7 +214,7 @@ var GLOSSARY_BASE = [
   ['Setpoint (SP)', 'The value an automatic controller holds its parameter at. Automate channels capture the current reading when engaged; edit it to maneuver on automatic.'],
 ];
 var GLOSSARY = {
-  pwr: [['PWR', 'Pressurized Water Reactor.'], ['PZR', 'Pressurizer — sets primary pressure.'], ['SG', 'Steam Generator.'], ['PORV', 'Power-Operated Relief Valve.'], ['HPI', 'High-Pressure Injection.'], ['ECCS', 'Emergency Core Cooling System (here, high-pressure injection).'], ['AFW', 'Auxiliary Feedwater.'], ['CVCS', 'Chemical & Volume Control System (boron & inventory).'], ['MTC', 'Moderator Temperature Coefficient.'], ['RCP', 'Reactor Coolant Pump.'], ['DHR / RHR', 'Decay-Heat / Residual-Heat Removal.'], ['Tavg', 'Average coolant temperature.']],
+  pwr: [['PWR', 'Pressurized Water Reactor.'], ['PZR', 'Pressurizer — sets primary pressure.'], ['SG', 'Steam Generator.'], ['PORV', 'Power-Operated Relief Valve.'], ['HPI/LPI', 'High-/Low-Pressure Injection — one merged emergency-injection system with a two-segment pump curve.'], ['ECCS', 'Emergency Core Cooling System (here, the merged HPI/LPI plus passive accumulators).'], ['AFW', 'Auxiliary Feedwater.'], ['CVCS', 'Chemical & Volume Control System (boron & inventory).'], ['MTC', 'Moderator Temperature Coefficient.'], ['RCP', 'Reactor Coolant Pump.'], ['DHR / RHR', 'Decay-Heat / Residual-Heat Removal.'], ['Tavg', 'Average coolant temperature.']],
   rbmk: [['RBMK', 'The Chernobyl-type graphite-moderated reactor.'], ['ORM', 'Operating Reactivity Margin — shutdown capacity in hand (counts the MANUAL bank; the AR group is excluded).'], ['AR', 'Automatic Regulator — the small, fine-stepped rod group that holds power automatically; switchable to manual (as the Chernobyl operators had it).'], ['MCP', 'Main Circulation Pump.'], ['AZ-5', 'The emergency-shutdown button.'], ['EPS', 'Emergency Protection System (auto-trips).'], ['ECCS', 'Emergency Core Cooling System — injects to the channels on a rupture / loss of coolant.'], ['Void', 'Steam bubbles in the coolant; in an RBMK they raise power.'], ['Positive scram effect', 'Pre-1986 rods briefly added reactivity as they began inserting.']],
   bwr: [['BWR', 'Boiling Water Reactor.'], ['RCIC', 'Reactor Core Isolation Cooling (steam-driven, no AC).'], ['IC', 'Isolation Condenser — passive heat sink (condenses steam, returns condensate; no AC). Fukushima Unit 1.'], ['HPCI', 'High-Pressure Coolant Injection (steam-driven, no AC).'], ['ADS', 'Automatic Depressurization System.'], ['LPCI', 'Low-Pressure Coolant Injection.'], ['LPCS', 'Low-Pressure Core Spray.'], ['SLC', 'Standby Liquid Control (boron; failure-to-scram backup).'], ['SRV', 'Safety/Relief Valve.'], ['MSIV', 'Main Steam Isolation Valve.'], ['Recirc', 'Recirculation flow — the main BWR power control.']],
 };
@@ -249,14 +249,13 @@ var TS_LABELS = {
   pressure_mpa: 'Primary pressure', pzr_level_pct: 'Pressurizer (PZR) level', sg_level_pct: 'Steam Generator (SG) level',
   subcooling_c: 'Subcooling margin', core_inventory_pct: 'Primary coolant inventory', boron_ppm: 'Boron concentration',
   porv_open: 'PORV open (actual)', porv_stuck: 'PORV stuck', porv_tailpipe_temp_c: 'PORV tailpipe temperature',
-  hpi_active: 'High-Pressure Injection (HPI) delivering', hpi_flow_normalized: 'HPI flow',
+  hpi_active: 'Emergency injection (HPI/LPI) delivering', hpi_flow_normalized: 'HPI/LPI flow (of combined rated)',
   afw_active: 'Auxiliary Feedwater (AFW) delivering', afw_pump_running: 'AFW pump running',
   fuel_damaged: 'Fuel damaged', pump_running: 'Reactor Coolant Pump (RCP) running', pump_flow_pct: 'RCP flow',
   steam_demand_mwe: 'Steam demand', condenser_cooling_available: 'Condenser cooling available',
   governor_valve_pct: 'Turbine governor valve', charging_flow_actual: 'CVCS charging flow (actual)',
   letdown_flow_actual: 'CVCS letdown flow (actual)', leak_flow: 'Primary leak flow',
-  steam_dump_valve_pct: 'Steam dump valve', lpi_active: 'Low-Pressure Injection (LPI) delivering',
-  lpi_flow_normalized: 'LPI flow', accumulators_discharging: 'Accumulators discharging',
+  steam_dump_valve_pct: 'Steam dump valve', accumulators_discharging: 'Accumulators discharging',
   accumulator_flow_normalized: 'Accumulator flow', accumulator_volume_pct: 'Accumulator volume',
   rhr_active: 'Residual Heat Removal (RHR) aligned',
   // RBMK

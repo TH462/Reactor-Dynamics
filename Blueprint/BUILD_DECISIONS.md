@@ -1996,3 +1996,25 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   Tavg deadband — a point sample lands on an arbitrary phase). Gates: all green at baseline
   (campaign 36/36·1313, ops 52/66 same set, synoptic 55/55, e2e 23/25 + procedures 20/21
   pre-existing).
+- **2026-07-15 — HPI/LPI merged into ONE emergency-injection system (stage 3, user direction).**
+  `pwr_primary.injectionFlowInv` = a two-segment pump curve — high-head/low-flow (hpi_flow_max
+  0.06 inv-frac/s, shutoff 16.44 MPa) + low-head/high-flow (lpi_flow_max×lpi_inventory_gain
+  = 0.10 inv-frac/s, shutoff 4.5 MPa) — behind the single `hpi_active` flag; at TMI pressures
+  the low-head segment contributes 0, so the flagship is numerically untouched (14/14).
+  `hpi_flow_normalized` REDEFINED as delivered/combined-rated (0–1; was raw inv-frac/s — the
+  only consumers were a >0 check in ops_pwr and display labels). `set_lpi` is a deprecated
+  engine-side alias for `set_hpi`; `lpi_active`/`lpi_flow_normalized` removed from
+  true_state/control_state/status (engine `_migrateState` folds a save's lpi_active in);
+  instrument `lpi_flow` RENAMED IN PLACE to `hpi_flow` (same SOURCE-map slot ⇒ PRNG sequence
+  unchanged, save-side key migration in PWRInstruments.load). Protection: the 2.76 MPa
+  `set_lpi` actuation deleted (the 11.03 MPa set_hpi arm covers the one system; the low-head
+  regime follows from the curve); alarm relabeled HPI/LPI ACTIVE. Synoptic ECCS card:
+  HPI|AFW|RHR/LPI tabs → HPI/LPI|AFW|RHR; the HPI/LPI row shows delivered % of combined rated;
+  the low-pressure SVG line animates when hpi_flow > 0.4 (only reachable via the low-head
+  segment). New engine suite test `merged_injection_curve`. **e2e LOCA finding:** the old
+  "LPI auto-starts at 2.76 MPa" check could NEVER pass — primary pressure floors at Tsat of
+  the hot voided core (~5.5 MPa), so 2.76/1.5 MPa were unreachable; the injection check now
+  asserts the merged system delivering at the floor (real, passes → e2e 24/25) and the
+  accumulator check stays red as the documented blowdown-model gap (tuning target).
+  Gates: pwr 14/14, campaign 36/36·1313, ops 52/66 (same set), synoptic 55/55, manual
+  regenerated + procedures 20/21.

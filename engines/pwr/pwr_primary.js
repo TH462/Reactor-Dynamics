@@ -14,23 +14,25 @@
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
   function T_sat(P) { return 179.47 * Math.pow(Math.max(P, 1e-6), 0.239); }
 
-  // HPI flow: injects against pressure, so flow falls as primary pressure rises
-  // toward the shutoff head. Decisive in TMI (§6.9). degraded_hpi scales it.
-  function hpiFlow(s, cfg) {
+  // Emergency injection — ONE merged HPI/LPI system (one command, one flag,
+  // one pump curve): a high-head/low-flow segment (shutoff 16.44 MPa — the
+  // classic HPI charging-pump head) plus a low-head/high-flow segment (shutoff
+  // 4.5 MPa — the LPI/RHR-pump head). Flow rises as pressure falls: at TMI
+  // pressures only the high-head segment is in play (numerically identical to
+  // the old standalone HPI — the flagship is untouched); in a large LOCA the
+  // low-head segment dominates. degraded_hpi scales the whole curve.
+  // Returns inventory-fraction/s for the mass balance; the exposed
+  // s.hpi_flow_normalized is this over the combined rated total.
+  function injectionFlowInv(s, cfg) {
     if (!s.hpi_active) return 0;
     var e = cfg.emergency;
-    var frac = clip((e.hpi_pressure_ref - s.pressure_mpa) / e.hpi_pressure_ref, 0, 1);
-    return e.hpi_flow_max * frac * (s.hpi_flow_multiplier != null ? s.hpi_flow_multiplier : 1.0);
+    var q_hh = e.hpi_flow_max * clip((e.hpi_pressure_ref - s.pressure_mpa) / e.hpi_pressure_ref, 0, 1);
+    var q_lh = e.lpi_flow_max * e.lpi_inventory_gain * clip((e.lpi_pressure_ref - s.pressure_mpa) / e.lpi_pressure_ref, 0, 1);
+    return (q_hh + q_lh) * (s.hpi_flow_multiplier != null ? s.hpi_flow_multiplier : 1.0);
   }
-
-  // Low-Pressure Injection: high-volume, low shutoff head. Normalized to rated LPI
-  // (≈1.0 near atmospheric), falling to zero as pressure rises toward lpi_pressure_ref.
-  // Manual (set_lpi) or M4 auto-start on low pressure. This is the exposed
-  // instrument/true_state quantity; its inventory effect is scaled below.
-  function lpiFlowNormalized(s, cfg) {
-    if (!s.lpi_active) return 0;
+  function injectionRatedInv(cfg) {
     var e = cfg.emergency;
-    return e.lpi_flow_max * clip((e.lpi_pressure_ref - s.pressure_mpa) / e.lpi_pressure_ref, 0, 1);
+    return e.hpi_flow_max + e.lpi_flow_max * e.lpi_inventory_gain;
   }
 
   // Passive accumulators: discharge into the cold leg once primary pressure drops
@@ -55,10 +57,10 @@
 
   // Step 9 — primary inventory and voiding (CVCS charging/letdown + HPI/LPI/accumulator/SI − losses).
   function stepInventory(s, cfg, dt) {
-    s.hpi_flow_normalized = hpiFlow(s, cfg);
-    s.lpi_flow_normalized = lpiFlowNormalized(s, cfg);
+    var inj_inv = injectionFlowInv(s, cfg);
+    s.hpi_flow_normalized = inj_inv / injectionRatedInv(cfg);   // 0–1 of combined HPI/LPI rated
     var accum_inv = stepAccumulators(s, cfg, dt);
-    var rc = cfg.reactivity, e = cfg.emergency;
+    var rc = cfg.reactivity;
     // CVCS charging: AUTO make-up (opt-in) modulates the TRUE flow to track letdown
     // + an inventory deficit, up to charging_max, compensating identified leakage;
     // MANUAL tracks the operator setpoint. Either way s.charging_flow is the true
@@ -68,11 +70,10 @@
     } else {
       s.charging_flow = s.charging_setpoint;
     }
-    // Charging requires the charging pump; LPI/accumulator inventory gains scale their
-    // normalized flows into the same inventory-fraction units as the rest of the balance.
+    // Charging requires the charging pump; the accumulator inventory gain scales its
+    // normalized flow into the same inventory-fraction units as the rest of the balance.
     var charging = (s.charging_pump_running === false) ? 0 : s.charging_flow;
-    var lpi_inv = s.lpi_flow_normalized * e.lpi_inventory_gain;
-    var dm = (charging + s.hpi_flow_normalized + lpi_inv + accum_inv + s.safety_injection_flow)
+    var dm = (charging + inj_inv + accum_inv + s.safety_injection_flow)
            - (s.letdown_flow + s.porv_flow + s.safety_flow + s.leak_flow);
     s._mass = clip(s._mass + dm * dt, 0.0, cfg.primary.mass_max);
     s.core_inventory_pct = s._mass * 100;
@@ -115,7 +116,7 @@
   }
 
   RD.pwrPrimary = {
-    hpiFlow: hpiFlow,
+    injectionFlowInv: injectionFlowInv,
     stepInventory: stepInventory,
     stepFlow: stepFlow,
   };

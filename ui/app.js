@@ -1719,7 +1719,6 @@
     'dhr-on': function () { cmd({ action: 'set_dhr', active: true }); }, 'dhr-off': function () { cmd({ action: 'set_dhr', active: false }); },
     // synoptic emergency card: RHR / LPI (AUTO = leave to the automatic actuation)
     'rhr-auto': function () {}, 'rhr-on': function () { cmd({ action: 'set_rhr', active: true }); }, 'rhr-off': function () { cmd({ action: 'set_rhr', active: false }); },
-    'lpi-auto': function () {}, 'lpi-on': function () { cmd({ action: 'set_lpi', active: true }); }, 'lpi-off': function () { cmd({ action: 'set_lpi', active: false }); },
     'dump-set': function () { cmd({ action: 'set_steam_dump', pct: inputVal('dumpSet') }); },
     // RBMK
     'rbmk-flow-set': function () { cmd({ action: 'set_channel_flow', pct: inputVal('rbmkFlow') }); },

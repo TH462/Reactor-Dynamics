@@ -403,25 +403,22 @@
     // -- Emergency Cooling (tabbed) -------------------------------------------
     h += card('emergency', 'emergency-cooling', 'Emergency Cooling',
       '<div class="tabs">' +
-      '<button data-syn="emtab" data-tab="hpi" data-f="tabHpi">HPI</button>' +
+      '<button data-syn="emtab" data-tab="hpi" data-f="tabHpi">HPI/LPI</button>' +
       '<button data-syn="emtab" data-tab="afw" data-f="tabAfw">AFW</button>' +
-      '<button data-syn="emtab" data-tab="rhr" data-f="tabRhr">RHR/LPI</button></div>' +
-      '<div class="tabpane" data-pane="hpi" data-hl="pwHpiLine gColdLeg">' +
+      '<button data-syn="emtab" data-tab="rhr" data-f="tabRhr">RHR</button></div>' +
+      '<div class="tabpane" data-pane="hpi" data-hl="pwHpiLine pwLpiLine gColdLeg">' +
       '<div class="ctl">' + seg([{ l: 'Auto', act: 'eccs-auto', on: 1 }, { l: 'On', act: 'eccs-on' }, { l: 'Off', act: 'eccs-off' }],
-        'High-pressure injection — AUTO actuates on low pressure; On forces injection.') + '</div>' +
-      row('HPI', 'emHpi', { hl: 'pwHpiLine' }) + '</div>' +
+        'Emergency injection (one merged HPI/LPI system) — AUTO actuates on low pressure; flow follows the two-segment pump curve: high-head trickle at pressure, high-volume once depressurized. On forces injection.') + '</div>' +
+      row('HPI/LPI', 'emHpi', { hl: 'pwHpiLine pwLpiLine' }) + '</div>' +
       '<div class="tabpane" data-pane="afw" data-hl="pwAfwLine gSg">' +
       '<div class="ctl">' + seg([{ l: 'Start', act: 'afw-start' }, { l: 'Stop', act: 'afw-stop' }],
         'Auxiliary feedwater — backup feed to the SG after a loss of main feedwater.') + '</div>' +
       row('AFW', 'emAfw', { hl: 'pwAfwLine' }) + '</div>' +
-      '<div class="tabpane" data-pane="rhr" data-hl="pwRhrLoop pwLpiLine">' +
+      '<div class="tabpane" data-pane="rhr" data-hl="pwRhrLoop">' +
       '<div class="ctl"><span class="k">RHR</span>' + seg([{ l: 'Auto', act: 'rhr-auto', on: 1 }, { l: 'On', act: 'rhr-on' }, { l: 'Off', act: 'rhr-off' }],
         'Residual heat removal — low-pressure cooldown loop, SG to condenser.') + '</div>' +
-      row('RHR', 'emRhr', { hl: 'pwRhrLoop' }) +
-      '<div class="ctl"><span class="k">LPI</span>' + seg([{ l: 'Auto', act: 'lpi-auto', on: 1 }, { l: 'On', act: 'lpi-on' }, { l: 'Off', act: 'lpi-off' }],
-        'Low-pressure injection — auto-starts on low pressure; effective once depressurized.') + '</div>' +
-      row('LPI', 'emLpi', { hl: 'pwLpiLine' }) + '</div>',
-      { em: 1, anchor: 'pwHpiLineAnchor', hint: 'Emergency Cooling — HPI | AFW | RHR/LPI. The active tab follows ECCS actuation.' });
+      row('RHR', 'emRhr', { hl: 'pwRhrLoop' }) + '</div>',
+      { em: 1, anchor: 'pwHpiLineAnchor', hint: 'Emergency Cooling — HPI/LPI | AFW | RHR. The active tab follows ECCS actuation.' });
 
     // -- PZR Pressurizer (merged pressure + level sections) --------------------
     h += card('pzr', 'pzr-pressurizer', 'PZR Pressurizer',
@@ -940,17 +937,19 @@
     }
 
     // ---- Emergency card ----
-    txt('emHpi', ins.hpi_active ? 'INJECTING' : 'standby'); vcls('emHpi', ins.hpi_active ? 'run' : 'dim');
+    txt('emHpi', ins.hpi_active
+      ? 'INJECTING ' + Math.round((ins.hpi_flow || 0) * 100) + ' %'
+      : 'standby');
+    vcls('emHpi', ins.hpi_active ? 'run' : 'dim');
     // AFW row shows the PUMP run status (honest: the pumps really start); the
     // pipe-flow animation below keys off delivered flow — at TMI-2 the two
     // disagree behind the tagged-shut discharge valve.
     var afwPump = ins.afw_pump_running != null ? ins.afw_pump_running : ins.afw_active;
     txt('emAfw', afwPump ? 'RUNNING' : 'off'); vcls('emAfw', afwPump ? 'run' : 'dim');
     txt('emRhr', ins.rhr_active ? 'COOLING' : 'off'); vcls('emRhr', ins.rhr_active ? 'run' : 'dim');
-    txt('emLpi', ins.lpi_active ? 'INJECTING' : 'standby'); vcls('emLpi', ins.lpi_active ? 'run' : 'dim');
     ['tabHpi', 'tabAfw', 'tabRhr'].forEach(function (f, i) {
-      var act = [ins.hpi_active, ins.afw_active, ins.rhr_active || ins.lpi_active || ins.accumulators_discharging][i];
-      var b = refs[f]; if (b) b.innerHTML = ['HPI', 'AFW', 'RHR/LPI'][i] + (act ? '<span class="dot"></span>' : '');
+      var act = [ins.hpi_active, ins.afw_active, ins.rhr_active || ins.accumulators_discharging][i];
+      var b = refs[f]; if (b) b.innerHTML = ['HPI/LPI', 'AFW', 'RHR'][i] + (act ? '<span class="dot"></span>' : '');
     });
 
     // ---- PZR card ----
@@ -1197,7 +1196,10 @@
     flowOn('pwAfwFlow', !!ins.afw_active, 0.9);
     valvePose('pwAfwValve', !!ins.afw_active);
     flowOn('pwRhrFlow', !!ins.rhr_active, 1.2);
-    flowOn('pwLpiFlow', !!ins.lpi_active && ins.lpi_flow > 0.02, clamp(0.8 / Math.max(ins.lpi_flow, 0.1), 0.4, 3));
+    // Merged HPI/LPI: the low-pressure line animates once the low-head segment
+    // of the injection curve carries real flow (hpi_flow well above the
+    // high-head-only ceiling of ~0.38 of combined rated).
+    flowOn('pwLpiFlow', !!ins.hpi_active && ins.hpi_flow > 0.4, clamp(0.8 / Math.max(ins.hpi_flow, 0.1), 0.4, 3));
     var accOn = !!ins.accumulators_discharging;
     flowOn('pwAccumulatorFlow', accOn && ins.accumulator_flow > 0.02, clamp(0.8 / Math.max(ins.accumulator_flow, 0.1), 0.4, 3));
     valvePose('pwAccumulatorCheckValve', accOn);
@@ -1245,7 +1247,7 @@
 
     // ECCS actuation drives the Emergency card tab + pulse
     var emAct = ins.hpi_active ? 'hpi' : ins.afw_active ? 'afw' :
-      (ins.rhr_active || ins.lpi_active || ins.accumulators_discharging) ? 'rhr' : null;
+      (ins.rhr_active || ins.accumulators_discharging) ? 'rhr' : null;
     if (emAct) {
       pulseCards.emergency = true;
       if (emTabAuto !== emAct && emTabUser == null) setEmTab(emAct);

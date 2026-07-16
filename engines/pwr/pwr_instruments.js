@@ -41,7 +41,8 @@
     turbine_rpm: 'turbine_rpm', condenser_vacuum: 'condenser_vacuum_kpa',
     charging_flow: 'charging_flow_actual', letdown_flow: 'letdown_flow_actual',
     steam_pressure: 'steam_pressure_mpa', boron_analyzer: 'boron_ppm',
-    governor_valve: 'governor_valve_pct', lpi_flow: 'lpi_flow_normalized',
+    governor_valve: 'governor_valve_pct',
+    hpi_flow: 'hpi_flow_normalized',   // merged HPI/LPI line (renamed in place from lpi_flow — same map position ⇒ PRNG order preserved)
     accumulator_flow: 'accumulator_flow_normalized', steam_dump_valve: 'steam_dump_valve_pct',
     primary_leak_flow: 'leak_flow',
     startup_rate: 'startup_rate_dpm',   // SUR rate meter (appended — PRNG order preserved)
@@ -186,6 +187,11 @@
     this.lagged = Object.assign({}, s.lagged);
     this.reading = Object.assign({}, s.reading);
     this.failed = JSON.parse(JSON.stringify(s.failed));
+    // Rename-in-place migrations (old saves): lpi_flow → hpi_flow (HPI/LPI merge).
+    ['lagged', 'reading', 'failed'].forEach(function (k) {
+      var o = this[k];
+      if (o && o.lpi_flow !== undefined && o.hpi_flow === undefined) { o.hpi_flow = o.lpi_flow; delete o.lpi_flow; }
+    }, this);
     this._rngState = s.rngState >>> 0;
     this.seed = s.seed >>> 0;
   };

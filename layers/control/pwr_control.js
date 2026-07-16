@@ -36,10 +36,9 @@
       action: 'set_hpi', active: true, reset_action: 'set_hpi', reset_active: false },
     { instrument: 'sg_level',         direction: 'low',  setpoint: 20.0,
       action: 'set_afw', active: true },
-    // Low-Pressure Injection permissive — auto-starts LPI once primary pressure
-    // falls into the LPI band (large-break / late-LOCA territory; ≈400 psia).
-    { instrument: 'primary_pressure', direction: 'low',  setpoint: 2.76,
-      action: 'set_lpi', active: true },
+    // (The old 2.76 MPa set_lpi actuation is gone: HPI/LPI is one merged system
+    // armed by the 11.03 MPa set_hpi actuation above — the low-head/high-flow
+    // regime follows physically from the two-segment pump curve.)
     // Residual Heat Removal permissive — auto-aligns RHR for cooldown once the
     // reactor is tripped and depressurized into the RHR band.
     { instrument: 'primary_pressure', direction: 'low',  setpoint: 3.45,
@@ -70,7 +69,7 @@
     { id: 'sg_level_low',   instrument: 'sg_level',         direction: 'low',      setpoint: 30.0, priority: 'warning',  panel: 'B', label_learning: 'Steam Generator Level Low',      label_industry: 'SG LVL LO' },
     { id: 'sg_level_lolo',  instrument: 'sg_level',         direction: 'low',      setpoint: 12.0, priority: 'critical', panel: 'B', label_learning: 'Steam Generator Level Critical Low', label_industry: 'SG LVL LO LO' },
     { id: 'rcp_trip',       instrument: 'rcp_running',      direction: 'is_false', setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Reactor Coolant Pump Trip',     label_industry: 'RCP TRIP' },
-    { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', label_learning: 'Emergency Cooling Active',       label_industry: 'HPI ACTIVE' },
+    { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
     { id: 'sbo',            instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
     { id: 'turbine_trip',   instrument: 'steam_demand_low', direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Turbine Trip / Low Steam Demand', label_industry: 'TURB TRIP' },
     { id: 'cond_vac_low',   instrument: 'condenser_vacuum', direction: 'low',      setpoint: 84.7, priority: 'caution',  panel: 'B', label_learning: 'Condenser Vacuum Low',           label_industry: 'COND VAC LO' },
