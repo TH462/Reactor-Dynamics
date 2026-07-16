@@ -641,7 +641,9 @@
   PWREngine.prototype._computeEquilibriumTemps = function (P0) {
     var cfg = this.cfg;
     var Tsec = TH.T_sat(cfg.steam_generator.steam_p_rated);
-    var Tavg = Tsec + (P0 * cfg.thermal.heat_gen_coeff) / cfg.thermal.h_sg;
+    // Core heat + RCP pump heat (full flow) both cross the SG at equilibrium.
+    var Tavg = Tsec + (P0 * cfg.thermal.heat_gen_coeff
+      + cfg.thermal.heat_gen_coeff * (cfg.thermal.pump_heat_frac || 0)) / cfg.thermal.h_sg;
     var delta_T = cfg.thermal.delta_T_rated * P0;
     return {
       Tavg: Tavg,
@@ -680,7 +682,8 @@
     // the module notes): full power → Tavg ≈ 304 °C, fuel ≈ +389 °C.
     var Tsec = TH.T_sat(cfg.steam_generator.steam_p_rated);
     var heatToCoolant = cfg.thermal.h_fc * (P0 * cfg.thermal.heat_gen_coeff / cfg.thermal.h_fc); // = P0*heat_gen
-    var TavgMinusTsec = (P0 * cfg.thermal.heat_gen_coeff) / cfg.thermal.h_sg;
+    var TavgMinusTsec = (P0 * cfg.thermal.heat_gen_coeff
+      + cfg.thermal.heat_gen_coeff * (cfg.thermal.pump_heat_frac || 0)) / cfg.thermal.h_sg;   // + RCP heat (full flow)
     var Tavg = Tsec + TavgMinusTsec;
     var Tfuel = Tavg + P0 * cfg.thermal.heat_gen_coeff / cfg.thermal.h_fc;
     var delta_T = cfg.thermal.delta_T_rated * P0 / 1.0;

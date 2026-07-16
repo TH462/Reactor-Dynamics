@@ -84,6 +84,10 @@
       // Coolant node: dTavg = (Q_fuel_to_coolant - Q_coolant_to_sg)/C_cool *dt.
       h_sg: 0.6,                   // coolant→SG, s^-1 [tune] (balances the energy in/out at rated)
       coolant_heat_capacity: 20.0, // sets the coolant thermal time constant [tune]
+      // RCP heat: the pumps' shaft work ends up in the coolant (~15–20 MW for a
+      // 4-loop plant ≈ 0.55 % of rated core heat), scaled by flow. Matters at
+      // no-load (heats the plant with the heat sink isolated) and post-trip. [tune]
+      pump_heat_frac: 0.0055,      // fraction of rated core heat at full flow
       delta_T_rated: 33.0,         // hot/cold leg split at rated, °C [tune]
       flow_floor: 0.1,             // delta_T saturates: max(flow_frac, 0.1)
       // DNB / core-exit boiling (steam-line-break / loss-of-flow AT POWER). The hot

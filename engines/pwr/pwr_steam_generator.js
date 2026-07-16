@@ -47,7 +47,15 @@
     var Q_sg = s._Q_coolant_to_sg != null
       ? s._Q_coolant_to_sg
       : cfg.thermal.h_sg * s.flow_frac * (s.tavg_c - s.t_secondary_c);
-    var steam_generation_rate = Q_sg / sg.latent_heat_secondary;
+    // RCP pump heat crosses the SG with the core heat, but the behavioral
+    // turbine draws steam for the CORE power only — booking the extra ~0.55 %
+    // as steam made the secondary pressure creep for hours until power sagged
+    // out of band (probed). Net it out of the steam-side balance here (treat it
+    // as SG blowdown/ambient losses); every primary-side pump-heat effect
+    // (no-load heatup with the sink isolated, post-trip cooldown change) lives
+    // in the coolant node and is unaffected.
+    var Q_pump = cfg.thermal.heat_gen_coeff * (cfg.thermal.pump_heat_frac || 0) * s.flow_frac;
+    var steam_generation_rate = Math.max(0, Q_sg - Q_pump) / sg.latent_heat_secondary;
 
     // B2 — steam dump / turbine bypass: vents steam straight to the condenser,
     // bypassing the turbine, to control SG pressure on a turbine trip / load

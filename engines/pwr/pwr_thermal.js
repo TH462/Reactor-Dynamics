@@ -66,7 +66,11 @@
     if (s.rhr_active && s.pressure_mpa < e.rhr_permissive_mpa && s.condenser_cooling_available) {
       Q_rhr = e.rhr_gain * Math.max(0, s.tavg_c - e.rhr_sink_c);
     }
-    var dTavg = (Q_fuel_to_coolant - Q_coolant_to_sg - Q_rhr) / t.coolant_heat_capacity;
+    // RCP heat: pump shaft work deposited in the coolant, scaled by flow — the
+    // real no-load heat source (heats the plant if the heat sink is isolated),
+    // and its loss slightly speeds a post-trip cooldown.
+    var Q_pump = t.heat_gen_coeff * (t.pump_heat_frac || 0) * s.flow_frac;
+    var dTavg = (Q_fuel_to_coolant + Q_pump - Q_coolant_to_sg - Q_rhr) / t.coolant_heat_capacity;
     s.tavg_c += dTavg * dt;
     s._dTavg_dt = dTavg; // pressurizer surge uses this (thermal expansion)
 

@@ -2079,3 +2079,17 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   RBMK AR card). New autoctl probes: T-ref capture, deadband lockup (≤2 nudges/120 s steady),
   manual-motion→MAN, other-group immunity — 20/20. Gates: campaign 36/36, ops 52/66 (same),
   synoptic 55/55.
+- **2026-07-15 — RCP heat (stage 7, user direction).** `pump_heat_frac: 0.0055` [tune]
+  (~0.55 % of rated core heat ≈ 15–20 MW for a 4-loop plant): `Q_pump = heat_gen_coeff ×
+  pump_heat_frac × flow_frac` added to the coolant node (pwr_thermal.stepCoolant), and the
+  equilibrium builders (`_computeEquilibriumTemps`, `_buildState`) carry it so the
+  full-power refs shift consistently (+0.18 °C — inside every tolerance) and reset stays
+  transient-free. Behavior gained (probed): HZP with the steam dump held closed heats at
+  ~17 °C/h on decay+pump heat; with the RCPs tripped the heatup nearly stops. **Secondary
+  bookkeeping finding:** letting the pump heat cross the SG as EXTRA STEAM made secondary
+  pressure creep for hours (the pressure-compensated turbine draws core-power steam only)
+  until power sagged out of band — ops "steady endurance 2 h" flipped red and the autoctl
+  HFP holds drifted −11 %/10 min. Fix: net Q_pump out of `steam_generation_rate` (booked
+  as SG blowdown/ambient losses — the lumped model has no other outlet); all primary-side
+  effects unaffected. Gates: pwr 14/14, autoctl 20/20, campaign 36/36, ops 52/66 with the
+  ORIGINAL failing set restored, manual regenerated (normal-value baselines shift ~0.2 °C).
