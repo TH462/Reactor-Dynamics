@@ -167,6 +167,7 @@
       steam_p_rated: 5.65,         // MPa secondary operating pressure [tune]
       steam_flow_rated: 1.0,       // [tune]
       sg_level_nominal: 65.0,      // % at hot_full_power
+      feed_pump_tau: 8.0,          // s — feed-pump speed→flow inertia (set_feed_pump_speed) [tune]
       afw_flow_frac: 0.15,         // AFW capacity, normalized to rated feed [tune]
       afw_start_level: 20.0,       // % — M4 auto-start setpoint (pwr_control actuation reads the instrument)
       afw_level_target: 20.0,      // % — built-in proportional level hold: full flow below this... [tune]

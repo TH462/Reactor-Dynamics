@@ -15,6 +15,14 @@
   function stepSecondary(s, cfg, dt) {
     var sg = cfg.steam_generator;
 
+    // FEED PUMP: the commanded speed (operator nudge/set, the three-element
+    // channel, or the load coupling — whoever wrote feed_pump_speed_pct last)
+    // reaches delivered demand through the pump's first-order inertia.
+    if (s.feed_pump_speed_pct != null) {
+      s.feedwater_demand_frac += ((s.feed_pump_speed_pct / 100) - s.feedwater_demand_frac)
+        / sg.feed_pump_tau * dt;
+    }
+
     // Feedwater: lost on the loss_of_feedwater failure; AFW backs up low SG level
     // (auto-start reads the instrument in M4; the engine exposes the effect).
     // AFW delivery = capacity × operator throttle (set_afw_flow) × a built-in

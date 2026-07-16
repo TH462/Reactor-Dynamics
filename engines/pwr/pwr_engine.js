@@ -179,7 +179,9 @@
         s.generator_load = s.turbine_demand_frac;
       },
       setFeed: function (s, frac) {
-        if (s.main_feedwater_available) s.feedwater_demand_frac = frac;
+        // Coupling drives the FEED PUMP's commanded speed; the pump's inertia
+        // (stepSecondary) carries it into delivered flow.
+        if (s.main_feedwater_available) s.feed_pump_speed_pct = clip(frac * 100, 0, 120);
       },
       tripFn: SG.tripTurbine,
     };
@@ -348,7 +350,8 @@
       // true flow (instruments.charging_flow) modulates away from this setpoint.
       charging_flow_normalized: s.charging_setpoint, letdown_flow_normalized: s.letdown_flow,
       charging_pump_running: s.charging_pump_running, cvcs_auto: s.cvcs_auto, boron_adjust: s.boron_adjust,
-      feedwater_flow_pct: s.feedwater_demand_frac * 100,
+      feed_pump_speed_pct: s.feed_pump_speed_pct,           // commanded pump speed (set_feed_pump_speed / nudge / coupling)
+      feedwater_flow_pct: s.feedwater_demand_frac * 100,    // deprecated mirror (pump delivery %) — kept one release
       feed_auto_coupled: s.feed_auto_coupled,
       steam_demand_mwe: s.steam_demand_mwe,
       load_mode: s.load_mode,
@@ -423,9 +426,15 @@
         s.generator_load = s.turbine_demand_frac;
         if (s.turbine_demand_frac > 0 && s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
         break;
-      case 'set_feedwater_flow':
+      case 'set_feedwater_flow':        // deprecated PWR alias — now drives the feed pump
+      case 'set_feed_pump_speed':
         s.feed_auto_coupled = false;
-        s.feedwater_demand_frac = clip(cmd.pct / 100, 0, 1.2);
+        s.feed_pump_speed_pct = clip(cmd.pct, 0, 120);
+        break;
+      case 'feed_pump_nudge':
+        // Manual feed-pump control: nudge the commanded speed up/down.
+        s.feed_auto_coupled = false;
+        s.feed_pump_speed_pct = clip((s.feed_pump_speed_pct || 0) + (cmd.delta_pct || 0), 0, 120);
         break;
       case 'set_feed_coupled':
         // Re-couple feedwater to load (the init default; set_feedwater_flow
@@ -558,7 +567,7 @@
         case 'failure_to_scram': s.scram_blocked = true; break;
         case 'stuck_open_spray': s.spray_override = true; break;
         case 'failed_pzr_heaters': s.heater_override = 0; break;
-        case 'sg_overfeed': s.feedwater_demand_frac = 1.2; break;
+        case 'sg_overfeed': s.feed_auto_coupled = false; s.feed_pump_speed_pct = 120; s.feedwater_demand_frac = 1.2; break;
       }
       return;
     }
@@ -725,7 +734,7 @@
       steam_pressure_mpa: cfg.steam_generator.steam_p_rated,
       steam_flow_normalized: P0, fw_flow_normalized: P0,
       steam_dump_override: null, steam_dump_frac: 0,   // B2 (null = auto)
-      feedwater_demand_frac: P0, feedwater_flow: P0, main_feedwater_available: true,
+      feedwater_demand_frac: P0, feed_pump_speed_pct: P0 * 100, feedwater_flow: P0, main_feedwater_available: true,
       afw_active: false, afw_pump_demand: false, afw_blocked: false, rhr_active: false,
       afw_throttle_frac: 1.0, afw_flow_normalized: 0,   // AFW throttle (set_afw_flow) + delivered flow
 
@@ -847,6 +856,8 @@
     // AFW throttle (added with the ESF AUTO/MAN arms).
     if (s.afw_throttle_frac == null) s.afw_throttle_frac = 1.0;
     if (s.afw_flow_normalized == null) s.afw_flow_normalized = 0;
+    // Feed pump (replaced direct feedwater-flow demand).
+    if (s.feed_pump_speed_pct == null) s.feed_pump_speed_pct = (s.feedwater_demand_frac || 0) * 100;
   };
 
   RD.PWREngine = PWREngine;

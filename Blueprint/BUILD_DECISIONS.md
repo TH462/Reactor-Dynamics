@@ -2041,3 +2041,27 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   pwr 14/14, campaign 36/36, ops 52/66 (same), synoptic 55/55, e2e 24/25, manual regenerated
   (set_afw_flow / set_esf_auto entries; stale fast-forward wording in the Automate entry
   fixed), procedures 20/21.
+- **2026-07-15 — FEED PUMP model + three-element control (stage 5, user direction).** The PWR's
+  feedwater is now driven through a feed pump: `feed_pump_speed_pct` (commanded) reaches
+  delivered `feedwater_demand_frac` through a first-order pump inertia (`feed_pump_tau` 8 s).
+  Writers of the commanded speed: MANUAL (`set_feed_pump_speed` 0–120 / `feed_pump_nudge` ±,
+  the synoptic ▼▲ + set box — both uncouple), the THREE-ELEMENT channel (`feed_sg` rebuilt:
+  SG level (1) + steam-flow feedforward (2) + 25×(steam−feed) mismatch trim (3) → pump speed;
+  `manual_overrides` kick it to MAN on any manual pump command; **defaultOn — the PWR's
+  free-play lineup**), and the LOAD COUPLING (retained engine-side but RE-PLUMBED to write
+  pump speed — the plan's "retire coupling" was softened because instructed content starts
+  channels clean and every load-maneuvering scenario relied on coupling for stability; with
+  the channel default-on in free play the coupling is effectively the scenario/fallback
+  path — deviation documented). `set_feedwater_flow` is a deprecated PWR alias (still real on
+  RBMK/BWR); `sg_overfeed` override fixed 1.2→120 (pct-units slip) and its physics effect now
+  sets pump speed; `loss_of_feedwater` intercepts the new commands. Kernel `_stepPid` gained
+  the `trim` hook, and **anti-windup switched from I-clamping to CONDITIONAL INTEGRATION** —
+  the clamp RATCHETED the integrator at an output floor (I forced to uMin−kp·e > 0 with the
+  level high) and noise excursions then trickle-fed a zero-steam-draw SG (probed: the
+  default-engaged channel overfilled the SG at HZP, 65→100 % in ~15 min; with conditional
+  integration HZP holds 65–68 % over 4 h at 3600×). Stability probes: HFP/50 % hold 65±1.2 %
+  over 2 h at 3600×. New control_state `feed_pump_speed_pct` (+ deprecated feedwater_flow_pct
+  mirror); synoptic Steam & Flow card rebuilt (pump nudge/set, speed readout, "Feed control:
+  AUTO — three-element / coupled / MANUAL" status). Gates: pwr 14/14, autoctl 19/19, campaign
+  36/36, ops 52/66 (same), synoptic 55/55, manual regenerated (Feed Pump Speed / Nudge
+  entries), procedures 20/21, audit PASS.

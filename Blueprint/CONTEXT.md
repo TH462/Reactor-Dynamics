@@ -375,7 +375,8 @@ physical-quantity vocabulary.
 
     "charging_flow_normalized": float,   // CVCS charging SETPOINT (command) — under AUTO the true flow (instruments.charging_flow) modulates away from this
     "letdown_flow_normalized": float,    // CVCS letdown setpoint
-    "feedwater_flow_pct": float, "steam_demand_mwe": float,
+    "feed_pump_speed_pct": float,        // PWR feed pump commanded speed (three-element channel / coupling / manual)
+    "feedwater_flow_pct": float, "steam_demand_mwe": float,   // feedwater_flow_pct: deprecated PWR mirror of pump delivery
     "hpi_active": bool, "rhr_active": bool,   // operator-actuated ECCS / cooldown (set_hpi — the merged HPI/LPI — / set_rhr)
     "afw_throttle_pct": float,                // AFW throttle position (set_afw_flow)
     "governor_valve_pct": float,     // turbine admission valve % (engine-driven; read-only readout)
@@ -444,7 +445,9 @@ scram
 **PWR plant control:**
 ```
 set_steam_demand    { mwe }
-set_feedwater_flow  { pct }                    // 0–100
+set_feed_pump_speed { pct }                    // feed pump commanded speed, 0–120 (delivered flow follows via pump inertia)
+feed_pump_nudge     { delta_pct }              // manual nudge of the pump speed (the ▲/▼ buttons)
+set_feedwater_flow  { pct }                    // DEPRECATED PWR alias for set_feed_pump_speed (still a real command on RBMK/BWR)
 set_heater          { power_pct }
 set_spray           { open }
 open_porv

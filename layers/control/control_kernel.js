@@ -55,7 +55,9 @@
   // Maps a value-bearing command to its parameter field (they differ by action).
   function valueFieldFor(action) {
     switch (action) {
-      case 'set_feedwater_flow': case 'set_recirc_flow': case 'set_channel_flow': case 'set_afw_flow': return 'pct';
+      case 'set_feedwater_flow': case 'set_recirc_flow': case 'set_channel_flow': case 'set_afw_flow':
+      case 'set_feed_pump_speed': return 'pct';
+      case 'feed_pump_nudge': return 'delta_pct';
       case 'set_hpi': case 'set_afw': case 'set_rcic': case 'set_hpci':
       case 'set_dhr': case 'set_rhr': case 'set_lpi': case 'set_eps_bypass': return 'active';
       case 'set_charging_flow': case 'set_letdown_flow': return 'normalized';
@@ -638,13 +640,23 @@
     if (c.pvF == null) return;
     var pv = c.pvF;
     var ff = def.ff ? def.ff(ctx) : 0;
+    var trim = def.trim ? def.trim(ctx) : 0;   // e.g. three-element feed: steam−feed mismatch
     if (c.I == null) c.I = def.init ? (def.init(ctx) || 0) : 0;   // post-restore re-init
     var e = (c.spEff != null ? c.spEff : c.sp) - pv;
     // Integrate in sim time, but never more than a few design periods per
     // evaluation — a giant sample must not carry a giant integral kick.
-    if (Math.abs(e) > def.db) c.I += (def.ki || 0) * e * Math.min(dt, 3 * def.period);   // freeze in the deadband (no creep)
-    c.I = clip(c.I, def.uMin - ff - def.kp * e, def.uMax - ff - def.kp * e);   // anti-windup
-    var u = clip(ff + def.kp * e + c.I, def.uMin, def.uMax);
+    // Anti-windup is CONDITIONAL integration (skip the increment when it would
+    // push the output further past a bound) — hard-clamping I to the bound
+    // instead RATCHETS it: at an output floor with the level high (e < 0) the
+    // clamp forces I = uMin − kp·e > 0, and instrument-noise excursions then
+    // trickle positive output forever (probed: the default-engaged feed channel
+    // slowly overfilled a zero-steam-draw SG at hot zero power).
+    if (Math.abs(e) > def.db) {   // freeze in the deadband (no creep)
+      var di = (def.ki || 0) * e * Math.min(dt, 3 * def.period);
+      var uTest = ff + trim + def.kp * e + c.I + di;
+      if (!(uTest > def.uMax && di > 0) && !(uTest < def.uMin && di < 0)) c.I += di;
+    }
+    var u = clip(ff + trim + def.kp * e + c.I, def.uMin, def.uMax);
     c.outNow = u;
     if (c.lastSent != null && Math.abs(e) <= def.db) { c.note = 'holding'; return; }
     if (c.lastAct != null && t - c.lastAct < def.period) return;

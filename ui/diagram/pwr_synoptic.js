@@ -457,10 +457,13 @@
     h += card('steam', 'sg-steam', 'Steam &amp; Flow',
       row('Steam flow', 'stmFlow', { hl: 'gSteamHeader', hint: 'Main steam flow — SG outlet to the turbine.' }) +
       row('Feedwater flow', 'fwFlow', { hl: 'gFeed', hint: 'Main feedwater flow into the SG.' }) +
-      '<div class="ctl" id="pwFeedCtl"><span class="k">Feed demand</span><span data-hl="gFeed">' + numSet('feedSet', 0, 100, 100, 'feed-set', '%') + '</span></div>' +
-      row('Feed', 'fwCoupled', { hint: 'When Load Mode is Follow or Manual, feedwater auto-tracks turbine load.' }) +
-      row('Feed setpoint', 'fwSet', {}),
-      { anchor: 'pwSgSteamOutletAnchor', hint: 'Steam &amp; Flow — steam and feedwater flows. Feed demand is hidden when auto-coupled to load.' });
+      '<div class="ctl" id="pwFeedCtl"><span class="k">Feed pump</span>' +
+      seg([{ l: '▼', act: 'feed-nudge-dn', f: 'fpDn' }, { l: '▲', act: 'feed-nudge-up', f: 'fpUp' }],
+        'Feed pump manual control — nudge the commanded pump speed down/up (takes the pump off automatic).') +
+      '<span data-hl="gFeed">' + numSet('feedSet', 0, 120, 100, 'feed-set', '%') + '</span></div>' +
+      row('Pump speed', 'fwSpd', { hint: 'Commanded feed-pump speed — delivered flow follows it through the pump\'s inertia.' }) +
+      row('Feed control', 'fwCoupled', { hint: 'Who is driving the feed pump: the three-element controller (AUTO, Automate tab), the load coupling, or your manual speed.' }),
+      { anchor: 'pwSgSteamOutletAnchor', hint: 'Steam &amp; Flow — steam and feedwater flows, and the feed pump (manual nudge/set or three-element automatic).' });
 
     // -- Plant Status (compact corner card) ---------------------------------------
     h += card('status', 'plant-status', 'Plant Status',
@@ -993,14 +996,15 @@
     if (overlay) txt('psDt', ctx.dispTd(ts.tavg_c - Tsat(ts.steam_pressure_mpa)));
     txt('stmFlow', fmtPct(ins.steam_flow * 100));
     txt('fwFlow', fmtPct(ins.fw_flow * 100));
-    var coupled = cs.feed_auto_coupled !== false;
-    if (refs.pwFeedCtl) refs.pwFeedCtl.style.display = coupled ? 'none' : '';
-    var fwRow = refs.fwSet && refs.fwSet.closest('.row');
-    if (fwRow) fwRow.style.display = coupled ? 'none' : '';
-    var fwCoupRow = refs.fwCoupled && refs.fwCoupled.closest('.row');
-    if (fwCoupRow) fwCoupRow.style.display = coupled ? '' : 'none';
-    if (coupled) txt('fwCoupled', 'auto (tracks load)');
-    else txt('fwSet', cs.feedwater_flow_pct.toFixed(0) + ' %');
+    // Feed pump: speed readout + who's driving it (three-element channel /
+    // load coupling / manual). The channel state comes from snapshot.automation.
+    txt('fwSpd', (cs.feed_pump_speed_pct != null ? cs.feed_pump_speed_pct : cs.feedwater_flow_pct).toFixed(0) + ' %');
+    var feedCh = null, chansA = (s.automation && s.automation.channels) || [];
+    for (var fci = 0; fci < chansA.length; fci++) if (chansA[fci].id === 'feed_sg') { feedCh = chansA[fci]; break; }
+    var feedMode = (feedCh && feedCh.engaged) ? 'AUTO — three-element'
+      : (cs.feed_auto_coupled !== false ? 'coupled (tracks load)' : 'MANUAL');
+    txt('fwCoupled', feedMode);
+    vcls('fwCoupled', (feedCh && feedCh.engaged) ? 'run' : (cs.feed_auto_coupled !== false ? '' : 'warn'));
     txt('rcpStat', ins.rcp_running ? 'running' : 'STOPPED'); vcls('rcpStat', ins.rcp_running ? 'run' : 'alarm');
     if (overlay) txt('rcpFlow', (ts.pump_flow_pct || 0).toFixed(0) + ' %');
     txt('tgRpm', ins.turbine_rpm.toFixed(0) + ' rpm');

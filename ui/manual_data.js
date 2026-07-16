@@ -124,11 +124,18 @@
           "params": ""
         },
         {
-          "control": "Feedwater Flow",
+          "control": "Feed Pump Speed",
           "group": "Secondary",
-          "uses": "Sets the make-up water flow to the boiler, as a percent of rated; used to control level.",
-          "command": "set_feedwater_flow",
+          "uses": "Commands the main feed pump speed (0–120 %); delivered feedwater follows through the pump’s inertia. Manual use takes the pump off automatic (three-element control or load coupling).",
+          "command": "set_feed_pump_speed",
           "params": "{pct}"
+        },
+        {
+          "control": "Feed Pump — Nudge",
+          "group": "Secondary",
+          "uses": "Nudges the feed pump commanded speed up or down a couple of percent — the manual fine control.",
+          "command": "feed_pump_nudge",
+          "params": "{delta_pct}"
         },
         {
           "control": "AFW (Aux Feedwater)",
@@ -1554,7 +1561,7 @@
             "tcold_c": 279.447,
             "pressure_mpa": 15.41,
             "pzr_level_pct": 54.979,
-            "sg_level_pct": 64.993,
+            "sg_level_pct": 65.014,
             "steam_flow_normalized": 0.499,
             "fw_flow_normalized": 0.499,
             "steam_pressure_mpa": 5.651,
@@ -1609,7 +1616,7 @@
             "tcold": 279.441,
             "primary_pressure": 15.413,
             "pzr_level": 55.775,
-            "sg_level": 64.923,
+            "sg_level": 64.942,
             "steam_flow": 0.497,
             "fw_flow": 0.496,
             "mwe_output": 498.827,
@@ -1786,7 +1793,7 @@
         {
           "control": "Feedwater Flow",
           "group": "Secondary",
-          "uses": "Sets the make-up water flow to the boiler, as a percent of rated; used to control level.",
+          "uses": "Sets the make-up water flow to the boiler, as a percent of rated; used to control level. (On the PWR this is a deprecated alias for the Feed Pump Speed control.)",
           "command": "set_feedwater_flow",
           "params": "{pct}"
         },
@@ -2823,7 +2830,7 @@
         {
           "control": "Feedwater Flow",
           "group": "Secondary",
-          "uses": "Sets the make-up water flow to the boiler, as a percent of rated; used to control level.",
+          "uses": "Sets the make-up water flow to the boiler, as a percent of rated; used to control level. (On the PWR this is a deprecated alias for the Feed Pump Speed control.)",
           "command": "set_feedwater_flow",
           "params": "{pct}"
         },
@@ -3858,7 +3865,7 @@
         {
           "control": "Feedwater Flow",
           "group": "Secondary",
-          "uses": "Sets the make-up water flow to the boiler, as a percent of rated; used to control level.",
+          "uses": "Sets the make-up water flow to the boiler, as a percent of rated; used to control level. (On the PWR this is a deprecated alias for the Feed Pump Speed control.)",
           "command": "set_feedwater_flow",
           "params": "{pct}"
         },
