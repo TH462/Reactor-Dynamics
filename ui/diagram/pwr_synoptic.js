@@ -1396,11 +1396,18 @@
     'Relief Valve (PORV)':         { card: 'relief' },
     'PORV Block Valve':            { card: 'relief' },
     'HPI':                         { card: 'emergency', emtab: 'hpi' },
+    'HPI/LPI':                     { card: 'emergency', emtab: 'hpi' },
     'AFW':                         { card: 'emergency', emtab: 'afw' },
+    'AFW Throttle':                { card: 'emergency', emtab: 'afw' },
     'Decay-Heat Removal (DHR)':    { card: 'emergency', emtab: 'rhr' },
     'Feed Pumps':                  { card: 'steam' },
     'Feed Reg':                    { card: 'steam' },
+    'Feed Pump':                   { card: 'steam' },
     'MSIV':                        { card: 'steam' },
+    'SR detector':                 { card: 'power', nis: 1 },
+    'NIS':                         { card: 'power', nis: 1 },
+    'Trip Blocks':                 { card: 'power', nis: 1 },
+    '1/M Plot':                    { card: 'power', nis: 1 },
     'Steam Dump':                  { card: 'turbgen' },
     'Turbine Load':                { card: 'turbgen' },
     'Main Breaker':                { card: 'turbgen' },
@@ -1414,6 +1421,10 @@
     if (!m || !mounted || !stage) return null;
     if (m.emtab) { emTabUser = m.emtab; setEmTab(m.emtab); }
     if (m.sec) { secUser.pin = m.sec; setPzrOpen(m.sec); }
+    if (m.nis) {
+      var ns = stage.querySelector('#pwNisSec');
+      if (ns) { ns.classList.add('open'); nisUser = true; }
+    }
     var el = m.panel ? stage.querySelector('#' + m.panel)
                      : stage.querySelector('.plant-card[data-card="' + m.card + '"]');
     if (el && m.sel) el = el.querySelector(m.sel) || el;

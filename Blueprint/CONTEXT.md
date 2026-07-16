@@ -305,6 +305,7 @@ physical-quantity vocabulary.
     "condenser_cooling_available": bool,   // condenser heat-sink availability (also §8.8 status)
     "reactivity_pcm": float, "startup_rate_dpm": float, "reactor_period_s": float,  // reactivity proxies — reactivity computer / SUR / period; display/derived only, NEVER fed to trips (HR1). The PWR carries a startup_rate INSTRUMENT (lagged/noisy twin of the SUR proxy) that feeds the rod-withdrawal interlock — an M4 command block with its own annunciator, not a protection trip.
     "sr_counts_cps": float, "ir_amps": float, "sr_energized": bool,   // nuclear instrumentation: Source Range counts (0 when de-energized; feeds the log instrument source_range + the 1e5 cps startup trip), Intermediate Range chamber current (feeds intermediate_range), SR switch state
+    "msiv_open": bool, "sg_safety_open": bool,   // main steam isolation valve + SG code safeties (upstream of the MSIV)
     // Synoptic additions (governor / ECCS / CVCS true flows — feed the §8.8 instruments; additive):
     "governor_valve_pct": number,     // turbine admission valve position, 0–100 %
     "charging_flow_actual": float,    // TRUE CVCS charging (0 with pump off; AUTO-modulated) — feeds instruments.charging_flow, ≠ setpoint
@@ -381,6 +382,7 @@ physical-quantity vocabulary.
     "feedwater_flow_pct": float, "steam_demand_mwe": float,   // feedwater_flow_pct: deprecated PWR mirror of pump delivery
     "hpi_active": bool, "rhr_active": bool,   // operator-actuated ECCS / cooldown (set_hpi — the merged HPI/LPI — / set_rhr)
     "afw_throttle_pct": float,                // AFW throttle position (set_afw_flow)
+    "sr_energized": bool, "msiv_open": bool,  // SR detector switch; main steam isolation valve
     "governor_valve_pct": float,     // turbine admission valve % (engine-driven; read-only readout)
     "steam_dump_pct": float, "steam_dump_auto": bool,   // steam dump / turbine bypass (B2)
     "pumps": [ { "id": string, "running": bool, "flow_pct": float } ],
@@ -470,6 +472,8 @@ open_block_valve                               // PORV block/isolation valve (B1
 close_block_valve                              // isolates a stuck-open PORV
 set_sr_detector     { on }                     // Source Range detector high voltage (P-6 interlocked both ways)
 set_trip_block      { trip_id, blocked }       // block/unblock a blockable startup trip (P-10 gated; auto-reinstates below)
+open_msiv                                      // Main Steam Isolation Valve — restore the steam path
+close_msiv                                     // isolate main steam (trips a loaded turbine; SG bottles to its code safeties)
 set_steam_dump      { mode: "auto"|"open"|"closed" | pct }   // turbine bypass to condenser (B2)
 ```
 **RBMK plant control:**
@@ -603,9 +607,11 @@ open `index.html` directly. No compilation, bundling, or transpilation in v1.
 
 v1 is deliberately contained: **three plants with fixed configurations** (the RBMK carrying
 its pre/post version switch), **single-session / single-user** with local save+load,
-**manual operation** (automatic *protection* is in scope; automatic *control* loops are
-not), and **the three flagship scenarios plus a library of smaller ones** (format defined;
-the full library grows over time).
+**manual-first operation** (automatic *protection* is in scope; operator-selectable
+automatic *control* — the Control Layer's per-plant automation channels, an explicit
+2026-07 scope extension — defaults off except each plant's normal lineup and always yields
+to manual action), and **the three flagship scenarios plus a library of smaller ones**
+(format defined; the full library grows over time).
 
 **Do not build the following in v1** (each is a reasonable future addition, intentionally
 deferred — resist the instinct to build outward before the core is solid):
@@ -616,14 +622,17 @@ deferred — resist the instinct to build outward before the core is solid):
 - Multi-user, accounts, authentication, cloud persistence, classroom infrastructure.
 - Server-side or WebAssembly physics. (v1 is browser-side vanilla JS — this is the target,
   nothing to defer here.)
-- Automatic *control* systems (auto rod control, auto level/pressure control beyond basic
-  relief/spray).
+- ~~Automatic *control* systems~~ — **built (2026-07 scope extension, user direction):**
+  per-plant automation channels in the Control Layer (rod T-avg hold, three-element
+  feedwater, AR power hold, recirc/pressure PIDs, ESF AUTO/MAN arms) — see
+  `M4b_control_layer.md`.
 - Multi-bank rod systems and sequencing, Bank Overlap Unit display, core map view. (All
   were TMI-2-specific; with one control group they have no place.)
 - Pressurizer discharge tank and rupture disk. (The stuck PORV + lying indicator are fully
   modeled; the discharge tank is secondary.)
-- Sensor redundancy / voting, containment modeling, fuel burnup, low-pressure injection or
-  accumulators for the PWR, thermodynamic turbine/condenser detail.
+- Sensor redundancy / voting, containment modeling, fuel burnup, thermodynamic
+  turbine/condenser detail. (PWR low-pressure injection was later merged into the one
+  HPI/LPI system, and passive accumulators were built — both post-v1-plan extensions.)
 - Automatic fast-forward dropout. (In v1 the user sets time acceleration manually.)
 
 ### Physics simplifications the Instructor must acknowledge

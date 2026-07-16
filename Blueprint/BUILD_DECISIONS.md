@@ -2170,3 +2170,19 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   msiv-open/close now branch: PWR = the real valve, BWR = the legacy msiv_closure failure
   toggle. Manual: MSIV command/glossary entries; regenerated. Gates: all green at baseline
   (campaign 36/36, ops 53/66, synoptic 55/55).
+- **2026-07-16 — Control-layer rework: docs + final gate sweep (stage 11, closes the
+  2026-07-15/16 eleven-stage plan).** CONTEXT.md brought fully current: §6.2 automation +
+  esf + trip_blocks snapshot sections, §6.3/§6.5 PWR field deltas (merged HPI/LPI, AFW,
+  feed pump, NIS, MSIV), §6.7 command catalog with deprecation notes, §7 file map
+  (layers/control/), §8 scope amended (operator-selectable automatic control is now an
+  explicit scope extension; the LPI/accumulator "do not build" note updated).
+  M4b_control_layer.md gained the §12/§13 kernel schema (ESF arms, blockable trips,
+  trip_block_permissive, blocks_when, actuation params). SYN_CONTROL_MAP gained the new
+  controls (SR detector/NIS/HPI-LPI/Feed Pump/1/M — with an `nis` reveal that opens the
+  collapsible section), fixing verify_manual_follow (now 84 checks, up from 81 — the new
+  startup-handoff steps verify through the live UI). Final battery: pwr 15/15 · rbmk 23/23
+  · bwr 12/12 · m4 15/15 · m5 17/17 · m6 16/16 · m6ph 8/8 · M7 OK · autoctl 20/20 ·
+  scenarios 3/3 · campaign 36/36 (1313) · ops 53/66 (better than the 52/66 pre-rework
+  baseline) · e2e 24/25 (accumulator blowdown gap) · procedures 20/21 (bwr_sbo_rcic) ·
+  audit PASS · manual-follow PASS · synoptic 55/55. Browser smokes: TMI lie intact
+  (indicator closed + hot tailpipe), BWR ?auto=all engages 5/5, TMI-2 P1 chat loads.

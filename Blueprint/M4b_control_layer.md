@@ -30,7 +30,23 @@ On top of the M4 spec's `trips / actuations / alarms / failures / interlocks`,
 a plant's protection config may carry:
 
 ```
-channels: [ ChannelDef ]     // automation channels (§3)
+channels:              [ ChannelDef ]        // automation channels (§3)
+esf_systems:           [ EsfSystemDef ]      // AUTO/MAN arms over ESF actuations (§6)
+trip_block_permissive: { instrument, direction, setpoint }   // P-10 (§7)
+```
+
+Trip/actuation/interlock extensions (all optional, all data):
+
+```
+TripDef      += id?          // referenced by set_trip_block
+             +  condition?   // trip evaluates only while it holds (same resolver
+                             //   as actuation conditions — e.g. 'sr_energized')
+             +  blockable?   // manually blockable while the permissive holds (§7)
+ActuationDef += arm?         // ESF system id — evaluates only while armed (§6)
+             +  params?      // extra command parameters carried on fire
+                             //   (e.g. set_sr_detector { on: true })
+InterlockDef += blocks_when? // { field, equals } — block only the matching form
+                             //   of the command (e.g. only set_sr_detector {on:false})
 ```
 
 ## 3. The automation channel runtime
@@ -102,6 +118,28 @@ set_auto_setpoint  { channel_id, value }          // clipped to sp.min/max
 automation: { channels: [ { id, group, label, hint, kind, engaged,
                             setpoint, setpoint_meta?, pv, note, standby } ] }
 ```
+
+## 3b. ESF AUTO/MAN arms (§12 in code)
+
+`EsfSystemDef = { id, label, commands: [actions] }`. Each system starts ARMED;
+`arm`-tagged actuations evaluate only while armed. A **non-internal** command
+listed on the system flips it to MANUAL (the operator took it by hand — the
+plant's own actuations are `_internal` and exempt). `set_esf_auto {system,
+auto:true}` re-arms and clears that system's `actuationFired` latches, so a
+STANDING start condition re-fires immediately — the point of re-arming.
+State: `automation.esf` in the snapshot, `esf` in the save (absent = armed).
+
+## 3c. Blockable startup trips (§13 in code)
+
+`set_trip_block {trip_id, blocked}` — refused (register-aware `blocked` result)
+unless `trip_block_permissive` is satisfied against the CURRENT instruments
+(P-10). While blocked, the trip is skipped. Blocks **auto-reinstate** the moment
+the permissive drops (Westinghouse convention). A layer constructed — or an old
+save loaded — with the permissive already satisfied starts with every blockable
+trip blocked: the real at-power lineup (without it, every at-power state
+insta-trips on the startup net). State: `rps_state.trip_blocks` in the snapshot,
+`trip_blocks` in the save. M7's "each trip warns first" invariant exempts
+blockable trips (their warning is the blocking procedure).
 
 ## 4. Lifecycle rules (M5)
 
