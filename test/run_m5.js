@@ -165,6 +165,35 @@ T.push(test('Attention stop — a plant event snaps fast-forward back to real ti
   var gsnap = g.advanceCycles(1);
   ck('no snap flag when already at 1×', gsnap.metadata.time_acceleration + '/' + !!gsnap.metadata.speed_snap,
      gsnap.metadata.time_acceleration === 1 && !gsnap.metadata.speed_snap, '1/false');
+
+  // A newly annunciating ALARM is an attention stop, distinct from scram/failure.
+  // trip_turbine is a COMMAND (not inject_failure), so it fires the TURB TRIP alarm
+  // without registering a new active_failure and without an immediate scram —
+  // isolating the alarm trigger.
+  var a = svc();
+  a.advanceCycles(3);
+  a.handleCommand({ action: 'set_speed', value: 60 });
+  a.advanceCycles(1);
+  a.handleCommand({ action: 'trip_turbine' });
+  var asnap = a.advanceCycles(1);
+  ck('a new alarm snaps back to real time', asnap.metadata.time_acceleration, asnap.metadata.time_acceleration === 1, '1');
+  ck('alarm reason reported', asnap.metadata.speed_snap && asnap.metadata.speed_snap.reason,
+     asnap.metadata.speed_snap && asnap.metadata.speed_snap.reason === 'alarm', 'alarm');
+
+  // The crucial NON-trigger: a commanded power/load maneuver is expected change and
+  // must remain fast-forwardable. Only an unbidden event snaps the clock; an
+  // excursion that genuinely needs attention annunciates an alarm (caught above),
+  // whereas the operator's own ramp does not. This guards fast-forward from being
+  // made useless during normal maneuvering by an over-eager future trigger.
+  var m = svc();
+  m.advanceCycles(3);
+  m.handleCommand({ action: 'set_speed', value: 60 });
+  m.advanceCycles(1);
+  m.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -4, speed: 'normal' });
+  var msnap = m.advanceCycles(1);
+  ck('a commanded maneuver does NOT snap fast-forward',
+     msnap.metadata.time_acceleration + '/' + !!msnap.metadata.speed_snap,
+     msnap.metadata.time_acceleration === 60 && !msnap.metadata.speed_snap, '60/false');
 }));
 
 T.push(test('Plant selection / reset — rebuilds the stack and resets the run', function (ck) {

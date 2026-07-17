@@ -9,6 +9,38 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Regression tests for the recent PWR reworks.** An audit found several recently-added features were
+  exercised but never *asserted*, so a regression would have passed silently. Added dedicated guards:
+  - **§14 engine suite (`run_pwr` 20→25):** `eccs_boration` (injection raises core boron toward the
+    RWST source; no-injection control stays flat; accumulators borate; no overshoot), `loop_pressure_nodes`
+    (node ordering, flow² offset scaling, coastdown collapse to a single pressure), `letdown_orifice_lineup`
+    (the four-state lineup ≈0/3/4/7 %, √ΔP pressure-driven tail-off, deprecated `set_letdown_flow` alias),
+    `save_migration` (a pre-rework save gains `pressure_setpoint`/`steam_dump_setpoint` defaults, migrates a
+    legacy `letdown_flow` to an orifice lineup, folds `lpi_active`→`hpi_active`, seeds the loop nodes), and
+    `mode5_controls` (pressure-setpoint tracking, RCP start/stop, steam-dump-setpoint secondary cooldown).
+  - **`run_m5` attention stops:** added the **alarm** trigger and the crucial **non-trigger** case — a
+    commanded power/load maneuver must *not* snap fast-forward (only unbidden events do), guarding
+    fast-forward from being made useless during normal maneuvering.
+  - **Shared `checkSanity` (every ops probe):** loop-pressure-node ordering, `boron_ppm ≥ 0`, and primary
+    inventory bounds now hold as passive invariants across all PWR ops scenarios (guarded so RBMK/BWR skip).
+  - Gates: `run_pwr` **25/25**, `run_m5` **19/19** (72 checks), ops **53/66** (unchanged scenarios, +60
+    invariant checks), `run_m7` **OK**, campaign **47/47**, RBMK **23/23** / BWR **12/12** unaffected.
+
+- **Borated emergency injection (PWR) — ECCS and accumulators now carry boron into the core.** The
+  emergency-injection water was pure inventory: HPI/LPI and the accumulators added coolant mass but
+  never changed core boron, so the negative-reactivity **shutdown-margin** role of borated safety
+  injection was absent. Now every emergency-injection source delivers water at **`eccs_boron_ppm`
+  (2500 ppm, the RWST/SIT concentration)** and it **mixes into `boron_ppm`** by perfect-mixing
+  transport — `dC/dt = q_inj·(C_eccs − C)/m` in `pwr_primary.stepInventory` — so injection **raises
+  core boron and adds negative reactivity**, exactly as borated ECCS/accumulator water holds a
+  reflooded core subcritical during a LOCA. The `boron_analyzer` readout now reflects this. Losses
+  (letdown/break/relief) leave at the current concentration and don't change it. CVCS borate/dilute
+  stays a separate idealized direct-rate channel. **Not modeled:** boil-off boron concentration (the
+  lumped loss term doesn't distinguish boil-off from leakage). Verified: a large-break LOCA with SI
+  drives boron 747 → ~2050 ppm (≈ −13000 pcm); no-injection control stays flat. PWR engine **20/20**,
+  scenarios **3/3**, campaign **47/47**, `run_autoctl` **20/20**, `run_m5` **19/19**, ops probes at
+  **53/66** baseline (no regressions).
+
 - **RCP cavitation (PWR) — the reactor coolant pumps now cavitate when the loop voids.** A running
   RCP degrades when its **suction node** approaches saturation: `suction_subcool_c = Tsat(p_pumpsuction)
   − tcold` (the lowest-pressure node, distinct from the bulk subcooling margin). Below an 8 °C onset the

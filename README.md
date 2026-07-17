@@ -73,7 +73,7 @@ _Last updated: 2026-07-17._
 - **ECCS card UI layout** open (contract in `Blueprint/pwr_synoptic_prerequisites.md`).
 
 **Current gate baselines** (a change should keep these at or above baseline — see
-_Definition of done_): PWR engine suite **20/20**, campaign **47/47**, `run_m5` **19/19**,
+_Definition of done_): PWR engine suite **25/25**, campaign **47/47**, `run_m5` **19/19**,
 `run_autoctl` **20/20**, synoptic **55/55**, `verify_e2e_ui` **PASS**, M7 **OK**, ops probes
 **~53/66** (remaining FAILs are tuning targets, not regressions).
 

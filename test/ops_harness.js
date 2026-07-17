@@ -188,6 +188,25 @@
     if (h.cmdErrors.length) {
       ck('no rejected commands (test-authoring guard)', h.cmdErrors.join(' | '), false, 'none');
     }
+    // Physical invariants that must hold for ANY final state (guarded by field
+    // presence so the RBMK/BWR probes, which lack these fields, skip them). These
+    // are algebraic truths — a violation means a structural regression, so wiring
+    // them here makes every ops probe a passive guard for the recent reworks.
+    var t = h.ts();
+    if (t.p_coldleg != null && t.p_hotleg != null && t.p_pumpsuction != null) {
+      // Loop pressure distribution: pump discharge (cold) is the highest node and
+      // pump suction the lowest; they collapse to equal on coastdown (hence ≤).
+      ck('loop pressure nodes ordered (suction ≤ hot ≤ cold)',
+        t.p_pumpsuction.toFixed(3) + ' ≤ ' + t.p_hotleg.toFixed(3) + ' ≤ ' + t.p_coldleg.toFixed(3),
+        t.p_pumpsuction <= t.p_hotleg + 1e-6 && t.p_hotleg <= t.p_coldleg + 1e-6, 'ordered');
+    }
+    if (t.boron_ppm != null) {
+      ck('boron concentration non-negative', t.boron_ppm.toFixed(1), t.boron_ppm >= 0, '≥ 0');
+    }
+    if (t.core_inventory_pct != null) {
+      ck('primary inventory within tank bounds', t.core_inventory_pct.toFixed(1),
+        t.core_inventory_pct >= -0.01 && t.core_inventory_pct <= 130, '0–130 %');
+    }
   }
 
   function fmt(x, d) { return (x == null || !isFinite(x)) ? String(x) : x.toFixed(d != null ? d : 2); }

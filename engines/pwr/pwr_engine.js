@@ -1763,6 +1763,192 @@
         ck('stopped pump does not cavitate', h.ts().rcp_cavitating, h.ts().rcp_cavitating === false, 'false');
       });
     },
+
+    // Borated emergency injection: HPI/LPI and the accumulators carry heavily
+    // borated RWST/SIT water (eccs_boron_ppm), which mixes into the core boron and
+    // adds negative reactivity — the ECCS shutdown-margin role during a LOCA. Guards
+    // pwr_primary.stepInventory's perfect-mixing transport.
+    eccs_boration: function () {
+      return test('Borated ECCS injection — HPI/accumulators raise core boron', function (ck) {
+        var C = new Harness('hot_full_power').eng.cfg.emergency.eccs_boron_ppm;
+        // (A) LOCA with safety injection: core boron rises toward the RWST source.
+        var h = new Harness('hot_full_power'); h.run(10);
+        var b0 = h.ts().boron_ppm;
+        h.cmd({ action: 'scram' });
+        h.cmd({ action: 'inject_failure', failure_id: 'primary_leak', severity: 1.0 });
+        h.cmd({ action: 'set_hpi', active: true });
+        h.run(200);
+        var b1 = h.ts().boron_ppm;
+        ck('HPI injection raises core boron', b0.toFixed(0) + ' → ' + b1.toFixed(0), b1 > b0 + 200, '> baseline + 200 ppm');
+        ck('boron never overshoots the ECCS source', b1.toFixed(0), b1 <= C + 1, '≤ ' + C + ' ppm');
+        // (B) Control: the same LOCA with NO injection leaves boron unchanged
+        // (mass-only losses leave at the current concentration).
+        var h2 = new Harness('hot_full_power'); h2.run(10);
+        var c0 = h2.ts().boron_ppm;
+        h2.cmd({ action: 'scram' });
+        h2.cmd({ action: 'inject_failure', failure_id: 'primary_leak', severity: 1.0 });
+        h2.run(200);
+        ck('no injection → boron unchanged', c0.toFixed(1) + ' → ' + h2.ts().boron_ppm.toFixed(1),
+          near(h2.ts().boron_ppm, c0, 1.0), c0.toFixed(1) + ' ±1');
+        // (C) Accumulator discharge also borates. Unit-test the mixing path directly
+        // (accumulators only arm at low pressure, awkward to reach through the full
+        // pressure model) with a crafted low-pressure state.
+        var cfg = new Harness('hot_full_power').eng.cfg;
+        var s = { pressure_mpa: 0.8, p_coldleg: 0.8, tavg_c: 120, _subcool_hot_c: 5,
+          _mass: 0.6, boron_ppm: 800, hpi_active: false, cvcs_auto: false,
+          charging_pump_running: false, charging_setpoint: 0, charging_flow: 0,
+          letdown_orifice_a: false, letdown_orifice_b: false,
+          porv_flow: 0, safety_flow: 0, leak_flow: 0, core_void_fraction: 0,
+          _accum_remaining: cfg.emergency.accumulator_capacity };
+        for (var i = 0; i < 10; i++) RD.pwrPrimary.stepInventory(s, cfg, 0.5);
+        ck('accumulators discharge at low pressure', s.accumulators_discharging, s.accumulators_discharging === true, 'true');
+        ck('accumulator injection borates the core', '800 → ' + s.boron_ppm.toFixed(0), s.boron_ppm > 850, '> 850 ppm');
+      });
+    },
+
+    // Loop pressure distribution: one dynamic pressure state (pressurizer/hot-leg
+    // reference) plus a quasi-static ΔP field. Guards computeNodePressures — every
+    // loop-tied system (ECCS/accumulators/letdown on the cold leg, RHR on the hot
+    // leg, cavitation on the suction) reads these nodes, so the invariant is shared.
+    loop_pressure_nodes: function () {
+      return test('Loop pressure distribution — node ordering, flow² scaling, coastdown collapse', function (ck) {
+        var h = new Harness('hot_full_power'); h.run(10);
+        var s = h.eng.s, pr = h.eng.cfg.primary, ff2 = s.flow_frac * s.flow_frac;
+        // At power the pump discharge (cold leg) is the highest node and the suction
+        // (between SG and RCP) the lowest; the hot leg is the pressurizer reference.
+        ck('cold leg is the highest node', s.p_coldleg.toFixed(3) + ' > ' + s.p_hotleg.toFixed(3), s.p_coldleg > s.p_hotleg, 'cold > hot');
+        ck('suction is the lowest node', s.p_pumpsuction.toFixed(3) + ' < ' + s.p_hotleg.toFixed(3), s.p_pumpsuction < s.p_hotleg, 'suction < hot');
+        ck('hot leg = the pressurizer reference', s.p_hotleg.toFixed(4), near(s.p_hotleg, s.pressure_mpa, 1e-6), s.pressure_mpa.toFixed(4));
+        // Offsets scale with flow_frac²; at (near) rated flow they equal the config ΔP.
+        ck('cold-leg offset = core ΔP · flow²', (s.p_coldleg - s.pressure_mpa).toFixed(4),
+          near(s.p_coldleg - s.pressure_mpa, pr.loop_dp_core_rated * ff2, 1e-3), (pr.loop_dp_core_rated * ff2).toFixed(4));
+        ck('suction offset = SG ΔP · flow²', (s.pressure_mpa - s.p_pumpsuction).toFixed(4),
+          near(s.pressure_mpa - s.p_pumpsuction, pr.loop_dp_sg_rated * ff2, 1e-3), (pr.loop_dp_sg_rated * ff2).toFixed(4));
+        // Coastdown: trip the pumps, flow decays to natural circulation (v1 = 0), and
+        // the three nodes collapse onto the single pressure state.
+        h.cmd({ action: 'inject_failure', failure_id: 'rcp_trip' });
+        h.run(120);
+        var s2 = h.eng.s;
+        ck('flow decayed off rated', s2.flow_frac.toFixed(3), s2.flow_frac < 0.2, '< 0.2');
+        ck('nodes collapse to one pressure on coastdown',
+          'Δcold=' + (s2.p_coldleg - s2.pressure_mpa).toFixed(3) + ' Δsuc=' + (s2.pressure_mpa - s2.p_pumpsuction).toFixed(3),
+          near(s2.p_coldleg, s2.pressure_mpa, 0.05) && near(s2.p_pumpsuction, s2.pressure_mpa, 0.05), 'both ≈ pressure_mpa');
+      });
+    },
+
+    // Two-orifice letdown: a pressure-driven bleed from the cold-leg node through the
+    // in-service orifice(s). Guards pwr_primary.letdownFlow (the √ΔP flow law and the
+    // four-state lineup) and the deprecated set_letdown_flow alias.
+    letdown_orifice_lineup: function () {
+      return test('Two-orifice letdown — pressure-driven lineup, tail-off, alias', function (ck) {
+        var h = new Harness('hot_full_power'); h.run(5);
+        var s = h.eng.s;
+        function lineup(a, b) { h.cmd({ action: 'set_letdown_orifices', a: a, b: b }); h.eng.step(0.02); return s.letdown_flow; }
+        var off = lineup(false, false), A = lineup(true, false), B = lineup(false, true), AB = lineup(true, true);
+        ck('off → no letdown', off.toFixed(4), off === 0, '0');
+        ck('A orifice ≈ 3% of rated', A.toFixed(4), near(A, 0.030, 0.004), '0.030 ±0.004');
+        ck('B orifice ≈ 4% (larger than A)', B.toFixed(4), near(B, 0.040, 0.004) && B > A, '0.040 ±0.004, > A');
+        ck('A+B lineup = sum of both orifices', AB.toFixed(4), near(AB, A + B, 1e-4), (A + B).toFixed(4));
+        ck('A+B (≈7%) is a net drain vs nominal charging (6%)', AB.toFixed(4), AB > 0.06, '> 0.06');
+        // Pressure-driven: flow ∝ √(p_coldleg − backpressure), so it tails off as RCS
+        // pressure falls toward the backpressure setpoint on a cooldown.
+        h.cmd({ action: 'set_letdown_orifices', a: true, b: true });
+        h.eng.s.pressure_mpa = 15.41; h.eng.step(0.02); var hi = s.letdown_flow;
+        h.eng.s.pressure_mpa = 5.0;   h.eng.step(0.02); var lo = s.letdown_flow;
+        ck('letdown tails off as RCS pressure falls', lo.toFixed(4) + ' < ' + hi.toFixed(4), lo < hi && lo > 0, 'lo < hi');
+        // Deprecated alias maps a requested normalized flow to the nearest lineup.
+        h.cmd({ action: 'set_letdown_flow', normalized: 0.0 });
+        ck('alias 0.0 → both orifices shut', !s.letdown_orifice_a && !s.letdown_orifice_b, !s.letdown_orifice_a && !s.letdown_orifice_b, 'off');
+        h.cmd({ action: 'set_letdown_flow', normalized: 0.07 });
+        ck('alias 0.07 → both orifices open', s.letdown_orifice_a && s.letdown_orifice_b, s.letdown_orifice_a && s.letdown_orifice_b, 'A+B');
+      });
+    },
+
+    // Save-format migration: a save written before the recent reworks must load and
+    // gain the new fields with their documented defaults. Guards _migrateState — the
+    // save contract (README DoD: old saves must still migrate).
+    save_migration: function () {
+      return test('Save migration — legacy saves gain new fields with documented defaults', function (ck) {
+        var h = new Harness('hot_full_power'); h.run(5);
+        var save = h.eng.saveState();
+        // Simulate a PRE-rework save: strip the fields added since and restore the old
+        // shapes — a commanded letdown_flow constant and the split lpi_active flag.
+        var legacy = save.s;
+        delete legacy.pressure_setpoint; delete legacy.steam_dump_setpoint;
+        delete legacy.letdown_orifice_a; delete legacy.letdown_orifice_b;
+        delete legacy.p_coldleg; delete legacy.p_hotleg; delete legacy.p_pumpsuction;
+        delete legacy.rhr_valve_open; delete legacy.eccs_mode;
+        delete legacy.hpi_active; legacy.lpi_active = true;   // old split-flag form → hpi
+        legacy.letdown_flow = 0.030;                          // old commanded constant → lineup A
+        // Load into a fresh engine; its cfg supplies the migration defaults.
+        var h2 = new Harness('hot_full_power');
+        h2.eng.loadState({ schema: save.schema, s: legacy, rod_groups: save.rod_groups,
+          active_failures: save.active_failures, instruments: save.instruments, refs: save.refs });
+        var s = h2.eng.s, cfg = h2.eng.cfg;
+        ck('pressure_setpoint ← NOP default', s.pressure_setpoint,
+          s.pressure_setpoint === cfg.pressurizer.P_setpoint, String(cfg.pressurizer.P_setpoint));
+        ck('steam_dump_setpoint ← no-load default', s.steam_dump_setpoint,
+          s.steam_dump_setpoint === cfg.steam_generator.steam_dump_setpoint, String(cfg.steam_generator.steam_dump_setpoint));
+        ck('legacy letdown_flow 0.030 → orifice A only', s.letdown_orifice_a + ' / ' + s.letdown_orifice_b,
+          s.letdown_orifice_a === true && s.letdown_orifice_b === false, 'A on / B off');
+        ck('lpi_active folds into hpi_active', s.hpi_active + ' / lpi=' + s.lpi_active,
+          s.hpi_active === true && s.lpi_active === undefined, 'hpi true, lpi gone');
+        var nodesOk = [s.p_coldleg, s.p_hotleg, s.p_pumpsuction].every(function (x) { return typeof x === 'number' && isFinite(x); });
+        ck('loop pressure nodes seeded on load', nodesOk, nodesOk, 'all finite');
+        // A half-migrated state must step cleanly (no NaN leaking from a missing field).
+        h2.run(2);
+        var t = h2.ts();
+        ck('migrated state steps without NaN', isFinite(t.pressure_mpa) && isFinite(t.boron_ppm),
+          isFinite(t.pressure_mpa) && isFinite(t.boron_ppm), 'finite');
+      });
+    },
+
+    // Mode-5 / transition control primitives in isolation (the round-trip test
+    // exercises them together; this pins each one's behavior so a regression points
+    // at the specific control): the operator pressure setpoint, the lowerable
+    // steam-dump setpoint, and RCP start/stop.
+    mode5_controls: function () {
+      return test('Mode-5 controls — pressure setpoint, RCP start/stop, steam-dump setpoint', function (ck) {
+        // (1) set_pressure_setpoint: heaters/spray hold the operator's target.
+        var h = new Harness('hot_full_power'); h.run(10);
+        var p0 = h.ts().pressure_mpa;
+        h.cmd({ action: 'set_pressure_setpoint', mpa: 13.0 });
+        h.run(300);
+        var p1 = h.ts().pressure_mpa;
+        ck('pressure tracks a lowered setpoint', p0.toFixed(2) + ' → ' + p1.toFixed(2),
+          p1 < p0 - 1 && near(p1, 13.0, 1.0), '≈ 13.0 (±1)');
+        h.cmd({ action: 'set_pressure_setpoint', mpa: 15.41 });
+        h.run(300);
+        ck('pressure recovers to a raised setpoint', p1.toFixed(2) + ' → ' + h.ts().pressure_mpa.toFixed(2),
+          h.ts().pressure_mpa > p1 + 1, '> lowered');
+
+        // (2) set_rcp: stopping the pumps coasts flow down (natural circ = 0 in v1);
+        // restarting spins them back up.
+        var r = new Harness('hot_full_power'); r.run(10);
+        ck('pumps running at power', r.ts().pump_flow_pct.toFixed(0), r.ts().pump_flow_pct > 95, '~100 %');
+        r.cmd({ action: 'set_rcp', running: false });
+        r.run(60);
+        ck('stopping the RCPs coasts flow down', r.ts().pump_flow_pct.toFixed(1), r.ts().pump_flow_pct < 10, '→ ~0 %');
+        r.cmd({ action: 'set_rcp', running: true });
+        r.run(30);
+        ck('restarting the RCPs restores flow', r.ts().pump_flow_pct.toFixed(0), r.ts().pump_flow_pct > 90, '~100 %');
+
+        // (3) set_steam_dump_setpoint: with the turbine offline the SG bottles to the
+        // no-load dump target; lowering it cools the secondary and, via the SG, the
+        // primary. Scrammed so there is no turbine load fighting the dump.
+        var d = new Harness('hot_full_power');
+        d.cmd({ action: 'scram' });
+        d.cmd({ action: 'disconnect_grid' });
+        d.run(60);
+        var sp0 = d.ts().steam_pressure_mpa, tavg0 = d.ts().tavg_c;
+        d.cmd({ action: 'set_steam_dump_setpoint', mpa: 5.0 });
+        d.run(400);
+        ck('lowering the steam-dump setpoint cools the secondary',
+          sp0.toFixed(2) + ' → ' + d.ts().steam_pressure_mpa.toFixed(2), d.ts().steam_pressure_mpa < sp0 - 0.5, 'steam pressure falls');
+        ck('secondary cooldown pulls the primary down too',
+          tavg0.toFixed(1) + ' → ' + d.ts().tavg_c.toFixed(1), d.ts().tavg_c < tavg0 - 1, 'tavg falls');
+      });
+    },
   };
 
   PWRScenarioTests.runAll = function () {
@@ -1771,7 +1957,8 @@
       'load_mode_follow',
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',
-      'merged_injection_curve', 'rhr_valve_and_mode', 'msiv_closure_at_power', 'rcp_cavitation'];
+      'merged_injection_curve', 'rhr_valve_and_mode', 'msiv_closure_at_power', 'rcp_cavitation',
+      'eccs_boration', 'loop_pressure_nodes', 'letdown_orifice_lineup', 'save_migration', 'mode5_controls'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(PWRScenarioTests[order[i]]());
     return results;
