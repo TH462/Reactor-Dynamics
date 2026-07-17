@@ -103,6 +103,41 @@ pwr_steam_generator, pwr_instruments, pwr_engine}.js`
   **20/20**, scenarios **3/3**, campaign **47/47**, `run_autoctl` **20/20**, `run_m5` **19/19**, ops
   **53/66** (baseline, no regressions).
 
+- **Break blowdown flash-cooling + realistic accumulator setpoint** (2026-07-17): fixed the break
+  depressurization model so `accumulator_trip_mpa` could be restored from the detuned **1.5 MPa** to the
+  real B&W CFT / Westinghouse SIT cover-gas pressure **4.14 MPa (600 psi)**. **Root cause (investigation
+  in `Diagnostic/PWR_PRESSURE_MODEL_PLAN.md`):** the old model had no term to remove a break's enthalpy,
+  so `tavg` pinned near the no-load temperature (~300 °C) for *every* break size — the saturation plateau
+  `Psat(tavg) ≈ 8.9 MPa` was fixed, and break size was distinguished only by `K_leak_depressurize`, a
+  direct pressure sink that ran *unconditionally* (including two-phase). That forced pressure far below
+  `Psat(tavg)` while `tavg` stayed hot — thermodynamically impossible superheat (a 100 % break sat at
+  2.38 MPa / 301 °C, Tsat 221 °C) — and, because nothing crossed 1.5 MPa, left the accumulators as
+  effectively dead code. The prior "TMI floors ~1.8–2.3 MPa so 4.14 MPa would fire and mask the lesson"
+  premise was **stale** (predates the sat-pull / loop-pressure rework): the current flagship TMI damage
+  branch holds ~8.8 MPa (1271 psi) the whole way to fuel damage. **Fix — two coupled changes.**
+  **(1) Blowdown flash-cooling** (`pwr_thermal.stepCoolant`): coolant leaving a break carries enthalpy
+  and the remaining inventory flashes to replace it, so `dTavg += blowdown_gain · leak_flow ·
+  (blowdown_sink_c − tavg)` — the same self-limiting mixing form as the ECCS quench, keyed on `leak_flow`
+  ONLY (a stuck-open PORV vents the steam space via `K_porv_relief` and leaves `leak_flow=0`, so the
+  flagship path is untouched). This makes the plateau *respond to break size*: a small break — decay heat
+  dominates the weak cooling, `tavg` holds hot, `Psat(tavg)` pins pressure well above 600 psi; a large
+  break — this term dominates, `tavg` falls toward containment, and `Psat(tavg)` (hence pressure, via the
+  sat-pull) drops through the ECCS/accumulator band. **(2) Gate `K_leak_depressurize` to the subcooled
+  regime** (`pwr_pressurizer.stepPressure`): once `primary_void_fraction > 0`, the direct term is dropped
+  so pressure is slaved to `Psat(tavg)` (consistent, no superheat) and the two-phase descent is governed
+  by *cooling*. `blowdown_gain` **0.02** [tune] tuned so ≤8 % SGTR holds the plateau (5.9 MPa / 854 psi,
+  never arms accumulators) while the 20 % large-LOCA default crosses below 4.14 MPa (3.2 MPa / 462 psi)
+  and dumps the accumulators + fires the cold quench; `blowdown_sink_c` **110 °C** (containment
+  saturation). **Cold-shutdown lineup:** with the setpoint at 4.14 MPa, the Mode 5 state (2.5 MPa) sits
+  *below* the accumulator pressure, so the cold-shutdown builder now **isolates the accumulators**
+  (`accumulator_valve_open = false`, the real Mode 5 lineup); `_driveHeatup` re-aligns them once
+  pressurized above the setpoint and `_driveCooldown` re-isolates before depressurizing into their band.
+  "Below 600 psi" is now the *natural, physical* large-break discriminator (only a break that cools the
+  RCS below Tsat(4.14) ≈ 252 °C arms the accumulators), as at TMI-2 where operators had to deliberately
+  depressurize to reach CFT pressure. New config: `thermal.blowdown_gain`, `thermal.blowdown_sink_c`.
+  Gates: PWR **26/26** (flagship inert to the change), campaign **47/47**, ops **53/66** (identical fail
+  set — SGTR/SBO pre-exist), m4 **15/15**, m5 **19/19**, autoctl **20/20**.
+
 - **Accumulator cold-water quench + discharge isolation valve** (2026-07-17): closed two gaps in the
   accumulator model surfaced in review. **(1) Cold-injection thermal quench.** Emergency-injection water
   now carries a *temperature*, not just mass and boron: `pwr_thermal.stepCoolant` pulls `tavg` toward
@@ -163,11 +198,13 @@ Implements `Blueprint/pwr_synoptic_prerequisites.md` so Fable can wire the synop
   primary break (`s.leak_flow`) now depressurizes the RCS (previously leaks only bled inventory, per
   the CONTEXT primary-pressure note). This brings **large LOCA into scope** — a large break crashes
   pressure into the ECCS band so LPI + accumulators actuate; the small PORV break (TMI) is unaffected
-  (`leak_flow=0` there). **Accumulator arming pressure tuned to 1.5 MPa** (below realistic ~4.14 MPa):
-  this v1 single-pressure model over-depressurizes a *small* break (TMI floors ~2.3 MPa / ~1.8 MPa
-  in the damage branch), so a realistic setpoint would spuriously refill the TMI transient and mask
-  the inventory/void lesson; the low arming pressure reserves accumulator action for genuine large
-  breaks. Documented at the param.
+  (`leak_flow=0` there). **[SUPERSEDED 2026-07-17 — see the "Break blowdown flash-cooling" entry
+  above.]** This originally paired with an accumulator setpoint detuned to 1.5 MPa on the premise that
+  the model "over-depressurizes a small break (TMI floors ~2.3/1.8 MPa)". That premise became stale after
+  the sat-pull / loop-pressure rework — the flagship TMI damage branch actually holds ~8.8 MPa — and
+  `K_leak_depressurize` is now gated to the subcooled regime, with break-size discrimination carried by
+  the physical blowdown flash-cooling term. `accumulator_trip_mpa` has been restored to the real
+  4.14 MPa (600 psi).
 - **M4 auto-permissives** added: low-pressure LPI auto-start (2.76 MPa) and RHR auto-align
   (3.45 MPa, gated on `rps_scrammed`). Safe setpoints — never reached in the existing suites.
 - Gate green: **PWR 12/12** (TMI not regressed), **M7 31/31 + teeth**, **E2E 25/25** (set_rhr/set_lpi

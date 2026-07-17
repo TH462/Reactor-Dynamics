@@ -68,11 +68,19 @@
     // Spray draws from the cold leg downstream of the Reactor Coolant Pump (RCP),
     // so its effectiveness scales with primary flow — no flow, no spray.
     var spray_eff = s.spray_flow_frac * clip(s.flow_frac != null ? s.flow_frac : 1, 0, 1);
+    // Break blowdown depressurizes the RCS — but ONLY while subcooled. Subcooled blowdown
+    // (liquid out, bubble collapse) drives pressure directly down to saturation; once the
+    // primary voids, the break vents steam that decay heat re-boils, so further depressurization
+    // is governed by how fast the coolant COOLS (thermal.blowdown_gain → Tavg → the sat-pull
+    // below), NOT this direct term. Gating it to the subcooled regime keeps pressure slaved to
+    // Psat(tavg) in two-phase — thermodynamically consistent — instead of forcing impossible
+    // superheat (pressure far below Psat(tavg) while Tavg stays hot).
+    var leak_depress = (s.primary_void_fraction > 0) ? 0 : (p.K_leak_depressurize || 0) * (s.leak_flow || 0);
     var dP = s.heater_power_frac * p.K_heater
            - spray_eff * p.K_spray
            - s.porv_flow * p.K_porv_relief
            - s.safety_flow * p.K_safety_relief
-           - (p.K_leak_depressurize || 0) * (s.leak_flow || 0)  // break blowdown depressurizes the RCS
+           - leak_depress
            + p.K_surge * (s._dTavg_dt || 0);              // thermal insurge raises pressure
     if (s.primary_void_fraction > 0) {
       // Two-phase: pressure collapses toward the saturation pressure of Tavg.

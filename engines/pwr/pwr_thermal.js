@@ -87,6 +87,20 @@
     if (q_inj > 0 && e.eccs_temp_c != null) {
       dTavg += (e.eccs_cooling_gain != null ? e.eccs_cooling_gain : 0) * q_inj * (e.eccs_temp_c - s.tavg_c);
     }
+    // Break blowdown flash-cooling (§6.2/§6.3): coolant leaving a primary break (s.leak_flow)
+    // carries enthalpy, and the remaining inventory flashes to replace it, removing latent heat.
+    // Self-limiting perfect-mixing pull of Tavg toward blowdown_sink_c (containment saturation)
+    // at the break throughput rate, scaled by blowdown_gain — the SAME form as the ECCS quench
+    // above. This is what makes the saturation plateau respond to break size (small break: decay
+    // heat dominates, Tavg holds high, Psat pins pressure > 600 psi; large break: this dominates,
+    // Tavg falls toward containment, pressure follows Psat(tavg) below the accumulator setpoint).
+    // Keyed on leak_flow ONLY (a stuck-open PORV vents the steam space, leak_flow=0 → no effect,
+    // so the flagship TMI path is untouched). Cannot cool below blowdown_sink_c; exactly 0 with
+    // no break.
+    var q_leak = s.leak_flow || 0;
+    if (q_leak > 0 && t.blowdown_gain) {
+      dTavg += t.blowdown_gain * q_leak * ((t.blowdown_sink_c != null ? t.blowdown_sink_c : 100) - s.tavg_c);
+    }
     s.tavg_c += dTavg * dt;
     s._dTavg_dt = dTavg; // pressurizer surge uses this (thermal expansion)
 

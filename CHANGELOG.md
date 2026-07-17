@@ -9,6 +9,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Physical break-depressurization model + realistic accumulator setpoint (PWR).** The accumulator
+  arming pressure is restored from the detuned **1.5 MPa** to the real B&W core-flood-tank /
+  Westinghouse SIT cover-gas pressure **4.14 MPa (600 psi)**. This is now physically meaningful because
+  break depressurization was reworked. **Before:** `tavg` pinned near ~300 °C for *every* break size (no
+  term removed the break's enthalpy), so the saturation plateau was fixed and break size was set only by
+  `K_leak_depressurize` — a direct pressure sink that ran even two-phase, forcing pressure far below
+  saturation while the coolant stayed hot (impossible superheat), and never actually reaching the old
+  1.5 MPa setpoint, so the accumulators were dead code. **Now:** a **break blowdown flash-cooling** term
+  in `pwr_thermal.stepCoolant` (`dTavg += blowdown_gain · leak_flow · (blowdown_sink_c − tavg)`, same
+  self-limiting form as the ECCS quench, keyed on `leak_flow` only) makes the plateau respond to break
+  size — a **small break** stays hot and pins pressure on the plateau *above* 600 psi (the SGTR/TMI
+  inventory-and-void lesson intact), a **large break** cools the RCS toward containment so pressure falls
+  below 600 psi and arms the accumulators + cold quench. `K_leak_depressurize` is gated to the subcooled
+  regime so two-phase pressure tracks saturation consistently (no superheat). Tuned so ≤8 % SGTR holds
+  ~5.9 MPa (854 psi) while the 20 % large-LOCA default drops to ~3.2 MPa (462 psi) and dumps the
+  accumulators. New config `thermal.blowdown_gain` (0.02), `thermal.blowdown_sink_c` (110 °C). The
+  **Mode 5 cold-shutdown** state now **isolates the SI accumulators** (it sits at 2.5 MPa, below the
+  restored setpoint — the real shutdown lineup); heatup re-aligns them once pressurized and cooldown
+  re-isolates before depressurizing into their band. The flagship TMI scenario is untouched (its
+  stuck-open PORV leaves `leak_flow=0`). Gates: **`run_pwr` 26/26**, campaign **47/47**, ops **53/66**
+  (identical fail set), m4 **15/15**, m5 **19/19**, autoctl **20/20**.
+
 - **Accumulator cold-water quench + discharge isolation valve (PWR).** Two gaps in the accumulator
   model, both raised in review. **(1) The cold injection had no thermal effect.** HPI/LPI and the
   accumulators added borated inventory (and, recently, boron) but their water carried no *temperature* —
@@ -23,9 +45,9 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   them. Added the motor-operated **discharge isolation valve** (`accumulator_valve_open`, default
   aligned) with **`open_accumulator_valve` / `close_accumulator_valve`** commands; a shut valve
   hard-gates discharge at any pressure, so a normal cooldown can depressurize below the check-valve
-  setpoint without a spurious dump. Old saves migrate to *valve open* (unchanged behavior). **Left
-  as-is (deliberate):** `accumulator_trip_mpa` stays tuned at 1.5 MPa rather than the real ~4.14 MPa /
-  600 psi — that detune reserves accumulator action for a genuine large break (see the config note).
+  setpoint without a spurious dump. Old saves migrate to *valve open* (unchanged behavior). (The
+  accumulator setpoint was left at 1.5 MPa in this change and **subsequently restored to the real
+  4.14 MPa** — see the "Physical break-depressurization model" entry above.)
   Verified new `run_pwr` guard `eccs_cold_injection` (quench magnitude matches the mixing rate, no-
   injection control stays flat, self-limit holds; valve blocks discharge/boration and preserves the
   tank). Gates: **`run_pwr` 26/26**, campaign **47/47**, ops **53/66** (unchanged — no new failures).

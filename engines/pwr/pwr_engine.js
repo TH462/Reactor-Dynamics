@@ -1046,6 +1046,12 @@
       if (init.cold_pzr_level != null) s.pzr_level_pct = init.cold_pzr_level;
       // Heaters/spray in auto tracking the cold setpoint (holds Pcold); turbine off.
       s.heater_override = null; s.spray_override = null;
+      // SI accumulators ISOLATED — the real Mode 5 lineup. Cold shutdown sits below the
+      // accumulator cover-gas pressure (Pcold ≈ 2.5 MPa < accumulator_trip_mpa 4.14 MPa), so an
+      // aligned tank would dump cold borated water and hold the plant subcritical/cold. The
+      // discharge isolation valves are shut in cold shutdown and re-aligned during heatup once
+      // RCS pressure exceeds the accumulator pressure (see _driveHeatup / _driveCooldown).
+      s.accumulator_valve_open = false;
     }
 
     if (name === 'hot_full_power' && !this._hfp_refs) {
@@ -1243,6 +1249,9 @@
     h.cmd({ action: 'set_steam_dump_setpoint', mpa: 8.90 });
     for (var p = 3; p <= 15.41; p += 2) { h.cmd({ action: 'set_pressure_setpoint', mpa: Math.min(p, 15.41) }); h.run(40); }
     h.cmd({ action: 'set_pressure_setpoint', mpa: 15.41 }); h.run(60);
+    // RCS is now above the accumulator cover-gas pressure — re-align the SI accumulators
+    // (isolated in the cold-shutdown lineup) so they are operable for the at-power Modes.
+    h.cmd({ action: 'open_accumulator_valve' });
     h.cmd({ action: 'set_feed_pump_speed', pct: 20 });
     var elapsed = 0, dt = 5;
     while (elapsed < maxSec) {
@@ -1278,6 +1287,9 @@
       if (t.pressure_mpa < 2.6) h.cmd({ action: 'set_spray', pct: 0 });
       else if (psp < t.pressure_mpa - 0.2) h.cmd({ action: 'set_spray', pct: 60 });
       else h.cmd({ action: 'set_spray', auto: true });
+      // Isolate the SI accumulators before depressurizing into their band (RCS approaching the
+      // ~4.14 MPa cover-gas pressure), so the controlled cooldown does not trigger a spurious dump.
+      if (t.pressure_mpa < 5.0) h.cmd({ action: 'close_accumulator_valve' });
       if (!below276 && t.pressure_mpa < 2.76) { below276 = true; h.cmd({ action: 'set_rhr', active: true }); h.cmd({ action: 'set_rhr_hx', pct: 100 }); h.cmd({ action: 'set_rcp', running: false }); }
       h.cmd({ action: 'set_boron_adjust', rate: t.reactivity_pcm < -1500 ? 0 : 3.0 });
       _pzrTrim(h); _feedHold(h);

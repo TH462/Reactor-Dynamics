@@ -117,6 +117,22 @@
       void_flux_tau: 3.0,          // s — flux void grows/recovers with this tau [tune]
       fuel_damage_c: 1200.0,       // cladding failure (fixed)
       fuel_melt_c: 2800.0,         // melt (fixed)
+      // Break blowdown flash-cooling (pwr_thermal.stepCoolant). Coolant leaving a primary
+      // break (s.leak_flow) carries enthalpy, and the remaining inventory flashes to replace
+      // it — removing latent heat as the break vents. Modeled as a self-limiting perfect-mixing
+      // pull of Tavg toward blowdown_sink_c (containment saturation) at the break throughput
+      // rate, scaled by blowdown_gain (same dimensionless form as the ECCS cold-injection
+      // quench). This makes the saturation plateau RESPOND to break size, which is the physical
+      // small-vs-large discriminator: a SMALL break — decay heat dominates the weak cooling, so
+      // Tavg holds the hot plateau and Psat(tavg) pins RCS pressure well above 600 psi (the TMI
+      // inventory/void lesson); a LARGE break — this term dominates decay heat, Tavg falls toward
+      // containment, and Psat(tavg) (and thus pressure, via the two-phase sat-pull) drops through
+      // the ECCS/accumulator band. Keyed on leak_flow ONLY — a stuck-open PORV/safety vents the
+      // steam space (K_porv_relief) and leaves leak_flow=0, so the flagship TMI path is untouched.
+      // Tuned so ≤8 % SGTR holds the plateau (>600 psi) while the 20 % large-LOCA default crosses
+      // below the 4.14 MPa accumulator setpoint. [tune]
+      blowdown_gain: 0.02,         // dimensionless scale on the break flash-cooling mixing term [tune]
+      blowdown_sink_c: 110.0,      // °C — containment-saturation floor the blowdown pulls Tavg toward [tune]
     },
 
     // -------------------------------------------------------------- pressurizer
@@ -263,13 +279,18 @@
       lpi_inventory_gain: 0.10,    // inventory frac/s per unit normalized low-head flow
       // Accumulators: passive borated tanks that discharge into the cold leg once
       // primary pressure falls below the arming pressure; finite capacity depletes.
-      // Same normalization convention as LPI. Real SIT cover gas is ~4.14 MPa, but
-      // this v1 single-pressure model over-depressurizes a SMALL break (the TMI
-      // sequence floors around 2.3 MPa / 1.8 MPa in the damage branch), so the arming
-      // pressure is tuned below that floor to reserve accumulator action for a genuine
-      // large-break LOCA (which crashes pressure to ~atmospheric) rather than spuriously
-      // refilling a small-break transient and masking the TMI inventory/void lesson. [tune]
-      accumulator_trip_mpa: 1.5,   // arming pressure (tuned; see note)
+      // Same normalization convention as LPI. Set to the real B&W core-flood-tank /
+      // Westinghouse SIT cover-gas pressure (~4.14 MPa / 600 psi). This value is now
+      // physically meaningful because the break blowdown flash-cooling term
+      // (thermal.blowdown_gain) makes the saturation plateau respond to break size: a
+      // SMALL break holds the hot plateau well ABOVE 600 psi (decay heat keeps the coolant
+      // hot — as at TMI-2, where operators had to deliberately depressurize to reach CFT
+      // pressure), so it never spuriously refills and the inventory/void lesson is intact;
+      // only a genuine LARGE break cools the RCS below Tsat(4.14 MPa) ≈ 252 °C and arms the
+      // accumulators. (Was detuned to 1.5 MPa under a stale premise — see BUILD_DECISIONS /
+      // CHANGELOG 2026-07-17; the old model pinned Tavg regardless of break size and used
+      // K_leak_depressurize to force pressure below saturation, which never reached 1.5.) [tune]
+      accumulator_trip_mpa: 4.14,  // arming pressure — real CFT/SIT cover-gas setpoint (600 psi)
       accumulator_flow_max: 1.0,   // normalized rated accumulator flow
       accumulator_inventory_gain: 0.12, // inventory frac/s per unit normalized flow
       accumulator_capacity: 2.5,   // total deliverable inventory fractions (finite)
