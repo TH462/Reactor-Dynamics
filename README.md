@@ -135,6 +135,20 @@ _Project status_). Runners print `PASS`/`FAIL` per test and a final tally.
 
 ---
 
+## Branching & workflow
+
+**Commit ongoing work to `develop`, not `main`.** `develop` is the active
+integration branch where day-to-day commits land; `main` is the stable/release
+branch. Do not commit straight to `main`.
+
+- **New work** → branch from / commit on `develop`.
+- **Releasing** → merge `develop` → `main` and push both. Do this only when the
+  work is at a done state (gates green — see _Definition of done_).
+- Keep `develop` current with `main` (fast-forward) before starting a new change so
+  history stays linear.
+
+---
+
 ## Architecture
 
 A layered stack — **snapshots flow up, commands flow down**; each layer talks only to the
