@@ -557,9 +557,10 @@
       ' data-scanner-hint="Charging setpoint (‰ of rated) — applies on Enter or when you click away.">' +
       '<span class="v" data-f="cvcsChg">—</span></div>' +
       '<div class="prow" data-hl="pwCvcsLetdownBranch pwPzrWater"><span class="k">Ltd</span>' +
-      '<input class="num-in" id="letdownSet" data-synset="letdown" type="number" min="0" max="100" value="0"' +
-      ' data-scanner-hint="Letdown setpoint (‰ of rated) — applies on Enter or when you click away.">' +
-      '<button class="btn-set" data-act="letdown-isolate" data-scanner-hint="Letdown isolate — drives letdown flow to zero.">Iso</button>' +
+      seg([{ l: 'A', act: 'letdown-a-in', f: 'ltdAin' }, { l: 'Out', act: 'letdown-a-out', f: 'ltdAout' }],
+        'Letdown orifice A — normal letdown (~3% of rated at NOP). In/out; flow is pressure-driven off the cold leg, so it tails off as RCS pressure falls.') +
+      seg([{ l: 'B', act: 'letdown-b-in', f: 'ltdBin' }, { l: 'Out', act: 'letdown-b-out', f: 'ltdBout' }],
+        'Letdown orifice B — larger orifice (~4% at NOP). A+B together = max letdown (a net drain, exceeds charging) for level reduction / depressurization.') +
       '<span class="v" data-f="cvcsLtd">—</span></div>' +
       '<div class="prow"><span class="k">B</span>' +
       seg([{ l: 'Bor', act: 'borate', f: 'bor' }, { l: 'Hold', act: 'boron-hold', on: 1, f: 'borHold' }, { l: 'Dil', act: 'dilute', f: 'dil' }],
@@ -738,12 +739,12 @@
         return;
       }
     });
-    // CVCS panel setpoints apply on change (compact panel has no Set buttons)
+    // CVCS charging setpoint applies on change (compact panel has no Set button).
+    // Letdown is now a two-orifice lineup (button segs), not a numeric setpoint.
     stage.addEventListener('change', function (e) {
       var inp = e.target.closest('[data-synset]'); if (!inp) return;
       var v = Math.max(0, Math.min(100, +inp.value || 0)) / 1000;   // ‰ -> normalized
       if (inp.getAttribute('data-synset') === 'charge') ctx.cmd({ action: 'set_charging_flow', normalized: v });
-      else ctx.cmd({ action: 'set_letdown_flow', normalized: v });
     });
     stage.addEventListener('input', function (e) {
       var sl = e.target.closest('[data-syn-slider="load"]'); if (!sl || !ctx) return;
@@ -1112,7 +1113,11 @@
     var pumpOn = cs.charging_pump_running !== false;
     segSync('cpOn', pumpOn); segSync('cpOff', !pumpOn);
     txt('cvcsChg', (cs.charging_flow_normalized * 100).toFixed(1) + '→' + (ins.charging_flow * 100).toFixed(1) + '%');
-    txt('cvcsLtd', ((cs.letdown_flow_normalized || 0) * 100).toFixed(1) + '→' + (ins.letdown_flow * 100).toFixed(1) + '%');
+    // Letdown: orifice lineup (buttons) + resulting pressure-driven flow (indication).
+    var ltdA = !!cs.letdown_orifice_a, ltdB = !!cs.letdown_orifice_b;
+    segSync('ltdAin', ltdA); segSync('ltdAout', !ltdA);
+    segSync('ltdBin', ltdB); segSync('ltdBout', !ltdB);
+    txt('cvcsLtd', (ins.letdown_flow * 100).toFixed(1) + '%');
     segSync('cvcsAuto', cs.cvcs_auto); segSync('cvcsMan', !cs.cvcs_auto);
     txt('cvcsBoron', ins.boron_analyzer.toFixed(0));
     if (refs.cvcsBoronDual) refs.cvcsBoronDual.textContent = learning ? '·true ' + ts.boron_ppm.toFixed(0) : '';
@@ -1388,7 +1393,7 @@
     'SCRAM':                       { card: 'rod', sel: '[data-syn="scram"]' },
     'Boron (Reactivity) — CVCS':   { panel: 'pwCvcsPanel' },
     'Charging Pump (CVCS)':        { panel: 'pwCvcsPanel' },
-    'Letdown Valve (CVCS)':        { panel: 'pwCvcsPanel' },
+    'Letdown Orifices (CVCS)':     { panel: 'pwCvcsPanel' },
     'CVCS Inventory Control':      { panel: 'pwCvcsPanel' },
     'Pressurizer Heaters (PZR)':   { card: 'pzr', sec: 'press' },
     'Pressurizer Spray (PZR)':     { card: 'pzr', sec: 'press' },

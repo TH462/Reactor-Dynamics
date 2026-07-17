@@ -68,11 +68,11 @@
           "params": "{normalized}"
         },
         {
-          "control": "Letdown Valve (CVCS)",
+          "control": "Letdown Orifices (CVCS)",
           "group": "Reactivity",
-          "uses": "Letdown removes coolant from the Reactor Coolant System — lowers primary inventory.",
-          "command": "set_letdown_flow",
-          "params": "{normalized}"
+          "uses": "Two fixed letdown orifices (off / A / B / A+B) bleed coolant from the cold leg to the VCT — lowers primary inventory. Flow is pressure-driven (∝ √ΔP across the orifice), so it tails off as RCS pressure falls; A+B is max letdown, a net drain against charging.",
+          "command": "set_letdown_orifices",
+          "params": "{a, b}"
         },
         {
           "control": "CVCS Inventory Control",

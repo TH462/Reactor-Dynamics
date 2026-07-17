@@ -9,6 +9,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Two-orifice letdown (PWR) — CVCS letdown is now a pressure-driven orifice lineup.** Letdown was a
+  commanded normalized setpoint; it is now **two fixed orifices, each independently in/out** — four
+  states **off / A / B / A+B** (`set_letdown_orifices {a, b}`). Flow is **pressure-driven** off the
+  cold-leg node — `C·√(p_coldleg − 2.4 MPa)`, the 2.4 MPa being the letdown-backpressure-control-valve
+  setpoint — so it **tails off as RCS pressure falls** toward that value on a cooldown, instead of
+  holding a commanded constant. Nominal at NOP: A ≈ 3 %, B ≈ 4 %, A+B ≈ 7 % of rated (A+B is a net
+  drain, exceeding charging, for level reduction / depressurization). The synoptic CVCS panel gains
+  two orifice toggles (A / B) replacing the letdown setpoint box; the manual renames "Letdown Valve"
+  → **"Letdown Orifices (CVCS)."** `set_letdown_flow {normalized}` is kept as a **deprecated alias**
+  (maps to the nearest lineup) and old saves migrate (`letdown_flow` → orifice lineup by NOP-flow).
+  PWR **19/19**, campaign **47/47**, `run_m5` **19/19**, synoptic **55/55**, `verify_e2e_ui` PASS.
+
 - **Loop pressure distribution (PWR) — three primary-loop pressure nodes.** The RCS is
   incompressible liquid outside the pressurizer bubble, so pressure stays ONE dynamic state
   (`pressure_mpa`, the pressurizer/hot-leg reference) plus a **quasi-static ΔP field** set by

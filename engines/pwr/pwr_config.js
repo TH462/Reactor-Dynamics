@@ -72,6 +72,19 @@
       boron_adjust_rate: 2.0,      // ppm/s while borating/diluting [tune]
       cvcs_makeup_gain: 3.0,       // auto-charging response to an inventory deficit [tune]
       charging_max: 0.06,          // max charging flow, normalized (normal makeup band) [tune]
+      // Letdown: TWO fixed orifices, each independently in/out (four states: off /
+      // A / B / A+B). Letdown is a pressure-driven bleed from the cold leg through
+      // an orifice to the letdown HX / VCT — so flow ∝ √(p_coldleg − backpressure),
+      // NOT a commanded constant (pwr_primary.stepInventory). The backpressure is the
+      // downstream letdown-backpressure-control-valve setpoint (2.4 MPa ≈ 350 psig,
+      // real Westinghouse), which keeps the letdown coolant subcooled and makes flow
+      // tail off toward zero as RCS pressure approaches it on a cooldown. Coefficients
+      // are normalized flow per √MPa, sized so at NOP (p_coldleg ≈ 15.71 MPa): orifice
+      // A ≈ 0.030 (normal letdown), B ≈ 0.040, A+B ≈ 0.070 (max — exceeds charging_max,
+      // a net drain for level reduction / depressurization). [tune]
+      letdown_backpressure_mpa: 2.4,
+      letdown_orifice_a_coeff: 0.00822,   // ≈ 0.030 normalized at NOP
+      letdown_orifice_b_coeff: 0.01096,   // ≈ 0.040 normalized at NOP
     },
 
     // ------------------------------------------------------------------ thermal

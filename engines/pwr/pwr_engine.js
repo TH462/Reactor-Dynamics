@@ -424,7 +424,11 @@
       // CVCS commands: charging_flow_normalized is the operator SETPOINT (what the
       // charging valve is commanded to), NOT the true flow — under AUTO make-up the
       // true flow (instruments.charging_flow) modulates away from this setpoint.
-      charging_flow_normalized: s.charging_setpoint, letdown_flow_normalized: s.letdown_flow,
+      charging_flow_normalized: s.charging_setpoint,
+      // Letdown orifice lineup (the command surface) + the resulting TRUE flow
+      // (readout; pressure-driven, not a setpoint).
+      letdown_orifice_a: !!s.letdown_orifice_a, letdown_orifice_b: !!s.letdown_orifice_b,
+      letdown_flow_normalized: s.letdown_flow,
       charging_pump_running: s.charging_pump_running, cvcs_auto: s.cvcs_auto, boron_adjust: s.boron_adjust,
       feed_pump_speed_pct: s.feed_pump_speed_pct,           // commanded pump speed (set_feed_pump_speed / nudge / coupling)
       feedwater_flow_pct: s.feedwater_demand_frac * 100,    // deprecated mirror (pump delivery %) — kept one release
@@ -632,8 +636,24 @@
         // leave AUTO make-up (which would otherwise modulate the true flow).
         s.charging_setpoint = cmd.normalized; s.charging_flow = cmd.normalized; s.cvcs_auto = false;
         break;
+      case 'set_letdown_orifices':
+        // The real letdown control: each orifice independently in/out (off / A / B /
+        // A+B). Flow is pressure-driven off the lineup (pwr_primary.letdownFlow).
+        if (cmd.a != null) s.letdown_orifice_a = !!cmd.a;
+        if (cmd.b != null) s.letdown_orifice_b = !!cmd.b;
+        break;
       case 'set_letdown_flow':
-        s.letdown_flow = cmd.normalized;
+        // Deprecated alias (pre-two-orifice saves/callers): map a requested
+        // normalized flow to the nearest orifice lineup by NOP-flow. off / A(≈0.03) /
+        // B(≈0.04) / A+B(≈0.07). The true flow is then pressure-driven like any lineup.
+        var _n = cmd.normalized || 0;
+        var _opts = [[false, false, 0], [true, false, 0.030], [false, true, 0.040], [true, true, 0.070]];
+        var _best = _opts[0], _bd = Infinity;
+        for (var _i = 0; _i < _opts.length; _i++) {
+          var _d = Math.abs(_opts[_i][2] - _n);
+          if (_d < _bd) { _bd = _d; _best = _opts[_i]; }
+        }
+        s.letdown_orifice_a = _best[0]; s.letdown_orifice_b = _best[1];
         break;
       case 'set_charging_pump':
         s.charging_pump_running = !!cmd.running;
@@ -883,7 +903,10 @@
       pzr_level_pct: cfg.pressurizer.pzr_level_nominal,
 
       _mass: 1.0, core_inventory_pct: 100, primary_void_fraction: 0,
+      // Letdown: two independent orifices (off / A / B / A+B). letdown_flow is the
+      // TRUE pressure-driven flow, recomputed each step from the lineup (pwr_primary).
       charging_flow: 0, charging_setpoint: 0, letdown_flow: 0, leak_flow: 0,
+      letdown_orifice_a: false, letdown_orifice_b: false,
       charging_pump_running: true, cvcs_auto: false, boron_adjust: 0,   // CVCS
       // Merged HPI/LPI emergency injection (one flag, two-segment pump curve)
       // + passive accumulators (ECCS, §6.2/§6.3).
@@ -1093,6 +1116,14 @@
     if (s.p_coldleg == null || s.p_hotleg == null || s.p_pumpsuction == null) {
       RD.pwrPrimary.computeNodePressures(s, this.cfg);
     }
+    // Two-orifice letdown (letdown rework 2026-07). Older saves stored letdown_flow
+    // as a commanded constant; derive the equivalent orifice lineup by nearest NOP-flow
+    // so intent carries over (letdown_flow is then recomputed pressure-driven each step).
+    if (s.letdown_orifice_a == null || s.letdown_orifice_b == null) {
+      var _lf = s.letdown_flow || 0;
+      s.letdown_orifice_a = _lf > 0.015;              // A in service above a small threshold
+      s.letdown_orifice_b = _lf > 0.050;              // B (larger) added toward the max lineup
+    }
   };
 
   RD.PWREngine = PWREngine;
@@ -1158,9 +1189,11 @@
   // the §14 gate can assert the transition is physically achievable end to end.
   function _pzrTrim(h) {                        // hold pzr level in band (letdown/charging)
     var l = h.ts().pzr_level_pct;
-    if (l > 62) { h.cmd({ action: 'set_letdown_flow', normalized: 0.04 }); h.cmd({ action: 'set_charging_flow', normalized: 0 }); }
-    else if (l < 50) { h.cmd({ action: 'set_charging_flow', normalized: 0.06 }); h.cmd({ action: 'set_letdown_flow', normalized: 0 }); }
-    else { h.cmd({ action: 'set_letdown_flow', normalized: 0 }); h.cmd({ action: 'set_charging_flow', normalized: 0 }); }
+    // Level high → open both letdown orifices (max drain); low → charge and isolate
+    // letdown; in band → both off. Letdown flow is pressure-driven from the lineup.
+    if (l > 62) { h.cmd({ action: 'set_letdown_orifices', a: true, b: true }); h.cmd({ action: 'set_charging_flow', normalized: 0 }); }
+    else if (l < 50) { h.cmd({ action: 'set_charging_flow', normalized: 0.06 }); h.cmd({ action: 'set_letdown_orifices', a: false, b: false }); }
+    else { h.cmd({ action: 'set_letdown_orifices', a: false, b: false }); h.cmd({ action: 'set_charging_flow', normalized: 0 }); }
   }
   function _feedHold(h) {                        // hold SG level ~65 % on the feed pump
     var sgL = h.ts().sg_level_pct;

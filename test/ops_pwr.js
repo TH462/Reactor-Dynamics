@@ -265,7 +265,7 @@
         h.run(300);
         var invHandsOff = h.ts().core_inventory_pct;
         h.cmd('scram');
-        h.cmd('set_letdown_flow', { normalized: 0 });
+        h.cmd('set_letdown_orifices', { a: false, b: false });
         // EOP: start safety injection, then cool down & depressurize so HPI flow
         // (which dies against high pressure) can beat the break flow.
         h.cmd('set_hpi', { active: true });
@@ -481,7 +481,7 @@
           hh.cmd('set_spray', { pct: flip ? 100 : 0 });
           hh.cmd('set_steam_dump', { mode: flip ? 'open' : 'closed' });
           hh.cmd('set_charging_flow', { normalized: flip ? 0.06 : 0 });
-          hh.cmd('set_letdown_flow', { normalized: flip ? 0 : 0.06 });
+          hh.cmd('set_letdown_orifices', { a: !flip, b: !flip });
           hh.cmd('rod_nudge', { group_id: 'control_rods', steps: flip ? 3 : -3 });
           hh.cmd('set_afw', { active: flip });
           hh.cmd('set_hpi', { active: !flip });

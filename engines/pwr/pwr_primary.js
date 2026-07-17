@@ -79,8 +79,24 @@
     return flow * e.accumulator_inventory_gain;   // inventory-fraction rate for the mass balance
   }
 
+  // Two-orifice letdown flow: a pressure-driven bleed from the cold leg through
+  // the in-service orifice(s) to the letdown HX / VCT. Each orifice passes
+  // C·√(p_coldleg − backpressure); s.letdown_flow is the TRUE flow (what the
+  // letdown_flow instrument reads), recomputed each step from the orifice lineup
+  // and the current cold-leg pressure — so it tails off as RCS pressure falls
+  // toward the backpressure on a cooldown, unlike the old commanded constant.
+  function letdownFlow(s, cfg) {
+    var rc = cfg.reactivity;
+    var pd = (s.p_coldleg != null) ? s.p_coldleg : s.pressure_mpa;
+    var sq = Math.sqrt(Math.max(0, pd - rc.letdown_backpressure_mpa));
+    return (s.letdown_orifice_a ? rc.letdown_orifice_a_coeff : 0) * sq
+         + (s.letdown_orifice_b ? rc.letdown_orifice_b_coeff : 0) * sq;
+  }
+
   // Step 9 — primary inventory and voiding (CVCS charging/letdown + HPI/LPI/accumulator/SI − losses).
   function stepInventory(s, cfg, dt) {
+    // Letdown first — the auto make-up law and the mass balance below both read it.
+    s.letdown_flow = letdownFlow(s, cfg);
     var inj_inv = injectionFlowInv(s, cfg);
     s.hpi_flow_normalized = inj_inv / injectionRatedInv(cfg);   // 0–1 of combined HPI/LPI rated
     var accum_inv = stepAccumulators(s, cfg, dt);
@@ -141,6 +157,7 @@
 
   RD.pwrPrimary = {
     computeNodePressures: computeNodePressures,
+    letdownFlow: letdownFlow,
     injectionFlowInv: injectionFlowInv,
     stepInventory: stepInventory,
     stepFlow: stepFlow,

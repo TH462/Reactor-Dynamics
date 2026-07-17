@@ -235,18 +235,22 @@ Blocks **auto-reinstate** when power falls below P-10.
 - Injects inventory into cold leg.  
 - Raises PZR level / inventory; carries boron concentration change when adjusting.  
 
-### 7.3 Letdown Valve / flow
+### 7.3 Letdown Orifices (A / B)
 
-- Removes coolant from RCS.  
-- Lowers inventory / PZR level.  
-- **Isolate** = set letdown to zero.  
+- Two fixed orifices, each independently **in** or **out** — four lineups: **off / A / B / A+B**.  
+- Removes coolant from the RCS (bleeds the cold leg to the letdown HX / VCT); lowers inventory / PZR level.  
+- Flow is **pressure-driven** (∝ √ΔP across the orifice, referenced to the 2.4 MPa letdown backpressure),
+  so it **tails off as RCS pressure falls** on a cooldown — it is not a throttled setpoint.  
+- Nominal at NOP: **A ≈ 3 %**, **B ≈ 4 %**, **A+B ≈ 7 %** of rated (A+B is max letdown — a net drain,
+  exceeding normal charging, for level reduction / depressurization).  
+- **Isolate** = both orifices out (letdown zero).  
 
 ### 7.4 CVCS Inventory Control AUTO / MANUAL
 
 | Mode | Behavior |
 |------|----------|
 | **AUTO** | Make-up modulates charging toward inventory hold |
-| **MANUAL** | Operator sets charging/letdown |
+| **MANUAL** | Operator sets charging flow and the letdown orifice lineup |
 
 ### 7.5 Borate / Dilute / Hold
 

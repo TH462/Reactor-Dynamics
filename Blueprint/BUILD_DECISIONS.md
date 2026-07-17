@@ -413,6 +413,39 @@ The §18 flagship is the acceptance centerpiece; the numbers were tuned so the t
   **20/20**, `verify_e2e_ui` PASS. Enables the two-orifice letdown model and RCP cavitation (suction
   node) that follow.
 
+### Two-orifice letdown (2026-07-17) — pressure-driven CVCS letdown, four-state orifice lineup
+
+- **What.** Letdown was a commanded normalized constant (`set_letdown_flow`); it is now **two fixed
+  orifices**, each independently in/out — four states (off / A / B / A+B) via `set_letdown_orifices
+  {a, b}` (each field optional, so a toggle preserves the other orifice). `pwr_primary.letdownFlow`
+  computes the TRUE flow each step: `Σ Cᵢ·√(max(0, p_coldleg − letdown_backpressure_mpa))` over the
+  in-service orifices. `s.letdown_flow` becomes that computed value (the `letdown_flow` instrument
+  still reads it — SOURCE map unchanged, PRNG order intact); it is no longer a set field.
+- **Why pressure-driven / backpressure = 2.4 MPa.** Real letdown is an orifice bleed from the cold
+  leg to the letdown HX / VCT; the downstream backpressure-control valve holds ~2.4 MPa (350 psig,
+  Westinghouse) to keep the letdown coolant subcooled. So flow ∝ √ΔP across the orifice and **tails
+  off as RCS pressure approaches 2.4 MPa on a cooldown** — the honest behavior (you lose letdown
+  driving head at low RCS pressure), not a throttled constant. Reads the cold-leg node from the
+  loop-pressure rework (letdown taps the cold leg).
+- **Calibration.** `letdown_orifice_a_coeff` 0.00822, `b` 0.01096 (normalized flow per √MPa), sized so
+  at NOP (`p_coldleg` ≈ 15.71): A ≈ 0.030 (normal letdown), B ≈ 0.040, A+B ≈ 0.070 — A+B exceeds
+  `charging_max` 0.06 (a net drain for level reduction / depressurization). [tune]
+- **Compat.** `set_letdown_flow {normalized}` kept as a **deprecated alias** — maps the requested flow
+  to the nearest orifice lineup by NOP-flow (off/A/B/A+B), like the `set_dhr`/`set_lpi` precedents.
+  `_migrateState` derives the orifice lineup from an old save's `letdown_flow` (A above 0.015, B above
+  0.050) so intent carries; the flow is then recomputed pressure-driven. All first-party callers
+  (§14 `_pzrTrim`, `run_campaign` cooldown, `ops_pwr`, `run_e2e_controls`, the synoptic UI) updated to
+  the orifice command.
+- **UI.** The synoptic CVCS panel's letdown setpoint box is replaced by two orifice toggles (A / B,
+  each In/Out) with state sync; the manual control renames "Letdown Valve (CVCS)" →
+  "Letdown Orifices (CVCS)" (`manual_data.js`, `manual_ui_map.js`, the synoptic highlight map, and
+  `Manuals/03` §7.3 all updated together; `audit_manual_controls` green).
+- **Gate.** PWR **19/19** (Mode 5↔1 roundtrip + save/restore green with orifice letdown), campaign
+  **47/47**, `run_m5` **19/19**, `run_m4` **15/15**, `run_e2e_controls` 27/28 (pre-existing blowdown
+  gap only), `run_ops` 53/66 (baseline), autoctl **20/20**, synoptic **55/55**, `verify_e2e_ui` PASS.
+  Functional headless drive: clicking orifice A/B in the shell moves the letdown indication (0 → ~2 →
+  ~5 % as A then B come in).
+
 ## M6·PH — Placeholder Instructor
 
 **File:** `layers/instructor_layer.js`

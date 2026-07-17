@@ -1700,8 +1700,13 @@
     'charge-pump-on': function () { cmd({ action: 'set_charging_pump', running: true }); },
     'charge-pump-off': function () { cmd({ action: 'set_charging_pump', running: false }); },
     'charge-set': function () { cmd({ action: 'set_charging_flow', normalized: inputVal('chargeSet') / 1000 }); },
-    'letdown-set': function () { cmd({ action: 'set_letdown_flow', normalized: inputVal('letdownSet') / 1000 }); },
-    'letdown-isolate': function () { cmd({ action: 'set_letdown_flow', normalized: 0 }); },
+    // Letdown: two independent orifices (off / A / B / A+B). Each toggle preserves the
+    // other orifice (the engine command only touches the field it's given). Flow is
+    // pressure-driven off the cold-leg node, not a commanded setpoint.
+    'letdown-a-in': function () { cmd({ action: 'set_letdown_orifices', a: true }); },
+    'letdown-a-out': function () { cmd({ action: 'set_letdown_orifices', a: false }); },
+    'letdown-b-in': function () { cmd({ action: 'set_letdown_orifices', b: true }); },
+    'letdown-b-out': function () { cmd({ action: 'set_letdown_orifices', b: false }); },
     'cvcs-auto': function () { cmd({ action: 'set_cvcs_auto', active: true }); },
     'cvcs-manual': function () { cmd({ action: 'set_cvcs_auto', active: false }); },
     'eccs-on': function () { ui.pdOp.eccs = true; cmd({ action: 'set_hpi', active: true }); }, 'eccs-off': function () { cmd({ action: 'set_hpi', active: false }); },

@@ -906,9 +906,9 @@ test('pwr_mode3_to_mode5 — controlled cooldown reaches Cold Shutdown', functio
     if (!below && t.pressure_mpa < 2.76) { below = true; s.handleCommand({ action: 'set_rhr', active: true }); s.handleCommand({ action: 'set_rhr_hx', pct: 100 }); s.handleCommand({ action: 'set_rcp', running: false }); }
     s.handleCommand({ action: 'set_boron_adjust', rate: t.reactivity_pcm < -2500 ? 0 : 4.0 });
     var l = t.pzr_level_pct;
-    if (l > 58) { s.handleCommand({ action: 'set_letdown_flow', normalized: 0.03 }); s.handleCommand({ action: 'set_charging_flow', normalized: 0 }); }
-    else if (l < 30) { s.handleCommand({ action: 'set_charging_flow', normalized: 0.03 }); s.handleCommand({ action: 'set_letdown_flow', normalized: 0 }); }
-    else { s.handleCommand({ action: 'set_letdown_flow', normalized: 0 }); s.handleCommand({ action: 'set_charging_flow', normalized: 0 }); }
+    if (l > 58) { s.handleCommand({ action: 'set_letdown_orifices', a: true, b: false }); s.handleCommand({ action: 'set_charging_flow', normalized: 0 }); }
+    else if (l < 30) { s.handleCommand({ action: 'set_charging_flow', normalized: 0.03 }); s.handleCommand({ action: 'set_letdown_orifices', a: false, b: false }); }
+    else { s.handleCommand({ action: 'set_letdown_orifices', a: false, b: false }); s.handleCommand({ action: 'set_charging_flow', normalized: 0 }); }
     s.handleCommand({ action: 'set_feed_pump_speed', pct: clampC(40 + 3 * (65 - t.sg_level_pct), 0, 100) });
     return lc(sn);
   }, 40000);

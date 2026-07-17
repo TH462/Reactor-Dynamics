@@ -116,8 +116,9 @@ console.log(B + 'PWR — recently-added controls' + X);
   ck('charging flow set', s.engine.s.charging_flow >= 0.04, s.engine.s.charging_flow.toFixed(3), '>=0.04');
 
   s = svc('pwr', 'hot_full_power');
-  s.handleCommand({ action: 'set_letdown_flow', normalized: 0.03 });
-  ck('letdown flow set', s.engine.s.letdown_flow >= 0.02, s.engine.s.letdown_flow.toFixed(3), '>=0.02');
+  s.handleCommand({ action: 'set_letdown_orifices', a: true, b: false });
+  step(s, 20);
+  ck('letdown orifice A → pressure-driven flow', s.engine.s.letdown_flow >= 0.02, s.engine.s.letdown_flow.toFixed(3), '>=0.02');
 
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'inject_failure', failure_id: 'sgtr', severity: 0.5 });
