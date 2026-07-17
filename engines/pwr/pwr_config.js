@@ -162,6 +162,19 @@
       natural_circ_flow: 0.0,      // v1 does not model PWR natural circ [tune]
       low_flow_trip: 0.25,         // true-flow trip (documented HR1 exception)
       mass_max: 1.2,               // clip ceiling for primary_mass
+      // Loop pressure distribution (pwr_primary.computeNodePressures). The primary
+      // is incompressible liquid except for the pressurizer bubble, so there is ONE
+      // dynamic pressure state (pressure_mpa, the pressurizer/hot-leg reference) plus
+      // a QUASI-STATIC ΔP field set by pump head vs. friction. Both offsets scale
+      // with flow_frac² (form loss) and collapse to zero when the RCPs coast down:
+      //   p_hotleg      = pressure_mpa                             (surge line taps here)
+      //   p_pumpsuction = pressure_mpa − loop_dp_sg_rated·ff²      (between SG and RCP — lowest)
+      //   p_coldleg     = pressure_mpa + loop_dp_core_rated·ff²    (RCP→RX pump discharge — highest)
+      // Implied pump head at rated = loop_dp_core_rated + loop_dp_sg_rated ≈ 0.55 MPa
+      // (~80 psi, a 4-loop RCP). ECCS/accumulators/letdown inject/draw at the cold
+      // leg; RCP cavitation keys off the suction node. [tune]
+      loop_dp_core_rated: 0.30,    // MPa — cold leg (pump discharge) above hot leg at rated flow
+      loop_dp_sg_rated: 0.25,      // MPa — pump suction below hot leg at rated flow
     },
 
     // ------------------------------------------------- steam generator / second

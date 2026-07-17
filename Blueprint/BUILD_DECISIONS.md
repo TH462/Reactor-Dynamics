@@ -383,6 +383,36 @@ The §18 flagship is the acceptance centerpiece; the numbers were tuned so the t
 - **Gate.** New `run_m5` suite "Attention stop …" (scram, failure, and the accel-must-be->1 guard);
   `run_m5` **19/19**, `run_autoctl` **20/20**.
 
+### Loop pressure distribution (2026-07-17) — three primary-loop pressure nodes, one bubble state
+
+- **What.** `pwr_primary.computeNodePressures(s, cfg)` writes three node pressures onto the engine
+  state each step: `p_hotleg = pressure_mpa` (the pressurizer/surge-line reference), `p_pumpsuction
+  = pressure_mpa − loop_dp_sg_rated·ff²` (between SG and RCP, the lowest node), and `p_coldleg =
+  pressure_mpa + loop_dp_core_rated·ff²` (RCP→RX pump discharge, the highest node). Two new
+  `primary.*` config constants (0.30 / 0.25 MPa at rated) set the offsets; the implied pump head is
+  their sum (~0.55 MPa ≈ 80 psi). Called from `engine.step` right after `stepPressure` (step 7b, so
+  injection reads it in step 9) and from `_buildState` (so `getTrueState` is valid pre-first-step).
+- **Why NOT independent dynamic states.** The RCS is incompressible liquid everywhere except the
+  pressurizer bubble, so it has exactly ONE thermodynamic pressure state (the bubble) plus a
+  quasi-static ΔP field — pump head vs. form loss, both ∝ `flow_frac²`. Three separately-integrated
+  pressures would invent compliance the water doesn't have and be numerically stiff (acoustic/
+  hydraulic transients at tiny dt). Pure algebra over `pressure_mpa`/`flow_frac` is the honest,
+  cheap reduction; the spread collapses to zero as the RCPs coast down.
+- **Re-pointed systems.** ECCS injection (`injectionFlowInv`) and passive accumulators
+  (`stepAccumulators`) discharge into the COLD leg, so they now work against `p_coldleg` — higher
+  than `pressure_mpa` at power (slightly less injection), converging on it as a LOCA trips the pumps
+  (where injection matters most, so the flagship is barely perturbed). RHR suction is the HOT leg,
+  which equals `pressure_mpa`, so its 2.76 MPa interlock is unchanged. Spray already scaled with
+  `flow_frac` (its ΔP is the cold-leg-to-pressurizer head) — left as is.
+- **Contract / instruments.** Node pressures are additive true-state fields (migrate cleanly; seeded
+  in `_migrateState`). The single `primary_pressure` instrument still reads `pressure_mpa` — real
+  plants have one wide-range RCS gauge, not three, so the nodes are internal truth the tied-in
+  systems consume, not new indicators (HR1 preserved; PRNG order untouched).
+- **Gate.** PWR engine **19/19** (the merged-injection §14 test now reads the actual `p_coldleg`),
+  campaign **47/47**, `run_m5` **19/19**, `run_m4` **15/15**, `run_ops` 53/66 (baseline), autoctl
+  **20/20**, `verify_e2e_ui` PASS. Enables the two-orifice letdown model and RCP cavitation (suction
+  node) that follow.
+
 ## M6·PH — Placeholder Instructor
 
 **File:** `layers/instructor_layer.js`

@@ -224,6 +224,11 @@
     TH.stepCoolant(s, this.cfg, dt);
     // 7. Primary pressure (pressurizer).
     PZ.stepPressure(s, this.cfg, dt);
+    // 7b. Loop pressure distribution — quasi-static node pressures (cold leg / hot
+    //     leg / pump suction) from pressure_mpa and the PREVIOUS step's flow_frac
+    //     (explicit coupling). Computed BEFORE stepInventory so injection/accumulators
+    //     read the cold-leg node this step.
+    PR.computeNodePressures(s, this.cfg);
     // 9. Primary inventory and voiding (HPI/leak/relief) — before the pzr level
     //    surge so void_surge reflects this step's voiding.
     PR.stepInventory(s, this.cfg, dt);
@@ -344,6 +349,11 @@
     return {
       power_pct: s.power_pct, tavg_c: s.tavg_c, thot_c: s.thot_c, tcold_c: s.tcold_c,
       pressure_mpa: s.pressure_mpa, pzr_level_pct: s.pzr_level_pct, sg_level_pct: s.sg_level_pct,
+      // Loop pressure distribution (true state; the single primary_pressure
+      // instrument still reads pressure_mpa — no per-node gauges). Cold leg = pump
+      // discharge (highest, ECCS/letdown datum); pump suction = between SG and RCP
+      // (lowest, RCP-cavitation datum); hot leg = pressurizer reference.
+      p_coldleg: s.p_coldleg, p_hotleg: s.p_hotleg, p_pumpsuction: s.p_pumpsuction,
       steam_flow_normalized: s.steam_flow_normalized, fw_flow_normalized: s.fw_flow_normalized,
       steam_pressure_mpa: s.steam_pressure_mpa,   // secondary SG pressure (additive; for the UI diagram)
       mwe_output: s.mwe_output, subcooling_c: s.subcooling_c, core_inventory_pct: s.core_inventory_pct,
@@ -856,6 +866,10 @@
       _Q_total: P0, _Q_coolant_to_sg: P0 * cfg.thermal.heat_gen_coeff, _dTavg_dt: 0, _h_fc_eff: cfg.thermal.h_fc,
 
       pressure_mpa: cfg.pressurizer.P_equilibrium,
+      // Loop pressure nodes — finalized by computeNodePressures() below (after the
+      // at_operating_temp / cold overrides settle pressure_mpa and flow_frac).
+      p_coldleg: cfg.pressurizer.P_equilibrium, p_hotleg: cfg.pressurizer.P_equilibrium,
+      p_pumpsuction: cfg.pressurizer.P_equilibrium,
       // Operator pressure-control setpoint (the target heaters/spray hold). Default
       // is normal operating pressure; the cold-shutdown / heatup / cooldown path
       // moves it across the range so pressure holds where it is placed instead of
@@ -991,6 +1005,8 @@
     if (name === 'hot_full_power' && !this._hfp_refs) {
       this._hfp_refs = { Tf: Tfuel, Tavg: Tavg };
     }
+    // Finalize the loop pressure nodes from the settled pressure_mpa / flow_frac.
+    PR.computeNodePressures(s, cfg);
     return s;
   };
 
@@ -1072,6 +1088,11 @@
     // Older saves default to NOP pressure and the config no-load dump setpoint.
     if (s.pressure_setpoint == null) s.pressure_setpoint = this.cfg.pressurizer.P_setpoint;
     if (s.steam_dump_setpoint == null) s.steam_dump_setpoint = this.cfg.steam_generator.steam_dump_setpoint;
+    // Loop pressure nodes (loop-pressure rework 2026-07). Recomputed each step from
+    // pressure_mpa/flow_frac, but seed them so getTrueState is valid pre-first-step.
+    if (s.p_coldleg == null || s.p_hotleg == null || s.p_pumpsuction == null) {
+      RD.pwrPrimary.computeNodePressures(s, this.cfg);
+    }
   };
 
   RD.PWREngine = PWREngine;
@@ -1610,9 +1631,11 @@
         // High-head-only regime (TMI pressures): identical to the old standalone
         // HPI — the low-head segment shuts off above 4.5 MPa.
         h.cmd({ action: 'set_hpi', active: true });
+        // Injection now works against the COLD-LEG node (pump discharge), so the
+        // expectation reads the p_coldleg the step actually produced, not pressure_mpa.
         s.pressure_mpa = 8.0; h.eng.step(0.02);
-        var expectHH = e.hpi_flow_max * (e.hpi_pressure_ref - 8.0) / e.hpi_pressure_ref / rated;
-        ck('8 MPa → high-head only', s.hpi_flow_normalized.toFixed(4), near(s.hpi_flow_normalized, expectHH, 0.01), expectHH.toFixed(4) + ' ±0.01');
+        var expectHH = e.hpi_flow_max * (e.hpi_pressure_ref - s.p_coldleg) / e.hpi_pressure_ref / rated;
+        ck('8 MPa (cold leg) → high-head only', s.hpi_flow_normalized.toFixed(4), near(s.hpi_flow_normalized, expectHH, 0.01), expectHH.toFixed(4) + ' ±0.01');
         // Low-head regime: combined flow approaches rated as pressure → 0.
         s.pressure_mpa = 1.0; h.eng.step(0.02);
         ck('1 MPa → low-head dominates', s.hpi_flow_normalized.toFixed(3), s.hpi_flow_normalized > 0.7, '>0.7 of combined rated');
@@ -1623,8 +1646,9 @@
         // degraded_hpi scales the whole curve.
         h.cmd({ action: 'inject_failure', failure_id: 'degraded_hpi', severity: 0.5 });
         h.eng.step(0.02);
-        var full = e.lpi_flow_max * e.lpi_inventory_gain * (e.lpi_pressure_ref - 1.0) / e.lpi_pressure_ref
-                 + e.hpi_flow_max * (e.hpi_pressure_ref - 1.0) / e.hpi_pressure_ref;
+        var pc = s.p_coldleg;
+        var full = e.lpi_flow_max * e.lpi_inventory_gain * (e.lpi_pressure_ref - pc) / e.lpi_pressure_ref
+                 + e.hpi_flow_max * (e.hpi_pressure_ref - pc) / e.hpi_pressure_ref;
         ck('degraded_hpi scales the combined curve', s.hpi_flow_normalized.toFixed(3),
           near(s.hpi_flow_normalized, 0.5 * full / rated, 0.02), (0.5 * full / rated).toFixed(3) + ' ±0.02');
       });

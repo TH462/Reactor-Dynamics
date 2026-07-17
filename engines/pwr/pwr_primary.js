@@ -14,6 +14,24 @@
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
   function T_sat(P) { return 179.47 * Math.pow(Math.max(P, 1e-6), 0.239); }
 
+  // Loop pressure distribution (M1 §6.5; loop-pressure rework 2026-07). The RCS is
+  // incompressible liquid outside the pressurizer bubble, so there is ONE dynamic
+  // pressure state (s.pressure_mpa, the pressurizer/hot-leg reference) plus a
+  // QUASI-STATIC ΔP field: pump head vs. friction, both ∝ flow_frac² (form loss),
+  // collapsing to a single pressure when the RCPs coast down. Writes the three node
+  // pressures onto s each step; the systems tied into the loop read the node they
+  // physically connect to (cold leg = ECCS/accumulators/letdown; hot leg = RHR
+  // suction; suction = RCP cavitation). Called by the engine after stepPressure and
+  // by _buildState so getTrueState is valid before the first step. NOT a new dynamic
+  // state — pure algebra over pressure_mpa and flow_frac (no integration, no stiffness).
+  function computeNodePressures(s, cfg) {
+    var pr = cfg.primary;
+    var ff2 = s.flow_frac * s.flow_frac;
+    s.p_hotleg = s.pressure_mpa;                                    // surge line taps the hot leg
+    s.p_pumpsuction = s.pressure_mpa - pr.loop_dp_sg_rated * ff2;   // between SG and RCP (lowest)
+    s.p_coldleg = s.pressure_mpa + pr.loop_dp_core_rated * ff2;     // RCP→RX pump discharge (highest)
+  }
+
   // Emergency injection — ONE merged HPI/LPI system (one command, one flag,
   // one pump curve): a high-head/low-flow segment (shutoff 16.44 MPa — the
   // classic HPI charging-pump head) plus a low-head/high-flow segment (shutoff
@@ -26,8 +44,12 @@
   function injectionFlowInv(s, cfg) {
     if (!s.hpi_active) return 0;
     var e = cfg.emergency;
-    var q_hh = e.hpi_flow_max * clip((e.hpi_pressure_ref - s.pressure_mpa) / e.hpi_pressure_ref, 0, 1);
-    var q_lh = e.lpi_flow_max * e.lpi_inventory_gain * clip((e.lpi_pressure_ref - s.pressure_mpa) / e.lpi_pressure_ref, 0, 1);
+    // ECCS discharges into the COLD leg (pump discharge), so injection works against
+    // the cold-leg node — higher than the pressurizer reference at power, converging
+    // on it as the RCPs coast down (when a LOCA has usually tripped them).
+    var p_inj = (s.p_coldleg != null) ? s.p_coldleg : s.pressure_mpa;
+    var q_hh = e.hpi_flow_max * clip((e.hpi_pressure_ref - p_inj) / e.hpi_pressure_ref, 0, 1);
+    var q_lh = e.lpi_flow_max * e.lpi_inventory_gain * clip((e.lpi_pressure_ref - p_inj) / e.lpi_pressure_ref, 0, 1);
     return (q_hh + q_lh) * (s.hpi_flow_multiplier != null ? s.hpi_flow_multiplier : 1.0);
   }
   function injectionRatedInv(cfg) {
@@ -41,8 +63,10 @@
   function stepAccumulators(s, cfg, dt) {
     var e = cfg.emergency;
     var flow = 0;
-    if (s.pressure_mpa < e.accumulator_trip_mpa && s._accum_remaining > 1e-6) {
-      var frac = clip((e.accumulator_trip_mpa - s.pressure_mpa) / e.accumulator_trip_mpa, 0, 1);
+    // Accumulators also discharge into the cold leg — pressure-driven off the cold-leg node.
+    var p_inj = (s.p_coldleg != null) ? s.p_coldleg : s.pressure_mpa;
+    if (p_inj < e.accumulator_trip_mpa && s._accum_remaining > 1e-6) {
+      var frac = clip((e.accumulator_trip_mpa - p_inj) / e.accumulator_trip_mpa, 0, 1);
       flow = e.accumulator_flow_max * frac;
       // Deplete finite capacity by the delivered inventory; do not overdraw the tank.
       var delivered = flow * e.accumulator_inventory_gain * dt;
@@ -116,6 +140,7 @@
   }
 
   RD.pwrPrimary = {
+    computeNodePressures: computeNodePressures,
     injectionFlowInv: injectionFlowInv,
     stepInventory: stepInventory,
     stepFlow: stepFlow,

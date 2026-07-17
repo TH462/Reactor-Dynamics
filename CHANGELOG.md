@@ -9,6 +9,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Loop pressure distribution (PWR) — three primary-loop pressure nodes.** The RCS is
+  incompressible liquid outside the pressurizer bubble, so pressure stays ONE dynamic state
+  (`pressure_mpa`, the pressurizer/hot-leg reference) plus a **quasi-static ΔP field** set by
+  pump head vs. friction — no new integration, no stiffness. `pwr_primary.computeNodePressures`
+  now exposes `p_hotleg` (= `pressure_mpa`), `p_pumpsuction` (between SG and RCP — lowest), and
+  `p_coldleg` (RCP→RX pump discharge — highest); both offsets scale with `flow_frac²` and collapse
+  to a single pressure when the RCPs coast down. The systems tied into the loop now read the node
+  they physically connect to: **ECCS/accumulator injection works against the cold-leg node** (pump
+  discharge, higher than the pressurizer reference at power; converging on it as a LOCA trips the
+  pumps), while RHR suction stays on the hot leg. Node pressures are true state only — the single
+  `primary_pressure` instrument is unchanged (real plants have one wide-range RCS gauge, not three).
+  PWR engine **19/19**, campaign **47/47**, `run_m5` **19/19**.
+
 - **Fast-forward attention stops — the clock snaps back to real time when the operator must
   act.** Time acceleration lives in the Simulation Service (M5); it now auto-decelerates to 1×
   the moment a genuine plant event appears on the broadcast the event lands on — a **reactor
