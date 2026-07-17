@@ -1287,9 +1287,11 @@
       if (t.pressure_mpa < 2.6) h.cmd({ action: 'set_spray', pct: 0 });
       else if (psp < t.pressure_mpa - 0.2) h.cmd({ action: 'set_spray', pct: 60 });
       else h.cmd({ action: 'set_spray', auto: true });
-      // Isolate the SI accumulators before depressurizing into their band (RCS approaching the
-      // ~4.14 MPa cover-gas pressure), so the controlled cooldown does not trigger a spurious dump.
-      if (t.pressure_mpa < 5.0) h.cmd({ action: 'close_accumulator_valve' });
+      // Isolate the SI accumulators just ABOVE the ~4.14 MPa (600 psi) check-valve setpoint, so an
+      // intentional cooldown shuts the discharge valve BEFORE pressure reaches the arming point and
+      // the accumulators never fire (unlike a LOCA, where the valve stays open and they dump at the
+      // setpoint). Margin is ~0.35 MPa (isolate near ~650 psi), tracking the config setpoint.
+      if (t.pressure_mpa < h.eng.cfg.emergency.accumulator_trip_mpa + 0.35) h.cmd({ action: 'close_accumulator_valve' });
       if (!below276 && t.pressure_mpa < 2.76) { below276 = true; h.cmd({ action: 'set_rhr', active: true }); h.cmd({ action: 'set_rhr_hx', pct: 100 }); h.cmd({ action: 'set_rcp', running: false }); }
       h.cmd({ action: 'set_boron_adjust', rate: t.reactivity_pcm < -1500 ? 0 : 3.0 });
       _pzrTrim(h); _feedHold(h);
