@@ -446,6 +446,38 @@ The §18 flagship is the acceptance centerpiece; the numbers were tuned so the t
   Functional headless drive: clicking orifice A/B in the shell moves the letdown indication (0 → ~2 →
   ~5 % as A then B come in).
 
+### RCP cavitation (2026-07-17) — suction-node voiding degrades pump flow
+
+- **What.** `pwr_primary.stepCavitation(s, cfg)` computes `suction_subcool_c = Tsat(p_pumpsuction) −
+  tcold` — the NPSH-like margin at the lowest-pressure node — and a severity `rcp_cavitation_frac =
+  clip((cavitation_onset_c − suction_subcool_c)/cavitation_band_c, 0, 1)`, gated on `pump_running`.
+  `stepFlow` then drops the delivered-flow target to `1 − cavitation_flow_loss·severity`, so a fully
+  cavitating pump settles near 30 % flow. A boolean `rcp_cavitating` (severity > 0.05) drives a new
+  panel-B **RCP CAVITATION** alarm and the synoptic RCP "CAVITATING" readout. Called at step 7c (after
+  `computeNodePressures`, before `stepFlow` at 10).
+- **Why the suction node / tcold.** The pump suction (between SG and RCP) is the lowest-pressure node
+  and carries post-SG cold-leg-temperature water, so it reaches saturation first as the RCS voids or
+  depressurizes — the real cavitation datum. Deliberately separate from the bulk `subcooling_margin`
+  instrument (the TMI deception): cavitation is its own suction-referenced quantity, so it can't perturb
+  the calibrated flagship signal.
+- **Feedback is mild & stable.** severity ← p_pumpsuction ← flow_frac ← severity is closed with the
+  engine's one-step explicit coupling. When flow collapses, `loop_dp_sg·ff²` shrinks and p_pumpsuction
+  rises ~0.2 MPa (≈2 °C of Tsat) — small against the 8 °C band, so no oscillation; the loop settles.
+- **Full mechanical effect from the start (owner ruling).** Cavitation degrades flow immediately, not
+  indication-only. The TMI flagship stays green (PWR 19→**20/20**): the deception is inventory/void-
+  driven (pzr sat-pull, void-surge), not flow-driven, so the flow collapse rides alongside without
+  corrupting it. Probed: in the stuck-PORV damage branch the suction margin goes to ≈ −1.5 °C, severity
+  → 1.0, flow 100 % → 30 % as inventory uncovers — making the scenarios' narrated "RCP cavitation noise
+  developing" (`pwr_tmi2_p1/p3`) physics-driven for the first time.
+- **Surfacing.** New true-state fields `suction_subcool_c` / `rcp_cavitation_frac` / `rcp_cavitating`;
+  `rcp_cavitating` added to the instrument status set (HR1 status booleans) and driven as the new alarm
+  and synoptic RCP state. Additive fields migrate cleanly.
+- **Gate.** New §14 test `rcp_cavitation` (no cavitation at steady power → depressurize → cavitates +
+  flow degrades → pump-off gating). PWR **20/20**, campaign **47/47**, `run_m4` **15/15** (alarm added),
+  `run_m5` **19/19**, `run_m6` **16/16**, `run_ops` 53/66 (baseline), autoctl **20/20**, synoptic
+  **55/55**, `verify_e2e_ui` PASS. (`run_procedures` 20/21 — the failing `bwr_sbo_rcic` is a pre-existing
+  BWR gap, unrelated.)
+
 ## M6·PH — Placeholder Instructor
 
 **File:** `layers/instructor_layer.js`

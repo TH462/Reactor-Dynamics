@@ -1073,7 +1073,9 @@
     segSync('msivOpenB', msivOpen); segSync('msivCloseB', !msivOpen);
     txt('msivStat', msivOpen ? '' : (ins.sg_safety_open ? 'SHUT · safeties lifting' : 'SHUT'));
     vcls('msivStat', msivOpen ? 'dim' : 'alarm');
-    txt('rcpStat', ins.rcp_running ? 'running' : 'STOPPED'); vcls('rcpStat', ins.rcp_running ? 'run' : 'alarm');
+    var rcpCav = !!ins.rcp_cavitating;
+    txt('rcpStat', !ins.rcp_running ? 'STOPPED' : (rcpCav ? 'CAVITATING' : 'running'));
+    vcls('rcpStat', !ins.rcp_running ? 'alarm' : (rcpCav ? 'warn' : 'run'));
     if (overlay) txt('rcpFlow', (ts.pump_flow_pct || 0).toFixed(0) + ' %');
     txt('tgRpm', ins.turbine_rpm.toFixed(0) + ' rpm');
     txt('tgMw', ins.mwe_output.toFixed(0) + ' MW');

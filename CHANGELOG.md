@@ -9,6 +9,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **RCP cavitation (PWR) — the reactor coolant pumps now cavitate when the loop voids.** A running
+  RCP degrades when its **suction node** approaches saturation: `suction_subcool_c = Tsat(p_pumpsuction)
+  − tcold` (the lowest-pressure node, distinct from the bulk subcooling margin). Below an 8 °C onset the
+  pump cavitates, severity ramping to full over 8 °C more, and **loses up to 70 % of delivered flow**
+  (`flow_frac`) — a real mechanical effect, not just an indication. This is the physics behind the
+  TMI-2 control room's "the pumps are objecting" cavitation noise: as the stuck-PORV LOCA drives the
+  RCS to saturation, the suction margin collapses, the pumps cavitate, and coolant flow falls. A new
+  **"RCP CAVITATION"** alarm annunciates, the synoptic RCP reads **CAVITATING**, and true state exposes
+  `suction_subcool_c` / `rcp_cavitation_frac` / `rcp_cavitating`. Only a running pump cavitates. PWR
+  engine **20/20** (new acceptance test), campaign **47/47**, `verify_e2e_ui` PASS.
+
 - **Two-orifice letdown (PWR) — CVCS letdown is now a pressure-driven orifice lineup.** Letdown was a
   commanded normalized setpoint; it is now **two fixed orifices, each independently in/out** — four
   states **off / A / B / A+B** (`set_letdown_orifices {a, b}`). Flow is **pressure-driven** off the

@@ -68,6 +68,7 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 | PWR-A24 | SG PRESS HI | caution | B |
 | PWR-A25 | COND VAC LO | caution | B |
 | PWR-A26 | COND VAC TRIP | warning | B |
+| PWR-A27 | RCP CAVITATION | warning | B |
 
 ---
 
@@ -335,6 +336,16 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 
 ---
 
+## PWR-A27 — Reactor Coolant Pump Cavitation (RCP CAVITATION)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `rcp_cavitating` true — suction-node subcooling `Tsat(P_suction) − Tcold` below ~8 °C on a running pump |
+| **Means** | The RCS is approaching saturation at the pump suction — the pumps are drawing two-phase fluid, losing head and flow. A voiding / depressurizing primary. **Not** an instrument fault — believe it. |
+| **Actions** | 1) Cross-check **LO SUBCOOL / SUBCOOL LOST** and pressurizer pressure — treat as loss of subcooling. 2) Suspect a LOCA / stuck-open relief path; do **not** secure injection for level alone. 3) Restore subcooling (inject, arrest depressurization). 4) Per site EOPs, trip the RCPs if subcooling cannot be restored (avoid running cavitating pumps). → **PWR-E07 / X01** |
+
+---
+
 ## 4.0 Multi-alarm patterns (quick diagnosis)
 
 | Pattern | Suspect |
@@ -342,6 +353,7 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 | SG LVL LO → LO LO + REACTOR TRIP | Loss of feed (**E01**) |
 | RCP TRIP + REACTOR TRIP | Loss of flow (**E02**) |
 | PORV OPEN or **no PORV alarm** + LO SUBCOOL + PZR LVL HI | Stuck PORV / TMI (**E07**, **X01**) |
+| RCP CAVITATION + LO SUBCOOL / SUBCOOL LOST | Primary voiding — RCS at saturation (**E07**, **X01**) |
 | TURB TRIP + HI TAVG + PZR PRESS HI | Load rejection (**E03**) |
 | PZR PRESS LO LO + HPI ACTIVE + inventory drop | LOCA (**E09**) |
 | COND VAC LO → TURB TRIP | Vacuum event (**E10**) |

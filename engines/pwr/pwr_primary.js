@@ -32,6 +32,27 @@
     s.p_coldleg = s.pressure_mpa + pr.loop_dp_core_rated * ff2;     // RCP→RX pump discharge (highest)
   }
 
+  // RCP cavitation (loop-pressure rework 2026-07). The pump suction is the
+  // lowest-pressure node and sees cold-leg-temperature water, so it reaches
+  // saturation first as the loop voids/depressurizes. suction_subcool_c =
+  // Tsat(p_pumpsuction) − tcold is the NPSH-like margin; when it falls to
+  // cavitation_onset_c the running pump begins to cavitate (severity ramps to
+  // full over cavitation_band_c more), losing head/flow — the mechanical bite
+  // applied in stepFlow. A stopped pump does not cavitate. Kept separate from the
+  // bulk subcooling_margin instrument (the TMI deception). Called after
+  // computeNodePressures; uses this step's p_pumpsuction and tcold.
+  function stepCavitation(s, cfg) {
+    var pr = cfg.primary;
+    var psuc = (s.p_pumpsuction != null) ? s.p_pumpsuction : s.pressure_mpa;
+    s.suction_subcool_c = T_sat(psuc) - (s.tcold_c != null ? s.tcold_c : s.tavg_c);
+    var cav = 0;
+    if (s.pump_running) {
+      cav = clip((pr.cavitation_onset_c - s.suction_subcool_c) / pr.cavitation_band_c, 0, 1);
+    }
+    s.rcp_cavitation_frac = cav;
+    s.rcp_cavitating = cav > (pr.cavitation_indicate_frac != null ? pr.cavitation_indicate_frac : 0.05);
+  }
+
   // Emergency injection — ONE merged HPI/LPI system (one command, one flag,
   // one pump curve): a high-head/low-flow segment (shutoff 16.44 MPa — the
   // classic HPI charging-pump head) plus a low-head/high-flow segment (shutoff
@@ -147,7 +168,11 @@
   function stepFlow(s, cfg, dt) {
     var pr = cfg.primary;
     if (s.pump_running) {
-      s.flow_frac += (1.0 - s.flow_frac) / pr.pump_spinup_tau * dt;
+      // A cavitating pump loses head/flow: the delivered-flow target drops from
+      // rated by cavitation_flow_loss × severity (the mechanical bite of a two-phase
+      // suction). Uses this step's cavitation severity (stepCavitation, step 7c).
+      var target = 1.0 - pr.cavitation_flow_loss * (s.rcp_cavitation_frac || 0);
+      s.flow_frac += (target - s.flow_frac) / pr.pump_spinup_tau * dt;
     } else {
       s.flow_frac += (pr.natural_circ_flow - s.flow_frac) / pr.pump_coastdown_tau * dt;
     }
@@ -157,6 +182,7 @@
 
   RD.pwrPrimary = {
     computeNodePressures: computeNodePressures,
+    stepCavitation: stepCavitation,
     letdownFlow: letdownFlow,
     injectionFlowInv: injectionFlowInv,
     stepInventory: stepInventory,

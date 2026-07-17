@@ -188,6 +188,18 @@
       // leg; RCP cavitation keys off the suction node. [tune]
       loop_dp_core_rated: 0.30,    // MPa — cold leg (pump discharge) above hot leg at rated flow
       loop_dp_sg_rated: 0.25,      // MPa — pump suction below hot leg at rated flow
+      // RCP cavitation (pwr_primary.stepCavitation). Keys off the SUCTION-node
+      // subcooling margin Tsat(p_pumpsuction) − tcold — the lowest-pressure node, so
+      // it saturates first as the loop voids/depressurizes (the TMI-2 mechanism: the
+      // pumps "objected" with loud cavitation as the RCS went two-phase). Distinct from
+      // the bulk subcooling_margin instrument (the flagship deception signal). Severity
+      // ramps 0→1 as the suction margin falls from onset to onset−band; a running RCP
+      // then loses up to cavitation_flow_loss of its delivered flow (a real mechanical
+      // effect, not just an indication). Only a RUNNING pump cavitates. [tune]
+      cavitation_onset_c: 8.0,     // suction subcooling (°C) at which cavitation begins
+      cavitation_band_c: 8.0,      // ...ramping to full cavitation over this many °C more
+      cavitation_flow_loss: 0.7,   // fraction of delivered flow lost at full cavitation
+      cavitation_indicate_frac: 0.05, // severity above which the cavitation status/alarm annunciates
     },
 
     // ------------------------------------------------- steam generator / second
@@ -338,7 +350,7 @@
                'steam_demand_low', 'rod_at_limit', 'sr_energized', 'msiv_open', 'sg_safety_open',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
                'afw_active', 'afw_pump_running', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
-               'condenser_cooling_available', 'safety_relief_active'],
+               'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating'],
     },
 
     // ---------------------------------------------------------- named init states

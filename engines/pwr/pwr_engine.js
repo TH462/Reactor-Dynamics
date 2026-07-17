@@ -229,6 +229,9 @@
     //     (explicit coupling). Computed BEFORE stepInventory so injection/accumulators
     //     read the cold-leg node this step.
     PR.computeNodePressures(s, this.cfg);
+    // 7c. RCP cavitation from the suction-node subcooling — before stepFlow (10)
+    //     applies its flow degradation. Uses this step's p_pumpsuction and tcold.
+    PR.stepCavitation(s, this.cfg);
     // 9. Primary inventory and voiding (HPI/leak/relief) — before the pzr level
     //    surge so void_surge reflects this step's voiding.
     PR.stepInventory(s, this.cfg, dt);
@@ -305,6 +308,7 @@
       accumulators_discharging: s.accumulators_discharging,
       condenser_cooling_available: s.condenser_cooling_available,
       safety_relief_active: s.safety_open || s.safety_flow > 0,
+      rcp_cavitating: !!s.rcp_cavitating,
     };
   };
 
@@ -354,6 +358,10 @@
       // discharge (highest, ECCS/letdown datum); pump suction = between SG and RCP
       // (lowest, RCP-cavitation datum); hot leg = pressurizer reference.
       p_coldleg: s.p_coldleg, p_hotleg: s.p_hotleg, p_pumpsuction: s.p_pumpsuction,
+      // RCP cavitation: suction-node subcooling margin (°C), severity (0–1), and the
+      // annunciated flag — the physics behind the TMI-2 "the pumps are objecting" noise.
+      suction_subcool_c: s.suction_subcool_c, rcp_cavitation_frac: s.rcp_cavitation_frac,
+      rcp_cavitating: !!s.rcp_cavitating,
       steam_flow_normalized: s.steam_flow_normalized, fw_flow_normalized: s.fw_flow_normalized,
       steam_pressure_mpa: s.steam_pressure_mpa,   // secondary SG pressure (additive; for the UI diagram)
       mwe_output: s.mwe_output, subcooling_c: s.subcooling_c, core_inventory_pct: s.core_inventory_pct,
@@ -914,6 +922,8 @@
       accumulators_discharging: false, accumulator_flow_normalized: 0,
       _accum_remaining: cfg.emergency.accumulator_capacity, accumulator_volume_pct: 100,
       flow_frac: 1.0, pump_flow_pct: 100, pump_running: true, station_blackout: false,
+      // RCP cavitation (suction-node subcooling; pwr_primary.stepCavitation).
+      suction_subcool_c: 0, rcp_cavitation_frac: 0, rcp_cavitating: false,
       // Nuclear instrumentation: SR energized only where the state says so (startup lineup).
       sr_energized: !!init.sr_on,
       sr_counts_cps: init.sr_on ? cfg.nis.k_sr * P0 : 0,
@@ -1124,6 +1134,10 @@
       s.letdown_orifice_a = _lf > 0.015;              // A in service above a small threshold
       s.letdown_orifice_b = _lf > 0.050;              // B (larger) added toward the max lineup
     }
+    // RCP cavitation (loop-pressure rework 2026-07). Recomputed each step; seed for
+    // pre-first-step getTrueState on an old save.
+    if (s.rcp_cavitation_frac == null) { s.rcp_cavitation_frac = 0; s.rcp_cavitating = false; }
+    if (s.suction_subcool_c == null) RD.pwrPrimary.stepCavitation(s, this.cfg);
   };
 
   RD.PWREngine = PWREngine;
@@ -1723,6 +1737,32 @@
         ck('LPI mode in the low-head regime', s.eccs_mode, s.eccs_mode === 'LPI', 'LPI');
       });
     },
+
+    rcp_cavitation: function () {
+      return test('RCP cavitation — suction voiding degrades pump flow', function (ck) {
+        var h = new Harness('hot_full_power');
+        h.run(10);
+        var t0 = h.ts();
+        // Steady full power: the suction node is deeply subcooled — no cavitation.
+        ck('no cavitation at steady full power', t0.rcp_cavitating, t0.rcp_cavitating === false, 'false');
+        ck('healthy suction subcooling', t0.suction_subcool_c.toFixed(0), t0.suction_subcool_c > 20, '> 20 °C');
+        ck('flow at rated', t0.pump_flow_pct.toFixed(0), near(t0.pump_flow_pct, 100, 1), '~100 %');
+        // Depressurize the hot RCS (hold it low via the setpoint so it can't recover):
+        // the suction node reaches saturation and the running pump cavitates.
+        h.cmd({ action: 'set_pressure_setpoint', mpa: 8.0 });
+        h.eng.s.pressure_mpa = 8.0;
+        h.run(15);
+        var t = h.ts();
+        ck('suction subcooling collapsed past onset', t.suction_subcool_c.toFixed(1), t.suction_subcool_c < 8, '< 8 °C (onset)');
+        ck('RCP cavitating', t.rcp_cavitating, t.rcp_cavitating === true, 'true');
+        ck('cavitation severity high', t.rcp_cavitation_frac.toFixed(2), t.rcp_cavitation_frac > 0.5, '> 0.5');
+        ck('delivered flow degraded below rated', t.pump_flow_pct.toFixed(0), t.pump_flow_pct < 80, '< 80 %');
+        // A stopped pump cannot cavitate (the effect is gated on pump_running).
+        h.cmd({ action: 'inject_failure', failure_id: 'rcp_trip' });
+        h.run(20);
+        ck('stopped pump does not cavitate', h.ts().rcp_cavitating, h.ts().rcp_cavitating === false, 'false');
+      });
+    },
   };
 
   PWRScenarioTests.runAll = function () {
@@ -1731,7 +1771,7 @@
       'load_mode_follow',
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',
-      'merged_injection_curve', 'rhr_valve_and_mode', 'msiv_closure_at_power'];
+      'merged_injection_curve', 'rhr_valve_and_mode', 'msiv_closure_at_power', 'rcp_cavitation'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(PWRScenarioTests[order[i]]());
     return results;
