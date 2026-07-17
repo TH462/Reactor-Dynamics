@@ -9,6 +9,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Cold Shutdown (Mode 5) initial condition + full Mode 5 ↔ Mode 1 transition (PWR).** The
+  engine now models a genuinely cold, depressurized plant and can be driven all the way up to
+  power and back down on integrated physics — the path the manuals previously marked *"[narr]
+  only — no cold IC."*
+  - **New `cold_shutdown` initial state (Mode 5).** RCS cold (~50 °C) and depressurized
+    (~2.5 MPa, below the 400 psi RHR interlock), subcritical with shutdown-margin boron, RHR in
+    service holding the cold sink, RCPs secured (RHR provides forced circulation), SR energized,
+    ~0 decay heat. Holds stably.
+  - **Operator pressure setpoint.** New `set_pressure_setpoint {mpa}` — the heaters/spray now
+    hold an operator-adjustable target across the full 0.1–17 MPa range (default NOP), so
+    pressure holds where it is placed during heatup/cooldown instead of snapping to NOP.
+  - **Secondary cooldown.** New `set_steam_dump_setpoint {mpa}` lets the operator lower the
+    no-load steam-dump target so the secondary — and with it the primary, through the SG —
+    cools during a cooldown.
+  - **Reactor coolant pump control.** New `set_rcp {running}` starts/stops the RCPs (secured in
+    cold shutdown; started for pump heat and SG coupling during heatup).
+  - **Plant MODE indicator + heatup/cooldown rate.** True-state now exposes `plant_mode` (1–6)
+    and `plant_mode_name` (per manual 05 §2), plus `tavg_rate_c_per_hr`.
+  - **New `5_percent` initial state** — low-power Mode 1, At Power (~6 %, just above the 5 %
+    Startup/At-Power boundary).
+  - **Full-stack cold lineup.** A plant that initializes depressurized starts with the
+    low-pressure Safety Injection ESF **disarmed** (the real P-11 SI-block lineup), so loading
+    Cold Shutdown no longer spuriously floods the core. Behaviour is unchanged for every hot
+    initial state (TMI included).
+  - New snapshot/state fields: `pressure_setpoint`, `steam_dump_setpoint`, `plant_mode`,
+    `plant_mode_name`, `tavg_rate_c_per_hr`. Save-compatible: older saves migrate
+    (`pressure_setpoint ← 15.41`, `steam_dump_setpoint ← 8.90`).
+  - Tests: engine `cold_shutdown_hold`, `steady_five_percent`, and `mode5_to_mode1_roundtrip`
+    (drives cold→hot→cold on integrated physics); full-stack cold-IC guard in `run_m5`.
+
 - **RHR / LPI system rework (PWR).** The Residual Heat Removal system is now modeled as
   the real shutdown-cooling loop that doubles as Low-Pressure Injection:
   - **Hot-leg suction valve with a 400 psi interlock.** `set_rhr {active}` opens/closes the

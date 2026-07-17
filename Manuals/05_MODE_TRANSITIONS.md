@@ -25,8 +25,8 @@ These MODES follow the commercial PWR (Westinghouse-style Tech Spec) structure, 
 | **1** | **Mode 1, At Power** | Power Operation | Critical (keff ≥ 0.99) | **> 5 %** | Hot (≥ ~177 °C / 350 °F class) | **[sim]** |
 | **2** | **Mode 2, Startup** | Startup | Critical | **≤ 5 %** | Hot | **[sim]** |
 | **3** | **Mode 3, Hot Standby** | Hot Standby | Subcritical (keff < 0.99) | ≈ 0 | Hot (NOP T/P ≈ 304 °C / 15.41 MPa) | **[sim]** |
-| **4** | **Mode 4, Hot Shutdown** | Hot Shutdown | Subcritical | ≈ 0 | Intermediate (between cold and hot) | **[narr]** / post-trip cooling path |
-| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical | ≈ 0 | Cold (≤ ~93 °C / 200 °F class) | **[narr]** only |
+| **4** | **Mode 4, Hot Shutdown** | Hot Shutdown | Subcritical | ≈ 0 | Intermediate (between cold and hot) | **[sim]** (transit during heatup/cooldown) |
+| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical | ≈ 0 | Cold (≤ ~93 °C / 200 °F class) | **[sim]** — `cold_shutdown` initial condition |
 | **6** | **Mode 6, Refueling** | Refueling | Deep subcritical | ≈ 0 | Cold; vessel head not fully tensioned | **Out of scope** |
 
 ### 2.1 Simulator initial-condition mapping
@@ -37,8 +37,10 @@ These MODES follow the commercial PWR (Westinghouse-style Tech Spec) structure, 
 | `50_percent` | **Mode 1, At Power** (partial-power Mode 1) |
 | Critical, power ≤ 5 % | **Mode 2, Startup** |
 | `hot_zero_power` (Hot Standby) | **Mode 3, Hot Standby** |
+| `5_percent` | **Mode 1, At Power** (low-power ~6 %, just above the 5 % boundary) |
+| `cold_shutdown` | **Mode 5, Cold Shutdown** (cold, depressurized, RHR in service, subcritical) |
 | Post-SCRAM, still hot | **Mode 3, Hot Standby** (hot shutdown board; still Mode 3 by temperature class) |
-| Cool / depressurized on RHR story | **Mode 4, Hot Shutdown** → **Mode 5, Cold Shutdown** **[narr]** |
+| Cool / depressurized on RHR | **Mode 4, Hot Shutdown** → **Mode 5, Cold Shutdown** **[sim]** |
 
 ### 2.2 What this trainer can actually step through
 
@@ -46,11 +48,11 @@ These MODES follow the commercial PWR (Westinghouse-style Tech Spec) structure, 
 |--------------|--------|
 | Mode 3, Hot Standby → Mode 2, Startup → Mode 1, At Power | Fully **[sim]** |
 | Mode 1, At Power → Mode 2, Startup → Mode 3, Hot Standby | Fully **[sim]** |
-| Mode 5, Cold Shutdown → Mode 4, Hot Shutdown → Mode 3, Hot Standby | **[narr]** (no cold IC / heatup rate) |
-| Mode 3, Hot Standby → Mode 4, Hot Shutdown → Mode 5, Cold Shutdown | **[narr]** (no cooldown rate) |
+| Mode 5, Cold Shutdown → Mode 4, Hot Shutdown → Mode 3, Hot Standby | **[sim]** — start from `cold_shutdown`, pressurize + start RCPs, take critical and heat to NOP |
+| Mode 3, Hot Standby → Mode 4, Hot Shutdown → Mode 5, Cold Shutdown | **[sim]** — borate, cool the secondary, depressurize, place RHR, secure RCPs |
 | Mode 6, Refueling | Not modeled |
 
-**NOTE:** You can still **train the full commercial story** Mode 5, Cold Shutdown → Mode 1, At Power → Mode 5, Cold Shutdown by reading the **[narr]** segments, then driving every **[sim]** segment on the board.
+**NOTE:** The **full commercial story** Mode 5, Cold Shutdown → Mode 1, At Power → Mode 5, Cold Shutdown is now driveable **end to end on the board** from the `cold_shutdown` initial condition. Heatup/cooldown *rates* are time-compressed (the lumped model is not wall-clock accurate), and the trainer supplies the heatup with controlled low-power nuclear heat rather than the real pump-heat-dominated ramp — see the honesty notes below.
 
 ### 2.3 Turbine load modes (not plant MODES)
 
@@ -101,7 +103,7 @@ Mode 1, At Power at power (watchstanding)
 | A4 | Heat and pressurize toward normal operating temperature and pressure within commercial heatup limits | Mode 4, Hot Shutdown |
 | A5 | Reach **Mode 3, Hot Standby**: subcritical, hot, P ≈ **15.41 MPa**, Tavg ≈ **304 °C**, heat sink available | **Mode 3, Hot Standby** |
 
-**Simulator:** There is no cold initial condition. **Skip Phase A in Free Play** by loading **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**. Read Phase A for commercial context only.
+**Simulator:** Phase A is now driveable — load the **`cold_shutdown`** initial condition (**Mode 5, Cold Shutdown**) and perform the heatup: raise the pressurizer setpoint to draw up to NOP pressure (`set_pressure_setpoint`), start the RCPs (`set_rcp`), keep the turbine offline so the SG bottles to no-load, then take the control bank out gently (watch SUR) to hold low power and heat the RCS to NOP. Or **skip Phase A** by loading **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**. Heatup *rate* is time-compressed and the heat source is controlled low-power nuclear heat, not the real pump-heat ramp.
 
 ### Phase B — Mode 3, Hot Standby lineup **[sim]** → PWR-N01
 
@@ -200,7 +202,7 @@ This is the deepest **fully simulated** shutdown state.
 | C4 | Continue to cold conditions (Tavg ≤ ~93 °C class) | **Mode 5, Cold Shutdown** |
 | C5 | Secure secondary as appropriate; solid plant / cold solid per commercial practice | Mode 5, Cold Shutdown |
 
-**Simulator:** Execute what exists — AFW, RHR On when permissives allow, inventory control — but **do not expect** a timed cold end state. **PWR-N15** is the narrative companion.
+**Simulator:** This is now driveable to a genuine cold end state: borate for shutdown margin, lower the steam-dump setpoint (`set_steam_dump_setpoint`) to cool the secondary and with it the primary, depressurize in step (`set_pressure_setpoint`, spray) keeping subcooling positive, place **RHR On** below the 2.76 MPa interlock, and **secure the RCPs** (`set_rcp`) so RHR draws the RCS to cold. The cold end state matches the `cold_shutdown` IC. Cooldown *rate* is time-compressed. **PWR-N15** is the companion procedure.
 
 ---
 

@@ -303,6 +303,24 @@
     };
   };
 
+  // Derived plant MODE (commercial numbering, M1/manual 05 §2). A classification
+  // of the *true* plant condition — reactivity, thermal power, and RCS temperature
+  // class — used for the Mode indicator on the board and the Mode 5↔1 transition
+  // teaching. Temperature classes: hot ≥ 177 °C (350 °F), cold ≤ 93 °C (200 °F),
+  // intermediate between. Mode 6 (Refueling) is out of scope. NOTE: during the
+  // nuclear heatup this trainer takes the core critical below the hot band (real
+  // plants reach hot standby before criticality), so a critical core at an
+  // intermediate temperature reads Mode 4 by its temperature class.
+  function plantModeOf(power_pct, reactivity_pcm, tavg_c) {
+    var hot = tavg_c >= 177, cold = tavg_c <= 93;
+    var critical = power_pct > 0.5 || reactivity_pcm > -200;   // sustaining fission / at criticality
+    if (power_pct > 5 && hot) return { mode: 1, name: 'At Power' };
+    if (critical && hot) return { mode: 2, name: 'Startup' };          // critical, ≤ 5 %, hot
+    if (hot) return { mode: 3, name: 'Hot Standby' };                  // subcritical, hot
+    if (cold) return { mode: 5, name: 'Cold Shutdown' };               // subcritical, cold
+    return { mode: 4, name: 'Hot Shutdown' };                          // subcritical, intermediate
+  }
+
   // ============================================================ contract surface
   PWREngine.prototype.getTrueState = function () {
     var s = this.s;
@@ -341,6 +359,11 @@
       load_mode: s.load_mode, load_target_mwe: s.load_target_mwe,
       load_imbalance_mwe: s.load_imbalance_mwe, sg_imbalance_active: s.sg_imbalance_active,
       reactivity_pcm: (s._rho || 0) * 1e5, startup_rate_dpm: sur, reactor_period_s: period,
+      // Derived plant MODE (1–6) + name, and the RCS heatup/cooldown rate (°C/hr)
+      // for the Mode 5↔1 transition indications.
+      plant_mode: plantModeOf(p, (s._rho || 0) * 1e5, s.tavg_c).mode,
+      plant_mode_name: plantModeOf(p, (s._rho || 0) * 1e5, s.tavg_c).name,
+      tavg_rate_c_per_hr: (s._dTavg_dt || 0) * 3600,
       // Nuclear instrumentation (startup ranges): SR counts (0 when de-energized), IR chamber current.
       sr_counts_cps: s.sr_counts_cps || 0, ir_amps: s.ir_amps || 0, sr_energized: !!s.sr_energized,
       // Main steam isolation + SG code safeties (upstream of the MSIV).
@@ -382,6 +405,7 @@
       // mirroring the steam_dump_auto precedent below.
       heater_auto: s.heater_override == null,
       spray_auto: s.spray_override == null,
+      pressure_setpoint: (s.pressure_setpoint != null ? s.pressure_setpoint : this.cfg.pressurizer.P_setpoint),
       // CVCS commands: charging_flow_normalized is the operator SETPOINT (what the
       // charging valve is commanded to), NOT the true flow — under AUTO make-up the
       // true flow (instruments.charging_flow) modulates away from this setpoint.
@@ -397,6 +421,7 @@
         ? (s.load_imbalance_mwe > 0 ? 'filling' : 'draining') : 'balanced',
       steam_dump_pct: s.steam_dump_frac * 100,
       steam_dump_auto: s.steam_dump_override == null,
+      steam_dump_setpoint: (s.steam_dump_setpoint != null ? s.steam_dump_setpoint : this.cfg.steam_generator.steam_dump_setpoint),
       governor_valve_pct: s.governor_valve_pct,   // turbine admission valve (engine-driven; read-only)
       hpi_active: s.hpi_active, rhr_active: s.rhr_active, rhr_valve_open: !!s.rhr_valve_open,
       rhr_hx_fraction: (s.rhr_hx_fraction != null ? s.rhr_hx_fraction : 1),   // HX flow split (set_rhr_hx), 0–1
@@ -489,6 +514,12 @@
       case 'set_spray':
         // {auto:true} → auto; {pct} → manual valve %; {open} → back-compat boolean.
         s.spray_override = cmd.auto ? null : (cmd.pct != null ? clip(cmd.pct / 100, 0, 1) : (cmd.open ? 1 : 0));
+        break;
+      case 'set_pressure_setpoint':
+        // Operator pressure-control target (MPa) the heaters/spray hold. Ramped up
+        // during heatup (draw/grow the bubble to NOP) and down during cooldown.
+        // Clamped to the physical relief band so it can't command past the safeties.
+        s.pressure_setpoint = clip(cmd.mpa, 0.1, this.cfg.pressurizer.safety_open_mpa);
         break;
       case 'open_porv':
         s.porv_demand = 'open';
@@ -591,6 +622,19 @@
         break;
       case 'set_charging_pump':
         s.charging_pump_running = !!cmd.running;
+        break;
+      case 'set_rcp':
+        // Reactor coolant pumps on/off. Secured in cold shutdown (RHR provides
+        // forced circulation) and started during heatup to add pump heat and
+        // couple the SG. Blocked while the station is blacked out (no AC power).
+        if (!s.station_blackout) s.pump_running = !!cmd.running;
+        break;
+      case 'set_steam_dump_setpoint':
+        // Operator no-load steam-dump target (MPa). Lowered during a cooldown so the
+        // AUTO dump vents the secondary down, cooling the primary through the SG;
+        // raised back toward the config no-load point on heatup. Clamped to the SG
+        // safety band so it can't be set above the code-safety pop.
+        s.steam_dump_setpoint = clip(cmd.mpa, 0.2, this.cfg.steam_generator.sg_safety_open_mpa);
         break;
       case 'set_cvcs_auto':
         s.cvcs_auto = !!cmd.active;   // auto make-up: charging modulates to hold inventory
@@ -807,6 +851,11 @@
       _Q_total: P0, _Q_coolant_to_sg: P0 * cfg.thermal.heat_gen_coeff, _dTavg_dt: 0, _h_fc_eff: cfg.thermal.h_fc,
 
       pressure_mpa: cfg.pressurizer.P_equilibrium,
+      // Operator pressure-control setpoint (the target heaters/spray hold). Default
+      // is normal operating pressure; the cold-shutdown / heatup / cooldown path
+      // moves it across the range so pressure holds where it is placed instead of
+      // snapping to NOP (M1 §6.4; Mode 5↔1 rework 2026-07).
+      pressure_setpoint: cfg.pressurizer.P_setpoint,
       heater_power_frac: 0, spray_flow_frac: 0, heater_override: null, spray_override: null,
       porv_demand: 'closed', porv_open: false, porv_stuck: false, safety_open: false,
       block_valve_open: true,                 // PORV isolation/block valve (B1; default open)
@@ -833,6 +882,10 @@
       msiv_open: true, sg_safety_open: false, sg_safety_flow: 0,   // main steam isolation + SG code safeties
       steam_flow_normalized: P0, fw_flow_normalized: P0,
       steam_dump_override: null, steam_dump_frac: 0,   // B2 (null = auto)
+      // Operator steam-dump pressure setpoint (the no-load secondary target the
+      // AUTO dump holds). Default is the config no-load point; lowered during a
+      // cooldown so the secondary — and with it the primary through the SG — cools.
+      steam_dump_setpoint: cfg.steam_generator.steam_dump_setpoint,
       feedwater_demand_frac: P0, feed_pump_speed_pct: P0 * 100, feedwater_flow: P0, main_feedwater_available: true,
       afw_active: false, afw_pump_demand: false, afw_blocked: false, rhr_active: false,
       // RHR / LPI: hot-leg suction valve (interlocked) + HX flow split + ECCS mode.
@@ -890,6 +943,44 @@
       s._H2 = dh.H2_0 * 0.07;
       s.decay_heat_pct = (s._H1 + s._H2) * 100;
       // Shutdown bank stays parked withdrawn at HZP (see SHUTDOWN_DRIVE hint); control bank is fully inserted.
+    }
+
+    // Mode 5, Cold Shutdown: override to a self-consistent COLD, depressurized,
+    // RHR-cooled equilibrium (the manual's Mode 5). Distinct from at_operating_temp
+    // (which pins the HOT no-load point): here the RCS is genuinely cold, the SG is
+    // decoupled (RCPs secured → flow_frac 0, so the coolant↔SG term vanishes), RHR
+    // holds the cold sink, and there is ~0 decay heat. The operator drives the
+    // Mode 5→4→3 heatup out of this state by pressurizing, starting RCPs, isolating
+    // RHR, and withdrawing rods / diluting boron.
+    if (init.cold) {
+      var e = cfg.emergency;
+      var Tcold = (init.cold_tavg_c != null) ? init.cold_tavg_c : e.rhr_sink_c;
+      var Pcold = (init.cold_pressure_mpa != null) ? init.cold_pressure_mpa : 2.5;
+      s.tavg_c = Tcold; s.thot_c = Tcold; s.tcold_c = Tcold; s.fuel_temp_c = Tcold;
+      s.pressure_mpa = Pcold; s.pressure_setpoint = Pcold;
+      s.subcooling_c = TH.T_sat(Pcold) - Tcold;
+      s._subcool_hot_c = TH.T_sat(Pcold) - Tcold;
+      s._Q_coolant_to_sg = 0; s._dTavg_dt = 0;
+      // No decay heat — a core shut down long enough to be cold (overrides the
+      // subcritical preload above, which is already ~0, and is explicit here).
+      s._H1 = 0; s._H2 = 0; s.decay_heat_pct = 0;
+      // RCPs secured; RHR forced circulation provides flow. flow_frac 0 decouples
+      // the SG from the primary (heat path is RHR, not the steam generator).
+      s.pump_running = false; s.flow_frac = 0; s.pump_flow_pct = 0;
+      // RHR aligned for shutdown cooling (the low pressure satisfies the interlock).
+      s.rhr_valve_open = true; s.rhr_active = true; s.rhr_hx_fraction = 1.0; s.eccs_mode = 'RHR';
+      // Secondary secured, cold and depressurized (indicated near atmospheric — the
+      // SG is decoupled by flow_frac 0, so this is an indication only, not a heat
+      // path). Keep the no-load steam-dump target so a later heatup can bottle the
+      // SG up to it in the usual way.
+      s.steam_pressure_mpa = 0.1;
+      s.t_secondary_c = TH.T_sat(0.1);
+      s.steam_dump_setpoint = cfg.steam_generator.steam_dump_setpoint;
+      s.msiv_open = true;
+      // Pressurizer level at a cold band.
+      if (init.cold_pzr_level != null) s.pzr_level_pct = init.cold_pzr_level;
+      // Heaters/spray in auto tracking the cold setpoint (holds Pcold); turbine off.
+      s.heater_override = null; s.spray_override = null;
     }
 
     if (name === 'hot_full_power' && !this._hfp_refs) {
@@ -972,6 +1063,10 @@
     if (s.msiv_open == null) s.msiv_open = true;
     if (s.sg_safety_open == null) s.sg_safety_open = false;
     if (s.sg_safety_flow == null) s.sg_safety_flow = 0;
+    // Operator pressure setpoint + lowerable steam-dump setpoint (Mode 5↔1 rework).
+    // Older saves default to NOP pressure and the config no-load dump setpoint.
+    if (s.pressure_setpoint == null) s.pressure_setpoint = this.cfg.pressurizer.P_setpoint;
+    if (s.steam_dump_setpoint == null) s.steam_dump_setpoint = this.cfg.steam_generator.steam_dump_setpoint;
   };
 
   RD.PWREngine = PWREngine;
@@ -1028,6 +1123,78 @@
   Harness.prototype.cmd = function (c) { return this.eng.applyCommand(c); };
   Harness.prototype.ts = function () { return this.eng.getTrueState(); };
   Harness.prototype.ins = function () { return this.eng.getInstruments(); };
+
+  // ---- Mode 5 ↔ Mode 1 procedural drivers (used by the round-trip test) --------
+  // Simplified "operator" scripts that drive the plant across the full heatup /
+  // cooldown on the engine's real physics, issuing only real engine commands and
+  // reading the TRUE state (deterministic — no instrument noise in the control
+  // path). They are NOT the control layer; they stand in for a trained operator so
+  // the §14 gate can assert the transition is physically achievable end to end.
+  function _pzrTrim(h) {                        // hold pzr level in band (letdown/charging)
+    var l = h.ts().pzr_level_pct;
+    if (l > 62) { h.cmd({ action: 'set_letdown_flow', normalized: 0.04 }); h.cmd({ action: 'set_charging_flow', normalized: 0 }); }
+    else if (l < 50) { h.cmd({ action: 'set_charging_flow', normalized: 0.06 }); h.cmd({ action: 'set_letdown_flow', normalized: 0 }); }
+    else { h.cmd({ action: 'set_letdown_flow', normalized: 0 }); h.cmd({ action: 'set_charging_flow', normalized: 0 }); }
+  }
+  function _feedHold(h) {                        // hold SG level ~65 % on the feed pump
+    var sgL = h.ts().sg_level_pct;
+    h.cmd({ action: 'set_feed_pump_speed', pct: Math.max(0, Math.min(100, 40 + 3 * (65 - sgL))) });
+  }
+  // Heatup: Mode 5, Cold Shutdown → Mode 1, At Power. Pressurize + draw the loop up
+  // (RCPs on, RHR auto-closes above the interlock), turbine offline so the SG bottles
+  // to no-load, then a gentle SUR-limited control-bank withdrawal takes the core
+  // critical and holds ~10 % fission power, heating the RCS to NOP and on past 5 %.
+  function _driveHeatup(h, maxSec) {
+    maxSec = maxSec || 6000;
+    var minSub = 1e9, maxFuel = 0, critAt = -1, hotAt = -1, mode1At = -1, t;
+    h.cmd({ action: 'set_rcp', running: true });
+    h.cmd({ action: 'disconnect_grid' });                     // turbine offline → SG bottles to no-load
+    h.cmd({ action: 'set_steam_dump_setpoint', mpa: 8.90 });
+    for (var p = 3; p <= 15.41; p += 2) { h.cmd({ action: 'set_pressure_setpoint', mpa: Math.min(p, 15.41) }); h.run(40); }
+    h.cmd({ action: 'set_pressure_setpoint', mpa: 15.41 }); h.run(60);
+    h.cmd({ action: 'set_feed_pump_speed', pct: 20 });
+    var elapsed = 0, dt = 5;
+    while (elapsed < maxSec) {
+      t = h.ts();
+      minSub = Math.min(minSub, t.subcooling_c); maxFuel = Math.max(maxFuel, t.fuel_temp_c);
+      if (critAt < 0 && t.reactivity_pcm > -30 && t.power_pct > 0.5) critAt = elapsed;
+      if (hotAt < 0 && t.tavg_c >= 303) hotAt = elapsed;
+      var Pt = (t.tavg_c < 300) ? 10 : 12;
+      if (t.power_pct > Pt * 1.3 || t.startup_rate_dpm > 1.5 || t.fuel_temp_c > 500) h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -2, speed: 'normal' });
+      else if (t.power_pct < Pt * 0.8 && t.startup_rate_dpm < 1.0) h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 1, speed: 'slow' });
+      _feedHold(h);
+      h.run(dt); elapsed += dt;
+      if (t.tavg_c >= 303 && t.power_pct > 5 && hotAt >= 0 && elapsed > hotAt + 200) { mode1At = elapsed; break; }
+    }
+    return { critAt: critAt, hotAt: hotAt, mode1At: mode1At, maxFuel: maxFuel, minSub: minSub };
+  }
+  // Cooldown: (Mode 1 →) Mode 3 → Mode 5, Cold Shutdown. Trip, borate for cold
+  // shutdown margin (cooling adds +reactivity via MTC), ramp the secondary down so
+  // the SG cools the primary, depressurize in step (subcooling-guarded), then below
+  // the interlock place RHR and secure RCPs so RHR alone draws the RCS cold.
+  function _driveCooldown(h, maxSec) {
+    maxSec = maxSec || 12000;
+    var minSub = 1e9, coldAt = -1, t, below276 = false, elapsed = 0, dt = 10, k = 0;
+    h.cmd({ action: 'scram' });
+    h.cmd({ action: 'set_afw', active: true });
+    while (elapsed < maxSec) {
+      t = h.ts();
+      minSub = Math.min(minSub, t.subcooling_c);
+      h.cmd({ action: 'set_steam_dump_setpoint', mpa: Math.max(0.3, 8.90 - k * 0.03) });
+      var satGuard = Math.pow(Math.max(t.tavg_c + 25, 1) / 179.47, 1 / 0.239);
+      var psp = Math.max(satGuard, 15.41 - k * 0.02);
+      h.cmd({ action: 'set_pressure_setpoint', mpa: psp });
+      if (t.pressure_mpa < 2.6) h.cmd({ action: 'set_spray', pct: 0 });
+      else if (psp < t.pressure_mpa - 0.2) h.cmd({ action: 'set_spray', pct: 60 });
+      else h.cmd({ action: 'set_spray', auto: true });
+      if (!below276 && t.pressure_mpa < 2.76) { below276 = true; h.cmd({ action: 'set_rhr', active: true }); h.cmd({ action: 'set_rhr_hx', pct: 100 }); h.cmd({ action: 'set_rcp', running: false }); }
+      h.cmd({ action: 'set_boron_adjust', rate: t.reactivity_pcm < -1500 ? 0 : 3.0 });
+      _pzrTrim(h); _feedHold(h);
+      h.run(dt); elapsed += dt; k++;
+      if (t.tavg_c <= 55 && t.pressure_mpa < 2.76 && t.rhr_valve_open) { coldAt = elapsed; break; }
+    }
+    return { coldAt: coldAt, minSub: minSub };
+  }
 
   function test(name, fn) {
     var checks = [];
@@ -1100,6 +1267,71 @@
         ck('stable pressure', t.pressure_mpa.toFixed(3), near(t.pressure_mpa, 15.41, 0.3), '15.41 ±0.3');
         ck('not scrammed', t.scrammed, t.scrammed === false, false);
         ck('reactivity ≈ critical', h.eng.s._rho.toExponential(2), Math.abs(h.eng.s._rho) < 5e-4, '|ρ|<5e-4');
+      });
+    },
+
+    steady_five_percent: function () {
+      return test('Steady operation — 5_percent (low-power Mode 1, At Power)', function (ck) {
+        var h = new Harness('5_percent');
+        var t0 = h.ts();
+        ck('reads Mode 1, At Power', t0.plant_mode + ' ' + t0.plant_mode_name, t0.plant_mode === 1, 'Mode 1');
+        h.run(300);
+        var t = h.ts();
+        ck('power holds low (~5–6 %)', t.power_pct.toFixed(2), near(t.power_pct, 5.5, 1.5), '5.5 ±1.5');
+        ck('stays in Mode 1 (> 5 %)', t.plant_mode + ' ' + t.plant_mode_name, t.plant_mode === 1, 'Mode 1');
+        ck('stable pressure', t.pressure_mpa.toFixed(3), near(t.pressure_mpa, 15.41, 0.3), '15.41 ±0.3');
+        // Low-power heat-balance Tavg sits below full-power NOP (no Tavg program in
+        // this lumped model), but well within the hot Mode-1 temperature class.
+        ck('Tavg hot (Mode-1 class)', t.tavg_c.toFixed(1), t.tavg_c > 250 && t.tavg_c < 310, '250–310 °C');
+        ck('not scrammed', t.scrammed, t.scrammed === false, false);
+        ck('reactivity ≈ critical', h.eng.s._rho.toExponential(2), Math.abs(h.eng.s._rho) < 5e-4, '|ρ|<5e-4');
+      });
+    },
+
+    cold_shutdown_hold: function () {
+      return test('Mode 5, Cold Shutdown — cold, subcritical, RHR-cooled, holds', function (ck) {
+        var h = new Harness('cold_shutdown');
+        var t0 = h.ts();
+        ck('reads Mode 5, Cold Shutdown', t0.plant_mode + ' ' + t0.plant_mode_name, t0.plant_mode === 5, 'Mode 5');
+        ck('cold at reset (Tavg ≤ 93 °C)', t0.tavg_c.toFixed(1), t0.tavg_c <= 93, '≤ 93');
+        ck('depressurized below RHR interlock', t0.pressure_mpa.toFixed(2), t0.pressure_mpa <= 2.76, '≤ 2.76 MPa');
+        ck('subcritical', t0.reactivity_pcm.toFixed(0), t0.reactivity_pcm < 0, '< 0 pcm');
+        ck('RHR aligned (hot-leg suction open)', t0.rhr_valve_open, t0.rhr_valve_open === true, true);
+        ck('ECCS card shows RHR', t0.eccs_mode, t0.eccs_mode === 'RHR', 'RHR');
+        ck('SR energized (shutdown monitoring)', t0.sr_energized, t0.sr_energized === true, true);
+        ck('healthy subcooling (no boiling cold)', t0.subcooling_c.toFixed(0), t0.subcooling_c > 50, '> 50 °C');
+        ck('~zero decay heat (long-shut core)', t0.decay_heat_pct.toFixed(3), t0.decay_heat_pct < 0.1, '< 0.1 %');
+        h.run(1200);
+        var t = h.ts();
+        ck('Tavg holds cold over 20 min', t.tavg_c.toFixed(1), t.tavg_c <= 93, '≤ 93 °C');
+        ck('pressure holds', t.pressure_mpa.toFixed(2), near(t.pressure_mpa, t0.pressure_mpa, 0.5), '≈ start ±0.5');
+        ck('still subcritical', t.reactivity_pcm.toFixed(0), t.reactivity_pcm < 0, '< 0 pcm');
+        ck('power did not run away', t.power_pct.toExponential(2), t.power_pct < 1.0, '< 1 %');
+      });
+    },
+
+    mode5_to_mode1_roundtrip: function () {
+      return test('Mode 5 ↔ Mode 1 round trip — cold→hot→cold on integrated physics', function (ck) {
+        var h = new Harness('cold_shutdown');
+        // --- Heatup: Mode 5 → Mode 3 → Mode 1 ---
+        var up = _driveHeatup(h, 6000);
+        var mid = h.ts();
+        ck('reached criticality on the way up', up.critAt, up.critAt >= 0, 'critAt ≥ 0 s');
+        ck('RCS heated to NOP (≥ 300 °C)', mid.tavg_c.toFixed(1), mid.tavg_c >= 300, '≥ 300 °C');
+        ck('mode indicator reached Mode 1', mid.plant_mode + ' ' + mid.plant_mode_name, mid.plant_mode === 1, 'Mode 1');
+        ck('Mode 1 reached — critical, > 5 % power', mid.power_pct.toFixed(1), up.mode1At >= 0 && mid.power_pct > 5, '> 5 % at NOP');
+        ck('no fuel damage during heatup', up.maxFuel.toFixed(0), up.maxFuel < 1200 && !h.eng.s.fuel_damaged, '< 1200 °C');
+        ck('stayed subcooled during heatup', up.minSub.toFixed(0), up.minSub > 0, '> 0 °C');
+        // --- Cooldown: Mode 1 → Mode 3 → Mode 5 ---
+        var down = _driveCooldown(h, 12000);
+        var end = h.ts();
+        ck('cooled back to Mode 5 (≤ 93 °C)', end.tavg_c.toFixed(1), end.tavg_c <= 93, '≤ 93 °C');
+        ck('depressurized below RHR interlock', end.pressure_mpa.toFixed(2), end.pressure_mpa < 2.76, '< 2.76 MPa');
+        ck('RHR aligned for cold cooling', end.rhr_valve_open, end.rhr_valve_open === true, true);
+        ck('subcritical at cold', end.reactivity_pcm.toFixed(0), end.reactivity_pcm < 0, '< 0 pcm');
+        ck('mode indicator returned to Mode 5', end.plant_mode + ' ' + end.plant_mode_name, end.plant_mode === 5, 'Mode 5');
+        ck('stayed subcooled during cooldown', down.minSub.toFixed(0), down.minSub > 0, '> 0 °C');
+        ck('returned to cold shutdown', down.coldAt, down.coldAt >= 0, 'coldAt ≥ 0 s');
       });
     },
 
@@ -1432,7 +1664,8 @@
   };
 
   PWRScenarioTests.runAll = function () {
-    var order = ['steady_full_power', 'hot_zero_power_standby', 'steady_50_percent', 'control_response', 'shutdown_scram',
+    var order = ['steady_full_power', 'hot_zero_power_standby', 'steady_50_percent', 'steady_five_percent',
+      'cold_shutdown_hold', 'mode5_to_mode1_roundtrip', 'control_response', 'shutdown_scram',
       'load_mode_follow',
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',

@@ -23,16 +23,20 @@
   function P_sat_from_T(T_c) { return Math.pow(Math.max(T_c, 1e-6) / 179.47, 1 / 0.239); }
 
   // Heater/spray proportional auto-control (§6.4); operator/failure overrides win.
+  // The control target is the operator setpoint (s.pressure_setpoint) — normally
+  // NOP (P_setpoint) but moved across the range on the Mode 5↔1 heatup/cooldown
+  // path; falls back to the config NOP setpoint for pre-setpoint saves.
   function autoControl(s, cfg) {
     var p = cfg.pressurizer;
+    var setpoint = (s.pressure_setpoint != null) ? s.pressure_setpoint : p.P_setpoint;
     if (s.heater_override != null) { s.heater_power_frac = s.heater_override; }
     else {
-      var err = p.P_setpoint - s.pressure_mpa;
+      var err = setpoint - s.pressure_mpa;
       s.heater_power_frac = err > 0 ? clip(err / p.heater_band_mpa, 0, 1) : 0;
     }
     if (s.spray_override != null) { s.spray_flow_frac = +s.spray_override; }  // fraction (or boolean → 0/1)
     else {
-      var err2 = p.P_setpoint - s.pressure_mpa;
+      var err2 = setpoint - s.pressure_mpa;
       s.spray_flow_frac = err2 < 0 ? clip(-err2 / p.spray_band_mpa, 0, 1) : 0;
     }
   }
@@ -74,7 +78,11 @@
       // Two-phase: pressure collapses toward the saturation pressure of Tavg.
       dP += p.K_sat_pull * (P_sat_from_T(s.tavg_c) - s.pressure_mpa);
     } else {
-      dP += p.P_restore_rate_gain * (p.P_equilibrium - s.pressure_mpa); // gentle self-restore
+      // Gentle self-restore toward the operator setpoint (heaters/charging holding
+      // pressure). Tracks s.pressure_setpoint so a cold/depressurized plant holds
+      // its low pressure instead of being dragged back to NOP.
+      var setpoint = (s.pressure_setpoint != null) ? s.pressure_setpoint : p.P_equilibrium;
+      dP += p.P_restore_rate_gain * (setpoint - s.pressure_mpa);
     }
     s.pressure_mpa = Math.max(0.1, s.pressure_mpa + dP * dt);
   }

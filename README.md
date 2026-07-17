@@ -51,7 +51,9 @@ _Last updated: 2026-07-16._
 
 **Layers**
 - **Physics engines complete** — PWR (M1) ✅, RBMK (M2) ✅, BWR (M3) ✅. All three have
-  full balance-of-plant (turbine/condenser/generator + electrical output).
+  full balance-of-plant (turbine/condenser/generator + electrical output). The PWR now
+  models a **Cold Shutdown (Mode 5) initial condition** and the **full Mode 5 ↔ Mode 1
+  heatup/cooldown on integrated physics** (previously `[narr]`-only) — see `CHANGELOG.md`.
 - **Stack complete** — Control (M4) ✅, Simulation Service (M5, +rewind) ✅, Instructor
   (M6) ✅ (beat engine, Path-2 follow, TMI flagship, rewind, highlights, Hook + Training),
   Test Runner (M7) ✅.
@@ -63,12 +65,16 @@ _Last updated: 2026-07-16._
 - Chernobyl / Fukushima **flagship scenarios** and the campaign wrapper for RBMK/BWR.
 - Extend the **M8 UI / M4 control surface to RBMK + BWR**.
 - **Campaign ↔ Mode-5 naming alignment** not yet applied in campaign code
-  (`Manuals/CAMPAIGN_MODE_ALIGNMENT_SPEC.md`).
+  (`Manuals/CAMPAIGN_MODE_ALIGNMENT_SPEC.md`). The **engine** now supports the cold IC and
+  the Mode 5 ↔ 1 path, so the campaign/scenario/manual string work can build on it.
+- Extend the **M8 UI / M4 control surface** to expose the new Mode-5 controls (pressure
+  setpoint, steam-dump setpoint, RCP start/stop) and the plant-MODE indicator.
 - **ECCS card UI layout** open (contract in `Blueprint/pwr_synoptic_prerequisites.md`).
 
 **Current gate baselines** (a change should keep these at or above baseline — see
-_Definition of done_): campaign **36/36**, synoptic **55/55**, `verify_e2e_ui` **PASS**,
-M7 **OK**, ops probes **~53/66** (remaining FAILs are tuning targets, not regressions).
+_Definition of done_): PWR engine suite **19/19**, campaign **44/44**, `run_m5` **18/18**,
+synoptic **55/55**, `verify_e2e_ui` **PASS**, M7 **OK**, ops probes **~53/66** (remaining
+FAILs are tuning targets, not regressions).
 
 ---
 

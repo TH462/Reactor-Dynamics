@@ -95,16 +95,37 @@
     }
     // ESF AUTO/MAN arms (M4b ESF arms): each configured system starts ARMED for its
     // auto-actuations; an OPERATOR command listed on the system flips it to
-    // MANUAL (the plant's own actuations are _internal and don't).
-    this.esfAuto = {};
-    var esf = this.config.esf_systems || [];
-    for (var ei = 0; ei < esf.length; ei++) this.esfAuto[esf[ei].id] = true;
+    // MANUAL (the plant's own actuations are _internal and don't). A plant that
+    // initializes with a standing actuation condition already met (a depressurized
+    // cold-shutdown lineup, where low-pressure SI would fire) starts that ESF in
+    // MANUAL — the real lineup has it blocked (P-11) — re-armed with set_esf_auto.
+    this.esfAuto = this._initialEsfArms();
     // Manual trip blocks (M4b trip blocks): trip id → true while blocked (P-10 gated).
     // A plant AT POWER starts with the blockable startup trips already blocked
     // (the real at-power lineup — they were blocked at P-10 on the way up);
     // auto-reinstate re-arms them the moment power falls below the permissive.
     this.tripBlocks = this._initialTripBlocks();
   }
+
+  // Initial ESF arm state. Armed by default; disarm any system whose ACTIVATING
+  // auto-actuation trigger is already satisfied at plant init — a standing
+  // condition at start-up is an intentional lineup (cold shutdown, depressurized),
+  // not an emergency, so the operator's lineup has that ESF blocked (the P-11 SI
+  // block). Behaviour is unchanged for every hot initial state (no trigger met at
+  // NOP), so at-power scenarios — TMI included — are untouched.
+  ControlLayer.prototype._initialEsfArms = function () {
+    var arms = {}, esf = this.config.esf_systems || [];
+    for (var i = 0; i < esf.length; i++) arms[esf[i].id] = true;
+    var ins = (this.engine && this.engine.getInstruments) ? this.engine.getInstruments() : {};
+    var acts = this.config.actuations || [];
+    for (var a = 0; a < acts.length; a++) {
+      var act = acts[a];
+      if (!act.arm || arms[act.arm] === false || act.active !== true) continue;   // only ACTIVATING actuations
+      var gateOk = !act.condition || this._evaluateCondition(act.condition);
+      if (gateOk && crossed(ins[act.instrument], act.direction, act.setpoint)) arms[act.arm] = false;
+    }
+    return arms;
+  };
 
   ControlLayer.prototype._initialTripBlocks = function () {
     var blocks = {};

@@ -337,7 +337,19 @@
       hot_full_power: { power: 1.0,  scrammed: false, rod_op_pct: 92.0 },
       hot_zero_power: { power: 1e-6, scrammed: false, subcritical: true, rod_op_pct: 0.0,
         at_operating_temp: true, sr_on: true },   // Hot standby: NOP T/P, control bank fully inserted, SR energized
+      // Low-power Mode 1, At Power: critical at ~6 % — just above the 5 % Startup/
+      // At-Power boundary (manual 05 §2: Mode 1 is > 5 %, Mode 2 is ≤ 5 %), the
+      // "just entered the power range" anchor for low-power practice.
+      '5_percent':    { power: 0.06, scrammed: false, rod_op_pct: 62.0 },
       '50_percent':   { power: 0.5,  scrammed: false, rod_op_pct: 78.0 },
+      // Mode 5, Cold Shutdown: subcritical, RCS cold (~50 °C) and depressurized
+      // (~2.5 MPa, below the 400 psi RHR interlock), RHR in service holding the
+      // cold sink, RCPs secured (RHR provides forced circulation), pressurizer
+      // bubble at the cold setpoint, SR energized, ~0 decay heat (long-shut core).
+      // The Mode 5↔1 heatup/cooldown path is driven from here (see _buildState).
+      cold_shutdown:  { power: 1e-6, scrammed: false, subcritical: true, cold: true,
+        rod_op_pct: 0.0, sr_on: true, rcp_off: true,
+        cold_tavg_c: 50.0, cold_pressure_mpa: 2.5, cold_pzr_level: 60.0 },
     },
   };
 

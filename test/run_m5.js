@@ -89,6 +89,18 @@ T.push(test('Full-stack interception — stuck-open PORV defeats close, routed t
   ck('failure shows in snapshot active_failures', JSON.stringify(snap.active_failures), snap.active_failures.some(function (f) { return f.id === 'stuck_porv_open'; }), 'contains stuck_porv_open');
 }));
 
+T.push(test('Cold shutdown (Mode 5) IC — stable through the full stack, no spurious ESF flood', function (ck) {
+  var s = svc({ initial_state: 'cold_shutdown' });
+  var snap = s.advanceCycles(40);
+  var ts = snap.true_state;
+  ck('reads Mode 5, Cold Shutdown', ts.plant_mode + ' ' + ts.plant_mode_name, ts.plant_mode === 5, 'Mode 5');
+  ck('holds cold (Tavg ≤ 93 °C)', ts.tavg_c.toFixed(1), ts.tavg_c <= 93, '≤ 93 °C');
+  ck('SI auto disarmed at depressurized init (P-11 lineup)', String(s.layer.esfAuto.hpi), s.layer.esfAuto.hpi === false, 'hpi MANUAL');
+  ck('no spurious HPI injection', ts.hpi_active, ts.hpi_active === false, false);
+  ck('core inventory not overfilled', ts.core_inventory_pct.toFixed(0), ts.core_inventory_pct <= 105, '≤ 105 %');
+  ck('RHR aligned for shutdown cooling', ts.rhr_valve_open, ts.rhr_valve_open === true, true);
+}));
+
 T.push(test('Lifecycle — play/pause gate the loop', function (ck) {
   var s = svc();
   s.stop();

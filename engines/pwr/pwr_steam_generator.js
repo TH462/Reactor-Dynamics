@@ -67,9 +67,10 @@
     // above a pressure setpoint (a basic relief to condenser, like the pzr
     // heater/spray auto-control); a manual override (0..1) wins. Removed steam is
     // additional steam-out in the pressure + level balance.
+    var dump_setpoint = (s.steam_dump_setpoint != null) ? s.steam_dump_setpoint : sg.steam_dump_setpoint;
     var dump = (s.steam_dump_override != null)
       ? s.steam_dump_override
-      : clip((s.steam_pressure_mpa - sg.steam_dump_setpoint) / sg.steam_dump_band, 0, 1) * sg.steam_dump_max;
+      : clip((s.steam_pressure_mpa - dump_setpoint) / sg.steam_dump_band, 0, 1) * sg.steam_dump_max;
     // MSIV: both downstream paths (turbine steam + dump-to-condenser) are
     // behind the isolation valve; closing it bottles the steam generator.
     if (s.msiv_open === false) dump = 0;

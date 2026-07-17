@@ -130,6 +130,45 @@ Implements `Blueprint/pwr_synoptic_prerequisites.md` so Fable can wire the synop
   + CVCS indication + large-LOCA ECCS), **M4 10/10**; save/restore bit-exact mid-LOCA with LPI +
   accumulators + CVCS-auto active. Contracts synced: CONTEXT §6.3/§6.5/§6.7, M1 §8.8.
 
+### Cold Shutdown (Mode 5) IC + full Mode 5 ↔ Mode 1 transition (2026-07)
+Made the manuals' previously-`[narr]` cold heatup/cooldown genuinely `[sim]`. Strategy: **regime-gated
+and additive** — the hot/at-power pressure path is byte-for-byte unchanged (all existing scenarios,
+TMI included, never enter the cold regime), so every prior gate held at baseline.
+- **Pressure control generalized to an operator setpoint.** `s.pressure_setpoint` (default
+  `P_setpoint` = NOP) now drives heater/spray auto-control *and* the gentle self-restore
+  (`pwr_pressurizer`), replacing the hard-coded restore to `P_equilibrium`. Command
+  `set_pressure_setpoint`. Identical behaviour at NOP; lets a cold plant hold low pressure instead of
+  snapping to 15.41 MPa (the blocker that made a cold state impossible before).
+- **`cold_shutdown` state** (`_buildState` `cold` block, analogous to `at_operating_temp`): Tavg ≈ 50 °C,
+  P ≈ 2.5 MPa (below the 2.76 MPa RHR interlock), **RCPs secured** (`flow_frac` 0 → the coolant↔SG
+  term vanishes, so the SG can't back-feed and RHR alone holds the sink), RHR aligned, ~0 decay,
+  SR on. `_trimToCritical` supplies the high cold-shutdown boron automatically (cold temps set before
+  the trim). Holds dead-stable.
+- **Secondary cooldown:** `s.steam_dump_setpoint` (default config no-load 8.90) is now operator-lowerable
+  (`set_steam_dump_setpoint`), so the dump vents the secondary down and the primary cools through the SG.
+- **`set_rcp`** starts/stops the RCPs — the missing control for pump-heat heatup and for securing pumps
+  once RHR is in service (the two moves that make heatup and the final cooldown work).
+- **Heat source for heatup is nuclear.** RCP/pressurizer heat is realistic (~0.55 % rated) but far too
+  slow given the coolant heat capacity; the operator takes the core critical at low power and the
+  fission heat drives Tavg to NOP (self-limiting via the temperature defect — a stable, controllable
+  ascent). Documented simplification vs. the real pump-heat-dominated heatup. The heatup runs at NOP
+  pressure with the turbine **offline** so the SG bottles to no-load; a gentle SUR-limited control-bank
+  withdrawal holds ~10 % without a prompt excursion (an aggressive withdrawal damages fuel — the
+  interlock/patience matters).
+- **Cooldown requires boration** — cooling adds +reactivity via the hot-referenced MTC/Doppler, so the
+  round-trip driver borates for margin (real practice), then lowers the secondary, depressurizes
+  subcooling-guarded, opens RHR below the interlock, and **secures RCPs** to decouple the SG.
+- **Plant MODE indicator** (`plant_mode`/`plant_mode_name`, `plantModeOf`) + `tavg_rate_c_per_hr` added
+  to `true_state` (manual 05 §2 classification). New `5_percent` low-power Mode-1 state.
+- **Full-stack lineup:** `ControlLayer._initialEsfArms` disarms any ESF whose *activating* auto-actuation
+  trigger is already met at init (the depressurized cold lineup → low-pressure SI blocked, the real
+  P-11 story), so loading Cold Shutdown no longer floods the core. Neutral for every hot IC (no trigger
+  met at NOP) — TMI unaffected.
+- Save-compatible: `_migrateState` defaults `pressure_setpoint ← 15.41`, `steam_dump_setpoint ← 8.90`.
+- Gate green: **PWR 19/19** (incl. `cold_shutdown_hold`, `steady_five_percent`,
+  `mode5_to_mode1_roundtrip`), **M5 18/18** (full-stack cold-IC guard), campaign **44/44**, autoctl
+  **20/20**, M4 **15/15**, M6 **16/16**, M7 OK, ops **53/66** (baseline). TMI flagship not regressed.
+
 ---
 
 ## M2 — RBMK Engine
