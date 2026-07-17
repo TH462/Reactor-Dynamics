@@ -139,6 +139,22 @@
     s._mass = clip(s._mass + dm * dt, 0.0, cfg.primary.mass_max);
     s.core_inventory_pct = s._mass * 100;
 
+    // Boron transport on the emergency-injection path (HPI/LPI + accumulators carry
+    // heavily borated RWST/SIT water at eccs_boron_ppm). Perfect-mixing update of the
+    // core concentration: dC/dt = q_inj·(C_eccs − C)/m, so injected inventory raises
+    // s.boron_ppm (negative reactivity) — the ECCS shutdown-margin role during a LOCA.
+    // Losses (letdown/break/relief) leave at the current concentration and so do not
+    // change it, and they already cancel in the mixing balance. CVCS borate/dilute is
+    // a separate idealized channel added in pwr_engine step 13. Boil-off boron
+    // concentration (steam carries no boron) is deliberately not modeled — the loss
+    // term is lumped and does not distinguish boil-off from leakage.
+    var eccs_inv = inj_inv + accum_inv;
+    var c_eccs = cfg.emergency.eccs_boron_ppm;
+    if (eccs_inv > 0 && c_eccs != null && s.boron_ppm != null) {
+      var m_mix = s._mass > 0.05 ? s._mass : 0.05;   // floor to bound the mixing rate as inventory → 0
+      s.boron_ppm += eccs_inv * (c_eccs - s.boron_ppm) / m_mix * dt;
+    }
+
     // Two void mechanisms, kept in SEPARATE state (they have different physical effects
     // and calibrations, and TMI's erosion phase transiently drives the exit to saturation
     // — so combining them would let the flux term corrupt the TMI pressurizer deception):

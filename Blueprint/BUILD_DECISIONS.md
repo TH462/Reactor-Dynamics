@@ -86,6 +86,22 @@ pwr_steam_generator, pwr_instruments, pwr_engine}.js`
   `hot_zero_power` is left subcritical by a fixed margin (rods inserted + boron).
 - **PRNG:** mulberry32 with a single `uint32` state; Gaussian noise via Box–Muller. The state is part of
   save/restore (CONTEXT §4) — verified bit-exact in the save/restore test.
+- **Borated emergency injection** (2026-07-17): emergency-injection water carries boron. HPI/LPI and the
+  accumulators deliver at `emergency.eccs_boron_ppm` (2500 ppm — RWST/SIT concentration; real RWST/SIT ≈
+  2000–2700), mixed into `boron_ppm` by perfect-mixing transport `dC/dt = q_inj·(C_eccs − C)/m` in
+  `pwr_primary.stepInventory` (mixing rate floored at m ≥ 0.05 to bound the update as inventory → 0). So
+  ECCS/accumulator injection **raises core boron → negative reactivity** — the shutdown-margin role of
+  borated safety injection during a LOCA (previously injection was mass-only; boron was CVCS borate/dilute
+  only). Losses leave at the current concentration and cancel in the balance, so only the injection
+  inflows shift concentration. CVCS borate/dilute is kept as a separate idealized direct-rate channel
+  (`pwr_engine` step 13) — not re-derived from charging concentration — to preserve the tested CVCS
+  behavior. **Deliberately not modeled:** boil-off boron concentration (steam carries no boron, so a
+  boiling core concentrates its boron) — the lumped loss term does not distinguish boil-off from leakage;
+  a refinement if post-LOCA boron-precipitation behavior is ever wanted. Verified: large-break LOCA + SI
+  drives boron 747 → ~2050 ppm (≈ −13000 pcm added margin), accumulator-only discharge borates as the
+  SITs deplete, no-injection control stays flat, asymptotes to the source with no overshoot. Gates: PWR
+  **20/20**, scenarios **3/3**, campaign **47/47**, `run_autoctl` **20/20**, `run_m5` **19/19**, ops
+  **53/66** (baseline, no regressions).
 
 ### Notes
 - `fuel_damaged` is internal (not a §6.3 field) — **Flag F5**.

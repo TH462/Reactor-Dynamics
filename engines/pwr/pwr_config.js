@@ -273,6 +273,14 @@
       accumulator_flow_max: 1.0,   // normalized rated accumulator flow
       accumulator_inventory_gain: 0.12, // inventory frac/s per unit normalized flow
       accumulator_capacity: 2.5,   // total deliverable inventory fractions (finite)
+      // Boron concentration of ALL emergency-injection water (RWST-sourced HPI/LPI
+      // and the SIT accumulators). Real RWST/SIT boron runs ~2000–2700 ppm, sized so
+      // the core stays subcritical when reflooded cold. Injected inventory mixes into
+      // s.boron_ppm (pwr_primary.stepInventory, perfect mixing), so ECCS/accumulator
+      // injection RAISES core boron and adds negative reactivity — the shutdown-margin
+      // role of borated safety injection during a LOCA. CVCS borate/dilute is a
+      // separate, idealized direct-rate channel (pwr_engine step 13). [tune]
+      eccs_boron_ppm: 2500,        // ppm; RWST/accumulator boron concentration [tune]
       // Residual Heat Removal (RHR, formerly DHR): the low-pressure shutdown-cooling
       // loop that doubles as LPI. Suction is taken from the HOT LEG through a valve
       // interlocked to primary pressure — it can be opened only below
