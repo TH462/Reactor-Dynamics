@@ -313,7 +313,12 @@
   // intermediate temperature reads Mode 4 by its temperature class.
   function plantModeOf(power_pct, reactivity_pcm, tavg_c) {
     var hot = tavg_c >= 177, cold = tavg_c <= 93;
-    var critical = power_pct > 0.5 || reactivity_pcm > -200;   // sustaining fission / at criticality
+    // "Critical" for classification = at/near criticality, OR clearly at power
+    // (> 5 %). The power clause keeps a plant making real power in Mode 1/2 through
+    // a momentary reactivity dip; below 5 %, reactivity distinguishes Mode 2
+    // (critical) from Mode 3 (subcritical — e.g. residual power decaying after a
+    // return to subcritical Hot Standby).
+    var critical = reactivity_pcm > -200 || power_pct > 5;
     if (power_pct > 5 && hot) return { mode: 1, name: 'At Power' };
     if (critical && hot) return { mode: 2, name: 'Startup' };          // critical, ≤ 5 %, hot
     if (hot) return { mode: 3, name: 'Hot Standby' };                  // subcritical, hot

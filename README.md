@@ -64,15 +64,16 @@ _Last updated: 2026-07-16._
 `BUILD_DECISIONS.md` Open Flags)
 - Chernobyl / Fukushima **flagship scenarios** and the campaign wrapper for RBMK/BWR.
 - Extend the **M8 UI / M4 control surface to RBMK + BWR**.
-- **Campaign ↔ Mode-5 naming alignment** not yet applied in campaign code
-  (`Manuals/CAMPAIGN_MODE_ALIGNMENT_SPEC.md`). The **engine** now supports the cold IC and
-  the Mode 5 ↔ 1 path, so the campaign/scenario/manual string work can build on it.
+- **Campaign ↔ Mode-5 alignment: done** — strings use *Mode N, Name*, and three missions
+  (`pwr_mode5_to_mode3`, `pwr_mode3_to_mode5`, `pwr_return_to_mode1`) drive the full Mode 5 ↔ 1
+  loop on the board (`Manuals/CAMPAIGN_MODE_ALIGNMENT_SPEC.md` §2–3). Remaining: refresh
+  `Manuals/11_CAMPAIGN_CROSSWALK.md` for the new 34-mission map.
 - Extend the **M8 UI / M4 control surface** to expose the new Mode-5 controls (pressure
   setpoint, steam-dump setpoint, RCP start/stop) and the plant-MODE indicator.
 - **ECCS card UI layout** open (contract in `Blueprint/pwr_synoptic_prerequisites.md`).
 
 **Current gate baselines** (a change should keep these at or above baseline — see
-_Definition of done_): PWR engine suite **19/19**, campaign **44/44**, `run_m5` **18/18**,
+_Definition of done_): PWR engine suite **19/19**, campaign **47/47**, `run_m5` **18/18**,
 synoptic **55/55**, `verify_e2e_ui` **PASS**, M7 **OK**, ops probes **~53/66** (remaining
 FAILs are tuning targets, not regressions).
 

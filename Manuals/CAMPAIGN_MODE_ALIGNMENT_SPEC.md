@@ -200,13 +200,13 @@ Act VI — Reckoning
 
 ## 6. Acceptance criteria (campaign done when…)
 
-- [x] All PWR campaign `teaches` use **Mode N, Name** where a plant state is named. *(2026-07: done — `ui/campaign_data.js` teaches + in-product procedure titles in `ui/manual_procedures.js`.)*
-- [ ] Player can complete a path that **starts at Mode 5 narrative** and reaches **Mode 1, At Power** on the board. *(Engine now supports it via the `cold_shutdown` IC; the three §3 missions are not yet authored.)*  
-- [ ] Player can complete a path from **Mode 1** to **Mode 5 narrative**.  
-- [ ] Player can **return** from Mode 5 narrative to Mode 1 on the board.  
-- [ ] Mode 4/5 honesty banners present.  
-- [ ] Manuals `11_CAMPAIGN_CROSSWALK.md` updated if mission numbers change.  
-- [ ] Discrepancies file updated: naming + Mode 5 path resolved.
+- [x] All PWR campaign `teaches` use **Mode N, Name** where a plant state is named. *(done — `ui/campaign_data.js` teaches + in-product procedure titles in `ui/manual_procedures.js`.)*
+- [x] Player can complete a path that **starts at Mode 5, Cold Shutdown** and reaches **Mode 1, At Power** on the board. *(`pwr_return_to_mode1`, driven from the `cold_shutdown` IC — no longer narrative-only.)*
+- [x] Player can complete a path from **Mode 3, Hot Standby** to **Mode 5, Cold Shutdown**. *(`pwr_mode3_to_mode5`.)*
+- [x] Player can **heat up** from Mode 5 to Mode 3 on the board. *(`pwr_mode5_to_mode3`.)*
+- [x] Mode 5 honesty banners present. *(Each transition mission's intro states the compressed rate + nuclear-heat-source simplification.)*
+- [ ] Manuals `11_CAMPAIGN_CROSSWALK.md` updated for the 3 new missions (PWR mission count 31 → 34).
+- [x] Discrepancies file updated: naming + Mode 5 path resolved.
 
 ---
 
@@ -216,3 +216,4 @@ Act VI — Reckoning
 |------|------|
 | 2026-07-16 | Spec authored from manuals Rev 2; **no campaign code changed**. |
 | 2026-07-16 | **§2 string alignment applied** — all PWR campaign `teaches` (`ui/campaign_data.js`), PWR procedure titles/purpose/outcome (`ui/manual_procedures.js`), and the two startup scenario descriptions now use **Mode N, Name**. §3 new Mode-5-path missions still pending (engine cold IC + Mode 5↔1 transition already landed separately). |
+| 2026-07-17 | **§3 new missions authored** — `pwr_mode5_to_mode3` (Act II), `pwr_mode3_to_mode5` + `pwr_return_to_mode1` (Act III), driven on integrated physics from the `cold_shutdown` board. Required a control-layer P-7/P-11 RPS trip bypass so a cold plant loads un-scrammed and can be heated. PWR campaign 31 → **34 missions**; run_campaign **47/47** with functional drives for all three. Remaining: `11_CAMPAIGN_CROSSWALK.md` mission-map refresh. |

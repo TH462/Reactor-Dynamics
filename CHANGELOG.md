@@ -9,6 +9,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Three Mode 5 ↔ Mode 1 campaign missions (PWR).** The training campaign now teaches the
+  full commercial heatup/cooldown loop on the board, using the cold initial condition below:
+  - **`pwr_mode5_to_mode3` — "The Big Warm-Up"** (Act II): the cold heatup — pressurize, start
+    RCPs, SR→IR handoff, take the core critical, and ride a low power up to NOP, settling at
+    subcritical Hot Standby.
+  - **`pwr_mode3_to_mode5` — "Cooling Down"** (Act III): the controlled cooldown — borate for
+    margin, cool the secondary, depressurize on subcooling, place RHR, secure the pumps.
+  - **`pwr_return_to_mode1` — "Cold to Power"** (Act III): the full startup Mode 5 → Mode 1,
+    closing the round trip.
+  - Each mission's intro carries the honesty banner (compressed rate; controlled nuclear heat).
+  - **P-7 / P-11 RPS trip bypass** (control layer): the low-pressure and low-flow reactor trips
+    are now bypassable in the cold/shutdown regime (a plant that inits depressurized loads with
+    them blocked; they auto-reinstate as pressure/power come up) — the real startup/shutdown
+    permissives, without which a cold plant loads scrammed and can't be heated. Neutral for
+    every hot initial state (a LOCA/TMI depressurization still trips).
+  - PWR campaign is now **34 missions**; `run_campaign` **47/47** with a scripted-operator drive
+    for each new mission.
+
 - **Cold Shutdown (Mode 5) initial condition + full Mode 5 ↔ Mode 1 transition (PWR).** The
   engine now models a genuinely cold, depressurized plant and can be driven all the way up to
   power and back down on integrated physics — the path the manuals previously marked *"[narr]

@@ -69,6 +69,7 @@ the start — revised 2026-07-07).
 ### Act II — The Physics (reactor behavior in your hands)
 | # | Mission | Kind | Teaches |
 |---|---------|------|---------|
+| 3a | The Big Warm-Up | [S] `pwr_mode5_to_mode3` **NEW 2026-07** | The cold heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby: pressurize, start RCPs, SR→IR handoff, approach to criticality, nuclear heatup to NOP, settle subcritical Hot Standby |
 | 4 | Critical! | [P] `pwr_startup` | The real approach-to-criticality procedure, end to end (SR/IR, the handoff, 1/M) |
 | 5 | The Reactor That Pushes Back | [S] `pwr_feedback` **NEW** | Doppler + moderator temperature coefficient; why a PWR is self-stabilizing; power follows steam demand |
 | 6 | Poisoned | [S] `pwr_xenon` **NEW** | Xenon-135: builds after power drops, chokes the core, decays away; why plants can't always restart immediately |
@@ -88,6 +89,8 @@ the start — revised 2026-07-07).
 | 16 | The Evening Shift — Checked Out | [S] `pwr_shift_exam` **v2 CHECKPOINT** | Graded free-form dispatch: down to 850, hold, back to 1000 — your tools, your call |
 | 17 | Coming Down | [P] `pwr_lower_power` | Controlled power reduction |
 | 18 | Putting It to Bed | [P] `pwr_shutdown` | Normal shutdown Mode 1, At Power → Mode 3, Hot Standby; decay heat is forever |
+| 18a | Cooling Down | [S] `pwr_mode3_to_mode5` **NEW 2026-07** | The controlled cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown: borate for margin, secondary-led cooldown, subcooling-guarded depressurization, RHR + RCP securing |
+| 18b | Cold to Power | [S] `pwr_return_to_mode1` **NEW 2026-07** | The full startup Mode 5, Cold Shutdown → Mode 1, At Power — closing the Mode 5 ↔ Mode 1 round trip |
 
 ### Act IV — When Things Go Wrong (protection & upsets)
 | # | Mission | Kind | Teaches |

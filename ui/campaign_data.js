@@ -26,6 +26,7 @@
         { kind: 'scenario', id: 'pwr_chain_reaction', teaches: 'Mode 3 → Mode 2 — criticality, the neutron source, startup rate and period.' },
       ] },
       { id: 'act2', title: 'Act II — The Physics', missions: [
+        { kind: 'scenario', id: 'pwr_mode5_to_mode3', teaches: 'Mode 5, Cold Shutdown → Mode 3, Hot Standby — the cold heatup: pressurize, take critical, ride the temperature up.' },
         { kind: 'procedure', id: 'pwr_startup', teaches: 'Mode 3, Hot Standby → Mode 2, Startup — take the reactor critical yourself, the real procedure.' },
         { kind: 'scenario', id: 'pwr_feedback', teaches: 'Mode 1, At Power — Doppler and moderator feedback: the reactor pushes back.' },
         { kind: 'scenario', id: 'pwr_xenon', teaches: 'After a Mode 1 trip — xenon-135: the poison that rises after shutdown, and the dead time it enforces.' },
@@ -43,6 +44,8 @@
         { kind: 'scenario', id: 'pwr_shift_exam', teaches: 'CHECKPOINT — Mode 1 dispatch, 850↔1000 MWe: your tools, your call. Graded.' },
         { kind: 'procedure', id: 'pwr_lower_power', teaches: 'Mode 1, At Power — coming down under control.' },
         { kind: 'procedure', id: 'pwr_shutdown', teaches: 'Mode 1, At Power → Mode 3, Hot Standby — decay heat never sleeps.' },
+        { kind: 'scenario', id: 'pwr_mode3_to_mode5', teaches: 'Mode 3, Hot Standby → Mode 5, Cold Shutdown — the controlled cooldown: borate, cool, depressurize, place RHR.' },
+        { kind: 'scenario', id: 'pwr_return_to_mode1', teaches: 'Mode 5, Cold Shutdown → Mode 1, At Power — the full startup, closing the round trip.' },
       ] },
       { id: 'act4', title: 'Act IV — When Things Go Wrong', missions: [
         { kind: 'scenario', id: 'pwr_protection', teaches: 'Mode 1 upset — the reactor protection system, and how to read an alarm flood.' },

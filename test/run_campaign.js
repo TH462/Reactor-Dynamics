@@ -35,6 +35,7 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'scenarios/pwr_automation.js',
   'scenarios/pwr_protection.js', 'scenarios/pwr_esf.js', 'scenarios/pwr_msiv.js',
   'scenarios/pwr_slb.js', 'scenarios/pwr_lof.js', 'scenarios/pwr_qualify.js',
+  'scenarios/pwr_mode5_to_mode3.js', 'scenarios/pwr_mode3_to_mode5.js', 'scenarios/pwr_return_to_mode1.js',
   'scenarios/rbmk_tour.js', 'scenarios/rbmk_void.js', 'scenarios/rbmk_ar.js',
   'scenarios/rbmk_chernobyl.js', 'scenarios/rbmk_az5_fixed.js',
   'scenarios/bwr_tour.js', 'scenarios/bwr_recirc.js', 'scenarios/bwr_isolation.js',
@@ -109,7 +110,7 @@ function settle(s, secs) { var end = s.simTime + secs; var sn; while (s.simTime 
 var TRIGGERS = ['time', 'delay', 'instrument', 'true_state', 'operator_action', 'inaction', 'alarm', 'scram', 'manual', 'all', 'any'];
 // campaign plant → the MANUAL_PROCEDURES engine keys its procedures must exist under
 var ENGINE_KEYS = { pwr: ['pwr'], rbmk: ['rbmk_pre', 'rbmk_post'], bwr: ['bwr'] };
-var EXPECTED_MISSIONS = { pwr: 31, rbmk: 9, bwr: 8 };
+var EXPECTED_MISSIONS = { pwr: 34, rbmk: 9, bwr: 8 };
 
 test('campaign structure — missions resolve, ids unique (all plants)', function (ck) {
   Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
@@ -847,6 +848,96 @@ test('pwr_sg_flood — bonus: both fixes work, inaction floods', function (ck) {
   snap = runUntil(s3, function (sn) { return lc(sn); }, 600);
   ck('inaction reaches the flooded endpoint', !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is the flooded card', lc(snap).title, /Flooded/i.test(lc(snap).title), 'SG Flooded card');
+});
+
+// ---------------------------------------------------------- Mode 5 ↔ Mode 1 path
+// Scripted-operator drives for the three transition missions. The heatup uses
+// controlled low-power nuclear heat (proven in the engine round-trip); the
+// cooldown uses temperature-tracking setpoints. Both read the TRUE state and
+// issue only real commands, at high acceleration to keep the gate fast.
+function psatC(T) { return Math.pow(Math.max(T, 1) / 179.47, 1 / 0.239); }
+function clampC(x, a, b) { return x < a ? a : (x > b ? b : x); }
+function heatupStep(s, shutdown) {
+  var t = s.engine.getTrueState();
+  s.handleCommand({ action: 'set_rcp', running: true });
+  s.handleCommand({ action: 'set_pressure_setpoint', mpa: 15.41 });
+  s.handleCommand({ action: 'set_feed_pump_speed', pct: clampC(40 + 3 * (65 - t.sg_level_pct), 0, 100) });
+  if (t.sr_energized && t.pressure_mpa > 5) s.handleCommand({ action: 'set_sr_detector', on: false }); // SR→IR handoff
+  if (t.pressure_mpa < 13.5) return;                    // pressurize before pulling rods
+  if (shutdown) {                                       // settle subcritical-but-hot (Mode 3)
+    s.handleCommand({ action: 'set_boron_adjust', rate: 3.0 });
+    s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -4, speed: 'normal' });
+    return;
+  }
+  var Pt = (t.tavg_c < 300) ? 10 : 12;                  // gentle SUR-limited hold ~10 %
+  if (t.power_pct > Pt * 1.3 || t.startup_rate_dpm > 1.5 || t.fuel_temp_c > 500) s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -2, speed: 'normal' });
+  else if (t.power_pct < Pt * 0.8 && t.startup_rate_dpm < 1.0) s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 1, speed: 'slow' });
+}
+
+test('pwr_mode5_to_mode3 — cold heatup reaches Hot Standby, no fuel damage', function (ck) {
+  var s = startScenario('pwr_mode5_to_mode3');
+  s.handleCommand({ action: 'set_speed', value: 60 });
+  var maxFuel = 0;
+  var snap = runUntil(s, function (sn) {
+    var t = s.engine.getTrueState(); if (t.fuel_temp_c > maxFuel) maxFuel = t.fuel_temp_c;
+    heatupStep(s, t.tavg_c >= 296);                     // heat, then settle subcritical once hot
+    return lc(sn);
+  }, 30000);
+  ck('heatup reaches an endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) {
+    ck('endpoint is the Hot Standby card', lc(snap).title, /Hot Standby/i.test(lc(snap).title), 'Hot Standby — Reached');
+    var tf = s.engine.getTrueState();
+    ck('hot at NOP temperature', tf.tavg_c.toFixed(1), tf.tavg_c > 285, '> 285 °C');
+    ck('subcritical Hot Standby (Mode 3)', 'mode=' + tf.plant_mode + ' rho=' + tf.reactivity_pcm.toFixed(0), tf.plant_mode === 3 && tf.reactivity_pcm < 0, 'Mode 3, subcritical');
+    ck('no fuel damage on the way up', maxFuel.toFixed(0), maxFuel < 1200 && !s.engine.s.fuel_damaged, '< 1200 °C');
+  }
+});
+
+test('pwr_mode3_to_mode5 — controlled cooldown reaches Cold Shutdown', function (ck) {
+  var s = startScenario('pwr_mode3_to_mode5');
+  s.handleCommand({ action: 'set_speed', value: 120 });
+  var below = false, blockedLP = false;
+  var snap = runUntil(s, function (sn) {
+    var t = s.engine.getTrueState();
+    s.handleCommand({ action: 'set_steam_dump_setpoint', mpa: clampC(psatC(t.tavg_c - 6), 0.3, 8.90) });
+    s.handleCommand({ action: 'set_pressure_setpoint', mpa: clampC(psatC(t.tavg_c + 30), 0.5, 15.41) });
+    if (t.pressure_mpa > psatC(t.tavg_c + 30) + 0.3) s.handleCommand({ action: 'set_spray', pct: 70 }); else s.handleCommand({ action: 'set_spray', auto: true });
+    if (!blockedLP && t.pressure_mpa < 13.5) { blockedLP = true; s.handleCommand({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true }); }
+    if (!below && t.pressure_mpa < 2.76) { below = true; s.handleCommand({ action: 'set_rhr', active: true }); s.handleCommand({ action: 'set_rhr_hx', pct: 100 }); s.handleCommand({ action: 'set_rcp', running: false }); }
+    s.handleCommand({ action: 'set_boron_adjust', rate: t.reactivity_pcm < -2500 ? 0 : 4.0 });
+    var l = t.pzr_level_pct;
+    if (l > 58) { s.handleCommand({ action: 'set_letdown_flow', normalized: 0.03 }); s.handleCommand({ action: 'set_charging_flow', normalized: 0 }); }
+    else if (l < 30) { s.handleCommand({ action: 'set_charging_flow', normalized: 0.03 }); s.handleCommand({ action: 'set_letdown_flow', normalized: 0 }); }
+    else { s.handleCommand({ action: 'set_letdown_flow', normalized: 0 }); s.handleCommand({ action: 'set_charging_flow', normalized: 0 }); }
+    s.handleCommand({ action: 'set_feed_pump_speed', pct: clampC(40 + 3 * (65 - t.sg_level_pct), 0, 100) });
+    return lc(sn);
+  }, 40000);
+  ck('cooldown reaches an endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) {
+    ck('endpoint is the Cold Shutdown card', lc(snap).title, /Cold Shutdown/i.test(lc(snap).title), 'Cold Shutdown — Reached');
+    var tf = s.engine.getTrueState();
+    ck('cold (Tavg ≤ 95 °C)', tf.tavg_c.toFixed(1), tf.tavg_c <= 95, '≤ 95 °C');
+    ck('depressurized below RHR interlock', tf.pressure_mpa.toFixed(2), tf.pressure_mpa < 2.76, '< 2.76 MPa');
+    ck('RHR aligned + subcritical', 'rhr=' + tf.rhr_valve_open + ' rho=' + tf.reactivity_pcm.toFixed(0), tf.rhr_valve_open && tf.reactivity_pcm < 0, 'RHR on, subcritical');
+  }
+});
+
+test('pwr_return_to_mode1 — full cold startup reaches Mode 1, At Power', function (ck) {
+  var s = startScenario('pwr_return_to_mode1');
+  s.handleCommand({ action: 'set_speed', value: 60 });
+  var maxFuel = 0;
+  var snap = runUntil(s, function (sn) {
+    var t = s.engine.getTrueState(); if (t.fuel_temp_c > maxFuel) maxFuel = t.fuel_temp_c;
+    heatupStep(s, false);                                // heat and hold power — no shutdown
+    return lc(sn);
+  }, 30000);
+  ck('startup reaches an endpoint', !!snap, !!snap, 'level_complete');
+  if (snap) {
+    ck('endpoint is the At Power card', lc(snap).title, /At Power|Mode 1/i.test(lc(snap).title), 'At Power — Mode 1 Reached');
+    var tf = s.engine.getTrueState();
+    ck('at Mode 1 (critical, hot, > 5 %)', 'mode=' + tf.plant_mode + ' P=' + tf.power_pct.toFixed(1), tf.plant_mode === 1 && tf.power_pct > 5, 'Mode 1, > 5 %');
+    ck('no fuel damage on the way up', maxFuel.toFixed(0), maxFuel < 1200 && !s.engine.s.fuel_damaged, '< 1200 °C');
+  }
 });
 
 // ------------------------------------------------------------ RBMK campaign

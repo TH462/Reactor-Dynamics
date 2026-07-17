@@ -23,10 +23,21 @@
     { instrument: 'power_range',      direction: 'high', setpoint: 120.0,  action: 'scram' }, // % rated
     { instrument: 'tavg',             direction: 'high', setpoint: 335.0,  action: 'scram' }, // °C
     { instrument: 'primary_pressure', direction: 'high', setpoint: 16.44,  action: 'scram' }, // MPa
-    { instrument: 'primary_pressure', direction: 'low',  setpoint: 12.41,  action: 'scram' }, // MPa
+    // Low-pressure reactor trip. Bypassable in the cold/shutdown regime (the real
+    // P-11 permissive, ~1970 psig / 13.6 MPa): a plant that INITIALIZES depressurized
+    // (cold_shutdown) starts with this trip blocked, and it AUTO-REINSTATES the moment
+    // pressure climbs back above P-11 during heatup. At power the permissive is not
+    // satisfied, so the trip is never blocked — a LOCA/TMI depressurization still trips.
+    { id: 'lo_press', instrument: 'primary_pressure', direction: 'low', setpoint: 12.41, action: 'scram', // MPa
+      blockable: true, block_permissive: { instrument: 'primary_pressure', direction: 'low', setpoint: 13.6 } },
     { instrument: 'pzr_level',        direction: 'low',  setpoint: 12.0,   action: 'scram' }, // %
     { instrument: 'sg_level',         direction: 'low',  setpoint: 12.0,   action: 'scram' }, // %
-    { instrument: '__true_flow__',    direction: 'low',  setpoint: 0.25,   action: 'scram' }, // HR1 exception
+    // Low-flow reactor trip. Bypassable below the P-7 low-power permissive (5 %): the
+    // RCPs are secured in cold shutdown (RHR provides circulation), so the trip is
+    // blocked at a depressurized/low-power init and re-arms above P-7. At power it is
+    // never blocked — a real RCP trip / loss of flow (pwr_lof) still scrams.
+    { id: 'lo_flow', instrument: '__true_flow__', direction: 'low', setpoint: 0.25, action: 'scram', // HR1 exception
+      blockable: true, block_permissive: { instrument: 'power_range', direction: 'low', setpoint: 5.0 } },
     // Startup nuclear-instrumentation trips (the startup safety net):
     // SR high flux at shutdown — 1e5 cps ≈ 0.02 % power; live only while the
     // detector is energized (secure the SR during the SR→IR handoff or trip).

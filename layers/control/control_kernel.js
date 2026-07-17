@@ -127,12 +127,17 @@
     return arms;
   };
 
+  // A blockable trip starts BLOCKED when its permissive is already satisfied at plant
+  // init — the at-power lineup blocks the startup trips (P-10), and a depressurized
+  // cold-shutdown lineup blocks the low-pressure / low-flow trips (P-11 / P-7). Each
+  // re-arms via _autoReinstateTripBlocks when its permissive drops.
   ControlLayer.prototype._initialTripBlocks = function () {
     var blocks = {};
     var ins = (this.engine && this.engine.getInstruments) ? this.engine.getInstruments() : {};
-    if (this._permissiveSatisfied(ins)) {
-      var tps = this.config.trips || [];
-      for (var ti = 0; ti < tps.length; ti++) if (tps[ti].blockable && tps[ti].id) blocks[tps[ti].id] = true;
+    var tps = this.config.trips || [];
+    for (var ti = 0; ti < tps.length; ti++) {
+      var t = tps[ti];
+      if (t.blockable && t.id && this._permTest(this._tripPermissive(t), ins)) blocks[t.id] = true;
     }
     return blocks;
   };
@@ -297,17 +302,30 @@
     }
   };
 
-  ControlLayer.prototype._permissiveSatisfied = function (ins) {
-    var perm = this.config.trip_block_permissive;
+  // The permissive gating a trip's block: its own `block_permissive` when it carries
+  // one (e.g. the P-11 pressure bypass / P-7 low-power bypass for the cold/shutdown
+  // regime), else the plant-wide `trip_block_permissive` (P-10 at-power).
+  ControlLayer.prototype._tripPermissive = function (t) {
+    return (t && t.block_permissive) ? t.block_permissive : this.config.trip_block_permissive;
+  };
+  ControlLayer.prototype._permTest = function (perm, ins) {
     if (!perm) return true;
     return crossed(ins[perm.instrument], perm.direction, perm.setpoint);
   };
+  ControlLayer.prototype._permissiveSatisfied = function (ins) {   // the plant-wide permissive (P-10)
+    return this._permTest(this.config.trip_block_permissive, ins);
+  };
 
-  // Westinghouse auto-reinstate: below the at-power permissive every manual
-  // trip block clears itself — the startup safety net re-arms on the way down.
+  // Westinghouse auto-reinstate: a trip block clears itself the moment ITS permissive
+  // is no longer satisfied — the startup net re-arms below P-10 on the way down, and
+  // the cold-regime P-11/P-7 bypasses re-arm above their permissive on the way up.
   ControlLayer.prototype._autoReinstateTripBlocks = function (ins) {
     if (!this._anyTripBlocks()) return;
-    if (!this._permissiveSatisfied(ins)) this.tripBlocks = {};
+    var tps = this.config.trips || [];
+    for (var i = 0; i < tps.length; i++) {
+      var t = tps[i];
+      if (t.id && this.tripBlocks[t.id] && !this._permTest(this._tripPermissive(t), ins)) delete this.tripBlocks[t.id];
+    }
   };
   ControlLayer.prototype._anyTripBlocks = function () {
     for (var k in this.tripBlocks) return true;
@@ -319,11 +337,11 @@
     for (var i = 0; i < trips.length; i++) if (trips[i].id === tripId && trips[i].blockable) { t = trips[i]; break; }
     if (!t) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown or unblockable trip', received: tripId };
     if (blocked) {
-      if (!this._permissiveSatisfied(this.lastInstruments)) {
+      if (!this._permTest(this._tripPermissive(t), this.lastInstruments)) {
         return { type: 'blocked', code: 'INTERLOCK',
                  message: this.register === 'industry'
-                   ? 'TRIP BLOCK REFUSED: at-power permissive (P-10) not satisfied.'
-                   : 'Trip block refused — the plant is below the at-power permissive; the startup trips stay armed until power is high enough (P-10).' };
+                   ? 'TRIP BLOCK REFUSED: block permissive not satisfied.'
+                   : 'Trip block refused — the plant is outside this trip’s block permissive (e.g. P-10 at-power, or P-11/P-7 for the low-pressure/low-flow trips).' };
       }
       this.tripBlocks[tripId] = true;
     } else {
