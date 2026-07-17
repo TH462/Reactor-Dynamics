@@ -1,12 +1,12 @@
 # 11 — Campaign ↔ Manuals Crosswalk
 
 **Document:** PWR-XW-01  
-**Revision:** 0  
-**Campaign:** PWR — Zero to Operator (`ui/campaign_data.js`)  
+**Revision:** 1 (2026-07: campaign aligned — Mode N strings + Mode 5 ↔ 1 missions)  
+**Campaign:** PWR — Zero to Operator (`ui/campaign_data.js`) — **34 missions + 1 bonus**  
 **Manuals:** this `Manuals/` set (MODE naming Rev 2)  
 
 Use this table to jump between a campaign mission and the matching operator procedure.  
-Campaign code still uses older “Hot Standby / at power” wording until `CAMPAIGN_MODE_ALIGNMENT_SPEC.md` is implemented.
+Campaign `teaches` and procedure titles now use the manuals' **Mode N, Name** convention, and three missions drive the full **Mode 5 ↔ Mode 1** path on the board (`CAMPAIGN_MODE_ALIGNMENT_SPEC.md` §2–3 complete).
 
 ---
 
@@ -14,10 +14,11 @@ Campaign code still uses older “Hot Standby / at power” wording until `CAMPA
 
 | Free Play / engine | Plant MODE (manuals) |
 |--------------------|----------------------|
-| `hot_full_power`, `50_percent` | **Mode 1, At Power** |
+| `hot_full_power`, `50_percent`, `5_percent` | **Mode 1, At Power** |
 | Critical ≤ 5 % | **Mode 2, Startup** |
 | `hot_zero_power` | **Mode 3, Hot Standby** |
-| Cooldown / cold story | **Mode 4 / Mode 5** **[narr]** |
+| Heatup/cooldown transit | **Mode 4, Hot Shutdown** **[sim]** |
+| `cold_shutdown` | **Mode 5, Cold Shutdown** **[sim]** |
 
 ---
 
@@ -28,6 +29,7 @@ Campaign code still uses older “Hot Standby / at power” wording until `CAMPA
 | 1 | `pwr_hook` | [S] | Mode 1 | `02` SCRAM; `03` SCRAM |
 | 2 | `pwr_tour` | [S] | Mode 1 | `01` energy path; T07 load Manual |
 | 3 | `pwr_chain_reaction` | [S] | Mode 3 → 2 | N02 concepts; SUR |
+| 3a | `pwr_mode5_to_mode3` | [S] | **Mode 5 → 4 → 3** | **PWR-T20** Phase A–B, **PWR-N03** |
 | 4 | `pwr_startup` | [P] | Mode 3 → 2 | **PWR-N01**, **PWR-N02**, T13 |
 | 5 | `pwr_feedback` | [S] | Mode 1 | `01` Doppler/MTC |
 | 6 | `pwr_xenon` | [S] | post Mode 1 trip | **PWR-N09** |
@@ -43,6 +45,8 @@ Campaign code still uses older “Hot Standby / at power” wording until `CAMPA
 | 16 | `pwr_shift_exam` | [S] | Mode 1 | N07/N08 (graded in campaign only) |
 | 17 | `pwr_lower_power` | [P] | Mode 1 | **PWR-N08** |
 | 18 | `pwr_shutdown` | [P] | Mode 1 → 3 | **PWR-N14**, **PWR-T04** |
+| 18a | `pwr_mode3_to_mode5` | [S] | **Mode 3 → 4 → 5** | **PWR-T21** Phase C, **PWR-N15** |
+| 18b | `pwr_return_to_mode1` | [S] | **Mode 5 → 1** (full) | **PWR-T20** full + N02/N06 |
 | 19 | `pwr_protection` | [S] | Mode 1 | `06`; **PWR-E03** |
 | 20 | `pwr_esf` | [S] | Mode 1 | **PWR-T12**; HPI/AFW in `03` |
 | 21 | `pwr_loss_of_feedwater` | [P] | Mode 1 | **PWR-E01** |
@@ -56,15 +60,10 @@ Campaign code still uses older “Hot Standby / at power” wording until `CAMPA
 | 31 | `pwr_qualify` | [S] | Mode 1 | E07/E08/X01 exam style |
 | Bonus | `pwr_sg_flood` | [S] | Mode 1 | N12 MANUAL; E16 partial |
 
-### Planned (not in campaign yet)
-
-| Proposed id | MODE path | Manual |
-|-------------|-----------|--------|
-| `pwr_mode5_to_mode3` | Mode 5 → Mode 3 | **PWR-T20** Phase A–B, **PWR-N03** |
-| `pwr_mode3_to_mode5` | Mode 3 → Mode 5 | **PWR-T21** Phase C, **PWR-N15** |
-| `pwr_return_to_mode1` | Mode 5 → Mode 1 | **PWR-T20** full + N02/N06 |
-
-See `CAMPAIGN_MODE_ALIGNMENT_SPEC.md`.
+**Numbering note:** the Mode-5 missions carry letter suffixes (3a, 18a, 18b) to
+show where they sit in the play order without renumbering the base 1–31 map. The
+authoritative order is `ui/campaign_data.js`; the round trip
+`3a → 4 … 18 → 18a → 18b` walks Mode 5 → 3 → 1 → 3 → 5 → 1.
 
 ---
 
@@ -81,7 +80,7 @@ See `CAMPAIGN_MODE_ALIGNMENT_SPEC.md`.
 
 | Manual | Topic |
 |--------|-------|
-| PWR-N03 / N15 / T20 / T21 | Full Mode 5 ↔ Mode 1 commercial path |
+| PWR-N03 / N15 / T20 / T21 | Full Mode 5 ↔ Mode 1 path — **now driven by missions 3a / 18a / 18b**; the procedures keep the step-level commercial detail (rate limits, exact lineups) beyond the missions' scope |
 | PWR-A01–A26 | Per-annunciator ARP |
 | PWR-E04–E06, E09–E18, E20–E21 | Failures not in syllabus |
 | PWR-N11, N13 | CVCS level detail; RCP normal ops |
