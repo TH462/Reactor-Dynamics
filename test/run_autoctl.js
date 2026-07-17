@@ -69,8 +69,9 @@ function rig(plant, initState, dv, keepDefaults) {
     layer.handleCommand = function (c) { if (layer._internal) sent.push(c); return orig(c); };
   };
   hook();
-  service.handleCommand({ action: 'set_speed', value: 10 });   // 1 s sim per cycle
-  return {
+  var intendedSpeed = 10;
+  service.handleCommand({ action: 'set_speed', value: intendedSpeed });   // 1 s sim per cycle
+  var self = {
     service: service, sent: sent, rehook: hook,
     snap: function () { return service.assembleSnapshot(); },
     chan: function (id) {
@@ -82,11 +83,22 @@ function rig(plant, initState, dv, keepDefaults) {
       ids.forEach(function (id) { service.handleCommand({ action: 'set_auto_channel', channel_id: id, engaged: true }); });
     },
     setSp: function (id, v) { service.handleCommand({ action: 'set_auto_setpoint', channel_id: id, value: v }); },
-    cmd: function (c) { return service.handleCommand(c); },
+    cmd: function (c) { if (c && c.action === 'set_speed') intendedSpeed = c.value; return service.handleCommand(c); },
     run: function (simSeconds) {   // ~1 s sim per cycle at 10× (transient cadence shortens a cycle; overshoot is fine)
-      return service.advanceCycles(Math.ceil(simSeconds));
+      // Re-assert the intended speed each cycle. The interactive attention-stop
+      // (auto-decelerate to 1× on a new alarm/scram/failure — simulation_service
+      // §_attentionStop) is a UI speed policy for a human at the board; a headless
+      // automation probe must still get its full sim-time budget, so we override
+      // the snap-back here. Automation correctness is independent of speed policy.
+      var res;
+      for (var i = 0; i < Math.ceil(simSeconds); i++) {
+        if (service.timeAcceleration !== intendedSpeed) service.handleCommand({ action: 'set_speed', value: intendedSpeed });
+        res = service.advanceCycles(1);
+      }
+      return res;
     },
   };
+  return self;
 }
 function inst(r) { return r.snap().instruments; }
 function ts(r) { return r.snap().true_state; }

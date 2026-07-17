@@ -9,6 +9,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Fast-forward attention stops — the clock snaps back to real time when the operator must
+  act.** Time acceleration lives in the Simulation Service (M5); it now auto-decelerates to 1×
+  the moment a genuine plant event appears on the broadcast the event lands on — a **reactor
+  trip / SCRAM**, a **newly injected or latched failure**, or a **newly annunciating alarm**. It
+  applies to *any* fast-forward — operator-selected or beat-driven — so an authored fast-forward
+  can no longer blow past a trip. (A *commanded* power/load maneuver is deliberately **not** a
+  trigger: an excursion that genuinely needs attention already annunciates an alarm, which the
+  alarm trigger catches, whereas an operator- or auto-channel-commanded ramp is expected change
+  and must remain fast-forwardable.) The snapshot that carries the event also carries
+  `metadata.speed_snap = { reason }`, and the UI toasts *why* the clock changed
+  ("Dropped to real time — reactor trip"). Authored *soft* stops (pausing just before an
+  operator action during a mode change) remain a content pattern: a beat with `speed: 1`.
+  `run_m5` **19/19**, `run_autoctl` **20/20**.
+
 - **Three Mode 5 ↔ Mode 1 campaign missions (PWR).** The training campaign now teaches the
   full commercial heatup/cooldown loop on the board, using the cold initial condition below:
   - **`pwr_mode5_to_mode3` — "The Big Warm-Up"** (Act II): the cold heatup — pressurize, start

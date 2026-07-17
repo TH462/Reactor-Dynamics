@@ -622,9 +622,18 @@
 
   // The Instructor can change time acceleration (beat `speed` — fast-forward in,
   // drop out at a set point); keep the speed seg + FF badge honest.
+  var SPEED_SNAP_MSG = {
+    scram: 'Dropped to real time — reactor trip',
+    failure: 'Dropped to real time — equipment failure',
+    alarm: 'Dropped to real time — new alarm',
+  };
   var lastSpeedSync = null;
   function syncSpeedUI(s) {
     var v = s && s.metadata ? s.metadata.time_acceleration : null;
+    // Attention stop (M5): a plant event snapped fast-forward back to real time.
+    // Toast the reason so the operator knows why the clock changed under them.
+    var snap = s && s.metadata ? s.metadata.speed_snap : null;
+    if (snap) showToast(SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time', 'error');
     if (v == null || v === lastSpeedSync) return;
     lastSpeedSync = v;
     var seg = $('speed');

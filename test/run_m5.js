@@ -136,6 +136,37 @@ T.push(test('Transient cadence — tightens on a transient, relaxes when steady'
   ck('cadence relaxes once settled', s.broadcastMs + ' ms', s.broadcastMs === normalMs, normalMs + ' ms');
 }));
 
+T.push(test('Attention stop — a plant event snaps fast-forward back to real time', function (ck) {
+  // SCRAM while fast-forwarding → drop to 1× with a reason on THIS snapshot.
+  var s = svc();
+  s.advanceCycles(3);                                    // establish a steady prev broadcast
+  s.handleCommand({ action: 'set_speed', value: 60 });
+  var ff = s.advanceCycles(1);                           // 60× with no event → stays fast
+  ck('fast-forward holds while nothing happens', ff.metadata.time_acceleration, ff.metadata.time_acceleration === 60, '60');
+  s.handleCommand({ action: 'scram' });
+  var snap = s.advanceCycles(1);
+  ck('scram snaps back to real time', snap.metadata.time_acceleration, snap.metadata.time_acceleration === 1, '1');
+  ck('the snap carries its reason', snap.metadata.speed_snap && snap.metadata.speed_snap.reason, snap.metadata.speed_snap && snap.metadata.speed_snap.reason === 'scram', 'scram');
+
+  // A newly-injected failure is also an attention stop.
+  var f = svc();
+  f.advanceCycles(3);
+  f.handleCommand({ action: 'set_speed', value: 60 });
+  f.advanceCycles(1);
+  f.handleCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+  var fsnap = f.advanceCycles(1);
+  ck('failure snaps back to real time', fsnap.metadata.time_acceleration, fsnap.metadata.time_acceleration === 1, '1');
+  ck('failure reason reported', fsnap.metadata.speed_snap && fsnap.metadata.speed_snap.reason, fsnap.metadata.speed_snap && fsnap.metadata.speed_snap.reason === 'failure', 'failure');
+
+  // Guard: at real time there is nothing to snap — no event flag is manufactured.
+  var g = svc();
+  g.advanceCycles(3);
+  g.handleCommand({ action: 'scram' });
+  var gsnap = g.advanceCycles(1);
+  ck('no snap flag when already at 1×', gsnap.metadata.time_acceleration + '/' + !!gsnap.metadata.speed_snap,
+     gsnap.metadata.time_acceleration === 1 && !gsnap.metadata.speed_snap, '1/false');
+}));
+
 T.push(test('Plant selection / reset — rebuilds the stack and resets the run', function (ck) {
   var s = svc();
   s.advanceCycles(5);

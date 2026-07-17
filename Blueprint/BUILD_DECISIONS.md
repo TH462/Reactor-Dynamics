@@ -13,7 +13,7 @@ where the two differ or where judgment was exercised.
 - Update the **Open Flags** table at the top whenever a flag is opened or closed.
 - Keep it skimmable: tables and short bullets, not prose.
 
-**Status:** M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ · M5 ✅ (+ rewind ring) · M6·PH ✅ · **M6 ✅ steps 1–6 (beat engine · Path 2 follow · TMI flagship · rewind · highlights/F8 · Hook + Training tab)** · M7 ✅ · M8 🟦 functional alpha (PWR) · **all three engines proven — physics layer complete** · **RBMK+BWR now have full balance-of-plant (turbine/condenser/generator + electrical output) for PWR-parity full-scope operation** (RBMK 20/20·129, BWR 10/10·63) · **blueprint reconciled to code — CONTEXT + M1/M2/M3 now describe all built engine/contract additions (BOP, block valve, SLC/LPCS/SRV, reactivity proxies, 50% states); UI/[tune] deviations remain logged below** · (next: Chernobyl/Fukushima flagships + Campaign wrapper, Qualification hints, or extend M8/M4 to RBMK+BWR)
+**Status:** M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ · M5 ✅ (+ rewind ring · attention-stops) · M6·PH ✅ · **M6 ✅ steps 1–6 (beat engine · Path 2 follow · TMI flagship · rewind · highlights/F8 · Hook + Training tab)** · M7 ✅ · M8 🟦 functional alpha (PWR) · **all three engines proven — physics layer complete** · **RBMK+BWR now have full balance-of-plant (turbine/condenser/generator + electrical output) for PWR-parity full-scope operation** (RBMK 20/20·129, BWR 10/10·63) · **blueprint reconciled to code — CONTEXT + M1/M2/M3 now describe all built engine/contract additions (BOP, block valve, SLC/LPCS/SRV, reactivity proxies, 50% states); UI/[tune] deviations remain logged below** · (next: Chernobyl/Fukushima flagships + Campaign wrapper, Qualification hints, or extend M8/M4 to RBMK+BWR)
 
 ---
 
@@ -344,6 +344,44 @@ The §18 flagship is the acceptance centerpiece; the numbers were tuned so the t
   with `tick()` / `advanceCycles(n)` exposed for synchronous, timer-free, deterministic test driving.
 - **Transient detection** uses the plant's primary pressure field via a `primaryPressure()` helper
   (`pressure_mpa` / `steam_pressure_mpa` / `vessel_pressure_mpa`), per §7's "pressure_like".
+
+### Fast-forward attention stops (2026-07-17) — auto-decelerate to real time on an operator event
+
+- **What.** Time acceleration now auto-snaps back to **1×** on the broadcast where a plant event the
+  operator must address first appears: **SCRAM** (`rps_state.scrammed` OR manual `true_state.scrammed`,
+  edge-triggered), a **newly present `active_failures` id**, or a **newly annunciating alarm**
+  (reuses `_anyAlarmNewlyFiring`). `_attentionStop(snap)` returns the
+  first matching reason; `_assembleWithInstructor` snaps `timeAcceleration=1` and stamps
+  `metadata.speed_snap = { reason }` on that same snapshot. The M8 UI toasts the reason (`app.js`
+  `SPEED_SNAP_MSG`); the FF badge/speed-seg already mirror `time_acceleration`, so they self-clear.
+- **NOT rapid change (2026-07-17).** A raw power/pressure excursion (`_isRapidChange`, the §7
+  transient-cadence signal) is deliberately **excluded** from `_attentionStop`. It fires on any
+  *commanded* maneuver — an operator or auto-channel power ramp — which is expected change, not an
+  attention event; snapping to 1× on it would make fast-forwarding through a startup/load ramp
+  impossible (and stalled every auto maneuver in `run_autoctl`). An excursion that genuinely warrants
+  attention already annunciates an alarm, which the alarm trigger catches. `_isRapidChange` stays as
+  the transient-broadcast-cadence signal only. `run_autoctl`'s headless probes re-assert their
+  intended speed each cycle (the attention-stop is a UI speed policy, orthogonal to automation
+  correctness). `run_autoctl` **20/20**.
+- **Why here (not M4).** Time acceleration is a property of the sim driver, not the plant — CONTEXT
+  treats `wall_time` as display-only, never physics. M4 sits *below* M5 and has no time concept
+  (its only "speed" is rod drive rate); for it to set the clock would invert the command-down /
+  snapshot-up contract (HR5). M5 is the only layer that both reads the assembled snapshot and owns
+  the clock. So the state stays in M5 and the auto-decelerate lives in M5.
+- **Ordering.** Applied *after* `_serviceInstructorRequests()` (so a beat's `speed` request has already
+  landed) but *before* `metadata.time_acceleration` is stamped — a real trip/failure therefore
+  overrides an authored fast-forward, and the snapshot carrying the event already reads 1× (no
+  one-broadcast lag). It only ever decelerates, and only while accel > 1, so it never fights a paused
+  or already-real-time clock.
+- **Edge detection.** `_prevScrammed` / `_prevFailureIds` are captured in `_updateCadence` alongside
+  `_prevTrueState`/`_prevAlarms`, and cleared to their null/false baseline on every reset path
+  (`constructor` / `selectPlant` / `loadState`) so a fresh plant or just-loaded save never reads as an
+  event on its first broadcast.
+- **Authored *soft* stops stay content.** Pausing just before an operator action during a mode change
+  is still a beat with `speed: 1` (the device documented at `instructor_layer.js` `_speedRequested`) —
+  no engine change; this feature covers only the *unauthored* hard events.
+- **Gate.** New `run_m5` suite "Attention stop …" (scram, failure, and the accel-must-be->1 guard);
+  `run_m5` **19/19**, `run_autoctl` **20/20**.
 
 ## M6·PH — Placeholder Instructor
 

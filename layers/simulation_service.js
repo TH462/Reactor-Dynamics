@@ -91,6 +91,8 @@
     this.broadcastMs = NORMAL_MS;
     this._prevTrueState = null;
     this._prevAlarms = null;
+    this._prevScrammed = false;        // attention-stop edge detection (auto-decelerate)
+    this._prevFailureIds = null;
     this._timer = null;
     // Rewind ring (Gameplay §7.2): in-memory checkpoints pushed when the
     // Instructor requests one (scenario load, beat fire, follow-step advance).
@@ -128,6 +130,8 @@
     this.simTime = 0;
     this._prevTrueState = null;
     this._prevAlarms = null;
+    this._prevScrammed = false;
+    this._prevFailureIds = null;
     this.broadcastMs = NORMAL_MS;
     this.checkpoints = [];             // a fresh plant invalidates the rewind ring
     this._rewindCursor = null;
@@ -189,6 +193,16 @@
     // Service the Instructor's consume-flags (no upward callbacks — M5 polls).
     // A beat-driven world rewind rebuilds the plant, so reassemble afterwards.
     if (this._serviceInstructorRequests()) snap = this.assembleSnapshot();
+    // Attention stop: a real plant event the operator must address snaps
+    // fast-forward back to real time. Applied AFTER the Instructor's speed request
+    // so a genuine trip/failure wins over a beat that asked for FF — and stamped
+    // BEFORE time_acceleration below so THIS snapshot (the one carrying the SCRAM)
+    // already reads 1×, with no one-broadcast lag.
+    var stop = this._attentionStop(snap);
+    if (stop && this.timeAcceleration > 1) {
+      this.timeAcceleration = 1.0;
+      snap.metadata.speed_snap = { reason: stop };
+    }
     // A beat's speed request takes effect from THIS broadcast — keep it honest.
     snap.metadata.time_acceleration = this.timeAcceleration;
     snap.instructor = this._instructorBlock();
@@ -292,18 +306,66 @@
     this.broadcastMs = transient ? TRANSIENT_MS : NORMAL_MS;
     this._prevTrueState = snap.true_state;
     this._prevAlarms = snap.alarms;
+    this._prevScrammed = this._snapScrammed(snap);
+    this._prevFailureIds = this._failureIdSet(snap.active_failures);
     if (this.running && this._timer != null) this._reschedule();
   };
 
   SimulationService.prototype._isActiveTransient = function (snap) {
+    if (this._isRapidChange(snap)) return true;
+    return this._anyAlarmNewlyFiring(snap.alarms, this._prevAlarms);
+  };
+
+  // Rapid power/pressure excursion vs. the previous broadcast, thresholds scaled
+  // to the actual cadence so the *rate* that trips is frequency-independent (§7).
+  // Shared by the transient-cadence flip and the attention stop.
+  SimulationService.prototype._isRapidChange = function (snap) {
     var prev = this._prevTrueState;
     if (!prev) return false;
-    // Scale the per-interval thresholds to the actual cadence so the rate that
-    // trips transient mode is independent of the broadcast frequency.
     var k = this.broadcastMs / CADENCE_REF_MS;
     if (Math.abs(snap.true_state.power_pct - prev.power_pct) > 1.0 * k) return true;
     if (Math.abs(primaryPressure(snap.true_state) - primaryPressure(prev)) > 0.14 * k) return true;
-    return this._anyAlarmNewlyFiring(snap.alarms, this._prevAlarms);
+    return false;
+  };
+
+  // Attention stop: return a reason string for the FIRST event on this
+  // broadcast that the operator must address, else null. Edge-triggered against
+  // the previous broadcast so a latched condition fires once, not every cycle.
+  // Null while there is no previous broadcast (fresh plant / just-loaded save) so
+  // a reset never reads as an event. See _assembleWithInstructor for the snap-back.
+  //
+  // NOTE: deliberately does NOT include _isRapidChange. A rapid excursion that
+  // genuinely needs attention already trips an alarm (caught above); a COMMANDED
+  // ramp — an operator or auto-channel power maneuver — is expected change, and
+  // snapping to 1× on it would make fast-forwarding through any startup/load ramp
+  // impossible. _isRapidChange stays as the transient-broadcast-cadence signal only.
+  SimulationService.prototype._attentionStop = function (snap) {
+    if (!this._prevTrueState) return null;
+    if (this._snapScrammed(snap) && !this._prevScrammed) return 'scram';
+    if (this._anyNewFailure(snap.active_failures)) return 'failure';
+    if (this._anyAlarmNewlyFiring(snap.alarms, this._prevAlarms)) return 'alarm';
+    return null;
+  };
+
+  // Scrammed if the protection latched (rps) OR the operator manually scrammed
+  // (true_state only — a manual scram never sets rps; see control_kernel §trip).
+  SimulationService.prototype._snapScrammed = function (snap) {
+    return !!((snap.rps_state && snap.rps_state.scrammed) ||
+              (snap.true_state && snap.true_state.scrammed));
+  };
+
+  SimulationService.prototype._failureIdSet = function (failures) {
+    var set = {};
+    if (failures) for (var i = 0; i < failures.length; i++) set[failures[i].id] = true;
+    return set;
+  };
+
+  SimulationService.prototype._anyNewFailure = function (failures) {
+    if (!failures || !this._prevFailureIds) return false;
+    for (var i = 0; i < failures.length; i++) {
+      if (!this._prevFailureIds[failures[i].id]) return true;
+    }
+    return false;
   };
 
   SimulationService.prototype._anyAlarmNewlyFiring = function (now, prev) {
@@ -480,6 +542,8 @@
     this.timeAcceleration = m.time_acceleration;
     this._prevTrueState = null;
     this._prevAlarms = null;
+    this._prevScrammed = false;
+    this._prevFailureIds = null;
     this.broadcastMs = NORMAL_MS;
     if (skipInstructor && this.instructor.rebaseTime) this.instructor.rebaseTime(this.simTime);
 
