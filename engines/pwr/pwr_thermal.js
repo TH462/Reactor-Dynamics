@@ -74,6 +74,19 @@
     // and its loss slightly speeds a post-trip cooldown.
     var Q_pump = t.heat_gen_coeff * (t.pump_heat_frac || 0) * s.flow_frac;
     var dTavg = (Q_fuel_to_coolant + Q_pump - Q_coolant_to_sg - Q_rhr) / t.coolant_heat_capacity;
+    // Cold ECCS injection quench (§6.2/§6.3): HPI/LPI and the accumulators inject borated
+    // RWST/SIT water well below Tavg, removing sensible heat as it mixes — the thermal
+    // shock of a large-break accumulator dump. Perfect-mixing pull of Tavg toward
+    // eccs_temp_c at the injection throughput rate stashed by stepInventory (inventory-
+    // frac/s, PREVIOUS step — explicit coupling), scaled by eccs_cooling_gain. Added as a
+    // direct °C/s contribution (already a fractional-throughput × ΔT rate, so NOT divided
+    // by coolant_heat_capacity like the power terms). Self-limiting: cools no further than
+    // eccs_temp_c, and is exactly 0 when no injection is flowing. RHR is not here — it is
+    // recirculation (Q_rhr above), not cold make-up.
+    var q_inj = s._eccs_inj_inv || 0;
+    if (q_inj > 0 && e.eccs_temp_c != null) {
+      dTavg += (e.eccs_cooling_gain != null ? e.eccs_cooling_gain : 0) * q_inj * (e.eccs_temp_c - s.tavg_c);
+    }
     s.tavg_c += dTavg * dt;
     s._dTavg_dt = dTavg; // pressurizer surge uses this (thermal expansion)
 

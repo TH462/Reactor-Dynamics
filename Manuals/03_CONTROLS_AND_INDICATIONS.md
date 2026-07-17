@@ -395,8 +395,14 @@ Blocks **auto-reinstate** when power falls below P-10.
 ### 11.1 Accumulators (passive)
 
 - Embedded panel — status + flow when discharging.  
-- No operator open/close.  
-- Discharge when primary pressure low enough.  
+- **Passive discharge:** the check valve opens automatically when primary (cold-leg) pressure falls
+  below the arming setpoint; finite borated capacity depletes as they inject (volume % → 0).  
+- **Discharge isolation valve** (motor-operated, in series with the check valve): **Open / Isolate**.
+  Default **aligned (open)**. Isolate before depressurizing below the check-valve setpoint on a normal
+  cooldown so the accumulators do **not** spuriously dump into the depressurized RCS; also used to isolate
+  a leaking/mispositioned tank. A shut valve **blocks discharge at any pressure**.  
+- **Cold-water quench:** accumulator/ECCS water injects **cold** (RWST/SIT ~40 °C), so a large-break dump
+  **cools T-avg** as well as restoring inventory and boron.  
 
 ### 11.2 RHR / DHR
 

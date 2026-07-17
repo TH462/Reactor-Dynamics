@@ -80,13 +80,18 @@
 
   // Passive accumulators: discharge into the cold leg once primary pressure drops
   // below the N2 cover pressure; finite borated capacity depletes as they inject
-  // (accumulator_volume_pct → 0). No operator command — pressure-driven only.
+  // (accumulator_volume_pct → 0). Pressure-driven (the passive check valve), but ALSO
+  // gated by the motor-operated discharge isolation valve in series with it: when the
+  // operator has isolated the accumulators (accumulator_valve_open === false) nothing
+  // flows at any pressure. That is how a normal cooldown depressurizes below the
+  // check-valve setpoint without a spurious dump. Default aligned (valve open).
   function stepAccumulators(s, cfg, dt) {
     var e = cfg.emergency;
     var flow = 0;
     // Accumulators also discharge into the cold leg — pressure-driven off the cold-leg node.
+    var aligned = (s.accumulator_valve_open !== false);   // isolation valve; default open
     var p_inj = (s.p_coldleg != null) ? s.p_coldleg : s.pressure_mpa;
-    if (p_inj < e.accumulator_trip_mpa && s._accum_remaining > 1e-6) {
+    if (aligned && p_inj < e.accumulator_trip_mpa && s._accum_remaining > 1e-6) {
       var frac = clip((e.accumulator_trip_mpa - p_inj) / e.accumulator_trip_mpa, 0, 1);
       flow = e.accumulator_flow_max * frac;
       // Deplete finite capacity by the delivered inventory; do not overdraw the tank.
@@ -149,6 +154,11 @@
     // concentration (steam carries no boron) is deliberately not modeled — the loss
     // term is lumped and does not distinguish boil-off from leakage.
     var eccs_inv = inj_inv + accum_inv;
+    // Stash the cold-injection throughput (HPI/LPI + accumulators, inventory-frac/s) for
+    // pwr_thermal.stepCoolant's quench term — it runs earlier in the step and reads this
+    // one step late (explicit coupling, CONTEXT §11). RHR is not included (recirculation,
+    // not cold make-up). Set every step so it falls to 0 when injection stops.
+    s._eccs_inj_inv = eccs_inv;
     var c_eccs = cfg.emergency.eccs_boron_ppm;
     if (eccs_inv > 0 && c_eccs != null && s.boron_ppm != null) {
       var m_mix = s._mass > 0.05 ? s._mass : 0.05;   // floor to bound the mixing rate as inventory → 0

@@ -400,6 +400,7 @@
       accumulators_discharging: s.accumulators_discharging,
       accumulator_flow_normalized: s.accumulator_flow_normalized,
       accumulator_volume_pct: s.accumulator_volume_pct, rhr_active: s.rhr_active,
+      accumulator_valve_open: s.accumulator_valve_open !== false,   // discharge isolation valve position
       // RHR hot-leg suction valve + ECCS mode (HPI/LPI/RHR/off) for the ECCS card.
       rhr_valve_open: !!s.rhr_valve_open, eccs_mode: s.eccs_mode || 'off',
     };
@@ -560,6 +561,16 @@
       case 'close_block_valve':
         // Isolate the PORV line (stops flow even if the PORV is stuck open).
         s.block_valve_open = false;
+        break;
+      case 'open_accumulator_valve':
+        // Align the SI accumulators to inject (discharge isolation valve open).
+        s.accumulator_valve_open = true;
+        break;
+      case 'close_accumulator_valve':
+        // Isolate the accumulators (motor-operated discharge valve shut) — blocks
+        // injection at any pressure, so a cooldown can depressurize below the
+        // check-valve setpoint without a spurious dump.
+        s.accumulator_valve_open = false;
         break;
       case 'set_hpi':
       case 'set_lpi':   // set_lpi: deprecated alias — HPI and LPI are one merged "HPI/LPI" system
@@ -921,6 +932,8 @@
       hpi_active: false, hpi_flow_normalized: 0, hpi_flow_multiplier: 1.0,
       accumulators_discharging: false, accumulator_flow_normalized: 0,
       _accum_remaining: cfg.emergency.accumulator_capacity, accumulator_volume_pct: 100,
+      accumulator_valve_open: true,           // motor-operated discharge isolation valve (default aligned)
+      _eccs_inj_inv: 0,                       // cold-injection throughput for the stepCoolant quench term
       flow_frac: 1.0, pump_flow_pct: 100, pump_running: true, station_blackout: false,
       // RCP cavitation (suction-node subcooling; pwr_primary.stepCavitation).
       suction_subcool_c: 0, rcp_cavitation_frac: 0, rcp_cavitating: false,
@@ -1107,6 +1120,11 @@
     // AFW throttle (added with the ESF AUTO/MAN arms).
     if (s.afw_throttle_frac == null) s.afw_throttle_frac = 1.0;
     if (s.afw_flow_normalized == null) s.afw_flow_normalized = 0;
+    // Accumulator discharge isolation valve + cold-injection thermal coupling (2026-07).
+    // Older saves have no isolation valve — default aligned (open) so behavior is
+    // unchanged; the quench throughput recomputes on the first step.
+    if (s.accumulator_valve_open == null) s.accumulator_valve_open = true;
+    if (s._eccs_inj_inv == null) s._eccs_inj_inv = 0;
     // Feed pump (replaced direct feedwater-flow demand).
     if (s.feed_pump_speed_pct == null) s.feed_pump_speed_pct = (s.feedwater_demand_frac || 0) * 100;
     // Nuclear instrumentation (SR/IR detectors).
@@ -1806,6 +1824,59 @@
       });
     },
 
+    // Cold-injection quench + accumulator isolation valve. (A) HPI/LPI/accumulator water
+    // enters below Tavg and removes sensible heat (pwr_thermal.stepCoolant's mixing term,
+    // driven by the throughput stashed in stepInventory). (B) The motor-operated discharge
+    // isolation valve hard-gates accumulator flow, so a cooldown can depressurize below the
+    // check-valve setpoint without a spurious dump.
+    eccs_cold_injection: function () {
+      return test('ECCS cold-injection quench + accumulator isolation valve', function (ck) {
+        var cfg = new Harness('hot_full_power').eng.cfg;
+        var e = cfg.emergency;
+        // (A) Two identical HOT coolant states through stepCoolant — one with injection
+        // throughput, one without. flow_frac 0 and matched temps zero every other term,
+        // so the difference isolates the cold-injection quench exactly.
+        function craft(qinj) {
+          return { fuel_temp_c: 300, tavg_c: 300, _h_fc_eff: cfg.thermal.h_fc,
+            t_secondary_c: 300, flow_frac: 0, power_pct: 0, pressure_mpa: 2.0,
+            rhr_active: false, condenser_cooling_available: false, _eccs_inj_inv: qinj };
+        }
+        var hot = craft(0.2), ctl = craft(0);
+        RD.pwrThermal.stepCoolant(hot, cfg, 1.0);
+        RD.pwrThermal.stepCoolant(ctl, cfg, 1.0);
+        ck('injection cools the coolant node', ctl.tavg_c.toFixed(2) + ' → ' + hot.tavg_c.toFixed(2),
+          hot.tavg_c < ctl.tavg_c - 1, 'injecting state cooler');
+        var expected = e.eccs_cooling_gain * 0.2 * (e.eccs_temp_c - 300);   // °C over dt = 1 s
+        ck('quench matches the mixing rate', (hot.tavg_c - ctl.tavg_c).toFixed(2),
+          near(hot.tavg_c - ctl.tavg_c, expected, 0.5), expected.toFixed(2) + ' °C');
+        ck('no injection → no quench', ctl.tavg_c.toFixed(2), near(ctl.tavg_c, 300, 1e-6), '300 (unchanged)');
+        // Self-limiting: with every other term zeroed (no fuel coupling), sustained
+        // injection pulls Tavg toward — but never past — the RWST/SIT temperature.
+        var deep = craft(1.0); deep.tavg_c = e.eccs_temp_c + 5; deep.fuel_temp_c = e.eccs_temp_c; deep._h_fc_eff = 0;
+        for (var i = 0; i < 50; i++) RD.pwrThermal.stepCoolant(deep, cfg, 1.0);
+        ck('quench cannot undershoot the RWST temperature', deep.tavg_c.toFixed(1),
+          deep.tavg_c >= e.eccs_temp_c - 0.5, '≥ ' + e.eccs_temp_c + ' °C');
+
+        // (B) Accumulator isolation valve: below the check-valve setpoint the aligned
+        // accumulators discharge; with the valve shut nothing flows at any pressure.
+        function accumState(valveOpen) {
+          return { pressure_mpa: 0.8, p_coldleg: 0.8, tavg_c: 120, _subcool_hot_c: 5,
+            _mass: 0.6, boron_ppm: 800, hpi_active: false, cvcs_auto: false,
+            charging_pump_running: false, charging_setpoint: 0, charging_flow: 0,
+            letdown_orifice_a: false, letdown_orifice_b: false,
+            porv_flow: 0, safety_flow: 0, leak_flow: 0, core_void_fraction: 0,
+            accumulator_valve_open: valveOpen,
+            _accum_remaining: cfg.emergency.accumulator_capacity };
+        }
+        var open = accumState(true), shut = accumState(false);
+        for (var j = 0; j < 10; j++) { RD.pwrPrimary.stepInventory(open, cfg, 0.5); RD.pwrPrimary.stepInventory(shut, cfg, 0.5); }
+        ck('aligned accumulators discharge below the setpoint', open.accumulators_discharging, open.accumulators_discharging === true, 'true');
+        ck('isolated accumulators do not discharge', shut.accumulators_discharging, shut.accumulators_discharging === false, 'false');
+        ck('isolation valve preserves the full tank', shut.accumulator_volume_pct.toFixed(1), near(shut.accumulator_volume_pct, 100, 0.1), '100 %');
+        ck('isolation valve blocks boration', shut.boron_ppm.toFixed(1), near(shut.boron_ppm, 800, 0.5), '800 ppm (unchanged)');
+      });
+    },
+
     // Loop pressure distribution: one dynamic pressure state (pressurizer/hot-leg
     // reference) plus a quasi-static ΔP field. Guards computeNodePressures — every
     // loop-tied system (ECCS/accumulators/letdown on the cold leg, RHR on the hot
@@ -1958,7 +2029,7 @@
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',
       'merged_injection_curve', 'rhr_valve_and_mode', 'msiv_closure_at_power', 'rcp_cavitation',
-      'eccs_boration', 'loop_pressure_nodes', 'letdown_orifice_lineup', 'save_migration', 'mode5_controls'];
+      'eccs_boration', 'eccs_cold_injection', 'loop_pressure_nodes', 'letdown_orifice_lineup', 'save_migration', 'mode5_controls'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(PWRScenarioTests[order[i]]());
     return results;

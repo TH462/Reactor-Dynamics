@@ -103,6 +103,34 @@ pwr_steam_generator, pwr_instruments, pwr_engine}.js`
   **20/20**, scenarios **3/3**, campaign **47/47**, `run_autoctl` **20/20**, `run_m5` **19/19**, ops
   **53/66** (baseline, no regressions).
 
+- **Accumulator cold-water quench + discharge isolation valve** (2026-07-17): closed two gaps in the
+  accumulator model surfaced in review. **(1) Cold-injection thermal quench.** Emergency-injection water
+  now carries a *temperature*, not just mass and boron: `pwr_thermal.stepCoolant` pulls `tavg` toward
+  `emergency.eccs_temp_c` (40 °C — RWST/SIT ambient) by perfect-mixing, `dTavg += eccs_cooling_gain ·
+  q_inj · (eccs_temp_c − tavg)`, where `q_inj` (`s._eccs_inj_inv`, HPI/LPI + accumulators, inventory-
+  frac/s) is stashed by `stepInventory` and read one step late (explicit coupling — stepCoolant runs
+  before stepInventory). Added as a **direct °C/s term** (already a fractional-throughput × ΔT rate — not
+  divided by `coolant_heat_capacity` like the power terms), and **self-limiting** (the mixing form cannot
+  cool below `eccs_temp_c`). **RHR is excluded** — it recirculates RCS water (the separate `Q_rhr` term),
+  it does not add cold make-up. `eccs_cooling_gain` (0.08, dimensionless [tune]) **decouples the thermal
+  coupling from the mass/void tuning**: the raw inventory-frac rates are tuned for the inventory balance,
+  so left ungained a full large-break dump would crash `tavg` ~70 °C in a single step; the gain shapes it
+  to a dramatic-but-observable ~°C/s quench. **(2) Discharge isolation valve.** The accumulators were
+  purely pressure-driven (an implicit check valve) with no way to isolate them — unlike RHR
+  (`rhr_valve_open`) or the PORV (`block_valve_open`). Added the motor-operated discharge isolation valve
+  `s.accumulator_valve_open` (default aligned/open) with `open_accumulator_valve` / `close_accumulator_valve`
+  commands; `stepAccumulators` hard-gates flow on it, so a normal cooldown can depressurize below the
+  check-valve setpoint without a spurious dump, and a mispositioned/leaking accumulator can be isolated.
+  Migrated on load to *open* (old-save behavior unchanged); exposed in `getTrueState`. **Deliberately left
+  as-is:** `accumulator_trip_mpa` stays at 1.5 MPa, **not** the real ~4.14 MPa / 600 psi check-valve
+  setpoint — that detune (documented at the config field) reserves accumulator action for a genuine
+  large-break LOCA rather than spuriously refilling a small break and masking the TMI inventory/void
+  lesson; revisiting it is a separate tuning decision, not part of this change. Verified new `run_pwr`
+  guard `eccs_cold_injection`: the quench magnitude matches `eccs_cooling_gain·q_inj·ΔT` exactly, the
+  no-injection control stays flat, the self-limit holds at `eccs_temp_c`; the isolation valve blocks
+  discharge and boration and preserves the full tank. Gates: PWR **26/26**, campaign **47/47**, ops
+  **53/66** (baseline — SGTR/SBO failures pre-exist, no new regressions).
+
 ### Notes
 - `fuel_damaged` is internal (not a §6.3 field) — **Flag F5**.
 - `sg_overfeed` value units look wrong — **Flag F2**.

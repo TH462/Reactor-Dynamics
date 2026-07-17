@@ -281,6 +281,20 @@
       // role of borated safety injection during a LOCA. CVCS borate/dilute is a
       // separate, idealized direct-rate channel (pwr_engine step 13). [tune]
       eccs_boron_ppm: 2500,        // ppm; RWST/accumulator boron concentration [tune]
+      // Cold-injection thermal quench. Emergency-injection water enters the cold leg
+      // well below Tavg (RWST/SIT held at containment/aux-building ambient), so it
+      // removes SENSIBLE heat as it mixes into the coolant node — the thermal shock
+      // that accompanies a large-break accumulator dump (and any HPI/LPI make-up).
+      // pwr_thermal.stepCoolant pulls Tavg toward eccs_temp_c at the injection
+      // throughput rate (HPI/LPI + accumulators, inventory-frac/s from stepInventory),
+      // scaled by eccs_cooling_gain. RHR is EXCLUDED — it recirculates RCS water, not
+      // cold RWST make-up (its heat removal is the separate Q_rhr term). The gain is a
+      // dimensionless tuning scale: the raw inventory-frac rates are tuned for the
+      // mass/void balance, so decoupling the thermal coupling keeps the quench
+      // dramatic-but-observable (~°C/s) rather than an instantaneous single-step
+      // crash. The mixing form is self-limiting — it cannot cool below eccs_temp_c. [tune]
+      eccs_temp_c: 40.0,           // °C — RWST / SIT injection temperature (~104 °F) [tune]
+      eccs_cooling_gain: 0.08,     // dimensionless scale on the cold-injection mixing term [tune]
       // Residual Heat Removal (RHR, formerly DHR): the low-pressure shutdown-cooling
       // loop that doubles as LPI. Suction is taken from the HOT LEG through a valve
       // interlocked to primary pressure — it can be opened only below

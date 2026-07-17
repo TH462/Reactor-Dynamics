@@ -9,6 +9,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Accumulator cold-water quench + discharge isolation valve (PWR).** Two gaps in the accumulator
+  model, both raised in review. **(1) The cold injection had no thermal effect.** HPI/LPI and the
+  accumulators added borated inventory (and, recently, boron) but their water carried no *temperature* —
+  blasting thousands of gallons of cold RWST/SIT water into the cold leg did nothing to `tavg`. Now
+  `pwr_thermal.stepCoolant` includes a **cold-injection quench**: injected water enters at
+  **`eccs_temp_c` (40 °C)** and removes sensible heat by perfect-mixing, `dTavg += eccs_cooling_gain ·
+  q_inj · (eccs_temp_c − tavg)`, where `q_inj` is the HPI/LPI+accumulator throughput stashed by
+  `stepInventory`. It is **self-limiting** (cools no further than the RWST temperature) and **excludes
+  RHR** (recirculation, not cold make-up). `eccs_cooling_gain` (0.08) decouples the thermal coupling
+  from the mass/void tuning so the quench is dramatic-but-observable (~°C/s) rather than a single-step
+  crash. **(2) No isolation valve.** The accumulators were purely pressure-driven with no way to isolate
+  them. Added the motor-operated **discharge isolation valve** (`accumulator_valve_open`, default
+  aligned) with **`open_accumulator_valve` / `close_accumulator_valve`** commands; a shut valve
+  hard-gates discharge at any pressure, so a normal cooldown can depressurize below the check-valve
+  setpoint without a spurious dump. Old saves migrate to *valve open* (unchanged behavior). **Left
+  as-is (deliberate):** `accumulator_trip_mpa` stays tuned at 1.5 MPa rather than the real ~4.14 MPa /
+  600 psi — that detune reserves accumulator action for a genuine large break (see the config note).
+  Verified new `run_pwr` guard `eccs_cold_injection` (quench magnitude matches the mixing rate, no-
+  injection control stays flat, self-limit holds; valve blocks discharge/boration and preserves the
+  tank). Gates: **`run_pwr` 26/26**, campaign **47/47**, ops **53/66** (unchanged — no new failures).
+
 - **Regression tests for the recent PWR reworks.** An audit found several recently-added features were
   exercised but never *asserted*, so a regression would have passed silently. Added dedicated guards:
   - **§14 engine suite (`run_pwr` 20→25):** `eccs_boration` (injection raises core boron toward the
