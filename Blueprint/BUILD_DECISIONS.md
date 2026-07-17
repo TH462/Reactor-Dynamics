@@ -2271,3 +2271,30 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   (Blueprint/pwr_training_campaign.md v2 tables). Gates: campaign 44/44 (1730, was
   36/36·1313) · scenarios 3/3 · m5 17/17 · m6 16/16 · procedures 20/21 (bwr_sbo_rcic,
   pre-existing) · audit PASS · manual-follow PASS (84) · verify_e2e_ui PASS.
+- **2026-07-16 — RHR/LPI rework (user direction): hot-leg suction valve with a 400 psi
+  interlock, HX-flow-split cooldown control, ECCS mode indication.** RHR was a bare
+  heat-sink term (`rhr_active` + a 3.45 MPa permissive). Rebuilt to the real
+  shutdown-cooling / LPI system. (1) **Hot-leg suction valve** `rhr_valve_open` driven by
+  `set_rhr` (`set_dhr` alias): the engine refuses the open above
+  `emergency.rhr_valve_interlock_mpa = 2.76` MPa (**400 psi**, was `rhr_permissive_mpa
+  3.45`) and **auto-closes** a standing-open valve each step if pressure climbs back above
+  it (`pwr_engine.step` §9b — the Westinghouse autoclosure interlock). `rhr_active` now
+  mirrors the valve. (2) **HX flow split** `set_rhr_hx {fraction|pct}` → `rhr_hx_fraction`
+  scales heat removed (`Q_rhr = rhr_gain · rhr_hx_fraction · (Tavg−sink)`, `pwr_thermal.js`)
+  — the operator throttles cooldown *rate* with total loop flow constant, so *no net
+  inventory change* (RHR is recirc hot leg→HX→cold leg; the RWST-fed injection path is the
+  merged HPI/LPI curve = LPI proper). (3) **`eccs_mode`** ∈ {HPI,LPI,RHR,off} derived each
+  step for one ECCS card: RHR when the valve is open, else HPI/LPI split at the 4.5 MPa
+  low-head shutoff. **LPI stays merged** (user ruling): the low-head regime of the one pump
+  curve, armed by the 11.03 MPa Safety Injection = the LOCA signal — no separate actuation.
+  Control layer: RHR auto-align setpoint 3.45→2.76 to track the interlock (a higher one
+  would silently no-op); `set_rhr_hx` deliberately kept OFF the `rhr` ESF arm (throttling
+  rate must not disarm the valve auto-open); `valueFieldFor` maps `set_rhr_hx`→`pct`. UI
+  left to the user (backend-only per direction) — binding contract in
+  `pwr_synoptic_prerequisites.md` §6.2a. Docs: M1 §6.9 + tuning table, CONTEXT §6.5/§6.7,
+  M4b §3b, synoptic prereq §6.1/§6.2/§6.2a, manual reference regenerated. Save migration:
+  `rhr_valve_open ← rhr_active`, `rhr_hx_fraction ← 1.0`. New engine self-test
+  `rhr_valve_and_mode` (8 ✓). Gates: run_pwr 16/16 (85) · e2e_controls 27/28 (accumulator
+  blowdown gap pre-existing) · m4 15/15 · autoctl 20/20 · scenarios 3/3 · campaign 44/44 ·
+  ops_pwr 15/19 (tuning targets, unchanged from baseline) · procedures 20/21 · audit PASS ·
+  manual-follow PASS · verify_e2e_ui PASS.

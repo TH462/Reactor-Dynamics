@@ -156,13 +156,16 @@ heat removal, over `set_rhr`/`set_dhr`).
   system, and the low-head/high-flow LPI regime follows physically from the
   two-segment pump curve — no second actuation needed.
 - **AFW** — SG level < 20 % → `set_afw {active:true}`, `arm: 'afw'`.
-- **RHR cooldown permissive** — primary pressure < 3.45 MPa with
-  `condition: 'rps_scrammed'` auto-aligns residual heat removal
-  (`set_rhr {active:true}`) once the reactor is tripped and depressurized into
-  the RHR band. *(as built)* Now also armed, `arm: 'rhr'` — a manual
-  `set_rhr`/`set_dhr` flips the system to MANUAL, and the synoptic's RHR
-  **Auto** button re-arms it via `set_esf_auto {system:'rhr'}` (it was a
-  documented no-op before, see `new_diagram_controls.md`).
+- **RHR cooldown permissive** — primary pressure < 2.76 MPa (400 psi, matching
+  the engine's `rhr_valve_interlock_mpa`) with `condition: 'rps_scrammed'`
+  auto-**opens the RHR hot-leg suction valve** (`set_rhr {active:true}`) once the
+  reactor is tripped and depressurized into the RHR band. The setpoint tracks the
+  engine interlock deliberately: the engine refuses the open above it, so a higher
+  actuation setpoint would silently no-op. *(as built)* Armed, `arm: 'rhr'` — a
+  manual `set_rhr`/`set_dhr` flips the system to MANUAL, and the synoptic's RHR
+  **Auto** button re-arms it via `set_esf_auto {system:'rhr'}`. `set_rhr_hx` (the
+  HX flow-split cooldown-rate throttle) is deliberately **not** an arm command —
+  throttling cooldown rate must not disarm the valve auto-open.
 
 ## 3c. Blockable startup trips ("M4b trip blocks" in code comments)
 

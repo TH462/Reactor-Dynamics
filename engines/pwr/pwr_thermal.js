@@ -58,13 +58,16 @@
     // quench-cooldown/pzr-level trip that made low-power work feel booby-trapped.)
     var Q_coolant_to_sg = t.h_sg * s.flow_frac * (s.tavg_c - s.t_secondary_c);
     s._Q_coolant_to_sg = Q_coolant_to_sg;
-    // Residual Heat Removal (RHR, §6.1): a low-pressure decay-heat cooldown loop,
-    // alignable only below the permissive pressure with condenser cooling available.
-    // When active and permitted it draws heat from the coolant node toward the
-    // cooldown sink; dormant (no effect) at operating pressure.
+    // Residual Heat Removal (RHR, §6.9): the low-pressure shutdown-cooling loop.
+    // Active = the hot-leg suction valve is open (s.rhr_active; the valve interlock
+    // already guarantees pressure is within the RHR band, so no pressure gate here).
+    // Heat removed scales with the HX flow split (set_rhr_hx): the operator throttles
+    // cooldown rate by routing more/less of the constant loop flow through the heat
+    // exchanger vs. the bypass. Draws the coolant node toward the cooldown sink.
     var e = cfg.emergency, Q_rhr = 0;
-    if (s.rhr_active && s.pressure_mpa < e.rhr_permissive_mpa && s.condenser_cooling_available) {
-      Q_rhr = e.rhr_gain * Math.max(0, s.tavg_c - e.rhr_sink_c);
+    if (s.rhr_active && s.condenser_cooling_available) {
+      var hxFrac = (s.rhr_hx_fraction != null ? s.rhr_hx_fraction : 1);
+      Q_rhr = e.rhr_gain * hxFrac * Math.max(0, s.tavg_c - e.rhr_sink_c);
     }
     // RCP heat: pump shaft work deposited in the coolant, scaled by flow — the
     // real no-load heat source (heats the plant if the heat sink is isolated),

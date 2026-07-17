@@ -200,7 +200,7 @@
     // Cooldown toward RHR entry conditions: dump steam, spray down pressure,
     // manage HPI per procedure. Measures whether a normal cooldown is achievable.
     ops_cooldown_to_rhr: function () {
-      return test('OPS cooldown — hot standby toward RHR entry (3.45 MPa)', function (ck) {
+      return test('OPS cooldown — hot standby toward RHR entry (2.76 MPa / 400 psi)', function (ck) {
         var h = H('hot_full_power');
         h.cmd('scram');   // end-of-cycle trip start for a clean cooldown test
         h.cmd('set_cvcs_auto', { active: true });

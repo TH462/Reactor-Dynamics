@@ -628,11 +628,29 @@ only. The arming pressure is deliberately below the small-break/TMI pressure flo
 masking the TMI inventory/void lesson. State: `accumulator\_flow\_normalized`,
 `accumulators\_discharging`, `accumulator\_volume\_pct`.
 * **Auxiliary feedwater:** §6.7, a secondary-side heat-removal backup.
-* **Residual heat removal (RHR — renamed from DHR) *(as built)*.** Low-pressure decay-heat
-cooldown loop: alignable only below `rhr\_permissive\_mpa = 3.45` MPa with condenser cooling
-available; when active it draws the coolant node toward `rhr\_sink\_c = 50` °C with gain
-`rhr\_gain = 0.03` **\[tune]** (`pwr\_thermal.js`; config `emergency.rhr\_\*`). Command
-`set\_rhr {active}` (`set\_dhr` retained as an alias); status boolean `rhr\_active`.
+* **Residual heat removal — RHR, doubles as LPI (renamed from DHR) *(as built)*.** The
+low-pressure shutdown-cooling loop. Suction is taken from the **hot leg** through a valve
+**interlocked to primary pressure**: it can be opened only below
+`rhr\_valve\_interlock\_mpa = 2.76` MPa (**400 psi**) and **auto-closes** if pressure climbs
+back above it (checked every step in `pwr\_engine.step` §9b — the Westinghouse RHR
+autoclosure interlock). The engine refuses a `set\_rhr {active:true}` above the interlock;
+`rhr\_active` mirrors the valve (`rhr\_valve\_open`). Aligned, it recirculates coolant
+**hot leg → HX → cold leg via the LPI/RHR pump** — *recirculation, so no net inventory
+change* (the RWST-fed injection path is the merged HPI/LPI curve above, i.e. LPI proper).
+Heat removed = `rhr\_gain = 0.03` × **HX flow split** × max(0, Tavg − `rhr\_sink\_c = 50` °C),
+all **\[tune]** (`pwr\_thermal.js`; config `emergency.rhr\_\*`), requires condenser cooling.
+The operator throttles cooldown **rate** with the HX flow split `set\_rhr\_hx {fraction 0–1 |
+pct}` (fraction of the constant loop flow routed through the exchanger vs. the bypass;
+`rhr\_hx\_fraction`) — total flow, and thus inventory, unchanged. Commands `set\_rhr {active}`
+(`set\_dhr` alias) and `set\_rhr\_hx`; status `rhr\_active`, `rhr\_valve\_open`, `rhr\_hx\_fraction`.
+Auto-aligns once tripped and depressurized below the interlock (M4, `arm: rhr`).
+* **ECCS mode indication *(as built)*.** For the single ECCS card, `eccs\_mode` ∈
+`{HPI, LPI, RHR, off}` is derived each step (`pwr\_engine.step` §9b): **RHR** whenever the
+hot-leg suction valve is open; else **HPI/LPI** injecting, split by pressure regime —
+**LPI** below the low-head pump shutoff head (`lpi\_pressure\_ref = 4.5` MPa, the state a LOCA
+depressurizes into), **HPI** above it; else **off**. LPI is not a separate actuation — it is
+the low-head regime of the merged curve, armed automatically by the 11.03 MPa Safety
+Injection signal (the LOCA signal, M4); it delivers as the plant depressurizes.
 
 *(as built — the earlier "LPI and accumulators are deferred" note no longer holds; the
 full ECCS ladder — HPI/LPI curve, passive accumulators, RHR — is in.)*
@@ -1245,7 +1263,7 @@ structured to get there.
 |`hpi\_flow\_max / hpi\_pressure\_ref`|0.06 / 16.44 MPa|high-head injection segment|
 |`lpi\_flow\_max·lpi\_inventory\_gain / lpi\_pressure\_ref`|0.10 / 4.5 MPa|low-head injection segment|
 |`accumulator trip / flow / gain / capacity`|1.5 MPa / 1.0 / 0.12 / 2.5|passive injection|
-|`rhr\_permissive\_mpa / rhr\_sink\_c / rhr\_gain`|3.45 MPa / 50 °C / 0.03|RHR cooldown|
+|`rhr\_valve\_interlock\_mpa / rhr\_sink\_c / rhr\_gain`|2.76 MPa (400 psi) / 50 °C / 0.03|RHR/LPI: hot-leg valve interlock, cooldown sink, gain at full HX flow (× `rhr\_hx\_fraction`)|
 |`nis.k\_sr / nis.k\_ir`|5.0e8 cps / 8.333e−3 A|SR/IR detector scaling|
 
 **Operating points / fixed setpoints:** primary 15.41 MPa, Tavg ≈ 304 °C, secondary 5.65 MPa,

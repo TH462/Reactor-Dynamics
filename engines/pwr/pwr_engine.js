@@ -227,6 +227,18 @@
     // 9. Primary inventory and voiding (HPI/leak/relief) — before the pzr level
     //    surge so void_surge reflects this step's voiding.
     PR.stepInventory(s, this.cfg, dt);
+    // 9b. RHR hot-leg suction valve interlock + ECCS mode indication. The valve
+    //     AUTO-CLOSES if pressure has climbed back above the 400 psi interlock
+    //     (e.g. a repressurization while aligned); rhr_active mirrors the valve.
+    //     eccs_mode drives the single ECCS card: RHR when the valve is open, else
+    //     HPI/LPI by pressure regime (LPI = the low-head/high-flow regime below the
+    //     LPI pump shutoff head, the state a LOCA depressurizes into).
+    if (s.rhr_valve_open && s.pressure_mpa > this.cfg.emergency.rhr_valve_interlock_mpa) {
+      s.rhr_valve_open = false;
+    }
+    s.rhr_active = !!s.rhr_valve_open;
+    s.eccs_mode = s.rhr_valve_open ? 'RHR'
+      : (s.hpi_active ? (s.pressure_mpa < this.cfg.emergency.lpi_pressure_ref ? 'LPI' : 'HPI') : 'off');
     // 8. Pressurizer level (the TMI deception) and SG level (in §11).
     PZ.stepLevel(s, this.cfg, dt);
     // 8b. PORV tailpipe / quench-tank line temperature (relief-flow tell).
@@ -284,6 +296,7 @@
       afw_active: s.afw_active,
       afw_pump_running: !!s.afw_pump_demand,
       rhr_active: s.rhr_active,
+      rhr_valve_open: !!s.rhr_valve_open,
       accumulators_discharging: s.accumulators_discharging,
       condenser_cooling_available: s.condenser_cooling_available,
       safety_relief_active: s.safety_open || s.safety_flow > 0,
@@ -341,6 +354,8 @@
       accumulators_discharging: s.accumulators_discharging,
       accumulator_flow_normalized: s.accumulator_flow_normalized,
       accumulator_volume_pct: s.accumulator_volume_pct, rhr_active: s.rhr_active,
+      // RHR hot-leg suction valve + ECCS mode (HPI/LPI/RHR/off) for the ECCS card.
+      rhr_valve_open: !!s.rhr_valve_open, eccs_mode: s.eccs_mode || 'off',
     };
   };
 
@@ -383,7 +398,9 @@
       steam_dump_pct: s.steam_dump_frac * 100,
       steam_dump_auto: s.steam_dump_override == null,
       governor_valve_pct: s.governor_valve_pct,   // turbine admission valve (engine-driven; read-only)
-      hpi_active: s.hpi_active, rhr_active: s.rhr_active,
+      hpi_active: s.hpi_active, rhr_active: s.rhr_active, rhr_valve_open: !!s.rhr_valve_open,
+      rhr_hx_fraction: (s.rhr_hx_fraction != null ? s.rhr_hx_fraction : 1),   // HX flow split (set_rhr_hx), 0–1
+      eccs_mode: s.eccs_mode || 'off',                                        // HPI | LPI | RHR | off
       afw_throttle_pct: (s.afw_throttle_frac != null ? s.afw_throttle_frac : 1.0) * 100,
       sr_energized: !!s.sr_energized,   // SR detector switch position
       msiv_open: s.msiv_open !== false, // main steam isolation valve position
@@ -544,7 +561,25 @@
         break;
       case 'set_rhr':
       case 'set_dhr':   // set_dhr: one-release alias for save/restore compatibility (RHR was DHR)
-        s.rhr_active = !!cmd.active;
+        // The RHR hot-leg suction valve. Opening is honored only below the 400 psi
+        // (rhr_valve_interlock_mpa) interlock — above it the open is refused and a
+        // standing-open valve auto-closes each step (see step()). Closing is always
+        // honored. rhr_active mirrors the valve (RHR is aligned iff the valve is open).
+        if (cmd.active) {
+          if (s.pressure_mpa <= this.cfg.emergency.rhr_valve_interlock_mpa) s.rhr_valve_open = true;
+          // else: interlock refuses the open (valve stays shut)
+        } else {
+          s.rhr_valve_open = false;
+        }
+        s.rhr_active = !!s.rhr_valve_open;
+        break;
+      case 'set_rhr_hx':
+        // RHR heat-exchanger flow split (0–1): fraction of the constant RHR loop
+        // flow routed through the HX vs. bypassed. Scales heat removed (cooldown
+        // rate); total loop flow — and thus inventory behavior — is unchanged.
+        // Accepts { fraction: 0–1 } or { pct: 0–100 }.
+        s.rhr_hx_fraction = clip(cmd.fraction != null ? cmd.fraction
+          : (cmd.pct != null ? cmd.pct / 100 : 1), 0, 1);
         break;
       case 'set_charging_flow':
         // Manual charging: set BOTH the operator setpoint and the true flow, and
@@ -800,6 +835,8 @@
       steam_dump_override: null, steam_dump_frac: 0,   // B2 (null = auto)
       feedwater_demand_frac: P0, feed_pump_speed_pct: P0 * 100, feedwater_flow: P0, main_feedwater_available: true,
       afw_active: false, afw_pump_demand: false, afw_blocked: false, rhr_active: false,
+      // RHR / LPI: hot-leg suction valve (interlocked) + HX flow split + ECCS mode.
+      rhr_valve_open: false, rhr_hx_fraction: 1.0, eccs_mode: 'off',
       afw_throttle_frac: 1.0, afw_flow_normalized: 0,   // AFW throttle (set_afw_flow) + delivered flow
 
       turbine_rpm: cfg.turbine.rpm_rated, condenser_vacuum_kpa: cfg.turbine.vacuum_rated,
@@ -917,6 +954,11 @@
     // HPI/LPI merge: lpi_active folded into the one hpi_active flag.
     if (s.lpi_active) { s.hpi_active = true; }
     delete s.lpi_active; delete s.lpi_flow_normalized;
+    // RHR hot-leg suction valve + HX flow split (RHR/LPI rework). Older saves have
+    // only rhr_active; the valve mirrors it and the HX split defaults to full flow.
+    if (s.rhr_valve_open == null) s.rhr_valve_open = !!s.rhr_active;
+    if (s.rhr_hx_fraction == null) s.rhr_hx_fraction = 1.0;
+    if (s.eccs_mode == null) s.eccs_mode = 'off';
     // AFW throttle (added with the ESF AUTO/MAN arms).
     if (s.afw_throttle_frac == null) s.afw_throttle_frac = 1.0;
     if (s.afw_flow_normalized == null) s.afw_flow_normalized = 0;
@@ -1350,6 +1392,43 @@
           near(s.hpi_flow_normalized, 0.5 * full / rated, 0.02), (0.5 * full / rated).toFixed(3) + ' ±0.02');
       });
     },
+
+    rhr_valve_and_mode: function () {
+      return test('RHR hot-leg valve interlock, HX split, ECCS mode', function (ck) {
+        var h = new Harness('hot_full_power');
+        var s = h.eng.s;
+        // Interlock: the open is refused above the 400 psi (2.76 MPa) interlock.
+        h.cmd({ action: 'set_rhr', active: true });
+        ck('open refused above interlock', s.rhr_valve_open, s.rhr_valve_open === false, 'false');
+        // Below the interlock the valve opens, RHR aligns, mode reads RHR.
+        s.pressure_mpa = 2.0; h.cmd({ action: 'set_rhr', active: true }); h.eng.step(0.02);
+        ck('valve opens below interlock', s.rhr_valve_open, s.rhr_valve_open === true, 'true');
+        ck('rhr_active mirrors the valve', s.rhr_active, s.rhr_active === true, 'true');
+        ck('ECCS mode = RHR when valve open', s.eccs_mode, s.eccs_mode === 'RHR', 'RHR');
+        // Autoclosure: a repressurization above the interlock shuts the valve.
+        s.pressure_mpa = 5.0; h.eng.step(0.02);
+        ck('valve auto-closes on repressurization', s.rhr_valve_open, s.rhr_valve_open === false, 'false');
+        // HX flow split scales heat removal — compare °C removed over one 1 s step
+        // at full vs. quarter split from two identical fresh plants.
+        function cooldownOverStep(frac) {
+          var hh = new Harness('hot_full_power'), ss = hh.eng.s;
+          ss.pressure_mpa = 2.0; ss.tavg_c = 150; ss.condenser_cooling_available = true;
+          hh.cmd({ action: 'set_rhr', active: true });
+          hh.cmd({ action: 'set_rhr_hx', fraction: frac });
+          var before = ss.tavg_c; hh.eng.step(1.0); return before - ss.tavg_c;
+        }
+        var dFull = cooldownOverStep(1.0), dQuarter = cooldownOverStep(0.25);
+        ck('more HX flow removes more heat', dFull.toFixed(3) + ' vs ' + dQuarter.toFixed(3),
+          dFull > dQuarter, 'full > quarter');
+        // With the valve shut, mode reflects HPI vs LPI by pressure regime.
+        h.cmd({ action: 'set_rhr', active: false });
+        h.cmd({ action: 'set_hpi', active: true });
+        s.pressure_mpa = 8.0; h.eng.step(0.02);
+        ck('HPI mode above the LPI shutoff head', s.eccs_mode, s.eccs_mode === 'HPI', 'HPI');
+        s.pressure_mpa = 2.0; h.eng.step(0.02);
+        ck('LPI mode in the low-head regime', s.eccs_mode, s.eccs_mode === 'LPI', 'LPI');
+      });
+    },
   };
 
   PWRScenarioTests.runAll = function () {
@@ -1357,7 +1436,7 @@
       'load_mode_follow',
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',
-      'merged_injection_curve', 'msiv_closure_at_power'];
+      'merged_injection_curve', 'rhr_valve_and_mode', 'msiv_closure_at_power'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(PWRScenarioTests[order[i]]());
     return results;

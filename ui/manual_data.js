@@ -152,9 +152,9 @@
           "params": "{pct}"
         },
         {
-          "control": "ESF Auto Re-arm (HPI/LPI, AFW)",
+          "control": "ESF Auto Re-arm (HPI/LPI, AFW, RHR)",
           "group": "Safety",
-          "uses": "Returns an engineered-safety system to AUTOMATIC: the system re-arms for its auto-actuation, and a still-standing start condition fires immediately. Any manual action on the system (on/off/throttle) puts it in MANUAL.",
+          "uses": "Returns an engineered-safety system to AUTOMATIC: the system re-arms for its auto-actuation, and a still-standing start condition fires immediately. Any manual action on the system (on/off/throttle) puts it in MANUAL. RHR auto re-opens its suction valve once tripped and below the 400 psi interlock.",
           "command": "set_esf_auto",
           "params": "{system, auto}"
         },
@@ -180,11 +180,18 @@
           "params": "{active}"
         },
         {
-          "control": "Decay-Heat Removal",
+          "control": "RHR Suction Valve (doubles as LPI)",
           "group": "Safety",
-          "uses": "Decay-Heat Removal (DHR / RHR) — removes leftover heat after shutdown once cool and depressurized.",
-          "command": "set_dhr",
+          "uses": "Opens/closes the Residual Heat Removal (RHR) hot-leg suction valve to align shutdown cooling. INTERLOCKED: it will only open below 400 psi (2.76 MPa) and AUTO-CLOSES if primary pressure climbs back above that — depressurize into the RHR band first. Aligned, RHR recirculates coolant hot leg → heat exchanger → cold leg through the low-pressure (LPI) pump. The same pump/line is the automatic Low-Pressure Injection path on a LOCA.",
+          "command": "set_rhr",
           "params": "{active}"
+        },
+        {
+          "control": "RHR Cooldown Rate (HX Flow Split)",
+          "group": "Safety",
+          "uses": "Sets how much of the RHR loop flow passes through the heat exchanger vs. the bypass (0–100 %). More through the exchanger = faster cooldown. Total flow is unchanged, so this throttles cooldown RATE without disturbing inventory — walk it up to hold the ~50 °C/h limit.",
+          "command": "set_rhr_hx",
+          "params": "{fraction | pct}"
         },
         {
           "control": "Source Range Detector On/Off",
@@ -715,7 +722,7 @@
           {
             "instrument": "primary_pressure",
             "direction": "low",
-            "setpoint": 3.45,
+            "setpoint": 2.76,
             "action": "set_rhr",
             "condition": "rps_scrammed"
           },
@@ -1598,7 +1605,9 @@
             "accumulators_discharging": false,
             "accumulator_flow_normalized": 0,
             "accumulator_volume_pct": 100,
-            "rhr_active": false
+            "rhr_active": false,
+            "rhr_valve_open": false,
+            "eccs_mode": "off"
           },
           "instruments": {
             "power_range": 100.178,
@@ -1640,6 +1649,7 @@
             "afw_active": false,
             "afw_pump_running": false,
             "rhr_active": false,
+            "rhr_valve_open": false,
             "accumulators_discharging": false,
             "condenser_cooling_available": true,
             "safety_relief_active": false
@@ -1706,7 +1716,9 @@
             "accumulators_discharging": false,
             "accumulator_flow_normalized": 0,
             "accumulator_volume_pct": 100,
-            "rhr_active": false
+            "rhr_active": false,
+            "rhr_valve_open": false,
+            "eccs_mode": "off"
           },
           "instruments": {
             "power_range": 0,
@@ -1748,6 +1760,7 @@
             "afw_active": false,
             "afw_pump_running": false,
             "rhr_active": false,
+            "rhr_valve_open": false,
             "accumulators_discharging": false,
             "condenser_cooling_available": true,
             "safety_relief_active": false
@@ -1814,7 +1827,9 @@
             "accumulators_discharging": false,
             "accumulator_flow_normalized": 0,
             "accumulator_volume_pct": 100,
-            "rhr_active": false
+            "rhr_active": false,
+            "rhr_valve_open": false,
+            "eccs_mode": "off"
           },
           "instruments": {
             "power_range": 50.037,
@@ -1856,6 +1871,7 @@
             "afw_active": false,
             "afw_pump_running": false,
             "rhr_active": false,
+            "rhr_valve_open": false,
             "accumulators_discharging": false,
             "condenser_cooling_available": true,
             "safety_relief_active": false
@@ -1915,7 +1931,9 @@
         "accumulators_discharging": "Accumulators discharging",
         "accumulator_flow_normalized": "Accumulator flow",
         "accumulator_volume_pct": "Accumulator volume",
-        "rhr_active": "Residual Heat Removal (RHR) aligned",
+        "rhr_active": "Residual Heat Removal (RHR) aligned (hot-leg suction valve open)",
+        "rhr_valve_open": "RHR hot-leg suction valve open (interlocked < 400 psi)",
+        "eccs_mode": "ECCS mode — HPI, LPI, RHR, or off",
         "void_fraction_avg": "Core void fraction",
         "drum_level_pct": "Steam drum level",
         "channel_flow_pct": "Channel flow",
@@ -2979,7 +2997,9 @@
         "accumulators_discharging": "Accumulators discharging",
         "accumulator_flow_normalized": "Accumulator flow",
         "accumulator_volume_pct": "Accumulator volume",
-        "rhr_active": "Residual Heat Removal (RHR) aligned",
+        "rhr_active": "Residual Heat Removal (RHR) aligned (hot-leg suction valve open)",
+        "rhr_valve_open": "RHR hot-leg suction valve open (interlocked < 400 psi)",
+        "eccs_mode": "ECCS mode — HPI, LPI, RHR, or off",
         "void_fraction_avg": "Core void fraction",
         "drum_level_pct": "Steam drum level",
         "channel_flow_pct": "Channel flow",
@@ -4055,7 +4075,9 @@
         "accumulators_discharging": "Accumulators discharging",
         "accumulator_flow_normalized": "Accumulator flow",
         "accumulator_volume_pct": "Accumulator volume",
-        "rhr_active": "Residual Heat Removal (RHR) aligned",
+        "rhr_active": "Residual Heat Removal (RHR) aligned (hot-leg suction valve open)",
+        "rhr_valve_open": "RHR hot-leg suction valve open (interlocked < 400 psi)",
+        "eccs_mode": "ECCS mode — HPI, LPI, RHR, or off",
         "void_fraction_avg": "Core void fraction",
         "drum_level_pct": "Steam drum level",
         "channel_flow_pct": "Channel flow",
@@ -5187,7 +5209,9 @@
         "accumulators_discharging": "Accumulators discharging",
         "accumulator_flow_normalized": "Accumulator flow",
         "accumulator_volume_pct": "Accumulator volume",
-        "rhr_active": "Residual Heat Removal (RHR) aligned",
+        "rhr_active": "Residual Heat Removal (RHR) aligned (hot-leg suction valve open)",
+        "rhr_valve_open": "RHR hot-leg suction valve open (interlocked < 400 psi)",
+        "eccs_mode": "ECCS mode — HPI, LPI, RHR, or off",
         "void_fraction_avg": "Core void fraction",
         "drum_level_pct": "Steam drum level",
         "channel_flow_pct": "Channel flow",

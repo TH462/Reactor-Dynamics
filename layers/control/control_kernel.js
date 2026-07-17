@@ -56,7 +56,7 @@
   function valueFieldFor(action) {
     switch (action) {
       case 'set_feedwater_flow': case 'set_recirc_flow': case 'set_channel_flow': case 'set_afw_flow':
-      case 'set_feed_pump_speed': return 'pct';
+      case 'set_feed_pump_speed': case 'set_rhr_hx': return 'pct';
       case 'feed_pump_nudge': return 'delta_pct';
       case 'set_hpi': case 'set_afw': case 'set_rcic': case 'set_hpci':
       case 'set_dhr': case 'set_rhr': case 'set_eps_bypass': return 'active';

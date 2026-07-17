@@ -3,7 +3,7 @@
  *
  * The ESF AUTO/MAN arms, taught by watching one fire and then taking it over:
  * the Emergency Cooling card's HPI / AFW / RHR arms each hold an auto-actuation
- * in the control layer (AFW: sg_level < 20 %; HPI: 11.03 MPa; RHR: 3.45 MPa +
+ * in the control layer (AFW: sg_level < 20 %; HPI: 11.03 MPa; RHR: 2.76 MPa (400 psi) +
  * tripped). An operator command on an armed system drops it to MANUAL; the
  * AUTO button (set_esf_auto) re-arms it AND clears the actuation latch so a
  * standing condition re-fires.
@@ -38,7 +38,7 @@
         trigger: { type: 'time', value: 2.0 },
         commentary: {
           learning: 'Open the Emergency Cooling card: HPI, AFW, RHR — and beside each, a small arm that reads AUTO. Those arms mean the plant holds some of its own switches. Each system is ARMED: a watchdog in the control layer stares at one gauge, and the moment the reading crosses its setpoint, the system fires itself — no permission asked. Armed is not fired: right now every arm is quiet, because every reading is healthy. I am about to give the auxiliary feedwater arm a reason to act.',
-          industry: 'ESF orientation: HPI / AFW / RHR each carry an AUTO/MAN arm (Emergency Cooling card). ARMED = the control-layer actuation evaluates its instrument (AFW: sg_level < 20 %; HPI: primary pressure < 11.03 MPa; RHR: 3.45 MPa + trip permissive). Armed ≠ actuated. A feedwater upset follows to demonstrate the AFW actuation.',
+          industry: 'ESF orientation: HPI / AFW / RHR each carry an AUTO/MAN arm (Emergency Cooling card). ARMED = the control-layer actuation evaluates its instrument (AFW: sg_level < 20 %; HPI: primary pressure < 11.03 MPa; RHR: 2.76 MPa (400 psi) + trip permissive). Armed ≠ actuated. A feedwater upset follows to demonstrate the AFW actuation.',
         },
         highlight: { control_label: 'AFW', instrument_id: 'sg' },
         advance: 'wait_for_trigger' },
@@ -116,7 +116,7 @@
         trigger: { type: 'delay', value: 1.0 },
         commentary: {
           learning: 'AUTO again — and one more subtlety worth keeping: re-arming also clears the actuation’s memory. If the level were below 20 percent right now, the arm would fire again immediately — a standing condition re-fires on a fresh arm. HPI and RHR carry exactly the same arms with their own setpoints, and they go MANUAL the same way the moment you touch them. You never drilled them today — you did not need to. One lesson, three switches.',
-          industry: 'set_esf_auto re-arms AND clears the actuation latch — a standing condition re-actuates immediately on re-arm (the point of the button). Identical arm semantics on HPI (11.03 MPa) and RHR (3.45 MPa + tripped permissive). Stability check pending.',
+          industry: 'set_esf_auto re-arms AND clears the actuation latch — a standing condition re-actuates immediately on re-arm (the point of the button). Identical arm semantics on HPI (11.03 MPa) and RHR (2.76 MPa / 400 psi + tripped permissive). Stability check pending.',
         },
         branches: [
           { trigger: { type: 'all', triggers: [

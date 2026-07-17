@@ -103,24 +103,40 @@ These exist so Fable can animate in **Realistic** mode per `new_diagram_controls
 
 ## 6. Physics & commands — system deliverables
 
-### 6.1 RHR (replace DHR)
+### 6.1 RHR (replace DHR) — *(as built, RHR/LPI rework)*
 
 | Item | Detail |
 |------|--------|
-| Command | `set_rhr { active }` — add to `CONTEXT.md` §6.7; **alias** `set_dhr` one release if saves need it |
+| Command | `set_rhr { active }` — hot-leg suction **valve** open/close; `set_dhr` deprecated alias |
+| Command | `set_rhr_hx { fraction \| pct }` — HX flow split, throttles cooldown **rate** |
 | User-facing text | **RHR** everywhere (not DHR) |
-| Physics | Post-scram / low-pressure cooldown; SG → condenser path when permissives met; needs condenser cooling |
-| State | `rhr_active`, expose in instruments status |
-| Sim | Retire or map `dhr_active` → `rhr_active` internally |
+| Physics | Suction from the **hot leg** through a valve interlocked to primary pressure — opens only < **2.76 MPa (400 psi)**, **auto-closes** above it. Recirculates hot leg → HX → cold leg via the LPI pump (no net inventory). Heat removed = `rhr_gain × rhr_hx_fraction × (Tavg − 50 °C)`; needs condenser cooling. See `M1` §6.9 |
+| State | `rhr_active`, `rhr_valve_open`, `rhr_hx_fraction` (all in `true_state`; `rhr_active`/`rhr_valve_open` also in instrument status) |
 
-### 6.2 LPI (Low-Pressure Injection)
+### 6.2 LPI (Low-Pressure Injection) — *(as built: merged into HPI)*
 
 | Item | Detail |
 |------|--------|
-| Command | `set_lpi { active }` or AUTO \| ON \| OFF per existing ECCS pattern |
-| Physics | Injection flow vs primary pressure curve; manual + auto on low P |
-| State | `lpi_active`, `lpi_flow_normalized` in `true_state` |
-| Instrument | `lpi_flow` ← `lpi_flow_normalized` |
+| Command | **No separate command** — LPI is the low-head/high-flow regime of the merged HPI/LPI (`set_hpi`, `set_lpi` alias). Fully automated: armed by the 11.03 MPa Safety Injection (LOCA) signal, delivers as the plant depressurizes below the 4.5 MPa low-head shutoff |
+| State | `hpi_active`, `hpi_flow_normalized` in `true_state`; instrument `hpi_flow` |
+
+### 6.2a ECCS card — as-built UI binding contract (backend done; card is the open UI task)
+
+One "Emergency Cooling" card with a **mode indicator** driven by `true_state.eccs_mode`
+∈ `{ "HPI", "LPI", "RHR", "off" }` (derived engine-side each step — the UI does not
+compute it). Bindings:
+
+| Card element | Bind to | Command |
+|------|------|------|
+| **Mode badge** | `true_state.eccs_mode` | — (read-only; `RHR` shows whenever the valve is open) |
+| HPI/LPI On·Off·Auto | status `hpi_active`; arm `automation.esf.hpi` | `set_hpi {active}` / `set_esf_auto {system:'hpi'}` |
+| HPI/LPI flow readout | instrument `hpi_flow` (0–1 combined rated) | — |
+| **RHR valve** Open·Close·Auto | status `rhr_valve_open`; arm `automation.esf.rhr` | `set_rhr {active}` / `set_esf_auto {system:'rhr'}` — greys out / refused ≥ 400 psi |
+| **RHR cooldown-rate** throttle | control_state `rhr_hx_fraction` (0–1) | `set_rhr_hx {pct}` |
+
+RHR mode is active on the card exactly when `rhr_valve_open` is true. The valve
+Open control should reflect the 400 psi interlock (disabled above it; a standing-open
+valve auto-closes, so the indicator follows `rhr_valve_open`).
 
 ### 6.3 Accumulators
 

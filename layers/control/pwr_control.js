@@ -61,10 +61,12 @@
     // (The old 2.76 MPa set_lpi actuation is gone: HPI/LPI is one merged system
     // armed by the 11.03 MPa set_hpi actuation above — the low-head/high-flow
     // regime follows physically from the two-segment pump curve.)
-    // Residual Heat Removal permissive — auto-aligns RHR for cooldown once the
-    // reactor is tripped and depressurized into the RHR band. Armed via the
-    // 'rhr' ESF system so the synoptic's RHR "Auto" button can re-arm it.
-    { instrument: 'primary_pressure', direction: 'low',  setpoint: 3.45,
+    // Residual Heat Removal permissive — auto-opens the RHR hot-leg suction valve
+    // for cooldown once the reactor is tripped and depressurized below the 400 psi
+    // (2.76 MPa) valve interlock. Setpoint matches emergency.rhr_valve_interlock_mpa
+    // (the engine refuses the open above it). Armed via the 'rhr' ESF system so the
+    // synoptic's RHR "Auto" button can re-arm it.
+    { instrument: 'primary_pressure', direction: 'low',  setpoint: 2.76,
       action: 'set_rhr', active: true, condition: 'rps_scrammed', arm: 'rhr' },
     // SR auto re-energize: when the IR falls below P-6 (deep shutdown) the
     // source-range detector comes back on so the operator keeps a count rate.
@@ -283,6 +285,8 @@
   var PWR_ESF_SYSTEMS = [
     { id: 'hpi', label: 'HPI/LPI emergency injection', commands: ['set_hpi', 'set_lpi'] },
     { id: 'afw', label: 'Auxiliary feedwater',         commands: ['set_afw', 'set_afw_flow'] },
+    // set_rhr_hx (HX flow split) is a cooldown-rate adjustment, NOT an alignment
+    // command — it deliberately does not disarm the RHR valve auto-open.
     { id: 'rhr', label: 'Residual heat removal',       commands: ['set_rhr', 'set_dhr'] },
   ];
 

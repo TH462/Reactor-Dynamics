@@ -328,7 +328,7 @@ physical-quantity vocabulary.
     "leak_flow": float,               // primary break flow, normalized (LOCA/SGTR) — feeds instruments.primary_leak_flow
     "steam_dump_valve_pct": number,   // steam-dump/bypass valve position, 0–100 % — feeds instruments.steam_dump_valve
     "accumulators_discharging": bool, "accumulator_flow_normalized": float, "accumulator_volume_pct": number,  // passive accumulators (finite volume)
-    "rhr_active": bool,               // Residual Heat Removal (formerly DHR) aligned
+    "rhr_active": bool, "rhr_valve_open": bool, "eccs_mode": string,   // RHR (formerly DHR) aligned = hot-leg suction valve open; eccs_mode = "HPI"|"LPI"|"RHR"|"off" for the ECCS card
 }
 ```
 
@@ -396,6 +396,7 @@ physical-quantity vocabulary.
     "feed_pump_speed_pct": float,        // PWR feed pump commanded speed (three-element channel / coupling / manual)
     "feedwater_flow_pct": float, "steam_demand_mwe": float,   // feedwater_flow_pct: deprecated PWR mirror of pump delivery
     "hpi_active": bool, "rhr_active": bool,   // operator-actuated ECCS / cooldown (set_hpi — the merged HPI/LPI — / set_rhr)
+    "rhr_valve_open": bool, "rhr_hx_fraction": float, "eccs_mode": string,   // RHR hot-leg valve state; HX flow split 0–1; ECCS card mode: "HPI"|"LPI"|"RHR"|"off"
     "afw_throttle_pct": float,                // AFW throttle position (set_afw_flow)
     "sr_energized": bool, "msiv_open": bool,  // SR detector switch; main steam isolation valve
     "governor_valve_pct": float,     // turbine admission valve % (engine-driven; read-only readout)
@@ -475,7 +476,8 @@ set_hpi             { active }                 // the merged HPI/LPI system; man
 set_afw             { active }                 // AFW pumps; manual use disarms the AFW ESF auto
 set_afw_flow        { pct }                    // AFW throttle, 0–100 % of capacity (also disarms the AFW auto)
 set_esf_auto        { system: "hpi"|"afw"|"rhr", auto }   // re-arm (or disarm) an ESF system's auto-actuation
-set_rhr             { active }                 // Residual Heat Removal — low-pressure decay-heat cooldown (was DHR)
+set_rhr             { active }                 // RHR hot-leg suction VALVE (doubles as LPI cooldown) — open honored only < 2.76 MPa (400 psi), auto-closes above it (was DHR)
+set_rhr_hx          { fraction | pct }         // RHR heat-exchanger flow split (0–1 / 0–100 %) — throttles cooldown RATE; total flow & inventory unchanged
 set_dhr             { active }                 // deprecated one-release alias for set_rhr (save-file compatibility)
 set_lpi             { active }                 // DEPRECATED alias for set_hpi (HPI+LPI merged into one system; save-file compatibility)
 set_charging_flow   { normalized }             // CVCS charging SETPOINT (manual) — inventory in (cold leg); instruments.charging_flow shows the true flow

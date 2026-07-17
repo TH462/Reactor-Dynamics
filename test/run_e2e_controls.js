@@ -67,12 +67,24 @@ console.log(B + 'PWR — recently-added controls' + X);
   ck('PORV block valve isolate', !s.engine.s.block_valve_open, s.engine.s.block_valve_open, false);
 
   s = svc('pwr', 'hot_full_power');
-  s.handleCommand({ action: 'set_rhr', active: true });
-  ck('RHR on', s.engine.s.rhr_active === true, s.engine.s.rhr_active, true);
+  s.handleCommand({ action: 'set_rhr', active: true });   // interlocked shut at operating pressure
+  ck('RHR valve interlocked shut above 400 psi', s.engine.s.rhr_active === false, s.engine.s.rhr_active, false);
 
   s = svc('pwr', 'hot_full_power');
-  s.handleCommand({ action: 'set_dhr', active: true });   // one-release alias → rhr_active
-  ck('set_dhr alias still maps to RHR', s.engine.s.rhr_active === true, s.engine.s.rhr_active, true);
+  s.engine.s.pressure_mpa = 2.0;                          // below the 400 psi (2.76 MPa) interlock
+  s.handleCommand({ action: 'set_rhr', active: true });
+  ck('RHR valve opens below interlock', s.engine.s.rhr_active === true, s.engine.s.rhr_active, true);
+  ck('RHR valve-open flag set below interlock', s.engine.s.rhr_valve_open === true, s.engine.s.rhr_valve_open, true);
+
+  s = svc('pwr', 'hot_full_power');
+  s.engine.s.pressure_mpa = 2.0;
+  s.handleCommand({ action: 'set_dhr', active: true });   // one-release alias → opens RHR valve
+  ck('set_dhr alias still aligns RHR', s.engine.s.rhr_active === true, s.engine.s.rhr_active, true);
+
+  s = svc('pwr', 'hot_full_power');
+  s.engine.s.pressure_mpa = 2.0;
+  s.handleCommand({ action: 'set_rhr_hx', pct: 40 });     // HX flow split (cooldown-rate throttle)
+  ck('set_rhr_hx sets the HX flow split', Math.abs(s.engine.s.rhr_hx_fraction - 0.4) < 1e-9, s.engine.s.rhr_hx_fraction, 0.4);
 
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'set_lpi', active: true });   // deprecated alias → merged HPI/LPI

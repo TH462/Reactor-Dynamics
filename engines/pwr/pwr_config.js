@@ -235,12 +235,19 @@
       accumulator_flow_max: 1.0,   // normalized rated accumulator flow
       accumulator_inventory_gain: 0.12, // inventory frac/s per unit normalized flow
       accumulator_capacity: 2.5,   // total deliverable inventory fractions (finite)
-      // Residual Heat Removal (RHR, formerly DHR): low-pressure decay-heat cooldown
-      // loop, aligned only below rhr_permissive_mpa with condenser cooling available.
-      // Removes heat from the coolant node toward rhr_sink_c. Dormant at power. [tune]
-      rhr_permissive_mpa: 3.45,    // MPa — RHR alignable only below this
+      // Residual Heat Removal (RHR, formerly DHR): the low-pressure shutdown-cooling
+      // loop that doubles as LPI. Suction is taken from the HOT LEG through a valve
+      // interlocked to primary pressure — it can be opened only below
+      // rhr_valve_interlock_mpa (400 psi) and AUTO-CLOSES if pressure climbs back
+      // above it (the Westinghouse RHR autoclosure interlock). Aligned = suction
+      // valve open (rhr_active). It recirculates coolant hot leg → HX → cold leg
+      // (no net inventory change — the LPI/RHR pump moves RCS water, not RWST
+      // make-up), removing heat toward rhr_sink_c. Cooldown rate is throttled by the
+      // HX flow split (set_rhr_hx): the operator routes more/less of the constant
+      // loop flow through the heat exchanger vs. the bypass. Dormant at power. [tune]
+      rhr_valve_interlock_mpa: 2.76, // MPa (400 psi) — hot-leg suction valve open-permissive & autoclosure interlock
       rhr_sink_c: 50.0,            // °C cooldown sink target
-      rhr_gain: 0.03,              // heat-removal gain (units of Q per °C above sink)
+      rhr_gain: 0.03,              // heat-removal gain at full HX flow (Q per °C above sink)
     },
 
     // ------------------------------------------------------------------ rods
@@ -304,7 +311,7 @@
       status: ['rps_scrammed', 'rcp_running', 'hpi_active', 'station_blackout',
                'steam_demand_low', 'rod_at_limit', 'sr_energized', 'msiv_open', 'sg_safety_open',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
-               'afw_active', 'afw_pump_running', 'rhr_active', 'accumulators_discharging',
+               'afw_active', 'afw_pump_running', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
                'condenser_cooling_available', 'safety_relief_active'],
     },
 
