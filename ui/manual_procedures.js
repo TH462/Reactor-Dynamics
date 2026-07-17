@@ -29,10 +29,10 @@
   var PWR = [
     {
       id: 'pwr_startup', category: 'startup',
-      title: 'Reactor startup — approach to criticality',
-      purpose: 'Take the reactor from Hot Standby (subcritical, hot) up to a low, controlled power by withdrawing the Control Rods, watching the Startup Rate (SUR) and reactor period.',
+      title: 'Mode 3, Hot Standby → Mode 2, Startup — approach to criticality',
+      purpose: 'Take the reactor from Mode 3, Hot Standby (subcritical, hot) up to a low, controlled power by withdrawing the Control Rods, watching the Startup Rate (SUR) and reactor period.',
       from: 'hot_zero_power',
-      prereq: ['Plant at Hot Standby: subcritical, hot, at operating temperature/pressure.', 'Reactor Coolant Pumps (RCP) running — forced flow established.', 'Control bank fully inserted; shutdown bank parked withdrawn; boron high (the plant is held subcritical).'],
+      prereq: ['Plant at Mode 3, Hot Standby: subcritical, hot, at operating temperature/pressure.', 'Reactor Coolant Pumps (RCP) running — forced flow established.', 'Control bank fully inserted; shutdown bank parked withdrawn; boron high (the plant is held subcritical).'],
       cautions: ['Withdraw in small increments — target SUR ≤ 1 decade per minute (DPM) and reactor period ≥ 30 s. (This trainer\'s single coarse bank will read ~2 DPM at the crossing; a real plant creeps up with fine control.)', 'This trainer lumps all control rods into one coarse group with only Doppler feedback, so power OVERSHOOTS its settling point on the way up. A real plant approaches criticality far more finely (fine rod control + a neutron source, held just-critical).'],
       steps: [
         { text: 'Confirm the plant is subcritical and hot: reactivity below zero, average coolant temperature (Tavg) ≈ 304 °C, primary pressure ≈ 15.4 MPa.', control: '(observe)', target: 'subcritical, hot', hold: 2, acc: { p: 'reactivity_pcm', op: '<', v: 0 } },
@@ -55,7 +55,7 @@
     },
     {
       id: 'pwr_raise_power', category: 'power',
-      title: 'Raise power',
+      title: 'Mode 1, At Power — raise power',
       purpose: 'Increase reactor power and electrical output by withdrawing rods a little and letting the turbine take more load. Rods lead, turbine follows — the PWR two-step every crew drills until it is boring.',
       from: '50_percent',
       prereq: ['Reactor critical and stable at partial power.', 'Turbine on line.'],
@@ -72,7 +72,7 @@
     },
     {
       id: 'pwr_lower_power', category: 'power',
-      title: 'Lower power',
+      title: 'Mode 1, At Power — lower power',
       purpose: 'Reduce reactor power and load by inserting rods and reducing turbine demand. Turbine leads down, rods trim — the two-step in reverse.',
       from: 'hot_full_power',
       prereq: ['Reactor at power, turbine on line.'],
@@ -88,7 +88,7 @@
     },
     {
       id: 'pwr_pressure_control', category: 'control',
-      title: 'Pressurizer pressure control',
+      title: 'Mode 1, At Power — pressurizer pressure control',
       purpose: 'Hold primary pressure at ≈ 15.41 MPa using the Pressurizer (PZR) heaters (raise) and spray (lower). Pressure is the subcooling guarantee — lose it, and the primary flirts with boiling.',
       from: 'hot_full_power',
       prereq: ['Reactor at power, pressurizer at normal level.'],
@@ -104,7 +104,7 @@
     },
     {
       id: 'pwr_sg_level', category: 'control',
-      title: 'Steam Generator level control',
+      title: 'Mode 1, At Power — steam generator level control',
       purpose: 'Control Steam Generator (SG) water level with the Feed Pump. The SGs are the heat sink; their level is its fuel gauge. Normally the three-element feedwater controller (Automate tab → "Feed pump → SG level") holds level for you; this procedure is the manual skill underneath it.',
       from: 'hot_full_power',
       prereq: ['Reactor at power, main feedwater available.'],
@@ -121,8 +121,8 @@
     },
     {
       id: 'pwr_shutdown', category: 'shutdown',
-      title: 'Normal shutdown to Hot Standby',
-      purpose: 'Shut the reactor down: take the turbine off load, then insert the rods. Decay heat continues and must keep being removed.',
+      title: 'Mode 1, At Power → Mode 3, Hot Standby — normal shutdown',
+      purpose: 'Shut the reactor down from Mode 1, At Power to Mode 3, Hot Standby: take the turbine off load, then insert the rods. Decay heat continues and must keep being removed.',
       from: 'hot_full_power',
       prereq: ['Reactor at power.'],
       cautions: ['Decay heat (~7 % of rated, decaying) persists after shutdown — maintain a heat sink.'],
@@ -133,11 +133,11 @@
         obs('Confirm the chain reaction has stopped and decay heat remains — keep cooling.', { p: 'decay_heat_pct', op: '>', v: 3 }),
       ],
       guard: { never_melted: true },
-      outcome: 'Reactor shut down at Hot Standby; decay heat being removed.',
+      outcome: 'Reactor shut down at Mode 3, Hot Standby; decay heat being removed.',
     },
     {
       id: 'pwr_loss_of_feedwater', category: 'emergency',
-      title: 'Loss of main feedwater',
+      title: 'Mode 1 emergency — loss of main feedwater',
       purpose: 'Main feedwater is gone and the Steam Generators (SG) are drying out. Trip the reactor and establish Auxiliary Feedwater (AFW) as the heat sink.',
       from: 'hot_full_power',
       prereq: ['At-power operation.'],
@@ -157,7 +157,7 @@
     },
     {
       id: 'pwr_rcp_trip', category: 'emergency',
-      title: 'Reactor coolant pump trip / loss of flow',
+      title: 'Mode 1 emergency — RCP trip / loss of flow',
       purpose: 'A Reactor Coolant Pump (RCP) has tripped and coolant flow is falling. Confirm the protective trip and stabilize.',
       from: 'hot_full_power',
       prereq: ['At-power operation.'],
@@ -174,7 +174,7 @@
     },
     {
       id: 'pwr_stuck_porv', category: 'emergency',
-      title: 'Stuck-open relief valve (small-break LOCA) — recover',
+      title: 'Mode 1 emergency — stuck-open PORV recover (small-break LOCA)',
       purpose: 'The Power-Operated Relief Valve (PORV) is stuck open — a small-break Loss-Of-Coolant Accident (LOCA) — while its indicator may read closed. Diagnose on the subcooling margin and ISOLATE with the block valve. This is the TMI recovery that was missed in 1979.',
       from: 'hot_full_power',
       prereq: ['At-power operation.'],

@@ -23,7 +23,7 @@
     design_version: null,
     initial_state: 'hot_zero_power',
     mode: 'guided',
-    description: 'Take the core critical with your own hands — and learn why it is a balance, not a switch.',
+    description: 'From Mode 3, Hot Standby, take the core critical with your own hands to Mode 2, Startup — and learn why it is a balance, not a switch.',
     // The instructor sets the board: the source-range counter is secured for
     // this first lesson (its high-flux trip at 1e5 cps would end the climb at
     // ~0.02 % power — the SR→IR handoff is a later skill; the startup ops

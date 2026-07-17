@@ -33,11 +33,21 @@ After first full form in a beat, short **Mode N** is OK.
 
 ### Honesty (Mode 4 / Mode 5)
 
-There is **no cold initial condition**. Mode 4/5 missions must:
+> **UPDATE (2026-07): the engine now HAS a cold initial condition.** A `cold_shutdown`
+> (Mode 5) initial state exists, and the full **Mode 5 → 4 → 3 → 2 → 1** heatup and the
+> reverse cooldown are driveable on integrated physics (engine test `mode5_to_mode1_roundtrip`;
+> new controls `set_pressure_setpoint`, `set_steam_dump_setpoint`, `set_rcp`; new indications
+> `plant_mode`/`plant_mode_name`, `tavg_rate_c_per_hr`). Mode 4/5 missions can now START on a
+> genuinely cold board (`cold_shutdown`) rather than parking at Hot Standby. See
+> `CHANGELOG.md` and `Manuals/05_MODE_TRANSITIONS.md`.
 
-- State clearly that heatup/cooldown **rates are not simulated**.  
-- Park the board at **Mode 3, Hot Standby** (`hot_zero_power`) while teaching Mode 5/4 narrative, **or** after Mode 1→3 shutdown for the cooldown story.  
-- Never claim instruments show cold Tavg if they show ~304 °C.
+Remaining honesty caveats for Mode 4/5 missions (still true):
+
+- Heatup/cooldown **rates are time-compressed** (the lumped model is not wall-clock accurate);
+  the heatup is supplied by controlled low-power nuclear heat, not the real pump-heat ramp.
+- Cold Tavg on the `cold_shutdown` board reads ~50 °C (genuinely cold) — but if a mission parks
+  at **Mode 3, Hot Standby** (`hot_zero_power`) instead, never claim instruments show cold Tavg
+  when they show ~304 °C.
 
 ---
 
@@ -190,8 +200,8 @@ Act VI — Reckoning
 
 ## 6. Acceptance criteria (campaign done when…)
 
-- [ ] All PWR campaign `teaches` use **Mode N, Name** where a plant state is named.  
-- [ ] Player can complete a path that **starts at Mode 5 narrative** and reaches **Mode 1, At Power** on the board.  
+- [x] All PWR campaign `teaches` use **Mode N, Name** where a plant state is named. *(2026-07: done — `ui/campaign_data.js` teaches + in-product procedure titles in `ui/manual_procedures.js`.)*
+- [ ] Player can complete a path that **starts at Mode 5 narrative** and reaches **Mode 1, At Power** on the board. *(Engine now supports it via the `cold_shutdown` IC; the three §3 missions are not yet authored.)*  
 - [ ] Player can complete a path from **Mode 1** to **Mode 5 narrative**.  
 - [ ] Player can **return** from Mode 5 narrative to Mode 1 on the board.  
 - [ ] Mode 4/5 honesty banners present.  
@@ -205,3 +215,4 @@ Act VI — Reckoning
 | Date | Note |
 |------|------|
 | 2026-07-16 | Spec authored from manuals Rev 2; **no campaign code changed**. |
+| 2026-07-16 | **§2 string alignment applied** — all PWR campaign `teaches` (`ui/campaign_data.js`), PWR procedure titles/purpose/outcome (`ui/manual_procedures.js`), and the two startup scenario descriptions now use **Mode N, Name**. §3 new Mode-5-path missions still pending (engine cold IC + Mode 5↔1 transition already landed separately). |

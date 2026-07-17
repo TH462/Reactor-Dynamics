@@ -87,7 +87,7 @@ the start — revised 2026-07-07).
 | 15 | Hands Off | [S] `pwr_automation` *(as built)* | The Automate tab: put the plant on automatic channels and be the dispatcher |
 | 16 | The Evening Shift — Checked Out | [S] `pwr_shift_exam` **v2 CHECKPOINT** | Graded free-form dispatch: down to 850, hold, back to 1000 — your tools, your call |
 | 17 | Coming Down | [P] `pwr_lower_power` | Controlled power reduction |
-| 18 | Putting It to Bed | [P] `pwr_shutdown` | Normal shutdown to Hot Standby; decay heat is forever |
+| 18 | Putting It to Bed | [P] `pwr_shutdown` | Normal shutdown Mode 1, At Power → Mode 3, Hot Standby; decay heat is forever |
 
 ### Act IV — When Things Go Wrong (protection & upsets)
 | # | Mission | Kind | Teaches |

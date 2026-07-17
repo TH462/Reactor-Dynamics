@@ -5,7 +5,7 @@
 **Updated:** 2026-07-16 (manuals Rev 2)  
 **Purpose:** Record differences between the external operator manuals in `Manuals/` and the PWR training campaign (“Zero to Operator”) as shipped in `ui/campaign_data.js` / `Blueprint/pwr_training_campaign.md`, with in-product walkthroughs in `ui/manual_procedures.js`.  
 
-**Scope of this file:** Comparison. Manuals Rev 2 aligned naming to **Mode N, Name** and added crosswalk + campaign **spec**; **campaign code is still unchanged**.
+**Scope of this file:** Comparison. Manuals Rev 2 aligned naming to **Mode N, Name** and added crosswalk + campaign **spec**. **UPDATE 2026-07:** the campaign `teaches` and in-product procedure titles are now aligned to **Mode N, Name** (this pass), and the engine now has a **`cold_shutdown` (Mode 5)** initial condition with the full Mode 5 ↔ Mode 1 transition simulated. Still pending: the three new **Mode-5-path campaign missions** (`pwr_mode5_to_mode3`, `pwr_mode3_to_mode5`, `pwr_return_to_mode1`) from the alignment spec §3.
 
 **Handoff for campaign implementers:** `CAMPAIGN_MODE_ALIGNMENT_SPEC.md`  
 **Live map:** `11_CAMPAIGN_CROSSWALK.md`
@@ -30,11 +30,11 @@
 | Physics & setpoints | Largely **aligned** (same plant, same engine numbers) |
 | Control surface topics | Campaign more UI-skill; manuals ops breadth + §17 campaign skills (Rev 2) |
 | Failure coverage | Manuals list **all** modeled failures; campaign drills a **subset** |
-| Plant MODE language | **Manuals:** Mode 1, At Power … Mode 5, Cold Shutdown. **Campaign:** still Hot Standby / at power → implement `CAMPAIGN_MODE_ALIGNMENT_SPEC.md` |
-| Startup path | Manuals Mode 5↔1; campaign hot-only until SPEC is coded |
+| Plant MODE language | **Manuals:** Mode 1, At Power … Mode 5, Cold Shutdown. **Campaign:** now aligned — `teaches` + procedure titles use **Mode N, Name** (2026-07) |
+| Startup path | Manuals Mode 5↔1; **engine now simulates the full path** (`cold_shutdown` IC). Campaign **Mode-5 missions** still to be authored (spec §3) |
 | Traceability | IDs still differ; **11_CAMPAIGN_CROSSWALK.md** maps them |
 
-Manuals Rev 2 closed naming + documentation gaps. Campaign code still needs the SPEC for Mode 5 path and Mode N strings.
+Manuals Rev 2 closed naming + documentation gaps. Campaign Mode-N **strings are now aligned** and the **engine supports the Mode 5 path**; the remaining gap is the three new Mode-5-path missions (spec §3).
 
 ---
 
@@ -42,8 +42,8 @@ Manuals Rev 2 closed naming + documentation gaps. Campaign code still needs the 
 
 | Topic | Manuals | Campaign / in-product procedures | Severity |
 |-------|---------|----------------------------------|----------|
-| Plant state names | **Mode 1, At Power**, **Mode 2, Startup**, **Mode 3, Hot Standby**, **Mode 4 / Mode 5** | “Hot Standby,” “at power,” “full power,” “shutdown” — no Mode N, Name yet | **H** (campaign pending SPEC) |
-| Shutdown endpoint | **PWR-N14** / **PWR-T04**: Mode 1, At Power → **Mode 3, Hot Standby** | Mission 18 `pwr_shutdown`: “To **Hot Standby**” | **M** |
+| Plant state names | **Mode 1, At Power**, **Mode 2, Startup**, **Mode 3, Hot Standby**, **Mode 4 / Mode 5** | Campaign `teaches` + procedure titles now use **Mode N, Name** | **RESOLVED** (2026-07) |
+| Shutdown endpoint | **PWR-N14** / **PWR-T04**: Mode 1, At Power → **Mode 3, Hot Standby** | Mission 18 `pwr_shutdown`: “Mode 1, At Power → **Mode 3, Hot Standby**” | **RESOLVED** |
 | Post-trip state | Hot, subcritical = still **Mode 3, Hot Standby** (by T class) | “Stable hot standby,” “shutdown board” | **L** |
 | Turbine load modes | Explicitly **not** plant MODES (Follow / Manual / Disconnected) | Same three load modes in `pwr_tour` / `pwr_load_follow` — consistent concept, different framing | **L** |
 | SCRAM | Two-press arm/confirm documented | Mission 1 teaches SCRAM; playtest noted two-press friction vs beat text | **M** (product/playtest; manuals clearer) |

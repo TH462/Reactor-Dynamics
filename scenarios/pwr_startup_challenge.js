@@ -40,7 +40,7 @@
     design_version: null,
     initial_state: 'hot_zero_power',
     mode: 'free_response',
-    description: 'The startup is yours alone: source to the band, handoff on the way, and nobody to catch you.',
+    description: 'The Mode 3 → Mode 2 startup is yours alone: source to the band, handoff on the way, and nobody to catch you.',
     beats: [
 
       { id: 'briefing',
