@@ -2714,3 +2714,26 @@ the repo is private, keep-raw event retention with a 100 MB tripwire). Built in 
   via the landing path, zero console errors (hero.png miss excepted while pending).
 - **Remaining for W1 done-done (owner):** create the Vercel project, connect repo,
   drop in `site/hero.png`, point ReactorDynamics.com DNS.
+
+### Website W1 addendum — in-sim feedback, no player uploads (2026-07-19)
+
+**OWNER RULING: players can never upload their own files.** Feedback telemetry attaches
+ONLY from the live session. Spec §6 updated.
+
+- `ui/app.js`: `exportDiag()` split into `buildDiagBundle()` (returns the schema-1.0
+  diagnosis bundle) + `downloadJSON()`; Dev-tab export unchanged in behavior. New
+  `sendFeedback()` builds `rd_feedback_<cat>_<plant>.json` (category/body/email/
+  site_version/diag) with `diag` from `buildDiagBundle()` when the pre-checked
+  "Attach this session's telemetry" box is on. W2 swaps only its tail for the POST.
+- `ui/shell.html`: 💬 button (sim-controls row, after ?) + `#feedbackOverlay`
+  (mission-overlay pattern; Esc-close wired into the global handler; status line
+  clears on open). Loads `../site/version.js` so reports carry the deploy stamp.
+- `ui/shell.css`: `.fb-*` form styles; **gotcha** — `.help-modal{height:auto}` (L455)
+  loses to `.mission-modal{height:min(84vh,760px)}` (L1089, later same-specificity),
+  so the feedback modal needed `.mission-modal.fb-modal{height:auto}` appended at
+  file end to size to content. The help overlay itself still stretches (pre-existing).
+- Site `feedback.html`: file input + client-side diag validation REMOVED; form is
+  text-only, always `diag:null`, notice points at the in-sim 💬 for telemetry.
+- **Gates:** scratchpad harness 20/20 (incl. overlay open/error/download, diag
+  attach/omit, Esc close, no-file-input assert); `verify_e2e_ui` PASS (16 shots);
+  `run_e2e_controls` 30/30.

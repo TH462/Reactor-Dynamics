@@ -457,6 +457,16 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .help-sec { margin-bottom: 14px; }
 .help-sec h4 { margin: 0 0 4px; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-2); }
 .help-sec p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); }
+
+/* Feedback overlay form (reuses the help modal chrome) */
+.fb-field { margin-bottom: 12px; }
+.fb-field label { display: block; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-2); margin-bottom: 4px; }
+.fb-field select, .fb-field textarea, .fb-field input[type="email"] { width: 100%; resize: vertical; }
+.fb-check { display: flex !important; align-items: center; gap: 8px; text-transform: none !important; letter-spacing: 0 !important; font-size: 13px !important; color: var(--text) !important; cursor: pointer; }
+.fb-hint { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+.fb-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.fb-msg { font-size: 12px; color: var(--running); }
+.fb-msg.err { color: var(--caution); }
 .help-keys { font-size: 11px; color: var(--text-2); }
 
 /* ===================================================== right col: instructor */
@@ -1161,3 +1171,8 @@ select.num-input { width: auto; }
    layout slot under a neighbor; raising the hovered card keeps every control
    reachable, and the neighbor is back on top the moment you move to it. */
 .app.pwr-synoptic .plant-card:hover { z-index: 5; }
+
+/* Feedback modal sizes to its form. (.help-modal's height:auto is defeated by
+   .mission-modal's fixed height — that rule comes later in the file — so the
+   compound selector here outranks it.) */
+.mission-modal.fb-modal { height: auto; max-height: min(84vh, 760px); }

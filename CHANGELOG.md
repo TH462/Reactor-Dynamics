@@ -15,8 +15,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   openable. New `about.html`, `privacy.html`, and `feedback.html` (form packages a
   `rd_feedback_*.json` bundle — with optional `rd_diag_*.json` attachment, validated ≤2 MB —
   until the W2 backend lands), shared `site/site.css` in the quiet-board palette, and
-  `.vercelignore`. Verified with a 12-check headless-Edge harness (links, coming-soon cards,
+  `.vercelignore`. Verified with a headless-Edge harness (links, coming-soon cards,
   package/validation flows, shell reachability, zero console errors).
+- **In-sim feedback (💬) with session telemetry — owner ruling: no player file uploads.**
+  A 💬 button in the sim-controls row opens a feedback overlay (category, description,
+  optional email) with a pre-checked *"Attach this session's telemetry"* box — the attachment
+  is the live diag recorder's bundle (same payload as the Dev-tab **Diagnosis JSON** export,
+  now split into `buildDiagBundle()` + download). Telemetry can ONLY come from the live
+  session: the site feedback form has **no file input** and always submits `diag: null`.
+  W1 packages the report as a `rd_feedback_<category>_<plant>.json` download; W2 swaps in
+  `POST /api/feedback`. Harness now 20 checks; `verify_e2e_ui` + `run_e2e_controls` hold.
 - **PWR pressurizer pressure-setpoint + steam-dump pressure-setpoint controls (Mode-5 playability).**
   The Mode-transition missions instruct raising the pressurizer setpoint to NOP (15.41 MPa) on a
   heatup and lowering the steam-dump setpoint on a cooldown, but the UI had no control for either —

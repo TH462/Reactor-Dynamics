@@ -132,18 +132,24 @@ Rule: payloads are context, not content — no free text in telemetry events.
 
 ## 6. Feedback & bug reports
 
-### In-sim (primary path)
+**OWNER RULING (2026-07-19): players can never upload their own files.** Telemetry
+attaches ONLY from the live session, via the in-sim flow below. The site form is
+text-only (`diag: null` always); `/api/feedback` rejects any `diag` payload whose
+request doesn't originate from the in-sim path shape.
 
-Extend the existing diag-export flow (`ui/app.js:1653`): next to **Export diag**, add
-**Report a bug** — opens a small overlay with category (bug / physics accuracy /
-feedback), free-text, optional email, and a pre-checked "attach session telemetry"
-box. Submitting POSTs the text + the same `exportDiag()` JSON to `/api/feedback`.
-The current download stays as the offline/manual fallback.
+### In-sim (primary path) — BUILT (W1 form of it)
+
+The 💬 button in the sim-controls row opens a feedback overlay (category / free-text /
+optional email / pre-checked **"Attach this session's telemetry"**). Attachment is the
+live recorder's `buildDiagBundle()` (the same payload as the Dev-tab **Diagnosis
+JSON** export — split out of `exportDiag()` in `ui/app.js`). W1 packages the report as
+a `rd_feedback_<category>_<plant>.json` download; W2 swaps the tail of
+`sendFeedback()` for the POST. The Dev-tab export download remains for AI/debug use.
 
 ### Site form (`/feedback.html`)
 
-Same fields, plus optional file-attach for a previously downloaded `rd_diag_*.json`
-(validated client-side: `kind === 'reactor_dynamics_diagnosis'`, size cap ~2 MB).
+Category / text / optional email only. No file input. Points users at the in-sim 💬
+button for anything that needs telemetry.
 
 ### Anti-spam
 
@@ -176,7 +182,7 @@ this is what lets us stamp country server-side and enforce rate limits.
 | endpoint | behavior |
 |---|---|
 | `POST /api/events` | accepts a batch (≤50 events), validates event names against the vocabulary, stamps country, inserts. Returns 204 always (fire-and-forget). |
-| `POST /api/feedback` | multipart or JSON; validates, uploads diag to Storage, inserts row, rate-limits. |
+| `POST /api/feedback` | JSON; validates (`diag`, when present, must be a well-formed `reactor_dynamics_diagnosis` ≤ 2 MB — size/shape checks server-side since the client can't be trusted), uploads diag to Storage, inserts row, rate-limits. |
 
 No read APIs in v1 — the owner reads via the Supabase dashboard/SQL editor.
 

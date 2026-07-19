@@ -1650,13 +1650,12 @@
     var el = $('diagSessionInfo');
     if (el) el.textContent = ui.plant + ' · ' + diag.reason + ' · ' + t.toFixed(0) + ' s · ' + diag.samples.length + ' samples';
   }
-  function exportDiag() {
-    if (!diag) return;
+  function buildDiagBundle() {
+    if (!diag) return null;
     var s = latest || service.assembleSnapshot(); var t = s.metadata.sim_time;
     diagSample(s, t);                                        // final partial-second sample
-    var iso = new Date().toISOString();
     var bundle = {
-      schema_version: '1.0', kind: 'reactor_dynamics_diagnosis', exported_at: iso,
+      schema_version: '1.0', kind: 'reactor_dynamics_diagnosis', exported_at: new Date().toISOString(),
       manifest: {
         plant_id: ui.plant, design_version: s.metadata.design_version || null, engine_key: ui.engineKey,
         initial_state: ui.initState,
@@ -1671,12 +1670,41 @@
     };
     var notesEl = $('diagNotes'), notes = notesEl && notesEl.value.trim();
     if (notes) bundle.notes = notes;
-    var stamp = iso.slice(0, 16).replace(/:/g, '');          // 2026-07-07T0046
+    return bundle;
+  }
+  function downloadJSON(obj, name) {
     var a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(bundle)], { type: 'application/json' }));
-    a.download = 'rd_diag_' + stamp + '_' + ui.plant + '.json';
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(obj)], { type: 'application/json' }));
+    a.download = name;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  }
+  function exportDiag() {
+    var bundle = buildDiagBundle();
+    if (!bundle) return;
+    var stamp = bundle.exported_at.slice(0, 16).replace(/:/g, '');   // 2026-07-07T0046
+    downloadJSON(bundle, 'rd_diag_' + stamp + '_' + ui.plant + '.json');
+  }
+  // Player feedback (💬) — telemetry comes ONLY from the live session recorder,
+  // never from a user-supplied file (owner ruling). W1 packages the report as a
+  // download; W2 replaces sendFeedback's tail with a POST to /api/feedback.
+  function sendFeedback() {
+    var status = $('fbStatus');
+    var body = $('fbText').value.trim();
+    if (!body) {
+      status.className = 'fb-msg err'; status.textContent = 'Say what happened first.';
+      return;
+    }
+    var report = {
+      schema_version: '1.0', kind: 'reactor_dynamics_feedback',
+      category: $('fbCategory').value, body: body,
+      email: $('fbEmail2').value.trim() || null,
+      site_version: (typeof window.RD_VERSION === 'string') ? window.RD_VERSION : null,
+      diag: $('fbAttach').checked ? buildDiagBundle() : null
+    };
+    downloadJSON(report, 'rd_feedback_' + report.category + '_' + ui.plant + '.json');
+    status.className = 'fb-msg';
+    status.textContent = 'Report packaged and downloaded — direct sending is coming soon.';
   }
 
   var ACTS = {
@@ -2041,6 +2069,12 @@
     $('helpBtn').addEventListener('click', function () { $('helpOverlay').hidden = false; });
     $('helpClose').addEventListener('click', function () { $('helpOverlay').hidden = true; });
     $('helpOverlay').addEventListener('click', function (e) { if (e.target === $('helpOverlay')) $('helpOverlay').hidden = true; });
+    // Feedback overlay (💬) — status line resets each open so a stale
+    // "packaged" confirmation never greets a fresh report.
+    $('fbBtn').addEventListener('click', function () { $('fbStatus').textContent = ''; $('feedbackOverlay').hidden = false; });
+    $('fbClose').addEventListener('click', function () { $('feedbackOverlay').hidden = true; });
+    $('feedbackOverlay').addEventListener('click', function (e) { if (e.target === $('feedbackOverlay')) $('feedbackOverlay').hidden = true; });
+    $('fbSend').addEventListener('click', function () { sendFeedback(); });
     $('missionOverlay').addEventListener('click', function (e) {
       if (e.target === $('missionOverlay')) { closeMissionSelect(); return; }
       var pc = e.target.closest('[data-mplant]');
@@ -2090,6 +2124,7 @@
         if (!$('manualOverlay').hidden) closeManual();
         if (!$('missionOverlay').hidden) closeMissionSelect();
         if (!$('helpOverlay').hidden) $('helpOverlay').hidden = true;
+        if (!$('feedbackOverlay').hidden) $('feedbackOverlay').hidden = true;
         if (ui.rewindPick) toggleRewindPick(false);
         return;
       }

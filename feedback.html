@@ -24,12 +24,15 @@
 <main class="page">
   <h1>Feedback &amp; bug reports</h1>
   <p class="lede">Something broke, or something's wrong about the physics or
-  procedures? Tell me — reports with telemetry attached are the most useful.</p>
+  procedures? Tell me.</p>
 
-  <div class="notice"><strong>Direct submission is coming soon.</strong>
-  For now, this form packages your report (with any attached telemetry) into a
-  file you can download and hold onto — or send through the in-simulator
-  <span class="mono">Export diag</span> flow described below.</div>
+  <div class="notice"><strong>Reporting a bug from inside the simulator is
+  best.</strong> Click the <strong>💬</strong> button in the control room — it
+  can attach your current session&rsquo;s telemetry (plant readings and the
+  commands you issued) so what you saw can be replayed exactly. This page is
+  for general feedback without telemetry. Direct submission is coming soon;
+  for now, the form packages your report into a file you can download and
+  hold onto.</div>
 
   <!-- W2 wires this form to POST /api/feedback (WEBSITE_SPEC.md §6-7). The
        field names and honeypot are already the shapes the API will expect. -->
@@ -47,15 +50,6 @@
       <label for="fbBody">What happened?</label>
       <textarea id="fbBody" name="body" required
         placeholder="What were you doing, what did you expect, and what did the board actually show?"></textarea>
-    </div>
-
-    <div class="field">
-      <label for="fbDiag">Attach session telemetry (optional)</label>
-      <input type="file" id="fbDiag" name="diag" accept=".json,application/json">
-      <div class="hint">In the simulator: Tools → <span class="mono">Export
-      diag</span> downloads an <span class="mono">rd_diag_*.json</span> capture
-      of your session — the command history and plant state that let me replay
-      exactly what you saw. Attach it here. Max 2&nbsp;MB.</div>
     </div>
 
     <div class="field">
@@ -93,55 +87,29 @@ document.getElementById('ver').textContent = window.RD_VERSION || '';
 
 // W1 fallback: assemble the report into a downloadable JSON bundle. W2 replaces
 // the handler body with a POST to /api/feedback; the bundle schema below is the
-// same payload the API will receive.
+// same payload the API will receive. Telemetry is never attached here — reports
+// with telemetry come from the in-simulator 💬 flow only (no user file uploads).
 (function () {
   var form = document.getElementById('fbForm');
   var msg = document.getElementById('fbMsg');
-
-  function readDiag(file) {
-    return new Promise(function (resolve, reject) {
-      if (!file) return resolve(null);
-      if (file.size > 2 * 1024 * 1024) return reject('Telemetry file is over the 2 MB limit.');
-      var r = new FileReader();
-      r.onload = function () {
-        try {
-          var d = JSON.parse(r.result);
-          if (d.kind !== 'reactor_dynamics_diagnosis') {
-            return reject('That file isn’t an rd_diag_*.json export from the simulator.');
-          }
-          resolve(d);
-        } catch (e) { reject('Couldn’t parse the attached file as JSON.'); }
-      };
-      r.onerror = function () { reject('Couldn’t read the attached file.'); };
-      r.readAsText(file);
-    });
-  }
-
   form.addEventListener('submit', function (ev) {
     ev.preventDefault();
-    msg.style.color = '';
-    var file = document.getElementById('fbDiag').files[0] || null;
-    readDiag(file).then(function (diag) {
-      var bundle = {
-        schema_version: '1.0',
-        kind: 'reactor_dynamics_feedback',
-        category: document.getElementById('fbCat').value,
-        body: document.getElementById('fbBody').value,
-        email: document.getElementById('fbEmail').value || null,
-        site_version: window.RD_VERSION || null,
-        diag: diag
-      };
-      var blob = new Blob([JSON.stringify(bundle, null, 1)], { type: 'application/json' });
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'rd_feedback_' + bundle.category + '.json';
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a); URL.revokeObjectURL(a.href);
-      msg.textContent = 'Report packaged and downloaded. Hold onto it — direct submission lands here soon.';
-    }).catch(function (err) {
-      msg.style.color = 'var(--caution)';
-      msg.textContent = String(err);
-    });
+    var bundle = {
+      schema_version: '1.0',
+      kind: 'reactor_dynamics_feedback',
+      category: document.getElementById('fbCat').value,
+      body: document.getElementById('fbBody').value,
+      email: document.getElementById('fbEmail').value || null,
+      site_version: window.RD_VERSION || null,
+      diag: null
+    };
+    var blob = new Blob([JSON.stringify(bundle, null, 1)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'rd_feedback_' + bundle.category + '.json';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(a.href);
+    msg.textContent = 'Report packaged and downloaded. Hold onto it — direct submission lands here soon.';
   });
 })();
 </script>
