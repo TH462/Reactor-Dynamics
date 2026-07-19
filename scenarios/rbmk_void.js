@@ -28,7 +28,8 @@
           industry: 'Interactive void-coefficient demonstration at 50% (tame regime). Planned evolution: channel flow reduction 80→~60%. PWR-trained expectation (negative MTC response) is about to be inverted.',
         },
         gate: { allow_actions: ['set_channel_flow', 'scram', 'manual_scram', 'acknowledge_alarm', 'acknowledge_all_alarms'],
-                message: 'Channel flow only for this experiment — the point is what the reactor does on its own.' },
+                message: { learning: 'Channel flow only for this experiment — the point is what the reactor does on its own.',
+                           industry: 'MCP/channel-flow controls only for this demonstration; observe the intrinsic response.' } },
         advance: 'wait_for_trigger' },
 
       // Prompt + branch watch (playtest pattern): the asked-for 80→60 cut leads

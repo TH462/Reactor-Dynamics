@@ -2132,6 +2132,117 @@
           submin > -5, '> -5 °C');
       });
     },
+
+    // Accumulator arming boundary + break-size discrimination. Pins the restored
+    // 4.14 MPa (600 psi) CFT/SIT setpoint (096f574) — the earlier unit tests
+    // crafted 0.8 MPa states that passed identically at the stale 1.5 MPa value,
+    // so the entire rationale for the restore was unpinned. (A) the boundary
+    // itself, (B) the blowdown model's design point: a full SGTR pins the
+    // saturation plateau ABOVE the setpoint (tanks stay shut), a large LOCA
+    // flash-cools below it (tanks dump).
+    accumulator_arming_boundary: function () {
+      return test('Accumulators — 4.14 MPa arming boundary + break-size discrimination', function (ck) {
+        var cfg = new Harness('hot_full_power').eng.cfg;
+        var sp = cfg.emergency.accumulator_trip_mpa;
+        ck('config setpoint is the real 600 psi', sp.toFixed(2), near(sp, 4.14, 0.01), '4.14 MPa');
+        function craft(p) {
+          var s = { pressure_mpa: p, p_coldleg: p, tavg_c: 200, _subcool_hot_c: 5,
+            _mass: 0.7, boron_ppm: 800, hpi_active: false, cvcs_auto: false,
+            charging_pump_running: false, charging_setpoint: 0, charging_flow: 0,
+            letdown_orifice_a: false, letdown_orifice_b: false,
+            porv_flow: 0, safety_flow: 0, leak_flow: 0, core_void_fraction: 0,
+            _accum_remaining: cfg.emergency.accumulator_capacity };
+          for (var i = 0; i < 10; i++) RD.pwrPrimary.stepInventory(s, cfg, 0.5);
+          return s;
+        }
+        var above = craft(sp + 0.3), below = craft(sp - 0.3);
+        ck('just ABOVE the setpoint: no discharge', String(above.accumulators_discharging),
+          above.accumulators_discharging === false, 'false at ' + (sp + 0.3).toFixed(2));
+        ck('just BELOW the setpoint: discharging', String(below.accumulators_discharging),
+          below.accumulators_discharging === true, 'true at ' + (sp - 0.3).toFixed(2));
+        // (B) Small break: full-severity SGTR, hands off post-scram — the sat
+        // plateau holds above the setpoint and the tanks NEVER dump.
+        var h = new Harness('hot_full_power'); h.run(10);
+        h.cmd({ action: 'scram' });
+        h.cmd({ action: 'inject_failure', failure_id: 'sgtr', severity: 1.0 });
+        var pminS = 99;
+        for (var i = 0; i < Math.round(600 / h.dt); i++) {
+          h.eng.step(h.dt);
+          if (h.eng.s.pressure_mpa < pminS) pminS = h.eng.s.pressure_mpa;
+        }
+        ck('SGTR plateau stays above the arming pressure', pminS.toFixed(2), pminS > sp, '> ' + sp);
+        ck('SGTR leaves the accumulators full', h.eng.s.accumulator_volume_pct.toFixed(1),
+          h.eng.s.accumulator_volume_pct > 99.9, '100%');
+        // Large break: blowdown flash-cooling drops the plateau through the
+        // setpoint and the tanks dump.
+        var h2 = new Harness('hot_full_power'); h2.run(10);
+        h2.cmd({ action: 'scram' });
+        h2.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
+        var pminL = 99, dumped = false;
+        for (var j = 0; j < Math.round(600 / h2.dt); j++) {
+          h2.eng.step(h2.dt);
+          if (h2.eng.s.pressure_mpa < pminL) pminL = h2.eng.s.pressure_mpa;
+          if (h2.eng.s.accumulators_discharging) dumped = true;
+        }
+        ck('large LOCA falls below the arming pressure', pminL.toFixed(2), pminL < sp, '< ' + sp);
+        ck('large LOCA dumps the accumulators', dumped + '/' + h2.eng.s.accumulator_volume_pct.toFixed(1) + '%',
+          dumped === true && h2.eng.s.accumulator_volume_pct < 99, 'discharging, tanks drawn down');
+      });
+    },
+
+    // Steam-dump capacity cap (e28f7b0): a full-open dump is limited to
+    // steam_dump_max (~50% of rated steam flow) on BOTH the manual override and
+    // the auto demand — deleting the cap previously failed nothing.
+    steam_dump_capacity_cap: function () {
+      return test('Steam dump — capacity capped at steam_dump_max on manual full-open', function (ck) {
+        var h = new Harness('hot_full_power');
+        var cap = h.eng.cfg.steam_generator.steam_dump_max;
+        ck('cap is a partial capacity (realism)', cap.toFixed(2), cap >= 0.4 && cap <= 0.55, '0.40..0.55');
+        h.run(5);
+        h.cmd({ action: 'set_steam_dump', mode: 'open' });
+        var maxFrac = 0;
+        for (var i = 0; i < Math.round(30 / h.dt); i++) {
+          h.eng.step(h.dt);
+          if (h.eng.s.steam_dump_frac > maxFrac) maxFrac = h.eng.s.steam_dump_frac;
+        }
+        ck('manual full-open never exceeds the cap', maxFrac.toFixed(3), maxFrac <= cap + 1e-9, '≤ ' + cap);
+        ck('dump is actually flowing at the cap', maxFrac.toFixed(3), maxFrac > cap - 0.05, '≈ ' + cap);
+      });
+    },
+
+    // P-14 main-feedwater isolation (engine surface): the isolate_feedwater
+    // command latches feedwater_isolated, which gates MAIN feed only — AFW is
+    // added downstream of the gate and keeps feeding (the P-14 design point).
+    // The trip/actuation halves live in M4 (ops_pwr ops_sg_overfeed_p14).
+    feedwater_isolation: function () {
+      return test('P-14 feedwater isolation — main feed gated, AFW passes through', function (ck) {
+        var h = new Harness('hot_full_power'); h.run(10);
+        var lvl0 = h.ts().sg_level_pct;
+        h.cmd({ action: 'isolate_feedwater', active: true });
+        ck('isolation latch set', h.eng.s.feedwater_isolated, h.eng.s.feedwater_isolated === true, 'true');
+        h.run(8);
+        var lvl1 = h.ts().sg_level_pct;
+        ck('SG boils down with main feed isolated', lvl0.toFixed(1) + ' → ' + lvl1.toFixed(1),
+          lvl1 < lvl0 - 3 && lvl1 > 0, 'falls > 3% (not yet dry)');
+        // The full P-14 response: turbine trip + reactor trip (P-9), then AFW
+        // carries decay heat — AFW is added DOWNSTREAM of the isolation gate
+        // and must still deliver against the latch.
+        h.cmd({ action: 'inject_failure', failure_id: 'turbine_trip' });
+        h.cmd({ action: 'scram' });
+        h.cmd({ action: 'set_afw', active: true });
+        // 300 s: the post-trip dump out-draws AFW at first; once decay heat and
+        // SG pressure settle, AFW's built-in level hold carries the SG at its
+        // regulation point (~the hold target) — delivering through the latch.
+        h.run(300);
+        ck('AFW still delivers through the isolation', h.eng.s.afw_flow_normalized.toFixed(3),
+          h.eng.s.afw_flow_normalized > 0.02, '> 0.02 (downstream of the gate)');
+        var lvl2 = h.ts().sg_level_pct;
+        ck('AFW holds the level at its regulation point (not dry)', lvl1.toFixed(1) + ' → ' + lvl2.toFixed(1),
+          lvl2 > 18, '> 18% (hold target band)');
+        h.cmd({ action: 'isolate_feedwater', active: false });
+        ck('operator restore clears the latch', h.eng.s.feedwater_isolated, h.eng.s.feedwater_isolated === false, 'false');
+      });
+    },
   };
 
   PWRScenarioTests.runAll = function () {
@@ -2142,7 +2253,8 @@
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',
       'merged_injection_curve', 'rhr_valve_and_mode', 'msiv_closure_at_power', 'rcp_cavitation',
       'eccs_boration', 'eccs_cold_injection', 'loop_pressure_nodes', 'letdown_orifice_lineup', 'save_migration', 'mode5_controls',
-      'cvcs_level_control', 'pressure_saturation_bounds'];
+      'cvcs_level_control', 'pressure_saturation_bounds', 'feedwater_isolation',
+      'accumulator_arming_boundary', 'steam_dump_capacity_cap'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(PWRScenarioTests[order[i]]());
     return results;

@@ -37,7 +37,8 @@
           industry: '50% steady. CVCS boron: soluble absorber, spatially uniform worth, adjusted via charging/letdown chemistry. Fast/local (rods) vs slow/uniform (boron) division of labor. Analyzer reading is your ppm indication.',
         },
         gate: { allow_actions: ['set_boron_adjust', 'rod_nudge', 'rod_start', 'rod_stop', 'scram', 'manual_scram', 'acknowledge_alarm', 'acknowledge_all_alarms'],
-                message: 'Reactivity controls only — rods and boron chemistry.' },
+                message: { learning: 'Reactivity controls only — rods and boron chemistry.',
+                           industry: 'Reactivity controls only for this evolution: rods and CVCS boration/dilution.' } },
         advance: 'wait_for_trigger' },
 
       { id: 'dilute_task',

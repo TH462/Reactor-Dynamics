@@ -388,7 +388,13 @@
       }
       var h1 = runaway(1), h256 = runaway(256);
       ck('1×: protection catches it before destruction', destroyed(h1.ts()), !destroyed(h1.ts()), 'intact');
-      ck.info('256×: intact?', destroyed(h256.ts()) ? h256.ts().destruction_cause : 'intact');
+      // C2 ACCEPTANCE (2026-07-19 review): protection latency scales with time
+      // acceleration (M4 evaluates once per broadcast → ~13 sim-s at 256×), so
+      // the identical runaway that trips cleanly at 1× destroys the core at
+      // 256×. This is the finding's hard check — expected RED until C2 is fixed
+      // (evaluate trips on sim-time cadence, or auto-drop accel on new alarms).
+      ck('256×: same protection outcome as 1× (C2 tuning target)',
+        destroyed(h256.ts()) ? h256.ts().destruction_cause : 'intact', !destroyed(h256.ts()), 'intact');
       ck.info('1× peak power', fmt(h1.range('power_pct').max, 1) + '%');
       ck.info('256× peak power', fmt(h256.range('power_pct').max, 1) + '%');
       ck.info('1× trip delay after inject (s)', h1.tripTime != null ? fmt(h1.tripTime - 10, 1) : 'no trip');

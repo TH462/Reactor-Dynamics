@@ -183,6 +183,29 @@ T.push(test('NIS startup net — conditioned SR trip, P-6 switch interlocks, blo
   ck('trip block refused below P-10', rb && rb.type, rb && rb.type === 'blocked', 'blocked');
 }));
 
+T.push(test('P-11/P-7 trip bypass — cold init blocks, auto-reinstate on repressurization', function (ck) {
+  var s = new Stack('cold_shutdown');
+  s.run(1);
+  ck('cold init auto-blocks lo_press (P-11)', String(s.layer.tripBlocks.lo_press), s.layer.tripBlocks.lo_press === true, 'blocked');
+  ck('cold init auto-blocks lo_flow (P-7)', String(s.layer.tripBlocks.lo_flow), s.layer.tripBlocks.lo_flow === true, 'blocked');
+  ck('depressurized plant sits unscrammed (bypass working)', String(s.layer.rps.scrammed), s.layer.rps.scrammed === false, 'false');
+  // Repressurize past the 13.6 MPa P-11 permissive (hold the true pressure —
+  // the instrument lags behind it) — the lo_press block must clear ITSELF:
+  // a stuck block here means the low-pressure trip is dead at power.
+  for (var i = 0; i < Math.round(30 / s.dt); i++) {
+    s.engine.s.pressure_mpa = 15.4;
+    s.engine.step(s.dt); s.layer.evaluate(s.engine.getInstruments());
+  }
+  ck('lo_press auto-reinstates above P-11', String(s.layer.tripBlocks.lo_press), s.layer.tripBlocks.lo_press !== true, 'cleared');
+  ck('lo_flow stays blocked (its P-7 permissive still satisfied)', String(s.layer.tripBlocks.lo_flow), s.layer.tripBlocks.lo_flow === true, 'blocked');
+  // The re-armed trip has teeth: pressure sagging back through 12.41 MPa scrams.
+  for (var j = 0; j < Math.round(15 / s.dt) && !s.layer.rps.scrammed; j++) {
+    s.engine.s.pressure_mpa = 11.0;
+    s.engine.step(s.dt); s.layer.evaluate(s.engine.getInstruments());
+  }
+  ck('re-armed lo_press trip fires on the way back down', s.layer.rps.last_trip_reason, s.layer.rps.scrammed === true, 'scrammed (primary_pressure low)');
+}));
+
 T.push(test('MSIV closure at power (full stack) — bottled SG drains to the level scram', function (ck) {
   var s = new Stack('hot_full_power');
   s.run(2);

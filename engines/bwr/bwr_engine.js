@@ -950,8 +950,12 @@
         sv.cmd({ action: 'inject_failure', failure_id: 'srv_stuck_open', severity: 1.0 });
         sv.run(600);
         ck('SRV stuck: pressure falls', sv.ts().vessel_pressure_mpa.toFixed(2), sv.ts().vessel_pressure_mpa < p0, '< ' + p0.toFixed(2));
+        // Assert the precondition TOO — the old `p < cutoff ? flow===0 : true`
+        // silently became always-pass if a retune kept pressure above the cutoff.
+        ck('SRV stuck: blowdown reaches the RCIC cutoff', sv.ts().vessel_pressure_mpa.toFixed(2),
+          sv.ts().vessel_pressure_mpa < sv.eng.cfg.safety.rcic_min_pressure, '< rcic_min_pressure');
         ck('SRV stuck: RCIC flow ceases below cutoff', sv.eng.s.rcic_flow.toFixed(4),
-          sv.ts().vessel_pressure_mpa < sv.eng.cfg.safety.rcic_min_pressure ? sv.eng.s.rcic_flow === 0 : true, 'RCIC stops at low P');
+          sv.eng.s.rcic_flow === 0, '0');
 
         // recirc pump trip at power: flow → natural circ, void up, power runs back.
         var rp = new Harness('full_power'); rp.run(20);
@@ -985,15 +989,22 @@
         h.runActuated(4 * H, { stop: function (e) { return e.s.vessel_level_pct < 15; } });
         var ins = h.ins();
         ck('hpci_unavailable status true', String(ins.hpci_unavailable), ins.hpci_unavailable === true, 'true');
-        ck('ads_open starts false (not yet triggered)', String(h.ts().ads_open), h.ts().ads_open === false, 'false');
+        // The ADS gate condition is satisfiable here (level < 15, HPCI out) yet
+        // the ENGINE must not have opened ADS on its own — actuation decisions
+        // live in the control layer (HR2), and this harness never issued one.
+        ck('engine never opens ADS on its own (HR2)', h.ts().vessel_level_pct.toFixed(1) + '% / ads=' + h.ts().ads_open,
+          h.ts().vessel_level_pct < 15 && h.ts().ads_open === false, 'gate satisfiable, ADS still shut');
         // With ads_failure injected, trigger_ads is blocked → ads_open stays false → LPCI never arms.
         h.cmd({ action: 'inject_failure', failure_id: 'ads_failure' });
         h.cmd({ action: 'trigger_ads' });     // blocked
         ck('ads_failure blocks trigger_ads', String(h.ts().ads_open), h.ts().ads_open === false, 'stays false');
         h.cmd({ action: 'start_lpci' });
         h.run(60);
+        // Assert the precondition TOO (see the RCIC-cutoff note above).
+        ck('vessel still above the LPCI threshold (no ADS blowdown)', h.ts().vessel_pressure_mpa.toFixed(2),
+          h.ts().vessel_pressure_mpa >= h.eng.cfg.safety.lpci_threshold_pressure, '≥ lpci_threshold_pressure');
         ck('LPCI cannot inject at high pressure (no ADS)', h.eng.s.lpci_flow.toFixed(3),
-          h.ts().vessel_pressure_mpa >= h.eng.cfg.safety.lpci_threshold_pressure ? h.eng.s.lpci_flow === 0 : true, 'no LPCI flow');
+          h.eng.s.lpci_flow === 0, '0');
       });
     },
 
@@ -1106,6 +1117,63 @@
     },
   };
 
+  BWRScenarioTests.atws_slc = function () {
+    return test('ATWS — failure_to_scram blocks the rods, SLC borates the core down', function (ck) {
+      var h = new Harness('full_power');
+      h.run(5);
+      h.cmd({ action: 'inject_failure', failure_id: 'failure_to_scram' });
+      h.cmd({ action: 'scram' });
+      h.run(20);
+      var t1 = h.ts();
+      ck('scram blocked — reactor still at power', t1.power_pct.toFixed(1), !t1.scrammed && t1.power_pct > 50, '> 50%, not scrammed');
+      var tank0 = h.eng.s.slc_tank_pct;
+      h.cmd({ action: 'initiate_slc' });
+      h.run(60);   // partial injection — tank must still be mid-drain here
+      ck('SLC boron ramp injecting', h.eng.s.slc_injected.toFixed(3), h.eng.s.slc_injected > 0.3, '> 0.3 of full worth');
+      ck('SLC tank draining (mid-drain)', tank0.toFixed(0) + ' → ' + h.eng.s.slc_tank_pct.toFixed(0),
+        h.eng.s.slc_tank_pct < tank0 - 5 && h.eng.s.slc_tank_pct > 5, 'drawn down, not yet empty');
+      // stop_slc halts further injection but already-injected worth persists
+      h.cmd({ action: 'stop_slc' });
+      var inj = h.eng.s.slc_injected, tank1 = h.eng.s.slc_tank_pct;
+      h.run(30);
+      ck('stop_slc: tank stops draining', tank1.toFixed(1) + ' → ' + h.eng.s.slc_tank_pct.toFixed(1),
+        near(h.eng.s.slc_tank_pct, tank1, 0.01), 'held');
+      ck('already-injected boron persists', h.eng.s.slc_injected.toFixed(3), h.eng.s.slc_injected >= inj - 1e-6, '≥ ' + inj.toFixed(3));
+      // resume and finish the shutdown
+      h.cmd({ action: 'initiate_slc' });
+      h.run(300);
+      var t2 = h.ts();
+      ck('boron shuts the plant down without rods', t2.power_pct.toFixed(1), t2.power_pct < 10, '< 10%');
+      ck('no fuel damage through the ATWS', String(t2.melted), !t2.melted && !h.eng.s.fuel_damaged, 'false');
+    });
+  };
+
+  BWRScenarioTests.hpci_injection = function () {
+    return test('HPCI — high-pressure injection actually runs and recovers level', function (ck) {
+      var h = new Harness('full_power');
+      h.run(5);
+      h.cmd({ action: 'scram' });
+      h.cmd({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+      // let the level fall well below nominal, then start HPCI manually
+      var t = 0;
+      while (h.ts().vessel_level_pct > 35 && t < 600) { h.run(5); t += 5; }
+      var lvl0 = h.ts().vessel_level_pct;
+      ck('level drawn down for the test', lvl0.toFixed(1), lvl0 <= 35, '≤ 35%');
+      h.cmd({ action: 'set_hpci', active: true });
+      h.run(2);
+      ck('HPCI delivers at pressure (hpci_flow > 0)', h.eng.s.hpci_flow.toFixed(3),
+        h.eng.s.hpci_flow > 0, '> 0 (vessel above hpci_min_pressure)');
+      h.run(120);
+      ck('HPCI recovers the level', lvl0.toFixed(1) + ' → ' + h.ts().vessel_level_pct.toFixed(1),
+        h.ts().vessel_level_pct > lvl0 + 3, 'rising');
+      // failure mode: stop_hpci kills and latches it failed
+      h.cmd({ action: 'inject_failure', failure_id: 'hpci_failure' });
+      h.run(2);
+      ck('hpci_failure stops delivery', h.eng.s.hpci_flow.toFixed(3), h.eng.s.hpci_flow === 0, '0');
+      ck('hpci_unavailable status reflects it', String(h.ins().hpci_unavailable), h.ins().hpci_unavailable === true, 'true');
+    });
+  };
+
   BWRScenarioTests.protection_trips = function () {
     return test('Protection — RPS trip table is fireable (high flux)', function (ck) {
       var h = new Harness('full_power');
@@ -1140,7 +1208,7 @@
   BWRScenarioTests.runAll = function () {
     var order = ['steady_full_power', 'flow_control', 'natural_circ', 'turbine_trip', 'shutdown_scram',
       'flagship_fukushima', 'physics_failures', 'actuation_gates', 'balance_of_plant', 'startup', 'isolation_condenser',
-      'protection_trips', 'save_restore'];
+      'protection_trips', 'atws_slc', 'hpci_injection', 'save_restore'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(BWRScenarioTests[order[i]]());
     return results;

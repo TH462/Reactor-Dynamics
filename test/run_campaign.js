@@ -258,6 +258,133 @@ test('campaign scenarios — auto_channels resolve to automation channels', func
   });
 });
 
+// Static "references resolve" pass (2026-07-19 review): every name a beat uses
+// must resolve against the live vocabularies — a typo'd goto softlocks the
+// mission, a typo'd instrument/alarm/command means the beat/gate silently never
+// fires (instructor_layer treats unknowns as compare-false). All cheap static
+// checks over RD.SCENARIOS; runs on ALL campaign scenarios including bonus.
+var DIRECTIONS = ['below', 'above', 'is_true', 'is_false', 'is_open'];
+var ADVANCE_VOCAB = [undefined, null, 'auto', 'end', 'wait_for_trigger'];
+function plantVocab(plant) {
+  var eng, alarms, failures;
+  if (plant === 'pwr') {
+    eng = [new RD.PWREngine({ initial_state: 'hot_full_power' })];
+    alarms = RD.PWR_CONTROL.protection.alarms;
+    failures = Object.keys(RD.PWR_CONTROL.protection.failures);
+  } else if (plant === 'bwr') {
+    eng = [new RD.BWREngine({ initial_state: 'full_power' })];
+    alarms = RD.BWR_CONTROL.protection.alarms;
+    failures = Object.keys(RD.BWR_CONTROL.protection.failures);
+  } else {
+    eng = [new RD.RBMKEngine({ design_version: 'pre_chernobyl' }),
+           new RD.RBMKEngine({ design_version: 'post_chernobyl' })];
+    var pre = RD.RBMK_CONTROL.forVersion('pre_chernobyl'), post = RD.RBMK_CONTROL.forVersion('post_chernobyl');
+    alarms = pre.alarms.concat(post.alarms);
+    failures = Object.keys(pre.failures);
+    Object.keys(post.failures).forEach(function (k) { if (failures.indexOf(k) === -1) failures.push(k); });
+  }
+  var ins = {}, ts = {};
+  eng.forEach(function (e) {
+    Object.keys(e.getInstruments()).forEach(function (k) { ins[k] = true; });
+    Object.keys(e.getTrueState()).forEach(function (k) { ts[k] = true; });
+  });
+  return { instruments: ins, true_state: ts,
+    alarm_ids: alarms.map(function (a) { return a.id; }), failure_ids: failures };
+}
+// Command vocabulary: every `case 'x':` in the engine/kernel/service dispatchers.
+// Over-permissive (switch cases that aren't commands slip in) but never wrong —
+// it exists to catch typos like 'opne_porv', not to be a strict schema.
+function commandVocab() {
+  var fs = require('fs');
+  var files = ['engines/pwr/pwr_engine.js', 'engines/rbmk/rbmk_engine.js', 'engines/bwr/bwr_engine.js',
+    'layers/control/control_kernel.js', 'layers/simulation_service.js', 'layers/instructor_layer.js'];
+  var vocab = {};
+  files.forEach(function (f) {
+    var src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    var m; var re = /case '([a-z0-9_]+)':/g;
+    while ((m = re.exec(src))) vocab[m[1]] = true;
+  });
+  vocab.manual_scram = true;   // UI alias routed before the dispatchers
+  return vocab;
+}
+test('campaign scenarios — every reference resolves (goto, instruments, alarms, commands, gates)', function (ck) {
+  var CMDS = commandVocab();
+  Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
+    var vocab = plantVocab(cid);
+    var missions = [];
+    RD.CAMPAIGNS[cid].acts.forEach(function (a) { a.missions.forEach(function (m) { missions.push(m); }); });
+    (RD.CAMPAIGNS[cid].bonus || []).forEach(function (m) { missions.push(m); });
+    missions.forEach(function (m) {
+      if (m.kind !== 'scenario') return;
+      var sc = RD.SCENARIOS[m.id]; if (!sc) return;
+      var beatIds = {};
+      (sc.beats || []).forEach(function (b) { beatIds[b.id] = true; });
+      function checkTrigger(tr, where) {
+        if (!tr) return;
+        switch (tr.type) {
+          case 'time': case 'delay':
+            ck(where + ' has numeric value', String(tr.value), typeof tr.value === 'number', 'number'); break;
+          case 'inaction':
+            ck(where + ' has numeric window', String(tr.window), typeof tr.window === 'number', 'number'); break;
+          case 'instrument':
+            ck(where + ' instrument resolves (' + tr.instrument + ')', tr.instrument,
+              vocab.instruments[tr.instrument] === true, 'a ' + cid + ' instrument');
+            ck(where + ' direction legal (' + tr.direction + ')', tr.direction,
+              DIRECTIONS.indexOf(tr.direction) !== -1, DIRECTIONS.join('|'));
+            break;
+          case 'true_state':
+            ck(where + ' field resolves (' + tr.field + ')', tr.field,
+              vocab.true_state[tr.field] === true, 'a ' + cid + ' true_state field');
+            ck(where + ' direction legal (' + tr.direction + ')', tr.direction,
+              DIRECTIONS.indexOf(tr.direction) !== -1, DIRECTIONS.join('|'));
+            break;
+          case 'alarm':
+            ck(where + ' alarm resolves (' + tr.alarm_id + ')', tr.alarm_id,
+              vocab.alarm_ids.indexOf(tr.alarm_id) !== -1, 'a ' + cid + ' alarm id');
+            break;
+          case 'operator_action':
+            ck(where + ' command resolves (' + tr.command + ')', tr.command,
+              CMDS[tr.command] === true, 'a known command');
+            break;
+          case 'all': case 'any':
+            ck(where + ' has sub-triggers', (tr.triggers || []).length, (tr.triggers || []).length > 0, '≥ 1');
+            (tr.triggers || []).forEach(function (c2, i2) { checkTrigger(c2, where + '.sub[' + i2 + ']'); });
+            break;
+          // scram / manual need no fields
+        }
+      }
+      (sc.beats || []).forEach(function (b) {
+        var at = m.id + '.' + b.id;
+        checkTrigger(b.trigger, at + ' trigger');
+        (b.branches || []).forEach(function (br, i) {
+          checkTrigger(br.trigger, at + ' branch[' + i + ']');
+          ck(at + ' branch[' + i + '] goto resolves (' + br.goto + ')', br.goto,
+            beatIds[br.goto] === true, 'an existing beat id');
+        });
+        ck(at + ' advance vocabulary (' + b.advance + ')', String(b.advance),
+          ADVANCE_VOCAB.indexOf(b.advance) !== -1, 'auto|end|wait_for_trigger|unset');
+        if (b.gate) {
+          if (b.gate.message != null) {
+            var gm = b.gate.message;
+            var gmOk = typeof gm === 'object' && !!gm.learning && !!gm.industry;
+            ck(at + ' gate.message has both registers (strings render as NOTHING)', gmOk ? 'ok' : typeof gm,
+              gmOk, '{learning, industry}');
+          }
+          (b.gate.block_actions || []).concat(b.gate.allow_actions || []).forEach(function (a2) {
+            ck(at + ' gate action resolves (' + a2 + ')', a2, CMDS[a2] === true, 'a known command');
+          });
+          if (b.gate.until) checkTrigger(b.gate.until, at + ' gate.until');
+        }
+        (b.inject_failures || []).forEach(function (f2, fi) {
+          var fid = typeof f2 === 'string' ? f2 : (f2 && f2.failure_id);
+          ck(at + ' inject_failures[' + fi + '] resolves (' + fid + ')', fid,
+            vocab.failure_ids.indexOf(fid) !== -1, 'a ' + cid + ' failure id');
+        });
+      });
+    });
+  });
+});
+
 // ---------------------------------------------------------------- Part 2: functional
 // Each new scenario is played to completion by a scripted operator.
 
@@ -890,26 +1017,48 @@ test('pwr_mode5_to_mode3 — cold heatup reaches Hot Standby, no fuel damage', f
     ck('hot at NOP temperature', tf.tavg_c.toFixed(1), tf.tavg_c > 285, '> 285 °C');
     ck('subcritical Hot Standby (Mode 3)', 'mode=' + tf.plant_mode + ' rho=' + tf.reactivity_pcm.toFixed(0), tf.plant_mode === 3 && tf.reactivity_pcm < 0, 'Mode 3, subcritical');
     ck('no fuel damage on the way up', maxFuel.toFixed(0), maxFuel < 1200 && !s.engine.s.fuel_damaged, '< 1200 °C');
+    // The heatup crosses the P-11 lo-press band with the trip auto-blocked at
+    // cold init and auto-reinstated on the way up — a spuriously-scrammed plant
+    // would still coast to the Hot Standby card, so pin "never scrammed".
+    ck('arrived UNscrammed (trip bypass + reinstate did their job)',
+      'rps=' + snap.rps_state.scrammed + ' eng=' + tf.scrammed,
+      snap.rps_state.scrammed === false && tf.scrammed === false, 'false/false');
   }
 });
 
 test('pwr_mode3_to_mode5 — controlled cooldown reaches Cold Shutdown', function (ck) {
   var s = startScenario('pwr_mode3_to_mode5');
   s.handleCommand({ action: 'set_speed', value: 120 });
-  var below = false, blockedLP = false;
+  // By-the-book cooldown (2026-07-19 rework — the old script arrived at Cold
+  // Shutdown SCRAMMED, caught by the new UNscrammed assertion below):
+  //  - Rates are SIM-TIME based, not per-sample: an M5 attention stop can drop
+  //    the speed to 1× mid-run, and per-sample walks then turn into full-speed
+  //    crashes (probed: spray crashed through P-11 AND the 12.41 lo-press trip
+  //    inside one broadcast).
+  //  - The P-11 block reads the pressure INSTRUMENT (HR1), which lags the
+  //    descent — hold at 13.45 MPa and RETRY until the block is accepted.
+  //  - CVCS AUTO make-up holds PZR level against the cooldown shrink (manual
+  //    charging management fought the servo and lost — pzr_level low scram).
+  var below = false, blockedLP = false, lastT = null, dumpSp = 8.90, prSp = 15.41;
   var snap = runUntil(s, function (sn) {
     var t = s.engine.getTrueState();
-    s.handleCommand({ action: 'set_steam_dump_setpoint', mpa: clampC(psatC(t.tavg_c - 6), 0.3, 8.90) });
-    s.handleCommand({ action: 'set_pressure_setpoint', mpa: clampC(psatC(t.tavg_c + 30), 0.5, 15.41) });
-    if (t.pressure_mpa > psatC(t.tavg_c + 30) + 0.3) s.handleCommand({ action: 'set_spray', pct: 70 }); else s.handleCommand({ action: 'set_spray', auto: true });
-    if (!blockedLP && t.pressure_mpa < 13.5) { blockedLP = true; s.handleCommand({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true }); }
+    var dtSim = lastT == null ? 0 : s.simTime - lastT; lastT = s.simTime;
+    s.handleCommand({ action: 'set_cvcs_auto', active: true });
+    dumpSp = Math.max(clampC(psatC(t.tavg_c - 30), 0.3, 8.90), dumpSp - 0.002 * dtSim);
+    s.handleCommand({ action: 'set_steam_dump_setpoint', mpa: clampC(dumpSp, 0.3, 8.90) });
+    var spTarget = psatC(t.tavg_c + 30);
+    prSp = Math.max(blockedLP ? 0.5 : 13.45, Math.min(prSp - 0.01 * dtSim, clampC(spTarget, 0.5, 15.41)));
+    s.handleCommand({ action: 'set_pressure_setpoint', mpa: clampC(Math.max(prSp, blockedLP ? spTarget : 13.45), 0.5, 15.41) });
+    s.handleCommand({ action: 'set_spray', auto: true });
+    if (!blockedLP && t.pressure_mpa < 13.55) {
+      var rb = s.handleCommand({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true });
+      if (!(rb && rb.type === 'blocked')) blockedLP = true;   // accepted (retry next sample if refused)
+    }
     if (!below && t.pressure_mpa < 2.76) { below = true; s.handleCommand({ action: 'set_rhr', active: true }); s.handleCommand({ action: 'set_rhr_hx', pct: 100 }); s.handleCommand({ action: 'set_rcp', running: false }); }
     s.handleCommand({ action: 'set_boron_adjust', rate: t.reactivity_pcm < -2500 ? 0 : 4.0 });
-    var l = t.pzr_level_pct;
-    if (l > 58) { s.handleCommand({ action: 'set_letdown_orifices', a: true, b: false }); s.handleCommand({ action: 'set_charging_flow', normalized: 0 }); }
-    else if (l < 30) { s.handleCommand({ action: 'set_charging_flow', normalized: 0.03 }); s.handleCommand({ action: 'set_letdown_orifices', a: false, b: false }); }
-    else { s.handleCommand({ action: 'set_letdown_orifices', a: false, b: false }); s.handleCommand({ action: 'set_charging_flow', normalized: 0 }); }
-    s.handleCommand({ action: 'set_feed_pump_speed', pct: clampC(40 + 3 * (65 - t.sg_level_pct), 0, 100) });
+    if (t.pzr_level_pct > 58) s.handleCommand({ action: 'set_letdown_orifices', a: true, b: false });
+    else s.handleCommand({ action: 'set_letdown_orifices', a: false, b: false });
+    s.handleCommand({ action: 'set_feed_pump_speed', pct: clampC(10 + 1.5 * (65 - t.sg_level_pct), 0, 100) });
     return lc(sn);
   }, 40000);
   ck('cooldown reaches an endpoint', !!snap, !!snap, 'level_complete');
@@ -919,6 +1068,12 @@ test('pwr_mode3_to_mode5 — controlled cooldown reaches Cold Shutdown', functio
     ck('cold (Tavg ≤ 95 °C)', tf.tavg_c.toFixed(1), tf.tavg_c <= 95, '≤ 95 °C');
     ck('depressurized below RHR interlock', tf.pressure_mpa.toFixed(2), tf.pressure_mpa < 2.76, '< 2.76 MPa');
     ck('RHR aligned + subcritical', 'rhr=' + tf.rhr_valve_open + ' rho=' + tf.reactivity_pcm.toFixed(0), tf.rhr_valve_open && tf.reactivity_pcm < 0, 'RHR on, subcritical');
+    // The scripted set_trip_block lo_press is what lets the depressurization
+    // through 12.41 MPa proceed — if the bypass became a no-op the plant would
+    // scram mid-cooldown and STILL reach the card. Pin "never scrammed".
+    ck('arrived UNscrammed (lo_press bypass worked)',
+      'rps=' + snap.rps_state.scrammed + ' eng=' + tf.scrammed,
+      snap.rps_state.scrammed === false && tf.scrammed === false, 'false/false');
   }
 });
 
@@ -937,6 +1092,9 @@ test('pwr_return_to_mode1 — full cold startup reaches Mode 1, At Power', funct
     var tf = s.engine.getTrueState();
     ck('at Mode 1 (critical, hot, > 5 %)', 'mode=' + tf.plant_mode + ' P=' + tf.power_pct.toFixed(1), tf.plant_mode === 1 && tf.power_pct > 5, 'Mode 1, > 5 %');
     ck('no fuel damage on the way up', maxFuel.toFixed(0), maxFuel < 1200 && !s.engine.s.fuel_damaged, '< 1200 °C');
+    ck('arrived UNscrammed (cold-init blocks + reinstate did their job)',
+      'rps=' + snap.rps_state.scrammed + ' eng=' + tf.scrammed,
+      snap.rps_state.scrammed === false && tf.scrammed === false, 'false/false');
   }
 });
 
@@ -1247,6 +1405,59 @@ test('pwr_tmi2_p3 — no deviations: history repeats gracefully', function (ck) 
   if (!snap) return;
   ck('graceful historical ending', lc(snap).title, /History Repeated/.test(lc(snap).title), 'History Repeated card');
   ck('core damage (as in 1979)', snap.true_state.fuel_damaged, snap.true_state.fuel_damaged === true, 'fuel_damaged true');
+});
+
+// The remaining three of the five endings (2026-07-19 review: the ending
+// discrimination is compound physics-coupled triggers — the part most likely
+// to break on physics drift — and 3/5 outcomes were unproven).
+
+test('pwr_tmi2_p3 — plugged not refilled: comply + early isolation, no re-injection', function (ck) {
+  var s = startScenario('pwr_tmi2_p3');
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 5000, [
+    { when: function (sn) { return sn.metadata.sim_time > 20; },
+      act: function (s2) { s2.handleCommand({ action: 'instructor_interact', interaction_id: 'afw_tag' }); } },
+    // comply with the HPI order the moment it arms (the historical action)
+    { when: function (sn) { return sn.instructor.current_beat_id === 'p3_b9_order'; },
+      act: function (s2) { s2.handleCommand({ action: 'set_hpi', active: false }); } },
+    // …but catch the tailpipe early: isolate pre-damage, never put water back
+    { when: function (sn) { return sn.metadata.sim_time > 320 && sn.true_state.porv_stuck; },
+      act: function (s2) { s2.handleCommand({ action: 'close_block_valve' }); } },
+  ]);
+  ck('reaches level_complete', !!snap, !!snap, 'level_complete');
+  if (!snap) return;
+  ck('ending: Plugged, Not Refilled', lc(snap).title, /Plugged, Not Refilled/.test(lc(snap).title), 'plugged card');
+  ck('no core damage', snap.true_state.fuel_damaged, snap.true_state.fuel_damaged === false, 'fuel_damaged false');
+  ck('inventory NOT recovered (the card\'s premise)', snap.true_state.core_inventory_pct.toFixed(1),
+    snap.true_state.core_inventory_pct <= 85, '≤ 85%');
+});
+
+test('pwr_tmi2_p3 — caught late: isolation only after damage begins', function (ck) {
+  var s = startScenario('pwr_tmi2_p3');
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 9000, [
+    { when: function (sn) { return sn.instructor.current_beat_id === 'p3_b9_order'; },
+      act: function (s2) { s2.handleCommand({ action: 'set_hpi', active: false }); } },
+    // act only once the core has already started to fail
+    { when: function (sn) { return sn.true_state.fuel_damaged === true; },
+      act: function (s2) { s2.handleCommand({ action: 'close_block_valve' }); s2.handleCommand({ action: 'set_hpi', active: true }); } },
+  ]);
+  ck('reaches level_complete', !!snap, !!snap, 'level_complete');
+  if (!snap) return;
+  ck('ending: Caught Late', lc(snap).title, /Caught Late/.test(lc(snap).title), 'late card');
+  ck('core damage stands', snap.true_state.fuel_damaged, snap.true_state.fuel_damaged === true, 'fuel_damaged true');
+});
+
+test('pwr_tmi2_p3 — holding not won: HPI defended, leak never isolated', function (ck) {
+  var s = startScenario('pwr_tmi2_p3');
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 9000, [
+    { when: function (sn) { return sn.metadata.sim_time > 20; },
+      act: function (s2) { s2.handleCommand({ action: 'instructor_interact', interaction_id: 'afw_tag' }); } },
+    // refuse the HPI order by simply never securing it; never touch the valve
+  ]);
+  ck('reaches level_complete', !!snap, !!snap, 'level_complete');
+  if (!snap) return;
+  ck('ending: Holding, Not Won', lc(snap).title, /Holding, Not Won/.test(lc(snap).title), 'bleed card');
+  ck('no core damage (injection winning)', snap.true_state.fuel_damaged, snap.true_state.fuel_damaged === false, 'fuel_damaged false');
+  ck('block valve still open (never isolated)', snap.true_state.block_valve_open, snap.true_state.block_valve_open === true, 'true');
 });
 
 report();

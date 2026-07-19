@@ -8,7 +8,62 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **High-flux reactor trips can actually fire (PWR + BWR).** The `power_range` meters clipped at
+  exactly the 120 % trip setpoint; `crossed()` is strict, so a pegged meter never fired the trip
+  (the RBMK was fixed for this long ago; the other two plants never got the parallel change —
+  finding C1). Evidence: the BWR held 175 % true power indefinitely with no trip; the PWR rode a
+  198 % excursion trip-free inside a passing ops check. Both meters now `[0, 200]`. BWR
+  `abuse_rod_yank_at_power` passes; PWR `abuse_accel_latency` gains hard "protection tripped"
+  checks at 1× and 256× (the C1 acceptance, re-pointed after the old `abuse_startup_yank`
+  acceptance went dead under the newer source-range trip).
+- **`inject_failure` with an unknown id is now a COMMAND_ERROR (all three engines).** The silent
+  no-op let a run_pwr test inject the effect-name `primary_leak` for months — its "LOCA" never ran.
+- **Four missions showed no message on a gated click** (`pwr_chain_reaction`, `pwr_boron`,
+  `rbmk_void`, `bwr_recirc`): `gate.message` was authored as a plain string, but the instructor
+  renders `msg[register]` — players got a block with no explanation. Now both-register objects,
+  and the campaign gate statically validates the shape.
+- **`pwr_mode3_to_mode5` cooldown script scrammed the plant en route** (caught by the new
+  arrived-UNscrammed assertion): at 120× a broadcast is 30 sim-s, so the script's full-spray
+  depressurization crashed through the P-11 permissive AND the 12.41 MPa lo-press trip between
+  operator samples, and the subcritical plant still coasted to the Cold Shutdown card. The driver
+  now walks the pressure setpoint down 0.5 MPa/sample until the P-11 block is placed (the real
+  procedure sequencing), then releases full spray.
+
 ### Added
+- **Test-suite review + hardening pass (2026-07-19)** — full findings in
+  `Diagnostic/TEST_SUITE_REVIEW_2026-07-19.md`. Repairs to checks that could not fail (run_m6
+  literal-`true` tautologies + a self-defeating consume-flag check; run_m4 vacuous safety-lift
+  disjunction; run_pwr loss-of-feedwater trip tautology + a dead loss-of-vacuum predicate;
+  run_e2e_controls CVCS pair stale since the SGTR leak rescale — now asserts the servo's real
+  contract: charging converges to match the leak). New coverage:
+  - **run_pwr 28→31**: `feedwater_isolation` (P-14 latch gates main feed, AFW passes through,
+    operator restore), `accumulator_arming_boundary` (the restored 4.14 MPa setpoint pinned at
+    ±0.3 MPa; full SGTR never arms the tanks, large LOCA dumps them — the break-size
+    discrimination the restore was for), `steam_dump_capacity_cap` (the ~50 % cap on manual
+    full-open, previously deletable without failing anything).
+  - **run_bwr 12→15**: `protection_trips` (the suite's FIRST trip assertions — negative control,
+    trip-table shape pin, fireable high-flux trip), `atws_slc` (failure_to_scram blocks rods,
+    SLC borates down, stop/resume semantics), `hpci_injection` (HPCI actually runs, recovers
+    level, hpci_failure kills it). Conditional-vacuous SBO/actuation checks now assert their
+    preconditions.
+  - **run_rbmk**: eps_bypass check gains its missing positive control (a past-setpoint state
+    trips un-bypassed, silenced bypassed) + post-1986 void-trip fireability; flagship-post peak
+    bound (final-power-only would have passed a transient excursion); stuck-rod melts-SOONER
+    discriminator; low-power ORM pinned to ≈7.5.
+  - **run_m4 17→18**: P-11/P-7 trip-bypass lifecycle — cold init auto-blocks, lo_press
+    auto-reinstates on repressurization (the safety-critical direction), re-armed trip fires.
+  - **run_campaign 47→51**: static "references resolve" pass (branch goto targets,
+    instrument/true_state/alarm/command names, direction + advance vocabulary, gate shapes,
+    inject_failures ids — a typo'd reference previously soft-locked or silently never fired);
+    the three untested TMI-2 Part 3 endings (Plugged-Not-Refilled, Caught-Late, Holding-Not-Won);
+    arrived-UNscrammed assertions on all three Mode 5↔1 missions.
+  - **ops_pwr**: `ops_sg_overfeed_p14` — hands-off P-14 acceptance under the real control layer
+    (HI HI alarm at 88 % precedes the 90 % actuation; turbine trip + feed isolation + P-9 scram).
+  - **ops_rbmk**: hard C2 acceptance check (256× accel destroys what 1× survives), deliberately
+    RED until C2 is fixed.
+  - **run_procedures**: strict expected-fail mechanism — B3 reports as `✗(known B3)` without
+    reddening the gate; an XPASS turns the gate red so the annotation cannot go stale.
 - **CVCS charging now controls pressurizer level; AUTO make-up holds level (PWR).** Charging/letdown
   gain real authority over indicated PZR level: a bounded net-make-up insurge term (`(charging − letdown)
   · K_cvcs_level`) is added to the level model, so charging raises level and letdown lowers it — as in a

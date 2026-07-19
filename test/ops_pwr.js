@@ -297,6 +297,31 @@
 
     // Turbine trip from 100% WITHOUT operator action: does the steam dump ride
     // it out, does the RPS catch it, where does the plant settle?
+    // P-14 high-high SG level: an overfeed at power must be CLOSED by the
+    // automatics — SG LVL HI HI annunciates (88%), then at 90% the coordinated
+    // protection fires: turbine trip + main-feedwater isolation + reactor trip
+    // through the P-9 interlock (>50% power). Hands off throughout. HARD checks:
+    // this is the acceptance test for the 1cc66ec protection package.
+    ops_sg_overfeed_p14: function () {
+      return test('OPS SG overfeed — P-14 trips turbine, isolates feed, scrams (hands off)', function (ck) {
+        var h = H('hot_full_power');
+        h.run(10);
+        h.cmd('inject_failure', { failure_id: 'sg_overfeed', severity: 1.0 });
+        var tIso = h.runUntil(function (ts, ins, hh) { return hh.eng.s.feedwater_isolated === true; }, 3600);
+        ck('P-14 isolates main feedwater', tIso >= 0 ? fmt(tIso, 0) + ' s' : 'never', tIso >= 0, 'fires');
+        h.run(30);
+        ck('turbine tripped by P-14', h.eng.s.turbine_tripped, h.eng.s.turbine_tripped === true, 'true');
+        ck('reactor tripped through P-9 (sg_level high)', h.tripReason || 'none',
+          h.tripTime != null && /sg_level high/.test(h.tripReason || ''), 'sg_level high');
+        ck('SG LVL HI HI annunciated first', h.alarmFirst.sg_level_hihi != null ? fmt(h.alarmFirst.sg_level_hihi, 0) + ' s' : 'never',
+          h.alarmFirst.sg_level_hihi != null && (tIso < 0 || h.alarmFirst.sg_level_hihi <= 10 + tIso + 1),
+          'before the isolation');
+        ck('AFW path unaffected by the isolation (latch is main-feed only)',
+          String(h.eng.s.afw_blocked), h.eng.s.afw_blocked === false, 'false');
+        T.checkSanity(ck, h);
+      });
+    },
+
     ops_turbine_trip_ride: function () {
       return test('OPS turbine trip at 100% — ride-through behavior', function (ck) {
         var h = H('hot_full_power');

@@ -73,10 +73,12 @@ _Last updated: 2026-07-17._
 - **ECCS card UI layout** open (contract in `Blueprint/pwr_synoptic_prerequisites.md`).
 
 **Current gate baselines** (a change should keep these at or above baseline — see
-_Definition of done_): PWR engine suite **28/28**, campaign **47/47**, `run_m5` **19/19**,
-`run_autoctl` **20/20**, synoptic **55/55**, `verify_e2e_ui` **PASS**, M7 **OK**, ops probes
-**~56/66** (remaining FAILs are tuning targets, not regressions; PWR ops 18/19 — load-follow Tavg
-is the one deferred gap, see `Diagnostic/OPS_TUNING_REPORT.md`).
+_Definition of done_): PWR engine suite **31/31**, BWR **15/15**, RBMK **23/23**, campaign
+**51/51**, `run_m4` **18/18**, `run_m5` **19/19**, `run_m6` **16/16**, `run_autoctl` **20/20**,
+`run_e2e_controls` **30/30**, `run_procedures` **21/21** (1 strict known-fail, B3), synoptic
+**55/55**, `verify_e2e_ui` **PASS**, M7 **OK**, ops probes **57/67** (every FAIL is a documented
+tuning target with a hard acceptance check — P4, R1/R2/R3, B2/B3/B4/B5, and the deliberately-red
+C2 accel-latency check; see `Diagnostic/OPS_TUNING_REPORT.md`).
 
 ---
 
@@ -111,10 +113,14 @@ node test/run_campaign.js       # PWR training campaign gate (structural + funct
 node test/run_autoctl.js        # control-layer automation gate
 node test/run_ops.js            # engine-under-M4 ops probes (FAILs = tuning targets)
 node test/run_m4.js … run_m7.js # per-layer stack tests
+node test/run_e2e_controls.js   # service-level control plumbing (recently-added controls)
+node test/run_procedures.js     # manual procedures replay (strict known-fails annotated)
 ```
 
 `test/ops_*.js`, `test/*_harness.js`, and `test/verify_*.js` are supporting harnesses.
 Ops-probe FAILs are tuning targets, tracked in `Diagnostic/OPS_TUNING_REPORT.md`.
+`run_e2e_controls.js` and `run_procedures.js` are PART OF THE GATE LIST — both drifted
+red unnoticed once because they weren't listed here (2026-07-19 review).
 
 ## Definition of done
 

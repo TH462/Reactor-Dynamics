@@ -28,7 +28,8 @@
           industry: 'Recirc maneuvering exercise from 50%, control rods static (BWR practice). Expected response: flow ↑ → void sweep-out → +ρ → power rise to a new self-stabilized point. Deliberate contrast with the RBMK flow experiment.',
         },
         gate: { allow_actions: ['set_recirc_flow', 'scram', 'manual_scram', 'acknowledge_alarm', 'acknowledge_all_alarms'],
-                message: 'Recirculation flow only — the rods stay parked, like a real BWR at power.' },
+                message: { learning: 'Recirculation flow only — the rods stay parked, like a real BWR at power.',
+                           industry: 'Recirc drive only for this maneuver; rod motion is gated (normal BWR at-power practice).' } },
         advance: 'wait_for_trigger' },
 
       // Prompt + branch watch (playtest pattern): a reactor trip mid-maneuver —

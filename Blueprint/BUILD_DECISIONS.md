@@ -22,7 +22,7 @@ where the two differ or where judgment was exercised.
 | # | Module | Flag | Severity | Status |
 |---|--------|------|----------|--------|
 | F1 | M1 | Criticality uses an explicit `rho_excess` + operating-temp references instead of the spec's "set reference temps" mechanism (which yields non-physical refs). Will M2/M3 reuse this pattern? | design | **RESOLVED (M2, confirmed M3)** — yes, all three. M2 trims rho_excess per-state with pinned Doppler/graphite/void refs; M3 (also boron-free) pins Tf_ref/void_ref at full power and trims rho_excess ONCE as a fixed core constant (so post_scram_sbo comes out subcritical). The pattern is now the house style for boron-free criticality. |
-| F2 | M1 | `sg_overfeed` failure `override_value: 1.2` is applied to `set_feedwater_flow {pct}` (0–100), so it underfeeds (1.2%) rather than overfeeds (~120%). Untested, not flagship. | data bug | **open** |
+| F2 | M1 | `sg_overfeed` failure `override_value: 1.2` is applied to `set_feedwater_flow {pct}` (0–100), so it underfeeds (1.2%) rather than overfeeds (~120%). Untested, not flagship. | data bug | **RESOLVED** — value fixed to 120 (pct-units slip, see `pwr_control.js` comment) and now tested end-to-end: `ops_pwr ops_sg_overfeed_p14` (2026-07-19) drives the failure under M4 to the full P-14 response. |
 | F3 | M1/M4 | The M1/M4 seam: command-override failures' persistent effects live in the engine (M1), while interception lives in M4. M4 forwards *and* intercepts. M7 will scrutinize this. | seam | **open** — validate in M7 |
 | F4 | M4 | `degraded_hpi` is typed `command_override` but its real effect is an engine HPI-flow multiplier (the spec itself flags this, M4 §7). Implemented via the engine hook. | taxonomy | **open** (spec-acknowledged) |
 | F5 | M1 | `fuel_damaged` (cladding failure at 1200 °C) is internal, not in the §6.3 `true_state` contract. Consumers must use `fuel_temp_c`/`melted`. | contract | **open** — confirm M6/M8 don't need it |
@@ -44,6 +44,44 @@ where the two differ or where judgment was exercised.
 | **Units** | SI/MPa internal everywhere, per CONTEXT §11. | User-confirmed. The M1 code snippets had psia residue (see M1 deviations); reconciled to MPa. |
 | **Repo** | Commits go directly to `main`, one per module. | Matches the linear, single-developer build (the scaffold was committed to `main`); each module is an independent, test-gated unit. |
 | **Load order** | `config → protection → thermal → pressurizer → primary → steam_generator → instruments → engine`, then layers. | The engine captures `RD.pwr*` helper namespaces at IIFE-eval time, so its dependencies must load first. Encoded in `index.html`, `test_pwr.html`, and the Node runners. |
+
+### Test-suite review + hardening pass (2026-07-19, Fable)
+
+Full findings: `Diagnostic/TEST_SUITE_REVIEW_2026-07-19.md`; skimmable summary in `CHANGELOG.md`
+[Unreleased]. The decisions worth carrying forward:
+
+- **C1 closed with acceptance-first sequencing.** `power_range` `[0,120]→[0,200]` in PWR + BWR
+  (the RBMK precedent). The RED test was written before the config fix — the old PWR acceptance
+  (`abuse_startup_yank`) had gone dead when the SR trip started catching the yank at 0.02 %.
+  Rule reaffirmed: when a finding's acceptance test stops being fail-able, re-point it BEFORE
+  fixing, or the fix has no red-to-green evidence.
+- **`inject_failure` unknown ids now COMMAND_ERROR (all engines).** The silent no-op is what let
+  `eccs_boration` inject the effect-name `primary_leak` and pass vacuously for months. API
+  softness that can make a test lie is a bug in the engine, not just the test.
+- **Strict expected-fail convention** (`run_procedures` KNOWN_FAILS): a documented tuning target
+  reports `✗(known B3)` without reddening the gate, and an XPASS turns the gate RED until the
+  annotation is removed. Rationale: a permanently red gate trains people to ignore red — but a
+  silent xfail goes stale; strictness keeps both honest. Reuse this pattern elsewhere before
+  letting any gate sit red on a known finding.
+- **Campaign static validation** (`references resolve` pass in `run_campaign`): every beat
+  reference — branch `goto`, instrument/true_state/alarm/command names, direction + `advance`
+  vocabulary, `gate.message` shape, `gate` action lists, `inject_failures` ids — is checked
+  against live engine/config vocabularies. Command vocabulary is scraped from the dispatchers'
+  `case '...'` tokens (over-permissive by design: catches typos, never false-fails). This is the
+  guard against the known "beat-authoring gotchas" class.
+- **Ops driver realism ruling.** The `pwr_mode3_to_mode5` campaign driver scrammed the plant
+  (full spray at 120× crossed P-11 and the lo-press trip inside ONE 30 sim-s broadcast) and the
+  mission still completed — mission cards prove the DESTINATION, so transition tests must assert
+  `rps_state.scrammed === false` explicitly. Scripted operators at high accel must sequence like
+  the procedure: place the P-11 block at the permissive before depressurizing past it (setpoint
+  walked 0.5 MPa/sample until blocked).
+- **Deliberate red:** the C2 acceptance (`ops_rbmk abuse_accel_latency` "256×: same protection
+  outcome as 1×") is knowingly failing — it is the tuning target's hard check, per the ops-suite
+  charter.
+- **Gates after this pass:** run_pwr **31/31** (191) · run_bwr **15/15** (92) · run_rbmk **23/23**
+  (150) · m4 **18/18** · m5 19/19 · m6 16/16 (94, tautologies repaired) · m6ph 8/8 · M7 OK ·
+  scenarios 3/3 · autoctl 20/20 · e2e_controls **30/30** · procedures **21/21** (1 known-fail B3)
+  · campaign **51/51** · ops **57/67** (all FAILs documented targets incl. the deliberate C2 red).
 
 ---
 
@@ -582,8 +620,11 @@ The §18 flagship is the acceptance centerpiece; the numbers were tuned so the t
   "Letdown Orifices (CVCS)" (`manual_data.js`, `manual_ui_map.js`, the synoptic highlight map, and
   `Manuals/03` §7.3 all updated together; `audit_manual_controls` green).
 - **Gate.** PWR **19/19** (Mode 5↔1 roundtrip + save/restore green with orifice letdown), campaign
-  **47/47**, `run_m5` **19/19**, `run_m4` **15/15**, `run_e2e_controls` 27/28 (pre-existing blowdown
-  gap only), `run_ops` 53/66 (baseline), autoctl **20/20**, synoptic **55/55**, `verify_e2e_ui` PASS.
+  **47/47**, `run_m5` **19/19**, `run_m4` **15/15**, `run_e2e_controls` 27/28 (recorded then as "the
+  blowdown gap", but the 2026-07-19 review found the failing check had silently CHANGED identity —
+  the accumulator check passed after 096f574 and the CVCS charging check went stale after e28f7b0's
+  leak rescale; both repaired 2026-07-19, suite 30/30), `run_ops` 53/66 (baseline), autoctl
+  **20/20**, synoptic **55/55**, `verify_e2e_ui` PASS.
   Functional headless drive: clicking orifice A/B in the shell moves the letdown indication (0 → ~2 →
   ~5 % as A then B come in).
 

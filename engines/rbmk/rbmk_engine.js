@@ -810,7 +810,8 @@
       ck('orm_display tracks true ORM', hf.ins().orm_display.toFixed(1), near(hf.ins().orm_display, hf.ts().orm_equiv_rods, 0.5), 'matches');
 
       var hl = new Harness(version, 'low_power_xenon');
-      ck('low_power ORM ≈ 7.5 (below min)', hl.ts().orm_equiv_rods.toFixed(1), hl.ts().orm_equiv_rods < orm_min, '< ' + orm_min);
+      ck('low_power ORM ≈ 7.5 (below min)', hl.ts().orm_equiv_rods.toFixed(1),
+        hl.ts().orm_equiv_rods < orm_min && near(hl.ts().orm_equiv_rods, 7.5, 2.5), '≈7.5, < ' + orm_min);
       ck('low_power ORM alarm active', String(hl.ts().orm_alarm_active), hl.ts().orm_alarm_active === true, 'true');
 
       // Coupling: low ORM amplifies the void feedback (§5.3) vs rated ORM.
@@ -869,6 +870,10 @@
       var r = h.runTrack(20);
       var t = h.ts();
       ck('power falls (no excursion)', t.power_pct.toFixed(2) + '% (peak ' + r.peak.toFixed(1) + ')', t.power_pct < p_pre, '< ' + p_pre.toFixed(2));
+      // Bound the PEAK too — final-power-only would pass a transient spike to
+      // hundreds of percent that then decayed (the pre-1986 signature).
+      ck('no transient excursion (peak bounded)', r.peak.toFixed(1) + '% vs pre ' + p_pre.toFixed(2) + '%',
+        r.peak < p_pre * 2 + 1, '< 2× pre-scram + 1');
       ck('not destroyed', String(t.melted), t.melted === false, false);
       ck('no steam explosion', String(t.steam_explosion_occurred), t.steam_explosion_occurred === false, false);
     });
@@ -906,10 +911,27 @@
       dy.run(30);
       ck('channel_dryout: fuel temp rises', dy.ts().fuel_temp_c.toFixed(0), dy.ts().fuel_temp_c > ft0 + 20, '> ' + ft0.toFixed(0));
 
-      // eps_bypass disables auto trips (rpsWouldTrip returns nothing even past setpoint).
+      // eps_bypass disables auto trips — WITH a positive control. The old check
+      // ran at steady full power where nothing was past any setpoint, so
+      // `length === 0` held with or without the bypass (tested nothing). Stick
+      // the power_range meter past both versions' trip setpoints instead.
       var eb = new Harness(version, 'full_power'); eb.run(5);
+      eb.cmd({ action: 'set_instrument_failure', instrument_id: 'power_range', mode: 'stuck', value: 130 });
+      eb.run(1);
+      ck('positive control: past-setpoint state WOULD trip un-bypassed', rpsWouldTrip(eb.eng).join(',') || 'none',
+        rpsWouldTrip(eb.eng).indexOf('power_range high') !== -1, 'power_range high');
       eb.cmd({ action: 'inject_failure', failure_id: 'eps_bypass' });
-      ck('eps_bypass: auto trips disabled', String(eb.ts().eps_bypassed), eb.ts().eps_bypassed === true && rpsWouldTrip(eb.eng).length === 0, 'bypassed');
+      ck('eps_bypass silences the SAME past-setpoint state', String(eb.ts().eps_bypassed) + '/' + (rpsWouldTrip(eb.eng).join(',') || 'none'),
+        eb.ts().eps_bypassed === true && rpsWouldTrip(eb.eng).length === 0, 'bypassed → no trip reasons');
+      // The post-1986 additions have their own positive control: the 0.80 void
+      // trip (absent pre-1986) reports on a stuck-high void instrument.
+      if (version === 'post_chernobyl') {
+        var vb = new Harness(version, 'full_power'); vb.run(5);
+        vb.cmd({ action: 'set_instrument_failure', instrument_id: 'void_fraction', mode: 'stuck', value: 0.9 });
+        vb.run(1);
+        ck('post-1986 void trip fireable (0.80 setpoint)', rpsWouldTrip(vb.eng).join(',') || 'none',
+          rpsWouldTrip(vb.eng).indexOf('void_fraction high') !== -1, 'void_fraction high');
+      }
 
       // rod runaway: control position decreases (withdraws), ρ rises while ORM falls; scram reverses.
       var rr = new Harness(version, 'full_power'); rr.run(5);
@@ -960,6 +982,11 @@
       stuck.cmd({ action: 'inject_failure', failure_id: 'stuck_rods_on_scram', severity: 1.0 });
       stuck.cmd({ action: 'manual_scram' }); var rs = stuck.runTrack(20);
       ck('pre: stuck-rod peak ≥ clean peak', rs.peak.toFixed(0) + ' vs ' + rc.peak.toFixed(0), rs.peak >= rc.peak, 'stuck ≥ clean');
+      // The robust differentiator (both peaks saturate on MAX_PROMPT_GROWTH so
+      // ≥ alone cannot distinguish "worsens" from "no effect"): the stuck-rod
+      // core is destroyed SOONER than the clean scram.
+      ck('pre: stuck rods melt SOONER than clean', rs.melted_at.toFixed(2) + 's vs ' + rc.melted_at.toFixed(2) + 's',
+        rs.melted_at >= 0 && rc.melted_at >= 0 && rs.melted_at < rc.melted_at, 'stuck < clean');
       ck('pre: both destroyed', String(clean.ts().melted) + '/' + String(stuck.ts().melted), clean.ts().melted && stuck.ts().melted, 'true/true');
 
       // post: same stall is only reduced worth — reactor still shuts down safely.

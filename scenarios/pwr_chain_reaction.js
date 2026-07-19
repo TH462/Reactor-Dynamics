@@ -38,7 +38,8 @@
           industry: 'Hot zero power, subcritical. Indicated flux is source-driven subcritical multiplication (P ≈ S·Λ/−ρ) — the design guarantee that startup is instrumented, never source-blind. Note the startup-rate meter at zero.',
         },
         gate: { allow_actions: ['rod_start', 'rod_stop', 'rod_nudge', 'scram', 'manual_scram', 'acknowledge_alarm', 'acknowledge_all_alarms'],
-                message: 'Rods only for this lesson — everything else is locked.' },
+                message: { learning: 'Rods only for this lesson — everything else is locked.',
+                           industry: 'Rod controls only for this evolution; all other panels are gated.' } },
         advance: 'wait_for_trigger' },
 
       { id: 'pull_rods',

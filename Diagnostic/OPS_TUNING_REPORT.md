@@ -21,6 +21,22 @@
 > sliding-Tavg point — NOT weakened in the test. Details: `Blueprint/BUILD_DECISIONS.md` (2026-07-19) +
 > `CHANGELOG.md`. The findings below are the original 2026-07-06 snapshot.
 
+> **Update 2026-07-19 (test-suite review pass — see `Diagnostic/TEST_SUITE_REVIEW_2026-07-19.md`).**
+> **C1 is FIXED**: `power_range` widened to `[0,200]` in BOTH `pwr_config.js` and `bwr_config.js`
+> (the RBMK fix, applied to the other two plants). BWR `abuse_rod_yank_at_power` now PASSES
+> (trips on `power_range high`). The acceptance tests were re-pointed first — the old PWR
+> acceptance (`abuse_startup_yank` "capped by protection") went dead when the SR trip started
+> catching the yank at 0.02 %: C1's PWR acceptance is now HARD "protection tripped" checks in
+> `abuse_accel_latency` (pass at 1× AND 256×), and the BWR engine suite gained `protection_trips`
+> (steady-state negative control + trip-table shape pin + overpower excursion that asserts the
+> meter reads past 120 and the trip fires — the BWR suite previously had zero trip assertions).
+> **C2 now has a hard acceptance check**, deliberately RED: RBMK `abuse_accel_latency`
+> "256×: same protection outcome as 1×" (currently steam_explosion — the finding's exact
+> signature). New PWR ops scenario `ops_sg_overfeed_p14` (P-14 acceptance, passes). Scoreboard
+> after this pass: **57/67** (PWR 19/20 — P4 only; RBMK 24/29 — R1/R2/R3 + the new C2 red;
+> BWR 14/18 — B2/B3/B4/B5). `run_procedures` now carries B3 as a strict expected-fail
+> (`✗(known B3)`, gate exits 0; an XPASS turns the gate red so the annotation can't go stale).
+
 ---
 
 ## 1. What these suites are
