@@ -322,6 +322,20 @@ Blocks **auto-reinstate** when power falls below P-10.
 
 **Imbalance annunciator:** `▲ filling` / `▼ draining` when turbine load and reactor power are mismatched (> ~40 MWe class).
 
+**Level ladder (protection):**
+
+| Level | Event |
+|-------|-------|
+| **≥ 90 %** | **P-14:** turbine trip + main-feed isolation + reactor trip (if ≥50 % power) |
+| ≥ 88 % | SG LVL HI HI alarm |
+| ≥ 75 % | SG LVL HI alarm |
+| **65 %** | nominal |
+| ≤ 30 % | SG LVL LO alarm |
+| ≤ 20 % | AFW auto-start |
+| **≤ 17 %** | SG LVL LO LO → reactor SCRAM |
+
+On a gauge, **red** at the two trip bands (≥90 %, ≤17 %), **amber** at the alarm/AFW bands, **green** through the normal ~30–75 % operating range. See §09 for the authoritative setpoint table.
+
 ### 9.2 Steam & Flow card
 
 **Highlight id:** `sg-steam`

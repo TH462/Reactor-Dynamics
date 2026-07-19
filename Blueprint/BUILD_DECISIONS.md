@@ -86,6 +86,24 @@ pwr_steam_generator, pwr_instruments, pwr_engine}.js`
   `hot_zero_power` is left subcritical by a fixed margin (rods inserted + boron).
 - **PRNG:** mulberry32 with a single `uint32` state; Gaussian noise via Box–Muller. The state is part of
   save/restore (CONTEXT §4) — verified bit-exact in the save/restore test.
+- **High-high SG level protection (P-14) + low-low reactor trip moved 12 %→17 %** (2026-07-18, user
+  direction): added the SG level ladder's high-side protection. **P-14 at 90 %** fires three coordinated
+  control-layer actions: `trip_turbine`, a new `isolate_feedwater` command (latching `feedwater_isolated`
+  flag gating MAIN feed in `pwr_steam_generator.stepSecondary`; AFW is added downstream of the gate so it
+  keeps feeding), and a **reactor trip** via the P-9 interlock. P-9 is a new `above_p9` status instrument
+  (`power_pct > 50`) exposed through the `status` passthrough (`pwr_config`); the reactor trip is a
+  `p14_reactor_trip` trip keyed on **`sg_level high 90` + condition `above_p9`** — deliberately **scoped
+  to the SG-level cause** rather than a general "any turbine trip → scram" P-9, so MSIV-closure / overspeed
+  / vacuum turbine trips still don't scram (a general P-9 broke `pwr_msiv` — the SG stays ~70 % there, so
+  the SG-keyed trip spares it while still firing on the SLB swell to ~94 %). New `SG LVL HI HI` critical
+  alarm at 88 %. **Low-low SG reactor trip 12 %→17 %** (+ its alarm): more heat-sink margin, sits just
+  below the 20 % AFW auto-start (real Westinghouse establishes AFW at ~the low-low signal — its role is the
+  post-trip heat sink, not trip prevention, so the small 3 % gap is correct). A steam-line break now trips
+  early on the P-14 swell (turbine trip + feed isolation + scram) instead of riding to a late
+  low-pzr-level trip — the automatics close the previously-unprotected high-SG-level condition; `pwr_slb`
+  passes with the earlier trip. **Full realistic P-9 (all turbine trips cascade) is a logged follow-on**
+  — it would require re-authoring `pwr_msiv` around a reactor trip. Gates: run_pwr 26/26, campaign 47/47,
+  m4 15/15, m5 19/19, m6 16/16, autoctl 20/20, ops 53/66 (identical fail set — zero regressions).
 - **Borated emergency injection** (2026-07-17): emergency-injection water carries boron. HPI/LPI and the
   accumulators deliver at `emergency.eccs_boron_ppm` (2500 ppm — RWST/SIT concentration; real RWST/SIT ≈
   2000–2700), mixed into `boron_ppm` by perfect-mixing transport `dC/dt = q_inj·(C_eccs − C)/m` in

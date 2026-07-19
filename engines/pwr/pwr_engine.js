@@ -296,6 +296,7 @@
       hpi_active: s.hpi_active,
       station_blackout: s.station_blackout,
       steam_demand_low: s.turbine_tripped || s.turbine_demand_frac < 0.05,
+      above_p9: (s.power_pct || 0) > 50,   // P-9 permissive: gates the high-high SG (P-14) reactor trip
       rod_at_limit: this._controlGroup().at_insertion_limit,
       sr_energized: !!s.sr_energized,
       msiv_open: s.msiv_open !== false,
@@ -693,6 +694,12 @@
       case 'set_cvcs_auto':
         s.cvcs_auto = !!cmd.active;   // auto make-up: charging modulates to hold inventory
         break;
+      case 'isolate_feedwater':
+        // P-14 main-feedwater isolation (control-layer actuation on high-high SG
+        // level). Stops MAIN feed only; AFW is added downstream of this gate and
+        // keeps flowing. Latches until an operator restore ({ active: false }).
+        s.feedwater_isolated = (cmd.active !== false);
+        break;
       case 'set_boron_adjust':
         // ppm/s: + borate, − dilute, 0 hold (needs the charging pump running)
         s.boron_adjust = cmd.rate || 0;
@@ -952,6 +959,7 @@
       // cooldown so the secondary — and with it the primary through the SG — cools.
       steam_dump_setpoint: cfg.steam_generator.steam_dump_setpoint,
       feedwater_demand_frac: P0, feed_pump_speed_pct: P0 * 100, feedwater_flow: P0, main_feedwater_available: true,
+      feedwater_isolated: false,   // P-14 main-feedwater isolation latch (AFW unaffected)
       afw_active: false, afw_pump_demand: false, afw_blocked: false, rhr_active: false,
       // RHR / LPI: hot-leg suction valve (interlocked) + HX flow split + ECCS mode.
       rhr_valve_open: false, rhr_hx_fraction: 1.0, eccs_mode: 'off',

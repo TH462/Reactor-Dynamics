@@ -58,6 +58,7 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 | PWR-A14 | PZR LVL LO LO | critical | A |
 | PWR-A15 | ROD INS LIMIT | warning | A |
 | PWR-A16 | SG LVL HI | caution | B |
+| PWR-A16b | SG LVL HI HI | critical | B |
 | PWR-A17 | SG LVL LO | warning | B |
 | PWR-A18 | SG LVL LO LO | critical | B |
 | PWR-A19 | RCP TRIP | critical | B |
@@ -236,6 +237,17 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 
 ---
 
+## PWR-A16b — Steam Generator Level High-High (SG LVL HI HI) — P-14
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | ≥ **88 %** (alarm); **P-14 protection at 90 %** |
+| **Means** | Overfeed / level swell approaching the moisture-carryover limit. |
+| **P-14 actuation (90 %)** | Automatic **turbine trip** + **main-feedwater isolation** (AFW keeps feeding), and a **reactor trip** if **≥50 % power** (P-9). |
+| **Actions** | 1) Expect turbine trip + feed isolation + SCRAM. 2) Verify feed isolated and AFW carrying the heat sink. 3) Restore main feed only after level is controlled. → **PWR-E03 / PWR-E01** |
+
+---
+
 ## PWR-A17 — Steam Generator Level Low (SG LVL LO)
 
 | Field | Content |
@@ -250,7 +262,7 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | ≤ **12 %** (SCRAM) |
+| **Setpoint** | ≤ **17 %** (SCRAM) |
 | **Means** | Heat sink critical. |
 | **Actions** | 1) Verify SCRAM. 2) **AFW Start** immediately. 3) Turbine load off. → **PWR-E01** |
 

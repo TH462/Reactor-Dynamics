@@ -66,8 +66,8 @@ Provide symptoms, automatic response, immediate operator actions, recovery, and 
 - Tavg / pressure rising if power remains  
 
 ### Automatic
-- Low SG level → SCRAM (~12 %)  
-- AFW AUTO start ~20 % if armed  
+- Low SG level → SCRAM (~17 %, lo-lo)  
+- AFW AUTO start ~20 % if armed (established just above the trip)  
 
 ### Immediate actions
 
@@ -135,6 +135,13 @@ Shutdown; cooled without fuel damage.
 
 ### Acceptance
 Load rejected safely; nuclear power matched or scrammed; no SG dryout or flood.
+
+### Note — high-high SG level (P-14)
+A **high-high SG level (≥90 %)** — from overfeed or a steam-line-break level swell — trips the
+turbine automatically to protect it from moisture carryover, **isolates main feedwater** (AFW keeps
+feeding), and **trips the reactor** if power is **≥50 %** (the P-9 interlock). Expect all three
+together. Main feed stays isolated until you restore it deliberately once level is controlled; verify
+AFW is carrying the heat sink in the meantime. Annunciates as **SG LVL HI HI** (PWR-A16b).
 
 ---
 

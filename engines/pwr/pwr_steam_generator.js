@@ -30,7 +30,7 @@
     // across the band above it (replaces the old hard `level < 20` cutoff — the
     // same equilibrium, without the on/off chatter, and the throttle lets the
     // operator take the flow anywhere below that).
-    var feedwater_flow = s.main_feedwater_available ? s.feedwater_demand_frac : 0.0;
+    var feedwater_flow = (s.main_feedwater_available && !s.feedwater_isolated) ? s.feedwater_demand_frac : 0.0;
     var afw_flow = 0;
     if (s.afw_active) {
       // The hold senses level through the SG LEVEL INSTRUMENT (previous step's

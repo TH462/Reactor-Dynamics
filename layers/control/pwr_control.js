@@ -31,7 +31,7 @@
     { id: 'lo_press', instrument: 'primary_pressure', direction: 'low', setpoint: 12.41, action: 'scram', // MPa
       blockable: true, block_permissive: { instrument: 'primary_pressure', direction: 'low', setpoint: 13.6 } },
     { instrument: 'pzr_level',        direction: 'low',  setpoint: 12.0,   action: 'scram' }, // %
-    { instrument: 'sg_level',         direction: 'low',  setpoint: 12.0,   action: 'scram' }, // %
+    { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,   action: 'scram' }, // % lo-lo (AFW auto-starts just above, 20 %)
     // Low-flow reactor trip. Bypassable below the P-7 low-power permissive (5 %): the
     // RCPs are secured in cold shutdown (RHR provides circulation), so the trip is
     // blocked at a depressurized/low-power init and re-arms above P-7. At power it is
@@ -54,6 +54,15 @@
     // at-power backstop of the startup net, blockable above P-10.
     { id: 'pr_low_setpoint', instrument: 'power_range',        direction: 'high', setpoint: 25.0,
       action: 'scram', blockable: true },
+    // High-high SG level (P-14) reactor trip — the reactor-trip half of P-14, via the
+    // P-9 interlock: with the turbine tripped and main feed isolated at high power, the
+    // lost heat sink would drive a rapid heatup/overpressure transient, so the reactor
+    // trips too. Gated by the above_p9 power permissive (≥50 %); below it the SG hi-hi
+    // isolates feed and trips the turbine but does NOT scram. Keyed on the SG-level cause
+    // (not the turbine-trip status) so it stays scoped to the overfeed/level event — a
+    // turbine trip from another cause (MSIV closure, overspeed, vacuum) does not scram here.
+    { id: 'p14_reactor_trip', instrument: 'sg_level', direction: 'high', setpoint: 90.0,
+      action: 'scram', condition: 'above_p9' },
   ];
 
   // P-10, the nuclear at-power permissive: manual trip blocks are allowed only
@@ -69,6 +78,15 @@
       action: 'set_hpi', active: true, reset_action: 'set_hpi', reset_active: false, arm: 'hpi' },
     { instrument: 'sg_level',         direction: 'low',  setpoint: 20.0,
       action: 'set_afw', active: true, arm: 'afw' },
+    // High-high SG level (P-14): moisture-carryover protection. Trip the turbine and
+    // isolate MAIN feedwater (AFW is unaffected — it is added downstream of the
+    // isolation gate and keeps feeding). The reactor then trips through the P-9
+    // interlock above. reset_below re-arms the fire latch; there is no reset_action,
+    // so the turbine stays tripped and feed stays isolated until an operator restore.
+    { instrument: 'sg_level',         direction: 'high', setpoint: 90.0,
+      action: 'trip_turbine', reset_below: 85.0 },
+    { instrument: 'sg_level',         direction: 'high', setpoint: 90.0,
+      action: 'isolate_feedwater', params: { active: true }, reset_below: 85.0 },
     // (The old 2.76 MPa set_lpi actuation is gone: HPI/LPI is one merged system
     // armed by the 11.03 MPa set_hpi actuation above — the low-head/high-flow
     // regime follows physically from the two-segment pump curve.)
@@ -129,9 +147,10 @@
     { id: 'rod_limit',         instrument: 'rod_at_limit',     direction: 'is_true', setpoint: null,  priority: 'warning',  panel: 'A', label_learning: 'Control Rods — Insertion Limit',  label_industry: 'ROD INS LIMIT' },
   ];
   var PWR_ALARMS_B = [
+    { id: 'sg_level_hihi',  instrument: 'sg_level',         direction: 'high',     setpoint: 88.0, priority: 'critical', panel: 'B', label_learning: 'Steam Generator Level High-High (P-14)', label_industry: 'SG LVL HI HI' },
     { id: 'sg_level_high',  instrument: 'sg_level',         direction: 'high',     setpoint: 75.0, priority: 'caution',  panel: 'B', label_learning: 'Steam Generator Level High',     label_industry: 'SG LVL HI' },
     { id: 'sg_level_low',   instrument: 'sg_level',         direction: 'low',      setpoint: 30.0, priority: 'warning',  panel: 'B', label_learning: 'Steam Generator Level Low',      label_industry: 'SG LVL LO' },
-    { id: 'sg_level_lolo',  instrument: 'sg_level',         direction: 'low',      setpoint: 12.0, priority: 'critical', panel: 'B', label_learning: 'Steam Generator Level Critical Low', label_industry: 'SG LVL LO LO' },
+    { id: 'sg_level_lolo',  instrument: 'sg_level',         direction: 'low',      setpoint: 17.0, priority: 'critical', panel: 'B', label_learning: 'Steam Generator Level Critical Low', label_industry: 'SG LVL LO LO' },
     { id: 'rcp_trip',       instrument: 'rcp_running',      direction: 'is_false', setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Reactor Coolant Pump Trip',     label_industry: 'RCP TRIP' },
     { id: 'rcp_cavitation', instrument: 'rcp_cavitating',   direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Reactor Coolant Pump Cavitation', label_industry: 'RCP CAVITATION' },
     { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },

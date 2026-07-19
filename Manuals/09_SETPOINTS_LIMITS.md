@@ -51,7 +51,8 @@
 | Primary pressure | high | **16.44 MPa** | |
 | Primary pressure | low | **12.41 MPa** | |
 | PZR level | low | **12 %** | |
-| SG level | low | **12 %** | |
+| SG level | low | **17 %** | Lo-lo; AFW auto-starts just above (20 %) |
+| SG level (P-14) | high | **90 %** | High-high; reactor trip via P-9, condition **≥50 % power** |
 | Primary flow (true flow exception) | low | **0.25** normalized | Low-flow trip |
 | Source range | high | **1e5 cps** | When SR energized |
 | Intermediate range | high | **1.67e-3 A** | ~20 % class over-range; blockable above P-10 |
@@ -87,6 +88,8 @@
 | Open SG safety | steam_pressure | high | **9.31 MPa** | Reseat **9.0 MPa** |
 | Turbine trip (vacuum) | condenser_vacuum | low | **74.5 kPa** | Reset region **84.7 kPa** |
 | Turbine trip (overspeed) | turbine_rpm | high | **1980 RPM** | Reset below ~**1800 RPM** |
+| Turbine trip (SG hi-hi / P-14) | sg_level | high | **90 %** | Re-arm below **85 %** |
+| Main feedwater isolation (P-14) | sg_level | high | **90 %** | Latches (manual restore); AFW unaffected. Re-arm below **85 %** |
 
 ### HPI pump curve (merged HPI/LPI)
 
@@ -125,9 +128,10 @@
 
 | ID | Name | Instrument | Dir | Setpoint | Priority |
 |----|------|------------|-----|----------|----------|
+| sg_level_hihi | SG LVL HI HI | sg_level | high | **88 %** | critical |
 | sg_level_high | SG LVL HI | sg_level | high | **75 %** | caution |
 | sg_level_low | SG LVL LO | sg_level | low | **30 %** | warning |
-| sg_level_lolo | SG LVL LO LO | sg_level | low | **12 %** | critical |
+| sg_level_lolo | SG LVL LO LO | sg_level | low | **17 %** | critical |
 | rcp_trip | RCP TRIP | rcp_running | false | — | critical |
 | hpi_active | HPI/LPI ACTIVE | hpi_active | true | — | status |
 | sbo | SBO | station_blackout | true | — | critical |

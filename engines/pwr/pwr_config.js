@@ -391,6 +391,9 @@
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running', 'hpi_active', 'station_blackout',
                'steam_demand_low', 'rod_at_limit', 'sr_energized', 'msiv_open', 'sg_safety_open',
+               // P-9 permissive (≥50 % power) that gates the high-high SG (P-14) reactor
+               // trip — read as a condition by the p14_reactor_trip trip.
+               'above_p9',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
                'afw_active', 'afw_pump_running', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
                'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating'],

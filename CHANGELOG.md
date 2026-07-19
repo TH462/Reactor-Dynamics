@@ -9,6 +9,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **High-high SG level protection (P-14) + realistic low-low reactor trip (PWR).** The steam-generator
+  level ladder gains its high-side protection and the low-low reactor trip is moved to a more realistic
+  setpoint. **(1) High-high SG level (P-14) at 90 %** now fires a coordinated protection: **turbine trip**
+  + **main-feedwater isolation** (new `isolate_feedwater` command / `feedwater_isolated` latch — stops
+  MAIN feed only; AFW is downstream of the gate and keeps feeding) + **reactor trip**. The reactor-trip
+  half is the P-9 interlock (lost heat sink at power → heatup/overpressure), gated by a new `above_p9`
+  status instrument (≥50 % power) and **scoped to the SG-level cause** so a turbine trip from another
+  source (MSIV closure, overspeed, vacuum) still does *not* scram. A new **`SG LVL HI HI`** critical
+  alarm annunciates at 88 %. **(2) The low-low SG-level reactor trip moves 12 % → 17 %** (with its
+  `SG LVL LO LO` alarm), giving the heat sink more margin and sitting just below the 20 % AFW auto-start
+  (real Westinghouse practice: AFW is established as the post-trip heat sink at ~the same low-low signal,
+  not to prevent the trip). A steam-line break now trips early on the SG swell (P-14 → turbine trip +
+  feed isolation + scram) instead of riding to a late low-pressurizer-level trip — the automatics close
+  the previously-unprotected high-SG-level condition. Gates: **`run_pwr` 26/26**, campaign **47/47**,
+  ops **53/66** (identical fail set), m4 **15/15**, m5 **19/19**, m6 **16/16**, autoctl **20/20**.
+
 - **Physical break-depressurization model + realistic accumulator setpoint (PWR).** The accumulator
   arming pressure is restored from the detuned **1.5 MPa** to the real B&W core-flood-tank /
   Westinghouse SIT cover-gas pressure **4.14 MPa (600 psi)**. This is now physically meaningful because
