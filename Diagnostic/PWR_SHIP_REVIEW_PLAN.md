@@ -37,28 +37,81 @@ docs (README baselines, `OPS_TUNING_REPORT.md`) are known to be partially stale.
    package.json, no framework); engine/layer files attach to `globalThis.RD` via
    `require()`. UI verification uses headless Edge (see Phase 4).
 
-## Baseline table — ground truth measured 2026-07-19
+## Baseline table — ground truth (AMENDED later on 2026-07-19, see Amendment A1)
 
-| Gate | Command | Measured 2026-07-19 | Ship target |
-|---|---|---|---|
-| PWR engine suite | `node test/run_pwr.js` | **24/26 ⚠ REGRESSION** (see P1-A) | **26/26** |
-| PWR ops probes | `node test/run_ops.js pwr` | 17/19 (`ops_load_follow`, `ops_sgtr_managed` FAIL) | **19/19** (Phase 2) |
-| Campaign | `node test/run_campaign.js` | 47/47 (1842 checks) | 47/47 |
-| Control/failure layer | `node test/run_m4.js` | 15/15 | 15/15 |
-| Simulation service | `node test/run_m5.js` | 19/19 | 19/19 |
-| Instructor | `node test/run_m6.js` | 16/16 | 16/16 |
-| Placeholder instructor | `node test/run_m6ph.js` | not measured — run & record | no regression |
-| Stack wiring | `node test/run_m7.js` | `M7 OK` (with teeth) | `M7 OK` |
-| Automation channels | `node test/run_autoctl.js` | 20/20 | 20/20 |
-| Procedures | `node test/run_procedures.js` | 20/21 (fail = `bwr_sbo_rcic`, accepted BWR finding B3) | 20/21 |
-| Flagship scenarios | `node test/run_scenarios.js` | 3/3 | 3/3 |
-| Synoptic DOM harness | headless Edge (Phase 4) | not measured — doc baseline 55/55 | 55/55 |
-| E2E UI | `node test/verify_e2e_ui.js` | not measured — doc baseline PASS | PASS |
-| BWR / RBMK guards | `node test/run_bwr.js` · `run_rbmk.js` | not measured — run once in Phase 1, record | no regression from Phase-1 record |
+| Gate | Command | Plan-time measure | **Re-measured post-A1** | Ship target |
+|---|---|---|---|---|
+| PWR engine suite | `node test/run_pwr.js` | 24/26 ⚠ (P1-A) | **31/31** (191) | 31/31 |
+| PWR ops probes | `node test/run_ops.js pwr` | 17/19 | **19/20** (P4 only; +`ops_sg_overfeed_p14`) | **19/20** (see A1 — P4 DEFERRED by owner ruling) |
+| Campaign | `node test/run_campaign.js` | 47/47 (1842) | **51/51** (2897) | 51/51 |
+| Control/failure layer | `node test/run_m4.js` | 15/15 | **18/18** | 18/18 |
+| Simulation service | `node test/run_m5.js` | 19/19 | 19/19 | 19/19 |
+| Instructor | `node test/run_m6.js` | 16/16 | 16/16 (94 — tautologies repaired) | 16/16 |
+| Placeholder instructor | `node test/run_m6ph.js` | not measured | **8/8** | 8/8 |
+| Stack wiring | `node test/run_m7.js` | `M7 OK` (with teeth) | `M7 OK` | `M7 OK` |
+| Automation channels | `node test/run_autoctl.js` | 20/20 | 20/20 | 20/20 |
+| Procedures | `node test/run_procedures.js` | 20/21 (B3) | **21/21** (B3 = strict `✗(known B3)`, exit 0) | 21/21 |
+| Flagship scenarios | `node test/run_scenarios.js` | 3/3 | 3/3 | 3/3 |
+| Control e2e | `node test/run_e2e_controls.js` | (not in plan — was silently 27/28) | **30/30** | 30/30 |
+| Synoptic DOM harness | headless Edge (Phase 4) | not measured | still not measured — Phase 4 | 55/55 |
+| E2E UI | `node test/verify_e2e_ui.js` | not measured | still not measured — Phase 4 | PASS |
+| BWR / RBMK guards | `node test/run_bwr.js` · `run_rbmk.js` | not measured | **15/15** (92) · **23/23** (150) | no regression |
+| All-plant ops | `node test/run_ops.js` | 56/66 | **57/67** (10 FAILs = documented targets incl. the deliberate C2 red) | no regression |
 
-Historical note: README says PWR 25/25 and campaign "must stay 36/36"; CHANGELOG says
-26/26 and 47/47. The suite counts grow as tests are added — reconcile README's stale
-numbers in Phase 5, and always compare against the *Phase-1 recorded* values.
+Historical note: README/CHANGELOG suite counts grow as tests are added — always compare
+against the **Re-measured post-A1** column above (it matches README's current baselines).
+
+## Amendment A1 (2026-07-19, Fable — after the full test-suite review pass)
+
+Between plan authoring and Phase-1 execution, two work streams landed on `develop` and
+change this plan's facts. Read `Diagnostic/TEST_SUITE_REVIEW_2026-07-19.md` +
+`CHANGELOG.md [Unreleased]` before starting. Concretely:
+
+1. **P1-A is already FIXED** — `run_pwr` was repaired (26/26) before this review started
+   and now stands 31/31. Phase 1 step 2 is a no-op; step 1 (record the battery) stands,
+   with the table above as the pre-recorded snapshot.
+2. **Phase 2 is largely done:**
+   - **P2-B (`ops_sgtr_managed`) FIXED** (`6b17e5f` pressure-model sat-hold + faithful EOP).
+   - **P2-A (`ops_load_follow`) → owner ruling: DEFERRED** (`ff0465d`): partial-load Tavg
+     291.5 vs ≥293 band; the steam-pressure-program fix destabilized load delivery and was
+     reverted; documented tuning gap, NOT to be closed by weakening the test. The ship
+     target is therefore **19/20**, not 19/19 — do not chase P4 without a new ruling.
+   - **P2-C/C1 FIXED** (this pass): `power_range` `[0,200]` in BOTH `pwr_config.js` and
+     `bwr_config.js`; manual regenerated; acceptance re-pointed (PWR `abuse_accel_latency`
+     hard trip checks; new BWR engine `protection_trips`). `abuse_startup_yank` is no
+     longer C1's acceptance (the SR trip catches the yank at 0.02 %).
+   - **P2-C/C2**: now has a deliberate RED acceptance check (`ops_rbmk abuse_accel_latency`
+     "256×: same protection outcome as 1×"). The judgment call (ship-blocker vs documented
+     limitation, prefer the small `simulation_service.tick()` fix) REMAINS OPEN for this review.
+   - **P2-C/C3**: still absent (no `reset_rps`) — still open, log as post-ship candidate.
+   - **P2-C/C4**: still true; the dual-read workaround is now triplicated
+     (`simulation_service._snapScrammed`, instructor `scram` trigger, kernel automation
+     stand-down) — fixing C4 should also collapse those three sites.
+3. **Phase 3 hotspot list — several now have dedicated regression guards** (verify, don't
+   re-derive): accumulator 4.14 MPa boundary + break-size discrimination
+   (`accumulator_arming_boundary`), steam-dump cap (`steam_dump_capacity_cap`), CVCS
+   level term (`cvcs_level_control`), spray floor (`pressure_saturation_bounds`),
+   P-14/P-9 scoping (m4 direct guards `26a1efe` + engine `feedwater_isolation` + ops
+   `ops_sg_overfeed_p14`), Mode 5↔1 + P-11 bypass lifecycle (m4 `P-11/P-7 trip bypass`,
+   campaign UNscrammed assertions). The read-for-bugs pass itself is still to do.
+4. **Phase 6 note:** the campaign gate now drives all FIVE TMI-2 p3 endings and asserts
+   the Mode-transition missions arrive unscrammed; a static "references resolve" pass
+   validates every beat reference (goto/instrument/alarm/command/gate vocab). The
+   `pwr_mode3_to_mode5` scripted driver was reworked (see gotchas below). Hands-on
+   playthrough is still to do.
+5. **New gotchas for Appendix A** (learned this pass, already bitten):
+   - Scripted drivers at high acceleration must use SIM-TIME-based rates, not per-sample
+     steps — an M5 attention stop can drop the speed to 1× mid-run and a per-sample walk
+     becomes a full-speed crash.
+   - Interlock permissives read the LAGGING instrument (HR1): on a fast transient a
+     `set_trip_block` that "should" be allowed gets refused — check the result and retry.
+   - `inject_failure` now returns COMMAND_ERROR on unknown ids (effect names like
+     `primary_leak` are not failure ids).
+   - Background shell pipes through `head`/`tail` buffer silently on Windows — don't
+     diagnose "no output" as a hang.
+6. **Stale lines in this plan superseded by A1:** the Appendix A bullet "`run_procedures.js`
+   20/21 … accepted" (now 21/21 with strict xfail) and Appendix B's suite counts
+   (`run_pwr` 31 suites, ops pwr 20, campaign 51).
 
 ---
 
