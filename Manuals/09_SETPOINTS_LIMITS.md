@@ -83,7 +83,7 @@
 | Open PZR safety | primary_pressure | high | **17.13 MPa** | Reseat **16.55 MPa** |
 | HPI start | primary_pressure | low | **11.03 MPa** | ESF arm must be AUTO |
 | AFW start | sg_level | low | **20 %** | ESF arm must be AUTO |
-| RHR start | primary_pressure | low | **3.45 MPa** | Condition: scrammed |
+| RHR start | primary_pressure | low | **2.76 MPa** (400 psi) | Condition: scrammed; ties to the RHR suction-valve autoclosure interlock |
 | SR re-energize assist | intermediate_range | low | **1e-10 A** | Actuation path as configured |
 | Open SG safety | steam_pressure | high | **9.31 MPa** | Reseat **9.0 MPa** |
 | Turbine trip (vacuum) | condenser_vacuum | low | **74.5 kPa** | Reset region **84.7 kPa** |

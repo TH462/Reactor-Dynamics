@@ -479,7 +479,7 @@ Describe cooldown from **Mode 3, Hot Standby** through **Mode 4, Hot Shutdown** 
 ### What is [sim]
 - Decay heat model active after power history.
 - **AFW** for secondary heat sink when main feed unavailable.
-- **RHR/DHR** control exists for low-pressure residual heat removal when permissives met (scrammed + low pressure band ~**3.45 MPa** class for auto arm).
+- **RHR/DHR** control exists for low-pressure residual heat removal when permissives met (scrammed + low pressure band ~**2.76 MPa** / 400 psi for auto arm, tied to the suction-valve autoclosure interlock).
 - HPI/LPI and accumulators for inventory under low pressure / LOCA conditions.
 
 ### Narrative commercial path (Mode 3, Hot Standby → Mode 5, Cold Shutdown)
