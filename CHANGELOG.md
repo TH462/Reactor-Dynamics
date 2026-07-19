@@ -8,6 +8,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **PWR pressure/secondary realism (ops-tuning).** Three physics-honesty fixes surfaced by the ops
+  probes. **(1) Spray floor:** pressurizer spray can no longer pull primary pressure to the containment
+  floor — it tapers to zero as pressure approaches the saturation pressure of the hottest coolant (Thot,
+  the core exit), self-limiting at the onset of core-exit boiling (real spray water is cold-leg liquid).
+  Full-heaters-vs-full-spray now floors ~8 MPa instead of 0.1 MPa (`abuse_heater_spray_fight` passes). On
+  a real cooldown Thot falls too, so the floor tracks down and spray still depressurizes as fast as the
+  plant cools. **(2) Steam-dump capacity:** the turbine-bypass dump is capped at a realistic ~50 % of
+  rated steam flow (`steam_dump_max` now a true cap on both the manual override and the auto demand), so a
+  full load rejection lifts the SG safeties and slamming the dump open gives a rate-limited cooldown
+  instead of a Tavg crash. **(3) SGTR leak scaling:** a tube rupture no longer drains the whole primary in
+  ~30 s — a per-failure `leak_scale` converts the "% rated flow" rating to a realistic slow drain (tens of
+  minutes) the EOP can out-inject (SGTR inventory now holds >70 %; a large-break LOCA is unscaled and
+  still fast). Gates unchanged: run_pwr 26/26, campaign 47/47, m4/m5/m6, autoctl 20/20, ops now 54/66.
+
 ### Added
 - **High-high SG level protection (P-14) + realistic low-low reactor trip (PWR).** The steam-generator
   level ladder gains its high-side protection and the low-low reactor trip is moved to a more realistic

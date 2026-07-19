@@ -149,6 +149,7 @@
       // space, so a small mass flow has a big pressure effect — which is why the
       // inventory-loss gain (porv_flow_max) and the pressure gain are decoupled.
       K_heater: 0.55, K_spray: 1.7, K_porv_relief: 300.0, K_safety_relief: 300.0,
+      spray_floor_band: 3.0,       // MPa — spray authority tapers to 0 across this band above Psat(tcold) (P6)
       K_surge: 1.0, P_restore_rate_gain: 0.02, // gentle stabilization only (heater regulates)
       // When the primary voids it is two-phase: pressure is pulled to the
       // saturation pressure of Tavg (so subcooling → 0). [tune]
@@ -241,7 +242,7 @@
       // dump holds it there, so hot standby holds its own temperature — the real
       // PWR steam-dump-in-pressure-mode behavior. On a turbine trip the pressure
       // rise above the setpoint opens the dump proportionally across the band.
-      steam_dump_setpoint: 8.90, steam_dump_band: 0.25, steam_dump_max: 1.0, // [tune]
+      steam_dump_setpoint: 8.90, steam_dump_band: 0.25, steam_dump_max: 0.5, // [tune]
     },
 
     // ------------------------------------------------------ turbine / condenser

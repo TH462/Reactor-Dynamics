@@ -778,7 +778,12 @@
         case 'block_afw': s.afw_blocked = true; s.afw_active = false; break;   // pump demand persists (run lights stay honest)
         case 'primary_leak':
           var meta = def.severity_meta;
-          s.leak_flow = severity * (meta ? meta.max / 100 : 0.05); // % rated flow → normalized
+          // % rated flow → inventory-fraction/s. A tube rupture (SGTR) is a small
+          // orifice primary→secondary: the raw "% rated flow" drains the whole primary
+          // in seconds if taken as inventory-frac/s directly, so a leak_scale converts
+          // it to a realistic slow drain (tens of minutes) that the EOP can out-inject.
+          // A large-break LOCA carries no scale (leak_scale = 1) and drains fast.
+          s.leak_flow = severity * (meta ? meta.max / 100 : 0.05) * (def.leak_scale != null ? def.leak_scale : 1);
           break;
         case 'rod_withdrawal_runaway':
         case 'stuck_control_rod':

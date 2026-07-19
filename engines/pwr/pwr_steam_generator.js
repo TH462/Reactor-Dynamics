@@ -70,7 +70,13 @@
     var dump_setpoint = (s.steam_dump_setpoint != null) ? s.steam_dump_setpoint : sg.steam_dump_setpoint;
     var dump = (s.steam_dump_override != null)
       ? s.steam_dump_override
-      : clip((s.steam_pressure_mpa - dump_setpoint) / sg.steam_dump_band, 0, 1) * sg.steam_dump_max;
+      : clip((s.steam_pressure_mpa - dump_setpoint) / sg.steam_dump_band, 0, 1);
+    // Physical capacity of the turbine-bypass/dump (real dump ≈ 40–55 % of rated
+    // steam flow): a full-open dump cannot vent more than this, so a full load
+    // rejection still lifts the SG safeties and an operator slamming the dump open
+    // gets a RATE-LIMITED cooldown instead of a Tavg crash (P2). Applies to both the
+    // manual override and the auto proportional demand.
+    dump = Math.min(dump, sg.steam_dump_max);
     // MSIV: both downstream paths (turbine steam + dump-to-condenser) are
     // behind the isolation valve; closing it bottles the steam generator.
     if (s.msiv_open === false) dump = 0;

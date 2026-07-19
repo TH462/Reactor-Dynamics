@@ -67,7 +67,18 @@
     relief(s, cfg);
     // Spray draws from the cold leg downstream of the Reactor Coolant Pump (RCP),
     // so its effectiveness scales with primary flow — no flow, no spray.
-    var spray_eff = s.spray_flow_frac * clip(s.flow_frac != null ? s.flow_frac : 1, 0, 1);
+    // Spray condenses the pressurizer steam bubble to control pressure, but it cannot
+    // pull the LOOP below the saturation pressure of the HOTTEST coolant (Thot, the
+    // core exit): below that the exit flashes to steam (pwr_thermal clamps the leg
+    // split at Tsat) and boiling — not pressure control — takes over. Taper the spray's
+    // authority to zero across a band above Psat(thot), so full heaters vs. full spray
+    // floors just at the onset of core-exit boiling instead of running the primary down
+    // to the containment floor. This is self-limiting: once thot pins to Tsat(P) the
+    // floor equals P and spray stops. On a real cooldown Thot falls too, so the floor
+    // tracks down and spray keeps depressurizing as fast as the plant actually cools.
+    var spray_floor = P_sat_from_T(s.thot_c != null ? s.thot_c : s.tavg_c);
+    var spray_authority = clip((s.pressure_mpa - spray_floor) / (p.spray_floor_band || 1.0), 0, 1);
+    var spray_eff = s.spray_flow_frac * clip(s.flow_frac != null ? s.flow_frac : 1, 0, 1) * spray_authority;
     // Break blowdown depressurizes the RCS — but ONLY while subcooled. Subcooled blowdown
     // (liquid out, bubble collapse) drives pressure directly down to saturation; once the
     // primary voids, the break vents steam that decay heat re-boils, so further depressurization
