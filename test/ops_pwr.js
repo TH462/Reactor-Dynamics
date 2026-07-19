@@ -269,11 +269,16 @@
         // EOP: start safety injection, then cool down & depressurize so HPI flow
         // (which dies against high pressure) can beat the break flow.
         h.cmd('set_hpi', { active: true });
-        h.cmd('set_steam_dump', { mode: 'open' });
         h.run(1800, function (hh) {
           var ins = hh.ins();
-          if (ins.subcooling_margin > 20 && ins.primary_pressure > 9.0) hh.cmd('set_spray', { pct: 60 });
-          else hh.cmd('set_spray', { pct: 0 });
+          // EOP priority — MAINTAIN SUBCOOLING MARGIN: the operator controls the
+          // cooldown/depressurization rate to keep the RCS subcooled, throttling the
+          // steam dump and spray back as the margin closes rather than crash-cooling on
+          // a full dump. (Full-open dump + full HPI over-cools and momentarily loses
+          // subcooling — not how an SGTR is managed.)
+          var m = ins.subcooling_margin;
+          hh.cmd('set_steam_dump', { pct: m > 30 ? 100 : (m > 15 ? 25 : 0) });
+          hh.cmd('set_spray', { pct: (m > 30 && ins.primary_pressure > 9.0) ? 60 : 0 });
         });
         var t = h.ts();
         ck('no fuel damage under the EOP', t.melted, !t.melted, 'false');

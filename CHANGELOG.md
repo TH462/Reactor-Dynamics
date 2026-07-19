@@ -24,6 +24,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   Gates: run_pwr 26/26, campaign 47/47, m4/m5/m6, autoctl 20/20, ops now 55/66 (PWR 17/19).
 
 ### Changed
+- **PWR pressure model holds saturation on a violent depressurization (SGTR).** Two coupled fixes so a
+  fast depressurization (e.g. an SGTR EOP on HPI) tracks saturation instead of reporting impossible
+  negative subcooling. **(1)** The pressurizer sat-pull (pressure → Psat(Tavg)) now engages whenever the
+  coolant is superheated (Tavg above Tsat(P)), not only when the void bookkeeping has flagged two-phase —
+  so a depressurization at full/overfilled inventory still pins pressure at saturation without touching
+  `primary_void_fraction` (the calibrated TMI void-surge is untouched, verified). **(2)** The subcooled-
+  liquid terms — break-depressurization and the thermal expansion/contraction surge (`K_surge`) — are now
+  suppressed in the saturated regime, so an HPI cold quench dropping Tavg fast no longer crashes pressure
+  below saturation via a thermal-outsurge term that is meaningless in two-phase. `ops_sgtr_managed`
+  subcooling held **+27 °C** (was −152 °C, core-loss); the scenario's EOP was also made faithful to the
+  #1 EOP rule — throttle the cooldown/dump to hold subcooling margin rather than crash-cool on a full
+  dump. PWR ops 17/19 → 18/19. No regressions across run_pwr/campaign/m4/m5/m6/autoctl.
 - **PWR pressure/secondary realism (ops-tuning).** Three physics-honesty fixes surfaced by the ops
   probes. **(1) Spray floor:** pressurizer spray can no longer pull primary pressure to the containment
   floor — it tapers to zero as pressure approaches the saturation pressure of the hottest coolant (Thot,

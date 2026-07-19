@@ -86,16 +86,31 @@
     // below), NOT this direct term. Gating it to the subcooled regime keeps pressure slaved to
     // Psat(tavg) in two-phase — thermodynamically consistent — instead of forcing impossible
     // superheat (pressure far below Psat(tavg) while Tavg stays hot).
-    var leak_depress = (s.primary_void_fraction > 0) ? 0 : (p.K_leak_depressurize || 0) * (s.leak_flow || 0);
+    // Saturated regime = the primary voids OR Tavg is at/above Tsat(P) (Psat(Tavg) ≥ P).
+    // There, pressure is slaved to Psat(Tavg) by flashing (the sat-pull below), so the
+    // subcooled-LIQUID terms — the break depressurization and the thermal expansion/
+    // contraction surge — are suppressed: a rapid cooldown (e.g. an HPI cold quench)
+    // must NOT crash pressure via K_surge below saturation; the vapour space compensates
+    // and pressure just tracks Psat(Tavg) down as the coolant cools.
+    var p_sat_tavg = P_sat_from_T(s.tavg_c);
+    var saturated = s.primary_void_fraction > 0 || p_sat_tavg > s.pressure_mpa;
+    var leak_depress = saturated ? 0 : (p.K_leak_depressurize || 0) * (s.leak_flow || 0);
     var dP = s.heater_power_frac * p.K_heater
            - spray_eff * p.K_spray
            - s.porv_flow * p.K_porv_relief
            - s.safety_flow * p.K_safety_relief
            - leak_depress
-           + p.K_surge * (s._dTavg_dt || 0);              // thermal insurge raises pressure
-    if (s.primary_void_fraction > 0) {
-      // Two-phase: pressure collapses toward the saturation pressure of Tavg.
-      dP += p.K_sat_pull * (P_sat_from_T(s.tavg_c) - s.pressure_mpa);
+           + (saturated ? 0 : p.K_surge * (s._dTavg_dt || 0));   // thermal surge — subcooled liquid only
+    if (saturated) {
+      // Two-phase OR superheated: a liquid cannot superheat — as pressure falls to the
+      // saturation pressure of Tavg the coolant flashes, and that flashing PINS pressure
+      // AT Psat(Tavg) rather than letting it crash below (which would report impossible
+      // negative subcooling). The operator depressurizes by COOLING (Tavg down → Psat
+      // down), which this tracks. Also engages when the primary voids (TMI erosion). The
+      // superheat branch is independent of the void bookkeeping, so a depressurization at
+      // FULL/overfilled inventory (e.g. an SGTR EOP on HPI) still holds saturation without
+      // touching primary_void_fraction (and thus the calibrated pressurizer void-surge).
+      dP += p.K_sat_pull * (p_sat_tavg - s.pressure_mpa);
     } else {
       // Gentle self-restore toward the operator setpoint (heaters/charging holding
       // pressure). Tracks s.pressure_setpoint so a cold/depressurized plant holds
