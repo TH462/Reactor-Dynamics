@@ -9,6 +9,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **A manual (operator) reactor trip now latches the RPS (`rps_state.scrammed`) — finding C4.**
+  A manual `scram` command scrammed the engine (`true_state.scrammed` and the `rps_scrammed`
+  instrument both went true) but left the control layer's `rps_state.scrammed` bookkeeping flag
+  false — only automatic trips set it. The mislabel was masked because every consumer dual-reads
+  `rps_state.scrammed || true_state.scrammed` (simulation_service, instructor, kernel automation
+  stand-down), but any future consumer reading `rps_state.scrammed` alone would have been wrong.
+  `control_kernel.handleCommand` now latches the RPS on an operator scram (before interception,
+  matching the automatic path: an ATWS that blocks the rods still shows the asserted trip signal).
+  The defensive dual-reads are retained on purpose — they correctly cover ATWS (rps set, engine
+  not) and pre-fix save loads. No gate moved (full battery green across all three plants).
 - **High-flux reactor trips can actually fire (PWR + BWR).** The `power_range` meters clipped at
   exactly the 120 % trip setpoint; `crossed()` is strict, so a pegged meter never fired the trip
   (the RBMK was fixed for this long ago; the other two plants never got the parallel change —

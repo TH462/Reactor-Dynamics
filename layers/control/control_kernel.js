@@ -181,6 +181,19 @@
       case 'clear_instrument_failure': return this.engine.applyCommand(command);
     }
 
+    // A manual (operator) reactor trip latches the RPS exactly as an automatic
+    // trip does — the same trip breakers open (C4). Without this, rps_state.scrammed
+    // lagged an operator scram while the engine's true_state.scrammed and the
+    // rps_scrammed instrument already reflected it, so any consumer reading
+    // rps_state.scrammed alone mislabelled the plant. Latched BEFORE interception,
+    // matching the automatic path in _evalTrips: an ATWS that blocks the rods still
+    // shows the asserted trip signal (rps.scrammed) with the engine unscrammed.
+    // Internal (trip-driven) scrams already set this and their real trip reason.
+    if (!this._internal && command.action === 'scram' && !this.rps.scrammed) {
+      this.rps.scrammed = true;
+      this.rps.last_trip_reason = 'manual scram';
+    }
+
     // Manual override (M4b automation): an OPERATOR command listed in a channel's
     // manual_overrides disengages that channel — taking the control by hand
     // kicks its automation to MAN (self-issued channel outputs are exempt).
