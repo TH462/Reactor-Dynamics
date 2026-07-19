@@ -116,7 +116,7 @@
         speed: 1,
         commentary: {
           learning: 'The unit tripped, and the shift examination with it. Two classic ways to lose this one: an ask so deep the turbine rejected the load outright, or a steam generator quietly draining toward its trip while every eye was on megawatts — on this board the deep step does both at once, and the low-level trip usually wins the race. Rewind and run the curve again: bounded steps, and the feed never out of your scan.',
-          industry: 'Reactor trip during the dispatch curve — load-rejection transient or SG low-level (12 %) from unattended feedwater on a deep step (probed: 1000→500 trips on SG level at ~180 s). Re-run with bounded steps (~100–150 MWe); engaging the feedwater channel is an accepted method.',
+          industry: 'Reactor trip during the dispatch curve — load-rejection transient or the SG low-low level scram (17 % indicated; true level dips lower behind the 3 s instrument lag on a fast drain) from unattended feedwater on a deep step (probed: 1000→500 trips on SG level at ~180 s). Re-run with bounded steps (~100–150 MWe); engaging the feedwater channel is an accepted method.',
         },
         level_complete: {
           title: 'The Evening Shift — Unit Trip',

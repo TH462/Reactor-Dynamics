@@ -63,7 +63,7 @@
       { id: 'place_rhr',
         trigger: { type: 'true_state', field: 'pressure_mpa', direction: 'below', value: 2.76 },
         commentary: {
-          learning: 'You are below the 400 psi interlock — Residual Heat Removal can go in service now. Open the RHR hot-leg suction (ECCS card), then SECURE the reactor coolant pumps: RHR provides the circulation from here, and with the pumps off the steam generators stop feeding heat back in, so RHR can pull the plant the rest of the way to cold. Keep RHR heat-exchanger flow up for the fastest safe cooldown.',
+          learning: 'You are below the 400 psi interlock — Residual Heat Removal can go in service now. Open the RHR hot-leg suction (Emergency Cooling card, RHR tab), then SECURE the reactor coolant pumps: RHR provides the circulation from here, and with the pumps off the steam generators stop feeding heat back in, so RHR can pull the plant the rest of the way to cold. Keep RHR heat-exchanger flow up for the fastest safe cooldown.',
           industry: 'Below the 2.76 MPa RHR permissive: align RHR (hot-leg suction open). Secure RCPs — RHR forced circulation takes over and decouples the SG (flow→0). Maximize RHR HX flow split for cooldown rate.',
         },
         highlight: { control_label: 'Decay-Heat Removal (DHR)', instrument_id: null },

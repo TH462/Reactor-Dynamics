@@ -201,3 +201,29 @@ closed — it was already current). README baselines + BUILD_DECISIONS updated (
 `set_pressure_setpoint` control; a handful of by-design `I-##` rows (DHR/RHR naming I-15, raw
 indication ids I-12, expanded N/E procs not machine-validated I-30) remain accurately "Open" as
 documented limitations, not defects.
+
+---
+
+## Phase 6 — Campaign & instructor playthrough
+
+Functional completion is proven by `run_campaign` (51/51, all 10 reviewed missions + the
+Mode-5 trio's arrived-unscrammed assertions) and instructor mechanics/edge-cases by `run_m6`
+(16/16: restart, rewind + speed-during-beats, reset/unload). The Mode-5 trio completes using
+exactly the commands the UI now exposes (`set_rcp` + `set_pressure_setpoint`, per the campaign
+`heatupStep` driver). A content-review agent then read all ten key missions for the layer the
+gates don't check (text-vs-reality, highlight resolution, detection soundness, numbers).
+
+**Result: campaign in strong shape.** Every `highlight.control_label` resolves; no beat
+instructs a nonexistent control (the RCP-start / Press SP / Dump SP additions closed the gaps);
+detection is action-gated throughout (no false-pass on inaction); *Mode N, Name* strings all
+match the engine; the TMI-2 chat trio's story-clock/converge idiom and alarm-name references are
+all correct.
+
+| ID | Sev | Finding | Action |
+|---|---|---|---|
+| P6-1 | L | `pwr_shift_exam.js:119` presented the true-level-at-trip (12 %) as if it were the SG lo-lo scram **setpoint** (17 % indicated). | FIXED — text now cites 17 % indicated + notes the true level dips lower behind the 3 s instrument lag. |
+| P6-2 | trivial | `pwr_mode3_to_mode5.js:66` said "ECCS card"; the card is labeled "Emergency Cooling". | FIXED — reworded to "Emergency Cooling card, RHR tab". |
+| P6-3 | L (post-ship) | `pwr_tour` `act_load`/`act_restore` have no idle/time fallback. | NOT FIXED — not a softlock (the instruction stays visible, plant runs steadily, player can act anytime); adding a fallback is a tutorial-UX design choice, logged optional post-ship. |
+
+No highlight-resolution failures, no nonexistent-control instructions, no false-pass detections.
+Gates after fixes: campaign 51/51, m6 16/16, scenarios 3/3.
