@@ -195,7 +195,7 @@
 |----------|--------------|
 | Source range | ~**500 cps** class at HZP source equilibrium; high scale ~1e6 cps near low power |
 | Intermediate range | Full scale ~**1e-3 A** near ~12 % power (“maxes out ~10 %”) |
-| Power range | 0–120 % |
+| Power range | 0–120 % calibrated scale; **instrument reads to 200 %** so a pegged meter can still cross the 120 % high-flux trip (strict `crossed()`) |
 
 ---
 
