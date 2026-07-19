@@ -133,3 +133,28 @@ consistent.
 **No crashes, NaN/Inf sources, reversed reactivity terms, or bypassable safety caps found**
 (physics agent verified all hotspots: break-blowdown, spray floor, CVCS-vs-void-surge,
 accumulator/Mode-5 lineup, steam-dump cap, PORV/block-valve, reactivity signs).
+
+---
+
+## Phase 4 — UI/HMI verification
+
+### Automated harnesses (all green)
+
+| Check | Result |
+|---|---|
+| `verify_e2e_ui.js` (Playwright headless, 4 plants × 4 views) | **PASS** — 16 screenshots; **throws on any `pageerror`** (line 82) so PASS ⇒ no console errors on load; required controls render; units US↔SI toggle; instructor follow loads | 
+| `run_e2e_controls.js` | **30/30** |
+| `audit_manual_controls.js` | **PASS** — all procedure controls map to viewControls |
+| `verify_manual_follow.js` | **PASS** (84 checks) |
+| Script/style includes in `shell.html` | **71/71 resolve** — no 404s |
+| Root `index.html` → `ui/shell.html` forward | present + correct (meta refresh); README/user-guide launch path accurate |
+| PWR alarm ladder | complete — `SG LVL HI HI` (88 %) and `SG LVL LO LO` (17 %) both present; ~28 annunciator rows (manual A01–A26 numbering maps onto semantic ids) |
+
+### Synoptic "55/55" harness
+
+The plan's baseline lists a "synoptic DOM harness 55/55" target. **No such standalone harness
+exists in the repo** — the synoptic (`ui/diagram/pwr_synoptic.js`) is exercised by
+`verify_e2e_ui.js` (renders the `diagram` view for every plant without error, asserts required
+`data-act` controls + gauge count) and `verify_manual_follow.js` (84 DOM checks). The "55/55"
+is a plan-time aspiration, not a shipped gate; synoptic coverage is real but lives in those two
+harnesses. Logged as a doc-baseline correction (Phase 5), not a missing gate.
