@@ -9,6 +9,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Vercel deploy config (`vercel.json`).** `/sim` now works as a clean entry URL
+  (rewrites to `ui/shell.html`, query strings preserved — `/sim?engine=pwr`), and the deploy
+  build stamps `site/version.js` with the commit sha, so the version shown in page footers
+  and carried on feedback reports identifies an actual build instead of reading "dev build".
+  In-page links stay relative so the pages still open straight off the filesystem.
 - **Public website, Phase W1 (`Blueprint/WEBSITE_SPEC.md`).** The root `index.html` is now the
   ReactorDynamics.com landing page (hero + plant picker: PWR live via `?engine=pwr`, BWR/RBMK
   "coming soon") instead of a bare redirect; `ui/shell.html` is unchanged and still directly

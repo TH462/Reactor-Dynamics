@@ -2737,3 +2737,30 @@ ONLY from the live session. Spec §6 updated.
 - **Gates:** scratchpad harness 20/20 (incl. overlay open/error/download, diag
   attach/omit, Esc close, no-file-input assert); `verify_e2e_ui` PASS (16 shots);
   `run_e2e_controls` 30/30.
+
+### Website W1 addendum — `vercel.json` (2026-07-19)
+
+Deploy config added so the Vercel import needs no dashboard-only settings:
+
+- **`rewrites`: `/sim` → `/ui/shell.html`** — wires the clean route the spec's site map
+  (§2) always listed but nothing implemented. Query strings pass through, so
+  `/sim?engine=pwr` works. **In-page links stay relative** (`ui/shell.html?engine=pwr`)
+  on purpose: absolute `/sim` hrefs would break `file://` and the headless harness,
+  which open pages off the filesystem. `/sim` is the shareable URL, not the internal one.
+- **`buildCommand`** stamps `site/version.js` from `VERCEL_GIT_COMMIT_SHA` (7-char sha,
+  falls back to `dev` off-Vercel) — the optional build the spec §8 anticipated. All five
+  consumers pick it up: the four site pages' footers and `ui/shell.html`, so W2 feedback
+  reports and telemetry `sim_version` carry the deploy sha.
+  - **Gotcha:** the stamper is inlined in `vercel.json` rather than a script under
+    `tools/` — `.vercelignore` excludes `tools/`, so a script there would not exist at
+    build time. Anything the build needs must be outside the ignore list.
+- **`outputDirectory: "."`** — repo root is the site root; setting a `buildCommand`
+  otherwise makes Vercel look for a `public/` output.
+- **Verified:** `vercel.json` parses; build command dry-run with a fake
+  `VERCEL_GIT_COMMIT_SHA` emits `node --check`-clean JS; repo placeholder restored.
+  Pre-flight link audit across all five pages found no case-sensitivity breaks
+  (Windows-local vs Linux-serving) — only the known-pending `site/hero.png`.
+- **Remaining for W1 done-done (owner):** create the Vercel project + connect repo
+  (nothing is pushed yet — `develop` is 13 ahead of `origin/develop`, and both remote
+  branches predate W1), choose the production branch (`main` has no site on it yet),
+  drop in `site/hero.png`, point ReactorDynamics.com DNS.
