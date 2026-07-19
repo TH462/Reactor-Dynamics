@@ -2652,3 +2652,38 @@ each snapshot, and issues commands. Alpha = PWR only + a few deliberate simplifi
   blowdown gap pre-existing) · m4 15/15 · autoctl 20/20 · scenarios 3/3 · campaign 44/44 ·
   ops_pwr 15/19 (tuning targets, unchanged from baseline) · procedures 20/21 · audit PASS ·
   manual-follow PASS · verify_e2e_ui PASS.
+
+### PWR pre-ship review (2026-07-19) — outcomes + rulings
+
+Full findings log: `Diagnostic/PWR_SHIP_REVIEW_2026-07.md`. Plan:
+`Diagnostic/PWR_SHIP_REVIEW_PLAN.md` (+ Amendment A1). Seven phases; PWR-scoped, BWR/RBMK
+touched only to prove shared-layer changes didn't regress. Post-review gate baselines match
+the README *Project status* block. Key outcomes:
+
+- **C4 (FIXED).** A manual operator `scram` now latches `rps_state.scrammed` in the control
+  kernel (before interception, matching the automatic trip path). The automation stand-down's
+  `|| true_state.scrammed` dual-read collapses to `this.rps.scrammed`; the snapshot-level
+  dual-reads (simulation_service/instructor) are kept defensive.
+- **C2 (RULING — documented limitation, ship as-is).** Protection evaluates once per broadcast,
+  so trips are late in sim-time at high acceleration. The PWR is safe even at 256× — `ops_pwr
+  abuse_accel_latency` proves it trips and does **not** melt. The "small tick() fix" is NOT
+  low-risk (shared cadence contract; would flip the deliberate RBMK RED C2 guard — out of scope).
+  Revisit per-substep protection post-ship only if a plant can damage within one broadcast.
+- **C3 (OPEN, post-ship).** No `reset_rps` recovery-from-scram path; a feature, not a fix.
+- **Phase-3 code fixes.** Rewind double-step/double-broadcast (in-tick instructor `_restore`
+  now `silent`); `_initialEsfArms` condition gate given the live instrument map; automation
+  `requires`-note null-guarded; `p_pumpsuction` floored at 0; stale spray-floor comment fixed.
+  No crashes / NaN / reversed-sign / bypassable-cap found (four-agent read-for-bugs pass).
+- **Phase-4 Mode-5 UI (ship-blockers FIXED).** The Mode-transition heatup missions were
+  unplayable from the real UI: RCP **Run** issued `clear_failure` (a no-op from cold shutdown)
+  instead of `set_rcp{running:true}`, and there was no pressure-/steam-dump-**setpoint** control.
+  Fixed the RCP buttons (`set_rcp`) and **added Pressure SP + Dump SP controls** (owner-ruled).
+  The campaign gate missed this because it only checks a highlight resolves to a card, not that
+  the card can issue the instructed command. Remaining Mode-5 polish (post-ship): `plant_mode`
+  text indicator, explicit `eccs_mode` readout.
+- **Documented known limitations (not fixed).** Decay-heat undercount on an un-scrammed runback
+  (`pwr_engine.js:220` — intersects the DEFERRED P2-A load-follow tuning; needs a ruling);
+  transient-cadence rounds 1× to ~1.2× real-time during transients; `set_speed` unclamped
+  (UI-unreachable); save/restore drops mid-beat instructor counters.
+- **Deferred (owner ruling, A1).** P2-A `ops_load_follow` partial-load Tavg 291.5 < 293 band —
+  ship target is ops **19/20**, not 19/19; the test stays honest, not weakened.

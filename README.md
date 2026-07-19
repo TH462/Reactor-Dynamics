@@ -47,7 +47,7 @@ below and go straight to the authoritative source for it.
 > is the at-a-glance truth for the next agent. The dense, append-only version lives in
 > `Blueprint/BUILD_DECISIONS.md` (Status line + Open Flags table) — update both.
 
-_Last updated: 2026-07-17._
+_Last updated: 2026-07-19 (PWR pre-ship review)._
 
 **Layers**
 - **Physics engines complete** — PWR (M1) ✅, RBMK (M2) ✅, BWR (M3) ✅. All three have
@@ -68,15 +68,18 @@ _Last updated: 2026-07-17._
   (`pwr_mode5_to_mode3`, `pwr_mode3_to_mode5`, `pwr_return_to_mode1`) drive the full Mode 5 ↔ 1
   loop on the board (`Manuals/CAMPAIGN_MODE_ALIGNMENT_SPEC.md` §2–3). Remaining: refresh
   `Manuals/11_CAMPAIGN_CROSSWALK.md` for the new 34-mission map.
-- Extend the **M8 UI / M4 control surface** to expose the new Mode-5 controls (pressure
-  setpoint, steam-dump setpoint, RCP start/stop) and the plant-MODE indicator.
+- **Mode-5 controls now exposed in the UI** (pre-ship review): RCP **Run/Stop** (`set_rcp`),
+  **Pressure SP** and **Dump SP** setpoint boxes. Remaining polish: a `plant_mode` text
+  indicator and an explicit `eccs_mode` readout (nice-to-have; the missions are playable
+  without them).
 - **ECCS card UI layout** open (contract in `Blueprint/pwr_synoptic_prerequisites.md`).
 
 **Current gate baselines** (a change should keep these at or above baseline — see
 _Definition of done_): PWR engine suite **31/31**, BWR **15/15**, RBMK **23/23**, campaign
 **51/51**, `run_m4` **18/18**, `run_m5` **19/19**, `run_m6` **16/16**, `run_autoctl` **20/20**,
-`run_e2e_controls` **30/30**, `run_procedures` **21/21** (1 strict known-fail, B3), synoptic
-**55/55**, `verify_e2e_ui` **PASS**, M7 **OK**, ops probes **57/67** (every FAIL is a documented
+`run_e2e_controls` **30/30**, `run_procedures` **21/21** (1 strict known-fail, B3),
+`verify_e2e_ui` **PASS** (renders every plant×view, throws on any console error, asserts required
+controls), `verify_manual_follow` **84**, M7 **OK**, ops probes **57/67** (every FAIL is a documented
 tuning target with a hard acceptance check — P4, R1/R2/R3, B2/B3/B4/B5, and the deliberately-red
 C2 accel-latency check; see `Diagnostic/OPS_TUNING_REPORT.md`).
 
@@ -131,7 +134,7 @@ _Project status_). Runners print `PASS`/`FAIL` per test and a final tally.
 - **Control-layer change** → `run_autoctl.js` **and** `run_m4.js`; check `run_ops.js` for
   regressions (don't turn a `PASS` into a `FAIL`; remaining FAILs are pre-existing tuning
   targets).
-- **Scenario / campaign / instructor change** → `run_campaign.js` (must stay **36/36**),
+- **Scenario / campaign / instructor change** → `run_campaign.js` (must stay **51/51**),
   `run_m6.js`, `run_procedures.js`.
 - **UI change** → `run` the app and drive the affected flow (see `/run` and the headless
   Edge workflow); `verify_e2e_ui.js` must stay **PASS**.
