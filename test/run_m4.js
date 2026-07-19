@@ -188,8 +188,14 @@ T.push(test('MSIV closure at power (full stack) — bottled SG drains to the lev
   s.run(2);
   s.cmd({ action: 'close_msiv' });
   ck('MSIV shut + turbine tripped', s.ts().msiv_open, s.ts().msiv_open === false && s.engine.s.turbine_tripped, 'shut + tripped');
-  s.run(120);
-  ck('safeties lifted while bottled', String(s.ts().sg_safety_open), s.ts().sg_safety_open === true || s.layer.rps.scrammed, 'lifted (or already scrammed)');
+  // Sample DURING the run: the old check was `lifted || scrammed`, and the next
+  // check requires the scram — so the safety lift itself was never pinned.
+  var everLifted = false;
+  for (var i = 0; i < Math.round(120 / s.dt); i++) {
+    s.engine.step(s.dt); s.layer.evaluate(s.engine.getInstruments());
+    if (s.ts().sg_safety_open === true) everLifted = true;
+  }
+  ck('safeties lifted while bottled', String(everLifted), everLifted === true, 'lifted at some point');
   ck('protection ended it — SG level scram', s.layer.rps.last_trip_reason, s.layer.rps.scrammed === true, 'scrammed');
   var al = s.alarm('msiv_closed');
   ck('MSIV SHUT annunciated', al && al.state, al && al.state !== 'clear', 'active');

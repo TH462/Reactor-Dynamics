@@ -120,23 +120,36 @@ console.log(B + 'PWR — recently-added controls' + X);
   step(s, 20);
   ck('letdown orifice A → pressure-driven flow', s.engine.s.letdown_flow >= 0.02, s.engine.s.letdown_flow.toFixed(3), '>=0.02');
 
+  // §8.8 CVCS AUTO make-up vs a leak. Severity 1.0 so the test discriminates:
+  // unmitigated, this leak (1.0 · 0.08 · leak_scale 0.03 ≈ 0.0024/s) loses
+  // ~10% inventory over the window — the old severity-0.5 run lost less than
+  // the 5% allowance, so the check passed with the automation OFF. And the old
+  // "indication > setpoint + 0.005" margin was calibrated to the pre-rescale
+  // leak (e28f7b0 rescaled SGTR ~33× slower): the servo's equilibrium charging
+  // exactly MATCHES the leak, far below 0.005 — assert the actual contract.
   s = svc('pwr', 'hot_full_power');
-  s.handleCommand({ action: 'inject_failure', failure_id: 'sgtr', severity: 0.5 });
+  s.handleCommand({ action: 'inject_failure', failure_id: 'sgtr', severity: 1.0 });
   var inv0 = s.engine.s.core_inventory_pct;
   s.handleCommand({ action: 'set_cvcs_auto', active: true });
   step(s, 400);
-  ck('CVCS auto make-up holds inventory vs leak', s.engine.s.core_inventory_pct >= inv0 - 5, s.engine.s.core_inventory_pct.toFixed(1), '>=' + (inv0 - 5).toFixed(1));
-  // §8.8: the charging_flow INDICATION (true modulated flow) rises above the operator
-  // SETPOINT under AUTO make-up — the two are distinct snapshot fields for the UI.
-  var snap = s.assembleSnapshot();
-  ck('charging_flow indication > setpoint under AUTO', snap.instruments.charging_flow > snap.control_state.charging_flow_normalized + 0.005,
-     'ind ' + snap.instruments.charging_flow.toFixed(4) + ' vs setpt ' + snap.control_state.charging_flow_normalized.toFixed(4), 'ind > setpt');
+  var leakNow = s.engine.s.leak_flow, chgNow = s.engine.s.charging_flow;
+  ck('CVCS auto make-up holds inventory vs leak', s.engine.s.core_inventory_pct >= inv0 - 2, s.engine.s.core_inventory_pct.toFixed(1), '>=' + (inv0 - 2).toFixed(1));
+  ck('AUTO charging converged to match the leak', chgNow >= 0.5 * leakNow && chgNow <= 3 * leakNow + 1e-6,
+     'chg ' + chgNow.toFixed(4) + ' vs leak ' + leakNow.toFixed(4), '0.5×..3× leak');
+  // The charging_flow INDICATION reads the true modulated flow, not the operator
+  // setpoint — the two are distinct snapshot fields for the UI. Average a few
+  // samples to see past the instrument noise (σ 0.001 ≈ the signal here).
+  var snap = s.assembleSnapshot(), indSum = 0, N = 20;
+  for (var k = 0; k < N; k++) { s.advanceCycles(1); indSum += s.assembleSnapshot().instruments.charging_flow; }
+  ck('operator setpoint untouched by AUTO', snap.control_state.charging_flow_normalized === 0,
+     'setpt ' + snap.control_state.charging_flow_normalized.toFixed(4), '0');
+  ck('charging_flow indication shows the modulated flow (not the setpoint)', indSum / N > 0.0005,
+     'mean ind ' + (indSum / N).toFixed(4), '> 0.0005');
 
   // §8.8: large-break LOCA drives the ECCS — merged HPI/LPI auto-start at
   // 11.03 MPa, delivering along the two-segment curve as pressure falls; the
-  // accumulator check documents a KNOWN physics gap: primary pressure floors
-  // at Tsat of the hot voided core (~5.5 MPa), so the 1.5 MPa accumulator
-  // arming pressure is unreachable in v1's blowdown model (tuning target).
+  // break blowdown model (096f574) cools the RCS so pressure falls through the
+  // restored 4.14 MPa accumulator arming setpoint and the tanks dump.
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
   s.handleCommand({ action: 'set_speed', value: 10 });
@@ -145,7 +158,7 @@ console.log(B + 'PWR — recently-added controls' + X);
     if (sn.instruments.accumulators_discharging && sn.instruments.accumulator_flow > 0) accumFired = true;
     if (sn.instruments.hpi_active && sn.instruments.hpi_flow > 0.2) injFired = true; }
   ck('large LOCA auto-starts merged HPI/LPI (hpi_active + delivering)', injFired, injFired, true);
-  ck('large LOCA discharges accumulators (status + flow) [known blowdown-model gap]', accumFired, accumFired, true);
+  ck('large LOCA discharges accumulators (status + flow)', accumFired, accumFired, true);
 })();
 
 console.log('\n' + B + 'RBMK — recently-added controls' + X);

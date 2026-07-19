@@ -705,6 +705,10 @@
         s.boron_adjust = cmd.rate || 0;
         break;
       case 'inject_failure':
+        // Unknown ids must be loud: a silent no-op here let a test believe its
+        // "LOCA" was running for months (effect names are not failure ids).
+        if (!this.cfg.protection.failures[cmd.failure_id])
+          return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown failure_id', received: cmd };
         this._injectFailure(cmd.failure_id, cmd.severity != null ? cmd.severity : 1.0);
         break;
       case 'clear_failure':
@@ -1509,11 +1513,22 @@
       return test('Transient — loss of main feedwater', function (ck) {
         var h = new Harness('hot_full_power');
         h.run(10);
+        // Read the lo-lo setpoint from the SHIPPING trip table (17% since the
+        // P-14 rework) instead of hardcoding — and assert the sg_level trip
+        // SPECIFICALLY: rpsWouldTrip ignores P-10 blocks, so at power the
+        // IR/PR trips always report and `length > 0` was a tautology.
+        var sgTrip = h.eng.getProtectionConfig().trips.filter(function (t) {
+          return t.instrument === 'sg_level' && t.direction === 'low';
+        })[0];
+        ck('shipping table has the low-SG trip', sgTrip ? sgTrip.setpoint : 'missing', !!sgTrip, 'sg_level low present');
+        ck('no low-SG trip before the failure', rpsWouldTrip(h.eng).indexOf('sg_level low') === -1,
+          rpsWouldTrip(h.eng).indexOf('sg_level low') === -1, 'true');
         h.cmd({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
-        var t = h.runUntil(function (ts, ins) { return ins.sg_level <= 12; }, 600);
-        ck('SG level falls to low-SG trip setpoint', t >= 0 ? t.toFixed(1) + 's' : 'never', t >= 0, 'reaches 12%');
+        var t = h.runUntil(function (ts, ins) { return ins.sg_level <= sgTrip.setpoint; }, 600);
+        ck('SG level falls to the trip setpoint (' + (sgTrip ? sgTrip.setpoint : '?') + '%)',
+          t >= 0 ? t.toFixed(1) + 's' : 'never', t >= 0, 'reaches setpoint');
         var reasons = rpsWouldTrip(h.eng);
-        ck('RPS would trip (low SG level)', reasons.join(','), reasons.length > 0, 'a trip fires');
+        ck('RPS would trip on sg_level low', reasons.join(','), reasons.indexOf('sg_level low') >= 0, 'includes sg_level low');
       });
     },
 
@@ -1550,9 +1565,12 @@
         var t = h.runUntil(function (ts) { return ts.condenser_vacuum_kpa < 74.5; }, 120);
         ck('vacuum decays below trip level', t >= 0 ? t.toFixed(1) + 's' : 'never', t >= 0, '< 74.5 kPa');
         // The trip actuation reads the vacuum INSTRUMENT (lag 5 s), so allow it
-        // to catch up to the truth before asserting.
-        var tt = h.runUntil(function (ts) { return ts.turbine_tripped; }, 30);
-        ck('turbine trips (via the control-layer actuation)', tt >= 0 ? tt.toFixed(1) + 's' : 'never', h.eng.s.turbine_tripped === true, 'tripped');
+        // to catch up to the truth before asserting. (getTrueState has no
+        // turbine_tripped field — the old predicate read undefined and never
+        // fired, so the timing claim was untested; read the engine directly.)
+        var tt = h.runUntil(function () { return h.eng.s.turbine_tripped === true; }, 30);
+        ck('turbine trips within 30 s of vacuum loss (harness actuation)',
+          tt >= 0 ? tt.toFixed(1) + 's' : 'never', tt >= 0, 'tripped ≤ 30 s');
       });
     },
 
@@ -1816,25 +1834,39 @@
     eccs_boration: function () {
       return test('Borated ECCS injection — HPI/accumulators raise core boron', function (ck) {
         var C = new Harness('hot_full_power').eng.cfg.emergency.eccs_boron_ppm;
-        // (A) LOCA with safety injection: core boron rises toward the RWST source.
+        // (A) SGTR with safety injection: core boron rises toward the RWST source.
+        // (sgtr, not the large break: at SGTR pressures the accumulators stay
+        // shut, so the boron seen is the HPI/RWST path alone. The original test
+        // injected the nonexistent id 'primary_leak' — an EFFECT name — which
+        // silently no-opped, so its "LOCA" never ran; inject_failure now errors
+        // on unknown ids, see the leak-check below.)
         var h = new Harness('hot_full_power'); h.run(10);
         var b0 = h.ts().boron_ppm;
         h.cmd({ action: 'scram' });
-        h.cmd({ action: 'inject_failure', failure_id: 'primary_leak', severity: 1.0 });
+        var rInj = h.cmd({ action: 'inject_failure', failure_id: 'sgtr', severity: 1.0 });
+        ck('failure accepted (real id) and leaking', (rInj == null) + '/' + (h.eng.s.leak_flow > 0),
+          rInj == null && h.eng.s.leak_flow > 0, 'true/true');
         h.cmd({ action: 'set_hpi', active: true });
         h.run(200);
         var b1 = h.ts().boron_ppm;
         ck('HPI injection raises core boron', b0.toFixed(0) + ' → ' + b1.toFixed(0), b1 > b0 + 200, '> baseline + 200 ppm');
         ck('boron never overshoots the ECCS source', b1.toFixed(0), b1 <= C + 1, '≤ ' + C + ' ppm');
-        // (B) Control: the same LOCA with NO injection leaves boron unchanged
-        // (mass-only losses leave at the current concentration).
+        // (B) Control: the same leak with NO injection leaves boron unchanged
+        // (mass-only losses leave at the current concentration; accumulators
+        // stay isolated above their 4.14 MPa arming pressure).
         var h2 = new Harness('hot_full_power'); h2.run(10);
         var c0 = h2.ts().boron_ppm;
         h2.cmd({ action: 'scram' });
-        h2.cmd({ action: 'inject_failure', failure_id: 'primary_leak', severity: 1.0 });
+        h2.cmd({ action: 'inject_failure', failure_id: 'sgtr', severity: 1.0 });
         h2.run(200);
         ck('no injection → boron unchanged', c0.toFixed(1) + ' → ' + h2.ts().boron_ppm.toFixed(1),
           near(h2.ts().boron_ppm, c0, 1.0), c0.toFixed(1) + ' ±1');
+        ck('control actually lost inventory (leak is real)', h2.eng.s._mass.toFixed(3),
+          h2.eng.s._mass < 0.995, '< 0.995');
+        // Unknown ids are rejected loudly — the API softness that let the old
+        // tautology pass for months.
+        var rBad = h2.cmd({ action: 'inject_failure', failure_id: 'primary_leak' });
+        ck('unknown failure_id is a COMMAND_ERROR', rBad && rBad.code, !!(rBad && rBad.code === 'COMMAND_ERROR'), 'COMMAND_ERROR');
         // (C) Accumulator discharge also borates. Unit-test the mixing path directly
         // (accumulators only arm at low pressure, awkward to reach through the full
         // pressure model) with a crafted low-pressure state.

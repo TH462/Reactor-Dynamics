@@ -417,6 +417,9 @@
         s.hpci_running = !!cmd.active;
         break;
       case 'inject_failure':
+        // Unknown ids must be loud (a silent no-op hides authoring typos).
+        if (!this.cfg.protection.failures[cmd.failure_id])
+          return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown failure_id', received: cmd };
         this._injectFailure(cmd.failure_id, cmd.severity != null ? cmd.severity : 1.0);
         break;
       case 'clear_failure':

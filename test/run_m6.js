@@ -336,17 +336,28 @@ T.push(test('Consume-flags + rebaseTime (rewind support)', function (ck) {
     { id: 'b1', trigger: { type: 'time', value: 0 }, speed: 30, commentary: { learning: 'x', industry: 'x' } },
     { id: 'b2', trigger: { type: 'delay', value: 2 }, rewind: { steps: 2 }, speed: 1, commentary: { learning: 'y', industry: 'y' } },
   ] });
-  ck('load requests checkpoint 0', x.it.consumeCheckpointRequest(), true, 'true');
-  ck('consume clears the flag', x.it.consumeCheckpointRequest(), x.it.consumeCheckpointRequest() === false, 'false');
-  ck('no speed request before a beat fires', String(x.it.consumeSpeedRequest()), x.it.consumeSpeedRequest() === null, 'null');
+  // Capture each consume ONCE — the old checks passed the literal `true` as the
+  // pass argument (could never fail) and/or consumed the flag twice, so the
+  // observed and asserted values were different reads.
+  var cp0 = x.it.consumeCheckpointRequest();
+  ck('load requests checkpoint 0', cp0, cp0 === true, 'true');
+  var cp1 = x.it.consumeCheckpointRequest();
+  ck('consume clears the flag', cp1, cp1 === false, 'false');
+  var sp0 = x.it.consumeSpeedRequest();
+  ck('no speed request before a beat fires', String(sp0), sp0 === null, 'null');
   x.it.step(snap(), 10);
-  ck('beat fire requests a checkpoint', x.it.consumeCheckpointRequest(), true, 'true');
+  var cp2 = x.it.consumeCheckpointRequest();
+  ck('beat fire requests a checkpoint', cp2, cp2 === true, 'true');
   var sp1 = x.it.consumeSpeedRequest();
   ck('beat speed requests time acceleration', sp1, sp1 === 30 && x.it._speedRequested === null, '30, then cleared');
   x.it.step(snap(), 12);
   var rw = x.it.consumeRewindRequest();
   ck('rewind beat requests a world rewind', JSON.stringify(rw), rw && rw.steps === 2 && rw.scope === 'world', '{steps:2, scope:world}');
-  ck('rewind beat does not also checkpoint', x.it.consumeCheckpointRequest(), x.it.consumeCheckpointRequest() === false, 'false');
+  // Single read: the old double-consume meant a regression (rewind beat ALSO
+  // checkpointing — the "one slot off" bug instructor_layer.js guards against)
+  // would be consumed by the observed read and pass the re-read anyway.
+  var cp3 = x.it.consumeCheckpointRequest();
+  ck('rewind beat does not also checkpoint', cp3, cp3 === false, 'false');
   var sp2 = x.it.consumeSpeedRequest();
   ck('rewind beat can also drop the speed', sp2, sp2 === 1, '1 (from beat b2)');
   x.it.rebaseTime(5);
@@ -384,7 +395,8 @@ T.push(test('Integration — start_scenario resets the plant, loads, and beats d
   var sn2 = s.handleCommand({ action: 'stop_scenario' });
   ck('stop_scenario returns to free-play', sn2.instructor.message, sn2.instructor.message === null, 'null');
   var sn3 = s.handleCommand({ action: 'reset', plant_id: 'pwr', initial_state: 'hot_full_power' });
-  ck('plain reset also unloads any scenario', sn3.instructor.message === null && s.instructor.mode === null, true, 'free-play');
+  var freePlay = sn3.instructor.message === null && s.instructor.mode === null;
+  ck('plain reset also unloads any scenario', sn3.instructor.message + '/' + s.instructor.mode, freePlay, 'null/null');
   delete RD.SCENARIOS.__m6int;
 }));
 
