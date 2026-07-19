@@ -77,3 +77,59 @@ limitation, not a blocker, for the PWR.**
 Confirmed absent (`ops_pwr` info check "RPS latched — no reset path in v1"). Restarting a
 scrammed reactor is a full procedure (recriticality, not a flag flip); adding it is a
 feature, not a trivially-safe fix. Log OPEN for post-ship.
+
+---
+
+## Phase 3 — Code & physics review
+
+Four parallel read-for-bugs agents over engines/pwr, config/instruments/load_mode,
+control layer, and sim_service/instructor. Findings verified against source before action.
+
+| ID | Phase | Sev | Finding | Action | Evidence |
+|---|---|---|---|---|---|
+| P3-1 | 3 | M | RHR-start setpoint: manual `09` says 3.45 MPa (500 psi); as-built fires `set_rhr` at 2.76 MPa (400 psi, autoclosure interlock). Code internally consistent (`pwr_control.js:98`, `pwr_config.js:336`); manual is stale. | FIX MANUAL (Phase 5) | agent trace; 2.76 = 400 psi Westinghouse autoclosure |
+| P3-2 | 3 | L | Power-range span doc note "0–120 %" in manual `09` vs `[0,200]` instrument (intentional over-range for C1). Doc clarity only. | FIX MANUAL (Phase 5) | `pwr_config.js:366-369` comment |
+
+**Config/instruments/units/failures/load_mode: CLEAN.** C1 has no second instance (every
+high setpoint strictly below its meter top, every low strictly above its floor, both
+directions of strict `crossed()` checked). Units consistent throughout. Failure defs
+(`leak_scale`, `severity_meta`, `intercepts`) all reference real ids and are internally
+consistent.
+
+### Fixed this phase (code)
+
+| ID | Sev | Finding | Fix | Evidence |
+|---|---|---|---|---|
+| P3-3 | M | Beat-driven world rewind double-steps the Instructor and double-broadcasts per tick (`_restore` re-runs `_assembleWithInstructor`+`_broadcast` mid-`tick`); post-rewind beat could fire against rolled-back state. Only shipped user: `pwr_hook` (`beat.rewind`). | `_rewind`/`_restore` gain a `silent` flag; the in-tick instructor rewind assembles without stepping/broadcasting (outer tick does both once). Operator-button + file-load paths unchanged. | m5/m6/campaign/scenarios green |
+| P3-4 | M→ latent | `_initialEsfArms` evaluated the actuation `condition` against empty `lastInstruments` at init, so a *conditioned* activating actuation (only `set_rhr`, cond `rps_scrammed`) could never be pre-disarmed. No live trigger (no init state is both scrammed and <2.76 MPa). | `_evaluateCondition(cond, ins)` accepts an explicit instrument map; both call sites pass the current `ins`. | battery green |
+| P3-5 | H (HR1) / cleanup | Automation stand-down read `true_state.scrammed` (HR1 straggler) with a comment stale after C4. | Collapsed to `this.rps.scrammed` (C4 makes it authoritative for manual + auto). `melted` read kept — no core-damage instrument exists (documented HR1 exception, damage instrument post-ship). | battery green |
+| P3-6 | L (latent) | `stepAutomation` `requires`-note dereferences `this.byId[def.requires].def.label` — throws if a channel names a non-existent `requires` id. Not reachable with current config. | Null-guard the reference (fall back to the raw id). | battery green |
+| P3-7 | L | `p_pumpsuction` node pressure could go negative (non-physical absolute pressure in `true_state`) on a deep depressurization with RCPs running. | `Math.max(0, …)` floor. Dynamics-identical (cavitation already floors into `T_sat`'s `1e-6` guard). | run_ops pwr "nodes ordered" green |
+| P3-8 | L | Stale comment: `spray_floor_band` said "above Psat(tcold)"; code correctly floors at Psat(**thot**). A future "fix-to-match-comment" would let spray pull below core-exit saturation. | Corrected the comment. | comment-only |
+
+### Documented known limitations (NOT fixed — out of scope / needs ruling)
+
+- **P3-9 (M, physics): decay heat dropped from the heat source while un-scrammed** —
+  `pwr_engine.js:220` adds `_H1+_H2` only when `scrammed`. On a fast **un-scrammed**
+  runback/load-follow, residual decay heat above the new equilibrium is undercounted
+  (~5–6 %, τ≈33 min), so Tavg/pressure sit low transiently. **This intersects the
+  DEFERRED P2-A load-follow tuning** (partial-load Tavg 291.5 < 293) and is a plausible
+  contributor to it. Changing the decay-heat model changes load-follow physics — exactly
+  the area the A1 owner ruling deferred ("do not chase P4 without a new ruling"). Left as
+  a documented limitation and flagged for whoever revisits P2-A. Scenarios that scram
+  (TMI, trips) are unaffected.
+- **P3-10 (L–M, sim): transient-cadence rounding** — at `TRANSIENT_MS=50` and 1×,
+  `_stepsPerBroadcast` rounds 2.5→3, so sim runs ~1.2× real-time *during transients only*
+  (physics stays stable; internal sim-time is self-consistent). Fixing needs a fractional-
+  step accumulator in the core tick loop (moderate risk, low reward). Documented.
+- **P3-11 (L, sim): `set_speed` unclamped** — value 0/negative doesn't freeze (yields 1
+  step/broadcast). **Unreachable from the shipped UI** (buttons send fixed `data-speed`
+  values; `speed || 60` guards the beat path). Theoretical robustness gap; documented.
+- **P3-12 (L, sim): save/restore mid-beat drops `_actionsSinceBeat` + follow `accStreak`** —
+  a save mid-beat loses accumulated operator actions / a partial convergence streak; the
+  player re-satisfies them. No crash/wrong-answer. Minor; documented (revisit if Phase 6/7
+  playthrough shows a real problem).
+
+**No crashes, NaN/Inf sources, reversed reactivity terms, or bypassable safety caps found**
+(physics agent verified all hotspots: break-blowdown, spray floor, CVCS-vs-void-surge,
+accumulator/Mode-5 lineup, steam-dump cap, PORV/block-valve, reactivity signs).

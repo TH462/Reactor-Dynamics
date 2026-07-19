@@ -150,7 +150,7 @@
       // space, so a small mass flow has a big pressure effect — which is why the
       // inventory-loss gain (porv_flow_max) and the pressure gain are decoupled.
       K_heater: 0.55, K_spray: 1.7, K_porv_relief: 300.0, K_safety_relief: 300.0,
-      spray_floor_band: 3.0,       // MPa — spray authority tapers to 0 across this band above Psat(tcold) (P6)
+      spray_floor_band: 3.0,       // MPa — spray authority tapers to 0 across this band above Psat(THOT), the core-exit leg (see pwr_pressurizer spray_floor); floor is the hottest leg so spray can't pull below core-exit saturation (P6)
       K_surge: 1.0, P_restore_rate_gain: 0.02, // gentle stabilization only (heater regulates)
       // When the primary voids it is two-phase: pressure is pulled to the
       // saturation pressure of Tavg (so subcooling → 0). [tune]

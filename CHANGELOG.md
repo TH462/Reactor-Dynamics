@@ -17,8 +17,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   stand-down), but any future consumer reading `rps_state.scrammed` alone would have been wrong.
   `control_kernel.handleCommand` now latches the RPS on an operator scram (before interception,
   matching the automatic path: an ATWS that blocks the rods still shows the asserted trip signal).
-  The defensive dual-reads are retained on purpose — they correctly cover ATWS (rps set, engine
-  not) and pre-fix save loads. No gate moved (full battery green across all three plants).
+  With the latch authoritative, the automation stand-down collapses its dual-read to
+  `this.rps.scrammed` (the snapshot-level dual-reads in simulation_service/instructor are kept as
+  defensive belt-and-suspenders). No gate moved (full battery green across all three plants).
+- **Beat-driven world rewind no longer double-steps the Instructor or double-broadcasts (P3-3).**
+  An instructor `beat.rewind` (used by `pwr_hook`) called `_restore` mid-`tick`, and `_restore` —
+  shared with file-load — re-ran `_assembleWithInstructor` (a second `instructor.step`) and
+  `_broadcast`, while the outer tick also reassembled and rebroadcast. Two snapshots per tick and a
+  post-rewind beat evaluated against the rolled-back state. The in-tick rewind path is now `silent`
+  (assemble without stepping, let the outer tick broadcast once); operator-button and file-load
+  restores are unchanged.
+- **Latent control-layer fixes (P3-4/5/6).** `_initialEsfArms` evaluated a conditioned actuation's
+  gate against the still-empty `lastInstruments` at init (`_evaluateCondition` now takes an explicit
+  instrument map; both call sites pass the live `ins`); a channel `requires`-note dereferenced a
+  possibly-undefined channel (null-guarded). None had a live trigger in the shipped configs.
+- **`p_pumpsuction` node pressure floored at 0 (P3-7).** A deep depressurization with RCPs running
+  could expose a negative absolute pressure in `true_state`; floored (dynamics-identical — cavitation
+  already floors into `T_sat`'s guard).
 - **High-flux reactor trips can actually fire (PWR + BWR).** The `power_range` meters clipped at
   exactly the 120 % trip setpoint; `crossed()` is strict, so a pegged meter never fired the trip
   (the RBMK was fixed for this long ago; the other two plants never got the parallel change —

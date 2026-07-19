@@ -121,7 +121,7 @@
     for (var a = 0; a < acts.length; a++) {
       var act = acts[a];
       if (!act.arm || arms[act.arm] === false || act.active !== true) continue;   // only ACTIVATING actuations
-      var gateOk = !act.condition || this._evaluateCondition(act.condition);
+      var gateOk = !act.condition || this._evaluateCondition(act.condition, ins);
       if (gateOk && crossed(ins[act.instrument], act.direction, act.setpoint)) arms[act.arm] = false;
     }
     return arms;
@@ -373,7 +373,7 @@
       var act = acts[i];
       if (act.arm && this.esfAuto[act.arm] === false) continue;
       var value = ins[act.instrument];
-      var gateOk = !act.condition || this._evaluateCondition(act.condition);
+      var gateOk = !act.condition || this._evaluateCondition(act.condition, ins);
       if (gateOk && crossed(value, act.direction, act.setpoint) && !this.actuationFired[i]) {
         this.actuationFired[i] = true;
         this._sendInternal(this._actuationCommand(act, false));
@@ -448,11 +448,16 @@
   // fallback: every condition a plant module references must be exposed as a
   // status instrument (the M7 config-consistency suite asserts this), and an
   // unresolvable condition evaluates NOT-met rather than silently arming.
-  ControlLayer.prototype._evaluateCondition = function (cond) {
-    if (cond in this.lastInstruments) return !!this.lastInstruments[cond];
+  ControlLayer.prototype._evaluateCondition = function (cond, ins) {
+    // Callers that hold the current instrument map pass it explicitly (the setpoint
+    // crossing on the same line reads the same map). Without it we fall back to the
+    // last evaluated cycle — but at plant init lastInstruments is still empty ({}),
+    // so _initialEsfArms MUST pass `ins` or a conditioned actuation's gate is dead.
+    ins = ins || this.lastInstruments;
+    if (cond in ins) return !!ins[cond];
     if (/_unavailable$/.test(cond)) {
       var base = cond.replace(/_unavailable$/, '_running');
-      if (base in this.lastInstruments) return !this.lastInstruments[base];
+      if (base in ins) return !ins[base];
     }
     return false;
   };
@@ -704,10 +709,12 @@
     this._autoAcc = 0;
     var ctx = this._ctx();
     var t = this._autoT;
+    // No core-damage instrument exists, so the "core destroyed" stand-down reads
+    // true_state.melted (a known HR1 exception; a damage instrument is post-ship).
     var dead = !!(ctx.true_state && ctx.true_state.melted);
-    // A protection trip latches rps; a MANUAL scram only shows in true_state —
-    // automation stands down on either.
-    var scrammed = !!(this.rps.scrammed || (ctx.true_state && ctx.true_state.scrammed));
+    // A protection trip OR a manual scram both latch rps now (C4), so the latch is
+    // the single source of truth for scram — no true_state.scrammed fallback needed.
+    var scrammed = this.rps.scrammed;
     for (var i = 0; i < this.channels.length; i++) {
       var c = this.channels[i], def = c.def;
       if (def.kind === 'mode') continue;                    // the engine runs these
@@ -718,7 +725,8 @@
         continue;
       }
       if (def.requires && !(this.byId[def.requires] && this.byId[def.requires].engaged)) {
-        c.note = 'idle — needs ' + this.byId[def.requires].def.label;
+        var req = this.byId[def.requires];
+        c.note = 'idle — needs ' + (req ? req.def.label : def.requires);   // guard a mis-referenced channel id
         continue;
       }
       this._trackChannel(c, ctx, step);

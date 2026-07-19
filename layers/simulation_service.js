@@ -214,7 +214,12 @@
     if (i.consumeCheckpointRequest && i.consumeCheckpointRequest()) this._pushCheckpoint();
     var rewound = false;
     var rw = i.consumeRewindRequest ? i.consumeRewindRequest() : null;
-    if (rw) rewound = !!this._rewind(rw.steps || 1, rw.scope || 'world');
+    // silent: this runs INSIDE _assembleWithInstructor (instructor.step already
+    // fired this tick and set the rewind), and the outer path reassembles + tick()
+    // rebroadcasts. A broadcasting/instructor-stepping _restore here would step the
+    // Instructor twice and emit two snapshots per tick (the double-step could
+    // prematurely advance the post-rewind beat against the rolled-back state).
+    if (rw) rewound = !!this._rewind(rw.steps || 1, rw.scope || 'world', false, true);
     // Speed applies AFTER a rewind so a beat's speed wins over the checkpoint's
     // stored acceleration (fast-forward in, snap back to real time at set points).
     var sp = i.consumeSpeedRequest ? i.consumeSpeedRequest() : null;
@@ -245,7 +250,7 @@
   // The target checkpoint stays on the ring so it can be rewound to again.
   // `exact` (rewind-pick): the caller names a specific checkpoint — skip both
   // press-semantics guards below and restore precisely what was asked for.
-  SimulationService.prototype._rewind = function (steps, scope, exact) {
+  SimulationService.prototype._rewind = function (steps, scope, exact, silent) {
     var idx = this.checkpoints.length - steps;
     if (!exact) {
       // If the newest checkpoint IS the current moment (a beat just fired here,
@@ -264,7 +269,7 @@
     if (!target) return null;
     this.checkpoints.length = idx + 1;
     this._rewindCursor = idx;
-    return this._restore(target, scope === 'world');
+    return this._restore(target, scope === 'world', silent);
   };
 
   // The snapshot's instructor block: the extended shape (M6 getSnapshotBlock —
@@ -521,7 +526,7 @@
   // rewind scope: the plant rolls back, the Instructor keeps its progress —
   // its time anchors are rebased so delay/time triggers don't chase a future
   // timestamp.
-  SimulationService.prototype._restore = function (state, skipInstructor) {
+  SimulationService.prototype._restore = function (state, skipInstructor, silent) {
     var m = state.metadata;
     var Ctor = engineCtor(m.plant_id);
     // Reconstruct the right engine + config for this plant, then restore each layer.
@@ -546,6 +551,11 @@
     this._prevFailureIds = null;
     this.broadcastMs = NORMAL_MS;
     if (skipInstructor && this.instructor.rebaseTime) this.instructor.rebaseTime(this.simTime);
+
+    // silent (in-tick instructor rewind): do NOT step the Instructor or broadcast
+    // again — the caller (_assembleWithInstructor) reassembles and tick() broadcasts
+    // once. Assemble without stepping so the return value is a valid rolled-back snap.
+    if (silent) return this.assembleSnapshot();
 
     var snap = this._assembleWithInstructor();
     this._broadcast(snap);

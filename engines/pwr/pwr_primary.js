@@ -28,7 +28,7 @@
     var pr = cfg.primary;
     var ff2 = s.flow_frac * s.flow_frac;
     s.p_hotleg = s.pressure_mpa;                                    // surge line taps the hot leg
-    s.p_pumpsuction = s.pressure_mpa - pr.loop_dp_sg_rated * ff2;   // between SG and RCP (lowest)
+    s.p_pumpsuction = Math.max(0, s.pressure_mpa - pr.loop_dp_sg_rated * ff2);   // between SG and RCP (lowest); floored at 0 — absolute pressure, and cavitation already floors into T_sat's guard
     s.p_coldleg = s.pressure_mpa + pr.loop_dp_core_rated * ff2;     // RCP→RX pump discharge (highest)
   }
 
