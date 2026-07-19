@@ -1695,8 +1695,15 @@
     'sdbank-withdraw': function () { cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: 1000, speed: 'fast' }); },
     'sdbank-insert': function () { cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: -1000, speed: 'fast' }); },
     // PWR
-    'rcp-run': function () { cmd({ action: 'clear_failure', failure_id: 'rcp_trip' }); },
-    'rcp-stop': function () { cmd({ action: 'inject_failure', failure_id: 'rcp_trip', severity: 1 }); },
+    // RCP start/stop is the real pump command (set_rcp) — starting the pumps is the
+    // FIRST operator action of the Mode-5→3 heatup and the Mode-5→1 startup, and the
+    // old clear_failure/inject_failure wiring could not start a pump secured in cold
+    // shutdown (nothing sends set_rcp{running:true}; clearing a stop_pump failure is a
+    // no-op — "pumps stay off until restarted"). Run also clears any RCP-trip failure so
+    // it doubles as the trip recovery; Stop is a clean operator stop (rcp_running drives
+    // every RCP indicator, so the board stays truthful either way).
+    'rcp-run': function () { cmd({ action: 'clear_failure', failure_id: 'rcp_trip' }); cmd({ action: 'set_rcp', running: true }); },
+    'rcp-stop': function () { cmd({ action: 'set_rcp', running: false }); },
     // CVCS — boron chemistry (decoupled), charging pump, letdown valve, auto make-up
     'borate': function () { cmd({ action: 'set_boron_adjust', rate: 2 }); },
     'dilute': function () { cmd({ action: 'set_boron_adjust', rate: -2 }); },
@@ -1727,6 +1734,8 @@
     'heat-auto': function () { cmd({ action: 'set_heater', auto: true }); }, 'heat-set': function () { cmd({ action: 'set_heater', power_pct: inputVal('heatSet') }); },
     'spray-open': function () { cmd({ action: 'set_spray', open: true }); }, 'spray-auto': function () { cmd({ action: 'set_spray', auto: true }); },
     'spray-set': function () { cmd({ action: 'set_spray', pct: inputVal('spraySet') }); },
+    // Mode-5/heatup-cooldown pressure-control setpoint (MPa); engine clamps to the relief band.
+    'press-sp-set': function () { cmd({ action: 'set_pressure_setpoint', mpa: inputVal('pressSpSet') }); },
     'feed-start': function () { cmd({ action: 'set_feed_pump_speed', pct: 100 }); }, 'feed-stop': function () { cmd({ action: 'set_feed_pump_speed', pct: 0 }); },
     'feed-set': function () { cmd({ action: 'set_feed_pump_speed', pct: inputVal('feedSet') }); },
     'feed-nudge-up': function () { cmd({ action: 'feed_pump_nudge', delta_pct: 2 }); },
@@ -1762,6 +1771,8 @@
     'rhr-auto': function () { cmd({ action: 'set_esf_auto', system: 'rhr', auto: true }); },
     'rhr-on': function () { cmd({ action: 'set_rhr', active: true }); }, 'rhr-off': function () { cmd({ action: 'set_rhr', active: false }); },
     'dump-set': function () { cmd({ action: 'set_steam_dump', pct: inputVal('dumpSet') }); },
+    // No-load steam-dump pressure setpoint (MPa) — lowered on a cooldown; engine clamps to the SG-safety band.
+    'dump-sp-set': function () { cmd({ action: 'set_steam_dump_setpoint', mpa: inputVal('dumpSpSet') }); },
     // RBMK
     'rbmk-flow-set': function () { cmd({ action: 'set_channel_flow', pct: inputVal('rbmkFlow') }); },
     'rbmk-feed-set': function () { cmd({ action: 'set_feedwater_flow', pct: inputVal('rbmkFeed') }); },

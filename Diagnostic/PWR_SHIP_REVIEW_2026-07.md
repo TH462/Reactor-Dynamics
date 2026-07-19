@@ -158,3 +158,20 @@ exists in the repo** — the synoptic (`ui/diagram/pwr_synoptic.js`) is exercise
 `data-act` controls + gauge count) and `verify_manual_follow.js` (84 DOM checks). The "55/55"
 is a plan-time aspiration, not a shipped gate; synoptic coverage is real but lives in those two
 harnesses. Logged as a doc-baseline correction (Phase 5), not a missing gate.
+
+### Mode-5 control surface (the pivotal Phase-4 finding) — FIXED
+
+A dedicated agent cross-checked every Mode-transition mission's highlighted control against the
+real PWR synoptic. **Two of the three missions were unplayable from the shipped UI**, and the
+campaign gate could not catch it (it only checks that a `control_label` resolves to a card, not
+that the card can issue the instructed command).
+
+| ID | Sev | Finding | Fix | Evidence |
+|---|---|---|---|---|
+| P4-1 | H (ship-blocker) | RCP **Run** button issued `clear_failure rcp_trip` — a no-op from cold shutdown (no trip to clear; and a cleared `stop_pump` doesn't restart). So the FIRST operator action of `pwr_mode5_to_mode3` + `pwr_return_to_mode1` ("start the RCPs") did nothing; both heatups were unplayable. | Repointed `rcp-run`→`clear_failure`+`set_rcp{running:true}`, `rcp-stop`→`set_rcp{running:false}` (all RCP indicators key off the `rcp_running` instrument, so the board stays truthful; no test/lesson used the failure-path buttons). | Verified: pump starts from cold_shutdown through the full stack; e2e_ui/e2e_controls/manual green |
+| P4-2 | H (ship-blocker) | The heatup `pressurize` beat instructs "raise the pressurizer pressure setpoint to 15.4 MPa" and the cooldown instructs lowering the steam-dump setpoint, but **no `set_pressure_setpoint` or `set_steam_dump_setpoint` control existed in the UI** — so the plant could not be pressurized (heat_up gate = pressure > 14 MPa) or cooled as authored. **User ruling: add the two controls.** | Added a **Pressure SP** box to the PZR card (`press-sp-set`→`set_pressure_setpoint`) and a **Dump SP** box to the Turbine-Generator card (`dump-sp-set`→`set_steam_dump_setpoint`), each MPa-fixed (following the MW-slider precedent) with a live setpoint readout. Both engine commands already existed. Registered in the `verify_e2e_ui` REQUIRED_ACTS gate. | e2e_ui PASS with the new acts required; campaign driver (which uses these exact commands) 51/51 |
+
+**Remaining Mode-5 cosmetics (nice-to-have, not blockers, post-ship):** a `plant_mode` text
+indicator and an explicit `eccs_mode` = RHR/HPI/LPI/off readout. Triggers are physics-based
+(not mode-string-gated) and RHR alignment is already visible/controllable via the Emergency
+Cooling card, so all three missions are now completable without them. Logged OPEN post-ship.

@@ -157,6 +157,14 @@ Blocks **auto-reinstate** when power falls below P-10.
 - System reference pressure for the whole RCS (uniform model).  
 - Normal: **15.41 MPa**.  
 
+### 5.1a Pressure setpoint (Press SP)
+
+- The pressure-control **setpoint** (MPa) the AUTO heaters/spray drive toward, shown as a live
+  readout with a numeric **Press SP** box (0.1–17 MPa; engine clamps to the relief band).  
+- **Raise** it toward NOP (**15.41 MPa**) during a heatup — the heaters pressurize to the new target;
+  **lower** it during a cooldown so spray/relief brings pressure down. Used by the Mode-transition
+  missions. (MPa-denominated regardless of the US/SI display toggle, like the load setpoint.)
+
 ### 5.2 PZR Heaters
 
 | Mode | Effect |
@@ -296,7 +304,8 @@ Blocks **auto-reinstate** when power falls below P-10.
 |------|--------|
 | **Running** | Forced flow; spray works; coastdown on trip |
 | **Trip** | Flow falls; low-flow protection SCRAMs; natural circulation for decay heat |
-| **Modeling note** | Single representative pump; start/stop may map approximately to clearing/injecting RCP trip in some paths |
+| **Run / Stop** | **Run** starts the pumps (`set_rcp{running:true}`) and clears any RCP-trip failure; **Stop** secures them (`set_rcp{running:false}`). Starting the RCPs is the first step of the Mode 5→3 heatup and the Mode 5→1 startup. |
+| **Modeling note** | Single representative pump. (Blocked while the station is blacked out — no AC.) |
 
 **CAUTION:** At power, loss of flow is an immediate trip condition. Do not stop RCPs at power except as directed by emergency procedure / drill script.
 
@@ -471,6 +480,7 @@ On a gauge, **red** at the two trip bands (≥90 %, ≤17 %), **amber** at the a
 |------|-----|
 | **AUTO** | Opens on high SG pressure / load rejection as configured |
 | **Manual % / Open** | Dump steam to condenser, bypass turbine |
+| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; 0.2–9.3 MPa, engine clamps to the SG-safety band) the AUTO dump holds. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. |
 
 ### 12.4 Indications
 

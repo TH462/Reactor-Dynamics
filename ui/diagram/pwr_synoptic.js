@@ -448,6 +448,8 @@
       '<div class="csec open" data-sec="press"><div class="sec-h" data-syn="sec" data-sec="press"><span>Pressure</span><span class="sec-v" data-f="pzrPh"></span><span class="car">▸</span></div>' +
       '<div class="sec-b">' +
       row('Primary pressure', 'pzrP', { big: 1, hl: 'gPzr', hint: 'Primary (RCS reference) pressure — one system pressure, set by the pressurizer.' }) +
+      row('Pressure SP', 'pzrPsp', { hint: 'Pressure-control setpoint (MPa) the AUTO heaters/spray hold. Raise toward NOP (15.41 MPa) on a heatup; lower on a cooldown.' }) +
+      '<div class="ctl"><span class="k">Press SP</span><span data-hl="pwPzrHeater">' + numSet('pressSpSet', 0.1, 17, 15.4, 'press-sp-set', 'MPa') + '</span></div>' +
       '<div class="ctl"><span class="k">Heater</span>' + seg([{ l: 'Auto', act: 'heat-auto', on: 1 }, { l: 'On', act: 'heat-on' }, { l: 'Off', act: 'heat-off' }],
         'Pressurizer heaters — raise pressure. Auto holds the setpoint.') +
       '<span data-hl="pwPzrHeater">' + numSet('heatSet', 0, 100, 0, 'heat-set', '%') + '</span></div>' +
@@ -529,6 +531,8 @@
       '<div class="ctl"><span class="k">Dump</span>' + seg([{ l: 'Auto', act: 'dump-auto', on: 1, f: 'dumpAuto' }, { l: 'Open', act: 'dump-open' }, { l: 'Close', act: 'dump-close' }],
         'Steam dump / bypass — AUTO opens on high SG pressure.') +
       '<span data-hl="gDump">' + numSet('dumpSet', 0, 100, 0, 'dump-set', '%') + '</span></div>' +
+      row('Dump SP', 'tgDumpSp', { hint: 'No-load steam-dump pressure setpoint (MPa) the AUTO dump holds. Lower it on a cooldown to vent the SG and cool the primary; raise it back toward the no-load point on a heatup.' }) +
+      '<div class="ctl"><span class="k">Dump SP</span>' + numSet('dumpSpSet', 0.2, 9.3, 8.9, 'dump-sp-set', 'MPa') + '</div>' +
       row('Dump valve', 'tgDump', { hl: 'gDump' }) +
       row('Trip', 'tgTrip', { hint: 'Turbine trip / low steam demand status.' }),
       { anchor: 'pwTurbineAnchor', hint: 'Turbine-Generator — load, governor, steam dump, trip status.' });
@@ -1032,6 +1036,7 @@
 
     // ---- PZR card ----
     txt('pzrP', ctx.dispP(ins.primary_pressure));
+    if (cs.pressure_setpoint != null) txt('pzrPsp', cs.pressure_setpoint.toFixed(2) + ' MPa');   // MPa-fixed to match the Press SP box
     txt('pzrL', ins.pzr_level.toFixed(0) + ' %');
     txt('pzrPh', ctx.dispP(ins.primary_pressure));
     txt('pzrLh', ins.pzr_level.toFixed(0) + ' %');
@@ -1097,6 +1102,7 @@
     txt('tgTarget', (cs.load_target_mwe != null ? cs.load_target_mwe : cs.steam_demand_mwe).toFixed(0) + ' → ' + ins.mwe_output.toFixed(0));
     txt('tgGov', ins.governor_valve.toFixed(0) + ' %');
     txt('tgDump', ins.steam_dump_valve.toFixed(0) + ' %' + (cs.steam_dump_auto ? ' auto' : ' man'));
+    if (cs.steam_dump_setpoint != null) txt('tgDumpSp', cs.steam_dump_setpoint.toFixed(2) + ' MPa');   // MPa-fixed to match the Dump SP box
     segSync('dumpAuto', cs.steam_dump_auto);
     var ttrip = !!ins.steam_demand_low;
     txt('tgTrip', ttrip ? 'TURB TRIP / LOW DEMAND' : 'normal'); vcls('tgTrip', ttrip ? 'alarm' : 'dim');

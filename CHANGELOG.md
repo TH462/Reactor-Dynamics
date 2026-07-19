@@ -8,7 +8,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **PWR pressurizer pressure-setpoint + steam-dump pressure-setpoint controls (Mode-5 playability).**
+  The Mode-transition missions instruct raising the pressurizer setpoint to NOP (15.41 MPa) on a
+  heatup and lowering the steam-dump setpoint on a cooldown, but the UI had no control for either —
+  so `pwr_mode5_to_mode3` and `pwr_return_to_mode1` could not be pressurized past their `heat_up`
+  gate, and the cooldown lacked its authored dump-setpoint step. Added a **Pressure SP** box to the
+  PZR card and a **Dump SP** box to the Turbine-Generator card (both MPa-fixed with a live readout);
+  the `set_pressure_setpoint`/`set_steam_dump_setpoint` engine commands already existed. Gated in
+  `verify_e2e_ui` REQUIRED_ACTS.
+
 ### Fixed
+- **PWR RCP Run/Stop buttons now start/stop the pumps (`set_rcp`) — Mode-5 ship-blocker.** The RCP
+  **Run** button issued `clear_failure rcp_trip`, which cannot start a pump secured in cold shutdown
+  (nothing sent `set_rcp{running:true}`; clearing a `stop_pump` failure is a no-op — "pumps stay off
+  until restarted"). The first operator action of the two heatup missions ("start the RCPs") was a
+  dead no-op, making them unplayable from the UI. Run now clears any RCP-trip failure *and* starts the
+  pumps; Stop is a clean operator stop. Every RCP indicator keys off the `rcp_running` instrument, so
+  the board stays truthful; no test or lesson used the old failure-path buttons.
 - **A manual (operator) reactor trip now latches the RPS (`rps_state.scrammed`) — finding C4.**
   A manual `scram` command scrammed the engine (`true_state.scrammed` and the `rps_scrammed`
   instrument both went true) but left the control layer's `rps_state.scrammed` bookkeeping flag
