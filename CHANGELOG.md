@@ -9,6 +9,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Public changelog page (`changelog.html`).** A player-facing "what changed" page, linked
+  from the footer of every site page. **Its log starts at the public launch** — the
+  pre-launch development history stays in this file and `BUILD_DECISIONS.md`, which remain
+  the engineering record. Ships with an empty state; entries are added by hand from a
+  template in the page source (tagged Added / Changed / Fixed, newest first).
 - **Vercel deploy config (`vercel.json`).** `/sim` now works as a clean entry URL
   (rewrites to `ui/shell.html`, query strings preserved — `/sim?engine=pwr`), and the deploy
   build stamps `site/version.js` with the commit sha, so the version shown in page footers

@@ -188,6 +188,28 @@ a:hover { text-decoration: underline; }
 .notice strong { color: var(--caution); }
 .form-msg { margin-top: 14px; font-size: 14px; color: var(--running); }
 
+/* =============================================================== changelog */
+.log-entry { border-top: 1px solid var(--border); padding-top: 24px; margin-top: 32px; }
+.log-entry:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+.log-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.log-head h2 { margin: 0; border: none; padding: 0; font-size: 20px; }
+.log-date { color: var(--muted); font-size: 13px; }
+.log-entry ul { margin: 14px 0 0; padding-left: 0; list-style: none; }
+.log-entry li { margin-bottom: 10px; font-size: 15px; line-height: 1.55; }
+.log-tag {
+  display: inline-block; min-width: 62px; margin-right: 8px;
+  font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase;
+  text-align: center; padding: 2px 6px; border-radius: 3px;
+  border: 1px solid currentColor; vertical-align: 1px;
+}
+.log-tag.added { color: var(--running); }
+.log-tag.changed { color: var(--normal); }
+.log-tag.fixed { color: var(--caution); }
+.log-empty {
+  border: 1px dashed var(--border); border-radius: var(--radius);
+  padding: 28px 20px; text-align: center; color: var(--muted); font-size: 15px;
+}
+
 /* ================================================================== footer */
 .site-footer {
   border-top: 1px solid var(--border);

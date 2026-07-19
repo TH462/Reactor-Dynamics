@@ -2764,3 +2764,28 @@ Deploy config added so the Vercel import needs no dashboard-only settings:
   (nothing is pushed yet — `develop` is 13 ahead of `origin/develop`, and both remote
   branches predate W1), choose the production branch (`main` has no site on it yet),
   drop in `site/hero.png`, point ReactorDynamics.com DNS.
+
+### Website W1 addendum — public changelog page (2026-07-19)
+
+**Two changelogs, deliberately.** `changelog.html` is player-facing and its log **starts at
+the public launch**; `CHANGELOG.md` + this file stay the engineering record and keep the
+pre-launch history. Owner's call: cataloguing changes to something nobody could use yet is
+noise, and the public page should read as product news, not commit subjects.
+
+- Hand-maintained plain HTML — no build step, no JS dependency for content (a changelog
+  should survive JS being off, and stay indexable). An HTML-commented `<article>` template
+  sits in the page source with the house rules: newest-first, tags `added`/`changed`/`fixed`,
+  write for players. Ships with a `.log-empty` state to delete when the first entry lands.
+- `site/site.css`: `.log-entry` / `.log-head` / `.log-tag` / `.log-empty`. Tag colours reuse
+  the board palette — added=`--running`, changed=`--normal`, fixed=`--caution`.
+- Linked from the **footer** of all five pages, not the top nav — an empty changelog does
+  not earn nav space; the nav stays Simulator/About/Feedback.
+- **Gotchas hit while wiring the footers:** (1) the header nav and the footer both contain
+  `About` → `Feedback` in sequence, so a naive first-match insert landed the link in the nav
+  on `index`/`privacy` and the footer on `about`/`feedback` — match the About+Feedback+Privacy
+  triple to hit the footer. (2) `git checkout --` restores these files **CRLF** (autocrlf),
+  so an `\n` pattern that worked pre-checkout silently matched nothing after; use `\r?\n`.
+- **Gate:** scratchpad headless-Edge harness, **14/14** — page renders, stylesheet applied,
+  empty state present, zero real `<article>` entries (asserts the template stays commented),
+  version stamp fills, footer link present exactly once and in the footer (not nav) on all
+  five pages, index→changelog navigation, zero console errors.
