@@ -1,0 +1,17 @@
+# Ship only what the public site + simulator need (WEBSITE_SPEC.md §8).
+node_modules
+test
+Diagnostic
+inbox
+mcps
+tools
+Blueprint
+terminals
+Manuals
+# dev harness pages
+test_pwr.html
+test_bwr.html
+test_rbmk.html
+pwr_full_plant_diagram_v2.html
+pwr_primary_loop_diagram_v2.html
+pwr_secondary_loop_diagram_v2.html

@@ -9,6 +9,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Public website, Phase W1 (`Blueprint/WEBSITE_SPEC.md`).** The root `index.html` is now the
+  ReactorDynamics.com landing page (hero + plant picker: PWR live via `?engine=pwr`, BWR/RBMK
+  "coming soon") instead of a bare redirect; `ui/shell.html` is unchanged and still directly
+  openable. New `about.html`, `privacy.html`, and `feedback.html` (form packages a
+  `rd_feedback_*.json` bundle — with optional `rd_diag_*.json` attachment, validated ≤2 MB —
+  until the W2 backend lands), shared `site/site.css` in the quiet-board palette, and
+  `.vercelignore`. Verified with a 12-check headless-Edge harness (links, coming-soon cards,
+  package/validation flows, shell reachability, zero console errors).
 - **PWR pressurizer pressure-setpoint + steam-dump pressure-setpoint controls (Mode-5 playability).**
   The Mode-transition missions instruct raising the pressurizer setpoint to NOP (15.41 MPa) on a
   heatup and lowering the steam-dump setpoint on a cooldown, but the UI had no control for either —

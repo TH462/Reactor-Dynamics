@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About — Reactor Dynamics</title>
+    <meta name="description" content="What Reactor Dynamics is, how faithful the physics are, and how it's built.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
+    <link rel="stylesheet" href="site/site.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
+    <nav class="site-nav">
+      <a href="ui/shell.html?engine=pwr">Simulator</a>
+      <a href="about.html" class="active">About</a>
+      <a href="feedback.html">Feedback</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <h1>About Reactor Dynamics</h1>
+  <p class="lede">An educational nuclear power plant simulator that runs
+  entirely in your browser.</p>
+
+  <p>Reactor Dynamics models three reactor types — a <strong>PWR</strong>
+  (pressurized water reactor), a <strong>BWR</strong> (boiling water reactor),
+  and an <strong>RBMK</strong> (the Chernobyl-era Soviet design) — accurately
+  enough to teach real plant behavior, and to reproduce the conditions behind
+  the three most famous nuclear accidents: <strong>Three Mile Island</strong>,
+  <strong>Chernobyl</strong>, and <strong>Fukushima</strong>.</p>
+
+  <h2>The defining idea: instruments, not truth</h2>
+  <p>In most simulation games you see the true state of the machine. Here you
+  don&rsquo;t. You operate on <strong>instrument readings</strong> — which lag,
+  drift, fail, and occasionally lie — never on the underlying physical state.
+  That gap between what is <em>true</em> and what is <em>indicated</em> is what
+  made the real accidents possible: at Three Mile Island, operators watched a
+  valve indicator that read &ldquo;closed&rdquo; while the valve was stuck open,
+  and drew reasonable conclusions from unreasonable data. Diagnosing a casualty
+  through imperfect instruments is the skill this simulator is built to teach.</p>
+
+  <h2>How faithful is it?</h2>
+  <p>The physics engines model point kinetics with delayed neutron groups,
+  reactivity feedback (fuel and moderator temperature, xenon, boron), decay
+  heat, two-phase steam generator behavior, and a complete balance of plant —
+  turbine, condenser, feedwater, and electrical output. Setpoints, alarms, and
+  procedures follow commercial practice, and the included operator manuals are
+  written in commercial format.</p>
+  <p>That said: <strong>this is an educational simulation, not engineering
+  software</strong>. Models are simplified and tuned for teaching. It must not
+  be used for real-world reactor operations, safety analysis, or as a
+  substitute for licensed operator training.</p>
+
+  <h2>Learning to operate</h2>
+  <p>An instructor layer watches the board and walks you through guided
+  campaigns: approach to criticality, power ascension, load maneuvers, plant
+  cooldown, and casualty response. Missions are gated — the instructor checks
+  the board state, not just your clicks. The campaign culminates in a story
+  module that puts you in the control room for the night shift of
+  March&nbsp;28,&nbsp;1979. The full <strong>operator manuals</strong> are
+  built into the simulator&rsquo;s Training tab.</p>
+
+  <h2>How it&rsquo;s built</h2>
+  <p>Vanilla JavaScript, no framework, no build step, no server — the whole
+  plant runs locally in your browser tab, so it works in restricted
+  institutional environments. The PWR control room is playable today; the BWR
+  and RBMK physics engines are complete, and their control rooms are under
+  construction.</p>
+
+  <h2>Feedback</h2>
+  <p>Found a bug, or a place where the physics or procedures are wrong? The
+  <a href="feedback.html">feedback page</a> explains how to send a report with
+  session telemetry attached.</p>
+</main>
+
+<footer class="site-footer">
+  <div class="inner">
+    <div>Reactor Dynamics is an educational simulation — not engineering
+    software, and no substitute for real operator training.</div>
+    <div class="links">
+      <a href="about.html">About</a>
+      <a href="feedback.html">Feedback</a>
+      <a href="privacy.html">Privacy</a>
+      <span id="ver" class="mono"></span>
+    </div>
+  </div>
+</footer>
+
+<script src="site/version.js"></script>
+<script>document.getElementById('ver').textContent = window.RD_VERSION || '';</script>
+</body>
+</html>

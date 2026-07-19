@@ -207,7 +207,7 @@ No read APIs in v1 — the owner reads via the Supabase dashboard/SQL editor.
 
 | phase | scope | ships when |
 |---|---|---|
-| **W1 — static shell** | Landing (plant cards + coming-soon), about, privacy, feedback page UI (form disabled/mailto fallback), root `index.html` swap, `.vercelignore`, Vercel project | site is live, sim playable via it |
+| **W1 — static shell** ✅ 2026-07-19 | Landing (plant cards + coming-soon), about, privacy, feedback page UI (packages a downloadable `rd_feedback_*.json` bundle until W2), root `index.html` swap, `.vercelignore`. Remaining W1 step: create the Vercel project + connect the repo (owner). Hero slot awaits owner's `site/hero.png` (frame auto-collapses until then). | site is live, sim playable via it |
 | **W2 — backend** | Supabase project + schema, `/api/events` + `/api/feedback`, `ui/telemetry.js`, in-sim Report-a-bug overlay, SQL views | telemetry + feedback flowing |
 | **W3 — nice-to-have** | Protected `/admin` funnel dashboard, feedback status workflow UI, Turnstile if needed, BWR/RBMK card flip-on when ready | as needed |
 

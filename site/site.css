@@ -1,0 +1,201 @@
+/* ============================================================================
+ * site.css — ReactorDynamics.com public site (landing / about / feedback /
+ * privacy). Phase W1 of Blueprint/WEBSITE_SPEC.md.
+ *
+ * Same quiet-board palette as ui/shell.css so stepping from the site into the
+ * control room doesn't feel like a site change. The site pages scroll (unlike
+ * the shell); color is still spent only where it means something — green for
+ * "live", amber for "coming soon", red never (reserved for the board).
+ * ========================================================================== */
+
+:root {
+  --bg: #070A0C;
+  --bg-panel: #0E1216;
+  --bg-elevated: #161B21;
+  --border: #232931;
+  --text: #E4E9EE;
+  --text-2: #98A3AF;
+  --muted: #69757F;
+  --normal: #5BB3C4;
+  --caution: #D9A441;
+  --running: #46A35E;
+  --core-glow: #00C4FF;
+  --radius: 6px;
+  --content: 980px;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, "Segoe UI", Roboto, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+
+a { color: var(--normal); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ================================================================== header */
+.site-header {
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(7, 10, 12, 0.92);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+}
+.site-header .bar {
+  max-width: var(--content); margin: 0 auto; padding: 12px 20px;
+  display: flex; align-items: center; gap: 16px;
+}
+.brand {
+  font-weight: 700; font-size: 18px; color: var(--text); letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+.brand:hover { text-decoration: none; }
+.site-nav { margin-left: auto; display: flex; gap: 22px; }
+.site-nav a { color: var(--text-2); font-size: 14px; }
+.site-nav a:hover { color: var(--text); text-decoration: none; }
+.site-nav a.active { color: var(--text); }
+
+/* ==================================================================== hero */
+.hero { text-align: center; padding: 64px 20px 40px; }
+.hero h1 {
+  font-size: clamp(28px, 5vw, 44px); line-height: 1.15; margin: 0 0 14px;
+  letter-spacing: -0.5px;
+}
+.hero .sub {
+  color: var(--text-2); font-size: clamp(15px, 2.2vw, 19px);
+  max-width: 640px; margin: 0 auto 28px;
+}
+.cta {
+  display: inline-block;
+  background: var(--bg-elevated);
+  border: 1px solid var(--normal);
+  color: var(--text);
+  padding: 13px 30px; border-radius: var(--radius);
+  font-size: 17px; font-weight: 600;
+  box-shadow: 0 0 24px rgba(0, 196, 255, 0.12);
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.cta:hover {
+  text-decoration: none;
+  box-shadow: 0 0 34px rgba(0, 196, 255, 0.28);
+  transform: translateY(-1px);
+}
+/* Owner-provided screenshot drops in as site/hero.png; until then the frame
+   collapses (onerror hides the img) and the page reads fine without it. */
+.hero-shot {
+  max-width: var(--content); margin: 40px auto 0; padding: 0 20px;
+}
+.hero-shot img {
+  width: 100%; display: block; border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+}
+
+/* ================================================================ sections */
+.section { max-width: var(--content); margin: 0 auto; padding: 48px 20px; }
+.section h2 {
+  font-size: 13px; font-weight: 600; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--muted); margin: 0 0 22px;
+}
+
+/* ============================================================= plant cards */
+.plants { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 760px) { .plants { grid-template-columns: 1fr; } }
+.plant-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  color: var(--text);
+}
+.plant-card h3 { margin: 0; font-size: 22px; }
+.plant-card .kind { color: var(--normal); font-size: 13px; letter-spacing: 0.5px; }
+.plant-card p { margin: 0; color: var(--text-2); font-size: 14px; flex: 1; }
+.plant-card .go {
+  margin-top: 14px; align-self: flex-start;
+  border: 1px solid var(--running); border-radius: var(--radius);
+  color: var(--text); padding: 8px 18px; font-size: 14px; font-weight: 600;
+}
+.plant-card.live { transition: border-color 0.15s, transform 0.15s; }
+.plant-card.live:hover {
+  text-decoration: none; border-color: var(--running); transform: translateY(-2px);
+}
+.plant-card.live:hover .go { background: rgba(70, 163, 94, 0.12); }
+.plant-card.soon { opacity: 0.55; }
+.badge-soon {
+  margin-top: 14px; align-self: flex-start;
+  border: 1px solid var(--caution); border-radius: var(--radius);
+  color: var(--caution); padding: 8px 18px;
+  font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+}
+
+/* ================================================================ features */
+.features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+@media (max-width: 760px) { .features { grid-template-columns: 1fr; } }
+.feature {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px 20px;
+}
+.feature h3 { margin: 0 0 6px; font-size: 16px; }
+.feature p { margin: 0; color: var(--text-2); font-size: 14px; }
+
+/* ============================================================ content pages */
+.page { max-width: 760px; margin: 0 auto; padding: 48px 20px 64px; }
+.page h1 { font-size: 32px; margin: 0 0 8px; letter-spacing: -0.5px; }
+.page .lede { color: var(--text-2); font-size: 18px; margin: 0 0 32px; }
+.page h2 {
+  font-size: 20px; margin: 36px 0 10px;
+  text-transform: none; letter-spacing: 0; color: var(--text);
+}
+.page p, .page li { color: var(--text-2); }
+.page strong { color: var(--text); }
+
+/* ================================================================ feedback */
+.field { margin-bottom: 18px; }
+.field label { display: block; font-size: 14px; color: var(--text); margin-bottom: 6px; }
+.field .hint { color: var(--muted); font-size: 13px; margin-top: 5px; }
+.field input[type="text"], .field input[type="email"],
+.field select, .field textarea {
+  width: 100%;
+  background: var(--bg-elevated); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; font-size: 15px; font-family: inherit;
+}
+.field textarea { min-height: 160px; resize: vertical; }
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none; border-color: var(--normal);
+}
+/* honeypot — visually gone, still in the DOM for bots (W2 backend checks it) */
+.field.hp { position: absolute; left: -9999px; }
+.btn {
+  display: inline-block; cursor: pointer;
+  background: var(--bg-elevated); color: var(--text);
+  border: 1px solid var(--normal); border-radius: var(--radius);
+  padding: 10px 24px; font-size: 15px; font-weight: 600; font-family: inherit;
+}
+.btn:hover { box-shadow: 0 0 20px rgba(0, 196, 255, 0.18); }
+.notice {
+  background: var(--bg-panel); border: 1px solid var(--caution);
+  border-radius: var(--radius); padding: 12px 16px;
+  color: var(--text-2); font-size: 14px; margin-bottom: 28px;
+}
+.notice strong { color: var(--caution); }
+.form-msg { margin-top: 14px; font-size: 14px; color: var(--running); }
+
+/* ================================================================== footer */
+.site-footer {
+  border-top: 1px solid var(--border);
+  margin-top: 32px; padding: 28px 20px 40px;
+}
+.site-footer .inner {
+  max-width: var(--content); margin: 0 auto;
+  color: var(--muted); font-size: 13px;
+}
+.site-footer .links { margin-top: 8px; display: flex; gap: 18px; flex-wrap: wrap; }
+.site-footer a { color: var(--text-2); }

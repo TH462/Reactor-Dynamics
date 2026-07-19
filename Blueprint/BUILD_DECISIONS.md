@@ -2687,3 +2687,30 @@ the README *Project status* block. Key outcomes:
   (UI-unreachable); save/restore drops mid-beat instructor counters.
 - **Deferred (owner ruling, A1).** P2-A `ops_load_follow` partial-load Tavg 291.5 < 293 band —
   ship target is ops **19/20**, not 19/19; the test stays honest, not weakened.
+
+### Website Phase W1 — static shell (2026-07-19)
+
+Spec: `Blueprint/WEBSITE_SPEC.md` (Vercel + Supabase; anonymous-first; owner-facing
+analytics — decisions locked with owner, incl. ReactorDynamics.com, no GitHub link while
+the repo is private, keep-raw event retention with a 100 MB tripwire). Built in this pass:
+
+- **Root `index.html` replaced** (was a meta-refresh redirect): landing with hero
+  (owner-provided `site/hero.png`; `onerror` collapses the frame while absent), plant
+  picker (PWR live → `ui/shell.html?engine=pwr` — the existing engine param, no sim
+  changes; BWR/RBMK dimmed COMING SOON, deliberately not links), feature strip, footer
+  disclaimer. `about.html` / `privacy.html` / `feedback.html`; shared `site/site.css`
+  reuses the shell.css quiet-board palette so site → control room reads continuous.
+- **Feedback W1 fallback is a download, not mailto** — a `rd_feedback_*.json` bundle
+  (schema mirrors the future `POST /api/feedback` payload: category/body/email/diag)
+  with client-side validation of attached `rd_diag_*.json` (`kind` check, 2 MB cap) and
+  the W2 honeypot field already in the DOM. Mailto was rejected to avoid publishing a
+  personal address; W2 replaces only the submit handler.
+- **`site/version.js`** is the deploy stamp seam (repo placeholder; Vercel build step
+  overwrites from `VERCEL_GIT_COMMIT_SHA`). **`.vercelignore`** ships only the sim +
+  site (verified: ui/ makes zero runtime fetches — Manuals content is embedded in
+  `ui/manual_data.js`, so excluding `Manuals/` etc. is safe).
+- **Gate:** scratchpad headless-Edge Playwright harness, **12/12** — landing links,
+  coming-soon non-links, package/validation/required-field flows, shell reachability
+  via the landing path, zero console errors (hero.png miss excepted while pending).
+- **Remaining for W1 done-done (owner):** create the Vercel project, connect repo,
+  drop in `site/hero.png`, point ReactorDynamics.com DNS.

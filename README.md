@@ -31,7 +31,7 @@ below and go straight to the authoritative source for it.
 | **Know what changed recently** | `CHANGELOG.md` (skimmable) → `Blueprint/BUILD_DECISIONS.md` (dense engineering rationale, tuning, gate tallies). |
 | **Operate the plant / look up a control, setpoint, or procedure** | `Manuals/` — start at `Manuals/README.md` (commercial-format PWR operator manuals). |
 | **See current known issues, tuning gaps, playtest findings** | `Diagnostic/` (`SPEC_AUDIT_*.md`, `OPS_TUNING_REPORT.md`, `PLAYTEST_REPORT.md`) and `Manuals/ISSUES_AND_FINDINGS.md`. |
-| **Run the simulator** | Open `index.html` (forwards to `ui/shell.html`), or serve the folder — see below. |
+| **Run the simulator** | Open `index.html` (the ReactorDynamics.com landing page — Operate the PWR from there), or `ui/shell.html` directly — see below. |
 | **Run the tests** | `node test/run_<suite>.js` — see below. |
 
 > There is no `CLAUDE.md`. **This README is the orientation document for coding agents**
@@ -87,7 +87,8 @@ C2 accel-latency check; see `Diagnostic/OPS_TUNING_REPORT.md`).
 
 ## Running it
 
-No build step. Either open `index.html` directly (it forwards to `ui/shell.html`), or
+No build step. Either open `index.html` (the public landing page — the PWR card opens
+the control room at `ui/shell.html?engine=pwr`), open `ui/shell.html` directly, or
 serve the folder with any static server:
 
 ```
@@ -181,7 +182,7 @@ own pure hydraulics/physics.
 
 ```
 Reactor_Dynamics/
-├── index.html                     → forwards to ui/shell.html
+├── index.html                     → ReactorDynamics.com landing page (site/, about/feedback/privacy.html)
 ├── README.md                      ← you are here (the map)
 ├── CHANGELOG.md                   ← user-visible change log
 ├── engines/
