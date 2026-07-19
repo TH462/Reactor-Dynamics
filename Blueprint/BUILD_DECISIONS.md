@@ -86,6 +86,48 @@ pwr_steam_generator, pwr_instruments, pwr_engine}.js`
   `hot_zero_power` is left subcritical by a fixed margin (rods inserted + boron).
 - **PRNG:** mulberry32 with a single `uint32` state; Gaussian noise via Box–Muller. The state is part of
   save/restore (CONTEXT §4) — verified bit-exact in the save/restore test.
+- **PWR ops-tuning pass — pressure/secondary realism + CVCS level control** (2026-07-19, from the
+  `run_ops` PWR probes). Took the PWR ops suite 15/19 → 18/19 (total ops 53 → 56/66) with regression-free
+  physics fixes; each also closes a real modeling gap.
+  - **Spray floor (P6).** Pressurizer spray tapered to zero as pressure nears **Psat(Thot)** (core-exit
+    boiling onset) — spray is cold-leg liquid and cannot condense the bubble below the hottest coolant's
+    saturation. `spray_floor_band` 3.0 MPa (a 1.0 band still let the transient undershoot into the
+    low-pressure trip; 3.0 tapers early enough to stay hot). `abuse_heater_spray_fight` floors ~8 MPa
+    (was 0.1). On a real cooldown Thot falls too, so the floor tracks down — cooldowns unaffected.
+  - **Steam-dump capacity cap (P2).** `steam_dump_max` 1.0 → 0.5 and made a **true cap on both the manual
+    override and the auto demand** (was bypassed by the override). A full load rejection now lifts the SG
+    safeties; slamming the dump open is a rate-limited cooldown, not a Tavg crash.
+  - **SGTR leak rescale (P1).** Per-failure `leak_scale: 0.03` on the `sgtr` def (the shared
+    `primary_leak` code multiplies it; `large_loca` is unscaled) — a tube rupture drains over ~15 min
+    instead of ~30 s. SGTR inventory holds >70 %.
+  - **Pressure holds saturation on a violent depressurization (SGTR subcooling).** Two coupled fixes:
+    (a) the sat-pull (P → Psat(Tavg)) engages whenever the coolant is **superheated** (Psat(Tavg) > P),
+    not only when `primary_void_fraction` is flagged — so a depressurization at full/overfilled inventory
+    (HPI overfill) still pins pressure at saturation **without touching the void bookkeeping** (TMI
+    void-surge untouched); (b) the subcooled-liquid terms (`K_surge` thermal surge, break depressurize)
+    are **suppressed in the saturated regime** — an HPI cold quench dropping Tavg fast no longer crashes
+    pressure via a thermal-outsurge term meaningless in two-phase. Subcooling −152 °C (core-loss) → +27.
+    A hard `P ≥ Psat(Tavg)` clamp and an ECCS-quench-rate cap were both tried and **reverted** (the clamp
+    broke the crafted low-pressure HPI/LPI + RHR states; the rate cap conflicts with the eccs
+    cold-injection thermal-shock test). `ops_sgtr_managed`'s EOP was also made faithful to the #1 EOP
+    rule — throttle the cooldown/dump to hold subcooling margin, not crash-cool on a full dump.
+  - **CVCS charging controls PZR level; AUTO holds level (P3 / feature).** See the "Added" CHANGELOG
+    entry — a bounded `(charging − letdown)·K_cvcs_level` insurge term (K=6.0) + AUTO servo
+    (`cvcs_charge_per_level` 0.006, `max(level-servo, inventory-makeup)`). Fixes `ops_normal_shutdown`
+    (rampdown no longer stalls at 45 % when the pressurizer shrinks below the 30 % hold) and delivers the
+    designed CVCS AUTO-holds-level behavior for the coming UI. TMI deception verified intact.
+  - **New engine guards:** `cvcs_level_control`, `pressure_saturation_bounds` (run_pwr 26/26 → **28/28**)
+    lock in the level-authority/AUTO-hold and the spray-floor/no-superheat behaviors as HARD gates (the
+    ops probes are soft tuning targets).
+  - **DEFERRED — load-follow Tavg (P4/P5), the 1 remaining PWR ops failure.** Partial-load Tavg settles
+    **291.5 °C** at 50 % (need ≥293): Tsec is nearly flat (271→275) while ΔT halves (33→16) with load, so
+    Tavg = Tsec + ΔT sags below band. Closing it needs the 50 % SG pressure ~+0.12 MPa higher. A **steam-
+    pressure program** (governor trims the valve to defend a load-rising SG pressure) was implemented and
+    **reverted**: defending pressure by trimming the load valve starves the turbine (mwe → 0) and trips
+    the plant on SG level at every stable gain — it fundamentally fights load delivery. The only other
+    lever (recalibrating `h_sg`/`delta_T_rated`/`steam_p_rated`) is pinned to the full-power Tavg=304
+    reference and has the widest blast radius in the engine. **Verdict:** not worth a 1.5 °C miss on a
+    defensible sliding-Tavg-program point; left as a documented tuning gap, NOT weakened in the test.
 - **High-high SG level protection (P-14) + low-low reactor trip moved 12 %→17 %** (2026-07-18, user
   direction): added the SG level ladder's high-side protection. **P-14 at 90 %** fires three coordinated
   control-layer actions: `trip_turbine`, a new `isolate_feedwater` command (latching `feedwater_isolated`

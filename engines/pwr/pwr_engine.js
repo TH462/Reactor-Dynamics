@@ -2047,6 +2047,59 @@
           tavg0.toFixed(1) + ' → ' + d.ts().tavg_c.toFixed(1), d.ts().tavg_c < tavg0 - 1, 'tavg falls');
       });
     },
+
+    // CVCS charging/letdown authority over indicated PZR level + AUTO level-hold.
+    // Guards the level-control rework: charging raises level, and AUTO make-up holds
+    // level against a letdown drain. The TMI void-surge deception (level rises as
+    // inventory falls, charging isolated) is guarded separately by flagship_tmi — the
+    // CVCS term is bounded far below K_void_surge, so it does not wash it out.
+    cvcs_level_control: function () {
+      return test('CVCS — charging controls pzr level; AUTO holds level', function (ck) {
+        // (1) Charging has authority over indicated level (the new insurge term).
+        var h = new Harness('hot_full_power');
+        h.run(20);
+        var l0 = h.ts().pzr_level_pct;
+        h.cmd({ action: 'set_charging_flow', normalized: 0.06 });   // MANUAL max charging, letdown off
+        h.run(60);
+        ck('charging raises pzr level', l0.toFixed(1) + ' → ' + h.ts().pzr_level_pct.toFixed(1),
+          h.ts().pzr_level_pct > l0 + 3, '> ' + (l0 + 3).toFixed(1));
+        // (2) AUTO make-up holds level against a letdown drain (B ≈ 4 %, < charging_max).
+        var h2 = new Harness('hot_full_power');
+        h2.run(20);
+        h2.cmd({ action: 'set_cvcs_auto', active: true });
+        h2.cmd({ action: 'set_letdown_orifices', a: false, b: true });
+        h2.run(400);
+        ck('AUTO holds level near nominal despite letdown', h2.ts().pzr_level_pct.toFixed(1),
+          near(h2.ts().pzr_level_pct, 55, 6), '55 ±6');
+        ck('AUTO charging modulated up to match the drain', h2.eng.s.charging_flow.toFixed(3),
+          h2.eng.s.charging_flow > 0.03, '> 0.03');
+        // The TMI void-surge deception (charging isolated → void surge dominates the level)
+        // is guarded by flagship_tmi; the CVCS insurge term is bounded far below K_void_surge.
+      });
+    },
+
+    // Pressure model saturation robustness — spray floor + no impossible superheat.
+    // Guards the pressurizer fixes: spray cannot pull pressure below the saturation
+    // pressure of the hottest coolant (Psat(Thot), core-exit boiling onset), and the
+    // coolant never reports impossible negative subcooling (a liquid cannot superheat).
+    pressure_saturation_bounds: function () {
+      return test('Pressure — spray floor + holds saturation (no superheat)', function (ck) {
+        var h = new Harness('hot_full_power');
+        h.cmd({ action: 'set_heater', power_pct: 100 });
+        h.cmd({ action: 'set_spray', pct: 100 });
+        var pmin = 99, submin = 99;
+        for (var i = 0; i < 1200; i++) {
+          h.eng.step(0.5);
+          if (h.eng.s.pressure_mpa < pmin) pmin = h.eng.s.pressure_mpa;
+          var sub = h.ts().subcooling_c;
+          if (sub < submin) submin = sub;
+        }
+        ck('full spray does not crash pressure to the containment floor', pmin.toFixed(2),
+          pmin > 6.0, '> 6.0 MPa');
+        ck('coolant never impossibly superheats (subcooling bounded)', submin.toFixed(1),
+          submin > -5, '> -5 °C');
+      });
+    },
   };
 
   PWRScenarioTests.runAll = function () {
@@ -2056,7 +2109,8 @@
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',
       'merged_injection_curve', 'rhr_valve_and_mode', 'msiv_closure_at_power', 'rcp_cavitation',
-      'eccs_boration', 'eccs_cold_injection', 'loop_pressure_nodes', 'letdown_orifice_lineup', 'save_migration', 'mode5_controls'];
+      'eccs_boration', 'eccs_cold_injection', 'loop_pressure_nodes', 'letdown_orifice_lineup', 'save_migration', 'mode5_controls',
+      'cvcs_level_control', 'pressure_saturation_bounds'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(PWRScenarioTests[order[i]]());
     return results;

@@ -5,6 +5,22 @@
 **Run:** `node test/run_ops.js [pwr|rbmk|bwr] [test_name]` — results JSON at `Diagnostic/ops_results.json`
 **Scoreboard at time of writing:** 51/66 scenarios pass; every remaining FAIL is a deliberate tuning target listed below (no test-authoring failures, no NaN/instability anywhere).
 
+> **Update 2026-07-19 (PWR ops-tuning pass).** PWR ops now **18/19** (total **56/66**). Resolved:
+> **P6** (spray floor — spray tapers at Psat(Thot), no crash to the containment floor), **P2**
+> (steam-dump capacity capped at ~50 %, a true cap on override + auto), **P1** (SGTR leak rescaled via a
+> per-failure `leak_scale` → inventory holds >70 %), **SGTR subcooling** (pressure model now holds
+> saturation on a violent depressurization: sat-pull engages on superheat and the subcooled-liquid
+> `K_surge`/break terms are suppressed in two-phase; `ops_sgtr_managed`'s EOP was also made faithful —
+> throttle the cooldown to hold subcooling margin), and **P3** (`ops_normal_shutdown` — CVCS AUTO now
+> holds programmed PZR level, so the rampdown no longer stalls when the pressurizer shrinks). New HARD
+> engine guards `cvcs_level_control` + `pressure_saturation_bounds` (run_pwr 26/26 → **28/28**).
+> **P4/P5 (load-follow Tavg) DEFERRED** — the one remaining PWR failure. Partial-load Tavg settles
+> 291.5 °C (need ≥293) because Tsec is flat while ΔT halves with load. A steam-pressure program to raise
+> partial-load Tsec destabilizes load delivery (tried, reverted); the alternative recalibration is pinned
+> to full-power Tavg=304 (widest blast radius). Left as a documented tuning gap — a defensible
+> sliding-Tavg point — NOT weakened in the test. Details: `Blueprint/BUILD_DECISIONS.md` (2026-07-19) +
+> `CHANGELOG.md`. The findings below are the original 2026-07-06 snapshot.
+
 ---
 
 ## 1. What these suites are
