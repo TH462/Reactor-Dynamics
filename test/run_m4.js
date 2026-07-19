@@ -297,6 +297,36 @@ T.push(test('Interlock — rod withdrawal blocked on high startup rate (HR1: rea
   s.cmd({ action: 'rod_stop_all' });
 }));
 
+// -------- P-14 high-high SG level protection (turbine trip + feed isolation + P-9 reactor trip) --------
+
+T.push(test('P-14 — high-high SG level: turbine trip + feedwater isolation + reactor trip (P-9)', function (ck) {
+  var s = new Stack('hot_full_power');
+  s.run(2);
+  ck('baseline clean (no trip, feed available, turbine running)',
+    [s.layer.rps.scrammed, !!s.engine.s.feedwater_isolated, !!s.engine.s.turbine_tripped].join(','),
+    s.layer.rps.scrammed === false && !s.engine.s.feedwater_isolated && !s.engine.s.turbine_tripped, 'clean');
+  // Drive the SG LEVEL INSTRUMENT above the 90% high-high setpoint (the control layer
+  // actuates on instruments, HR1). At full power the P-9 permissive (above_p9) is met.
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'sg_level', mode: 'stuck', value: 95 });
+  s.run(2);
+  ck('turbine tripped (P-14)', String(s.engine.s.turbine_tripped), s.engine.s.turbine_tripped === true, 'tripped');
+  ck('main feedwater isolated (P-14)', String(s.engine.s.feedwater_isolated), s.engine.s.feedwater_isolated === true, 'isolated');
+  ck('reactor tripped via the P-9 cascade', s.layer.rps.last_trip_reason || 'none', s.layer.rps.scrammed === true, 'scrammed');
+  ck('SG LVL HI HI (P-14) alarm annunciates', s.alarm('sg_level_hihi') && s.alarm('sg_level_hihi').state,
+    s.alarm('sg_level_hihi') && s.alarm('sg_level_hihi').state !== 'clear', 'active');
+}));
+
+T.push(test('P-14 / P-9 — below 50% power, high-high SG trips turbine + isolates feed but does NOT scram', function (ck) {
+  var s = new Stack('5_percent');
+  s.run(2);
+  ck('plant is below the P-9 permissive (< 50% power)', s.ts().power_pct.toFixed(1) + '%', s.ts().power_pct < 50, '< 50%');
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'sg_level', mode: 'stuck', value: 95 });
+  s.run(2);
+  ck('turbine still trips (P-14 is not power-gated)', String(s.engine.s.turbine_tripped), s.engine.s.turbine_tripped === true, 'tripped');
+  ck('feedwater still isolates (P-14 is not power-gated)', String(s.engine.s.feedwater_isolated), s.engine.s.feedwater_isolated === true, 'isolated');
+  ck('NO reactor trip below P-9 (the cascade is power-gated)', String(s.layer.rps.scrammed), s.layer.rps.scrammed === false, 'not scrammed');
+}));
+
 // -------- report --------
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', RST = '\x1b[0m', BOLD = '\x1b[1m';
 var pass = 0, fail = 0;
