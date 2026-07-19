@@ -218,7 +218,16 @@ No read APIs in v1 — the owner reads via the Supabase dashboard/SQL editor.
 3. **No GitHub link** — repo is private for now; revisit if it goes public. Keep all
    site copy free of repo URLs.
 
-## 11. Open questions
+## 11. Event retention
 
-1. Retention: keep raw `events` forever or roll up to daily aggregates after ~90
-   days? (Default until decided: keep raw — volumes will be tiny at launch.)
+**Policy: keep raw events indefinitely**, with a tripwire instead of a schedule:
+when the `events` table exceeds ~100 MB or the funnel views get slow, move to
+roll-up-then-archive — `pg_cron` job aggregates rows older than ~90 days into
+daily-summary tables (users/day/country, beat pass-fail counts, session-length
+buckets), exports the raw rows to a Storage bucket, then prunes them.
+
+Rationale: at launch scale (~300–500 bytes/event, ~20–40 events/session) even
+1,000 sessions/month is ~15 MB/year against Supabase's 500 MB free tier, and raw
+retention preserves the ability to ask new diagnostic questions of old data.
+Migration later is cheap because owner queries live in SQL views — storage can
+change underneath them without touching anything else.
