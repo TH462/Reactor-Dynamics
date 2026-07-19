@@ -402,16 +402,18 @@
       ], 'Rod control mode — AUTO captures T-ref from the current Tavg and drives the bank to hold it (variable speed on the mismatch); any manual rod motion drops it back to MAN.') +
       '<span class="v mono" data-f="prodTref"></span></div>' +
       '<div class="ctl">' + seg([
-        { l: 'Raise', hold: 'rod-withdraw' }, { l: 'Stop', act: 'rod-stop' }, { l: 'Lower', hold: 'rod-insert' },
-      ], 'Rod motion — HOLD Raise / Lower to drive the control bank at the selected speed; release (or Stop) to halt. Manual motion takes rod control to MAN.') +
-      seg([{ l: '+1', act: 'rod-nudge-out' }, { l: '−1', act: 'rod-nudge-in' }], 'Nudge — move the control bank one step.') + '</div>' +
+        { l: 'Raise', hold: 'rod-withdraw' }, { l: 'Lower', hold: 'rod-insert' },
+      ], 'Rod motion — a quick click of Raise / Lower steps the control bank one step; hold to drive continuously at the selected speed, release to halt. Manual motion takes rod control to MAN.') + '</div>' +
       '<div class="ctl"><span class="k">Speed</span>' + seg([
         { l: 'Slow', act: 'rodspeed-slow' }, { l: 'Norm', act: 'rodspeed-normal', on: 1 }, { l: 'Fast', act: 'rodspeed-fast' },
       ], 'Rod speed — slow / normal / fast drive rate (manual drive; AUTO picks its own speed from the mismatch).') + '</div>' +
       row('Status', 'rodStat', { hint: 'Rod/trip status — REACTOR TRIP from the protection system, or rod insertion limit when the bank is too deep for this power.' }) +
       '<div class="sub lrn-only" data-f="rodLimNote"></div>' +
+      '<div class="ctl"><span class="k">Shutdown Bank</span>' + seg([
+        { l: 'Withdraw', act: 'sdbank-withdraw' }, { l: 'Insert', act: 'sdbank-insert' },
+      ], 'Shutdown bank — one click drives it the whole way out or in at fast speed. Normally parked fully withdrawn; a SCRAM drives it fully in and overrides this.') + '</div>' +
       '<button class="pw-scram" data-syn="scram" data-scanner-hint="SCRAM — two-step: first click arms (CONFIRM), second click trips the reactor.">SCRAM</button>',
-      { anchor: 'pwRpvAnchor', hint: 'Rod Control — control bank drive, read-only shutdown bank, insertion limit, and SCRAM.' });
+      { anchor: 'pwRpvAnchor', hint: 'Rod Control — control bank drive, shutdown bank drive, insertion limit, and SCRAM.' });
 
     // -- Primary Flow & Inventory -------------------------------------------
     h += card('priminv', 'primary-inventory', 'Primary Flow &amp; Inventory',

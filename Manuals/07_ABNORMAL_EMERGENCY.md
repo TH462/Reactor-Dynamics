@@ -477,11 +477,10 @@ Level returned to band; primary temperature controlled; no trip if recoverable, 
 
 | Step | Action |
 |------|--------|
-| 1 | Attempt **Rod Stop / Stop All**  
-| 2 | Attempt insert  
-| 3 | **SCRAM** immediately if motion continues  
-| 4 | After trip, verify rods in (unless E18)  
-| 5 | Stabilize heat sink  
+| 1 | Attempt **Lower** (hold) to insert against the runaway  
+| 2 | **SCRAM** immediately if motion continues  
+| 3 | After trip, verify rods in (unless E18)  
+| 4 | Stabilize heat sink  
 
 ### Acceptance
 Power terminated; scram successful or ATWS path if combined.

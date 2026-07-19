@@ -1686,10 +1686,14 @@
     // rods — uniform across plants (+withdraw / −insert)
     'rod-raise': function () { cmd({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: ui.rodSpeed }); },
     'rod-lower': function () { cmd({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: ui.rodSpeed }); },
-    'rod-stop': function () { cmd({ action: 'rod_stop', group_id: 'control_rods' }); },
     'rod-nudge-out': function () { cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 1, speed: ui.rodSpeed }); },
     'rod-nudge-in': function () { cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -1, speed: ui.rodSpeed }); },
     'rodspeed-slow': function () { ui.rodSpeed = 'slow'; }, 'rodspeed-normal': function () { ui.rodSpeed = 'normal'; }, 'rodspeed-fast': function () { ui.rodSpeed = 'fast'; },
+    // Shutdown (scram) bank — one click drives it the whole way out or in at fast
+    // speed (not held): steps is far past max_steps so rod_nudge's target clips
+    // to the end of travel and drives there, same rate-limited motion as a hold.
+    'sdbank-withdraw': function () { cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: 1000, speed: 'fast' }); },
+    'sdbank-insert': function () { cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: -1000, speed: 'fast' }); },
     // PWR
     'rcp-run': function () { cmd({ action: 'clear_failure', failure_id: 'rcp_trip' }); },
     'rcp-stop': function () { cmd({ action: 'inject_failure', failure_id: 'rcp_trip', severity: 1 }); },
@@ -1792,9 +1796,15 @@
   // Press-and-hold controls (rod drive): pointerdown starts motion at the selected
   // speed, release (anywhere) stops it. The rods then move as the sim steps — at
   // the same rate the smooth +1/−1 nudge uses.
+  //
+  // Control-bank Raise/Lower are also tap-or-hold: pointerdown arms a single-step
+  // nudge (armRodTap) instead of driving immediately; if released within
+  // TAP_HOLD_MS it fires as a 1-step nudge, otherwise the timer promotes it to a
+  // continuous hold-drive, same as before.
+  var TAP_HOLD_MS = 220;
   var HOLD = {
-    'rod-withdraw': function () { startHoldRod('control_rods', 1); },
-    'rod-insert': function () { startHoldRod('control_rods', -1); },
+    'rod-withdraw': function () { armRodTap('control_rods', 1); },
+    'rod-insert': function () { armRodTap('control_rods', -1); },
     'srod-withdraw': function () { startHoldRod('shutdown_rods', 1); },
     'srod-insert': function () { startHoldRod('shutdown_rods', -1); },
     // RBMK AR rods: manual drive first takes the channel to MAN (touching the
@@ -1806,9 +1816,24 @@
     var c = autoChan(autoSnap(), 'rods_power');
     if (c && c.engaged) { cmd({ action: 'set_auto_channel', channel_id: 'rods_power', engaged: false }); renderAutomate(service.assembleSnapshot()); }
   }
-  var holdingGroup = null;
+  var holdingGroup = null, pendingRodTap = null;
   function startHoldRod(group, direction) { holdingGroup = group; cmd({ action: 'rod_start', group_id: group, direction: direction, speed: ui.rodSpeed }); }
-  function endHold() { if (!holdingGroup) return; cmd({ action: 'rod_stop', group_id: holdingGroup }); holdingGroup = null; document.querySelectorAll('.holding').forEach(function (x) { x.classList.remove('holding'); }); }
+  function armRodTap(group, direction) {
+    pendingRodTap = { group: group, direction: direction, timer: setTimeout(function () {
+      pendingRodTap = null; startHoldRod(group, direction);
+    }, TAP_HOLD_MS) };
+  }
+  function endHold() {
+    document.querySelectorAll('.holding').forEach(function (x) { x.classList.remove('holding'); });
+    if (pendingRodTap) {
+      clearTimeout(pendingRodTap.timer);
+      cmd({ action: 'rod_nudge', group_id: pendingRodTap.group, steps: pendingRodTap.direction, speed: ui.rodSpeed });
+      pendingRodTap = null;
+      return;
+    }
+    if (!holdingGroup) return;
+    cmd({ action: 'rod_stop', group_id: holdingGroup }); holdingGroup = null;
+  }
 
   // Two-press confirm for destructive plant actions (the SCRAM idiom): first
   // press arms the button — it reads CONFIRM? for 3 s — second press fires.

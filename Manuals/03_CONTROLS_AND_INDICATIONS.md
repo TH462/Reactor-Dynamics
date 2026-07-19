@@ -23,7 +23,7 @@ Describe every operator control and major indication on the PWR board, with purp
 | **AUTO vs MAN** | Manual action on an automated control often forces MAN until re-engaged. |
 | **ESF arms** | Manual start/stop/throttle of HPI or AFW takes that system to MANUAL; press AUTO to re-arm. |
 | **Two-press** | SCRAM, MSIV close, PORV block isolate, etc. require arm then confirm. |
-| **Hold controls** | Rod Raise/Lower: hold to move, release to stop. |
+| **Tap vs. hold (rod drive)** | Control-bank Raise/Lower: a quick click steps one step; hold to drive continuously, release to stop. Shutdown-bank Withdraw/Insert: one click drives the whole way (fast speed) — no hold. |
 
 ---
 
@@ -32,23 +32,23 @@ Describe every operator control and major indication on the PWR board, with purp
 **Location:** Synoptic left margin — Rod Control  
 **Highlight id:** `reactor-rods`
 
-### 3.1 Control Bank — Raise / Lower / Stop
+### 3.1 Control Bank — Raise / Lower
 
 | Item | Detail |
 |------|--------|
 | **Purpose** | Move the operable control rod group to change reactivity and power |
 | **Direction** | Raise = withdraw = add reactivity; Lower = insert = remove reactivity |
-| **Motion** | Hold Raise or Lower; release or press Stop to halt |
-| **Nudge** | ±1 step fine control when available |
+| **Quick click** | Steps the bank **one step** |
+| **Hold** | Drives continuously at the selected **Rod Speed**; release to halt |
 | **Indication** | Vertical bar + step count (0 = fully inserted, max ≈ 228 steps fully withdrawn) |
 | **Operating position** | ≈ 92 % withdrawn at hot full power |
 
 **Procedure — move rods**
 
 1. Select **Rod Speed**: Slow | Normal | Fast.  
-2. Hold **Raise** or **Lower** (or use Nudge).  
+2. Click **Raise** or **Lower** for a single step, or hold either to drive continuously.  
 3. Watch **Startup Rate (SUR)** and power.  
-4. Release to stop.  
+4. Release to stop (a hold stops as soon as you let go; a click is already a discrete step).  
 
 **CAUTION:** Target SUR ≤ **1 DPM** and reactor period ≥ **30 s** on approach to criticality. This trainer’s coarse single bank may briefly read ~2 DPM at the criticality crossing.
 
@@ -62,11 +62,17 @@ Describe every operator control and major indication on the PWR board, with purp
 | **Normal** | Routine power maneuvering |
 | **Fast** | Large intentional moves (watch SUR) |
 
-### 3.3 Shutdown Bank (indication only)
+### 3.3 Shutdown Bank — Withdraw / Insert
 
-- Normally **fully withdrawn** (green) at power.  
-- Drives **in** only on SCRAM.  
-- Red if not fully withdrawn during power operation (abnormal).  
+| Item | Detail |
+|------|--------|
+| **Purpose** | Emergency-protection rod group — carries shutdown margin, not used for routine reactivity trim |
+| **Normal position** | Fully **withdrawn** (green) at power |
+| **Withdraw / Insert** | One click drives it the **whole way** out or in, at **fast** speed (not held — it is a full-stroke command, not a step or a drive-to-release control) |
+| **Indication** | Vertical bar + step count, same as the control bank |
+| **SCRAM** | Drives fully in automatically and **overrides** any manual Withdraw/Insert command |
+
+**CAUTION:** Red if not fully withdrawn during power operation (abnormal) — parking it in at power gives up shutdown margin. Insert it deliberately only as part of a planned shutdown/cooldown, not as a substitute for control-bank trim.
 
 ### 3.4 Insertion Limit
 
