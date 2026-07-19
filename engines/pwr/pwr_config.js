@@ -71,6 +71,7 @@
       // mode makes up identified leakage by modulating charging up to charging_max.
       boron_adjust_rate: 2.0,      // ppm/s while borating/diluting [tune]
       cvcs_makeup_gain: 3.0,       // auto-charging response to an inventory deficit [tune]
+      cvcs_charge_per_level: 0.006,// AUTO make-up: charging above letdown per % PZR-level deficit [tune]
       charging_max: 0.06,          // max charging flow, normalized (normal makeup band) [tune]
       // Letdown: TWO fixed orifices, each independently in/out (four states: off /
       // A / B / A+B). Letdown is a pressure-driven bleed from the cold leg through
@@ -171,6 +172,11 @@
       // Pressurizer level (the TMI deception).
       K_thermal_surge: 2.0, K_void_surge: 40.0,    // thermal out-surge on cooldown; was 12 — too aggressive on rod maneuvers [tune]
       level_loss_per_flow: 8.0, K_level: 1.0,    // [tune]
+      // CVCS net make-up (charging − letdown) authority over indicated PZR level: a
+      // slow insurge/outsurge that lets charging hold level over an evolution. Kept
+      // small so it never competes with the fast void_surge (the TMI deception, where
+      // charging is isolated anyway) — bounded by charging_max/letdown ≈ 0.07. [tune]
+      K_cvcs_level: 6.0,
       pzr_level_nominal: 55.0,     // % at hot_full_power
       // PORV tailpipe / quench-tank temperature (the discharge line downstream of
       // the PORV and code safeties). Reads WARM at baseline — the seat has always

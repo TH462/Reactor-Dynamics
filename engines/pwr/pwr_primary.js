@@ -132,13 +132,23 @@
     // MANUAL tracks the operator setpoint. Either way s.charging_flow is the true
     // flow (what the charging_flow instrument reads); charging_setpoint is the command.
     if (s.cvcs_auto) {
-      s.charging_flow = clip((s.letdown_flow || 0) + (rc.cvcs_makeup_gain || 3) * (1.0 - s._mass), 0, rc.charging_max != null ? rc.charging_max : 0.06);
+      // AUTO make-up holds PROGRAMMED PZR LEVEL (real CVCS level control) while still
+      // compensating a gross inventory deficit. charging = letdown + max(level-servo,
+      // inventory-makeup): the level term (charging above/below letdown per % level
+      // error, reading last step's indicated level) holds level through the thermal
+      // shrink of a load change/cooldown; the inventory term still catches a leak that
+      // has not yet shown up as a level drop (e.g. before voiding). Capped at charging_max.
+      var level_sp = cfg.pressurizer.pzr_level_nominal;
+      var level_demand = (rc.cvcs_charge_per_level || 0.006) * (level_sp - (s.pzr_level_pct != null ? s.pzr_level_pct : level_sp));
+      var inv_demand = (rc.cvcs_makeup_gain || 3) * (1.0 - s._mass);
+      s.charging_flow = clip((s.letdown_flow || 0) + Math.max(level_demand, inv_demand), 0, rc.charging_max != null ? rc.charging_max : 0.06);
     } else {
       s.charging_flow = s.charging_setpoint;
     }
     // Charging requires the charging pump; the accumulator inventory gain scales its
     // normalized flow into the same inventory-fraction units as the rest of the balance.
     var charging = (s.charging_pump_running === false) ? 0 : s.charging_flow;
+    s._charging_actual = charging;   // pump-gated true charging, for the pzr level insurge term (stepLevel)
     var dm = (charging + inj_inv + accum_inv)
            - (s.letdown_flow + s.porv_flow + s.safety_flow + s.leak_flow);
     s._mass = clip(s._mass + dm * dt, 0.0, cfg.primary.mass_max);

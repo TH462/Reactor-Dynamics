@@ -8,6 +8,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **CVCS charging now controls pressurizer level; AUTO make-up holds level (PWR).** Charging/letdown
+  gain real authority over indicated PZR level: a bounded net-make-up insurge term (`(charging − letdown)
+  · K_cvcs_level`) is added to the level model, so charging raises level and letdown lowers it — as in a
+  real plant. **CVCS AUTO make-up now holds programmed level** (not just mass): charging modulates
+  above/below letdown to drive level toward `pzr_level_nominal`, while still compensating a gross
+  inventory deficit (`max(level-servo, inventory-makeup)`) so a leak that has not yet shown as a level
+  drop is still caught. The term is small and bounded (`charging_max`/letdown ≈ 0.07), far below the
+  fast `K_void_surge` that drives the **TMI level-vs-inventory deception** — which is verified intact
+  (level still rises as inventory falls; charging is isolated in that path anyway). This fixes the
+  `ops_normal_shutdown` probe (the operator's rampdown no longer stalls at 45 % power when the
+  pressurizer shrinks below the 30 % hold — AUTO make-up restores level so the ramp continues to hot
+  standby). New config `reactivity.cvcs_charge_per_level` (0.006), `pressurizer.K_cvcs_level` (6.0).
+  Gates: run_pwr 26/26, campaign 47/47, m4/m5/m6, autoctl 20/20, ops now 55/66 (PWR 17/19).
+
 ### Changed
 - **PWR pressure/secondary realism (ops-tuning).** Three physics-honesty fixes surfaced by the ops
   probes. **(1) Spray floor:** pressurizer spray can no longer pull primary pressure to the containment

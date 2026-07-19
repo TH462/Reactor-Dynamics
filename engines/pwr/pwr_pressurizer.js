@@ -128,7 +128,13 @@
     var p = cfg.pressurizer;
     var thermal_surge = p.K_thermal_surge * (s._dTavg_dt || 0);
     var void_surge = p.K_void_surge * s.primary_void_fraction;
-    var surge_in_rate = thermal_surge + void_surge;
+    // CVCS net make-up: charging adds liquid to the primary (insurge → level up),
+    // letdown bleeds it (level down). This is what gives charging real authority over
+    // indicated level so AUTO make-up can hold it. Small gain, bounded by
+    // charging_max/letdown (~0.07), so it never competes with the fast void_surge that
+    // drives the TMI deception (where charging is isolated anyway).
+    var cvcs_surge = ((s._charging_actual || 0) - (s.letdown_flow || 0)) * p.K_cvcs_level;
+    var surge_in_rate = thermal_surge + void_surge + cvcs_surge;
     var dLevel = (surge_in_rate
                   - s.porv_flow * p.level_loss_per_flow
                   - s.safety_flow * p.level_loss_per_flow) * p.K_level;
