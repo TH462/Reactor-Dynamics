@@ -75,10 +75,10 @@ Do **not** say “Mode 1, At Power” for Follow or “Mode 5, Cold Shutdown” 
 ### Overview
 
 ```
-Mode 5, Cold Shutdown          [narr]
+Mode 5, Cold Shutdown          [sim]  ← cold_shutdown IC
         │  heatup / pressurize / draw PZR bubble
         ▼
-Mode 4, Hot Shutdown           [narr]
+Mode 4, Hot Shutdown           [sim]
         │  continue heatup to NOP
         ▼
 Mode 3, Hot Standby           [sim]  ← Free Play starts here
@@ -93,7 +93,7 @@ Mode 1, At Power         [sim]
 Mode 1, At Power at power (watchstanding)
 ```
 
-### Phase A — Mode 5, Cold Shutdown → Mode 4, Hot Shutdown → Mode 3, Hot Standby **[narr]**
+### Phase A — Mode 5, Cold Shutdown → Mode 4, Hot Shutdown → Mode 3, Hot Standby **[sim, rate-compressed]**
 
 | Step | Action | MODE after step |
 |------|--------|-----------------|
@@ -164,10 +164,10 @@ Mode 2, Startup                 [sim]  (optional plateau ≤ 5 %)
 Mode 3, Hot Standby           [sim]
         │  decay heat removal; begin cooldown story
         ▼
-Mode 4, Hot Shutdown           [narr]
+Mode 4, Hot Shutdown           [sim]
         │  continue cooldown / depressurize; RHR
         ▼
-Mode 5, Cold Shutdown          [narr]
+Mode 5, Cold Shutdown          [sim]  ← genuine cold end state
 ```
 
 ### Phase A — Mode 1, At Power → Mode 2, Startup / Mode 3, Hot Standby **[sim]**
@@ -192,7 +192,7 @@ Mode 5, Cold Shutdown          [narr]
 
 This is the deepest **fully simulated** shutdown state.
 
-### Phase C — Mode 3, Hot Standby → Mode 4, Hot Shutdown → Mode 5, Cold Shutdown **[narr]**
+### Phase C — Mode 3, Hot Standby → Mode 4, Hot Shutdown → Mode 5, Cold Shutdown **[sim, rate-compressed]**
 
 | Step | Action | MODE after step |
 |------|--------|-----------------|
@@ -355,9 +355,9 @@ Training display only; does not change plant MODE.
 ```
  Mode 6, Refueling     OUT OF SCOPE
         │
- Mode 5, Cold Shutdown ──────── [narr] heatup ────────┐
+ Mode 5, Cold Shutdown ──────── [sim] heatup ─────────┐
         ▲                                                 │
-        │ [narr] cooldown                                 ▼
+        │ [sim] cooldown                                  ▼
  Mode 4, Hot Shutdown ◄─────────────────────── Mode 3, Hot Standby  [sim]
         ▲                                                 │
         │                                                 │ N02 [sim]

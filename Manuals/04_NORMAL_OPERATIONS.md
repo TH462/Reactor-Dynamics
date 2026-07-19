@@ -8,7 +8,7 @@
 
 ## 1.0 Purpose
 
-Provide step-followable **normal operating procedures** for the Reactor⚛️Dynamics PWR across commercial **plant MODES**. Fully simulated work centers on **Mode 3, Hot Standby**, **Mode 2, Startup**, and **Mode 1, At Power**. **Mode 4, Hot Shutdown** / **Mode 5, Cold Shutdown** heatup and cooldown are **[narr]** only.
+Provide step-followable **normal operating procedures** for the Reactor⚛️Dynamics PWR across commercial **plant MODES**. Fully simulated work centers on **Mode 3, Hot Standby**, **Mode 2, Startup**, and **Mode 1, At Power**. **Mode 4, Hot Shutdown** / **Mode 5, Cold Shutdown** heatup and cooldown are now **[sim]** from the `cold_shutdown` initial condition, with time-compressed rates (missions `pwr_mode5_to_mode3` / `pwr_return_to_mode1` / `pwr_mode3_to_mode5`).
 
 **Master MODE paths:** `05_MODE_TRANSITIONS.md` — **PWR-T20** (Mode 5, Cold Shutdown → Mode 1, At Power), **PWR-T21** (Mode 1, At Power → Mode 5, Cold Shutdown).
 
@@ -18,7 +18,7 @@ Provide step-followable **normal operating procedures** for the Reactor⚛️Dyn
 |----|-------|------------|-------|
 | PWR-N01 | Prerequisites & plant lineup (Mode 3, Hot Standby) | Mode 3, Hot Standby | [sim] |
 | PWR-N02 | Approach to criticality (Mode 3, Hot Standby → Mode 2, Startup) | 3 → 2 | [sim] |
-| PWR-N03 | Heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby | 5 → 4 → 3 | [narr] |
+| PWR-N03 | Heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby | 5 → 4 → 3 | [sim] |
 | PWR-N04 | Mode 2, Startup low-power operation & POAH | Mode 2, Startup | [sim] |
 | PWR-N05 | Turbine roll & generator synchronization | Mode 2, Startup → One | [sim] |
 | PWR-N06 | Power ascension in Mode 1, At Power to 100 % | Mode 1, At Power | [sim] |
@@ -30,7 +30,7 @@ Provide step-followable **normal operating procedures** for the Reactor⚛️Dyn
 | PWR-N12 | Steam Generator level & feedwater control | Mode 1, At Power–Two | [sim] |
 | PWR-N13 | Reactor Coolant Pump (RCP) operation | Mode 1, At Power–Three | [sim, approx] |
 | PWR-N14 | Normal shutdown Mode 1, At Power → Mode 3, Hot Standby | 1 → 3 | [sim] |
-| PWR-N15 | Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (DHR/RHR) | 3 → 4 → 5 | [narr] |
+| PWR-N15 | Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (DHR/RHR) | 3 → 4 → 5 | [sim] |
 
 **Related:** MODE transitions → `05_MODE_TRANSITIONS.md`. Control details → `03_CONTROLS_AND_INDICATIONS.md`. Setpoints → `09_SETPOINTS_LIMITS.md`.
 
@@ -115,24 +115,24 @@ Reactor in **Mode 2, Startup** (critical, controlled power ≤ 5 %); ready for *
 
 ---
 
-## PWR-N03 — Heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby **[narr]**
+## PWR-N03 — Heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby **[sim]**
 
 ### Purpose
-Describe commercial heatup from **Mode 5, Cold Shutdown** (Cold Shutdown) through **Mode 4, Hot Shutdown** (Hot Shutdown) to **Mode 3, Hot Standby** (Hot Standby). **Not step-followable** in this trainer (no cold state, no modeled heatup rate). Part of master path **PWR-T20**.
+Commercial heatup from **Mode 5, Cold Shutdown** through **Mode 4, Hot Shutdown** to **Mode 3, Hot Standby**. This is now **driveable on the board**: a `cold_shutdown` initial condition ships, and the heatup runs on integrated physics with time-compressed rates (mission `pwr_mode5_to_mode3`, master path **PWR-T20**). See **05_MODE_TRANSITIONS §3.0** for the transition detail.
 
-### Narrative (not simulated)
+### Sequence (simulated, rates compressed)
 
 | Step | MODE | Action |
 |------|------|--------|
-| 1 | **Mode 5, Cold Shutdown** | Cold shutdown: subcritical, RCS cold; fill/vent as required |
-| 2 | Mode 5, Cold Shutdown → **Mode 4, Hot Shutdown** | Start RCPs when permitted; pump heat + controlled nuclear heat; draw PZR bubble |
-| 3 | **Mode 4, Hot Shutdown** | Intermediate temperature; continue heatup/pressurization within commercial limits |
-| 4 | → **Mode 3, Hot Standby** | Reach NOP T/P (≈ 304 °C, 15.41 MPa), subcritical, heat sink aligned |
+| 1 | **Mode 5, Cold Shutdown** | Start from the `cold_shutdown` IC: subcritical, RCS cold (~2.5 MPa), RCPs secured, RHR aligned for shutdown cooling |
+| 2 | Mode 5, Cold Shutdown → **Mode 4, Hot Shutdown** | **Start the RCPs** (RCP → Run) for pump heat and SG coupling; **raise the Pressure SP** toward NOP (15.41 MPa) so the heaters pressurize (RHR auto-isolates above its 2.76 MPa / 400 psi interlock); hand the NIS over (SR → OFF) |
+| 3 | **Mode 4, Hot Shutdown** | Ease the **Control Bank** out to take the reactor just critical; hold ~10 % power for nuclear heatup — the temperature defect trims reactivity, so keep trimming out to hold power; drive Tavg up |
+| 4 | → **Mode 3, Hot Standby** | At NOP T/P (≈ 304 °C, 15.41 MPa), insert the bank / borate back subcritical; RCS held hot on pump heat |
 
-**Simulator note:** RCP pump heat **is** modeled at power/flow, but there is no Mode 5, Cold Shutdown initial condition. Begin all [sim] startups at **Mode 3, Hot Standby** (**PWR-N01**). Read this procedure, then continue **PWR-T20** Phase B on the board.
+**Simulator note:** the heat source for heatup is **nuclear** (RCP/PZR heat alone is far too small to reach NOP); the compressed rates make the evolution playable in minutes. The pressurizer **Pressure SP** and steam-dump **Dump SP** controls, RCP Run/Stop, and the `plant_mode` state are all as-built.
 
 ### Outcome
-Operator can narrate Mode 5, Cold Shutdown → Mode 3, Hot Standby; sim work starts at Mode 3, Hot Standby.
+Operator drives Mode 5, Cold Shutdown → Mode 3, Hot Standby on the board and arrives subcritical-and-hot at Hot Standby (the board **PWR-N01** begins from).
 
 ---
 
@@ -467,14 +467,14 @@ Shut the reactor down from **Mode 1, At Power** (or Mode 2, Startup) to **Mode 3
 | 7 | Monitor decay heat indication if available (overlay / Learning) | Observe | Decay heat &gt; 0 |
 
 ### Outcome
-**Mode 3, Hot Standby** — reactor shut down, hot; decay heat being removed. Continue to Mode 5, Cold Shutdown via **PWR-N15** / **PWR-T21** (narrative).
+**Mode 3, Hot Standby** — reactor shut down, hot; decay heat being removed. Continue to Mode 5, Cold Shutdown via **PWR-N15** / **PWR-T21** (driveable, rate-compressed).
 
 ---
 
-## PWR-N15 — Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (DHR/RHR) **[narr]**
+## PWR-N15 — Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (DHR/RHR) **[sim]**
 
 ### Purpose
-Describe cooldown from **Mode 3, Hot Standby** through **Mode 4, Hot Shutdown** to **Mode 5, Cold Shutdown** (Cold Shutdown). Full cold shutdown cooldown **rates** are not modeled. Completes master path **PWR-T21**.
+Cooldown from **Mode 3, Hot Standby** through **Mode 4, Hot Shutdown** to **Mode 5, Cold Shutdown**. This is now **driveable on the board** to a genuine cold (Mode 5) end state — only the cooldown **rates** are time-compressed (mission `pwr_mode3_to_mode5`). Completes master path **PWR-T21**.
 
 ### What is [sim]
 - Decay heat model active after power history.
@@ -494,8 +494,8 @@ Describe cooldown from **Mode 3, Hot Standby** through **Mode 4, Hot Shutdown** 
 
 ### Simulator practice
 1. After **PWR-N14** (Mode 3, Hot Standby), keep AFW/feed maintaining SG level.  
-2. If depressurized and RHR available, start **RHR** per Emergency card and re-arm AUTO if desired.  
-3. Do not expect a timed Mode 5, Cold Shutdown end condition on the board.
+2. Borate to cold-shutdown margin; **lower the Dump SP** to vent the SG and cool the primary; **lower the Pressure SP** to bring pressure down with spray.  
+3. Below the ~2.76 MPa interlock, place **RHR** in service (auto-arms) and **secure the RCPs** to decouple the SG; ride the plant down to a genuine Mode 5 cold end state (rate compressed).
 
 ### Outcome
 Operator can narrate Mode 3, Hot Standby → Mode 5, Cold Shutdown; understands decay-heat obligation and trainer limits.

@@ -5,7 +5,7 @@
 **Updated:** 2026-07-16 (manuals Rev 2)  
 **Purpose:** Record differences between the external operator manuals in `Manuals/` and the PWR training campaign (“Zero to Operator”) as shipped in `ui/campaign_data.js` / `Blueprint/pwr_training_campaign.md`, with in-product walkthroughs in `ui/manual_procedures.js`.  
 
-**Scope of this file:** Comparison. Manuals Rev 2 aligned naming to **Mode N, Name** and added crosswalk + campaign **spec**. **UPDATE 2026-07:** the campaign is now aligned — `teaches` and procedure titles use **Mode N, Name**; the engine has a **`cold_shutdown` (Mode 5)** initial condition with the full Mode 5 ↔ Mode 1 transition simulated; and the three **Mode-5-path missions** (`pwr_mode5_to_mode3`, `pwr_mode3_to_mode5`, `pwr_return_to_mode1`) are authored and driven on the board (PWR campaign now **34 missions**). Remaining: refresh `11_CAMPAIGN_CROSSWALK.md` for the new mission map.
+**Scope of this file:** Comparison. Manuals Rev 2 aligned naming to **Mode N, Name** and added crosswalk + campaign **spec**. **UPDATE 2026-07:** the campaign is now aligned — `teaches` and procedure titles use **Mode N, Name**; the engine has a **`cold_shutdown` (Mode 5)** initial condition with the full Mode 5 ↔ Mode 1 transition simulated; and the three **Mode-5-path missions** (`pwr_mode5_to_mode3`, `pwr_mode3_to_mode5`, `pwr_return_to_mode1`) are authored and driven on the board (PWR campaign now **34 missions** + 1 bonus). `11_CAMPAIGN_CROSSWALK.md` is **refreshed (Rev 1)** and maps all 34 + bonus — verified current in the 2026-07-19 pre-ship review. This discrepancies file is now largely historical; the naming, Mode-5 path, and crosswalk items are all closed.
 
 **Handoff for campaign implementers:** `CAMPAIGN_MODE_ALIGNMENT_SPEC.md`  
 **Live map:** `11_CAMPAIGN_CROSSWALK.md`
@@ -32,7 +32,7 @@
 | Failure coverage | Manuals list **all** modeled failures; campaign drills a **subset** |
 | Plant MODE language | **Manuals:** Mode 1, At Power … Mode 5, Cold Shutdown. **Campaign:** now aligned — `teaches` + procedure titles use **Mode N, Name** (2026-07) |
 | Startup path | Manuals Mode 5↔1; **now fully covered** — engine simulates the path (`cold_shutdown` IC) and three campaign missions (`pwr_mode5_to_mode3`, `pwr_mode3_to_mode5`, `pwr_return_to_mode1`) drive it on the board |
-| Traceability | IDs still differ; **11_CAMPAIGN_CROSSWALK.md** maps them (mission-map refresh for the 3 new missions pending) |
+| Traceability | IDs still differ; **11_CAMPAIGN_CROSSWALK.md** maps them (Rev 1 — all 34 missions + bonus, current) |
 
 Manuals Rev 2 closed naming + documentation gaps. Campaign Mode-N **strings are aligned**, the **engine supports the Mode 5 path**, and the **three Mode-5 missions are authored** (spec §3 complete). Remaining housekeeping: the crosswalk mission map.
 

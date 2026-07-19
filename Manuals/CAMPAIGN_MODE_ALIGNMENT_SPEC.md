@@ -205,7 +205,7 @@ Act VI — Reckoning
 - [x] Player can complete a path from **Mode 3, Hot Standby** to **Mode 5, Cold Shutdown**. *(`pwr_mode3_to_mode5`.)*
 - [x] Player can **heat up** from Mode 5 to Mode 3 on the board. *(`pwr_mode5_to_mode3`.)*
 - [x] Mode 5 honesty banners present. *(Each transition mission's intro states the compressed rate + nuclear-heat-source simplification.)*
-- [ ] Manuals `11_CAMPAIGN_CROSSWALK.md` updated for the 3 new missions (PWR mission count 31 → 34).
+- [x] Manuals `11_CAMPAIGN_CROSSWALK.md` updated for the 3 new missions (PWR mission count 31 → 34). *(Verified current at Rev 1 in the 2026-07-19 pre-ship review — maps all 34 missions + bonus.)*
 - [x] Discrepancies file updated: naming + Mode 5 path resolved.
 
 ---

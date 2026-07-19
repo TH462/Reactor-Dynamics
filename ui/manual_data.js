@@ -1091,15 +1091,15 @@
           "name": "High Coolant Temperature (HI TAVG)",
           "priority": "warning",
           "panel": "A",
-          "means": null,
-          "response": "Investigate and correct the cause before it worsens."
+          "means": "Average coolant temperature is above its high alarm — the plant is running hotter than the temperature program.",
+          "response": "Reduce power or raise heat removal (steam dump / feed); check the Tavg-vs-load balance."
         },
         {
           "id": "pzr_pressure_high",
           "name": "Pressurizer Pressure High (PZR PRESS HI)",
           "priority": "warning",
           "panel": "A",
-          "means": null,
+          "means": "Primary pressure is above its normal band (heading toward the spray / PORV region).",
           "response": "Investigate and correct the cause before it worsens."
         },
         {
@@ -1107,7 +1107,7 @@
           "name": "Pressurizer Pressure Low (PZR PRESS LO)",
           "priority": "warning",
           "panel": "A",
-          "means": null,
+          "means": "Primary pressure is below its normal band — subcooling margin is shrinking.",
           "response": "Investigate and correct the cause before it worsens."
         },
         {
@@ -1131,16 +1131,16 @@
           "name": "Startup Rate High (SUR HI)",
           "priority": "caution",
           "panel": "A",
-          "means": null,
-          "response": "Monitor; no immediate action required."
+          "means": "The startup rate (reactor period) is high — power is rising quickly.",
+          "response": "Stop withdrawing rods and let the rate fall before continuing the ascent."
         },
         {
           "id": "sr_high_flux",
           "name": "Source Range Count Rate High (SR HI FLUX)",
           "priority": "caution",
           "panel": "A",
-          "means": null,
-          "response": "Monitor; no immediate action required."
+          "means": "Source-range count rate is high — the reactor is approaching the point to transfer to the intermediate range.",
+          "response": "Complete the SR→IR handoff (de-energize the source range) before its high-flux trip cuts the ascent short."
         },
         {
           "id": "subcooling_low",
@@ -1163,7 +1163,7 @@
           "name": "Pressurizer Level High (PZR LVL HI)",
           "priority": "caution",
           "panel": "A",
-          "means": null,
+          "means": "Pressurizer level is above its normal band.",
           "response": "Monitor; no immediate action required."
         },
         {
@@ -1171,7 +1171,7 @@
           "name": "Pressurizer Level Low (PZR LVL LO)",
           "priority": "warning",
           "panel": "A",
-          "means": null,
+          "means": "Pressurizer level is below its normal band — watch inventory and charging.",
           "response": "Investigate and correct the cause before it worsens."
         },
         {
@@ -1187,7 +1187,7 @@
           "name": "Control Rods — Insertion Limit (ROD INS LIMIT)",
           "priority": "warning",
           "panel": "A",
-          "means": null,
+          "means": "A control-rod group has reached its travel (insertion/withdrawal) limit.",
           "response": "Investigate and correct the cause before it worsens."
         },
         {
@@ -1195,15 +1195,15 @@
           "name": "Steam Generator Level High-High (P-14) (SG LVL HI HI)",
           "priority": "critical",
           "panel": "B",
-          "means": null,
-          "response": "Act immediately — follow the emergency procedure for this condition."
+          "means": "Steam Generator level is HIGH-HIGH (P-14) — a feedwater overfill.",
+          "response": "Reduce feed at once; expect the coordinated P-14 response: turbine trip, MAIN feedwater isolation (AFW keeps feeding), and — at power — a reactor trip."
         },
         {
           "id": "sg_level_high",
           "name": "Steam Generator Level High (SG LVL HI)",
           "priority": "caution",
           "panel": "B",
-          "means": null,
+          "means": "Steam Generator level is above its normal band.",
           "response": "Monitor; no immediate action required."
         },
         {
@@ -1211,8 +1211,8 @@
           "name": "Steam Generator Level Low (SG LVL LO)",
           "priority": "warning",
           "panel": "B",
-          "means": null,
-          "response": "Investigate and correct the cause before it worsens."
+          "means": "Steam Generator level is below its normal band — the heat sink is shrinking.",
+          "response": "Restore feedwater; Auxiliary Feedwater auto-starts at the low-low level."
         },
         {
           "id": "sg_level_lolo",
@@ -1235,15 +1235,15 @@
           "name": "Reactor Coolant Pump Cavitation (RCP CAVITATION)",
           "priority": "warning",
           "panel": "B",
-          "means": null,
-          "response": "Investigate and correct the cause before it worsens."
+          "means": "A Reactor Coolant Pump is cavitating — its suction is near saturation and flow is degrading.",
+          "response": "Restore subcooling at the pump suction (raise pressure / lower temperature); reduce reliance on the affected pump."
         },
         {
           "id": "hpi_active",
           "name": "Emergency Injection Active (HPI/LPI ACTIVE)",
           "priority": "status",
           "panel": "B",
-          "means": null,
+          "means": "Emergency injection (HPI/LPI) is running (status indication).",
           "response": "Monitor; no immediate action required."
         },
         {
@@ -1259,7 +1259,7 @@
           "name": "Turbine Trip / Low Steam Demand (TURB TRIP)",
           "priority": "warning",
           "panel": "B",
-          "means": null,
+          "means": "The turbine has tripped or steam demand has fallen low.",
           "response": "Investigate and correct the cause before it worsens."
         },
         {
@@ -1267,7 +1267,7 @@
           "name": "Main Steam Isolated (MSIV Shut) (MSIV SHUT)",
           "priority": "warning",
           "panel": "B",
-          "means": null,
+          "means": "The Main Steam Isolation Valve is shut — the steam generator is bottled off from the turbine.",
           "response": "Investigate and correct the cause before it worsens."
         },
         {
@@ -1275,7 +1275,7 @@
           "name": "Steam Generator Pressure High (SG PRESS HI)",
           "priority": "caution",
           "panel": "B",
-          "means": null,
+          "means": "Steam Generator (secondary) pressure is high.",
           "response": "Monitor; no immediate action required."
         },
         {
@@ -1283,7 +1283,7 @@
           "name": "Condenser Vacuum Low (COND VAC LO)",
           "priority": "caution",
           "panel": "B",
-          "means": null,
+          "means": "Condenser vacuum is degrading — turbine backpressure is rising.",
           "response": "Monitor; no immediate action required."
         },
         {
@@ -1291,7 +1291,7 @@
           "name": "Condenser Vacuum Trip Level (COND VAC TRIP)",
           "priority": "warning",
           "panel": "B",
-          "means": null,
+          "means": "Condenser vacuum has fallen to the turbine-trip level.",
           "response": "Investigate and correct the cause before it worsens."
         }
       ],

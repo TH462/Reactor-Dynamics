@@ -175,3 +175,29 @@ that the card can issue the instructed command).
 indicator and an explicit `eccs_mode` = RHR/HPI/LPI/off readout. Triggers are physics-based
 (not mode-string-gated) and RHR alignment is already visible/controllable via the Emergency
 Cooling card, so all three missions are now completable without them. Logged OPEN post-ship.
+
+---
+
+## Phase 5 — Documentation & manuals consistency
+
+A doc-analysis agent re-triaged every `I-##`, `CAMPAIGN_MANUAL_DISCREPANCIES`, and the
+crosswalk against as-built. Applied:
+
+| ID | Sev | Finding | Action |
+|---|---|---|---|
+| P5-1 | M | **I-13**: 18 PWR alarms had null `alarm_response.means` in the in-product manual. | FIXED — authored all 18 in `tools/gen_manual_reference.js`, regenerated `ui/manual_data.js`; **PWR now 0 null means** (RBMK/BWR nulls out of scope). I-13 status flipped. |
+| P5-2 | M | **04_NORMAL_OPERATIONS N03/N15** told the learner the cold state doesn't exist ("no cold state", "there is no Mode 5 IC", "[narr] only") — a shipped feature denied by the shipped manual. | FIXED — rewrote N03 + N15 as `[sim]` driveable (cold_shutdown IC, RCP Run, Press SP/Dump SP heatup/cooldown), fixed §1.0 line 11 + index rows. |
+| P5-3 | L | **05_MODE_TRANSITIONS** diagrams/headers tagged Mode 5/4 `[narr]` while the body said "now driveable" (self-contradictory). | FIXED — all Mode-5 `[narr]` → `[sim]` in Phase A/C headers + the two ASCII diagrams + the §8 map. |
+| P5-4 | L | **I-01** ("no cold plant state") stale. | FIXED — flipped to Resolved-in-product with the shipped IC/missions cited. |
+| P5-5 | L | `CAMPAIGN_MANUAL_DISCREPANCIES` + `CAMPAIGN_MODE_ALIGNMENT_SPEC` said "31 missions" / "crosswalk refresh pending". | FIXED — crosswalk **verified already current** (Rev 1, 34 missions + bonus); flipped the stale "pending" flags + checkbox. |
+| P3-1 | M | RHR setpoint 3.45→2.76 MPa (from Phase 3). | FIXED — Manuals 09 + 04. |
+| P3-2 | L | Power-range "0–120 %" doc note. | FIXED — clarified 0–120 % scale vs 200 % instrument over-range in 09. |
+
+**Config-vs-manual setpoints otherwise verified consistent** (PORV/PZR-safety/HPI/AFW/SG-safety/
+turbine/NIS/rod/load-mode all match). **Crosswalk needs no refresh** (a plan open-item now
+closed — it was already current). README baselines + BUILD_DECISIONS updated (top-level commit).
+
+**Remaining doc-hygiene (minor, non-blocking, noted for post-ship):** N10 could mention the new
+`set_pressure_setpoint` control; a handful of by-design `I-##` rows (DHR/RHR naming I-15, raw
+indication ids I-12, expanded N/E procs not machine-validated I-30) remain accurately "Open" as
+documented limitations, not defects.

@@ -28,7 +28,7 @@
 
 | ID | Sev | Finding | Impact on manuals | Status |
 |----|-----|---------|-------------------|--------|
-| I-01 | — | **No cold plant state.** Engines start hot; heatup/cooldown *rates* not modeled. | **Mode 5, Cold Shutdown** / **Mode 4, Hot Shutdown** are **[narr]** only; Free Play starts **Mode 3, Hot Standby**. PWR-T20/T21 document the full Mode 5, Cold Shutdown↔One story with narr + sim segments. | Noted in manuals |
+| I-01 | — | ~~**No cold plant state.**~~ **RESOLVED (2026-07).** A `cold_shutdown` (Mode 5) initial condition ships (`pwr_config.js`), and the full Mode 5↔1 heatup/cooldown runs on integrated physics with time-compressed rates. | **Mode 5, Cold Shutdown** / **Mode 4, Hot Shutdown** are now **[sim]** (rates compressed), driven by missions `pwr_mode5_to_mode3`/`pwr_return_to_mode1`/`pwr_mode3_to_mode5`. 04-N03/N15 and 05 updated. | **Resolved in product** (pre-ship review) |
 | I-36 | L | Commercial **Mode 4, Hot Shutdown** vs “hot shutdown after trip” naming: trainer post-trip board is still hot NOP class (**Mode 3, Hot Standby** by Tech Spec temperature), not intermediate-temperature Mode 4, Hot Shutdown. | Manuals treat post-trip hot as Mode 3, Hot Standby; Mode 4, Hot Shutdown reserved for cooldown narrative. | Noted in manuals |
 | I-02 | M | **Single lumped RCS loop** (one RCP/SG representation). No multi-loop isolation procedures. | RCP/SGTR procedures simplified vs commercial multi-loop EOPs. | Noted in manuals |
 | I-03 | M | **Single control bank + shutdown bank** (no overlap unit / multi-bank sequence). | Rod procedures use one operable bank. | Noted in manuals |
@@ -48,7 +48,7 @@
 |----|-----|---------|--------|--------|
 | I-11 | M | **M8 / early control-section specs** still describe four horizontal control sections for PWR. | As-built PWR uses **synoptic margin cards only** (`new_diagram_controls.md`, M8 as-built note). Manuals follow as-built synoptic. | Open (Blueprint residual) |
 | I-12 | L | **Some `manual_data.js` indication names** still raw ids (`charging_flow`, `boron_analyzer`) without polished display names. | Operator manual 03 uses human labels; generated in-product manual may look rougher. | Open |
-| I-13 | M | **Alarm response “means” fields** in generated `alarm_response` are **null** for several alarms (high_tavg, pressure HI/LO, SUR, SR, level HI/LO mid-tier, rod limit, SG mid-tier, turb trip, MSIV, vac, etc.). | Full means/response authored in `06_ALARM_RESPONSE.md` for training; in-product manual incomplete for those rows. | Open |
+| I-13 | M | ~~Alarm response “means” fields null for several alarms.~~ **RESOLVED for PWR (pre-ship review)** — `means` authored for all 18 previously-null PWR alarms in `tools/gen_manual_reference.js` and regenerated; PWR now has **0 null means**. (RBMK/BWR still have some nulls — out of PWR ship scope.) | In-product PWR manual now complete for alarm means. | **Resolved (PWR)** |
 | I-14 | M | **In-product procedures** cover a **subset** of OPERATOR_MANUAL_PLAN list (startup, raise/lower, pressure, SG, shutdown, LOFW, RCP, stuck PORV, TMI narrative). | External manuals expand N## / E## set; not all are harness-validated in `run_procedures.js`. | Open |
 | I-15 | L | **DHR vs RHR naming** mixed across UI (set_dhr / set_rhr / RHR tab). | Manuals treat DHR/RHR as the residual heat removal path. | Open |
 | I-16 | L | **OPERATOR_MANUAL_PLAN** counts ~22 PWR alarms; as-built has **26** alarm ids in control data. | Manuals use full as-built list (A01–A26). | Noted |
