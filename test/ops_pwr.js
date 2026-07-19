@@ -509,12 +509,17 @@
       return test('ABUSE time-acceleration — rod runaway at 1× vs 256×', function (ck) {
         function runaway(accel) {
           var h = H('50_percent', { accel: accel });
-          h.run(10 * (accel >= 10 ? 1 : 1));
+          h.run(10);
           h.cmd('inject_failure', { failure_id: 'continuous_rod_withdrawal', severity: 1.0 });
           h.run(300);
           return h;
         }
         var h1 = runaway(1), h256 = runaway(256);
+        // HARD: the high-flux trip must actually fire (C1 acceptance — the
+        // power_range meter needs headroom above the 120% setpoint; pegged at
+        // exactly 120 a strict crossed() never fires and the excursion rides free).
+        ck('1×: protection tripped', h1.tripReason || 'no trip', h1.tripTime != null, 'tripped');
+        ck('256×: protection tripped (late is C2, never is C1)', h256.tripReason || 'no trip', h256.tripTime != null, 'tripped');
         ck('1×: protection catches it, no damage', h1.ts().melted, !h1.ts().melted, 'false');
         ck('256×: no damage even with late protection', h256.ts().melted, !h256.ts().melted, 'false');
         ck.info('1× peak power', fmt(h1.range('power_pct').max, 1) + '%');

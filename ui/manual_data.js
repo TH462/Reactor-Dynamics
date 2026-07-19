@@ -237,7 +237,7 @@
           "unit": "%",
           "range": [
             0,
-            120
+            200
           ],
           "lag_s": 0.1,
           "derived": false,
@@ -4606,7 +4606,7 @@
           "unit": "%",
           "range": [
             0,
-            120
+            200
           ],
           "lag_s": 0.1,
           "derived": false,

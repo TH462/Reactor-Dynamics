@@ -363,7 +363,10 @@
     // id → { measures, lag (s), noise sigma (instrument units), range[min,max] }.
     // Status booleans (no lag/noise) are listed under `status`.
     instruments: {
-      power_range:       { lag: 0.1, noise: 0.2,   range: [0, 120] },
+      // power_range top-of-range must exceed the 120% trip setpoint: a reading
+      // pegged at exactly the setpoint never satisfies a strict crossed() compare,
+      // so the high-flux trip could never fire (same fix as the RBMK meter).
+      power_range:       { lag: 0.1, noise: 0.2,   range: [0, 200] },
       tavg:              { lag: 4.0, noise: 0.2,   range: [232, 343] },
       thot:              { lag: 4.0, noise: 0.2,   range: [232, 343] },
       tcold:             { lag: 4.0, noise: 0.2,   range: [232, 343] },

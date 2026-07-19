@@ -1103,9 +1103,41 @@
     },
   };
 
+  BWRScenarioTests.protection_trips = function () {
+    return test('Protection — RPS trip table is fireable (high flux)', function (ck) {
+      var h = new Harness('full_power');
+      h.run(5);
+      // Negative control: a healthy full-power plant sits clear of every setpoint.
+      var idle = rpsWouldTrip(h.eng);
+      ck('steady plant clear of all trips', idle.join(',') || 'none', idle.length === 0, 'no trip reasons');
+      // Structural pin on the shipping table — this suite is the only place its
+      // shape is asserted, so a deleted trip would otherwise go unnoticed.
+      var shape = h.eng.getProtectionConfig().trips
+        .map(function (t) { return t.instrument + ':' + t.direction; }).sort().join(',');
+      ck('trip table shape (4 trips)', shape,
+        shape === 'power_range:high,vessel_level:low,vessel_pressure:high,vessel_pressure:low',
+        'power_range:high,vessel_level:low,vessel_pressure:high,vessel_pressure:low');
+      // Overpower excursion: max recirc + continuous withdrawal. The meter must
+      // have headroom above the 120% setpoint — pegged at exactly 120 a strict
+      // crossed() compare can never fire (the C1 defect this test guards).
+      h.cmd({ action: 'set_recirc_flow', pct: 48 });
+      h.cmd({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'fast' });
+      var fired = -1, peakIns = 0;
+      for (var i = 0; i < Math.round(60 / h.dt); i++) {
+        h.eng.step(h.dt);
+        var pr = h.ins().power_range;
+        if (pr > peakIns) peakIns = pr;
+        if (fired < 0 && rpsWouldTrip(h.eng).indexOf('power_range high') >= 0) fired = i * h.dt;
+      }
+      ck('meter reads above the setpoint (no peg at 120)', peakIns.toFixed(1), peakIns > 120.5, '> 120.5');
+      ck('power_range high trip fires', fired >= 0 ? fired.toFixed(1) + 's' : 'never', fired >= 0, 'fires during the excursion');
+    });
+  };
+
   BWRScenarioTests.runAll = function () {
     var order = ['steady_full_power', 'flow_control', 'natural_circ', 'turbine_trip', 'shutdown_scram',
-      'flagship_fukushima', 'physics_failures', 'actuation_gates', 'balance_of_plant', 'startup', 'isolation_condenser', 'save_restore'];
+      'flagship_fukushima', 'physics_failures', 'actuation_gates', 'balance_of_plant', 'startup', 'isolation_condenser',
+      'protection_trips', 'save_restore'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(BWRScenarioTests[order[i]]());
     return results;
