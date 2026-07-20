@@ -8,6 +8,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **PWR — the reactor coolant system no longer empties when it shouldn't.** A high pressurizer
+  level from thermal expansion (e.g. after closing the MSIV, which heats the primary) could make
+  the automatic charging drain the whole RCS to zero chasing a level it can't lower that way.
+  Charging-in-AUTO now never lets the primary fall below its nominal inventory — it only lets down
+  genuine *excess* mass — so a heat-up raises the level without emptying the reactor.
+
 ### Changed
 - **PWR board — heat-map temperature colors for easy transient reading.** Water uses a
   continuous blue→cyan→green→yellow→orange→red heat-map, with the scale expanded over the

@@ -146,7 +146,14 @@
       // detection needed. A HIGH level drives charging below letdown to bring it back down.
       var level_sp = cfg.pressurizer.pzr_level_nominal;
       var level_demand = (rc.cvcs_charge_per_level || 0.006) * (level_sp - (s.pzr_level_pct != null ? s.pzr_level_pct : level_sp));
-      s.charging_flow = clip((s.letdown_flow || 0) + level_demand, 0, rc.charging_max != null ? rc.charging_max : 0.06);
+      var target = (s.letdown_flow || 0) + level_demand;
+      // SAFETY: level control must never let charging fall below letdown to DRAIN the primary
+      // below nominal inventory. A high indicated level from THERMAL EXPANSION (a heat-up — real
+      // plants raise the programmed level setpoint with Tavg) would otherwise empty the RCS,
+      // since draining mass can't lower a thermally-driven level. Only genuine EXCESS inventory
+      // (mass above nominal, e.g. over-charging) may be let down below the letdown rate.
+      if (target < (s.letdown_flow || 0) && s._mass <= 1.0) target = (s.letdown_flow || 0);
+      s.charging_flow = clip(target, 0, rc.charging_max != null ? rc.charging_max : 0.06);
     } else {
       s.charging_flow = s.charging_setpoint;
     }
