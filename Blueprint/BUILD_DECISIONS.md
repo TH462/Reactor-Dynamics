@@ -941,6 +941,30 @@ Closed the board's derived-indication gaps with real engine state, per owner req
 Verification: board_check **37/37** (adds glow, boron-channel, condensate, real-discharge checks);
 gates green — PWR 31/31, e2e 30/30, autoctl 20/20, campaign 51/51, M4 18/18, M5 19/19, M6 16/16, M7 OK.
 
+#### Follow-up (2026-07-20): visual fidelity fixes (owner review of the render)
+
+- **Inactive buttons render grey.** The diagram's authored button color is its ACTIVE-state
+  color; buttons now render grey when inactive and adopt `--bd-color` (the authored color) when
+  selected (`.bd-active`) or momentarily pressed (`:active`).
+- **PORV sizing.** The PORV component rendered at a fixed 90×195 px (copied literally from the
+  design), overflowing its 45×70 tile and putting its ports ~60 px low — the cause of the bent PORV
+  pipes. Now fills the tile like every other component (`width/height:100%`, `preserveAspectRatio
+  meet`), so the item box sets its size and the ports land where the builder placed them.
+- **Pump built-in controls suppressed where redundant (crooked pipes).** A pump with
+  `showControls:true` reserves control space (taller viewBox), which shifts the pump art — and its
+  ports — up and bends the connected pipes. The RCP, ECCS, and feed pumps have dedicated external
+  controls (RCP ON/OFF buttons; HPI START/STOP/AUTO; SG FEED panel), so they now render **art-only**
+  (driver `suppressBuiltInControls`), removing the redundant "extra" button the owner spotted on the
+  RCP and straightening the pipes. The RCP's on-pump ON/OFF buttons are rewired from `set_charging_pump`
+  to `set_rcp`. Charging and condensate pumps keep their built-in toggle — it's their sole control
+  (no external button), not a redundant one.
+- **Turbine drain removed.** The exported diagram carried a `turbineGenerator/tcv-drain →
+  condenser/steam-in-2` line for a port the turbine never had; a real casing drain isn't modeled and
+  the owner confirmed it's unnecessary, so `tools/gen_board_data.js` drops that pipe (29 pipes now)
+  and the invented drain port is removed from the turbine component.
+
+Verification: board_check **38/38**; engine/control untouched this round.
+
 ## Change log
 
 - **M1** built and committed (`a18c85f`). Suite 11/11.

@@ -122,8 +122,9 @@
 
   function buildButton(it) {
     var btn = h('button', { className: 'bd-btn' }, it.label || 'BUTTON');
-    btn.style.border = '1px solid ' + (it.color || '#4fe3ff');
-    btn.style.color = it.color || '#4fe3ff';
+    // The authored item color is the ACTIVE-state color; a button renders grey when
+    // inactive (CSS default) and adopts --bd-color when selected (.bd-active) or pressed.
+    btn.style.setProperty('--bd-color', it.color || '#4fe3ff');
     btn.style.fontSize = (it.fontSize || 11) + 'px';
     btn.addEventListener('click', function () {
       var d = driver();
@@ -240,6 +241,16 @@
     var body = h('div', { style: { position: 'absolute', inset: 0, overflow: 'visible' } });
     el.appendChild(body);
     var reg = RD.BoardComps && RD.BoardComps[it.comp];
+    // Some pumps have dedicated control buttons/panels elsewhere on the board, so their
+    // built-in control box is redundant AND its reserved space shifts the pump art (and
+    // its ports) up, bending the connected pipes. The driver names those; render them
+    // art-only by overriding showControls to false.
+    var d0 = driver();
+    if (d0 && d0.suppressBuiltInControls && d0.suppressBuiltInControls(it.id) && it.showControls !== false) {
+      var clone = {}; for (var k in it) clone[k] = it[k];
+      clone.showControls = false;
+      it = clone;
+    }
     if (reg && reg.build) {
       var env = {
         h: RD.BoardH.h,

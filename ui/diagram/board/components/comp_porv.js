@@ -106,7 +106,10 @@
       onClick: function () { env.onControl('toggle', !openProp); } });
     var hoverring = h('circle', { key: 'hoverring', className: 'porv-hoverring', cx: cx, cy: 124, r: 30, fill: 'none', stroke: CYAN, strokeWidth: 5, opacity: 0, filter: 'url(#' + GLOW + ')', style: { pointerEvents: 'none' } });
 
-    var svg = h('svg', { viewBox: '44 5 70 152', style: { width: '90px', height: '195px', aspectRatio: '70 / 152', overflow: 'visible' } },
+    // Fill the tile (like every other component) so the item's authored box sets the
+    // on-canvas size and the data-port markers land where the builder placed them — a
+    // fixed-px svg centered in a smaller tile put the ports ~60px low and bent the pipes.
+    var svg = h('svg', { viewBox: '44 5 70 152', preserveAspectRatio: 'xMidYMid meet', style: { width: '100%', height: '100%', overflow: 'visible', display: 'block' } },
       h('g', { key: 'porvScene' }, [defs, ventG, glowC, bodyRect, bonnet, plugG, inFlG, outFlG, portIn, portOut, hit, hoverring]));
 
     var unwatch = env.StdPipe.watchScale(svg, function (s) {
@@ -138,7 +141,6 @@
       if (unwatch) { unwatch(); unwatch = null; }
     }
 
-    var root = h('div', { style: { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, svg);
-    return { el: root, update: update, destroy: destroy };
+    return { el: svg, update: update, destroy: destroy };
   }
 })();

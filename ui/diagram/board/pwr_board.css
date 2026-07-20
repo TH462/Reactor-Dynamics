@@ -45,13 +45,17 @@
 .bd-btn {
   width: 100%; height: 100%;
   background: #10161d;
+  /* Inactive = grey; the authored item color (--bd-color) is the ACTIVE-state color. */
+  border: 1px solid #2f3f4b; color: #7c93a4;
   letter-spacing: 0.12em; border-radius: 4px; cursor: pointer;
   font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
 }
-.bd-btn:active { transform: translateY(1px); }
-.bd-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-/* Selected-state override the wiring layer toggles (mirrors builder seg() active look) */
-.bd-btn.bd-active { background: #0c3a44 !important; border-color: #4fe3ff !important; color: #4fe3ff !important; }
+/* Momentary press feedback: flash to the active color. */
+.bd-btn:active { transform: translateY(1px); border-color: var(--bd-color); color: var(--bd-color); }
+.bd-btn:disabled { opacity: 0.45; cursor: not-allowed; color: #55636e; border-color: #26333d; }
+/* Selected/engaged state: adopt the button's authored active color. */
+.bd-btn.bd-active { background: #0c1a22; border-color: var(--bd-color); color: var(--bd-color); }
 
 /* ---- scram ---- */
 .bd-scram {

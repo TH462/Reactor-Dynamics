@@ -70,9 +70,10 @@
     imrmtg3r8ez: { press: function () { cmd({ action: 'set_cvcs_auto', active: true }); }, active: function (s) { return CS(s).cvcs_auto; } },
     imrprbi6ui1: { press: function () { cmd({ action: 'set_cvcs_auto', active: false }); }, active: function (s) { return !CS(s).cvcs_auto; } },
     imrqn630s3b: { press: function () { cmd({ action: 'set_charging_flow', normalized: 0 }); }, active: function (s) { return !CS(s).cvcs_auto && (CS(s).charging_flow_normalized || 0) === 0; } },
-    // charging pump ON/OFF (by the pump)
-    imrsjy1m9g: { press: function () { cmd({ action: 'set_charging_pump', running: true }); }, active: function (s) { return CS(s).charging_pump_running; } },
-    imrsjy59pnu: { press: function () { cmd({ action: 'set_charging_pump', running: false }); }, active: function (s) { return !CS(s).charging_pump_running; } },
+    // RCP ON/OFF (the two buttons sit on the reactor coolant pump; the pump itself is
+    // rendered art-only so these are its controls — not a redundant built-in toggle).
+    imrsjy1m9g: { press: function () { cmd({ action: 'set_rcp', running: true }); }, active: function (s) { return IN(s).rcp_running; } },
+    imrsjy59pnu: { press: function () { cmd({ action: 'set_rcp', running: false }); }, active: function (s) { return !IN(s).rcp_running; } },
     // --- Letdown orifices: CLOSED / A 3% / B 4% / A+B 7% ---
     imrmtin8wm3: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: false }); }, active: function (s) { return !CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },
     imrmtimrch3: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: false }); }, active: function (s) { return CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },
@@ -234,13 +235,19 @@
     imrppb3kuav: function (open) { cmd({ action: open ? 'open_block_valve' : 'close_block_valve' }); },
     imrppxt2aqd: function (open) { cmd({ action: open ? 'open_accumulator_valve' : 'close_accumulator_valve' }); }
   };
-  // Pump control targets (component onControl 'toggle' / 'speed')
+  // Pump control targets (component onControl 'toggle' / 'speed'). Only the pumps that
+  // keep their built-in control need an entry — the RCP, ECCS, and feed pumps are rendered
+  // art-only (see suppressBuiltInControls) and are driven by their external buttons/panels.
   var PUMP_TOGGLE = {
-    imrobnzlha1: function (on) { cmd({ action: 'set_hpi', active: on }); },
-    imrobpq4a70: function (on) { cmd({ action: 'set_rcp', running: on }); },
     imrqp87ueqb: function (on) { cmd({ action: 'set_charging_pump', running: on }); },
     imrqvzbd9hd: function (on) { cmd({ action: 'set_condensate_pump', running: on }); }
   };
+  // Pumps whose built-in control box is redundant (they have external controls) — render
+  // them art-only so the control space doesn't shift the pump art and bend the pipes.
+  //   RCP  -> external ON/OFF buttons (imrsjy1m9g/imrsjy59pnu -> set_rcp)
+  //   ECCS -> HPI START/STOP/AUTO panel (set_hpi); the pump reflects hpi_active
+  //   feed -> SG FEED RATE panel (set_feed_pump_speed)
+  var ART_ONLY_PUMPS = { imrobpq4a70: 1, imrobnzlha1: 1, imrobph7xrq: 1 };
 
   // ================================================================ TRIP BLOCKS menu (task #5)
   // Only the 4 blockable trips (owner ruling).
@@ -397,6 +404,8 @@
     controlLabelItem: function (label) { return CONTROL_LABEL_MAP[label] || null; },
     controlLabels: function () { return Object.keys(CONTROL_LABEL_MAP); },
     tagItem: function () { return TAG_ITEM; },
+    // pumps rendered art-only (built-in control box suppressed) — see ART_ONLY_PUMPS
+    suppressBuiltInControls: function (id) { return !!ART_ONLY_PUMPS[id]; },
     // exposed for the acceptance harness
     selfTest: function (ck, svc, sent) {
       var s = svc.assembleSnapshot();

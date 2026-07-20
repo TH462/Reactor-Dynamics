@@ -80,14 +80,6 @@
     // standardized medium exhaust port (the board draws the connecting stub to the condenser)
     C.push(h('circle', { key: 'pmExhaust', cx: exX, cy: exTopY + 12, r: 0.75, fill: 'none', 'data-port': 'exhaust-out', 'data-fluid': 'wetSteam', 'data-dir': 'down', 'data-size': 'medium', 'data-out': '1' }));
 
-    // TCV / casing drain — the final diagram routes a drain line
-    // (turbineGenerator/tcv-drain -> condenser/steam-in-2). The design turbine never
-    // exposed this port, so it is added here at the casing underside toward the
-    // condenser so the authored pipe resolves and the drain line draws.
-    var drX = 430, drY = 250;
-    C.push(h('rect', { key: 'drNoz', x: drX - 9, y: drY - 5, width: 18, height: 14, rx: 3, fill: 'url(#' + gid + 'SteelGrad)', stroke: '#223543', strokeWidth: 1 }));
-    C.push(h('circle', { key: 'pmDrain', cx: drX, cy: drY + 9, r: 0.75, fill: 'none', 'data-port': 'tcv-drain', 'data-fluid': 'steam', 'data-dir': 'down', 'data-size': 'medium', 'data-out': '1' }));
-
     // turbine casing (narrowed left/right; left edge stays put so the steam-inlet stub
     // doesn't have to move)
     var turbD = 'M330,40 L586,90 L586,210 L330,260 Z';
