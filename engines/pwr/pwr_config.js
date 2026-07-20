@@ -383,9 +383,12 @@
       // pegged at exactly the setpoint never satisfies a strict crossed() compare,
       // so the high-flux trip could never fire (same fix as the RBMK meter).
       power_range:       { lag: 0.1, noise: 0.2,   range: [0, 200] },
-      tavg:              { lag: 4.0, noise: 0.2,   range: [232, 343] },
-      thot:              { lag: 4.0, noise: 0.2,   range: [232, 343] },
-      tcold:             { lag: 4.0, noise: 0.2,   range: [232, 343] },
+      // Range spans cold shutdown → hot: the meter must read true down in the cold band
+      // (Mode 5 ~50 °C) instead of flooring at the at-power operating minimum. The UI Tavg
+      // gauge auto-ranges its DISPLAY scale (fine operating band when hot, wide when cold).
+      tavg:              { lag: 4.0, noise: 0.2,   range: [30, 343] },
+      thot:              { lag: 4.0, noise: 0.2,   range: [30, 343] },
+      tcold:             { lag: 4.0, noise: 0.2,   range: [30, 343] },
       primary_pressure:  { lag: 0.5, noise: 0.014, range: [0, 20.7] },
       pzr_level:         { lag: 2.0, noise: 0.5,   range: [0, 100] },
       sg_level:          { lag: 3.0, noise: 0.5,   range: [0, 100] },

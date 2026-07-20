@@ -115,7 +115,17 @@
       gauges: [
         { id: 'power',   label: 'Reactor Power', lead: true, raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
         { id: 'press',   label: 'Primary Pressure', raw: function (s) { return s.instruments.primary_pressure; }, dim: 'pressure', min: 0, max: 20.7, caution: 16.2, danger: 16.44, dp: 0 },
-        { id: 'tavg',    label: 'Avg Coolant Temp (Tavg)', raw: function (s) { return s.instruments.tavg; }, dim: 'temp', min: 250, max: 343, caution: 312, danger: 335, dp: 0 },
+        { id: 'tavg',    label: 'Avg Coolant Temp (Tavg)', raw: function (s) { return s.instruments.tavg; }, dim: 'temp', min: 250, max: 343, caution: 312, danger: 335, dp: 0,
+          // Auto-ranging: the operating band [250-343] when hot; a wide LOW-RANGE scale
+          // [30-260] when cold (Mode 5 / heatup-cooldown) so one gauge covers both. 8°C
+          // hysteresis around the operating minimum avoids flicker while crossing.
+          autorange: function (raw) {
+            if (this._wide == null) this._wide = raw < 246;
+            this._wide = raw < (this._wide ? 254 : 246);
+            return this._wide
+              ? { min: 30, max: 260, caution: null, danger: null, caution_lo: null, danger_lo: null, label: 'Avg Coolant Temp (Tavg) · LOW RANGE' }
+              : { min: 250, max: 343, caution: 312, danger: 335, label: 'Avg Coolant Temp (Tavg)' };
+          } },
         { id: 'pzr',     label: 'Pressurizer Level (PZR)', raw: function (s) { return s.instruments.pzr_level; }, units: '%', min: 0, max: 100, caution_lo: 25, danger_lo: 12, dp: 0 },
         { id: 'sg',      label: 'Steam Generator Level (SG)', raw: function (s) { return s.instruments.sg_level; }, units: '%', min: 0, max: 100, caution_lo: 30, danger_lo: 12, dp: 0 },
         { id: 'subcool', label: 'Subcooling Margin', raw: function (s) { return s.instruments.subcooling_margin; }, dim: 'tempdiff', min: -28, max: 83, caution_lo: 11, danger_lo: 0, dp: 0 },
@@ -551,13 +561,18 @@
       // profile's gauges — read defensively or the whole render pass dies.
       try { raw = g.raw(s); } catch (e) { raw = null; }
       if (raw == null || isNaN(raw)) { root.querySelector('[data-val]').textContent = '—'; return; }
-      var st = gaugeState(g, raw);
+      // Auto-ranging gauge: a gauge may pick a different scale/bands from the reading
+      // (e.g. Tavg swaps to a wide LOW-RANGE scale in cold shutdown to save a second gauge).
+      var eff = g.autorange ? Object.assign({}, g, g.autorange(raw) || {}) : g;
+      var lblSpan = root.querySelector('.g-label span');
+      if (lblSpan && eff.label && lblSpan.textContent !== eff.label) lblSpan.textContent = eff.label;
+      var st = gaugeState(eff, raw);
       root.classList.toggle('warn', st === 'warn');
       root.classList.toggle('alarm', st === 'alarm');
       var disp = g.dim ? conv(raw, g.dim) : raw * (g.mul || 1);
       var units = g.dim ? unit(g.dim) : g.units;
       root.querySelector('[data-val]').innerHTML = disp.toFixed(g.dp) + '<span class="g-units"> ' + units + '</span>';
-      var frac = (raw - g.min) / (g.max - g.min), cf = Math.max(0, Math.min(1, frac));
+      var frac = (raw - eff.min) / (eff.max - eff.min), cf = Math.max(0, Math.min(1, frac));
       root.querySelector('[data-needle]').style.left = (cf * 100) + '%';
       // single dim bar track; colored fill (to the needle) only when in a band
       var fill = root.querySelector('[data-fill]');
@@ -567,7 +582,7 @@
       var h = gaugeHist[g.id]; h.push(raw); if (h.length > 40) h.shift();
       var tr = root.querySelector('[data-trend]');
       if (h.length > 4) {
-        var d = h[h.length - 1] - h[h.length - 5], thr = Math.abs(g.max - g.min) * 0.002;
+        var d = h[h.length - 1] - h[h.length - 5], thr = Math.abs(eff.max - eff.min) * 0.002;
         tr.textContent = d > thr ? '▲' : d < -thr ? '▼' : '▶';
         tr.className = 'g-trend ' + (d > 0 ? 'trend-up' : d < 0 ? 'trend-down' : 'trend-flat');
       }
@@ -2891,6 +2906,9 @@
     var em = /[?&]engine=(pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');
     var startKey = em ? em[1] : 'pwr', startEng = ENGINES[startKey];
     ui.engineKey = startKey; ui.plant = startEng.plant; ui.initState = startEng.init;
+    // optional ?init=<state> override (dev convenience) — one of the plant's presets
+    var initm = /[?&]init=([a-z0-9_]+)/.exec(location.search || '');
+    if (initm && (prof().initStates || []).some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
     ui.series = Object.assign({}, prof().defaultSeries);
     buildGauges(); buildGraphParams(); updateSimSummary();
     buildPlantDisplay();
