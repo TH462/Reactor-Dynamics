@@ -2893,3 +2893,45 @@ noise, and the public page should read as product news, not commit subjects.
   empty state present, zero real `<article>` entries (asserts the template stays commented),
   version stamp fills, footer link present exactly once and in the footer (not nav) on all
   five pages, index→changelog navigation, zero console errors.
+
+### PWR board — preset lineups, wide-range SG, trip-block cue, pump temps (2026-07-20)
+
+**Wide-range SG level (engine).** New `sg_level_wide` instrument. The engine models only
+the narrow (working) range as a clamped integral, so wide range is an **affine remap** of it:
+narrow 0–100 % is the `SG_WR_LO..SG_WR_HI` (30–75 %) window of the wide scale
+(`pwr_engine.js` `SG_WR_LO/HI`, mirrored in the SG board component's gauge placement — a
+shared constant contract). Appended to SOURCE + config with `noise:0` per the cross-step
+PRNG rule. The SG board component now drives the **vessel water column from wide range** over
+the full vessel, while the **LVL gauge marker rides narrow range** through the same window —
+so the marker lines up with the water surface at steady state and reads its alarm/trip zone.
+Caveat documented: both peg together (a truly independent wide range would need an un-clamped
+secondary-inventory state, which the engine doesn't have).
+
+**Free-play preset lineups (Mode 1/3/5).** Preset starts now come up operating. Split across
+the two idiomatic free-play mechanisms so **instructed content (noDefaults) is untouched**:
+- Control-layer `defaultOn` on `boron_conc` (boron control ON, `sp.capture` holds the preset's
+  trimmed boron — a sensible per-mode target for free) and `cvcs_makeup` (charging AUTO).
+- Engine `getStartupLineup()` for control_state with no channel to carry it — today just the
+  letdown orifice (Orifice A on hot presets, isolated on `cold_shutdown`); applied by
+  `simulation_service.selectPlant` only when `!noDefaults`.
+- ECCS/AFW arms, trip blocks, steam-dump auto, turbine follow, feed auto were already
+  mode-correct via the control-layer live-instrument init / engine defaults. Verified:
+  M1 blocks `ir_high`+`pr_low_setpoint`; M3 `lo_flow`; M5 `lo_press`+`lo_flow` (P-11/P-7) with
+  SI in MANUAL (P-11). Added `cold_shutdown` (Mode 5) to the UI preset picker.
+- **Gotcha:** opening letdown at a free-play start only balances because charging is in AUTO.
+  Two test harnesses assumed letdown closed at start and broke when CVCS was stood down
+  (autoctl neutral baseline; e2e CVCS-vs-leak) — both now close letdown where they isolate a
+  leak/inventory contract. Not an engine base-default change (would perturb every scenario).
+
+**TRIP BLOCKS cue.** `.bd-btn` gained a `.bd-warn` (amber) state independent of the authored
+active color, plus a `.bd-badge` count. Renderer `buttonWarn`/`buttonBadge` hooks; the driver
+lights the TRIP BLOCKS button amber with the blocked-trip count whenever ≥1 blockable trip is
+blocked.
+
+**Pump fluid-color temps go live.** RCP → `tcold` (cold leg), feed pump → a feedwater proxy
+(`fwTemp`, between hotwell and SG saturation, tracks load). Cold make-up pumps (HPI/RWST,
+charging/VCT, condensate/hotwell) stay near-constant cold. Fixes the RCP rendering hot at cold
+shutdown (was hardcoded 290).
+
+**Gates:** run_pwr 31, campaign 51, autoctl 20/20, m4/m5/m6, m7 OK, e2e 30/30, board_check 52.
+(`verify_e2e_ui` fails on this checks the retired synoptic control ids — pre-existing, unrelated.)
