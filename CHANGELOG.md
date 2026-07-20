@@ -9,6 +9,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **PWR board — pipes now show real fluid temperature.** The reactor-coolant pipes (hot leg, both
+  cold-leg runs, pressurizer spray and surge lines) and the main steam header were previously painted
+  a fixed color — the hot leg stayed red even in cold shutdown. They now take the plant's live leg /
+  saturation temperatures each update, so the whole loop runs cool blue when the plant is cold and
+  warms to red as it heats up, matching the pumps (which already colored to the fluid they move).
 - **PWR board — real ECCS/feedwater indications, a modeled condensate pump, and boron-in-the-loop.**
   The AFW and HPI/charging flow + discharge-pressure gauges, and the condensate flow gauge, now read
   true engine quantities instead of derived placeholders. The **condensate pump** is a real control:

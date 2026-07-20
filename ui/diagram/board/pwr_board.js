@@ -41,6 +41,7 @@
   var ports = {};        // "itemId/port" -> port record (world coords)
   var nudge = {};        // itemId -> {dx,dy}
   var pipeFlow = [];     // [{fromKey,toKey,flowEl,dir,dur}]
+  var pipeTempEls = [];  // [{id, phase, boreEl, flowEl}] — pipes whose fluid color tracks live temp
   var ro = null, scanTimer = null, lastSnap = null;
 
   function driver() { return RD.PwrBoardDriver || null; }
@@ -404,6 +405,7 @@
     if (!window.StdPipe) return;
     RD.BoardH.clear(underSvg);
     pipeFlow = [];
+    pipeTempEls = [];
     var K = window.StdPipe.createKit(RD.BoardH.h);
     Object.keys(ports).forEach(function (key) {
       var p = ports[key];
@@ -435,8 +437,31 @@
         flowEl: flowEl,
         anim: flowEl ? flowEl.style.animation : ''
       });
+      // A pipe with an id whose driver supplies a live temp gets its fluid color
+      // (bore = static fill, flow = moving line) repainted each snapshot. bore is the
+      // 2nd stacked-stroke polyline (case, bore, flow) — see StdPipe.pipe().
+      if (p.id && p.phase) {
+        var boreEl = el.childNodes && el.childNodes[1] ? el.childNodes[1] : null;
+        if (boreEl) pipeTempEls.push({ id: p.id, phase: p.phase, boreEl: boreEl, flowEl: flowEl });
+      }
     });
     updatePipeFlowStates();
+    if (lastSnap) updatePipeTemps(lastSnap);
+  }
+
+  // Repaint live-temperature pipes: driver.pipeTemp(id, s) → °C → StdPipe color ramp.
+  function updatePipeTemps(s) {
+    if (!s || !pipeTempEls.length || !window.StdPipe || !window.StdPipe.phaseTempColor) return;
+    var d = driver();
+    if (!d || !d.pipeTemp) return;
+    for (var i = 0; i < pipeTempEls.length; i++) {
+      var rec = pipeTempEls[i];
+      var t = d.pipeTemp(rec.id, s);
+      if (t == null || isNaN(t)) continue;
+      var c = window.StdPipe.phaseTempColor(rec.phase, t);
+      if (rec.boreEl) rec.boreEl.setAttribute('stroke', c.bore);
+      if (rec.flowEl) rec.flowEl.setAttribute('stroke', c.flow);
+    }
   }
 
   function updatePipeFlowStates() {
@@ -515,7 +540,7 @@
     if (host) host.innerHTML = '';
     host = null; wrap = null; stage = null; underSvg = null; pausedEl = null;
     comps = {}; tiles = {}; valueEls = {}; buttonEls = {}; numberEls = {}; scramEls = {};
-    ports = {}; nudge = {}; pipeFlow = []; lastSnap = null;
+    ports = {}; nudge = {}; pipeFlow = []; pipeTempEls = []; lastSnap = null;
   }
 
   function render(s) {
@@ -582,6 +607,7 @@
       if (d.afterRender) d.afterRender(s);
     }
     updatePipeFlowStates();
+    updatePipeTemps(s);
   }
 
   RD.PwrBoard = {

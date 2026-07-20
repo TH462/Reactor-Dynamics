@@ -2965,3 +2965,33 @@ hysteresis), via a generic `gauge.autorange(raw)` hook. Saves a second permanent
   energy balance is latent-heat-only with no sensible-heat term, so an engine feed-temp would be
   inert. Modeling it properly needs a hotwell/condensate node + FW-heater train + sensible-heat
   term — a real physics feature, not plumbing for a pump color.
+
+### PWR board — live pipe temperatures (2026-07-20)
+
+The board pipes were painted with a STATIC temperature authored in `pwr_board_data.js` — the hot-leg
+run baked at 339 °C showed red even in Mode 5 cold shutdown (true ~50 °C). Pumps already colored to
+their fluid temperature (RCP→`tcold`, feed→`fwTemp`); the pipes lagged behind.
+
+**Fix.** The driver (`pwr_board_wiring.js`) gained a `PIPE_TEMP` map (pipe `id` → live °C) and a
+`pipeTemp(id, s)` API method, same keyed-by-stable-id idiom as the item maps. The renderer
+(`pwr_board.js`) captures each pipe's bore + flow polylines in `buildPipes` and repaints them each
+snapshot via `StdPipe.phaseTempColor(phase, °C)` in a new `updatePipeTemps(s)` (called from
+`render` after `updatePipeFlowStates`, and once at build time from `lastSnap`). Pipes not in the map
+keep their authored color, so this is incremental — no board_data change.
+
+Mapped pipes: RCS hot leg → `thot`; both cold-leg runs + pressurizer spray → `tcold`; pressurizer
+surge → `thot`; SG main steam-out + main-steam header + TCV/dump branches → `satTempC(steam_pressure)`.
+Verified via a node probe of `drv.pipeTemp` across the three presets (HFP hot leg 320 °C / cold leg
+288 °C; Mode 5 all ~50 °C; steam header tracks SG saturation), and by hot-vs-cold board screenshots:
+the whole primary loop is red at power and blue in cold shutdown.
+
+**Also verified (no change): trip blocks are correct per preset.** `_initialTripBlocks` derives from
+each blockable trip's permissive against live instruments — HFP blocks `ir_high`+`pr_low_setpoint`
+(P-10, startup trips blocked at power), Mode 3 blocks `lo_flow` (P-7, low power), Mode 5 blocks
+`lo_press`+`lo_flow` (P-11 depressurized + P-7). Matches real PWR permissive logic. **Pump temps**
+are already fluid-based (RCP shows cold-leg temp — genuinely ~288 °C hot / ~50 °C cold; the
+"pump-heat" `FLUID_HEAT` fallback in `comp_pump.js` only applies when no temp is supplied, which
+never happens for a wired pump).
+
+**Gates:** run_pwr 31/31, campaign 51/51, autoctl 20/20, m4 18/18, m5 19/19, e2e 30/30,
+board_check 52/52.

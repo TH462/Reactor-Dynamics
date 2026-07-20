@@ -260,6 +260,26 @@
   //   condensate-> no control (always running); it doesn't need to be operated
   var ART_ONLY_PUMPS = { imrobpq4a70: 1, imrobnzlha1: 1, imrobph7xrq: 1, imrqp87ueqb: 1, imrqvzbd9hd: 1 };
 
+  // ================================================================ LIVE PIPE TEMPERATURES
+  // The board pipes are authored with a STATIC temp (pwr_board_data.js) — a hot-leg run
+  // baked at 339 °C shows red even in Mode 5 cold shutdown. These pipes instead take a
+  // live fluid temperature (°C) each snapshot so their color tracks the plant: the primary
+  // coolant loop reads the RCS leg temps, the secondary main-steam header reads the SG
+  // saturation temperature. Pipe id → temp(s); any pipe not listed keeps its authored temp.
+  // Keyed by the pwr_board_data.js pipe `id` (stable), same idiom as the item maps above.
+  var PIPE_TEMP = {
+    pmrr3mh0eqa: function (s) { return IN(s).thot; },                     // RCS hot leg  (RV hot-out → SG)
+    pmrr0sdw3oe: function (s) { return IN(s).tcold; },                    // RCS cold leg (RV cold-in ← RCP)
+    pmrr0sfz914: function (s) { return IN(s).tcold; },                    // RCS cold leg (RCP → SG cold-out)
+    pmrr0whsee9: function (s) { return IN(s).tcold; },                    // pressurizer spray (taken off the cold leg)
+    pmrr3zbmng6: function (s) { return IN(s).thot; },                     // pressurizer surge (ties to the hot leg)
+    pmrr0u4vgri: function (s) { return satTempC(IN(s).steam_pressure); }, // SG main steam-out (saturated)
+    pmrr46n63pq: function (s) { return satTempC(IN(s).steam_pressure); }, // main steam header (MSIV → TCV)
+    pmrr499yfkb: function (s) { return satTempC(IN(s).steam_pressure); }, // main steam → turbine (TCV out)
+    pmrr0u9nib3: function (s) { return satTempC(IN(s).steam_pressure); }, // steam dump → condenser bypass
+    pmrr46oahnx: function (s) { return satTempC(IN(s).steam_pressure); }  // steam dump branch
+  };
+
   // ================================================================ TRIP BLOCKS menu (task #5)
   // Only the 4 blockable trips (owner ruling).
   var BLOCKABLE_TRIPS = [
@@ -412,6 +432,9 @@
       return n > 0 ? n : null;
     },
     buttonDisabled: function () { return false; },
+    // Live fluid temperature (°C) for a pipe id, or null to keep its authored temp.
+    // Lets the renderer repaint pipe fluid color each snapshot (see PIPE_TEMP).
+    pipeTemp: function (id, s) { var f = PIPE_TEMP[id]; return f ? f(s) : null; },
     compProps: function (item, s) {
       var f = COMPPROPS[item.id] || COMPPROPS[item.comp === undefined ? item.id : item.id];
       // fall back to comp-name keyed entries for the singletons
