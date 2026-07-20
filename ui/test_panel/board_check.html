@@ -179,6 +179,27 @@
       ticks(2);
       ck('func: block ir_high toggles trip_blocks', (!!rps().trip_blocks.ir_high) !== beforeBlk, 'was ' + beforeBlk);
 
+      // --- ESF AUTO/ON/OFF triad: AUTO re-arms; the AUTO tile lights when armed ---
+      function esfState(id) { return (svc.assembleSnapshot().automation.esf || {})[id]; }
+      function tileActive(id) { var b = document.querySelector('[data-item="' + id + '"] button'); return !!b && b.classList.contains('bd-active'); }
+      // HPI: force MANUAL via STOP, then re-arm via AUTO
+      clickBtn('imrldz0wqds'); ticks(2);
+      ck('func: HPI STOP -> esf.hpi manual', esfState('hpi') === 'manual', esfState('hpi'));
+      RD.PwrBoard.render(svc.assembleSnapshot());
+      ck('feedback: HPI AUTO tile dark while MANUAL', !tileActive('imrle1mc0lk'));
+      clickBtn('imrle1mc0lk'); ticks(2);
+      ck('func: HPI AUTO -> esf.hpi auto', esfState('hpi') === 'auto', esfState('hpi'));
+      RD.PwrBoard.render(svc.assembleSnapshot());
+      ck('feedback: HPI AUTO tile lit when armed', tileActive('imrle1mc0lk'));
+      ck('feedback: HPI OFF tile dark when armed', !tileActive('imrldz0wqds'));
+      // AFW: force MANUAL via STOP, then re-arm via AUTO
+      clickBtn('imrmssoa137'); ticks(2);
+      ck('func: AFW STOP -> esf.afw manual', esfState('afw') === 'manual', esfState('afw'));
+      clickBtn('imrmssr9ihq'); ticks(2);
+      ck('func: AFW AUTO -> esf.afw auto', esfState('afw') === 'auto', esfState('afw'));
+      RD.PwrBoard.render(svc.assembleSnapshot());
+      ck('feedback: AFW AUTO tile lit when armed', tileActive('imrmssr9ihq'));
+
       // --- physics-perturbing checks LAST (they degrade the plant) ---
       // condensate pump has no board control (owner: it doesn't need operating), but the
       // engine still models it — securing it collapses main feed. Exercise via the command.

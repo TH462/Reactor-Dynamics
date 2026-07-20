@@ -44,6 +44,11 @@
     for (var i = 0; i < ch.length; i++) if (ch[i].id === id) return ch[i];
     return null;
   }
+  // ESF arm state by system id ('auto' | 'manual'); the AUTO buttons highlight when armed.
+  function esfAuto(s, id) {
+    var e = s.automation && s.automation.esf;
+    return !!(e && e[id] === 'auto');
+  }
   function rodGroup(s, id) {
     var g = (CS(s).rod_groups || []);
     for (var i = 0; i < g.length; i++) if (g[i].id === id) return g[i];
@@ -59,13 +64,15 @@
   // Each entry: press(s) issues command(s); active(s) -> selected highlight.
   var BUTTONS = {
     // --- HPI / ECCS ---
-    imrldymb837: { press: function () { cmd({ action: 'set_hpi', active: true }); }, active: function (s) { return IN(s).hpi_active; } },
-    imrldz0wqds: { press: function () { cmd({ action: 'set_hpi', active: false }); }, active: function (s) { return !IN(s).hpi_active; } },
-    imrle1mc0lk: { press: function () { cmd({ action: 'set_esf_auto', system: 'hpi', auto: true }); } },
+    // AUTO/ON/OFF is a mutually-exclusive triad (mirrors pwr_synoptic.js): AUTO lights
+    // when the ESF arm is 'auto'; ON/OFF light only while in MANUAL (arm !== 'auto').
+    imrldymb837: { press: function () { cmd({ action: 'set_hpi', active: true }); }, active: function (s) { return !esfAuto(s, 'hpi') && IN(s).hpi_active; } },
+    imrldz0wqds: { press: function () { cmd({ action: 'set_hpi', active: false }); }, active: function (s) { return !esfAuto(s, 'hpi') && !IN(s).hpi_active; } },
+    imrle1mc0lk: { press: function () { cmd({ action: 'set_esf_auto', system: 'hpi', auto: true }); }, active: function (s) { return esfAuto(s, 'hpi'); } },
     // --- AFW ---
-    imrmsslj42u: { press: function () { cmd({ action: 'set_afw', active: true }); }, active: function (s) { return IN(s).afw_active || IN(s).afw_pump_running; } },
-    imrmssoa137: { press: function () { cmd({ action: 'set_afw', active: false }); }, active: function (s) { return !(IN(s).afw_active || IN(s).afw_pump_running); } },
-    imrmssr9ihq: { press: function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); } },
+    imrmsslj42u: { press: function () { cmd({ action: 'set_afw', active: true }); }, active: function (s) { return !esfAuto(s, 'afw') && (IN(s).afw_active || IN(s).afw_pump_running); } },
+    imrmssoa137: { press: function () { cmd({ action: 'set_afw', active: false }); }, active: function (s) { return !esfAuto(s, 'afw') && !(IN(s).afw_active || IN(s).afw_pump_running); } },
+    imrmssr9ihq: { press: function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); }, active: function (s) { return esfAuto(s, 'afw'); } },
     // --- Charging panel: AUTO / MAN / OFF (this panel is the charging pump's control;
     //     OFF stops the charging pump, AUTO/MAN run it in auto make-up / manual charging) ---
     imrmtg3r8ez: { press: function () { cmd({ action: 'set_charging_pump', running: true }); cmd({ action: 'set_cvcs_auto', active: true }); }, active: function (s) { return CS(s).charging_pump_running && CS(s).cvcs_auto; } },
