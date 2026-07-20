@@ -2995,3 +2995,36 @@ never happens for a wired pump).
 
 **Gates:** run_pwr 31/31, campaign 51/51, autoctl 20/20, m4 18/18, m5 19/19, e2e 30/30,
 board_check 52/52.
+
+### PWR board — live fluid pools + neutral trip-block cue (2026-07-20)
+
+Follow-up audit of every fluid pool for live temperature/level tracking, plus a color-scheme fix.
+
+**Fixed (were hardcoded in `pwr_board_wiring.js` compProps):**
+- *Pressurizer fluid temp* was `temp: 345` (always max-red). Now `satTempC(primary_pressure)` — the
+  pressurizer sits at saturation, so it's red at operating pressure (~352 °C @ 15.4 MPa) and cools
+  as the plant depressurizes (~225 °C @ 2.5 MPa in the Mode 5 IC — legitimately hotter than the
+  50 °C loop, exactly as a real pressurizer runs during heatup/cooldown).
+- *SG boiling vigor* was `boil: 55` (constant simmer). Now `min(100, steam_flow*85)` — vigorous at
+  power (~84), calm (0) at hot standby / cold shutdown where there's no steam demand.
+- *Reactor core bubbles* were keyed on `subcooling_margin < 0`, which almost never triggers (a PWR
+  core stays subcooled by pressure even in a LOCA — subcooling hit only ~11 °C, never negative, in
+  probes). Now `max(core_void_fraction*400, subcooling<0 ? -sub*3 : 0)` — driven by the engine's
+  REAL void fraction so bubbles appear as the core actually voids (a 20 % LOCA reached void≈0.016 →
+  boil≈6), with the superheat term kept as a kick if subcooling ever does go negative.
+
+**Trip-block button → grey.** Owner color scheme: green = normal, yellow = attention, red = alarm.
+Trips blocked during a startup/shutdown lineup are NORMAL (P-10/P-11/P-7 permissives), so the amber
+`bd-warn` was miscuing them as "attention". Added a neutral `.bd-btn.bd-info` (grey) + grey badge;
+renderer gained a `buttonInfo` hook (parallel to `buttonWarn`); driver's TRIP BLOCKS indicator moved
+from `buttonWarn` → `buttonInfo`. board_check updated to assert grey (bd-info, not bd-warn).
+
+**Audited, left as-is (documented):**
+- *Reactor vessel coolant pool* color is POWER-driven (fission-heat / Cherenkov-glow model), not a
+  plain thermometer — so it reads cool at hot standby (hot but 0 % power). The fuel-rod / core-glow
+  visuals SHOULD stay power-driven; splitting the downcomer pool onto a temperature scale is a
+  comp_reactor_vessel rework, deferred (flagged for the owner). Level (`core_inventory_pct`) IS live.
+- *Condenser hotwell* temp (40 °C) and level (55 %) are static — the engine models neither (no
+  hotwell instrument); the condenser runs at a near-constant ~40 °C saturation under vacuum anyway.
+
+**Gates:** run_pwr 31, campaign 51, autoctl 20, m4 18, m5 19, m6 16, m7 OK, e2e 30, board_check 52.

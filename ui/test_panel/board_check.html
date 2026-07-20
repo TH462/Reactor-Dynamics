@@ -169,14 +169,15 @@
       var afterSteps = cs().rod_groups.filter(function (g) { return g.id === 'control_rods'; })[0].steps;
       ck('func: rod WITHDRAW nudge moves control bank up', afterSteps > beforeSteps, beforeSteps + '->' + afterSteps);
 
-      // TRIP BLOCKS button: yellow warning + count badge while trips are blocked.
-      // At hot_full_power the at-power startup net (ir_high + pr_low_setpoint) is blocked.
+      // TRIP BLOCKS button: neutral GREY (bd-info) + count badge while trips are blocked
+      // (a standing lineup note, not an alarm). At hot_full_power the at-power startup net
+      // (ir_high + pr_low_setpoint) is blocked.
       function tripBtn() { return document.querySelector('[data-item="imrsk4xz2dm"] button'); }
       function tripBadge() { var b = tripBtn() && tripBtn().querySelector('.bd-badge'); return b && b.style.display !== 'none' ? b.textContent : null; }
       RD.PwrBoard.render(svc.assembleSnapshot());
       var blk0 = Object.keys(rps().trip_blocks).filter(function (k) { return rps().trip_blocks[k]; }).length;
-      ck('warn: TRIP BLOCKS yellow when trips blocked', tripBtn().classList.contains('bd-warn'), blk0);
-      ck('warn: TRIP BLOCKS badge shows blocked count', tripBadge() === String(blk0), tripBadge() + ' vs ' + blk0);
+      ck('info: TRIP BLOCKS grey when trips blocked', tripBtn().classList.contains('bd-info') && !tripBtn().classList.contains('bd-warn'), blk0);
+      ck('info: TRIP BLOCKS badge shows blocked count', tripBadge() === String(blk0), tripBadge() + ' vs ' + blk0);
       // TRIP BLOCKS popover + block a trip
       clickBtn('imrsk4xz2dm');
       var popOpen = !!document.querySelector('.bd-pop');

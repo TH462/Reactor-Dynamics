@@ -9,6 +9,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **PWR board — every fluid pool now tracks live conditions.** The **pressurizer** water/steam
+  color follows the real saturation temperature of RCS pressure (red hot at operating pressure,
+  cooling as the plant depressurizes) instead of a fixed hot color. The **steam generator** boils
+  as hard as it is actually making steam — vigorous at power, calm at hot standby / cold shutdown —
+  instead of a constant simmer. The **reactor core** bubbles track the engine's real coolant void
+  fraction, so boiling shows up when the core actually starts to void in a transient (and stays
+  quiet during normal subcooled operation).
+- **PWR board — TRIP BLOCKS button is now grey, not yellow.** Blocking startup trips is a normal
+  part of a shutdown/startup lineup, not an alarm, so the button uses a neutral grey (with its
+  count badge) — keeping green/yellow/red for real normal / attention / alarm severity.
 - **PWR board — pipes now show real fluid temperature.** The reactor-coolant pipes (hot leg, both
   cold-leg runs, pressurizer spray and surge lines) and the main steam header were previously painted
   a fixed color — the hot leg stayed red even in cold shutdown. They now take the plant's live leg /

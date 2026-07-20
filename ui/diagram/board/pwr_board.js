@@ -581,10 +581,14 @@
         var it = itemById(id);
         var on = d.buttonActive ? !!d.buttonActive(it, s) : false;
         btn.classList.toggle('bd-active', on);
-        // Warning (yellow) state — independent of the authored active color. Used for
-        // e.g. TRIP BLOCKS: yellow while any trip is blocked, with a count badge.
+        // Warning (yellow) state — independent of the authored active color, for genuine
+        // "needs attention" conditions on the green/yellow/red scale.
         var warn = d.buttonWarn ? !!d.buttonWarn(it, s) : false;
         btn.classList.toggle('bd-warn', warn);
+        // Informational (grey) state — a neutral standing condition the operator set, e.g.
+        // TRIP BLOCKS: grey (with a count badge) while trips are intentionally blocked.
+        var info = d.buttonInfo ? !!d.buttonInfo(it, s) : false;
+        btn.classList.toggle('bd-info', info);
         var badge = d.buttonBadge ? d.buttonBadge(it, s) : null;
         setBadge(btn, badge);
         var dis = d.buttonDisabled ? !!d.buttonDisabled(it, s) : false;

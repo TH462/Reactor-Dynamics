@@ -56,9 +56,14 @@
 .bd-btn:disabled { opacity: 0.45; cursor: not-allowed; color: #55636e; border-color: #26333d; }
 /* Selected/engaged state: adopt the button's authored active color. */
 .bd-btn.bd-active { background: #0c1a22; border-color: var(--bd-color); color: var(--bd-color); }
-/* Warning state (yellow) — a caution independent of the authored active color, e.g. a
-   trip is currently BLOCKED. Wins over the authored color; matches the .bd-blocked amber. */
+/* Warning state (yellow) — a caution independent of the authored active color. Reserved
+   for genuine "needs attention" conditions on the green/yellow/red severity scale. */
 .bd-btn.bd-warn { background: #3a2408; border-color: #ffd166; color: #ffd166; }
+/* Informational/neutral state (grey) — a non-alarm condition the operator has deliberately
+   set, e.g. reactor trips intentionally BLOCKED as part of a startup/shutdown lineup. Grey
+   keeps it OFF the green(normal)/yellow(attention)/red(alarm) severity scale — it's a
+   standing lineup note, not something wrong. */
+.bd-btn.bd-info { background: #1b2229; border-color: #7c8b98; color: #b8c4cd; }
 /* Count badge on a button (e.g. number of trips blocked). */
 .bd-btn { position: relative; }
 .bd-badge {
@@ -68,6 +73,8 @@
   font-size: 10px; line-height: 13px; font-weight: 700; text-align: center;
   letter-spacing: 0; pointer-events: none;
 }
+/* Grey badge on a neutral/info button (matches .bd-info, not the amber default). */
+.bd-btn.bd-info .bd-badge { background: #8a99a6; color: #10161d; }
 
 /* ---- scram ---- */
 .bd-scram {

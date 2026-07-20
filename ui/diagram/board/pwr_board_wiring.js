@@ -193,26 +193,36 @@
       var cr = rodGroup(s, 'control_rods'), sr = rodGroup(s, 'shutdown_rods');
       var t = s.true_state || {};
       var sub = IN(s).subcooling_margin;
+      // Core boiling: primarily the real void fraction the engine tracks (0..~0.3), scaled
+      // so even a few percent voids show light bubbling; plus a superheat kick if subcooling
+      // actually goes negative. Zero voids + subcooled ⇒ no bubbles (normal PWR operation).
+      var voidFrac = t.core_void_fraction != null ? t.core_void_fraction : 0;
       return {
         regFrac: cr ? cr.position_pct / 100 : 0.9,
         shutFrac: sr ? sr.position_pct / 100 : 1,
         power: (IN(s).power_range || 0) / 100,
         coreInv: t.core_inventory_pct != null ? t.core_inventory_pct : 100,
-        boil: (sub != null && sub < 0) ? Math.min(100, -sub * 3) : 0,
+        boil: Math.min(100, Math.max(voidFrac * 400, (sub != null && sub < 0) ? -sub * 3 : 0)),
         glow: true, showFlow: IN(s).rcp_running
       };
     },
     steamGenerator: function (s) {
       // level = wide range (whole-vessel water column); narrowLevel = the working range on
       // the LVL gauge (with its alarm/trip zones). Two distinct engine instruments.
-      return { power: IN(s).power_range, level: IN(s).sg_level_wide, narrowLevel: IN(s).sg_level, boil: 55,
+      // boil = boiling vigor, driven by live steam production (steam_flow, normalized ~0..1)
+      // so the SG bubbles hard at power and goes calm when there's no steam demand.
+      return { power: IN(s).power_range, level: IN(s).sg_level_wide, narrowLevel: IN(s).sg_level,
+        boil: Math.min(100, (IN(s).steam_flow || 0) * 85),
         temp: satTempC(IN(s).steam_pressure), showFlow: true, glow: true };
     },
     pressurizer: function (s) {
       var c = CS(s);
+      // Fluid color tracks the LIVE pressurizer temperature = saturation temp of the RCS
+      // pressure (the pressurizer sits at saturation), so it runs red hot at operating
+      // pressure and cools as the plant depressurizes — not a fixed 345 °C.
       return { level: IN(s).pzr_level, heaterPower: c.heater_power_pct,
         heaterOn: (c.heater_power_pct || 0) > 0 || (c.heater_auto && (IN(s).power_range || 0) > 0),
-        spray: (c.spray_valve_pct || 0) > 2, temp: 345, glow: true, showFlow: true };
+        spray: (c.spray_valve_pct || 0) > 2, temp: satTempC(IN(s).primary_pressure), glow: true, showFlow: true };
     },
     porv: function (s) { return { open: IN(s).porv_indicator === 'open' }; },
     condenser: function (s) {
@@ -421,8 +431,9 @@
       var b = BUTTONS[item.id];
       return b && b.active ? !!b.active(s) : false;
     },
-    // Warning (yellow) state: the TRIP BLOCKS button lights amber while any trip is blocked.
-    buttonWarn: function (item, s) {
+    // Neutral (grey) state: the TRIP BLOCKS button greys out while any trip is blocked —
+    // a standing lineup note, not an alarm (green/yellow/red is reserved for real severity).
+    buttonInfo: function (item, s) {
       return item.id === 'imrsk4xz2dm' && blockedTripCount(s) > 0;
     },
     // Count badge: how many trips are currently blocked, on the TRIP BLOCKS button.
