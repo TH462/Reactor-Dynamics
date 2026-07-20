@@ -454,12 +454,17 @@
     underSvg.style.cssText = 'position:absolute;left:0;top:0;overflow:visible;pointer-events:none';
     stage.appendChild(underSvg);
 
-    // stable z-ordering: boxes first (pipeTop boxes go under pipes via z-index -1),
-    // then pipes svg (already appended), then everything else in doc order
+    // Panel contents must sit above their (opaque) box regardless of authoring order —
+    // e.g. the AFW box is authored AFTER its START/STOP/AUTO buttons and would paint over
+    // them. Boxes stay at their base z (pipeTop -1, else 0) and components at 0 (so a
+    // control panel authored over a vessel edge still covers it); buttons/values/text/
+    // numbers/scram lift to z-index 1.
+    var LIFT = { button: 1, value: 1, text: 1, number: 1, scram: 1 };
     (doc.items || []).forEach(function (it) {
       var b = BUILDERS[it.kind];
       if (!b) return;
       var el = b(it);
+      if (LIFT[it.kind]) el.style.zIndex = '1';
       tiles[it.id] = el;
       stage.appendChild(el);
     });

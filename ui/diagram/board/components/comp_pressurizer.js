@@ -134,9 +134,13 @@
     // ---- ports ----
     var sprayPort = h('circle', { cx: 32, cy: 124, r: 0.75, fill: 'none', 'data-port': 'spray-in', 'data-fluid': 'coldLeg', 'data-dir': 'left', 'data-size': 'small', 'data-out': '0', 'data-active': '0' });
 
-    // ---- root svg (fixed viewBox, controls hidden) ----
+    // ---- root svg (controls hidden) ----
+    // Headroom added ABOVE the vessel (viewBox top raised well above the dome apex at
+    // y95) so the vessel sits in the LOWER part of its tile: the authored PORV/relief
+    // valves sit above the dome with a short connecting pipe, instead of the tile-filling
+    // vessel swallowing them (owner: "lower the PZR so the PORV lines up above it").
     var svg = h('svg', {
-      viewBox: '10 90 220 466', preserveAspectRatio: 'xMidYMid meet',
+      viewBox: '10 -120 220 685', preserveAspectRatio: 'xMidYMid meet',
       style: { width: '100%', height: '100%', overflow: 'visible', display: 'block' }
     },
       defs,
