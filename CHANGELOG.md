@@ -8,6 +8,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **PWR board — new temperature color scheme (no more pink).** Water now runs a cold-blue →
+  cyan → amber → hot-red ramp, so an at-power plant reads warm orange-red instead of the old
+  purple/magenta. Steam keeps its grey scale.
+- **PWR board — AFW block valve is now an independent operator valve (TMI-2).** The auxiliary-
+  feedwater block/discharge valve no longer just mirrors the AFW start/stop buttons. You can run
+  the AFW pumps (run lights on, discharge pressure at shutoff) while the block valve is shut and
+  **no water reaches the steam generator** — the exact trap that caught TMI-2.
+- **PWR board — SG FEED AUTO now shows AUTO when the feed control is actually running.** The
+  SG-feed panel read a legacy flag, so it displayed MAN even though the three-element feedwater
+  controller was in automatic; it now reflects and engages the real feed channel.
+- **PWR board — the turbine-inlet steam pipe stops when the turbine is offline.** A tripped/
+  unloaded turbine no longer shows steam still flowing to it.
+
 ### Added
 - **PWR board — 1/M startup-plot button.** A **1/M PLOT** button (under TRIP BLOCKS, with the
   startup net) opens the inverse-count-rate approach-to-criticality plot directly from the board.

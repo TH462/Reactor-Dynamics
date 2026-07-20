@@ -434,7 +434,7 @@
                // trip — read as a condition by the p14_reactor_trip trip.
                'above_p9',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
-               'afw_active', 'afw_pump_running', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
+               'afw_active', 'afw_pump_running', 'afw_block_open', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
                'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating',
                // condensate pump run status (operator-controlled; gates main feedwater)
                'condensate_pump_running'],

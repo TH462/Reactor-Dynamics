@@ -46,11 +46,14 @@
   // ---------------------------------------------------------------------------
   var TEMP_MIN_C = 15;     // coldest rendered temperature (aqua / lightest steam)
   var WATER_MAX_C = 345;   // hottest liquid water in a PWR -> full red
+  // Cold→hot thermal ramp (NO purple/magenta midband — that read as "mostly pink" at
+  // operating temperature). Cold deep-blue → cyan → amber → red, so a normal-temperature
+  // plant reads warm orange-red and a cold plant reads blue, warming through cyan/teal.
   var WATER_RAMP = [
-    [0.00, [0x24, 0xe2, 0xd6]],  // aqua
-    [0.34, [0x3b, 0x7b, 0xf0]],  // blue
-    [0.67, [0xa2, 0x4e, 0xe6]],  // purple
-    [1.00, [0xff, 0x3b, 0x2e]]   // red   (hottest water)
+    [0.00, [0x2b, 0x74, 0xd6]],  // cold — deep blue
+    [0.34, [0x2c, 0xc2, 0xd0]],  // cyan / teal
+    [0.68, [0xf0, 0xb4, 0x3c]],  // amber
+    [1.00, [0xe0, 0x40, 0x2c]]   // hot — red
   ];
   var STEAM_RAMP = [
     [0.00, [0x5a, 0x64, 0x6b]],  // medium-dark grey  (cooler steam)

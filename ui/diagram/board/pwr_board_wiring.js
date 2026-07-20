@@ -125,9 +125,13 @@
     imro8lddxi: { press: function () { cmd({ action: 'set_load_mode', mode: 'manual' }); }, active: function (s) { return CS(s).load_mode === 'manual'; } },
     imro8len0oi: { press: function () { cmd({ action: 'disconnect_grid' }); }, active: function (s) { return IN(s).steam_demand_low || (IN(s).mwe_output || 0) <= 1; } },
     // --- SG feed pump: AUTO / MAN / OFF ---
-    imrsgjmrjfg: { press: function () { cmd({ action: 'set_feed_coupled', active: true }); }, active: function (s) { return CS(s).feed_auto_coupled; } },
-    imrsgjuh7l0: { press: function (s) { cmd({ action: 'set_feed_pump_speed', pct: CS(s).feed_pump_speed_pct || 100 }); }, active: function (s) { return !CS(s).feed_auto_coupled && (CS(s).feed_pump_speed_pct || 0) > 0; } },
-    imrsgjwq1q0: { press: function () { cmd({ action: 'set_feed_pump_speed', pct: 0 }); }, active: function (s) { return !CS(s).feed_auto_coupled && (CS(s).feed_pump_speed_pct || 0) === 0; } },
+    // AUTO = the three-element feedwater channel (feed_sg), which is the plant's real feed
+    // automation and the free-play default. (The board used to read feed_auto_coupled, a
+    // legacy load-coupling flag that is OFF at the preset start, so AUTO looked like MAN even
+    // though feed_sg was running.) A manual pump command drops feed_sg to MAN via its override.
+    imrsgjmrjfg: { press: function () { cmd({ action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true }); }, active: function (s) { var c = chan(s, 'feed_sg'); return !!(c && c.engaged); } },
+    imrsgjuh7l0: { press: function (s) { cmd({ action: 'set_feed_pump_speed', pct: CS(s).feed_pump_speed_pct || 100 }); }, active: function (s) { var c = chan(s, 'feed_sg'); return !(c && c.engaged) && (CS(s).feed_pump_speed_pct || 0) > 0; } },
+    imrsgjwq1q0: { press: function () { cmd({ action: 'set_feed_pump_speed', pct: 0 }); }, active: function (s) { var c = chan(s, 'feed_sg'); return !(c && c.engaged) && (CS(s).feed_pump_speed_pct || 0) === 0; } },
     // --- TRIP BLOCKS popover ---
     imrsk4xz2dm: { press: function (item, btn) { toggleTripBlocks(btn); } },
     // --- 1/M startup plot launcher (driver-injected tile; opens the draggable window) ---
@@ -271,7 +275,11 @@
     imrqp87ueqb: function (s) { return pumpProps(CS(s).charging_pump_running, CS(s).charging_pump_running ? 0.8 : 0, 50); },       // charging pump (VCT — cold)
     imrqvzbd9hd: function (s) { var on = IN(s).condensate_pump_running !== false; return pumpProps(on, on ? 1 : 0, 40); }, // condensate pump (hotwell — cool)
     // valves
-    imrpp2g2m8k: function (s) { return valveProps(IN(s).afw_active ? 1 : 0, 'water', 60); },                                       // afw valve
+    // AFW block/discharge valve — INDEPENDENT of the AFW START/STOP/AUTO (pump) buttons.
+    // openFrac = block valve open (operator-set); it only shows FLOW when AFW is actually
+    // delivering (pumps demanded AND valve open). Shut it with the pumps running to recreate
+    // TMI-2: run lights on, discharge-pressure at shutoff, but no water reaching the SG.
+    imrpp2g2m8k: function (s) { return valveProps(IN(s).afw_block_open === false ? 0 : 1, 'water', 60, IN(s).afw_active); }, // afw block valve
     imrpp99kx2y: function (s) { return valveProps(IN(s).msiv_open ? 1 : 0, 'steam', satTempC(IN(s).steam_pressure)); },            // main steam isolation
     imrppb3kuav: function (s) { return valveProps(CS(s).porv_block_open ? 1 : 0, 'steam', 250); },                                 // PORV block valve
     // accumulator shutoff (isolation) valve — normally OPEN/aligned, but the accumulators
@@ -279,12 +287,15 @@
     // discharge only "flows" while accumulators_discharging (no flow into the Rx at power).
     imrppxt2aqd: function (s) { return valveProps(CS(s).accumulator_valve_open === false ? 0 : 1, 'water', 50, IN(s).accumulators_discharging); },
     imrprmm4u5q: function (s) { return valveProps((IN(s).steam_dump_valve || 0) / 100, (IN(s).steam_dump_valve || 0) > 2 ? 'steam' : 'empty', satTempC(IN(s).steam_pressure)); }, // steam dump valve
-    imrr45syy4v: function (s) { return valveProps((IN(s).governor_valve || 0) / 100, 'steam', satTempC(IN(s).steam_pressure)); }   // TCV
+    // TCV (turbine control valve) — only shows steam FLOW when the turbine is actually taking
+    // load; a tripped/unloaded turbine (steam_demand_low) closes the governor to a crack, so
+    // the turbine-inlet pipe should go still even though the valve isn't fully shut.
+    imrr45syy4v: function (s) { return valveProps((IN(s).governor_valve || 0) / 100, 'steam', satTempC(IN(s).steam_pressure), !IN(s).steam_demand_low && (IN(s).governor_valve || 0) > 5); }   // TCV
   };
 
   // Clickable-valve toggle targets (component onControl 'toggle')
   var VALVE_TOGGLE = {
-    imrpp2g2m8k: function (open) { cmd({ action: 'set_afw', active: open }); },
+    imrpp2g2m8k: function (open) { cmd({ action: 'set_afw_block', open: open }); },   // AFW block valve (independent of pump START/STOP)
     imrpp99kx2y: function (open) { cmd({ action: open ? 'open_msiv' : 'close_msiv' }); },
     imrppb3kuav: function (open) { cmd({ action: open ? 'open_block_valve' : 'close_block_valve' }); },
     imrppxt2aqd: function (open) { cmd({ action: open ? 'open_accumulator_valve' : 'close_accumulator_valve' }); }

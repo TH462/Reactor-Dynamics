@@ -305,6 +305,7 @@
       // §8.8 synoptic status — copied into instruments.reading each step (HR1).
       afw_active: s.afw_active,
       afw_pump_running: !!s.afw_pump_demand,
+      afw_block_open: !s.afw_blocked,   // AFW discharge/block valve open? (independent of pump demand)
       rhr_active: s.rhr_active,
       rhr_valve_open: !!s.rhr_valve_open,
       accumulators_discharging: s.accumulators_discharging,
@@ -382,6 +383,7 @@
       fuel_damaged: s.fuel_damaged,              // latched at fuel_damage_c — scenario outcome-grading hook
       hpi_active: s.hpi_active, hpi_flow_normalized: s.hpi_flow_normalized, afw_active: s.afw_active,
       afw_pump_running: !!s.afw_pump_demand,   // pump demand (run lights) — distinct from delivered flow (TMI-2)
+      afw_blocked: !!s.afw_blocked,            // AFW block/discharge valve shut (operator or TMI-2 tag-out)
       afw_flow_normalized: s.afw_flow_normalized || 0,   // TRUE delivered AFW flow (throttle × level hold; 0 when blocked)
       // ECCS/feedwater discharge-pressure + condensate indications (feed instruments).
       // HPI/charging pump develops head above the RCS it injects into (clamped to shutoff);
@@ -600,6 +602,14 @@
         // valves). Demand latches through a block so clearing the block restores
         // flow with the pumps already running, as in 1979.
         s.afw_pump_demand = !!cmd.active;
+        s.afw_active = s.afw_pump_demand && !s.afw_blocked;
+        break;
+      case 'set_afw_block':
+        // Operator AFW block / discharge valve — INDEPENDENT of the pump START/STOP. Closed
+        // means the pumps may run (demand + run lights honest) but NO flow reaches the SG:
+        // the TMI-2 tagged-shut discharge valves nobody noticed. Same latch as the failure
+        // path, just operator-driven.
+        s.afw_blocked = (cmd.open === false);
         s.afw_active = s.afw_pump_demand && !s.afw_blocked;
         break;
       case 'set_afw_flow':

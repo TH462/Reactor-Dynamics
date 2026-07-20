@@ -48,6 +48,7 @@
       openFrac: 1,
       contents: cfg.contents != null ? cfg.contents : (cfg.fluid != null ? null : 'steam'),
       temp: cfg.temp != null ? cfg.temp : 220,
+      flow: true,   // false = valve open but NOT flowing (no downstream animation)
       fl: null, wet: false
     };
 
@@ -176,13 +177,13 @@
     var applied = {};
     function applyState(force) {
       var openFrac = Math.max(0, Math.min(1, st.openFrac));
-      if (!force && applied.openFrac === openFrac && applied.contents === st.contents && applied.temp === st.temp) return;
-      applied.openFrac = openFrac; applied.contents = st.contents; applied.temp = st.temp;
+      if (!force && applied.openFrac === openFrac && applied.contents === st.contents && applied.temp === st.temp && applied.flow === st.flow) return;
+      applied.openFrac = openFrac; applied.contents = st.contents; applied.temp = st.temp; applied.flow = st.flow;
 
       var fl = st.contents ? K.phaseTempColor(st.contents, st.temp) : (K.FLUIDS[fluidKey] || K.FLUIDS.coolWater);
       var isEmpty = !!fl.empty;
       var open = openFrac > 0.02; // source: flow > 2 (%)
-      var wet = open && !isEmpty;
+      var wet = open && !isEmpty && st.flow;   // flowing (streak + downstream pipe); st.flow gates a "open but not flowing" valve
       st.fl = fl; st.wet = wet;
 
       fluidStopA.setAttribute('stop-color', fl.flow);
@@ -218,7 +219,7 @@
       // (source only checked empty; the board rule adds openFrac > 0)
       var pTag = st.contents || '';
       var pTemp = st.contents != null ? String(st.temp) : '';
-      var active = (openFrac > 0 && !isEmpty) ? '1' : '0';
+      var active = (openFrac > 0 && !isEmpty && st.flow) ? '1' : '0';
       ['a', 'b'].forEach(function (id) {
         portEls[id].setAttribute('data-phase', pTag);
         portEls[id].setAttribute('data-temp', pTemp);
@@ -240,6 +241,7 @@
       if (props.openFrac != null) st.openFrac = props.openFrac;
       if (props.contents != null) st.contents = props.contents;
       if (props.temp != null) st.temp = props.temp;
+      if (props.flow != null) st.flow = !!props.flow;
       applyState(false);
     }
 
