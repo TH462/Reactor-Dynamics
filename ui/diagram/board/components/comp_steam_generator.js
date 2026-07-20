@@ -50,7 +50,7 @@
     var inner = 'M123,' + (shellTop + 1) + ' A87 ' + (domeRy - 12) + ' 0 0 1 297,' + (shellTop + 1) +
       ' L297,' + (shellBot - 1) + ' A87 ' + (botRy - 8) + ' 0 0 1 123,' + (shellBot - 1) + ' Z';
     var bendY = 314, legBot = 470, tubeSheetY = 440;
-    var waterTop = 48, waterBot = tubeSheetY - 5;
+    var waterBot = tubeSheetY - 5;
 
     function mix(a, b, t) {
       t = Math.max(0, Math.min(1, t));
@@ -131,8 +131,14 @@
 
     // NARROW-RANGE level gauge — a fixed instrument band (NOT the full vessel height); its
     // top/bottom are the ends of the narrow operating range, not 0/100% of actual water.
+    // The engine's sg_level IS this narrow (working) range, so both the marker AND the
+    // vessel water surface are driven off pctY() on THIS scale — they line up, and the
+    // surface reads against the correct zone. (A true wide-range water column would need a
+    // separate engine value; we don't have one, so the visible water tracks the narrow range.)
+    // Zones match the PWR SG-level setpoints (pwr_control.js): red = trip (lo-lo 17 % scram /
+    // hi 90 % P-14), yellow = alarm (low 30 % / high 75 %), green = normal band.
     var gx = 88, gw = 15, gTop = 100, gBot = 230, gH = gBot - gTop;
-    function pctY(pct) { return gBot - (pct / 100) * gH; }
+    function pctY(pct) { return gBot - (clampN(pct, 0, 100) / 100) * gH; }
     var zones = [[0, 17, '#ef4d2e'], [17, 30, '#f0a53b'], [30, 75, '#43d17a'], [75, 90, '#f0a53b'], [90, 100, '#ef4d2e']];
     var gEls = [h('rect', { x: gx - 2, y: gTop - 2, width: gw + 4, height: gH + 4, rx: 4, fill: '#0b1119', stroke: '#25333e', strokeWidth: 1 })];
     zones.forEach(function (z) {
@@ -237,7 +243,10 @@
         last.power = power; last.glowOn = glowOn;
       }
 
-      var levelY = waterBot - (level / 100) * (waterBot - waterTop);
+      // Water surface tracks the narrow (working) range on the gauge's own scale, so the
+      // surface in the vessel image lines up exactly with the gauge marker and both read
+      // against the correct alarm/trip zone.
+      var levelY = pctY(level);
       if (level !== last.level) {
         steamRect.setAttribute('height', String(Math.max(0, levelY - 20)));
         waterRect.setAttribute('y', String(levelY));
@@ -247,7 +256,7 @@
         var clipTop = Math.max(bendY, levelY);
         waterClipRect.setAttribute('y', String(clipTop));
         waterClipRect.setAttribute('height', String(Math.max(0, waterBot - clipTop)));
-        markerGroup.style.transform = 'translate(0px,' + Math.max(gTop, Math.min(gBot, levelY)).toFixed(2) + 'px)';
+        markerGroup.style.transform = 'translate(0px,' + levelY.toFixed(2) + 'px)';
         last.level = level;
       }
 
