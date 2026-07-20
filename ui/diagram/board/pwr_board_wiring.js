@@ -28,18 +28,22 @@
 
   // Nominal full-scale flows for indications the engine exposes only as normalized/pct.
   var GPM_HPI = 600, GPM_AFW = 640, GPM_CHARGING = 1000, GPM_LETDOWN = 1000, GPM_FEED_PER_PCT = 10;
-  var PSI_HPI_DISCH = 1520, PSI_AFW_DISCH = 1180;
 
   // ---- driver-local UI state (things the engine has no field for) ----
   var rodSpeed = 'normal';           // S/M/F selection for rod nudges
-  var boronOn = false;               // boron target-seeking controller on/off
-  var boronTargetPpm = 1000;         // desired boron (ppm)
   var refs = null, ctxRef = null;
   var pop = null;                    // active popover element
 
   function cmd(c) { if (ctxRef && ctxRef.cmd) ctxRef.cmd(c); }
   function CS(s) { return s.control_state || {}; }
   function IN(s) { return s.instruments || {}; }
+  // Automation channel by id (boron concentration seeking lives in the control layer).
+  function chan(s, id) {
+    var ch = s.automation && s.automation.channels;
+    if (!ch) return null;
+    for (var i = 0; i < ch.length; i++) if (ch[i].id === id) return ch[i];
+    return null;
+  }
   function rodGroup(s, id) {
     var g = (CS(s).rod_groups || []);
     for (var i = 0; i < g.length; i++) if (g[i].id === id) return g[i];
@@ -74,9 +78,9 @@
     imrmtimrch3: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: false }); }, active: function (s) { return CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },
     imrmtimhz4g: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: true }); }, active: function (s) { return !CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
     imrmtimyxef: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: true }); }, active: function (s) { return CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
-    // --- Boron control ON / OFF (target-seeking controller, see afterRender) ---
-    imrqp6com2b: { press: function () { boronOn = true; }, active: function () { return boronOn; } },
-    imrqp6avzkw: { press: function () { boronOn = false; cmd({ action: 'set_boron_adjust', rate: 0 }); }, active: function () { return !boronOn; } },
+    // --- Boron control ON / OFF: engages the control-layer 'boron_conc' channel ---
+    imrqp6com2b: { press: function () { cmd({ action: 'set_auto_channel', channel_id: 'boron_conc', engaged: true }); }, active: function (s) { var c = chan(s, 'boron_conc'); return !!(c && c.engaged); } },
+    imrqp6avzkw: { press: function () { cmd({ action: 'set_auto_channel', channel_id: 'boron_conc', engaged: false }); }, active: function (s) { var c = chan(s, 'boron_conc'); return !(c && c.engaged); } },
     // --- Pressurizer spray: AUTO / MANUAL / OFF ---
     imro8zestdm: { press: function () { cmd({ action: 'set_spray', auto: true }); }, active: function (s) { return CS(s).spray_auto; } },
     imro900yzeq: { press: function (s) { cmd({ action: 'set_spray', pct: CS(s).spray_valve_pct || 50 }); }, active: function (s) { return !CS(s).spray_auto && (CS(s).spray_valve_pct || 0) > 0; } },
@@ -117,7 +121,7 @@
     imro8xhy2me: { set: function (v) { cmd({ action: 'set_feed_pump_speed', pct: v / GPM_FEED_PER_PCT }); }, get: function (s) { return (CS(s).feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT; } }, // SG Feed rate gpm
     imro929i738: { set: function (v) { cmd({ action: 'set_spray', pct: v }); }, get: function (s) { return CS(s).spray_valve_pct; } },                    // spray %
     imro96mj15p: { set: function (v) { cmd({ action: 'set_heater', power_pct: v }); }, get: function (s) { return CS(s).heater_power_pct; } },             // heater %
-    imrpq29jo7t: { set: function (v) { boronTargetPpm = v; }, get: function () { return boronTargetPpm; } },                                              // boron target ppm
+    imrpq29jo7t: { set: function (v) { cmd({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: v }); }, get: function (s) { var c = chan(s, 'boron_conc'); return c && c.setpoint != null ? c.setpoint : null; } }, // boron target ppm (control-layer channel setpoint)
     imrpq48hn3t: { set: function (v) { cmd({ action: 'set_charging_flow', normalized: v / GPM_CHARGING }); }, get: function (s) { return (CS(s).charging_flow_normalized || 0) * GPM_CHARGING; } }, // charging gpm
     imrsg8b7b9o: { set: function (v) { cmd({ action: 'set_pressure_setpoint', mpa: psi2MPa(v) }); }, get: function (s) { return MPa2psi(CS(s).pressure_setpoint || 0); } } // plant pressure setpoint psi
   };
@@ -125,10 +129,10 @@
   // ================================================================ VALUES (indications)
   // fn(s) -> display text (unit stays as authored on the item).
   var VALUES = {
-    imrmromyxdq: function (s) { return r0((IN(s).hpi_flow || 0) * GPM_HPI); },                        // ECCS flow gpm
-    imrmru52f8l: function (s) { return IN(s).hpi_active ? PSI_HPI_DISCH : 0; },                        // ECCS discharge psi
-    imrmstovyli: function (s) { return IN(s).afw_active ? r0((CS(s).afw_throttle_pct || 100) / 100 * GPM_AFW) : 0; }, // AFW flow gpm
-    imrmsu1bl4r: function (s) { return IN(s).afw_active ? PSI_AFW_DISCH : 0; },                        // AFW discharge psi
+    imrmromyxdq: function (s) { return r0((IN(s).hpi_flow || 0) * GPM_HPI); },                          // ECCS flow gpm (true hpi_flow)
+    imrmru52f8l: function (s) { return r0(MPa2psi(IN(s).hpi_discharge_pressure || 0)); },               // ECCS discharge psi (true pump head)
+    imrmstovyli: function (s) { return r0((IN(s).afw_flow || 0) * GPM_AFW); },                          // AFW flow gpm (true afw_flow)
+    imrmsu1bl4r: function (s) { return r0(MPa2psi(IN(s).afw_discharge_pressure || 0)); },               // AFW discharge psi (true pump head)
     imrmtkjxzm1: function (s) { return r0((IN(s).letdown_flow || 0) * GPM_LETDOWN); },                 // letdown flow gpm
     imrqn5m0oaj: function (s) { return r0((IN(s).charging_flow || 0) * GPM_CHARGING); },               // charging flow gpm
     imrmtp2alpy: function (s) { return r0(IN(s).boron_analyzer); },                                     // boron ppm
@@ -213,7 +217,7 @@
     imrobph7xrq: function (s) { return pumpProps((CS(s).feed_pump_speed_pct || 0) > 0, (CS(s).feed_pump_speed_pct || 0) / 100, 220); }, // feed pump
     imrobpq4a70: function (s) { var p = pumpRec(s, 'rcp'); return pumpProps(IN(s).rcp_running, p ? p.flow_pct / 100 : 1, 290); },  // rcp
     imrqp87ueqb: function (s) { return pumpProps(CS(s).charging_pump_running, CS(s).charging_pump_running ? 0.8 : 0, 60); },       // charging pump
-    imrqvzbd9hd: function (s) { return pumpProps(IN(s).condenser_cooling_available, IN(s).condenser_cooling_available ? 1 : 0, 45); }, // condensate pump (cosmetic)
+    imrqvzbd9hd: function (s) { var on = IN(s).condensate_pump_running !== false; return pumpProps(on, on ? 1 : 0, 45); }, // condensate pump (real: gates main feed)
     // valves
     imrpp2g2m8k: function (s) { return valveProps(IN(s).afw_active ? 1 : 0, 'water', 60); },                                       // afw valve
     imrpp99kx2y: function (s) { return valveProps(IN(s).msiv_open ? 1 : 0, 'steam', satTempC(IN(s).steam_pressure)); },            // main steam isolation
@@ -234,8 +238,8 @@
   var PUMP_TOGGLE = {
     imrobnzlha1: function (on) { cmd({ action: 'set_hpi', active: on }); },
     imrobpq4a70: function (on) { cmd({ action: 'set_rcp', running: on }); },
-    imrqp87ueqb: function (on) { cmd({ action: 'set_charging_pump', running: on }); }
-    // condensate pump (imrqvzbd9hd): no engine field — cosmetic, no-op
+    imrqp87ueqb: function (on) { cmd({ action: 'set_charging_pump', running: on }); },
+    imrqvzbd9hd: function (on) { cmd({ action: 'set_condensate_pump', running: on }); }
   };
 
   // ================================================================ TRIP BLOCKS menu (task #5)
@@ -281,6 +285,33 @@
   }
 
   function isBlocked(s, id) { var tb = (s && s.rps_state && s.rps_state.trip_blocks) || {}; return !!tb[id]; }
+
+  // ============================================================ instructor highlight
+  // Manual-procedure / campaign-beat control labels (the vocabulary validated against
+  // RD.PwrSynoptic.highlightLabels) → the board item that hosts that control. Glowing
+  // the enclosing box/panel lights the whole control group. Keep this covering the same
+  // label set as pwr_synoptic.js SYN_CONTROL_MAP or campaign highlights won't resolve.
+  var CONTROL_LABEL_MAP = {
+    'Control Bank': 'imrpk3wvydp', 'Rod Speed': 'imrpk3wvydp', 'Rod motion': 'imrpk3wvydp',
+    'Nudge': 'imrpk3wvydp', 'Shutdown Bank': 'imrpny66npx',
+    'SCRAM': 'imrqr8ecji6',
+    'Mode': 'imro8k5pzem', 'Load': 'imro8k5pzem', 'Turbine Load': 'imro8k5pzem', 'Main Breaker': 'imro8k5pzem',
+    'Steam Dump': 'imrop5ouw7h',
+    'Boron': 'imrmtlyf64y', 'Boron (Reactivity) — CVCS': 'imrmtlyf64y',
+    'Charging Pump (CVCS)': 'imrmslginf9', 'CVCS Inventory Control': 'imrmslginf9',
+    'Letdown Orifices (CVCS)': 'imrmslvu2c0',
+    'Pressurizer Heaters (PZR)': 'imro94kec8b', 'Pressurizer Spray (PZR)': 'imro8ymb0jw',
+    'Reactor Coolant Pumps (RCP)': 'imrobpq4a70',
+    'Relief Valve (PORV)': 'porv', 'PORV Block Valve': 'imrppb3kuav',
+    'HPI': 'imrldx4qme6', 'HPI/LPI': 'imrldx4qme6', 'Decay-Heat Removal (DHR)': 'imrldx4qme6',
+    'AFW': 'imrmssto6d', 'AFW Throttle': 'imrmssto6d',
+    'Feed Pumps': 'imrqxsodu5j', 'Feed Reg': 'imrqxsodu5j', 'Feed Pump': 'imrqxsodu5j',
+    'MSIV': 'imrpp99kx2y',
+    'SR detector': 'imro6qutiht', 'NIS': 'imro6qutiht', '1/M Plot': 'imro6rctcgm',
+    'Trip Blocks': 'imrsk4xz2dm'
+  };
+  // The board item the maintenance tag hangs over (TMI-2 AFW discharge valve).
+  var TAG_ITEM = 'imrpp2g2m8k';
 
   function refreshTripBlocks(s) {
     if (!pop || !s) return;
@@ -358,14 +389,14 @@
       return f(s);
     },
     afterRender: function (s) {
-      // boron target-seeking controller (operator automation — engine has only a rate cmd)
-      if (boronOn && CS(s).charging_pump_running) {
-        var diff = boronTargetPpm - (IN(s).boron_analyzer || 0);
-        var rate = Math.abs(diff) < 5 ? 0 : (diff > 0 ? 0.5 : -0.5);
-        if ((CS(s).boron_adjust || 0) !== rate) cmd({ action: 'set_boron_adjust', rate: rate });
-      }
+      // Boron target-seeking now lives in the control/automation layer (the
+      // 'boron_conc' channel) — the ON/OFF buttons and target number engage and set it.
       refreshTripBlocks(s);
     },
+    // instructor highlight vocabulary (consumed by pwr_board.revealControl / highlightLabels)
+    controlLabelItem: function (label) { return CONTROL_LABEL_MAP[label] || null; },
+    controlLabels: function () { return Object.keys(CONTROL_LABEL_MAP); },
+    tagItem: function () { return TAG_ITEM; },
     // exposed for the acceptance harness
     selfTest: function (ck, svc, sent) {
       var s = svc.assembleSnapshot();

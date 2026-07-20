@@ -674,12 +674,13 @@
       if (def.sp) { var cap = def.sp.capture(ctx); c.sp = cap != null && isFinite(cap) ? clip(cap, def.sp.min, def.sp.max) : def.sp.min; }
       c.spEff = c.sp;
       c.I = def.init ? (def.init(ctx) || 0) : 0;
-      c.lastAct = null; c.lastSent = null; c.bangMode = 'idle';
+      c.lastAct = null; c.lastSent = null; c.bangMode = 'idle'; c.concMode = 'hold';
       c.pvF = null; c.rate = null;
     } else {
       // Leave the plant exactly where automation had it — plus safe stand-down.
       if (def.kind === 'rods') this._sendInternal({ action: 'rod_stop', group_id: def.group_id });
       if (def.kind === 'bang') { this._sendInternal({ action: 'set_boron_adjust', rate: 0 }); c.bangMode = 'idle'; }
+      if (def.kind === 'conc') { this._sendInternal({ action: 'set_boron_adjust', rate: 0 }); c.concMode = 'hold'; }
       c.pvNow = null;
     }
   };
@@ -733,6 +734,7 @@
       if (def.kind === 'pid') this._stepPid(c, ctx, t, step);
       else if (def.kind === 'rods') this._stepRods(c, ctx, t, step);
       else if (def.kind === 'bang') this._stepBang(c, ctx, t);
+      else if (def.kind === 'conc') this._stepConc(c, ctx, t);
     }
   };
 
@@ -862,6 +864,35 @@
     c.bangMode = want;
     c.lastAct = t;
     c.note = want === 'idle' ? 'in band' : want + '…';
+  };
+
+  // Boron CONCENTRATION seek: bang-bang toward a boron_analyzer setpoint (ppm) via
+  // set_boron_adjust — borate below the target, dilute above, hold inside the deadband.
+  // Reads the boron ANALYZER (HR1), so a failed/lagging analyzer fools it like the
+  // operator. Needs the charging pump running (the adjust rate rides charging flow).
+  ControlLayer.prototype._stepConc = function (c, ctx, t) {
+    var def = c.def;
+    var pv = c.pvF != null ? c.pvF : c.pvNow;
+    if (pv == null && def.pv) pv = def.pv(ctx);
+    if (pv == null || !isFinite(pv)) return;
+    c.pvNow = pv;
+    var sp = c.spEff != null ? c.spEff : c.sp;
+    if (sp == null) return;
+    var pumpOff = ctx.control_state && ctx.control_state.charging_pump_running === false;
+    if (pumpOff) {
+      if (c.concMode !== 'hold') { this._sendInternal({ action: 'set_boron_adjust', rate: 0 }); c.concMode = 'hold'; }
+      c.note = 'idle — charging pump OFF';
+      return;
+    }
+    var e = sp - pv;   // +e → concentration too low → borate
+    var want = Math.abs(e) <= (def.db || 0) ? 'hold' : (e > 0 ? 'borate' : 'dilute');
+    if (want === c.concMode) { c.note = want === 'hold' ? 'in band' : want + '…'; return; }
+    if (c.lastAct != null && def.period && t - c.lastAct < def.period) return;
+    var rate = want === 'borate' ? def.rate : want === 'dilute' ? -def.rate : 0;
+    var r = this._sendInternal({ action: 'set_boron_adjust', rate: rate });
+    if (r && r.type === 'blocked') { c.note = '⛔ ' + (r.message || 'blocked'); return; }
+    c.concMode = want; c.lastAct = t;
+    c.note = want === 'hold' ? 'in band' : want + '…';
   };
 
   // The snapshot's automation section (M5 assembles it every cycle): channel

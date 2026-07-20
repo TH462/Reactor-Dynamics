@@ -560,11 +560,32 @@
     rescanPorts: function () { if (scanPorts()) buildPipes(); },
     ports: function () { return ports; },
     lastSnapshot: function () { return lastSnap; },
-    // Instructor-highlight hooks (parity with RD.PwrSynoptic). Highlight/reveal on the
-    // data-driven board is future work — these are safe no-ops so app.js's shared
-    // highlight path keeps working.
-    setTag: function () {},
-    revealControl: function () { return null; },
-    highlightLabels: function () {}
+    // Instructor-highlight hooks (parity with RD.PwrSynoptic). The driver owns the
+    // control-label vocabulary; the renderer resolves it to a board tile to glow.
+    revealControl: function (label) {
+      var d = driver();
+      if (!d || !d.controlLabelItem) return null;
+      var id = d.controlLabelItem(label);
+      return (id && tiles[id]) ? tiles[id] : null;
+    },
+    // The maintenance-tag prop (TMI-2): show/hide a TAGGED badge over the AFW valve tile.
+    setTag: function (tagId, visible) {
+      var d = driver();
+      var id = d && d.tagItem ? d.tagItem() : null;
+      var host = id && tiles[id];
+      if (!host) return;
+      var tag = host.querySelector('.bd-maint-tag');
+      if (!!(tagId && visible)) {
+        if (!tag) {
+          tag = h('div', { className: 'bd-maint-tag bd-mono' }, 'TAGGED');
+          host.appendChild(tag);
+        }
+        tag.style.display = '';
+      } else if (tag) {
+        tag.style.display = 'none';
+      }
+    },
+    // Labels revealControl can resolve — every PWR beat highlight must name one.
+    highlightLabels: (function () { var d = RD.PwrBoardDriver; return d && d.controlLabels ? d.controlLabels() : []; })()
   };
 })();

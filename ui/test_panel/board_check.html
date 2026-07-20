@@ -119,7 +119,9 @@
       function setNum(id, v) { var i = document.querySelector('[data-item="' + id + '"] input'); if (!i) return false; i.focus(); i.value = String(v); i.blur(); return true; }
       function cs() { return svc.assembleSnapshot().control_state; }
       function rps() { return svc.assembleSnapshot().rps_state; }
-      function ticks(n) { svc.handleCommand({ action: 'play' }); for (var i = 0; i < n; i++) svc.tick(); svc.handleCommand({ action: 'pause' }); }
+      // Step directly (do NOT use play/pause — start() arms a real timer that runs
+      // wild under headless virtual-time and would trip the plant between checks).
+      function ticks(n) { svc.running = true; for (var i = 0; i < n; i++) svc.tick(); svc.running = false; }
 
       clickBtn('imro900yzeq'); ck('func: spray MANUAL -> spray_auto false', cs().spray_auto === false);
       clickBtn('imro96h8lip'); ck('func: heater OFF -> heater_auto false & 0%', cs().heater_auto === false && cs().heater_power_pct === 0);
@@ -130,6 +132,26 @@
       clickBtn('imrppquqg16'); ck('func: steam dump OPEN -> not auto', cs().steam_dump_auto === false);
       setNum('imro8rmka2y', 850); ck('func: generator load 850 MW -> load_target', Math.abs(cs().load_target_mwe - 850) < 1);
       setNum('imrsg8b7b9o', 2100); ck('func: pressure setpoint 2100 psi -> ~14.48 MPa', Math.abs(cs().pressure_setpoint - 2100 / 145.038) < 0.05);
+
+      // --- instructor glow ---
+      ck('glow: revealControl(HPI) returns a tile', !!RD.PwrBoard.revealControl('HPI'));
+      ck('glow: revealControl(SCRAM) returns a tile', !!RD.PwrBoard.revealControl('SCRAM'));
+      ck('glow: revealControl(unknown) is null', RD.PwrBoard.revealControl('Nonsense') === null);
+      ck('glow: highlightLabels covers the vocab (>=30)', RD.PwrBoard.highlightLabels.length >= 30);
+      RD.PwrBoard.setTag('afw_tag', true);
+      var tagEl = document.querySelector('.bd-maint-tag');
+      ck('glow: setTag shows maintenance tag', !!tagEl && tagEl.style.display !== 'none');
+      RD.PwrBoard.setTag(null, false);
+      ck('glow: setTag hides the tag', !document.querySelector('.bd-maint-tag') || document.querySelector('.bd-maint-tag').style.display === 'none');
+
+      // --- boron control now runs in the control/automation layer ---
+      function chanOf(id) { return svc.assembleSnapshot().automation.channels.filter(function (c) { return c.id === id; })[0]; }
+      clickBtn('imrqp6com2b'); ticks(2);
+      ck('func: BORON ON engages boron_conc channel', !!(chanOf('boron_conc') && chanOf('boron_conc').engaged));
+      setNum('imrpq29jo7t', 850); ticks(2);
+      ck('func: boron target 850 -> channel setpoint', Math.abs((chanOf('boron_conc') || {}).setpoint - 850) < 1);
+      clickBtn('imrqp6avzkw'); ticks(2);
+      ck('func: BORON OFF disengages the channel', !(chanOf('boron_conc') && chanOf('boron_conc').engaged));
 
       // rods: nudge withdraw drives control bank up
       var beforeSteps = cs().rod_groups.filter(function (g) { return g.id === 'control_rods'; })[0].steps;
@@ -147,6 +169,19 @@
       if (tb) tb.click();
       ticks(2);
       ck('func: block ir_high toggles trip_blocks', (!!rps().trip_blocks.ir_high) !== beforeBlk, 'was ' + beforeBlk);
+
+      // --- physics-perturbing checks LAST (they degrade the plant): condensate pump
+      //     collapses main feed; ECCS discharge indications ---
+      RD.PwrBoardDriver.onControl({ id: 'imrqvzbd9hd', comp: 'Pump' }, 'toggle', false);
+      ck('func: condensate pump OFF -> control_state', cs().condensate_pump_running === false);
+      ticks(30);
+      ck('func: condensate pump OFF collapses main feed', svc.assembleSnapshot().instruments.condensate_flow < 0.3);
+      RD.PwrBoardDriver.onControl({ id: 'imrqvzbd9hd', comp: 'Pump' }, 'toggle', true);
+      svc.handleCommand({ action: 'set_afw', active: true }); ticks(20);
+      ck('func: AFW discharge pressure real (>0 when pumps demanded)', svc.assembleSnapshot().instruments.afw_discharge_pressure > 0);
+      svc.handleCommand({ action: 'set_hpi', active: true }); ticks(10);
+      ck('func: HPI discharge pressure real (>0 when injecting)', svc.assembleSnapshot().instruments.hpi_discharge_pressure > 0);
+      svc.handleCommand({ action: 'set_hpi', active: false }); svc.handleCommand({ action: 'set_afw', active: false });
 
       // SCRAM two-step: arm then confirm
       var scr = document.querySelector('[data-item="imrqr8ecji6"] button');

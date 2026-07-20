@@ -9,6 +9,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **PWR board — real ECCS/feedwater indications, a modeled condensate pump, and boron-in-the-loop.**
+  The AFW and HPI/charging flow + discharge-pressure gauges, and the condensate flow gauge, now read
+  true engine quantities instead of derived placeholders. The **condensate pump** is a real control:
+  securing it collapses main feedwater to zero (auxiliary feedwater is a separate train and keeps
+  feeding). **Boron control** (the board's ON/OFF + target-ppm) now runs as a proper automatic control
+  channel in the controls layer — it borates below the target and dilutes above, holding within a
+  deadband, and drops to manual the moment you touch the boron controls yourself. The turbine runs at
+  **1800 rpm** at full power (a large PWR's half-speed generator), which the board now displays live.
+- **Instructor highlight on the new board.** Guided-scenario steps and procedures can now make the
+  relevant control on the board glow (and hang a maintenance tag on the aux-feedwater valve), the same
+  as the old plant display.
 - **New PWR plant board (data-driven learning synoptic).** The PWR plant display is now a
   single integrated schematic authored in a diagram builder and exported as data
   (`ui/diagram/board/pwr_board_data.js`), replacing the procedurally-drawn synoptic. It

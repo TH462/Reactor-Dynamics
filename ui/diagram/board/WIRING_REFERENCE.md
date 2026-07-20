@@ -80,12 +80,24 @@ trip_blocks keys present = currently-blocked. At full power ir_high+pr_low_setpo
 - Trip blocks: `set_trip_block {trip_id, blocked}` (control-kernel level, via ctx.cmd).
 - ESF AUTO arms: `set_esf_auto {system:'hpi'|'afw'|'rhr', auto:true}`.
 
-## GAPS (no engine backing today — see task #6)
-- Condensate pump on/off (no command; pump is not an inventory actor). → visual only or add.
-- Condensate polisher status (behavioral; no state). → static NORMAL.
-- SG feed rate as gpm number: engine uses feed_pump_speed_pct (0–120). Map gpm→pct.
-- Boron "Setting" gpm field vs ppm field: charging gpm vs boron target ppm. boron target has no
-  engine field — engine uses boron_adjust rate. Need ON/OFF+target→rate translation (task #6).
+## Resolved (2026-07-20 engine + control changes)
+- **Condensate pump** is now a real actor: `set_condensate_pump {running}` +
+  `control_state.condensate_pump_running` + `instruments.condensate_pump_running`. Securing it
+  gates MAIN feedwater to zero (AFW unaffected). Board pump toggle → set_condensate_pump.
+- **AFW flow / discharge pressure**: real instruments `afw_flow` (=afw_flow_normalized) and
+  `afw_discharge_pressure` (MPa; pump head above SG, shutoff when deadheaded, 0 when idle).
+- **HPI discharge pressure**: real instrument `hpi_discharge_pressure` (MPa; RCS + margin, clamped
+  to shutoff). HPI flow was already `hpi_flow`.
+- **Condensate/main-feed flow**: real instrument `condensate_flow` (0 when condensate pump off).
+- **Boron target-seeking**: now the control-layer `boron_conc` channel (kind `conc`). Board BORON
+  ON/OFF → `set_auto_channel {channel_id:'boron_conc'}`; target ppm number →
+  `set_auto_setpoint {channel_id:'boron_conc'}`; setpoint read from `automation.channels`.
+  NO UI-side control loop.
+- New instruments carry **noise:0** deliberately — the instrument PRNG is a continuous cross-step
+  stream, so a noise draw would shift every downstream instrument's noise and move marginal
+  campaign endpoints. Lag (deterministic) is kept.
+
+## Remaining minor notes
+- SG feed rate gpm number ↔ feed_pump_speed_pct (0–120): mapped gpm = pct × 10.
+- Condensate polisher status is behavioral (no engine state) → static NORMAL.
 - Generator FOLLOW/MAN/OFF: FOLLOW=set_load_mode{follow}; MAN=set_load_mode{manual}; OFF=disconnect_grid.
-- AFW/HPI discharge pressure + flow (gpm) indications: no instruments → derive from active status
-  (show rated when active, — when not) or add instruments (task #6).

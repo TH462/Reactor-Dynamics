@@ -49,6 +49,11 @@
     porv_tailpipe_temp: 'porv_tailpipe_temp_c',   // PORV discharge/quench-tank line temp (appended — PRNG order preserved)
     source_range: 'sr_counts_cps',          // SR proportional counter, cps (log; appended)
     intermediate_range: 'ir_amps',          // IR compensated ion chamber, amps (log; appended last)
+    // ECCS/feedwater flow + discharge-pressure sources (appended — PRNG order preserved)
+    afw_flow: 'afw_flow_normalized',
+    afw_discharge_pressure: 'afw_discharge_pressure_mpa',
+    hpi_discharge_pressure: 'hpi_discharge_pressure_mpa',
+    condensate_flow: 'condensate_flow_normalized',
   };
 
   function PWRInstruments(config, seed) {

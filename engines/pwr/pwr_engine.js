@@ -310,6 +310,7 @@
       condenser_cooling_available: s.condenser_cooling_available,
       safety_relief_active: s.safety_open || s.safety_flow > 0,
       rcp_cavitating: !!s.rcp_cavitating,
+      condensate_pump_running: s.condensate_pump_running !== false,
     };
   };
 
@@ -376,6 +377,14 @@
       hpi_active: s.hpi_active, hpi_flow_normalized: s.hpi_flow_normalized, afw_active: s.afw_active,
       afw_pump_running: !!s.afw_pump_demand,   // pump demand (run lights) — distinct from delivered flow (TMI-2)
       afw_flow_normalized: s.afw_flow_normalized || 0,   // TRUE delivered AFW flow (throttle × level hold; 0 when blocked)
+      // ECCS/feedwater discharge-pressure + condensate indications (feed instruments).
+      // HPI/charging pump develops head above the RCS it injects into (clamped to shutoff);
+      // afw_discharge_pressure_mpa + condensate_flow_normalized are set in stepSecondary.
+      hpi_discharge_pressure_mpa: s.hpi_active
+        ? clip(s.pressure_mpa + this.cfg.emergency.hpi_discharge_margin_mpa, 0, this.cfg.emergency.hpi_shutoff_mpa) : 0,
+      afw_discharge_pressure_mpa: s.afw_discharge_pressure_mpa || 0,
+      condensate_flow_normalized: s.condensate_flow_normalized || 0,
+      condensate_pump_running: s.condensate_pump_running !== false,
       pump_running: s.pump_running, pump_flow_pct: s.pump_flow_pct, station_blackout: s.station_blackout,
       turbine_rpm: s.turbine_rpm, condenser_vacuum_kpa: s.condenser_vacuum_kpa,
       condenser_cooling_available: s.condenser_cooling_available,
@@ -440,6 +449,7 @@
       letdown_orifice_a: !!s.letdown_orifice_a, letdown_orifice_b: !!s.letdown_orifice_b,
       letdown_flow_normalized: s.letdown_flow,
       charging_pump_running: s.charging_pump_running, cvcs_auto: s.cvcs_auto, boron_adjust: s.boron_adjust,
+      condensate_pump_running: s.condensate_pump_running !== false,   // operator-controlled; gates main feed
       feed_pump_speed_pct: s.feed_pump_speed_pct,           // commanded pump speed (set_feed_pump_speed / nudge / coupling)
       feedwater_flow_pct: s.feedwater_demand_frac * 100,    // deprecated mirror (pump delivery %) — kept one release
       feed_auto_coupled: s.feed_auto_coupled,
@@ -683,6 +693,12 @@
         // forced circulation) and started during heatup to add pump heat and
         // couple the SG. Blocked while the station is blacked out (no AC power).
         if (!s.station_blackout) s.pump_running = !!cmd.running;
+        break;
+      case 'set_condensate_pump':
+        // Condensate pump on/off. It feeds the feed-pump suction, so securing it
+        // drops MAIN feedwater to zero (AFW is unaffected — separate train). Blocked
+        // while blacked out (no AC power). See stepSecondary (condOK gate).
+        if (!s.station_blackout) s.condensate_pump_running = !!cmd.running;
         break;
       case 'set_steam_dump_setpoint':
         // Operator no-load steam-dump target (MPa). Lowered during a cooldown so the
@@ -962,6 +978,10 @@
       steam_pressure_mpa: cfg.steam_generator.steam_p_rated,
       msiv_open: true, sg_safety_open: false, sg_safety_flow: 0,   // main steam isolation + SG code safeties
       steam_flow_normalized: P0, fw_flow_normalized: P0,
+      // Condensate pump (feeds the feed-pump suction — gates MAIN feed) + the flow/
+      // discharge-pressure indication fields (computed in stepSecondary / getTrueState).
+      condensate_pump_running: true, condensate_flow_normalized: P0,
+      afw_discharge_pressure_mpa: 0,
       steam_dump_override: null, steam_dump_frac: 0,   // B2 (null = auto)
       // Operator steam-dump pressure setpoint (the no-load secondary target the
       // AUTO dump holds). Default is the config no-load point; lowered during a
@@ -1143,6 +1163,11 @@
     // AFW throttle (added with the ESF AUTO/MAN arms).
     if (s.afw_throttle_frac == null) s.afw_throttle_frac = 1.0;
     if (s.afw_flow_normalized == null) s.afw_flow_normalized = 0;
+    // Condensate pump + ECCS/feed discharge-pressure indications (2026-07). Older saves
+    // ran with the condensate pump implicitly on; default it on so main feed is unchanged.
+    if (s.condensate_pump_running == null) s.condensate_pump_running = true;
+    if (s.condensate_flow_normalized == null) s.condensate_flow_normalized = s.fw_flow_normalized || 0;
+    if (s.afw_discharge_pressure_mpa == null) s.afw_discharge_pressure_mpa = 0;
     // Accumulator discharge isolation valve + cold-injection thermal coupling (2026-07).
     // Older saves have no isolation valve — default aligned (open) so behavior is
     // unchanged; the quench throughput recomputes on the first step.

@@ -242,6 +242,11 @@
       afw_start_level: 20.0,       // % — M4 auto-start setpoint (pwr_control actuation reads the instrument)
       afw_level_target: 20.0,      // % — built-in proportional level hold: full flow below this... [tune]
       afw_level_band: 8.0,         // % — ...tapering to zero across this band above it [tune]
+      // AFW pump discharge-pressure indication (MPa). A motor/turbine-driven AFW pump
+      // develops head above the SG it feeds; deadheaded (discharge valve shut) it sits
+      // at shutoff head. 0 when the pumps are not demanded. [tune]
+      afw_shutoff_mpa: 10.34,      // ≈ 1500 psi pump shutoff head
+      afw_discharge_margin_mpa: 1.0, // head above SG pressure while delivering
       // B2 steam dump / turbine bypass (auto opens above setpoint, to condenser).
       // The setpoint is the NO-LOAD secondary pressure (Tsat ≈ no-load Tavg
       // ~303 °C): with no steam draw the secondary saturates up to it and the
@@ -284,6 +289,11 @@
       lpi_pressure_ref: 4.5,       // MPa low-head shutoff head
       lpi_flow_max: 1.0,           // normalized rated low-head flow
       lpi_inventory_gain: 0.10,    // inventory frac/s per unit normalized low-head flow
+      // HPI/charging pump discharge-pressure indication (MPa): the head the running
+      // pump develops against the RCS it injects into (system pressure + line margin,
+      // clamped to shutoff head). 0 when HPI is not active. [tune]
+      hpi_shutoff_mpa: 12.4,       // ≈ 1800 psi centrifugal-charging shutoff head
+      hpi_discharge_margin_mpa: 0.4, // head above RCS pressure while injecting
       // Accumulators: passive borated tanks that discharge into the cold leg once
       // primary pressure falls below the arming pressure; finite capacity depletes.
       // Same normalization convention as LPI. Set to the real B&W core-flood-tank /
@@ -396,6 +406,15 @@
       // noise act per decade; noise sigma in decades). Appended to SOURCE last.
       source_range:      { lag: 0.5, noise: 0.02,  range: [1, 1e6],     log: true },   // proportional counter, counts/s; de-energized reads the range floor
       intermediate_range:{ lag: 0.5, noise: 0.02,  range: [1e-11, 2e-3], log: true },  // compensated ion chamber, AMPS — calibrated band tops out ~1e-3 A (≈12 % power, "maxes out around 10 %"); physical over-range to 2e-3 so the high-flux trip (1.67e-3 ≈ 20 %) is reachable
+      // ECCS / feedwater flow + discharge-pressure indications. noise:0 is DELIBERATE:
+      // these are appended to SOURCE, and the instrument PRNG is a continuous cross-step
+      // stream, so any noise draw here would shift every downstream instrument's noise and
+      // silently move marginal campaign endpoints. Zero sigma → _gauss returns without a
+      // draw, so the existing RNG sequence is byte-identical. Lag (deterministic) stays.
+      afw_flow:                { lag: 1.0, noise: 0, range: [0, 1.2] },   // TRUE delivered AFW flow (= afw_flow_normalized)
+      afw_discharge_pressure:  { lag: 0.5, noise: 0, range: [0, 12] },    // AFW pump discharge head, MPa
+      hpi_discharge_pressure:  { lag: 0.5, noise: 0, range: [0, 18] },    // HPI/charging pump discharge head, MPa
+      condensate_flow:         { lag: 1.0, noise: 0, range: [0, 1.2] },   // condensate/main-feed flow (0 when the condensate pump is off)
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },
@@ -406,7 +425,9 @@
                'above_p9',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
                'afw_active', 'afw_pump_running', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
-               'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating'],
+               'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating',
+               // condensate pump run status (operator-controlled; gates main feedwater)
+               'condensate_pump_running'],
     },
 
     // ---------------------------------------------------------- named init states

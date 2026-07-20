@@ -910,6 +910,37 @@ functional clicks confirm the engine responds (spray, heater, letdown orifices, 
 charging pump, steam dump, load target, pressure setpoint, rod withdrawal, TRIP BLOCKS, full SCRAM).
 Engine gates unregressed: PWR 31/31, e2e controls 30/30, M7 OK, campaign 51/51.
 
+#### Follow-up (2026-07-20): real indications, condensate pump, boron-in-layer, glow
+
+Closed the board's derived-indication gaps with real engine state, per owner request.
+
+- **New instruments** (`afw_flow`, `afw_discharge_pressure`, `hpi_discharge_pressure`,
+  `condensate_flow`) + status `condensate_pump_running`. AFW/HPI pump discharge pressures model head
+  above the SG/RCS (shutoff when deadheaded, 0 idle); config params in `steam_generator` / `emergency`.
+  **All four carry `noise:0` deliberately** — the instrument PRNG is a continuous cross-step stream,
+  so a noise draw on an appended instrument shifts every downstream instrument's noise and silently
+  moved two marginal campaign endpoints (pwr_boron, pwr_rod_auto tripped). Zero sigma skips the draw
+  (`_gauss` early-returns), keeping the RNG byte-identical; lag stays. A general lesson for any future
+  appended instrument.
+- **Condensate pump** is a real actor: `set_condensate_pump {running}`; `stepSecondary` gates MAIN
+  feed on it (AFW is a separate train, unaffected), so securing it collapses `condensate_flow`/
+  `fw_flow`. Save-restore migrates old states to on.
+- **Boron target-seeking moved out of the UI into the control layer.** New channel kind `conc`
+  (`_stepConc` in control_kernel) + PWR channel `boron_conc`: bang-bang toward a `boron_analyzer`
+  ppm setpoint via `set_boron_adjust`, needs the charging pump, drops to MAN on an operator
+  `set_boron_adjust`. Board BORON ON/OFF → `set_auto_channel`; target ppm → `set_auto_setpoint`;
+  setpoint read back from `automation.channels`. The old `afterRender` UI loop is deleted.
+- **Instructor glow on the board.** `RD.PwrBoard.revealControl/setTag/highlightLabels` are now real:
+  the driver holds a control-label→item map covering the same vocabulary as `RD.PwrSynoptic`
+  `SYN_CONTROL_MAP` (so the run_campaign highlight gate still resolves), the renderer glows the
+  resolved tile with `.instr-glow`, and `setTag` hangs a `.bd-maint-tag` over the AFW valve (TMI-2).
+- **Turbine RPM:** 1800 rpm at 100 % is correct for a ~1000 MWe PWR (half-speed, 4-pole generator —
+  wet LP steam needs long last-stage blades that can't take 3600 rpm). Engine already rated 1800; the
+  board shows it live (the design's "3600" was a placeholder). No change.
+
+Verification: board_check **37/37** (adds glow, boron-channel, condensate, real-discharge checks);
+gates green — PWR 31/31, e2e 30/30, autoctl 20/20, campaign 51/51, M4 18/18, M5 19/19, M6 16/16, M7 OK.
+
 ## Change log
 
 - **M1** built and committed (`a18c85f`). Suite 11/11.

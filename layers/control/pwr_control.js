@@ -266,6 +266,15 @@
       busyNote: function (s) { return s.control_state.charging_pump_running === false ? ' (charging pump OFF)' : ''; },
       hi: 96.0, lo: 55.0, hiStop: 90.0, loStop: 62.0, rate: 0.5 },
 
+    { id: 'boron_conc', kind: 'conc', group: 'Reactor',
+      label: 'Boron concentration (target)',
+      hint: 'Seeks a target boron concentration — borates below the setpoint, dilutes above, holds inside a ±8 ppm deadband. Reads the boron analyzer, so a lagging/failed sample fools it like the operator. Needs the charging pump running. This is the board BORON CONTROL ON/OFF + target.',
+      offOnScram: false,
+      manual_overrides: ['set_boron_adjust'],   // an operator borate/dilute takes it to MAN
+      pv: function (s) { return s.instruments.boron_analyzer; },
+      sp: { capture: function (s) { return s.instruments.boron_analyzer; }, min: 0, max: 2500, unit: 'ppm', dp: 0, step: 10 },
+      db: 8.0, rate: 0.5, pvTau: 5.0, period: 2.0 },
+
     { id: 'pzr_pressure', kind: 'mode', group: 'Primary',
       label: 'Pressurizer pressure (heaters + spray)',
       hint: 'Returns the pressurizer heaters and spray to their proportional automatic control holding ~2235 psia. Manual = both freeze at their current output.',

@@ -30,7 +30,13 @@
     // across the band above it (replaces the old hard `level < 20` cutoff — the
     // same equilibrium, without the on/off chatter, and the throttle lets the
     // operator take the flow anywhere below that).
-    var feedwater_flow = (s.main_feedwater_available && !s.feedwater_isolated) ? s.feedwater_demand_frac : 0.0;
+    // Main feedwater also needs the condensate pump (it feeds the feed-pump suction):
+    // securing the condensate pump drops main feed to zero, exactly like the tagged-out
+    // train it models. AFW draws from the condensate storage tank, so it is unaffected.
+    var condOK = s.condensate_pump_running !== false;
+    var main_feed = (s.main_feedwater_available && !s.feedwater_isolated && condOK) ? s.feedwater_demand_frac : 0.0;
+    s.condensate_flow_normalized = main_feed;   // TRUE main-feed / condensate flow indication
+    var feedwater_flow = main_feed;
     var afw_flow = 0;
     if (s.afw_active) {
       // The hold senses level through the SG LEVEL INSTRUMENT (previous step's
@@ -41,6 +47,14 @@
       afw_flow = sg.afw_flow_frac * (s.afw_throttle_frac != null ? s.afw_throttle_frac : 1.0) * hold;
     }
     s.afw_flow_normalized = afw_flow;
+    // AFW pump discharge-pressure indication (MPa): pumps demanded → develop head above
+    // the SG (deadheaded at shutoff if the discharge is blocked); 0 when not demanded.
+    if (s.afw_pump_demand) {
+      s.afw_discharge_pressure_mpa = s.afw_blocked ? sg.afw_shutoff_mpa
+        : clip(s.steam_pressure_mpa + sg.afw_discharge_margin_mpa, 0, sg.afw_shutoff_mpa);
+    } else {
+      s.afw_discharge_pressure_mpa = 0;
+    }
     feedwater_flow += afw_flow;
     s.feedwater_flow = feedwater_flow;
     s.fw_flow_normalized = feedwater_flow;
