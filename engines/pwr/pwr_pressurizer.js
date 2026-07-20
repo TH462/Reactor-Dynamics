@@ -147,8 +147,12 @@
     // letdown bleeds it (level down). This is what gives charging real authority over
     // indicated level so AUTO make-up can hold it. Small gain, bounded by
     // charging_max/letdown (~0.07), so it never competes with the fast void_surge that
-    // drives the TMI deception (where charging is isolated anyway).
-    var cvcs_surge = ((s._charging_actual || 0) - (s.letdown_flow || 0)) * p.K_cvcs_level;
+    // drives the TMI deception (where charging is isolated anyway). A LIQUID leak
+    // (cold-leg break) is inventory leaving too, so it lowers the level exactly like
+    // letdown — same coefficient, so the mass and level equilibria agree and the level
+    // controller sees (and makes up) a leak on its own, as a real plant does. A stuck-open
+    // PORV vents STEAM (leak_flow=0, level rises via void_surge) so the TMI path is untouched.
+    var cvcs_surge = ((s._charging_actual || 0) - (s.letdown_flow || 0) - (s.leak_flow || 0)) * p.K_cvcs_level;
     var surge_in_rate = thermal_surge + void_surge + cvcs_surge;
     var dLevel = (surge_in_rate
                   - s.porv_flow * p.level_loss_per_flow

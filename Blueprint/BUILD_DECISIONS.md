@@ -3106,3 +3106,31 @@ Owner ruling: ALL water on the board uses the shared `StdPipe.phaseTempColor('wa
   used by the condenser compProps).
 
 **Gates:** run_pwr 31, campaign 51, autoctl 20, m4 18, m5 19, e2e 30, board_check 52.
+
+### PWR — CVCS pzr-level control, feed-pump color, pump-off pipe gating (2026-07-20, playtest)
+
+Playtest findings.
+
+**Pressurizer level control (physically correct, no truth-peeking).** AUTO charging held level
+with `charging = letdown + max(level_demand, inv_demand)` — the `max` floored charging at letdown, so
+a HIGH level was never brought down (charging never dropped below letdown). First attempt gated the
+`inv_demand` make-up floor on true `leak_flow`, but that's unphysical (a real CVCS level controller
+cannot know a leak exists). Root cause: a liquid leak did NOT lower the pzr level in `stepLevel`
+(only porv/safety steam-space vents did), so the level servo couldn't see a leak — hence the bolted-on
+mass-peeking term. Fix: add `leak_flow` as an inventory-out term on the level in `stepLevel`
+(`cvcs_surge = (charging − letdown − leak_flow)·K_cvcs_level`), same coefficient as letdown so the
+mass and level equilibria agree; then AUTO charging becomes a PURE level servo
+(`charging = clip(letdown + level_demand, 0, charging_max)`, reading only indicated level, HR1). A
+leak now lowers the level → the servo charges up to hold it → makes the leak up on its own, exactly
+like a real plant; a high level drives charging below letdown to come back down. TMI path untouched
+(stuck PORV vents steam, leak_flow=0, level rises via void_surge). Gates: e2e 30/30 (leak-match +
+inventory-hold both pass), autoctl 20, run_pwr 31, campaign 51, m5 19.
+
+**Feed-pump fluid color + pump-off pipe gating (board).** Feed pump + both its pipes now read one
+`fwTemp` (the pump matched only its discharge before). `comp_pump` gates its suction/discharge port
+`data-active` on the running state, so turning any pump off stops the connected pipes' flow animation.
+
+**Open playtest items (tasks #22–27):** spray too strong (PORV never lifts on a full-power heat-sink
+loss — spray AUTO holds ~2255 psi vs ~2379 with spray off), reactor-vessel z-order over the rod
+cards, slow-rod-insertion SCRAM at 100%, a spray/PORV tuning test, and a meta-analysis of why the
+prior production-readiness review missed all of these (control-loop / physical-plausibility gap).

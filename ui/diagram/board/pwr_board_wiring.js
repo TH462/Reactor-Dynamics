@@ -317,8 +317,11 @@
     pmrr0u9nib3: function (s) { return satTempC(IN(s).steam_pressure); }, // steam dump → condenser bypass
     pmrr46oahnx: function (s) { return satTempC(IN(s).steam_pressure); }, // steam dump branch
     // secondary condensate / feedwater loop — same water ramp as the pumps & vessels it links
-    pmrr0uzf5ew: function (s) { return fwTemp(s); },      // feedwater: feed pump → SG (hot, load-driven)
-    pmrr0ustj2z: function (s) { return condTemp(s); },    // condensate → feed pump suction
+    // Feed pump + both its pipes carry the same feedwater — one fwTemp so the pump's fluid
+    // color matches the pipes into/out of it (the cool→hot transition sits upstream, at the
+    // condensate pump / FW-heater junction).
+    pmrr0uzf5ew: function (s) { return fwTemp(s); },      // feedwater: feed pump → SG
+    pmrr0ustj2z: function (s) { return fwTemp(s); },      // feedwater: → feed pump suction
     pmrr0uryodr: function (s) { return condTemp(s); },    // condensate pump discharge
     pmrr4j7wa1o: function (s) { return condTemp(s); },    // condenser hotwell → condensate pump
     // circulating cooling-water loop (condenser ↔ cooling tower)

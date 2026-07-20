@@ -13,6 +13,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   startup net) opens the inverse-count-rate approach-to-criticality plot directly from the board.
 
 ### Changed
+- **PWR — automatic pressurizer level control works like a real plant.** Charging in AUTO now
+  modulates above *and below* letdown to hold the programmed pressurizer level — a high level is
+  actively brought back down (previously charging never dropped below letdown, so a high level just
+  sat there). A primary leak now correctly lowers the pressurizer level, so the level controller
+  makes the leak up on its own, the way a real CVCS does — without the simulator "knowing" a leak
+  exists.
+- **PWR board — feed-pump fluid color matches its pipes, and pipes stop when a pump is off.** The
+  feed pump and the feedwater pipes into and out of it now read the same temperature. Turning any
+  pump off (feed, RCP, charging, …) now stops the flow animation in its connected pipes.
 - **PWR board — all water shares one temperature color scale.** Every body of water on the
   diagram — reactor coolant, steam-generator water, pressurizer, condenser hotwell and its
   circulating cooling water, and the cooling-tower basin — now uses the same aqua→blue→purple→red

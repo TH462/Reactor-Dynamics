@@ -138,10 +138,15 @@
       // error, reading last step's indicated level) holds level through the thermal
       // shrink of a load change/cooldown; the inventory term still catches a leak that
       // has not yet shown up as a level drop (e.g. before voiding). Capped at charging_max.
+      // Pure pressurizer-level control, exactly like the real CVCS: charging modulates
+      // above/BELOW letdown to hold the programmed level, reading only the INDICATED level
+      // (HR1 — no peeking at true mass or leak flow). A leak makes ITSELF up because it
+      // lowers the level (see stepLevel: leak_flow is now an inventory-out term on the
+      // level, as it physically is), so the servo charges up to hold level — no leak
+      // detection needed. A HIGH level drives charging below letdown to bring it back down.
       var level_sp = cfg.pressurizer.pzr_level_nominal;
       var level_demand = (rc.cvcs_charge_per_level || 0.006) * (level_sp - (s.pzr_level_pct != null ? s.pzr_level_pct : level_sp));
-      var inv_demand = (rc.cvcs_makeup_gain || 3) * (1.0 - s._mass);
-      s.charging_flow = clip((s.letdown_flow || 0) + Math.max(level_demand, inv_demand), 0, rc.charging_max != null ? rc.charging_max : 0.06);
+      s.charging_flow = clip((s.letdown_flow || 0) + level_demand, 0, rc.charging_max != null ? rc.charging_max : 0.06);
     } else {
       s.charging_flow = s.charging_setpoint;
     }

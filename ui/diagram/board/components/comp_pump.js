@@ -93,15 +93,16 @@
     var inFlG = h('g', { key: 'rcpInFl', transform: flTransform(cx - R - 14, cy) }, K.flange({ key: 'f', x: cx - R - 14, y: cy, angle: 0, d: flD }));
     var outFlG = h('g', { key: 'rcpOutFl', transform: flTransform(cx, cy - R - 24) }, K.flange({ key: 'f', x: cx, y: cy - R - 24, angle: 90, d: flD }));
 
+    var portIn, portOut;   // set data-active off the running state so downstream pipes stop when off
     var inletG = h('g', { key: 'inlet', transform: 'rotate(' + (suctionAngle - 180) + ' ' + cx + ' ' + cy + ') translate(0 ' + (-suctionShift) + ')' }, [
-      h('circle', { key: 'pmIn', cx: cx - R - 14, cy: cy, r: 0.75, fill: 'none', 'data-port': 'suction', 'data-fluid': fluid, 'data-dir': angleToDir(suctionAngle), 'data-size': portSize, 'data-out': '0' }),
+      h('circle', { key: 'pmIn', ref: function (el) { portIn = el; }, cx: cx - R - 14, cy: cy, r: 0.75, fill: 'none', 'data-port': 'suction', 'data-fluid': fluid, 'data-dir': angleToDir(suctionAngle), 'data-size': portSize, 'data-out': '0', 'data-active': '1' }),
       h('rect', { key: 'rcpInNoz', x: cx - R - 14, y: cy - 12, width: 22, height: 24, rx: 4, fill: 'url(#' + STEEL + ')', stroke: '#223543', strokeWidth: 1.2 }),
       inFlG
     ]);
 
     var outletG = h('g', { key: 'outlet', transform: 'rotate(' + (dischargeAngle - 270) + ' ' + cx + ' ' + cy + ')' }, [
       h('rect', { key: 'rcpOutNoz', x: cx - 15, y: cy - R - 24, width: 30, height: 36, rx: 4, fill: 'url(#' + STEEL + ')', stroke: '#223543', strokeWidth: 1.2 }),
-      h('circle', { key: 'pmOut', cx: cx, cy: cy - R - 24, r: 0.75, fill: 'none', 'data-port': 'discharge', 'data-fluid': fluid, 'data-dir': angleToDir(dischargeAngle), 'data-size': portSize, 'data-out': '1' }),
+      h('circle', { key: 'pmOut', ref: function (el) { portOut = el; }, cx: cx, cy: cy - R - 24, r: 0.75, fill: 'none', 'data-port': 'discharge', 'data-fluid': fluid, 'data-dir': angleToDir(dischargeAngle), 'data-size': portSize, 'data-out': '1', 'data-active': '1' }),
       outFlG
     ]);
 
@@ -169,6 +170,10 @@
         var on = spd > 2;
         if (on !== lastOn) {
           lastOn = on;
+          // gate the connected pipes: no pump flow → no downstream flow animation
+          var act = on ? '1' : '0';
+          if (portIn) portIn.setAttribute('data-active', act);
+          if (portOut) portOut.setAttribute('data-active', act);
           if (tglRect) {
             tglRect.setAttribute('fill', on ? '#0c3a26' : '#101a24');
             tglRect.setAttribute('stroke', on ? '#43d17a' : '#26333e');
