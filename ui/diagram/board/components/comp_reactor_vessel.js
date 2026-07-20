@@ -53,7 +53,7 @@
       poolClip: gid + 'PoolClip', stripClip: gid + 'StripClip', glow: gid + 'Glow', glow2: gid + 'Glow2'
     };
     var R = {};   // refs to dynamic elements
-    var st = { regFrac: 0.8333, shutFrac: 0.8333, power: 1, coreInv: 100, boil: 45, glow: true, showFlow: true };
+    var st = { regFrac: 0.8333, shutFrac: 0.8333, power: 1, coreInv: 100, boil: 45, glow: true, showFlow: true, tcold: 290, thot: 320 };
     var last = {};
     var lastBoil = -1;
 
@@ -259,14 +259,16 @@
       if (force || last.shutFrac !== st.shutFrac) { last.shutFrac = st.shutFrac; bankB.setW(st.shutFrac); }
     }
 
+    // Fuel rods + glows track POWER (heat being generated / Cherenkov). The coolant water
+    // color tracks TEMPERATURE (see applyFluidTemp) — the fuel glowing hot in a hot-but-
+    // low-power state, or a cool pool at power, is exactly the intended reading.
     function applyColors(force) {
       if (!force && last.power === st.power && last.glow === st.glow) return;
       last.power = st.power; last.glow = st.glow;
       var p = st.power, glowOn = st.glow;
       var COOL = [44, 88, 152], HOT = [176, 56, 34];
-      var cTopA = mixArr(COOL, HOT, p * 1.05), cMidA = mixArr(COOL, HOT, p * 0.6), cBotA = mixArr(COOL, HOT, p * 0.22);
-      var cTop = rgbStr(cTopA), cMid = rgbStr(cMidA), cBot = rgbStr(cBotA);
-      var cBotDark = rgbStr(mixArr(cBotA, [0, 0, 0], 0.38));
+      var cTopA = mixArr(COOL, HOT, p * 1.05);
+      var cTop = rgbStr(cTopA);   // hot-side power tone — only the thermal glow behind the core uses it now
       var fuelBrown = [61, 38, 22], fuelOrange = [255, 140, 26], fuelYellow = [255, 226, 90], fuelWhite = [255, 255, 255];
       var fuelBaseArr;
       if (p <= 1) fuelBaseArr = mixArr(fuelBrown, fuelOrange, p);
@@ -276,18 +278,10 @@
       var fuelGlowOpacity = clamp((p - 0.03) / 0.5, 0, 1);
       var fuelEdge = rgbStr(mixArr(fuelBaseArr, [0, 0, 0], 0.48));
       var fuelMid = rgbStr(mixArr(fuelBaseArr, [255, 226, 175], Math.min(0.55, 0.1 + p * 0.5)));
-      R.cflow0.setAttribute('stop-color', cBot);
-      R.cflow1.setAttribute('stop-color', cMid);
-      R.cflow2.setAttribute('stop-color', cTop);
-      R.pool0.setAttribute('stop-color', cBot);
-      R.pool1.setAttribute('stop-color', cBot);
-      R.pool2.setAttribute('stop-color', cBotDark);
       R.fuel0.setAttribute('stop-color', fuelEdge);
       R.fuel1.setAttribute('stop-color', fuelMid);
       R.fuel2.setAttribute('stop-color', fuelEdge);
       R.fuelRods.forEach(function (r) { r.setAttribute('stroke', fuelEdge); });
-      R.hotres.setAttribute('fill', cTop);
-      R.hotThroat.setAttribute('fill', cTop);
       // glow prop = master enable for Cherenkov/thermal glows (learning mode);
       // the source gated only the thermal glow — here it also gates the flux and
       // fuel halos per the board's glow semantics.
@@ -299,6 +293,28 @@
       R.fuelglow.setAttribute('fill', fuelBase);
       R.fuelglow.setAttribute('opacity', String(fuelGlowOpacity * 0.28));
       show(R.fuelglow, glowOn && fuelGlowOpacity > 0.01);
+    }
+
+    // Coolant water color = TEMPERATURE, via the same global ramp as the pipes/valves.
+    // Downcomer + lower plenum pool = cold-leg temp (Tcold); the core channel upflow runs
+    // Tcold (inlet, bottom) → Thot (core exit, top); the hot reservoir / hot-leg throat = Thot.
+    function applyFluidTemp(force) {
+      if (!force && last.tcold === st.tcold && last.thot === st.thot) return;
+      last.tcold = st.tcold; last.thot = st.thot;
+      var cold = env.StdPipe.phaseTempColor('water', st.tcold);
+      var hot = env.StdPipe.phaseTempColor('water', st.thot);
+      var mid = env.StdPipe.phaseTempColor('water', (st.tcold + st.thot) / 2);
+      // core channel (gradient bottom offset 0 = inlet/cold, top offset 1 = exit/hot)
+      R.cflow0.setAttribute('stop-color', cold.flow);
+      R.cflow1.setAttribute('stop-color', mid.flow);
+      R.cflow2.setAttribute('stop-color', hot.flow);
+      // downcomer + lower plenum: cold-leg water (darker fill toward the bottom)
+      R.pool0.setAttribute('stop-color', cold.flow);
+      R.pool1.setAttribute('stop-color', cold.flow);
+      R.pool2.setAttribute('stop-color', cold.bore);
+      // hot reservoir above the core + hot-leg throat: hot-leg water
+      R.hotres.setAttribute('fill', hot.flow);
+      R.hotThroat.setAttribute('fill', hot.flow);
     }
 
     function applyInventory(force) {
@@ -351,6 +367,7 @@
     function applyAll(force) {
       applyRods(force);
       applyColors(force);
+      applyFluidTemp(force);
       applyInventory(force);
       applyBubbles(force);
       applyFlow(force);
@@ -399,6 +416,8 @@
       if (props.boil != null) st.boil = clamp(props.boil, 0, 100);
       if (props.glow != null) st.glow = !!props.glow;
       if (props.showFlow != null) st.showFlow = !!props.showFlow;
+      if (props.tcold != null) st.tcold = props.tcold;
+      if (props.thot != null) st.thot = props.thot;
       applyAll(false);
     }
 

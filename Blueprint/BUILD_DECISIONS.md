@@ -3028,3 +3028,34 @@ from `buttonWarn` → `buttonInfo`. board_check updated to assert grey (bd-info,
   hotwell instrument); the condenser runs at a near-constant ~40 °C saturation under vacuum anyway.
 
 **Gates:** run_pwr 31, campaign 51, autoctl 20, m4 18, m5 19, m6 16, m7 OK, e2e 30, board_check 52.
+
+### PWR board — 1/M button, reactor-vessel temperature coloring (2026-07-20)
+
+**1/M plot launcher.** The board replaced the synoptic, which had a `data-act="one-over-m"` button;
+the board had none. Added a **1/M PLOT** button (opens `RD.OneOverM.open()`). Rather than hand-edit
+the GENERATED `pwr_board_data.js`, the driver now exposes `extraItems()` and the renderer appends
+those to `doc.items` at mount (deduped by id, before tiles build) — control tiles kept in driver
+code survive a diagram re-export. New `EXTRA_ITEMS` + BUTTONS `bdOneOverM` entry in the driver.
+Placed under TRIP BLOCKS (both are NIS/startup-net tools) at 370,890. board_check's tile-count
+check stays balanced (injection precedes tile build); headless click test confirms the window opens.
+
+**Reactor vessel: water color = temperature, fuel/glow = power.** Owner ruling — "glowing fuel rods
+signify heat being generated, the fluid color signifies fluid temperature." comp_reactor_vessel's
+`applyColors` drove BOTH fuel and the coolant gradients off `power`, so at hot standby (302 °C, 0 %)
+the vessel read cool. Split it: `applyColors` keeps fuel rods + flux/thermal/fuel glows on power;
+new `applyFluidTemp(tcold,thot)` colors the coolant via `StdPipe.phaseTempColor('water',·)` — the
+downcomer/lower-plenum pool at Tcold, the core channel Tcold(inlet)→Thot(exit), the hot reservoir
+and hot-leg throat at Thot. Driver passes `tcold/thot` in reactorVessel compProps. Verified: hot
+standby now shows hot-red water with DARK fuel; full power glowing fuel in hot water; cold shutdown
+blue. Same phaseTempColor ramp as the pipes, so the loop reads consistently end to end.
+
+**Pressurizer level auto-hold — it already exists (no code change).** User asked for a pzr-level
+auto-hold. The engine's `cvcs_auto` (CVCS make-up channel, board **CHARGING → AUTO**) already
+modulates charging to the `pzr_level_nominal` setpoint (`pwr_primary.js` §9:
+`charging = letdown + max(level_servo, inventory_makeup)`), and it defaults ON on free-play presets.
+Probed: baseline holds 54.9 %; opening both letdown orifices, AUTO holds 53.4 % while charging
+maxes to chase. Limitation (documented, realistic): it's charging-side only — it can raise/hold a
+LOW level but can't drive a HIGH level down (letdown is a fixed-orifice lineup, as in a real CVCS).
+The gap was discoverability (the control is labeled "CHARGING", not "PZR LEVEL"), not capability.
+
+**Gates:** run_pwr 31, campaign 51, autoctl 20, m4 18, m5 19, e2e 30, board_check 52.

@@ -481,6 +481,16 @@
     ctx = context || {};
     doc = window.RD_PWR_BOARD_DOC;
     if (!doc) return;
+    // Driver-injected control tiles (kept in driver code so they survive board_data.js
+    // regeneration). Appended once, deduped by id — mutating the shared doc is safe because
+    // a second mount finds them already present. Must run before tiles are built below.
+    var drv0 = driver();
+    if (drv0 && drv0.extraItems) {
+      var extra = drv0.extraItems() || [];
+      for (var ei = 0; ei < extra.length; ei++) {
+        if (!itemById(extra[ei].id)) doc.items.push(extra[ei]);
+      }
+    }
     host.innerHTML = '';
     wrap = h('div', { className: 'pwr-board-wrap' });
     stage = h('div', { className: 'pwr-board-stage' });

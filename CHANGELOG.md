@@ -8,7 +8,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **PWR board — 1/M startup-plot button.** A **1/M PLOT** button (under TRIP BLOCKS, with the
+  startup net) opens the inverse-count-rate approach-to-criticality plot directly from the board.
+
 ### Changed
+- **PWR board — reactor vessel water is colored by temperature, not power.** The coolant in the
+  downcomer, lower plenum, and core channel now takes its color from the live cold-leg / hot-leg
+  temperatures (cool at the inlet, warming up through the core), while the **fuel rods and core
+  glow stay power-driven**. So at hot standby (hot but zero power) the water reads hot with dark
+  fuel; at full power the fuel glows inside hot water — glow = heat generated, water color = fluid
+  temperature.
 - **PWR board — every fluid pool now tracks live conditions.** The **pressurizer** water/steam
   color follows the real saturation temperature of RCS pressure (red hot at operating pressure,
   cooling as the plant depressurizes) instead of a fixed hot color. The **steam generator** boils

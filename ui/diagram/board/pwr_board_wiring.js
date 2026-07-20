@@ -124,8 +124,19 @@
     imrsgjuh7l0: { press: function (s) { cmd({ action: 'set_feed_pump_speed', pct: CS(s).feed_pump_speed_pct || 100 }); }, active: function (s) { return !CS(s).feed_auto_coupled && (CS(s).feed_pump_speed_pct || 0) > 0; } },
     imrsgjwq1q0: { press: function () { cmd({ action: 'set_feed_pump_speed', pct: 0 }); }, active: function (s) { return !CS(s).feed_auto_coupled && (CS(s).feed_pump_speed_pct || 0) === 0; } },
     // --- TRIP BLOCKS popover ---
-    imrsk4xz2dm: { press: function (item, btn) { toggleTripBlocks(btn); } }
+    imrsk4xz2dm: { press: function (item, btn) { toggleTripBlocks(btn); } },
+    // --- 1/M startup plot launcher (driver-injected tile; opens the draggable window) ---
+    bdOneOverM: { press: function () { if (window.RD && window.RD.OneOverM) window.RD.OneOverM.open(); } }
   };
+
+  // Driver-supplied control tiles NOT in the generated board_data.js — kept here so they
+  // survive a diagram re-export. The renderer appends these to doc.items at mount (deduped
+  // by id) and wires them like any authored button (BUTTONS entry above). The 1/M plot is a
+  // NIS/startup tool, so it sits with the startup net just under the TRIP BLOCKS button.
+  var EXTRA_ITEMS = [
+    { id: 'bdOneOverM', kind: 'button', name: '', left: 370, top: 890, width: 75, height: 40,
+      label: '1/M PLOT', color: '#5aad7c', fontSize: 13 }
+  ];
 
   // ================================================================ NUMBERS (editable)
   // set(v): issue command from the typed value; get(s): reflect current sim state.
@@ -203,6 +214,8 @@
         power: (IN(s).power_range || 0) / 100,
         coreInv: t.core_inventory_pct != null ? t.core_inventory_pct : 100,
         boil: Math.min(100, Math.max(voidFrac * 400, (sub != null && sub < 0) ? -sub * 3 : 0)),
+        // coolant water color = live leg temperatures (fuel/glow stay power-driven)
+        tcold: IN(s).tcold, thot: IN(s).thot,
         glow: true, showFlow: IN(s).rcp_running
       };
     },
@@ -443,6 +456,8 @@
       return n > 0 ? n : null;
     },
     buttonDisabled: function () { return false; },
+    // Control tiles to append to the board that aren't in the generated board_data.js.
+    extraItems: function () { return EXTRA_ITEMS; },
     // Live fluid temperature (°C) for a pipe id, or null to keep its authored temp.
     // Lets the renderer repaint pipe fluid color each snapshot (see PIPE_TEMP).
     pipeTemp: function (id, s) { var f = PIPE_TEMP[id]; return f ? f(s) : null; },
