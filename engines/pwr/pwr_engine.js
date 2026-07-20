@@ -204,6 +204,10 @@
     var insPrev = this.instruments && this.instruments.reading;
     s._ins_sg_level = insPrev && insPrev.sg_level != null ? insPrev.sg_level : null;
     s._ins_power_pct = insPrev && insPrev.power_range != null ? insPrev.power_range : null;
+    // The CVCS auto make-up senses pressurizer level through its LEVEL INSTRUMENT (HR1) —
+    // a lagged/stuck/failed pzr-level sensor fools the charging control exactly as it fools
+    // the operator (a false-high level makes it back off charging → real inventory loss).
+    s._ins_pzr_level = insPrev && insPrev.pzr_level != null ? insPrev.pzr_level : null;
 
     // 0. Rod motion (incl. runaway) before reactivity reads positions.
     this._stepRods(dt);

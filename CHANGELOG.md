@@ -9,6 +9,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **PWR — the automatic charging control now senses the pressurizer-level *instrument*, not the
+  true level.** Every automatic control now reads the same (lagged/failable) sensors the operator
+  sees — so a stuck or failed pressurizer-level sensor fools the charging control just as it fools
+  you, instead of the controller secretly working off perfect truth.
 - **PWR — the reactor coolant system no longer empties when it shouldn't.** A high pressurizer
   level from thermal expansion (e.g. after closing the MSIV, which heats the primary) could make
   the automatic charging drain the whole RCS to zero chasing a level it can't lower that way.

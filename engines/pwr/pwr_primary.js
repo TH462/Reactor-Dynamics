@@ -145,13 +145,18 @@
       // level, as it physically is), so the servo charges up to hold level — no leak
       // detection needed. A HIGH level drives charging below letdown to bring it back down.
       var level_sp = cfg.pressurizer.pzr_level_nominal;
-      var level_demand = (rc.cvcs_charge_per_level || 0.006) * (level_sp - (s.pzr_level_pct != null ? s.pzr_level_pct : level_sp));
+      // Sense the INDICATED pzr level (previous-step instrument, HR1) — NOT true level — so a
+      // lagged/failed level sensor fools the level control like the operator. Falls back to
+      // true level only before the first instrument reading exists.
+      var level_ind = (s._ins_pzr_level != null) ? s._ins_pzr_level
+                    : (s.pzr_level_pct != null ? s.pzr_level_pct : level_sp);
+      var level_demand = (rc.cvcs_charge_per_level || 0.006) * (level_sp - level_ind);
       var target = (s.letdown_flow || 0) + level_demand;
-      // SAFETY: level control must never let charging fall below letdown to DRAIN the primary
-      // below nominal inventory. A high indicated level from THERMAL EXPANSION (a heat-up — real
-      // plants raise the programmed level setpoint with Tavg) would otherwise empty the RCS,
-      // since draining mass can't lower a thermally-driven level. Only genuine EXCESS inventory
-      // (mass above nominal, e.g. over-charging) may be let down below the letdown rate.
+      // SAFETY: level control must never drain the primary below nominal inventory. A high
+      // indicated level from THERMAL EXPANSION (heat-up) would otherwise empty the RCS, since
+      // draining mass can't lower a thermally-driven level (pzr level & mass are decoupled in
+      // this model). Only genuine EXCESS inventory (mass above nominal) is let down below the
+      // letdown rate. [A Tavg-programmed setpoint would be more physical — deferred; see #34.]
       if (target < (s.letdown_flow || 0) && s._mass <= 1.0) target = (s.letdown_flow || 0);
       s.charging_flow = clip(target, 0, rc.charging_max != null ? rc.charging_max : 0.06);
     } else {
