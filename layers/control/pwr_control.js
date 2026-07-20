@@ -271,6 +271,10 @@
       hint: 'Seeks a target boron concentration — borates below the setpoint, dilutes above, holds inside a ±8 ppm deadband. Reads the boron analyzer, so a lagging/failed sample fools it like the operator. Needs the charging pump running. This is the board BORON CONTROL ON/OFF + target.',
       offOnScram: false,
       manual_overrides: ['set_boron_adjust'],   // an operator borate/dilute takes it to MAN
+      // Free-play preset starts come up with boron control ON, holding whatever boron the
+      // preset was trimmed to (sp.capture reads the current analyzer) — a sensible target per
+      // mode without hardcoding. Instructed content (noDefaults) is unaffected.
+      defaultOn: function () { return true; },
       pv: function (s) { return s.instruments.boron_analyzer; },
       sp: { capture: function (s) { return s.instruments.boron_analyzer; }, min: 0, max: 2500, unit: 'ppm', dp: 0, step: 10 },
       db: 8.0, rate: 0.5, pvTau: 5.0, period: 2.0 },
@@ -289,6 +293,9 @@
       label: 'CVCS make-up (inventory)',
       hint: 'Automatic make-up — charging modulates to hold primary inventory (compensates letdown and identified leakage).',
       isOn: function (cs) { return !!cs.cvcs_auto; },
+      // Charging/CVCS make-up starts in AUTO on free-play preset starts (the charging pump
+      // is already running); instructed content (noDefaults) sets its own lineup.
+      defaultOn: function () { return true; },
       engage: function () { return [{ action: 'set_cvcs_auto', active: true }]; },
       disengage: function () { return [{ action: 'set_cvcs_auto', active: false }]; } },
 

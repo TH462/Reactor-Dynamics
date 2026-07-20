@@ -59,7 +59,13 @@ function report() {
 function rig(plant, initState, dv, keepDefaults) {
   var service = new RD.SimulationService({ seed: 0xA07 });
   service.selectPlant(plant, initState, dv || null);
-  if (!keepDefaults) service.handleCommand({ action: 'set_auto_channel', channel_id: 'all', engaged: false });
+  if (!keepDefaults) {
+    service.handleCommand({ action: 'set_auto_channel', channel_id: 'all', engaged: false });
+    // A neutral baseline for isolating automation dynamics: undo the free-play preset
+    // letdown alignment (Orifice A) too — with CVCS make-up stood down there is no
+    // charging to balance it, and an open letdown would drain the primary on its own.
+    if (plant === 'pwr') service.handleCommand({ action: 'set_letdown_orifices', a: false, b: false });
+  }
   var sent = [];
   var hook = function () {
     var layer = service.layer;

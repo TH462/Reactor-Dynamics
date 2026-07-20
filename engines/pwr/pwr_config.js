@@ -415,6 +415,7 @@
       afw_discharge_pressure:  { lag: 0.5, noise: 0, range: [0, 12] },    // AFW pump discharge head, MPa
       hpi_discharge_pressure:  { lag: 0.5, noise: 0, range: [0, 18] },    // HPI/charging pump discharge head, MPa
       condensate_flow:         { lag: 1.0, noise: 0, range: [0, 1.2] },   // condensate/main-feed flow (0 when the condensate pump is off)
+      sg_level_wide:           { lag: 4.0, noise: 0, range: [0, 100] },   // whole-vessel wide-range level (slower than narrow; noise:0 per the rule above)
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },

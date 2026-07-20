@@ -23,6 +23,12 @@
 
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
+  // Wide-range SG level window: the narrow (working) range 0–100 % maps onto this
+  // sub-band of the whole-vessel wide-range scale. MUST match the SG board component's
+  // gauge placement (ui/diagram/board/components/comp_steam_generator.js SG_WR_LO/HI)
+  // so the narrow gauge marker lines up with the wide-range water column it zooms into.
+  var SG_WR_LO = 30, SG_WR_HI = 75;
+
   // S-curve rod worth: rods least effective near fully in/out, most in the middle.
   // pos_norm: 0 = fully inserted, 1 = fully withdrawn.
   function scruve(pos_norm) { return pos_norm - Math.sin(2 * Math.PI * pos_norm) / (2 * Math.PI); }
@@ -355,6 +361,13 @@
     return {
       power_pct: s.power_pct, tavg_c: s.tavg_c, thot_c: s.thot_c, tcold_c: s.tcold_c,
       pressure_mpa: s.pressure_mpa, pzr_level_pct: s.pzr_level_pct, sg_level_pct: s.sg_level_pct,
+      // Wide-range SG level (whole-vessel column, tube sheet → separators). The engine
+      // integrates only the narrow (working) range, so wide range is an affine remap of
+      // it: the narrow 0–100 % band is the SG_WR_LO..SG_WR_HI window of the wide scale
+      // (a zoomed instrument view). Feeds the SG vessel water column in the UI while the
+      // narrow gauge keeps its alarm/trip zones. (Coupled: both peg together — a truly
+      // independent wide range would need an un-clamped secondary-inventory state.)
+      sg_level_wide_pct: clip(SG_WR_LO + (SG_WR_HI - SG_WR_LO) * s.sg_level_pct / 100, 0, 100),
       // Loop pressure distribution (true state; the single primary_pressure
       // instrument still reads pressure_mpa — no per-node gauges). Cold leg = pump
       // discharge (highest, ECCS/letdown datum); pump suction = between SG and RCP
@@ -884,6 +897,7 @@
   // ================================================================ initial state
   PWREngine.prototype.reset = function (cmd) {
     var name = (cmd && cmd.initial_state) || 'hot_full_power';
+    this._initialStateName = name;
     this.rod_groups = this._makeRodGroups();
     this.active_failures = [];
     this.s = this._buildState(name);
@@ -893,6 +907,19 @@
     this.T_coolant_ref = this._hfp_refs.Tavg;
     this._trimToCritical(name);
     this.instruments.reset(this.getTrueState(), this._instrExtras());
+  };
+
+  // Free-play preset lineup (applied by the service in selectPlant, NOT for instructed
+  // content). Engine-side control_state that has no automation channel to carry it —
+  // today just the letdown orifice alignment. Hot presets run a single letdown orifice
+  // (A, 3 %); the cold/depressurized lineup keeps letdown isolated (RHR letdown regime),
+  // which is the base default, so no command. ESF arms, trip blocks, charging/boron auto,
+  // steam dump, turbine follow and feed auto are handled by the control layer / engine
+  // defaults; this only fills the letdown gap.
+  PWREngine.prototype.getStartupLineup = function () {
+    var name = this._initialStateName || 'hot_full_power';
+    if (name === 'cold_shutdown') return [];   // letdown isolated when depressurized
+    return [{ action: 'set_letdown_orifices', a: true, b: false }];   // Orifice A (3 %)
   };
 
   PWREngine.prototype._buildState = function (name) {

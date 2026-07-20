@@ -54,6 +54,7 @@
     afw_discharge_pressure: 'afw_discharge_pressure_mpa',
     hpi_discharge_pressure: 'hpi_discharge_pressure_mpa',
     condensate_flow: 'condensate_flow_normalized',
+    sg_level_wide: 'sg_level_wide_pct',   // whole-vessel wide-range level (appended — PRNG order preserved)
   };
 
   function PWRInstruments(config, seed) {

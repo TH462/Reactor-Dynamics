@@ -140,6 +140,13 @@
     if (this.instructor.setRegister) this.instructor.setRegister(this.activeRegister);
     // The plant's normal automation lineup (e.g. the RBMK AR in AUTO at power).
     if (!(opts && opts.noDefaults) && this.layer.engageDefaults) this.layer.engageDefaults();
+    // Engine-side free-play preset lineup (control_state with no automation channel to
+    // carry it, e.g. the PWR letdown orifice alignment). Free play only — instructed
+    // content (noDefaults) applies its own setup_commands instead.
+    if (!(opts && opts.noDefaults) && this.engine.getStartupLineup) {
+      var lineup = this.engine.getStartupLineup() || [];
+      for (var li = 0; li < lineup.length; li++) this.handleCommand(lineup[li]);
+    }
 
     // Assemble + broadcast the initial snapshot so the UI renders the start state.
     var snap = this._assembleWithInstructor();

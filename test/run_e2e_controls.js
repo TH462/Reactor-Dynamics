@@ -128,6 +128,9 @@ console.log(B + 'PWR — recently-added controls' + X);
   // leak (e28f7b0 rescaled SGTR ~33× slower): the servo's equilibrium charging
   // exactly MATCHES the leak, far below 0.005 — assert the actual contract.
   s = svc('pwr', 'hot_full_power');
+  // Isolate the leak-matching contract: close the free-play preset letdown (Orifice A)
+  // so equilibrium charging balances the LEAK alone, not leak + letdown make-up.
+  s.handleCommand({ action: 'set_letdown_orifices', a: false, b: false });
   s.handleCommand({ action: 'inject_failure', failure_id: 'sgtr', severity: 1.0 });
   var inv0 = s.engine.s.core_inventory_pct;
   s.handleCommand({ action: 'set_cvcs_auto', active: true });
