@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PWR Board — acceptance checks (dev)</title>
+  <link rel="stylesheet" href="../diagram/board/pwr_board.css">
+  <style>
+    body { margin: 0; background: #0a0e13; overflow: auto; }
+    #host { width: 1280px; height: 800px; position: relative; border: 1px solid #333; display: flex; flex-direction: column; }
+    #out { font: 12px/1.5 Consolas, monospace; color: #d8dee9; white-space: pre; padding: 10px; }
+    .p { color: #8ce0a6; } .f { color: #e08c8c; }
+  </style>
+</head>
+<body>
+  <div id="host"></div>
+  <div id="out"></div>
+  <script src="../../engines/load_mode.js"></script>
+  <script src="../../engines/pwr/pwr_config.js"></script>
+  <script src="../../layers/control/pwr_control.js"></script>
+  <script src="../../engines/pwr/pwr_thermal.js"></script>
+  <script src="../../engines/pwr/pwr_pressurizer.js"></script>
+  <script src="../../engines/pwr/pwr_primary.js"></script>
+  <script src="../../engines/pwr/pwr_steam_generator.js"></script>
+  <script src="../../engines/pwr/pwr_instruments.js"></script>
+  <script src="../../engines/pwr/pwr_engine.js"></script>
+  <script src="../../layers/control/rbmk_control.js"></script>
+  <script src="../../engines/rbmk/rbmk_config.js"></script>
+  <script src="../../engines/rbmk/rbmk_kinetics.js"></script>
+  <script src="../../engines/rbmk/rbmk_thermal.js"></script>
+  <script src="../../engines/rbmk/rbmk_rods.js"></script>
+  <script src="../../engines/rbmk/rbmk_instruments.js"></script>
+  <script src="../../engines/rbmk/rbmk_engine.js"></script>
+  <script src="../../engines/bwr/bwr_config.js"></script>
+  <script src="../../layers/control/bwr_control.js"></script>
+  <script src="../../engines/bwr/bwr_vessel.js"></script>
+  <script src="../../engines/bwr/bwr_recirculation.js"></script>
+  <script src="../../engines/bwr/bwr_safety_systems.js"></script>
+  <script src="../../engines/bwr/bwr_instruments.js"></script>
+  <script src="../../engines/bwr/bwr_engine.js"></script>
+  <script src="../../layers/control/control_kernel.js"></script>
+  <script src="../../layers/instructor_layer.js"></script>
+  <script src="../../layers/simulation_service.js"></script>
+
+  <script src="../diagram/board/board_h.js"></script>
+  <script src="../diagram/board/std_pipe.js"></script>
+  <script src="../diagram/board/pwr_board_data.js"></script>
+  <script src="../diagram/board/components/comp_reactor_vessel.js"></script>
+  <script src="../diagram/board/components/comp_steam_generator.js"></script>
+  <script src="../diagram/board/components/comp_pressurizer.js"></script>
+  <script src="../diagram/board/components/comp_porv.js"></script>
+  <script src="../diagram/board/components/comp_pump.js"></script>
+  <script src="../diagram/board/components/comp_valve.js"></script>
+  <script src="../diagram/board/components/comp_valve_horizontal.js"></script>
+  <script src="../diagram/board/components/comp_valve_vertical.js"></script>
+  <script src="../diagram/board/components/comp_turbine_generator.js"></script>
+  <script src="../diagram/board/components/comp_condenser.js"></script>
+  <script src="../diagram/board/components/comp_cooling_tower.js"></script>
+  <script src="../diagram/board/pwr_board_wiring.js"></script>
+  <script src="../diagram/board/pwr_board.js"></script>
+
+  <script>
+  (function () {
+    'use strict';
+    var RD = globalThis.RD;
+    var out = [], nPass = 0, nFail = 0;
+    function ck(name, cond, detail) {
+      if (cond) { nPass++; out.push('<span class="p">PASS</span> ' + name); }
+      else { nFail++; out.push('<span class="f">FAIL</span> ' + name + (detail != null ? '  [' + detail + ']' : '')); }
+    }
+
+    var svc = new RD.SimulationService({ plant_id: 'pwr', initial_state: 'hot_full_power' });
+    var snap = svc.assembleSnapshot();
+
+    var sentCommands = [];
+    var ctx = {
+      cmd: function (c) { sentCommands.push(c); return (svc.command ? svc.command(c) : svc.handleCommand(c)); },
+      unit: 'si',
+      mode: function () { return 'learning'; },
+      overlay: function () { return false; }
+    };
+
+    RD.PwrBoard.mount(document.getElementById('host'), ctx);
+    RD.PwrBoard.render(snap);
+
+    setTimeout(function () {
+      RD.PwrBoard.rescanPorts();
+      RD.PwrBoard.render(svc.assembleSnapshot());
+
+      var stage = document.querySelector('.pwr-board-stage');
+      ck('board mounts', RD.PwrBoard.isMounted());
+      ck('stage present', !!stage);
+      var missing = [];
+      (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) {
+        if (it.kind !== 'component') return;
+        if (!(RD.BoardComps && RD.BoardComps[it.comp])) missing.push(it.comp);
+      });
+      ck('all component modules registered', missing.length === 0, missing.join(','));
+      var tiles = stage ? stage.querySelectorAll('.bd-tile').length : 0;
+      ck('all items rendered (' + tiles + ')', tiles === (window.RD_PWR_BOARD_DOC.items || []).length, tiles);
+      var portCount = Object.keys(RD.PwrBoard.ports()).length;
+      ck('ports scanned (' + portCount + ' >= 40)', portCount >= 40, portCount);
+      var pipes = stage ? stage.querySelectorAll('svg > g').length : 0;
+      ck('pipes + flanges drawn (' + pipes + ')', pipes >= (window.RD_PWR_BOARD_DOC.pipes || []).length, pipes);
+      var pendingPorts = (window.RD_PWR_BOARD_DOC.pipes || []).filter(function (p) {
+        var bad = 0;
+        [p.from, p.to].forEach(function (e) {
+          if (typeof e === 'string' && !RD.PwrBoard.ports()[e]) bad++;
+        });
+        return bad > 0;
+      }).map(function (p) { return p.id; });
+      ck('every pipe endpoint resolves', pendingPorts.length === 0, pendingPorts.join(','));
+
+      if (RD.PwrBoardDriver && RD.PwrBoardDriver.selfTest) {
+        RD.PwrBoardDriver.selfTest(ck, svc, sentCommands);
+      }
+
+      out.push('', nFail === 0 ? 'ALL ' + nPass + ' CHECKS PASS' : nFail + ' FAILURES / ' + (nPass + nFail));
+      document.getElementById('out').innerHTML = out.join('\n');
+      document.title = (nFail === 0 ? 'PASS ' : 'FAIL ') + '— PWR Board checks';
+    }, 800);
+  })();
+  </script>
+</body>
+</html>

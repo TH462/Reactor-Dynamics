@@ -1,0 +1,140 @@
+/* pwr_board.css — PWR learning-board synoptic (design-system port).
+ * Visual language follows the Claude Design "PWR Reactor" project: dark #0a0e13
+ * canvas with a two-level grid, IBM Plex-style mono labels (system fallbacks —
+ * no webfont dependency), cyan #4fe3ff accent.
+ * stdPipeFlow / stdPipeFlowRev keyframes are injected by std_pipe.js itself.
+ */
+
+.pwr-board-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: #0a0e13;
+}
+
+/* Fixed-aspect world canvas, scaled to fit the wrap (JS sets transform). */
+.pwr-board-stage {
+  position: absolute;
+  left: 0; top: 0;
+  width: 2400px; height: 1600px;
+  transform-origin: 0 0;
+  background-color: #0a0e13;
+  background-image:
+    linear-gradient(#182432 1px, transparent 1px),
+    linear-gradient(90deg, #182432 1px, transparent 1px),
+    linear-gradient(#111a23 1px, transparent 1px),
+    linear-gradient(90deg, #111a23 1px, transparent 1px);
+  background-size: 25px 25px, 25px 25px, 5px 5px, 5px 5px;
+  font-family: ui-sans-serif, "Segoe UI", system-ui, sans-serif;
+  isolation: isolate;
+}
+
+.pwr-board-stage, .pwr-board-stage * { box-sizing: border-box; }
+
+.bd-mono { font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace; }
+
+/* ---- tiles ---- */
+.bd-tile { position: absolute; }
+.bd-box-title {
+  position: absolute; left: 10px; top: 7px; color: #6b8598;
+  letter-spacing: 0.16em; white-space: nowrap;
+  font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+.bd-btn {
+  width: 100%; height: 100%;
+  background: #10161d;
+  letter-spacing: 0.12em; border-radius: 4px; cursor: pointer;
+  font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+.bd-btn:active { transform: translateY(1px); }
+.bd-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+/* Selected-state override the wiring layer toggles (mirrors builder seg() active look) */
+.bd-btn.bd-active { background: #0c3a44 !important; border-color: #4fe3ff !important; color: #4fe3ff !important; }
+
+/* ---- scram ---- */
+.bd-scram {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  border-radius: 10px; cursor: pointer;
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55);
+}
+.bd-scram:active { transform: translateY(1px); }
+@keyframes bdScramPulse {
+  0%, 100% { box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55), 0 0 0 0 rgba(255, 180, 0, 0.55); }
+  50%      { box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55), 0 0 14px 3px rgba(255, 180, 0, 0.35); }
+}
+
+/* ---- number inputs ---- */
+.bd-num-frame {
+  display: flex; align-items: stretch;
+  border: 1px solid #2a3a46; border-radius: 4px; overflow: hidden; background: #0b1119;
+}
+.bd-num-frame input {
+  flex: 1; min-width: 0; background: transparent; border: none;
+  font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-weight: 600; padding: 6px 8px; text-align: right; outline: none;
+}
+.bd-num-frame .bd-num-unit {
+  display: flex; align-items: center; color: #7f96a8; align-self: center;
+  font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  padding: 0 8px 0 0; white-space: nowrap;
+}
+.bd-num-steps { display: flex; flex-direction: column; border-left: 1px solid #2a3a46; flex: none; }
+.bd-num-steps button {
+  background: #10161d; border: none; color: #9fb3c4; font-size: 8px; line-height: 1;
+  width: 20px; height: 14px; cursor: pointer; padding: 0;
+}
+.bd-num-steps button:first-child { border-bottom: 1px solid #2a3a46; }
+.bd-num-steps button:hover { color: #e8f2f8; }
+
+/* ---- value (right-anchored indication) / text ---- */
+.bd-value {
+  transform: translateX(-100%);
+  padding: 2px; white-space: nowrap; font-weight: 600;
+  font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+.bd-value .bd-unit { color: #7f96a8; margin-left: -0.18em; }
+.bd-text { padding: 2px 4px; letter-spacing: 0.06em; white-space: pre-wrap; }
+
+/* ---- popover menus (TRIP BLOCKS etc.) ---- */
+.bd-pop {
+  position: absolute; z-index: 40; min-width: 240px;
+  background: #0e1620; border: 1px solid #3a4c58; border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6); padding: 10px;
+  font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+.bd-pop h4 {
+  margin: 0 0 8px; color: #9fb3c4; font-size: 11px; letter-spacing: 0.16em; font-weight: 600;
+}
+.bd-pop .bd-pop-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0;
+}
+.bd-pop .bd-pop-row .lbl { color: #9fb3c4; font-size: 11px; white-space: nowrap; }
+.bd-pop .bd-pop-row .sub { color: #6b8598; font-size: 9px; }
+.bd-pop button {
+  background: #10161d; border: 1px solid #2a3a46; color: #6b8598; border-radius: 4px;
+  font-family: inherit; font-size: 10px; letter-spacing: 0.1em; padding: 3px 10px; cursor: pointer;
+}
+.bd-pop button.bd-blocked { background: #3a2408; border-color: #ffd166; color: #ffd166; }
+.bd-pop button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- paused overlay (spec: Pause freeze) ---- */
+.pwr-board-paused {
+  position: absolute; inset: 0; display: none; z-index: 60;
+  align-items: center; justify-content: center; pointer-events: none;
+}
+.pwr-board-paused.on { display: flex; }
+.pwr-board-paused span {
+  font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 28px; letter-spacing: 0.3em; color: #e8f2f8;
+  background: rgba(10, 14, 19, 0.82); border: 1px solid #3a4c58; border-radius: 10px;
+  padding: 14px 34px 14px 40px;
+}
+/* Freeze every board animation while paused */
+.pwr-board-stage.bd-frozen *, .pwr-board-stage.bd-frozen *::before, .pwr-board-stage.bd-frozen *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}

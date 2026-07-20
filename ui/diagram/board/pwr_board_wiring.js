@@ -1,0 +1,406 @@
+/* pwr_board_wiring.js — RD.PwrBoardDriver: the sim-specific half of the PWR board.
+ *
+ * Maps every named diagram item (from pwr_board_data.js) to an engine command and
+ * every indication to a snapshot instrument. The renderer (pwr_board.js) calls into
+ * this driver for all behavior — it holds no plant knowledge itself.
+ *
+ * Command + snapshot contract is documented in WIRING_REFERENCE.md (dumped from a live
+ * hot_full_power snapshot). Items are keyed by their stable `id`.
+ *
+ * The board is authored in US customary units (psi / °F / gpm); the engine is SI, so
+ * indication values convert on the way out. Controls that the engine has no field for
+ * (boron target-seeking, condensate pump) are handled here as operator automation or
+ * flagged in WIRING_REFERENCE.md §GAPS.
+ */
+(function () {
+  'use strict';
+  var RD = window.RD = window.RD || {};
+
+  // ---- unit conversions (SI -> board US) ----
+  function C2F(c) { return c * 9 / 5 + 32; }
+  function Cd2F(c) { return c * 9 / 5; }
+  function MPa2psi(p) { return p * 145.038; }
+  function psi2MPa(p) { return p / 145.038; }
+  function kPa2inHg(k) { return k * 0.2953; }
+  function satTempC(pMPa) { return pMPa > 0 ? 180 * Math.pow(pMPa, 0.245) : 15; } // Tsat approx, 0.1–10 MPa
+  function r0(v) { return Math.round(v); }
+  function r1(v) { return (Math.round(v * 10) / 10); }
+
+  // Nominal full-scale flows for indications the engine exposes only as normalized/pct.
+  var GPM_HPI = 600, GPM_AFW = 640, GPM_CHARGING = 1000, GPM_LETDOWN = 1000, GPM_FEED_PER_PCT = 10;
+  var PSI_HPI_DISCH = 1520, PSI_AFW_DISCH = 1180;
+
+  // ---- driver-local UI state (things the engine has no field for) ----
+  var rodSpeed = 'normal';           // S/M/F selection for rod nudges
+  var boronOn = false;               // boron target-seeking controller on/off
+  var boronTargetPpm = 1000;         // desired boron (ppm)
+  var refs = null, ctxRef = null;
+  var pop = null;                    // active popover element
+
+  function cmd(c) { if (ctxRef && ctxRef.cmd) ctxRef.cmd(c); }
+  function CS(s) { return s.control_state || {}; }
+  function IN(s) { return s.instruments || {}; }
+  function rodGroup(s, id) {
+    var g = (CS(s).rod_groups || []);
+    for (var i = 0; i < g.length; i++) if (g[i].id === id) return g[i];
+    return null;
+  }
+  function pumpRec(s, id) {
+    var p = (CS(s).pumps || []);
+    for (var i = 0; i < p.length; i++) if (p[i].id === id) return p[i];
+    return null;
+  }
+
+  // ================================================================ BUTTONS
+  // Each entry: press(s) issues command(s); active(s) -> selected highlight.
+  var BUTTONS = {
+    // --- HPI / ECCS ---
+    imrldymb837: { press: function () { cmd({ action: 'set_hpi', active: true }); }, active: function (s) { return IN(s).hpi_active; } },
+    imrldz0wqds: { press: function () { cmd({ action: 'set_hpi', active: false }); }, active: function (s) { return !IN(s).hpi_active; } },
+    imrle1mc0lk: { press: function () { cmd({ action: 'set_esf_auto', system: 'hpi', auto: true }); } },
+    // --- AFW ---
+    imrmsslj42u: { press: function () { cmd({ action: 'set_afw', active: true }); }, active: function (s) { return IN(s).afw_active || IN(s).afw_pump_running; } },
+    imrmssoa137: { press: function () { cmd({ action: 'set_afw', active: false }); }, active: function (s) { return !(IN(s).afw_active || IN(s).afw_pump_running); } },
+    imrmssr9ihq: { press: function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); } },
+    // --- Charging panel: AUTO / MAN / OFF ---
+    imrmtg3r8ez: { press: function () { cmd({ action: 'set_cvcs_auto', active: true }); }, active: function (s) { return CS(s).cvcs_auto; } },
+    imrprbi6ui1: { press: function () { cmd({ action: 'set_cvcs_auto', active: false }); }, active: function (s) { return !CS(s).cvcs_auto; } },
+    imrqn630s3b: { press: function () { cmd({ action: 'set_charging_flow', normalized: 0 }); }, active: function (s) { return !CS(s).cvcs_auto && (CS(s).charging_flow_normalized || 0) === 0; } },
+    // charging pump ON/OFF (by the pump)
+    imrsjy1m9g: { press: function () { cmd({ action: 'set_charging_pump', running: true }); }, active: function (s) { return CS(s).charging_pump_running; } },
+    imrsjy59pnu: { press: function () { cmd({ action: 'set_charging_pump', running: false }); }, active: function (s) { return !CS(s).charging_pump_running; } },
+    // --- Letdown orifices: CLOSED / A 3% / B 4% / A+B 7% ---
+    imrmtin8wm3: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: false }); }, active: function (s) { return !CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },
+    imrmtimrch3: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: false }); }, active: function (s) { return CS(s).letdown_orifice_a && !CS(s).letdown_orifice_b; } },
+    imrmtimhz4g: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: true }); }, active: function (s) { return !CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
+    imrmtimyxef: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: true }); }, active: function (s) { return CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
+    // --- Boron control ON / OFF (target-seeking controller, see afterRender) ---
+    imrqp6com2b: { press: function () { boronOn = true; }, active: function () { return boronOn; } },
+    imrqp6avzkw: { press: function () { boronOn = false; cmd({ action: 'set_boron_adjust', rate: 0 }); }, active: function () { return !boronOn; } },
+    // --- Pressurizer spray: AUTO / MANUAL / OFF ---
+    imro8zestdm: { press: function () { cmd({ action: 'set_spray', auto: true }); }, active: function (s) { return CS(s).spray_auto; } },
+    imro900yzeq: { press: function (s) { cmd({ action: 'set_spray', pct: CS(s).spray_valve_pct || 50 }); }, active: function (s) { return !CS(s).spray_auto && (CS(s).spray_valve_pct || 0) > 0; } },
+    imro901sddd: { press: function () { cmd({ action: 'set_spray', pct: 0 }); }, active: function (s) { return !CS(s).spray_auto && (CS(s).spray_valve_pct || 0) === 0; } },
+    // --- Pressurizer heater: AUTO / MANUAL / OFF ---
+    imro969lnex: { press: function () { cmd({ action: 'set_heater', auto: true }); }, active: function (s) { return CS(s).heater_auto; } },
+    imro96ei9hd: { press: function (s) { cmd({ action: 'set_heater', power_pct: CS(s).heater_power_pct || 50 }); }, active: function (s) { return !CS(s).heater_auto && (CS(s).heater_power_pct || 0) > 0; } },
+    imro96h8lip: { press: function () { cmd({ action: 'set_heater', power_pct: 0 }); }, active: function (s) { return !CS(s).heater_auto && (CS(s).heater_power_pct || 0) === 0; } },
+    // --- Control rods: WITHDRAW / INSERT (nudge at selected speed) ---
+    imrpk6qzjq8: { press: function () { cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 4, speed: rodSpeed }); } },
+    imrpk79mwng: { press: function () { cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -4, speed: rodSpeed }); } },
+    imrpk8169ds: { press: function () { rodSpeed = 'slow'; }, active: function () { return rodSpeed === 'slow'; } },
+    imrpk8grvcz: { press: function () { rodSpeed = 'normal'; }, active: function () { return rodSpeed === 'normal'; } },
+    imrpk8kjsjs: { press: function () { rodSpeed = 'fast'; }, active: function () { return rodSpeed === 'fast'; } },
+    // --- Shutdown rods ---
+    imrpnyaxsb3: { press: function () { cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: 4, speed: rodSpeed }); } },
+    imrpnyf37ju: { press: function () { cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: -4, speed: rodSpeed }); } },
+    // --- Steam dump: AUTO / OPEN / CLOSE ---
+    imrppqg6mcc: { press: function () { cmd({ action: 'set_steam_dump', mode: 'auto' }); }, active: function (s) { return CS(s).steam_dump_auto; } },
+    imrppquqg16: { press: function () { cmd({ action: 'set_steam_dump', mode: 'open' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) > 50; } },
+    imrppqxggbj: { press: function () { cmd({ action: 'set_steam_dump', mode: 'closed' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) <= 50; } },
+    // --- Generator load mode: FOLLOW / MAN / OFF ---
+    imro8ktzs3u: { press: function () { cmd({ action: 'set_load_mode', mode: 'follow' }); }, active: function (s) { return CS(s).load_mode === 'follow'; } },
+    imro8lddxi: { press: function () { cmd({ action: 'set_load_mode', mode: 'manual' }); }, active: function (s) { return CS(s).load_mode === 'manual'; } },
+    imro8len0oi: { press: function () { cmd({ action: 'disconnect_grid' }); }, active: function (s) { return IN(s).steam_demand_low || (IN(s).mwe_output || 0) <= 1; } },
+    // --- SG feed pump: AUTO / MAN / OFF ---
+    imrsgjmrjfg: { press: function () { cmd({ action: 'set_feed_coupled', active: true }); }, active: function (s) { return CS(s).feed_auto_coupled; } },
+    imrsgjuh7l0: { press: function (s) { cmd({ action: 'set_feed_pump_speed', pct: CS(s).feed_pump_speed_pct || 100 }); }, active: function (s) { return !CS(s).feed_auto_coupled && (CS(s).feed_pump_speed_pct || 0) > 0; } },
+    imrsgjwq1q0: { press: function () { cmd({ action: 'set_feed_pump_speed', pct: 0 }); }, active: function (s) { return !CS(s).feed_auto_coupled && (CS(s).feed_pump_speed_pct || 0) === 0; } },
+    // --- TRIP BLOCKS popover ---
+    imrsk4xz2dm: { press: function (item, btn) { toggleTripBlocks(btn); } }
+  };
+
+  // ================================================================ NUMBERS (editable)
+  // set(v): issue command from the typed value; get(s): reflect current sim state.
+  var NUMBERS = {
+    imro8rmka2y: { set: function (v) { cmd({ action: 'set_load_target', mwe: v }); }, get: function (s) { return CS(s).load_target_mwe; } },              // Generator Load MW
+    imro8xhy2me: { set: function (v) { cmd({ action: 'set_feed_pump_speed', pct: v / GPM_FEED_PER_PCT }); }, get: function (s) { return (CS(s).feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT; } }, // SG Feed rate gpm
+    imro929i738: { set: function (v) { cmd({ action: 'set_spray', pct: v }); }, get: function (s) { return CS(s).spray_valve_pct; } },                    // spray %
+    imro96mj15p: { set: function (v) { cmd({ action: 'set_heater', power_pct: v }); }, get: function (s) { return CS(s).heater_power_pct; } },             // heater %
+    imrpq29jo7t: { set: function (v) { boronTargetPpm = v; }, get: function () { return boronTargetPpm; } },                                              // boron target ppm
+    imrpq48hn3t: { set: function (v) { cmd({ action: 'set_charging_flow', normalized: v / GPM_CHARGING }); }, get: function (s) { return (CS(s).charging_flow_normalized || 0) * GPM_CHARGING; } }, // charging gpm
+    imrsg8b7b9o: { set: function (v) { cmd({ action: 'set_pressure_setpoint', mpa: psi2MPa(v) }); }, get: function (s) { return MPa2psi(CS(s).pressure_setpoint || 0); } } // plant pressure setpoint psi
+  };
+
+  // ================================================================ VALUES (indications)
+  // fn(s) -> display text (unit stays as authored on the item).
+  var VALUES = {
+    imrmromyxdq: function (s) { return r0((IN(s).hpi_flow || 0) * GPM_HPI); },                        // ECCS flow gpm
+    imrmru52f8l: function (s) { return IN(s).hpi_active ? PSI_HPI_DISCH : 0; },                        // ECCS discharge psi
+    imrmstovyli: function (s) { return IN(s).afw_active ? r0((CS(s).afw_throttle_pct || 100) / 100 * GPM_AFW) : 0; }, // AFW flow gpm
+    imrmsu1bl4r: function (s) { return IN(s).afw_active ? PSI_AFW_DISCH : 0; },                        // AFW discharge psi
+    imrmtkjxzm1: function (s) { return r0((IN(s).letdown_flow || 0) * GPM_LETDOWN); },                 // letdown flow gpm
+    imrqn5m0oaj: function (s) { return r0((IN(s).charging_flow || 0) * GPM_CHARGING); },               // charging flow gpm
+    imrmtp2alpy: function (s) { return r0(IN(s).boron_analyzer); },                                     // boron ppm
+    imro6ohhdq3: function (s) { return r0(C2F(IN(s).tavg)); },                                          // Tavg °F
+    imro6qpci2d: function (s) { return r0(Cd2F(IN(s).thot - IN(s).tcold)); },                           // dTavg °F
+    imro6qsncb9: function (s) { var v = IN(s).startup_rate || 0; return (v >= 0 ? '+' : '') + v.toFixed(2); }, // SUR DPM
+    imro6qutiht: function (s) { return fmtExp(IN(s).source_range); },                                   // source range cps
+    imro6rctcgm: function (s) { return r0(IN(s).intermediate_range * 1e6) || r1(IN(s).intermediate_range); }, // IR (µA-ish)
+    imro6rdwwdn: function (s) { var r = (s.true_state && s.true_state.reactivity_pcm) || 0; return (r >= 0 ? '+' : '') + r0(r); }, // reactivity pcm
+    imrpk4pjcpd: function (s) { var g = rodGroup(s, 'control_rods'); return g ? g.steps : 0; },         // control rod steps
+    imrpnzfsfcx: function (s) { var g = rodGroup(s, 'shutdown_rods'); return g ? g.steps : 0; },        // shutdown rod steps
+    imrppee04aj: function (s) { return r0(IN(s).turbine_rpm); },                                        // turbine rpm
+    imrppeg6g16: function (s) { return r0(IN(s).steam_dump_valve); },                                   // steam dump %
+    imrppeh5hkb: function (s) { return r0(IN(s).mwe_output); },                                         // generator MW
+    imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
+    imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
+    imrppyp0wfo: function (s) { return accN2Psi(s); },                                                  // accumulator N2 psig
+    imrppztrng1: function (s) { return CS(s).eccs_mode, IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
+    imrpq0n2ujv: function (s) { return r0(accFill(s)); },                                               // accumulator fill %
+    imrqn8uo0z: function (s) { var r = CS(s).boron_adjust || 0; return r > 0 ? 'BORATING' : (r < 0 ? 'DILUTING' : 'HOLD'); }, // boron status
+    imrqrouhrdr: function () { return 'NORMAL'; },                                                      // condensate polisher (behavioral)
+    imrqzuhzre3: function (s) { return r0(kPa2inHg(IN(s).condenser_vacuum)); },                         // condenser vacuum inHg
+    imrr1fmzzjp: function (s) { return r0(IN(s).sg_level); },                                           // SG level %
+    imrr1gwi93j: function (s) { return r0(MPa2psi(IN(s).steam_pressure)); },                            // SG pressure psi
+    imrr1hecwq7: function (s) { return r0(C2F(satTempC(IN(s).steam_pressure))); },                      // steam temp °F (sat)
+    imrr1ixcqe3: function (s) { return r0(MPa2psi(IN(s).primary_pressure)); },                          // plant pressure psi
+    imrr4fnxhlc: function (s) { return r0(C2F(IN(s).thot)); },                                          // T-hot °F
+    imrr4g29a7c: function (s) { return r0(C2F(IN(s).tcold)); },                                         // T-cold °F
+    imrsgch20pv: function (s) { return r0(C2F(IN(s).porv_tailpipe_temp)); },                            // PORV tailpipe °F
+    imrsgkz4lq0: function (s) { return r0((CS(s).feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT); }       // SG feed rate gpm
+  };
+
+  function fmtExp(v) { if (!v || v <= 0) return '0'; var e = Math.floor(Math.log10(v)); var m = v / Math.pow(10, e); return m.toFixed(1) + 'e' + e; }
+  function accIsolated(s) { return CS(s).accumulator_valve_open === false; }
+  function accFill(s) { var t = s.true_state || {}; return t.accumulator_volume_pct != null ? t.accumulator_volume_pct : 78; }
+  function accN2Psi(s) { var t = s.true_state || {}; return t.accumulator_pressure_mpa != null ? r0(MPa2psi(t.accumulator_pressure_mpa)) : 640; }
+
+  // ================================================================ COMPONENTS
+  // compProps(item, s) -> props for the component's update()
+  function pumpProps(running, speed, temp) { return { running: !!running, speed: speed, temp: temp }; }
+  function valveProps(openFrac, contents, temp) { return { openFrac: openFrac, contents: contents, temp: temp }; }
+
+  var COMPPROPS = {
+    reactorVessel: function (s) {
+      var cr = rodGroup(s, 'control_rods'), sr = rodGroup(s, 'shutdown_rods');
+      var t = s.true_state || {};
+      var sub = IN(s).subcooling_margin;
+      return {
+        regFrac: cr ? cr.position_pct / 100 : 0.9,
+        shutFrac: sr ? sr.position_pct / 100 : 1,
+        power: (IN(s).power_range || 0) / 100,
+        coreInv: t.core_inventory_pct != null ? t.core_inventory_pct : 100,
+        boil: (sub != null && sub < 0) ? Math.min(100, -sub * 3) : 0,
+        glow: true, showFlow: IN(s).rcp_running
+      };
+    },
+    steamGenerator: function (s) {
+      return { power: IN(s).power_range, level: IN(s).sg_level, boil: 55,
+        temp: satTempC(IN(s).steam_pressure), showFlow: true, glow: true };
+    },
+    pressurizer: function (s) {
+      var c = CS(s);
+      return { level: IN(s).pzr_level, heaterPower: c.heater_power_pct,
+        heaterOn: (c.heater_power_pct || 0) > 0 || (c.heater_auto && (IN(s).power_range || 0) > 0),
+        spray: (c.spray_valve_pct || 0) > 2, temp: 345, glow: true, showFlow: true };
+    },
+    porv: function (s) { return { open: IN(s).porv_indicator === 'open' }; },
+    condenser: function (s) {
+      return { steamLoad: IN(s).power_range, hotwellLevel: 55,
+        coolingFlow: IN(s).condenser_cooling_available ? 80 : 0, temp: 40,
+        vacuumInHg: kPa2inHg(IN(s).condenser_vacuum) };
+    },
+    coolingTower: function (s) {
+      return { heatLoad: IN(s).power_range, coolingFlow: IN(s).condenser_cooling_available ? 80 : 0 };
+    },
+    turbineGenerator: function (s) {
+      var gov = (IN(s).governor_valve || 0) / 100;
+      return { flowFrac: IN(s).steam_demand_low ? 0 : gov };
+    },
+    // pumps
+    imrobnzlha1: function (s) { return pumpProps(IN(s).hpi_active, IN(s).hpi_flow || 0, 60); },                                  // eccs pump
+    imrobph7xrq: function (s) { return pumpProps((CS(s).feed_pump_speed_pct || 0) > 0, (CS(s).feed_pump_speed_pct || 0) / 100, 220); }, // feed pump
+    imrobpq4a70: function (s) { var p = pumpRec(s, 'rcp'); return pumpProps(IN(s).rcp_running, p ? p.flow_pct / 100 : 1, 290); },  // rcp
+    imrqp87ueqb: function (s) { return pumpProps(CS(s).charging_pump_running, CS(s).charging_pump_running ? 0.8 : 0, 60); },       // charging pump
+    imrqvzbd9hd: function (s) { return pumpProps(IN(s).condenser_cooling_available, IN(s).condenser_cooling_available ? 1 : 0, 45); }, // condensate pump (cosmetic)
+    // valves
+    imrpp2g2m8k: function (s) { return valveProps(IN(s).afw_active ? 1 : 0, 'water', 60); },                                       // afw valve
+    imrpp99kx2y: function (s) { return valveProps(IN(s).msiv_open ? 1 : 0, 'steam', satTempC(IN(s).steam_pressure)); },            // main steam isolation
+    imrppb3kuav: function (s) { return valveProps(CS(s).porv_block_open ? 1 : 0, 'steam', 250); },                                 // PORV block valve
+    imrppxt2aqd: function (s) { return valveProps(CS(s).accumulator_valve_open === false ? 0 : 1, 'water', 50); },                 // accumulator shutoff
+    imrprmm4u5q: function (s) { return valveProps((IN(s).steam_dump_valve || 0) / 100, (IN(s).steam_dump_valve || 0) > 2 ? 'steam' : 'empty', satTempC(IN(s).steam_pressure)); }, // steam dump valve
+    imrr45syy4v: function (s) { return valveProps((IN(s).governor_valve || 0) / 100, 'steam', satTempC(IN(s).steam_pressure)); }   // TCV
+  };
+
+  // Clickable-valve toggle targets (component onControl 'toggle')
+  var VALVE_TOGGLE = {
+    imrpp2g2m8k: function (open) { cmd({ action: 'set_afw', active: open }); },
+    imrpp99kx2y: function (open) { cmd({ action: open ? 'open_msiv' : 'close_msiv' }); },
+    imrppb3kuav: function (open) { cmd({ action: open ? 'open_block_valve' : 'close_block_valve' }); },
+    imrppxt2aqd: function (open) { cmd({ action: open ? 'open_accumulator_valve' : 'close_accumulator_valve' }); }
+  };
+  // Pump control targets (component onControl 'toggle' / 'speed')
+  var PUMP_TOGGLE = {
+    imrobnzlha1: function (on) { cmd({ action: 'set_hpi', active: on }); },
+    imrobpq4a70: function (on) { cmd({ action: 'set_rcp', running: on }); },
+    imrqp87ueqb: function (on) { cmd({ action: 'set_charging_pump', running: on }); }
+    // condensate pump (imrqvzbd9hd): no engine field — cosmetic, no-op
+  };
+
+  // ================================================================ TRIP BLOCKS menu (task #5)
+  // Only the 4 blockable trips (owner ruling).
+  var BLOCKABLE_TRIPS = [
+    { id: 'lo_press', label: 'PZR PRESS LO-LO', sub: 'Reactor trip · 1800 psi (P-11 permissive)' },
+    { id: 'lo_flow', label: 'RCS LOW FLOW', sub: 'Reactor trip · loss of flow (P-7 permissive)' },
+    { id: 'ir_high', label: 'IR HIGH FLUX', sub: 'Startup trip · ~20% (P-10 permissive)' },
+    { id: 'pr_low_setpoint', label: 'PR HIGH (LOW SETPT)', sub: 'Startup trip · 25% (P-10 permissive)' }
+  ];
+
+  function closePop() { if (pop && pop.parentNode) pop.parentNode.removeChild(pop); pop = null; }
+
+  function toggleTripBlocks(btn) {
+    if (pop) { closePop(); return; }
+    var stage = refs && refs.stage;
+    if (!stage) return;
+    pop = document.createElement('div');
+    pop.className = 'bd-pop bd-mono';
+    // position just above the button within the stage (canvas coords)
+    var item = null;
+    (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) { if (it.id === 'imrsk4xz2dm') item = it; });
+    if (item) { pop.style.left = (item.left - 90) + 'px'; pop.style.top = (item.top - 250) + 'px'; }
+    pop.appendChild(mk('h4', null, 'TRIP BLOCKS'));
+    var snap = RD.PwrBoard.lastSnapshot ? RD.PwrBoard.lastSnapshot() : null;
+    BLOCKABLE_TRIPS.forEach(function (t) {
+      var row = mk('div', 'bd-pop-row');
+      var txt = mk('div', null);
+      txt.appendChild(mk('div', 'lbl', t.label));
+      txt.appendChild(mk('div', 'sub', t.sub));
+      var b = mk('button', null, '');
+      b.setAttribute('data-trip', t.id);
+      b.addEventListener('click', function () {
+        var blocked = isBlocked(RD.PwrBoard.lastSnapshot(), t.id);
+        cmd({ action: 'set_trip_block', trip_id: t.id, blocked: !blocked });
+      });
+      row.appendChild(txt);
+      row.appendChild(b);
+      pop.appendChild(row);
+    });
+    stage.appendChild(pop);
+    refreshTripBlocks(snap);
+  }
+
+  function isBlocked(s, id) { var tb = (s && s.rps_state && s.rps_state.trip_blocks) || {}; return !!tb[id]; }
+
+  function refreshTripBlocks(s) {
+    if (!pop || !s) return;
+    var btns = pop.querySelectorAll('button[data-trip]');
+    for (var i = 0; i < btns.length; i++) {
+      var id = btns[i].getAttribute('data-trip');
+      var blocked = isBlocked(s, id);
+      btns[i].textContent = blocked ? 'BLOCKED' : 'BLOCK';
+      btns[i].className = blocked ? 'bd-blocked' : '';
+      // permissive gating: at power lo_press/lo_flow can't be blocked (permissive unmet);
+      // the engine simply ignores the command, so reflect a disabled affordance.
+      var permit = tripBlockPermitted(s, id);
+      btns[i].disabled = !permit && !blocked;
+    }
+  }
+
+  function tripBlockPermitted(s, id) {
+    var INS = IN(s);
+    // P-10 (10% power) gates ir_high / pr_low_setpoint; lo_press/lo_flow gate on their own
+    // low-pressure / low-power permissive.
+    if (id === 'ir_high' || id === 'pr_low_setpoint') return (INS.power_range || 0) > 10;
+    if (id === 'lo_press') return (INS.primary_pressure || 99) < 13.6;
+    if (id === 'lo_flow') return (INS.power_range || 0) < 5;
+    return true;
+  }
+
+  function mk(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  // ================================================================ driver API
+  RD.PwrBoardDriver = {
+    onMount: function (doc, ctx, r) {
+      ctxRef = ctx; refs = r; closePop();
+    },
+    onButton: function (item, btn) {
+      var b = BUTTONS[item.id];
+      if (b && b.press) b.press(RD.PwrBoard.lastSnapshot() || {}, btn);
+    },
+    onNumber: function (item, value) {
+      var n = NUMBERS[item.id];
+      if (n && n.set) n.set(value);
+    },
+    onControl: function (item, action, value) {
+      if (action === 'toggle') {
+        if (VALVE_TOGGLE[item.id]) { VALVE_TOGGLE[item.id](!!value); return; }
+        if (PUMP_TOGGLE[item.id]) { PUMP_TOGGLE[item.id](!!value); return; }
+      } else if (action === 'speed') {
+        if (item.id === 'imrobph7xrq') cmd({ action: 'set_feed_pump_speed', pct: value });
+      }
+    },
+    onScram: function () { cmd({ action: 'scram' }); },
+    onScramReset: function () { /* no engine reset command; visual only */ },
+    scramFired: function (s) { return IN(s).rps_scrammed; },
+    valueFor: function (item, s) {
+      var f = VALUES[item.id];
+      if (!f) return null;
+      var v = f(s);
+      return v == null ? null : { text: String(v) };
+    },
+    numberFor: function (item, s) {
+      var n = NUMBERS[item.id];
+      if (!n || !n.get) return null;
+      var v = n.get(s);
+      return v == null ? null : v;
+    },
+    buttonActive: function (item, s) {
+      var b = BUTTONS[item.id];
+      return b && b.active ? !!b.active(s) : false;
+    },
+    buttonDisabled: function () { return false; },
+    compProps: function (item, s) {
+      var f = COMPPROPS[item.id] || COMPPROPS[item.comp === undefined ? item.id : item.id];
+      // fall back to comp-name keyed entries for the singletons
+      if (!f && item.comp) f = COMPPROPS[item.id];
+      if (!f) return null;
+      return f(s);
+    },
+    afterRender: function (s) {
+      // boron target-seeking controller (operator automation — engine has only a rate cmd)
+      if (boronOn && CS(s).charging_pump_running) {
+        var diff = boronTargetPpm - (IN(s).boron_analyzer || 0);
+        var rate = Math.abs(diff) < 5 ? 0 : (diff > 0 ? 0.5 : -0.5);
+        if ((CS(s).boron_adjust || 0) !== rate) cmd({ action: 'set_boron_adjust', rate: rate });
+      }
+      refreshTripBlocks(s);
+    },
+    // exposed for the acceptance harness
+    selfTest: function (ck, svc, sent) {
+      var s = svc.assembleSnapshot();
+      ck('driver: value map covers all value items', (function () {
+        var miss = [];
+        (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) {
+          if (it.kind === 'value' && !VALUES[it.id]) miss.push(it.id);
+        });
+        return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+      ck('driver: every button wired', (function () {
+        var miss = [];
+        (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) {
+          if (it.kind === 'button' && !BUTTONS[it.id]) miss.push(it.id);
+        });
+        return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+      ck('driver: every number wired', (function () {
+        var miss = [];
+        (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) {
+          if (it.kind === 'number' && !NUMBERS[it.id]) miss.push(it.id);
+        });
+        return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+      ck('driver: control-bearing components wired', (function () {
+        var miss = [];
+        (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) {
+          if (it.kind !== 'component') return;
+          if (!COMPPROPS[it.id] && !COMPPROPS[it.comp === undefined ? '' : it.id]) {
+            // singletons keyed by their fixed id
+            if (['steamGenerator','turbineGenerator','reactorVessel','pressurizer','porv','condenser','coolingTower'].indexOf(it.id) < 0) miss.push(it.id);
+          }
+        });
+        return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+    }
+  };
+})();
