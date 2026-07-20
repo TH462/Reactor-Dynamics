@@ -232,6 +232,12 @@
       steam_p_rated: 5.65,         // MPa secondary operating pressure [tune]
       steam_flow_rated: 1.0,       // [tune]
       sg_level_nominal: 65.0,      // % at hot_full_power
+      // Wide-range level window: the whole-vessel wide range is the integrated inventory
+      // (clamped only at the physical vessel bounds 0/100); the NARROW working range is the
+      // sg_wr_lo..sg_wr_hi sub-band of it, mapped to narrow 0–100 %. So when the narrow gauge
+      // pegs (overfill/dryout) the wide range keeps reading. The board SG component mirrors
+      // this window (comp_steam_generator.js SG_WR_LO/HI) to place its narrow gauge.
+      sg_wr_lo: 30.0, sg_wr_hi: 75.0,
       feed_pump_tau: 8.0,          // s — feed-pump speed→flow inertia (set_feed_pump_speed) [tune]
       // SG code safety valves — upstream of the MSIV, above the 8.90 no-load
       // dump setpoint: the backstop when the SG is bottled (MSIV shut). [tune]

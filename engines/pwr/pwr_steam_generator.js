@@ -113,8 +113,15 @@
     var steam_out = s.steam_flow_normalized + dump + sg_relief;
 
     // SG level (the true level; shrink/swell is added in the instrument model §8.4).
-    var dSGLevel = (feedwater_flow - steam_out) * sg.K_sg_level;
-    s.sg_level_pct = clip(s.sg_level_pct + dSGLevel * dt, 0, 100);
+    // WIDE range is the integrated inventory over the whole vessel, clamped only at the
+    // physical bounds [0,100]. NARROW (working) range is derived as the sg_wr_lo..sg_wr_hi
+    // window of it — so when narrow pegs on an overfill/dryout, wide keeps moving. The wide
+    // gain is scaled from K_sg_level so the narrow reading's IN-WINDOW dynamics are identical
+    // to the old direct-narrow integration (d(narrow) = K_sg_level·imbalance while unpegged).
+    var wr_lo = sg.sg_wr_lo, wr_hi = sg.sg_wr_hi, wr_span = wr_hi - wr_lo;
+    var dWide = (feedwater_flow - steam_out) * sg.K_sg_level * (wr_span / 100);
+    s.sg_level_wide_pct = clip((s.sg_level_wide_pct != null ? s.sg_level_wide_pct : wr_lo + wr_span * s.sg_level_pct / 100) + dWide * dt, 0, 100);
+    s.sg_level_pct = clip((s.sg_level_wide_pct - wr_lo) / wr_span * 100, 0, 100);
 
     // Secondary pressure and steam flow.
     var dSteamP = (steam_generation_rate - steam_out) * sg.K_steam_pressure;

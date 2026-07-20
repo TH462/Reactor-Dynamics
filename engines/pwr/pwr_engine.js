@@ -23,11 +23,6 @@
 
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
-  // Wide-range SG level window: the narrow (working) range 0–100 % maps onto this
-  // sub-band of the whole-vessel wide-range scale. MUST match the SG board component's
-  // gauge placement (ui/diagram/board/components/comp_steam_generator.js SG_WR_LO/HI)
-  // so the narrow gauge marker lines up with the wide-range water column it zooms into.
-  var SG_WR_LO = 30, SG_WR_HI = 75;
 
   // S-curve rod worth: rods least effective near fully in/out, most in the middle.
   // pos_norm: 0 = fully inserted, 1 = fully withdrawn.
@@ -361,13 +356,11 @@
     return {
       power_pct: s.power_pct, tavg_c: s.tavg_c, thot_c: s.thot_c, tcold_c: s.tcold_c,
       pressure_mpa: s.pressure_mpa, pzr_level_pct: s.pzr_level_pct, sg_level_pct: s.sg_level_pct,
-      // Wide-range SG level (whole-vessel column, tube sheet → separators). The engine
-      // integrates only the narrow (working) range, so wide range is an affine remap of
-      // it: the narrow 0–100 % band is the SG_WR_LO..SG_WR_HI window of the wide scale
-      // (a zoomed instrument view). Feeds the SG vessel water column in the UI while the
-      // narrow gauge keeps its alarm/trip zones. (Coupled: both peg together — a truly
-      // independent wide range would need an un-clamped secondary-inventory state.)
-      sg_level_wide_pct: clip(SG_WR_LO + (SG_WR_HI - SG_WR_LO) * s.sg_level_pct / 100, 0, 100),
+      // Wide-range SG level (whole-vessel column, tube sheet → separators). This is the
+      // integrated inventory state; the narrow (working) range above is derived as its
+      // sg_wr_lo..sg_wr_hi window (pwr_steam_generator.js). Wide keeps reading when narrow
+      // pegs on an overfill/dryout — feeds the SG vessel water column in the UI.
+      sg_level_wide_pct: s.sg_level_wide_pct,
       // Loop pressure distribution (true state; the single primary_pressure
       // instrument still reads pressure_mpa — no per-node gauges). Cold leg = pump
       // discharge (highest, ECCS/letdown datum); pump suction = between SG and RCP
@@ -1002,6 +995,10 @@
       ir_amps: cfg.nis.k_ir * P0,
 
       sg_level_pct: cfg.steam_generator.sg_level_nominal,
+      // Wide-range inventory state (integrated); narrow is derived from it in stepSecondary.
+      // Seed so the derived narrow == sg_level_nominal at init (nominal sits in the window).
+      sg_level_wide_pct: cfg.steam_generator.sg_wr_lo +
+        (cfg.steam_generator.sg_wr_hi - cfg.steam_generator.sg_wr_lo) * cfg.steam_generator.sg_level_nominal / 100,
       steam_pressure_mpa: cfg.steam_generator.steam_p_rated,
       msiv_open: true, sg_safety_open: false, sg_safety_flow: 0,   // main steam isolation + SG code safeties
       steam_flow_normalized: P0, fw_flow_normalized: P0,
@@ -1195,6 +1192,12 @@
     if (s.condensate_pump_running == null) s.condensate_pump_running = true;
     if (s.condensate_flow_normalized == null) s.condensate_flow_normalized = s.fw_flow_normalized || 0;
     if (s.afw_discharge_pressure_mpa == null) s.afw_discharge_pressure_mpa = 0;
+    // Wide-range SG level (integrated inventory state). Older saves have only the narrow
+    // sg_level_pct — seed wide from it via the window so the derived narrow is unchanged.
+    if (s.sg_level_wide_pct == null) {
+      var sgw = this.cfg.steam_generator;
+      s.sg_level_wide_pct = sgw.sg_wr_lo + (sgw.sg_wr_hi - sgw.sg_wr_lo) * (s.sg_level_pct != null ? s.sg_level_pct : sgw.sg_level_nominal) / 100;
+    }
     // Accumulator discharge isolation valve + cold-injection thermal coupling (2026-07).
     // Older saves have no isolation valve — default aligned (open) so behavior is
     // unchanged; the quench throughput recomputes on the first step.
