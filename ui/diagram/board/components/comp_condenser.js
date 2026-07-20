@@ -49,8 +49,8 @@
     var radii = [15, 26, 37];
 
     // dynamic element refs
-    var waterStops = [], steamStops = [], steamGradEl;
-    var shellGlowEl, steamRect, waterRect, surfLine, outcRect;
+    var waterStops = [], steamStops = [], steamGradEl, tubeStops = [];
+    var shellGlowEl, steamRect, waterRect, surfLine, outcRect, incRect;
     var tubeFlowEls = [];
     var panelG = null, slInputs = {}, slVals = {}, roVals = {};
 
@@ -65,7 +65,9 @@
         h('stop', { key: 0, offset: '0', ref: function (el) { steamStops[0] = el; } }),
         h('stop', { key: 1, offset: '1', ref: function (el) { steamStops[1] = el; } })]),
       h('linearGradient', { key: 'tube', id: gid + 'TubeGrad', x1: '0', y1: '0', x2: '1', y2: '0' }, [
-        h('stop', { key: 0, offset: '0', stopColor: '#1a3f72' }), h('stop', { key: 1, offset: '0.5', stopColor: '#4a90d9' }), h('stop', { key: 2, offset: '1', stopColor: '#1a3f72' })]),
+        h('stop', { key: 0, offset: '0', stopColor: '#1a3f72', ref: function (el) { tubeStops[0] = el; } }),
+        h('stop', { key: 1, offset: '0.5', stopColor: '#4a90d9', ref: function (el) { tubeStops[1] = el; } }),
+        h('stop', { key: 2, offset: '1', stopColor: '#1a3f72', ref: function (el) { tubeStops[2] = el; } })]),
       h('clipPath', { key: 'clip', id: gid + 'InnerClip' }, [h('rect', { key: 0, x: innerL, y: innerTop, width: innerR - innerL, height: innerBot - innerTop, rx: 6 })]),
       h('filter', { key: 'glow', id: gid + 'Glow', x: '-60%', y: '-60%', width: '220%', height: '220%' }, [h('feGaussianBlur', { key: 0, stdDeviation: '9' })])
     ]));
@@ -93,9 +95,10 @@
     // tube sheet + supply/return chambers
     C.push(h('rect', { key: 'sheet', x: rightX, y: cy - 43, width: 6, height: 86, rx: 2, fill: '#2b3d4a' }));
     outcRect = h('rect', { key: 'outc', x: rightX + 6, y: cy - 43, width: 32, height: 43, fill: mix(COOL, HOT, 0.1), opacity: 0.85 });
+    incRect = h('rect', { key: 'inc', x: rightX + 6, y: cy, width: 32, height: 43, fill: coolSupplyColor, opacity: 0.85 });
     C.push(h('g', { key: 'chambers', clipPath: 'url(#' + gid + 'InnerClip)' }, [
       outcRect,
-      h('rect', { key: 'inc', x: rightX + 6, y: cy, width: 32, height: 43, fill: coolSupplyColor, opacity: 0.85 }),
+      incRect,
       h('rect', { key: 'divider', x: rightX + 6, y: cy - 2, width: 32, height: 4, fill: '#0e1620' })
     ]));
 
@@ -220,7 +223,19 @@
       }
       if (loadFrac !== last.loadFrac) {
         last.loadFrac = loadFrac;
-        outcRect.setAttribute('fill', mix(COOL, HOT, 0.1 + loadFrac * 0.18));
+        // Circulating cooling water on the SAME global water ramp as every other pool/pipe:
+        // cold at the inlet chamber, warmer at the outlet as it picks up the condensing heat.
+        var cwSupply = 25, cwReturn = 25 + loadFrac * 14;
+        var supC = env.StdPipe.phaseTempColor('water', cwSupply);
+        var retC = env.StdPipe.phaseTempColor('water', cwReturn);
+        var avgC = env.StdPipe.phaseTempColor('water', (cwSupply + cwReturn) / 2);
+        outcRect.setAttribute('fill', retC.flow);
+        if (incRect) incRect.setAttribute('fill', supC.flow);
+        if (tubeStops[0]) {
+          tubeStops[0].setAttribute('stop-color', avgC.bore);
+          tubeStops[1].setAttribute('stop-color', avgC.flow);
+          tubeStops[2].setAttribute('stop-color', avgC.bore);
+        }
       }
 
       if (showControls) {

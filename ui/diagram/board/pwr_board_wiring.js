@@ -29,6 +29,9 @@
   // pressure instead read hot even at hot standby (feed pump off, feedwater actually cold).
   function fwTemp(s) { return 40 + 1.8 * clamp((s.instruments || {}).power_range || 0, 0, 100); }
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  // Condenser hotwell / condensate temperature — cold (condensing under vacuum), rising
+  // modestly with load (higher backpressure). Shared by the condenser and the condensate pipes.
+  function condTemp(s) { return 33 + 0.12 * ((s.instruments || {}).power_range || 0); }
   function r0(v) { return Math.round(v); }
   function r1(v) { return (Math.round(v * 10) / 10); }
 
@@ -249,7 +252,7 @@
       // stays cold — the condensing side under vacuum, never primary-hot.
       return { steamLoad: IN(s).power_range, hotwellLevel: 55,
         coolingFlow: IN(s).condenser_cooling_available ? 80 : 0,
-        temp: 33 + 0.12 * (IN(s).power_range || 0),
+        temp: condTemp(s),
         vacuumInHg: kPa2inHg(IN(s).condenser_vacuum) };
     },
     coolingTower: function (s) {
@@ -312,7 +315,15 @@
     pmrr46n63pq: function (s) { return satTempC(IN(s).steam_pressure); }, // main steam header (MSIV → TCV)
     pmrr499yfkb: function (s) { return satTempC(IN(s).steam_pressure); }, // main steam → turbine (TCV out)
     pmrr0u9nib3: function (s) { return satTempC(IN(s).steam_pressure); }, // steam dump → condenser bypass
-    pmrr46oahnx: function (s) { return satTempC(IN(s).steam_pressure); }  // steam dump branch
+    pmrr46oahnx: function (s) { return satTempC(IN(s).steam_pressure); }, // steam dump branch
+    // secondary condensate / feedwater loop — same water ramp as the pumps & vessels it links
+    pmrr0uzf5ew: function (s) { return fwTemp(s); },      // feedwater: feed pump → SG (hot, load-driven)
+    pmrr0ustj2z: function (s) { return condTemp(s); },    // condensate → feed pump suction
+    pmrr0uryodr: function (s) { return condTemp(s); },    // condensate pump discharge
+    pmrr4j7wa1o: function (s) { return condTemp(s); },    // condenser hotwell → condensate pump
+    // circulating cooling-water loop (condenser ↔ cooling tower)
+    pmrr0ujsja6: function (s) { return 25 + 0.14 * (IN(s).power_range || 0); }, // CW return (warm)
+    pmrr0um0pv: function () { return 25; }                                       // CW supply (cold)
   };
 
   // ================================================================ TRIP BLOCKS menu (task #5)

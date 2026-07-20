@@ -13,6 +13,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   startup net) opens the inverse-count-rate approach-to-criticality plot directly from the board.
 
 ### Changed
+- **PWR board — all water shares one temperature color scale.** Every body of water on the
+  diagram — reactor coolant, steam-generator water, pressurizer, condenser hotwell and its
+  circulating cooling water, and the cooling-tower basin — now uses the same aqua→blue→purple→red
+  temperature ramp, driven by its actual temperature. The cooling tower and condenser cooling water
+  previously used a separate blue/red blend. Steam keeps its own grey scale.
 - **PWR board — accumulators no longer show flow into the reactor during normal operation.**
   The safety-injection accumulators are passive: they only inject once RCS pressure falls below
   their 600 psi check-valve setpoint. The board now shows the accumulator discharge as still (open,

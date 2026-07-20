@@ -3088,3 +3088,21 @@ Continuation of the coolant-color audit (owner: water color = temperature everyw
 - **Charging card NOT relabeled** (owner ruling — pzr-level-via-charging is learned in training).
 
 **Gates:** run_pwr 31, campaign 51, autoctl 20, m4 18, m5 19, e2e 30, board_check 52.
+
+### PWR board — one water ramp everywhere (2026-07-20)
+
+Owner ruling: ALL water on the board uses the shared `StdPipe.phaseTempColor('water',·)` ramp
+(aqua→blue→purple→red); steam uses the grey steam ramp. Remaining offenders used their own
+`mix(COOL,HOT,·)` blend:
+- **Cooling tower** (`comp_cooling_tower`): basin/trough water now `phaseTempColor('water', outletTemp)`,
+  falling rain `phaseTempColor('water', inletTemp)`. Plume/haze/shell-glow are heat-rejection vapor,
+  not liquid water — kept as-is.
+- **Condenser** (`comp_condenser`): the circulating cooling water (tube-bundle gradient + inlet/outlet
+  chambers) now on the ramp — cold supply (~25 °C) / warm return (25 + load·14). Hotwell/steam were
+  already on the ramp.
+- **Condensate/feedwater + CW-loop pipes** added to the driver `PIPE_TEMP` map so the pipes match the
+  components they join: feed pump→SG = `fwTemp` (hot, load-driven, matches the feed pump), condensate
+  lines = `condTemp` (~33–45 °C), CW return/supply = warm/cold. New shared `condTemp(s)` helper (also
+  used by the condenser compProps).
+
+**Gates:** run_pwr 31, campaign 51, autoctl 20, m4 18, m5 19, e2e 30, board_check 52.

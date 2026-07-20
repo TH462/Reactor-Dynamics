@@ -140,10 +140,15 @@
       var coolRange = coolOn ? Math.max(2, 5 + coolFrac * 9 - loadFrac * 2) : 0.5;
       var outletTemp = Math.max(wetBulb + 2, inletTemp - coolRange);
       var evap = Math.max(0, Math.min(1, loadFrac * 0.6 + coolFrac * 0.4 - 0.05));
-      var waterFrac = Math.max(0, Math.min(1, (outletTemp - wetBulb) / 34));
 
-      waterTopStop.setAttribute('stop-color', mix(COOL, HOT, 0.05 + waterFrac * 0.16));
-      waterBotStop.setAttribute('stop-color', mix(COOL, HOT, 0.02 + waterFrac * 0.10));
+      // Basin/circulating water uses the SAME global water temperature ramp as every other
+      // pipe/pool on the board (cool basin water at the outlet temperature); the falling
+      // rain is the warmer water entering at the inlet temperature. The plume/haze/glow are
+      // heat-rejection vapor, not liquid water, so they keep their own tint.
+      var basinC = env.StdPipe.phaseTempColor('water', outletTemp);
+      var rainC = env.StdPipe.phaseTempColor('water', inletTemp).flow;
+      waterTopStop.setAttribute('stop-color', basinC.flow);
+      waterBotStop.setAttribute('stop-color', basinC.bore);
 
       plumeGroup.style.display = evap > 0.04 ? '' : 'none';
       var puffOpacity = 0.12 + evap * 0.22;
@@ -162,6 +167,7 @@
       for (var j = 0; j < rainLines.length; j++) {
         rainLines[j].setAttribute('opacity', String(rainOpacity));
         rainLines[j].setAttribute('class', rainCls);
+        rainLines[j].setAttribute('stroke', rainC);
       }
       basinSurf.setAttribute('class', showFlow ? 'flow' : '');
     }
