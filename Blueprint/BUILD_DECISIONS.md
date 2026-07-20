@@ -950,20 +950,21 @@ gates green — PWR 31/31, e2e 30/30, autoctl 20/20, campaign 51/51, M4 18/18, M
   design), overflowing its 45×70 tile and putting its ports ~60 px low — the cause of the bent PORV
   pipes. Now fills the tile like every other component (`width/height:100%`, `preserveAspectRatio
   meet`), so the item box sets its size and the ports land where the builder placed them.
-- **Pump built-in controls suppressed where redundant (crooked pipes).** A pump with
-  `showControls:true` reserves control space (taller viewBox), which shifts the pump art — and its
-  ports — up and bends the connected pipes. The RCP, ECCS, and feed pumps have dedicated external
-  controls (RCP ON/OFF buttons; HPI START/STOP/AUTO; SG FEED panel), so they now render **art-only**
-  (driver `suppressBuiltInControls`), removing the redundant "extra" button the owner spotted on the
-  RCP and straightening the pipes. The RCP's on-pump ON/OFF buttons are rewired from `set_charging_pump`
-  to `set_rcp`. Charging and condensate pumps keep their built-in toggle — it's their sole control
-  (no external button), not a redundant one.
+- **All pumps render art-only (crooked pipes).** A pump with `showControls:true` reserves control
+  space (taller viewBox), which shifts the pump art — and its ports — up and bends the connected
+  pipes. Owner ruling: **no pump has its own toggle; every pump control is a separate button/panel.**
+  So all five pumps render **art-only** (driver `suppressBuiltInControls`), which straightens the
+  pipes. Controls: RCP → on-pump ON/OFF buttons (rewired `set_charging_pump` → `set_rcp`); ECCS →
+  HPI START/STOP/AUTO panel; feed → SG FEED panel; charging → CHARGING panel (**OFF = charging pump
+  off**; AUTO/MAN run the pump in auto make-up / manual charging); condensate → no control (always
+  running — the owner confirmed it doesn't need operating; the engine still models it, so a
+  `set_condensate_pump` command from a scenario still collapses main feed).
 - **Turbine drain removed.** The exported diagram carried a `turbineGenerator/tcv-drain →
   condenser/steam-in-2` line for a port the turbine never had; a real casing drain isn't modeled and
   the owner confirmed it's unnecessary, so `tools/gen_board_data.js` drops that pipe (29 pipes now)
   and the invented drain port is removed from the turbine component.
 
-Verification: board_check **38/38**; engine/control untouched this round.
+Verification: board_check **41/41**; engine/control untouched this round.
 
 ## Change log
 

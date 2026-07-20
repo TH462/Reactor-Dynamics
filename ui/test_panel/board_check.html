@@ -130,6 +130,14 @@
       clickBtn('imro8lddxi'); ck('func: generator MAN -> load_mode manual', cs().load_mode === 'manual');
       clickBtn('imrsjy59pnu'); ck('func: RCP OFF button -> rcp not running', cs().pumps.filter(function (p) { return p.id === 'rcp'; })[0].running === false);
       clickBtn('imrsjy1m9g'); ck('func: RCP ON button -> rcp running', cs().pumps.filter(function (p) { return p.id === 'rcp'; })[0].running === true);
+      // charging panel is the charging pump's control (OFF = pump off)
+      clickBtn('imrqn630s3b'); ck('func: charging OFF -> charging pump off', cs().charging_pump_running === false);
+      clickBtn('imrmtg3r8ez'); ck('func: charging AUTO -> pump on + cvcs auto', cs().charging_pump_running === true && cs().cvcs_auto === true);
+      clickBtn('imrprbi6ui1'); ck('func: charging MAN -> pump on + cvcs manual', cs().charging_pump_running === true && cs().cvcs_auto === false);
+      // every pump is marked art-only (no built-in control box)
+      ck('board: all 5 pumps art-only', ['imrobpq4a70','imrobnzlha1','imrobph7xrq','imrqp87ueqb','imrqvzbd9hd'].every(function (id) {
+        return RD.PwrBoardDriver.suppressBuiltInControls(id);
+      }));
       clickBtn('imrppquqg16'); ck('func: steam dump OPEN -> not auto', cs().steam_dump_auto === false);
       setNum('imro8rmka2y', 850); ck('func: generator load 850 MW -> load_target', Math.abs(cs().load_target_mwe - 850) < 1);
       setNum('imrsg8b7b9o', 2100); ck('func: pressure setpoint 2100 psi -> ~14.48 MPa', Math.abs(cs().pressure_setpoint - 2100 / 145.038) < 0.05);
@@ -171,13 +179,12 @@
       ticks(2);
       ck('func: block ir_high toggles trip_blocks', (!!rps().trip_blocks.ir_high) !== beforeBlk, 'was ' + beforeBlk);
 
-      // --- physics-perturbing checks LAST (they degrade the plant): condensate pump
-      //     collapses main feed; ECCS discharge indications ---
-      RD.PwrBoardDriver.onControl({ id: 'imrqvzbd9hd', comp: 'Pump' }, 'toggle', false);
-      ck('func: condensate pump OFF -> control_state', cs().condensate_pump_running === false);
-      ticks(30);
-      ck('func: condensate pump OFF collapses main feed', svc.assembleSnapshot().instruments.condensate_flow < 0.3);
-      RD.PwrBoardDriver.onControl({ id: 'imrqvzbd9hd', comp: 'Pump' }, 'toggle', true);
+      // --- physics-perturbing checks LAST (they degrade the plant) ---
+      // condensate pump has no board control (owner: it doesn't need operating), but the
+      // engine still models it — securing it collapses main feed. Exercise via the command.
+      svc.handleCommand({ action: 'set_condensate_pump', running: false }); ticks(30);
+      ck('func: condensate pump OFF (engine) collapses main feed', svc.assembleSnapshot().instruments.condensate_flow < 0.3);
+      svc.handleCommand({ action: 'set_condensate_pump', running: true });
       svc.handleCommand({ action: 'set_afw', active: true }); ticks(20);
       ck('func: AFW discharge pressure real (>0 when pumps demanded)', svc.assembleSnapshot().instruments.afw_discharge_pressure > 0);
       svc.handleCommand({ action: 'set_hpi', active: true }); ticks(10);

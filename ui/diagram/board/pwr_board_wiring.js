@@ -66,10 +66,11 @@
     imrmsslj42u: { press: function () { cmd({ action: 'set_afw', active: true }); }, active: function (s) { return IN(s).afw_active || IN(s).afw_pump_running; } },
     imrmssoa137: { press: function () { cmd({ action: 'set_afw', active: false }); }, active: function (s) { return !(IN(s).afw_active || IN(s).afw_pump_running); } },
     imrmssr9ihq: { press: function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); } },
-    // --- Charging panel: AUTO / MAN / OFF ---
-    imrmtg3r8ez: { press: function () { cmd({ action: 'set_cvcs_auto', active: true }); }, active: function (s) { return CS(s).cvcs_auto; } },
-    imrprbi6ui1: { press: function () { cmd({ action: 'set_cvcs_auto', active: false }); }, active: function (s) { return !CS(s).cvcs_auto; } },
-    imrqn630s3b: { press: function () { cmd({ action: 'set_charging_flow', normalized: 0 }); }, active: function (s) { return !CS(s).cvcs_auto && (CS(s).charging_flow_normalized || 0) === 0; } },
+    // --- Charging panel: AUTO / MAN / OFF (this panel is the charging pump's control;
+    //     OFF stops the charging pump, AUTO/MAN run it in auto make-up / manual charging) ---
+    imrmtg3r8ez: { press: function () { cmd({ action: 'set_charging_pump', running: true }); cmd({ action: 'set_cvcs_auto', active: true }); }, active: function (s) { return CS(s).charging_pump_running && CS(s).cvcs_auto; } },
+    imrprbi6ui1: { press: function () { cmd({ action: 'set_charging_pump', running: true }); cmd({ action: 'set_cvcs_auto', active: false }); }, active: function (s) { return CS(s).charging_pump_running && !CS(s).cvcs_auto; } },
+    imrqn630s3b: { press: function () { cmd({ action: 'set_charging_pump', running: false }); }, active: function (s) { return !CS(s).charging_pump_running; } },
     // RCP ON/OFF (the two buttons sit on the reactor coolant pump; the pump itself is
     // rendered art-only so these are its controls — not a redundant built-in toggle).
     imrsjy1m9g: { press: function () { cmd({ action: 'set_rcp', running: true }); }, active: function (s) { return IN(s).rcp_running; } },
@@ -235,19 +236,14 @@
     imrppb3kuav: function (open) { cmd({ action: open ? 'open_block_valve' : 'close_block_valve' }); },
     imrppxt2aqd: function (open) { cmd({ action: open ? 'open_accumulator_valve' : 'close_accumulator_valve' }); }
   };
-  // Pump control targets (component onControl 'toggle' / 'speed'). Only the pumps that
-  // keep their built-in control need an entry — the RCP, ECCS, and feed pumps are rendered
-  // art-only (see suppressBuiltInControls) and are driven by their external buttons/panels.
-  var PUMP_TOGGLE = {
-    imrqp87ueqb: function (on) { cmd({ action: 'set_charging_pump', running: on }); },
-    imrqvzbd9hd: function (on) { cmd({ action: 'set_condensate_pump', running: on }); }
-  };
-  // Pumps whose built-in control box is redundant (they have external controls) — render
-  // them art-only so the control space doesn't shift the pump art and bend the pipes.
-  //   RCP  -> external ON/OFF buttons (imrsjy1m9g/imrsjy59pnu -> set_rcp)
-  //   ECCS -> HPI START/STOP/AUTO panel (set_hpi); the pump reflects hpi_active
-  //   feed -> SG FEED RATE panel (set_feed_pump_speed)
-  var ART_ONLY_PUMPS = { imrobpq4a70: 1, imrobnzlha1: 1, imrobph7xrq: 1 };
+  // EVERY pump renders art-only (no built-in toggle) — pump control lives entirely in the
+  // separate buttons/panels, so a pump's control space never shifts its art and bends pipes:
+  //   RCP       -> on-pump ON/OFF buttons (imrsjy1m9g/imrsjy59pnu -> set_rcp)
+  //   ECCS      -> HPI START/STOP/AUTO panel (set_hpi); the pump reflects hpi_active
+  //   feed      -> SG FEED RATE panel (set_feed_pump_speed)
+  //   charging  -> CHARGING panel AUTO/MAN/OFF (OFF = charging pump off)
+  //   condensate-> no control (always running); it doesn't need to be operated
+  var ART_ONLY_PUMPS = { imrobpq4a70: 1, imrobnzlha1: 1, imrobph7xrq: 1, imrqp87ueqb: 1, imrqvzbd9hd: 1 };
 
   // ================================================================ TRIP BLOCKS menu (task #5)
   // Only the 4 blockable trips (owner ruling).
@@ -361,12 +357,8 @@
       if (n && n.set) n.set(value);
     },
     onControl: function (item, action, value) {
-      if (action === 'toggle') {
-        if (VALVE_TOGGLE[item.id]) { VALVE_TOGGLE[item.id](!!value); return; }
-        if (PUMP_TOGGLE[item.id]) { PUMP_TOGGLE[item.id](!!value); return; }
-      } else if (action === 'speed') {
-        if (item.id === 'imrobph7xrq') cmd({ action: 'set_feed_pump_speed', pct: value });
-      }
+      // Only clickable valves emit control now — every pump is rendered art-only.
+      if (action === 'toggle' && VALVE_TOGGLE[item.id]) VALVE_TOGGLE[item.id](!!value);
     },
     onScram: function () { cmd({ action: 'scram' }); },
     onScramReset: function () { /* no engine reset command; visual only */ },
