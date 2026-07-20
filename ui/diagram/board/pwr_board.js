@@ -559,6 +559,12 @@
     refreshLayout: function () { layout(); if (scanPorts()) buildPipes(); },
     rescanPorts: function () { if (scanPorts()) buildPipes(); },
     ports: function () { return ports; },
-    lastSnapshot: function () { return lastSnap; }
+    lastSnapshot: function () { return lastSnap; },
+    // Instructor-highlight hooks (parity with RD.PwrSynoptic). Highlight/reveal on the
+    // data-driven board is future work — these are safe no-ops so app.js's shared
+    // highlight path keeps working.
+    setTag: function () {},
+    revealControl: function () { return null; },
+    highlightLabels: function () {}
   };
 })();

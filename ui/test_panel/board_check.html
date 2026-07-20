@@ -114,6 +114,46 @@
         RD.PwrBoardDriver.selfTest(ck, svc, sentCommands);
       }
 
+      // ---- functional: click real board controls, confirm the engine responds ----
+      function clickBtn(id) { var b = document.querySelector('[data-item="' + id + '"] button'); if (b) b.click(); return !!b; }
+      function setNum(id, v) { var i = document.querySelector('[data-item="' + id + '"] input'); if (!i) return false; i.focus(); i.value = String(v); i.blur(); return true; }
+      function cs() { return svc.assembleSnapshot().control_state; }
+      function rps() { return svc.assembleSnapshot().rps_state; }
+      function ticks(n) { svc.handleCommand({ action: 'play' }); for (var i = 0; i < n; i++) svc.tick(); svc.handleCommand({ action: 'pause' }); }
+
+      clickBtn('imro900yzeq'); ck('func: spray MANUAL -> spray_auto false', cs().spray_auto === false);
+      clickBtn('imro96h8lip'); ck('func: heater OFF -> heater_auto false & 0%', cs().heater_auto === false && cs().heater_power_pct === 0);
+      clickBtn('imrmtimrch3'); ck('func: letdown A -> orifice A on / B off', cs().letdown_orifice_a === true && cs().letdown_orifice_b === false);
+      clickBtn('imrmtimyxef'); ck('func: letdown A+B -> both on', cs().letdown_orifice_a === true && cs().letdown_orifice_b === true);
+      clickBtn('imro8lddxi'); ck('func: generator MAN -> load_mode manual', cs().load_mode === 'manual');
+      clickBtn('imrsjy59pnu'); ck('func: charging pump OFF -> not running', cs().charging_pump_running === false);
+      clickBtn('imrppquqg16'); ck('func: steam dump OPEN -> not auto', cs().steam_dump_auto === false);
+      setNum('imro8rmka2y', 850); ck('func: generator load 850 MW -> load_target', Math.abs(cs().load_target_mwe - 850) < 1);
+      setNum('imrsg8b7b9o', 2100); ck('func: pressure setpoint 2100 psi -> ~14.48 MPa', Math.abs(cs().pressure_setpoint - 2100 / 145.038) < 0.05);
+
+      // rods: nudge withdraw drives control bank up
+      var beforeSteps = cs().rod_groups.filter(function (g) { return g.id === 'control_rods'; })[0].steps;
+      clickBtn('imrpk8kjsjs'); // fast
+      clickBtn('imrpk6qzjq8'); ticks(30);
+      var afterSteps = cs().rod_groups.filter(function (g) { return g.id === 'control_rods'; })[0].steps;
+      ck('func: rod WITHDRAW nudge moves control bank up', afterSteps > beforeSteps, beforeSteps + '->' + afterSteps);
+
+      // TRIP BLOCKS popover + block a trip
+      clickBtn('imrsk4xz2dm');
+      var popOpen = !!document.querySelector('.bd-pop');
+      ck('func: TRIP BLOCKS opens popover', popOpen);
+      var beforeBlk = !!rps().trip_blocks.ir_high;
+      var tb = document.querySelector('.bd-pop button[data-trip="ir_high"]');
+      if (tb) tb.click();
+      ticks(2);
+      ck('func: block ir_high toggles trip_blocks', (!!rps().trip_blocks.ir_high) !== beforeBlk, 'was ' + beforeBlk);
+
+      // SCRAM two-step: arm then confirm
+      var scr = document.querySelector('[data-item="imrqr8ecji6"] button');
+      if (scr) { scr.click(); scr.click(); }
+      ticks(3);
+      ck('func: SCRAM two-step trips the reactor', svc.assembleSnapshot().instruments.rps_scrammed === true);
+
       out.push('', nFail === 0 ? 'ALL ' + nPass + ' CHECKS PASS' : nFail + ' FAILURES / ' + (nPass + nFail));
       document.getElementById('out').innerHTML = out.join('\n');
       document.title = (nFail === 0 ? 'PASS ' : 'FAIL ') + '— PWR Board checks';

@@ -664,12 +664,13 @@
     }
     // Scenario prop: the maintenance tag over the AFW valve indication. Hidden
     // once its interaction is granted (the tag comes off the valve).
-    if (RD.PwrSynoptic && RD.PwrSynoptic.setTag) {
+    var pwrDisp = RD.PwrBoard || RD.PwrSynoptic;
+    if (pwrDisp && pwrDisp.setTag) {
       var tagId = ip && ip.tag;
       var chat = s.instructor && s.instructor.chat;
       var granted = !!(tagId && chat && chat.interactions && chat.interactions[tagId] &&
                        chat.interactions[tagId].granted);
-      RD.PwrSynoptic.setTag(tagId || null, !!tagId && !granted);
+      pwrDisp.setTag(tagId || null, !!tagId && !granted);
     }
   }
 
@@ -924,8 +925,10 @@
     if (!hl) return;
     var el = null;
     if (hl.control_label) {
+      var pwrDisp2 = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard
+                   : (RD.PwrSynoptic && RD.PwrSynoptic.isMounted() ? RD.PwrSynoptic : null);
       el = ui.plant === 'pwr'
-        ? (RD.PwrSynoptic && RD.PwrSynoptic.isMounted() ? RD.PwrSynoptic.revealControl(hl.control_label) : null)
+        ? (pwrDisp2 ? pwrDisp2.revealControl(hl.control_label) : null)
         : findPdControl(hl.control_label, hl.view);
     }
     if (!el && hl.instrument_id) el = $('gauge-' + hl.instrument_id);
@@ -2004,7 +2007,9 @@
     // Settings → Diagram Mode (Education = Learning | Realistic) + Physics Overlay (Learning only) — PWR synoptic
     var mseg = $('modeSeg');
     if (mseg) mseg.addEventListener('click', function (e) {
-      var b = e.target.closest('[data-mode]'); if (!b) return;
+      var b = e.target.closest('[data-mode]'); if (!b || b.disabled) return;
+      // The learning board has no realistic (quiet-board) rendering yet, so the
+      // Realistic option is disabled — the diagram stays in Teaching mode.
       ui.diagMode = b.getAttribute('data-mode');
       if (ui.diagMode === 'realistic') ui.physOverlay = false;
       syncOverlayRow();
@@ -2833,7 +2838,7 @@
     // ui.plant catches up — never feed a foreign snapshot to a display.
     var snapPlant = s && s.metadata && s.metadata.plant_id;
     if (snapPlant && snapPlant !== ui.plant) return;
-    if (ui.plant === 'pwr') { RD.PwrSynoptic.render(s); return; }   // one synoptic stage — no views
+    if (ui.plant === 'pwr') { RD.PwrBoard.render(s); return; }   // one learning-board stage — no views
     renderStatusBar(s);
     if (ui.view === 'primary' || ui.view === 'secondary') renderPdRows(ui.view, s);
     if (ui.view === 'all') renderPdAll(s);
@@ -2856,10 +2861,13 @@
   function buildPlantDisplay() {
     var syn = ui.plant === 'pwr';
     document.querySelector('.app').classList.toggle('pwr-synoptic', syn);
-    if (!syn && RD.PwrSynoptic && RD.PwrSynoptic.isMounted()) RD.PwrSynoptic.unmount();
+    if (!syn) {
+      if (RD.PwrBoard && RD.PwrBoard.isMounted()) RD.PwrBoard.unmount();
+      if (RD.PwrSynoptic && RD.PwrSynoptic.isMounted()) RD.PwrSynoptic.unmount();
+    }
     if (syn) {
       $('statusBar').innerHTML = ''; $('viewTabs').innerHTML = ''; $('pdCtlRow').innerHTML = '';
-      RD.PwrSynoptic.mount($('viewArea'), {
+      RD.PwrBoard.mount($('viewArea'), {
         cmd: cmd, conv: conv, unit: unit,
         dispP: dispP, dispT: dispT, dispTd: dispTd, dispV: dispV,
         mode: function () { return ui.diagMode; },

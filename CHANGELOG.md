@@ -8,6 +8,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **New PWR plant board (data-driven learning synoptic).** The PWR plant display is now a
+  single integrated schematic authored in a diagram builder and exported as data
+  (`ui/diagram/board/pwr_board_data.js`), replacing the procedurally-drawn synoptic. It
+  carries its controls on the equipment — rod control + SCRAM, pressurizer spray/heater,
+  CVCS charging & letdown orifices, boron control, HPI/AFW/steam-dump, feed pump, turbine
+  load — plus every indication (temps, pressures, flows, NIS, boron, PORV tailpipe temp).
+  A new **TRIP BLOCKS** menu lists the reactor trips that can be blocked for a normal
+  shutdown (low-pressure, low-flow, and the two startup high-flux trips), each gated by its
+  permissive. The **Realistic** diagram-mode toggle is disabled for now — the realistic
+  (quiet-board) version of this diagram is still in design.
+
 ### Added
 - **Public changelog page (`changelog.html`).** A player-facing "what changed" page, linked
   from the footer of every site page. **Its log starts at the public launch** — the

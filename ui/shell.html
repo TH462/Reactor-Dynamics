@@ -6,6 +6,7 @@
   <title>Reactor⚛️Dynamics — Control Room</title>
   <link rel="stylesheet" href="shell.css">
   <link rel="stylesheet" href="diagram/pwr_synoptic.css">
+  <link rel="stylesheet" href="diagram/board/pwr_board.css">
 </head>
 <body>
   <div class="app">
@@ -164,7 +165,7 @@
           <!-- Settings tab -->
           <div class="tabpane" data-pane="settings">
             <div class="set-row" data-scanner-hint="Diagram Mode — Teaching adds labels, color, and physics annotations to the synoptic; Realistic is the quiet board: indications and status only (HR1).">
-              <span class="k">Diagram Mode</span><div class="seg" id="modeSeg"><button class="on" data-mode="learning">Teaching</button><button data-mode="realistic">Realistic</button></div></div>
+              <span class="k">Diagram Mode</span><div class="seg" id="modeSeg"><button class="on" data-mode="learning">Teaching</button><button data-mode="realistic" disabled title="Realistic board not available yet — the realistic PWR diagram is still in design.">Realistic</button></div></div>
             <div class="set-row" id="overlayRow" data-scanner-hint="Physics Overlay — Learning only. On shows the full physics layer (reactivity, period, inventory, void, P–S ΔT, ghosts); off keeps the quiet teaching board.">
               <span class="k">Physics Overlay</span><div class="seg" id="physSeg"><button class="on" data-phys="off">Off</button><button data-phys="on">On</button></div></div>
             <div class="set-row" id="valuesRow" data-scanner-hint="Values Display — the legacy RBMK/BWR All view can show instrument readings, true physical values, or both side by side."><span class="k">Values Display</span><div class="seg" id="overlaySeg2"><button class="on" data-overlay="instruments">Instruments</button><button data-overlay="true">True</button><button data-overlay="both">Both</button></div></div>
@@ -395,8 +396,25 @@
   <!-- Operator's manual data (generated reference + authored procedures) -->
   <script src="manual_data.js"></script>
   <script src="manual_procedures.js"></script>
-  <!-- PWR full-plant synoptic (new_diagram_controls.md) — mounted by app.js when plant_id === 'pwr' -->
+  <!-- PWR full-plant synoptic (legacy; kept for instructor highlight fallbacks) -->
   <script src="diagram/pwr_synoptic.js"></script>
+  <!-- PWR learning board — data-driven synoptic (Claude Design import); mounted by app.js when plant_id === 'pwr' -->
+  <script src="diagram/board/board_h.js"></script>
+  <script src="diagram/board/std_pipe.js"></script>
+  <script src="diagram/board/pwr_board_data.js"></script>
+  <script src="diagram/board/components/comp_reactor_vessel.js"></script>
+  <script src="diagram/board/components/comp_steam_generator.js"></script>
+  <script src="diagram/board/components/comp_pressurizer.js"></script>
+  <script src="diagram/board/components/comp_porv.js"></script>
+  <script src="diagram/board/components/comp_pump.js"></script>
+  <script src="diagram/board/components/comp_valve.js"></script>
+  <script src="diagram/board/components/comp_valve_horizontal.js"></script>
+  <script src="diagram/board/components/comp_valve_vertical.js"></script>
+  <script src="diagram/board/components/comp_turbine_generator.js"></script>
+  <script src="diagram/board/components/comp_condenser.js"></script>
+  <script src="diagram/board/components/comp_cooling_tower.js"></script>
+  <script src="diagram/board/pwr_board_wiring.js"></script>
+  <script src="diagram/board/pwr_board.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
