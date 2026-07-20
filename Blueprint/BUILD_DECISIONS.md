@@ -2935,3 +2935,33 @@ shutdown (was hardcoded 290).
 
 **Gates:** run_pwr 31, campaign 51, autoctl 20/20, m4/m5/m6, m7 OK, e2e 30/30, board_check 52.
 (`verify_e2e_ui` fails on this checks the retired synoptic control ids — pre-existing, unrelated.)
+
+### PWR follow-up — dynamic wide-range SG, auto-ranging Tavg, boron/feedwater assessments (2026-07-20)
+
+**Dynamic wide-range SG level (replaced the cosmetic remap).** `sg_level_wide_pct` is now the
+INTEGRATED whole-vessel inventory (clamped only at 0/100); narrow `sg_level_pct` is DERIVED as
+its `sg_wr_lo..sg_wr_hi` window (`pwr_steam_generator.js`). The wide gain is scaled by
+`wr_span/100` so narrow's in-window dynamics are byte-identical to the old direct integration —
+so trips fire on the same schedule while wide keeps reading past the narrow pegs (a dryout drives
+narrow→0 at ~26 s, then wide continues 31→14→0). Campaign 51/51 confirms the reserve behavior at
+the pegs moved no endpoint. Window constants live in `cfg.steam_generator`, mirrored in the SG
+board component; migration seeds wide from narrow.
+
+**Mode 5 was never unstable — the temp meters floored it.** `tavg/thot/tcold` had `range:[232,343]`
+(the at-power narrow band), so cold shutdown's true ~50 °C pegged at 232 on every gauge/number and
+mis-colored the RCP. True `tavg_c` holds 50 °C rock-steady. Fix: widen ranges to `[30,343]`
+(at-power unaffected; all gates green) + an **auto-ranging vital Tavg gauge** — one slot that shows
+the operating band [250-343] when hot and swaps to a wide LOW-RANGE [30-260] when cold (8 °C
+hysteresis), via a generic `gauge.autorange(raw)` hook. Saves a second permanent gauge. Added a
+`?init=<preset>` dev URL param. Verified in-shell: cold shutdown reads "Tavg · LOW RANGE 122 °F".
+
+**Assessments (investigated, no change made):**
+- *Boron per-preset values* (HFP ~747, M3 ~348, M5 ~495 ppm) are LOW and cold<hot (backwards vs a
+  real plant), but they are the exact, internally-consistent output of the lumped reactivity model:
+  constant boron worth (10 pcm/ppm, no temp dependence) + cold shutdown crediting the full inserted
+  control-bank worth (−8500 pcm). Making them realistic is a whole-model re-tune (touches every
+  boration transient + criticality tests), not a localized fix. Left as-is.
+- *Feedwater temperature* is NOT modeled and should stay a UI proxy (`fwTemp`): the secondary
+  energy balance is latent-heat-only with no sensible-heat term, so an engine feed-temp would be
+  inert. Modeling it properly needs a hotwell/condensate node + FW-heater train + sensible-heat
+  term — a real physics feature, not plumbing for a pump color.
