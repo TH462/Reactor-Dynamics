@@ -13,6 +13,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   startup net) opens the inverse-count-rate approach-to-criticality plot directly from the board.
 
 ### Changed
+- **PWR board — accumulators no longer show flow into the reactor during normal operation.**
+  The safety-injection accumulators are passive: they only inject once RCS pressure falls below
+  their 600 psi check-valve setpoint. The board now shows the accumulator discharge as still (open,
+  water-filled, but not flowing) at power, and animates it only when the accumulators actually
+  discharge. The accumulator isolation valve is also reliably clickable (it no longer sits under
+  the reactor-vessel tile).
+- **PWR board — steam-generator U-tubes and channel heads, and the feed-pump temperature, read
+  true.** The SG tube bundle and the hot/cold coolant reservoirs at its base take the primary
+  hot-leg / cold-leg temperatures (they carry reactor coolant), not power. The feed pump's fluid
+  color now follows feedwater temperature by load (cold when shut down, ~220 °C at full power)
+  instead of steam pressure, and the condenser hotwell reads a cool, load-dependent temperature.
 - **PWR board — reactor vessel water is colored by temperature, not power.** The coolant in the
   downcomer, lower plenum, and core channel now takes its color from the live cold-leg / hot-leg
   temperatures (cool at the inlet, warming up through the core), while the **fuel rods and core

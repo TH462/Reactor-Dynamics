@@ -220,6 +220,8 @@
       var narrowLevel = clampN(num(props.narrowLevel, 62), 0, 100);
       var boil = clampN(num(props.boil, 55), 0, 100);
       var temp = num(props.temp, 285);
+      // primary-side leg temperatures for the U-tubes + channel-head reservoirs
+      var thot = num(props.thot, 320), tcold = num(props.tcold, 290);
       var showFlow = props.showFlow !== false;
       var glowOn = props.glow !== false;
 
@@ -235,16 +237,22 @@
       }
 
       var p = power / 100;
+      // U-tubes + the hot/cold channel-head reservoirs carry PRIMARY coolant, so they take
+      // the leg temperatures (hot-leg side / cold-leg side) on the same ramp as the pipes —
+      // not power. The tube-bundle thermal glow stays power-gated (heat transferred).
+      if (thot !== last.thot || tcold !== last.tcold) {
+        var hotC = StdPipe.phaseTempColor('water', thot).flow;
+        var coldC = StdPipe.phaseTempColor('water', tcold).flow;
+        tubeStops[0].setAttribute('stop-color', hotC);   // hot-leg side (left channel head)
+        tubeStops[2].setAttribute('stop-color', coldC);  // cold-leg side (right channel head)
+        hotcRect.setAttribute('fill', hotC);
+        coldcRect.setAttribute('fill', coldC);
+        hotNoz.setAttribute('fill', hotC);
+        coldNoz.setAttribute('fill', coldC);
+        glowRect.setAttribute('fill', hotC);
+        last.thot = thot; last.tcold = tcold;
+      }
       if (power !== last.power || glowOn !== last.glowOn) {
-        var tubeHot = mix(COOL, HOT, p * 1.05);
-        var tubeCold = mix(COOL, HOT, p * 0.18);
-        tubeStops[0].setAttribute('stop-color', tubeHot);
-        tubeStops[2].setAttribute('stop-color', tubeCold);
-        hotcRect.setAttribute('fill', tubeHot);
-        coldcRect.setAttribute('fill', tubeCold);
-        hotNoz.setAttribute('fill', tubeHot);
-        coldNoz.setAttribute('fill', tubeCold);
-        glowRect.setAttribute('fill', tubeHot);
         glowRect.setAttribute('opacity', String(Math.min(0.3, p * 0.22)));
         glowRect.style.display = (glowOn && p > 0.1) ? '' : 'none';
         last.power = power; last.glowOn = glowOn;

@@ -3059,3 +3059,32 @@ LOW level but can't drive a HIGH level down (letdown is a fixed-orifice lineup, 
 The gap was discoverability (the control is labeled "CHARGING", not "PZR LEVEL"), not capability.
 
 **Gates:** run_pwr 31, campaign 51, autoctl 20, m4 18, m5 19, e2e 30, board_check 52.
+
+### PWR board — SG/feed/condenser temps, accumulator flow gating + clickability (2026-07-20)
+
+Continuation of the coolant-color audit (owner: water color = temperature everywhere).
+
+- **SG U-tubes + channel-head reservoirs → leg temps.** comp_steam_generator drove the tube
+  bundle + hot/cold channel-head rects off `power`. Now `thot/tcold` props color them via
+  `phaseTempColor('water',·)` (hot-leg side = Thot, cold-leg side = Tcold); the tube-bundle glow
+  stays power-gated (heat transferred). Driver passes thot/tcold in steamGenerator compProps.
+- **Feed-pump temp → load, not steam pressure.** `fwTemp` was `40+0.62·(satTempC(steam_pressure)−40)`,
+  which read ~205 °C at hot standby even with the feed pump OFF (feedwater actually cold). Final
+  feedwater temp is set by the FW-heater train (turbine extraction ∝ load), so now
+  `40 + 1.8·power_range` (40 °C no-load → 220 °C full). Condenser hotwell likewise `33 + 0.12·power`
+  (cool, backpressure rises with load). Cooling tower already had an internal inlet/outlet temp
+  model — left as-is.
+- **Accumulators not feeding at power.** The passive SITs inject only below the 600 psi check-valve
+  setpoint (`accumulator_trip_mpa: 4.14`, already correct). The board animated the discharge whenever
+  the isolation valve was open. Added a `flow` prop to comp_valve_vertical: open + water-filled bore
+  but NO streak / inactive downstream port when `flow=false`. Driver gates it on
+  `accumulators_discharging` (false at power). So the valve reads OPEN/aligned while the line sits
+  still — physically the check valve holding back injection.
+- **Accumulator isolation valve clickable.** It sits at (625,660), inside the reactor-vessel tile's
+  box (360–640 × 400–835). It was already reachable at center, but to be safe clickable COMPONENT
+  tiles (it.clickable) now lift to z-index 1 like buttons, so a big neighbor's transparent tile
+  can't swallow the click. Verified: ports data-active=0 at power (no flow), z-index 1, click still
+  toggles open↔closed.
+- **Charging card NOT relabeled** (owner ruling — pzr-level-via-charging is learned in training).
+
+**Gates:** run_pwr 31, campaign 51, autoctl 20, m4 18, m5 19, e2e 30, board_check 52.

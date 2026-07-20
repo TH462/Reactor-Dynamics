@@ -510,7 +510,10 @@
       var b = BUILDERS[it.kind];
       if (!b) return;
       var el = b(it);
-      if (LIFT[it.kind]) el.style.zIndex = '1';
+      // Lift lifted kinds AND clickable components (e.g. the accumulator isolation valve,
+      // which sits inside the reactor-vessel tile's box) so a larger neighboring component's
+      // transparent tile can't swallow their clicks.
+      if (LIFT[it.kind] || (it.kind === 'component' && it.clickable)) el.style.zIndex = '1';
       tiles[it.id] = el;
       stage.appendChild(el);
     });

@@ -47,6 +47,7 @@
       openFrac: 1,
       contents: cfg.contents != null ? cfg.contents : (cfg.fluid != null ? null : 'water'),
       temp: cfg.temp != null ? cfg.temp : 290,
+      flow: true,   // false = open + water-filled but NOT flowing (e.g. check valve holds it shut)
       fl: null, wet: false
     };
 
@@ -140,13 +141,14 @@
     var applied = {};
     function applyState(force) {
       var openFrac = Math.max(0, Math.min(1, st.openFrac));
-      if (!force && applied.openFrac === openFrac && applied.contents === st.contents && applied.temp === st.temp) return;
-      applied.openFrac = openFrac; applied.contents = st.contents; applied.temp = st.temp;
+      if (!force && applied.openFrac === openFrac && applied.contents === st.contents && applied.temp === st.temp && applied.flow === st.flow) return;
+      applied.openFrac = openFrac; applied.contents = st.contents; applied.temp = st.temp; applied.flow = st.flow;
 
       var fl = st.contents ? K.phaseTempColor(st.contents, st.temp) : (K.FLUIDS[fluidKey] || K.FLUIDS.coldWater);
       var isEmpty = !!fl.empty;
       var open = openFrac >= 0.5; // binary pose (source used flow > 2%)
-      var wet = open && !isEmpty;
+      var filled = open && !isEmpty;     // valve open on a water-filled line (bore reads wet)
+      var wet = filled && st.flow;       // actually flowing (drives the streak + downstream pipe)
       st.fl = fl; st.wet = wet;
 
       fluidStopA.setAttribute('stop-color', fl.flow);
@@ -154,15 +156,14 @@
 
       // ball pose: bore along the pipe when open, across it when closed (0.4s transition)
       ballRotG.style.transform = 'rotate(' + (open ? OPEN_ANG : OPEN_ANG + 90) + 'deg)';
-      // bore greys out when closed or empty, exactly like the source
-      boreRect.setAttribute('fill', wet ? ('url(#' + FLUID + ')') : '#5a6874');
+      // bore shows fluid when open+filled (even if not flowing); grey when closed or empty
+      boreRect.setAttribute('fill', filled ? ('url(#' + FLUID + ')') : '#5a6874');
       streakEl.style.display = wet ? '' : 'none';
 
-      // ports — data-active gates downstream pipe animation on open AND non-empty
-      // (source only checked empty; the board rule adds openFrac > 0)
+      // ports — data-active gates downstream pipe animation on open, non-empty AND flowing
       var pTag = st.contents || '';
       var pTemp = st.contents != null ? String(st.temp) : '';
-      var active = (openFrac > 0 && !isEmpty) ? '1' : '0';
+      var active = wet ? '1' : '0';
       ['a', 'b'].forEach(function (id) {
         portEls[id].setAttribute('data-phase', pTag);
         portEls[id].setAttribute('data-temp', pTemp);
@@ -184,6 +185,7 @@
       if (props.openFrac != null) st.openFrac = props.openFrac;
       if (props.contents != null) st.contents = props.contents;
       if (props.temp != null) st.temp = props.temp;
+      if (props.flow != null) st.flow = !!props.flow;
       applyState(false);
     }
 

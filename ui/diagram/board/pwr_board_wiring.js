@@ -23,10 +23,12 @@
   function psi2MPa(p) { return p / 145.038; }
   function kPa2inHg(k) { return k * 0.2953; }
   function satTempC(pMPa) { return pMPa > 0 ? 180 * Math.pow(pMPa, 0.245) : 15; } // Tsat approx, 0.1–10 MPa
-  // Feedwater temperature proxy (no direct instrument): between the condenser hotwell
-  // (~40 °C) and the SG secondary saturation, subcooled — tracks load so the feed pump's
-  // fluid color warms up with power and cools when the plant is shut down.
-  function fwTemp(s) { return 40 + 0.62 * (satTempC((s.instruments || {}).steam_pressure) - 40); }
+  // Feedwater temperature proxy (no direct instrument): the final-feedwater temperature is
+  // set by the FW-heater train, which is heated by turbine extraction steam — so it scales
+  // with LOAD, from condensate (~40 °C, no load) to ~220 °C at full power. Tying it to steam
+  // pressure instead read hot even at hot standby (feed pump off, feedwater actually cold).
+  function fwTemp(s) { return 40 + 1.8 * clamp((s.instruments || {}).power_range || 0, 0, 100); }
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
   function r0(v) { return Math.round(v); }
   function r1(v) { return (Math.round(v * 10) / 10); }
 
@@ -197,7 +199,9 @@
   // ================================================================ COMPONENTS
   // compProps(item, s) -> props for the component's update()
   function pumpProps(running, speed, temp) { return { running: !!running, speed: speed, temp: temp }; }
-  function valveProps(openFrac, contents, temp) { return { openFrac: openFrac, contents: contents, temp: temp }; }
+  // flowing (default true): when false the valve shows OPEN + water-filled but NOT flowing —
+  // e.g. an aligned accumulator isolation valve held shut by its 600 psi check valve.
+  function valveProps(openFrac, contents, temp, flowing) { return { openFrac: openFrac, contents: contents, temp: temp, flow: flowing !== false }; }
 
   var COMPPROPS = {
     reactorVessel: function (s) {
@@ -226,7 +230,9 @@
       // so the SG bubbles hard at power and goes calm when there's no steam demand.
       return { power: IN(s).power_range, level: IN(s).sg_level_wide, narrowLevel: IN(s).sg_level,
         boil: Math.min(100, (IN(s).steam_flow || 0) * 85),
-        temp: satTempC(IN(s).steam_pressure), showFlow: true, glow: true };
+        temp: satTempC(IN(s).steam_pressure),
+        // U-tubes + channel-head reservoirs carry primary coolant — color by leg temps
+        thot: IN(s).thot, tcold: IN(s).tcold, showFlow: true, glow: true };
     },
     pressurizer: function (s) {
       var c = CS(s);
@@ -239,8 +245,11 @@
     },
     porv: function (s) { return { open: IN(s).porv_indicator === 'open' }; },
     condenser: function (s) {
+      // hotwell/condensate temperature rises modestly with load (higher backpressure) but
+      // stays cold — the condensing side under vacuum, never primary-hot.
       return { steamLoad: IN(s).power_range, hotwellLevel: 55,
-        coolingFlow: IN(s).condenser_cooling_available ? 80 : 0, temp: 40,
+        coolingFlow: IN(s).condenser_cooling_available ? 80 : 0,
+        temp: 33 + 0.12 * (IN(s).power_range || 0),
         vacuumInHg: kPa2inHg(IN(s).condenser_vacuum) };
     },
     coolingTower: function (s) {
@@ -262,7 +271,10 @@
     imrpp2g2m8k: function (s) { return valveProps(IN(s).afw_active ? 1 : 0, 'water', 60); },                                       // afw valve
     imrpp99kx2y: function (s) { return valveProps(IN(s).msiv_open ? 1 : 0, 'steam', satTempC(IN(s).steam_pressure)); },            // main steam isolation
     imrppb3kuav: function (s) { return valveProps(CS(s).porv_block_open ? 1 : 0, 'steam', 250); },                                 // PORV block valve
-    imrppxt2aqd: function (s) { return valveProps(CS(s).accumulator_valve_open === false ? 0 : 1, 'water', 50); },                 // accumulator shutoff
+    // accumulator shutoff (isolation) valve — normally OPEN/aligned, but the accumulators
+    // only inject once RCS pressure falls below the 600 psi check-valve setpoint, so the
+    // discharge only "flows" while accumulators_discharging (no flow into the Rx at power).
+    imrppxt2aqd: function (s) { return valveProps(CS(s).accumulator_valve_open === false ? 0 : 1, 'water', 50, IN(s).accumulators_discharging); },
     imrprmm4u5q: function (s) { return valveProps((IN(s).steam_dump_valve || 0) / 100, (IN(s).steam_dump_valve || 0) > 2 ? 'steam' : 'empty', satTempC(IN(s).steam_pressure)); }, // steam dump valve
     imrr45syy4v: function (s) { return valveProps((IN(s).governor_valve || 0) / 100, 'steam', satTempC(IN(s).steam_pressure)); }   // TCV
   };
