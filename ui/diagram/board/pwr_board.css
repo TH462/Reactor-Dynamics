@@ -56,6 +56,18 @@
 .bd-btn:disabled { opacity: 0.45; cursor: not-allowed; color: #55636e; border-color: #26333d; }
 /* Selected/engaged state: adopt the button's authored active color. */
 .bd-btn.bd-active { background: #0c1a22; border-color: var(--bd-color); color: var(--bd-color); }
+/* Warning state (yellow) — a caution independent of the authored active color, e.g. a
+   trip is currently BLOCKED. Wins over the authored color; matches the .bd-blocked amber. */
+.bd-btn.bd-warn { background: #3a2408; border-color: #ffd166; color: #ffd166; }
+/* Count badge on a button (e.g. number of trips blocked). */
+.bd-btn { position: relative; }
+.bd-badge {
+  position: absolute; top: -6px; right: -6px; min-width: 15px; height: 15px;
+  padding: 0 3px; box-sizing: border-box; border-radius: 8px;
+  background: #ffd166; color: #201400; border: 1px solid #10161d;
+  font-size: 10px; line-height: 13px; font-weight: 700; text-align: center;
+  letter-spacing: 0; pointer-events: none;
+}
 
 /* ---- scram ---- */
 .bd-scram {

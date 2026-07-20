@@ -120,6 +120,17 @@
     return el;
   }
 
+  // Show/hide a small count badge on a button. `val` null/''/0 → no badge.
+  function setBadge(btn, val) {
+    var show = val != null && val !== '' && val !== 0;
+    var b = btn._bdBadge;
+    if (!show) { if (b) b.style.display = 'none'; return; }
+    if (!b) { b = h('span', { className: 'bd-badge' }); btn._bdBadge = b; btn.appendChild(b); }
+    var txt = String(val);
+    if (b.textContent !== txt) b.textContent = txt;
+    b.style.display = '';
+  }
+
   function buildButton(it) {
     var btn = h('button', { className: 'bd-btn' }, it.label || 'BUTTON');
     // The authored item color is the ACTIVE-state color; a button renders grey when
@@ -545,6 +556,12 @@
         var it = itemById(id);
         var on = d.buttonActive ? !!d.buttonActive(it, s) : false;
         btn.classList.toggle('bd-active', on);
+        // Warning (yellow) state — independent of the authored active color. Used for
+        // e.g. TRIP BLOCKS: yellow while any trip is blocked, with a count badge.
+        var warn = d.buttonWarn ? !!d.buttonWarn(it, s) : false;
+        btn.classList.toggle('bd-warn', warn);
+        var badge = d.buttonBadge ? d.buttonBadge(it, s) : null;
+        setBadge(btn, badge);
         var dis = d.buttonDisabled ? !!d.buttonDisabled(it, s) : false;
         if (btn.disabled !== dis) btn.disabled = dis;
       });

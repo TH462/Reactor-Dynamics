@@ -23,6 +23,10 @@
   function psi2MPa(p) { return p / 145.038; }
   function kPa2inHg(k) { return k * 0.2953; }
   function satTempC(pMPa) { return pMPa > 0 ? 180 * Math.pow(pMPa, 0.245) : 15; } // Tsat approx, 0.1–10 MPa
+  // Feedwater temperature proxy (no direct instrument): between the condenser hotwell
+  // (~40 °C) and the SG secondary saturation, subcooled — tracks load so the feed pump's
+  // fluid color warms up with power and cools when the plant is shut down.
+  function fwTemp(s) { return 40 + 0.62 * (satTempC((s.instruments || {}).steam_pressure) - 40); }
   function r0(v) { return Math.round(v); }
   function r1(v) { return (Math.round(v * 10) / 10); }
 
@@ -223,12 +227,14 @@
       var gov = (IN(s).governor_valve || 0) / 100;
       return { flowFrac: IN(s).steam_demand_low ? 0 : gov };
     },
-    // pumps
-    imrobnzlha1: function (s) { return pumpProps(IN(s).hpi_active, IN(s).hpi_flow || 0, 60); },                                  // eccs pump
-    imrobph7xrq: function (s) { return pumpProps((CS(s).feed_pump_speed_pct || 0) > 0, (CS(s).feed_pump_speed_pct || 0) / 100, 220); }, // feed pump
-    imrobpq4a70: function (s) { var p = pumpRec(s, 'rcp'); return pumpProps(IN(s).rcp_running, p ? p.flow_pct / 100 : 1, 290); },  // rcp
-    imrqp87ueqb: function (s) { return pumpProps(CS(s).charging_pump_running, CS(s).charging_pump_running ? 0.8 : 0, 60); },       // charging pump
-    imrqvzbd9hd: function (s) { var on = IN(s).condensate_pump_running !== false; return pumpProps(on, on ? 1 : 0, 45); }, // condensate pump (real: gates main feed)
+    // pumps — the fluid-color temperature is LIVE where the pump moves plant fluid whose
+    // temperature changes with state (RCP on the cold leg; feed pump = feedwater); cold
+    // make-up sources (HPI/RWST, charging/VCT, condensate/hotwell) stay near-constant cold.
+    imrobnzlha1: function (s) { return pumpProps(IN(s).hpi_active, IN(s).hpi_flow || 0, 50); },                                  // eccs pump (RWST — cold)
+    imrobph7xrq: function (s) { return pumpProps((CS(s).feed_pump_speed_pct || 0) > 0, (CS(s).feed_pump_speed_pct || 0) / 100, fwTemp(s)); }, // feed pump (feedwater — tracks load)
+    imrobpq4a70: function (s) { var p = pumpRec(s, 'rcp'); return pumpProps(IN(s).rcp_running, p ? p.flow_pct / 100 : 1, IN(s).tcold); },  // rcp (cold-leg coolant — live)
+    imrqp87ueqb: function (s) { return pumpProps(CS(s).charging_pump_running, CS(s).charging_pump_running ? 0.8 : 0, 50); },       // charging pump (VCT — cold)
+    imrqvzbd9hd: function (s) { var on = IN(s).condensate_pump_running !== false; return pumpProps(on, on ? 1 : 0, 40); }, // condensate pump (hotwell — cool)
     // valves
     imrpp2g2m8k: function (s) { return valveProps(IN(s).afw_active ? 1 : 0, 'water', 60); },                                       // afw valve
     imrpp99kx2y: function (s) { return valveProps(IN(s).msiv_open ? 1 : 0, 'steam', satTempC(IN(s).steam_pressure)); },            // main steam isolation
@@ -297,6 +303,13 @@
   }
 
   function isBlocked(s, id) { var tb = (s && s.rps_state && s.rps_state.trip_blocks) || {}; return !!tb[id]; }
+  // How many of the blockable trips are currently blocked (drives the TRIP BLOCKS
+  // button's yellow warning state + count badge).
+  function blockedTripCount(s) {
+    var n = 0;
+    for (var i = 0; i < BLOCKABLE_TRIPS.length; i++) if (isBlocked(s, BLOCKABLE_TRIPS[i].id)) n++;
+    return n;
+  }
 
   // ============================================================ instructor highlight
   // Manual-procedure / campaign-beat control labels (the vocabulary validated against
@@ -387,6 +400,16 @@
     buttonActive: function (item, s) {
       var b = BUTTONS[item.id];
       return b && b.active ? !!b.active(s) : false;
+    },
+    // Warning (yellow) state: the TRIP BLOCKS button lights amber while any trip is blocked.
+    buttonWarn: function (item, s) {
+      return item.id === 'imrsk4xz2dm' && blockedTripCount(s) > 0;
+    },
+    // Count badge: how many trips are currently blocked, on the TRIP BLOCKS button.
+    buttonBadge: function (item, s) {
+      if (item.id !== 'imrsk4xz2dm') return null;
+      var n = blockedTripCount(s);
+      return n > 0 ? n : null;
     },
     buttonDisabled: function () { return false; },
     compProps: function (item, s) {

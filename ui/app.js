@@ -110,7 +110,7 @@
     // ------------------------------------------------------------------ PWR
     pwr: {
       scram: 'REACTOR SCRAM', scramShort: 'SCRAM',
-      initStates: [['hot_full_power', 'Hot Full Power'], ['50_percent', '50 % Power'], ['hot_zero_power', 'Hot Standby']],
+      initStates: [['hot_full_power', 'Hot Full Power'], ['50_percent', '50 % Power'], ['hot_zero_power', 'Hot Standby (Mode 3)'], ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
       defaultSeries: { power: true, tavg: true, pressure: true, sg_level: true },
       gauges: [
         { id: 'power',   label: 'Reactor Power', lead: true, raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
