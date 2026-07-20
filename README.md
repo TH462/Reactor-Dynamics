@@ -66,8 +66,8 @@ _Last updated: 2026-07-19 (PWR pre-ship review)._
 - Extend the **M8 UI / M4 control surface to RBMK + BWR**.
 - **Campaign ↔ Mode-5 alignment: done** — strings use *Mode N, Name*, and three missions
   (`pwr_mode5_to_mode3`, `pwr_mode3_to_mode5`, `pwr_return_to_mode1`) drive the full Mode 5 ↔ 1
-  loop on the board (`Manuals/CAMPAIGN_MODE_ALIGNMENT_SPEC.md` §2–3). Remaining: refresh
-  `Manuals/11_CAMPAIGN_CROSSWALK.md` for the new 34-mission map.
+  loop on the board (`Manuals/CAMPAIGN_MODE_ALIGNMENT_SPEC.md` §2–3). `11_CAMPAIGN_CROSSWALK.md`
+  verified current (Rev 1, 34 missions + bonus) in the 2026-07-19 review.
 - **Mode-5 controls now exposed in the UI** (pre-ship review): RCP **Run/Stop** (`set_rcp`),
   **Pressure SP** and **Dump SP** setpoint boxes. Remaining polish: a `plant_mode` text
   indicator and an explicit `eccs_mode` readout (nice-to-have; the missions are playable

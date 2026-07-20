@@ -227,3 +227,87 @@ all correct.
 
 No highlight-resolution failures, no nonexistent-control instructions, no false-pass detections.
 Gates after fixes: campaign 51/51, m6 16/16, scenarios 3/3.
+
+---
+
+# Phase 7 — Final sweep & Ship Report
+
+## Final gate battery (2026-07-19, post-review)
+
+| Gate | Result | Ship target | Status |
+|---|---|---|---|
+| PWR engine (`run_pwr`) | **31/31** | 31/31 | ✅ |
+| PWR ops (`run_ops pwr`) | **19/20** | 19/20 (P2-A deferred) | ✅ |
+| Campaign (`run_campaign`) | **51/51** | 51/51 | ✅ |
+| Control/failure (`run_m4`) | **18/18** | 18/18 | ✅ |
+| Sim service (`run_m5`) | **19/19** | 19/19 | ✅ |
+| Instructor (`run_m6`) | **16/16** | 16/16 | ✅ |
+| Placeholder instructor (`run_m6ph`) | **8/8** | 8/8 | ✅ |
+| Automation (`run_autoctl`) | **20/20** | 20/20 | ✅ |
+| Procedures (`run_procedures`) | **21/21** (1 known-fail B3) | 21/21 | ✅ |
+| Scenarios (`run_scenarios`) | **3/3** | 3/3 | ✅ |
+| Control e2e (`run_e2e_controls`) | **30/30** | 30/30 | ✅ |
+| Stack wiring (`run_m7`) | **M7 OK** | M7 OK | ✅ |
+| E2E UI (`verify_e2e_ui`) | **PASS** | PASS | ✅ |
+| Manual-follow (`verify_manual_follow`) | **84** | — | ✅ |
+| Manual-control audit | **PASS** | — | ✅ |
+| BWR guard (`run_bwr`) | **15/15** | no regression | ✅ |
+| RBMK guard (`run_rbmk`) | **23/23** | no regression | ✅ |
+| All-plant ops (`run_ops`) | **57/67** (10 documented FAILs) | no regression | ✅ |
+
+**Every PWR gate is at or above its ship target; BWR/RBMK unchanged from the Phase-1 record.**
+
+## Adversarial hour — ALL CLEAN
+
+A custom abuse driver (`scratchpad/adversarial.js`) exercised the shipped PWR config:
+256× LOCA + contradictory command spam, all-channel automation flip-flop under manual fight,
+save/load mid-transient (stuck-open PORV), repeated rewind-during-scram, and a boil-dry
+extreme (LOCA+SGTR, RCPs off, HPI denied). **Zero NaN/Inf, zero throws, zero stuck** (sim_time
+always advanced). The only non-finite value seen — `reactor_period_s = Infinity` at zero power —
+is the documented legitimate exception (ops harness skips it; both UI consumers render "∞").
+
+## Repo hygiene
+
+- Working tree clean; no `console.log`/`debugger`/FIXME/XXX in shipped UI/engine/layer source.
+- `inbox/Diagram.png` was **inadvertently committed by a `git add -A`** during Phase 2 (`b30776a`);
+  **corrected** — removed from tracking, now untracked again pending owner disposition (**needs a
+  decision — see Open Items**). Other `inbox/` files were already tracked working docs.
+- Two stale `Diagnostic/rd_diag_2026-07-07*.json` (untracked diagnostic dumps) — harmless, noted.
+
+## Findings summary (this review)
+
+**Fixed (13):** C4 (manual-scram RPS latch) · P3-3 (rewind double-step) · P3-4 (init ESF gate) ·
+P3-5 (HR1 stand-down cleanup) · P3-6 (requires null-guard) · P3-7 (p_pumpsuction floor) ·
+P3-8 + P3-2 + P3-1 (doc/comment: spray-floor, power-range, RHR setpoint) · **P4-1 (RCP-start
+ship-blocker)** · **P4-2 (pressure/steam-dump setpoint controls — ship-blocker, owner-ruled)** ·
+P5-1 (18 PWR alarm means) · P5-2 (04-N03 denied the shipped cold IC) · P5-3/4/5 (doc hygiene:
+mode-transition [sim] tags, I-01/I-13 flips, crosswalk flags) · P6-1 (shift-exam setpoint text) ·
+P6-2 (RHR card label).
+
+**Rulings:** C2 = documented limitation (PWR safe at 256×; the shared-cadence fix is not
+low-risk) · P2-A = deferred (owner ruling A1; ship target 19/20).
+
+**Open / post-ship (documented, non-blocking):** C3 (`reset_rps` recovery) · `plant_mode` +
+`eccs_mode` UI indicators · P3-9 decay-heat undercount on unscrammed runback (intersects the
+deferred P2-A; needs a ruling) · P3-10 transient-cadence ~1.2× wall-time · P3-11 `set_speed`
+unclamped (UI-unreachable) · P3-12 save/restore mid-beat instructor counters · P6-3 tour idle
+fallback · RBMK/BWR alarm means (out of PWR scope) · minor doc polish (N10 setpoint mention).
+
+## Ship / No-Ship recommendation
+
+**Recommendation: SHIP the PWR** (v1 functional-alpha UI), as-documented.
+
+Rationale: every PWR gate is green at target; the two genuine **ship-blockers found in this
+review — both in the Mode-5 UI surface (RCP start could not start the pumps; no
+pressure/steam-dump setpoint control) — are fixed and verified**, so all 34 campaign missions,
+including the Mode 5↔1 trio, are now completable from the real UI. The code passed a four-agent
+read-for-bugs pass (no crashes, NaN sources, reversed-sign terms, or bypassable safety caps)
+and an adversarial abuse hour with zero faults. The in-product manual is internally consistent
+(alarm means complete, mode-transition procedures reconciled to the shipped physics). All
+remaining items are **documented limitations or post-ship polish**, not correctness defects.
+
+**Two decisions are the owner's** (see Open Items): (1) disposition of `inbox/Diagram.png`;
+(2) whether any post-ship item (esp. C2 per-substep protection, or the `plant_mode`/`eccs_mode`
+indicators) should block v1 — my assessment is none do.
+
+**Not merged to `main`.** All work is on `develop`. Awaiting owner sign-off to release.
