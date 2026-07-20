@@ -44,17 +44,31 @@
   //   phase 'steam' -> light/medium grey (cool) -> medium-dark grey (hot).
   //   phase 'empty' -> isolated (dark, no flow).
   // ---------------------------------------------------------------------------
-  var TEMP_MIN_C = 15;     // coldest rendered temperature (aqua / lightest steam)
+  var TEMP_MIN_C = 15;     // coldest rendered temperature
   var WATER_MAX_C = 345;   // hottest liquid water in a PWR -> full red
-  // Cold→hot thermal ramp (NO purple/magenta midband — that read as "mostly pink" at
-  // operating temperature). Cold deep-blue → cyan → amber → red, so a normal-temperature
-  // plant reads warm orange-red and a cold plant reads blue, warming through cyan/teal.
+  // Heat-map ramp: hue varies continuously cold→hot (blue→cyan→green→yellow→orange→red) so
+  // ADJACENT temperatures differ in hue, not just brightness — you can read a ~30 °C hot-leg /
+  // cold-leg split at a glance and watch a transient sweep colors. Paired with the operating-
+  // band expansion below (rampT) so the 200–345 °C band the plant lives in spans most of the ramp.
   var WATER_RAMP = [
-    [0.00, [0x2b, 0x74, 0xd6]],  // cold — deep blue
-    [0.34, [0x2c, 0xc2, 0xd0]],  // cyan / teal
-    [0.68, [0xf0, 0xb4, 0x3c]],  // amber
-    [1.00, [0xe0, 0x40, 0x2c]]   // hot — red
+    [0.00, [0x2b, 0x66, 0xd8]],  // cold — blue
+    [0.20, [0x2a, 0xac, 0xe4]],  // azure
+    [0.38, [0x2c, 0xd0, 0xc0]],  // teal
+    [0.54, [0x49, 0xcb, 0x60]],  // green
+    [0.68, [0xc6, 0xd6, 0x3a]],  // lime
+    [0.80, [0xf2, 0xc0, 0x33]],  // yellow
+    [0.90, [0xef, 0x8a, 0x2e]],  // orange
+    [1.00, [0xd8, 0x33, 0x26]]   // hot — red
   ];
+  // Operating-band expansion. A PWR lives at ~280–345 °C, a thin slice of 15–345 that on a
+  // linear scale all reads near-red. Give everything ABOVE OP_LO the majority of the ramp
+  // (from OP_KNEE up), compressing the rarely-seen cold band below it — like a plant HMI whose
+  // temperature scale is centered on the operating range, so hot-leg reads red and cold-leg green.
+  var OP_LO = 200, OP_KNEE = 0.35;
+  function rampT(tempC) {
+    if (tempC <= OP_LO) return clamp01((tempC - TEMP_MIN_C) / (OP_LO - TEMP_MIN_C)) * OP_KNEE;
+    return OP_KNEE + clamp01((tempC - OP_LO) / (WATER_MAX_C - OP_LO)) * (1 - OP_KNEE);
+  }
   var STEAM_RAMP = [
     [0.00, [0x5a, 0x64, 0x6b]],  // medium-dark grey  (cooler steam)
     [1.00, [0xd8, 0xde, 0xe2]]   // medium/light grey (hotter steam)
@@ -75,7 +89,7 @@
   //   bore = darker static fill inside the pipe;  flow = bright moving line.
   function phaseTempColor(phase, tempC) {
     if (phase === 'empty') return { bore: '#101a22', flow: '#101a22', empty: true, phase: 'empty', temp: tempC };
-    var t = clamp01((tempC - TEMP_MIN_C) / (WATER_MAX_C - TEMP_MIN_C));
+    var t = rampT(tempC);
     if (phase === 'steam') {
       var s = sampleRamp(STEAM_RAMP, t);
       return { bore: toHex(mix3(s, [0x10, 0x17, 0x1d], 0.52)), flow: toHex(s), phase: 'steam', temp: tempC };

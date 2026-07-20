@@ -9,9 +9,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
-- **PWR board — new temperature color scheme (no more pink).** Water now runs a cold-blue →
-  cyan → amber → hot-red ramp, so an at-power plant reads warm orange-red instead of the old
-  purple/magenta. Steam keeps its grey scale.
+- **PWR board — heat-map temperature colors for easy transient reading.** Water uses a
+  continuous blue→cyan→green→yellow→orange→red heat-map, with the scale expanded over the
+  operating band (200–345 °C) the way a plant HMI is — so the hot leg reads orange and the cold
+  leg green (their ~30 °C split is now obvious), and a heat-up/cool-down sweeps the full spectrum.
+  Drops the old purple/pink. Steam keeps its grey scale.
 - **PWR board — AFW block valve is now an independent operator valve (TMI-2).** The auxiliary-
   feedwater block/discharge valve no longer just mirrors the AFW start/stop buttons. You can run
   the AFW pumps (run lights on, discharge pressure at shutoff) while the block valve is shut and
