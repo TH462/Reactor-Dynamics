@@ -50,7 +50,14 @@
     var inner = 'M123,' + (shellTop + 1) + ' A87 ' + (domeRy - 12) + ' 0 0 1 297,' + (shellTop + 1) +
       ' L297,' + (shellBot - 1) + ' A87 ' + (botRy - 8) + ' 0 0 1 123,' + (shellBot - 1) + ' Z';
     var bendY = 314, legBot = 470, tubeSheetY = 440;
-    var waterBot = tubeSheetY - 5;
+    // Whole-vessel WIDE-range water column: wide 0 % = tube sheet, 100 % = up in the dome.
+    var waterBot = tubeSheetY - 5, waterTopFull = 48;
+    function fullY(wr) { return waterBot - (clampN(wr, 0, 100) / 100) * (waterBot - waterTopFull); }
+    // The narrow (working) range is a zoomed window of the wide scale — MUST match the
+    // engine's sg_level_wide mapping (pwr_engine.js SG_WR_LO/HI): narrow 0–100 % ⇒ wide
+    // SG_WR_LO..SG_WR_HI. The gauge is physically placed over that window so its marker
+    // (narrow level) lines up with the wide-range water surface it zooms into.
+    var SG_WR_LO = 30, SG_WR_HI = 75;
 
     function mix(a, b, t) {
       t = Math.max(0, Math.min(1, t));
@@ -129,15 +136,12 @@
     }
     rebuildConns();
 
-    // NARROW-RANGE level gauge — a fixed instrument band (NOT the full vessel height); its
-    // top/bottom are the ends of the narrow operating range, not 0/100% of actual water.
-    // The engine's sg_level IS this narrow (working) range, so both the marker AND the
-    // vessel water surface are driven off pctY() on THIS scale — they line up, and the
-    // surface reads against the correct zone. (A true wide-range water column would need a
-    // separate engine value; we don't have one, so the visible water tracks the narrow range.)
-    // Zones match the PWR SG-level setpoints (pwr_control.js): red = trip (lo-lo 17 % scram /
-    // hi 90 % P-14), yellow = alarm (low 30 % / high 75 %), green = normal band.
-    var gx = 88, gw = 15, gTop = 100, gBot = 230, gH = gBot - gTop;
+    // NARROW-RANGE level gauge — the working range, physically spanning the wide-range
+    // SG_WR_LO..SG_WR_HI window on the vessel so the marker (narrow level) lines up with
+    // the wide-range water surface. gTop = narrow 100 %, gBot = narrow 0 %. Zones match the
+    // PWR SG-level setpoints (pwr_control.js): red = trip (lo-lo 17 % scram / hi 90 % P-14),
+    // yellow = alarm (low 30 % / high 75 %), green = normal band.
+    var gx = 88, gw = 15, gTop = fullY(SG_WR_HI), gBot = fullY(SG_WR_LO), gH = gBot - gTop;
     function pctY(pct) { return gBot - (clampN(pct, 0, 100) / 100) * gH; }
     var zones = [[0, 17, '#ef4d2e'], [17, 30, '#f0a53b'], [30, 75, '#43d17a'], [75, 90, '#f0a53b'], [90, 100, '#ef4d2e']];
     var gEls = [h('rect', { x: gx - 2, y: gTop - 2, width: gw + 4, height: gH + 4, rx: 4, fill: '#0b1119', stroke: '#25333e', strokeWidth: 1 })];
@@ -210,7 +214,10 @@
     function update(props) {
       props = props || {};
       var power = clampN(num(props.power, 100), 0, 150);
-      var level = clampN(num(props.level, 62), 0, 100);
+      // level = WIDE range (whole-vessel water column). narrowLevel = the working range
+      // shown on the LVL gauge; defaults to the wide value if not supplied separately.
+      var level = clampN(num(props.level, 59), 0, 100);
+      var narrowLevel = clampN(num(props.narrowLevel, 62), 0, 100);
       var boil = clampN(num(props.boil, 55), 0, 100);
       var temp = num(props.temp, 285);
       var showFlow = props.showFlow !== false;
@@ -243,10 +250,10 @@
         last.power = power; last.glowOn = glowOn;
       }
 
-      // Water surface tracks the narrow (working) range on the gauge's own scale, so the
-      // surface in the vessel image lines up exactly with the gauge marker and both read
-      // against the correct alarm/trip zone.
-      var levelY = pctY(level);
+      // Vessel water surface = WIDE range over the full column. The narrow gauge marker =
+      // NARROW range mapped through the same window (pctY), so at steady state it sits on
+      // the surface; in a transient the faster narrow reading leads it slightly (realistic).
+      var levelY = fullY(level);
       if (level !== last.level) {
         steamRect.setAttribute('height', String(Math.max(0, levelY - 20)));
         waterRect.setAttribute('y', String(levelY));
@@ -256,8 +263,11 @@
         var clipTop = Math.max(bendY, levelY);
         waterClipRect.setAttribute('y', String(clipTop));
         waterClipRect.setAttribute('height', String(Math.max(0, waterBot - clipTop)));
-        markerGroup.style.transform = 'translate(0px,' + levelY.toFixed(2) + 'px)';
         last.level = level;
+      }
+      if (narrowLevel !== last.narrowLevel) {
+        markerGroup.style.transform = 'translate(0px,' + pctY(narrowLevel).toFixed(2) + 'px)';
+        last.narrowLevel = narrowLevel;
       }
 
       var bubbleKey = Math.round(boil) + '|' + Math.round(levelY / 3);

@@ -199,7 +199,9 @@
       };
     },
     steamGenerator: function (s) {
-      return { power: IN(s).power_range, level: IN(s).sg_level, boil: 55,
+      // level = wide range (whole-vessel water column); narrowLevel = the working range on
+      // the LVL gauge (with its alarm/trip zones). Two distinct engine instruments.
+      return { power: IN(s).power_range, level: IN(s).sg_level_wide, narrowLevel: IN(s).sg_level, boil: 55,
         temp: satTempC(IN(s).steam_pressure), showFlow: true, glow: true };
     },
     pressurizer: function (s) {
