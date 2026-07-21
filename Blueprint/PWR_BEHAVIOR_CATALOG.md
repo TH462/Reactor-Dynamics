@@ -205,7 +205,7 @@ safety 17.13 MPa, with reseats ordered below lifts):
 | PI-4 | AFW auto-start on loss of both MFW (fw_flow < 0.10 above P-9) and on the P-4 handoff | **DONE** (P4) |
 | PI-5 | FW isolation on SI (rides the hpi arm), and on trip + low Tavg (P-4) — with CC-3 | **DONE** (P4) |
 | PI-7 | RPS reset path: `reset_rps` — refused while a trip signal stands; engine enforces rods-in; ops abuse test drives the recovery leg | **DONE** (P4) |
-| PI-8 ⚑ | High pzr level trip ~92 % — **DEFERRED, owner ruling needed**: the EV-11 thermal mismatch pegs level 100 %, so a 92 % trip scrams every lazy dispatch (and the shift exam's manual route). Options in PLAYTEST_CHECKLIST.md: accept / alarm+rod-block only / recalibrate the power defect (~7 °C real-like mismatch — most physical, biggest re-validation). CA-4 waits on this | ⚑ ruling |
+| PI-8 | High pzr level trip **97 %** — enabled by the power-defect recalibration (owner ruling: `alpha_MTC` → −2.0e-4, real-PWR range; un-trimmed mismatch now ~+7 °C, ride-out swell peaks ~94). CA-4 probe pins both legs: sensed overfill trips; a stuck-low sensor defeats the single channel (teaching point) | **DONE** (P4/P5) |
 | PI-9 | SI on low steam-line pressure — verify the SLB gate's path | verify → P5 |
 
 ## 10. Retired (v3 rulings — do not resurrect)
@@ -245,3 +245,8 @@ safety 17.13 MPa, with reseats ordered below lifts):
   1.05 delegated, demos yes, TR-8 physics trip, single-SG EOP + multi-loop manual note,
   335 °C backstop kept, SI raise TMI-gated, EV-11 provisional) **plus the tempo
   principle**: fast enough to be interesting, slow enough to be manageable. **v3.0 FROZEN.**
+- **2026-07-21 (owner): teaching goal declared** (the plant exists to teach PWR physics)
+  and **power defect recalibrated** per ruling on the PI-8 conflict: `alpha_MTC`
+  −3.3e-5 → −2.0e-4 (real-PWR range). Un-trimmed mismatch +18 → ~+7 °C; slider asks now
+  delivered almost exactly; PI-8 implemented at 97 %; EV-11 re-worded to the honest
+  character. All 51 campaign gates re-validated green on the new coefficient.

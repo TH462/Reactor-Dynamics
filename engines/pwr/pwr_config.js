@@ -54,8 +54,15 @@
 
     // ----------------------------------------------------------- reactivity fb
     reactivity: {
-      alpha_D: -2.5e-5,            // Doppler, K^-1 [tune]
-      alpha_MTC: -3.3e-5,          // moderator temperature coeff, K^-1 [tune]
+      alpha_D: -2.5e-5,            // Doppler, K^-1 (defect ≈ 970 pcm over the 389 °C fuel rise — realistic) [tune]
+      // MTC recalibrated −3.3e-5 → −2.0e-4 (owner ruling 2026-07-21, teaching goal):
+      // with the old value an un-trimmed 15 % load cut parked Tavg +18 °C (the
+      // coolant had to swing that far to shed the power) — at −20 pcm/°C (real-PWR
+      // range) the same cut delivers the ask exactly and parks Tavg +7 °C. Sets the
+      // EV-11 mismatch, the TR-1 ride-out equilibrium (parks ~64 % / +16 °C / pzr
+      // ~94 %), and load-follow self-regulation to real-like magnitudes, and makes
+      // the PI-8 high-level trip implementable (97 % clears the ride-out swell).
+      alpha_MTC: -2.0e-4,          // moderator temperature coeff, K^-1 [tune]
       boron_worth_per_ppm: 1.0e-4, // [tune]
       rod_worth_total: 0.085,      // total control-group worth (~8500 pcm) [tune]
       rod_worth_shutdown: 0.10,    // shutdown-group worth (shutdown margin) [tune]

@@ -6,7 +6,7 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 21 pass, 2 known gaps (xfail).
+Battery result: 22 pass, 2 known gaps (xfail).
 
 ## TR-2 — TR-2 loss of main feedwater @100% — the TMI opener
 *Known gap:* spray uncapped — PORV never lifts on loss of feed (catalog v3 FG-6, feel-plan P5)
@@ -24,7 +24,6 @@ Battery result: 21 pass, 2 known gaps (xfail).
 ## Not yet probed (coverage todo)
 
 - **TR-3** — todo (needs TR-2 tuned first)
-- **CA-4** — todo (needs PI-8 high-level trip first)
 - **PI-3** — todo (with interlock build)
 - **PI-8** — todo (with interlock build)
 - **PI-9** — todo (verify SLB path)

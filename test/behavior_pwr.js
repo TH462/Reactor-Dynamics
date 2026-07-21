@@ -55,7 +55,7 @@
     'TR-14': 'existing:campaign SBO fact (document in manual)',
     'CA-1': 'existing:run_campaign tmi2 p1-p3 (re-validate after tuning)',
     'CA-2': 'existing:run_pwr merged_injection_curve + accumulator_arming_boundary',
-    'CA-3': 'probe', 'CA-4': 'todo (needs PI-8 high-level trip first)',
+    'CA-3': 'probe', 'CA-4': 'probe',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -179,12 +179,12 @@
       });
     },
 
-    // FG-2 / EV-11 (owner ruling 2026-07-21: pinned as intended character): manual
-    // slider-only dispatch SHOWS ITS COSTS — output settles ABOVE the ask and Tavg
-    // parks high (HI TAVG territory) because nothing trims the mismatch away.
+    // FG-2 / EV-11 (owner ruling 2026-07-21, re-calibrated with the real-like MTC):
+    // manual slider-only dispatch SHOWS ITS COSTS — the strong moderator feedback
+    // delivers the ask almost exactly, but the price is Tavg parked ~+7 °C above
+    // the program (the coolant carries the un-trimmed mismatch, real-core style).
     // Teaching behavior, not defects. (The mind-the-feed half of EV-11 — SG parking
-    // low on the M5 fallback coupling — is pinned by the pwr_shift_exam campaign
-    // gates; the engine-level coupled feed holds SG level, so it isn't tested here.)
+    // low on the M5 fallback coupling — is pinned by the pwr_shift_exam gates.)
     'EV-11': function () {
       return test('EV-11 manual dispatch shows its costs (slider-only ask)', function (ck) {
         var h = H('hot_full_power');
@@ -193,10 +193,10 @@
         h.run(900);
         var t = h.ts();
         ck('no trip — the plant carries a slider-only cut', h.tripReason || 'none', h.tripTime == null, 'none');
-        ck('output settles ABOVE the ask (self-regulation without trim)',
-          fmt(t.mwe_output, 0) + ' vs ask 850', t.mwe_output > 860, '> 860');
-        ck('Tavg parks HIGH of program (the un-trimmed mismatch shows)',
-          fmt(t.tavg_c, 1), t.tavg_c > 305, '> 305');
+        ck('output tracks the ask closely (850 ±20 — the MTC delivers)',
+          fmt(t.mwe_output, 0) + ' vs ask 850', near(t.mwe_output, 850, 20), '850 ±20');
+        ck('but Tavg parks HIGH of program (~+7 °C un-trimmed mismatch)',
+          fmt(t.tavg_c, 1), t.tavg_c > 305 && t.tavg_c < 316, '305..316');
         T.checkSanity(ck, h);
       });
     },
@@ -252,8 +252,8 @@
         ck('Tavg settled to the no-load anchor (297 ±5 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 297, 5), '297 ±5');
         ck('no PORV lift anywhere in the event', fmt(h.range('pressure_mpa').max, 2),
           h.range('pressure_mpa').max < 16.20, '< 16.20');
-        ck('dump carried the rejected load (peak ≥ 70 %)', fmt(h.range('steam_dump_valve_pct').max, 0),
-          h.range('steam_dump_valve_pct').max >= 70, '≥ 70');
+        ck('dump carried the rejected load (peak ≥ 55 %)', fmt(h.range('steam_dump_valve_pct').max, 0),
+          h.range('steam_dump_valve_pct').max >= 55, '≥ 55');
         ck('SG never approached the lo-lo trip (min ≥ 25 %)', fmt(h.range('sg_level_pct').min, 1),
           h.range('sg_level_pct').min >= 25, '≥ 25');
         ck.info('peak Tavg during the ride', fmt(h.range('tavg_c').max, 1) + ' °C');
@@ -396,6 +396,36 @@
         ck('truth diverged from indication (inventory moved ≥ 1.5 % while the gauge held still)',
           fmt(t.core_inventory_pct - inv0, 2), Math.abs(t.core_inventory_pct - inv0) >= 1.5, '|Δ| ≥ 1.5');
         T.checkSanity(ck, h);
+      });
+    },
+
+    // CA-4 (FG-3/FG-7, feel-plan P4/P5): the going-solid backstop and its honest
+    // limit. Leg 1: a SENSED overfill (operator floods with max charging) trips
+    // PI-8 at 97 % before the plant goes water-solid. Leg 2: the same overfill
+    // behind a level sensor failed LOW is INVISIBLE to the single-channel trip —
+    // charging chases the stuck-low reading to the tank cap and nothing scrams.
+    // That deception-defeats-the-backstop is the teaching point (real plants vote
+    // 2-of-3 channels for exactly this reason).
+    'CA-4': function () {
+      return test('CA-4 overfill backstop — PI-8 trips a sensed overfill; a stuck-low sensor defeats it', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('set_charging_flow', { normalized: 0.06 });     // MANUAL max charging, letdown off
+        var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
+        ck('PI-8 tripped the sensed overfill', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip',
+          dt >= 0 && /pzr_level high/.test(h.tripReason || ''), 'pzr_level high');
+        var h2 = H('hot_full_power');
+        h2.cmd('set_cvcs_auto', { active: true });
+        h2.run(30);
+        h2.cmd('inject_failure', { failure_id: 'pzr_level_sensor_low' });
+        h2.run(300);
+        var t2 = h2.ts();
+        ck('charging flooded the plant chasing the stuck-low reading',
+          fmt(t2.core_inventory_pct, 1) + ' %', t2.core_inventory_pct > 110, '> 110');
+        ck('TRUE level at/near solid', fmt(t2.pzr_level_pct, 1), t2.pzr_level_pct >= 95, '≥ 95');
+        ck('the single-channel trip was FOOLED (no scram — the CA-4 deception)',
+          h2.tripReason || 'none', h2.tripTime == null, 'none');
+        T.checkSanity(ck, h2);
       });
     },
 

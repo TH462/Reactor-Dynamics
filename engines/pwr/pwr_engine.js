@@ -1589,10 +1589,13 @@
         var h = new Harness('hot_full_power');
         h.run(30);
         var p_before = h.ts().power_pct;
+        // Real-like MTC (−20 pcm/°C, P4/P5 recalibration): the coolant fights a
+        // small withdrawal hard, so the settled rise is ~0.1 % — direction is the
+        // physics being pinned, not magnitude.
         h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 8 }); // withdraw
         h.run(120);
         var p_with = h.ts().power_pct;
-        ck('power rises on withdraw', p_with.toFixed(2), p_with > p_before + 0.5, '> ' + p_before.toFixed(2));
+        ck('power rises on withdraw', p_with.toFixed(2), p_with > p_before + 0.05, '> ' + p_before.toFixed(2));
         ck('re-settles (stable)', h.eng.s._rho.toExponential(2), Math.abs(h.eng.s._rho) < 1e-3, 'near critical');
         var p_mid = h.ts().power_pct;
         h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -8 }); // insert back
@@ -1627,10 +1630,12 @@
         h.run(10);
         ck('default follow mode', h.eng.s.load_mode, h.eng.s.load_mode === 'follow', 'follow');
         ck('feed coupled', h.eng.s.feed_auto_coupled, h.eng.s.feed_auto_coupled === true, 'true');
+        // Real-like MTC: 15 steps in sheds less settled power (the coolant cools
+        // and gives reactivity back) — ~91-92 % vs the old ~88.
         h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -15 });
         h.run(180);
         var t = h.ts();
-        ck('power fell', t.power_pct.toFixed(1), t.power_pct < 90, '< 90%');
+        ck('power fell', t.power_pct.toFixed(1), t.power_pct < 96, '< 96%');
         ck('load target tracked down', h.eng.s.load_target_mwe.toFixed(0), h.eng.s.load_target_mwe < 950, '< 950 MWe');
         ck('SG level stable (no runaway fill)', t.sg_level_pct.toFixed(0), t.sg_level_pct < 88, '< 88%');
       });

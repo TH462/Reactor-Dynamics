@@ -205,6 +205,9 @@
                                    severity_meta: { label: 'Break Size', unit: '% effective area', min: 0, max: 100, default: 30 }, display: 'Main Steam Line Break' },
     tavg_sensor_failure:         { type: 'instrument', category: 'instrument', instrument_id: 'tavg', mode: 'drift', display: 'Tavg Sensor Drifting' },
     pzr_level_sensor_stuck:      { type: 'instrument', category: 'instrument', instrument_id: 'pzr_level', mode: 'stuck', display: 'Pressurizer Level Sensor Stuck' },
+    // CA-4: fails LOW (reads 20 %) — auto make-up floods the plant chasing it, and
+    // the single-channel PI-8 trip reads the same lie (the deception teaching point).
+    pzr_level_sensor_low:        { type: 'instrument', category: 'instrument', instrument_id: 'pzr_level', mode: 'stuck', stuck_value: 20.0, display: 'Pressurizer Level Sensor Failed Low' },
   };
 
   // Interlocks (M4 §4b) — condition-latched command blocks, from instruments
@@ -285,7 +288,14 @@
   // above 13.6 MPa on heatup).
   PWR_TRIPS.push(
     { id: 'si_trip', instrument: 'primary_pressure', direction: 'low', setpoint: SI_MPA, action: 'scram',
-      blockable: true, block_permissive: { instrument: 'primary_pressure', direction: 'low', setpoint: 13.6 } }
+      blockable: true, block_permissive: { instrument: 'primary_pressure', direction: 'low', setpoint: 13.6 } },
+    // PI-8 (feel-plan P4/P5, enabled by the MTC recalibration): high pressurizer
+    // level trip — the going-solid backstop (CA-4: a sensed overfill trips before
+    // the plant goes water-solid). 97 % clears the ride-out's thermal swell peak
+    // (~94 %) so FG-4 keeps its no-scram character; the 75 % alarm warns first.
+    // Single-channel honesty: a level sensor failed LOW defeats this trip too —
+    // that deception is CA-4's teaching point, pinned in the battery.
+    { id: 'pzr_hi_level', instrument: 'pzr_level', direction: 'high', setpoint: 97.0, action: 'scram' }
   );
 
   var PWR_CHANNELS = [
