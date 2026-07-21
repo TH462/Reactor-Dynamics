@@ -208,6 +208,12 @@
     // a lagged/stuck/failed pzr-level sensor fools the charging control exactly as it fools
     // the operator (a false-high level makes it back off charging → real inventory loss).
     s._ins_pzr_level = insPrev && insPrev.pzr_level != null ? insPrev.pzr_level : null;
+    // The CVCS level PROGRAM reads indicated Tavg (HR1) — its setpoint card tracks the
+    // same thermal-expansion line the derived level rides (pwr_primary/pwr_pressurizer).
+    s._ins_tavg = insPrev && insPrev.tavg != null ? insPrev.tavg : null;
+    // Full-power equilibrium Tavg — the anchor of the level base line. Lazy so
+    // loaded saves (which lack the stash) recompute it once.
+    if (s._tavg_fp == null) s._tavg_fp = this._computeEquilibriumTemps(1.0).Tavg;
 
     // 0. Rod motion (incl. runaway) before reactivity reads positions.
     this._stepRods(dt);
@@ -379,6 +385,7 @@
       steam_pressure_mpa: s.steam_pressure_mpa,   // secondary SG pressure (additive; for the UI diagram)
       mwe_output: s.mwe_output, subcooling_c: s.subcooling_c, core_inventory_pct: s.core_inventory_pct,
       core_void_fraction: s.core_void_fraction,   // flux-driven core boiling (DNB at power); 0 in TMI/normal ops
+      primary_void_fraction: s.primary_void_fraction,   // inventory-driven (TMI) void — the FG-3 deception gate
 
       fuel_temp_c: s.fuel_temp_c, decay_heat_pct: s.decay_heat_pct, xenon_pct_eq: s.xenon_pct_eq,
       boron_ppm: s.boron_ppm, porv_open: s.porv_open, porv_stuck: s.porv_stuck,
@@ -997,7 +1004,12 @@
       block_valve_open: true,                 // PORV isolation/block valve (B1; default open)
       porv_flow: 0, safety_flow: 0,
       tailpipe_temp_c: cfg.pressurizer.tailpipe_ambient_c,   // PORV discharge line (warm baseline: leaky seat)
-      pzr_level_pct: cfg.pressurizer.pzr_level_nominal,
+      // DERIVED level at init: on the thermal-expansion base line at nominal mass —
+      // so every state starts exactly where stepLevel will hold it (SS-5: partial-
+      // load states init at their programmed level, not a flat nominal).
+      _tavg_fp: Tfp,
+      pzr_level_pct: clip(cfg.pressurizer.pzr_level_nominal
+        + cfg.pressurizer.level_per_tavg * (Tavg - Tfp), cfg.pressurizer.level_prog_floor, 100),
 
       _mass: 1.0, core_inventory_pct: 100, primary_void_fraction: 0,
       // Letdown: two independent orifices (off / A / B / A+B). letdown_flow is the
@@ -1129,8 +1141,15 @@
       s.t_secondary_c = TH.T_sat(0.1);
       s.steam_dump_setpoint = cfg.steam_generator.steam_dump_setpoint;
       s.msiv_open = true;
-      // Pressurizer level at a cold band.
-      if (init.cold_pzr_level != null) s.pzr_level_pct = init.cold_pzr_level;
+      // Pressurizer level at a cold band. With DERIVED level, an IC level implies a
+      // mass surplus over nominal (a cold plant really does hold more mass): invert
+      // level = floor + level_per_mass_surplus·(mass − 1) for the cold base line.
+      if (init.cold_pzr_level != null) {
+        s._mass = clip(1.0 + (init.cold_pzr_level - cfg.pressurizer.level_prog_floor)
+          / cfg.pressurizer.level_per_mass_surplus, 0, cfg.primary.mass_max);
+        s.core_inventory_pct = s._mass * 100;
+        s.pzr_level_pct = init.cold_pzr_level;
+      }
       // Heaters/spray in auto tracking the cold setpoint (holds Pcold); turbine off.
       s.heater_override = null; s.spray_override = null;
       // SI accumulators ISOLATED — the real Mode 5 lineup. Cold shutdown sits below the
@@ -2174,8 +2193,8 @@
     // CVCS charging/letdown authority over indicated PZR level + AUTO level-hold.
     // Guards the level-control rework: charging raises level, and AUTO make-up holds
     // level against a letdown drain. The TMI void-surge deception (level rises as
-    // inventory falls, charging isolated) is guarded separately by flagship_tmi — the
-    // CVCS term is bounded far below K_void_surge, so it does not wash it out.
+    // inventory falls, charging isolated) is guarded separately by flagship_tmi — with
+    // DERIVED level the void lift (level_per_void·void_gain) outweighs the mass term.
     cvcs_level_control: function () {
       return test('CVCS — charging controls pzr level; AUTO holds level', function (ck) {
         // (1) Charging has authority over indicated level (the new insurge term).
@@ -2196,8 +2215,8 @@
           near(h2.ts().pzr_level_pct, 55, 6), '55 ±6');
         ck('AUTO charging modulated up to match the drain', h2.eng.s.charging_flow.toFixed(3),
           h2.eng.s.charging_flow > 0.03, '> 0.03');
-        // The TMI void-surge deception (charging isolated → void surge dominates the level)
-        // is guarded by flagship_tmi; the CVCS insurge term is bounded far below K_void_surge.
+        // The TMI void-surge deception (charging isolated → void lift dominates the level)
+        // is guarded by flagship_tmi; charging moves level only through the mass balance.
       });
     },
 

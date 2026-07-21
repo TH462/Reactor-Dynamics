@@ -28,12 +28,12 @@
   // ------------------------------------------------------------- XFAIL (strict)
   // id → why it is expected to fail today (catalog §8 decision that will fix it).
   var XFAIL = {
-    'SS-5': 'no pzr level program — constant 55% setpoint (catalog §8.7)',
-    'TR-1': 'no reactor-trip-on-turbine-trip above P-9 (PI-1, catalog §8.2)',
-    'TR-2': 'spray uncapped + missing PI-1/PI-2 — PORV never lifts on loss of feed (#22)',
-    'CC-3': 'no post-trip feedwater isolation / AFW handoff (P-4 analog, catalog §8.4)',
-    'CC-5': 'spray capacity uncapped — suppresses loss-of-heat-sink repressurization (#22/#23)',
-    'CC-10': 'pzr level and RCS mass are decoupled integrators — CVCS holds level while true inventory winds to the tank cap (catalog §8.5)',
+    'TR-1': 'awaiting the ride-out dump upsize (catalog v3 FG-4; probe re-authored in feel-plan P4)',
+    'TR-2': 'spray uncapped — PORV never lifts on loss of feed (catalog v3 FG-6, feel-plan P5)',
+    'CC-3': 'no post-trip feedwater isolation / AFW handoff (P-4 analog, feel-plan P4)',
+    'CC-5': 'spray capacity uncapped — suppresses loss-of-heat-sink repressurization (feel-plan P5)',
+    // SS-5 and CC-10 left this list 2026-07-21: level is now DERIVED from
+    // inventory + thermal expansion + saturation-gated void (catalog v3 FG-3).
   };
 
   // -------------------------------------------------------------- COVERAGE map
@@ -62,7 +62,7 @@
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
     'CC-5': 'probe', 'CC-6': 'probe', 'CC-7': 'existing:run_pwr steam_dump_capacity_cap',
     'CC-8': 'probe', 'CC-9': 'existing:run_pwr + run_campaign pwr_esf',
-    'CC-10': 'probe',
+    'CC-10': 'probe', 'CC-10b': 'probe',
     'PI-1': 'probe:TR-1', 'PI-2': 'probe:TR-2', 'PI-3': 'todo (with interlock build)',
     'PI-4': 'todo (with interlock build)', 'PI-5': 'probe:CC-3', 'PI-6': 'todo (needs multi-loop model)',
     'PI-7': 'probe', 'PI-7-reset': 'todo (RPS reset path, C3 — with interlock build)',
@@ -355,9 +355,12 @@
         h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.1 });
         h.run(900);
         var t = h.ts();
+        // With DERIVED level the servo settles at charging = letdown + leak EXACTLY
+        // (the old +0.003 margin was the mass-windup drift, not physics) — the spec
+        // is only that charging clearly rose to carry the leak.
         ck('charging rose above letdown to make up the leak',
           fmt(t.charging_flow_actual, 3) + ' vs ' + fmt(t.letdown_flow_actual, 3),
-          t.charging_flow_actual > t.letdown_flow_actual + 0.003, 'charging > letdown');
+          t.charging_flow_actual > t.letdown_flow_actual + 0.0005, 'charging > letdown');
         ck('pzr level held ≥ 40 %', fmt(h.range('pzr_level_pct').min, 1),
           h.range('pzr_level_pct').min >= 40, '≥ 40');
         ck('no trip while CVCS carries it', h.tripReason || 'none', h.tripTime == null, 'none');
@@ -365,10 +368,9 @@
       });
     },
 
-    // Discovered by this battery's first run (2026-07-20): because pzr level and RCS
-    // mass are separate integrators, the CVCS level servo can hold level at 55 %
-    // while TRUE inventory winds up to the 120 % tank cap (or the 0 % floor). Mass
-    // must be conserved: with charging balancing a small leak, inventory stays ~100 %.
+    // Discovered by this battery's first run (2026-07-20), fixed by the derived-level
+    // rework (2026-07-21): level is a pure function of inventory + expansion + void,
+    // so the CVCS servo holding level IS holding inventory — no silent windup possible.
     'CC-10': function () {
       return test('CC-10 level↔mass coupling — CVCS holds level WITHOUT inventory windup', function (ck) {
         var h = H('hot_full_power');
@@ -382,6 +384,27 @@
         ck('true inventory conserved 97..103 % (no silent windup)',
           fmt(h.range('core_inventory_pct').min, 1) + '..' + fmt(h.range('core_inventory_pct').max, 1),
           h.range('core_inventory_pct').min >= 97 && h.range('core_inventory_pct').max <= 103, '97..103');
+      });
+    },
+
+    // The catalog v3 FG-3 boundary invariant [I]: the level gauge is honest outside
+    // void regimes. A subcooled inventory loss LOWERS true level (tracking the mass),
+    // and the TMI rise appears ONLY once the primary saturates and voids. Permanent
+    // regression fence around the deception boundary.
+    'CC-10b': function () {
+      return test('CC-10b deception boundary — subcooled loss lowers level; only voiding raises it', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        var l0 = h.ts().pzr_level_pct, inv0 = h.ts().core_inventory_pct;
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.3 });   // CVCS stays MANUAL: nothing makes it up
+        h.run(120);
+        var t = h.ts();
+        ck('still subcooled through the early drain', fmt(t.subcooling_c, 1), t.subcooling_c > 0, '> 0');
+        ck('no void yet (deception gated on saturation)', fmt(t.primary_void_fraction, 3),
+          t.primary_void_fraction === 0, '0');
+        ck('true level FELL with the inventory (honest gauge while subcooled)',
+          fmt(l0, 1) + ' → ' + fmt(t.pzr_level_pct, 1) + ' (inv ' + fmt(inv0, 1) + ' → ' + fmt(t.core_inventory_pct, 1) + ')',
+          t.pzr_level_pct < l0 - 1 && t.core_inventory_pct < inv0 - 1, 'both fall');
       });
     },
 

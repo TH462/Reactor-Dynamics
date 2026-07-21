@@ -71,7 +71,11 @@
       // mode makes up identified leakage by modulating charging up to charging_max.
       boron_adjust_rate: 2.0,      // ppm/s while borating/diluting [tune]
       cvcs_makeup_gain: 3.0,       // auto-charging response to an inventory deficit [tune]
-      cvcs_charge_per_level: 0.006,// AUTO make-up: charging above letdown per % PZR-level deficit [tune]
+      // AUTO make-up: charging above letdown per % PZR-level deficit. With DERIVED
+      // level (level_per_mass 100), loop gain = 0.001·100 = 0.1/s (τ≈10 s) — sized
+      // for stability against the level-instrument lag; a leak L parks the level
+      // L/0.001 % below setpoint (0.003 leak → ~3 %, visible but held). [tune]
+      cvcs_charge_per_level: 0.001,
       charging_max: 0.06,          // max charging flow, normalized (normal makeup band) [tune]
       // Letdown: TWO fixed orifices, each independently in/out (four states: off /
       // A / B / A+B). Letdown is a pressure-driven bleed from the cold leg through
@@ -169,15 +173,31 @@
       safety_flow_max: 0.10,       // [tune]
       P_containment: 0.103,        // MPa backpressure [tune]
       P_flow_ref: 15.41,           // reference ΔP for relief-flow sqrt scaling, MPa
-      // Pressurizer level (the TMI deception).
-      K_thermal_surge: 2.0, K_void_surge: 40.0,    // thermal out-surge on cooldown; was 12 — too aggressive on rod maneuvers [tune]
-      level_loss_per_flow: 8.0, K_level: 1.0,    // [tune]
-      // CVCS net make-up (charging − letdown) authority over indicated PZR level: a
-      // slow insurge/outsurge that lets charging hold level over an evolution. Kept
-      // small so it never competes with the fast void_surge (the TMI deception, where
-      // charging is isolated anyway) — bounded by charging_max/letdown ≈ 0.07. [tune]
-      K_cvcs_level: 6.0,
-      pzr_level_nominal: 55.0,     // % at hot_full_power
+      // Pressurizer level — DERIVED (catalog v3 FG-3 / CC-10 rework, 2026-07-21).
+      // Level is a pure function of state, not an integrator:
+      //   level = base(Tavg) + level_per_mass·(mass − 1) + level_per_void·void
+      // base(Tavg) is the thermal-expansion line anchored at pzr_level_nominal for
+      // the full-power equilibrium Tavg, floored below the program band (cold modes:
+      // the normalized mass bookkeeping doesn't model the real cold-plant mass
+      // surplus, so the floor stands in for CVCS keeping the pzr on span). The void
+      // term is the TMI deception, active ONLY when the primary actually voids
+      // (saturation-gated in pwr_primary): 3·level_per_void > level_per_mass, so in
+      // any voided state indicated level RISES as inventory falls — and nowhere else.
+      level_per_tavg: 2.0,         // % level per °C Tavg (matches old K_thermal_surge transient feel) [tune]
+      level_per_mass: 100.0,       // % level per inventory-fraction DEFICIT below nominal (a deficit
+                                   // draws down the whole loop) [tune]
+      level_per_mass_surplus: 300.0, // % level per inventory-fraction SURPLUS above nominal — steeper,
+                                   // because surplus packs into the pressurizer steam space, the only
+                                   // compressible volume: the "going solid" regime (TMI b9: HPI packing
+                                   // +0.16 mass must read > the 75 % high alarm) [tune]
+      level_per_void: 150.0,       // % level per void-fraction — the TMI lift. Calibrated so the
+                                   // story-clock void (~0.2 as HPI fires) lifts level past the 75 %
+                                   // high alarm (the "going solid" call that throttles HPI), and deep
+                                   // voiding pegs the gauge high (historical). ×void_gain 3 ⇒ net
+                                   // +350 %/frac vs the −100 mass term: any voided state deceives. [tune]
+      level_prog_floor: 28.0,      // % — base(Tavg) floor below the program band; 3 % above the
+                                   // pzr_level_low alarm (25) so no-load/sagged states don't sit in alarm [tune]
+      pzr_level_nominal: 55.0,     // % at hot_full_power (the base-line anchor)
       // PORV tailpipe / quench-tank temperature (the discharge line downstream of
       // the PORV and code safeties). Reads WARM at baseline — the seat has always
       // leaked a little (historically true at TMI-2, and why the crew discounted a
@@ -479,7 +499,10 @@
       // The Mode 5↔1 heatup/cooldown path is driven from here (see _buildState).
       cold_shutdown:  { power: 1e-6, scrammed: false, subcritical: true, cold: true,
         rod_op_pct: 0.0, sr_on: true, rcp_off: true,
-        cold_tavg_c: 50.0, cold_pressure_mpa: 2.5, cold_pzr_level: 60.0 },
+        // cold_pzr_level 60 → 30 with the derived-level rework: an IC level implies a
+        // mass surplus (level = floor 28 + 100·(mass−1)); 30 % ⇒ mass 1.02, inside both
+        // the 1.2 tank cap and the m5 suite's ≤105 % cold-init sanity bound.
+        cold_tavg_c: 50.0, cold_pressure_mpa: 2.5, cold_pzr_level: 30.0 },
     },
   };
 

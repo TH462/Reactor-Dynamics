@@ -179,11 +179,15 @@
         h.cmd('set_cvcs_auto', { active: true });   // makeup holds inventory through the shrink
         // ~4%/min rod rampdown, turbine follows; PAUSE the ramp whenever the
         // pressurizer level shrinks near the low alarm (a real operator holds).
+        // Threshold 26: with DERIVED level, rod-only reduction sags Tavg and level
+        // rides the program down to its floor (28) — that's normal; only a genuine
+        // mass shrink BELOW the floor should pause the ramp (old 30 was calibrated
+        // to the flat-55 level and stalled the ramp mid-curve).
         var lastAct = 0, ramp = 100;
         h.run(2400, function (hh, t) {
           if (t - lastAct < 8) return;
           lastAct = t;
-          if (hh.ins().pzr_level > 30) ramp = Math.max(3, ramp - 0.55);
+          if (hh.ins().pzr_level > 26) ramp = Math.max(3, ramp - 0.55);
           holdPower(hh, ramp, 1.0);
         });
         ck('power followed the rampdown', fmt(h.ts().power_pct, 1) + '%', h.ts().power_pct < 25, '< 25%');

@@ -136,28 +136,37 @@
     s.tailpipe_temp_c += (target - s.tailpipe_temp_c) * (dt / (tau + dt));
   }
 
-  // Step 8 (pzr part) — pressurizer level. void_surge pushes liquid INTO the
-  // pressurizer as the primary voids, raising indicated level even as total
-  // inventory falls: the TMI deception (§6.4).
+  // The thermal-expansion base line: where TRUE level sits at nominal inventory
+  // for a given Tavg. Anchored at pzr_level_nominal for the full-power equilibrium
+  // Tavg (s._tavg_fp, stashed by the engine), floored below the program band —
+  // the CVCS level program (pwr_primary) targets this same line, so setpoint and
+  // physics agree by construction and thermal expansion never reads as a leak.
+  function levelBase(s, cfg) {
+    var p = cfg.pressurizer;
+    var tref = (s._tavg_fp != null) ? s._tavg_fp : 304.0;
+    var base = p.pzr_level_nominal + p.level_per_tavg * (s.tavg_c - tref);
+    return clip(base, p.level_prog_floor, 100);
+  }
+
+  // Step 8 (pzr part) — pressurizer level, DERIVED from state (CC-10 rework):
+  //   level = base(Tavg) + level_per_mass·(mass − 1) + level_per_void·void
+  // No integrator: level and inventory cannot silently drift apart. The void term
+  // pushes liquid INTO the pressurizer as the primary voids, raising indicated
+  // level even as total inventory falls — the TMI deception (§6.4) — and it is
+  // active ONLY when the primary actually saturates (primary_void_fraction is
+  // saturation-gated in pwr_primary). Relief/leak/charging flows act on level
+  // through the MASS balance (stepInventory), not through separate level terms.
   function stepLevel(s, cfg, dt) {
     var p = cfg.pressurizer;
-    var thermal_surge = p.K_thermal_surge * (s._dTavg_dt || 0);
-    var void_surge = p.K_void_surge * s.primary_void_fraction;
-    // CVCS net make-up: charging adds liquid to the primary (insurge → level up),
-    // letdown bleeds it (level down). This is what gives charging real authority over
-    // indicated level so AUTO make-up can hold it. Small gain, bounded by
-    // charging_max/letdown (~0.07), so it never competes with the fast void_surge that
-    // drives the TMI deception (where charging is isolated anyway). A LIQUID leak
-    // (cold-leg break) is inventory leaving too, so it lowers the level exactly like
-    // letdown — same coefficient, so the mass and level equilibria agree and the level
-    // controller sees (and makes up) a leak on its own, as a real plant does. A stuck-open
-    // PORV vents STEAM (leak_flow=0, level rises via void_surge) so the TMI path is untouched.
-    var cvcs_surge = ((s._charging_actual || 0) - (s.letdown_flow || 0) - (s.leak_flow || 0)) * p.K_cvcs_level;
-    var surge_in_rate = thermal_surge + void_surge + cvcs_surge;
-    var dLevel = (surge_in_rate
-                  - s.porv_flow * p.level_loss_per_flow
-                  - s.safety_flow * p.level_loss_per_flow) * p.K_level;
-    s.pzr_level_pct = clip(s.pzr_level_pct + dLevel * dt, 0, 100);
+    var dm = (s._mass != null ? s._mass : 1.0) - 1.0;
+    // Piecewise mass term: a DEFICIT draws down the whole loop (shallow); a
+    // SURPLUS packs into the pressurizer steam space — the only compressible
+    // volume — so it reads ~3× steeper (the "going solid" regime).
+    var mass_term = dm < 0 ? p.level_per_mass * dm : p.level_per_mass_surplus * dm;
+    var level = levelBase(s, cfg)
+              + mass_term
+              + p.level_per_void * (s.primary_void_fraction || 0);
+    s.pzr_level_pct = clip(level, 0, 100);
   }
 
   RD.pwrPressurizer = {
@@ -165,6 +174,7 @@
     autoControl: autoControl,
     relief: relief,
     stepPressure: stepPressure,
+    levelBase: levelBase,
     stepLevel: stepLevel,
     stepTailpipe: stepTailpipe,
   };

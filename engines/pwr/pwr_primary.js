@@ -144,20 +144,25 @@
       // lowers the level (see stepLevel: leak_flow is now an inventory-out term on the
       // level, as it physically is), so the servo charges up to hold level — no leak
       // detection needed. A HIGH level drives charging below letdown to bring it back down.
-      var level_sp = cfg.pressurizer.pzr_level_nominal;
+      // PROGRAMMED level setpoint (catalog v3 FG-3): the same thermal-expansion base
+      // line the derived level rides (pwr_pressurizer.levelBase), computed from the
+      // INDICATED Tavg (HR1 — the program card reads a plant instrument, not truth).
+      // Because setpoint and physics share one line, a heat-up raises level AND
+      // setpoint together: the old #34 failure mode (auto charging draining the RCS
+      // to chase a thermally-high level) is structurally gone, and with DERIVED level
+      // draining genuinely lowers level, so no mass floor is needed either.
+      var tavg_ind = (s._ins_tavg != null) ? s._ins_tavg : s.tavg_c;
+      var pz = cfg.pressurizer;
+      var tref = (s._tavg_fp != null) ? s._tavg_fp : 304.0;
+      var level_sp = clip(pz.pzr_level_nominal + pz.level_per_tavg * (tavg_ind - tref),
+                          pz.level_prog_floor, 100);
       // Sense the INDICATED pzr level (previous-step instrument, HR1) — NOT true level — so a
       // lagged/failed level sensor fools the level control like the operator. Falls back to
       // true level only before the first instrument reading exists.
       var level_ind = (s._ins_pzr_level != null) ? s._ins_pzr_level
                     : (s.pzr_level_pct != null ? s.pzr_level_pct : level_sp);
-      var level_demand = (rc.cvcs_charge_per_level || 0.006) * (level_sp - level_ind);
+      var level_demand = (rc.cvcs_charge_per_level || 0.001) * (level_sp - level_ind);
       var target = (s.letdown_flow || 0) + level_demand;
-      // SAFETY: level control must never drain the primary below nominal inventory. A high
-      // indicated level from THERMAL EXPANSION (heat-up) would otherwise empty the RCS, since
-      // draining mass can't lower a thermally-driven level (pzr level & mass are decoupled in
-      // this model). Only genuine EXCESS inventory (mass above nominal) is let down below the
-      // letdown rate. [A Tavg-programmed setpoint would be more physical — deferred; see #34.]
-      if (target < (s.letdown_flow || 0) && s._mass <= 1.0) target = (s.letdown_flow || 0);
       s.charging_flow = clip(target, 0, rc.charging_max != null ? rc.charging_max : 0.06);
     } else {
       s.charging_flow = s.charging_setpoint;

@@ -6,44 +6,33 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 13 pass, 6 known gaps (xfail).
-
-## SS-5 — SS-5 pzr level program — level rises with Tavg
-*Known gap:* no pzr level program — constant 55% setpoint (catalog §8.7)
-
-- **no-load level ≤ 40 %** — required `≤ 40`, observed `55.3`
-- **program rises ≥ 15 % no-load → full** — required `≥ 15`, observed `-0.3`
+Battery result: 16 pass, 4 known gaps (xfail).
 
 ## TR-1 — TR-1 turbine trip @100% — anticipatory reactor trip (P-9)
-*Known gap:* no reactor-trip-on-turbine-trip above P-9 (PI-1, catalog §8.2)
+*Known gap:* awaiting the ride-out dump upsize (catalog v3 FG-4; probe re-authored in feel-plan P4)
 
 - **reactor trips within 5 s of turbine trip** — required `≤ 5 s`, observed `39.5 s`
 - measurement: peak pressure after TT = `15.54 MPa`
 - measurement: peak Tavg after TT = `320.9 °C`
 
 ## TR-2 — TR-2 loss of main feedwater @100% — the TMI opener
-*Known gap:* spray uncapped + missing PI-1/PI-2 — PORV never lifts on loss of feed (#22)
+*Known gap:* spray uncapped — PORV never lifts on loss of feed (catalog v3 FG-6, feel-plan P5)
 
 - **primary pressure reaches PORV lift 16.20 MPa** — required `≥ 16.20`, observed `15.50`
 - **PORV lifted** — required `lifted`, observed `never lifted`
 
 ## CC-3 — CC-3 post-trip feedwater — MFW isolates, AFW takes the SGs
-*Known gap:* no post-trip feedwater isolation / AFW handoff (P-4 analog, catalog §8.4)
+*Known gap:* no post-trip feedwater isolation / AFW handoff (P-4 analog, feel-plan P4)
 
 - **main feed isolated once Tavg is at no-load (fw_flow < 0.05)** — required `< 0.05`, observed `0.052`
 - **SG level held by AFW band (≥ 15 %)** — required `≥ 15`, observed `0.0`
 
 ## CC-5 — CC-5 spray capacity — cannot suppress loss-of-heat-sink spike
-*Known gap:* spray capacity uncapped — suppresses loss-of-heat-sink repressurization (#22/#23)
+*Known gap:* spray capacity uncapped — suppresses loss-of-heat-sink repressurization (feel-plan P5)
 
 - **pressure reaches PORV lift 16.20 MPa despite spray AUTO** — required `≥ 16.20`, observed `15.53`
 - **PORV lifted** — required `lifted`, observed `never lifted`
 - measurement: observed peak pressure = `15.53 MPa`
-
-## CC-10 — CC-10 level↔mass coupling — CVCS holds level WITHOUT inventory windup
-*Known gap:* pzr level and RCS mass are decoupled integrators — CVCS holds level while true inventory winds to the tank cap (catalog §8.5)
-
-- **true inventory conserved 97..103 % (no silent windup)** — required `97..103`, observed `100.0..110.4`
 
 ## Not yet probed (coverage todo)
 

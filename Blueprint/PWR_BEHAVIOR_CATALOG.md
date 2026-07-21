@@ -95,12 +95,21 @@ its consequences instead of hiding them.*
 *Feel: the level gauge is an honest instrument. It moves because inventory or temperature
 moved — and it deceives (TMI) exactly and only when the primary actually voids.*
 
+**DELIVERED 2026-07-21 (feel-plan P2).** Level is now `base(Tavg) + mass term + void term`:
+the thermal-expansion base line (2 %/°C, floored at 28 % below the program band, anchored
+55 % at full-power Tavg) plus a piecewise mass term (−100 %/frac deficit; +300 %/frac
+surplus — surplus packs the pressurizer steam space, the "going solid" regime) plus the
+saturation-gated void lift (+150 %/frac — the TMI deception). The CVCS setpoint tracks the
+same base line (HR1: indicated Tavg), so expansion never reads as a leak — the #34 bug
+class is structurally dead, and the `_mass<=1.0` floor is deleted.
+
 | ID | Behavior | Tier | Probe | Status |
 |----|----------|------|-------|--------|
-| CC-10 | Level = f(RCS inventory, thermal expansion) + void term **gated on saturation**. Independent level integrator and `_mass<=1.0` charging floor deleted. Level↔inventory track closely outside void regimes (no silent windup) | I | probe | XFAIL → P2 |
-| SS-5 | Level rises with load — **emergent** from thermal expansion once CC-10 lands (+ CVCS setpoint curve consistent with it) | I | probe | XFAIL → P2/P3 |
-| CC-8 | CVCS auto make-up holds the level curve; a leak reads as level-trend + charging-trend divergence (no leak telepathy) | C | cvcs_level_control | PASS — re-band P3 |
-| CA-3 | Level sensor fails HIGH → auto charging backs off, real inventory falls physically deep; caught via trends/subcooling | C | probe | PASS — depth honest after CC-10 |
+| CC-10 | Level = f(RCS inventory, thermal expansion) + void term **gated on saturation**. Independent level integrator and `_mass<=1.0` charging floor deleted. Level↔inventory track closely outside void regimes (no silent windup) | I | probe | **PASS** (P2, 2026-07-21) |
+| CC-10b | Deception boundary: a subcooled loss LOWERS true level; only voiding raises it | I | probe | **PASS** (new fence) |
+| SS-5 | Level rises with load — **emergent** from thermal expansion (+ CVCS setpoint curve on the same line) | I | probe | **PASS** (P2) |
+| CC-8 | CVCS auto make-up holds the level curve; a leak reads as level-trend + charging-trend divergence (no leak telepathy). Servo settles at charging = letdown + leak *exactly* (the old margin was windup drift) | C | cvcs_level_control + probe | PASS — re-band P3 |
+| CA-3 | Level sensor fails HIGH → auto charging backs off, real inventory falls physically deep; caught via trends/subcooling | C | probe | PASS — depth now unbounded (honest) |
 | CA-4 | Level sensor fails LOW → charging drives level up; PI-8 high-level trip backstops | C | todo | todo → P4 (needs PI-8) |
 
 ## 6. FG-4 — The ride-out signature

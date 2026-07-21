@@ -9,6 +9,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **PWR — the pressurizer level gauge is now physical.** Level is derived from what's
+  actually in the plant — inventory, coolant thermal expansion, and (only when the primary
+  really saturates) void displacement — instead of drifting on its own integrator. What
+  this means at the panel: level rises with load because hot water expands (the level
+  program comes free); draining genuinely lowers it; over-filling packs the steam space
+  and reads steeply toward solid; and the TMI deception (level rising while inventory
+  leaves) happens exactly when voids exist and nowhere else. The CVCS setpoint follows the
+  same expansion line, so a heat-up can no longer trick auto-charging into draining the
+  reactor. Cold-shutdown states now carry a modest real mass surplus (level 30 %).
 - **PWR — the plant is now officially its own plant.** Direction change (owner, 2026-07-20):
   the PWR is a ~100 MWe single-loop experimental unit tuned for behavior and feel, no longer
   chasing generic Westinghouse 4-loop numbers. Full plan: `Blueprint/PWR_FEEL_TUNING_PLAN.md`.
