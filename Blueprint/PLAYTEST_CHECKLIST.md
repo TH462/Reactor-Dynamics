@@ -51,5 +51,14 @@ main feedwater — AFW auto-starts, the SG drains anyway, protection wins on the
 limit. Read the new beat text in play and judge whether the drama and the alarm-flood
 reading lesson still land.
 
-## Phase 5+ (spray cap, SGTR, SI raise) — to be filled when built
+## Phase 5 — casualty ladder
+
+| Check | What good feels like | Knob if wrong |
+|---|---|---|
+| **Turbine trip revisited (trip-open dump):** the dump now drives open the instant the turbine trips (Tavg-error mode, real Westinghouse) — the catch is GRACEFUL: reactor stays near full power into the condenser, Tavg swells only ~1-5 °C. Walk rods in at leisure | Drama moved from "spike and alarms" to "the machine catches it" — confirm that reads as competence, not anticlimax | `dump_trip_mode_band_c` 8.0 (bigger = softer open) |
+| **Loss of feed + AFW blocked (the TMI arc on real physics):** lo-lo trip ~45 s, SG dries out over ~2 min, then a slow ~15-min decay-heat repressurization to the PORV lift — all emergent, no scripting | The quarter-hour dread should feel like TMI's timeline. Too fast/slow? | `sg_dryout_residual` 0.02 (smaller = faster heat-up), decay-heat constants |
+| **Full SGTR (severity 1.0):** leak ~2× charging — CVCS visibly loses (charging pegged, level falling), trip ~10 s, SI at 12.4. Then the EOP: spray the pressure down toward SG pressure and *watch the leak die with the ΔP* | The one-SG teaching: you can't isolate your only heat sink — you take the pressure to it. Confirm the leak-vs-ΔP coupling reads on the gauges | `leak_scale` 1.5, `sgtr_dp_ref` 9.8 |
+| **SI at 12.4 MPa:** injection now arrives with the low-pressure trip (12.41), not 1.4 MPa later | Casualties get help earlier — TMI module timing verified unchanged | `SI_MPA` + the ESF literal in pwr_control |
+
+## Phase 6 (ratings layer, manuals, plant name) — to be filled when built
 ## Phase 6 (ratings layer, manuals, plant name) — to be filled when built

@@ -121,6 +121,14 @@
 
   // Step 9 — primary inventory and voiding (CVCS charging/letdown + HPI/LPI/accumulator/SI − losses).
   function stepInventory(s, cfg, dt) {
+    // SGTR leak scales with the primary→secondary ΔP across the ruptured tube
+    // (feel-plan P5): full rate at the rated ΔP (~9.8 MPa), tapering to ZERO as
+    // the primary is depressurized to SG pressure — the single-SG EOP's whole
+    // strategy. Containment-side leaks (LOCA) are not ΔP-modulated here.
+    if (s._leak_to_sg && s._leak_base) {
+      var dp_ref = cfg.primary.sgtr_dp_ref || 9.8;
+      s.leak_flow = s._leak_base * clip((s.pressure_mpa - s.steam_pressure_mpa) / dp_ref, 0, 1.2);
+    }
     // Letdown first — the auto make-up law and the mass balance below both read it.
     s.letdown_flow = letdownFlow(s, cfg);
     var inj_inv = injectionFlowInv(s, cfg);

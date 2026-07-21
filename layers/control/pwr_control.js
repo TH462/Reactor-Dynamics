@@ -177,7 +177,12 @@
     turbine_trip:                { type: 'command_override', category: 'power', intercepts: ['set_steam_demand', 'set_load_target', 'connect_grid'], override_value: 0.0, display: 'Turbine Trip' },
     loss_of_offsite_power:       { type: 'physics_parameter', category: 'power', effect: 'coast_down_pumps', display: 'Loss of Offsite Power' },
     station_blackout:            { type: 'physics_parameter', category: 'power', effect: 'full_blackout', display: 'Station Blackout' },
-    sgtr:                        { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 0.03,
+    // SGTR rescaled (owner ruling, catalog v3 FG-6): leak_scale 0.03 → 1.5 puts a
+    // FULL-severity rupture at 0.12 normalized ≈ 2× charging_max (0.06) — a real
+    // full tube rupture overwhelms CVCS and forces trip + SI, which is why the
+    // EOP exists. leak_to_sg: the engine ΔP-modulates it (primary−SG pressure),
+    // so depressurizing to SG pressure STOPS the leak — the single-SG EOP.
+    sgtr:                        { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 1.5, leak_to_sg: true,
                                    severity_meta: { label: 'Leak Rate', unit: '% rated flow', min: 0, max: 8, default: 3 }, display: 'Steam Generator Tube Rupture' },
     rcp_trip:                    { type: 'physics_parameter', category: 'coolant', effect: 'stop_pump', display: 'RCP Trip' },
     loss_of_condenser_vacuum:    { type: 'physics_parameter', category: 'power', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },

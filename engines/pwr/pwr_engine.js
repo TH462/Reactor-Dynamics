@@ -843,6 +843,13 @@
           // it to a realistic slow drain (tens of minutes) that the EOP can out-inject.
           // A large-break LOCA carries no scale (leak_scale = 1) and drains fast.
           s.leak_flow = severity * (meta ? meta.max / 100 : 0.05) * (def.leak_scale != null ? def.leak_scale : 1);
+          // SGTR leaks flow primary→secondary through the ruptured tube, so they
+          // scale with the pressure DIFFERENCE across it (feel-plan P5): stash the
+          // base rate and let stepInventory modulate it by ΔP each step. This is
+          // what makes the single-SG EOP physical — depressurize the primary to
+          // SG pressure and the leak STOPS. Containment-side leaks stay static.
+          s._leak_to_sg = !!def.leak_to_sg;
+          s._leak_base = s.leak_flow;
           break;
         case 'rod_withdrawal_runaway':
         case 'stuck_control_rod':
@@ -889,7 +896,7 @@
         case 'vacuum_decay': s.condenser_cooling_available = true; break;
         case 'degrade_hpi': s.hpi_flow_multiplier = 1.0; break;
         case 'block_afw': s.afw_blocked = false; s.afw_active = !!s.afw_pump_demand; break;   // valves reopened: flow resumes if the pumps are demanded
-        case 'primary_leak': s.leak_flow = 0; break;
+        case 'primary_leak': s.leak_flow = 0; s._leak_base = 0; s._leak_to_sg = false; break;
         case 'rod_withdrawal_runaway': s._fail.rod_runaway = { active: false, rate: 0 }; break;
         case 'stuck_control_rod': s._fail.stuck_rod = { active: false, worth_held: 0 }; break;
         case 'secondary_depressurize': s._fail.steam_break = { active: false, size: 0 }; break;

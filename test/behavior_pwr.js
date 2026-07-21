@@ -49,7 +49,7 @@
     'TR-7': 'probe', 'TR-8': 'probe',
     'TR-9': 'existing:run_ops sg_overfeed_p14 + run_pwr feedwater_isolation',
     'TR-10': 'probe', 'TR-11': 'existing:run_ops heaters vs spray fight (end-state pin: todo)',
-    'TR-12': 'existing:run_campaign pwr_slb', 'TR-13': 'existing:run_ops SGTR stabilize',
+    'TR-12': 'existing:run_campaign pwr_slb', 'TR-13': 'probe + ops SGTR single-SG EOP',
     'TR-14': 'existing:campaign SBO fact (document in manual)',
     'CA-1': 'existing:run_campaign tmi2 p1-p3 (re-validate after tuning)',
     'CA-2': 'existing:run_pwr merged_injection_curve + accumulator_arming_boundary',
@@ -408,7 +408,7 @@
         h.run(60);
         var inv0 = h.ts().core_inventory_pct;
         h.cmd('inject_failure', { failure_id: 'pzr_level_sensor_stuck' });
-        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.15 });
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.003 });   // = old 0.15 pre-rescale (leak_scale 0.03 -> 1.5)
         var ind0 = h.ins().pzr_level;
         h.run(600);
         var t = h.ts();
@@ -420,6 +420,36 @@
           h.range('charging_flow_actual').max <= t.letdown_flow_actual + 0.012, 'no make-up response');
         ck('truth diverged from indication (inventory moved ≥ 1.5 % while the gauge held still)',
           fmt(t.core_inventory_pct - inv0, 2), Math.abs(t.core_inventory_pct - inv0) >= 1.5, '|Δ| ≥ 1.5');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    // TR-13 (FG-6 ladder, owner-ruled rescale): a FULL tube rupture (leak ≈ 0.12
+    // normalized ≈ 2× charging_max) OVERWHELMS the CVCS — level and pressure
+    // fall through the trip + SI no matter what auto make-up does. That is the
+    // whole reason the EOP exists. And because the leak is ΔP-scaled, the
+    // depressurization SELF-LIMITS it — pinned here, driven to termination in
+    // the ops single-SG EOP scenario.
+    'TR-13': function () {
+      return test('TR-13 full SGTR — overwhelms charging, forces trip + SI', function (ck) {
+        var h = H('hot_full_power');
+        h.cmd('set_cvcs_auto', { active: true });
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 1.0 });
+        h.run(1);
+        var base = h.eng.s._leak_base;
+        ck('full-severity BASE leak exceeds charging capacity (~2×)', fmt(base, 3) + ' vs max 0.06',
+          base > 0.06, '> 0.06');
+        var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 900);
+        ck('CVCS cannot hold it — the plant trips', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip',
+          dt >= 0, 'trips');
+        var ds = h.runUntil(function (ts) { return ts.hpi_active; }, 600);
+        ck('SI actuates on the continuing depressurization', ds >= 0 ? fmt(ds, 0) + ' s after trip' : 'no SI',
+          ds >= 0, 'SI');
+        h.run(300);
+        var t = h.ts();
+        ck('ΔP scaling limits the delivered leak below the base rate',
+          fmt(t.leak_flow, 3) + ' vs base ' + fmt(base, 3), t.leak_flow < base * 0.9, '< 0.9 × base');
         T.checkSanity(ck, h);
       });
     },
@@ -514,7 +544,7 @@
         var h = H('hot_full_power');
         h.cmd('set_cvcs_auto', { active: true });
         h.run(60);
-        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.1 });
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.002 });   // = old 0.1 pre-rescale (stays inside CVCS capacity by design)
         h.run(900);
         var t = h.ts();
         // With DERIVED level the servo settles at charging = letdown + leak EXACTLY
@@ -538,7 +568,7 @@
         var h = H('hot_full_power');
         h.cmd('set_cvcs_auto', { active: true });
         h.run(60);
-        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.1 });
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.002 });   // = old 0.1 pre-rescale (stays inside CVCS capacity by design)
         h.run(900);
         var t = h.ts();
         ck('pzr level held near program (50..60 %)', fmt(t.pzr_level_pct, 1),
@@ -558,7 +588,7 @@
         var h = H('hot_full_power');
         h.run(30);
         var l0 = h.ts().pzr_level_pct, inv0 = h.ts().core_inventory_pct;
-        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.3 });   // CVCS stays MANUAL: nothing makes it up
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.006 });   // = old 0.3 pre-rescale; CVCS stays MANUAL: nothing makes it up
         h.run(120);
         var t = h.ts();
         ck('still subcooled through the early drain', fmt(t.subcooling_c, 1), t.subcooling_c > 0, '> 0');

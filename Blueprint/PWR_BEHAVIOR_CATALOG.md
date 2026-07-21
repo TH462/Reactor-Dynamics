@@ -54,7 +54,7 @@ Feel is set by capacity *ratios*, not absolute numbers. These are the levers the
 | Steam dump ÷ rated steam flow | **1.05 — SET (P4)** | ride-out enabler; vacuum/condenser-gated | Turbine trip = maneuver, not scram (FG-4) | done |
 | Spray ÷ heat-sink-loss insurge | wins (K 1.7, uncapped) | **must lose** (flow cap) | PORV lifts in the TMI opener (FG-6) | P5 |
 | Spray ÷ normal step insurge | wins | still wins | Step insurges stay arrested | P5 |
-| Full-SGTR leak ÷ charging_max | 0.03 ÷ 0.06 (charging wins) | **≈ 0.12 ÷ 0.06** (leak wins 2×) | Full SGTR *forces* trip + SI (FG-6) | P5 |
+| Full-SGTR leak ÷ charging_max | **0.12 ÷ 0.06 — SET (P5)**, ΔP-scaled to zero at SG pressure | leak wins 2×; depressurization kills it | Full SGTR *forces* trip + SI; the EOP works (FG-6) | done |
 | AFW cap ÷ post-trip decay heat | 0.15 (recovers ~5 min) | keep | Post-trip SG recovery tempo (FG-5) | P4 |
 | No-load Tavg anchor | **297 °C — SET (P3, 2026-07-21)** | dump setpoint 8.23 MPa = Psat(297); shallow 7 °C program | Post-trip shrink bite; program span (FG-5/FG-2) | done |
 | `K_sg_level` / dump rate | 5.0 | tune with anchor | Shrink depth/speed (FG-5) | P4 |
@@ -162,7 +162,7 @@ runs exactly as canon. Deception lives only where physics puts it.*
 | TR-10 | Stuck-open PORV (SBLOCA): depressurize → low-P trip → SI; **indicated level rises while inventory falls** (void deception, canon); block valve terminates | C | run_pwr flagship_tmi + module | PASS |
 | CA-1 | TMI-2 module p1–p3 milestones achievable; story clock re-timed after P5 tuning | C | campaign tmi2 | PASS — re-time P5 |
 | CA-2 | SBLOCA spectrum: accumulators at 4.14 MPa, RHR/LPI < 2.76 MPa, Tavg pins near saturation on blowdown | C | run_pwr eccs probes | PASS |
-| TR-13 ⚑ | **SGTR, single-SG EOP (re-shaped):** full severity overwhelms charging (leak_scale ≈ 0.12) → trip + SI; there is no intact SG to steam — EOP is **depressurize primary below SG pressure to kill the leak**, then cooldown to RHR; steaming the contaminated SG is a radiological teaching point | C | ops SGTR (re-author) | re-author → P5 |
+| TR-13 | **SGTR, single-SG EOP — DELIVERED (P5):** full severity = 0.12 normalized ≈ 2× charging (leak_scale 1.5), **ΔP-scaled** through the ruptured tube — trip + SI forced (battery pin), and the EOP *depressurize to SG pressure* physically kills the leak (ops scenario: 0.056 → 0.006, inventory recovers, rides the sat-line band on the way down). Steaming the contaminated SG = P6 manual note | C | probe + ops EOP | **PASS** (P5) |
 | TR-5 | MSIV closure @100 %: SG safeties pop 9.31/reseat 9.0, primary stabilizes at safeties' Tsat, inventory retained | C | run_pwr msiv | PASS |
 | TR-12 | Steam line break: blowdown cooldown → positive reactivity → trip + SI; MSIV limits | C | campaign pwr_slb | PASS — re-validate P5 |
 | TR-11 | Spray valve fails open: slow depressurization, heaters lose, low-P trip unless isolated | C | ops heaters-vs-spray | PASS? — end-state pin todo |

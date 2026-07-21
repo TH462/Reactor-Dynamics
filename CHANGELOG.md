@@ -9,6 +9,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **PWR — a full tube rupture is now a real emergency, and its procedure really works.**
+  The SGTR leak scaled up ~4× (a full-severity rupture is twice what charging can make
+  up, so it forces the trip and safety injection instead of being quietly out-pumped) and
+  now scales with the pressure difference across the ruptured tube — so the single-SG
+  EOP, *depressurize the primary to steam-generator pressure*, physically stops the leak.
+  Safety injection also actuates earlier (12.4 MPa, up from 11.03), arriving together
+  with the low-pressure reactor trip.
 - **PWR — a turbine trip no longer scrams the reactor: this plant rides it out.** The
   steam dump is sized at 105 % of rated steam flow, so losing the turbine is a transient
   the operator manages — the dump catches the load, the plant self-stabilizes at partial
