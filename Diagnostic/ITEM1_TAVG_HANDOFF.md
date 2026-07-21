@@ -1,5 +1,10 @@
 # Tuning-pass Item 1 (Tavg program) — PAUSED, uncommitted handoff
 
+**Status: RESOLVED 2026-07-20 — the re-plan landed as `Blueprint/PWR_FEEL_TUNING_PLAN.md`
+(v1.0, approved) and this work was COMMITTED as Phase 0** (machinery kept, the 292→306
+anchors are placeholders until Phase 3 picks this plant's own map). The physics findings
+below remain the durable record. Original pause note follows.
+
 **Status: paused 2026-07-20 at owner request. Nothing committed. Direction change:**
 treat this plant as its own unique plant and tune for desired behavior/feel, not
 catalog numbers borrowed from a generic Westinghouse 4-loop. Fable to re-plan.

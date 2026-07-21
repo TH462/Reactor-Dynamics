@@ -8,6 +8,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **PWR — the plant is now officially its own plant.** Direction change (owner, 2026-07-20):
+  the PWR is a ~100 MWe single-loop experimental unit tuned for behavior and feel, no longer
+  chasing generic Westinghouse 4-loop numbers. Full plan: `Blueprint/PWR_FEEL_TUNING_PLAN.md`.
+- **PWR — coolant temperature now follows a sliding program with load.** Average coolant
+  temperature rises from a no-load anchor to its full-power value as load increases (it used
+  to sit flat and even sag at mid-load), every startup state initializes as a true steady
+  state, and the steam-dump setpoint anchors the no-load end (8.90 → 7.67 MPa). Current
+  anchor numbers are placeholders until the feel pass picks this plant's own map.
+- **PWR — partial-power states now start with the right xenon.** Low-power initial conditions
+  used to seed full-power iodine/xenon, so a 5 % steady state slowly drooped to ~1 % as the
+  excess iodine decayed in. States now initialize at their own power's equilibrium — 5 %
+  holds indefinitely.
+- **PWR — Evening Shift exam re-calibrated for the new load coupling.** Under the temperature
+  program a slider-only 850 MWe ask settles ~895 (no more undershoot through 870), and the
+  down-leg shrink parks SG level near 31 % until the feed is minded — the exam's phase
+  markers moved accordingly (reduction credit < 905, hold line < 910), and feed vigilance is
+  now genuinely required for full marks on the manual route.
+
 ### Fixed
 - **PWR — the automatic charging control now senses the pressurizer-level *instrument*, not the
   true level.** Every automatic control now reads the same (lagged/failable) sensors the operator

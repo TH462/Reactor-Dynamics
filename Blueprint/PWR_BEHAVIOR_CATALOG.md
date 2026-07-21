@@ -4,15 +4,16 @@
 4, 5, and 9). This is the tuning-pass ground truth; changes require an owner ruling.**
 Date: 2026-07-20
 
-> **⚑ DIRECTION CHANGE (2026-07-20, owner): re-plan pending — do NOT execute this catalog
-> as-is.** The owner has decided to treat this as its own unique plant and tune for desired
-> behavior/feel, not the generic-Westinghouse target numbers below. **Fable to re-plan.**
-> Item 1 (SS-2 Tavg program) was partially implemented then paused; the work is **uncommitted**.
-> Read **`Diagnostic/ITEM1_TAVG_HANDOFF.md`** first — it records exactly what changed, the test
-> status at pause, and three durable physics findings (Tavg is pinned by the boron/MTC trim, so
-> the "feel" lever is the no-load anchor + Tref program; the SS-6 droop was a xenon-IC bug; and
-> post-trip SG shrink is sensitive to the no-load Tavg). The bands below are now *reference*,
-> not ground truth, until the owner re-freezes.
+> **⚑ DIRECTION CHANGE (2026-07-20, owner) — RE-PLANNED. The replacement plan is
+> `Blueprint/PWR_FEEL_TUNING_PLAN.md` (v1.0, approved).** This sim is now **its own plant**:
+> a ~100 MWe / ~300 MWt single-loop experimental PWR, tuned for behavior/feel — the
+> generic-Westinghouse bands below are *historical reference only* and will be replaced by
+> catalog v3 (feel-first; this plant's own numbers minted at the Phase-7 freeze). Item 1's
+> machinery (sliding-Tavg init/program hook, xenon ICs) is committed with placeholder
+> anchors; `Diagnostic/ITEM1_TAVG_HANDOFF.md` records the physics findings that motivated
+> the re-plan. Key ruling deltas vs. §8 below: PI-1/PI-2/PI-6 are DROPPED (ride-out plant,
+> ~100 % steam dump; single loop), TR-4 is retired, and the SGTR EOP is re-shaped for a
+> single SG. TMI-2 remains canon.
 
 ## Purpose and rules
 
