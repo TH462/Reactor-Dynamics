@@ -67,6 +67,14 @@
              : Math.max(0, _wide / (t.sg_dryout_wide_pct || 30));
     var _dry_factor = (t.sg_dryout_residual || 0.05) + (1 - (t.sg_dryout_residual || 0.05)) * _wet;
     var Q_coolant_to_sg = t.h_sg * s.flow_frac * _dry_factor * (s.tavg_c - s.t_secondary_c);
+    // REVERSE flow (SG hotter than the primary — e.g. a cold RCS with the
+    // secondary at atmospheric saturation ~100 °C) transfers poorly: the
+    // boiling regime that gives the SG its rated conductance only exists
+    // primary→secondary; backwards it is condensate-film/natural convection.
+    // Without this, starting RCPs on a cold plant let the Tsat-floored
+    // secondary back-heat the primary at ~1 °C/s forever (an infinite-
+    // reservoir artifact the old fire-hose spray masked as a pressure spike).
+    if (Q_coolant_to_sg < 0) Q_coolant_to_sg *= (t.sg_reverse_frac || 0.05);
     s._Q_coolant_to_sg = Q_coolant_to_sg;
     // Residual Heat Removal (RHR, §6.9): the low-pressure shutdown-cooling loop.
     // Active = the hot-leg suction valve is open (s.rhr_active; the valve interlock

@@ -161,6 +161,14 @@
     if (s._fail.steam_break.active) {
       s.steam_pressure_mpa -= cfg.physics_failures.STEAM_BREAK_RATE * s._fail.steam_break.size * dt;
     }
+    // Thermodynamic bound (feel-plan P5): the secondary saturates from PRIMARY
+    // heat, so it can never sit hotter than the coolant heating it — cap SG
+    // pressure at Psat(Tavg). Kills the cold-SG pressurization runaway (a
+    // marginal-ΔT bottling artifact where the integrating SG out-heated the
+    // primary at ~1 °C/s and blew the RCS past the high-pressure trip during
+    // every cold pressurization — previously masked by the fire-hose spray).
+    var psat_tavg_cap = Math.pow(Math.max(s.tavg_c, 1) / 179.47, 1 / 0.239);
+    if (s.steam_pressure_mpa > psat_tavg_cap) s.steam_pressure_mpa = psat_tavg_cap;
     s.steam_pressure_mpa = Math.max(0.1, s.steam_pressure_mpa);
 
     // Turbine governor / control valve (§6.4) — EHC LOAD-CONTROL mode. The valve
