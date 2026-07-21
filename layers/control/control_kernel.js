@@ -743,6 +743,14 @@
   // damped PV rate for derivative (anticipation) action.
   ControlLayer.prototype._trackChannel = function (c, ctx, dt) {
     var def = c.def;
+    // Programmed setpoint (e.g. the PWR rods_tavg Tref-on-load program, catalog §8.1):
+    // the working setpoint is recomputed each evaluation from the plant state rather
+    // than held at the value captured at engage, so it tracks load. spEff still slews
+    // toward it below, so the programmed setpoint moves smoothly.
+    if (def.program && def.sp) {
+      var pg = def.program(ctx);
+      if (pg != null && isFinite(pg)) c.sp = clip(pg, def.sp.min, def.sp.max);
+    }
     if (def.sp && c.sp != null) {
       if (c.spEff == null) c.spEff = c.sp;
       if (def.spSlew && dt > 0) {

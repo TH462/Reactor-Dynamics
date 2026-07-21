@@ -28,8 +28,6 @@
   // ------------------------------------------------------------- XFAIL (strict)
   // id → why it is expected to fail today (catalog §8 decision that will fix it).
   var XFAIL = {
-    'SS-2': 'no Tavg program — flat ~303/304 °C, 50% sags to ~291 (catalog §8.1)',
-    'SS-6': 'NEW (battery discovery 2026-07-20): 5% hands-off droops continuously to ~1% in 30 min — low-power equilibrium not held; tune with SS-2 program work',
     'SS-5': 'no pzr level program — constant 55% setpoint (catalog §8.7)',
     'TR-1': 'no reactor-trip-on-turbine-trip above P-9 (PI-1, catalog §8.2)',
     'TR-2': 'spray uncapped + missing PI-1/PI-2 — PORV never lifts on loss of feed (#22)',

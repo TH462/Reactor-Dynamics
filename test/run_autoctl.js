@@ -157,7 +157,11 @@ test('PWR · all-auto except grid: demand swing 1000→700→1000', function (ck
   // the demand nearly 1:1 at any SG pressure — 700 MW asked settles ~70%
   // mean (power breathes a few % inside the rod channel's Tavg deadband).
   ck('power followed demand down (mean)', pDown.toFixed(1), near(pDown, 71, 5), '71±5 (compensated governor delivers the ask)');
-  ck('tavg restored', i.tavg.toFixed(2) + ' vs sp ' + sp.toFixed(2), near(i.tavg, sp, 1.5), 'sp±1.5');
+  // Sliding Tavg program (SS-2): Tref slides DOWN with load, and the rods walk Tavg
+  // down to it — the old flat "tavg restored to the engage value" was the P4 defect.
+  var spDown = r.chan('rods_tavg').setpoint;
+  ck('Tref slid down with load', spDown.toFixed(2) + ' vs full-load ' + sp.toFixed(2), spDown < sp - 2, '< full-load − 2 °C');
+  ck('tavg tracked the program down', i.tavg.toFixed(2) + ' vs Tref ' + spDown.toFixed(2), near(i.tavg, spDown, 1.5), 'Tref±1.5');
   ck('SG level held', i.sg_level.toFixed(1), near(i.sg_level, r.chan('feed_sg').setpoint, 4), 'sp±4');
   r.cmd({ action: 'set_steam_demand', mwe: 1000 });
   r.run(800);
@@ -165,7 +169,8 @@ test('PWR · all-auto except grid: demand swing 1000→700→1000', function (ck
   i = inst(r);
   ck('no scram back at 1000 MW', scrammed(r), !scrammed(r), 'false');
   ck('power followed demand up (mean)', pUp.toFixed(1), near(pUp, 100, 6), '100±6');
-  ck('tavg restored again', i.tavg.toFixed(2), near(i.tavg, sp, 1.5), 'sp±1.5');
+  var spUp = r.chan('rods_tavg').setpoint;
+  ck('tavg back on program at full load', i.tavg.toFixed(2) + ' vs Tref ' + spUp.toFixed(2), near(i.tavg, spUp, 1.5), 'Tref±1.5');
 });
 
 test('PWR · secondary-on-auto while the operator moves rods', function (ck) {
@@ -179,14 +184,16 @@ test('PWR · secondary-on-auto while the operator moves rods', function (ck) {
   ck('pressure held', ts(r).pressure_mpa.toFixed(2), near(ts(r).pressure_mpa, 15.41, 0.4), '15.41±0.4');
 });
 
-test('PWR · rod auto: T-ref captured at engage, deadband lockup, manual motion → MAN', function (ck) {
+test('PWR · rod auto: T-ref on the load program, deadband lockup, manual motion → MAN', function (ck) {
   var r = rig('pwr', 'hot_full_power');
   r.run(10);
   var tavgAtEngage = inst(r).tavg;
   r.engage(['rods_tavg']);
   var c = r.chan('rods_tavg');
-  ck('T-ref := indicated Tavg at engage', c.setpoint.toFixed(2) + ' vs tavg ' + tavgAtEngage.toFixed(2),
-    near(c.setpoint, tavgAtEngage, 0.5), 'tavg ±0.5');
+  // Tref is programmed on load (SS-2), not captured; at full power the program value
+  // equals the operating Tavg, so engaging here holds the plant where it sits.
+  ck('T-ref = full-power program point ≈ operating Tavg', c.setpoint.toFixed(2) + ' vs tavg ' + tavgAtEngage.toFixed(2),
+    near(c.setpoint, tavgAtEngage, 1.0), 'tavg ±1.0');
   // Steady plant inside the ±0.8 °C deadband: the channel locks up (no nudges).
   var before = r.sent.filter(function (x) { return x.action === 'rod_nudge'; }).length;
   r.run(120);

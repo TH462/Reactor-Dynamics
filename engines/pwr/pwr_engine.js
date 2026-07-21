@@ -933,18 +933,30 @@
     var cfg = this.cfg, init = cfg.initial_states[name] || cfg.initial_states.hot_full_power;
     var P0 = init.power;
 
-    // Equilibrium temperatures from the steady heat balance (see derivation in
-    // the module notes): full power → Tavg ≈ 304 °C, fuel ≈ +389 °C.
-    var Tsec = TH.T_sat(cfg.steam_generator.steam_p_rated);
-    var heatToCoolant = cfg.thermal.h_fc * (P0 * cfg.thermal.heat_gen_coeff / cfg.thermal.h_fc); // = P0*heat_gen
+    // Sliding Tavg program (SS-2, catalog §8.1). Tavg is anchored to the load-
+    // programmed reference — a LINEAR interpolation in load between the no-load
+    // anchor (Tsat of the steam-dump setpoint ≈ 292 °C) and the full-power coolant
+    // equilibrium (~304-306 °C) — instead of the old flat-secondary anchor (which
+    // pinned the secondary pressure and let Tavg SAG with load, the SS-2/SS-3
+    // defect). The secondary saturation temperature is then DERIVED from the steady
+    // heat balance at this power (Tavg − Tsec = heat in / h_sg), so each init state
+    // is a TRUE steady state: the boron trim (below) pins Tavg here via the MTC, and
+    // the derived steam pressure means the secondary does not have to drift to a new
+    // equilibrium after reset. At full power the program top equals the old value, so
+    // the MTC/Doppler reference temps and the full-power operating point are unchanged.
     var TavgMinusTsec = (P0 * cfg.thermal.heat_gen_coeff
-      + cfg.thermal.heat_gen_coeff * (cfg.thermal.pump_heat_frac || 0)) / cfg.thermal.h_sg;   // + RCP heat (full flow)
-    var Tavg = Tsec + TavgMinusTsec;
+      + cfg.thermal.heat_gen_coeff * (cfg.thermal.pump_heat_frac || 0)) / cfg.thermal.h_sg;   // heat in (core + RCP) / h_sg
+    var Tnl = TH.T_sat(cfg.steam_generator.steam_dump_setpoint);           // program bottom: no-load Tavg
+    var Tfp = this._computeEquilibriumTemps(1.0).Tavg;                     // program top: full-power equilibrium
+    var Tavg = Tnl + (Tfp - Tnl) * clip(P0, 0, 1);                         // Tref(load), linear
+    var Tsec = Tavg - TavgMinusTsec;                                       // derived secondary saturation temp
+    var steam_p = PZ.P_sat_from_T(Tsec);                                  // derived secondary pressure (a true steady state)
     var Tfuel = Tavg + P0 * cfg.thermal.heat_gen_coeff / cfg.thermal.h_fc;
     var delta_T = cfg.thermal.delta_T_rated * P0 / 1.0;
 
-    var X_eq = this._computeXeq();
-    this._X_eq = X_eq;
+    this._X_eq = this._computeXeq(1);        // full-power equilibrium: the 100 % xenon reference (normalizer)
+    var X_eq0 = this._computeXeq(P0);        // THIS state's equilibrium xenon (SS-6: 5 % starts at 5 % xenon)
+    var I_eq0 = this._I_eq(P0);
 
     var d = cfg.kinetics.delayed;
     var C = [];
@@ -956,13 +968,13 @@
     var s = {
       sim_time: 0,
       _P: P0, power_pct: P0 * 100, _prev_power_pct: P0 * 100, _power_rate: 0, _rho: 0,
-      _C: C, _I: init.subcritical ? 0 : this._I_eq(), _X: init.subcritical ? 0 : X_eq,
+      _C: C, _I: init.subcritical ? 0 : I_eq0, _X: init.subcritical ? 0 : X_eq0,
       // Decay heat pre-loaded to the equilibrium fraction for this power (a
       // reactor that has been running a while), ~0 for a subcritical cold start.
       _H1: init.subcritical ? 0 : cfg.kinetics.decay.H1_0 * P0,
       _H2: init.subcritical ? 0 : cfg.kinetics.decay.H2_0 * P0,
       decay_heat_pct: init.subcritical ? 0 : (cfg.kinetics.decay.H1_0 + cfg.kinetics.decay.H2_0) * P0 * 100,
-      xenon_pct_eq: init.subcritical ? 0 : 100,
+      xenon_pct_eq: init.subcritical ? 0 : (X_eq0 / this._X_eq) * 100,   // % of full-power equilibrium xenon
       boron_ppm: 800,
 
       fuel_temp_c: Tfuel, tavg_c: Tavg, thot_c: Tavg + delta_T / 2, tcold_c: Tavg - delta_T / 2,
@@ -1013,7 +1025,7 @@
       // Seed so the derived narrow == sg_level_nominal at init (nominal sits in the window).
       sg_level_wide_pct: cfg.steam_generator.sg_wr_lo +
         (cfg.steam_generator.sg_wr_hi - cfg.steam_generator.sg_wr_lo) * cfg.steam_generator.sg_level_nominal / 100,
-      steam_pressure_mpa: cfg.steam_generator.steam_p_rated,
+      steam_pressure_mpa: steam_p,   // derived from the Tavg program (SS-2), not the flat rated value
       msiv_open: true, sg_safety_open: false, sg_safety_flow: 0,   // main steam isolation + SG code safeties
       steam_flow_normalized: P0, fw_flow_normalized: P0,
       // Condensate pump (feeds the feed-pump suction — gates MAIN feed) + the flow/
@@ -1137,13 +1149,21 @@
     return s;
   };
 
-  PWREngine.prototype._computeXeq = function () {
+  // Equilibrium xenon / iodine at normalized power P (default full power). Iodine
+  // I_eq = γ_I·P/λ_I; xenon X_eq = P·(γ_I+γ_X)/(λ_X+σφ·P). Parameterizing by P lets a
+  // partial-power init START at ITS equilibrium xenon instead of the full-power value —
+  // the SS-6 fix: a plant sitting at steady 5 % carries 5 %-equilibrium xenon, so it does
+  // not suffer a spurious post-downpower xenon in-growth (I decaying into X) that droops
+  // power to ~1 % over 30 min. The normalizer this._X_eq stays the P=1 value (the "100 %
+  // xenon" reference for xenon_pct_eq and the rho_xenon worth).
+  PWREngine.prototype._computeXeq = function (P) {
     var x = this.cfg.kinetics.xenon;
-    var I_eq = x.gamma_I / x.lambda_I;
-    return (x.lambda_I * I_eq + x.gamma_X) / (x.lambda_X + x.sigma_phi);
+    if (P == null) P = 1;
+    var I_eq = x.gamma_I * P / x.lambda_I;
+    return (x.lambda_I * I_eq + x.gamma_X * P) / (x.lambda_X + x.sigma_phi * P);
   };
-  PWREngine.prototype._I_eq = function () {
-    var x = this.cfg.kinetics.xenon; return x.gamma_I / x.lambda_I;
+  PWREngine.prototype._I_eq = function (P) {
+    var x = this.cfg.kinetics.xenon; return x.gamma_I * (P == null ? 1 : P) / x.lambda_I;
   };
 
   // Trim boron so the net reactivity is exactly critical (ρ = 0) at the operating
@@ -1439,12 +1459,14 @@
         var h = new Harness('hot_zero_power');
         var t0 = h.ts();
         ck('subcritical', t0.reactivity_pcm.toFixed(0), t0.reactivity_pcm < 0, '< 0');
-        ck('Tavg ≈ 304 °C at reset', t0.tavg_c.toFixed(2), near(t0.tavg_c, 304, 3), '304 ±3');
+        // No-load Tavg is the BOTTOM of the sliding Tavg program (SS-2/SS-4): Tsat of the
+        // steam-dump setpoint ≈ 292 °C (was the flat 304 anchor the program replaces).
+        ck('Tavg ≈ 292 °C at reset (no-load program point)', t0.tavg_c.toFixed(2), near(t0.tavg_c, 292, 3), '292 ±3');
         ck('control bank fully inserted', h.eng.getControlState().rod_groups[0].position_pct.toFixed(1), near(h.eng.getControlState().rod_groups[0].position_pct, 0, 1), '0 ±1');
         ck('pressure ≈ 15.41 MPa', t0.pressure_mpa.toFixed(3), near(t0.pressure_mpa, 15.41, 0.25), '15.41 ±0.25');
         h.run(100);
         var t = h.ts();
-        ck('Tavg holds ~304 °C (idle HZP)', t.tavg_c.toFixed(2), near(t.tavg_c, 304, 4), '304 ±4');
+        ck('Tavg holds ~292 °C (idle HZP)', t.tavg_c.toFixed(2), near(t.tavg_c, 292, 4), '292 ±4');
         ck('still subcritical', t.reactivity_pcm.toFixed(0), t.reactivity_pcm < 0, '< 0');
       });
     },
@@ -2299,15 +2321,19 @@
         h.cmd({ action: 'inject_failure', failure_id: 'turbine_trip' });
         h.cmd({ action: 'scram' });
         h.cmd({ action: 'set_afw', active: true });
-        // 300 s: the post-trip dump out-draws AFW at first; once decay heat and
-        // SG pressure settle, AFW's built-in level hold carries the SG at its
-        // regulation point (~the hold target) — delivering through the latch.
-        h.run(300);
+        // The post-trip cooldown to the (now lower, SS-2) no-load Tavg ≈ 292 °C dumps the
+        // primary's stored sensible heat into the SG: the auto steam dump vents that burst
+        // and the narrow SG level dips hard before AFW — added DOWNSTREAM of the isolation
+        // gate — arrests the drain and recovers the SG to its regulation band. The point of
+        // the test is that AFW keeps delivering THROUGH THE LATCH; the recovery proves it.
+        // (Deeper/slower than the pre-program transient, when no-load Tavg ≈ 303 meant almost
+        // no post-trip cooldown — a downstream ripple of the Tavg program, catalog §8.1.)
+        h.run(600);
         ck('AFW still delivers through the isolation', h.eng.s.afw_flow_normalized.toFixed(3),
           h.eng.s.afw_flow_normalized > 0.02, '> 0.02 (downstream of the gate)');
         var lvl2 = h.ts().sg_level_pct;
-        ck('AFW holds the level at its regulation point (not dry)', lvl1.toFixed(1) + ' → ' + lvl2.toFixed(1),
-          lvl2 > 18, '> 18% (hold target band)');
+        ck('AFW recovers the SG to its regulation band', lvl1.toFixed(1) + ' → ' + lvl2.toFixed(1),
+          lvl2 > 18, '> 18% (AFW hold target band)');
         h.cmd({ action: 'isolate_feedwater', active: false });
         ck('operator restore clears the latch', h.eng.s.feedwater_isolated, h.eng.s.feedwater_isolated === false, 'false');
       });

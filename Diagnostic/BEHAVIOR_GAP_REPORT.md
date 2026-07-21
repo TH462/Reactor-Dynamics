@@ -6,15 +6,7 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 11 pass, 8 known gaps (xfail).
-
-## SS-2 — SS-2 Tavg program — rises with load (292 → 306 °C)
-*Known gap:* no Tavg program — flat ~303/304 °C, 50% sags to ~291 (catalog §8.1)
-
-- **no-load Tavg 290..294 °C** — required `290..294`, observed `302.8`
-- **50% Tavg 296..302 °C (SS-3)** — required `296..302`, observed `287.6`
-- **program rises ≥ 8 °C no-load → full** — required `≥ 8`, observed `1.3`
-- **monotonic: no-load < 50% < 100%** — required `monotonic`, observed `302.8 < 287.6 < 304.1`
+Battery result: 13 pass, 6 known gaps (xfail).
 
 ## SS-5 — SS-5 pzr level program — level rises with Tavg
 *Known gap:* no pzr level program — constant 55% setpoint (catalog §8.7)
@@ -22,37 +14,31 @@ Battery result: 11 pass, 8 known gaps (xfail).
 - **no-load level ≤ 40 %** — required `≤ 40`, observed `55.3`
 - **program rises ≥ 15 % no-load → full** — required `≥ 15`, observed `-0.3`
 
-## SS-6 — SS-6 5% steady — stable indefinitely on the dump
-*Known gap:* NEW (battery discovery 2026-07-20): 5% hands-off droops continuously to ~1% in 30 min — low-power equilibrium not held; tune with SS-2 program work
-
-- **power still 5 ±2 % after 30 min hands-off** — required `3..7`, observed `1.0`
-- **no continuing droop over the last 10 min (±0.5 %)** — required `flat`, observed `2.48 → 1.05`
-- measurement: lowest power seen (at s) = `1.05 @ 1800`
-
 ## TR-1 — TR-1 turbine trip @100% — anticipatory reactor trip (P-9)
 *Known gap:* no reactor-trip-on-turbine-trip above P-9 (PI-1, catalog §8.2)
 
-- **reactor trips within 5 s of turbine trip** — required `≤ 5 s`, observed `46.0 s`
-- measurement: peak pressure after TT = `15.57 MPa`
-- measurement: peak Tavg after TT = `324.8 °C`
+- **reactor trips within 5 s of turbine trip** — required `≤ 5 s`, observed `39.5 s`
+- measurement: peak pressure after TT = `15.54 MPa`
+- measurement: peak Tavg after TT = `320.9 °C`
 
 ## TR-2 — TR-2 loss of main feedwater @100% — the TMI opener
 *Known gap:* spray uncapped + missing PI-1/PI-2 — PORV never lifts on loss of feed (#22)
 
-- **primary pressure reaches PORV lift 16.20 MPa** — required `≥ 16.20`, observed `15.52`
+- **primary pressure reaches PORV lift 16.20 MPa** — required `≥ 16.20`, observed `15.50`
 - **PORV lifted** — required `lifted`, observed `never lifted`
 
 ## CC-3 — CC-3 post-trip feedwater — MFW isolates, AFW takes the SGs
 *Known gap:* no post-trip feedwater isolation / AFW handoff (P-4 analog, catalog §8.4)
 
 - **main feed isolated once Tavg is at no-load (fw_flow < 0.05)** — required `< 0.05`, observed `0.052`
+- **SG level held by AFW band (≥ 15 %)** — required `≥ 15`, observed `0.0`
 
 ## CC-5 — CC-5 spray capacity — cannot suppress loss-of-heat-sink spike
 *Known gap:* spray capacity uncapped — suppresses loss-of-heat-sink repressurization (#22/#23)
 
-- **pressure reaches PORV lift 16.20 MPa despite spray AUTO** — required `≥ 16.20`, observed `15.57`
+- **pressure reaches PORV lift 16.20 MPa despite spray AUTO** — required `≥ 16.20`, observed `15.53`
 - **PORV lifted** — required `lifted`, observed `never lifted`
-- measurement: observed peak pressure = `15.57 MPa`
+- measurement: observed peak pressure = `15.53 MPa`
 
 ## CC-10 — CC-10 level↔mass coupling — CVCS holds level WITHOUT inventory windup
 *Known gap:* pzr level and RCS mass are decoupled integrators — CVCS holds level while true inventory winds to the tank cap (catalog §8.5)
