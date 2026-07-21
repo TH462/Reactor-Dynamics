@@ -1,6 +1,8 @@
 # PWR Behavior Catalog — Tuning-Pass Ground Truth (DRAFT for owner red-line)
 
-**Status: DRAFT v1 — awaiting owner review. Nothing is tuned against this until red-lined.**
+**Status: v1.1 — owner rulings of 2026-07-20 recorded in §8. Open before freeze: final owner
+ok on items 4 (post-trip feedwater) and 5 (level/mass rework), and the engineering-units
+boundary layer (item 9).**
 Date: 2026-07-20
 
 ## Purpose and rules
@@ -56,7 +58,7 @@ Open tasks folded in: #22 #23 #24(UI) #25 #26 #27, OPS report P4/P5, C2–C4.
 | EV-3 | Power ramp ±5 %/min | Rods+boron coordinate; Tavg tracks program within ±1.5 °C; no trip | PARTIAL — ramps work but track the *wrong* (flat) program; re-band after SS-2 |
 | EV-4 | Load follow 100→50→100 | Completes without operator help in all-auto; Tavg per program | FAIL-ish — works but authority ~25 % of real (P4); retune with SS-2 |
 | EV-5 | Boration/dilution response | ~10 ppm step → clear reactivity response; worth ≈ −8 to −12 pcm/ppm | PASS (`pwr_boron` campaign, eccs_boration) |
-| EV-6 ⚑ | **Slow manual rod insertion at 100 %**, all-auto | Power/Tavg walk down smoothly; turbine follow or dump compensates; **no SCRAM** from single steps with stabilization waits | **UNREP** (#25 — owner reproduced, I could not; probe matrix goes in battery regardless; need owner's exact lineup) |
+| EV-6 | **Slow manual rod insertion at 100 %**, all-auto | Power/Tavg walk down smoothly; turbine follow or dump compensates; **no SCRAM** from single steps with stabilization waits | RESOLVED 2026-07-20 — owner retried and could not reproduce (#25 closed); probe matrix stays in the battery as regression insurance |
 | EV-7 | Single rod step at 100 % | Small flux dip, Tavg recovers via auto rods within ~2 min, no trip | PASS? (near `control_response`; pin explicitly) |
 | EV-8 | Xenon transient after power change | Peak ~6–10 hr after downpower; magnitude enough to demand boron/rod compensation | PASS (`ops xenon 8h`, `pwr_xenon`) |
 | EV-9 | Startup 1/M approach | Doubling behavior; SR→IR→PR overlap; P-6 SR cutout, P-10 at 10 %; IR 20 %/PR-low 25 % backstops | PASS (campaign startup ×2, NIS suite) |
@@ -161,16 +163,42 @@ Setpoint verification (all currently implemented, values vs Westinghouse-typical
    CHANGELOG entries per behavior change.
 6. **Battery joins CI** — catalog IDs become the permanent spec layer above the regression gates.
 
-## 8. Red-line focus (the ⚑ items in one place)
+## 8. Red-line decisions (owner rulings, 2026-07-20)
 
-1. **SS-2 Tavg program** — adopt sliding 292→306 °C? Largest ripple: HZP setpoints, steam-dump
-   setpoint (~7.7 MPa), heatup/cooldown scenarios, campaign numbers. Recommended yes.
-2. **PI-1/PI-2/PI-3 interlock cluster** — which anticipatory trips do you want? (PI-1 is what
-   makes TR-1/TR-2 real; TMI plants had turbine-trip-on-feed-loss, hence PI-2.)
-3. **CC-5 spray flow cap** — required for TMI realism; pick cap so TR-2 lifts PORV but a normal
+1. **SS-2 Tavg program — DECIDED: adopt sliding program 292 → 306 °C.**
+   Physical basis: SG heat transfer needs a primary→secondary ΔT that grows with load. Holding
+   Tavg flat forces steam pressure to collapse as load rises; holding steam pressure flat forces
+   a huge Tavg swing. Westinghouse plants split the difference with a Tref program *linear in
+   turbine load* (no-load ~292 °C → full-load ~306 °C); rods drive Tavg to Tref. Implementation:
+   Tref(load) replaces the flat no-load anchor; rods_tavg tracks Tref, not a captured value;
+   steam-dump setpoint becomes Psat(292 °C) ≈ 7.7 MPa. This erases the 50 %-sag defect (target
+   there becomes ~299) and restores real load-follow authority (P4's root cause).
+2. **PI interlock cluster — DECIDED: add all of PI-1 … PI-8** (reactor-trip-on-turbine-trip
+   above P-9, turbine-trip on lo-lo SG/loss-of-MFW, reactor-trip-on-SI, AFW start on MFW loss,
+   FW isolation on SI and on trip+low-Tavg, P-8 single-loop low-flow trip, RPS reset + manual-scram
+   flag, high-pzr-level trip).
+3. **CC-5 spray flow cap — DECIDED: yes.** Cap sized so TR-2 lifts the PORV but a normal step
    insurge is still arrested.
-4. **CC-3 post-trip feedwater** — isolate MFW at trip + AFW handoff, or keep PID feeding?
-5. **CC-10 level/mass rework scope** — full coupling rework vs tightened stopgap.
-6. **SI setpoint** 11.03 → ~12.4 MPa? Changes TMI/SBLOCA timing.
-7. **SS-5 pzr level program** — worth doing this pass or defer?
-8. **EV-6** — need your exact rod-insertion lineup to reproduce #25.
+4. **CC-3 post-trip feedwater — RECOMMENDED (pending owner ok): implement real behavior.**
+   On reactor trip with Tavg falling below no-load (P-4 analog): MFW isolates, feed_sg channel
+   stands down with a visible note, AFW auto-starts and holds SG level at its 20 % target.
+   Rationale: the current always-on PID pumps 40 °C feed against decay heat after every trip
+   (overcooling that distorts all post-trip behavior), and the MFW→AFW handoff is itself a core
+   TMI teaching point.
+5. **CC-10 level/mass rework — RECOMMENDED (pending owner ok): physical-level middle path.**
+   Pzr level becomes a *derived* quantity: f(RCS inventory, coolant thermal expansion) plus a
+   void term that only activates when the primary actually reaches saturation (the TMI regime) —
+   preserving the deception exactly where voids exist and nowhere else. The independent level
+   integrator and the `_mass<=1.0` charging-floor stopgap are deleted. Not the full re-plumb;
+   not the stopgap-tightening (which leaves the bug class alive).
+6. **SI setpoint — DECIDED: raise 11.03 → ~12.4 MPa.** TMI/SBLOCA timing re-validated in step 5.
+7. **SS-5 pzr level program — DECIDED: do it this pass**, bundled with item 1 (the level
+   setpoint is a function of Tavg/Tref, so CVCS is touched once, not twice).
+8. **EV-6 rod-insertion SCRAM — CLOSED.** Neither party can reproduce; probe stays in battery.
+9. **Units boundary layer — RECOMMENDED (pending owner ok): keep normalized engine internals,
+   add an engineering-units conversion block.** A single config ratings table (MWt, RCS flow,
+   charging/letdown gpm, feed/steam flow, PORV/safety capacities) consumed by UI readouts,
+   manuals, instructor text, and the behavior battery's band checks. Internals stay normalized
+   (numerically stable, plant-agnostic); humans and the catalog never see a unitless flow again.
+   Rationale: the unit-boundary is where real bugs happened (BWR RCIC unit bug, SGTR leak_scale,
+   the `_mass<=1.0` floor); a named conversion layer shrinks that class without an engine re-plumb.
