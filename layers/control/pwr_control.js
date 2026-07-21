@@ -74,7 +74,11 @@
   var PWR_ACTUATIONS = [
     { instrument: 'primary_pressure', direction: 'high', setpoint: 16.20,
       action: 'open_porv', reset_below: 15.86, reset_action: 'close_porv' },
-    { instrument: 'primary_pressure', direction: 'low',  setpoint: 11.03,
+    // SI setpoint raised 11.03 → 12.4 MPa (owner ruling 2026-07-21, TMI-clock-
+    // gated): the plant calls for injection earlier in a depressurization.
+    // Sits just below the 12.41 low-pressure trip, so trip and SI arrive
+    // together in a fast LOCA — real-plant-like. Keep = SI_MPA below.
+    { instrument: 'primary_pressure', direction: 'low',  setpoint: 12.4,
       action: 'set_hpi', active: true, reset_action: 'set_hpi', reset_active: false, arm: 'hpi' },
     { instrument: 'sg_level',         direction: 'low',  setpoint: 20.0,
       action: 'set_afw', active: true, arm: 'afw' },
@@ -88,7 +92,7 @@
     { instrument: 'sg_level',         direction: 'high', setpoint: 90.0,
       action: 'isolate_feedwater', params: { active: true }, reset_below: 85.0 },
     // (The old 2.76 MPa set_lpi actuation is gone: HPI/LPI is one merged system
-    // armed by the 11.03 MPa set_hpi actuation above — the low-head/high-flow
+    // armed by the 12.4 MPa set_hpi actuation above — the low-head/high-flow
     // regime follows physically from the two-segment pump curve.)
     // Residual Heat Removal permissive — auto-opens the RHR hot-leg suction valve
     // for cooldown once the reactor is tripped and depressurized below the 400 psi
@@ -270,7 +274,7 @@
   // PI-5: feedwater isolation on safety injection (an SI casualty is never one
   // where continued main feed is right); rides the 'hpi' ESF arm so the cold
   // P-11 lineup (SI disarmed) cannot spuriously isolate feed.
-  var SI_MPA = 11.03;   // SI actuation pressure — shared by the ESF, PI-3 trip, and PI-5 FWI
+  var SI_MPA = 12.4;    // SI actuation pressure (raised 11.03 → 12.4, owner ruling, TMI-clock-gated) — shared by the ESF, PI-3 trip, and PI-5 FWI
   PWR_ACTUATIONS.push(
     { instrument: 'tavg', direction: 'low', setpoint: TAVG_NOLOAD + 3, condition: 'rps_scrammed',
       action: 'isolate_feedwater', params: { active: true } },
