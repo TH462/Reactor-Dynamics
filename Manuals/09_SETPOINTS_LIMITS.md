@@ -16,7 +16,7 @@
 | Parameter | Nominal | MODE |
 |-----------|---------|------|
 | Reactor power | **100 %** | Mode 1, At Power |
-| Electrical output | **≈ 1000 MWe** | Mode 1, At Power |
+| Electrical output | **≈ 100 MWe** | Mode 1, At Power |
 | Primary pressure | **15.41 MPa** | Mode 1, At Power |
 | Tavg | **≈ 304 °C** | Mode 1, At Power |
 | Thot / Tcold | **≈ 321 / 288 °C** (ΔT ≈ 33 °C) | Mode 1, At Power |

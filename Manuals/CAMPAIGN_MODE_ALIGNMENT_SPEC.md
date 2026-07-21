@@ -72,7 +72,7 @@ Update `teaches` in `ui/campaign_data.js` and scenario `title` / `description` /
 | `pwr_raise_power` | coordinated escalation… | Mode 1, At Power — raise power |
 | `pwr_load_follow` | follow the grid… | Mode 1 — load Follow / Manual |
 | `pwr_automation` | Automate tab… | Mode 1 — full AUTO suite |
-| `pwr_shift_exam` | evening shift… | CHECKPOINT — Mode 1 dispatch 850↔1000 MWe |
+| `pwr_shift_exam` | evening shift… | CHECKPOINT — Mode 1 dispatch 85↔100 MWe |
 | `pwr_lower_power` | coming down… | Mode 1, At Power — lower power |
 | `pwr_shutdown` | To Hot Standby… | **Mode 1, At Power → Mode 3, Hot Standby** |
 | `pwr_protection` | RPS / alarms… | Mode 1 upset — RPS and alarm flood |

@@ -625,4 +625,6 @@ No LOCA-style HPI throttle error; inventory managed.
 - `06_ALARM_RESPONSE.md`  
 - `08_ACCIDENT_TMI.md`  
 - `05_MODE_TRANSITIONS.md` (T06 post-trip)  
-- `09_SETPOINTS_LIMITS.md`  
+- `09_SETPOINTS_LIMITS.md`
+
+> **Single-loop note (SGTR):** this plant has ONE steam generator, so the classic multi-loop strategy — isolate the faulted SG and steam the intact ones — does not exist here. The EOP is to **depressurize the primary to SG pressure**, which stops the tube leak (it is driven by the pressure difference), then cool down to RHR. **Radiological note:** the SG you are steaming through the dump *is* the contaminated one — in a real plant this is a monitored, minimized release path; multi-loop plants avoid it entirely by steaming their intact generators.

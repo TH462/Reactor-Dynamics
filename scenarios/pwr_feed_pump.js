@@ -8,13 +8,13 @@
  * (`feed_sg`) and watching it carry the restore.
  *
  * Probed physics (seed 42, hot_full_power): SG level nominal 65.1%; with the
- * pump held at 100% and load at 950 MWe the level climbs ~0.25%/s — crosses
+ * pump held at 100% and load at 95 MWe the level climbs ~0.25%/s — crosses
  * 67% at ~17 s and the 75% HI alarm at ~52 s, so the trim window is real but
  * fair. A trim to the low 90s reverses the trend (~0.3%/s down at −6%
  * mismatch); too deep a cut dives through the band (88% took level to 42% in
  * ~70 s — the "full-time job" lesson). feed_sg captures its setpoint from the
- * CURRENT indicated level on engage and rides the 1000 MWe restore clean
- * (mwe > 985 in ~130 s, level flat, "holding").
+ * CURRENT indicated level on engage and rides the 100 MWe restore clean
+ * (mwe > 98.5 in ~130 s, level flat, "holding").
  *
  * Softlock-proofing: both task beats are prompt-with-branches; every watch
  * carries a scram catch, and the level-high alarm lands on its own failure
@@ -66,10 +66,10 @@
       // 75% alarm is the failure branch, ~35 s apart.
       { id: 'load_drop',
         trigger: { type: 'delay', value: 3.0 },
-        commands: [{ action: 'set_load_target', mwe: 950 }],
+        commands: [{ action: 'set_load_target', mwe: 95 }],
         commentary: {
-          learning: 'MANUAL — good. Now I am easing the turbine back to 950 MW. Steam draw falls... but your pump has no idea: it keeps pushing the same water in. Eyes on SG level — watch it start to climb.',
-          industry: 'Load reduced to 950 MWe (instructor). Steam flow down ~5%; feed fixed at your last command — level rising ~0.25%/s. Stand by to trim.',
+          learning: 'MANUAL — good. Now I am easing the turbine back to 95 MW. Steam draw falls... but your pump has no idea: it keeps pushing the same water in. Eyes on SG level — watch it start to climb.',
+          industry: 'Load reduced to 95 MWe (instructor). Steam flow down ~5%; feed fixed at your last command — level rising ~0.25%/s. Stand by to trim.',
         },
         branches: [
           { trigger: { type: 'scram' }, goto: 'tripped' },
@@ -111,11 +111,11 @@
         ] },
 
       // Payoff: the controller carries the restore the player just sweated
-      // through by hand. Probed ~130 s to mwe > 985; the delay-420 branch is
+      // through by hand. Probed ~130 s to mwe > 98.5; the delay-420 branch is
       // the can't-strand fallback.
       { id: 'auto_ride',
         trigger: { type: 'delay', value: 3.0 },
-        commands: [{ action: 'set_load_target', mwe: 1000 }],
+        commands: [{ action: 'set_load_target', mwe: 100 }],
         commentary: {
           learning: 'It has the pump — the channel reads "holding". Now watch a professional work: I am taking the turbine back to 1000 MW, the same move that just made you sweat. Steam draw rises, the channel feels the mismatch through its flow elements, and it walks the pump up almost before the level twitches. Hands off — watch the level trace stay flat while half the secondary reorganizes underneath it.',
           industry: 'Load restored to 1000 MWe under automatic feed. Expect feedforward response: pump speed tracks steam flow, level deviation minimal. Monitor the channel status and SG level through the ramp.',
@@ -124,7 +124,7 @@
           { trigger: { type: 'scram' }, goto: 'tripped' },
           { trigger: { type: 'all', triggers: [
               { type: 'delay', value: 40.0 },
-              { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 985 },
+              { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 98.5 },
             ] }, goto: 'complete' },
           { trigger: { type: 'delay', value: 420.0 }, goto: 'complete' },
         ] },

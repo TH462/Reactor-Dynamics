@@ -27,7 +27,7 @@
       { id: 'intro',
         trigger: { type: 'time', value: 2.0 },
         commentary: {
-          learning: 'This plant is making a thousand megawatts right now, and every watt starts in the reactor vessel on the left: uranium atoms are splitting, and each split heats the water around the fuel. Follow the glowing hot leg from the reactor — that water is carrying the heat away. It is at about 320 °C, far above normal boiling, and it stays liquid only because the loop is squeezed to about 155 times atmospheric pressure.',
+          learning: 'This plant is making a hundred megawatts right now, and every watt starts in the reactor vessel on the left: uranium atoms are splitting, and each split heats the water around the fuel. Follow the glowing hot leg from the reactor — that water is carrying the heat away. It is at about 320 °C, far above normal boiling, and it stays liquid only because the loop is squeezed to about 155 times atmospheric pressure.',
           industry: 'PWR at 100% rated. Energy path orientation, primary side first: core → hot leg at ~320 °C, single-phase because the RCS is held at ~15.5 MPa. Trace the loop on the synoptic.',
         },
         highlight: { control_label: null, instrument_id: 'power' },
@@ -45,7 +45,7 @@
         trigger: { type: 'delay', value: 22.0 },
         commentary: {
           learning: 'The steam crosses the hall and spins the turbine — that spinning shaft IS the thousand megawatts, handed to the generator and out to the grid. Below it, the condenser turns the used steam back into water so the feed pumps can send it to the steam generators again. One loop of heat, around and around.',
-          industry: 'Steam → HP/LP turbine → generator (1000 MWe nominal) → condenser at vacuum → condensate/feed back to the SGs. Closed secondary cycle.',
+          industry: 'Steam → HP/LP turbine → generator (100 MWe nominal) → condenser at vacuum → condensate/feed back to the SGs. Closed secondary cycle.',
         },
         advance: 'wait_for_trigger' },
 
@@ -66,14 +66,14 @@
         trigger: { type: 'delay', value: 20.0 },
         commentary: {
           learning: 'Your turn. Prove the chain is real: on the Turbine-Generator card, switch Load to MANUAL and slide the target down to 900 MW — one modest step; big cuts shock the machine. You are asking the grid side for less power — watch what happens upstream: steam flow drops, and the reactor quietly follows. Go ahead.',
-          industry: 'Operator action: Turbine-Generator card → Load mode MANUAL, target 900 MWe (limit dispatch steps ~100 MWe). Observe steam flow and reactor power tracking the reduced demand — no rod motion required.',
+          industry: 'Operator action: Turbine-Generator card → Load mode MANUAL, target 90 MWe (limit dispatch steps ~10 MWe). Observe steam flow and reactor power tracking the reduced demand — no rod motion required.',
         },
         highlight: { control_label: 'Mode', instrument_id: null },
         branches: [
           { trigger: { type: 'scram' }, goto: 'load_lost' },
           { trigger: { type: 'all', triggers: [
               { type: 'operator_action', command: 'set_load_target' },
-              { type: 'instrument', instrument: 'mwe_output', direction: 'below', value: 985 },
+              { type: 'instrument', instrument: 'mwe_output', direction: 'below', value: 98.5 },
             ] }, goto: 'act_restore' },
         ] },
 
@@ -81,13 +81,13 @@
         trigger: { type: 'delay', value: 2.0 },
         commentary: {
           learning: 'See it? Less steam drawn, and the reactor answered by making less heat — nobody touched the control rods. Output reads your 900 almost exactly: the governor is a real regulator, opening its valve as the loop warms so the grid gets precisely what was asked. The reactor paid for it upstream — Tavg is riding about fifteen degrees hotter, the loop absorbing the mismatch a crew would trim away with rods or boron. Now ask it back: slide the target up to 1000 MW, and once output reads full power, set Load mode to FOLLOW to hand the plant back to the grid.',
-          industry: 'Demand reduction propagated up the chain: governor (pressure-compensated — delivered ≈ demand) → steam flow → primary ΔT → power, rods untouched; Tavg rises ~+15 °C absorbing the mismatch pending reactivity support. Restore: target 1000 MWe, then load mode FOLLOW once at rated.',
+          industry: 'Demand reduction propagated up the chain: governor (pressure-compensated — delivered ≈ demand) → steam flow → primary ΔT → power, rods untouched; Tavg rises ~+15 °C absorbing the mismatch pending reactivity support. Restore: target 100 MWe, then load mode FOLLOW once at rated.',
         },
         branches: [
           { trigger: { type: 'scram' }, goto: 'load_lost' },
           { trigger: { type: 'all', triggers: [
               { type: 'operator_action', command: 'set_load_target' },
-              { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 985 },
+              { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 98.5 },
             ] }, goto: 'complete' },
         ] },
 
@@ -109,8 +109,8 @@
         trigger: { type: 'delay', value: 1.5 },
         speed: 1,
         commentary: {
-          learning: 'BANG — that was the plant protecting itself. You asked the grid side for a huge cut all at once; the turbine rejected the load and the reactor tripped rather than ride the shock. No harm done — refusing to be hurried is exactly what the protection is for. Rewind (or Retry) and try the gentler ask: 900 megawatts, one step.',
-          industry: 'Reactor trip on load rejection — the manual load step exceeded transient capability. Protection response nominal. Rewind/Retry and limit dispatch steps to ~100 MWe.',
+          learning: 'BANG — that was the plant protecting itself. You asked the grid side for a huge cut all at once; the turbine rejected the load and the reactor tripped rather than ride the shock. No harm done — refusing to be hurried is exactly what the protection is for. Rewind (or Retry) and try the gentler ask: 90 megawatts, one step.',
+          industry: 'Reactor trip on load rejection — the manual load step exceeded transient capability. Protection response nominal. Rewind/Retry and limit dispatch steps to ~10 MWe.',
         },
         level_complete: {
           title: 'The Energy Journey — Load Rejected',

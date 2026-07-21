@@ -12,7 +12,7 @@
   'use strict';
 
   var DEFAULT_TAU = 45; // seconds — turbine governor / operator lag
-  var IMBALANCE_MW = 40;  // annunciator threshold
+  var IMBALANCE_FRAC = 0.04;  // annunciator threshold, fraction of rated (plant-agnostic)
 
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
@@ -73,7 +73,7 @@
     // above stays on true power: the turbine extracts what the reactor makes.
     var indMwe = (s._ins_power_pct != null ? s._ins_power_pct / 100 : powerFrac(s)) * rated;
     s.load_imbalance_mwe = indMwe - s.load_target_mwe;
-    s.sg_imbalance_active = Math.abs(s.load_imbalance_mwe) > IMBALANCE_MW;
+    s.sg_imbalance_active = Math.abs(s.load_imbalance_mwe) > IMBALANCE_FRAC * rated;
   }
 
   function disconnect(s, tripFn) {
@@ -93,7 +93,7 @@
 
   RD.LoadMode = {
     DEFAULT_TAU: DEFAULT_TAU,
-    IMBALANCE_MW: IMBALANCE_MW,
+    IMBALANCE_FRAC: IMBALANCE_FRAC,
     initState: initState,
     step: step,
     disconnect: disconnect,

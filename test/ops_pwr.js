@@ -74,7 +74,7 @@
         h.run(600, function (hh, t) { if (t - lastAct >= 10) { lastAct = t; holdPower(hh, 50, 1.0); } });
         var mid = h.ts();
         ck('power near 50% at plateau', fmt(mid.power_pct, 1), near(mid.power_pct, 50, 5), '50 ±5');
-        ck('turbine followed the reactor down', fmt(mid.mwe_output, 0) + ' MWe', near(mid.mwe_output, 500, 60), '500 ±60');
+        ck('turbine followed the reactor down', fmt(mid.mwe_output, 0) + ' MWe', near(mid.mwe_output, 50, 6), '50 ±6');
         // Manual ROD-ONLY power reduction (holdPower nudges rods, boron fixed) sags Tavg
         // below the sliding Tavg program's 50 % point (~298 °C): inserting rods to drop
         // power needs positive reactivity from somewhere, and with boron held the MTC
@@ -107,7 +107,7 @@
       return test('OPS grid step — +5% demand from 50%: MTC alone, then rods', function (ck) {
         var h = H('50_percent');
         h.run(120);
-        h.cmd('set_load_target', { mwe: 550 });
+        h.cmd('set_load_target', { mwe: 55 });
         h.run(300);
         var mtcOnly = h.ts().power_pct;
         ck.info('reactor pickup on MTC alone at +5 min', fmt(mtcOnly, 1) + '% (real PWR: most of the step)');
@@ -117,7 +117,7 @@
         });
         var t = h.ts();
         ck('power settles 55 ±2% with rod assist', fmt(t.power_pct, 1), near(t.power_pct, 55, 2), '55 ±2');
-        ck('electrical output near demand', fmt(t.mwe_output, 0) + ' MWe', near(t.mwe_output, 550, 30), '550 ±30');
+        ck('electrical output near demand', fmt(t.mwe_output, 0) + ' MWe', near(t.mwe_output, 55, 3), '55 ±3');
         ck('no trip', h.tripReason || 'none', h.tripTime == null, 'none');
         ck.info('peak power during step', fmt(h.range('power_pct').max, 1));
         T.checkSanity(ck, h);

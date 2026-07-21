@@ -145,7 +145,7 @@
           Math.abs(t.charging_flow_actual - t.letdown_flow_actual) < 0.01, 'match');
         ck('steam ≈ feed (±3%)', fmt(t.steam_flow_normalized, 3) + ' vs ' + fmt(t.fw_flow_normalized, 3),
           Math.abs(t.steam_flow_normalized - t.fw_flow_normalized) < 0.03, 'match');
-        ck('electrical ≈ rated (1000 ±50 MWe)', fmt(t.mwe_output, 0), near(t.mwe_output, 1000, 50), '1000 ±50');
+        ck('electrical ≈ rated (100 ±5 MWe)', fmt(t.mwe_output, 0), near(t.mwe_output, 100, 5), '100 ±5');
         T.checkSanity(ck, h);
       });
     },
@@ -162,8 +162,8 @@
         var h = H('hot_full_power');
         h.run(60);
         var t0 = h.ts().tavg_c;
-        for (var i = 1; i <= 6; i++) {           // 1000 → 700 MWe in 50 MWe steps, ~5 %/min
-          h.cmd('set_load_target', { mwe: 1000 - i * 50 });
+        for (var i = 1; i <= 6; i++) {           // 100 → 70 MWe in 5 MWe steps, ~5 %/min
+          h.cmd('set_load_target', { mwe: 100 - i * 5 });
           h.run(60);
         }
         h.run(300);
@@ -187,12 +187,12 @@
       return test('EV-11 manual dispatch shows its costs (slider-only ask)', function (ck) {
         var h = H('hot_full_power');
         h.run(60);
-        h.cmd('set_load_target', { mwe: 850 });
+        h.cmd('set_load_target', { mwe: 85 });
         h.run(900);
         var t = h.ts();
         ck('no trip — the plant carries a slider-only cut', h.tripReason || 'none', h.tripTime == null, 'none');
-        ck('output tracks the ask closely (850 ±20 — the MTC delivers)',
-          fmt(t.mwe_output, 0) + ' vs ask 850', near(t.mwe_output, 850, 20), '850 ±20');
+        ck('output tracks the ask closely (85 ±2 — the MTC delivers)',
+          fmt(t.mwe_output, 0) + ' vs ask 85', near(t.mwe_output, 85, 2), '85 ±2');
         ck('but Tavg parks HIGH of program (~+7 °C un-trimmed mismatch)',
           fmt(t.tavg_c, 1), t.tavg_c > 305 && t.tavg_c < 316, '305..316');
         T.checkSanity(ck, h);
@@ -295,8 +295,8 @@
         ck('reactor trips ≤ 90 s on the genuine lo-lo limit', dt >= 0 ? fmt(dt, 1) + ' s' : 'no trip in 300 s',
           dt >= 0 && dt <= 90, '≤ 90 s');
         h.run(300);
-        ck('turbine tripped with/after the reactor', String(h.ts().mwe_output < 50),
-          h.ts().mwe_output < 50, 'true');
+        ck('turbine tripped with/after the reactor', String(h.ts().mwe_output < 5),
+          h.ts().mwe_output < 5, 'true');
         ck('AFW auto-started and carries the SGs (no dryout)', String(!!h.ts().afw_active),
           !!h.ts().afw_active, 'true');
         ck('with AFW available the PORV is NOT needed', fmt(h.range('pressure_mpa').max, 2),

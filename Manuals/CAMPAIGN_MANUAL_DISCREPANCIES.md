@@ -103,7 +103,7 @@ Manuals Rev 2 closed naming + documentation gaps. Campaign Mode-N **strings are 
 | `pwr_feed_pump` | N12 mentions three-element vs MANUAL; no separate “specialist” procedure |
 | `pwr_rod_auto` | `03` / T10 cover rod AUTO; no T-ref-capture trap drill steps |
 | `pwr_automation` | Automate tab in `03`/T10; no full multi-channel dispatcher exercise |
-| `pwr_shift_exam` | No free-form 850↔1000 MWe graded shift procedure |
+| `pwr_shift_exam` | No free-form 85↔100 MWe graded shift procedure |
 | TMI-2 Parts 1–3 | Single narrative **X01**; not three mission scripts |
 
 ### 5.3 Manual procedures with **no** campaign mission

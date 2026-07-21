@@ -8,13 +8,13 @@
  * deadband, then proves manual override precedence with a single nudge.
  *
  * Probed physics (seed 42, hot_full_power): Tavg baseline 304.0 °C; a
- * 1000→900 MWe drop walks Tavg up ~1 °C/20 s, crossing 307 at ~40 s and the
+ * 1000→90 MWe drop walks Tavg up ~1 °C/20 s, crossing 307 at ~40 s and the
  * 312.2 HI TAVG annunciator at ~135 s (equilibrium ~+11 °C unchecked). Manual
  * trim: ~15–18 single-step insertions paced 3-at-a-time with ~30 s waits
  * bring Tavg back under 305.5 without deep overshoot; a 28-step burst drove
  * power to 55% and Tavg to 298 — the overshoot lesson is real. rods_tavg
  * captures T-ref from the CURRENT indicated Tavg on engage; with a good
- * capture (~305) the 1000 MWe restore reaches mwe > 985 in well under a
+ * capture (~305) the 100 MWe restore reaches mwe > 985 in well under a
  * minute and locks up "holding" (|Tavg−Tref| < 0.9). With a LOW capture
  * (~298) output tops out near 950 MWe — hence the delay-420 fallback on the
  * ride watch, and the setpoint-edit note in the commentary. One rod_nudge
@@ -50,10 +50,10 @@
 
       { id: 'off_program',
         trigger: { type: 'delay', value: 28.0 },
-        commands: [{ action: 'set_load_target', mwe: 900 }],
+        commands: [{ action: 'set_load_target', mwe: 90 }],
         commentary: {
-          learning: 'I am pulling the turbine back to 900 MW. Watch T-avg on the gauge strip: steam draw falls, the loop banks the surplus as heat, and the temperature starts walking up off its program — about a degree every twenty seconds, headed for the HI TAVG annunciator at 312. Hands off for now. Just watch it climb.',
-          industry: 'Load to 900 MWe (instructor). Tavg rising off program, ~1 °C per 20 s (~+11 °C equilibrium if unchecked; HI TAVG warning 312.2 °C). Hold manipulations until tasked.',
+          learning: 'I am pulling the turbine back to 90 MW. Watch T-avg on the gauge strip: steam draw falls, the loop banks the surplus as heat, and the temperature starts walking up off its program — about a degree every twenty seconds, headed for the HI TAVG annunciator at 312. Hands off for now. Just watch it climb.',
+          industry: 'Load to 90 MWe (instructor). Tavg rising off program, ~1 °C per 20 s (~+11 °C equilibrium if unchecked; HI TAVG warning 312.2 °C). Hold manipulations until tasked.',
         },
         highlight: { control_label: 'Control Bank', instrument_id: 'tavg' },
         advance: 'wait_for_trigger' },
@@ -96,10 +96,10 @@
       // guarantees an exit either way.
       { id: 'auto_ride',
         trigger: { type: 'delay', value: 3.0 },
-        commands: [{ action: 'set_load_target', mwe: 1000 }],
+        commands: [{ action: 'set_load_target', mwe: 100 }],
         commentary: {
-          learning: 'Engaged — T-ref captured, and the rod card shows it. Now the morning ask: I am running the turbine back up to 1000 MW, the mirror of the move you just fought by hand. Watch the bank. The controller senses steam running ahead of power and walks the rods OUT — small error, slow steps; bigger error, faster — and as T-avg closes on T-ref it slows, stops, and the status reads "holding". That lockup band is ±0.8 degrees: inside it, the rods do not move at all.',
-          industry: 'Load restored to 1000 MWe under automatic rod control. Expect mismatch-term withdrawal on the speed ladder, then lockup inside ±0.8 °C of T-ref ("holding"). If T-ref was captured low, output tops out below rated — raise the channel setpoint from the Automate tab.',
+          learning: 'Engaged — T-ref captured, and the rod card shows it. Now the morning ask: I am running the turbine back up to 100 MW, the mirror of the move you just fought by hand. Watch the bank. The controller senses steam running ahead of power and walks the rods OUT — small error, slow steps; bigger error, faster — and as T-avg closes on T-ref it slows, stops, and the status reads "holding". That lockup band is ±0.8 degrees: inside it, the rods do not move at all.',
+          industry: 'Load restored to 100 MWe under automatic rod control. Expect mismatch-term withdrawal on the speed ladder, then lockup inside ±0.8 °C of T-ref ("holding"). If T-ref was captured low, output tops out below rated — raise the channel setpoint from the Automate tab.',
         },
         branches: [
           { trigger: { type: 'scram' }, goto: 'tripped' },
@@ -142,7 +142,7 @@
         level_complete: {
           title: 'The Steady Hand — Handed Over',
           outcome_learning: 'You held T-avg by hand, then taught yourself out of the job — and learned the rule that matters: engage automation when the number is where you want it.',
-          outcome_industry: 'Manual Tavg trim and rods_tavg engagement validated through a 1000→900→1000 MWe swing; T-ref capture and manual-override precedence demonstrated.',
+          outcome_industry: 'Manual Tavg trim and rods_tavg engagement validated through a 1000→900→100 MWe swing; T-ref capture and manual-override precedence demonstrated.',
           actions: ['continue', 'retry'],
         },
         advance: 'end' },

@@ -148,13 +148,13 @@ test('PWR · all-auto except grid: demand swing 1000→700→1000', function (ck
   r.engage(['rods_tavg', 'boron_trim', 'pzr_pressure', 'cvcs_makeup', 'feed_sg', 'steam_dump']);
   // grid stays manual (load follow OFF = the user's slider)
   var sp = r.chan('rods_tavg').setpoint;
-  r.cmd({ action: 'set_steam_demand', mwe: 700 });
+  r.cmd({ action: 'set_steam_demand', mwe: 70 });
   r.run(800);
   var pDown = meanPower(r, 100);
   var t = ts(r), i = inst(r);
-  ck('no scram at 700 MW', scrammed(r), !scrammed(r), 'false');
+  ck('no scram at 70 MW', scrammed(r), !scrammed(r), 'false');
   // Pressure-compensated governor (EHC load control): delivered steam tracks
-  // the demand nearly 1:1 at any SG pressure — 700 MW asked settles ~70%
+  // the demand nearly 1:1 at any SG pressure — a 70 MW ask settles ~70%
   // mean (power breathes a few % inside the rod channel's Tavg deadband).
   ck('power followed demand down (mean)', pDown.toFixed(1), near(pDown, 71, 5), '71±5 (compensated governor delivers the ask)');
   // Sliding Tavg program (SS-2): Tref slides DOWN with load, and the rods walk Tavg
@@ -164,11 +164,11 @@ test('PWR · all-auto except grid: demand swing 1000→700→1000', function (ck
   ck('Tref slid down with load', spDown.toFixed(2) + ' vs full-load ' + sp.toFixed(2), spDown < sp - 1.5, '< full-load − 1.5 °C');
   ck('tavg tracked the program down', i.tavg.toFixed(2) + ' vs Tref ' + spDown.toFixed(2), near(i.tavg, spDown, 1.5), 'Tref±1.5');
   ck('SG level held', i.sg_level.toFixed(1), near(i.sg_level, r.chan('feed_sg').setpoint, 4), 'sp±4');
-  r.cmd({ action: 'set_steam_demand', mwe: 1000 });
+  r.cmd({ action: 'set_steam_demand', mwe: 100 });
   r.run(800);
   var pUp = meanPower(r, 100);
   i = inst(r);
-  ck('no scram back at 1000 MW', scrammed(r), !scrammed(r), 'false');
+  ck('no scram back at 100 MW', scrammed(r), !scrammed(r), 'false');
   ck('power followed demand up (mean)', pUp.toFixed(1), near(pUp, 100, 6), '100±6');
   var spUp = r.chan('rods_tavg').setpoint;
   ck('tavg back on program at full load', i.tavg.toFixed(2) + ' vs Tref ' + spUp.toFixed(2), near(i.tavg, spUp, 1.5), 'Tref±1.5');

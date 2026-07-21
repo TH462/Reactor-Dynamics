@@ -457,7 +457,7 @@ On a gauge, **red** at the two trip bands (≥90 %, ≤17 %), **amber** at the a
 
 ### 12.2 Turbine Load (MWe)
 
-- Slider / setpoint **0 – rated (~1000 MWe)**.  
+- Slider / setpoint **0 – rated (~100 MWe)**.  
 - Setting a target forces **Manual** mode.  
 - Raising load draws more steam → power follows (with feedback).  
 

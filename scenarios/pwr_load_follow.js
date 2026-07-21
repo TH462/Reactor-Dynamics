@@ -2,13 +2,13 @@
  * pwr_load_follow.js — Follow the Grid (campaign Act III, mission 11).
  *
  * The evening-ramp story, played on the Turbine-Generator card: Manual mode
- * down to 800 MWe for the night lull, hold while the THREE-ELEMENT feed
+ * down to 80 MWe for the night lull, hold while the THREE-ELEMENT feed
  * channel (auto_channels: feed_sg — the plant's normal free-play lineup)
  * holds SG level through the whole shift, morning pickup back to rated, then
  * hand the plant back to Follow. Teaches the load-mode controls end to end
  * and cements the Act II lesson: demand leads, the reactor follows.
  *
- * Probed on this lineup (2026-07): the 800 ask is DELIVERED (~800 ±40 MWe
+ * Probed on this lineup (2026-07): the 80 ask is DELIVERED (~80 ±4 MWe
  * wander, no restoring force in Manual); Tavg parks ~322 °C (+18) with HI
  * TAVG in at 312 °C; the steam dump never lifts (the feed channel keeps the
  * secondary in balance — the old coupled-feed lineup parked at ~840 on the
@@ -42,21 +42,21 @@
         highlight: { control_label: 'Mode', instrument_id: null },
         advance: 'wait_for_trigger' },
 
-      // Prompt + branch watch: the 800 MW step leads on; the scram branch is
+      // Prompt + branch watch: the 80 MW step leads on; the scram branch is
       // the softlock-proof catch. Probed: with the three-element feed engaged
       // the unit RIDES even a deep dispatch step (1000→0 tested) — a trip
       // here means a manual scram or hands on something off-script.
       { id: 'ramp_down',
         trigger: { type: 'delay', value: 26.0 },
         commentary: {
-          learning: 'Switch Load to MANUAL and bring the slider down to 800 MW — one step, not a plunge; the grid dims gently and so should you. (If you forget the mode switch, the slider engages Manual by itself.) Then look at the Steam & Flow card while the governor throttles steam: the feed CONTROLLER sees the draw change and walks the pump down to match — element one is SG level, elements two and three are the steam-versus-feed mismatch, anticipating the move before level ever drifts. The Feed control readout says "AUTO — three-element", and level barely moves. The reactor, meanwhile, eases off on feedback alone — no rods.',
-          industry: 'Manual mode, target 800 MWe (bounded step). Coupled response: governor → steam flow → reactor power via MTC. Three-element feedwater (level + steam/feed mismatch) drives pump speed to the new draw; SG level constant at setpoint. Single-input dispatch.',
+          learning: 'Switch Load to MANUAL and bring the slider down to 80 MW — one step, not a plunge; the grid dims gently and so should you. (If you forget the mode switch, the slider engages Manual by itself.) Then look at the Steam & Flow card while the governor throttles steam: the feed CONTROLLER sees the draw change and walks the pump down to match — element one is SG level, elements two and three are the steam-versus-feed mismatch, anticipating the move before level ever drifts. The Feed control readout says "AUTO — three-element", and level barely moves. The reactor, meanwhile, eases off on feedback alone — no rods.',
+          industry: 'Manual mode, target 80 MWe (bounded step). Coupled response: governor → steam flow → reactor power via MTC. Three-element feedwater (level + steam/feed mismatch) drives pump speed to the new draw; SG level constant at setpoint. Single-input dispatch.',
         },
         branches: [
           { trigger: { type: 'scram' }, goto: 'grid_lost' },
           { trigger: { type: 'all', triggers: [
               { type: 'operator_action', command: 'set_load_target' },
-              { type: 'instrument', instrument: 'mwe_output', direction: 'below', value: 955 },
+              { type: 'instrument', instrument: 'mwe_output', direction: 'below', value: 95.5 },
             ] }, goto: 'hold' },
         ] },
 
@@ -64,7 +64,7 @@
         trigger: { type: 'delay', value: 2.0 },
         commentary: {
           learning: 'Settling out — read your board carefully, because the plant is talking. The governor DELIVERED your cut: output settles around 800 and breathes a few tens of megawatts either side — Manual mode has no restoring force, so it wanders. But look at T-avg: it climbed almost twenty degrees to carry the mismatch, because without rods the core can only meet a smaller steam draw by running hotter. At the top of that climb the HI TAVG annunciator came in, amber. Acknowledge it, and understand it: nothing is broken. The plant is telling you, in lights, that a cut this deep wants RODS or BORON alongside the slider — and tonight, deliberately, we gave it neither. And the steam generators? The three-element controller walked the pump from 100% down to about 80 and pinned level on its setpoint — the flood and the boil-dry of the old coupled-feed boards simply never happen, and the steam dump never had to lift. Night watch now: do NOTHING more, but stay awake to T-avg and to the Pump speed and Feed control readouts on the Steam card. I will run the night at 10× — watch your board.',
-          industry: 'Delivered ~800 MWe (±40 MWe wander — manual dispatch has no restoring force). Tavg up ~+18 °C absorbing the mismatch; HI TAVG annunciates at 312 °C — acknowledge. Three-element feedwater: pump speed ~80 %, SG level held at setpoint; steam dump remained closed. Full reduction requires coordinated reactivity control, deliberately withheld tonight. Monitoring: Tavg, pump speed, Feed control readout. Night compressed 10×.',
+          industry: 'Delivered ~80 MWe (±4 MWe wander — manual dispatch has no restoring force). Tavg up ~+18 °C absorbing the mismatch; HI TAVG annunciates at 312 °C — acknowledge. Three-element feedwater: pump speed ~80 %, SG level held at setpoint; steam dump remained closed. Full reduction requires coordinated reactivity control, deliberately withheld tonight. Monitoring: Tavg, pump speed, Feed control readout. Night compressed 10×.',
         },
         speed: 10,
         advance: 'wait_for_trigger' },
@@ -73,14 +73,14 @@
         trigger: { type: 'delay', value: 300.0 },
         commentary: {
           learning: 'Dawn. Alarm clocks, toasters, trains — the grid is waking up hungry. Take the slider back up to 1000 MW. Watch the same chain run in reverse: more steam drawn, cold-leg cools a touch, the core wakes up to meet it — and on the Steam & Flow card the feed controller walks the pump back up as the steam draw grows. Smooth hands — the plant likes gradual asks, and the last hundred megawatts take the longest.',
-          industry: 'Morning pickup: target 1000 MWe. Reverse coupling: increased steam draw → cooler return → +ρ via MTC → power ascension to rated (expect several minutes on the final approach). Feedwater tracks via the three-element channel.',
+          industry: 'Morning pickup: target 100 MWe. Reverse coupling: increased steam draw → cooler return → +ρ via MTC → power ascension to rated (expect several minutes on the final approach). Feedwater tracks via the three-element channel.',
         },
         speed: 1,
         branches: [
           { trigger: { type: 'scram' }, goto: 'grid_lost' },
           { trigger: { type: 'all', triggers: [
               { type: 'operator_action', command: 'set_load_target' },
-              { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 990 },
+              { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 99 },
             ] }, goto: 'restore_follow' },
         ] },
 
@@ -102,7 +102,7 @@
         level_complete: {
           title: 'Follow the Grid — Shift Complete',
           outcome_learning: 'Down for the night, up for the dawn — one slider, zero rod motion, a city kept lit.',
-          outcome_industry: 'Manual dispatch cycle 1000→800→1000 MWe under three-element feedwater control; SG level stable throughout.',
+          outcome_industry: 'Manual dispatch cycle 100→80→100 MWe under three-element feedwater control; SG level stable throughout.',
           actions: ['continue', 'retry'],
         },
         advance: 'end' },

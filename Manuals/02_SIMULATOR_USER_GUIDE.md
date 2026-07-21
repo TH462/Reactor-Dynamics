@@ -159,7 +159,7 @@ Entry: status line under sim controls, or **Sim** tab → Plant & Mission.
 
 | State ID | Label | Plant MODE | Board meaning |
 |----------|-------|------------|---------------|
-| `hot_full_power` | Hot Full Power | **Mode 1, At Power** | Critical ~100 %, ~1000 MWe |
+| `hot_full_power` | Hot Full Power | **Mode 1, At Power** | Critical ~100 %, ~100 MWe |
 | `50_percent` | 50 % Power | **Mode 1, At Power** | Critical mid-power (> 5 %) |
 | `hot_zero_power` | Hot Standby | **Mode 3, Hot Standby** | Subcritical, hot T/P, control bank in, SR on |
 

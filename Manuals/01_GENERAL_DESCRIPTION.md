@@ -2,7 +2,7 @@
 
 **Document:** PWR-GD-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Rating:** ≈ 1000 MWe  
+**Rating:** ≈ 100 MWe / ≈ 300 MWt — a compact **single-loop experimental PWR** (one reactor coolant pump, one U-tube steam generator, one main steam line). Small and generously margined by design: the ~105 % steam dump rides out a full load rejection, and reactor trips are reserved for genuine limits.  
 **Revision:** 0  
 
 ---
@@ -19,7 +19,7 @@ A **Pressurized Water Reactor** keeps primary coolant water under high pressure 
 
 | Parameter | Nominal (hot full power) |
 |-----------|---------------------------|
-| Electrical output | ≈ **1000 MWe** |
+| Electrical output | ≈ **100 MWe** |
 | Primary pressure | **15.41 MPa** |
 | Average coolant temperature (Tavg) | ≈ **304 °C** |
 | Hot leg / cold leg | ≈ 321 / 288 °C (ΔT ≈ 33 °C at rated) |

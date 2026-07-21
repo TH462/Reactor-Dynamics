@@ -38,8 +38,8 @@
       { id: 'drop_load',
         trigger: { type: 'delay', value: 14.0 },
         commentary: {
-          learning: 'The evening peak just ended: put the turbine in MANUAL and take the LOAD down to 700 MW — the move you learned in the load-follow shift. Then fold your arms and watch the cascade — steam draw falls, the primary warms, the rod channel feels Tavg rise and trickles the bank in, feedwater follows the shrinking steam flow, the pressurizer channel swallows the pressure swell. Four systems answering one slider.',
-          industry: 'Select MANUAL load mode and reduce demand to 700 MWe. Observe the automatic response chain: governor/steam draw ↓ → Tavg ↑ → auto rod insertion → power coast-down; feedwater tracks steam flow; PZR spray absorbs the insurge. No other manual action expected.',
+          learning: 'The evening peak just ended: put the turbine in MANUAL and take the LOAD down to 70 MW — the move you learned in the load-follow shift. Then fold your arms and watch the cascade — steam draw falls, the primary warms, the rod channel feels Tavg rise and trickles the bank in, feedwater follows the shrinking steam flow, the pressurizer channel swallows the pressure swell. Four systems answering one slider.',
+          industry: 'Select MANUAL load mode and reduce demand to 70 MWe. Observe the automatic response chain: governor/steam draw ↓ → Tavg ↑ → auto rod insertion → power coast-down; feedwater tracks steam flow; PZR spray absorbs the insurge. No other manual action expected.',
         },
         highlight: { control_label: 'Turbine Load', instrument_id: null },
         branches: [
@@ -56,8 +56,8 @@
       { id: 'watch_settle',
         trigger: { type: 'delay', value: 30.0 },
         commentary: {
-          learning: 'Look at the Automate tab now: the rod channel reads "holding" with Tavg pinned back on its setpoint, and the plant found its new level without a single command from you. One honest note: most of what you just watched was the PHYSICS — Doppler and the moderator coefficient pulled power toward the new demand on their own, like they always do. The channels did the trimming: the last degree of Tavg, the last percent of level. Automation on this machine is a fine-tip pen over self-stabilizing physics. Now the morning ramp: take the load back up to 1000 MW.',
-          industry: 'Settled at reduced load: Tavg restored to program, SG level on setpoint, channels quiescent ("holding"). Attribution note: inherent feedback (Doppler/MTC) provides the coarse load-follow; automation supplies fine trim. Restore demand to 1000 MWe.',
+          learning: 'Look at the Automate tab now: the rod channel reads "holding" with Tavg pinned back on its setpoint, and the plant found its new level without a single command from you. One honest note: most of what you just watched was the PHYSICS — Doppler and the moderator coefficient pulled power toward the new demand on their own, like they always do. The channels did the trimming: the last degree of Tavg, the last percent of level. Automation on this machine is a fine-tip pen over self-stabilizing physics. Now the morning ramp: take the load back up to 100 MW.',
+          industry: 'Settled at reduced load: Tavg restored to program, SG level on setpoint, channels quiescent ("holding"). Attribution note: inherent feedback (Doppler/MTC) provides the coarse load-follow; automation supplies fine trim. Restore demand to 100 MWe.',
         },
         highlight: { control_label: 'Turbine Load', instrument_id: null },
         branches: [
@@ -80,7 +80,7 @@
         level_complete: {
           title: 'Hands Off — Dispatched',
           outcome_learning: 'You swung a gigawatt plant with one finger. The machine — and the physics under it — did the rest.',
-          outcome_industry: 'Full-plant automation exercise complete: load swing 1000→700→1000 MWe under automatic regulation.',
+          outcome_industry: 'Full-plant automation exercise complete: load swing 100→70→100 MWe under automatic regulation.',
           actions: ['continue', 'retry'],
         },
         advance: 'end' },

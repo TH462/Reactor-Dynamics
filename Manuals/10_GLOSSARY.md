@@ -68,7 +68,7 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 | Term | Definition |
 |------|------------|
 | **Heat sink** | Where core heat goes — primarily the Steam Generators (secondary water/steam). |
-| **Hot Full Power (HFP)** | ~100 % power, ~1000 MWe, equilibrium — full-power **Mode 1, At Power**. |
+| **Hot Full Power (HFP)** | ~100 % power, ~100 MWe, equilibrium — full-power **Mode 1, At Power**. |
 | **Hot Standby** | Subcritical, hot, at operating temperature and pressure — **Mode 3, Hot Standby**. |
 | **Hot Shutdown** | Subcritical with RCS not yet cold — commercial **Mode 4, Hot Shutdown** class; post-trip hot board in this trainer is still treated as Mode 3, Hot Standby by temperature until cooldown **[narr]**. |
 | **Cold Shutdown** | Subcritical and cold — **Mode 5, Cold Shutdown** **[narr]** only in this trainer. |

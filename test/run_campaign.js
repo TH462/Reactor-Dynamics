@@ -397,7 +397,7 @@ test('pwr_tour — energy journey completes', function (ck) {
   if (!snap) return;
   settle(s, 22);
   s.handleCommand({ action: 'set_load_mode', mode: 'manual' });
-  s.handleCommand({ action: 'set_load_target', mwe: 900 });
+  s.handleCommand({ action: 'set_load_target', mwe: 90 });
   snap = waitBeat(s, 'act_restore', 400);
   ck('load reduction observed → restore prompt', !!snap, !!snap, 'act_restore pending');
   if (!snap) return;
@@ -406,18 +406,18 @@ test('pwr_tour — energy journey completes', function (ck) {
   // pulling it home) — the restore is an explicit ask back to 1000. (Switching
   // to follow right away would snap the target to current power; the mission
   // has the player set FOLLOW only after output recovers.)
-  s.handleCommand({ action: 'set_load_target', mwe: 1000 });
+  s.handleCommand({ action: 'set_load_target', mwe: 100 });
   snap = runUntil(s, function (sn) { return lc(sn); }, 600);
   ck('tour completes', !!snap, !!snap, 'level_complete');
   if (snap) ck('completion is the tour endpoint', lc(snap).title, /Complete/i.test(lc(snap).title), 'Energy Journey — Complete card');
-  // Greedy ask (500 MW) trips on load rejection → the trip-catch card, not a
+  // Greedy ask (50 MW) trips on load rejection → the trip-catch card, not a
   // softlock (playtest fix).
   var s2 = startScenario('pwr_tour');
   snap = waitBeat(s2, 'act_load', 300);
   if (snap) {
     settle(s2, 22);
     s2.handleCommand({ action: 'set_load_mode', mode: 'manual' });
-    s2.handleCommand({ action: 'set_load_target', mwe: 500 });
+    s2.handleCommand({ action: 'set_load_target', mwe: 50 });
     snap = runUntil(s2, function (sn) { return lc(sn); }, 600);
   }
   ck('greedy ask reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
@@ -512,14 +512,14 @@ test('pwr_load_follow — evening ramp and morning pickup (three-element feed)',
   if (!snap) return;
   settle(s, 28);
   s.handleCommand({ action: 'set_load_mode', mode: 'manual' });
-  s.handleCommand({ action: 'set_load_target', mwe: 800 });
+  s.handleCommand({ action: 'set_load_target', mwe: 80 });
   snap = waitBeat(s, 'ramp_up', 1800);
   ck('night hold reached (dawn beat armed)', !!snap, !!snap, 'ramp_up pending');
   if (!snap) return;
   ck('three-element feed held SG level through the cut', snap.instruments.sg_level.toFixed(1),
     Math.abs(snap.instruments.sg_level - 65) < 8, '65 ±8 %');
   settle(s, 305);                       // ramp_up fires at delay 300, watch opens
-  s.handleCommand({ action: 'set_load_target', mwe: 1000 });
+  s.handleCommand({ action: 'set_load_target', mwe: 100 });
   snap = waitBeat(s, 'restore_follow', 1200);
   ck('back at full output → restore prompt', !!snap, !!snap, 'restore_follow pending');
   if (!snap) return;
@@ -688,21 +688,21 @@ test('pwr_startup_challenge — runaway coast lands on the overshoot card, not a
 
 test('pwr_shift_exam — evening curve passes pure-manual AND on player-engaged channels', function (ck) {
   // Manual route (fallback coupling, re-probed 2026-07-20 under the sliding-
-  // Tavg program): the 850 ask walks down monotonically, crosses the 905
-  // marker at ~186 s and dwells 894–899 under the 910 hold line (the old
-  // undershoot-through-870 is gone); the return crosses 985 and settles ~996.
+  // Tavg program; MWe rescaled /10 in P6): the 85 ask walks down, crosses the
+  // 90.5 marker and dwells ~89.5 under the 91 hold line; the return crosses
+  // 98.5 and settles ~99.6.
   var s = startScenario('pwr_shift_exam');
   var snap = waitBeat(s, 'watch_down', 60);
   ck('reduction watch arms', !!snap, !!snap, 'watch_down pending');
   if (!snap) return;
   settle(s, 46);                        // watch_down fires (delay 45)
   s.handleCommand({ action: 'set_load_mode', mode: 'manual' });
-  s.handleCommand({ action: 'set_load_target', mwe: 850 });
+  s.handleCommand({ action: 'set_load_target', mwe: 85 });
   snap = waitBeat(s, 'pickup_call', 1200);
   ck('reduction + hold credited → pickup call', !!snap, !!snap, 'pickup_call pending');
   if (!snap) return;
   settle(s, 4);                         // pickup_call fires (delay 1)
-  s.handleCommand({ action: 'set_load_target', mwe: 1000 });
+  s.handleCommand({ action: 'set_load_target', mwe: 100 });
   // Feed vigilance (the exam's own teaching — "the feed never out of your
   // scan"): under the Tavg program the down-leg shrink parks SG level ~31 %
   // and the fallback flow-matching feed holds it there, so the slider-only
@@ -726,12 +726,12 @@ test('pwr_shift_exam — evening curve passes pure-manual AND on player-engaged 
   s2.handleCommand({ action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true });
   settle(s2, 40);                       // past the watch_down fire
   s2.handleCommand({ action: 'set_load_mode', mode: 'manual' });
-  s2.handleCommand({ action: 'set_load_target', mwe: 850 });
+  s2.handleCommand({ action: 'set_load_target', mwe: 85 });
   snap = waitBeat(s2, 'pickup_call', 1200);
   ck('channels route credits the hold', !!snap, !!snap, 'pickup_call pending');
   if (snap) {
     settle(s2, 4);
-    s2.handleCommand({ action: 'set_load_target', mwe: 1000 });
+    s2.handleCommand({ action: 'set_load_target', mwe: 100 });
     snap = runUntil(s2, function (sn) { return lc(sn); }, 1200);
   }
   ck('channels route reaches an endpoint', !!snap, !!snap, 'level_complete');
@@ -745,7 +745,7 @@ test('pwr_shift_exam — deep ask trips the unit (SG drains on the fallback feed
   var s = startScenario('pwr_shift_exam');
   settle(s, 48);                        // watch_down fired; scram branch live
   s.handleCommand({ action: 'set_load_mode', mode: 'manual' });
-  s.handleCommand({ action: 'set_load_target', mwe: 500 });
+  s.handleCommand({ action: 'set_load_target', mwe: 50 });
   var snap = runUntil(s, function (sn) { return lc(sn); }, 900);
   ck('deep ask reaches an endpoint (no softlock)', !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is the unit-trip card', lc(snap).title, /Unit Trip/i.test(lc(snap).title), 'Unit Trip card');
@@ -1229,12 +1229,12 @@ test('pwr_automation — dispatcher swing completes under the authored preset', 
   ck('drop-load beat arms', !!snap, !!snap, 'drop_load pending');
   if (!snap) return;
   settle(s, 16);                        // its delay-14 fires; branch watch opens
-  s.handleCommand({ action: 'set_load_target', mwe: 700 });
+  s.handleCommand({ action: 'set_load_target', mwe: 70 });
   snap = waitBeat(s, 'watch_settle', 600);
   ck('power followed demand down → settle card', !!snap, !!snap, 'watch_settle pending');
   if (!snap) return;
   settle(s, 34);                        // watch_settle fires (delay 30); raise watch opens
-  s.handleCommand({ action: 'set_load_target', mwe: 1000 });
+  s.handleCommand({ action: 'set_load_target', mwe: 100 });
   snap = runUntil(s, function (sn) { return lc(sn); }, 900);
   ck('ramp back up completes the mission', !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is the dispatched card', lc(snap).title, /Dispatched/i.test(lc(snap).title), 'Hands Off — Dispatched card');

@@ -200,7 +200,7 @@ Generator carrying load; plant in or entering **Mode 1, At Power**; nuclear–el
 ## PWR-N06 — Power ascension in Mode 1, At Power to 100 %
 
 ### Purpose
-In **Mode 1, At Power**, raise reactor power and electrical output to full-power Mode 1 (~**1000 MWe**) by coordinating rods, boron, and turbine load.
+In **Mode 1, At Power**, raise reactor power and electrical output to full-power Mode 1 (~**100 MWe**) by coordinating rods, boron, and turbine load.
 
 ### Prerequisites
 - **Mode 1, At Power** (or completing entry via N05); turbine on line or load Follow available.

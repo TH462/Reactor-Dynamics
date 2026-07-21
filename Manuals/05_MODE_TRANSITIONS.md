@@ -141,7 +141,7 @@ Mode 1, At Power at power (watchstanding)
 
 | Step | Action | Acceptance |
 |------|--------|------------|
-| E1 | Ascend to ~100 % / ~1000 MWe | Full-power **Mode 1, At Power** |
+| E1 | Ascend to ~100 % / ~100 MWe | Full-power **Mode 1, At Power** |
 | E2 | Verify P ≈ 15.41 MPa, SG ~65 %, PZR ~55 %, subcooling healthy | HFP band |
 
 ---

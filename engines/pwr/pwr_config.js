@@ -29,6 +29,24 @@
   var PWR_CONFIG = {
     plant_id: 'pwr',
 
+    // ------------------------------------------------- plant identity & ratings
+    // Catalog v3 rulings (2026-07-21): its own plant — a compact single-loop
+    // experimental PWR. Engine internals stay normalized; this table is the ONE
+    // place human-facing absolute ratings live (UI readouts, manuals, instructor
+    // text, battery band checks). The name is the owner's call.
+    identity: {
+      name: null,                       // pending owner selection (feel-plan P6)
+      plant_class: 'single-loop experimental pressurized water reactor',
+      mwt_rated: 300.0,                 // core thermal rating, MW
+      mwe_rated: 100.0,                 // gross electrical rating, MW (= turbine.mwe_rated)
+      loops: 1, steam_generators: 1, rcps: 1,
+      // Display conversions for normalized flows (manual/UI flavor, [tune]):
+      rcs_flow_gpm: 24000,              // rated reactor coolant flow
+      charging_max_gpm: 40,             // = charging_max 0.06 normalized
+      letdown_normal_gpm: 20,           // = orifice A 0.030 normalized
+      afw_gpm: 100,                     // = afw_flow_frac 0.15 normalized
+    },
+
     // ---------------------------------------------------------------- kinetics
     kinetics: {
       delayed: DELAYED,
@@ -325,7 +343,7 @@
       vacuum_rated: 96.5, vacuum_lost: 16.9,   // kPa [tune]
       vacuum_restore_tau: 10.0, vacuum_decay_tau: 30.0, // s [tune]
       vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer)
-      mwe_rated: 1000.0,           // MWe [tune]
+      mwe_rated: 100.0,            // MWe — THIS PLANT'S RATING (identity below; feel-plan P6) [tune]
       // Turbine governor / control valve: EHC load-control mode — the valve
       // TARGET is pressure-compensated (demand ÷ P/P_rated, clamped fully open)
       // so steady-state delivered steam equals the load demand at any secondary

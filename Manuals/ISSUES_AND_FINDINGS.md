@@ -101,7 +101,7 @@ Sources include `Diagnostic/SPEC_AUDIT_2026-07-16.md` and campaign playtest note
 
 | Check | Result |
 |-------|--------|
-| HFP pressure **15.41 MPa**, Tavg ~**304 °C**, ~**1000 MWe** | Consistent across M1, config, manual_data |
+| HFP pressure **15.41 MPa**, Tavg ~**304 °C**, ~**100 MWe** | Consistent across M1, config, manual_data |
 | PORV **16.20 / 15.86 MPa**, safeties **17.13 / 16.55 MPa** | Consistent control data / safety_limits |
 | SG level normal **65 %**, PZR **55 %** | Consistent |
 | AFW actuation **20 %**, SG trip **12 %** | Consistent |
