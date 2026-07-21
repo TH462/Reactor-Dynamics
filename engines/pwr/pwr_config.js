@@ -35,7 +35,7 @@
     // place human-facing absolute ratings live (UI readouts, manuals, instructor
     // text, battery band checks). The name is the owner's call.
     identity: {
-      name: null,                       // pending owner selection (feel-plan P6)
+      name: 'SLX-100',                  // Single-Loop eXperimental, 100 MWe (owner, 2026-07-21)
       plant_class: 'single-loop experimental pressurized water reactor',
       mwt_rated: 300.0,                 // core thermal rating, MW
       mwe_rated: 100.0,                 // gross electrical rating, MW (= turbine.mwe_rated)

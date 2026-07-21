@@ -71,7 +71,7 @@
     // ============================================== 1. steady-state operating map
 
     'SS-1': function () {
-      return test('SS-1 100% snapshot vs Westinghouse map', function (ck) {
+      return test('SS-1 100% snapshot — the SLX-100 operating point', function (ck) {
         var h = H('hot_full_power');
         h.run(600);
         var t = h.ts();

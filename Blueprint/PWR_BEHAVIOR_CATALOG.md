@@ -1,8 +1,13 @@
-# PWR Behavior Catalog — v3.0 (feel-first)
+# SLX-100 Behavior Catalog — v3.1 (feel-first, FROZEN-FINAL)
 
-**Status: v3.0 FROZEN — 2026-07-21. All §11 hotspots ruled by owner (see §12); changes
-require an owner ruling. Supersedes v2.0 (generic-Westinghouse bands; see git history for
-the full v2.0 text). Companion: `Blueprint/PWR_FEEL_TUNING_PLAN.md` (v1.0, approved).**
+**Status: v3.1 FROZEN-FINAL — 2026-07-21, feel-plan Phase 7 complete. The plant is the
+SLX-100** (Single-Loop eXperimental, 100 MWe — owner-named). **Every catalog gap is
+closed: the battery runs 26 pass / 0 xfail / 0 fail, and its bands ARE the minted
+character bands** — each probe was re-authored during the pass to this plant's own tuned
+behavior (297→~304 °C program, ~13 % shrink, graceful ride-out, TR-3 dryout arc, ΔP-
+killed SGTR). Changes require an owner ruling; owner playtest feedback
+(Blueprint/PLAYTEST_CHECKLIST.md) is the standing re-tune channel — knobs are one-line.
+Companion: `Blueprint/PWR_FEEL_TUNING_PLAN.md` (v1.0, all phases complete).**
 
 **⚑ TEACHING GOAL (owner, 2026-07-21) — the plant's reason to exist: teach people how a
 PWR works — the physics and how it acts.** When a tuning choice trades convenience against
