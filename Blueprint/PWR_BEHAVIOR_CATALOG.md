@@ -4,6 +4,16 @@
 4, 5, and 9). This is the tuning-pass ground truth; changes require an owner ruling.**
 Date: 2026-07-20
 
+> **⚑ DIRECTION CHANGE (2026-07-20, owner): re-plan pending — do NOT execute this catalog
+> as-is.** The owner has decided to treat this as its own unique plant and tune for desired
+> behavior/feel, not the generic-Westinghouse target numbers below. **Fable to re-plan.**
+> Item 1 (SS-2 Tavg program) was partially implemented then paused; the work is **uncommitted**.
+> Read **`Diagnostic/ITEM1_TAVG_HANDOFF.md`** first — it records exactly what changed, the test
+> status at pause, and three durable physics findings (Tavg is pinned by the boron/MTC trim, so
+> the "feel" lever is the no-load anchor + Tref program; the SS-6 droop was a xenon-IC bug; and
+> post-trip SG shrink is sensitive to the no-load Tavg). The bands below are now *reference*,
+> not ground truth, until the owner re-freezes.
+
 ## Purpose and rules
 
 This catalog is the external ground truth for the comprehensive PWR tuning pass. It exists
