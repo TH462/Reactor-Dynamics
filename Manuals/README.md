@@ -20,7 +20,7 @@ They cover:
 
 **Primary operator paths:** take the plant **Mode 5, Cold Shutdown → Mode 1, At Power** (cold shutdown to power operation) and **Mode 1, At Power → Mode 5, Cold Shutdown** (power operation to cold shutdown). See `05_MODE_TRANSITIONS.md` procedures **PWR-T20** and **PWR-T21**.
 
-These manuals are training documentation derived from `Blueprint/` design specs, the as-built engines/control layer, and the in-product reference data (`ui/manual_data.js`, `ui/manual_procedures.js`). They are **not** licensing basis documents for a real nuclear plant.
+These manuals are training documentation derived from `Blueprint/` design specs, the as-built engines/control layer, and the validated procedure data (`ui/manual_procedures.js`). **They are the PWR operator's manual** — the in-app Manual renders these same files (packed by `tools/pack_manuals.js`), so an edit here is an edit to the product. They are **not** licensing basis documents for a real nuclear plant.
 
 ---
 

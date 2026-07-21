@@ -454,6 +454,37 @@
         this._broadcast(fsnap);
         return fsnap;
       }
+      // ---- Path 3 auto-checklists: the SAME procedure artifact run as a passive
+      // checklist against the LIVE plant — no reset, no auto preset, no gating.
+      // The Instructor grades steps off the instruments; the UI renders bubbles.
+      case 'start_checklist': {
+        if (!this.engine) return { type: 'error', code: 'COMMAND_ERROR', message: 'no active plant', received: command };
+        var ckey = this.activePlantId === 'rbmk'
+          ? (this.activeDesignVersion === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre')
+          : this.activePlantId;
+        var cpool = (RD.MANUAL_PROCEDURES || {})[ckey] || [];
+        var cproc = null;
+        for (var cpi = 0; cpi < cpool.length; cpi++) if (cpool[cpi].id === command.procedure_id) { cproc = cpool[cpi]; break; }
+        if (!cproc || !this.instructor.loadChecklist) {
+          return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown procedure_id', received: command };
+        }
+        this.instructor.loadChecklist(cproc, { procedure_id: cproc.id, profile_key: ckey });
+        var cksnap = this._assembleWithInstructor();
+        this._broadcast(cksnap);
+        return cksnap;
+      }
+      case 'stop_checklist': {
+        if (this.instructor.stopChecklist) this.instructor.stopChecklist();
+        var cssnap = this._assembleWithInstructor();
+        this._broadcast(cssnap);
+        return cssnap;
+      }
+      case 'checklist_check': {
+        if (this.instructor.checklistCheck) this.instructor.checklistCheck(command.index);
+        var ccsnap = this._assembleWithInstructor();
+        this._broadcast(ccsnap);
+        return ccsnap;
+      }
       case 'stop_scenario':
       case 'stop_follow': {
         if (this.instructor.unload) this.instructor.unload();

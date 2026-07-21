@@ -35,7 +35,7 @@
       prereq: ['Plant at Mode 3, Hot Standby: subcritical, hot, at operating temperature/pressure.', 'Reactor Coolant Pumps (RCP) running — forced flow established.', 'Control bank fully inserted; shutdown bank parked withdrawn; boron high (the plant is held subcritical).'],
       cautions: ['Withdraw in small increments — target SUR ≤ 1 decade per minute (DPM) and reactor period ≥ 30 s. (This trainer\'s single coarse bank will read ~2 DPM at the crossing; a real plant creeps up with fine control.)', 'This trainer lumps all control rods into one coarse group with only Doppler feedback, so power OVERSHOOTS its settling point on the way up. A real plant approaches criticality far more finely (fine rod control + a neutron source, held just-critical).'],
       steps: [
-        { text: 'Confirm the plant is subcritical and hot: reactivity below zero, average coolant temperature (Tavg) ≈ 304 °C, primary pressure ≈ 15.4 MPa.', control: '(observe)', target: 'subcritical, hot', hold: 2, acc: { p: 'reactivity_pcm', op: '<', v: 0 } },
+        { text: 'Confirm the plant is subcritical and hot: reactivity below zero, average coolant temperature (Tavg) ≈ 297 °C (the no-load program point), primary pressure ≈ 15.4 MPa.', control: '(observe)', target: 'subcritical, hot', hold: 2, acc: { p: 'reactivity_pcm', op: '<', v: 0 } },
         { text: 'Check the nuclear instruments (NIS block, Power & Reactivity card): the Source Range (SR) counter reads a few hundred counts per second — the neutron source keeping the core visible — and the Intermediate Range (IR) chamber is on scale (above 1e-10 A, the P-6 permissive).',
           control: '(observe)', target: 'SR counting, IR on scale', hold: 2,
           acc: { p: 'sr_counts_cps', op: '>', v: 100 } },
@@ -65,7 +65,7 @@
           target: 'small, steady power rise', cmd: { action: 'rod_nudge', group_id: 'control', steps: 6, speed: 'normal' }, hold: 60,
           acc: { p: 'power_pct', op: '>', v: 50.5 } },
         { text: 'Raise the Turbine Load to match the higher reactor power and send more electricity to the grid.', control: 'Turbine Load',
-          target: '≈ 700 MWe', cmd: { action: 'set_steam_demand', mwe: 700 }, hold: 40, acc: { p: 'power_pct', op: '>', v: 52 } },
+          target: '≈ 70 MWe', cmd: { action: 'set_steam_demand', mwe: 70 }, hold: 40, acc: { p: 'power_pct', op: '>', v: 52 } },
       ],
       guard: { never_melted: true },
       outcome: 'Power and electrical output settle at a higher point.',
@@ -78,7 +78,7 @@
       prereq: ['Reactor at power, turbine on line.'],
       cautions: ['Watch that the Steam Generator (SG) level does not swell excessively as load drops.'],
       steps: [
-        { text: 'Reduce the Turbine Load.', control: 'Turbine Load', target: '≈ 600 MWe', cmd: { action: 'set_steam_demand', mwe: 600 }, hold: 10 },
+        { text: 'Reduce the Turbine Load.', control: 'Turbine Load', target: '≈ 60 MWe', cmd: { action: 'set_steam_demand', mwe: 60 }, hold: 10 },
         { text: 'Insert the Control Rods a few steps to lower reactor power (Rod Control card → Insert in short bursts).', control: 'Rod Speed',
           target: 'power falling', cmd: { action: 'rod_nudge', group_id: 'control', steps: -10, speed: 'normal' }, hold: 90,
           acc: { p: 'power_pct', op: '<', v: 98 } },

@@ -3134,3 +3134,50 @@ inventory-hold both pass), autoctl 20, run_pwr 31, campaign 51, m5 19.
 loss — spray AUTO holds ~2255 psi vs ~2379 with spray off), reactor-vessel z-order over the rod
 cards, slow-rod-insertion SCRAM at 100%, a spray/PORV tuning test, and a meta-analysis of why the
 prior production-readiness review missed all of these (control-loop / physical-plausibility gap).
+
+### Manual unification + instructor auto-checklists (2026-07-21)
+
+**One PWR manual.** Owner ruling: the `Manuals/*.md` set is THE manual; the generated web
+manual (RD.MANUAL pwr profile) was retired after a full content-gap audit ported everything
+worth keeping (per-IC normal values → 09 §11.0 regenerated from the LIVE engine, indication
+ranges + linked alarms → 03 §16.0, engine command reference → 03 §18.0, `set_rhr_hx` +
+~50 °C/h → 03 §11.2 + 05, severity sliders + new PWR-E22 `pzr_level_sensor_low` procedure
+→ 07) and left the stale bits behind (1000-MWe-era normal values, HPI 11.03, HZP steam 8.9).
+`gen_manual_reference.js` now emits a pwr **reference-only stub** (indication id→name for
+the Failures-tab picker — the one non-manual consumer of the profile); RBMK/BWR profiles
+unchanged until their own passes produce md sets.
+
+**Manual on the site.** `tools/pack_manuals.js` packs the 13 operator docs into
+`ui/manual_md.js` (`RD.MANUAL_MD`, ~184 KB; the three dev logs deliberately excluded), and
+`ui/md_render.js` (`RD.mdToHtml`, escape-all GFM-ish: tables/lists/fences/quotes/hard
+breaks; `.md` links → in-manual `data-doc` nav) renders them in the Manual overlay.
+Procedures/Accidents remain LIVE sections from RD.MANUAL_PROCEDURES (follow + checklist
+buttons). Edit a manual → re-run the packer. Old renderer path kept for rbmk/bwr
+(`p.reference_only` guards the pwr stub from it).
+
+**Auto-checklists (Path 3).** `instructor_layer.js` gained a checklist runtime orthogonal
+to mode: a procedure run PASSIVELY against the live plant — no reset (vs `start_follow`),
+no command gating, sequential auto-check of the active step (acc graded instrument-first
+with the follow debounce; saw latched; cmd-family observed when nothing gradable; pure
+observation steps hand-tick via `checklist_check`, which is also the operator override).
+M5 commands: `start_checklist` / `stop_checklist` / `checklist_check` (each broadcasts).
+Snapshot block `instructor.checklist` (step text NOT duplicated — UI reads
+RD.MANUAL_PROCEDURES like follow). Survives save/load independent of mode; any
+scenario/follow load clears it. UI: chat-style bubbles in the instructor card (done ✓ /
+active ▸ + live acc status / pending ○), 📋 picker on the card (free play only), 📋 buttons
+on manual proc cards + walkthrough rows. New gate `test/run_checklist.js` (24 checks).
+
+**Stale-scale sweep (found while auditing):** `manual_procedures.js` pwr still commanded
+600/700 MWe (→ 60/70) and told the operator HZP Tavg ≈ 304 (→ 297, the no-load anchor);
+manuals 04/05 said Mode 3 ≈ 304 °C in five places (→ 297); 09 imbalance cue 40 MWe (→ 4),
+"Rated MWe 1000" (→ 100), missing `rcp_cavitation` row; `pwr_config.js` `mwe_output`
+instrument range was `[0,1300]` (→ `[0,130]`, noise 1.0 → 0.1 — same relative noise as
+pre-rescale).
+
+**Gates:** checklist 24/24, procedures 21/21, m6ph 8/8, m6 16/16, m5 19/19, m4 18/18,
+pwr 31/31, behavior 30/0/0, ops-pwr 20/20, autoctl 20/20, scenarios 3/3, campaign 51/51
+(2897). Full run_ops 58/67 — the 9 fails are the documented RBMK/BWR tuning targets
+(zero pwr). md-renderer smoke: 13/13 docs render with balanced tables/lists.
+`verify_manual_follow` PWR bar checks fail 30 on clean HEAD too (worktree-verified
+pre-existing: like `verify_e2e_ui`, it still probes the retired `RD.PwrSynoptic`
+reveal while the board display mounts); its manual-pill and rbmk/bwr checks pass.

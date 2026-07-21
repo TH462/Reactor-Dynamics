@@ -728,6 +728,14 @@
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
     // save/load restores, and anything else that broadcasts mid-transition.
+    // Checklist picker row: free play only — anything instructed owns the card.
+    var cklRow = $('instrCklRow');
+    if (cklRow) {
+      var cklBusy = !!(ui.scenario || (s.instructor && (s.instructor.follow || s.instructor.chat ||
+        s.instructor.checklist || s.instructor.level_complete)));
+      cklRow.hidden = cklBusy;
+      if (cklBusy) { var cm = $('cklMenu'); if (cm) cm.hidden = true; }
+    }
     var fb = s.instructor && s.instructor.follow;
     if (fb) { ui.follow = { id: fb.procedure_id }; syncInstrNav('follow'); renderFollow(s); return; }
     if (ui.follow) ui.follow = null;              // the snapshot says the follow ended
@@ -735,6 +743,11 @@
     // replaces the single-slot commentary card. Level-complete renders inline.
     if (s.instructor && s.instructor.chat) { syncInstrNav('chat'); renderChat(s); return; }
     if (chatState.sid) resetChat();
+    // Auto-checklist (Path 3): chat-style bubble list, one bubble per step,
+    // checking itself off the instruments while the operator plays on.
+    var ckb = s.instructor && s.instructor.checklist;
+    if (ckb) { syncInstrNav('ckl'); renderChecklist(s, ckb); return; }
+    if (cklState.key) resetCkl();
     var lc = s.instructor && s.instructor.level_complete;
     if (lc) { syncInstrNav('lc'); msgHold.queue = []; msgHold.shown = null; renderLevelComplete(s, lc); return; }
     syncInstrNav(ui.scenario ? 'scenario' : 'idle');
@@ -933,6 +946,88 @@
       return;
     }
     cmd({ action: 'instructor_continue' });
+  }
+
+  // ============================================================ auto-checklists (Path 3)
+  // Renders instructor.checklist as a chat-style bubble list: every step is a
+  // bubble; done steps carry the check, the active step shows its live
+  // acceptance status and a manual override. Step text comes from the same
+  // RD.MANUAL_PROCEDURES artifact the Instructor graded it from.
+  var cklState = { key: null };
+  function resetCkl() {
+    if (!cklState.key) return;
+    cklState = { key: null };
+    var card = $('instructorCard'); if (card) card.classList.remove('chat-mode');
+    var cur = $('instrCurrent'); if (cur) cur.textContent = '';
+  }
+  function renderChecklist(s, ck) {
+    var cur = $('instrCurrent'), card = $('instructorCard');
+    var pr = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ck.procedure_id; })[0];
+    if (!pr) { cur.textContent = 'Checklist: ' + ck.procedure_id; return; }   // mid plant-restore mismatch
+    var key = [ck.procedure_id, (ck.steps_done || []).map(function (d) { return d ? 1 : 0; }).join(''),
+      ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, ui.register].join('|');
+    if (key === cklState.key) return;
+    var firstBuild = !cklState.key;
+    cklState.key = key;
+    card.classList.add('chat-mode');
+    cur.classList.remove('instr-standby');
+    var h = '<div class="ckl-log" id="cklLog">';
+    h += '<div class="ckl-head">📋 <b>' + mesc(pr.title) + '</b>' +
+      '<div class="m-note">Auto-checklist — steps check themselves off the instruments while you operate.</div></div>';
+    for (var i = 0; i < pr.steps.length; i++) {
+      var st = pr.steps[i];
+      var done = !!(ck.steps_done && ck.steps_done[i]);
+      var active = !ck.complete && i === ck.step_index;
+      var cls = done ? 'ckl-done' : active ? 'ckl-active' : 'ckl-pend';
+      h += '<div class="ckl-step ' + cls + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
+      h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
+      if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
+      if (active) {
+        var bits = [];
+        if (st.control) bits.push('Control: <b>' + mesc(st.control) + '</b>');
+        if (st.target) bits.push('Target: ' + mesc(st.target));
+        if (bits.length) h += '<div class="ckl-sub">' + bits.join(' &nbsp;·&nbsp; ') + '</div>';
+        if (st.acc) {
+          var via = ck.graded_by === 'instrument' ? 'reading the instrument' : ck.graded_by === 'true_state' ? 'no instrument twin — true value' : null;
+          h += '<div class="ckl-sub">✓ when ' + mesc(st.acc.p) + ' ' + (OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) +
+            (ck.acc_met ? ' <span style="color:var(--running)">met</span>' : ' <span class="muted">…not yet</span>') +
+            (via ? ' <span class="muted">· ' + via + '</span>' : '') + '</div>';
+        }
+        if (st.note) h += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
+        h += '<button class="btn ckl-mark" data-ckl-check="' + i + '">✓ Mark done</button>';
+      }
+      h += '</div></div>';
+    }
+    if (ck.complete) {
+      h += '<div class="ckl-complete">✅ <b>Checklist complete</b>' +
+        (pr.outcome ? '<div class="m-note">' + mesc(pr.outcome) + '</div>' : '') + '</div>';
+    }
+    h += '</div>';
+    h += '<div class="ckl-btns"><button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : '✕ End checklist') + '</button></div>';
+    cur.innerHTML = h;
+    var log = $('cklLog');
+    if (log) {
+      if (ck.complete) log.scrollTop = log.scrollHeight;
+      else if (!firstBuild) { var act = log.querySelector('.ckl-active'); if (act) act.scrollIntoView({ block: 'nearest' }); }
+    }
+    if (firstBuild) setFocus('instructor');
+  }
+  // Picker menu (free-play instructor card): every non-narrative procedure for
+  // the active plant can run as a checklist.
+  function toggleCklMenu(force) {
+    var menu = $('cklMenu'); if (!menu) return;
+    var show = force != null ? !!force : menu.hidden;
+    if (show) {
+      var procs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return !x.narrative; });
+      menu.innerHTML = procs.length ? procs.map(function (p) {
+        return '<button data-ckl-start="' + mesc(p.id) + '"><span class="ckl-cat">' + mesc(p.category) + '</span>' + mesc(p.title) + '</button>';
+      }).join('') : '<div class="m-note">No procedures for this plant.</div>';
+    }
+    menu.hidden = !show;
+  }
+  function startChecklist(id) {
+    cmd({ action: 'start_checklist', procedure_id: id });
+    setFocus('instructor', true);
   }
 
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
@@ -1230,6 +1325,7 @@
     var h = '<div class="m-note">Follow a real procedure step by step — the Instructor checks each step off the instruments.</div>';
     return h + (procs.map(function (x) {
       return '<div class="tr-row"><span class="tr-ptitle">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(x.title) + '</span>' +
+        '<button class="btn" data-checklist="' + x.id + '" title="Run as a passive checklist against the live plant">📋</button>' +
         '<button class="btn" data-follow="' + x.id + '">▶ Follow</button></div>';
     }).join('') || '<div class="m-note">No procedures for this plant.</div>');
   }
@@ -1369,7 +1465,7 @@
   // click (persona header), which still maximizes the instructor.
   function setFocus(which, user) {
     var instr = $('instructorCard'), tools = $('toolsCard'); if (!instr || !tools) return;
-    var live = !!(ui.scenario || ui.follow || chatState.sid);
+    var live = !!(ui.scenario || ui.follow || chatState.sid || cklState.key);
     var iExp, tExp;
     if (which === 'instructor') {
       iExp = true;
@@ -2080,7 +2176,21 @@
     $('manualClose').addEventListener('click', closeManual);
     $('manualOverlay').addEventListener('click', function (e) { if (e.target === $('manualOverlay')) closeManual(); });
     $('manualNav').addEventListener('click', function (e) { var b = e.target.closest('[data-msec]'); if (!b) return; ui.manualSection = b.getAttribute('data-msec'); renderManual(); });
-    $('manualContent').addEventListener('click', function (e) { var b = e.target.closest('[data-follow]'); if (!b) return; followProcedure(b.getAttribute('data-follow')); });
+    $('manualContent').addEventListener('click', function (e) {
+      // Cross-document links inside the packed markdown manual.
+      var dl = e.target.closest('[data-doc]');
+      if (dl) {
+        e.preventDefault();
+        var mm = mdManual();
+        var doc = mm && mm.docs.filter(function (d) { return d.file === dl.getAttribute('data-doc'); })[0];
+        if (doc) { ui.manualSection = doc.id; renderManual(); }
+        else showToast('That document is not part of the packed manual.', 'error');
+        return;
+      }
+      var c = e.target.closest('[data-checklist]');
+      if (c) { closeManual(); startChecklist(c.getAttribute('data-checklist')); return; }
+      var b = e.target.closest('[data-follow]'); if (!b) return; followProcedure(b.getAttribute('data-follow'));
+    });
     // Manual table filter (glossary / indications) — hides non-matching rows.
     $('manualContent').addEventListener('input', function (e) {
       if (e.target.id !== 'mFilter') return;
@@ -2101,6 +2211,17 @@
       var cb = e.target.closest('[data-chatbtn]');
       if (cb) { chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return; }
       var b = e.target.closest('[data-lc]'); if (!b) return; levelCompleteAction(b.getAttribute('data-lc'));
+    });
+    // Auto-checklists: picker row (free play) + the bubble list's own buttons.
+    $('instrCklRow').addEventListener('click', function (e) {
+      var st = e.target.closest('[data-ckl-start]');
+      if (st) { toggleCklMenu(false); startChecklist(st.getAttribute('data-ckl-start')); return; }
+      if (e.target.closest('#cklOpenBtn')) toggleCklMenu();
+    });
+    $('instructorCard').addEventListener('click', function (e) {
+      var mk = e.target.closest('[data-ckl-check]');
+      if (mk) { cmd({ action: 'checklist_check', index: +mk.getAttribute('data-ckl-check') }); return; }
+      if (e.target.closest('[data-ckl-stop]')) cmd({ action: 'stop_checklist' });
     });
     // Plant & Mission window: plant / mode / start-condition picks re-render in
     // place; the start buttons close the window and launch.
@@ -2151,6 +2272,8 @@
         ui.scenario = null; cmd({ action: 'stop_scenario' }); buildTraining();
         if (latest) renderInstructor(latest); return;
       }
+      var ckq = e.target.closest('[data-checklist]');
+      if (ckq) { closeMissionSelect(); ensureEngine(msel.engine); startChecklist(ckq.getAttribute('data-checklist')); return; }
       var f = e.target.closest('[data-follow]');
       if (f) { closeMissionSelect(); ensureEngine(msel.engine); followProcedure(f.getAttribute('data-follow')); }
     });
@@ -2279,11 +2402,16 @@
     return sp.v + (sp.u ? ' ' + sp.u : '');
   }
 
-  function openManual() { if (!manualProfile()) { showToast('Manual data not loaded.', 'error'); return; } $('manualOverlay').hidden = false; renderManual(); }
+  function mdManual() { return (RD.MANUAL_MD || {})[ui.engineKey]; }
+  function openManual() { if (!mdManual() && !manualProfile()) { showToast('Manual data not loaded.', 'error'); return; } $('manualOverlay').hidden = false; renderManual(); }
   function closeManual() { $('manualOverlay').hidden = true; }
 
   function renderManual() {
-    var p = manualProfile(); if (!p) return;
+    // Plants with a packed markdown manual (Manuals/*.md via tools/pack_manuals.js)
+    // render the real operator documents; the generated RD.MANUAL reference is
+    // the fallback for plants that don't have one yet (RBMK / BWR).
+    if (mdManual()) { renderManualMd(mdManual()); return; }
+    var p = manualProfile(); if (!p || p.reference_only) return;
     $('manualTitle').textContent = "Operator’s Manual — " + p.name;
     $('manualNav').innerHTML = MANUAL_SECTIONS.map(function (s) {
       return '<button data-msec="' + s.id + '" class="' + (ui.manualSection === s.id ? 'on' : '') + '">' + s.label + '</button>';
@@ -2292,6 +2420,34 @@
       controls: mControls, indications: mIndications, setpoints: mSetpoints, normal: mNormal, failures: mFailures,
       glossary: mGlossary }[ui.manualSection] || mOverview;
     $('manualContent').innerHTML = fn(p);
+    $('manualContent').scrollTop = 0;
+  }
+
+  // ---- Markdown manual (the Manuals/*.md operator set, packed) --------------
+  // The documents are the single source; Procedures / Accidents stay LIVE from
+  // RD.MANUAL_PROCEDURES (they carry the follow / checklist buttons).
+  var mdocCache = {};   // "engineKey|docId" → rendered html
+  function renderManualMd(mm) {
+    $('manualTitle').textContent = "Operator’s Manual — " + (mm.plant_label || 'Plant');
+    var live = [{ id: 'procedures', label: 'Procedures (live)' }, { id: 'accidents', label: 'Accident Walkthroughs (live)' }];
+    var validSec = live.some(function (s) { return s.id === ui.manualSection; }) ||
+      mm.docs.some(function (d) { return d.id === ui.manualSection; });
+    if (!validSec) ui.manualSection = mm.docs[0].id;
+    $('manualNav').innerHTML = mm.docs.map(function (d) {
+      return '<button data-msec="' + mesc(d.id) + '" class="' + (ui.manualSection === d.id ? 'on' : '') + '">' + mesc(d.label) + '</button>';
+    }).join('') + '<div class="mnav-sep">Instructor</div>' + live.map(function (s) {
+      return '<button data-msec="' + s.id + '" class="' + (ui.manualSection === s.id ? 'on' : '') + '">' + s.label + '</button>';
+    }).join('');
+    var h;
+    if (ui.manualSection === 'procedures') h = mProcedures();
+    else if (ui.manualSection === 'accidents') h = mAccidents();
+    else {
+      var doc = mm.docs.filter(function (d) { return d.id === ui.manualSection; })[0];
+      var ckey = ui.engineKey + '|' + doc.id;
+      if (!mdocCache[ckey]) mdocCache[ckey] = '<div class="mdoc">' + RD.mdToHtml(doc.md) + '</div>';
+      h = mdocCache[ckey];
+    }
+    $('manualContent').innerHTML = h;
     $('manualContent').scrollTop = 0;
   }
 
@@ -2310,7 +2466,8 @@
   }
   function mProcCard(pr) {
     var h = '<div class="m-card"><div class="m-h">' + mesc(pr.title) + ' <span class="m-pill">' + mesc(pr.category) + '</span>' +
-      '<button class="btn m-follow" data-follow="' + mesc(pr.id) + '">▶ Follow in Instructor</button></div>';
+      '<button class="btn m-follow" data-follow="' + mesc(pr.id) + '">▶ Follow in Instructor</button>' +
+      '<button class="btn m-follow" data-checklist="' + mesc(pr.id) + '" title="Run as a passive checklist against the live plant — no reset, steps auto-check off the instruments">📋 Checklist</button></div>';
     h += '<div class="m-sub">Start from: ' + mesc(pr.from) + '</div>';
     if (pr.purpose) h += '<p style="margin:8px 0">' + mesc(pr.purpose) + '</p>';
     if (pr.prereq && pr.prereq.length) h += '<div class="m-sub2">Prerequisites</div><ul class="m-ul">' + pr.prereq.map(function (x) { return '<li>' + mesc(x) + '</li>'; }).join('') + '</ul>';

@@ -57,7 +57,7 @@ Initial condition **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**, 
 | Step | Action | Control / indication | Acceptance |
 |------|--------|----------------------|------------|
 | 1 | Confirm plant subcritical | Power & Reactivity / reactivity or power ~0 | Reactivity &lt; 0; power near source equilibrium |
-| 2 | Confirm hot operating temperature | Tavg ≈ **304 °C** | At operating T (NOP) |
+| 2 | Confirm hot operating temperature | Tavg ≈ **297 °C** (no-load program point) | At operating T (NOP) |
 | 3 | Confirm primary pressure | Primary pressure ≈ **15.41 MPa** | Near PZR setpoint |
 | 4 | Confirm subcooling healthy | Subcooling bar | Typically tens of °C; green zone |
 | 5 | Confirm RCP running (forced flow) | RCP card / rcp_running | Pump running |
@@ -93,7 +93,8 @@ Take the reactor from **Mode 3, Hot Standby** (subcritical, hot) to **Mode 2, St
 |------|------|
 | **CAUTION** | Withdraw in small increments. Target SUR ≤ **1 DPM**, reactor period ≥ **30 s**. |
 | **CAUTION** | This trainer’s single coarse bank may briefly read ~**2 DPM** at the criticality crossing. |
-| **CAUTION** | Power can **overshoot** the settling point (lumped Doppler-only fine structure). Stop rods early and let feedback settle. |
+| **CAUTION** | Power can **overshoot** the settling point: this trainer lumps all rods into one coarse group with Doppler-only fine structure. A real plant approaches criticality far more finely (fine rod control + a neutron source, held just-critical). Stop rods early and let feedback settle. |
+| **NOTE** | From fully inserted rods the approach takes **two to three minutes at Norm speed**; creeping the whole way at Slow takes over ten. Norm until the SUR stirs, then Slow for the crossing. |
 | **WARNING** | Leave SR energized past ~1e5 cps → **SR high-flux trip**. Perform SR→IR handoff on time. |
 | **NOTE** | Rod withdrawal blocks if SUR ≥ **2.5 DPM** until SUR &lt; **1.5 DPM**. Insertion always works. |
 
@@ -101,7 +102,7 @@ Take the reactor from **Mode 3, Hot Standby** (subcritical, hot) to **Mode 2, St
 
 | Step | Action | Control | Acceptance |
 |------|--------|---------|------------|
-| 1 | Confirm subcritical, hot: Tavg ≈ 304 °C, P ≈ 15.41 MPa | Observe | Reactivity &lt; 0 |
+| 1 | Confirm subcritical, hot: Tavg ≈ 297 °C (no-load), P ≈ 15.41 MPa | Observe | Reactivity &lt; 0 |
 | 2 | Confirm SR counting (hundreds of cps class); IR on scale when required for handoff | NIS / Power card | SR &gt; ~100 cps |
 | 3 | When IR ≥ **1e-10 A** (P-6), switch **SR detector OFF** | SR detector | SR de-energized; IR carries indication |
 | 4 | Set Rod Speed **Norm** for bulk withdrawal; **Slow** for final approach | Rod Speed | Speed selected |
@@ -127,7 +128,7 @@ Commercial heatup from **Mode 5, Cold Shutdown** through **Mode 4, Hot Shutdown*
 | 1 | **Mode 5, Cold Shutdown** | Start from the `cold_shutdown` IC: subcritical, RCS cold (~2.5 MPa), RCPs secured, RHR aligned for shutdown cooling |
 | 2 | Mode 5, Cold Shutdown → **Mode 4, Hot Shutdown** | **Start the RCPs** (RCP → Run) for pump heat and SG coupling; **raise the Pressure SP** toward NOP (15.41 MPa) so the heaters pressurize (RHR auto-isolates above its 2.76 MPa / 400 psi interlock); hand the NIS over (SR → OFF) |
 | 3 | **Mode 4, Hot Shutdown** | Ease the **Control Bank** out to take the reactor just critical; hold ~10 % power for nuclear heatup — the temperature defect trims reactivity, so keep trimming out to hold power; drive Tavg up |
-| 4 | → **Mode 3, Hot Standby** | At NOP T/P (≈ 304 °C, 15.41 MPa), insert the bank / borate back subcritical; RCS held hot on pump heat |
+| 4 | → **Mode 3, Hot Standby** | At NOP T/P (≈ 297 °C no-load, 15.41 MPa), insert the bank / borate back subcritical; RCS held hot on pump heat |
 
 **Simulator note:** the heat source for heatup is **nuclear** (RCP/PZR heat alone is far too small to reach NOP); the compressed rates make the evolution playable in minutes. The pressurizer **Pressure SP** and steam-dump **Dump SP** controls, RCP Run/Stop, and the `plant_mode` state are all as-built.
 
@@ -509,7 +510,7 @@ Operator can narrate Mode 3, Hot Standby → Mode 5, Cold Shutdown; understands 
 | Power | 100 % | Mode 1, At Power |
 | MWe | 1000 | Mode 1, At Power |
 | Primary pressure | 15.41 MPa | Mode 1, At Power–Three |
-| Tavg | ~304 °C | Mode 1, At Power–Three (hot) |
+| Tavg | ≈ 297–304 °C (no-load → full-power program) | Mode 1, At Power–Three (hot) |
 | PZR level | ~55 % | Mode 1, At Power |
 | SG level | ~65 % | Mode 1, At Power |
 | Subcooling | ~41 °C | Mode 1, At Power |

@@ -2,8 +2,8 @@
 
 **Document:** PWR-SP-01  
 **Title:** Operating Limits and Protection Setpoints — PWR  
-**Revision:** 1  
-**Source:** As-built `pwr_control.js`, `pwr_config.js`, `ui/manual_data.js`  
+**Revision:** 2  
+**Source:** As-built `pwr_control.js`, `pwr_config.js`; normal values captured from the live engine  
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
 
@@ -148,6 +148,7 @@
 | sg_press_high | SG PRESS HI | steam_pressure | high | **9.0 MPa** | caution |
 | cond_vac_low | COND VAC LO | condenser_vacuum | low | **84.7 kPa** | caution |
 | cond_vac_trip | COND VAC TRIP | condenser_vacuum | low | **74.5 kPa** | warning |
+| rcp_cavitation | RCP CAVITATION | rcp_cavitating | true | — | warning |
 
 ---
 
@@ -193,7 +194,7 @@
 | SUR on approach | ≤ **1 DPM** (trainer may briefly ~2 DPM at crossing) |
 | Reactor period | ≥ **30 s** preferred on startup range |
 | Power ramp ceiling | ~**10 %/min** class where achievable |
-| Load imbalance (SG annunciator) | &gt; ~**40 MWe** mismatch → filling/draining cue |
+| Load imbalance (SG annunciator) | &gt; ~**4 MWe** mismatch (4 % of rated) → filling/draining cue |
 
 ---
 
@@ -212,13 +213,63 @@
 | Parameter | Value / behavior |
 |-----------|------------------|
 | Load follow time constant | ~**45 s** |
-| Rated MWe | **1000** |
+| Rated MWe | **100** |
 | SCRAM → load mode | **Disconnected** |
 | Manual set target | Forces **manual** mode |
 
 ---
 
-## 11.0 Related documents
+## 11.0 Normal values by initial condition
+
+Expected readings at each Free Play starting state, captured from the live engine after
+settling (60 s at the steady-power states, 5 s otherwise). Use this table to verify a
+healthy board after selecting an IC, and as the "what should this read?" reference during
+evolutions. At steady state the **indicated** values track these true values through each
+instrument's lag and noise (see `03_CONTROLS_AND_INDICATIONS.md` §16.0) — a mismatch that
+persists is either a transient in progress or a failed instrument.
+
+| Parameter | `hot_full_power` | `50_percent` | `5_percent` | `hot_zero_power` | `cold_shutdown` |
+|---|---|---|---|---|---|
+| Plant MODE | At Power (1) | At Power (1) | At Power (1) | Hot Standby (3) | Cold Shutdown (5) |
+| Reactor power (%) | 100 | ≈ 50 | ≈ 6 | ~0 (source) | ~0 |
+| Generator output (MWe) | 100 | ≈ 50 | ≈ 6 | 0 | 0 |
+| Tavg (°C) | 304 | ≈ 300 | ≈ 297 | 297 | 50 |
+| T-hot / T-cold (°C) | 321 / 288 | 309 / 292 | 298 / 296 | 297 / 297 | 50 / 50 |
+| Primary pressure (MPa) | 15.41 | 15.41 | 15.41 | 15.41 | 2.50 |
+| Subcooling margin (°C) | ≈ 41 | ≈ 45 | ≈ 48 | ≈ 48 | ≈ 173 |
+| PZR level (%) | 55 | ≈ 46 | ≈ 38 | ≈ 37 | 30 |
+| SG level (%) | 65 | ≈ 64 | ≈ 65 | 65 | 65 |
+| SG / steam pressure (MPa) | 5.65 | ≈ 6.8 | ≈ 8.0 | 8.23 | ≈ 0.1 |
+| Steam / feed flow (norm.) | 1.00 | 0.50 | 0.06 | 0 | 0 |
+| Fuel average temp (°C) | ≈ 693 | ≈ 496 | ≈ 321 | 297 | 50 |
+| Decay heat (%) | 7.0 | 3.5 | ≈ 0.4 | ≈ 0.5 | ~0 |
+| Xenon (% of equilibrium) | 100 | ≈ 66 | ≈ 11 | 0 | 0 |
+| Boron (ppm) | ≈ 747 | ≈ 837 | ≈ 846 | ≈ 363 | ≈ 919 |
+| Net reactivity (pcm) | 0 | 0 | ≈ 0 | ≈ −1000 | ≈ −1000 |
+| Source range (cps) | 0 (de-energized) | 0 (de-energized) | 0 (de-energized) | ≈ 500 | ≈ 500 |
+| Intermediate range (A) | ≈ 8e-3 | ≈ 4e-3 | ≈ 5e-4 | ≈ 8e-9 | ≈ 8e-9 |
+| SR detector | OFF | OFF | OFF | Energized | Energized |
+| Condenser vacuum (kPa) | ≈ 96.5 | ≈ 96.5 | ≈ 96.5 | ≈ 96.5 | ≈ 96.5 |
+| Turbine speed (RPM) | 1800 | 1800 | 1800 | 1800 | 1800 |
+| MSIV | Open | Open | Open | Open | Open |
+| RHR | Out of service | Out of service | Out of service | Out of service | **In service** |
+| ECCS mode indicator | off | off | off | off | **RHR** |
+
+Notes:
+
+- **PZR level rides the Tavg program** (2.5 %/°C, 55 % at full-power Tavg): the level column
+  IS the program — do not "correct" a 38 % level at low power, it is where the program wants it.
+- **Steam pressure rides the load**: full-power 5.65 MPa up to the 8.23 MPa no-load point
+  (= Psat of the 297 °C no-load Tavg anchor).
+- **Boron differs per IC by design** (rod position and xenon differ); the `hot_zero_power`
+  value is low because the control bank is fully inserted and xenon-free ≈ criticality is
+  held down by rods, not boron.
+- `cold_shutdown` starts with RCPs secured, RHR aligned, and the SR detector energized —
+  see `05_MODE_TRANSITIONS.md` PWR-T20 for the climb out.
+
+---
+
+## 12.0 Related documents
 
 - `06_ALARM_RESPONSE.md`  
 - `04_NORMAL_OPERATIONS.md`  

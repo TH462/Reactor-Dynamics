@@ -197,11 +197,12 @@ Reactor_Dynamics/
 │   └── test_runner.js             ← M7  (dev only)
 ├── scenarios/                     ← M6  flagship + library scenarios (pwr_*, rbmk_*, bwr_*)
 ├── ui/          { app.js, shell.html, diagram/, panels/, test_panel/,   ← M8
-│                  manual_data.js, manual_procedures.js, campaign_data.js }
+│                  manual_data.js, manual_procedures.js, manual_md.js,
+│                  md_render.js, campaign_data.js }
 ├── test/                          ← Node CLI runners + harnesses
-├── tools/                         ← build tooling (e.g. gen_manual_reference.js)
+├── tools/                         ← build tooling (gen_manual_reference.js, pack_manuals.js)
 ├── Blueprint/                     ← the authoritative specification (see below)
-├── Manuals/                       ← commercial-format PWR operator manuals
+├── Manuals/                       ← THE PWR operator manual (renders in-app via pack_manuals.js)
 └── Diagnostic/                    ← audit / tuning / playtest reports
 ```
 

@@ -950,6 +950,40 @@ select.num-input { width: auto; }
 .m-follow { float: right; margin: -2px 0 0 8px; font-size: 11px; padding: 3px 8px; color: var(--running); border-color: var(--running-muted); }
 .m-follow:hover { color: var(--text); background: var(--running-muted); }
 
+/* ---- packed markdown manual (Manuals/*.md via RD.MANUAL_MD) ---- */
+.mnav-sep {
+  margin: 10px 4px 2px; padding-top: 8px; border-top: 1px solid var(--border);
+  color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+}
+.mdoc { max-width: 880px; }
+.mdoc h1 { font-size: 18px; margin: 0 0 12px; color: var(--text); }
+.mdoc h2 { font-size: 15px; margin: 20px 0 8px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.mdoc h3 { font-size: 13.5px; margin: 16px 0 6px; color: var(--text-2); }
+.mdoc h4, .mdoc h5, .mdoc h6 { font-size: 12.5px; margin: 12px 0 4px; color: var(--text-2); }
+.mdoc p { margin: 0 0 10px; }
+.mdoc ul, .mdoc ol { margin: 0 0 10px; padding-left: 22px; }
+.mdoc li { margin: 2px 0; }
+.mdoc blockquote {
+  margin: 0 0 10px; padding: 6px 12px; border-left: 3px solid var(--stopped);
+  background: var(--bg-strip); color: var(--text-2);
+}
+.mdoc hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+.mdoc code {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 11.5px;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px;
+}
+.mdoc .mdoc-code {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 11.5px;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 5px;
+  padding: 8px 10px; overflow-x: auto; margin: 0 0 10px; white-space: pre;
+}
+.mdoc .mdoc-tw { overflow-x: auto; margin: 6px 0 14px; }
+.mdoc table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.mdoc th, .mdoc td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.mdoc th { color: var(--text-2); font-weight: 600; white-space: nowrap; }
+.mdoc a { color: var(--running); text-decoration: none; }
+.mdoc a:hover { text-decoration: underline; }
+
 /* ============================================================ M6 Instructor —
    highlight glow (control the current beat/step points at) + Level Complete */
 .instr-glow {
@@ -1081,6 +1115,36 @@ select.num-input { width: auto; }
 .chat-btn-ack { border-color: var(--stopped); }
 .chat-btn-skip { border-color: var(--caution); color: var(--caution); }
 .chat-ff { text-align: center; color: var(--caution); font-size: 11px; font-style: italic; }
+
+/* ============================================================ auto-checklists (Path 3)
+   A procedure run as a passive checklist in the Instructor card: chat-style
+   bubbles, one per step, checking themselves off the instruments. */
+.instr-ckl { padding: 0 10px 8px; }
+.instr-ckl > .btn { width: 100%; }
+.ckl-menu { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; max-height: 40vh; overflow-y: auto; }
+.ckl-menu[hidden] { display: none; }
+.ckl-menu button {
+  text-align: left; background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); padding: 6px 9px; font-size: 12.5px; cursor: pointer;
+}
+.ckl-menu button:hover { border-color: var(--stopped); }
+.ckl-cat { display: inline-block; min-width: 62px; margin-right: 6px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.ckl-log { display: flex; flex-direction: column; gap: 8px; max-height: 48vh; overflow-y: auto; padding-right: 4px; margin-bottom: 8px; }
+.ckl-head { font-size: 13px; }
+.ckl-step { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; background: var(--bg-elevated); }
+.ckl-ico { font-weight: 700; width: 16px; text-align: center; flex: none; }
+.ckl-body { flex: 1; min-width: 0; }
+.ckl-txt { font-size: 12.5px; line-height: 1.4; color: var(--text); }
+.ckl-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+.ckl-done { opacity: 0.62; border-left: 3px solid var(--running); }
+.ckl-done .ckl-ico { color: var(--running); }
+.ckl-active { border-left: 3px solid var(--caution); }
+.ckl-active .ckl-ico { color: var(--caution); }
+.ckl-pend { opacity: 0.45; }
+.ckl-mark { margin-top: 6px; font-size: 11px; padding: 3px 8px; }
+.ckl-complete { text-align: center; border: 1px solid var(--running); border-radius: 8px; padding: 8px; color: var(--running); }
+.ckl-btns { display: flex; gap: 6px; }
+.ckl-btns .btn { flex: 1; }
 
 /* ============================ Plant & Mission window ======================
    Sim tab → ⚛️ Plant & Mission… — plant column (left), then mode tabs +

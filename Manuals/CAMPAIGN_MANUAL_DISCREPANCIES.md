@@ -195,7 +195,7 @@ Manuals Rev 2 closed naming + documentation gaps. Campaign Mode-N **strings are 
 
 5. **Mode 5, Cold Shutdown → Mode 1, At Power** is a manuals centerpiece; **zero campaign missions** exercise it. A reader of manuals may expect Free Play cold starts that do not exist.
 
-6. **In-product Operator’s Manual (M key)** is generated from `manual_data` / `manual_procedures` — a **third** surface that matches the campaign walkthroughs better than the external `Manuals/` set.
+6. **In-product Operator’s Manual (M key)** — RESOLVED 2026-07-21: for the PWR it now renders THIS `Manuals/` set (packed by `tools/pack_manuals.js`), so the "third surface" is gone; procedures stay live from `manual_procedures`.
 
 ---
 

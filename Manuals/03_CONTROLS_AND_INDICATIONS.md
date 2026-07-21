@@ -437,9 +437,11 @@ On a gauge, **red** at the two trip bands (≥90 %, ≤17 %), **amber** at the a
 
 | Control | Effect |
 |---------|--------|
-| **On / Off** | Residual / decay heat removal path |
-| **AUTO** | May arm when scrammed and pressure low enough (~**3.45 MPa** class) |
-| **Scope** | Post-shutdown cooldown assist; full cold ops **[narr]** |
+| **Suction valve Open / Shut** | The RHR hot-leg suction valve — the system's entry point. **Interlocked**: it will not open above ~**2.76 MPa** (400 psi) primary pressure, and autocloses if pressure rises back above the interlock (protects the low-pressure piping) |
+| **AUTO** | Arms the valve to open itself when scrammed and pressure is below the interlock |
+| **Cooldown Rate (HX flow split)** | Throttles how much RHR flow passes through the heat exchanger vs the bypass — this sets the **cooldown RATE without disturbing inventory**. Walk it up slowly to hold the ~**50 °C/h** cooldown limit; full HX flow on a hot plant overshoots the limit |
+| **Indication** | `eccs_mode` shows **RHR** while the system is in service; primary temperature trend is the rate instrument |
+| **Scope** | The Mode 4→5 decay-heat path: below the interlock pressure RHR carries the plant to Cold Shutdown and holds it there (see `05_MODE_TRANSITIONS.md` PWR-T21) |
 
 ---
 
@@ -547,27 +549,42 @@ Not a plant control — **trainer control**.
 
 ## 16.0 Indication catalog (operator-facing)
 
-| Instrument | Unit | Typical lag | Primary use |
-|------------|------|-------------|-------------|
-| power_range | % | 0.1 s | Power control, high flux |
-| source_range | cps | 0.5 s | Startup counts |
-| intermediate_range | A | 0.5 s | SR handoff to ~10 % |
-| startup_rate | DPM | 2 s | Approach rate / interlock |
-| tavg / thot / tcold | °C | 4 s | Thermal state |
-| primary_pressure | MPa | 0.5 s | Subcooling / trips |
-| pzr_level | % | 2 s | Inventory (can mislead) |
-| subcooling_margin | °C | derived | LOCA diagnosis |
-| sg_level | % | 3 s | Heat sink |
-| steam_flow / fw_flow | ×rated | 1 s | Mass match |
-| steam_pressure | MPa | 0.5 s | SG / dump |
-| mwe_output | MWe | 0.2 s | Grid |
-| turbine_rpm | RPM | 0.5 s | Sync / overspeed |
-| condenser_vacuum | kPa | 5 s | Turbine health |
-| boron_analyzer | ppm | 45 s | Chemistry |
-| charging/letdown flow | norm | 2 s | CVCS |
-| hpi_flow | norm | 1 s | ECCS |
-| porv_indicator | open/closed | boolean | **May lie** |
-| porv_tailpipe_temp | °C | 10 s | Stuck PORV clue |
+Every board instrument, with its indicating range, typical lag, and the annunciators it
+drives (see `06_ALARM_RESPONSE.md` for each alarm's response). A reading pegged at a range
+end may be **over-range, not truth** — the power range reads to 200 % precisely so a pegged
+meter can still cross the 120 % trip.
+
+| Instrument | Unit | Range | Typical lag | Primary use | Drives alarms |
+|------------|------|-------|-------------|-------------|---------------|
+| power_range | % | 0 – 200 | 0.1 s | Power control, high flux | HI FLUX |
+| source_range | cps | 1 – 1e6 | 0.5 s | Startup counts | SR HI FLUX |
+| intermediate_range | A | 1e-11 – 2e-3 | 0.5 s | SR handoff to ~10 % | — |
+| startup_rate | DPM | −5 – 10 | 2 s | Approach rate / interlock | SUR HI |
+| tavg | °C | 30 – 343 | 4 s | Thermal state / rod program | HI TAVG |
+| thot / tcold | °C | 30 – 343 | 4 s | ΔT, natural-circ check | — |
+| primary_pressure | MPa | 0 – 20.7 | 0.5 s | Subcooling / trips | PZR PRESS HI / LO / LO LO |
+| pzr_level | % | 0 – 100 | 2 s | Inventory (can mislead) | PZR LVL HI / LO / LO LO |
+| subcooling_margin | °C | −28 – 83 | derived | LOCA diagnosis | LO SUBCOOL, SUBCOOL LOST |
+| sg_level | % | 0 – 100 | 3 s | Heat sink (narrow range) | SG LVL HI HI / HI / LO / LO LO |
+| sg_level_wide | % | 0 – 100 | 4 s | Heat sink below the narrow taps (dryout diagnosis) | — |
+| steam_flow / fw_flow | ×rated | 0 – 1.2 | 1 s | Mass match | — |
+| condensate_flow | ×rated | 0 – 1.2 | 1 s | Hotwell → feed train | — |
+| steam_pressure | MPa | 0 – 10.5 | 0.5 s | SG / dump | SG PRESS HI |
+| steam_dump_valve | % | 0 – 100 | 0.3 s | Dump/bypass position | — |
+| governor_valve | % | 0 – 100 | 0.3 s | Turbine admission | — |
+| mwe_output | MWe | 0 – 130 | 0.2 s | Grid | — |
+| turbine_rpm | RPM | 0 – 2000 | 0.5 s | Sync / overspeed | — |
+| condenser_vacuum | kPa | 0 – 102 | 5 s | Turbine health | COND VAC LO / TRIP |
+| boron_analyzer | ppm | 0 – 2500 | 45 s | Chemistry | — |
+| charging_flow / letdown_flow | norm | 0 – 0.12 | 2 s | CVCS lineup | — |
+| hpi_flow | norm | 0 – 1.2 | 1 s | ECCS delivery | (HPI ACTIVE status) |
+| hpi_discharge_pressure | MPa | 0 – 18 | 0.5 s | Pump vs RCS head | — |
+| afw_flow | norm | 0 – 1.2 | 1 s | AFW delivery | — |
+| afw_discharge_pressure | MPa | 0 – 12 | 0.5 s | AFW pump health | — |
+| accumulator_flow | norm | 0 – 1.2 | 0.5 s | Passive injection | — |
+| primary_leak_flow | norm | 0 – 1 | 0.2 s | Identified leakage | — |
+| porv_indicator | open/closed | status | — | **May lie** (shows the command) | PORV OPEN |
+| porv_tailpipe_temp | °C | 0 – 250 | 10 s | Stuck PORV clue | — |
 
 ---
 
@@ -624,7 +641,48 @@ Campaign grades solo criticality (`pwr_startup_challenge`), shift dispatch (`pwr
 
 ---
 
-## 18.0 Related documents
+## 18.0 Engine command reference
+
+Every on-screen control issues one of these engine commands (the same names appear in the
+Instructor's procedure steps, the Automate tab's channel descriptions, and diagnostic logs).
+Listed for cross-reference — normal operation never requires typing a command.
+
+| Control (section) | Command | Params |
+|-------------------|---------|--------|
+| Rods — Raise / Lower hold (§3.1) | `rod_start` / `rod_stop` | `{group_id, direction, speed}` / `{group_id}` |
+| Rods — Nudge (§3.1) | `rod_nudge` | `{group_id, steps, speed}` |
+| Rods — Stop All (§3.1) | `rod_stop_all` | — |
+| SCRAM (§3.5) | `scram` | — |
+| Boron Borate / Dilute (§7.5) | `set_boron_adjust` | `{rate}` |
+| Charging pump On/Off (§7.1) | `set_charging_pump` | `{running}` |
+| Charging flow (§7.2) | `set_charging_flow` | `{normalized}` |
+| Letdown valve (§7.3) | `set_letdown_flow` | `{normalized}` |
+| CVCS inventory AUTO (§7.4) | `set_cvcs_auto` | `{active}` |
+| PZR heaters (§5.2) | `set_heater` | `{power_pct}` |
+| PZR spray (§5.3) | `set_spray` | `{open}` |
+| PORV open / close (§6.1) | `open_porv` / `close_porv` | — |
+| PORV block valve (§6.2) | `open_block_valve` / `close_block_valve` | — |
+| RCP run / stop (§8.1) | `set_rcp` | `{running}` |
+| Feed pump speed (§9.2) | `set_feed_pump_speed` | `{pct}` |
+| Feed pump nudge (§9.2) | `feed_pump_nudge` | `{delta_pct}` |
+| AFW start / stop (§10) | `set_afw` | `{active}` |
+| AFW throttle (§10) | `set_afw_flow` | `{pct}` |
+| ESF auto re-arm (§17.4) | `set_esf_auto` | `{system, auto}` |
+| Turbine load (§12.2) | `set_steam_demand` | `{mwe}` |
+| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode | pct}` |
+| Pressure setpoint box (§5) | `set_pressure_setpoint` | `{mpa}` |
+| Steam-dump setpoint box (§12.3) | `set_steam_dump_setpoint` | `{mpa}` |
+| HPI/LPI (§11.0) | `set_hpi` | `{active}` |
+| RHR suction valve (§11.2) | `set_rhr` | `{active}` |
+| RHR cooldown rate / HX split (§11.2) | `set_rhr_hx` | `{fraction | pct}` |
+| SR detector on/off (§4.3) | `set_sr_detector` | `{on}` |
+| Startup trip blocks (§4.4) | `set_trip_block` | `{trip_id, blocked}` |
+| MSIV open / close (§9.2) | `open_msiv` / `close_msiv` | — |
+| Automate tab (§14) | *(issues the commands above)* | — |
+
+---
+
+## 19.0 Related documents
 
 - `04_NORMAL_OPERATIONS.md`  
 - `05_MODE_TRANSITIONS.md`  

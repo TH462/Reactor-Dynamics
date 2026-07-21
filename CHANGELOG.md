@@ -8,7 +8,33 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Auto-checklists in the Instructor chat.** Any operator procedure can now run as a
+  passive checklist against the live plant: call it up from the 📋 Checklists button on the
+  Instructor card (or the 📋 button next to any procedure in the manual / walkthrough
+  lists), and each step appears as a chat bubble that **checks itself off the instruments**
+  as you operate — no plant reset, no gated controls, unlike a walkthrough. Steps with an
+  acceptance reading auto-check when it holds; pure observation steps take a hand-tick,
+  which also serves as the manual override. Checklists survive save/load and end the moment
+  instructed content (a mission or walkthrough) takes the card.
+- **The in-app PWR manual is now the real manual.** The 📖 Manual for the PWR renders the
+  full `Manuals/*.md` operator set — 13 documents (general description → glossary,
+  including the TMI accident study and the campaign crosswalk) — instead of the old
+  generated reference pages. Procedures and accident walkthroughs remain live sections
+  with their Follow and Checklist buttons. RBMK/BWR keep the generated reference until
+  they get manual sets of their own.
+
 ### Changed
+- **PWR manuals enhanced before the old web manual was retired** (everything worth keeping
+  was ported, everything stale was not): per-initial-condition normal-values tables
+  (09 §11.0), indication ranges + linked annunciators (03 §16.0), an engine command
+  reference (03 §18.0), the previously undocumented RHR Cooldown Rate / heat-exchanger
+  split control and its ~50 °C/h limit (03 §11.2, 05), failure severity sliders and the
+  new **PWR-E22** failed-low pressurizer-level-sensor procedure (07). Stale numbers fixed
+  across the set: Mode 3 Tavg is the 297 °C no-load anchor (was shown as 304), the load
+  imbalance cue is ~4 MWe (was 40), rated output 100 MWe leftovers, and the procedures'
+  turbine-load steps now command 60/70 MWe instead of 1000-MWe-era values. The MWe output
+  gauge instrument also had a 10× stale range (0–1300 → 0–130).
 - **PWR — a full tube rupture is now a real emergency, and its procedure really works.**
   The SGTR leak scaled up ~4× (a full-severity rupture is twice what charging can make
   up, so it forces the trip and safety injection instead of being quietly out-pumped) and

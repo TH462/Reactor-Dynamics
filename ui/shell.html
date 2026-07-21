@@ -102,6 +102,12 @@
           <div class="instr-prev" id="instrPrev">— no prior messages —</div>
           <div class="instr-current instr-standby" id="instrCurrent">Standing by…</div>
         </div>
+        <!-- Auto-checklist picker (Path 3) — free play only; runs a procedure as a
+             passive checklist whose steps check themselves off the instruments -->
+        <div class="instr-ckl" id="instrCklRow" hidden>
+          <button class="btn" id="cklOpenBtn" data-scanner-hint="Checklists — call up a procedure as a checklist in the chat; each step checks itself off the instruments while you operate.">📋 Checklists</button>
+          <div class="ckl-menu" id="cklMenu" hidden></div>
+        </div>
         <!-- Walkthrough (follow) nav — shown only while following a procedure -->
         <div class="instr-nav" id="instrNav" hidden>
           <button class="btn" data-fnav="prev" data-scanner-hint="Previous step — go back one procedure step.">◀ Prev</button>
@@ -210,8 +216,9 @@
         </div>
       </div>
 
-      <!-- Operator's Manual overlay (Phase 3) — reference + procedures, register-aware,
-           driven by app.js from RD.MANUAL + RD.MANUAL_PROCEDURES for the active plant -->
+      <!-- Operator's Manual overlay — PWR renders the packed Manuals/*.md operator
+           set (RD.MANUAL_MD) + live procedures; RBMK/BWR still use the generated
+           RD.MANUAL reference until they get their own manual sets -->
       <div class="manual-overlay" id="manualOverlay" hidden>
         <div class="manual-modal">
           <div class="manual-head">
@@ -390,6 +397,8 @@
   <!-- Operator's manual data (generated reference + authored procedures) -->
   <script src="manual_data.js"></script>
   <script src="manual_procedures.js"></script>
+  <script src="md_render.js"></script>
+  <script src="manual_md.js"></script>
   <!-- PWR full-plant synoptic (legacy; kept for instructor highlight fallbacks) -->
   <script src="diagram/pwr_synoptic.js"></script>
   <!-- PWR learning board — data-driven synoptic (Claude Design import); mounted by app.js when plant_id === 'pwr' -->

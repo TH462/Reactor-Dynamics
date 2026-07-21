@@ -97,6 +97,9 @@
     this._checkpointRequested = false;
     this._rewindRequested = null;     // { steps, scope } — beat-driven world rewind
     this._speedRequested = null;      // beat-driven time acceleration (number)
+    // Checklist mode (Path 3): a procedure run as a PASSIVE checklist against the
+    // live plant — no reset, no gating; steps auto-check off the instruments.
+    this.checklist = null;
   };
 
   // Re-point at the (possibly rebuilt) layer below. Deliberately does NOT clear
@@ -135,6 +138,40 @@
     this._checkpointRequested = true;
   };
 
+  // Load a manual procedure as an AUTO-CHECKLIST (Path 3). Unlike follow mode it
+  // does NOT reset the plant and does NOT gate commands: the operator plays on,
+  // and each step checks itself off when its evidence appears — `acc` graded
+  // instrument-first (same debounce as follow), `saw` latched, or the step's
+  // command family observed descending. Steps with nothing gradable (pure
+  // observations) wait for a manual tick (M5 `checklist_check`), which is also
+  // the operator's override for any stuck step. Orthogonal to mode on purpose —
+  // it lives in free play; loading a scenario/walkthrough clears it (_clear).
+  InstructorLayer.prototype.loadChecklist = function (proc, meta) {
+    if (!proc || !proc.steps || !proc.steps.length) return;
+    this.checklist = {
+      proc: proc,
+      procedure_id: (meta && meta.procedure_id) || proc.id,
+      profile_key: (meta && meta.profile_key) || null,
+      idx: 0,
+      done: proc.steps.map(function () { return false; }),
+      doneBy: proc.steps.map(function () { return null; }),   // 'auto' | 'manual'
+      cmdSeen: false, sawSeen: false, accStreak: 0, accMetNow: false,
+      gradedBy: null, complete: false,
+    };
+  };
+
+  InstructorLayer.prototype.stopChecklist = function () { this.checklist = null; };
+
+  // Manual tick — only the ACTIVE step can be checked (a checklist is sequential).
+  // Allowed even on auto-gradable steps: the operator's judgment outranks a
+  // debounce that hasn't landed yet.
+  InstructorLayer.prototype.checklistCheck = function (index) {
+    var c = this.checklist;
+    if (!c || c.complete) return;
+    if (index != null && index !== c.idx) return;
+    this._checklistCheckOff('manual');
+  };
+
   // Back to free-play. M5 calls this on stop_scenario/stop_follow and on every
   // plain plant reset so stale progress can't outlive its plant.
   InstructorLayer.prototype.unload = function () {
@@ -150,6 +187,7 @@
     this._lastSimTime = simTime;
     if (this.mode === 'scenario') this._stepScenario(snapshot, simTime);
     else if (this.mode === 'follow') this._stepFollow(snapshot, simTime);
+    if (this.checklist) this._stepChecklist(snapshot);
     this._continueRequested = false;    // a Continue click satisfies at most one pass
   };
 
@@ -496,6 +534,46 @@
     };
   };
 
+  // ============================================================ checklist (Path 3)
+  // Passive sequential grading of the active (first unchecked) step. A step
+  // auto-checks on: acc met (debounced, plus saw latched if authored) — the
+  // outcome is the verification, the keystroke path doesn't matter; or, with no
+  // acc, its saw latching; or, with neither, its command family being observed.
+  // Pure observation steps only check by hand (checklistCheck).
+  InstructorLayer.prototype._stepChecklist = function (snapshot) {
+    var c = this.checklist;
+    if (c.complete) return;
+    var st = c.proc.steps[c.idx];
+    if (!st) { c.complete = true; return; }
+
+    if (st.saw && !c.sawSeen && this._grade(snapshot, st.saw).met) c.sawSeen = true;
+
+    if (st.acc) {
+      var g = this._grade(snapshot, st.acc);
+      c.gradedBy = g.graded_by;
+      c.accStreak = g.met ? c.accStreak + 1 : 0;
+      c.accMetNow = c.accStreak >= ACC_STABLE_N;
+    } else {
+      c.gradedBy = null;
+      c.accMetNow = false;
+    }
+
+    var met = st.acc ? (c.accMetNow && (!st.saw || c.sawSeen))
+            : st.saw ? c.sawSeen
+            : st.cmd ? c.cmdSeen
+            : false;
+    if (met) this._checklistCheckOff('auto');
+  };
+
+  InstructorLayer.prototype._checklistCheckOff = function (by) {
+    var c = this.checklist;
+    c.done[c.idx] = true;
+    c.doneBy[c.idx] = by;
+    c.idx++;
+    c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
+    if (c.idx >= c.proc.steps.length) c.complete = true;
+  };
+
   // Grade one {p, op, v [,tol]} predicate. Instrument-first (HR1): if the param
   // has an instrument twin and the reading exists, grade what the operator sees;
   // otherwise the documented true_state fallback.
@@ -540,6 +618,17 @@
     }
     if (command && command.action === 'follow_nav' && this.mode === 'follow') {
       return this._handleFollowNav(command);
+    }
+
+    // Checklist cmd-watch (Path 3, passive): if the active step's evidence is a
+    // command with nothing gradable behind it, seeing the family descend is the
+    // check. Recording only — the command is never blocked or altered.
+    if (this.checklist && !this.checklist.complete && command && command.action) {
+      var cst = this.checklist.proc.steps[this.checklist.idx];
+      if (cst && cst.cmd && this._sameFamily(cst.cmd.action, command.action) &&
+          (cst.cmd.action !== 'inject_failure' || cst.cmd.failure_id === command.failure_id)) {
+        this.checklist.cmdSeen = true;
+      }
     }
 
     // Scenario gates (beats restrict actions until their `until` trigger fires).
@@ -672,6 +761,19 @@
         rev: this._chatRev,
         interactions: this._interact,
       } : null,
+      // Auto-checklist (Path 3). Step text is NOT duplicated here — the UI reads
+      // it from the same RD.MANUAL_PROCEDURES artifact, like follow mode.
+      checklist: this.checklist ? {
+        procedure_id: this.checklist.procedure_id,
+        profile_key: this.checklist.profile_key,
+        step_index: this.checklist.idx,
+        step_total: this.checklist.proc.steps.length,
+        steps_done: this.checklist.done.slice(),
+        done_by: this.checklist.doneBy.slice(),
+        acc_met: this.checklist.accMetNow,
+        graded_by: this.checklist.gradedBy,
+        complete: this.checklist.complete,
+      } : null,
     };
   };
 
@@ -724,13 +826,41 @@
         cmdSeen: this.follow.cmdSeen, sawSeen: this.follow.sawSeen,
         done: this.follow.done,
       } : null,
+      checklist: this.checklist ? {
+        procedure_id: this.checklist.procedure_id,
+        profile_key: this.checklist.profile_key,
+        idx: this.checklist.idx,
+        done: this.checklist.done.slice(),
+        done_by: this.checklist.doneBy.slice(),
+        cmdSeen: this.checklist.cmdSeen, sawSeen: this.checklist.sawSeen,
+        complete: this.checklist.complete,
+      } : null,
     };
   };
 
   InstructorLayer.prototype.loadState = function (state) {
     this._clear();
     this.register = (state && state.register != null) ? state.register : 'learning';
-    if (!state || !state.mode) return;
+    if (!state) return;
+    // Checklist restore is independent of mode — it normally lives in free play
+    // (mode null). Content is re-resolved by id, like follow.
+    if (state.checklist) {
+      var cs = state.checklist;
+      var cpool = (RD.MANUAL_PROCEDURES && cs.profile_key) ? RD.MANUAL_PROCEDURES[cs.profile_key] : null;
+      var cproc = null;
+      if (cpool) for (var ci = 0; ci < cpool.length; ci++) if (cpool[ci].id === cs.procedure_id) cproc = cpool[ci];
+      if (cproc) {
+        this.checklist = {
+          proc: cproc, procedure_id: cs.procedure_id, profile_key: cs.profile_key,
+          idx: cs.idx, done: (cs.done || []).slice(), doneBy: (cs.done_by || []).slice(),
+          cmdSeen: !!cs.cmdSeen, sawSeen: !!cs.sawSeen,
+          accStreak: 0, accMetNow: false, gradedBy: null, complete: !!cs.complete,
+        };
+      } else if (typeof console !== 'undefined') {
+        console.warn('InstructorLayer.loadState: checklist procedure "' + cs.procedure_id + '" not found — dropped.');
+      }
+    }
+    if (!state.mode) return;
 
     if (state.mode === 'scenario') {
       var sc = RD.SCENARIOS ? RD.SCENARIOS[state.scenario_id] : null;

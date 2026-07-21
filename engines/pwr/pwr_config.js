@@ -466,7 +466,7 @@
       sg_level:          { lag: 3.0, noise: 0.5,   range: [0, 100] },
       steam_flow:        { lag: 1.0, noise: 0.01,  range: [0, 1.2] },
       fw_flow:           { lag: 1.0, noise: 0.01,  range: [0, 1.2] },
-      mwe_output:        { lag: 0.2, noise: 1.0,   range: [0, 1300] },
+      mwe_output:        { lag: 0.2, noise: 0.1,   range: [0, 130] },   // noise/range scaled with the 100 MWe rating
       turbine_rpm:       { lag: 0.5, noise: 2.0,   range: [0, 2000] },
       condenser_vacuum:  { lag: 5.0, noise: 0.34,  range: [0, 102] },
       // §8.8 synoptic additions — CVCS flows, SG pressure, chemistry, governor, ECCS

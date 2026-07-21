@@ -8,6 +8,7 @@
 | 0 | 2026-07-16 | Initial commercial-style manual set created from Blueprint specs, as-built PWR engine/control layer, and in-product procedure data. Covers simulator use, all controls, normal ops, mode transitions, alarms, failures, and TMI. Issues captured in `ISSUES_AND_FINDINGS.md`. | Manual build session |
 | 1 | 2026-07-16 | Plant MODES introduced; master paths **PWR-T20** / **PWR-T21**. | Manual build session |
 | 2 | 2026-07-16 | Naming locked to **Mode N, Name** (e.g. **Mode 1, At Power**). Campaign handoff: `CAMPAIGN_MODE_ALIGNMENT_SPEC.md`. Crosswalk: `11_CAMPAIGN_CROSSWALK.md`. Manuals only. | Manual build session |
+| 3 | 2026-07-21 | **This set is now THE PWR manual** — the generated in-app reference (`ui/manual_data.js` PWR profile) was retired, and these documents render in-app via `tools/pack_manuals.js`. Content merged from the retired web manual: per-IC normal values (09 §11.0), indication ranges + linked alarms (03 §16.0), engine command reference (03 §18.0), RHR cooldown-rate control (03 §11.2, 05), failure severity sliders + **PWR-E22** failed-low level sensor (07). SLX-100 program corrections: Mode 3 Tavg 304→297 °C (no-load anchor), imbalance cue 40→4 MWe, rated 1000→100 MWe leftovers. | Manual+site session |
 
 ## Source documents (authoritative for content)
 
@@ -21,8 +22,7 @@
 | `Blueprint/load_mode_spec.md` | Turbine load modes |
 | `Blueprint/OPERATOR_MANUAL_PLAN.md` | Procedure ID scheme and voice rules |
 | `Blueprint/pwr_training_campaign.md` | Training campaign structure |
-| `ui/manual_data.js` | Generated setpoints, controls, alarm response |
-| `ui/manual_procedures.js` | Validated step procedures |
+| `ui/manual_procedures.js` | Validated step procedures (also the in-app follow / checklist source) |
 | `engines/pwr/pwr_config.js` | Operating points and limits |
 
 ## Review status

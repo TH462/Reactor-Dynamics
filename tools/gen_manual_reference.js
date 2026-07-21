@@ -367,9 +367,24 @@ function buildProfile(plant, Ctor, dv) {
   };
 }
 
+// PWR: reference-only stub. The PWR operator's manual is the Manuals/*.md set
+// (packed by tools/pack_manuals.js → RD.MANUAL_MD) — the generated profile was
+// retired so there is exactly ONE PWR manual. The stub keeps only what the app
+// consumes outside the manual overlay: instrument display names for the
+// Failures tab's advanced-instrument picker.
+function buildPwrStub() {
+  var e = new RD.PWREngine({});
+  return {
+    id: 'pwr', plant: 'pwr', design_version: null,
+    name: 'Pressurized Water Reactor (PWR)',
+    reference_only: true,
+    indications: buildIndications(e.cfg, e.getProtectionConfig()),
+  };
+}
+
 var MANUAL = {
   _generated: 'by tools/gen_manual_reference.js — do not hand-edit; re-run after engine/config changes',
-  pwr: buildProfile('pwr', RD.PWREngine, null),
+  pwr: buildPwrStub(),
   rbmk_pre: buildProfile('rbmk', RD.RBMKEngine, 'pre_chernobyl'),
   rbmk_post: buildProfile('rbmk', RD.RBMKEngine, 'post_chernobyl'),
   bwr: buildProfile('bwr', RD.BWREngine, null),
@@ -377,4 +392,5 @@ var MANUAL = {
 var body = ';(function (RD) {\n  "use strict";\n  RD.MANUAL = ' + JSON.stringify(MANUAL, null, 2).replace(/\n/g, '\n  ') + ';\n})(globalThis.RD || (globalThis.RD = {}));\n';
 fs.writeFileSync(path.join(__dirname, '..', 'ui', 'manual_data.js'), body);
 console.log('Wrote ui/manual_data.js (' + (body.length / 1024).toFixed(1) + ' KB)');
-['pwr', 'rbmk_pre', 'rbmk_post', 'bwr'].forEach(function (k) { var p = MANUAL[k]; console.log('  ' + k + ': ' + p.controls.length + ' controls, ' + p.indications.length + ' indications, ' + p.alarm_response.length + ' alarms, ' + p.failures.length + ' failures, ' + p.glossary.length + ' glossary'); });
+console.log('  pwr: reference-only stub (' + MANUAL.pwr.indications.length + ' indications — full manual is Manuals/*.md via pack_manuals.js)');
+['rbmk_pre', 'rbmk_post', 'bwr'].forEach(function (k) { var p = MANUAL[k]; console.log('  ' + k + ': ' + p.controls.length + ' controls, ' + p.indications.length + ' indications, ' + p.alarm_response.length + ' alarms, ' + p.failures.length + ' failures, ' + p.glossary.length + ' glossary'); });

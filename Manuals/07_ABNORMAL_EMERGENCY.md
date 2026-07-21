@@ -37,8 +37,23 @@ Provide symptoms, automatic response, immediate operator actions, recovery, and 
 | PWR-E19 | Main Steam Line Break | power |
 | PWR-E20 | Tavg Sensor Drifting | instrument |
 | PWR-E21 | Pressurizer Level Sensor Stuck | instrument |
+| PWR-E22 | Pressurizer Level Sensor Failed Low | instrument |
 
 **Combined drills:** E07 + E08 = TMI indicator deception (see **PWR-X01**).
+
+### 2.1 Failure severity sliders
+
+Most failures inject at a fixed severity; six carry a slider (Tools → Failures). The slider
+is the failure's physical size — the response procedures below apply at any setting.
+
+| Failure | Slider | Range | Default |
+|---------|--------|-------|---------|
+| SG Tube Rupture (E06) | Rupture Severity | 0 – 100 % of full rupture | 40 % |
+| Degraded HPI (E11) | HPI Capacity | 100 → 0 % of rated | 50 % |
+| Large LOCA (E09) | Break Size | 0 – 50 % rated flow | 20 % |
+| Continuous Rod Withdrawal (E17) | Withdrawal Rate | 0 – 6 steps/s | 3 |
+| Rod Stuck on Scram (E18) | Rod Worth Held | 0 – 40 % of total | 20 % |
+| Main Steam Line Break (E19) | Break Size | 0 – 100 % effective area | 30 % |
 
 ---
 
@@ -591,6 +606,38 @@ No rod run from bad AUTO; plant stable on diverse indications.
 
 ### Acceptance
 No LOCA-style HPI throttle error; inventory managed.
+
+---
+
+## PWR-E22 — Pressurizer Level Sensor Failed Low
+
+### Failure
+`pzr_level_sensor_low` — the level channel fails and reads a fixed LOW value (~20 %)
+regardless of true level.
+
+### Symptoms
+- PZR level pinned low while pressure, Tavg, and charging history say otherwise  
+- CVCS AUTO charges hard trying to "restore" level that is not actually low  
+- PZR LVL LO / LO LO alarms with no supporting evidence on any other channel  
+
+### The teaching point
+The **PI-8 going-solid trip (97 %) reads this same single channel** — with the sensor
+failed low, that backstop is **defeated**. An overfill driven by the wrong-charging CVCS
+(or by an over-eager operator) can now take the pressurizer solid with no automatic
+protection: the first hard evidence is pressure spiking against the sprays and the PORV.
+One failed sensor removes the very protection sized for the error it causes.
+
+### Immediate actions
+
+| Step | Action |
+|------|--------|
+| 1 | Cross-check: pressure + subcooling + charging/letdown totals vs the level reading |
+| 2 | CVCS inventory → **MANUAL** — stop the auto-charge chasing a phantom low level |
+| 3 | Manage inventory on the diverse evidence (pressure response to heaters/spray is the honest level-proxy) |
+| 4 | Treat the 97 % high-level trip as **inoperable** — do not lean on it while the channel is failed |
+
+### Acceptance
+No solid-pressurizer event; inventory managed on diverse indications.
 
 ---
 
