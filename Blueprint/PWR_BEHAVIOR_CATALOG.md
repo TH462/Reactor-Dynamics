@@ -1,8 +1,7 @@
 # PWR Behavior Catalog — Tuning-Pass Ground Truth (DRAFT for owner red-line)
 
-**Status: v1.1 — owner rulings of 2026-07-20 recorded in §8. Open before freeze: final owner
-ok on items 4 (post-trip feedwater) and 5 (level/mass rework), and the engineering-units
-boundary layer (item 9).**
+**Status: v2.0 — FROZEN 2026-07-20. All §8 items decided (owner approved recommendations on
+4, 5, and 9). This is the tuning-pass ground truth; changes require an owner ruling.**
 Date: 2026-07-20
 
 ## Purpose and rules
@@ -147,6 +146,30 @@ Setpoint verification (all currently implemented, values vs Westinghouse-typical
 
 ---
 
+## 6b. Battery findings — first run, 2026-07-20 (status updates, not band changes)
+
+The behavior battery (`test/run_behavior.js`, 20 probes) went live against this catalog.
+Result: 11 pass, 8 known gaps (strict xfail), 0 unexpected. Discoveries:
+
+- **SS-6 is a FAIL, newly discovered**: 5 % hands-off droops continuously to ~1 % in
+  30 min (2.48 → 1.05 %/last 10 min) — the low-power equilibrium isn't held. The engine
+  suite's `steady_five_percent` gate passes because it asserts a looser/shorter window —
+  a textbook regression-gate-vs-spec miss. Tune with the SS-2 program work.
+- **C4 is RESOLVED**: a manual scram DOES latch `rps_state.scrammed` now (fixed sometime
+  during the control-layer rework; the OPS report note is stale). C3 (no RPS *reset*
+  path) still stands — coverage id PI-7-reset.
+- **CC-10 windup evidence pinned**: with CVCS in auto vs a small SGTR, pzr level holds
+  55 % while TRUE inventory winds from 100 % to the 120 % tank cap — the decoupled-
+  integrator defect demonstrated live (probe CC-10, xfail).
+- **Observation for owner ruling (TR-13 realism)**: `sgtr` leak_scale is 0.03, so even a
+  full-severity tube rupture (0.03) is *smaller than charging capacity* (0.06) — CVCS can
+  always out-pump an SGTR. In a real plant a full SGTR (~400+ gpm) overwhelms charging
+  (~100 gpm), which is exactly why it forces a trip + SI. Candidate: raise SGTR leak scale
+  above charging capacity during the tuning pass (interacts with the P1 rescale).
+- Measured baselines for the tuning targets: turbine trip @100 % → trip only at 46 s
+  (high-Tavg backstop, peak 324.8 °C) — PI-1 will make this ≤ 5 s; loss-of-feed and
+  heat-sink-loss both peak at **15.57 MPa** vs the required 16.20 PORV lift (CC-5).
+
 ## 7. Execution plan after red-line
 
 1. **Freeze catalog** (owner red-line → v1.0).
@@ -179,13 +202,13 @@ Setpoint verification (all currently implemented, values vs Westinghouse-typical
    flag, high-pzr-level trip).
 3. **CC-5 spray flow cap — DECIDED: yes.** Cap sized so TR-2 lifts the PORV but a normal step
    insurge is still arrested.
-4. **CC-3 post-trip feedwater — RECOMMENDED (pending owner ok): implement real behavior.**
+4. **CC-3 post-trip feedwater — DECIDED: implement real behavior.**
    On reactor trip with Tavg falling below no-load (P-4 analog): MFW isolates, feed_sg channel
    stands down with a visible note, AFW auto-starts and holds SG level at its 20 % target.
    Rationale: the current always-on PID pumps 40 °C feed against decay heat after every trip
    (overcooling that distorts all post-trip behavior), and the MFW→AFW handoff is itself a core
    TMI teaching point.
-5. **CC-10 level/mass rework — RECOMMENDED (pending owner ok): physical-level middle path.**
+5. **CC-10 level/mass rework — DECIDED: physical-level middle path.**
    Pzr level becomes a *derived* quantity: f(RCS inventory, coolant thermal expansion) plus a
    void term that only activates when the primary actually reaches saturation (the TMI regime) —
    preserving the deception exactly where voids exist and nowhere else. The independent level
@@ -195,7 +218,7 @@ Setpoint verification (all currently implemented, values vs Westinghouse-typical
 7. **SS-5 pzr level program — DECIDED: do it this pass**, bundled with item 1 (the level
    setpoint is a function of Tavg/Tref, so CVCS is touched once, not twice).
 8. **EV-6 rod-insertion SCRAM — CLOSED.** Neither party can reproduce; probe stays in battery.
-9. **Units boundary layer — RECOMMENDED (pending owner ok): keep normalized engine internals,
+9. **Units boundary layer — DECIDED: keep normalized engine internals,
    add an engineering-units conversion block.** A single config ratings table (MWt, RCS flow,
    charging/letdown gpm, feed/steam flow, PORV/safety capacities) consumed by UI readouts,
    manuals, instructor text, and the behavior battery's band checks. Internals stay normalized
