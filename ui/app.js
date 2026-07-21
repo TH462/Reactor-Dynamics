@@ -138,6 +138,13 @@
         { id: 'pzr_level',label: 'PZR Level',c: '#507878', get: function (i) { return i.pzr_level; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'subcool',  label: 'Subcool',  c: '#707060', get: function (i) { return i.subcooling_margin; }, range: [-10, 60], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + '°'; } },
         { id: 'mwe',      label: 'Output MW',c: '#506880', get: function (i) { return i.mwe_output; }, range: [0, 1100], fmt: function (v) { return v.toFixed(0); } },
+        { id: 'thot',     label: 'Hot Leg',  c: '#c0563e', get: function (i) { return i.thot; }, range: [270, 335], fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
+        { id: 'tcold',    label: 'Cold Leg', c: '#4a86c0', get: function (i) { return i.tcold; }, range: [260, 320], fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
+        { id: 'steam_flow',label: 'Steam Flow',c: '#8a9a5a', get: function (i) { return i.steam_flow * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'fw_flow',  label: 'Feed Flow',c: '#4a8a86', get: function (i) { return i.fw_flow * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'boron',    label: 'Boron',    c: '#9a7ab8', get: function (i) { return i.boron_analyzer; }, range: [0, 1400], fmt: function (v) { return v.toFixed(0) + ' ppm'; } },
+        { id: 'steam_p',  label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
+        { id: 'sur',      label: 'Startup Rate', c: '#c0913e', get: function (i) { return i.startup_rate; }, range: [-2, 3], fmt: function (v) { return v.toFixed(1) + ' DPM'; } },
       ],
     },
 

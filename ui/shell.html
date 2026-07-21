@@ -121,7 +121,6 @@
       <div class="panel tools expanded" id="toolsCard">
         <div class="tabbar" id="tabbar">
           <button class="on" data-tab="failures">Failures</button>
-          <button data-tab="automate">Automate</button>
           <button data-tab="graph">Graph</button>
           <button data-tab="sim">Sim</button>
           <button data-tab="settings">Settings</button>
@@ -134,12 +133,7 @@
             <div class="advanced-exp" id="advExpToggle" data-scanner-hint="Advanced instrument failure — fail any single instrument (stuck, drifting, noisy, or dead) while the plant behind it stays real. The board will lie to you (HR1).">▸ Advanced instrument failure (instrument × mode × value)</div>
             <div class="adv-fail" id="advFailPanel" hidden></div>
           </div>
-          <!-- Automate tab — a face over snapshot.automation (in-stack channel runtime) -->
-          <div class="tabpane" data-pane="automate">
-            <div class="auto-master" id="autoMaster"></div>
-            <div id="autoList"></div>
-            <div class="m-note" style="margin-top:8px">Automation reads the <b>instruments</b> and issues normal commands — a failed sensor fools it, interlocks block it, and while a channel is engaged it will override your manual input for that control.</div>
-          </div>
+          <!-- (Automate tab removed — all operator automations live on the board diagram.) -->
           <!-- Graph tab — parameter toggles for the strip chart -->
           <div class="tabpane" data-pane="graph">
             <div class="g-section-title">Plot parameters</div>

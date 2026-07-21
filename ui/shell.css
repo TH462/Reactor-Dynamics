@@ -93,6 +93,12 @@ body {
   gap: var(--gap);
   overflow: hidden;
 }
+/* Panel order in the right column: sim controls, TOOLS block, then the instructor
+   block, then the scanner (the tool block sits above the Shift Supervisor). */
+.right-col > .sim-controls { order: 0; }
+.right-col > #toolsCard     { order: 1; }
+.right-col > #instructorCard { order: 2; }
+.right-col > .scanner       { order: 3; }
 
 /* Responsive: the layout must survive any monitor. The 760px plant-area floor
    was what forced horizontal scroll on mid-size displays; relax it first, then
