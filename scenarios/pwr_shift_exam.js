@@ -8,21 +8,23 @@
  * tools is part of the exam. One briefing, quiet phase markers, graded
  * outcome (the pwr_qualify register).
  *
- * Probed calibration (scratchpad probe_shift1, seed 42) — both routes pass:
- *   - MANUAL, fallback coupling: an 850 ask undershoots through 870 at
- *     t≈265 s, then wanders 868–899 (Tavg carries ~+18 °C of mismatch, HI
- *     TAVG annunciates — normal for slider-only dispatch, the hold card
- *     acknowledges it). Return ask crosses 985 ~330 s later and settles
- *     ~989. SG level stays [61.8, 69.7] % the whole run.
+ * Probed calibration (re-probed 2026-07-20 under the sliding-Tavg program,
+ * placeholder anchors — scratchpad probe_shift2, seed 42; thresholds get a
+ * final re-probe in feel-plan Phase 3 when this plant's anchors are picked):
+ *   - MANUAL, fallback coupling: an 850 ask walks down monotonically,
+ *     crosses 905 at t≈186 s and settles 894–899 — the old undershoot-
+ *     through-870 is gone (the program-consistent secondary no longer drags
+ *     output below the ask; Tavg mismatch still annunciates HI TAVG, which
+ *     the hold card acknowledges). Return ask crosses 985 and settles ~996.
  *   - CHANNELS (rods_tavg + feed_sg engaged by the player): the 850 ask
- *     parks ~830 with no alarms (rods trim Tavg back to program); the
- *     return crosses 985 within ~25 s. SG level [59.3, 70.4] %.
- *   - TRIP route (the failure card): a clean-board 1000 → 500 ask scrams at
- *     t≈180 s — on SG LOW LEVEL (11.8 %), not load rejection: the fallback
- *     feed lets the SG drain on a deep step. "Forgot the feed" is literal.
- *   - Thresholds: down-marker mwe < 885 (both routes cross; a 900-first
- *     stepper crosses on the second step), hold credit 180 s with mwe < 905
- *     (manual wander tops at ~899), return mwe > 985, SG sane band 40–80 %
+ *     tracks near the ask (rods trim Tavg to the program); crosses the
+ *     down-marker with margin; return crosses 985 quickly.
+ *   - TRIP route (the failure card): a clean-board 1000 → 500 ask scrams
+ *     on SG LOW LEVEL — the fallback feed lets the SG drain on a deep
+ *     step. "Forgot the feed" is literal.
+ *   - Thresholds: down-marker mwe < 905 (manual dwells 894–899; channels
+ *     park lower), hold credit 180 s with mwe < 910 (~10 MWe over the
+ *     probed wander top 899.4), return mwe > 985, SG sane band 40–80 %
  *     graded at the settled finish (mid-run excursions deep enough to
  *     matter end at the 12 % trip → the tripped card).
  *   - Every phase watches for scram; a 50-min time budget ends any parked
@@ -56,23 +58,23 @@
         trigger: { type: 'delay', value: 45.0 },
         branches: [
           { trigger: { type: 'scram' }, goto: 'tripped' },
-          { trigger: { type: 'instrument', instrument: 'mwe_output', direction: 'below', value: 885 }, goto: 'hold_marker' },
+          { trigger: { type: 'instrument', instrument: 'mwe_output', direction: 'below', value: 905 }, goto: 'hold_marker' },
           { trigger: { type: 'time', value: 3000.0 }, goto: 'shift_over' },
         ] },
 
       // Phase 1 credited. Hold credit: 180 s after this fires with output
-      // still down (< 905 covers the probed manual wander to ~899).
+      // still down (< 910 covers the probed manual wander to ~899).
       { id: 'hold_marker',
         trigger: { type: 'delay', value: 1.0 },
         commentary: {
           learning: '850 on the curve — hold here. If the board is grumbling about coolant temperature, that is the mismatch a slider-only cut leaves behind: your call whether to live with it or trim it away. Keep one eye on steam-generator level; the night is not long.',
-          industry: 'Reduction phase credited (~850 MWe). Note: uncompensated dispatch parks Tavg high (possible HI TAVG — informational). Hold and monitor SG level; pickup call to follow.',
+          industry: 'Reduction phase credited (output below 905 MWe on the evening curve). Note: uncompensated dispatch parks Tavg high (possible HI TAVG — informational). Hold and monitor SG level; pickup call to follow.',
         },
         branches: [
           { trigger: { type: 'scram' }, goto: 'tripped' },
           { trigger: { type: 'all', triggers: [
               { type: 'delay', value: 180.0 },
-              { type: 'instrument', instrument: 'mwe_output', direction: 'below', value: 905 },
+              { type: 'instrument', instrument: 'mwe_output', direction: 'below', value: 910 },
             ] }, goto: 'pickup_call' },
           { trigger: { type: 'time', value: 3000.0 }, goto: 'shift_over' },
         ] },

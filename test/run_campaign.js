@@ -687,9 +687,10 @@ test('pwr_startup_challenge — runaway coast lands on the overshoot card, not a
 });
 
 test('pwr_shift_exam — evening curve passes pure-manual AND on player-engaged channels', function (ck) {
-  // Manual route (fallback coupling, probed): the 850 ask undershoots through
-  // the 885 marker at ~265 s and wanders 868–899 under the 905 hold line;
-  // the return crosses 985 ~330 s after the ask; SG never leaves [61.8, 69.7].
+  // Manual route (fallback coupling, re-probed 2026-07-20 under the sliding-
+  // Tavg program): the 850 ask walks down monotonically, crosses the 905
+  // marker at ~186 s and dwells 894–899 under the 910 hold line (the old
+  // undershoot-through-870 is gone); the return crosses 985 and settles ~996.
   var s = startScenario('pwr_shift_exam');
   var snap = waitBeat(s, 'watch_down', 60);
   ck('reduction watch arms', !!snap, !!snap, 'watch_down pending');
@@ -702,12 +703,23 @@ test('pwr_shift_exam — evening curve passes pure-manual AND on player-engaged 
   if (!snap) return;
   settle(s, 4);                         // pickup_call fires (delay 1)
   s.handleCommand({ action: 'set_load_target', mwe: 1000 });
+  // Feed vigilance (the exam's own teaching — "the feed never out of your
+  // scan"): under the Tavg program the down-leg shrink parks SG level ~31 %
+  // and the fallback flow-matching feed holds it there, so the slider-only
+  // route must restore level by hand before the grade reads SG 40–80 %.
+  for (var fv = 0; fv < 60; fv++) {
+    var tv = s.engine.getTrueState();
+    if (tv.sg_level_pct > 55) break;
+    s.handleCommand({ action: 'set_feed_pump_speed', pct: clampC(100 + 2 * (65 - tv.sg_level_pct), 0, 120) });
+    settle(s, 10);
+  }
+  s.handleCommand({ action: 'set_feed_coupled', active: true });
   snap = runUntil(s, function (sn) { return lc(sn); }, 1200);
   ck('manual route reaches an endpoint', !!snap, !!snap, 'level_complete');
   if (snap) ck('manual route earns full marks', lc(snap).title, /Full Marks/i.test(lc(snap).title), 'Full Marks card');
   // Channels route: the board starts CLEAN — engaging rods_tavg + feed_sg is
-  // the player's own tool choice (probed: parks ~830 with no alarms, return
-  // crosses 985 in ~25 s, SG stays [59.3, 70.4]).
+  // the player's own tool choice (under the program the rods track Tref, so
+  // the ask is followed closely; crosses the down-marker with margin).
   var s2 = startScenario('pwr_shift_exam');
   settle(s2, 10);
   s2.handleCommand({ action: 'set_auto_channel', channel_id: 'rods_tavg', engaged: true });
