@@ -1,243 +1,224 @@
-# PWR Behavior Catalog — Tuning-Pass Ground Truth (DRAFT for owner red-line)
+# PWR Behavior Catalog — v3.0 (feel-first, DRAFT for owner red-line)
 
-**Status: v2.0 — FROZEN 2026-07-20. All §8 items decided (owner approved recommendations on
-4, 5, and 9). This is the tuning-pass ground truth; changes require an owner ruling.**
-Date: 2026-07-20
+**Status: v3.0 DRAFT — 2026-07-21. Supersedes v2.0 (generic-Westinghouse bands; see git
+history for the full v2.0 text). Owner red-lines this draft before tuning starts (feel-plan
+Phase 1). Companion: `Blueprint/PWR_FEEL_TUNING_PLAN.md` (v1.0, approved).**
 
-> **⚑ DIRECTION CHANGE (2026-07-20, owner) — RE-PLANNED. The replacement plan is
-> `Blueprint/PWR_FEEL_TUNING_PLAN.md` (v1.0, approved).** This sim is now **its own plant**:
-> a ~100 MWe / ~300 MWt single-loop experimental PWR, tuned for behavior/feel — the
-> generic-Westinghouse bands below are *historical reference only* and will be replaced by
-> catalog v3 (feel-first; this plant's own numbers minted at the Phase-7 freeze). Item 1's
-> machinery (sliding-Tavg init/program hook, xenon ICs) is committed with placeholder
-> anchors; `Diagnostic/ITEM1_TAVG_HANDOFF.md` records the physics findings that motivated
-> the re-plan. Key ruling deltas vs. §8 below: PI-1/PI-2/PI-6 are DROPPED (ride-out plant,
-> ~100 % steam dump; single loop), TR-4 is retired, and the SGTR EOP is re-shaped for a
-> single SG. TMI-2 remains canon.
+## 0. The plant
 
-## Purpose and rules
+A **~100 MWe / ~300 MWt single-loop experimental PWR** — a compact, generously margined
+research-prototype unit. One RCP, one U-tube SG, one steam line/MSIV (the engine's lumped
+model, now the truth rather than an approximation). Primary operating point ~15.41 MPa /
+Tavg ≈ 300 °C class with the existing setpoint ladder — those are **this plant's numbers**
+now, not borrowed ones. Rating and all human-facing units arrive via the Phase-6 ratings
+layer.
 
-This catalog is the external ground truth for the comprehensive PWR tuning pass. It exists
-because the pre-launch review verified the sim against *its own tests* (regression gates), not
-against *what a real PWR does* — so behavioral defects (spray masking the TMI pressure
-excursion, no turbine/feedwater interlocks, primary draining on MSIV closure) passed review.
+**Character in one line: an operator's plant.** Transients are manageable; the machine
+gives you time and indications; protection trips are the last word, not the first. Scrams
+are reserved for genuine limits. The TMI-2 sequence is canon — the one place where a
+specific causal chain is the product.
 
-Rules agreed 2026-07-20:
-- **Scope**: PWR only. RBMK/BWR get their own catalogs later using this template.
-- **Fidelity**: generic Westinghouse 4-loop U-tube plant, quantitative bands ~±15 % unless
-  tighter matters (setpoints are exact). Directional/ordering correctness is mandatory.
-- **Authorship**: Claude drafts, owner red-lines. Entries marked ⚑ are the ones most worth
-  owner attention (big ripple or judgment calls).
-- **Conflicts**: physics wins. Training beats, manuals, scenario numbers, and campaign gates
-  get updated to match tuned behavior; all 51 campaign gates re-validated after tuning.
-- Every entry, once tuned, becomes a permanent probe in the behavior battery (`test/run_behavior.js`,
-  to be created) so this class of defect cannot regress silently.
+## 1. Rules
 
-**Status legend**
-- `PASS` — behavior correct today and covered by an existing green check.
-- `PASS?` — believed correct, but no test pins it (needs a probe before we trust it).
-- `FAIL` — known wrong (playtest or suite evidence).
-- `GAP` — feature/interlock absent entirely.
-- `UNREP` — reported in playtest, not yet reproduced.
+- **Feel goals (FG-1…FG-7) are the spec.** Each entry states the *operator experience*
+  required, plus the physics invariants that make it honest. Quantitative bands are
+  **minted at the Phase-7 freeze from this plant's own tuned golden runs** — not inherited.
+  Until then the battery pins direction/ordering, not numbers.
+- **Two probe tiers** in `test/run_behavior.js` (strict xfail throughout):
+  **[I] invariants** — plant-agnostic physics truths, written early, never move;
+  **[C] character** — this plant's numbers, pinned only after the owner approves the feel.
+- **Conflicts: physics wins; TMI canon wins over setpoint preferences.** Training beats,
+  manuals, and campaign gates get updated to match tuned behavior (all 51 gates re-run at
+  freeze).
+- Status legend: `PASS` (green today) · `PASS?` (believed right, needs a pin) ·
+  `XFAIL→Pn` (known gap, fixed in feel-plan Phase n) · `todo→Pn` (probe not yet written) ·
+  `RETIRED` (see §8).
 
-Existing coverage referenced below: `run_pwr` (32 engine scenarios), `run_ops`/`ops_pwr`
-(20 ops scenarios), `run_autoctl` (channel probes), `run_campaign` (51 gates), `run_m5`.
-Open tasks folded in: #22 #23 #24(UI) #25 #26 #27, OPS report P4/P5, C2–C4.
+## 2. Design ratios — the feel knobs
 
----
+Feel is set by capacity *ratios*, not absolute numbers. These are the levers the phases tune:
 
-## 1. Steady-state operating map
+| Ratio | Today | Direction | Sets the feel of | Phase |
+|---|---|---|---|---|
+| Steam dump ÷ rated steam flow | 0.50 | **→ ~1.0** | Turbine trip = maneuver, not scram (FG-4) | P4 |
+| Spray ÷ heat-sink-loss insurge | wins (K 1.7, uncapped) | **must lose** (flow cap) | PORV lifts in the TMI opener (FG-6) | P5 |
+| Spray ÷ normal step insurge | wins | still wins | Step insurges stay arrested | P5 |
+| Full-SGTR leak ÷ charging_max | 0.03 ÷ 0.06 (charging wins) | **≈ 0.12 ÷ 0.06** (leak wins 2×) | Full SGTR *forces* trip + SI (FG-6) | P5 |
+| AFW cap ÷ post-trip decay heat | 0.15 (recovers ~5 min) | keep | Post-trip SG recovery tempo (FG-5) | P4 |
+| No-load Tavg anchor | 292 °C (placeholder) | **propose ~297** | Post-trip shrink bite; program span (FG-5/FG-2) | P3 |
+| `K_sg_level` / dump rate | 5.0 | tune with anchor | Shrink depth/speed (FG-5) | P4 |
+| Heater capacity ÷ outsurge | recovers ≤ ~5 min | keep | Post-trip pressure recovery tempo | P4 |
 
-| ID | Behavior | Expected (band) | Sim today | Status |
-|----|----------|-----------------|-----------|--------|
-| SS-1 | 100 % snapshot | Tavg 303–309 °C, ΔT 30–36 °C, pzr 15.4–15.5 MPa, pzr level 55–60 %, SG 5.5–6.0 MPa, SG level ~65 % NR, steam≈feed within 2 % | Tavg ≈304, ΔT 33, 15.41 MPa, 55 %, 5.65 MPa | PASS (`steady_full_power`) |
-| SS-2 ⚑ | **Tavg program** — Tavg rises with load | Monotonic no-load→full-power rise, ~1.3–1.5 °C per 10 % load. Target: **292 ±2 °C no-load → 306 ±3 °C full power** | **No program.** Flat ~303 no-load, ~304 full; 50 % load *sags* to ~291.5 (wrong direction) | **FAIL** (P4/P5, the single largest systemic gap) |
-| SS-3 | 50 % snapshot | Tavg ~299 ±3 per program, ΔT ~16–17 °C, SG pressure between no-load and rated | Tavg ~291.5 (sag), ΔT halves ✓ | FAIL (couples to SS-2) |
-| SS-4 | HZP / Mode 3 standby | Tavg = no-load program value; steam dump holds SG at Psat(no-load Tavg); pzr at 15.41 MPa, level low end of program; power < P-10 | Holds at Tsat(8.90 MPa) ≈ 303 °C | FAIL (couples to SS-2; dump setpoint moves with program, → ~7.7 MPa) |
-| SS-5 ⚑ | Pzr **level program** — level rises with Tavg | ~25 % no-load → ~55–60 % full power (programmed on Tavg) | Constant setpoint 55 % at all conditions | GAP (medium priority; interacts with level/mass rework, see CC-10) |
-| SS-6 | 5 % steady | Stable indefinitely; steam dump carries load; no channel hunting | Covered | PASS (`steady_five_percent`) |
-| SS-7 | Mode 5 cold shutdown | RCS < 93 °C, RHR carrying decay heat, pressure per IC, boron at shutdown concentration | Covered | PASS (`cold_shutdown_hold`) |
-| SS-8 | Heat-balance closure at any steady state | charging≈letdown, steam≈feed, primary power = secondary power ±2 % | Believed OK | PASS? (add explicit probe) |
+## 3. FG-1 — Startup & shutdown discipline
 
-## 2. Normal evolutions
+*Feel: deliberate and procedural. Hours-scale evolutions, the instrument ladder respected,
+nothing jumps the queue. Already the sim's strength — carried forward unchanged.*
 
-| ID | Behavior | Expected (band) | Status |
-|----|----------|-----------------|--------|
-| EV-1 | Mode 5→1 heatup | ≤ 28 °C/hr RCS heatup; bubble drawn before Mode 4→3; RCPs per lineup; no spurious ESF (P-11 handled) | PASS (`mode5_to_mode1_roundtrip`, m5 suite) |
-| EV-2 | Cooldown to RHR entry | ≤ 55 °C/hr; RHR interlock opens < 2.76 MPa; borate on cooldown | PASS (`rhr_valve_and_mode`, ops cooldown) |
-| EV-3 | Power ramp ±5 %/min | Rods+boron coordinate; Tavg tracks program within ±1.5 °C; no trip | PARTIAL — ramps work but track the *wrong* (flat) program; re-band after SS-2 |
-| EV-4 | Load follow 100→50→100 | Completes without operator help in all-auto; Tavg per program | FAIL-ish — works but authority ~25 % of real (P4); retune with SS-2 |
-| EV-5 | Boration/dilution response | ~10 ppm step → clear reactivity response; worth ≈ −8 to −12 pcm/ppm | PASS (`pwr_boron` campaign, eccs_boration) |
-| EV-6 | **Slow manual rod insertion at 100 %**, all-auto | Power/Tavg walk down smoothly; turbine follow or dump compensates; **no SCRAM** from single steps with stabilization waits | RESOLVED 2026-07-20 — owner retried and could not reproduce (#25 closed); probe matrix stays in the battery as regression insurance |
-| EV-7 | Single rod step at 100 % | Small flux dip, Tavg recovers via auto rods within ~2 min, no trip | PASS? (near `control_response`; pin explicitly) |
-| EV-8 | Xenon transient after power change | Peak ~6–10 hr after downpower; magnitude enough to demand boron/rod compensation | PASS (`ops xenon 8h`, `pwr_xenon`) |
-| EV-9 | Startup 1/M approach | Doubling behavior; SR→IR→PR overlap; P-6 SR cutout, P-10 at 10 %; IR 20 %/PR-low 25 % backstops | PASS (campaign startup ×2, NIS suite) |
-| EV-10 | Turbine roll & sync | Requires vacuum > trip point; overspeed trip 1980 rpm enforced; sync only at rated rpm | PASS (`transient_loss_vacuum`, overspeed actuation) |
+| ID | Behavior | Probe | Status |
+|----|----------|-------|--------|
+| EV-9 | 1/M approach: doubling behavior, SR→IR→PR overlap, P-6/P-10 ladder, IR/PR backstops | campaign startup ×2, NIS suite | PASS |
+| EV-10 | Turbine roll & sync: vacuum required, overspeed 1980 rpm, sync at rated rpm | run_pwr loss_vacuum, overspeed | PASS |
+| EV-1 | Mode 5→1 heatup ≤ 28 °C/hr; bubble drawn before Mode 4→3; no spurious ESF (P-11) | run_pwr roundtrip, m5 suite | PASS |
+| EV-2 | Cooldown ≤ 55 °C/hr; RHR interlock < 2.76 MPa; borate on cooldown | run_pwr rhr_valve, ops cooldown | PASS |
+| SS-7 | Cold shutdown hold: RHR carries decay heat, shutdown boron | run_pwr cold_shutdown_hold | PASS |
+| SS-4 | HZP/Mode 3 standby: Tavg = no-load anchor, dump holds SG at Psat(anchor) | probe:SS-2 | PASS (program) |
 
-## 3. Anticipated transients (initiating event → required sequence)
+## 4. FG-2 — Steady state & maneuvering
 
-| ID | Event @ IC | Required sequence (times from event) | Status |
-|----|-----------|--------------------------------------|--------|
-| TR-1 ⚑ | **Turbine trip @ 100 %** | Above P-9 (~50 %): **reactor trips directly on turbine trip** (anticipatory). Pressure/Tavg spike bounded by dump+PORV; PORV may lift briefly; no SI | **GAP — no turbine-trip→reactor-trip interlock.** Sim rides out on 50 % dump + spray, which real W plants do not above P-9. (`transient_turbine_trip` currently *asserts* ride-out — test itself must change) |
-| TR-2 ⚑ | **Loss of main feedwater @ 100 %** (TMI opener) | SG levels fall → **lo-lo 17 % reactor trip ≤ ~60 s** → turbine trips (via reactor trip); **primary pressure spikes to PORV lift 16.20 MPa within ~10–30 s of turbine trip**, PORV cycles, recloses; AFW auto-starts at 20 %; spray must NOT be able to suppress the spike | **FAIL** (#22): turbine keeps running, spray (K=1.7, no flow cap) holds ~15.55 MPa, PORV never lifts. Fix = TR-1 interlock + spray capacity CC-5 |
-| TR-3 ⚑ | Loss of feedwater **with AFW block valve shut** (TMI-2 proper) | As TR-2, then SG dryout ~15–30 min → primary heat-up/repressurization, PORV cycling; recovery when block valve found (matches TMI-2 module story clock) | FAIL upstream (needs TR-2 first); TMI module timing then re-validated |
-| TR-4 ⚑ | **Trip of 1 of N RCPs @ 100 %** | Above P-8 (~30 %): **reactor trip on single-loop low flow**. Below P-8: run back, no trip | **GAP** — low-flow trip threshold 0.25 total flow ≈ all-pumps loss; single-pump trip rides out at 100 % (`transient_rcp_trip` asserts ride-out — test must change) |
-| TR-5 | MSIV closure @ 100 % | Reactor trip (high pressure or via TR-1 path); SG pressure → safeties 9.31 MPa pop/9.0 reseat; primary stabilizes at safeties' Tsat; **pzr/RCS inventory retained** | PASS since #34 fix (`msiv_closure_at_power`); re-check after TR-1 exists |
-| TR-6 | 50 % load rejection | Steam dump (≤50 % cap) + rods absorb it; no reactor trip; Tavg returns to program | PASS (`ops grid step`, dump-cap check); re-band after SS-2 |
-| TR-7 | Manual reactor trip from 100 % | Turbine trips; Tavg → no-load value on dump; pzr outsurge: pressure dips (heaters recover), level drops ~20–30 % **not to zero**; no SI; rods_tavg channel self-disengages | PASS (`shutdown_scram`, autoctl scram probe) |
-| TR-8 | Loss of condenser vacuum @ 100 % | Turbine trip at 74.5 kPa; steam dump to condenser unavailable → SG safeties/relief carry; reactor trip per TR-1 | PARTIAL — trip fires; dump-unavailable-on-vacuum needs a pin; TR-1 coupling |
-| TR-9 | SG overfill | P-14 at 90 %: turbine trip + feedwater isolation; reset at 85 % | PASS (`ops_sg_overfeed_p14`, `feedwater_isolation`) |
-| TR-10 | Stuck-open PORV @ 100 % (SBLOCA) | Depressurize → low-P trip 12.41 MPa → SI 11.03 MPa; subcooling shrinks; **indicated pzr level rises while inventory falls** (void deception); block valve closure terminates | PASS (`flagship_tmi`, PORV walkaway, TMI module) |
-| TR-11 | Spray valve fails open @ 100 % | Slow depressurization; heaters fight and lose; low-pressure trip eventually; no SI if operator isolates | PASS? (`heaters vs spray fight` is close; pin end-state) |
-| TR-12 | Steam line break | Faulted SG blows down, RCS cooldown → positive reactivity; trip + SI; MSIV isolation limits it | PASS (`pwr_slb` campaign gate) — re-validate after interlock work |
-| TR-13 | SGTR @ 100 % | Primary→secondary leak; pzr level/pressure fall; trip + SI; stabilize, identify, isolate faulted SG; leak scales with ΔP | PASS (P1 fixed via `leak_scale`; `ops SGTR stabilize`) |
-| TR-14 | Station blackout | Loss of all AC: RCPs coast down, natural circulation; no HPI/charging; known unsurvivable long-term (by design, teaching point) | PASS (campaign fact) — document as intended in manual |
+*Feel: the plant holds itself. Any steady state is truly steady; Tavg rides its program up
+with load; all-auto load-follow completes hands-off; manual dispatch works but shows you
+its consequences instead of hiding them.*
 
-## 4. Casualties & instrument deception (HR1)
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| SS-2 | Tavg **monotonically rises** no-load → full power along this plant's program (anchors picked in P3) | I | probe | PASS (placeholder anchors) |
+| SS-1 | 100 % snapshot self-consistent (steam≈feed, charging≈letdown, ΔT per power) | C | probe | PASS — band minted at freeze |
+| SS-3 | 50 % point sits *on* the program (no sag) | I | probe:SS-2 | PASS |
+| SS-6 | 5 % steady holds indefinitely (xenon at own-power equilibrium) | I | probe | PASS |
+| SS-8 | Heat-balance closure ±2 % at any steady state | I | probe | PASS? — pin explicitly |
+| EV-4 | All-auto load-follow 100→50→100 hands-off; Tavg tracks program | C | ops load follow | re-band → P3 |
+| EV-3 | ±5 %/min ramps track the program without trip | C | todo | todo → P3 |
+| EV-5 | Boration/dilution: ~10 ppm step → clear response, −8..−12 pcm/ppm worth | I | campaign pwr_boron | PASS |
+| EV-7 | Single rod step at 100 %: flux dip, auto recovery ~2 min, no trip | C | probe:EV-6 | PASS? |
+| EV-8 | Xenon transient: peak hours after downpower, needs compensation | I | ops xenon 8h | PASS |
+| EV-6 | Slow manual rod insertion, all-auto: walks down smoothly, no scram | C | probe | PASS (regression insurance) |
+| **EV-11** ⚑ | **Manual dispatch shows its costs** (new, documents probed reality): a slider-only load drop settles ~45 MWe *above* the ask (self-regulation without trim), Tavg sags below program on rod-only reduction, and the down-leg shrink parks SG level low until the operator minds the feed | C | shift-exam gates; battery pin todo | todo → P3 |
 
-| ID | Behavior | Expected | Status |
-|----|----------|----------|--------|
-| CA-1 | TMI-2 full sequence (module p1–p3) | Story-clock milestones remain achievable after TR-1/TR-2/CC-5 retuning: trip, PORV stuck, level deception, pumps cavitation, block valve save | PASS today; **must re-validate after tuning** (times will shift) |
-| CA-2 | SBLOCA spectrum | Break → depressurize; accumulators inject at 4.14 MPa; RHR/LPI available < 2.76 MPa; Tavg pins near saturation during blowdown | PASS (`merged_injection_curve`, `accumulator_arming_boundary`, `eccs_cold_injection`) |
-| CA-3 | Pzr level sensor fails HIGH | Auto charging backs off (reads instrument, not truth) → real inventory falls; operator must catch via other indications (charging/letdown mismatch, Tavg, subcooling) | PASS since cc0d390 — but drain depth capped by mass floor (see CC-10 ⚑) |
-| CA-4 | Pzr level sensor fails LOW | Charging drives up → high level; P-14-analog? No — pzr high level *trip* at… (none modeled — see PI-8) | PARTIAL — servo response correct; missing high-pzr-level trip backstop |
-| CA-5 | Tavg instrument failure w/ rods in auto | Rods misdrive; bounded by IR/PR trips, high/low pressure trips; rod channel dropout on operator take-over with note | PASS (autoctl HR1 probes) |
-| CA-6 | Loss of NIS channels | SR re-energize at P-6 on down-range; startup ladder blocks honored | PASS (NIS suite) |
+## 5. FG-3 — Physical pressurizer level
 
-## 5. Control-channel behaviors (each = what it holds, how it fails)
+*Feel: the level gauge is an honest instrument. It moves because inventory or temperature
+moved — and it deceives (TMI) exactly and only when the primary actually voids.*
 
-| ID | Channel | Required behavior | Status |
-|----|---------|-------------------|--------|
-| CC-1 | rods_tavg | Holds indicated Tavg ±0.8 °C of captured ref; disengages on scram AND on operator rod action (with visible note); after SS-2, ref = *program* not captured value ⚑ | PASS today (autoctl); re-work with SS-2 |
-| CC-2 | feed_sg (3-element) | Holds SG level ±~2 % at steady; ff on steam flow; drops to MAN only on operator feed commands (with note) | PASS (#32 was display bug, fixed) |
-| CC-3 ⚑ | feed_sg **post-trip** | Real plant: MFW isolates on reactor trip w/ low Tavg (P-4); AFW feeds. Sim: PID stays engaged and keeps feeding through the trip | GAP — decide: add trip-time FW isolation + AFW handoff (recommended), or document sim behavior |
-| CC-4 | boron_conc | Holds analyzer value ±8 ppm; survives scram (correct — boration continues) | PASS |
-| CC-5 ⚑ | **Pzr spray sizing** | Spray sized for insurge transients only: can arrest a step insurge, **cannot suppress a loss-of-heat-sink repressurization** (TR-2 must reach PORV). Needs flow-capacity cap, not just gain | **FAIL** (#22): K_spray 1.7, uncapped — overwhelms TR-2 |
-| CC-6 | Heaters | Restore pressure after outsurge within ~5 min band 0.207 MPa; proportional + backup behavior | PASS |
-| CC-7 | Steam dump | No-load Tavg hold at HZP; 50 % capacity cap enforced; unavailable on lost vacuum (TR-8) | PASS (cap tested); vacuum-interlock pin needed |
-| CC-8 | CVCS auto make-up | Holds pzr level at setpoint via charging vs letdown; leak shows up as level drop → make-up (real-plant leak indication = level/charging trend, NOT leak telepathy) | PASS (rebuilt this week, `cvcs_level_control`) |
-| CC-9 | ESF arms | HPI/AFW/RHR arm-fire-disarm; manual disarm with note; re-arm rules | PASS |
-| CC-10 ⚑ | **Pzr level ↔ RCS mass coupling** | Level and inventory are separate integrators (deliberate TMI deception machinery). Boundary must be explicit: deception active only in void-forming regimes; in normal ops level must track inventory closely enough that CA-3/CA-4 depths are physical. Mass floor (`_mass<=1.0` charging clamp) is a stopgap | ARCH item — the root cause behind two shipped bugs (#21, #34). Rework scope is a tuning-pass line item |
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| CC-10 | Level = f(RCS inventory, thermal expansion) + void term **gated on saturation**. Independent level integrator and `_mass<=1.0` charging floor deleted. Level↔inventory track closely outside void regimes (no silent windup) | I | probe | XFAIL → P2 |
+| SS-5 | Level rises with load — **emergent** from thermal expansion once CC-10 lands (+ CVCS setpoint curve consistent with it) | I | probe | XFAIL → P2/P3 |
+| CC-8 | CVCS auto make-up holds the level curve; a leak reads as level-trend + charging-trend divergence (no leak telepathy) | C | cvcs_level_control | PASS — re-band P3 |
+| CA-3 | Level sensor fails HIGH → auto charging backs off, real inventory falls physically deep; caught via trends/subcooling | C | probe | PASS — depth honest after CC-10 |
+| CA-4 | Level sensor fails LOW → charging drives level up; PI-8 high-level trip backstops | C | todo | todo → P4 (needs PI-8) |
 
-## 6. Protection & interlocks
+## 6. FG-4 — The ride-out signature
 
-Setpoint verification (all currently implemented, values vs Westinghouse-typical — all PASS unless noted):
+*Feel: losing the turbine is a bad afternoon, not a scram. The dump catches the whole load,
+the plant settles at no-load, the operator recovers on their own schedule. Trips happen when
+a real limit is reached — and then they mean it.*
 
-| Trip/ESF | Sim | Real-typical | Verdict |
-|---|---|---|---|
-| High flux | 120 % | 118 % | OK |
-| High pzr pressure trip | 16.44 MPa | ~16.5 (2385 psig) | OK |
-| Low pzr pressure trip | 12.41 MPa (blockable, P-11 13.6) | ~12.9–13.1 | OK (band) |
-| PORV | 16.20 / 15.86 MPa | 16.2 (2335 psig) | OK |
-| Pzr safety | 17.13 / 16.55 MPa | ~17.2 (2485 psig) | OK |
-| SI | 11.03 MPa | ~12.5 (1807 psig) | ⚑ low-ish; consider raising toward 12.4–12.5 (interacts with TMI module timing) |
-| Lo-lo SG level trip | 17 % | lo-lo NR trip | OK |
-| AFW start | 20 % | lo-lo/loss-of-MFW | OK (+ see PI-4) |
-| P-14 SG hi-hi | 90 % → TT + FWI | same | OK |
-| SG safeties | 9.31 / 9.0 MPa | ~8.3–9.0 | OK (band) |
-| Steam dump setpoint | 8.90 MPa | tracks no-load Tavg | moves with SS-2 (→ ~7.7 MPa) ⚑ |
-| Accumulators | 4.14 MPa | 4.14 (600 psi) | OK (restored) |
-| RHR interlock | 2.76 MPa | ~2.5–3.0 | OK |
-| High Tavg trip | 335 °C | (not a std W trip; harmless backstop) | keep |
-| Turbine: vacuum 74.5 kPa, overspeed 1980 rpm, reactor-trip→turbine-trip | — | same | OK |
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| TR-1 ⚑ | **Turbine trip @100 %: NO reactor trip.** Dump (~100 %) picks up the load, Tavg settles to the no-load anchor, no PORV lift, operator recovers. (Re-specified from v2.0's anticipatory trip — probe re-authored to assert ride-out) | C | probe (re-author) | XFAIL → P4 (dump upsize) |
+| TR-6 | 50 % load rejection: a non-event — dump + rods absorb, Tavg returns to program | C | ops grid step | PASS — re-band P3/P4 |
+| CC-7 | Steam dump: holds no-load Tavg at HZP; capacity ~100 % (P4); **unavailable on lost vacuum** | C | dump-cap probe + vacuum pin | cap change → P4 |
+| TR-8 ⚑ | Loss of vacuum @100 %: turbine trips, dump unavailable, SG safeties carry briefly; **untended, the primary heats to a genuine limit trip (high pzr pressure) — trip by physics, not anticipation**; tended, the operator runs back and rides it out | C | todo (endpoint pin) | todo → P4 |
+| TR-9 | SG overfill: P-14 at 90 % → turbine trip + FW isolation, reset 85 % | C | ops p14 + run_pwr | PASS |
 
-**Missing interlocks (the defect cluster behind TR-1…TR-4):**
+## 7. FG-5 — Reactor trip feel
 
-| ID | Missing item | Required | Priority |
-|----|--------------|----------|----------|
-| PI-1 ⚑ | Reactor trip on turbine trip above P-9 (~50 %) | Add | HIGH — unlocks TR-1/TR-2 |
-| PI-2 ⚑ | Turbine trip on reactor trip already exists; **turbine trip on lo-lo SG / loss-of-MFW (AMSAC-style)** | Add (or rely on PI-1 via lo-lo trip — decide) | HIGH |
-| PI-3 ⚑ | Reactor trip on SI actuation | Add | MED |
-| PI-4 | AFW auto-start on loss of both MFW pumps (not just lo-lo level) | Add | MED |
-| PI-5 | Feedwater isolation on SI, and on reactor trip w/ low Tavg (P-4) | Add with CC-3 | MED |
-| PI-6 | P-8 single-loop low-flow trip above ~30 % power | Add | MED (unlocks TR-4) |
-| PI-7 | RPS reset / scram recovery path (C3) + manual scram sets `rps_state.scrammed` (C4) | Add | MED |
-| PI-8 | High pzr level trip (~92 %) | Add (backstop for CA-4) | LOW |
-| PI-9 | SI on low steam-line pressure (SLB protection) | Have SLB gate passing without it — verify path | LOW |
+*Feel: dramatic but fair. The board lights up, the SG shrinks visibly, the dump barks, the
+handoff to AFW is watchable — and five minutes later the plant is quietly at no-load with
+pressure recovered. Nothing about a clean trip should require heroics.*
 
----
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| TR-7 | Manual trip from 100 %: turbine follows, Tavg → no-load on dump, pzr outsurge dips pressure (heaters recover ≤ ~5 min), level drops but **not to zero**, no SI, rods_tavg self-disengages | C | run_pwr scram + autoctl | PASS — bands at freeze |
+| CC-3 | Post-trip feedwater: MFW isolates on trip + low Tavg (P-4 analog), feed_sg stands down with a visible note, AFW auto-starts and holds its ~20 % target | C | probe | XFAIL → P4 (with PI-5) |
+| **TR-15** ⚑ | **Post-trip SG shrink depth** (new, the explicit taste knob): narrow-range dips hard enough to get attention but recovery is assured by AFW within minutes. Depth set by no-load anchor + `K_sg_level`/dump rate — owner picks from a two-tuning demo in P4 | C | new probe | todo → P4 |
+| CC-6 | Heaters restore pressure after outsurge within the ~5 min / 0.207 MPa band | C | probe | PASS |
+| PI-7 | Manual scram latches RPS (done); **RPS reset path** exists so a trip is recoverable without restart | C | probe (reset: todo) | latch PASS · reset todo → P4 |
 
-## 6b. Battery findings — first run, 2026-07-20 (status updates, not band changes)
+## 8. FG-6 — The casualty ladder
 
-The behavior battery (`test/run_behavior.js`, 20 probes) went live against this catalog.
-Result: 11 pass, 8 known gaps (strict xfail), 0 unexpected. Discoveries:
+*Feel: graduated severity with honest indications. Small leaks hide inside CVCS capacity and
+teach trend-reading; a full SGTR overwhelms charging and forces the EOP; the TMI sequence
+runs exactly as canon. Deception lives only where physics puts it.*
 
-- **SS-6 is a FAIL, newly discovered**: 5 % hands-off droops continuously to ~1 % in
-  30 min (2.48 → 1.05 %/last 10 min) — the low-power equilibrium isn't held. The engine
-  suite's `steady_five_percent` gate passes because it asserts a looser/shorter window —
-  a textbook regression-gate-vs-spec miss. Tune with the SS-2 program work.
-- **C4 is RESOLVED**: a manual scram DOES latch `rps_state.scrammed` now (fixed sometime
-  during the control-layer rework; the OPS report note is stale). C3 (no RPS *reset*
-  path) still stands — coverage id PI-7-reset.
-- **CC-10 windup evidence pinned**: with CVCS in auto vs a small SGTR, pzr level holds
-  55 % while TRUE inventory winds from 100 % to the 120 % tank cap — the decoupled-
-  integrator defect demonstrated live (probe CC-10, xfail).
-- **TR-13 SGTR scale — DECIDED (owner, 2026-07-20): raise it.** `sgtr` leak_scale 0.03 is
-  smaller than charging capacity 0.06, so CVCS can out-pump even a full tube rupture. In a
-  real plant a full SGTR (~400+ gpm) overwhelms charging (~100 gpm) — that is exactly why
-  it forces a trip + SI. Tuning pass: raise the SGTR leak scale so a full-severity rupture
-  clearly exceeds charging (target ~2× charging_max, i.e. leak_scale ≈ 0.12), re-band the
-  ops SGTR scenario and the battery's CC-8/CC-10/CA-3 probes (which use small severities
-  precisely to stay inside CVCS capacity — pick severities so their leaks stay ≈ 0.003–0.006
-  normalized), and re-validate accumulator-plateau physics (config note: ≤8 % SGTR holds the
-  plateau — that percentage shifts with the rescale). Interacts with the earlier P1 rescale.
-- Measured baselines for the tuning targets: turbine trip @100 % → trip only at 46 s
-  (high-Tavg backstop, peak 324.8 °C) — PI-1 will make this ≤ 5 s; loss-of-feed and
-  heat-sink-loss both peak at **15.57 MPa** vs the required 16.20 PORV lift (CC-5).
+**Ladder invariant [I] (new probe): seal leak < small SGTR < charging capacity < full SGTR
+< SBLOCA — each rung's response escalates (trend → make-up → trip+SI → ECCS).**
 
-## 7. Execution plan after red-line
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| TR-2 ⚑ | **TMI opener (canon):** loss of MFW → SG lo-lo trips reactor ≤ ~60 s → turbine trips → decay + stored heat repressurize the primary to **PORV lift 16.20 MPa**; spray must lose; AFW starts at 20 % | C | probe | XFAIL → P5 (spray cap) |
+| CC-5 | Spray flow cap: arrests a normal step insurge, **cannot** suppress loss-of-heat-sink repressurization | I | probe | XFAIL → P5 |
+| TR-3 | TMI-2 proper: TR-2 with AFW blocked → SG dryout ~15–30 min → sustained repressurization/PORV cycling → recovery on block-valve discovery (story clock) | C | todo | todo → P5 (after TR-2) |
+| TR-10 | Stuck-open PORV (SBLOCA): depressurize → low-P trip → SI; **indicated level rises while inventory falls** (void deception, canon); block valve terminates | C | run_pwr flagship_tmi + module | PASS |
+| CA-1 | TMI-2 module p1–p3 milestones achievable; story clock re-timed after P5 tuning | C | campaign tmi2 | PASS — re-time P5 |
+| CA-2 | SBLOCA spectrum: accumulators at 4.14 MPa, RHR/LPI < 2.76 MPa, Tavg pins near saturation on blowdown | C | run_pwr eccs probes | PASS |
+| TR-13 ⚑ | **SGTR, single-SG EOP (re-shaped):** full severity overwhelms charging (leak_scale ≈ 0.12) → trip + SI; there is no intact SG to steam — EOP is **depressurize primary below SG pressure to kill the leak**, then cooldown to RHR; steaming the contaminated SG is a radiological teaching point | C | ops SGTR (re-author) | re-author → P5 |
+| TR-5 | MSIV closure @100 %: SG safeties pop 9.31/reseat 9.0, primary stabilizes at safeties' Tsat, inventory retained | C | run_pwr msiv | PASS |
+| TR-12 | Steam line break: blowdown cooldown → positive reactivity → trip + SI; MSIV limits | C | campaign pwr_slb | PASS — re-validate P5 |
+| TR-11 | Spray valve fails open: slow depressurization, heaters lose, low-P trip unless isolated | C | ops heaters-vs-spray | PASS? — end-state pin todo |
+| TR-14 | Station blackout: natural-circ-less coastdown, no HPI — **unsurvivable long-term by design** (teaching point; sharper on a single-loop plant — document in manual) | — | campaign fact | PASS — document P6 |
+| CA-5 | Tavg instrument failure w/ rods in auto: bounded misdrive, operator takeover note | C | autoctl HR1 | PASS |
+| CA-6 | NIS channel loss: SR re-energize at P-6 down-range, ladder blocks honored | C | NIS suite | PASS |
 
-1. **Freeze catalog** (owner red-line → v1.0).
-2. **Behavior battery**: new `test/run_behavior.js` — one probe per catalog ID, engine+M5 level,
-   quantitative bands from this doc; FAIL/GAP entries land as strict xfails (existing convention)
-   so the gate is green-with-yellow until tuned, and any silent fix XPASSes red.
-3. **Gap report** auto-generated from the battery run = the Fable tuning packet
-   (replaces hand-stacked task list; #22, #25, P4/P5, C3/C4 all become catalog IDs).
-4. **Tuning pass** in priority order: SS-2 Tavg program (+ SS-6 low-power hold) →
-   PI-1/PI-2 interlock cluster → CC-5 spray capacity → CC-10 level/mass boundary →
-   PI-3..8 → SS-5 level program → SI setpoint raise → TR-13 SGTR rescale → units layer.
-5. **Re-validate downstream artifacts**: run_pwr/ops/autoctl/m5 bands re-tuned where the *test*
-   asserted wrong behavior (TR-1, TR-4 explicitly); all 51 campaign gates re-run and beat text
-   updated; TMI-2 module story clock re-timed (CA-1); manuals + procedure references regenerated;
-   CHANGELOG entries per behavior change.
-6. **Battery joins CI** — catalog IDs become the permanent spec layer above the regression gates.
+## 9. FG-7 — Protection & interlocks (minimal and legible)
 
-## 8. Red-line decisions (owner rulings, 2026-07-20)
+*Feel: every trip traceable to an indication the operator can see. No anticipatory trips —
+that is the big-plant compromise this plant doesn't need.*
 
-1. **SS-2 Tavg program — DECIDED: adopt sliding program 292 → 306 °C.**
-   Physical basis: SG heat transfer needs a primary→secondary ΔT that grows with load. Holding
-   Tavg flat forces steam pressure to collapse as load rises; holding steam pressure flat forces
-   a huge Tavg swing. Westinghouse plants split the difference with a Tref program *linear in
-   turbine load* (no-load ~292 °C → full-load ~306 °C); rods drive Tavg to Tref. Implementation:
-   Tref(load) replaces the flat no-load anchor; rods_tavg tracks Tref, not a captured value;
-   steam-dump setpoint becomes Psat(292 °C) ≈ 7.7 MPa. This erases the 50 %-sag defect (target
-   there becomes ~299) and restores real load-follow authority (P4's root cause).
-2. **PI interlock cluster — DECIDED: add all of PI-1 … PI-8** (reactor-trip-on-turbine-trip
-   above P-9, turbine-trip on lo-lo SG/loss-of-MFW, reactor-trip-on-SI, AFW start on MFW loss,
-   FW isolation on SI and on trip+low-Tavg, P-8 single-loop low-flow trip, RPS reset + manual-scram
-   flag, high-pzr-level trip).
-3. **CC-5 spray flow cap — DECIDED: yes.** Cap sized so TR-2 lifts the PORV but a normal step
-   insurge is still arrested.
-4. **CC-3 post-trip feedwater — DECIDED: implement real behavior.**
-   On reactor trip with Tavg falling below no-load (P-4 analog): MFW isolates, feed_sg channel
-   stands down with a visible note, AFW auto-starts and holds SG level at its 20 % target.
-   Rationale: the current always-on PID pumps 40 °C feed against decay heat after every trip
-   (overcooling that distorts all post-trip behavior), and the MFW→AFW handoff is itself a core
-   TMI teaching point.
-5. **CC-10 level/mass rework — DECIDED: physical-level middle path.**
-   Pzr level becomes a *derived* quantity: f(RCS inventory, coolant thermal expansion) plus a
-   void term that only activates when the primary actually reaches saturation (the TMI regime) —
-   preserving the deception exactly where voids exist and nowhere else. The independent level
-   integrator and the `_mass<=1.0` charging-floor stopgap are deleted. Not the full re-plumb;
-   not the stopgap-tightening (which leaves the bug class alive).
-6. **SI setpoint — DECIDED: raise 11.03 → ~12.4 MPa.** TMI/SBLOCA timing re-validated in step 5.
-7. **SS-5 pzr level program — DECIDED: do it this pass**, bundled with item 1 (the level
-   setpoint is a function of Tavg/Tref, so CVCS is touched once, not twice).
-8. **EV-6 rod-insertion SCRAM — CLOSED.** Neither party can reproduce; probe stays in battery.
-9. **Units boundary layer — DECIDED: keep normalized engine internals,
-   add an engineering-units conversion block.** A single config ratings table (MWt, RCS flow,
-   charging/letdown gpm, feed/steam flow, PORV/safety capacities) consumed by UI readouts,
-   manuals, instructor text, and the behavior battery's band checks. Internals stay normalized
-   (numerically stable, plant-agnostic); humans and the catalog never see a unitless flow again.
-   Rationale: the unit-boundary is where real bugs happened (BWR RCIC unit bug, SGTR leak_scale,
-   the `_mass<=1.0` floor); a named conversion layer shrinks that class without an engine re-plumb.
+**This plant's ladder** (adopted from the v2.0 verification — all implemented and PASS;
+pressure ordering is an [I] probe: operating 15.41 < PORV 16.20 < high-P trip 16.44 <
+safety 17.13 MPa, with reseats ordered below lifts):
+
+| Trip/ESF | Setpoint | Note |
+|---|---|---|
+| High flux | 120 % | |
+| High pzr pressure trip | 16.44 MPa | PORV lifts *first* (tries to save the trip) |
+| Low pzr pressure trip | 12.41 MPa | blockable below P-11 (13.6) |
+| PORV | 16.20 / 15.86 MPa | |
+| Pzr safety | 17.13 / 16.55 MPa | |
+| SI | 11.03 MPa | ⚑ raise toward ~12.4 in P5, **TMI clock wins on conflict** |
+| Lo-lo SG level trip | 17 % | the heat-sink-loss trip (does TR-2's work — no AMSAC needed) |
+| AFW start | 20 % + on loss of both MFW (PI-4, P4) | |
+| P-14 SG hi-hi | 90 % → TT + FWI, reset 85 % | |
+| SG safeties | 9.31 / 9.0 MPa | |
+| Steam dump setpoint | Psat(no-load anchor) — 7.67 MPa placeholder | moves with the P3 anchor |
+| Accumulators | 4.14 MPa | |
+| RHR interlock | 2.76 MPa | |
+| High Tavg trip | 335 °C | ⚑ keep as harmless legible backstop (owner confirm) |
+| Turbine | vacuum 74.5 kPa, overspeed 1980 rpm, trips on reactor trip | |
+
+**Interlock work list (all physical, none anticipatory):**
+
+| ID | Item | Status |
+|----|------|--------|
+| PI-3 | Reactor trip on SI actuation (SI means a real casualty) | GAP → P4 |
+| PI-4 | AFW auto-start on loss of both MFW pumps | GAP → P4 |
+| PI-5 | FW isolation on SI, and on trip + low Tavg (P-4) — bundled with CC-3 | GAP → P4 |
+| PI-7 | RPS reset path (latch already works) | GAP → P4 |
+| PI-8 | High pzr level trip ~92 % (CA-4 backstop) | GAP → P4 |
+| PI-9 | SI on low steam-line pressure — verify the SLB gate's path | verify → P5 |
+
+## 10. Retired (v3 rulings — do not resurrect)
+
+| Item | Was | Why retired |
+|---|---|---|
+| PI-1 | Reactor trip on turbine trip above P-9 | Ride-out plant; ~100 % dump removes the reason |
+| PI-2 | AMSAC turbine trip on lo-lo SG | Lo-lo trips the *reactor*; turbine follows via the existing link |
+| PI-6 / TR-4 | P-8 single-loop low-flow trip / "1-of-N pump" transient | Single loop — no partial-flow state exists; loss of *the* RCP hits the total low-flow trip (probe re-labeled, kept) |
+| v2.0 fidelity rule | "±15 % of generic Westinghouse" | Bands are minted from this plant's own golden runs at freeze |
+
+## 11. Red-line hotspots ⚑ (owner attention wanted)
+
+1. **TR-1/CC-7 dump capacity** — proposing ~100–105 % of rated steam flow. Bigger = more
+   effortless ride-out; smaller = the operator works harder. P4 probes both; taste call.
+2. **TR-15 shrink depth** — two-tuning demo in P4 (anchor ~297 vs lower + `K_sg_level`);
+   you pick how hard a trip bites.
+3. **TR-8 untended endpoint** — confirming: lost vacuum with no operator action should end
+   in a *high-pressure* trip (physics), not a special interlock.
+4. **TR-13 single-SG EOP** — confirming: steaming the contaminated SG (then depressurizing
+   to kill the leak) is the intended teaching, since there's no intact SG to hide behind.
+5. **High-Tavg 335 °C backstop** — keep or delete (it fired as the stand-in trip in old
+   turbine-trip runs; under ride-out it should never fire — proposing keep as backstop).
+6. **SI raise to ~12.4** — only if the TMI story clock tolerates it; canon wins otherwise.
+7. **EV-11** — blessing "manual dispatch shows its costs" as *intended character* (settles
+   above the ask; feed needs minding) rather than defects to tune away.
+
+## 12. Rulings log
+
+- **2026-07-20 (owner):** own plant — 100 MWe single-loop experimental; keep primary
+  thermo; ride-out character (dump → ~100 %); Item-1 machinery committed, anchors
+  placeholder; TMI-2 canon. (Feel plan v1.0 approved.)
+- **2026-07-20 (owner, v2.0 era, still standing):** SGTR leak-scale raise to ~0.12;
+  CC-10 physical-level middle path; CC-3 real post-trip feedwater; spray flow cap;
+  units/ratings boundary layer; EV-6 closed (unreproducible).
+- **v3.0 red-line: PENDING** — this draft.
