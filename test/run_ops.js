@@ -58,8 +58,19 @@ var wantJson = process.argv.indexOf('--json') !== -1;
 var jsonPath = path.join(__dirname, '..', 'Diagnostic', 'ops_results.json');
 var plantArg = args[0], testArg = args[1];
 
-var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', CYAN = '\x1b[36m', RST = '\x1b[0m', BOLD = '\x1b[1m';
-var passCount = 0, failCount = 0, all = {};
+var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', CYAN = '\x1b[36m', RST = '\x1b[0m', BOLD = '\x1b[1m', YEL = '\x1b[33m';
+var passCount = 0, failCount = 0, xfailCount = 0, all = {};
+
+// Known tuning targets (strict xfail, same convention as run_behavior /
+// run_procedures): a listed check that FAILS reports yellow and does not
+// redden the gate; a listed check that PASSES reports STALE XFAIL red —
+// remove the entry. Key = 'plant / scenario name / check desc'.
+var KNOWN_FAILS = {
+  'pwr / OPS SGTR — recognize, trip, stabilize on HPI / subcooling held':
+    'hand-tuned dump/spray thresholds assume the pre-program Tavg baseline; ' +
+    'scenario is re-authored for the single-SG EOP in feel-plan Phase 5 ' +
+    '(Blueprint/PWR_FEEL_TUNING_PLAN.md)',
+};
 
 Object.keys(SUITES).forEach(function (plant) {
   if (plantArg && plantArg !== plant) return;
@@ -74,34 +85,57 @@ Object.keys(SUITES).forEach(function (plant) {
 
   console.log('\n' + BOLD + '════════ ' + plant.toUpperCase() + ' operations suite ════════' + RST + DIM + '  (' + secs + 's wall)' + RST);
   results.forEach(function (r) {
-    var head = r.pass ? GREEN + 'PASS' + RST : RED + 'FAIL' + RST;
+    var keyBase = plant + ' / ' + r.name + ' / ';
+    var hardFail = false, anyKnown = false;
+    r.checks.forEach(function (c) {
+      if (c.info) return;
+      var known = KNOWN_FAILS[keyBase + c.desc];
+      c._known = known || null;
+      c._stale = !!(c.pass && known);
+      if (c._stale || (!c.pass && !known)) hardFail = true;
+      if (!c.pass && known) anyKnown = true;
+    });
+    var head = hardFail ? RED + 'FAIL' + RST : (anyKnown ? YEL + 'XFAIL' + RST : GREEN + 'PASS' + RST);
     console.log('\n' + head + '  ' + BOLD + r.name + RST);
     r.checks.forEach(function (c) {
-      var mark = c.info ? CYAN + '  ▸' + RST : (c.pass ? GREEN + '  ✓' + RST : RED + '  ✗' + RST);
-      var line = mark + ' ' + c.desc;
-      if (c.info) line += DIM + '  = ' + c.observed + RST;
-      else if (!c.pass) line += DIM + '  [expected ' + c.expected + ', observed ' + c.observed + ']' + RST;
-      else line += DIM + '  (' + c.observed + ')' + RST;
+      var line;
+      if (c.info) { line = CYAN + '  ▸' + RST + ' ' + c.desc + DIM + '  = ' + c.observed + RST; }
+      else if (c._stale) {
+        line = RED + '  ✗ STALE XFAIL' + RST + ' ' + c.desc + DIM + '  (passes now — remove the KNOWN_FAILS entry)' + RST;
+        failCount++;
+      } else if (!c.pass && c._known) {
+        line = YEL + '  ✗(known)' + RST + ' ' + c.desc + DIM + '  [expected ' + c.expected + ', observed ' + c.observed + '] — ' + c._known + RST;
+        xfailCount++;
+      } else if (!c.pass) {
+        line = RED + '  ✗' + RST + ' ' + c.desc + DIM + '  [expected ' + c.expected + ', observed ' + c.observed + ']' + RST;
+        failCount++;
+      } else {
+        line = GREEN + '  ✓' + RST + ' ' + c.desc + DIM + '  (' + c.observed + ')' + RST;
+        passCount++;
+      }
       console.log(line);
-      if (!c.info) { if (c.pass) passCount++; else failCount++; }
     });
+    r._effectivePass = !hardFail;
   });
 });
 
 var suitesRun = Object.keys(all);
 var suitePass = 0, suiteTotal = 0;
 suitesRun.forEach(function (p) {
-  all[p].forEach(function (r) { suiteTotal++; if (r.pass) suitePass++; });
+  all[p].forEach(function (r) { suiteTotal++; if (r._effectivePass) suitePass++; });
 });
 console.log('\n' + BOLD + '──────────────────────────────────────────' + RST);
 console.log(BOLD + 'Scenarios: ' + suitePass + '/' + suiteTotal + RST +
   '   Checks: ' + GREEN + passCount + ' passed' + RST +
+  (xfailCount ? ', ' + YEL + xfailCount + ' known-fail' + RST : '') +
   (failCount ? ', ' + RED + failCount + ' failed' + RST : ''));
 
 if (wantJson || !plantArg) {
   try {
     fs.mkdirSync(path.dirname(jsonPath), { recursive: true });
-    fs.writeFileSync(jsonPath, JSON.stringify(all, null, 1));
+    fs.writeFileSync(jsonPath, JSON.stringify(all, function (k, v) {
+      return k.charAt(0) === '_' ? undefined : v;   // strip runner-internal fields
+    }, 1));
     console.log(DIM + 'results JSON → ' + jsonPath + RST);
   } catch (e) { console.log(DIM + 'JSON write skipped: ' + e.message + RST); }
 }
