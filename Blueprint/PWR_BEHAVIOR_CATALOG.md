@@ -161,11 +161,15 @@ Result: 11 pass, 8 known gaps (strict xfail), 0 unexpected. Discoveries:
 - **CC-10 windup evidence pinned**: with CVCS in auto vs a small SGTR, pzr level holds
   55 % while TRUE inventory winds from 100 % to the 120 % tank cap — the decoupled-
   integrator defect demonstrated live (probe CC-10, xfail).
-- **Observation for owner ruling (TR-13 realism)**: `sgtr` leak_scale is 0.03, so even a
-  full-severity tube rupture (0.03) is *smaller than charging capacity* (0.06) — CVCS can
-  always out-pump an SGTR. In a real plant a full SGTR (~400+ gpm) overwhelms charging
-  (~100 gpm), which is exactly why it forces a trip + SI. Candidate: raise SGTR leak scale
-  above charging capacity during the tuning pass (interacts with the P1 rescale).
+- **TR-13 SGTR scale — DECIDED (owner, 2026-07-20): raise it.** `sgtr` leak_scale 0.03 is
+  smaller than charging capacity 0.06, so CVCS can out-pump even a full tube rupture. In a
+  real plant a full SGTR (~400+ gpm) overwhelms charging (~100 gpm) — that is exactly why
+  it forces a trip + SI. Tuning pass: raise the SGTR leak scale so a full-severity rupture
+  clearly exceeds charging (target ~2× charging_max, i.e. leak_scale ≈ 0.12), re-band the
+  ops SGTR scenario and the battery's CC-8/CC-10/CA-3 probes (which use small severities
+  precisely to stay inside CVCS capacity — pick severities so their leaks stay ≈ 0.003–0.006
+  normalized), and re-validate accumulator-plateau physics (config note: ≤8 % SGTR holds the
+  plateau — that percentage shifts with the rescale). Interacts with the earlier P1 rescale.
 - Measured baselines for the tuning targets: turbine trip @100 % → trip only at 46 s
   (high-Tavg backstop, peak 324.8 °C) — PI-1 will make this ≤ 5 s; loss-of-feed and
   heat-sink-loss both peak at **15.57 MPa** vs the required 16.20 PORV lift (CC-5).
@@ -178,8 +182,9 @@ Result: 11 pass, 8 known gaps (strict xfail), 0 unexpected. Discoveries:
    so the gate is green-with-yellow until tuned, and any silent fix XPASSes red.
 3. **Gap report** auto-generated from the battery run = the Fable tuning packet
    (replaces hand-stacked task list; #22, #25, P4/P5, C3/C4 all become catalog IDs).
-4. **Tuning pass** in priority order: SS-2 Tavg program → PI-1/PI-2 interlock cluster →
-   CC-5 spray capacity → CC-10 level/mass boundary → PI-3..8 → SS-5 level program.
+4. **Tuning pass** in priority order: SS-2 Tavg program (+ SS-6 low-power hold) →
+   PI-1/PI-2 interlock cluster → CC-5 spray capacity → CC-10 level/mass boundary →
+   PI-3..8 → SS-5 level program → SI setpoint raise → TR-13 SGTR rescale → units layer.
 5. **Re-validate downstream artifacts**: run_pwr/ops/autoctl/m5 bands re-tuned where the *test*
    asserted wrong behavior (TR-1, TR-4 explicitly); all 51 campaign gates re-run and beat text
    updated; TMI-2 module story clock re-timed (CA-1); manuals + procedure references regenerated;
