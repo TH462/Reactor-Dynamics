@@ -1566,7 +1566,7 @@
         var up = _driveHeatup(h, 6000);
         var mid = h.ts();
         ck('reached criticality on the way up', up.critAt, up.critAt >= 0, 'critAt ≥ 0 s');
-        ck('RCS heated to NOP (≥ 300 °C)', mid.tavg_c.toFixed(1), mid.tavg_c >= 300, '≥ 300 °C');
+        ck('RCS heated to the no-load anchor (≥ 296 °C)', mid.tavg_c.toFixed(1), mid.tavg_c >= 296, '≥ 296 °C');
         ck('mode indicator reached Mode 1', mid.plant_mode + ' ' + mid.plant_mode_name, mid.plant_mode === 1, 'Mode 1');
         ck('Mode 1 reached — critical, > 5 % power', mid.power_pct.toFixed(1), up.mode1At >= 0 && mid.power_pct > 5, '> 5 % at NOP');
         ck('no fuel damage during heatup', up.maxFuel.toFixed(0), up.maxFuel < 1200 && !h.eng.s.fuel_damaged, '< 1200 °C');

@@ -223,6 +223,11 @@
         var t0 = h.t(), T0 = h.ts().tavg_c;
         h.run(7200, function (hh, t) {
           var ts = hh.ts(), ins = hh.ins();
+          // Real cooldown procedure: walk the PRESSURE SETPOINT down with the
+          // temperature (heaters follow instead of fighting the capped spray —
+          // the old fire-hose spray simply overpowered them, feel-plan P5).
+          var psp = Math.max(Math.pow(Math.max(ts.tavg_c + 30, 1) / 179.47, 1 / 0.239), 2.0);
+          hh.cmd('set_pressure_setpoint', { mpa: Math.min(psp, 15.41) });
           if (ts.hpi_active && ins.subcooling_margin > 25) hh.cmd('set_hpi', { active: false });
           var tavgTarget = T0 - 50 * ((t - t0) / 3600);
           hh.cmd('set_steam_dump', { pct: ins.tavg > tavgTarget ? 12 : 0 });

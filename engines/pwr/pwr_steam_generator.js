@@ -94,6 +94,19 @@
     var dump = (s.steam_dump_override != null)
       ? s.steam_dump_override
       : clip((s.steam_pressure_mpa - dump_setpoint) / sg.steam_dump_band, 0, 1);
+    // TRIP-OPEN mode (real Westinghouse behavior, feel-plan P5): on a turbine trip
+    // the dump drives open on the Tavg error immediately — it does NOT wait for SG
+    // pressure to climb to the no-load setpoint (that wait was a ~2.6 MPa bottling
+    // window that spiked the primary on every load rejection). Self-limiting: as
+    // Tavg approaches the no-load anchor the demand tapers and pressure-mode takes
+    // over. This is what makes the FG-4 ride-out a graceful catch — and it is
+    // exactly what CANNOT save a loss-of-feed event, where the drying SG stops
+    // absorbing heat no matter what the dump vents (the TMI differentiator).
+    if (s.steam_dump_override == null && s.turbine_tripped) {
+      var tnl_dump = T_sat(dump_setpoint);
+      var tavg_err = (s._ins_tavg != null ? s._ins_tavg : s.tavg_c) - tnl_dump;
+      dump = Math.max(dump, clip(tavg_err / (sg.dump_trip_mode_band_c || 8.0), 0, 1));
+    }
     // Physical capacity of the turbine-bypass/dump. THIS PLANT (FG-4 ride-out,
     // feel-plan P4): ~105 % of rated steam flow — a full load rejection is caught
     // by the dump alone (no anticipatory reactor trip exists). The cap still

@@ -124,6 +124,13 @@
       // inventory-driven void (post-scram, primary.void_gain); combined by max, so
       // neither perturbs the other. All [tune] — the at-power scenarios arbitrate.
       dnb_margin_c: 8.0,           // hot-leg subcooling (°C) at which DNB begins [tune]
+      // SG tube-bundle uncovery (TR-3/TMI dryout, feel-plan P5): heat transfer
+      // scales to a small steam-side residual as the WIDE-range level falls below
+      // the threshold. Residual sized BELOW post-trip decay heat so a dry SG
+      // genuinely stops being a heat sink (the primary heats to saturation and
+      // repressurizes to the PORV — the TMI mechanism). [tune]
+      sg_dryout_wide_pct: 30.0,
+      sg_dryout_residual: 0.02,
       void_flux_gain: 0.02,        // equilibrium core void per °C of exit overshoot [tune]
       void_flux_max: 0.8,          // ceiling on flux-driven void fraction [tune]
       void_flux_tau: 3.0,          // s — flux void grows/recovers with this tau [tune]
@@ -161,6 +168,12 @@
       // space, so a small mass flow has a big pressure effect — which is why the
       // inventory-loss gain (porv_flow_max) and the pressure gain are decoupled.
       K_heater: 0.55, K_spray: 1.7, K_porv_relief: 300.0, K_safety_relief: 300.0,
+      // CC-5 spray FLOW CAP (catalog v3 FG-6, feel-plan P5): spray is sized for
+      // step insurges, NOT for a loss-of-heat-sink repressurization — capped at
+      // this fraction of full spray flow (auto demand AND operator override), the
+      // TMI opener's heat-up outruns it and the PORV lifts at 16.20 as canon
+      // requires. Cooldowns still get real depressurization authority.
+      spray_flow_max: 0.12,        // [tune] — binds below the TR-2 insurge equilibrium (~0.23 demand)
       spray_floor_band: 3.0,       // MPa — spray authority tapers to 0 across this band above Psat(THOT), the core-exit leg (see pwr_pressurizer spray_floor); floor is the hottest leg so spray can't pull below core-exit saturation (P6)
       K_surge: 1.0, P_restore_rate_gain: 0.02, // gentle stabilization only (heater regulates)
       // When the primary voids it is two-phase: pressure is pulled to the

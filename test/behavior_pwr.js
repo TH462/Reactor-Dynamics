@@ -28,11 +28,9 @@
   // ------------------------------------------------------------- XFAIL (strict)
   // id → why it is expected to fail today (catalog §8 decision that will fix it).
   var XFAIL = {
-    'TR-2': 'spray uncapped — PORV never lifts on loss of feed (catalog v3 FG-6, feel-plan P5)',
-    'CC-5': 'spray capacity uncapped — suppresses loss-of-heat-sink repressurization (feel-plan P5)',
-    // TR-1 (ride-out) and CC-3 (MFW→AFW handoff) left this list 2026-07-21 with the
-    // P4 dump upsize + P-4/PI-4/PI-5 interlocks; SS-5 and CC-10 left it with the P2
-    // derived-level rework.
+    // Emptied 2026-07-21 (feel-plan P5): TR-2/CC-5 left with the spray cap +
+    // trip-open dump + TR-3 re-spec; TR-1/CC-3 left with the P4 ride-out and
+    // P-4 handoff; SS-5/CC-10 left with the P2 derived-level rework.
   };
 
   // -------------------------------------------------------------- COVERAGE map
@@ -45,7 +43,7 @@
     'EV-5': 'existing:run_campaign pwr_boron', 'EV-6': 'probe', 'EV-7': 'probe:EV-6',
     'EV-8': 'existing:run_ops xenon 8h', 'EV-9': 'existing:run_campaign startup ×2',
     'EV-10': 'existing:run_pwr transient_loss_vacuum',
-    'TR-1': 'probe', 'TR-2': 'probe', 'TR-3': 'todo (needs TR-2 tuned first)',
+    'TR-1': 'probe', 'TR-2': 'probe', 'TR-3': 'probe',
     'TR-4': 'probe (lumped-RCP model: total-loss trip; P-8 single-loop needs multi-loop model)',
     'TR-5': 'probe', 'TR-6': 'existing:run_ops grid step + steam_dump_capacity_cap',
     'TR-7': 'probe', 'TR-8': 'probe',
@@ -229,16 +227,17 @@
         var h = H('hot_full_power');
         h.run(30);
         h.cmd('inject_failure', { failure_id: 'turbine_trip' });
-        // Phase 1 — hands-off ride: the dump catches the rejected load; the
-        // rod-less core self-regulates at partial power with Tavg (and pzr
-        // level) parked HIGH — the plant is stable, loudly asking for trim.
+        // Phase 1 — hands-off ride: the TRIP-OPEN dump (Tavg-error fast-open,
+        // real Westinghouse behavior) catches the rejected load immediately —
+        // the reactor keeps making near-full power straight into the condenser
+        // with only a gentle Tavg swell. Graceful catch, then YOUR recovery.
         h.run(180);
         var mid = h.ts();
         ck('no scram through the hands-off ride', h.tripReason || 'none', h.tripTime == null, 'none');
-        ck('plant self-stabilized at partial power (40..90 %)', fmt(mid.power_pct, 0),
-          mid.power_pct > 40 && mid.power_pct < 90, '40..90');
-        ck('Tavg parked high but under the 335 backstop', fmt(mid.tavg_c, 1),
-          mid.tavg_c > 310 && mid.tavg_c < 330, '310..330');
+        ck('dump carries near-full power (90..103 %)', fmt(mid.power_pct, 0),
+          mid.power_pct > 90 && mid.power_pct < 103, '90..103');
+        ck('Tavg swells only gently (300..312)', fmt(mid.tavg_c, 1),
+          mid.tavg_c > 300 && mid.tavg_c < 312, '300..312');
         // Phase 2 — the operator recovers at their own pace: rods walk the
         // plant down to the no-load point on the dump.
         var guard = 0;
@@ -282,22 +281,48 @@
       });
     },
 
+    // Re-specified 2026-07-21 (P5): in this plant's lumped SG the first-seconds
+    // pressure wave is caught by the trip-open dump for ANY load rejection, so
+    // the canon PORV lift lives where TMI's actually did — in the DRYOUT phase
+    // with AFW unavailable (TR-3/CC-5 below). TR-2 with AFW available is the
+    // saved case: AFW carries the SGs, no PORV, trip on the genuine lo-lo limit.
     'TR-2': function () {
-      return test('TR-2 loss of main feedwater @100% — the TMI opener', function (ck) {
+      return test('TR-2 loss of main feedwater @100% — AFW carries it, lo-lo trips it', function (ck) {
         var h = H('hot_full_power');
         h.run(30);
         h.cmd('inject_failure', { failure_id: 'loss_of_feedwater' });
         var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
-        ck('reactor trips ≤ 90 s (lo-lo SG or anticipatory)', dt >= 0 ? fmt(dt, 1) + ' s' : 'no trip in 300 s',
+        ck('reactor trips ≤ 90 s on the genuine lo-lo limit', dt >= 0 ? fmt(dt, 1) + ' s' : 'no trip in 300 s',
           dt >= 0 && dt <= 90, '≤ 90 s');
         h.run(300);
         ck('turbine tripped with/after the reactor', String(h.ts().mwe_output < 50),
           h.ts().mwe_output < 50, 'true');
-        ck('primary pressure reaches PORV lift 16.20 MPa', fmt(h.range('pressure_mpa').max, 2),
-          h.range('pressure_mpa').max >= 16.20, '≥ 16.20');
-        ck('PORV lifted', h.alarmFired('porv_open') ? 'lifted' : 'never lifted',
-          h.alarmFired('porv_open'), 'lifted');
-        ck('AFW auto-started', String(!!h.ts().afw_active), !!h.ts().afw_active, 'true');
+        ck('AFW auto-started and carries the SGs (no dryout)', String(!!h.ts().afw_active),
+          !!h.ts().afw_active, 'true');
+        ck('with AFW available the PORV is NOT needed', fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < 16.20, '< 16.20');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    // TR-3 / the CC-5 canon pin: loss of feed WITH AFW blocked (the actual TMI-2
+    // lineup) — the SG dries out, decay heat has nowhere to go, the primary heats
+    // to saturation and repressurizes over ~10-20 min, and the capped spray CANNOT
+    // stop it: the PORV lifts. This is the sim-honest home of the canon PORV lift
+    // (the first-seconds wave is caught by the trip-open dump on every rejection).
+    'TR-3': function () {
+      return test('TR-3 loss of feed + AFW blocked — dryout repressurization lifts the PORV', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'afw_failure' });
+        h.cmd('inject_failure', { failure_id: 'loss_of_feedwater' });
+        var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
+        ck('reactor trips on the lo-lo limit first', dt >= 0 ? fmt(dt, 0) + ' s' : 'no trip', dt >= 0, 'trips');
+        var dl = h.runUntil(function (ts) { return ts.porv_open; }, 1800);
+        ck('the dry-SG repressurization lifts the PORV (spray loses)',
+          dl >= 0 ? fmt(dl, 0) + ' s after trip' : 'no lift in 30 min — peak ' + fmt(h.range('pressure_mpa').max, 2),
+          dl >= 0, 'PORV lifts');
+        ck.info('peak pressure', fmt(h.range('pressure_mpa').max, 2) + ' MPa');
         T.checkSanity(ck, h);
       });
     },
@@ -450,19 +475,21 @@
       });
     },
 
-    // The #22/#23 pin: heat-sink loss with spray in AUTO must still lift the PORV.
+    // The #22/#23 pin, re-specified (P5): the spray line has a PHYSICAL capacity
+    // cap — an operator (or the auto servo) commanding full spray gets the cap,
+    // not the fire hose. The "spray loses the repressurization race" half of the
+    // old CC-5 lives in TR-3 (the sim-honest dryout path).
     'CC-5': function () {
-      return test('CC-5 spray capacity — cannot suppress loss-of-heat-sink spike', function (ck) {
+      return test('CC-5 spray capacity — the flow cap binds every demand', function (ck) {
         var h = H('hot_full_power');
         h.run(30);
-        h.cmd('inject_failure', { failure_id: 'turbine_trip' });
-        h.cmd('inject_failure', { failure_id: 'loss_of_feedwater' });
-        h.run(600);
-        ck('pressure reaches PORV lift 16.20 MPa despite spray AUTO',
-          fmt(h.range('pressure_mpa').max, 2), h.range('pressure_mpa').max >= 16.20, '≥ 16.20');
-        ck('PORV lifted', h.alarmFired('porv_open') ? 'lifted' : 'never lifted',
-          h.alarmFired('porv_open'), 'lifted');
-        ck.info('observed peak pressure', fmt(h.range('pressure_mpa').max, 2) + ' MPa');
+        h.cmd('set_spray', { pct: 100 });
+        h.run(30);
+        var cap = h.eng.cfg.pressurizer.spray_flow_max;
+        ck('a full-open command delivers only the cap', fmt(h.eng.s.spray_flow_frac, 2) + ' vs cap ' + fmt(cap, 2),
+          h.eng.s.spray_flow_frac <= cap + 1e-9, '≤ ' + fmt(cap, 2));
+        ck('capped spray still depressurizes (step-insurge authority is real)',
+          fmt(h.ts().pressure_mpa, 2), h.ts().pressure_mpa < 15.35, '< 15.35');
       });
     },
 

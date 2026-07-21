@@ -56,7 +56,17 @@
     // opens the ΔT — the real PWR secondary characteristic. (The old binary
     // idle-gate slammed a rated-capacity sink onto the core at 1% power — the
     // quench-cooldown/pzr-level trip that made low-power work feel booby-trapped.)
-    var Q_coolant_to_sg = t.h_sg * s.flow_frac * (s.tavg_c - s.t_secondary_c);
+    // SG tube-bundle uncovery (TR-3 / the TMI dryout mechanism, feel-plan P5):
+    // heat transfer needs wetted tubes. As the WIDE-range level falls below the
+    // uncovery threshold the bundle progressively dries and Q collapses toward a
+    // small steam-side residual — a dry SG is NOT a heat sink, which is exactly
+    // what turns a blocked-AFW loss of feed into the TMI repressurization. Normal
+    // ops (wide ≈ 55-65) and the AFW hold (wide ≈ 40) sit above the threshold.
+    var _wide = s.sg_level_wide_pct != null ? s.sg_level_wide_pct : 50;
+    var _wet = _wide >= (t.sg_dryout_wide_pct || 30) ? 1
+             : Math.max(0, _wide / (t.sg_dryout_wide_pct || 30));
+    var _dry_factor = (t.sg_dryout_residual || 0.05) + (1 - (t.sg_dryout_residual || 0.05)) * _wet;
+    var Q_coolant_to_sg = t.h_sg * s.flow_frac * _dry_factor * (s.tavg_c - s.t_secondary_c);
     s._Q_coolant_to_sg = Q_coolant_to_sg;
     // Residual Heat Removal (RHR, §6.9): the low-pressure shutdown-cooling loop.
     // Active = the hot-leg suction valve is open (s.rhr_active; the valve interlock

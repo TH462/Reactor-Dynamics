@@ -66,10 +66,8 @@ var passCount = 0, failCount = 0, xfailCount = 0, all = {};
 // redden the gate; a listed check that PASSES reports STALE XFAIL red —
 // remove the entry. Key = 'plant / scenario name / check desc'.
 var KNOWN_FAILS = {
-  'pwr / OPS SGTR — recognize, trip, stabilize on HPI / subcooling held':
-    'hand-tuned dump/spray thresholds assume the pre-program Tavg baseline; ' +
-    'scenario is re-authored for the single-SG EOP in feel-plan Phase 5 ' +
-    '(Blueprint/PWR_FEEL_TUNING_PLAN.md)',
+  // Emptied 2026-07-21: the SGTR subcooling dip healed with the P5 spray cap +
+  // trip-open dump (the managed cooldown no longer overshoots saturation).
 };
 
 Object.keys(SUITES).forEach(function (plant) {

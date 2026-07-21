@@ -39,6 +39,11 @@
       var err2 = setpoint - s.pressure_mpa;
       s.spray_flow_frac = err2 < 0 ? clip(-err2 / p.spray_band_mpa, 0, 1) : 0;
     }
+    // Physical spray capacity (CC-5): the spray line can only pass so much — the
+    // cap binds auto demand and operator override alike, so a loss-of-heat-sink
+    // repressurization outruns it (the PORV does its job) while a step insurge
+    // is still arrested.
+    if (p.spray_flow_max != null) s.spray_flow_frac = clip(s.spray_flow_frac, 0, p.spray_flow_max);
   }
 
   // Resolve actual valve positions and relief flows.

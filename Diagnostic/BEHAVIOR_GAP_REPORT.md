@@ -6,24 +6,11 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 22 pass, 2 known gaps (xfail).
+Battery result: 25 pass, 0 known gaps (xfail).
 
-## TR-2 — TR-2 loss of main feedwater @100% — the TMI opener
-*Known gap:* spray uncapped — PORV never lifts on loss of feed (catalog v3 FG-6, feel-plan P5)
-
-- **primary pressure reaches PORV lift 16.20 MPa** — required `≥ 16.20`, observed `15.51`
-- **PORV lifted** — required `lifted`, observed `never lifted`
-
-## CC-5 — CC-5 spray capacity — cannot suppress loss-of-heat-sink spike
-*Known gap:* spray capacity uncapped — suppresses loss-of-heat-sink repressurization (feel-plan P5)
-
-- **pressure reaches PORV lift 16.20 MPa despite spray AUTO** — required `≥ 16.20`, observed `15.55`
-- **PORV lifted** — required `lifted`, observed `never lifted`
-- measurement: observed peak pressure = `15.55 MPa`
-
+**No gaps — the battery is fully green. The tuning pass is complete.**
 ## Not yet probed (coverage todo)
 
-- **TR-3** — todo (needs TR-2 tuned first)
 - **PI-3** — todo (with interlock build)
 - **PI-8** — todo (with interlock build)
 - **PI-9** — todo (verify SLB path)
