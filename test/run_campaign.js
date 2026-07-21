@@ -1064,7 +1064,11 @@ test('pwr_mode3_to_mode5 — controlled cooldown reaches Cold Shutdown', functio
     s.handleCommand({ action: 'set_pressure_setpoint', mpa: clampC(Math.max(prSp, blockedLP ? spTarget : 13.45), 0.5, 15.41) });
     s.handleCommand({ action: 'set_spray', auto: true });
     if (!blockedLP && t.pressure_mpa < 13.55) {
+      // P-11 bypass: block BOTH pressure-keyed trips for the cooldown — lo_press
+      // (12.41) and the PI-3 SI trip (11.03, feel-plan P4). Same permissive, same
+      // procedure step; both auto-reinstate above 13.6 on the next heatup.
       var rb = s.handleCommand({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true });
+      s.handleCommand({ action: 'set_trip_block', trip_id: 'si_trip', blocked: true });
       if (!(rb && rb.type === 'blocked')) blockedLP = true;   // accepted (retry next sample if refused)
     }
     if (!below && t.pressure_mpa < 2.76) { below = true; s.handleCommand({ action: 'set_rhr', active: true }); s.handleCommand({ action: 'set_rhr_hx', pct: 100 }); s.handleCommand({ action: 'set_rcp', running: false }); }

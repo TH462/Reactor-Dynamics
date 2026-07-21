@@ -423,6 +423,7 @@
       // §8.8 instrument sources — TRUE sim flows/positions (indications ≠ command setpoints):
       charging_flow_actual: (s.charging_pump_running === false ? 0 : s.charging_flow),
       letdown_flow_actual: s.letdown_flow, steam_dump_valve_pct: s.steam_dump_frac * 100,
+      turbine_tripped: !!s.turbine_tripped,
       leak_flow: s.leak_flow,
       // §7 true_state additions (governor / accumulators / RHR):
       governor_valve_pct: s.governor_valve_pct,
@@ -527,6 +528,17 @@
         break;
       case 'scram':
         if (!s.scram_blocked) this._scram();
+        break;
+      case 'reset_rps':
+        // PI-7 scram recovery (C3): the trip breakers reset only with the rods
+        // fully inserted (the physical interlock — resetting re-closes the
+        // breakers; the rods stay in until deliberately withdrawn, and the
+        // startup net governs the re-ascent). The control layer refuses the
+        // reset while any trip signal still stands; this is the engine half.
+        if (s.scrammed && this.rod_groups.every(function (g) { return g.position_pct <= 2.0; })) {
+          s.scrammed = false;
+          this.rod_groups.forEach(function (g) { g.scrammed = false; g.moving = false; g.velocity = 0; g.nudge_target = null; });
+        }
         break;
       case 'set_load_mode':
         RD.LoadMode.setMode(s, cmd.mode, { tripFn: SG.tripTurbine, rated: this.cfg.turbine.mwe_rated });
@@ -1831,12 +1843,12 @@
           t.steam_pressure_mpa > sg.sg_safety_reseat_mpa - 0.3 && t.steam_pressure_mpa < sg.sg_safety_open_mpa + 0.4,
           (sg.sg_safety_reseat_mpa - 0.3).toFixed(1) + '–' + (sg.sg_safety_open_mpa + 0.4).toFixed(1) + ' MPa');
         ck('no steam past the MSIV', t.steam_flow_normalized.toFixed(3), t.steam_flow_normalized === 0, '0');
-        // With the turbine gone the coupling zeroes feed while the safeties keep
-        // drawing — the SG DRAINS. (In the assembled stack the low-SG-level trip
-        // then scrams the plant: the full-stack probe lives in test/run_m4.js.
-        // The engine alone finds a relief-fed equilibrium — that is physics, not
-        // protection, and protection is deliberately not in this suite.)
-        ck('SG draining toward the level trip', t.sg_level_pct.toFixed(1), t.sg_level_pct < 55, '< 55 % and falling');
+        // The main feed pumps are steam-driven off the line downstream of the
+        // MSIV (feel-plan P4) — closing it starves them, so the SG DRAINS while
+        // the safeties keep drawing. (In the assembled stack the low-SG trip
+        // then scrams the plant; the engine alone finds the relief-fed
+        // equilibrium — physics, not protection.)
+        ck('SG draining toward the level trip (feed pumps starved)', t.sg_level_pct.toFixed(1), t.sg_level_pct < 55, '< 55 % and falling');
         ck('fuel intact', String(t.melted), t.melted === false, 'false');
         // Reopen: the dump path is live again (relief no longer alone).
         h.cmd({ action: 'open_msiv' });
@@ -2312,7 +2324,9 @@
       return test('Steam dump — capacity capped at steam_dump_max on manual full-open', function (ck) {
         var h = new Harness('hot_full_power');
         var cap = h.eng.cfg.steam_generator.steam_dump_max;
-        ck('cap is a partial capacity (realism)', cap.toFixed(2), cap >= 0.4 && cap <= 0.55, '0.40..0.55');
+        // FG-4 ride-out plant (feel-plan P4): the dump swallows a full load
+        // rejection with a small margin — ~105 % of rated steam flow.
+        ck('cap is the ride-out capacity (~1.05 of rated)', cap.toFixed(2), cap >= 1.0 && cap <= 1.15, '1.00..1.15');
         h.run(5);
         h.cmd({ action: 'set_steam_dump', mode: 'open' });
         var maxFrac = 0;
@@ -2321,7 +2335,9 @@
           if (h.eng.s.steam_dump_frac > maxFrac) maxFrac = h.eng.s.steam_dump_frac;
         }
         ck('manual full-open never exceeds the cap', maxFrac.toFixed(3), maxFrac <= cap + 1e-9, '≤ ' + cap);
-        ck('dump is actually flowing at the cap', maxFrac.toFixed(3), maxFrac > cap - 0.05, '≈ ' + cap);
+        // The manual override commands 0..1 of valve travel (1.0 = full open);
+        // the 1.05 cap is auto-demand headroom above rated, so full-open flows 1.0.
+        ck('dump is actually flowing near rated at full-open', maxFrac.toFixed(3), maxFrac > 0.95, '> 0.95');
       });
     },
 

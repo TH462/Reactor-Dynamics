@@ -569,9 +569,12 @@
       });
     },
 
-    // Scram, then try to "un-scram" by withdrawing — documents the recovery path.
+    // Scram, then try to "un-scram" by withdrawing — the latch holds until a
+    // deliberate RPS reset (PI-7/C3, feel-plan P4): withdrawal stays blocked
+    // while latched; reset_rps (refused while a trip signal stands, rods must
+    // be fully inserted) re-closes the breakers; only then do rods move.
     abuse_scram_then_recover: function () {
-      return test('ABUSE scram then withdraw — is there a recovery path?', function (ck) {
+      return test('ABUSE scram then withdraw — latch holds until a deliberate RPS reset', function (ck) {
         var h = H('hot_full_power');
         h.run(10);
         h.cmd('scram');
@@ -585,7 +588,17 @@
           cs.rod_groups[0].position_pct < 5, '< 5% withdrawn');
         ck('power stays shut down', fmt(h.ts().power_pct, 2) + '%', h.ts().power_pct < 5, '< 5%');
         ck.info('engine scram latched', h.ts().scrammed);
-        ck.info('RPS latched (no reset path in v1)', h.rps().scrammed + ' / ' + (h.rps().last_trip_reason || 'manual'));
+        // Recovery leg (PI-7-reset): reset the RPS, then withdrawal is honored.
+        h.cmd('reset_rps');
+        h.run(5);
+        ck('RPS reset clears the latch (no standing trip signal)', String(h.rps().scrammed),
+          h.rps().scrammed === false, 'false');
+        h.run(60, function (hh) {
+          hh.cmd('rod_start', { group_id: 'control_rods', direction: 1, speed: 'fast' });
+        });
+        var cs2 = h.ctl();
+        ck('after reset, rod withdrawal is honored', fmt(cs2.rod_groups[0].position_pct, 1) + '%',
+          cs2.rod_groups[0].position_pct > 2, '> 2% withdrawn');
         T.checkSanity(ck, h);
       });
     },

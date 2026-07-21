@@ -38,7 +38,25 @@
     if (s.load_mode === 'disconnected') {
       s.load_target_mwe = 0;
       opts.setLoad(s, 0, rated);
-      if (s.feed_auto_coupled) opts.setFeed(s, 0);
+      // Coupled feed follows the ACTUAL total steam draw (turbine + dump +
+      // safeties), not the (zero) load: after a turbine trip the steam dump
+      // still draws from the SG, and any feed regulation matches steam flow —
+      // so a ride-out (turbine trip, reactor at power on the dump) doesn't
+      // silently drain the SG, and a post-trip SG holds level until the P-4
+      // isolation hands off to AFW. Reads the previous step's total draw
+      // (explicit coupling). The follow/manual branches below deliberately keep
+      // feed on the load TARGET: the feed-vs-actual-steam mismatch on a slider
+      // ask is the EV-11 / shift-exam teaching behavior.
+      if (s.feed_auto_coupled) {
+        // Pure flow-matching with the pump's lag systematically over/under-feeds
+        // a moving draw (a declining draw slowly FILLS the SG into the P-14
+        // isolation) — so the fallback carries a gentle single-element level
+        // trim toward the normal working level, like any standing feed
+        // regulation. Reads the SG level instrument (HR1), one step lagged.
+        var lvl = s._ins_sg_level != null ? s._ins_sg_level : (s.sg_level_pct != null ? s.sg_level_pct : 65);
+        var trim = 0.002 * (65 - lvl);
+        opts.setFeed(s, clip((s.steam_out_total != null ? s.steam_out_total : 0) + trim, 0, 1.2));
+      }
     } else if (s.load_mode === 'follow') {
       s.load_target_mwe += alpha * (powerMwe - s.load_target_mwe);
       opts.setLoad(s, s.load_target_mwe, rated);

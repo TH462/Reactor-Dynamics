@@ -33,7 +33,16 @@
     // Main feedwater also needs the condensate pump (it feeds the feed-pump suction):
     // securing the condensate pump drops main feed to zero, exactly like the tagged-out
     // train it models. AFW draws from the condensate storage tank, so it is unaffected.
-    var condOK = s.condensate_pump_running !== false;
+    // A LOST CONDENSER also takes the condensate path (TR-8): the pump draws from the
+    // condenser hotwell, so no condenser → no suction → no main feed. And the main
+    // feed pumps are STEAM-DRIVEN off the main line downstream of the MSIV — closing
+    // the MSIV starves them (the pwr_msiv decision-clock physics: bottle the boiler
+    // and the feed dies with the steam). Both close the chain: heat-sink loss → MFW
+    // loss → SG inventory falls → lo-lo trip — the ride-out plant trips on a genuine
+    // limit, never on anticipation (FG-4). A plain turbine trip keeps the MSIV open,
+    // so the ride-out keeps its feed.
+    var condOK = s.condensate_pump_running !== false && s.condenser_cooling_available !== false
+              && s.msiv_open !== false;
     var main_feed = (s.main_feedwater_available && !s.feedwater_isolated && condOK) ? s.feedwater_demand_frac : 0.0;
     s.condensate_flow_normalized = main_feed;   // TRUE main-feed / condensate flow indication
     var feedwater_flow = main_feed;
@@ -85,15 +94,18 @@
     var dump = (s.steam_dump_override != null)
       ? s.steam_dump_override
       : clip((s.steam_pressure_mpa - dump_setpoint) / sg.steam_dump_band, 0, 1);
-    // Physical capacity of the turbine-bypass/dump (real dump ≈ 40–55 % of rated
-    // steam flow): a full-open dump cannot vent more than this, so a full load
-    // rejection still lifts the SG safeties and an operator slamming the dump open
-    // gets a RATE-LIMITED cooldown instead of a Tavg crash (P2). Applies to both the
-    // manual override and the auto proportional demand.
+    // Physical capacity of the turbine-bypass/dump. THIS PLANT (FG-4 ride-out,
+    // feel-plan P4): ~105 % of rated steam flow — a full load rejection is caught
+    // by the dump alone (no anticipatory reactor trip exists). The cap still
+    // rate-limits an operator slamming the dump open on a cooldown. Applies to
+    // both the manual override and the auto proportional demand.
     dump = Math.min(dump, sg.steam_dump_max);
     // MSIV: both downstream paths (turbine steam + dump-to-condenser) are
     // behind the isolation valve; closing it bottles the steam generator.
     if (s.msiv_open === false) dump = 0;
+    // No condenser, no bypass path (TR-8/CC-7): a lost condenser (vacuum decay,
+    // SBO) removes the dump entirely — the SG falls back on its code safeties.
+    if (s.condenser_cooling_available === false) dump = 0;
     s.steam_dump_frac = dump;
 
     // SG code safety valves — UPSTREAM of the MSIV, the relief that remains
@@ -111,6 +123,11 @@
     s.sg_safety_flow = sg_relief;
 
     var steam_out = s.steam_flow_normalized + dump + sg_relief;
+    // Total SG draw (turbine + dump + safeties) — the flow any feed regulation
+    // actually matches. Exposed for the disconnected-mode feed coupling
+    // (load_mode.js): after a turbine trip the dump still draws, and feed must
+    // follow THAT or the ride-out silently drains the SG (FG-4, feel-plan P4).
+    s.steam_out_total = steam_out;
 
     // SG level (the true level; shrink/swell is added in the instrument model §8.4).
     // WIDE range is the integrated inventory over the whole vessel, clamped only at the

@@ -177,6 +177,9 @@
       case 'set_auto_setpoint':        return this.setAutoSetpoint(command.channel_id, command.value);
       case 'set_esf_auto':             return this.setEsfAuto(command.system, command.auto);
       case 'set_trip_block':           return this.setTripBlock(command.trip_id, command.blocked);
+      case 'reset_rps':
+        if (!this._resettingRps) return this.resetRps();
+        break;   // in-flight engine forward: fall through to interception + engine
       case 'set_instrument_failure':
       case 'clear_instrument_failure': return this.engine.applyCommand(command);
     }
@@ -313,6 +316,40 @@
         this._sendInternal({ action: 'scram' });          // descends through interception (ATWS-aware)
       }
     }
+  };
+
+  // PI-7 scram recovery (C3): reset the reactor-protection latch. Refused while
+  // any live (unblocked, condition-satisfied) trip signal still stands — the
+  // breakers will not hold in against an asserted trip. The engine half enforces
+  // the rods-fully-inserted interlock; success is read back from engine truth so
+  // an interception (ATWS-style) cannot leave the RPS state lying.
+  ControlLayer.prototype.resetRps = function () {
+    if (!this.rps.scrammed) return null;
+    var ins = this.engine.instruments.reading || {};
+    var trips = this.config.trips || [];
+    for (var i = 0; i < trips.length; i++) {
+      var t = trips[i];
+      if (t.condition && !this._evaluateCondition(t.condition)) continue;
+      if (t.blockable && t.id && this.tripBlocks[t.id]) continue;
+      var value = (t.instrument === '__true_flow__')
+        ? this.engine.getTrueState().pump_flow_pct / 100
+        : ins[t.instrument];
+      if (crossed(value, t.direction, t.setpoint)) {
+        return { type: 'refused', code: 'TRIP_SIGNAL_PRESENT',
+                 detail: t.instrument + ' ' + t.direction + ' still asserted' };
+      }
+    }
+    this._resettingRps = true;
+    try { this._sendInternal({ action: 'reset_rps' }); }
+    finally { this._resettingRps = false; }
+    var truth = this.engine.getTrueState();
+    if (!truth.scrammed) {
+      this.rps.scrammed = false;
+      this.rps.last_trip_reason = null;
+      return null;
+    }
+    return { type: 'refused', code: 'RODS_NOT_INSERTED',
+             detail: 'trip breakers reset only with all rods inserted' };
   };
 
   // The permissive gating a trip's block: its own `block_permissive` when it carries
@@ -723,6 +760,11 @@
       if (dead || (scrammed && def.offOnScram)) {           // stand down, visibly
         this._toggleChannel(c, false, ctx);
         c.note = dead ? 'off — core destroyed' : 'off — reactor scrammed';
+        continue;
+      }
+      if (def.offWhen && def.offWhen(ctx)) {                // plant-condition stand-down (e.g. P-4 FWI)
+        this._toggleChannel(c, false, ctx);
+        c.note = def.offNote || 'off — plant condition';
         continue;
       }
       if (def.requires && !(this.byId[def.requires] && this.byId[def.requires].engaged)) {

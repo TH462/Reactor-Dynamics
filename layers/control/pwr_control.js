@@ -256,6 +256,38 @@
   function trefProgram(loadFrac) { return TAVG_NOLOAD + (TAVG_FULLPOWER - TAVG_NOLOAD) * clip(loadFrac, 0, 1); }
   function trefFromLoad(s) { return trefProgram(clip(s.instruments.steam_flow, 0, 1)); }
 
+  // ---- Post-trip feedwater handoff + heat-sink protections (feel-plan P4) ----
+  // P-4 analog (CC-3): with the reactor TRIPPED and Tavg down at the no-load
+  // anchor, main feedwater isolates (cold 40 °C feed pumped against decay heat
+  // overcools every post-trip) and AFW starts — the MFW→AFW handoff, a core TMI
+  // teaching point. Latched (no reset_action): the operator restores feed.
+  // PI-4: AFW also auto-starts on loss of main feed AT POWER (fw_flow collapsing
+  // above P-9 means both MFW trains are gone) — heat-sink protection ahead of
+  // the lo-lo level trip, so AFW is already coming in as the SG draws down.
+  // PI-5: feedwater isolation on safety injection (an SI casualty is never one
+  // where continued main feed is right); rides the 'hpi' ESF arm so the cold
+  // P-11 lineup (SI disarmed) cannot spuriously isolate feed.
+  var SI_MPA = 11.03;   // SI actuation pressure — shared by the ESF, PI-3 trip, and PI-5 FWI
+  PWR_ACTUATIONS.push(
+    { instrument: 'tavg', direction: 'low', setpoint: TAVG_NOLOAD + 3, condition: 'rps_scrammed',
+      action: 'isolate_feedwater', params: { active: true } },
+    { instrument: 'tavg', direction: 'low', setpoint: TAVG_NOLOAD + 3, condition: 'rps_scrammed',
+      action: 'set_afw', active: true, arm: 'afw' },
+    { instrument: 'fw_flow', direction: 'low', setpoint: 0.10, condition: 'above_p9',
+      action: 'set_afw', active: true, arm: 'afw' },
+    { instrument: 'primary_pressure', direction: 'low', setpoint: SI_MPA,
+      action: 'isolate_feedwater', params: { active: true }, arm: 'hpi' }
+  );
+  // PI-3: reactor trip on safety injection — SI actuating means a real casualty;
+  // the reactor does not stay at power through it. Keyed on the same low-pressure
+  // signal as the SI ESF; blockable in the cold/shutdown regime via the same P-11
+  // permissive as lo_press (auto-blocked at a depressurized init, auto-reinstates
+  // above 13.6 MPa on heatup).
+  PWR_TRIPS.push(
+    { id: 'si_trip', instrument: 'primary_pressure', direction: 'low', setpoint: SI_MPA, action: 'scram',
+      blockable: true, block_permissive: { instrument: 'primary_pressure', direction: 'low', setpoint: 13.6 } }
+  );
+
   var PWR_CHANNELS = [
     { id: 'rods_tavg', kind: 'rods', group: 'Reactor',
       label: 'Rod control → Tavg (AUTO)',
@@ -318,6 +350,10 @@
       disengage: function () { return [{ action: 'set_cvcs_auto', active: false }]; } },
 
     { id: 'feed_sg', kind: 'pid', group: 'Secondary',
+      // CC-3: the channel stands down (visible note) when main feedwater is
+      // isolated — P-4 post-trip handoff or P-14/SI isolation. AFW has the SGs.
+      offWhen: function (ctx) { return !!(ctx.true_state && ctx.true_state.feedwater_isolated); },
+      offNote: 'off — main feedwater isolated (AFW has the SGs)',
       label: 'Feed pump → SG level (three-element)',
       hint: 'Three-element feedwater control — steam-generator level (element 1) plus the steam-flow vs feed-flow mismatch (elements 2 & 3) drive the feed pump speed. Engaging takes the pump off the load coupling; a manual pump command (nudge/set) takes the channel back to MAN.',
       pv: function (s) { return s.instruments.sg_level; },

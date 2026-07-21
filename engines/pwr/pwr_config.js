@@ -288,7 +288,12 @@
       // the setpoint opens the dump proportionally across the band. The program top
       // is the full-power coolant equilibrium; _buildState interpolates linearly in
       // load and DERIVES each state's secondary pressure to be a true steady state.
-      steam_dump_setpoint: 8.23, steam_dump_band: 0.25, steam_dump_max: 0.5, // [tune] = Psat(297 °C), FG-2 no-load anchor
+      // steam_dump_max 1.05 (feel-plan P4, owner ruling 2026-07-21): the RIDE-OUT
+      // enabler (FG-4). This plant's dump swallows a full load rejection with a
+      // small margin, so a turbine trip is a transient the operator manages — not
+      // a scram. The stored-heat burst still swings Tavg visibly before settling
+      // (tempo principle). Unavailable when the condenser is lost (vacuum/SBO).
+      steam_dump_setpoint: 8.23, steam_dump_band: 0.25, steam_dump_max: 1.05, // [tune] = Psat(297 °C) anchor; ride-out capacity
     },
 
     // ------------------------------------------------------ turbine / condenser

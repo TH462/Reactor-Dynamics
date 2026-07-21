@@ -9,6 +9,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **PWR — a turbine trip no longer scrams the reactor: this plant rides it out.** The
+  steam dump is sized at 105 % of rated steam flow, so losing the turbine is a transient
+  the operator manages — the dump catches the load, the plant self-stabilizes at partial
+  power (temperature and pressurizer level parked high, asking for rod trim), and you walk
+  it down to hot standby at your own pace. Reactor trips are reserved for genuine limits.
+- **PWR — real post-trip feedwater handoff.** On a reactor trip, once coolant temperature
+  reaches the no-load point, main feedwater isolates (no more cold feed pumped against
+  decay heat), the feed control channel visibly stands down, and auxiliary feedwater takes
+  the steam generator. AFW also auto-starts the moment main feed is lost at power.
+- **PWR — the heat-sink chain is physical end-to-end.** The steam dump needs the condenser
+  (lost vacuum or blackout removes it), main feed needs the condenser hotwell AND the main
+  steam line (steam-driven feed pumps — closing the MSIV starves them), and safety
+  injection now also trips the reactor and isolates feed. Loss of vacuum untended plays
+  out as: turbine trip → no dump → feed dies → SG drains → trip on the real limit.
+- **PWR — scram recovery exists.** `reset_rps` re-closes the trip breakers — refused while
+  any trip signal stands, and only with all rods inserted; then a normal startup ladder
+  brings the plant back. (The "Plant Protects Itself" mission now teaches protection with
+  a loss-of-feedwater casualty, since a turbine trip no longer scrams this plant.)
 - **PWR — the plant got its own temperature program: 297 → ~304 °C.** The no-load anchor
   is now 297 °C (steam dump setpoint 8.23 MPa), a deliberately shallow 7 °C program that
   fits a small plant with a generously-sized steam generator — and roughly halves the

@@ -4,6 +4,11 @@
 require an owner ruling. Supersedes v2.0 (generic-Westinghouse bands; see git history for
 the full v2.0 text). Companion: `Blueprint/PWR_FEEL_TUNING_PLAN.md` (v1.0, approved).**
 
+**⚑ TEACHING GOAL (owner, 2026-07-21) — the plant's reason to exist: teach people how a
+PWR works — the physics and how it acts.** When a tuning choice trades convenience against
+physical honesty, honesty wins; every behavior should be *explainable* to the player in
+plant-physics terms.
+
 **⚑ TEMPO PRINCIPLE (owner, 2026-07-21) — governs every character band and demo:
 the plant should react fast enough to be interesting, slow enough to be manageable.**
 When a tuning choice trades speed for manageability, aim for the band where the operator
@@ -46,7 +51,7 @@ Feel is set by capacity *ratios*, not absolute numbers. These are the levers the
 
 | Ratio | Today | Direction | Sets the feel of | Phase |
 |---|---|---|---|---|
-| Steam dump ÷ rated steam flow | 0.50 | **→ ~1.0** | Turbine trip = maneuver, not scram (FG-4) | P4 |
+| Steam dump ÷ rated steam flow | **1.05 — SET (P4)** | ride-out enabler; vacuum/condenser-gated | Turbine trip = maneuver, not scram (FG-4) | done |
 | Spray ÷ heat-sink-loss insurge | wins (K 1.7, uncapped) | **must lose** (flow cap) | PORV lifts in the TMI opener (FG-6) | P5 |
 | Spray ÷ normal step insurge | wins | still wins | Step insurges stay arrested | P5 |
 | Full-SGTR leak ÷ charging_max | 0.03 ÷ 0.06 (charging wins) | **≈ 0.12 ÷ 0.06** (leak wins 2×) | Full SGTR *forces* trip + SI (FG-6) | P5 |
@@ -120,10 +125,10 @@ a real limit is reached — and then they mean it.*
 
 | ID | Behavior | Tier | Probe | Status |
 |----|----------|------|-------|--------|
-| TR-1 ⚑ | **Turbine trip @100 %: NO reactor trip.** Dump (~100 %) picks up the load, Tavg settles to the no-load anchor, no PORV lift, operator recovers. (Re-specified from v2.0's anticipatory trip — probe re-authored to assert ride-out) | C | probe (re-author) | XFAIL → P4 (dump upsize) |
+| TR-1 | **Turbine trip @100 %: NO reactor trip.** Dump (1.05×) picks up the load; the rod-less core self-parks ~75 % with Tavg/level high (asking for trim); the operator walks it to the no-load anchor at their own pace. Probe drives both phases | C | probe | **PASS** (P4, 2026-07-21) |
 | TR-6 | 50 % load rejection: a non-event — dump + rods absorb, Tavg returns to program | C | ops grid step | PASS — re-band P3/P4 |
-| CC-7 | Steam dump: holds no-load Tavg at HZP; capacity ~100 % (P4); **unavailable on lost vacuum** | C | dump-cap probe + vacuum pin | cap change → P4 |
-| TR-8 ⚑ | Loss of vacuum @100 %: turbine trips, dump unavailable, SG safeties carry briefly; **untended, the primary heats to a genuine limit trip (high pzr pressure) — trip by physics, not anticipation**; tended, the operator runs back and rides it out | C | todo (endpoint pin) | todo → P4 |
+| CC-7 | Steam dump: holds no-load Tavg at HZP; capacity 1.05× (ride-out); **unavailable on lost vacuum/condenser** (engine gate) | C | dump-cap probe + TR-8 | **PASS** (P4) |
+| TR-8 | Loss of vacuum @100 %: turbine trips, dump unavailable, **feed dies with the hotwell** (condensate needs the condenser) → SG drains → **genuine-limit trip (SG lo-lo), not anticipation**; tended, the operator runs back | C | probe | **PASS** (P4) |
 | TR-9 | SG overfill: P-14 at 90 % → turbine trip + FW isolation, reset 85 % | C | ops p14 + run_pwr | PASS |
 
 ## 7. FG-5 — Reactor trip feel
@@ -135,8 +140,8 @@ pressure recovered. Nothing about a clean trip should require heroics.*
 | ID | Behavior | Tier | Probe | Status |
 |----|----------|------|-------|--------|
 | TR-7 | Manual trip from 100 %: turbine follows, Tavg → no-load on dump, pzr outsurge dips pressure (heaters recover ≤ ~5 min), level drops but **not to zero**, no SI, rods_tavg self-disengages | C | run_pwr scram + autoctl | PASS — bands at freeze |
-| CC-3 | Post-trip feedwater: MFW isolates on trip + low Tavg (P-4 analog), feed_sg stands down with a visible note, AFW auto-starts and holds its ~20 % target | C | probe | XFAIL → P4 (with PI-5) |
-| **TR-15** ⚑ | **Post-trip SG shrink depth** (new, the explicit taste knob): narrow-range dips hard enough to get attention but recovery is assured by AFW within minutes. Depth set by no-load anchor + `K_sg_level`/dump rate — owner picks from a two-tuning demo in P4 | C | new probe | todo → P4 |
+| CC-3 | Post-trip feedwater: MFW isolates on trip + low Tavg (P-4 analog), feed_sg stands down with a visible note ("off — main feedwater isolated"), AFW auto-starts and holds its target | C | probe | **PASS** (P4) |
+| **TR-15** | **Post-trip SG shrink depth** — current tuning: NR dips to ~13 % min, AFW recovery over minutes. **Owner picks depth via the playtest checklist** (Blueprint/PLAYTEST_CHECKLIST.md); knobs: anchor + `K_sg_level` + `afw_flow_frac` | C | probe:CC-3 | tuned — owner taste pending |
 | CC-6 | Heaters restore pressure after outsurge within the ~5 min / 0.207 MPa band | C | probe | PASS |
 | PI-7 | Manual scram latches RPS (done); **RPS reset path** exists so a trip is recoverable without restart | C | probe (reset: todo) | latch PASS · reset todo → P4 |
 
@@ -196,11 +201,11 @@ safety 17.13 MPa, with reseats ordered below lifts):
 
 | ID | Item | Status |
 |----|------|--------|
-| PI-3 | Reactor trip on SI actuation (SI means a real casualty) | GAP → P4 |
-| PI-4 | AFW auto-start on loss of both MFW pumps | GAP → P4 |
-| PI-5 | FW isolation on SI, and on trip + low Tavg (P-4) — bundled with CC-3 | GAP → P4 |
-| PI-7 | RPS reset path (latch already works) | GAP → P4 |
-| PI-8 | High pzr level trip ~92 % (CA-4 backstop) | GAP → P4 |
+| PI-3 | Reactor trip on SI actuation (`si_trip` @ 11.03, P-11-blockable like lo_press; cooldown procedure blocks BOTH) | **DONE** (P4) |
+| PI-4 | AFW auto-start on loss of both MFW (fw_flow < 0.10 above P-9) and on the P-4 handoff | **DONE** (P4) |
+| PI-5 | FW isolation on SI (rides the hpi arm), and on trip + low Tavg (P-4) — with CC-3 | **DONE** (P4) |
+| PI-7 | RPS reset path: `reset_rps` — refused while a trip signal stands; engine enforces rods-in; ops abuse test drives the recovery leg | **DONE** (P4) |
+| PI-8 ⚑ | High pzr level trip ~92 % — **DEFERRED, owner ruling needed**: the EV-11 thermal mismatch pegs level 100 %, so a 92 % trip scrams every lazy dispatch (and the shift exam's manual route). Options in PLAYTEST_CHECKLIST.md: accept / alarm+rod-block only / recalibrate the power defect (~7 °C real-like mismatch — most physical, biggest re-validation). CA-4 waits on this | ⚑ ruling |
 | PI-9 | SI on low steam-line pressure — verify the SLB gate's path | verify → P5 |
 
 ## 10. Retired (v3 rulings — do not resurrect)

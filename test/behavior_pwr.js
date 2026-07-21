@@ -28,12 +28,11 @@
   // ------------------------------------------------------------- XFAIL (strict)
   // id → why it is expected to fail today (catalog §8 decision that will fix it).
   var XFAIL = {
-    'TR-1': 'awaiting the ride-out dump upsize (catalog v3 FG-4; probe re-authored in feel-plan P4)',
     'TR-2': 'spray uncapped — PORV never lifts on loss of feed (catalog v3 FG-6, feel-plan P5)',
-    'CC-3': 'no post-trip feedwater isolation / AFW handoff (P-4 analog, feel-plan P4)',
     'CC-5': 'spray capacity uncapped — suppresses loss-of-heat-sink repressurization (feel-plan P5)',
-    // SS-5 and CC-10 left this list 2026-07-21: level is now DERIVED from
-    // inventory + thermal expansion + saturation-gated void (catalog v3 FG-3).
+    // TR-1 (ride-out) and CC-3 (MFW→AFW handoff) left this list 2026-07-21 with the
+    // P4 dump upsize + P-4/PI-4/PI-5 interlocks; SS-5 and CC-10 left it with the P2
+    // derived-level rework.
   };
 
   // -------------------------------------------------------------- COVERAGE map
@@ -49,7 +48,7 @@
     'TR-1': 'probe', 'TR-2': 'probe', 'TR-3': 'todo (needs TR-2 tuned first)',
     'TR-4': 'probe (lumped-RCP model: total-loss trip; P-8 single-loop needs multi-loop model)',
     'TR-5': 'probe', 'TR-6': 'existing:run_ops grid step + steam_dump_capacity_cap',
-    'TR-7': 'probe', 'TR-8': 'existing:run_pwr transient_loss_vacuum (dump-unavailable pin: todo)',
+    'TR-7': 'probe', 'TR-8': 'probe',
     'TR-9': 'existing:run_ops sg_overfeed_p14 + run_pwr feedwater_isolation',
     'TR-10': 'probe', 'TR-11': 'existing:run_ops heaters vs spray fight (end-state pin: todo)',
     'TR-12': 'existing:run_campaign pwr_slb', 'TR-13': 'existing:run_ops SGTR stabilize',
@@ -64,8 +63,8 @@
     'CC-8': 'probe', 'CC-9': 'existing:run_pwr + run_campaign pwr_esf',
     'CC-10': 'probe', 'CC-10b': 'probe',
     'PI-1': 'probe:TR-1', 'PI-2': 'probe:TR-2', 'PI-3': 'todo (with interlock build)',
-    'PI-4': 'todo (with interlock build)', 'PI-5': 'probe:CC-3', 'PI-6': 'todo (needs multi-loop model)',
-    'PI-7': 'probe', 'PI-7-reset': 'todo (RPS reset path, C3 — with interlock build)',
+    'PI-4': 'probe:TR-8 (AFW on MFW loss at power)', 'PI-5': 'probe:CC-3', 'PI-6': 'RETIRED (single-loop plant)',
+    'PI-7': 'probe', 'PI-7-reset': 'existing:run_ops abuse scram-then-withdraw (reset leg added P4)',
     'PI-8': 'todo (with interlock build)', 'PI-9': 'todo (verify SLB path)',
   };
 
@@ -221,16 +220,65 @@
 
     // =================================================== 3. anticipated transients
 
+    // Re-authored for the RIDE-OUT ruling (catalog v3 FG-4, feel-plan P4): this
+    // plant's ~105 % dump swallows a full load rejection — a turbine trip is a
+    // transient the operator manages, NOT a scram. The v2.0 anticipatory-trip
+    // expectation (P-9) is retired with the ruling.
     'TR-1': function () {
-      return test('TR-1 turbine trip @100% — anticipatory reactor trip (P-9)', function (ck) {
+      return test('TR-1 turbine trip @100% — RIDE-OUT: dump catches, operator recovers, no scram', function (ck) {
         var h = H('hot_full_power');
         h.run(30);
         h.cmd('inject_failure', { failure_id: 'turbine_trip' });
-        var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 120);
-        ck('reactor trips within 5 s of turbine trip', dt >= 0 ? fmt(dt, 1) + ' s' : 'no trip in 120 s',
-          dt >= 0 && dt <= 5, '≤ 5 s');
-        ck.info('peak pressure after TT', fmt(h.range('pressure_mpa').max, 2) + ' MPa');
-        ck.info('peak Tavg after TT', fmt(h.range('tavg_c').max, 1) + ' °C');
+        // Phase 1 — hands-off ride: the dump catches the rejected load; the
+        // rod-less core self-regulates at partial power with Tavg (and pzr
+        // level) parked HIGH — the plant is stable, loudly asking for trim.
+        h.run(180);
+        var mid = h.ts();
+        ck('no scram through the hands-off ride', h.tripReason || 'none', h.tripTime == null, 'none');
+        ck('plant self-stabilized at partial power (40..90 %)', fmt(mid.power_pct, 0),
+          mid.power_pct > 40 && mid.power_pct < 90, '40..90');
+        ck('Tavg parked high but under the 335 backstop', fmt(mid.tavg_c, 1),
+          mid.tavg_c > 310 && mid.tavg_c < 330, '310..330');
+        // Phase 2 — the operator recovers at their own pace: rods walk the
+        // plant down to the no-load point on the dump.
+        var guard = 0;
+        while (h.ts().power_pct > 10 && guard++ < 40 && h.tripTime == null) {
+          h.cmd('rod_nudge', { group_id: 'control_rods', steps: -2 });
+          h.run(20);
+        }
+        h.run(240);
+        var t = h.ts();
+        ck('no scram through the recovery either', h.tripReason || 'none', h.tripTime == null, 'none');
+        ck('Tavg settled to the no-load anchor (297 ±5 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 297, 5), '297 ±5');
+        ck('no PORV lift anywhere in the event', fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < 16.20, '< 16.20');
+        ck('dump carried the rejected load (peak ≥ 70 %)', fmt(h.range('steam_dump_valve_pct').max, 0),
+          h.range('steam_dump_valve_pct').max >= 70, '≥ 70');
+        ck('SG never approached the lo-lo trip (min ≥ 25 %)', fmt(h.range('sg_level_pct').min, 1),
+          h.range('sg_level_pct').min >= 25, '≥ 25');
+        ck.info('peak Tavg during the ride', fmt(h.range('tavg_c').max, 1) + ' °C');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    // TR-8 (FG-4, owner ruling 2026-07-21): loss of condenser vacuum — turbine
+    // trips on the vacuum limit, the dump is UNAVAILABLE (no condenser), the
+    // condensate path dies so main feed is lost, and the untended plant trips
+    // later on a GENUINE limit (SG lo-lo / pressure) — physics, not anticipation.
+    'TR-8': function () {
+      return test('TR-8 loss of vacuum @100% — dump unavailable, genuine-limit trip', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'loss_of_condenser_vacuum' });
+        var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 900);
+        var t = h.ts();
+        ck('turbine tripped on the vacuum limit', String(t.turbine_tripped), !!t.turbine_tripped, 'true');
+        ck('steam dump unavailable with the condenser lost (max ≈ 0 %)',
+          fmt(h.range('steam_dump_valve_pct').max, 1), h.range('steam_dump_valve_pct').max < 5, '< 5');
+        ck('reactor tripped later on a genuine limit (not anticipation)',
+          dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip in 900 s',
+          dt >= 8, '≥ 8 s (no anticipatory trip), then a real limit');
+        ck.info('trip cause', h.tripReason || 'none');
       });
     },
 
@@ -358,10 +406,17 @@
         h.cmd('scram');
         h.run(600);
         var t = h.ts();
-        ck('main feed isolated once Tavg is at no-load (fw_flow < 0.05)',
-          fmt(t.fw_flow_normalized, 3), t.fw_flow_normalized < 0.05, '< 0.05');
-        ck('SG level held by AFW band (≥ 15 %)', fmt(h.range('sg_level_pct').min, 1),
-          h.range('sg_level_pct').min >= 15, '≥ 15');
+        // condensate_flow reads MAIN feed only (fw_flow includes AFW downstream
+        // of the isolation gate — the P-14 design point).
+        ck('main feed isolated once Tavg is at no-load (condensate_flow ≈ 0)',
+          fmt(t.condensate_flow_normalized, 3), t.condensate_flow_normalized < 0.02, '< 0.02');
+        ck('AFW auto-started for the handoff', String(t.afw_active), !!t.afw_active, 'true');
+        // The dip depth here is the TR-15 shrink taste knob (current tuning
+        // ~13-14 % min): hard enough to get attention, recovery assured by AFW.
+        ck('SG dip bounded through the handoff (min ≥ 8 %)', fmt(h.range('sg_level_pct').min, 1),
+          h.range('sg_level_pct').min >= 8, '≥ 8');
+        ck('AFW recovered the SG by the end (≥ 15 %)', fmt(t.sg_level_pct, 1),
+          t.sg_level_pct >= 15, '≥ 15');
       });
     },
 

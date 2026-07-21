@@ -29,20 +29,24 @@
         },
         advance: 'wait_for_trigger' },
 
+      // Re-told for the ride-out plant (feel-plan P4): a bare turbine trip no
+      // longer scrams — the dump swallows it (that is its own lesson, taught in
+      // the load-follow arc). The casualty that makes protection ACT on this
+      // plant is losing the heat sink itself: main feedwater.
       { id: 'trip_it',
         trigger: { type: 'delay', value: 22.0 },
         commentary: {
-          learning: 'HANDS OFF THE BOARD. The turbine just tripped — its valves slammed shut and a thousand megawatts of steam suddenly has nowhere to go. Watch the dominoes: steam pressure spikes, the reactor loses its heat sink, and the protection system decides. You could not react this fast. Nobody could. That is the point.',
-          industry: 'Turbine trip injected at 100%: load rejection, steam pressure transient, heat sink degradation. Anticipate reactor trip via the protection chain. Observe only.',
+          learning: 'HANDS OFF THE BOARD. Both feed pumps just died — the boiler is still making a full plant’s worth of steam, and nothing is putting water back. Watch the dominoes: auxiliary feedwater starts itself, the steam generator drains anyway, and the moment the level crosses the protection line the watchdogs decide. You could not react this fast. Nobody could. That is the point.',
+          industry: 'Loss of main feedwater injected at 100%: AFW auto-starts on the MFW loss, SG inventory falls at full steam draw, anticipate reactor trip on SG lo-lo level. Observe only.',
         },
-        inject_failures: ['turbine_trip'],
+        inject_failures: ['loss_of_feedwater'],
         advance: 'wait_for_trigger' },
 
       { id: 'scrammed',
         trigger: { type: 'scram' },
         commentary: {
-          learning: 'SCRAM — every rod dropped, the chain reaction is dead, and the whole fight took seconds with your hands in your lap. Now look at the board: alarms everywhere. Do not fear the wall of lights — it is a STORY written in the order things happened: turbine trip, pressure spike, reactor trip, levels swinging. Real operators read alarm floods like sentences.',
-          industry: 'Reactor trip complete; rods on the bottom. Annunciator flood present — triage by sequence and system, not by count: initiator (turbine), primary response (trip), secondary effects (SG level/pressure transients).',
+          learning: 'SCRAM — every rod dropped, the chain reaction is dead, and the whole fight took seconds with your hands in your lap. Now look at the board: alarms everywhere. Do not fear the wall of lights — it is a STORY written in the order things happened: feed lost, AFW start, level falling, reactor trip, turbine follows, levels swinging. Real operators read alarm floods like sentences.',
+          industry: 'Reactor trip complete on SG lo-lo level; rods on the bottom; turbine tripped via the reactor trip. Annunciator flood present — triage by sequence and system, not by count: initiator (feedwater), protection response (AFW, trip), secondary effects (SG level/pressure transients).',
         },
         advance: 'wait_for_trigger' },
 
