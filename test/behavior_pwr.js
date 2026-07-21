@@ -49,7 +49,8 @@
     'TR-7': 'probe', 'TR-8': 'probe',
     'TR-9': 'existing:run_ops sg_overfeed_p14 + run_pwr feedwater_isolation',
     'TR-10': 'probe', 'TR-11': 'existing:run_ops heaters vs spray fight (end-state pin: todo)',
-    'TR-12': 'existing:run_campaign pwr_slb', 'TR-13': 'probe + ops SGTR single-SG EOP',
+    'TR-12': 'probe + run_campaign pwr_slb', 'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
+    'SS-9': 'probe (cold thermal stability)', 'SS-10': 'probe (severity clamp)',
     'TR-14': 'existing:campaign SBO fact (document in manual)',
     'CA-1': 'existing:run_campaign tmi2 p1-p3 (re-validate after tuning)',
     'CA-2': 'existing:run_pwr merged_injection_curve + accumulator_arming_boundary',
@@ -421,6 +422,85 @@
         ck('truth diverged from indication (inventory moved ≥ 1.5 % while the gauge held still)',
           fmt(t.core_inventory_pct - inv0, 2), Math.abs(t.core_inventory_pct - inv0) >= 1.5, '|Δ| ≥ 1.5');
         T.checkSanity(ck, h);
+      });
+    },
+
+    // TR-12 (FG-6): steam line break at power with the REAL-strength MTC (−20
+    // pcm/°C, 6× the old coefficient). The overcooling inserts 6× the positive
+    // reactivity it used to — this pin holds the line: the excursion stays
+    // bounded, protection ends it, and the scrammed core does NOT walk back to
+    // criticality as the blowdown keeps cooling (the shutdown margin covers the
+    // MTC insertion — the classic SLB analysis question).
+    'TR-12': function () {
+      return test('TR-12 steam line break @100% — bounded excursion, no post-trip return to power', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'steam_line_break', severity: 0.8 });
+        var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
+        ck('protection ends it', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip', dt >= 0, 'trips');
+        ck('power excursion bounded (< 130 %)', fmt(h.range('power_pct').max, 1),
+          h.range('power_pct').max < 130, '< 130');
+        h.run(900);
+        ck('no return to power on the continuing cooldown (post-trip max < 5 %)',
+          fmt(h.ts().power_pct, 2), h.ts().power_pct < 5, '< 5');
+        ck('no fuel damage', String(!!h.ts().fuel_damaged), !h.ts().fuel_damaged, 'false');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    // SS-9 (new, P6 edge-case sweep): cold-plant thermal stability. The reverse
+    // SG→primary heat path is damped to 5 % conductance (sg_reverse_frac) — this
+    // pins that a hands-off cold shutdown neither runs away warming (the old
+    // infinite-reservoir artifact) nor drifts unphysically, for half an hour.
+    'SS-9': function () {
+      return test('SS-9 cold shutdown hands-off — thermally quiet for 30 min', function (ck) {
+        var h = H('cold_shutdown');
+        var t0 = h.ts().tavg_c;
+        h.run(1800);
+        var t = h.ts();
+        ck('Tavg drift bounded (±5 °C over 30 min)', fmt(t0, 1) + ' → ' + fmt(t.tavg_c, 1),
+          Math.abs(t.tavg_c - t0) <= 5, '±5');
+        ck('no trip / no spurious ESF', (h.tripReason || 'none') + ' / hpi=' + t.hpi_active,
+          h.tripTime == null && !t.hpi_active, 'quiet');
+        ck('pressure stayed in the cold band (< 4 MPa)', fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < 4, '< 4');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    // TR-13b (P6 edge-case sweep): the ΔP-scaled SGTR survives save/load. The
+    // leak base and its to-SG flag are engine state — a save taken mid-casualty
+    // must restore a leak that still flows AND still dies with the ΔP.
+    'TR-13b': function () {
+      return test('TR-13b SGTR save/load — the ΔP-scaled leak survives a restore', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.5 });
+        h.run(30);
+        var leakBefore = h.ts().leak_flow;
+        ck('leak flowing before the save', fmt(leakBefore, 4), leakBefore > 0.01, '> 0.01');
+        var save = h.eng.saveState();
+        var h2 = H('hot_full_power');
+        h2.eng.loadState(save);
+        h2.run(10);
+        var leakAfter = h2.ts().leak_flow;
+        ck('leak still flowing after the restore', fmt(leakAfter, 4), leakAfter > 0.01, '> 0.01');
+        ck('restored leak still ΔP-scaled (base survives)', fmt(h2.eng.s._leak_base || 0, 3),
+          (h2.eng.s._leak_base || 0) > 0.05 && h2.eng.s._leak_to_sg === true, 'base ≈ 0.06, to_sg');
+      });
+    },
+
+    // Severity-bounds robustness (P6): a scenario author passing meta-units
+    // (40 meaning "40 %") must not inject a physically absurd casualty — the
+    // engine clamps severity to [0,1].
+    'SS-10': function () {
+      return test('SS-10 severity clamp — out-of-range injection is bounded', function (ck) {
+        var h = H('hot_full_power');
+        h.run(10);
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 40 });
+        h.run(2);
+        ck('severity 40 clamps to a full rupture, not 40 of them',
+          fmt(h.eng.s._leak_base, 3), h.eng.s._leak_base <= 0.121, '≤ 0.121');
       });
     },
 

@@ -409,7 +409,7 @@ On a gauge, **red** at the two trip bands (≥90 %, ≤17 %), **amber** at the a
 | Control | Effect |
 |---------|--------|
 | **On / Off** | Start/stop merged high/low pressure injection |
-| **AUTO arm** | Actuates on low primary pressure (~**11.03 MPa**) when armed |
+| **AUTO arm** | Actuates on low primary pressure (~**12.4 MPa**) when armed |
 | **Pump curve** | High-head trickle at operating pressure; high volume below ~**4.5 MPa** shutoff region |
 | **Indication** | `hpi_flow`, HPI ACTIVE alarm/status |
 

@@ -339,7 +339,7 @@
       '<button class="btn-set" data-act="' + act + '">' + (lbl || 'Set') + '</button>';
   }
   function loadSlider(min, max, val) {
-    return '<input type="range" class="load-slider" id="mweSlider" data-syn-slider="load" min="' + min + '" max="' + max + '" value="' + val + '" step="10"/>' +
+    return '<input type="range" class="load-slider" id="mweSlider" data-syn-slider="load" min="' + min + '" max="' + max + '" value="' + val + '" step="1"/>' +
       '<span class="load-slider-val" data-f="mweSliderVal">' + val + '</span> MW';
   }
   function card(key, hlId, title, body, opts) {
@@ -523,7 +523,7 @@
         { l: 'Manual', act: 'load-manual', f: 'lmManual' },
         { l: 'Off', act: 'load-disconnect', warn: 1, f: 'lmDisc' },
       ], 'Load mode — Follow tracks reactor power; Manual uses the slider; Off disconnects from grid (0 MWe).') + '</div>' +
-      '<div class="ctl" id="pwLoadSliderRow"><span class="k">Load</span><span data-hl="gGov gTurbine">' + loadSlider(0, 1100, 1000) + '</span></div>' +
+      '<div class="ctl" id="pwLoadSliderRow"><span class="k">Load</span><span data-hl="gGov gTurbine">' + loadSlider(0, 110, 100) + '</span></div>' +
       row('Turbine', 'tgRpm', { hl: 'gTurbine', hint: 'Turbine speed (RPM).' }) +
       row('Output', 'tgMw', { hl: 'gTurbine', hint: 'Electrical output (MWe).' }) +
       row('Target', 'tgTarget', { hint: 'Load setpoint vs actual output.' }) +
@@ -532,7 +532,7 @@
         'Steam dump / bypass — AUTO opens on high SG pressure.') +
       '<span data-hl="gDump">' + numSet('dumpSet', 0, 100, 0, 'dump-set', '%') + '</span></div>' +
       row('Dump SP', 'tgDumpSp', { hint: 'No-load steam-dump pressure setpoint (MPa) the AUTO dump holds. Lower it on a cooldown to vent the SG and cool the primary; raise it back toward the no-load point on a heatup.' }) +
-      '<div class="ctl"><span class="k">Dump SP</span>' + numSet('dumpSpSet', 0.2, 9.3, 8.9, 'dump-sp-set', 'MPa') + '</div>' +
+      '<div class="ctl"><span class="k">Dump SP</span>' + numSet('dumpSpSet', 0.2, 9.3, 8.23, 'dump-sp-set', 'MPa') + '</div>' +
       row('Dump valve', 'tgDump', { hl: 'gDump' }) +
       row('Trip', 'tgTrip', { hint: 'Turbine trip / low steam demand status.' }),
       { anchor: 'pwTurbineAnchor', hint: 'Turbine-Generator — load, governor, steam dump, trip status.' });

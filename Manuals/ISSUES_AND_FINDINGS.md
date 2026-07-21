@@ -105,7 +105,7 @@ Sources include `Diagnostic/SPEC_AUDIT_2026-07-16.md` and campaign playtest note
 | PORV **16.20 / 15.86 MPa**, safeties **17.13 / 16.55 MPa** | Consistent control data / safety_limits |
 | SG level normal **65 %**, PZR **55 %** | Consistent |
 | AFW actuation **20 %**, SG trip **12 %** | Consistent |
-| HPI actuation **11.03 MPa** | Consistent |
+| HPI actuation **12.4 MPa** (raised 2026-07, feel-plan P5) | Consistent |
 | Failure list in `pwr_control.js` PWR_FAILURES | All mapped to PWR-E01–E21 |
 | Load modes Follow / Manual / Disconnected + scram disconnect | Matches `load_mode_spec.md` |
 | Subcooling as TMI truth-teller | Consistent M1 / synoptic / procedures |

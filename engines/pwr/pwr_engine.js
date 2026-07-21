@@ -806,6 +806,10 @@
   PWREngine.prototype._injectFailure = function (id, severity) {
     var def = this.cfg.protection.failures[id];
     if (!def) return;
+    // Severity is a 0–1 fraction everywhere (the UI slider sends value/100).
+    // Clamp defensively: a scenario author passing meta-units (e.g. 40 for
+    // "40 %") would otherwise inject a physically absurd casualty.
+    if (severity != null) severity = clip(severity, 0, 1);
     if (this.active_failures.indexOf(id) === -1) this.active_failures.push(id);
     var s = this.s;
     if (def.type === 'instrument') {

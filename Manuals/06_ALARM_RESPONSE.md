@@ -133,7 +133,7 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 |-------|---------|
 | **Setpoint** | ≤ **12.41 MPa** (also low-pressure SCRAM) |
 | **Means** | Dangerously low RCS pressure. |
-| **Actions** | 1) Verify SCRAM. 2) Verify **HPI** actuation (~11.03 MPa AUTO if armed). 3) Isolate stuck PORV with **block valve** if indicated. 4) Stop spray. 5) Do not throttle HPI on PZR level alone. → **PWR-E07**, **E09** |
+| **Actions** | 1) Verify SCRAM. 2) Verify **HPI** actuation (~12.4 MPa AUTO if armed). 3) Isolate stuck PORV with **block valve** if indicated. 4) Stop spray. 5) Do not throttle HPI on PZR level alone. → **PWR-E07**, **E09** |
 
 ---
 

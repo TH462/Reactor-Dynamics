@@ -137,7 +137,7 @@
         { id: 'sg_level', label: 'SG Level', c: '#806890', get: function (i) { return i.sg_level; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'pzr_level',label: 'PZR Level',c: '#507878', get: function (i) { return i.pzr_level; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'subcool',  label: 'Subcool',  c: '#707060', get: function (i) { return i.subcooling_margin; }, range: [-10, 60], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + '°'; } },
-        { id: 'mwe',      label: 'Output MW',c: '#506880', get: function (i) { return i.mwe_output; }, range: [0, 1100], fmt: function (v) { return v.toFixed(0); } },
+        { id: 'mwe',      label: 'Output MW',c: '#506880', get: function (i) { return i.mwe_output; }, range: [0, 110], fmt: function (v) { return v.toFixed(0); } },
         { id: 'thot',     label: 'Hot Leg',  c: '#c0563e', get: function (i) { return i.thot; }, range: [270, 335], fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
         { id: 'tcold',    label: 'Cold Leg', c: '#4a86c0', get: function (i) { return i.tcold; }, range: [260, 320], fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
         { id: 'steam_flow',label: 'Steam Flow',c: '#8a9a5a', get: function (i) { return i.steam_flow * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
@@ -1501,8 +1501,22 @@
   // display:none, so its offsetParent is null).
   function inputVal(id) {
     var els = document.querySelectorAll('[id="' + id + '"]');
-    for (var i = 0; i < els.length; i++) if (els[i].offsetParent !== null) return +els[i].value;
-    return els.length ? +els[els.length - 1].value : 0;
+    var el = null;
+    for (var i = 0; i < els.length; i++) if (els[i].offsetParent !== null) { el = els[i]; break; }
+    if (!el && els.length) el = els[els.length - 1];
+    if (!el) return 0;
+    var v = +el.value;
+    // Bound-clamp typed values (owner ruling 2026-07-21): HTML min/max only
+    // STYLE an out-of-range number input — they don't stop it. Clamp at this
+    // single choke point and write the clamped value back so the operator sees
+    // exactly what the plant accepted. NaN falls to the low bound.
+    var lo = el.min !== '' && el.min != null ? +el.min : null;
+    var hi = el.max !== '' && el.max != null ? +el.max : null;
+    if (isNaN(v)) v = lo != null ? lo : 0;
+    if (lo != null && v < lo) v = lo;
+    if (hi != null && v > hi) v = hi;
+    if (String(v) !== el.value) el.value = v;
+    return v;
   }
 
   // ============================================================ Automate tab
@@ -1809,7 +1823,8 @@
     'load-follow': function () { cmd({ action: 'set_load_mode', mode: 'follow' }); },
     'load-manual': function () { cmd({ action: 'set_load_mode', mode: 'manual' }); },
     'load-disconnect': function () { cmd({ action: 'disconnect_grid' }); },
-    'breaker-close': function () { cmd({ action: 'set_steam_demand', mwe: 1000 }); },
+    // Rated ask on breaker close — read from the active plant's config (SLX-100 = 100).
+    'breaker-close': function () { var r = (RD['PWR_CONFIG'] && ui.plant === 'pwr') ? RD.PWR_CONFIG.turbine.mwe_rated : (ui.plant === 'bwr' ? 1100 : 1000); cmd({ action: 'set_steam_demand', mwe: r }); },
     'breaker-open': function (b) { armedConfirm(b, function () { cmd({ action: 'set_steam_demand', mwe: 0 }); }); },
     'mwe-set': function () { cmd({ action: 'set_steam_demand', mwe: inputVal('mweSet') }); },
     'porv-block-open': function () { cmd({ action: 'open_block_valve' }); },

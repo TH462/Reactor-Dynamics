@@ -56,6 +56,8 @@
 | Primary flow (true flow exception) | low | **0.25** normalized | Low-flow trip |
 | Source range | high | **1e5 cps** | When SR energized |
 | Intermediate range | high | **1.67e-3 A** | ~20 % class over-range; blockable above P-10 |
+| Primary pressure (SI trip, PI-3) | low | **12.4 MPa** | Reactor trip on safety injection; blockable below P-11 (13.6 MPa), auto-reinstates |
+| PZR level (PI-8) | high | **97 %** | Going-solid backstop; the 75 % alarm warns first |
 
 ### Permissives / blocks
 
@@ -81,14 +83,20 @@
 |----------|------------|-----------|----------|---------------|
 | Open PORV | primary_pressure | high | **16.20 MPa** | Close/reseat **15.86 MPa** |
 | Open PZR safety | primary_pressure | high | **17.13 MPa** | Reseat **16.55 MPa** |
-| HPI start | primary_pressure | low | **11.03 MPa** | ESF arm must be AUTO |
+| HPI start (Safety Injection) | primary_pressure | low | **12.4 MPa** | ESF arm must be AUTO; arrives with the low-pressure trip |
+| Feedwater isolation (on SI) | primary_pressure | low | **12.4 MPa** | Rides the HPI arm (PI-5) |
 | AFW start | sg_level | low | **20 %** | ESF arm must be AUTO |
+| AFW start (loss of MFW, PI-4) | fw_flow | low | **0.10** normalized | Above P-9 (≥50 % power) |
+| MFW isolation + AFW start (P-4) | tavg | low | **300 °C** | Condition: reactor tripped — the post-trip MFW→AFW handoff |
 | RHR start | primary_pressure | low | **2.76 MPa** (400 psi) | Condition: scrammed; ties to the RHR suction-valve autoclosure interlock |
 | SR re-energize assist | intermediate_range | low | **1e-10 A** | Actuation path as configured |
 | Open SG safety | steam_pressure | high | **9.31 MPa** | Reseat **9.0 MPa** |
 | Turbine trip (vacuum) | condenser_vacuum | low | **74.5 kPa** | Reset region **84.7 kPa** |
 | Turbine trip (overspeed) | turbine_rpm | high | **1980 RPM** | Reset below ~**1800 RPM** |
 | Turbine trip (SG hi-hi / P-14) | sg_level | high | **90 %** | Re-arm below **85 %** |
+| Steam dump (pressure mode) | steam_pressure | high | **8.23 MPa** | = Psat(297 °C), the no-load Tavg anchor; capacity **105 %** of rated steam flow |
+| Steam dump (trip-open mode) | tavg error | — | opens on (Tavg − 297)/8 °C | On turbine trip; needs the condenser (unavailable on lost vacuum / MSIV shut) |
+| Spray flow cap | — | — | **12 %** of full spray flow | Sized for step insurges; cannot suppress a loss-of-heat-sink repressurization |
 | Main feedwater isolation (P-14) | sg_level | high | **90 %** | Latches (manual restore); AFW unaffected. Re-arm below **85 %** |
 
 ### HPI pump curve (merged HPI/LPI)

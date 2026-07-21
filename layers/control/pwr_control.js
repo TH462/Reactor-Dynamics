@@ -182,8 +182,12 @@
     // full tube rupture overwhelms CVCS and forces trip + SI, which is why the
     // EOP exists. leak_to_sg: the engine ΔP-modulates it (primary−SG pressure),
     // so depressurizing to SG pressure STOPS the leak — the single-SG EOP.
-    sgtr:                        { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 1.5, leak_to_sg: true,
-                                   severity_meta: { label: 'Leak Rate', unit: '% rated flow', min: 0, max: 8, default: 3 }, display: 'Steam Generator Tube Rupture' },
+    sgtr:                        { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 0.12, leak_to_sg: true,
+                                   // Post-rescale semantics, kept transparent: severity is a fraction
+                                   // of a FULL double-ended rupture; full = meta.max/100 · leak_scale
+                                   // = 0.12 normalized ≈ 2× charging capacity. The label reads an
+                                   // honest 0–100 % of full rupture.
+                                   severity_meta: { label: 'Rupture Severity', unit: '% of full rupture', min: 0, max: 100, default: 40 }, display: 'Steam Generator Tube Rupture' },
     rcp_trip:                    { type: 'physics_parameter', category: 'coolant', effect: 'stop_pump', display: 'RCP Trip' },
     loss_of_condenser_vacuum:    { type: 'physics_parameter', category: 'power', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },
     // degraded_hpi and afw_failure are PHYSICS-side (HR7): both are persistent
