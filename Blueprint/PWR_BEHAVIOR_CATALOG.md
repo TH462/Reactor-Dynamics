@@ -1,8 +1,14 @@
-# PWR Behavior Catalog — v3.0 (feel-first, DRAFT for owner red-line)
+# PWR Behavior Catalog — v3.0 (feel-first)
 
-**Status: v3.0 DRAFT — 2026-07-21. Supersedes v2.0 (generic-Westinghouse bands; see git
-history for the full v2.0 text). Owner red-lines this draft before tuning starts (feel-plan
-Phase 1). Companion: `Blueprint/PWR_FEEL_TUNING_PLAN.md` (v1.0, approved).**
+**Status: v3.0 FROZEN — 2026-07-21. All §11 hotspots ruled by owner (see §12); changes
+require an owner ruling. Supersedes v2.0 (generic-Westinghouse bands; see git history for
+the full v2.0 text). Companion: `Blueprint/PWR_FEEL_TUNING_PLAN.md` (v1.0, approved).**
+
+**⚑ TEMPO PRINCIPLE (owner, 2026-07-21) — governs every character band and demo:
+the plant should react fast enough to be interesting, slow enough to be manageable.**
+When a tuning choice trades speed for manageability, aim for the band where the operator
+has time to recognize, decide, and act — but not time to get bored. Both P4 demos and the
+Phase-7 band minting are judged against this line.
 
 ## 0. The plant
 
@@ -197,21 +203,21 @@ safety 17.13 MPa, with reseats ordered below lifts):
 | PI-6 / TR-4 | P-8 single-loop low-flow trip / "1-of-N pump" transient | Single loop — no partial-flow state exists; loss of *the* RCP hits the total low-flow trip (probe re-labeled, kept) |
 | v2.0 fidelity rule | "±15 % of generic Westinghouse" | Bands are minted from this plant's own golden runs at freeze |
 
-## 11. Red-line hotspots ⚑ (owner attention wanted)
+## 11. Red-line hotspots — RULED (owner, 2026-07-21)
 
-1. **TR-1/CC-7 dump capacity** — proposing ~100–105 % of rated steam flow. Bigger = more
-   effortless ride-out; smaller = the operator works harder. P4 probes both; taste call.
-2. **TR-15 shrink depth** — two-tuning demo in P4 (anchor ~297 vs lower + `K_sg_level`);
-   you pick how hard a trip bites.
-3. **TR-8 untended endpoint** — confirming: lost vacuum with no operator action should end
-   in a *high-pressure* trip (physics), not a special interlock.
-4. **TR-13 single-SG EOP** — confirming: steaming the contaminated SG (then depressurizing
-   to kill the leak) is the intended teaching, since there's no intact SG to hide behind.
-5. **High-Tavg 335 °C backstop** — keep or delete (it fired as the stand-in trip in old
-   turbine-trip runs; under ride-out it should never fire — proposing keep as backstop).
-6. **SI raise to ~12.4** — only if the TMI story clock tolerates it; canon wins otherwise.
-7. **EV-11** — blessing "manual dispatch shows its costs" as *intended character* (settles
-   above the ask; feed needs minding) rather than defects to tune away.
+1. **TR-1/CC-7 dump capacity — RULED: Claude's call, playtest-adjustable.** Decision:
+   **1.05 × rated steam flow** — full ride-out with a small margin, but the stored-heat
+   burst at trip still swings Tavg visibly before settling (tempo principle: interesting,
+   then manageable). Revisit after playtesting.
+2. **TR-15 shrink demo — RULED: yes**, owner picks from the two-tuning demo in P4.
+3. **TR-8 untended endpoint — RULED: yes** — high-pressure trip by physics.
+4. **TR-13 single-SG EOP — RULED: yes**, with a required manual/instructor note that
+   multi-loop plants differ (isolate the faulted SG, steam the intact ones) — added to
+   the P6 manual work.
+5. **High-Tavg 335 °C backstop — RULED: keep.**
+6. **SI raise toward ~12.4 — RULED: yes**, TMI story clock has precedence on conflict.
+7. **EV-11 manual-dispatch character — RULED: try it** — pinned as intended behavior;
+   revisit if playtesting reads it as annoyance rather than teaching.
 
 ## 12. Rulings log
 
@@ -221,4 +227,7 @@ safety 17.13 MPa, with reseats ordered below lifts):
 - **2026-07-20 (owner, v2.0 era, still standing):** SGTR leak-scale raise to ~0.12;
   CC-10 physical-level middle path; CC-3 real post-trip feedwater; spray flow cap;
   units/ratings boundary layer; EV-6 closed (unreproducible).
-- **v3.0 red-line: PENDING** — this draft.
+- **2026-07-21 (owner): v3.0 red-line complete** — all seven §11 hotspots ruled (dump
+  1.05 delegated, demos yes, TR-8 physics trip, single-SG EOP + multi-loop manual note,
+  335 °C backstop kept, SI raise TMI-gated, EV-11 provisional) **plus the tempo
+  principle**: fast enough to be interesting, slow enough to be manageable. **v3.0 FROZEN.**
