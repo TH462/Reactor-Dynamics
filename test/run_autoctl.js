@@ -160,7 +160,8 @@ test('PWR · all-auto except grid: demand swing 1000→700→1000', function (ck
   // Sliding Tavg program (SS-2): Tref slides DOWN with load, and the rods walk Tavg
   // down to it — the old flat "tavg restored to the engage value" was the P4 defect.
   var spDown = r.chan('rods_tavg').setpoint;
-  ck('Tref slid down with load', spDown.toFixed(2) + ' vs full-load ' + sp.toFixed(2), spDown < sp - 2, '< full-load − 2 °C');
+  // Shallow program (297→304): a 30 % load drop slides Tref ~2.1 °C — assert > 1.5.
+  ck('Tref slid down with load', spDown.toFixed(2) + ' vs full-load ' + sp.toFixed(2), spDown < sp - 1.5, '< full-load − 1.5 °C');
   ck('tavg tracked the program down', i.tavg.toFixed(2) + ' vs Tref ' + spDown.toFixed(2), near(i.tavg, spDown, 1.5), 'Tref±1.5');
   ck('SG level held', i.sg_level.toFixed(1), near(i.sg_level, r.chan('feed_sg').setpoint, 4), 'sp±4');
   r.cmd({ action: 'set_steam_demand', mwe: 1000 });

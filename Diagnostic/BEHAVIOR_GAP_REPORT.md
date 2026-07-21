@@ -6,37 +6,36 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 16 pass, 4 known gaps (xfail).
+Battery result: 18 pass, 4 known gaps (xfail).
 
 ## TR-1 — TR-1 turbine trip @100% — anticipatory reactor trip (P-9)
 *Known gap:* awaiting the ride-out dump upsize (catalog v3 FG-4; probe re-authored in feel-plan P4)
 
-- **reactor trips within 5 s of turbine trip** — required `≤ 5 s`, observed `39.5 s`
-- measurement: peak pressure after TT = `15.54 MPa`
-- measurement: peak Tavg after TT = `320.9 °C`
+- **reactor trips within 5 s of turbine trip** — required `≤ 5 s`, observed `43.0 s`
+- measurement: peak pressure after TT = `15.56 MPa`
+- measurement: peak Tavg after TT = `323.2 °C`
 
 ## TR-2 — TR-2 loss of main feedwater @100% — the TMI opener
 *Known gap:* spray uncapped — PORV never lifts on loss of feed (catalog v3 FG-6, feel-plan P5)
 
-- **primary pressure reaches PORV lift 16.20 MPa** — required `≥ 16.20`, observed `15.50`
+- **primary pressure reaches PORV lift 16.20 MPa** — required `≥ 16.20`, observed `15.51`
 - **PORV lifted** — required `lifted`, observed `never lifted`
 
 ## CC-3 — CC-3 post-trip feedwater — MFW isolates, AFW takes the SGs
 *Known gap:* no post-trip feedwater isolation / AFW handoff (P-4 analog, feel-plan P4)
 
 - **main feed isolated once Tavg is at no-load (fw_flow < 0.05)** — required `< 0.05`, observed `0.052`
-- **SG level held by AFW band (≥ 15 %)** — required `≥ 15`, observed `0.0`
+- **SG level held by AFW band (≥ 15 %)** — required `≥ 15`, observed `4.2`
 
 ## CC-5 — CC-5 spray capacity — cannot suppress loss-of-heat-sink spike
 *Known gap:* spray capacity uncapped — suppresses loss-of-heat-sink repressurization (feel-plan P5)
 
-- **pressure reaches PORV lift 16.20 MPa despite spray AUTO** — required `≥ 16.20`, observed `15.53`
+- **pressure reaches PORV lift 16.20 MPa despite spray AUTO** — required `≥ 16.20`, observed `15.55`
 - **PORV lifted** — required `lifted`, observed `never lifted`
-- measurement: observed peak pressure = `15.53 MPa`
+- measurement: observed peak pressure = `15.55 MPa`
 
 ## Not yet probed (coverage todo)
 
-- **EV-3** — todo (re-band after SS-2 tuning)
 - **TR-3** — todo (needs TR-2 tuned first)
 - **CA-4** — todo (needs PI-8 high-level trip first)
 - **PI-3** — todo (with interlock build)

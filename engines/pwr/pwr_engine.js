@@ -942,7 +942,7 @@
 
     // Sliding Tavg program (SS-2, catalog §8.1). Tavg is anchored to the load-
     // programmed reference — a LINEAR interpolation in load between the no-load
-    // anchor (Tsat of the steam-dump setpoint ≈ 292 °C) and the full-power coolant
+    // anchor (Tsat of the steam-dump setpoint — this plant: 297 °C) and the full-power coolant
     // equilibrium (~304-306 °C) — instead of the old flat-secondary anchor (which
     // pinned the secondary pressure and let Tavg SAG with load, the SS-2/SS-3
     // defect). The secondary saturation temperature is then DERIVED from the steady
@@ -1371,7 +1371,11 @@
     var minSub = 1e9, maxFuel = 0, critAt = -1, hotAt = -1, mode1At = -1, t;
     h.cmd({ action: 'set_rcp', running: true });
     h.cmd({ action: 'disconnect_grid' });                     // turbine offline → SG bottles to no-load
-    h.cmd({ action: 'set_steam_dump_setpoint', mpa: 8.90 });
+    // Bottle the SG to the configured no-load anchor (Tsat(setpoint) = no-load Tavg);
+    // "hot" for the Mode-3/1 criteria below is derived from the same anchor.
+    var dumpSp = h.eng.cfg.steam_generator.steam_dump_setpoint;
+    var T_hot = TH.T_sat(dumpSp) - 1;
+    h.cmd({ action: 'set_steam_dump_setpoint', mpa: dumpSp });
     for (var p = 3; p <= 15.41; p += 2) { h.cmd({ action: 'set_pressure_setpoint', mpa: Math.min(p, 15.41) }); h.run(40); }
     h.cmd({ action: 'set_pressure_setpoint', mpa: 15.41 }); h.run(60);
     // RCS is now above the accumulator cover-gas pressure — re-align the SI accumulators
@@ -1383,13 +1387,13 @@
       t = h.ts();
       minSub = Math.min(minSub, t.subcooling_c); maxFuel = Math.max(maxFuel, t.fuel_temp_c);
       if (critAt < 0 && t.reactivity_pcm > -30 && t.power_pct > 0.5) critAt = elapsed;
-      if (hotAt < 0 && t.tavg_c >= 303) hotAt = elapsed;
-      var Pt = (t.tavg_c < 300) ? 10 : 12;
+      if (hotAt < 0 && t.tavg_c >= T_hot) hotAt = elapsed;
+      var Pt = (t.tavg_c < T_hot - 3) ? 10 : 12;
       if (t.power_pct > Pt * 1.3 || t.startup_rate_dpm > 1.5 || t.fuel_temp_c > 500) h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -2, speed: 'normal' });
       else if (t.power_pct < Pt * 0.8 && t.startup_rate_dpm < 1.0) h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 1, speed: 'slow' });
       _feedHold(h);
       h.run(dt); elapsed += dt;
-      if (t.tavg_c >= 303 && t.power_pct > 5 && hotAt >= 0 && elapsed > hotAt + 200) { mode1At = elapsed; break; }
+      if (t.tavg_c >= T_hot && t.power_pct > 5 && hotAt >= 0 && elapsed > hotAt + 200) { mode1At = elapsed; break; }
     }
     return { critAt: critAt, hotAt: hotAt, mode1At: mode1At, maxFuel: maxFuel, minSub: minSub };
   }
@@ -1405,7 +1409,7 @@
     while (elapsed < maxSec) {
       t = h.ts();
       minSub = Math.min(minSub, t.subcooling_c);
-      h.cmd({ action: 'set_steam_dump_setpoint', mpa: Math.max(0.3, 8.90 - k * 0.03) });
+      h.cmd({ action: 'set_steam_dump_setpoint', mpa: Math.max(0.3, h.eng.cfg.steam_generator.steam_dump_setpoint - k * 0.03) });
       var satGuard = Math.pow(Math.max(t.tavg_c + 25, 1) / 179.47, 1 / 0.239);
       var psp = Math.max(satGuard, 15.41 - k * 0.02);
       h.cmd({ action: 'set_pressure_setpoint', mpa: psp });
@@ -1478,14 +1482,15 @@
         var h = new Harness('hot_zero_power');
         var t0 = h.ts();
         ck('subcritical', t0.reactivity_pcm.toFixed(0), t0.reactivity_pcm < 0, '< 0');
-        // No-load Tavg is the BOTTOM of the sliding Tavg program (SS-2/SS-4): Tsat of the
-        // steam-dump setpoint ≈ 292 °C (was the flat 304 anchor the program replaces).
-        ck('Tavg ≈ 292 °C at reset (no-load program point)', t0.tavg_c.toFixed(2), near(t0.tavg_c, 292, 3), '292 ±3');
+        // No-load Tavg is the BOTTOM of the sliding Tavg program (FG-2): Tsat of the
+        // steam-dump setpoint — this plant's anchor 297 °C (feel-plan P3).
+        var Tnl = TH.T_sat(h.eng.cfg.steam_generator.steam_dump_setpoint);
+        ck('Tavg ≈ no-load anchor (' + Tnl.toFixed(0) + ' °C) at reset', t0.tavg_c.toFixed(2), near(t0.tavg_c, Tnl, 3), Tnl.toFixed(0) + ' ±3');
         ck('control bank fully inserted', h.eng.getControlState().rod_groups[0].position_pct.toFixed(1), near(h.eng.getControlState().rod_groups[0].position_pct, 0, 1), '0 ±1');
         ck('pressure ≈ 15.41 MPa', t0.pressure_mpa.toFixed(3), near(t0.pressure_mpa, 15.41, 0.25), '15.41 ±0.25');
         h.run(100);
         var t = h.ts();
-        ck('Tavg holds ~292 °C (idle HZP)', t.tavg_c.toFixed(2), near(t.tavg_c, 292, 4), '292 ±4');
+        ck('Tavg holds the no-load anchor (idle HZP)', t.tavg_c.toFixed(2), near(t.tavg_c, Tnl, 4), Tnl.toFixed(0) + ' ±4');
         ck('still subcritical', t.reactivity_pcm.toFixed(0), t.reactivity_pcm < 0, '< 0');
       });
     },
@@ -2340,7 +2345,7 @@
         h.cmd({ action: 'inject_failure', failure_id: 'turbine_trip' });
         h.cmd({ action: 'scram' });
         h.cmd({ action: 'set_afw', active: true });
-        // The post-trip cooldown to the (now lower, SS-2) no-load Tavg ≈ 292 °C dumps the
+        // The post-trip cooldown to the (FG-2 program) no-load Tavg ≈ 297 °C dumps the
         // primary's stored sensible heat into the SG: the auto steam dump vents that burst
         // and the narrow SG level dips hard before AFW — added DOWNSTREAM of the isolation
         // gate — arrests the drain and recovers the SG to its regulation band. The point of

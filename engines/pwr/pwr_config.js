@@ -183,7 +183,9 @@
       // term is the TMI deception, active ONLY when the primary actually voids
       // (saturation-gated in pwr_primary): 3·level_per_void > level_per_mass, so in
       // any voided state indicated level RISES as inventory falls — and nowhere else.
-      level_per_tavg: 2.0,         // % level per °C Tavg (matches old K_thermal_surge transient feel) [tune]
+      level_per_tavg: 2.5,         // % level per °C Tavg — steepened 2.0 → 2.5 with the shallow 297→304
+                                   // program so the level program keeps a visible span (~37.5 % no-load
+                                   // → 55 % full power) [tune]
       level_per_mass: 100.0,       // % level per inventory-fraction DEFICIT below nominal (a deficit
                                    // draws down the whole loop) [tune]
       level_per_mass_surplus: 300.0, // % level per inventory-fraction SURPLUS above nominal — steeper,
@@ -275,16 +277,18 @@
       afw_discharge_margin_mpa: 1.0, // head above SG pressure while delivering
       // B2 steam dump / turbine bypass (auto opens above setpoint, to condenser).
       // The setpoint is the NO-LOAD secondary pressure, and it is the BOTTOM ANCHOR
-      // of the sliding Tavg program (SS-2, catalog §8.1): Tsat(setpoint) = the no-load
-      // Tavg. Set to Psat(292 °C) ≈ 7.67 MPa so hot standby holds Tavg ≈ 292 °C (was
-      // 8.90 → Tsat ≈ 303, the flat no-load anchor the program replaces). With no steam
-      // draw the secondary saturates up to it and the dump holds it there, so hot
-      // standby holds its own temperature — the real PWR steam-dump-in-pressure-mode
-      // behavior. On a turbine trip the pressure rise above the setpoint opens the
-      // dump proportionally across the band. The full-power top of the program is the
-      // full-power coolant equilibrium (~304-306 °C); _buildState interpolates linearly
-      // in load and DERIVES each state's secondary pressure to be a true steady state.
-      steam_dump_setpoint: 7.67, steam_dump_band: 0.25, steam_dump_max: 0.5, // [tune] = Psat(292 °C), SS-2 no-load anchor
+      // of the sliding Tavg program (catalog v3 FG-2): Tsat(setpoint) = the no-load
+      // Tavg. THIS PLANT'S ANCHOR (feel-plan P3, 2026-07-21): Psat(297 °C) ≈ 8.23 MPa
+      // — a shallow ~7 °C program (297 no-load → ~304 full power), consistent with a
+      // small plant whose SG is generously sized (less ΔT growth needed with load),
+      // and it halves the post-trip stored-heat dump into the SG vs. the old 292
+      // Westinghouse anchor (softer shrink — TR-15 tempo). With no steam draw the
+      // secondary saturates up to the setpoint and the dump holds it there, so hot
+      // standby holds its own temperature. On a turbine trip the pressure rise above
+      // the setpoint opens the dump proportionally across the band. The program top
+      // is the full-power coolant equilibrium; _buildState interpolates linearly in
+      // load and DERIVES each state's secondary pressure to be a true steady state.
+      steam_dump_setpoint: 8.23, steam_dump_band: 0.25, steam_dump_max: 0.5, // [tune] = Psat(297 °C), FG-2 no-load anchor
     },
 
     // ------------------------------------------------------ turbine / condenser

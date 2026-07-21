@@ -51,7 +51,7 @@ Feel is set by capacity *ratios*, not absolute numbers. These are the levers the
 | Spray ÷ normal step insurge | wins | still wins | Step insurges stay arrested | P5 |
 | Full-SGTR leak ÷ charging_max | 0.03 ÷ 0.06 (charging wins) | **≈ 0.12 ÷ 0.06** (leak wins 2×) | Full SGTR *forces* trip + SI (FG-6) | P5 |
 | AFW cap ÷ post-trip decay heat | 0.15 (recovers ~5 min) | keep | Post-trip SG recovery tempo (FG-5) | P4 |
-| No-load Tavg anchor | 292 °C (placeholder) | **propose ~297** | Post-trip shrink bite; program span (FG-5/FG-2) | P3 |
+| No-load Tavg anchor | **297 °C — SET (P3, 2026-07-21)** | dump setpoint 8.23 MPa = Psat(297); shallow 7 °C program | Post-trip shrink bite; program span (FG-5/FG-2) | done |
 | `K_sg_level` / dump rate | 5.0 | tune with anchor | Shrink depth/speed (FG-5) | P4 |
 | Heater capacity ÷ outsurge | recovers ≤ ~5 min | keep | Post-trip pressure recovery tempo | P4 |
 
@@ -77,18 +77,18 @@ its consequences instead of hiding them.*
 
 | ID | Behavior | Tier | Probe | Status |
 |----|----------|------|-------|--------|
-| SS-2 | Tavg **monotonically rises** no-load → full power along this plant's program (anchors picked in P3) | I | probe | PASS (placeholder anchors) |
+| SS-2 | Tavg **monotonically rises** no-load → full power along this plant's program — **anchors SET: 297 → ~304 °C** (P3, 2026-07-21); level program rides the same line at 2.5 %/°C (~37.5 → 55 %) | I | probe | **PASS — anchors set** |
 | SS-1 | 100 % snapshot self-consistent (steam≈feed, charging≈letdown, ΔT per power) | C | probe | PASS — band minted at freeze |
 | SS-3 | 50 % point sits *on* the program (no sag) | I | probe:SS-2 | PASS |
 | SS-6 | 5 % steady holds indefinitely (xenon at own-power equilibrium) | I | probe | PASS |
 | SS-8 | Heat-balance closure ±2 % at any steady state | I | probe | PASS? — pin explicitly |
 | EV-4 | All-auto load-follow 100→50→100 hands-off; Tavg tracks program | C | ops load follow | re-band → P3 |
-| EV-3 | ±5 %/min ramps track the program without trip | C | todo | todo → P3 |
+| EV-3 | ±5 %/min ramps: no trip, power follows; rod-less Tavg carries the mismatch (engine pin), program-tracking version in run_autoctl | C | probe + autoctl | **PASS** (P3) |
 | EV-5 | Boration/dilution: ~10 ppm step → clear response, −8..−12 pcm/ppm worth | I | campaign pwr_boron | PASS |
 | EV-7 | Single rod step at 100 %: flux dip, auto recovery ~2 min, no trip | C | probe:EV-6 | PASS? |
 | EV-8 | Xenon transient: peak hours after downpower, needs compensation | I | ops xenon 8h | PASS |
 | EV-6 | Slow manual rod insertion, all-auto: walks down smoothly, no scram | C | probe | PASS (regression insurance) |
-| **EV-11** ⚑ | **Manual dispatch shows its costs** (new, documents probed reality): a slider-only load drop settles ~45 MWe *above* the ask (self-regulation without trim), Tavg sags below program on rod-only reduction, and the down-leg shrink parks SG level low until the operator minds the feed | C | shift-exam gates; battery pin todo | todo → P3 |
+| **EV-11** | **Manual dispatch shows its costs** (owner-ruled character): a slider-only load drop settles above the ask with Tavg parked high of program (un-trimmed mismatch); the M5 fallback feed parks SG level low until minded (shift-exam gates) | C | probe + shift-exam gates | **PASS** (P3) |
 
 ## 5. FG-3 — Physical pressurizer level
 
@@ -186,7 +186,7 @@ safety 17.13 MPa, with reseats ordered below lifts):
 | AFW start | 20 % + on loss of both MFW (PI-4, P4) | |
 | P-14 SG hi-hi | 90 % → TT + FWI, reset 85 % | |
 | SG safeties | 9.31 / 9.0 MPa | |
-| Steam dump setpoint | Psat(no-load anchor) — 7.67 MPa placeholder | moves with the P3 anchor |
+| Steam dump setpoint | 8.23 MPa = Psat(297 °C) | this plant's anchor, set in P3; consumers derive from config |
 | Accumulators | 4.14 MPa | |
 | RHR interlock | 2.76 MPa | |
 | High Tavg trip | 335 °C | ⚑ keep as harmless legible backstop (owner confirm) |

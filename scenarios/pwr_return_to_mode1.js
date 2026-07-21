@@ -23,7 +23,8 @@
     design_version: null,
     initial_state: 'cold_shutdown',
     mode: 'guided',
-    setup_commands: [{ action: 'disconnect_grid' }, { action: 'set_steam_dump_setpoint', mpa: 8.90 }],
+    // No dump-setpoint override: the config default IS the no-load anchor (FG-2).
+    setup_commands: [{ action: 'disconnect_grid' }],
     description: 'The full startup Mode 5, Cold Shutdown → Mode 2, Startup → Mode 1, At Power: heat the cold plant, take it critical, and ride the power up past 5 % into power operation — the other half of the round trip.',
     beats: [
 

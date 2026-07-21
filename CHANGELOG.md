@@ -9,6 +9,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **PWR — the plant got its own temperature program: 297 → ~304 °C.** The no-load anchor
+  is now 297 °C (steam dump setpoint 8.23 MPa), a deliberately shallow 7 °C program that
+  fits a small plant with a generously-sized steam generator — and roughly halves the
+  stored heat a reactor trip dumps into the SG, for a gentler post-trip shrink. Hot
+  standby, heatup targets, and the pressurizer level program (now ~37 % no-load → 55 %
+  full power) all follow the anchor automatically; Mode-transition scenarios and drivers
+  derive it from config instead of hardcoding it.
 - **PWR — the pressurizer level gauge is now physical.** Level is derived from what's
   actually in the plant — inventory, coolant thermal expansion, and (only when the primary
   really saturates) void displacement — instead of drifting on its own integrator. What

@@ -26,7 +26,8 @@
     mode: 'guided',
     // Pre-stage the secondary: turbine offline (no steam draw) so the steam
     // generators bottle up to the no-load setpoint as the plant heats.
-    setup_commands: [{ action: 'disconnect_grid' }, { action: 'set_steam_dump_setpoint', mpa: 8.90 }],
+    // No dump-setpoint override: the config default IS the no-load anchor (FG-2).
+    setup_commands: [{ action: 'disconnect_grid' }],
     description: 'The heatup Mode 5, Cold Shutdown → Mode 4, Hot Shutdown → Mode 3, Hot Standby: pressurize, start the pumps, take the core critical at low power and ride the temperature up to normal operating conditions.',
     beats: [
 

@@ -1051,13 +1051,14 @@ test('pwr_mode3_to_mode5 — controlled cooldown reaches Cold Shutdown', functio
   //    descent — hold at 13.45 MPa and RETRY until the block is accepted.
   //  - CVCS AUTO make-up holds PZR level against the cooldown shrink (manual
   //    charging management fought the servo and lost — pzr_level low scram).
-  var below = false, blockedLP = false, lastT = null, dumpSp = 8.90, prSp = 15.41;
+  var noLoadSp = RD.PWR_CONFIG.steam_generator.steam_dump_setpoint;
+  var below = false, blockedLP = false, lastT = null, dumpSp = noLoadSp, prSp = 15.41;
   var snap = runUntil(s, function (sn) {
     var t = s.engine.getTrueState();
     var dtSim = lastT == null ? 0 : s.simTime - lastT; lastT = s.simTime;
     s.handleCommand({ action: 'set_cvcs_auto', active: true });
-    dumpSp = Math.max(clampC(psatC(t.tavg_c - 30), 0.3, 8.90), dumpSp - 0.002 * dtSim);
-    s.handleCommand({ action: 'set_steam_dump_setpoint', mpa: clampC(dumpSp, 0.3, 8.90) });
+    dumpSp = Math.max(clampC(psatC(t.tavg_c - 30), 0.3, noLoadSp), dumpSp - 0.002 * dtSim);
+    s.handleCommand({ action: 'set_steam_dump_setpoint', mpa: clampC(dumpSp, 0.3, noLoadSp) });
     var spTarget = psatC(t.tavg_c + 30);
     prSp = Math.max(blockedLP ? 0.5 : 13.45, Math.min(prSp - 0.01 * dtSim, clampC(spTarget, 0.5, 15.41)));
     s.handleCommand({ action: 'set_pressure_setpoint', mpa: clampC(Math.max(prSp, blockedLP ? spTarget : 13.45), 0.5, 15.41) });

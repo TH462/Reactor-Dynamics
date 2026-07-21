@@ -42,7 +42,7 @@
     'SS-5': 'probe', 'SS-6': 'probe', 'SS-7': 'existing:run_pwr cold_shutdown_hold',
     'SS-8': 'probe',
     'EV-1': 'existing:run_pwr mode5_to_mode1_roundtrip', 'EV-2': 'existing:run_ops cooldown + run_pwr rhr_valve_and_mode',
-    'EV-3': 'todo (re-band after SS-2 tuning)', 'EV-4': 'existing:run_ops load follow (re-band after SS-2)',
+    'EV-3': 'probe', 'EV-11': 'probe', 'EV-4': 'existing:run_ops load follow (re-band after SS-2)',
     'EV-5': 'existing:run_campaign pwr_boron', 'EV-6': 'probe', 'EV-7': 'probe:EV-6',
     'EV-8': 'existing:run_ops xenon 8h', 'EV-9': 'existing:run_campaign startup ×2',
     'EV-10': 'existing:run_pwr transient_loss_vacuum',
@@ -96,14 +96,17 @@
 
     // Also covers SS-3 (50% point) and SS-4 (HZP point).
     'SS-2': function () {
-      return test('SS-2 Tavg program — rises with load (292 → 306 °C)', function (ck) {
+      // This plant's program (feel-plan P3): shallow 297 → ~304 °C — a small plant
+      // with a generously-sized SG needs less ΔT growth with load. The monotonic
+      // rise is the [I] invariant; the anchor numbers are this plant's character.
+      return test('SS-2 Tavg program — rises with load (297 → ~304 °C)', function (ck) {
         var hz = H('hot_zero_power'); hz.run(300);
         var h5 = H('50_percent');     h5.run(600);
         var hf = H('hot_full_power'); hf.run(300);
         var t0 = hz.ts().tavg_c, t50 = h5.ts().tavg_c, t100 = hf.ts().tavg_c;
-        ck('no-load Tavg 290..294 °C', fmt(t0, 1), t0 > 290 && t0 < 294, '290..294');
-        ck('50% Tavg 296..302 °C (SS-3)', fmt(t50, 1), t50 > 296 && t50 < 302, '296..302');
-        ck('program rises ≥ 8 °C no-load → full', fmt(t100 - t0, 1), (t100 - t0) >= 8, '≥ 8');
+        ck('no-load Tavg 295..299 °C', fmt(t0, 1), t0 > 295 && t0 < 299, '295..299');
+        ck('50% Tavg 299..303 °C (SS-3)', fmt(t50, 1), t50 > 299 && t50 < 303, '299..303');
+        ck('program rises ≥ 5 °C no-load → full', fmt(t100 - t0, 1), (t100 - t0) >= 5, '≥ 5');
         ck('monotonic: no-load < 50% < 100%', fmt(t0, 1) + ' < ' + fmt(t50, 1) + ' < ' + fmt(t100, 1),
           t0 < t50 && t50 < t100, 'monotonic');
       });
@@ -151,6 +154,53 @@
     },
 
     // ======================================================= 2. normal evolutions
+
+    // FG-2: a stepped load ramp completes with no trip and power follows the
+    // demand down. At ENGINE level (no rods_tavg channel) Tavg RISES to carry the
+    // mismatch — the MTC sheds the power thermally; that is the honest rod-less
+    // physics. The program-TRACKING version of this ramp (Tref slides, rods walk
+    // Tavg down) is pinned in run_autoctl's demand-swing suite.
+    'EV-3': function () {
+      return test('EV-3 load ramp (rod-less) — power follows, Tavg carries the mismatch, no trip', function (ck) {
+        var h = H('hot_full_power');
+        h.run(60);
+        var t0 = h.ts().tavg_c;
+        for (var i = 1; i <= 6; i++) {           // 1000 → 700 MWe in 50 MWe steps, ~5 %/min
+          h.cmd('set_load_target', { mwe: 1000 - i * 50 });
+          h.run(60);
+        }
+        h.run(300);
+        var t = h.ts();
+        ck('no trip through the ramp', h.tripReason || 'none', h.tripTime == null, 'none');
+        ck('power followed the demand down (≤ 80 %)', fmt(t.power_pct, 1), t.power_pct <= 80, '≤ 80');
+        ck('Tavg rose to carry the rod-less mismatch (MTC self-regulation)',
+          fmt(t0, 1) + ' → ' + fmt(t.tavg_c, 1), t.tavg_c > t0 + 5, 'rises');
+        ck('bounded below the high-Tavg backstop (335)', fmt(t.tavg_c, 1), t.tavg_c < 330, '< 330');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    // FG-2 / EV-11 (owner ruling 2026-07-21: pinned as intended character): manual
+    // slider-only dispatch SHOWS ITS COSTS — output settles ABOVE the ask and Tavg
+    // parks high (HI TAVG territory) because nothing trims the mismatch away.
+    // Teaching behavior, not defects. (The mind-the-feed half of EV-11 — SG parking
+    // low on the M5 fallback coupling — is pinned by the pwr_shift_exam campaign
+    // gates; the engine-level coupled feed holds SG level, so it isn't tested here.)
+    'EV-11': function () {
+      return test('EV-11 manual dispatch shows its costs (slider-only ask)', function (ck) {
+        var h = H('hot_full_power');
+        h.run(60);
+        h.cmd('set_load_target', { mwe: 850 });
+        h.run(900);
+        var t = h.ts();
+        ck('no trip — the plant carries a slider-only cut', h.tripReason || 'none', h.tripTime == null, 'none');
+        ck('output settles ABOVE the ask (self-regulation without trim)',
+          fmt(t.mwe_output, 0) + ' vs ask 850', t.mwe_output > 860, '> 860');
+        ck('Tavg parks HIGH of program (the un-trimmed mismatch shows)',
+          fmt(t.tavg_c, 1), t.tavg_c > 305, '> 305');
+        T.checkSanity(ck, h);
+      });
+    },
 
     // Also covers EV-7. Regression insurance for closed #25.
     'EV-6': function () {

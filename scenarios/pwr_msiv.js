@@ -15,7 +15,7 @@
  * fires (early: the drain gets there at ~50 s anyway; late: the bulk steam
  * draw on reopening shrinks the level through the setpoint immediately). What
  * reopening DOES buy is the aftermath: with the MSIV open the steam dump
- * (~8.9 MPa no-load setpoint) carries decay heat to the condenser and the
+ * (~8.2 MPa no-load setpoint) carries decay heat to the condenser and the
  * safeties reseat for good; with it shut the code safeties cycle 9.31/9.0 on
  * decay heat indefinitely. Both endpoints teach; the cards say exactly this.
  * AFW refills either way to its ~24 % hold by ~4 min after closure.
@@ -104,7 +104,7 @@
         ] },
         commentary: {
           learning: 'SCRAM on low level — and now the difference you made: pressure is falling to the steam dump’s setpoint, the code safeties have reseated, and decay heat is flowing to the condenser like it should. AFW is refilling the boiler. Fast clock while she comes back.',
-          industry: 'Low-SG trip. Post-trip lineup with the MSIV open: steam dump (~8.9 MPa no-load setpoint) carries decay heat to the condenser; SG safeties reseated; AFW refilling to its hold. Time 10× through recovery.',
+          industry: 'Low-SG trip. Post-trip lineup with the MSIV open: steam dump (~8.2 MPa no-load setpoint) carries decay heat to the condenser; SG safeties reseated; AFW refilling to its hold. Time 10× through recovery.',
         },
         speed: 10,
         advance: 'wait_for_trigger' },

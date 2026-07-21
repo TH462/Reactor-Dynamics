@@ -250,7 +250,7 @@
   // rods walk Tavg down the program (the old capture-and-hold froze Tavg flat — P4).
   function _tsat(P) { return 179.47 * Math.pow(Math.max(P, 1e-6), 0.239); }
   var _thm = RD.PWR_CONFIG ? RD.PWR_CONFIG.thermal : {};
-  var TAVG_NOLOAD = _tsat((_sg && _sg.steam_dump_setpoint) || 7.67);
+  var TAVG_NOLOAD = _tsat((_sg && _sg.steam_dump_setpoint) || 8.23);
   var TAVG_FULLPOWER = _tsat((_sg && _sg.steam_p_rated) || 5.65)
     + (_thm.heat_gen_coeff * (1 + (_thm.pump_heat_frac || 0))) / _thm.h_sg;
   function trefProgram(loadFrac) { return TAVG_NOLOAD + (TAVG_FULLPOWER - TAVG_NOLOAD) * clip(loadFrac, 0, 1); }
@@ -259,7 +259,7 @@
   var PWR_CHANNELS = [
     { id: 'rods_tavg', kind: 'rods', group: 'Reactor',
       label: 'Rod control → Tavg (AUTO)',
-      hint: 'Automatic rod control — the reference temperature Tref is PROGRAMMED on turbine load (a sliding ~292 °C no-load → ~305 °C full-power line), and the rods drive indicated Tavg to it: a Tavg−Tref mismatch (e.g. after a load change) computes the required rod direction and a Westinghouse-style variable speed (bigger error → faster drive), locking up inside a ±0.8 °C (±1.5 °F) deadband. As load changes Tref slides with it, so the rods walk Tavg along the program. Any manual rod motion takes it back to MAN.',
+      hint: 'Automatic rod control — the reference temperature Tref is PROGRAMMED on turbine load (a sliding ~297 °C no-load → ~304 °C full-power line), and the rods drive indicated Tavg to it: a Tavg−Tref mismatch (e.g. after a load change) computes the required rod direction and a Westinghouse-style variable speed (bigger error → faster drive), locking up inside a ±0.8 °C (±1.5 °F) deadband. As load changes Tref slides with it, so the rods walk Tavg along the program. Any manual rod motion takes it back to MAN.',
       group_id: 'control_rods', offOnScram: true,
       manual_overrides: ['rod_nudge', 'rod_start'],   // operator rod motion on this group → MAN
       pv: function (s) { return s.instruments.tavg; },
