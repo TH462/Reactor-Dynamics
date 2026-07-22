@@ -105,6 +105,18 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-22 — ECCS pump merge — change plan drafted (awaiting owner approval)  ⏸
+Owner reversed the dedicated-ECCS-pump ruling (it was written on faulty info; real Westinghouse
+charging pumps ARE the high-head SI pumps). Decision: combine makeup + high-head HPI into one
+pump ("one pump, two speeds"), keep LPI/RHR as its own pump, no throttle valve in the diagram.
+Grounded change plan written to **`Blueprint/ECCS_PUMP_MERGE_PLAN.md`** (verified board state:
+two adjacent pump glyphs, HPI panel is the only injection control, NO board RHR card — RHR is
+auto). Recommends **Option B**: the HPI panel becomes the Safety-Injection actuation driving
+BOTH pumps (charging/HPI high-head immediately; RHR/LPI low-head once depressurized), LPI stays
+automatic → no new card. Full file/symbol change-list + 4 open decisions (D1 Option A vs B, D2
+loss-of-charging-pump coupling, D3 labels, D4 hpi_flow_hh/lh snapshot fields). **Not yet
+implemented** — pending owner sign-off on D1–D4.
+
 ### 2026-07-22 — Audit: hunt for other flow-scale/node mistakes (PWR)  ✅ clean
 **Owner request:** in light of the CVCS bug (a cold-leg flow scaled against the whole primary
 volume), review the PWR code for other instances of the same class.
