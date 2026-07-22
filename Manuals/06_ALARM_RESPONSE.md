@@ -211,9 +211,9 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | ≤ **12 %** (SCRAM) |
+| **Setpoint** | ≤ **12 %** (SCRAM + auto SI) |
 | **Means** | Critical inventory indication. |
-| **Actions** | 1) Verify SCRAM. 2) Maximize charging / HPI. 3) Find inventory loss. |
+| **Actions** | 1) Verify SCRAM. 2) Verify **HPI auto-actuation** (SI initiates on PZR level lo-lo when the HPI arm is AUTO). 3) Maximize charging. 4) Find inventory loss. |
 
 ---
 

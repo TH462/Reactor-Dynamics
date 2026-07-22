@@ -31,7 +31,7 @@ below and go straight to the authoritative source for it.
 | **Know what changed recently** | `CHANGELOG.md` (skimmable) → `Blueprint/BUILD_DECISIONS.md` (dense engineering rationale, tuning, gate tallies). |
 | **Operate the plant / look up a control, setpoint, or procedure** | `Manuals/` — start at `Manuals/README.md` (commercial-format PWR operator manuals). |
 | **See current known issues, tuning gaps, playtest findings** | `Diagnostic/` (`SPEC_AUDIT_*.md`, `OPS_TUNING_REPORT.md`, `PLAYTEST_REPORT.md`) and `Manuals/ISSUES_AND_FINDINGS.md`. |
-| **Tune plant behavior (the physics "knobs")** | Each plant's **`[tune]`-annotated constants** in `engines/<plant>/<plant>_config.js` (PWR 88, RBMK 27, BWR 37 — the file header explains the convention: `[tune]` values are starting points arbitrated by the scenario suite; un-marked values are fixed). Protection/alarm/failure setpoints are data too, in `layers/control/<plant>_control.js`. Validate a change with `test/run_ops.js` (behavior probes) and `test/run_behavior.js`; open tuning targets are tracked in `Diagnostic/OPS_TUNING_REPORT.md`. |
+| **Tune plant behavior (the physics "knobs")** | Each plant's **`[tune]`-annotated constants** in `engines/<plant>/<plant>_config.js` (PWR 89, RBMK 27, BWR 37 — the file header explains the convention: `[tune]` values are starting points arbitrated by the scenario suite; un-marked values are fixed). Protection/alarm/failure setpoints are data too, in `layers/control/<plant>_control.js`. Validate a change with `test/run_ops.js` (behavior probes) and `test/run_behavior.js`; open tuning targets are tracked in `Diagnostic/OPS_TUNING_REPORT.md`. |
 | **Run the simulator** | Open `index.html` (the ReactorDynamics.com landing page — Operate the PWR from there), or `ui/shell.html` directly — see below. |
 | **Run the tests** | `node test/run_<suite>.js` — see below. |
 
@@ -48,7 +48,9 @@ below and go straight to the authoritative source for it.
 > is the at-a-glance truth for the next agent. The dense, append-only version lives in
 > `Blueprint/BUILD_DECISIONS.md` (Status line + Open Flags table) — update both.
 
-_Last updated: 2026-07-19 (PWR pre-ship review)._
+_Last updated: 2026-07-22 (P7 CVCS↔inventory retune — letdown/charging off the accident scale,
+SGTR re-anchored to ½ HPI, SI-on-pzr-level-lo-lo ESF added; see `Diagnostic/OPS_TUNING_REPORT.md`
+update 2026-07-22b)._
 
 **Layers**
 - **Physics engines complete** — PWR (M1) ✅, RBMK (M2) ✅, BWR (M3) ✅. All three have
@@ -78,16 +80,18 @@ _Last updated: 2026-07-19 (PWR pre-ship review)._
 **Current gate baselines** (a change should keep these at or above baseline — see
 _Definition of done_): PWR engine suite **31/31**, BWR **15/15**, RBMK **23/23**, campaign
 **51/51**, `run_m4` **18/18**, `run_m5` **19/19**, `run_m6` **16/16**, `run_autoctl` **20/20**,
-`run_e2e_controls` **27/30** (3 pre-existing reds unrelated to CVCS balance — a PZR-spray
-reach check and two CVCS-auto-vs-severity-1.0-SGTR expectations that are stale after the SGTR
-leak rescale; the leak now starts at 2× charging capacity so "auto holds ≥98 %" is no longer
-physical — follow-up, not a regression), `run_procedures` **21/21** (1 strict known-fail, B3),
-`verify_e2e_ui` **PASS** (renders every plant×view, throws on any console error, asserts required
-controls), `verify_manual_follow` **84**, M7 **OK**, ops probes **58/68** (every FAIL is a documented
-tuning target with a hard acceptance check — P4, R1/R2/R3, B2/B3/B4/B5, the deliberately-red
-C2 accel-latency check, and P7 the CVCS pressurizer drain-rate target
-(`ops_cvcs_pzr_drain_rate` — letdown drains the pzr ~1000× too fast, a lumped-inventory-scale
-gap); see `Diagnostic/OPS_TUNING_REPORT.md`).
+`run_behavior` **30/0/0**, `run_e2e_controls` **28/30** (2 pre-existing F12 reds — a PZR-spray
+reach check and the CVCS-auto-vs-severity-1.0-SGTR "holds ≥98 %" expectation, both stale;
+the third F12 red turned green with the 2026-07-22 P7 retune), `run_procedures` **21/21**
+(1 strict known-fail, B3), `run_checklist` **24/24**, `verify_e2e_ui` **FAIL (pre-existing,
+verified on clean HEAD 4df8ac5 — pwr/primary board controls not found by the harness; same
+family as the `verify_manual_follow` PwrSynoptic-probe staleness, follow-up)**,
+`verify_manual_follow` **84** (30 pre-existing PWR bar-check fails, documented 2026-07-21),
+M7 **OK**, ops probes **59/68**, PWR **21/21** (every FAIL is a documented RBMK/BWR tuning
+target with a hard acceptance check — P4, R1/R2/R3, B2/B3/B4/B5, and the deliberately-red
+C2 accel-latency check; **P7 resolved 2026-07-22** — CVCS letdown/charging now enter the
+mass balance through `cvcs_inventory_gain`, an uncompensated 20 gpm letdown walks the pzr
+down ~2 %/min; see `Diagnostic/OPS_TUNING_REPORT.md` update 2026-07-22b).
 
 ---
 

@@ -31,7 +31,7 @@ where the two differ or where judgment was exercised.
 | F9 | M5/M6·PH/M7 | Integration tests assert `rod_nudge` reaches the engine **instantly** (`210 → 200`), but the engine now does a **rate-limited nudge** (drives a `nudge_target` over sim time — the "rod control reworked" change). The one-step assertion sees `210→210` and fails. **Pre-existing** (reproduces on clean HEAD; unrelated to the BOP work) — the stale check needs to step the sim forward after nudging. | test | **open** — fix the 3 integration tests to run the sim after `rod_nudge` |
 | F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **RESOLVED (M6)** — highlights auto-reveal hidden controls on both mechanisms: RBMK/BWR `findPdControl()` switches the owning view tab (`app.js`); PWR `RD.PwrSynoptic.revealControl(label)` opens the owning card tab/section via the data-driven `SYN_CONTROL_MAP` (`pwr_synoptic.js`). `verify_manual_follow.js` now checks PWR controls through the same reveal path. |
 | F10 | M2/M8 | **RBMK automatic-regulator (AR) rod group** (user-directed): add a third, small-worth (~5–8% of the manual bank, no displacer), fine-step group — the authentic RBMK AR. The Automate rod channel drives IT (fixes the ±4%/step hold granularity); its diagram/control card carries its own AUTO/MAN selector mirroring the Automate channel; disengaging = taking manual control (the pre-Chernobyl condition — scenario beat material). Include AR in ORM; scram drives it in; keep the positive-scram displacer exclusively on the manual bank so the Chernobyl acceptance suite stays green. NO second manual group — the AR under manual override IS the fine manual bank. | planned | **RESOLVED (2026-07-07)** — built as specced (see the dated entry); the Chernobyl AR scenario beat is authored under F11. |
-| F12 | M8/test | **`run_e2e_controls` 27/30 — 3 pre-existing reds** (predate the CVCS-balance fix; verified on clean HEAD). (a) *PZR spray manual set reaches engine* — expects spray ≥45 % at the engine, gets 12; the spray-demand reach drifted. (b/c) *CVCS auto make-up holds inventory vs leak* / *AUTO charging converged to match the leak* — written against an old SGTR scale (comment says leak ≈0.0024/s); the leak now starts at **0.12/s = 2× charging capacity** and tapers with ΔP, so "auto holds ≥98 %" and "charging matches the leak" are no longer physical for a violent severity-1.0 SGTR. Fix = re-baseline these two tests to the current SGTR trajectory (or assert against a small leak the servo *can* match), and re-check the spray reach. | test | **open** — separate from CVCS make-up balance (that fix landed 2026-07-21) |
+| F12 | M8/test | **`run_e2e_controls` 28/30 — 2 pre-existing reds** (was 3; (c) *AUTO charging converged to match the leak* turned green with the 2026-07-22 P7 retune/SGTR re-anchor). (a) *PZR spray manual set reaches engine* — expects spray ≥45 % at the engine, gets 12; the spray-demand reach drifted. (b) *CVCS auto make-up holds inventory vs leak* — "auto holds ≥98 %" is not physical for a severity-1.0 SGTR (now 0.03 frac/s ≈ 40× CVCS make-up authority); re-baseline to the current trajectory or assert against a small leak the servo *can* match. | test | **open** — spray reach + one stale SGTR expectation |
 | F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **RESOLVED (2026-07-07)** — rbmk_ar + pwr_automation missions, auto_channels presets exercised end-to-end (startScenarioAuto gate harness), Chernobyl AR tie-in. Pre-existing missions deliberately left bare (triggers tuned against bare-plant trajectories). |
 
 ---
@@ -3222,3 +3222,68 @@ pwr 31/31, behavior 30/0/0, ops-pwr 20/20, autoctl 20/20, scenarios 3/3, campaig
 `verify_manual_follow` PWR bar checks fail 30 on clean HEAD too (worktree-verified
 pre-existing: like `verify_e2e_ui`, it still probes the retired `RD.PwrSynoptic`
 reveal while the board display mounts); its manual-pill and rbmk/bwr checks pass.
+
+### P7 CVCS↔inventory retune — letdown drain rate, SGTR re-anchor, SI on level (2026-07-22)
+
+**Owner request:** "letdown can drain the pressurizer way too fast — too fast to respond to and
+unrealistic; do a tuning pass and evaluate associated behaviors." This SUPERSEDES the 2026-07-21
+ruling ("do not rescale; bound it with interlocks") — the drain *rate* itself is now the defect.
+
+**The retune.** New `[tune]` `cvcs_inventory_gain: 0.012` (`pwr_config.js reactivity`): CVCS
+charging/letdown normalized flows (gauge scale — orifice A 0.030 ≡ 20 gpm) enter
+`pwr_primary.stepInventory`'s mass balance through this gain instead of 1:1 on the accident
+scale (leak/ECCS/relief keep the fast lumped scale — accident pacing untouched). Result:
+uncompensated orifice-A drain ≈ **2.2 %/min** of pzr level (was ~2 %/s — the "drain the plant in
+30 s" bug); A+B ≈ 5 %/min; max manual charging ≈ 13 %/min (going-solid regime). Gain window was
+constraint-derived before tuning: probe `ops_cvcs_pzr_drain_rate` needs ≥300 s per 15 % (g ≤
+0.017); CA-4's PI-8 overfill backstop must trip inside 300 s (g ≥ ~0.008). 0.012 splits it.
+
+**Servo re-tune (forced by the same change).** The AUTO make-up loop gain is
+`cvcs_charge_per_level · g · level_per_mass`; with g down ~80×, the old 0.001 parked a CC-8-size
+leak (2.4e-4 frac/s) ~20 % below program → CC-10's "inventory 97..103" failed at 96. Stiffening
+alone hits CA-3's noise ceiling (charging must NOT chase gauge noise: max excursion ≤ letdown +
+0.012 over 600 s). Resolution: a first-order **damping filter on the level error**
+(`cvcs_level_filter_tau: 20 s`, new engine state `_cvcs_err_f`, reseeded on AUTO engage — a real
+M/A station's damping) kills the noise path, letting `cvcs_charge_per_level` go 0.001 → **0.01**
+(loop τ ≈ 83 s; the CC-8 leak parks ~2 % low). Save-compat: `_cvcs_err_f` lazily seeded, old
+saves fine. Deleted dead config `cvcs_makeup_gain` (defined, never read) and the write-only
+`_charging_actual` stash (stale since the CC-10 derived-level rework).
+
+**Knock-on 1 — SGTR re-anchored (`leak_scale` 0.12 → 0.03).** The FG-6 anchor "full rupture =
+2× charging_max" was premised on charging living on the accident inventory scale; post-retune
+that comparison is meaningless — and the old scenario pass was FAKE: AUTO charging had been
+delivering up to 0.06 frac/s ≈ a second full HPI, silently carrying `ops_sgtr_managed`
+(inventory hit literal 0.0 without it). New anchor, same intent: full rupture = 0.03 frac/s ≈
+½ HPI high-head rated ≈ 2× SI-at-pressure — still overwhelms CVCS (~40× its make-up authority),
+still forces trip + SI + EOP, and the subcooling-guarded walk-down now WINS the inventory race
+(min 55.2 %, final 92 %). Behavior probes that encode absolute leak sizes had severities ×4
+(CA-3 0.012, CC-8/CC-10 0.008, CC-10b 0.024); TR-13's anchor is now computed against
+`charging_max · cvcs_inventory_gain`; TR-13's "delivered < 0.9×base" outcome check re-scoped to
+assert the ΔP-modulation MECHANISM (post-retune hands-off anatomy: trip + SI hold the primary
+subcooled at pressure while the overcooled secondary sags, so ΔP can sit at/above rated — the
+walk-down outcome lives in `ops_sgtr_managed`).
+
+**Knock-on 2 — SI on pzr level lo-lo (P1(b) CLOSED).** With the smaller leak the heaters
+out-muscle `K_leak_depressurize`, so the pressure-only SI path never fires while a leak drains
+the RCS at full pressure — exactly the P1(b) gap. New ESF actuation (`pwr_control.js`):
+`pzr_level low 12 %` → `set_hpi`, latched (re-arm above 20 %, NO reset_action — securing SI is
+deliberate), riding the existing `hpi` ESF arm, so the cold P-11 disarm and operator-manual
+override gate it for free. TMI untouched: its deceived level reads HIGH, so this path stays
+silent (and that silence IS the historical lesson).
+
+**Knock-on 3 — `ops_sgtr_managed` EOP made faithful.** The scripted EOP throttled SI on
+subcooling alone; real SI-termination criteria require subcooling AND pzr level recovered.
+Added the level condition (terminate only >33 %, re-initiate <20 % or margin <15). The old
+script survived only on the phantom charging.
+
+**Manuals:** 09 §3.0 gained the SI-on-level row AND the (previously undocumented) 17 % letdown
+isolation row; 06 PWR-A14 notes auto-SI; 03 §7.3 gained a "rate feel" bullet (≈2 %/min etc.).
+Repacked (`pack_manuals`), reference regenerated.
+
+**Gates after:** pwr 31/31 · rbmk 23/23 · bwr 15/15 · behavior 30/0/0 · ops **59/68** (PWR
+21/21, zero fails — P7 green; 9 remaining are documented RBMK/BWR + deliberate C2) · m4 18/18 ·
+m5 19/19 · m6 16/16 · m7 OK · autoctl 20/20 · scenarios 3/3 · campaign 51/51 (2897) ·
+procedures 21/21 · checklist 24/24 · e2e_controls **28/30** (F12 shrank by one — "AUTO charging
+converged" turned green; 2 stale reds stand) · `verify_e2e_ui` FAIL **pre-existing** (verified
+identical on clean HEAD 4df8ac5; same retired-PwrSynoptic-probe family as the documented
+`verify_manual_follow` 30-check fail).

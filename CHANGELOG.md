@@ -8,6 +8,34 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **PWR — CVCS now moves inventory at a realistic pace.** Letdown and charging (tens of
+  gpm) used to act on the primary at the same lumped "accident" scale as a LOCA, so an
+  uncompensated 20 gpm letdown drained the pressurizer ~2 %/**second** — far too fast for
+  any operator to respond. A new engine coupling (`cvcs_inventory_gain`) puts CVCS on its
+  own scale: orifice A now walks pressurizer level down **≈ 2 %/minute** (A+B ≈ 5 %/min;
+  max charging fills ≈ 13 %/min), so mistakes take minutes to matter and the 17 % letdown
+  isolation / low-level protections have honest time to backstop you. The AUTO make-up
+  servo was re-tuned to match (a damped level error lets it hold a small leak ~2 % below
+  program without chasing gauge noise).
+- **PWR — SGTR rescaled onto its ESF yardstick.** A full-severity tube rupture is now
+  ~½ of HPI's rated high-head flow (≈ 2× what SI delivers at pressure): it still
+  overwhelms CVCS and forces the trip + SI + EOP, but the single-SG EOP's
+  subcooling-guarded depressurization can now actually win the inventory race (the old
+  scale only looked survivable because AUTO charging was acting as an unphysical second
+  HPI — a side effect removed by the CVCS retune). Severity is still an honest 0–100 % of
+  a full rupture.
+
+### Added
+- **PWR — Safety Injection on pressurizer level LO-LO (12 %).** Real ESFAS protects
+  inventory, not just pressure: HPI now auto-starts when pressurizer level falls to 12 %
+  (with the low-level reactor trip), even when the heaters are holding pressure up. It
+  rides the existing HPI AUTO arm (cold/depressurized lineups stay blocked per P-11;
+  taking manual SI control disarms it), re-arms above 20 %, and never fires during the
+  TMI deception (the failed level channel reads *high* — which is the lesson).
+  Documented in Manuals 09 §3.0 (along with the previously undocumented 17 % letdown
+  isolation row) and 06 (PZR LVL LO LO response).
+
 ### Fixed
 - **PWR board — every setpoint box now clamps to its valid range and auto-corrects
   out-of-range entries.** Typing a number above the max (or below the min) snaps the box

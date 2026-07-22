@@ -84,6 +84,8 @@
 | Open PORV | primary_pressure | high | **16.20 MPa** | Close/reseat **15.86 MPa** |
 | Open PZR safety | primary_pressure | high | **17.13 MPa** | Reseat **16.55 MPa** |
 | HPI start (Safety Injection) | primary_pressure | low | **12.4 MPa** | ESF arm must be AUTO; arrives with the low-pressure trip |
+| HPI start (SI on PZR level lo-lo) | pzr_level | low | **12 %** | Inventory-protecting SI path — fires with the 12 % low-level trip even if the heaters are holding pressure; re-arms above **20 %**; rides the HPI arm |
+| Letdown isolation | pzr_level | low | **17 %** | Closes both letdown orifices before the 12 % low-level trip; re-arms above **20 %**; restoration is a deliberate operator action (no auto-reopen) |
 | Feedwater isolation (on SI) | primary_pressure | low | **12.4 MPa** | Rides the HPI arm (PI-5) |
 | AFW start | sg_level | low | **20 %** | ESF arm must be AUTO |
 | AFW start (loss of MFW, PI-4) | fw_flow | low | **0.10** normalized | Above P-9 (≥50 % power) |

@@ -293,18 +293,23 @@
         h.cmd('set_letdown_orifices', { a: false, b: false });
         // EOP: subcooling-guarded depressurization — walk the pressure setpoint
         // down toward SG pressure (spray does the work below the setpoint),
-        // throttle HPI once subcooling is comfortable so it stops repressurizing
-        // the primary against the leak. (The initial blowdown of a full-bore
-        // rupture BRIEFLY touches saturation before SI catches it — physics;
-        // the hold-subcooling requirement is on the MANAGED phase below.)
-        // "Held" is measured from the moment SI first RESTORES the margin (>15) —
-        // the blowdown tail overlaps the start of this window by a few seconds.
+        // throttle HPI per the REAL SI-termination criteria: subcooling
+        // comfortable AND pressurizer level recovered. (The old script gated on
+        // subcooling alone — that was survivable only while AUTO charging acted
+        // as an unphysical second HPI on the accident inventory scale; post-P7-
+        // retune, level/inventory is HPI's job and terminating SI while the pzr
+        // is empty drains the plant, exactly as it would for a real crew.)
+        // (The initial blowdown of a full-bore rupture BRIEFLY touches saturation
+        // before SI catches it — physics; the hold-subcooling requirement is on
+        // the MANAGED phase below. "Held" is measured from the moment SI first
+        // RESTORES the margin (>15) — the blowdown tail overlaps the start of
+        // this window by a few seconds.)
         var minSubEop = 1e9, eopArmed = false;
         h.run(2400, function (hh) {
           if (!eopArmed && hh.ts().subcooling_c > 15) eopArmed = true;
           if (eopArmed) minSubEop = Math.min(minSubEop, hh.ts().subcooling_c);
           var ins = hh.ins();
-          var m = ins.subcooling_margin;
+          var m = ins.subcooling_margin, lvl = ins.pzr_level;
           var sgP = hh.ts().steam_pressure_mpa;
           // Depressurize only while the margin is comfortable; when it thins,
           // FREEZE the setpoint at current pressure (the restore term otherwise
@@ -316,8 +321,10 @@
           var target = m > 28 ? Math.max(sgP, 2.0) : hh.ts().pressure_mpa + 0.3;
           hh.cmd('set_pressure_setpoint', { mpa: Math.max(2.0, Math.min(target, 15.41)) });
           hh.cmd('set_spray', { pct: m > 40 ? 100 : (m > 28 ? 25 : 0) });
-          if (m > 30 && hh.ts().hpi_active) hh.cmd('set_hpi', { active: false });
-          else if (m < 15 && !hh.ts().hpi_active) hh.cmd('set_hpi', { active: true });
+          // SI termination: margin comfortable AND level back on span (recovering).
+          // SI (re)initiation: margin thin OR level lost off the bottom of the span.
+          if (m > 30 && lvl > 33 && hh.ts().hpi_active) hh.cmd('set_hpi', { active: false });
+          else if ((m < 15 || lvl < 20) && !hh.ts().hpi_active) hh.cmd('set_hpi', { active: true });
         });
         var t = h.ts();
         ck('no fuel damage under the EOP', t.melted, !t.melted, 'false');
@@ -366,20 +373,18 @@
       });
     },
 
-    // CVCS pressurizer drain-rate TUNING PROBE (owner request 2026-07-22): "how fast does
+    // CVCS pressurizer drain-rate probe (owner request 2026-07-22): "how fast does
     // CVCS drain the pressurizer should be a test performed for tuning." Lines up one
     // letdown orifice (~20 gpm) with make-up secured (charging 0, no CVCS auto) and times
     // how fast the pressurizer walks down. Pressure is held by the heaters during the
     // drain, so there is no HPI confound — it is a clean letdown-out measurement.
     //
-    // This is a RED tuning target by design. Letdown/charging share the lumped inventory
-    // scale with LOCA/leak/ECCS (pwr_primary.stepInventory) and level_per_mass=100 maps
-    // pzr level to RCS mass 1:1, so a ~20 gpm orifice reads as ~3 %/s of inventory —
-    // ~2 %/s of pzr level, i.e. a 15 % swing in ~7 s. A real ~20 gpm bleed against a real
-    // pressurizer + RCS inventory takes MINUTES (tens of minutes) to move level that far;
-    // the probe fails until the CVCS↔inventory coupling is rescaled off the LOCA scale
-    // (see BUILD_DECISIONS "CVCS make-up — bumpless transfer + letdown isolation"). It
-    // also confirms the low-level letdown-isolation interlock bounds the drain.
+    // This is the acceptance test for the P7 retune (cvcs_inventory_gain): CVCS
+    // charging/letdown no longer enter the mass balance 1:1 on the accident scale —
+    // a ~20 gpm orifice now walks pzr level down ~2 %/min (0.030 · gain ·
+    // level_per_mass), so an uncompensated drain takes minutes to matter and the
+    // operator can respond. It also confirms the low-level letdown-isolation
+    // interlock still bounds the (slower) drain before the primary empties.
     ops_cvcs_pzr_drain_rate: function () {
       return test('OPS CVCS pzr drain rate — letdown, no make-up (TUNING TARGET)', function (ck) {
         var h = H('hot_full_power');
@@ -395,13 +400,17 @@
         ck.info('start pzr level', fmt(lvl0, 1) + ' %');
         ck.info('pressure across the drain (no HPI actuation)', fmt(p0, 2) + ' → ' + fmt(h.ts().pressure_mpa, 2) + ' MPa');
         ck.info('drain rate', fmt(ratePerMin, 1) + ' %/min (' + fmt(ratePerMin / 60, 3) + ' %/s)');
-        // THE TUNING TARGET: a 15 % pzr drop on an uncompensated ~20 gpm letdown should
-        // take minutes. tDrop < 0 (never dropped 15 % in 30 min) is the realistic pass.
+        // THE ACCEPTANCE: a 15 % pzr drop on an uncompensated ~20 gpm letdown should
+        // take minutes. tDrop < 0 (never dropped 15 % in 30 min) also passes.
         ck('15% pzr drop is realistically slow', tDrop < 0 ? '> 1800 s' : fmt(tDrop, 1) + ' s',
           tDrop < 0 || tDrop >= 300, '>= 300 s (real: minutes)');
-        // Protection still bounds it: keep draining, confirm letdown isolates on low level
-        // and the primary is NOT emptied (interlock added with the bumpless-transfer fix).
-        h.run(120);
+        // Protection still bounds it: keep draining until the low-level letdown-isolation
+        // interlock (17 %) closes the orifices — at ~2 %/min that is ~10 more minutes —
+        // and confirm the primary is NOT emptied (interlock added with the bumpless-
+        // transfer fix; the retune only slowed the approach to it).
+        h.runUntil(function (ts, ins, hh) {
+          var c = hh.ctl(); return !c.letdown_orifice_a && !c.letdown_orifice_b;
+        }, 3600);
         var cs = h.ctl(), massEnd = h.ts().core_inventory_pct / 100;
         ck('letdown isolated on low level (interlock held)',
           (cs.letdown_orifice_a || cs.letdown_orifice_b) ? 'still open' : 'isolated',

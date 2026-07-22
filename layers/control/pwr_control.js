@@ -80,6 +80,20 @@
     // together in a fast LOCA — real-plant-like. Keep = SI_MPA below.
     { instrument: 'primary_pressure', direction: 'low',  setpoint: 12.4,
       action: 'set_hpi', active: true, reset_action: 'set_hpi', reset_active: false, arm: 'hpi' },
+    // SI on pressurizer level LO-LO (P1(b), closed with the P7 CVCS retune): real
+    // ESFAS protects INVENTORY, not just pressure — without this, a leak the
+    // heaters can out-muscle (post-retune SGTR, where K_leak_depressurize no
+    // longer overwhelms them) drains the RCS at full pressure with zero auto
+    // injection, because the high-head pump is a trickle against 15 MPa until
+    // the operator depressurizes. Fires with the 12 % low-level reactor trip.
+    // Latched (letdown-isolation pattern): reset_below re-arms the fire latch
+    // once level recovers past 20 %; NO reset_action — securing SI is a
+    // deliberate operator/termination decision, not automatic. Rides the 'hpi'
+    // ESF arm, so the cold depressurized lineup (P-11 disarm) and an operator
+    // taking manual SI control both gate it. At TMI the deceived level instrument
+    // reads HIGH, so this path stays silent there — the deception is untouched.
+    { instrument: 'pzr_level', direction: 'low', setpoint: 12.0,
+      action: 'set_hpi', active: true, reset_below: 20.0, arm: 'hpi' },
     { instrument: 'sg_level',         direction: 'low',  setpoint: 20.0,
       action: 'set_afw', active: true, arm: 'afw' },
     // High-high SG level (P-14): moisture-carryover protection. Trip the turbine and
@@ -187,16 +201,22 @@
     turbine_trip:                { type: 'command_override', category: 'power', intercepts: ['set_steam_demand', 'set_load_target', 'connect_grid'], override_value: 0.0, display: 'Turbine Trip' },
     loss_of_offsite_power:       { type: 'physics_parameter', category: 'power', effect: 'coast_down_pumps', display: 'Loss of Offsite Power' },
     station_blackout:            { type: 'physics_parameter', category: 'power', effect: 'full_blackout', display: 'Station Blackout' },
-    // SGTR rescaled (owner ruling, catalog v3 FG-6): leak_scale 0.03 → 1.5 puts a
-    // FULL-severity rupture at 0.12 normalized ≈ 2× charging_max (0.06) — a real
-    // full tube rupture overwhelms CVCS and forces trip + SI, which is why the
-    // EOP exists. leak_to_sg: the engine ΔP-modulates it (primary−SG pressure),
-    // so depressurizing to SG pressure STOPS the leak — the single-SG EOP.
-    sgtr:                        { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 0.12, leak_to_sg: true,
-                                   // Post-rescale semantics, kept transparent: severity is a fraction
+    // SGTR scale, re-derived for the P7 CVCS retune (2026-07-22; supersedes the
+    // FG-6 "2× charging_max" anchor, whose premise — charging on the accident
+    // inventory scale — the retune removed). A FULL-severity rupture is 0.03
+    // inventory-frac/s = ½ the high-head SI rated flow: at pressure the leak
+    // still outruns SI ~2× (forces the trip + SI + EOP — the FG-6 intent) and
+    // dwarfs CVCS make-up authority (~40× charging_max·cvcs_inventory_gain),
+    // while the subcooling-guarded EOP walk-down can WIN the inventory race it
+    // lost at the old 0.12 (which silently leaned on AUTO charging doubling as
+    // a second HPI — 0.06 frac/s of make-up that no longer exists post-retune).
+    // leak_to_sg: the engine ΔP-modulates it (primary−SG pressure), so
+    // depressurizing to SG pressure STOPS the leak — the single-SG EOP.
+    sgtr:                        { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 0.03, leak_to_sg: true,
+                                   // Severity semantics, kept transparent: severity is a fraction
                                    // of a FULL double-ended rupture; full = meta.max/100 · leak_scale
-                                   // = 0.12 normalized ≈ 2× charging capacity. The label reads an
-                                   // honest 0–100 % of full rupture.
+                                   // = 0.03 normalized ≈ ½ HPI's high-head rated flow. The label
+                                   // reads an honest 0–100 % of full rupture.
                                    severity_meta: { label: 'Rupture Severity', unit: '% of full rupture', min: 0, max: 100, default: 40 }, display: 'Steam Generator Tube Rupture' },
     rcp_trip:                    { type: 'physics_parameter', category: 'coolant', effect: 'stop_pump', display: 'RCP Trip' },
     loss_of_condenser_vacuum:    { type: 'physics_parameter', category: 'power', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },

@@ -95,12 +95,26 @@
       // (needs the charging pump). Charging/letdown control primary INVENTORY; auto
       // mode makes up identified leakage by modulating charging up to charging_max.
       boron_adjust_rate: 2.0,      // ppm/s while borating/diluting [tune]
-      cvcs_makeup_gain: 3.0,       // auto-charging response to an inventory deficit [tune]
-      // AUTO make-up: charging above letdown per % PZR-level deficit. With DERIVED
-      // level (level_per_mass 100), loop gain = 0.001·100 = 0.1/s (τ≈10 s) — sized
-      // for stability against the level-instrument lag; a leak L parks the level
-      // L/0.001 % below setpoint (0.003 leak → ~3 %, visible but held). [tune]
-      cvcs_charge_per_level: 0.001,
+      // CVCS↔inventory coupling (P7 drain-rate retune, 2026-07-22). Charging and
+      // letdown are TENS of gpm against the whole RCS, so their normalized flows
+      // (sized for the gauges/lineup: orifice A ≈ 0.030 ≡ 20 gpm) must NOT enter
+      // the mass balance 1:1 like the accident-scale flows do — that read a 20 gpm
+      // bleed as ~3 %/s of total inventory and drained the pressurizer in seconds.
+      // This gain converts CVCS normalized flow → inventory-fraction/s; leak/ECCS/
+      // relief keep the lumped fast scale (accident pacing is tuned there). Sized so
+      // an uncompensated orifice-A drain walks pzr level down ~2 %/min
+      // (0.030·gain·level_per_mass — minutes to respond, the letdown-isolation
+      // interlock and low-level trip still bound it) and max manual charging fills
+      // ~13 %/min in the going-solid regime (CA-4's PI-8 backstop fires in ~3 min). [tune]
+      cvcs_inventory_gain: 0.012,
+      // AUTO make-up: charging above letdown per % PZR-level deficit (the error is
+      // damped through cvcs_level_filter_tau first — the M/A station's damping —
+      // so this can be stiff without chasing gauge noise, CA-3). Loop τ =
+      // 1/(0.01·cvcs_inventory_gain·level_per_mass) ≈ 83 s; a leak L parks the
+      // level (L/cvcs_inventory_gain)/0.01 % below setpoint (a 2.4e-4 leak → ~2 %,
+      // visible but held — CC-8/CC-10). [tune]
+      cvcs_charge_per_level: 0.01,
+      cvcs_level_filter_tau: 20.0, // s — first-order damping on the servo's level error [tune]
       charging_max: 0.06,          // max charging flow, normalized (normal makeup band) [tune]
       // Letdown: TWO fixed orifices, each independently in/out (four states: off /
       // A / B / A+B). Letdown is a pressure-driven bleed from the cold leg through

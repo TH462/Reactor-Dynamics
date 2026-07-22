@@ -51,6 +51,31 @@
 > low-level letdown-isolation interlock holds; the primary is not drained to empty). Scoreboard:
 > **58/68** — PWR adds this one RED; all prior tallies unchanged.
 
+> **Update 2026-07-22b (P7 RESOLVED — CVCS↔inventory retune; P1(b) closed; SGTR re-anchored).**
+> Owner-requested tuning pass, superseding the 2026-07-21 "do not rescale" ruling. New
+> `cvcs_inventory_gain = 0.012` converts CVCS normalized flows (gauge scale: orifice A 0.030 ≡ 20 gpm)
+> into inventory-fraction/s in `pwr_primary.stepInventory`; leak/ECCS/relief keep the fast accident
+> scale. Uncompensated orifice-A drain is now **~2.2 %/min** of pzr level (15 % in ~7 min — the probe's
+> ≥300 s acceptance passes with margin); max charging fills ~13 %/min in the going-solid regime (CA-4's
+> PI-8 backstop still trips inside its window). The AUTO level servo was re-tuned to match
+> (`cvcs_charge_per_level` 0.001 → 0.01 through a new first-order **error damping**,
+> `cvcs_level_filter_tau = 20 s` — stiff enough to park a 2.4e-4 leak ~2 % below program (CC-8/CC-10)
+> without amplifying gauge noise into a charging chase (CA-3)). Knock-ons, both fixed as part of the
+> pass: **(1) SGTR re-anchored** — the FG-6 "full rupture = 2× charging_max" premise died with the
+> rescale (AUTO charging had been acting as an unphysical second HPI at 0.06 frac/s); `leak_scale`
+> 0.12 → **0.03** (full rupture ≈ ½ HPI high-head rated ≈ 2× SI-at-pressure — still forces trip + SI
+> + EOP, and the single-SG EOP now WINS the inventory race; behavior severities ×4 to hold the same
+> absolute leak sizes). **(2) P1(b) closed** — new ESF actuation **SI on pzr_level lo-lo (12 %)**,
+> riding the `hpi` arm (cold P-11 disarm and operator-manual both gate it; TMI untouched — its
+> deceived level reads HIGH). Without it, a leak the heaters can out-muscle drained the RCS at full
+> pressure with zero auto injection. `ops_sgtr_managed`'s scripted EOP also gained the REAL
+> SI-termination criteria (subcooling **and** pzr level recovered — the old subcooling-only throttle
+> survived only on the phantom charging). Dead config `cvcs_makeup_gain` and the stale
+> `_charging_actual` stash were removed. Scoreboard: **59/68** — PWR **21/21**, zero PWR fails;
+> the 9 remaining are the documented RBMK/BWR targets + the deliberate C2 red. `run_e2e_controls`
+> 27 → **28/30** (one F12 stale red — "AUTO charging converged to match the leak" — turned green;
+> the other two F12 reds stand).
+
 \---
 
 ## 1\. What these suites are
@@ -154,6 +179,8 @@ pressure with **zero auto injection** (HPI is a trickle against 15 MPa by design
 a leak-flow denominator or new `severity\_meta`); **(b):** add an SI actuation on
 `pzr\_level` low-low (real ESFAS has one) — right now the only inventory-protecting trip
 path is pressure, which the heaters actively defeat. Acceptance: `ops\_sgtr\_managed`.
+*(2026-07-22b: **(b) DONE** — SI on pzr\_level 12 % lo-lo shipped with the P7 CVCS retune;
+(a) re-anchored twice, final `leak\_scale` 0.03. See the update block above.)*
 
 ### P2 — Steam dump has unlimited capacity; heaters repressurize absurdly fast
 

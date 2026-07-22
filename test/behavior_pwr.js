@@ -409,7 +409,7 @@
         h.run(60);
         var inv0 = h.ts().core_inventory_pct;
         h.cmd('inject_failure', { failure_id: 'pzr_level_sensor_stuck' });
-        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.003 });   // = old 0.15 pre-rescale (leak_scale 0.03 -> 1.5)
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.012 });   // leak 3.6e-4 frac/s (severity ×4 with the 0.12→0.03 leak_scale — same absolute leak)
         var ind0 = h.ins().pzr_level;
         h.run(600);
         var t = h.ts();
@@ -486,7 +486,7 @@
         var leakAfter = h2.ts().leak_flow;
         ck('leak still flowing after the restore', fmt(leakAfter, 4), leakAfter > 0.01, '> 0.01');
         ck('restored leak still ΔP-scaled (base survives)', fmt(h2.eng.s._leak_base || 0, 3),
-          (h2.eng.s._leak_base || 0) > 0.05 && h2.eng.s._leak_to_sg === true, 'base ≈ 0.06, to_sg');
+          (h2.eng.s._leak_base || 0) > 0.012 && h2.eng.s._leak_to_sg === true, 'base ≈ 0.015, to_sg');
       });
     },
 
@@ -500,12 +500,14 @@
         h.cmd('inject_failure', { failure_id: 'sgtr', severity: 40 });
         h.run(2);
         ck('severity 40 clamps to a full rupture, not 40 of them',
-          fmt(h.eng.s._leak_base, 3), h.eng.s._leak_base <= 0.121, '≤ 0.121');
+          fmt(h.eng.s._leak_base, 3), h.eng.s._leak_base <= 0.031, '≤ 0.031');
       });
     },
 
-    // TR-13 (FG-6 ladder, owner-ruled rescale): a FULL tube rupture (leak ≈ 0.12
-    // normalized ≈ 2× charging_max) OVERWHELMS the CVCS — level and pressure
+    // TR-13 (FG-6 ladder; anchor re-derived for the P7 CVCS retune): a FULL tube
+    // rupture (leak = 0.03 inventory-frac/s ≈ ½ HPI's high-head rated flow)
+    // OVERWHELMS the CVCS — its make-up authority is charging_max ·
+    // cvcs_inventory_gain ≈ 7.2e-4 frac/s, ~40× smaller — so level and pressure
     // fall through the trip + SI no matter what auto make-up does. That is the
     // whole reason the EOP exists. And because the leak is ΔP-scaled, the
     // depressurization SELF-LIMITS it — pinned here, driven to termination in
@@ -518,8 +520,11 @@
         h.cmd('inject_failure', { failure_id: 'sgtr', severity: 1.0 });
         h.run(1);
         var base = h.eng.s._leak_base;
-        ck('full-severity BASE leak exceeds charging capacity (~2×)', fmt(base, 3) + ' vs max 0.06',
-          base > 0.06, '> 0.06');
+        var rc = h.eng.cfg.reactivity;
+        var makeup = (rc.charging_max || 0.06) * (rc.cvcs_inventory_gain != null ? rc.cvcs_inventory_gain : 1);
+        ck('full-severity BASE leak dwarfs CVCS make-up authority (≥ 10×)',
+          fmt(base, 3) + ' vs make-up ' + fmt(makeup, 4),
+          base > 10 * makeup, '> ' + fmt(10 * makeup, 3));
         var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 900);
         ck('CVCS cannot hold it — the plant trips', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip',
           dt >= 0, 'trips');
@@ -528,8 +533,19 @@
           ds >= 0, 'SI');
         h.run(300);
         var t = h.ts();
-        ck('ΔP scaling limits the delivered leak below the base rate',
-          fmt(t.leak_flow, 3) + ' vs base ' + fmt(base, 3), t.leak_flow < base * 0.9, '< 0.9 × base');
+        // The delivered leak is ΔP-MODULATED (base · clip((P_rcs − P_sg)/dp_ref)).
+        // Post-retune the hands-off anatomy changed: trip + SI hold the primary
+        // subcooled at pressure (heaters out-muscle the smaller leak) while the
+        // overcooled secondary sags, so ΔP can sit at/above rated — the delivered
+        // leak is NOT necessarily below base. Assert the MECHANISM tracks;
+        // the ΔP-collapse OUTCOME (walk-down kills the leak) is proven by the
+        // ops single-SG EOP scenario.
+        var dpRef = h.eng.cfg.primary.sgtr_dp_ref || 9.8;
+        var dpFrac = Math.min(1.2, Math.max(0, (t.pressure_mpa - t.steam_pressure_mpa) / dpRef));
+        var expect = base * dpFrac;
+        ck('delivered leak tracks the ΔP modulation (base · clip(ΔP/ref))',
+          fmt(t.leak_flow, 3) + ' vs expected ' + fmt(expect, 3) + ' (ΔP frac ' + fmt(dpFrac, 2) + ')',
+          Math.abs(t.leak_flow - expect) <= Math.max(0.15 * expect, 1e-4), '±15 %');
         T.checkSanity(ck, h);
       });
     },
@@ -624,7 +640,7 @@
         var h = H('hot_full_power');
         h.cmd('set_cvcs_auto', { active: true });
         h.run(60);
-        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.002 });   // = old 0.1 pre-rescale (stays inside CVCS capacity by design)
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.008 });   // leak 2.4e-4 frac/s — inside CVCS make-up authority by design (severity ×4 with the 0.12→0.03 leak_scale)
         h.run(900);
         var t = h.ts();
         // With DERIVED level the servo settles at charging = letdown + leak EXACTLY
@@ -648,7 +664,7 @@
         var h = H('hot_full_power');
         h.cmd('set_cvcs_auto', { active: true });
         h.run(60);
-        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.002 });   // = old 0.1 pre-rescale (stays inside CVCS capacity by design)
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.008 });   // leak 2.4e-4 frac/s — inside CVCS make-up authority by design (severity ×4 with the 0.12→0.03 leak_scale)
         h.run(900);
         var t = h.ts();
         ck('pzr level held near program (50..60 %)', fmt(t.pzr_level_pct, 1),
@@ -668,7 +684,7 @@
         var h = H('hot_full_power');
         h.run(30);
         var l0 = h.ts().pzr_level_pct, inv0 = h.ts().core_inventory_pct;
-        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.006 });   // = old 0.3 pre-rescale; CVCS stays MANUAL: nothing makes it up
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.024 });   // leak 7.2e-4 frac/s; CVCS stays MANUAL: nothing makes it up (severity ×4 with the 0.12→0.03 leak_scale)
         h.run(120);
         var t = h.ts();
         ck('still subcooled through the early drain', fmt(t.subcooling_c, 1), t.subcooling_c > 0, '> 0');

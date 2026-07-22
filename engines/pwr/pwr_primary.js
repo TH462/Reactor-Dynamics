@@ -140,12 +140,9 @@
     // MANUAL tracks the operator setpoint. Either way s.charging_flow is the true
     // flow (what the charging_flow instrument reads); charging_setpoint is the command.
     if (s.cvcs_auto) {
-      // AUTO make-up holds PROGRAMMED PZR LEVEL (real CVCS level control) while still
-      // compensating a gross inventory deficit. charging = letdown + max(level-servo,
-      // inventory-makeup): the level term (charging above/below letdown per % level
-      // error, reading last step's indicated level) holds level through the thermal
-      // shrink of a load change/cooldown; the inventory term still catches a leak that
-      // has not yet shown up as a level drop (e.g. before voiding). Capped at charging_max.
+      // AUTO make-up holds PROGRAMMED PZR LEVEL (real CVCS level control):
+      // charging = letdown + level-servo (charging above/below letdown per % level
+      // error, reading last step's indicated level). Capped at charging_max.
       // Pure pressurizer-level control, exactly like the real CVCS: charging modulates
       // above/BELOW letdown to hold the programmed level, reading only the INDICATED level
       // (HR1 — no peeking at true mass or leak flow). A leak makes ITSELF up because it
@@ -169,18 +166,30 @@
       // true level only before the first instrument reading exists.
       var level_ind = (s._ins_pzr_level != null) ? s._ins_pzr_level
                     : (s.pzr_level_pct != null ? s.pzr_level_pct : level_sp);
-      var level_demand = (rc.cvcs_charge_per_level || 0.001) * (level_sp - level_ind);
+      // Damped level error (the M/A station's damping, P7 retune): first-order
+      // filter on (setpoint − indicated) so the servo can be stiff enough to park
+      // a leak near program WITHOUT amplifying gauge noise into a visible charging
+      // chase (CA-3). Reseeded whenever AUTO is (re)engaged.
+      var err_raw = level_sp - level_ind;
+      var ftau = rc.cvcs_level_filter_tau != null ? rc.cvcs_level_filter_tau : 20.0;
+      if (s._cvcs_err_f == null) s._cvcs_err_f = err_raw;
+      s._cvcs_err_f += (err_raw - s._cvcs_err_f) * (dt / (ftau + dt));
+      var level_demand = (rc.cvcs_charge_per_level || 0.001) * s._cvcs_err_f;
       var target = (s.letdown_flow || 0) + level_demand;
       s.charging_flow = clip(target, 0, rc.charging_max != null ? rc.charging_max : 0.06);
     } else {
       s.charging_flow = s.charging_setpoint;
+      s._cvcs_err_f = null;   // stale in MANUAL; reseed on the next AUTO engage
     }
-    // Charging requires the charging pump; the accumulator inventory gain scales its
-    // normalized flow into the same inventory-fraction units as the rest of the balance.
+    // Charging requires the charging pump. CVCS flows are normalized to the
+    // gauge/lineup scale (orifice A ≈ 0.030 ≡ 20 gpm) — tens of gpm against the
+    // whole RCS — so they enter the mass balance through cvcs_inventory_gain
+    // (frac/s per unit normalized flow, P7 retune) instead of 1:1 like the
+    // accident-scale flows (leak/ECCS/relief keep the lumped fast scale).
     var charging = (s.charging_pump_running === false) ? 0 : s.charging_flow;
-    s._charging_actual = charging;   // pump-gated true charging, for the pzr level insurge term (stepLevel)
-    var dm = (charging + inj_inv + accum_inv)
-           - (s.letdown_flow + s.porv_flow + s.safety_flow + s.leak_flow);
+    var g_cvcs = rc.cvcs_inventory_gain != null ? rc.cvcs_inventory_gain : 1.0;
+    var dm = (charging * g_cvcs + inj_inv + accum_inv)
+           - (s.letdown_flow * g_cvcs + s.porv_flow + s.safety_flow + s.leak_flow);
     s._mass = clip(s._mass + dm * dt, 0.0, cfg.primary.mass_max);
     s.core_inventory_pct = s._mass * 100;
 

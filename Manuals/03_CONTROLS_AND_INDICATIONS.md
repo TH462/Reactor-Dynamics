@@ -257,6 +257,9 @@ Blocks **auto-reinstate** when power falls below P-10.
   so it **tails off as RCS pressure falls** on a cooldown — it is not a throttled setpoint.  
 - Nominal at NOP: **A ≈ 3 %**, **B ≈ 4 %**, **A+B ≈ 7 %** of rated (A+B is max letdown — a net drain,
   exceeding normal charging, for level reduction / depressurization).  
+- **Rate feel:** uncompensated (charging secured), orifice A walks PZR level down **≈ 2 %/min**;
+  A+B ≈ 5 %/min; max charging with letdown isolated raises level ≈ 13 %/min. Minutes to act, not seconds —
+  and the **17 % low-level letdown isolation** (see 09 §3.0) backstops an unattended drain.  
 - **Isolate** = both orifices out (letdown zero).  
 
 ### 7.4 CVCS Inventory Control AUTO / MANUAL
