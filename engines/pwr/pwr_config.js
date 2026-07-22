@@ -368,8 +368,12 @@
 
     // ----------------------------------------------------------- emergency cool
     emergency: {
-      // Merged HPI/LPI emergency injection — ONE system, one command (set_hpi),
-      // a two-segment pump curve (pwr_primary.injectionFlowInv):
+      // Merged HPI/LPI emergency injection on a DEDICATED ECCS pump train (this
+      // plant's ECCS has its own pump, RWST-sourced — separate from the CVCS
+      // charging pump; owner ruling 2026-07-22, and why HPI flow sits on a much
+      // larger scale than CVCS charging — see reactivity.cvcs_inventory_gain).
+      // ONE system, one command (set_hpi), a two-segment pump curve
+      // (pwr_primary.injectionFlowInv):
       //   high-head/low-flow segment  — hpi_flow_max (inventory-frac/s at 0 MPa),
       //                                 shutoff head hpi_pressure_ref;
       //   low-head/high-flow segment  — lpi_flow_max × lpi_inventory_gain
@@ -381,10 +385,10 @@
       lpi_pressure_ref: 4.5,       // MPa low-head shutoff head
       lpi_flow_max: 1.0,           // normalized rated low-head flow
       lpi_inventory_gain: 0.10,    // inventory frac/s per unit normalized low-head flow
-      // HPI/charging pump discharge-pressure indication (MPa): the head the running
+      // ECCS pump discharge-pressure indication (MPa): the head the running
       // pump develops against the RCS it injects into (system pressure + line margin,
       // clamped to shutoff head). 0 when HPI is not active. [tune]
-      hpi_shutoff_mpa: 12.4,       // ≈ 1800 psi centrifugal-charging shutoff head
+      hpi_shutoff_mpa: 12.4,       // ≈ 1800 psi — ECCS pump shutoff head (classic centrifugal-charging curve)
       hpi_discharge_margin_mpa: 0.4, // head above RCS pressure while injecting
       // Accumulators: passive borated tanks that discharge into the cold leg once
       // primary pressure falls below the arming pressure; finite capacity depletes.

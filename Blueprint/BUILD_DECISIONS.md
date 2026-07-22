@@ -3287,3 +3287,20 @@ procedures 21/21 · checklist 24/24 · e2e_controls **28/30** (F12 shrank by one
 converged" turned green; 2 stale reds stand) · `verify_e2e_ui` FAIL **pre-existing** (verified
 identical on clean HEAD 4df8ac5; same retired-PwrSynoptic-probe family as the documented
 `verify_manual_follow` 30-check fail).
+
+### Owner ruling — ECCS/HPI is a dedicated pump train (justifies the CVCS↔HPI scale gap) (2026-07-22)
+
+Following the P7 CVCS retune, a review flagged one *seam*: CVCS charging and HPI represent, in a
+real Westinghouse plant, the **same** centrifugal charging pumps (they do double duty as high-head
+SI), yet the model puts them on very different flow scales (charging ≈ 7.2e-4 frac/s max via
+`cvcs_inventory_gain`; HPI high-head 0.06 frac/s). **Owner ruling:** in *this* plant the **ECCS/HPI
+has its own dedicated pump** (RWST-sourced SI train), NOT the charging pump doing double duty — so
+the scale difference is physically correct, not a compromise. This is already how the model is
+built end-to-end: independent flags (`hpi_active` via `set_hpi` vs `charging_pump_running` via
+`set_charging_pump`), independent injection gating (`injectionFlowInv` checks only `hpi_active`),
+its own discharge-pressure instrument (`hpi_discharge_pressure`), and a dedicated **ECCS pump**
+element on the board (`pwr_board_wiring.js`, "eccs pump (RWST — cold)"). Comments in
+`pwr_primary.injectionFlowInv` and the `pwr_config.js emergency` block were reframed from "the
+classic HPI charging-pump head" to "dedicated ECCS train (head coincides with the classic
+centrifugal-charging curve)" so the seam isn't re-flagged. **Comment/doc only — no physics or gate
+change** (`run_pwr` 31/31 unchanged).

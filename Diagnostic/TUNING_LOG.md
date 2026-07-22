@@ -120,11 +120,14 @@ the pattern is already present: heat-to-SG (`h_sg·flow_frac`) and pzr spray
 (`spray_flow_frac·flow_frac`) both scale with cold-leg flow — what letdown was missing. Secondary
 side is internally consistent (feed/steam/dump/AFW/relief all on one rated-flow basis). Instrument
 model, boron chemistry (direct ppm/s rate), and xenon/iodine don't share the hazard.
-**One seam noted (not a bug):** CVCS charging and HPI model the *same physical pumps* but now sit
-on different scales by design (normal makeup vs emergency injection) — calibrated against the
-flagships, deliberately untouched; the plant gives emergency inventory defense via `set_hpi`, not
-by cranking charging (matches PWR-A14). No scenario relied on max-charging-as-inventory-defense
-(campaign/procedures/ops-PWR all green). **No code change warranted.**
+**The one seam RESOLVED by plant design (owner ruling 2026-07-22).** I had noted CVCS charging and
+HPI as "the same physical pumps on different scales." Owner ruling: **this plant's ECCS/HPI has its
+OWN dedicated pump** (RWST-sourced SI train), separate from the small CVCS charging pump — already
+realized in code (independent `hpi_active` vs `charging_pump_running` flags, own `set_hpi` command,
+own `hpi_discharge_pressure`) and in the UI (the board's dedicated ECCS pump element). So the
+different flow scales are *physically correct*, not a compromise: a large SI pump simply delivers
+far more than a small make-up pump. Comments in `pwr_primary.injectionFlowInv` + `pwr_config.js
+emergency` reframed from "charging-pump head" to the dedicated ECCS train. **No physics change.**
 
 ### 2026-07-22 — P7 CVCS drain rate + associated behaviors (PWR)  ✅
 **Owner report:** letdown drains the pressurizer far too fast to respond to.

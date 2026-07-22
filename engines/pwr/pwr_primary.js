@@ -53,10 +53,15 @@
     s.rcp_cavitating = cav > (pr.cavitation_indicate_frac != null ? pr.cavitation_indicate_frac : 0.05);
   }
 
-  // Emergency injection — ONE merged HPI/LPI system (one command, one flag,
-  // one pump curve): a high-head/low-flow segment (shutoff 16.44 MPa — the
-  // classic HPI charging-pump head) plus a low-head/high-flow segment (shutoff
-  // 4.5 MPa — the LPI/RHR-pump head). Flow rises as pressure falls: at TMI
+  // Emergency injection — ONE merged HPI/LPI system on a DEDICATED ECCS pump
+  // train (this plant's ECCS has its OWN pump, RWST-sourced — NOT the CVCS
+  // charging pump doing double duty; owner ruling 2026-07-22). That is what
+  // justifies HPI and CVCS charging on different flow scales: charging is a
+  // small make-up pump (see cvcs_inventory_gain), the ECCS pump is a large SI
+  // train. One command, one flag, one pump curve: a high-head/low-flow segment
+  // (shutoff 16.44 MPa — head coincides with the classic centrifugal-charging
+  // curve) plus a low-head/high-flow segment (shutoff 4.5 MPa —
+  // the LPI/RHR-pump head). Flow rises as pressure falls: at TMI
   // pressures only the high-head segment is in play (numerically identical to
   // the old standalone HPI — the flagship is untouched); in a large LOCA the
   // low-head segment dominates. degraded_hpi scales the whole curve.
