@@ -105,6 +105,27 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-22 — Audit: hunt for other flow-scale/node mistakes (PWR)  ✅ clean
+**Owner request:** in light of the CVCS bug (a cold-leg flow scaled against the whole primary
+volume), review the PWR code for other instances of the same class.
+**Method:** traced every term that enters an accumulation (integration), checking two axes per
+term — the **spatial node** it draws on and the **magnitude scale** it uses.
+**Finding — no second instance.** The complete primary mass balance
+(`pwr_primary.stepInventory`): charging/letdown (now `×cvcs_inventory_gain`, cold-leg node) —
+fixed; HPI/LPI, accumulators (accident scale, cold-leg node), PORV/safety/leak (accident scale)
+— all deliberately calibrated and node-correct. Spray and RHR are correctly *excluded* from the
+balance (internal recirculation, no net inventory). Confirmed by grep that charging/letdown enter
+an accumulation in **exactly one place**, so the gain can't be bypassed. The *correct* version of
+the pattern is already present: heat-to-SG (`h_sg·flow_frac`) and pzr spray
+(`spray_flow_frac·flow_frac`) both scale with cold-leg flow — what letdown was missing. Secondary
+side is internally consistent (feed/steam/dump/AFW/relief all on one rated-flow basis). Instrument
+model, boron chemistry (direct ppm/s rate), and xenon/iodine don't share the hazard.
+**One seam noted (not a bug):** CVCS charging and HPI model the *same physical pumps* but now sit
+on different scales by design (normal makeup vs emergency injection) — calibrated against the
+flagships, deliberately untouched; the plant gives emergency inventory defense via `set_hpi`, not
+by cranking charging (matches PWR-A14). No scenario relied on max-charging-as-inventory-defense
+(campaign/procedures/ops-PWR all green). **No code change warranted.**
+
 ### 2026-07-22 — P7 CVCS drain rate + associated behaviors (PWR)  ✅
 **Owner report:** letdown drains the pressurizer far too fast to respond to.
 **Root cause:** CVCS shared the lumped accident inventory scale, so ~20 gpm letdown read as
