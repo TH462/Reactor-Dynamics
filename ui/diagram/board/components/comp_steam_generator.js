@@ -49,7 +49,7 @@
       ' L310,' + shellBot + ' A100 ' + botRy + ' 0 0 1 110,' + shellBot + ' Z';
     var inner = 'M123,' + (shellTop + 1) + ' A87 ' + (domeRy - 12) + ' 0 0 1 297,' + (shellTop + 1) +
       ' L297,' + (shellBot - 1) + ' A87 ' + (botRy - 8) + ' 0 0 1 123,' + (shellBot - 1) + ' Z';
-    var bendY = 314, legBot = 470, tubeSheetY = 440;
+    var legBot = 470, tubeSheetY = 440;
     // Whole-vessel WIDE-range water column: wide 0 % = tube sheet, 100 % = up in the dome.
     var waterBot = tubeSheetY - 5, waterTopFull = 48;
     function fullY(wr) { return waterBot - (clampN(wr, 0, 100) / 100) * (waterBot - waterTopFull); }
@@ -58,6 +58,16 @@
     // SG_WR_LO..SG_WR_HI. The gauge is physically placed over that window so its marker
     // (narrow level) lines up with the wide-range water surface it zooms into.
     var SG_WR_LO = 30, SG_WR_HI = 75;
+    // U-tube bundle height is PINNED to the engine's SG dryout threshold — pwr_config.js
+    // sg_dryout_wide_pct = 30 % wide, which equals SG_WR_LO (narrow 0 %). The tallest
+    // U-bend apex sits at that wide-range level, so the animated water surface reaches the
+    // tube tops exactly as the engine begins tube-bundle uncovery (heat transfer collapse).
+    // Below it the tubes progressively emerge — the dryout the operator sees IS the dryout
+    // the engine models. bendY = where the straight legs end and the bends arc up to the top.
+    var tubeRadii = [14, 26, 38, 50, 62], tubeMaxR = 62;
+    var tubeTopY = fullY(SG_WR_LO);                                   // outer bend apex = 30 % wide (= gBot)
+    var bendY = tubeTopY + tubeMaxR;
+    var bundleTopY = tubeTopY - 6, bundleBoxH = tubeSheetY - bundleTopY;   // glow + outline bounds (enclose the bends)
 
     function mix(a, b, t) {
       t = Math.max(0, Math.min(1, t));
@@ -99,13 +109,13 @@
     var flowEls = [surfLine];
 
     var glowRect = h('rect', {
-      x: 138, y: bendY - 16, width: 144, height: tubeSheetY - (bendY - 16), rx: 48,
+      x: 138, y: bundleTopY, width: 144, height: bundleBoxH, rx: 48,
       filter: 'url(#' + ids.glow + ')', style: { display: 'none' }
     });
     var hotcRect = h('rect', { x: 110, y: tubeSheetY + 10, width: 100, height: 90, opacity: 0.85 });
     var coldcRect = h('rect', { x: cx, y: tubeSheetY + 10, width: 100, height: 90, opacity: 0.85 });
 
-    var tubeGroups = [14, 26, 38, 50, 62].map(function (g) {
+    var tubeGroups = tubeRadii.map(function (g) {
       var d = 'M' + (cx - g) + ',' + legBot + ' L' + (cx - g) + ',' + bendY +
         ' A' + g + ' ' + g + ' 0 0 1 ' + (cx + g) + ',' + bendY + ' L' + (cx + g) + ',' + legBot;
       var flowPath = h('path', { d: d, fill: 'none', stroke: '#eaf4fb', strokeWidth: 1.6, strokeLinecap: 'round', opacity: 0.55, strokeDasharray: '10 16' });
@@ -166,10 +176,10 @@
       h('path', { d: outer, fill: 'url(#' + ids.steel + ')', stroke: '#46596a', strokeWidth: 2.4 }),
       h('path', { d: inner, fill: '#0b141d', stroke: '#1b2a36', strokeWidth: 1 }),
       h('g', { clipPath: 'url(#' + ids.clip + ')' }, steamRect, waterRect, surfLine),
-      [bendY + 40, bendY + 80, bendY + 120].map(function (y) {
+      [bendY + 18, bendY + 40].map(function (y) {
         return h('rect', { x: 146, y: y - 3, width: 128, height: 6, fill: '#1c2830', opacity: 0.85 });
       }),
-      h('rect', { x: 138, y: bendY - 16, width: 144, height: tubeSheetY - (bendY - 16), rx: 48, fill: 'none', stroke: '#2c3d47', strokeWidth: 1.4, opacity: 0.7 }),
+      h('rect', { x: 138, y: bundleTopY, width: 144, height: bundleBoxH, rx: 48, fill: 'none', stroke: '#2c3d47', strokeWidth: 1.4, opacity: 0.7 }),
       glowRect,
       h('rect', { x: 131, y: tubeSheetY, width: 158, height: 10, rx: 2, fill: '#2b3d4a' }),
       h('g', { clipPath: 'url(#' + ids.clip + ')' },

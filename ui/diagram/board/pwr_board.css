@@ -51,8 +51,11 @@
   font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
 }
-/* Momentary press feedback: flash to the active color. */
-.bd-btn:active { transform: translateY(1px); border-color: var(--bd-color); color: var(--bd-color); }
+/* Momentary press feedback: flash to the active color. bd-pressed holds that cue
+   for the duration of a press-and-hold (rod drive) even if the pointer drifts off
+   the button, where the native :active would otherwise drop. */
+.bd-btn:active,
+.bd-btn.bd-pressed { transform: translateY(1px); border-color: var(--bd-color); color: var(--bd-color); }
 .bd-btn:disabled { opacity: 0.45; cursor: not-allowed; color: #55636e; border-color: #26333d; }
 /* Selected/engaged state: adopt the button's authored active color. */
 .bd-btn.bd-active { background: #0c1a22; border-color: var(--bd-color); color: var(--bd-color); }

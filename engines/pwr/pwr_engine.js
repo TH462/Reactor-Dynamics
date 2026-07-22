@@ -44,13 +44,13 @@
       { id: 'control_rods', name: 'Control Rods', function: 'control',
         steps: 0, max_steps: r.max_steps, position_pct: 0,
         moving: false, direction: 0, speed: 'normal', scrammed: false,
-        velocity: 0, step_accumulator: 0, nudge_target: null, worth: this.cfg.reactivity.rod_worth_total,
+        velocity: 0, step_accumulator: 0, nudge_target: null, coast_remaining_s: 0, worth: this.cfg.reactivity.rod_worth_total,
         insertion_limit_steps: Math.round(r.insertion_limit_pct / 100 * r.max_steps),
         at_insertion_limit: false },
       { id: 'shutdown_rods', name: 'Shutdown Rods', function: 'shutdown',
         steps: r.max_steps, max_steps: r.max_steps, position_pct: 100,
         moving: false, direction: 0, speed: 'normal', scrammed: false,
-        velocity: 0, step_accumulator: 0, nudge_target: null, worth: this.cfg.reactivity.rod_worth_shutdown,
+        velocity: 0, step_accumulator: 0, nudge_target: null, coast_remaining_s: 0, worth: this.cfg.reactivity.rod_worth_shutdown,
         insertion_limit_steps: null, at_insertion_limit: false },
     ];
   };
@@ -145,6 +145,12 @@
         // scram time (linear, not asymptotic), so the motion is decisive/visible.
         var t_scram = g.function === 'shutdown' ? r.scram_time_shutdown_s : r.scram_time_control_s;
         g.velocity = -(g.max_steps / t_scram);
+      }
+      // Coast-to-stop after an operator release (rod_stop): keep driving at the current
+      // velocity for stop_coast_s, then latch. Skipped while scrammed (scram owns motion).
+      if (!g.scrammed && g.coast_remaining_s > 0) {
+        g.coast_remaining_s -= dt;
+        if (g.coast_remaining_s <= 0) { g.coast_remaining_s = 0; g.velocity = 0; }
       }
       if (!g.velocity) { g.moving = (g.velocity !== 0); this._updateRodDerived(g); continue; }
       g.moving = true;
@@ -485,6 +491,11 @@
       hpi_active: s.hpi_active, rhr_active: s.rhr_active, rhr_valve_open: !!s.rhr_valve_open,
       rhr_hx_fraction: (s.rhr_hx_fraction != null ? s.rhr_hx_fraction : 1),   // HX flow split (set_rhr_hx), 0–1
       eccs_mode: s.eccs_mode || 'off',                                        // HPI | LPI | RHR | off
+      // SI accumulator discharge isolation valve — the operator command surface
+      // (open_/close_accumulator_valve). Mirrors porv_block_open/msiv_open: the
+      // board reads the clickable valve's position + ARMED/ISOLATED status from
+      // control_state, so it must live here as well as in true_state.
+      accumulator_valve_open: s.accumulator_valve_open !== false,
       afw_throttle_pct: (s.afw_throttle_frac != null ? s.afw_throttle_frac : 1.0) * 100,
       sr_energized: !!s.sr_energized,   // SR detector switch position
       msiv_open: s.msiv_open !== false, // main steam isolation valve position
@@ -504,6 +515,7 @@
         g = this._group(cmd.group_id);
         if (g && !(g.id === 'control_rods' && s._fail.rod_runaway.active)) {
           g.speed = cmd.speed || g.speed || 'normal';
+          g.coast_remaining_s = 0;   // a fresh nudge cancels any coast-to-stop in flight
           g.nudge_target = clip(g.steps + cmd.steps, 0, g.max_steps);
           var nv = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
           g.velocity = (g.nudge_target >= g.steps ? 1 : -1) * nv;
@@ -514,6 +526,7 @@
         g = this._group(cmd.group_id);
         if (g && !(g.id === 'control_rods' && s._fail.rod_runaway.active)) {
           g.speed = cmd.speed || 'normal'; g.nudge_target = null;   // continuous (held) — no target
+          g.coast_remaining_s = 0;   // a fresh hold-drive cancels any coast-to-stop in flight
           var v = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
           g.velocity = (cmd.direction >= 0 ? 1 : -1) * v;
           g.moving = true;
@@ -521,7 +534,14 @@
         break;
       case 'rod_stop':
         g = this._group(cmd.group_id);
-        if (g && !g.scrammed) { g.velocity = 0; g.moving = false; g.nudge_target = null; }
+        if (g && !g.scrammed) {
+          g.nudge_target = null;
+          // A moving bank coasts to a stop (the latch catches a beat after release);
+          // a bank already at rest stops immediately. _stepRods runs the countdown.
+          var coast = this.cfg.rods.stop_coast_s || 0;
+          if (g.velocity && coast > 0) { g.coast_remaining_s = coast; }
+          else { g.velocity = 0; g.moving = false; g.coast_remaining_s = 0; }
+        }
         break;
       case 'rod_stop_all':
         this.rod_groups.forEach(function (gr) { if (!gr.scrammed) { gr.velocity = 0; gr.moving = false; gr.nudge_target = null; } });
@@ -537,7 +557,7 @@
         // reset while any trip signal still stands; this is the engine half.
         if (s.scrammed && this.rod_groups.every(function (g) { return g.position_pct <= 2.0; })) {
           s.scrammed = false;
-          this.rod_groups.forEach(function (g) { g.scrammed = false; g.moving = false; g.velocity = 0; g.nudge_target = null; });
+          this.rod_groups.forEach(function (g) { g.scrammed = false; g.moving = false; g.velocity = 0; g.nudge_target = null; g.coast_remaining_s = 0; });
         }
         break;
       case 'set_load_mode':
@@ -798,7 +818,7 @@
     this.rod_groups.forEach(function (g) {
       // A stuck control rod holds out; M4/§9.1 model the held worth in reactivity,
       // but the group still "scrams" (drives in) — the held worth is added back.
-      g.scrammed = true; g.moving = true; g.nudge_target = null;
+      g.scrammed = true; g.moving = true; g.nudge_target = null; g.coast_remaining_s = 0;
     });
   };
 

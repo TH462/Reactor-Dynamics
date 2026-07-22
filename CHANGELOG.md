@@ -8,6 +8,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **PWR — the board rod-drive buttons are now momentary (tap-or-hold).** WITHDRAW/INSERT
+  (control and shutdown banks) used to fire a fixed 4-step nudge on release, so a click
+  moved the bank several steps regardless of hold time. Now a quick **tap moves exactly
+  one step**, and **holding drives the bank continuously at the selected speed until you
+  let go** (`rod_start`/`rod_stop`). On release the bank **coasts to a stop** — a realistic
+  slight overrun (time-based `rods.stop_coast_s`: ~1–2 steps at fast, negligible at slow)
+  rather than an abrupt halt. Matches the classic control strip's rod drive; keyboard
+  (Space/Enter hold) works too.
+- **PWR — the accumulator (SI) isolation valve on the board is clickable again.** Clicking
+  the accumulator discharge-isolation valve now actually opens/closes it, and the
+  ARMED/ISOLATED status follows. The valve's position was published only in `true_state`
+  while the board reads the operator command surface from `control_state`, so the click
+  fired but the drawing never moved (it read a permanently-open default). It is a plain
+  block valve — independent of the ECCS/HPI buttons in both directions.
+- **PWR — the steam-generator U-tubes now line up with the wide-range level.** The drawn
+  U-tube bundle used to top out around 47 % wide-range, but the engine begins tube-bundle
+  dryout at 30 % wide (`sg_dryout_wide_pct`, which is also narrow-range 0 %). The tube
+  apexes are now pinned to that 30 % mark, so the animated water surface reaches the tube
+  tops exactly as the engine starts collapsing SG heat transfer — what you see is what the
+  physics is doing.
+
 ### Added
 - **Auto-checklists in the Instructor chat.** Any operator procedure can now run as a
   passive checklist against the live plant: call it up from the 📋 Checklists button on the

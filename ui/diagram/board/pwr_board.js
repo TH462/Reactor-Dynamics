@@ -43,6 +43,7 @@
   var pipeFlow = [];     // [{fromKey,toKey,flowEl,dir,dur}]
   var pipeTempEls = [];  // [{id, phase, boreEl, flowEl}] — pipes whose fluid color tracks live temp
   var ro = null, scanTimer = null, lastSnap = null;
+  var releaseHandler = null;   // board-wide pointerup/cancel/blur → ends any held momentary button
 
   function driver() { return RD.PwrBoardDriver || null; }
   function h() { return RD.BoardH.h.apply(null, arguments); }
@@ -138,14 +139,45 @@
     // inactive (CSS default) and adopts --bd-color when selected (.bd-active) or pressed.
     btn.style.setProperty('--bd-color', it.color || '#4fe3ff');
     btn.style.fontSize = (it.fontSize || 11) + 'px';
-    btn.addEventListener('click', function () {
-      var d = driver();
-      if (d && d.onButton) d.onButton(it, btn);
-    });
+    var d0 = driver();
+    if (d0 && d0.buttonMomentary && d0.buttonMomentary(it)) {
+      // Press-and-hold (momentary) button, e.g. the rod drive: pointerdown/keydown
+      // begin the press; release is caught board-wide (see mount) so dragging off the
+      // button still ends it. No click handler — that would double-fire on release.
+      var down = function (e) {
+        if (e) e.preventDefault();
+        btn.classList.add('bd-pressed');
+        var d = driver();
+        if (d && d.onButtonDown) d.onButtonDown(it, btn);
+      };
+      btn.addEventListener('pointerdown', down);
+      btn.addEventListener('keydown', function (e) {
+        if (e.repeat || (e.key !== ' ' && e.key !== 'Enter')) return;
+        down(e);
+      });
+      btn.addEventListener('keyup', function (e) {
+        if (e.key !== ' ' && e.key !== 'Enter') return;
+        endMomentary();
+      });
+    } else {
+      btn.addEventListener('click', function () {
+        var d = driver();
+        if (d && d.onButton) d.onButton(it, btn);
+      });
+    }
     buttonEls[it.id] = btn;
     var el = tileBase(it);
     el.appendChild(btn);
     return el;
+  }
+
+  // Board-wide release for momentary (hold) buttons: a rod drive must stop on release
+  // no matter where the pointer goes, so the up/cancel/blur listeners live on the
+  // document (added in mount, removed in unmount), not on the button itself.
+  function endMomentary() {
+    Object.keys(buttonEls).forEach(function (k) { buttonEls[k].classList.remove('bd-pressed'); });
+    var d = driver();
+    if (d && d.onButtonUp) d.onButtonUp();
   }
 
   function buildScram(it) {
@@ -526,6 +558,12 @@
     var d = driver();
     if (d && d.onMount) d.onMount(doc, ctx, { tiles: tiles, buttons: buttonEls, numbers: numberEls, values: valueEls, comps: comps, stage: stage, wrap: wrap });
 
+    // Board-wide release for hold buttons — see endMomentary/buildButton.
+    releaseHandler = function () { endMomentary(); };
+    document.addEventListener('pointerup', releaseHandler);
+    document.addEventListener('pointercancel', releaseHandler);
+    window.addEventListener('blur', releaseHandler);
+
     ro = new ResizeObserver(function () { layout(); });
     ro.observe(wrap);
     layout();
@@ -544,6 +582,12 @@
 
   function unmount() {
     if (ro) { ro.disconnect(); ro = null; }
+    if (releaseHandler) {
+      document.removeEventListener('pointerup', releaseHandler);
+      document.removeEventListener('pointercancel', releaseHandler);
+      window.removeEventListener('blur', releaseHandler);
+      releaseHandler = null;
+    }
     if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
     Object.keys(scramEls).forEach(function (k) { clearTimeout(scramEls[k].timer); });
     Object.keys(comps).forEach(function (k) {

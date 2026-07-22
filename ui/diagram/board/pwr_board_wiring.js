@@ -107,15 +107,17 @@
     imro969lnex: { press: function () { cmd({ action: 'set_heater', auto: true }); }, active: function (s) { return CS(s).heater_auto; } },
     imro96ei9hd: { press: function (s) { cmd({ action: 'set_heater', power_pct: CS(s).heater_power_pct || 50 }); }, active: function (s) { return !CS(s).heater_auto && (CS(s).heater_power_pct || 0) > 0; } },
     imro96h8lip: { press: function () { cmd({ action: 'set_heater', power_pct: 0 }); }, active: function (s) { return !CS(s).heater_auto && (CS(s).heater_power_pct || 0) === 0; } },
-    // --- Control rods: WITHDRAW / INSERT (nudge at selected speed) ---
-    imrpk6qzjq8: { press: function () { cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 4, speed: rodSpeed }); } },
-    imrpk79mwng: { press: function () { cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -4, speed: rodSpeed }); } },
+    // --- Control rods: WITHDRAW / INSERT — momentary (tap-or-hold). A quick TAP
+    // moves ONE step; HOLDING drives the bank at the selected speed until release
+    // (rod_start / rod_stop). See the hold state machine in the driver API below. ---
+    imrpk6qzjq8: { hold: { group: 'control_rods', direction: 1 } },
+    imrpk79mwng: { hold: { group: 'control_rods', direction: -1 } },
     imrpk8169ds: { press: function () { rodSpeed = 'slow'; }, active: function () { return rodSpeed === 'slow'; } },
     imrpk8grvcz: { press: function () { rodSpeed = 'normal'; }, active: function () { return rodSpeed === 'normal'; } },
     imrpk8kjsjs: { press: function () { rodSpeed = 'fast'; }, active: function () { return rodSpeed === 'fast'; } },
-    // --- Shutdown rods ---
-    imrpnyaxsb3: { press: function () { cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: 4, speed: rodSpeed }); } },
-    imrpnyf37ju: { press: function () { cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: -4, speed: rodSpeed }); } },
+    // --- Shutdown rods — same momentary tap-or-hold drive ---
+    imrpnyaxsb3: { hold: { group: 'shutdown_rods', direction: 1 } },
+    imrpnyf37ju: { hold: { group: 'shutdown_rods', direction: -1 } },
     // --- Steam dump: AUTO / OPEN / CLOSE ---
     imrppqg6mcc: { press: function () { cmd({ action: 'set_steam_dump', mode: 'auto' }); }, active: function (s) { return CS(s).steam_dump_auto; } },
     imrppquqg16: { press: function () { cmd({ action: 'set_steam_dump', mode: 'open' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) > 50; } },
@@ -445,6 +447,31 @@
 
   function mk(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
+  // ---- momentary rod drive (tap-or-hold), mirroring the classic control strip.
+  // pointerdown arms a single-step nudge; if released within TAP_HOLD_MS it fires as
+  // a 1-step nudge, otherwise the timer promotes it to a continuous hold-drive
+  // (rod_start) that runs until release (rod_stop). Release is caught board-wide
+  // (pointerup / pointercancel / blur) so dragging off the button still stops the rod.
+  var TAP_HOLD_MS = 220;
+  var holdingGroup = null, pendingRodTap = null;
+  function startHoldRod(group, direction) { holdingGroup = group; cmd({ action: 'rod_start', group_id: group, direction: direction, speed: rodSpeed }); }
+  function armRodTap(group, direction) {
+    pendingRodTap = { group: group, direction: direction, timer: setTimeout(function () {
+      pendingRodTap = null; startHoldRod(group, direction);
+    }, TAP_HOLD_MS) };
+  }
+  function endHoldRod() {
+    if (pendingRodTap) {   // released before the hold threshold → a tap = one step
+      clearTimeout(pendingRodTap.timer);
+      cmd({ action: 'rod_nudge', group_id: pendingRodTap.group, steps: pendingRodTap.direction, speed: rodSpeed });
+      pendingRodTap = null;
+      return;
+    }
+    if (!holdingGroup) return;
+    cmd({ action: 'rod_stop', group_id: holdingGroup });
+    holdingGroup = null;
+  }
+
   // ================================================================ driver API
   RD.PwrBoardDriver = {
     onMount: function (doc, ctx, r) {
@@ -454,6 +481,14 @@
       var b = BUTTONS[item.id];
       if (b && b.press) b.press(RD.PwrBoard.lastSnapshot() || {}, btn);
     },
+    // Momentary (press-and-hold) buttons — the rod drive. buttonMomentary tells the
+    // board to route these through pointer/keyboard down+up instead of click.
+    buttonMomentary: function (item) { var b = BUTTONS[item.id]; return !!(b && b.hold); },
+    onButtonDown: function (item) {
+      var b = BUTTONS[item.id];
+      if (b && b.hold) armRodTap(b.hold.group, b.hold.direction);
+    },
+    onButtonUp: function () { endHoldRod(); },
     onNumber: function (item, value) {
       var n = NUMBERS[item.id];
       if (n && n.set) n.set(value);

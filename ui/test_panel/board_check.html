@@ -162,12 +162,22 @@
       clickBtn('imrqp6avzkw'); ticks(2);
       ck('func: BORON OFF disengages the channel', !(chanOf('boron_conc') && chanOf('boron_conc').engaged));
 
-      // rods: nudge withdraw drives control bank up
-      var beforeSteps = cs().rod_groups.filter(function (g) { return g.id === 'control_rods'; })[0].steps;
+      // rods: the WITHDRAW/INSERT buttons are momentary (tap-or-hold). A quick TAP
+      // (pointerdown then pointerup before the hold threshold) nudges EXACTLY ONE step;
+      // the nudge_target clamps it so extra ticks never carry it further. (The
+      // hold-to-drive path uses a real 220 ms timer and is covered by the interactive
+      // playwright check, not this synchronous harness.)
+      function rodTap(id) {
+        var b = document.querySelector('[data-item="' + id + '"] button');
+        b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      }
+      function ctlSteps() { return cs().rod_groups.filter(function (g) { return g.id === 'control_rods'; })[0].steps; }
       clickBtn('imrpk8kjsjs'); // fast
-      clickBtn('imrpk6qzjq8'); ticks(30);
-      var afterSteps = cs().rod_groups.filter(function (g) { return g.id === 'control_rods'; })[0].steps;
-      ck('func: rod WITHDRAW nudge moves control bank up', afterSteps > beforeSteps, beforeSteps + '->' + afterSteps);
+      var beforeSteps = ctlSteps();
+      rodTap('imrpk6qzjq8'); ticks(30);
+      var afterSteps = ctlSteps();
+      ck('func: rod WITHDRAW tap moves control bank up exactly one step', afterSteps === beforeSteps + 1, beforeSteps + '->' + afterSteps);
 
       // TRIP BLOCKS button: neutral GREY (bd-info) + count badge while trips are blocked
       // (a standing lineup note, not an alarm). At hot_full_power the at-power startup net

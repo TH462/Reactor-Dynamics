@@ -431,6 +431,11 @@
       max_steps: 228,
       // Selectable speeds (steps/s): slow 8/min, normal 48/min, fast 72/min.
       speeds: { slow: 0.133, normal: 0.800, fast: 1.200 },
+      // On release the drive de-energizes but the bank overruns briefly before the
+      // latch catches — a slight coast (this many seconds of continued travel at the
+      // current speed, then stop). Time-based, so a fast drive overruns ~1–2 steps
+      // while a slow crawl stops almost at once (momentum feel, not an abrupt halt). [tune]
+      stop_coast_s: 1.0,
       scram_time_control_s: 2.5,   // full-travel insertion time [tune]
       scram_time_shutdown_s: 2.0,  // slightly faster (pre-loaded) [tune]
       control_op_position_pct: 92.0, // control group operating position (% withdrawn)
