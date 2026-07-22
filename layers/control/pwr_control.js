@@ -105,6 +105,16 @@
     // source-range detector comes back on so the operator keeps a count rate.
     { instrument: 'intermediate_range', direction: 'low', setpoint: 1.0e-10,
       action: 'set_sr_detector', params: { on: true } },
+    // Letdown isolation on LOW pressurizer level (~17 %, real Westinghouse
+    // interlock). Letdown is a bleed OUT of the RCS; if it keeps running while
+    // level is falling it will empty the primary. Isolating both orifices here
+    // makes it physically impossible to drain the plant through CVCS — the bleed
+    // shuts before the 12 % pzr-level reactor trip, arresting the drop. Latched:
+    // reset_below only re-arms the fire latch when level recovers past 20 %; there
+    // is NO reset_action, so letdown stays isolated until the operator re-opens an
+    // orifice (letdown restoration is a deliberate operator action, not automatic).
+    { instrument: 'pzr_level', direction: 'low', setpoint: 17.0,
+      action: 'set_letdown_orifices', params: { a: false, b: false }, reset_below: 20.0 },
   ];
 
   // Mechanical protections moved in-stack (2026-07 ruling): relief-valve pops

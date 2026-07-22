@@ -37,6 +37,20 @@
 > BWR 14/18 — B2/B3/B4/B5). `run\_procedures` now carries B3 as a strict expected-fail
 > (`✗(known B3)`, gate exits 0; an XPASS turns the gate red so the annotation can't go stale).
 
+> **Update 2026-07-22 (CVCS pressurizer drain-rate tuning target — owner request).** New PWR ops
+> probe `ops_cvcs_pzr_drain_rate` measures how fast an uncompensated letdown orifice (~20 gpm, with
+> charging and CVCS-auto secured) walks the pressurizer down — the "you shouldn't be able to drain the
+> plant in 30 s" concern. **Deliberately RED (P7):** a 15 % pzr drop takes ~5 s (~179 %/min) where a
+> real ~20 gpm bleed against a real pressurizer + RCS inventory needs MINUTES. The cause is structural,
+> not a knob: letdown/charging share the lumped inventory scale with LOCA/leak/ECCS and
+> `level_per_mass = 100` maps pzr level to RCS mass 1:1 (`pwr_primary`), so ~20 gpm reads as ~3 %/s of
+> inventory. The fix is a coupled retune — rescale the CVCS↔inventory coupling off the LOCA scale
+> without breaking leak/LOCA make-up calibration (see `Blueprint/BUILD_DECISIONS.md` "CVCS make-up —
+> bumpless transfer + letdown isolation", 2026-07-21). Pressure holds on the heaters through the drain,
+> so there is no HPI confound — a clean letdown-out measurement. The probe's other checks PASS (the
+> low-level letdown-isolation interlock holds; the primary is not drained to empty). Scoreboard:
+> **58/68** — PWR adds this one RED; all prior tallies unchanged.
+
 \---
 
 ## 1\. What these suites are

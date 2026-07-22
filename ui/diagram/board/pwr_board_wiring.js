@@ -37,6 +37,24 @@
 
   // Nominal full-scale flows for indications the engine exposes only as normalized/pct.
   var GPM_HPI = 600, GPM_AFW = 640, GPM_CHARGING = 1000, GPM_LETDOWN = 1000, GPM_FEED_PER_PCT = 10;
+  // Editable-input valid ranges [min, max], in the board's display (US) units — the
+  // renderer clamps every setpoint box to these and auto-corrects an out-of-range entry
+  // to the nearest bound (both min and max). Sourced from the engine limits so a retune
+  // keeps the UI honest; the board is US-only, so these are the only unit the box shows.
+  var _CFG = (typeof RD !== 'undefined' && RD.PWR_CONFIG) || {};
+  var _RX = _CFG.reactivity || {}, _PZ = _CFG.pressurizer || {}, _ID = _CFG.identity || {};
+  // Charging: the normal make-up band (reactivity.charging_max 0.06) on the gpm scale = 60.
+  var CHARGING_MAX_GPM = GPM_CHARGING * (_RX.charging_max || 0.06);
+  var NUM_BOUNDS = {
+    imro8rmka2y: [0, _ID.mwe_rated || 100],                          // generator load, MW (rated)
+    imro8xhy2me: [0, 120 * GPM_FEED_PER_PCT],                        // SG feed, gpm (feed pump 0-120%)
+    imro929i738: [0, 100],                                           // pzr spray, %
+    imro96mj15p: [0, 100],                                           // pzr heater, %
+    imrpq29jo7t: [0, 2500],                                          // boron target, ppm (channel sp.max)
+    imrpq48hn3t: [0, CHARGING_MAX_GPM],                              // charging, gpm (0-60)
+    imrsg8b7b9o: [Math.ceil(MPa2psi(0.1)),                           // pressure setpoint, psi:
+                  Math.floor(MPa2psi(_PZ.safety_open_mpa || 17.13))] //   engine band 0.1 MPa .. pzr safety
+  };
 
   // ---- driver-local UI state (things the engine has no field for) ----
   var rodSpeed = 'normal';           // S/M/F selection for rod nudges
@@ -157,7 +175,7 @@
     imro929i738: { set: function (v) { cmd({ action: 'set_spray', pct: v }); }, get: function (s) { return CS(s).spray_valve_pct; } },                    // spray %
     imro96mj15p: { set: function (v) { cmd({ action: 'set_heater', power_pct: v }); }, get: function (s) { return CS(s).heater_power_pct; } },             // heater %
     imrpq29jo7t: { set: function (v) { cmd({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: v }); }, get: function (s) { var c = chan(s, 'boron_conc'); return c && c.setpoint != null ? c.setpoint : null; } }, // boron target ppm (control-layer channel setpoint)
-    imrpq48hn3t: { set: function (v) { cmd({ action: 'set_charging_flow', normalized: v / GPM_CHARGING }); }, get: function (s) { return (CS(s).charging_flow_normalized || 0) * GPM_CHARGING; } }, // charging gpm
+    imrpq48hn3t: { set: function (v) { cmd({ action: 'set_charging_flow', normalized: v / GPM_CHARGING }); }, get: function (s) { return (CS(s).charging_flow_normalized || 0) * GPM_CHARGING; } }, // charging gpm (input clamped to NUM_BOUNDS)
     imrsg8b7b9o: { set: function (v) { cmd({ action: 'set_pressure_setpoint', mpa: psi2MPa(v) }); }, get: function (s) { return MPa2psi(CS(s).pressure_setpoint || 0); } } // plant pressure setpoint psi
   };
 
@@ -493,6 +511,8 @@
       var n = NUMBERS[item.id];
       if (n && n.set) n.set(value);
     },
+    // Valid [min, max] for an editable box, so the renderer clamps out-of-range entries.
+    boundsFor: function (item) { return NUM_BOUNDS[item.id] || null; },
     onControl: function (item, action, value) {
       // Only clickable valves emit control now — every pump is rendered art-only.
       if (action === 'toggle' && VALVE_TOGGLE[item.id]) VALVE_TOGGLE[item.id](!!value);

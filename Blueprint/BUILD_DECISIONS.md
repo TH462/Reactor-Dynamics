@@ -31,6 +31,7 @@ where the two differ or where judgment was exercised.
 | F9 | M5/M6·PH/M7 | Integration tests assert `rod_nudge` reaches the engine **instantly** (`210 → 200`), but the engine now does a **rate-limited nudge** (drives a `nudge_target` over sim time — the "rod control reworked" change). The one-step assertion sees `210→210` and fails. **Pre-existing** (reproduces on clean HEAD; unrelated to the BOP work) — the stale check needs to step the sim forward after nudging. | test | **open** — fix the 3 integration tests to run the sim after `rod_nudge` |
 | F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **RESOLVED (M6)** — highlights auto-reveal hidden controls on both mechanisms: RBMK/BWR `findPdControl()` switches the owning view tab (`app.js`); PWR `RD.PwrSynoptic.revealControl(label)` opens the owning card tab/section via the data-driven `SYN_CONTROL_MAP` (`pwr_synoptic.js`). `verify_manual_follow.js` now checks PWR controls through the same reveal path. |
 | F10 | M2/M8 | **RBMK automatic-regulator (AR) rod group** (user-directed): add a third, small-worth (~5–8% of the manual bank, no displacer), fine-step group — the authentic RBMK AR. The Automate rod channel drives IT (fixes the ±4%/step hold granularity); its diagram/control card carries its own AUTO/MAN selector mirroring the Automate channel; disengaging = taking manual control (the pre-Chernobyl condition — scenario beat material). Include AR in ORM; scram drives it in; keep the positive-scram displacer exclusively on the manual bank so the Chernobyl acceptance suite stays green. NO second manual group — the AR under manual override IS the fine manual bank. | planned | **RESOLVED (2026-07-07)** — built as specced (see the dated entry); the Chernobyl AR scenario beat is authored under F11. |
+| F12 | M8/test | **`run_e2e_controls` 27/30 — 3 pre-existing reds** (predate the CVCS-balance fix; verified on clean HEAD). (a) *PZR spray manual set reaches engine* — expects spray ≥45 % at the engine, gets 12; the spray-demand reach drifted. (b/c) *CVCS auto make-up holds inventory vs leak* / *AUTO charging converged to match the leak* — written against an old SGTR scale (comment says leak ≈0.0024/s); the leak now starts at **0.12/s = 2× charging capacity** and tapers with ΔP, so "auto holds ≥98 %" and "charging matches the leak" are no longer physical for a violent severity-1.0 SGTR. Fix = re-baseline these two tests to the current SGTR trajectory (or assert against a small leak the servo *can* match), and re-check the spray reach. | test | **open** — separate from CVCS make-up balance (that fix landed 2026-07-21) |
 | F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **RESOLVED (2026-07-07)** — rbmk_ar + pwr_automation missions, auto_channels presets exercised end-to-end (startScenarioAuto gate harness), Chernobyl AR tie-in. Pre-existing missions deliberately left bare (triggers tuned against bare-plant trajectories). |
 
 ---
@@ -3134,6 +3135,46 @@ inventory-hold both pass), autoctl 20, run_pwr 31, campaign 51, m5 19.
 loss — spray AUTO holds ~2255 psi vs ~2379 with spray off), reactor-vessel z-order over the rod
 cards, slow-rod-insertion SCRAM at 100%, a spray/PORV tuning test, and a meta-analysis of why the
 prior production-readiness review missed all of these (control-loop / physical-plausibility gap).
+
+### PWR CVCS make-up — bumpless transfer + letdown low-level isolation (2026-07-21)
+
+**Reported symptom (owner playtest):** "CVCS seems unbalanced and the auto doesn't work
+very well" → then "you shouldn't be able to drain the plant in 30 seconds."
+
+**Root cause.** Under AUTO make-up, `charging_setpoint` sat frozen at its init value (0)
+while the true `charging_flow` modulated (`pwr_primary.stepInventory`). Toggling CVCS make-up
+to MANUAL ran `charging_flow = charging_setpoint = 0` (`pwr_engine.js set_charging_flow`
+path via the auto-off branch), so letdown (orifice A ≈ 0.030) kept bleeding against **zero**
+charging → net −0.030/s drained the pressurizer in ~15 s and the whole RCS in ~33 s from one
+click.
+
+**Why 33 s (and why NOT rescaled).** `level_per_mass = 100` maps pzr level to total RCS mass
+1:1 (mass 1.0 → 55 %; the pzr empties ~0.45 below nominal), and CVCS letdown/charging share the
+**same normalized inventory-fraction scale as leak/LOCA/ECCS** (0.06 charging ≡ 40 gpm ≡ a big
+slice of the lumped inventory). So a 20 gpm letdown reads as ~3 %/s of inventory — unphysical in
+absolute terms, but rescaling *only* CVCS would break the leak/LOCA make-up calibration tuned
+against those units (charging_max ≈ 2× a 0.03 leak, ≈ ½ a 0.12 LOCA). Ruling: do **not** rescale;
+fix it the way a real plant is bounded — make it impossible to drain the plant via CVCS.
+
+**Fixes.**
+1. **Bumpless AUTO→MANUAL transfer** (`pwr_engine.js set_cvcs_auto`): on the true→false edge,
+   `charging_setpoint ← charging_flow` — the manual station tracks the live auto output, so
+   MANUAL holds inventory instead of snapping to a stale setpoint. (Residual: manual inherits the
+   auto controller's small proportional droop bias → a slow, operator-trimmable level drift, not a
+   drain.)
+2. **Letdown isolation on low pzr level ~17 %** (`pwr_control.js PWR_ACTUATIONS`, config-driven
+   actuation → `set_letdown_orifices {a:false,b:false}`). Real Westinghouse interlock; fires before
+   the 12 % low-level reactor trip. Latched (`reset_below: 20` re-arms the fire latch only; no
+   `reset_action`, operator re-opens). Bounds every over-letdown case — including the A+B lineup
+   whose flow (~0.070) exceeds charging_max (0.060) and used to drain silently — to a self-arrest
+   at ~17 %, mass floored (~0.49 in probe), RCS never empties.
+
+**Gates:** pwr 31/31, autoctl 20/20, m4 18/18, scenarios 3/3, procedures 21/21, campaign
+51/51 (2897), ops 58/67 (unchanged 9 documented RBMK/BWR tuning targets, zero pwr — actually
++1 vs the stale README 57). `run_e2e_controls` stayed **27/30** — the 3 reds are pre-existing
+(stash-verified) and unrelated to make-up balance; logged as **F12** (stale PZR-spray reach +
+two CVCS-auto-vs-severity-1.0-SGTR expectations that predate the SGTR leak rescale). README
+baseline line corrected (e2e 30→27, ops 57→58).
 
 ### Manual unification + instructor auto-checklists (2026-07-21)
 

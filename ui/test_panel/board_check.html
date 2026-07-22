@@ -139,7 +139,8 @@
         return RD.PwrBoardDriver.suppressBuiltInControls(id);
       }));
       clickBtn('imrppquqg16'); ck('func: steam dump OPEN -> not auto', cs().steam_dump_auto === false);
-      setNum('imro8rmka2y', 850); ck('func: generator load 850 MW -> load_target', Math.abs(cs().load_target_mwe - 850) < 1);
+      setNum('imro8rmka2y', 80); ck('func: generator load 80 MW -> load_target', Math.abs(cs().load_target_mwe - 80) < 1);
+      setNum('imro8rmka2y', 850); ck('func: generator load clamps to rated (100 MW)', Math.abs(cs().load_target_mwe - 100) < 1);
       setNum('imrsg8b7b9o', 2100); ck('func: pressure setpoint 2100 psi -> ~14.48 MPa', Math.abs(cs().pressure_setpoint - 2100 / 145.038) < 0.05);
 
       // --- instructor glow ---

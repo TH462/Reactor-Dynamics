@@ -238,13 +238,21 @@
     numberEls[it.id] = rec;
 
     function commit(v) {
-      if (isNaN(v)) { rec.editing = false; return; }
+      var d = driver();
+      if (isNaN(v)) {                                    // empty / non-numeric: revert, don't command
+        rec.editing = false;
+        if (rec.preEdit != null) input.value = rec.preEdit;
+        return;
+      }
+      // Clamp to the control's valid range and auto-correct an out-of-bounds entry to the
+      // nearest acceptable value (both min and max). Bounds come from the plant driver.
+      var b = d && d.boundsFor && d.boundsFor(it);
+      if (b) { if (v < b[0]) v = b[0]; else if (v > b[1]) v = b[1]; }
       rec.editing = false;
       input.value = v.toFixed(digits);
-      var d = driver();
       if (d && d.onNumber) d.onNumber(it, v);
     }
-    input.addEventListener('focus', function () { rec.editing = true; });
+    input.addEventListener('focus', function () { rec.editing = true; rec.preEdit = input.value; });
     input.addEventListener('blur', function () { commit(parseFloat(input.value)); });
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter') input.blur(); });
 

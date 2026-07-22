@@ -366,6 +366,51 @@
       });
     },
 
+    // CVCS pressurizer drain-rate TUNING PROBE (owner request 2026-07-22): "how fast does
+    // CVCS drain the pressurizer should be a test performed for tuning." Lines up one
+    // letdown orifice (~20 gpm) with make-up secured (charging 0, no CVCS auto) and times
+    // how fast the pressurizer walks down. Pressure is held by the heaters during the
+    // drain, so there is no HPI confound — it is a clean letdown-out measurement.
+    //
+    // This is a RED tuning target by design. Letdown/charging share the lumped inventory
+    // scale with LOCA/leak/ECCS (pwr_primary.stepInventory) and level_per_mass=100 maps
+    // pzr level to RCS mass 1:1, so a ~20 gpm orifice reads as ~3 %/s of inventory —
+    // ~2 %/s of pzr level, i.e. a 15 % swing in ~7 s. A real ~20 gpm bleed against a real
+    // pressurizer + RCS inventory takes MINUTES (tens of minutes) to move level that far;
+    // the probe fails until the CVCS↔inventory coupling is rescaled off the LOCA scale
+    // (see BUILD_DECISIONS "CVCS make-up — bumpless transfer + letdown isolation"). It
+    // also confirms the low-level letdown-isolation interlock bounds the drain.
+    ops_cvcs_pzr_drain_rate: function () {
+      return test('OPS CVCS pzr drain rate — letdown, no make-up (TUNING TARGET)', function (ck) {
+        var h = H('hot_full_power');
+        h.cmd('set_charging_flow', { normalized: 0 });        // MANUAL, charging secured
+        h.cmd('set_letdown_orifices', { a: true, b: false });  // one orifice (~20 gpm)
+        h.run(1);
+        var lvl0 = h.ts().pzr_level_pct, p0 = h.ts().pressure_mpa;
+        // Time to walk level down a fixed 15-point band, kept ABOVE the ~17 % letdown-
+        // isolation setpoint so this measures the raw drain rate, not the interlock.
+        var target = lvl0 - 15;
+        var tDrop = h.runUntil(function (ts) { return ts.pzr_level_pct <= target; }, 1800);
+        var ratePerMin = tDrop > 0 ? 15 / (tDrop / 60) : 0;
+        ck.info('start pzr level', fmt(lvl0, 1) + ' %');
+        ck.info('pressure across the drain (no HPI actuation)', fmt(p0, 2) + ' → ' + fmt(h.ts().pressure_mpa, 2) + ' MPa');
+        ck.info('drain rate', fmt(ratePerMin, 1) + ' %/min (' + fmt(ratePerMin / 60, 3) + ' %/s)');
+        // THE TUNING TARGET: a 15 % pzr drop on an uncompensated ~20 gpm letdown should
+        // take minutes. tDrop < 0 (never dropped 15 % in 30 min) is the realistic pass.
+        ck('15% pzr drop is realistically slow', tDrop < 0 ? '> 1800 s' : fmt(tDrop, 1) + ' s',
+          tDrop < 0 || tDrop >= 300, '>= 300 s (real: minutes)');
+        // Protection still bounds it: keep draining, confirm letdown isolates on low level
+        // and the primary is NOT emptied (interlock added with the bumpless-transfer fix).
+        h.run(120);
+        var cs = h.ctl(), massEnd = h.ts().core_inventory_pct / 100;
+        ck('letdown isolated on low level (interlock held)',
+          (cs.letdown_orifice_a || cs.letdown_orifice_b) ? 'still open' : 'isolated',
+          !cs.letdown_orifice_a && !cs.letdown_orifice_b, 'isolated');
+        ck('primary not drained to empty', fmt(massEnd, 3), massEnd > 0.35, '> 0.35');
+        T.checkSanity(ck, h);
+      });
+    },
+
     ops_turbine_trip_ride: function () {
       return test('OPS turbine trip at 100% — ride-through behavior', function (ck) {
         var h = H('hot_full_power');

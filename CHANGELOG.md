@@ -9,6 +9,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **PWR board — every setpoint box now clamps to its valid range and auto-corrects
+  out-of-range entries.** Typing a number above the max (or below the min) snaps the box
+  to the nearest acceptable value on Enter/blur, and an empty or non-numeric entry reverts
+  to the previous value instead of committing garbage. The step arrows (▲▼) respect the
+  bounds too. Ranges (board is US-only): Generator Load 0–100 MW, SG Feed 0–1200 gpm,
+  Spray 0–100 %, Heater 0–100 %, Boron target 0–2500 ppm, Charging 0–60 gpm, Pressure
+  setpoint 15–2484 psi. Bounds derive from the engine limits (e.g. charging = the make-up
+  band `charging_max`; pressure = 0.1 MPa up to the pressurizer safety) so a retune keeps
+  the UI in sync. The **charging box's range marking was corrected from a wrong "0-150" to
+  "0-60"** (max charging = `charging_max` 0.06 on the board's 1000 gpm/normalized scale).
+- **PWR — CVCS make-up no longer drains the reactor when you switch it to MANUAL, and
+  letdown can no longer empty the plant.** Two CVCS fixes:
+  - **Bumpless AUTO→MANUAL transfer.** Under AUTO make-up the charging *setpoint* sat
+    frozen at its start value (0), so toggling CVCS make-up to MANUAL snapped charging
+    to zero while letdown kept running — the pressurizer, then the whole RCS, drained in
+    a couple of minutes from a single click. Now, exactly like a real manual/auto station,
+    the manual setpoint **tracks the live auto flow**, so dropping to MANUAL holds
+    inventory where it was (the operator then trims from there).
+  - **Letdown isolation on low pressurizer level (~17 %).** A real Westinghouse interlock:
+    letdown is a bleed *out* of the RCS, so if level keeps falling it isolates both
+    orifices before the plant can be drained (and before the 12 % low-level reactor trip).
+    Over-letdown — including the max A+B lineup, whose flow exceeds charging capacity —
+    now self-arrests at ~17 % instead of running the primary dry. Letdown stays isolated
+    until the operator re-opens an orifice.
 - **PWR — the board rod-drive buttons are now momentary (tap-or-hold).** WITHDRAW/INSERT
   (control and shutdown banks) used to fire a fixed 4-step nudge on release, so a click
   moved the bank several steps regardless of hold time. Now a quick **tap moves exactly

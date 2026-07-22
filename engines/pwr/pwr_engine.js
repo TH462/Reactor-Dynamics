@@ -767,6 +767,13 @@
         s.steam_dump_setpoint = clip(cmd.mpa, 0.2, this.cfg.steam_generator.sg_safety_open_mpa);
         break;
       case 'set_cvcs_auto':
+        // Bumpless AUTO→MANUAL transfer: leaving AUTO, the manual charging setpoint
+        // picks up the current true charging flow (a real M/A station tracks the auto
+        // output). Without this, MANUAL snapped charging to a STALE setpoint — 0 at
+        // init — so a single toggle to manual left letdown running against zero
+        // charging and drained the RCS. Capture only on the true→false edge so a
+        // fresh operator setpoint is never clobbered.
+        if (!cmd.active && s.cvcs_auto) s.charging_setpoint = s.charging_flow;
         s.cvcs_auto = !!cmd.active;   // auto make-up: charging modulates to hold inventory
         break;
       case 'isolate_feedwater':
