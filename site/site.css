@@ -207,7 +207,11 @@ a.disabled { pointer-events: none; cursor: default; opacity: 0.4; text-decoratio
 .log-entry:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
 .log-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .log-head h2 { margin: 0; border: none; padding: 0; font-size: 20px; }
-.log-date { color: var(--muted); font-size: 13px; }
+.log-ver {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: var(--normal);
+  border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; line-height: 1.5;
+}
+.log-date { color: var(--muted); font-size: 13px; margin-left: auto; }
 .log-entry ul { margin: 14px 0 0; padding-left: 0; list-style: none; }
 .log-entry li { margin-bottom: 10px; font-size: 15px; line-height: 1.55; }
 .log-tag {

@@ -161,6 +161,9 @@ _Project status_). Runners print `PASS`/`FAIL` per test and a final tally.
   migration notes pattern in `CHANGELOG.md`); re-run `run_m7.js`.
 - **Then update** `CHANGELOG.md`, the `Project status` section above, and
   `Blueprint/BUILD_DECISIONS.md` if a decision or flag changed.
+- **On release (merge `develop` → `main`)** → add the player-facing `changelog.html`
+  entry with the next **`Alpha X.Y.Z`** version, per _Branching & workflow → Website
+  changelog & version numbers_.
 
 ---
 
@@ -172,9 +175,33 @@ branch. Do not commit straight to `main`.
 
 - **New work** → branch from / commit on `develop`.
 - **Releasing** → merge `develop` → `main` and push both. Do this only when the
-  work is at a done state (gates green — see _Definition of done_).
+  work is at a done state (gates green — see _Definition of done_). **Immediately
+  before the merge, add the website changelog entry + version number — see below.**
 - Keep `develop` current with `main` (fast-forward) before starting a new change so
   history stays linear.
+
+### Website changelog & version numbers
+
+The public site has a **player-facing** changelog at **`changelog.html`** — separate
+from the developer `CHANGELOG.md`. **Every release gets a version number and a
+`changelog.html` entry. This is a required release step, not optional — do it as part
+of the merge, without being asked.**
+
+- **When** — immediately *before* you merge `develop` → `main` (work done, gates green).
+  One entry per release.
+- **Version number** — format **`Alpha MAJOR.MINOR.PATCH`** (e.g. `Alpha 1.1.1`). The
+  **next release is `Alpha 1.0.1`**. Find the last version in the top entry of
+  `changelog.html` and **increment the LAST segment** each release (`1.0.1` → `1.0.2`
+  → …); bump the minor for a notable feature group and the major for a big milestone
+  (owner's call).
+- **The entry** — add a new `<article class="log-entry">` at the TOP of the log
+  (newest-first), carrying: the **version** (`<span class="log-ver mono">Alpha X.Y.Z</span>`),
+  the **date** (visible text *and* the `datetime="YYYY-MM-DD"` attribute), and a brief,
+  **player-facing** summary (added / changed / fixed tags). Write for players, not the
+  repo — copy the template in the file's `ADDING AN ENTRY` comment.
+- **Not** the same as the `RD_VERSION` deploy stamp (`site/version.js` — the git SHA
+  Vercel stamps at build time). That's an automatic build artifact; the `Alpha X.Y.Z`
+  number is the human release version.
 
 ---
 

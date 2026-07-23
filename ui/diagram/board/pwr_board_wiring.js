@@ -58,7 +58,8 @@
   // ▲/▼ nudge size overrides (the authored data step is a coarse default). Survives a
   // board-data regeneration, unlike editing the generated pwr_board_data.js by hand.
   var NUM_STEP = {
-    imro8rmka2y: 1     // generator load: nudge 1 MW per arrow press (authored default was 20)
+    imro8rmka2y: 1,    // generator load: nudge 1 MW per arrow press (authored default was 20)
+    imrpq29jo7t: 1     // boron target: nudge 1 ppm per arrow press (authored default was 20)
   };
 
   // ---- driver-local UI state (things the engine has no field for) ----

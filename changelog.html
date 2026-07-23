@@ -30,12 +30,16 @@
   something nobody could yet use.</p>
 
   <!-- ==================================================================
-       ADDING AN ENTRY
+       ADDING AN ENTRY  (do this just BEFORE merging develop → main)
 
        Newest entry goes directly below this comment, so the page reads
-       newest-first. Copy the template, set both the visible date and the
-       datetime="" attribute (YYYY-MM-DD), and delete the .log-empty block
-       below once the first real entry lands.
+       newest-first. Copy the template, then:
+         • VERSION — "Alpha MAJOR.MINOR.PATCH". Read the current top entry for
+           the last version and increment the LAST segment each release
+           (Alpha 1.0.1 → 1.0.2 → …); bump the minor for a notable feature
+           group and the major for a big milestone (owner's call).
+         • DATE — set both the visible text and the datetime="" attr (YYYY-MM-DD).
+       Full rule: README.md → "Website changelog & version numbers".
 
        Tags: added / changed / fixed. Write for players, not for the repo —
        "the reactor trips less aggressively during startup", not the commit
@@ -45,6 +49,7 @@
   <article class="log-entry">
     <div class="log-head">
       <h2>Some short headline</h2>
+      <span class="log-ver mono">Alpha 1.0.2</span>
       <time class="log-date mono" datetime="2026-01-01">1 January 2026</time>
     </div>
     <ul>
@@ -56,10 +61,19 @@
 
        ================================================================== -->
 
-  <div class="log-empty">
-    Nothing to report yet &mdash; Reactor Dynamics has only just gone live.
-    Updates will appear here as they ship.
-  </div>
+  <article class="log-entry">
+    <div class="log-head">
+      <h2>Hands-on TMI-2, a calmer board, and a smoother ride</h2>
+      <span class="log-ver mono">Alpha 1.0.1</span>
+      <time class="log-date mono" datetime="2026-07-23">23 July 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag changed">Changed</span><strong>TMI-2, Part 1 is now hands-on.</strong> You work the controls the way the night-shift crew did &mdash; securing injection, isolating the stuck relief valve &mdash; instead of only watching it play out. The stuck valve, its hot tailpipe, and the maintenance tag are all visible on the board now.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Calmer, more honest gauges.</strong> Indication noise is cut in half, and boration/dilution now moves power at the pace of the actual (slowly&#8209;mixing) boron rather than jumping ahead of the reading. Control rods are a touch gentler near startup.</li>
+      <li><span class="log-tag added">Added</span><strong>Keyboard rods and clearer controls.</strong> Drive the control rods with the &uarr;/&darr; keys, and every clickable control now glows when you hover it. The generator&#8209;load and boron arrows step by 1 (MW / ppm) for fine trimming.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>No more flicker or stuck rods.</strong> The changing numbers and strip chart no longer strobe after a few minutes of play, and holding an arrow key no longer leaves the rods drifting after you let go.</li>
+    </ul>
+  </article>
 
   <p style="margin-top:32px">Found a bug, or want to suggest something? The
   <a href="feedback.html">feedback page</a> comes straight to me, and there is

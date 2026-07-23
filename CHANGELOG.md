@@ -8,7 +8,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Website version tracking.** The public changelog (`changelog.html`) now carries a per-release
+  version number (`Alpha MAJOR.MINOR.PATCH`, starting **Alpha 1.0.1**). Adding a `changelog.html`
+  entry with the next version is now a required step *before* each `develop`→`main` merge — the
+  workflow is documented in `README.md` (_Branching & workflow → Website changelog & version
+  numbers_) so every coding agent follows it.
+
 ### Changed
+- **PWR board — boron target ▲/▼ now nudges 1 ppm** (was 20) for fine reactivity-chemistry trimming
+  (matches the 1 MW generator-load step).
 - **Boron now moves power at the speed of the *actual* concentration, not the input.** Borating
   or diluting used to swing power almost instantly while the boron indication crept up slowly —
   because reactivity keyed off the injected concentration while the analyzer sample lagged. The
