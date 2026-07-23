@@ -155,7 +155,10 @@ body {
 /* Quiet board: a normal reading is the DIM resting state — the value's color is
    its status. Normal = dim blue-white, Caution = amber, Alarm = red + flash. */
 .gauge .g-label { font-size: 10px; color: var(--clr-dim-label); letter-spacing: .03em; display:flex; justify-content:space-between; }
-.gauge .g-value { font-size: 22px; font-weight: 650; line-height: 1.05; color: var(--clr-normal-value); }
+/* value + mini strip chart share one row (chart to the RIGHT of the number) so the
+   gauge strip stays short — freeing vertical room for the diagram below. */
+.g-valrow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gauge .g-value { flex: 0 0 auto; font-size: 22px; font-weight: 650; line-height: 1.05; color: var(--clr-normal-value); }
 .gauge .g-units { font-size: 10px; color: var(--clr-dim-label); }
 /* Quiet board: value color IS the status — dim normal, amber caution, red+flash alarm. */
 .gauge.warn  .g-value { color: var(--caution); }
@@ -173,7 +176,8 @@ body {
 .g-band .needle { position: absolute; top: -2px; width: 2px; height: 9px; background: var(--text); border-radius: 1px;
   transition: left .12s linear; z-index: 1; }
 .g-band .trip { position: absolute; top: -3px; width: 0; height: 11px; border-left: 1px dashed var(--critical); }
-.g-spark { width: 100%; height: 14px; }
+/* mini strip chart: sits beside the number (1 min of data), fills the slack width */
+.g-spark { flex: 1 1 auto; width: auto; min-width: 32px; height: 20px; opacity: .85; }
 
 /* ===================================================== control sections row */
 /* minmax(0,1fr) — NOT plain 1fr — forces genuinely equal columns. Plain 1fr is
@@ -309,7 +313,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 
 /* ====================================================== bottom: chart+alarm */
 /* the diagram (main-area) now stretches; the chart/alarm strip is a fixed band */
-.bottom-row { flex: 0 0 196px; display: flex; gap: var(--gap); min-height: 150px; }
+/* chart+alarm band trimmed ~20% vertically (was 196/150) to give the diagram more room */
+.bottom-row { flex: 0 0 157px; display: flex; gap: var(--gap); min-height: 120px; }
 .strip-chart {
   flex: 1 1 auto; background: var(--bg-strip); border: 1px solid var(--border); border-radius: var(--radius);
   display: flex; flex-direction: column; padding: 6px 8px;

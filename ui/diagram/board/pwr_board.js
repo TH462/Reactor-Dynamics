@@ -554,6 +554,11 @@
       // which sits inside the reactor-vessel tile's box) so a larger neighboring component's
       // transparent tile can't swallow their clicks.
       if (LIFT[it.kind] || (it.kind === 'component' && it.clickable)) el.style.zIndex = '1';
+      // The reactor vessel is authored to sit IN FRONT of the CONTROL/SHUTDOWN GROUP rod
+      // panels it overlaps (the vessel/CRDM art reads over them, not under). Lift it above
+      // the panel contents; it has no interactive controls (showControls:false), so make it
+      // click-through — the rod hold-buttons beneath it stay reachable.
+      if (it.id === 'reactorVessel') { el.style.zIndex = '2'; el.style.pointerEvents = 'none'; }
       tiles[it.id] = el;
       stage.appendChild(el);
     });

@@ -338,8 +338,10 @@
       el.setAttribute('data-scanner-hint', g.label + ' — reads the instrument (lagged/noisy/fallible), not the true value.');
       el.innerHTML =
         '<div class="g-label"><span>' + g.label + '</span><span class="g-trend trend-flat" data-trend></span></div>' +
-        '<div class="g-value" data-val>—</div>' +
-        '<svg class="g-spark" viewBox="0 0 100 14" preserveAspectRatio="none"><polyline data-spark fill="none" stroke="#56657a" stroke-width="1.5"/></svg>' +
+        '<div class="g-valrow">' +
+          '<div class="g-value" data-val>—</div>' +
+          '<svg class="g-spark" viewBox="0 0 100 14" preserveAspectRatio="none"><polyline data-spark fill="none" stroke="#56657a" stroke-width="1.5"/></svg>' +
+        '</div>' +
         '<div class="g-band"><span class="g-fill" data-fill style="display:none"></span><span class="needle" data-needle style="left:0%"></span></div>';
       el.id = 'gauge-' + g.id;
       strip.appendChild(el);
@@ -585,16 +587,21 @@
       var fill = root.querySelector('[data-fill]');
       if (st !== 'normal') { fill.style.display = 'block'; fill.style.width = (cf * 100) + '%'; fill.style.background = st === 'alarm' ? 'var(--bar-alarm)' : 'var(--bar-warn)'; }
       else fill.style.display = 'none';
-      // trend + sparkline
-      var h = gaugeHist[g.id]; h.push(raw); if (h.length > 40) h.shift();
+      // trend + sparkline — keep a rolling 1-minute (sim-time) window, not a fixed
+      // sample count, so the mini chart spans the same minute at any time-accel.
+      var h = gaugeHist[g.id], now = s.metadata.sim_time;
+      while (h.length && h[h.length - 1].t > now + 1e-9) h.pop();   // drop samples ahead of us (rewind)
+      h.push({ t: now, v: raw });
+      while (h.length > 1 && h[0].t < now - 60) h.shift();          // 60 s window
       var tr = root.querySelector('[data-trend]');
       if (h.length > 4) {
-        var d = h[h.length - 1] - h[h.length - 5], thr = Math.abs(eff.max - eff.min) * 0.002;
+        var d = h[h.length - 1].v - h[h.length - 5].v, thr = Math.abs(eff.max - eff.min) * 0.002;
         tr.textContent = d > thr ? '▲' : d < -thr ? '▼' : '▶';
         tr.className = 'g-trend ' + (d > 0 ? 'trend-up' : d < 0 ? 'trend-down' : 'trend-flat');
       }
-      var mn = Math.min.apply(null, h), mx = Math.max.apply(null, h), rng = (mx - mn) || 1;
-      var pts = h.map(function (v, i) { return (i / Math.max(1, h.length - 1) * 100).toFixed(1) + ',' + (13 - (v - mn) / rng * 12).toFixed(1); }).join(' ');
+      var vals = h.map(function (p) { return p.v; });
+      var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals), rng = (mx - mn) || 1;
+      var pts = h.map(function (p, i) { return (i / Math.max(1, h.length - 1) * 100).toFixed(1) + ',' + (13 - (p.v - mn) / rng * 12).toFixed(1); }).join(' ');
       root.querySelector('[data-spark]').setAttribute('points', pts);
     });
   }

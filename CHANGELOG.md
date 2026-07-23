@@ -9,6 +9,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **PWR board — more vertical room for the plant diagram.** The chart + alarm band was
+  trimmed ~20 % (196→157 px), and the six vital-few gauges now carry their mini strip
+  chart *beside* the number instead of under it — a shorter gauge row. Those mini charts
+  are smaller and now show a rolling **1 minute** of history (sim-time window, so they
+  span the same minute at any time-accel). The reactor vessel was also lifted to sit **in
+  front of** the CONTROL/SHUTDOWN GROUP rod panels it overlaps (it was authored that way);
+  the vessel is click-through so the rod hold-buttons beneath it stay reachable.
+
 - **PWR — CVCS now moves inventory at a realistic pace.** Letdown and charging (tens of
   gpm) used to act on the primary at the same lumped "accident" scale as a LOCA, so an
   uncompensated 20 gpm letdown drained the pressurizer ~2 %/**second** — far too fast for
