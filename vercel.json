@@ -1,5 +1,5 @@
 {
-  "buildCommand": "node -e 'require(\"fs\").writeFileSync(\"site/version.js\", \"/* Generated at deploy. Repo copy is a placeholder (WEBSITE_SPEC.md \\u00a78). */\\n\" + \"window.RD_VERSION = \" + JSON.stringify(\"alpha \\u00b7 \" + (process.env.VERCEL_GIT_COMMIT_SHA || \"dev\").slice(0, 7)) + \";\\n\")'",
+  "buildCommand": "node site/stamp_version.js",
   "outputDirectory": ".",
   "rewrites": [
     { "source": "/sim", "destination": "/ui/shell.html" }
