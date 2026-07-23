@@ -141,9 +141,14 @@
     imrppquqg16: { press: function () { cmd({ action: 'set_steam_dump', mode: 'open' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) > 50; } },
     imrppqxggbj: { press: function () { cmd({ action: 'set_steam_dump', mode: 'closed' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) <= 50; } },
     // --- Generator load mode: FOLLOW / MAN / OFF ---
-    imro8ktzs3u: { press: function () { cmd({ action: 'set_load_mode', mode: 'follow' }); }, active: function (s) { return CS(s).load_mode === 'follow'; } },
-    imro8lddxi: { press: function () { cmd({ action: 'set_load_mode', mode: 'manual' }); }, active: function (s) { return CS(s).load_mode === 'manual'; } },
-    imro8len0oi: { press: function () { cmd({ action: 'disconnect_grid' }); }, active: function (s) { return IN(s).steam_demand_low || (IN(s).mwe_output || 0) <= 1; } },
+    // FOLLOW and MAN bring the turbine ONLINE — connect_grid clears a prior trip/
+    // disconnect (if condenser vacuum permits) and closes the breaker; set_load_mode
+    // alone never un-trips, which is why pressing FOLLOW used to do nothing after OFF.
+    // Lit state tracks the ACTUAL online/offline state (turbine_tripped): OFF lights
+    // only when the machine is truly offline, FOLLOW/MAN only while online in that mode.
+    imro8ktzs3u: { press: function () { cmd({ action: 'connect_grid' }); }, active: function (s) { return !IN(s).turbine_tripped && CS(s).load_mode === 'follow'; } },
+    imro8lddxi: { press: function () { cmd({ action: 'connect_grid' }); cmd({ action: 'set_load_mode', mode: 'manual' }); }, active: function (s) { return !IN(s).turbine_tripped && CS(s).load_mode === 'manual'; } },
+    imro8len0oi: { press: function () { cmd({ action: 'disconnect_grid' }); }, active: function (s) { return !!IN(s).turbine_tripped; } },
     // --- SG feed pump: AUTO / MAN / OFF ---
     // AUTO = the three-element feedwater channel (feed_sg), which is the plant's real feed
     // automation and the free-play default. (The board used to read feed_auto_coupled, a

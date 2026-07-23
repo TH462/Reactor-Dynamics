@@ -203,21 +203,29 @@
     // layer, which reads the condenser_vacuum / turbine_rpm INSTRUMENTS and
     // issues trip_turbine (2026-07 ruling — HR7: a tripped turbine is a
     // command-level event). The engine only spins the machine.
-    var synced = !s.turbine_tripped && s.generator_load > 0;
-    if (synced) {
-      // Grid holds the synchronous generator at rated speed.
+    if (s.turbine_tripped) {
+      // Tripped / disconnected: the stop valves are shut, so there is no admission
+      // steam and the rotor coasts down on windage/bearing friction toward rest —
+      // it does NOT hold rated (that was the "1800 rpm while off" bug).
+      s.turbine_rpm += (0 - s.turbine_rpm) / (tb.coastdown_tau || 40) * dt;
+      if (s.turbine_rpm < 1) s.turbine_rpm = 0;
+    } else if (s.generator_load > 0) {
+      // Synchronised to the grid: the grid holds the generator at rated speed
+      // (a synchronous machine spins at rated at any load, incl. a light startup load).
       s.turbine_rpm += (tb.rpm_rated - s.turbine_rpm) / (tb.sync_tau || 0.5) * dt;
     } else {
-      // Free: coast down on lost steam, or spin up toward overspeed if steam
-      // keeps flowing with the load gone.
+      // Connected but unloaded (a load reject before the trip): admission steam with
+      // the load gone accelerates the rotor toward the overspeed trip.
       var net_torque = s.steam_flow_normalized * tb.torque_per_flow
                      - s.generator_load * tb.torque_per_load;
       s.turbine_rpm += (net_torque / tb.turbine_inertia) * dt;
       if (s.turbine_rpm < 0) s.turbine_rpm = 0;
     }
 
-    s.mwe_output = (s.power_pct / 100) * tb.mwe_rated
-      * (s.turbine_rpm / tb.rpm_rated) * (s.condenser_vacuum_kpa / tb.vacuum_rated);
+    // A disconnected generator carries no grid load, so it produces no electrical
+    // output regardless of shaft speed.
+    s.mwe_output = s.turbine_tripped ? 0
+      : (s.power_pct / 100) * tb.mwe_rated * (s.turbine_rpm / tb.rpm_rated) * (s.condenser_vacuum_kpa / tb.vacuum_rated);
     if (s.mwe_output < 0) s.mwe_output = 0;
   }
 

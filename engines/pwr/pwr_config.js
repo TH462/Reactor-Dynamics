@@ -354,6 +354,7 @@
       turbine_inertia: 50.0,       // coasts slowly [tune]
       rpm_rated: 1800.0, rpm_overspeed_trip: 1980.0,
       sync_tau: 0.5,               // s grid pull-in to rated speed when synced
+      coastdown_tau: 40.0,         // s rotor coastdown to rest after a trip/disconnect [tune]
       vacuum_rated: 96.5, vacuum_lost: 16.9,   // kPa [tune]
       vacuum_restore_tau: 10.0, vacuum_decay_tau: 30.0, // s [tune]
       vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer)
