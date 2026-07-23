@@ -40,6 +40,13 @@ below and go straight to the authoritative source for it.
 > (Claude and others). When in doubt about a number, prefer the as-built engine/config
 > values over prose docs.
 
+> **Coding agents — RBMK and BWR are on hold.** Do **not** implement, tune, refactor,
+> extend, or "fix while you're here" the RBMK or BWR engines, controls, scenarios, UI,
+> or their tests. All active work is **PWR only** until the PWR is finished and the owner
+> reopens those plants. Touching them wastes tokens; leave known RBMK/BWR reds and
+> backlog items alone unless the owner explicitly asks. Shared code is fine to change
+> for a PWR need — do not start RBMK/BWR-specific work.
+
 ---
 
 ## Project status
