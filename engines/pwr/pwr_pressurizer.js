@@ -22,17 +22,49 @@
   // Inverse of T_sat: saturation pressure (MPa) for a temperature (°C).
   function P_sat_from_T(T_c) { return Math.pow(Math.max(T_c, 1e-6) / 179.47, 1 / 0.239); }
 
-  // Heater/spray proportional auto-control (§6.4); operator/failure overrides win.
-  // The control target is the operator setpoint (s.pressure_setpoint) — normally
-  // NOP (P_setpoint) but moved across the range on the Mode 5↔1 heatup/cooldown
-  // path; falls back to the config NOP setpoint for pre-setpoint saves.
-  function autoControl(s, cfg) {
+  // Effective control target: the operator setpoint (s.pressure_setpoint), but a
+  // RAISED setpoint is slewed — the effective target (s._pressure_sp_eff) walks up
+  // at setpoint_pressurize_slew_mpa_s so a big upward step pressurizes at the
+  // plant's deliberate heatup pace instead of at full heater authority (~3 s for
+  // 350→600 psi pre-fix). A LOWERED setpoint takes effect immediately. Disturbance
+  // response at a fixed setpoint keeps the full proportional authority.
+  function effectiveSetpoint(s, cfg, dt) {
     var p = cfg.pressurizer;
-    var setpoint = (s.pressure_setpoint != null) ? s.pressure_setpoint : p.P_setpoint;
-    if (s.heater_override != null) { s.heater_power_frac = s.heater_override; }
+    var sp = (s.pressure_setpoint != null) ? s.pressure_setpoint : p.P_setpoint;
+    var slew = p.setpoint_pressurize_slew_mpa_s;
+    if (slew == null || dt == null) return sp;                    // no slew configured
+    if (s._pressure_sp_eff == null) s._pressure_sp_eff = sp;      // seed (migrated save / first step)
+    if (sp <= s._pressure_sp_eff) s._pressure_sp_eff = sp;        // down: immediate
     else {
+      // Up: only the portion ABOVE current pressure slews — the target may catch
+      // up to where pressure already is instantly (an operator freezing a
+      // descent at "current + a little" must stop the pull-down NOW; only
+      // commanding pressure to places it hasn't been is heater-paced).
+      var base = Math.max(s._pressure_sp_eff, Math.min(sp, s.pressure_mpa));
+      s._pressure_sp_eff = Math.min(sp, base + slew * dt);
+    }
+    return s._pressure_sp_eff;
+  }
+
+  // Heater/spray proportional auto-control (§6.4); operator/failure overrides win.
+  // The control target is the (slewed) operator setpoint — normally NOP
+  // (P_setpoint) but moved across the range on the Mode 5↔1 heatup/cooldown
+  // path; falls back to the config NOP setpoint for pre-setpoint saves.
+  function autoControl(s, cfg, setpointEff) {
+    var p = cfg.pressurizer;
+    var setpoint = (setpointEff != null) ? setpointEff
+                 : (s.pressure_setpoint != null) ? s.pressure_setpoint : p.P_setpoint;
+    var spCmd = (s.pressure_setpoint != null) ? s.pressure_setpoint : p.P_setpoint;
+    if (s.heater_override != null) { s.heater_power_frac = s.heater_override; s._heater_dp_frac = s.heater_override; }
+    else {
+      // Indicated heater power reads against the COMMANDED setpoint (during a
+      // slewed pressurization the heaters run hard, like a real pressurizer
+      // heatup); the pressure-rate term uses the slewed effective target, so the
+      // RATE stays at the heatup pace while the indication is honest.
+      var errInd = spCmd - s.pressure_mpa;
+      s.heater_power_frac = errInd > 0 ? clip(errInd / p.heater_band_mpa, 0, 1) : 0;
       var err = setpoint - s.pressure_mpa;
-      s.heater_power_frac = err > 0 ? clip(err / p.heater_band_mpa, 0, 1) : 0;
+      s._heater_dp_frac = err > 0 ? clip(err / p.heater_band_mpa, 0, 1) : 0;
     }
     if (s.spray_override != null) { s.spray_flow_frac = +s.spray_override; }  // fraction (or boolean → 0/1)
     else {
@@ -68,7 +100,8 @@
   // Step 7 — primary pressure.
   function stepPressure(s, cfg, dt) {
     var p = cfg.pressurizer;
-    autoControl(s, cfg);
+    var spEff = effectiveSetpoint(s, cfg, dt);
+    autoControl(s, cfg, spEff);
     relief(s, cfg);
     // Spray draws from the cold leg downstream of the Reactor Coolant Pump (RCP),
     // so its effectiveness scales with primary flow — no flow, no spray.
@@ -100,7 +133,7 @@
     var p_sat_tavg = P_sat_from_T(s.tavg_c);
     var saturated = s.primary_void_fraction > 0 || p_sat_tavg > s.pressure_mpa;
     var leak_depress = saturated ? 0 : (p.K_leak_depressurize || 0) * (s.leak_flow || 0);
-    var dP = s.heater_power_frac * p.K_heater
+    var dP = (s._heater_dp_frac != null ? s._heater_dp_frac : s.heater_power_frac) * p.K_heater
            - spray_eff * p.K_spray
            - s.porv_flow * p.K_porv_relief
            - s.safety_flow * p.K_safety_relief
@@ -117,11 +150,11 @@
       // touching primary_void_fraction (and thus the calibrated pressurizer void-surge).
       dP += p.K_sat_pull * (p_sat_tavg - s.pressure_mpa);
     } else {
-      // Gentle self-restore toward the operator setpoint (heaters/charging holding
-      // pressure). Tracks s.pressure_setpoint so a cold/depressurized plant holds
-      // its low pressure instead of being dragged back to NOP.
-      var setpoint = (s.pressure_setpoint != null) ? s.pressure_setpoint : p.P_equilibrium;
-      dP += p.P_restore_rate_gain * (setpoint - s.pressure_mpa);
+      // Gentle self-restore toward the (slewed) operator setpoint (heaters/charging
+      // holding pressure). Tracks the effective setpoint so a cold/depressurized
+      // plant holds its low pressure instead of being dragged back to NOP — and a
+      // raised setpoint pressurizes at the slew pace, not at restore-gain speed.
+      dP += p.P_restore_rate_gain * (spEff - s.pressure_mpa);
     }
     s.pressure_mpa = Math.max(0.1, s.pressure_mpa + dP * dt);
   }
@@ -176,6 +209,7 @@
 
   RD.pwrPressurizer = {
     P_sat_from_T: P_sat_from_T,
+    effectiveSetpoint: effectiveSetpoint,
     autoControl: autoControl,
     relief: relief,
     stepPressure: stepPressure,

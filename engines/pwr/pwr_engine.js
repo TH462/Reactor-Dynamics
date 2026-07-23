@@ -1066,6 +1066,7 @@
       // moves it across the range so pressure holds where it is placed instead of
       // snapping to NOP (M1 §6.4; Mode 5↔1 rework 2026-07).
       pressure_setpoint: cfg.pressurizer.P_setpoint,
+      _pressure_sp_eff: cfg.pressurizer.P_setpoint,   // slewed effective target (seeded = commanded, see pwr_pressurizer.effectiveSetpoint)
       heater_power_frac: 0, spray_flow_frac: 0, heater_override: null, spray_override: null,
       porv_demand: 'closed', porv_open: false, porv_stuck: false, safety_open: false,
       block_valve_open: true,                 // PORV isolation/block valve (B1; default open)
@@ -1188,7 +1189,7 @@
       var Tcold = (init.cold_tavg_c != null) ? init.cold_tavg_c : e.rhr_sink_c;
       var Pcold = (init.cold_pressure_mpa != null) ? init.cold_pressure_mpa : 2.5;
       s.tavg_c = Tcold; s.thot_c = Tcold; s.tcold_c = Tcold; s.fuel_temp_c = Tcold;
-      s.pressure_mpa = Pcold; s.pressure_setpoint = Pcold;
+      s.pressure_mpa = Pcold; s.pressure_setpoint = Pcold; s._pressure_sp_eff = Pcold;
       s.subcooling_c = TH.T_sat(Pcold) - Tcold;
       s._subcool_hot_c = TH.T_sat(Pcold) - Tcold;
       s._Q_coolant_to_sg = 0; s._dTavg_dt = 0;
@@ -1354,6 +1355,9 @@
     // Operator pressure setpoint + lowerable steam-dump setpoint (Mode 5↔1 rework).
     // Older saves default to NOP pressure and the config no-load dump setpoint.
     if (s.pressure_setpoint == null) s.pressure_setpoint = this.cfg.pressurizer.P_setpoint;
+    // Setpoint-pressurization slew (2026-07-23): older saves have no effective-target
+    // state — seed it at the commanded setpoint (the save is settled there).
+    if (s._pressure_sp_eff == null) s._pressure_sp_eff = s.pressure_setpoint;
     if (s.steam_dump_setpoint == null) s.steam_dump_setpoint = this.cfg.steam_generator.steam_dump_setpoint;
     // Loop pressure nodes (loop-pressure rework 2026-07). Recomputed each step from
     // pressure_mpa/flow_frac, but seed them so getTrueState is valid pre-first-step.

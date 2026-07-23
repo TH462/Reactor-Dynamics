@@ -63,6 +63,21 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>Fine rod control, honest pressurizing, and full startup checklists</h2>
+      <span class="log-ver mono">Alpha 1.0.3</span>
+      <time class="log-date mono" datetime="2026-07-23">23 July 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag changed">Changed</span><strong>Real fine control at criticality.</strong> The control bank is now a fine&#8209;step drive (912 steps of travel): one tap near the critical point adds about a cent and a half of reactivity &mdash; like a real plant &mdash; instead of lurching power several percent. Speeds are unchanged in feel; the 1/M plot and step readouts follow the new scale, and old saves carry over.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Pressurizing takes real time now.</strong> Raising the pressurizer pressure setpoint no longer snaps the plant there in seconds &mdash; the heaters run flat out while pressure climbs at a deliberate heatup pace (a 350&nbsp;&rarr;&nbsp;600&nbsp;psi step takes about a minute and a half). Holding pressure through transients is as strong as ever.</li>
+      <li><span class="log-tag added">Added</span><strong>Mode 5 &rarr; Mode 3 heatup checklist.</strong> A live checklist walks the whole cold&#8209;board heatup: pumps, pressurization, instrument handoff, a gentle approach to criticality, and a dilution&#8209;driven ride up to Hot Standby.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The startup checklist now finishes the job.</strong> It carries you past criticality, across the 5&nbsp;% boundary into Mode 1, At Power, and puts the generator on line.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>&ldquo;Cold to Power&rdquo; can&rsquo;t stall at the finish line.</strong> The mission&rsquo;s arrival check sat a hair above the temperature the plant actually settles at; it now declares Mode&nbsp;1 reliably.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>Xenon on the chart, and clearer control readouts</h2>
       <span class="log-ver mono">Alpha 1.0.2</span>
       <time class="log-date mono" datetime="2026-07-23">23 July 2026</time>

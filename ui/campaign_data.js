@@ -27,7 +27,7 @@
       ] },
       { id: 'act2', title: 'Act II — The Physics', missions: [
         { kind: 'scenario', id: 'pwr_mode5_to_mode3', teaches: 'Mode 5, Cold Shutdown → Mode 3, Hot Standby — the cold heatup: pressurize, take critical, ride the temperature up.' },
-        { kind: 'procedure', id: 'pwr_startup', teaches: 'Mode 3, Hot Standby → Mode 2, Startup — take the reactor critical yourself, the real procedure.' },
+        { kind: 'procedure', id: 'pwr_startup', teaches: 'Mode 3, Hot Standby → Mode 1, At Power — take the reactor critical and put the unit on line, the real procedure.' },
         { kind: 'scenario', id: 'pwr_feedback', teaches: 'Mode 1, At Power — Doppler and moderator feedback: the reactor pushes back.' },
         { kind: 'scenario', id: 'pwr_xenon', teaches: 'After a Mode 1 trip — xenon-135: the poison that rises after shutdown, and the dead time it enforces.' },
         { kind: 'scenario', id: 'pwr_boron', teaches: 'Mode 1, At Power — boron vs rods: chemistry for the long game.' },

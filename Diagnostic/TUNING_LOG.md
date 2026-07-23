@@ -105,6 +105,34 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-23 — Mode-5 pressurization slew + Mode-transition live checklists  ✅
+Owner: Mode-5 setpoint 350→600 psi pressurized "almost instantly." Probed: **K_heater 0.55 MPa/s
+at full demand** (its job: transient-holding authority — the SGTR plateau consumes all of it), so
+a 1.73 MPa setpoint step completed in ~3 s. Fix: **upward setpoint slew** — the effective control
+target (`s._pressure_sp_eff`, `pwr_pressurizer.effectiveSetpoint`) walks up at
+`setpoint_pressurize_slew_mpa_s = 0.02` [tune]; the commanded `pressure_setpoint` (display) is
+untouched; DOWN is immediate; and the slew binds only the portion **above current pressure** —
+an operator freezing a depressurization at "current + 0.3" must stop the pull-down NOW (the
+first cut regressed `ops_sgtr_managed` into bulk voiding exactly there). Heater INDICATION reads
+vs the commanded setpoint (runs 100 % during a pressurization) while the dP term uses the slewed
+target (`s._heater_dp_frac`) — real-plant feel: heaters flat out, thermal pace. Seeded at init
+(both IC paths) + `_migrateState`; **seed-at-first-step was a bug** (a cmd before the first
+engine step became the seed → instant jump). Probed: 350→600 psi now 80 s; cold→NOP ≈ 11 min sim.
+**Fallout fixed:** `pwr_return_to_mode1` timed out — its `arrive_mode1` beat needed true Tavg
+> 298 while the no-load anchor is ~297 (razor edge crossed only by power-spike flicker; the
+slew's ~10-min timing shift + slightly higher xenon made the spikes miss). Gate → 296 (matches
+`pwr_mode5_to_mode3`'s 295 convention).
+**Checklists (owner ask):** new `pwr_heatup` (Mode 5 → Mode 3) — RCP start, dump-SP restore,
+slewed pressurization (hold 720), accumulators, feed 30 %, SR→IR, bulk+fine rod approach, then a
+**dilution ride** (`set_boron_adjust −0.12` for 4300 s — one command = a smooth ramp the MTC
+self-regulates; rod-chunk trims spiked to 158 % in prototyping) to Tavg ~314, rods-in + borate →
+lands 297.2 °C / Mode 3 / −7.4 k pcm. Feed too low dries the SG and the heatup runs away
+(prototype hit Tavg 366 — keep ride power ≤ ~35 %). `pwr_startup` extended to Mode 1
+(title/purpose, +3 steps: 5 % boundary obs, `connect_grid` → 51 MWe, plant_mode ~1);
+`campaign_data` teaches + crosswalk/alignment docs updated; manual_ui_map indexes safe (steps
+appended, never inserted). Gates: procedures **22/22** (95/95), checklist 24/24, campaign 51/51,
+run_pwr 31/31, behavior 30/0/0, ops PWR 21/21, autoctl 20/20, m4–m7 green.
+
 ### 2026-07-23 — fine-step rod drive: 228 → 912 steps (owner: startup granularity)  ✅
 Owner startup playtest: criticality at ~61 steps, ONE step jumped power 0 → ~10 % — no granular
 control in the critical region. Probed (scratchpad `rod_probe.js`): ~**36 pcm/step (~5.5 ¢)** at

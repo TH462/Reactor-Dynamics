@@ -56,9 +56,11 @@ below and go straight to the authoritative source for it.
 > is the at-a-glance truth for the next agent. The dense, append-only version lives in
 > `Blueprint/BUILD_DECISIONS.md` (Status line + Open Flags table) — update both.
 
-_Last updated: 2026-07-23 (fine-step rod drive — PWR control bank 228 → 912 steps at ×4 steps/s:
-one step ≈ 9 pcm (~1.4 ¢) in the startup critical band instead of ~36 pcm, all tuned dynamics
-unchanged, old saves rescale on load; see `Diagnostic/TUNING_LOG.md` 2026-07-23)._
+_Last updated: 2026-07-23 (fine-step rod drive — control bank 228 → 912 steps, one step ≈ 9 pcm
+in the critical band; Mode-5 pressurization slew — a raised pressure setpoint walks up at
+0.02 MPa/s instead of arriving in seconds; new `pwr_heatup` Mode 5 → 3 live checklist +
+`pwr_startup` extended to Mode 1 with turbine on line — procedures gate now **22/22**; see
+`Diagnostic/TUNING_LOG.md` 2026-07-23 entries)._
 
 **Layers**
 - **Physics engines complete** — PWR (M1) ✅, RBMK (M2) ✅, BWR (M3) ✅. All three have

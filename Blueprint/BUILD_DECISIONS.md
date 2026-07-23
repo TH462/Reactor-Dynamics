@@ -46,6 +46,27 @@ where the two differ or where judgment was exercised.
 | **Repo** | Commits go directly to `main`, one per module. | Matches the linear, single-developer build (the scaffold was committed to `main`); each module is an independent, test-gated unit. |
 | **Load order** | `config → protection → thermal → pressurizer → primary → steam_generator → instruments → engine`, then layers. | The engine captures `RD.pwr*` helper namespaces at IIFE-eval time, so its dependencies must load first. Encoded in `index.html`, `test_pwr.html`, and the Node runners. |
 
+### Pressurizer setpoint slew + Mode-transition checklists (2026-07-23, owner Mode-5 feel)
+
+**Claim.** `K_heater` (0.55 MPa/s at full demand) is transient-holding authority, not a heatup
+rate — but it also served operator setpoint steps, so raising the Mode-5 setpoint 350→600 psi
+pressurized in ~3 s. **Decision:** slew the EFFECTIVE control target upward at
+`setpoint_pressurize_slew_mpa_s = 0.02` (`pwr_pressurizer.effectiveSetpoint`, state
+`s._pressure_sp_eff`, seeded at init/migration — lazily seeding on first step turned a
+pre-first-step command into the seed, an instant jump). Three deliberate asymmetries: DOWN is
+immediate (depressurization is spray/cooling-limited on its own); the slew binds only the
+portion **above current pressure** (a freeze-the-descent setpoint raise must stop the
+restore-term pull-down instantly — the first cut voided `ops_sgtr_managed` exactly there); and
+heater INDICATION reads vs the commanded setpoint while the dP term uses the slewed one
+(`s._heater_dp_frac`) — heaters honestly show flat-out during a pressurization that proceeds at
+thermal pace. Disturbance response at fixed setpoint (SGTR plateau) keeps full authority.
+Fallout: `pwr_return_to_mode1`'s `arrive_mode1` Tavg gate 298 → 296 (the no-load anchor is ~297;
+298 was crossed only by power-spike flicker — razor edge, now matches the 295-ish convention of
+the other Mode-5 missions). Also added `pwr_heatup` (Mode 5 → 3 live checklist; dilution-ride
+design — one `set_boron_adjust −0.12` = a smooth MTC-self-regulated heatup ramp; rod-chunk trims
+spiked 158 % in prototyping) and extended `pwr_startup` to Mode 1 (+`connect_grid` on-line step).
+Worklog + probe numbers: `Diagnostic/TUNING_LOG.md` 2026-07-23 (slew entry).
+
 ### Fine-step rod drive — PWR `max_steps` 228 → 912 (2026-07-23, owner startup granularity)
 
 **Claim.** The PWR control-bank step quantum was the startup-granularity bottleneck, not the

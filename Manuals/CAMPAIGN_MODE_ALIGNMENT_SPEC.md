@@ -60,7 +60,7 @@ Update `teaches` in `ui/campaign_data.js` and scenario `title` / `description` /
 | `pwr_hook` | scram button… | Mode 1, At Power — SCRAM and Rewind |
 | `pwr_tour` | energy journey… | Mode 1, At Power — energy path; primary must not boil |
 | `pwr_chain_reaction` | criticality… | Mode 3 → Mode 2 — criticality, source, SUR |
-| `pwr_startup` | take reactor critical… | Mode 3, Hot Standby → Mode 2, Startup — approach to criticality |
+| `pwr_startup` | take reactor critical… | Mode 3, Hot Standby → Mode 1, At Power — startup to power *(extended to Mode 1, 2026-07-23)* |
 | `pwr_feedback` | Doppler… | Mode 1, At Power — Doppler / MTC feedback |
 | `pwr_xenon` | xenon… | After Mode 1 trip — xenon poison transient |
 | `pwr_boron` | boron vs rods… | Mode 1, At Power — boron vs rods |
@@ -90,7 +90,7 @@ Update `teaches` in `ui/campaign_data.js` and scenario `title` / `description` /
 
 | id | New title (example) |
 |----|---------------------|
-| `pwr_startup` | Mode 3, Hot Standby → Mode 2, Startup — approach to criticality |
+| `pwr_startup` | Mode 3, Hot Standby → Mode 1, At Power — startup to power *(extended 2026-07-23; a Mode 5 → 3 heatup checklist `pwr_heatup` was added alongside)* |
 | `pwr_raise_power` | Mode 1, At Power — raise power |
 | `pwr_lower_power` | Mode 1, At Power — lower power |
 | `pwr_shutdown` | Mode 1, At Power → Mode 3, Hot Standby |

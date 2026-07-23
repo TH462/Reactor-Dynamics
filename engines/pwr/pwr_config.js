@@ -226,6 +226,17 @@
       spray_flow_max: 0.12,        // [tune] — binds below the TR-2 insurge equilibrium (~0.23 demand)
       spray_floor_band: 3.0,       // MPa — spray authority tapers to 0 across this band above Psat(THOT), the core-exit leg (see pwr_pressurizer spray_floor); floor is the hottest leg so spray can't pull below core-exit saturation (P6)
       K_surge: 1.0, P_restore_rate_gain: 0.02, // gentle stabilization only (heater regulates)
+      // Operator-setpoint pressurization slew (Mode-5 heatup feel, 2026-07-23). K_heater
+      // (0.55 MPa/s at full power) is the CONTROL authority for holding pressure against
+      // transients (the SGTR plateau needs all of it) — but it made a RAISED operator
+      // setpoint arrive near-instantly: a 350→600 psi step in Mode 5 completed in ~3 s.
+      // Physically, heating a big subcooled pressurizer to a higher saturation point takes
+      // time regardless of heater margin. So the EFFECTIVE control target walks UP toward
+      // the commanded setpoint at this rate (full cold→NOP pressurization ≈ 11 min sim,
+      // matching the deliberately time-compressed Mode 5↔1 pacing); a LOWERED setpoint
+      // takes effect immediately (depressurization is spray/cooling-limited on its own).
+      // Disturbance response at a FIXED setpoint is untouched. [tune]
+      setpoint_pressurize_slew_mpa_s: 0.02,
       // When the primary voids it is two-phase: pressure is pulled to the
       // saturation pressure of Tavg (so subcooling → 0). [tune]
       K_sat_pull: 1.5,

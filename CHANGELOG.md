@@ -8,7 +8,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Mode 5 → Mode 3 live checklist (`pwr_heatup`).** A full plant-heatup checklist from the cold
+  board: RCP start, slewed pressurization, accumulator re-alignment, SR→IR handoff, a gentle
+  fine-step approach to criticality, a **dilution-driven nuclear heatup ride** to the no-load
+  point, then rods-in + boration to settle at Mode 3, Hot Standby. Engine-validated end-to-end
+  (lands Tavg ≈ 297 °C, subcritical, Mode 3) and available from the 📋 Checklists picker.
+
 ### Changed
+- **Pressurizing to a raised setpoint now takes real time.** The pressurizer heaters' control
+  authority (sized for holding pressure through transients) also applied to operator setpoint
+  steps — raising the Mode-5 setpoint 350 → 600 psi completed in ~3 seconds. The **effective
+  control target now walks up at ~0.02 MPa/s** (the plant's deliberate heatup pace: that step
+  now takes ~80 s, full cold → NOP ≈ 11 min sim) while the heaters honestly indicate full
+  output. Lowering the setpoint, and disturbance response at a fixed setpoint (SGTR plateau,
+  pressure dips), are unchanged. Old saves are unaffected on load.
+- **The startup checklist now goes all the way to Mode 1.** `pwr_startup` ("Mode 3 → Mode 2 —
+  approach to criticality") is now **"Mode 3, Hot Standby → Mode 1, At Power — startup to
+  power"**: after criticality it confirms the 5 % Mode-1 boundary and puts the generator on
+  line (Connect Grid). The campaign walkthrough entry follows suit.
+- **`pwr_return_to_mode1` completion gate un-razored.** The final "arrived at Mode 1" beat
+  required true Tavg > 298 °C while the no-load dump anchor is ~297 °C — completion depended on
+  power-spike flicker. Now gates at 296 °C, matching the "hot" criterion the other Mode-5
+  missions use.
 - **Fine-step rod drive (PWR) — real granularity at criticality.** The control bank now travels
   **912 steps** (was 228) at ×4 the steps/s, so every rate in fraction-of-travel per second — and
   every tuned evolution — is unchanged, but one step is now **~9 pcm (~1.4 ¢)** in the startup

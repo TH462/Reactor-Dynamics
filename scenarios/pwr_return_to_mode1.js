@@ -61,8 +61,13 @@
         advance: 'wait_for_trigger' },
 
       { id: 'arrive_mode1',
+        // Tavg gate 296 (was 298, 2026-07-23): the no-load dump anchor is Tsat(dump
+        // setpoint) ≈ 297 °C, so a ~10 % nuclear-heatup hold rides at ~297.5–298.0 and
+        // only power spikes flickered past 298 — a razor edge that made completion
+        // trajectory-dependent. 296 matches the "hot" criterion used everywhere else
+        // (anchor − 1; pwr_mode5_to_mode3 gates its Hot Standby card at 295).
         trigger: { type: 'all', triggers: [
-          { type: 'true_state', field: 'tavg_c', direction: 'above', value: 298 },
+          { type: 'true_state', field: 'tavg_c', direction: 'above', value: 296 },
           { type: 'true_state', field: 'power_pct', direction: 'above', value: 5.0 },
         ] },
         commentary: {

@@ -30,7 +30,7 @@ Campaign `teaches` and procedure titles now use the manuals' **Mode N, Name** co
 | 2 | `pwr_tour` | [S] | Mode 1 | `01` energy path; T07 load Manual |
 | 3 | `pwr_chain_reaction` | [S] | Mode 3 → 2 | N02 concepts; SUR |
 | 3a | `pwr_mode5_to_mode3` | [S] | **Mode 5 → 4 → 3** | **PWR-T20** Phase A–B, **PWR-N03** |
-| 4 | `pwr_startup` | [P] | Mode 3 → 2 | **PWR-N01**, **PWR-N02**, T13 |
+| 4 | `pwr_startup` | [P] | Mode 3 → 1 | **PWR-N01**, **PWR-N02**, N06, T13 |
 | 5 | `pwr_feedback` | [S] | Mode 1 | `01` Doppler/MTC |
 | 6 | `pwr_xenon` | [S] | post Mode 1 trip | **PWR-N09** |
 | 7 | `pwr_boron` | [S] | Mode 1 | **PWR-N09** |
