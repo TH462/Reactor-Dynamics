@@ -1234,7 +1234,7 @@ select.num-input { width: auto; }
 .oom-lab { font-size: 9px; }
 .oom-fit { stroke: var(--normal); stroke-dasharray: 5 4; stroke-width: 1.2; }
 .oom-crit { stroke: var(--caution); stroke-width: 1.2; }
-.oom-critlab { fill: var(--caution); font-size: 8px; }
+.oom-critlab { fill: var(--caution); font-size: 10px; font-weight: 600; }
 .oom-pt { fill: var(--text); }
 
 /* An expanded card (e.g. the NIS section at a startup lineup) can overflow its

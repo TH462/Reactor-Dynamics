@@ -7,10 +7,13 @@
  *      captured from the source-range INSTRUMENT (HR1) and plotted as 1.0 at
  *      the current rod position.
  *   2. Withdraw a few steps, stop, wait for the count rate to stabilize, press
- *      PLOT again: the point (rod fraction withdrawn, C0/C) lands and — with
- *      two or more points — a least-squares line extrapolates to y = 0.
+ *      PLOT again: the point (rod steps withdrawn, C0/C) lands and — with two or
+ *      more points — a line through the LATEST points extrapolates to y = 0.
  *   3. Repeat as you approach: where the line meets zero is the predicted
- *      critical rod position. Confirm it tightens as points accumulate.
+ *      critical rod position. It tightens each plot — extrapolate from the
+ *      newest points and re-plot in small steps, never the whole history (see
+ *      fit(): early low-worth points would bias the prediction to the danger
+ *      side, overstating your margin to criticality).
  *
  * Session tool by design: the table is the operator's scratchpad, not plant
  * state — it is NOT in save files, and it clears itself on plant change,
@@ -53,6 +56,7 @@
   var win = null, svg = null, msgEl = null;
   var points = [];           // [{ x: rod fraction withdrawn 0–1, counts, y: C0/counts }]
   var C0 = null;
+  var maxSteps = 228;        // control-group full-withdrawal steps (for the steps axis)
   var lastPlant = null, lastCaptureT = null;
 
   // Plot geometry (viewBox units).
@@ -66,17 +70,27 @@
     return null;
   }
 
-  // Least squares over all points → { a, b } for y = a + b·x.
+  // Least squares over the TRAILING window (the points nearest criticality) →
+  // { a, b, x0 } for y = a + b·x, where x0 is the leading point of the window.
+  //
+  // Real 1/M practice extrapolates from the LATEST points, not the whole
+  // history. The early points sit where the rods are barely withdrawn — the flat
+  // toe of the S-shaped rod-worth curve, where differential worth ≈ 0 and 1/M
+  // hardly moves. Averaging them into the fit flattens the slope and throws the
+  // predicted critical position far PAST actual (the danger side: it tells the
+  // operator they have ~2× the margin they really do). Fitting only the trailing
+  // window tracks the local slope and tightens toward the true point each plot.
+  var FIT_WINDOW = 3;
   function fit() {
-    var n = points.length;
-    if (n < 2) return null;
-    var sx = 0, sy = 0, sxx = 0, sxy = 0;
-    points.forEach(function (p) { sx += p.x; sy += p.y; sxx += p.x * p.x; sxy += p.x * p.y; });
+    if (points.length < 2) return null;
+    var pts = points.slice(Math.max(0, points.length - FIT_WINDOW));
+    var n = pts.length, sx = 0, sy = 0, sxx = 0, sxy = 0;
+    pts.forEach(function (p) { sx += p.x; sy += p.y; sxx += p.x * p.x; sxy += p.x * p.y; });
     var mx = sx / n, my = sy / n;
     var den = sxx - n * mx * mx;
     if (Math.abs(den) < 1e-9) return null;
     var b = (sxy - n * mx * my) / den;
-    return { a: my - b * mx, b: b };
+    return { a: my - b * mx, b: b, x0: pts[0].x };
   }
 
   function setMsg(text, warn) {
@@ -93,7 +107,7 @@
     h += '<rect x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + (H - T - B) + '" class="oom-frame"/>';
     [0.25, 0.5, 0.75, 1.0].forEach(function (g) {
       h += '<line x1="' + px(g) + '" y1="' + T + '" x2="' + px(g) + '" y2="' + (H - B) + '" class="oom-grid"/>';
-      h += '<text x="' + px(g) + '" y="' + (H - B + 12) + '" class="oom-tick" text-anchor="middle">' + (g * 100).toFixed(0) + '%</text>';
+      h += '<text x="' + px(g) + '" y="' + (H - B + 12) + '" class="oom-tick" text-anchor="middle">' + Math.round(g * maxSteps) + '</text>';
     });
     [0.25, 0.5, 0.75, 1.0].forEach(function (g) {
       h += '<line x1="' + L + '" y1="' + py(g) + '" x2="' + (W - R) + '" y2="' + py(g) + '" class="oom-grid"/>';
@@ -103,7 +117,7 @@
     h += '<line x1="' + L + '" y1="' + py(0) + '" x2="' + (W - R) + '" y2="' + py(0) + '" class="oom-zero"/>';
     h += '<text x="' + (L - 4) + '" y="' + (py(0) + 3) + '" class="oom-tick" text-anchor="end">0</text>';
     // axis labels
-    h += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 4) + '" class="oom-lab" text-anchor="middle">rod position (% withdrawn)</text>';
+    h += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 4) + '" class="oom-lab" text-anchor="middle">rod position (steps withdrawn)</text>';
     h += '<text x="10" y="' + ((T + H - B) / 2) + '" class="oom-lab" text-anchor="middle" transform="rotate(-90 10 ' + ((T + H - B) / 2) + ')">1/M  (C₀/C)</text>';
 
     // fit line, extrapolated to y=0
@@ -111,12 +125,12 @@
     if (f && f.b < -1e-6) {
       var xc = -f.a / f.b;
       var xEnd = Math.min(Math.max(xc, points[points.length - 1].x), 1.0);
-      h += '<line x1="' + px(0) + '" y1="' + py(f.a) + '" x2="' + px(xEnd) + '" y2="' + py(f.a + f.b * xEnd) + '" class="oom-fit"/>';
+      h += '<line x1="' + px(f.x0) + '" y1="' + py(f.a + f.b * f.x0) + '" x2="' + px(xEnd) + '" y2="' + py(f.a + f.b * xEnd) + '" class="oom-fit"/>';
       if (xc > points[points.length - 1].x - 1e-9 && xc <= 1.2) {
         pred = xc;
         if (xc <= 1.0) {
           h += '<line x1="' + px(xc) + '" y1="' + T + '" x2="' + px(xc) + '" y2="' + (H - B) + '" class="oom-crit"/>';
-          h += '<text x="' + px(Math.min(xc, 0.9)) + '" y="' + (T + 10) + '" class="oom-critlab" text-anchor="middle">critical</text>';
+          h += '<text x="' + px(Math.min(xc, 0.88)) + '" y="' + (T + 10) + '" class="oom-critlab" text-anchor="middle">critical ' + Math.round(xc * maxSteps) + '</text>';
         }
       }
     }
@@ -132,10 +146,8 @@
     var predEl = win.querySelector('#oomPred');
     if (predEl) {
       if (pred != null) {
-        var s = getSnap && getSnap();
-        var g = s && controlGroup(s);
-        var steps = g ? Math.round(pred * g.max_steps) : null;
-        predEl.textContent = 'predicted criticality ≈ ' + (pred * 100).toFixed(1) + '% withdrawn' + (steps != null ? ' (≈ step ' + steps + ')' : '');
+        var steps = Math.round(pred * maxSteps);
+        predEl.textContent = 'predicted criticality ≈ step ' + steps + ' (' + (pred * 100).toFixed(1) + '% withdrawn)';
       } else {
         predEl.textContent = points.length >= 2 ? 'insufficient trend — keep plotting' : '';
       }
@@ -154,6 +166,7 @@
     if (counts > 9e5) { setMsg('SR pegged near full scale — past 1/M territory', true); return; }
     var g = controlGroup(s);
     if (!g) return;
+    if (g.max_steps) maxSteps = g.max_steps;
     var x = (g.position_pct || 0) / 100;
     if (points.length === 0) {
       C0 = counts;
