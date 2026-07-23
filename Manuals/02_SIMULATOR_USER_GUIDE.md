@@ -198,6 +198,7 @@ Per-channel **AUTO / MAN** controllers that read **instruments** and issue plant
 | Channel (label) | Holds / drives |
 |-----------------|----------------|
 | Rod control → Tavg (AUTO) | Control rods to hold Tavg setpoint |
+| Boron concentration (target) | Batch-doses boron to a target ppm (metered, totalizer-stopped — see 03 §7.5) |
 | Boron → rod position trim | Bang-bang boron trim |
 | Pressurizer pressure | Heaters + spray mode |
 | CVCS make-up | Inventory make-up |

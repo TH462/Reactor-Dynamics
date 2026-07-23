@@ -56,10 +56,12 @@ below and go straight to the authoritative source for it.
 > is the at-a-glance truth for the next agent. The dense, append-only version lives in
 > `Blueprint/BUILD_DECISIONS.md` (Status line + Open Flags table) — update both.
 
-_Last updated: 2026-07-23 (fine-step rod drive — control bank 228 → 912 steps, one step ≈ 9 pcm
-in the critical band; Mode-5 pressurization slew — a raised pressure setpoint walks up at
-0.02 MPa/s instead of arriving in seconds; new `pwr_heatup` Mode 5 → 3 live checklist +
-`pwr_startup` extended to Mode 1 with turbine on line — procedures gate now **22/22**; see
+_Last updated: 2026-07-23 (boron batch-dose rework — the BORON CONTROL target now meters a
+feedforward batch stopped by a flow totalizer instead of seeking the 45 s-lagged analyzer:
+no deadband, 1 ppm nudges execute, rate 0.5 → 0.05 ppm/s, doses land exactly (was ~50 %
+over-delivery + power spike/scram); Manuals 03 §7.5 teaches "dilution moves Tavg, not power at
+rated". Earlier same day: fine-step rod drive 228 → 912 steps; Mode-5 pressurization slew;
+`pwr_heatup` checklist + `pwr_startup` to Mode 1 — procedures gate **22/22**; see
 `Diagnostic/TUNING_LOG.md` 2026-07-23 entries)._
 
 **Layers**
@@ -92,7 +94,7 @@ _Definition of done_): PWR engine suite **31/31**, BWR **15/15**, RBMK **23/23**
 **51/51**, `run_m4` **18/18**, `run_m5` **19/19**, `run_m6` **16/16**, `run_autoctl` **20/20**,
 `run_behavior` **30/0/0**, `run_e2e_controls` **28/30** (2 pre-existing F12 reds — a PZR-spray
 reach check and the CVCS-auto-vs-severity-1.0-SGTR "holds ≥98 %" expectation, both stale;
-the third F12 red turned green with the 2026-07-22 P7 retune), `run_procedures` **21/21**
+the third F12 red turned green with the 2026-07-22 P7 retune), `run_procedures` **22/22**
 (1 strict known-fail, B3), `run_checklist` **24/24**, `verify_e2e_ui` **FAIL (pre-existing,
 verified on clean HEAD 4df8ac5 — pwr/primary board controls not found by the harness; same
 family as the `verify_manual_follow` PwrSynoptic-probe staleness, follow-up)**,

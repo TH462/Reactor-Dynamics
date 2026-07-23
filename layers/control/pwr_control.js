@@ -373,7 +373,7 @@
 
     { id: 'boron_conc', kind: 'conc', group: 'Reactor',
       label: 'Boron concentration (target)',
-      hint: 'Seeks a target boron concentration — borates below the setpoint, dilutes above, holds inside a ±8 ppm deadband. Reads the boron analyzer, so a lagging/failed sample fools it like the operator. Needs the charging pump running. This is the board BORON CONTROL ON/OFF + target.',
+      hint: 'Meters boron changes as a BATCH DOSE, the way a real makeup panel does: a new target computes the change and delivers it at charging-flow pace, stopped by the flow totalizer — not by chasing the boron analyzer (its 45 s sample lag would overshoot). Any target change executes, however small. Needs the charging pump running. This is the board BORON CONTROL ON/OFF + target.',
       offOnScram: false,
       manual_overrides: ['set_boron_adjust'],   // an operator borate/dilute takes it to MAN
       // Free-play preset starts come up with boron control ON, holding whatever boron the
@@ -382,7 +382,15 @@
       defaultOn: function () { return true; },
       pv: function (s) { return s.instruments.boron_analyzer; },
       sp: { capture: function (s) { return s.instruments.boron_analyzer; }, min: 0, max: 2500, unit: 'ppm', dp: 0, step: 10 },
-      db: 8.0, rate: 0.5, pvTau: 5.0, period: 2.0 },
+      // rate: real-plant scale — max RCS makeup (~150 gpm into ~90 000 gal) changes
+      // concentration ~1.5 ppm/min ≈ 0.025 ppm/s; 0.05 is deliberately generous so a
+      // dose lands in game-time (~0.5 pcm/s of reactivity at 10 pcm/ppm worth, gentle
+      // enough for the MTC to ride). The old 0.5 was a firehose: ~5 pcm/s spiked
+      // power ~10 % per 10 ppm asked (TUNING_LOG S9). [tune]
+      // reAnchorPpm: a new target re-samples the analyzer for the dose books only
+      // when they've drifted beyond this (e.g. ECCS boration) — beyond noise (±2σ≈4),
+      // below any dose worth caring about.
+      rate: 0.05, reAnchorPpm: 15, pvTau: 5.0, period: 2.0 },
 
     { id: 'pzr_pressure', kind: 'mode', group: 'Primary',
       label: 'Pressurizer pressure (heaters + spray)',

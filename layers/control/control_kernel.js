@@ -89,7 +89,8 @@
     var chDefs = this.config.channels || [];
     for (var ci = 0; ci < chDefs.length; ci++) {
       var ch = { def: chDefs[ci], engaged: false, sp: null, spEff: null, I: 0, lastAct: null,
-                 lastSent: null, note: '', bangMode: 'idle', pvF: null, pvNow: null, rate: null };
+                 lastSent: null, note: '', bangMode: 'idle', pvF: null, pvNow: null, rate: null,
+                 concMode: 'hold', concBasis: null, concLastSp: null };
       this.channels.push(ch);
       this.byId[chDefs[ci].id] = ch;
     }
@@ -607,6 +608,9 @@
   //          period + min output delta for a sparse command stream).
   //   rods — discrete rod control: damped error → a bounded rod_nudge.
   //   bang — boron trim (PWR): bang-bang with hysteresis on control-rod position.
+  //   conc — boron batch dose (PWR): a target ppm meters a feedforward dose
+  //          stopped by a flow totalizer (real makeup-panel semantics — see
+  //          _stepConc), NOT a feedback seek on the lagged analyzer.
   //
   // Channel-def callbacks (pv/ff/trim/isOn/engage/disengage/defaultOn/standby/
   // init/sp.capture) receive a snapshot-shaped ctx assembled from the engine —
@@ -712,6 +716,8 @@
       c.spEff = c.sp;
       c.I = def.init ? (def.init(ctx) || 0) : 0;
       c.lastAct = null; c.lastSent = null; c.bangMode = 'idle'; c.concMode = 'hold';
+      // conc: open the books at the captured target — no dose pending on engage.
+      c.concBasis = c.sp; c.concLastSp = c.sp;
       c.pvF = null; c.rate = null;
     } else {
       // Leave the plant exactly where automation had it — plus safe stand-down.
@@ -776,7 +782,7 @@
       if (def.kind === 'pid') this._stepPid(c, ctx, t, step);
       else if (def.kind === 'rods') this._stepRods(c, ctx, t, step);
       else if (def.kind === 'bang') this._stepBang(c, ctx, t);
-      else if (def.kind === 'conc') this._stepConc(c, ctx, t);
+      else if (def.kind === 'conc') this._stepConc(c, ctx, t, step);
     }
   };
 
@@ -916,33 +922,62 @@
     c.note = want === 'idle' ? 'in band' : want + '…';
   };
 
-  // Boron CONCENTRATION seek: bang-bang toward a boron_analyzer setpoint (ppm) via
-  // set_boron_adjust — borate below the target, dilute above, hold inside the deadband.
-  // Reads the boron ANALYZER (HR1), so a failed/lagging analyzer fools it like the
-  // operator. Needs the charging pump running (the adjust rate rides charging flow).
-  ControlLayer.prototype._stepConc = function (c, ctx, t) {
+  // Boron BATCH DOSE (real-plant makeup semantics — TUNING_LOG S8/S9): a target
+  // ppm is converted to a metered dose — delta = target − the channel's BOOKKEPT
+  // concentration — delivered at the makeup rate and stopped by the flow
+  // TOTALIZER, never by chasing the boron analyzer (its ~loop-transit sample lag
+  // made closed-loop seeking over-deliver ~rate×lag and spike power). The books
+  // advance with the metered injection (feedforward, like a real batch
+  // integrator counting gallons); the analyzer is consulted only when a NEW
+  // target finds the books stale beyond def.reAnchorPpm (e.g. after ECCS
+  // boration) — the "take a chemistry sample before computing the dose" step.
+  // Any target change executes, however small (no deadband). Needs the charging
+  // pump (the dose rides charging flow; the totalizer pauses with the pump off,
+  // mirroring the engine's own injection gate). A side effect worth keeping:
+  // a completed dose does NOT fight external boration (ECCS) back toward an old
+  // target — the totalizer is spent, exactly like the real panel.
+  ControlLayer.prototype._stepConc = function (c, ctx, t, step) {
     var def = c.def;
-    var pv = c.pvF != null ? c.pvF : c.pvNow;
-    if (pv == null && def.pv) pv = def.pv(ctx);
-    if (pv == null || !isFinite(pv)) return;
-    c.pvNow = pv;
-    var sp = c.spEff != null ? c.spEff : c.sp;
+    var pv = c.pvF != null ? c.pvF : (def.pv ? def.pv(ctx) : null);
+    if (pv != null && isFinite(pv)) c.pvNow = pv; else pv = null;
+    var sp = c.sp;
     if (sp == null) return;
     var pumpOff = ctx.control_state && ctx.control_state.charging_pump_running === false;
+    // Totalizer bookkeeping FIRST: the rate commanded at the previous evaluation
+    // has been injecting for `step` sim-seconds (the engine applies boron_adjust
+    // whenever the charging pump runs — the same gate as pumpOff here).
+    if (!pumpOff && c.concBasis != null) {
+      if (c.concMode === 'borate') c.concBasis += def.rate * step;
+      else if (c.concMode === 'dilute') c.concBasis -= def.rate * step;
+    }
+    // A NEW target = a new dose computation. Re-anchor the books from the
+    // (filtered) analyzer only if they have clearly drifted — otherwise
+    // sequential nudges meter exactly from where the last dose ended.
+    if (sp !== c.concLastSp || c.concBasis == null) {
+      if (c.concBasis == null || (pv != null && Math.abs(pv - c.concBasis) > (def.reAnchorPpm || 15))) {
+        c.concBasis = pv != null ? pv : sp;
+      }
+      c.concLastSp = sp;
+    }
+    var remaining = sp - c.concBasis;   // + → borate; the totalizer stop is |remaining| ≈ 0
     if (pumpOff) {
       if (c.concMode !== 'hold') { this._sendInternal({ action: 'set_boron_adjust', rate: 0 }); c.concMode = 'hold'; }
-      c.note = 'idle — charging pump OFF';
+      c.note = 'idle — charging pump OFF' + (Math.abs(remaining) > 0.1 ? ' (dose paused, ' + Math.abs(remaining).toFixed(1) + ' ppm to go)' : '');
       return;
     }
-    var e = sp - pv;   // +e → concentration too low → borate
-    var want = Math.abs(e) <= (def.db || 0) ? 'hold' : (e > 0 ? 'borate' : 'dilute');
-    if (want === c.concMode) { c.note = want === 'hold' ? 'in band' : want + '…'; return; }
-    if (c.lastAct != null && def.period && t - c.lastAct < def.period) return;
+    var want = remaining > 0.05 ? 'borate' : remaining < -0.05 ? 'dilute' : 'hold';
+    if (want === 'hold' && c.concMode !== 'hold') c.concBasis = sp;   // dose delivered — square the books
+    var note = want === 'hold' ? 'idle'
+      : (want === 'borate' ? 'borating' : 'diluting') + ' — ' + Math.abs(remaining).toFixed(1) + ' ppm to go';
+    if (want === c.concMode) { c.note = note; return; }
+    // Starting a dose respects the action period; STOPPING or reversing never
+    // waits — a delayed stop is an overshoot.
+    if (want !== 'hold' && c.concMode === 'hold' && c.lastAct != null && def.period && t - c.lastAct < def.period) return;
     var rate = want === 'borate' ? def.rate : want === 'dilute' ? -def.rate : 0;
     var r = this._sendInternal({ action: 'set_boron_adjust', rate: rate });
     if (r && r.type === 'blocked') { c.note = '⛔ ' + (r.message || 'blocked'); return; }
     c.concMode = want; c.lastAct = t;
-    c.note = want === 'hold' ? 'in band' : want + '…';
+    c.note = note;
   };
 
   // The snapshot's automation section (M5 assembles it every cycle): channel
@@ -986,7 +1021,8 @@
     for (var i = 0; i < this.channels.length; i++) {
       var c = this.channels[i];
       ch[c.def.id] = { engaged: c.engaged, sp: c.sp, spEff: c.spEff, I: c.I, lastAct: c.lastAct,
-                       lastSent: c.lastSent, note: c.note, bangMode: c.bangMode, pvF: c.pvF, rate: c.rate };
+                       lastSent: c.lastSent, note: c.note, bangMode: c.bangMode, pvF: c.pvF, rate: c.rate,
+                       concMode: c.concMode, concBasis: c.concBasis, concLastSp: c.concLastSp };
     }
     return { t: this._autoT, acc: this._autoAcc, channels: ch, esf: Object.assign({}, this.esfAuto),
              trip_blocks: Object.assign({}, this.tripBlocks) };
@@ -1006,9 +1042,15 @@
         c.lastSent = sv.lastSent != null ? sv.lastSent : null;
         c.note = sv.note || ''; c.bangMode = sv.bangMode || 'idle';
         c.pvF = sv.pvF != null ? sv.pvF : null; c.rate = sv.rate != null ? sv.rate : null;
+        // conc batch state: an old save (pre-batch) has none — open the books at
+        // the saved target so no phantom dose starts on load.
+        c.concMode = sv.concMode || 'hold';
+        c.concBasis = sv.concBasis != null ? sv.concBasis : c.sp;
+        c.concLastSp = sv.concLastSp != null ? sv.concLastSp : c.sp;
       } else {
         c.engaged = false; c.sp = null; c.spEff = null; c.I = 0; c.lastAct = null;
         c.lastSent = null; c.note = ''; c.bangMode = 'idle'; c.pvF = null; c.rate = null;
+        c.concMode = 'hold'; c.concBasis = null; c.concLastSp = null;
       }
       c.pvNow = null;
     }

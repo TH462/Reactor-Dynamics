@@ -280,6 +280,18 @@ Blocks **auto-reinstate** when power falls below P-10.
 | **Rate** | Compressed for training (~ppm/s scale); real plants are slower |
 | **Indication** | Boron analyzer (slow lag ~45 s) — may disagree briefly with true boron |
 
+**BORON CONTROL (target ppm) — batch dose.** The board's BORON CONTROL ON/OFF + target
+works like a real makeup panel: entering a new target computes the change and **meters it
+as a batch** at ~0.05 ppm/s, stopped by the flow totalizer — it does **not** chase the
+lagged analyzer, so a dose lands on the ppm asked without overshoot. Any target change
+executes, however small (1 ppm nudges work). The dose pauses if the charging pump stops
+and resumes with it. A manual Borate/Dilute takes the channel to **MAN**.
+
+> **At full power, dilution moves Tavg, not power.** With the turbine at rated load the
+> reactor self-regulates back to ~100 % — the boron change appears as a Tavg change
+> (~0.5 °C per ppm). Use dilution to manage rod position / Tavg; move POWER with the
+> turbine load. Below rated load, dilution does raise power.
+
 **Procedure — dilute for power rise (slow)**
 
 1. Charging pump **On**.  

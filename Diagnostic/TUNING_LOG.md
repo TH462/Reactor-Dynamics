@@ -40,7 +40,7 @@ staleness** items.
 | `run_autoctl` | **20/20** | |
 | `run_scenarios` | **3/3** | flagships |
 | `run_campaign` | **51/51** (2897) | |
-| `run_procedures` | **21/21** | 1 strict known-fail (B3) |
+| `run_procedures` | **22/22** | 1 strict known-fail (B3) |
 | `run_checklist` | **24/24** | |
 | `run_e2e_controls` | **28/30** | 2 pre-existing reds (F12) |
 | `verify_e2e_ui` | **FAIL** | pre-existing on clean HEAD (retired PwrSynoptic probe) |
@@ -105,7 +105,29 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
-### 2026-07-23 — Mode-5 pressurization slew + Mode-transition live checklists  ✅
+### 2026-07-23 — Boron batch-dose rework (S8 + S9 fixed; owner-approved design)  ✅
+Owner: "power change doesn't follow the dilution change." Diagnosis (probes: engine-direct
+OpsHarness + full-stack SimulationService, free-play defaults) → **S8–S11**. Owner asked how real
+plants do it → ruling: implement **real makeup-panel batch semantics**. Rework (`control_kernel.js
+_stepConc` + `pwr_control.js` def): a new target ppm computes a dose vs the channel's **bookkept
+concentration** and meters it feedforward at `rate` 0.05 ppm/s (was 0.5 — ~real-plant ×2),
+**stopped by the flow totalizer**, never chasing the 45 s-lagged analyzer; no deadband (`db`
+dropped — 1 ppm board nudges execute); books re-anchor from the filtered analyzer only when a NEW
+target finds them stale > `reAnchorPpm` 15 (ECCS boration); dose pauses with the charging pump
+(same gate as the engine's injection); batch state (`concMode/concBasis/concLastSp`) rides
+save/rewind, old saves load with no phantom dose (absent → books = saved target). Side effect
+worth keeping: a spent totalizer doesn't dilute against ECCS boration toward a stale target (the
+old seek did). Probed: 1 ppm ask → −0.95 delivered; 25 ppm ask → −25.0 exact, Pmax 102.6 % (was
+118 % + high-flux scram), Tavg absorbs ~0.45 °C/ppm; pump-pause/resume, MAN-override, mid-dose
+save/load all clean. **S10** (at rated, dilution moves Tavg not power — authentic) addressed as
+teaching text: Manuals 03 §7.5 batch-dose block + "dilution moves Tavg, not power" note; 02 §7.2
+channel row; WIRING_REFERENCE.md updated; manuals regenerated + repacked. **S11 still open**
+(coupled-feed 1.2 vs governor 1.0 clip → SG overfill when feed_sg is OFF). Engine mixing-lag fix
+(07-23) verified working; power still leads the analyzer ~15 s (mix τ 30 vs analyzer lag 45) —
+matters far less now that doses are slow. Gates: autoctl 20/20, m4 18/18, m5 19/19, m6 16/16,
+m6ph 8/8, m7 OK, pwr 31/31, behavior 30/0/0, ops pwr 21/21, campaign 51/51, procedures 22/22,
+checklist 24/24, e2e 28/30 (same 2 pre-existing reds), scenarios 3/3, manual_follow 30 fails
+(= baseline).
 Owner: Mode-5 setpoint 350→600 psi pressurized "almost instantly." Probed: **K_heater 0.55 MPa/s
 at full demand** (its job: transient-holding authority — the SGTR plateau consumes all of it), so
 a 1.73 MPa setpoint step completed in ~3 s. Fix: **upward setpoint slew** — the effective control
@@ -327,6 +349,10 @@ real smell worth a look during this effort.
 | **S5** | RBMK | Zero-flow aftermath too forgiving — post-trip fuel sits ~570 °C indefinitely, never dries out/damages | Real consequence is boil-off→dryout over tens of minutes; scale `h_fc` with channel flow at decay levels |
 | **S6** | RBMK | EPS bypass — verify M4 actually honors `eps_bypassed` in `_evalTrips` (was cosmetic; a `disable_auto_trips` effect now exists — confirm it inhibits auto-trips for the Chernobyl sequence) | The historical sequence can't be walked if bypass doesn't suppress trips |
 | **S7** | BWR | High-level (L8) protection + startup rod-block absent (overfeed to 150 % pegs 100 % with no alarm/trip) | Siblings (PWR/RBMK) have both; add at least a `vessel_level_high` alarm |
+| **S8** | PWR | **RESOLVED (2026-07-23)** — batch-dose rework removed the deadband entirely; 1 ppm board nudges now execute (probed −0.95 ppm delivered). See session entry | Was: board arrows nudge 1 ppm but `boron_conc` deadband ±8 ppm swallowed target changes ≤ 8 ppm |
+| **S9** | PWR | **RESOLVED (2026-07-23)** — `boron_conc` no longer seeks the lagged analyzer: a new target meters a feedforward dose stopped by a flow totalizer (real makeup-panel semantics), rate 0.5 → 0.05 ppm/s. Probed: 25 ppm ask delivers −25.0 exactly, power peaks 102.6 % (was 118 % + scram) | Was: seek on the 45 s-lagged analyzer over-delivered ~50 % and spiked/scrammed the plant |
+| **S10** | PWR | At 100 % with the governor at rated, steady-state power ALWAYS returns to ~100 % after dilution — Tavg absorbs it (+~0.45 °C/ppm). AUTHENTIC PWR physics (probed 2026-07-23), but reads as "boron does nothing" from the board | Teaching-surface gap, not a bug: nothing on the board tells the player boron moves Tavg (not power) when the turbine is pinned at rated |
+| **S11** | PWR | Load-coupled feed (feed_sg channel OFF, `load_mode.js` follow branch) clips feed at 1.2 while the governor clips steam at 1.0 — any power excursion above rated integrates SG level up (probed 65→89 %) until an `sg_level high` scram minutes later, looking unrelated to its cause | Hidden in default free play (feed_sg defaultOn holds level) but live whenever feed is manual/failed; fix = clip coupled feed to the governor's deliverable or feed on `steam_out_total` in follow mode too |
 
 ---
 

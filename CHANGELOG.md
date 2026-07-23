@@ -8,6 +8,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Boron target control is now a metered BATCH DOSE (real makeup-panel semantics).** The board's
+  BORON CONTROL target used to *seek* the boron analyzer — but that sample lags ~45 s, so a dose
+  over-delivered by ~50 % (a 10 ppm ask injected ~15 ppm, spiking power to ~110 %; a 30 ppm ask
+  scrammed on high flux), while its ±8 ppm deadband silently swallowed the board's 1 ppm arrow
+  nudges entirely. Now a new target computes the change and **meters it feedforward, stopped by a
+  flow totalizer** — exactly the ppm asked, no analyzer chase, no deadband (1 ppm nudges execute),
+  at a realistic **0.05 ppm/s** (was 0.5 — a ~5 pcm/s firehose). The dose pauses with the charging
+  pump, survives save/load and rewind, and a spent totalizer no longer fights ECCS boration back
+  toward a stale target. Manual Borate/Dilute buttons are unchanged (and still force the channel
+  to MAN). Manuals §7.5 now documents the batch behavior — including why dilution at full power
+  moves **Tavg, not steady-state power** (that part is real PWR physics).
+
 ### Added
 - **Mode 5 → Mode 3 live checklist (`pwr_heatup`).** A full plant-heatup checklist from the cold
   board: RCP start, slewed pressurization, accumulator re-alignment, SR→IR handoff, a gentle

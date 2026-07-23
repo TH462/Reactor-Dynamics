@@ -46,6 +46,28 @@ where the two differ or where judgment was exercised.
 | **Repo** | Commits go directly to `main`, one per module. | Matches the linear, single-developer build (the scaffold was committed to `main`); each module is an independent, test-gated unit. |
 | **Load order** | `config → protection → thermal → pressurizer → primary → steam_generator → instruments → engine`, then layers. | The engine captures `RD.pwr*` helper namespaces at IIFE-eval time, so its dependencies must load first. Encoded in `index.html`, `test_pwr.html`, and the Node runners. |
 
+### Boron batch-dose rework — `conc` channel semantics (2026-07-23, owner "power doesn't follow dilution")
+
+**Claim.** The `boron_conc` channel's closed-loop seek on the boron analyzer was structurally
+wrong, not mistuned: the analyzer lags ~45 s, so any seek over-delivers ~rate×lag (probed: a
+10 ppm ask injected ~15 ppm and spiked power to ~110 %; 30 ppm scrammed on high flux), while the
+±8 ppm deadband swallowed the board's 1 ppm arrow nudges whole. **Decision (owner-approved,
+modeled on real makeup panels):** `conc` channels now meter a **feedforward batch dose** — a new
+target computes delta vs a **bookkept concentration** (`concBasis`, advanced by the commanded
+injection like a real flow totalizer), delivers at `rate` (0.5 → **0.05 ppm/s**, ~2× real-plant
+max makeup), and stops on the totalizer, never consulting the analyzer mid-dose. No deadband.
+The books re-anchor from the filtered analyzer only when a NEW target finds them stale beyond
+`reAnchorPpm` (15 — covers ECCS boration); the dose pauses with the charging pump (the engine's
+own injection gate); batch state rides save/rewind (absent in old saves → books = saved target,
+no phantom dose). Deliberate consequences: the channel no longer *holds* concentration against
+external boration — a spent totalizer won't dilute against ECCS toward a stale target (the old
+seek would have); and a failed analyzer now fools it only at dose *computation*, not
+execution — matching how real batch ops depend on the flow integrator, not the boronometer.
+The at-rated observation that started this ("dilution doesn't change power") is authentic PWR
+physics — boron moves Tavg, power follows the turbine — now taught in Manuals 03 §7.5.
+Full worklog + probe numbers: `Diagnostic/TUNING_LOG.md` 2026-07-23 (batch-dose entry; S8/S9
+resolved, S11 SG-overfill still open).
+
 ### Pressurizer setpoint slew + Mode-transition checklists (2026-07-23, owner Mode-5 feel)
 
 **Claim.** `K_heater` (0.55 MPa/s at full demand) is transient-holding authority, not a heatup

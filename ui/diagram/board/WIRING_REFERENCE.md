@@ -89,10 +89,12 @@ trip_blocks keys present = currently-blocked. At full power ir_high+pr_low_setpo
 - **HPI discharge pressure**: real instrument `hpi_discharge_pressure` (MPa; RCS + margin, clamped
   to shutoff). HPI flow was already `hpi_flow`.
 - **Condensate/main-feed flow**: real instrument `condensate_flow` (0 when condensate pump off).
-- **Boron target-seeking**: now the control-layer `boron_conc` channel (kind `conc`). Board BORON
+- **Boron target (batch dose)**: the control-layer `boron_conc` channel (kind `conc`). Board BORON
   ON/OFF → `set_auto_channel {channel_id:'boron_conc'}`; target ppm number →
   `set_auto_setpoint {channel_id:'boron_conc'}`; setpoint read from `automation.channels`.
-  NO UI-side control loop.
+  NO UI-side control loop. Semantics (2026-07-23 rework): a new target meters a feedforward
+  BATCH DOSE stopped by a flow totalizer (real makeup-panel behavior) — it does NOT seek the
+  lagged analyzer, has no deadband (1 ppm arrow nudges execute), and runs at 0.05 ppm/s.
 - New instruments carry **noise:0** deliberately — the instrument PRNG is a continuous cross-step
   stream, so a noise draw would shift every downstream instrument's noise and move marginal
   campaign endpoints. Lag (deterministic) is kept.
