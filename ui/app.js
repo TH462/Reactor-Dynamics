@@ -44,7 +44,10 @@
   // the Automate tab is a pure face over snapshot.automation, issuing
   // set_auto_channel / set_auto_setpoint commands like any operator action.
   var chartBuf = [];        // { t, ins }
-  var gaugeHist = {};       // id -> [raw values]
+  var gaugeHist = {};       // id -> [{ t, v }]
+  // Fraction of the strip-chart plot width the traces occupy; the remaining right
+  // gutter holds the live value chips (see drawChart / drawFloats / rewindPickClick).
+  var CHART_PLOT_FRAC = 0.86;
   var smoothed = {};        // id -> display-damped instrument value
   var DISPLAY_DAMP_K = 0.18;
 
@@ -1434,7 +1437,8 @@
     var cps = (service && service.checkpoints) || [];
     if (!cps.length || chartBuf.length < 2) { toggleRewindPick(false); return; }
     var rect = document.querySelector('.chart-plot').getBoundingClientRect();
-    var frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    // traces occupy only the left CHART_PLOT_FRAC of the plot (right gutter = value chips)
+    var frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / (rect.width * CHART_PLOT_FRAC)));
     var t0 = chartBuf[0].t, t1 = chartBuf[chartBuf.length - 1].t;
     var tPick = t0 + frac * (t1 - t0);
     var best = 0, bd = Infinity;
@@ -1552,6 +1556,7 @@
     }).join('');
     if (chartBuf.length < 2) { svg.innerHTML = ''; if (floats) floats.innerHTML = ''; return; }
     var t0 = chartBuf[0].t, t1 = chartBuf[chartBuf.length - 1].t, span = (t1 - t0) || 1;
+    var PW = W * CHART_PLOT_FRAC;   // traces stop short of the right edge; value chips live in the gutter
     var html = '';
     // horizontal gridlines — kept very dark so they recede behind the traces
     [30, 60, 90].forEach(function (y) { html += '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#0f1217" stroke-width="0.5" vector-effect="non-scaling-stroke"/>'; });
@@ -1559,7 +1564,7 @@
     active.forEach(function (ser) {
       var lo = ser.range[0], hi = ser.range[1], rng = (hi - lo) || 1, ly = 0;
       var pts = chartBuf.map(function (b) {
-        var x = (b.t - t0) / span * W;
+        var x = (b.t - t0) / span * PW;
         var f = Math.max(0, Math.min(1, (ser.get(b.ins) - lo) / rng));
         var y = H - 8 - f * (H - 16); ly = y;
         return x.toFixed(1) + ',' + y.toFixed(1);
@@ -1573,7 +1578,7 @@
       service.checkpoints.forEach(function (cp) {
         var t = cp.metadata.sim_time;
         if (t < t0 || t > t1) return;
-        var x = ((t - t0) / span * W).toFixed(1);
+        var x = ((t - t0) / span * PW).toFixed(1);
         html += '<line class="cp-mark" x1="' + x + '" y1="0" x2="' + x + '" y2="' + H + '" stroke="#7ab0ff" stroke-width="1" stroke-dasharray="3,3" vector-effect="non-scaling-stroke"/>' +
                 '<circle cx="' + x + '" cy="6" r="2.5" fill="#7ab0ff"/>';
       });
@@ -2344,6 +2349,21 @@
       if (e.key === 'a' || e.key === 'A') { cmd({ action: 'acknowledge_all_alarms' }); return; }
       if (e.key === 'm' || e.key === 'M') { $('manualOverlay').hidden ? openManual() : closeManual(); return; }
       if (e.key === '?') { $('helpOverlay').hidden = !$('helpOverlay').hidden; return; }
+      // ↑/↓ drive the control rods: Up = withdraw, Down = insert. Press-and-hold to
+      // drive continuously (at the S/M/F speed); a quick tap moves one step — the board's
+      // rod machine owns the tap-vs-hold decision, so we just relay down/up here.
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        if (ui.plant !== 'pwr' || !RD.PwrBoard || !RD.PwrBoard.isMounted()) return;
+        e.preventDefault();
+        if (e.repeat) return;   // key auto-repeat: the hold is already running
+        RD.PwrBoard.driveRod('control_rods', e.key === 'ArrowUp' ? 1 : -1, true);
+        return;
+      }
+    });
+    // Release the rod drive when the arrow key comes up (parity with button release).
+    document.addEventListener('keyup', function (e) {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (RD.PwrBoard && RD.PwrBoard.driveRod) RD.PwrBoard.driveRod('control_rods', 0, false);
     });
     // Strip-chart rewind: the ⏪ by the scrubber + click-to-pick on the plot.
     // The scrubber track is the same affordance — clicking the timeline opens

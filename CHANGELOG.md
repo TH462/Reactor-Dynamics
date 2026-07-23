@@ -8,7 +8,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **PWR board — keyboard control-rod drive.** **↑** withdraws and **↓** inserts the
+  control rods, mirroring the WITHDRAW/INSERT buttons: a quick tap moves one step, hold
+  drives continuously at the selected S/M/F speed. Ignored while typing in a field.
+
 ### Changed
+- **PWR board — turbine Load ▲/▼ now nudges 1 MW** (was 20 MW) for fine load trimming.
+- **PWR board — strip-chart value chips moved to the right of the traces.** The traces now
+  stop short of the right edge and each line's live value indication sits in the reserved
+  gutter to its right (it used to overlap at the left edge); the time axis "now" tick lines
+  up with the trace ends.
 - **PWR board — more vertical room for the plant diagram.** The chart + alarm band was
   trimmed ~20 % (34 %→27 % of the plant column, min 200→160 px), and the six vital-few
   gauges now carry their mini strip

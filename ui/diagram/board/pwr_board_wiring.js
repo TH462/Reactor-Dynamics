@@ -55,6 +55,11 @@
     imrsg8b7b9o: [Math.ceil(MPa2psi(0.1)),                           // pressure setpoint, psi:
                   Math.floor(MPa2psi(_PZ.safety_open_mpa || 17.13))] //   engine band 0.1 MPa .. pzr safety
   };
+  // ▲/▼ nudge size overrides (the authored data step is a coarse default). Survives a
+  // board-data regeneration, unlike editing the generated pwr_board_data.js by hand.
+  var NUM_STEP = {
+    imro8rmka2y: 1     // generator load: nudge 1 MW per arrow press (authored default was 20)
+  };
 
   // ---- driver-local UI state (things the engine has no field for) ----
   var rodSpeed = 'normal';           // S/M/F selection for rod nudges
@@ -516,6 +521,14 @@
     cmd({ action: 'rod_stop', group_id: holdingGroup });
     holdingGroup = null;
   }
+  // The momentary WITHDRAW/INSERT button for a rod group + direction (for keyboard drive).
+  function rodButtonId(group, direction) {
+    for (var id in BUTTONS) {
+      var b = BUTTONS[id];
+      if (b && b.hold && b.hold.group === group && b.hold.direction === direction) return id;
+    }
+    return null;
+  }
 
   // ================================================================ driver API
   RD.PwrBoardDriver = {
@@ -534,12 +547,31 @@
       if (b && b.hold) armRodTap(b.hold.group, b.hold.direction);
     },
     onButtonUp: function () { endHoldRod(); },
+    // Programmatic rod drive (keyboard ↑/↓) — mirrors the momentary buttons' tap-or-hold
+    // (tap = 1 step, hold = drive at the S/M/F speed). down=true begins, down=false releases.
+    // Returns false if the matching rod button is disabled (e.g. after a scram) so the
+    // caller can no-op. Also reflects the button's pressed cue for parity with a click.
+    driveRod: function (group, direction, down) {
+      if (down) {
+        var id = rodButtonId(group, direction);
+        var btn = (refs && refs.buttons && id) ? refs.buttons[id] : null;
+        if (btn && btn.disabled) return false;
+        if (btn) btn.classList.add('bd-pressed');
+        armRodTap(group, direction);
+        return true;
+      }
+      if (refs && refs.buttons) Object.keys(refs.buttons).forEach(function (k) { refs.buttons[k].classList.remove('bd-pressed'); });
+      endHoldRod();
+      return true;
+    },
     onNumber: function (item, value) {
       var n = NUMBERS[item.id];
       if (n && n.set) n.set(value);
     },
     // Valid [min, max] for an editable box, so the renderer clamps out-of-range entries.
     boundsFor: function (item) { return NUM_BOUNDS[item.id] || null; },
+    // ▲/▼ step override for an editable number box (null = use the authored it.step).
+    stepFor: function (item) { return NUM_STEP[item.id] != null ? NUM_STEP[item.id] : null; },
     onControl: function (item, action, value) {
       // Only clickable valves emit control now — every pump is rendered art-only.
       if (action === 'toggle' && VALVE_TOGGLE[item.id]) VALVE_TOGGLE[item.id](!!value);

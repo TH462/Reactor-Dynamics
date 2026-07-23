@@ -228,6 +228,8 @@
     }
     var digits = it.digits == null ? 0 : it.digits;
     var step = it.step == null ? 1 : it.step;
+    var d0 = driver();
+    if (d0 && d0.stepFor) { var so = d0.stepFor(it); if (so != null) step = so; }
     var editable = it.editable !== false;
     var input = h('input', { type: 'text', inputMode: 'decimal' });
     input.style.color = it.color || '#4fe3ff';
@@ -689,6 +691,9 @@
     unmount: unmount,
     render: render,
     isMounted: function () { return !!stage; },
+    // Programmatic momentary rod drive (keyboard ↑/↓) — delegates to the plant driver's
+    // tap-or-hold machine so speed (S/M/F), tap-vs-hold and the pressed cue all match a click.
+    driveRod: function (group, direction, down) { var d = driver(); return !!(d && d.driveRod && d.driveRod(group, direction, down)); },
     refreshLayout: function () { layout(); if (scanPorts()) buildPipes(); },
     rescanPorts: function () { if (scanPorts()) buildPipes(); },
     ports: function () { return ports; },

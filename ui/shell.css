@@ -331,7 +331,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .chart-plot.chart-focus .chart-trace.hl .chart-line { stroke-width: 2.2px !important; }
 .chart-plot.chart-focus .chart-trace.hl .chart-dot { filter: drop-shadow(0 0 2px rgba(255, 255, 255, .35)); }
 .cfloat {
-  position: absolute; right: auto; transform: translate(5px, -50%);
+  /* value indication sits in the right gutter, to the RIGHT of the trace ends */
+  position: absolute; right: 3px; left: auto; transform: translate(0, -50%);
   display: flex; align-items: center; gap: 3px;
   padding: 1px 5px 1px 3px; border-radius: 2px;
   background: rgba(8, 11, 14, .84);
@@ -584,9 +585,11 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 }
 select.num-input { width: auto; }
 
-/* strip-chart low-profile x-axis (time ticks) */
+/* strip-chart low-profile x-axis (time ticks). The right 14% is a gutter for the
+   live value chips (traces stop at CHART_PLOT_FRAC), so reserve it here too — the
+   "0" (now) tick then lines up with each trace's end. */
 .chart-xaxis { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted);
-  padding: 1px 4px 0 6px; line-height: 1.1; height: 12px; box-sizing: border-box; }
+  padding: 1px 14% 0 6px; line-height: 1.1; height: 12px; box-sizing: border-box; }
 
 /* Automate tab (operator automation toggles) */
 .auto-master { display: flex; align-items: center; justify-content: space-between; padding: 2px 0 8px; border-bottom: 1px solid #23272d; }
