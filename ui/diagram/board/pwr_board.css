@@ -147,17 +147,27 @@
 .bd-pop button.bd-blocked { background: #3a2408; border-color: #ffd166; color: #ffd166; }
 .bd-pop button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* ---- maintenance tag (scenario prop over the AFW valve, TMI-2) ---- */
+/* ---- maintenance tag (scenario prop over the AFW valve, TMI-2) ----
+   A hung clearance tag that OCCLUDES the valve body, on a stalk to the valve stem
+   above — so the operator literally cannot read the discharge-valve indication behind
+   it, the way a real danger tag hangs on the handwheel. Centered over the ~50px tile. */
 .bd-maint-tag {
-  position: absolute; left: 50%; top: -14px; transform: translateX(-50%);
+  position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%) rotate(-7deg);
   z-index: 8; white-space: nowrap; pointer-events: none;
-  background: #b6892a; color: #1a1206; border: 1px solid #e8c46a; border-radius: 3px;
-  font-size: 10px; letter-spacing: 0.12em; font-weight: 700; padding: 1px 6px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  min-width: 40px; text-align: center;
+  background: #b6892a; color: #1a1206; border: 1px solid #e8c46a; border-radius: 4px;
+  font-size: 9px; letter-spacing: 0.1em; font-weight: 700; padding: 9px 7px 6px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
 }
+/* string tying the tag up to the valve stem/handwheel above the tile */
 .bd-maint-tag::before {
-  content: ""; position: absolute; left: 50%; top: -6px; width: 1px; height: 6px;
+  content: ""; position: absolute; left: 50%; top: -13px; width: 1px; height: 14px;
   background: #e8c46a; transform: translateX(-50%);
+}
+/* grommet hole the string passes through */
+.bd-maint-tag::after {
+  content: ""; position: absolute; left: 50%; top: 3px; width: 4px; height: 4px;
+  border-radius: 50%; border: 1px solid #1a1206; transform: translateX(-50%);
 }
 
 /* ---- paused overlay (spec: Pause freeze) ---- */

@@ -87,6 +87,12 @@
 
     this.simTime = 0;
     this.timeAcceleration = 1.0;
+    // True while the CURRENT acceleration was requested by a scenario beat (an
+    // authored fast-forward), false once the user touches the speed control. A
+    // beat-authored FF must ride THROUGH the alarm cascade of a scripted transient
+    // (TMI-2's subcooling/level alarms) instead of snapping back on every new
+    // annunciator — see _assembleWithInstructor's attention-stop below.
+    this._authoredSpeed = false;
     this.running = false;
     this.broadcastMs = NORMAL_MS;
     this._prevTrueState = null;
@@ -206,8 +212,15 @@
     // BEFORE time_acceleration below so THIS snapshot (the one carrying the SCRAM)
     // already reads 1×, with no one-broadcast lag.
     var stop = this._attentionStop(snap);
+    // A newly-firing alarm normally snaps FF back so the operator can react — but a
+    // scenario that AUTHORED this fast-forward (beat.speed) is deliberately running
+    // through a scripted transient whose whole point is a cascade of alarms; letting
+    // each one drop the clock made authored skips stutter to a halt (issue #105).
+    // A genuine scram or new failure still hard-stops even under an authored FF.
+    if (stop === 'alarm' && this._authoredSpeed) stop = null;
     if (stop && this.timeAcceleration > 1) {
       this.timeAcceleration = 1.0;
+      this._authoredSpeed = false;
       snap.metadata.speed_snap = { reason: stop };
     }
     // A beat's speed request takes effect from THIS broadcast — keep it honest.
@@ -230,7 +243,7 @@
     // Speed applies AFTER a rewind so a beat's speed wins over the checkpoint's
     // stored acceleration (fast-forward in, snap back to real time at set points).
     var sp = i.consumeSpeedRequest ? i.consumeSpeedRequest() : null;
-    if (sp != null) this.timeAcceleration = sp;
+    if (sp != null) { this.timeAcceleration = sp; this._authoredSpeed = (sp > 1); }
     return rewound;
   };
 
@@ -399,7 +412,7 @@
       case 'play':  this.start(); return null;
       case 'pause': this.stop(); return null;
       case 'reset': return this.selectPlant(command.plant_id, command.initial_state, command.design_version || null);
-      case 'set_speed': this.timeAcceleration = command.value; return null;
+      case 'set_speed': this.timeAcceleration = command.value; this._authoredSpeed = false; return null;
       case 'save_state': return this.saveState();
       case 'load_state': return this.loadState(command.state);
       case 'set_register':
@@ -583,6 +596,7 @@
     this.activeDesignVersion = m.design_version || null;
     this.simTime = m.sim_time;
     this.timeAcceleration = m.time_acceleration;
+    this._authoredSpeed = false;
     this._prevTrueState = null;
     this._prevAlarms = null;
     this._prevScrammed = false;

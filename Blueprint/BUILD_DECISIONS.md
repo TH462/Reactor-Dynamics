@@ -46,6 +46,58 @@ where the two differ or where judgment was exercised.
 | **Repo** | Commits go directly to `main`, one per module. | Matches the linear, single-developer build (the scaffold was committed to `main`); each module is an independent, test-gated unit. |
 | **Load order** | `config → protection → thermal → pressurizer → primary → steam_generator → instruments → engine`, then layers. | The engine captures `RD.pwr*` helper namespaces at IIFE-eval time, so its dependencies must load first. Encoded in `index.html`, `test_pwr.html`, and the Node runners. |
 
+### TMI-2 Part 1 — guided hands-on rework + FF/board fixes (2026-07-23, issue #105)
+
+Owner playtest of "The Fog of War" produced GitHub issue #105 (seven items). Decisions taken
+(two owner rulings via `AskUserQuestion`, the rest concrete bug fixes):
+
+- **Part 1 is now GUIDED HANDS-ON, reversing the original watch-only design (Spec §4 "No —
+  scripted/historical").** Owner ruling: the player must *manipulate the controls*, not just
+  watch. Implementation reuses Part 3's `operator_action`/`inaction`/`branches` machinery: the
+  supervisor orders the two pivotal historical actions and the player performs them —
+  `set_hpi{active:false}` (securing HPI, the mistake) and `close_block_valve` (isolation) —
+  each with a supervisor-takes-over `inaction` fallback so the outcome stays historical (core
+  damage). The player pulls the trigger; the rails still hold. Part 3 remains the *free-agency*
+  act (branching endings); Part 1 is *guided* (fixed ending, player's hands).
+- **Phase gating replaces the single watch-only gate.** `watchGate(until, msg)` pushes an
+  ack-only gate whose `until` opens the next action window: gate `until TRIG.pzrLevelHigh`
+  (opens the secure-HPI window) → `until TRIG.identification` (locks HPI OFF through the
+  draindown so the trap can't be undone) → open isolation window → ack-only to the debrief.
+  Between gates all plant actions are legal; the gates *are* the rails. The existing campaign
+  test "gate blocks plant actions in character" still passes (set_hpi blocked during turnover).
+- **Pacing: no scripted fast-forward buttons (owner ruling "smoothly compressed, no skips").**
+  The `chat_button:{style:'skip'}` FF buttons are gone; the ~19-min-real draindown runs at an
+  authored `beat.speed: 6` that snaps to `1` at each reveal. Historical elapsed-time labels
+  (`story_min`, the `time_skip` divider) are kept per Spec §2.2 guardrail.
+- **M5 FF-through-transient fix (`simulation_service.js`).** `_attentionStop`'s `'alarm'` clause
+  snapped `timeAcceleration` back to 1 on *every* newly-firing alarm — so an authored FF through
+  a scripted alarm cascade stuttered to a halt (issue #105 "fast forward keeps dropping out").
+  New `this._authoredSpeed` flag (set true when a beat authors `speed>1`, cleared on user
+  `set_speed`) suppresses the `'alarm'` snap while an authored FF is active; scram/new-failure
+  still hard-stop. `_anyAlarmNewlyFiring` itself is untouched (still drives transient cadence).
+- **Board — PORV shows TRUE valve position, not the demand light (`pwr_board_wiring.js`).** The
+  `porv` compProps read `IN(s).porv_indicator` (the demand lamp — frozen "closed" by the
+  `porv_indicator_stuck_closed` failure), so a stuck-open PORV rendered shut with no discharge
+  flow. Now reads `s.true_state.porv_open`: the schematic vents + flows on the real valve state
+  while the operator's *indicator* readout stays wrong. HR1 note: the schematic depicts the
+  plant; the lie lives in the lamp/numeric indications, which still read "closed". Deliberate,
+  owner-directed for the visible physical tell.
+- **Board — tailpipe temp legible (`pwr_board_wiring.js`).** The PORV outflow-pipe temperature
+  value turns amber (`SR_HANDOFF_COLOR`) above 100 °C; the discharge pipes (`pmrr0wvtu7z`,
+  `pmrsi3xy4ch`) and the pzr→PORV inlet (`pmrr0y2b78z`) were added to `PIPE_TEMP` so they track
+  live fluid temp instead of a frozen authored value.
+- **Board — maintenance tag occludes the valve (`pwr_board.css`).** `.bd-maint-tag` was a badge
+  floating 14 px above the tile (`top:-14px`); reworked to a clearance tag centered *over* the
+  valve body on a stalk (verified: tag/valve centers coincide at (731,±486)).
+- **"Pressurizer never went solid" (#105 #4) was legibility, not physics.** Probe confirmed
+  `pzr_level_pct` pegs 100 % (void-insurge term dominates while inventory drains) ~t196–670;
+  added an explicit "gone SOLID… with the pumps OFF" callout in `b13_lull2` so the beat lands.
+
+Gates after the pass (all at/above baseline): `run_campaign` 51/51, `run_m5` 19/19, `run_m6`
+16/16, `run_autoctl` 20/20, `run_pwr` 31/31, `run_m4` 18/18, `run_m7` OK, `run_procedures`
+21/21, board_check 54/0. Interactive + historical Part-1 paths both drive to the core-damage
+level_complete headlessly; PORV/tailpipe/tag verified in headless Edge.
+
 ### Test-suite review + hardening pass (2026-07-19, Fable)
 
 Full findings: `Diagnostic/TEST_SUITE_REVIEW_2026-07-19.md`; skimmable summary in `CHANGELOG.md`

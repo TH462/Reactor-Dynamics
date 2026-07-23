@@ -105,6 +105,22 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-23 — TMI-2 Part 1 rework (issue #105)  ✅
+Owner playtest → GitHub issue #105 (7 items). Two owner rulings (`AskUserQuestion`): Part 1
+becomes **guided hands-on** (player performs the historical actions, supervisor takes over on
+`inaction`; outcome stays historical), and pacing is **smoothly compressed, no skip buttons**.
+Changes: `scenarios/pwr_tmi2_p1.js` reworked (operator_action/inaction branches for
+secure-HPI + isolation, phase `watchGate(until,msg)` rails, `beat.speed:6` compression, "gone
+SOLID" callout); `layers/simulation_service.js` `_authoredSpeed` flag so an authored FF rides
+through the alarm cascade instead of snapping to 1× on each new alarm (scram/failure still
+hard-stop); board `pwr_board_wiring.js` PORV reads `true_state.porv_open` (stuck-open valve
+visibly vents + flows while the demand lamp stays "closed"), tailpipe gauge goes amber >100 °C,
+discharge pipes added to `PIPE_TEMP`; `pwr_board.css` `.bd-maint-tag` now hangs OVER the valve.
+#4 "never went solid" was legibility, not physics (probe: `pzr_level_pct` pegs 100 % ~t196–670).
+Full rationale in `Blueprint/BUILD_DECISIONS.md` (2026-07-23 entry). Gates green: run_campaign
+51/51, run_m5 19/19, run_m6 16/16, run_autoctl 20/20, run_pwr 31/31, run_m4 18/18, run_m7 OK,
+run_procedures 21/21, board_check 54/0; both Part-1 paths reach core-damage headlessly.
+
 ### 2026-07-22 — ECCS pump merge — change plan drafted (awaiting owner approval)  ⏸
 Owner reversed the dedicated-ECCS-pump ruling (it was written on faulty info; real Westinghouse
 charging pumps ARE the high-head SI pumps). Decision: combine makeup + high-head HPI into one

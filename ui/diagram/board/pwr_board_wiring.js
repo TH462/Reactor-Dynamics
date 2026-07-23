@@ -242,7 +242,15 @@
     imrr1ixcqe3: function (s) { return r0(MPa2psi(IN(s).primary_pressure)); },                          // plant pressure psi
     imrr4fnxhlc: function (s) { return r0(C2F(IN(s).thot)); },                                          // T-hot °F
     imrr4g29a7c: function (s) { return r0(C2F(IN(s).tcold)); },                                         // T-cold °F
-    imrsgch20pv: function (s) { return r0(C2F(IN(s).porv_tailpipe_temp)); },                            // PORV tailpipe °F
+    imrsgch20pv: function (s) {                                                                          // PORV tailpipe °F
+      // The one honest tell in the TMI-2 sequence: a seated PORV leaves the tailpipe at its
+      // ~180 °F leaky-seat baseline; a passing (stuck-open) valve cooks it toward ~300 °F.
+      // The 1979 crew had this reading and misread it — so make the elevation legible: amber
+      // once it climbs clear of baseline (issue #105 #6). SR_NORMAL_COLOR is the authored green.
+      var c = IN(s).porv_tailpipe_temp;
+      if (c == null) return null;
+      return { text: String(r0(C2F(c))), color: c > 100 ? SR_HANDOFF_COLOR : SR_NORMAL_COLOR };
+    },
     imrsgkz4lq0: function (s) { return r0((CS(s).feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT); }       // SG feed rate gpm
   };
 
@@ -302,7 +310,14 @@
         heaterOn: (c.heater_power_pct || 0) > 0 || (c.heater_auto && (IN(s).power_range || 0) > 0),
         spray: (c.spray_valve_pct || 0) > 2, temp: satTempC(IN(s).primary_pressure), glow: true, showFlow: true };
     },
-    porv: function (s) { return { open: IN(s).porv_indicator === 'open' }; },
+    // The PORV schematic shows the TRUE valve position (vent plume + discharge flow),
+    // not the demand-signal light. That light is the TMI-2 lie — it reads "closed" while
+    // the valve is stuck open — but the physical valve, its steam plume, and the flow down
+    // the tailpipe are real, and the board depicts the plant, not the lamp. So a stuck-open
+    // PORV visibly vents and drives flow through the discharge pipe (issue #105 #5), while
+    // the operator's PORV *indicator* readout stays wrong. Falls back to the indicator if a
+    // snapshot ever lacks true_state (defensive; real snapshots always carry it).
+    porv: function (s) { var t = s.true_state || {}; return { open: t.porv_open != null ? !!t.porv_open : (IN(s).porv_indicator === 'open') }; },
     condenser: function (s) {
       // hotwell/condensate temperature rises modestly with load (higher backpressure) but
       // stays cold — the condensing side under vacuum, never primary-hot.
@@ -379,6 +394,13 @@
     pmrr499yfkb: function (s) { return satTempC(IN(s).steam_pressure); }, // main steam → turbine (TCV out)
     pmrr0u9nib3: function (s) { return satTempC(IN(s).steam_pressure); }, // steam dump → condenser bypass
     pmrr46oahnx: function (s) { return satTempC(IN(s).steam_pressure); }, // steam dump branch
+    // PORV relief path — the discharge line heats with the tailpipe instrument (~82 °C
+    // seated → ~150 °C passing) so a stuck-open PORV visibly cooks its tailpipe on the board
+    // instead of sitting frozen at an authored red (issue #105 #6). The inlet line off the
+    // pressurizer carries live RCS steam at saturation.
+    pmrr0y2b78z: function (s) { return satTempC(IN(s).primary_pressure); }, // pressurizer → PORV inlet
+    pmrr0wvtu7z: function (s) { return IN(s).porv_tailpipe_temp; },         // PORV → block valve (tailpipe)
+    pmrsi3xy4ch: function (s) { return IN(s).porv_tailpipe_temp; },         // block valve → drain (tailpipe)
     // secondary condensate / feedwater loop — same water ramp as the pumps & vessels it links
     // Feed pump + both its pipes carry the same feedwater — one fwTemp so the pump's fluid
     // color matches the pipes into/out of it (the cool→hot transition sits upstream, at the

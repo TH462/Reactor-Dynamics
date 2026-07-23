@@ -58,6 +58,10 @@
     // The historical error — securing High-Pressure Injection on the rising
     // pressurizer level.
     hpiSecure: { commands: [{ action: 'set_hpi', active: false }] },
+    // Restoring injection after the player has already isolated the relief path
+    // by hand (Part 1 guided recovery) — the block valve is the player's action;
+    // this just confirms full-flow injection back in service.
+    hpiRestore: { commands: [{ action: 'set_hpi', active: true }] },
     // The 8-minute AFW discovery: valves reopened; latched pump demand
     // delivers flow immediately.
     afwRestore: { clear_failures: ['afw_failure'] },

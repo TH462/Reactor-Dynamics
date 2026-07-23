@@ -14,6 +14,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   drives continuously at the selected S/M/F speed. Ignored while typing in a field.
 
 ### Changed
+- **TMI-2 Part 1 is now hands-on (issue #105).** "The Fog of War" no longer plays itself
+  while you watch — the Shift Supervisor *orders* the two pivotal historical actions and
+  **you** perform them on the board: securing High-Pressure Injection (the fatal mistake)
+  and, at the end, closing the PORV block valve and restoring injection (the recovery). If
+  you hesitate, the supervisor makes the call himself, so the ending is always the
+  historical one — but the trigger is yours. Between the two decisions the board is gated to
+  on-order actions so the trap can't be undone mid-event.
+- **TMI-2 Part 1 pacing — no more long fast-forwards.** The uneventful two-hour draindown is
+  now run at a smooth authored acceleration that snaps back to real time at each reveal,
+  instead of the "Wait/Skip" fast-forward buttons that kept dropping back to 1× on every new
+  alarm. The historical elapsed-time labels (~2 h 20 m) are kept.
+- **Fast-forward no longer stutters through a scripted transient.** A scenario-authored
+  fast-forward now rides *through* an alarm cascade instead of snapping back to real time on
+  each new annunciator; a genuine reactor trip or new failure still hard-stops it. (Fixes the
+  TMI-2 "fast forward keeps dropping out" report.)
+- **PWR board — the PORV now shows the *real* valve, not just the demand light.** A
+  stuck-open PORV visibly vents and drives flow down its discharge line even while the
+  control-room demand indicator reads "closed" (the TMI-2 lie) — the board depicts the plant,
+  the lamp depicts the signal. The PORV **outflow-pipe temperature** reads live and turns
+  amber as the tailpipe heats, and the discharge pipe warms with it — the one honest tell the
+  1979 crew had. (Issue #105: stuck PORV / no flow / tailpipe temp not visible.)
+- **PWR board — the maintenance tag now hangs *over* the tagged valve.** The TMI-2 clearance
+  tag was a small badge floating above the AFW discharge valve; it now hangs across the valve
+  body like a real danger tag, occluding the indication behind it. (Issue #105.)
 - **PWR board — turbine Load ▲/▼ now nudges 1 MW** (was 20 MW) for fine load trimming.
 - **PWR board — strip-chart value chips moved to the right of the traces.** The traces now
   stop short of the right edge and each line's live value indication sits in the reserved
