@@ -29,6 +29,7 @@
   var NUDGE_KINDS = { 'Pump': 1, 'Valve': 1, 'Valve Horizontal': 1, 'Valve Vertical': 1 };
   var MONO = '"IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace';
   var SANS = 'ui-sans-serif, "Segoe UI", system-ui, sans-serif';
+  var BD_NUM_AUTO_COLOR = '#6b7d8a';   // greyed number = auto-driven (not operator-editable); cyan = editable
 
   var host = null, wrap = null, stage = null, underSvg = null, pausedEl = null;
   var doc = null, ctx = null;
@@ -645,6 +646,11 @@
       // numbers reflect sim state unless being edited
       Object.keys(numberEls).forEach(function (id) {
         var rec = numberEls[id];
+        // Cyan = the operator can type here; grey = the box is AUTO-driven right now, so a
+        // manual entry would just be overwritten by the controller (see driver.numberAuto).
+        var auto = d.numberAuto ? d.numberAuto(rec.item, s) : false;
+        var col = auto ? BD_NUM_AUTO_COLOR : (rec.item.color || '#4fe3ff');
+        if (rec._appliedCol !== col) { rec.input.style.color = col; rec._appliedCol = col; }
         if (rec.editing) return;
         var v = d.numberFor ? d.numberFor(rec.item, s) : null;
         if (v == null || isNaN(v)) return;

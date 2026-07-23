@@ -9,6 +9,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Xenon strip-chart series (PWR).** Xenon (% of equilibrium, from `true_state.xenon_pct_eq`) is
+  now a selectable plot trend — the chart buffer carries it alongside the instrument readings.
 - **Website version tracking.** The public changelog (`changelog.html`) now carries a per-release
   version number (`Alpha MAJOR.MINOR.PATCH`, starting **Alpha 1.0.1**). Adding a `changelog.html`
   entry with the next version is now a required step *before* each `develop`→`main` merge — the
@@ -16,8 +18,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   numbers_) so every coding agent follows it.
 
 ### Changed
+- **Vital-few gauge colors match the plant diagram.** The six top indications now use the board's
+  readout palette — green normal, amber caution, red alarm (`#5aad7c`/`#ffd166`/`#ff6a4d`) — instead
+  of the old dim blue-white. Cyan stays reserved for user-editable inputs, on the gauges and board alike.
+- **PWR board — auto-driven number boxes read grey.** A setpoint/input box turns grey while its
+  controller is on AUTO (load in FOLLOW, feed on the feed_sg channel, spray/heater AUTO, CVCS auto
+  make-up) — the operator can't type into it then. Cyan = editable. The two operator setpoints (boron
+  target, pressure setpoint) stay cyan. (driver `numberAuto` + a render-time recolor.)
 - **PWR board — boron target ▲/▼ now nudges 1 ppm** (was 20) for fine reactivity-chemistry trimming
   (matches the 1 MW generator-load step).
+- **Site — About and Feedback links disabled site-wide** (pages kept, links greyed/non-clickable on
+  every page's nav, footer, and inline references); removed the "SI units under the hood" line from
+  the front-page feature copy.
 - **Boron now moves power at the speed of the *actual* concentration, not the input.** Borating
   or diluting used to swing power almost instantly while the boron indication crept up slowly —
   because reactivity keyed off the injected concentration while the analyzer sample lagged. The

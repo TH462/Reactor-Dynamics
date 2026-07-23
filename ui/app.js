@@ -146,6 +146,7 @@
         { id: 'steam_flow',label: 'Steam Flow',c: '#8a9a5a', get: function (i) { return i.steam_flow * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'fw_flow',  label: 'Feed Flow',c: '#4a8a86', get: function (i) { return i.fw_flow * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'boron',    label: 'Boron',    c: '#9a7ab8', get: function (i) { return i.boron_analyzer; }, range: [0, 1400], fmt: function (v) { return v.toFixed(0) + ' ppm'; } },
+        { id: 'xenon',    label: 'Xenon',    c: '#b05a8a', get: function (i) { return i.xenon_pct_eq; }, range: [0, 250], fmt: function (v) { return v.toFixed(0) + '% eq'; } },
         { id: 'steam_p',  label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
         { id: 'sur',      label: 'Startup Rate', c: '#c0913e', get: function (i) { return i.startup_rate; }, range: [-2, 3], fmt: function (v) { return v.toFixed(1) + ' DPM'; } },
       ],
@@ -575,7 +576,11 @@
     // easing a display value across a time jump shows numbers that were never real.
     if (chartBuf.length && chartBuf[chartBuf.length - 1].t > s.metadata.sim_time + 1e-9) smoothed = {};
     while (chartBuf.length && chartBuf[chartBuf.length - 1].t > s.metadata.sim_time + 1e-9) chartBuf.pop();
-    chartBuf.push({ t: s.metadata.sim_time, ins: Object.assign({}, s.instruments) });
+    // Snapshot the instruments for the chart; also carry xenon (a true-state quantity with
+    // no gauge of its own) so it can be a plottable series alongside the instrument readings.
+    var chartIns = Object.assign({}, s.instruments);
+    if (s.true_state && s.true_state.xenon_pct_eq != null) chartIns.xenon_pct_eq = s.true_state.xenon_pct_eq;
+    chartBuf.push({ t: s.metadata.sim_time, ins: chartIns });
     var cutoff = s.metadata.sim_time - ui.window;
     while (chartBuf.length > 2 && chartBuf[0].t < cutoff) chartBuf.shift();
     drawChart();

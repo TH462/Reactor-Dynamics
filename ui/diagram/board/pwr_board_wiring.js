@@ -625,6 +625,21 @@
       var v = n.get(s);
       return v == null ? null : v;
     },
+    // True when a number box is currently AUTO-driven — the value is being set by an
+    // automatic controller, so the operator can't meaningfully type into it. The renderer
+    // greys these out (cyan = user-editable). The two SETPOINT boxes (boron target, pressure
+    // setpoint) are always the operator's to set even under auto, so they stay editable.
+    numberAuto: function (item, s) {
+      var cs = CS(s);
+      switch (item.id) {
+        case 'imro8rmka2y': return cs.load_mode === 'follow';                         // generator load auto-tracks in FOLLOW
+        case 'imro8xhy2me': var c = chan(s, 'feed_sg'); return !!(c && c.engaged);     // SG feed on the feed_sg auto channel
+        case 'imro929i738': return !!cs.spray_auto;                                    // pressurizer spray AUTO
+        case 'imro96mj15p': return !!cs.heater_auto;                                   // pressurizer heater AUTO
+        case 'imrpq48hn3t': return !!cs.cvcs_auto;                                     // charging AUTO make-up
+        default: return false;
+      }
+    },
     buttonActive: function (item, s) {
       var b = BUTTONS[item.id];
       return b && b.active ? !!b.active(s) : false;

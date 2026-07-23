@@ -158,11 +158,13 @@ body {
 /* value + mini strip chart share one row (chart to the RIGHT of the number) so the
    gauge strip stays short — freeing vertical room for the diagram below. */
 .g-valrow { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.gauge .g-value { flex: 0 0 auto; font-size: 22px; font-weight: 650; line-height: 1.05; color: var(--clr-normal-value); }
+/* Colors match the plant diagram's readout scheme: green normal, amber caution, red alarm
+   (the diagram uses cyan only for user-editable inputs, so the gauges — pure readouts —
+   stay green like every other indication on the board). */
+.gauge .g-value { flex: 0 0 auto; font-size: 22px; font-weight: 650; line-height: 1.05; color: #5aad7c; }
 .gauge .g-units { font-size: 10px; color: var(--clr-dim-label); }
-/* Quiet board: value color IS the status — dim normal, amber caution, red+flash alarm. */
-.gauge.warn  .g-value { color: var(--caution); }
-.gauge.alarm .g-value { color: var(--critical); animation: gauge-alarm-flash .6s steps(1, end) infinite; }
+.gauge.warn  .g-value { color: #ffd166; }
+.gauge.alarm .g-value { color: #ff6a4d; animation: gauge-alarm-flash .6s steps(1, end) infinite; }
 @keyframes gauge-alarm-flash { 50% { opacity: .4; } }
 /* trend arrow: dim at rest; color (not direction) signals deviation */
 .gauge .g-trend { font-size: 11px; color: #2a3a4a; }
