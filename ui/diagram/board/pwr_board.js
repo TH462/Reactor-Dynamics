@@ -565,7 +565,11 @@
       stage.appendChild(el);
     });
 
-    pausedEl = h('div', { className: 'pwr-board-paused' }, h('span', null, 'SIMULATION PAUSED'));
+    pausedEl = h('div', { className: 'pwr-board-paused' },
+      h('div', { className: 'pwr-paused-box' }, [
+        h('div', { className: 'pwr-paused-main' }, 'SIMULATION PAUSED'),
+        h('div', { className: 'pwr-paused-sub' }, 'Press ▶ Play to start')
+      ]));
     wrap.appendChild(stage);
     wrap.appendChild(pausedEl);
     host.appendChild(wrap);

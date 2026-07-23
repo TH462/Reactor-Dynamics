@@ -429,7 +429,9 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
   padding: 8px 10px; display: flex; flex-direction: column; gap: 8px;
 }
 .sim-top { display: flex; align-items: center; justify-content: space-between; }
-.logo { font-weight: 800; letter-spacing: .01em; font-size: 15px; white-space: nowrap; }
+.logo { font-weight: 800; letter-spacing: .01em; font-size: 15px; white-space: nowrap;
+  color: var(--text); text-decoration: none; cursor: pointer; }
+.logo:hover { color: var(--text); opacity: 0.82; text-decoration: none; }
 .logo .a { color: var(--normal); }
 .clock { font-size: 15px; font-weight: 600; }
 .clock.running { animation: pulse 2s ease-in-out infinite; }
@@ -441,6 +443,16 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
   background: var(--bg-right); color: var(--running); font-size: 15px; cursor: pointer; flex: 0 0 auto;
 }
 .play.paused { color: var(--caution); }
+/* First-run cue: pulse the Play button until the sim is started for the first time. */
+.play.attention {
+  border-color: var(--running); color: var(--running);
+  animation: playPulse 1.4s ease-in-out infinite;
+}
+@keyframes playPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(64, 209, 122, 0.55); }
+  50%      { box-shadow: 0 0 0 6px rgba(64, 209, 122, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .play.attention { animation: none; box-shadow: 0 0 0 2px rgba(64,209,122,0.5); } }
 .speed { display: inline-flex; gap: 0; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; flex: 1 1 auto; }
 .speed button { flex: 1 1 0; background: var(--bg-right); color: var(--text-2); border: none; border-right: 1px solid var(--border);
   padding: 4px 0; font-size: 11px; cursor: pointer; }
@@ -492,6 +504,8 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 }
 .instructor.expanded, .tools.expanded { flex: 1 1 0; }
 .instructor.collapsed, .tools.collapsed { flex: 0 0 auto; }
+/* the whole collapsed instructor is a click target to maximize (persona is hidden in chat-mode) */
+.instructor.collapsed { cursor: pointer; }
 .instructor .persona { cursor: pointer; }
 .instructor .persona::after {
   content: '▸'; margin-left: auto; color: var(--muted); font-size: 11px;

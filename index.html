@@ -18,6 +18,7 @@
 <header class="site-header">
   <div class="bar">
     <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
+    <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
     <nav class="site-nav">
       <a href="ui/shell.html?engine=pwr">Simulator</a>
       <a href="about.html">About</a>
@@ -27,6 +28,7 @@
 </header>
 
 <section class="hero">
+  <div class="alpha-note">🚧 Alpha build &middot; a work in progress — expect rough edges, missing pieces, and features that change.</div>
   <h1>Run a nuclear power plant<br>from your browser.</h1>
   <p class="sub">Real reactor physics. Guided training campaigns, from first
   criticality to Three Mile Island. Nothing to install — it all runs locally
@@ -72,17 +74,19 @@
   <h2>What makes it different</h2>
   <div class="features">
     <div class="feature">
-      <h3>The instruments can lie</h3>
-      <p>You never see the true state of the plant — only instrument readings,
-      which lag, drift, and fail. At Three Mile Island a valve indicator read
-      &ldquo;closed&rdquo; while the valve was stuck open. Here, that gap is the
-      whole point.</p>
+      <h3>Reactivity you can feel</h3>
+      <p>The core runs on point-kinetics with six delayed-neutron groups, and it
+      pushes back: Doppler and moderator-temperature feedback, boron worth, and
+      xenon poisoning all move the reactivity in real time. Watch net reactivity
+      and reactor period as you approach criticality, and feel the coefficients
+      fight — or amplify — every move you make.</p>
     </div>
     <div class="feature">
-      <h3>Real reactor physics</h3>
-      <p>Point kinetics with delayed neutrons, xenon transients, decay heat,
-      two-phase steam generators, and a full balance of plant from the core to
-      the grid.</p>
+      <h3>A whole plant, modeled</h3>
+      <p>Decay heat, two-phase steam generators, pressurizer level and pressure
+      control, and a full balance of plant from the core through the turbine to
+      the grid — coupled thermal-hydraulics where every valve, pump, and rod has
+      a real, physical consequence, in SI units under the hood.</p>
     </div>
     <div class="feature">
       <h3>Guided campaigns</h3>

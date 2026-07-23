@@ -176,11 +176,18 @@
   align-items: center; justify-content: center; pointer-events: none;
 }
 .pwr-board-paused.on { display: flex; }
-.pwr-board-paused span {
+.pwr-paused-box {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  background: rgba(10, 14, 19, 0.82); border: 1px solid #3a4c58; border-radius: 10px;
+  padding: 16px 34px 18px 40px;
+}
+.pwr-paused-main {
   font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   font-size: 28px; letter-spacing: 0.3em; color: #e8f2f8;
-  background: rgba(10, 14, 19, 0.82); border: 1px solid #3a4c58; border-radius: 10px;
-  padding: 14px 34px 14px 40px;
+}
+.pwr-paused-sub {
+  font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 13px; letter-spacing: 0.12em; color: #8fb3c7;
 }
 /* Freeze every board animation while paused */
 .pwr-board-stage.bd-frozen *, .pwr-board-stage.bd-frozen *::before, .pwr-board-stage.bd-frozen *::after {

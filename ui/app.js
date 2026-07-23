@@ -1390,7 +1390,7 @@
     resetChat();                 // fresh transcript state (chat-mode scenarios)
     setFocus('instructor', true);
     service.handleCommand({ action: 'play' });
-    $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused');
+    $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused'); $('playBtn').classList.remove('attention');
   }
 
   // ---- "Follow in Instructor" (Path 2): the Instructor (M6) runs the procedure —
@@ -2160,8 +2160,14 @@
       document.querySelectorAll('.tabpane').forEach(function (p) { p.classList.toggle('on', p.getAttribute('data-pane') === b.getAttribute('data-tab')); });
       setFocus('tools');
     });
-    var persona = document.querySelector('.instructor .persona');
-    if (persona) persona.addEventListener('click', function () { setFocus('instructor', true); });
+    // Maximize a collapsed instructor by clicking anywhere on the collapsed card.
+    // The persona header is the affordance, but it's hidden in chat-mode — keying off
+    // the collapsed card itself (delegation) fixes the "sometimes it won't maximize"
+    // case where there was no persona to click. When expanded, this is a no-op so the
+    // card's own buttons (Acknowledge, chat, level-complete) still work normally.
+    $('instructorCard').addEventListener('click', function () {
+      if ($('instructorCard').classList.contains('collapsed')) setFocus('instructor', true);
+    });
     // generic segmented active state (delegated so rebuilt controls keep working)
     document.body.addEventListener('click', function (e) {
       var btn = e.target.closest('.seg button'); if (!btn) return;
@@ -2169,7 +2175,7 @@
     });
     $('playBtn').addEventListener('click', function () {
       if (service.running) { service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused'); }
-      else { service.start(); $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused'); }
+      else { service.start(); $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused'); $('playBtn').classList.remove('attention'); }
     });
     $('speed').addEventListener('click', function (e) {
       var b = e.target.closest('[data-speed]'); if (!b) return;
@@ -3176,7 +3182,7 @@
     if (im || ffm) { latest = service.assembleSnapshot(); render(latest); }
     // optional ?tab= deep-link — opens a Tools-Block tab (dev/screenshot convenience).
     // ?tab=training (the retired tab) opens the Plant & Mission window instead.
-    var tbm = /[?&]tab=(failures|automate|graph|sim|settings|training|dev)/.exec(location.search || '');
+    var tbm = /[?&]tab=(failures|graph|sim|settings|training)/.exec(location.search || '');
     if (tbm) {
       if (tbm[1] === 'training') openMissionSelect();
       else { var tbtn = document.querySelector('#tabbar [data-tab="' + tbm[1] + '"]'); if (tbtn) tbtn.click(); }
@@ -3195,7 +3201,7 @@
       else am[1].split(',').forEach(function (id) { service.handleCommand({ action: 'set_auto_channel', channel_id: id, engaged: true }); });
       renderAutomate(service.assembleSnapshot());
     }
-    if (/[?&]run=1/.test(location.search || '')) { service.start(); $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused'); }
+    if (/[?&]run=1/.test(location.search || '')) { service.start(); $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused'); $('playBtn').classList.remove('attention'); }
     // optional ?follow=<procId> deep-link — loads a procedure into the Instructor block
     var fm = /[?&]follow=([a-z0-9_]+)/.exec(location.search || '');
     if (fm) followProcedure(fm[1]);

@@ -14,6 +14,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   drives continuously at the selected S/M/F speed. Ignored while typing in a field.
 
 ### Changed
+- **UI cleanup (issue #115).** The control room opens on the **Sim** tab (moved to the
+  left and made the default); the **Dev** tab was removed (session telemetry still rides
+  along with 💬 Feedback), and the Automate tab is gone (operator automations live on the
+  board). The **Reactor⚛️Dynamics** wordmark in the control room now links back to the home
+  page, and a collapsed Instructor panel maximizes when you click anywhere on it (it could
+  previously get stuck minimized during chat scenarios, where its header is hidden).
+- **First-run cue (issue #115).** The "SIMULATION PAUSED" board overlay now adds "Press ▶
+  Play to start", and the Play button pulses until you start the sim for the first time.
+- **Home page (issue #115).** An **ALPHA** badge and a "work in progress" banner make the
+  build status clear up front. The "instruments can lie" feature card was replaced with two
+  reactor-physics blurbs (point-kinetics reactivity feedback; the coupled whole-plant model).
 - **TMI-2 Part 1 is now hands-on (issue #105).** "The Fog of War" no longer plays itself
   while you watch — the Shift Supervisor *orders* the two pivotal historical actions and
   **you** perform them on the board: securing High-Pressure Injection (the fatal mistake)

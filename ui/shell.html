@@ -73,11 +73,11 @@
       <!-- Sim controls (§3) -->
       <div class="sim-controls">
         <div class="sim-top">
-          <div class="logo">Reactor<span class="a">⚛️</span>Dynamics</div>
+          <a class="logo" href="../index.html" title="Back to the Reactor Dynamics home page">Reactor<span class="a">⚛️</span>Dynamics</a>
           <div class="clock mono" id="clock">T+00:00:00</div>
         </div>
         <div class="sim-row">
-          <button class="play paused" id="playBtn" data-scanner-hint="Play / Pause — starts or stops the simulation. Separate from the speed selector.">▶</button>
+          <button class="play paused attention" id="playBtn" data-scanner-hint="Play / Pause — starts or stops the simulation. Separate from the speed selector.">▶</button>
           <div class="speed" id="speed" data-scanner-hint="Speed — time acceleration. 1× real-time up to 3600×. No automatic dropout.">
             <button class="on" data-speed="1">1×</button><button data-speed="10">10×</button><button data-speed="60">60×</button><button data-speed="600">600×</button><button data-speed="3600">3600×</button>
           </div>
@@ -126,15 +126,14 @@
       <!-- Tools Block (§10) — expanded by default; collapses to its tab strip -->
       <div class="panel tools expanded" id="toolsCard">
         <div class="tabbar" id="tabbar">
-          <button class="on" data-tab="failures">Failures</button>
+          <button class="on" data-tab="sim">Sim</button>
+          <button data-tab="failures">Failures</button>
           <button data-tab="graph">Graph</button>
-          <button data-tab="sim">Sim</button>
           <button data-tab="settings">Settings</button>
-          <button data-tab="dev">Dev</button>
         </div>
         <div class="tab-body">
           <!-- Failures tab — built by app.js from M4's catalog -->
-          <div class="tabpane on" data-pane="failures">
+          <div class="tabpane" data-pane="failures">
             <div id="failList"></div>
             <div class="advanced-exp" id="advExpToggle" data-scanner-hint="Advanced instrument failure — fail any single instrument (stuck, drifting, noisy, or dead) while the plant behind it stays real. The board will lie to you (HR1).">▸ Advanced instrument failure (instrument × mode × value)</div>
             <div class="adv-fail" id="advFailPanel" hidden></div>
@@ -149,8 +148,8 @@
             </div>
             <div class="set-row"><span class="k">Export</span><button class="btn" data-act="export-csv">CSV ⭳</button></div>
           </div>
-          <!-- Sim tab — active plant/mode summary + the Plant & Mission window -->
-          <div class="tabpane" data-pane="sim">
+          <!-- Sim tab — active plant/mode summary + the Plant & Mission window (default/leftmost) -->
+          <div class="tabpane on" data-pane="sim">
             <div class="set-row"><span class="k">Plant</span><span class="mono" id="simPlantLbl">—</span></div>
             <div class="set-row"><span class="k">Mode</span><span class="mono" id="simModeLbl">Free Play</span></div>
             <div class="set-row" data-scanner-hint="Plant &amp; Mission — choose the reactor, then free play (with a starting condition), the training campaign, a scenario, or a procedure walkthrough.">
@@ -172,16 +171,7 @@
             <div class="set-row" data-scanner-hint="Terminology — Plain language spells things out for learners; Industry uses real plant terms and acronyms."><span class="k">Terminology</span><div class="seg" id="registerSeg"><button class="on" data-register="learning">Plain language</button><button data-register="industry">Industry</button></div></div>
             <div class="set-row"><span class="k">Units</span><div class="seg" id="unitsSeg"><button class="on" data-units="US">US</button><button data-units="SI">SI</button></div></div>
           </div>
-          <!-- Dev tab — development-only tools -->
-          <div class="tabpane" data-pane="dev">
-            <div class="g-section-title">Session Diagnosis <span style="text-transform:none;letter-spacing:0;color:var(--muted)">· AI / debug export</span></div>
-            <div class="set-row"><span class="k">Session</span><span class="mono" id="diagSessionInfo">—</span></div>
-            <div class="set-row" style="flex-direction:column;align-items:stretch;gap:6px">
-              <span class="k">Notes</span>
-              <textarea id="diagNotes" class="num-input mono" rows="3" placeholder="What were you testing? What looked wrong?" style="width:100%;resize:vertical;min-height:4em"></textarea>
-            </div>
-            <div class="set-row"><span class="k">Export</span><button class="btn" data-act="export-diag" data-scanner-hint="Export diagnosis — downloads a JSON bundle of this session (1 Hz samples, events, commands, replay state) for AI-assisted debugging.">Diagnosis JSON ⭳</button></div>
-          </div>
+          <!-- (Dev tab removed — session telemetry still rides along with 💬 Feedback.) -->
         </div>
       </div>
 
