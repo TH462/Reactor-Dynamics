@@ -11,12 +11,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ### Fixed
 - **Control-room UI no longer strobes/flickers after playing a while.** The changing
   readouts (top indications, strip chart, and the clock) could start "dispersing and
-  reappearing" — especially on the hosted build after a minute of play. Cause: the UI
-  re-rendered from inside the simulation's broadcast timer (up to 20 Hz during a
-  transient), and the strip chart re-emits its whole SVG each frame; mutating the DOM off
-  the browser's paint cycle let the GPU present frames mid-rebuild. Rendering is now
-  coalesced onto `requestAnimationFrame`, so the browser always composites one complete
-  frame per update. (The plant diagram was never affected — it updates surgically.)
+  reappearing" a couple minutes into a session (most visible on the hosted build). Two
+  causes: (1) the strip chart rebuilt a polyline over its *entire* sample buffer every
+  frame — thousands of points as the 5-minute window filled — so the render grew heavier
+  until it blew the frame budget; the chart now decimates to about one point per pixel, so
+  its cost is bounded regardless of how long you play. (2) The UI rendered from inside the
+  simulation's broadcast timer; rendering is now coalesced onto `requestAnimationFrame` so
+  the browser always composites one complete frame. (The plant diagram was never affected —
+  it updates surgically.)
+- **Keyboard rod drive no longer sticks.** Holding **↑**/**↓** to drive the rods could, in
+  some environments, leave the rods driving to their limit long after the key was released.
+  The tap-or-hold state machine now ignores repeat/echo key events while a press is already
+  active, so a release always issues the stop; a window-blur (alt-tab) safety net also
+  releases the drive in case a key-up is lost.
 
 ### Added
 - **PWR board — keyboard control-rod drive.** **↑** withdraws and **↓** inserts the

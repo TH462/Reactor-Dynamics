@@ -1582,12 +1582,24 @@
     var t0 = chartBuf[0].t, t1 = chartBuf[chartBuf.length - 1].t, span = (t1 - t0) || 1;
     var PW = W * CHART_PLOT_FRAC;   // traces stop short of the right edge; value chips live in the gutter
     var html = '';
+    // Decimate to at most ~2 samples per horizontal pixel. chartBuf holds EVERY
+    // broadcast inside the window (thousands of points at 10–20 Hz over the 5-minute
+    // default), and re-emitting a polyline over all of them each frame is what made
+    // the render grow heavier over time until it blew the frame budget and the whole
+    // UI (numbers, chart, clock) started to jank/strobe a couple minutes in. Sampling
+    // to the plot's pixel resolution makes drawChart O(pixels), not O(buffer).
+    var MAX_PTS = Math.max(2, Math.round(PW));   // ~1 sample per plot pixel — plenty for a strip chart
+    var idx = [];
+    var stride = Math.max(1, Math.ceil(chartBuf.length / MAX_PTS));
+    for (var bi = 0; bi < chartBuf.length; bi += stride) idx.push(bi);
+    if (idx[idx.length - 1] !== chartBuf.length - 1) idx.push(chartBuf.length - 1);   // always include the latest sample
     // horizontal gridlines — kept very dark so they recede behind the traces
     [30, 60, 90].forEach(function (y) { html += '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#0f1217" stroke-width="0.5" vector-effect="non-scaling-stroke"/>'; });
     var lastY = [];
     active.forEach(function (ser) {
       var lo = ser.range[0], hi = ser.range[1], rng = (hi - lo) || 1, ly = 0;
-      var pts = chartBuf.map(function (b) {
+      var pts = idx.map(function (bIdx) {
+        var b = chartBuf[bIdx];
         var x = (b.t - t0) / span * PW;
         var f = Math.max(0, Math.min(1, (ser.get(b.ins) - lo) / rng));
         var y = H - 8 - f * (H - 16); ly = y;
@@ -2393,6 +2405,11 @@
     // Release the rod drive when the arrow key comes up (parity with button release).
     document.addEventListener('keyup', function (e) {
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (RD.PwrBoard && RD.PwrBoard.driveRod) RD.PwrBoard.driveRod('control_rods', 0, false);
+    });
+    // Safety net: if the window loses focus mid-hold (alt-tab, etc.) the keyup can be
+    // lost — force the rod drive to release so the rods never keep driving on their own.
+    window.addEventListener('blur', function () {
       if (RD.PwrBoard && RD.PwrBoard.driveRod) RD.PwrBoard.driveRod('control_rods', 0, false);
     });
     // Strip-chart rewind: the ⏪ by the scrubber + click-to-pick on the plot.

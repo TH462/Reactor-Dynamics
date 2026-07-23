@@ -528,6 +528,14 @@
   var holdingGroup = null, pendingRodTap = null;
   function startHoldRod(group, direction) { holdingGroup = group; cmd({ action: 'rod_start', group_id: group, direction: direction, speed: rodSpeed }); }
   function armRodTap(group, direction) {
+    // Ignore a re-arm while a tap is already pending or a hold is already running.
+    // A single physical press must produce exactly one tap-or-hold cycle. Keyboard
+    // auto-repeat is meant to be filtered upstream by KeyboardEvent.repeat, but some
+    // environments (remote desktop, on-screen keyboards, older browsers) don't set it,
+    // and without this guard each repeat leaked a timer + a second rod_start while
+    // leaving pendingRodTap set — so the release fired as a tap and NEVER sent rod_stop,
+    // leaving the rods driving to the limit long after the key was let go.
+    if (pendingRodTap || holdingGroup) return;
     pendingRodTap = { group: group, direction: direction, timer: setTimeout(function () {
       pendingRodTap = null; startHoldRod(group, direction);
     }, TAP_HOLD_MS) };
