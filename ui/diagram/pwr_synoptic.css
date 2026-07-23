@@ -8,11 +8,12 @@
 
 /* ------------------------------------------------------------ shell hooks */
 /* PWR-only: hide the legacy 4-view switcher / status bar / control row and give
-   the chart+alarm band its spec share (~38%, min 200px). RBMK/BWR untouched. */
+   the chart+alarm band its share. Trimmed ~20% (was 34%/200px) to give the
+   diagram more vertical room. RBMK/BWR untouched. */
 .app.pwr-synoptic .view-switcher,
 .app.pwr-synoptic .status-bar,
 .app.pwr-synoptic .pd-controlbar { display: none; }
-.app.pwr-synoptic .bottom-row { flex: 0 0 34%; min-height: 200px; }
+.app.pwr-synoptic .bottom-row { flex: 0 0 27%; min-height: 160px; }
 .app.pwr-synoptic .view-area { padding: 0; overflow: hidden; }
 
 /* ------------------------------------------------------------ stage */

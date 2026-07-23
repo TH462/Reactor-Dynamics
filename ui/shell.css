@@ -313,8 +313,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 
 /* ====================================================== bottom: chart+alarm */
 /* the diagram (main-area) now stretches; the chart/alarm strip is a fixed band */
-/* chart+alarm band trimmed ~20% vertically (was 196/150) to give the diagram more room */
-.bottom-row { flex: 0 0 157px; display: flex; gap: var(--gap); min-height: 120px; }
+.bottom-row { flex: 0 0 196px; display: flex; gap: var(--gap); min-height: 150px; }
 .strip-chart {
   flex: 1 1 auto; background: var(--bg-strip); border: 1px solid var(--border); border-radius: var(--radius);
   display: flex; flex-direction: column; padding: 6px 8px;

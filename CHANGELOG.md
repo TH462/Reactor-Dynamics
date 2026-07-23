@@ -10,7 +10,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ### Changed
 - **PWR board — more vertical room for the plant diagram.** The chart + alarm band was
-  trimmed ~20 % (196→157 px), and the six vital-few gauges now carry their mini strip
+  trimmed ~20 % (34 %→27 % of the plant column, min 200→160 px), and the six vital-few
+  gauges now carry their mini strip
   chart *beside* the number instead of under it — a shorter gauge row. Those mini charts
   are smaller and now show a rolling **1 minute** of history (sim-time window, so they
   span the same minute at any time-accel). The reactor vessel was also lifted to sit **in
