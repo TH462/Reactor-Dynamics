@@ -33,7 +33,7 @@
       purpose: 'Take the reactor from Mode 3, Hot Standby (subcritical, hot) up to a low, controlled power by withdrawing the Control Rods, watching the Startup Rate (SUR) and reactor period.',
       from: 'hot_zero_power',
       prereq: ['Plant at Mode 3, Hot Standby: subcritical, hot, at operating temperature/pressure.', 'Reactor Coolant Pumps (RCP) running — forced flow established.', 'Control bank fully inserted; shutdown bank parked withdrawn; boron high (the plant is held subcritical).'],
-      cautions: ['Withdraw in small increments — target SUR ≤ 1 decade per minute (DPM) and reactor period ≥ 30 s. (This trainer\'s single coarse bank will read ~2 DPM at the crossing; a real plant creeps up with fine control.)', 'This trainer lumps all control rods into one coarse group with only Doppler feedback, so power OVERSHOOTS its settling point on the way up. A real plant approaches criticality far more finely (fine rod control + a neutron source, held just-critical).'],
+      cautions: ['Withdraw in small increments — target SUR ≤ 1 decade per minute (DPM) and reactor period ≥ 30 s. The fine-step drive (912 steps full travel) puts one step at roughly 1.5 ¢ near the critical band — use single-step nudges at Slow for the final approach.', 'This trainer lumps all control rods into one group with only Doppler feedback, so power still OVERSHOOTS its settling point on the way up if you lead with big withdrawals. A real plant approaches criticality the same way you should here: fine rod control, held just-critical.'],
       steps: [
         { text: 'Confirm the plant is subcritical and hot: reactivity below zero, average coolant temperature (Tavg) ≈ 297 °C (the no-load program point), primary pressure ≈ 15.4 MPa.', control: '(observe)', target: 'subcritical, hot', hold: 2, acc: { p: 'reactivity_pcm', op: '<', v: 0 } },
         { text: 'Check the nuclear instruments (NIS block, Power & Reactivity card): the Source Range (SR) counter reads a few hundred counts per second — the neutron source keeping the core visible — and the Intermediate Range (IR) chamber is on scale (above 1e-10 A, the P-6 permissive).',
@@ -46,7 +46,7 @@
         { text: 'On the Rod Control card (diagram, right margin): keep Rod Speed at Norm and hold Control Bank → Withdraw in bursts toward criticality; drop to Slow for the final approach once the Startup Rate (SUR) needle stirs. Power begins to climb once you pass critical; keep the SUR low and the reactor period long.',
           control: 'Control Bank', target: 'SUR ≤ 1 DPM, reactor period ≥ 30 s',
           note: 'Norm speed until SUR responds, then Slow to creep up on criticality; release Withdraw to stop motion. Watch SUR on the Reactivity Computer (Tools → Sim) or the NIS block on the diagram. From fully inserted rods this takes two to three minutes at Norm — Slow the whole way takes over ten. If the period drops below 30 s, stop or insert — the reactor is accelerating.',
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 75, speed: 'normal' }, hold: 150,
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 300, speed: 'normal' }, hold: 150,
           saw: { p: 'startup_rate_dpm', op: '>', v: 0 }, acc: { p: 'power_pct', op: '>', v: 1 } },
         obs('Let the negative feedback (Doppler / Moderator Temperature Coefficient) settle power at the new point. Trim rods to hold it steady.', { p: 'melted', op: '<', v: 1 }),
       ],
@@ -62,7 +62,7 @@
       cautions: ['Keep the power ramp modest; let temperatures and xenon follow.'],
       steps: [
         { text: 'Withdraw the Control Rods a few steps to add reactivity (Rod Control card → set Rod Speed, then Withdraw in short bursts).', control: 'Rod Speed',
-          target: 'small, steady power rise', cmd: { action: 'rod_nudge', group_id: 'control', steps: 6, speed: 'normal' }, hold: 60,
+          target: 'small, steady power rise', cmd: { action: 'rod_nudge', group_id: 'control', steps: 24, speed: 'normal' }, hold: 60,
           acc: { p: 'power_pct', op: '>', v: 50.5 } },
         { text: 'Raise the Turbine Load to match the higher reactor power and send more electricity to the grid.', control: 'Turbine Load',
           target: '≈ 70 MWe', cmd: { action: 'set_steam_demand', mwe: 70 }, hold: 40, acc: { p: 'power_pct', op: '>', v: 52 } },
@@ -80,7 +80,7 @@
       steps: [
         { text: 'Reduce the Turbine Load.', control: 'Turbine Load', target: '≈ 60 MWe', cmd: { action: 'set_steam_demand', mwe: 60 }, hold: 10 },
         { text: 'Insert the Control Rods a few steps to lower reactor power (Rod Control card → Insert in short bursts).', control: 'Rod Speed',
-          target: 'power falling', cmd: { action: 'rod_nudge', group_id: 'control', steps: -10, speed: 'normal' }, hold: 90,
+          target: 'power falling', cmd: { action: 'rod_nudge', group_id: 'control', steps: -40, speed: 'normal' }, hold: 90,
           acc: { p: 'power_pct', op: '<', v: 98 } },
       ],
       guard: { never_melted: true },

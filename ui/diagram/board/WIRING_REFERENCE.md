@@ -36,7 +36,7 @@ steam temperature, generator governor % separate from governor_valve. Board show
 derived/static — see wiring notes.
 
 ## snapshot.control_state
-rod_groups[]: {id:'control_rods'|'shutdown_rods', steps, max_steps(228), position_pct, moving,
+rod_groups[]: {id:'control_rods'|'shutdown_rods', steps, max_steps(PWR 912), position_pct, moving,
   direction, speed, insertion_limit_steps, at_insertion_limit}
 porv_demand('closed'/'open'), porv_block_open(bool)
 heater_power_pct, spray_valve_pct, heater_auto, spray_auto, pressure_setpoint(MPa)

@@ -665,7 +665,11 @@
       var doc = window.RD_PWR_BOARD_DOC;
       if (doc && doc.items) {
         for (var i = 0; i < doc.items.length; i++) {
-          if (doc.items[i].id === 'imrqr8ecji6') { doc.items[i].top = 335; break; }
+          if (doc.items[i].id === 'imrqr8ecji6') { doc.items[i].top = 335; }
+          // Fine-step rod drive (228 → 912, 2026-07-23): the generated board data
+          // carries a static '/228' unit suffix on both step readouts — patch it
+          // here so it survives a diagram re-export.
+          if (doc.items[i].id === 'imrpk4pjcpd' || doc.items[i].id === 'imrpnzfsfcx') { doc.items[i].unit = '/912'; }
         }
       }
       return EXTRA_ITEMS;

@@ -56,9 +56,9 @@ below and go straight to the authoritative source for it.
 > is the at-a-glance truth for the next agent. The dense, append-only version lives in
 > `Blueprint/BUILD_DECISIONS.md` (Status line + Open Flags table) — update both.
 
-_Last updated: 2026-07-22 (P7 CVCS↔inventory retune — letdown/charging off the accident scale,
-SGTR re-anchored to ½ HPI, SI-on-pzr-level-lo-lo ESF added; see `Diagnostic/OPS_TUNING_REPORT.md`
-update 2026-07-22b)._
+_Last updated: 2026-07-23 (fine-step rod drive — PWR control bank 228 → 912 steps at ×4 steps/s:
+one step ≈ 9 pcm (~1.4 ¢) in the startup critical band instead of ~36 pcm, all tuned dynamics
+unchanged, old saves rescale on load; see `Diagnostic/TUNING_LOG.md` 2026-07-23)._
 
 **Layers**
 - **Physics engines complete** — PWR (M1) ✅, RBMK (M2) ✅, BWR (M3) ✅. All three have

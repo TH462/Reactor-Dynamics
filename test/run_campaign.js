@@ -450,7 +450,7 @@ test('pwr_feedback — nudge out, plant self-stabilizes, demand demo', function 
   var snap = waitBeat(s, 'stabilized', 120);
   ck('nudge prompt fires', !!snap, !!snap, 'stabilized pending');
   if (!snap) return;
-  s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 3, speed: 'normal' });
+  s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 12, speed: 'normal' });
   snap = waitBeat(s, 'complete', 900);
   ck('stabilization observed → demand demo runs', !!snap, !!snap, 'complete pending');
   if (!snap) return;
@@ -596,12 +596,13 @@ test('pwr_rod_auto — manual Tavg trim, T-ref capture, override precedence', fu
   ck('trim prompt fires on the excursion', !!snap, !!snap, 'trim_task fired');
   if (!snap) return;
   settle(s, 12);
-  // Paced trim (the UI press pattern): 3 single-step insertions, ~30 s settling
-  // between rounds — a burst overshoots (probed: 28 steps -> Tavg 298).
+  // Paced trim (the UI press pattern): 3 small insertions (4 fine steps ≈ one old
+  // step), ~30 s settling between rounds — a burst overshoots (probed on the old
+  // scale: 28 steps -> Tavg 298).
   for (var round = 0; round < 12; round++) {
     snap = s.advanceCycles(1);
     if (snap.instruments.tavg <= 305.5) break;
-    for (var p2 = 0; p2 < 3; p2++) { s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -1, speed: 'normal' }); settle(s, 1.5); }
+    for (var p2 = 0; p2 < 3; p2++) { s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -4, speed: 'normal' }); settle(s, 1.5); }
     settle(s, 30);
   }
   snap = waitBeat(s, 'engage_auto', 300);
@@ -613,7 +614,7 @@ test('pwr_rod_auto — manual Tavg trim, T-ref capture, override precedence', fu
   ck('AUTO rides the restore -> override lesson', !!snap, !!snap, 'override fired');
   if (!snap) return;
   settle(s, 4);                         // override fires (delay 2); watch opens
-  s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 1, speed: 'normal' });
+  s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 4, speed: 'normal' });
   var sn2 = s.advanceCycles(1);
   var rc = null, chans = (sn2.automation && sn2.automation.channels) || [];
   for (var ci = 0; ci < chans.length; ci++) if (chans[ci].id === 'rods_tavg') rc = chans[ci];
@@ -1005,12 +1006,12 @@ function heatupStep(s, shutdown) {
   if (t.pressure_mpa < 13.5) return;                    // pressurize before pulling rods
   if (shutdown) {                                       // settle subcritical-but-hot (Mode 3)
     s.handleCommand({ action: 'set_boron_adjust', rate: 3.0 });
-    s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -4, speed: 'normal' });
+    s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -16, speed: 'normal' });
     return;
   }
   var Pt = (t.tavg_c < 300) ? 10 : 12;                  // gentle SUR-limited hold ~10 %
-  if (t.power_pct > Pt * 1.3 || t.startup_rate_dpm > 1.5 || t.fuel_temp_c > 500) s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -2, speed: 'normal' });
-  else if (t.power_pct < Pt * 0.8 && t.startup_rate_dpm < 1.0) s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 1, speed: 'slow' });
+  if (t.power_pct > Pt * 1.3 || t.startup_rate_dpm > 1.5 || t.fuel_temp_c > 500) s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -8, speed: 'normal' });
+  else if (t.power_pct < Pt * 0.8 && t.startup_rate_dpm < 1.0) s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 4, speed: 'slow' });
 }
 
 test('pwr_mode5_to_mode3 — cold heatup reaches Hot Standby, no fuel damage', function (ck) {

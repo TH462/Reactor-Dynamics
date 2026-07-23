@@ -28,7 +28,7 @@
     description: 'The feed pump was left in MANUAL at full speed while power comes down — nobody is minding SG level.',
     setup_commands: [
       { action: 'set_feed_pump_speed', pct: 100 },                         // pump to MANUAL, pinned high
-      { action: 'rod_nudge', group_id: 'control_rods', steps: -10 },       // the dispatch trim already underway
+      { action: 'rod_nudge', group_id: 'control_rods', steps: -40 },       // the dispatch trim already underway
     ],
     beats: [
 

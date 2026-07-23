@@ -377,7 +377,7 @@ physical-quantity vocabulary.
         {
             "id": string,            // "control_rods", "shutdown_rods", ...
             "name": string, "function": string,   // "control" | "shutdown"
-            "steps": int, "max_steps": int,        // max_steps = 228
+            "steps": int, "max_steps": int,        // per plant config (PWR 912 fine steps; RBMK/BWR 228)
             "position_pct": number,  // 0–100, 100 = fully withdrawn
             "moving": bool, "direction": int,      // +1 withdraw, -1 insert, 0 stopped
             "speed": string,         // "slow" | "normal" | "fast"

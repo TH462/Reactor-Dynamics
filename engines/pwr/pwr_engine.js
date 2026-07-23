@@ -1288,6 +1288,23 @@
     this.s = JSON.parse(JSON.stringify(st.s));
     this._migrateState(this.s);
     this.rod_groups = JSON.parse(JSON.stringify(st.rod_groups));
+    // Fine-step drive migration (228 → 912, 2026-07-23): saves written on a
+    // different step scale rescale position by the ratio — same fraction of
+    // travel, so rod reactivity is unchanged on load.
+    var cfgMax = this.cfg.rods.max_steps;
+    for (var gi = 0; gi < this.rod_groups.length; gi++) {
+      var g = this.rod_groups[gi];
+      if (g.max_steps !== cfgMax && g.max_steps > 0) {
+        var ratio = cfgMax / g.max_steps;
+        g.steps = Math.round(g.steps * ratio);
+        g.max_steps = cfgMax;
+        if (g.insertion_limit_steps != null) {
+          g.insertion_limit_steps = Math.round(this.cfg.rods.insertion_limit_pct / 100 * cfgMax);
+        }
+        g.nudge_target = null; g.step_accumulator = 0; g.velocity = 0; g.coast_remaining_s = 0;
+        this._updateRodDerived(g);
+      }
+    }
     this.active_failures = st.active_failures.slice();
     this.instruments.load(st.instruments);
     this.T_fuel_ref = st.refs.Tf; this.T_coolant_ref = st.refs.Tavg;
@@ -1457,8 +1474,8 @@
       if (critAt < 0 && t.reactivity_pcm > -30 && t.power_pct > 0.5) critAt = elapsed;
       if (hotAt < 0 && t.tavg_c >= T_hot) hotAt = elapsed;
       var Pt = (t.tavg_c < T_hot - 3) ? 10 : 12;
-      if (t.power_pct > Pt * 1.3 || t.startup_rate_dpm > 1.5 || t.fuel_temp_c > 500) h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -2, speed: 'normal' });
-      else if (t.power_pct < Pt * 0.8 && t.startup_rate_dpm < 1.0) h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 1, speed: 'slow' });
+      if (t.power_pct > Pt * 1.3 || t.startup_rate_dpm > 1.5 || t.fuel_temp_c > 500) h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -8, speed: 'normal' });
+      else if (t.power_pct < Pt * 0.8 && t.startup_rate_dpm < 1.0) h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 4, speed: 'slow' });
       _feedHold(h);
       h.run(dt); elapsed += dt;
       if (t.tavg_c >= T_hot && t.power_pct > 5 && hotAt >= 0 && elapsed > hotAt + 200) { mode1At = elapsed; break; }
@@ -1648,13 +1665,13 @@
         // Real-like MTC (−20 pcm/°C, P4/P5 recalibration): the coolant fights a
         // small withdrawal hard, so the settled rise is ~0.1 % — direction is the
         // physics being pinned, not magnitude.
-        h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 8 }); // withdraw
+        h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 32 }); // withdraw
         h.run(120);
         var p_with = h.ts().power_pct;
         ck('power rises on withdraw', p_with.toFixed(2), p_with > p_before + 0.05, '> ' + p_before.toFixed(2));
         ck('re-settles (stable)', h.eng.s._rho.toExponential(2), Math.abs(h.eng.s._rho) < 1e-3, 'near critical');
         var p_mid = h.ts().power_pct;
-        h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -8 }); // insert back
+        h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -32 }); // insert back
         h.run(120);
         var p_back = h.ts().power_pct;
         ck('power falls on insert', p_back.toFixed(2), p_back < p_mid - 0.5, '< ' + p_mid.toFixed(2));
@@ -1686,9 +1703,9 @@
         h.run(10);
         ck('default follow mode', h.eng.s.load_mode, h.eng.s.load_mode === 'follow', 'follow');
         ck('feed coupled', h.eng.s.feed_auto_coupled, h.eng.s.feed_auto_coupled === true, 'true');
-        // Real-like MTC: 15 steps in sheds less settled power (the coolant cools
-        // and gives reactivity back) — ~91-92 % vs the old ~88.
-        h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -15 });
+        // Real-like MTC: 60 fine steps in (= old 15) sheds less settled power (the
+        // coolant cools and gives reactivity back) — ~91-92 % vs the old ~88.
+        h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -60 });
         h.run(180);
         var t = h.ts();
         ck('power fell', t.power_pct.toFixed(1), t.power_pct < 96, '< 96%');
@@ -1847,7 +1864,7 @@
         var im = new Harness('hot_full_power'); im.run(5);
         var held = im.ins().tavg;
         im.cmd({ action: 'set_instrument_failure', instrument_id: 'tavg', mode: 'stuck' });
-        im.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 10 });
+        im.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 40 });
         im.run(60);
         ck('stuck tavg instrument frozen', im.ins().tavg.toFixed(2), near(im.ins().tavg, held, 0.01), 'held=' + held.toFixed(2));
         ck('true Tavg moved', im.ts().tavg_c.toFixed(2), Math.abs(im.ts().tavg_c - held) > 0.2, 'diverged');

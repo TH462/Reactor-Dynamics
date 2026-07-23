@@ -40,7 +40,7 @@ Describe every operator control and major indication on the PWR board, with purp
 | **Direction** | Raise = withdraw = add reactivity; Lower = insert = remove reactivity |
 | **Quick click** | Steps the bank **one step** |
 | **Hold** | Drives continuously at the selected **Rod Speed**; release to halt |
-| **Indication** | Vertical bar + step count (0 = fully inserted, max ≈ 228 steps fully withdrawn) |
+| **Indication** | Vertical bar + step count (0 = fully inserted, max 912 steps fully withdrawn — a fine-step drive: one step ≈ 9 pcm ≈ 1.5 ¢ near the startup critical band) |
 | **Operating position** | ≈ 92 % withdrawn at hot full power |
 
 **Procedure — move rods**
@@ -50,7 +50,7 @@ Describe every operator control and major indication on the PWR board, with purp
 3. Watch **Startup Rate (SUR)** and power.  
 4. Release to stop (a hold stops as soon as you let go; a click is already a discrete step).  
 
-**CAUTION:** Target SUR ≤ **1 DPM** and reactor period ≥ **30 s** on approach to criticality. This trainer’s coarse single bank may briefly read ~2 DPM at the criticality crossing.
+**CAUTION:** Target SUR ≤ **1 DPM** and reactor period ≥ **30 s** on approach to criticality. With the fine-step drive (one step ≈ 1.5 ¢ near the crossing), single-step nudges at **Slow** keep the crossing well inside 1 DPM — big held withdrawals are what push the rate up.
 
 **Interlock:** Rod **withdrawal** is blocked when SUR ≥ **2.5 DPM** until SUR < **1.5 DPM**. Insertion always remains available.
 

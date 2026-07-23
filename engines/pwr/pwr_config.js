@@ -97,7 +97,9 @@
       // any small withdrawal (low power has no Doppler/MTC to damp it). This factor scales
       // the S-curve's sinusoidal term: 1.0 = textbook S-curve, <1 flattens the peak toward a
       // straight line, cutting the peak/mid differential worth while KEEPING the total worth
-      // (so the Mode-5→1 heatup still reaches power). 0.8 here ≈ 10 % gentler peak — the strongest the tuned Mode-5→1 startup tolerates. [tune]
+      // (so the Mode-5→1 heatup still reaches power). 0.8 here ≈ 10 % gentler peak — the strongest the tuned Mode-5→1 startup tolerates.
+      // (Per-step pcm numbers above are on the old 228-step drive; the 912-step fine drive
+      // is ×4 finer — see rods.max_steps.) [tune]
       rod_worth_curve_flatten: 0.8,
       rod_worth_shutdown: 0.10,    // shutdown-group worth (shutdown margin) [tune]
       // Core excess reactivity, held down by boron/rods/xenon at the operating
@@ -463,13 +465,23 @@
 
     // ------------------------------------------------------------------ rods
     rods: {
-      max_steps: 228,
-      // Selectable speeds (steps/s): slow 8/min, normal 48/min, fast 72/min.
-      speeds: { slow: 0.133, normal: 0.800, fast: 1.200 },
+      // Fine-step drive (rod-granularity retune 2026-07-23). The single lumped bank
+      // carries the FULL control worth (~8500 pcm) that a real plant spreads over
+      // ~4 banks × 228 steps of travel — at 228 steps one step near the startup
+      // critical band inserted ~36 pcm (~5.5 ¢): criticality arrived in ~40 pcm
+      // lurches and one tap at the point of adding heat jumped power ~+4 % (peak
+      // ~10 %). 912 steps (= 4 × 228, the real total-travel equivalent) puts one
+      // step at ~9 pcm (~1.4 ¢) in the critical band — real bank-D differential
+      // worth. Speeds are ×4 in steps/s so travel in %/s (and every tuned
+      // evolution) is unchanged; only the quantum is finer. [tune]
+      max_steps: 912,
+      // Selectable speeds (steps/s): slow 32/min, normal 192/min, fast 288/min —
+      // the same fraction-of-travel rates as the old 8/48/72 on 228 steps.
+      speeds: { slow: 0.533, normal: 3.200, fast: 4.800 },
       // On release the drive de-energizes but the bank overruns briefly before the
       // latch catches — a slight coast (this many seconds of continued travel at the
-      // current speed, then stop). Time-based, so a fast drive overruns ~1–2 steps
-      // while a slow crawl stops almost at once (momentum feel, not an abrupt halt). [tune]
+      // current speed, then stop). Time-based, so a fast drive overruns ~4–5 fine
+      // steps while a slow crawl stops almost at once (momentum feel, not an abrupt halt). [tune]
       stop_coast_s: 1.0,
       scram_time_control_s: 2.5,   // full-travel insertion time [tune]
       scram_time_shutdown_s: 2.0,  // slightly faster (pre-loaded) [tune]
@@ -480,7 +492,7 @@
 
     // -------------------------------------------------- §9.1 physics-fail [tune]
     physics_failures: {
-      ROD_RUNAWAY_RATE_MAX: 6.0,   // steps/s
+      ROD_RUNAWAY_RATE_MAX: 24.0,  // steps/s (fine steps — same fraction-of-travel/s as 6.0 on 228)
       STUCK_ROD_MAX_FRAC: 0.4,     // fraction of rod_worth_total
       STEAM_BREAK_RATE: 1.5,       // MPa/s at full break size
       DEFAULT_DRIFT_RATE: 0.5,     // instrument drift units/s

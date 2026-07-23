@@ -241,7 +241,7 @@
     large_loca:                  { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate',
                                    severity_meta: { label: 'Break Size', unit: '% rated flow', min: 0, max: 50, default: 20 }, display: 'Large LOCA (Cold-Leg Break)' },
     continuous_rod_withdrawal:   { type: 'physics_parameter', category: 'reactivity', effect: 'rod_withdrawal_runaway', severity_scales: 'withdraw_rate',
-                                   severity_meta: { label: 'Withdrawal Rate', unit: 'steps/s', min: 0, max: 6, default: 3 }, display: 'Continuous Rod Withdrawal' },
+                                   severity_meta: { label: 'Withdrawal Rate', unit: 'steps/s', min: 0, max: 24, default: 12 }, display: 'Continuous Rod Withdrawal' },
     stuck_rod_on_scram:          { type: 'physics_parameter', category: 'reactivity', effect: 'stuck_control_rod', severity_scales: 'worth_fraction_held',
                                    severity_meta: { label: 'Rod Worth Held', unit: '% of total', min: 0, max: 40, default: 20 }, display: 'Control Rod Stuck on Scram' },
     steam_line_break:            { type: 'physics_parameter', category: 'power', effect: 'secondary_depressurize', severity_scales: 'break_size',
@@ -360,7 +360,9 @@
       trim: function (s) { return 1.25 * (s.instruments.steam_flow * 100 - s.instruments.power_range); },
       // ±0.8 °C (±1.5 °F) lockup band; error-proportional speed ladder [tune].
       speeds: [{ above: 0.8, speed: 'slow' }, { above: 2.0, speed: 'normal' }, { above: 4.0, speed: 'fast' }],
-      gain: 0.4, db: 0.8, maxStep: 2, period: 5.0, fastAt: 4.0, kd: 5, spSlew: 0.05 },
+      // gain/maxStep are in FINE steps (912-step drive, 2026-07-23): ×4 the old
+      // 228-step values, so the channel's authority in %-of-travel is unchanged.
+      gain: 1.6, db: 0.8, maxStep: 8, period: 5.0, fastAt: 4.0, kd: 5, spSlew: 0.05 },
 
     { id: 'boron_trim', kind: 'bang', group: 'Reactor',
       label: 'Boron → rod position trim',

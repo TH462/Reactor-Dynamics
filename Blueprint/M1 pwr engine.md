@@ -680,18 +680,23 @@ starting power — at 50 % the control bank sits visibly deeper than at full pow
 re-trimmed to keep the point critical.
 
 ```javascript
-// Motion: 228 steps full travel; accumulate sub-step motion
+// Motion: 912 fine steps full travel; accumulate sub-step motion
 step\_accumulator += Math.abs(velocity\_steps\_per\_s) \* dt;
 const dir = withdrawing ? +1 : -1;
 while (step\_accumulator >= 1.0) {
-    position = clip(position + dir, 0, max\_steps);       // 0 = fully in, 228 = fully out
+    position = clip(position + dir, 0, max\_steps);       // 0 = fully in, 912 = fully out
     step\_accumulator -= 1.0;
     if (position === 0 || position === max\_steps) { velocity = 0; break; }   // stop at limits
 }
 ```
 
-Selectable speeds: slow 8 steps/min (0.133/s), normal 48 (0.800/s), fast 72 (1.200/s).
-`max\_steps = 228`.
+Selectable speeds: slow 32 steps/min (0.533/s), normal 192 (3.20/s), fast 288 (4.80/s).
+`max\_steps = 912` — the **fine-step drive** (rod-granularity retune 2026-07-23): the single
+lumped bank carries the full ~8500 pcm a real plant spreads over ~4 banks × 228 steps, so
+912 (= 4 × 228, the real total-travel equivalent) puts one step at ~9 pcm (~1.4 ¢) in the
+startup critical band — real bank-D differential worth. Speeds are ×4 in steps/s so travel
+in fraction-of-span per second (and every tuned evolution) is unchanged from the original
+228-step drive; only the quantum is finer. Old saves rescale on load.
 
 **Insertion limits:** the control group has a power-dependent insertion limit; crossing it
 sets `at\_insertion\_limit` (an alarm condition, §9). The shutdown group has none.
@@ -1272,6 +1277,6 @@ engine's PORV is command-driven, §6.4); safety open 17.13 / reseat 16.55 and SG
 open 9.31 / reseat 9.0 (likewise control-layer actuation data since the 2026-07-16 ruling —
 the engine's valves are command-driven); vacuum trip 74.5 kPa / overspeed 1980 RPM
 (control-layer `trip\_turbine` actuations);
-`P\_containment` 0.103 MPa; `max\_steps` 228; scram 2.5 s (control) / 2.0 s (shutdown); fuel
+`P\_containment` 0.103 MPa; `max\_steps` 912 (fine-step drive, §7); scram 2.5 s (control) / 2.0 s (shutdown); fuel
 damage 1200 °C, melt 2800 °C; trip/alarm setpoints per §9.
 

@@ -179,8 +179,8 @@
 
 | Parameter | Value |
 |-----------|-------|
-| Control bank max steps | **≈ 228** fully withdrawn |
-| Speed slow / normal / fast | **0.133 / 0.800 / 1.200** (normalized rate config) |
+| Control bank max steps | **912** fully withdrawn (fine-step drive; one step ≈ 9 pcm ≈ 1.5 ¢ in the startup critical band) |
+| Speed slow / normal / fast | **0.533 / 3.20 / 4.80 steps/s** (32 / 192 / 288 steps/min — same fraction-of-travel rates as the pre-fine-step drive) |
 | Scram insertion time (control) | **~2.5 s** full travel |
 | Scram insertion time (shutdown) | **~2.0 s** |
 | Insertion limit floor | **~30 %** withdrawn (power-dependent concept) |

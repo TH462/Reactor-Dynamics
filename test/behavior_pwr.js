@@ -206,7 +206,7 @@
         var h = H('hot_full_power');
         h.run(60);
         for (var i = 0; i < 6; i++) {
-          h.cmd('rod_nudge', { group_id: 'control_rods', steps: -1 });
+          h.cmd('rod_nudge', { group_id: 'control_rods', steps: -4 });
           h.run(120);
         }
         var t = h.ts();
@@ -243,7 +243,7 @@
         // plant down to the no-load point on the dump.
         var guard = 0;
         while (h.ts().power_pct > 10 && guard++ < 40 && h.tripTime == null) {
-          h.cmd('rod_nudge', { group_id: 'control_rods', steps: -2 });
+          h.cmd('rod_nudge', { group_id: 'control_rods', steps: -8 });
           h.run(20);
         }
         h.run(240);

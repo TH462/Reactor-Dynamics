@@ -177,7 +177,7 @@ test('PWR · all-auto except grid: demand swing 1000→700→1000', function (ck
 test('PWR · secondary-on-auto while the operator moves rods', function (ck) {
   var r = rig('pwr', 'hot_full_power');
   r.engage(['feed_sg', 'steam_dump', 'pzr_pressure', 'cvcs_makeup']);
-  r.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -15, speed: 'normal' });
+  r.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -60, speed: 'normal' });
   r.run(300);
   var i = inst(r);
   ck('no scram', scrammed(r), !scrammed(r), 'false');
@@ -201,13 +201,13 @@ test('PWR · rod auto: T-ref on the load program, deadband lockup, manual motion
   var during = r.sent.filter(function (x) { return x.action === 'rod_nudge'; }).length - before;
   ck('deadband lockup — no rod motion at steady state', during, during <= 2, '≤2 nudges in 120 s');
   // Manual rod motion takes the channel to MAN (a rod command on its group).
-  r.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -2, speed: 'slow' });
+  r.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -8, speed: 'slow' });
   c = r.chan('rods_tavg');
   ck('manual rod motion disengaged the channel', c.engaged, c.engaged === false, 'false');
   ck('note says manual control taken', c.note, /manual/.test(c.note), 'mentions manual');
   // Motion on a DIFFERENT group must NOT disengage it.
   r.engage(['rods_tavg']);
-  r.cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: -1, speed: 'slow' });
+  r.cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: -4, speed: 'slow' });
   ck('other-group motion leaves it engaged', r.chan('rods_tavg').engaged, r.chan('rods_tavg').engaged === true, 'true');
 });
 

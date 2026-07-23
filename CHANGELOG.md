@@ -8,6 +8,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Fine-step rod drive (PWR) — real granularity at criticality.** The control bank now travels
+  **912 steps** (was 228) at ×4 the steps/s, so every rate in fraction-of-travel per second — and
+  every tuned evolution — is unchanged, but one step is now **~9 pcm (~1.4 ¢)** in the startup
+  critical band instead of ~36 pcm (~5.5 ¢). Rationale: the single lumped bank carries the full
+  ~8500 pcm a real plant spreads over ~4 banks × 228 steps of travel, so 912 is the real
+  total-travel equivalent — and one UI tap now matches real bank-D differential worth (~5–15
+  pcm/step) instead of jolting power several percent at the point of adding heat. Board step
+  readouts show `/912`; the 1/M plot axis follows automatically; **old saves rescale rod position
+  on load** (same fraction of travel — reactivity unchanged). Manuals (§3.1, §7.0, PWR-N02
+  cautions) and the PWR startup procedure step counts updated to the fine scale.
+
 ### Added
 - **Xenon strip-chart series (PWR).** Xenon (% of equilibrium, from `true_state.xenon_pct_eq`) is
   now a selectable plot trend — the chart buffer carries it alongside the instrument readings.

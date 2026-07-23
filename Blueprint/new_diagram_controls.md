@@ -160,7 +160,7 @@ Four tiers — keeps card density manageable.
 
   * **Rod Control Card**
 
-    * **Control bank** (operable): vertical bar + step readout (0–228 steps withdrawn); RAISE | STOP | LOWER (hold) + ±1 nudge; speed Slow | Normal | Fast; **SCRAM** (two-step safety cover).
+    * **Control bank** (operable): vertical bar + step readout (0–912 fine steps withdrawn); RAISE | STOP | LOWER (hold) + ±1 nudge; speed Slow | Normal | Fast; **SCRAM** (two-step safety cover).
     * **Shutdown bank** (read-only): bar + steps; green when fully withdrawn at power; drives in on scram only; red if not fully withdrawn during power operation.
     * **Insertion limit**: limit marker on control bank bar; amber/red when `rod_at_limit`; plain-language limit readout in Learning Mode.
     * **Scram status**: `rps_scrammed` / REACTOR TRIP indication.

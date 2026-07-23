@@ -205,7 +205,7 @@ the same commands. See also §5.6 for PWR controls added since that spec.
     power: 215 steps"). The insertion-limit alarm fires if the bank is driven below its limit.
 
 - **Shutdown Bank** — **shown but read-only.** It moves only on scram. Display: green when fully
-  withdrawn (228/228); shows it driving in when scrammed. Red if not fully withdrawn during power
+  withdrawn (912/912); shows it driving in when scrammed. Red if not fully withdrawn during power
   operation (an abnormal condition). Reads `control_state.rod_groups[shutdown]`.
 
 - **Chemical Shim (Boron)** — BORATE | OFF | DILUTE three-way control with an AUTO toggle. Concentration

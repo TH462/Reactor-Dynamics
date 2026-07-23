@@ -46,6 +46,25 @@ where the two differ or where judgment was exercised.
 | **Repo** | Commits go directly to `main`, one per module. | Matches the linear, single-developer build (the scaffold was committed to `main`); each module is an independent, test-gated unit. |
 | **Load order** | `config → protection → thermal → pressurizer → primary → steam_generator → instruments → engine`, then layers. | The engine captures `RD.pwr*` helper namespaces at IIFE-eval time, so its dependencies must load first. Encoded in `index.html`, `test_pwr.html`, and the Node runners. |
 
+### Fine-step rod drive — PWR `max_steps` 228 → 912 (2026-07-23, owner startup granularity)
+
+**Claim.** The PWR control-bank step quantum was the startup-granularity bottleneck, not the
+worth curve: with 8500 pcm over 228 steps, one step ≈ 36 pcm (~5.5 ¢) at the critical band
+(probed), so criticality arrived in lurches and one tap at the point of adding heat jumped power
+~+4 % settled / ~10 % peak. The already-shipped `rod_worth_curve_flatten = 0.8` was maxed out.
+**Decision:** subdivide the drive ×4 — `max_steps` 912 (= 4 × 228, the real ~4-banks-of-travel
+equivalent the single lumped bank stands in for), speeds ×4 in steps/s (identical
+fraction-of-travel per second), all PWR absolute-step literals ×4 (drivers, procedures,
+`rods_tavg` gain 0.4→1.6 / maxStep 2→8, `ROD_RUNAWAY_RATE_MAX` 24), UI tap stays 1 step. Result:
+9.0 pcm/step (~1.4 ¢) at the crossing — real bank-D differential worth — with every tuned
+evolution numerically unchanged. `loadState` rescales old saves' rod steps by the max_steps ratio
+(same fraction of travel → same reactivity). Board `/228` unit suffixes patched to `/912` in
+`extraItems()` (re-export-safe; generated `pwr_board_data.js` untouched). Rejected: lowering
+`rod_worth_total` (breaks Mode-5→1 heatup reach, at-power authority; only ~2× gain), true
+multi-bank overlap (correct long-term shape, large blast radius — stays deferred). RBMK/BWR keep
+228 (on hold). Full worklog + probe numbers: `Diagnostic/TUNING_LOG.md` 2026-07-23. Gates: all
+PWR gates at baseline (run_pwr 31/31 … e2e 28/30 same F12 reds), rbmk 23/23, bwr 15/15.
+
 ### TMI-2 Part 1 — guided hands-on rework + FF/board fixes (2026-07-23, issue #105)
 
 Owner playtest of "The Fog of War" produced GitHub issue #105 (seven items). Decisions taken

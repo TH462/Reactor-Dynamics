@@ -422,7 +422,7 @@ T.push(test('Integration — Path 2: start_follow runs a real procedure end-to-e
   ck('the step\'s own command passes the gate', JSON.stringify(ok), ok == null, 'null (accepted)');
   sn = s.advanceCycles(2);
   ck('cmd-only step auto-advances once its command is issued', sn.instructor.follow.step_index, sn.instructor.follow.step_index === 1, '1');
-  s.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: -10, speed: 'normal' });
+  s.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: -40, speed: 'normal' });
   s.handleCommand({ action: 'set_speed', value: 10 });
   var done = null;
   for (var i = 0; i < 3000 && !done; i++) {

@@ -92,8 +92,8 @@ Take the reactor from **Mode 3, Hot Standby** (subcritical, hot) to **Mode 2, St
 | Type | Text |
 |------|------|
 | **CAUTION** | Withdraw in small increments. Target SUR ≤ **1 DPM**, reactor period ≥ **30 s**. |
-| **CAUTION** | This trainer’s single coarse bank may briefly read ~**2 DPM** at the criticality crossing. |
-| **CAUTION** | Power can **overshoot** the settling point: this trainer lumps all rods into one coarse group with Doppler-only fine structure. A real plant approaches criticality far more finely (fine rod control + a neutron source, held just-critical). Stop rods early and let feedback settle. |
+| **CAUTION** | The fine-step drive puts one step at ≈ **1.5 ¢** near the crossing — single-step nudges at **Slow** keep SUR well under 1 DPM. Big held withdrawals through the crossing are what spike the rate. |
+| **CAUTION** | Power can **overshoot** the settling point if you lead with large withdrawals: this trainer lumps all rods into one group with Doppler-only fine structure. Approach like a real plant — fine rod control, held just-critical — and let feedback settle. |
 | **NOTE** | From fully inserted rods the approach takes **two to three minutes at Norm speed**; creeping the whole way at Slow takes over ten. Norm until the SUR stirs, then Slow for the crossing. |
 | **WARNING** | Leave SR energized past ~1e5 cps → **SR high-flux trip**. Perform SR→IR handoff on time. |
 | **NOTE** | Rod withdrawal blocks if SUR ≥ **2.5 DPM** until SUR &lt; **1.5 DPM**. Insertion always works. |

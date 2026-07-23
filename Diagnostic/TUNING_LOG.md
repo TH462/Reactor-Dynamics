@@ -105,6 +105,34 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-23 — fine-step rod drive: 228 → 912 steps (owner: startup granularity)  ✅
+Owner startup playtest: criticality at ~61 steps, ONE step jumped power 0 → ~10 % — no granular
+control in the critical region. Probed (scratchpad `rod_probe.js`): ~**36 pcm/step (~5.5 ¢)** at
+the crossing (static crit step 56 xenon-free); at the point of adding heat one step ≈ +4 %
+equilibrium power with ~2× transient overshoot → matches the report. Root cause: the single lumped
+bank carries the full 8500 pcm a real plant spreads over ~4 banks × 228 steps (real bank-D
+differential worth is ~5–15 pcm/step). The earlier `rod_worth_curve_flatten` (see entry below) was
+already maxed at 0.8 — the flatten can't fix a quantization problem.
+**Fix — subdivide the drive ×4, preserve all dynamics:** `rods.max_steps` 228 → **912**, `speeds`
+×4 in steps/s (slow 0.533 / normal 3.2 / fast 4.8 — identical fraction-of-travel per second), so
+the ONLY change is a 4× finer quantum: **9.0 pcm/step (~1.4 ¢)** at the crossing (probed, crit
+step 224). Everything absolute-step-scaled moved with it: `ROD_RUNAWAY_RATE_MAX` 6 → 24 steps/s +
+`continuous_rod_withdrawal` severity_meta (max 24 / default 12); `rods_tavg` channel gain 0.4 →
+1.6, maxStep 2 → 8 (same authority in travel); PWR rod_nudge literals ×4 across engine drivers,
+ops/behavior/campaign/checklist/m6-follow drivers, `pwr_sg_flood` setup, and the PWR
+`manual_procedures` (75→300, 6→24, −10→−40); board tap stays `steps:1` (that IS the granularity
+win). **Save migration** in `loadState`: rod groups rescale steps by max_steps ratio (same
+fraction of travel → same reactivity). Board `/228` readout units → `/912` patched re-export-safe
+in `extraItems()` (generated `pwr_board_data.js` untouched); 1/M panel reads max_steps from the
+snapshot (default bumped). Docs: Manuals 03/04/09 + M1 spec §7/§16, CONTEXT contract comment,
+M8/new_diagram_controls/WIRING_REFERENCE; manuals repacked. RBMK/BWR untouched (own 228 configs;
+their `manual_procedures` step counts deliberately NOT scaled). Considered and rejected: lowering
+`rod_worth_total` (breaks Mode-5→1 heatup + at-power authority, only ~2× gain), true multi-bank
+overlap (right long-term shape, way bigger blast radius — deferred, unchanged from the prior
+ruling). Gates: run_pwr 31/31, behavior 30/0/0, ops PWR 21/21, autoctl 20/20, m4 18/18, m5 19/19,
+m6 16/16, m6ph 8/8, campaign 51/51, procedures 21/21, checklist 24/24, scenarios 3/3, m7 OK,
+e2e 28/30 (same 2 pre-existing F12 reds), rbmk 23/23, bwr 15/15. Headless board check: `/912` live.
+
 ### 2026-07-23 — boron mixing lag + rod-worth-curve flatten (owner feel)  ✅
 Owner: (1) borate/dilute swung power ~instantly while the boron indication lagged — power keyed
 off `s.boron_ppm` (injected) with NO mixing lag, while `boron_analyzer` lags 45 s. Fix: new

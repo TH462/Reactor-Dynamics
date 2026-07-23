@@ -30,8 +30,8 @@
   // turbine in load-follow mode the electrical side tracks the reactor.
   function holdPower(hh, targetPct, band) {
     var p = hh.ts().power_pct;
-    if (p < targetPct - band) hh.cmd('rod_nudge', { group_id: 'control_rods', steps: 1 });
-    else if (p > targetPct + band) hh.cmd('rod_nudge', { group_id: 'control_rods', steps: -1 });
+    if (p < targetPct - band) hh.cmd('rod_nudge', { group_id: 'control_rods', steps: 4 });
+    else if (p > targetPct + band) hh.cmd('rod_nudge', { group_id: 'control_rods', steps: -4 });
   }
 
   var OPS = {
@@ -145,19 +145,20 @@
         var t1 = h.runUntil(function (ts) { return ts.reactivity_pcm > -300; }, 600);
         h.cmd('rod_stop', { group_id: 'control_rods' });
         ck('reached -300 pcm on bulk withdrawal', t1 >= 0 ? fmt(t1, 0) + ' s' : 'timeout', t1 >= 0, '< 600 s');
-        // Phase 2: single-step nudges, checking the response every few seconds
-        // (a startup is walked, not batch-run), until the power responds.
+        // Phase 2: small nudges (4 fine steps ≈ one pre-2026-07-23 coarse step),
+        // checking the response every few seconds (a startup is walked, not
+        // batch-run), until the power responds.
         var guard = 0;
         outer:
         while (h.ts().power_pct < 0.3 && guard++ < 200 && h.tripTime == null) {
-          var r = h.cmd('rod_nudge', { group_id: 'control_rods', steps: 1, speed: 'slow' });
+          var r = h.cmd('rod_nudge', { group_id: 'control_rods', steps: 4, speed: 'slow' });
           if (r && r.type === 'blocked') { h.run(20); continue; }
           for (var w = 0; w < 4; w++) { h.run(5); if (h.ts().power_pct >= 0.3) break outer; }
         }
         ck('reached point of adding heat (0.3%)', fmt(h.ts().power_pct, 3) + '%', h.ts().power_pct >= 0.3, '>= 0.3%');
         // Phase 3: level the rise like an operator (a few steps back in), then
         // let Doppler carry it to a stable low-power point.
-        h.cmd('rod_nudge', { group_id: 'control_rods', steps: -3, speed: 'slow' });
+        h.cmd('rod_nudge', { group_id: 'control_rods', steps: -12, speed: 'slow' });
         h.run(300);
         var t = h.ts();
         // Even leveled, the sim coasts up to ~20% before Doppler turns it — a
@@ -489,10 +490,10 @@
           if (p < 48.5) {
             var atTop = cs.rod_groups[0].position_pct > 99;
             if (atTop) { hh.cmd('set_boron_adjust', { rate: -0.05 }); dilutedFor += 60; }
-            else hh.cmd('rod_nudge', { group_id: 'control_rods', steps: 1 });
+            else hh.cmd('rod_nudge', { group_id: 'control_rods', steps: 4 });
           } else if (p > 51.5) {
             hh.cmd('set_boron_adjust', { rate: 0 });
-            hh.cmd('rod_nudge', { group_id: 'control_rods', steps: -1 });
+            hh.cmd('rod_nudge', { group_id: 'control_rods', steps: -4 });
           } else {
             hh.cmd('set_boron_adjust', { rate: 0 });
           }

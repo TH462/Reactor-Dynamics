@@ -56,7 +56,7 @@
   var win = null, svg = null, msgEl = null;
   var points = [];           // [{ x: rod fraction withdrawn 0–1, counts, y: C0/counts }]
   var C0 = null;
-  var maxSteps = 228;        // control-group full-withdrawal steps (for the steps axis)
+  var maxSteps = 912;        // control-group full-withdrawal steps (for the steps axis; self-updates from the snapshot on plot)
   var lastPlant = null, lastCaptureT = null;
 
   // Plot geometry (viewBox units).

@@ -1938,8 +1938,8 @@
     // Shutdown (scram) bank — one click drives it the whole way out or in at fast
     // speed (not held): steps is far past max_steps so rod_nudge's target clips
     // to the end of travel and drives there, same rate-limited motion as a hold.
-    'sdbank-withdraw': function () { cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: 1000, speed: 'fast' }); },
-    'sdbank-insert': function () { cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: -1000, speed: 'fast' }); },
+    'sdbank-withdraw': function () { cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: 4000, speed: 'fast' }); },
+    'sdbank-insert': function () { cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: -4000, speed: 'fast' }); },
     // PWR
     // RCP start/stop is the real pump command (set_rcp) — starting the pumps is the
     // FIRST operator action of the Mode-5→3 heatup and the Mode-5→1 startup, and the

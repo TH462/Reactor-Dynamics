@@ -70,7 +70,7 @@ ck('checked automatically, not by hand', c.done_by[0] === 'auto', c.done_by[0]);
 
 // ------------------------------------------------- 3. acc auto-check (debounced)
 head('3. Auto-check — acceptance predicate, instrument-first, debounced');
-svc.handleCommand({ action: 'rod_nudge', group_id: ctlGroup(svc), steps: -10, speed: 'normal' });
+svc.handleCommand({ action: 'rod_nudge', group_id: ctlGroup(svc), steps: -40, speed: 'normal' });
 var lim = 0;
 do { snap = run(svc, 1); c = ckl(snap); lim++; } while (c && !c.complete && lim < 400);
 ck('step 2 auto-checks when power_pct < 98', c && c.steps_done[1] === true, 'after ' + lim + ' ticks');
