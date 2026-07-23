@@ -8,6 +8,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **Control-room UI no longer strobes/flickers after playing a while.** The changing
+  readouts (top indications, strip chart, and the clock) could start "dispersing and
+  reappearing" — especially on the hosted build after a minute of play. Cause: the UI
+  re-rendered from inside the simulation's broadcast timer (up to 20 Hz during a
+  transient), and the strip chart re-emits its whole SVG each frame; mutating the DOM off
+  the browser's paint cycle let the GPU present frames mid-rebuild. Rendering is now
+  coalesced onto `requestAnimationFrame`, so the browser always composites one complete
+  frame per update. (The plant diagram was never affected — it updates surgically.)
+
 ### Added
 - **PWR board — keyboard control-rod drive.** **↑** withdraws and **↓** inserts the
   control rods, mirroring the WITHDRAW/INSERT buttons: a quick tap moves one step, hold

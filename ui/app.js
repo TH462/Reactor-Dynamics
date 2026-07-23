@@ -517,8 +517,32 @@
   }
 
   // ============================================================ render snapshot
+  // Rendering is coalesced onto requestAnimationFrame. The sim broadcasts from a
+  // setTimeout (up to 20 Hz during a transient), and the per-tick DOM work is heavy
+  // — the strip chart re-emits its whole SVG (and the value chips) via innerHTML
+  // every frame. Mutating the DOM off the browser's paint cycle let the compositor
+  // present a frame mid-rebuild on real GPUs, which showed up as the changing
+  // numbers / chart / clock "strobing" — dispersing and reappearing — on the hosted
+  // build, while software-rendered headless looked fine. Deferring the actual DOM
+  // pass to rAF guarantees each frame is fully built before it composites, and
+  // collapses multiple broadcasts landing within one frame into a single paint.
+  // `latest` is still assigned synchronously so chat/command code reading it is
+  // unaffected. The board (RD.PwrBoard) never had this problem — it updates SVG
+  // attributes surgically rather than rebuilding markup — but it rides along fine.
+  var _renderRaf = 0, _renderSnap = null;
+  var _raf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window)
+                                          : function (f) { return setTimeout(f, 16); };
   function render(s) {
     latest = s;
+    _renderSnap = s;
+    if (_renderRaf) return;                 // a paint is already queued — it will use the latest snap
+    _renderRaf = _raf(function () {
+      _renderRaf = 0;
+      var snap = _renderSnap; _renderSnap = null;
+      if (snap) renderNow(snap);
+    });
+  }
+  function renderNow(s) {
     dampInstruments(s);
     $('clock').textContent = 'T+' + hms(s.metadata.sim_time);
     $('clock').classList.toggle('running', s.metadata.running);
