@@ -51,9 +51,13 @@
         speed: 8,
         branches: [
           { trigger: { type: 'scram' }, goto: 'overdone' },
+          // Advance once the player has diluted and had time to watch the loop respond.
+          // Gate on the ACTION + a settle, not a razor Tavg crossing: with the boron
+          // mixing lag (boron_mix_tau_s) the temperature response trails the injection, so
+          // an exact-threshold gate would fire early or late depending on the drive rate.
           { trigger: { type: 'all', triggers: [
               { type: 'operator_action', command: 'set_boron_adjust' },
-              { type: 'instrument', instrument: 'tavg', direction: 'above', value: 288.5 },
+              { type: 'delay', value: 45.0 },
             ] }, goto: 'borate_task' },
         ] },
 
@@ -69,9 +73,12 @@
         speed: 8,
         branches: [
           { trigger: { type: 'scram' }, goto: 'overdone' },
+          // Complete once the player has borated back and watched the loop settle. Same
+          // action + settle gating as the dilution step (see above) — robust to the boron
+          // mixing lag rather than keyed to a razor Tavg threshold the lag would defer.
           { trigger: { type: 'all', triggers: [
-              { type: 'operator_action', command: 'set_boron_adjust', params: { rate: 2 } },
-              { type: 'instrument', instrument: 'tavg', direction: 'below', value: 287.3 },
+              { type: 'operator_action', command: 'set_boron_adjust' },
+              { type: 'delay', value: 45.0 },
             ] }, goto: 'complete' },
         ] },
 

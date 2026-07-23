@@ -26,7 +26,14 @@
 
   // S-curve rod worth: rods least effective near fully in/out, most in the middle.
   // pos_norm: 0 = fully inserted, 1 = fully withdrawn.
-  function scruve(pos_norm) { return pos_norm - Math.sin(2 * Math.PI * pos_norm) / (2 * Math.PI); }
+  // Integral rod-worth S-curve. K (0..1) flattens the sinusoidal term toward a straight
+  // line — lowering the mid-core differential-worth peak while preserving the endpoints
+  // (scruve(0)=0, scruve(1)=1), i.e. the TOTAL worth is unchanged. K defaults to 1 (the
+  // textbook S-curve) so external callers (RD.pwrScruve) are unaffected.
+  function scruve(pos_norm, K) {
+    if (K == null) K = 1;
+    return pos_norm - K * Math.sin(2 * Math.PI * pos_norm) / (2 * Math.PI);
+  }
 
   // ====================================================================== engine
   function PWREngine(opts) {
@@ -61,10 +68,11 @@
   // ----------------------------------------------------------- reactivity (§4)
   PWREngine.prototype._rodReactivity = function () {
     var rho = 0;
+    var K = this.cfg.reactivity.rod_worth_curve_flatten;   // undefined ⇒ default (textbook S-curve)
     for (var i = 0; i < this.rod_groups.length; i++) {
       var g = this.rod_groups[i];
       var withdrawn = g.steps / g.max_steps;
-      rho += -g.worth * scruve(1.0 - withdrawn);
+      rho += -g.worth * scruve(1.0 - withdrawn, K);
     }
     return rho;
   };
@@ -80,7 +88,10 @@
     }
     var rho_doppler = rc.alpha_D * (s.fuel_temp_c - this.T_fuel_ref);
     var rho_mtc = rc.alpha_MTC * (s.tavg_c - this.T_coolant_ref);
-    var rho_boron = -rc.boron_worth_per_ppm * s.boron_ppm;
+    // Reactivity follows the mixing-lagged core boron (see boron_mix_tau_s), so power tracks
+    // the indicated level instead of leading it. Falls back to boron_ppm before the lag state
+    // exists (first step / a migrated save).
+    var rho_boron = -rc.boron_worth_per_ppm * (s.boron_reactive != null ? s.boron_reactive : s.boron_ppm);
     var X_eq = this._X_eq;
     var rho_xenon = -this.cfg.kinetics.xenon.xenon_worth * (s._X / X_eq);
     return rc.rho_excess + rho_rods + rho_doppler + rho_mtc + rho_boron + rho_xenon;
@@ -280,6 +291,12 @@
     //     the charging pump); decoupled from the net inventory balance.
     if (s.charging_pump_running !== false) s.boron_ppm += (s.boron_adjust || 0) * dt;
     if (s.boron_ppm < 0) s.boron_ppm = 0;
+    // Mixing/transport lag: the CORE boron that drives reactivity follows the injected
+    // concentration through a first-order filter (boron_mix_tau_s), so a borate/dilute changes
+    // power over ~a loop transit — tracking the indication rather than jolting instantly.
+    if (s.boron_reactive == null) s.boron_reactive = s.boron_ppm;
+    var btau = this.cfg.reactivity.boron_mix_tau_s || 0;
+    s.boron_reactive += (btau > 0 ? dt / (btau + dt) : 1) * (s.boron_ppm - s.boron_reactive);
     // 14. Fuel damage / melt.
     TH.checkDamage(s, this.cfg);
 
@@ -1252,6 +1269,7 @@
     } else {
       s.boron_ppm = Math.max(0, nonBoron / rc.boron_worth_per_ppm);
     }
+    s.boron_reactive = s.boron_ppm;   // the mixing lag starts settled at the trimmed concentration
     s._rho = this._totalReactivity();
   };
 

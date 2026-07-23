@@ -9,6 +9,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Boron now moves power at the speed of the *actual* concentration, not the input.** Borating
+  or diluting used to swing power almost instantly while the boron indication crept up slowly —
+  because reactivity keyed off the injected concentration while the analyzer sample lagged. The
+  boron that drives reactivity now follows a **mixing/transport lag** (the borated water has to
+  circulate and homogenize before it changes the core), so power responds gradually and in step
+  with the indicated level instead of leading it. The "boron vs rods" training mission was
+  re-paced to steer on the (now-realistic) boron inertia.
+- **Gentler control rods at low power.** The control-rod integral-worth curve was flattened
+  toward its average, trimming the peak differential worth so a small rod move near the startup
+  critical point is less of a jolt — startup is a little more forgiving. (Total rod worth is
+  unchanged, so shutdown margin and the cold→hot startup are unaffected.)
 - **Indication noise cut in half.** Every gauge/indication jitters half as much (a global
   `instrument_noise_scale` on the instrument model), so the board reads calmer while the
   instruments still lag, drift, and can fail (HR1 intact).

@@ -82,7 +82,23 @@
       // the PI-8 high-level trip implementable (97 % clears the ride-out swell).
       alpha_MTC: -2.0e-4,          // moderator temperature coeff, K^-1 [tune]
       boron_worth_per_ppm: 1.0e-4, // [tune]
+      // Boron mixing/transport lag (s): borated/diluted water must circulate the RCS loop and
+      // homogenize before it changes CORE reactivity, so reactivity follows a first-order-lagged
+      // concentration, not the instantaneous injected value. Without it, power moved the moment
+      // you borated while the (sample-lagged) analyzer trailed ~45 s behind — power appeared to
+      // respond to the boron INPUT rather than the indicated level. ~one loop transit; brings
+      // power's response into step with the indication. Scenarios that steer on boron (pwr_boron)
+      // must allow for the resulting inertia (gentle rates, room to overshoot). [tune]
+      boron_mix_tau_s: 30.0,
       rod_worth_total: 0.085,      // total control-group worth (~8500 pcm) [tune]
+      // Integral-worth-curve flattening (owner, low-power feel). The rod worth follows an
+      // S-curve (scruve); its differential worth peaks 2× the average at mid-core, so near
+      // the startup critical band a 1-step move inserted ~48 pcm (peak ~74) and power ran on
+      // any small withdrawal (low power has no Doppler/MTC to damp it). This factor scales
+      // the S-curve's sinusoidal term: 1.0 = textbook S-curve, <1 flattens the peak toward a
+      // straight line, cutting the peak/mid differential worth while KEEPING the total worth
+      // (so the Mode-5→1 heatup still reaches power). 0.8 here ≈ 10 % gentler peak — the strongest the tuned Mode-5→1 startup tolerates. [tune]
+      rod_worth_curve_flatten: 0.8,
       rod_worth_shutdown: 0.10,    // shutdown-group worth (shutdown margin) [tune]
       // Core excess reactivity, held down by boron/rods/xenon at the operating
       // point. The reference temps (T_fuel_ref/T_coolant_ref) are set at init to

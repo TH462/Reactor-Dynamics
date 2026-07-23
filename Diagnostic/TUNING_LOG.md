@@ -105,6 +105,24 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-23 — boron mixing lag + rod-worth-curve flatten (owner feel)  ✅
+Owner: (1) borate/dilute swung power ~instantly while the boron indication lagged — power keyed
+off `s.boron_ppm` (injected) with NO mixing lag, while `boron_analyzer` lags 45 s. Fix: new
+`reactivity.boron_mix_tau_s = 30`; engine holds `s.boron_reactive` (first-order lag of `boron_ppm`,
+initialized in `_trimToCritical`, saved via the whole-`s` deep-copy) and `_totalReactivity` uses it.
+Probed: reactive-boron now leads the analyzer ~15 s (was ~45 s) and power changes over ~30 s.
+**Gotcha:** the lag broke `pwr_boron` — that demo steers a razor ~2 °C Tavg band with fast
+open-loop boron (rate 2), so `rate×tau` overshoots the band. Owner ruling (AskUserQuestion): enable
+the lag + rework the demo. Reworked its two decision branches to gate on **operator_action + a 45 s
+settle** (lag-independent) instead of exact Tavg crossings — teaches the same feel. (2) Low-power rod
+touchiness: single control group carries the whole ~8500 pcm, so ~48 pcm/step near criticality.
+Reducing `rod_worth_total` breaks the Mode-5→1 heatup (needs the worth to reach power); instead added
+`reactivity.rod_worth_curve_flatten` scaling `scruve`'s sinusoid (`scruve(pos, K)`), flattening the
+peak while keeping the integral. 0.8 is the strongest the tuned startup tolerates (~10 % gentler
+peak; 0.5–0.7 break `pwr_return_to_mode1`). A bigger cut needs rod banking/overlap (owner deferred).
+Gates all green (run_pwr 31/31, campaign 51/51, behavior 30/0/0, ops 59/68 baseline, autoctl 20/20,
+m4–m6, procedures 21/21).
+
 ### 2026-07-23 — indication noise halved + board hover glow  ✅
 Owner asks (with issue #113, already-fixed 1 MW load step — verified, no change). (1) **Cut
 indication noise in half**: new `PWR_CONFIG.instrument_noise_scale = 0.5`, applied to `spec.noise`
