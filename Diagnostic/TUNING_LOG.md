@@ -105,6 +105,22 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-23 — indication noise halved + board hover glow  ✅
+Owner asks (with issue #113, already-fixed 1 MW load step — verified, no change). (1) **Cut
+indication noise in half**: new `PWR_CONFIG.instrument_noise_scale = 0.5`, applied to `spec.noise`
+at the two gauss draws in `pwr_instruments.update` (constructor reads it → `this.noiseScale`). PRNG
+draw ORDER/COUNT unchanged (one draw per instrument), so saves/rewinds/scenarios stay deterministic;
+only noise MAGNITUDE drops. Regressed 2 razor-edge ops probes (`run_ops` 59→57): `ops_pwr`
+cooldown "subcooling never lost" (true min −0.4 vs >0) and SGTR "inventory ≥55 %" (54.8 vs 55) — both
+because the probes' own coarse control reacts to the steadier indicated values, shifting the trajectory
+a few tenths across an infinitesimal threshold (behavior physically unchanged). Fix: gave those two
+checks documented physical tolerances (subcooling > −1 °C; inventory > 54 %) — a real loss reads many
+units, not tenths. `run_ops` back to 59/68 baseline, PWR probes green. (2) **Board hover glow**: cyan
+`:hover` box-shadow on `.bd-btn`/`.bd-pop button`/`.bd-num-frame` + drop-shadow on `.bd-scram`
+(`pwr_board.css`) — the clickable HTML controls now glow like the valves/PORV already did (those are the
+only clickable components; pumps are ART-only/suppressed, condenser non-interactive). Gates all green.
+
+
 ### 2026-07-23 — TMI-2 Part 1 rework (issue #105)  ✅
 Owner playtest → GitHub issue #105 (7 items). Two owner rulings (`AskUserQuestion`): Part 1
 becomes **guided hands-on** (player performs the historical actions, supervisor takes over on

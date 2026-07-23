@@ -8,6 +8,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Indication noise cut in half.** Every gauge/indication jitters half as much (a global
+  `instrument_noise_scale` on the instrument model), so the board reads calmer while the
+  instruments still lag, drift, and can fail (HR1 intact).
+- **Hover glow on every clickable control.** Board buttons, the SCRAM button, and the
+  number-entry spinners now light up with a cyan glow on mouse-over — the same affordance
+  the valves already had — so it's obvious at a glance what's actionable.
+
 ### Fixed
 - **Control-room UI no longer strobes/flickers after playing a while.** The changing
   readouts (top indications, strip chart, and the clock) could start "dispersing and

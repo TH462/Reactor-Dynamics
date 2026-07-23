@@ -471,6 +471,11 @@
       DEFAULT_NOISE_SCALE: 5.0,    // noisy-mode sigma multiplier
     },
 
+    // Global multiplier on every instrument's noise sigma (below). The readouts were
+    // jittering more than wanted, so indicated noise is cut in half. Tuners: this scales
+    // the per-instrument `noise` values at read time; set to 1 to use the raw sigmas.
+    instrument_noise_scale: 0.5,
+
     // ----------------------------------------------------------- instrument set
     // id → { measures, lag (s), noise sigma (instrument units), range[min,max] }.
     // Status booleans (no lag/noise) are listed under `status`.

@@ -116,6 +116,20 @@
 .bd-num-steps button:first-child { border-bottom: 1px solid #2a3a46; }
 .bd-num-steps button:hover { color: #e8f2f8; }
 
+/* ---- hover affordance ----
+   Every clickable control gets a cyan glow on mouse-over, matching the valve/PORV
+   hover ring, so it's obvious at a glance what's actionable. The box-shadow ring sits
+   OUTSIDE the button's own border, so state colors (active/warn/info) are preserved. */
+.bd-btn:not(:disabled):hover,
+.bd-pop button:not(:disabled):hover {
+  box-shadow: 0 0 0 1px rgba(79, 227, 255, 0.55), 0 0 9px rgba(79, 227, 255, 0.32);
+}
+.bd-num-frame:hover {
+  border-color: #4fe3ff;
+  box-shadow: 0 0 0 1px rgba(79, 227, 255, 0.40), 0 0 8px rgba(79, 227, 255, 0.24);
+}
+.bd-scram:not(:disabled):hover { filter: drop-shadow(0 0 7px rgba(79, 227, 255, 0.50)); }
+
 /* ---- value (right-anchored indication) / text ---- */
 .bd-value {
   transform: translateX(-100%);

@@ -60,6 +60,11 @@
   function PWRInstruments(config, seed) {
     this.cfg = config;
     this.specs = config.instruments;
+    // Global scale on indicated noise (config.instrument_noise_scale; default 1). Applied
+    // to the per-instrument sigma at read time — halving it cuts gauge jitter in half
+    // without touching PRNG draw order (still one draw per instrument), so saves/rewinds
+    // and the scenario suite stay deterministic.
+    this.noiseScale = (config.instrument_noise_scale != null) ? config.instrument_noise_scale : 1;
     this.swell_factor = 0.8; // SG level shrink-and-swell [tune]
     this.defaults = config.physics_failures;
     this.seed = (seed >>> 0) || 0x9E3779B9;
@@ -132,14 +137,14 @@
         if (this.lagged[id] == null || !isFinite(this.lagged[id])) this.lagged[id] = lv;
         var alphaL = dt / (spec.lag + dt);
         this.lagged[id] += alphaL * (lv - this.lagged[id]);
-        val = clip(Math.pow(10, this._gauss(this.lagged[id], spec.noise)), spec.range[0], spec.range[1]);
+        val = clip(Math.pow(10, this._gauss(this.lagged[id], spec.noise * this.noiseScale)), spec.range[0], spec.range[1]);
       } else {
         // First-order lag (§8.1).
         var alpha = dt / (spec.lag + dt);
         this.lagged[id] += alpha * (trueVal - this.lagged[id]);
 
         // Noise (§8.2), then range peg (§8.3).
-        val = this._gauss(this.lagged[id], spec.noise);
+        val = this._gauss(this.lagged[id], spec.noise * this.noiseScale);
         val = clip(val, spec.range[0], spec.range[1]);
       }
 
