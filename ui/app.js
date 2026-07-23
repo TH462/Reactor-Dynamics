@@ -617,6 +617,29 @@
     $('rxPeriod').textContent = per == null ? '— (PWR only)' : (!isFinite(per) || Math.abs(per) > 9999) ? '∞ (steady)' : per.toFixed(0) + ' s';
   }
 
+  // Friendly cause for the Reactor Trip alarm, keyed by rps_state.last_trip_reason
+  // ("<instrument> <direction>", set in control_kernel on the first trip to fire).
+  // Falls back to a cleaned-up raw string so a newly-added trip still reads sensibly.
+  var TRIP_CAUSE = {
+    'power_range high':        'Hi Neutron Flux',
+    'source_range high':       'Source Range Hi Flux',
+    'intermediate_range high': 'Intermediate Range Hi Flux',
+    'tavg high':               'Hi Coolant Temp (Tavg)',
+    'primary_pressure high':   'Hi RCS Pressure',
+    'primary_pressure low':    'Lo RCS Pressure',
+    'pzr_level low':           'Lo Pressurizer Level',
+    'sg_level low':            'Lo SG Level',
+    'sg_level high':           'Hi SG Level (P-14)',
+    '__true_flow__ low':       'Lo RCS Flow',
+    'manual scram':            'Manual Trip'
+  };
+  function tripCauseLabel(reason) {
+    if (!reason) return null;
+    if (TRIP_CAUSE[reason]) return TRIP_CAUSE[reason];
+    return reason.replace(/_+/g, ' ').replace(/\s+/g, ' ').trim()
+      .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
   function renderAlarms(s) {
     var stack = $('alarmStack');
     var active = s.alarms.filter(function (a) { return a.state !== 'clear'; });
@@ -634,9 +657,16 @@
       // Unacknowledged tiles carry an explicit ACK chip — the whole tile is the
       // click target, but the affordance must be visible without the scanner.
       var chip = unack ? '<span class="ack-chip">ACK</span>' : '';
+      // Reactor Trip is the one alarm whose cause the operator can't read off the
+      // tile — append the first-out trip reason (why it scrammed) from the RPS state.
+      var label = a.tile_label;
+      if (a.id === 'reactor_trip') {
+        var cause = tripCauseLabel(s.rps_state && s.rps_state.last_trip_reason);
+        if (cause) label += ' — ' + cause;
+      }
       return '<div class="alarm-tile ' + sev + unack + ' cat-' + cat + '" data-ack="' + a.id +
-        '" data-scanner-hint="' + esc(a.tile_label) + ' — ' + a.priority + ' alarm (' + cat + '). Reads the instrument; click to acknowledge.">' +
-        '<div class="bar"></div><div class="body"><div class="label">' + a.tile_label +
+        '" data-scanner-hint="' + esc(label) + ' — ' + a.priority + ' alarm (' + cat + '). Reads the instrument; click to acknowledge.">' +
+        '<div class="bar"></div><div class="body"><div class="label">' + label +
         '</div><div class="meta">' + cat + ' · ' + a.priority + ' · ' + a.state.replace('active_', '') + '</div></div>' +
         chip + '<div class="glyph">' + glyph + '</div></div>';
     }).join('');
