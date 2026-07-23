@@ -155,7 +155,13 @@
     // --- TRIP BLOCKS popover ---
     imrsk4xz2dm: { press: function (item, btn) { toggleTripBlocks(btn); } },
     // --- 1/M startup plot launcher (driver-injected tile; opens the draggable window) ---
-    bdOneOverM: { press: function () { if (window.RD && window.RD.OneOverM) window.RD.OneOverM.open(); } }
+    bdOneOverM: { press: function () { if (window.RD && window.RD.OneOverM) window.RD.OneOverM.open(); } },
+    // --- Source-range detector: single energize/secure toggle. P-6 interlocked in the
+    //     control layer (de-energize refused until IR on scale; re-energize refused at high
+    //     flux); the engine ignores a blocked switch, so active() reflects the true state
+    //     either way. Lit = energized/monitoring. Secure it during the SR→IR handoff to
+    //     clear the 1e5 cps high-flux trip (pwr_control 'sr_high') before it scrams the ascent. ---
+    bdSrDetector: { press: function (s) { cmd({ action: 'set_sr_detector', on: !IN(s).sr_energized }); }, active: function (s) { return !!IN(s).sr_energized; } }
   };
 
   // Driver-supplied control tiles NOT in the generated board_data.js — kept here so they
@@ -164,7 +170,13 @@
   // NIS/startup tool, so it sits with the startup net just under the TRIP BLOCKS button.
   var EXTRA_ITEMS = [
     { id: 'bdOneOverM', kind: 'button', name: '', left: 370, top: 890, width: 75, height: 40,
-      label: '1/M PLOT', color: '#5aad7c', fontSize: 13 }
+      label: '1/M PLOT', color: '#5aad7c', fontSize: 13 },
+    // Source-range detector energize/secure switch. The generated board carries the SR
+    // *indication* (id imro6qutiht) but no switch, so a startup can't secure the SR before
+    // its high-flux trip scrams the ascent. Sits just under the SR indication and above the
+    // SCRAM button (which extraItems() nudges down to make room). See BUTTONS.bdSrDetector.
+    { id: 'bdSrDetector', kind: 'button', name: '', left: 505, top: 305, width: 110, height: 20,
+      label: 'SR DET', color: '#5aad7c', fontSize: 12 }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -192,8 +204,14 @@
     imro6ohhdq3: function (s) { return r0(C2F(IN(s).tavg)); },                                          // Tavg °F
     imro6qpci2d: function (s) { return r0(Cd2F(IN(s).thot - IN(s).tcold)); },                           // dTavg °F
     imro6qsncb9: function (s) { var v = IN(s).startup_rate || 0; return (v >= 0 ? '+' : '') + v.toFixed(2); }, // SUR DPM
-    imro6qutiht: function (s) { return fmtExp(IN(s).source_range); },                                   // source range cps
-    imro6rctcgm: function (s) { return r0(IN(s).intermediate_range * 1e6) || r1(IN(s).intermediate_range); }, // IR (µA-ish)
+    imro6qutiht: function (s) {                                                                          // source range cps (amber at SR→IR handoff)
+      var sr = IN(s).source_range;
+      // Amber at the SR high-flux CAUTION (pwr_control 'sr_high_flux', 5e4 cps): the cue to
+      // finish the SR→IR handoff and secure the SR detector before its 1e5 cps high-flux trip.
+      var handoff = sr != null && isFinite(sr) && sr >= SR_HANDOFF_CPS;
+      return { text: fmtExp(sr), color: handoff ? SR_HANDOFF_COLOR : SR_NORMAL_COLOR };
+    },
+    imro6rctcgm: function (s) { return fmtExp(IN(s).intermediate_range); },                              // IR amps (log scale, amps — like SR; was a mislabeled µA integer that read "0"/"1")
     imro6rdwwdn: function (s) { var r = (s.true_state && s.true_state.reactivity_pcm) || 0; return (r >= 0 ? '+' : '') + r0(r); }, // reactivity pcm
     imrpk4pjcpd: function (s) { var g = rodGroup(s, 'control_rods'); return g ? g.steps : 0; },         // control rod steps
     imrpnzfsfcx: function (s) { var g = rodGroup(s, 'shutdown_rods'); return g ? g.steps : 0; },        // shutdown rod steps
@@ -218,6 +236,10 @@
     imrsgkz4lq0: function (s) { return r0((CS(s).feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT); }       // SG feed rate gpm
   };
 
+  // SR→IR handoff cue: turn the source-range indication amber at the SR high-flux caution
+  // (matches pwr_control 'sr_high_flux' = 5e4 cps), prompting the operator to secure the SR
+  // before its 1e5 cps trip. SR_NORMAL_COLOR is the authored green on the SR indication item.
+  var SR_HANDOFF_CPS = 5.0e4, SR_HANDOFF_COLOR = '#D9A441' /* --caution */, SR_NORMAL_COLOR = '#5aad7c';
   function fmtExp(v) { if (!v || v <= 0) return '0'; var e = Math.floor(Math.log10(v)); var m = v / Math.pow(10, e); return m.toFixed(1) + 'e' + e; }
   function accIsolated(s) { return CS(s).accumulator_valve_open === false; }
   function accFill(s) { var t = s.true_state || {}; return t.accumulator_volume_pct != null ? t.accumulator_volume_pct : 78; }
@@ -524,7 +546,10 @@
       var f = VALUES[item.id];
       if (!f) return null;
       var v = f(s);
-      return v == null ? null : { text: String(v) };
+      if (v == null) return null;
+      // A formatter may return { text, color, unit } to drive per-value colouring (e.g. the
+      // SR indication going amber at the SR→IR handoff); otherwise it returns a plain value.
+      return (typeof v === 'object') ? v : { text: String(v) };
     },
     numberFor: function (item, s) {
       var n = NUMBERS[item.id];
@@ -549,7 +574,19 @@
     },
     buttonDisabled: function () { return false; },
     // Control tiles to append to the board that aren't in the generated board_data.js.
-    extraItems: function () { return EXTRA_ITEMS; },
+    extraItems: function () {
+      // Make room for the SR DET toggle between the SR indication and SCRAM: nudge the
+      // authored scram button (imrqr8ecji6) down a little. Done here (not in the generated
+      // board_data.js) so it survives a diagram re-export; idempotent — sets an absolute
+      // top each mount. 335 + height 45 = 380, flush with the CONTROL/SHUTDOWN group boxes.
+      var doc = window.RD_PWR_BOARD_DOC;
+      if (doc && doc.items) {
+        for (var i = 0; i < doc.items.length; i++) {
+          if (doc.items[i].id === 'imrqr8ecji6') { doc.items[i].top = 335; break; }
+        }
+      }
+      return EXTRA_ITEMS;
+    },
     // Live fluid temperature (°C) for a pipe id, or null to keep its authored temp.
     // Lets the renderer repaint pipe fluid color each snapshot (see PIPE_TEMP).
     pipeTemp: function (id, s) { var f = PIPE_TEMP[id]; return f ? f(s) : null; },
