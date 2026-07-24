@@ -171,7 +171,7 @@ Entry: status line under sim controls, or **Sim** tab → Plant & Mission.
 
 | Mode | What you see |
 |------|----------------|
-| **Learning** | Full teaching visuals, SUR, deception duals (Indicated vs Actual on PORV/boron when relevant), contextual xenon/fuel chips |
+| **Learning** | Full teaching visuals, SUR, deception duals (Indicated vs Actual on the PORV when relevant), contextual xenon/fuel chips |
 | **Realistic** | Quiet board — indications and status only; no physics teaching overlays |
 | **Physics Overlay** | Learning only — reactivity (pcm), period, inventory, void, etc. |
 

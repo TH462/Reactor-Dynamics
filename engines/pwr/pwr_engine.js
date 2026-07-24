@@ -1010,6 +1010,15 @@
     this.T_fuel_ref = this._hfp_refs.Tf;
     this.T_coolant_ref = this._hfp_refs.Tavg;
     this._trimToCritical(name);
+    // Post an initial RCS chemistry grab-sample result. A real plant always has a
+    // last lab boron number standing on the board; opening free-play startups with
+    // "—" (never sampled) is the unrealistic state. The lab number IS the settled
+    // reactive concentration the trim just solved, rounded to 1 ppm — so the CHEM
+    // readout shows the current boron from the first frame, and the conc channel
+    // latches this seq without treating it as a fresh (re-baselining) result.
+    this.s.boron_sample_ppm = Math.round(this.s.boron_reactive != null ? this.s.boron_reactive : this.s.boron_ppm);
+    this.s.boron_sample_seq = 1;
+    this.s._boron_sample_timer = 0;
     this.instruments.reset(this.getTrueState(), this._instrExtras());
   };
 

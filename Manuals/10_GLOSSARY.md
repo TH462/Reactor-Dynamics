@@ -39,7 +39,8 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 
 | Term | Definition |
 |------|------------|
-| **Borate / Dilute** | Raise / lower dissolved boron concentration via CVCS (adds / removes negative reactivity). |
+| **Borate / Dilute** | Raise / lower dissolved boron concentration via CVCS (adds / removes negative reactivity) — done by setting the BORON CONTROL target ppm (batch dose), not a live meter seek. |
+| **CHEM SAMPLE / chemistry sample** | RCS grab sample analyzed by the lab; the result (posted after a compressed ~60 s turnaround) is the authoritative boron ppm — there is no online boron meter on the board. |
 | **BOP** | Balance of Plant — turbine, condenser, feedwater, and related secondary systems. |
 | **CVCS** | Chemical & Volume Control System — charging, letdown, boron adjust, inventory make-up. |
 | **Critical / Criticality** | Steady chain reaction: reactivity ≈ 0; power neither grows nor dies away on its own. |

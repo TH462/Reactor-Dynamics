@@ -301,10 +301,10 @@ Use Chemical & Volume Control System (CVCS) boron and rods for long- and short-t
 
 | Step | Action | Acceptance |
 |------|--------|------------|
-| 1 | Charging pump **On** | Pump running |
-| 2 | Select **Borate** (power down / more margin) or **Dilute** (power up) | Chemistry changing |
-| 3 | Watch power/Tavg respond; confirm with a chem sample | Expected direction |
-| 4 | **Hold** near target; finish with rod trim | Stable criticality |
+| 1 | Charging pump **On**; BORON CONTROL **On** | Pump running; channel engaged |
+| 2 | Set a boron **target** — higher to borate (power down / more margin), lower to dilute (power up). The batch dose meters the change and stops at the target (see 03 §7.5) | Dose delivering |
+| 3 | Watch power/Tavg respond; confirm the new concentration with a **CHEM SAMPLE** (no live boron meter) | Expected direction |
+| 4 | Let the dose complete; finish with rod trim | Stable criticality |
 
 ### Procedure — xenon awareness
 

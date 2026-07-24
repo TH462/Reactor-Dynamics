@@ -30,8 +30,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   now shows the dose countdown (`DILUTING 12→`), and the panel carries the lab readout
   (`SAMPLING…` → `705 PPM`). Result is deterministic (mixed concentration, 1 ppm resolution — no
   PRNG shift); old saves migrate (never sampled, no lab pending).
+- **Free-play startups open with a boron CHEM SAMPLE already in hand.** Every starting condition
+  now posts an initial grab-sample result at reset (the settled concentration, 1 ppm resolution),
+  so the CHEM readout shows the current boron from the first frame instead of `—` (never sampled) —
+  a real board always carries a last lab number. The makeup channel latches this result without
+  treating it as a fresh (re-baselining) sample.
 
 ### Changed
+- **Followable procedures + remaining manual sections aligned to the batch-dose / CHEM model.**
+  The `pwr_heatup` procedure and manuals 02/03/04/10 now describe boron the way the board works:
+  set a **target** (borate = raise, dilute = lower), confirm concentration with a **CHEM SAMPLE**
+  (no live meter), and `take_boron_sample` is listed in the command reference. (Scenario training
+  narration still names the analyzer — tracked as backlog S12.)
 - **Boron target control is now a metered BATCH DOSE (real makeup-panel semantics).** The board's
   BORON CONTROL target used to *seek* the boron analyzer — but that sample lags ~45 s, so a dose
   over-delivered by ~50 % (a 10 ppm ask injected ~15 ppm, spiking power to ~110 %; a 30 ppm ask

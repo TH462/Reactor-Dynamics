@@ -273,9 +273,10 @@ Blocks **auto-reinstate** when power falls below P-10.
 
 | Control | Effect |
 |---------|--------|
-| **Borate** | Raises boron ppm → removes reactivity (power down / more shutdown margin) |
-| **Dilute** | Lowers boron ppm → adds reactivity (power up) |
-| **Hold** | Stop chemistry change |
+| **Borate** | *Raise* the boron target → removes reactivity (power down / more shutdown margin) |
+| **Dilute** | *Lower* the boron target → adds reactivity (power up) |
+| **Hold** | Leave the target where it is — a running dose finishes and stops itself |
+| **How** | **BORON CONTROL ON/OFF + target ppm** — you set a target and the batch dose delivers it: *borate* = raise the target, *dilute* = lower it |
 | **Requires** | Charging pump running |
 | **Rate** | Compressed for training (~ppm/s scale); real plants are slower |
 | **Indication** | Chemistry samples (CHEM) — there is **no live boron meter** on the panels |
@@ -291,15 +292,15 @@ you ordered, and from the plant's response — rod position, Tavg drift.
 works like a real makeup panel: entering a new target computes the change and **meters it
 as a batch** at ~0.05 ppm/s, stopped by the flow totalizer — a dose lands on the ppm
 asked without overshoot. Any target change executes, however small (1 ppm nudges work).
-The dose pauses if the charging pump stops and resumes with it. A manual Borate/Dilute
-takes the channel to **MAN**.
+The dose pauses if the charging pump stops and resumes with it. Boron driven directly
+(a procedure walkthrough issuing a borate/dilute rate) takes the channel to **MAN**.
 
 **CHEM SAMPLE — the authoritative number.** Chemistry confirms every completed dose
 automatically: an RCS grab sample is drawn and the lab posts the result (`sample N ppm`)
 after a compressed ~60 s turnaround — real labs take 30–60 min. Take a **manual sample**
 (CHEM SAMPLE button) when the dose books may be stale: after ECCS/accumulator injection
-(which borates the core outside the makeup system) or after freehand Borate/Dilute runs.
-A fresh result while no dose is running **re-baselines the panel** — the books and the
+(which borates the core outside the makeup system) or after boron was driven directly in
+a procedure. A fresh result while no dose is running **re-baselines the panel** — the books and the
 displayed target snap to the lab number, so the next dose is computed from reality.
 
 > **At full power, dilution moves Tavg, not power.** With the turbine at rated load the
@@ -309,17 +310,17 @@ displayed target snap to the lab number, so the next dose is computed from reali
 
 **Procedure — dilute for power rise (slow)**
 
-1. Charging pump **On**.  
-2. Select **Dilute**.  
+1. Charging pump **On**; BORON CONTROL **On**.  
+2. Set a **lower** boron target (dilute) — the batch dose meters the change and stops at it.  
 3. Watch power / Tavg respond; track the dose you have ordered.  
-4. **Hold** at the planned change; confirm with a **CHEM SAMPLE**; trim with rods.  
+4. At the planned change, confirm with a **CHEM SAMPLE**; trim with rods.  
 
 **Procedure — borate for power reduction / xenon prep**
 
-1. Charging pump **On**.  
-2. Select **Borate**.  
-3. Coordinate with rod insertion and load reduction.  
-4. **Hold** at target.  
+1. Charging pump **On**; BORON CONTROL **On**.  
+2. Set a **higher** boron target (borate).  
+3. Coordinate with rod insertion and load reduction as the dose delivers.  
+4. Confirm the new concentration with a **CHEM SAMPLE**.  
 
 ---
 
@@ -684,6 +685,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | Rods — Stop All (§3.1) | `rod_stop_all` | — |
 | SCRAM (§3.5) | `scram` | — |
 | Boron Borate / Dilute (§7.5) | `set_boron_adjust` | `{rate}` |
+| Boron chemistry sample (§7.5) | `take_boron_sample` | — |
 | Charging pump On/Off (§7.1) | `set_charging_pump` | `{running}` |
 | Charging flow (§7.2) | `set_charging_flow` | `{normalized}` |
 | Letdown valve (§7.3) | `set_letdown_flow` | `{normalized}` |
