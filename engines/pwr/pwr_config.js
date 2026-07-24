@@ -184,6 +184,20 @@
       // the threshold. Residual sized BELOW post-trip decay heat so a dry SG
       // genuinely stops being a heat sink (the primary heats to saturation and
       // repressurizes to the PORV — the TMI mechanism). [tune]
+      // KNOWN GAP (2026-07-24, meltdown battery MD-6): at 0.02 a *sustained* dry SG
+      // still removes the full decay-heat load — the trip-open steam dump vents to
+      // the condenser and pins t_secondary ~190 °C below Tavg, so a total loss of
+      // feed+AFW with no makeup parks the primary at ~297 °C forever instead of
+      // heating to the PZR safeties and boiling down. Lowering this residual DOES
+      // make MD-6 heat out, but it also deepens the brief pre-AFW dryout dip on a
+      // recoverable loss of MFW — TR-2's peak pressure jumps 15.88 → 16.25 MPa (the
+      // AFW-precludes-PORV band is < 16.20) the instant it drops below ~0.015, and
+      // MD-6 doesn't heat until ≤ 0.006, so no single value satisfies both. The real
+      // fix is structural (limit the steam dump to actual steam GENERATION so a dry
+      // SG can't vent steam it isn't making, or model time-dependent dryout depletion
+      // that distinguishes a transient dip from a sustained dry SG), which is a
+      // secondary-model rework with blast radius over the tuned load-rejection
+      // ride-out — deferred, held red as MD-6. Left at 0.02.
       sg_dryout_wide_pct: 30.0,
       sg_dryout_residual: 0.02,
       void_flux_gain: 0.02,        // equilibrium core void per °C of exit overshoot [tune]

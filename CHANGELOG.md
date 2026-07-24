@@ -9,6 +9,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **New meltdown-path test gate (`node test/run_meltdown.js`).** A strict-xfail battery
+  (`test/meltdown_pwr.js`) that drives the classic routes to core damage — large-break LOCA,
+  TMI small-break, station blackout, ATWS+LOCA, total loss of heat sink, ECCS recovery — and
+  asserts the physically correct endpoint (damage / melt / protected). Discovered four
+  core-damage-side defects; see Fixed. Now 7 pass / 1 xfail (the open one is documented).
 - **Live checklists now highlight the controls and indications a step points at — just hover it.**
   Mousing over any step in a running checklist glows the relevant board controls *and* readouts
   (a green preview glow, distinct from the blue "do this now" Instructor glow). Steps carry an
@@ -31,6 +36,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   "▸ Show the N steps" expander — the menu reads as a list of checklists to pick from; the steps
   appear when you Follow or run one (or expand a card). Accident walkthroughs still show their
   steps inline (there the steps are the content).
+
+### Fixed
+- **An ATWS during a LOCA is no longer benign.** Decay heat was switched on only by a scram, so
+  an unscrammed core that lost coolant (fission collapsing from moderator loss, not a rod
+  insertion) *froze* at its current temperature instead of heating to melt — the worst real
+  accident produced *less* damage than a clean shutdown. Decay heat now persists whenever fission
+  power collapses for any reason (scram-agnostic). Post-scram cooldown and normal operation are
+  unchanged.
+- **A core melt now reports its cause.** The `destruction_cause` outcome flag (`thermal_melt`) was
+  tracked internally but not exposed in the plant's true-state readout; scenario grading read
+  `undefined` on a confirmed melt. It is now surfaced.
 
 ### Changed
 - **The boron analyzer is gone from the panels — chemistry sampling is how you know boron now.**

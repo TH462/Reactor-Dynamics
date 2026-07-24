@@ -41,6 +41,7 @@ staleness** items.
 | `run_scenarios` | **3/3** | flagships |
 | `run_campaign` | **51/51** (2897) | |
 | `run_procedures` | **22/22** | 1 strict known-fail (B3) |
+| `run_meltdown` | **7 pass / 1 xfail** | PWR core-damage paths — MD-5/MD-7 fixed, MD-8 reframed; 1 xfail = MD-6 dry-SG sink (backlog §3.4) |
 | `run_checklist` | **24/24** | |
 | `run_e2e_controls` | **28/30** | 2 pre-existing reds (F12) |
 | `verify_e2e_ui` | **FAIL** | pre-existing on clean HEAD (retired PwrSynoptic probe) |
@@ -104,6 +105,42 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-24 — Meltdown-path battery: 4 core-damage defects found; 2 fixed, 1 reframed, 1 deferred  🔬✅
+Owner stress-tested the physics "to find different paths to meltdown" and reported **all
+meltdown paths have major issues.** Investigated the fuel-damage endpoint (`pwr_thermal.checkDamage`:
+> 1200 °C damage, > 2800 °C melt) across the classic routes, built a new **strict-xfail gate**, then
+(owner: "fix all") worked the list:
+- **New files:** `test/meltdown_pwr.js` (battery `RD.MeltdownPWR`) + `test/run_meltdown.js` (runner,
+  same PASS/XFAIL/FAIL/XPASS semantics as `run_behavior`). Writes `Diagnostic/MELTDOWN_REPORT.md`.
+  Engine-direct via `RD.PWRScenarioTests.Harness` (the deterministic flagship_tmi harness).
+- **Now 7 pass / 1 xfail** (was 4/4). Working paths (green): MD-1 large-break LOCA no-ECCS → melt,
+  MD-2 TMI small-break → melt, MD-3 SBO → melt, MD-4 HPI recovery holds (negative control).
+- **MD-5 FIXED (highest value)** — ATWS+LOCA was *benign* (uncovered core froze at 1250 °C) because
+  decay heat was gated on the scram flag: `_Q_total = _P + (scrammed ? decay : 0)`. In an ATWS
+  fission collapses from moderator loss, not a scram, so decay was never switched on. Made the term
+  scram-agnostic: `_P + ((scrammed || _P < decay) ? decay : 0)` (`pwr_engine.js:248`) — identical
+  when scrammed or at power (post-scram tail + normal ops unchanged), only adds the missing source in
+  the unscrammed-fission-collapse regime. Now melts @ 1480 s. **1-line, 0 regressions.**
+- **MD-7 FIXED** — `destruction_cause` was set on `engine.s` but omitted from the `getTrueState`
+  return; added it (`pwr_engine.js:~449`). Melts now report `thermal_melt`.
+- **MD-8 REFRAMED (not a bug)** — turned out to be the intended TMI lesson: a small break holds high
+  pressure (decay heat pins Psat above the accumulator arming point), so HPI alone can't quite hold
+  it and the operator must DEPRESSURIZE to arm accumulators/LPI (feed-and-bleed). Probed: passive
+  HPI → damage @ ~19 min, but depressurize-to-flood → survives (sev 0.05-0.30 all protected). Test
+  rewritten to assert the intended EOP recovery. The *passive* non-monotonicity (small break damages,
+  medium self-depressurizes and refloods) is a known lumped-HPI simplification, recorded as info +
+  flagged for owner review — not a hard fail.
+- **MD-6 DEFERRED (genuine defect, structural)** — total loss of feed+AFW parks the primary at
+  ~297 °C forever: a sustained dry SG stays a perfect heat sink (trip-open dump pins t_secondary
+  ~190 °C low, 0.02 residual passes full decay heat). NO single-knob fix — lowering
+  `sg_dryout_residual` heats MD-6 out but breaks TR-2 (the pre-AFW dip on a recoverable loss of MFW
+  pushes peak pressure 15.88 → 16.25 MPa, over the < 16.20 band) at any residual below ~0.015, while
+  MD-6 needs ≤ 0.006. Real fix is structural (limit the steam dump to actual steam generation, or
+  time-dependent dryout depletion) — a secondary-model rework over the tuned load-rejection ride-out.
+  Reverted the residual to 0.02; held red as the single xfail. Full detail in §3.4.
+- **Gates:** all baselines held (pwr 31/31, behavior 30/0, ops 59/68, campaign 51/51, procedures
+  22/22, autoctl 20/20, m4-m7, e2e 28/30, checklist 24/24). run_meltdown **7/1**.
 
 ### 2026-07-24 — Live-checklist revamp: 1/M startup + step-hover highlights + compact picker  ✅
 Owner playtested the Mode 3 → Mode 1 board checklist: "lacking many steps… the biggest gap was
@@ -429,6 +466,26 @@ real smell worth a look during this effort.
 | **S9** | PWR | **RESOLVED (2026-07-23)** — `boron_conc` no longer seeks the lagged analyzer: a new target meters a feedforward dose stopped by a flow totalizer (real makeup-panel semantics), rate 0.5 → 0.05 ppm/s. Probed: 25 ppm ask delivers −25.0 exactly, power peaks 102.6 % (was 118 % + scram) | Was: seek on the 45 s-lagged analyzer over-delivered ~50 % and spiked/scrammed the plant |
 | **S10** | PWR | At 100 % with the governor at rated, steady-state power ALWAYS returns to ~100 % after dilution — Tavg absorbs it (+~0.45 °C/ppm). AUTHENTIC PWR physics (probed 2026-07-23), but reads as "boron does nothing" from the board | Teaching-surface gap, not a bug: nothing on the board tells the player boron moves Tavg (not power) when the turbine is pinned at rated |
 | **S11** | PWR | Load-coupled feed (feed_sg channel OFF, `load_mode.js` follow branch) clips feed at 1.2 while the governor clips steam at 1.0 — any power excursion above rated integrates SG level up (probed 65→89 %) until an `sg_level high` scram minutes later, looking unrelated to its cause | Hidden in default free play (feed_sg defaultOn holds level) but live whenever feed is manual/failed; fix = clip coupled feed to the governor's deliverable or feed on `steam_out_total` in follow mode too |
+| **S13** | PWR | ATWS **at power** with heat sink intact (failure_to_scram + continuous_rod_withdrawal) self-limits at ~756 °C on Doppler and never damages; may be too benign vs a real ATWS overpressure/PCT event | Lower priority than the MD-x set; revisit after the decay-heat gate (MD-5) is fixed, since that changes every uncovered-core outcome |
+
+### 3.4 PWR meltdown-path physics defects (found 2026-07-24 — owner playtest "all meltdown paths have major issues")
+
+New gate: **`node test/run_meltdown.js`** (battery `test/meltdown_pwr.js`, strict-xfail). Now
+**7 pass / 1 xfail / 0 fail** (was 4/4 at discovery). MD-5 + MD-7 fixed, MD-8 reframed, MD-6
+deferred. Report auto-writes to `Diagnostic/MELTDOWN_REPORT.md`.
+
+| ID | Symptom | Root cause | Fix / location | Status |
+|---|---|---|---|---|
+| **MD-5** | ATWS + LOCA (worst real accident: full-power core + no coolant) was **benign** — the uncovered core froze at ~1250 °C and never melted | Decay heat gated on the scram flag: `_Q_total = _P + (scrammed ? decay : 0)`. In an ATWS fission collapses from moderator loss (uncovery), not a scram, so decay was never switched on | Scram-agnostic: `_P + ((scrammed || _P < decay) ? decay : 0)` (`pwr_engine.js:248`) — unchanged when scrammed or at power; only adds the missing source on unscrammed fission collapse | **RESOLVED (2026-07-24)** — melts @ 1480 s, 0 regressions |
+| **MD-7** | On a confirmed melt the operator-facing true state reported `destruction_cause = undefined` | The field is set on `engine.s` (`checkDamage`) but was omitted from the `getTrueState()` return block | Added `destruction_cause: s.destruction_cause` (`pwr_engine.js:~449`) | **RESOLVED (2026-07-24)** |
+| **MD-8** | With PASSIVE full ECCS, LOCA survival is **non-monotonic** — a small break (sev 0.05-0.10) damages while a medium (0.20) refloods | By DESIGN: a small break holds high pressure (decay heat pins Psat above the 4.14 MPa accumulator arming point — the TMI inventory/void lesson), so HPI alone can't quite hold it and the operator must DEPRESSURIZE to arm accumulators/LPI (feed-and-bleed EOP). Passive-band non-monotonicity is a known lumped-HPI simplification | Test **reframed** to assert the intended depressurize-to-flood recovery (sev 0.05-0.20 all survive with it); passive band recorded as info | **RESOLVED-as-reframed (2026-07-24)**. *Open for owner review:* whether to also make the passive small-break case monotonic (would need HPI strengthening, which conflicts with the deliberate SGTR-outruns-HPI balance) |
+| **MD-6** | Total loss of heat sink (MFW+AFW, no makeup) parks the primary at **~297 °C forever** instead of heating to the PZR safeties, boiling off, and uncovering (TMI-without-recovery) | A **sustained dry SG stays a perfect heat sink**: the trip-open steam dump vents to the condenser and pins `t_secondary` ~190 °C below Tavg, so the 0.02 residual conductance still passes the full decay-heat load with no secondary-inventory limit | **NO single-knob tune** — lowering `sg_dryout_residual` heats MD-6 out (works ≤ 0.006) but deepens the pre-AFW dip on a recoverable loss of MFW → TR-2 peak 15.88 → 16.25 MPa (band < 16.20) at any residual below ~0.015. Real fix is structural: limit the steam dump to actual steam GENERATION, or model time-dependent dryout depletion (`pwr_steam_generator.js` + `pwr_thermal.js:66-69`) | **OPEN — deferred (owner review).** Secondary-model rework with blast radius over the tuned load-rejection ride-out; held as the single `run_meltdown` xfail |
+
+> The plant modeled normal ops and the flagship TMI path well, but the *space of ways to actually
+> damage the core* was ungated until now. MD-5 (the owner-flagged "worst accident is benign") was a
+> one-line, zero-regression fix. MD-6 is the one genuine open defect and needs a dedicated
+> secondary-model effort, not a knob tweak.
+
 | **S12** | PWR | **TRAINING OVERHAUL WORKLIST (owner: Opus does this later; trainings need a major overhaul anyway).** Boron analyzer was UI-REMOVED 2026-07-23 (chemistry sampling is the teaching tool); training content still *narrates* the analyzer. Complete inventory of what to rework: **(a)** `scenarios/pwr_boron.js` beats at lines ~36 and ~47 — "the boron analyzer shows the number" / "watch the boron analyzer creeping down"; re-teach as dose-order + CHEM SAMPLE confirmation (the scenario's decision logic already gates on operator_action + settle, not the analyzer — text-only change); **(b)** `layers/instructor_layer.js` line ~45 maps `boron_ppm → boron_analyzer` for beat conditions — still FUNCTIONAL (instrument exists, just undisplayed) but consider re-keying teaching beats to `boron_sample` or true-state; **(c)** `ui/campaign_data.js` mission 7 (`pwr_boron`) teaches-line "boron vs rods: chemistry for the long game" — fine, but the mission should introduce the sampling ritual; **(d)** Manuals 04 PWR-N09 got minimal line-fixes only (steps now say "confirm with a chem sample") — the full procedure should teach the batch-dose + sample workflow properly; **(e)** any walkthrough/checklist prose that says "watch the boron ppm fall" live (checklists key on `boron_ppm` acceptance checks — functional, fine). UI restore path if ever wanted: `pwr_board_wiring.js` extraItems() splice + 'CHEM' relabel, `pwr_synoptic.js` B-row comment, `app.js` boron series comment, `pvDisplay:false` on the channel def — all one-line reverts, instrument untouched | Teaching-content debt, not a defect; the sim mechanics are already sample-first |
 
 ---
