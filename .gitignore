@@ -30,6 +30,9 @@ Diagnostic/
 # Coding-agent instructions — local only, not published (public overview is README.md)
 CLAUDE.md
 
+# Personal go-public checklist — local only, not published
+GO_PUBLIC_CHECKLIST.md
+
 # Claude Code local settings (machine-specific; shared settings.json may be tracked)
 .claude/settings.local.json
 
