@@ -1638,8 +1638,12 @@
       else {
         var s0 = vmax - vmin;
         var full = Math.abs(ser.range[1] - ser.range[0]) || 1;
-        var vspan = Math.max(s0, full * 0.08);
-        var pad = vspan * 0.15;
+        // Buffer around the line = the min-zoom floor + the top/bottom pad. Narrow it
+        // so lines fill more of the plot: halve it for most series, and cut it to a
+        // tenth for the slow-moving boron trend so its small changes are legible.
+        var bufScale = (ser.id === 'boron') ? 0.1 : 0.5;
+        var vspan = Math.max(s0, full * 0.08 * bufScale);
+        var pad = vspan * 0.15 * bufScale;
         var c = (vmin + vmax) / 2;
         tlo = c - vspan / 2 - pad; thi = c + vspan / 2 + pad;
       }
