@@ -93,9 +93,9 @@ Node test runners execute for the test suite.
 ```
 
 > **Note for contributors:** `Blueprint/` is a dense internal engineering specification
-> and design log. Some of its notes (and a few code comments) reference working
-> directories used during development that are kept out of the public repo — you can
-> safely ignore those breadcrumbs.
+> and design log, and `Diagnostic/` holds the candid tuning/audit/playtest reports it
+> references. A few notes and code comments also point to an `inbox/` working directory
+> (design-import scratch) that isn't published — you can safely ignore those breadcrumbs.
 
 ## License
 

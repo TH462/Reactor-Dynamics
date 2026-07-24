@@ -18,14 +18,15 @@ node_modules/
 *.save.json
 exports/
 
-# Session diagnosis exports (Dev tab) — large transient debug dumps
-Diagnostic/rd_diag_*.json
+# Diagnostic JSON — session-diagnosis exports (Dev tab) and regenerated result
+# dumps (behavior_results.json, ops_results.json). Kept out of the public repo;
+# the curated Diagnostic/*.md reports ARE tracked and published.
+Diagnostic/*.json
 
 # Internal working material — kept local, not published to the public repo.
-# (No secrets; these are handoff drafts and candid dev reports. Removed from
-# tracking 2026-07-24 in prep for going public — see the LICENSE/legal work.)
+# (No secrets; handoff drafts + design imports.) Untracked 2026-07-24 in prep
+# for going public.
 inbox/
-Diagnostic/
 
 # Coding-agent instructions — local only, not published (public overview is README.md)
 CLAUDE.md
