@@ -500,6 +500,23 @@ TMI included, never enter the cold regime), so every prior gate held at baseline
   `mode5_to_mode1_roundtrip`), **M5 18/18** (full-stack cold-IC guard), campaign **44/44**, autoctl
   **20/20**, M4 **15/15**, M6 **16/16**, M7 OK, ops **53/66** (baseline). TMI flagship not regressed.
 
+**2026-07-24 — SG dryout depletion (meltdown battery MD-6, structural).** A fully dry SG used to
+stay a perfect heat sink forever (trip-open dump pinned `t_secondary` ~190 °C below Tavg; the 0.02
+`sg_dryout_residual` passed the whole decay-heat load), so total loss of MFW+AFW parked the primary
+at ~297 °C — unkillable. No constant residual could fix it: TR-2 (recoverable MFW loss) needed
+≥ 0.015 to hold its < 16.20 MPa peak while MD-6 needed ≤ 0.006. **Probe finding that shaped the
+design: TR-2 *also* fully dries its SG** (wide 0.0 @ ~62 s, secondary at the 0.10 MPa floor) before
+AFW rebuilds level — so no level threshold separates transient from sustained dryout; the real
+differentiator is **whether feed is reaching the bundle**. Decision: time-dependent depletion keyed
+on feed, not level. New state `s.sg_dry_deplete` (0..1, stepped in
+`pwr_steam_generator.stepSecondary`): → 1 with τ 300 s (`sg_dryout_deplete_tau`) while wide <
+`sg_dryout_wide_pct` AND `feedwater_flow < sg_dryout_feed_eps` (0.01); → 0 with τ 45 s
+(`sg_dryout_rewet_tau`) on any feed — AFW wets the tubes before pool level recovers, the real AFW
+mechanism. `pwr_thermal.stepCoolant` scales the residual by (1 − deplete). TR-2 is *bit-identical*
+(deplete never engages under AFW); MD-6 heats to Tavg 366 °C, boils down, damage @ 2835 s, melt @
+6250 s. Save-compatible (missing field defaults 0 at every use site). Gates: `run_meltdown` **8/8**
+(XFAIL emptied), behavior 30/0/0, PWR 31/31, all other baselines held.
+
 ---
 
 ## M2 — RBMK Engine

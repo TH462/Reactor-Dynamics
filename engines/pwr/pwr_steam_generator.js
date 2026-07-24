@@ -153,6 +153,21 @@
     s.sg_level_wide_pct = clip((s.sg_level_wide_pct != null ? s.sg_level_wide_pct : wr_lo + wr_span * s.sg_level_pct / 100) + dWide * dt, 0, 100);
     s.sg_level_pct = clip((s.sg_level_wide_pct - wr_lo) / wr_span * 100, 0, 100);
 
+    // Tube-bundle dryout DEPLETION (MD-6 structural fix — see pwr_config sg_dryout_*):
+    // a bundle that is below the uncovery threshold AND receiving no feed boils its
+    // residual film off toward zero conductance (τ deplete); any feedwater ≥ feed_eps
+    // rewets it (τ rewet) — AFW wets the tubes even while the pool level is still
+    // rebuilding, which is what keeps a recoverable loss of MFW (TR-2) at the full
+    // residual through its brief dry transit. pwr_thermal.stepCoolant reads this
+    // NEXT step (explicit coupling, CONTEXT §11) and scales sg_dryout_residual by
+    // (1 − deplete).
+    var th = cfg.thermal;
+    var dryUnfed = s.sg_level_wide_pct < (th.sg_dryout_wide_pct || 30)
+                && feedwater_flow < (th.sg_dryout_feed_eps || 0.01);
+    var dep = s.sg_dry_deplete || 0;
+    var depTau = dryUnfed ? (th.sg_dryout_deplete_tau || 300) : (th.sg_dryout_rewet_tau || 45);
+    s.sg_dry_deplete = clip(dep + ((dryUnfed ? 1 : 0) - dep) / depTau * dt, 0, 1);
+
     // Secondary pressure and steam flow.
     var dSteamP = (steam_generation_rate - steam_out) * sg.K_steam_pressure;
     s.steam_pressure_mpa += dSteamP * dt;

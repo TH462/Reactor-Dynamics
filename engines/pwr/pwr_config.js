@@ -184,8 +184,24 @@
       // the threshold. Residual sized BELOW post-trip decay heat so a dry SG
       // genuinely stops being a heat sink (the primary heats to saturation and
       // repressurizes to the PORV — the TMI mechanism). [tune]
+      // Time-dependent dryout DEPLETION (2026-07-24, meltdown battery MD-6): the
+      // residual above is the conductance of a freshly-dried bundle (film moisture,
+      // steam-side convection). If the bundle stays dry AND UNFED, that film boils
+      // off and the residual itself decays away (τ = deplete_tau) — a *sustained*
+      // total loss of feed+AFW genuinely loses its heat sink and the primary heats
+      // to the PZR safeties (MD-6, TMI without recovery). Any feedwater reaching
+      // the SG (main or AFW ≥ feed_eps) rewets the bundle (τ = rewet_tau) — which
+      // is why a RECOVERABLE loss of MFW (TR-2: AFW auto-starts ~13 s in, level
+      // transits 0 for a minute) keeps the full residual through its brief dip and
+      // its 15.88 MPa peak, while the same dip with AFW blocked depletes and
+      // repressurizes to the PORV (TR-3/MD-6). This is the structural fix for the
+      // old MD-6 known gap — no single constant residual could satisfy both
+      // (TR-2 needed ≥ 0.015, MD-6 needed ≤ 0.006).
       sg_dryout_wide_pct: 30.0,
       sg_dryout_residual: 0.02,
+      sg_dryout_deplete_tau: 300.0, // s — dry+unfed bundle's residual film boils off [tune]
+      sg_dryout_rewet_tau: 45.0,    // s — feed restores the bundle film [tune]
+      sg_dryout_feed_eps: 0.01,     // normalized feed that counts as wetting the bundle
       void_flux_gain: 0.02,        // equilibrium core void per °C of exit overshoot [tune]
       void_flux_max: 0.8,          // ceiling on flux-driven void fraction [tune]
       void_flux_tau: 3.0,          // s — flux void grows/recovers with this tau [tune]

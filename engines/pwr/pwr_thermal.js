@@ -62,10 +62,15 @@
     // small steam-side residual — a dry SG is NOT a heat sink, which is exactly
     // what turns a blocked-AFW loss of feed into the TMI repressurization. Normal
     // ops (wide ≈ 55-65) and the AFW hold (wide ≈ 40) sit above the threshold.
+    // The steam-side residual itself DEPLETES when the bundle stays dry and unfed
+    // (s.sg_dry_deplete, stepped by pwr_steam_generator; previous step — explicit
+    // coupling): a sustained total loss of feed genuinely loses the heat sink
+    // (MD-6), while a fed dry transit (TR-2, AFW running) keeps the full residual.
     var _wide = s.sg_level_wide_pct != null ? s.sg_level_wide_pct : 50;
     var _wet = _wide >= (t.sg_dryout_wide_pct || 30) ? 1
              : Math.max(0, _wide / (t.sg_dryout_wide_pct || 30));
-    var _dry_factor = (t.sg_dryout_residual || 0.05) + (1 - (t.sg_dryout_residual || 0.05)) * _wet;
+    var _resid = (t.sg_dryout_residual || 0.05) * (1 - (s.sg_dry_deplete || 0));
+    var _dry_factor = _resid + (1 - _resid) * _wet;
     var Q_coolant_to_sg = t.h_sg * s.flow_frac * _dry_factor * (s.tavg_c - s.t_secondary_c);
     // REVERSE flow (SG hotter than the primary — e.g. a cold RCS with the
     // secondary at atmospheric saturation ~100 °C) transfers poorly: the

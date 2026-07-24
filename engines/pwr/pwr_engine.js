@@ -242,10 +242,22 @@
     // 3. Xenon / iodine.
     this._stepXenon(dt);
     // 4. Heat generation. Decay heat tracks power continuously (above). During
-    //    operation it is embedded in P (rated = total thermal); after scram, as
-    //    the fission term collapses, decay heat is the residual source.
+    //    operation it is embedded in P (rated = total thermal); once the fission
+    //    term collapses, decay heat is the residual source.
+    //    The switch is "has fission collapsed", NOT "did we scram": a scram is the
+    //    usual cause, but fission also collapses when an UNSCRAMMED core loses its
+    //    moderator (an ATWS during a LOCA — the core uncovers, voids out, and goes
+    //    subcritical without a rod insertion). Gating on s.scrammed alone left decay
+    //    heat switched off in exactly that case, so the worst real accident froze the
+    //    fuel at its current temp instead of heating to melt (meltdown battery MD-5).
+    //    Condition: scrammed OR prompt power has fallen below the decay-heat floor
+    //    (self-scaling, no magic constant). This is identical to the old form whenever
+    //    scrammed is true and whenever P > decay (all at-power operation), so the
+    //    post-scram tail and normal ops are unchanged; it only adds the missing source
+    //    in the unscrammed-fission-collapse regime.
     this._stepDecay(dt);
-    s._Q_total = s._P + (s.scrammed ? (s._H1 + s._H2) : 0);
+    var _decay = s._H1 + s._H2;
+    s._Q_total = s._P + ((s.scrammed || s._P < _decay) ? _decay : 0);
     // Emergency injection multiplier already on state; HPI flow computed in §9.
     // 5–6. Fuel and coolant temperatures (legs, true subcooling).
     TH.stepFuel(s, this.cfg, dt);
@@ -446,7 +458,9 @@
       pump_running: s.pump_running, pump_flow_pct: s.pump_flow_pct, station_blackout: s.station_blackout,
       turbine_rpm: s.turbine_rpm, condenser_vacuum_kpa: s.condenser_vacuum_kpa,
       condenser_cooling_available: s.condenser_cooling_available,
-      scrammed: s.scrammed, melted: s.melted, steam_demand_mwe: s.steam_demand_mwe,
+      scrammed: s.scrammed, melted: s.melted,
+      destruction_cause: s.destruction_cause,   // 'none' | 'thermal_melt' — outcome-grading hook (sibling of fuel_damaged/melted)
+      steam_demand_mwe: s.steam_demand_mwe,
       load_mode: s.load_mode, load_target_mwe: s.load_target_mwe,
       load_imbalance_mwe: s.load_imbalance_mwe, sg_imbalance_active: s.sg_imbalance_active,
       reactivity_pcm: (s._rho || 0) * 1e5, startup_rate_dpm: sur, reactor_period_s: period,
