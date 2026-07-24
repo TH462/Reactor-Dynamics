@@ -44,11 +44,13 @@
   // the Automate tab is a pure face over snapshot.automation, issuing
   // set_auto_channel / set_auto_setpoint commands like any operator action.
   var chartBuf = [];        // { t, ins }
+  var chartRange = {};      // id -> { lo, hi } — peak-hold auto-range (expands fast, re-tightens slow)
   var gaugeHist = {};       // id -> [{ t, v }]
   // Fraction of the strip-chart plot width the traces occupy; the remaining right
   // gutter holds the live value chips (see drawChart / drawFloats / rewindPickClick).
   var CHART_PLOT_FRAC = 0.86;
   var CHART_RECORD_SEC = 1800;   // keep 30 min of history; the chart DISPLAYS only ui.window of it
+  var PEAK_HOLD_K = 0.06;        // per-frame rate the peak-hold axis re-tightens toward the data (expand is instant)
   var smoothed = {};        // id -> display-damped instrument value
   var DISPLAY_DAMP_K = 0.18;
 
@@ -1586,6 +1588,7 @@
     var svg = $('chartCanvas'), floats = $('chartFloats'), W = 400, H = 120;
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
     if (chartBuf.length < 2) {
+      chartRange = {};   // no data → forget held ranges so the next fit starts clean
       $('chartLegend').innerHTML = active.map(function (s) {
         return '<span class="leg" style="color:' + s.c + '"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + s.range[0] + '–' + s.range[1] + '</b></span>';
       }).join('');
@@ -1626,13 +1629,26 @@
         if (v < vmin) vmin = v;
         if (v > vmax) vmax = v;
       }
-      if (!isFinite(vmin) || !isFinite(vmax)) { ranges[ser.id] = [ser.range[0], ser.range[1]]; return; }
-      var s0 = vmax - vmin;                                    // data span in the window
-      var full = Math.abs(ser.range[1] - ser.range[0]) || 1;   // instrument full scale
-      var span = Math.max(s0, full * 0.08);                    // floor at 8 % of full scale so a flat/noisy line stays small instead of zooming to fill the plot
-      var pad = span * 0.15;                                    // buffer above & below so the trace never rides the edge
-      var c = (vmin + vmax) / 2;
-      ranges[ser.id] = [c - span / 2 - pad, c + span / 2 + pad];
+      var tlo, thi;   // target range for this frame
+      if (!isFinite(vmin) || !isFinite(vmax)) { tlo = ser.range[0]; thi = ser.range[1]; }
+      else {
+        var s0 = vmax - vmin;                                    // data span in the window
+        var full = Math.abs(ser.range[1] - ser.range[0]) || 1;   // instrument full scale
+        var span = Math.max(s0, full * 0.08);                    // floor at 8 % of full scale so a flat/noisy line stays small instead of zooming to fill the plot
+        var pad = span * 0.15;                                   // buffer above & below so the trace never rides the edge
+        var c = (vmin + vmax) / 2;
+        tlo = c - span / 2 - pad; thi = c + span / 2 + pad;
+      }
+      // Peak-hold: expand to fit new data instantly, but re-tighten slowly — so the
+      // axis never clips and already-plotted points don't jitter as the window slides.
+      var h = chartRange[ser.id];
+      if (!h) h = { lo: tlo, hi: thi };
+      else {
+        h.lo = (tlo < h.lo) ? tlo : h.lo + PEAK_HOLD_K * (tlo - h.lo);
+        h.hi = (thi > h.hi) ? thi : h.hi + PEAK_HOLD_K * (thi - h.hi);
+      }
+      chartRange[ser.id] = h;
+      ranges[ser.id] = [h.lo, h.hi];
     });
     // legend reflects the current (dynamic) range each line is scaled to
     $('chartLegend').innerHTML = active.map(function (s) {
@@ -2289,7 +2305,7 @@
     $('registerSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-register]'); if (!b) return; ui.register = b.getAttribute('data-register'); cmd({ action: 'set_register', value: ui.register }); });
     $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
     $('graphParams').addEventListener('change', function (e) { var cb = e.target.closest('input[data-series]'); if (!cb) return; ui.series[cb.getAttribute('data-series')] = cb.checked; drawChart(); });
-    $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); drawChart(); });
+    $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
     $('loadFile').addEventListener('change', function (e) {
       var f = e.target.files[0]; if (!f) return; var r = new FileReader();
       r.onload = function () { try { var st = JSON.parse(r.result); service.loadState(st); afterPlantChange(); diagReset('restore', { engine_key: ui.engineKey }); showToast('State loaded — ' + f.name); } catch (err) { showToast('Not a valid save file: ' + f.name, 'error'); } };
