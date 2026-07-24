@@ -32,30 +32,33 @@
   <!-- ==================================================================
        ADDING AN ENTRY  (do this just BEFORE merging develop → main)
 
-       Newest entry goes directly below this comment, so the page reads
-       newest-first. Copy the template, then:
-         • VERSION — "Alpha MAJOR.MINOR.PATCH". Read the current top entry for
-           the last version and increment the LAST segment each release
-           (Alpha 1.0.1 → 1.0.2 → …); bump the minor for a notable feature
-           group and the major for a big milestone (owner's call).
-         • DATE — set both the visible text and the datetime="" attr (YYYY-MM-DD).
-       Full rule: README.md → "Website changelog & version numbers".
+       Newest entry goes directly below this comment (newest-first).
 
-       Tags: added / changed / fixed. Write for players, not for the repo —
-       "the reactor trips less aggressively during startup", not the commit
-       subject. Blueprint/BUILD_DECISIONS.md and CHANGELOG.md remain the
-       engineering record; this page is the public one.
+       VERSION — "Alpha X.Y.Z" = Platform . Feature . Refinement. Read the top
+       entry and bump the highest-significance digit in the release:
+         • X Platform    — architecture/scope milestones (a new reactor type, an
+                           engine overhaul, alpha → beta). Rare.
+         • Y Feature     — a new player-facing capability. Resets Z to 0.
+         • Z Refinement  — bug fixes, tuning, small refinements.
+       DATE — set both the visible text and the datetime="" attr (YYYY-MM-DD).
+
+       STYLE — concise and factual. One line per change; lead with the change and
+       state what changed, not why it's nice. No marketing or filler ("great
+       for…", "handy for…", "like a real plant"), no hedging. Player-facing
+       wording, not commit subjects. Tags: added / changed / fixed.
+       (Blueprint/BUILD_DECISIONS.md + CHANGELOG.md are the engineering record;
+       this page is the public one.)
 
   <article class="log-entry">
     <div class="log-head">
-      <h2>Some short headline</h2>
-      <span class="log-ver mono">Alpha 1.0.2</span>
+      <h2>Short headline</h2>
+      <span class="log-ver mono">Alpha 1.5.0</span>
       <time class="log-date mono" datetime="2026-01-01">1 January 2026</time>
     </div>
     <ul>
-      <li><span class="log-tag added">Added</span>A thing that is new.</li>
-      <li><span class="log-tag changed">Changed</span>A thing that works differently now.</li>
-      <li><span class="log-tag fixed">Fixed</span>A thing that was broken.</li>
+      <li><span class="log-tag added">Added</span><strong>New thing.</strong> One factual sentence.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Changed thing.</strong> What is different now.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Fixed thing.</strong> What was broken.</li>
     </ul>
   </article>
 
@@ -63,70 +66,83 @@
 
   <article class="log-entry">
     <div class="log-head">
-      <h2>Roomier control room &amp; a clearer trend chart</h2>
-      <span class="log-ver mono">Alpha 1.0.5</span>
+      <h2>Boron trend, 30-minute chart history</h2>
+      <span class="log-ver mono">Alpha 1.5.0</span>
       <time class="log-date mono" datetime="2026-07-24">24 July 2026</time>
     </div>
     <ul>
-      <li><span class="log-tag changed">Changed</span><strong>A bigger plant diagram.</strong> The control room is now three columns — the plant diagram and vital indications (kept as large as possible), the trend chart and alarms stacked in a middle column, and the simulator panel on the right — giving the diagram far more room.</li>
-      <li><span class="log-tag added">Added</span><strong>Hide the side panel.</strong> The <strong>&#9974;</strong> button hides the simulator panel and moves the time controls atop the chart/alarms column, making the diagram larger still — handy for demonstrations. Click again to bring the panel back.</li>
-      <li><span class="log-tag changed">Changed</span><strong>Auto-scaling trend chart.</strong> Each line on the strip chart now zooms to its own range, so small changes are easy to see instead of sitting flat against a full-scale axis; faint gridlines were added behind the traces.</li>
-      <li><span class="log-tag changed">Changed</span><strong>Generator load starts in Manual at power.</strong> A free-play startup in Mode 1 now begins with the generator in Manual rather than load-follow, so you drive generator load yourself.</li>
+      <li><span class="log-tag added">Added</span><strong>Boron trend.</strong> Boron (ppm) is now a plottable graph option.</li>
+      <li><span class="log-tag changed">Changed</span><strong>30 minutes of history.</strong> The trend chart records 30 minutes; the time window sets how much is shown.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Wider trends when the panel is hidden.</strong> Hiding the side panel widens the trend/alarms column into the freed space.</li>
     </ul>
   </article>
 
   <article class="log-entry">
     <div class="log-head">
-      <h2>Open source, a Legal page, and a way to reach me</h2>
-      <span class="log-ver mono">Alpha 1.0.4</span>
+      <h2>Three-column control room</h2>
+      <span class="log-ver mono">Alpha 1.4.0</span>
       <time class="log-date mono" datetime="2026-07-24">24 July 2026</time>
     </div>
     <ul>
-      <li><span class="log-tag added">Added</span><strong>Reactor Dynamics is now open source.</strong> The simulator&rsquo;s code is released under the GNU AGPL&#8209;3.0 license, and the operator manuals and training text under Creative Commons (CC&nbsp;BY&nbsp;4.0) &mdash; free to study, share, and build on.</li>
-      <li><span class="log-tag added">Added</span><strong>A Legal page.</strong> Terms of use, the safety disclaimer, and the licensing details now live on a dedicated page, linked from every footer.</li>
-      <li><span class="log-tag added">Added</span><strong>Get in touch.</strong> Comments, questions, or feedback? You can now reach me directly at <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a> &mdash; there&rsquo;s a contact line at the bottom of the home page.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Three-column layout.</strong> Plant diagram and vitals on the left, trend chart and alarms in the middle, simulator panel on the right. Larger diagram.</li>
+      <li><span class="log-tag added">Added</span><strong>Hide the side panel.</strong> The <strong>&#9974;</strong> button hides the simulator panel and moves the time controls onto the trend/alarms column.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Auto-scaling trend chart.</strong> Each line scales to its own range; faint gridlines added.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Generator load starts in Manual.</strong> Mode&nbsp;1 free-play now begins in Manual rather than load-follow.</li>
     </ul>
   </article>
 
   <article class="log-entry">
     <div class="log-head">
-      <h2>Fine rod control, honest pressurizing, and full startup checklists</h2>
-      <span class="log-ver mono">Alpha 1.0.3</span>
-      <time class="log-date mono" datetime="2026-07-23">23 July 2026</time>
+      <h2>Open source, Legal page, contact</h2>
+      <span class="log-ver mono">Alpha 1.3.0</span>
+      <time class="log-date mono" datetime="2026-07-24">24 July 2026</time>
     </div>
     <ul>
-      <li><span class="log-tag changed">Changed</span><strong>Real fine control at criticality.</strong> The control bank is now a fine&#8209;step drive (912 steps of travel): one tap near the critical point adds about a cent and a half of reactivity &mdash; like a real plant &mdash; instead of lurching power several percent. Speeds are unchanged in feel; the 1/M plot and step readouts follow the new scale, and old saves carry over.</li>
-      <li><span class="log-tag changed">Changed</span><strong>Pressurizing takes real time now.</strong> Raising the pressurizer pressure setpoint no longer snaps the plant there in seconds &mdash; the heaters run flat out while pressure climbs at a deliberate heatup pace (a 350&nbsp;&rarr;&nbsp;600&nbsp;psi step takes about a minute and a half). Holding pressure through transients is as strong as ever.</li>
-      <li><span class="log-tag added">Added</span><strong>Mode 5 &rarr; Mode 3 heatup checklist.</strong> A live checklist walks the whole cold&#8209;board heatup: pumps, pressurization, instrument handoff, a gentle approach to criticality, and a dilution&#8209;driven ride up to Hot Standby.</li>
-      <li><span class="log-tag changed">Changed</span><strong>The startup checklist now finishes the job.</strong> It carries you past criticality, across the 5&nbsp;% boundary into Mode 1, At Power, and puts the generator on line.</li>
-      <li><span class="log-tag fixed">Fixed</span><strong>&ldquo;Cold to Power&rdquo; can&rsquo;t stall at the finish line.</strong> The mission&rsquo;s arrival check sat a hair above the temperature the plant actually settles at; it now declares Mode&nbsp;1 reliably.</li>
+      <li><span class="log-tag added">Added</span><strong>Open source.</strong> Code under AGPL&#8209;3.0, manuals under CC&nbsp;BY&nbsp;4.0.</li>
+      <li><span class="log-tag added">Added</span><strong>Legal page.</strong> Terms of use, safety disclaimer, and licensing; linked in the footer.</li>
+      <li><span class="log-tag added">Added</span><strong>Contact.</strong> <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</li>
     </ul>
   </article>
 
   <article class="log-entry">
     <div class="log-head">
-      <h2>Xenon on the chart, and clearer control readouts</h2>
-      <span class="log-ver mono">Alpha 1.0.2</span>
+      <h2>Fine rod control, timed pressurizing, startup checklists</h2>
+      <span class="log-ver mono">Alpha 1.2.0</span>
       <time class="log-date mono" datetime="2026-07-23">23 July 2026</time>
     </div>
     <ul>
-      <li><span class="log-tag added">Added</span><strong>Xenon on the strip chart.</strong> Xenon (as % of equilibrium) is now one of the trends you can plot &mdash; handy for watching the post&#8209;trip xenon peak build and decay.</li>
-      <li><span class="log-tag changed">Changed</span><strong>The six vital gauges now match the board.</strong> The main indications up top use the same green / amber / red readout colors as the plant diagram below them.</li>
-      <li><span class="log-tag changed">Changed</span><strong>Auto&#8209;controlled inputs read grey.</strong> When a control is running on automatic, its number box turns grey to show you can&rsquo;t type into it; cyan means it&rsquo;s yours to set.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Fine-step control bank.</strong> 912 steps of travel; about 1.5 cents of reactivity per tap near critical. Old saves migrate.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Pressurizing takes real time.</strong> A 350&#8209;to&#8209;600&nbsp;psi setpoint step climbs over about 90 seconds.</li>
+      <li><span class="log-tag added">Added</span><strong>Mode&nbsp;5 &rarr; Mode&nbsp;3 heatup checklist.</strong> Pumps, pressurization, instrument handoff, approach to criticality, dilution to Hot Standby.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Startup checklist runs to Mode&nbsp;1.</strong> Carries past criticality across the 5&nbsp;% boundary and puts the generator on line.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>&ldquo;Cold to Power&rdquo; completion.</strong> The arrival check now declares Mode&nbsp;1 reliably.</li>
     </ul>
   </article>
 
   <article class="log-entry">
     <div class="log-head">
-      <h2>Hands-on TMI-2, a calmer board, and a smoother ride</h2>
-      <span class="log-ver mono">Alpha 1.0.1</span>
+      <h2>Xenon trend, clearer readouts</h2>
+      <span class="log-ver mono">Alpha 1.1.0</span>
       <time class="log-date mono" datetime="2026-07-23">23 July 2026</time>
     </div>
     <ul>
-      <li><span class="log-tag changed">Changed</span><strong>TMI-2, Part 1 is now hands-on.</strong> You work the controls the way the night-shift crew did &mdash; securing injection, isolating the stuck relief valve &mdash; instead of only watching it play out. The stuck valve, its hot tailpipe, and the maintenance tag are all visible on the board now.</li>
-      <li><span class="log-tag changed">Changed</span><strong>Calmer, more honest gauges.</strong> Indication noise is cut in half, and boration/dilution now moves power at the pace of the actual (slowly&#8209;mixing) boron rather than jumping ahead of the reading. Control rods are a touch gentler near startup.</li>
-      <li><span class="log-tag added">Added</span><strong>Keyboard rods and clearer controls.</strong> Drive the control rods with the &uarr;/&darr; keys, and every clickable control now glows when you hover it. The generator&#8209;load and boron arrows step by 1 (MW / ppm) for fine trimming.</li>
-      <li><span class="log-tag fixed">Fixed</span><strong>No more flicker or stuck rods.</strong> The changing numbers and strip chart no longer strobe after a few minutes of play, and holding an arrow key no longer leaves the rods drifting after you let go.</li>
+      <li><span class="log-tag added">Added</span><strong>Xenon trend.</strong> Xenon (% of equilibrium) is now plottable on the strip chart.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Vital gauges match the board.</strong> Same green/amber/red readout colors as the diagram.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Auto-controlled inputs read grey.</strong> Cyan means the value is yours to set.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
+      <h2>Hands-on TMI-2, calmer board</h2>
+      <span class="log-ver mono">Alpha 1.0.0</span>
+      <time class="log-date mono" datetime="2026-07-23">23 July 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag changed">Changed</span><strong>TMI-2 Part&nbsp;1 is hands-on.</strong> Secure injection and isolate the stuck relief valve yourself; the stuck valve, hot tailpipe, and maintenance tag are on the board.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Calmer gauges.</strong> Indication noise halved; boration/dilution moves power at the boron mixing rate. Gentler rods near startup.</li>
+      <li><span class="log-tag added">Added</span><strong>Keyboard rods and finer controls.</strong> Arrow keys drive the rods; controls highlight on hover; generator-load and boron arrows step by 1&nbsp;MW / 1&nbsp;ppm.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>No strobing or drifting rods.</strong> Numbers and strip chart no longer strobe after a few minutes; rods stop when you release the key.</li>
     </ul>
   </article>
 

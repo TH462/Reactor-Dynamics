@@ -48,6 +48,7 @@
   // Fraction of the strip-chart plot width the traces occupy; the remaining right
   // gutter holds the live value chips (see drawChart / drawFloats / rewindPickClick).
   var CHART_PLOT_FRAC = 0.86;
+  var CHART_RECORD_SEC = 1800;   // keep 30 min of history; the chart DISPLAYS only ui.window of it
   var smoothed = {};        // id -> display-damped instrument value
   var DISPLAY_DAMP_K = 0.18;
 
@@ -145,11 +146,10 @@
         { id: 'tcold',    label: 'Cold Leg', c: '#4a86c0', get: function (i) { return i.tcold; }, range: [260, 320], fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
         { id: 'steam_flow',label: 'Steam Flow',c: '#8a9a5a', get: function (i) { return i.steam_flow * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'fw_flow',  label: 'Feed Flow',c: '#4a8a86', get: function (i) { return i.fw_flow * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        // Boron trend removed from the UI with the analyzer (owner ruling 2026-07-23 —
-        // chemistry sampling is the teaching tool; boronometers aren't relied on).
-        // Restore by uncommenting; a future overhaul may re-add it as a stepped
-        // chem-sample history (get: i.boron_sample) instead of the live analyzer.
-        // { id: 'boron',    label: 'Boron',    c: '#9a7ab8', get: function (i) { return i.boron_analyzer; }, range: [0, 1400], fmt: function (v) { return v.toFixed(0) + ' ppm'; } },
+        // Boron trend (RCS boron reading). Re-added as a plottable graph option
+        // 2026-07-24 (owner request); the board itself still shows boron via the
+        // chemistry SAMPLE mechanic, not a live boronometer.
+        { id: 'boron',    label: 'Boron',    c: '#9a7ab8', get: function (i) { return i.boron_analyzer; }, range: [0, 1400], fmt: function (v) { return v.toFixed(0) + ' ppm'; } },
         { id: 'xenon',    label: 'Xenon',    c: '#b05a8a', get: function (i) { return i.xenon_pct_eq; }, range: [0, 250], fmt: function (v) { return v.toFixed(0) + '% eq'; } },
         { id: 'steam_p',  label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
         { id: 'sur',      label: 'Startup Rate', c: '#c0913e', get: function (i) { return i.startup_rate; }, range: [-2, 3], fmt: function (v) { return v.toFixed(1) + ' DPM'; } },
@@ -585,7 +585,7 @@
     var chartIns = Object.assign({}, s.instruments);
     if (s.true_state && s.true_state.xenon_pct_eq != null) chartIns.xenon_pct_eq = s.true_state.xenon_pct_eq;
     chartBuf.push({ t: s.metadata.sim_time, ins: chartIns });
-    var cutoff = s.metadata.sim_time - ui.window;
+    var cutoff = s.metadata.sim_time - CHART_RECORD_SEC;   // retain 30 min regardless of the display window
     while (chartBuf.length > 2 && chartBuf[0].t < cutoff) chartBuf.shift();
     drawChart();
   }
@@ -1602,10 +1602,15 @@
     // the render grow heavier over time until it blew the frame budget and the whole
     // UI (numbers, chart, clock) started to jank/strobe a couple minutes in. Sampling
     // to the plot's pixel resolution makes drawChart O(pixels), not O(buffer).
+    // Sample only the VISIBLE window [t0, t1]; the buffer holds up to 30 min, so a
+    // longer display window shows history, but decimation must not spend its pixel
+    // budget on off-screen samples.
+    var startI = 0;
+    while (startI < chartBuf.length - 1 && chartBuf[startI].t < t0) startI++;
     var MAX_PTS = Math.max(2, Math.round(PW));   // ~1 sample per plot pixel — plenty for a strip chart
     var idx = [];
-    var stride = Math.max(1, Math.ceil(chartBuf.length / MAX_PTS));
-    for (var bi = 0; bi < chartBuf.length; bi += stride) idx.push(bi);
+    var stride = Math.max(1, Math.ceil((chartBuf.length - startI) / MAX_PTS));
+    for (var bi = startI; bi < chartBuf.length; bi += stride) idx.push(bi);
     if (idx[idx.length - 1] !== chartBuf.length - 1) idx.push(chartBuf.length - 1);   // always include the latest sample
     // Dynamic per-series range: fit each visible line to its OWN min/max (plus a
     // little padding) so small changes fill the plot height instead of flatlining

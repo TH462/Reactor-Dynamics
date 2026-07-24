@@ -154,9 +154,10 @@ body {
 .app.pwr-synoptic > .bottom-row > .alarm-panel  { order: 2; flex: 1 1 0; min-height: 0; }
 .app.pwr-synoptic > .bottom-row > .strip-chart  { order: 3; flex: 1 1 0; min-height: 0; }
 
-/* ⛶ hides the right sim panel → two columns, the diagram even larger */
+/* ⛶ hides the right sim panel → two columns; the trend/alarms column grows into
+   the freed space (the diagram stays about its 3-column width) */
 .app.pwr-synoptic.sim-hidden {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  grid-template-columns: minmax(0, 1fr) minmax(400px, 700px);
   grid-template-areas: "diagram midcol";
 }
 .app.pwr-synoptic.sim-hidden > .right-col { display: none; }
