@@ -297,6 +297,17 @@
     if (s.boron_reactive == null) s.boron_reactive = s.boron_ppm;
     var btau = this.cfg.reactivity.boron_mix_tau_s || 0;
     s.boron_reactive += (btau > 0 ? dt / (btau + dt) : 1) * (s.boron_ppm - s.boron_reactive);
+    // 13b. Boron grab sample: lab turnaround, then the result posts — the MIXED
+    // (reactive) concentration at analysis time, rounded to 1 ppm. Deterministic
+    // (no PRNG draw — the instrument noise stream must not shift).
+    if (s._boron_sample_timer > 0) {
+      s._boron_sample_timer -= dt;
+      if (s._boron_sample_timer <= 0) {
+        s._boron_sample_timer = 0;
+        s.boron_sample_ppm = Math.round(s.boron_reactive != null ? s.boron_reactive : s.boron_ppm);
+        s.boron_sample_seq = (s.boron_sample_seq || 0) + 1;
+      }
+    }
     // 14. Fuel damage / melt.
     TH.checkDamage(s, this.cfg);
 
@@ -346,6 +357,11 @@
       safety_relief_active: s.safety_open || s.safety_flow > 0,
       rcp_cavitating: !!s.rcp_cavitating,
       condensate_pump_running: s.condensate_pump_running !== false,
+      // RCS boron grab sample: last lab result + pending flag + result counter
+      // (status pass-through — no lag/noise; the lab turnaround IS the lag).
+      boron_sample: s.boron_sample_ppm,
+      boron_sample_pending: s._boron_sample_timer > 0,
+      boron_sample_seq: s.boron_sample_seq || 0,
     };
   };
 
@@ -803,6 +819,13 @@
         // ppm/s: + borate, − dilute, 0 hold (needs the charging pump running)
         s.boron_adjust = cmd.rate || 0;
         break;
+      case 'take_boron_sample':
+        // Draw an RCS grab sample; the result posts after the lab turnaround
+        // (boron_sample_lab_s). A sample already in the lab is not re-drawn.
+        if (!(s._boron_sample_timer > 0)) {
+          s._boron_sample_timer = this.cfg.reactivity.boron_sample_lab_s || 60;
+        }
+        break;
       case 'inject_failure':
         // Unknown ids must be loud: a silent no-op here let a test believe its
         // "LOCA" was running for months (effect names are not failure ids).
@@ -1085,6 +1108,9 @@
       charging_flow: 0, charging_setpoint: 0, letdown_flow: 0, leak_flow: 0,
       letdown_orifice_a: false, letdown_orifice_b: false,
       charging_pump_running: true, cvcs_auto: false, boron_adjust: 0,   // CVCS
+      // RCS boron grab sample (take_boron_sample): last lab result (ppm; null =
+      // never sampled), lab-turnaround countdown, and a result sequence counter.
+      boron_sample_ppm: null, _boron_sample_timer: 0, boron_sample_seq: 0,
       // Merged HPI/LPI emergency injection (one flag, two-segment pump curve)
       // + passive accumulators (ECCS, §6.2/§6.3).
       hpi_active: false, hpi_flow_normalized: 0, hpi_flow_multiplier: 1.0,
@@ -1352,6 +1378,11 @@
     if (s.msiv_open == null) s.msiv_open = true;
     if (s.sg_safety_open == null) s.sg_safety_open = false;
     if (s.sg_safety_flow == null) s.sg_safety_flow = 0;
+    // Boron grab sample (2026-07-23 batch-dose rework). Older saves have never
+    // sampled — null result, no lab work pending.
+    if (s.boron_sample_ppm === undefined) s.boron_sample_ppm = null;
+    if (s._boron_sample_timer == null) s._boron_sample_timer = 0;
+    if (s.boron_sample_seq == null) s.boron_sample_seq = 0;
     // Operator pressure setpoint + lowerable steam-dump setpoint (Mode 5↔1 rework).
     // Older saves default to NOP pressure and the config no-load dump setpoint.
     if (s.pressure_setpoint == null) s.pressure_setpoint = this.cfg.pressurizer.P_setpoint;

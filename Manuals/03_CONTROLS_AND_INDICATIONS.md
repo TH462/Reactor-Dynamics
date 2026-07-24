@@ -287,6 +287,16 @@ lagged analyzer, so a dose lands on the ppm asked without overshoot. Any target 
 executes, however small (1 ppm nudges work). The dose pauses if the charging pump stops
 and resumes with it. A manual Borate/Dilute takes the channel to **MAN**.
 
+**CHEM SAMPLE — the authoritative number.** Chemistry confirms every completed dose
+automatically: an RCS grab sample is drawn and the lab posts the result (`sample N ppm`)
+after a compressed ~60 s turnaround — real labs take 30–60 min. Take a **manual sample**
+(CHEM SAMPLE button) when the dose books may be stale: after ECCS/accumulator injection
+(which borates the core outside the makeup system) or after freehand Borate/Dilute runs.
+A fresh result while no dose is running **re-baselines the panel** — the books and the
+displayed target snap to the lab number, so the next dose is computed from reality. The
+online analyzer stays what it is: a lagged, noisy trend instrument; the lab sample is
+the reference (that hierarchy is real).
+
 > **At full power, dilution moves Tavg, not power.** With the turbine at rated load the
 > reactor self-regulates back to ~100 % — the boron change appears as a Tavg change
 > (~0.5 °C per ppm). Use dilution to manage rod position / Tavg; move POWER with the

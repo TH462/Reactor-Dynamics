@@ -1954,6 +1954,7 @@
     'borate': function () { cmd({ action: 'set_boron_adjust', rate: 2 }); },
     'dilute': function () { cmd({ action: 'set_boron_adjust', rate: -2 }); },
     'boron-hold': function () { cmd({ action: 'set_boron_adjust', rate: 0 }); },
+    'boron-sample': function () { cmd({ action: 'take_boron_sample' }); },   // RCS grab sample → lab result after turnaround
     'charge-pump-on': function () { cmd({ action: 'set_charging_pump', running: true }); },
     'charge-pump-off': function () { cmd({ action: 'set_charging_pump', running: false }); },
     'charge-set': function () { cmd({ action: 'set_charging_flow', normalized: inputVal('chargeSet') / 1000 }); },

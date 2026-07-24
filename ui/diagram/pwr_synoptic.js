@@ -571,8 +571,14 @@
       '<div class="prow"><span class="k">B</span>' +
       seg([{ l: 'Bor', act: 'borate', f: 'bor' }, { l: 'Hold', act: 'boron-hold', on: 1, f: 'borHold' }, { l: 'Dil', act: 'dilute', f: 'dil' }],
         'Boron — Borate adds absorber (power down), Dilute removes it. Needs the charging pump running.') +
-      '<span class="v" data-f="cvcsBoron" data-scanner-hint="Boron analyzer — slow chemistry sample (ppm), not the live core concentration.">—</span>' +
+      '<span class="v" data-f="cvcsBoron" data-scanner-hint="Boron analyzer — online boronometer (ppm), lagged ~45 s; the grab sample below is the authoritative lab number.">—</span>' +
       '<span class="dual lrn-only" data-f="cvcsBoronDual"></span></div>' +
+      '<div class="prow"><span class="k">Dose</span>' +
+      '<span class="v" data-f="cvcsDose" data-scanner-hint="Boron batch-dose totalizer (BORON CONTROL target) — the metered change remaining. Doses stop on the totalizer, not the analyzer.">—</span></div>' +
+      '<div class="prow"><span class="k">Chem</span>' +
+      seg([{ l: 'Sample', act: 'boron-sample', f: 'chemSample' }],
+        'Draw an RCS grab sample — the lab posts the authoritative boron concentration after a (compressed) turnaround. Sampled automatically after each completed dose; take one manually when the books may be stale (after ECCS injection or freehand Bor/Dil).') +
+      '<span class="v" data-f="cvcsChem">—</span></div>' +
       '</div></div>';
 
     h += '<div class="diagram-panel" id="pwAccumulatorPanel" data-highlight-id="accumulators" data-anchor="pwAccumulatorsAnchor"' +
@@ -1133,6 +1139,14 @@
     if (refs.cvcsBoronDual) refs.cvcsBoronDual.textContent = learning ? '·true ' + ts.boron_ppm.toFixed(0) : '';
     segSync('bor', cs.boron_adjust > 0); segSync('borHold', !cs.boron_adjust); segSync('dil', cs.boron_adjust < 0);
     ['bor', 'dil'].forEach(function (f) { if (refs[f]) refs[f].disabled = !pumpOn; });
+    // Batch-dose totalizer status (the boron_conc channel's note) + last chem sample.
+    var bcCh = null, chList = (s.automation && s.automation.channels) || [];
+    for (var bci = 0; bci < chList.length; bci++) if (chList[bci].id === 'boron_conc') { bcCh = chList[bci]; break; }
+    txt('cvcsDose', bcCh ? (bcCh.engaged ? (bcCh.note || 'idle') : 'MAN') : '—');
+    txt('cvcsChem', ins.boron_sample_pending ? 'SAMPLING…'
+      : (ins.boron_sample != null ? 'sample ' + ins.boron_sample + ' ppm' : '—'));
+    segSync('chemSample', !!ins.boron_sample_pending);
+    if (refs.chemSample) refs.chemSample.disabled = !!ins.boron_sample_pending;
 
     // ---- Accumulator panel (flow UI only while discharging) ----
     var accOn = !!ins.accumulators_discharging;

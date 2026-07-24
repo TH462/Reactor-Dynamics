@@ -46,6 +46,26 @@ where the two differ or where judgment was exercised.
 | **Repo** | Commits go directly to `main`, one per module. | Matches the linear, single-developer build (the scaffold was committed to `main`); each module is an independent, test-gated unit. |
 | **Load order** | `config → protection → thermal → pressurizer → primary → steam_generator → instruments → engine`, then layers. | The engine captures `RD.pwr*` helper namespaces at IIFE-eval time, so its dependencies must load first. Encoded in `index.html`, `test_pwr.html`, and the Node runners. |
 
+### Boron chemistry sample — auto-confirm + CHEM SAMPLE button (2026-07-23, owner panel-design ruling)
+
+**Claim.** With batch dosing, the channel's bookkept concentration is exact in normal ops but goes
+stale exactly where real books do: external boration (ECCS/accumulators) and freehand Bor/Dil.
+Real plants close that gap with the chemistry lab — a sample after every planned change, an
+unscheduled one when the books are in doubt. **Decision (owner, AskUserQuestion):** model the lab.
+`take_boron_sample` (engine) starts a compressed ~60 s turnaround, then posts the **mixed
+(reactive) concentration rounded to 1 ppm** — deterministic; deliberately NOT an instrument-spec
+gauss draw, since inserting a PRNG draw would shift every downstream instrument's noise stream
+and break save/scenario determinism. Result rides `instruments.boron_sample/_pending/_seq`
+(status pass-through). The `conc` channel auto-samples on dose completion (confirmatory
+chemistry); a fresh result while idle re-baselines books AND displayed target to the lab number —
+chosen over books-only re-anchor because a books-only update would immediately open a dose toward
+the stale target (probed during design). Mid-dose results latch without applying (the totalizer
+is already metering honest injection). The analyzer keeps its role as the lagged online trend;
+the lab is the reference — the real instrument hierarchy, and a second HR1 surface (books vs
+boronometer vs lab). UI: board CHEM SAMPLE button + lab readout (EXTRA_ITEMS, box grown in
+extraItems()), dose countdown on the status value, synoptic Dose/Chem rows.
+Worklog + probe numbers: `Diagnostic/TUNING_LOG.md` 2026-07-23 (chemistry-sample entry).
+
 ### Boron batch-dose rework — `conc` channel semantics (2026-07-23, owner "power doesn't follow dilution")
 
 **Claim.** The `boron_conc` channel's closed-loop seek on the boron analyzer was structurally

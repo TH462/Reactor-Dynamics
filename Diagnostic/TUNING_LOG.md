@@ -105,6 +105,30 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-23 — Boron chemistry sample (owner-approved: auto + manual SAMPLE button)  ✅
+Follow-on to the batch-dose rework (AskUserQuestion ruling: auto sample on dose completion +
+manual button). Engine: `take_boron_sample` command → `_boron_sample_timer` (lab turnaround
+`reactivity.boron_sample_lab_s = 60` [tune], compressed from real 30–60 min) → result =
+**mixed (`boron_reactive`) concentration rounded to 1 ppm** — deterministic, NO PRNG draw (the
+noise stream must not shift); exposed as instrument STATUS fields `boron_sample` /
+`boron_sample_pending` / `boron_sample_seq` (status pass-through, not a lagged spec). Kernel
+(`_stepConc`): a completed dose auto-issues the sample (confirmatory chemistry); a FRESH result
+while idle **re-baselines** — books AND `c.sp` snap to the lab number (prevents both stale-books
+doses and phantom doses toward an old target; mid-dose results latch but don't apply); seq latches
+on engage/first-eval so stale results never fire. `dose_remaining` added to the automation
+snapshot for totalizer readouts. UI: board EXTRA_ITEMS `bdBoronSample` (CHEM SAMPLE button, lit
+while lab busy) + `bdBoronChem` (readout), BORON CONTROL box grown 85→115 via extraItems();
+status value appends `DILUTING 12→`; synoptic CVCS gets Dose + Chem rows and a Sample button
+(`boron-sample` act). Probed (full stack): manual sample posts ~60 s and re-baselines
+(762→822 after a +180 freehand, no phantom dose); dose completion auto-confirms (10 ppm ask →
+lab 724 = target); legacy saves (fields stripped) migrate clean, zero drift. **Gotcha:**
+`assembleSnapshot().instruments` ALIASES the live reading object — a probe that stores snapshots
+and prints later reads current values, not captured ones (bit this session; capture primitives).
+Headless Edge: CHEM SAMPLE click → SAMPLING… → result renders; panel screenshots verified.
+Gates: pwr 31/31, autoctl 20/20, m4 18/18, m5 19/19, m6 16/16, m6ph 8/8, m7 OK, ops pwr 21/21,
+behavior 30/0/0, campaign 51/51, procedures 22/22, checklist 24/24, e2e 28/30 (same 2), scenarios
+3/3. Manuals 03 §7.5 CHEM SAMPLE block; repacked.
+
 ### 2026-07-23 — Boron batch-dose rework (S8 + S9 fixed; owner-approved design)  ✅
 Owner: "power change doesn't follow the dilution change." Diagnosis (probes: engine-direct
 OpsHarness + full-stack SimulationService, free-play defaults) → **S8–S11**. Owner asked how real

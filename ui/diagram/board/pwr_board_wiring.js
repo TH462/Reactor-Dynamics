@@ -172,7 +172,12 @@
     //     flux); the engine ignores a blocked switch, so active() reflects the true state
     //     either way. Lit = energized/monitoring. Secure it during the SR→IR handoff to
     //     clear the 1e5 cps high-flux trip (pwr_control 'sr_high') before it scrams the ascent. ---
-    bdSrDetector: { press: function (s) { cmd({ action: 'set_sr_detector', on: !IN(s).sr_energized }); }, active: function (s) { return !!IN(s).sr_energized; } }
+    bdSrDetector: { press: function (s) { cmd({ action: 'set_sr_detector', on: !IN(s).sr_energized }); }, active: function (s) { return !!IN(s).sr_energized; } },
+    // --- Boron grab sample (batch-dose rework): draws an RCS sample; the lab posts the
+    //     authoritative ppm after the turnaround (instruments.boron_sample/_pending).
+    //     Lit while the lab is working. Doses auto-sample on completion; this button is
+    //     for when the books may be stale (post-ECCS, freehand Bor/Dil). ---
+    bdBoronSample: { press: function () { cmd({ action: 'take_boron_sample' }); }, active: function (s) { return !!IN(s).boron_sample_pending; } }
   };
 
   // Driver-supplied control tiles NOT in the generated board_data.js — kept here so they
@@ -187,7 +192,13 @@
     // its high-flux trip scrams the ascent. Sits just under the SR indication and above the
     // SCRAM button (which extraItems() nudges down to make room). See BUTTONS.bdSrDetector.
     { id: 'bdSrDetector', kind: 'button', name: '', left: 505, top: 305, width: 110, height: 20,
-      label: 'SR DET', color: '#5aad7c', fontSize: 12 }
+      label: 'SR DET', color: '#5aad7c', fontSize: 12 },
+    // Boron chemistry sample row (batch-dose rework): button + lab-result readout on a new
+    // row inside the BORON CONTROL box (extraItems() grows the box to make room).
+    { id: 'bdBoronSample', kind: 'button', name: '', left: 735, top: 920, width: 100, height: 22,
+      label: 'CHEM SAMPLE', color: '#5aad7c', fontSize: 11 },
+    { id: 'bdBoronChem', kind: 'value', name: 'Boron chem sample result', left: 1011, top: 922,
+      value: '—', unit: '', color: '#5aad7c', fontSize: 14, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -234,7 +245,19 @@
     imrppyp0wfo: function (s) { return accN2Psi(s); },                                                  // accumulator N2 psig
     imrppztrng1: function (s) { return CS(s).eccs_mode, IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
     imrpq0n2ujv: function (s) { return r0(accFill(s)); },                                               // accumulator fill %
-    imrqn8uo0z: function (s) { var r = CS(s).boron_adjust || 0; return r > 0 ? 'BORATING' : (r < 0 ? 'DILUTING' : 'HOLD'); }, // boron status
+    imrqn8uo0z: function (s) {                                                                           // boron status (+ dose countdown)
+      var r = CS(s).boron_adjust || 0;
+      var base = r > 0 ? 'BORATING' : (r < 0 ? 'DILUTING' : 'HOLD');
+      // Batch-dose totalizer: append the metered ppm remaining while a channel dose runs.
+      var c = chan(s, 'boron_conc'), rem = c && c.dose_remaining;
+      if (r !== 0 && rem != null && Math.abs(rem) > 0.05) base += ' ' + Math.round(Math.abs(rem)) + '→';
+      return base;
+    },
+    bdBoronChem: function (s) {                                                                          // boron chem sample (lab result)
+      if (IN(s).boron_sample_pending) return 'SAMPLING…';
+      var v = IN(s).boron_sample;
+      return v != null ? r0(v) + ' PPM' : '—';
+    },
     imrqrouhrdr: function () { return 'NORMAL'; },                                                      // condensate polisher (behavioral)
     imrqzuhzre3: function (s) { return r0(kPa2inHg(IN(s).condenser_vacuum)); },                         // condenser vacuum inHg
     imrr1fmzzjp: function (s) { return r0(IN(s).sg_level); },                                           // SG level %
@@ -670,6 +693,9 @@
           // carries a static '/228' unit suffix on both step readouts — patch it
           // here so it survives a diagram re-export.
           if (doc.items[i].id === 'imrpk4pjcpd' || doc.items[i].id === 'imrpnzfsfcx') { doc.items[i].unit = '/912'; }
+          // Boron batch-dose rework: grow the BORON CONTROL box one row so the
+          // CHEM SAMPLE button + lab-result readout (EXTRA_ITEMS) fit inside it.
+          if (doc.items[i].title === 'BORON CONTROL') { doc.items[i].height = 115; }
         }
       }
       return EXTRA_ITEMS;

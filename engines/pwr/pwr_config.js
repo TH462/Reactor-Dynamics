@@ -113,6 +113,11 @@
       // (needs the charging pump). Charging/letdown control primary INVENTORY; auto
       // mode makes up identified leakage by modulating charging up to charging_max.
       boron_adjust_rate: 2.0,      // ppm/s while borating/diluting [tune]
+      // RCS boron grab sample (take_boron_sample): lab turnaround before the
+      // result posts. Real labs run ~30–60 min; compressed for training like the
+      // adjust rate above. The result is the mixed (reactive) concentration
+      // rounded to 1 ppm — authoritative, deterministic (no PRNG draw). [tune]
+      boron_sample_lab_s: 60.0,
       // CVCS↔inventory coupling (P7 drain-rate retune, 2026-07-22). Charging and
       // letdown are TENS of gpm against the whole RCS, so their normalized flows
       // (sized for the gauges/lineup: orifice A ≈ 0.030 ≡ 20 gpm) must NOT enter
@@ -577,7 +582,12 @@
                'afw_active', 'afw_pump_running', 'afw_block_open', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
                'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating',
                // condensate pump run status (operator-controlled; gates main feedwater)
-               'condensate_pump_running'],
+               'condensate_pump_running',
+               // RCS boron grab sample (take_boron_sample): last lab RESULT (ppm,
+               // null before the first sample), lab-pending flag, and a result
+               // sequence counter consumers use to spot a fresh result. Passed
+               // through as status (no PRNG draw — the noise stream must not shift).
+               'boron_sample', 'boron_sample_pending', 'boron_sample_seq'],
     },
 
     // ---------------------------------------------------------- named init states

@@ -95,6 +95,14 @@ trip_blocks keys present = currently-blocked. At full power ir_high+pr_low_setpo
   NO UI-side control loop. Semantics (2026-07-23 rework): a new target meters a feedforward
   BATCH DOSE stopped by a flow totalizer (real makeup-panel behavior) — it does NOT seek the
   lagged analyzer, has no deadband (1 ppm arrow nudges execute), and runs at 0.05 ppm/s.
+  The status value (imrqn8uo0z) appends the dose remaining (`DILUTING 12→`) from the
+  channel's `dose_remaining` snapshot field while a dose runs.
+- **Boron chem sample**: driver EXTRA_ITEMS `bdBoronSample` (button → `take_boron_sample`;
+  lit while the lab works) + `bdBoronChem` (lab result: `SAMPLING…` / `<ppm> PPM` / `—`,
+  from `instruments.boron_sample`/`boron_sample_pending`). Result posts after the compressed
+  ~60 s lab turnaround; a completed channel dose auto-samples. A fresh result while the
+  channel is idle re-baselines books AND target to the lab number (see control_kernel
+  `_stepConc`). extraItems() grows the BORON CONTROL box (h 85 → 115) for the new row.
 - New instruments carry **noise:0** deliberately — the instrument PRNG is a continuous cross-step
   stream, so a noise draw would shift every downstream instrument's noise and move marginal
   campaign endpoints. Lag (deterministic) is kept.

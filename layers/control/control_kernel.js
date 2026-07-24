@@ -90,7 +90,7 @@
     for (var ci = 0; ci < chDefs.length; ci++) {
       var ch = { def: chDefs[ci], engaged: false, sp: null, spEff: null, I: 0, lastAct: null,
                  lastSent: null, note: '', bangMode: 'idle', pvF: null, pvNow: null, rate: null,
-                 concMode: 'hold', concBasis: null, concLastSp: null };
+                 concMode: 'hold', concBasis: null, concLastSp: null, concSampleSeq: null };
       this.channels.push(ch);
       this.byId[chDefs[ci].id] = ch;
     }
@@ -716,8 +716,9 @@
       c.spEff = c.sp;
       c.I = def.init ? (def.init(ctx) || 0) : 0;
       c.lastAct = null; c.lastSent = null; c.bangMode = 'idle'; c.concMode = 'hold';
-      // conc: open the books at the captured target — no dose pending on engage.
-      c.concBasis = c.sp; c.concLastSp = c.sp;
+      // conc: open the books at the captured target — no dose pending on engage;
+      // sample seq re-latches on the first evaluation (a stale result must not fire).
+      c.concBasis = c.sp; c.concLastSp = c.sp; c.concSampleSeq = null;
       c.pvF = null; c.rate = null;
     } else {
       // Leave the plant exactly where automation had it — plus safe stand-down.
@@ -959,6 +960,26 @@
       }
       c.concLastSp = sp;
     }
+    // Fresh lab RESULT (take_boron_sample, exposed as instruments.boron_sample/_seq —
+    // like set_boron_adjust above, a conc-kind plant coupling): while IDLE, a new
+    // result re-baselines the channel — books AND target snap to the lab number, so
+    // the next dose is computed from reality without starting one now (the operator
+    // dials the change from an honest baseline). Mid-dose results are latched but
+    // not applied (the totalizer is already counting honest injection).
+    var seq = ctx.instruments ? ctx.instruments.boron_sample_seq : null;
+    if (seq != null) {
+      if (c.concSampleSeq == null) c.concSampleSeq = seq;
+      else if (seq !== c.concSampleSeq) {
+        c.concSampleSeq = seq;
+        var lab = ctx.instruments.boron_sample;
+        if (c.concMode === 'hold' && lab != null && isFinite(lab)) {
+          c.concBasis = lab;
+          c.sp = def.sp ? clip(lab, def.sp.min, def.sp.max) : lab;
+          c.concLastSp = c.sp;
+          sp = c.sp;
+        }
+      }
+    }
     var remaining = sp - c.concBasis;   // + → borate; the totalizer stop is |remaining| ≈ 0
     if (pumpOff) {
       if (c.concMode !== 'hold') { this._sendInternal({ action: 'set_boron_adjust', rate: 0 }); c.concMode = 'hold'; }
@@ -966,7 +987,13 @@
       return;
     }
     var want = remaining > 0.05 ? 'borate' : remaining < -0.05 ? 'dilute' : 'hold';
-    if (want === 'hold' && c.concMode !== 'hold') c.concBasis = sp;   // dose delivered — square the books
+    if (want === 'hold' && c.concMode !== 'hold') {
+      c.concBasis = sp;   // dose delivered — square the books
+      // Confirmatory chemistry: draw the post-dose sample automatically, the way a
+      // real crew samples after every planned boron change (result posts after the
+      // lab turnaround and re-baselines above — normally a no-op confirmation).
+      this._sendInternal({ action: 'take_boron_sample' });
+    }
     var note = want === 'hold' ? 'idle'
       : (want === 'borate' ? 'borating' : 'diluting') + ' — ' + Math.abs(remaining).toFixed(1) + ' ppm to go';
     if (want === c.concMode) { c.note = note; return; }
@@ -1003,6 +1030,10 @@
                                 dp: def.sp.dp != null ? def.sp.dp : 0, step: def.sp.step || 1,
                                 dim: def.sp.dim || null };
       }
+      // conc: signed batch-dose remaining (+ borate / − dilute), for totalizer readouts.
+      if (def.kind === 'conc') {
+        entry.dose_remaining = (c.engaged && c.sp != null && c.concBasis != null) ? c.sp - c.concBasis : null;
+      }
       out.push(entry);
     }
     var result = { channels: out };
@@ -1022,7 +1053,8 @@
       var c = this.channels[i];
       ch[c.def.id] = { engaged: c.engaged, sp: c.sp, spEff: c.spEff, I: c.I, lastAct: c.lastAct,
                        lastSent: c.lastSent, note: c.note, bangMode: c.bangMode, pvF: c.pvF, rate: c.rate,
-                       concMode: c.concMode, concBasis: c.concBasis, concLastSp: c.concLastSp };
+                       concMode: c.concMode, concBasis: c.concBasis, concLastSp: c.concLastSp,
+                       concSampleSeq: c.concSampleSeq };
     }
     return { t: this._autoT, acc: this._autoAcc, channels: ch, esf: Object.assign({}, this.esfAuto),
              trip_blocks: Object.assign({}, this.tripBlocks) };
@@ -1047,10 +1079,11 @@
         c.concMode = sv.concMode || 'hold';
         c.concBasis = sv.concBasis != null ? sv.concBasis : c.sp;
         c.concLastSp = sv.concLastSp != null ? sv.concLastSp : c.sp;
+        c.concSampleSeq = sv.concSampleSeq != null ? sv.concSampleSeq : null;   // null → latch on first evaluation
       } else {
         c.engaged = false; c.sp = null; c.spEff = null; c.I = 0; c.lastAct = null;
         c.lastSent = null; c.note = ''; c.bangMode = 'idle'; c.pvF = null; c.rate = null;
-        c.concMode = 'hold'; c.concBasis = null; c.concLastSp = null;
+        c.concMode = 'hold'; c.concBasis = null; c.concLastSp = null; c.concSampleSeq = null;
       }
       c.pvNow = null;
     }

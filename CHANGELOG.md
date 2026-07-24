@@ -8,6 +8,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Boron CHEM SAMPLE — the lab is now on the board.** A new `take_boron_sample` command draws
+  an RCS grab sample; the lab posts the authoritative concentration after a compressed ~60 s
+  turnaround (real labs: 30–60 min). Chemistry **confirms every completed dose automatically**
+  (the "sample after every planned boron change" ritual), and a **CHEM SAMPLE button** (board
+  BORON CONTROL panel + CVCS synoptic) covers the recovery case: after ECCS/accumulator boration
+  or freehand Borate/Dilute, a fresh result **re-baselines the panel** — dose books and displayed
+  target snap to the lab number so the next dose computes from reality. The board's boron status
+  now shows the dose countdown (`DILUTING 12→`), and the panel carries the lab readout
+  (`SAMPLING…` → `705 PPM`). Result is deterministic (mixed concentration, 1 ppm resolution — no
+  PRNG shift); old saves migrate (never sampled, no lab pending).
+
 ### Changed
 - **Boron target control is now a metered BATCH DOSE (real makeup-panel semantics).** The board's
   BORON CONTROL target used to *seek* the boron analyzer — but that sample lags ~45 s, so a dose
