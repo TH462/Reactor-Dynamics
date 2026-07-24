@@ -35,6 +35,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   otherwise fall back to the step's named control. Works on the checklist bubble list.
 
 ### Changed
+- **The control room fills the window: a bigger diagram and no dead space beside it.**
+  Two independent wastes of page, both worst on wide-but-short windows (2560×1080, any
+  un-maximized landscape window). First, the board reserved phantom width: the
+  right-anchored, auto-width indication tiles were measured as `left + width` — their
+  builder width, not their footprint — so the diagram was scaled to fit a box ~12 % wider
+  than it draws. Fitting is now measured from the rendered tiles, and **the diagram is
+  ~15 % larger at every window size**. Second, whenever the diagram fits to *height* the
+  leftover width was simply blank: the alarms/trend and simulator columns stayed pinned at
+  340/360 px with hundreds of px of nothing between them and the board. Those two columns
+  now stretch into that space (to 860 px and 520 px; 1200 px for alarms/trend when ⛶ hides
+  the simulator panel) and give it back when the diagram needs it. At 2560×1080 the dead
+  strip beside the board goes from **676 px to ~40 px**. Narrow/stacked layouts are
+  unaffected. (`ui/diagram/board/pwr_board.js` `contentBounds`/`fitColumns`, `ui/shell.css`
+  `--midcol-w`/`--simcol-w`.)
 - **`privacy.html` now describes what is actually collected.** It previously stated the site
   collects "**nothing**", which the analytics beacon makes false. The *Right now* section now
   names the page-view data (path, referrer, country, device/browser/OS), states that no cookies
