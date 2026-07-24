@@ -1,10 +1,14 @@
 /* comp_porv.js — PORV (spring-bonnet angle relief valve), ported from
  * inbox/design_import/PORV.dc.html per ui/diagram/board/PORTING_CONTRACT.md.
  *
- * update({ open, showLabel }) — `open` drives the stem/disc lift, vent plume,
- * body-stroke glow and port data-active. The body click only emits
- * env.onControl('toggle', !openProp); visual state changes only via update().
- * The draggable indication card (cardDx/cardDy/onCardMove) is stripped.
+ * update({ open, flowing, showLabel }) — `open` drives the stem/disc lift and
+ * body-stroke glow (the VALVE POSITION); `flowing` drives the vent plume, status
+ * glow and port data-active (the ACTUAL DISCHARGE). They differ when the PORV is
+ * stuck open but the block valve has isolated the line: the disc stays lifted
+ * (open) yet nothing vents (flowing=false), so closing the block visibly stops
+ * the plume/flow. `flowing` defaults to `open` for callers that pass only `open`.
+ * The body click only emits env.onControl('toggle', !openProp); visual state
+ * changes only via update(). The draggable indication card is stripped.
  */
 (function () {
   'use strict';
@@ -42,7 +46,8 @@
     var STEEL = env.uid('porvSteel'), GLOW = env.uid('porvGlow');
 
     var openProp = false;   // last `open` received from update() — click emits its inverse
-    var appliedOpen = null; // last value applied to the DOM
+    var appliedOpen = null; // last disc-position value applied to the DOM
+    var appliedFlow = null; // last discharge (plume/flow) value applied to the DOM
 
     var flD = (K.SIZES && K.SIZES[portSize]) || 4;
     var sc = 1;
@@ -123,15 +128,24 @@
     function update(props) {
       props = props || {};
       var open = !!props.open;
+      // `flowing` = steam actually discharging. Defaults to `open` (API parity),
+      // but the board passes false when the block valve isolates a stuck-open PORV.
+      var flowing = props.flowing != null ? !!props.flowing : open;
       openProp = open;
+      // Disc position + body-open glow track the VALVE (stays lifted while stuck open).
       if (open !== appliedOpen) {
         appliedOpen = open;
-        ventG.style.display = open ? '' : 'none';
-        glowC.style.display = (glowOn && open) ? '' : 'none';
         bodyRect.setAttribute('stroke', open ? CYAN : '#46596a');
         plugG.style.transform = open ? 'translateY(0px)' : 'translateY(16px)';
-        portIn.setAttribute('data-active', open ? '1' : '0');
-        portOut.setAttribute('data-active', open ? '1' : '0');
+      }
+      // Plume + status glow + downstream pipe flow track the DISCHARGE — so an
+      // isolated stuck-open PORV shows its disc lifted but vents nothing.
+      if (flowing !== appliedFlow) {
+        appliedFlow = flowing;
+        ventG.style.display = flowing ? '' : 'none';
+        glowC.style.display = (glowOn && flowing) ? '' : 'none';
+        portIn.setAttribute('data-active', flowing ? '1' : '0');
+        portOut.setAttribute('data-active', flowing ? '1' : '0');
       }
       // showLabel is accepted for API parity, but the design source declares the
       // label/showLabel props without drawing any label geometry — nothing to toggle.

@@ -339,14 +339,19 @@
         heaterOn: (c.heater_power_pct || 0) > 0 || (c.heater_auto && (IN(s).power_range || 0) > 0),
         spray: (c.spray_valve_pct || 0) > 2, temp: satTempC(IN(s).primary_pressure), glow: true, showFlow: true };
     },
-    // The PORV schematic shows the TRUE valve position (vent plume + discharge flow),
-    // not the demand-signal light. That light is the TMI-2 lie — it reads "closed" while
-    // the valve is stuck open — but the physical valve, its steam plume, and the flow down
-    // the tailpipe are real, and the board depicts the plant, not the lamp. So a stuck-open
-    // PORV visibly vents and drives flow through the discharge pipe (issue #105 #5), while
-    // the operator's PORV *indicator* readout stays wrong. Falls back to the indicator if a
-    // snapshot ever lacks true_state (defensive; real snapshots always carry it).
-    porv: function (s) { var t = s.true_state || {}; return { open: t.porv_open != null ? !!t.porv_open : (IN(s).porv_indicator === 'open') }; },
+    // The PORV schematic shows the TRUE valve position (disc lift), not the demand-
+    // signal light — that light is the TMI-2 lie, reading "closed" while the valve is
+    // stuck open (issue #105 #5), while the operator's PORV *indicator* readout stays
+    // wrong. The plume/flow, however, track ACTUAL DISCHARGE: closing the PORV block
+    // valve isolates the line, so a stuck-open PORV keeps its disc lifted but vents
+    // nothing — which is how the operator sees the block-valve isolation take effect.
+    // Falls back to the indicator if a snapshot ever lacks true_state (defensive).
+    porv: function (s) {
+      var t = s.true_state || {};
+      var open = t.porv_open != null ? !!t.porv_open : (IN(s).porv_indicator === 'open');
+      var blockOpen = t.block_valve_open != null ? !!t.block_valve_open : (CS(s).porv_block_open !== false);
+      return { open: open, flowing: open && blockOpen };
+    },
     condenser: function (s) {
       // hotwell/condensate temperature rises modestly with load (higher backpressure) but
       // stays cold — the condensing side under vacuum, never primary-hot.
