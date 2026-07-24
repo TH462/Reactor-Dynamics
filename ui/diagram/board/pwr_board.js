@@ -73,9 +73,29 @@
 
   function layout() {
     if (!wrap || !stage) return;
+    // Lock the left column to the diagram: the board fills the available HEIGHT
+    // and the plant-area is squeezed to the width the diagram needs at that
+    // height, so there's no horizontal letterbox — the freed width flows to the
+    // (stretching) right column. Skip when the columns stack on narrow screens
+    // (max-width:860px) so the CSS width:100% wins there.
+    var plant = wrap.closest('.plant-area');
+    var stacked = typeof window.matchMedia === 'function' &&
+      window.matchMedia('(max-width: 860px)').matches;
+    var b = contentBounds();
     var r = wrap.getBoundingClientRect();
     if (r.width < 4 || r.height < 4) return;
-    var b = contentBounds();
+    if (plant && stacked) {
+      if (plant.style.width) plant.style.width = '';   // revert to stacked CSS
+    } else if (plant) {
+      var wantW = r.height * (b.w / b.h);                     // diagram width at full height
+      var chromeW = plant.getBoundingClientRect().width - r.width;  // padding/siblings
+      var target = Math.round(wantW + chromeW);
+      var cur = parseFloat(plant.style.width);
+      if (target > 40 && (isNaN(cur) || Math.abs(cur - target) > 0.5)) {
+        plant.style.width = target + 'px';
+        r = wrap.getBoundingClientRect();               // re-measure after the resize
+      }
+    }
     var s = Math.min(r.width / b.w, r.height / b.h);
     var ox = (r.width - b.w * s) / 2 - b.x * s;
     var oy = (r.height - b.h * s) / 2 - b.y * s;
@@ -601,6 +621,9 @@
   }
 
   function unmount() {
+    // Release the diagram-locked width so the plant-area reverts to its flex sizing
+    // (e.g. for the legacy RBMK/BWR views).
+    if (wrap) { var pa = wrap.closest('.plant-area'); if (pa) pa.style.width = ''; }
     if (ro) { ro.disconnect(); ro = null; }
     if (releaseHandler) {
       document.removeEventListener('pointerup', releaseHandler);

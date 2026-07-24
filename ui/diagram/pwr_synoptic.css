@@ -16,6 +16,13 @@
 .app.pwr-synoptic .bottom-row { flex: 0 0 27%; min-height: 160px; }
 .app.pwr-synoptic .view-area { padding: 0; overflow: hidden; }
 
+/* Lock the left plant-area to the diagram's width and let the right column take
+   the slack. The diagram fills the available HEIGHT; pwr_board.js then sets an
+   explicit width on .plant-area so it hugs the diagram (no horizontal letterbox),
+   and the freed width flows to the stretching right column. */
+.app.pwr-synoptic .plant-area { flex: 0 0 auto; min-width: 0; }
+.app.pwr-synoptic .right-col  { flex: 1 1 auto; max-width: none; }
+
 /* ------------------------------------------------------------ stage */
 .synoptic-stage {
   position: relative; width: 100%; height: 100%;

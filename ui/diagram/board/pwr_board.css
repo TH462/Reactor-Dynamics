@@ -1,6 +1,6 @@
 /* pwr_board.css — PWR learning-board synoptic (design-system port).
  * Visual language follows the Claude Design "PWR Reactor" project: dark #0a0e13
- * canvas with a two-level grid, IBM Plex-style mono labels (system fallbacks —
+ * canvas, IBM Plex-style mono labels (system fallbacks —
  * no webfont dependency), cyan #4fe3ff accent.
  * stdPipeFlow / stdPipeFlowRev keyframes are injected by std_pipe.js itself.
  */
@@ -20,12 +20,6 @@
   width: 2400px; height: 1600px;
   transform-origin: 0 0;
   background-color: #0a0e13;
-  background-image:
-    linear-gradient(#182432 1px, transparent 1px),
-    linear-gradient(90deg, #182432 1px, transparent 1px),
-    linear-gradient(#111a23 1px, transparent 1px),
-    linear-gradient(90deg, #111a23 1px, transparent 1px);
-  background-size: 25px 25px, 25px 25px, 5px 5px, 5px 5px;
   font-family: ui-sans-serif, "Segoe UI", system-ui, sans-serif;
   isolation: isolate;
 }
