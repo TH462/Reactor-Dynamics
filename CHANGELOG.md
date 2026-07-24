@@ -13,7 +13,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   (`test/meltdown_pwr.js`) that drives the classic routes to core damage — large-break LOCA,
   TMI small-break, station blackout, ATWS+LOCA, total loss of heat sink, ECCS recovery — and
   asserts the physically correct endpoint (damage / melt / protected). Discovered four
-  core-damage-side defects; see Fixed. Now 7 pass / 1 xfail (the open one is documented).
+  core-damage-side defects; see Fixed. Now 8/8 — every meltdown path reaches its correct
+  endpoint.
 - **Live checklists now highlight the controls and indications a step points at — just hover it.**
   Mousing over any step in a running checklist glows the relevant board controls *and* readouts
   (a green preview glow, distinct from the blue "do this now" Instructor glow). Steps carry an
@@ -38,6 +39,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   steps inline (there the steps are the content).
 
 ### Fixed
+- **A total loss of feedwater is now the accident it should be.** A steam generator that boiled
+  dry used to stay a perfect heat sink forever — the steam dump kept "venting" and the primary
+  parked at ~297 °C indefinitely, so losing all feed *and* aux feed with no makeup was survivable
+  by doing nothing. The tube bundle now **depletes** when it is dry *and unfed*: over minutes its
+  residual heat transfer boils away, decay heat has nowhere to go, and the primary heats to the
+  pressurizer safeties, boils off its inventory, uncovers, and damages the core — TMI-2 without
+  the recovery. Any feedwater reaching the SG (auxiliary feed included) rewets the bundle, so the
+  *recoverable* loss-of-feed transient — AFW auto-starts and carries the plant through a brief
+  dry spell — behaves exactly as before, to the decimal. (Engine: new `sg_dry_deplete` state in
+  `pwr_steam_generator.js` scaling the dryout residual in `pwr_thermal.js`; old saves load
+  unchanged.)
 - **An ATWS during a LOCA is no longer benign.** Decay heat was switched on only by a scram, so
   an unscrammed core that lost coolant (fission collapsing from moderator loss, not a rod
   insertion) *froze* at its current temperature instead of heating to melt — the worst real

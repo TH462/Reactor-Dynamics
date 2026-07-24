@@ -72,22 +72,12 @@
   // MD-7 fixed 2026-07-24 (destruction_cause exposed in getTrueState).
   // MD-8 reframed 2026-07-24 to assert the intended depressurize-to-flood recovery
   //   (it was a test-premise issue + a documented simplification, not a bug).
-  var XFAIL = {
-    'MD-6': 'a *sustained* dry SG stays a perfect heat sink. The trip-open steam dump ' +
-            'vents to the condenser and pins t_secondary ~190 °C below Tavg, so the 0.02 ' +
-            'residual conductance (pwr_thermal.js:66-69) still passes the full decay-heat ' +
-            'load and total loss of feed+AFW parks the primary at ~297 °C forever instead ' +
-            'of heating to the PZR safeties, boiling off, and uncovering. NOT a one-knob ' +
-            'tune: lowering sg_dryout_residual DOES make this heat out, but it deepens the ' +
-            'brief pre-AFW dip on a RECOVERABLE loss of MFW — TR-2 peak pressure jumps ' +
-            '15.88 → 16.25 MPa (the AFW-precludes-PORV band is < 16.20) at any residual ' +
-            'below ~0.015, while MD-6 needs ≤ 0.006, so no single value satisfies both. ' +
-            'Real fix is structural: limit the steam dump to actual steam GENERATION (a ' +
-            'dry SG cannot vent steam it is not making), or model time-dependent dryout ' +
-            'depletion that distinguishes a transient dip from a sustained dry SG. ' +
-            'Secondary-model rework with blast radius over the tuned load-rejection ' +
-            'ride-out — deferred (owner review). See TUNING_LOG §3.4.',
-  };
+  // MD-6 fixed 2026-07-24: time-dependent dryout DEPLETION — a dry AND UNFED bundle
+  //   boils its residual film off (sg_dryout_deplete_tau), so a sustained total loss
+  //   of feed+AFW genuinely loses the heat sink; any feed (AFW) rewets, which keeps
+  //   the recoverable-MFW-loss dip (TR-2) at the full residual. Structural fix in
+  //   pwr_steam_generator.stepSecondary + pwr_thermal.stepCoolant.
+  var XFAIL = {};
 
   var PROBES = {
 

@@ -41,7 +41,7 @@ staleness** items.
 | `run_scenarios` | **3/3** | flagships |
 | `run_campaign` | **51/51** (2897) | |
 | `run_procedures` | **22/22** | 1 strict known-fail (B3) |
-| `run_meltdown` | **7 pass / 1 xfail** | PWR core-damage paths — MD-5/MD-7 fixed, MD-8 reframed; 1 xfail = MD-6 dry-SG sink (backlog §3.4) |
+| `run_meltdown` | **8/8** | PWR core-damage paths — all resolved; MD-6 fixed 2026-07-24 (time-dependent dryout depletion, §3.4) |
 | `run_checklist` | **24/24** | |
 | `run_e2e_controls` | **28/30** | 2 pre-existing reds (F12) |
 | `verify_e2e_ui` | **FAIL** | pre-existing on clean HEAD (retired PwrSynoptic probe) |
@@ -105,6 +105,33 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-24 — MD-6 FIXED: time-dependent SG dryout depletion (dry + unfed bundle loses its residual)  ✅
+The deferred meltdown-battery defect (total loss of feed+AFW parked the primary at ~297 °C
+forever) is resolved structurally. Probing killed the level-threshold idea before it started:
+**TR-2's recoverable loss of MFW also fully dries the SG** (wide hits 0.0 at ~62 s, secondary
+pressure at the 0.10 MPa floor) before AFW rebuilds it — the physical difference from MD-6 is
+only that **AFW is feeding the bundle** through the dry transit. So the fix keys on feed, not
+level (3 files):
+- `pwr_steam_generator.stepSecondary` steps a new state **`s.sg_dry_deplete`** (0..1): grows
+  toward 1 with τ `sg_dryout_deplete_tau` (300 s) while wide < `sg_dryout_wide_pct` (30) AND
+  `feedwater_flow` < `sg_dryout_feed_eps` (0.01); decays with τ `sg_dryout_rewet_tau` (45 s)
+  otherwise — AFW wets the tubes even while the pool level is still rebuilding (real AFW
+  physics, and the TR-2/MD-6 differentiator).
+- `pwr_thermal.stepCoolant` scales the steam-side residual:
+  `residual_eff = sg_dryout_residual × (1 − sg_dry_deplete)` (explicit coupling, previous
+  step). `sg_dryout_residual` itself stays 0.02.
+- `pwr_config.js`: the 3 new `[tune]` constants next to the dryout pair; the KNOWN-GAP comment
+  replaced by the model note.
+Result: MD-6 heats to **Tavg 366 °C**, lifts the PZR safeties, boils to 0 % inventory, fuel
+damage @ 2835 s, melt @ 6250 s (`thermal_melt`). **TR-2 is bit-identical** (peak 15.88 MPa —
+deplete never engages with AFW running), TR-3's PORV still lifts, FG-4 ride-out untouched
+(wet SG ⇒ deplete = 0 in every other scenario). Old saves migrate (missing field defaults to
+0 at every use site). `test/meltdown_pwr.js` XFAIL list is now **empty**.
+- **Gates:** run_meltdown **8/8** (was 7/1), behavior 30/0/0 , pwr 31/31, scenarios 3/3, ops
+  59/68 (same 9 documented RBMK/BWR reds), campaign 51/51, procedures 22/22, autoctl 20/20,
+  checklist 24/24, m4 18/18, m5 18/19 (pre-existing rewind red), m6 16/16, m7 OK, e2e 28/30
+  (pre-existing).
 
 ### 2026-07-24 — Meltdown-path battery: 4 core-damage defects found; 2 fixed, 1 reframed, 1 deferred  🔬✅
 Owner stress-tested the physics "to find different paths to meltdown" and reported **all
@@ -471,20 +498,20 @@ real smell worth a look during this effort.
 ### 3.4 PWR meltdown-path physics defects (found 2026-07-24 — owner playtest "all meltdown paths have major issues")
 
 New gate: **`node test/run_meltdown.js`** (battery `test/meltdown_pwr.js`, strict-xfail). Now
-**7 pass / 1 xfail / 0 fail** (was 4/4 at discovery). MD-5 + MD-7 fixed, MD-8 reframed, MD-6
-deferred. Report auto-writes to `Diagnostic/MELTDOWN_REPORT.md`.
+**8 pass / 0 xfail / 0 fail** (was 4/4 at discovery). MD-5 + MD-7 fixed, MD-8 reframed, MD-6
+fixed 2026-07-24 (dryout depletion). Report auto-writes to `Diagnostic/MELTDOWN_REPORT.md`.
 
 | ID | Symptom | Root cause | Fix / location | Status |
 |---|---|---|---|---|
 | **MD-5** | ATWS + LOCA (worst real accident: full-power core + no coolant) was **benign** — the uncovered core froze at ~1250 °C and never melted | Decay heat gated on the scram flag: `_Q_total = _P + (scrammed ? decay : 0)`. In an ATWS fission collapses from moderator loss (uncovery), not a scram, so decay was never switched on | Scram-agnostic: `_P + ((scrammed || _P < decay) ? decay : 0)` (`pwr_engine.js:248`) — unchanged when scrammed or at power; only adds the missing source on unscrammed fission collapse | **RESOLVED (2026-07-24)** — melts @ 1480 s, 0 regressions |
 | **MD-7** | On a confirmed melt the operator-facing true state reported `destruction_cause = undefined` | The field is set on `engine.s` (`checkDamage`) but was omitted from the `getTrueState()` return block | Added `destruction_cause: s.destruction_cause` (`pwr_engine.js:~449`) | **RESOLVED (2026-07-24)** |
 | **MD-8** | With PASSIVE full ECCS, LOCA survival is **non-monotonic** — a small break (sev 0.05-0.10) damages while a medium (0.20) refloods | By DESIGN: a small break holds high pressure (decay heat pins Psat above the 4.14 MPa accumulator arming point — the TMI inventory/void lesson), so HPI alone can't quite hold it and the operator must DEPRESSURIZE to arm accumulators/LPI (feed-and-bleed EOP). Passive-band non-monotonicity is a known lumped-HPI simplification | Test **reframed** to assert the intended depressurize-to-flood recovery (sev 0.05-0.20 all survive with it); passive band recorded as info | **RESOLVED-as-reframed (2026-07-24)**. *Open for owner review:* whether to also make the passive small-break case monotonic (would need HPI strengthening, which conflicts with the deliberate SGTR-outruns-HPI balance) |
-| **MD-6** | Total loss of heat sink (MFW+AFW, no makeup) parks the primary at **~297 °C forever** instead of heating to the PZR safeties, boiling off, and uncovering (TMI-without-recovery) | A **sustained dry SG stays a perfect heat sink**: the trip-open steam dump vents to the condenser and pins `t_secondary` ~190 °C below Tavg, so the 0.02 residual conductance still passes the full decay-heat load with no secondary-inventory limit | **NO single-knob tune** — lowering `sg_dryout_residual` heats MD-6 out (works ≤ 0.006) but deepens the pre-AFW dip on a recoverable loss of MFW → TR-2 peak 15.88 → 16.25 MPa (band < 16.20) at any residual below ~0.015. Real fix is structural: limit the steam dump to actual steam GENERATION, or model time-dependent dryout depletion (`pwr_steam_generator.js` + `pwr_thermal.js:66-69`) | **OPEN — deferred (owner review).** Secondary-model rework with blast radius over the tuned load-rejection ride-out; held as the single `run_meltdown` xfail |
+| **MD-6** | Total loss of heat sink (MFW+AFW, no makeup) parks the primary at **~297 °C forever** instead of heating to the PZR safeties, boiling off, and uncovering (TMI-without-recovery) | A **sustained dry SG stays a perfect heat sink**: the trip-open steam dump vents to the condenser and pins `t_secondary` ~190 °C below Tavg, so the 0.02 residual conductance still passes the full decay-heat load with no secondary-inventory limit | **NO single-knob tune** — lowering `sg_dryout_residual` heats MD-6 out (works ≤ 0.006) but deepens the pre-AFW dip on a recoverable loss of MFW → TR-2 peak 15.88 → 16.25 MPa (band < 16.20) at any residual below ~0.015. Real fix is structural: **time-dependent dryout DEPLETION** — probing showed TR-2 *also* fully dries its SG (wide 0.0 @ 62 s) before AFW rebuilds it, so no level threshold separates the cases; the differentiator is that TR-2's bundle is being FED through the dry transit. New state `s.sg_dry_deplete` (stepped in `pwr_steam_generator.stepSecondary`): grows τ 300 s while dry AND unfed (`feedwater_flow < sg_dryout_feed_eps`), rewets τ 45 s on any feed; `pwr_thermal.stepCoolant` scales the residual by (1 − deplete). Constants `sg_dryout_deplete_tau / rewet_tau / feed_eps` in `pwr_config.js` | **RESOLVED (2026-07-24)** — MD-6 heats to Tavg 366 °C, boils down, damage @ 2835 s, melt @ 6250 s; TR-2 bit-identical (15.88 MPa peak), all gates held |
 
 > The plant modeled normal ops and the flagship TMI path well, but the *space of ways to actually
 > damage the core* was ungated until now. MD-5 (the owner-flagged "worst accident is benign") was a
-> one-line, zero-regression fix. MD-6 is the one genuine open defect and needs a dedicated
-> secondary-model effort, not a knob tweak.
+> one-line, zero-regression fix. MD-6 needed the dedicated secondary-model effort (dryout
+> depletion, fixed 2026-07-24) — the battery is now fully green with an empty XFAIL list.
 
 | **S12** | PWR | **TRAINING OVERHAUL WORKLIST (owner: Opus does this later; trainings need a major overhaul anyway).** Boron analyzer was UI-REMOVED 2026-07-23 (chemistry sampling is the teaching tool); training content still *narrates* the analyzer. Complete inventory of what to rework: **(a)** `scenarios/pwr_boron.js` beats at lines ~36 and ~47 — "the boron analyzer shows the number" / "watch the boron analyzer creeping down"; re-teach as dose-order + CHEM SAMPLE confirmation (the scenario's decision logic already gates on operator_action + settle, not the analyzer — text-only change); **(b)** `layers/instructor_layer.js` line ~45 maps `boron_ppm → boron_analyzer` for beat conditions — still FUNCTIONAL (instrument exists, just undisplayed) but consider re-keying teaching beats to `boron_sample` or true-state; **(c)** `ui/campaign_data.js` mission 7 (`pwr_boron`) teaches-line "boron vs rods: chemistry for the long game" — fine, but the mission should introduce the sampling ritual; **(d)** Manuals 04 PWR-N09 got minimal line-fixes only (steps now say "confirm with a chem sample") — the full procedure should teach the batch-dose + sample workflow properly; **(e)** any walkthrough/checklist prose that says "watch the boron ppm fall" live (checklists key on `boron_ppm` acceptance checks — functional, fine). UI restore path if ever wanted: `pwr_board_wiring.js` extraItems() splice + 'CHEM' relabel, `pwr_synoptic.js` B-row comment, `app.js` boron series comment, `pvDisplay:false` on the channel def — all one-line reverts, instrument untouched | Teaching-content debt, not a defect; the sim mechanics are already sample-first |
 
