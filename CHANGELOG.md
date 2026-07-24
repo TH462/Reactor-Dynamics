@@ -17,7 +17,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   is untouched, and the makeup channel still uses it internally to seed its books). The CHEM
   sample readout takes the analyzer's place on the panel. Manuals 03/04 rewritten
   chemistry-first. Training content still narrates the analyzer in places — a full training
-  overhaul is planned (worklist: `Diagnostic/TUNING_LOG.md` backlog S12).
+  overhaul is planned (worklist tracked in the internal dev log, backlog S12).
 
 ### Added
 - **Boron CHEM SAMPLE — the lab is now on the board.** A new `take_boron_sample` command draws
@@ -550,8 +550,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   procedure sequencing), then releases full spray.
 
 ### Added
-- **Test-suite review + hardening pass (2026-07-19)** — full findings in
-  `Diagnostic/TEST_SUITE_REVIEW_2026-07-19.md`. Repairs to checks that could not fail (run_m6
+- **Test-suite review + hardening pass (2026-07-19)** — full findings recorded in the
+  internal test-suite review (2026-07-19). Repairs to checks that could not fail (run_m6
   literal-`true` tautologies + a self-defeating consume-flag check; run_m4 vacuous safety-lift
   disjunction; run_pwr loss-of-feedwater trip tautology + a dead loss-of-vacuum predicate;
   run_e2e_controls CVCS pair stale since the SGTR leak rescale — now asserts the servo's real

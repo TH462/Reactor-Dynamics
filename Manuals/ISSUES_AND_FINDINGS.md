@@ -57,7 +57,7 @@
 
 ## 4. Control layer / hard-rule issues (from product audits; still relevant to operators)
 
-Sources include `Diagnostic/SPEC_AUDIT_2026-07-16.md` and campaign playtest notes. Some items marked resolved same-day in that audit — retained if still operator-relevant or if residual risk remains.
+Sources include internal product audits (2026-07-16) and campaign playtest notes. Some items marked resolved same-day in that audit — retained if still operator-relevant or if residual risk remains.
 
 | ID | Sev | Finding | Operator impact | Status |
 |----|-----|---------|-----------------|--------|
@@ -128,7 +128,7 @@ Sources include `Diagnostic/SPEC_AUDIT_2026-07-16.md` and campaign playtest note
 - `Blueprint/OPERATOR_MANUAL_PLAN.md`, `CONTEXT.md`, `M1 pwr engine.md`, `M8 UI HMI Spec Consolidated.md`, `new_diagram_controls.md`, `load_mode_spec.md`, `pwr_training_campaign.md`  
 - `engines/pwr/pwr_config.js`, `layers/control/pwr_control.js`  
 - `ui/manual_data.js`, `ui/manual_procedures.js`, `ui/app.js` (shortcuts / Plant & Mission)  
-- `Diagnostic/SPEC_AUDIT_2026-07-16.md`, `Diagnostic/PLAYTEST_REPORT.md` (partial)
+- internal product-audit and playtest notes (2026-07-16, partial)
 
 ---
 
