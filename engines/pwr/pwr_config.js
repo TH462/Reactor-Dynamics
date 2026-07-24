@@ -516,9 +516,10 @@
     },
 
     // Global multiplier on every instrument's noise sigma (below). The readouts were
-    // jittering more than wanted, so indicated noise is cut in half. Tuners: this scales
-    // the per-instrument `noise` values at read time; set to 1 to use the raw sigmas.
-    instrument_noise_scale: 0.5,
+    // jittering more than wanted, so indicated noise is scaled to a quarter of the raw
+    // sigmas. Tuners: this scales the per-instrument `noise` values at read time; set to
+    // 1 to use the raw sigmas.
+    instrument_noise_scale: 0.25,
 
     // ----------------------------------------------------------- instrument set
     // id → { measures, lag (s), noise sigma (instrument units), range[min,max] }.

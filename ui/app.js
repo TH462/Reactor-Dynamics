@@ -1590,7 +1590,10 @@
       }).join('');
       svg.innerHTML = ''; if (floats) floats.innerHTML = ''; return;
     }
-    var t0 = chartBuf[0].t, t1 = chartBuf[chartBuf.length - 1].t, span = (t1 - t0) || 1;
+    // Fixed strip-chart window: the axis always spans the full ui.window and data
+    // enters at the right, scrolling left — rather than the span growing until it
+    // fills. t1 is the latest sample; t0 is exactly one window behind it.
+    var t1 = chartBuf[chartBuf.length - 1].t, t0 = t1 - ui.window, span = ui.window || 1;
     var PW = W * CHART_PLOT_FRAC;   // traces stop short of the right edge; value chips live in the gutter
     var html = '';
     // Decimate to at most ~2 samples per horizontal pixel. chartBuf holds EVERY
@@ -1618,9 +1621,12 @@
         if (v > vmax) vmax = v;
       }
       if (!isFinite(vmin) || !isFinite(vmax)) { ranges[ser.id] = [ser.range[0], ser.range[1]]; return; }
-      var s0 = vmax - vmin;
-      var pad = s0 > 1e-9 ? s0 * 0.12 : (Math.abs(vmax) * 0.02 + 1);   // flat line → small centred window
-      ranges[ser.id] = [vmin - pad, vmax + pad];
+      var s0 = vmax - vmin;                                    // data span in the window
+      var full = Math.abs(ser.range[1] - ser.range[0]) || 1;   // instrument full scale
+      var span = Math.max(s0, full * 0.08);                    // floor at 8 % of full scale so a flat/noisy line stays small instead of zooming to fill the plot
+      var pad = span * 0.15;                                    // buffer above & below so the trace never rides the edge
+      var c = (vmin + vmax) / 2;
+      ranges[ser.id] = [c - span / 2 - pad, c + span / 2 + pad];
     });
     // legend reflects the current (dynamic) range each line is scaled to
     $('chartLegend').innerHTML = active.map(function (s) {
