@@ -1600,47 +1600,49 @@
     var t1 = chartBuf[chartBuf.length - 1].t, t0 = t1 - ui.window, span = ui.window || 1;
     var PW = W * CHART_PLOT_FRAC;   // traces stop short of the right edge; value chips live in the gutter
     var html = '';
-    // Decimate to at most ~2 samples per horizontal pixel. chartBuf holds EVERY
-    // broadcast inside the window (thousands of points at 10–20 Hz over the 5-minute
-    // default), and re-emitting a polyline over all of them each frame is what made
-    // the render grow heavier over time until it blew the frame budget and the whole
-    // UI (numbers, chart, clock) started to jank/strobe a couple minutes in. Sampling
-    // to the plot's pixel resolution makes drawChart O(pixels), not O(buffer).
-    // Sample only the VISIBLE window [t0, t1]; the buffer holds up to 30 min, so a
-    // longer display window shows history, but decimation must not spend its pixel
-    // budget on off-screen samples.
+    // Downsample the VISIBLE window [t0, t1] into fixed TIME buckets — one per plot
+    // pixel. chartBuf holds up to 30 min (thousands of points at 10–20 Hz) but only
+    // ui.window shows; bucketing keeps drawChart O(pixels), and — unlike index-stride
+    // sampling — is STABLE as the window scrolls: a sample stays in the same time
+    // bucket, so the line doesn't change shape as it moves left. Averaging the
+    // sub-pixel samples per bucket also makes a noisy trace readable — this is
+    // pixel-resolution downsampling, NOT temporal smoothing (there's no lag).
     var startI = 0;
     while (startI < chartBuf.length - 1 && chartBuf[startI].t < t0) startI++;
-    var MAX_PTS = Math.max(2, Math.round(PW));   // ~1 sample per plot pixel — plenty for a strip chart
-    var idx = [];
-    var stride = Math.max(1, Math.ceil((chartBuf.length - startI) / MAX_PTS));
-    for (var bi = startI; bi < chartBuf.length; bi += stride) idx.push(bi);
-    if (idx[idx.length - 1] !== chartBuf.length - 1) idx.push(chartBuf.length - 1);   // always include the latest sample
-    // Dynamic per-series range: fit each visible line to its OWN min/max (plus a
-    // little padding) so small changes fill the plot height instead of flatlining
-    // across a fixed full-scale range. Falls back to the static range when a line
-    // has no finite data in the window.
-    var ranges = {};
+    var NB = Math.max(2, Math.round(PW));   // one bucket per plot pixel
+    var ranges = {}, seriesMeans = {};
     active.forEach(function (ser) {
-      var vmin = Infinity, vmax = -Infinity;
-      for (var k = 0; k < idx.length; k++) {
-        var v = ser.get(chartBuf[idx[k]].ins);
-        if (v == null || !isFinite(v)) continue;
-        if (v < vmin) vmin = v;
-        if (v > vmax) vmax = v;
+      var sum = {}, cnt = {}, tsum = {};    // sparse per-bucket accumulators
+      for (var j = startI; j < chartBuf.length; j++) {
+        var val = ser.get(chartBuf[j].ins);
+        if (val == null || !isFinite(val)) continue;
+        var bk = Math.floor((chartBuf[j].t - t0) / span * NB);
+        if (bk < 0) bk = 0; else if (bk >= NB) bk = NB - 1;
+        if (cnt[bk] === undefined) { sum[bk] = 0; cnt[bk] = 0; tsum[bk] = 0; }
+        sum[bk] += val; cnt[bk] += 1; tsum[bk] += chartBuf[j].t;
       }
-      var tlo, thi;   // target range for this frame
+      var means = [], vmin = Infinity, vmax = -Infinity;
+      for (var bk2 = 0; bk2 < NB; bk2++) {
+        if (cnt[bk2] === undefined) continue;
+        var mv = sum[bk2] / cnt[bk2];
+        means.push({ t: tsum[bk2] / cnt[bk2], v: mv });
+        if (mv < vmin) vmin = mv;
+        if (mv > vmax) vmax = mv;
+      }
+      seriesMeans[ser.id] = means;
+      // Peak-hold auto-range around the bucket means: expand to fit instantly,
+      // re-tighten slowly (axis never clips, doesn't jitter). 8 %-of-full-scale floor
+      // keeps a flat line small; 15 % buffer keeps the trace off the edges.
+      var tlo, thi;
       if (!isFinite(vmin) || !isFinite(vmax)) { tlo = ser.range[0]; thi = ser.range[1]; }
       else {
-        var s0 = vmax - vmin;                                    // data span in the window
-        var full = Math.abs(ser.range[1] - ser.range[0]) || 1;   // instrument full scale
-        var span = Math.max(s0, full * 0.08);                    // floor at 8 % of full scale so a flat/noisy line stays small instead of zooming to fill the plot
-        var pad = span * 0.15;                                   // buffer above & below so the trace never rides the edge
+        var s0 = vmax - vmin;
+        var full = Math.abs(ser.range[1] - ser.range[0]) || 1;
+        var vspan = Math.max(s0, full * 0.08);
+        var pad = vspan * 0.15;
         var c = (vmin + vmax) / 2;
-        tlo = c - span / 2 - pad; thi = c + span / 2 + pad;
+        tlo = c - vspan / 2 - pad; thi = c + vspan / 2 + pad;
       }
-      // Peak-hold: expand to fit new data instantly, but re-tighten slowly — so the
-      // axis never clips and already-plotted points don't jitter as the window slides.
       var h = chartRange[ser.id];
       if (!h) h = { lo: tlo, hi: thi };
       else {
@@ -1660,16 +1662,16 @@
     var lastY = [];
     active.forEach(function (ser) {
       var r = ranges[ser.id], lo = r[0], hi = r[1], rng = (hi - lo) || 1, ly = 0;
-      var pts = idx.map(function (bIdx) {
-        var b = chartBuf[bIdx];
-        var x = (b.t - t0) / span * PW;
-        var f = Math.max(0, Math.min(1, (ser.get(b.ins) - lo) / rng));
+      var pts = seriesMeans[ser.id].map(function (m) {
+        var x = (m.t - t0) / span * PW;
+        var f = Math.max(0, Math.min(1, (m.v - lo) / rng));
         var y = H - 8 - f * (H - 16); ly = y;
         return x.toFixed(1) + ',' + y.toFixed(1);
       }).join(' ');
       var hot = seriesAlarmed(ser);
       html += '<polyline points="' + pts + '" fill="none" stroke="' + (hot ? lighten(ser.c) : ser.c) + '" stroke-width="' + (hot ? 2.4 : 1.5) + '" vector-effect="non-scaling-stroke"/>';
-      lastY.push({ ser: ser, y: ly, hot: hot, val: ser.get(chartBuf[chartBuf.length - 1].ins) });
+      var mm = seriesMeans[ser.id];
+      lastY.push({ ser: ser, y: ly, hot: hot, val: mm.length ? mm[mm.length - 1].v : ser.get(chartBuf[chartBuf.length - 1].ins) });
     });
     // Rewind-pick mode: mark every checkpoint inside the window as a jump target.
     if (ui.rewindPick && service && service.checkpoints) {
