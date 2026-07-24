@@ -1086,6 +1086,18 @@ Closed the board's derived-indication gaps with real engine state, per owner req
   the driver holds a control-label→item map covering the same vocabulary as `RD.PwrSynoptic`
   `SYN_CONTROL_MAP` (so the run_campaign highlight gate still resolves), the renderer glows the
   resolved tile with `.instr-glow`, and `setTag` hangs a `.bd-maint-tag` over the AFW valve (TMI-2).
+- **Checklist step-hover highlights (2026-07-24).** The same `revealControl` vocabulary now backs a
+  *hover preview* on live checklists: mousing a `.ckl-step` glows every control **and indication** the
+  step names, in a distinct green `.ckl-glow` (so a transient hover never wipes an active blue
+  `.instr-glow` beat). Steps carry an explicit `hl: [...]` list; absent that, `stepHlLabels` falls back
+  to the step's `control` string. `CONTROL_LABEL_MAP` gained an **indication** block (Reactivity,
+  Startup Rate, Tavg, Plant Pressure, SG Level, Source/Intermediate Range, `1/M Plot Tool`) plus
+  control aliases for the heatup checklist's `control` strings. These are board-only additions (not
+  campaign-beat labels), so no `SYN_CONTROL_MAP` parity is required. `pwr_startup` was rebuilt around
+  the 1/M plot (8→12 steps; SR→IR handoff sequenced so P-6 is satisfied and the 1e5 SR trip is never
+  approached — probed engine-direct and through SimulationService). The Procedures (live) picker now
+  collapses each card's steps into a `<details>` so it reads as a menu (`.m-step` DOM still emitted for
+  `verify_manual_follow`). See `Diagnostic/TUNING_LOG.md` 2026-07-24.
 - **Turbine RPM:** 1800 rpm at 100 % is correct for a ~1000 MWe PWR (half-speed, 4-pole generator —
   wet LP steam needs long last-stage blades that can't take 3600 rpm). Engine already rated 1800; the
   board shows it live (the design's "3600" was a placeholder). No change.

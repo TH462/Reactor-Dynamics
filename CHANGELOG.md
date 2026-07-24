@@ -8,6 +8,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Live checklists now highlight the controls and indications a step points at — just hover it.**
+  Mousing over any step in a running checklist glows the relevant board controls *and* readouts
+  (a green preview glow, distinct from the blue "do this now" Instructor glow). Steps carry an
+  explicit highlight list where a control alone isn't enough — e.g. the startup steps glow the
+  1/M PLOT tool, the Source Range counts, and the Reactivity/Startup-Rate readouts together — and
+  otherwise fall back to the step's named control. Works on the checklist bubble list.
+
+### Changed
+- **The Mode 3 → Mode 1 startup checklist is rebuilt around the 1/M plot.** The old walkthrough
+  jumped from "check the instruments" straight to a single big rod pull with no approach-to-
+  criticality method. It now walks the real thing: set the **1/M baseline** before touching the
+  rods, withdraw in **small bursts** and **re-plot** between them to watch the predicted critical
+  position tighten, perform the **SR→IR handoff** at the right moment (secure the Source Range
+  before its high-flux trip), then creep to criticality on Slow, arrest the overshoot, and put the
+  turbine on line. Twelve concise steps, each written so an operator who doesn't know the plant by
+  heart can follow it — and each hover-highlights its controls and gauges. The ascent now settles
+  in the low-power band (~15 %) instead of overshooting to ~50 %.
+- **The Procedures (live) menu is a scannable list again.** Each procedure card used to dump its
+  full step list inline, so the page was a wall of text. Steps are now tucked behind a
+  "▸ Show the N steps" expander — the menu reads as a list of checklists to pick from; the steps
+  appear when you Follow or run one (or expand a card). Accident walkthroughs still show their
+  steps inline (there the steps are the content).
+
 ### Changed
 - **The boron analyzer is gone from the panels — chemistry sampling is how you know boron now.**
   Real plants sometimes fit online boronometers but don't rely on them; the concentration of

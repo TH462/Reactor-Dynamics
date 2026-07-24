@@ -1055,7 +1055,8 @@
       var done = !!(ck.steps_done && ck.steps_done[i]);
       var active = !ck.complete && i === ck.step_index;
       var cls = done ? 'ckl-done' : active ? 'ckl-active' : 'ckl-pend';
-      h += '<div class="ckl-step ' + cls + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
+      var hoverable = stepHlLabels(st) ? ' ckl-hoverable' : '';
+      h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
       h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
       if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
       if (active) {
@@ -1081,12 +1082,44 @@
     h += '</div>';
     h += '<div class="ckl-btns"><button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : '✕ End checklist') + '</button></div>';
     cur.innerHTML = h;
+    // Step hover → glow the controls/indications the step names (its `hl` list) on
+    // the plant display, reusing the Instructor highlight vocabulary (revealControl).
+    Array.prototype.forEach.call(cur.querySelectorAll('.ckl-step'), function (el) {
+      var st2 = pr.steps[+el.getAttribute('data-ckl-step')];
+      var labs = st2 && stepHlLabels(st2);
+      if (!labs) return;
+      el.addEventListener('mouseenter', function () { glowLabels(labs); });
+      el.addEventListener('mouseleave', clearHoverGlow);
+    });
     var log = $('cklLog');
     if (log) {
       if (ck.complete) log.scrollTop = log.scrollHeight;
       else if (!firstBuild) { var act = log.querySelector('.ckl-active'); if (act) act.scrollIntoView({ block: 'nearest' }); }
     }
     if (firstBuild) setFocus('instructor');
+  }
+  // Labels a checklist step points at on hover: its explicit `hl` list when
+  // authored (controls + indications), else a fallback to the step's own `control`
+  // field (skipping the "(observe…)" placeholders that name no on-board control).
+  function stepHlLabels(st) {
+    if (st.hl && st.hl.length) return st.hl;
+    if (st.control && !/^\(observe/i.test(st.control)) return [st.control];
+    return null;
+  }
+  // Hover-preview glow for checklist steps: glow every control/indication label a
+  // step names. Separate class from the Instructor beat glow (.instr-glow) so a
+  // transient hover never wipes an active beat highlight.
+  function glowLabels(labels) {
+    clearHoverGlow();
+    if (!labels || !labels.length) return;
+    var board = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+    labels.forEach(function (lab) {
+      var el = ui.plant === 'pwr' ? (board ? board.revealControl(lab) : null) : findPdControl(lab);
+      if (el) el.classList.add('ckl-glow');
+    });
+  }
+  function clearHoverGlow() {
+    document.querySelectorAll('.ckl-glow').forEach(function (el) { el.classList.remove('ckl-glow'); });
   }
   // Picker menu (free-play instructor card): every non-narrative procedure for
   // the active plant can run as a checklist.
@@ -2664,7 +2697,11 @@
     if (st.note) h += '<div class="m-note">' + mesc(st.note) + '</div>';
     return h + '</div></div>';
   }
-  function mProcCard(pr) {
+  // collapse: on the Procedures (live) selection page the steps are tucked into a
+  // <details> so the list stays a scannable menu of checklists — the steps appear
+  // when you actually Follow/run one (or expand). Accident walkthroughs pass false
+  // (there the steps ARE the content). The .m-step DOM is still emitted either way.
+  function mProcCard(pr, collapse) {
     var h = '<div class="m-card"><div class="m-h">' + mesc(pr.title) + ' <span class="m-pill">' + mesc(pr.category) + '</span>' +
       '<button class="btn m-follow" data-follow="' + mesc(pr.id) + '">▶ Follow in Instructor</button>' +
       '<button class="btn m-follow" data-checklist="' + mesc(pr.id) + '" title="Run as a passive checklist against the live plant — no reset, steps auto-check off the instruments">📋 Checklist</button></div>';
@@ -2672,7 +2709,12 @@
     if (pr.purpose) h += '<p style="margin:8px 0">' + mesc(pr.purpose) + '</p>';
     if (pr.prereq && pr.prereq.length) h += '<div class="m-sub2">Prerequisites</div><ul class="m-ul">' + pr.prereq.map(function (x) { return '<li>' + mesc(x) + '</li>'; }).join('') + '</ul>';
     if (pr.cautions && pr.cautions.length) h += '<div class="m-caution">' + pr.cautions.map(function (c) { return '⚠ ' + mesc(c); }).join('<br>') + '</div>';
-    (pr.steps || []).forEach(function (st, i) { h += mStep(st, i); });
+    var stepsHtml = (pr.steps || []).map(function (st, i) { return mStep(st, i); }).join('');
+    if (collapse && stepsHtml) {
+      h += '<details class="m-steps"><summary class="m-steps-sum">▸ Show the ' + (pr.steps || []).length + ' steps</summary>' + stepsHtml + '</details>';
+    } else {
+      h += stepsHtml;
+    }
     if (pr.outcome) h += '<div class="m-outcome">✔ Outcome: ' + mesc(pr.outcome) + '</div>';
     return h + '</div>';
   }
@@ -2692,8 +2734,8 @@
     if (!procs.length) return '<p class="muted">No procedures authored for this plant yet.</p>';
     var order = ['startup', 'power', 'control', 'shutdown', 'emergency'];
     procs = procs.slice().sort(function (a, b) { return order.indexOf(a.category) - order.indexOf(b.category); });
-    var h = '<h2>Procedures</h2>';
-    procs.forEach(function (pr) { h += mProcCard(pr); });
+    var h = '<h2>Procedures</h2><p class="muted">Pick a procedure to Follow (guided, resets the plant) or run as a live 📋 Checklist against the plant as it sits. Expand a card to preview its steps.</p>';
+    procs.forEach(function (pr) { h += mProcCard(pr, true); });
     return h;
   }
 

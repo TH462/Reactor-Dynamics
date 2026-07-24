@@ -30,7 +30,7 @@ var VIEW_CONTROLS = {
 
 /* Per-step: which view hosts the control group (scram = status-bar button, not pdCtlRow). */
 var STEP_UI = {
-  pwr_startup: [{ i: 2, view: 'primary', control: 'SR detector' }, { i: 3, view: 'primary', control: 'Control Bank' }],
+  pwr_startup: [{ i: 3, view: 'primary', control: 'Control Bank' }, { i: 7, view: 'primary', control: 'SR detector' }],
   pwr_raise_power: [{ i: 0, view: 'primary', control: 'Rod Speed' }, { i: 1, view: 'secondary', control: 'Turbine Load' }],
   pwr_lower_power: [{ i: 0, view: 'secondary', control: 'Turbine Load' }, { i: 1, view: 'primary', control: 'Rod Speed' }],
   pwr_pressure_control: [{ i: 1, view: 'primary', control: 'Pressurizer Spray (PZR)' }],

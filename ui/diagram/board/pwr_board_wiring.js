@@ -521,7 +521,17 @@
     'Feed Pumps': 'imrqxsodu5j', 'Feed Reg': 'imrqxsodu5j', 'Feed Pump': 'imrqxsodu5j',
     'MSIV': 'imrpp99kx2y',
     'SR detector': 'imro6qutiht', 'NIS': 'imro6qutiht', '1/M Plot': 'imro6rctcgm',
-    'Trip Blocks': 'imrsk4xz2dm'
+    'Trip Blocks': 'imrsk4xz2dm',
+    // Indication readouts — highlight vocabulary for checklist-step hover (glowLabels
+    // in ui/app.js). Not used by campaign beats, so no SYN_CONTROL_MAP parity needed.
+    '1/M Plot Tool': 'bdOneOverM', 'Source Range': 'imro6qutiht', 'Intermediate Range': 'imro6rctcgm',
+    'Reactivity': 'imro6rdwwdn', 'Startup Rate': 'imro6qsncb9', 'Tavg': 'imro6ohhdq3',
+    'Plant Pressure': 'imrr1ixcqe3', 'SG Level': 'imrr1fmzzjp',
+    // Aliases for the `control` strings the checklist steps use (so the step-hover
+    // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
+    'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrobpq4a70', 'Dump SP': 'imrop5ouw7h',
+    'Pressure SP': 'imrsg8b7b9o', 'Accumulator valve': 'imrppx5n1ay',
+    'Turbine — Connect Grid': 'imro8k5pzem'
   };
   // The board item the maintenance tag hangs over (TMI-2 AFW discharge valve).
   var TAG_ITEM = 'imrpp2g2m8k';

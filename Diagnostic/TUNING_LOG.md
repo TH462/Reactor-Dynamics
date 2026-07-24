@@ -36,7 +36,7 @@ staleness** items.
 | `run_bwr` | **15/15** | |
 | `run_behavior` | **30 / 0 xfail / 0 fail** | PWR behavior catalog |
 | `run_ops` | **59/68** | PWR **21/21**; 9 open = RBMK/BWR + 1 deliberate red (see backlog) |
-| `run_m4`..`run_m7` | 18 / 19 / 16 / OK | stack layers |
+| `run_m4`..`run_m7` | 18 / **18** / 16 / OK | stack layers — m5 is 18/19 (1 pre-existing rewind bit-exact red on clean HEAD; docs elsewhere still say 19/19) |
 | `run_autoctl` | **20/20** | |
 | `run_scenarios` | **3/3** | flagships |
 | `run_campaign` | **51/51** (2897) | |
@@ -104,6 +104,42 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-24 — Live-checklist revamp: 1/M startup + step-hover highlights + compact picker  ✅
+Owner playtested the Mode 3 → Mode 1 board checklist: "lacking many steps… the biggest gap was
+there's no instructions for the 1/M plot." Also asked that hovering a step highlight the relevant
+controls/indications, and that the procedure picker list checklists without dumping every step.
+**Three changes:**
+1. **`pwr_startup` rebuilt (8 → 12 steps), 1/M-first** (`ui/manual_procedures.js`). Old flow secured
+   SR *before* the withdrawal (defeating 1/M, which needs SR counts) and did one 300-step burst →
+   ~48 % overshoot. New flow: set the 1/M baseline → two Norm bursts with a re-plot between each
+   (SR = 500 → 707 → 2470 cps, all below the 5e4 amber caution) → **SR→IR handoff** (P-6 is
+   satisfied from cold: IR instrument ≈ 8e-9 > 1e-10, so securing SR is *not* blocked, and SR never
+   nears the 1e5 trip) → +45 slow to criticality → −8 slow to arrest the overshoot → connect grid.
+   Lands ~15 % power (probed engine-direct **and** through the full SimulationService: no block, no
+   trip, checklist completes). Every acc has wide margin (see `run_procedures` trace). `manual_ui_map`
+   STEP_UI indices moved to `{i:3 Control Bank},{i:7 SR detector}`.
+2. **Step-hover highlights** (`ui/app.js` `glowLabels`/`stepHlLabels` + `renderChecklist`; new
+   `.ckl-glow` green preview class in `shell.css`). Hovering a `.ckl-step` glows every control +
+   indication the step names, reusing `RD.PwrBoard.revealControl`. Steps carry an explicit `hl`
+   list (controls **and** readouts — e.g. `['1/M Plot Tool','Source Range']`, `['Control Bank',
+   'Startup Rate','Reactivity']`); absent that, it falls back to the step's own `control` string.
+   New **indication vocabulary** added to `CONTROL_LABEL_MAP` (Reactivity, Startup Rate, Tavg, Plant
+   Pressure, SG Level, Source/Intermediate Range, 1/M Plot Tool) + control aliases so the heatup
+   checklist's `control` strings resolve (Boron control, RCP Run/Stop, Dump SP, Pressure SP,
+   Accumulator valve). Board-only — not campaign labels, so no SYN_CONTROL_MAP parity needed.
+   `obs()` gained a 4th `hl` arg. Headless-Edge smoke: 12/12 steps hoverable, step-3 glows 3 tiles /
+   step-2 glows 2, all clear on mouseout, **zero console errors**.
+3. **Compact Procedures (live) menu** (`ui/app.js` `mProcCard(pr, collapse)`): the selection page
+   tucks steps into a `<details>` ("▸ Show the N steps") so it reads as a checklist list, not a step
+   dump. `.m-step` DOM still emitted (collapsed) so `verify_manual_follow` still resolves. Accident
+   walkthroughs pass `collapse=false` (steps are their content).
+**Gates:** run_procedures **22/22** (96/96, was 95), run_checklist **24/24**, run_m6 **16/16**,
+run_campaign **51/51** (2932), run_pwr 31/31, run_m4 18/18, run_autoctl 20/20. `run_m5` **18/19** —
+the 1 red (rewind bit-exact) is **pre-existing, verified on clean HEAD via git-stash** (docs claim
+19/19; that's stale — this change doesn't touch physics/PRNG/service). No manual repack (procedures
+render live from `manual_procedures.js`, not packed). Manuals 03/04/09 still narrate 1/M/SR→IR
+conceptually — a prose refresh to match the new step granularity is a nice-to-have, not done.
 
 ### 2026-07-23 — Boron analyzer removed from the UI (owner ruling; chemistry-first teaching)  ✅
 Owner changed course after the sample build: boronometers are sometimes fitted but the industry
