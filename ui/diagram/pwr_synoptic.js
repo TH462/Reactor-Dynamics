@@ -568,11 +568,13 @@
       seg([{ l: 'B', act: 'letdown-b-in', f: 'ltdBin' }, { l: 'Out', act: 'letdown-b-out', f: 'ltdBout' }],
         'Letdown orifice B — larger orifice (~4% at NOP). A+B together = max letdown (a net drain, exceeds charging) for level reduction / depressurization.') +
       '<span class="v" data-f="cvcsLtd">—</span></div>' +
+      // Boron analyzer readout removed from the UI (owner ruling 2026-07-23): the
+      // industry doesn't rely on boronometers — the chem sample below is how you
+      // know the concentration. Instrument survives in code for an easy restore.
       '<div class="prow"><span class="k">B</span>' +
       seg([{ l: 'Bor', act: 'borate', f: 'bor' }, { l: 'Hold', act: 'boron-hold', on: 1, f: 'borHold' }, { l: 'Dil', act: 'dilute', f: 'dil' }],
-        'Boron — Borate adds absorber (power down), Dilute removes it. Needs the charging pump running.') +
-      '<span class="v" data-f="cvcsBoron" data-scanner-hint="Boron analyzer — online boronometer (ppm), lagged ~45 s; the grab sample below is the authoritative lab number.">—</span>' +
-      '<span class="dual lrn-only" data-f="cvcsBoronDual"></span></div>' +
+        'Boron — Borate adds absorber (power down), Dilute removes it. Needs the charging pump running. Concentration is known by chemistry sample (below).') +
+      '</div>' +
       '<div class="prow"><span class="k">Dose</span>' +
       '<span class="v" data-f="cvcsDose" data-scanner-hint="Boron batch-dose totalizer (BORON CONTROL target) — the metered change remaining. Doses stop on the totalizer, not the analyzer.">—</span></div>' +
       '<div class="prow"><span class="k">Chem</span>' +
@@ -1135,8 +1137,6 @@
     segSync('ltdBin', ltdB); segSync('ltdBout', !ltdB);
     txt('cvcsLtd', (ins.letdown_flow * 100).toFixed(1) + '%');
     segSync('cvcsAuto', cs.cvcs_auto); segSync('cvcsMan', !cs.cvcs_auto);
-    txt('cvcsBoron', ins.boron_analyzer.toFixed(0));
-    if (refs.cvcsBoronDual) refs.cvcsBoronDual.textContent = learning ? '·true ' + ts.boron_ppm.toFixed(0) : '';
     segSync('bor', cs.boron_adjust > 0); segSync('borHold', !cs.boron_adjust); segSync('dil', cs.boron_adjust < 0);
     ['bor', 'dil'].forEach(function (f) { if (refs[f]) refs[f].disabled = !pumpOn; });
     // Batch-dose totalizer status (the boron_conc channel's note) + last chem sample.

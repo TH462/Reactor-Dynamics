@@ -278,14 +278,21 @@ Blocks **auto-reinstate** when power falls below P-10.
 | **Hold** | Stop chemistry change |
 | **Requires** | Charging pump running |
 | **Rate** | Compressed for training (~ppm/s scale); real plants are slower |
-| **Indication** | Boron analyzer (slow lag ~45 s) — may disagree briefly with true boron |
+| **Indication** | Chemistry samples (CHEM) — there is **no live boron meter** on the panels |
+
+**How you know the concentration — chemistry, not a gauge.** There is no online boron
+readout in this control room, because that is how the industry actually works: boron
+concentration is known from **grab samples analyzed by the chemistry lab**, plus the
+operator's own dose bookkeeping. (Online "boronometers" exist at some plants but are
+not relied upon.) Between samples you infer boron the way real crews do: from the dose
+you ordered, and from the plant's response — rod position, Tavg drift.
 
 **BORON CONTROL (target ppm) — batch dose.** The board's BORON CONTROL ON/OFF + target
 works like a real makeup panel: entering a new target computes the change and **meters it
-as a batch** at ~0.05 ppm/s, stopped by the flow totalizer — it does **not** chase the
-lagged analyzer, so a dose lands on the ppm asked without overshoot. Any target change
-executes, however small (1 ppm nudges work). The dose pauses if the charging pump stops
-and resumes with it. A manual Borate/Dilute takes the channel to **MAN**.
+as a batch** at ~0.05 ppm/s, stopped by the flow totalizer — a dose lands on the ppm
+asked without overshoot. Any target change executes, however small (1 ppm nudges work).
+The dose pauses if the charging pump stops and resumes with it. A manual Borate/Dilute
+takes the channel to **MAN**.
 
 **CHEM SAMPLE — the authoritative number.** Chemistry confirms every completed dose
 automatically: an RCS grab sample is drawn and the lab posts the result (`sample N ppm`)
@@ -293,9 +300,7 @@ after a compressed ~60 s turnaround — real labs take 30–60 min. Take a **man
 (CHEM SAMPLE button) when the dose books may be stale: after ECCS/accumulator injection
 (which borates the core outside the makeup system) or after freehand Borate/Dilute runs.
 A fresh result while no dose is running **re-baselines the panel** — the books and the
-displayed target snap to the lab number, so the next dose is computed from reality. The
-online analyzer stays what it is: a lagged, noisy trend instrument; the lab sample is
-the reference (that hierarchy is real).
+displayed target snap to the lab number, so the next dose is computed from reality.
 
 > **At full power, dilution moves Tavg, not power.** With the turbine at rated load the
 > reactor self-regulates back to ~100 % — the boron change appears as a Tavg change
@@ -306,8 +311,8 @@ the reference (that hierarchy is real).
 
 1. Charging pump **On**.  
 2. Select **Dilute**.  
-3. Watch boron analyzer and power / Tavg.  
-4. **Hold** when near target; trim with rods.  
+3. Watch power / Tavg respond; track the dose you have ordered.  
+4. **Hold** at the planned change; confirm with a **CHEM SAMPLE**; trim with rods.  
 
 **Procedure — borate for power reduction / xenon prep**
 
@@ -600,7 +605,7 @@ meter can still cross the 120 % trip.
 | mwe_output | MWe | 0 – 130 | 0.2 s | Grid | — |
 | turbine_rpm | RPM | 0 – 2000 | 0.5 s | Sync / overspeed | — |
 | condenser_vacuum | kPa | 0 – 102 | 5 s | Turbine health | COND VAC LO / TRIP |
-| boron_analyzer | ppm | 0 – 2500 | 45 s | Chemistry | — |
+| boron_sample (CHEM) | ppm | 0 – 2500 | ~60 s lab | Chemistry grab sample — the boron reference | — |
 | charging_flow / letdown_flow | norm | 0 – 0.12 | 2 s | CVCS lineup | — |
 | hpi_flow | norm | 0 – 1.2 | 1 s | ECCS delivery | (HPI ACTIVE status) |
 | hpi_discharge_pressure | MPa | 0 – 18 | 0.5 s | Pump vs RCS head | — |

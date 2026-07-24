@@ -105,6 +105,22 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-23 — Boron analyzer removed from the UI (owner ruling; chemistry-first teaching)  ✅
+Owner changed course after the sample build: boronometers are sometimes fitted but the industry
+doesn't RELY on them — teach chemistry sampling instead. **UI-only removal; all code kept for
+restore** (each spot carries a dated comment): board analyzer readout `imrmtp2alpy` spliced out
+in `extraItems()` + 'ACTUAL' label relabeled 'CHEM' + `bdBoronChem` moved into the old spot
+(1011,880 @18); synoptic CVCS B-row readout + learning dual removed; `app.js` boron trend series
+commented out (future: re-add as stepped `boron_sample` history); Automate tab pv hidden via new
+generic `pvDisplay:false` def flag (kernel `getAutomationState` nulls entry.pv) — the channel
+still READS the analyzer internally for engage-capture/re-anchor ("the panel knows roughly what's
+in the loop"). Manuals: 03 §7.5 rewritten chemistry-first ("no live boron meter — grab samples +
+dose bookkeeping, like the industry"), instrument table row → `boron_sample (CHEM)`; 04 minimal
+line-fixes (precaution + N09 step + subcritical-confirm step). **Training overhaul deferred to
+Opus — full worklist at backlog S12.** Gates: pwr 31/31, autoctl 20/20, m4 18/18, m5 19/19,
+m6 16/16, m6ph 8/8, m7 OK, ops pwr 21/21, behavior 30/0/0, campaign 51/51, procedures 22/22,
+checklist 24/24, e2e 28/30 (same 2), scenarios 3/3; headless board screenshot verified.
+
 ### 2026-07-23 — Boron chemistry sample (owner-approved: auto + manual SAMPLE button)  ✅
 Follow-on to the batch-dose rework (AskUserQuestion ruling: auto sample on dose completion +
 manual button). Engine: `take_boron_sample` command → `_boron_sample_timer` (lab turnaround
@@ -377,6 +393,7 @@ real smell worth a look during this effort.
 | **S9** | PWR | **RESOLVED (2026-07-23)** — `boron_conc` no longer seeks the lagged analyzer: a new target meters a feedforward dose stopped by a flow totalizer (real makeup-panel semantics), rate 0.5 → 0.05 ppm/s. Probed: 25 ppm ask delivers −25.0 exactly, power peaks 102.6 % (was 118 % + scram) | Was: seek on the 45 s-lagged analyzer over-delivered ~50 % and spiked/scrammed the plant |
 | **S10** | PWR | At 100 % with the governor at rated, steady-state power ALWAYS returns to ~100 % after dilution — Tavg absorbs it (+~0.45 °C/ppm). AUTHENTIC PWR physics (probed 2026-07-23), but reads as "boron does nothing" from the board | Teaching-surface gap, not a bug: nothing on the board tells the player boron moves Tavg (not power) when the turbine is pinned at rated |
 | **S11** | PWR | Load-coupled feed (feed_sg channel OFF, `load_mode.js` follow branch) clips feed at 1.2 while the governor clips steam at 1.0 — any power excursion above rated integrates SG level up (probed 65→89 %) until an `sg_level high` scram minutes later, looking unrelated to its cause | Hidden in default free play (feed_sg defaultOn holds level) but live whenever feed is manual/failed; fix = clip coupled feed to the governor's deliverable or feed on `steam_out_total` in follow mode too |
+| **S12** | PWR | **TRAINING OVERHAUL WORKLIST (owner: Opus does this later; trainings need a major overhaul anyway).** Boron analyzer was UI-REMOVED 2026-07-23 (chemistry sampling is the teaching tool); training content still *narrates* the analyzer. Complete inventory of what to rework: **(a)** `scenarios/pwr_boron.js` beats at lines ~36 and ~47 — "the boron analyzer shows the number" / "watch the boron analyzer creeping down"; re-teach as dose-order + CHEM SAMPLE confirmation (the scenario's decision logic already gates on operator_action + settle, not the analyzer — text-only change); **(b)** `layers/instructor_layer.js` line ~45 maps `boron_ppm → boron_analyzer` for beat conditions — still FUNCTIONAL (instrument exists, just undisplayed) but consider re-keying teaching beats to `boron_sample` or true-state; **(c)** `ui/campaign_data.js` mission 7 (`pwr_boron`) teaches-line "boron vs rods: chemistry for the long game" — fine, but the mission should introduce the sampling ritual; **(d)** Manuals 04 PWR-N09 got minimal line-fixes only (steps now say "confirm with a chem sample") — the full procedure should teach the batch-dose + sample workflow properly; **(e)** any walkthrough/checklist prose that says "watch the boron ppm fall" live (checklists key on `boron_ppm` acceptance checks — functional, fine). UI restore path if ever wanted: `pwr_board_wiring.js` extraItems() splice + 'CHEM' relabel, `pwr_synoptic.js` B-row comment, `app.js` boron series comment, `pvDisplay:false` on the channel def — all one-line reverts, instrument untouched | Teaching-content debt, not a defect; the sim mechanics are already sample-first |
 
 ---
 

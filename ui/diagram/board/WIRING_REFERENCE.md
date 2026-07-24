@@ -18,7 +18,7 @@ ctx.unit selects display unit system ('si' or 'us'); board authored in US custom
 | condenser_vacuum | kPa | |
 | charging_flow, letdown_flow | normalized (~0–0.12) | true CVCS flows |
 | steam_pressure | MPa | SG secondary |
-| boron_analyzer | ppm | lagged boron |
+| boron_analyzer | ppm | lagged boron — **UI-REMOVED 2026-07-23** (instrument + VALUES entry kept in code; item spliced in extraItems(); chem sample is the displayed boron) |
 | governor_valve | % | turbine gov position (lagged) |
 | hpi_flow, accumulator_flow | normalized | |
 | steam_dump_valve | % | dump valve position |

@@ -46,6 +46,23 @@ where the two differ or where judgment was exercised.
 | **Repo** | Commits go directly to `main`, one per module. | Matches the linear, single-developer build (the scaffold was committed to `main`); each module is an independent, test-gated unit. |
 | **Load order** | `config → protection → thermal → pressurizer → primary → steam_generator → instruments → engine`, then layers. | The engine captures `RD.pwr*` helper namespaces at IIFE-eval time, so its dependencies must load first. Encoded in `index.html`, `test_pwr.html`, and the Node runners. |
 
+### Boron analyzer UI-removed — chemistry-first boron indication (2026-07-23, owner ruling)
+
+**Claim/ruling.** Online boronometers exist in the industry but are not relied upon; the
+concentration of record is chemistry grab samples + dose bookkeeping. Owner: showing a live
+analyzer undercuts the sampling lesson — **remove it from the UI, keep the code**. Removal is
+display-only and one-line-revertible at each spot (dated comments): board readout spliced +
+'ACTUAL'→'CHEM' relabel in `extraItems()` (re-export-safe), synoptic B-row readout/dual dropped,
+`app.js` trend series commented (candidate future re-add: stepped `boron_sample` history), and a
+new **generic `pvDisplay:false` channel-def flag** hides a channel's pv from the automation
+snapshot while the channel keeps reading it — chosen over ripping the analyzer out of the
+`boron_conc` def because engage-capture/re-anchor still need an internal "roughly what's in the
+loop" source, and because HR1-style instrument failures on the analyzer can still quietly fool
+the makeup channel (a good future lesson). The `boron_analyzer` instrument spec, PRNG draw
+order, and every save contract are untouched. Manuals 03/04 rewritten chemistry-first.
+**Training content deliberately NOT reworked** (owner: Opus later, big overhaul anyway) —
+complete worklist at `Diagnostic/TUNING_LOG.md` backlog **S12**.
+
 ### Boron chemistry sample — auto-confirm + CHEM SAMPLE button (2026-07-23, owner panel-design ruling)
 
 **Claim.** With batch dosing, the channel's bookkept concentration is exact in normal ops but goes

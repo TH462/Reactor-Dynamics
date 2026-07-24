@@ -1021,7 +1021,10 @@
         id: def.id, group: def.group, label: def.label, hint: def.hint || '', kind: def.kind,
         engaged: this._isEngaged(c, ctx),
         setpoint: c.sp,
-        pv: pv,
+        // pvDisplay:false — the channel still READS its pv internally, but the
+        // snapshot doesn't surface it (e.g. the boron analyzer, removed from the
+        // UI 2026-07-23 while remaining the conc channel's internal seed/re-anchor).
+        pv: def.pvDisplay === false ? null : pv,
         note: c.note || '',
         standby: !!(c.engaged && def.standby && def.standby(ctx, this)),
       };

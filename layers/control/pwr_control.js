@@ -373,14 +373,17 @@
 
     { id: 'boron_conc', kind: 'conc', group: 'Reactor',
       label: 'Boron concentration (target)',
-      hint: 'Meters boron changes as a BATCH DOSE, the way a real makeup panel does: a new target computes the change and delivers it at charging-flow pace, stopped by the flow totalizer — not by chasing the boron analyzer (its 45 s sample lag would overshoot). Any target change executes, however small. Needs the charging pump running. This is the board BORON CONTROL ON/OFF + target.',
+      hint: 'Meters boron changes as a BATCH DOSE, the way a real makeup panel does: a new target computes the change and delivers it at charging-flow pace, stopped by the flow totalizer. Chemistry confirms every completed dose (CHEM SAMPLE posts the authoritative ppm after the lab turnaround). Any target change executes, however small. Needs the charging pump running. This is the board BORON CONTROL ON/OFF + target.',
       offOnScram: false,
       manual_overrides: ['set_boron_adjust'],   // an operator borate/dilute takes it to MAN
       // Free-play preset starts come up with boron control ON, holding whatever boron the
       // preset was trimmed to (sp.capture reads the current analyzer) — a sensible target per
       // mode without hardcoding. Instructed content (noDefaults) is unaffected.
       defaultOn: function () { return true; },
-      pv: function (s) { return s.instruments.boron_analyzer; },
+      // The analyzer is UI-REMOVED (owner ruling 2026-07-23) but stays the channel's
+      // INTERNAL seed/re-anchor source — "the makeup panel knows roughly what's in
+      // the loop" — while pvDisplay:false keeps it off the Automate tab.
+      pv: function (s) { return s.instruments.boron_analyzer; }, pvDisplay: false,
       sp: { capture: function (s) { return s.instruments.boron_analyzer; }, min: 0, max: 2500, unit: 'ppm', dp: 0, step: 10 },
       // rate: real-plant scale — max RCS makeup (~150 gpm into ~90 000 gal) changes
       // concentration ~1.5 ppm/min ≈ 0.025 ppm/s; 0.05 is deliberately generous so a

@@ -56,12 +56,12 @@ below and go straight to the authoritative source for it.
 > is the at-a-glance truth for the next agent. The dense, append-only version lives in
 > `Blueprint/BUILD_DECISIONS.md` (Status line + Open Flags table) — update both.
 
-_Last updated: 2026-07-23 (boron batch-dose rework + chemistry sample — the BORON CONTROL
-target now meters a feedforward batch stopped by a flow totalizer instead of seeking the
-45 s-lagged analyzer (no deadband, 1 ppm nudges execute, 0.05 ppm/s, doses land exactly); a
-new `take_boron_sample` lab mechanic auto-confirms each dose and a CHEM SAMPLE button
-re-baselines the panel from the lab result after ECCS/freehand boration; Manuals 03 §7.5
-teaches both, incl. "dilution moves Tavg, not power at rated". Earlier same day: fine-step
+_Last updated: 2026-07-23 (boron is now chemistry-first: the BORON CONTROL target meters a
+feedforward BATCH DOSE stopped by a flow totalizer (no deadband, 1 ppm nudges execute,
+0.05 ppm/s); a `take_boron_sample` lab mechanic auto-confirms each dose and a CHEM SAMPLE
+button re-baselines the panel after ECCS/freehand boration; and the **boron analyzer is
+removed from the UI** (owner ruling — industry doesn't rely on boronometers; code kept for
+restore, training-overhaul worklist at TUNING_LOG backlog S12). Earlier same day: fine-step
 rod drive 228 → 912; Mode-5 pressurization slew; `pwr_heatup` checklist + `pwr_startup` to
 Mode 1 — procedures **22/22**; see `Diagnostic/TUNING_LOG.md` 2026-07-23 entries)._
 

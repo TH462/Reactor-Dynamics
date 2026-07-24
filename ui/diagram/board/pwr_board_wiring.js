@@ -197,8 +197,10 @@
     // row inside the BORON CONTROL box (extraItems() grows the box to make room).
     { id: 'bdBoronSample', kind: 'button', name: '', left: 735, top: 920, width: 100, height: 22,
       label: 'CHEM SAMPLE', color: '#5aad7c', fontSize: 11 },
-    { id: 'bdBoronChem', kind: 'value', name: 'Boron chem sample result', left: 1011, top: 922,
-      value: '—', unit: '', color: '#5aad7c', fontSize: 14, rAnchor: true }
+    // Sits in the old analyzer readout spot ('CHEM' label to its left) — the panel's
+    // one boron number is the lab result (analyzer removed from the UI, 2026-07-23).
+    { id: 'bdBoronChem', kind: 'value', name: 'Boron chem sample result', left: 1011, top: 880,
+      value: '—', unit: '', color: '#5aad7c', fontSize: 18, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -222,7 +224,10 @@
     imrmsu1bl4r: function (s) { return r0(MPa2psi(IN(s).afw_discharge_pressure || 0)); },               // AFW discharge psi (true pump head)
     imrmtkjxzm1: function (s) { return r0((IN(s).letdown_flow || 0) * GPM_LETDOWN); },                 // letdown flow gpm
     imrqn5m0oaj: function (s) { return r0((IN(s).charging_flow || 0) * GPM_CHARGING); },               // charging flow gpm
-    imrmtp2alpy: function (s) { return r0(IN(s).boron_analyzer); },                                     // boron ppm
+    // Boron analyzer readout — item spliced out of the doc in extraItems() (analyzer
+    // removed from the UI 2026-07-23; boronometers aren't relied on in the industry).
+    // Entry kept so restoring the item is a one-line revert.
+    imrmtp2alpy: function (s) { return r0(IN(s).boron_analyzer); },                                     // boron ppm (analyzer — UI-removed)
     imro6ohhdq3: function (s) { return r0(C2F(IN(s).tavg)); },                                          // Tavg °F
     imro6qpci2d: function (s) { return r0(Cd2F(IN(s).thot - IN(s).tcold)); },                           // dTavg °F
     imro6qsncb9: function (s) { var v = IN(s).startup_rate || 0; return (v >= 0 ? '+' : '') + v.toFixed(2); }, // SUR DPM
@@ -696,6 +701,15 @@
           // Boron batch-dose rework: grow the BORON CONTROL box one row so the
           // CHEM SAMPLE button + lab-result readout (EXTRA_ITEMS) fit inside it.
           if (doc.items[i].title === 'BORON CONTROL') { doc.items[i].height = 115; }
+          // Boron analyzer removed from the UI (owner ruling 2026-07-23 — industry
+          // doesn't rely on boronometers; chemistry sampling is the teaching tool).
+          // The lab-result readout (bdBoronChem) takes the old analyzer spot and the
+          // 'ACTUAL' label becomes 'CHEM'. Instrument + VALUES entry kept in code —
+          // restore by deleting this splice/relabel.
+          if (doc.items[i].id === 'imrmugv8e96') { doc.items[i].text = 'CHEM'; }
+        }
+        for (var j = doc.items.length - 1; j >= 0; j--) {
+          if (doc.items[j].id === 'imrmtp2alpy') doc.items.splice(j, 1);   // analyzer ppm readout
         }
       }
       return EXTRA_ITEMS;

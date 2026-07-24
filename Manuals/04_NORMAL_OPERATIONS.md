@@ -63,7 +63,7 @@ Initial condition **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**, 
 | 5 | Confirm RCP running (forced flow) | RCP card / rcp_running | Pump running |
 | 6 | Confirm control bank fully inserted | Rod Control bar | Steps ≈ 0 withdrawn (inserted) |
 | 7 | Confirm shutdown bank parked out | Shutdown bank indication | Fully withdrawn (normal) |
-| 8 | Confirm boron high / plant held subcritical | Boron analyzer (slow) | Consistent with subcritical hold |
+| 8 | Confirm boron high / plant held subcritical | Chem sample (CHEM SAMPLE if stale) | Consistent with subcritical hold |
 | 9 | Confirm Source Range energized | SR detector On; SR counts | SR On; counts typically hundreds of cps class |
 | 10 | Confirm Intermediate Range on scale for handoff readiness | IR current | IR rising into view as power rises later; at HZP may be low |
 | 11 | Confirm SG available as heat sink | SG level ~nominal; feed available | Level not LO-LO |
@@ -293,7 +293,7 @@ Use Chemical & Volume Control System (CVCS) boron and rods for long- and short-t
 - Charging pump available; CVCS panel accessible.
 
 ### Precautions
-- Boron changes are **slow** relative to rods (analyzer lag ~**45 s**; chemistry still compressed vs real plant).
+- Boron changes are **slow** relative to rods; concentration is known by **chemistry sample** (~60 s compressed lab turnaround), not a live meter.
 - Charging pump must be **On** for borate/dilute.
 - Post-trip / post-downpower xenon peak can prevent easy restart (trainer honesty: no full RPS reset cold restart path).
 
@@ -303,7 +303,7 @@ Use Chemical & Volume Control System (CVCS) boron and rods for long- and short-t
 |------|--------|------------|
 | 1 | Charging pump **On** | Pump running |
 | 2 | Select **Borate** (power down / more margin) or **Dilute** (power up) | Chemistry changing |
-| 3 | Watch boron analyzer trend and power/Tavg | Expected direction |
+| 3 | Watch power/Tavg respond; confirm with a chem sample | Expected direction |
 | 4 | **Hold** near target; finish with rod trim | Stable criticality |
 
 ### Procedure — xenon awareness

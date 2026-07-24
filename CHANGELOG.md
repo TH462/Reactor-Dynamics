@@ -8,6 +8,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The boron analyzer is gone from the panels — chemistry sampling is how you know boron now.**
+  Real plants sometimes fit online boronometers but don't rely on them; the concentration of
+  record comes from grab samples and dose bookkeeping. The board's `ACTUAL <ppm>` analyzer
+  readout, the synoptic CVCS ppm readout, the boron trend series, and the Automate-tab pv are
+  all removed (code retained behind dated comments for an easy restore — the instrument itself
+  is untouched, and the makeup channel still uses it internally to seed its books). The CHEM
+  sample readout takes the analyzer's place on the panel. Manuals 03/04 rewritten
+  chemistry-first. Training content still narrates the analyzer in places — a full training
+  overhaul is planned (worklist: `Diagnostic/TUNING_LOG.md` backlog S12).
+
 ### Added
 - **Boron CHEM SAMPLE — the lab is now on the board.** A new `take_boron_sample` command draws
   an RCS grab sample; the lab posts the authoritative concentration after a compressed ~60 s
