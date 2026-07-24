@@ -117,38 +117,63 @@ body {
   .bottom-row { flex: 0 0 auto; height: 240px; }
 }
 
-/* ===================================== presentation / "maximize diagram" mode
-   Toggled by the ⛶ button in the time-control row. app.js relocates two nodes —
-   the time controls (.sim-controls) to a full-width top bar, and the bottom bar
-   (.bottom-row: strip chart + alarms) into the right slot — and adds
-   .demo-diagram here. Re-gridding .app makes the .app.pwr-synoptic flex rules on
-   these children inert, so this overrides cleanly without !important. The board's
-   ResizeObserver refits the diagram automatically to the enlarged area. */
+/* ============================================ PWR control-room 3-column layout
+   The PWR board grids .app into: the diagram + vital gauges (left, kept as large
+   as possible), the alarms (top) + strip chart (bottom) stacked into a middle
+   column, and the simulator panel — time controls pinned on top — on the right.
+   app.js (buildPlantDisplay) moves .bottom-row out from under the diagram into
+   the middle column, so the diagram reclaims that vertical room. Gridding .app
+   makes the older .app.pwr-synoptic flex rules on these children inert;
+   pwr_board.js skips its plant-width lock in this mode so the board fits the
+   grid track (its ResizeObserver refits on any relayout).
+
+   The ⛶ button hides the right panel (.sim-hidden): the layout drops to two
+   columns and app.js moves the time controls (.sim-controls) atop the middle
+   column, enlarging the diagram further. */
 .demo-btn.on { color: var(--running); border-color: var(--running); }
 
-.app.demo-diagram {
+.app.pwr-synoptic {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
-  grid-template-rows: auto minmax(0, 1fr);
-  grid-template-areas:
-    "topbar topbar"
-    "main   side";
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px) minmax(320px, 360px);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "diagram midcol simcol";
 }
-.app.demo-diagram > .sim-controls { grid-area: topbar; }
-.app.demo-diagram > .plant-area   { grid-area: main; min-width: 0; max-width: none; }
-.app.demo-diagram > .right-col    { grid-area: side; min-width: 0; max-width: none; }
+.app.pwr-synoptic > .plant-area { grid-area: diagram; min-width: 0; max-width: none; }
+.app.pwr-synoptic > .bottom-row { grid-area: midcol; min-width: 0; min-height: 0; flex-direction: column; }
+.app.pwr-synoptic > .right-col  { grid-area: simcol; min-width: 0; max-width: none; }
 
-/* the side column shows ONLY the relocated bottom bar (strip chart + alarms),
-   stacked vertically; tools / instructor / scanner are hidden */
-.app.demo-diagram > .right-col > #toolsCard,
-.app.demo-diagram > .right-col > #instructorCard,
-.app.demo-diagram > .right-col > .scanner { display: none; }
-.app.demo-diagram > .right-col > .bottom-row {
-  flex: 1 1 auto; min-height: 0; flex-direction: column;
+/* keep the diagram's flex chain honest so the board fits its column width
+   instead of overflowing (the .main-area link lacks min-width:0) */
+.app.pwr-synoptic > .plant-area .main-area,
+.app.pwr-synoptic > .plant-area .view-area,
+.app.pwr-synoptic > .plant-area .pwr-board-wrap { min-width: 0; }
+
+/* middle column: time controls (present only in .sim-hidden) pinned on top,
+   then alarms, then the strip chart; alarms + chart split the remaining height */
+.app.pwr-synoptic > .bottom-row > .sim-controls { order: 1; flex: 0 0 auto; }
+.app.pwr-synoptic > .bottom-row > .alarm-panel  { order: 2; flex: 1 1 0; min-height: 0; }
+.app.pwr-synoptic > .bottom-row > .strip-chart  { order: 3; flex: 1 1 0; min-height: 0; }
+
+/* ⛶ hides the right sim panel → two columns, the diagram even larger */
+.app.pwr-synoptic.sim-hidden {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  grid-template-areas: "diagram midcol";
 }
-.app.demo-diagram > .right-col > .bottom-row > .strip-chart,
-.app.demo-diagram > .right-col > .bottom-row > .alarm-panel {
-  flex: 1 1 auto; min-height: 0;
+.app.pwr-synoptic.sim-hidden > .right-col { display: none; }
+
+/* narrow screens: stack the columns so nothing overflows */
+@media (max-width: 1200px) {
+  html, body { overflow: auto; }
+  .app.pwr-synoptic {
+    height: auto; min-height: 100vh;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 62vh auto auto;
+    grid-template-areas: "diagram" "midcol" "simcol";
+  }
+  .app.pwr-synoptic.sim-hidden {
+    grid-template-rows: 70vh auto;
+    grid-template-areas: "diagram" "midcol";
+  }
 }
 
 /* generic panel chrome */
@@ -201,7 +226,7 @@ body {
 .gauge.alarm .g-value { color: #ff6a4d; animation: gauge-alarm-flash .6s steps(1, end) infinite; }
 @keyframes gauge-alarm-flash { 50% { opacity: .4; } }
 /* trend arrow: dim at rest; color (not direction) signals deviation */
-.gauge .g-trend { font-size: 11px; color: #2a3a4a; }
+.gauge .g-trend { font-size: 11px; color: #3a4e60; }
 .gauge.warn  .g-trend { color: #c09020; }
 .gauge.alarm .g-trend { color: #e05030; }
 .trend-up, .trend-down, .trend-flat { /* direction is the glyph; color is state (above) */ }
@@ -473,7 +498,7 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .clock.running { animation: pulse 2s ease-in-out infinite; }
 .clock.accel { color: var(--caution); }
 @keyframes pulse { 50% { opacity: .6; } }
-.sim-row { display: flex; align-items: center; gap: 8px; }
+.sim-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .play {
   width: 40px; height: 30px; border-radius: 6px; border: 1px solid var(--border);
   background: var(--bg-right); color: var(--running); font-size: 15px; cursor: pointer; flex: 0 0 auto;
@@ -741,7 +766,7 @@ select.num-input { width: auto; }
  * ========================================================================== */
 :root {
   --clr-normal-value:    #a8b8c8;
-  --clr-dim-label:       #4a5a6a;
+  --clr-dim-label:       #62768a;   /* matches the diagram's component-label grey (.comp-label / .lbl-name) */
   --clr-status-normal:   #4a6070;
   --clr-caution:         #d4a020;
   --clr-alarm:           #e05030;

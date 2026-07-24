@@ -86,6 +86,11 @@
     if (r.width < 4 || r.height < 4) return;
     if (plant && stacked) {
       if (plant.style.width) plant.style.width = '';   // revert to stacked CSS
+    } else if (plant && plant.closest('.app.pwr-synoptic')) {
+      // The PWR layout grids the columns explicitly — don't lock the plant width
+      // to the diagram (that inline width would overflow the neighbouring
+      // columns); let the grid track size it so the board fits to width.
+      if (plant.style.width) { plant.style.width = ''; r = wrap.getBoundingClientRect(); }
     } else if (plant) {
       var wantW = r.height * (b.w / b.h);                     // diagram width at full height
       var chromeW = plant.getBoundingClientRect().width - r.width;  // padding/siblings

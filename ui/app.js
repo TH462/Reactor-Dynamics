@@ -1584,10 +1584,12 @@
   function drawChart() {
     var svg = $('chartCanvas'), floats = $('chartFloats'), W = 400, H = 120;
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
-    $('chartLegend').innerHTML = active.map(function (s) {
-      return '<span class="leg" style="color:' + s.c + '"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + s.range[0] + '–' + s.range[1] + '</b></span>';
-    }).join('');
-    if (chartBuf.length < 2) { svg.innerHTML = ''; if (floats) floats.innerHTML = ''; return; }
+    if (chartBuf.length < 2) {
+      $('chartLegend').innerHTML = active.map(function (s) {
+        return '<span class="leg" style="color:' + s.c + '"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + s.range[0] + '–' + s.range[1] + '</b></span>';
+      }).join('');
+      svg.innerHTML = ''; if (floats) floats.innerHTML = ''; return;
+    }
     var t0 = chartBuf[0].t, t1 = chartBuf[chartBuf.length - 1].t, span = (t1 - t0) || 1;
     var PW = W * CHART_PLOT_FRAC;   // traces stop short of the right edge; value chips live in the gutter
     var html = '';
@@ -1602,11 +1604,34 @@
     var stride = Math.max(1, Math.ceil(chartBuf.length / MAX_PTS));
     for (var bi = 0; bi < chartBuf.length; bi += stride) idx.push(bi);
     if (idx[idx.length - 1] !== chartBuf.length - 1) idx.push(chartBuf.length - 1);   // always include the latest sample
-    // horizontal gridlines — kept very dark so they recede behind the traces
-    [30, 60, 90].forEach(function (y) { html += '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#0f1217" stroke-width="0.5" vector-effect="non-scaling-stroke"/>'; });
+    // Dynamic per-series range: fit each visible line to its OWN min/max (plus a
+    // little padding) so small changes fill the plot height instead of flatlining
+    // across a fixed full-scale range. Falls back to the static range when a line
+    // has no finite data in the window.
+    var ranges = {};
+    active.forEach(function (ser) {
+      var vmin = Infinity, vmax = -Infinity;
+      for (var k = 0; k < idx.length; k++) {
+        var v = ser.get(chartBuf[idx[k]].ins);
+        if (v == null || !isFinite(v)) continue;
+        if (v < vmin) vmin = v;
+        if (v > vmax) vmax = v;
+      }
+      if (!isFinite(vmin) || !isFinite(vmax)) { ranges[ser.id] = [ser.range[0], ser.range[1]]; return; }
+      var s0 = vmax - vmin;
+      var pad = s0 > 1e-9 ? s0 * 0.12 : (Math.abs(vmax) * 0.02 + 1);   // flat line → small centred window
+      ranges[ser.id] = [vmin - pad, vmax + pad];
+    });
+    // legend reflects the current (dynamic) range each line is scaled to
+    $('chartLegend').innerHTML = active.map(function (s) {
+      var r = ranges[s.id], sp = r[1] - r[0], dp = sp >= 10 ? 0 : sp >= 1 ? 1 : 2;
+      return '<span class="leg" style="color:' + s.c + '"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + r[0].toFixed(dp) + '–' + r[1].toFixed(dp) + '</b></span>';
+    }).join('');
+    // horizontal gridlines — barely visible, thin; recede behind the traces
+    [20, 40, 60, 80, 100].forEach(function (y) { html += '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#1e2831" stroke-width="0.5" vector-effect="non-scaling-stroke"/>'; });
     var lastY = [];
     active.forEach(function (ser) {
-      var lo = ser.range[0], hi = ser.range[1], rng = (hi - lo) || 1, ly = 0;
+      var r = ranges[ser.id], lo = r[0], hi = r[1], rng = (hi - lo) || 1, ly = 0;
       var pts = idx.map(function (bIdx) {
         var b = chartBuf[bIdx];
         var x = (b.t - t0) / span * PW;
@@ -2332,33 +2357,30 @@
     $('fbClose').addEventListener('click', function () { $('feedbackOverlay').hidden = true; });
     $('feedbackOverlay').addEventListener('click', function (e) { if (e.target === $('feedbackOverlay')) $('feedbackOverlay').hidden = true; });
     $('fbSend').addEventListener('click', function () { sendFeedback(); });
-    // Presentation mode (⛶) — maximize the plant diagram for demos. Moves the
-    // time controls to a full-width top bar and the strip chart + alarms into
-    // the side column (hiding tools/instructor/scanner); toggle to restore. The
-    // node references are captured once, so moving them keeps their listeners.
+    // Hide side panel (⛶) — hides the right simulator panel and moves the time
+    // controls (.sim-controls) atop the middle alarms/graph column so the plant
+    // diagram gets even more room; toggle to bring the panel back. The middle
+    // column (.bottom-row) is resolved live since positionBottomRow() places it.
     (function () {
       var appEl = document.querySelector('.app');
-      var simControls = document.querySelector('.right-col > .sim-controls');
+      var simControls = document.querySelector('.sim-controls');
       var rightColEl = document.querySelector('.right-col');
-      var plantAreaEl = document.querySelector('.plant-area');
-      var bottomRow = document.querySelector('.plant-area > .bottom-row');
       var demoBtn = $('demoBtn');
-      if (!appEl || !simControls || !rightColEl || !plantAreaEl || !bottomRow || !demoBtn) return;
-      var demoOn = false;
+      if (!appEl || !simControls || !rightColEl || !demoBtn) return;
+      var hidden = false;
       demoBtn.addEventListener('click', function () {
-        demoOn = !demoOn;
-        if (demoOn) {
-          appEl.classList.add('demo-diagram');
-          appEl.insertBefore(simControls, appEl.firstChild);        // time controls → top bar
-          rightColEl.insertBefore(bottomRow, rightColEl.firstChild); // strip chart + alarms → side
+        hidden = !hidden;
+        var midCol = document.querySelector('.bottom-row');
+        if (hidden) {
+          appEl.classList.add('sim-hidden');
+          if (midCol) midCol.insertBefore(simControls, midCol.firstChild);  // time controls → top of the middle column
           demoBtn.classList.add('on');
-          demoBtn.title = 'Restore the standard control-room layout';
+          demoBtn.title = 'Show the side panel';
         } else {
-          appEl.classList.remove('demo-diagram');
-          rightColEl.insertBefore(simControls, rightColEl.firstChild); // time controls → back to right column
-          plantAreaEl.appendChild(bottomRow);                          // strip chart + alarms → back to bottom
+          appEl.classList.remove('sim-hidden');
+          rightColEl.insertBefore(simControls, rightColEl.firstChild);      // time controls → back atop the right panel
           demoBtn.classList.remove('on');
-          demoBtn.title = 'Presentation mode — maximize the plant diagram';
+          demoBtn.title = 'Hide the side panel — enlarge the diagram';
         }
       });
     })();
@@ -3196,9 +3218,27 @@
   // PWR: single full-plant synoptic (Blueprint/new_diagram_controls.md) replaces
   // the 4-view plant display. RBMK/BWR keep the legacy display until their own
   // diagram specs exist.
+  // PWR uses a 3-column grid (diagram | strip-chart+alarms | sim panel), so the
+  // strip chart + alarms live in the MIDDLE column: move .bottom-row out from
+  // under the diagram to be a direct child of .app. Other plants keep it under
+  // the plant display. Idempotent.
+  function positionBottomRow(syn) {
+    var app = document.querySelector('.app');
+    var plant = document.querySelector('.plant-area');
+    var right = document.querySelector('.right-col');
+    var bottom = document.querySelector('.bottom-row');
+    if (!app || !plant || !right || !bottom) return;
+    if (syn) {
+      if (bottom.parentNode !== app) app.insertBefore(bottom, right);
+    } else if (bottom.parentNode !== plant) {
+      plant.appendChild(bottom);
+    }
+  }
+
   function buildPlantDisplay() {
     var syn = ui.plant === 'pwr';
     document.querySelector('.app').classList.toggle('pwr-synoptic', syn);
+    positionBottomRow(syn);
     if (!syn) {
       if (RD.PwrBoard && RD.PwrBoard.isMounted()) RD.PwrBoard.unmount();
       if (RD.PwrSynoptic && RD.PwrSynoptic.isMounted()) RD.PwrSynoptic.unmount();

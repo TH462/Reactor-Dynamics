@@ -1032,7 +1032,11 @@
   PWREngine.prototype.getStartupLineup = function () {
     var name = this._initialStateName || 'hot_full_power';
     if (name === 'cold_shutdown') return [];   // letdown isolated when depressurized
-    return [{ action: 'set_letdown_orifices', a: true, b: false }];   // Orifice A (3 %)
+    var lineup = [{ action: 'set_letdown_orifices', a: true, b: false }];   // Orifice A (3 %)
+    // Mode 1 (power operation) free-play start: put the generator load in MANUAL
+    // rather than load-follow, so the operator drives generator load explicitly.
+    if (name === 'hot_full_power' || name === '50_percent') lineup.push({ action: 'set_load_mode', mode: 'manual' });
+    return lineup;
   };
 
   PWREngine.prototype._buildState = function (name) {

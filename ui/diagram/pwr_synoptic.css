@@ -7,21 +7,15 @@
  * ========================================================================== */
 
 /* ------------------------------------------------------------ shell hooks */
-/* PWR-only: hide the legacy 4-view switcher / status bar / control row and give
-   the chart+alarm band its share. Trimmed ~20% (was 34%/200px) to give the
-   diagram more vertical room. RBMK/BWR untouched. */
+/* PWR-only: hide the legacy 4-view switcher / status bar / control row. The
+   column layout itself (diagram | strip+alarms | sim panel) is a grid defined in
+   shell.css (.app.pwr-synoptic); the flex-era bottom-row/plant-area/right-col
+   sizing rules that used to live here were removed — grid places them now, and
+   pwr_board.js no longer locks the plant width in this mode. RBMK/BWR untouched. */
 .app.pwr-synoptic .view-switcher,
 .app.pwr-synoptic .status-bar,
 .app.pwr-synoptic .pd-controlbar { display: none; }
-.app.pwr-synoptic .bottom-row { flex: 0 0 27%; min-height: 160px; }
 .app.pwr-synoptic .view-area { padding: 0; overflow: hidden; }
-
-/* Lock the left plant-area to the diagram's width and let the right column take
-   the slack. The diagram fills the available HEIGHT; pwr_board.js then sets an
-   explicit width on .plant-area so it hugs the diagram (no horizontal letterbox),
-   and the freed width flows to the stretching right column. */
-.app.pwr-synoptic .plant-area { flex: 0 0 auto; min-width: 0; }
-.app.pwr-synoptic .right-col  { flex: 1 1 auto; max-width: none; }
 
 /* ------------------------------------------------------------ stage */
 .synoptic-stage {
