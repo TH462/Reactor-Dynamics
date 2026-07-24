@@ -9,6 +9,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Vercel Web Analytics on every shipped page.** A one-line first-party beacon
+  (`/_vercel/insights/script.js`) in the `<head>` of `index`, `about`, `changelog`,
+  `feedback`, `legal`, `privacy` and `ui/shell.html`. No npm package and no build step —
+  Vercel serves the script at the edge for static sites, so `@vercel/analytics` would only
+  add a bundler this project doesn't have. The path is root-relative so it resolves the same
+  from `/ui/shell.html` as from the top level. Off Vercel (local `npx serve .`) it 404s
+  harmlessly. **Requires the Web Analytics toggle to be enabled in the Vercel project
+  dashboard — the tag alone records nothing.**
+- **Vercel Speed Insights on the control room only** (`/_vercel/speed-insights/script.js`,
+  `ui/shell.html`). Real-user load timings for the one page that pulls in the full engine +
+  layer + UI script set. Separate Vercel product with its own dashboard toggle.
+
 - **New meltdown-path test gate (`node test/run_meltdown.js`).** A strict-xfail battery
   (`test/meltdown_pwr.js`) that drives the classic routes to core damage — large-break LOCA,
   TMI small-break, station blackout, ATWS+LOCA, total loss of heat sink, ECCS recovery — and
@@ -23,6 +35,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   otherwise fall back to the step's named control. Works on the checklist bubble list.
 
 ### Changed
+- **`privacy.html` now describes what is actually collected.** It previously stated the site
+  collects "**nothing**", which the analytics beacon makes false. The *Right now* section now
+  names the page-view data (path, referrer, country, device/browser/OS), states that no cookies
+  or persistent identifiers are set, and that nothing *inside* the simulator is recorded. The
+  lede's "no third-party trackers" became "no cross-site tracking" — the beacon is same-origin,
+  but Vercel is a processor, and the weaker claim is unambiguously true. The *Planned: anonymous
+  usage telemetry* section (the separate Supabase work, `WEBSITE_SPEC.md` §5) is unchanged.
 - **The Mode 3 → Mode 1 startup checklist is rebuilt around the 1/M plot.** The old walkthrough
   jumped from "check the instruments" straight to a single big rod pull with no approach-to-
   criticality method. It now walks the real thing: set the **1/M baseline** before touching the

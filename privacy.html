@@ -7,6 +7,8 @@
     <meta name="description" content="What Reactor Dynamics collects (very little) and why.">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
     <link rel="stylesheet" href="site/site.css">
+    <!-- Vercel Web Analytics (cookieless page-view beacon; 404s harmlessly off-Vercel) -->
+    <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
 
@@ -24,12 +26,18 @@
 <main class="page">
   <h1>Privacy</h1>
   <p class="lede">The short version: no accounts, no cookies, no ads, no
-  third-party trackers. The simulator runs entirely in your browser.</p>
+  cross-site tracking. The simulator runs entirely in your browser.</p>
 
   <h2>Right now</h2>
-  <p>The site currently collects <strong>nothing</strong>. The simulator runs
-  locally in your browser tab; your plant state and progress stay on your
-  machine (in your browser&rsquo;s local storage) and are never uploaded.</p>
+  <p>The simulator runs locally in your browser tab; your plant state and
+  progress stay on your machine (in your browser&rsquo;s local storage) and are
+  never uploaded.</p>
+  <p>The only thing collected is an anonymous <strong>page-view count</strong>,
+  through Vercel Web Analytics — the host this site is served from. For each
+  page you open it records the page address, the referring link, and coarse
+  device information (country, device type, browser, operating system). It sets
+  <strong>no cookies</strong>, stores no persistent identifier, and cannot follow
+  you to other sites. Nothing you do <em>inside</em> the simulator is recorded.</p>
 
   <h2>Planned: anonymous usage telemetry</h2>
   <p>A future update will add lightweight, anonymous telemetry so I can see
