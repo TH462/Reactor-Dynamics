@@ -176,11 +176,14 @@ T.push(test('NIS startup net — conditioned SR trip, P-6 switch interlocks, blo
   p.cmd({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: false });
   p.run(1);
   ck('unblocked PR-25 trips at power', p.layer.rps.last_trip_reason, p.layer.rps.scrammed === true, 'scrammed');
-  // P-10 gate: below 10 % the block command is refused; and blocks auto-reinstate.
+  // Manual rule: below P-10 the automatic permissive is unmet, but the IR trip is not
+  // asserted at zero power, so the operator may block it PROACTIVELY — and it's tracked
+  // as a manual block (which survives auto-reinstate).
   var q = new Stack('hot_zero_power');
   q.run(1);
   var rb = q.cmd({ action: 'set_trip_block', trip_id: 'ir_high', blocked: true });
-  ck('trip block refused below P-10', rb && rb.type, rb && rb.type === 'blocked', 'blocked');
+  ck('proactive block allowed below P-10 (IR not asserted)', rb, rb == null && q.layer.tripBlocks.ir_high === true, 'blocked');
+  ck('operator block tracked as manual', String(q.layer.manualTripBlocks.ir_high), q.layer.manualTripBlocks.ir_high === true, 'true');
 }));
 
 T.push(test('P-11/P-7 trip bypass — cold init blocks, auto-reinstate on repressurization', function (ck) {

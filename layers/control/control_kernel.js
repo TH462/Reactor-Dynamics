@@ -106,6 +106,10 @@
     // (the real at-power lineup — they were blocked at P-10 on the way up);
     // auto-reinstate re-arms them the moment power falls below the permissive.
     this.tripBlocks = this._initialTripBlocks();
+    // Manually-engaged trip blocks (a subset of tripBlocks). These survive
+    // auto-reinstate — the automatic permissive blocks still reinstate, but a block
+    // the operator set proactively persists until they clear it.
+    this.manualTripBlocks = {};
   }
 
   // Initial ESF arm state. Armed by default; disarm any system whose ACTIVATING
@@ -366,6 +370,16 @@
   ControlLayer.prototype._permissiveSatisfied = function (ins) {   // the plant-wide permissive (P-10)
     return this._permTest(this.config.trip_block_permissive, ins);
   };
+  // Is a trip currently asserted (would fire this instant if unblocked)? Same read
+  // path as _evalTrips, incl. the __true_flow__ HR1 exception. Drives the manual
+  // block rule: block only while NOT asserted; clearing is locked while asserted.
+  ControlLayer.prototype._tripAsserted = function (t, ins) {
+    if (t.condition && !this._evaluateCondition(t.condition)) return false;
+    var value = (t.instrument === '__true_flow__')
+      ? this.engine.getTrueState().pump_flow_pct / 100
+      : (ins || {})[t.instrument];
+    return crossed(value, t.direction, t.setpoint);
+  };
 
   // Westinghouse auto-reinstate: a trip block clears itself the moment ITS permissive
   // is no longer satisfied — the startup net re-arms below P-10 on the way down, and
@@ -375,7 +389,7 @@
     var tps = this.config.trips || [];
     for (var i = 0; i < tps.length; i++) {
       var t = tps[i];
-      if (t.id && this.tripBlocks[t.id] && !this._permTest(this._tripPermissive(t), ins)) delete this.tripBlocks[t.id];
+      if (t.id && this.tripBlocks[t.id] && !this.manualTripBlocks[t.id] && !this._permTest(this._tripPermissive(t), ins)) delete this.tripBlocks[t.id];   // manual blocks survive
     }
   };
   ControlLayer.prototype._anyTripBlocks = function () {
@@ -387,16 +401,24 @@
     var trips = this.config.trips || [], t = null;
     for (var i = 0; i < trips.length; i++) if (trips[i].id === tripId && trips[i].blockable) { t = trips[i]; break; }
     if (!t) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown or unblockable trip', received: tripId };
+    var ins = this.lastInstruments, asserted = this._tripAsserted(t, ins);
     if (blocked) {
-      if (!this._permTest(this._tripPermissive(t), this.lastInstruments)) {
+      // Engage rule: inside the block permissive (the automatic regime) as before, OR
+      // proactively any time the trip is NOT asserted. A trip that is already asserted
+      // outside its permissive can't be blocked — block it before the condition is met.
+      if (!this._permTest(this._tripPermissive(t), ins) && asserted) {
         return { type: 'blocked', code: 'INTERLOCK',
                  message: this.register === 'industry'
-                   ? 'TRIP BLOCK REFUSED: block permissive not satisfied.'
-                   : 'Trip block refused — the plant is outside this trip’s block permissive (e.g. P-10 at-power, or P-11/P-7 for the low-pressure/low-flow trips).' };
+                   ? 'TRIP BLOCK REFUSED: trip already asserted.'
+                   : 'Trip block refused — that trip is already tripping; block it before the condition is reached.' };
       }
       this.tripBlocks[tripId] = true;
+      this.manualTripBlocks[tripId] = true;   // operator-set: survives auto-reinstate
     } else {
+      // Clearing is always allowed (like a real plant — remove the block and the trip
+      // re-arms; it scrams immediately if it was being held off).
       delete this.tripBlocks[tripId];
+      delete this.manualTripBlocks[tripId];
     }
     return null;
   };
@@ -562,8 +584,23 @@
   };
 
   ControlLayer.prototype.getRpsState = function () {
+    // Per-trip block status for the UI: whether it's asserted now, and whether the
+    // operator may block / clear it under the manual rule (block unless asserted;
+    // clear only while not asserted). Keeps the UI from re-deriving trip physics.
+    var ins = this.lastInstruments, self = this, status = {};
+    (this.config.trips || []).forEach(function (t) {
+      if (!t.blockable || !t.id) return;
+      var asserted = self._tripAsserted(t, ins), blocked = !!self.tripBlocks[t.id];
+      status[t.id] = {
+        blocked: blocked, asserted: asserted,
+        can_block: !blocked && (self._permTest(self._tripPermissive(t), ins) || !asserted),
+        can_clear: blocked   // clearing a block is always allowed
+      };
+    });
     return { scrammed: this.rps.scrammed, last_trip_reason: this.rps.last_trip_reason,
-             trip_blocks: Object.assign({}, this.tripBlocks) };
+             trip_blocks: Object.assign({}, this.tripBlocks),
+             manual_trip_blocks: Object.assign({}, this.manualTripBlocks),
+             trip_block_status: status };
   };
 
   ControlLayer.prototype.getSnapshotSections = function () {
@@ -1060,7 +1097,8 @@
                        concSampleSeq: c.concSampleSeq };
     }
     return { t: this._autoT, acc: this._autoAcc, channels: ch, esf: Object.assign({}, this.esfAuto),
-             trip_blocks: Object.assign({}, this.tripBlocks) };
+             trip_blocks: Object.assign({}, this.tripBlocks),
+             manual_trip_blocks: Object.assign({}, this.manualTripBlocks) };
   };
 
   ControlLayer.prototype._loadAutomation = function (au) {
@@ -1096,6 +1134,7 @@
     // Absent in an old save → re-derive the at-power lineup from the restored
     // instruments (a pre-NIS save at full power must not insta-trip on load).
     this.tripBlocks = (au && au.trip_blocks) ? Object.assign({}, au.trip_blocks) : this._initialTripBlocks();
+    this.manualTripBlocks = (au && au.manual_trip_blocks) ? Object.assign({}, au.manual_trip_blocks) : {};   // old saves: none → all treated as auto
   };
 
   // -------------------------------------------------------------- save / restore

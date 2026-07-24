@@ -528,27 +528,18 @@
 
   function refreshTripBlocks(s) {
     if (!pop || !s) return;
+    var st = (s.rps_state && s.rps_state.trip_block_status) || {};
     var btns = pop.querySelectorAll('button[data-trip]');
     for (var i = 0; i < btns.length; i++) {
       var id = btns[i].getAttribute('data-trip');
-      var blocked = isBlocked(s, id);
+      var ts = st[id] || {};
+      var blocked = ts.blocked != null ? ts.blocked : isBlocked(s, id);
       btns[i].textContent = blocked ? 'BLOCKED' : 'BLOCK';
       btns[i].className = blocked ? 'bd-blocked' : '';
-      // permissive gating: at power lo_press/lo_flow can't be blocked (permissive unmet);
-      // the engine simply ignores the command, so reflect a disabled affordance.
-      var permit = tripBlockPermitted(s, id);
-      btns[i].disabled = !permit && !blocked;
+      // Manual rule (kernel-evaluated): block unless the trip is asserted; while blocked,
+      // clearing is locked as long as the trip is asserted (removing it would scram now).
+      btns[i].disabled = blocked ? (ts.can_clear === false) : (ts.can_block === false);
     }
-  }
-
-  function tripBlockPermitted(s, id) {
-    var INS = IN(s);
-    // P-10 (10% power) gates ir_high / pr_low_setpoint; lo_press/lo_flow gate on their own
-    // low-pressure / low-power permissive.
-    if (id === 'ir_high' || id === 'pr_low_setpoint') return (INS.power_range || 0) > 10;
-    if (id === 'lo_press') return (INS.primary_pressure || 99) < 13.6;
-    if (id === 'lo_flow') return (INS.power_range || 0) < 5;
-    return true;
   }
 
   function mk(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
