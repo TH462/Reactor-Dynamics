@@ -14,6 +14,9 @@ tmp/
 # Node (only if a dev static server / tooling is ever added; v1 has no build step)
 node_modules/
 
+# Vercel CLI link folder (project IDs; created by `vercel link`)
+.vercel/
+
 # Saved simulation states downloaded during manual testing
 *.save.json
 exports/

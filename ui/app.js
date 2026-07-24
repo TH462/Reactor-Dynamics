@@ -2332,6 +2332,36 @@
     $('fbClose').addEventListener('click', function () { $('feedbackOverlay').hidden = true; });
     $('feedbackOverlay').addEventListener('click', function (e) { if (e.target === $('feedbackOverlay')) $('feedbackOverlay').hidden = true; });
     $('fbSend').addEventListener('click', function () { sendFeedback(); });
+    // Presentation mode (⛶) — maximize the plant diagram for demos. Moves the
+    // time controls to a full-width top bar and the strip chart + alarms into
+    // the side column (hiding tools/instructor/scanner); toggle to restore. The
+    // node references are captured once, so moving them keeps their listeners.
+    (function () {
+      var appEl = document.querySelector('.app');
+      var simControls = document.querySelector('.right-col > .sim-controls');
+      var rightColEl = document.querySelector('.right-col');
+      var plantAreaEl = document.querySelector('.plant-area');
+      var bottomRow = document.querySelector('.plant-area > .bottom-row');
+      var demoBtn = $('demoBtn');
+      if (!appEl || !simControls || !rightColEl || !plantAreaEl || !bottomRow || !demoBtn) return;
+      var demoOn = false;
+      demoBtn.addEventListener('click', function () {
+        demoOn = !demoOn;
+        if (demoOn) {
+          appEl.classList.add('demo-diagram');
+          appEl.insertBefore(simControls, appEl.firstChild);        // time controls → top bar
+          rightColEl.insertBefore(bottomRow, rightColEl.firstChild); // strip chart + alarms → side
+          demoBtn.classList.add('on');
+          demoBtn.title = 'Restore the standard control-room layout';
+        } else {
+          appEl.classList.remove('demo-diagram');
+          rightColEl.insertBefore(simControls, rightColEl.firstChild); // time controls → back to right column
+          plantAreaEl.appendChild(bottomRow);                          // strip chart + alarms → back to bottom
+          demoBtn.classList.remove('on');
+          demoBtn.title = 'Presentation mode — maximize the plant diagram';
+        }
+      });
+    })();
     $('missionOverlay').addEventListener('click', function (e) {
       if (e.target === $('missionOverlay')) { closeMissionSelect(); return; }
       var pc = e.target.closest('[data-mplant]');

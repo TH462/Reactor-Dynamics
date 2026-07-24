@@ -117,6 +117,40 @@ body {
   .bottom-row { flex: 0 0 auto; height: 240px; }
 }
 
+/* ===================================== presentation / "maximize diagram" mode
+   Toggled by the ⛶ button in the time-control row. app.js relocates two nodes —
+   the time controls (.sim-controls) to a full-width top bar, and the bottom bar
+   (.bottom-row: strip chart + alarms) into the right slot — and adds
+   .demo-diagram here. Re-gridding .app makes the .app.pwr-synoptic flex rules on
+   these children inert, so this overrides cleanly without !important. The board's
+   ResizeObserver refits the diagram automatically to the enlarged area. */
+.demo-btn.on { color: var(--running); border-color: var(--running); }
+
+.app.demo-diagram {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "topbar topbar"
+    "main   side";
+}
+.app.demo-diagram > .sim-controls { grid-area: topbar; }
+.app.demo-diagram > .plant-area   { grid-area: main; min-width: 0; max-width: none; }
+.app.demo-diagram > .right-col    { grid-area: side; min-width: 0; max-width: none; }
+
+/* the side column shows ONLY the relocated bottom bar (strip chart + alarms),
+   stacked vertically; tools / instructor / scanner are hidden */
+.app.demo-diagram > .right-col > #toolsCard,
+.app.demo-diagram > .right-col > #instructorCard,
+.app.demo-diagram > .right-col > .scanner { display: none; }
+.app.demo-diagram > .right-col > .bottom-row {
+  flex: 1 1 auto; min-height: 0; flex-direction: column;
+}
+.app.demo-diagram > .right-col > .bottom-row > .strip-chart,
+.app.demo-diagram > .right-col > .bottom-row > .alarm-panel {
+  flex: 1 1 auto; min-height: 0;
+}
+
 /* generic panel chrome */
 .panel {
   background: var(--bg-right);
