@@ -1,0 +1,66 @@
+Reactor Dynamics — Content License (manuals & training material)
+================================================================
+
+Copyright (C) 2026 Timothy Holt
+
+Reactor Dynamics is dual-licensed. This file governs the WRITTEN, NON-CODE
+CONTENT of the project. The software is licensed separately — see LICENSE
+(GNU Affero General Public License, version 3).
+
+------------------------------------------------------------------------
+What this file covers
+------------------------------------------------------------------------
+
+The prose and instructional material of the project, specifically:
+
+  * the operator manuals under  Manuals/
+  * the training-campaign, mission, and instructor text (the human-readable
+    briefing / dialogue / procedure prose authored for learners)
+  * the site copy under  about.html, index.html, and the other site pages
+
+is licensed under the
+
+  Creative Commons Attribution 4.0 International License (CC BY 4.0).
+
+  Human-readable summary:  https://creativecommons.org/licenses/by/4.0/
+  Full legal code:         https://creativecommons.org/licenses/by/4.0/legalcode
+
+You are free to share and adapt this material for any purpose, including
+commercially, provided you give appropriate credit, link to the license, and
+indicate if changes were made.
+
+Suggested attribution:
+
+  “Operator manual text from Reactor Dynamics by Timothy Holt
+   (https://reactordynamics.com), used under CC BY 4.0.”
+
+------------------------------------------------------------------------
+What this file does NOT cover
+------------------------------------------------------------------------
+
+  * All SOURCE CODE — the physics engines, control/simulation/instructor
+    layers, UI, tooling, and tests (engines/, layers/, scenarios/, ui/,
+    test/, tools/, and the site's JavaScript) — is licensed under the
+    GNU Affero General Public License v3.0. See LICENSE.
+
+  * Data files that are an inseparable part of the software (scenario
+    definitions, config/tuning constants, and any code that merely embeds
+    manual text) follow the code and are licensed under AGPL-3.0, not this
+    file.
+
+  * Third-party components retain their own licenses (e.g. the Playwright
+    test dependency under node_modules/).
+
+Where a single file mixes prose and code, treat the executable code as
+AGPL-3.0 and the quotable prose as CC BY 4.0. When in doubt, the AGPL
+governs anything that runs.
+
+------------------------------------------------------------------------
+No warranty
+------------------------------------------------------------------------
+
+Reactor Dynamics is an educational simulation. The content is provided for
+teaching and general interest only. It is NOT engineering documentation, NOT
+a substitute for licensed operator training, and must NOT be used to operate,
+design, or make safety decisions about any real nuclear facility. The content
+is provided "as is", without warranty of any kind.

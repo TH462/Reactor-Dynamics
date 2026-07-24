@@ -306,6 +306,29 @@ Source of truth: `engines/`, `layers/`, `scenarios/`, `ui/`, `test/`, `tools/` (
 for intent: `terminals/` (raw session logs), `inbox/` (handoff drafts), `mcps/`,
 `node_modules/`, and the `Diagnostic/*.json` dumps (the `.md` reports there are curated).
 
+## License
+
+Reactor Dynamics is dual-licensed, © 2026 Timothy Holt:
+
+- **Code** — the physics engines, control/simulation/instructor layers, UI,
+  tooling, and tests (`engines/`, `layers/`, `scenarios/`, `ui/`, `test/`,
+  `tools/`, and the site JS) — is under the **GNU Affero General Public License
+  v3.0** (`LICENSE`). AGPL is copyleft with a network clause: anyone who
+  distributes the code *or hosts a modified version* must publish their
+  complete corresponding source under the same license. (The whole plant is
+  vanilla JS served to the browser, so the source is public by construction —
+  AGPL just makes the terms explicit.)
+- **Manuals & training prose** — `Manuals/` and the human-readable
+  mission/instructor/site copy — is under **Creative Commons Attribution 4.0
+  (CC BY 4.0)** (`LICENSE-CONTENT`): reuse freely, including commercially, with
+  attribution. Scenario/config data and any code that embeds manual text
+  follow the code (AGPL-3.0).
+
+The public-facing version of these terms — plus the safety disclaimer,
+no-warranty, and limitation-of-liability language — lives on the site at
+`legal.html` (linked from every page footer). Third-party dependencies (e.g.
+Playwright under `node_modules/`) keep their own licenses.
+
 ## Domain conventions
 
 - **Instruments vs truth.** Gauges, alarms, and automatic protection read *instrumented*
