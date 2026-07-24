@@ -548,6 +548,7 @@
     });
   }
   function renderNow(s) {
+    var rawIns = s.instruments;   // capture BEFORE damping — the strip chart plots RAW, unsmoothed readings at every speed
     dampInstruments(s);
     $('clock').textContent = 'T+' + hms(s.metadata.sim_time);
     $('clock').classList.toggle('running', s.metadata.running);
@@ -582,7 +583,7 @@
     while (chartBuf.length && chartBuf[chartBuf.length - 1].t > s.metadata.sim_time + 1e-9) chartBuf.pop();
     // Snapshot the instruments for the chart; also carry xenon (a true-state quantity with
     // no gauge of its own) so it can be a plottable series alongside the instrument readings.
-    var chartIns = Object.assign({}, s.instruments);
+    var chartIns = Object.assign({}, rawIns);   // RAW instruments — no display smoothing on the chart
     if (s.true_state && s.true_state.xenon_pct_eq != null) chartIns.xenon_pct_eq = s.true_state.xenon_pct_eq;
     chartBuf.push({ t: s.metadata.sim_time, ins: chartIns });
     var cutoff = s.metadata.sim_time - CHART_RECORD_SEC;   // retain 30 min regardless of the display window
