@@ -217,6 +217,18 @@ Per-channel **AUTO / MAN** controllers that read **instruments** and issue plant
 
 Strip / multi-parameter trends for post-event review and slow transients (xenon, boron).
 
+**What the trend traces.** In **Teaching** mode the strip chart plots the **true physics** —
+sensor noise is not a lesson, and a clean trace is what makes a slow trend readable. In
+**Realistic** mode it plots the **instruments**, so a failed or drifting sensor shows up on
+the trend exactly as it does on the gauge, and must be caught by cross-checking diverse
+indications (see PWR-E20/E21/E22 in `07_ABNORMAL_EMERGENCY.md`). Alarms and automatic
+protection read the instruments in **both** modes (HR1) — the mode changes what is *drawn*,
+never what the plant decides.
+
+The vertical scale auto-ranges to round numbers and is then **held**: it re-scales only when
+a trace leaves the band, so a line does not change shape once it has been drawn. A trace
+brightens when its parameter is in an alarm band.
+
 ### 7.4 Sim
 
 - Save / load state (JSON).

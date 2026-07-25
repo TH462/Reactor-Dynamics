@@ -35,6 +35,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   otherwise fall back to the step's named control. Works on the checklist bubble list.
 
 ### Changed
+- **The strip chart traces the physics, holds still, and stopped turning white.** Three
+  separate complaints, three causes. (1) It plotted the **instrument** readings, so every
+  trace carried sensor noise that teaches nothing. In **Teaching** mode it now plots the
+  true physics; in **Realistic** mode it still plots the instruments — lightly denoised —
+  so the sensor-failure drills (PWR-E20/E21/E22: drifting Tavg, stuck PZR level) still
+  have to be caught by cross-checking, exactly as the procedures say. This falls out
+  neatly on TMI-2, which runs Realistic for the deception (p1/p3) and Teaching for the
+  reveal (p2). Alarms and protection read instruments in both modes, unchanged (HR1).
+  (2) **Traces kept wriggling and reshaping after they were drawn** — the auto-range eased
+  its limits toward the data every single frame, re-projecting the *whole* trace each time.
+  The axis now sits on round 1-2-5 numbers and is *held*: it re-fits only when the data
+  leaves the band, or after the trace has sat well inside it for several seconds. Once a
+  point is drawn it stays put. Axis labels are readable numbers now (`0–120`, `14.5–16.0`)
+  instead of `-7–107` and `15.22–15.54`, and they no longer run past a quantity's physical
+  limits. (3) **Traces sometimes turned white** — the alarm highlight washed the colour
+  60 % toward white, which destroyed the series identity, and it was driven by the raw
+  noisy reading so a value sitting on its setpoint strobed the line every frame. The
+  highlight is gentler (28 %, hue preserved) and latches with a release deadband.
+  Side effect: the trend buffer now records one value per plotted series instead of a copy
+  of the whole instrument set, so it holds **both** sources in ~40 % *less* memory than it
+  used for one. The CSV export follows whatever the chart is showing.
 - **The control room fills the window: a bigger diagram and no dead space beside it.**
   Two independent wastes of page, both worst on wide-but-short windows (2560×1080, any
   un-maximized landscape window). First, the board reserved phantom width: the
