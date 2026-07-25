@@ -59,6 +59,10 @@ var BASELINES = {
   'run_autoctl.js':        { code: 0, score: '20/20' },
   'run_campaign.js':       { code: 0, score: '51/51 2932passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
+  // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
+  // regressions. 30 -> 35 checks; the replacements are differential, so they
+  // discriminate where the originals could not.
+  'run_e2e_controls.js':   { code: 0, score: '35/35' },
   'run_procedures.js':     { code: 0, score: '22/22 96/96' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
@@ -67,11 +71,6 @@ var BASELINES = {
     note: 'Ops probes are tuning targets by design. The FAILs are documented RBMK/BWR ' +
           'targets (P4, R1-R3, B2-B5) plus the deliberately-red C2 accel-latency probe ' +
           '(#153, status-deliberate). See Diagnostic/OPS_TUNING_REPORT.md.',
-  },
-  'run_e2e_controls.js': {
-    code: 1, score: '28/30',
-    note: '2 stale F12 expectations — a PZR-spray reach check and the ' +
-          'CVCS-auto-vs-severity-1.0-SGTR "holds >=98%" check. Tracked as #150.',
   },
   'run_m5.js': {
     code: 1, score: '18/19 78passed 1failed',
