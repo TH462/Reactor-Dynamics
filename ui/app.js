@@ -1672,6 +1672,86 @@
     var e = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / e;
     return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * e;
   }
+
+  /* ---------------------------------------- keep flat traces off each other --
+     Every series auto-ranges independently onto the SAME plot height, so a steady
+     plant centres all of them and draws four lines as one. Give a near-flat trace
+     clear air by SLIDING ITS BAND — both limits by the same amount, so the trace
+     keeps its zoom and shape and the legend still states its mapping exactly.
+
+     Movement is rationed, because a line that slides around is exactly what the held
+     axis exists to prevent. A series may take a new lane only when its band was just
+     re-fit, or when it has been touching a neighbour for a sustained dwell (traces
+     drift inside their frozen bands, so a good placement can go stale) — and then at
+     most one trace moves per draw. A trace with real vertical excursion is left alone
+     entirely: it is already telling its own story by its shape, and sliding it would
+     only cost it headroom. */
+  var LANE_FLAT = 0.22;   // trace covering less than this much of its band counts as flat
+  var LANE_GAP  = 0.10;   // clear space to leave between two traces (plot fractions)
+  var LANE_EDGE = 0.15;   // keep a slid trace this far inside its band, so a small move
+                          // doesn't immediately push it out and force another re-fit
+  function spreadTraces(active, ranges, extent, refit) {
+    var live = active.filter(function (s) { return extent[s.id] && chartRange[s.id]; });
+    var slots = [], F = {};
+    function frac(ser) {
+      var r = ranges[ser.id], rng = (r[1] - r[0]) || 1, e = extent[ser.id];
+      return { lo: (e.min - r[0]) / rng, hi: (e.max - r[0]) / rng };
+    }
+    function meets(a, b) { return a.lo < b.hi + LANE_GAP && a.hi > b.lo - LANE_GAP; }
+    function clashes(lo, hi) {
+      for (var i = 0; i < slots.length; i++) if (meets({ lo: lo, hi: hi }, slots[i])) return true;
+      return false;
+    }
+    // Only flat traces take part — they neither move nor block otherwise. A trace with
+    // real excursion sweeps most of the plot, so counting it as an obstacle would leave
+    // no free lane at all; and where it crosses a flat line the two are still easy to
+    // read apart, because one of them has a shape.
+    live = live.filter(function (ser) { F[ser.id] = frac(ser); return F[ser.id].hi - F[ser.id].lo <= LANE_FLAT; });
+    // A placement that was good when it was made can still go bad: the trace drifts
+    // inside its frozen band until it meets a neighbour. Count how long a flat trace
+    // has been in contact and let the worst offender re-place itself once that has
+    // persisted — ONE trace per draw, one clean step, rather than lines continuously
+    // sliding around each other.
+    var drifted = null;
+    live.forEach(function (ser) {
+      var h = chartRange[ser.id];
+      var hit = live.some(function (o) { return o !== ser && meets(F[ser.id], F[o.id]); });
+      h.clash = hit ? (h.clash || 0) + 1 : 0;
+      if (!refit[ser.id] && h.clash > CHART_SHRINK_FRAMES &&
+          (!drifted || h.clash > chartRange[drifted.id].clash)) drifted = ser;
+    });
+    var movable = {};
+    live.forEach(function (ser) { if (refit[ser.id]) movable[ser.id] = 1; });
+    if (drifted) movable[drifted.id] = 1;
+    // everything staying put claims its lane first — those are the fixed points
+    live.forEach(function (ser) { if (!movable[ser.id]) slots.push(F[ser.id]); });
+    live.forEach(function (ser) {
+      if (!movable[ser.id]) return;
+      var f = F[ser.id];
+      var r = ranges[ser.id], rng = (r[1] - r[0]) || 1, h = chartRange[ser.id];
+      h.clash = 0;   // re-armed: if this placement also goes bad, it takes another full dwell
+      if (!clashes(f.lo, f.hi)) { slots.push(f); return; }
+      var rLo = Math.min(ser.range[0], ser.range[1]), rHi = Math.max(ser.range[0], ser.range[1]);
+      var inRange = h.lo >= rLo - 1e-9 && h.hi <= rHi + 1e-9;   // don't slide a band off its physical scale
+      var best = null;
+      for (var k = 1; k <= 30 && best === null; k++) {
+        for (var sgn = 1; sgn >= -1; sgn -= 2) {
+          var d = sgn * k * 0.025, lo = f.lo + d, hi = f.hi + d;
+          if (lo < LANE_EDGE || hi > 1 - LANE_EDGE) continue;
+          if (clashes(lo, hi)) continue;
+          // sliding the trace UP by d lowers both band limits by d·range
+          if (inRange && (h.lo - d * rng < rLo - 1e-9 || h.hi - d * rng > rHi + 1e-9)) continue;
+          best = d; break;
+        }
+      }
+      if (best !== null) {
+        h.lo -= best * rng; h.hi -= best * rng;
+        ranges[ser.id] = [h.lo, h.hi];
+        f = { lo: f.lo + best, hi: f.hi + best };
+      }
+      slots.push(f);
+    });
+  }
   function drawChart() {
     var svg = $('chartCanvas'), floats = $('chartFloats'), W = 400, H = 120;
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
@@ -1698,7 +1778,7 @@
     var startI = 0;
     while (startI < chartBuf.length - 1 && chartBuf[startI].t < t0) startI++;
     var NB = Math.max(2, Math.round(PW));   // one bucket per plot pixel
-    var ranges = {}, seriesMeans = {};
+    var ranges = {}, seriesMeans = {}, extent = {}, refit = {};
     // Realistic traces the raw instrument, so it still carries sensor noise. Bucket
     // averaging alone thins out at short windows (fewer samples per bucket), so smooth
     // over a FIXED TIME width instead — the trace reads the same at 1 min and 30 min.
@@ -1747,18 +1827,25 @@
       var h = chartRange[ser.id];
       var fits = h && isFinite(vmin) && vmin >= h.lo && vmax <= h.hi;
       var band = h ? (h.hi - h.lo) : 0;
-      // shrink only after the trace has sat in the middle third of the band for a while
-      var tooSmall = fits && (vmax - vmin) < band * 0.33 && band > minSpan * 1.5;
+      var need = Math.max(vmax - vmin, minSpan) * 1.3;   // 30 % headroom so a drifting line doesn't re-fit every few seconds
+      // Zoom back in only once the band is MUCH wider than a fresh fit would be (after a
+      // transient has scrolled away), and only after a dwell. Comparing against `need` —
+      // rather than against the minimum span — matters: a band that already equals its
+      // fresh fit must not keep re-fitting to the identical numbers forever, or anything
+      // keyed to a re-fit (the lane placement below) would twitch on that cycle.
+      var tooSmall = fits && band > need * 1.6;
       if (h) h.small = tooSmall ? (h.small || 0) + 1 : 0;
       if (!isFinite(vmin) || !isFinite(vmax)) {
         ranges[ser.id] = h ? [h.lo, h.hi] : [ser.range[0], ser.range[1]];
         return;
       }
+      extent[ser.id] = { min: vmin, max: vmax };
       if (!h || !fits || h.small > CHART_SHRINK_FRAMES) {
-        var need = Math.max(vmax - vmin, minSpan) * 1.3;   // 30 % headroom so a drifting line doesn't re-fit every few seconds
         var step = niceStep(need / 4);
         var c = (vmin + vmax) / 2;
-        h = { lo: Math.floor((c - need / 2) / step) * step, hi: Math.ceil((c + need / 2) / step) * step, small: 0 };
+        // carry `clash` across the re-fit — a fresh object would reset the lane dwell,
+        // and during a transient (where re-fits are frequent) it would never complete
+        h = { lo: Math.floor((c - need / 2) / step) * step, hi: Math.ceil((c + need / 2) / step) * step, small: 0, clash: (h && h.clash) || 0 };
         if (h.hi - h.lo < step) h.hi = h.lo + step;
         // Don't spend plot height on values the quantity can't take — a level axis
         // running to −50 % reads as broken. Only clamps where the data allows it.
@@ -1766,9 +1853,11 @@
         if (h.lo < rLo && vmin >= rLo) h.lo = rLo;
         if (h.hi > rHi && vmax <= rHi) h.hi = rHi;
         chartRange[ser.id] = h;
+        refit[ser.id] = true;
       }
       ranges[ser.id] = [h.lo, h.hi];
     });
+    spreadTraces(active, ranges, extent, refit);
     // legend reflects the current (dynamic) range each line is scaled to
     $('chartLegend').innerHTML = active.map(function (s) {
       var r = ranges[s.id], sp = r[1] - r[0], dp = sp >= 10 ? 0 : sp >= 1 ? 1 : 2;
@@ -2397,8 +2486,10 @@
     });
     $('speed').addEventListener('click', function (e) {
       var b = e.target.closest('[data-speed]'); if (!b) return;
-      var v = +b.getAttribute('data-speed'); cmd({ action: 'set_speed', value: v });
-      var fast = v >= 600; $('ffBadge').style.display = fast ? 'block' : 'none'; if (fast) $('ffBadge').textContent = '⚡ ' + v + '×';
+      // The ⚡ badge is syncSpeedUI's job (it runs off the snapshot and null-guards
+      // the element). This handler used to set it too, unguarded — and the PWR shell
+      // has no #ffBadge, so every speed click threw before the segment could repaint.
+      cmd({ action: 'set_speed', value: +b.getAttribute('data-speed') });
     });
     // Settings → Values Display (Instruments / True / Both) drives the legacy All view.
     var oseg = $('overlaySeg2');

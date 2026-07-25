@@ -35,6 +35,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   otherwise fall back to the step's named control. Works on the checklist bubble list.
 
 ### Changed
+- **Strip-chart traces no longer stack on top of each other.** Each series auto-ranges
+  independently onto the same plot height, so a steady plant centred all of them and drew
+  four lines as one — worst exactly where it matters least to have them piled up, on the
+  flat traces that carry no shape to tell them apart. A near-flat trace now slides its
+  whole band (both limits together, so it keeps its zoom and its legend stays exactly
+  true) until it has clear air. Movement is rationed so this cannot undo the held axis: a
+  trace may take a new lane only when its band is re-fit, or after it has been touching a
+  neighbour for several seconds, and only one trace moves per redraw. Traces with real
+  vertical excursion are left alone entirely — they are already distinguishable by shape,
+  and where they cross a flat line they are still easy to read. On a steady plant the
+  closest approach between any two traces goes from **0 px to ~11 px**, with no lane
+  movement at all over 45 seconds of running.
+- **Fixed: clicking a simulation-speed chip (1× / 10× / 60× …) threw an error every time.**
+  The handler set the ⚡ fast-forward badge directly and the PWR control room has no such
+  badge, so it hit a null. The speed still changed (that happened first), but the exception
+  aborted the rest of the handler on every click. The badge already had a correct,
+  null-guarded owner elsewhere; the duplicate is gone.
 - **The strip chart traces the physics, holds still, and stopped turning white.** Three
   separate complaints, three causes. (1) It plotted the **instrument** readings, so every
   trace carried sensor noise that teaches nothing. In **Teaching** mode it now plots the
