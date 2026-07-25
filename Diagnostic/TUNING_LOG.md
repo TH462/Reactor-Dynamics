@@ -20,7 +20,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Current status (2026-07-22)
+## Current status (2026-07-25)
 
 **PWR is the focus plant and is in good shape** — all PWR engine, behavior, and ops gates
 green. The open backlog is dominated by **RBMK and BWR operability tuning** (documented,
@@ -31,12 +31,13 @@ staleness** items.
 
 | Gate | State | Notes |
 |---|---|---|
-| `run_pwr` | **31/31** | PWR engine-direct |
+| **`run_all`** | **OK (19 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| `run_pwr` | **32/32** | PWR engine-direct (+`load_above_rated_hold`, the #130 pin) |
 | `run_rbmk` | **23/23** | |
 | `run_bwr` | **15/15** | |
 | `run_behavior` | **30 / 0 xfail / 0 fail** | PWR behavior catalog |
 | `run_ops` | **59/68** | PWR **21/21**; 9 open = RBMK/BWR + 1 deliberate red (see backlog) |
-| `run_m4`..`run_m7` | 18 / **18** / 16 / OK | stack layers — m5 is 18/19 (1 pre-existing rewind bit-exact red on clean HEAD; docs elsewhere still say 19/19) |
+| `run_m4`..`run_m7` | 18 / **18** / 16 / OK | stack layers — m5 is **18/19** (rewind bit-exact red, #151). Confirmed 2026-07-25: 18/19 is the truth; the 19/19 in other docs was the drift #161 is about |
 | `run_autoctl` | **20/20** | |
 | `run_scenarios` | **3/3** | flagships |
 | `run_campaign` | **51/51** (2897) | |
@@ -44,8 +45,8 @@ staleness** items.
 | `run_meltdown` | **8/8** | PWR core-damage paths — all resolved; MD-6 fixed 2026-07-24 (time-dependent dryout depletion, §3.4) |
 | `run_checklist` | **24/24** | |
 | `run_e2e_controls` | **28/30** | 2 pre-existing reds (F12) |
-| `verify_e2e_ui` | **FAIL** | pre-existing on clean HEAD (retired PwrSynoptic probe) |
-| `verify_manual_follow` | **84** (30 PWR bar-checks fail) | pre-existing, same PwrSynoptic-probe family |
+| `verify_e2e_ui` | **PASS (16 screenshots)** | fixed 2026-07-25 (#148); carries 1 strict xfail for the manual-units gap (#111) |
+| `verify_manual_follow` | **PASS (84 checks)** | fixed 2026-07-25 (#149) — probed the retired `RD.PwrSynoptic`, which never mounts |
 
 ---
 
@@ -105,6 +106,76 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-25 — Gate honesty pass + the feed/steam clip asymmetry (S11)  ✅🔬
+
+**Six issues closed, two gates repaired, one physics bug fixed, one aggregate gate built.**
+
+**S11 RESOLVED — coupled feed clipped at 1.2 vs a governor clipped at 1.0** (`engines/load_mode.js`,
+issue #130). Reproduced first: on `hot_full_power` in manual load, a sustained above-rated ask
+walks SG level 65 → 89 % and scrams on `sg_level high` — 36 s at 1.3x, 61 s at 1.10x, 112 s at
+1.05x; 1.00x and below are stable. Cause exactly as suspected: the governor clamps steam to rated
+(`pwr_steam_generator.js:199`) while the coupling fed 1.2, a permanent imbalance nothing can null.
+The 1.2 was the feed pump's runout capacity (`pwr_engine` `setFeed`, 0..120 %) reused as a *demand*
+ceiling. Fixed by capping coupled feed at rated. **Scoped per-plant** via
+`opts.maxCoupledFeedFrac` — capping the shared default moved `run_bwr` to 14/15 and those plants
+are on hold, so PWR passes 1.0 and RBMK/BWR keep 1.2 until reopened. Untouched: the pump clamp
+(deliberate overfeed still possible), the disconnected branch (matches an actual draw that can
+exceed rated), and EV-11 (feed still tracks the load TARGET, so a slider move still shows its
+transient mismatch — the new test asserts this explicitly). Regression pin:
+`run_pwr load_above_rated_hold`, verified failing without the fix and banded against the *shipping*
+high-SG setpoint rather than a literal.
+
+**Two stale-scale defects fell out of it** (both from the ~1000 → 100 MWe rescale, both masked;
+filed as #193 to sweep for more):
+- `run_m6` Path 2 was **passing for the wrong reason** — it issued `set_steam_demand 600` where
+  `pwr_lower_power` authors 60, a 6x ask, and only completed because the overfeed *scrammed the
+  plant*, which is what drove power under the step's 98 % acceptance. Now 60; completes on the
+  rods at t=8 s.
+- `run_pwr load_mode_follow` asserted `load_target_mwe < 950` — vacuously true since the rescale
+  (actual 86). Rebanded against rated + a real tracks-power check.
+
+**`node test/run_all.js` is now THE gate** (#147). 19 runners vs a `BASELINES` map, ~5.7 min
+(`--fast` skips the two Playwright gates, ~2.5 min). Exit codes alone were not enough — `run_ops`
+exits 1 at 59/68 *and* at 55/68 — so each runner also carries a scraped tally baseline. Drift is
+**symmetric**: scoring better than baseline fails too, so a red turning green must be acknowledged.
+A discovered runner with no baseline entry fails the gate, so a new suite cannot go unlisted the way
+`run_e2e_controls` did. **Baselines are now data, not prose** — that is the structural half of #161,
+whose premise this confirmed (CLAUDE.md listed `run_m5` 19/19 while its own status text said 18/19;
+truth is 18/19).
+
+**Both UI-harness reds in §3.2 fixed:**
+- `verify_manual_follow` **FAILED (30) → PASS (84 checks)** (#149). One line: it probed
+  `RD.PwrSynoptic.isMounted()`, and the retired module still loads so the global exists but never
+  mounts — all 30 PWR bar-checks were false negatives. `RD.PwrBoard` has the same API.
+- `verify_e2e_ui` **FAIL → PASS (16 screenshots)** (#148). Two bugs, and *neither* was the retired
+  synoptic probe this log blamed at UI-1 — that text was wrong, the file never referenced
+  `PwrSynoptic`. (1) `REQUIRED_ACTS` demanded 14 `data-act` buttons the board path deliberately
+  never emits (`ui/app.js:3413`, `:3459-3460` return before `populateControlBar`); replaced with 21
+  board labels probed through `RD.PwrBoard.revealControl()` — the same path Instructor highlights
+  use, so a broken label now fails both together. (2) the manual-units block clicked
+  `[data-msec="setpoints"]`, renamed to `09_setpoints_limits` by the manual-md unification.
+
+**A regression the red gate had been hiding.** Fixing (2) surfaced that the packed manual **does not
+honour the units toggle at all** — `renderManualMd` (`ui/app.js:2813-2816`) caches on
+`engineKey|docId` with no units key and renders markdown authored in SI, so it reads 1200 °C either
+way while the gauges convert. That is **#111**, and it is a *regression*: the old structured manual
+converted, and `verify_e2e_ui` asserted it (2192 °F vs 1200 °C). The unification dropped the
+capability and staled the assertion in one stroke. Pinned as a **strict xfail** in the harness —
+it errors with "promote this and close #111" the moment the manual starts converting.
+
+**Four issues closed as stale, verified against source** — worth knowing the board was carrying
+dead weight: **#78** (ECCS/HPI + AFW AUTO — fully working: `pwr_control.js:81-98`,
+`control_kernel.js:121-133`, board triads at `pwr_board_wiring.js:103-109`; `run_autoctl` 20/20 and
+`run_ops` asserts both auto-starts), **#128** and **#129** (both HR1 violations, both fixed by
+`5e540c5` on 2026-07-16 — `pwr_steam_generator.js:54` reads `_ins_sg_level`, `load_mode.js:74` reads
+`_ins_power_pct`), **#152** (the campaign `goto` validator shipped in `a171af8`; measured 137 gotos /
+0 dangling, 503 triggers / 0 unrecognized; `wait_for_trigger` is a documented alias, not an unknown
+token). #128/#129 sharing one fix commit suggests the whole #12x-13x batch was filed off a
+pre-July-16 tree and deserves the same scrutiny before anyone works it.
+
+Filed: **#189** (validator holes split from #152), **#191** (CI needs a ruling — Playwright is
+vendored with no `package.json`), **#193** (rescale sweep).
 
 ### 2026-07-25 — PWR indication audit: 4 fiction readouts fixed; gap list filed  ✅🔬
 Triggered by the owner asking what a real plant indicates for reactivity/startup, and whether
@@ -388,7 +459,8 @@ old seek did). Probed: 1 ppm ask → −0.95 delivered; 25 ppm ask → −25.0 e
 save/load all clean. **S10** (at rated, dilution moves Tavg not power — authentic) addressed as
 teaching text: Manuals 03 §7.5 batch-dose block + "dilution moves Tavg, not power" note; 02 §7.2
 channel row; WIRING_REFERENCE.md updated; manuals regenerated + repacked. **S11 still open**
-(coupled-feed 1.2 vs governor 1.0 clip → SG overfill when feed_sg is OFF). Engine mixing-lag fix
+(coupled-feed 1.2 vs governor 1.0 clip → SG overfill when feed_sg is OFF) — *[resolved later,
+2026-07-25, #130; left as written here since this is the historical entry]*. Engine mixing-lag fix
 (07-23) verified working; power still leads the analyzer ~15 s (mix τ 30 vs analyzer lag 45) —
 matters far less now that doses are slow. Gates: autoctl 20/20, m4 18/18, m5 19/19, m6 16/16,
 m6ph 8/8, m7 OK, pwr 31/31, behavior 30/0/0, ops pwr 21/21, campaign 51/51, procedures 22/22,
@@ -598,8 +670,8 @@ when it's fixed. RBMK/BWR items are the bulk of the remaining ops-suite reds.
 | ID | Symptom | Suspected cause | Fix direction | Status |
 |---|---|---|---|---|
 | **F12** | `run_e2e_controls` 28/30: (a) PZR spray manual set reaches engine only 12 (want ≥45); (b) "CVCS auto make-up holds inventory vs leak ≥98 %" | (a) spray-demand reach drifted; (b) stale expectation — severity-1.0 SGTR is now 0.03 frac/s (~40× CVCS make-up), so "auto holds ≥98 %" isn't physical | (a) re-check spray reach; (b) re-baseline to current trajectory or assert a small leak the servo *can* match | **open** (was 3 reds; one turned green with P7) |
-| **UI-1** | `verify_e2e_ui` FAIL — pwr/primary board controls "not found" by the harness | Harness still probes the retired `RD.PwrSynoptic` reveal path while the board display mounts | Point the harness at the board mount | **open** — verified identical on clean HEAD `4df8ac5` |
-| **UI-2** | `verify_manual_follow` 30 PWR bar-checks fail | Same retired-PwrSynoptic-probe family as UI-1 | Same as UI-1 | **open** — manual-pill + rbmk/bwr checks pass |
+| **UI-1** | `verify_e2e_ui` FAIL — pwr/primary board controls "not found" by the harness | **This suspected cause was WRONG** — the file never referenced `RD.PwrSynoptic`. Real causes: (a) `REQUIRED_ACTS` demanded 14 `data-act` buttons the board path deliberately never emits (`ui/app.js:3413`, `:3459-3460` return before `populateControlBar`); (b) the manual-units block clicked `[data-msec="setpoints"]`, renamed `09_setpoints_limits` by the manual-md unification | Probe 21 board labels via `RD.PwrBoard.revealControl()` (same path Instructor highlights use); re-point the manual section | **RESOLVED 2026-07-25 (#148)** — PASS (16 screenshots). Surfaced #111: the packed manual ignores the units toggle entirely, now a strict xfail here |
+| **UI-2** | `verify_manual_follow` 30 PWR bar-checks fail | Retired-`PwrSynoptic`-probe — correct for THIS file: it probed `RD.PwrSynoptic.isMounted()`, and the retired module still loads (global exists) but never mounts, so every PWR bar-check was a false negative | Swap to `RD.PwrBoard` (identical `isMounted`/`revealControl` API) | **RESOLVED 2026-07-25 (#149)** — one line; FAILED (30) → PASS (84 checks), delta verified against the pre-fix file |
 
 ### 3.3 Suspected / oddities (not hard failures — watch or investigate)
 
@@ -618,7 +690,7 @@ real smell worth a look during this effort.
 | **S8** | PWR | **RESOLVED (2026-07-23)** — batch-dose rework removed the deadband entirely; 1 ppm board nudges now execute (probed −0.95 ppm delivered). See session entry | Was: board arrows nudge 1 ppm but `boron_conc` deadband ±8 ppm swallowed target changes ≤ 8 ppm |
 | **S9** | PWR | **RESOLVED (2026-07-23)** — `boron_conc` no longer seeks the lagged analyzer: a new target meters a feedforward dose stopped by a flow totalizer (real makeup-panel semantics), rate 0.5 → 0.05 ppm/s. Probed: 25 ppm ask delivers −25.0 exactly, power peaks 102.6 % (was 118 % + scram) | Was: seek on the 45 s-lagged analyzer over-delivered ~50 % and spiked/scrammed the plant |
 | **S10** | PWR | At 100 % with the governor at rated, steady-state power ALWAYS returns to ~100 % after dilution — Tavg absorbs it (+~0.45 °C/ppm). AUTHENTIC PWR physics (probed 2026-07-23), but reads as "boron does nothing" from the board | Teaching-surface gap, not a bug: nothing on the board tells the player boron moves Tavg (not power) when the turbine is pinned at rated |
-| **S11** | PWR | Load-coupled feed (feed_sg channel OFF, `load_mode.js` follow branch) clips feed at 1.2 while the governor clips steam at 1.0 — any power excursion above rated integrates SG level up (probed 65→89 %) until an `sg_level high` scram minutes later, looking unrelated to its cause | Hidden in default free play (feed_sg defaultOn holds level) but live whenever feed is manual/failed; fix = clip coupled feed to the governor's deliverable or feed on `steam_out_total` in follow mode too |
+| **S11** — **RESOLVED 2026-07-25** (#130, see session log) | PWR | Load-coupled feed (feed_sg channel OFF, `load_mode.js` follow branch) clips feed at 1.2 while the governor clips steam at 1.0 — any power excursion above rated integrates SG level up (probed 65→89 %) until an `sg_level high` scram minutes later, looking unrelated to its cause | Hidden in default free play (feed_sg defaultOn holds level) but live whenever feed is manual/failed; fix = clip coupled feed to the governor's deliverable or feed on `steam_out_total` in follow mode too |
 | **S13** | PWR | ATWS **at power** with heat sink intact (failure_to_scram + continuous_rod_withdrawal) self-limits at ~756 °C on Doppler and never damages; may be too benign vs a real ATWS overpressure/PCT event | Lower priority than the MD-x set; revisit after the decay-heat gate (MD-5) is fixed, since that changes every uncovered-core outcome |
 
 ### 3.4 PWR meltdown-path physics defects (found 2026-07-24 — owner playtest "all meltdown paths have major issues")
