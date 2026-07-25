@@ -35,6 +35,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   otherwise fall back to the step's named control. Works on the checklist bubble list.
 
 ### Fixed
+- **The startup no longer coasts to ~15–20 % power when you try to level off in the
+  low-power band.** The plant was never the problem — measured, it parks at 1.8–3.5 %
+  when you take the excess reactivity out in *one* decisive inward drive released as the
+  startup rate nulls, and at 10–20 % (and eventually a trip) when you tap it out a step
+  at a time, because the plant keeps running while you tap. Three things were teaching
+  the wrong reflex: the startup checklist withdrew ~+430 pcm and took back only ~76,
+  named "~5–15 %" as the target, and *passed* on landing above 5 %; a caution blamed the
+  overshoot on the trainer's lumped rod group, which the measurement disproves; and the
+  startup-rate protection was set where a real startup never reaches it (peak 1.82 DPM
+  against a 2.0 DPM alarm and a 2.5 DPM withdrawal block — so on the run that coasted to
+  19.8 % and tripped, nothing warned and nothing stopped you). Now: **SUR HI alarm at
+  1.0 DPM, rod withdrawal blocked at 1.5 DPM** (clearing below 0.8, insertion never
+  blocked); the checklist creeps to criticality at ≤1 DPM, levels off at the point of
+  adding heat with one Norm-speed drive, and **crossing the 5 % boundary into Mode 1 is
+  now its own deliberate step** rather than something the ascent does to you. Following
+  it lands 1.5 % in Mode 2, then 12.4 % and the generator on line — with every phase of
+  the ascent peaking below 0.92 DPM.
 - **Asking the turbine for more than the plant can make no longer floods the steam
   generator and trips the reactor.** The governor has always capped steam at rated
   output, but the automatic feedwater coupled to the *ask* rather than to that cap —

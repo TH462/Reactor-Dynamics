@@ -500,6 +500,35 @@ TMI included, never enter the cold regime), so every prior gate held at baseline
   `mode5_to_mode1_roundtrip`), **M5 18/18** (full-stack cold-IC guard), campaign **44/44**, autoctl
   **20/20**, M4 **15/15**, M6 **16/16**, M7 OK, ops **53/66** (baseline). TMI flagship not regressed.
 
+**2026-07-25 — Startup rate protection retuned; the "20 % coast" was never physics (issue #134).**
+The complaint — power coasts to ~20 % after criticality even when leveled — was assumed to be a
+weak low-power Doppler bite or too-steep differential rod worth (TUNING_LOG backlog S3). It is
+neither, and touching either would have destabilized the tuned Mode-5→1 heatup. Measured on
+`hot_zero_power` with rods then frozen for an hour: removing the accumulated reactivity in ONE
+continuous drive released as SUR nulls parks the plant at **1.8–3.5 %**; removing the *same*
+reactivity in single-step taps parks it at **10.3 %**, and from a brisker approach at **19.8 % plus
+an IR-high trip**. Same worth, same feedback — the plant runs while you tap. Below the point of
+adding heat there is no temperature feedback at all, so residual ρ decides everything, and
+sustaining even a 1 DPM ramp means carrying ~+200 pcm that must all come back out.
+
+The actual defects were procedural and instrumental: (a) `pwr_startup` withdrew +45 steps
+(≈ +430 pcm) and returned −8 (≈ −76), named "~5–15 %" as its target and **accepted on
+`power_pct > 5`**, so overshooting was a pass condition; (b) its caution attributed the overshoot to
+the lumped single rod group, which the measurement disproves; (c) the SUR HI alarm (2.0 DPM) and
+rod-withdrawal block (2.5 DPM) sat above anything a startup reaches — the run that coasted to 19.8 %
+peaked at **1.82 DPM**, so neither fired. SUR saturates near 1.4–1.8 DPM over a wide ρ band
+(2.5 DPM ⇒ ~10 s period ⇒ ρ ≈ +400 pcm), i.e. the block was a prompt-criticality backstop
+mislabelled as a rate control.
+
+Decision (owner-ruled): make the block a genuine rate control — **alarm 2.0 → 1.0 DPM, block
+2.5 → 1.5, clears 1.5 → 0.8** — and rebuild the checklist around the technique rather than the
+recipe, with **crossing the 5 % boundary promoted to its own deliberate step**. The by-the-book
+ascent now peaks at 0.92 DPM (block never engages) and lands 1.47 % in Mode 2 → 12.4 % in Mode 1 →
+12.5 MWe. Consequence worth recording: a *held* withdrawal can no longer run the plant away, so the
+`pwr_startup_challenge` overshoot card is now reached in bites taken under the block — which is the
+scenario's own lesson sharpened, *the inhibit can freeze your hand but it cannot subtract*.
+`run_procedures` 96 → 97 checks; all 19 runners at baseline.
+
 **2026-07-24 — SG dryout depletion (meltdown battery MD-6, structural).** A fully dry SG used to
 stay a perfect heat sink forever (trip-open dump pinned `t_secondary` ~190 °C below Tavg; the 0.02
 `sg_dryout_residual` passed the whole decay-heat load), so total loss of MFW+AFW parked the primary
@@ -659,7 +688,7 @@ The §18 flagship is the acceptance centerpiece; the numbers were tuned so the t
 | C6 | **`evaluateCondition` default** | Unknown gate conditions evaluate **true** (permissive) | The PWR uses no actuation gate conditions; the evaluator is built generic for the BWR's `ads_open`/`hpci_unavailable` (M3). |
 | C7 | **Failure `category`** | Added a `category` field to the PWR failure **data** (`pwr_protection.js`) | M4 §10's catalog needs `category ∈ reactivity\|coolant\|power\|instrument\|safety_system`; per HR3 it is plant data, so it lives in the engine config, not in M4. |
 | C8 | **`degraded_hpi`** | Routed to the engine's `hpi_flow_multiplier` hook; its `set_hpi` interception is a pass-through | The spec (M4 §7) flags it as "really physics_parameter". **→ Flag F4.** |
-| C9 | **Interlocks (§4b, added with the PWR startup-forgiveness pass)** | New config-driven machinery: `config.interlocks[]` — condition-latched command blocks with hysteresis (`setpoint` engages + optional `on_engage` command, `clears_below/above` disengages), reading INSTRUMENTS (HR1). `withdrawal_only` blocks outward rod motion but never insertion. Blocked commands return `{type:'blocked', code:'INTERLOCK', message}` (register-aware). State in save/restore. | Real plants have rod stops / withdrawal inhibits that are neither trips nor failures — the plant refusing an unsafe command while telling you why. PWR instance: rod-withdrawal block at SUR ≥ 2.5 DPM (clears < 1.5), the guard that keeps a hasty trainee out of prompt-critical territory. Pure data per HR3. |
+| C9 | **Interlocks (§4b, added with the PWR startup-forgiveness pass)** | New config-driven machinery: `config.interlocks[]` — condition-latched command blocks with hysteresis (`setpoint` engages + optional `on_engage` command, `clears_below/above` disengages), reading INSTRUMENTS (HR1). `withdrawal_only` blocks outward rod motion but never insertion. Blocked commands return `{type:'blocked', code:'INTERLOCK', message}` (register-aware). State in save/restore. | Real plants have rod stops / withdrawal inhibits that are neither trips nor failures — the plant refusing an unsafe command while telling you why. PWR instance: rod-withdrawal block at SUR ≥ 1.5 DPM (clears < 0.8) — retuned from 2.5/1.5 in 2026-07 (#134), where it was a prompt-criticality backstop that never fired on an actual startup. Pure data per HR3. |
 | C10 | **Actuation `reset_below` comparison fixed** | Reset fires when the value returns to the SAFE side (`< reset_below` for high-direction, `>` for low) | Was inverted (`value > reset_below`): the PORV auto-actuation fired open and "reset" (close) in the same evaluate, flapping every cycle while pressure stayed high. Masked in practice (nothing reached 16.2 MPa in normal ops; TMI's stick intercepts the closes) — exposed when the steam-dump rework let a turbine trip actually reach the PORV band. |
 
 ---
@@ -1203,7 +1232,7 @@ Verification: board_check **41/41**; engine/control untouched this round.
   hot-standby init made self-consistent (tavg = tcold = thot = Tsat(dump setpoint), sgP =
   setpoint → zero reset drift); `startup_rate` instrument added (lag 2 s, appended last —
   PRNG order preserved; instruments steam_pressure range → 10.5). **M4 data** — `sur_high`
-  caution alarm (2.0 DPM) + rod-withdrawal interlock (≥ 2.5 DPM, clears < 1.5; see M4 C9/C10).
+  caution alarm (1.0 DPM) + rod-withdrawal interlock (≥ 1.5 DPM, clears < 0.8; see M4 C9/C10).
   **Outcome (traced):** attentive pull → SUR builds smoothly, release at 1 DPM while still
   −265 pcm subcritical, core settles gently; hands-off continuous pull → withdrawal blocked at
   +343 pcm (0.53 $), Doppler rolls the rise over, plant SELF-STABILIZES at ~29% power, and the

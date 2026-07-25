@@ -637,10 +637,15 @@ test('pwr_rod_auto — manual Tavg trim, T-ref capture, override precedence', fu
 });
 
 test('pwr_startup_challenge — solo startup passes; forgotten handoff fails on the SR gate', function (ck) {
-  // Win line (probed): secure SR (P-6 already satisfied at HZP), pull to 1 %,
-  // reinsert to null SUR — power then holds ~[1.0, 3.5] % through the 120 s
-  // graded window. Commands land during the exam watch (no operator_action
-  // triggers in this scenario, so beat-fire memory clearing is moot).
+  // Win line (re-probed 2026-07-25 under the 1.5 DPM withdrawal block, #134):
+  // secure SR (P-6 already satisfied at HZP), pull to 1 % — the block now
+  // interrupts the held pull at ~+54 pcm instead of letting it reach ~+300 —
+  // then reinsert at SLOW to null SUR. The arrest speed matters: with only
+  // ~54 pcm in, a Norm-speed drive removes ~30 pcm/s and blows through zero to
+  // −17 pcm, and power decays out the BOTTOM of the band (window closes). At
+  // Slow it parks ~1.85 % with ρ ≈ +12 through the 120 s graded window.
+  // Commands land during the exam watch (no operator_action triggers in this
+  // scenario, so beat-fire memory clearing is moot).
   var s = startScenario('pwr_startup_challenge');
   var snap = waitBeat(s, 'exam', 60);
   ck('exam watch arms', !!snap, !!snap, 'exam pending');
@@ -652,8 +657,8 @@ test('pwr_startup_challenge — solo startup passes; forgotten handoff fails on 
   s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
   ck('criticality reached unscrammed', snap && !snap.rps_state.scrammed, snap && !snap.rps_state.scrammed, 'power > 1 %, no scram');
   if (!snap || snap.rps_state.scrammed) return;
-  runUntil(s, function (sn) { return sn.instruments.power_range > 1.5; }, 300);
-  s.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'normal' });
+  runUntil(s, function (sn) { return sn.instruments.power_range > 2.0; }, 300);
+  s.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'slow' });
   runUntil(s, function (sn) { return sn.instruments.startup_rate <= 0.0; }, 300);
   s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
   snap = runUntil(s, function (sn) { return lc(sn); }, 900);
@@ -671,15 +676,25 @@ test('pwr_startup_challenge — solo startup passes; forgotten handoff fails on 
 });
 
 test('pwr_startup_challenge — runaway coast lands on the overshoot card, not a softlock', function (ck) {
-  // Stop-at-1 %-and-watch leaves the full pull's reactivity in: power coasts
-  // 1 % → ~19 % in ~42 s. power_range crosses the 12 % branch a probed ~7 s
-  // before the IR trip (1.67e-3 A ≈ 20 %), so the band-overshoot card wins
-  // the race deterministically and carries the excess-reactivity lesson.
+  // Stop-at-1 %-and-watch leaves the pull's reactivity in and power coasts out
+  // the top of the band. Re-probed 2026-07-25 (#134): a single HELD withdrawal
+  // no longer gets there — the 1.5 DPM block interrupts it — so the overshoot
+  // is now driven the way a player actually reaches it, in BITES taken while
+  // the rate sits under the block. Seven 40-step bites bank ~+256 pcm without
+  // the interlock ever engaging, and stopping at 1 % coasts to 12.6 %. That is
+  // the sharper form of the scenario's own lesson: the withdrawal inhibit can
+  // freeze your hand but it cannot subtract what you already added.
   var s = startScenario('pwr_startup_challenge');
   settle(s, 5);
   s.handleCommand({ action: 'set_sr_detector', on: false });
-  s.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'normal' });
-  var snap = runUntil(s, function (sn) { return sn.instruments.power_range > 1.0; }, 1200);
+  var bites = 0;
+  var snap = runUntil(s, function (sn) {
+    if (!s.engine.rod_groups[0].moving && sn.instruments.startup_rate < 0.8 && bites < 60) {
+      s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 40, speed: 'normal' });
+      bites++;
+    }
+    return sn.instruments.power_range > 1.0;
+  }, 1200);
   s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
   ck('criticality reached', !!snap, !!snap, 'power > 1 %');
   snap = runUntil(s, function (sn) { return lc(sn); }, 900);

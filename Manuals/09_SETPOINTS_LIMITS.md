@@ -71,8 +71,8 @@
 
 | Parameter | Value |
 |-----------|-------|
-| Block withdrawal when SUR ≥ | **2.5 DPM** |
-| Clear when SUR &lt; | **1.5 DPM** |
+| Block withdrawal when SUR ≥ | **1.5 DPM** |
+| Clear when SUR &lt; | **0.8 DPM** |
 | Insertion | Always allowed |
 
 ---
@@ -125,7 +125,7 @@
 | pzr_pressure_low | PZR PRESS LO | primary_pressure | low | **14.82 MPa** | warning |
 | pzr_pressure_lolo | PZR PRESS LO LO | primary_pressure | low | **12.41 MPa** | critical |
 | porv_open | PORV OPEN | porv_indicator | open | — | warning |
-| sur_high | SUR HI | startup_rate | high | **2 DPM** | caution |
+| sur_high | SUR HI | startup_rate | high | **1 DPM** | caution |
 | sr_high_flux | SR HI FLUX | source_range | high | **5e4 cps** | caution |
 | subcooling_low | LO SUBCOOL | subcooling_margin | low | **11.1 °C** | warning |
 | subcooling_lost | SUBCOOL LOST | subcooling_margin | low | **0 °C** | critical |
@@ -193,7 +193,7 @@
 
 | Parameter | Training target |
 |-----------|-----------------|
-| SUR on approach | ≤ **1 DPM** (trainer may briefly ~2 DPM at crossing) |
+| SUR on approach | ≤ **1 DPM** — the SUR HI alarm sits exactly there and withdrawal blocks at 1.5 DPM |
 | Reactor period | ≥ **30 s** preferred on startup range |
 | Power ramp ceiling | ~**10 %/min** class where achievable |
 | Load imbalance (SG annunciator) | &gt; ~**4 MWe** mismatch (4 % of rated) → filling/draining cue |

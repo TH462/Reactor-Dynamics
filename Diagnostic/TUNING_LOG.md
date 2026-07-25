@@ -107,6 +107,77 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-25 — S3 RESOLVED: the startup overshoot was the recipe, not the physics  ✅🔬
+
+**Issue #134 ("after criticality the plant coasts to ~20 % power even when leveled").** The
+S3 backlog row hypothesized *"a stronger low-power Doppler bite or gentler mid-curve
+differential rod worth."* **Both were wrong**, and chasing either would have destabilized
+the tuned Mode-5→1 heatup for nothing. The plant is fully controllable at the point of
+adding heat; what lands it at 20 % is how the reactivity comes back out.
+
+**The measurement that settled it** (scratchpad `probe_s3*.js`, `hot_zero_power` →
+approach → level off → 1 h hands-off, rods then frozen):
+
+| level-off method | leveled at | settles |
+|---|---|---|
+| continuous drive-in at Norm, released when SUR nulls | 3.77 % | **3.5 %** |
+| same, gentler approach | 2.02 % | **1.8 %** |
+| tap −1 step / 10 s | 3.77 % | 10.3 % |
+| tap −1 step / 5 s from a brisk approach | 13.4 % | 19.8 % **+ IR-high scram** |
+
+Same plant, same rod worth, same Doppler. The *only* variable is whether the accumulated
+reactivity is removed in one drive or in taps — and the plant runs while you tap. Below the
+point of adding heat there is no temperature feedback to hold you anywhere, so power goes
+wherever the residual ρ takes it; sustaining even a gentle 1 DPM ramp means carrying
+**~+200 pcm**, and all of it has to come back out.
+
+**Three real defects, all of them downstream of that:**
+
+1. **The shipped checklist codified the overshoot.** `ui/manual_procedures.js` step 9
+   withdrew `+45` (≈ +430 pcm) and step 10 took back only `−8` (≈ −76 pcm). Its stated
+   target was *"power steady, ~5–15 %"* and its acceptance was `power_pct > 5` — **landing
+   above 5 % was a pass condition.** Replayed: **14.63 %**, holding 14.0 % an hour later
+   (this is the "~15 %" the status line advertised).
+2. **The checklist blamed the model for it** — *"this trainer lumps all control rods into
+   one group with only Doppler feedback, so power OVERSHOOTS"*. Disproved above.
+3. **The startup-rate protection was inert.** SUR HI alarm 2.0 DPM, rod-withdrawal block
+   2.5 DPM. On the run that coasted to 19.8 % and tripped, **peak SUR was 1.82 DPM** — no
+   alarm, no block, zero refused commands. SUR saturates near 1.4–1.8 DPM across a wide band
+   of positive ρ (2.5 DPM ⇒ ~10 s period ⇒ ρ ≈ +400 pcm), so the setpoint sat above anything
+   a startup reaches. It was a prompt-criticality backstop (its own comment says ~0.55 $)
+   wearing a startup-rate label.
+
+**Fixes** (owner ruling: target the 1–3 % band, and retune the rate protection):
+
+- `layers/control/pwr_control.js` — SUR HI alarm **2.0 → 1.0 DPM**; rod-withdrawal block
+  **2.5 → 1.5 DPM, clears 1.5 → 0.8**. Caution first, then the physical stop, both inside
+  the ≤1 DPM the checklist already teaches.
+- `ui/manual_procedures.js` `pwr_startup` — approach rebalanced (`+120 / +70 / +44 slow`,
+  creep hold 150 → **600 s**, because three decades at ≤1 DPM genuinely takes ~10 min); the
+  level-off is now **one decisive `−6` at Norm** with the technique spelled out; and
+  **crossing the 5 % boundary is a new step of its own** (`+16 slow`) instead of something
+  the ascent does to you. Replayed: creep → 1.30 % (Mode 2), level → **1.47 %** (Mode 2),
+  raise → 12.43 % (Mode 1), grid → 12.5 MWe. **Every phase peaks ≤ 0.92 DPM**, so the
+  by-the-book ascent never touches the new block.
+- `scenarios/pwr_startup_challenge.js` + `test/run_campaign.js` — both routes re-probed.
+  A *continuous* pull no longer runs away (the block interrupts it at ~+54 pcm), so the
+  overshoot card is now reached the way a player actually reaches it: in **bites** taken
+  while the rate sits under the block (7 × 40 steps banks ~+256 pcm, coasts to 12.6 %) —
+  a sharper form of the scenario's own line, *the inhibit can freeze your hand but it
+  cannot subtract*. The win line now arrests at **Slow**: with only ~54 pcm in, a Norm
+  arrest removes ~30 pcm/s and drives through zero to −17 pcm, decaying out the *bottom*
+  of the band.
+- Setpoint prose synced in `Manuals/03/04/06/09` (repacked via `tools/pack_manuals.js`),
+  `Blueprint/BUILD_DECISIONS.md`, `Blueprint/M4 control failure.md`.
+
+**Gates:** all 19 runners at baseline. `run_procedures` **22/22, 96 → 97 checks** (the new
+step; `BASELINES` updated). `run_campaign` held at **51/51** after the two drivers were
+re-probed — they were tuned to the old interlock and legitimately had to move.
+
+**Backlog:** S3 → **RESOLVED**. Note for whoever revisits this: the equilibrium map is
+fine — one step ≈ 0.55 % power at the point of adding heat — so rod granularity is *not*
+the lever. The lever is always how fast the excess comes out.
+
 ### 2026-07-25 — Gate honesty pass + the feed/steam clip asymmetry (S11)  ✅🔬
 
 **Six issues closed, two gates repaired, one physics bug fixed, one aggregate gate built.**
@@ -682,7 +753,7 @@ real smell worth a look during this effort.
 |---|---|---|---|
 | **S1** | PWR | `abuse_porv_walkaway` end state shows inventory 120 % (clip at `mass_max`) with pzr level 7 % — the overfill/level bookkeeping disagree | A level/inventory contradiction is exactly the class of bug the derived-level rework was meant to kill; worth confirming it's just the clip |
 | **S2** | PWR | LOFW warning-to-trip window is only ~4 s (`ops_loss_of_feedwater_handsoff`) | Too fast for a player to react — consider slowing SG boil-down slightly |
-| **S3** | PWR | After criticality the sim coasts to ~20 % power even when leveled with counter-insertion (real practice stabilizes <5 %) | Startup feel — maybe a stronger low-power Doppler bite or gentler mid-curve differential rod worth |
+| **S3** | PWR | **RESOLVED (2026-07-25, issue #134)** — and the suspicion in this row was wrong. Not a physics/rod-worth problem: the plant parks at 1.8–3.5 % when the excess reactivity is removed in ONE drive, and at 10–20 % when it is tapped out. The real causes were the checklist recipe (+45/−8, target "5–15 %", `acc: power_pct > 5`), a caution that blamed the lumped core for it, and an inert rate protection (alarm 2.0 / block 2.5 DPM against a peak of 1.82). See session entry | Was: startup feel — maybe a stronger low-power Doppler bite or gentler mid-curve differential rod worth |
 | **S4** | PWR | 50 % xenon swing may be a touch small (peak ~106 % vs ~113 % on the daily cycle) | Fine for v1; note if xenon scenarios feel flat |
 | **S5** | RBMK | Zero-flow aftermath too forgiving — post-trip fuel sits ~570 °C indefinitely, never dries out/damages | Real consequence is boil-off→dryout over tens of minutes; scale `h_fc` with channel flow at decay levels |
 | **S6** | RBMK | EPS bypass — verify M4 actually honors `eps_bypassed` in `_evalTrips` (was cosmetic; a `disable_auto_trips` effect now exists — confirm it inhibits auto-trips for the Chernobyl sequence) | The historical sequence can't be walked if bypass doesn't suppress trips |

@@ -151,9 +151,9 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | SUR ≥ **2 DPM** |
+| **Setpoint** | SUR ≥ **1 DPM** |
 | **Means** | Power rising quickly. |
-| **Actions** | 1) Stop withdrawal. 2) Insert if needed. 3) Expect withdrawal interlock at **2.5 DPM**. 4) Resume only when SUR &lt; **1.5 DPM**. |
+| **Actions** | 1) Stop withdrawal. 2) Insert if needed. 3) Expect withdrawal interlock at **1.5 DPM**. 4) Resume only when SUR &lt; **0.8 DPM**. |
 
 ---
 

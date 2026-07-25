@@ -165,7 +165,11 @@
     { id: 'pzr_pressure_low',  instrument: 'primary_pressure', direction: 'low',     setpoint: 14.82, priority: 'warning',  panel: 'A', label_learning: 'Pressurizer Pressure Low',        label_industry: 'PZR PRESS LO' },
     { id: 'pzr_pressure_lolo', instrument: 'primary_pressure', direction: 'low',     setpoint: 12.41, priority: 'critical', panel: 'A', label_learning: 'Pressurizer Pressure Very Low',   label_industry: 'PZR PRESS LO LO' },
     { id: 'porv_open',         instrument: 'porv_indicator',   direction: 'is_open', setpoint: null,  priority: 'warning',  panel: 'A', label_learning: 'Pressure Relief Valve Open',      label_industry: 'PORV OPEN' },
-    { id: 'sur_high',          instrument: 'startup_rate',     direction: 'high',    setpoint: 2.0,   priority: 'caution',  panel: 'A', label_learning: 'Startup Rate High',               label_industry: 'SUR HI' },
+    // 2.0 → 1.0 DPM (issue #134): the alarm sat above the rate a real startup
+    // ever reaches, so it never warned before the withdrawal block. 1.0 is the
+    // admin startup-rate limit the checklist teaches, and lands one step below
+    // the 1.5 DPM rod-withdrawal block — caution first, then the physical stop.
+    { id: 'sur_high',          instrument: 'startup_rate',     direction: 'high',    setpoint: 1.0,   priority: 'caution',  panel: 'A', label_learning: 'Startup Rate High',               label_industry: 'SUR HI' },
     { id: 'sr_high_flux',      instrument: 'source_range',     direction: 'high',    setpoint: 5.0e4, priority: 'caution',  panel: 'A', label_learning: 'Source Range Count Rate High',    label_industry: 'SR HI FLUX' },
     { id: 'subcooling_low',    instrument: 'subcooling_margin', direction: 'low',    setpoint: 11.1,  priority: 'warning',  panel: 'A', label_learning: 'Low Subcooling Margin',           label_industry: 'LO SUBCOOL' },
     { id: 'subcooling_lost',   instrument: 'subcooling_margin', direction: 'low',    setpoint: 0.0,   priority: 'critical', panel: 'A', label_learning: 'Subcooling Lost — Coolant Boiling', label_industry: 'SUBCOOL LOST' },
@@ -257,14 +261,24 @@
   // (HR1). The rod-withdrawal block is the startup-forgiveness guard: when the
   // startup rate runs high the plant stops outward rod motion and refuses more
   // withdrawal until the rate settles — insertion always works. Real PWR rod
-  // stops behave exactly this way; here the setpoint (~0.55 $) also keeps a
-  // hasty trainee out of prompt-critical territory.
+  // stops behave exactly this way.
+  //
+  // Setpoint 2.5 → 1.5 DPM (issue #134, 2026-07-25). At 2.5 the block was a
+  // PROMPT-CRITICALITY backstop (~0.55 $) wearing a startup-rate label, and it
+  // never fired on the evolution it exists for: a measured startup run to a
+  // 19.8 % overshoot and an IR-high trip peaked at SUR 1.82 DPM — no block, no
+  // alarm, zero refusals. SUR saturates near 1.4–1.8 DPM across a wide band of
+  // positive reactivity (2.5 DPM ⇒ a ~10 s period ⇒ ρ ≈ +400 pcm), so the old
+  // number sat above anything a startup reaches. 1.5 DPM / clear 0.8 makes it a
+  // genuine rate control matching the ≤1 DPM the startup checklist already
+  // teaches; the by-the-book ascent peaks at 0.92 DPM, so the block is real
+  // margin, not a nuisance. [tune]
   var PWR_INTERLOCKS = [
-    { instrument: 'startup_rate', direction: 'high', setpoint: 2.5, clears_below: 1.5,
+    { instrument: 'startup_rate', direction: 'high', setpoint: 1.5, clears_below: 0.8,
       blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true,
       on_engage: { action: 'rod_stop_all' },
-      message_learning: 'Rod withdrawal blocked — the reactor is already speeding up too fast (startup rate high). Let the rate settle below 1.5 DPM, then continue. You can always insert.',
-      message_industry: 'ROD WITHDRAWAL BLOCK: SUR ≥ 2.5 DPM. Withdrawal inhibited until SUR < 1.5 DPM. Insertion available.' },
+      message_learning: 'Rod withdrawal blocked — the reactor is already speeding up too fast (startup rate high). Let the rate settle below 0.8 DPM, then continue. You can always insert.',
+      message_industry: 'ROD WITHDRAWAL BLOCK: SUR ≥ 1.5 DPM. Withdrawal inhibited until SUR < 0.8 DPM. Insertion available.' },
     // P-6 pair on the source-range detector switch (blocks_when picks the
     // guarded form of set_sr_detector):
     // (a) can't DE-energize the SR until the IR is on scale — you'd go blind.

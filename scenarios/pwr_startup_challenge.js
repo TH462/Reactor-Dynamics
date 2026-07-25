@@ -16,17 +16,23 @@
  *     (~0.017 % power); sr_energized stays TRUE after the scram (the auto
  *     re-energize actuation needs IR < 1e-10 A — hours away), so the
  *     diagnose beat can grade the handoff on true state.
- *   - Continuous pull reaches 1 % at ~157 s but the SUR interlock has
- *     already frozen the bank (2.5 DPM); the coast then runs 1 % → ~19 % in
- *     ~42 s and the IR trip (1.67e-3 A ≈ 20 %) scrams. On that runaway,
- *     power_range crosses 12 % a probed ~7 s before the trip — the
- *     overshoot branch always wins the race, so the excess-reactivity/IR-net
- *     lesson lives on the failed_high card; failed_trip catches the rest
- *     (manual scrams, pre-criticality trips).
- *   - Win line: stop the pull at 1 %, reinsert until SUR ≤ 0 (~6 steps of
- *     bank) — power then holds [1.0, 3.5] % for 6+ min. A lazy insert
- *     (SUR ~0.3) creeps through the band and out the top without tripping,
- *     which is why the overshoot branch and the time budget both exist
+ *   - Re-probed 2026-07-25 for the tightened SUR interlock (block 1.5 DPM,
+ *     clears 0.8 — issue #134; was 2.5/1.5, which never fired on a startup).
+ *   - A CONTINUOUS pull no longer runs away: the block interrupts it at
+ *     ~+54 pcm, and the bank stops well short of the old ~+300. The
+ *     overshoot is now reached the way a player actually reaches it — in
+ *     BITES taken while the rate sits under the block. Seven 40-step bites
+ *     bank ~+256 pcm without the interlock ever engaging; stopping at 1 %
+ *     then coasts to ~12.6 % and the overshoot branch takes it. This is the
+ *     sharper form of the scenario's own lesson: the withdrawal inhibit can
+ *     freeze your hand, but it cannot subtract what you already added.
+ *     failed_trip catches the rest (manual scrams, pre-criticality trips).
+ *   - Win line: stop the pull at 1 %, then reinsert at SLOW until SUR ≤ 0 —
+ *     parks ~1.85 % with ρ ≈ +12 through the graded window. Speed matters
+ *     now: with only ~54 pcm in, a Norm-speed arrest removes ~30 pcm/s and
+ *     drives straight through zero to −17 pcm, and power decays out the
+ *     BOTTOM of the band. A lazy insert still creeps out the top, which is
+ *     why the overshoot branch and the time budget both exist
  *     (softlock-proofing: every trajectory reaches an endpoint).
  */
 ;(function (RD) {
@@ -47,7 +53,7 @@
         trigger: { type: 'time', value: 2.0 },
         commentary: {
           learning: 'Your board, your startup. The reactor is shut down: control bank full in, the source-range counter alive at a few hundred counts. The exam is one clean solo startup — take the core critical and stabilize anywhere between 1 and 10 percent power, without a trip. Two protections are waiting to grade you. The source-range counter trips at 100,000 counts — barely 0.02 percent power — so secure it before your climb gets there; the intermediate range is already on scale to carry the watch. Above the band, the intermediate-range trip ends careless overshoots. Your startup-rate meter is the truth: pull gently, and remember that rods ADD reactivity only rods take back — the withdrawal interlock can freeze your hand, but it cannot subtract. The 1/M plot is there if you want it. One quiet word at criticality; after that, the instruments do the talking.',
-          industry: 'Startup examination, solo. IC: HZP, control bank 0 steps, SR energized (~5e2 cps), IR on scale (P-6 satisfied). Task: establish criticality and stabilize in the 1–10 % band, executing the SR→IR handoff (de-energize SR before 1e5 cps) en route; no protective actuation. SUR withdrawal inhibit 2.5/1.5 DPM active; IR high-flux trip 1.67e-3 A (≈20 %). Single criticality acknowledgment; no further coaching. Commencing.',
+          industry: 'Startup examination, solo. IC: HZP, control bank 0 steps, SR energized (~5e2 cps), IR on scale (P-6 satisfied). Task: establish criticality and stabilize in the 1–10 % band, executing the SR→IR handoff (de-energize SR before 1e5 cps) en route; no protective actuation. SUR withdrawal inhibit 1.5/0.8 DPM active; IR high-flux trip 1.67e-3 A (≈20 %). Single criticality acknowledgment; no further coaching. Commencing.',
         },
         advance: 'wait_for_trigger' },
 
@@ -127,8 +133,8 @@
         trigger: { type: 'delay', value: 1.5 },
         speed: 1,
         commentary: {
-          learning: 'A trip, with the handoff already done — so the machine caught you on the physics, not the counter. The sobering arithmetic of startup rate: at two decades per minute, one percent becomes twenty in under a minute, and the intermediate-range net waits exactly there. The withdrawal interlock froze your bank when the rate hit 2.5 DPM, but an interlock cannot subtract reactivity — only insertion can. Stop pulling the moment power comes alive, and kill the rate before it kills the run.',
-          industry: 'Reactor trip during the graded startup with SR secured. Review: SUR management — terminate withdrawal at criticality, insert to null SUR inside the band; the withdrawal inhibit (≥2.5 DPM) limits addition but removes nothing. Re-examination via Rewind/Retry.',
+          learning: 'A trip, with the handoff already done — so the machine caught you on the physics, not the counter. The sobering arithmetic of startup rate: at two decades per minute, one percent becomes twenty in under a minute, and the intermediate-range net waits exactly there. The withdrawal interlock freezes your bank when the rate hits 1.5 DPM, but an interlock cannot subtract reactivity — only insertion can, and everything you banked below that rate is still in the core. Stop pulling the moment power comes alive, and kill the rate before it kills the run.',
+          industry: 'Reactor trip during the graded startup with SR secured. Review: SUR management — terminate withdrawal at criticality, insert to null SUR inside the band; the withdrawal inhibit (≥1.5 DPM, clears &lt;0.8) limits rate of addition but removes nothing. Re-examination via Rewind/Retry.',
         },
         level_complete: {
           title: 'Startup Ended — Tripped on the Climb',

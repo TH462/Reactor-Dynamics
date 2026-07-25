@@ -204,7 +204,7 @@ restored (`interlockActive`).
 **Shipped interlock data** *(as built)*:
 
 - **PWR** (pwr_control.js): (a) rod-withdrawal block on high startup rate — engages at
-  SUR ≥ 2.5 DPM, clears below 1.5, `withdrawal_only`, `on_engage: rod_stop_all`; (b) the
+  SUR ≥ 1.5 DPM, clears below 0.8, `withdrawal_only`, `on_engage: rod_stop_all`; (b) the
   P-6 pair on `set_sr_detector` — below P-6 (IR < 1e-10 A) the source-range detector cannot
   be **de**-energized (`blocks_when {on:false}` — you'd go blind), and above 1e-6 A it
   cannot be **re**-energized (`blocks_when {on:true}` — it would burn out the counter;
