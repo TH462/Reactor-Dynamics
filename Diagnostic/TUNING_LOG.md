@@ -106,6 +106,64 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-25 — Rod-speed first-step bug: stale `step_accumulator` (all three plants)  ✅
+**Report:** "moving rods in/out, the reactivity indication changes instantly even with rod
+speed set to slow."
+
+**Investigation.** The suspicion (reactivity computed from *demanded* rather than *actual*
+rod position) was wrong, and worth recording as ruled out: `_rodReactivity` reads `g.steps`
+only (`pwr_engine.js:74`); `nudge_target` is never in the reactivity path. Speed → velocity
+in steps/s (`pwr_engine.js:564-568`, `:577-578`), position integrated with `dt`
+(`:169-178`). Nothing writes a demanded position into `g.steps`. Two real causes:
+
+1. **The bug — `g.step_accumulator` was never cleared by a new rod command.** It is
+   initialized (`pwr_engine.js:54`,`:60`) and cleared on reset (`:1358`), but `rod_nudge` /
+   `rod_start` cleared `coast_remaining_s`, `velocity` and `nudge_target` and left the
+   fraction behind. A held **fast** drive strands it as high as 0.96; the next **slow** tap
+   then lands its step in 0.08 s instead of 1.88 s. Measured, engine-direct:
+
+   | case | first step at | expected |
+   |---|---|---|
+   | slow +1 from rest | 1.88 s | 1.88 s ✅ |
+   | normal +1 from rest | 0.32 s | 0.31 s ✅ |
+   | fast +1 from rest | 0.22 s | 0.21 s ✅ |
+   | **slow +1 after a fast drive** | **0.08 s** ❌ | 1.88 s |
+
+2. **Not a bug — the jump size is speed-independent by design.** Position is quantized to
+   whole steps (`:172`) and the ρ readout is unfiltered true state (`getTrueState`
+   `pwr_engine.js:466` → `ui/app.js:682`, `pwr_synoptic.js:950`; there is no reactivity
+   entry in `pwr_instruments.js`). One tap therefore produces one discrete ρ jump of
+   *identical* magnitude at every speed — 2.8 pcm at the cold-shutdown rod position,
+   ~9 pcm in the critical band per the `max_steps: 912` retune note
+   (`pwr_config.js:499-512`). Speed changes only the latency before the jump. Bug 1 was
+   removing even that latency, which is what made it read as instant.
+
+**Fix.** `if (!g.velocity) g.step_accumulator = 0;` in `rod_nudge` and `rod_start`, in
+`pwr_engine.js`, `bwr_engine.js` and `rbmk_engine.js` (owner explicitly reopened BWR/RBMK
+for this one fix).
+
+**Why the `!g.velocity` guard, not an unconditional reset** — the automatic rod channel
+re-issues `rod_nudge` on a `period: 5.0` cadence with `maxStep: 8`
+(`pwr_control.js:365`), and 8 steps at slow (0.533 steps/s) takes 15 s. An unconditional
+clear would discard up to a full step of real travel every 5 s during automatic control.
+The guard is also the physically honest rule: a stopped drive starts clean, a moving drive
+is mid-step.
+
+**Owner ruling — do NOT smooth the ρ display.** Proposed and rejected: the reactivity
+readout is the sim's designated *truth overlay* (labelled "not a plant instrument",
+`pwr_synoptic.js:364`) and filtering it would blur exactly the instruments-vs-truth line
+HR1 exists to draw. The step is also physically right — real bank differential worth.
+Motion feedback already exists (`↑`/`↓` at `pwr_synoptic.js:983`, "withdrawing"/"inserting"
+at `ui/app.js:3126`) and was simply being skipped past by the bug. If a slow drive still
+feels wrong, the honest levers are `max_steps` (the step quantum) or `rods.speeds` — not a
+cosmetic filter.
+
+**Gates** — all at baseline: `run_pwr` 31/31, `run_bwr` 15/15, `run_rbmk` 23/23,
+`run_autoctl` 20/20, `run_m4` 18/18, `run_m6` 16/16, `run_behavior` 30/0/0,
+`run_meltdown` 8/8, `run_campaign` 51/51, `run_scenarios` 3/3, `run_procedures` 22/22,
+`run_checklist` 24/24, `run_e2e_controls` 28/30 (baseline), `run_ops` 59/68 (baseline),
+`run_m5` 18/19 (pre-existing rewind red, re-verified on clean HEAD this session).
+
 ### 2026-07-24 — MD-6 FIXED: time-dependent SG dryout depletion (dry + unfed bundle loses its residual)  ✅
 The deferred meltdown-battery defect (total loss of feed+AFW parked the primary at ~297 °C
 forever) is resolved structurally. Probing killed the level-threshold idea before it started:

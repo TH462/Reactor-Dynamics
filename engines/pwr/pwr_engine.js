@@ -562,6 +562,11 @@
         g = this._group(cmd.group_id);
         if (g && !(g.id === 'control_rods' && s._fail.rod_runaway.active)) {
           g.speed = cmd.speed || g.speed || 'normal';
+          // A command to a bank at rest starts its travel from a clean fraction —
+          // otherwise the leftover accumulator from the previous move (up to ~1 full
+          // step) lands the first step almost immediately and the selected speed is
+          // ignored. A bank still in motion keeps its fraction (it is mid-step).
+          if (!g.velocity) g.step_accumulator = 0;
           g.coast_remaining_s = 0;   // a fresh nudge cancels any coast-to-stop in flight
           g.nudge_target = clip(g.steps + cmd.steps, 0, g.max_steps);
           var nv = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
@@ -573,6 +578,7 @@
         g = this._group(cmd.group_id);
         if (g && !(g.id === 'control_rods' && s._fail.rod_runaway.active)) {
           g.speed = cmd.speed || 'normal'; g.nudge_target = null;   // continuous (held) — no target
+          if (!g.velocity) g.step_accumulator = 0;   // see rod_nudge
           g.coast_remaining_s = 0;   // a fresh hold-drive cancels any coast-to-stop in flight
           var v = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
           g.velocity = (cmd.direction >= 0 ? 1 : -1) * v;

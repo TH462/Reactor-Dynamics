@@ -127,6 +127,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   steps inline (there the steps are the content).
 
 ### Fixed
+- **Rod speed is honoured on the first step again — a SLOW drive no longer jumps instantly.**
+  The rod drive carries a fractional-step accumulator between physics ticks, and a new rod
+  command never cleared it. A bank left mid-step by a previous move (a fast hold-drive can
+  strand it at 0.96 of a step) would take its *next* step almost immediately no matter which
+  speed was selected — so a single tap at SLOW moved the bank, and stepped reactivity, in
+  0.08 s instead of the 1.88 s the slow drive calls for. A command to a bank **at rest** now
+  starts from a clean fraction; a command redirecting a bank that is still **in motion** keeps
+  its fraction, since it is genuinely mid-step (this matters — the automatic rod channel
+  re-issues its nudge every 5 s while an 8-step slow move is still travelling, and clearing
+  the fraction there would throw away real progress). Fixed identically in all three plants
+  (`pwr_engine.js`, `bwr_engine.js`, `rbmk_engine.js` `rod_nudge`/`rod_start`). Rod position
+  was always integrated at the selected speed and reactivity was always read from the *actual*
+  bank position — the speed setting itself was never broken, only its first step.
+
 - **A total loss of feedwater is now the accident it should be.** A steam generator that boiled
   dry used to stay a perfect heat sink forever — the steam dump kept "venting" and the primary
   parked at ~297 °C indefinitely, so losing all feed *and* aux feed with no makeup was survivable
