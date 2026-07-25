@@ -458,6 +458,14 @@
       accumulator_flow_max: 1.0,   // normalized rated accumulator flow
       accumulator_inventory_gain: 0.12, // inventory frac/s per unit normalized flow
       accumulator_capacity: 2.5,   // total deliverable inventory fractions (finite)
+      // N2 cover-gas volume as a fraction of the initial WATER volume, used to drive the
+      // tank-pressure indication as the accumulator empties. A real SIT is ~1350 ft³ holding
+      // ~1000 ft³ of borated water, so the gas space is ~0.35 of the water volume. The gas
+      // expands isothermally as water discharges (P·V constant), so a full tank indicates the
+      // charge pressure and a fully-dumped one decays to ~0.26 of it (~155 psi) — which is why
+      // accumulators stop injecting well before they are empty. Indication only; the injection
+      // driving head remains accumulator_trip_mpa. [tune]
+      accumulator_gas_frac: 0.35,
       // Boron concentration of ALL emergency-injection water (RWST-sourced HPI/LPI
       // and the SIT accumulators). Real RWST/SIT boron runs ~2000–2700 ppm, sized so
       // the core stays subcritical when reflooded cold. Injected inventory mixes into

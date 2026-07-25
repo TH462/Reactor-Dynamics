@@ -678,8 +678,10 @@
 
   function renderReactimeter(s) {
     var t = s.true_state;
-    var sgn = function (v) { return (v >= 0 ? '+' : '') + v; };
-    $('rxReactivity').textContent = t.reactivity_pcm != null ? sgn(t.reactivity_pcm.toFixed(0)) + ' pcm' : '— pcm';
+    // Sign off the NUMBER, not the rounded string: a tiny negative ρ rounds to the string
+    // "-0", which coerces to -0 and passes `>= 0`, so the old form printed "+-0 pcm".
+    var sgn = function (n) { var r = n.toFixed(0); if (r === '-0') r = '0'; return (r.charAt(0) === '-' ? '' : '+') + r; };
+    $('rxReactivity').textContent = t.reactivity_pcm != null ? sgn(t.reactivity_pcm) + ' pcm' : '— pcm';
     var per = t.reactor_period_s;
     $('rxPeriod').textContent = per == null ? '— (PWR only)' : (!isFinite(per) || Math.abs(per) > 9999) ? '∞ (steady)' : per.toFixed(0) + ' s';
   }

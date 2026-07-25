@@ -482,7 +482,11 @@
       governor_valve_pct: s.governor_valve_pct,
       accumulators_discharging: s.accumulators_discharging,
       accumulator_flow_normalized: s.accumulator_flow_normalized,
-      accumulator_volume_pct: s.accumulator_volume_pct, rhr_active: s.rhr_active,
+      accumulator_volume_pct: s.accumulator_volume_pct,
+      // N2 cover-gas pressure (indication only — see pwr_primary.stepAccumulators). Falls as
+      // the tank empties; the board reads this for the SIT pressure readout.
+      accumulator_pressure_mpa: s.accumulator_pressure_mpa,
+      rhr_active: s.rhr_active,
       accumulator_valve_open: s.accumulator_valve_open !== false,   // discharge isolation valve position
       // RHR hot-leg suction valve + ECCS mode (HPI/LPI/RHR/off) for the ECCS card.
       rhr_valve_open: !!s.rhr_valve_open, eccs_mode: s.eccs_mode || 'off',
@@ -1149,6 +1153,7 @@
       hpi_active: false, hpi_flow_normalized: 0, hpi_flow_multiplier: 1.0,
       accumulators_discharging: false, accumulator_flow_normalized: 0,
       _accum_remaining: cfg.emergency.accumulator_capacity, accumulator_volume_pct: 100,
+      accumulator_pressure_mpa: cfg.emergency.accumulator_trip_mpa,   // full tank = charge pressure
       accumulator_valve_open: true,           // motor-operated discharge isolation valve (default aligned)
       _eccs_inj_inv: 0,                       // cold-injection throughput for the stepCoolant quench term
       flow_frac: 1.0, pump_flow_pct: 100, pump_running: true, station_blackout: false,

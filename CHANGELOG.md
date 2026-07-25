@@ -127,6 +127,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   steps inline (there the steps are the content).
 
 ### Fixed
+- **Four board readouts were showing fiction; they now read the plant.** An indication audit
+  found four displays wired to constants or to the wrong field:
+  - **SIT (accumulator) pressure** was pinned at a hard-coded `640 psig` forever — the board
+    asked the engine for a tank pressure the engine never exported. The accumulators now model
+    their **nitrogen cover gas**, which expands isothermally as water discharges, so the gauge
+    falls from its 600 psi charge toward ~156 psi as the tank empties. That is *why* a real
+    accumulator's injection tails off as it drains, and the board now shows it.
+  - **SG feed rate** displayed the feed-pump *demand* rather than measured feed flow, so the
+    indication stayed pegged at what you asked for even through a feed-pump trip. It now reads
+    the feed-flow instrument.
+  - **Condensate polisher** always read `NORMAL` — a hard-coded string wired to nothing. It now
+    reports whether condensate is actually flowing through it (`IN SERVICE` / `STANDBY`).
+  - **Net reactivity** printed `+-0 pcm` whenever ρ was a hair below zero.
+
 - **Rod speed is honoured on the first step again — a SLOW drive no longer jumps instantly.**
   The rod drive carries a fractional-step accumulator between physics ticks, and a new rod
   command never cleared it. A bank left mid-step by a previous move (a fast hold-drive can

@@ -37,6 +37,7 @@
 
   // Nominal full-scale flows for indications the engine exposes only as normalized/pct.
   var GPM_HPI = 600, GPM_AFW = 640, GPM_CHARGING = 1000, GPM_LETDOWN = 1000, GPM_FEED_PER_PCT = 10;
+  var GPM_FEED = 1000;   // full-rated feed flow, for the measured fw_flow indication (normalized 0-1)
   // Editable-input valid ranges [min, max], in the board's display (US) units — the
   // renderer clamps every setpoint box to these and auto-corrects an out-of-range entry
   // to the nearest bound (both min and max). Sourced from the engine limits so a retune
@@ -248,7 +249,7 @@
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
     imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
     imrppyp0wfo: function (s) { return accN2Psi(s); },                                                  // accumulator N2 psig
-    imrppztrng1: function (s) { return CS(s).eccs_mode, IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
+    imrppztrng1: function (s) { return IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
     imrpq0n2ujv: function (s) { return r0(accFill(s)); },                                               // accumulator fill %
     imrqn8uo0z: function (s) {                                                                           // boron status (+ dose countdown)
       var r = CS(s).boron_adjust || 0;
@@ -263,7 +264,10 @@
       var v = IN(s).boron_sample;
       return v != null ? r0(v) + ' PPM' : '—';
     },
-    imrqrouhrdr: function () { return 'NORMAL'; },                                                      // condensate polisher (behavioral)
+    // Condensate polisher: there is no polisher model, so this cannot report resin condition.
+    // It reports the one thing that IS modeled — whether condensate is flowing through it —
+    // instead of the hard-coded 'NORMAL' it displayed until 2026-07-25.
+    imrqrouhrdr: function (s) { return IN(s).condensate_pump_running ? 'IN SERVICE' : 'STANDBY'; },
     imrqzuhzre3: function (s) { return r0(kPa2inHg(IN(s).condenser_vacuum)); },                         // condenser vacuum inHg
     imrr1fmzzjp: function (s) { return r0(IN(s).sg_level); },                                           // SG level %
     imrr1gwi93j: function (s) { return r0(MPa2psi(IN(s).steam_pressure)); },                            // SG pressure psi
@@ -280,7 +284,11 @@
       if (c == null) return null;
       return { text: String(r0(C2F(c))), color: c > 100 ? SR_HANDOFF_COLOR : SR_NORMAL_COLOR };
     },
-    imrsgkz4lq0: function (s) { return r0((CS(s).feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT); }       // SG feed rate gpm
+    // SG feed rate: MEASURED feed flow, not pump demand. This read control_state
+    // feed_pump_speed_pct until 2026-07-25, so it showed what was asked for rather than what
+    // the plant delivered — the indication stayed at demand through a feed-pump trip.
+    imrsgkz4lq0: function (s) { return r0((IN(s).fw_flow || 0) * GPM_FEED); }                           // SG feed rate gpm
+
   };
 
   // SR→IR handoff cue: turn the source-range indication amber at the SR high-flux caution
@@ -290,7 +298,9 @@
   function fmtExp(v) { if (!v || v <= 0) return '0'; var e = Math.floor(Math.log10(v)); var m = v / Math.pow(10, e); return m.toFixed(1) + 'e' + e; }
   function accIsolated(s) { return CS(s).accumulator_valve_open === false; }
   function accFill(s) { var t = s.true_state || {}; return t.accumulator_volume_pct != null ? t.accumulator_volume_pct : 78; }
-  function accN2Psi(s) { var t = s.true_state || {}; return t.accumulator_pressure_mpa != null ? r0(MPa2psi(t.accumulator_pressure_mpa)) : 640; }
+  // N2 cover-gas pressure. Older saves predate the engine field — show a dash rather than a
+  // fabricated constant (this readout was pinned at a hard-coded 640 psig until 2026-07-25).
+  function accN2Psi(s) { var t = s.true_state || {}; return t.accumulator_pressure_mpa != null ? r0(MPa2psi(t.accumulator_pressure_mpa)) : null; }
 
   // ================================================================ COMPONENTS
   // compProps(item, s) -> props for the component's update()

@@ -106,6 +106,72 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-25 — PWR indication audit: 4 fiction readouts fixed; gap list filed  ✅🔬
+Triggered by the owner asking what a real plant indicates for reactivity/startup, and whether
+the ρ readout should be moved somewhere that reads as educational. Full inventory taken of
+every PWR indication (5 surfaces: vital gauge strip, board diagram, strip chart, alarm panel,
+Reactivity Computer + 1/M plot).
+
+**Headline finding (no code change — owner ruling pending, filed as an issue).** The board's
+`REACTIVITY … pcm` item sits *inside the NIS panel* (`pwr_board_wiring.js` VALUES item
+`imro6rdwwdn`, coords 471,240) flanked by `INTER RANGE` / `SOURCE RANGE` / `STARTUP RATE` —
+all genuine modeled instruments — with **no visual distinction**, while the engine comment at
+`pwr_engine.js:406-411` already states real PWRs have no ρ gauge. A correctly-framed home
+already exists (Sim tab → REACTIVITY COMPUTER, `ui/shell.html:166-168`). Recommendation: delete
+the board copy, give the freed NIS slot to **POWER RANGE %** (modeled at `pwr_config.js:547`
+but with *no board numeric at all* — digits exist only on the vital strip), leaving the panel
+reading SR/IR/PR + SUR = the real channel set. Blocker: checklist highlight vocabulary points
+at the ρ readout; `run_checklist` must stay 24/24.
+
+**Fixed this session (4 readouts displaying fiction):**
+
+| Readout | Was | Now |
+|---|---|---|
+| SIT N₂ pressure | hard-coded `640 psig` — `pwr_board_wiring.js` `accN2Psi` read `true_state.accumulator_pressure_mpa`, **never exported** by `getTrueState()` | real N₂ cover-gas pressure (new field) |
+| SG FEED RATE | `control_state.feed_pump_speed_pct × 10` — pump *demand* | measured `instruments.fw_flow × GPM_FEED` |
+| CONDENSATE POLISHER | hard-coded string `'NORMAL'` | `IN SERVICE`/`STANDBY` from `instruments.condensate_pump_running` |
+| Net reactivity ρ | `+-0 pcm` — `sgn()` tested the *string* from `toFixed(0)`; `"-0"` coerces to `-0` and passes `>= 0` | `+0 pcm` |
+
+**New physics — accumulator N₂ cover gas** (`pwr_primary.js` `stepAccumulators`, new `[tune]`
+constant `accumulator_gas_frac: 0.35` at `pwr_config.js`). Gas expands isothermally into the
+volume the discharged water vacates: `P = P0·Vg0/(Vg0 + Vdischarged)`. Indication only — the
+injection driving head is still `accumulator_trip_mpa`, so no scenario physics moved. Curve:
+
+| fill | 100 % | 75 % | 50 % | 25 % | 0 % |
+|---|---|---|---|---|---|
+| psi | 600 | 350 | 247 | 191 | 156 |
+
+Old saves lack the field; `accN2Psi` now returns `null` (dash) rather than fabricating a value.
+
+**Also removed:** dead comma-expression `CS(s).eccs_mode,` in the accumulator-status formatter
+(`pwr_board_wiring.js`) — evaluated and discarded.
+
+**Deferred to the UI revamp** — drafted as GitHub issues in `inbox/`
+(`ISSUE_pwr_indication_gaps.md`, `ISSUE_radiation_monitoring.md`; `gh` CLI is not installed on
+this machine, so they are drafts to paste). Key deferred items: the ρ move above; the strip
+chart plots `true_state` for every trace because the Realistic toggle is `disabled`
+(`ui/shell.html:173`) — a **larger** truth/instrument leak than the ρ readout, sitting directly
+under a lagged gauge strip with nothing saying so; heatup/cooldown rate
+(`tavg_rate_c_per_hr`) and plant mode (`plant_mode_name`) both computed every step and never
+displayed; **core damage never annunciated** (`fuel_damaged`/`melted`/`destruction_cause` have
+zero UI consumers — you can melt the core and the board says nothing); board hard-codes US
+units and ignores the display toggle (`pwr_board_wiring.js:19-24`) — owner wants it toggleable,
+deferred because it spans ~30 formatters plus the editable setpoint boxes' bounds and
+parse-back.
+
+**Owner scope rulings:** rod deviation (step counter vs RPI), generator electrical indications
+(MVAR/volts/frequency/breaker), AFD/ΔI and QPTR are **out of scope** — do not add. Radiation
+monitoring + containment instrumentation deferred to its own issue.
+
+**Modeled but unused, decision pending:** `accumulator_flow`, `primary_leak_flow` (LOCA/SGTR
+break flow has no readout anywhere), `condensate_flow`; plus status booleans `rhr_active`,
+`rhr_valve_open`, `safety_relief_active`, `sg_safety_open` (SG code safeties pop invisibly).
+
+**Gates** — all at baseline: `run_pwr` 31/31, `run_scenarios` 3/3, `run_m7` OK, `run_m4` 18/18,
+`run_m6` 16/16, `run_meltdown` 8/8, `run_behavior` 30/0/0, `run_campaign` 51/51,
+`run_checklist` 24/24, `run_procedures` 22/22, `run_e2e_controls` 28/30, `run_ops` 59/68,
+`run_m5` 18/19 (pre-existing).
+
 ### 2026-07-25 — Rod-speed first-step bug: stale `step_accumulator` (all three plants)  ✅
 **Report:** "moving rods in/out, the reactivity indication changes instantly even with rod
 speed set to slow."
