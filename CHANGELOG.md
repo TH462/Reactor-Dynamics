@@ -35,6 +35,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   otherwise fall back to the step's named control. Works on the checklist bubble list.
 
 ### Changed
+- **Fast-forward no longer collapses the moment a casualty starts.** Acceleration dropped
+  back to real time on *every* newly-annunciating alarm, and a casualty annunciates in
+  cascades — a large-break LOCA dropped the clock **5 times in its first 3 minutes**, a
+  loss of feedwater 6 times, each one needing a manual re-engage. An alarm now drops the
+  clock only on an **otherwise quiet board**, which is what an annunciator is actually for:
+  drawing the eye to a new condition on a normal board. Once the board is lit and you are
+  working procedures, the alarms that follow are the consequences you are already handling.
+  A **reactor trip** or a **new equipment failure** still stops the clock regardless. The
+  same LOCA now stops once, on the scram; measured in the control room, engaging 60x through
+  a loss of feedwater went from **3 manual re-engages to 1**. Standing alarms also mean a
+  long cooldown or a Mode 5 heatup — exactly where a long fast-forward is the point — runs
+  uninterrupted.
+- **New setting: Fast-forward dropout (On / Off).** Turns the behavior above off entirely,
+  for running a casualty through at speed. Events still annunciate normally; they just never
+  touch the clock. Settings tab; On by default. It is a preference, not plant state, so a
+  rewind or a state restore will not change it under you.
 - **Strip-chart traces no longer stack on top of each other.** Each series auto-ranges
   independently onto the same plot height, so a steady plant centred all of them and drew
   four flat lines in one place — while leaving the top and bottom of the chart unused.

@@ -180,6 +180,58 @@ T.push(test('Attention stop — a plant event snaps fast-forward back to real ti
   ck('alarm reason reported', asnap.metadata.speed_snap && asnap.metadata.speed_snap.reason,
      asnap.metadata.speed_snap && asnap.metadata.speed_snap.reason === 'alarm', 'alarm');
 
+  // …but only on a QUIET BOARD. Once alarms are already up the operator is inside a
+  // casualty working procedures, and the alarms that follow are consequences they are
+  // already handling — stopping for each one made fast-forward unusable exactly when it
+  // is most wanted (a large-break LOCA dropped the clock 5 times in its first 3 min).
+  var lit = svc();
+  lit.advanceCycles(3);
+  lit.handleCommand({ action: 'trip_turbine' });          // light the board
+  lit.advanceCycles(8);
+  var litCount = lit.assembleSnapshot().alarms.filter(function (a) { return a.state !== 'clear'; }).length;
+  ck('board is lit before the run', litCount, litCount > 0, '> 0');
+  lit.handleCommand({ action: 'set_speed', value: 60 });
+  var prevState = {}, sawNewAlarm = false, alarmSnapped = false;
+  lit.assembleSnapshot().alarms.forEach(function (a) { prevState[a.id] = a.state; });
+  for (var li = 0; li < 200; li++) {
+    var ls = lit.advanceCycles(1);
+    ls.alarms.forEach(function (a) {
+      if ((prevState[a.id] || 'clear') === 'clear' && a.state !== 'clear') sawNewAlarm = true;
+      prevState[a.id] = a.state;
+    });
+    if (ls.metadata.speed_snap && ls.metadata.speed_snap.reason === 'alarm') alarmSnapped = true;
+  }
+  ck('further alarms did fire during the run', sawNewAlarm, sawNewAlarm, 'true');
+  ck('a new alarm on an ALREADY-LIT board does NOT snap fast-forward', alarmSnapped, !alarmSnapped, 'false');
+
+  // Settings → Fast-forward dropout = Off: nothing touches the clock, not even a scram.
+  var off = svc();
+  off.advanceCycles(3);
+  ck('attention stops on by default', off.assembleSnapshot().metadata.attention_stops,
+     off.assembleSnapshot().metadata.attention_stops === true, 'true');
+  off.handleCommand({ action: 'set_attention_stops', value: false });
+  ck('the setting is reported in metadata', off.assembleSnapshot().metadata.attention_stops,
+     off.assembleSnapshot().metadata.attention_stops === false, 'false');
+  off.handleCommand({ action: 'set_speed', value: 60 });
+  off.handleCommand({ action: 'inject_failure', failure_id: 'large_loca', severity: 0.2 });
+  var offDrops = 0, offMin = Infinity;
+  for (var oi = 0; oi < 400; oi++) {
+    var os = off.advanceCycles(1);
+    if (os.metadata.speed_snap) offDrops++;
+    offMin = Math.min(offMin, os.metadata.time_acceleration);
+  }
+  ck('dropout off: a LOCA + scram never drops the clock', offDrops + '/' + offMin,
+     offDrops === 0 && offMin === 60, '0/60');
+
+  // The preference is the operator's, not the plant's: restoring a checkpoint (rewind)
+  // must not hand them back a setting they changed since.
+  var pref = svc();
+  pref.advanceCycles(3);
+  var prefState = pref.saveState();
+  pref.handleCommand({ action: 'set_attention_stops', value: false });
+  pref.loadState(prefState);
+  ck('a state restore leaves the dropout preference alone', pref.attentionStops, pref.attentionStops === false, 'false');
+
   // The crucial NON-trigger: a commanded power/load maneuver is expected change and
   // must remain fast-forwardable. Only an unbidden event snaps the clock; an
   // excursion that genuinely needs attention annunciates an alarm (caught above),

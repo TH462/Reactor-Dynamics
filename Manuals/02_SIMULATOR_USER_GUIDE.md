@@ -112,6 +112,15 @@ Headline instruments (always instrument readings):
 
 **CAUTION:** High speed during approach to criticality or load rejection can leave you behind the plant. Use 1×–10× for startups and transients until proficient.
 
+**Fast-forward dropout.** Acceleration snaps back to **1×** when something arrives that you
+have to look at: a **reactor trip**, a **new equipment failure**, or the **first alarm on an
+otherwise quiet board**. A toast names the reason. Alarms that follow while the board is
+*already* lit do **not** drop the clock — inside a casualty those are the consequences you
+are already working, and stopping for each one would make fast-forward useless exactly when
+a long evolution (cooldown, boration, decay-heat wait) needs it. Standing alarms therefore
+suppress alarm dropouts for as long as they stand; a trip or a new failure still gets
+through. Turn the whole behavior off at **Settings → Fast-forward dropout**.
+
 ### 4.2 Keyboard (global)
 
 | Key | Action |

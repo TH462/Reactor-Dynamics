@@ -746,6 +746,9 @@
     failure: 'Dropped to real time — equipment failure',
     alarm: 'Dropped to real time — new alarm',
   };
+  // Settings → Fast-forward dropout. The service owns the policy (HR5: it arrives by
+  // command like everything else); the UI just mirrors what the snapshot reports.
+  var attnStops = true;
   var lastSpeedSync = null;
   function syncSpeedUI(s) {
     var v = s && s.metadata ? s.metadata.time_acceleration : null;
@@ -753,6 +756,8 @@
     // Toast the reason so the operator knows why the clock changed under them.
     var snap = s && s.metadata ? s.metadata.speed_snap : null;
     if (snap) showToast(SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time', 'error');
+    var as = s && s.metadata ? s.metadata.attention_stops : null;
+    if (as != null && as !== attnStops) { attnStops = as; syncSeg('[data-attn]', as ? 'on' : 'off', 'attn'); }
     if (v == null || v === lastSpeedSync) return;
     lastSpeedSync = v;
     var seg = $('speed');
@@ -2465,6 +2470,12 @@
     syncOverlayRow();
     $('registerSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-register]'); if (!b) return; ui.register = b.getAttribute('data-register'); cmd({ action: 'set_register', value: ui.register }); });
     $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
+    var aseg = $('attnSeg');
+    if (aseg) aseg.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-attn]'); if (!b) return;
+      attnStops = b.getAttribute('data-attn') === 'on';
+      cmd({ action: 'set_attention_stops', value: attnStops });
+    });
     $('graphParams').addEventListener('change', function (e) { var cb = e.target.closest('input[data-series]'); if (!cb) return; ui.series[cb.getAttribute('data-series')] = cb.checked; drawChart(); });
     $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
     $('loadFile').addEventListener('change', function (e) {
