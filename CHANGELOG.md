@@ -35,6 +35,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   otherwise fall back to the step's named control. Works on the checklist bubble list.
 
 ### Changed
+- **The AGPL offer of source now resolves.** `legal.html` §5 and `README.md` carried
+  commented-out placeholders where the source-repository URL belongs; both now link
+  **https://github.com/TH462/Reactor-Dynamics**. AGPL-3.0 section 13 requires a network
+  service to offer its complete corresponding source, so an unresolved placeholder was a
+  release blocker for going public.
 - **Fast-forward no longer collapses the moment a casualty starts.** Acceleration dropped
   back to real time on *every* newly-annunciating alarm, and a casualty annunciates in
   cascades — a large-break LOCA dropped the clock **5 times in its first 3 minutes**, a
