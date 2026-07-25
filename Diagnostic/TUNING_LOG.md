@@ -146,9 +146,11 @@ Old saves lack the field; `accN2Psi` now returns `null` (dash) rather than fabri
 **Also removed:** dead comma-expression `CS(s).eccs_mode,` in the accumulator-status formatter
 (`pwr_board_wiring.js`) — evaluated and discarded.
 
-**Deferred to the UI revamp** — drafted as GitHub issues in `inbox/`
-(`ISSUE_pwr_indication_gaps.md`, `ISSUE_radiation_monitoring.md`; `gh` CLI is not installed on
-this machine, so they are drafts to paste). Key deferred items: the ρ move above; the strip
+**Deferred to the UI revamp** — filed as **GitHub #122** (indication gaps) and **#123**
+(radiation + containment); bodies drafted in `inbox/ISSUE_pwr_indication_gaps.md` and
+`ISSUE_radiation_monitoring.md`. (`gh` was installed per-user later the same session — see
+`CLAUDE.md` § Issue tracking; every agent-touched issue carries the `Claude` label.) Key
+deferred items: the ρ move above; the strip
 chart plots `true_state` for every trace because the Realistic toggle is `disabled`
 (`ui/shell.html:173`) — a **larger** truth/instrument leak than the ρ readout, sitting directly
 under a lagged gauge strip with nothing saying so; heatup/cooldown rate
