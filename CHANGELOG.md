@@ -34,6 +34,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   1/M PLOT tool, the Source Range counts, and the Reactivity/Startup-Rate readouts together — and
   otherwise fall back to the step's named control. Works on the checklist bubble list.
 
+### Fixed
+- **Asking the turbine for more than the plant can make no longer floods the steam
+  generator and trips the reactor.** The governor has always capped steam at rated
+  output, but the automatic feedwater coupled to the *ask* rather than to that cap —
+  so any load target above 100 % fed the SG faster than it could boil, level climbed
+  65 % → 89 %, and the plant scrammed on high SG level a minute or two later, with
+  nothing on the board connecting the trip back to the slider that caused it. The
+  coupling now saturates at rated. Below rated nothing changes, including the
+  deliberate feed-vs-steam mismatch you see while a load change is in progress, and
+  you can still overfeed by hand on purpose.
+
 ### Changed
 - **The AGPL offer of source now resolves.** `legal.html` §5 and `README.md` carried
   commented-out placeholders where the source-repository URL belongs; both now link

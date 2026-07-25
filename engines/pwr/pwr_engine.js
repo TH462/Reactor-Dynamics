@@ -191,6 +191,11 @@
     var cfg = this.cfg;
     return {
       mweRated: cfg.turbine.mwe_rated,
+      // Cap the coupled feed demand at rated (issue #130). The governor below clamps
+      // steam to 1.0, so anything above that is feed the plant can never boil off —
+      // a permanent imbalance that walks SG level into the high-level scram. The
+      // pump's own 0..120 % runout clamp in setFeed is separate and stays.
+      maxCoupledFeedFrac: 1.0,
       setLoad: function (s, mwe, rated) {
         s.steam_demand_mwe = mwe;
         s.turbine_demand_frac = clip(mwe / rated, 0, 1.2);
@@ -1782,8 +1787,65 @@
         h.run(180);
         var t = h.ts();
         ck('power fell', t.power_pct.toFixed(1), t.power_pct < 96, '< 96%');
-        ck('load target tracked down', h.eng.s.load_target_mwe.toFixed(0), h.eng.s.load_target_mwe < 950, '< 950 MWe');
+        // Banded against RATED, not a literal: this read "< 950 MWe", left over from
+        // the ~1000 MWe plant, and has been vacuously true since the rescale to 100.
+        var ratedF = RD.PWR_CONFIG.turbine.mwe_rated;
+        ck('load target tracked down', h.eng.s.load_target_mwe.toFixed(0),
+          h.eng.s.load_target_mwe < ratedF * 0.95, '< ' + (ratedF * 0.95).toFixed(0) + ' MWe');
+        ck('load target tracks power (follow mode)', h.eng.s.load_target_mwe.toFixed(1),
+          near(h.eng.s.load_target_mwe, t.power_pct / 100 * ratedF, ratedF * 0.05), '≈ power ±5% rated');
         ck('SG level stable (no runaway fill)', t.sg_level_pct.toFixed(0), t.sg_level_pct < 88, '< 88%');
+      });
+    },
+
+    // Regression pin for the feed/steam clip asymmetry (issue #130). The governor
+    // clamps steam to rated, so an above-rated load ask used to boil 1.0 while the
+    // coupled feed drove 1.2 — a permanent imbalance that walked SG level 65 → 89 %
+    // and scrammed on sg_level high 36-112 s later, with no visible link back to the
+    // slider that caused it. The ask must instead simply saturate at what the plant
+    // can deliver.
+    load_above_rated_hold: function () {
+      return test('Load mode — a sustained above-rated ask saturates, it does not flood the SG', function (ck) {
+        var rated = RD.PWR_CONFIG.turbine.mwe_rated;
+        var h = new Harness('hot_full_power');
+        h.run(60);
+        h.cmd({ action: 'set_load_mode', mode: 'manual' });
+        h.cmd({ action: 'set_load_target', mwe: rated * 1.3 });
+        var peak = 0;
+        for (var i = 0; i < 180; i++) {          // 30 min at 10 s/step
+          h.run(10);
+          if (h.ts().sg_level_pct > peak) peak = h.ts().sg_level_pct;
+        }
+        var t = h.ts();
+        // Band the peak against the SHIPPING high-SG trip setpoint rather than a
+        // literal: this harness is the bare engine, so the RPS is not in the loop and
+        // a `scrammed` check here would be vacuous — but crossing that setpoint is
+        // exactly what scrams the plant once M4 is. Margin, not just "didn't trip".
+        var sgHi = h.eng.getProtectionConfig().trips.filter(function (tr) {
+          return tr.instrument === 'sg_level' && tr.direction === 'high';
+        })[0];
+        ck('shipping table has the high-SG trip', sgHi ? sgHi.setpoint : 'missing', !!sgHi, 'sg_level high present');
+        ck('SG level stays well clear of the high-SG trip (' + (sgHi ? sgHi.setpoint : '?') + '%)',
+          peak.toFixed(1), sgHi && peak < sgHi.setpoint - 10, '< setpoint − 10%');
+        ck('SG level settles at the working level', t.sg_level_pct.toFixed(1),
+          near(t.sg_level_pct, 65, 8), '65 ±8');
+        // The ask saturates at what the turbine can actually take — asking for more
+        // than rated must not deliver more than rated, but must still deliver rated.
+        ck('output saturates at rated, not above', t.mwe_output.toFixed(1),
+          near(t.mwe_output, rated, rated * 0.05), rated.toFixed(0) + ' ±5%');
+        // Sub-rated coupling is untouched by the clip — the EV-11 mismatch behaviour
+        // on an ordinary slider move must still be there.
+        var h2 = new Harness('hot_full_power');
+        h2.run(60);
+        h2.cmd({ action: 'set_load_mode', mode: 'manual' });
+        h2.cmd({ action: 'set_load_target', mwe: rated * 0.85 });
+        h2.run(1800);
+        var t2 = h2.ts();
+        ck('sub-rated ask still tracks (coupling not disabled)', t2.mwe_output.toFixed(1),
+          near(t2.mwe_output, rated * 0.85, rated * 0.06), (rated * 0.85).toFixed(0) + ' ±6%');
+        ck('sub-rated SG level still drifts up a little (EV-11 mismatch intact)',
+          t2.sg_level_pct.toFixed(1), t2.sg_level_pct > 65.5 && t2.sg_level_pct < 75,
+          '65.5 < lvl < 75');
       });
     },
 
@@ -2534,7 +2596,7 @@
   PWRScenarioTests.runAll = function () {
     var order = ['steady_full_power', 'hot_zero_power_standby', 'steady_50_percent', 'steady_five_percent',
       'cold_shutdown_hold', 'mode5_to_mode1_roundtrip', 'control_response', 'shutdown_scram',
-      'load_mode_follow',
+      'load_mode_follow', 'load_above_rated_hold',
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',
       'merged_injection_curve', 'rhr_valve_and_mode', 'msiv_closure_at_power', 'rcp_cavitation',

@@ -39,7 +39,10 @@ var TEST_DIR = __dirname;
  */
 var BASELINES = {
   // ---- engines & scenarios ----
-  'run_pwr.js':            { code: 0, score: '31/31 191passed' },
+  // 32/32 since 2026-07-25: +load_above_rated_hold (the #130 regression pin), and
+  // load_mode_follow gained a real load-tracks-power check where a vacuous
+  // "< 950 MWe" literal used to sit.
+  'run_pwr.js':            { code: 0, score: '32/32 198passed' },
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
