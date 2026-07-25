@@ -1152,6 +1152,10 @@
       alarmStates: Object.assign({}, this.alarmStates),
       actuationFired: this.actuationFired.slice(),
       interlockActive: this.interlockActive.slice(),
+      // NOTE: trip blocks ride inside `automation` (_saveAutomation → trip_blocks /
+      // manual_trip_blocks, restored by _loadAutomation). Do not add a second
+      // top-level copy — they round-trip correctly today and two sources of truth
+      // for the same state is how they would stop doing so.
       automation: this._saveAutomation(),
     };
   };
@@ -1173,6 +1177,17 @@
       ? st.interlockActive.slice()
       : (this.config.interlocks || []).map(function () { return false; });
     this._loadAutomation(st.automation);   // absent in old saves → all channels MAN
+                                           // (also restores tripBlocks/manualTripBlocks)
+    // lastInstruments is the previous step's readings. It is DERIVED, so it is not
+    // serialised — but it must not be left empty either: getRpsState() computes
+    // every trip's `asserted` from it, and _evalInterlocks / command permissives
+    // read it too. A restored layer with lastInstruments = {} reported every
+    // blockable trip as NOT asserted until the next step, which is what made
+    // rewind non-bit-exact (run_m5, #151) and would have briefly mis-enabled the
+    // trip-block buttons after any restore. The engine is restored before the
+    // layer (simulation_service loadState), so its readings are already correct.
+    this.lastInstruments = (this.engine && this.engine.getInstruments)
+      ? this.engine.getInstruments() : {};
   };
 
   RD.ControlLayer = ControlLayer;

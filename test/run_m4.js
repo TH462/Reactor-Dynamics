@@ -303,6 +303,78 @@ T.push(test('Save / restore — layer runtime state round-trips', function (ck) 
   ck('alarm ack state restored', s.alarm('high_tavg').state, s.alarm('high_tavg').state === 'active_acknowledged', 'active_acknowledged');
 }));
 
+T.push(test('Save / restore — trip blocks and derived trip status round-trip (#151)', function (ck) {
+  // The BUG this pins: lastInstruments (the previous step's readings) was not
+  // rebuilt on restore, so getRpsState() computed every blockable trip's
+  // `asserted` from {} and reported false until the next step — the run_m5 rewind
+  // bit-exactness red, and briefly wrong trip-block buttons after any restore.
+  //
+  // The tripBlocks assertions below are coverage, not a fix: those already
+  // round-trip correctly inside the `automation` blob (_saveAutomation /
+  // _loadAutomation). They are asserted here so that stays true, and so nobody
+  // "helpfully" adds a second top-level copy of them to saveState.
+  var s = new Stack('hot_full_power', 7);
+  s.run(2);
+  var before = s.layer.getRpsState();
+  var blockedIds = Object.keys(before.trip_blocks);
+  ck('at-power lineup has blocked trips to lose', blockedIds.join(','), blockedIds.length > 0, 'non-empty');
+  var assertedBefore = Object.keys(before.trip_block_status)
+    .filter(function (k) { return before.trip_block_status[k].asserted; });
+  ck('...and some trips genuinely asserted', assertedBefore.join(','), assertedBefore.length > 0, 'non-empty');
+
+  var snap = s.layer.saveState();
+  s.layer.tripBlocks = {};                 // mutate both, then restore
+  s.layer.manualTripBlocks = {};
+  s.layer.lastInstruments = {};
+  s.layer.loadState(snap);
+
+  var after = s.layer.getRpsState();
+  ck('trip blocks restored', JSON.stringify(after.trip_blocks),
+    JSON.stringify(after.trip_blocks) === JSON.stringify(before.trip_blocks),
+    JSON.stringify(before.trip_blocks));
+  ck('derived asserted flags restored (lastInstruments rebuilt from the engine)',
+    JSON.stringify(after.trip_block_status) === JSON.stringify(before.trip_block_status)
+      ? 'identical' : JSON.stringify(after.trip_block_status),
+    JSON.stringify(after.trip_block_status) === JSON.stringify(before.trip_block_status),
+    'identical');
+
+  // A manual block must round-trip, and must stay distinguishable from an
+  // automatic one — manualTripBlocks is what survives auto-reinstate.
+  // Set it directly rather than via block_trip: the manual rule refuses a block
+  // on an already-asserted trip, so which ids are blockable depends on plant
+  // state, and this test is about persistence, not the block rule.
+  var freeTrip = (s.layer.config.trips || []).filter(function (t) {
+    return t.blockable && t.id && !s.layer.tripBlocks[t.id];
+  })[0];
+  ck('a blockable trip exists that is not already blocked', freeTrip ? freeTrip.id : 'none',
+    !!freeTrip, 'some trip id');
+  if (freeTrip) {
+    s.layer.tripBlocks[freeTrip.id] = true;
+    s.layer.manualTripBlocks[freeTrip.id] = true;
+    var withManual = s.layer.saveState();
+    s.layer.tripBlocks = {}; s.layer.manualTripBlocks = {};
+    s.layer.loadState(withManual);
+    ck('manual trip block survives the round-trip',
+      String(!!s.layer.manualTripBlocks[freeTrip.id]),
+      s.layer.manualTripBlocks[freeTrip.id] === true, 'true');
+    ck('...and stays in the blocked set too',
+      String(!!s.layer.tripBlocks[freeTrip.id]),
+      s.layer.tripBlocks[freeTrip.id] === true, 'true');
+    delete s.layer.tripBlocks[freeTrip.id];
+    delete s.layer.manualTripBlocks[freeTrip.id];
+  }
+
+  // Old saves carry no trip_blocks inside `automation` — those must still load,
+  // re-deriving the at-power lineup so a pre-NIS save does not insta-trip.
+  var legacy = s.layer.saveState();
+  delete legacy.automation.trip_blocks; delete legacy.automation.manual_trip_blocks;
+  s.layer.loadState(legacy);
+  ck('legacy save without trip blocks still loads (re-derives the at-power lineup)',
+    JSON.stringify(s.layer.getRpsState().trip_blocks),
+    JSON.stringify(s.layer.getRpsState().trip_blocks) === JSON.stringify(before.trip_blocks),
+    'initial at-power lineup');
+}));
+
 T.push(test('Interlock — rod withdrawal blocked on high startup rate (HR1: reads the instrument)', function (ck) {
   var s = new Stack('hot_full_power');
   s.run(1);

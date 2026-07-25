@@ -50,7 +50,12 @@ var BASELINES = {
   'run_meltdown.js':       { code: 0, score: '8pass 0xfail' },
 
   // ---- stack layers ----
-  'run_m4.js':             { code: 0, score: '18/18 78passed' },
+  // 19/19 since 2026-07-25 (#151): +a save/restore round-trip test for trip blocks
+  // and the derived `asserted` flags.
+  'run_m4.js':             { code: 0, score: '19/19 86passed' },
+  // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
+  // rebuilt on restore, so every blockable trip reported asserted=false.
+  'run_m5.js':             { code: 0, score: '19/19 79passed' },
   'run_m6.js':             { code: 0, score: '16/16 94passed' },
   'run_m6ph.js':           { code: 0, score: '8/8 18passed' },
   'run_m7.js':             { code: 0, score: null },   // prints "M7 OK", no tally
@@ -71,12 +76,6 @@ var BASELINES = {
     note: 'Ops probes are tuning targets by design. The FAILs are documented RBMK/BWR ' +
           'targets (P4, R1-R3, B2-B5) plus the deliberately-red C2 accel-latency probe ' +
           '(#153, status-deliberate). See Diagnostic/OPS_TUNING_REPORT.md.',
-  },
-  'run_m5.js': {
-    code: 1, score: '18/19 78passed 1failed',
-    note: 'Rewind bit-exactness red. Tracked as #151. NOTE: CLAUDE.md carried this as ' +
-          '19/19 in its baseline list while its own status text said 18/19 — the ' +
-          'drift #161 is about. 18/19 is the measured truth as of 2026-07-25.',
   },
 
   // ---- browser gates (slow: Playwright + a throwaway http server) ----
