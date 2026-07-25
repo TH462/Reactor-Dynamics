@@ -37,14 +37,14 @@ staleness** items.
 | `run_bwr` | **15/15** | |
 | `run_behavior` | **30 / 0 xfail / 0 fail** | PWR behavior catalog |
 | `run_ops` | **59/68** | PWR **21/21**; 9 open = RBMK/BWR + 1 deliberate red (see backlog) |
-| `run_m4`..`run_m7` | 18 / **18** / 16 / OK | stack layers — m5 is **18/19** (rewind bit-exact red, #151). Confirmed 2026-07-25: 18/19 is the truth; the 19/19 in other docs was the drift #161 is about |
+| `run_m4`..`run_m7` | **19** / **19** / 16 / OK | stack layers — all green. m5's rewind red RESOLVED 2026-07-25 (#151): `lastInstruments` was not rebuilt on restore, so every blockable trip reported `asserted=false` |
 | `run_autoctl` | **20/20** | |
 | `run_scenarios` | **3/3** | flagships |
 | `run_campaign` | **51/51** (2897) | |
 | `run_procedures` | **22/22** | 1 strict known-fail (B3) |
 | `run_meltdown` | **8/8** | PWR core-damage paths — all resolved; MD-6 fixed 2026-07-24 (time-dependent dryout depletion, §3.4) |
 | `run_checklist` | **24/24** | |
-| `run_e2e_controls` | **28/30** | 2 pre-existing reds (F12) |
+| `run_e2e_controls` | **35/35** | F12 RESOLVED 2026-07-25 (#150) — both reds were stale expectations, not regressions |
 | `verify_e2e_ui` | **PASS (16 screenshots)** | fixed 2026-07-25 (#148); carries 1 strict xfail for the manual-units gap (#111) |
 | `verify_manual_follow` | **PASS (84 checks)** | fixed 2026-07-25 (#149) — probed the retired `RD.PwrSynoptic`, which never mounts |
 
@@ -669,7 +669,7 @@ when it's fixed. RBMK/BWR items are the bulk of the remaining ops-suite reds.
 
 | ID | Symptom | Suspected cause | Fix direction | Status |
 |---|---|---|---|---|
-| **F12** | `run_e2e_controls` 28/30: (a) PZR spray manual set reaches engine only 12 (want ≥45); (b) "CVCS auto make-up holds inventory vs leak ≥98 %" | (a) spray-demand reach drifted; (b) stale expectation — severity-1.0 SGTR is now 0.03 frac/s (~40× CVCS make-up), so "auto holds ≥98 %" isn't physical | (a) re-check spray reach; (b) re-baseline to current trajectory or assert a small leak the servo *can* match | **open** (was 3 reds; one turned green with P7) |
+| **F12** — **RESOLVED 2026-07-25** (#150) | `run_e2e_controls` 28/30 -> 35/35: (a) PZR spray manual set reaches engine only 12 (want ≥45); (b) "CVCS auto make-up holds inventory vs leak ≥98 %" | (a) spray-demand reach drifted; (b) stale expectation — severity-1.0 SGTR is now 0.03 frac/s (~40× CVCS make-up), so "auto holds ≥98 %" isn't physical | **Neither was a regression.** (a) spray has an owner-ruled flow cap (`spray_flow_max` 0.12, CC-5) applied to the operator override too, so 12 IS the cap — now asserts below-cap passthrough + at-cap clamping, read from config. (b) rebuilt as differential checks (OFF stops charging / ON commands it / auto measurably slows the loss). A third check that was PASSING was also meaningless: it compared `charging_flow` to `leak_flow` directly, which are different scales (`cvcs_inventory_gain` 0.012 vs 1:1). | **RESOLVED 2026-07-25 (#150)** — 35/35. Raised #194: in mass terms CVCS covers a constant ~24 % of any leak, so none is ever held |
 | **UI-1** | `verify_e2e_ui` FAIL — pwr/primary board controls "not found" by the harness | **This suspected cause was WRONG** — the file never referenced `RD.PwrSynoptic`. Real causes: (a) `REQUIRED_ACTS` demanded 14 `data-act` buttons the board path deliberately never emits (`ui/app.js:3413`, `:3459-3460` return before `populateControlBar`); (b) the manual-units block clicked `[data-msec="setpoints"]`, renamed `09_setpoints_limits` by the manual-md unification | Probe 21 board labels via `RD.PwrBoard.revealControl()` (same path Instructor highlights use); re-point the manual section | **RESOLVED 2026-07-25 (#148)** — PASS (16 screenshots). Surfaced #111: the packed manual ignores the units toggle entirely, now a strict xfail here |
 | **UI-2** | `verify_manual_follow` 30 PWR bar-checks fail | Retired-`PwrSynoptic`-probe — correct for THIS file: it probed `RD.PwrSynoptic.isMounted()`, and the retired module still loads (global exists) but never mounts, so every PWR bar-check was a false negative | Swap to `RD.PwrBoard` (identical `isMounted`/`revealControl` API) | **RESOLVED 2026-07-25 (#149)** — one line; FAILED (30) → PASS (84 checks), delta verified against the pre-fix file |
 
