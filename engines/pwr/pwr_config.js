@@ -640,6 +640,9 @@
                // P-9 permissive (≥50 % power) that gates the high-high SG (P-14) reactor
                // trip — read as a condition by the p14_reactor_trip trip.
                'above_p9',
+               // Reactor/turbine load imbalance > 4 % of rated — the SG filling/draining
+               // annunciator (#211). Computed from INDICATED power in load_mode.js.
+               'sg_imbalance_active',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
                'afw_active', 'afw_pump_running', 'afw_block_open', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
                'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating',

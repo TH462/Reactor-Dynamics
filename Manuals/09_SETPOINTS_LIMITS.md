@@ -153,6 +153,7 @@
 | hpi_active | HPI/LPI ACTIVE | hpi_active | true | — | status |
 | sbo | SBO | station_blackout | true | — | critical |
 | turbine_trip | TURB TRIP | steam_demand_low | true | — | warning |
+| load_imbalance | LOAD IMBAL | sg_imbalance_active | true | > **4 %** of rated (4 MWe) | caution |
 | msiv_closed | MSIV SHUT | msiv_open | false | — | warning |
 | sg_press_high | SG PRESS HI | steam_pressure | high | **9.0 MPa** | caution |
 | cond_vac_low | COND VAC LO | condenser_vacuum | low | **84.7 kPa** | caution |
@@ -203,7 +204,7 @@
 | SUR on approach | ≤ **1 DPM** — the SUR HI alarm sits exactly there and withdrawal blocks at 1.5 DPM |
 | Reactor period | ≥ **30 s** preferred on startup range |
 | Power ramp ceiling | ~**10 %/min** class where achievable |
-| Load imbalance (SG annunciator) | &gt; ~**4 MWe** mismatch (4 % of rated) → filling/draining cue |
+| Load imbalance (SG annunciator) | &gt; ~**4 MWe** mismatch (4 % of rated) → filling/draining cue. Annunciated as **LOAD IMBAL** (Panel B, caution) — see §4. Reducing reactor power without walking the turbine load setpoint down is the usual cause in MANUAL, and it overcools the primary; the annunciator is the only thing that tells you. |
 
 ---
 

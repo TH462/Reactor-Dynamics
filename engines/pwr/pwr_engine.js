@@ -394,6 +394,11 @@
       safety_relief_active: s.safety_open || s.safety_flow > 0,
       rcp_cavitating: !!s.rcp_cavitating,
       condensate_pump_running: s.condensate_pump_running !== false,
+      // Reactor/turbine load imbalance — the SG filling/draining annunciator (#211).
+      // Already computed HR1-correctly in load_mode.js from INDICATED power vs the
+      // load target, > 4 % of rated. It was reaching true_state and getControlState
+      // but never the instrument layer, so no alarm could read it.
+      sg_imbalance_active: !!s.sg_imbalance_active,
       // RCS boron grab sample: last lab result + pending flag + result counter
       // (status pass-through — no lag/noise; the lab turnaround IS the lag).
       boron_sample: s.boron_sample_ppm,

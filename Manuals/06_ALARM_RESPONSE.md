@@ -70,6 +70,7 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 | PWR-A25 | COND VAC LO | caution | B |
 | PWR-A26 | COND VAC TRIP | warning | B |
 | PWR-A27 | RCP CAVITATION | warning | B |
+| PWR-A28 | LOAD IMBAL | caution | B |
 
 ---
 
@@ -345,6 +346,16 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 | **Setpoint** | ≤ **74.5 kPa** |
 | **Means** | Turbine protection vacuum trip region. |
 | **Actions** | 1) Verify turbine trip. 2) Control reactor/SG. → **PWR-E10** |
+
+---
+
+## PWR-A28 — Reactor/Turbine Load Imbalance (LOAD IMBAL)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `sg_imbalance_active` true — indicated reactor power and turbine load differ by more than **4 % of rated (4 MWe)** |
+| **Means** | The reactor and the turbine are not making and taking the same amount of steam, so the steam generator is **filling** (load above power) or **draining** (power above load). In MANUAL load control the turbine sits at whatever load setpoint you last gave it, so changing reactor power alone always produces this. |
+| **Actions** | 1) Compare reactor power against generator output. 2) In MANUAL, walk the load setpoint to match the power you are at — or put load control in FOLLOW. 3) Watch Tavg: a sustained imbalance with the turbine high **overcools** the primary, and there is no trip that will stop it. 4) Watch SG level, which is moving in the direction the imbalance names. |
 
 ---
 

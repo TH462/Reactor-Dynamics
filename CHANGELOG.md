@@ -9,6 +9,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The board now tells you when the reactor and turbine have diverged** (issue #211). A new
+  **LOAD IMBAL** annunciator (Panel B, caution) fires when indicated reactor power and turbine
+  load differ by more than 4 % of rated — the steam generator is filling or draining.
+  `Manuals/09` had documented this annunciator all along and the engine had computed the
+  signal all along, but it never reached the instrument layer, so no alarm could read it and
+  the control layer never implemented one. The consequence was severe and completely silent:
+  in the shipped MANUAL lineup the governor sits at the operator's load setpoint and never
+  moves, so reducing reactor power on rods alone leaves the turbine as an unthrottled heat
+  sink — measured, Tavg **304 → 247 °C** on a daily load cycle and **304 → 130 °C** (still
+  falling) on a normal shutdown, with **no alarm and no trip at any point**. The annunciator
+  now comes in at the 4 MWe threshold while Tavg is still 303 °C — about 50 degrees before
+  the plant is in trouble. New alarm-response entry **PWR-A28**.
 - **Auxiliary feedwater no longer parks the plant in a standing alarm** (issue #207, owner
   ruling). AFW **latches** — once it auto-starts on low steam-generator level it keeps
   feeding until an operator secures it, as in a real plant. Its proportional level hold ran
