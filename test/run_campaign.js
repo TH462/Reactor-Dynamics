@@ -81,8 +81,14 @@ function runUntil(s, pred, simBudget) {
   }
   return null;
 }
+// RD_SEED lets the whole campaign gate be re-run on a different instrument-noise
+// stream (`RD_SEED=7 node test/run_campaign.js`) without touching the baseline —
+// the default is unchanged, so the gate itself is unaffected. Added because several
+// campaign endpoints pass on a few points of SG-level margin, and a trajectory that
+// only survives one noise ordering is not one anyone can tune against (#210).
+var SEED = Number(process.env.RD_SEED) || 42;
 function startScenario(id) {
-  var s = new RD.SimulationService({ seed: 42 });
+  var s = new RD.SimulationService({ seed: SEED });
   var sc = RD.SCENARIOS[id];
   s.selectPlant(sc.plant_id, sc.initial_state, sc.design_version || null);
   s.handleCommand({ action: 'start_scenario', scenario_id: id });
