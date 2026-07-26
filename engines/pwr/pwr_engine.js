@@ -399,6 +399,9 @@
       // load target, > 4 % of rated. It was reaching true_state and getControlState
       // but never the instrument layer, so no alarm could read it.
       sg_imbalance_active: !!s.sg_imbalance_active,
+      // Turbine trip status, for the P-9 reactor trip on turbine trip (default-off;
+      // see pwr_control.js). Status pass-through — no lag, no noise, no PRNG draw.
+      turbine_tripped: !!s.turbine_tripped,
       // RCS boron grab sample: last lab result + pending flag + result counter
       // (status pass-through — no lag/noise; the lab turnaround IS the lag).
       boron_sample: s.boron_sample_ppm,

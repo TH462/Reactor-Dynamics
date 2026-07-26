@@ -190,6 +190,29 @@ bent to keep a paragraph true.
 change really was wrong. But settle that against levels 1–3, and say out loud which
 behaviour you are treating as ground truth and why.
 
+**A ruling is not a conversation-stopper — question the owner's decisions too.**
+*(owner instruction, 2026-07-26: "we should question my own decisions because they may have
+been made with inaccurate assumptions")* A ruling is only as good as the premise it was made
+on, and premises go stale: the plant changes, a measurement turns out wrong, or the ruling was
+given on a summary that was itself mistaken.
+
+**This is targeted, not a standing re-audit** *(owner, same day: "we don't need to question
+every decision made — that would be a lot; let's be more targeted")*. Do not re-litigate
+settled rulings on principle. Raise one when you have a **specific reason to doubt its
+premise** — you are working in that area and the facts do not match, a measurement contradicts
+it, or its stated justification points at something that has since changed. Otherwise take the
+ruling and move on. Then:
+
+- **Record the premise, not just the decision.** A ruling written as a bare verdict cannot be
+  re-examined later, because nobody can tell what it assumed. This is exactly how the P-9 gap
+  became "by design" (#216): the decision survived, its provenance did not.
+- **When you find a ruling whose premise no longer holds, say so** — surface it with the
+  evidence rather than deferring to it. Deferring to a ruling you have reason to doubt is not
+  respect; it launders an error into a standing rule.
+- **Beware of citing a ruling for something it did not decide.** Check what was actually ruled
+  on, not what the ruling is now being used to justify. Stretching one onto an adjacent case
+  is the most common way a level-2 claim appears out of nowhere.
+
 **The dangerous case is not the crude one.** "Deepen the shrink so the mission's trip stays
 unavoidable" is obviously an inversion. Harder: a change that looks like genuine
 plant-correctness *and* happens to rescue the content — you cannot tell motive from outcome,

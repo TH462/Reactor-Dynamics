@@ -65,6 +65,32 @@
       action: 'scram', condition: 'above_p9' },
   ];
 
+  // ---- Reactor Trip on Turbine Trip (P-9) — the ANTICIPATORY trip, currently OFF ----
+  // Real Westinghouse PWRs trip the reactor whenever the turbine trips above P-9 (~50 %
+  // power): losing the heat sink at high power is not something to wait out, so the trip
+  // anticipates the transient rather than waiting for a process limit to be exceeded.
+  // THIS PLANT DOES NOT HAVE IT, and the absence has a tangled history (#216):
+  //   • 2026-07-18 — a general P-9 WAS implemented, it broke the `pwr_msiv` mission, and
+  //     it was narrowed to the SG-level cause for that reason; the realistic version was
+  //     deferred because "it would require re-authoring pwr_msiv around a reactor trip".
+  //   • The absence then hardened into "this plant has no turbine-trip reactor trip BY
+  //     DESIGN", and that claim was used to reject adding it (#215).
+  //   • TR-8's genuine "physics, not anticipation" ruling (2026-07-21) POSTDATES the
+  //     scoping by three days, so it rationalised the gap rather than causing it.
+  // Under HR9 ("err toward what real plants do") the presumption is now that it belongs.
+  // Built here and left DEFAULT-OFF pending the owner's ruling, so the blast radius can
+  // be measured by flipping one flag rather than guessed at. Flip
+  // `protection.turbine_trip_reactor_trip` in pwr_config.js to enable.
+  //
+  // Note the P-9 permissive is NOT a defeat switch — it is prototypical: below 50 % power
+  // the trip is bypassed automatically, because there the plant genuinely can ride a
+  // turbine trip out on the dump. `condition: 'above_p9'` IS that permissive.
+  if ((RD.PWR_CONFIG.protection_options || {}).turbine_trip_reactor_trip) {
+    PWR_TRIPS.push({ id: 'turbine_trip_reactor_trip', instrument: 'turbine_tripped',
+      direction: 'is_true', setpoint: null, action: 'scram', condition: 'above_p9',
+      blockable: true, block_permissive: { instrument: 'power_range', direction: 'low', setpoint: 50.0 } });
+  }
+
   // P-10, the nuclear at-power permissive: manual trip blocks are allowed only
   // above 10 % power-range power, and auto-clear (reinstate) below it.
   var PWR_TRIP_BLOCK_PERMISSIVE = { instrument: 'power_range', direction: 'high', setpoint: 10.0 };

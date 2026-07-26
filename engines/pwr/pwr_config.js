@@ -644,6 +644,10 @@
                // P-9 permissive (≥50 % power) that gates the high-high SG (P-14) reactor
                // trip — read as a condition by the p14_reactor_trip trip.
                'above_p9',
+               // Turbine trip status — read by the P-9 reactor trip on turbine trip
+               // (see pwr_control.js). A STATUS passthrough, so it draws no PRNG
+               // number and cannot shift the instrument noise stream.
+               'turbine_tripped',
                // Reactor/turbine load imbalance > 4 % of rated — the SG filling/draining
                // annunciator (#211). Computed from INDICATED power in load_mode.js.
                'sg_imbalance_active',
@@ -675,6 +679,19 @@
     nis: {
       k_sr: 5.0e8,                 // cps per unit normalized power [tune]
       k_ir: 8.333e-3,              // amps per unit normalized power [tune]
+    },
+
+    // ------------------------------------------------- optional protective functions
+    // Switches for protective functions whose PRESENCE is a live design question, so the
+    // answer is a flag rather than a fork. See the block comment in pwr_control.js.
+    protection_options: {
+      // Reactor Trip on Turbine Trip above P-9 (~50 % power) — prototypical Westinghouse,
+      // absent here for historical reasons that did not survive audit (#216). Default OFF
+      // preserves today's behaviour; flip to true to measure or adopt it. Turning it ON
+      // will legitimately change TR-1 and TR-8 in the behaviour catalog and re-shape the
+      // `pwr_msiv` mission — under HR9 that is content following the plant, not a
+      // regression.
+      turbine_trip_reactor_trip: false,
     },
 
     initial_states: {

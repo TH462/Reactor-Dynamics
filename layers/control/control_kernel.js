@@ -37,6 +37,10 @@
     if (value == null) return false;
     if (direction === 'high') return value > setpoint;
     if (direction === 'low') return value < setpoint;
+    // Boolean signal (a status passthrough, e.g. turbine_tripped) — `setpoint` is
+    // unused. Already the alarm convention; trips gained it with the P-9 reactor
+    // trip on turbine trip, which is keyed on a state, not a threshold.
+    if (direction === 'is_true') return !!value;
     return false;
   }
 
