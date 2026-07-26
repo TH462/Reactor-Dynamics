@@ -108,6 +108,75 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-26c — The feed controller could not see the steam dump (#206)  ✅🔬
+
+Started on #206 (`pwr_heatup` broken under the stack). Three procedure defects, and underneath
+them a control-layer bug worth more than the issue that surfaced it.
+
+**The bug.** `feed_sg`'s element 2 (feedforward) and element 3 (mismatch trim) read the
+`steam_flow` instrument = `steam_flow_normalized` = **governor/turbine flow only**. With the
+turbine offline or tripped the dump carries the steam and that reads ~0, so the three-element
+controller commanded **zero feed while the SG boiled down**. `pwr_steam_generator.js:139-143`
+had already named the hazard in prose — *"after a turbine trip the dump still draws, and feed
+must follow THAT or the ride-out silently drains the SG (FG-4)"* — and `load_mode.js:87` had
+been fixed to match `steam_out_total`. The M4 channel never was. Fixed with a new
+**`sg_steam_flow`** instrument (main-steam-line transmitter: turbine + dump + safeties).
+Measured, full-load turbine trip under the stack:
+
+| | before | after |
+|---|---|---|
+| feed flow | 0.667 → 0 (AFW only) | **0.977, tracking the dump** |
+| SG level after the ride | **0.0 %** | **64.9 %** |
+| follow-on alarms | `sg_level_low` @22 s, `sg_level_lolo` + `reactor_trip` @28 s | **none** |
+| plant | scrammed | 98 % power, riding out |
+
+That is TR-1/TR-2/TR-3 territory — every ride-out where the dump carries decay heat.
+
+**Three landmines while wiring it, all worth remembering.**
+
+1. **An appended instrument must have `noise: 0`.** The rule is written at
+   `pwr_config.js:602-606` and I shipped 0.01 anyway. The instrument PRNG is a *continuous
+   cross-step stream*, so one extra Box-Muller draw per tick shifts every downstream
+   instrument's noise from that step on. It moved three marginal endpoints: `run_behavior`
+   TR-12b's SG safety lift (9.31 → **9.24 MPa** — a 0.8 % miss), `run_campaign`
+   `pwr_rod_auto`'s override (SG reached the 90 % P-14 trip at t=615 instead of peaking
+   86.8 %), and `run_m5`. Zero sigma ⇒ `_gauss` returns without drawing ⇒ byte-identical.
+   The comment now says so at the site, because "same lag/noise/range as steam_flow" is
+   exactly the edit a future reader would make.
+2. **A new instrument's source must exist in `getTrueState()`, not just in state.** `SOURCE`
+   maps id → *true_state* field; an undefined source latches NaN in the lag buffer
+   permanently. Also seeded in `_buildState` and `_migrateState` (old saves).
+3. **`run_m5`'s "further alarms did fire" was a precondition, not a target.** It guarded the
+   real assertion (*a new alarm on an already-lit board does NOT snap fast-forward*), and the
+   alarms it borrowed were the post-trip SG drain — i.e. the defect was the alarm source.
+   First repair used `inject_failure`, which is **itself** an attention stop: it snapped to 1×
+   on the same cycle as the alarm it caused, so every later alarm arrived at 1× where the rule
+   already forbids snapping — vacuous again, differently. Now uses an operator command
+   (`set_feed_pump_speed pct:0`), which annunciates `sg_level_low` two cycles later **still at
+   60×**, genuinely exercising the assertion.
+
+**`pwr_heatup` procedure defects (all invisible below M4).** It never blocked the startup net
+it deliberately walks into — the heatup's heat source *is* 10–30 % fission and the IR trip sits
+at ~20 %, so it scrammed at step 11 with Tavg at 108.8 °C. Blocks can be set **proactively**
+while a trip is unasserted (`setTripBlock` at `control_kernel.js:409`) and survive auto-reinstate
+via `manualTripBlocks`, so they go in cold, before the ascent. It set a standing 30 % manual feed
+demand instead of engaging Feed AUTO (SG to 94.5 %, `sg_level_hihi`). And it left the turbine in
+FOLLOW, so once the SG could finally make steam the governor took ~46 % of it and the ride
+stalled at 240 °C — `cold_shutdown` returns an **empty** `getStartupLineup()`, so nothing puts
+load control anywhere. Now: Tavg **50 → 297 °C**, secondary bottled to **8.20 MPa**, Mode 3.
+Also relaxed step 14's `tavg_c > 305`, which demanded an 8 °C overshoot **above** the no-load
+anchor and contradicted its own step target ("~300 °C"); it now reads `> 295`.
+
+**Residual, still #206, now precisely characterised.** Across the heatup's long low-power holds
+the SG fills on a persistent **~0.001-normalized feed trickle against zero steam demand** —
+TRUE narrow 65.0 → 75.8 % with `fw` pinned at 0.001, climbing to ~90 % over the ride. When the
+dump finally opens the generator boils and the accumulated inventory swings the other way:
+level collapses through the 17 % lo-lo and scrams. The channel reports "holding" throughout
+because it is saturated at u=0 — it cannot pump water *out*. **It is knife-edge**: the same run
+held 65 % and passed 19/19 under a different instrument-noise ordering. 3 strict xfails.
+
+**Gates:** `run_all.js` **OK, 20 runners at baseline**. `run_procedures_stack` xfails 13 → **9**.
+
 ### 2026-07-26b — Full-stack procedure gate; the layer-depth audit it triggered  ✅🔬
 
 Built `test/run_procedures_stack.js` (runner #20) to close the gap named in the entry below.

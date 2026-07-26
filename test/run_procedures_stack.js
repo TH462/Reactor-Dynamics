@@ -223,23 +223,30 @@ function runProcedure(profKey, proc) {
  * annotation cannot go stale silently. Same convention as run_procedures.js,
  * run_behavior.js and run_meltdown.js. */
 var KNOWN_FAILS = {
-  /* #206 — pwr_heatup under the stack: it drives the plant to the 10–30 % power the
-   * heatup uses as its heat source, never blocks the startup net, and the
-   * INTERMEDIATE RANGE HIGH trip (~20 % class, blockable above P-10) scrams it at
-   * step 11. Tavg is left at ~109 °C — the heatup never happens. It also floods the
-   * SG (sg_level_hihi standing) because it holds a standing 30 % manual feed-pump
-   * demand with no channel regulating level. Engine-direct there is no RPS and no
-   * M4 feed channel, so all of this is invisible and the procedure passes.
-   * The same defect class as #202 item 6 (a procedure that ascends through the
-   * startup net without blocking it) — which is exactly why this gate exists. */
+  /* #206 (pwr_heatup) — FOUR of the original seven xfails are fixed and removed; the
+   * heatup now actually heats (Tavg 50 → 297 °C, secondary bottled to the 8.20 MPa
+   * no-load anchor, Mode 3 reached). Fixed: the procedure never blocked the startup
+   * net it walks straight into (IR HIGH scram at ~20 %); it held a standing 30 %
+   * manual feed-pump demand instead of engaging Feed AUTO; and it left the turbine in
+   * FOLLOW, so the governor took the steam and the ride stalled at 240 °C. Under all
+   * three sat a real control bug — the three-element channel read `steam_flow`
+   * (turbine only) instead of total SG draw — now fixed via `sg_steam_flow`.
+   *
+   * WHAT REMAINS (still #206, precisely characterised): across the heatup's long
+   * low-power holds the SG fills on a persistent ~0.001-normalized feed trickle
+   * against ZERO steam demand — TRUE narrow level 65.0 → 75.8 % with fw pinned at
+   * 0.001 — and keeps climbing to ~90 % during the ride. When Tavg reaches the
+   * no-load point the dump opens, the generator finally boils, and the accumulated
+   * inventory swings the other way: level collapses through the 17 % lo-lo and
+   * scrams. Nothing regulates it because the channel reports "holding" throughout —
+   * it cannot pump water OUT, so it is saturated at u=0 with level far above
+   * setpoint. The boron xfail below is downstream of that scram, not independent.
+   * NOTE it is knife-edge: this outcome flips on instrument-noise ordering alone
+   * (with sg_steam_flow at noise 0.01 the same run held 65 % and passed 19/19). */
   'pwr·pwr_heatup': {
-    'step 10 reactivity_pcm > -60': '#206',
-    'step 11 tavg_c > 305': '#206',
-    'step 14 boron_ppm > 900': '#206',
-    'step 15 tavg_c > 285': '#206',
-    'step 16 plant_mode ~ 3': '#206',
-    'stack: no unexpected scram': '#206',
-    'stack: no critical alarm standing at end': '#206',
+    'step 17 boron_ppm > 900': '#206 SG fill',
+    'stack: no unexpected scram': '#206 SG fill',
+    'stack: no critical alarm standing at end': '#206 SG fill',
   },
   /* #208 — RBMK/BWR procedures that diverge under the stack. Those plants are ON
    * HOLD (see CLAUDE.md); these are recorded so the findings survive until they

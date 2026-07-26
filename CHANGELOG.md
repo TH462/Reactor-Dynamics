@@ -8,6 +8,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The three-element feedwater controller was blind to the steam dump** — the most
+  consequential fix in this batch. `feed_sg`'s feedforward and mismatch trim read the
+  `steam_flow` instrument, which is **governor (turbine) flow only**. Whenever the turbine
+  is offline or tripped and the dump is carrying the plant, that reads ~0, so the controller
+  commanded **zero feed while the generator boiled down**. The engine's own comment
+  (`pwr_steam_generator.js:139-143`) had named this exact hazard — *"after a turbine trip the
+  dump still draws, and feed must follow THAT or the ride-out silently drains the SG"* — and
+  the engine's coupled-feed fallback was fixed for it long ago; the M4 channel never was.
+  New **`sg_steam_flow`** instrument (main-steam-line transmitter: turbine + dump + safeties)
+  now drives both elements. Measured on a full-load turbine trip: SG level holds **62–67 %
+  for 20 minutes** with feed tracking the dump (0.971 vs 0.973) and **no follow-on alarms**;
+  previously it drained to **0 %** and scrammed on level lo-lo within 28 s.
+- **`pwr_heatup` now actually heats the plant** (issue #206): Tavg **50 → 297 °C**, secondary
+  bottled up to the 8.20 MPa no-load anchor, Mode 3 reached. Three procedure defects, all
+  invisible below M4: it never blocked the startup net it deliberately walks into (scrammed
+  on INTERMEDIATE RANGE HIGH at ~20 % with the plant barely past 100 °C — the same defect as
+  the startup checklist's, in the procedure that runs immediately before it); it set a
+  standing 30 % manual feed-pump demand instead of engaging Feed AUTO (SG flooded to 94.5 %,
+  SG LVL HI HI standing); and it left the turbine in FOLLOW, so once the SG could finally
+  make steam the governor took ~46 % of it and the heatup stalled at 240 °C. A residual
+  slow SG fill on trickle feed remains, tracked in #206.
+
 ### Added
 - **New full-stack procedure gate (`node test/run_procedures_stack.js`).** The same authored
   procedures as `run_procedures.js`, but driven through `SimulationService` — M4 + M5 + M6 —

@@ -609,6 +609,16 @@
       hpi_discharge_pressure:  { lag: 0.5, noise: 0, range: [0, 18] },    // HPI/charging pump discharge head, MPa
       condensate_flow:         { lag: 1.0, noise: 0, range: [0, 1.2] },   // condensate/main-feed flow (0 when the condensate pump is off)
       sg_level_wide:           { lag: 4.0, noise: 0, range: [0, 100] },   // whole-vessel wide-range level (slower than narrow; noise:0 per the rule above)
+      // Main-steam-line flow transmitter: TOTAL SG draw (turbine + dump + safeties).
+      // Same lag/range as `steam_flow` — it is the same class of instrument, just
+      // tapped where it also sees the dump. noise:0 per the rule above, and it is
+      // not optional: shipping this at noise 0.01 cost one extra PRNG draw PER STEP,
+      // which shifted every downstream instrument's noise from that step on and moved
+      // three marginal endpoints (run_behavior TR-12b's SG safety lift 9.31 → 9.24 MPa,
+      // run_campaign pwr_rod_auto's override, run_m5's second alarm). Physically it is
+      // also the right call: this transmitter measures the same steam as `steam_flow`,
+      // so giving it an independent jitter would double-count the same noise source.
+      sg_steam_flow:           { lag: 1.0, noise: 0, range: [0, 1.2] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },

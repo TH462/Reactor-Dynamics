@@ -447,8 +447,18 @@
       label: 'Feed pump → SG level (three-element)',
       hint: 'Three-element feedwater control — steam-generator level (element 1) plus the steam-flow vs feed-flow mismatch (elements 2 & 3) drive the feed pump speed. Engaging takes the pump off the load coupling; a manual pump command (nudge/set) takes the channel back to MAN.',
       pv: function (s) { return s.instruments.sg_level; },
-      ff: function (s) { return clip(s.instruments.steam_flow * 100, 0, 120); },       // element 2: steam flow sets the base demand
-      trim: function (s) { return 25 * (s.instruments.steam_flow - s.instruments.fw_flow); },   // element 3: steam−feed mismatch anticipation [tune]
+      // Elements 2 & 3 read `sg_steam_flow` — the MAIN STEAM LINE transmitter, which
+      // sees turbine + dump + safeties — NOT `steam_flow`, which is governor/turbine
+      // flow only. With the turbine offline (heatup, startup before sync) or tripped
+      // (any ride-out where the dump carries decay heat) the dump is the entire steam
+      // demand, so reading `steam_flow` left this controller commanding ZERO feed
+      // while the generator boiled down. Measured on pwr_heatup: level fell 90 → 33 %
+      // in 120 s with fw pinned at 0.000 and the channel still reporting "holding",
+      // then scrammed on SG level low. The engine's own coupled-feed fallback already
+      // matched steam_out_total (load_mode.js, FG-4) — this channel never got the
+      // same fix. See pwr_steam_generator.js:139-143.
+      ff: function (s) { return clip(s.instruments.sg_steam_flow * 100, 0, 120); },       // element 2: total steam draw sets the base demand
+      trim: function (s) { return 25 * (s.instruments.sg_steam_flow - s.instruments.fw_flow); },   // element 3: steam−feed mismatch anticipation [tune]
       cmd: function (u) { return { action: 'set_feed_pump_speed', pct: u }; },
       manual_overrides: ['set_feed_pump_speed', 'feed_pump_nudge', 'set_feedwater_flow'],
       defaultOn: function () { return true; },   // the PWR's normal free-play lineup (replaces coupled feed as the level backbone)

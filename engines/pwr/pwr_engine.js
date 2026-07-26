@@ -458,6 +458,12 @@
       suction_subcool_c: s.suction_subcool_c, rcp_cavitation_frac: s.rcp_cavitation_frac,
       rcp_cavitating: !!s.rcp_cavitating,
       steam_flow_normalized: s.steam_flow_normalized, fw_flow_normalized: s.fw_flow_normalized,
+      // TOTAL steam leaving the SG (turbine + dump + safeties) — the source behind the
+      // `sg_steam_flow` main-steam-line instrument, and the flow feed regulation must
+      // actually match. `steam_flow_normalized` above is turbine flow ALONE, which
+      // reads ~0 whenever the dump is carrying the plant. Defaulted rather than left
+      // undefined: an undefined instrument source latches NaN in the lag buffer.
+      steam_out_total: (s.steam_out_total != null ? s.steam_out_total : (s.steam_flow_normalized || 0)),
       steam_pressure_mpa: s.steam_pressure_mpa,   // secondary SG pressure (additive; for the UI diagram)
       mwe_output: s.mwe_output, subcooling_c: s.subcooling_c, core_inventory_pct: s.core_inventory_pct,
       core_void_fraction: s.core_void_fraction,   // flux-driven core boiling (DNB at power); 0 in TMI/normal ops
@@ -1208,6 +1214,11 @@
       steam_pressure_mpa: steam_p,   // derived from the Tavg program (SS-2), not the flat rated value
       msiv_open: true, sg_safety_open: false, sg_safety_flow: 0,   // main steam isolation + SG code safeties
       steam_flow_normalized: P0, fw_flow_normalized: P0,
+      // Total SG draw (turbine + dump + safeties). Recomputed every SG step, but it
+      // MUST exist from tick zero: the `sg_steam_flow` instrument sources it, and an
+      // undefined source poisons that instrument's first-order lag buffer with NaN
+      // permanently. Old saves are defaulted in _migrateState for the same reason.
+      steam_out_total: P0,
       // Condensate pump (feeds the feed-pump suction — gates MAIN feed) + the flow/
       // discharge-pressure indication fields (computed in stepSecondary / getTrueState).
       condensate_pump_running: true, condensate_flow_normalized: P0,
@@ -1422,6 +1433,12 @@
     if (s.rhr_valve_open == null) s.rhr_valve_open = !!s.rhr_active;
     if (s.rhr_hx_fraction == null) s.rhr_hx_fraction = 1.0;
     if (s.eccs_mode == null) s.eccs_mode = 'off';
+    // Total SG draw, added with the `sg_steam_flow` main-steam-line instrument
+    // (2026-07-26). Recomputed on the first SG step, but it must be a NUMBER before
+    // the first instrument read or the lag buffer latches NaN. Seed it from the
+    // turbine flow the save does carry — correct whenever the dump is shut, and
+    // corrected within one step regardless.
+    if (s.steam_out_total == null) s.steam_out_total = s.steam_flow_normalized || 0;
     // AFW throttle (added with the ESF AUTO/MAN arms).
     if (s.afw_throttle_frac == null) s.afw_throttle_frac = 1.0;
     if (s.afw_flow_normalized == null) s.afw_flow_normalized = 0;

@@ -194,6 +194,21 @@ T.push(test('Attention stop — a plant event snaps fast-forward back to real ti
   var prevState = {}, sawNewAlarm = false, alarmSnapped = false;
   lit.assembleSnapshot().alarms.forEach(function (a) { prevState[a.id] = a.state; });
   for (var li = 0; li < 200; li++) {
+    // Force a SECOND alarm partway through. This used to arrive for free: the
+    // post-trip ride-out drained the SG, because the three-element feed channel
+    // read turbine flow and so commanded no feed while the dump carried the plant
+    // (the FG-4 defect, fixed 2026-07-26 — feed now tracks total SG draw). With
+    // the ride-out clean the board stays quiet, `sawNewAlarm` goes false and the
+    // real assertion below would pass VACUOUSLY, so the follow-on alarm is now
+    // produced deliberately rather than borrowed from a plant defect.
+    //
+    // It must be an OPERATOR COMMAND, not inject_failure: a failure injection is
+    // itself an attention stop, so it snaps the clock to 1× on the same cycle as
+    // the alarm it causes, and every later alarm then arrives at 1× where the
+    // quiet-board rule already forbids snapping — vacuous again, just differently.
+    // Zeroing the feed pump kicks feed_sg to MAN and annunciates sg_level_low two
+    // cycles later, STILL AT 60×, which is exactly the case :205 is about.
+    if (li === 40) lit.handleCommand({ action: 'set_feed_pump_speed', pct: 0 });
     var ls = lit.advanceCycles(1);
     ls.alarms.forEach(function (a) {
       if ((prevState[a.id] || 'clear') === 'clear' && a.state !== 'clear') sawNewAlarm = true;
