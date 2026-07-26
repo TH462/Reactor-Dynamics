@@ -8,6 +8,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The startup checklist now takes load control after synchronising** (owner ruling, #211).
+  The generator picks up load in FOLLOW — right for getting on line, where the turbine chases
+  the reactor — and the checklist then puts it in **MANUAL**, leaving the setpoint where FOLLOW
+  put it, already matched to the power being made. This resolves a split nobody had noticed:
+  the two routes into Mode 1 disagreed. A player starting from the free-play `hot_full_power`
+  preset got **manual** with a matched 100 MWe setpoint; a player who ran the startup checklist
+  ended in **follow**. Same plant state, two different load-control lineups depending on how you
+  arrived, with nothing explaining why. Both are MANUAL now — measured, both leave an imbalance
+  under 1 MWe and no alarms. MANUAL is deliberate, not incidental: it keeps the reactor/turbine
+  coupling in the operator's hands, and the new LOAD IMBAL annunciator means the consequence of
+  ignoring it is no longer silent.
+
 ### Fixed
 - **The board now tells you when the reactor and turbine have diverged** (issue #211). A new
   **LOAD IMBAL** annunciator (Panel B, caution) fires when indicated reactor power and turbine

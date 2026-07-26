@@ -80,7 +80,11 @@ var BASELINES = {
   //   +3 (#197) the approach plots SIX 1/M points instead of three — three
   //      predicts criticality 79 steps late, which is not close enough to
   //      withdraw against.
-  'run_procedures.js':     { code: 0, score: '22/22 100/100' },
+  //   +1 (#211) the startup now TAKES LOAD CONTROL after synchronising — it picked up
+  //      load in FOLLOW, which is right for getting on line, then goes to MANUAL so both
+  //      routes into Mode 1 leave the same lineup (the free-play preset was already
+  //      MANUAL, so a player who learned via the checklist used to get a different board).
+  'run_procedures.js':     { code: 0, score: '22/22 101/101' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -88,7 +92,7 @@ var BASELINES = {
   // **6** (2026-07-26c): pwr_heatup is now fully green — the last 3 fell when the PID
   // output deadband stopped stranding a residual pump demand (#210). The remaining 6
   // are all RBMK/BWR (#208, plants on hold).
-  'run_procedures_stack.js': { code: 0, score: '22/22 154/154' },
+  'run_procedures_stack.js': { code: 0, score: '22/22 155/155' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
