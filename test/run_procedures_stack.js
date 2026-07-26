@@ -242,12 +242,15 @@ var KNOWN_FAILS = {
    * it cannot pump water OUT, so it is saturated at u=0 with level far above
    * setpoint. The boron xfail below is downstream of that scram, not independent.
    * NOTE it is knife-edge: this outcome flips on instrument-noise ordering alone
-   * (with sg_steam_flow at noise 0.01 the same run held 65 % and passed 19/19). */
-  'pwr·pwr_heatup': {
-    'step 17 boron_ppm > 900': '#206 SG fill',
-    'stack: no unexpected scram': '#206 SG fill',
-    'stack: no critical alarm standing at end': '#206 SG fill',
-  },
+   * (with sg_steam_flow at noise 0.01 the same run held 65 % and passed 19/19).
+   *
+   * RESOLVED 2026-07-26c (#210) — all three removed, pwr_heatup is 19/19 green. The
+   * "trickle" was not noise and not physics: the PID output deadband (`minDelta`)
+   * stranded the channel's LAST small pump demand. Wanting u = 0 after last sending
+   * 0.13 %, it never sent again (|0 − 0.13| < minDelta 1.0), so a 0.13 % feed stood
+   * for the rest of the run against ZERO steam draw. Fixed in control_kernel.js:
+   * minDelta no longer suppresses the step onto a rail. Measured: TRUE level now
+   * holds 65.5 % across every hold (was 65.0 → 75.8 → collapse). */
   /* #208 — RBMK/BWR procedures that diverge under the stack. Those plants are ON
    * HOLD (see CLAUDE.md); these are recorded so the findings survive until they
    * reopen, NOT scheduled. Strict xfail: if one starts passing, the gate reddens

@@ -84,9 +84,10 @@ var BASELINES = {
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
-  // critical alarm standing, declared auto_channels engaged). Strict xfails 13 → 9
-  // (2026-07-26b): pwr_heatup 7 → 3 — it now genuinely heats (50 → 297 °C, Mode 3),
-  // leaving only the slow SG fill on trickle feed; 6 = RBMK/BWR (#208, on hold).
+  // critical alarm standing, declared auto_channels engaged). Strict xfails 13 → 9 →
+  // **6** (2026-07-26c): pwr_heatup is now fully green — the last 3 fell when the PID
+  // output deadband stopped stranding a residual pump demand (#210). The remaining 6
+  // are all RBMK/BWR (#208, plants on hold).
   'run_procedures_stack.js': { code: 0, score: '22/22 154/154' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----

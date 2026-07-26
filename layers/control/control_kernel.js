@@ -890,7 +890,27 @@
     c.outNow = u;
     if (c.lastSent != null && Math.abs(e) <= def.db) { c.note = 'holding'; return; }
     if (c.lastAct != null && t - c.lastAct < def.period) return;
-    if (c.lastSent != null && Math.abs(u - c.lastSent) < (def.minDelta || 0)) return;
+    // minDelta suppresses chatter in the INTERIOR of the output range. It must not
+    // suppress the last small step onto a RAIL: with minDelta 1.0 a channel that
+    // wants u = 0 but last sent 0.13 never sends again (|0 − 0.13| < 1.0), so a
+    // stale trickle stands for the rest of the run. On the feed channel that is a
+    // 0.13 % pump demand into a generator with NO steam leaving — measured, it
+    // filled the SG 65.0 → 75.8 % across pwr_heatup's holds and then collapsed
+    // through the lo-lo when the dump finally opened (#210). Same family as the
+    // anti-windup ratchet noted above, by a different mechanism: reaching a bound
+    // is a state change, not chatter, so it is always worth sending.
+    var atRail = (u <= def.uMin + 1e-9 && c.lastSent > def.uMin + 1e-9) ||
+                 (u >= def.uMax - 1e-9 && c.lastSent < def.uMax - 1e-9);
+    if (c.lastSent != null && !atRail && Math.abs(u - c.lastSent) < (def.minDelta || 0)) {
+      // Report honestly instead of leaving a stale note standing. `holding` above
+      // means "error inside the deadband"; this is "error is real but I am not
+      // moving", and if the output is pinned at a bound the operator needs to know
+      // the channel is out of authority — a feed controller cannot pump water OUT.
+      c.note = (u <= def.uMin + 1e-9) ? 'at minimum output — no authority to correct'
+             : (u >= def.uMax - 1e-9) ? 'at maximum output — no authority to correct'
+             : 'steady';
+      return;
+    }
     var r = this._sendInternal(def.cmd(u));
     c.note = (r && r.type === 'blocked') ? '⛔ ' + (r.message || 'blocked') : '';
     c.lastSent = u; c.lastAct = t;
