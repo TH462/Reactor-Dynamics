@@ -46,6 +46,44 @@ where the two differ or where judgment was exercised.
 | **Repo** | Commits go directly to `main`, one per module. | Matches the linear, single-developer build (the scaffold was committed to `main`); each module is an independent, test-gated unit. |
 | **Load order** | `config → protection → thermal → pressurizer → primary → steam_generator → instruments → engine`, then layers. | The engine captures `RD.pwr*` helper namespaces at IIFE-eval time, so its dependencies must load first. Encoded in `index.html`, `test_pwr.html`, and the Node runners. |
 
+### Manual feed stays unforgiving; the board gains STEAM FLOW (2026-07-26, owner ruling, #206)
+
+**The question.** #206 asked for a ruling: should a bare `set_feed_pump_speed` be as
+unforgiving as it is, or should the pump demand be rate-limited / level-trimmed when no
+automation channel is engaged?
+
+**The measurement that reframed it.** The issue recorded "every standing value 2–30 % floods
+past 90 % to a P-14 trip". Re-measured on the shipped lineup, the failure direction **inverts
+with power** — at 6 % power 5 % pump holds level indefinitely and 10 % floods; at 100 % power
+**100 % holds 65.0 % flat for 30 minutes** and everything below ~95 % drains the SG to zero
+and scrams inside five minutes. The pump is a fixed-demand device and the value that holds
+level is simply **steam flow**. Nothing is wrong with the control.
+
+**Ruling: add the indication, do not soften the control.** Rate-limiting or level-trimming a
+MANUAL pump would make manual not manual — the plant would silently rescue the player, and the
+lesson (feed must match steam) is exactly the one the mechanic exists to teach. What was
+genuinely broken was informational: the board displayed feed flow and level but **no steam
+flow of any kind** (`sg_steam_flow` appeared nowhere under `ui/`), so the player was asked to
+match a number that was not on the board. Level is the *integral* of the flow error, so it is
+structurally a late cue — by the time it moves, the correction is overdue.
+
+**Consequences.**
+- New **STEAM FLOW** readout via `EXTRA_ITEMS` in `pwr_board_wiring.js` (re-export-safe, per
+  the board convention), directly above SG FEED RATE, right-anchored to the same column and on
+  the same gpm scale — the pair plus level is the prototypical three-element display.
+- It reads **`sg_steam_flow`** (turbine + dump + safeties), **never** `steam_flow` (governor
+  only). The latter reads ~0 with the turbine tripped and the dump carrying the plant, which
+  would blank the indication during the casualty it matters most in — the same blind spot that
+  had the three-element channel commanding zero feed through a turbine trip. Pinned by a
+  turbine-trip assertion in `verify_e2e_ui.js`.
+- **HR1 holds:** the readout takes the instrument, so a failed transmitter deceives the
+  operator exactly as it deceives the controller.
+
+**Not chosen, and why:** widening the ▲▼ resolution near the match point. At full power the
+workable window is ~100 ± 2 % and the arrow step is ±2 %, so one click is roughly the whole
+tolerance — but making the control finer only where the answer is correct would be a hint
+disguised as ergonomics. The readout tells the player where the window is; hitting it is theirs.
+
 ### Boron analyzer UI-removed — chemistry-first boron indication (2026-07-23, owner ruling)
 
 **Claim/ruling.** Online boronometers exist in the industry but are not relied upon; the

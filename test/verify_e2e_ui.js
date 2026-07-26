@@ -197,6 +197,56 @@ async function testUnitsAndInstructor(page) {
   return log.join('\n');
 }
 
+/* The three-element pair on the board: STEAM FLOW must sit beside SG FEED RATE, on the
+ * SAME scale, reading TOTAL main-steam-line draw (issue #206).
+ *
+ * Why this is a gate and not just a screenshot: the obvious wiring for a "steam flow"
+ * readout is the `steam_flow` instrument, which is governor/turbine flow ONLY. That reads
+ * ~0 whenever the turbine is offline and the steam dump is carrying the plant — so the
+ * board would show "no steam" while the SG boiled at 98 % dump, which is precisely the
+ * blind spot that had the three-element feed channel commanding zero feed through a
+ * turbine trip. The readout is worth nothing unless it survives THAT case, so the check
+ * trips the turbine and asserts the number stays up. It also guards the pairing itself:
+ * the indication is a driver EXTRA_ITEM, so a board re-export must not drop it. */
+async function testSteamFeedPair(page) {
+  var log = [];
+  var read = async function (qs) {
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&run=1' + qs,
+      { waitUntil: 'networkidle', timeout: 90000 });
+    await page.waitForTimeout(1200);
+    return page.evaluate(function () {
+      var t = function (id) {
+        var e = document.querySelector('[data-item="' + id + '"]');
+        return e ? e.textContent.trim() : null;
+      };
+      return { steam: t('bdSteamFlow'), feed: t('imrsgkz4lq0'), gov: t('imrppej8ulo'), dump: t('imrppeg6g16') };
+    });
+  };
+  var num = function (t) { return t == null ? null : Number(String(t).replace(/[^0-9.-]/g, '')); };
+
+  var atPower = await read('&ff=30');
+  log.push('at power: steam=' + atPower.steam + ' feed=' + atPower.feed + ' gov=' + atPower.gov);
+  if (atPower.steam == null) throw new Error('STEAM FLOW readout (bdSteamFlow) is missing from the board');
+  if (!/gpm/.test(atPower.steam) || !/gpm/.test(atPower.feed)) {
+    throw new Error('STEAM FLOW and SG FEED RATE must share the gpm scale to be comparable, got ' +
+      atPower.steam + ' vs ' + atPower.feed);
+  }
+  if (Math.abs(num(atPower.steam) - num(atPower.feed)) > 80) {
+    throw new Error('at steady full power feed should match steam, got steam=' + atPower.steam + ' feed=' + atPower.feed);
+  }
+
+  var tripped = await read('&inject=turbine_trip&ff=120');
+  log.push('turbine tripped: steam=' + tripped.steam + ' feed=' + tripped.feed +
+           ' gov=' + tripped.gov + ' dump=' + tripped.dump);
+  if (!(num(tripped.gov) < 20)) throw new Error('turbine_trip did not shut the governor (gov=' + tripped.gov + ')');
+  if (!(num(tripped.dump) > 20)) throw new Error('steam dump did not pick up the plant (dump=' + tripped.dump + ')');
+  if (!(num(tripped.steam) > 300)) {
+    throw new Error('STEAM FLOW collapsed with the turbine (' + tripped.steam + ') — it is wired to the ' +
+      'governor-only `steam_flow` instrument instead of `sg_steam_flow` (total SG draw). See #206.');
+  }
+  return log.join('\n');
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -219,6 +269,8 @@ async function main() {
     }
     var iuLog = await testUnitsAndInstructor(page);
     fs.writeFileSync(path.join(SCRATCH, 'instructor-units.log'), iuLog);
+    var sfLog = await testSteamFeedPair(page);
+    fs.writeFileSync(path.join(SCRATCH, 'steam-feed-pair.log'), sfLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {

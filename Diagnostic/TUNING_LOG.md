@@ -20,7 +20,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Current status (2026-07-26d)
+## Current status (2026-07-26e)
 
 **PWR is the focus plant and is in good shape** — all PWR engine, behavior, and ops gates
 green. The open backlog is dominated by **RBMK and BWR operability tuning** (documented,
@@ -31,18 +31,19 @@ staleness** items.
 
 | Gate | State | Notes |
 |---|---|---|
-| **`run_all`** | **OK (20 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
-| `run_procedures_stack` | **22/22 (154/154)** | NEW 2026-07-26b — procedures through M4+M5+M6. 13 strict xfails: 7 `pwr_heatup` (#206), 6 RBMK/BWR (#208) |
+| **`run_all`** | **OK (21 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| `run_procedures_stack` | **22/22 (155/155)** | NEW 2026-07-26b — procedures through M4+M5+M6. **6** strict xfails, all RBMK/BWR (#208); the 7 `pwr_heatup` xfails cleared 2026-07-26c/d (#206, #210) |
+| `run_meltdown_stack` | **3/3 (21/21)** | NEW 2026-07-26d (#209) — the core-damage casualties driven **hands off** on the shipped lineup; asserts the automatic chain fires unprompted |
 | `run_pwr` | **32/32** | PWR engine-direct (+`load_above_rated_hold`, the #130 pin) |
 | `run_rbmk` | **23/23** | |
 | `run_bwr` | **15/15** | |
 | `run_behavior` | **35 / 0 xfail / 0 fail** | PWR behavior catalog — coverage-todo list **empty** (#131); +TR-12b MSIV break isolation (#199) |
-| `run_ops` | **59/68** | PWR **21/21**; 9 open = RBMK/BWR + 1 deliberate red (see backlog) |
+| `run_ops` | **57/68** | 2026-07-26d: harness rewired to the SHIPPED lineup (#209), so two PWR probes that silently assumed load-follow now command it; 11 open = RBMK/BWR + 1 deliberate red (see backlog) |
 | `run_m4`..`run_m7` | **19** / **19** / 16 / OK | stack layers — all green. m5's rewind red RESOLVED 2026-07-25 (#151): `lastInstruments` was not rebuilt on restore, so every blockable trip reported `asserted=false` |
 | `run_autoctl` | **20/20** | |
 | `run_scenarios` | **3/3** | flagships |
-| `run_campaign` | **51/51** (2897) | |
-| `run_procedures` | **22/22** | 1 strict known-fail (B3) |
+| `run_campaign` | **51/51** (2932) | |
+| `run_procedures` | **22/22 (101/101)** | engine-direct — see the layer table in CLAUDE.md before trusting it for anything M4 decides |
 | `run_meltdown` | **8/8** | PWR core-damage paths — all resolved; MD-6 fixed 2026-07-24 (time-dependent dryout depletion, §3.4) |
 | `run_checklist` | **24/24** | |
 | `run_e2e_controls` | **35/35** | F12 RESOLVED 2026-07-25 (#150) — both reds were stale expectations, not regressions |
@@ -107,6 +108,67 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-26e — The board asked you to match a number it never showed (#206 closed)  ✅🔬
+
+Picked up #206's last open half: *"any standing manual feed-pump demand overfills the SG —
+decide whether `set_feed_pump_speed` should be this unforgiving, or whether the pump demand
+should be rate-limited / level-trimmed when no channel is engaged."*
+
+**Re-measured first, and the filed framing did not survive it.** The issue swept a standing
+demand 0–30 % across the ascent and found *every value 2–30 %* flooding past 90 % to a P-14
+trip. On the shipped lineup today (post `sg_steam_flow` and post `minDelta`):
+
+| standing pump | at 6 % power | at 100 % power |
+|---|---|---|
+| 0 % | drains to ~19 %, AFW catches it | drains to **0 %**, scram @195 s |
+| 5 % | **holds 52.8 % — stable** | drains to 0 %, scram @299 s (at 50 %) |
+| 8 % | parks 87.6 %, SG LVL HI, no trip | — |
+| 10–50 % | floods >90 %, feed isolation + turbine trip | drains to 0 %, scram @206–241 s |
+| 95 % | — | drains to 22.1 %, SG LVL LO |
+| **100 %** | — | **holds 65.0 % flat for 30 min** |
+| 105 % | — | floods to 90.8 %, P-14 scram @1112 s |
+
+**The failure direction inverts with power, and there is nothing wrong with the pump.** It is
+a fixed-demand device; the value that holds level is simply **steam flow** — ~5 % at 6 %
+power, ~100 % at 100 % power. Set it right and level holds indefinitely. The original "every
+value floods" reading was an artifact of sweeping *low* demands during a *rising*-power ascent.
+
+*(Aside worth keeping: no scram at 6 % power is correct, not a miss — `p14_reactor_trip` is
+gated on the `above_p9` ≥50 % permissive, so SG hi-hi below P-9 isolates feed and trips the
+turbine without scramming. `pwr_control.js:63-65`.)*
+
+**So the defect is informational.** Board inventory (verified, not assumed): the board carries
+`fw_flow` as SG FEED RATE in gpm — and **no steam flow indication of any kind**. The string
+`sg_steam_flow` appeared **nowhere under `ui/`**. The player was asked to match a quantity that
+was not on the board; all they could see was level, which is the **integral** of the error and
+therefore always a late cue. Worse, the tolerance is tight — at full power the workable window
+is ~100 ± 2 %, and the set box's ▲▼ step is ±20 gpm = ±2 %, so **one click is the whole margin**.
+
+**Owner ruling: add the indication, do not soften the control.** Rate-limiting or level-trimming
+a MANUAL pump would make manual not manual — the plant would quietly rescue the player and the
+lesson (feed must match steam) would be lost. New **STEAM FLOW** readout, `EXTRA_ITEMS` in
+`pwr_board_wiring.js` (re-export-safe), placed directly above SG FEED RATE, right-anchored to
+**the same column** and on **the same gpm scale**, so matching is a visual comparison.
+
+**The wiring detail that is the whole point:** it reads **`sg_steam_flow`** (turbine + dump +
+safeties), *not* `steam_flow` (governor only). Measured through a turbine trip: governor **0 %**,
+dump **98 %**, STEAM FLOW **983 gpm**, feed tracking at 984, level 66 %. Wired to `steam_flow`
+the box would read ~0 while the generator boiled hard through the dump — the same blind spot
+that had the three-element channel commanding zero feed through a turbine trip (2026-07-26c).
+`verify_e2e_ui.js` now trips the turbine and fails with that exact message if the number
+collapses with the governor, so it cannot be quietly rewired.
+
+Manual §9.2 rewritten around the pair (feed = steam → steady; feed < steam → falling; level
+tells you what already happened, the mismatch tells you what is about to), plus the honest
+warning that no single standing value is safe at all powers. `pack_manuals.js` re-run.
+
+**Found and NOT fixed** → filed separately: the automation channels' `note` strings are
+**rendered nowhere in the shipped UI**. The Automate tab was removed (`shell.html:150`) and
+`renderAutomate` early-returns (`app.js:1969-1970`), so `feed_sg`'s *"at minimum output — no
+authority to correct"* — added in #210 precisely so a saturated channel would stop claiming
+"holding" — is invisible to players, as is *"off — main feedwater isolated (AFW has the SGs)"*,
+which fires while the AUTO lamp silently goes dark with no on-screen reason.
 
 ### 2026-07-26d — Four PWR fixes off the back of the layer audit (#207, #210, #211)  ✅🔬
 

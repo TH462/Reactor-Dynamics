@@ -201,7 +201,23 @@
     // Sits in the old analyzer readout spot ('CHEM' label to its left) — the panel's
     // one boron number is the lab result (analyzer removed from the UI, 2026-07-23).
     { id: 'bdBoronChem', kind: 'value', name: 'Boron chem sample result', left: 1011, top: 880,
-      value: '—', unit: '', color: '#5aad7c', fontSize: 18, rAnchor: true }
+      value: '—', unit: '', color: '#5aad7c', fontSize: 18, rAnchor: true },
+    // --- STEAM FLOW: the three-element display's missing element (issue #206) ---
+    // The board showed feed flow and SG level but NO steam flow of any kind, so a player
+    // holding feed in MANUAL was asked to match a number that was not on the board. The
+    // pump is a fixed-demand device: set it to steam flow and level holds indefinitely
+    // (measured — 100 % holds 65.0 % flat at full power, 5 % holds at 6 % power), set it
+    // wrong and level ramps to a trip in either direction. Level is the INTEGRAL of the
+    // error, so it is always a late cue; this is the leading one.
+    //   Deliberately on the SAME gpm scale as SG FEED RATE and right-anchored to the SAME
+    // column directly above it, so matching is a visual comparison rather than arithmetic.
+    // Sits at the feed station (not on the steam header) because matching is the task it
+    // serves — which is also the prototypical arrangement: "three-element" IS steam flow,
+    // feed flow and level read together.
+    { id: 'bdSteamFlowBox', kind: 'box', name: '', left: 1230, top: 400, width: 105, height: 60,
+      bg: '#16202a', border: '#25333e', radius: 8, title: 'STEAM FLOW', fontSize: 12, ports: [], stick: false },
+    { id: 'bdSteamFlow', kind: 'value', name: 'Main steam line flow indication', left: 1305, top: 428,
+      value: '—', unit: 'gpm', color: '#5aad7c', fontSize: 17, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -287,8 +303,17 @@
     // SG feed rate: MEASURED feed flow, not pump demand. This read control_state
     // feed_pump_speed_pct until 2026-07-25, so it showed what was asked for rather than what
     // the plant delivered — the indication stayed at demand through a feed-pump trip.
-    imrsgkz4lq0: function (s) { return r0((IN(s).fw_flow || 0) * GPM_FEED); }                           // SG feed rate gpm
-
+    imrsgkz4lq0: function (s) { return r0((IN(s).fw_flow || 0) * GPM_FEED); },                          // SG feed rate gpm
+    // Main steam line flow — the TOTAL SG draw (turbine + dump + safeties), which is what
+    // feed has to match. NOT the `steam_flow` instrument: that is governor/turbine flow only
+    // and reads ~0 whenever the turbine is offline and the dump is carrying the plant — the
+    // same blind spot that had the three-element channel commanding zero feed through a
+    // turbine trip (#206). Same GPM_FEED scale as the feed indication below it. HR1: reads
+    // the instrument, so a failed transmitter lies here exactly as it does to the channel.
+    bdSteamFlow: function (s) {
+      var f = IN(s).sg_steam_flow;
+      return f == null ? null : r0(f * GPM_FEED);
+    }
   };
 
   // SR→IR handoff cue: turn the source-range indication amber at the SR high-flux caution
@@ -537,6 +562,7 @@
     '1/M Plot Tool': 'bdOneOverM', 'Source Range': 'imro6qutiht', 'Intermediate Range': 'imro6rctcgm',
     'Reactivity': 'imro6rdwwdn', 'Startup Rate': 'imro6qsncb9', 'Tavg': 'imro6ohhdq3',
     'Plant Pressure': 'imrr1ixcqe3', 'SG Level': 'imrr1fmzzjp',
+    'Steam Flow': 'bdSteamFlow', 'Feed Flow': 'imrsgkz4lq0',
     // Aliases for the `control` strings the checklist steps use (so the step-hover
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
     'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrobpq4a70', 'Dump SP': 'imrop5ouw7h',

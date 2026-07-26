@@ -9,6 +9,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **STEAM FLOW indication on the board** (issue #206, owner ruling). The board showed feed
+  flow and SG level but **no steam flow of any kind** — so a player holding feedwater in
+  MANUAL was asked to match a number that was not displayed anywhere. The feed pump is a
+  fixed-demand device: set it to steam flow and level holds indefinitely, set it wrong and
+  level ramps to a trip in whichever direction the error points. All the board offered was
+  level — the *integral* of the error, and therefore always a late cue. The new readout sits
+  directly above SG FEED RATE, right-aligned in the same column and on the same gpm scale,
+  so matching is a visual comparison rather than arithmetic. Together with level these are
+  the *three elements* the feedwater controller regulates on, which is the prototypical
+  arrangement — "three-element" **is** steam flow, feed flow and level read together.
+  - It reads **`sg_steam_flow`** (total main-steam-line draw: turbine + dump + safeties),
+    **not** the older `steam_flow` (governor/turbine only). That distinction is the whole
+    point: with the turbine tripped and the dump carrying the plant, governor flow is ~0
+    while the generator still boils hard. Measured through a turbine trip — governor 0 %,
+    dump 98 %, **STEAM FLOW 983 gpm**, feed tracking it at 984. Wired the other way the
+    board would have read "no steam" during exactly the casualty it matters most in.
+  - Guarded by a new assertion in `verify_e2e_ui.js` that trips the turbine and fails with
+    a pointed message if the number collapses with the governor.
 - **New hands-off protection gate (`node test/run_meltdown_stack.js`).** The same core-damage
   casualties as `run_meltdown.js`, but driven through the **full stack** on the shipped lineup
   with the operator taking their hands off. `run_meltdown` is deliberately engine-direct and
