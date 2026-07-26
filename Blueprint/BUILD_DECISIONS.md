@@ -46,6 +46,47 @@ where the two differ or where judgment was exercised.
 | **Repo** | Commits go directly to `main`, one per module. | Matches the linear, single-developer build (the scaffold was committed to `main`); each module is an independent, test-gated unit. |
 | **Load order** | `config → protection → thermal → pressurizer → primary → steam_generator → instruments → engine`, then layers. | The engine captures `RD.pwr*` helper namespaces at IIFE-eval time, so its dependencies must load first. Encoded in `index.html`, `test_pwr.html`, and the Node runners. |
 
+### The plant is the ground truth; scenarios follow it (2026-07-26, owner ruling)
+
+> *"Are you tuning the plant to a scenario, or adjusting scenarios to the plant? We should
+> focus on getting correct behavior out of the plant, then adjust scenarios to fit the plant."*
+
+**Precedence, highest authority first:**
+
+1. **Physics and prototypicality** — what a real plant of this type does.
+2. **The plant's deliberate identity** — the documented character choices (100 MWe single-loop,
+   **ride-out** rather than trip-happy, TMI canon). These outrank prototypicality where they
+   conflict, but only because they were ruled on explicitly.
+3. **The behaviour catalog** (`run_behavior`) and the **physics acceptance suites**
+   (`run_pwr`, `run_ops`) — these *encode* 1 and 2 and therefore legitimately arbitrate tuning.
+4. **Control/protection setpoints.**
+5. **Authored content** — campaign missions, procedures, checklists, manual prose.
+6. **Gate expectations for that content** (`run_campaign`, `run_procedures*`, `run_checklist`).
+
+**Nothing at level 5 or 6 may cause a change at levels 1–4.** When a mission breaks after a
+plant change, the default presumption is that the *mission is stale*.
+
+**Why the `[tune]` convention is not in conflict.** The file header says `[tune]` values are
+*"starting points arbitrated by the scenario suite"* — that means the **physics acceptance
+suites** (level 3), which are written as statements of intended behaviour independent of any
+story. Campaign missions merely *observe* the plant. The failure mode this ruling guards
+against is letting content-level expectations masquerade as behaviour specifications, at which
+point the gate that is supposed to protect the plant is quietly enforcing a story instead.
+
+**The guard.** A scenario breaking is a **canary, not an authority** — read it, because
+occasionally it means the plant change really was wrong. But answer that question against
+levels 1–3, never by asking what keeps the mission green.
+
+**Worked example — #215.** `pwr_msiv`'s win path softlocked after #207 raised
+`afw_level_target` 20 → 32, because the mission assumed a low-SG trip that AFW now often
+prevents. Two candidate "fixes" were inversions of this rule and were struck: deepening the
+shrink so the trip stayed unavoidable, and adding the **Reactor Trip on Turbine Trip** (P-9)
+that real Westinghouse plants have and this one lacks. The second is the instructive one — it
+*looks* like a plant-correctness fix, and would have made the mission pass — but **`TR-1` pins
+turbine-trip ride-out as this plant's deliberate character** (level 2), so adding it would have
+been tuning a protective function to rescue content. Resolution: the plant is correct, the
+mission is stale, rewrite the mission.
+
 ### Manual feed stays unforgiving; the board gains STEAM FLOW (2026-07-26, owner ruling, #206)
 
 **The question.** #206 asked for a ruling: should a bare `set_feed_pump_speed` be as
