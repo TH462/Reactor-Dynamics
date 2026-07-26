@@ -155,14 +155,22 @@ actually do?"** — never "what keeps this mission green?" *(owner ruling, 2026-
 
 Authority runs in one direction, highest first:
 
-1. **Physics and prototypicality** — what a real plant of this type does.
+1. **Physics and prototypicality** — what a real plant of this type actually does.
+   **Err toward the real plant.** This is a teaching simulator: when a choice is open, the
+   prototypical answer is the right one, because the thing being taught is how real plants
+   behave. A departure needs a reason beyond "it plays better".
 2. **This plant's deliberate identity** — the ruled-on character choices (100 MWe
-   single-loop, **ride-out** rather than trip-happy, TMI canon). These outrank
-   prototypicality where they conflict, *because they were ruled on explicitly* — that is
-   the only thing that lets them win, so an identity claim must point at the ruling.
+   single-loop, TMI canon). These are **named departures from prototypicality, not a
+   parallel authority**: a deviation is legitimate only if it is (a) explicitly ruled on,
+   (b) recorded with the reason, and (c) **declared as a simplification wherever it
+   understates reality** (§Domain conventions — *"where a simplification understates
+   reality, say so plainly"*). An identity claim that cannot point at its ruling is not an
+   identity claim; it is an unexamined default, and prototypicality wins.
 3. **The behaviour catalog and physics acceptance suites** (`run_behavior`, `run_pwr`,
    `run_ops`) — these *encode* 1 and 2, which is what earns them the right to arbitrate
-   tuning.
+   tuning. A catalog row is only as authoritative as the physics behind it: a row that
+   turns out to contradict real-plant behaviour without a recorded ruling is a **defect in
+   the catalog**, not a licence.
 4. **Control and protection setpoints.**
 5. **Authored content** — campaign missions, procedures, checklists, manual prose.
 6. **Gate expectations for that content** — `run_campaign`, `run_procedures*`,
@@ -184,11 +192,19 @@ behaviour you are treating as ground truth and why.
 
 **The dangerous case is not the crude one.** "Deepen the shrink so the mission's trip stays
 unavoidable" is obviously an inversion. Harder: a change that looks like genuine
-plant-correctness *and* happens to rescue the content. Real Westinghouse PWRs trip the
-reactor on turbine trip above P-9; this plant has no such trip, and adding it would have
-fixed a softlocked mission (#215). It was still wrong — `TR-1` pins turbine-trip **ride-out**
-as this plant's character (level 2). Nothing would have flagged it, because prototypicality
-argued *for* it. Check the identity layer before accepting any "more realistic" argument.
+plant-correctness *and* happens to rescue the content — you cannot tell motive from outcome,
+so you have to settle it on the physics alone.
+
+**And beware of using level 2 to dismiss level 1.** Working #215 I reached for exactly that:
+real Westinghouse PWRs trip the reactor on turbine trip above P-9, this plant has no such
+trip, and I ruled the gap acceptable because `TR-1` pins turbine-trip *ride-out* as the
+plant's character. That reasoning is only valid if the ruling actually covers the case — and
+here it may not: in a real plant **load rejection** is the ride-out case, while a **turbine
+trip** (stop valves slamming shut) is precisely what P-9 arms the reactor trip for. If `TR-1`
+conflates the two, then the catalog row is the defect and the missing trip is real. *(Open —
+see the P-9 question raised 2026-07-26.)* The lesson: an identity deviation must be checked
+against **what it was actually ruled on for**, not stretched to cover an adjacent case that
+happens to need covering.
 
 ---
 
