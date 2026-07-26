@@ -500,6 +500,29 @@ TMI included, never enter the cold regime), so every prior gate held at baseline
   `mode5_to_mode1_roundtrip`), **M5 18/18** (full-stack cold-IC guard), campaign **44/44**, autoctl
   **20/20**, M4 **15/15**, M6 **16/16**, M7 OK, ops **53/66** (baseline). TMI flagship not regressed.
 
+**2026-07-26b — Gates must declare which LAYER they run at (new `run_procedures_stack.js`; #209).**
+`run_procedures.js` drives bare engines, which made it structurally blind to anything M4 decides —
+it passed a procedure that never engaged the feed channel (#202 item 5) and still passes one that
+gets scrammed by the startup net under the stack (#206). Built a full-stack counterpart rather than
+converting the original: the engine-direct run is a legitimate *isolated physics* view, and keeping
+both means a divergence between them localises the defect to the control layer instead of merely
+reporting that something broke. The new gate asserts the identical predicates plus four
+stack-only ones (command accepted / no unexpected scram / no standing critical alarm / declared
+`auto_channels` engaged), with deliberate scrams exempted — the first draft flagged `bwr_shutdown`
+scramming at its own scram step, which is the gate being wrong, not the procedure.
+
+**The audit this triggered is the more important outcome.** `ControlLayer.stepAutomation()` and
+`engageDefaults()` each have exactly ONE production caller, both in `simulation_service.js`
+(:176, :152), as does `engine.getStartupLineup()` (:156-159). Nothing below M5 can engage or tick
+an automation channel. Since `feed_sg`, `cvcs_makeup` and `boron_conc` are `defaultOn`, every
+engine+M4 harness — `run_ops`, `run_behavior` — tests a plant configuration the player cannot
+produce, with SG level on the engine's coupled-feed fallback rather than the three-element
+controller that ships. `run_ops` is where the `[tune]` knobs are arbitrated, so the tuning targets
+in `OPS_TUNING_REPORT.md` were set against that configuration. Filed as #209 rather than fixed
+here: engaging the real lineup will move the bands, and re-arbitrating them is its own pass.
+**Convention going forward:** a runner's header must state its layer, and the layer table in
+CLAUDE.md is the index. A `ControlFailureLayer` in the harness does *not* make a gate full-stack.
+
 **2026-07-26 — The rod insertion limit is a power curve, not a floor (issue #202 item 4).**
 `pwr_config.js` had carried the comment *"Power-dependent insertion limit for the control group"*
 over a single `insertion_limit_pct: 30.0`, and `_updateRodDerived` compared the bank against it

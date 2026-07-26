@@ -31,7 +31,8 @@ staleness** items.
 
 | Gate | State | Notes |
 |---|---|---|
-| **`run_all`** | **OK (19 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| **`run_all`** | **OK (20 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| `run_procedures_stack` | **22/22 (154/154)** | NEW 2026-07-26b — procedures through M4+M5+M6. 13 strict xfails: 7 `pwr_heatup` (#206), 6 RBMK/BWR (#208) |
 | `run_pwr` | **32/32** | PWR engine-direct (+`load_above_rated_hold`, the #130 pin) |
 | `run_rbmk` | **23/23** | |
 | `run_bwr` | **15/15** | |
@@ -106,6 +107,86 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-26b — Full-stack procedure gate; the layer-depth audit it triggered  ✅🔬
+
+Built `test/run_procedures_stack.js` (runner #20) to close the gap named in the entry below.
+Auditing the rest of the suite for the same shape turned up a larger one.
+
+**The gate.** Replays every authored procedure through `SimulationService` (M4+M5+M6) rather than
+engine-direct. It asserts the **same** `acc`/`saw`/`guard` predicates as `run_procedures.js`, so any
+divergence is attributable to the stack and nothing else — then adds four assertions only the stack
+can make:
+
+1. every step command **accepted** — not `{type:'error'}` (unknown action) nor `{type:'blocked'}`
+   (interlock refusal). Engine-direct swallows both silently.
+2. **no unexpected scram** in a normal-category procedure — the #202 item-6 class.
+3. **no critical alarm standing at the end** — the #202 item-5 class, a procedure that "completes"
+   into a degraded plant.
+4. declared `auto_channels` actually engaged at the end.
+
+Emergency/accident categories are exempt from 2–3, and a scram at-or-after a step that *commands*
+one is expected (a shutdown procedure scrams on purpose) — both were false positives in the first
+draft, caught by `bwr_shutdown`/`rbmk_shutdown` reporting their own deliberate trips. Runs at 10×
+accel (1 s protection granularity — see #153) in **4.1 s**. `--lineup=bare` runs the noDefaults
+lineup campaign missions use.
+
+**Baseline: 22/22 · 154/154 with 13 strict xfails.** `pwr_startup` passes and reproduces the
+engine-direct numbers exactly, which is the parity signal the design wanted.
+
+**Finding — `pwr_heatup` (7 xfails, #206).** Richer than the earlier probe showed: it is **scrammed
+at step 11 by INTERMEDIATE RANGE HIGH**. The heatup uses controlled fission at ~10–30 % power as its
+heat source (its own caution says so) and never blocks the startup net — *the same defect as #202
+item 6*, in the procedure that runs immediately before it. Tavg ends at **108.8 °C** (the heatup
+never happens), plant_mode 4 not 3, `reactor_trip` + `sg_level_hihi` standing. Engine-direct there
+is no RPS to trip and no M4 feed channel, so `run_procedures` passes it 100 %.
+
+**Finding — six RBMK/BWR procedures diverge (6 xfails, #208).** Recorded, **not fixed** (plants on
+hold). Both `rbmk_raise_power` variants land just short of their own target (50.2/50.5 vs `> 51`),
+both `rbmk_mcp_trip` variants overshoot their post-trip ceiling by different amounts (25.27 pre vs
+12.26 post), and `bwr_startup` reaches **0 %** power under the stack against 19.9 % engine-direct —
+that last one is not a near-miss, something in M4 blocks the ascent outright (cf. #179).
+
+**The bigger finding — verified, not inferred (#209, priority-high).**
+
+```
+stepAutomation   → 1 production caller: simulation_service.js:176
+engageDefaults   → 1 production caller: simulation_service.js:152
+getStartupLineup → 1 production caller: simulation_service.js:156-159
+set_auto_channel → 0 occurrences in ops_pwr.js, behavior_pwr.js, ops_harness.js
+```
+
+So **every runner below M5 runs with the automation-channel runtime never ticking and no channel
+engaged**, and without the free-play lineup. `feed_sg` (*"replaces coupled feed as the level
+backbone"*), `cvcs_makeup` and `boron_conc` are all `defaultOn` in the shipped app. `run_ops` and
+`run_behavior` hold a real `ControlFailureLayer` and *look* full-stack — they are engine+M4. So:
+
+- **`run_behavior`** certifies every steady-state band and ride-out shape in
+  `PWR_BEHAVIOR_CATALOG.md` on SG level carried by the engine's coupled-feed fallback, not the
+  three-element controller that ships. The catalog rows that are *about* the controller can't run
+  at all — `feed_sg`'s `offWhen: feedwater_isolated` stand-down (CC-3 / P-4 post-trip handoff) has
+  no code path there. ~45 truth assertions vs ~6 instrument ones, so an HR1-class instrument defect
+  cannot redden the battery that polices plant feel.
+- **`run_ops`** arbitrates the `[tune]` knobs — 2 h endurance, 8 h xenon, the 100→50→100 daily
+  cycle — i.e. exactly the slow evolutions where controller wind-up and channel↔manual handoff
+  appear, with the controller runtime stopped. Its header comment *"exactly as in the assembled
+  sim"* is now false; it was true before the channels moved into the kernel and the lineup moved
+  into `selectPlant`. **Tuning targets in `OPS_TUNING_REPORT.md` are set against a plant that does
+  not ship.**
+- **`run_meltdown`** is deliberately a fuel-temperature gate, which is fine for MD-1/2/3 — but
+  MD-4 ("stuck PORV *with HPI* → protected") and MD-8 ("depressurize-to-flood → survivable") are
+  *protection* claims proven with HPI hand-set, because auto-ECCS is off by construction
+  (`meltdown_pwr.js:18-21`). A regression in an SI setpoint or the P-11 permissive turns a
+  documented-survivable path lethal for every player while this stays 8/8; `run_pwr`'s ECCS suites
+  command injection by hand too, so nothing else catches it either.
+
+Cheapest fix (in #209): give `ops_harness.js` `engageDefaults()` at construction and
+`stepAutomation(dt)` in its drive loop, in M5's tick order — one change fixes both gates, but
+expect band drift, so it wants its own pass. The layer table is now in CLAUDE.md so the next agent
+does not have to rediscover it.
+
+**Gates:** `run_all.js` **OK, 20 runners at baseline**. New `BASELINES` entry only; nothing else
+moved.
 
 ### 2026-07-26 — Startup-checklist playtest sweep: six defects, three spun off (issue #202)  ✅🔬
 

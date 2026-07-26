@@ -81,6 +81,12 @@ var BASELINES = {
   //      predicts criticality 79 steps late, which is not close enough to
   //      withdraw against.
   'run_procedures.js':     { code: 0, score: '22/22 100/100' },
+  // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
+  // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
+  // assertions only the stack can make (command accepted, no unexpected scram, no
+  // critical alarm standing, declared auto_channels engaged). 13 strict xfails:
+  // 7 = pwr_heatup under the stack (#206), 6 = RBMK/BWR divergences (#208, on hold).
+  'run_procedures_stack.js': { code: 0, score: '22/22 154/154' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {

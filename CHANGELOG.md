@@ -9,6 +9,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **New full-stack procedure gate (`node test/run_procedures_stack.js`).** The same authored
+  procedures as `run_procedures.js`, but driven through `SimulationService` — M4 + M5 + M6 —
+  instead of engine-direct. It asserts the *same* `acc`/`saw`/`guard` predicates, so any
+  divergence is attributable to the stack alone, plus four assertions only the stack can
+  make: every step command **accepted** (not rejected as unknown, not refused by an
+  interlock), **no unexpected scram**, **no critical alarm standing at the end**, and any
+  declared `auto_channels` actually engaged. Deliberate scrams (a shutdown procedure) and
+  emergency/accident categories are exempted. **22/22 · 154/154 with 13 strict xfails**,
+  4.1 s. Built because `run_procedures.js` had been structurally blind twice: it cannot see
+  anything the control layer decides.
 - **The startup checklist now sets up its heat sink, and blocks its own trips**
   (issue #202, owner playtest). Three new steps in `pwr_startup`: **engage the
   three-element Feed AUTO channel at step 3**, while SG level is still at its nominal
