@@ -149,6 +149,47 @@ inheritance scheme (beyond the RBMK's internal pre/post sharing). HR3 still appl
 parameters are data, just expressed in JS — so a future externalization is an extraction,
 not a redesign.
 
+**HR9 — The plant is the ground truth. Content follows the plant, never the reverse.**
+The only question that decides a tuning or behaviour change is **"what should this plant
+actually do?"** — never "what keeps this mission green?" *(owner ruling, 2026-07-26)*
+
+Authority runs in one direction, highest first:
+
+1. **Physics and prototypicality** — what a real plant of this type does.
+2. **This plant's deliberate identity** — the ruled-on character choices (100 MWe
+   single-loop, **ride-out** rather than trip-happy, TMI canon). These outrank
+   prototypicality where they conflict, *because they were ruled on explicitly* — that is
+   the only thing that lets them win, so an identity claim must point at the ruling.
+3. **The behaviour catalog and physics acceptance suites** (`run_behavior`, `run_pwr`,
+   `run_ops`) — these *encode* 1 and 2, which is what earns them the right to arbitrate
+   tuning.
+4. **Control and protection setpoints.**
+5. **Authored content** — campaign missions, procedures, checklists, manual prose.
+6. **Gate expectations for that content** — `run_campaign`, `run_procedures*`,
+   `run_checklist`.
+
+**Nothing at 5–6 may cause a change at 1–4.** When authored content breaks after a plant
+change, the default presumption is that *the content is stale*.
+
+This is what the `[tune]` convention means by "arbitrated by the scenario suite": level 3,
+the suites that state intended behaviour independently of any story. Campaign missions only
+*observe* the plant. The failure mode the rule exists to prevent is a content-level
+expectation quietly acquiring the authority of a behaviour specification — at which point
+the gate that should protect the plant is enforcing a story instead, and the plant is being
+bent to keep a paragraph true.
+
+**Broken content is a canary, not an authority.** Read it — occasionally it means the plant
+change really was wrong. But settle that against levels 1–3, and say out loud which
+behaviour you are treating as ground truth and why.
+
+**The dangerous case is not the crude one.** "Deepen the shrink so the mission's trip stays
+unavoidable" is obviously an inversion. Harder: a change that looks like genuine
+plant-correctness *and* happens to rescue the content. Real Westinghouse PWRs trip the
+reactor on turbine trip above P-9; this plant has no such trip, and adding it would have
+fixed a softlocked mission (#215). It was still wrong — `TR-1` pins turbine-trip **ride-out**
+as this plant's character (level 2). Nothing would have flagged it, because prototypicality
+argued *for* it. Check the identity layer before accepting any "more realistic" argument.
+
 ---
 
 ## 4. The Time Step and Determinism

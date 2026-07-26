@@ -46,10 +46,15 @@ where the two differ or where judgment was exercised.
 | **Repo** | Commits go directly to `main`, one per module. | Matches the linear, single-developer build (the scaffold was committed to `main`); each module is an independent, test-gated unit. |
 | **Load order** | `config → protection → thermal → pressurizer → primary → steam_generator → instruments → engine`, then layers. | The engine captures `RD.pwr*` helper namespaces at IIFE-eval time, so its dependencies must load first. Encoded in `index.html`, `test_pwr.html`, and the Node runners. |
 
-### The plant is the ground truth; scenarios follow it (2026-07-26, owner ruling)
+### The plant is the ground truth; scenarios follow it (2026-07-26, owner ruling → **HR9**)
 
 > *"Are you tuning the plant to a scenario, or adjusting scenarios to the plant? We should
 > focus on getting correct behavior out of the plant, then adjust scenarios to fit the plant."*
+>
+> *"'What should this plant actually do?' is always the right question."*
+
+**Promoted to a Hard Rule — `Blueprint/CONTEXT.md` §3 HR9**, which is now the canonical
+statement; this entry is the rationale and the worked example behind it.
 
 **Precedence, highest authority first:**
 
