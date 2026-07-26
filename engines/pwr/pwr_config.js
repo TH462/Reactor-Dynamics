@@ -370,7 +370,20 @@
       sg_safety_flow_max: 1.2,     // normalized relief capacity at full lift
       afw_flow_frac: 0.15,         // AFW capacity, normalized to rated feed [tune]
       afw_start_level: 20.0,       // % — M4 auto-start setpoint (pwr_control actuation reads the instrument)
-      afw_level_target: 20.0,      // % — built-in proportional level hold: full flow below this... [tune]
+      // AFW LATCHES (owner ruling, #207): the pump demand set by the M4 actuation has no
+      // reset, so it stands until the operator secures it — as in a real plant, where AFW
+      // auto-starts on low level and runs until someone stops it.
+      //
+      // The hold target was 20 with the same 8 % band, i.e. full flow below 20 tapering to
+      // zero at 28 — a control band lying ENTIRELY inside the amber caution zone (17–30 %).
+      // So an AFW-only generator parked at 25.1 % with SG LVL LO standing indefinitely: the
+      // plant was latched into a permanent alarm by design. Now 32/8 — full flow below 32,
+      // zero at 40 — which settles at 37.1 % against decay-heat steam draw: comfortably
+      // GREEN, 7 points clear of the 30 % boundary so transients do not dip back into amber,
+      // and far below the 75 % HI caution. Measured on a scram + feedwater isolation held
+      // 2 h; note the approach is slow (AFW is only 0.15 of rated), so a short probe window
+      // will catch it still climbing. [tune]
+      afw_level_target: 32.0,      // % — built-in proportional level hold: full flow below this... [tune]
       afw_level_band: 8.0,         // % — ...tapering to zero across this band above it [tune]
       // AFW pump discharge-pressure indication (MPa). A motor/turbine-driven AFW pump
       // develops head above the SG it feeds; deadheaded (discharge valve shut) it sits

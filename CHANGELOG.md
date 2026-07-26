@@ -9,6 +9,26 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Auxiliary feedwater no longer parks the plant in a standing alarm** (issue #207, owner
+  ruling). AFW **latches** — once it auto-starts on low steam-generator level it keeps
+  feeding until an operator secures it, as in a real plant. Its proportional level hold ran
+  full flow below 20 % tapering to zero at 28 %, a control band lying **entirely inside the
+  amber 17–30 % caution zone**, so an AFW-only generator settled at **25.1 %** with SG LVL LO
+  standing indefinitely — the plant was latched into a permanent alarm by design. The hold is
+  now 32 % / 8 % band, settling at **37.1 %**: comfortably green, 7 points clear of the
+  boundary, far below the 75 % caution. `run_meltdown` MD-6 (the feed-keyed dryout depletion)
+  and `run_behavior` TR-2 both hold.
+- **A stranded PID output could feed a steam generator forever** (issue #210). `minDelta`, the
+  output deadband that suppresses chatter, was also suppressing the last small step onto a
+  **rail**: a channel wanting `u = 0` after last sending 0.13 % never sent again, so a 0.13 %
+  feed demand stood for the rest of the run against **zero** steam leaving the generator.
+  Measured on `pwr_heatup`: true level 65.0 → 75.8 % across the low-power holds, climbing to
+  ~90 %, then collapsing through the 17 % lo-lo when the dump opened. Reaching a bound is a
+  state change, not chatter, so it is now always sent. Channels also stopped reporting a stale
+  `holding` while sitting 25 points off setpoint with no authority to correct — they now say
+  *"at minimum output — no authority to correct"*, the honest answer for a feed controller
+  that cannot pump water out. Same family as the anti-windup ratchet fixed earlier, returning
+  by a different mechanism.
 - **The three-element feedwater controller was blind to the steam dump** — the most
   consequential fix in this batch. `feed_sg`'s feedforward and mismatch trim read the
   `steam_flow` instrument, which is **governor (turbine) flow only**. Whenever the turbine

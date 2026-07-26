@@ -109,6 +109,13 @@
 ### AFW delivery
 
 - Delivered flow = capacity × throttle × level-hold taper near target.  
+- **AFW latches.** Once it auto-starts on low steam-generator level it keeps feeding until
+  an operator secures it — it does not stop by itself. Deciding when to secure it is the
+  operator's call, and it should not be left running once a trusted heat sink is back.  
+- **Level hold: full flow below 32 %, tapering to zero at 40 %.** Against decay-heat steam
+  draw an AFW-only generator settles around **37 %** — inside the normal green band, clear
+  of the 30 % SG LVL LO alarm. The approach is slow (AFW is only 15 % of rated feed), so
+  expect level to take the best part of an hour to walk back up from a low-level start.  
 
 ---
 
