@@ -523,6 +523,23 @@ here: engaging the real lineup will move the bands, and re-arbitrating them is i
 **Convention going forward:** a runner's header must state its layer, and the layer table in
 CLAUDE.md is the index. A `ControlFailureLayer` in the harness does *not* make a gate full-stack.
 
+**2026-07-26 — Gross overcooling is ANNUNCIATED, not protected (owner ruling, #211).**
+Reducing reactor power on rods while the turbine sits at a stale MANUAL load setpoint makes the
+turbine an unthrottled heat sink: measured through a real `SimulationService`, Tavg 304 → 247 °C
+on a daily load cycle and 304 → 130 °C (still falling) on a normal shutdown, secondary at
+0.25 MPa, with the heaters holding primary pressure so subcooling ran away to ~98 °C — and **no
+alarm and no trip at any point**. The alarm half was a pure wiring gap and is fixed (`LOAD IMBAL`,
+Panel B caution; `load_mode.js` had computed the signal HR1-correctly all along and `Manuals/09`
+had documented the annunciator all along — `sg_imbalance_active` simply never reached the
+instrument layer, so no alarm *could* read it). **The protection half is deliberately NOT built.**
+This plant's identity is ride-out-friendly — it has no turbine-trip reactor trip by design — and a
+low-Tavg or low-steam-pressure trip would fire during legitimate cooldowns and the Mode 5 approach
+unless carefully gated. The teaching outcome is that the operator learns to watch the imbalance
+rather than being rescued by an automatic action. Recorded here so the absence reads as a decision
+rather than an oversight. **Open, deliberately separate:** whether the free-play Mode 1 preset
+should start in MANUAL at all (`getStartupLineup()`), given that the two routes into Mode 1
+disagree — the preset gives MANUAL, while the startup checklist's `connect_grid` gives FOLLOW.
+
 **2026-07-26 — The rod insertion limit is a power curve, not a floor (issue #202 item 4).**
 `pwr_config.js` had carried the comment *"Power-dependent insertion limit for the control group"*
 over a single `insertion_limit_pct: 30.0`, and `_updateRodDerived` compared the bank against it
