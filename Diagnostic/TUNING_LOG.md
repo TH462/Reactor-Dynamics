@@ -20,7 +20,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Current status (2026-07-26)
+## Current status (2026-07-26d)
 
 **PWR is the focus plant and is in good shape** — all PWR engine, behavior, and ops gates
 green. The open backlog is dominated by **RBMK and BWR operability tuning** (documented,
@@ -107,6 +107,64 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-26d — Four PWR fixes off the back of the layer audit (#207, #210, #211)  ✅🔬
+
+All four came out of #209's finding that the gates certified a lineup nobody plays. With the
+harness on the shipped lineup, real defects became visible.
+
+**#210 — the PID output deadband stranded a residual demand forever.** `minDelta` exists to
+suppress chatter in the INTERIOR of a channel's range; it was also suppressing the last small
+step onto a **rail**. The feed channel wanted `u = 0` having last sent `0.13 %` pump, and
+`|0 − 0.13| < 1.0`, so it never sent again — a 0.13 % feed demand standing against a generator
+with nothing boiling it off. TRUE level 65.0 → 75.8 % across `pwr_heatup`'s holds, on to ~90 %,
+then collapsing through the 17 % lo-lo when the dump opened. **Not noise, not physics — a
+latched controller output.** Fixed: reaching a bound is a state change, always send it.
+
+Same family as the anti-windup ratchet already documented at `control_kernel.js:878-883`
+(*"instrument-noise excursions then trickle positive output forever"*). **This area has now
+produced two distinct slow-fill bugs by different mechanisms** — worth suspicion next time
+something fills quietly.
+
+Also killed a **stale note**: the channel reported `holding` — which means *error inside the
+deadband* — while 25 points off setpoint with no authority to correct. Now
+*"at minimum output — no authority to correct"*, the honest answer for a feed controller that
+cannot pump water OUT.
+
+**The knife-edge is gone, and that mattered more than the defect.** 8 independent noise streams
+through `pwr_heatup`: Tavg spread **0.01 °C**, SG level spread **1.42 points**, no scram and no
+critical alarm in any run. Before, the same procedure flipped between passing 19/19 and
+scramming on lo-lo purely on noise ordering — which is exactly what a stranded integrator does:
+it turns a zero-mean perturbation into a permanent bias sized by wherever the noise left it.
+
+**#207 — AFW latches, and now holds level in the GREEN.** The latch half was already true (the
+M4 actuation's pump demand has no reset). What was not latched was the FLOW: the proportional
+hold ran full flow below 20 tapering to zero at 28 — a control band lying **entirely inside the
+amber 17–30 zone** — so an AFW-only generator settled at 25.1 % with SG LVL LO standing forever.
+Now 32/8, settling at **37.1 %**. Measurement trap worth remembering: AFW is only 0.15 of rated,
+so the approach is slow — a 40-minute probe read 27.9 % across three different targets and
+looked like a plateau when all three were still climbing. Use ≥90 minutes.
+
+**#211 — the board was silent while the plant overcooled.** In the shipped MANUAL lineup the
+governor sits at the operator's load setpoint and never moves, so cutting reactor power on rods
+alone leaves the turbine an unthrottled heat sink: Tavg **304 → 247 °C** on a daily load cycle,
+**304 → 130 °C** (still falling) on a normal shutdown — with **no alarm and no trip anywhere**.
+`load_mode.js` had computed the signal HR1-correctly all along and `Manuals/09` had documented
+the annunciator all along; `sg_imbalance_active` simply never reached the instrument layer, so
+no alarm *could* read it. Three lines, each with a home already. **LOAD IMBAL** (Panel B,
+caution) now fires at the 4 MWe threshold — measured t=176 s, Tavg still 303.3 °C, ~50 degrees
+before trouble. Owner ruling: **annunciated, not protected** — this plant has no turbine-trip
+reactor trip by design and a low-Tavg trip would fire on legitimate cooldowns. Recorded in
+BUILD_DECISIONS so the absence reads as a decision.
+
+**Two routes into Mode 1 disagreed** — the free-play preset gave MANUAL (target matched), the
+startup checklist's `connect_grid` gave FOLLOW. Owner ruling: keep MANUAL. The checklist now
+takes load control after synchronising (`set_load_mode`, so the setpoint stays where FOLLOW left
+it — measured imbalance 0.9 MWe, no alarms).
+
+**Gates:** `run_all.js` **OK, 20 runners at baseline** throughout. `run_procedures` 100 → 101,
+`run_procedures_stack` 154 → 155 and its xfails 9 → **6** (all remaining are RBMK/BWR, #208).
+
 
 ### 2026-07-26c — The feed controller could not see the steam dump (#206)  ✅🔬
 
