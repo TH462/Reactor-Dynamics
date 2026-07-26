@@ -48,7 +48,10 @@
     'TR-5': 'probe', 'TR-6': 'existing:run_ops grid step + steam_dump_capacity_cap',
     'TR-7': 'probe', 'TR-8': 'probe',
     'TR-9': 'existing:run_ops sg_overfeed_p14 + run_pwr feedwater_isolation',
-    'TR-10': 'probe', 'TR-11': 'existing:run_ops heaters vs spray fight (end-state pin: todo)',
+    // TR-11: the catalog row ("heaters lose, low-P trip unless isolated") predates
+    // the P5 spray capacity cap — measured under the cap the heaters WIN, and the
+    // probe pins that end state. See the probe comment and Diagnostic/TUNING_LOG.md.
+    'TR-10': 'probe', 'TR-11': 'probe (end-state pin) + existing:run_ops heaters vs spray fight',
     'TR-12': 'probe + run_campaign pwr_slb', 'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
     'SS-9': 'probe (cold thermal stability)', 'SS-10': 'probe (severity clamp)',
     'TR-14': 'existing:campaign SBO fact (document in manual)',
@@ -61,10 +64,11 @@
     'CC-5': 'probe', 'CC-6': 'probe', 'CC-7': 'existing:run_pwr steam_dump_capacity_cap',
     'CC-8': 'probe', 'CC-9': 'existing:run_pwr + run_campaign pwr_esf',
     'CC-10': 'probe', 'CC-10b': 'probe',
-    'PI-1': 'probe:TR-1', 'PI-2': 'probe:TR-2', 'PI-3': 'todo (with interlock build)',
+    'PI-1': 'probe:TR-1', 'PI-2': 'probe:TR-2', 'PI-3': 'probe (blocked-case legs + P-11 permissive)',
     'PI-4': 'probe:TR-8 (AFW on MFW loss at power)', 'PI-5': 'probe:CC-3', 'PI-6': 'RETIRED (single-loop plant)',
     'PI-7': 'probe', 'PI-7-reset': 'existing:run_ops abuse scram-then-withdraw (reset leg added P4)',
-    'PI-8': 'todo (with interlock build)', 'PI-9': 'todo (verify SLB path)',
+    'PI-8': 'probe (setpoint + ordering) + probe:CA-4 (both behaviour legs)',
+    'PI-9': 'probe — VERIFIED 2026-07-25: no low-steam-line-pressure SI signal exists; owner ruling pending (#199)',
   };
 
   var PROBES = {
@@ -400,6 +404,39 @@
       });
     },
 
+    // TR-11 END-STATE PIN (#131): the catalog row predates the P5 spray capacity
+    // cap and reads "heaters lose, low-P trip unless isolated". Measured under the
+    // cap, the opposite is true and that IS the end state: a spray valve stuck
+    // fully open is a NUISANCE, not a casualty. The valve sits at its ~12 % cap,
+    // pressure droops ~0.08 MPa and parks there, and the auto heaters hold it at
+    // roughly a third of their duty — no trip, no alarm, indefinitely.
+    // Driven through the SPRAY OFF command form ({open:false}) because that is the
+    // one the override actually intercepts; the {pct}/{auto} forms silently defeat
+    // it (#200), deliberately NOT pinned here so the fix does not have to fight a test.
+    'TR-11': function () {
+      return test('TR-11 spray valve stuck open — the capped spray loses to the heaters', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        var p0 = h.ts().pressure_mpa;
+        h.cmd('inject_failure', { failure_id: 'stuck_open_spray' });
+        h.cmd('set_spray', { open: false });        // the operator shuts it; the override re-opens it
+        h.run(1800);
+        var t = h.ts(), c = h.ctl();
+        var cap = h.eng.cfg.pressurizer.spray_flow_max * 100;
+        ck('the stuck valve sits at the spray capacity cap', fmt(c.spray_valve_pct, 1) + ' vs cap ' + fmt(cap, 1),
+          c.spray_valve_pct >= cap - 0.5, '≈ ' + fmt(cap, 1) + ' %');
+        ck('pressure droops less than 0.3 MPa and parks (≥ 15.1)',
+          fmt(p0, 2) + ' → ' + fmt(t.pressure_mpa, 2) + ' (min ' + fmt(h.range('pressure_mpa').min, 2) + ')',
+          h.range('pressure_mpa').min >= 15.1, '≥ 15.1');
+        ck('the heaters win it without saturating (< 90 % duty)', fmt(c.heater_power_pct, 1),
+          c.heater_power_pct < 90, '< 90');
+        ck('no low-pressure trip in 30 min', h.tripReason || 'none', h.tripTime == null, 'none');
+        ck('subcooling never threatened', fmt(h.range('subcooling_c').min, 1),
+          h.range('subcooling_c').min > 20, '> 20');
+        T.checkSanity(ck, h);
+      });
+    },
+
     // ============================================ 4/5. casualties + control channels
 
     'CA-3': function () {
@@ -711,6 +748,135 @@
         ck('engine latched the scram', String(h.ts().scrammed), !!h.ts().scrammed, 'true');
         ck('RPS state shows scrammed after a MANUAL scram (C4 — resolved)', String(h.rps().scrammed),
           h.rps().scrammed === true, 'true');
+      });
+    },
+
+    // PI-3 (feel-plan P4, probe written #131): reactor trip on safety injection.
+    // The rule keys on the SAME low-pressure signal as the SI ESF (SI_MPA 12.4)
+    // and sits 0.01 MPa under the lo_press trip (12.41), so on any depressurization
+    // both assert together and the reason string ('primary_pressure low') cannot
+    // tell them apart. What makes PI-3 real — and testable — is the BLOCKED case:
+    // block lo_press alone and the plant still scrams, which is exactly why the
+    // cooldown procedure has to block BOTH. Third leg: the P-11 permissive
+    // auto-blocks both at a depressurized init and auto-reinstates them on heatup.
+    'PI-3': function () {
+      return test('PI-3 trip on SI — si_trip scrams with lo_press blocked; a cooldown must block both', function (ck) {
+        // ---- leg 1: lo_press blocked, si_trip live → the depressurization still scrams.
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('set_trip_block', { trip_id: 'lo_press', blocked: true });
+        ck('lo_press took a manual block at power (P-10 satisfied)',
+          String(h.rps().trip_blocks.lo_press), h.rps().trip_blocks.lo_press === true, 'true');
+        h.cmd('inject_failure', { failure_id: 'stuck_porv_open' });
+        h.cmd('open_porv');
+        h.cmd('close_porv');                        // intercepted — the valve stays open
+        var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
+        ck('si_trip scrammed it anyway (the only pressure trip left)',
+          dt >= 0 ? fmt(dt, 1) + ' s — ' + (h.tripReason || '?') : 'no trip in 300 s',
+          dt >= 0 && /primary_pressure low/.test(h.tripReason || ''), 'primary_pressure low');
+        ck('level was nowhere near its own trip (not a level scram in disguise)',
+          fmt(h.ins().pzr_level, 1), h.ins().pzr_level > 30, '> 30 % (trip is 12)');
+        ck('SI actuated with it', String(h.ts().hpi_active), !!h.ts().hpi_active, 'true');
+
+        // ---- leg 2: BOTH blocked — the cooldown lineup. Pressure walks through
+        // the SI setpoint with no reactor trip, but the ESF is untouched.
+        var h2 = H('hot_full_power');
+        h2.run(30);
+        h2.cmd('set_trip_block', { trip_id: 'lo_press', blocked: true });
+        h2.cmd('set_trip_block', { trip_id: 'si_trip', blocked: true });
+        h2.cmd('inject_failure', { failure_id: 'stuck_porv_open' });
+        h2.cmd('open_porv');
+        h2.cmd('close_porv');
+        var dt2 = h2.runUntil(function (ts, ins) { return ins.primary_pressure < 12.0; }, 300);
+        ck('with both blocked, pressure crossed 12.4 MPa unscrammed',
+          dt2 >= 0 ? fmt(h2.ins().primary_pressure, 2) + ' MPa, rps.scrammed=' + h2.rps().scrammed : 'never got there',
+          dt2 >= 0 && h2.rps().scrammed === false, 'below 12.4, no scram');
+        ck('blocking the TRIP did not disable the SI ESF', String(h2.ts().hpi_active),
+          !!h2.ts().hpi_active, 'true');
+
+        // ---- leg 3: the P-11 permissive — auto-blocked cold, auto-reinstated hot.
+        var h3 = H('cold_shutdown');
+        h3.run(5);
+        ck('si_trip auto-blocked at the depressurized init (P-11)',
+          String(h3.rps().trip_blocks.si_trip), h3.rps().trip_blocks.si_trip === true, 'true');
+        h3.cmd('set_pressure_setpoint', { mpa: 15.4 });
+        var dt3 = h3.runUntil(function (ts, ins) { return ins.primary_pressure > 13.8; }, 3000);
+        h3.run(10);
+        ck('and auto-reinstated on the heatup past 13.6 MPa',
+          dt3 >= 0 ? fmt(h3.ins().primary_pressure, 2) + ' MPa → blocked=' + !!h3.rps().trip_blocks.si_trip
+                   : 'never repressurized',
+          dt3 >= 0 && !h3.rps().trip_blocks.si_trip, 'not blocked');
+      });
+    },
+
+    // PI-8 (feel-plan P4/P5, probe written #131): the going-solid backstop. CA-4
+    // pins the two BEHAVIOURS (a sensed overfill trips; a stuck-low sensor defeats
+    // it); this pins the NUMBER and the ordering — 97 % read off the INDICATED
+    // level (HR1, not truth), the 75 % caution well ahead of it, and enough
+    // headroom above the ride-out swell that FG-4 keeps its no-scram character.
+    'PI-8': function () {
+      return test('PI-8 high-level trip — 97 % on the indicated channel, alarm first, ride-out clears it', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('set_charging_flow', { normalized: 0.06 });     // MANUAL max charging, letdown off
+        var ind = null, tru = null;
+        var dt = h.runUntil(function (ts, ins, hh) {
+          if (hh.tripTime != null && ind == null) { ind = ins.pzr_level; tru = ts.pzr_level_pct; }
+          return hh.tripTime != null;
+        }, 900);
+        ck('tripped on high pressurizer level', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip',
+          dt >= 0 && /pzr_level high/.test(h.tripReason || ''), 'pzr_level high');
+        ck('the setpoint is read off the INDICATED level (97 ±0.5 %)', fmt(ind, 2),
+          near(ind, 97.0, 0.5), '97 ±0.5');
+        ck('true level lagged behind it, still short of solid', fmt(tru, 2),
+          tru > ind && tru < 100, ind + ' < true < 100');
+        var lead = h.alarmFirst['pzr_level_high'] != null ? h.tripTime - h.alarmFirst['pzr_level_high'] : -1;
+        ck('the 75 % caution led the trip by ≥ 60 s', lead >= 0 ? fmt(lead, 0) + ' s' : 'alarm never fired',
+          lead >= 60, '≥ 60 s');
+        // Headroom: the FG-4 ride-out must not clip the backstop.
+        var h2 = H('hot_full_power');
+        h2.run(30);
+        h2.cmd('inject_failure', { failure_id: 'turbine_trip' });
+        h2.run(300);
+        ck('the ride-out swell stays well clear of it (< 90 %)', fmt(h2.range('pzr_level_pct').max, 1),
+          h2.range('pzr_level_pct').max < 90 && h2.tripTime == null, '< 90, no scram');
+      });
+    },
+
+    // PI-9 — the catalog's last interlock item was "verify the SLB gate's path".
+    // VERIFIED (#131), and the answer is that the path does not exist: there is no
+    // steam_pressure row in PWR_ACTUATIONS, so no SI on low steam-line pressure,
+    // and the SLB produces none by the back door either — the pressurizer holds
+    // the primary at ~15.3 MPa while the loop crash-cools, so the 12.4 MPa
+    // actuation never sees its setpoint. This probe pins that measured state
+    // rather than leaving it a silent coverage todo: if the interlock is ever
+    // added (owner ruling pending, #199) this reddens and must be re-authored.
+    // Why it is currently harmless is asserted too — inventory is intact, so there
+    // is nothing to inject, and TR-12 separately pins that shutdown margin covers
+    // the overcooling insertion without boron.
+    'PI-9': function () {
+      return test('PI-9 SLB gate — VERIFIED: no low-steam-line-pressure SI exists (#199)', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'steam_line_break', severity: 0.8 });
+        var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
+        var siEver = false;
+        h.run(900, function (hh) { if (hh.ts().hpi_active) siEver = true; });
+        var t = h.ts();
+        ck('protection ends the event', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip',
+          dt >= 0, 'trips');
+        ck('the secondary blows down far below the classic 4.1 MPa SI setpoint',
+          fmt(h.range('steam_pressure_mpa').min, 2), h.range('steam_pressure_mpa').min < 1.0, '< 1.0');
+        ck('NO safety injection anywhere in the event (the verified gap)',
+          String(siEver) + ' / hpi_flow max ' + fmt(h.range('hpi_flow_normalized').max, 4),
+          !siEver && h.range('hpi_flow_normalized').max < 0.001, 'never');
+        ck('the primary never reached the 12.4 MPa SI actuation either',
+          fmt(h.range('pressure_mpa').min, 2), h.range('pressure_mpa').min > 12.4, '> 12.4');
+        ck('nothing to inject: inventory intact and deeply subcooled',
+          fmt(t.core_inventory_pct, 1) + ' % / ' + fmt(t.subcooling_c, 0) + ' °C sub',
+          t.core_inventory_pct > 98 && t.subcooling_c > 50, '> 98 %, subcooled');
+        ck.info('end state — a cold primary held at pressure (PTS, unmodelled)',
+          fmt(t.tavg_c, 1) + ' °C at ' + fmt(t.pressure_mpa, 2) + ' MPa');
       });
     },
   };

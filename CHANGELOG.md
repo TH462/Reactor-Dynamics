@@ -21,6 +21,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `ui/shell.html`). Real-user load timings for the one page that pulls in the full engine +
   layer + UI script set. Separate Vercel product with its own dashboard toggle.
 
+- **The PWR behavior battery now probes the four protections it had been skipping**
+  (`run_behavior` 30 → **34 pass / 0 xfail**, coverage-todo list empty). `PI-3` (reactor trip
+  on safety injection — provable only with `lo_press` blocked, since the two setpoints are
+  0.01 MPa apart and report the same reason string; plus the P-11 auto-block/auto-reinstate
+  legs), `PI-8` (the 97 % going-solid backstop read off the *indicated* level, with the 75 %
+  caution 102 s ahead of it and the ride-out swell well clear), `PI-9` (verified — see
+  Changed), and the `TR-11` end-state pin (a spray valve stuck fully open is a nuisance, not
+  a casualty: under the P5 capacity cap the heaters hold pressure at 15.33 MPa on 37 % duty,
+  no trip in 30 min). Two defects found writing them, both filed rather than fixed here: no
+  SI on low steam-line pressure exists at all, and `stuck_open_spray` is silently cleared by
+  the SPRAY AUTO button or the spray % slider.
 - **New meltdown-path test gate (`node test/run_meltdown.js`).** A strict-xfail battery
   (`test/meltdown_pwr.js`) that drives the classic routes to core damage — large-break LOCA,
   TMI small-break, station blackout, ATWS+LOCA, total loss of heat sink, ECCS recovery — and
@@ -74,6 +85,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   you can still overfeed by hand on purpose.
 
 ### Changed
+- **The behavior catalog's last two open interlock rows are settled.** `PI-9` ("SI on low
+  steam-line pressure — verify the SLB gate's path") is **verified: the signal does not
+  exist**, and a steam line break produces no injection by any other route either — the
+  pressurizer holds the primary near 15.3 MPa while the loop crash-cools to ~105 °C, so the
+  12.4 MPa actuation never sees its setpoint. Harmless today (inventory stays intact and
+  shutdown margin covers the overcooling on its own), and now asserted by a probe instead of
+  assumed; whether to add the interlock or retire the row is an owner ruling. `TR-11`'s row
+  is **superseded by the earlier spray-capacity-cap ruling** — it still predicted "heaters
+  lose, low-P trip unless isolated", which the cap reversed.
 - **The AGPL offer of source now resolves.** `legal.html` §5 and `README.md` carried
   commented-out placeholders where the source-repository URL belongs; both now link
   **https://github.com/TH462/Reactor-Dynamics**. AGPL-3.0 section 13 requires a network

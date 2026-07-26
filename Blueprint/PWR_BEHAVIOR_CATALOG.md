@@ -170,7 +170,7 @@ runs exactly as canon. Deception lives only where physics puts it.*
 | TR-13 | **SGTR, single-SG EOP — DELIVERED (P5):** full severity = 0.12 normalized ≈ 2× charging (leak_scale 1.5), **ΔP-scaled** through the ruptured tube — trip + SI forced (battery pin), and the EOP *depressurize to SG pressure* physically kills the leak (ops scenario: 0.056 → 0.006, inventory recovers, rides the sat-line band on the way down). Steaming the contaminated SG = P6 manual note | C | probe + ops EOP | **PASS** (P5) |
 | TR-5 | MSIV closure @100 %: SG safeties pop 9.31/reseat 9.0, primary stabilizes at safeties' Tsat, inventory retained | C | run_pwr msiv | PASS |
 | TR-12 | Steam line break: blowdown cooldown → positive reactivity → trip + SI; MSIV limits | C | campaign pwr_slb | PASS — re-validate P5 |
-| TR-11 | Spray valve fails open: slow depressurization, heaters lose, low-P trip unless isolated | C | ops heaters-vs-spray | PASS? — end-state pin todo |
+| TR-11 | Spray valve fails open: ~~slow depressurization, heaters lose, low-P trip unless isolated~~ — **row superseded by the P5 spray-capacity-cap ruling** (§12, 2026-07-20). Measured under the cap the heaters WIN: the valve sits at its ~12 % cap, pressure droops 15.41 → 15.33 MPa and parks, heaters hold at ~37 % duty, no trip and no alarm for 30 min. A stuck-open spray valve is a **nuisance, not a casualty** | C | probe + ops heaters-vs-spray | **PASS** — end-state pinned 2026-07-25 (#131) |
 | TR-14 | Station blackout: natural-circ-less coastdown, no HPI — **unsurvivable long-term by design** (teaching point; sharper on a single-loop plant — document in manual) | — | campaign fact | PASS — document P6 |
 | CA-5 | Tavg instrument failure w/ rods in auto: bounded misdrive, operator takeover note | C | autoctl HR1 | PASS |
 | CA-6 | NIS channel loss: SR re-energize at P-6 down-range, ladder blocks honored | C | NIS suite | PASS |
@@ -211,7 +211,7 @@ safety 17.13 MPa, with reseats ordered below lifts):
 | PI-5 | FW isolation on SI (rides the hpi arm), and on trip + low Tavg (P-4) — with CC-3 | **DONE** (P4) |
 | PI-7 | RPS reset path: `reset_rps` — refused while a trip signal stands; engine enforces rods-in; ops abuse test drives the recovery leg | **DONE** (P4) |
 | PI-8 | High pzr level trip **97 %** — enabled by the power-defect recalibration (owner ruling: `alpha_MTC` → −2.0e-4, real-PWR range; un-trimmed mismatch now ~+7 °C, ride-out swell peaks ~94). CA-4 probe pins both legs: sensed overfill trips; a stuck-low sensor defeats the single channel (teaching point) | **DONE** (P4/P5) |
-| PI-9 | SI on low steam-line pressure — verify the SLB gate's path | verify → P5 |
+| PI-9 | SI on low steam-line pressure — verify the SLB gate's path | **VERIFIED 2026-07-25 (#131): the signal does not exist.** No `steam_pressure` row in `PWR_ACTUATIONS`, and the SLB produces no SI by the back door either — the pressurizer holds the primary at ~15.3 MPa while the loop crash-cools to ~105 °C, so the 12.4 MPa actuation never sees its setpoint. Currently harmless (inventory intact; TR-12 pins that shutdown margin covers the overcooling insertion). Pinned by the `PI-9` probe; **add-or-retire is an owner ruling, #199** |
 
 ## 10. Retired (v3 rulings — do not resurrect)
 

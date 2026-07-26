@@ -35,7 +35,7 @@ staleness** items.
 | `run_pwr` | **32/32** | PWR engine-direct (+`load_above_rated_hold`, the #130 pin) |
 | `run_rbmk` | **23/23** | |
 | `run_bwr` | **15/15** | |
-| `run_behavior` | **30 / 0 xfail / 0 fail** | PWR behavior catalog |
+| `run_behavior` | **34 / 0 xfail / 0 fail** | PWR behavior catalog — coverage-todo list now **empty** (#131, 2026-07-25) |
 | `run_ops` | **59/68** | PWR **21/21**; 9 open = RBMK/BWR + 1 deliberate red (see backlog) |
 | `run_m4`..`run_m7` | **19** / **19** / 16 / OK | stack layers — all green. m5's rewind red RESOLVED 2026-07-25 (#151): `lastInstruments` was not rebuilt on restore, so every blockable trip reported `asserted=false` |
 | `run_autoctl` | **20/20** | |
@@ -106,6 +106,69 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-25 — The behavior battery's own coverage gaps closed (issue #131)  ✅🔬
+
+`run_behavior` printed **30 pass / 0 xfail / 0 fail**, which reads as full coverage. It was
+green partly because four catalogued behaviours were **never probed** — `PI-3`, `PI-8`,
+`PI-9` sat at `todo` in the `COVERAGE` map and `TR-11` carried an unwritten "end-state pin".
+A green gate that omits its own known gaps is worse than a red one, because it stops anyone
+looking. Battery now **34 pass / 0 xfail**, coverage-todo list **empty**.
+
+The issue text said `PI-3`/`PI-8` were blocked on an "interlock build". Stale — the catalog
+had marked both **DONE (P4/P5)** and the setpoints are in `Manuals/09_SETPOINTS_LIMITS.md`.
+Only the probes were missing. What the writing turned up:
+
+**PI-3 — the trip is real but invisible by its reason string.** `si_trip` (12.4 MPa) sits
+**0.01 MPa** under `lo_press` (12.41), and `_evalTrips` builds `last_trip_reason` as
+`instrument + ' ' + direction` (`control_kernel.js:320`) — so both report
+`'primary_pressure low'` and no depressurization can distinguish them. PI-3 is only
+observable in the **blocked** case, which is exactly the catalog's note that a cooldown must
+block *both*. Probe drives a `stuck_porv_open` depressurization three ways: lo_press blocked
+alone → still scrams at 7.5 s (si_trip did it, level 52.9 % so not a level trip in disguise);
+both blocked → pressure walks through 12.4 to 11.98 MPa unscrammed **but SI still actuates**
+(blocking a trip does not disable the ESF — worth teaching); and the P-11 permissive
+auto-blocks both at a `cold_shutdown` init and auto-reinstates them at 13.99 MPa on heatup.
+
+**PI-8 — pinned the number, not just the behaviour.** `CA-4` already pins the two
+behaviours (a sensed overfill trips; a stuck-low sensor defeats the single channel). The new
+probe pins the **setpoint and the ordering**: trip fires at **indicated 97.05 %** (HR1 — the
+instrument, not truth, which lagged at 97.34), the 75 % caution leads it by **102 s**, and the
+FG-4 ride-out swell peaks at **57.8 %** — enormous headroom, not the ~94 % the catalog
+predicted at P4.
+
+**PI-9 — verified, and the answer is that the signal does not exist.** → **issue #199**
+(owner ruling). No `steam_pressure` row in `PWR_ACTUATIONS` at all. On an SLB (sev 0.8) the
+secondary blows down to **0.10 MPa** — an order of magnitude below the classic ~4.1 MPa /
+600 psi setpoint — while `hpi_active` stays false for 900 s. No back door either: the
+pressurizer holds the primary at 15.2–15.4 MPa while the loop crash-cools to **105 °C**, so
+the 12.4 MPa actuation never sees its setpoint. End state is a primary at 105 °C and
+15.4 MPa, **240 °C subcooled**, inventory 100 %. Currently harmless — the safety function is
+reactivity, not inventory, and `TR-12` separately pins that shutdown margin covers the
+overcooling insertion. Probe asserts that measured state, so adding the interlock reddens it
+deliberately rather than silently. (Noted in #199 and not chased: a 240 °C-subcooled primary
+held at full pressure is textbook **PTS**, which this model has no consequence for.)
+
+**TR-11 — the catalog row was stale, and the end state is the opposite of what it says.**
+The row ("slow depressurization, heaters lose, low-P trip unless isolated") predates the
+**P5 spray capacity cap**. Measured under the cap: valve pegged at its 12 % cap, pressure
+droops 15.41 → **15.33 MPa** and parks, heaters hold at **36.8 %** duty — no trip, no alarm,
+for 30 min. A stuck-open spray valve is a **nuisance, not a casualty**. Catalog row struck
+through and re-stated (superseded by the §12 ruling, not by this session's opinion).
+
+**Found on the way — `stuck_open_spray` is defeated by two of its three command forms**
+→ **issue #200**. The kernel maps `override_value: true` onto the field
+`valueFieldFor('set_spray')` = `open`, but the engine resolves `auto` > `pct` > `open`
+(`pwr_engine.js:668`). So SPRAY OFF `{open:false}` → stuck open ✓, while SPRAY AUTO
+`{auto:true}` and the % slider `{pct:0}` **silently clear the failure** ✗ — and all three are
+live board controls (`ui/app.js:2204/2223`). A player reaching for SPRAY AUTO, the natural
+response, un-breaks the valve. Consequence today is ~0.08 MPa, hence `priority-low`; the
+defect is in the mechanism. TR-11 deliberately drives the form that works and does **not**
+pin the broken precedence, so the fix will not have to fight a test.
+
+Files: `test/behavior_pwr.js` (+4 probes, `COVERAGE` map), `test/run_all.js` (`BASELINES`
+30 → 34), `Blueprint/PWR_BEHAVIOR_CATALOG.md` (TR-11 + PI-9 rows). All 19 runners at
+baseline.
 
 ### 2026-07-25 — 1/M approach rebuilt: three points is 79 steps short (issue #197)  ✅🔬
 

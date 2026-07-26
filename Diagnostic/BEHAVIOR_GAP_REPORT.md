@@ -6,11 +6,6 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 30 pass, 0 known gaps (xfail).
+Battery result: 34 pass, 0 known gaps (xfail).
 
 **No gaps — the battery is fully green. The tuning pass is complete.**
-## Not yet probed (coverage todo)
-
-- **PI-3** — todo (with interlock build)
-- **PI-8** — todo (with interlock build)
-- **PI-9** — todo (verify SLB path)

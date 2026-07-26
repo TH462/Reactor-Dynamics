@@ -46,7 +46,9 @@ var BASELINES = {
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
-  'run_behavior.js':       { code: 0, score: '30pass 0xfail' },
+  // 34 since 2026-07-25 (#131): PI-3, PI-8, PI-9 and the TR-11 end-state pin were
+  // catalogued behaviours the battery never probed — the coverage todo list is now empty.
+  'run_behavior.js':       { code: 0, score: '34pass 0xfail' },
   'run_meltdown.js':       { code: 0, score: '8pass 0xfail' },
 
   // ---- stack layers ----
