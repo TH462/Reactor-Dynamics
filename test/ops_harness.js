@@ -66,6 +66,29 @@
     this.blockedCount = 0;    // interlock-refused commands
     this.cmdErrors = [];      // COMMAND_ERROR returns (always a test-authoring bug)
 
+    // ---- THE SHIPPED LINEUP (issue #209) -------------------------------------
+    // Mirror what M5 selectPlant does, in the same order (simulation_service.js
+    // :152-159). Without this the harness runs a plant NO PLAYER CAN PRODUCE:
+    // `engageDefaults()` and `stepAutomation()` have exactly one production caller
+    // each, both in M5, so a harness that stops at M4 has the automation-channel
+    // runtime never ticking and no channel ever engaged — while `feed_sg` (the
+    // three-element controller that REPLACES coupled feed as the level backbone),
+    // `cvcs_makeup` and `boron_conc` are all `defaultOn` in the shipped app.
+    // `getStartupLineup()` is the engine-side half (PWR letdown Orifice A; load
+    // mode MANUAL at the Mode-1 presets).
+    //
+    // opts.noDefaults reproduces the OLD bare lineup — and the campaign/walkthrough
+    // one, since `start_scenario` passes noDefaults too. Probes that deliberately
+    // test hand control should pass it and say why.
+    this.noDefaults = !!opts.noDefaults;
+    if (!this.noDefaults) {
+      if (this.cfl.engageDefaults) this.cfl.engageDefaults();
+      if (this.eng.getStartupLineup) {
+        var lineup = this.eng.getStartupLineup() || [];
+        for (var li = 0; li < lineup.length; li++) this.cfl.handleCommand(lineup[li]);
+      }
+    }
+
     this.cfl.evaluate(this.eng.getInstruments());
     this._sample();
   }
@@ -94,6 +117,12 @@
   OpsHarness.prototype.run = function (seconds, onSample) {
     var n = Math.round(seconds / DT);
     for (var i = 0; i < n; i++) {
+      // M5 tick order (simulation_service.js:172-179), and it matters: the channels
+      // run at PHYSICS rate reading the PREVIOUS step's instruments, then the engine
+      // steps, then M4 evaluates trips/alarms on the new readings once per broadcast.
+      // Ticking automation here is the other half of #209 — engaging channels at
+      // construction does nothing if their runtime never runs.
+      if (!this.noDefaults && this.cfl.stepAutomation) this.cfl.stepAutomation(DT);
       this.eng.step(DT);
       this.simTime += DT;
       this._stepCount++;
@@ -111,6 +140,7 @@
   OpsHarness.prototype.runUntil = function (pred, maxSeconds, onSample) {
     var n = Math.round(maxSeconds / DT), t0 = this.simTime;
     for (var i = 0; i < n; i++) {
+      if (!this.noDefaults && this.cfl.stepAutomation) this.cfl.stepAutomation(DT);   // M5 tick order — see run()
       this.eng.step(DT);
       this.simTime += DT;
       this._stepCount++;

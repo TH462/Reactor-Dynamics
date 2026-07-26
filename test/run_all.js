@@ -91,10 +91,17 @@ var BASELINES = {
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
-    code: 1, score: '59/68 337passed 9failed',
+    code: 1, score: '57/68 334passed 12failed',
     note: 'Ops probes are tuning targets by design. The FAILs are documented RBMK/BWR ' +
           'targets (P4, R1-R3, B2-B5) plus the deliberately-red C2 accel-latency probe ' +
-          '(#153, status-deliberate). See Diagnostic/OPS_TUNING_REPORT.md.',
+          '(#153, status-deliberate). See Diagnostic/OPS_TUNING_REPORT.md. ' +
+          '2026-07-26c (#209): 59/68 -> 57/68 when ops_harness was wired to the SHIPPED ' +
+          'lineup (engageDefaults + startup lineup + stepAutomation, mirroring M5). The ' +
+          'two PWR probes it broke were repaired (they silently assumed load-follow; the ' +
+          'shipped board is MANUAL -> #211). The two NEW reds are RBMK, which is ON HOLD: ' +
+          '[post] load follow returns to 95.2 % vs 100 +/-3, and [pre] flow reduction holds ' +
+          '94.0 % vs 100 +/-4 — both are the AR channel now actually running. Recorded in ' +
+          '#208, not chased.',
   },
 
   // ---- browser gates (slow: Playwright + a throwaway http server) ----

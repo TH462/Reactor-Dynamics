@@ -65,6 +65,15 @@
     ops_load_follow_daily: function () {
       return test('OPS load follow — 100 → 50 → 100% daily cycle (rods, turbine follows)', function (ck) {
         var h = H('hot_full_power');
+        // DECLARE THE LINEUP (#209). This probe's whole subject is "rods set reactor
+        // power, the turbine follows" — but the SHIPPED board hands Mode 1 out in
+        // MANUAL (engine.getStartupLineup()), which the harness now applies. In
+        // MANUAL the governor sits at the operator's load target and never moves, so
+        // driving the reactor down with rods alone leaves the turbine as an
+        // unthrottled heat sink: measured, Tavg 304 → 247 °C with SG pressure at
+        // 2.86 MPa. That is not this probe's subject — it is a real defect, filed
+        // separately — so ask for FOLLOW explicitly rather than inheriting it.
+        h.cmd('set_load_mode', { mode: 'follow' });
         var lastAct = 0;
         h.run(1800, function (hh, t) {
           if (t - lastAct < 10) return;
@@ -177,6 +186,10 @@
     ops_normal_shutdown: function () {
       return test('OPS normal shutdown — ramp down, borate/insert, hot standby', function (ck) {
         var h = H('hot_full_power');
+        // Turbine in FOLLOW so it ramps off with the reactor — see the lineup note in
+        // ops_load_follow_daily. The shipped board starts in MANUAL (#209); left there,
+        // this rod-only rampdown drags Tavg to 130 °C against a 0.25 MPa secondary.
+        h.cmd('set_load_mode', { mode: 'follow' });
         h.cmd('set_cvcs_auto', { active: true });   // makeup holds inventory through the shrink
         // ~4%/min rod rampdown, turbine follows; PAUSE the ramp whenever the
         // pressurizer level shrinks near the low alarm (a real operator holds).

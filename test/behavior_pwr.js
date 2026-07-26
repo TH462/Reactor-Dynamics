@@ -639,7 +639,13 @@
       return test('CA-4 overfill backstop — PI-8 trips a sensed overfill; a stuck-low sensor defeats it', function (ck) {
         var h = H('hot_full_power');
         h.run(30);
-        h.cmd('set_charging_flow', { normalized: 0.06 });     // MANUAL max charging, letdown off
+        // MANUAL max charging with letdown ISOLATED. The isolation is now commanded
+        // explicitly (#209): this probe always said "letdown off", but it used to get
+        // that for free from a bare harness lineup. The shipped board opens Orifice A
+        // (engine.getStartupLineup()), which drains 0.030 against 0.060 of charging —
+        // half the fill rate, and the overfill no longer reaches PI-8 inside 300 s.
+        h.cmd('set_letdown_orifices', { a: false, b: false });
+        h.cmd('set_charging_flow', { normalized: 0.06 });
         var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
         ck('PI-8 tripped the sensed overfill', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip',
           dt >= 0 && /pzr_level high/.test(h.tripReason || ''), 'pzr_level high');
@@ -651,7 +657,13 @@
         var t2 = h2.ts();
         ck('charging flooded the plant chasing the stuck-low reading',
           fmt(t2.core_inventory_pct, 1) + ' %', t2.core_inventory_pct > 110, '> 110');
-        ck('TRUE level at/near solid', fmt(t2.pzr_level_pct, 1), t2.pzr_level_pct >= 95, '≥ 95');
+        // Threshold 95 → 85 (#209). This leg deliberately keeps the SHIPPED lineup —
+        // CVCS in AUTO with letdown Orifice A open is the board a player is handed —
+        // so the overfill it drives is bounded by that 0.030 drain: measured 87.3 %
+        // TRUE level against 110.8 % inventory. The lesson is unchanged and arguably
+        // sharper: the stuck-low sensor walks the plant far above its program and
+        // parks it just UNDER the 97 % PI-8 backstop, with nothing annunciating.
+        ck('TRUE level driven far above program', fmt(t2.pzr_level_pct, 1), t2.pzr_level_pct >= 85, '≥ 85');
         ck('the single-channel trip was FOOLED (no scram — the CA-4 deception)',
           h2.tripReason || 'none', h2.tripTime == null, 'none');
         T.checkSanity(ck, h2);
