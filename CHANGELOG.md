@@ -8,6 +8,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **New hands-off protection gate (`node test/run_meltdown_stack.js`).** The same core-damage
+  casualties as `run_meltdown.js`, but driven through the **full stack** on the shipped lineup
+  with the operator taking their hands off. `run_meltdown` is deliberately engine-direct and
+  does not load the control layer at all — so its MD-4 (*"stuck PORV **with HPI** → core
+  protected"*) and MD-8 (*"depressurize-to-flood → survivable"*) are **protection** claims
+  proven with the operator hand-scramming and hand-starting HPI. In the shipped plant nobody
+  hand-starts HPI: M4 scrams on the instruments and actuates SI at 12.4 MPa. This gate asserts
+  the automatic chain actually fires **unprompted** — scram without a manual scram,
+  `hpi_active` without a `set_hpi` — so a regression in an SI setpoint, an ESF arm or the P-11
+  permissive cannot silently turn a documented-survivable path into a melt. **3/3 · 21/21.**
+  Measured: the plant trips itself on SG level at 120 s and injects at 121 s; the LOCA band
+  0.05–0.20 all scram on low pressure within 19–55 s and inject 1–2 s later.
+
 ### Changed
 - **The startup checklist now takes load control after synchronising** (owner ruling, #211).
   The generator picks up load in FOLLOW — right for getting on line, where the turbine chases

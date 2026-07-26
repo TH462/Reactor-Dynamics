@@ -53,6 +53,14 @@ var BASELINES = {
   // 35 since 2026-07-25 (#199): +TR-12b, the MSIV isolating a downstream steam line break.
   'run_behavior.js':       { code: 0, score: '35pass 0xfail' },
   'run_meltdown.js':       { code: 0, score: '8pass 0xfail' },
+  // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
+  // full stack. run_meltdown is engine-direct and does not load control_kernel at
+  // all, so its MD-4/MD-8 PROTECTION claims are proven with the operator hand-
+  // scramming and hand-starting HPI. This asserts the automatic chain actually
+  // fires unprompted — scram without a manual scram, hpi_active without a set_hpi —
+  // so a regression in an SI setpoint, an ESF arm or the P-11 permissive cannot
+  // silently turn a documented-survivable path into a melt.
+  'run_meltdown_stack.js': { code: 0, score: '3/3 21/21' },
 
   // ---- stack layers ----
   // 19/19 since 2026-07-25 (#151): +a save/restore round-trip test for trip blocks
