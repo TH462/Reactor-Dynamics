@@ -52,7 +52,8 @@
     // the P5 spray capacity cap — measured under the cap the heaters WIN, and the
     // probe pins that end state. See the probe comment and Diagnostic/TUNING_LOG.md.
     'TR-10': 'probe', 'TR-11': 'probe (end-state pin) + existing:run_ops heaters vs spray fight',
-    'TR-12': 'probe + run_campaign pwr_slb', 'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
+    'TR-12': 'probe + run_campaign pwr_slb', 'TR-12b': 'probe (MSIV isolates a downstream break, #199)',
+    'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
     'SS-9': 'probe (cold thermal stability)', 'SS-10': 'probe (severity clamp)',
     'TR-14': 'existing:campaign SBO fact (document in manual)',
     'CA-1': 'existing:run_campaign tmi2 p1-p3 (re-validate after tuning)',
@@ -68,7 +69,7 @@
     'PI-4': 'probe:TR-8 (AFW on MFW loss at power)', 'PI-5': 'probe:CC-3', 'PI-6': 'RETIRED (single-loop plant)',
     'PI-7': 'probe', 'PI-7-reset': 'existing:run_ops abuse scram-then-withdraw (reset leg added P4)',
     'PI-8': 'probe (setpoint + ordering) + probe:CA-4 (both behaviour legs)',
-    'PI-9': 'probe — VERIFIED 2026-07-25: no low-steam-line-pressure SI signal exists; owner ruling pending (#199)',
+    'PI-9': 'probe — RETIRED 2026-07-25 by owner ruling (#199); the probe fences the absence, catalog §10',
   };
 
   var PROBES = {
@@ -485,6 +486,46 @@
       });
     },
 
+    // TR-12b (#199): the MSIV is the operator's one lever on a steam line break,
+    // and until 2026-07-25 it was decorative — the break sink ignored valve
+    // position entirely, so the manual's "MSIV Close if it terminates break (as
+    // modeled)" and the catalog's "MSIV limits" were both false. Now the break's
+    // LOCATION decides it. Both legs run the same severity and the same command;
+    // only the side of the valve the pipe failed on differs.
+    'TR-12b': function () {
+      return test('TR-12b steam line break — the MSIV ends a downstream break, and cannot touch an upstream one', function (ck) {
+        function run(failure) {
+          var h = H('hot_full_power');
+          h.run(30);
+          h.cmd('inject_failure', { failure_id: failure, severity: 0.8 });
+          h.run(60);
+          var atClose = h.ts().steam_pressure_mpa;
+          h.cmd('close_msiv');
+          h.cmd('close_msiv');                      // two-press arm/confirm
+          h.run(900);
+          return { h: h, atClose: atClose, t: h.ts() };
+        }
+        var d = run('steam_line_break');
+        ck('MSIV shut', String(d.t.msiv_open), d.t.msiv_open === false, 'false');
+        ck('DOWNSTREAM: isolating ends the blowdown — the bottled SG re-pressurizes',
+          fmt(d.atClose, 2) + ' → ' + fmt(d.t.steam_pressure_mpa, 2) + ' MPa',
+          d.t.steam_pressure_mpa > d.atClose + 1.0, 'rises ≥ 1 MPa');
+        ck('and the overcooling is arrested (Tavg back near the no-load anchor)',
+          fmt(d.t.tavg_c, 1), d.t.tavg_c > 280, '> 280 °C');
+        ck('the bottled generator lifts its code safeties, as in TR-5',
+          String(d.t.sg_safety_open), !!d.t.sg_safety_open, 'true');
+
+        var u = run('steam_line_break_upstream');
+        ck('UPSTREAM: the same command changes nothing — the break is on the wrong side',
+          fmt(u.atClose, 2) + ' → ' + fmt(u.t.steam_pressure_mpa, 2) + ' MPa',
+          u.t.steam_pressure_mpa < 1.0, '< 1.0 (still blown down)');
+        ck('so the plant overcools regardless of the operator',
+          fmt(u.t.tavg_c, 1), u.t.tavg_c < 150, '< 150 °C');
+        ck('neither leg damages fuel', String(!!d.t.fuel_damaged) + ' / ' + String(!!u.t.fuel_damaged),
+          !d.t.fuel_damaged && !u.t.fuel_damaged, 'false / false');
+      });
+    },
+
     // SS-9 (new, P6 edge-case sweep): cold-plant thermal stability. The reverse
     // SG→primary heat path is damped to 5 % conductance (sg_reverse_frac) — this
     // pins that a hands-off cold shutdown neither runs away warming (the old
@@ -843,19 +884,20 @@
       });
     },
 
-    // PI-9 — the catalog's last interlock item was "verify the SLB gate's path".
-    // VERIFIED (#131), and the answer is that the path does not exist: there is no
-    // steam_pressure row in PWR_ACTUATIONS, so no SI on low steam-line pressure,
-    // and the SLB produces none by the back door either — the pressurizer holds
-    // the primary at ~15.3 MPa while the loop crash-cools, so the 12.4 MPa
-    // actuation never sees its setpoint. This probe pins that measured state
-    // rather than leaving it a silent coverage todo: if the interlock is ever
-    // added (owner ruling pending, #199) this reddens and must be re-authored.
-    // Why it is currently harmless is asserted too — inventory is intact, so there
-    // is nothing to inject, and TR-12 separately pins that shutdown margin covers
-    // the overcooling insertion without boron.
+    // PI-9 — RETIRED by owner ruling 2026-07-25 (#199), and this probe is the
+    // fence that keeps it retired. There is no steam_pressure row in
+    // PWR_ACTUATIONS, so no SI on low steam-line pressure, and the SLB produces
+    // none by the back door either — the pressurizer holds the primary at
+    // ~15.3 MPa while the loop crash-cools, so the 12.4 MPa actuation never sees
+    // its setpoint. The ruling rested on three measurements: the core cannot
+    // return to power (ρ ≤ −9,604 pcm even with the MAXIMUM stuck rod, so the
+    // interlock's reactivity job does not exist here); a prototype actuation
+    // pegged inventory at the 120 % tank cap injecting into an intact primary;
+    // and the severe case already gets borated water from the accumulators.
+    // Adding the interlock reddens this probe — which is the point: it re-opens
+    // the ruling deliberately instead of drifting past it. Catalog §10.
     'PI-9': function () {
-      return test('PI-9 SLB gate — VERIFIED: no low-steam-line-pressure SI exists (#199)', function (ck) {
+      return test('PI-9 SLB gate — RETIRED: no low-steam-line-pressure SI, and none needed (#199)', function (ck) {
         var h = H('hot_full_power');
         h.run(30);
         h.cmd('inject_failure', { failure_id: 'steam_line_break', severity: 0.8 });

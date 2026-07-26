@@ -954,6 +954,7 @@
         case 'rod_withdrawal_runaway':
         case 'stuck_control_rod':
         case 'secondary_depressurize':
+        case 'secondary_depressurize_upstream':
           this._applyPhysicsFailure(def.effect, severity);
           break;
       }
@@ -968,7 +969,15 @@
     switch (effect) {
       case 'rod_withdrawal_runaway': s._fail.rod_runaway = { active: true, rate: pf.ROD_RUNAWAY_RATE_MAX * severity }; break;
       case 'stuck_control_rod': s._fail.stuck_rod = { active: true, worth_held: pf.STUCK_ROD_MAX_FRAC * severity }; break;
-      case 'secondary_depressurize': s._fail.steam_break = { active: true, size: severity }; break;
+      // Break LOCATION relative to the MSIV decides whether the operator can end it
+      // (#199). Downstream (turbine hall) — the MSIV stands between the SG and the
+      // break, so shutting it isolates the generator and the blowdown STOPS.
+      // Upstream (inside containment, between SG and valve) — nothing on this
+      // single-loop plant can isolate it; the SG blows down whatever you do. The
+      // steam-line rupture that a multi-loop crew answers by isolating the faulted
+      // SG and steaming the intact ones has no counterpart here — say so, don't fake it.
+      case 'secondary_depressurize': s._fail.steam_break = { active: true, size: severity, upstream: false }; break;
+      case 'secondary_depressurize_upstream': s._fail.steam_break = { active: true, size: severity, upstream: true }; break;
     }
   };
 
@@ -999,7 +1008,9 @@
         case 'primary_leak': s.leak_flow = 0; s._leak_base = 0; s._leak_to_sg = false; break;
         case 'rod_withdrawal_runaway': s._fail.rod_runaway = { active: false, rate: 0 }; break;
         case 'stuck_control_rod': s._fail.stuck_rod = { active: false, worth_held: 0 }; break;
-        case 'secondary_depressurize': s._fail.steam_break = { active: false, size: 0 }; break;
+        case 'secondary_depressurize':
+        case 'secondary_depressurize_upstream':
+          s._fail.steam_break = { active: false, size: 0, upstream: false }; break;
       }
     }
   };
@@ -1209,7 +1220,7 @@
       _fail: {
         rod_runaway: { active: false, rate: 0 },
         stuck_rod: { active: false, worth_held: 0 },
-        steam_break: { active: false, size: 0 },
+        steam_break: { active: false, size: 0, upstream: false },
       },
     };
 
@@ -1419,6 +1430,14 @@
     if (s.ir_amps == null) s.ir_amps = 0;
     // MSIV + SG safeties.
     if (s.msiv_open == null) s.msiv_open = true;
+    // Steam-break LOCATION (2026-07-25, #199): pre-MSIV-gate saves carry
+    // `_fail.steam_break = {active, size}` with no location. Default DOWNSTREAM
+    // (isolable) — that is what the plain `steam_line_break` id now means, and a
+    // save can only hold that one, since the upstream variant did not exist. A
+    // restored mid-break save therefore gains a working MSIV, which is the fix.
+    if (s._fail && s._fail.steam_break && s._fail.steam_break.upstream == null) {
+      s._fail.steam_break.upstream = false;
+    }
     if (s.sg_safety_open == null) s.sg_safety_open = false;
     if (s.sg_safety_flow == null) s.sg_safety_flow = 0;
     // Boron grab sample (2026-07-23 batch-dose rework). Older saves have never
@@ -2350,6 +2369,8 @@
         delete legacy.rhr_valve_open; delete legacy.eccs_mode;
         delete legacy.hpi_active; legacy.lpi_active = true;   // old split-flag form → hpi
         legacy.letdown_flow = 0.030;                          // old commanded constant → lineup A
+        // Pre-#199 steam break: no location field (the sink ignored the MSIV).
+        legacy._fail.steam_break = { active: true, size: 0.4 };
         // Load into a fresh engine; its cfg supplies the migration defaults.
         var h2 = new Harness('hot_full_power');
         h2.eng.loadState({ schema: save.schema, s: legacy, rod_groups: save.rod_groups,
@@ -2365,6 +2386,9 @@
           s.hpi_active === true && s.lpi_active === undefined, 'hpi true, lpi gone');
         var nodesOk = [s.p_coldleg, s.p_hotleg, s.p_pumpsuction].every(function (x) { return typeof x === 'number' && isFinite(x); });
         ck('loop pressure nodes seeded on load', nodesOk, nodesOk, 'all finite');
+        ck('legacy steam break gains a location — DOWNSTREAM, so the MSIV now works on it',
+          'upstream=' + s._fail.steam_break.upstream + ' size=' + s._fail.steam_break.size,
+          s._fail.steam_break.upstream === false && s._fail.steam_break.size === 0.4, 'upstream=false, size kept');
         // A half-migrated state must step cleanly (no NaN leaking from a missing field).
         h2.run(2);
         var t = h2.ts();

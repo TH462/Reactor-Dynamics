@@ -173,8 +173,18 @@
     s.steam_pressure_mpa += dSteamP * dt;
 
     // §9.1 main steam line break: blows the secondary down (overcooling).
-    if (s._fail.steam_break.active) {
-      s.steam_pressure_mpa -= cfg.physics_failures.STEAM_BREAK_RATE * s._fail.steam_break.size * dt;
+    // The MSIV gates it, by break LOCATION (#199). A break DOWNSTREAM of the valve
+    // (turbine hall) has the MSIV between it and the generator, so shutting the
+    // valve isolates the SG and the blowdown stops dead — the operator's one real
+    // lever on this casualty, and the reason the alarm-response card sends you to
+    // the MSIV. A break UPSTREAM (inside containment, between SG and valve) is on
+    // the wrong side of every isolation this single-loop plant owns: it blows the
+    // generator down no matter what the operator shuts. Before this the sink ran
+    // unconditionally, so closing the MSIV mid-break changed nothing at all while
+    // the manual and the catalog both claimed it did.
+    var brk = s._fail.steam_break;
+    if (brk.active && (brk.upstream || s.msiv_open !== false)) {
+      s.steam_pressure_mpa -= cfg.physics_failures.STEAM_BREAK_RATE * brk.size * dt;
     }
     // Thermodynamic bound (feel-plan P5): the secondary saturates from PRIMARY
     // heat, so it can never sit hotter than the coolant heating it — cap SG

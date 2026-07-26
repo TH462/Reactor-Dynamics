@@ -34,7 +34,8 @@ Provide symptoms, automatic response, immediate operator actions, recovery, and 
 | PWR-E16 | SG Overfeed / Overcooling | power |
 | PWR-E17 | Continuous Rod Withdrawal | reactivity |
 | PWR-E18 | Control Rod Stuck on Scram | reactivity |
-| PWR-E19 | Main Steam Line Break | power |
+| PWR-E19 | Main Steam Line Break (downstream of MSIV — isolable) | power |
+| PWR-E19u | Main Steam Line Break (upstream of MSIV — not isolable) | power |
 | PWR-E20 | Tavg Sensor Drifting | instrument |
 | PWR-E21 | Pressurizer Level Sensor Stuck | instrument |
 | PWR-E22 | Pressurizer Level Sensor Failed Low | instrument |
@@ -43,7 +44,7 @@ Provide symptoms, automatic response, immediate operator actions, recovery, and 
 
 ### 2.1 Failure severity sliders
 
-Most failures inject at a fixed severity; six carry a slider (Tools → Failures). The slider
+Most failures inject at a fixed severity; seven carry a slider (Tools → Failures). The slider
 is the failure's physical size — the response procedures below apply at any setting.
 
 | Failure | Slider | Range | Default |
@@ -53,7 +54,8 @@ is the failure's physical size — the response procedures below apply at any se
 | Large LOCA (E09) | Break Size | 0 – 50 % rated flow | 20 % |
 | Continuous Rod Withdrawal (E17) | Withdrawal Rate | 0 – 6 steps/s | 3 |
 | Rod Stuck on Scram (E18) | Rod Worth Held | 0 – 40 % of total | 20 % |
-| Main Steam Line Break (E19) | Break Size | 0 – 100 % effective area | 30 % |
+| Main Steam Line Break, downstream (E19) | Break Size | 0 – 100 % effective area | 30 % |
+| Main Steam Line Break, upstream (E19u) | Break Size | 0 – 100 % effective area | 30 % |
 
 ---
 
@@ -536,12 +538,22 @@ Power reduced by boron/feedback; core cooled; damage avoided.
 ## PWR-E19 — Main Steam Line Break
 
 ### Failure
-`steam_line_break` — secondary depressurization; severity break size %.
+`steam_line_break` — break **downstream** of the MSIV (turbine hall); severity break size %.  
+`steam_line_break_upstream` — break **upstream** of the MSIV (between generator and valve);
+same severity scale.
+
+**The location decides whether you can end it.** The MSIV sits between the steam generator and
+the turbine. A break downstream of the valve is on the far side of it, so shutting the MSIV puts
+steel between the generator and the break and the blowdown **stops**. A break upstream is on the
+generator side, where no isolation this plant owns can reach it — it blows the generator down
+whatever you shut. A multi-loop plant answers a steam line break by isolating the faulted
+generator and steaming the intact ones; **this plant has one generator**, so against an upstream
+break there is nothing to fall back on. Trip, and ride the cooldown out.
 
 ### Symptoms
 - Steam pressure falling; severe overcooling  
 - Tavg drop → reactivity add → power rise possible  
-- Possible MSIV/steam path response  
+- MSIV SHUT annunciates if you isolate (turbine trips with it)  
 - DNB / core-exit boiling risk at power in model  
 
 ### Immediate actions
@@ -549,14 +561,22 @@ Power reduced by boron/feedback; core cooled; damage avoided.
 | Step | Action |
 |------|--------|
 | 1 | **SCRAM**  
-| 2 | Isolate steam path — **MSIV Close** if it terminates break (as modeled)  
+| 2 | **MSIV Close** (two-press). **Downstream break: this terminates it** — steam pressure stops falling and the bottled generator re-pressurizes to its code safeties (9.31 MPa lift / 9.0 reseat), and you are now in the bottled-SG condition of alarm card **PWR-A23**. **Upstream break: it will not help** — steam pressure keeps falling; do not wait on it  
 | 3 | Stop AFW/feed overfill into faulted path if level high  
 | 4 | Control pressure (spray/heaters) as primary cools  
 | 5 | Borate if return-to-power risk  
-| 6 | Stabilize intact heat sink  
+| 6 | Stabilize intact heat sink — after a successful isolation the generator is bottled and dry-heading toward the low-level trip; feed it (AFW) and control pressure per **PWR-A23**  
 
 ### Acceptance
-Break isolated or effects mitigated; reactor shut down; core cooled without melt.
+Break isolated (downstream) or effects mitigated (upstream); reactor shut down; core cooled
+without melt.
+
+> **Model honesty.** There is **no automatic safety injection on low steam-line pressure** in
+> this plant, and none is needed — the scrammed core holds more than 9,600 pcm subcritical
+> through a full blowdown even with the maximum stuck rod, so there is no return-to-power to
+> borate against. Real plants carry the interlock; here it would inject into an intact primary
+> with nothing to make up. Pressurized thermal shock — a cold, deeply subcooled primary held at
+> full pressure — is a genuine concern this model does **not** represent.
 
 ---
 

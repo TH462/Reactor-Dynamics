@@ -42,13 +42,16 @@ var BASELINES = {
   // 32/32 since 2026-07-25: +load_above_rated_hold (the #130 regression pin), and
   // load_mode_follow gained a real load-tracks-power check where a vacuous
   // "< 950 MWe" literal used to sit.
-  'run_pwr.js':            { code: 0, score: '32/32 198passed' },
+  // 199 checks since 2026-07-25 (#199): save_migration also pins the new
+  // _fail.steam_break.upstream default (legacy saves → downstream/isolable).
+  'run_pwr.js':            { code: 0, score: '32/32 199passed' },
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
   // 34 since 2026-07-25 (#131): PI-3, PI-8, PI-9 and the TR-11 end-state pin were
   // catalogued behaviours the battery never probed — the coverage todo list is now empty.
-  'run_behavior.js':       { code: 0, score: '34pass 0xfail' },
+  // 35 since 2026-07-25 (#199): +TR-12b, the MSIV isolating a downstream steam line break.
+  'run_behavior.js':       { code: 0, score: '35pass 0xfail' },
   'run_meltdown.js':       { code: 0, score: '8pass 0xfail' },
 
   // ---- stack layers ----

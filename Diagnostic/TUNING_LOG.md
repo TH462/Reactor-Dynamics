@@ -35,7 +35,7 @@ staleness** items.
 | `run_pwr` | **32/32** | PWR engine-direct (+`load_above_rated_hold`, the #130 pin) |
 | `run_rbmk` | **23/23** | |
 | `run_bwr` | **15/15** | |
-| `run_behavior` | **34 / 0 xfail / 0 fail** | PWR behavior catalog — coverage-todo list now **empty** (#131, 2026-07-25) |
+| `run_behavior` | **35 / 0 xfail / 0 fail** | PWR behavior catalog — coverage-todo list **empty** (#131); +TR-12b MSIV break isolation (#199) |
 | `run_ops` | **59/68** | PWR **21/21**; 9 open = RBMK/BWR + 1 deliberate red (see backlog) |
 | `run_m4`..`run_m7` | **19** / **19** / 16 / OK | stack layers — all green. m5's rewind red RESOLVED 2026-07-25 (#151): `lastInstruments` was not rebuilt on restore, so every blockable trip reported `asserted=false` |
 | `run_autoctl` | **20/20** | |
@@ -106,6 +106,69 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-25 — PI-9 retired on measurement; the MSIV made real (issue #199)  ✅🔬
+
+Owner ruling on the PI-9 question raised by #131 — *"SI on low steam-line pressure: add it or
+retire it?"* — decided by three measurements rather than by preference, plus a second ruling that
+came out of the same investigation.
+
+**Ruling 1 — PI-9 RETIRED (catalog §10).** The interlock's job in a real plant is *reactivity*:
+boron in before an overcooled core with a strong negative MTC walks back to criticality, with the
+most reactive rod stuck out. Three findings:
+
+| # | Question | Measurement |
+|---|---|---|
+| 1 | Can this core return to power? | **No.** SLB against the MAXIMUM stuck rod (`STUCK_ROD_MAX_FRAC` 0.4 × `rod_worth_total` 8500 = **3,400 pcm held**) ends at **ρ = −9,604 pcm**, power 0.000 % — ~3× the held worth in spare margin. At sev 1.0, ρ = −27,252. The job does not exist. |
+| 2 | Would adding it help? | **It harms.** Prototype (`steam_pressure` low @ 4.14 → `set_hpi`): SI fires at **47 s** into a primary that never lost a drop; **inventory pegs at the 120 % tank cap** by t=300 s, level 88 %, PZR LVL HI annunciated, and stays there. An automatic that floods an intact plant. |
+| 3 | Is the severe case uncovered? | **No.** At sev 1.0 the primary does crash (0.11 MPa) and the **accumulators fire at 243 s**, dumping fully — boron 734 → 2500 ppm. Passive ECCS already covers the only case where injection could matter. |
+
+The `PI-9` probe stays as the **fence**: it asserts the absence, so adding the interlock reddens
+the gate and re-opens the ruling deliberately instead of drifting past it.
+
+**Ruling 2 — the MSIV now isolates a downstream steam line break.** Found while answering
+ruling 1, and the bigger defect of the two. `pwr_steam_generator.js:176` applied the break as an
+**unconditional** pressure sink that never read valve position, so the operator's one lever on the
+casualty did nothing — while `Manuals/07:552` said *"MSIV Close **if it terminates break (as
+modeled)**"* and the catalog's TR-12 row claimed *"MSIV limits"*. Measured before the fix, closing
+the MSIV 60 s into an SLB gave **SGp 0.10 MPa, Tavg 105.6 °C** — identical to leaving it open.
+
+Fixed by modelling break **location**, which is the real-plant distinction and the honest one for
+a single-generator plant:
+
+- **`steam_line_break`** (existing id) = **downstream**, turbine hall. The valve stands between
+  generator and break, so shutting it ends the blowdown: SGp **5.59 → 9.02 MPa**, code safeties
+  lift, Tavg recovers to **305.8 °C** — i.e. it becomes the TR-5 bottled-SG condition.
+- **`steam_line_break_upstream`** (new) = inside containment, between generator and valve. No
+  isolation this plant owns reaches it: **5.59 → 0.10 MPa**, Tavg 105.4, MSIV or not. A multi-loop
+  crew isolates the faulted SG and steams the intact ones; **this plant has one generator**, so
+  that answer does not exist here. Say so rather than fake it.
+
+With the MSIV left alone both variants are **bit-identical to the old model**, so `TR-12`, `PI-9`
+and the ops/campaign SLB paths are untouched — the new behaviour only appears when someone shuts
+the valve, which previously did nothing.
+
+`pwr_slb` switched to the **upstream** variant: its arc is "you cannot stop the cooldown, only
+shut the reactor down", and its `waiting` branch needs the blowdown to keep draining the
+pressurizer to the low-level trip — a player who shut the MSIV mid-scenario would now terminate
+the casualty and strand the story. Its prose said *"isolate the affected steam generator"*
+(multi-loop thinking); both endpoint texts now explain **why** isolation is unavailable here and
+that a downstream break would be a different casualty.
+
+Save contract: `_fail.steam_break` gains `upstream`; `_migrateState` defaults legacy saves to
+**downstream** (the only thing they can hold), so a restored mid-break save gains a working MSIV.
+Pinned in the engine's `save_migration` test.
+
+Docs corrected rather than patched around: catalog TR-12 row (both the false "MSIV limits" **and**
+the false "trip + SI"), PI-9 → §10 with the measurements, rulings log, `Manuals/07` PWR-E19
+(rewritten around the location split, +E19u index/severity rows, + a model-honesty note on the
+absent SI and unmodelled PTS), `Manuals/01` + `03` MSIV purpose, and the `close_msiv` blurb in
+`tools/gen_manual_reference.js`. Both manual pipelines regenerated (`pack_manuals.js`,
+`gen_manual_reference.js`).
+
+New probe **`TR-12b`** (`run_behavior` 34 → **35**) runs both legs off the same command and
+severity, differing only in which side of the valve the pipe failed on. Closes the
+`Manuals/ISSUES_AND_FINDINGS.md` I-33 concern about thin single-SG isolation logic.
 
 ### 2026-07-25 — The behavior battery's own coverage gaps closed (issue #131)  ✅🔬
 

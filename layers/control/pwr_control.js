@@ -248,8 +248,18 @@
                                    severity_meta: { label: 'Withdrawal Rate', unit: 'steps/s', min: 0, max: 24, default: 12 }, display: 'Continuous Rod Withdrawal' },
     stuck_rod_on_scram:          { type: 'physics_parameter', category: 'reactivity', effect: 'stuck_control_rod', severity_scales: 'worth_fraction_held',
                                    severity_meta: { label: 'Rod Worth Held', unit: '% of total', min: 0, max: 40, default: 20 }, display: 'Control Rod Stuck on Scram' },
+    // Two steam-line breaks, distinguished by LOCATION relative to the MSIV (#199,
+    // 2026-07-25). The plain id is the TURBINE-HALL break, downstream of the valve:
+    // shutting the MSIV puts steel between the generator and the break and the
+    // blowdown ends. The `_upstream` variant is inside containment, between SG and
+    // valve, where no isolation this plant owns can reach it — the honest
+    // single-loop answer to "isolate the faulted SG", which a one-generator plant
+    // cannot do. Before the split the break ignored the MSIV entirely, so the
+    // manual's "MSIV Close if it terminates break (as modeled)" hedge was a no-op.
     steam_line_break:            { type: 'physics_parameter', category: 'power', effect: 'secondary_depressurize', severity_scales: 'break_size',
-                                   severity_meta: { label: 'Break Size', unit: '% effective area', min: 0, max: 100, default: 30 }, display: 'Main Steam Line Break' },
+                                   severity_meta: { label: 'Break Size', unit: '% effective area', min: 0, max: 100, default: 30 }, display: 'Main Steam Line Break (Downstream — MSIV Isolable)' },
+    steam_line_break_upstream:   { type: 'physics_parameter', category: 'power', effect: 'secondary_depressurize_upstream', severity_scales: 'break_size',
+                                   severity_meta: { label: 'Break Size', unit: '% effective area', min: 0, max: 100, default: 30 }, display: 'Main Steam Line Break (Upstream of MSIV — Not Isolable)' },
     tavg_sensor_failure:         { type: 'instrument', category: 'instrument', instrument_id: 'tavg', mode: 'drift', display: 'Tavg Sensor Drifting' },
     pzr_level_sensor_stuck:      { type: 'instrument', category: 'instrument', instrument_id: 'pzr_level', mode: 'stuck', display: 'Pressurizer Level Sensor Stuck' },
     // CA-4: fails LOW (reads 20 %) — auto make-up floods the plant chasing it, and

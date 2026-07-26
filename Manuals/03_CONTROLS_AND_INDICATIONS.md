@@ -402,6 +402,7 @@ On a gauge, **red** at the two trip bands (≥90 %, ≤17 %), **amber** at the a
 |------|--------|
 | **Open** | Steam path SG → turbine / dump available |
 | **Close** | Isolates main steam; turbine trips; SG bottles toward safeties; feed loss path can drain SG toward low-level trip |
+| **Close — as a casualty response** | Terminates a steam line break **downstream** of the valve (PWR-E19): the blowdown stops and the generator re-pressurizes. Does nothing for a break **upstream**, between generator and valve — that one has no isolation on this single-generator plant |
 | **Close arming** | Two-press CONFIRM? |
 
 **WARNING:** Closing MSIV at power is a major transient. Expect turbine trip and rising SG pressure.

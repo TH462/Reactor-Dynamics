@@ -169,7 +169,7 @@ runs exactly as canon. Deception lives only where physics puts it.*
 | CA-2 | SBLOCA spectrum: accumulators at 4.14 MPa, RHR/LPI < 2.76 MPa, Tavg pins near saturation on blowdown | C | run_pwr eccs probes | PASS |
 | TR-13 | **SGTR, single-SG EOP — DELIVERED (P5):** full severity = 0.12 normalized ≈ 2× charging (leak_scale 1.5), **ΔP-scaled** through the ruptured tube — trip + SI forced (battery pin), and the EOP *depressurize to SG pressure* physically kills the leak (ops scenario: 0.056 → 0.006, inventory recovers, rides the sat-line band on the way down). Steaming the contaminated SG = P6 manual note | C | probe + ops EOP | **PASS** (P5) |
 | TR-5 | MSIV closure @100 %: SG safeties pop 9.31/reseat 9.0, primary stabilizes at safeties' Tsat, inventory retained | C | run_pwr msiv | PASS |
-| TR-12 | Steam line break: blowdown cooldown → positive reactivity → trip + SI; MSIV limits | C | campaign pwr_slb | PASS — re-validate P5 |
+| TR-12 | Steam line break: blowdown cooldown → positive reactivity → trip. **"trip + SI" corrected 2026-07-25 (#199): there is no SI on this path and none is needed** — the scrammed core holds ≥ 9,600 pcm subcritical even with the maximum stuck rod (PI-9, §10). **"MSIV limits" was fiction until 2026-07-25** — the break sink ignored valve position; it now depends on break LOCATION: downstream of the MSIV is isolable (shutting it ends the blowdown, SG re-pressurizes to its safeties), upstream is not | C | probe + TR-12b + campaign pwr_slb | **PASS** |
 | TR-11 | Spray valve fails open: ~~slow depressurization, heaters lose, low-P trip unless isolated~~ — **row superseded by the P5 spray-capacity-cap ruling** (§12, 2026-07-20). Measured under the cap the heaters WIN: the valve sits at its ~12 % cap, pressure droops 15.41 → 15.33 MPa and parks, heaters hold at ~37 % duty, no trip and no alarm for 30 min. A stuck-open spray valve is a **nuisance, not a casualty** | C | probe + ops heaters-vs-spray | **PASS** — end-state pinned 2026-07-25 (#131) |
 | TR-14 | Station blackout: natural-circ-less coastdown, no HPI — **unsurvivable long-term by design** (teaching point; sharper on a single-loop plant — document in manual) | — | campaign fact | PASS — document P6 |
 | CA-5 | Tavg instrument failure w/ rods in auto: bounded misdrive, operator takeover note | C | autoctl HR1 | PASS |
@@ -211,7 +211,7 @@ safety 17.13 MPa, with reseats ordered below lifts):
 | PI-5 | FW isolation on SI (rides the hpi arm), and on trip + low Tavg (P-4) — with CC-3 | **DONE** (P4) |
 | PI-7 | RPS reset path: `reset_rps` — refused while a trip signal stands; engine enforces rods-in; ops abuse test drives the recovery leg | **DONE** (P4) |
 | PI-8 | High pzr level trip **97 %** — enabled by the power-defect recalibration (owner ruling: `alpha_MTC` → −2.0e-4, real-PWR range; un-trimmed mismatch now ~+7 °C, ride-out swell peaks ~94). CA-4 probe pins both legs: sensed overfill trips; a stuck-low sensor defeats the single channel (teaching point) | **DONE** (P4/P5) |
-| PI-9 | SI on low steam-line pressure — verify the SLB gate's path | **VERIFIED 2026-07-25 (#131): the signal does not exist.** No `steam_pressure` row in `PWR_ACTUATIONS`, and the SLB produces no SI by the back door either — the pressurizer holds the primary at ~15.3 MPa while the loop crash-cools to ~105 °C, so the 12.4 MPa actuation never sees its setpoint. Currently harmless (inventory intact; TR-12 pins that shutdown margin covers the overcooling insertion). Pinned by the `PI-9` probe; **add-or-retire is an owner ruling, #199** |
+| PI-9 | SI on low steam-line pressure — verify the SLB gate's path | **RETIRED 2026-07-25 (owner ruling, #199) — see §10.** Verified absent, measured, and ruled not worth adding: the reactivity job does not exist on this plant and adding it does harm |
 
 ## 10. Retired (v3 rulings — do not resurrect)
 
@@ -220,6 +220,7 @@ safety 17.13 MPa, with reseats ordered below lifts):
 | PI-1 | Reactor trip on turbine trip above P-9 | Ride-out plant; ~100 % dump removes the reason |
 | PI-2 | AMSAC turbine trip on lo-lo SG | Lo-lo trips the *reactor*; turbine follows via the existing link |
 | PI-6 / TR-4 | P-8 single-loop low-flow trip / "1-of-N pump" transient | Single loop — no partial-flow state exists; loss of *the* RCP hits the total low-flow trip (probe re-labeled, kept) |
+| PI-9 | SI on low steam-line pressure | **Owner ruling 2026-07-25 (#199), on measurement, not preference.** The interlock's job in a real plant is *reactivity* — get boron in before an overcooled core with a strong negative MTC walks back to criticality, with the most reactive rod stuck out. Measured here: an SLB against the **maximum** stuck rod (`STUCK_ROD_MAX_FRAC` 0.4 × 8500 = 3400 pcm held out) ends at **ρ = −9,604 pcm**, power 0.000 % — nearly 3× the held worth in spare margin. The job does not exist. Prototyped anyway (`steam_pressure` low @ 4.14 → `set_hpi`): SI fires at 47 s into a primary that never lost a drop and pegs **inventory at the 120 % tank cap** with PZR LVL HI annunciated — an automatic that floods an intact plant. And the one case where injection could matter is already covered: at full break severity the primary does crash and the **accumulators fire at 243 s**, boron 734 → 2500 ppm. Pinned permanently by the `PI-9` probe, which asserts the absence — adding the interlock reddens it and re-opens this ruling deliberately. **The effort went to `TR-12b` instead**, making the MSIV genuinely isolate a downstream break |
 | v2.0 fidelity rule | "±15 % of generic Westinghouse" | Bands are minted from this plant's own golden runs at freeze |
 
 ## 11. Red-line hotspots — RULED (owner, 2026-07-21)
@@ -250,6 +251,18 @@ safety 17.13 MPa, with reseats ordered below lifts):
   1.05 delegated, demos yes, TR-8 physics trip, single-SG EOP + multi-loop manual note,
   335 °C backstop kept, SI raise TMI-gated, EV-11 provisional) **plus the tempo
   principle**: fast enough to be interesting, slow enough to be manageable. **v3.0 FROZEN.**
+- **2026-07-25 (owner): PI-9 retired, and the MSIV made real (#199).** Two rulings from one
+  investigation. **(1) No SI on low steam-line pressure** — decided on measurement, not taste:
+  the core cannot return to power even with the maximum stuck rod (ρ ≤ −9,604 pcm), a prototype
+  actuation floods an intact primary to the 120 % tank cap, and the severe case already gets
+  borated accumulator water. Moved to §10; the `PI-9` probe fences the absence. **(2) The MSIV
+  now isolates a DOWNSTREAM steam line break** — the break sink previously ignored valve
+  position, so the operator's one lever on the casualty did nothing while the manual and the
+  TR-12 row both claimed it did. Break location is now modelled: `steam_line_break` is the
+  turbine-hall break (shut the MSIV, blowdown ends, SG re-pressurizes to its code safeties);
+  the new `steam_line_break_upstream` is inside containment and unisolable — the honest answer
+  for a single-generator plant, which cannot "isolate the faulted SG and steam the intact ones".
+  `pwr_slb` uses the upstream variant so its ride-it-out arc stays true. Pinned by `TR-12b`.
 - **2026-07-21 (owner): teaching goal declared** (the plant exists to teach PWR physics)
   and **power defect recalibrated** per ruling on the PI-8 conflict: `alpha_MTC`
   −3.3e-5 → −2.0e-4 (real-PWR range). Un-trimmed mismatch +18 → ~+7 °C; slider asks now

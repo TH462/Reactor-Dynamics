@@ -52,7 +52,15 @@
           learning: 'A main steam line has just ruptured. The secondary side is blowing down through the break — watch the steam pressure collapse. With the secondary suddenly cold, it is pulling heat out of the reactor coolant far faster than normal, and the average coolant temperature is starting to fall. Keep your eye on the reactor power.',
           industry: 'Main steam line break. Secondary depressurizing through the break; the SG is now an oversized heat sink. Tavg falling (overcooling). Watch power_range.',
         },
-        commands: [{ action: 'inject_failure', failure_id: 'steam_line_break', severity: 1.0 }],
+        // UPSTREAM of the MSIV — inside containment, between generator and valve
+        // (#199). Deliberate: this scenario's whole arc is "you cannot stop the
+        // cooldown, you can only shut the reactor down", and its `waiting` branch
+        // needs the blowdown to keep draining the pressurizer to the low-level
+        // trip. With the MSIV now able to end a DOWNSTREAM break, a player who
+        // shut it mid-scenario would terminate the casualty and strand the story.
+        // The physics is also the honest one for a single-generator plant: there
+        // is no intact SG to fall back on, so an upstream break has no isolation.
+        commands: [{ action: 'inject_failure', failure_id: 'steam_line_break_upstream', severity: 1.0 }],
         advance: 'wait_for_trigger' },
 
       { id: 'reactivity_event',
@@ -70,8 +78,8 @@
       { id: 'operator_trip',
         trigger: { type: 'delay', value: 3.0 },
         commentary: {
-          learning: 'Tripped. Power collapses to decay heat — you recognized a reactivity event coming from the secondary side and shut the reactor down, which is exactly the trained response to a steam line break (the next step in a real plant is to isolate the broken steam line so the overcooling stops). The break is still cooling the plant, but a subcritical reactor cannot run away. Two honest notes on this simulation: a real plant injects BORATED water to hold the core down against continued cooldown, and it guards against thermal shock to the vessel from that cold water — this model captures neither, but the reactivity rise and the trip you just made are faithful.',
-          industry: 'Manual trip. Power → decay heat. Correct response to a steam line break: trip and isolate the affected SG. Model honesty (M6 §13): real SI is borated (return-to-power protection) and PTS is a concern — neither modeled here; the MTC-driven excursion and the trip are faithful.',
+          learning: 'Tripped. Power collapses to decay heat — you recognized a reactivity event coming from the secondary side and shut the reactor down, which is exactly the trained response to a steam line break. The next move in a real plant is to isolate the break, and here is why you cannot: this rupture is upstream of the main steam isolation valve — between the steam generator and the valve — so there is no valve on the wrong side of it to shut. A multi-loop plant isolates the faulted generator and keeps steaming the intact ones; this plant has exactly one generator. The break goes on cooling the plant, and a subcritical reactor is your answer to it. (Had the pipe failed downstream, in the turbine hall, shutting the MSIV would have ended the blowdown outright.) Two honest notes on this simulation: a real plant injects BORATED water to hold the core down against continued cooldown, and it guards against thermal shock to the vessel from that cold water — this model captures neither, but the reactivity rise and the trip you just made are faithful.',
+          industry: 'Manual trip. Power → decay heat. Correct response to a steam line break: trip, then isolate. Isolation is unavailable here — the break is UPSTREAM of the MSIV on a single-generator plant, so no isolation reaches it (a downstream break is terminated by shutting the MSIV; a multi-loop plant isolates the faulted SG and steams the intact ones). Model honesty (M6 §13): real SI is borated (return-to-power protection) and PTS is a concern — neither modeled here; the MTC-driven excursion and the trip are faithful.',
         },
         level_complete: {
           title: 'Steam Line Break — Controlled',
@@ -94,8 +102,8 @@
       { id: 'auto_tripped',
         trigger: { type: 'scram' },
         commentary: {
-          learning: 'Back to real time. The reactor tripped itself — on low pressurizer level, as the cooling, contracting primary drained the pressurizer. The plant protected itself and stayed safe. But notice what it took: the trained operator does not wait for that. On a steam line break you trip immediately and isolate the affected steam generator. Two honest notes: a real plant would inject BORATED water to hold the core down against the continued cooldown, and would worry about thermal shock to the vessel — neither is modeled here, though the reactivity rise and the trip are faithful.',
-          industry: 'Reactor trip on low pzr level (contracting primary drained the pressurizer). Plant safe, but late — the correct response is an immediate manual trip and SG isolation. Model honesty (M6 §13): borated SI and PTS not modeled; the MTC excursion and trip are faithful.',
+          learning: 'Back to real time. The reactor tripped itself — on low pressurizer level, as the cooling, contracting primary drained the pressurizer. The plant protected itself and stayed safe. But notice what it took: the trained operator does not wait for that. On a steam line break you trip immediately, then isolate the break if you can reach it. This one you cannot: it is upstream of the main steam isolation valve, on the generator side, so no valve stands between it and the steam generator. (A break downstream, out in the turbine hall, is a different casualty — shut the MSIV and the blowdown stops.) Two honest notes: a real plant would inject BORATED water to hold the core down against the continued cooldown, and would worry about thermal shock to the vessel — neither is modeled here, though the reactivity rise and the trip are faithful.',
+          industry: 'Reactor trip on low pzr level (contracting primary drained the pressurizer). Plant safe, but late — the correct response is an immediate manual trip. Isolation is unavailable: the break is UPSTREAM of the MSIV (a downstream break IS terminated by shutting it). Model honesty (M6 §13): borated SI and PTS not modeled; the MTC excursion and trip are faithful.',
         },
         speed: 1,
         level_complete: {

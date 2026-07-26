@@ -46,6 +46,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   otherwise fall back to the step's named control. Works on the checklist bubble list.
 
 ### Fixed
+- **Closing the MSIV now actually stops a steam line break — it used to do nothing.** The break
+  blew the secondary down regardless of valve position, so the one lever an operator has on the
+  casualty was decorative, while the manual told you to reach for it ("MSIV Close *if it
+  terminates break (as modeled)*") and the behavior catalog claimed "MSIV limits". Break
+  **location** is now modelled, which is the distinction a real crew is trained on:
+  **Main Steam Line Break (Downstream — MSIV Isolable)** is the turbine-hall break, and shutting
+  the MSIV puts the valve between the generator and the break — the blowdown stops, the bottled
+  generator re-pressurizes to its code safeties, and you are in the familiar MSIV-closure
+  condition. The new **Main Steam Line Break (Upstream of MSIV — Not Isolable)** is inside
+  containment, between generator and valve, where nothing on a single-generator plant can reach
+  it: you trip and ride the cooldown out. A multi-loop plant would isolate the faulted generator
+  and keep steaming the intact ones; this plant has one, and now says so instead of pretending.
+  The **Steam Line Break** scenario uses the upstream variant, so its "you cannot stop this"
+  story is true rather than accidental, and its ending explains why. With the MSIV left alone,
+  both variants behave exactly as the old model did.
+  **Save migration:** `_fail.steam_break` gains an `upstream` flag; saves written before this
+  default to *downstream*, so a save restored mid-break gains a working MSIV.
 - **The startup checklist now plots enough 1/M points to actually find criticality.**
   It asked for three, which puts the predicted critical rod position **79 steps past**
   where the reactor really goes critical — no use at all when the whole method is
@@ -86,14 +103,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ### Changed
 - **The behavior catalog's last two open interlock rows are settled.** `PI-9` ("SI on low
-  steam-line pressure — verify the SLB gate's path") is **verified: the signal does not
-  exist**, and a steam line break produces no injection by any other route either — the
-  pressurizer holds the primary near 15.3 MPa while the loop crash-cools to ~105 °C, so the
-  12.4 MPa actuation never sees its setpoint. Harmless today (inventory stays intact and
-  shutdown margin covers the overcooling on its own), and now asserted by a probe instead of
-  assumed; whether to add the interlock or retire the row is an owner ruling. `TR-11`'s row
-  is **superseded by the earlier spray-capacity-cap ruling** — it still predicted "heaters
-  lose, low-P trip unless isolated", which the cap reversed.
+  steam-line pressure") is **retired** — the signal does not exist, and the measurements say
+  it should not: this core cannot return to power on an overcooling even with the most
+  reactive rod stuck out of it (better than 9,600 pcm of margin left), a prototype of the
+  interlock injected into an intact primary until inventory pegged at its cap, and the one
+  case where injection could matter already gets borated water from the accumulators. Real
+  plants carry the interlock; this one has no job for it, and the manual now says so plainly
+  — along with the fact that pressurized thermal shock is a real concern the model does not
+  represent. `TR-11`'s row is **superseded by the earlier spray-capacity-cap ruling** — it
+  still predicted "heaters lose, low-P trip unless isolated", which the cap reversed.
 - **The AGPL offer of source now resolves.** `legal.html` §5 and `README.md` carried
   commented-out placeholders where the source-repository URL belongs; both now link
   **https://github.com/TH462/Reactor-Dynamics**. AGPL-3.0 section 13 requires a network
