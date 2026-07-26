@@ -107,6 +107,48 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-25 — 1/M approach rebuilt: three points is 79 steps short (issue #197)  ✅🔬
+
+**Owner report:** *"Only plotting 3 points doesn't get you close enough to the correct rod
+withdrawal step for criticality."* Confirmed and quantified.
+
+The panel (`ui/panels/one_over_m.js`) least-squares over the **trailing 3 points**
+(`FIT_WINDOW = 3`), x = fraction withdrawn, y = C₀/C, prediction at y = 0. Replaying the
+checklist's own schedule from `hot_zero_power` — **true criticality ≈ step 224**:
+
+| points plotted | at step | 1/M | predicted crit | error |
+|---|---|---|---|---|
+| 2 | 120 | 0.7069 | 409 | **+185** |
+| 3 | 190 | 0.3314 | 303 | **+79** |
+| …with a finer schedule | | | | |
+| 4 | 200 | 0.2537 | 247 | +23 |
+| 5 | 215 | 0.1321 | 235 | +11 |
+| 6 | 223 | 0.0728 | **232** | **+8** |
+
+The bias is **structural, not a bug**: early points sit in the flat toe of the rod-worth
+S-curve, so the trend is too shallow and extrapolates long. `fit()`'s own comment already
+documents this — it is why the window is trailing rather than all-points. The cure is more
+points with **shrinking bursts**, so the trailing window ends up on the steep part of the
+curve. It converges monotonically **from above** — always reading slightly high, the safe
+side for "stop short of the prediction and creep".
+
+**Fixed.** `pwr_startup` approach rebuilt around six points (`+120, +50, +30, +15, +8`),
+and each approach step is now self-contained — *withdraw, settle, plot* — rather than
+alternating withdraw-steps with plot-steps. Each step states what the prediction should read
+there, so the player watches it walk down instead of trusting the first number; the caution
+now says outright that an early estimate is an **upper bound, not a target**. The last
+plotted point lands at ρ = −15 pcm, just subcritical — exactly where plotting should stop
+and creeping should start.
+
+Tail retuned for the shorter remaining distance: creep **+44 → +11**. Replayed: creep →
+2.86 % (Mode 2), level off → **2.37 %** (Mode 2), raise → 12.43 % (Mode 1), grid → 12.5 MWe.
+**Every phase peaks ≤ 0.89 DPM** — still under the 1.0 DPM alarm and the 1.5 DPM block set
+the same day.
+
+**Gates:** `run_procedures` **22/22, 97 → 100 checks** (`BASELINES` updated); all 19 runners
+at baseline. Probe: scratchpad `probe_oom.js` (mirrors the panel's fit exactly and bisects
+the engine for the true critical step).
+
 ### 2026-07-25 — S3 RESOLVED: the startup overshoot was the recipe, not the physics  ✅🔬
 
 **Issue #134 ("after criticality the plant coasts to ~20 % power even when leveled").** The

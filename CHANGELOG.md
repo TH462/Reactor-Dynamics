@@ -35,6 +35,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   otherwise fall back to the step's named control. Works on the checklist bubble list.
 
 ### Fixed
+- **The startup checklist now plots enough 1/M points to actually find criticality.**
+  It asked for three, which puts the predicted critical rod position **79 steps past**
+  where the reactor really goes critical — no use at all when the whole method is
+  "stop short of the prediction and creep up on it". The early points sit in the flat
+  toe of the rod-worth curve, so the trend is too shallow and always extrapolates long
+  (two points predict step 409 against a true 224). The approach now takes **six**
+  points with the withdrawal bursts shrinking as you close in, which walks the estimate
+  down 409 → 329 → 247 → 235 → 232 and lands within about eight steps — still reading
+  slightly high, which is the safe side. Each approach step is now one self-contained
+  *withdraw, settle, plot*, and tells you what the prediction should read at that point
+  so you can watch it converge instead of trusting the first number.
 - **The startup no longer coasts to ~15–20 % power when you try to level off in the
   low-power band.** The plant was never the problem — measured, it parks at 1.8–3.5 %
   when you take the excess reactivity out in *one* decisive inward drive released as the

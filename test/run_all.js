@@ -68,10 +68,14 @@ var BASELINES = {
   // regressions. 30 -> 35 checks; the replacements are differential, so they
   // discriminate where the originals could not.
   'run_e2e_controls.js':   { code: 0, score: '35/35' },
-  // 96 → 97 checks: pwr_startup gained a step (#134) — the level-off now holds
-  // the point of adding heat at 1–3 %, and crossing the 5 % boundary into Mode 1
-  // is its own deliberate step instead of something the ascent does to you.
-  'run_procedures.js':     { code: 0, score: '22/22 97/97' },
+  // 96 → 100 checks, both from the pwr_startup rebuild:
+  //   +1 (#134) the level-off now holds the point of adding heat at 1–3 %, and
+  //      crossing the 5 % boundary into Mode 1 is its own deliberate step
+  //      instead of something the ascent does to you;
+  //   +3 (#197) the approach plots SIX 1/M points instead of three — three
+  //      predicts criticality 79 steps late, which is not close enough to
+  //      withdraw against.
+  'run_procedures.js':     { code: 0, score: '22/22 100/100' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
