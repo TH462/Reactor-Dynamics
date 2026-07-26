@@ -9,7 +9,11 @@
  *
  * Units are SI throughout (CONTEXT §11): pressure MPa, temperature °C, level
  * and power %, flows normalized to rated. Values marked [tune] are starting
- * points arbitrated by the §14 scenario suite; un-marked values are fixed.
+ * points arbitrated by the PHYSICS ACCEPTANCE SUITES — run_pwr, run_behavior,
+ * run_ops — which state intended plant behaviour independently of any story.
+ * Campaign missions, procedures and checklists are NOT arbiters of tuning
+ * (CONTEXT §3 HR9): they observe the plant. If one breaks after a change here,
+ * the presumption is that the CONTENT is stale. Un-marked values are fixed.
  *
  * Global-namespace module: attaches RD.PWR_CONFIG. Works as an ordered
  * <script> tag in the browser and via require() in Node (both share globalThis).

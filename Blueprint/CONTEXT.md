@@ -885,8 +885,12 @@ scenario tests. There is no shared engine module and no shared engine code.
   is **display-only** — the stored value never changes — and the true-state overlay shows the
   true value in the **same on-screen format** as the indicated one, so indicated-vs-true stays a
   like-for-like comparison.
-- **Tuning:** values labeled `[tune]` in a module's math are starting points; the scenario
-  tests are the final arbiter. Values not labeled are fixed constants — do not change them.
+- **Tuning:** values labeled `[tune]` in a module's math are starting points; the **physics
+  acceptance suites** are the final arbiter — `run_pwr` / `run_rbmk` / `run_bwr`,
+  `run_behavior`, `run_ops`, which state intended plant behaviour independently of any story.
+  **Campaign missions, procedures and checklists are NOT arbiters of tuning** (HR9): they
+  observe the plant, and when one breaks after a plant change the presumption is that the
+  content is stale. Values not labeled are fixed constants — do not change them.
 - **Naming:** snapshot fields, command names, and instrument ids are a fixed contract — use
   the exact names in §6 (and the per-plant instrument ids in the engine modules). Do not
   invent variants.
