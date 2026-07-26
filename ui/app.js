@@ -3470,12 +3470,15 @@
 
   // ============================================================ init
   function init() {
+    // Release version by the logo (site/release.js). Stays blank if the file is
+    // missing rather than printing a placeholder that could go stale unnoticed.
+    if ($('logoVer')) $('logoVer').textContent = window.RD_RELEASE || '';
     ui.series = Object.assign({}, PROFILES.pwr.defaultSeries);
     service = new RD.SimulationService({ seed: 0x1234 });
     service.subscribe(render);
     service.subscribe(diagTick);
     service.subscribe(renderAutomate);   // channels run in-stack; the tab just re-renders per broadcast
-    if (RD.OneOverM) { RD.OneOverM.init({ getSnap: autoSnap }); service.subscribe(RD.OneOverM.tick); }
+    if (RD.OneOverM) { RD.OneOverM.init({ getSnap: autoSnap, cmd: cmd }); service.subscribe(RD.OneOverM.tick); }
     bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)
     var em = /[?&]engine=(pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');

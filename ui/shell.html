@@ -78,7 +78,10 @@
       <!-- Sim controls (§3) -->
       <div class="sim-controls">
         <div class="sim-top">
-          <a class="logo" href="../index.html" title="Back to the Reactor Dynamics home page">Reactor<span class="a">⚛️</span>Dynamics</a>
+          <div class="brand">
+            <a class="logo" href="../index.html" title="Back to the Reactor Dynamics home page">Reactor<span class="a">⚛️</span>Dynamics</a>
+            <span class="logo-ver mono" id="logoVer" title="Release version — see the changelog"></span>
+          </div>
           <div class="clock mono" id="clock">T+00:00:00</div>
         </div>
         <div class="sim-row">
@@ -323,6 +326,7 @@
   <!-- The simulation stack (all three engines + layers), then the UI app. The
        engine selector (Sim tab) switches between them at runtime. -->
   <script src="../site/version.js"></script>  <!-- deploy stamp; feedback reports carry it -->
+  <script src="../site/release.js"></script>  <!-- player-facing Alpha X.Y.Z, shown by the logo -->
   <script src="../engines/load_mode.js"></script>
   <script src="../engines/pwr/pwr_config.js"></script>
   <script src="../layers/control/pwr_control.js"></script>

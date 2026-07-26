@@ -500,6 +500,41 @@ TMI included, never enter the cold regime), so every prior gate held at baseline
   `mode5_to_mode1_roundtrip`), **M5 18/18** (full-stack cold-IC guard), campaign **44/44**, autoctl
   **20/20**, M4 **15/15**, M6 **16/16**, M7 OK, ops **53/66** (baseline). TMI flagship not regressed.
 
+**2026-07-26 — The rod insertion limit is a power curve, not a floor (issue #202 item 4).**
+`pwr_config.js` had carried the comment *"Power-dependent insertion limit for the control group"*
+over a single `insertion_limit_pct: 30.0`, and `_updateRodDerived` compared the bank against it
+unconditionally. The power dependence was never built, so the limit was calibrated for one
+operating point and wrong everywhere else: 30 % of 912 = 274 steps, and the authored startup
+crosses into Mode 1 at 244 — ROD INS LIMIT annunciated for the entire evolution and the automatic
+rod channel (`control_kernel.js:916`) refused to insert below it. **Decision: implement the curve
+the comment promised rather than suppress the alarm.** A RIL exists to preserve shutdown margin
+and cap ejected-rod worth *at power*; during a startup the bank is deliberately deep and boron plus
+the shutdown bank hold the margin, so the correct model is "not applicable below a low-power
+threshold, then rising with power". New `_insertionLimitSteps()` + three `[tune]` constants
+(`insertion_limit_min_power_pct` 5, `lo_pct` 5, `hi_pct` 70), recomputed every tick — which also
+retires the `max_steps` rescale branch in `loadState`, since the value is no longer stored.
+Calibrated against measurement, not preference: the bank sits at 0 % / 62 % / 92 % withdrawn at
+HZP / the `5_percent` preset / full power, and **92 % across the whole load range** (follow mode
+moves load on Tavg and boron feedback, not rods), so `hi_pct` 70 leaves ~22 points of margin at
+full power and the alarm now carries information — *the bank is abnormally deep for this power*.
+Snapshot note: `insertion_limit_steps` may now be **null** (limit not applicable); consumers must
+treat null as "no limit", which is what the shutdown group already published. Old saves need no
+migration — the field is derived, not stored.
+
+**2026-07-26 — Procedure steps may carry commands no engine can execute (issue #202).**
+Three of the startup checklist's new steps issue commands that live *above* the engine:
+`plot_1m_point` (an operator observation consumed by the instructor layer — the 1/M plot's points
+are UI state, so there is no instrument for `acc` to grade and seeing the action is the only
+possible evidence), and `set_trip_block` / `set_auto_channel` (M4). `test/run_procedures.js` drives
+engines directly, below M4, so it now skips them via a documented `NON_ENGINE_ACTIONS` map while
+still running each step's `hold`/`acc`/`saw`. **The flag this raises is a gate gap, not a design
+problem:** `run_procedures` structurally cannot validate any procedure step whose effect lives in
+the control layer, and this is the second time a procedure has been green at engine level and
+broken under the full stack (the SG-level collapse in item 5, and `pwr_heatup` flooding to 95 % in
+#206). A full-stack procedure gate is the obvious follow-up. Also added `_cmdEvidence()`, which
+discriminates command evidence by `trip_id` as it already did by `failure_id` — without it two
+consecutive `set_trip_block` steps check each other off.
+
 **2026-07-25 — Startup rate protection retuned; the "20 % coast" was never physics (issue #134).**
 The complaint — power coasts to ~20 % after criticality even when leveled — was assumed to be a
 weak low-power Doppler bite or too-steep differential rod worth (TUNING_LOG backlog S3). It is

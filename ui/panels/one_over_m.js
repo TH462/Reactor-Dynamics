@@ -53,6 +53,7 @@
 
   // ------------------------------------------------------------------ state
   var getSnap = null;        // () => latest snapshot
+  var sendCmd = null;        // (cmd) => dispatch through the service (HR5)
   var win = null, svg = null, msgEl = null;
   var points = [];           // [{ x: rod fraction withdrawn 0–1, counts, y: C0/counts }]
   var C0 = null;
@@ -178,6 +179,12 @@
       setMsg('C = ' + Math.round(counts) + ' cps → 1/M = ' + (C0 / counts).toFixed(3));
     }
     lastCaptureT = s.metadata.sim_time;
+    // Announce the reading downstream so a live checklist step that says "plot a
+    // point" checks itself off (#202 item 1). The points themselves stay UI-side;
+    // this carries no data, it just marks that the operator took the sample. Sent
+    // only on a point that was actually recorded — the early returns above bail
+    // first, so a refused press (SR de-energized, no counts) does not count.
+    if (sendCmd) sendCmd({ action: 'plot_1m_point' });
     render();
   }
 
@@ -217,7 +224,7 @@
   }
 
   var OneOverM = {
-    init: function (opts) { getSnap = opts.getSnap; if (!win) build(); },
+    init: function (opts) { getSnap = opts.getSnap; sendCmd = opts.cmd || null; if (!win) build(); },
     open: function () {
       if (!win) build();
       win.hidden = false;

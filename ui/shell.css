@@ -504,6 +504,8 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
   color: var(--text); text-decoration: none; cursor: pointer; }
 .logo:hover { color: var(--text); opacity: 0.82; text-decoration: none; }
 .logo .a { color: var(--normal); }
+.brand { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.logo-ver { font-size: 10px; font-weight: 600; color: var(--muted); white-space: nowrap; }
 .clock { font-size: 15px; font-weight: 600; }
 .clock.running { animation: pulse 2s ease-in-out infinite; }
 .clock.accel { color: var(--caution); }

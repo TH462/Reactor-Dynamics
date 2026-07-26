@@ -9,6 +9,58 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **The startup checklist now sets up its heat sink, and blocks its own trips**
+  (issue #202, owner playtest). Three new steps in `pwr_startup`: **engage the
+  three-element Feed AUTO channel at step 3**, while SG level is still at its nominal
+  65 % (the channel captures level as its setpoint, so engaging it late captures a bad
+  number); and, once above P-10, **block the IR HIGH and PR 25 % trips as explicit
+  steps** rather than discovering the startup net at 20 % power. `run_procedures`
+  22/22 · 100/100 checks, unchanged — the three commands are M4/UI actions the
+  engine-only harness skips (new `NON_ENGINE_ACTIONS` list).
+- **The 1/M "Plot point" button is now visible to the instructor.** Pressing it emits
+  `plot_1m_point`, an operator action with no plant effect that the instructor layer
+  consumes (M4 never sees it), so the checklist's *"set the 1/M baseline"* step checks
+  itself off when the point is actually taken. The plot's points stay UI-side.
+- **The release version is shown next to the logo in the control room** (issue #201),
+  from a new hand-edited `site/release.js` (`window.RD_RELEASE`). Distinct from the
+  `RD_VERSION` git-SHA deploy stamp; bump it with the `changelog.html` entry.
+
+### Fixed
+- **The rod insertion limit is now power-dependent, as its own config comment always
+  claimed** (issue #202 item 4). `insertion_limit_pct: 30` was a flat % withdrawn floor,
+  so ROD INS LIMIT annunciated continuously through every startup — the control bank
+  crosses Mode 2 at ~27 % withdrawn and only reaches 92 % at power. The limit now does
+  not apply below 5 % power and ramps linearly from 5 % to **70 % withdrawn at 100 %
+  power** (three new `[tune]` constants). Measured margin: null at hot standby, 6 % vs a
+  62 % bank at the `5_percent` preset, 70 % vs 92 % at full power — so the alarm now
+  means "the bank is abnormally deep for this power", which is what it is for. It also
+  stops the automatic rod channel inserting past a limit that no longer moves with load.
+- **Steam-generator level no longer decays through the whole startup** (issue #202 item
+  5). `pwr_startup` never commanded feedwater at all, so nothing regulated level: AFW
+  picked it up around 20 % and its proportional hold (band 20–28 %) parked the plant at
+  **21.4 % narrow — inside the amber band — indefinitely**. With the new Feed AUTO step,
+  measured end-of-procedure level is 65.7 % on a `noDefaults` board (was 46.8 %), 65.0 %
+  in free play, and 70.9 % even if the feed pump was manually poked first (was 21.4 %).
+- **Checklist hover no longer restacks the PWR board** (issue #202 item 2). The shared
+  `.ckl-glow` / `.instr-glow` rules lift the glowed element to `z-index: 5`, which pulled
+  a hovered panel in front of the reactor vessel authored to sit over it, obscuring its
+  neighbours. Board tiles now keep their authored stacking layer.
+- **The startup checklist no longer points the operator at reactivity** (issue #202 item
+  3, owner ruling). Reactivity in pcm is truth, not an instrument (HR1), but six approach
+  steps graded on `reactivity_pcm` — and the live checklist prints its acceptance
+  predicate, so the player was told to watch a reading that does not exist on the board.
+  The six approach steps now grade on **source-range count rate** (620 / 1 000 / 1 800 /
+  3 300 / 6 200 cps, measured), step 1 on Tavg, and no step's hover-highlight names
+  Reactivity any more.
+- **The pressurizer cutaway uses the full height of the vessel internals** (issue #192).
+  The water band was mapped onto the LVL strip's 160–470 pixel span, so the cutaway read
+  as a copy of the gauge beside it; it now spans the inner dome apex to the inner dish
+  floor, and the strip keeps its own instrument span.
+- **A checklist step is no longer checked off by a different step's trip block.** Command
+  evidence matching now discriminates `set_trip_block` by `trip_id` (as it already did
+  `inject_failure` by `failure_id`), so blocking the power-range trip does not also tick
+  the intermediate-range step.
+
 - **Vercel Web Analytics on every shipped page.** A one-line first-party beacon
   (`/_vercel/insights/script.js`) in the `<head>` of `index`, `about`, `changelog`,
   `feedback`, `legal`, `privacy` and `ui/shell.html`. No npm package and no build step —

@@ -526,8 +526,22 @@
       scram_time_control_s: 2.5,   // full-travel insertion time [tune]
       scram_time_shutdown_s: 2.0,  // slightly faster (pre-loaded) [tune]
       control_op_position_pct: 92.0, // control group operating position (% withdrawn)
-      // Power-dependent insertion limit for the control group (% withdrawn floor).
-      insertion_limit_pct: 30.0,
+      // Rod insertion limit (RIL) for the control group — the % withdrawn floor the
+      // bank is expected to stay above. It drives the ROD INS LIMIT alarm and stops
+      // the automatic rod channel from inserting further.
+      //
+      // It is POWER-DEPENDENT, and that matters: the limit exists to preserve
+      // shutdown margin and to cap ejected-rod worth AT POWER. During a startup the
+      // bank is deliberately deep — boron and the shutdown bank hold the margin —
+      // so a fixed floor annunciates continuously through every ascent and says
+      // nothing. Below `min_power_pct` the limit does not apply at all; above it the
+      // floor ramps linearly from `lo_pct` to `hi_pct` at 100 % power. The bank sits
+      // at 92 % withdrawn across the whole load range, so `hi_pct` 70 leaves ~22
+      // points of margin at full power and the alarm means "you are driving the bank
+      // abnormally deep for this power", which is what it is for. [tune]
+      insertion_limit_min_power_pct: 5.0,
+      insertion_limit_lo_pct: 5.0,
+      insertion_limit_hi_pct: 70.0,
     },
 
     // -------------------------------------------------- §9.1 physics-fail [tune]

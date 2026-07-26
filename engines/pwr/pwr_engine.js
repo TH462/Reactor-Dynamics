@@ -52,7 +52,7 @@
         steps: 0, max_steps: r.max_steps, position_pct: 0,
         moving: false, direction: 0, speed: 'normal', scrammed: false,
         velocity: 0, step_accumulator: 0, nudge_target: null, coast_remaining_s: 0, worth: this.cfg.reactivity.rod_worth_total,
-        insertion_limit_steps: Math.round(r.insertion_limit_pct / 100 * r.max_steps),
+        insertion_limit_steps: null,   // power-dependent; recomputed every tick
         at_insertion_limit: false },
       { id: 'shutdown_rods', name: 'Shutdown Rods', function: 'shutdown',
         steps: r.max_steps, max_steps: r.max_steps, position_pct: 100,
@@ -180,10 +180,30 @@
     }
   };
 
+  // Power-dependent rod insertion limit (RIL), in steps, for the control group —
+  // null when the limit does not apply (below min_power_pct, i.e. a startup, where
+  // the bank is deliberately deep and boron plus the shutdown bank hold the margin).
+  // See the [tune] block in pwr_config.js §rods for why this is a curve and not a
+  // fixed floor (issue #202).
+  PWREngine.prototype._insertionLimitSteps = function (g) {
+    var r = this.cfg.rods;
+    if (r.insertion_limit_min_power_pct == null) return null;
+    var P = (this.s && isFinite(this.s.power_pct)) ? this.s.power_pct : 0;
+    var P0 = r.insertion_limit_min_power_pct;
+    if (P <= P0) return null;
+    var f = (P - P0) / (100 - P0);
+    if (f > 1) f = 1;
+    var pct = r.insertion_limit_lo_pct + (r.insertion_limit_hi_pct - r.insertion_limit_lo_pct) * f;
+    return Math.round(pct / 100 * g.max_steps);
+  };
+
   PWREngine.prototype._updateRodDerived = function (g) {
     g.position_pct = g.steps / g.max_steps * 100;
-    if (g.insertion_limit_steps != null) {
-      g.at_insertion_limit = g.steps <= g.insertion_limit_steps;
+    // Only the control group carries an insertion limit; the shutdown bank is
+    // parked withdrawn and has none (its steps stay null).
+    if (g.function === 'control') {
+      g.insertion_limit_steps = this._insertionLimitSteps(g);
+      g.at_insertion_limit = g.insertion_limit_steps != null && g.steps <= g.insertion_limit_steps;
     }
   };
 
@@ -1379,9 +1399,8 @@
         var ratio = cfgMax / g.max_steps;
         g.steps = Math.round(g.steps * ratio);
         g.max_steps = cfgMax;
-        if (g.insertion_limit_steps != null) {
-          g.insertion_limit_steps = Math.round(this.cfg.rods.insertion_limit_pct / 100 * cfgMax);
-        }
+        // insertion_limit_steps needs no rescale — _updateRodDerived below
+        // recomputes it from power against the new max_steps.
         g.nudge_target = null; g.step_accumulator = 0; g.velocity = 0; g.coast_remaining_s = 0;
         this._updateRodDerived(g);
       }

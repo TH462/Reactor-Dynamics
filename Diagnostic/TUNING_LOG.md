@@ -20,7 +20,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Current status (2026-07-25)
+## Current status (2026-07-26)
 
 **PWR is the focus plant and is in good shape** — all PWR engine, behavior, and ops gates
 green. The open backlog is dominated by **RBMK and BWR operability tuning** (documented,
@@ -106,6 +106,109 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-26 — Startup-checklist playtest sweep: six defects, three spun off (issue #202)  ✅🔬
+
+Owner playtest of the Mode 3 → Mode 1 checklist rebuilt in #197/#134, filed as six numbered
+items. All six fixed; measuring two of them uncovered three larger defects that were filed
+rather than folded in. Also closed the two quick UI reports filed alongside it (#201, #192).
+
+**Item 1 — step 3 never checked off.** The 1/M plot's points live in `ui/panels/one_over_m.js`,
+not in the snapshot, so there is no instrument for `acc` to grade and no command for the
+cmd-watch to see — the step could only ever be ticked by hand. Fixed by making the action
+visible: "Plot point" now emits **`plot_1m_point`**, an operator action with no plant effect
+that `InstructorLayer.handleCommand` consumes (M4 would reject it as an unknown command) after
+the checklist/follow cmd-watch has recorded it. Never gated — taking a reading is an
+observation. Sent only on a point that was actually recorded, so a refused press (SR
+de-energized, no counts) does not tick the step.
+
+**Item 2 — hover brought the panel to the front.** `.ckl-glow`/`.instr-glow` in `shell.css:1103`
+carry `z-index: 5`. Board tiles carry an authored stacking order (panels auto, buttons/values 1,
+`reactorVessel` 2 — `pwr_board.js:640,653`) **and deliberately overlap**: the vessel art is
+authored to read in front of the CONTROL/SHUTDOWN GROUP panels beneath it. Glowing a panel
+therefore pulled it out in front of the vessel and its neighbours. Pinned the authored layer in
+`pwr_board.css` (which loads after `shell.css`, so it wins). Ruled out: `.ckl-glow`'s
+`position: relative` does **not** fight `.bd-tile { position: absolute }` — same specificity,
+`pwr_board.css` is later.
+
+**Item 3 — reactivity in the checklist (owner ruling: remove completely).** ρ in pcm is truth,
+not an instrument (HR1), yet six approach steps graded on `reactivity_pcm` **and**
+`renderChecklist` (`app.js:1101`) prints the acceptance predicate verbatim — so the board told
+the player to watch a reading that does not exist on it, and even labelled it *"no instrument
+twin — true value"*. Re-expressed on **source-range count rate**, measured per step: **620 /
+1 000 / 1 800 / 3 300 / 6 200 cps** (observed 701 / 1 105 / 2 011 / 3 744 / 6 999, ~10 % margin).
+Step 1 moved to `tavg_c ~ 297`. No step's `hl` names Reactivity any more. Cautions still discuss
+reactivity as a *concept* — that is operator training, not a fiction readout.
+
+**Item 4 — ROD INS LIMIT lit for the whole startup.** `pwr_config.js` said *"Power-dependent
+insertion limit"* and `pwr_engine.js:185` implemented `steps <= 30 % of max` — a flat floor the
+power dependence was never built for. 30 % of 912 = **274 steps**, and the ascent crosses into
+Mode 1 at **244**. Measured bank positions: HZP 0 %, end-of-startup **26.8 %**, `5_percent`
+preset **62 %**, full power **92 %** — and 92 % across the *whole* load range (follow mode moves
+load on Tavg/boron feedback, not rods). New `_insertionLimitSteps()`: not applicable below
+`insertion_limit_min_power_pct` 5 %, then linear from `lo_pct` 5 to `hi_pct` 70 at 100 % power
+(three new `[tune]` constants). Result: null / 6 % / 70 % against banks of 0 / 62 / 92 — the alarm
+now means *"the bank is abnormally deep for this power"*. Recomputed every tick, so the
+`max_steps` rescale in `loadState` no longer needs its own recompute. Also un-freezes the
+automatic rod channel, which refuses to insert below the limit (`control_kernel.js:916`) —
+**that path is auto-only; manual insertion was never blocked**, which is why the level-off step
+worked at all.
+
+**Item 5 — SG level dangerously low, never recovered.** `pwr_startup` commanded **no feedwater at
+all** (programmatic check over every step; the `prereq`/`cautions` never mention the SG). With
+nothing regulating level, AFW picks it up at 20 % and its proportional hold pins it:
+`0.15·(28−L)/8 = 0.124` at 12.4 % power ⇒ **L = 21.4 %**, matching the measurement exactly, and
+flat for a further 30 min. **The AFW band (20–28 %) lies entirely inside the amber zone
+(17–30 %)** — the plant parks in the yellow by construction. Fixed by a new **step 3: engage the
+three-element Feed AUTO channel** while level is still 65 %, because the channel *captures* level
+as its setpoint (`pwr_control.js:456`) — engage it late and it captures a bad number. Verified
+under the **full stack** (the engine-only `run_procedures` cannot see this):
+
+| lineup | before | after |
+|---|---|---|
+| A `noDefaults` (campaign / walkthroughs) | 46.8 % | **65.7 %** |
+| B free-play defaults | 65.3 % | **65.0 %** |
+| C free-play, feed pump poked first | **21.4 %** (standing amber alarm) | **70.9 %** |
+
+**Item 6 — trip blocks.** Two new steps after the 5 % crossing, once above P-10: block `ir_high`
+then `pr_low_setpoint`. The startup net ladders P-10 (10 %) < IR high (20 %) < PR low setpoint
+(25 %), so continuing the ascent without them scrams at 20 %. Found while wiring it that a
+checklist step is checked off by *any* command of the same family, so the two blocks would tick
+each other — added a `trip_id` discriminator alongside the existing `failure_id` one, factored
+into a new `_cmdEvidence()` used by both the checklist and follow watches.
+
+**Harness note.** Three of the new step commands never reach an engine (`plot_1m_point`
+instructor-side, `set_trip_block` and `set_auto_channel` M4-side). `run_procedures` drives
+engines *directly*, below M4, so it now skips them via a documented `NON_ENGINE_ACTIONS` list —
+`hold`/`acc`/`saw` still run. **This is the gate gap worth naming:** `run_procedures` could not
+have caught item 5 or item 6, and it is the second time a procedure has been green at engine
+level and broken under the stack. Noted in #206.
+
+**Also fixed (owner reports filed alongside):**
+- **#201** — release version by the logo. New hand-edited `site/release.js`
+  (`window.RD_RELEASE = "Alpha 1.6.1"`), distinct from the `RD_VERSION` git-SHA deploy stamp,
+  which `site/stamp_version.js` overwrites at build. Bump it *with* the `changelog.html` entry.
+- **#192** — the pressurizer cutaway mapped its water band onto the LVL strip's 160–470 px span,
+  so it read as a copy of the gauge. Now spans the inner dome apex (106) to the inner dish floor
+  (541), derived from the `inner` path so it tracks the art; the strip keeps 160–470 as its own
+  instrument span. Heater rods re-pinned to absolute pixels so widening the band did not drag
+  them into the dish. Both verified by screenshot, not just by gate.
+
+**Spun off — real defects found while measuring, deliberately not fixed here:**
+- **#205** (medium) `pwr_startup` never dilutes boron, so Mode 1 is reached with the bank at
+  26.8 % withdrawn where the 6 %-power preset sits at 62 %. This is the *honest* half of what the
+  insertion-limit alarm was reporting; the flat floor was the defect, the deep bank is real.
+- **#206** (high) `pwr_heatup` reaches **95.4 % SG level at step 8 under the full stack** and
+  never pressurises or goes critical — invisible to `run_procedures`. Separately, **every**
+  non-zero standing feed-pump demand 2–30 % overfills to a P-14 trip + scram. The two compound:
+  heatup ends with the pump at 30 %, so heatup → startup back-to-back starts in the overfeed
+  branch with `feed_sg` in MAN.
+- **#207** (needs-ruling) the AFW hold band lying inside the amber zone, per item 5 above.
+
+**Gates:** `node test/run_all.js` → **AGGREGATE GATE: OK, 19 runners at baseline**, no `BASELINES`
+edits needed. `run_procedures` held **22/22 · 100/100** across three added steps (the new steps
+carry no `acc`), `run_behavior` 35/0, `run_pwr` 32/32, `run_campaign` 51/51, `verify_e2e_ui` PASS,
+`verify_manual_follow` 84 checks. Single tracked red `run_ops` 59/68 unchanged.
 
 ### 2026-07-25 — PI-9 retired on measurement; the MSIV made real (issue #199)  ✅🔬
 
