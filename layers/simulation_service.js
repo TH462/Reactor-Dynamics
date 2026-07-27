@@ -401,8 +401,15 @@
     return true;
   };
 
-  // Scrammed if the protection latched (rps) OR the operator manually scrammed
-  // (true_state only — a manual scram never sets rps; see control_kernel §trip).
+  // Scrammed if the protection latched (rps) OR the engine is actually shut down.
+  //
+  // The second read is NOT what this comment used to claim. It said "a manual scram
+  // never sets rps" — that stopped being true when `control_kernel.js:204-207` began
+  // latching `rps.scrammed` + reason 'manual scram' on an operator scram, and the
+  // stale comment survived the change (#158). Corrected rather than collapsed: the
+  // two reads still differ under an ATWS, where the kernel asserts `rps.scrammed`
+  // while the engine stays unscrammed, and the `||` keeps this true for both that
+  // case and any path that shuts the engine down without the kernel seeing it.
   SimulationService.prototype._snapScrammed = function (snap) {
     return !!((snap.rps_state && snap.rps_state.scrammed) ||
               (snap.true_state && snap.true_state.scrammed));

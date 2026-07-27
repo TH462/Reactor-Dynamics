@@ -196,6 +196,43 @@ typo'd trigger type passes silently.
   false positive worth remembering: **`:952` matched because `orm` is a substring of
   `'n`*`orm`*`al'`** — so any such check needs a curated identifier list, not substrings.
 
+**Addendum — the HR3 guard (#227) and what verifying the backlog turned up.**
+
+- **`test/run_hr3.js` built — runner #22, 0.2 s, static.** The design choice worth keeping: the
+  plant vocabulary is **derived from the three engines**, not hand-listed, and the discrimination
+  falls out of the data — *a token all three plants define is a shared concept, not a plant
+  specific*, so `scrammed`/`rod_groups`/`power_pct` need no allow-list entry and never will.
+  Everything else needs a written reason. Validated by injection: the exact #156 leak → caught;
+  a fresh RBMK leak → caught; a stale allow-list entry → caught. It caught **three couplings I
+  had missed by hand**. **Limitation, learned the honest way:** my first RBMK injection did NOT
+  trip it, and the guard was right — I had written `instruments.orm`, and the real field is
+  `orm_display`. It matches real plant names, not invented ones.
+- **Two latent bugs found on its first run → #228, recorded not fixed** (both RBMK/BWR-facing).
+  The sharper one: the `__true_flow__` trip sentinel reads `pump_flow_pct`, which is
+  **`undefined` on RBMK and BWR** → `undefined/100` = NaN → `crossed(NaN,…)` is false, so a
+  future RBMK/BWR flow trip on that sentinel would **never fire and never say so**. Both plants
+  are flow-critical. Also `reset_rps` is sent by the kernel but handled only by `pwr_engine.js`.
+- **The backlog is roughly half stale — verify before working.** Of #158's seven residue items,
+  **five were already fixed or had moved**; three of the survivors have a real reason the
+  2026-07-16 audit did not see (`set_lpi` is a live deprecated alias with save-file
+  compatibility; renaming `act5` orphans `rd_progress` keys; `buildTraining` has a standing
+  "do not" ruling). Fixed the two that were genuinely mechanical: the `dampInstruments` no-op
+  stub + dead call site, and a **new** instance of the #156 pattern — `simulation_service.js:404`
+  claimed *"a manual scram never sets rps"*, which `control_kernel.js:204-207` stopped being
+  true; corrected, not collapsed, since the two reads still differ under an ATWS.
+- **`instruments.rps_scrammed` cannot fail** — it is a `status:` passthrough copied by
+  `_copyStatus` after the instrument loop, and `_applyFailure` only runs over `SOURCE` ids. So
+  it is identically `true_state.scrammed` on all three plants, and the remaining HR1 swaps at
+  `app.js:3310/3433` are **conformance cosmetics with zero behaviour delta**. Worth doing; not
+  worth claiming as a bug fix.
+- **#161(b) fixed, and it had spread.** Measured: PWR ops is **21/21 with ZERO fails**; all 11
+  reds are 7 RBMK + 4 BWR, and the deliberate C2 red is *one of the RBMK seven*, not a twelfth
+  item. Naming **P4** as an open target was wrong — and the wrong list had since been **copied
+  verbatim into `run_all.js`'s note**, so the authority file was asserting it too. Both
+  corrected together, with the measurement and its date inline. #161 stays open for (d) only:
+  `OPS_TUNING_REPORT.md` is still the 2026-07-06 body and needs a real refresh, not a
+  number-swap.
+
 ### 2026-07-27 — backlog sweep (8 issues closed) + #219: the dump reference was the bug, not the latch  ✅🔬
 
 **#219 — the steam-dump load-rejection latch, reviewed with fresh eyes as asked.** Measured

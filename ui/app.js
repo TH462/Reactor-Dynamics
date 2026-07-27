@@ -534,7 +534,11 @@
   //
   // Noise is now set per indication at the source (pwr_config instrument table), sized
   // against each readout's display step. One knob, in one place, sim-time correct.
-  function dampInstruments(s) { /* no-op — see above */ }
+  //
+  // The no-op stub and its call site are gone as of 2026-07-27b (#158): an empty
+  // function that every reader has to open the file to understand is worse than no
+  // function. This comment is the part worth keeping — it says why the board does
+  // NOT damp, which is the question someone will eventually come here to ask.
 
   // ============================================================ render snapshot
   // Rendering is coalesced onto requestAnimationFrame. The sim broadcasts from a
@@ -563,8 +567,10 @@
     });
   }
   function renderNow(s) {
-    var rawIns = s.instruments;   // capture BEFORE damping — the strip chart plots RAW, unsmoothed readings at every speed
-    dampInstruments(s);
+    // `rawIns` used to mean "captured BEFORE display damping". There is no damping
+    // any more (#217), so it is simply the instruments — kept as a named local
+    // because the chart paths below read it a few times (#158).
+    var rawIns = s.instruments;
     $('clock').textContent = 'T+' + hms(s.metadata.sim_time);
     $('clock').classList.toggle('running', s.metadata.running);
     $('clock').classList.toggle('accel', s.metadata.time_acceleration > 1);

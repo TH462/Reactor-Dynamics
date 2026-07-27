@@ -144,9 +144,14 @@ var BASELINES = {
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
     code: 1, score: '57/68 334passed 12failed',
-    note: 'Ops probes are tuning targets by design. The FAILs are documented RBMK/BWR ' +
-          'targets (P4, R1-R3, B2-B5) plus the deliberately-red C2 accel-latency probe ' +
-          '(#153, status-deliberate). See Diagnostic/OPS_TUNING_REPORT.md. ' +
+    note: 'Ops probes are tuning targets by design. Measured 2026-07-27b from ' +
+          'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; all 11 reds are ' +
+          '7 RBMK + 4 BWR, and the deliberately-red C2 accel-latency probe (#153, ' +
+          'status-deliberate) is one of the RBMK seven ("ABUSE [post] time-acceleration"), ' +
+          'not a twelfth item. The old wording here named "P4" among the open targets — ' +
+          'a P-prefixed probe is PWR and P4 has passed since 2026-07-22 (#161(b)). It was ' +
+          'wrong in CLAUDE.md and got copied into this note; both corrected together. ' +
+          'See Diagnostic/OPS_TUNING_REPORT.md. ' +
           '2026-07-26c (#209): 59/68 -> 57/68 when ops_harness was wired to the SHIPPED ' +
           'lineup (engageDefaults + startup lineup + stepAutomation, mirroring M5). The ' +
           'two PWR probes it broke were repaired (they silently assumed load-follow; the ' +
