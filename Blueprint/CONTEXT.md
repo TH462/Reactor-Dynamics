@@ -235,6 +235,14 @@ happens to need covering.
 never the current behaviour.** *(2026-07-27, after the same failure surfaced three times in
 one session — #200, #206/#219, #219.)*
 
+> **"Tests should check to make sure the sim does what it's INTENDED to do, not just check
+> that it does what it already does."** *(owner, 2026-07-27 — the rule in one line.)*
+
+That distinction is the whole rule. A test written from observed behaviour can only ever
+confirm the behaviour it was written from, including the parts that are wrong — it locks in
+the defect and reports coverage while doing it. A test written from the **intent** can fail,
+which is the only reason to have it.
+
 HR9 says content must not vote on physics. HR10 is the same inversion one level up: **test
 outcomes driving design.** It is more dangerous than the content version, because a green
 gate reads as proof rather than as a story someone wrote.
