@@ -826,9 +826,17 @@ test('pwr_esf — ESF arms: auto-fire, MAN drop, re-arm; starved branch', functi
 });
 
 test('pwr_msiv — MSIV closure: reopen and bottled endpoints, cold-feet catch', function (ck) {
-  // Reopen branch: close at power, take the decision inside its ~21 s window
-  // (probed: decision fires 29 s post-closure, auto low-SG trip at ~50 s; the
-  // trip is unavoidable — reopening decides the post-trip heat path).
+  // Re-probed 2026-07-26 (#218) after P-9. The old shape was a RACE: the reactor was
+  // still critical after closure and the player had ~21 s to reopen before an automatic
+  // low-SG-level trip. With Reactor Trip on Turbine Trip the scram now lands at CLOSURE
+  // (measured 4.1 s, ~0.1 s after the valve), so there is no race left — and the beat's
+  // old `scram` branch fired instantly and railroaded every run to the bottled ending in
+  // 14 s. The mission is now the post-trip EOP question it should always have been:
+  // decay heat is on the code safeties, do you restore the dump path or not? Inaction is
+  // a real 90 s choice, not a clock the player loses.
+  // Measured: decision at 29 s; reopen -> safeties reseat within 0.4 s, dump to 100 %,
+  // ends 8.02 MPa with the MSIV open. Inaction -> 11 safety lifts in 600 s, never
+  // reseating, parked at 9.02 MPa.
   var s = startScenario('pwr_msiv');
   var snap = runUntil(s, function () { return s.instructor.firedBeats.has('intro'); }, 30);
   ck('closure prompt opens', !!snap, !!snap, 'intro fired');
@@ -845,11 +853,11 @@ test('pwr_msiv — MSIV closure: reopen and bottled endpoints, cold-feet catch',
   ck('reopen path completes', !!snap, !!snap, 'level_complete');
   if (snap) {
     ck('endpoint is the dump-path card', lc(snap).title, /Dump Path/i.test(lc(snap).title), 'Dump Path Restored card');
-    ck('trip still came (shrink-driven, probed unavoidable)', snap.rps_state.scrammed, snap.rps_state.scrammed === true, 'scrammed');
+    ck('the reactor tripped (P-9 at closure, not a level trip)', snap.rps_state.scrammed, snap.rps_state.scrammed === true, 'scrammed');
     ck('safeties reseated with the dump carrying decay heat', snap.instruments.sg_safety_open, snap.instruments.sg_safety_open === false, 'sg_safety_open false');
   }
-  // Bottled branch: ride it down — the automatic low-SG trip (~50 s) exits the
-  // decision via its scram branch; the SG stays bottled on cycling safeties.
+  // Bottled branch: decline to act. The decision beat's 90 s inaction branch exits to
+  // the bottled ending; the SG stays sealed on cycling code safeties.
   var s2 = startScenario('pwr_msiv');
   runUntil(s2, function () { return s2.instructor.firedBeats.has('intro'); }, 30);
   settle(s2, 2);

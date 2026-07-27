@@ -79,12 +79,13 @@ var BASELINES = {
 
   // ---- control, campaign, procedures ----
   'run_autoctl.js':        { code: 0, score: '20/20' },
-  // TRACKED RED (#218): 50/51 while pwr_msiv is re-authored for P-9. MSIV closure now
-  // trips the turbine, which above P-9 scrams the reactor immediately — the mission's
-  // ~21 s "decision window" before a level-driven trip no longer exists, so it ends on
-  // the bottled card instead of the dump-path one. This also FIXED #215's softlock: the
-  // reopen path now completes on every seed. Same convention as run_ops' tracked red.
-  'run_campaign.js':       { code: 1, score: '50/51 2931passed 1failed', note: '#218 pwr_msiv endpoint — re-author for P-9' },
+  // Back to 51/51 2026-07-26 (#218): pwr_msiv re-authored for P-9. The mission had been
+  // a RACE — reopen before an automatic low-SG trip — and with the scram now landing at
+  // closure that race is gone; worse, the decision beat's `scram` branch fired instantly
+  // and railroaded every run to the bottled ending in 14 s, so the player had no decision
+  // at all. It is now the post-trip EOP question: decay heat is on the code safeties, do
+  // you restore the dump path? Check count 2931 -> 2930: one assertion merged, none lost.
+  'run_campaign.js':       { code: 0, score: '51/51 2930passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
