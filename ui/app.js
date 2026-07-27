@@ -52,7 +52,6 @@
   var CHART_RECORD_SEC = 1800;   // keep 30 min of history; the chart DISPLAYS only ui.window of it
   var CHART_SHRINK_FRAMES = 40;  // frames a trace must sit well inside its band before the axis zooms in (~4 s)
   var smoothed = {};        // id -> display-damped instrument value
-  var DISPLAY_DAMP_K = 0.18;
 
   // ----------------------------------------------------------- unit conversion
   function conv(v, dim) {
@@ -515,18 +514,24 @@
   }
 
   // ============================================================ display damping
-  function dampInstruments(s) {
-    if (s.metadata.time_acceleration >= 60) { smoothed = {}; return; }
-    var src = s.instruments, out = {}, k = DISPLAY_DAMP_K;
-    for (var id in src) {
-      var v = src[id];
-      if (typeof v === 'number' && isFinite(v)) {
-        smoothed[id] = (smoothed[id] == null) ? v : smoothed[id] + k * (v - smoothed[id]);
-        out[id] = smoothed[id];
-      } else out[id] = v;
-    }
-    s.instruments = out;
-  }
+  // RETIRED 2026-07-26 (#217). This applied a per-FRAME EMA to every instrument and
+  // replaced s.instruments wholesale, so the whole board read damped values. Three
+  // reasons it had to go:
+  //
+  //   1. It is a SECOND lag. The engine already models instrument lag properly —
+  //      inside the physics step, on sim time (HR6). This one sat on top of it,
+  //      uncontrolled and undocumented in any spec.
+  //   2. It has no `dt` term, so the damping is FRAME-RATE DEPENDENT: a 120 Hz display
+  //      damps twice as fast as a 60 Hz one. Instrument dynamics must be sim-time
+  //      correct (HR6) — that is the whole reason lag lives in the engine step.
+  //   3. It attenuated noise ~3x, so every sigma had to be inflated ~3x to survive it.
+  //      Those same sigmas are what a `noisy` sensor FAILURE multiplies, so the
+  //      inflation would have made failures wilder too. Tuning the physics to defeat a
+  //      UI filter is backwards.
+  //
+  // Noise is now set per indication at the source (pwr_config instrument table), sized
+  // against each readout's display step. One knob, in one place, sim-time correct.
+  function dampInstruments(s) { /* no-op — see above */ }
 
   // ============================================================ render snapshot
   // Rendering is coalesced onto requestAnimationFrame. The sim broadcasts from a

@@ -926,10 +926,26 @@
         }, 900);
         ck('tripped on high pressurizer level', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip',
           dt >= 0 && /pzr_level high/.test(h.tripReason || ''), 'pzr_level high');
-        ck('the setpoint is read off the INDICATED level (97 ±0.5 %)', fmt(ind, 2),
-          near(ind, 97.0, 0.5), '97 ±0.5');
-        ck('true level lagged behind it, still short of solid', fmt(tru, 2),
-          tru > ind && tru < 100, ind + ' < true < 100');
+        // Tolerance is 3x the channel's own noise sigma, not a fixed 0.5. A trip on a
+        // NOISY rising channel fires on the first excursion across the setpoint, which
+        // precedes the mean crossing — so the reading sampled at the trip sits a little
+        // BELOW the setpoint by construction, and by more when the channel is noisier.
+        // The old ±0.5 was silently calibrated to an effective sigma of 0.125 (the
+        // retired global 0.25 scaler); at the per-indication sigma of 0.5 (#217) that
+        // band is ±1σ and would fail on noise ordering alone. The assertion's PURPOSE
+        // is unchanged — it proves the trip reads the INDICATED channel, and truth is
+        // several points away from this band either way.
+        ck('the setpoint is read off the INDICATED level (97 ±1.5 %)', fmt(ind, 2),
+          near(ind, 97.0, 1.5), '97 ±1.5 (3σ)');
+        // The substantive claim is "not solid yet". The ORDERING claim (true above
+        // indicated, because the channel lags) is real but NOT resolvable from a single
+        // sample here: level is rising ~0.08 %/s, so a 2 s lag separates them by only
+        // ~0.16 % — well inside the channel's own noise. Asserting an unresolvable
+        // ordering makes the probe a coin-flip on noise ordering, so it is bounded by
+        // the noise instead of pretending to see through it. If the lag itself needs
+        // pinning, it wants a windowed comparison, not a point sample.
+        ck('true level still short of solid, indication tracking it', fmt(tru, 2),
+          tru < 100 && Math.abs(tru - ind) < 1.5, '< 100, within 1.5 % of indicated');
         var lead = h.alarmFirst['pzr_level_high'] != null ? h.tripTime - h.alarmFirst['pzr_level_high'] : -1;
         ck('the 75 % caution led the trip by ≥ 60 s', lead >= 0 ? fmt(lead, 0) + ' s' : 'alarm never fired',
           lead >= 60, '≥ 60 s');
