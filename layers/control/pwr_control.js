@@ -82,13 +82,28 @@
   // be measured by flipping one flag rather than guessed at. Flip
   // `protection.turbine_trip_reactor_trip` in pwr_config.js to enable.
   //
-  // Note the P-9 permissive is NOT a defeat switch — it is prototypical: below 50 % power
-  // the trip is bypassed automatically, because there the plant genuinely can ride a
-  // turbine trip out on the dump. `condition: 'above_p9'` IS that permissive.
+  // NOT `blockable`, deliberately. `condition: 'above_p9'` IS the P-9 bypass: below 50 %
+  // power the trip is bypassed AUTOMATICALLY, because there the plant genuinely can ride
+  // a turbine trip out on the dump. That is the whole of the interlock — P-9 is a power
+  // permissive, not an operator-selectable bypass like P-11/P-7/P-10 (which really are
+  // operator-selectable, and are the four trips carrying `blockable`).
+  //
+  // It was briefly shipped `blockable` with a redundant `power_range < 50` permissive.
+  // Measured, that produced three defects, and the middle one is the reason the rule
+  // "one interlock, one mechanism" matters:
+  //   1. At full power `can_block` was TRUE, so an operator could defeat a reactor trip
+  //      from the board and a subsequent turbine trip did NOT scram. No real plant lets
+  //      you do that at power.
+  //   2. Below P-9 the trip auto-blocked ON TOP of already being bypassed by its
+  //      condition, so the board would report it "blocked" when it was merely N/A.
+  //   3. A block set during startup was recorded as a MANUAL block, and manual blocks
+  //      survive auto-reinstate by design — so it silently carried a defeated reactor
+  //      trip all the way up to full power.
+  // Defeating this trip is an out-of-fiction INSTRUCTOR action (the trips page), not a
+  // control-board control. See #216.
   if ((RD.PWR_CONFIG.protection_options || {}).turbine_trip_reactor_trip) {
     PWR_TRIPS.push({ id: 'turbine_trip_reactor_trip', instrument: 'turbine_tripped',
-      direction: 'is_true', setpoint: null, action: 'scram', condition: 'above_p9',
-      blockable: true, block_permissive: { instrument: 'power_range', direction: 'low', setpoint: 50.0 } });
+      direction: 'is_true', setpoint: null, action: 'scram', condition: 'above_p9' });
   }
 
   // P-10, the nuclear at-power permissive: manual trip blocks are allowed only

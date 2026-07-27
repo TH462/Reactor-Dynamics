@@ -208,6 +208,16 @@
       // "warning" is the blocking procedure itself (block above P-10 before
       // ascending), and a matching alarm would sit permanently lit at power.
       if (t.blockable) return;
+      // STATE-KEYED (boolean) trips are exempt, and structurally so: this check compares
+      // setpoint MAGNITUDES to find an alarm that fires earlier on the way to the trip,
+      // and a boolean has no less-extreme value to sit at — `setpoint` is null. More to
+      // the point, an ANTICIPATORY trip has no approach to warn about: the initiating
+      // event IS the trip condition. The PWR's Reactor Trip on Turbine Trip (P-9) fires
+      // the instant the turbine trips, and the operator is told by the TURB TRIP
+      // annunciator at the same moment — simultaneously, not in advance, which is what
+      // "anticipatory" means. Demanding an earlier warning here would be demanding a
+      // warning that the turbine is about to trip.
+      if (t.direction === 'is_true') return;
       var warns = alarms.some(function (a) {
         return a.instrument === t.instrument && a.direction === t.direction && a.setpoint != null &&
           (t.direction === 'high' ? a.setpoint < t.setpoint : a.setpoint > t.setpoint);
