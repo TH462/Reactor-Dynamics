@@ -91,7 +91,7 @@ Sources include `Diagnostic/SPEC_AUDIT_2026-07-16.md` and campaign playtest note
 | I-30 | M | Expanded **PWR-N/E** procedures are **not** all machine-validated in `test/run_procedures.js` (unlike the shorter in-product set). | Open — future: port acceptance predicates |
 | I-31 | L | Commercial EOP step detail (foldout trees, CSF status trees, red path priorities) is **simplified** to trainer-appropriate linear procedures. | By design |
 | I-32 | L | **RBMK/BWR** not covered in this Manuals set (user asked PWR). | Out of scope |
-| I-33 | M | **MSIV at power** and **steam line break** interact with single-SG model — isolation “faulted SG” logic is thinner than multi-SG commercial EOPs. | E19 simplified |
+| I-33 | M | **MSIV at power** and **steam line break** interact with single-SG model — isolation “faulted SG” logic is thinner than multi-SG commercial EOPs. | **RESOLVED 2026-07-25 (#199)** — the model no longer papers over it. Break **location** decides isolability: a downstream break is terminated by shutting the MSIV, an upstream one has no isolation at all, and E19 now states plainly that "isolate the faulted SG and steam the intact ones" has no counterpart on a single-generator plant. Pinned by `TR-12b` |
 | I-34 | M | **Feed-and-bleed** as last-resort heat removal is mentioned conceptually under dual heat-sink failure; not a fully validated procedure. | Open |
 | I-35 | L | Unit conversion (MPa↔psia, °C↔°F) not tabulated in manuals; UI has display toggle. | Open enhancement |
 

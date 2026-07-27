@@ -93,6 +93,10 @@
     // (TMI-2's subcooling/level alarms) instead of snapping back on every new
     // annunciator — see _assembleWithInstructor's attention-stop below.
     this._authoredSpeed = false;
+    // Attention stops on/off (Settings → Fast-forward). A player who wants the clock
+    // to keep running through a casualty turns this off; scram, failures and alarms
+    // then annunciate as normal but never touch the acceleration.
+    this.attentionStops = opts.attention_stops !== false;
     this.running = false;
     this.broadcastMs = NORMAL_MS;
     this._prevTrueState = null;
@@ -310,6 +314,7 @@
         sim_time: this.simTime,
         running: this.running,
         time_acceleration: this.timeAcceleration,
+        attention_stops: this.attentionStops,    // Settings → does an event drop fast-forward?
         wall_time: new Date().toISOString(),     // display-only; never in physics (§9)
         plant_id: this.activePlantId,
         design_version: this.activeDesignVersion,
@@ -364,12 +369,36 @@
   // ramp — an operator or auto-channel power maneuver — is expected change, and
   // snapping to 1× on it would make fast-forwarding through any startup/load ramp
   // impossible. _isRapidChange stays as the transient-broadcast-cadence signal only.
+  /* Attention stop — the events that drop fast-forward back to real time.
+     A scram and a newly-arrived failure are discrete, once-only events and always
+     stop the clock.
+
+     An ALARM only stops it on an otherwise QUIET BOARD. This is what an annunciator
+     is actually for: it draws the eye to a new condition on a normal board. Once the
+     board is lit and the operator is inside a casualty working procedures, the alarms
+     that follow are the consequences they are already handling — and stopping for each
+     one made fast-forward unusable exactly when it is most wanted (a large-break LOCA
+     dropped the clock 5 times in its first 3 minutes, a loss of feedwater 6 times).
+     Under this rule the same LOCA stops once, on the scram.
+
+     Standing alarms therefore suppress alarm-stops for as long as they stand — during
+     a cooldown, or a Mode 5 heatup with low-pressure alarms latched in, which is
+     precisely when a long fast-forward is the point. A scram or a new failure still
+     gets through regardless. */
   SimulationService.prototype._attentionStop = function (snap) {
     if (!this._prevTrueState) return null;
+    if (!this.attentionStops) return null;          // operator turned dropouts off (Settings)
     if (this._snapScrammed(snap) && !this._prevScrammed) return 'scram';
     if (this._anyNewFailure(snap.active_failures)) return 'failure';
-    if (this._anyAlarmNewlyFiring(snap.alarms, this._prevAlarms)) return 'alarm';
+    if (this._boardQuiet(this._prevAlarms) && this._anyAlarmNewlyFiring(snap.alarms, this._prevAlarms)) return 'alarm';
     return null;
+  };
+
+  // No alarm annunciating (acknowledged or not) as of the previous broadcast.
+  SimulationService.prototype._boardQuiet = function (alarms) {
+    if (!alarms) return true;
+    for (var i = 0; i < alarms.length; i++) if (alarms[i].state !== 'clear') return false;
+    return true;
   };
 
   // Scrammed if the protection latched (rps) OR the operator manually scrammed
@@ -413,6 +442,7 @@
       case 'pause': this.stop(); return null;
       case 'reset': return this.selectPlant(command.plant_id, command.initial_state, command.design_version || null);
       case 'set_speed': this.timeAcceleration = command.value; this._authoredSpeed = false; return null;
+      case 'set_attention_stops': this.attentionStops = !!command.value; return null;
       case 'save_state': return this.saveState();
       case 'load_state': return this.loadState(command.state);
       case 'set_register':

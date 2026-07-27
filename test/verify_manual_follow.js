@@ -38,12 +38,14 @@ function cgLabels(page) {
 
 async function checkControlOnBar(page, prof, view, control) {
   if (prof === 'pwr') {
-    // The PWR plant display is the full synoptic (no view bar): a control is
-    // "on the board" when the synoptic can reveal it (auto-switching the tab or
+    // The PWR plant display is the learning board (no view bar): a control is
+    // "on the board" when the board can reveal it (auto-switching the tab or
     // section it hides behind — the same path Instructor highlights use).
+    // RD.PwrSynoptic is retired for the PWR — it still loads, but never mounts,
+    // so probing it failed every bar-check regardless of the board's contents.
     return page.evaluate(function (label) {
       var RD = globalThis.RD;
-      return !!(RD.PwrSynoptic && RD.PwrSynoptic.isMounted() && RD.PwrSynoptic.revealControl(label));
+      return !!(RD.PwrBoard && RD.PwrBoard.isMounted() && RD.PwrBoard.revealControl(label));
     }, view === 'scram' ? map.VIEW_CONTROLS.pwr.scram : control);
   }
   if (view === 'scram') {

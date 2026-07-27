@@ -114,9 +114,8 @@ Reactor Dynamics is dual-licensed, © 2026 Timothy Holt:
 The full public terms — safety disclaimer, no-warranty, and limitation of liability —
 are on the [legal page](legal.html).
 
-<!-- REPO URL PLACEHOLDER: once the repository is public, add its link here, e.g.
-     **Source:** https://github.com/<owner>/<repo> — this also satisfies the AGPL §13
-     network-source offer referenced in legal.html §5. -->
+**Source:** https://github.com/TH462/Reactor-Dynamics — this is also the AGPL §13
+network-source offer referenced in [legal.html](legal.html) §5.
 
 ## Contact
 

@@ -9,6 +9,191 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Reactor Trip on Turbine Trip (P-9).** Above ~50 % power a turbine trip now trips the reactor,
+  as a real Westinghouse plant does — the stop valves slam, the heat sink is gone, and protection
+  anticipates rather than waiting for a process limit. Below 50 % it is bypassed automatically
+  (that is what the P-9 permissive *is*), because there the plant genuinely can ride a turbine
+  trip out on the steam dump. The behaviour catalog had been pinning the wrong event entirely:
+  its ride-out probe injected a **turbine trip** while describing a **load rejection**. Those are
+  different events, and both are now covered — a load rejection rides out at power, a turbine
+  trip scrams.
+- **The steam dump now catches a load rejection, not just a turbine trip.** Its fast-open mode
+  only ever armed on a turbine trip, so a rejection with the turbine still on line waited on SG
+  pressure and spiked the primary. On a full load rejection: peak Tavg **319.5 → 305.2 °C**, the
+  PORV no longer lifts, and the dump carries 98 % — the plant's ride-out character now holds for
+  the event it was always claimed for.
+- **STEAM FLOW indication on the board** (issue #206, owner ruling). The board showed feed
+  flow and SG level but **no steam flow of any kind** — so a player holding feedwater in
+  MANUAL was asked to match a number that was not displayed anywhere. The feed pump is a
+  fixed-demand device: set it to steam flow and level holds indefinitely, set it wrong and
+  level ramps to a trip in whichever direction the error points. All the board offered was
+  level — the *integral* of the error, and therefore always a late cue. The new readout sits
+  directly above SG FEED RATE, right-aligned in the same column and on the same gpm scale,
+  so matching is a visual comparison rather than arithmetic. Together with level these are
+  the *three elements* the feedwater controller regulates on, which is the prototypical
+  arrangement — "three-element" **is** steam flow, feed flow and level read together.
+  - It reads **`sg_steam_flow`** (total main-steam-line draw: turbine + dump + safeties),
+    **not** the older `steam_flow` (governor/turbine only). That distinction is the whole
+    point: with the turbine tripped and the dump carrying the plant, governor flow is ~0
+    while the generator still boils hard. Measured through a turbine trip — governor 0 %,
+    dump 98 %, **STEAM FLOW 983 gpm**, feed tracking it at 984. Wired the other way the
+    board would have read "no steam" during exactly the casualty it matters most in.
+  - Guarded by a new assertion in `verify_e2e_ui.js` that trips the turbine and fails with
+    a pointed message if the number collapses with the governor.
+- **New hands-off protection gate (`node test/run_meltdown_stack.js`).** The same core-damage
+  casualties as `run_meltdown.js`, but driven through the **full stack** on the shipped lineup
+  with the operator taking their hands off. `run_meltdown` is deliberately engine-direct and
+  does not load the control layer at all — so its MD-4 (*"stuck PORV **with HPI** → core
+  protected"*) and MD-8 (*"depressurize-to-flood → survivable"*) are **protection** claims
+  proven with the operator hand-scramming and hand-starting HPI. In the shipped plant nobody
+  hand-starts HPI: M4 scrams on the instruments and actuates SI at 12.4 MPa. This gate asserts
+  the automatic chain actually fires **unprompted** — scram without a manual scram,
+  `hpi_active` without a `set_hpi` — so a regression in an SI setpoint, an ESF arm or the P-11
+  permissive cannot silently turn a documented-survivable path into a melt. **3/3 · 21/21.**
+  Measured: the plant trips itself on SG level at 120 s and injects at 121 s; the LOCA band
+  0.05–0.20 all scram on low pressure within 19–55 s and inject 1–2 s later.
+
+### Changed
+- **Indication noise is now set per indication, not by a global multiplier.** Gauges were
+  jittering more than wanted, and the previous fix scaled *every* instrument down to a quarter.
+  Measured, only about nine indications were actually misbehaving — feed and steam flow were
+  jittering ten times their display step — while pressurizer and SG level, T-avg and the valve
+  positions were already right, and reactor power, generator output and condenser vacuum were
+  already too *quiet* to move at all. Noise is now sized per indication against what each readout
+  can actually show, so the last digit moves occasionally, like a live instrument, instead of
+  churning or sitting frozen. The board's separate display smoothing has been removed: the
+  instruments already model their own lag, and the extra filter both duplicated it and made the
+  underlying numbers meaningless.
+- **The startup checklist now takes load control after synchronising** (owner ruling, #211).
+  The generator picks up load in FOLLOW — right for getting on line, where the turbine chases
+  the reactor — and the checklist then puts it in **MANUAL**, leaving the setpoint where FOLLOW
+  put it, already matched to the power being made. This resolves a split nobody had noticed:
+  the two routes into Mode 1 disagreed. A player starting from the free-play `hot_full_power`
+  preset got **manual** with a matched 100 MWe setpoint; a player who ran the startup checklist
+  ended in **follow**. Same plant state, two different load-control lineups depending on how you
+  arrived, with nothing explaining why. Both are MANUAL now — measured, both leave an imbalance
+  under 1 MWe and no alarms. MANUAL is deliberate, not incidental: it keeps the reactor/turbine
+  coupling in the operator's hands, and the new LOAD IMBAL annunciator means the consequence of
+  ignoring it is no longer silent.
+
+### Fixed
+- **The board now tells you when the reactor and turbine have diverged** (issue #211). A new
+  **LOAD IMBAL** annunciator (Panel B, caution) fires when indicated reactor power and turbine
+  load differ by more than 4 % of rated — the steam generator is filling or draining.
+  `Manuals/09` had documented this annunciator all along and the engine had computed the
+  signal all along, but it never reached the instrument layer, so no alarm could read it and
+  the control layer never implemented one. The consequence was severe and completely silent:
+  in the shipped MANUAL lineup the governor sits at the operator's load setpoint and never
+  moves, so reducing reactor power on rods alone leaves the turbine as an unthrottled heat
+  sink — measured, Tavg **304 → 247 °C** on a daily load cycle and **304 → 130 °C** (still
+  falling) on a normal shutdown, with **no alarm and no trip at any point**. The annunciator
+  now comes in at the 4 MWe threshold while Tavg is still 303 °C — about 50 degrees before
+  the plant is in trouble. New alarm-response entry **PWR-A28**.
+- **Auxiliary feedwater no longer parks the plant in a standing alarm** (issue #207, owner
+  ruling). AFW **latches** — once it auto-starts on low steam-generator level it keeps
+  feeding until an operator secures it, as in a real plant. Its proportional level hold ran
+  full flow below 20 % tapering to zero at 28 %, a control band lying **entirely inside the
+  amber 17–30 % caution zone**, so an AFW-only generator settled at **25.1 %** with SG LVL LO
+  standing indefinitely — the plant was latched into a permanent alarm by design. The hold is
+  now 32 % / 8 % band, settling at **37.1 %**: comfortably green, 7 points clear of the
+  boundary, far below the 75 % caution. `run_meltdown` MD-6 (the feed-keyed dryout depletion)
+  and `run_behavior` TR-2 both hold.
+- **A stranded PID output could feed a steam generator forever** (issue #210). `minDelta`, the
+  output deadband that suppresses chatter, was also suppressing the last small step onto a
+  **rail**: a channel wanting `u = 0` after last sending 0.13 % never sent again, so a 0.13 %
+  feed demand stood for the rest of the run against **zero** steam leaving the generator.
+  Measured on `pwr_heatup`: true level 65.0 → 75.8 % across the low-power holds, climbing to
+  ~90 %, then collapsing through the 17 % lo-lo when the dump opened. Reaching a bound is a
+  state change, not chatter, so it is now always sent. Channels also stopped reporting a stale
+  `holding` while sitting 25 points off setpoint with no authority to correct — they now say
+  *"at minimum output — no authority to correct"*, the honest answer for a feed controller
+  that cannot pump water out. Same family as the anti-windup ratchet fixed earlier, returning
+  by a different mechanism.
+- **The three-element feedwater controller was blind to the steam dump** — the most
+  consequential fix in this batch. `feed_sg`'s feedforward and mismatch trim read the
+  `steam_flow` instrument, which is **governor (turbine) flow only**. Whenever the turbine
+  is offline or tripped and the dump is carrying the plant, that reads ~0, so the controller
+  commanded **zero feed while the generator boiled down**. The engine's own comment
+  (`pwr_steam_generator.js:139-143`) had named this exact hazard — *"after a turbine trip the
+  dump still draws, and feed must follow THAT or the ride-out silently drains the SG"* — and
+  the engine's coupled-feed fallback was fixed for it long ago; the M4 channel never was.
+  New **`sg_steam_flow`** instrument (main-steam-line transmitter: turbine + dump + safeties)
+  now drives both elements. Measured on a full-load turbine trip: SG level holds **62–67 %
+  for 20 minutes** with feed tracking the dump (0.971 vs 0.973) and **no follow-on alarms**;
+  previously it drained to **0 %** and scrammed on level lo-lo within 28 s.
+- **`pwr_heatup` now actually heats the plant** (issue #206): Tavg **50 → 297 °C**, secondary
+  bottled up to the 8.20 MPa no-load anchor, Mode 3 reached. Three procedure defects, all
+  invisible below M4: it never blocked the startup net it deliberately walks into (scrammed
+  on INTERMEDIATE RANGE HIGH at ~20 % with the plant barely past 100 °C — the same defect as
+  the startup checklist's, in the procedure that runs immediately before it); it set a
+  standing 30 % manual feed-pump demand instead of engaging Feed AUTO (SG flooded to 94.5 %,
+  SG LVL HI HI standing); and it left the turbine in FOLLOW, so once the SG could finally
+  make steam the governor took ~46 % of it and the heatup stalled at 240 °C. A residual
+  slow SG fill on trickle feed remains, tracked in #206.
+
+### Added
+- **New full-stack procedure gate (`node test/run_procedures_stack.js`).** The same authored
+  procedures as `run_procedures.js`, but driven through `SimulationService` — M4 + M5 + M6 —
+  instead of engine-direct. It asserts the *same* `acc`/`saw`/`guard` predicates, so any
+  divergence is attributable to the stack alone, plus four assertions only the stack can
+  make: every step command **accepted** (not rejected as unknown, not refused by an
+  interlock), **no unexpected scram**, **no critical alarm standing at the end**, and any
+  declared `auto_channels` actually engaged. Deliberate scrams (a shutdown procedure) and
+  emergency/accident categories are exempted. **22/22 · 154/154 with 13 strict xfails**,
+  4.1 s. Built because `run_procedures.js` had been structurally blind twice: it cannot see
+  anything the control layer decides.
+- **The startup checklist now sets up its heat sink, and blocks its own trips**
+  (issue #202, owner playtest). Three new steps in `pwr_startup`: **engage the
+  three-element Feed AUTO channel at step 3**, while SG level is still at its nominal
+  65 % (the channel captures level as its setpoint, so engaging it late captures a bad
+  number); and, once above P-10, **block the IR HIGH and PR 25 % trips as explicit
+  steps** rather than discovering the startup net at 20 % power. `run_procedures`
+  22/22 · 100/100 checks, unchanged — the three commands are M4/UI actions the
+  engine-only harness skips (new `NON_ENGINE_ACTIONS` list).
+- **The 1/M "Plot point" button is now visible to the instructor.** Pressing it emits
+  `plot_1m_point`, an operator action with no plant effect that the instructor layer
+  consumes (M4 never sees it), so the checklist's *"set the 1/M baseline"* step checks
+  itself off when the point is actually taken. The plot's points stay UI-side.
+- **The release version is shown next to the logo in the control room** (issue #201),
+  from a new hand-edited `site/release.js` (`window.RD_RELEASE`). Distinct from the
+  `RD_VERSION` git-SHA deploy stamp; bump it with the `changelog.html` entry.
+
+### Fixed
+- **The rod insertion limit is now power-dependent, as its own config comment always
+  claimed** (issue #202 item 4). `insertion_limit_pct: 30` was a flat % withdrawn floor,
+  so ROD INS LIMIT annunciated continuously through every startup — the control bank
+  crosses Mode 2 at ~27 % withdrawn and only reaches 92 % at power. The limit now does
+  not apply below 5 % power and ramps linearly from 5 % to **70 % withdrawn at 100 %
+  power** (three new `[tune]` constants). Measured margin: null at hot standby, 6 % vs a
+  62 % bank at the `5_percent` preset, 70 % vs 92 % at full power — so the alarm now
+  means "the bank is abnormally deep for this power", which is what it is for. It also
+  stops the automatic rod channel inserting past a limit that no longer moves with load.
+- **Steam-generator level no longer decays through the whole startup** (issue #202 item
+  5). `pwr_startup` never commanded feedwater at all, so nothing regulated level: AFW
+  picked it up around 20 % and its proportional hold (band 20–28 %) parked the plant at
+  **21.4 % narrow — inside the amber band — indefinitely**. With the new Feed AUTO step,
+  measured end-of-procedure level is 65.7 % on a `noDefaults` board (was 46.8 %), 65.0 %
+  in free play, and 70.9 % even if the feed pump was manually poked first (was 21.4 %).
+- **Checklist hover no longer restacks the PWR board** (issue #202 item 2). The shared
+  `.ckl-glow` / `.instr-glow` rules lift the glowed element to `z-index: 5`, which pulled
+  a hovered panel in front of the reactor vessel authored to sit over it, obscuring its
+  neighbours. Board tiles now keep their authored stacking layer.
+- **The startup checklist no longer points the operator at reactivity** (issue #202 item
+  3, owner ruling). Reactivity in pcm is truth, not an instrument (HR1), but six approach
+  steps graded on `reactivity_pcm` — and the live checklist prints its acceptance
+  predicate, so the player was told to watch a reading that does not exist on the board.
+  The six approach steps now grade on **source-range count rate** (620 / 1 000 / 1 800 /
+  3 300 / 6 200 cps, measured), step 1 on Tavg, and no step's hover-highlight names
+  Reactivity any more.
+- **The pressurizer cutaway uses the full height of the vessel internals** (issue #192).
+  The water band was mapped onto the LVL strip's 160–470 pixel span, so the cutaway read
+  as a copy of the gauge beside it; it now spans the inner dome apex to the inner dish
+  floor, and the strip keeps its own instrument span.
+- **A checklist step is no longer checked off by a different step's trip block.** Command
+  evidence matching now discriminates `set_trip_block` by `trip_id` (as it already did
+  `inject_failure` by `failure_id`), so blocking the power-range trip does not also tick
+  the intermediate-range step.
+
 - **Vercel Web Analytics on every shipped page.** A one-line first-party beacon
   (`/_vercel/insights/script.js`) in the `<head>` of `index`, `about`, `changelog`,
   `feedback`, `legal`, `privacy` and `ui/shell.html`. No npm package and no build step —
@@ -21,6 +206,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `ui/shell.html`). Real-user load timings for the one page that pulls in the full engine +
   layer + UI script set. Separate Vercel product with its own dashboard toggle.
 
+- **The PWR behavior battery now probes the four protections it had been skipping**
+  (`run_behavior` 30 → **34 pass / 0 xfail**, coverage-todo list empty). `PI-3` (reactor trip
+  on safety injection — provable only with `lo_press` blocked, since the two setpoints are
+  0.01 MPa apart and report the same reason string; plus the P-11 auto-block/auto-reinstate
+  legs), `PI-8` (the 97 % going-solid backstop read off the *indicated* level, with the 75 %
+  caution 102 s ahead of it and the ride-out swell well clear), `PI-9` (verified — see
+  Changed), and the `TR-11` end-state pin (a spray valve stuck fully open is a nuisance, not
+  a casualty: under the P5 capacity cap the heaters hold pressure at 15.33 MPa on 37 % duty,
+  no trip in 30 min). Two defects found writing them, both filed rather than fixed here: no
+  SI on low steam-line pressure exists at all, and `stuck_open_spray` is silently cleared by
+  the SPRAY AUTO button or the spray % slider.
 - **New meltdown-path test gate (`node test/run_meltdown.js`).** A strict-xfail battery
   (`test/meltdown_pwr.js`) that drives the classic routes to core damage — large-break LOCA,
   TMI small-break, station blackout, ATWS+LOCA, total loss of heat sink, ECCS recovery — and
@@ -34,7 +230,147 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   1/M PLOT tool, the Source Range counts, and the Reactivity/Startup-Rate readouts together — and
   otherwise fall back to the step's named control. Works on the checklist bubble list.
 
+### Fixed
+- **Closing the MSIV now actually stops a steam line break — it used to do nothing.** The break
+  blew the secondary down regardless of valve position, so the one lever an operator has on the
+  casualty was decorative, while the manual told you to reach for it ("MSIV Close *if it
+  terminates break (as modeled)*") and the behavior catalog claimed "MSIV limits". Break
+  **location** is now modelled, which is the distinction a real crew is trained on:
+  **Main Steam Line Break (Downstream — MSIV Isolable)** is the turbine-hall break, and shutting
+  the MSIV puts the valve between the generator and the break — the blowdown stops, the bottled
+  generator re-pressurizes to its code safeties, and you are in the familiar MSIV-closure
+  condition. The new **Main Steam Line Break (Upstream of MSIV — Not Isolable)** is inside
+  containment, between generator and valve, where nothing on a single-generator plant can reach
+  it: you trip and ride the cooldown out. A multi-loop plant would isolate the faulted generator
+  and keep steaming the intact ones; this plant has one, and now says so instead of pretending.
+  The **Steam Line Break** scenario uses the upstream variant, so its "you cannot stop this"
+  story is true rather than accidental, and its ending explains why. With the MSIV left alone,
+  both variants behave exactly as the old model did.
+  **Save migration:** `_fail.steam_break` gains an `upstream` flag; saves written before this
+  default to *downstream*, so a save restored mid-break gains a working MSIV.
+- **The startup checklist now plots enough 1/M points to actually find criticality.**
+  It asked for three, which puts the predicted critical rod position **79 steps past**
+  where the reactor really goes critical — no use at all when the whole method is
+  "stop short of the prediction and creep up on it". The early points sit in the flat
+  toe of the rod-worth curve, so the trend is too shallow and always extrapolates long
+  (two points predict step 409 against a true 224). The approach now takes **six**
+  points with the withdrawal bursts shrinking as you close in, which walks the estimate
+  down 409 → 329 → 247 → 235 → 232 and lands within about eight steps — still reading
+  slightly high, which is the safe side. Each approach step is now one self-contained
+  *withdraw, settle, plot*, and tells you what the prediction should read at that point
+  so you can watch it converge instead of trusting the first number.
+- **The startup no longer coasts to ~15–20 % power when you try to level off in the
+  low-power band.** The plant was never the problem — measured, it parks at 1.8–3.5 %
+  when you take the excess reactivity out in *one* decisive inward drive released as the
+  startup rate nulls, and at 10–20 % (and eventually a trip) when you tap it out a step
+  at a time, because the plant keeps running while you tap. Three things were teaching
+  the wrong reflex: the startup checklist withdrew ~+430 pcm and took back only ~76,
+  named "~5–15 %" as the target, and *passed* on landing above 5 %; a caution blamed the
+  overshoot on the trainer's lumped rod group, which the measurement disproves; and the
+  startup-rate protection was set where a real startup never reaches it (peak 1.82 DPM
+  against a 2.0 DPM alarm and a 2.5 DPM withdrawal block — so on the run that coasted to
+  19.8 % and tripped, nothing warned and nothing stopped you). Now: **SUR HI alarm at
+  1.0 DPM, rod withdrawal blocked at 1.5 DPM** (clearing below 0.8, insertion never
+  blocked); the checklist creeps to criticality at ≤1 DPM, levels off at the point of
+  adding heat with one Norm-speed drive, and **crossing the 5 % boundary into Mode 1 is
+  now its own deliberate step** rather than something the ascent does to you. Following
+  it lands 1.5 % in Mode 2, then 12.4 % and the generator on line — with every phase of
+  the ascent peaking below 0.92 DPM.
+- **Asking the turbine for more than the plant can make no longer floods the steam
+  generator and trips the reactor.** The governor has always capped steam at rated
+  output, but the automatic feedwater coupled to the *ask* rather than to that cap —
+  so any load target above 100 % fed the SG faster than it could boil, level climbed
+  65 % → 89 %, and the plant scrammed on high SG level a minute or two later, with
+  nothing on the board connecting the trip back to the slider that caused it. The
+  coupling now saturates at rated. Below rated nothing changes, including the
+  deliberate feed-vs-steam mismatch you see while a load change is in progress, and
+  you can still overfeed by hand on purpose.
+
 ### Changed
+- **The behavior catalog's last two open interlock rows are settled.** `PI-9` ("SI on low
+  steam-line pressure") is **retired** — the signal does not exist, and the measurements say
+  it should not: this core cannot return to power on an overcooling even with the most
+  reactive rod stuck out of it (better than 9,600 pcm of margin left), a prototype of the
+  interlock injected into an intact primary until inventory pegged at its cap, and the one
+  case where injection could matter already gets borated water from the accumulators. Real
+  plants carry the interlock; this one has no job for it, and the manual now says so plainly
+  — along with the fact that pressurized thermal shock is a real concern the model does not
+  represent. `TR-11`'s row is **superseded by the earlier spray-capacity-cap ruling** — it
+  still predicted "heaters lose, low-P trip unless isolated", which the cap reversed.
+- **The AGPL offer of source now resolves.** `legal.html` §5 and `README.md` carried
+  commented-out placeholders where the source-repository URL belongs; both now link
+  **https://github.com/TH462/Reactor-Dynamics**. AGPL-3.0 section 13 requires a network
+  service to offer its complete corresponding source, so an unresolved placeholder was a
+  release blocker for going public.
+- **Fast-forward no longer collapses the moment a casualty starts.** Acceleration dropped
+  back to real time on *every* newly-annunciating alarm, and a casualty annunciates in
+  cascades — a large-break LOCA dropped the clock **5 times in its first 3 minutes**, a
+  loss of feedwater 6 times, each one needing a manual re-engage. An alarm now drops the
+  clock only on an **otherwise quiet board**, which is what an annunciator is actually for:
+  drawing the eye to a new condition on a normal board. Once the board is lit and you are
+  working procedures, the alarms that follow are the consequences you are already handling.
+  A **reactor trip** or a **new equipment failure** still stops the clock regardless. The
+  same LOCA now stops once, on the scram; measured in the control room, engaging 60x through
+  a loss of feedwater went from **3 manual re-engages to 1**. Standing alarms also mean a
+  long cooldown or a Mode 5 heatup — exactly where a long fast-forward is the point — runs
+  uninterrupted.
+- **New setting: Fast-forward dropout (On / Off).** Turns the behavior above off entirely,
+  for running a casualty through at speed. Events still annunciate normally; they just never
+  touch the clock. Settings tab; On by default. It is a preference, not plant state, so a
+  rewind or a state restore will not change it under you.
+- **Strip-chart traces no longer stack on top of each other.** Each series auto-ranges
+  independently onto the same plot height, so a steady plant centred all of them and drew
+  four flat lines in one place — while leaving the top and bottom of the chart unused.
+  Each series now has a **fixed vertical lane**, taken from its position in the list, and
+  its band is slid onto that lane whenever the band is fitted. Lanes come out evenly
+  spaced across the full height, top-to-bottom in the order the series are listed. Because
+  the lane is fixed there is nothing to search and nothing to re-shuffle: two traces can
+  never trade places, and a line cannot move unless its own axis re-fits. The slide is
+  clamped so the data never leaves its band, which also means a trace with real excursion
+  keeps every bit of its zoom and simply doesn't move — it has no room to spare, and its
+  shape already tells it apart. On a steady plant the closest approach between any two
+  traces goes from **0 px to 20.6 px**, spread evenly from the top of the chart to the
+  bottom, with no lane movement at all over 45 seconds of running.
+- **Fixed: clicking a simulation-speed chip (1× / 10× / 60× …) threw an error every time.**
+  The handler set the ⚡ fast-forward badge directly and the PWR control room has no such
+  badge, so it hit a null. The speed still changed (that happened first), but the exception
+  aborted the rest of the handler on every click. The badge already had a correct,
+  null-guarded owner elsewhere; the duplicate is gone.
+- **The strip chart traces the physics, holds still, and stopped turning white.** Three
+  separate complaints, three causes. (1) It plotted the **instrument** readings, so every
+  trace carried sensor noise that teaches nothing. In **Teaching** mode it now plots the
+  true physics; in **Realistic** mode it still plots the instruments — lightly denoised —
+  so the sensor-failure drills (PWR-E20/E21/E22: drifting Tavg, stuck PZR level) still
+  have to be caught by cross-checking, exactly as the procedures say. This falls out
+  neatly on TMI-2, which runs Realistic for the deception (p1/p3) and Teaching for the
+  reveal (p2). Alarms and protection read instruments in both modes, unchanged (HR1).
+  (2) **Traces kept wriggling and reshaping after they were drawn** — the auto-range eased
+  its limits toward the data every single frame, re-projecting the *whole* trace each time.
+  The axis now sits on round 1-2-5 numbers and is *held*: it re-fits only when the data
+  leaves the band, or after the trace has sat well inside it for several seconds. Once a
+  point is drawn it stays put. Axis labels are readable numbers now (`0–120`, `14.5–16.0`)
+  instead of `-7–107` and `15.22–15.54`, and they no longer run past a quantity's physical
+  limits. (3) **Traces sometimes turned white** — the alarm highlight washed the colour
+  60 % toward white, which destroyed the series identity, and it was driven by the raw
+  noisy reading so a value sitting on its setpoint strobed the line every frame. The
+  highlight is gentler (28 %, hue preserved) and latches with a release deadband.
+  Side effect: the trend buffer now records one value per plotted series instead of a copy
+  of the whole instrument set, so it holds **both** sources in ~40 % *less* memory than it
+  used for one. The CSV export follows whatever the chart is showing.
+- **The control room fills the window: a bigger diagram and no dead space beside it.**
+  Two independent wastes of page, both worst on wide-but-short windows (2560×1080, any
+  un-maximized landscape window). First, the board reserved phantom width: the
+  right-anchored, auto-width indication tiles were measured as `left + width` — their
+  builder width, not their footprint — so the diagram was scaled to fit a box ~12 % wider
+  than it draws. Fitting is now measured from the rendered tiles, and **the diagram is
+  ~15 % larger at every window size**. Second, whenever the diagram fits to *height* the
+  leftover width was simply blank: the alarms/trend and simulator columns stayed pinned at
+  340/360 px with hundreds of px of nothing between them and the board. Those two columns
+  now stretch into that space (to 860 px and 520 px; 1200 px for alarms/trend when ⛶ hides
+  the simulator panel) and give it back when the diagram needs it. At 2560×1080 the dead
+  strip beside the board goes from **676 px to ~40 px**. Narrow/stacked layouts are
+  unaffected. (`ui/diagram/board/pwr_board.js` `contentBounds`/`fitColumns`, `ui/shell.css`
+  `--midcol-w`/`--simcol-w`.)
 - **`privacy.html` now describes what is actually collected.** It previously stated the site
   collects "**nothing**", which the analytics beacon makes false. The *Right now* section now
   names the page-view data (path, referrer, country, device/browser/OS), states that no cookies
@@ -58,6 +394,34 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   steps inline (there the steps are the content).
 
 ### Fixed
+- **Four board readouts were showing fiction; they now read the plant.** An indication audit
+  found four displays wired to constants or to the wrong field:
+  - **SIT (accumulator) pressure** was pinned at a hard-coded `640 psig` forever — the board
+    asked the engine for a tank pressure the engine never exported. The accumulators now model
+    their **nitrogen cover gas**, which expands isothermally as water discharges, so the gauge
+    falls from its 600 psi charge toward ~156 psi as the tank empties. That is *why* a real
+    accumulator's injection tails off as it drains, and the board now shows it.
+  - **SG feed rate** displayed the feed-pump *demand* rather than measured feed flow, so the
+    indication stayed pegged at what you asked for even through a feed-pump trip. It now reads
+    the feed-flow instrument.
+  - **Condensate polisher** always read `NORMAL` — a hard-coded string wired to nothing. It now
+    reports whether condensate is actually flowing through it (`IN SERVICE` / `STANDBY`).
+  - **Net reactivity** printed `+-0 pcm` whenever ρ was a hair below zero.
+
+- **Rod speed is honoured on the first step again — a SLOW drive no longer jumps instantly.**
+  The rod drive carries a fractional-step accumulator between physics ticks, and a new rod
+  command never cleared it. A bank left mid-step by a previous move (a fast hold-drive can
+  strand it at 0.96 of a step) would take its *next* step almost immediately no matter which
+  speed was selected — so a single tap at SLOW moved the bank, and stepped reactivity, in
+  0.08 s instead of the 1.88 s the slow drive calls for. A command to a bank **at rest** now
+  starts from a clean fraction; a command redirecting a bank that is still **in motion** keeps
+  its fraction, since it is genuinely mid-step (this matters — the automatic rod channel
+  re-issues its nudge every 5 s while an 8-step slow move is still travelling, and clearing
+  the fraction there would throw away real progress). Fixed identically in all three plants
+  (`pwr_engine.js`, `bwr_engine.js`, `rbmk_engine.js` `rod_nudge`/`rod_start`). Rod position
+  was always integrated at the selected speed and reactivity was always read from the *actual*
+  bank position — the speed setting itself was never broken, only its first step.
+
 - **A total loss of feedwater is now the accident it should be.** A steam generator that boiled
   dry used to stay a perfect heat sink forever — the steam dump kept "venting" and the primary
   parked at ~297 °C indefinitely, so losing all feed *and* aux feed with no makeup was survivable

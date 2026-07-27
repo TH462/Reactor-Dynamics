@@ -112,6 +112,15 @@ Headline instruments (always instrument readings):
 
 **CAUTION:** High speed during approach to criticality or load rejection can leave you behind the plant. Use 1×–10× for startups and transients until proficient.
 
+**Fast-forward dropout.** Acceleration snaps back to **1×** when something arrives that you
+have to look at: a **reactor trip**, a **new equipment failure**, or the **first alarm on an
+otherwise quiet board**. A toast names the reason. Alarms that follow while the board is
+*already* lit do **not** drop the clock — inside a casualty those are the consequences you
+are already working, and stopping for each one would make fast-forward useless exactly when
+a long evolution (cooldown, boration, decay-heat wait) needs it. Standing alarms therefore
+suppress alarm dropouts for as long as they stand; a trip or a new failure still gets
+through. Turn the whole behavior off at **Settings → Fast-forward dropout**.
+
 ### 4.2 Keyboard (global)
 
 | Key | Action |
@@ -216,6 +225,18 @@ Per-channel **AUTO / MAN** controllers that read **instruments** and issue plant
 ### 7.3 Graph
 
 Strip / multi-parameter trends for post-event review and slow transients (xenon, boron).
+
+**What the trend traces.** In **Teaching** mode the strip chart plots the **true physics** —
+sensor noise is not a lesson, and a clean trace is what makes a slow trend readable. In
+**Realistic** mode it plots the **instruments**, so a failed or drifting sensor shows up on
+the trend exactly as it does on the gauge, and must be caught by cross-checking diverse
+indications (see PWR-E20/E21/E22 in `07_ABNORMAL_EMERGENCY.md`). Alarms and automatic
+protection read the instruments in **both** modes (HR1) — the mode changes what is *drawn*,
+never what the plant decides.
+
+The vertical scale auto-ranges to round numbers and is then **held**: it re-scales only when
+a trace leaves the band, so a line does not change shape once it has been drawn. A trace
+brightens when its parameter is in an alarm band.
 
 ### 7.4 Sim
 

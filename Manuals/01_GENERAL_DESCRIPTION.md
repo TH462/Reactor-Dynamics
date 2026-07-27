@@ -82,7 +82,7 @@ FISSION HEAT (core)
 | **Steam Generator** | Heat sink and steam source |
 | **Main feed / feed pump** | Maintains SG level (manual or three-element AUTO) |
 | **AFW** | Auxiliary Feedwater when main feed is lost |
-| **MSIV** | Isolates SG from turbine |
+| **MSIV** | Isolates SG from turbine — and from a steam line break downstream of it (PWR-E19) |
 | **Turbine-generator** | Electrical output; load modes Follow / Manual / Disconnected |
 | **Steam dump** | Bypass steam to condenser on load rejection |
 | **Condenser** | Vacuum must be healthy or turbine trips |

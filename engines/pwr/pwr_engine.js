@@ -52,7 +52,7 @@
         steps: 0, max_steps: r.max_steps, position_pct: 0,
         moving: false, direction: 0, speed: 'normal', scrammed: false,
         velocity: 0, step_accumulator: 0, nudge_target: null, coast_remaining_s: 0, worth: this.cfg.reactivity.rod_worth_total,
-        insertion_limit_steps: Math.round(r.insertion_limit_pct / 100 * r.max_steps),
+        insertion_limit_steps: null,   // power-dependent; recomputed every tick
         at_insertion_limit: false },
       { id: 'shutdown_rods', name: 'Shutdown Rods', function: 'shutdown',
         steps: r.max_steps, max_steps: r.max_steps, position_pct: 100,
@@ -180,10 +180,30 @@
     }
   };
 
+  // Power-dependent rod insertion limit (RIL), in steps, for the control group —
+  // null when the limit does not apply (below min_power_pct, i.e. a startup, where
+  // the bank is deliberately deep and boron plus the shutdown bank hold the margin).
+  // See the [tune] block in pwr_config.js §rods for why this is a curve and not a
+  // fixed floor (issue #202).
+  PWREngine.prototype._insertionLimitSteps = function (g) {
+    var r = this.cfg.rods;
+    if (r.insertion_limit_min_power_pct == null) return null;
+    var P = (this.s && isFinite(this.s.power_pct)) ? this.s.power_pct : 0;
+    var P0 = r.insertion_limit_min_power_pct;
+    if (P <= P0) return null;
+    var f = (P - P0) / (100 - P0);
+    if (f > 1) f = 1;
+    var pct = r.insertion_limit_lo_pct + (r.insertion_limit_hi_pct - r.insertion_limit_lo_pct) * f;
+    return Math.round(pct / 100 * g.max_steps);
+  };
+
   PWREngine.prototype._updateRodDerived = function (g) {
     g.position_pct = g.steps / g.max_steps * 100;
-    if (g.insertion_limit_steps != null) {
-      g.at_insertion_limit = g.steps <= g.insertion_limit_steps;
+    // Only the control group carries an insertion limit; the shutdown bank is
+    // parked withdrawn and has none (its steps stay null).
+    if (g.function === 'control') {
+      g.insertion_limit_steps = this._insertionLimitSteps(g);
+      g.at_insertion_limit = g.insertion_limit_steps != null && g.steps <= g.insertion_limit_steps;
     }
   };
 
@@ -191,6 +211,11 @@
     var cfg = this.cfg;
     return {
       mweRated: cfg.turbine.mwe_rated,
+      // Cap the coupled feed demand at rated (issue #130). The governor below clamps
+      // steam to 1.0, so anything above that is feed the plant can never boil off —
+      // a permanent imbalance that walks SG level into the high-level scram. The
+      // pump's own 0..120 % runout clamp in setFeed is separate and stays.
+      maxCoupledFeedFrac: 1.0,
       setLoad: function (s, mwe, rated) {
         s.steam_demand_mwe = mwe;
         s.turbine_demand_frac = clip(mwe / rated, 0, 1.2);
@@ -369,6 +394,14 @@
       safety_relief_active: s.safety_open || s.safety_flow > 0,
       rcp_cavitating: !!s.rcp_cavitating,
       condensate_pump_running: s.condensate_pump_running !== false,
+      // Reactor/turbine load imbalance — the SG filling/draining annunciator (#211).
+      // Already computed HR1-correctly in load_mode.js from INDICATED power vs the
+      // load target, > 4 % of rated. It was reaching true_state and getControlState
+      // but never the instrument layer, so no alarm could read it.
+      sg_imbalance_active: !!s.sg_imbalance_active,
+      // Turbine trip status, for the P-9 reactor trip on turbine trip (default-off;
+      // see pwr_control.js). Status pass-through — no lag, no noise, no PRNG draw.
+      turbine_tripped: !!s.turbine_tripped,
       // RCS boron grab sample: last lab result + pending flag + result counter
       // (status pass-through — no lag/noise; the lab turnaround IS the lag).
       boron_sample: s.boron_sample_ppm,
@@ -433,6 +466,12 @@
       suction_subcool_c: s.suction_subcool_c, rcp_cavitation_frac: s.rcp_cavitation_frac,
       rcp_cavitating: !!s.rcp_cavitating,
       steam_flow_normalized: s.steam_flow_normalized, fw_flow_normalized: s.fw_flow_normalized,
+      // TOTAL steam leaving the SG (turbine + dump + safeties) — the source behind the
+      // `sg_steam_flow` main-steam-line instrument, and the flow feed regulation must
+      // actually match. `steam_flow_normalized` above is turbine flow ALONE, which
+      // reads ~0 whenever the dump is carrying the plant. Defaulted rather than left
+      // undefined: an undefined instrument source latches NaN in the lag buffer.
+      steam_out_total: (s.steam_out_total != null ? s.steam_out_total : (s.steam_flow_normalized || 0)),
       steam_pressure_mpa: s.steam_pressure_mpa,   // secondary SG pressure (additive; for the UI diagram)
       mwe_output: s.mwe_output, subcooling_c: s.subcooling_c, core_inventory_pct: s.core_inventory_pct,
       core_void_fraction: s.core_void_fraction,   // flux-driven core boiling (DNB at power); 0 in TMI/normal ops
@@ -482,7 +521,11 @@
       governor_valve_pct: s.governor_valve_pct,
       accumulators_discharging: s.accumulators_discharging,
       accumulator_flow_normalized: s.accumulator_flow_normalized,
-      accumulator_volume_pct: s.accumulator_volume_pct, rhr_active: s.rhr_active,
+      accumulator_volume_pct: s.accumulator_volume_pct,
+      // N2 cover-gas pressure (indication only — see pwr_primary.stepAccumulators). Falls as
+      // the tank empties; the board reads this for the SIT pressure readout.
+      accumulator_pressure_mpa: s.accumulator_pressure_mpa,
+      rhr_active: s.rhr_active,
       accumulator_valve_open: s.accumulator_valve_open !== false,   // discharge isolation valve position
       // RHR hot-leg suction valve + ECCS mode (HPI/LPI/RHR/off) for the ECCS card.
       rhr_valve_open: !!s.rhr_valve_open, eccs_mode: s.eccs_mode || 'off',
@@ -562,6 +605,11 @@
         g = this._group(cmd.group_id);
         if (g && !(g.id === 'control_rods' && s._fail.rod_runaway.active)) {
           g.speed = cmd.speed || g.speed || 'normal';
+          // A command to a bank at rest starts its travel from a clean fraction —
+          // otherwise the leftover accumulator from the previous move (up to ~1 full
+          // step) lands the first step almost immediately and the selected speed is
+          // ignored. A bank still in motion keeps its fraction (it is mid-step).
+          if (!g.velocity) g.step_accumulator = 0;
           g.coast_remaining_s = 0;   // a fresh nudge cancels any coast-to-stop in flight
           g.nudge_target = clip(g.steps + cmd.steps, 0, g.max_steps);
           var nv = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
@@ -573,6 +621,7 @@
         g = this._group(cmd.group_id);
         if (g && !(g.id === 'control_rods' && s._fail.rod_runaway.active)) {
           g.speed = cmd.speed || 'normal'; g.nudge_target = null;   // continuous (held) — no target
+          if (!g.velocity) g.step_accumulator = 0;   // see rod_nudge
           g.coast_remaining_s = 0;   // a fresh hold-drive cancels any coast-to-stop in flight
           var v = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
           g.velocity = (cmd.direction >= 0 ? 1 : -1) * v;
@@ -939,6 +988,7 @@
         case 'rod_withdrawal_runaway':
         case 'stuck_control_rod':
         case 'secondary_depressurize':
+        case 'secondary_depressurize_upstream':
           this._applyPhysicsFailure(def.effect, severity);
           break;
       }
@@ -953,7 +1003,15 @@
     switch (effect) {
       case 'rod_withdrawal_runaway': s._fail.rod_runaway = { active: true, rate: pf.ROD_RUNAWAY_RATE_MAX * severity }; break;
       case 'stuck_control_rod': s._fail.stuck_rod = { active: true, worth_held: pf.STUCK_ROD_MAX_FRAC * severity }; break;
-      case 'secondary_depressurize': s._fail.steam_break = { active: true, size: severity }; break;
+      // Break LOCATION relative to the MSIV decides whether the operator can end it
+      // (#199). Downstream (turbine hall) — the MSIV stands between the SG and the
+      // break, so shutting it isolates the generator and the blowdown STOPS.
+      // Upstream (inside containment, between SG and valve) — nothing on this
+      // single-loop plant can isolate it; the SG blows down whatever you do. The
+      // steam-line rupture that a multi-loop crew answers by isolating the faulted
+      // SG and steaming the intact ones has no counterpart here — say so, don't fake it.
+      case 'secondary_depressurize': s._fail.steam_break = { active: true, size: severity, upstream: false }; break;
+      case 'secondary_depressurize_upstream': s._fail.steam_break = { active: true, size: severity, upstream: true }; break;
     }
   };
 
@@ -984,7 +1042,9 @@
         case 'primary_leak': s.leak_flow = 0; s._leak_base = 0; s._leak_to_sg = false; break;
         case 'rod_withdrawal_runaway': s._fail.rod_runaway = { active: false, rate: 0 }; break;
         case 'stuck_control_rod': s._fail.stuck_rod = { active: false, worth_held: 0 }; break;
-        case 'secondary_depressurize': s._fail.steam_break = { active: false, size: 0 }; break;
+        case 'secondary_depressurize':
+        case 'secondary_depressurize_upstream':
+          s._fail.steam_break = { active: false, size: 0, upstream: false }; break;
       }
     }
   };
@@ -1143,6 +1203,7 @@
       hpi_active: false, hpi_flow_normalized: 0, hpi_flow_multiplier: 1.0,
       accumulators_discharging: false, accumulator_flow_normalized: 0,
       _accum_remaining: cfg.emergency.accumulator_capacity, accumulator_volume_pct: 100,
+      accumulator_pressure_mpa: cfg.emergency.accumulator_trip_mpa,   // full tank = charge pressure
       accumulator_valve_open: true,           // motor-operated discharge isolation valve (default aligned)
       _eccs_inj_inv: 0,                       // cold-injection throughput for the stepCoolant quench term
       flow_frac: 1.0, pump_flow_pct: 100, pump_running: true, station_blackout: false,
@@ -1161,6 +1222,11 @@
       steam_pressure_mpa: steam_p,   // derived from the Tavg program (SS-2), not the flat rated value
       msiv_open: true, sg_safety_open: false, sg_safety_flow: 0,   // main steam isolation + SG code safeties
       steam_flow_normalized: P0, fw_flow_normalized: P0,
+      // Total SG draw (turbine + dump + safeties). Recomputed every SG step, but it
+      // MUST exist from tick zero: the `sg_steam_flow` instrument sources it, and an
+      // undefined source poisons that instrument's first-order lag buffer with NaN
+      // permanently. Old saves are defaulted in _migrateState for the same reason.
+      steam_out_total: P0,
       // Condensate pump (feeds the feed-pump suction — gates MAIN feed) + the flow/
       // discharge-pressure indication fields (computed in stepSecondary / getTrueState).
       condensate_pump_running: true, condensate_flow_normalized: P0,
@@ -1193,7 +1259,7 @@
       _fail: {
         rod_runaway: { active: false, rate: 0 },
         stuck_rod: { active: false, worth_held: 0 },
-        steam_break: { active: false, size: 0 },
+        steam_break: { active: false, size: 0, upstream: false },
       },
     };
 
@@ -1352,9 +1418,8 @@
         var ratio = cfgMax / g.max_steps;
         g.steps = Math.round(g.steps * ratio);
         g.max_steps = cfgMax;
-        if (g.insertion_limit_steps != null) {
-          g.insertion_limit_steps = Math.round(this.cfg.rods.insertion_limit_pct / 100 * cfgMax);
-        }
+        // insertion_limit_steps needs no rescale — _updateRodDerived below
+        // recomputes it from power against the new max_steps.
         g.nudge_target = null; g.step_accumulator = 0; g.velocity = 0; g.coast_remaining_s = 0;
         this._updateRodDerived(g);
       }
@@ -1376,6 +1441,12 @@
     if (s.rhr_valve_open == null) s.rhr_valve_open = !!s.rhr_active;
     if (s.rhr_hx_fraction == null) s.rhr_hx_fraction = 1.0;
     if (s.eccs_mode == null) s.eccs_mode = 'off';
+    // Total SG draw, added with the `sg_steam_flow` main-steam-line instrument
+    // (2026-07-26). Recomputed on the first SG step, but it must be a NUMBER before
+    // the first instrument read or the lag buffer latches NaN. Seed it from the
+    // turbine flow the save does carry — correct whenever the dump is shut, and
+    // corrected within one step regardless.
+    if (s.steam_out_total == null) s.steam_out_total = s.steam_flow_normalized || 0;
     // AFW throttle (added with the ESF AUTO/MAN arms).
     if (s.afw_throttle_frac == null) s.afw_throttle_frac = 1.0;
     if (s.afw_flow_normalized == null) s.afw_flow_normalized = 0;
@@ -1403,6 +1474,14 @@
     if (s.ir_amps == null) s.ir_amps = 0;
     // MSIV + SG safeties.
     if (s.msiv_open == null) s.msiv_open = true;
+    // Steam-break LOCATION (2026-07-25, #199): pre-MSIV-gate saves carry
+    // `_fail.steam_break = {active, size}` with no location. Default DOWNSTREAM
+    // (isolable) — that is what the plain `steam_line_break` id now means, and a
+    // save can only hold that one, since the upstream variant did not exist. A
+    // restored mid-break save therefore gains a working MSIV, which is the fix.
+    if (s._fail && s._fail.steam_break && s._fail.steam_break.upstream == null) {
+      s._fail.steam_break.upstream = false;
+    }
     if (s.sg_safety_open == null) s.sg_safety_open = false;
     if (s.sg_safety_flow == null) s.sg_safety_flow = 0;
     // Boron grab sample (2026-07-23 batch-dose rework). Older saves have never
@@ -1771,8 +1850,65 @@
         h.run(180);
         var t = h.ts();
         ck('power fell', t.power_pct.toFixed(1), t.power_pct < 96, '< 96%');
-        ck('load target tracked down', h.eng.s.load_target_mwe.toFixed(0), h.eng.s.load_target_mwe < 950, '< 950 MWe');
+        // Banded against RATED, not a literal: this read "< 950 MWe", left over from
+        // the ~1000 MWe plant, and has been vacuously true since the rescale to 100.
+        var ratedF = RD.PWR_CONFIG.turbine.mwe_rated;
+        ck('load target tracked down', h.eng.s.load_target_mwe.toFixed(0),
+          h.eng.s.load_target_mwe < ratedF * 0.95, '< ' + (ratedF * 0.95).toFixed(0) + ' MWe');
+        ck('load target tracks power (follow mode)', h.eng.s.load_target_mwe.toFixed(1),
+          near(h.eng.s.load_target_mwe, t.power_pct / 100 * ratedF, ratedF * 0.05), '≈ power ±5% rated');
         ck('SG level stable (no runaway fill)', t.sg_level_pct.toFixed(0), t.sg_level_pct < 88, '< 88%');
+      });
+    },
+
+    // Regression pin for the feed/steam clip asymmetry (issue #130). The governor
+    // clamps steam to rated, so an above-rated load ask used to boil 1.0 while the
+    // coupled feed drove 1.2 — a permanent imbalance that walked SG level 65 → 89 %
+    // and scrammed on sg_level high 36-112 s later, with no visible link back to the
+    // slider that caused it. The ask must instead simply saturate at what the plant
+    // can deliver.
+    load_above_rated_hold: function () {
+      return test('Load mode — a sustained above-rated ask saturates, it does not flood the SG', function (ck) {
+        var rated = RD.PWR_CONFIG.turbine.mwe_rated;
+        var h = new Harness('hot_full_power');
+        h.run(60);
+        h.cmd({ action: 'set_load_mode', mode: 'manual' });
+        h.cmd({ action: 'set_load_target', mwe: rated * 1.3 });
+        var peak = 0;
+        for (var i = 0; i < 180; i++) {          // 30 min at 10 s/step
+          h.run(10);
+          if (h.ts().sg_level_pct > peak) peak = h.ts().sg_level_pct;
+        }
+        var t = h.ts();
+        // Band the peak against the SHIPPING high-SG trip setpoint rather than a
+        // literal: this harness is the bare engine, so the RPS is not in the loop and
+        // a `scrammed` check here would be vacuous — but crossing that setpoint is
+        // exactly what scrams the plant once M4 is. Margin, not just "didn't trip".
+        var sgHi = h.eng.getProtectionConfig().trips.filter(function (tr) {
+          return tr.instrument === 'sg_level' && tr.direction === 'high';
+        })[0];
+        ck('shipping table has the high-SG trip', sgHi ? sgHi.setpoint : 'missing', !!sgHi, 'sg_level high present');
+        ck('SG level stays well clear of the high-SG trip (' + (sgHi ? sgHi.setpoint : '?') + '%)',
+          peak.toFixed(1), sgHi && peak < sgHi.setpoint - 10, '< setpoint − 10%');
+        ck('SG level settles at the working level', t.sg_level_pct.toFixed(1),
+          near(t.sg_level_pct, 65, 8), '65 ±8');
+        // The ask saturates at what the turbine can actually take — asking for more
+        // than rated must not deliver more than rated, but must still deliver rated.
+        ck('output saturates at rated, not above', t.mwe_output.toFixed(1),
+          near(t.mwe_output, rated, rated * 0.05), rated.toFixed(0) + ' ±5%');
+        // Sub-rated coupling is untouched by the clip — the EV-11 mismatch behaviour
+        // on an ordinary slider move must still be there.
+        var h2 = new Harness('hot_full_power');
+        h2.run(60);
+        h2.cmd({ action: 'set_load_mode', mode: 'manual' });
+        h2.cmd({ action: 'set_load_target', mwe: rated * 0.85 });
+        h2.run(1800);
+        var t2 = h2.ts();
+        ck('sub-rated ask still tracks (coupling not disabled)', t2.mwe_output.toFixed(1),
+          near(t2.mwe_output, rated * 0.85, rated * 0.06), (rated * 0.85).toFixed(0) + ' ±6%');
+        ck('sub-rated SG level still drifts up a little (EV-11 mismatch intact)',
+          t2.sg_level_pct.toFixed(1), t2.sg_level_pct > 65.5 && t2.sg_level_pct < 75,
+          '65.5 < lvl < 75');
       });
     },
 
@@ -2277,6 +2413,8 @@
         delete legacy.rhr_valve_open; delete legacy.eccs_mode;
         delete legacy.hpi_active; legacy.lpi_active = true;   // old split-flag form → hpi
         legacy.letdown_flow = 0.030;                          // old commanded constant → lineup A
+        // Pre-#199 steam break: no location field (the sink ignored the MSIV).
+        legacy._fail.steam_break = { active: true, size: 0.4 };
         // Load into a fresh engine; its cfg supplies the migration defaults.
         var h2 = new Harness('hot_full_power');
         h2.eng.loadState({ schema: save.schema, s: legacy, rod_groups: save.rod_groups,
@@ -2292,6 +2430,9 @@
           s.hpi_active === true && s.lpi_active === undefined, 'hpi true, lpi gone');
         var nodesOk = [s.p_coldleg, s.p_hotleg, s.p_pumpsuction].every(function (x) { return typeof x === 'number' && isFinite(x); });
         ck('loop pressure nodes seeded on load', nodesOk, nodesOk, 'all finite');
+        ck('legacy steam break gains a location — DOWNSTREAM, so the MSIV now works on it',
+          'upstream=' + s._fail.steam_break.upstream + ' size=' + s._fail.steam_break.size,
+          s._fail.steam_break.upstream === false && s._fail.steam_break.size === 0.4, 'upstream=false, size kept');
         // A half-migrated state must step cleanly (no NaN leaking from a missing field).
         h2.run(2);
         var t = h2.ts();
@@ -2523,7 +2664,7 @@
   PWRScenarioTests.runAll = function () {
     var order = ['steady_full_power', 'hot_zero_power_standby', 'steady_50_percent', 'steady_five_percent',
       'cold_shutdown_hold', 'mode5_to_mode1_roundtrip', 'control_response', 'shutdown_scram',
-      'load_mode_follow',
+      'load_mode_follow', 'load_above_rated_hold',
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',
       'merged_injection_curve', 'rhr_valve_and_mode', 'msiv_closure_at_power', 'rcp_cavitation',

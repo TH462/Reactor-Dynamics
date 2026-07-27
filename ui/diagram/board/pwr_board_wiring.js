@@ -37,6 +37,7 @@
 
   // Nominal full-scale flows for indications the engine exposes only as normalized/pct.
   var GPM_HPI = 600, GPM_AFW = 640, GPM_CHARGING = 1000, GPM_LETDOWN = 1000, GPM_FEED_PER_PCT = 10;
+  var GPM_FEED = 1000;   // full-rated feed flow, for the measured fw_flow indication (normalized 0-1)
   // Editable-input valid ranges [min, max], in the board's display (US) units — the
   // renderer clamps every setpoint box to these and auto-corrects an out-of-range entry
   // to the nearest bound (both min and max). Sourced from the engine limits so a retune
@@ -200,7 +201,23 @@
     // Sits in the old analyzer readout spot ('CHEM' label to its left) — the panel's
     // one boron number is the lab result (analyzer removed from the UI, 2026-07-23).
     { id: 'bdBoronChem', kind: 'value', name: 'Boron chem sample result', left: 1011, top: 880,
-      value: '—', unit: '', color: '#5aad7c', fontSize: 18, rAnchor: true }
+      value: '—', unit: '', color: '#5aad7c', fontSize: 18, rAnchor: true },
+    // --- STEAM FLOW: the three-element display's missing element (issue #206) ---
+    // The board showed feed flow and SG level but NO steam flow of any kind, so a player
+    // holding feed in MANUAL was asked to match a number that was not on the board. The
+    // pump is a fixed-demand device: set it to steam flow and level holds indefinitely
+    // (measured — 100 % holds 65.0 % flat at full power, 5 % holds at 6 % power), set it
+    // wrong and level ramps to a trip in either direction. Level is the INTEGRAL of the
+    // error, so it is always a late cue; this is the leading one.
+    //   Deliberately on the SAME gpm scale as SG FEED RATE and right-anchored to the SAME
+    // column directly above it, so matching is a visual comparison rather than arithmetic.
+    // Sits at the feed station (not on the steam header) because matching is the task it
+    // serves — which is also the prototypical arrangement: "three-element" IS steam flow,
+    // feed flow and level read together.
+    { id: 'bdSteamFlowBox', kind: 'box', name: '', left: 1230, top: 400, width: 105, height: 60,
+      bg: '#16202a', border: '#25333e', radius: 8, title: 'STEAM FLOW', fontSize: 12, ports: [], stick: false },
+    { id: 'bdSteamFlow', kind: 'value', name: 'Main steam line flow indication', left: 1305, top: 428,
+      value: '—', unit: 'gpm', color: '#5aad7c', fontSize: 17, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -248,7 +265,7 @@
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
     imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
     imrppyp0wfo: function (s) { return accN2Psi(s); },                                                  // accumulator N2 psig
-    imrppztrng1: function (s) { return CS(s).eccs_mode, IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
+    imrppztrng1: function (s) { return IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
     imrpq0n2ujv: function (s) { return r0(accFill(s)); },                                               // accumulator fill %
     imrqn8uo0z: function (s) {                                                                           // boron status (+ dose countdown)
       var r = CS(s).boron_adjust || 0;
@@ -263,7 +280,10 @@
       var v = IN(s).boron_sample;
       return v != null ? r0(v) + ' PPM' : '—';
     },
-    imrqrouhrdr: function () { return 'NORMAL'; },                                                      // condensate polisher (behavioral)
+    // Condensate polisher: there is no polisher model, so this cannot report resin condition.
+    // It reports the one thing that IS modeled — whether condensate is flowing through it —
+    // instead of the hard-coded 'NORMAL' it displayed until 2026-07-25.
+    imrqrouhrdr: function (s) { return IN(s).condensate_pump_running ? 'IN SERVICE' : 'STANDBY'; },
     imrqzuhzre3: function (s) { return r0(kPa2inHg(IN(s).condenser_vacuum)); },                         // condenser vacuum inHg
     imrr1fmzzjp: function (s) { return r0(IN(s).sg_level); },                                           // SG level %
     imrr1gwi93j: function (s) { return r0(MPa2psi(IN(s).steam_pressure)); },                            // SG pressure psi
@@ -280,7 +300,20 @@
       if (c == null) return null;
       return { text: String(r0(C2F(c))), color: c > 100 ? SR_HANDOFF_COLOR : SR_NORMAL_COLOR };
     },
-    imrsgkz4lq0: function (s) { return r0((CS(s).feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT); }       // SG feed rate gpm
+    // SG feed rate: MEASURED feed flow, not pump demand. This read control_state
+    // feed_pump_speed_pct until 2026-07-25, so it showed what was asked for rather than what
+    // the plant delivered — the indication stayed at demand through a feed-pump trip.
+    imrsgkz4lq0: function (s) { return r0((IN(s).fw_flow || 0) * GPM_FEED); },                          // SG feed rate gpm
+    // Main steam line flow — the TOTAL SG draw (turbine + dump + safeties), which is what
+    // feed has to match. NOT the `steam_flow` instrument: that is governor/turbine flow only
+    // and reads ~0 whenever the turbine is offline and the dump is carrying the plant — the
+    // same blind spot that had the three-element channel commanding zero feed through a
+    // turbine trip (#206). Same GPM_FEED scale as the feed indication below it. HR1: reads
+    // the instrument, so a failed transmitter lies here exactly as it does to the channel.
+    bdSteamFlow: function (s) {
+      var f = IN(s).sg_steam_flow;
+      return f == null ? null : r0(f * GPM_FEED);
+    }
   };
 
   // SR→IR handoff cue: turn the source-range indication amber at the SR high-flux caution
@@ -290,7 +323,9 @@
   function fmtExp(v) { if (!v || v <= 0) return '0'; var e = Math.floor(Math.log10(v)); var m = v / Math.pow(10, e); return m.toFixed(1) + 'e' + e; }
   function accIsolated(s) { return CS(s).accumulator_valve_open === false; }
   function accFill(s) { var t = s.true_state || {}; return t.accumulator_volume_pct != null ? t.accumulator_volume_pct : 78; }
-  function accN2Psi(s) { var t = s.true_state || {}; return t.accumulator_pressure_mpa != null ? r0(MPa2psi(t.accumulator_pressure_mpa)) : 640; }
+  // N2 cover-gas pressure. Older saves predate the engine field — show a dash rather than a
+  // fabricated constant (this readout was pinned at a hard-coded 640 psig until 2026-07-25).
+  function accN2Psi(s) { var t = s.true_state || {}; return t.accumulator_pressure_mpa != null ? r0(MPa2psi(t.accumulator_pressure_mpa)) : null; }
 
   // ================================================================ COMPONENTS
   // compProps(item, s) -> props for the component's update()
@@ -527,6 +562,7 @@
     '1/M Plot Tool': 'bdOneOverM', 'Source Range': 'imro6qutiht', 'Intermediate Range': 'imro6rctcgm',
     'Reactivity': 'imro6rdwwdn', 'Startup Rate': 'imro6qsncb9', 'Tavg': 'imro6ohhdq3',
     'Plant Pressure': 'imrr1ixcqe3', 'SG Level': 'imrr1fmzzjp',
+    'Steam Flow': 'bdSteamFlow', 'Feed Flow': 'imrsgkz4lq0',
     // Aliases for the `control` strings the checklist steps use (so the step-hover
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
     'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrobpq4a70', 'Dump SP': 'imrop5ouw7h',

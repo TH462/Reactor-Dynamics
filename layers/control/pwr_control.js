@@ -65,6 +65,47 @@
       action: 'scram', condition: 'above_p9' },
   ];
 
+  // ---- Reactor Trip on Turbine Trip (P-9) — the ANTICIPATORY trip, currently OFF ----
+  // Real Westinghouse PWRs trip the reactor whenever the turbine trips above P-9 (~50 %
+  // power): losing the heat sink at high power is not something to wait out, so the trip
+  // anticipates the transient rather than waiting for a process limit to be exceeded.
+  // THIS PLANT DOES NOT HAVE IT, and the absence has a tangled history (#216):
+  //   • 2026-07-18 — a general P-9 WAS implemented, it broke the `pwr_msiv` mission, and
+  //     it was narrowed to the SG-level cause for that reason; the realistic version was
+  //     deferred because "it would require re-authoring pwr_msiv around a reactor trip".
+  //   • The absence then hardened into "this plant has no turbine-trip reactor trip BY
+  //     DESIGN", and that claim was used to reject adding it (#215).
+  //   • TR-8's genuine "physics, not anticipation" ruling (2026-07-21) POSTDATES the
+  //     scoping by three days, so it rationalised the gap rather than causing it.
+  // Under HR9 ("err toward what real plants do") the presumption is now that it belongs.
+  // Built here and left DEFAULT-OFF pending the owner's ruling, so the blast radius can
+  // be measured by flipping one flag rather than guessed at. Flip
+  // `protection.turbine_trip_reactor_trip` in pwr_config.js to enable.
+  //
+  // NOT `blockable`, deliberately. `condition: 'above_p9'` IS the P-9 bypass: below 50 %
+  // power the trip is bypassed AUTOMATICALLY, because there the plant genuinely can ride
+  // a turbine trip out on the dump. That is the whole of the interlock — P-9 is a power
+  // permissive, not an operator-selectable bypass like P-11/P-7/P-10 (which really are
+  // operator-selectable, and are the four trips carrying `blockable`).
+  //
+  // It was briefly shipped `blockable` with a redundant `power_range < 50` permissive.
+  // Measured, that produced three defects, and the middle one is the reason the rule
+  // "one interlock, one mechanism" matters:
+  //   1. At full power `can_block` was TRUE, so an operator could defeat a reactor trip
+  //      from the board and a subsequent turbine trip did NOT scram. No real plant lets
+  //      you do that at power.
+  //   2. Below P-9 the trip auto-blocked ON TOP of already being bypassed by its
+  //      condition, so the board would report it "blocked" when it was merely N/A.
+  //   3. A block set during startup was recorded as a MANUAL block, and manual blocks
+  //      survive auto-reinstate by design — so it silently carried a defeated reactor
+  //      trip all the way up to full power.
+  // Defeating this trip is an out-of-fiction INSTRUCTOR action (the trips page), not a
+  // control-board control. See #216.
+  if ((RD.PWR_CONFIG.protection_options || {}).turbine_trip_reactor_trip) {
+    PWR_TRIPS.push({ id: 'turbine_trip_reactor_trip', instrument: 'turbine_tripped',
+      direction: 'is_true', setpoint: null, action: 'scram', condition: 'above_p9' });
+  }
+
   // P-10, the nuclear at-power permissive: manual trip blocks are allowed only
   // above 10 % power-range power, and auto-clear (reinstate) below it.
   var PWR_TRIP_BLOCK_PERMISSIVE = { instrument: 'power_range', direction: 'high', setpoint: 10.0 };
@@ -165,7 +206,11 @@
     { id: 'pzr_pressure_low',  instrument: 'primary_pressure', direction: 'low',     setpoint: 14.82, priority: 'warning',  panel: 'A', label_learning: 'Pressurizer Pressure Low',        label_industry: 'PZR PRESS LO' },
     { id: 'pzr_pressure_lolo', instrument: 'primary_pressure', direction: 'low',     setpoint: 12.41, priority: 'critical', panel: 'A', label_learning: 'Pressurizer Pressure Very Low',   label_industry: 'PZR PRESS LO LO' },
     { id: 'porv_open',         instrument: 'porv_indicator',   direction: 'is_open', setpoint: null,  priority: 'warning',  panel: 'A', label_learning: 'Pressure Relief Valve Open',      label_industry: 'PORV OPEN' },
-    { id: 'sur_high',          instrument: 'startup_rate',     direction: 'high',    setpoint: 2.0,   priority: 'caution',  panel: 'A', label_learning: 'Startup Rate High',               label_industry: 'SUR HI' },
+    // 2.0 → 1.0 DPM (issue #134): the alarm sat above the rate a real startup
+    // ever reaches, so it never warned before the withdrawal block. 1.0 is the
+    // admin startup-rate limit the checklist teaches, and lands one step below
+    // the 1.5 DPM rod-withdrawal block — caution first, then the physical stop.
+    { id: 'sur_high',          instrument: 'startup_rate',     direction: 'high',    setpoint: 1.0,   priority: 'caution',  panel: 'A', label_learning: 'Startup Rate High',               label_industry: 'SUR HI' },
     { id: 'sr_high_flux',      instrument: 'source_range',     direction: 'high',    setpoint: 5.0e4, priority: 'caution',  panel: 'A', label_learning: 'Source Range Count Rate High',    label_industry: 'SR HI FLUX' },
     { id: 'subcooling_low',    instrument: 'subcooling_margin', direction: 'low',    setpoint: 11.1,  priority: 'warning',  panel: 'A', label_learning: 'Low Subcooling Margin',           label_industry: 'LO SUBCOOL' },
     { id: 'subcooling_lost',   instrument: 'subcooling_margin', direction: 'low',    setpoint: 0.0,   priority: 'critical', panel: 'A', label_learning: 'Subcooling Lost — Coolant Boiling', label_industry: 'SUBCOOL LOST' },
@@ -184,6 +229,14 @@
     { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
     { id: 'sbo',            instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
     { id: 'turbine_trip',   instrument: 'steam_demand_low', direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Turbine Trip / Low Steam Demand', label_industry: 'TURB TRIP' },
+    // Reactor/turbine LOAD IMBALANCE — reactor power and turbine load have diverged by
+    // more than 4 % of rated (load_mode.js IMBALANCE_FRAC, from INDICATED power). The SG
+    // is filling or draining as a result. Manuals/09 §8 has documented this annunciator
+    // since it was written; the control layer never implemented it, so the board stayed
+    // silent while a rod-only power reduction in MANUAL dragged Tavg 304 → 130 °C with
+    // no alarm and no trip anywhere (#211). Caution, not warning: on this ride-out plant
+    // an imbalance is a cue to act, not a limit being approached.
+    { id: 'load_imbalance', instrument: 'sg_imbalance_active', direction: 'is_true', setpoint: null, priority: 'caution', panel: 'B', label_learning: 'Reactor/Turbine Load Imbalance — SG filling or draining', label_industry: 'LOAD IMBAL' },
     { id: 'msiv_closed',    instrument: 'msiv_open',        direction: 'is_false', setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Main Steam Isolated (MSIV Shut)', label_industry: 'MSIV SHUT' },
     { id: 'sg_press_high',  instrument: 'steam_pressure',   direction: 'high',     setpoint: 9.0,  priority: 'caution',  panel: 'B', label_learning: 'Steam Generator Pressure High',   label_industry: 'SG PRESS HI' },
     { id: 'cond_vac_low',   instrument: 'condenser_vacuum', direction: 'low',      setpoint: 84.7, priority: 'caution',  panel: 'B', label_learning: 'Condenser Vacuum Low',           label_industry: 'COND VAC LO' },
@@ -244,8 +297,18 @@
                                    severity_meta: { label: 'Withdrawal Rate', unit: 'steps/s', min: 0, max: 24, default: 12 }, display: 'Continuous Rod Withdrawal' },
     stuck_rod_on_scram:          { type: 'physics_parameter', category: 'reactivity', effect: 'stuck_control_rod', severity_scales: 'worth_fraction_held',
                                    severity_meta: { label: 'Rod Worth Held', unit: '% of total', min: 0, max: 40, default: 20 }, display: 'Control Rod Stuck on Scram' },
+    // Two steam-line breaks, distinguished by LOCATION relative to the MSIV (#199,
+    // 2026-07-25). The plain id is the TURBINE-HALL break, downstream of the valve:
+    // shutting the MSIV puts steel between the generator and the break and the
+    // blowdown ends. The `_upstream` variant is inside containment, between SG and
+    // valve, where no isolation this plant owns can reach it — the honest
+    // single-loop answer to "isolate the faulted SG", which a one-generator plant
+    // cannot do. Before the split the break ignored the MSIV entirely, so the
+    // manual's "MSIV Close if it terminates break (as modeled)" hedge was a no-op.
     steam_line_break:            { type: 'physics_parameter', category: 'power', effect: 'secondary_depressurize', severity_scales: 'break_size',
-                                   severity_meta: { label: 'Break Size', unit: '% effective area', min: 0, max: 100, default: 30 }, display: 'Main Steam Line Break' },
+                                   severity_meta: { label: 'Break Size', unit: '% effective area', min: 0, max: 100, default: 30 }, display: 'Main Steam Line Break (Downstream — MSIV Isolable)' },
+    steam_line_break_upstream:   { type: 'physics_parameter', category: 'power', effect: 'secondary_depressurize_upstream', severity_scales: 'break_size',
+                                   severity_meta: { label: 'Break Size', unit: '% effective area', min: 0, max: 100, default: 30 }, display: 'Main Steam Line Break (Upstream of MSIV — Not Isolable)' },
     tavg_sensor_failure:         { type: 'instrument', category: 'instrument', instrument_id: 'tavg', mode: 'drift', display: 'Tavg Sensor Drifting' },
     pzr_level_sensor_stuck:      { type: 'instrument', category: 'instrument', instrument_id: 'pzr_level', mode: 'stuck', display: 'Pressurizer Level Sensor Stuck' },
     // CA-4: fails LOW (reads 20 %) — auto make-up floods the plant chasing it, and
@@ -257,14 +320,24 @@
   // (HR1). The rod-withdrawal block is the startup-forgiveness guard: when the
   // startup rate runs high the plant stops outward rod motion and refuses more
   // withdrawal until the rate settles — insertion always works. Real PWR rod
-  // stops behave exactly this way; here the setpoint (~0.55 $) also keeps a
-  // hasty trainee out of prompt-critical territory.
+  // stops behave exactly this way.
+  //
+  // Setpoint 2.5 → 1.5 DPM (issue #134, 2026-07-25). At 2.5 the block was a
+  // PROMPT-CRITICALITY backstop (~0.55 $) wearing a startup-rate label, and it
+  // never fired on the evolution it exists for: a measured startup run to a
+  // 19.8 % overshoot and an IR-high trip peaked at SUR 1.82 DPM — no block, no
+  // alarm, zero refusals. SUR saturates near 1.4–1.8 DPM across a wide band of
+  // positive reactivity (2.5 DPM ⇒ a ~10 s period ⇒ ρ ≈ +400 pcm), so the old
+  // number sat above anything a startup reaches. 1.5 DPM / clear 0.8 makes it a
+  // genuine rate control matching the ≤1 DPM the startup checklist already
+  // teaches; the by-the-book ascent peaks at 0.92 DPM, so the block is real
+  // margin, not a nuisance. [tune]
   var PWR_INTERLOCKS = [
-    { instrument: 'startup_rate', direction: 'high', setpoint: 2.5, clears_below: 1.5,
+    { instrument: 'startup_rate', direction: 'high', setpoint: 1.5, clears_below: 0.8,
       blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true,
       on_engage: { action: 'rod_stop_all' },
-      message_learning: 'Rod withdrawal blocked — the reactor is already speeding up too fast (startup rate high). Let the rate settle below 1.5 DPM, then continue. You can always insert.',
-      message_industry: 'ROD WITHDRAWAL BLOCK: SUR ≥ 2.5 DPM. Withdrawal inhibited until SUR < 1.5 DPM. Insertion available.' },
+      message_learning: 'Rod withdrawal blocked — the reactor is already speeding up too fast (startup rate high). Let the rate settle below 0.8 DPM, then continue. You can always insert.',
+      message_industry: 'ROD WITHDRAWAL BLOCK: SUR ≥ 1.5 DPM. Withdrawal inhibited until SUR < 0.8 DPM. Insertion available.' },
     // P-6 pair on the source-range detector switch (blocks_when picks the
     // guarded form of set_sr_detector):
     // (a) can't DE-energize the SR until the IR is on scale — you'd go blind.
@@ -423,8 +496,18 @@
       label: 'Feed pump → SG level (three-element)',
       hint: 'Three-element feedwater control — steam-generator level (element 1) plus the steam-flow vs feed-flow mismatch (elements 2 & 3) drive the feed pump speed. Engaging takes the pump off the load coupling; a manual pump command (nudge/set) takes the channel back to MAN.',
       pv: function (s) { return s.instruments.sg_level; },
-      ff: function (s) { return clip(s.instruments.steam_flow * 100, 0, 120); },       // element 2: steam flow sets the base demand
-      trim: function (s) { return 25 * (s.instruments.steam_flow - s.instruments.fw_flow); },   // element 3: steam−feed mismatch anticipation [tune]
+      // Elements 2 & 3 read `sg_steam_flow` — the MAIN STEAM LINE transmitter, which
+      // sees turbine + dump + safeties — NOT `steam_flow`, which is governor/turbine
+      // flow only. With the turbine offline (heatup, startup before sync) or tripped
+      // (any ride-out where the dump carries decay heat) the dump is the entire steam
+      // demand, so reading `steam_flow` left this controller commanding ZERO feed
+      // while the generator boiled down. Measured on pwr_heatup: level fell 90 → 33 %
+      // in 120 s with fw pinned at 0.000 and the channel still reporting "holding",
+      // then scrammed on SG level low. The engine's own coupled-feed fallback already
+      // matched steam_out_total (load_mode.js, FG-4) — this channel never got the
+      // same fix. See pwr_steam_generator.js:139-143.
+      ff: function (s) { return clip(s.instruments.sg_steam_flow * 100, 0, 120); },       // element 2: total steam draw sets the base demand
+      trim: function (s) { return 25 * (s.instruments.sg_steam_flow - s.instruments.fw_flow); },   // element 3: steam−feed mismatch anticipation [tune]
       cmd: function (u) { return { action: 'set_feed_pump_speed', pct: u }; },
       manual_overrides: ['set_feed_pump_speed', 'feed_pump_nudge', 'set_feedwater_flow'],
       defaultOn: function () { return true; },   // the PWR's normal free-play lineup (replaces coupled feed as the level backbone)

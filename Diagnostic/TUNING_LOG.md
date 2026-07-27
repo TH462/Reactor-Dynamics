@@ -20,7 +20,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Current status (2026-07-22)
+## Current status (2026-07-26f)
 
 **PWR is the focus plant and is in good shape** — all PWR engine, behavior, and ops gates
 green. The open backlog is dominated by **RBMK and BWR operability tuning** (documented,
@@ -31,21 +31,24 @@ staleness** items.
 
 | Gate | State | Notes |
 |---|---|---|
-| `run_pwr` | **31/31** | PWR engine-direct |
+| **`run_all`** | **OK (21 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| `run_procedures_stack` | **22/22 (155/155)** | NEW 2026-07-26b — procedures through M4+M5+M6. **6** strict xfails, all RBMK/BWR (#208); the 7 `pwr_heatup` xfails cleared 2026-07-26c/d (#206, #210) |
+| `run_meltdown_stack` | **3/3 (21/21)** | NEW 2026-07-26d (#209) — the core-damage casualties driven **hands off** on the shipped lineup; asserts the automatic chain fires unprompted |
+| `run_pwr` | **32/32** | PWR engine-direct (+`load_above_rated_hold`, the #130 pin) |
 | `run_rbmk` | **23/23** | |
 | `run_bwr` | **15/15** | |
-| `run_behavior` | **30 / 0 xfail / 0 fail** | PWR behavior catalog |
-| `run_ops` | **59/68** | PWR **21/21**; 9 open = RBMK/BWR + 1 deliberate red (see backlog) |
-| `run_m4`..`run_m7` | 18 / **18** / 16 / OK | stack layers — m5 is 18/19 (1 pre-existing rewind bit-exact red on clean HEAD; docs elsewhere still say 19/19) |
+| `run_behavior` | **35 / 0 xfail / 0 fail** | PWR behavior catalog — coverage-todo list **empty** (#131); +TR-12b MSIV break isolation (#199) |
+| `run_ops` | **57/68** | 2026-07-26d: harness rewired to the SHIPPED lineup (#209), so two PWR probes that silently assumed load-follow now command it; 11 open = RBMK/BWR + 1 deliberate red (see backlog) |
+| `run_m4`..`run_m7` | **19** / **19** / 16 / OK | stack layers — all green. m5's rewind red RESOLVED 2026-07-25 (#151): `lastInstruments` was not rebuilt on restore, so every blockable trip reported `asserted=false` |
 | `run_autoctl` | **20/20** | |
 | `run_scenarios` | **3/3** | flagships |
-| `run_campaign` | **51/51** (2897) | |
-| `run_procedures` | **22/22** | 1 strict known-fail (B3) |
+| `run_campaign` | **51/51** (2932) | |
+| `run_procedures` | **22/22 (101/101)** | engine-direct — see the layer table in CLAUDE.md before trusting it for anything M4 decides |
 | `run_meltdown` | **8/8** | PWR core-damage paths — all resolved; MD-6 fixed 2026-07-24 (time-dependent dryout depletion, §3.4) |
 | `run_checklist` | **24/24** | |
-| `run_e2e_controls` | **28/30** | 2 pre-existing reds (F12) |
-| `verify_e2e_ui` | **FAIL** | pre-existing on clean HEAD (retired PwrSynoptic probe) |
-| `verify_manual_follow` | **84** (30 PWR bar-checks fail) | pre-existing, same PwrSynoptic-probe family |
+| `run_e2e_controls` | **35/35** | F12 RESOLVED 2026-07-25 (#150) — both reds were stale expectations, not regressions |
+| `verify_e2e_ui` | **PASS (16 screenshots)** | fixed 2026-07-25 (#148); carries 1 strict xfail for the manual-units gap (#111) |
+| `verify_manual_follow` | **PASS (84 checks)** | fixed 2026-07-25 (#149) — probed the retired `RD.PwrSynoptic`, which never mounts |
 
 ---
 
@@ -105,6 +108,889 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-26f — P-9 adopted; noise moved to per-indication; the back-catalogue audited  ✅🔬
+
+Three linked threads, all from one owner instruction: **"err toward doing it the way real
+plants do — this is an educational sim after all."**
+
+**HR9 written, then amended.** New Hard Rule (`CONTEXT.md` §3): *the plant is the ground truth;
+content follows the plant, never the reverse*, with a one-way authority order. As first written
+it had this plant's identity **outranking** prototypicality — the owner inverted that. Identity
+choices are now **named departures**, legitimate only if ruled on, recorded, **and declared as
+simplifications where they understate reality**. A standing clause was added on the owner's
+instruction — *question the owner's own decisions, they may rest on stale premises* — deliberately
+scoped as **targeted, not a standing re-audit**: raise a ruling only with a specific reason to
+doubt its premise. Also: **record the premise, not just the verdict.**
+
+**The audit (#216).** Four parallel passes over `BUILD_DECISIONS`, the diagnostics, every source
+comment, and all 262 commits. Mostly compliant *before HR9 existed* — the dominant pattern is
+content being rewritten to fit the plant, and baseline hygiene is **clean** (no baseline ever
+lowered, no xfail ever added to absorb a plant change). One serious violation, fully laundered:
+
+> P-9 reactor trip on turbine trip was implemented 2026-07-18, **broke `pwr_msiv`**, and was
+> narrowed for that reason; the realistic version was deferred because *"it would require
+> re-authoring `pwr_msiv` around a reactor trip"*. The absence then hardened into *"this plant
+> has no turbine-trip reactor trip by design"* — **a line I wrote myself**, in the #211 session,
+> without checking its provenance — and that claim was used in #215 to reject adding the trip.
+
+`TR-8`'s genuine *"physics, not anticipation"* ruling **postdates the scoping by three days**, so
+it rationalised the gap rather than causing it. The mechanism was two doc lines (`CONTEXT` §11,
+`pwr_config` header) reading as if content could arbitrate tuning; both now name the physics
+acceptance suites and say campaign/procedures/checklists **are not arbiters**.
+
+**P-9 adopted (#216).** Built default-off first so the ruling rested on a measurement — blast
+radius 4 runners, far smaller than the 2026-07-18 deferral implied. The catalog was pinning the
+**wrong event**: `TR-1` injected a *turbine trip* while its own text described a *load rejection*.
+Split — **TR-1** = load rejection, turbine on line, dump catches it, no scram; **TR-1b** = turbine
+trip above P-9, scram in 0.5 s. `run_behavior` 35 → **36, no band relaxed**.
+
+That split exposed a real gap **independent of P-9**: the fast-open dump armed on `turbine_tripped`
+alone, though its comment said *"a turbine trip / load rejection"*. Now armed on either — full load
+rejection Tavg peak **319.5 → 305.2 °C**, PORV lift gone, dump 98 %. **The arming logic took three
+attempts and I do not trust it (#219, flagged for fresh eyes):** arming on the power/load mismatch
+tripped `pwr_boron` (a deliberate power *rise* looks identical to a load *fall*); arming on load-fall
+alone dropped the dump mid-ride (Tavg 345 °C); correct is a latch — arm on fall, hold on mismatch.
+**I arrived at that shape by iterating against failing tests, which is HR9's own anti-pattern one
+level up.**
+
+**Then P-9's own defect.** I shipped it `blockable` with a redundant permissive on top of its
+`above_p9` condition. Measured: **defeatable at full power**; auto-blocked below P-9 *on top of*
+already being bypassed; and a startup-time block recorded as **manual**, which survives
+auto-reinstate — silently carrying a defeated reactor trip to full power. **`run_all` was green
+throughout.** Fixed by deleting the redundancy: `above_p9` *is* the bypass. Defeating it is an
+instructor action (#222), not a board control.
+
+**Noise (#217).** Owner: *"some of the indications were dancing around too much."* Measured,
+"dancing" is noise relative to the **display step** — `fw_flow`/`steam_flow` sat at **10×** their
+1 gpm step, `boron_analyzer` 4×, three more ~3× — while `pzr_level`/`sg_level`/`tavg`/valve
+positions were **already in the sweet spot** and `power_range`/`mwe_output`/`condenser_vacuum` were
+**already too quiet**. Nine misbehaved; the global 0.25 scaler punished all twenty-five.
+`instrument_noise_scale` retired to **1.0**; sigma set per indication against its display step.
+
+**Removed the UI display damping** (`app.js dampInstruments`): a *second* lag on top of the engine's
+sim-time lag, **frame-rate dependent** (no `dt` term — HR6), and attenuating ~3×, which would have
+forced every sigma inflated 3× — and those sigmas are what a `noisy` **failure** multiplies.
+
+Two findings recorded at their sites: **`power_range` carries a constant ABSOLUTE sigma across a
+0–200 % span**, so a value that looks live at 100 % is ruinous at 1 % (it broke
+`pwr_startup_challenge`) — held deliberately quiet, chosen for the low-power case; and **PI-8's
+"true level lags indicated" is not resolvable from one sample** (0.16 % lag vs the channel noise),
+so it now bounds the difference instead of pretending to see through it. **Noise that hides the
+indicated-vs-true gap works against the point of the sim** — which is why levels were pulled back.
+
+**Open from this session:** #218 (content re-authoring — `pwr_msiv`'s decision window is gone;
+`pwr_heatup` measured at **106 % power with the turbine offline**, four times its own stated band),
+#219 (the dump latch), #220 (unsourced real-plant claims, incl. whether a 105 % dump is defensible),
+#221 (audit programme — **protection first, pilot before committing**), #222 (trips page), #214,
+#217 part 2 (per-instrument PRNG streams, then the six frozen instruments).
+
+
+### 2026-07-26e — The board asked you to match a number it never showed (#206 closed)  ✅🔬
+
+Picked up #206's last open half: *"any standing manual feed-pump demand overfills the SG —
+decide whether `set_feed_pump_speed` should be this unforgiving, or whether the pump demand
+should be rate-limited / level-trimmed when no channel is engaged."*
+
+**Re-measured first, and the filed framing did not survive it.** The issue swept a standing
+demand 0–30 % across the ascent and found *every value 2–30 %* flooding past 90 % to a P-14
+trip. On the shipped lineup today (post `sg_steam_flow` and post `minDelta`):
+
+| standing pump | at 6 % power | at 100 % power |
+|---|---|---|
+| 0 % | drains to ~19 %, AFW catches it | drains to **0 %**, scram @195 s |
+| 5 % | **holds 52.8 % — stable** | drains to 0 %, scram @299 s (at 50 %) |
+| 8 % | parks 87.6 %, SG LVL HI, no trip | — |
+| 10–50 % | floods >90 %, feed isolation + turbine trip | drains to 0 %, scram @206–241 s |
+| 95 % | — | drains to 22.1 %, SG LVL LO |
+| **100 %** | — | **holds 65.0 % flat for 30 min** |
+| 105 % | — | floods to 90.8 %, P-14 scram @1112 s |
+
+**The failure direction inverts with power, and there is nothing wrong with the pump.** It is
+a fixed-demand device; the value that holds level is simply **steam flow** — ~5 % at 6 %
+power, ~100 % at 100 % power. Set it right and level holds indefinitely. The original "every
+value floods" reading was an artifact of sweeping *low* demands during a *rising*-power ascent.
+
+*(Aside worth keeping: no scram at 6 % power is correct, not a miss — `p14_reactor_trip` is
+gated on the `above_p9` ≥50 % permissive, so SG hi-hi below P-9 isolates feed and trips the
+turbine without scramming. `pwr_control.js:63-65`.)*
+
+**So the defect is informational.** Board inventory (verified, not assumed): the board carries
+`fw_flow` as SG FEED RATE in gpm — and **no steam flow indication of any kind**. The string
+`sg_steam_flow` appeared **nowhere under `ui/`**. The player was asked to match a quantity that
+was not on the board; all they could see was level, which is the **integral** of the error and
+therefore always a late cue. Worse, the tolerance is tight — at full power the workable window
+is ~100 ± 2 %, and the set box's ▲▼ step is ±20 gpm = ±2 %, so **one click is the whole margin**.
+
+**Owner ruling: add the indication, do not soften the control.** Rate-limiting or level-trimming
+a MANUAL pump would make manual not manual — the plant would quietly rescue the player and the
+lesson (feed must match steam) would be lost. New **STEAM FLOW** readout, `EXTRA_ITEMS` in
+`pwr_board_wiring.js` (re-export-safe), placed directly above SG FEED RATE, right-anchored to
+**the same column** and on **the same gpm scale**, so matching is a visual comparison.
+
+**The wiring detail that is the whole point:** it reads **`sg_steam_flow`** (turbine + dump +
+safeties), *not* `steam_flow` (governor only). Measured through a turbine trip: governor **0 %**,
+dump **98 %**, STEAM FLOW **983 gpm**, feed tracking at 984, level 66 %. Wired to `steam_flow`
+the box would read ~0 while the generator boiled hard through the dump — the same blind spot
+that had the three-element channel commanding zero feed through a turbine trip (2026-07-26c).
+`verify_e2e_ui.js` now trips the turbine and fails with that exact message if the number
+collapses with the governor, so it cannot be quietly rewired.
+
+Manual §9.2 rewritten around the pair (feed = steam → steady; feed < steam → falling; level
+tells you what already happened, the mismatch tells you what is about to), plus the honest
+warning that no single standing value is safe at all powers. `pack_manuals.js` re-run.
+
+**Found and NOT fixed** → filed separately: the automation channels' `note` strings are
+**rendered nowhere in the shipped UI**. The Automate tab was removed (`shell.html:150`) and
+`renderAutomate` early-returns (`app.js:1969-1970`), so `feed_sg`'s *"at minimum output — no
+authority to correct"* — added in #210 precisely so a saturated channel would stop claiming
+"holding" — is invisible to players, as is *"off — main feedwater isolated (AFW has the SGs)"*,
+which fires while the AUTO lamp silently goes dark with no on-screen reason.
+
+### 2026-07-26d — Four PWR fixes off the back of the layer audit (#207, #210, #211)  ✅🔬
+
+All four came out of #209's finding that the gates certified a lineup nobody plays. With the
+harness on the shipped lineup, real defects became visible.
+
+**#210 — the PID output deadband stranded a residual demand forever.** `minDelta` exists to
+suppress chatter in the INTERIOR of a channel's range; it was also suppressing the last small
+step onto a **rail**. The feed channel wanted `u = 0` having last sent `0.13 %` pump, and
+`|0 − 0.13| < 1.0`, so it never sent again — a 0.13 % feed demand standing against a generator
+with nothing boiling it off. TRUE level 65.0 → 75.8 % across `pwr_heatup`'s holds, on to ~90 %,
+then collapsing through the 17 % lo-lo when the dump opened. **Not noise, not physics — a
+latched controller output.** Fixed: reaching a bound is a state change, always send it.
+
+Same family as the anti-windup ratchet already documented at `control_kernel.js:878-883`
+(*"instrument-noise excursions then trickle positive output forever"*). **This area has now
+produced two distinct slow-fill bugs by different mechanisms** — worth suspicion next time
+something fills quietly.
+
+Also killed a **stale note**: the channel reported `holding` — which means *error inside the
+deadband* — while 25 points off setpoint with no authority to correct. Now
+*"at minimum output — no authority to correct"*, the honest answer for a feed controller that
+cannot pump water OUT.
+
+**The knife-edge is gone, and that mattered more than the defect.** 8 independent noise streams
+through `pwr_heatup`: Tavg spread **0.01 °C**, SG level spread **1.42 points**, no scram and no
+critical alarm in any run. Before, the same procedure flipped between passing 19/19 and
+scramming on lo-lo purely on noise ordering — which is exactly what a stranded integrator does:
+it turns a zero-mean perturbation into a permanent bias sized by wherever the noise left it.
+
+**#207 — AFW latches, and now holds level in the GREEN.** The latch half was already true (the
+M4 actuation's pump demand has no reset). What was not latched was the FLOW: the proportional
+hold ran full flow below 20 tapering to zero at 28 — a control band lying **entirely inside the
+amber 17–30 zone** — so an AFW-only generator settled at 25.1 % with SG LVL LO standing forever.
+Now 32/8, settling at **37.1 %**. Measurement trap worth remembering: AFW is only 0.15 of rated,
+so the approach is slow — a 40-minute probe read 27.9 % across three different targets and
+looked like a plateau when all three were still climbing. Use ≥90 minutes.
+
+**#211 — the board was silent while the plant overcooled.** In the shipped MANUAL lineup the
+governor sits at the operator's load setpoint and never moves, so cutting reactor power on rods
+alone leaves the turbine an unthrottled heat sink: Tavg **304 → 247 °C** on a daily load cycle,
+**304 → 130 °C** (still falling) on a normal shutdown — with **no alarm and no trip anywhere**.
+`load_mode.js` had computed the signal HR1-correctly all along and `Manuals/09` had documented
+the annunciator all along; `sg_imbalance_active` simply never reached the instrument layer, so
+no alarm *could* read it. Three lines, each with a home already. **LOAD IMBAL** (Panel B,
+caution) now fires at the 4 MWe threshold — measured t=176 s, Tavg still 303.3 °C, ~50 degrees
+before trouble. Owner ruling: **annunciated, not protected** — this plant has no turbine-trip
+reactor trip by design and a low-Tavg trip would fire on legitimate cooldowns. Recorded in
+BUILD_DECISIONS so the absence reads as a decision.
+
+**Two routes into Mode 1 disagreed** — the free-play preset gave MANUAL (target matched), the
+startup checklist's `connect_grid` gave FOLLOW. Owner ruling: keep MANUAL. The checklist now
+takes load control after synchronising (`set_load_mode`, so the setpoint stays where FOLLOW left
+it — measured imbalance 0.9 MWe, no alarms).
+
+**Gates:** `run_all.js` **OK, 20 runners at baseline** throughout. `run_procedures` 100 → 101,
+`run_procedures_stack` 154 → 155 and its xfails 9 → **6** (all remaining are RBMK/BWR, #208).
+
+
+### 2026-07-26c — The feed controller could not see the steam dump (#206)  ✅🔬
+
+Started on #206 (`pwr_heatup` broken under the stack). Three procedure defects, and underneath
+them a control-layer bug worth more than the issue that surfaced it.
+
+**The bug.** `feed_sg`'s element 2 (feedforward) and element 3 (mismatch trim) read the
+`steam_flow` instrument = `steam_flow_normalized` = **governor/turbine flow only**. With the
+turbine offline or tripped the dump carries the steam and that reads ~0, so the three-element
+controller commanded **zero feed while the SG boiled down**. `pwr_steam_generator.js:139-143`
+had already named the hazard in prose — *"after a turbine trip the dump still draws, and feed
+must follow THAT or the ride-out silently drains the SG (FG-4)"* — and `load_mode.js:87` had
+been fixed to match `steam_out_total`. The M4 channel never was. Fixed with a new
+**`sg_steam_flow`** instrument (main-steam-line transmitter: turbine + dump + safeties).
+Measured, full-load turbine trip under the stack:
+
+| | before | after |
+|---|---|---|
+| feed flow | 0.667 → 0 (AFW only) | **0.977, tracking the dump** |
+| SG level after the ride | **0.0 %** | **64.9 %** |
+| follow-on alarms | `sg_level_low` @22 s, `sg_level_lolo` + `reactor_trip` @28 s | **none** |
+| plant | scrammed | 98 % power, riding out |
+
+That is TR-1/TR-2/TR-3 territory — every ride-out where the dump carries decay heat.
+
+**Three landmines while wiring it, all worth remembering.**
+
+1. **An appended instrument must have `noise: 0`.** The rule is written at
+   `pwr_config.js:602-606` and I shipped 0.01 anyway. The instrument PRNG is a *continuous
+   cross-step stream*, so one extra Box-Muller draw per tick shifts every downstream
+   instrument's noise from that step on. It moved three marginal endpoints: `run_behavior`
+   TR-12b's SG safety lift (9.31 → **9.24 MPa** — a 0.8 % miss), `run_campaign`
+   `pwr_rod_auto`'s override (SG reached the 90 % P-14 trip at t=615 instead of peaking
+   86.8 %), and `run_m5`. Zero sigma ⇒ `_gauss` returns without drawing ⇒ byte-identical.
+   The comment now says so at the site, because "same lag/noise/range as steam_flow" is
+   exactly the edit a future reader would make.
+2. **A new instrument's source must exist in `getTrueState()`, not just in state.** `SOURCE`
+   maps id → *true_state* field; an undefined source latches NaN in the lag buffer
+   permanently. Also seeded in `_buildState` and `_migrateState` (old saves).
+3. **`run_m5`'s "further alarms did fire" was a precondition, not a target.** It guarded the
+   real assertion (*a new alarm on an already-lit board does NOT snap fast-forward*), and the
+   alarms it borrowed were the post-trip SG drain — i.e. the defect was the alarm source.
+   First repair used `inject_failure`, which is **itself** an attention stop: it snapped to 1×
+   on the same cycle as the alarm it caused, so every later alarm arrived at 1× where the rule
+   already forbids snapping — vacuous again, differently. Now uses an operator command
+   (`set_feed_pump_speed pct:0`), which annunciates `sg_level_low` two cycles later **still at
+   60×**, genuinely exercising the assertion.
+
+**`pwr_heatup` procedure defects (all invisible below M4).** It never blocked the startup net
+it deliberately walks into — the heatup's heat source *is* 10–30 % fission and the IR trip sits
+at ~20 %, so it scrammed at step 11 with Tavg at 108.8 °C. Blocks can be set **proactively**
+while a trip is unasserted (`setTripBlock` at `control_kernel.js:409`) and survive auto-reinstate
+via `manualTripBlocks`, so they go in cold, before the ascent. It set a standing 30 % manual feed
+demand instead of engaging Feed AUTO (SG to 94.5 %, `sg_level_hihi`). And it left the turbine in
+FOLLOW, so once the SG could finally make steam the governor took ~46 % of it and the ride
+stalled at 240 °C — `cold_shutdown` returns an **empty** `getStartupLineup()`, so nothing puts
+load control anywhere. Now: Tavg **50 → 297 °C**, secondary bottled to **8.20 MPa**, Mode 3.
+Also relaxed step 14's `tavg_c > 305`, which demanded an 8 °C overshoot **above** the no-load
+anchor and contradicted its own step target ("~300 °C"); it now reads `> 295`.
+
+**Residual, still #206, now precisely characterised.** Across the heatup's long low-power holds
+the SG fills on a persistent **~0.001-normalized feed trickle against zero steam demand** —
+TRUE narrow 65.0 → 75.8 % with `fw` pinned at 0.001, climbing to ~90 % over the ride. When the
+dump finally opens the generator boils and the accumulated inventory swings the other way:
+level collapses through the 17 % lo-lo and scrams. The channel reports "holding" throughout
+because it is saturated at u=0 — it cannot pump water *out*. **It is knife-edge**: the same run
+held 65 % and passed 19/19 under a different instrument-noise ordering. 3 strict xfails.
+
+**Gates:** `run_all.js` **OK, 20 runners at baseline**. `run_procedures_stack` xfails 13 → **9**.
+
+### 2026-07-26b — Full-stack procedure gate; the layer-depth audit it triggered  ✅🔬
+
+Built `test/run_procedures_stack.js` (runner #20) to close the gap named in the entry below.
+Auditing the rest of the suite for the same shape turned up a larger one.
+
+**The gate.** Replays every authored procedure through `SimulationService` (M4+M5+M6) rather than
+engine-direct. It asserts the **same** `acc`/`saw`/`guard` predicates as `run_procedures.js`, so any
+divergence is attributable to the stack and nothing else — then adds four assertions only the stack
+can make:
+
+1. every step command **accepted** — not `{type:'error'}` (unknown action) nor `{type:'blocked'}`
+   (interlock refusal). Engine-direct swallows both silently.
+2. **no unexpected scram** in a normal-category procedure — the #202 item-6 class.
+3. **no critical alarm standing at the end** — the #202 item-5 class, a procedure that "completes"
+   into a degraded plant.
+4. declared `auto_channels` actually engaged at the end.
+
+Emergency/accident categories are exempt from 2–3, and a scram at-or-after a step that *commands*
+one is expected (a shutdown procedure scrams on purpose) — both were false positives in the first
+draft, caught by `bwr_shutdown`/`rbmk_shutdown` reporting their own deliberate trips. Runs at 10×
+accel (1 s protection granularity — see #153) in **4.1 s**. `--lineup=bare` runs the noDefaults
+lineup campaign missions use.
+
+**Baseline: 22/22 · 154/154 with 13 strict xfails.** `pwr_startup` passes and reproduces the
+engine-direct numbers exactly, which is the parity signal the design wanted.
+
+**Finding — `pwr_heatup` (7 xfails, #206).** Richer than the earlier probe showed: it is **scrammed
+at step 11 by INTERMEDIATE RANGE HIGH**. The heatup uses controlled fission at ~10–30 % power as its
+heat source (its own caution says so) and never blocks the startup net — *the same defect as #202
+item 6*, in the procedure that runs immediately before it. Tavg ends at **108.8 °C** (the heatup
+never happens), plant_mode 4 not 3, `reactor_trip` + `sg_level_hihi` standing. Engine-direct there
+is no RPS to trip and no M4 feed channel, so `run_procedures` passes it 100 %.
+
+**Finding — six RBMK/BWR procedures diverge (6 xfails, #208).** Recorded, **not fixed** (plants on
+hold). Both `rbmk_raise_power` variants land just short of their own target (50.2/50.5 vs `> 51`),
+both `rbmk_mcp_trip` variants overshoot their post-trip ceiling by different amounts (25.27 pre vs
+12.26 post), and `bwr_startup` reaches **0 %** power under the stack against 19.9 % engine-direct —
+that last one is not a near-miss, something in M4 blocks the ascent outright (cf. #179).
+
+**The bigger finding — verified, not inferred (#209, priority-high).**
+
+```
+stepAutomation   → 1 production caller: simulation_service.js:176
+engageDefaults   → 1 production caller: simulation_service.js:152
+getStartupLineup → 1 production caller: simulation_service.js:156-159
+set_auto_channel → 0 occurrences in ops_pwr.js, behavior_pwr.js, ops_harness.js
+```
+
+So **every runner below M5 runs with the automation-channel runtime never ticking and no channel
+engaged**, and without the free-play lineup. `feed_sg` (*"replaces coupled feed as the level
+backbone"*), `cvcs_makeup` and `boron_conc` are all `defaultOn` in the shipped app. `run_ops` and
+`run_behavior` hold a real `ControlFailureLayer` and *look* full-stack — they are engine+M4. So:
+
+- **`run_behavior`** certifies every steady-state band and ride-out shape in
+  `PWR_BEHAVIOR_CATALOG.md` on SG level carried by the engine's coupled-feed fallback, not the
+  three-element controller that ships. The catalog rows that are *about* the controller can't run
+  at all — `feed_sg`'s `offWhen: feedwater_isolated` stand-down (CC-3 / P-4 post-trip handoff) has
+  no code path there. ~45 truth assertions vs ~6 instrument ones, so an HR1-class instrument defect
+  cannot redden the battery that polices plant feel.
+- **`run_ops`** arbitrates the `[tune]` knobs — 2 h endurance, 8 h xenon, the 100→50→100 daily
+  cycle — i.e. exactly the slow evolutions where controller wind-up and channel↔manual handoff
+  appear, with the controller runtime stopped. Its header comment *"exactly as in the assembled
+  sim"* is now false; it was true before the channels moved into the kernel and the lineup moved
+  into `selectPlant`. **Tuning targets in `OPS_TUNING_REPORT.md` are set against a plant that does
+  not ship.**
+- **`run_meltdown`** is deliberately a fuel-temperature gate, which is fine for MD-1/2/3 — but
+  MD-4 ("stuck PORV *with HPI* → protected") and MD-8 ("depressurize-to-flood → survivable") are
+  *protection* claims proven with HPI hand-set, because auto-ECCS is off by construction
+  (`meltdown_pwr.js:18-21`). A regression in an SI setpoint or the P-11 permissive turns a
+  documented-survivable path lethal for every player while this stays 8/8; `run_pwr`'s ECCS suites
+  command injection by hand too, so nothing else catches it either.
+
+Cheapest fix (in #209): give `ops_harness.js` `engageDefaults()` at construction and
+`stepAutomation(dt)` in its drive loop, in M5's tick order — one change fixes both gates, but
+expect band drift, so it wants its own pass. The layer table is now in CLAUDE.md so the next agent
+does not have to rediscover it.
+
+**Gates:** `run_all.js` **OK, 20 runners at baseline**. New `BASELINES` entry only; nothing else
+moved.
+
+### 2026-07-26 — Startup-checklist playtest sweep: six defects, three spun off (issue #202)  ✅🔬
+
+Owner playtest of the Mode 3 → Mode 1 checklist rebuilt in #197/#134, filed as six numbered
+items. All six fixed; measuring two of them uncovered three larger defects that were filed
+rather than folded in. Also closed the two quick UI reports filed alongside it (#201, #192).
+
+**Item 1 — step 3 never checked off.** The 1/M plot's points live in `ui/panels/one_over_m.js`,
+not in the snapshot, so there is no instrument for `acc` to grade and no command for the
+cmd-watch to see — the step could only ever be ticked by hand. Fixed by making the action
+visible: "Plot point" now emits **`plot_1m_point`**, an operator action with no plant effect
+that `InstructorLayer.handleCommand` consumes (M4 would reject it as an unknown command) after
+the checklist/follow cmd-watch has recorded it. Never gated — taking a reading is an
+observation. Sent only on a point that was actually recorded, so a refused press (SR
+de-energized, no counts) does not tick the step.
+
+**Item 2 — hover brought the panel to the front.** `.ckl-glow`/`.instr-glow` in `shell.css:1103`
+carry `z-index: 5`. Board tiles carry an authored stacking order (panels auto, buttons/values 1,
+`reactorVessel` 2 — `pwr_board.js:640,653`) **and deliberately overlap**: the vessel art is
+authored to read in front of the CONTROL/SHUTDOWN GROUP panels beneath it. Glowing a panel
+therefore pulled it out in front of the vessel and its neighbours. Pinned the authored layer in
+`pwr_board.css` (which loads after `shell.css`, so it wins). Ruled out: `.ckl-glow`'s
+`position: relative` does **not** fight `.bd-tile { position: absolute }` — same specificity,
+`pwr_board.css` is later.
+
+**Item 3 — reactivity in the checklist (owner ruling: remove completely).** ρ in pcm is truth,
+not an instrument (HR1), yet six approach steps graded on `reactivity_pcm` **and**
+`renderChecklist` (`app.js:1101`) prints the acceptance predicate verbatim — so the board told
+the player to watch a reading that does not exist on it, and even labelled it *"no instrument
+twin — true value"*. Re-expressed on **source-range count rate**, measured per step: **620 /
+1 000 / 1 800 / 3 300 / 6 200 cps** (observed 701 / 1 105 / 2 011 / 3 744 / 6 999, ~10 % margin).
+Step 1 moved to `tavg_c ~ 297`. No step's `hl` names Reactivity any more. Cautions still discuss
+reactivity as a *concept* — that is operator training, not a fiction readout.
+
+**Item 4 — ROD INS LIMIT lit for the whole startup.** `pwr_config.js` said *"Power-dependent
+insertion limit"* and `pwr_engine.js:185` implemented `steps <= 30 % of max` — a flat floor the
+power dependence was never built for. 30 % of 912 = **274 steps**, and the ascent crosses into
+Mode 1 at **244**. Measured bank positions: HZP 0 %, end-of-startup **26.8 %**, `5_percent`
+preset **62 %**, full power **92 %** — and 92 % across the *whole* load range (follow mode moves
+load on Tavg/boron feedback, not rods). New `_insertionLimitSteps()`: not applicable below
+`insertion_limit_min_power_pct` 5 %, then linear from `lo_pct` 5 to `hi_pct` 70 at 100 % power
+(three new `[tune]` constants). Result: null / 6 % / 70 % against banks of 0 / 62 / 92 — the alarm
+now means *"the bank is abnormally deep for this power"*. Recomputed every tick, so the
+`max_steps` rescale in `loadState` no longer needs its own recompute. Also un-freezes the
+automatic rod channel, which refuses to insert below the limit (`control_kernel.js:916`) —
+**that path is auto-only; manual insertion was never blocked**, which is why the level-off step
+worked at all.
+
+**Item 5 — SG level dangerously low, never recovered.** `pwr_startup` commanded **no feedwater at
+all** (programmatic check over every step; the `prereq`/`cautions` never mention the SG). With
+nothing regulating level, AFW picks it up at 20 % and its proportional hold pins it:
+`0.15·(28−L)/8 = 0.124` at 12.4 % power ⇒ **L = 21.4 %**, matching the measurement exactly, and
+flat for a further 30 min. **The AFW band (20–28 %) lies entirely inside the amber zone
+(17–30 %)** — the plant parks in the yellow by construction. Fixed by a new **step 3: engage the
+three-element Feed AUTO channel** while level is still 65 %, because the channel *captures* level
+as its setpoint (`pwr_control.js:456`) — engage it late and it captures a bad number. Verified
+under the **full stack** (the engine-only `run_procedures` cannot see this):
+
+| lineup | before | after |
+|---|---|---|
+| A `noDefaults` (campaign / walkthroughs) | 46.8 % | **65.7 %** |
+| B free-play defaults | 65.3 % | **65.0 %** |
+| C free-play, feed pump poked first | **21.4 %** (standing amber alarm) | **70.9 %** |
+
+**Item 6 — trip blocks.** Two new steps after the 5 % crossing, once above P-10: block `ir_high`
+then `pr_low_setpoint`. The startup net ladders P-10 (10 %) < IR high (20 %) < PR low setpoint
+(25 %), so continuing the ascent without them scrams at 20 %. Found while wiring it that a
+checklist step is checked off by *any* command of the same family, so the two blocks would tick
+each other — added a `trip_id` discriminator alongside the existing `failure_id` one, factored
+into a new `_cmdEvidence()` used by both the checklist and follow watches.
+
+**Harness note.** Three of the new step commands never reach an engine (`plot_1m_point`
+instructor-side, `set_trip_block` and `set_auto_channel` M4-side). `run_procedures` drives
+engines *directly*, below M4, so it now skips them via a documented `NON_ENGINE_ACTIONS` list —
+`hold`/`acc`/`saw` still run. **This is the gate gap worth naming:** `run_procedures` could not
+have caught item 5 or item 6, and it is the second time a procedure has been green at engine
+level and broken under the stack. Noted in #206.
+
+**Also fixed (owner reports filed alongside):**
+- **#201** — release version by the logo. New hand-edited `site/release.js`
+  (`window.RD_RELEASE = "Alpha 1.6.1"`), distinct from the `RD_VERSION` git-SHA deploy stamp,
+  which `site/stamp_version.js` overwrites at build. Bump it *with* the `changelog.html` entry.
+- **#192** — the pressurizer cutaway mapped its water band onto the LVL strip's 160–470 px span,
+  so it read as a copy of the gauge. Now spans the inner dome apex (106) to the inner dish floor
+  (541), derived from the `inner` path so it tracks the art; the strip keeps 160–470 as its own
+  instrument span. Heater rods re-pinned to absolute pixels so widening the band did not drag
+  them into the dish. Both verified by screenshot, not just by gate.
+
+**Spun off — real defects found while measuring, deliberately not fixed here:**
+- **#205** (medium) `pwr_startup` never dilutes boron, so Mode 1 is reached with the bank at
+  26.8 % withdrawn where the 6 %-power preset sits at 62 %. This is the *honest* half of what the
+  insertion-limit alarm was reporting; the flat floor was the defect, the deep bank is real.
+- **#206** (high) `pwr_heatup` reaches **95.4 % SG level at step 8 under the full stack** and
+  never pressurises or goes critical — invisible to `run_procedures`. Separately, **every**
+  non-zero standing feed-pump demand 2–30 % overfills to a P-14 trip + scram. The two compound:
+  heatup ends with the pump at 30 %, so heatup → startup back-to-back starts in the overfeed
+  branch with `feed_sg` in MAN.
+- **#207** (needs-ruling) the AFW hold band lying inside the amber zone, per item 5 above.
+
+**Gates:** `node test/run_all.js` → **AGGREGATE GATE: OK, 19 runners at baseline**, no `BASELINES`
+edits needed. `run_procedures` held **22/22 · 100/100** across three added steps (the new steps
+carry no `acc`), `run_behavior` 35/0, `run_pwr` 32/32, `run_campaign` 51/51, `verify_e2e_ui` PASS,
+`verify_manual_follow` 84 checks. Single tracked red `run_ops` 59/68 unchanged.
+
+### 2026-07-25 — PI-9 retired on measurement; the MSIV made real (issue #199)  ✅🔬
+
+Owner ruling on the PI-9 question raised by #131 — *"SI on low steam-line pressure: add it or
+retire it?"* — decided by three measurements rather than by preference, plus a second ruling that
+came out of the same investigation.
+
+**Ruling 1 — PI-9 RETIRED (catalog §10).** The interlock's job in a real plant is *reactivity*:
+boron in before an overcooled core with a strong negative MTC walks back to criticality, with the
+most reactive rod stuck out. Three findings:
+
+| # | Question | Measurement |
+|---|---|---|
+| 1 | Can this core return to power? | **No.** SLB against the MAXIMUM stuck rod (`STUCK_ROD_MAX_FRAC` 0.4 × `rod_worth_total` 8500 = **3,400 pcm held**) ends at **ρ = −9,604 pcm**, power 0.000 % — ~3× the held worth in spare margin. At sev 1.0, ρ = −27,252. The job does not exist. |
+| 2 | Would adding it help? | **It harms.** Prototype (`steam_pressure` low @ 4.14 → `set_hpi`): SI fires at **47 s** into a primary that never lost a drop; **inventory pegs at the 120 % tank cap** by t=300 s, level 88 %, PZR LVL HI annunciated, and stays there. An automatic that floods an intact plant. |
+| 3 | Is the severe case uncovered? | **No.** At sev 1.0 the primary does crash (0.11 MPa) and the **accumulators fire at 243 s**, dumping fully — boron 734 → 2500 ppm. Passive ECCS already covers the only case where injection could matter. |
+
+The `PI-9` probe stays as the **fence**: it asserts the absence, so adding the interlock reddens
+the gate and re-opens the ruling deliberately instead of drifting past it.
+
+**Ruling 2 — the MSIV now isolates a downstream steam line break.** Found while answering
+ruling 1, and the bigger defect of the two. `pwr_steam_generator.js:176` applied the break as an
+**unconditional** pressure sink that never read valve position, so the operator's one lever on the
+casualty did nothing — while `Manuals/07:552` said *"MSIV Close **if it terminates break (as
+modeled)**"* and the catalog's TR-12 row claimed *"MSIV limits"*. Measured before the fix, closing
+the MSIV 60 s into an SLB gave **SGp 0.10 MPa, Tavg 105.6 °C** — identical to leaving it open.
+
+Fixed by modelling break **location**, which is the real-plant distinction and the honest one for
+a single-generator plant:
+
+- **`steam_line_break`** (existing id) = **downstream**, turbine hall. The valve stands between
+  generator and break, so shutting it ends the blowdown: SGp **5.59 → 9.02 MPa**, code safeties
+  lift, Tavg recovers to **305.8 °C** — i.e. it becomes the TR-5 bottled-SG condition.
+- **`steam_line_break_upstream`** (new) = inside containment, between generator and valve. No
+  isolation this plant owns reaches it: **5.59 → 0.10 MPa**, Tavg 105.4, MSIV or not. A multi-loop
+  crew isolates the faulted SG and steams the intact ones; **this plant has one generator**, so
+  that answer does not exist here. Say so rather than fake it.
+
+With the MSIV left alone both variants are **bit-identical to the old model**, so `TR-12`, `PI-9`
+and the ops/campaign SLB paths are untouched — the new behaviour only appears when someone shuts
+the valve, which previously did nothing.
+
+`pwr_slb` switched to the **upstream** variant: its arc is "you cannot stop the cooldown, only
+shut the reactor down", and its `waiting` branch needs the blowdown to keep draining the
+pressurizer to the low-level trip — a player who shut the MSIV mid-scenario would now terminate
+the casualty and strand the story. Its prose said *"isolate the affected steam generator"*
+(multi-loop thinking); both endpoint texts now explain **why** isolation is unavailable here and
+that a downstream break would be a different casualty.
+
+Save contract: `_fail.steam_break` gains `upstream`; `_migrateState` defaults legacy saves to
+**downstream** (the only thing they can hold), so a restored mid-break save gains a working MSIV.
+Pinned in the engine's `save_migration` test.
+
+Docs corrected rather than patched around: catalog TR-12 row (both the false "MSIV limits" **and**
+the false "trip + SI"), PI-9 → §10 with the measurements, rulings log, `Manuals/07` PWR-E19
+(rewritten around the location split, +E19u index/severity rows, + a model-honesty note on the
+absent SI and unmodelled PTS), `Manuals/01` + `03` MSIV purpose, and the `close_msiv` blurb in
+`tools/gen_manual_reference.js`. Both manual pipelines regenerated (`pack_manuals.js`,
+`gen_manual_reference.js`).
+
+New probe **`TR-12b`** (`run_behavior` 34 → **35**) runs both legs off the same command and
+severity, differing only in which side of the valve the pipe failed on. Closes the
+`Manuals/ISSUES_AND_FINDINGS.md` I-33 concern about thin single-SG isolation logic.
+
+### 2026-07-25 — The behavior battery's own coverage gaps closed (issue #131)  ✅🔬
+
+`run_behavior` printed **30 pass / 0 xfail / 0 fail**, which reads as full coverage. It was
+green partly because four catalogued behaviours were **never probed** — `PI-3`, `PI-8`,
+`PI-9` sat at `todo` in the `COVERAGE` map and `TR-11` carried an unwritten "end-state pin".
+A green gate that omits its own known gaps is worse than a red one, because it stops anyone
+looking. Battery now **34 pass / 0 xfail**, coverage-todo list **empty**.
+
+The issue text said `PI-3`/`PI-8` were blocked on an "interlock build". Stale — the catalog
+had marked both **DONE (P4/P5)** and the setpoints are in `Manuals/09_SETPOINTS_LIMITS.md`.
+Only the probes were missing. What the writing turned up:
+
+**PI-3 — the trip is real but invisible by its reason string.** `si_trip` (12.4 MPa) sits
+**0.01 MPa** under `lo_press` (12.41), and `_evalTrips` builds `last_trip_reason` as
+`instrument + ' ' + direction` (`control_kernel.js:320`) — so both report
+`'primary_pressure low'` and no depressurization can distinguish them. PI-3 is only
+observable in the **blocked** case, which is exactly the catalog's note that a cooldown must
+block *both*. Probe drives a `stuck_porv_open` depressurization three ways: lo_press blocked
+alone → still scrams at 7.5 s (si_trip did it, level 52.9 % so not a level trip in disguise);
+both blocked → pressure walks through 12.4 to 11.98 MPa unscrammed **but SI still actuates**
+(blocking a trip does not disable the ESF — worth teaching); and the P-11 permissive
+auto-blocks both at a `cold_shutdown` init and auto-reinstates them at 13.99 MPa on heatup.
+
+**PI-8 — pinned the number, not just the behaviour.** `CA-4` already pins the two
+behaviours (a sensed overfill trips; a stuck-low sensor defeats the single channel). The new
+probe pins the **setpoint and the ordering**: trip fires at **indicated 97.05 %** (HR1 — the
+instrument, not truth, which lagged at 97.34), the 75 % caution leads it by **102 s**, and the
+FG-4 ride-out swell peaks at **57.8 %** — enormous headroom, not the ~94 % the catalog
+predicted at P4.
+
+**PI-9 — verified, and the answer is that the signal does not exist.** → **issue #199**
+(owner ruling). No `steam_pressure` row in `PWR_ACTUATIONS` at all. On an SLB (sev 0.8) the
+secondary blows down to **0.10 MPa** — an order of magnitude below the classic ~4.1 MPa /
+600 psi setpoint — while `hpi_active` stays false for 900 s. No back door either: the
+pressurizer holds the primary at 15.2–15.4 MPa while the loop crash-cools to **105 °C**, so
+the 12.4 MPa actuation never sees its setpoint. End state is a primary at 105 °C and
+15.4 MPa, **240 °C subcooled**, inventory 100 %. Currently harmless — the safety function is
+reactivity, not inventory, and `TR-12` separately pins that shutdown margin covers the
+overcooling insertion. Probe asserts that measured state, so adding the interlock reddens it
+deliberately rather than silently. (Noted in #199 and not chased: a 240 °C-subcooled primary
+held at full pressure is textbook **PTS**, which this model has no consequence for.)
+
+**TR-11 — the catalog row was stale, and the end state is the opposite of what it says.**
+The row ("slow depressurization, heaters lose, low-P trip unless isolated") predates the
+**P5 spray capacity cap**. Measured under the cap: valve pegged at its 12 % cap, pressure
+droops 15.41 → **15.33 MPa** and parks, heaters hold at **36.8 %** duty — no trip, no alarm,
+for 30 min. A stuck-open spray valve is a **nuisance, not a casualty**. Catalog row struck
+through and re-stated (superseded by the §12 ruling, not by this session's opinion).
+
+**Found on the way — `stuck_open_spray` is defeated by two of its three command forms**
+→ **issue #200**. The kernel maps `override_value: true` onto the field
+`valueFieldFor('set_spray')` = `open`, but the engine resolves `auto` > `pct` > `open`
+(`pwr_engine.js:668`). So SPRAY OFF `{open:false}` → stuck open ✓, while SPRAY AUTO
+`{auto:true}` and the % slider `{pct:0}` **silently clear the failure** ✗ — and all three are
+live board controls (`ui/app.js:2204/2223`). A player reaching for SPRAY AUTO, the natural
+response, un-breaks the valve. Consequence today is ~0.08 MPa, hence `priority-low`; the
+defect is in the mechanism. TR-11 deliberately drives the form that works and does **not**
+pin the broken precedence, so the fix will not have to fight a test.
+
+Files: `test/behavior_pwr.js` (+4 probes, `COVERAGE` map), `test/run_all.js` (`BASELINES`
+30 → 34), `Blueprint/PWR_BEHAVIOR_CATALOG.md` (TR-11 + PI-9 rows). All 19 runners at
+baseline.
+
+### 2026-07-25 — 1/M approach rebuilt: three points is 79 steps short (issue #197)  ✅🔬
+
+**Owner report:** *"Only plotting 3 points doesn't get you close enough to the correct rod
+withdrawal step for criticality."* Confirmed and quantified.
+
+The panel (`ui/panels/one_over_m.js`) least-squares over the **trailing 3 points**
+(`FIT_WINDOW = 3`), x = fraction withdrawn, y = C₀/C, prediction at y = 0. Replaying the
+checklist's own schedule from `hot_zero_power` — **true criticality ≈ step 224**:
+
+| points plotted | at step | 1/M | predicted crit | error |
+|---|---|---|---|---|
+| 2 | 120 | 0.7069 | 409 | **+185** |
+| 3 | 190 | 0.3314 | 303 | **+79** |
+| …with a finer schedule | | | | |
+| 4 | 200 | 0.2537 | 247 | +23 |
+| 5 | 215 | 0.1321 | 235 | +11 |
+| 6 | 223 | 0.0728 | **232** | **+8** |
+
+The bias is **structural, not a bug**: early points sit in the flat toe of the rod-worth
+S-curve, so the trend is too shallow and extrapolates long. `fit()`'s own comment already
+documents this — it is why the window is trailing rather than all-points. The cure is more
+points with **shrinking bursts**, so the trailing window ends up on the steep part of the
+curve. It converges monotonically **from above** — always reading slightly high, the safe
+side for "stop short of the prediction and creep".
+
+**Fixed.** `pwr_startup` approach rebuilt around six points (`+120, +50, +30, +15, +8`),
+and each approach step is now self-contained — *withdraw, settle, plot* — rather than
+alternating withdraw-steps with plot-steps. Each step states what the prediction should read
+there, so the player watches it walk down instead of trusting the first number; the caution
+now says outright that an early estimate is an **upper bound, not a target**. The last
+plotted point lands at ρ = −15 pcm, just subcritical — exactly where plotting should stop
+and creeping should start.
+
+Tail retuned for the shorter remaining distance: creep **+44 → +11**. Replayed: creep →
+2.86 % (Mode 2), level off → **2.37 %** (Mode 2), raise → 12.43 % (Mode 1), grid → 12.5 MWe.
+**Every phase peaks ≤ 0.89 DPM** — still under the 1.0 DPM alarm and the 1.5 DPM block set
+the same day.
+
+**Gates:** `run_procedures` **22/22, 97 → 100 checks** (`BASELINES` updated); all 19 runners
+at baseline. Probe: scratchpad `probe_oom.js` (mirrors the panel's fit exactly and bisects
+the engine for the true critical step).
+
+### 2026-07-25 — S3 RESOLVED: the startup overshoot was the recipe, not the physics  ✅🔬
+
+**Issue #134 ("after criticality the plant coasts to ~20 % power even when leveled").** The
+S3 backlog row hypothesized *"a stronger low-power Doppler bite or gentler mid-curve
+differential rod worth."* **Both were wrong**, and chasing either would have destabilized
+the tuned Mode-5→1 heatup for nothing. The plant is fully controllable at the point of
+adding heat; what lands it at 20 % is how the reactivity comes back out.
+
+**The measurement that settled it** (scratchpad `probe_s3*.js`, `hot_zero_power` →
+approach → level off → 1 h hands-off, rods then frozen):
+
+| level-off method | leveled at | settles |
+|---|---|---|
+| continuous drive-in at Norm, released when SUR nulls | 3.77 % | **3.5 %** |
+| same, gentler approach | 2.02 % | **1.8 %** |
+| tap −1 step / 10 s | 3.77 % | 10.3 % |
+| tap −1 step / 5 s from a brisk approach | 13.4 % | 19.8 % **+ IR-high scram** |
+
+Same plant, same rod worth, same Doppler. The *only* variable is whether the accumulated
+reactivity is removed in one drive or in taps — and the plant runs while you tap. Below the
+point of adding heat there is no temperature feedback to hold you anywhere, so power goes
+wherever the residual ρ takes it; sustaining even a gentle 1 DPM ramp means carrying
+**~+200 pcm**, and all of it has to come back out.
+
+**Three real defects, all of them downstream of that:**
+
+1. **The shipped checklist codified the overshoot.** `ui/manual_procedures.js` step 9
+   withdrew `+45` (≈ +430 pcm) and step 10 took back only `−8` (≈ −76 pcm). Its stated
+   target was *"power steady, ~5–15 %"* and its acceptance was `power_pct > 5` — **landing
+   above 5 % was a pass condition.** Replayed: **14.63 %**, holding 14.0 % an hour later
+   (this is the "~15 %" the status line advertised).
+2. **The checklist blamed the model for it** — *"this trainer lumps all control rods into
+   one group with only Doppler feedback, so power OVERSHOOTS"*. Disproved above.
+3. **The startup-rate protection was inert.** SUR HI alarm 2.0 DPM, rod-withdrawal block
+   2.5 DPM. On the run that coasted to 19.8 % and tripped, **peak SUR was 1.82 DPM** — no
+   alarm, no block, zero refused commands. SUR saturates near 1.4–1.8 DPM across a wide band
+   of positive ρ (2.5 DPM ⇒ ~10 s period ⇒ ρ ≈ +400 pcm), so the setpoint sat above anything
+   a startup reaches. It was a prompt-criticality backstop (its own comment says ~0.55 $)
+   wearing a startup-rate label.
+
+**Fixes** (owner ruling: target the 1–3 % band, and retune the rate protection):
+
+- `layers/control/pwr_control.js` — SUR HI alarm **2.0 → 1.0 DPM**; rod-withdrawal block
+  **2.5 → 1.5 DPM, clears 1.5 → 0.8**. Caution first, then the physical stop, both inside
+  the ≤1 DPM the checklist already teaches.
+- `ui/manual_procedures.js` `pwr_startup` — approach rebalanced (`+120 / +70 / +44 slow`,
+  creep hold 150 → **600 s**, because three decades at ≤1 DPM genuinely takes ~10 min); the
+  level-off is now **one decisive `−6` at Norm** with the technique spelled out; and
+  **crossing the 5 % boundary is a new step of its own** (`+16 slow`) instead of something
+  the ascent does to you. Replayed: creep → 1.30 % (Mode 2), level → **1.47 %** (Mode 2),
+  raise → 12.43 % (Mode 1), grid → 12.5 MWe. **Every phase peaks ≤ 0.92 DPM**, so the
+  by-the-book ascent never touches the new block.
+- `scenarios/pwr_startup_challenge.js` + `test/run_campaign.js` — both routes re-probed.
+  A *continuous* pull no longer runs away (the block interrupts it at ~+54 pcm), so the
+  overshoot card is now reached the way a player actually reaches it: in **bites** taken
+  while the rate sits under the block (7 × 40 steps banks ~+256 pcm, coasts to 12.6 %) —
+  a sharper form of the scenario's own line, *the inhibit can freeze your hand but it
+  cannot subtract*. The win line now arrests at **Slow**: with only ~54 pcm in, a Norm
+  arrest removes ~30 pcm/s and drives through zero to −17 pcm, decaying out the *bottom*
+  of the band.
+- Setpoint prose synced in `Manuals/03/04/06/09` (repacked via `tools/pack_manuals.js`),
+  `Blueprint/BUILD_DECISIONS.md`, `Blueprint/M4 control failure.md`.
+
+**Gates:** all 19 runners at baseline. `run_procedures` **22/22, 96 → 97 checks** (the new
+step; `BASELINES` updated). `run_campaign` held at **51/51** after the two drivers were
+re-probed — they were tuned to the old interlock and legitimately had to move.
+
+**Backlog:** S3 → **RESOLVED**. Note for whoever revisits this: the equilibrium map is
+fine — one step ≈ 0.55 % power at the point of adding heat — so rod granularity is *not*
+the lever. The lever is always how fast the excess comes out.
+
+### 2026-07-25 — Gate honesty pass + the feed/steam clip asymmetry (S11)  ✅🔬
+
+**Six issues closed, two gates repaired, one physics bug fixed, one aggregate gate built.**
+
+**S11 RESOLVED — coupled feed clipped at 1.2 vs a governor clipped at 1.0** (`engines/load_mode.js`,
+issue #130). Reproduced first: on `hot_full_power` in manual load, a sustained above-rated ask
+walks SG level 65 → 89 % and scrams on `sg_level high` — 36 s at 1.3x, 61 s at 1.10x, 112 s at
+1.05x; 1.00x and below are stable. Cause exactly as suspected: the governor clamps steam to rated
+(`pwr_steam_generator.js:199`) while the coupling fed 1.2, a permanent imbalance nothing can null.
+The 1.2 was the feed pump's runout capacity (`pwr_engine` `setFeed`, 0..120 %) reused as a *demand*
+ceiling. Fixed by capping coupled feed at rated. **Scoped per-plant** via
+`opts.maxCoupledFeedFrac` — capping the shared default moved `run_bwr` to 14/15 and those plants
+are on hold, so PWR passes 1.0 and RBMK/BWR keep 1.2 until reopened. Untouched: the pump clamp
+(deliberate overfeed still possible), the disconnected branch (matches an actual draw that can
+exceed rated), and EV-11 (feed still tracks the load TARGET, so a slider move still shows its
+transient mismatch — the new test asserts this explicitly). Regression pin:
+`run_pwr load_above_rated_hold`, verified failing without the fix and banded against the *shipping*
+high-SG setpoint rather than a literal.
+
+**Two stale-scale defects fell out of it** (both from the ~1000 → 100 MWe rescale, both masked;
+filed as #193 to sweep for more):
+- `run_m6` Path 2 was **passing for the wrong reason** — it issued `set_steam_demand 600` where
+  `pwr_lower_power` authors 60, a 6x ask, and only completed because the overfeed *scrammed the
+  plant*, which is what drove power under the step's 98 % acceptance. Now 60; completes on the
+  rods at t=8 s.
+- `run_pwr load_mode_follow` asserted `load_target_mwe < 950` — vacuously true since the rescale
+  (actual 86). Rebanded against rated + a real tracks-power check.
+
+**`node test/run_all.js` is now THE gate** (#147). 19 runners vs a `BASELINES` map, ~5.7 min
+(`--fast` skips the two Playwright gates, ~2.5 min). Exit codes alone were not enough — `run_ops`
+exits 1 at 59/68 *and* at 55/68 — so each runner also carries a scraped tally baseline. Drift is
+**symmetric**: scoring better than baseline fails too, so a red turning green must be acknowledged.
+A discovered runner with no baseline entry fails the gate, so a new suite cannot go unlisted the way
+`run_e2e_controls` did. **Baselines are now data, not prose** — that is the structural half of #161,
+whose premise this confirmed (CLAUDE.md listed `run_m5` 19/19 while its own status text said 18/19;
+truth is 18/19).
+
+**Both UI-harness reds in §3.2 fixed:**
+- `verify_manual_follow` **FAILED (30) → PASS (84 checks)** (#149). One line: it probed
+  `RD.PwrSynoptic.isMounted()`, and the retired module still loads so the global exists but never
+  mounts — all 30 PWR bar-checks were false negatives. `RD.PwrBoard` has the same API.
+- `verify_e2e_ui` **FAIL → PASS (16 screenshots)** (#148). Two bugs, and *neither* was the retired
+  synoptic probe this log blamed at UI-1 — that text was wrong, the file never referenced
+  `PwrSynoptic`. (1) `REQUIRED_ACTS` demanded 14 `data-act` buttons the board path deliberately
+  never emits (`ui/app.js:3413`, `:3459-3460` return before `populateControlBar`); replaced with 21
+  board labels probed through `RD.PwrBoard.revealControl()` — the same path Instructor highlights
+  use, so a broken label now fails both together. (2) the manual-units block clicked
+  `[data-msec="setpoints"]`, renamed to `09_setpoints_limits` by the manual-md unification.
+
+**A regression the red gate had been hiding.** Fixing (2) surfaced that the packed manual **does not
+honour the units toggle at all** — `renderManualMd` (`ui/app.js:2813-2816`) caches on
+`engineKey|docId` with no units key and renders markdown authored in SI, so it reads 1200 °C either
+way while the gauges convert. That is **#111**, and it is a *regression*: the old structured manual
+converted, and `verify_e2e_ui` asserted it (2192 °F vs 1200 °C). The unification dropped the
+capability and staled the assertion in one stroke. Pinned as a **strict xfail** in the harness —
+it errors with "promote this and close #111" the moment the manual starts converting.
+
+**Four issues closed as stale, verified against source** — worth knowing the board was carrying
+dead weight: **#78** (ECCS/HPI + AFW AUTO — fully working: `pwr_control.js:81-98`,
+`control_kernel.js:121-133`, board triads at `pwr_board_wiring.js:103-109`; `run_autoctl` 20/20 and
+`run_ops` asserts both auto-starts), **#128** and **#129** (both HR1 violations, both fixed by
+`5e540c5` on 2026-07-16 — `pwr_steam_generator.js:54` reads `_ins_sg_level`, `load_mode.js:74` reads
+`_ins_power_pct`), **#152** (the campaign `goto` validator shipped in `a171af8`; measured 137 gotos /
+0 dangling, 503 triggers / 0 unrecognized; `wait_for_trigger` is a documented alias, not an unknown
+token). #128/#129 sharing one fix commit suggests the whole #12x-13x batch was filed off a
+pre-July-16 tree and deserves the same scrutiny before anyone works it.
+
+Filed: **#189** (validator holes split from #152), **#191** (CI needs a ruling — Playwright is
+vendored with no `package.json`), **#193** (rescale sweep).
+
+### 2026-07-25 — PWR indication audit: 4 fiction readouts fixed; gap list filed  ✅🔬
+Triggered by the owner asking what a real plant indicates for reactivity/startup, and whether
+the ρ readout should be moved somewhere that reads as educational. Full inventory taken of
+every PWR indication (5 surfaces: vital gauge strip, board diagram, strip chart, alarm panel,
+Reactivity Computer + 1/M plot).
+
+**Headline finding (no code change — owner ruling pending, filed as an issue).** The board's
+`REACTIVITY … pcm` item sits *inside the NIS panel* (`pwr_board_wiring.js` VALUES item
+`imro6rdwwdn`, coords 471,240) flanked by `INTER RANGE` / `SOURCE RANGE` / `STARTUP RATE` —
+all genuine modeled instruments — with **no visual distinction**, while the engine comment at
+`pwr_engine.js:406-411` already states real PWRs have no ρ gauge. A correctly-framed home
+already exists (Sim tab → REACTIVITY COMPUTER, `ui/shell.html:166-168`). Recommendation: delete
+the board copy, give the freed NIS slot to **POWER RANGE %** (modeled at `pwr_config.js:547`
+but with *no board numeric at all* — digits exist only on the vital strip), leaving the panel
+reading SR/IR/PR + SUR = the real channel set. Blocker: checklist highlight vocabulary points
+at the ρ readout; `run_checklist` must stay 24/24.
+
+**Fixed this session (4 readouts displaying fiction):**
+
+| Readout | Was | Now |
+|---|---|---|
+| SIT N₂ pressure | hard-coded `640 psig` — `pwr_board_wiring.js` `accN2Psi` read `true_state.accumulator_pressure_mpa`, **never exported** by `getTrueState()` | real N₂ cover-gas pressure (new field) |
+| SG FEED RATE | `control_state.feed_pump_speed_pct × 10` — pump *demand* | measured `instruments.fw_flow × GPM_FEED` |
+| CONDENSATE POLISHER | hard-coded string `'NORMAL'` | `IN SERVICE`/`STANDBY` from `instruments.condensate_pump_running` |
+| Net reactivity ρ | `+-0 pcm` — `sgn()` tested the *string* from `toFixed(0)`; `"-0"` coerces to `-0` and passes `>= 0` | `+0 pcm` |
+
+**New physics — accumulator N₂ cover gas** (`pwr_primary.js` `stepAccumulators`, new `[tune]`
+constant `accumulator_gas_frac: 0.35` at `pwr_config.js`). Gas expands isothermally into the
+volume the discharged water vacates: `P = P0·Vg0/(Vg0 + Vdischarged)`. Indication only — the
+injection driving head is still `accumulator_trip_mpa`, so no scenario physics moved. Curve:
+
+| fill | 100 % | 75 % | 50 % | 25 % | 0 % |
+|---|---|---|---|---|---|
+| psi | 600 | 350 | 247 | 191 | 156 |
+
+Old saves lack the field; `accN2Psi` now returns `null` (dash) rather than fabricating a value.
+
+**Also removed:** dead comma-expression `CS(s).eccs_mode,` in the accumulator-status formatter
+(`pwr_board_wiring.js`) — evaluated and discarded.
+
+**Deferred to the UI revamp** — filed as **GitHub #122** (indication gaps) and **#123**
+(radiation + containment); bodies drafted in `inbox/ISSUE_pwr_indication_gaps.md` and
+`ISSUE_radiation_monitoring.md`. (`gh` was installed per-user later the same session — see
+`CLAUDE.md` § Issue tracking; every agent-touched issue carries the `Claude` label.) Key
+deferred items: the ρ move above; the strip
+chart plots `true_state` for every trace because the Realistic toggle is `disabled`
+(`ui/shell.html:173`) — a **larger** truth/instrument leak than the ρ readout, sitting directly
+under a lagged gauge strip with nothing saying so; heatup/cooldown rate
+(`tavg_rate_c_per_hr`) and plant mode (`plant_mode_name`) both computed every step and never
+displayed; **core damage never annunciated** (`fuel_damaged`/`melted`/`destruction_cause` have
+zero UI consumers — you can melt the core and the board says nothing); board hard-codes US
+units and ignores the display toggle (`pwr_board_wiring.js:19-24`) — owner wants it toggleable,
+deferred because it spans ~30 formatters plus the editable setpoint boxes' bounds and
+parse-back.
+
+**Owner scope rulings:** rod deviation (step counter vs RPI), generator electrical indications
+(MVAR/volts/frequency/breaker), AFD/ΔI and QPTR are **out of scope** — do not add. Radiation
+monitoring + containment instrumentation deferred to its own issue.
+
+**Modeled but unused, decision pending:** `accumulator_flow`, `primary_leak_flow` (LOCA/SGTR
+break flow has no readout anywhere), `condensate_flow`; plus status booleans `rhr_active`,
+`rhr_valve_open`, `safety_relief_active`, `sg_safety_open` (SG code safeties pop invisibly).
+
+**Gates** — all at baseline: `run_pwr` 31/31, `run_scenarios` 3/3, `run_m7` OK, `run_m4` 18/18,
+`run_m6` 16/16, `run_meltdown` 8/8, `run_behavior` 30/0/0, `run_campaign` 51/51,
+`run_checklist` 24/24, `run_procedures` 22/22, `run_e2e_controls` 28/30, `run_ops` 59/68,
+`run_m5` 18/19 (pre-existing).
+
+### 2026-07-25 — Rod-speed first-step bug: stale `step_accumulator` (all three plants)  ✅
+**Report:** "moving rods in/out, the reactivity indication changes instantly even with rod
+speed set to slow."
+
+**Investigation.** The suspicion (reactivity computed from *demanded* rather than *actual*
+rod position) was wrong, and worth recording as ruled out: `_rodReactivity` reads `g.steps`
+only (`pwr_engine.js:74`); `nudge_target` is never in the reactivity path. Speed → velocity
+in steps/s (`pwr_engine.js:564-568`, `:577-578`), position integrated with `dt`
+(`:169-178`). Nothing writes a demanded position into `g.steps`. Two real causes:
+
+1. **The bug — `g.step_accumulator` was never cleared by a new rod command.** It is
+   initialized (`pwr_engine.js:54`,`:60`) and cleared on reset (`:1358`), but `rod_nudge` /
+   `rod_start` cleared `coast_remaining_s`, `velocity` and `nudge_target` and left the
+   fraction behind. A held **fast** drive strands it as high as 0.96; the next **slow** tap
+   then lands its step in 0.08 s instead of 1.88 s. Measured, engine-direct:
+
+   | case | first step at | expected |
+   |---|---|---|
+   | slow +1 from rest | 1.88 s | 1.88 s ✅ |
+   | normal +1 from rest | 0.32 s | 0.31 s ✅ |
+   | fast +1 from rest | 0.22 s | 0.21 s ✅ |
+   | **slow +1 after a fast drive** | **0.08 s** ❌ | 1.88 s |
+
+2. **Not a bug — the jump size is speed-independent by design.** Position is quantized to
+   whole steps (`:172`) and the ρ readout is unfiltered true state (`getTrueState`
+   `pwr_engine.js:466` → `ui/app.js:682`, `pwr_synoptic.js:950`; there is no reactivity
+   entry in `pwr_instruments.js`). One tap therefore produces one discrete ρ jump of
+   *identical* magnitude at every speed — 2.8 pcm at the cold-shutdown rod position,
+   ~9 pcm in the critical band per the `max_steps: 912` retune note
+   (`pwr_config.js:499-512`). Speed changes only the latency before the jump. Bug 1 was
+   removing even that latency, which is what made it read as instant.
+
+**Fix.** `if (!g.velocity) g.step_accumulator = 0;` in `rod_nudge` and `rod_start`, in
+`pwr_engine.js`, `bwr_engine.js` and `rbmk_engine.js` (owner explicitly reopened BWR/RBMK
+for this one fix).
+
+**Why the `!g.velocity` guard, not an unconditional reset** — the automatic rod channel
+re-issues `rod_nudge` on a `period: 5.0` cadence with `maxStep: 8`
+(`pwr_control.js:365`), and 8 steps at slow (0.533 steps/s) takes 15 s. An unconditional
+clear would discard up to a full step of real travel every 5 s during automatic control.
+The guard is also the physically honest rule: a stopped drive starts clean, a moving drive
+is mid-step.
+
+**Owner ruling — do NOT smooth the ρ display.** Proposed and rejected: the reactivity
+readout is the sim's designated *truth overlay* (labelled "not a plant instrument",
+`pwr_synoptic.js:364`) and filtering it would blur exactly the instruments-vs-truth line
+HR1 exists to draw. The step is also physically right — real bank differential worth.
+Motion feedback already exists (`↑`/`↓` at `pwr_synoptic.js:983`, "withdrawing"/"inserting"
+at `ui/app.js:3126`) and was simply being skipped past by the bug. If a slow drive still
+feels wrong, the honest levers are `max_steps` (the step quantum) or `rods.speeds` — not a
+cosmetic filter.
+
+**Gates** — all at baseline: `run_pwr` 31/31, `run_bwr` 15/15, `run_rbmk` 23/23,
+`run_autoctl` 20/20, `run_m4` 18/18, `run_m6` 16/16, `run_behavior` 30/0/0,
+`run_meltdown` 8/8, `run_campaign` 51/51, `run_scenarios` 3/3, `run_procedures` 22/22,
+`run_checklist` 24/24, `run_e2e_controls` 28/30 (baseline), `run_ops` 59/68 (baseline),
+`run_m5` 18/19 (pre-existing rewind red, re-verified on clean HEAD this session).
 
 ### 2026-07-24 — MD-6 FIXED: time-dependent SG dryout depletion (dry + unfed bundle loses its residual)  ✅
 The deferred meltdown-battery defect (total loss of feed+AFW parked the primary at ~297 °C
@@ -262,7 +1148,8 @@ old seek did). Probed: 1 ppm ask → −0.95 delivered; 25 ppm ask → −25.0 e
 save/load all clean. **S10** (at rated, dilution moves Tavg not power — authentic) addressed as
 teaching text: Manuals 03 §7.5 batch-dose block + "dilution moves Tavg, not power" note; 02 §7.2
 channel row; WIRING_REFERENCE.md updated; manuals regenerated + repacked. **S11 still open**
-(coupled-feed 1.2 vs governor 1.0 clip → SG overfill when feed_sg is OFF). Engine mixing-lag fix
+(coupled-feed 1.2 vs governor 1.0 clip → SG overfill when feed_sg is OFF) — *[resolved later,
+2026-07-25, #130; left as written here since this is the historical entry]*. Engine mixing-lag fix
 (07-23) verified working; power still leads the analyzer ~15 s (mix τ 30 vs analyzer lag 45) —
 matters far less now that doses are slow. Gates: autoctl 20/20, m4 18/18, m5 19/19, m6 16/16,
 m6ph 8/8, m7 OK, pwr 31/31, behavior 30/0/0, ops pwr 21/21, campaign 51/51, procedures 22/22,
@@ -471,9 +1358,9 @@ when it's fixed. RBMK/BWR items are the bulk of the remaining ops-suite reds.
 
 | ID | Symptom | Suspected cause | Fix direction | Status |
 |---|---|---|---|---|
-| **F12** | `run_e2e_controls` 28/30: (a) PZR spray manual set reaches engine only 12 (want ≥45); (b) "CVCS auto make-up holds inventory vs leak ≥98 %" | (a) spray-demand reach drifted; (b) stale expectation — severity-1.0 SGTR is now 0.03 frac/s (~40× CVCS make-up), so "auto holds ≥98 %" isn't physical | (a) re-check spray reach; (b) re-baseline to current trajectory or assert a small leak the servo *can* match | **open** (was 3 reds; one turned green with P7) |
-| **UI-1** | `verify_e2e_ui` FAIL — pwr/primary board controls "not found" by the harness | Harness still probes the retired `RD.PwrSynoptic` reveal path while the board display mounts | Point the harness at the board mount | **open** — verified identical on clean HEAD `4df8ac5` |
-| **UI-2** | `verify_manual_follow` 30 PWR bar-checks fail | Same retired-PwrSynoptic-probe family as UI-1 | Same as UI-1 | **open** — manual-pill + rbmk/bwr checks pass |
+| **F12** — **RESOLVED 2026-07-25** (#150) | `run_e2e_controls` 28/30 -> 35/35: (a) PZR spray manual set reaches engine only 12 (want ≥45); (b) "CVCS auto make-up holds inventory vs leak ≥98 %" | (a) spray-demand reach drifted; (b) stale expectation — severity-1.0 SGTR is now 0.03 frac/s (~40× CVCS make-up), so "auto holds ≥98 %" isn't physical | **Neither was a regression.** (a) spray has an owner-ruled flow cap (`spray_flow_max` 0.12, CC-5) applied to the operator override too, so 12 IS the cap — now asserts below-cap passthrough + at-cap clamping, read from config. (b) rebuilt as differential checks (OFF stops charging / ON commands it / auto measurably slows the loss). A third check that was PASSING was also meaningless: it compared `charging_flow` to `leak_flow` directly, which are different scales (`cvcs_inventory_gain` 0.012 vs 1:1). | **RESOLVED 2026-07-25 (#150)** — 35/35. Raised #194: in mass terms CVCS covers a constant ~24 % of any leak, so none is ever held |
+| **UI-1** | `verify_e2e_ui` FAIL — pwr/primary board controls "not found" by the harness | **This suspected cause was WRONG** — the file never referenced `RD.PwrSynoptic`. Real causes: (a) `REQUIRED_ACTS` demanded 14 `data-act` buttons the board path deliberately never emits (`ui/app.js:3413`, `:3459-3460` return before `populateControlBar`); (b) the manual-units block clicked `[data-msec="setpoints"]`, renamed `09_setpoints_limits` by the manual-md unification | Probe 21 board labels via `RD.PwrBoard.revealControl()` (same path Instructor highlights use); re-point the manual section | **RESOLVED 2026-07-25 (#148)** — PASS (16 screenshots). Surfaced #111: the packed manual ignores the units toggle entirely, now a strict xfail here |
+| **UI-2** | `verify_manual_follow` 30 PWR bar-checks fail | Retired-`PwrSynoptic`-probe — correct for THIS file: it probed `RD.PwrSynoptic.isMounted()`, and the retired module still loads (global exists) but never mounts, so every PWR bar-check was a false negative | Swap to `RD.PwrBoard` (identical `isMounted`/`revealControl` API) | **RESOLVED 2026-07-25 (#149)** — one line; FAILED (30) → PASS (84 checks), delta verified against the pre-fix file |
 
 ### 3.3 Suspected / oddities (not hard failures — watch or investigate)
 
@@ -484,7 +1371,7 @@ real smell worth a look during this effort.
 |---|---|---|---|
 | **S1** | PWR | `abuse_porv_walkaway` end state shows inventory 120 % (clip at `mass_max`) with pzr level 7 % — the overfill/level bookkeeping disagree | A level/inventory contradiction is exactly the class of bug the derived-level rework was meant to kill; worth confirming it's just the clip |
 | **S2** | PWR | LOFW warning-to-trip window is only ~4 s (`ops_loss_of_feedwater_handsoff`) | Too fast for a player to react — consider slowing SG boil-down slightly |
-| **S3** | PWR | After criticality the sim coasts to ~20 % power even when leveled with counter-insertion (real practice stabilizes <5 %) | Startup feel — maybe a stronger low-power Doppler bite or gentler mid-curve differential rod worth |
+| **S3** | PWR | **RESOLVED (2026-07-25, issue #134)** — and the suspicion in this row was wrong. Not a physics/rod-worth problem: the plant parks at 1.8–3.5 % when the excess reactivity is removed in ONE drive, and at 10–20 % when it is tapped out. The real causes were the checklist recipe (+45/−8, target "5–15 %", `acc: power_pct > 5`), a caution that blamed the lumped core for it, and an inert rate protection (alarm 2.0 / block 2.5 DPM against a peak of 1.82). See session entry | Was: startup feel — maybe a stronger low-power Doppler bite or gentler mid-curve differential rod worth |
 | **S4** | PWR | 50 % xenon swing may be a touch small (peak ~106 % vs ~113 % on the daily cycle) | Fine for v1; note if xenon scenarios feel flat |
 | **S5** | RBMK | Zero-flow aftermath too forgiving — post-trip fuel sits ~570 °C indefinitely, never dries out/damages | Real consequence is boil-off→dryout over tens of minutes; scale `h_fc` with channel flow at decay levels |
 | **S6** | RBMK | EPS bypass — verify M4 actually honors `eps_bypassed` in `_evalTrips` (was cosmetic; a `disable_auto_trips` effect now exists — confirm it inhibits auto-trips for the Chernobyl sequence) | The historical sequence can't be walked if bypass doesn't suppress trips |
@@ -492,7 +1379,7 @@ real smell worth a look during this effort.
 | **S8** | PWR | **RESOLVED (2026-07-23)** — batch-dose rework removed the deadband entirely; 1 ppm board nudges now execute (probed −0.95 ppm delivered). See session entry | Was: board arrows nudge 1 ppm but `boron_conc` deadband ±8 ppm swallowed target changes ≤ 8 ppm |
 | **S9** | PWR | **RESOLVED (2026-07-23)** — `boron_conc` no longer seeks the lagged analyzer: a new target meters a feedforward dose stopped by a flow totalizer (real makeup-panel semantics), rate 0.5 → 0.05 ppm/s. Probed: 25 ppm ask delivers −25.0 exactly, power peaks 102.6 % (was 118 % + scram) | Was: seek on the 45 s-lagged analyzer over-delivered ~50 % and spiked/scrammed the plant |
 | **S10** | PWR | At 100 % with the governor at rated, steady-state power ALWAYS returns to ~100 % after dilution — Tavg absorbs it (+~0.45 °C/ppm). AUTHENTIC PWR physics (probed 2026-07-23), but reads as "boron does nothing" from the board | Teaching-surface gap, not a bug: nothing on the board tells the player boron moves Tavg (not power) when the turbine is pinned at rated |
-| **S11** | PWR | Load-coupled feed (feed_sg channel OFF, `load_mode.js` follow branch) clips feed at 1.2 while the governor clips steam at 1.0 — any power excursion above rated integrates SG level up (probed 65→89 %) until an `sg_level high` scram minutes later, looking unrelated to its cause | Hidden in default free play (feed_sg defaultOn holds level) but live whenever feed is manual/failed; fix = clip coupled feed to the governor's deliverable or feed on `steam_out_total` in follow mode too |
+| **S11** — **RESOLVED 2026-07-25** (#130, see session log) | PWR | Load-coupled feed (feed_sg channel OFF, `load_mode.js` follow branch) clips feed at 1.2 while the governor clips steam at 1.0 — any power excursion above rated integrates SG level up (probed 65→89 %) until an `sg_level high` scram minutes later, looking unrelated to its cause | Hidden in default free play (feed_sg defaultOn holds level) but live whenever feed is manual/failed; fix = clip coupled feed to the governor's deliverable or feed on `steam_out_total` in follow mode too |
 | **S13** | PWR | ATWS **at power** with heat sink intact (failure_to_scram + continuous_rod_withdrawal) self-limits at ~756 °C on Doppler and never damages; may be too benign vs a real ATWS overpressure/PCT event | Lower priority than the MD-x set; revisit after the decay-heat gate (MD-5) is fixed, since that changes every uncovered-core outcome |
 
 ### 3.4 PWR meltdown-path physics defects (found 2026-07-24 — owner playtest "all meltdown paths have major issues")

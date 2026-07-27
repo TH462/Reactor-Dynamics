@@ -42,6 +42,18 @@ function cmp(a, op, b, tol) {
 }
 function pred(ts, c) { return cmp(ts[c.p], c.op, c.v, c.tol); }
 
+// Step commands that never reach an ENGINE, so this harness (which drives engines
+// directly, without the M4 control layer above them) skips them. The step's
+// `hold`/`acc`/`saw` still run; only the command is not issued.
+//   plot_1m_point   — an operator observation consumed by the instructor layer
+//                     (see handleCommand in layers/instructor_layer.js)
+//   set_trip_block  — an M4 reactor-protection block; the trips themselves are
+//                     control-layer, so an engine-only run has nothing to block
+//   set_auto_channel — engages an M4 automation channel; below M4 there is no
+//                     channel to engage (the engine's own coupled-feed fallback
+//                     stands in, which is why the engine-only level still holds)
+var NON_ENGINE_ACTIONS = { plot_1m_point: true, set_trip_block: true, set_auto_channel: true };
+
 function runProcedure(prof, proc) {
   var P = PROFILES[prof];
   var e = new P.ctor(P.version ? { design_version: P.version } : {});
@@ -52,7 +64,7 @@ function runProcedure(prof, proc) {
   function tick() { var ts = e.getTrueState(); if (ts.melted) meltHit = true; gNever.forEach(function (g) { if (pred(ts, g.c)) g.hit = true; }); }
 
   (proc.steps || []).forEach(function (st, idx) {
-    if (st.cmd) { var cmd = {}; for (var k in st.cmd) cmd[k] = st.cmd[k];
+    if (st.cmd && !NON_ENGINE_ACTIONS[st.cmd.action]) { var cmd = {}; for (var k in st.cmd) cmd[k] = st.cmd[k];
       if (cmd.group_id === 'control' || cmd.group_id === 'shutdown') cmd.group_id = groupId(e, cmd.group_id);
       e.applyCommand(cmd); }
     var sawHit = false, n = Math.round((st.hold || 0) / 0.02);

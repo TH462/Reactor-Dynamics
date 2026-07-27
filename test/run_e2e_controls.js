@@ -51,11 +51,27 @@ console.log(B + 'PWR — recently-added controls' + X);
   var heatPct = s.engine.s.heater_power_frac * 100;
   ck('PZR heater manual set reaches engine', heatPct >= 75, heatPct.toFixed(0), '>=75');
 
+  // Spray has an owner-ruled FLOW CAP (CC-5, catalog v3 FG-6 / feel-plan P5):
+  // pwr_config pressurizer.spray_flow_max, applied in pwr_pressurizer to the auto
+  // demand AND the operator override alike. So a 50 % ask CANNOT reach 50 %.
+  // This check used to assert ">= 45" and had been red ever since the cap landed —
+  // read as a plumbing regression, but the command was arriving perfectly and
+  // being clamped exactly as designed. Assert both halves instead: an ask below
+  // the cap arrives untouched, and an ask above it is clamped to the cap.
+  var sprayCap = RD.PWR_CONFIG.pressurizer.spray_flow_max * 100;
+  s = svc('pwr', 'hot_full_power');
+  s.handleCommand({ action: 'set_spray', pct: sprayCap / 2 });
+  step(s, 20);
+  var sprayLo = s.engine.s.spray_flow_frac * 100;
+  ck('PZR spray manual set below the cap reaches engine untouched',
+    Math.abs(sprayLo - sprayCap / 2) < 0.5, sprayLo.toFixed(1), (sprayCap / 2).toFixed(1));
+
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'set_spray', pct: 50 });
   step(s, 20);
   var sprayPct = s.engine.s.spray_flow_frac * 100;
-  ck('PZR spray manual set reaches engine', sprayPct >= 45, sprayPct.toFixed(0), '>=45');
+  ck('PZR spray manual set above the cap is clamped to it (CC-5)',
+    Math.abs(sprayPct - sprayCap) < 0.5, sprayPct.toFixed(1), sprayCap.toFixed(1) + ' (cap)');
 
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'open_porv' });
@@ -120,28 +136,78 @@ console.log(B + 'PWR — recently-added controls' + X);
   step(s, 20);
   ck('letdown orifice A → pressure-driven flow', s.engine.s.letdown_flow >= 0.02, s.engine.s.letdown_flow.toFixed(3), '>=0.02');
 
-  // §8.8 CVCS AUTO make-up vs a leak. Severity 1.0 so the test discriminates:
-  // unmitigated, this leak (1.0 · 0.08 · leak_scale 0.03 ≈ 0.0024/s) loses
-  // ~10% inventory over the window — the old severity-0.5 run lost less than
-  // the 5% allowance, so the check passed with the automation OFF. And the old
-  // "indication > setpoint + 0.005" margin was calibrated to the pre-rescale
-  // leak (e28f7b0 rescaled SGTR ~33× slower): the servo's equilibrium charging
-  // exactly MATCHES the leak, far below 0.005 — assert the actual contract.
-  s = svc('pwr', 'hot_full_power');
-  // Isolate the leak-matching contract: close the free-play preset letdown (Orifice A)
-  // so equilibrium charging balances the LEAK alone, not leak + letdown make-up.
-  s.handleCommand({ action: 'set_letdown_orifices', a: false, b: false });
-  s.handleCommand({ action: 'inject_failure', failure_id: 'sgtr', severity: 1.0 });
-  var inv0 = s.engine.s.core_inventory_pct;
-  s.handleCommand({ action: 'set_cvcs_auto', active: true });
-  step(s, 400);
-  var leakNow = s.engine.s.leak_flow, chgNow = s.engine.s.charging_flow;
-  ck('CVCS auto make-up holds inventory vs leak', s.engine.s.core_inventory_pct >= inv0 - 2, s.engine.s.core_inventory_pct.toFixed(1), '>=' + (inv0 - 2).toFixed(1));
-  ck('AUTO charging converged to match the leak', chgNow >= 0.5 * leakNow && chgNow <= 3 * leakNow + 1e-6,
-     'chg ' + chgNow.toFixed(4) + ' vs leak ' + leakNow.toFixed(4), '0.5×..3× leak');
+  // §8.8 CVCS AUTO make-up vs a leak — DIFFERENTIAL, not an absolute band.
+  //
+  // This asserted "inventory holds >= inv0 - 2" against a severity-1.0 SGTR and had
+  // been red for weeks. Two things were wrong with it, and the second is the worse:
+  //
+  //  1. It is not physical. Measured over the 400 s window, a severity-1.0 SGTR takes
+  //     inventory 100 % -> 5.6 %. Make-up slows that by ~1.7 points; nothing "holds"
+  //     it. (The old comment's "loses ~10 % over the window" was an order of magnitude
+  //     out — 0.0024/s x 400 s is ~96 %.)
+  //  2. It did not test the control. CVCS auto is ON in the free-play lineup, so
+  //     `set_cvcs_auto {active:true}` was a no-op: the check behaved identically
+  //     whether or not the command did anything at all.
+  //
+  // What is actually worth pinning here — this suite is control plumbing, not physics
+  // tuning — is that the command MOVES the plant, in both directions, and that make-up
+  // measurably slows the loss. Severity 0.2 gives the cleanest signal: charging is
+  // saturated at its maximum, so the delta does not depend on servo gain.
+  //
+  // Letdown (the free-play Orifice A preset) is closed first so charging balances the
+  // LEAK alone rather than leak + letdown make-up.
+  function sgtrRun(cvcsAuto, severity) {
+    var t = svc('pwr', 'hot_full_power');
+    t.handleCommand({ action: 'set_letdown_orifices', a: false, b: false });
+    t.handleCommand({ action: 'set_cvcs_auto', active: cvcsAuto });
+    t.handleCommand({ action: 'inject_failure', failure_id: 'sgtr', severity: severity });
+    step(t, 400);
+    return {
+      svc: t, inv: t.engine.s.core_inventory_pct,
+      chg: t.engine.s.charging_flow || 0, leak: t.engine.s.leak_flow || 0,
+    };
+  }
+  var cvcsOn = sgtrRun(true, 0.2), cvcsOff = sgtrRun(false, 0.2);
+  // The OFF leg is the one that discriminates: because the free-play lineup already
+  // has CVCS auto ON, only turning it OFF can prove the command reaches the kernel.
+  // Keep both legs — ON alone would pass against a no-op, which is the trap the
+  // previous version of this check fell into.
+  ck('set_cvcs_auto OFF stops automatic charging', cvcsOff.chg === 0, cvcsOff.chg.toFixed(4), '0');
+  ck('set_cvcs_auto ON commands charging', cvcsOn.chg > 0, cvcsOn.chg.toFixed(4), '>0');
+  ck('CVCS auto measurably slows the inventory loss',
+    cvcsOn.inv > cvcsOff.inv + 1, cvcsOn.inv.toFixed(2) + ' vs ' + cvcsOff.inv.toFixed(2),
+    'ON > OFF + 1');
+  // ...and at a leak small enough to be inside its authority the servo MODULATES
+  // rather than sitting on its stop — otherwise "auto" would just be a fixed pump.
+  var small = sgtrRun(true, 0.008);
+  ck('CVCS auto modulates below saturation on a small leak',
+    small.chg > 0 && small.chg < cvcsOn.chg * 0.9, small.chg.toFixed(5),
+    '0 < chg < ' + (cvcsOn.chg * 0.9).toFixed(5));
+  // PROPORTIONAL DROOP. While unsaturated the servo's make-up scales with the leak
+  // and covers a consistent FRACTION of it — it does not match it, because there is
+  // no integral term, which is why a leak parks pzr level below setpoint (the droop
+  // is quantified in pwr_config reactivity, ~2 % for a 2.4e-4 leak).
+  //
+  // This replaces a check that asserted charging_flow was 0.5x..3x leak_flow. Those
+  // are DIFFERENT SCALES: charging enters the mass balance through
+  // cvcs_inventory_gain (0.012) while the leak is 1:1 (pwr_primary.js:202). It was
+  // comparing incommensurable numbers and passed only by coincidence at severity 1.0,
+  // where charging sits at 2.6x the leak while pinned at its maximum. Compared in
+  // mass terms, coverage is ~24 % across the whole unsaturated range — see #194.
+  var gain = RD.PWR_CONFIG.reactivity.cvcs_inventory_gain;
+  var leakA = sgtrRun(true, 0.004), leakB = sgtrRun(true, 0.008);
+  var covA = leakA.chg * gain / leakA.leak, covB = leakB.chg * gain / leakB.leak;
+  ck('CVCS make-up scales with the leak (proportional servo)',
+    leakB.chg > leakA.chg * 1.8 && leakB.chg < leakA.chg * 2.2,
+    leakA.chg.toFixed(5) + ' -> ' + leakB.chg.toFixed(5) + ' on a 2x leak', '~2x');
+  ck('CVCS covers a consistent fraction of the leak, not all of it (droop)',
+    Math.abs(covA - covB) < 0.03 && covA > 0.1 && covA < 0.5,
+    (covA * 100).toFixed(0) + '% / ' + (covB * 100).toFixed(0) + '%', 'equal, 10..50%');
+
   // The charging_flow INDICATION reads the true modulated flow, not the operator
   // setpoint — the two are distinct snapshot fields for the UI. Average a few
   // samples to see past the instrument noise (σ 0.001 ≈ the signal here).
+  s = cvcsOn.svc;
   var snap = s.assembleSnapshot(), indSum = 0, N = 20;
   for (var k = 0; k < N; k++) { s.advanceCycles(1); indSum += s.assembleSnapshot().instruments.charging_flow; }
   ck('operator setpoint untouched by AUTO', snap.control_state.charging_flow_normalized === 0,

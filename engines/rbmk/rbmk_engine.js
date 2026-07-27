@@ -299,6 +299,9 @@
         if (g && !(g === this._controlGroup() && s._fail.rod_runaway.active)) {
           // +steps = withdraw → DECREASE insertion (RBMK convention); move at speed.
           g.speed = cmd.speed || g.speed || 'normal';
+          // A command to a bank at rest starts from a clean fraction — a leftover
+          // accumulator would land the first step at once and ignore the speed.
+          if (!g.velocity) g.step_accumulator = 0;
           g.nudge_target = clip(g.steps - cmd.steps, 0, g.max_steps);
           var nv = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
           g.velocity = (g.nudge_target >= g.steps ? 1 : -1) * nv;   // insertion velocity
@@ -309,6 +312,7 @@
         g = this._group(cmd.group_id);
         if (g && !(g === this._controlGroup() && s._fail.rod_runaway.active)) {
           g.speed = cmd.speed || 'normal'; g.nudge_target = null;
+          if (!g.velocity) g.step_accumulator = 0;   // see rod_nudge
           var v = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
           // direction +1 = withdraw → negative insertion velocity.
           g.velocity = (cmd.direction >= 0 ? -1 : 1) * v;

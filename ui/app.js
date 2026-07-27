@@ -43,16 +43,15 @@
   // Operator automation now lives IN-STACK (layers/control/control_kernel.js);
   // the Automate tab is a pure face over snapshot.automation, issuing
   // set_auto_channel / set_auto_setpoint commands like any operator action.
-  var chartBuf = [];        // { t, ins }
+  var chartBuf = [];        // { t, v:{serId:instrumentVal}, tv:{serId:trueVal} } — one value per plotted series
   var chartRange = {};      // id -> { lo, hi } — peak-hold auto-range (expands fast, re-tightens slow)
   var gaugeHist = {};       // id -> [{ t, v }]
   // Fraction of the strip-chart plot width the traces occupy; the remaining right
   // gutter holds the live value chips (see drawChart / drawFloats / rewindPickClick).
   var CHART_PLOT_FRAC = 0.86;
   var CHART_RECORD_SEC = 1800;   // keep 30 min of history; the chart DISPLAYS only ui.window of it
-  var PEAK_HOLD_K = 0.06;        // per-frame rate the peak-hold axis re-tightens toward the data (expand is instant)
+  var CHART_SHRINK_FRAMES = 40;  // frames a trace must sit well inside its band before the axis zooms in (~4 s)
   var smoothed = {};        // id -> display-damped instrument value
-  var DISPLAY_DAMP_K = 0.18;
 
   // ----------------------------------------------------------- unit conversion
   function conv(v, dim) {
@@ -136,25 +135,30 @@
         { id: 'sg',      label: 'Steam Generator Level (SG)', raw: function (s) { return s.instruments.sg_level; }, units: '%', min: 0, max: 100, caution_lo: 30, danger_lo: 12, dp: 0 },
         { id: 'subcool', label: 'Subcooling Margin', raw: function (s) { return s.instruments.subcooling_margin; }, dim: 'tempdiff', min: -28, max: 83, caution_lo: 11, danger_lo: 0, dp: 0 },
       ],
+      // `get` reads the INSTRUMENT (lag + noise + injectable sensor failures); `tru`
+      // reads the same quantity from true_state. The chart picks between them per
+      // chartSource() — physics in Learning, instruments in Realistic, so the
+      // PWR-E20/E21/E22 sensor-failure drills still bite where the manual says they do.
       series: [
-        { id: 'power',    label: 'Power %',  c: '#6a90b0', get: function (i) { return i.power_range; }, range: [0, 120], dHi: 118, fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'tavg',     label: 'Tavg',     c: '#b07830', get: function (i) { return i.tavg; }, range: [270, 330], dHi: 335, fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
-        { id: 'pressure', label: 'Pressure', c: '#507048', get: function (i) { return i.primary_pressure; }, range: [10, 17], dHi: 16.44, fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
-        { id: 'sg_level', label: 'SG Level', c: '#806890', get: function (i) { return i.sg_level; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'pzr_level',label: 'PZR Level',c: '#507878', get: function (i) { return i.pzr_level; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'subcool',  label: 'Subcool',  c: '#707060', get: function (i) { return i.subcooling_margin; }, range: [-10, 60], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + '°'; } },
-        { id: 'mwe',      label: 'Output MW',c: '#506880', get: function (i) { return i.mwe_output; }, range: [0, 110], fmt: function (v) { return v.toFixed(0); } },
-        { id: 'thot',     label: 'Hot Leg',  c: '#c0563e', get: function (i) { return i.thot; }, range: [270, 335], fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
-        { id: 'tcold',    label: 'Cold Leg', c: '#4a86c0', get: function (i) { return i.tcold; }, range: [260, 320], fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
-        { id: 'steam_flow',label: 'Steam Flow',c: '#8a9a5a', get: function (i) { return i.steam_flow * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'fw_flow',  label: 'Feed Flow',c: '#4a8a86', get: function (i) { return i.fw_flow * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'power',    label: 'Power %',  c: '#6a90b0', get: function (i) { return i.power_range; }, tru: function (t) { return t.power_pct; }, range: [0, 120], dHi: 118, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'tavg',     label: 'Tavg',     c: '#b07830', get: function (i) { return i.tavg; }, tru: function (t) { return t.tavg_c; }, range: [270, 330], dHi: 335, fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
+        { id: 'pressure', label: 'Pressure', c: '#507048', get: function (i) { return i.primary_pressure; }, tru: function (t) { return t.pressure_mpa; }, range: [10, 17], dHi: 16.44, fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
+        { id: 'sg_level', label: 'SG Level', c: '#806890', get: function (i) { return i.sg_level; }, tru: function (t) { return t.sg_level_pct; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'pzr_level',label: 'PZR Level',c: '#507878', get: function (i) { return i.pzr_level; }, tru: function (t) { return t.pzr_level_pct; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'subcool',  label: 'Subcool',  c: '#707060', get: function (i) { return i.subcooling_margin; }, tru: function (t) { return t.subcooling_c; }, range: [-10, 60], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + '°'; } },
+        { id: 'mwe',      label: 'Output MW',c: '#506880', get: function (i) { return i.mwe_output; }, tru: function (t) { return t.mwe_output; }, range: [0, 110], fmt: function (v) { return v.toFixed(0); } },
+        { id: 'thot',     label: 'Hot Leg',  c: '#c0563e', get: function (i) { return i.thot; }, tru: function (t) { return t.thot_c; }, range: [270, 335], fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
+        { id: 'tcold',    label: 'Cold Leg', c: '#4a86c0', get: function (i) { return i.tcold; }, tru: function (t) { return t.tcold_c; }, range: [260, 320], fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
+        { id: 'steam_flow',label: 'Steam Flow',c: '#8a9a5a', get: function (i) { return i.steam_flow * 100; }, tru: function (t) { return t.steam_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'fw_flow',  label: 'Feed Flow',c: '#4a8a86', get: function (i) { return i.fw_flow * 100; }, tru: function (t) { return t.fw_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
         // Boron trend (RCS boron reading). Re-added as a plottable graph option
         // 2026-07-24 (owner request); the board itself still shows boron via the
         // chemistry SAMPLE mechanic, not a live boronometer.
-        { id: 'boron',    label: 'Boron',    c: '#9a7ab8', get: function (i) { return i.boron_analyzer; }, range: [0, 1400], fmt: function (v) { return v.toFixed(0) + ' ppm'; } },
-        { id: 'xenon',    label: 'Xenon',    c: '#b05a8a', get: function (i) { return i.xenon_pct_eq; }, range: [0, 250], fmt: function (v) { return v.toFixed(0) + '% eq'; } },
-        { id: 'steam_p',  label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
-        { id: 'sur',      label: 'Startup Rate', c: '#c0913e', get: function (i) { return i.startup_rate; }, range: [-2, 3], fmt: function (v) { return v.toFixed(1) + ' DPM'; } },
+        { id: 'boron',    label: 'Boron',    c: '#9a7ab8', get: function (i) { return i.boron_analyzer; }, tru: function (t) { return t.boron_ppm; }, range: [0, 1400], fmt: function (v) { return v.toFixed(0) + ' ppm'; } },
+        // xenon has no instrument at all — it is true state in both modes
+        { id: 'xenon',    label: 'Xenon',    c: '#b05a8a', get: function (i) { return i.xenon_pct_eq; }, tru: function (t) { return t.xenon_pct_eq; }, range: [0, 250], fmt: function (v) { return v.toFixed(0) + '% eq'; } },
+        { id: 'steam_p',  label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, tru: function (t) { return t.steam_pressure_mpa; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
+        { id: 'sur',      label: 'Startup Rate', c: '#c0913e', get: function (i) { return i.startup_rate; }, tru: function (t) { return t.startup_rate_dpm; }, range: [-2, 3], fmt: function (v) { return v.toFixed(1) + ' DPM'; } },
       ],
     },
 
@@ -510,18 +514,24 @@
   }
 
   // ============================================================ display damping
-  function dampInstruments(s) {
-    if (s.metadata.time_acceleration >= 60) { smoothed = {}; return; }
-    var src = s.instruments, out = {}, k = DISPLAY_DAMP_K;
-    for (var id in src) {
-      var v = src[id];
-      if (typeof v === 'number' && isFinite(v)) {
-        smoothed[id] = (smoothed[id] == null) ? v : smoothed[id] + k * (v - smoothed[id]);
-        out[id] = smoothed[id];
-      } else out[id] = v;
-    }
-    s.instruments = out;
-  }
+  // RETIRED 2026-07-26 (#217). This applied a per-FRAME EMA to every instrument and
+  // replaced s.instruments wholesale, so the whole board read damped values. Three
+  // reasons it had to go:
+  //
+  //   1. It is a SECOND lag. The engine already models instrument lag properly —
+  //      inside the physics step, on sim time (HR6). This one sat on top of it,
+  //      uncontrolled and undocumented in any spec.
+  //   2. It has no `dt` term, so the damping is FRAME-RATE DEPENDENT: a 120 Hz display
+  //      damps twice as fast as a 60 Hz one. Instrument dynamics must be sim-time
+  //      correct (HR6) — that is the whole reason lag lives in the engine step.
+  //   3. It attenuated noise ~3x, so every sigma had to be inflated ~3x to survive it.
+  //      Those same sigmas are what a `noisy` sensor FAILURE multiplies, so the
+  //      inflation would have made failures wilder too. Tuning the physics to defeat a
+  //      UI filter is backwards.
+  //
+  // Noise is now set per indication at the source (pwr_config instrument table), sized
+  // against each readout's display step. One knob, in one place, sim-time correct.
+  function dampInstruments(s) { /* no-op — see above */ }
 
   // ============================================================ render snapshot
   // Rendering is coalesced onto requestAnimationFrame. The sim broadcasts from a
@@ -583,11 +593,27 @@
     // easing a display value across a time jump shows numbers that were never real.
     if (chartBuf.length && chartBuf[chartBuf.length - 1].t > s.metadata.sim_time + 1e-9) smoothed = {};
     while (chartBuf.length && chartBuf[chartBuf.length - 1].t > s.metadata.sim_time + 1e-9) chartBuf.pop();
-    // Snapshot the instruments for the chart; also carry xenon (a true-state quantity with
-    // no gauge of its own) so it can be a plottable series alongside the instrument readings.
-    var chartIns = Object.assign({}, rawIns);   // RAW instruments — no display smoothing on the chart
-    if (s.true_state && s.true_state.xenon_pct_eq != null) chartIns.xenon_pct_eq = s.true_state.xenon_pct_eq;
-    chartBuf.push({ t: s.metadata.sim_time, ins: chartIns });
+    // Record ONE VALUE PER SERIES per sample — instrument in `v`, true state in `tv` —
+    // rather than a copy of the whole instrument + true_state dicts. The chart only ever
+    // reads the ~15 plotted quantities, and the buffer holds 30 min at frame rate, so
+    // keeping the full dicts cost ~100 MB (and carrying truth alongside would have
+    // doubled it). Both sources are recorded regardless of the current mode, so toggling
+    // Learning↔Realistic re-traces the history it already has instead of starting over.
+    var chartIns = rawIns;   // RAW instruments — no display smoothing on the chart
+    if (s.true_state && s.true_state.xenon_pct_eq != null) {
+      // xenon has no instrument; carry the true value so the series can plot in both modes
+      chartIns = Object.assign({}, rawIns); chartIns.xenon_pct_eq = s.true_state.xenon_pct_eq;
+    }
+    var sv = {}, stv = {};
+    prof().series.forEach(function (ser) {
+      var a; try { a = ser.get(chartIns); } catch (e) { a = null; }
+      sv[ser.id] = (a == null || !isFinite(a)) ? null : a;
+      if (ser.tru && s.true_state) {
+        var b; try { b = ser.tru(s.true_state); } catch (e2) { b = null; }
+        stv[ser.id] = (b == null || !isFinite(b)) ? null : b;
+      }
+    });
+    chartBuf.push({ t: s.metadata.sim_time, v: sv, tv: stv });
     var cutoff = s.metadata.sim_time - CHART_RECORD_SEC;   // retain 30 min regardless of the display window
     while (chartBuf.length > 2 && chartBuf[0].t < cutoff) chartBuf.shift();
     drawChart();
@@ -657,8 +683,10 @@
 
   function renderReactimeter(s) {
     var t = s.true_state;
-    var sgn = function (v) { return (v >= 0 ? '+' : '') + v; };
-    $('rxReactivity').textContent = t.reactivity_pcm != null ? sgn(t.reactivity_pcm.toFixed(0)) + ' pcm' : '— pcm';
+    // Sign off the NUMBER, not the rounded string: a tiny negative ρ rounds to the string
+    // "-0", which coerces to -0 and passes `>= 0`, so the old form printed "+-0 pcm".
+    var sgn = function (n) { var r = n.toFixed(0); if (r === '-0') r = '0'; return (r.charAt(0) === '-' ? '' : '+') + r; };
+    $('rxReactivity').textContent = t.reactivity_pcm != null ? sgn(t.reactivity_pcm) + ' pcm' : '— pcm';
     var per = t.reactor_period_s;
     $('rxPeriod').textContent = per == null ? '— (PWR only)' : (!isFinite(per) || Math.abs(per) > 9999) ? '∞ (steady)' : per.toFixed(0) + ' s';
   }
@@ -725,6 +753,9 @@
     failure: 'Dropped to real time — equipment failure',
     alarm: 'Dropped to real time — new alarm',
   };
+  // Settings → Fast-forward dropout. The service owns the policy (HR5: it arrives by
+  // command like everything else); the UI just mirrors what the snapshot reports.
+  var attnStops = true;
   var lastSpeedSync = null;
   function syncSpeedUI(s) {
     var v = s && s.metadata ? s.metadata.time_acceleration : null;
@@ -732,6 +763,8 @@
     // Toast the reason so the operator knows why the clock changed under them.
     var snap = s && s.metadata ? s.metadata.speed_snap : null;
     if (snap) showToast(SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time', 'error');
+    var as = s && s.metadata ? s.metadata.attention_stops : null;
+    if (as != null && as !== attnStops) { attnStops = as; syncSeg('[data-attn]', as ? 'on' : 'off', 'attn'); }
     if (v == null || v === lastSpeedSync) return;
     lastSpeedSync = v;
     var seg = $('speed');
@@ -754,6 +787,10 @@
       var want = syn === 'realistic' ? 'realistic' : 'learning';
       var wantOv = want === 'learning' && !!ip.overlay;
       if (ui.diagMode !== want || ui.physOverlay !== wantOv) {
+        // The mode also swaps what the strip chart traces (physics vs instruments) —
+        // TMI-2 p1/p3 run Realistic so the chart keeps the deception, p2 runs Learning
+        // so the reveal can show the physics. Re-fit the axes across the swap.
+        if (ui.diagMode !== want) chartRange = {};
         ui.diagMode = want; ui.physOverlay = wantOv; syncOverlayRow();
       }
     } else if (uiPolicyPrev) {
@@ -1230,7 +1267,7 @@
   // Retry a walkthrough — start_follow itself resets to the procedure's `from` state.
   function followRetry() {
     var pr = curFollowProc(); if (!pr) return;
-    chartBuf = []; smoothed = {};
+    chartBuf = []; smoothed = {}; seriesHot = {};
     cmd({ action: 'start_follow', procedure_id: pr.id });
     buildAutomate();
     setFocus('instructor', true);
@@ -1476,7 +1513,7 @@
     // start_follow resets the plant to the procedure's `from` state and loads it;
     // ui.follow syncs from the resulting snapshot in renderInstructor. Fresh
     // timeline → fresh trend history and gauge smoothing.
-    chartBuf = []; smoothed = {};
+    chartBuf = []; smoothed = {}; seriesHot = {};
     cmd({ action: 'start_follow', procedure_id: id });
     buildAutomate();
     resetInstrFlow();            // fresh walkthrough → fresh commentary queue
@@ -1606,17 +1643,65 @@
   }
 
   // ============================================================ strip chart
+  // WHAT THE CHART TRACES. Learning plots the PHYSICS (true_state) — instrument noise
+  // is not a lesson, it just makes a trend unreadable. Realistic plots the INSTRUMENTS,
+  // so a drifting Tavg or a stuck PZR level channel (PWR-E20/E21/E22) still shows up
+  // as an honest disagreement between the chart and the other indications. This is a
+  // display choice only: alarms and protection read instruments in both modes (HR1).
+  // A series with no `tru` (RBMK/BWR) always traces its instrument.
+  function chartTruth() { return ui.diagMode !== 'realistic'; }
+  function seriesVal(ser, sample) {
+    var src = (chartTruth() && ser.tru) ? sample.tv : sample.v;
+    var v = src ? src[ser.id] : null;
+    return (v == null || !isFinite(v)) ? null : v;
+  }
+  // Alarm emphasis on a trace. Latching with a release deadband (5 % of the distance
+  // back into the band): a value sitting exactly on its setpoint used to strobe the
+  // whole polyline once per frame.
+  var seriesHot = {};   // id -> bool, held between frames
   function seriesAlarmed(ser) {
     if (!latest) return false;
-    var v = ser.get(latest.instruments);
-    if (ser.dHi != null && v >= ser.dHi) return true;
-    if (ser.dLo != null && v <= ser.dLo) return true;
-    return false;
+    var v = (chartTruth() && ser.tru && latest.true_state) ? ser.tru(latest.true_state) : ser.get(latest.instruments);
+    if (v == null || !isFinite(v)) return !!seriesHot[ser.id];
+    var full = Math.abs(ser.range[1] - ser.range[0]) || 1, dead = full * 0.05;
+    var was = !!seriesHot[ser.id], hot = was;
+    if (ser.dHi != null) hot = was ? (v >= ser.dHi - dead) : (v >= ser.dHi);
+    if (ser.dLo != null) hot = was ? (v <= ser.dLo + dead) : (v <= ser.dLo);
+    seriesHot[ser.id] = hot;
+    return hot;
   }
+  // Alarm tint. 0.6 toward white washed every series out to near-grey — a "white line"
+  // that no longer identified its own series. 0.28 keeps the hue; the stroke width and
+  // the value chip carry the rest of the emphasis.
   function lighten(hex) {
     var n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
-    return 'rgb(' + Math.round(r + (255 - r) * 0.6) + ',' + Math.round(g + (255 - g) * 0.6) + ',' + Math.round(b + (255 - b) * 0.6) + ')';
+    return 'rgb(' + Math.round(r + (255 - r) * 0.28) + ',' + Math.round(g + (255 - g) * 0.28) + ',' + Math.round(b + (255 - b) * 0.28) + ')';
   }
+  // 1-2-5 ladder — the axis only ever lands on a round number, so a re-fit is a single
+  // visible step instead of a continuous creep.
+  function niceStep(raw) {
+    if (!(raw > 0) || !isFinite(raw)) return 1;
+    var e = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / e;
+    return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * e;
+  }
+
+  /* --------------------------------------------- one lane per series (offset) --
+     Every series auto-ranges independently onto the SAME plot height, so a steady
+     plant centres all of them and draws four flat lines in one place, using none of
+     the top or bottom of the chart. Each series therefore gets a FIXED vertical lane
+     — from its position in the active list, not from what the other traces happen to
+     be doing — and its band is slid onto that lane when the band is fitted.
+
+     Fixed is the whole point: there is nothing to search, nothing to re-shuffle and no
+     way for two traces to trade places, so a line cannot move unless its own axis
+     re-fits. Lanes come out evenly spaced across the plot — top-to-bottom in the order
+     the series are listed — and the slide is clamped so the data never leaves the band.
+     That clamp is also why no flatness test is needed: a trace already filling its band
+     has no slack and simply stays where it is (it needs the room to show its shape),
+     a flat one has half a band either way and slides the whole distance. */
+  var LANE_LO = 0.14, LANE_HI = 0.86;   // lane centres span this much of the plot
+  function laneOf(i, n) { return n < 2 ? 0.5 : LANE_HI - i * (LANE_HI - LANE_LO) / (n - 1); }
+
   function drawChart() {
     var svg = $('chartCanvas'), floats = $('chartFloats'), W = 400, H = 120;
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
@@ -1644,49 +1729,95 @@
     while (startI < chartBuf.length - 1 && chartBuf[startI].t < t0) startI++;
     var NB = Math.max(2, Math.round(PW));   // one bucket per plot pixel
     var ranges = {}, seriesMeans = {};
-    active.forEach(function (ser) {
+    // Realistic traces the raw instrument, so it still carries sensor noise. Bucket
+    // averaging alone thins out at short windows (fewer samples per bucket), so smooth
+    // over a FIXED TIME width instead — the trace reads the same at 1 min and 30 min.
+    // Truth needs none of this: the physics has no noise to remove.
+    var secPerBucket = span / NB;
+    var SMOOTH_SEC = 3;
+    var kSmooth = chartTruth() ? 0 : Math.min(12, Math.floor(SMOOTH_SEC / Math.max(1e-6, secPerBucket) / 2));
+    active.forEach(function (ser, si) {
       var sum = {}, cnt = {}, tsum = {};    // sparse per-bucket accumulators
       for (var j = startI; j < chartBuf.length; j++) {
-        var val = ser.get(chartBuf[j].ins);
+        var val = seriesVal(ser, chartBuf[j]);
         if (val == null || !isFinite(val)) continue;
         var bk = Math.floor((chartBuf[j].t - t0) / span * NB);
         if (bk < 0) bk = 0; else if (bk >= NB) bk = NB - 1;
         if (cnt[bk] === undefined) { sum[bk] = 0; cnt[bk] = 0; tsum[bk] = 0; }
         sum[bk] += val; cnt[bk] += 1; tsum[bk] += chartBuf[j].t;
       }
-      var means = [], vmin = Infinity, vmax = -Infinity;
+      var means = [];
       for (var bk2 = 0; bk2 < NB; bk2++) {
         if (cnt[bk2] === undefined) continue;
-        var mv = sum[bk2] / cnt[bk2];
-        means.push({ t: tsum[bk2] / cnt[bk2], v: mv });
-        if (mv < vmin) vmin = mv;
-        if (mv > vmax) vmax = mv;
+        means.push({ t: tsum[bk2] / cnt[bk2], v: sum[bk2] / cnt[bk2] });
       }
+      // centred moving average — zero net lag, unlike an EWMA (a drifting or stuck
+      // sensor survives it untouched; only the per-sample jitter goes)
+      if (kSmooth > 0 && means.length > 2 * kSmooth) {
+        var sm = new Array(means.length);
+        for (var m = 0; m < means.length; m++) {
+          var a = Math.max(0, m - kSmooth), z = Math.min(means.length - 1, m + kSmooth), acc = 0;
+          for (var q = a; q <= z; q++) acc += means[q].v;
+          sm[m] = { t: means[m].t, v: acc / (z - a + 1) };
+        }
+        means = sm;
+      }
+      var vmin = Infinity, vmax = -Infinity;
+      means.forEach(function (p) { if (p.v < vmin) vmin = p.v; if (p.v > vmax) vmax = p.v; });
       seriesMeans[ser.id] = means;
-      // Peak-hold auto-range around the bucket means: expand to fit instantly,
-      // re-tighten slowly (axis never clips, doesn't jitter). 8 %-of-full-scale floor
-      // keeps a flat line small; 15 % buffer keeps the trace off the edges.
-      var tlo, thi;
-      if (!isFinite(vmin) || !isFinite(vmax)) { tlo = ser.range[0]; thi = ser.range[1]; }
-      else {
-        var s0 = vmax - vmin;
-        var full = Math.abs(ser.range[1] - ser.range[0]) || 1;
-        // Buffer around the line = the min-zoom floor + the top/bottom pad. Narrow it
-        // so lines fill more of the plot: halve it for most series, and cut it to a
-        // tenth for the slow-moving boron trend so its small changes are legible.
-        var bufScale = (ser.id === 'boron') ? 0.1 : 0.5;
-        var vspan = Math.max(s0, full * 0.08 * bufScale);
-        var pad = vspan * 0.15 * bufScale;
-        var c = (vmin + vmax) / 2;
-        tlo = c - vspan / 2 - pad; thi = c + vspan / 2 + pad;
-      }
+      // STABLE auto-range. The old model eased lo/hi toward the data every frame, which
+      // re-projected the WHOLE trace every frame — history that had already been drawn
+      // kept sliding and changing shape. The axis now sits on a 1-2-5 ladder and is HELD:
+      // it only re-fits when the data leaves the band, or when the data has been small
+      // inside it for a sustained dwell. Between re-fits every drawn point is frozen.
+      var full = Math.abs(ser.range[1] - ser.range[0]) || 1;
+      // Minimum zoom, so a dead-flat line doesn't fill the plot with rounding: a tenth
+      // of full scale, and a fortieth for the slow-moving boron trend.
+      var minSpan = full * ((ser.id === 'boron') ? 0.025 : 0.1);
       var h = chartRange[ser.id];
-      if (!h) h = { lo: tlo, hi: thi };
-      else {
-        h.lo = (tlo < h.lo) ? tlo : h.lo + PEAK_HOLD_K * (tlo - h.lo);
-        h.hi = (thi > h.hi) ? thi : h.hi + PEAK_HOLD_K * (thi - h.hi);
+      var fits = h && isFinite(vmin) && vmin >= h.lo && vmax <= h.hi;
+      var band = h ? (h.hi - h.lo) : 0;
+      var need = Math.max(vmax - vmin, minSpan) * 1.3;   // 30 % headroom so a drifting line doesn't re-fit every few seconds
+      var lane = laneOf(si, active.length);
+      // Zoom back in only once the band is MUCH wider than a fresh fit would be (after a
+      // transient has scrolled away), and only after a dwell. Comparing against `need` —
+      // rather than against the minimum span — matters: a band that already equals its
+      // fresh fit must not keep re-fitting to the identical numbers forever.
+      var tooSmall = fits && band > need * 1.6;
+      if (h) h.small = tooSmall ? (h.small || 0) + 1 : 0;
+      if (!isFinite(vmin) || !isFinite(vmax)) {
+        ranges[ser.id] = h ? [h.lo, h.hi] : [ser.range[0], ser.range[1]];
+        return;
       }
-      chartRange[ser.id] = h;
+      // The lane belongs to the series' slot in the list, so it is the same on every
+      // fit for the life of the selection — re-fitting can change a trace's ZOOM but
+      // never which lane it lives in.
+      if (!h || !fits || h.small > CHART_SHRINK_FRAMES || h.lane !== si + '/' + active.length) {
+        var step = niceStep(need / 4);
+        var c = (vmin + vmax) / 2;
+        h = { lo: Math.floor((c - need / 2) / step) * step, hi: Math.ceil((c + need / 2) / step) * step,
+              small: 0, lane: si + '/' + active.length };
+        if (h.hi - h.lo < step) h.hi = h.lo + step;
+        // Don't spend plot height on values the quantity can't take — a level axis
+        // running to −50 % reads as broken. Only clamps where the data allows it.
+        var rLo = Math.min(ser.range[0], ser.range[1]), rHi = Math.max(ser.range[0], ser.range[1]);
+        var inRange = h.lo >= rLo - 1e-9 && h.hi <= rHi + 1e-9;
+        if (h.lo < rLo && vmin >= rLo) { h.lo = rLo; inRange = true; }
+        if (h.hi > rHi && vmax <= rHi) { h.hi = rHi; inRange = true; }
+        // Slide onto this series' lane. Measure from where the trace ACTUALLY sits —
+        // rounding the limits onto the ladder leaves it off centre, so assuming 0.5 here
+        // put traces in the wrong lane entirely. Shifting the band UP in value moves the
+        // trace DOWN the plot. Clamped so the data never leaves the band, which is what
+        // lets this work with no flatness test: a trace already filling its band has no
+        // slack, clamps to zero and stays put; a flat one slides the whole way.
+        var wide = h.hi - h.lo;
+        var shift = (c - h.lo) - lane * wide;
+        var up = vmin - h.lo, dn = vmax - h.hi;               // dn ≤ 0 ≤ up
+        if (inRange) { up = Math.min(up, rHi - h.hi); dn = Math.max(dn, rLo - h.lo); }
+        shift = Math.max(dn, Math.min(up, shift));
+        h.lo += shift; h.hi += shift;
+        chartRange[ser.id] = h;
+      }
       ranges[ser.id] = [h.lo, h.hi];
     });
     // legend reflects the current (dynamic) range each line is scaled to
@@ -1708,7 +1839,7 @@
       var hot = seriesAlarmed(ser);
       html += '<polyline points="' + pts + '" fill="none" stroke="' + (hot ? lighten(ser.c) : ser.c) + '" stroke-width="' + (hot ? 2.4 : 1.5) + '" vector-effect="non-scaling-stroke"/>';
       var mm = seriesMeans[ser.id];
-      lastY.push({ ser: ser, y: ly, hot: hot, val: mm.length ? mm[mm.length - 1].v : ser.get(chartBuf[chartBuf.length - 1].ins) });
+      lastY.push({ ser: ser, y: ly, hot: hot, val: mm.length ? mm[mm.length - 1].v : seriesVal(ser, chartBuf[chartBuf.length - 1]) });
     });
     // Rewind-pick mode: mark every checkpoint inside the window as a jump target.
     if (ui.rewindPick && service && service.checkpoints) {
@@ -2317,8 +2448,10 @@
     });
     $('speed').addEventListener('click', function (e) {
       var b = e.target.closest('[data-speed]'); if (!b) return;
-      var v = +b.getAttribute('data-speed'); cmd({ action: 'set_speed', value: v });
-      var fast = v >= 600; $('ffBadge').style.display = fast ? 'block' : 'none'; if (fast) $('ffBadge').textContent = '⚡ ' + v + '×';
+      // The ⚡ badge is syncSpeedUI's job (it runs off the snapshot and null-guards
+      // the element). This handler used to set it too, unguarded — and the PWR shell
+      // has no #ffBadge, so every speed click threw before the segment could repaint.
+      cmd({ action: 'set_speed', value: +b.getAttribute('data-speed') });
     });
     // Settings → Values Display (Instruments / True / Both) drives the legacy All view.
     var oseg = $('overlaySeg2');
@@ -2331,6 +2464,7 @@
       // Realistic option is disabled — the diagram stays in Teaching mode.
       ui.diagMode = b.getAttribute('data-mode');
       if (ui.diagMode === 'realistic') ui.physOverlay = false;
+      chartRange = {};   // the chart swaps between physics and instruments with the mode — re-fit the axes
       syncOverlayRow();
       if (latest) render(latest);
     });
@@ -2343,6 +2477,12 @@
     syncOverlayRow();
     $('registerSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-register]'); if (!b) return; ui.register = b.getAttribute('data-register'); cmd({ action: 'set_register', value: ui.register }); });
     $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
+    var aseg = $('attnSeg');
+    if (aseg) aseg.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-attn]'); if (!b) return;
+      attnStops = b.getAttribute('data-attn') === 'on';
+      cmd({ action: 'set_attention_stops', value: attnStops });
+    });
     $('graphParams').addEventListener('change', function (e) { var cb = e.target.closest('input[data-series]'); if (!cb) return; ui.series[cb.getAttribute('data-series')] = cb.checked; drawChart(); });
     $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
     $('loadFile').addEventListener('change', function (e) {
@@ -2900,7 +3040,7 @@
   }
 
   function rebuildPlantUI() {
-    chartBuf = []; smoothed = {};
+    chartBuf = []; smoothed = {}; seriesHot = {};
     buildGauges(); buildGraphParams(); updateSimSummary(); buildFailures();
     // The control layer already reset its channels and engaged the plant's
     // normal lineup (M5 selectPlant → engageDefaults); the tab just rebuilds.
@@ -2942,7 +3082,8 @@
   function exportCsv() {
     var cols = prof().series.filter(function (s) { return ui.series[s.id]; });
     var head = ['sim_time'].concat(cols.map(function (c) { return c.id; })).join(',');
-    var rows = chartBuf.map(function (b) { return [b.t.toFixed(2)].concat(cols.map(function (c) { return c.get(b.ins).toFixed(3); })).join(','); });
+    // export what the chart is actually showing (seriesVal), so the CSV and the trace agree
+    var rows = chartBuf.map(function (b) { return [b.t.toFixed(2)].concat(cols.map(function (c) { var v = seriesVal(c, b); return (v == null || !isFinite(v)) ? '' : v.toFixed(3); })).join(','); });
     var url = URL.createObjectURL(new Blob([head + '\n' + rows.join('\n')], { type: 'text/csv' }));
     var a = document.createElement('a'); a.href = url; a.download = 'reactor_trend.csv'; a.click();
   }
@@ -3334,12 +3475,15 @@
 
   // ============================================================ init
   function init() {
+    // Release version by the logo (site/release.js). Stays blank if the file is
+    // missing rather than printing a placeholder that could go stale unnoticed.
+    if ($('logoVer')) $('logoVer').textContent = window.RD_RELEASE || '';
     ui.series = Object.assign({}, PROFILES.pwr.defaultSeries);
     service = new RD.SimulationService({ seed: 0x1234 });
     service.subscribe(render);
     service.subscribe(diagTick);
     service.subscribe(renderAutomate);   // channels run in-stack; the tab just re-renders per broadcast
-    if (RD.OneOverM) { RD.OneOverM.init({ getSnap: autoSnap }); service.subscribe(RD.OneOverM.tick); }
+    if (RD.OneOverM) { RD.OneOverM.init({ getSnap: autoSnap, cmd: cmd }); service.subscribe(RD.OneOverM.tick); }
     bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)
     var em = /[?&]engine=(pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');

@@ -625,10 +625,22 @@
     // check. Recording only — the command is never blocked or altered.
     if (this.checklist && !this.checklist.complete && command && command.action) {
       var cst = this.checklist.proc.steps[this.checklist.idx];
-      if (cst && cst.cmd && this._sameFamily(cst.cmd.action, command.action) &&
-          (cst.cmd.action !== 'inject_failure' || cst.cmd.failure_id === command.failure_id)) {
-        this.checklist.cmdSeen = true;
+      if (cst && this._cmdEvidence(cst.cmd, command)) this.checklist.cmdSeen = true;
+    }
+
+    // 1/M plot point — an operator ACTION with no plant effect. Pressing "Plot
+    // point" records a source-range sample in the 1/M tool, whose points live in
+    // the UI (ui/panels/one_over_m.js), not in the snapshot, so there is nothing
+    // for `acc` to grade: seeing the action IS the evidence (#202 item 1). The
+    // checklist cmd-watch above has already recorded it; do the same for follow
+    // mode, then consume — M4 would reject it as an unknown plant command.
+    // Never gated: taking a reading is an observation, always allowed.
+    if (command && command.action === 'plot_1m_point') {
+      if (this.mode === 'follow' && this.follow && !this.follow.done) {
+        var fst1m = this.follow.proc.steps[this.follow.idx];
+        if (fst1m && fst1m.cmd && fst1m.cmd.action === 'plot_1m_point') this.follow.cmdSeen = true;
       }
+      return null;
     }
 
     // Scenario gates (beats restrict actions until their `until` trigger fires).
@@ -650,10 +662,7 @@
       if (!this._followAllows(st, command)) return this._blocked(this._wrongActionText(st));
       var r = this.below.handleCommand(command);
       this.pendingMessage = null;   // compliance clears stale wrong-action feedback
-      if (st && st.cmd && this._sameFamily(st.cmd.action, command.action) &&
-          (st.cmd.action !== 'inject_failure' || st.cmd.failure_id === command.failure_id)) {
-        this.follow.cmdSeen = true;
-      }
+      if (st && this._cmdEvidence(st.cmd, command)) this.follow.cmdSeen = true;
       return r;
     }
 
@@ -675,6 +684,20 @@
   InstructorLayer.prototype._sameFamily = function (a, b) {
     if (a === b) return true;
     return ROD_FAMILY.indexOf(a) !== -1 && ROD_FAMILY.indexOf(b) !== -1;
+  };
+
+  // Does `command` count as having performed the step whose authored command is
+  // `stepCmd`? Family match, plus a discriminator for the actions where the family
+  // alone is too coarse: several DIFFERENT steps can share one action and would
+  // otherwise check each other off. `inject_failure` is keyed by failure_id;
+  // `set_trip_block` by trip_id, so blocking the power-range trip does not also
+  // tick the intermediate-range step (the startup net needs BOTH — #202 item 6).
+  InstructorLayer.prototype._cmdEvidence = function (stepCmd, command) {
+    if (!stepCmd || !command || !command.action) return false;
+    if (!this._sameFamily(stepCmd.action, command.action)) return false;
+    if (stepCmd.action === 'inject_failure') return stepCmd.failure_id === command.failure_id;
+    if (stepCmd.action === 'set_trip_block') return stepCmd.trip_id === command.trip_id;
+    return true;
   };
 
   InstructorLayer.prototype._followAllows = function (st, command) {

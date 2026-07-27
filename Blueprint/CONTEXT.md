@@ -149,6 +149,86 @@ inheritance scheme (beyond the RBMK's internal pre/post sharing). HR3 still appl
 parameters are data, just expressed in JS — so a future externalization is an extraction,
 not a redesign.
 
+**HR9 — The plant is the ground truth. Content follows the plant, never the reverse.**
+The only question that decides a tuning or behaviour change is **"what should this plant
+actually do?"** — never "what keeps this mission green?" *(owner ruling, 2026-07-26)*
+
+Authority runs in one direction, highest first:
+
+1. **Physics and prototypicality** — what a real plant of this type actually does.
+   **Err toward the real plant.** This is a teaching simulator: when a choice is open, the
+   prototypical answer is the right one, because the thing being taught is how real plants
+   behave. A departure needs a reason beyond "it plays better".
+2. **This plant's deliberate identity** — the ruled-on character choices (100 MWe
+   single-loop, TMI canon). These are **named departures from prototypicality, not a
+   parallel authority**: a deviation is legitimate only if it is (a) explicitly ruled on,
+   (b) recorded with the reason, and (c) **declared as a simplification wherever it
+   understates reality** (§Domain conventions — *"where a simplification understates
+   reality, say so plainly"*). An identity claim that cannot point at its ruling is not an
+   identity claim; it is an unexamined default, and prototypicality wins.
+3. **The behaviour catalog and physics acceptance suites** (`run_behavior`, `run_pwr`,
+   `run_ops`) — these *encode* 1 and 2, which is what earns them the right to arbitrate
+   tuning. A catalog row is only as authoritative as the physics behind it: a row that
+   turns out to contradict real-plant behaviour without a recorded ruling is a **defect in
+   the catalog**, not a licence.
+4. **Control and protection setpoints.**
+5. **Authored content** — campaign missions, procedures, checklists, manual prose.
+6. **Gate expectations for that content** — `run_campaign`, `run_procedures*`,
+   `run_checklist`.
+
+**Nothing at 5–6 may cause a change at 1–4.** When authored content breaks after a plant
+change, the default presumption is that *the content is stale*.
+
+This is what the `[tune]` convention means by "arbitrated by the scenario suite": level 3,
+the suites that state intended behaviour independently of any story. Campaign missions only
+*observe* the plant. The failure mode the rule exists to prevent is a content-level
+expectation quietly acquiring the authority of a behaviour specification — at which point
+the gate that should protect the plant is enforcing a story instead, and the plant is being
+bent to keep a paragraph true.
+
+**Broken content is a canary, not an authority.** Read it — occasionally it means the plant
+change really was wrong. But settle that against levels 1–3, and say out loud which
+behaviour you are treating as ground truth and why.
+
+**A ruling is not a conversation-stopper — question the owner's decisions too.**
+*(owner instruction, 2026-07-26: "we should question my own decisions because they may have
+been made with inaccurate assumptions")* A ruling is only as good as the premise it was made
+on, and premises go stale: the plant changes, a measurement turns out wrong, or the ruling was
+given on a summary that was itself mistaken.
+
+**This is targeted, not a standing re-audit** *(owner, same day: "we don't need to question
+every decision made — that would be a lot; let's be more targeted")*. Do not re-litigate
+settled rulings on principle. Raise one when you have a **specific reason to doubt its
+premise** — you are working in that area and the facts do not match, a measurement contradicts
+it, or its stated justification points at something that has since changed. Otherwise take the
+ruling and move on. Then:
+
+- **Record the premise, not just the decision.** A ruling written as a bare verdict cannot be
+  re-examined later, because nobody can tell what it assumed. This is exactly how the P-9 gap
+  became "by design" (#216): the decision survived, its provenance did not.
+- **When you find a ruling whose premise no longer holds, say so** — surface it with the
+  evidence rather than deferring to it. Deferring to a ruling you have reason to doubt is not
+  respect; it launders an error into a standing rule.
+- **Beware of citing a ruling for something it did not decide.** Check what was actually ruled
+  on, not what the ruling is now being used to justify. Stretching one onto an adjacent case
+  is the most common way a level-2 claim appears out of nowhere.
+
+**The dangerous case is not the crude one.** "Deepen the shrink so the mission's trip stays
+unavoidable" is obviously an inversion. Harder: a change that looks like genuine
+plant-correctness *and* happens to rescue the content — you cannot tell motive from outcome,
+so you have to settle it on the physics alone.
+
+**And beware of using level 2 to dismiss level 1.** Working #215 I reached for exactly that:
+real Westinghouse PWRs trip the reactor on turbine trip above P-9, this plant has no such
+trip, and I ruled the gap acceptable because `TR-1` pins turbine-trip *ride-out* as the
+plant's character. That reasoning is only valid if the ruling actually covers the case — and
+here it may not: in a real plant **load rejection** is the ride-out case, while a **turbine
+trip** (stop valves slamming shut) is precisely what P-9 arms the reactor trip for. If `TR-1`
+conflates the two, then the catalog row is the defect and the missing trip is real. *(Open —
+see the P-9 question raised 2026-07-26.)* The lesson: an identity deviation must be checked
+against **what it was actually ruled on for**, not stretched to cover an adjacent case that
+happens to need covering.
+
 ---
 
 ## 4. The Time Step and Determinism
@@ -828,8 +908,12 @@ scenario tests. There is no shared engine module and no shared engine code.
   is **display-only** — the stored value never changes — and the true-state overlay shows the
   true value in the **same on-screen format** as the indicated one, so indicated-vs-true stays a
   like-for-like comparison.
-- **Tuning:** values labeled `[tune]` in a module's math are starting points; the scenario
-  tests are the final arbiter. Values not labeled are fixed constants — do not change them.
+- **Tuning:** values labeled `[tune]` in a module's math are starting points; the **physics
+  acceptance suites** are the final arbiter — `run_pwr` / `run_rbmk` / `run_bwr`,
+  `run_behavior`, `run_ops`, which state intended plant behaviour independently of any story.
+  **Campaign missions, procedures and checklists are NOT arbiters of tuning** (HR9): they
+  observe the plant, and when one breaks after a plant change the presumption is that the
+  content is stale. Values not labeled are fixed constants — do not change them.
 - **Naming:** snapshot fields, command names, and instrument ids are a fixed contract — use
   the exact names in §6 (and the per-plant instrument ids in the engine modules). Do not
   invent variants.

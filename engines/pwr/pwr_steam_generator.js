@@ -102,10 +102,48 @@
     // over. This is what makes the FG-4 ride-out a graceful catch — and it is
     // exactly what CANNOT save a loss-of-feed event, where the drying SG stops
     // absorbing heat no matter what the dump vents (the TMI differentiator).
-    if (s.steam_dump_override == null && s.turbine_tripped) {
+    // Armed by a turbine trip OR a large load rejection (C-7 class). The rejection arm
+    // was added 2026-07-26 with the P-9 reactor trip (#216): once a turbine trip above
+    // P-9 scrams the reactor, the RIDE-OUT case is the load rejection — the turbine
+    // stays on line and the plant holds power — and that case was never getting the
+    // fast mode, so the dump waited on SG pressure and the primary spiked. Reads the
+    // load mismatch in MWe, computed HR1-correctly from INDICATED power in load_mode.js.
+    // load_rejected_mwe = how far load has been THROWN OFF recently (load_mode.js), not
+    // the power/load mismatch — the mismatch is equally positive when power is being
+    // raised deliberately, and arming there overcools the plant into a power runup.
+    // LATCHED, because the two candidate signals are each right for only half the job:
+    //   ARM on load FALLING (load_rejected_mwe) — a transient, and the only signal that
+    //     does not also fire when the operator deliberately RAISES power. Arming on the
+    //     raw power/load mismatch opened the dump into a dilution and tripped pwr_boron.
+    //   HOLD on the power/load mismatch — because the fall signal decays in ~60 s while
+    //     a ride-out lasts as long as the reactor is making more than the turbine takes.
+    //     Holding on the fall signal alone dropped the dump mid-ride (Tavg 319 °C, PORV).
+    // Cleared when the reactor has come down to meet the load — the ride-out is over.
+    // This is how the real interlock behaves: armed by C-7, held while the condition
+    // persists, reset in band.
+    var rejectMwe = s.load_rejected_mwe || 0;
+    if (rejectMwe > (sg.dump_load_reject_mwe || Infinity)) s.dump_reject_mode = true;
+    else if (Math.abs(s.load_imbalance_mwe || 0) < (sg.dump_reject_clear_mwe || 0)) s.dump_reject_mode = false;
+    if (s.steam_dump_override == null && (s.turbine_tripped || s.dump_reject_mode)) {
       var tnl_dump = T_sat(dump_setpoint);
       var tavg_err = (s._ins_tavg != null ? s._ins_tavg : s.tavg_c) - tnl_dump;
-      dump = Math.max(dump, clip(tavg_err / (sg.dump_trip_mode_band_c || 8.0), 0, 1));
+      var fast = clip(tavg_err / (sg.dump_trip_mode_band_c || 8.0), 0, 1);
+      // On a load rejection the TURBINE IS STILL DRAWING, so the dump must only make up
+      // the REJECTED load — cap the fast demand at the mismatch fraction. Without this
+      // the dump opens on the raw Tavg error, turbine + dump together outrun what the
+      // reactor is making, the plant overcools and MTC runs power up into the 120 %
+      // trip (measured on EV-11's 15 MWe slider cut). On a turbine TRIP there is no
+      // turbine draw left to share with, so the full error demand stands.
+      if (!s.turbine_tripped) {
+        // Cap on the MISMATCH (power the turbine is not taking), not on the arming
+        // signal: the arm decays in ~60 s while the ride-out lasts as long as the
+        // reactor is over the load. Capping on the arm closed the dump mid-ride and
+        // ran Tavg to 345 °C. Safe here because the cap only applies once ARMED, and
+        // the arm keys on load falling — so a deliberate power rise never reaches it.
+        var rated = (cfg.turbine && cfg.turbine.mwe_rated) || 100;
+        fast = Math.min(fast, clip((s.load_imbalance_mwe || 0) / rated, 0, 1));
+      }
+      dump = Math.max(dump, fast);
     }
     // Physical capacity of the turbine-bypass/dump. THIS PLANT (FG-4 ride-out,
     // feel-plan P4): ~105 % of rated steam flow — a full load rejection is caught
@@ -173,8 +211,18 @@
     s.steam_pressure_mpa += dSteamP * dt;
 
     // §9.1 main steam line break: blows the secondary down (overcooling).
-    if (s._fail.steam_break.active) {
-      s.steam_pressure_mpa -= cfg.physics_failures.STEAM_BREAK_RATE * s._fail.steam_break.size * dt;
+    // The MSIV gates it, by break LOCATION (#199). A break DOWNSTREAM of the valve
+    // (turbine hall) has the MSIV between it and the generator, so shutting the
+    // valve isolates the SG and the blowdown stops dead — the operator's one real
+    // lever on this casualty, and the reason the alarm-response card sends you to
+    // the MSIV. A break UPSTREAM (inside containment, between SG and valve) is on
+    // the wrong side of every isolation this single-loop plant owns: it blows the
+    // generator down no matter what the operator shuts. Before this the sink ran
+    // unconditionally, so closing the MSIV mid-break changed nothing at all while
+    // the manual and the catalog both claimed it did.
+    var brk = s._fail.steam_break;
+    if (brk.active && (brk.upstream || s.msiv_open !== false)) {
+      s.steam_pressure_mpa -= cfg.physics_failures.STEAM_BREAK_RATE * brk.size * dt;
     }
     // Thermodynamic bound (feel-plan P5): the secondary saturates from PRIMARY
     // heat, so it can never sit hotter than the coolant heating it — cap SG

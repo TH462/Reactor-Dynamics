@@ -30,6 +30,17 @@
 
 /* ---- tiles ---- */
 .bd-tile { position: absolute; }
+/* Highlight glows must NOT restack the board. Board tiles carry an authored
+ * stacking order (panels auto, buttons/values/text 1, reactor vessel 2 — see
+ * buildStage in pwr_board.js), and tiles deliberately overlap: the vessel art is
+ * authored to read IN FRONT of the CONTROL/SHUTDOWN GROUP panels beneath it. The
+ * shared .ckl-glow / .instr-glow rules in shell.css lift the glowed element to
+ * z-index 5, which pulled a hovered panel out in front of the vessel and its
+ * neighbours and obscured them (issue #202, item 2). Pin the authored layer here
+ * — pwr_board.css loads after shell.css, so this wins. The halo is a box-shadow
+ * and still reads where the tile is visible. */
+.pwr-board-stage .bd-tile.ckl-glow,
+.pwr-board-stage .bd-tile.instr-glow { z-index: auto; }
 .bd-box-title {
   position: absolute; left: 10px; top: 7px; color: #6b8598;
   letter-spacing: 0.16em; white-space: nowrap;

@@ -46,6 +46,90 @@ where the two differ or where judgment was exercised.
 | **Repo** | Commits go directly to `main`, one per module. | Matches the linear, single-developer build (the scaffold was committed to `main`); each module is an independent, test-gated unit. |
 | **Load order** | `config → protection → thermal → pressurizer → primary → steam_generator → instruments → engine`, then layers. | The engine captures `RD.pwr*` helper namespaces at IIFE-eval time, so its dependencies must load first. Encoded in `index.html`, `test_pwr.html`, and the Node runners. |
 
+### The plant is the ground truth; scenarios follow it (2026-07-26, owner ruling → **HR9**)
+
+> *"Are you tuning the plant to a scenario, or adjusting scenarios to the plant? We should
+> focus on getting correct behavior out of the plant, then adjust scenarios to fit the plant."*
+>
+> *"'What should this plant actually do?' is always the right question."*
+
+**Promoted to a Hard Rule — `Blueprint/CONTEXT.md` §3 HR9**, which is now the canonical
+statement; this entry is the rationale and the worked example behind it.
+
+**Precedence, highest authority first:**
+
+1. **Physics and prototypicality** — what a real plant of this type does.
+2. **The plant's deliberate identity** — the documented character choices (100 MWe single-loop,
+   **ride-out** rather than trip-happy, TMI canon). These outrank prototypicality where they
+   conflict, but only because they were ruled on explicitly.
+3. **The behaviour catalog** (`run_behavior`) and the **physics acceptance suites**
+   (`run_pwr`, `run_ops`) — these *encode* 1 and 2 and therefore legitimately arbitrate tuning.
+4. **Control/protection setpoints.**
+5. **Authored content** — campaign missions, procedures, checklists, manual prose.
+6. **Gate expectations for that content** (`run_campaign`, `run_procedures*`, `run_checklist`).
+
+**Nothing at level 5 or 6 may cause a change at levels 1–4.** When a mission breaks after a
+plant change, the default presumption is that the *mission is stale*.
+
+**Why the `[tune]` convention is not in conflict.** The file header says `[tune]` values are
+*"starting points arbitrated by the scenario suite"* — that means the **physics acceptance
+suites** (level 3), which are written as statements of intended behaviour independent of any
+story. Campaign missions merely *observe* the plant. The failure mode this ruling guards
+against is letting content-level expectations masquerade as behaviour specifications, at which
+point the gate that is supposed to protect the plant is quietly enforcing a story instead.
+
+**The guard.** A scenario breaking is a **canary, not an authority** — read it, because
+occasionally it means the plant change really was wrong. But answer that question against
+levels 1–3, never by asking what keeps the mission green.
+
+**Worked example — #215.** `pwr_msiv`'s win path softlocked after #207 raised
+`afw_level_target` 20 → 32, because the mission assumed a low-SG trip that AFW now often
+prevents. Two candidate "fixes" were inversions of this rule and were struck: deepening the
+shrink so the trip stayed unavoidable, and adding the **Reactor Trip on Turbine Trip** (P-9)
+that real Westinghouse plants have and this one lacks. The second is the instructive one — it
+*looks* like a plant-correctness fix, and would have made the mission pass — but **`TR-1` pins
+turbine-trip ride-out as this plant's deliberate character** (level 2), so adding it would have
+been tuning a protective function to rescue content. Resolution: the plant is correct, the
+mission is stale, rewrite the mission.
+
+### Manual feed stays unforgiving; the board gains STEAM FLOW (2026-07-26, owner ruling, #206)
+
+**The question.** #206 asked for a ruling: should a bare `set_feed_pump_speed` be as
+unforgiving as it is, or should the pump demand be rate-limited / level-trimmed when no
+automation channel is engaged?
+
+**The measurement that reframed it.** The issue recorded "every standing value 2–30 % floods
+past 90 % to a P-14 trip". Re-measured on the shipped lineup, the failure direction **inverts
+with power** — at 6 % power 5 % pump holds level indefinitely and 10 % floods; at 100 % power
+**100 % holds 65.0 % flat for 30 minutes** and everything below ~95 % drains the SG to zero
+and scrams inside five minutes. The pump is a fixed-demand device and the value that holds
+level is simply **steam flow**. Nothing is wrong with the control.
+
+**Ruling: add the indication, do not soften the control.** Rate-limiting or level-trimming a
+MANUAL pump would make manual not manual — the plant would silently rescue the player, and the
+lesson (feed must match steam) is exactly the one the mechanic exists to teach. What was
+genuinely broken was informational: the board displayed feed flow and level but **no steam
+flow of any kind** (`sg_steam_flow` appeared nowhere under `ui/`), so the player was asked to
+match a number that was not on the board. Level is the *integral* of the flow error, so it is
+structurally a late cue — by the time it moves, the correction is overdue.
+
+**Consequences.**
+- New **STEAM FLOW** readout via `EXTRA_ITEMS` in `pwr_board_wiring.js` (re-export-safe, per
+  the board convention), directly above SG FEED RATE, right-anchored to the same column and on
+  the same gpm scale — the pair plus level is the prototypical three-element display.
+- It reads **`sg_steam_flow`** (turbine + dump + safeties), **never** `steam_flow` (governor
+  only). The latter reads ~0 with the turbine tripped and the dump carrying the plant, which
+  would blank the indication during the casualty it matters most in — the same blind spot that
+  had the three-element channel commanding zero feed through a turbine trip. Pinned by a
+  turbine-trip assertion in `verify_e2e_ui.js`.
+- **HR1 holds:** the readout takes the instrument, so a failed transmitter deceives the
+  operator exactly as it deceives the controller.
+
+**Not chosen, and why:** widening the ▲▼ resolution near the match point. At full power the
+workable window is ~100 ± 2 % and the arrow step is ±2 %, so one click is roughly the whole
+tolerance — but making the control finer only where the answer is correct would be a hint
+disguised as ergonomics. The readout tells the player where the window is; hitting it is theirs.
+
 ### Boron analyzer UI-removed — chemistry-first boron indication (2026-07-23, owner ruling)
 
 **Claim/ruling.** Online boronometers exist in the industry but are not relied upon; the
@@ -500,6 +584,110 @@ TMI included, never enter the cold regime), so every prior gate held at baseline
   `mode5_to_mode1_roundtrip`), **M5 18/18** (full-stack cold-IC guard), campaign **44/44**, autoctl
   **20/20**, M4 **15/15**, M6 **16/16**, M7 OK, ops **53/66** (baseline). TMI flagship not regressed.
 
+**2026-07-26b — Gates must declare which LAYER they run at (new `run_procedures_stack.js`; #209).**
+`run_procedures.js` drives bare engines, which made it structurally blind to anything M4 decides —
+it passed a procedure that never engaged the feed channel (#202 item 5) and still passes one that
+gets scrammed by the startup net under the stack (#206). Built a full-stack counterpart rather than
+converting the original: the engine-direct run is a legitimate *isolated physics* view, and keeping
+both means a divergence between them localises the defect to the control layer instead of merely
+reporting that something broke. The new gate asserts the identical predicates plus four
+stack-only ones (command accepted / no unexpected scram / no standing critical alarm / declared
+`auto_channels` engaged), with deliberate scrams exempted — the first draft flagged `bwr_shutdown`
+scramming at its own scram step, which is the gate being wrong, not the procedure.
+
+**The audit this triggered is the more important outcome.** `ControlLayer.stepAutomation()` and
+`engageDefaults()` each have exactly ONE production caller, both in `simulation_service.js`
+(:176, :152), as does `engine.getStartupLineup()` (:156-159). Nothing below M5 can engage or tick
+an automation channel. Since `feed_sg`, `cvcs_makeup` and `boron_conc` are `defaultOn`, every
+engine+M4 harness — `run_ops`, `run_behavior` — tests a plant configuration the player cannot
+produce, with SG level on the engine's coupled-feed fallback rather than the three-element
+controller that ships. `run_ops` is where the `[tune]` knobs are arbitrated, so the tuning targets
+in `OPS_TUNING_REPORT.md` were set against that configuration. Filed as #209 rather than fixed
+here: engaging the real lineup will move the bands, and re-arbitrating them is its own pass.
+**Convention going forward:** a runner's header must state its layer, and the layer table in
+CLAUDE.md is the index. A `ControlFailureLayer` in the harness does *not* make a gate full-stack.
+
+**2026-07-26 — Gross overcooling is ANNUNCIATED, not protected (owner ruling, #211).**
+Reducing reactor power on rods while the turbine sits at a stale MANUAL load setpoint makes the
+turbine an unthrottled heat sink: measured through a real `SimulationService`, Tavg 304 → 247 °C
+on a daily load cycle and 304 → 130 °C (still falling) on a normal shutdown, secondary at
+0.25 MPa, with the heaters holding primary pressure so subcooling ran away to ~98 °C — and **no
+alarm and no trip at any point**. The alarm half was a pure wiring gap and is fixed (`LOAD IMBAL`,
+Panel B caution; `load_mode.js` had computed the signal HR1-correctly all along and `Manuals/09`
+had documented the annunciator all along — `sg_imbalance_active` simply never reached the
+instrument layer, so no alarm *could* read it). **The protection half is deliberately NOT built.**
+This plant's identity is ride-out-friendly — it has no turbine-trip reactor trip by design — and a
+low-Tavg or low-steam-pressure trip would fire during legitimate cooldowns and the Mode 5 approach
+unless carefully gated. The teaching outcome is that the operator learns to watch the imbalance
+rather than being rescued by an automatic action. Recorded here so the absence reads as a decision
+rather than an oversight. **Open, deliberately separate:** whether the free-play Mode 1 preset
+should start in MANUAL at all (`getStartupLineup()`), given that the two routes into Mode 1
+disagree — the preset gives MANUAL, while the startup checklist's `connect_grid` gives FOLLOW.
+
+**2026-07-26 — The rod insertion limit is a power curve, not a floor (issue #202 item 4).**
+`pwr_config.js` had carried the comment *"Power-dependent insertion limit for the control group"*
+over a single `insertion_limit_pct: 30.0`, and `_updateRodDerived` compared the bank against it
+unconditionally. The power dependence was never built, so the limit was calibrated for one
+operating point and wrong everywhere else: 30 % of 912 = 274 steps, and the authored startup
+crosses into Mode 1 at 244 — ROD INS LIMIT annunciated for the entire evolution and the automatic
+rod channel (`control_kernel.js:916`) refused to insert below it. **Decision: implement the curve
+the comment promised rather than suppress the alarm.** A RIL exists to preserve shutdown margin
+and cap ejected-rod worth *at power*; during a startup the bank is deliberately deep and boron plus
+the shutdown bank hold the margin, so the correct model is "not applicable below a low-power
+threshold, then rising with power". New `_insertionLimitSteps()` + three `[tune]` constants
+(`insertion_limit_min_power_pct` 5, `lo_pct` 5, `hi_pct` 70), recomputed every tick — which also
+retires the `max_steps` rescale branch in `loadState`, since the value is no longer stored.
+Calibrated against measurement, not preference: the bank sits at 0 % / 62 % / 92 % withdrawn at
+HZP / the `5_percent` preset / full power, and **92 % across the whole load range** (follow mode
+moves load on Tavg and boron feedback, not rods), so `hi_pct` 70 leaves ~22 points of margin at
+full power and the alarm now carries information — *the bank is abnormally deep for this power*.
+Snapshot note: `insertion_limit_steps` may now be **null** (limit not applicable); consumers must
+treat null as "no limit", which is what the shutdown group already published. Old saves need no
+migration — the field is derived, not stored.
+
+**2026-07-26 — Procedure steps may carry commands no engine can execute (issue #202).**
+Three of the startup checklist's new steps issue commands that live *above* the engine:
+`plot_1m_point` (an operator observation consumed by the instructor layer — the 1/M plot's points
+are UI state, so there is no instrument for `acc` to grade and seeing the action is the only
+possible evidence), and `set_trip_block` / `set_auto_channel` (M4). `test/run_procedures.js` drives
+engines directly, below M4, so it now skips them via a documented `NON_ENGINE_ACTIONS` map while
+still running each step's `hold`/`acc`/`saw`. **The flag this raises is a gate gap, not a design
+problem:** `run_procedures` structurally cannot validate any procedure step whose effect lives in
+the control layer, and this is the second time a procedure has been green at engine level and
+broken under the full stack (the SG-level collapse in item 5, and `pwr_heatup` flooding to 95 % in
+#206). A full-stack procedure gate is the obvious follow-up. Also added `_cmdEvidence()`, which
+discriminates command evidence by `trip_id` as it already did by `failure_id` — without it two
+consecutive `set_trip_block` steps check each other off.
+
+**2026-07-25 — Startup rate protection retuned; the "20 % coast" was never physics (issue #134).**
+The complaint — power coasts to ~20 % after criticality even when leveled — was assumed to be a
+weak low-power Doppler bite or too-steep differential rod worth (TUNING_LOG backlog S3). It is
+neither, and touching either would have destabilized the tuned Mode-5→1 heatup. Measured on
+`hot_zero_power` with rods then frozen for an hour: removing the accumulated reactivity in ONE
+continuous drive released as SUR nulls parks the plant at **1.8–3.5 %**; removing the *same*
+reactivity in single-step taps parks it at **10.3 %**, and from a brisker approach at **19.8 % plus
+an IR-high trip**. Same worth, same feedback — the plant runs while you tap. Below the point of
+adding heat there is no temperature feedback at all, so residual ρ decides everything, and
+sustaining even a 1 DPM ramp means carrying ~+200 pcm that must all come back out.
+
+The actual defects were procedural and instrumental: (a) `pwr_startup` withdrew +45 steps
+(≈ +430 pcm) and returned −8 (≈ −76), named "~5–15 %" as its target and **accepted on
+`power_pct > 5`**, so overshooting was a pass condition; (b) its caution attributed the overshoot to
+the lumped single rod group, which the measurement disproves; (c) the SUR HI alarm (2.0 DPM) and
+rod-withdrawal block (2.5 DPM) sat above anything a startup reaches — the run that coasted to 19.8 %
+peaked at **1.82 DPM**, so neither fired. SUR saturates near 1.4–1.8 DPM over a wide ρ band
+(2.5 DPM ⇒ ~10 s period ⇒ ρ ≈ +400 pcm), i.e. the block was a prompt-criticality backstop
+mislabelled as a rate control.
+
+Decision (owner-ruled): make the block a genuine rate control — **alarm 2.0 → 1.0 DPM, block
+2.5 → 1.5, clears 1.5 → 0.8** — and rebuild the checklist around the technique rather than the
+recipe, with **crossing the 5 % boundary promoted to its own deliberate step**. The by-the-book
+ascent now peaks at 0.92 DPM (block never engages) and lands 1.47 % in Mode 2 → 12.4 % in Mode 1 →
+12.5 MWe. Consequence worth recording: a *held* withdrawal can no longer run the plant away, so the
+`pwr_startup_challenge` overshoot card is now reached in bites taken under the block — which is the
+scenario's own lesson sharpened, *the inhibit can freeze your hand but it cannot subtract*.
+`run_procedures` 96 → 97 checks; all 19 runners at baseline.
+
 **2026-07-24 — SG dryout depletion (meltdown battery MD-6, structural).** A fully dry SG used to
 stay a perfect heat sink forever (trip-open dump pinned `t_secondary` ~190 °C below Tavg; the 0.02
 `sg_dryout_residual` passed the whole decay-heat load), so total loss of MFW+AFW parked the primary
@@ -659,7 +847,7 @@ The §18 flagship is the acceptance centerpiece; the numbers were tuned so the t
 | C6 | **`evaluateCondition` default** | Unknown gate conditions evaluate **true** (permissive) | The PWR uses no actuation gate conditions; the evaluator is built generic for the BWR's `ads_open`/`hpci_unavailable` (M3). |
 | C7 | **Failure `category`** | Added a `category` field to the PWR failure **data** (`pwr_protection.js`) | M4 §10's catalog needs `category ∈ reactivity\|coolant\|power\|instrument\|safety_system`; per HR3 it is plant data, so it lives in the engine config, not in M4. |
 | C8 | **`degraded_hpi`** | Routed to the engine's `hpi_flow_multiplier` hook; its `set_hpi` interception is a pass-through | The spec (M4 §7) flags it as "really physics_parameter". **→ Flag F4.** |
-| C9 | **Interlocks (§4b, added with the PWR startup-forgiveness pass)** | New config-driven machinery: `config.interlocks[]` — condition-latched command blocks with hysteresis (`setpoint` engages + optional `on_engage` command, `clears_below/above` disengages), reading INSTRUMENTS (HR1). `withdrawal_only` blocks outward rod motion but never insertion. Blocked commands return `{type:'blocked', code:'INTERLOCK', message}` (register-aware). State in save/restore. | Real plants have rod stops / withdrawal inhibits that are neither trips nor failures — the plant refusing an unsafe command while telling you why. PWR instance: rod-withdrawal block at SUR ≥ 2.5 DPM (clears < 1.5), the guard that keeps a hasty trainee out of prompt-critical territory. Pure data per HR3. |
+| C9 | **Interlocks (§4b, added with the PWR startup-forgiveness pass)** | New config-driven machinery: `config.interlocks[]` — condition-latched command blocks with hysteresis (`setpoint` engages + optional `on_engage` command, `clears_below/above` disengages), reading INSTRUMENTS (HR1). `withdrawal_only` blocks outward rod motion but never insertion. Blocked commands return `{type:'blocked', code:'INTERLOCK', message}` (register-aware). State in save/restore. | Real plants have rod stops / withdrawal inhibits that are neither trips nor failures — the plant refusing an unsafe command while telling you why. PWR instance: rod-withdrawal block at SUR ≥ 1.5 DPM (clears < 0.8) — retuned from 2.5/1.5 in 2026-07 (#134), where it was a prompt-criticality backstop that never fired on an actual startup. Pure data per HR3. |
 | C10 | **Actuation `reset_below` comparison fixed** | Reset fires when the value returns to the SAFE side (`< reset_below` for high-direction, `>` for low) | Was inverted (`value > reset_below`): the PORV auto-actuation fired open and "reset" (close) in the same evaluate, flapping every cycle while pressure stayed high. Masked in practice (nothing reached 16.2 MPa in normal ops; TMI's stick intercepts the closes) — exposed when the steam-dump rework let a turbine trip actually reach the PORV band. |
 
 ---
@@ -1203,7 +1391,7 @@ Verification: board_check **41/41**; engine/control untouched this round.
   hot-standby init made self-consistent (tavg = tcold = thot = Tsat(dump setpoint), sgP =
   setpoint → zero reset drift); `startup_rate` instrument added (lag 2 s, appended last —
   PRNG order preserved; instruments steam_pressure range → 10.5). **M4 data** — `sur_high`
-  caution alarm (2.0 DPM) + rod-withdrawal interlock (≥ 2.5 DPM, clears < 1.5; see M4 C9/C10).
+  caution alarm (1.0 DPM) + rod-withdrawal interlock (≥ 1.5 DPM, clears < 0.8; see M4 C9/C10).
   **Outcome (traced):** attentive pull → SUR builds smoothly, release at 1 DPM while still
   −265 pcm subcritical, core settles gently; hands-off continuous pull → withdrawal blocked at
   +343 pcm (0.53 $), Doppler rolls the rise over, plant SELF-STABILIZES at ~29% power, and the

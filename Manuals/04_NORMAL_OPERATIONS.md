@@ -96,7 +96,7 @@ Take the reactor from **Mode 3, Hot Standby** (subcritical, hot) to **Mode 2, St
 | **CAUTION** | Power can **overshoot** the settling point if you lead with large withdrawals: this trainer lumps all rods into one group with Doppler-only fine structure. Approach like a real plant — fine rod control, held just-critical — and let feedback settle. |
 | **NOTE** | From fully inserted rods the approach takes **two to three minutes at Norm speed**; creeping the whole way at Slow takes over ten. Norm until the SUR stirs, then Slow for the crossing. |
 | **WARNING** | Leave SR energized past ~1e5 cps → **SR high-flux trip**. Perform SR→IR handoff on time. |
-| **NOTE** | Rod withdrawal blocks if SUR ≥ **2.5 DPM** until SUR &lt; **1.5 DPM**. Insertion always works. |
+| **NOTE** | Rod withdrawal blocks if SUR ≥ **1.5 DPM** until SUR &lt; **0.8 DPM**. Insertion always works. |
 
 ### Procedure
 

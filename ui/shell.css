@@ -132,9 +132,17 @@ body {
    column, enlarging the diagram further. */
 .demo-btn.on { color: var(--running); border-color: var(--running); }
 
+/* --midcol-w / --simcol-w are the two right tracks' MAXIMA, driven by
+   pwr_board.js fitColumns(): the diagram keeps the width it needs at full height
+   and the leftover — large on short-and-wide windows, where the board would
+   otherwise letterbox — is handed to these columns instead of sitting dead
+   beside the diagram. The values here are the floors used before/without that
+   measurement. */
 .app.pwr-synoptic {
+  --midcol-w: 340px;
+  --simcol-w: 360px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px) minmax(320px, 360px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, var(--midcol-w)) minmax(320px, var(--simcol-w));
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas: "diagram midcol simcol";
 }
@@ -157,7 +165,8 @@ body {
 /* ⛶ hides the right sim panel → two columns; the trend/alarms column grows into
    the freed space (the diagram stays about its 3-column width) */
 .app.pwr-synoptic.sim-hidden {
-  grid-template-columns: minmax(0, 1fr) minmax(400px, 700px);
+  --midcol-w: 700px;
+  grid-template-columns: minmax(0, 1fr) minmax(400px, var(--midcol-w));
   grid-template-areas: "diagram midcol";
 }
 .app.pwr-synoptic.sim-hidden > .right-col { display: none; }
@@ -495,6 +504,8 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
   color: var(--text); text-decoration: none; cursor: pointer; }
 .logo:hover { color: var(--text); opacity: 0.82; text-decoration: none; }
 .logo .a { color: var(--normal); }
+.brand { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.logo-ver { font-size: 10px; font-weight: 600; color: var(--muted); white-space: nowrap; }
 .clock { font-size: 15px; font-weight: 600; }
 .clock.running { animation: pulse 2s ease-in-out infinite; }
 .clock.accel { color: var(--caution); }

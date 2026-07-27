@@ -14,6 +14,29 @@
   var DEFAULT_TAU = 45; // seconds — turbine governor / operator lag
   var IMBALANCE_FRAC = 0.04;  // annunciator threshold, fraction of rated (plant-agnostic)
 
+  // Ceiling on the LOAD-COUPLED feed demand, as a fraction of rated feed flow.
+  // Per-plant via opts.maxCoupledFeedFrac; this is the legacy default.
+  //
+  // It must not exceed what that plant's turbine can actually draw. The PWR governor
+  // clamps steam to rated (pwr_steam_generator: clip(turbine_demand_frac, 0, 1)
+  // before the pressure compensation), so an above-rated ask there boiled rated
+  // while feeding 1.2 — a PERMANENT +0.2 imbalance no controller can null. SG level
+  // integrated 65 % → 89 % and scrammed on sg_level high 36-112 s later, long after
+  // the operator stopped associating cause with effect. 1.2 is the feed pump's
+  // runout capacity, reused here as a demand ceiling by mistake (issue #130).
+  //
+  // The PWR passes 1.0 (see pwr_engine _loadModeOpts). RBMK and BWR keep the legacy
+  // 1.2 deliberately: they are ON HOLD, their governors differ, and changing the
+  // shared default moved their gates. They should adopt an explicit cap when their
+  // plants are reopened — the reasoning is not PWR-specific.
+  //
+  // Capping does NOT soften the EV-11 teaching behavior: feed still tracks the load
+  // TARGET rather than actual steam flow, so a slider move still shows the transient
+  // feed-vs-steam mismatch. It only removes a SUSTAINED ask the plant can never
+  // satisfy. The pump's own 0..120 % runout clamp is untouched — an operator command
+  // or the sg_overfeed failure can still drive feed past rated on purpose.
+  var DEFAULT_MAX_COUPLED_FEED_FRAC = 1.2;
+
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
   function powerFrac(s) {
@@ -28,12 +51,14 @@
     if (s.feed_auto_coupled == null) s.feed_auto_coupled = true;
   }
 
-  // opts: { mweRated, setLoad(s, mwe, rated), setFeed(s, frac), tripTurbine?(s) }
+  // opts: { mweRated, setLoad(s, mwe, rated), setFeed(s, frac), tripTurbine?(s),
+  //         maxCoupledFeedFrac? }
   function step(s, dt, opts) {
     var tau = s.load_follow_tau != null ? s.load_follow_tau : DEFAULT_TAU;
     var alpha = dt / (tau + dt);
     var rated = opts.mweRated;
     var powerMwe = powerFrac(s) * rated;
+    var feedMax = opts.maxCoupledFeedFrac != null ? opts.maxCoupledFeedFrac : DEFAULT_MAX_COUPLED_FEED_FRAC;
 
     if (s.load_mode === 'disconnected') {
       s.load_target_mwe = 0;
@@ -55,17 +80,34 @@
         // regulation. Reads the SG level instrument (HR1), one step lagged.
         var lvl = s._ins_sg_level != null ? s._ins_sg_level : (s.sg_level_pct != null ? s.sg_level_pct : 65);
         var trim = 0.002 * (65 - lvl);
+        // Keeps the 1.2 ceiling, NOT feedMax: this branch matches an
+        // ACTUAL measured draw, and with the dump wide open (capacity 105 % of rated
+        // steam flow) plus safeties, that draw genuinely can exceed rated. Clamping it
+        // to 1.0 here would under-feed a real ride-out.
         opts.setFeed(s, clip((s.steam_out_total != null ? s.steam_out_total : 0) + trim, 0, 1.2));
       }
     } else if (s.load_mode === 'follow') {
       s.load_target_mwe += alpha * (powerMwe - s.load_target_mwe);
       opts.setLoad(s, s.load_target_mwe, rated);
-      if (s.feed_auto_coupled) opts.setFeed(s, clip(s.load_target_mwe / rated, 0, 1.2));
+      if (s.feed_auto_coupled) opts.setFeed(s, clip(s.load_target_mwe / rated, 0, feedMax));
     } else {
       // manual — load_target_mwe is the operator setpoint (slider)
       opts.setLoad(s, s.load_target_mwe, rated);
-      if (s.feed_auto_coupled) opts.setFeed(s, clip(s.load_target_mwe / rated, 0, 1.2));
+      if (s.feed_auto_coupled) opts.setFeed(s, clip(s.load_target_mwe / rated, 0, feedMax));
     }
+
+    // LOAD-REJECTION detector: a slow-following reference of the load TARGET, so
+    // (ref − target) measures how far and how recently load has been THROWN OFF. The
+    // PWR's fast-open steam dump arms on it (C-7 class). It must key on load FALLING,
+    // not on the power/load mismatch: that mismatch is equally positive when the
+    // operator deliberately raises power (dilution), and arming there opens the dump
+    // into a rising plant, overcools it and lets MTC run power up — measured, it
+    // tripped `pwr_boron`. The reference decays back, so the arm is transient like the
+    // real interlock rather than a standing make-up path.
+    if (s.load_ref_mwe == null) s.load_ref_mwe = s.load_target_mwe || 0;
+    var refTau = s.load_reject_ref_tau != null ? s.load_reject_ref_tau : 60.0;
+    s.load_ref_mwe += (dt / (refTau + dt)) * (s.load_target_mwe - s.load_ref_mwe);
+    s.load_rejected_mwe = Math.max(0, s.load_ref_mwe - s.load_target_mwe);
 
     // The imbalance ANNUNCIATOR reads INDICATED power (the engine stashes the
     // previous step's power_range reading as s._ins_power_pct) — HR1: an

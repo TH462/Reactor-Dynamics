@@ -71,8 +71,8 @@
 
 | Parameter | Value |
 |-----------|-------|
-| Block withdrawal when SUR ≥ | **2.5 DPM** |
-| Clear when SUR &lt; | **1.5 DPM** |
+| Block withdrawal when SUR ≥ | **1.5 DPM** |
+| Clear when SUR &lt; | **0.8 DPM** |
 | Insertion | Always allowed |
 
 ---
@@ -109,6 +109,13 @@
 ### AFW delivery
 
 - Delivered flow = capacity × throttle × level-hold taper near target.  
+- **AFW latches.** Once it auto-starts on low steam-generator level it keeps feeding until
+  an operator secures it — it does not stop by itself. Deciding when to secure it is the
+  operator's call, and it should not be left running once a trusted heat sink is back.  
+- **Level hold: full flow below 32 %, tapering to zero at 40 %.** Against decay-heat steam
+  draw an AFW-only generator settles around **37 %** — inside the normal green band, clear
+  of the 30 % SG LVL LO alarm. The approach is slow (AFW is only 15 % of rated feed), so
+  expect level to take the best part of an hour to walk back up from a low-level start.  
 
 ---
 
@@ -125,7 +132,7 @@
 | pzr_pressure_low | PZR PRESS LO | primary_pressure | low | **14.82 MPa** | warning |
 | pzr_pressure_lolo | PZR PRESS LO LO | primary_pressure | low | **12.41 MPa** | critical |
 | porv_open | PORV OPEN | porv_indicator | open | — | warning |
-| sur_high | SUR HI | startup_rate | high | **2 DPM** | caution |
+| sur_high | SUR HI | startup_rate | high | **1 DPM** | caution |
 | sr_high_flux | SR HI FLUX | source_range | high | **5e4 cps** | caution |
 | subcooling_low | LO SUBCOOL | subcooling_margin | low | **11.1 °C** | warning |
 | subcooling_lost | SUBCOOL LOST | subcooling_margin | low | **0 °C** | critical |
@@ -146,6 +153,7 @@
 | hpi_active | HPI/LPI ACTIVE | hpi_active | true | — | status |
 | sbo | SBO | station_blackout | true | — | critical |
 | turbine_trip | TURB TRIP | steam_demand_low | true | — | warning |
+| load_imbalance | LOAD IMBAL | sg_imbalance_active | true | > **4 %** of rated (4 MWe) | caution |
 | msiv_closed | MSIV SHUT | msiv_open | false | — | warning |
 | sg_press_high | SG PRESS HI | steam_pressure | high | **9.0 MPa** | caution |
 | cond_vac_low | COND VAC LO | condenser_vacuum | low | **84.7 kPa** | caution |
@@ -183,7 +191,7 @@
 | Speed slow / normal / fast | **0.533 / 3.20 / 4.80 steps/s** (32 / 192 / 288 steps/min — same fraction-of-travel rates as the pre-fine-step drive) |
 | Scram insertion time (control) | **~2.5 s** full travel |
 | Scram insertion time (shutdown) | **~2.0 s** |
-| Insertion limit floor | **~30 %** withdrawn (power-dependent concept) |
+| Insertion limit (RIL) | **Power-dependent.** Not applicable below **5 %** power; above it the % withdrawn floor ramps linearly from **5 %** to **70 %** at 100 % power (≈ 10 % withdrawn at 12 % power, 70 % at full power). Drives the ROD INS LIMIT alarm and stops the automatic rod channel inserting further. The bank sits at 92 % withdrawn across the load range, so the limit means "the bank is abnormally deep for this power" |
 | Control worth (total group) | **~8500 pcm** class (`rod_worth_total = 0.085`) |
 | Shutdown group worth | **0.10** reactivity units |
 
@@ -193,10 +201,10 @@
 
 | Parameter | Training target |
 |-----------|-----------------|
-| SUR on approach | ≤ **1 DPM** (trainer may briefly ~2 DPM at crossing) |
+| SUR on approach | ≤ **1 DPM** — the SUR HI alarm sits exactly there and withdrawal blocks at 1.5 DPM |
 | Reactor period | ≥ **30 s** preferred on startup range |
 | Power ramp ceiling | ~**10 %/min** class where achievable |
-| Load imbalance (SG annunciator) | &gt; ~**4 MWe** mismatch (4 % of rated) → filling/draining cue |
+| Load imbalance (SG annunciator) | &gt; ~**4 MWe** mismatch (4 % of rated) → filling/draining cue. Annunciated as **LOAD IMBAL** (Panel B, caution) — see §4. Reducing reactor power without walking the turbine load setpoint down is the usual cause in MANUAL, and it overcools the primary; the annunciator is the only thing that tells you. |
 
 ---
 

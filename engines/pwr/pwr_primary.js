@@ -107,6 +107,12 @@
     s.accumulator_flow_normalized = flow;
     s.accumulators_discharging = flow > 1e-6;
     s.accumulator_volume_pct = clip(s._accum_remaining / e.accumulator_capacity * 100, 0, 100);
+    // N2 cover-gas pressure for the tank indication: the gas space expands isothermally into
+    // the volume the discharged water vacated, so P = P0·Vg0/(Vg0 + Vwater_discharged). Falls
+    // with fill, which is why a real accumulator's injection tails off as it empties.
+    var gasFrac = e.accumulator_gas_frac != null ? e.accumulator_gas_frac : 0.35;
+    var emptied = 1 - s.accumulator_volume_pct / 100;
+    s.accumulator_pressure_mpa = e.accumulator_trip_mpa * gasFrac / (gasFrac + emptied);
     return flow * e.accumulator_inventory_gain;   // inventory-fraction rate for the mass balance
   }
 

@@ -50,15 +50,28 @@
   function h() { return RD.BoardH.h.apply(null, arguments); }
 
   // ---------------------------------------------------------------- layout --
+  // A tile's world-space footprint. `value` tiles are RIGHT-anchored (CSS
+  // translateX(-100%)) and auto-width — their doc `width` is a builder hint, not
+  // their footprint — so measure the rendered box (offset* ignores the stage's
+  // scale transform, so it is already in world units) and fall back to the doc
+  // geometry before the first paint.
+  function itemBox(it) {
+    var el = tiles[it.id];
+    var w = it.width || 120, hh = it.height || 40;
+    if (el && el.offsetWidth) { w = el.offsetWidth; hh = el.offsetHeight || hh; }
+    return it.kind === 'value'
+      ? { l: it.left - w, t: it.top, r: it.left, b: it.top + hh }
+      : { l: it.left, t: it.top, r: it.left + w, b: it.top + hh };
+  }
+
   function contentBounds() {
     var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     (doc.items || []).forEach(function (it) {
-      var w = it.width || 120, hh = it.height || 40;
-      var l = it.kind === 'value' ? it.left - w : it.left; // values are right-anchored
-      if (l < minX) minX = l;
-      if (it.top < minY) minY = it.top;
-      if (it.left + w > maxX) maxX = it.left + w;
-      if (it.top + hh > maxY) maxY = it.top + hh;
+      var q = itemBox(it);
+      if (q.l < minX) minX = q.l;
+      if (q.t < minY) minY = q.t;
+      if (q.r > maxX) maxX = q.r;
+      if (q.b > maxY) maxY = q.b;
     });
     (doc.pipes || []).forEach(function (p) {
       (p.waypoints || []).forEach(function (q) {
@@ -69,6 +82,51 @@
     if (!isFinite(minX)) { minX = 0; minY = 0; maxX = CANVAS_W; maxY = CANVAS_H; }
     var pad = 18;
     return { x: minX - pad, y: minY - pad, w: (maxX - minX) + pad * 2, h: (maxY - minY) + pad * 2 };
+  }
+
+  /* --------------------------------------------- elastic PWR grid columns --
+     In the 3-column PWR layout the diagram track is `1fr`, so on a short-and-wide
+     window (2560x1080, any un-maximized landscape window) the board fits to HEIGHT
+     and letterboxes — hundreds of px of dead space beside it while the alarms/trend
+     and simulator columns stay pinned at their base widths.
+
+     fitColumns measures that dead space and hands it to those two columns (as the
+     --midcol-w / --simcol-w maxima the grid template reads), up to a cap past which
+     they are just whitespace themselves. Handing width away narrows the diagram
+     track by the same amount, so the next pass measures ~0 slack and settles; the
+     1.5px deadband keeps the ResizeObserver from chattering. Negative slack (the
+     columns hold width the board now needs) flows back the same way. */
+  var MIDCOL_BASE = 340, MIDCOL_MAX = 860;             // alarms + strip chart
+  var MIDCOL_SOLO_BASE = 700, MIDCOL_SOLO_MAX = 1200;  // …when ⛶ hides the simulator column
+  var SIMCOL_BASE = 360, SIMCOL_MAX = 520;             // simulator / tools / instructor / scanner
+  var MIDCOL_SHARE = 0.55;   // the trend/alarm column gets the larger half
+
+  function cssPx(app, name, fallback) {
+    var v = parseFloat(app.style.getPropertyValue(name));
+    return isFinite(v) ? v : fallback;
+  }
+
+  function fitColumns(app, r, b) {
+    var solo = app.classList.contains('sim-hidden');   // ⛶ — no simulator column
+    var midBase = solo ? MIDCOL_SOLO_BASE : MIDCOL_BASE;
+    var midMax = solo ? MIDCOL_SOLO_MAX : MIDCOL_MAX;
+    var simBase = solo ? 0 : SIMCOL_BASE;
+    var simMax = solo ? 0 : SIMCOL_MAX;
+    // clamp the carried-over values to THIS mode's range — ⛶ swaps the bases, so
+    // the width the other mode parked in the var may be out of range here
+    var mid = Math.min(midMax, Math.max(midBase, cssPx(app, '--midcol-w', midBase)));
+    var sim = Math.min(SIMCOL_MAX, Math.max(SIMCOL_BASE, cssPx(app, '--simcol-w', SIMCOL_BASE)));
+    // dead space beside the board once it is scaled to the available height
+    var slack = r.width - r.height * (b.w / b.h);
+    var total = Math.max(midBase + simBase,
+                Math.min(midMax + simMax, mid + (solo ? 0 : sim) + slack));
+    var grow = total - (midBase + simBase);
+    var gSim = Math.min(simMax - simBase, grow * (1 - MIDCOL_SHARE));
+    var gMid = Math.min(midMax - midBase, grow - gSim);
+    gSim = Math.min(simMax - simBase, grow - gMid);   // hand back what mid capped out on
+    var wantMid = Math.round(midBase + gMid), wantSim = Math.round(SIMCOL_BASE + gSim);
+    if (Math.abs(wantMid - mid) > 1.5) app.style.setProperty('--midcol-w', wantMid + 'px');
+    if (!solo && Math.abs(wantSim - sim) > 1.5) app.style.setProperty('--simcol-w', wantSim + 'px');
   }
 
   function layout() {
@@ -89,8 +147,14 @@
     } else if (plant && plant.closest('.app.pwr-synoptic')) {
       // The PWR layout grids the columns explicitly — don't lock the plant width
       // to the diagram (that inline width would overflow the neighbouring
-      // columns); let the grid track size it so the board fits to width.
+      // columns). Instead give the letterbox slack to the other two grid tracks.
       if (plant.style.width) { plant.style.width = ''; r = wrap.getBoundingClientRect(); }
+      var app = plant.closest('.app.pwr-synoptic');
+      if (!(typeof window.matchMedia === 'function' &&
+            window.matchMedia('(max-width: 1200px)').matches)) {   // not the stacked template
+        fitColumns(app, r, b);
+        r = wrap.getBoundingClientRect();               // re-measure after the reflow
+      }
     } else if (plant) {
       var wantW = r.height * (b.w / b.h);                     // diagram width at full height
       var chromeW = plant.getBoundingClientRect().width - r.width;  // padding/siblings

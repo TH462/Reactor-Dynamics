@@ -81,8 +81,14 @@ function runUntil(s, pred, simBudget) {
   }
   return null;
 }
+// RD_SEED lets the whole campaign gate be re-run on a different instrument-noise
+// stream (`RD_SEED=7 node test/run_campaign.js`) without touching the baseline —
+// the default is unchanged, so the gate itself is unaffected. Added because several
+// campaign endpoints pass on a few points of SG-level margin, and a trajectory that
+// only survives one noise ordering is not one anyone can tune against (#210).
+var SEED = Number(process.env.RD_SEED) || 42;
 function startScenario(id) {
-  var s = new RD.SimulationService({ seed: 42 });
+  var s = new RD.SimulationService({ seed: SEED });
   var sc = RD.SCENARIOS[id];
   s.selectPlant(sc.plant_id, sc.initial_state, sc.design_version || null);
   s.handleCommand({ action: 'start_scenario', scenario_id: id });
@@ -637,10 +643,15 @@ test('pwr_rod_auto — manual Tavg trim, T-ref capture, override precedence', fu
 });
 
 test('pwr_startup_challenge — solo startup passes; forgotten handoff fails on the SR gate', function (ck) {
-  // Win line (probed): secure SR (P-6 already satisfied at HZP), pull to 1 %,
-  // reinsert to null SUR — power then holds ~[1.0, 3.5] % through the 120 s
-  // graded window. Commands land during the exam watch (no operator_action
-  // triggers in this scenario, so beat-fire memory clearing is moot).
+  // Win line (re-probed 2026-07-25 under the 1.5 DPM withdrawal block, #134):
+  // secure SR (P-6 already satisfied at HZP), pull to 1 % — the block now
+  // interrupts the held pull at ~+54 pcm instead of letting it reach ~+300 —
+  // then reinsert at SLOW to null SUR. The arrest speed matters: with only
+  // ~54 pcm in, a Norm-speed drive removes ~30 pcm/s and blows through zero to
+  // −17 pcm, and power decays out the BOTTOM of the band (window closes). At
+  // Slow it parks ~1.85 % with ρ ≈ +12 through the 120 s graded window.
+  // Commands land during the exam watch (no operator_action triggers in this
+  // scenario, so beat-fire memory clearing is moot).
   var s = startScenario('pwr_startup_challenge');
   var snap = waitBeat(s, 'exam', 60);
   ck('exam watch arms', !!snap, !!snap, 'exam pending');
@@ -652,8 +663,8 @@ test('pwr_startup_challenge — solo startup passes; forgotten handoff fails on 
   s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
   ck('criticality reached unscrammed', snap && !snap.rps_state.scrammed, snap && !snap.rps_state.scrammed, 'power > 1 %, no scram');
   if (!snap || snap.rps_state.scrammed) return;
-  runUntil(s, function (sn) { return sn.instruments.power_range > 1.5; }, 300);
-  s.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'normal' });
+  runUntil(s, function (sn) { return sn.instruments.power_range > 2.0; }, 300);
+  s.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'slow' });
   runUntil(s, function (sn) { return sn.instruments.startup_rate <= 0.0; }, 300);
   s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
   snap = runUntil(s, function (sn) { return lc(sn); }, 900);
@@ -671,15 +682,25 @@ test('pwr_startup_challenge — solo startup passes; forgotten handoff fails on 
 });
 
 test('pwr_startup_challenge — runaway coast lands on the overshoot card, not a softlock', function (ck) {
-  // Stop-at-1 %-and-watch leaves the full pull's reactivity in: power coasts
-  // 1 % → ~19 % in ~42 s. power_range crosses the 12 % branch a probed ~7 s
-  // before the IR trip (1.67e-3 A ≈ 20 %), so the band-overshoot card wins
-  // the race deterministically and carries the excess-reactivity lesson.
+  // Stop-at-1 %-and-watch leaves the pull's reactivity in and power coasts out
+  // the top of the band. Re-probed 2026-07-25 (#134): a single HELD withdrawal
+  // no longer gets there — the 1.5 DPM block interrupts it — so the overshoot
+  // is now driven the way a player actually reaches it, in BITES taken while
+  // the rate sits under the block. Seven 40-step bites bank ~+256 pcm without
+  // the interlock ever engaging, and stopping at 1 % coasts to 12.6 %. That is
+  // the sharper form of the scenario's own lesson: the withdrawal inhibit can
+  // freeze your hand but it cannot subtract what you already added.
   var s = startScenario('pwr_startup_challenge');
   settle(s, 5);
   s.handleCommand({ action: 'set_sr_detector', on: false });
-  s.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'normal' });
-  var snap = runUntil(s, function (sn) { return sn.instruments.power_range > 1.0; }, 1200);
+  var bites = 0;
+  var snap = runUntil(s, function (sn) {
+    if (!s.engine.rod_groups[0].moving && sn.instruments.startup_rate < 0.8 && bites < 60) {
+      s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 40, speed: 'normal' });
+      bites++;
+    }
+    return sn.instruments.power_range > 1.0;
+  }, 1200);
   s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
   ck('criticality reached', !!snap, !!snap, 'power > 1 %');
   snap = runUntil(s, function (sn) { return lc(sn); }, 900);
@@ -805,9 +826,17 @@ test('pwr_esf — ESF arms: auto-fire, MAN drop, re-arm; starved branch', functi
 });
 
 test('pwr_msiv — MSIV closure: reopen and bottled endpoints, cold-feet catch', function (ck) {
-  // Reopen branch: close at power, take the decision inside its ~21 s window
-  // (probed: decision fires 29 s post-closure, auto low-SG trip at ~50 s; the
-  // trip is unavoidable — reopening decides the post-trip heat path).
+  // Re-probed 2026-07-26 (#218) after P-9. The old shape was a RACE: the reactor was
+  // still critical after closure and the player had ~21 s to reopen before an automatic
+  // low-SG-level trip. With Reactor Trip on Turbine Trip the scram now lands at CLOSURE
+  // (measured 4.1 s, ~0.1 s after the valve), so there is no race left — and the beat's
+  // old `scram` branch fired instantly and railroaded every run to the bottled ending in
+  // 14 s. The mission is now the post-trip EOP question it should always have been:
+  // decay heat is on the code safeties, do you restore the dump path or not? Inaction is
+  // a real 90 s choice, not a clock the player loses.
+  // Measured: decision at 29 s; reopen -> safeties reseat within 0.4 s, dump to 100 %,
+  // ends 8.02 MPa with the MSIV open. Inaction -> 11 safety lifts in 600 s, never
+  // reseating, parked at 9.02 MPa.
   var s = startScenario('pwr_msiv');
   var snap = runUntil(s, function () { return s.instructor.firedBeats.has('intro'); }, 30);
   ck('closure prompt opens', !!snap, !!snap, 'intro fired');
@@ -824,11 +853,11 @@ test('pwr_msiv — MSIV closure: reopen and bottled endpoints, cold-feet catch',
   ck('reopen path completes', !!snap, !!snap, 'level_complete');
   if (snap) {
     ck('endpoint is the dump-path card', lc(snap).title, /Dump Path/i.test(lc(snap).title), 'Dump Path Restored card');
-    ck('trip still came (shrink-driven, probed unavoidable)', snap.rps_state.scrammed, snap.rps_state.scrammed === true, 'scrammed');
+    ck('the reactor tripped (P-9 at closure, not a level trip)', snap.rps_state.scrammed, snap.rps_state.scrammed === true, 'scrammed');
     ck('safeties reseated with the dump carrying decay heat', snap.instruments.sg_safety_open, snap.instruments.sg_safety_open === false, 'sg_safety_open false');
   }
-  // Bottled branch: ride it down — the automatic low-SG trip (~50 s) exits the
-  // decision via its scram branch; the SG stays bottled on cycling safeties.
+  // Bottled branch: decline to act. The decision beat's 90 s inaction branch exits to
+  // the bottled ending; the SG stays sealed on cycling code safeties.
   var s2 = startScenario('pwr_msiv');
   runUntil(s2, function () { return s2.instructor.firedBeats.has('intro'); }, 30);
   settle(s2, 2);

@@ -6,8 +6,10 @@
  *
  * Porting decision: the design derived water level from a `power` prop
  * (level = 58 + (p-1)*10, clamped 20-90). Here level is a DIRECT prop (0-100, the actual
- * pressurizer level %), mapped onto the same water-band pixel span (waterTop=160 -> 100%,
- * waterBot=470 -> 0%).
+ * pressurizer level %), mapped onto the vessel's FULL internal height — waterTop=106 (inner
+ * dome apex) -> 100%, waterBot=541 (inner dish floor) -> 0%. The design mapped it onto the
+ * LVL strip's 160..470 span instead, which made the cutaway read as a copy of the gauge
+ * rather than as the vessel (issue #192); the strip keeps 160..470 as its own instrument span.
  * update({ level, heaterPower, heaterOn, spray, temp, glow, showFlow })
  */
 (function () {
@@ -57,11 +59,21 @@
       ' L160,' + shellBot + ' A60 ' + botRy + ' 0 0 1 40,' + shellBot + ' Z';
     var inner = 'M50,' + (shellTop + 1) + ' A50 ' + (domeRy - 10) + ' 0 0 1 150,' + (shellTop + 1) +
       ' L150,' + (shellBot - 1) + ' A50 ' + (botRy - 8) + ' 0 0 1 50,' + (shellBot - 1) + ' Z';
-    var waterTop = 160, waterBot = 470;
+    // Water band spans the FULL INTERNAL cavity — 100 % is the crown of the inner
+    // dome, 0 % the floor of the inner dish (issue #192). These are derived from the
+    // `inner` path above, so they track the vessel art if the shell geometry moves.
+    // The LVL strip beside the vessel is a separate gauge with its own span (see
+    // barTop/barBot below); the two are deliberately NOT the same pixels any more.
+    var waterTop = shellTop + 1 - (domeRy - 10);   // 106 — inner dome apex
+    var waterBot = shellBot - 1 + (botRy - 8);     // 541 — inner dish floor
     var HBROWN = [61, 38, 22], HORANGE = [255, 138, 58];
     var spx = cx, spyMouth = 147;
     var hwR = 150, hL = 58;
-    var hys = [waterBot - 48, waterBot - 36, waterBot - 24, waterBot - 12];
+    // Heater bundle sits low in the straight shell. Authored against the design's
+    // 470 water floor; kept as absolute pixels so widening the water band (#192)
+    // does not drag the heaters down into the bottom dish.
+    var heaterBase = 470;
+    var hys = [heaterBase - 48, heaterBase - 36, heaterBase - 24, heaterBase - 12];
 
     // ---- defs (dynamic stops kept as refs) ----
     var waterStops = [h('stop', { offset: '0' }), h('stop', { offset: '1' })];
@@ -116,7 +128,9 @@
     rebuildSprayPipes(null, false, true);
 
     // ---- level gauge (LVL bar, red top/bottom zones, marker at level) ----
-    var barX = 21, barW = 9, barTop = waterTop, barBot = waterBot, barH = barBot - barTop;
+    // The gauge keeps the design's original 160..470 span — it is an instrument
+    // strip, not a cutaway, so it no longer shares pixels with the water band.
+    var barX = 21, barW = 9, barTop = 160, barBot = 470, barH = barBot - barTop;
     function wlY(pct) { return barBot - (pct / 100) * barH; }
     var gEls = [h('rect', { x: barX - 2, y: barTop - 2, width: barW + 4, height: barH + 4, rx: 3, fill: '#0b1119', stroke: '#25333e', strokeWidth: 1 })];
     [[0, 12, '#ef4d2e'], [12, 88, '#43d17a'], [88, 100, '#ef4d2e']].forEach(function (z) {
@@ -225,14 +239,16 @@
         last.temp = temp;
       }
 
+      // levelY = the water surface in the vessel (full-cavity span);
+      // wlY(level) = the same reading on the LVL strip, which has its own span.
       var levelY = waterBot - (level / 100) * (waterBot - waterTop);
       if (level !== last.level) {
         steamRect.setAttribute('height', String(Math.max(0, levelY - 96)));
         waterRect.setAttribute('y', String(levelY));
-        waterRect.setAttribute('height', String(Math.max(0, waterBot + 70 - levelY)));
+        waterRect.setAttribute('height', String(Math.max(0, waterBot + 20 - levelY)));
         surfLine.style.transform = 'translate(0px,' + levelY.toFixed(2) + 'px)';
         steamGrad.setAttribute('y1', String(levelY));
-        wlMarker.style.transform = 'translate(0px,' + Math.max(barTop, Math.min(barBot, levelY)).toFixed(2) + 'px)';
+        wlMarker.style.transform = 'translate(0px,' + wlY(level).toFixed(2) + 'px)';
         last.level = level;
       }
 

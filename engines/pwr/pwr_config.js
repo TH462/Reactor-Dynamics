@@ -9,7 +9,11 @@
  *
  * Units are SI throughout (CONTEXT §11): pressure MPa, temperature °C, level
  * and power %, flows normalized to rated. Values marked [tune] are starting
- * points arbitrated by the §14 scenario suite; un-marked values are fixed.
+ * points arbitrated by the PHYSICS ACCEPTANCE SUITES — run_pwr, run_behavior,
+ * run_ops — which state intended plant behaviour independently of any story.
+ * Campaign missions, procedures and checklists are NOT arbiters of tuning
+ * (CONTEXT §3 HR9): they observe the plant. If one breaks after a change here,
+ * the presumption is that the CONTENT is stale. Un-marked values are fixed.
  *
  * Global-namespace module: attaches RD.PWR_CONFIG. Works as an ordered
  * <script> tag in the browser and via require() in Node (both share globalThis).
@@ -370,7 +374,20 @@
       sg_safety_flow_max: 1.2,     // normalized relief capacity at full lift
       afw_flow_frac: 0.15,         // AFW capacity, normalized to rated feed [tune]
       afw_start_level: 20.0,       // % — M4 auto-start setpoint (pwr_control actuation reads the instrument)
-      afw_level_target: 20.0,      // % — built-in proportional level hold: full flow below this... [tune]
+      // AFW LATCHES (owner ruling, #207): the pump demand set by the M4 actuation has no
+      // reset, so it stands until the operator secures it — as in a real plant, where AFW
+      // auto-starts on low level and runs until someone stops it.
+      //
+      // The hold target was 20 with the same 8 % band, i.e. full flow below 20 tapering to
+      // zero at 28 — a control band lying ENTIRELY inside the amber caution zone (17–30 %).
+      // So an AFW-only generator parked at 25.1 % with SG LVL LO standing indefinitely: the
+      // plant was latched into a permanent alarm by design. Now 32/8 — full flow below 32,
+      // zero at 40 — which settles at 37.1 % against decay-heat steam draw: comfortably
+      // GREEN, 7 points clear of the 30 % boundary so transients do not dip back into amber,
+      // and far below the 75 % HI caution. Measured on a scram + feedwater isolation held
+      // 2 h; note the approach is slow (AFW is only 0.15 of rated), so a short probe window
+      // will catch it still climbing. [tune]
+      afw_level_target: 32.0,      // % — built-in proportional level hold: full flow below this... [tune]
       afw_level_band: 8.0,         // % — ...tapering to zero across this band above it [tune]
       // AFW pump discharge-pressure indication (MPa). A motor/turbine-driven AFW pump
       // develops head above the SG it feeds; deadheaded (discharge valve shut) it sits
@@ -396,6 +413,24 @@
       // a scram. The stored-heat burst still swings Tavg visibly before settling
       // (tempo principle). Unavailable when the condenser is lost (vacuum/SBO).
       steam_dump_setpoint: 8.23, steam_dump_band: 0.25, steam_dump_max: 1.05, // [tune] = Psat(297 °C) anchor; ride-out capacity
+      // LOAD-REJECTION arm for the fast-open (Tavg-error) dump mode — the C-7 class
+      // interlock. The fast mode used to arm on `turbine_tripped` ALONE, even though
+      // its own comment said it was for "a turbine trip / load rejection" and that the
+      // pressure-only wait "spiked the primary on every load rejection". A rejection
+      // where the turbine stays on line therefore never got it. Now it also arms on a
+      // large reactor/turbine load mismatch (indicated power − load target, MWe — the
+      // same HR1-correct signal the LOAD IMBAL annunciator reads). It cannot self-arm
+      // at steady power: there the mismatch is ~0.
+      //   40 MWe = 40 % of rated. The real C-7 arm is RATE-based (turbine load
+      // rate-of-decrease); magnitude is the proxy here, so the threshold has to sit
+      // clear of dispatch. At 10 MWe it armed on EV-11's ordinary 15 MWe slider cut and
+      // the dump then vented the difference FOREVER — holding the reactor at 100 % and
+      // defeating the very load-follow lesson that probe teaches. A >=40 % step is a
+      // casualty, not a manoeuvre. [tune]
+      dump_load_reject_mwe: 40.0,
+      // ...and the mismatch below which the latch RESETS: the reactor has come back to
+      // meet the load, so the ride-out is over and pressure-mode has it again. [tune]
+      dump_reject_clear_mwe: 10.0,
     },
 
     // ------------------------------------------------------ turbine / condenser
@@ -458,6 +493,14 @@
       accumulator_flow_max: 1.0,   // normalized rated accumulator flow
       accumulator_inventory_gain: 0.12, // inventory frac/s per unit normalized flow
       accumulator_capacity: 2.5,   // total deliverable inventory fractions (finite)
+      // N2 cover-gas volume as a fraction of the initial WATER volume, used to drive the
+      // tank-pressure indication as the accumulator empties. A real SIT is ~1350 ft³ holding
+      // ~1000 ft³ of borated water, so the gas space is ~0.35 of the water volume. The gas
+      // expands isothermally as water discharges (P·V constant), so a full tank indicates the
+      // charge pressure and a fully-dumped one decays to ~0.26 of it (~155 psi) — which is why
+      // accumulators stop injecting well before they are empty. Indication only; the injection
+      // driving head remains accumulator_trip_mpa. [tune]
+      accumulator_gas_frac: 0.35,
       // Boron concentration of ALL emergency-injection water (RWST-sourced HPI/LPI
       // and the SIT accumulators). Real RWST/SIT boron runs ~2000–2700 ppm, sized so
       // the core stays subcritical when reflooded cold. Injected inventory mixes into
@@ -518,8 +561,22 @@
       scram_time_control_s: 2.5,   // full-travel insertion time [tune]
       scram_time_shutdown_s: 2.0,  // slightly faster (pre-loaded) [tune]
       control_op_position_pct: 92.0, // control group operating position (% withdrawn)
-      // Power-dependent insertion limit for the control group (% withdrawn floor).
-      insertion_limit_pct: 30.0,
+      // Rod insertion limit (RIL) for the control group — the % withdrawn floor the
+      // bank is expected to stay above. It drives the ROD INS LIMIT alarm and stops
+      // the automatic rod channel from inserting further.
+      //
+      // It is POWER-DEPENDENT, and that matters: the limit exists to preserve
+      // shutdown margin and to cap ejected-rod worth AT POWER. During a startup the
+      // bank is deliberately deep — boron and the shutdown bank hold the margin —
+      // so a fixed floor annunciates continuously through every ascent and says
+      // nothing. Below `min_power_pct` the limit does not apply at all; above it the
+      // floor ramps linearly from `lo_pct` to `hi_pct` at 100 % power. The bank sits
+      // at 92 % withdrawn across the whole load range, so `hi_pct` 70 leaves ~22
+      // points of margin at full power and the alarm means "you are driving the bank
+      // abnormally deep for this power", which is what it is for. [tune]
+      insertion_limit_min_power_pct: 5.0,
+      insertion_limit_lo_pct: 5.0,
+      insertion_limit_hi_pct: 70.0,
     },
 
     // -------------------------------------------------- §9.1 physics-fail [tune]
@@ -531,12 +588,43 @@
       DEFAULT_NOISE_SCALE: 5.0,    // noisy-mode sigma multiplier
     },
 
-    // Global multiplier on every instrument's noise sigma (below). The readouts were
-    // jittering more than wanted, so indicated noise is scaled to a quarter of the raw
-    // sigmas. Tuners: this scales the per-instrument `noise` values at read time; set to
-    // 1 to use the raw sigmas.
-    instrument_noise_scale: 0.25,
+    // Global multiplier on every instrument's noise sigma. RETIRED to 1.0 (#217):
+    // noise is now set PER INDICATION below, which is what the original complaint
+    // actually called for.
+    //
+    // History worth keeping. This was introduced at 0.5 and halved again to 0.25 within
+    // a day, because "the readouts were jittering more than wanted". The complaint was
+    // real, but the instrument was wrong: measured, only about NINE indications were
+    // misbehaving, and a global scaler punished all twenty-five. The ones that were
+    // already right got dragged to frozen.
+    //
+    // What actually governs "dancing" is noise relative to the readout's DISPLAY STEP,
+    // not absolute sigma. `fw_flow` and `steam_flow` were at sigma = 10x their 1 gpm
+    // display step; `boron_analyzer` 4x; `hpi_flow`, `steam_pressure` and
+    // `porv_tailpipe_temp` ~3x. Meanwhile `pzr_level`/`sg_level` (0.5), `tavg` (0.36 F)
+    // and the valve positions (0.3) were already in the sweet spot — and `power_range`,
+    // `mwe_output` and `condenser_vacuum` were already too QUIET.
+    //
+    // The sigmas below are therefore chosen so that visible jitter lands near
+    // 0.3-0.6 x the display step: the last digit moves occasionally, which reads as a
+    // live instrument, rather than churning every frame or sitting frozen. Per class,
+    // because real signals differ — flows (turbulence, pulsation) 0.6, levels and
+    // pressures 0.5, nuclear 0.4, temperatures (RTD thermal inertia) and valve
+    // position feedback 0.3.
+    //
+    // Keep this at 1.0. If the board still feels wrong, move the ONE indication that
+    // is wrong, not all of them.
+    instrument_noise_scale: 1.0,
 
+    // NOTE on `power_range` noise (#217): its sigma is a CONSTANT ABSOLUTE value across
+    // a 0-200 % span, which is a modelling simplification — real excore NI noise is
+    // signal-dependent (counting statistics), so it is relatively larger at low flux and
+    // smaller at power. Consequence: a sigma sized to look "live" at 100 % power is
+    // ruinous at 1 % power, where the same absolute number is tens of percent of the
+    // reading and swamps a startup. It is therefore deliberately held at the QUIET end
+    // (0.2, ~0.2 x the 1 % display step) — chosen for the low-power case, not the
+    // at-power one. Raising it broke pwr_startup_challenge's approach, which is the
+    // honest symptom. A signal-proportional noise model would let both ends be right.
     // ----------------------------------------------------------- instrument set
     // id → { measures, lag (s), noise sigma (instrument units), range[min,max] }.
     // Status booleans (no lag/noise) are listed under `status`.
@@ -548,31 +636,31 @@
       // Range spans cold shutdown → hot: the meter must read true down in the cold band
       // (Mode 5 ~50 °C) instead of flooring at the at-power operating minimum. The UI Tavg
       // gauge auto-ranges its DISPLAY scale (fine operating band when hot, wide when cold).
-      tavg:              { lag: 4.0, noise: 0.2,   range: [30, 343] },
-      thot:              { lag: 4.0, noise: 0.2,   range: [30, 343] },
-      tcold:             { lag: 4.0, noise: 0.2,   range: [30, 343] },
-      primary_pressure:  { lag: 0.5, noise: 0.014, range: [0, 20.7] },
-      pzr_level:         { lag: 2.0, noise: 0.5,   range: [0, 100] },
-      sg_level:          { lag: 3.0, noise: 0.5,   range: [0, 100] },
-      steam_flow:        { lag: 1.0, noise: 0.01,  range: [0, 1.2] },
-      fw_flow:           { lag: 1.0, noise: 0.01,  range: [0, 1.2] },
-      mwe_output:        { lag: 0.2, noise: 0.1,   range: [0, 130] },   // noise/range scaled with the 100 MWe rating
-      turbine_rpm:       { lag: 0.5, noise: 2.0,   range: [0, 2000] },
-      condenser_vacuum:  { lag: 5.0, noise: 0.34,  range: [0, 102] },
+      tavg:              { lag: 4.0, noise: 0.17,   range: [30, 343] },
+      thot:              { lag: 4.0, noise: 0.17,   range: [30, 343] },
+      tcold:             { lag: 4.0, noise: 0.17,   range: [30, 343] },
+      primary_pressure:  { lag: 0.5, noise: 0.0034, range: [0, 20.7] },
+      pzr_level:         { lag: 2.0, noise: 0.3,   range: [0, 100] },
+      sg_level:          { lag: 3.0, noise: 0.3,   range: [0, 100] },
+      steam_flow:        { lag: 1.0, noise: 0.0006,  range: [0, 1.2] },
+      fw_flow:           { lag: 1.0, noise: 0.0006,  range: [0, 1.2] },
+      mwe_output:        { lag: 0.2, noise: 0.3,   range: [0, 130] },   // noise/range scaled with the 100 MWe rating
+      turbine_rpm:       { lag: 0.5, noise: 0.3,   range: [0, 2000] },
+      condenser_vacuum:  { lag: 5.0, noise: 1,  range: [0, 102] },
       // §8.8 synoptic additions — CVCS flows, SG pressure, chemistry, governor, ECCS
       // (LPI/accumulator), and Animation-HR1 helpers (steam dump, primary leak).
       // Sources track TRUE sim quantities, not command setpoints (see pwr_instruments SOURCE).
-      charging_flow:     { lag: 2.0, noise: 0.001, range: [0, 0.12] },   // true CVCS charging (≠ setpoint under AUTO)
-      letdown_flow:      { lag: 2.0, noise: 0.001, range: [0, 0.12] },   // true CVCS letdown
-      steam_pressure:    { lag: 0.5, noise: 0.02,  range: [0, 10.5] },   // SG secondary pressure, MPa (top of range = no-load saturation + margin)
-      boron_analyzer:    { lag: 45,  noise: 4.0,   range: [0, 2500] },   // chemistry sample — slow (Realistic-only boron readout)
+      charging_flow:     { lag: 2.0, noise: 0.0006, range: [0, 0.12] },   // true CVCS charging (≠ setpoint under AUTO)
+      letdown_flow:      { lag: 2.0, noise: 0.0006, range: [0, 0.12] },   // true CVCS letdown
+      steam_pressure:    { lag: 0.5, noise: 0.0034,  range: [0, 10.5] },   // SG secondary pressure, MPa (top of range = no-load saturation + margin)
+      boron_analyzer:    { lag: 45,  noise: 0.3,   range: [0, 2500] },   // chemistry sample — slow (Realistic-only boron readout)
       governor_valve:    { lag: 0.3, noise: 0.3,   range: [0, 100] },    // turbine admission valve %
-      hpi_flow:          { lag: 1.0, noise: 0.005, range: [0, 1.2] },    // merged HPI/LPI injection line, normalized to combined rated (renamed in place from lpi_flow — PRNG order preserved)
-      accumulator_flow:  { lag: 0.5, noise: 0.005, range: [0, 1.2] },    // passive accumulator injection, normalized
+      hpi_flow:          { lag: 1.0, noise: 0.001, range: [0, 1.2] },    // merged HPI/LPI injection line, normalized to combined rated (renamed in place from lpi_flow — PRNG order preserved)
+      accumulator_flow:  { lag: 0.5, noise: 0.001, range: [0, 1.2] },    // passive accumulator injection, normalized
       steam_dump_valve:  { lag: 0.3, noise: 0.3,   range: [0, 100] },    // turbine bypass valve % (Animation HR1)
-      primary_leak_flow: { lag: 0.2, noise: 0.002, range: [0, 1.0] },    // LOCA/SGTR break flow, normalized (Animation HR1)
-      startup_rate:      { lag: 2.0, noise: 0.02,  range: [-5, 10] },    // SUR (dpm) — startup-range rate meter; feeds the rod-withdrawal interlock
-      porv_tailpipe_temp:{ lag: 10.0, noise: 1.5,  range: [0, 250] },    // PORV discharge/quench-tank line temperature — the unalarmed indication that reveals a stuck-open PORV (TMI-2)
+      primary_leak_flow: { lag: 0.2, noise: 0.0006, range: [0, 1.0] },    // LOCA/SGTR break flow, normalized (Animation HR1)
+      startup_rate:      { lag: 2.0, noise: 0.004,  range: [-5, 10] },    // SUR (dpm) — startup-range rate meter; feeds the rod-withdrawal interlock
+      porv_tailpipe_temp:{ lag: 10.0, noise: 0.17,  range: [0, 250] },    // PORV discharge/quench-tank line temperature — the unalarmed indication that reveals a stuck-open PORV (TMI-2)
       // Nuclear instrumentation (startup ranges) — LOG-scale detectors (lag +
       // noise act per decade; noise sigma in decades). Appended to SOURCE last.
       source_range:      { lag: 0.5, noise: 0.02,  range: [1, 1e6],     log: true },   // proportional counter, counts/s; de-energized reads the range floor
@@ -587,6 +675,16 @@
       hpi_discharge_pressure:  { lag: 0.5, noise: 0, range: [0, 18] },    // HPI/charging pump discharge head, MPa
       condensate_flow:         { lag: 1.0, noise: 0, range: [0, 1.2] },   // condensate/main-feed flow (0 when the condensate pump is off)
       sg_level_wide:           { lag: 4.0, noise: 0, range: [0, 100] },   // whole-vessel wide-range level (slower than narrow; noise:0 per the rule above)
+      // Main-steam-line flow transmitter: TOTAL SG draw (turbine + dump + safeties).
+      // Same lag/range as `steam_flow` — it is the same class of instrument, just
+      // tapped where it also sees the dump. noise:0 per the rule above, and it is
+      // not optional: shipping this at noise 0.01 cost one extra PRNG draw PER STEP,
+      // which shifted every downstream instrument's noise from that step on and moved
+      // three marginal endpoints (run_behavior TR-12b's SG safety lift 9.31 → 9.24 MPa,
+      // run_campaign pwr_rod_auto's override, run_m5's second alarm). Physically it is
+      // also the right call: this transmitter measures the same steam as `steam_flow`,
+      // so giving it an independent jitter would double-count the same noise source.
+      sg_steam_flow:           { lag: 1.0, noise: 0, range: [0, 1.2] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },
@@ -595,6 +693,13 @@
                // P-9 permissive (≥50 % power) that gates the high-high SG (P-14) reactor
                // trip — read as a condition by the p14_reactor_trip trip.
                'above_p9',
+               // Turbine trip status — read by the P-9 reactor trip on turbine trip
+               // (see pwr_control.js). A STATUS passthrough, so it draws no PRNG
+               // number and cannot shift the instrument noise stream.
+               'turbine_tripped',
+               // Reactor/turbine load imbalance > 4 % of rated — the SG filling/draining
+               // annunciator (#211). Computed from INDICATED power in load_mode.js.
+               'sg_imbalance_active',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
                'afw_active', 'afw_pump_running', 'afw_block_open', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
                'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating',
@@ -623,6 +728,19 @@
     nis: {
       k_sr: 5.0e8,                 // cps per unit normalized power [tune]
       k_ir: 8.333e-3,              // amps per unit normalized power [tune]
+    },
+
+    // ------------------------------------------------- optional protective functions
+    // Switches for protective functions whose PRESENCE is a live design question, so the
+    // answer is a flag rather than a fork. See the block comment in pwr_control.js.
+    protection_options: {
+      // Reactor Trip on Turbine Trip above P-9 (~50 % power) — prototypical Westinghouse,
+      // absent here for historical reasons that did not survive audit (#216). Default OFF
+      // preserves today's behaviour; flip to true to measure or adopt it. Turning it ON
+      // will legitimately change TR-1 and TR-8 in the behaviour catalog and re-shape the
+      // `pwr_msiv` mission — under HR9 that is content following the plant, not a
+      // regression.
+      turbine_trip_reactor_trip: true,
     },
 
     initial_states: {

@@ -55,6 +55,15 @@
     hpi_discharge_pressure: 'hpi_discharge_pressure_mpa',
     condensate_flow: 'condensate_flow_normalized',
     sg_level_wide: 'sg_level_wide_pct',   // whole-vessel wide-range level (appended — PRNG order preserved)
+    // TOTAL steam leaving the SG — turbine + steam dump + safeties. `steam_flow`
+    // above is the GOVERNOR (turbine) flow only, which is the right signal for
+    // load-following consumers (the Tavg program, the rod channel) but wrong for
+    // feed regulation: with the turbine offline or tripped the dump carries the
+    // steam and `steam_flow` reads ~0 while the generator drains. A real plant
+    // measures this in the main steam line, upstream of where the dump taps off,
+    // so the transmitter sees everything leaving the SG. Appended — PRNG order
+    // preserved. See pwr_steam_generator.js `steam_out_total`.
+    sg_steam_flow: 'steam_out_total',
   };
 
   function PWRInstruments(config, seed) {

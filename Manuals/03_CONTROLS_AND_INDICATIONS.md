@@ -52,7 +52,7 @@ Describe every operator control and major indication on the PWR board, with purp
 
 **CAUTION:** Target SUR ≤ **1 DPM** and reactor period ≥ **30 s** on approach to criticality. With the fine-step drive (one step ≈ 1.5 ¢ near the crossing), single-step nudges at **Slow** keep the crossing well inside 1 DPM — big held withdrawals are what push the rate up.
 
-**Interlock:** Rod **withdrawal** is blocked when SUR ≥ **2.5 DPM** until SUR < **1.5 DPM**. Insertion always remains available.
+**Interlock:** Rod **withdrawal** is blocked when SUR ≥ **1.5 DPM** until SUR < **0.8 DPM**. Insertion always remains available.
 
 ### 3.2 Rod Speed
 
@@ -380,21 +380,55 @@ On a gauge, **red** at the two trip bands (≥90 %, ≤17 %), **amber** at the a
 
 **Highlight id:** `sg-steam`
 
-#### Feed Pump — Set % / Nudge
+#### STEAM FLOW / SG FEED RATE — the matched pair
+
+Two indications, deliberately on the **same gpm scale** and stacked in the same column so
+they can be compared at a glance. Together with SG level they are the *three elements* the
+feedwater controller regulates on — and the same three you use when you take it manual.
+
+| Indication | Reads | Why it is there |
+|------------|-------|-----------------|
+| **STEAM FLOW** | Total **main steam line** flow — turbine **plus** steam dump **plus** any lifted safety | What the generator is losing |
+| **SG FEED RATE** | Measured feedwater flow (not pump demand) | What you are putting back |
+| **SG LEVEL** | Narrow-range level | The **integral** of the difference — a *late* cue |
+
+**STEAM FLOW is main-steam-line flow, not turbine flow.** With the turbine tripped and the
+dump carrying the plant, the governor is shut but the generator is still boiling hard — this
+indication stays up, and feed must follow *it*. Watch the pair through a turbine trip: the
+governor goes to 0 % and the dump to ~98 %, and STEAM FLOW barely moves.
+
+**Reading the pair**
+
+- **Feed = steam** → level is steady, wherever it happens to be.
+- **Feed < steam** → level is falling. It will keep falling until you fix the *flow*.
+- **Feed > steam** → level is rising, likewise.
+
+Level tells you what already happened; the flow mismatch tells you what is about to.
+
+#### Feed Pump — Set gpm / ▲▼
 
 | Item | Detail |
 |------|--------|
-| **Purpose** | Command main feed pump speed (0–120 %) |
-| **Manual effect** | Takes three-element controller to **MANUAL** |
-| **Coupled mode** | When load-coupled, feed may track load — card may show “tracks load” |
-| **Nudge** | Fine ±% adjustments |
+| **Purpose** | Command main feed pump speed, shown as **0–1200 gpm** (= 0–120 % pump speed) |
+| **Manual effect** | Takes the three-element controller to **MANUAL** |
+| **▲▼ step** | ±20 gpm |
+| **Character** | A **fixed-demand** device. It holds the speed you set — it has no level feedback of its own |
 
-**Procedure — raise SG level manually**
+**WARNING:** in MANUAL the pump does exactly what you asked and nothing else. Set it to match
+steam flow and level holds indefinitely; set it wrong and level ramps to a trip in *whichever*
+direction the error points — high-high (≥90 %, feed isolation and turbine trip) or low-low
+(≤17 %, reactor trip). There is no value that is safe at all powers: matching flow at 100 %
+power is ~1000 gpm, at 6 % power it is ~50 gpm.
 
-1. Note controller status (AUTO three-element vs MANUAL).  
-2. Raise **Feed Pump** % (or ▲ nudge).  
-3. Wait for level lag; avoid overshoot.  
-4. Re-engage **Automate → Feed pump → SG level → AUTO**.  
+**Procedure — control SG level manually**
+
+1. Note controller status (three-element **AUTO** vs **MANUAL**).  
+2. Read **STEAM FLOW**. Set **SG FEED RATE** to match it — that stops the level *moving*.  
+3. Only then trim: a little above steam flow to raise level, a little below to lower it.  
+4. Return to the matched value as level approaches where you want it — level lags, so trim
+   back **before** you arrive, not after.  
+5. Re-engage **AUTO** (SG FEED RATE panel) when done; the channel captures current level as
+   its setpoint, so engage it at a level you are happy to hold.  
 
 #### MSIV — Open / Close
 
@@ -402,6 +436,7 @@ On a gauge, **red** at the two trip bands (≥90 %, ≤17 %), **amber** at the a
 |------|--------|
 | **Open** | Steam path SG → turbine / dump available |
 | **Close** | Isolates main steam; turbine trips; SG bottles toward safeties; feed loss path can drain SG toward low-level trip |
+| **Close — as a casualty response** | Terminates a steam line break **downstream** of the valve (PWR-E19): the blowdown stops and the generator re-pressurizes. Does nothing for a break **upstream**, between generator and valve — that one has no isolation on this single-generator plant |
 | **Close arming** | Two-press CONFIRM? |
 
 **WARNING:** Closing MSIV at power is a major transient. Expect turbine trip and rising SG pressure.
@@ -645,9 +680,12 @@ See **PWR-T10** / **T11**. Campaign: `pwr_rod_auto`.
 |--------|--------------------|
 | Three-element **AUTO** | Controller (normal) |
 | Load coupling | Feed tracks load when coupled |
-| **MANUAL** feed % | **You** — any Set % / nudge |
+| **MANUAL** feed gpm | **You** — any Set gpm / ▲▼ |
 
-Leaving feed MANUAL while reducing power floods the SG (campaign bonus `pwr_sg_flood`). Re-engage AUTO when done — **PWR-N12**.
+Leaving feed MANUAL while reducing power floods the SG (campaign bonus `pwr_sg_flood`): the
+pump holds the speed you set while steam flow falls away beneath it, so the mismatch grows
+even though you touched nothing. **STEAM FLOW is the indication that shows this happening** —
+level will not admit it for several minutes. Re-engage AUTO when done — **PWR-N12**.
 
 ### 17.4 ESF AUTO / MAN arms (Mode 1)
 

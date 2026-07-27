@@ -418,7 +418,13 @@ T.push(test('Integration — Path 2: start_follow runs a real procedure end-to-e
   var blocked = s.handleCommand({ action: 'open_porv' });
   ck('off-script command blocked through the full stack (HR5)', JSON.stringify(blocked), blocked && blocked.type === 'blocked', 'blocked');
   ck('blocked command did not reach the engine', s.engine.getControlState().porv_demand, s.engine.getControlState().porv_demand === 'closed', 'closed');
-  var ok = s.handleCommand({ action: 'set_steam_demand', mwe: 600 });
+  // 60 MWe = the value pwr_lower_power step 1 actually authors (60 % of this plant's
+  // 100 MWe rating). This read 600 — a leftover from the ~1000 MWe plant, i.e. a 6x
+  // ask on the rescaled unit. It "worked" only because the old feed/steam clip
+  // asymmetry (#130) flooded the SG on an above-rated ask and scrammed the plant,
+  // which is what actually drove power under the step's 98 % acceptance. With that
+  // fixed, the test has to lower power the way the procedure says to.
+  var ok = s.handleCommand({ action: 'set_steam_demand', mwe: 60 });
   ck('the step\'s own command passes the gate', JSON.stringify(ok), ok == null, 'null (accepted)');
   sn = s.advanceCycles(2);
   ck('cmd-only step auto-advances once its command is issued', sn.instructor.follow.step_index, sn.instructor.follow.step_index === 1, '1');
