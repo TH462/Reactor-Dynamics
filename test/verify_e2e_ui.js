@@ -34,7 +34,7 @@ var REQUIRED_BOARD_LABELS = {
     'Charging Pump (CVCS)', 'CVCS Inventory Control', 'Letdown Orifices (CVCS)', 'Boron',
     'Pressurizer Heaters (PZR)', 'Pressurizer Spray (PZR)', 'Pressure SP',
     'Relief Valve (PORV)', 'PORV Block Valve',
-    'Reactor Coolant Pumps (RCP)', 'Decay-Heat Removal (DHR)',
+    'Reactor Coolant Pumps (RCP)', 'Residual Heat Removal (RHR)',
     'HPI', 'AFW', 'Feed Pumps', 'MSIV',
     'Steam Dump', 'Dump SP', 'Turbine Load',
     'Control Bank', 'Shutdown Bank', 'SCRAM',

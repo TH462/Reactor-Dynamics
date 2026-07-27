@@ -198,7 +198,7 @@ This is the deepest **fully simulated** shutdown state.
 |------|--------|-----------------|
 | C1 | Borate to cold-shutdown margin (commercial) | Mode 3, Hot Standby |
 | C2 | Cooldown and depressurize within limits using steam dump / AFW / secondary | Mode 4, Hot Shutdown |
-| C3 | Place **RHR/DHR** in service when pressure/temperature permit | Mode 4, Hot Shutdown |
+| C3 | Place **RHR** in service when pressure/temperature permit | Mode 4, Hot Shutdown |
 | C4 | Continue to cold conditions (Tavg ≤ ~93 °C class) | **Mode 5, Cold Shutdown** |
 | C5 | Secure secondary as appropriate; solid plant / cold solid per commercial practice | Mode 5, Cold Shutdown |
 

@@ -133,7 +133,7 @@ Optional narrative procedures (same content, `narrative: true` so harness skips)
 
 1. **mode3_hold** — Decay heat, heat sink after Mode 1→3 shutdown.  
 2. **cooldown_mode4** — Borate / cooldown / depressurize narrative → Mode 4.  
-3. **rhr** — RHR/DHR when permitted (optional soft action).  
+3. **rhr** — RHR when permitted (optional soft action).  
 4. **arrive_mode5** — Mode 5, Cold Shutdown complete; Mode 6 out of scope.  
 5. **level_complete** — Plant “cold”; next path is return to Mode 1.
 

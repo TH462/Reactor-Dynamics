@@ -25,6 +25,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   listening, and that gap is the lesson.
   *Save migration:* a save carrying the old encoding keeps its failure instead of silently
   healing on load.
+- **The residual-heat-removal system is called RHR everywhere** (issue #145, owner ruling). It
+  was named both ways: the tab said RHR, the control label said "Decay-Heat Removal (DHR)", and
+  the glossary hedged with "DHR / RHR". The control label, the manuals and the glossary now all
+  read **RHR**. The `set_dhr` *command* still works — old saves depend on it — and is documented
+  as a deprecated alias.
 - **Fifteen instruments printed their raw internal id as their name in the reference
   manual** (issue #145). `startup_rate`, `charging_flow`, `sg_steam_flow`, `sg_level_wide`,
   `hpi_flow` and ten more fell through the generator's display-name table and were listed as

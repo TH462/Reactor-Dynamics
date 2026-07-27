@@ -71,7 +71,7 @@ FISSION HEAT (core)
 | **CVCS** | Charging, letdown, boron adjust, inventory make-up |
 | **HPI/LPI** | Merged emergency injection (high-head trickle, high volume at low pressure) |
 | **Accumulators** | Passive injection when primary pressure falls low enough |
-| **RHR / DHR** | Residual / decay heat removal when cool and depressurized |
+| **RHR** | Residual heat removal when cool and depressurized |
 
 **Simplification:** Single lumped primary loop (one representative RCP/SG), uniform primary pressure (no leg ΔP model).
 

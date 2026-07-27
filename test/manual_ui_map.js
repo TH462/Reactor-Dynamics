@@ -6,7 +6,7 @@ var VIEW_CONTROLS = {
   pwr: {
     primary: ['Control Bank', 'Rod Speed', 'Shutdown Bank', 'Boron (Reactivity) — CVCS', 'Charging Pump (CVCS)', 'Letdown Orifices (CVCS)',
       'CVCS Inventory Control', 'Pressurizer Heaters (PZR)', 'Pressurizer Spray (PZR)', 'Reactor Coolant Pumps (RCP)',
-      'Relief Valve (PORV)', 'PORV Block Valve', 'Decay-Heat Removal (DHR)', 'SR detector'],
+      'Relief Valve (PORV)', 'PORV Block Valve', 'Residual Heat Removal (RHR)', 'SR detector'],
     secondary: ['Feed Pumps', 'AFW', 'Feed Reg', 'Feed Pump', 'Steam Dump', 'MSIV', 'Turbine Load', 'Main Breaker'],
     scram: 'SCRAM',
   },
