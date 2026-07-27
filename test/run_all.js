@@ -82,7 +82,13 @@ var BASELINES = {
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   'run_m5.js':             { code: 0, score: '19/19 79passed' },
-  'run_m6.js':             { code: 0, score: '16/16 94passed' },
+  // 16 -> 17 suites, 94 -> 102 checks 2026-07-27 (#142): a new save/restore test for
+  // the instructor's operator-action memory and follow acc streak, both of which
+  // saveState dropped. Verified against the PRE-fix instructor, where 5 of its 8
+  // checks fail — including the softlock itself (an `operator_action` beat could
+  // never be credited after a restore). Its legacy-save check passes on both
+  // versions, which is the point: old saves keep their old behaviour.
+  'run_m6.js':             { code: 0, score: '17/17 102passed' },
   'run_m6ph.js':           { code: 0, score: '8/8 18passed' },
   'run_m7.js':             { code: 0, score: null },   // prints "M7 OK", no tally
 
@@ -94,7 +100,13 @@ var BASELINES = {
   // and railroaded every run to the bottled ending in 14 s, so the player had no decision
   // at all. It is now the post-trip EOP question: decay heat is on the code safeties, do
   // you restore the dump path? Check count 2931 -> 2930: one assertion merged, none lost.
-  'run_campaign.js':       { code: 0, score: '51/51 2930passed' },
+  // Check count 2930 -> 3024 2026-07-27 (#189), suites unchanged at 51: the four static
+  // passes now walk RD.SCENARIOS directly instead of the campaign tree, so a scenario
+  // that is unwired (zero validation before) or bonus-only (two of the four passes
+  // skipped it) is graded like any other. +94 checks, none red. Measured against the
+  // pre-fix runner: a dangling goto in an unwired scenario and a typo'd trigger type on
+  // a `gate.until` both passed silently; both now fail.
+  'run_campaign.js':       { code: 0, score: '51/51 3024passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they

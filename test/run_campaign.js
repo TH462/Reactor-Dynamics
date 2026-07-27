@@ -118,6 +118,23 @@ var TRIGGERS = ['time', 'delay', 'instrument', 'true_state', 'operator_action', 
 var ENGINE_KEYS = { pwr: ['pwr'], rbmk: ['rbmk_pre', 'rbmk_post'], bwr: ['bwr'] };
 var EXPECTED_MISSIONS = { pwr: 34, rbmk: 9, bwr: 8 };
 
+// The static passes below walk RD.SCENARIOS DIRECTLY rather than the campaign
+// tree (#189). Walking the tree made validation *campaign-gated*: a scenario
+// authored but not yet wired into an act received ZERO reference validation and
+// could ship with a dangling goto — the permanent-softlock class #152 was about
+// — with nothing complaining until a player reached it. Two of these passes were
+// narrower still, walking `acts` only, so a bonus mission was skipped as well
+// (measured: `pwr_sg_flood` is bonus-only, and got no beat-vocabulary, register
+// or level_complete check at all). Campaign coverage is 100 % today, so both
+// holes are latent rather than live — which is the reason to close them now, at
+// zero cost, instead of after someone authors a scenario ahead of wiring it.
+// A scenario carries its own plant (`plant_id`), so nothing needed the campaign
+// id except as a proxy for it.
+function allScenarios() {
+  return Object.keys(RD.SCENARIOS).map(function (id) { return RD.SCENARIOS[id]; })
+    .filter(function (sc) { return sc && sc.id && sc.plant_id; });
+}
+
 test('campaign structure — missions resolve, ids unique (all plants)', function (ck) {
   Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
     var camp = RD.CAMPAIGNS[cid];
@@ -148,12 +165,8 @@ test('campaign structure — missions resolve, ids unique (all plants)', functio
 });
 
 test('campaign scenarios — beat vocabulary, registers, endpoints', function (ck) {
-  var scenarioIds = [];
-  Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
-    RD.CAMPAIGNS[cid].acts.forEach(function (a) { a.missions.forEach(function (m) { if (m.kind === 'scenario') scenarioIds.push(m.id); }); });
-  });
-  scenarioIds.forEach(function (id) {
-    var sc = RD.SCENARIOS[id]; if (!sc) return;
+  allScenarios().forEach(function (sc) {
+    var id = sc.id;
     var beatIds = {};
     var hasLc = false;
     (sc.beats || []).forEach(function (b) {
@@ -215,27 +228,21 @@ var PD_LABELS = {
     'Standby Liquid Control (SLC)', 'Steam Dump', 'Turbine Load', 'Feedwater', 'SCRAM'],
 };
 test('campaign highlights — every named control/gauge resolves on the board', function (ck) {
-  Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
-    var missions = [];
-    RD.CAMPAIGNS[cid].acts.forEach(function (a) { a.missions.forEach(function (m) { missions.push(m); }); });
-    (RD.CAMPAIGNS[cid].bonus || []).forEach(function (m) { missions.push(m); });
-    missions.forEach(function (m) {
-      if (m.kind !== 'scenario') return;
-      var sc = RD.SCENARIOS[m.id]; if (!sc) return;
-      (sc.beats || []).forEach(function (b) {
-        if (!b.highlight) return;
-        if (b.highlight.control_label) {
-          var pool = cid === 'pwr' ? RD.PwrSynoptic.highlightLabels : (PD_LABELS[cid] || []);
-          var known = pool.indexOf(b.highlight.control_label) !== -1;
-          ck(m.id + '.' + b.id + ' control highlight resolves (' + b.highlight.control_label + ')',
-            b.highlight.control_label, known, cid === 'pwr' ? 'a SYN_CONTROL_MAP label' : 'a PD view-bar label');
-        }
-        if (b.highlight.instrument_id) {
-          var ids = GAUGE_IDS[cid] || [];
-          ck(m.id + '.' + b.id + ' gauge highlight resolves (' + b.highlight.instrument_id + ')',
-            b.highlight.instrument_id, ids.indexOf(b.highlight.instrument_id) !== -1, ids.join('|'));
-        }
-      });
+  allScenarios().forEach(function (sc) {
+    var pid = sc.plant_id;
+    (sc.beats || []).forEach(function (b) {
+      if (!b.highlight) return;
+      if (b.highlight.control_label) {
+        var pool = pid === 'pwr' ? RD.PwrSynoptic.highlightLabels : (PD_LABELS[pid] || []);
+        var known = pool.indexOf(b.highlight.control_label) !== -1;
+        ck(sc.id + '.' + b.id + ' control highlight resolves (' + b.highlight.control_label + ')',
+          b.highlight.control_label, known, pid === 'pwr' ? 'a SYN_CONTROL_MAP label' : 'a PD view-bar label');
+      }
+      if (b.highlight.instrument_id) {
+        var ids = GAUGE_IDS[pid] || [];
+        ck(sc.id + '.' + b.id + ' gauge highlight resolves (' + b.highlight.instrument_id + ')',
+          b.highlight.instrument_id, ids.indexOf(b.highlight.instrument_id) !== -1, ids.join('|'));
+      }
     });
   });
 });
@@ -249,17 +256,13 @@ function plantChannelIds(plant) {
   return (cfg.channels || []).map(function (d) { return d.id; });
 }
 test('campaign scenarios — auto_channels resolve to automation channels', function (ck) {
-  Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
-    var chanIds = plantChannelIds(cid);
-    RD.CAMPAIGNS[cid].acts.forEach(function (a) {
-      a.missions.forEach(function (m) {
-        if (m.kind !== 'scenario') return;
-        var sc = RD.SCENARIOS[m.id];
-        if (!sc || !sc.auto_channels) return;
-        sc.auto_channels.forEach(function (id) {
-          ck(m.id + ' auto_channels: ' + id, id, chanIds.indexOf(id) !== -1, 'a ' + cid + ' channel (' + chanIds.join('|') + ')');
-        });
-      });
+  var chanCache = {};
+  allScenarios().forEach(function (sc) {
+    if (!sc.auto_channels) return;
+    var pid = sc.plant_id;
+    var chanIds = chanCache[pid] || (chanCache[pid] = plantChannelIds(pid));
+    sc.auto_channels.forEach(function (id) {
+      ck(sc.id + ' auto_channels: ' + id, id, chanIds.indexOf(id) !== -1, 'a ' + pid + ' channel (' + chanIds.join('|') + ')');
     });
   });
 });
@@ -315,77 +318,83 @@ function commandVocab() {
 }
 test('campaign scenarios — every reference resolves (goto, instruments, alarms, commands, gates)', function (ck) {
   var CMDS = commandVocab();
-  Object.keys(RD.CAMPAIGNS).forEach(function (cid) {
-    var vocab = plantVocab(cid);
-    var missions = [];
-    RD.CAMPAIGNS[cid].acts.forEach(function (a) { a.missions.forEach(function (m) { missions.push(m); }); });
-    (RD.CAMPAIGNS[cid].bonus || []).forEach(function (m) { missions.push(m); });
-    missions.forEach(function (m) {
-      if (m.kind !== 'scenario') return;
-      var sc = RD.SCENARIOS[m.id]; if (!sc) return;
-      var beatIds = {};
-      (sc.beats || []).forEach(function (b) { beatIds[b.id] = true; });
-      function checkTrigger(tr, where) {
-        if (!tr) return;
-        switch (tr.type) {
-          case 'time': case 'delay':
-            ck(where + ' has numeric value', String(tr.value), typeof tr.value === 'number', 'number'); break;
-          case 'inaction':
-            ck(where + ' has numeric window', String(tr.window), typeof tr.window === 'number', 'number'); break;
-          case 'instrument':
-            ck(where + ' instrument resolves (' + tr.instrument + ')', tr.instrument,
-              vocab.instruments[tr.instrument] === true, 'a ' + cid + ' instrument');
-            ck(where + ' direction legal (' + tr.direction + ')', tr.direction,
-              DIRECTIONS.indexOf(tr.direction) !== -1, DIRECTIONS.join('|'));
-            break;
-          case 'true_state':
-            ck(where + ' field resolves (' + tr.field + ')', tr.field,
-              vocab.true_state[tr.field] === true, 'a ' + cid + ' true_state field');
-            ck(where + ' direction legal (' + tr.direction + ')', tr.direction,
-              DIRECTIONS.indexOf(tr.direction) !== -1, DIRECTIONS.join('|'));
-            break;
-          case 'alarm':
-            ck(where + ' alarm resolves (' + tr.alarm_id + ')', tr.alarm_id,
-              vocab.alarm_ids.indexOf(tr.alarm_id) !== -1, 'a ' + cid + ' alarm id');
-            break;
-          case 'operator_action':
-            ck(where + ' command resolves (' + tr.command + ')', tr.command,
-              CMDS[tr.command] === true, 'a known command');
-            break;
-          case 'all': case 'any':
-            ck(where + ' has sub-triggers', (tr.triggers || []).length, (tr.triggers || []).length > 0, '≥ 1');
-            (tr.triggers || []).forEach(function (c2, i2) { checkTrigger(c2, where + '.sub[' + i2 + ']'); });
-            break;
-          // scram / manual need no fields
-        }
+  var vocabCache = {};
+  allScenarios().forEach(function (sc) {
+    var cid = sc.plant_id;
+    var vocab = vocabCache[cid] || (vocabCache[cid] = plantVocab(cid));
+    var beatIds = {};
+    (sc.beats || []).forEach(function (b) { beatIds[b.id] = true; });
+    function checkTrigger(tr, where) {
+      if (!tr) return;
+      switch (tr.type) {
+        case 'time': case 'delay':
+          ck(where + ' has numeric value', String(tr.value), typeof tr.value === 'number', 'number'); break;
+        case 'inaction':
+          ck(where + ' has numeric window', String(tr.window), typeof tr.window === 'number', 'number'); break;
+        case 'instrument':
+          ck(where + ' instrument resolves (' + tr.instrument + ')', tr.instrument,
+            vocab.instruments[tr.instrument] === true, 'a ' + cid + ' instrument');
+          ck(where + ' direction legal (' + tr.direction + ')', tr.direction,
+            DIRECTIONS.indexOf(tr.direction) !== -1, DIRECTIONS.join('|'));
+          break;
+        case 'true_state':
+          ck(where + ' field resolves (' + tr.field + ')', tr.field,
+            vocab.true_state[tr.field] === true, 'a ' + cid + ' true_state field');
+          ck(where + ' direction legal (' + tr.direction + ')', tr.direction,
+            DIRECTIONS.indexOf(tr.direction) !== -1, DIRECTIONS.join('|'));
+          break;
+        case 'alarm':
+          ck(where + ' alarm resolves (' + tr.alarm_id + ')', tr.alarm_id,
+            vocab.alarm_ids.indexOf(tr.alarm_id) !== -1, 'a ' + cid + ' alarm id');
+          break;
+        case 'operator_action':
+          ck(where + ' command resolves (' + tr.command + ')', tr.command,
+            CMDS[tr.command] === true, 'a known command');
+          break;
+        case 'all': case 'any':
+          ck(where + ' has sub-triggers', (tr.triggers || []).length, (tr.triggers || []).length > 0, '≥ 1');
+          (tr.triggers || []).forEach(function (c2, i2) { checkTrigger(c2, where + '.sub[' + i2 + ']'); });
+          break;
+        // 'scram' and 'manual' are legal and carry no fields, so they fall through
+        // to the default arm — which asserts only that the TYPE is one the
+        // instructor knows (#189). Without it the switch silently accepted a
+        // typo'd type such as 'instrment': _evalTrigger returns falsy for an
+        // unknown type, so that beat never fires — the same permanent softlock
+        // #152 was about, reached by misspelling instead of a bad goto. The
+        // legality pass above catches typos on `b.trigger` and branch triggers,
+        // but it never descends into `gate.until` or `all`/`any` sub-triggers;
+        // this walk does, so the default arm is what makes the check complete.
+        default:
+          ck(where + ' trigger type known (' + tr.type + ')', String(tr.type),
+            TRIGGERS.indexOf(tr.type) !== -1, TRIGGERS.join('|'));
       }
-      (sc.beats || []).forEach(function (b) {
-        var at = m.id + '.' + b.id;
-        checkTrigger(b.trigger, at + ' trigger');
-        (b.branches || []).forEach(function (br, i) {
-          checkTrigger(br.trigger, at + ' branch[' + i + ']');
-          ck(at + ' branch[' + i + '] goto resolves (' + br.goto + ')', br.goto,
-            beatIds[br.goto] === true, 'an existing beat id');
-        });
-        ck(at + ' advance vocabulary (' + b.advance + ')', String(b.advance),
-          ADVANCE_VOCAB.indexOf(b.advance) !== -1, 'auto|end|wait_for_trigger|unset');
-        if (b.gate) {
-          if (b.gate.message != null) {
-            var gm = b.gate.message;
-            var gmOk = typeof gm === 'object' && !!gm.learning && !!gm.industry;
-            ck(at + ' gate.message has both registers (strings render as NOTHING)', gmOk ? 'ok' : typeof gm,
-              gmOk, '{learning, industry}');
-          }
-          (b.gate.block_actions || []).concat(b.gate.allow_actions || []).forEach(function (a2) {
-            ck(at + ' gate action resolves (' + a2 + ')', a2, CMDS[a2] === true, 'a known command');
-          });
-          if (b.gate.until) checkTrigger(b.gate.until, at + ' gate.until');
+    }
+    (sc.beats || []).forEach(function (b) {
+      var at = sc.id + '.' + b.id;
+      checkTrigger(b.trigger, at + ' trigger');
+      (b.branches || []).forEach(function (br, i) {
+        checkTrigger(br.trigger, at + ' branch[' + i + ']');
+        ck(at + ' branch[' + i + '] goto resolves (' + br.goto + ')', br.goto,
+          beatIds[br.goto] === true, 'an existing beat id');
+      });
+      ck(at + ' advance vocabulary (' + b.advance + ')', String(b.advance),
+        ADVANCE_VOCAB.indexOf(b.advance) !== -1, 'auto|end|wait_for_trigger|unset');
+      if (b.gate) {
+        if (b.gate.message != null) {
+          var gm = b.gate.message;
+          var gmOk = typeof gm === 'object' && !!gm.learning && !!gm.industry;
+          ck(at + ' gate.message has both registers (strings render as NOTHING)', gmOk ? 'ok' : typeof gm,
+            gmOk, '{learning, industry}');
         }
-        (b.inject_failures || []).forEach(function (f2, fi) {
-          var fid = typeof f2 === 'string' ? f2 : (f2 && f2.failure_id);
-          ck(at + ' inject_failures[' + fi + '] resolves (' + fid + ')', fid,
-            vocab.failure_ids.indexOf(fid) !== -1, 'a ' + cid + ' failure id');
+        (b.gate.block_actions || []).concat(b.gate.allow_actions || []).forEach(function (a2) {
+          ck(at + ' gate action resolves (' + a2 + ')', a2, CMDS[a2] === true, 'a known command');
         });
+        if (b.gate.until) checkTrigger(b.gate.until, at + ' gate.until');
+      }
+      (b.inject_failures || []).forEach(function (f2, fi) {
+        var fid = typeof f2 === 'string' ? f2 : (f2 && f2.failure_id);
+        ck(at + ' inject_failures[' + fi + '] resolves (' + fid + ')', fid,
+          vocab.failure_ids.indexOf(fid) !== -1, 'a ' + cid + ' failure id');
       });
     });
   });

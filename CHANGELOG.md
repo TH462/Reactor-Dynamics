@@ -13,7 +13,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+- **Saving mid-scenario could strand you on a step you had already done** (issue #142). Some
+  scenario beats wait for you to *do* something — open a valve, switch load mode. The record
+  of having done it was not written into the save, so if you saved (or hit an automatic
+  checkpoint, or rewound) between the action and the beat reacting to it, the instructor came
+  back believing you had done nothing. On a one-shot action there is nothing to repeat, and
+  the scenario had no way forward. The same save also reset how far a walkthrough step had
+  progressed toward its acceptance check, quietly costing you up to five evaluations of
+  credit. Both now survive a save. Older save files still load and behave exactly as they did.
 
 ## [Alpha 1.7.1] — 2026-07-27
 

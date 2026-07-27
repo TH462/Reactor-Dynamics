@@ -458,6 +458,14 @@
       // the loop" — while pvDisplay:false keeps it off the Automate tab.
       pv: function (s) { return s.instruments.boron_analyzer; }, pvDisplay: false,
       sp: { capture: function (s) { return s.instruments.boron_analyzer; }, min: 0, max: 2500, unit: 'ppm', dp: 0, step: 10 },
+      // The dose rides charging flow, so with the charging pump stopped the
+      // totalizer pauses — mirroring the engine's own injection gate. The kernel
+      // asks the plant this rather than reading the CVCS field itself (HR3).
+      // The `s.control_state &&` guard is carried over verbatim from the kernel code
+      // this replaced — a missing control_state read as "not paused", and moving the
+      // check into the plant must not quietly turn that into a throw.
+      pausedWhen: function (s) { return !!(s.control_state && s.control_state.charging_pump_running === false); },
+      pausedNote: 'idle — charging pump OFF',
       // rate: real-plant scale — max RCS makeup (~150 gpm into ~90 000 gal) changes
       // concentration ~1.5 ppm/min ≈ 0.025 ppm/s; 0.05 is deliberately generous so a
       // dose lands in game-time (~0.5 pcm/s of reactivity at 10 pcm/ppm worth, gentle

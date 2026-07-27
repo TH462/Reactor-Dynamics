@@ -1004,11 +1004,16 @@
     if (pv != null && isFinite(pv)) c.pvNow = pv; else pv = null;
     var sp = c.sp;
     if (sp == null) return;
-    var pumpOff = ctx.control_state && ctx.control_state.charging_pump_running === false;
+    // pausedWhen: the plant says when its metering path is unavailable, the same
+    // way `busyNote` supplies the bang channel's status suffix (HR3 — no plant
+    // fields in the kernel). This read `control_state.charging_pump_running`
+    // directly, which is a PWR CVCS detail the generic conc machinery has no
+    // business knowing.
+    var paused = def.pausedWhen ? !!def.pausedWhen(ctx) : false;
     // Totalizer bookkeeping FIRST: the rate commanded at the previous evaluation
-    // has been injecting for `step` sim-seconds (the engine applies boron_adjust
-    // whenever the charging pump runs — the same gate as pumpOff here).
-    if (!pumpOff && c.concBasis != null) {
+    // has been injecting for `step` sim-seconds (the engine applies the metered
+    // rate only while the path is available — the same gate as `paused` here).
+    if (!paused && c.concBasis != null) {
       if (c.concMode === 'borate') c.concBasis += def.rate * step;
       else if (c.concMode === 'dilute') c.concBasis -= def.rate * step;
     }
@@ -1042,9 +1047,10 @@
       }
     }
     var remaining = sp - c.concBasis;   // + → borate; the totalizer stop is |remaining| ≈ 0
-    if (pumpOff) {
+    if (paused) {
       if (c.concMode !== 'hold') { this._sendInternal({ action: 'set_boron_adjust', rate: 0 }); c.concMode = 'hold'; }
-      c.note = 'idle — charging pump OFF' + (Math.abs(remaining) > 0.1 ? ' (dose paused, ' + Math.abs(remaining).toFixed(1) + ' ppm to go)' : '');
+      c.note = (def.pausedNote || 'idle — paused') +
+        (Math.abs(remaining) > 0.1 ? ' (dose paused, ' + Math.abs(remaining).toFixed(1) + ' ' + (def.sp && def.sp.unit || '') + ' to go)' : '');
       return;
     }
     var want = remaining > 0.05 ? 'borate' : remaining < -0.05 ? 'dilute' : 'hold';

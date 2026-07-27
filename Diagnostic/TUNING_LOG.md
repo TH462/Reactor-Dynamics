@@ -20,7 +20,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Current status (2026-07-26f)
+## Current status (2026-07-27b)
 
 **PWR is the focus plant and is in good shape** — all PWR engine, behavior, and ops gates
 green. The open backlog is dominated by **RBMK and BWR operability tuning** (documented,
@@ -39,10 +39,10 @@ staleness** items.
 | `run_bwr` | **15/15** | |
 | `run_behavior` | **35 / 0 xfail / 0 fail** | PWR behavior catalog — coverage-todo list **empty** (#131); +TR-12b MSIV break isolation (#199) |
 | `run_ops` | **57/68** | 2026-07-26d: harness rewired to the SHIPPED lineup (#209), so two PWR probes that silently assumed load-follow now command it; 11 open = RBMK/BWR + 1 deliberate red (see backlog) |
-| `run_m4`..`run_m7` | **19** / **19** / 16 / OK | stack layers — all green. m5's rewind red RESOLVED 2026-07-25 (#151): `lastInstruments` was not rebuilt on restore, so every blockable trip reported `asserted=false` |
+| `run_m4`..`run_m7` | **19** / **19** / **17** / OK | stack layers — all green. m6 16 → 17 on 2026-07-27b (#142), a save/restore test for the instructor's operator-action memory. m5's rewind red RESOLVED 2026-07-25 (#151): `lastInstruments` was not rebuilt on restore, so every blockable trip reported `asserted=false` |
 | `run_autoctl` | **20/20** | |
 | `run_scenarios` | **3/3** | flagships |
-| `run_campaign` | **51/51** (2932) | |
+| `run_campaign` | **51/51** (3024) | 2930 → 3024 on 2026-07-27b (#189) — the static passes now walk `RD.SCENARIOS` directly, so unwired and bonus-only scenarios are validated too |
 | `run_procedures` | **22/22 (101/101)** | engine-direct — see the layer table in CLAUDE.md before trusting it for anything M4 decides |
 | `run_meltdown` | **8/8** | PWR core-damage paths — all resolved; MD-6 fixed 2026-07-24 (time-dependent dryout depletion, §3.4) |
 | `run_checklist` | **24/24** | |
@@ -108,6 +108,87 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-27b — Three small issues (#189, #142, #156), and what measuring each one changed about it  ✅🔬
+
+A batch of three "easy" items. All three turned out to be filed slightly wrong, and in each
+case the *measurement* is the part worth keeping — the code change is small.
+
+**#189 — the campaign validator's two latent holes.** Filed as (1) validation is
+campaign-gated so an unwired scenario gets none, and (2) `checkTrigger` has no `default:` so a
+typo'd trigger type passes silently.
+
+- **Hole 1 confirmed, and it was wider than filed.** Four static passes walk the campaign
+  tree; *two of them* (`beat vocabulary, registers, endpoints` and `auto_channels`) walked
+  `acts` only, so a **bonus** mission was skipped as well. Measured: 36 scenarios, 0 unwired,
+  but **`pwr_sg_flood` is bonus-only** and was getting no beat-id-uniqueness, register or
+  `level_complete` check at all. All four passes now walk `RD.SCENARIOS` directly. Nothing
+  needed the campaign id — a scenario carries its own `plant_id`.
+- **Hole 2 was half wrong.** The issue said a typo'd type "passes validation silently". It
+  does not, for `b.trigger` and branch triggers: the legality pass at `run_campaign.js:164`
+  already checks `TRIGGERS.indexOf(tr.type)`. What it never does is **descend into
+  `gate.until` or `all`/`any` sub-triggers**, and the reference pass that *does* descend had
+  no `default:` arm. So the hole is real but lives in a different place than filed. The
+  default arm asserts membership in the existing `TRIGGERS` vocabulary rather than
+  `false` — `scram` and `manual` are legal and field-less, and fall through to it.
+- **Proved by injection, old vs new** (HR10 — the whole point is that these checks were
+  vacuous, so "it still passes" proves nothing). Ran the **real** Part 1 code, sliced at the
+  Part 2 marker, against deliberately corrupted scenarios:
+
+  | injected defect | pre-fix runner | post-fix runner |
+  |---|---|---|
+  | dangling `goto` in an unwired scenario | **passes — missed entirely** | caught |
+  | typo'd type on a `gate.until` | **passes — missed entirely** | caught |
+  | typo'd type in an `all`/`any` sub-trigger | caught (legality pass) | caught twice |
+  | dup beat id + missing register on a bonus-only scenario | **both missed** | both caught |
+
+  Clean: **51/51, 2930 → 3024 checks**, no reds. The +94 is the bonus scenario plus the new
+  default arm.
+
+**#142 — instructor save/restore drops progress.** Confirmed at `instructor_layer.js:880,926`
+(`accStreak: 0` hardcoded on both restore paths) and `_actionsSinceBeat` absent from
+`saveState()` entirely.
+
+- **The consequence is a softlock, not a cosmetic reset**, and that is worth naming because
+  the issue filed it as "progress tracking resets". `_actionsSinceBeat` is the *only* record
+  that an operator command descended since the last beat fired, which is exactly what an
+  `operator_action` trigger fires on. Perform the action → save → restore, and the beat is
+  still armed with nothing left to satisfy it. On a one-shot action there is no again. Three
+  authored beats trigger this way (`pwr_feedback.stabilized`, `pwr_load_follow.complete`,
+  `pwr_protection.stabilizing`), and the save path is not just the save button — auto
+  checkpoints and **rewind** go through it.
+- `accStreak` is the milder half: up to `ACC_STABLE_N` = 5 evaluations of credit lost.
+- Both now round-trip; absent fields default to the old values, so **pre-#142 saves load and
+  behave exactly as before** — asserted, not assumed.
+- **Gated, and the gate was validated against the old code.** New test in `run_m6`
+  (16/16 94 → **17/17 102**). Against the pre-fix instructor **5 of its 8 checks fail**,
+  including the softlock itself; the legacy-save check passes on **both** versions, which is
+  what makes it a backward-compatibility assertion rather than decoration.
+
+**#156 — kernel generality leaks. Both halves were stale; one is fixed, one should not be.**
+
+- **The `_stepBang` half is already fixed.** `control_kernel.js:961-985` has no plant field,
+  and carries the comment *"busyNote: optional per-plant status suffix (HR3 — no plant fields
+  here)"*. The audit item dates from 2026-07-16.
+- **The leak moved.** `charging_pump_running` is now in **`_stepConc`** (`:1007`), introduced
+  with the boron batch-dose work — i.e. the same HR3 leak was re-created in new code after
+  the old one was cleaned. Fixed the same way the kernel already solved it: a plant-supplied
+  `pausedWhen` predicate + `pausedNote`, mirroring `busyNote`. Behaviour is bit-identical —
+  `pausedNote` reproduces the old string and the unit comes from `def.sp.unit` (`'ppm'`).
+  The kernel's `control_state &&` null guard was carried *into the hook*, deliberately: moving
+  a guarded read into plant code is a silent way to turn a null check into a throw.
+- **The `clip()` half is not HR3 and I did not do it.** HR3 is *"plant-specific behavior is
+  data, not hardcoded logic"*; four identical one-line clamps in four IIFEs is DRY, not HR3,
+  and the issue conflates them. Centralizing it is a net loss: `control_kernel.js` loads
+  **after** the three plant control modules, so a shared `RD.*.clip` would resolve only at
+  call time — a real load-order coupling bought for a 60-character pure function that cannot
+  meaningfully drift. Recommend closing that half as won't-fix, or doing it properly inside a
+  shared-utils file that loads first, if the owner wants it.
+- **Still open, and larger than this issue:** the `conc` channel kind is plant-coupled well
+  beyond the pump gate — it names `set_boron_adjust`, `take_boron_sample` and
+  `boron_sample_seq` directly. The kernel itself calls this *"a conc-kind plant coupling"*
+  at `:1024-1025`, so it reads as accepted rather than drift, but it is the same class and
+  nothing records the decision.
 
 ### 2026-07-27 — backlog sweep (8 issues closed) + #219: the dump reference was the bug, not the latch  ✅🔬
 
