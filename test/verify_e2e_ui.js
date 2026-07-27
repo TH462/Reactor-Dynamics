@@ -239,10 +239,18 @@ async function testSteamFeedPair(page) {
   log.push('turbine tripped: steam=' + tripped.steam + ' feed=' + tripped.feed +
            ' gov=' + tripped.gov + ' dump=' + tripped.dump);
   if (!(num(tripped.gov) < 20)) throw new Error('turbine_trip did not shut the governor (gov=' + tripped.gov + ')');
-  if (!(num(tripped.dump) > 20)) throw new Error('steam dump did not pick up the plant (dump=' + tripped.dump + ')');
-  if (!(num(tripped.steam) > 300)) {
+  // Decay-heat scale since #216: above P-9 a turbine trip now SCRAMS the reactor, so the
+  // dump carries ~8 % (decay heat) rather than the ~98 % of the old ride-out. The check
+  // is unchanged in purpose and if anything sharper — governor 0 % against STEAM FLOW
+  // ~79 gpm is a cleaner demonstration that the readout is not governor-only.
+  if (!(num(tripped.dump) > 3)) throw new Error('steam dump did not pick up decay heat (dump=' + tripped.dump + ')');
+  if (!(num(tripped.steam) > 40)) {
     throw new Error('STEAM FLOW collapsed with the turbine (' + tripped.steam + ') — it is wired to the ' +
       'governor-only `steam_flow` instrument instead of `sg_steam_flow` (total SG draw). See #206.');
+  }
+  if (!(num(tripped.feed) > 30)) {
+    throw new Error('feed stopped tracking the dump draw (' + tripped.feed + ') — the three-element ' +
+      'channel is reading governor flow again. See #206.');
   }
   return log.join('\n');
 }
