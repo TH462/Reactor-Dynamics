@@ -60,7 +60,11 @@ var BASELINES = {
   // ride-out. Those are different events in a real plant — a LOAD REJECTION rides out,
   // a turbine trip above P-9 scrams. Split: TR-1 now drives the ride-out with a real
   // load rejection, new TR-1b pins the P-9 anticipatory scram. No band was relaxed.
-  'run_behavior.js':       { code: 0, score: '36pass 0xfail' },
+  // 37 since 2026-07-27 (#219): +TR-1c. The steam-dump C-7 arm is a bistable, so a
+  // rejection just under it gets no fast dump and ends at the PORV. Owner ruled to KEEP
+  // the threshold and DECLARE the cliff (DESIGN_COMPANION §8.8), so the probe pins BOTH
+  // sides — 39 MWe lifts, 41 MWe is caught — and the declared behaviour cannot drift.
+  'run_behavior.js':       { code: 0, score: '37pass 0xfail' },
   'run_meltdown.js':       { code: 0, score: '8pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at

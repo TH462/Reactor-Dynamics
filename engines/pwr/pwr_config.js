@@ -441,8 +441,12 @@
       //     318.9 °C, 16.24 MPa); 41 MWe arms and is caught (Tavg 304.5, no lift).
       //   * it is BLIND TO STAIRCASES. The same 60 MWe rejected in four 15 MWe steps
       //     never arms at all (Tavg 319.0) — each step is under the rate threshold.
-      // Both follow from any bistable arm and are not fixed by moving the number.
-      // Open for a ruling on where the manoeuvre/casualty boundary belongs. [tune]
+      // Both follow from any bistable arm and are not fixed by moving the number — an arm
+      // low enough to catch a 15 MWe cut vents forever (above). RULED 2026-07-27 (#219,
+      // owner): KEEP 40 MWe and DECLARE the cliff. The sub-threshold rejection is a
+      // manoeuvre the operator handles, and the PORV is the honest backstop when they
+      // don't. Recorded as a named simplification, DESIGN_COMPANION §8.8, catalog TR-1c,
+      // and pinned BOTH SIDES by behaviour probe TR-1c so it cannot move silently. [tune]
       dump_load_reject_mwe: 40.0,
       // ...and the mismatch below which the latch RESETS: the reactor has come back to
       // meet the load, so the ride-out is over and pressure-mode has it again. [tune]

@@ -44,6 +44,7 @@
     'EV-8': 'existing:run_ops xenon 8h', 'EV-9': 'existing:run_campaign startup ×2',
     'EV-10': 'existing:run_pwr transient_loss_vacuum',
     'TR-1': 'probe (LOAD REJECTION — the ride-out case)', 'TR-1b': 'probe (turbine trip → P-9 scram, #216)',
+    'TR-1c': 'probe (sub-threshold rejection — the arm cliff, declared §8.8, #219)',
     'TR-2': 'probe', 'TR-3': 'probe',
     'TR-4': 'probe (lumped-RCP model: total-loss trip; P-8 single-loop needs multi-loop model)',
     'TR-5': 'probe', 'TR-6': 'existing:run_ops grid step + steam_dump_capacity_cap',
@@ -331,6 +332,54 @@
           dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip in 900 s',
           dt >= 8, '≥ 8 s (no anticipatory trip), then a real limit');
         ck.info('trip cause', h.tripReason || 'none');
+      });
+    },
+
+    /* TR-1c (#219, owner ruling 2026-07-27) — THE ARM IS A CLIFF, AND THAT IS DECLARED.
+     * The fast-open dump must be armed: measured, an unarmed Tavg-error dump vents ~6.5 %
+     * at steady full power forever and opens into a deliberate rod withdrawal hard enough
+     * to run power to 114 %. Any armed system has a threshold, and any threshold is a
+     * discontinuity — so a rejection just UNDER `dump_load_reject_mwe` is a manoeuvre the
+     * operator has to handle, and hands-off it ends at the PORV. That is a named
+     * simplification (DESIGN_COMPANION §8.8), not a defect, and this probe pins BOTH sides
+     * of the cliff so it cannot move silently. Lowering the arm is not the fix: an arm low
+     * enough to catch an ordinary 15 MWe dispatch cut leaves the dump venting the difference
+     * forever, holding the reactor at 100 % and destroying the EV-11 load-follow lesson. */
+    'TR-1c': function () {
+      return test('TR-1c sub-threshold load rejection — the C-7 arm is a cliff (declared, §8.8)', function (ck) {
+        var arm = RD.PWR_CONFIG.steam_generator.dump_load_reject_mwe;
+        ck.info('arm threshold under test', fmt(arm, 0) + ' MWe');
+
+        // --- just UNDER the arm: no fast dump, operator's problem, PORV is the backstop
+        var lo = H('hot_full_power');
+        lo.run(30);
+        lo.cmd('set_load_target', { mwe: 100 - (arm - 1) });     // 39 MWe rejected
+        var loArmed = false;
+        for (var i = 0; i < 180; i++) { lo.run(5); if (lo.eng.s.dump_reject_mode) loArmed = true; }
+        ck('under the arm the fast dump never arms', String(loArmed), loArmed === false, 'false');
+        ck('so Tavg climbs well past program (> 315 °C)', fmt(lo.range('tavg_c').max, 1),
+          lo.range('tavg_c').max > 315, '> 315');
+        ck('and hands-off it ends at the PORV — the declared backstop',
+          fmt(lo.range('pressure_mpa').max, 2), lo.range('pressure_mpa').max >= 16.20, '≥ 16.20');
+
+        // --- just OVER the arm: caught, and Tavg stays on program
+        var hi = H('hot_full_power');
+        hi.run(30);
+        hi.cmd('set_load_target', { mwe: 100 - (arm + 1) });     // 41 MWe rejected
+        var hiArmed = false;
+        for (var j = 0; j < 180; j++) { hi.run(5); if (hi.eng.s.dump_reject_mode) hiArmed = true; }
+        ck('one MWe over the arm, the fast dump arms', String(hiArmed), hiArmed === true, 'true');
+        ck('the dump carries it (peak ≥ 30 %)', fmt(hi.range('steam_dump_valve_pct').max, 1),
+          hi.range('steam_dump_valve_pct').max >= 30, '≥ 30');
+        ck('Tavg stays on program (< 310 °C)', fmt(hi.range('tavg_c').max, 1),
+          hi.range('tavg_c').max < 310, '< 310');
+        ck('no PORV lift on this side of the cliff', fmt(hi.range('pressure_mpa').max, 2),
+          hi.range('pressure_mpa').max < 16.20, '< 16.20');
+        // The programmed reference (#219) is what keeps the caught side proportional: with
+        // the old fixed no-load anchor the demand saturated and MTC ran power to 102.7 %.
+        ck('and the catch does not overcool into a power runup (< 101 %)',
+          fmt(hi.range('power_pct').max, 1), hi.range('power_pct').max < 101, '< 101');
+        T.checkSanity(ck, hi);
       });
     },
 

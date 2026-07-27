@@ -131,6 +131,7 @@ a real limit is reached — and then they mean it.*
 | ID | Behavior | Tier | Probe | Status |
 |----|----------|------|-------|--------|
 | TR-1 | **Turbine trip @100 %: NO reactor trip.** Dump (1.05×) picks up the load; the rod-less core self-parks ~75 % with Tavg/level high (asking for trim); the operator walks it to the no-load anchor at their own pace. Probe drives both phases | C | probe | **PASS** (P4, 2026-07-21) |
+| TR-1c | **Sub-threshold load rejection: operator-managed, PORV is the backstop.** Below the C-7 arm (`dump_load_reject_mwe` 40 MWe) the fast dump does not arm at all — 39 MWe rejected hands-off reaches Tavg 318.9 °C and lifts the PORV; 41 MWe arms and is caught at 304.5 °C with no lift. **Declared simplification** (DESIGN_COMPANION §8.8), not a defect: any armed system has a threshold, and lowering it destroys the EV-11 load-follow lesson. Probe pins BOTH sides so the cliff cannot move silently | C | probe | **PASS** (ruled 2026-07-27, #219) |
 | TR-6 | 50 % load rejection: a non-event — dump + rods absorb, Tavg returns to program | C | ops grid step | PASS — re-band P3/P4 |
 | CC-7 | Steam dump: holds no-load Tavg at HZP; capacity 1.05× (ride-out); **unavailable on lost vacuum/condenser** (engine gate) | C | dump-cap probe + TR-8 | **PASS** (P4) |
 | TR-8 | Loss of vacuum @100 %: turbine trips, dump unavailable, **feed dies with the hotwell** (condensate needs the condenser) → SG drains → **genuine-limit trip (SG lo-lo), not anticipation**; tended, the operator runs back | C | probe | **PASS** (P4) |

@@ -24,6 +24,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   Tavg 305.3 °C. A turbine trip is unchanged by construction — at zero load the program
   collapses onto the old no-load anchor.
 
+- **The steam dump's load-rejection arm is a declared simplification, not a hidden edge**
+  (#219, owner ruling). A rejection just below the arm threshold gets no fast dump and, left
+  alone, ends at the PORV — that is the operator's manoeuvre to handle, and the relief valve
+  is the honest backstop. Written up as simplification §8.8 and pinned on both sides by a new
+  behaviour probe, so the boundary cannot move without the gate saying so.
+
 ### Fixed
 - **A pressurizer spray valve stuck open healed itself the moment you touched the spray
   controls** (issue #200). The failure was encoded by writing `spray_override = true` — a
