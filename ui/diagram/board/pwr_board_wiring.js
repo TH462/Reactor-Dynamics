@@ -551,7 +551,7 @@
     'Pressurizer Heaters (PZR)': 'imro94kec8b', 'Pressurizer Spray (PZR)': 'imro8ymb0jw',
     'Reactor Coolant Pumps (RCP)': 'imrobpq4a70',
     'Relief Valve (PORV)': 'porv', 'PORV Block Valve': 'imrppb3kuav',
-    'HPI': 'imrldx4qme6', 'HPI/LPI': 'imrldx4qme6', 'Decay-Heat Removal (DHR)': 'imrldx4qme6',
+    'HPI': 'imrldx4qme6', 'HPI/LPI': 'imrldx4qme6', 'Residual Heat Removal (RHR)': 'imrldx4qme6',
     'AFW': 'imrmssto6d', 'AFW Throttle': 'imrmssto6d',
     'Feed Pumps': 'imrqxsodu5j', 'Feed Reg': 'imrqxsodu5j', 'Feed Pump': 'imrqxsodu5j',
     'MSIV': 'imrpp99kx2y',

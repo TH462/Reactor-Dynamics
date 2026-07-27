@@ -253,6 +253,13 @@
     // The CVCS level PROGRAM reads indicated Tavg (HR1) — its setpoint card tracks the
     // same thermal-expansion line the derived level rides (pwr_primary/pwr_pressurizer).
     s._ins_tavg = insPrev && insPrev.tavg != null ? insPrev.tavg : null;
+    // The steam dump's Tavg reference is PROGRAMMED ON TURBINE LOAD (#219), and it reads
+    // that load through the steam-flow instrument — the same instrument the rod channel's
+    // Tref program reads (pwr_control.js trefFromLoad). HR1: an automatic control senses
+    // through indications, so a failed steam-flow instrument mis-programs the dump exactly
+    // as it mis-programs the rods. NOT a new instrument — just a stash of an existing
+    // reading, so it adds no draw to the instrument PRNG stream (see pwr_config.js).
+    s._ins_steam_flow = insPrev && insPrev.steam_flow != null ? insPrev.steam_flow : null;
     // Full-power equilibrium Tavg — the anchor of the level base line. Lazy so
     // loaded saves (which lack the stash) recompute it once.
     if (s._tavg_fp == null) s._tavg_fp = this._computeEquilibriumTemps(1.0).Tavg;
@@ -478,7 +485,7 @@
       primary_void_fraction: s.primary_void_fraction,   // inventory-driven (TMI) void — the FG-3 deception gate
 
       fuel_temp_c: s.fuel_temp_c, decay_heat_pct: s.decay_heat_pct, xenon_pct_eq: s.xenon_pct_eq,
-      boron_ppm: s.boron_ppm, porv_open: s.porv_open, porv_stuck: s.porv_stuck,
+      boron_ppm: s.boron_ppm, porv_open: s.porv_open, porv_stuck: s.porv_stuck, spray_stuck: !!s.spray_stuck,
       block_valve_open: s.block_valve_open,   // scenario-trigger hook (memory-free isolation grading)
       porv_tailpipe_temp_c: s.tailpipe_temp_c,   // PORV discharge-line temperature (feeds instruments.porv_tailpipe_temp)
       fuel_damaged: s.fuel_damaged,              // latched at fuel_damage_c — scenario outcome-grading hook
@@ -699,6 +706,10 @@
         break;
       case 'set_spray':
         // {auto:true} → auto; {pct} → manual valve %; {open} → back-compat boolean.
+        // The DEMAND always moves — but it is ineffective while spray_stuck, exactly
+        // as close_porv is while porv_stuck: pressurize() forces the valve open. The
+        // controller genuinely returns to AUTO (spray_auto reads true) while the valve
+        // sits open regardless — that gap is the lesson, not a bug (HR1).
         s.spray_override = cmd.auto ? null : (cmd.pct != null ? clip(cmd.pct / 100, 0, 1) : (cmd.open ? 1 : 0));
         break;
       case 'set_pressure_setpoint':
@@ -952,7 +963,10 @@
         case 'loss_of_feedwater': s.main_feedwater_available = false; break;
         case 'turbine_trip': SG.tripTurbine(s); break;
         case 'failure_to_scram': s.scram_blocked = true; break;
-        case 'stuck_open_spray': s.spray_override = true; break;
+        // A stuck valve is a persistent PHYSICAL state, not a value written into the
+        // operator's demand — writing spray_override meant the next set_spray (AUTO
+        // button or % slider) simply overwrote the failure and cleared it (#200).
+        case 'stuck_open_spray': s.spray_stuck = true; break;
         case 'failed_pzr_heaters': s.heater_override = 0; break;
         case 'sg_overfeed': s.feed_auto_coupled = false; s.feed_pump_speed_pct = 120; s.feedwater_demand_frac = 1.2; break;
       }
@@ -1027,7 +1041,7 @@
         case 'stuck_porv_open': s.porv_stuck = false; break;
         case 'loss_of_feedwater': s.main_feedwater_available = true; break;
         case 'failure_to_scram': s.scram_blocked = false; break;
-        case 'stuck_open_spray': s.spray_override = null; break;
+        case 'stuck_open_spray': s.spray_stuck = false; break;   // the operator's own demand is left as they set it
         case 'failed_pzr_heaters': s.heater_override = null; break;
       }
       return;
@@ -1177,7 +1191,7 @@
       // snapping to NOP (M1 §6.4; Mode 5↔1 rework 2026-07).
       pressure_setpoint: cfg.pressurizer.P_setpoint,
       _pressure_sp_eff: cfg.pressurizer.P_setpoint,   // slewed effective target (seeded = commanded, see pwr_pressurizer.effectiveSetpoint)
-      heater_power_frac: 0, spray_flow_frac: 0, heater_override: null, spray_override: null,
+      heater_power_frac: 0, spray_flow_frac: 0, heater_override: null, spray_override: null, spray_stuck: false,
       porv_demand: 'closed', porv_open: false, porv_stuck: false, safety_open: false,
       block_valve_open: true,                 // PORV isolation/block valve (B1; default open)
       porv_flow: 0, safety_flow: 0,
@@ -1441,6 +1455,16 @@
     if (s.rhr_valve_open == null) s.rhr_valve_open = !!s.rhr_active;
     if (s.rhr_hx_fraction == null) s.rhr_hx_fraction = 1.0;
     if (s.eccs_mode == null) s.eccs_mode = 'off';
+    // Spray valve stuck open (#200, 2026-07-27). The failure used to be encoded by
+    // writing `spray_override = true` — a boolean shoved into the OPERATOR'S demand
+    // field, which is exactly why any later set_spray overwrote and cleared it. It is
+    // now its own physical flag. Convert the legacy encoding: only a literal `true`
+    // is the old failure (a genuine manual demand is a 0..1 fraction), and the demand
+    // goes back to auto since the operator never set it.
+    if (s.spray_stuck == null) {
+      s.spray_stuck = (s.spray_override === true);
+      if (s.spray_override === true) s.spray_override = null;
+    }
     // Total SG draw, added with the `sg_steam_flow` main-steam-line instrument
     // (2026-07-26). Recomputed on the first SG step, but it must be a NUMBER before
     // the first instrument read or the lag buffer latches NaN. Seed it from the
@@ -2415,6 +2439,8 @@
         legacy.letdown_flow = 0.030;                          // old commanded constant → lineup A
         // Pre-#199 steam break: no location field (the sink ignored the MSIV).
         legacy._fail.steam_break = { active: true, size: 0.4 };
+        // Pre-#200 stuck-open spray: encoded as a boolean in the operator's demand field.
+        delete legacy.spray_stuck; legacy.spray_override = true;
         // Load into a fresh engine; its cfg supplies the migration defaults.
         var h2 = new Harness('hot_full_power');
         h2.eng.loadState({ schema: save.schema, s: legacy, rod_groups: save.rod_groups,
@@ -2433,6 +2459,9 @@
         ck('legacy steam break gains a location — DOWNSTREAM, so the MSIV now works on it',
           'upstream=' + s._fail.steam_break.upstream + ' size=' + s._fail.steam_break.size,
           s._fail.steam_break.upstream === false && s._fail.steam_break.size === 0.4, 'upstream=false, size kept');
+        ck('legacy stuck-open spray survives as a physical flag, demand back to auto',
+          'spray_stuck=' + s.spray_stuck + ' override=' + s.spray_override,
+          s.spray_stuck === true && s.spray_override === null, 'stuck=true, override=null');
         // A half-migrated state must step cleanly (no NaN leaking from a missing field).
         h2.run(2);
         var t = h2.ts();

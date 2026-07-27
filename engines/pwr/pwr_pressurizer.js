@@ -66,7 +66,10 @@
       var err = setpoint - s.pressure_mpa;
       s._heater_dp_frac = err > 0 ? clip(err / p.heater_band_mpa, 0, 1) : 0;
     }
-    if (s.spray_override != null) { s.spray_flow_frac = +s.spray_override; }  // fraction (or boolean → 0/1)
+    // A spray valve stuck open is mechanical: it beats BOTH the auto controller and
+    // any operator demand, the way porv_stuck beats porv_demand in relief() (#200).
+    if (s.spray_stuck) { s.spray_flow_frac = 1; }
+    else if (s.spray_override != null) { s.spray_flow_frac = +s.spray_override; }  // fraction (or boolean → 0/1)
     else {
       var err2 = setpoint - s.pressure_mpa;
       s.spray_flow_frac = err2 < 0 ? clip(-err2 / p.spray_band_mpa, 0, 1) : 0;

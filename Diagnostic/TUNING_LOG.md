@@ -109,6 +109,67 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-27 — backlog sweep (8 issues closed) + #219: the dump reference was the bug, not the latch  ✅🔬
+
+**#219 — the steam-dump load-rejection latch, reviewed with fresh eyes as asked.** Measured
+by building the variants and running them against the three cases the mechanism was fitted
+to *plus* edge cases it had never seen (`reject_39`/`reject_41`, a 4×15 MWe staircase, a slow
+60 MWe ramp).
+
+- **The arm survives.** Removing it: **6.5 % dump at steady full power forever**, and a
+  deliberate rod withdrawal overcools into a **114 %** power runup. Not a fudge.
+- **The arm signal is better than its author believed.** `load_rejected_mwe` is a first-order
+  reference minus the target — a **washout/high-pass filter**, i.e. a rate-of-decrease
+  detector by construction. That is C-7 class in structure. `(40 MWe, 60 s)` therefore encodes
+  a rate: a step > 40 MWe, or a ramp > ~40 MWe/min. Nothing said so; now in the config.
+- **The reference was the actual defect.** Pinned to the no-load anchor, the Tavg error is
+  ~13 °C against an 8 °C band at full power — **saturated whenever the plant is at power**, so
+  the demand carried no event-size information and the mismatch **cap existed to put it back
+  by hand**. This plant already had the right reference: the sliding program the rod
+  controller runs (`pwr_control.js trefProgram`, SS-2). The dump now shares it → demand is
+  proportional on its own, **cap deleted**. 41 MWe rejection: capped **102.7 %** power (the
+  dump overcooled and MTC ran power up — the very thing the cap was for), programmed+uncapped
+  **99.2 %**. Turbine trip unchanged by construction (load→0 ⇒ program collapses to no-load).
+- **HR1:** programmed on the steam-flow INSTRUMENT via a new `_ins_steam_flow` stash (a stash
+  of an existing reading — no extra draw on the instrument PRNG stream).
+- **Left open for a ruling, now measured instead of implied:** the 40 MWe arm is a **cliff**
+  (39 MWe → no arm, Tavg **318.9 °C, PORV lifts**; 41 MWe → caught, 304.5) and is **blind to
+  staircases** (60 MWe as 4×15 never arms, Tavg 319.0). Neither is fixed by moving the number —
+  an arm low enough to catch a 15 MWe cut leaves the dump venting forever (power ends 99.7 %
+  instead of 85 %, defeating EV-11). Written into `dump_load_reject_mwe`.
+- **The config comment described the ABANDONED design** (arm on the power/load mismatch —
+  attempt 1, the one that tripped `pwr_boron`), not the shipped washout. Corrected.
+- `verify_e2e_ui` turbine-trip sample **120 s → 240 s**, and now asserts feed **tracks** steam
+  within 15 gpm rather than merely exceeding 30. At 120 s the SG is still coming off the
+  post-trip swell so feed is legitimately 0 — the old failure message blamed the channel for
+  reading governor flow when STEAM FLOW read 80 gpm with the governor shut. Because this issue
+  is *about* fitting mechanisms to tests, the new sample point was validated on **both** old
+  and new physics (old 67 vs 66, new 64 vs 64) before adopting it.
+
+**Backlog sweep, same day.** Closed **#119** (the in-sim Plant & Mission picker offered RBMK/BWR
+as live cards — clicking one switched to a board that was never built; now greyed + inert,
+`?engine=` still reaches them for dev), **#127** (no desktop-only notice), **#145** (owner
+ruling: **RHR everywhere, DHR retired** from every user-facing surface + 15 instruments that
+printed their raw id as their name), **#159** (audit script wrote to a dead agent scratch dir),
+**#200** (a stuck-open spray valve healed itself the moment you touched SPRAY AUTO — the failure
+was written into the operator's *demand* field; now `s.spray_stuck`, mirroring `porv_stuck`,
+with a save migration), and **#143/#144/#155** verified already-fixed with only stale flags left
+(`BUILD_DECISIONS` F4 and F5 both marked RESOLVED).
+
+**Two recurring lessons.** (1) *Tests shaped around the bug*: TR-11 drove `stuck_open_spray`
+through the one command form the broken override intercepted, with a comment saying the
+defeating forms were deliberately unpinned; `verify_e2e_ui` pinned a transient. Both now guard
+the real claim. (2) *Flags outlive their fixes*: three issues were open only because
+`BUILD_DECISIONS`/`ISSUES_AND_FINDINGS` rows were never updated — #144 was filed against a
+field that had been in the contract all along.
+
+**Filed:** #224 (STEP_UI map stale vs the re-authored procedures, 33 mismatches, and its auditor
+is not in the gate), #225 (**41 of 82** PWR `getTrueState` fields undocumented in CONTEXT §6.3,
+and nothing guards it — found while closing #144).
+
+All 21 runners at baseline; `run_pwr` 199 → **200 checks** (save_migration pins the #200
+conversion), `BASELINES` updated.
+
 ### 2026-07-26f — P-9 adopted; noise moved to per-indication; the back-catalogue audited  ✅🔬
 
 Three linked threads, all from one owner instruction: **"err toward doing it the way real

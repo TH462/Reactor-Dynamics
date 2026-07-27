@@ -30,7 +30,7 @@ Provide step-followable **normal operating procedures** for the Reactor⚛️Dyn
 | PWR-N12 | Steam Generator level & feedwater control | Mode 1, At Power–Two | [sim] |
 | PWR-N13 | Reactor Coolant Pump (RCP) operation | Mode 1, At Power–Three | [sim, approx] |
 | PWR-N14 | Normal shutdown Mode 1, At Power → Mode 3, Hot Standby | 1 → 3 | [sim] |
-| PWR-N15 | Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (DHR/RHR) | 3 → 4 → 5 | [sim] |
+| PWR-N15 | Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (RHR) | 3 → 4 → 5 | [sim] |
 
 **Related:** MODE transitions → `05_MODE_TRANSITIONS.md`. Control details → `03_CONTROLS_AND_INDICATIONS.md`. Setpoints → `09_SETPOINTS_LIMITS.md`.
 
@@ -472,7 +472,7 @@ Shut the reactor down from **Mode 1, At Power** (or Mode 2, Startup) to **Mode 3
 
 ---
 
-## PWR-N15 — Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (DHR/RHR) **[sim]**
+## PWR-N15 — Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (RHR) **[sim]**
 
 ### Purpose
 Cooldown from **Mode 3, Hot Standby** through **Mode 4, Hot Shutdown** to **Mode 5, Cold Shutdown**. This is now **driveable on the board** to a genuine cold (Mode 5) end state — only the cooldown **rates** are time-compressed (mission `pwr_mode3_to_mode5`). Completes master path **PWR-T21**.
@@ -480,7 +480,7 @@ Cooldown from **Mode 3, Hot Standby** through **Mode 4, Hot Shutdown** to **Mode
 ### What is [sim]
 - Decay heat model active after power history.
 - **AFW** for secondary heat sink when main feed unavailable.
-- **RHR/DHR** control exists for low-pressure residual heat removal when permissives met (scrammed + low pressure band ~**2.76 MPa** / 400 psi for auto arm, tied to the suction-valve autoclosure interlock).
+- **RHR** control exists for low-pressure residual heat removal when permissives met (scrammed + low pressure band ~**2.76 MPa** / 400 psi for auto arm, tied to the suction-valve autoclosure interlock).
 - HPI/LPI and accumulators for inventory under low pressure / LOCA conditions.
 
 ### Narrative commercial path (Mode 3, Hot Standby → Mode 5, Cold Shutdown)

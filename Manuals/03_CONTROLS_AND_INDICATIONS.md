@@ -499,7 +499,7 @@ power is ~1000 gpm, at 6 % power it is ~50 gpm.
 - **Cold-water quench:** accumulator/ECCS water injects **cold** (RWST/SIT ~40 °C), so a large-break dump
   **cools T-avg** as well as restoring inventory and boron.  
 
-### 11.2 RHR / DHR
+### 11.2 RHR
 
 | Control | Effect |
 |---------|--------|

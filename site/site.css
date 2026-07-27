@@ -70,12 +70,15 @@ a.disabled { pointer-events: none; cursor: default; opacity: 0.4; text-decoratio
 
 /* ==================================================================== hero */
 .hero { text-align: center; padding: 64px 20px 40px; }
+/* Shrink-to-fit but block-level, so consecutive notes stack instead of
+   sharing a line. */
 .alpha-note {
-  display: inline-block; margin: 0 auto 20px;
+  display: block; width: fit-content; max-width: 100%; margin: 0 auto 10px;
   background: rgba(217, 164, 65, 0.10); border: 1px solid var(--caution);
   color: var(--caution); border-radius: var(--radius);
   padding: 8px 16px; font-size: 13px; font-weight: 600; letter-spacing: 0.2px;
 }
+.alpha-note:last-of-type { margin-bottom: 20px; }
 .hero h1 {
   font-size: clamp(28px, 5vw, 44px); line-height: 1.15; margin: 0 0 14px;
   letter-spacing: -0.5px;

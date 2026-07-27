@@ -51,7 +51,7 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 | Term | Definition |
 |------|------------|
 | **Decay heat** | Heat from radioactive decay after fission stops (~7 % of rated after a power run, then falling). |
-| **DHR / RHR** | Decay-Heat Removal / Residual Heat Removal — low-pressure systems that remove leftover heat after shutdown. |
+| **RHR** | Residual Heat Removal — the low-pressure system that removes leftover decay heat after shutdown. |
 | **DNB** | Departure from Nucleate Boiling — heat-transfer crisis; fuel temperature rises sharply. |
 | **Doppler** | Negative reactivity feedback from hotter fuel absorbing more neutrons (prompt stabilizer). |
 | **DPM** | Decades Per Minute — unit of Startup Rate (one decade = factor of ten in power). |

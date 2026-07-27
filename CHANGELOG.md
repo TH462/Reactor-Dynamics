@@ -15,6 +15,64 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 _Nothing yet._
 
+## [Alpha 1.7.1] — 2026-07-27
+
+### Changed
+- **The steam dump's temperature reference now slides with turbine load** (issue #219). It was
+  pinned to the no-load anchor, which meant that at full power the dump's error signal was
+  already saturated — the demand carried no information about how big the event was, so a
+  load-mismatch cap had been added on top to put that information back. The reference is now
+  the same sliding Tavg program the rod controller already runs, so the demand is proportional
+  to the size of the rejection on its own and the cap is gone. On a 41 MWe rejection the plant
+  now settles at 99.2 % power instead of overshooting to 102.7 %; a full rejection peaks at
+  Tavg 305.3 °C. A turbine trip is unchanged by construction — at zero load the program
+  collapses onto the old no-load anchor.
+
+- **The steam dump's load-rejection arm is a declared simplification, not a hidden edge**
+  (#219, owner ruling). A rejection just below the arm threshold gets no fast dump and, left
+  alone, ends at the PORV — that is the operator's manoeuvre to handle, and the relief valve
+  is the honest backstop. Written up as simplification §8.8 and pinned on both sides by a new
+  behaviour probe, so the boundary cannot move without the gate saying so.
+
+### Fixed
+- **A pressurizer spray valve stuck open healed itself the moment you touched the spray
+  controls** (issue #200). The failure was encoded by writing `spray_override = true` — a
+  boolean shoved into the *operator's own demand field* — so pressing SPRAY AUTO or moving
+  the spray % slider simply overwrote the failure and the stuck valve un-stuck. A stuck
+  valve is mechanical, and now behaves like one: `s.spray_stuck` in the engine, with the
+  pressurizer forcing the valve open past both the auto controller and any operator demand,
+  exactly as `porv_stuck` already beat `porv_demand`. Note the controller still reads AUTO
+  while the valve sits open — the controller genuinely *is* in auto, the valve just isn't
+  listening, and that gap is the lesson.
+  *Save migration:* a save carrying the old encoding keeps its failure instead of silently
+  healing on load.
+- **The residual-heat-removal system is called RHR everywhere** (issue #145, owner ruling). It
+  was named both ways: the tab said RHR, the control label said "Decay-Heat Removal (DHR)", and
+  the glossary hedged with "DHR / RHR". The control label, the manuals and the glossary now all
+  read **RHR**. The `set_dhr` *command* still works — old saves depend on it — and is documented
+  as a deprecated alias.
+- **Fifteen instruments printed their raw internal id as their name in the reference
+  manual** (issue #145). `startup_rate`, `charging_flow`, `sg_steam_flow`, `sg_level_wide`,
+  `hpi_flow` and ten more fell through the generator's display-name table and were listed as
+  e.g. "startup_rate — startup_rate". They now read as "Startup Rate (SUR) — how fast power
+  is changing, in decades per minute". The boron entry is now explicit that it is a
+  chemistry *sample*, not a live board indication.
+- **The in-sim plant picker offered plants that have no control room** (issue #119). The
+  Plant & Mission window listed all four engines as live, selectable cards: picking RBMK or
+  BWR switched the plant and dropped you onto a board that was never extended to it. The
+  landing page had said "COMING SOON" for months; the picker one click inside had not. The
+  three held plants now render greyed with a COMING SOON badge and are inert. The `?engine=`
+  URL override still reaches them deliberately — it is the dev/test route into those engines.
+- **The front page described a different reactor than the one you operate.** The PWR card
+  read "Westinghouse-style four-loop plant"; this plant is the **SLX-100 — a single-loop,
+  single-SG, single-RCP 100 MWe unit** (`pwr_config.js` identity block, owner ruling
+  2026-07-21). Retiring stale four-loop copy was already on the feel-plan's cleanup list.
+- **The landing page now says the control room needs a desktop.** It renders on a phone but
+  is not operable on one, and nothing said so (issue #127).
+- `test/audit_manual_controls.js` wrote its report into a dead agent scratch directory under
+  the OS temp dir (a hardcoded session id). It now writes to `Diagnostic/`, with an optional
+  argv override (issue #159).
+
 ## [Alpha 1.7.0] — 2026-07-27
 
 ### Added

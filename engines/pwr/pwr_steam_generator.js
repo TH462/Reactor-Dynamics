@@ -102,48 +102,50 @@
     // over. This is what makes the FG-4 ride-out a graceful catch — and it is
     // exactly what CANNOT save a loss-of-feed event, where the drying SG stops
     // absorbing heat no matter what the dump vents (the TMI differentiator).
-    // Armed by a turbine trip OR a large load rejection (C-7 class). The rejection arm
-    // was added 2026-07-26 with the P-9 reactor trip (#216): once a turbine trip above
-    // P-9 scrams the reactor, the RIDE-OUT case is the load rejection — the turbine
-    // stays on line and the plant holds power — and that case was never getting the
-    // fast mode, so the dump waited on SG pressure and the primary spiked. Reads the
-    // load mismatch in MWe, computed HR1-correctly from INDICATED power in load_mode.js.
-    // load_rejected_mwe = how far load has been THROWN OFF recently (load_mode.js), not
-    // the power/load mismatch — the mismatch is equally positive when power is being
-    // raised deliberately, and arming there overcools the plant into a power runup.
-    // LATCHED, because the two candidate signals are each right for only half the job:
-    //   ARM on load FALLING (load_rejected_mwe) — a transient, and the only signal that
-    //     does not also fire when the operator deliberately RAISES power. Arming on the
-    //     raw power/load mismatch opened the dump into a dilution and tripped pwr_boron.
-    //   HOLD on the power/load mismatch — because the fall signal decays in ~60 s while
-    //     a ride-out lasts as long as the reactor is making more than the turbine takes.
-    //     Holding on the fall signal alone dropped the dump mid-ride (Tavg 319 °C, PORV).
-    // Cleared when the reactor has come down to meet the load — the ride-out is over.
-    // This is how the real interlock behaves: armed by C-7, held while the condition
-    // persists, reset in band.
+    // ARMED, not continuously modulating — measured (#219). An unarmed Tavg-error dump
+    // vents 6.5 % at steady full power forever, and opens into a deliberate rod
+    // withdrawal hard enough that the overcool + MTC runs power to 114 %. So the arm is
+    // real; only its threshold is a judgement call (see pwr_config dump_load_reject_mwe).
+    //   ARM: a turbine trip, or `load_rejected_mwe` past dump_load_reject_mwe.
+    //   RESET: when |load_imbalance_mwe| falls inside dump_reject_clear_mwe — the reactor
+    //     has come back to meet the load, so the ride-out is over. It cannot reset on the
+    //     arm signal itself, which decays in ~60 s while a ride-out lasts as long as the
+    //     reactor is over the load.
+    // `load_rejected_mwe` (load_mode.js) is a WASHOUT of the load target — a first-order
+    // reference minus the target is a high-pass filter, i.e. a rate-of-decrease detector.
+    // That is C-7 class in structure: it cannot fire at steady load however large, and it
+    // does not fire when the operator RAISES load.
     var rejectMwe = s.load_rejected_mwe || 0;
     if (rejectMwe > (sg.dump_load_reject_mwe || Infinity)) s.dump_reject_mode = true;
     else if (Math.abs(s.load_imbalance_mwe || 0) < (sg.dump_reject_clear_mwe || 0)) s.dump_reject_mode = false;
     if (s.steam_dump_override == null && (s.turbine_tripped || s.dump_reject_mode)) {
+      // Reference Tavg is PROGRAMMED ON TURBINE LOAD, not pinned to the no-load anchor
+      // (#219). This is the same sliding program the rod controller already runs (SS-2,
+      // catalog §8.1, `pwr_control.js trefProgram`): no-load Tsat(dump setpoint) at zero
+      // load, the full-power coolant equilibrium at rated. Dump and rods therefore share
+      // one reference, as a real plant's do, and the endpoints derive from the same config
+      // so the two cannot drift apart.
+      //
+      // Why it matters: against the FIXED no-load anchor the error is ~13 °C at steady full
+      // power against an 8 °C band — i.e. the demand is SATURATED whenever the plant is at
+      // power, carrying no information about the size of the event. Every measured pathology
+      // followed from that, and a mismatch-fraction cap had to be bolted on to put the size
+      // information back. Programmed, the error is ~0 at any steady load and grows with the
+      // size of the rejection, so the demand is proportional on its own and the cap is gone.
+      // Measured on a 41 MWe rejection: capped, the dump overcooled and MTC ran power to
+      // 102.7 %; programmed and uncapped, 99.2 %.
+      //
+      // On a turbine trip load goes to zero, so the program collapses to the no-load anchor
+      // and the trip case is unchanged by construction.
       var tnl_dump = T_sat(dump_setpoint);
-      var tavg_err = (s._ins_tavg != null ? s._ins_tavg : s.tavg_c) - tnl_dump;
-      var fast = clip(tavg_err / (sg.dump_trip_mode_band_c || 8.0), 0, 1);
-      // On a load rejection the TURBINE IS STILL DRAWING, so the dump must only make up
-      // the REJECTED load — cap the fast demand at the mismatch fraction. Without this
-      // the dump opens on the raw Tavg error, turbine + dump together outrun what the
-      // reactor is making, the plant overcools and MTC runs power up into the 120 %
-      // trip (measured on EV-11's 15 MWe slider cut). On a turbine TRIP there is no
-      // turbine draw left to share with, so the full error demand stands.
-      if (!s.turbine_tripped) {
-        // Cap on the MISMATCH (power the turbine is not taking), not on the arming
-        // signal: the arm decays in ~60 s while the ride-out lasts as long as the
-        // reactor is over the load. Capping on the arm closed the dump mid-ride and
-        // ran Tavg to 345 °C. Safe here because the cap only applies once ARMED, and
-        // the arm keys on load falling — so a deliberate power rise never reaches it.
-        var rated = (cfg.turbine && cfg.turbine.mwe_rated) || 100;
-        fast = Math.min(fast, clip((s.load_imbalance_mwe || 0) / rated, 0, 1));
-      }
-      dump = Math.max(dump, fast);
+      var t_fullpower = T_sat(sg.steam_p_rated)
+        + (cfg.thermal.heat_gen_coeff * (1 + (cfg.thermal.pump_heat_frac || 0))) / cfg.thermal.h_sg;
+      // HR1: programmed on the steam-flow INSTRUMENT, like the rod channel's Tref and like
+      // the instrumented Tavg below — an automatic control reads indications, not truth.
+      var loadFrac = clip(s._ins_steam_flow != null ? s._ins_steam_flow : (s.steam_flow_normalized || 0), 0, 1);
+      var tref_dump = tnl_dump + (t_fullpower - tnl_dump) * loadFrac;
+      var tavg_err = (s._ins_tavg != null ? s._ins_tavg : s.tavg_c) - tref_dump;
+      dump = Math.max(dump, clip(tavg_err / (sg.dump_trip_mode_band_c || 8.0), 0, 1));
     }
     // Physical capacity of the turbine-bypass/dump. THIS PLANT (FG-4 ride-out,
     // feel-plan P4): ~105 % of rated steam flow — a full load rejection is caught

@@ -1428,7 +1428,7 @@
     'HPI/LPI':                     { card: 'emergency', emtab: 'hpi' },
     'AFW':                         { card: 'emergency', emtab: 'afw' },
     'AFW Throttle':                { card: 'emergency', emtab: 'afw' },
-    'Decay-Heat Removal (DHR)':    { card: 'emergency', emtab: 'rhr' },
+    'Residual Heat Removal (RHR)':    { card: 'emergency', emtab: 'rhr' },
     'Feed Pumps':                  { card: 'steam' },
     'Feed Reg':                    { card: 'steam' },
     'Feed Pump':                   { card: 'steam' },

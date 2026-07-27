@@ -199,9 +199,9 @@
         },
         {
           "id": "charging_flow",
-          "name": "charging_flow",
-          "measures": "charging_flow",
-          "unit": "",
+          "name": "Charging Flow",
+          "measures": "CVCS flow being pumped INTO the primary (make-up). Balanced against letdown to hold pressurizer level.",
+          "unit": "×rated",
           "range": [
             0,
             0.12
@@ -213,9 +213,9 @@
         },
         {
           "id": "letdown_flow",
-          "name": "letdown_flow",
-          "measures": "letdown_flow",
-          "unit": "",
+          "name": "Letdown Flow",
+          "measures": "CVCS flow being drawn OUT of the primary through the letdown orifices. Balanced against charging.",
+          "unit": "×rated",
           "range": [
             0,
             0.12
@@ -243,9 +243,9 @@
         },
         {
           "id": "boron_analyzer",
-          "name": "boron_analyzer",
-          "measures": "boron_analyzer",
-          "unit": "",
+          "name": "Boron Concentration (lab sample)",
+          "measures": "Boron concentration in the primary coolant, from a chemistry sample — NOT a live board indication. Real plants sample; they do not trust an online boronometer. Take a sample to refresh it.",
+          "unit": "ppm",
           "range": [
             0,
             2500
@@ -257,9 +257,9 @@
         },
         {
           "id": "governor_valve",
-          "name": "governor_valve",
-          "measures": "governor_valve",
-          "unit": "",
+          "name": "Turbine Governor Valve",
+          "measures": "Position of the turbine governor valve — how much steam the turbine is being allowed to take.",
+          "unit": "%",
           "range": [
             0,
             100
@@ -271,9 +271,9 @@
         },
         {
           "id": "hpi_flow",
-          "name": "hpi_flow",
-          "measures": "hpi_flow",
-          "unit": "",
+          "name": "Emergency Injection Flow",
+          "measures": "Flow delivered by the merged HPI/LPI emergency injection system.",
+          "unit": "×rated",
           "range": [
             0,
             1.2
@@ -285,9 +285,9 @@
         },
         {
           "id": "accumulator_flow",
-          "name": "accumulator_flow",
-          "measures": "accumulator_flow",
-          "unit": "",
+          "name": "Accumulator Flow",
+          "measures": "Flow from the passive safety-injection accumulators, which discharge on their own once primary pressure falls below their cover-gas pressure.",
+          "unit": "×rated",
           "range": [
             0,
             1.2
@@ -299,9 +299,9 @@
         },
         {
           "id": "steam_dump_valve",
-          "name": "steam_dump_valve",
-          "measures": "steam_dump_valve",
-          "unit": "",
+          "name": "Steam Dump Valve",
+          "measures": "Position of the steam dump (turbine bypass) to the condenser — the heat sink when the turbine cannot take the steam.",
+          "unit": "%",
           "range": [
             0,
             100
@@ -313,9 +313,9 @@
         },
         {
           "id": "primary_leak_flow",
-          "name": "primary_leak_flow",
-          "measures": "primary_leak_flow",
-          "unit": "",
+          "name": "Primary Leak Rate",
+          "measures": "Indicated leakage out of the primary system.",
+          "unit": "×rated",
           "range": [
             0,
             1
@@ -327,9 +327,9 @@
         },
         {
           "id": "startup_rate",
-          "name": "startup_rate",
-          "measures": "startup_rate",
-          "unit": "",
+          "name": "Startup Rate (SUR)",
+          "measures": "How fast power is changing, in decades per minute — positive is rising. The rate indication the approach to criticality is flown on.",
+          "unit": "DPM",
           "range": [
             -5,
             10
@@ -387,9 +387,9 @@
         },
         {
           "id": "afw_flow",
-          "name": "afw_flow",
-          "measures": "afw_flow",
-          "unit": "",
+          "name": "Auxiliary Feedwater Flow",
+          "measures": "Flow delivered by the auxiliary feedwater (AFW) pumps — the post-trip heat sink when main feed is gone.",
+          "unit": "×rated",
           "range": [
             0,
             1.2
@@ -401,9 +401,9 @@
         },
         {
           "id": "afw_discharge_pressure",
-          "name": "afw_discharge_pressure",
-          "measures": "afw_discharge_pressure",
-          "unit": "",
+          "name": "AFW Discharge Pressure",
+          "measures": "Auxiliary-feedwater pump discharge pressure. Pumps can run against shut valves: pressure up, flow zero (the TMI-2 trap).",
+          "unit": "MPa",
           "range": [
             0,
             12
@@ -415,9 +415,9 @@
         },
         {
           "id": "hpi_discharge_pressure",
-          "name": "hpi_discharge_pressure",
-          "measures": "hpi_discharge_pressure",
-          "unit": "",
+          "name": "Emergency Injection Discharge Pressure",
+          "measures": "HPI/LPI pump discharge pressure — read with flow to tell \"running but blocked\" from \"running and delivering\".",
+          "unit": "MPa",
           "range": [
             0,
             18
@@ -429,9 +429,9 @@
         },
         {
           "id": "condensate_flow",
-          "name": "condensate_flow",
-          "measures": "condensate_flow",
-          "unit": "",
+          "name": "Condensate Flow",
+          "measures": "Flow from the condensate pump feeding the main feedwater pump suction. No condensate, no main feed.",
+          "unit": "×rated",
           "range": [
             0,
             1.2
@@ -443,14 +443,28 @@
         },
         {
           "id": "sg_level_wide",
-          "name": "sg_level_wide",
-          "measures": "sg_level_wide",
-          "unit": "",
+          "name": "Steam Generator Level (wide range)",
+          "measures": "Steam-generator level on the WIDE-range scale — stays on scale during heatup, cooldown and post-trip drain, where the narrow range pegs.",
+          "unit": "%",
           "range": [
             0,
             100
           ],
           "lag_s": 4,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
+        },
+        {
+          "id": "sg_steam_flow",
+          "name": "Total Steam Flow",
+          "measures": "TOTAL flow leaving the steam generator on the main steam line — turbine plus dump plus safeties. This is the number feedwater must match; the turbine-only Steam Flow reads ~0 when the dump is carrying the plant.",
+          "unit": "×rated",
+          "range": [
+            0,
+            1.2
+          ],
+          "lag_s": 1,
           "derived": false,
           "boolean": false,
           "alarms": []
@@ -754,9 +768,9 @@
         },
         {
           "id": "startup_rate",
-          "name": "startup_rate",
-          "measures": "startup_rate",
-          "unit": "",
+          "name": "Startup Rate (SUR)",
+          "measures": "How fast power is changing, in decades per minute — positive is rising. The rate indication the approach to criticality is flown on.",
+          "unit": "DPM",
           "range": [
             -5,
             10
@@ -1820,9 +1834,9 @@
         },
         {
           "id": "startup_rate",
-          "name": "startup_rate",
-          "measures": "startup_rate",
-          "unit": "",
+          "name": "Startup Rate (SUR)",
+          "measures": "How fast power is changing, in decades per minute — positive is rising. The rate indication the approach to criticality is flown on.",
+          "unit": "DPM",
           "range": [
             -5,
             10

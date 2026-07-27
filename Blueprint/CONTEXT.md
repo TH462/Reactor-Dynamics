@@ -231,6 +231,55 @@ happens to need covering.
 
 ---
 
+**HR10 — A passing test is not evidence the mechanism is right. Tests assert the claim,
+never the current behaviour.** *(2026-07-27, after the same failure surfaced three times in
+one session — #200, #206/#219, #219.)*
+
+HR9 says content must not vote on physics. HR10 is the same inversion one level up: **test
+outcomes driving design.** It is more dangerous than the content version, because a green
+gate reads as proof rather than as a story someone wrote.
+
+Three shapes, all found in this repo:
+
+1. **Mechanism fitted to a suite.** #219's steam-dump arm was arrived at by three attempts,
+   each prompted by a red gate, until all gates passed. Three probes accepting a mechanism
+   says only that those three probes accept it. Measured afterwards, the mechanism had a
+   one-megawatt cliff — a 39 MWe rejection lifted the PORV where 41 MWe was caught — and was
+   blind to staircased rejections entirely. **No probe covered either case, so nothing was
+   red.** If you cannot state why a mechanism is right *without* citing which tests pass,
+   you have not finished.
+2. **A test driven through the one path the bug does not break.** `TR-11` exercised
+   `stuck_open_spray` through the only command form the broken override actually intercepted,
+   with a comment recording that the two forms which *defeated* the failure were deliberately
+   left unpinned "so the fix does not have to fight a test" (#200). The defect was documented
+   inside its own regression test and remained shipped for months.
+3. **A test that pins an incidental value instead of its claim.** `verify_e2e_ui` sampled feed
+   flow 120 s after a turbine trip and asserted `> 30 gpm`. Its stated claim was that feed
+   *tracks total steam flow*; at that moment the old plant read feed 60 against steam 80, so it
+   cleared the bar **without tracking at all**. When legitimate physics moved the transient, it
+   failed — and blamed the wrong component in its error message.
+
+**What to do instead**
+
+- **Derive first, then test.** Reach for a mechanism because it is what the plant should do.
+  A test suite is how you check that; it is not where the answer comes from.
+- **When a change reddens a gate, ask what the gate was really asserting** before touching
+  either side. It may be pinning a fixture, a transient, or the very defect you are fixing
+  (see also *test preconditions vs assertions*).
+- **Probe the edges you did not design for.** Every threshold has two sides and every latch
+  has a reset; measure both. Most defects here lived where no probe looked, not where one was
+  wrong.
+- **If you must move a test, validate the new form against the OLD behaviour too.** If it
+  passes on both, it is a better test. If it passes only on your change, you refitted it —
+  say so out loud and expect to be challenged.
+- **Assert the claim in the words of the claim.** "Feed tracks steam within 15 gpm" survives a
+  transient shifting; "feed > 30" does not, and never tested tracking.
+- **A declared behaviour that nothing measures is only a comment** — but a measurement with no
+  stated claim is only a number. Pin both sides of a deliberate discontinuity (catalog TR-1c is
+  the worked example).
+
+---
+
 ## 4. The Time Step and Determinism
 
 **Each step, in order:** advance the physics, then update the instruments from the new true
@@ -388,6 +437,10 @@ physical-quantity vocabulary.
     "core_inventory_pct": number,     // primary coolant mass
     "fuel_temp_c": number, "decay_heat_pct": number, "xenon_pct_eq": number, "boron_ppm": float,
     "porv_open": bool,                // actual valve position
+    "spray_stuck": bool,              // pressurizer spray valve mechanically stuck open — beats the auto
+                                      //   controller AND any operator demand, the way porv_stuck beats
+                                      //   porv_demand. Note spray_auto can read TRUE while this is true:
+                                      //   the controller really is in auto, the valve just isn't listening.
     "porv_stuck": bool, "hpi_active": bool, "hpi_flow_normalized": float, "afw_active": bool,   // hpi_* = the ONE merged HPI/LPI emergency-injection system (two-segment pump curve; flow normalized to combined rated)
     "afw_pump_running": bool,         // AFW PUMP demand (run lights, honest) — distinct from delivered flow afw_active; the TMI-2 pumps-running/valves-shut split
     "afw_flow_normalized": float,     // TRUE delivered AFW flow (capacity × throttle × level hold; 0 when blocked)

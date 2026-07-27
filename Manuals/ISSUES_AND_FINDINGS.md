@@ -47,10 +47,10 @@
 | ID | Sev | Finding | Detail | Status |
 |----|-----|---------|--------|--------|
 | I-11 | M | **M8 / early control-section specs** still describe four horizontal control sections for PWR. | As-built PWR uses **synoptic margin cards only** (`new_diagram_controls.md`, M8 as-built note). Manuals follow as-built synoptic. | Open (Blueprint residual) |
-| I-12 | L | **Some `manual_data.js` indication names** still raw ids (`charging_flow`, `boron_analyzer`) without polished display names. | Operator manual 03 uses human labels; generated in-product manual may look rougher. | Open |
+| I-12 | L | ~~**Some `manual_data.js` indication names** still raw ids without polished display names.~~ **RESOLVED 2026-07-27 (#145)** — root cause was the `IND` fallback in `tools/gen_manual_reference.js` (`{ n: id, m: id }`), so **15** instruments printed their raw id as name *and* description, not the two originally noted. All 15 authored and regenerated; raw-id count is now **0**. | In-product indication list now reads in human labels on every plant. | **Resolved** |
 | I-13 | M | ~~Alarm response “means” fields null for several alarms.~~ **RESOLVED for PWR (pre-ship review)** — `means` authored for all 18 previously-null PWR alarms in `tools/gen_manual_reference.js` and regenerated; PWR now has **0 null means**. (RBMK/BWR still have some nulls — out of PWR ship scope.) | In-product PWR manual now complete for alarm means. | **Resolved (PWR)** |
 | I-14 | M | **In-product procedures** cover a **subset** of OPERATOR_MANUAL_PLAN list (startup, raise/lower, pressure, SG, shutdown, LOFW, RCP, stuck PORV, TMI narrative). | External manuals expand N## / E## set; not all are harness-validated in `run_procedures.js`. | Open |
-| I-15 | L | **DHR vs RHR naming** mixed across UI (set_dhr / set_rhr / RHR tab). | Manuals treat DHR/RHR as the residual heat removal path. | Open |
+| I-15 | L | ~~**DHR vs RHR naming** mixed across UI.~~ **RESOLVED 2026-07-27 (#145, owner ruling: read RHR only)** — control label is now `Residual Heat Removal (RHR)` across synoptic, board wiring, scenario highlight and both test maps; manuals and glossary say RHR, not “RHR / DHR”. The `set_dhr` **command** alias remains (save-file contract, pinned by `run_e2e_controls`) and is documented as a deprecated alias. | UI, manuals and glossary all say RHR; only the legacy command id carries the old name. | **Resolved** |
 | I-16 | L | **OPERATOR_MANUAL_PLAN** counts ~22 PWR alarms; as-built has **26** alarm ids in control data. | Manuals use full as-built list (A01–A26). | Noted |
 
 ---

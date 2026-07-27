@@ -44,7 +44,12 @@ var BASELINES = {
   // "< 950 MWe" literal used to sit.
   // 199 checks since 2026-07-25 (#199): save_migration also pins the new
   // _fail.steam_break.upstream default (legacy saves → downstream/isolable).
-  'run_pwr.js':            { code: 0, score: '32/32 199passed' },
+  // 200 checks since 2026-07-27 (#200): save_migration also pins the stuck-open
+  // spray conversion — the failure used to be encoded as `spray_override = true`
+  // (a boolean in the OPERATOR'S demand field, which is why any set_spray cleared
+  // it); it is now s.spray_stuck, and a legacy save carrying the old encoding must
+  // keep the failure rather than silently healing on load.
+  'run_pwr.js':            { code: 0, score: '32/32 200passed' },
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
@@ -55,7 +60,11 @@ var BASELINES = {
   // ride-out. Those are different events in a real plant — a LOAD REJECTION rides out,
   // a turbine trip above P-9 scrams. Split: TR-1 now drives the ride-out with a real
   // load rejection, new TR-1b pins the P-9 anticipatory scram. No band was relaxed.
-  'run_behavior.js':       { code: 0, score: '36pass 0xfail' },
+  // 37 since 2026-07-27 (#219): +TR-1c. The steam-dump C-7 arm is a bistable, so a
+  // rejection just under it gets no fast dump and ends at the PORV. Owner ruled to KEEP
+  // the threshold and DECLARE the cliff (DESIGN_COMPANION §8.8), so the probe pins BOTH
+  // sides — 39 MWe lifts, 41 MWe is caught — and the declared behaviour cannot drift.
+  'run_behavior.js':       { code: 0, score: '37pass 0xfail' },
   'run_meltdown.js':       { code: 0, score: '8pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at
