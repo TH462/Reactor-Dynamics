@@ -68,6 +68,22 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>Plant picker, RHR naming, and a steam dump that scales with the event</h2>
+      <span class="log-ver mono">Alpha 1.7.1</span>
+      <time class="log-date mono" datetime="2026-07-27">27 July 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag changed">Changed</span><strong>Steam dump now scales with the size of a load rejection.</strong> Its temperature reference slides with turbine load instead of sitting at the no&#8209;load value, so the dump opens in proportion to what was actually rejected. A large rejection now settles at power instead of overshooting past 100&nbsp;%.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The residual heat removal system is called RHR everywhere.</strong> It was labelled DHR on the control and RHR on its tab.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The plant picker offered reactors that have no control room.</strong> Selecting BWR or RBMK inside the simulator loaded a board that was never built for them. They are now shown as coming soon.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A stuck&#8209;open pressurizer spray valve repaired itself.</strong> Pressing SPRAY AUTO or moving the spray slider cleared the fault. A stuck valve now stays stuck, whatever you command.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Fifteen instruments showed their internal name in the reference manual</strong> &mdash; &ldquo;startup_rate&rdquo; instead of &ldquo;Startup Rate (SUR)&rdquo;, and so on.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The front page said the plant was a four&#8209;loop design.</strong> It is a single&#8209;loop 100&nbsp;MWe unit, and now says so. The page also states that the control room needs a desktop or laptop.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>Steam flow on the board, trip on turbine trip</h2>
       <span class="log-ver mono">Alpha 1.7.0</span>
       <time class="log-date mono" datetime="2026-07-27">27 July 2026</time>

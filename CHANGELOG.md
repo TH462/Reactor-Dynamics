@@ -13,6 +13,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [Alpha 1.7.1] — 2026-07-27
+
 ### Changed
 - **The steam dump's temperature reference now slides with turbine load** (issue #219). It was
   pinned to the no-load anchor, which meant that at full power the dump's error signal was
