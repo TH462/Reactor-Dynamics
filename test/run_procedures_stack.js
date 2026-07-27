@@ -251,18 +251,24 @@ var KNOWN_FAILS = {
    * for the rest of the run against ZERO steam draw. Fixed in control_kernel.js:
    * minDelta no longer suppresses the step onto a rail. Measured: TRUE level now
    * holds 65.5 % across every hold (was 65.0 → 75.8 → collapse). */
-  /* #218 — pwr_heatup drives above P-9 (~50 % power) with the turbine offline, and the
-   * new Reactor Trip on Turbine Trip correctly scrams it (#216). A real plant would
-   * never sit above 50 % power with the turbine tripped, so the PROCEDURE is asking for
-   * something the protection is right to refuse — the heatup's own caution says it uses
-   * "10-30 % power", so it is overshooting its own stated band. Fix belongs in the
-   * procedure (cap the heatup below P-9), not in the plant. Boron is downstream of the
-   * scram, not independent. Strict xfail: reddens if the procedure is fixed. */
-  'pwr·pwr_heatup': {
-    'stack: no unexpected scram': '#218 heatup exceeds P-9',
-    'stack: no critical alarm standing at end': '#218 heatup exceeds P-9',
-    'step 17 boron_ppm > 900': '#218 (downstream of the P-9 scram)',
-  },
+  /* #218 (pwr_heatup) — RESOLVED 2026-07-27b, all three xfails removed.
+   *
+   * The filed diagnosis was "the heatup overshoots its stated 10-30 % band to ~55 %,
+   * cap it below P-9". Measured, it did not overshoot: it peaked at 49.9 % against a
+   * 50 % permissive — a knife-edge sitting exactly ON the setpoint, which is why it
+   * did not always trip. The procedure's own caution claiming "roughly 55 %" was
+   * simply wrong, and wrong in the direction that made the problem look bigger and
+   * simpler than it was.
+   *
+   * Cause: step 14 diluted at a fixed 4300 s hold. Traced at 300 s resolution, Tavg
+   * reaches the no-load anchor at t~5700 — about 3800 s in — after which the dump
+   * pins temperature and the remaining ~500 s of dilution has nowhere to go but
+   * power: 6.1 % at t=5476, 19.5 % at t=5776, 49.9 % by t~6076. The step's own text
+   * already said to "secure the dilution as Tavg reaches the hot band"; the fixed
+   * hold just wasn't doing it. Hold 4300 -> 3900 stops dilution at arrival.
+   *
+   * The boron xfail was indeed downstream of the scram and cleared with it —
+   * confirmed by the gate, not assumed. */
 
   /* #208 — RBMK/BWR procedures that diverge under the stack. Those plants are ON
    * HOLD (see CLAUDE.md); these are recorded so the findings survive until they

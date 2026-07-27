@@ -135,10 +135,14 @@ var BASELINES = {
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
-  // critical alarm standing, declared auto_channels engaged). Strict xfails 13 → 9 →
-  // **6** (2026-07-26c): pwr_heatup is now fully green — the last 3 fell when the PID
-  // output deadband stopped stranding a residual pump demand (#210). The remaining 6
-  // are all RBMK/BWR (#208, plants on hold).
+  // critical alarm standing, declared auto_channels engaged). Strict xfails 13 → 9 → 6
+  // (2026-07-26c, #210) → 9 again when P-9 was adopted (#218) → **6** (2026-07-27b, #218
+  // resolved). The remaining 6 are all RBMK/BWR (#208, plants on hold).
+  //
+  // Check count does NOT move on an xfail change — an xfail is still a check, just an
+  // annotated one — so the score string is the same either way. That is worth knowing
+  // before assuming this baseline is untouched: the 2026-07-27b #218 fix cleared three
+  // xfails without shifting a single number here.
   'run_procedures_stack.js': { code: 0, score: '22/22 155/155' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----

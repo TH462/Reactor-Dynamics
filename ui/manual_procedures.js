@@ -80,7 +80,7 @@
           target: 'critical', cmd: { action: 'rod_nudge', group_id: 'control', steps: 12, speed: 'slow' }, hold: 600,
           saw: { p: 'startup_rate_dpm', op: '>', v: 0 }, acc: { p: 'reactivity_pcm', op: '>', v: -60 } },
         { text: 'Commence the nuclear heatup with a slow DILUTION — lower the boron toward criticality (the walkthrough meters it for you). Power rises into the tens of percent and the temperature defect regulates it — the coolant warms toward the no-load point while the SG absorbs the heat. Watch SG level and trim feed as the steam draw grows.', control: 'Boron control',
-          target: 'Tavg up to the no-load band (~297–301 °C)', cmd: { action: 'set_boron_adjust', rate: -0.12 }, hold: 4300,
+          target: 'Tavg up to the no-load band (~297–301 °C)', cmd: { action: 'set_boron_adjust', rate: -0.12 }, hold: 3900,
           // Was `> 305`, which asked the ride to OVERSHOOT the 297 °C no-load anchor by
           // 8 degrees — inconsistent with this step's own stated target and with where
           // the plant correctly settles. Measured end-of-dilution: 301.2 °C, settling to
