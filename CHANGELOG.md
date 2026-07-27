@@ -6,7 +6,16 @@ follows [Keep a Changelog](https://keepachangelog.com/); newest entries on top.
 For the dense engineering rationale behind each change (spec deviations, tuning, gate
 tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summary.
 
+> **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]` heading
+> below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
+> empty `## [Unreleased]` above it. The version must match the top entry of
+> `changelog.html` and the string in `site/release.js`.
+
 ## [Unreleased]
+
+_Nothing yet._
+
+## [Alpha 1.7.0] — 2026-07-27
 
 ### Added
 - **Reactor Trip on Turbine Trip (P-9).** Above ~50 % power a turbine trip now trips the reactor,
@@ -194,6 +203,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `inject_failure` by `failure_id`), so blocking the power-range trip does not also tick
   the intermediate-range step.
 
+## [Alpha 1.6.1 and earlier] — up to 2026-07-24
+
+_Everything below this line predates the convention above: it was kept as one running
+`[Unreleased]` log and was never cut per release, so it is not separated by version.
+`changelog.html` is the authoritative per-version record for these._
+
+### Added
 - **Vercel Web Analytics on every shipped page.** A one-line first-party beacon
   (`/_vercel/insights/script.js`) in the `<head>` of `index`, `about`, `changelog`,
   `feedback`, `legal`, `privacy` and `ui/shell.html`. No npm package and no build step —
