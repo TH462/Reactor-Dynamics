@@ -175,7 +175,7 @@ Manuals Rev 2 closed naming + documentation gaps. Campaign Mode-N **strings are 
 | D-08 | TMI recovery | Isolate block valve; keep HPI; trust subcooling | Same core teaching across stuck_porv / tmi / qualify | **Aligned** |
 | D-09 | SBO | E05 documented with “may be unsurvivable” | Campaign **removed** SBO qualify path for same physics reason | **Aligned** (intent) / manuals still teach E05 |
 | D-10 | Rewind | Mentioned as mission recovery | Central to campaign failure cards; playtest found rewind quirks | **M** (product) |
-| D-11 | Act id `act5` | Not discussed in depth | Act VI still keyed `act5` for progress persistence | **L** (dev only) |
+| D-11 | Act id `act5` | Not discussed in depth | **RESOLVED 2026-07-27b (#158)** — renamed to `act6`. The "kept for progress persistence" reason was measured and found false: `rd_progress` stores only scenario/procedure ids, never act ids | **L** (dev only) |
 | D-12 | 1/M panel | Little/no 1/M scratchpad procedure in manuals | Campaign Act II / startup tooling emphasizes 1/M | **M** |
 | D-13 | Mode 5, Cold Shutdown in Free Play | Explicitly no IC; narr only | Campaign never references Mode 5, Cold Shutdown | **Aligned** on sim limits; manuals still sell Mode 5, Cold Shutdown path as training story |
 

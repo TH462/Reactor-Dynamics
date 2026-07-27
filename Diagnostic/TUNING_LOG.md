@@ -215,8 +215,17 @@ typo'd trigger type passes silently.
 - **The backlog is roughly half stale — verify before working.** Of #158's seven residue items,
   **five were already fixed or had moved**; three of the survivors have a real reason the
   2026-07-16 audit did not see (`set_lpi` is a live deprecated alias with save-file
-  compatibility; renaming `act5` orphans `rd_progress` keys; `buildTraining` has a standing
-  "do not" ruling). Fixed the two that were genuinely mechanical: the `dampInstruments` no-op
+  compatibility). **Two of the three "reasons" did not survive contact — including one I had
+  just written into this log.** (a) *"renaming `act5` orphans `rd_progress` keys"* is **false**:
+  `rd_progress` only ever holds `completed_scenarios`, `completed_procedures` and `hook_done`,
+  all keyed by SCENARIO id; act ids are used only to iterate and render (`app.js:1322, :1358`)
+  and are never persisted. Renamed to `act6`, nothing to migrate. (b) `buildTraining`'s standing
+  *"accepted — do not re-fix"* is **not an owner ruling** — it lives in
+  `PWR_SHIP_REVIEW_PLAN.md`, whose own header reads *"Created: 2026-07-19 (Fable) · Executor:
+  Opus"*, i.e. one agent instructing another, committed under the owner's name because that is
+  how agent work lands. It had also been overtaken twice (it "accepts" `dampInstruments`, since
+  retired under #217, and `clip()`, ruled on separately). Renamed to `refreshMissionSelect`.
+  Fixed the two that were genuinely mechanical: the `dampInstruments` no-op
   stub + dead call site, and a **new** instance of the #156 pattern — `simulation_service.js:404`
   claimed *"a manual scram never sets rps"*, which `control_kernel.js:204-207` stopped being
   true; corrected, not collapsed, since the two reads still differ under an ATWS.
@@ -232,6 +241,53 @@ typo'd trigger type passes silently.
   corrected together, with the measurement and its date inline. #161 stays open for (d) only:
   `OPS_TUNING_REPORT.md` is still the 2026-07-06 body and needs a real refresh, not a
   number-swap.
+
+**Addendum 2 — the instruction corpus was audited and cut, on an owner ruling.**
+
+Asked to confirm or revoke five standing directives, the owner could not identify any of them
+as his, and said: *"I think we have too many instructions in this project and it's starting to
+confuse the coding agents and gum up the works."* Measured: **~229,000 words of docs carrying
+~650 "do not / never / by design" phrases**, and `CLAUDE.md` — the first file every agent reads
+— was **7,462 words**, most of it fifteen stacked history entries duplicating this log.
+
+- **Four-line precedence rule added to `CLAUDE.md`**, which retires the other ~647 directives
+  without auditing them one by one: (1) only `CONTEXT.md` Hard Rules + `CLAUDE.md` bind;
+  (2) `Diagnostic/`, `BUILD_DECISIONS.md`, `Manuals/` are **record, not policy**; (3) **plans
+  expire when executed**; (4) no date + verbatim owner quote ⇒ **advisory**.
+- **`CLAUDE.md` cut 690 → 432 lines, 7,462 → 3,786 words** *(OWNER RULING, 2026-07-27:
+  "Execute the cut.")*. Verified first that this log is a **strict superset** of what was
+  removed — 7 entries for 07-25 against `CLAUDE.md`'s 5, 3-for-3 on 07-24 — so no content was
+  destroyed, only a second copy.
+- **Attribution is now mandatory** (`CONTEXT.md` §3, and on the canonical label issue #61):
+  `OWNER RULING (YYYY-MM-DD): "<their words>"`, or it is *your* recommendation and must be
+  labelled as such — including when approved, e.g. *"Claude's reasoning, owner-approved
+  2026-07-27 ('Do as you suggest')"*. F13 was rewritten this way retroactively; the first
+  draft said only "ruled won't-fix", which is the failure mode even though the owner did agree.
+- **Revoked:** `PWR_SHIP_REVIEW_PLAN.md` stamped **EXECUTED — historical record, not policy**
+  *(OWNER RULING: "Yes. Marking done.")*; Amendment A1's *"do not chase P4 without a new
+  ruling"* **revoked as moot** (PWR ops measures 21/21, zero fails); the C2 "Ruling: ship as a
+  documented limitation" **struck as a third copy** of #153 + its deliberately-red probe; the
+  unattributed *"Owner scope rulings … out of scope — do not add"* **downgraded** to "not
+  planned; propose with a reason".
+- **Two stale-and-still-binding statements struck**, both of which would have misled the next
+  reader: `pwr_control.js:68` said *"currently OFF … THIS PLANT DOES NOT HAVE IT"* about P-9
+  while `pwr_config.js:763` had it `true` — the comment narrating how a stale claim hardened
+  into "by design" had itself gone stale the same way — and `BUILD_DECISIONS.md:494`'s
+  *"deliberately left at 1.5 MPa"* against a config reading **4.14**.
+- **#229 filed** — P3-9 (decay heat undercounted through an un-scrammed runback) was blocked
+  by the A1 citation, not by a decision. Re-verified still open: the MD-5 fix broadened the
+  gate to `scrammed || _P < _decay` and its own comment says that is *"identical to the old
+  form … whenever P > decay (all at-power operation)"* — precisely P3-9's regime.
+
+**#210 closed — the promised seed sweep, finally run.** `pwr_rod_auto` on 7 seeds, peak SG
+level vs the 90 % P-14 trip: range **79.76 – 85.90**, spread **6.14**, mean 83.16, **worst
+margin 4.10 points, 0 scrams, 7/7 completed**. The filed 86.8 % is worse than anything measured
+today — the plant moved under the issue (#210's own `minDelta` fix, then #219's dump
+reference). Not a knife-edge, but the spread exceeds the worst-case margin, so the margin is
+noise-dominated: recorded as a watch item, deliberately not tuned, since tuning against an
+unobserved seed is fitting to noise. **Process lesson:** the first attempt burned 78 minutes
+and produced nothing because it printed only after all seeds finished *and* was piped through
+`tail` — stream per-iteration output from the start on any long sweep.
 
 ### 2026-07-27 — backlog sweep (8 issues closed) + #219: the dump reference was the bug, not the latch  ✅🔬
 
@@ -1106,9 +1162,14 @@ units and ignores the display toggle (`pwr_board_wiring.js:19-24`) — owner wan
 deferred because it spans ~30 formatters plus the editable setpoint boxes' bounds and
 parse-back.
 
-**Owner scope rulings:** rod deviation (step counter vs RPI), generator electrical indications
-(MVAR/volts/frequency/breaker), AFD/ΔI and QPTR are **out of scope** — do not add. Radiation
-monitoring + containment instrumentation deferred to its own issue.
+**Scope — not planned** *(downgraded 2026-07-27 from "**Owner scope rulings** … out of scope —
+do not add". Asked directly, the owner could not confirm he made that call, and the entry
+carried no date or quote, so under the attribution rule in `CONTEXT.md` it is advisory, not
+binding. The scope guidance is still good; the prohibition was never his to enforce.)*
+Rod deviation (step counter vs RPI), generator electrical indications
+(MVAR/volts/frequency/breaker), AFD/ΔI and QPTR are **not planned** — propose one with a
+reason if you want it, rather than treating the omission as settled. Radiation monitoring +
+containment instrumentation deferred to its own issue.
 
 **Modeled but unused, decision pending:** `accumulator_flow`, `primary_leak_flow` (LOCA/SGTR
 break flow has no readout anywhere), `condensate_flow`; plus status booleans `rhr_active`,

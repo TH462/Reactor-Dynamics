@@ -1269,7 +1269,7 @@
     var c = campaign();
     if (c && finished && campaignMissions(c).some(function (m) { return m.id === finished; })) {
       var nxt = campaignFrontier();
-      if (nxt) { startMission(nxt); buildTraining(); return; }
+      if (nxt) { startMission(nxt); refreshMissionSelect(); return; }
     }
     if (latest) renderInstructor(latest);
   }
@@ -1306,7 +1306,7 @@
       var cp = p.completed_procedures || [];
       if (cp.indexOf(ui.follow.id) === -1) { cp.push(ui.follow.id); saveProgress({ completed_procedures: cp }); }
     }
-    buildTraining();
+    refreshMissionSelect();
   }
 
   // ---- Campaign (Path 3 wrapper — Blueprint/pwr_training_campaign.md) ----
@@ -1402,9 +1402,11 @@
     $('missionOverlay').hidden = false;
   }
   function closeMissionSelect() { $('missionOverlay').hidden = true; }
-  // Legacy name, still the "training lists changed" refresh hook (completion
-  // marks, active-scenario card): re-render the window if it's open.
-  function buildTraining() {
+  // Called whenever something that the mission window displays has changed
+  // (completion marks, the active-scenario card): re-render it if it is open.
+  // Was `buildTraining`, a leftover from the retired Training tab — renamed
+  // 2026-07-27b (#158) now that it does exactly one thing and says so.
+  function refreshMissionSelect() {
     if (!$('missionOverlay').hidden) renderMissionSelect();
   }
   function scenariosFor(key) {
@@ -2624,7 +2626,7 @@
       var cc = e.target.closest('[data-camp-continue]');
       if (cc) {
         var fm = campaignFrontier(msel.engine);
-        if (fm) { closeMissionSelect(); if (fm.kind !== 'scenario') ensureEngine(msel.engine); startMission(fm); buildTraining(); }
+        if (fm) { closeMissionSelect(); if (fm.kind !== 'scenario') ensureEngine(msel.engine); startMission(fm); refreshMissionSelect(); }
         return;
       }
       var cs = e.target.closest('[data-camp-start]');
@@ -2632,12 +2634,12 @@
         var kv = cs.getAttribute('data-camp-start').split(':');
         closeMissionSelect();
         if (kv[0] !== 'scenario') ensureEngine(msel.engine);
-        startMission({ kind: kv[0], id: kv[1] }); buildTraining(); return;
+        startMission({ kind: kv[0], id: kv[1] }); refreshMissionSelect(); return;
       }
       var st = e.target.closest('[data-trstart]');
-      if (st) { closeMissionSelect(); startScenario(st.getAttribute('data-trstart')); buildTraining(); return; }
+      if (st) { closeMissionSelect(); startScenario(st.getAttribute('data-trstart')); refreshMissionSelect(); return; }
       if (e.target.closest('[data-trstop]')) {
-        ui.scenario = null; cmd({ action: 'stop_scenario' }); buildTraining();
+        ui.scenario = null; cmd({ action: 'stop_scenario' }); refreshMissionSelect();
         if (latest) renderInstructor(latest); return;
       }
       var ckq = e.target.closest('[data-checklist]');
@@ -2646,7 +2648,7 @@
       if (f) { closeMissionSelect(); ensureEngine(msel.engine); followProcedure(f.getAttribute('data-follow')); }
     });
     // First-run Hook invitation (prompted, never forced — Gameplay §7.1).
-    $('hookStart').addEventListener('click', function () { $('hookPrompt').hidden = true; startScenario('pwr_hook'); buildTraining(); });
+    $('hookStart').addEventListener('click', function () { $('hookPrompt').hidden = true; startScenario('pwr_hook'); refreshMissionSelect(); });
     $('hookSkip').addEventListener('click', function () { $('hookPrompt').hidden = true; saveProgress({ hook_done: true }); });
     // Global keyboard shortcuts (documented in the ? help card). Skipped while
     // typing in a field or holding a modifier; Space is left alone when a
@@ -3064,7 +3066,7 @@
     syncOverlayRow();   // per-plant settings rows (Values Display is legacy-view only)
     buildAdvFail();     // advanced instrument-failure panel follows the active plant
     var ps = $('pdScram'); if (ps && !ps.classList.contains('fired') && !ps.classList.contains('armed')) ps.textContent = prof().scramShort;
-    buildTraining();   // walkthrough list follows the active plant
+    refreshMissionSelect();   // walkthrough list follows the active plant
     latest = service.assembleSnapshot(); render(latest);
     if (!$('manualOverlay').hidden) renderManual();   // keep the manual in sync on plant switch
   }
@@ -3561,10 +3563,10 @@
     // optional ?follow=<procId> deep-link — loads a procedure into the Instructor block
     var fm = /[?&]follow=([a-z0-9_]+)/.exec(location.search || '');
     if (fm) followProcedure(fm[1]);
-    buildTraining();
+    refreshMissionSelect();
     // optional ?scenario=<id> deep-link — starts an M6 scenario directly
     var scm = /[?&]scenario=([a-z0-9_]+)/.exec(location.search || '');
-    if (scm && RD.SCENARIOS && RD.SCENARIOS[scm[1]]) { startScenario(scm[1]); buildTraining(); }
+    if (scm && RD.SCENARIOS && RD.SCENARIOS[scm[1]]) { startScenario(scm[1]); refreshMissionSelect(); }
     // First-run Hook invitation (Gameplay §7.1): plain loads only — any deep link
     // (search string) or a completed/declined hook suppresses it.
     if (!location.search && !progress().hook_done && RD.SCENARIOS && RD.SCENARIOS.pwr_hook) {

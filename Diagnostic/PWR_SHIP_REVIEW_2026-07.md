@@ -56,8 +56,16 @@ No below-baseline gate found. Phase 1 complete.
 
 `simulation_service.tick()` runs N fixed-dt physics substeps per broadcast, then calls
 `layer.evaluate()` (trips + actuations + alarms) **once** on the final readings. At high
-acceleration the trip therefore fires late in sim-time. **Ruling: ship as a documented
-limitation, not a blocker, for the PWR.**
+acceleration the trip therefore fires late in sim-time. ~~**Ruling: ship as a documented
+limitation, not a blocker, for the PWR.**~~
+
+**Not a ruling — de-duplicated 2026-07-27.** This was written by the review's executor
+(an agent), not the owner, and it was the *third* copy of the same decision: the live
+record is **issue #153**, labelled `status-deliberate`, plus the deliberately-red
+`abuse_accel_latency` probe in `run_ops`, which turns green the moment anyone fixes it.
+An issue and a red gate are a better record than a sentence in a report, because both
+move when the code does. The analysis below is retained — it is the evidence. Treat the
+decision as living in #153.
 
 - **The PWR is protected even at 256×.** `ops_pwr abuse_accel_latency` asserts, as HARD
   checks, that a rod-runaway *trips* at both 1× and 256× (the C1 fix gave the meter
@@ -114,10 +122,18 @@ consistent.
   runback/load-follow, residual decay heat above the new equilibrium is undercounted
   (~5–6 %, τ≈33 min), so Tavg/pressure sit low transiently. **This intersects the
   DEFERRED P2-A load-follow tuning** (partial-load Tavg 291.5 < 293) and is a plausible
-  contributor to it. Changing the decay-heat model changes load-follow physics — exactly
+  contributor to it. ~~Changing the decay-heat model changes load-follow physics — exactly
   the area the A1 owner ruling deferred ("do not chase P4 without a new ruling"). Left as
-  a documented limitation and flagged for whoever revisits P2-A. Scenarios that scram
+  a documented limitation and flagged for whoever revisits P2-A.~~ Scenarios that scram
   (TMI, trips) are unaffected.
+
+  **UNBLOCKED 2026-07-27.** There was no A1 owner ruling — A1 is a Fable-authored amendment
+  to an agent-written plan, and citing it here is how it acquired owner authority. It is
+  revoked as moot in any case (PWR ops now 21/21, zero fails). Re-verified that P3-9 itself
+  is **still open**: the MD-5 fix changed the gate to `scrammed || _P < _decay`
+  (`pwr_engine.js:292`) and its own comment states this is "identical to the old form …
+  whenever P > decay (all at-power operation)" — which is precisely P3-9's regime. Tracked
+  as a normal issue now, to be judged on the physics.
 - **P3-10 (L–M, sim): transient-cadence rounding** — at `TRANSIENT_MS=50` and 1×,
   `_stepsPerBroadcast` rounds 2.5→3, so sim runs ~1.2× real-time *during transients only*
   (physics stays stable; internal sim-time is self-consistent). Fixing needs a fractional-

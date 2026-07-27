@@ -1,5 +1,28 @@
 # PWR Pre-Ship Review Plan
 
+> ## ⛔ EXECUTED — HISTORICAL RECORD, NOT POLICY
+>
+> **Closed 2026-07-27** *(OWNER RULING, 2026-07-27: "Yes. Marking done.")*. This plan was
+> carried out; its findings live in `Diagnostic/PWR_SHIP_REVIEW_2026-07.md`.
+>
+> **Nothing in this file binds anyone.** It is a completed work order, and a work order
+> expires when it is executed. Every "do not", "accepted — do not re-fix", "deferred" and
+> "ship target" below described the state of play on 2026-07-19 and is now **void**, whether
+> or not it still reads like an instruction.
+>
+> This matters because it did not expire on its own: for a week its line *"the audit's
+> deliberately-left items … are accepted — do not re-fix them"* was cited as though the owner
+> had ruled it. He had not — this document's own header says it was written by one agent
+> (Fable) for another (Opus) to execute. Two specific revocations:
+> - **"do not re-fix them"** (§ near the Specs list) — **REVOKED.** Judge those items on their
+>   merits. `dampInstruments` and `clip()` have since been settled independently anyway.
+> - **Amendment A1's "do not chase P4 without a new ruling"** — **REVOKED as moot.** Measured
+>   2026-07-27: PWR ops is **21/21 with zero fails**; P4 passes, so the gap it froze has
+>   closed. The P3-9 decay-heat finding it was sheltering is now tracked on its own merits.
+>
+> If something here is still worth obeying, promote it to `Blueprint/CONTEXT.md` (rules) or
+> `BUILD_DECISIONS.md` (decisions) with a date and attribution. Left here, it does not count.
+
 **Created:** 2026-07-19 (Fable) · **Executor:** Opus · **Branch:** `develop`
 **Goal:** One comprehensive, phased review of the entire PWR stack before v1 ship. BWR and
 RBMK are *not* shipping yet and are out of scope except as regression guards.
@@ -75,7 +98,12 @@ change this plan's facts. Read `Diagnostic/TEST_SUITE_REVIEW_2026-07-19.md` +
    - **P2-A (`ops_load_follow`) → owner ruling: DEFERRED** (`ff0465d`): partial-load Tavg
      291.5 vs ≥293 band; the steam-pressure-program fix destabilized load delivery and was
      reverted; documented tuning gap, NOT to be closed by weakening the test. The ship
-     target is therefore **19/20**, not 19/19 — do not chase P4 without a new ruling.
+     target is therefore **19/20**, not 19/19 — ~~do not chase P4 without a new ruling~~.
+     **REVOKED 2026-07-27 (moot):** PWR ops now measures **21/21, zero fails** — P4 passes,
+     so there is no gap left to defer. Note this clause was written by Fable inside an
+     agent-authored amendment yet was later cited downstream as "the A1 owner ruling"
+     (`PWR_SHIP_REVIEW_2026-07.md:118`), and in that guise it was blocking **P3-9**, a real
+     and still-open physics finding. P3-9 is now tracked on its own merits.
    - **P2-C/C1 FIXED** (this pass): `power_range` `[0,200]` in BOTH `pwr_config.js` and
      `bwr_config.js`; manual regenerated; acceptance re-pointed (PWR `abuse_accel_latency`
      hard trip checks; new BWR engine `protection_trips`). `abuse_startup_yank` is no
