@@ -9,6 +9,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Reactor Trip on Turbine Trip (P-9).** Above ~50 % power a turbine trip now trips the reactor,
+  as a real Westinghouse plant does — the stop valves slam, the heat sink is gone, and protection
+  anticipates rather than waiting for a process limit. Below 50 % it is bypassed automatically
+  (that is what the P-9 permissive *is*), because there the plant genuinely can ride a turbine
+  trip out on the steam dump. The behaviour catalog had been pinning the wrong event entirely:
+  its ride-out probe injected a **turbine trip** while describing a **load rejection**. Those are
+  different events, and both are now covered — a load rejection rides out at power, a turbine
+  trip scrams.
+- **The steam dump now catches a load rejection, not just a turbine trip.** Its fast-open mode
+  only ever armed on a turbine trip, so a rejection with the turbine still on line waited on SG
+  pressure and spiked the primary. On a full load rejection: peak Tavg **319.5 → 305.2 °C**, the
+  PORV no longer lifts, and the dump carries 98 % — the plant's ride-out character now holds for
+  the event it was always claimed for.
 - **STEAM FLOW indication on the board** (issue #206, owner ruling). The board showed feed
   flow and SG level but **no steam flow of any kind** — so a player holding feedwater in
   MANUAL was asked to match a number that was not displayed anywhere. The feed pump is a
@@ -41,6 +54,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   0.05–0.20 all scram on low pressure within 19–55 s and inject 1–2 s later.
 
 ### Changed
+- **Indication noise is now set per indication, not by a global multiplier.** Gauges were
+  jittering more than wanted, and the previous fix scaled *every* instrument down to a quarter.
+  Measured, only about nine indications were actually misbehaving — feed and steam flow were
+  jittering ten times their display step — while pressurizer and SG level, T-avg and the valve
+  positions were already right, and reactor power, generator output and condenser vacuum were
+  already too *quiet* to move at all. Noise is now sized per indication against what each readout
+  can actually show, so the last digit moves occasionally, like a live instrument, instead of
+  churning or sitting frozen. The board's separate display smoothing has been removed: the
+  instruments already model their own lag, and the extra filter both duplicated it and made the
+  underlying numbers meaningless.
 - **The startup checklist now takes load control after synchronising** (owner ruling, #211).
   The generator picks up load in FOLLOW — right for getting on line, where the turbine chases
   the reactor — and the checklist then puts it in **MANUAL**, leaving the setpoint where FOLLOW

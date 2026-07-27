@@ -20,7 +20,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Current status (2026-07-26e)
+## Current status (2026-07-26f)
 
 **PWR is the focus plant and is in good shape** — all PWR engine, behavior, and ops gates
 green. The open backlog is dominated by **RBMK and BWR operability tuning** (documented,
@@ -108,6 +108,83 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-26f — P-9 adopted; noise moved to per-indication; the back-catalogue audited  ✅🔬
+
+Three linked threads, all from one owner instruction: **"err toward doing it the way real
+plants do — this is an educational sim after all."**
+
+**HR9 written, then amended.** New Hard Rule (`CONTEXT.md` §3): *the plant is the ground truth;
+content follows the plant, never the reverse*, with a one-way authority order. As first written
+it had this plant's identity **outranking** prototypicality — the owner inverted that. Identity
+choices are now **named departures**, legitimate only if ruled on, recorded, **and declared as
+simplifications where they understate reality**. A standing clause was added on the owner's
+instruction — *question the owner's own decisions, they may rest on stale premises* — deliberately
+scoped as **targeted, not a standing re-audit**: raise a ruling only with a specific reason to
+doubt its premise. Also: **record the premise, not just the verdict.**
+
+**The audit (#216).** Four parallel passes over `BUILD_DECISIONS`, the diagnostics, every source
+comment, and all 262 commits. Mostly compliant *before HR9 existed* — the dominant pattern is
+content being rewritten to fit the plant, and baseline hygiene is **clean** (no baseline ever
+lowered, no xfail ever added to absorb a plant change). One serious violation, fully laundered:
+
+> P-9 reactor trip on turbine trip was implemented 2026-07-18, **broke `pwr_msiv`**, and was
+> narrowed for that reason; the realistic version was deferred because *"it would require
+> re-authoring `pwr_msiv` around a reactor trip"*. The absence then hardened into *"this plant
+> has no turbine-trip reactor trip by design"* — **a line I wrote myself**, in the #211 session,
+> without checking its provenance — and that claim was used in #215 to reject adding the trip.
+
+`TR-8`'s genuine *"physics, not anticipation"* ruling **postdates the scoping by three days**, so
+it rationalised the gap rather than causing it. The mechanism was two doc lines (`CONTEXT` §11,
+`pwr_config` header) reading as if content could arbitrate tuning; both now name the physics
+acceptance suites and say campaign/procedures/checklists **are not arbiters**.
+
+**P-9 adopted (#216).** Built default-off first so the ruling rested on a measurement — blast
+radius 4 runners, far smaller than the 2026-07-18 deferral implied. The catalog was pinning the
+**wrong event**: `TR-1` injected a *turbine trip* while its own text described a *load rejection*.
+Split — **TR-1** = load rejection, turbine on line, dump catches it, no scram; **TR-1b** = turbine
+trip above P-9, scram in 0.5 s. `run_behavior` 35 → **36, no band relaxed**.
+
+That split exposed a real gap **independent of P-9**: the fast-open dump armed on `turbine_tripped`
+alone, though its comment said *"a turbine trip / load rejection"*. Now armed on either — full load
+rejection Tavg peak **319.5 → 305.2 °C**, PORV lift gone, dump 98 %. **The arming logic took three
+attempts and I do not trust it (#219, flagged for fresh eyes):** arming on the power/load mismatch
+tripped `pwr_boron` (a deliberate power *rise* looks identical to a load *fall*); arming on load-fall
+alone dropped the dump mid-ride (Tavg 345 °C); correct is a latch — arm on fall, hold on mismatch.
+**I arrived at that shape by iterating against failing tests, which is HR9's own anti-pattern one
+level up.**
+
+**Then P-9's own defect.** I shipped it `blockable` with a redundant permissive on top of its
+`above_p9` condition. Measured: **defeatable at full power**; auto-blocked below P-9 *on top of*
+already being bypassed; and a startup-time block recorded as **manual**, which survives
+auto-reinstate — silently carrying a defeated reactor trip to full power. **`run_all` was green
+throughout.** Fixed by deleting the redundancy: `above_p9` *is* the bypass. Defeating it is an
+instructor action (#222), not a board control.
+
+**Noise (#217).** Owner: *"some of the indications were dancing around too much."* Measured,
+"dancing" is noise relative to the **display step** — `fw_flow`/`steam_flow` sat at **10×** their
+1 gpm step, `boron_analyzer` 4×, three more ~3× — while `pzr_level`/`sg_level`/`tavg`/valve
+positions were **already in the sweet spot** and `power_range`/`mwe_output`/`condenser_vacuum` were
+**already too quiet**. Nine misbehaved; the global 0.25 scaler punished all twenty-five.
+`instrument_noise_scale` retired to **1.0**; sigma set per indication against its display step.
+
+**Removed the UI display damping** (`app.js dampInstruments`): a *second* lag on top of the engine's
+sim-time lag, **frame-rate dependent** (no `dt` term — HR6), and attenuating ~3×, which would have
+forced every sigma inflated 3× — and those sigmas are what a `noisy` **failure** multiplies.
+
+Two findings recorded at their sites: **`power_range` carries a constant ABSOLUTE sigma across a
+0–200 % span**, so a value that looks live at 100 % is ruinous at 1 % (it broke
+`pwr_startup_challenge`) — held deliberately quiet, chosen for the low-power case; and **PI-8's
+"true level lags indicated" is not resolvable from one sample** (0.16 % lag vs the channel noise),
+so it now bounds the difference instead of pretending to see through it. **Noise that hides the
+indicated-vs-true gap works against the point of the sim** — which is why levels were pulled back.
+
+**Open from this session:** #218 (content re-authoring — `pwr_msiv`'s decision window is gone;
+`pwr_heatup` measured at **106 % power with the turbine offline**, four times its own stated band),
+#219 (the dump latch), #220 (unsourced real-plant claims, incl. whether a 105 % dump is defensible),
+#221 (audit programme — **protection first, pilot before committing**), #222 (trips page), #214,
+#217 part 2 (per-instrument PRNG streams, then the six frozen instruments).
+
 
 ### 2026-07-26e — The board asked you to match a number it never showed (#206 closed)  ✅🔬
 
