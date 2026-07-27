@@ -251,6 +251,19 @@ var KNOWN_FAILS = {
    * for the rest of the run against ZERO steam draw. Fixed in control_kernel.js:
    * minDelta no longer suppresses the step onto a rail. Measured: TRUE level now
    * holds 65.5 % across every hold (was 65.0 → 75.8 → collapse). */
+  /* #218 — pwr_heatup drives above P-9 (~50 % power) with the turbine offline, and the
+   * new Reactor Trip on Turbine Trip correctly scrams it (#216). A real plant would
+   * never sit above 50 % power with the turbine tripped, so the PROCEDURE is asking for
+   * something the protection is right to refuse — the heatup's own caution says it uses
+   * "10-30 % power", so it is overshooting its own stated band. Fix belongs in the
+   * procedure (cap the heatup below P-9), not in the plant. Boron is downstream of the
+   * scram, not independent. Strict xfail: reddens if the procedure is fixed. */
+  'pwr·pwr_heatup': {
+    'stack: no unexpected scram': '#218 heatup exceeds P-9',
+    'stack: no critical alarm standing at end': '#218 heatup exceeds P-9',
+    'step 17 boron_ppm > 900': '#218 (downstream of the P-9 scram)',
+  },
+
   /* #208 — RBMK/BWR procedures that diverge under the stack. Those plants are ON
    * HOLD (see CLAUDE.md); these are recorded so the findings survive until they
    * reopen, NOT scheduled. Strict xfail: if one starts passing, the gate reddens

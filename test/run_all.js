@@ -51,7 +51,11 @@ var BASELINES = {
   // 34 since 2026-07-25 (#131): PI-3, PI-8, PI-9 and the TR-11 end-state pin were
   // catalogued behaviours the battery never probed — the coverage todo list is now empty.
   // 35 since 2026-07-25 (#199): +TR-12b, the MSIV isolating a downstream steam line break.
-  'run_behavior.js':       { code: 0, score: '35pass 0xfail' },
+  // 36 since 2026-07-26 (#216): TR-1 was injecting a TURBINE TRIP while asserting the
+  // ride-out. Those are different events in a real plant — a LOAD REJECTION rides out,
+  // a turbine trip above P-9 scrams. Split: TR-1 now drives the ride-out with a real
+  // load rejection, new TR-1b pins the P-9 anticipatory scram. No band was relaxed.
+  'run_behavior.js':       { code: 0, score: '36pass 0xfail' },
   'run_meltdown.js':       { code: 0, score: '8pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at
@@ -75,7 +79,12 @@ var BASELINES = {
 
   // ---- control, campaign, procedures ----
   'run_autoctl.js':        { code: 0, score: '20/20' },
-  'run_campaign.js':       { code: 0, score: '51/51 2932passed' },
+  // TRACKED RED (#218): 50/51 while pwr_msiv is re-authored for P-9. MSIV closure now
+  // trips the turbine, which above P-9 scrams the reactor immediately — the mission's
+  // ~21 s "decision window" before a level-driven trip no longer exists, so it ends on
+  // the bottled card instead of the dump-path one. This also FIXED #215's softlock: the
+  // reopen path now completes on every seed. Same convention as run_ops' tracked red.
+  'run_campaign.js':       { code: 1, score: '50/51 2931passed 1failed', note: '#218 pwr_msiv endpoint — re-author for P-9' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they

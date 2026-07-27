@@ -413,6 +413,24 @@
       // a scram. The stored-heat burst still swings Tavg visibly before settling
       // (tempo principle). Unavailable when the condenser is lost (vacuum/SBO).
       steam_dump_setpoint: 8.23, steam_dump_band: 0.25, steam_dump_max: 1.05, // [tune] = Psat(297 °C) anchor; ride-out capacity
+      // LOAD-REJECTION arm for the fast-open (Tavg-error) dump mode — the C-7 class
+      // interlock. The fast mode used to arm on `turbine_tripped` ALONE, even though
+      // its own comment said it was for "a turbine trip / load rejection" and that the
+      // pressure-only wait "spiked the primary on every load rejection". A rejection
+      // where the turbine stays on line therefore never got it. Now it also arms on a
+      // large reactor/turbine load mismatch (indicated power − load target, MWe — the
+      // same HR1-correct signal the LOAD IMBAL annunciator reads). It cannot self-arm
+      // at steady power: there the mismatch is ~0.
+      //   40 MWe = 40 % of rated. The real C-7 arm is RATE-based (turbine load
+      // rate-of-decrease); magnitude is the proxy here, so the threshold has to sit
+      // clear of dispatch. At 10 MWe it armed on EV-11's ordinary 15 MWe slider cut and
+      // the dump then vented the difference FOREVER — holding the reactor at 100 % and
+      // defeating the very load-follow lesson that probe teaches. A >=40 % step is a
+      // casualty, not a manoeuvre. [tune]
+      dump_load_reject_mwe: 40.0,
+      // ...and the mismatch below which the latch RESETS: the reactor has come back to
+      // meet the load, so the ride-out is over and pressure-mode has it again. [tune]
+      dump_reject_clear_mwe: 10.0,
     },
 
     // ------------------------------------------------------ turbine / condenser
@@ -691,7 +709,7 @@
       // will legitimately change TR-1 and TR-8 in the behaviour catalog and re-shape the
       // `pwr_msiv` mission — under HR9 that is content following the plant, not a
       // regression.
-      turbine_trip_reactor_trip: false,
+      turbine_trip_reactor_trip: true,
     },
 
     initial_states: {

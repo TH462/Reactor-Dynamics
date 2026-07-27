@@ -168,9 +168,12 @@ T.push(test('Attention stop — a plant event snaps fast-forward back to real ti
 
   // A newly annunciating ALARM is an attention stop, distinct from scram/failure.
   // trip_turbine is a COMMAND (not inject_failure), so it fires the TURB TRIP alarm
-  // without registering a new active_failure and without an immediate scram —
-  // isolating the alarm trigger.
-  var a = svc();
+  // without registering a new active_failure — isolating the alarm trigger.
+  // Driven from the 6 % initial state since #216: above P-9 (~50 % power) a turbine
+  // trip now SCRAMS the reactor, which would make this an attention stop of the wrong
+  // KIND (reason 'scram', not 'alarm') and leave the alarm leg untested. Below P-9 the
+  // trip is bypassed exactly as in a real plant, so the alarm still arrives alone.
+  var a = svc({ initial_state: '5_percent' });
   a.advanceCycles(3);
   a.handleCommand({ action: 'set_speed', value: 60 });
   a.advanceCycles(1);
@@ -184,7 +187,7 @@ T.push(test('Attention stop — a plant event snaps fast-forward back to real ti
   // casualty working procedures, and the alarms that follow are consequences they are
   // already handling — stopping for each one made fast-forward unusable exactly when it
   // is most wanted (a large-break LOCA dropped the clock 5 times in its first 3 min).
-  var lit = svc();
+  var lit = svc({ initial_state: '5_percent' });         // below P-9 — see above
   lit.advanceCycles(3);
   lit.handleCommand({ action: 'trip_turbine' });          // light the board
   lit.advanceCycles(8);

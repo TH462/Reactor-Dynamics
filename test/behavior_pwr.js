@@ -43,7 +43,8 @@
     'EV-5': 'existing:run_campaign pwr_boron', 'EV-6': 'probe', 'EV-7': 'probe:EV-6',
     'EV-8': 'existing:run_ops xenon 8h', 'EV-9': 'existing:run_campaign startup ×2',
     'EV-10': 'existing:run_pwr transient_loss_vacuum',
-    'TR-1': 'probe', 'TR-2': 'probe', 'TR-3': 'probe',
+    'TR-1': 'probe (LOAD REJECTION — the ride-out case)', 'TR-1b': 'probe (turbine trip → P-9 scram, #216)',
+    'TR-2': 'probe', 'TR-3': 'probe',
     'TR-4': 'probe (lumped-RCP model: total-loss trip; P-8 single-loop needs multi-loop model)',
     'TR-5': 'probe', 'TR-6': 'existing:run_ops grid step + steam_dump_capacity_cap',
     'TR-7': 'probe', 'TR-8': 'probe',
@@ -228,11 +229,24 @@
     // plant's ~105 % dump swallows a full load rejection — a turbine trip is a
     // transient the operator manages, NOT a scram. The v2.0 anticipatory-trip
     // expectation (P-9) is retired with the ruling.
+    /* TR-1 re-specified 2026-07-26 (#216, owner ruling): this probe used to inject a
+     * TURBINE TRIP and assert no scram. That conflated two events a real plant treats
+     * very differently:
+     *   • LOAD REJECTION — the grid demand collapses but the turbine stays available.
+     *     The dump catches it and the plant rides it out at power. THIS is the ride-out
+     *     case, and it is genuinely prototypical (plants are designed for it).
+     *   • TURBINE TRIP — the stop valves slam. Above P-9 (~50 % power) a real
+     *     Westinghouse plant trips the reactor immediately, because that is exactly
+     *     what the P-9 interlock arms the trip for.
+     * The plant previously had no turbine-trip reactor trip, so both events read the
+     * same and this probe pinned the wrong one. TR-1 now drives the ride-out with a
+     * real load rejection; the turbine-trip case is TR-1b below. */
     'TR-1': function () {
-      return test('TR-1 turbine trip @100% — RIDE-OUT: dump catches, operator recovers, no scram', function (ck) {
+      return test('TR-1 load rejection @100% — RIDE-OUT: dump catches, operator recovers, no scram', function (ck) {
         var h = H('hot_full_power');
         h.run(30);
-        h.cmd('inject_failure', { failure_id: 'turbine_trip' });
+        // Full load rejection: demand to zero with the turbine still on line.
+        h.cmd('set_load_target', { mwe: 0 });
         // Phase 1 — hands-off ride: the TRIP-OPEN dump (Tavg-error fast-open,
         // real Westinghouse behavior) catches the rejected load immediately —
         // the reactor keeps making near-full power straight into the condenser
@@ -262,6 +276,39 @@
         ck('SG never approached the lo-lo trip (min ≥ 25 %)', fmt(h.range('sg_level_pct').min, 1),
           h.range('sg_level_pct').min >= 25, '≥ 25');
         ck.info('peak Tavg during the ride', fmt(h.range('tavg_c').max, 1) + ' °C');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    /* TR-1b (#216, owner ruling 2026-07-26) — the other half of the split. Above P-9
+     * (~50 % power) a turbine trip scrams the reactor, prototypical Westinghouse: the
+     * stop valves slam and the heat sink is gone, so protection anticipates rather than
+     * waiting for a process limit. The plant then rides its OWN decay heat out on the
+     * dump. Contrast TR-1 (load rejection, turbine stays on line → no scram) and TR-8
+     * (turbine trip with the condenser LOST → no dump, so a genuine-limit trip). */
+    'TR-1b': function () {
+      return test('TR-1b turbine trip @100% — P-9 scrams the reactor, dump takes the decay heat', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        var t0 = h.t;
+        h.cmd('inject_failure', { failure_id: 'turbine_trip' });
+        var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 120);
+        ck('the reactor trips on the turbine trip', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip in 120 s',
+          dt >= 0 && /turbine_tripped/.test(h.tripReason || ''), 'turbine_tripped is_true');
+        ck('it is ANTICIPATORY — inside 5 s, not waiting for a process limit',
+          dt >= 0 ? fmt(dt, 1) + ' s' : 'never', dt >= 0 && dt <= 5, '≤ 5 s');
+        h.run(600);
+        var t = h.ts();
+        ck('the dump carries decay heat to the condenser', fmt(h.range('steam_dump_valve_pct').max, 0),
+          h.range('steam_dump_valve_pct').max >= 20, '≥ 20 %');
+        ck('SG code safeties never lift (the dump got there first)', String(!!t.sg_safety_open),
+          h.range('steam_pressure_mpa').max < 9.31, 'no lift (< 9.31 MPa)');
+        ck('no PORV lift on the primary side', fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < 16.20, '< 16.20');
+        ck('settles at the no-load anchor (297 ±6 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 297, 6), '297 ±6');
+        ck('SG level held well clear of the lo-lo trip', fmt(h.range('sg_level_pct').min, 1),
+          h.range('sg_level_pct').min >= 25, '≥ 25 %');
+        ck('core intact', fmt(h.range('fuel_temp_c').max, 0), h.range('fuel_temp_c').max < 1200, '< 1200 °C');
         T.checkSanity(ck, h);
       });
     },
@@ -886,10 +933,13 @@
         var lead = h.alarmFirst['pzr_level_high'] != null ? h.tripTime - h.alarmFirst['pzr_level_high'] : -1;
         ck('the 75 % caution led the trip by ≥ 60 s', lead >= 0 ? fmt(lead, 0) + ' s' : 'alarm never fired',
           lead >= 60, '≥ 60 s');
-        // Headroom: the FG-4 ride-out must not clip the backstop.
+        // Headroom: the FG-4 ride-out must not clip the backstop. Driven by a LOAD
+        // REJECTION since #216 — a turbine trip above P-9 now scrams (TR-1b), so it no
+        // longer produces a ride-out swell to measure. The load rejection is the event
+        // that still holds the plant at power, which is what this headroom is for.
         var h2 = H('hot_full_power');
         h2.run(30);
-        h2.cmd('inject_failure', { failure_id: 'turbine_trip' });
+        h2.cmd('set_load_target', { mwe: 0 });
         h2.run(300);
         ck('the ride-out swell stays well clear of it (< 90 %)', fmt(h2.range('pzr_level_pct').max, 1),
           h2.range('pzr_level_pct').max < 90 && h2.tripTime == null, '< 90, no scram');

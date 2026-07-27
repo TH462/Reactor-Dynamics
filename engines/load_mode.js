@@ -96,6 +96,19 @@
       if (s.feed_auto_coupled) opts.setFeed(s, clip(s.load_target_mwe / rated, 0, feedMax));
     }
 
+    // LOAD-REJECTION detector: a slow-following reference of the load TARGET, so
+    // (ref − target) measures how far and how recently load has been THROWN OFF. The
+    // PWR's fast-open steam dump arms on it (C-7 class). It must key on load FALLING,
+    // not on the power/load mismatch: that mismatch is equally positive when the
+    // operator deliberately raises power (dilution), and arming there opens the dump
+    // into a rising plant, overcools it and lets MTC run power up — measured, it
+    // tripped `pwr_boron`. The reference decays back, so the arm is transient like the
+    // real interlock rather than a standing make-up path.
+    if (s.load_ref_mwe == null) s.load_ref_mwe = s.load_target_mwe || 0;
+    var refTau = s.load_reject_ref_tau != null ? s.load_reject_ref_tau : 60.0;
+    s.load_ref_mwe += (dt / (refTau + dt)) * (s.load_target_mwe - s.load_ref_mwe);
+    s.load_rejected_mwe = Math.max(0, s.load_ref_mwe - s.load_target_mwe);
+
     // The imbalance ANNUNCIATOR reads INDICATED power (the engine stashes the
     // previous step's power_range reading as s._ins_power_pct) — HR1: an
     // annunciator is an indication, not physics. The load-follow tracking
