@@ -68,6 +68,32 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>Steam flow on the board, trip on turbine trip</h2>
+      <span class="log-ver mono">Alpha 1.7.0</span>
+      <time class="log-date mono" datetime="2026-07-27">27 July 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>STEAM FLOW readout.</strong> Sits directly above SG FEED RATE on the same scale, so holding feedwater in MANUAL is a matter of matching two numbers instead of chasing level. It reads total main&#8209;steam&#8209;line flow, so it stays live with the turbine tripped and the steam dump carrying the plant.</li>
+      <li><span class="log-tag added">Added</span><strong>Reactor trip on turbine trip.</strong> Above about 50&nbsp;% power a turbine trip now trips the reactor. Below that it is bypassed automatically, and the plant rides the trip out on the steam dump.</li>
+      <li><span class="log-tag added">Added</span><strong>LOAD IMBAL annunciator.</strong> Lights when reactor power and turbine load diverge. Reducing power on rods alone used to overcool the plant from 304&nbsp;&deg;C to 130&nbsp;&deg;C with nothing on the board saying so.</li>
+      <li><span class="log-tag added">Added</span><strong>Release version by the logo</strong> in the control room.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Startup checklist rebuilt around the 1/M approach.</strong> Six plotted points instead of three, so the prediction converges on criticality instead of running some eighty rod steps long; new steps put feedwater in automatic and block the startup trips above P&#8209;10. The approach steps now grade on measured source&#8209;range counts rather than reactivity.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Rod insertion limit is power&#8209;dependent.</strong> Not applicable below 5&nbsp;% power and ramping to 70&nbsp;% withdrawn at full power, instead of a flat floor that lit ROD INS LIMIT during every startup.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Steam&#8209;line breaks now have a location.</strong> The standard break is downstream of the isolation valve and closing the MSIV ends it; a new break inside containment cannot be isolated at all.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Larger PWR board</strong> with elastic right&#8209;hand columns, removing the dead space at wide window sizes.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Indication noise is set per readout.</strong> One global setting had feed and steam flow dancing at ten times their display resolution while power and output were unnaturally still. Display smoothing has been removed, so a needle now lags only as far as its instrument does.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Automatic feedwater control could not see the steam dump.</strong> With the turbine offline or tripped it read almost no steam flow and commanded no feed while the generator boiled down.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Auxiliary feedwater holds level in the green band.</strong> It used to settle at 21&nbsp;%, inside the amber.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Four readouts were showing fiction.</strong> Accumulator pressure was a hard&#8209;coded number and now falls as the tank drains, SG FEED RATE showed pump demand rather than measured flow, the condensate polisher always read NORMAL, and net reactivity printed &ldquo;+&minus;0&nbsp;pcm&rdquo;.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Startup no longer overshoots to about 20&nbsp;% power.</strong> The startup rate alarm and the rod withdrawal block are now set where they catch a fast ascent.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Rod speed on the first step.</strong> A bank left part&#8209;way through a step took its next step almost immediately, whatever speed was selected.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Strip charts</strong> keep each trace in its own lane, hold still when the plant does, and no longer turn white.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Hovering a checklist step</strong> no longer pulls panels in front of the reactor vessel.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>Anonymous visitor counts</h2>
       <span class="log-ver mono">Alpha 1.6.1</span>
       <time class="log-date mono" datetime="2026-07-24">24 July 2026</time>
