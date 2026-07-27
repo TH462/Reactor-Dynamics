@@ -458,16 +458,21 @@
     // fully open is a NUISANCE, not a casualty. The valve sits at its ~12 % cap,
     // pressure droops ~0.08 MPa and parks there, and the auto heaters hold it at
     // roughly a third of their duty — no trip, no alarm, indefinitely.
-    // Driven through the SPRAY OFF command form ({open:false}) because that is the
-    // one the override actually intercepts; the {pct}/{auto} forms silently defeat
-    // it (#200), deliberately NOT pinned here so the fix does not have to fight a test.
+    // Now driven through the two command forms that used to SILENTLY DEFEAT the
+    // failure (#200, fixed): the override was written into the operator's demand
+    // (spray_override), so SPRAY AUTO or the % slider simply overwrote it and the
+    // stuck valve healed itself. A stuck valve is mechanical — it is now s.spray_stuck
+    // in the engine and pressurize() forces the valve open past both the auto
+    // controller and any operator demand, mirroring porv_stuck. Driving the failure
+    // through those forms makes this test the regression guard for that fix.
     'TR-11': function () {
       return test('TR-11 spray valve stuck open — the capped spray loses to the heaters', function (ck) {
         var h = H('hot_full_power');
         h.run(30);
         var p0 = h.ts().pressure_mpa;
         h.cmd('inject_failure', { failure_id: 'stuck_open_spray' });
-        h.cmd('set_spray', { open: false });        // the operator shuts it; the override re-opens it
+        h.cmd('set_spray', { pct: 0 });             // slider to zero — used to clear the failure (#200)
+        h.cmd('set_spray', { auto: true });         // SPRAY AUTO — used to clear the failure (#200)
         h.run(1800);
         var t = h.ts(), c = h.ctl();
         var cap = h.eng.cfg.pressurizer.spray_flow_max * 100;

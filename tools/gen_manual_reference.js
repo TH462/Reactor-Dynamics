@@ -147,6 +147,23 @@ var IND = {
   recirc_flow:      { n: 'Recirc / Core Flow', m: 'Core flow from the recirculation system, percent of rated.', u: '%' },
   core_void_fraction:{ n: 'Core Void Fraction', m: 'Steam-bubble fraction in the core.', u: 'frac' },
   rcic_status:      { n: 'RCIC Status', m: 'Whether the steam-driven RCIC pump is running.', u: '' },
+  // PWR indications that used to fall through to `{ n: id, m: id }` below and print
+  // their raw instrument id as both name and description (#145 / I-12).
+  startup_rate:     { n: 'Startup Rate (SUR)', m: 'How fast power is changing, in decades per minute — positive is rising. The rate indication the approach to criticality is flown on.', u: 'DPM' },
+  charging_flow:    { n: 'Charging Flow', m: 'CVCS flow being pumped INTO the primary (make-up). Balanced against letdown to hold pressurizer level.', u: '×rated' },
+  letdown_flow:     { n: 'Letdown Flow', m: 'CVCS flow being drawn OUT of the primary through the letdown orifices. Balanced against charging.', u: '×rated' },
+  boron_analyzer:   { n: 'Boron Concentration (lab sample)', m: 'Boron concentration in the primary coolant, from a chemistry sample — NOT a live board indication. Real plants sample; they do not trust an online boronometer. Take a sample to refresh it.', u: 'ppm' },
+  governor_valve:   { n: 'Turbine Governor Valve', m: 'Position of the turbine governor valve — how much steam the turbine is being allowed to take.', u: '%' },
+  steam_dump_valve: { n: 'Steam Dump Valve', m: 'Position of the steam dump (turbine bypass) to the condenser — the heat sink when the turbine cannot take the steam.', u: '%' },
+  sg_steam_flow:    { n: 'Total Steam Flow', m: 'TOTAL flow leaving the steam generator on the main steam line — turbine plus dump plus safeties. This is the number feedwater must match; the turbine-only Steam Flow reads ~0 when the dump is carrying the plant.', u: '×rated' },
+  sg_level_wide:    { n: 'Steam Generator Level (wide range)', m: 'Steam-generator level on the WIDE-range scale — stays on scale during heatup, cooldown and post-trip drain, where the narrow range pegs.', u: '%' },
+  condensate_flow:  { n: 'Condensate Flow', m: 'Flow from the condensate pump feeding the main feedwater pump suction. No condensate, no main feed.', u: '×rated' },
+  afw_flow:         { n: 'Auxiliary Feedwater Flow', m: 'Flow delivered by the auxiliary feedwater (AFW) pumps — the post-trip heat sink when main feed is gone.', u: '×rated' },
+  afw_discharge_pressure: { n: 'AFW Discharge Pressure', m: 'Auxiliary-feedwater pump discharge pressure. Pumps can run against shut valves: pressure up, flow zero (the TMI-2 trap).', u: 'MPa' },
+  hpi_flow:         { n: 'Emergency Injection Flow', m: 'Flow delivered by the merged HPI/LPI emergency injection system.', u: '×rated' },
+  hpi_discharge_pressure: { n: 'Emergency Injection Discharge Pressure', m: 'HPI/LPI pump discharge pressure — read with flow to tell "running but blocked" from "running and delivering".', u: 'MPa' },
+  accumulator_flow: { n: 'Accumulator Flow', m: 'Flow from the passive safety-injection accumulators, which discharge on their own once primary pressure falls below their cover-gas pressure.', u: '×rated' },
+  primary_leak_flow:{ n: 'Primary Leak Rate', m: 'Indicated leakage out of the primary system.', u: '×rated' },
 };
 
 // Safety limits (authored).

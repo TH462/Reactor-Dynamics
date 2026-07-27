@@ -14,6 +14,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **A pressurizer spray valve stuck open healed itself the moment you touched the spray
+  controls** (issue #200). The failure was encoded by writing `spray_override = true` — a
+  boolean shoved into the *operator's own demand field* — so pressing SPRAY AUTO or moving
+  the spray % slider simply overwrote the failure and the stuck valve un-stuck. A stuck
+  valve is mechanical, and now behaves like one: `s.spray_stuck` in the engine, with the
+  pressurizer forcing the valve open past both the auto controller and any operator demand,
+  exactly as `porv_stuck` already beat `porv_demand`. Note the controller still reads AUTO
+  while the valve sits open — the controller genuinely *is* in auto, the valve just isn't
+  listening, and that gap is the lesson.
+  *Save migration:* a save carrying the old encoding keeps its failure instead of silently
+  healing on load.
+- **Fifteen instruments printed their raw internal id as their name in the reference
+  manual** (issue #145). `startup_rate`, `charging_flow`, `sg_steam_flow`, `sg_level_wide`,
+  `hpi_flow` and ten more fell through the generator's display-name table and were listed as
+  e.g. "startup_rate — startup_rate". They now read as "Startup Rate (SUR) — how fast power
+  is changing, in decades per minute". The boron entry is now explicit that it is a
+  chemistry *sample*, not a live board indication.
 - **The in-sim plant picker offered plants that have no control room** (issue #119). The
   Plant & Mission window listed all four engines as live, selectable cards: picking RBMK or
   BWR switched the plant and dropped you onto a board that was never extended to it. The

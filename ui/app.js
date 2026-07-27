@@ -2245,7 +2245,9 @@
     'dump-open': function () { cmd({ action: 'set_steam_dump', mode: 'open' }); },
     'dump-close': function () { cmd({ action: 'set_steam_dump', mode: 'closed' }); },
     'porv-open': function () { cmd({ action: 'open_porv' }); }, 'porv-close': function () { cmd({ action: 'close_porv' }); },
-    'dhr-on': function () { cmd({ action: 'set_dhr', active: true }); }, 'dhr-off': function () { cmd({ action: 'set_dhr', active: false }); },
+    // (No dhr-on/dhr-off handlers: nothing emits them. The set_dhr COMMAND alias
+    // still lives in the engine/kernel as a save-file contract — pinned by
+    // run_e2e_controls — but the UI speaks RHR only. #145)
     // synoptic emergency card: RHR — AUTO re-arms the ESF actuation (a manual
     // On/Off flips it to MANUAL, like the HPI and AFW arms).
     'rhr-auto': function () { cmd({ action: 'set_esf_auto', system: 'rhr', auto: true }); },

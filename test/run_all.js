@@ -44,7 +44,12 @@ var BASELINES = {
   // "< 950 MWe" literal used to sit.
   // 199 checks since 2026-07-25 (#199): save_migration also pins the new
   // _fail.steam_break.upstream default (legacy saves → downstream/isolable).
-  'run_pwr.js':            { code: 0, score: '32/32 199passed' },
+  // 200 checks since 2026-07-27 (#200): save_migration also pins the stuck-open
+  // spray conversion — the failure used to be encoded as `spray_override = true`
+  // (a boolean in the OPERATOR'S demand field, which is why any set_spray cleared
+  // it); it is now s.spray_stuck, and a legacy save carrying the old encoding must
+  // keep the failure rather than silently healing on load.
+  'run_pwr.js':            { code: 0, score: '32/32 200passed' },
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },

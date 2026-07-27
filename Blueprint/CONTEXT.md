@@ -388,6 +388,10 @@ physical-quantity vocabulary.
     "core_inventory_pct": number,     // primary coolant mass
     "fuel_temp_c": number, "decay_heat_pct": number, "xenon_pct_eq": number, "boron_ppm": float,
     "porv_open": bool,                // actual valve position
+    "spray_stuck": bool,              // pressurizer spray valve mechanically stuck open — beats the auto
+                                      //   controller AND any operator demand, the way porv_stuck beats
+                                      //   porv_demand. Note spray_auto can read TRUE while this is true:
+                                      //   the controller really is in auto, the valve just isn't listening.
     "porv_stuck": bool, "hpi_active": bool, "hpi_flow_normalized": float, "afw_active": bool,   // hpi_* = the ONE merged HPI/LPI emergency-injection system (two-segment pump curve; flow normalized to combined rated)
     "afw_pump_running": bool,         // AFW PUMP demand (run lights, honest) — distinct from delivered flow afw_active; the TMI-2 pumps-running/valves-shut split
     "afw_flow_normalized": float,     // TRUE delivered AFW flow (capacity × throttle × level hold; 0 when blocked)
