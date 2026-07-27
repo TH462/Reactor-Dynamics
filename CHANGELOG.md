@@ -13,6 +13,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The steam dump's temperature reference now slides with turbine load** (issue #219). It was
+  pinned to the no-load anchor, which meant that at full power the dump's error signal was
+  already saturated — the demand carried no information about how big the event was, so a
+  load-mismatch cap had been added on top to put that information back. The reference is now
+  the same sliding Tavg program the rod controller already runs, so the demand is proportional
+  to the size of the rejection on its own and the cap is gone. On a 41 MWe rejection the plant
+  now settles at 99.2 % power instead of overshooting to 102.7 %; a full rejection peaks at
+  Tavg 305.3 °C. A turbine trip is unchanged by construction — at zero load the program
+  collapses onto the old no-load anchor.
+
 ### Fixed
 - **A pressurizer spray valve stuck open healed itself the moment you touched the spray
   controls** (issue #200). The failure was encoded by writing `spray_override = true` — a

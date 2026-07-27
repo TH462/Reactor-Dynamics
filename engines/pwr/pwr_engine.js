@@ -253,6 +253,13 @@
     // The CVCS level PROGRAM reads indicated Tavg (HR1) — its setpoint card tracks the
     // same thermal-expansion line the derived level rides (pwr_primary/pwr_pressurizer).
     s._ins_tavg = insPrev && insPrev.tavg != null ? insPrev.tavg : null;
+    // The steam dump's Tavg reference is PROGRAMMED ON TURBINE LOAD (#219), and it reads
+    // that load through the steam-flow instrument — the same instrument the rod channel's
+    // Tref program reads (pwr_control.js trefFromLoad). HR1: an automatic control senses
+    // through indications, so a failed steam-flow instrument mis-programs the dump exactly
+    // as it mis-programs the rods. NOT a new instrument — just a stash of an existing
+    // reading, so it adds no draw to the instrument PRNG stream (see pwr_config.js).
+    s._ins_steam_flow = insPrev && insPrev.steam_flow != null ? insPrev.steam_flow : null;
     // Full-power equilibrium Tavg — the anchor of the level base line. Lazy so
     // loaded saves (which lack the stash) recompute it once.
     if (s._tavg_fp == null) s._tavg_fp = this._computeEquilibriumTemps(1.0).Tavg;

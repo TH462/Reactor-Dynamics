@@ -235,22 +235,33 @@ async function testSteamFeedPair(page) {
     throw new Error('at steady full power feed should match steam, got steam=' + atPower.steam + ' feed=' + atPower.feed);
   }
 
-  var tripped = await read('&inject=turbine_trip&ff=120');
+  // Sampled at ff=240, not 120 (#219). At 120 s the SG is still coming down off the
+  // post-trip swell, so feed is legitimately at 0 for part of that window while the level
+  // element unloads — which says nothing about what the channel is READING. Measured on
+  // BOTH the old and new dump physics, 240 s is past the transient and feed is tracking
+  // (old 67 vs steam 66; new 64 vs 64), so this is a settled point, not a refit to one of
+  // them. At 120 s the old physics read feed 60 against steam 80 — it cleared the old
+  // `> 30` bar without tracking at all, which is why that bar is replaced below.
+  var tripped = await read('&inject=turbine_trip&ff=240');
   log.push('turbine tripped: steam=' + tripped.steam + ' feed=' + tripped.feed +
            ' gov=' + tripped.gov + ' dump=' + tripped.dump);
   if (!(num(tripped.gov) < 20)) throw new Error('turbine_trip did not shut the governor (gov=' + tripped.gov + ')');
   // Decay-heat scale since #216: above P-9 a turbine trip now SCRAMS the reactor, so the
-  // dump carries ~8 % (decay heat) rather than the ~98 % of the old ride-out. The check
+  // dump carries ~7 % (decay heat) rather than the ~98 % of the old ride-out. The check
   // is unchanged in purpose and if anything sharper — governor 0 % against STEAM FLOW
-  // ~79 gpm is a cleaner demonstration that the readout is not governor-only.
+  // ~64 gpm is a cleaner demonstration that the readout is not governor-only.
   if (!(num(tripped.dump) > 3)) throw new Error('steam dump did not pick up decay heat (dump=' + tripped.dump + ')');
   if (!(num(tripped.steam) > 40)) {
     throw new Error('STEAM FLOW collapsed with the turbine (' + tripped.steam + ') — it is wired to the ' +
       'governor-only `steam_flow` instrument instead of `sg_steam_flow` (total SG draw). See #206.');
   }
-  if (!(num(tripped.feed) > 30)) {
-    throw new Error('feed stopped tracking the dump draw (' + tripped.feed + ') — the three-element ' +
-      'channel is reading governor flow again. See #206.');
+  // Assert TRACKING, not just "nonzero": the #206 claim is that feed follows the TOTAL
+  // steam draw when the turbine is offline and the dump is carrying the plant. A bare
+  // `feed > 30` passes on a channel reading governor flow that happens to be mid-swing.
+  if (!(num(tripped.feed) > 30) || Math.abs(num(tripped.feed) - num(tripped.steam)) > 15) {
+    throw new Error('feed is not tracking the dump draw (feed=' + tripped.feed + ' vs steam=' +
+      tripped.steam + ') — the three-element channel should match TOTAL steam flow with the ' +
+      'turbine offline. See #206.');
   }
   return log.join('\n');
 }
