@@ -177,18 +177,24 @@ typo'd trigger type passes silently.
   `pausedNote` reproduces the old string and the unit comes from `def.sp.unit` (`'ppm'`).
   The kernel's `control_state &&` null guard was carried *into the hook*, deliberately: moving
   a guarded read into plant code is a silent way to turn a null check into a throw.
-- **The `clip()` half is not HR3 and I did not do it.** HR3 is *"plant-specific behavior is
-  data, not hardcoded logic"*; four identical one-line clamps in four IIFEs is DRY, not HR3,
-  and the issue conflates them. Centralizing it is a net loss: `control_kernel.js` loads
-  **after** the three plant control modules, so a shared `RD.*.clip` would resolve only at
-  call time — a real load-order coupling bought for a 60-character pure function that cannot
-  meaningfully drift. Recommend closing that half as won't-fix, or doing it properly inside a
-  shared-utils file that loads first, if the owner wants it.
-- **Still open, and larger than this issue:** the `conc` channel kind is plant-coupled well
-  beyond the pump gate — it names `set_boron_adjust`, `take_boron_sample` and
-  `boron_sample_seq` directly. The kernel itself calls this *"a conc-kind plant coupling"*
-  at `:1024-1025`, so it reads as accepted rather than drift, but it is the same class and
-  nothing records the decision.
+- **The `clip()` half is not HR3, and it is now a recorded won't-fix** (owner ruling,
+  #156 closed `status-deliberate`, flag **F13**). HR3 is *"plant-specific behavior is data,
+  not hardcoded logic"*; four identical one-line clamps in four IIFEs is DRY, not HR3, and
+  the issue conflates them. **Measured before deciding: `clip` is the ONLY duplicated
+  helper** — `crossed`/`rodGroup`/`valueFieldFor` are kernel-only, `_tsat`/`trefProgram` are
+  PWR physics, `alarms`/`forVersion` are RBMK. So a shared-utils file would exist to hold one
+  60-character pure function, at the cost of either a load-order coupling (`control_kernel.js`
+  loads **after** all three plant modules, so `RD.*.clip` resolves only at call time) or
+  editing ~19 test-runner load lists plus `shell.html` and the `test_*.html` pages.
+  **Revisit trigger:** a second shared helper.
+- **The recurrence is the real finding, and it is spun out as #227.** The rule was stated
+  *in the file*, the fix pattern existed *in the file*, and the violation still came back and
+  shipped — because nothing gates it. Measured for that issue: 13 plant-specific identifier
+  sites in the kernel today, in three groups — the boron cluster (`bang`/`conc` kinds, which
+  the kernel's own comment at `:1024-1025` calls *"a conc-kind plant coupling"*, i.e. accepted
+  but never recorded as a decision), `valueFieldFor`'s command vocabulary (`:62-67`), and one
+  false positive worth remembering: **`:952` matched because `orm` is a substring of
+  `'n`*`orm`*`al'`** — so any such check needs a curated identifier list, not substrings.
 
 ### 2026-07-27 — backlog sweep (8 issues closed) + #219: the dump reference was the bug, not the latch  ✅🔬
 
