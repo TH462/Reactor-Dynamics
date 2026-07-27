@@ -31,7 +31,7 @@ staleness** items.
 
 | Gate | State | Notes |
 |---|---|---|
-| **`run_all`** | **OK (21 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| **`run_all`** | **OK (22 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
 | `run_procedures_stack` | **22/22 (155/155)** | NEW 2026-07-26b — procedures through M4+M5+M6. **6** strict xfails, all RBMK/BWR (#208); the 7 `pwr_heatup` xfails cleared 2026-07-26c/d (#206, #210) |
 | `run_meltdown_stack` | **3/3 (21/21)** | NEW 2026-07-26d (#209) — the core-damage casualties driven **hands off** on the shipped lineup; asserts the automatic chain fires unprompted |
 | `run_pwr` | **32/32** | PWR engine-direct (+`load_above_rated_hold`, the #130 pin) |

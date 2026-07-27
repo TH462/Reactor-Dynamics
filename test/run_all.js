@@ -78,6 +78,14 @@ var BASELINES = {
   // ---- stack layers ----
   // 19/19 since 2026-07-25 (#151): +a save/restore round-trip test for trip blocks
   // and the derived `asserted` flags.
+  // NEW 2026-07-27b (#227) — static HR3 guard over control_kernel.js. Not a sim
+  // gate: it derives the plant vocabulary from all three engines and fails on any
+  // plant-specific name in the shared kernel that is not in its ALLOWED list with a
+  // reason. Exists because the leak #156 reported had ALREADY been fixed once in
+  // that file and was then re-created ~40 lines below the comment warning against
+  // it. The site count is part of the score on purpose: a NEW coupling shifts it
+  // and trips drift even when the author allow-lists it properly.
+  'run_hr3.js':            { code: 0, score: '32checks 0failed' },
   'run_m4.js':             { code: 0, score: '19/19 86passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
