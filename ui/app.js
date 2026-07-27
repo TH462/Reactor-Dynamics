@@ -92,17 +92,20 @@
   // ====================================================================== engines
   // Selector key → plant + design_version + default initial state, plus the
   // display copy for the Plant & Mission window's plant cards.
+  // `soon: true` = the physics engine is complete but the M8 board / M4 control
+  // surface is not extended to it yet, so the card is shown greyed and is not
+  // selectable. The ?engine= dev override still reaches them deliberately.
   var ENGINES = {
     pwr:       { plant: 'pwr',  dv: null,              init: 'hot_full_power',
                  label: 'PWR', sub: 'Pressurized Water Reactor',
                  desc: 'The stable, self-regulating starting point. Separate primary and steam loops. Home of the Three Mile Island story.' },
-    rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power',
+    rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power', soon: true,
                  label: 'RBMK pre-1986', sub: 'Chernobyl-type · original design',
                  desc: 'Graphite-moderated, positive void coefficient, graphite-tipped rods — the design that failed at Chernobyl.' },
-    rbmk_post: { plant: 'rbmk', dv: 'post_chernobyl',  init: 'full_power',
+    rbmk_post: { plant: 'rbmk', dv: 'post_chernobyl',  init: 'full_power', soon: true,
                  label: 'RBMK post-1986', sub: 'Chernobyl-type · retrofitted',
                  desc: 'The same machine after the post-accident fixes. Run the same transient here and compare the outcome.' },
-    bwr:       { plant: 'bwr',  dv: null,              init: 'full_power',
+    bwr:       { plant: 'bwr',  dv: null,              init: 'full_power', soon: true,
                  label: 'BWR', sub: 'Boiling Water Reactor',
                  desc: 'Boils water right in the core, steam straight to the turbine. Steam-driven safety systems — home of the Fukushima story.' },
   };
@@ -1415,10 +1418,12 @@
     // Step 1 — the plant column
     $('mpPlants').innerHTML = Object.keys(ENGINES).map(function (k) {
       var e = ENGINES[k];
-      return '<div class="mplant-card' + (k === msel.engine ? ' on' : '') + '" data-mplant="' + k + '">' +
+      return '<div class="mplant-card' + (k === msel.engine ? ' on' : '') + (e.soon ? ' soon' : '') + '"' +
+        ' data-mplant="' + k + '"' + (e.soon ? ' aria-disabled="true" title="Control room under construction"' : '') + '>' +
         '<div class="mplant-name">' + mesc(e.label) + (k === ui.engineKey ? ' <span class="mplant-live">● active</span>' : '') + '</div>' +
         '<div class="mplant-sub">' + mesc(e.sub) + '</div>' +
-        '<div class="mplant-desc">' + mesc(e.desc) + '</div></div>';
+        '<div class="mplant-desc">' + mesc(e.desc) + '</div>' +
+        (e.soon ? '<div class="mplant-soon">COMING SOON</div>' : '') + '</div>';
     }).join('');
     // Step 2 — the mode tabs
     var modes = [['free', 'Free Play'], ['campaign', 'Campaign'], ['scenarios', 'Scenarios'], ['walkthroughs', 'Walkthroughs']];
@@ -2595,6 +2600,8 @@
       if (e.target === $('missionOverlay')) { closeMissionSelect(); return; }
       var pc = e.target.closest('[data-mplant]');
       if (pc) {
+        // Plants whose control room isn't built yet are shown but not selectable.
+        if (ENGINES[pc.getAttribute('data-mplant')].soon) return;
         msel.engine = pc.getAttribute('data-mplant');
         msel.init = ENGINES[msel.engine].init;
         renderMissionSelect(); return;

@@ -1296,6 +1296,15 @@ select.num-input { width: auto; }
 .mplant-live { font-size: 10px; color: #79d297; font-weight: 400; }
 .mplant-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
 .mplant-desc { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+/* Engine complete, control room not built yet: visible so the roadmap reads,
+   but muted and inert so it doesn't look broken when clicking does nothing. */
+.mplant-card.soon { opacity: 0.45; cursor: default; }
+.mplant-card.soon:hover { border-color: var(--border); }
+.mplant-soon {
+  margin-top: 8px; align-self: flex-start; display: inline-block;
+  border: 1px solid var(--caution); color: var(--caution); border-radius: 4px;
+  padding: 1px 6px; font-size: 9px; font-weight: 700; letter-spacing: 1px;
+}
 /* step 2 — mode tabs; step 3 — the nested content */
 .mp-right { display: flex; flex-direction: column; min-height: 0; }
 .mp-modes { display: flex; border-bottom: 1px solid var(--border); }

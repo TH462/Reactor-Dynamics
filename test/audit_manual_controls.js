@@ -4,7 +4,9 @@
 var fs = require('fs');
 var path = require('path');
 var map = require('./manual_ui_map.js');
-var SCRATCH = process.env.GROK_GOAL_SCRATCH || path.join(require('os').tmpdir(), 'grok-goal-0a451deb05ff', 'implementer');
+// Report destination: repo-relative Diagnostic/ by default (where the other
+// generated reports live). `node test/audit_manual_controls.js <dir>` overrides.
+var SCRATCH = process.env.GROK_GOAL_SCRATCH || process.argv[2] || path.join(__dirname, '..', 'Diagnostic');
 
 require('../ui/manual_procedures.js');
 var RD = globalThis.RD;

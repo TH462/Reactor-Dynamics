@@ -13,7 +13,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+- **The in-sim plant picker offered plants that have no control room** (issue #119). The
+  Plant & Mission window listed all four engines as live, selectable cards: picking RBMK or
+  BWR switched the plant and dropped you onto a board that was never extended to it. The
+  landing page had said "COMING SOON" for months; the picker one click inside had not. The
+  three held plants now render greyed with a COMING SOON badge and are inert. The `?engine=`
+  URL override still reaches them deliberately — it is the dev/test route into those engines.
+- **The front page described a different reactor than the one you operate.** The PWR card
+  read "Westinghouse-style four-loop plant"; this plant is the **SLX-100 — a single-loop,
+  single-SG, single-RCP 100 MWe unit** (`pwr_config.js` identity block, owner ruling
+  2026-07-21). Retiring stale four-loop copy was already on the feel-plan's cleanup list.
+- **The landing page now says the control room needs a desktop.** It renders on a phone but
+  is not operable on one, and nothing said so (issue #127).
+- `test/audit_manual_controls.js` wrote its report into a dead agent scratch directory under
+  the OS temp dir (a hardcoded session id). It now writes to `Diagnostic/`, with an optional
+  argv override (issue #159).
 
 ## [Alpha 1.7.0] — 2026-07-27
 
