@@ -30,6 +30,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   after a rewind, and the Help overlay finally explains how to aim the free-play rewind.
   **ROD AUTO is now on the board**: the rods_tavg channel had no control anywhere in the
   shipped UI — a toggle on the rod-control card fixes the campaign's unplayable directive.
+- **Owner-directed board polish (#237 comments).** Presets start with **30 minutes of
+  steady-state trend history** — the strip chart and gauge sparklines are populated from
+  the first frame instead of looking like the plant just appeared. The pressurizer gained
+  a **temperature indication** and a **live heater-power indication** (reads the actual
+  auto-controller output, not the commanded setting). **Hot/cold color contrast is
+  retuned**: the at-power RCS band now owns most of the temperature ramp, so the cold leg
+  reads green against an orange-red hot leg (they were adjacent yellows). The
+  pressurizer's internal spray pipework follows the live cold-leg temperature instead of
+  a fixed blue; the SG feed nozzle moved down so the feed line runs level with its tee;
+  and clicking the **SIMULATION PAUSED** box now resumes the sim.
 - **The SI units toggle is scoped instead of mixed** (owner call): the PWR board renders
   US customary throughout, so the SI position is disabled with an explanatory tooltip
   while the PWR is active (full SI board support is tracked in #238). The stale "Automate

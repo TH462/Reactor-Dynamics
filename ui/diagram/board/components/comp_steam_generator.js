@@ -141,7 +141,9 @@
       clearEl(connsGroup);
       connsGroup.appendChild(K.flange({ key: 'hotFl', x: 107 * s, y: 495 * s, angle: 0, d: 12 }));
       connsGroup.appendChild(K.flange({ key: 'coldFl', x: 257 * s, y: 543 * s, angle: 90, d: 12 }));
-      connsGroup.appendChild(K.flange({ key: 'fwFl', x: 310 * s, y: 245 * s, angle: 0, d: 8 }));
+      // fw-in dropped 245 → 269 (world y ≈ 436) so the feed line runs LEVEL with the
+      // feed tee it comes from instead of climbing ~15 px into the vessel (#237, owner)
+      connsGroup.appendChild(K.flange({ key: 'fwFl', x: 310 * s, y: 269 * s, angle: 0, d: 8 }));
       connsGroup.appendChild(K.flange({ key: 'stFl', x: 210 * s, y: 55 * s, angle: 90, d: 8 }));
     }
     rebuildConns();
@@ -194,7 +196,7 @@
         h('rect', { x: cx - 2, y: tubeSheetY + 10, width: 4, height: 90, fill: '#0e1620' })),
       tubeGroups,
       bubbleGroup,
-      h('circle', { cx: 310, cy: 245, r: 0.75, fill: 'none', 'data-port': 'fw-in', 'data-fluid': 'coolWater', 'data-dir': 'right', 'data-size': 'medium', 'data-out': '0' }),
+      h('circle', { cx: 310, cy: 269, r: 0.75, fill: 'none', 'data-port': 'fw-in', 'data-fluid': 'coolWater', 'data-dir': 'right', 'data-size': 'medium', 'data-out': '0' }),
       h('rect', { x: 180, y: 55, width: 60, height: 30, rx: 6, fill: '#20303a', stroke: '#425863', strokeWidth: 1 }),
       h('circle', { cx: 210, cy: 55, r: 0.75, fill: 'none', 'data-port': 'steam-out', 'data-fluid': 'steam', 'data-dir': 'up', 'data-size': 'medium', 'data-out': '1' }),
       hotNoz,

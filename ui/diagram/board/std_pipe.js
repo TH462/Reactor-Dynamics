@@ -61,13 +61,21 @@
     [1.00, [0xd8, 0x33, 0x26]]   // hot — red
   ];
   // Operating-band expansion. A PWR lives at ~280–345 °C, a thin slice of 15–345 that on a
-  // linear scale all reads near-red. Give everything ABOVE OP_LO the majority of the ramp
-  // (from OP_KNEE up), compressing the rarely-seen cold band below it — like a plant HMI whose
-  // temperature scale is centered on the operating range, so hot-leg reads red and cold-leg green.
-  var OP_LO = 200, OP_KNEE = 0.35;
+  // linear scale all reads near-red — so the scale is piecewise, centered on the operating
+  // range like a plant HMI's. Retuned 2026-07-28 (#237, owner: "increase the color contrast
+  // between the hot and cold sides"): the old single knee gave the whole 200–345 °C band a
+  // linear share, which rendered the at-power cold leg (~292 °C) YELLOW and hot leg (~319 °C)
+  // ORANGE — adjacent hues, ~0.12 of the ramp apart. The at-power RCS band (285–322 °C) now
+  // owns 0.50–0.90 of the ramp, so cold leg reads GREEN, hot leg ORANGE-RED (~0.29 apart —
+  // two full hue steps), and only pressurizer saturation (345 °C) reaches deep red.
+  var OP_LO = 200, OP_KNEE = 0.28;    // ≤200 °C: shutdown/cold band, compressed (blue→teal)
+  var RCS_LO = 285, RCS_KNEE = 0.50;  // 200–285 °C: heatup approach band (teal→green)
+  var RCS_HI = 322, RCS_HI_T = 0.90;  // 285–322 °C: the at-power leg band — most of the ramp
   function rampT(tempC) {
     if (tempC <= OP_LO) return clamp01((tempC - TEMP_MIN_C) / (OP_LO - TEMP_MIN_C)) * OP_KNEE;
-    return OP_KNEE + clamp01((tempC - OP_LO) / (WATER_MAX_C - OP_LO)) * (1 - OP_KNEE);
+    if (tempC <= RCS_LO) return OP_KNEE + (tempC - OP_LO) / (RCS_LO - OP_LO) * (RCS_KNEE - OP_KNEE);
+    if (tempC <= RCS_HI) return RCS_KNEE + (tempC - RCS_LO) / (RCS_HI - RCS_LO) * (RCS_HI_T - RCS_KNEE);
+    return RCS_HI_T + clamp01((tempC - RCS_HI) / (WATER_MAX_C - RCS_HI)) * (1 - RCS_HI_T);
   }
   var STEAM_RAMP = [
     [0.00, [0x5a, 0x64, 0x6b]],  // medium-dark grey  (cooler steam)

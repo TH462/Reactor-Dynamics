@@ -311,7 +311,15 @@
     // it the other way. Sits in the strip freed by the TRIP BLOCKS resize (DOC_PATCHES).
     { id: 'bdRodAuto', kind: 'button',
       name: 'Rod Tavg auto channel toggle  ·  sim: set_auto_channel rods_tavg {engaged:!engaged}; lit ← channel engaged',
-      left: 645, top: 405, label: 'ROD AUTO', width: 85, height: 20, color: '#8ba4b6', fontSize: 11 }
+      left: 645, top: 405, label: 'ROD AUTO', width: 85, height: 20, color: '#8ba4b6', fontSize: 11 },
+    // Pressurizer temperature + live heater power, right of the vessel's heater zone
+    // (#237, owner): the heater panel's % box reflects live power but reads as a
+    // command under AUTO; this is the INDICATION. Temp = saturation at RCS pressure —
+    // the same source that colors the pressurizer's water, so they always agree.
+    { id: 'bdPzrTempLbl', kind: 'text', name: '', left: 1118, top: 402, text: 'PZR TEMP', fontSize: 11, color: '#9fb3c4', weight: 600, mono: true },
+    { id: 'bdPzrTempVal', kind: 'value', name: 'PZR temperature  ·  sim: satTempC(in.primary_pressure) °C→°F', left: 1170, top: 416, value: '653', unit: 'F', color: '#5aad7c', fontSize: 14, rAnchor: true },
+    { id: 'bdPzrHtrLbl', kind: 'text', name: '', left: 1118, top: 436, text: 'HTR PWR', fontSize: 11, color: '#9fb3c4', weight: 600, mono: true },
+    { id: 'bdPzrHtrVal', kind: 'value', name: 'PZR heater LIVE power  ·  sim: cs.heater_power_pct (actual, auto or manual)', left: 1170, top: 450, value: '25', unit: '%', color: '#5aad7c', fontSize: 14, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -378,6 +386,11 @@
     // reads CLOSED while a stuck valve keeps venting, and the tailpipe temperature below is
     // the only honest tell. The schematic PORV shows true disc position; this does not.
     ims2jf7fv7m: function (s) { return String(IN(s).porv_indicator || 'closed').toUpperCase(); },
+    // PZR temperature + live heater power (EXTRA_ITEMS pair, #237). Heater reads the
+    // engine's ACTUAL output (heater_power_frac) — under AUTO this is the proportional
+    // controller's live demand, which the panel's editable % box shows greyed.
+    bdPzrTempVal: function (s) { return r0(C2F(satTempC(IN(s).primary_pressure))); },
+    bdPzrHtrVal: function (s) { return r0(CS(s).heater_power_pct || 0); },
     imro6qpci2d: function (s) { return r0(Cd2F(IN(s).thot - IN(s).tcold)); },                           // dTavg °F
     imro6qsncb9: function (s) { var v = IN(s).startup_rate || 0; return (v >= 0 ? '+' : '') + v.toFixed(2); }, // SUR DPM
     imro6qutiht: function (s) {                                                                          // source range cps (amber at SR→IR handoff)
@@ -516,7 +529,9 @@
       // pressure and cools as the plant depressurizes — not a fixed 345 °C.
       return { level: IN(s).pzr_level, heaterPower: c.heater_power_pct,
         heaterOn: (c.heater_power_pct || 0) > 0 || (c.heater_auto && (IN(s).power_range || 0) > 0),
-        spray: (c.spray_valve_pct || 0) > 2, temp: satTempC(IN(s).primary_pressure), glow: true, showFlow: true };
+        spray: (c.spray_valve_pct || 0) > 2, temp: satTempC(IN(s).primary_pressure),
+        // the spray runs carry COLD-LEG water — same live temp as the external spray pipe (#237)
+        sprayTemp: IN(s).tcold, glow: true, showFlow: true };
     },
     // The PORV schematic shows the TRUE valve position (disc lift), not the demand-
     // signal light — that light is the TMI-2 lie, reading "closed" while the valve is

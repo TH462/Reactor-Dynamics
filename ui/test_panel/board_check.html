@@ -131,6 +131,7 @@
         plumb('geom: pressurizer surge line plumb to the hot-leg tee', 'pressurizer/surge', 'ims2kt7fu64/c', 'x');
         plumb('geom: pressurizer PORV tap plumb to the block valve', 'pressurizer/pressure-tap', 'imrppb3kuav/b', 'x');
         plumb('geom: pressurizer relief nozzle on the vessel axis', 'pressurizer/relief-out', 'pressurizer/surge', 'x');
+        plumb('geom: SG feed line level with the feed tee (#237)', 'steamGenerator/fw-in', 'ims31q71cmu/a', 'y');
       })();
 
       if (RD.PwrBoardDriver && RD.PwrBoardDriver.selfTest) {
@@ -299,6 +300,15 @@
         pipeState('pms3tda86bw') === 'paused', pipeState('pms3tda86bw'));
       ck('pipe: full power steam dump branch PAUSED (dump shut at power)',
         pipeState('pmrr46oahnx') === 'paused', pipeState('pmrr46oahnx'));
+      // PZR indication pair (EXTRA_ITEMS, #237): temperature = saturation at RCS
+      // pressure (~653 °F at operating pressure), heater power = live actual output.
+      (function () {
+        var tt = document.querySelector('[data-item="bdPzrTempVal"]');
+        var tv = tt ? parseInt((tt.textContent.match(/\d+/) || ['0'])[0], 10) : 0;
+        ck('readout: PZR TEMP reads saturation (600-700 F at power)', tv > 600 && tv < 700, tt && tt.textContent);
+        var ht = document.querySelector('[data-item="bdPzrHtrVal"]');
+        ck('readout: PZR HTR PWR live indication numeric', !!ht && /\d/.test(ht.textContent), ht && ht.textContent);
+      })();
 
       // Cold Shutdown (Mode 5): RCPs secured, no steam, no feed — a dead plant must
       // read STILL. 23 of 37 pipes animated here before #236.

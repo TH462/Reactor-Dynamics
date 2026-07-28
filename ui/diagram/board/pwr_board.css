@@ -213,6 +213,10 @@
   background: rgba(10, 14, 19, 0.82); border: 1px solid #3a4c58; border-radius: 10px;
   padding: 16px 34px 18px 40px;
 }
+/* the box is the resume control when the shell supplies ctx.resume (#237) — the
+   veil itself stays pointer-events:none so the board around it remains clickable */
+.pwr-paused-box.pwr-paused-click { pointer-events: auto; cursor: pointer; }
+.pwr-paused-box.pwr-paused-click:hover { border-color: #5aad7c; }
 .pwr-paused-main {
   font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   font-size: 28px; letter-spacing: 0.3em; color: #e8f2f8;

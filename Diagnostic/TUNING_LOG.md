@@ -109,6 +109,36 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28m — #237 comment items (missed in the first pass)  ✅
+
+**Process miss worth remembering: the first #237 pass worked the issue BODY and never
+pulled the COMMENTS** — six owner comments (17:51–18:00Z) went unread, one of which
+("go with (a) SI board-wide") contradicted the in-session AskUserQuestion answer. Owner
+re-confirmed in-session: **the scoping stands**. Always `gh issue view --comments`.
+board_check **84/84** (81 → 84).
+
+- **30-min steady-state preseed**: a fresh chartBuf seeds CHART_RECORD_SEC of flat
+  samples at the first snapshot's values (any new timeline: boot/reset/switch/mission);
+  gauge sparklines seed their 60 s window the same way. The plant no longer "just
+  appeared"; the cutoff trim retires the synthetic tail naturally.
+- **PZR TEMP + HTR PWR indications** (EXTRA_ITEMS pair right of the vessel's heater
+  zone): temp = satTempC(primary_pressure) — same source as the vessel's water colour;
+  heater = `cs.heater_power_pct`, which IS the live actual output under AUTO
+  (engine publishes heater_power_frac·100, pwr_engine.js:565). Pinned (600–700 °F).
+- **Colour checks measured, two verdicts**: PZR internal water = already correct (live
+  saturation). **Internal spray pipework was static cold-blue preset** — now takes a
+  `sprayTemp` prop (tcold) with in-place stroke repaint (rebuild would restart dashes,
+  #233 class). Feed line: owner premise "feed is preheated to SG water temp" is NOT
+  prototypical — real final feedwater ≈ 227 °C vs SG sat ~285 °C; our fwTemp tops at
+  220 °C ✓ model kept, evidence in the close-out.
+- **SG feed flange leveled**: fw-in port + flange local y 245 → 269 (world ≈ 436 = feed
+  tee level); pinned by a plumb check (subtraction, not judgement).
+- **Hot/cold contrast retuned** (std_pipe rampT): the at-power RCS band 285–322 °C now
+  owns 0.50–0.90 of the ramp — cold leg GREEN vs hot leg ORANGE-RED (was yellow vs
+  orange, 0.12 apart). Only PZR saturation reaches deep red. Mode 5 still blue.
+- **Paused veil is clickable to resume** (ctx.resume routed through the play button so
+  ▶/⏸ stays the single source of truth).
+
 ### 2026-07-28l — #237 UI/UX pass: focus model, SI scoping, Automate sweep, alarms, deadband, failures lock  ✅
 
 Owner: "Work 237" + AskUserQuestion ruling: **SI toggle scoped (option b), full SI parked

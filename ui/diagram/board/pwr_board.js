@@ -791,10 +791,15 @@
       stage.appendChild(el);
     });
 
+    // Clicking the paused veil resumes (#237, owner) — the box is the most obvious
+    // thing on a paused screen, so it is also the resume control. ctx.resume is
+    // supplied by the shell (it owns the play button state); without it the veil
+    // stays a passive notice.
     pausedEl = h('div', { className: 'pwr-board-paused' },
-      h('div', { className: 'pwr-paused-box' }, [
+      h('div', { className: 'pwr-paused-box' + (ctx && ctx.resume ? ' pwr-paused-click' : ''),
+        onClick: function () { if (ctx && ctx.resume) ctx.resume(); } }, [
         h('div', { className: 'pwr-paused-main' }, 'SIMULATION PAUSED'),
-        h('div', { className: 'pwr-paused-sub' }, 'Press ▶ Play to start')
+        h('div', { className: 'pwr-paused-sub' }, ctx && ctx.resume ? 'Click here (or press ▶ Play) to start' : 'Press ▶ Play to start')
       ]));
     wrap.appendChild(stage);
     wrap.appendChild(pausedEl);

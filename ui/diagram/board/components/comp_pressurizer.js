@@ -114,16 +114,21 @@
 
     // ---- spray pipework (scale-compensated StdPipe, rebuilt on scale / spray change) ----
     var sprayConns = h('g', null);
-    var lastS = null, lastSprayOn = null, lastShowFlow = null;
+    var lastS = null, lastSprayOn = null, lastShowFlow = null, lastSprayTemp = null;
     function rebuildSprayPipes(s, sprayOn, showFlow) {
       var kP = 1 / (s || 0.55);
       sprayConns.setAttribute('transform', 'scale(' + kP.toFixed(4) + ')');
       clearEl(sprayConns);
       var flow = showFlow && sprayOn;
       function S(x, y) { return [x * (s || 0.55), y * (s || 0.55)]; }
-      sprayConns.appendChild(K.pipe({ d: 4, fluid: 'coldLeg', flow: flow, dir: 1, points: [S(34, 124), S(52, 124)] }));
-      sprayConns.appendChild(K.pipe({ d: 4, fluid: 'coldLeg', flow: flow, dir: 1, points: [S(50, 124), S(140, 124)] }));
-      sprayConns.appendChild(K.pipe({ d: 4, fluid: 'coldLeg', flow: flow, dir: 1, points: [S(spx, 124), S(spx, 133)] }));
+      // Live spray-water colour (#237, owner: "check the sprayers internal pipe color"):
+      // the spray carries COLD-LEG water, so these internal runs take the same live
+      // temperature the external spray pipe renders (sprayTemp prop = tcold) instead of
+      // the static cold-blue preset — the colour no longer jumps at the vessel boundary.
+      var sprayFluid = lastSprayTemp != null ? { phase: 'water', temp: lastSprayTemp } : 'coldLeg';
+      sprayConns.appendChild(K.pipe({ d: 4, fluid: sprayFluid, flow: flow, dir: 1, points: [S(34, 124), S(52, 124)] }));
+      sprayConns.appendChild(K.pipe({ d: 4, fluid: sprayFluid, flow: flow, dir: 1, points: [S(50, 124), S(140, 124)] }));
+      sprayConns.appendChild(K.pipe({ d: 4, fluid: sprayFluid, flow: flow, dir: 1, points: [S(spx, 124), S(spx, 133)] }));
     }
     rebuildSprayPipes(null, false, true);
 
@@ -283,6 +288,20 @@
         last.heaterPower = heaterPower; last.glowOn = glowOn;
       }
 
+      // live spray-water temperature (tcold from the wiring) — repaint the internal
+      // spray runs IN PLACE when it moves materially (≥1 °C). A rebuild would restart
+      // the dash animation (#233); stroke writes don't. rebuildSprayPipes reads
+      // lastSprayTemp itself, so scale/spray rebuilds keep the live colour too.
+      var sprayTemp = props.sprayTemp;
+      if (sprayTemp != null && isFinite(sprayTemp) && (lastSprayTemp == null || Math.abs(sprayTemp - lastSprayTemp) >= 1)) {
+        lastSprayTemp = sprayTemp;
+        var sc = StdPipe.phaseTempColor('water', sprayTemp);
+        for (var pi = 0; pi < sprayConns.childNodes.length; pi++) {
+          var pg = sprayConns.childNodes[pi].childNodes;   // [case, bore, flow?]
+          if (pg[1]) pg[1].setAttribute('stroke', sc.bore);
+          if (pg[2]) pg[2].setAttribute('stroke', sc.flow);
+        }
+      }
       if (spray !== last.spray) {
         var sprayFrac = spray ? 1 : 0;
         sprayFan.style.display = spray ? '' : 'none';

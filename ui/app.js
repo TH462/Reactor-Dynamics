@@ -623,6 +623,18 @@
         stv[ser.id] = (b == null || !isFinite(b)) ? null : b;
       }
     });
+    // #237 (owner): presets start with 30 minutes of steady-state history so the
+    // graphs are populated — the plant has been RUNNING, it didn't just appear.
+    // A fresh buffer (boot, reset, plant switch, mission start — anything that
+    // cleared chartBuf) seeds the full record window with flat samples at this
+    // first snapshot's own values; the live trace continues from them and the
+    // cutoff trim below retires the synthetic tail as real history accrues.
+    // (sv/stv are frozen after this call, so sharing one object per row is safe.)
+    if (!chartBuf.length) {
+      for (var pt = s.metadata.sim_time - CHART_RECORD_SEC; pt < s.metadata.sim_time; pt += 5) {
+        chartBuf.push({ t: pt, v: sv, tv: stv });
+      }
+    }
     chartBuf.push({ t: s.metadata.sim_time, v: sv, tv: stv });
     var cutoff = s.metadata.sim_time - CHART_RECORD_SEC;   // retain 30 min regardless of the display window
     while (chartBuf.length > 2 && chartBuf[0].t < cutoff) chartBuf.shift();
@@ -666,6 +678,9 @@
       // sample count, so the mini chart spans the same minute at any time-accel.
       var h = gaugeHist[g.id], now = s.metadata.sim_time;
       while (h.length && h[h.length - 1].t > now + 1e-9) h.pop();   // drop samples ahead of us (rewind)
+      // fresh gauge → seed its 60 s sparkline flat at the current value (#237,
+      // same steady-state preseed as the strip chart; also settles the trend arrow)
+      if (!h.length) for (var ps = now - 60; ps < now; ps += 5) h.push({ t: ps, v: raw });
       h.push({ t: now, v: raw });
       while (h.length > 1 && h[0].t < now - 60) h.shift();          // 60 s window
       // #237: deadband + hysteresis on the trend arrow. The old rule (0.2 % of
@@ -3669,6 +3684,9 @@
         dispP: dispP, dispT: dispT, dispTd: dispTd, dispV: dispV,
         mode: function () { return ui.diagMode; },
         overlay: function () { return ui.physOverlay; },
+        // #237 (owner): the SIMULATION PAUSED veil is clickable to resume. Route
+        // through the play button so its ▶/⏸ state stays the single source of truth.
+        resume: function () { if (!service.running) $('playBtn').click(); },
       });
       return;
     }
