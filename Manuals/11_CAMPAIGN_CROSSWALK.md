@@ -93,7 +93,7 @@ authoritative order is `ui/campaign_data.js`; the round trip
 |-------|-----------------|
 | ESF AUTO/MAN re-arm | `05` PWR-T12; `03` Emergency card |
 | MSIV “bottle the boiler” | `03` MSIV; `07` related; below |
-| Rod AUTO T-ref capture | `03` Automate / T10 caution |
+| Rod AUTO T-ref capture | `03` §14 automation / T10 caution |
 | Feed three-element vs MANUAL | `03` / **PWR-N12** |
 | 1/M / NIS handoff | `03` NIS; N02; `05` T13 |
 | Mode 5 path | `05` T20/T21; N03/N15 |

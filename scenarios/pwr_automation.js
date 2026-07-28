@@ -1,7 +1,7 @@
 /*
  * pwr_automation.js — Hands Off (PWR campaign, Act III closer).
  *
- * The Automate tab, taught the way the user meets it: every plant control on
+ * Plant automation, taught the way the user meets it: every plant control on
  * automatic EXCEPT grid demand (the auto_channels preset below), and the
  * player becomes the grid dispatcher — swing demand down and up and watch the
  * rod, feedwater, pressurizer, and dump channels fly the plant. The closing
@@ -29,7 +29,7 @@
       { id: 'intro',
         trigger: { type: 'time', value: 2.0 },
         commentary: {
-          learning: 'Open the Tools → Automate tab and read the board: rods holding Tavg, boron trimming behind them, pressurizer pressure, inventory make-up, feedwater, steam dump — every channel lit AUTO. Every channel except one: the grid. Today you are not the operator; you are the DISPATCHER. Your only control is how much electricity the city asks for — and the plant\'s job is to answer without you touching anything else.',
+          learning: 'Read the AUTO lights across the board: rods holding Tavg (ROD AUTO), boron trimming behind them (BORON), pressurizer pressure, inventory make-up (CHARGING), feedwater (STEAM GEN FEED), steam dump — every controller engaged. Every channel except one: the grid. Today you are not the operator; you are the DISPATCHER. Your only control is how much electricity the city asks for — and the plant\'s job is to answer without you touching anything else.',
           industry: 'Automation lineup: rod control (Tavg program), boron trim, PZR pressure, CVCS make-up, SG level (three-element), steam dump — all engaged. Load demand in MANUAL: dispatcher exercise. All other controls remain available but should be unnecessary.',
         },
         highlight: { control_label: 'Turbine Load', instrument_id: null },
@@ -56,7 +56,7 @@
       { id: 'watch_settle',
         trigger: { type: 'delay', value: 30.0 },
         commentary: {
-          learning: 'Look at the Automate tab now: the rod channel reads "holding" with Tavg pinned back on its setpoint, and the plant found its new level without a single command from you. One honest note: most of what you just watched was the PHYSICS — Doppler and the moderator coefficient pulled power toward the new demand on their own, like they always do. The channels did the trimming: the last degree of Tavg, the last percent of level. Automation on this machine is a fine-tip pen over self-stabilizing physics. Now the morning ramp: take the load back up to 100 MW.',
+          learning: 'Look at the rod card now: ROD AUTO still lit, Tavg pinned back on its setpoint — the plant found its new level without a single command from you. One honest note: most of what you just watched was the PHYSICS — Doppler and the moderator coefficient pulled power toward the new demand on their own, like they always do. The channels did the trimming: the last degree of Tavg, the last percent of level. Automation on this machine is a fine-tip pen over self-stabilizing physics. Now the morning ramp: take the load back up to 100 MW.',
           industry: 'Settled at reduced load: Tavg restored to program, SG level on setpoint, channels quiescent ("holding"). Attribution note: inherent feedback (Doppler/MTC) provides the coarse load-follow; automation supplies fine trim. Restore demand to 100 MWe.',
         },
         highlight: { control_label: 'Turbine Load', instrument_id: null },

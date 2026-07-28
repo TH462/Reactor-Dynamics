@@ -65,7 +65,7 @@
     mode: 'demonstration',
     chat: true,
     description: 'March 28, 1979, 4 AM — the night shift, exactly as the crew lived it. No hindsight. You have the board.',
-    ui_policy: { synoptic: 'realistic', overlay: false, tag: 'afw_tag' },
+    ui_policy: { synoptic: 'realistic', overlay: false, tag: 'afw_tag', failures: 'locked' },
     setup_commands: T2.PHYS.setup,
 
     interactions: {

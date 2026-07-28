@@ -13,6 +13,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **UI/UX pass from the #237 review** (owner-directed). The instructor card no longer
+  steals the column on a message — new content while it is collapsed cues a count badge
+  and a brief glow on its header instead, and the player owns the layout: the persona
+  header (now visible in chat mode too, showing the scenario title) collapses/expands the
+  card in every mode, re-clicking the active tools tab collapses the tools, and all three
+  layouts (instructor max / split / tools max) are reachable during a scenario — the old
+  model locked a permanent 50/50 after one tab click. Alarm tiles carry a `T+hh:mm:ss`
+  annunciation stamp (newest-first within each severity) so post-event sequence diagnosis
+  reads off the panel, and Ack All reports how many alarms it silenced. Vital-tile trend
+  arrows gained a deadband with hysteresis — an arrow only lights when the displayed value
+  has actually moved a display digit over the trend window, so steady state shows steady.
+  Authored scenarios can now lock the Failures tab (`ui_policy.failures: 'locked'` — the
+  TMI-2 chat scenarios do), a transcript-level "⏩ reveal all" catches up re-paced dialogue
+  after a rewind, and the Help overlay finally explains how to aim the free-play rewind.
+  **ROD AUTO is now on the board**: the rods_tavg channel had no control anywhere in the
+  shipped UI — a toggle on the rod-control card fixes the campaign's unplayable directive.
+- **The SI units toggle is scoped instead of mixed** (owner call): the PWR board renders
+  US customary throughout, so the SI position is disabled with an explanatory tooltip
+  while the PWR is active (full SI board support is tracked in #238). The stale "Automate
+  tab" phrasing (~30 player-facing directives pointing at a removed tab) is swept — every
+  procedure, scenario, campaign line, and manual section now names the board control that
+  exists (STEAM GEN FEED → AUTO, ROD AUTO, BORON → ON), and the manuals are repacked.
+
 ### Fixed
 - **The board no longer shows flow that isn't happening** (#236). Pipe dash animation now
   follows the plant everywhere: a Cold Shutdown plant reads still (previously 23 of 37

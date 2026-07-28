@@ -101,8 +101,8 @@
       { id: 'engage_auto',
         trigger: { type: 'delay', value: 3.0 },
         commentary: {
-          learning: 'Back in the band — and feel how much attention that took? A hair under to bring it down, a hair over to hold it... that is a full-time job, and real plants staff it with a controller. Open Tools → Automate, group Secondary: "Feed pump → SG level (three-element)". Engage it. Three elements: the LEVEL itself, plus steam flow out and feed flow in — so it corrects the mismatch before the level even moves. The moment it takes over, the Feed control readout shows "AUTO — three-element".',
-          industry: 'Band recaptured. Engage the three-element feedwater channel (Automate → Secondary → feed_sg): element 1 SG level, elements 2/3 steam−feed mismatch anticipation driving pump speed. Setpoint captures the current indicated level on engage. Feed control readout: AUTO — three-element.',
+          learning: 'Back in the band — and feel how much attention that took? A hair under to bring it down, a hair over to hold it... that is a full-time job, and real plants staff it with a controller. Press STEAM GEN FEED → AUTO on the board. Three elements: the LEVEL itself, plus steam flow out and feed flow in — so it corrects the mismatch before the level even moves. The moment it takes over, the AUTO light on the STEAM GEN FEED card comes on.',
+          industry: 'Band recaptured. Engage the three-element feedwater channel (STEAM GEN FEED → AUTO; channel feed_sg): element 1 SG level, elements 2/3 steam−feed mismatch anticipation driving pump speed. Setpoint captures the current indicated level on engage. STEAM GEN FEED: AUTO lit.',
         },
         branches: [
           { trigger: { type: 'scram' }, goto: 'tripped' },

@@ -140,15 +140,22 @@ async function testUnitsAndInstructor(page) {
   log.push('US manual setpoints doc length: ' + usDoc.length);
   if (usDoc.length < 500) throw new Error('setpoints document did not render (len ' + usDoc.length + ')');
 
-  // Toggle SI while manual overlay is open (DOM click — overlay blocks tab bar pointer events).
-  await page.evaluate(function () {
+  // #237 (owner call 2026-07-28): SI is SCOPED on the PWR board — the board renders US
+  // customary throughout, so the SI position is DISABLED with a tooltip rather than
+  // producing the mixed SI-chips-beside-US-board display #235 measured. This used to
+  // assert the toggle converted the gauge to MPa — that was the half-feature; the
+  // assertion now pins the scoping: button disabled, click is a no-op, gauges stay US.
+  // When #238's display-unit layer lands, revert to a real convert-to-MPa assertion.
+  var siDisabled = await page.evaluate(function () {
     var b = document.querySelector('#unitsSeg button[data-units="SI"]');
-    if (b) b.click();
+    if (b) b.click();   // disabled → listeners don't fire; belt for the no-op assert below
+    return b ? b.disabled : null;
   });
   await page.waitForTimeout(400);
+  if (siDisabled !== true) throw new Error('PWR SI toggle expected DISABLED (scoped, #237/#238), got: ' + siDisabled);
   var siUnit = await page.locator('#gauge-press [data-val]').textContent();
-  log.push('SI gauge pressure: ' + siUnit);
-  if (!/MPa/i.test(siUnit)) throw new Error('SI units expected MPa, got: ' + siUnit);
+  log.push('PWR pressure gauge with SI scoped (stays US): ' + siUnit);
+  if (!/psi/i.test(siUnit)) throw new Error('PWR gauge expected to stay US (psi) with SI scoped, got: ' + siUnit);
 
   // The board/gauges honour the units toggle; the packed manual does NOT.
   // renderManualMd (ui/app.js) caches on `engineKey|docId` with no units key and

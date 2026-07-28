@@ -40,7 +40,7 @@
         { kind: 'scenario', id: 'pwr_rod_auto', teaches: 'Mode 1 — rod control in AUTO: Tavg hold, the T-ref capture trap, and manual override.' },
         { kind: 'procedure', id: 'pwr_raise_power', teaches: 'Mode 1, At Power — coordinated power escalation.' },
         { kind: 'scenario', id: 'pwr_load_follow', teaches: 'Mode 1 — follow the grid with the load-mode controls; three-element feed minding the boilers.' },
-        { kind: 'scenario', id: 'pwr_automation', teaches: 'Mode 1 — the Automate tab: put the plant on automatic and be the dispatcher.' },
+        { kind: 'scenario', id: 'pwr_automation', teaches: 'Mode 1 — plant automation: put the plant on automatic and be the dispatcher.' },
         { kind: 'scenario', id: 'pwr_shift_exam', teaches: 'CHECKPOINT — Mode 1 dispatch, 850↔1000 MWe: your tools, your call. Graded.' },
         { kind: 'procedure', id: 'pwr_lower_power', teaches: 'Mode 1, At Power — coming down under control.' },
         { kind: 'procedure', id: 'pwr_shutdown', teaches: 'Mode 1, At Power → Mode 3, Hot Standby — decay heat never sleeps.' },

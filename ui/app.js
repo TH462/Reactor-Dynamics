@@ -46,6 +46,7 @@
   var chartBuf = [];        // { t, v:{serId:instrumentVal}, tv:{serId:trueVal} } — one value per plotted series
   var chartRange = {};      // id -> { lo, hi } — peak-hold auto-range (expands fast, re-tightens slow)
   var gaugeHist = {};       // id -> [{ t, v }]
+  var gaugeTrend = {};      // id -> -1|0|1 — latched trend-arrow state (#237 hysteresis)
   // Fraction of the strip-chart plot width the traces occupy; the remaining right
   // gutter holds the live value chips (see drawChart / drawFloats / rewindPickClick).
   var CHART_PLOT_FRAC = 0.86;
@@ -348,7 +349,7 @@
 
   // ============================================================ build static DOM
   function buildGauges() {
-    var strip = $('gaugeStrip'); strip.innerHTML = ''; gaugeHist = {};
+    var strip = $('gaugeStrip'); strip.innerHTML = ''; gaugeHist = {}; gaugeTrend = {};
     prof().gauges.forEach(function (g) {
       var el = document.createElement('div');
       el.className = 'gauge' + (g.lead ? ' lead' : '');
@@ -667,11 +668,25 @@
       while (h.length && h[h.length - 1].t > now + 1e-9) h.pop();   // drop samples ahead of us (rewind)
       h.push({ t: now, v: raw });
       while (h.length > 1 && h[0].t < now - 60) h.shift();          // 60 s window
+      // #237: deadband + hysteresis on the trend arrow. The old rule (0.2 % of
+      // range over 5 samples) lit ▲/▼ from noise-scale drift at steady state —
+      // and an arrow that is sometimes lit at steady state teaches players to
+      // ignore arrows. New rule: light only when the DISPLAYED value has moved
+      // at least one least-significant display digit across the whole 60 s
+      // window; clear again below half that (re-entry hysteresis) or when the
+      // drift direction flips, so a value dithering on the boundary can't strobe.
       var tr = root.querySelector('[data-trend]');
       if (h.length > 4) {
-        var d = h[h.length - 1].v - h[h.length - 5].v, thr = Math.abs(eff.max - eff.min) * 0.002;
-        tr.textContent = d > thr ? '▲' : d < -thr ? '▼' : '▶';
-        tr.className = 'g-trend ' + (d > 0 ? 'trend-up' : d < 0 ? 'trend-down' : 'trend-flat');
+        var dNow = g.dim ? conv(h[h.length - 1].v, g.dim) : h[h.length - 1].v * (g.mul || 1);
+        var dThen = g.dim ? conv(h[0].v, g.dim) : h[0].v * (g.mul || 1);
+        var dd = dNow - dThen, stepU = Math.pow(10, -(g.dp || 0));
+        var t0 = gaugeTrend[g.id] || 0, t1 = t0;
+        if (dd >= stepU) t1 = 1;
+        else if (dd <= -stepU) t1 = -1;
+        else if (Math.abs(dd) < stepU * 0.5 || (t0 === 1 && dd < 0) || (t0 === -1 && dd > 0)) t1 = 0;
+        gaugeTrend[g.id] = t1;
+        tr.textContent = t1 > 0 ? '▲' : t1 < 0 ? '▼' : '▶';
+        tr.className = 'g-trend ' + (t1 > 0 ? 'trend-up' : t1 < 0 ? 'trend-down' : 'trend-flat');
       }
       var vals = h.map(function (p) { return p.v; });
       var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals), rng = (mx - mn) || 1;
@@ -723,11 +738,34 @@
       .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   }
 
+  // #237: annunciation timestamps. The snapshot's alarm records carry state but not
+  // WHEN each came in, and post-event diagnosis ("did SG level high precede the
+  // trip?") needs the sequence — so the UI stamps first-seen sim time per alarm.
+  // Re-annunciation re-stamps (the entry clears when the alarm does), and a rewind
+  // that lands before a stamp discards it (a stamp from the abandoned future).
+  var alarmSeen = {};
+  function alarmClock(t) {
+    t = Math.max(0, Math.floor(t));
+    var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+    return 'T+' + (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
   function renderAlarms(s) {
     var stack = $('alarmStack');
+    var now = s.metadata ? s.metadata.sim_time : 0;
     var active = s.alarms.filter(function (a) { return a.state !== 'clear'; });
+    var liveIds = {};
+    active.forEach(function (a) {
+      liveIds[a.id] = true;
+      if (alarmSeen[a.id] == null || alarmSeen[a.id] > now + 1e-9) alarmSeen[a.id] = now;
+    });
+    Object.keys(alarmSeen).forEach(function (id) { if (!liveIds[id]) delete alarmSeen[id]; });
+    // Severity keeps the triage order; WITHIN a severity, newest first — the
+    // stamps carry the exact sequence either way.
     var prio = { critical: 0, warning: 1, caution: 2, status: 3 };
-    active.sort(function (a, b) { return (prio[a.priority] - prio[b.priority]); });
+    active.sort(function (a, b) {
+      var d = prio[a.priority] - prio[b.priority];
+      return d !== 0 ? d : (alarmSeen[b.id] || 0) - (alarmSeen[a.id] || 0);
+    });
     var nUnack = active.filter(function (a) { return a.state === 'active_unacknowledged'; }).length;
     var title = $('alarmTitle');
     if (title) title.textContent = nUnack ? 'Alarms (' + nUnack + ')' : 'Alarms';
@@ -747,10 +785,12 @@
         var cause = tripCauseLabel(s.rps_state && s.rps_state.last_trip_reason);
         if (cause) label += ' — ' + cause;
       }
+      var stamp = alarmSeen[a.id] != null ? alarmClock(alarmSeen[a.id]) : '';
       return '<div class="alarm-tile ' + sev + unack + ' cat-' + cat + '" data-ack="' + a.id +
-        '" data-scanner-hint="' + esc(label) + ' — ' + a.priority + ' alarm (' + cat + '). Reads the instrument; click to acknowledge.">' +
+        '" data-scanner-hint="' + esc(label) + ' — ' + a.priority + ' alarm (' + cat + '), annunciated ' + stamp + ' sim time. Reads the instrument; click to acknowledge.">' +
         '<div class="bar"></div><div class="body"><div class="label">' + label +
-        '</div><div class="meta">' + cat + ' · ' + a.priority + ' · ' + a.state.replace('active_', '') + '</div></div>' +
+        '</div><div class="meta">' + cat + ' · ' + a.priority + ' · ' + a.state.replace('active_', '') +
+        (stamp ? ' · <span class="alarm-t mono">' + stamp + '</span>' : '') + '</div></div>' +
         chip + '<div class="glyph">' + glyph + '</div></div>';
     }).join('');
   }
@@ -787,9 +827,30 @@
   // maintenance-tag prop. The player's own Settings choices are saved on entry
   // and restored when the scenario unloads.
   var uiPolicyPrev = null;
+  var failuresLocked = false;   // ui_policy.failures === 'locked' — the scenario owns failures (#237)
   function applyUiPolicy(s) {
     var active = s.instructor && s.instructor.scenario_id;
     var ip = active ? s.instructor.ui_policy : null;
+    // Authored scenarios can lock the Failures tab: a player injecting "PORV Stuck
+    // Open" mid-TMI desyncs the plant from the story the beats are scripting. The
+    // tab stays visible (honesty about what the trainer is doing) but inert, with
+    // a note. Free play is untouched — no scenario, no lock.
+    var lock = !!(ip && ip.failures === 'locked');
+    if (lock !== failuresLocked) {
+      failuresLocked = lock;
+      var pane = document.querySelector('.tabpane[data-pane="failures"]');
+      if (pane) {
+        pane.classList.toggle('fail-locked', lock);
+        var note = pane.querySelector('.fail-locked-note');
+        if (lock && !note) {
+          note = document.createElement('div');
+          note.className = 'fail-locked-note';
+          note.textContent = '🔒 The scenario owns failures — injections are disabled until it ends.';
+          pane.insertBefore(note, pane.firstChild);
+        }
+        if (!lock && note) note.remove();
+      }
+    }
     var syn = ip && ip.synoptic;
     if (syn) {
       if (!uiPolicyPrev) uiPolicyPrev = { diagMode: ui.diagMode, physOverlay: ui.physOverlay };
@@ -890,7 +951,9 @@
       msgHold.shown = msgHold.queue.shift();
       msgHold.at = now;
       cur.textContent = msgHold.shown; cur.classList.remove('instr-standby');
-      setFocus('instructor');
+      // No focus steal (#237): the collapsed card already shows this line
+      // one-line ellipsized — cue the header and let the player expand.
+      instrAttention();
     } else if (!msg && !msgHold.queue.length && dwellMet) {
       if (msgHold.shown !== null || cur.textContent !== 'Standing by…') {
         msgHold.shown = null;
@@ -910,6 +973,8 @@
     chatState = { sid: null, shown: 0, nextAt: 0, instantThrough: 0, rev: -1, reg: null, storySec: null, lastT: null, btnKey: null, skipBid: null, lcKey: null };
     var card = $('instructorCard');
     if (card) card.classList.remove('chat-mode');
+    var roleEl = document.querySelector('#instructorCard .persona .role');
+    if (roleEl) roleEl.textContent = 'Shift Supervisor';
   }
   var CHAT_SPEAKERS = {
     sup: 'Shift Supervisor', supx: 'Shift Supervisor', aux: 'Aux Operator',
@@ -993,6 +1058,14 @@
       cur.classList.remove('instr-standby');
       cur.innerHTML = '<div class="chat-log" id="chatLog"></div><div class="chat-btns" id="chatBtns"></div>';
       if (card) card.classList.add('chat-mode');
+      // The persona header stays visible in chat mode now (#237) — it is the
+      // collapse affordance and the mid-scenario orientation line. It shows the
+      // SCENE (scenario title), never a speaker: the transcript's per-line
+      // headers carry who is talking, and a fixed speaker up top would lie
+      // whenever anyone else speaks (instructor-vs-supervisor register rule).
+      var roleEl = document.querySelector('#instructorCard .persona .role');
+      var sc0 = sid && RD.SCENARIOS ? RD.SCENARIOS[sid] : null;
+      if (roleEl) roleEl.textContent = (sc0 && sc0.title) ? sc0.title : 'Scenario';
     }
     var logEl = $('chatLog');
     // One-at-a-time reveal on a real-time reading cadence. Player-outgoing
@@ -1011,7 +1084,10 @@
     }
     if (revealed) {
       logEl.scrollTop = logEl.scrollHeight;
-      setFocus('instructor');
+      // No focus steal per line (#237) — the scenario's opening already expanded
+      // the card (startScenario). If the player has since collapsed it, cue.
+      var iCard = $('instructorCard');
+      if (iCard && !iCard.classList.contains('expanded')) { instrAttention(); iCard.querySelector('.instr-current').scrollTop = 1e6; }
     }
     chatState.rev = chat.rev;
     var unrevealed = chatState.shown < chat.log.length;
@@ -1019,7 +1095,14 @@
     // conversation has fully played out (no acknowledging unread dialogue).
     var btns = $('chatBtns');
     if (unrevealed) {
-      if (chatState.btnKey !== '__revealing__') { chatState.btnKey = '__revealing__'; btns.innerHTML = ''; }
+      // #237: transcript-level catch-up. The reading cadence is right for first
+      // play, but replays/rewinds re-pace old dialogue — one tap dumps the rest
+      // of the pending lines instantly. Display-only: the engine log is untouched.
+      if (chatState.btnKey !== '__revealing__') {
+        chatState.btnKey = '__revealing__';
+        btns.innerHTML = '<button class="btn ghost chat-reveal-all" data-chatrevealall="1" ' +
+          'data-scanner-hint="Reveal all — show the rest of this conversation at once instead of line-by-line.">⏩ reveal all</button>';
+      }
       return;
     }
     var lc = s.instructor.level_complete;
@@ -1617,27 +1700,66 @@
     cur.innerHTML = mesc(st.text) + (meta.length ? '<div class="m-note" style="margin-top:4px">' + meta.join(' &nbsp;·&nbsp; ') + '</div>' : '') + acc + warn +
       (st.note ? '<div class="m-note" style="color:var(--muted)">' + mesc(st.note) + '</div>' : '');
   }
-  // Focus model: a strict accordion in free play (exactly one of instructor /
-  // tools expanded), but while instructed content is live (scenario, walkthrough,
-  // chat) the two SPLIT the column instead of stealing from each other — live
-  // guidance must never vanish because the player opened the Graph tab, and a
-  // new chat line must not slam a tool shut mid-use. `user` marks an explicit
-  // click (persona header), which still maximizes the instructor.
-  function setFocus(which, user) {
+  // Focus model (#237 rework). Free play keeps the strict accordion (exactly one
+  // of {instructor, tools} expanded); while instructed content is live the PLAYER
+  // owns the layout and all three states are reachable — instructor max, 50/50
+  // split, tools max — via the persona header (toggles the instructor card) and
+  // the tab strip (expands the tools; clicking the ACTIVE tab again collapses
+  // them). The instructor never expands itself on a message any more: new content
+  // while collapsed cues the header badge + a brief glow instead (instrAttention).
+  // setFocus remains only as the CONTENT-TRANSITION entry point — scenario /
+  // walkthrough / checklist start, level-complete, strict-gate feedback — where
+  // the named card taking the column is what the player's own action asked for.
+  // Invariant (applyFocus): at least one card is always expanded.
+  function isLive() { return !!(ui.scenario || ui.follow || chatState.sid || cklState.key); }
+  function applyFocus(iExp, tExp) {
     var instr = $('instructorCard'), tools = $('toolsCard'); if (!instr || !tools) return;
-    var live = !!(ui.scenario || ui.follow || chatState.sid || cklState.key);
-    var iExp, tExp;
-    if (which === 'instructor') {
-      iExp = true;
-      tExp = (live && !user) ? tools.classList.contains('expanded') : false;
-    } else {
-      tExp = true;
-      iExp = live;
-    }
+    if (!iExp && !tExp) iExp = true;
     instr.classList.toggle('expanded', iExp);
     instr.classList.toggle('collapsed', !iExp);
     tools.classList.toggle('expanded', tExp);
     tools.classList.toggle('collapsed', !tExp);
+    if (iExp) clearInstrAttention();
+    // Keep the transcript sliver pinned to its latest lines when the chat card
+    // collapses (the collapsed chat card shows the tail, not the top).
+    var cur = $('instrCurrent'); if (cur) cur.scrollTop = cur.scrollHeight;
+  }
+  function setFocus(which) {
+    applyFocus(which === 'instructor', which !== 'instructor');
+  }
+  // Persona header: the always-visible collapse/expand affordance (it survives
+  // chat mode now). Collapsing hands the column to the tools; expanding splits
+  // while live and takes the column in free play (accordion).
+  function toggleInstructorCard() {
+    var instr = $('instructorCard'), tools = $('toolsCard'); if (!instr || !tools) return;
+    var iExp = instr.classList.contains('expanded'), tExp = tools.classList.contains('expanded');
+    if (iExp) applyFocus(false, true);
+    else applyFocus(true, isLive() ? tExp : false);
+  }
+  // Tab strip: expand the tools (split while live, accordion in free play);
+  // re-clicking the already-active tab collapses them back to the strip.
+  function focusTools(activeAgain) {
+    var instr = $('instructorCard'), tools = $('toolsCard'); if (!instr || !tools) return;
+    if (activeAgain && tools.classList.contains('expanded')) { applyFocus(true, false); return; }
+    applyFocus(isLive() ? instr.classList.contains('expanded') : false, true);
+  }
+  // #237 attention cue: new instructor content while the card is collapsed gets a
+  // count badge + glow on the header (same grammar as the board's TRIP BLOCKS
+  // badge) instead of stealing the column. Cleared when the player expands.
+  var instrUnseen = 0;
+  function instrAttention() {
+    var card = $('instructorCard'); if (!card || card.classList.contains('expanded')) return;
+    instrUnseen++;
+    var b = $('instrBadge');
+    if (b) { b.hidden = false; b.textContent = instrUnseen > 9 ? '9+' : String(instrUnseen); }
+    card.classList.remove('instr-attn');
+    void card.offsetWidth;   // restart the pulse animation for each new line
+    card.classList.add('instr-attn');
+  }
+  function clearInstrAttention() {
+    instrUnseen = 0;
+    var b = $('instrBadge'); if (b) b.hidden = true;
+    var card = $('instructorCard'); if (card) card.classList.remove('instr-attn');
   }
 
   function renderFailures(s) {
@@ -2193,7 +2315,12 @@
   var ACTS = {
     scram: function () { cmd({ action: 'scram' }); },
     'export-diag': function () { exportDiag(); },
-    'ack-all': function () { cmd({ action: 'acknowledge_all_alarms' }); },
+    'ack-all': function () {
+      // #237: a flood ack shouldn't be silent — say how many just went quiet.
+      var n = latest ? latest.alarms.filter(function (a) { return a.state === 'active_unacknowledged'; }).length : 0;
+      cmd({ action: 'acknowledge_all_alarms' });
+      if (n > 0) showToast(n + ' alarm' + (n === 1 ? '' : 's') + ' acknowledged');
+    },
     // rods — uniform across plants (+withdraw / −insert)
     'rod-raise': function () { cmd({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: ui.rodSpeed }); },
     'rod-lower': function () { cmd({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: ui.rodSpeed }); },
@@ -2465,17 +2592,24 @@
   function bindUI() {
     $('tabbar').addEventListener('click', function (e) {
       var b = e.target.closest('button[data-tab]'); if (!b) return;
+      var again = b.classList.contains('on');   // re-click of the active tab = collapse toggle (#237)
       $('tabbar').querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
       document.querySelectorAll('.tabpane').forEach(function (p) { p.classList.toggle('on', p.getAttribute('data-pane') === b.getAttribute('data-tab')); });
-      setFocus('tools');
+      focusTools(again);
     });
-    // Maximize a collapsed instructor by clicking anywhere on the collapsed card.
-    // The persona header is the affordance, but it's hidden in chat-mode — keying off
-    // the collapsed card itself (delegation) fixes the "sometimes it won't maximize"
-    // case where there was no persona to click. When expanded, this is a no-op so the
-    // card's own buttons (Acknowledge, chat, level-complete) still work normally.
+    // Persona header (now visible in every mode, chat included): the collapse/
+    // expand toggle. stopPropagation so the card-level expand below doesn't
+    // immediately re-expand a card the header just collapsed.
+    var personaEl = document.querySelector('#instructorCard .persona');
+    if (personaEl) personaEl.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleInstructorCard();
+    });
+    // Expand a collapsed instructor by clicking anywhere on the collapsed card.
+    // When expanded, this is a no-op so the card's own buttons (Acknowledge,
+    // chat, level-complete) still work normally.
     $('instructorCard').addEventListener('click', function () {
-      if ($('instructorCard').classList.contains('collapsed')) setFocus('instructor', true);
+      if ($('instructorCard').classList.contains('collapsed')) toggleInstructorCard();
     });
     // generic segmented active state (delegated so rebuilt controls keep working)
     document.body.addEventListener('click', function (e) {
@@ -2576,6 +2710,13 @@
     $('instructorCard').addEventListener('click', function (e) {
       var cb = e.target.closest('[data-chatbtn]');
       if (cb) { chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return; }
+      var ra = e.target.closest('[data-chatrevealall]');
+      if (ra) {
+        chatState.instantThrough = Number.MAX_SAFE_INTEGER;   // everything pending reveals as backlog
+        chatState.nextAt = 0;
+        if (latest) renderChat(latest);
+        return;
+      }
       var b = e.target.closest('[data-lc]'); if (!b) return; levelCompleteAction(b.getAttribute('data-lc'));
     });
     // Auto-checklists: picker row (free play) + the bubble list's own buttons.
@@ -2757,6 +2898,24 @@
     syncSeg('[data-units]', units, 'units');
     if (latest) render(latest);
     if ($('manualOverlay') && !$('manualOverlay').hidden) renderManual();
+  }
+  // #237 (owner call 2026-07-28): the SI toggle is SCOPED rather than mixed. The
+  // PWR board renders US customary at every readout (its wiring converts inline,
+  // and the authored unit strings are US), so a global SI selection produced SI
+  // chart chips beside US board readouts — an actively inconsistent display,
+  // worse than no toggle. Until the board grows a display-unit layer (#238
+  // deferred-upgrades entry), the SI position is disabled while the PWR is the
+  // active plant — the same honest pattern as the disabled Realistic button.
+  // The RBMK/BWR classic panels render through conv() and keep the toggle.
+  function syncUnitsScope() {
+    var seg = $('unitsSeg'); if (!seg) return;
+    var siBtn = seg.querySelector('[data-units="SI"]'); if (!siBtn) return;
+    var scoped = ui.plant === 'pwr';
+    siBtn.disabled = scoped;
+    siBtn.title = scoped
+      ? 'SI display is not available on the PWR board yet — the board reads US customary. SI board support is a tracked upgrade.'
+      : '';
+    if (scoped && ui.units === 'SI') applyUnitsMode('US');
   }
 
   // ============================================================ Operator's Manual (Phase 3)
@@ -3083,6 +3242,7 @@
 
   function rebuildPlantUI() {
     chartBuf = []; smoothed = {}; seriesHot = {};
+    syncUnitsScope();
     buildGauges(); buildGraphParams(); updateSimSummary(); buildFailures();
     // The control layer already reset its channels and engaged the plant's
     // normal lineup (M5 selectPlant → engageDefaults); the tab just rebuilds.
@@ -3535,6 +3695,7 @@
     var initm = /[?&]init=([a-z0-9_]+)/.exec(location.search || '');
     if (initm && (prof().initStates || []).some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
     ui.series = Object.assign({}, prof().defaultSeries);
+    syncUnitsScope();
     buildGauges(); buildGraphParams(); updateSimSummary();
     buildPlantDisplay();
     service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)

@@ -617,9 +617,9 @@
           "params": "{active}"
         },
         {
-          "control": "Automate Tab (per-control automation)",
+          "control": "Board automation (per-control AUTO)",
           "group": "Automation",
-          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram; controllers run inside the Control Layer at a fixed simulated-time cadence, so time acceleration does not change their behavior.",
+          "uses": "AUTO/MAN controls on the board cards — STEAM GEN FEED → AUTO (three-element feed), ROD AUTO (Tavg), BORON → ON, steam dump AUTO, charging AUTO. Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram; controllers run inside the Control Layer at a fixed simulated-time cadence, so time acceleration does not change their behavior.",
           "command": "(issues the commands above)",
           "params": ""
         }
@@ -1243,11 +1243,11 @@
         },
         {
           "acronym": "AUTO / MAN",
-          "term": "Automatic / manual control of a plant control channel (Tools → Automate). AUTO reads the instruments and issues commands to hold a setpoint; MAN leaves the control to you."
+          "term": "Automatic / manual control of a plant control channel (the AUTO/MAN buttons on its board card). AUTO reads the instruments and issues commands to hold a setpoint; MAN leaves the control to you."
         },
         {
           "acronym": "Setpoint (SP)",
-          "term": "The value an automatic controller holds its parameter at. Automate channels capture the current reading when engaged; edit it to maneuver on automatic."
+          "term": "The value an automatic controller holds its parameter at. Automation channels capture the current reading when engaged; channels with a setpoint box on their card (boron target, dump setpoint) stay editable to maneuver on automatic."
         },
         {
           "acronym": "RBMK",
@@ -1683,9 +1683,9 @@
           "params": "{active}"
         },
         {
-          "control": "Automate Tab (per-control automation)",
+          "control": "Board automation (per-control AUTO)",
           "group": "Automation",
-          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram; controllers run inside the Control Layer at a fixed simulated-time cadence, so time acceleration does not change their behavior.",
+          "uses": "AUTO/MAN controls on the board cards — STEAM GEN FEED → AUTO (three-element feed), ROD AUTO (Tavg), BORON → ON, steam dump AUTO, charging AUTO. Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram; controllers run inside the Control Layer at a fixed simulated-time cadence, so time acceleration does not change their behavior.",
           "command": "(issues the commands above)",
           "params": ""
         }
@@ -2321,11 +2321,11 @@
         },
         {
           "acronym": "AUTO / MAN",
-          "term": "Automatic / manual control of a plant control channel (Tools → Automate). AUTO reads the instruments and issues commands to hold a setpoint; MAN leaves the control to you."
+          "term": "Automatic / manual control of a plant control channel (the AUTO/MAN buttons on its board card). AUTO reads the instruments and issues commands to hold a setpoint; MAN leaves the control to you."
         },
         {
           "acronym": "Setpoint (SP)",
-          "term": "The value an automatic controller holds its parameter at. Automate channels capture the current reading when engaged; edit it to maneuver on automatic."
+          "term": "The value an automatic controller holds its parameter at. Automation channels capture the current reading when engaged; channels with a setpoint box on their card (boron target, dump setpoint) stay editable to maneuver on automatic."
         },
         {
           "acronym": "RBMK",
@@ -2810,9 +2810,9 @@
           "params": ""
         },
         {
-          "control": "Automate Tab (per-control automation)",
+          "control": "Board automation (per-control AUTO)",
           "group": "Automation",
-          "uses": "Tools → Automate: an AUTO/MAN toggle per plant control (rod control, feedwater level control, pressure control, load follow, steam dump, …). Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram; controllers run inside the Control Layer at a fixed simulated-time cadence, so time acceleration does not change their behavior.",
+          "uses": "AUTO/MAN controls on the board cards — STEAM GEN FEED → AUTO (three-element feed), ROD AUTO (Tavg), BORON → ON, steam dump AUTO, charging AUTO. Engaged channels read the INSTRUMENTS and issue these same commands for you — setpoints capture the current reading and are editable. A failed sensor fools the automation, interlocks block it, and while a channel is engaged it overrides your manual input for that control. Rod/power channels disengage themselves on a scram; controllers run inside the Control Layer at a fixed simulated-time cadence, so time acceleration does not change their behavior.",
           "command": "(issues the commands above)",
           "params": ""
         }
@@ -3415,11 +3415,11 @@
         },
         {
           "acronym": "AUTO / MAN",
-          "term": "Automatic / manual control of a plant control channel (Tools → Automate). AUTO reads the instruments and issues commands to hold a setpoint; MAN leaves the control to you."
+          "term": "Automatic / manual control of a plant control channel (the AUTO/MAN buttons on its board card). AUTO reads the instruments and issues commands to hold a setpoint; MAN leaves the control to you."
         },
         {
           "acronym": "Setpoint (SP)",
-          "term": "The value an automatic controller holds its parameter at. Automate channels capture the current reading when engaged; edit it to maneuver on automatic."
+          "term": "The value an automatic controller holds its parameter at. Automation channels capture the current reading when engaged; channels with a setpoint box on their card (boron target, dump setpoint) stay editable to maneuver on automatic."
         },
         {
           "acronym": "BWR",

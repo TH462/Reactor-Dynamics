@@ -60,8 +60,8 @@
       { id: 'fix',
         trigger: { type: 'delay', value: 13.0 },
         commentary: {
-          learning: 'Two good answers — pick either. One: give the pump back to the machine. Open the Automate tab and engage "Feed pump → SG level (three-element)"; the controller reads level plus the steam−feed mismatch and will haul the pump down itself. Two: fly it by hand — cut the feed pump speed well below the steam draw and stop the fill. Choose before the drum reaches the steam nozzles.',
-          industry: 'Corrective options: (1) engage the three-element feedwater channel (Automate tab) — controller recaptures level; (2) manual feed pump speed reduction below current steam flow. Act before gross level excursion (≥ 96 %).',
+          learning: 'Two good answers — pick either. One: give the pump back to the machine. Press STEAM GEN FEED → AUTO on the board; the controller reads level plus the steam−feed mismatch and will haul the pump down itself. Two: fly it by hand — cut the feed pump speed well below the steam draw and stop the fill. Choose before the drum reaches the steam nozzles.',
+          industry: 'Corrective options: (1) engage the three-element feedwater channel (STEAM GEN FEED → AUTO) — controller recaptures level; (2) manual feed pump speed reduction below current steam flow. Act before gross level excursion (≥ 96 %).',
         },
         highlight: { view: null, control_label: 'Feed Pump', instrument_id: 'sg' },
         branches: [

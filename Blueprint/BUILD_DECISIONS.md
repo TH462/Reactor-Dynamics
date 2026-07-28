@@ -37,6 +37,37 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-28h — #237 UI/UX pass: the player owns the column; automation directives name real controls
+
+board_check **81/81**; `run_all` **22 at baseline**. Narrative in TUNING_LOG 2026-07-28l;
+the decisions:
+
+- **The instructor cues, it does not steal.** Per-message focus stealing is gone
+  (badge + glow on the always-visible persona header); only transitions the player's own
+  action caused (scenario start, level-complete, strict-gate feedback) take the column.
+  Free play keeps the M8 accordion; live content hands the layout to the player (three
+  reachable states). The chat header shows the SCENE (scenario title), never a speaker —
+  the transcript's per-line headers own who is talking (instructor-vs-supervisor rule).
+- **SI toggle scoped, not mixed (OWNER CALL, 2026-07-28, AskUserQuestion: "Scope the
+  toggle")**: SI disabled with a tooltip while the PWR board is active; full SI = a
+  display-unit layer in the board driver, parked as a #238 entry. The mixed display was
+  the one indefensible option.
+- **A directive must name a control that exists.** The Automate sweep's real find:
+  `rods_tavg` had no control in the shipped UI at all — campaign mission `pwr_rod_auto`
+  was unplayable as directed, and every gate stayed green because run_campaign drives
+  commands, not clicks. ROD AUTO (EXTRA_ITEMS toggle, SR DET pattern) closes it; the
+  board_check functional pins now click it both ways. Lesson recorded: content gates
+  validate AUTHORED intent, not UI reachability — scenario directives have no
+  verify_manual_follow analog (test-gap worth an issue if it bites again).
+- **Alarm timestamps are UI-side state** (first-seen sim time), severity-then-newest
+  ordering — severity keeps triage, stamps carry sequence. The engine's alarm records
+  stay unchanged (no snapshot/save format change).
+- **Failures lock is display-side** (`ui_policy.failures:'locked'`, authored on the three
+  TMI-2 chat scenarios): honest note + inert tab. The command path is deliberately NOT
+  gated — a determined player can still inject via console, which is out-of-fiction
+  tooling, not gameplay. If a hard gate is ever wanted it belongs in the instructor
+  layer, not the UI.
+
 ## 2026-07-28g — board tells the truth about flow and speed: #235 defects + #236 pipe gating
 
 board_check **79/79** (was 59 — the recorded "60/60" never matched code, #235 F6);

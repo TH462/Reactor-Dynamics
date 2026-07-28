@@ -49,8 +49,8 @@ The PWR uses a **single full-plant synoptic diagram** as the sole control surfac
 ├─────────────────────────────────────────────────────────────┤├ Instructor ───────────────┤
 │                                                             ││ commentary / gates        │
 │              PWR SYNOPTIC DIAGRAM                           │├ Tools ────────────────────┤
-│   (margin cards + CVCS / accumulator panels on equipment)   ││ Failures Automate Graph   │
-│                                                             ││ Sim Settings Dev          │
+│   (margin cards + CVCS / accumulator panels on equipment)   ││ Sim Failures Graph        │
+│                                                             ││ Settings                  │
 ├──────────────────────────────┬──────────────────────────────┤├ System Scanner ───────────┤
 │ Strip chart (trends)         │ Alarm panel                  ││ hover descriptions        │
 └──────────────────────────────┴──────────────────────────────┘└───────────────────────────┘
@@ -95,7 +95,7 @@ Headline instruments (always instrument readings):
 |--------|----------|
 | **Sim controls** | Play/Pause, speed 1× / 10× / 60× / 600× / 3600×, Save, Manual, Help |
 | **Instructor** | Scenario commentary, gates, walkthrough step grading |
-| **Tools** | Failures, Automate, Graph, Sim, Settings, Dev |
+| **Tools** | Sim, Failures, Graph, Settings |
 | **System Scanner** | Short description of hovered element |
 
 ---
@@ -200,9 +200,12 @@ Entry: status line under sim controls, or **Sim** tab → Plant & Mission.
 
 See `07_ABNORMAL_EMERGENCY.md` for response procedures per failure.
 
-### 7.2 Automate
+### 7.2 Plant automation (board AUTO controls)
 
-Per-channel **AUTO / MAN** controllers that read **instruments** and issue plant commands:
+Per-channel **AUTO / MAN** controllers that read **instruments** and issue plant
+commands. They live on the board's control cards (there is no separate tab):
+**STEAM GEN FEED → AUTO** (three-element SG level), **ROD AUTO** on the rod-control
+card (Tavg), **BORON → ON** (target ppm), **STEAM DUMP → AUTO**, **CHARGING → AUTO**.
 
 | Channel (label) | Holds / drives |
 |-----------------|----------------|

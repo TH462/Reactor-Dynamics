@@ -26,7 +26,7 @@
     mode: 'guided',
     chat: true,
     description: 'The same night, replayed with the truth showing — what the board said vs. what the plant did.',
-    ui_policy: { synoptic: 'learning', overlay: true, tag: 'afw_tag' },
+    ui_policy: { synoptic: 'learning', overlay: true, tag: 'afw_tag', failures: 'locked' },
     setup_commands: T2.PHYS.setup,
 
     interactions: {

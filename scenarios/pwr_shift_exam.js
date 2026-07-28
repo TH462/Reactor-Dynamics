@@ -3,7 +3,7 @@
  *
  * The load-follow shift, re-run as a checkpoint: drive the evening curve
  * (100 → 85 MWe, stable hold, back to ~100) with ANY tools — manual
- * dispatch like pwr_load_follow, or Automate-tab channels like
+ * dispatch like pwr_load_follow, or automation channels like
  * pwr_automation. The board starts CLEAN (no auto_channels preset): choosing
  * tools is part of the exam. One briefing, quiet phase markers, graded
  * outcome (the pwr_qualify register).
@@ -47,8 +47,8 @@
       { id: 'intro',
         trigger: { type: 'time', value: 2.0 },
         commentary: {
-          learning: 'Evening watch, and tonight you are checked out: no coaching, no highlights — the shift is yours. The curve: take the grid down to 85 megawatts for the night lull, hold it steady, then bring it back to a hundred for the morning. HOW is up to you. Drive the board by hand the way you ran your load-follow shift, or open Tools → Automate and put channels to work — the examiners only read the outcome. Three things decide the grade: both moves completed, no reactor trip, and steam-generator level inside its sane band — 40 to 80 percent — when the work is judged. Small asks, settled plant, feed never forgotten. I will mark the phases quietly as you pass them.',
-          industry: 'Shift examination: dispatch curve 100 → 85 MWe (stable hold) → ~100 MWe. Control method unrestricted: manual dispatch and/or Automate-tab channels (board starts with all channels in MAN). Grading: curve completed, zero protective actuations, SG level 40–80 % at judgment. Phase markers only; no procedural coaching. Commencing.',
+          learning: 'Evening watch, and tonight you are checked out: no coaching, no highlights — the shift is yours. The curve: take the grid down to 85 megawatts for the night lull, hold it steady, then bring it back to a hundred for the morning. HOW is up to you. Drive the board by hand the way you ran your load-follow shift, or put the AUTO controls to work — STEAM GEN FEED, ROD AUTO, BORON — the examiners only read the outcome. Three things decide the grade: both moves completed, no reactor trip, and steam-generator level inside its sane band — 40 to 80 percent — when the work is judged. Small asks, settled plant, feed never forgotten. I will mark the phases quietly as you pass them.',
+          industry: 'Shift examination: dispatch curve 100 → 85 MWe (stable hold) → ~100 MWe. Control method unrestricted: manual dispatch and/or the automation channels on the board (all channels start in MAN). Grading: curve completed, zero protective actuations, SG level 40–80 % at judgment. Phase markers only; no procedural coaching. Commencing.',
         },
         advance: 'wait_for_trigger' },
 

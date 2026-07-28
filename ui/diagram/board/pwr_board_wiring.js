@@ -219,6 +219,10 @@
     imrmtimhz4g: { press: function () { cmd({ action: 'set_letdown_orifices', a: false, b: true }); }, active: function (s) { return !CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
     imrmtimyxef: { press: function () { cmd({ action: 'set_letdown_orifices', a: true, b: true }); }, active: function (s) { return CS(s).letdown_orifice_a && CS(s).letdown_orifice_b; } },
     // --- Boron control ON / OFF: engages the control-layer 'boron_conc' channel ---
+    // Rod control AUTO (rods_tavg channel) — single toggle, lit when engaged. The channel
+    // captures the CURRENT indicated Tavg as its reference on engage (control layer), so
+    // the procedure guidance "engage it while Tavg is where you want it" is load-bearing.
+    bdRodAuto: { press: function (s) { var c = chan(s, 'rods_tavg'); cmd({ action: 'set_auto_channel', channel_id: 'rods_tavg', engaged: !(c && c.engaged) }); }, active: function (s) { var c = chan(s, 'rods_tavg'); return !!(c && c.engaged); } },
     imrqp6com2b: { press: function () { cmd({ action: 'set_auto_channel', channel_id: 'boron_conc', engaged: true }); }, active: function (s) { var c = chan(s, 'boron_conc'); return !!(c && c.engaged); } },
     imrqp6avzkw: { press: function () { cmd({ action: 'set_auto_channel', channel_id: 'boron_conc', engaged: false }); }, active: function (s) { var c = chan(s, 'boron_conc'); return !(c && c.engaged); } },
     // --- Pressurizer spray: AUTO / MANUAL / OFF ---
@@ -299,7 +303,16 @@
   // analyzer splice are all either authored correctly now or refer to items V2 dropped.
   // Applying them against the V2 doc would MOVE things (the SCRAM patch forced top=335;
   // V2 authors it at 255), so they are deleted rather than kept "just in case".
-  var EXTRA_ITEMS = [];
+  var EXTRA_ITEMS = [
+    // ROD AUTO (#237): the rods_tavg automation channel had NO control anywhere in the
+    // shipped UI — its only AUTO/MAN buttons lived in the retired synoptic, while the
+    // pwr_rod_auto mission and two manual procedures directed players at the removed
+    // Automate tab. One toggle (SR DET pattern): lit = channel engaged; press = take
+    // it the other way. Sits in the strip freed by the TRIP BLOCKS resize (DOC_PATCHES).
+    { id: 'bdRodAuto', kind: 'button',
+      name: 'Rod Tavg auto channel toggle  ·  sim: set_auto_channel rods_tavg {engaged:!engaged}; lit ← channel engaged',
+      left: 645, top: 405, label: 'ROD AUTO', width: 85, height: 20, color: '#8ba4b6', fontSize: 11 }
+  ];
 
   // ================================================================ NUMBERS (editable)
   // set(v): issue command from the typed value; get(s): reflect current sim state.
@@ -994,7 +1007,10 @@
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
     'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrobpq4a70', 'Dump SP': 'imrop5ouw7h',
     'Pressure SP': 'imrsg8b7b9o', 'Accumulator valve': 'imrppx5n1ay',
-    'Turbine — Connect Grid': 'imro8k5pzem'
+    'Turbine — Connect Grid': 'imro8k5pzem',
+    // The rods_tavg channel toggle (EXTRA_ITEMS, #237) — the control the old
+    // "Automate → Reactor" directives now point at.
+    'Rod AUTO': 'bdRodAuto'
   };
   // The board item the maintenance tag hangs over (TMI-2 AFW discharge valve).
   var TAG_ITEM = 'imrpp2g2m8k';
@@ -1082,6 +1098,16 @@
       imrzmlyafa3: { props: { left: 1416, width: 72 } },
       // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
       imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
+      // TRIP BLOCKS resized 40 → 30 tall and dropped to 425 (matching the rod-card
+      // button height) to free the strip under the SHUTDOWN box for the ROD AUTO
+      // toggle (EXTRA_ITEMS, #237).
+      imrsk4xz2dm: { props: { top: 425, height: 30 } },
+      // STEAM DUMP card: at ≥1000 psi the right-anchored STEAM PRESS value grew left
+      // into its caption ("STEAM PRESS1194 psi", #235 comment / #237). Move the value
+      // anchor to the panel edge (matching its 1845-1855 siblings) and the caption
+      // 5 px left for ~15 px of clearance at 4 digits.
+      imrr1gwi93j: { props: { left: 1850 } },
+      ims3wu2kxnl: { props: { left: 1670 } },
       // RCP suction/discharge swap, item half (#236): the loop physically enters this
       // pump from the letdown tee on its RIGHT and leaves toward the charging tee on its
       // LEFT, but the nozzles were authored suction-left/discharge-right — water entered

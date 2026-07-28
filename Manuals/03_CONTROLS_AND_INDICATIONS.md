@@ -574,15 +574,13 @@ power is ~1000 gpm, at 6 % power it is ~50 gpm.
 
 ---
 
-## 14.0 Automate tab (channel procedures)
+## 14.0 Automation channels (board AUTO procedures)
 
 ### 14.1 Engage a channel
 
-1. Open **Tools → Automate**.  
-2. Locate channel (e.g. Feed pump → SG level).  
-3. Set/verify setpoint (captured on engage).  
-4. Select **AUTO**.  
-5. Confirm `note` status (holding / blocked / scrammed).  
+1. Find the channel's AUTO control on its board card — **STEAM GEN FEED → AUTO** (three-element SG level), **ROD AUTO** on the rod-control card (Tavg), **BORON → ON** (target ppm), **STEAM DUMP → AUTO**, **CHARGING → AUTO**.  
+2. Where the card carries a setpoint box (boron target ppm, dump setpoint), set/verify it; the other channels capture the current reading on engage.  
+3. Press **AUTO** — the button stays lit while the channel is engaged.  
 
 ### 14.2 Return to manual
 
@@ -596,7 +594,7 @@ power is ~1000 gpm, at 6 % power it is ~50 gpm.
 - Manual rod motion → MAN.  
 - Drops out on scram.  
 
-**CAUTION:** If you engage rod AUTO after a large Tavg error, rods will drive hard. Capture near the temperature you want, or edit setpoint carefully.
+**CAUTION:** If you engage **ROD AUTO** after a large Tavg error, rods will drive hard. Capture near the temperature you want — if the capture was wrong, take it back to MAN, trim Tavg, and re-engage.
 
 ---
 
@@ -667,7 +665,7 @@ These topics appear as dedicated **campaign** missions; manuals cover them here 
 ### 17.2 Rod AUTO — T-ref capture trap (Mode 1)
 
 1. Stabilize Tavg where you want it.  
-2. Engage **Automate → Rod control → Tavg (AUTO)** — setpoint **captures current indicated Tavg**.  
+2. Engage **ROD AUTO** (rod-control card) — the reference **captures current indicated Tavg**.  
 3. If you engage with a large Tavg error vs desired plant, rods will drive hard.  
 4. Any manual rod motion → **MAN**.  
 5. Channel drops out on SCRAM.  
@@ -713,7 +711,7 @@ Campaign grades solo criticality (`pwr_startup_challenge`), shift dispatch (`pwr
 ## 18.0 Engine command reference
 
 Every on-screen control issues one of these engine commands (the same names appear in the
-Instructor's procedure steps, the Automate tab's channel descriptions, and diagnostic logs).
+Instructor's procedure steps, the board's automation channels, and diagnostic logs).
 Listed for cross-reference — normal operation never requires typing a command.
 
 | Control (section) | Command | Params |
@@ -748,7 +746,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | SR detector on/off (§4.3) | `set_sr_detector` | `{on}` |
 | Startup trip blocks (§4.4) | `set_trip_block` | `{trip_id, blocked}` |
 | MSIV open / close (§9.2) | `open_msiv` / `close_msiv` | — |
-| Automate tab (§14) | *(issues the commands above)* | — |
+| Automation AUTO/MAN (§14) | `set_auto_channel` / `set_auto_setpoint` | `{channel_id, engaged}` / `{channel_id, value}` |
 
 ---
 

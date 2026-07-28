@@ -109,6 +109,52 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28l — #237 UI/UX pass: focus model, SI scoping, Automate sweep, alarms, deadband, failures lock  ✅
+
+Owner: "Work 237" + AskUserQuestion ruling: **SI toggle scoped (option b), full SI parked
+in #238**. board_check **81/81** (79 → 81, ROD AUTO pins); `run_all` 22 at baseline.
+
+- **Instructor focus model rewritten** (`setFocus` → applyFocus/toggleInstructorCard/
+  focusTools + instrAttention): NO focus steal on messages (badge + glow cue, TRIP BLOCKS
+  grammar); persona header survives chat-mode (shows the SCENARIO TITLE — a scene, never a
+  speaker, per the instructor-vs-supervisor rule) and is the always-visible collapse
+  toggle; active-tab re-click collapses the tools; all three layouts reachable while live.
+  Content transitions (start/level-complete/gate feedback) still take the column — those
+  are player-caused. Collapsed chat card = transcript sliver pinned to its tail (the
+  latent one-line-ellipsis hazard from the #235 comment is styled out).
+- **ROD AUTO added to the board** (EXTRA_ITEMS + TRIP BLOCKS resized via DOC_PATCHES):
+  the sweep exposed that `rods_tavg` had NO control in the shipped UI (its AUTO/MAN lived
+  only in the retired synoptic) — the pwr_rod_auto mission directed players at a control
+  that did not exist. run_campaign green all along because it drives COMMANDS (gate
+  can't see missing UI; verify_manual_follow covers procedures, not scenario beats).
+- **Automate-tab sweep**: manual_procedures ×4, five PWR scenarios, campaign teaches
+  line, gen_manual_reference glossary/controls, Manuals 02/03/04 + crosswalk; repacked
+  (pack_manuals + gen_manual_reference). Left: `rbmk_ar.js` (ON HOLD), historical record
+  docs (records, not policy). **Stale claim disproven while sweeping** (#237 §7): "number
+  inputs commit only on blur" — `pwr_board.js:444` has had Enter→blur; no change.
+- **Alarm stamps**: UI-side first-seen sim-time per alarm (`alarmSeen`), `T+hh:mm:ss` on
+  each tile, newest-first WITHIN severity (severity keeps triage), rewind discards
+  future stamps, Ack All toasts its count.
+- **Trend arrows**: deadband + hysteresis on the displayed value (±1 least-significant
+  display digit over the 60 s window, clear at half / on direction flip) — replaces the
+  0.2 %-of-range-over-5-samples rule that flickered at steady state.
+- **Failures lock**: `ui_policy.failures:'locked'` renders the tab inert + note; authored
+  on pwr_tmi2_p1/p2/p3. UI-side only — the command path is NOT gated (an instructor-layer
+  intercept would be the hard enforcement; note in #237 close-out). `pwr_tmi` flagship is
+  a candidate but was left (not a chat scenario; needs its own look).
+- Polish: STEAM PRESS spacing (DOC_PATCHES: value anchor 1850, caption 1670), Help
+  overlay explains rewind-pick aiming, chat "⏩ reveal all" (display-only, instantThrough).
+- **Gate amendment (HR10, both sides):** `verify_e2e_ui` asserted the SI toggle converts
+  the pressure gauge to MPa — the half-feature #235 measured as incoherent. Re-authored
+  to pin the OWNER-RULED behavior: SI button DISABLED on PWR, click no-ops, gauge stays
+  psi. The new form fails on the old code by construction (button was enabled there);
+  revert to a convert-to-MPa assertion when #238's display-unit layer lands.
+
+**Gotcha (workflow):** the Bash tool collapses `\\` in heredocs/inline scripts — a Python
+in-place edit that "succeeded" had actually no-op'd (old==new after collapse) and a JS
+apostrophe fix had to go through the Edit tool. Verify replacements landed; node --check
+every edited JS file.
+
 ### 2026-07-28k — V2 board correctness pass: #235 defects + #236 pipe flows fixed  ✅
 
 Owner: "Work 235 and 236." Both closed. **board_check 59 → 79/79** — the #236 test gap

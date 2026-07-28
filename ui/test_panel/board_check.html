@@ -185,6 +185,14 @@
       ck('func: boron target 850 -> channel setpoint', Math.abs((chanOf('boron_conc') || {}).setpoint - 850) < 1);
       clickBtn('imrqp6avzkw'); ticks(2);
       ck('func: BORON OFF disengages the channel', !(chanOf('boron_conc') && chanOf('boron_conc').engaged));
+      // ROD AUTO toggle (EXTRA_ITEMS, #237) — the rods_tavg channel's board control.
+      // The toggle reads the channel state off the RENDERED snapshot (SR DET pattern),
+      // so re-render between clicks — in the app every broadcast does this.
+      clickBtn('bdRodAuto'); ticks(2);
+      ck('func: ROD AUTO engages rods_tavg', !!(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
+      RD.PwrBoard.render(svc.assembleSnapshot());
+      clickBtn('bdRodAuto'); ticks(2);
+      ck('func: ROD AUTO again disengages rods_tavg', !(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
 
       // rods: the WITHDRAW/INSERT buttons are momentary (tap-or-hold). A quick TAP
       // (pointerdown then pointerup before the hold threshold) nudges EXACTLY ONE step;

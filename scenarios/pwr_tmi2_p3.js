@@ -47,7 +47,7 @@
     mode: 'free_response',
     chat: true,
     description: 'Same shift, same board, same lying light — but this time you know. Stabilize the plant.',
-    ui_policy: { synoptic: 'realistic', overlay: false, tag: 'afw_tag' },
+    ui_policy: { synoptic: 'realistic', overlay: false, tag: 'afw_tag', failures: 'locked' },
     setup_commands: T2.PHYS.setup,
 
     interactions: {

@@ -625,10 +625,24 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .instructor.collapsed { cursor: pointer; }
 .instructor .persona { cursor: pointer; }
 .instructor .persona::after {
-  content: '▸'; margin-left: auto; color: var(--muted); font-size: 11px;
+  content: '▸'; margin-left: 6px; color: var(--muted); font-size: 11px;
   transition: transform .15s ease;
 }
 .instructor.expanded .persona::after { transform: rotate(90deg); }
+/* #237 attention cue: unseen-content badge + a brief pulse while collapsed —
+   the instructor cues instead of stealing the column. Badge takes the flexible
+   gap (margin-left:auto) so the chevron stays pinned at the right edge. */
+.persona .instr-badge {
+  background: var(--caution, #d9a441); color: #14181c;
+  font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 6px; line-height: 1.4;
+}
+.persona .instr-badge[hidden] { display: none; }
+.persona .role { margin-right: auto; }   /* pushes badge + chevron to the right edge */
+@keyframes instrAttnPulse {
+  0%, 100% { box-shadow: none; }
+  45% { box-shadow: inset 0 0 0 2px var(--caution, #d9a441); }
+}
+.instructor.instr-attn { animation: instrAttnPulse 1.1s ease 2; }
 .instructor.collapsed .instr-prev,
 .instructor.collapsed .instr-nav,
 .instructor.collapsed .instr-ack { display: none; }
@@ -636,6 +650,14 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tools.collapsed .tab-body { display: none; }
+/* #237: a scenario that declares ui_policy.failures:'locked' owns the Failures
+   tab — visible but inert, with the note explaining why. */
+.tabpane.fail-locked #failList, .tabpane.fail-locked .advanced-exp,
+.tabpane.fail-locked #advFailPanel { pointer-events: none; opacity: 0.45; }
+.fail-locked-note {
+  font-size: 12px; color: var(--caution, #d9a441); padding: 6px 8px; margin-bottom: 6px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg-elevated);
+}
 .instructor .persona { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .persona .icon { width: 26px; height: 26px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border);
   display: flex; align-items: center; justify-content: center; font-size: 14px; }
@@ -1237,9 +1259,18 @@ select.num-input { width: auto; }
 /* ============================================================ chat mode (TMI-2 M5)
    Multi-speaker transcript in the Instructor card. Bubbles stay quiet-board
    muted; color marks WHO is speaking, not urgency (SYS lines borrow caution). */
-.instructor.chat-mode .persona,
-#instructorCard.chat-mode .persona,
+/* The persona header survives chat mode (#237): it is the always-visible
+   collapse affordance and the mid-scenario orientation line (renderChat swaps
+   its text to the scenario title — a scene, never a speaker). Only the
+   prior-messages line is chat-hidden. */
 #instructorCard.chat-mode .instr-prev { display: none; }
+/* Collapsed chat card: a short sliver of the transcript, pinned to its LATEST
+   lines by script scroll — the one-line nowrap ellipsis further up is for the
+   free-play message card and would render a whole transcript as one line. */
+.instructor.collapsed.chat-mode .instr-current {
+  white-space: normal; overflow: hidden; max-height: 46px; text-overflow: clip;
+}
+.instructor.collapsed.chat-mode .chat-btns { display: none; }
 .chat-log {
   display: flex; flex-direction: column; gap: 8px;
   max-height: 48vh; overflow-y: auto; padding-right: 4px; margin-bottom: 8px;

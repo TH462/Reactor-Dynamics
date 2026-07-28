@@ -190,8 +190,8 @@ Place the turbine-generator on the grid and establish electrical output coordina
 | 3 | Select load mode **Manual** (or Follow if already matching power) | Turbine-Generator | Mode set |
 | 4 | Raise Turbine Load in steps toward a low MWe target consistent with reactor power | Turbine Load | MWe rises; steam flow rises |
 | 5 | Match reactor power with rods (or Follow mode) so SG level stays controlled | Rods / Follow | No SG LO-LO / HI flood |
-| 6 | Place feed on **three-element AUTO** when stable | Automate → Feed | AUTO holding SG level |
-| 7 | Optionally engage **Rod AUTO (Tavg)** only after Tavg is where you want it | Automate → Rods | Holding without large drive |
+| 6 | Place feed on **three-element AUTO** when stable | STEAM GEN FEED → AUTO | AUTO holding SG level |
+| 7 | Optionally engage **ROD AUTO (Tavg)** only after Tavg is where you want it | ROD AUTO (rod card) | Holding without large drive |
 
 ### Outcome
 Generator carrying load; plant in or entering **Mode 1, At Power**; nuclear–electric coordinated.
@@ -220,9 +220,9 @@ In **Mode 1, At Power**, raise reactor power and electrical output to full-power
 | 2 | Withdraw Control Bank in small bursts **or** dilute slowly | Rods / CVCS Dilute | Power rising controlled |
 | 3 | Raise Turbine Load to match (Manual) **or** use Follow | Turbine Load / Follow | MWe tracks power |
 | 4 | Hold at each plateau; check Tavg, pressure, SG level, subcooling | Observe | Stable board |
-| 5 | Re-engage feed AUTO and PZR AUTO as needed | Automate | Controllers holding |
+| 5 | Re-engage feed AUTO and PZR AUTO as needed | Board AUTO controls | Controllers holding |
 | 6 | At ~92 % control bank withdrawn / HFP equilibrium, trim boron for critical hold | CVCS / rods | Power ~100 %; P ≈ 15.41 MPa; SG ~65 %; PZR ~55 % |
-| 7 | Optionally place Rod AUTO and load Follow for steady operation | Automate | Hands-off hold |
+| 7 | Optionally place ROD AUTO and load FOLLOW for steady operation | ROD AUTO · FOLLOW | Hands-off hold |
 
 ### Outcome
 Full-power **Mode 1, At Power** equilibrium ready for normal maneuvering or watchstanding.
@@ -394,7 +394,7 @@ Control SG water level with the feed pump; understand three-element AUTO as the 
 |------|--------|---------|------------|
 | 1 | Read SG level (~**65 %**) and feed status line (AUTO vs MANUAL) | SG / Steam & Flow | Known driver |
 | 2 | Raise feed pump % to raise level; lower to reduce | Feed Pump Set % / nudge | Level responds |
-| 3 | Re-engage **Automate → Feed pump → SG level → AUTO** | Automate | AUTO holding |
+| 3 | Re-engage **STEAM GEN FEED → AUTO** | Board | AUTO holding |
 
 ### Procedure — normal automatic
 

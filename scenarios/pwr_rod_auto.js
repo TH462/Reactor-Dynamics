@@ -81,8 +81,8 @@
       { id: 'engage_auto',
         trigger: { type: 'delay', value: 3.0 },
         commentary: {
-          learning: 'On target — you just did, in minutes, what the machine does all day. Now hand it over, but hear the trap first: the moment you press AUTO, the controller captures T-ref — its target — from whatever T-avg reads RIGHT THEN. Engage while the temperature sits where you want it, and it holds that number forever. Engage while it is still diving from your last correction, and it will faithfully hold your mistake. It is close to program right now — a fine moment. Press AUTO on the rod card, or engage "Rod control → Tavg" in the Automate tab.',
-          industry: 'Tavg restored. Engage rods_tavg (rod card AUTO, or Automate → Reactor). T-ref captures the CURRENT indicated Tavg at engage — verify Tavg is on the desired value first; setpoint remains editable afterwards (set_auto_setpoint). Mismatch-dominant two-term controller, ±0.8 °C deadband, error-proportional speed ladder.',
+          learning: 'On target — you just did, in minutes, what the machine does all day. Now hand it over, but hear the trap first: the moment you press AUTO, the controller captures T-ref — its target — from whatever T-avg reads RIGHT THEN. Engage while the temperature sits where you want it, and it holds that number forever. Engage while it is still diving from your last correction, and it will faithfully hold your mistake. It is close to program right now — a fine moment. Press ROD AUTO on the rod-control card.',
+          industry: 'Tavg restored. Engage rods_tavg (ROD AUTO on the rod-control card). T-ref captures the CURRENT indicated Tavg at engage — verify Tavg is on the desired value first; setpoint remains editable afterwards (set_auto_setpoint). Mismatch-dominant two-term controller, ±0.8 °C deadband, error-proportional speed ladder.',
         },
         highlight: { control_label: 'Control Bank', instrument_id: null },
         branches: [
@@ -99,7 +99,7 @@
         commands: [{ action: 'set_load_target', mwe: 100 }],
         commentary: {
           learning: 'Engaged — T-ref captured, and the rod card shows it. Now the morning ask: I am running the turbine back up to 100 MW, the mirror of the move you just fought by hand. Watch the bank. The controller senses steam running ahead of power and walks the rods OUT — small error, slow steps; bigger error, faster — and as T-avg closes on T-ref it slows, stops, and the status reads "holding". That lockup band is ±0.8 degrees: inside it, the rods do not move at all.',
-          industry: 'Load restored to 100 MWe under automatic rod control. Expect mismatch-term withdrawal on the speed ladder, then lockup inside ±0.8 °C of T-ref ("holding"). If T-ref was captured low, output tops out below rated — raise the channel setpoint from the Automate tab.',
+          industry: 'Load restored to 100 MWe under automatic rod control. Expect mismatch-term withdrawal on the speed ladder, then lockup inside ±0.8 °C of T-ref ("holding"). If T-ref was captured low, output tops out below rated — take ROD AUTO back to MAN, trim Tavg to the number you want, and re-engage to capture it.',
         },
         branches: [
           { trigger: { type: 'scram' }, goto: 'tripped' },
@@ -136,7 +136,7 @@
         // MAN — re-assert AUTO so the closing card tells the truth.
         commands: [{ action: 'set_auto_channel', channel_id: 'rods_tavg', engaged: true }],
         commentary: {
-          learning: 'Shift handed over. This is how the plant actually runs: the rod channel holding T-avg against every little breath of the grid, and the operator supervising — engaging it at the right number, taking it back the moment judgment says so. Two more things it knows: if the reactor trips, the channel stands down on its own rather than fight a scram; and its setpoint is yours to edit in the Automate tab whenever the program calls for a different temperature. The steady hand is yours. It just does not get tired.',
+          learning: 'Shift handed over. This is how the plant actually runs: the rod channel holding T-avg against every little breath of the grid, and the operator supervising — engaging it at the right number, taking it back the moment judgment says so. Two more things it knows: if the reactor trips, the channel stands down on its own rather than fight a scram; and its reference is yours to reset — take it to MAN, trim T-avg to the number the program calls for, and re-engage to capture it. The steady hand is yours. It just does not get tired.',
           industry: 'Exercise complete: manual Tavg trim, AUTO engagement with T-ref capture, automatic load-follow response, manual-override precedence, re-engage. Channel is offOnScram; setpoint adjustable via set_auto_setpoint. Supervisory doctrine per the full-plant automation mission.',
         },
         level_complete: {
