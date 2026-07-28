@@ -109,6 +109,63 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28c — vital-tile playtest: four defects, two of them latent for the whole V2 board  ✅🔬
+
+`run_all` **22 runners at baseline**, board_check **60/60**. Released as Alpha 1.8.1.
+
+**1. `board_h.js` appended `px` to EVERY numeric style value.** The unit whitelist was
+`opacity` and `zIndex` only, so `lineHeight: 1.1` became `1.1px` and `fontWeight: 700` became
+`700px`. Both are invalid declarations, which the browser silently DROPS — so the property
+falls back to its inherited value and the symptom presents as a layout bug rather than a unit
+bug. Measured on the reactor-power tile: the caption's line box was **1.2 px tall** and the
+reading's **1 px**, so both texts overflowed their boxes and the number painted on top of its
+own label. Every numeric `fontWeight` on the board had also been silently inert since V2 —
+nothing set that way was ever bold. Fixed with a proper UNITLESS set (React's list, trimmed).
+**If you add a style prop that takes a ratio or a count, add it to that set.**
+
+**2. Tile flicker was band churn at the render rate.** The #233 mode-aware bands recompute
+`normLo/normHi` every render from live signals (load for Tavg, the setpoint for pressure);
+the tile rebuilds its gauge whenever a band edge changes, so unquantised edges rebuilt the DOM
+at ~10 Hz — worst during a transient, which is exactly when load is moving. Band edges are now
+rounded to whole display units. Probed: **60 consecutive renders now emit 1 distinct band set
+per tile** (was one per render).
+
+**3. The Tavg tile had no cold side at all — and neither did the plant.** `displayScale`
+derives the tile window from the TRIP bounds. Tavg has a high trip (335 °C) and NO low trip, so
+`loActive` was false and the window ran from the meter's floor (50 °F) to the trip: the green
+programme band was ~1 % of the strip in a field of grey. The owner read the display correctly
+and inferred the real gap — **there was no low-Tavg alarm anywhere in the protection tables**,
+only `high_tavg` and the high scram.
+- Added alarm **`low_tavg` at 289 °C** — the P-12 line, ~8 °C below the no-load programme
+  anchor, so it is clear at hot standby (post-trip Tavg parks at ~297) and comes in as soon as
+  you are genuinely cooling out of the hot band. It stands IN through a Mode 4/5 cooldown,
+  which is correct.
+- Deliberately **no low-Tavg TRIP**: a PWR does not scram on low coolant temperature. The real
+  cold-side protections are this interlock and LTOP. Do not "complete the pair" by adding one.
+- `displayScale` now honours an explicit `winLo`/`winHi`, and `tavgBand` supplies a MODE-aware
+  window: 540–645 °F hot, 50–350 °F in Mode 5/6. Measured result: window 540–645, green band
+  574–584 (~10 % of the strip), low alarm 552 °F, high alarm 594 °F.
+- Green band widened from 2.5x to 3.5x the rod controller's ±0.8 °C lockup band. The rods lock
+  tighter, but Tavg legitimately wanders wider while load moves, and a band under ~10 °F is a
+  hairline on a 105 °F window.
+
+**4. The tile sparklines sampled per RENDER, not per plant step.** The board renders at
+whatever rate the browser gives it (**measured 9.6 Hz**) while the sim advances 0.1 s a step,
+so the buffer covered ~36 s of plant and drew it as a coarse staircase while claiming a
+three-minute window. Now sampled on SIM time at `WINDOW_S/HIST_MAX` (0.5 s), with catch-up in
+whole slots so a fast-forward lays down a correctly-spaced trace. A true 3 minutes at any time
+acceleration, ~1.5 samples per pixel — reads as a curve, like the strip chart underneath.
+
+**Correction to the #234 entry above — `advanceCycles(1)` is 0.1 s of SIM TIME, not 1 s.**
+`measure_noise.js` assumed 1 s (its `metadata.dt` fallback), so the "60 s" windows in that
+entry were really 6 s and the display-damping filter was evaluated at the wrong `alpha`. The
+CHARACTER of the conclusions holds — white at the instrument, damped at the indicator — but
+**do not trust the absolute per-minute figures in the #234 entry; re-measure at dt = 0.1.**
+The real board renders at ~10 Hz against a 10 Hz sim, so `DISPLAY_DAMP` sees dt ≈ 0.1 and damps
+roughly 3x harder than those numbers imply. Left as-is because the owner's report after that
+change was flicker and layout, not "too calm" — but this is the number to check first if the
+board ever reads dead.
+
 ### 2026-07-28b — #234 resolved: the damping belonged in the INDICATOR, not the instrument  ✅🔬
 
 `run_all` back to **22 runners at baseline** (`run_campaign` 51/51, `run_e2e_controls` 35/35),

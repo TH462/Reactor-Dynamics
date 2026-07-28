@@ -38,7 +38,8 @@
           "derived": false,
           "boolean": false,
           "alarms": [
-            "high_tavg"
+            "high_tavg",
+            "low_tavg"
           ]
         },
         {
