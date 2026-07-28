@@ -68,6 +68,19 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>Steady gauges and a smooth trend line</h2>
+      <span class="log-ver mono">Alpha 1.8.2</span>
+      <time class="log-date mono" datetime="2026-07-28">28 July 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag fixed">Fixed</span><strong>The vital&#8209;parameter tiles no longer flicker at all.</strong> They were tearing down and rebuilding their band and trend elements on every repaint, ten times a second, which lets a half&#8209;built frame reach the screen. Those elements are now reused in place.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The tile trend lines are properly smooth.</strong> They take a sample on every plant step, five times more often than before, and are plotted against time rather than sample number &mdash; so the line scrolls at a constant rate instead of stretching while its buffer fills.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The numbers beside the bottom graph no longer overlap.</strong> Their minimum spacing was a fixed percentage that came out two pixels short of the numbers' own height, so spreading them apart still left them touching. The spacing is now measured from the real text height.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>Readable gauges: no flicker, no overlap, and a temperature scale that fits the mode</h2>
       <span class="log-ver mono">Alpha 1.8.1</span>
       <time class="log-date mono" datetime="2026-07-28">28 July 2026</time>

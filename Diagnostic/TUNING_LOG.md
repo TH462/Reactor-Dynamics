@@ -109,6 +109,45 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28d — flicker, trend cadence and chart labels: all three were measurement, not taste  ✅🔬
+
+`run_all` **22 at baseline**, board_check **60/60**. Alpha 1.8.2.
+
+**Answering "why does the board render at an odd frequency to the sim steps?" — it does not.**
+`SimulationService` broadcasts from a `setTimeout` at `NORMAL_MS = 100` (10 Hz; 50 ms during a
+transient), and `app.js` coalesces each broadcast onto the next `requestAnimationFrame`. So the
+board paints **once per broadcast, 1:1 with sim steps**. The measured 9.6 Hz against a nominal
+10 Hz is ordinary `setTimeout` drift — browsers guarantee *at least* the delay, never exactly —
+plus the occasional pair of broadcasts collapsing into one 16.7 ms frame. There is no
+resampling and no beat frequency. **My earlier note that the sparkline was stamping ~9 identical
+samples per plant step was WRONG** and is retracted here: render and sim are 1:1.
+
+**1. Flicker was clear-and-append, not band churn.** #233c quantised the band edges so they stop
+changing every frame, which reduced it — the owner reported "still happening, just not as
+frequently", which is exactly the signature of a residual cause. `paint()` was calling
+`BoardH.clear()` on the trace group AND the chart-band group on EVERY repaint, and
+`rebuildGaugeBands()` did the same whenever an edge moved. `app.js` already documents this exact
+failure: mutating markup lets the compositor present a frame mid-rebuild. Now pooled — elements
+are created once and updated by attribute. **Measured: 0 DOM nodes added or removed over 5 s of
+steady running** (previously churning every frame).
+
+**2. The trend cadence — I had made it WORSE.** #233c moved sampling from per-render to a fixed
+0.5 s interval to lengthen the window, which dropped the rate from ~10 Hz to 2 Hz and made the
+leading edge visibly step. Correct fix: sample every update AND plot against TIME. Index-based x
+was a second defect hiding underneath — the trace stretched to fill the width and compressed as
+the buffer filled. Now `hist` holds `{t, v}`, entries are dropped by AGE not count, x is
+`(t - t0)/WINDOW_S`, and drawing decimates to `DRAW_MAX` points (~2 per pixel) so cost is flat.
+**Measured: 9.59 samples/s** (was 2).
+
+**3. The chart labels overlapped by arithmetic.** `drawFloats` spreads colliding chips with a
+`GAP` of **11 % of the gutter**. Measured: gutter **174 px**, chip **21 px** — so the gap it
+enforced was **19.1 px, smaller than the chip itself**. Any time two traces came close enough
+for the spread to fire, the chips it "separated" still overlapped. GAP now derives from the
+measured chip height (cached after first paint). Also fixed a latent bug in the same function:
+the bottom-overflow correction pushed each item up with `Math.max(2, …)` INDIVIDUALLY, which
+could collapse the gap between the top two while "fixing" the overflow — it is one column
+offset now, with an even-distribution fallback if the column genuinely cannot fit.
+
 ### 2026-07-28c — vital-tile playtest: four defects, two of them latent for the whole V2 board  ✅🔬
 
 `run_all` **22 runners at baseline**, board_check **60/60**. Released as Alpha 1.8.1.

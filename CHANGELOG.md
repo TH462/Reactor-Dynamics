@@ -13,6 +13,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.2] — 2026-07-28
+
+### Fixed
+- **The vital-parameter tiles no longer flicker at all.** The previous fix stopped their
+  coloured bands changing every frame, but the tiles still tore down and rebuilt their band
+  rectangles and trend polylines from scratch on every repaint — about ten times a second —
+  which lets the compositor present a half-built frame. Those elements are now reused and
+  updated in place: measured over five seconds of steady running, the tile adds and removes
+  **zero** DOM nodes where it previously churned continuously.
+- **The tile trend lines are properly smooth.** They now take a sample on every plant step
+  (~10 a second, up from 2) and are plotted against **time** rather than sample number, so the
+  line scrolls at a constant rate instead of stretching and compressing while its buffer fills.
+  The window is still a true three minutes at any time-acceleration.
+- **The numbers beside the bottom graph no longer overlap.** They are spread apart when traces
+  converge, but the minimum spacing was a fixed percentage that worked out to 19 px against a
+  21 px number — so the spreading left them two pixels short of clearing each other. The gap is
+  now measured from the number's real height, and if the column ever cannot fit it distributes
+  evenly instead of piling up at the top edge.
+
 ## [Alpha 1.8.1] — 2026-07-28
 
 ### Fixed
