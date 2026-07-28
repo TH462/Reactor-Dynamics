@@ -211,6 +211,17 @@
       void_flux_tau: 3.0,          // s — flux void grows/recovers with this tau [tune]
       fuel_damage_c: 1200.0,       // cladding failure (fixed)
       fuel_melt_c: 2800.0,         // melt (fixed)
+      // PARTIAL-uncovery hot node (#213, pwr_thermal.stepCladding): peak cladding
+      // temperature of the exposed (uppermost) fuel. Between core_top_uncover (0.70)
+      // and significant_uncover (0.50) the top of the core is steam-cooled only: the
+      // hot node heats at the decay-heat rate scaled by the uncovered fraction and
+      // is cooled weakly toward Tsat — TMI-2's actual damage mechanism (top ~half
+      // uncovered under an hour → clad failure and local melt while the BULK coolant
+      // stayed unremarkable). The bulk h_fc collapse below 0.50 is unchanged; this
+      // node covers the band above it that previously had zero consequence.
+      clad_heat_gain: 15.0,        // °C/s of exposed-clad heatup per unit total heat (_Q_total is FRACTIONAL, 1.0 = rated) at full uncovery — ~0.9 °C/s at early (6 %) decay heat, the observed TMI/severe-accident order [tune]
+      clad_steam_h: 1.0e-4,        // 1/s — steam-convection cooling of the exposed clad toward Tsat; sets the equilibrium gradient (grazing uncovery late in decay stabilizes below damage; deep or early uncovery runs away) [tune]
+      clad_quench_tau: 120.0,      // s — reflood/rewet relaxation of the hot node back to the wetted-core temperature (quench-front timescale, minutes) [tune]
       // Break blowdown flash-cooling (pwr_thermal.stepCoolant). Coolant leaving a primary
       // break (s.leak_flow) carries enthalpy, and the remaining inventory flashes to replace
       // it — removing latent heat as the break vents. Modeled as a self-limiting perfect-mixing

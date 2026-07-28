@@ -37,6 +37,39 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-28e — partial uncovery damages the core: exposed-clad hot node (#213)
+
+Owner-filed #213. `run_all` **22 runners at baseline** with `run_meltdown` **8 → 9** (new
+MD-9). Narrative + gotchas in `Diagnostic/TUNING_LOG.md` 2026-07-28h; the decisions:
+
+- **Deviation from the M1 spec, on HR9 grounds.** M1 §6.5/§6.10 keys damage on the
+  whole-core-average fuel temperature with heat transfer degrading only below
+  `significant_uncover` (0.50) — under which a core held at 50–70 % inventory (top of core
+  exposed per the spec's own `core_top_uncover: 0.70`, which was **dead config** — nothing
+  consumed it) reads fully cooled indefinitely. TMI-2 was destroyed by exactly that
+  condition in under an hour; the average-node spec cannot represent damage that is local
+  before it is average. Physics outranks the spec text (HR9).
+- **Mechanism: a second, peak-clad node — not a steeper bulk collapse.** Steepening the
+  bulk `h_fc` ramp instead would cool-starve the *whole* core to make its average reach
+  1200 °C — wrong mechanism (the covered lower core IS still cooled) and it would move
+  every existing deep-uncovery trajectory. `stepCladding` (pwr_thermal.js) heats
+  `clad_temp_c` at `clad_heat_gain·_Q_total·f_unc` against weak steam convection toward
+  Tsat, quenches to the wetted-core temp on reflood (`clad_quench_tau`), and is floored at
+  the bulk fuel temp; `checkDamage` judges damage/melt at **max(clad, bulk)**. Constants
+  are physics-anchored, not gate-fitted: ~0.9 °C/s exposed-clad heatup at early decay heat
+  (severe-accident order), equilibrium gradient chosen so grazing late-decay uncovery
+  stabilizes below 1200 °C while deep or early uncovery runs away. All three `[tune]`.
+- **HR10 discipline**: MD-9 was authored from the intended physics and run against the OLD
+  engine first (FAIL: damage never; preconditions green), then the fix turned it. Both MD-9
+  branches pin inventory strictly > 50 % so the pre-existing bulk collapse cannot produce a
+  false pass. MD-8's EOP recovery peaks are byte-identical (624/645/723 °C) — the node does
+  not over-trigger on prompt refloods.
+- **Contract**: `clad_temp_c` added to `getTrueState` (lazy-init on first step → old saves
+  migrate unchanged; `run_m7` green). No new instrument — PWR deliberately has no fuel-temp
+  instrument; the in-fiction tells remain subcooling margin / pzr level (prototypical), the
+  truth overlay carries the diagnostic. Zirconium-oxidation runaway above ~1100 °C is a
+  declared omission (understates how fast a very hot core accelerates to melt).
+
 ## 2026-07-27d — V2 board polish (#231): alignment, dash rate, instrument sigmas
 
 Three playtest items off `e9dc316`. `run_all` **22/22 at baseline, unchanged** — no baseline

@@ -65,7 +65,10 @@ var BASELINES = {
   // the threshold and DECLARE the cliff (DESIGN_COMPANION §8.8), so the probe pins BOTH
   // sides — 39 MWe lifts, 41 MWe is caught — and the declared behaviour cannot drift.
   'run_behavior.js':       { code: 0, score: '37pass 0xfail' },
-  'run_meltdown.js':       { code: 0, score: '8pass 0xfail' },
+  // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
+  // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
+  // new exposed-clad hot node (pwr_thermal.stepCladding).
+  'run_meltdown.js':       { code: 0, score: '9pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at
   // all, so its MD-4/MD-8 PROTECTION claims are proven with the operator hand-

@@ -151,11 +151,45 @@
     s.subcooling_c = trueSubcooling(s); // true diagnostic value (bulk; mirrors the instrument)
   }
 
-  // Step 14 — fuel damage / melt endpoint (thresholds fixed).
+  // Step 14a — partial-uncovery hot node (#213): peak cladding temperature of the
+  // exposed (uppermost) fuel region. The bulk fuel node above averages the WHOLE
+  // core, so a core held partially uncovered (inventory between significant_uncover
+  // and core_top_uncover) read as fully cooled and could sit there forever — while
+  // at TMI-2 exactly that condition (top ~half exposed under an hour) failed the
+  // cladding and melted part of the core. Exposed clad is steam-cooled only: it
+  // heats at the local decay-heat rate (lumped: total heat × uncovered fraction)
+  // against weak convection toward Tsat. When the core re-covers, the node quenches
+  // back to the wetted-core temperature on the reflood timescale. Below
+  // significant_uncover the fraction saturates at 1 and this node keeps cooking
+  // alongside the existing bulk h_fc collapse — one consistent story, no handoff.
+  function stepCladding(s, cfg, dt) {
+    var t = cfg.thermal, p = cfg.primary;
+    if (s.clad_temp_c == null) s.clad_temp_c = (s.thot_c != null ? s.thot_c : s.tavg_c); // lazy init (new field; old saves)
+    var mass = s.core_inventory_pct / 100;
+    var f_unc = (p.core_top_uncover - mass) / (p.core_top_uncover - p.significant_uncover);
+    f_unc = f_unc < 0 ? 0 : (f_unc > 1 ? 1 : f_unc);
+    if (f_unc > 0) {
+      var heat = (t.clad_heat_gain || 0) * (s._Q_total || 0) * f_unc;
+      var cool = (t.clad_steam_h || 0) * (s.clad_temp_c - T_sat(s.pressure_mpa));
+      s.clad_temp_c += (heat - cool) * dt;
+    } else {
+      var wet = (s.thot_c != null ? s.thot_c : s.tavg_c);
+      s.clad_temp_c += (wet - s.clad_temp_c) * dt / ((t.clad_quench_tau || 120) + dt);
+    }
+    // The bulk node can outrun the hot node on a fast deep uncovery (h_fc collapse
+    // heats the average core directly) — the PEAK clad is never cooler than that.
+    if (s.clad_temp_c < s.fuel_temp_c) s.clad_temp_c = s.fuel_temp_c;
+  }
+
+  // Step 14 — fuel damage / melt endpoint (thresholds fixed). Judged at the PEAK
+  // clad/fuel temperature: the hot node fails first on partial uncovery (#213),
+  // the bulk node on whole-core loss of cooling — damage is local before it is
+  // average, so the max of the two is the physical criterion.
   function checkDamage(s, cfg) {
     var t = cfg.thermal;
-    if (s.fuel_temp_c > t.fuel_damage_c) s.fuel_damaged = true;
-    if (s.fuel_temp_c > t.fuel_melt_c) {
+    var peak = (s.clad_temp_c != null && s.clad_temp_c > s.fuel_temp_c) ? s.clad_temp_c : s.fuel_temp_c;
+    if (peak > t.fuel_damage_c) s.fuel_damaged = true;
+    if (peak > t.fuel_melt_c) {
       s.melted = true;
       if (s.destruction_cause === 'none') s.destruction_cause = 'thermal_melt';
     }
@@ -167,6 +201,7 @@
     hFcEffective: hFcEffective,
     stepFuel: stepFuel,
     stepCoolant: stepCoolant,
+    stepCladding: stepCladding,
     checkDamage: checkDamage,
   };
 

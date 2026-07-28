@@ -284,6 +284,51 @@
       });
     },
 
+    // MD-9 — PARTIAL core uncovery, held (#213). The TMI-2 core was destroyed with
+    // roughly its top half uncovered for under an hour: exposed cladding is steam-
+    // cooled only and heats at decay-heat rates to clad failure (>1200 °C) while the
+    // still-covered lower core keeps the BULK coolant unremarkable. The model's own
+    // contract puts top-of-core uncovery at inventory < 70 % (core_top_uncover) —
+    // so a core HELD between 50 % and 70 % must be damaged in tens of minutes, not
+    // sit indefinitely at coolant temperature. Both branches stay strictly above
+    // 50 % the whole way, so the pre-existing bulk heat-transfer collapse
+    // (significant_uncover) can play no part in the outcome.
+    'MD-9': function () {
+      return test('MD-9 Partial uncovery held (inventory 50-70 %) → clad damage; prompt reflood → protected', function (ck) {
+        function bleedTo(inv) {
+          var h = new Harness('hot_full_power');
+          h.run(10);
+          h.cmd({ action: 'scram' });
+          h.cmd({ action: 'open_porv' });
+          h.cmd({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+          h.cmd({ action: 'set_hpi', active: false });
+          var t = h.runUntil(function (ts) { return ts.core_inventory_pct <= inv; }, 20000);
+          h.cmd({ action: 'close_block_valve' });   // isolate the bleed — inventory now holds
+          return { h: h, reachedAt: t };
+        }
+        // Damage branch: hold at ~60 % (top of core uncovered, bottom covered) for 2 h.
+        var b = bleedTo(60);
+        ck('bleed reaches the partial band (precondition)', fmt(b.h.ts().core_inventory_pct, 1),
+          b.reachedAt >= 0, '≤ 60 %');
+        var r = driveDamage(b.h, 7200);
+        recordEndpoint(ck, r);
+        ck('inventory stays PARTIAL throughout (> 50 %)', fmt(r.minInv, 1), r.minInv > 50, '> 50');
+        ck('held partial uncovery damages the core (> 1200 °C)',
+          r.damagedAt < 0 ? 'never' : r.damagedAt + ' s', r.damagedAt >= 0, 'damaged in tens of minutes');
+        ck('damage arrives on a TMI timescale (< 90 min)',
+          r.damagedAt < 0 ? 'never' : r.damagedAt + ' s', r.damagedAt >= 0 && r.damagedAt < 5400, '< 5400 s');
+        // Recovery branch: same bleed, but HPI restored immediately — the core
+        // refloods above top-of-core before the exposed clad can fail.
+        var g = bleedTo(65);
+        g.h.cmd({ action: 'set_hpi', active: true });
+        var rr = driveDamage(g.h, 3600);
+        recordEndpoint(ck, rr);
+        ck('reflood recovers the core (inventory back > 70 %)', fmt(rr.t.core_inventory_pct, 1),
+          rr.t.core_inventory_pct > 70, '> 70');
+        ck('prompt reflood → no damage', fmt(rr.maxFuel, 0), rr.t.fuel_damaged === false, '< 1200 °C');
+      });
+    },
+
   };
 
   function runAll() {

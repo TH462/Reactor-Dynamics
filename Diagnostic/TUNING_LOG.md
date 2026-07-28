@@ -44,7 +44,7 @@ staleness** items.
 | `run_scenarios` | **3/3** | flagships |
 | `run_campaign` | **51/51** (3024) | 2930 → 3024 on 2026-07-27b (#189) — the static passes now walk `RD.SCENARIOS` directly, so unwired and bonus-only scenarios are validated too |
 | `run_procedures` | **22/22 (101/101)** | engine-direct — see the layer table in CLAUDE.md before trusting it for anything M4 decides |
-| `run_meltdown` | **8/8** | PWR core-damage paths — all resolved; MD-6 fixed 2026-07-24 (time-dependent dryout depletion, §3.4) |
+| `run_meltdown` | **9/9** | PWR core-damage paths — all resolved; +MD-9 partial-uncovery hold 2026-07-28e (#213, exposed-clad hot node); MD-6 fixed 2026-07-24 (time-dependent dryout depletion, §3.4) |
 | `run_checklist` | **24/24** | |
 | `run_e2e_controls` | **35/35** | F12 RESOLVED 2026-07-25 (#150) — both reds were stale expectations, not regressions |
 | `verify_e2e_ui` | **PASS (16 screenshots)** | fixed 2026-07-25 (#148); carries 1 strict xfail for the manual-units gap (#111) |
@@ -108,6 +108,43 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-28h — partial core uncovery now damages the core: exposed-clad hot node (#213)  ✅
+
+Owner-filed #213: "Core damage doesn't happen on partial core unrecovery." **Reproduced,
+fixed, gate green (`run_meltdown` 8 → 9, `run_all` 22 runners at baseline).**
+
+**The defect.** Damage keyed solely on the whole-core-average `fuel_temp_c`, and fuel→coolant
+coupling only degraded below `significant_uncover` (0.50) — so a core held at 50–70 %
+inventory (top of core exposed by the model's own contract, `core_top_uncover: 0.70`) read
+as fully cooled forever. Measured: scram → stuck-PORV bleed to 60 % → isolate → **2 h hold:
+fuel sits at ~305 °C, damage NEVER** — while TMI-2 was destroyed by exactly this condition
+in under an hour. `core_top_uncover` and `void_onset` were **dead config** — nothing
+consumed them. The M1 spec (§6.5/§6.10) carries the same simplification; HR9 puts the
+physics above it.
+
+**The fix** (`pwr_thermal.stepCladding`, called before `checkDamage`): a peak
+exposed-cladding hot node `s.clad_temp_c`. Uncovered fraction ramps 0→1 across
+`core_top_uncover`→`significant_uncover`; while exposed the node heats at
+`clad_heat_gain·_Q_total·f` (≈0.9 °C/s at early decay heat — severe-accident order) against
+weak steam convection toward Tsat (`clad_steam_h`, sets the equilibrium gradient: grazing
+uncovery late in decay stabilizes below 1200 °C, deep or early uncovery runs away); when
+re-covered it quenches to the wetted-core temp over `clad_quench_tau` (120 s). Damage/melt
+judged at max(clad, bulk fuel). Node is floored at the bulk temp so deep-uncovery paths
+can't read the "peak" cooler than the average. All three constants `[tune]` in
+`pwr_config.js` thermal.
+
+**Gotchas for the next session:**
+- `_Q_total`/`_P` are **FRACTIONAL** (1.0 = rated), not % — `power_pct = _P·100`. First cut
+  of `clad_heat_gain` was 100× low and the node never moved; nothing NaN'd, it just
+  quietly did nothing. Check the units of an engine source term before scaling it.
+- MD-9 (new battery path) was written from the intended physics and **run against the old
+  engine first — FAIL (damage never), preconditions green** — then the fix turned it. Both
+  branches hold inventory strictly > 50 % so the pre-existing bulk collapse can play no part.
+- MD-8's EOP recoveries transit the 50–70 % band briefly; peaks unchanged (624/645/723 °C),
+  so the node does not over-trigger on a prompt reflood. PWR has **no fuel-temp instrument**
+  (truth overlay only — the in-fiction tells stay subcooling/pzr level, prototypical);
+  `clad_temp_c` is exposed in `getTrueState`, lazy-init covers old saves (run_m7 green).
 
 ### 2026-07-28g — UI/UX review pass: instructor block measured, SI toggle, stale Automate refs (#235 comment, #237)  🔬
 

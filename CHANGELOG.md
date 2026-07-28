@@ -13,6 +13,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **A core held partially uncovered is now damaged, as it must be** (#213). Previously the
+  fuel model averaged the whole core, so with inventory anywhere above 50 % the fuel read
+  fully cooled — a plant could sit at 60 % inventory (top of core exposed) indefinitely
+  with no consequence, when that exact condition destroyed the TMI-2 core in under an
+  hour. The engine now tracks a **peak exposed-cladding temperature** (`clad_temp_c`):
+  between top-of-core uncovery (70 %) and significant uncovery (50 %) the exposed clad is
+  steam-cooled only and heats at decay-heat rates; damage and melt are judged at the peak
+  of clad and bulk fuel temperature. Held at 60 % inventory, clad failure now arrives in
+  ~34 minutes; a prompt reflood still quenches the node with no damage, and all existing
+  meltdown paths and LOCA recoveries are unchanged (`run_meltdown` 8 → **9** with the new
+  MD-9 partial-uncovery path).
+  *Migration note:* the new `clad_temp_c` state field is lazily initialized on the first
+  step (to the hot-leg temperature), so saves written before this change load unchanged.
+
 ## [Alpha 1.8.2] — 2026-07-28
 
 ### Fixed

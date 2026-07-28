@@ -352,7 +352,8 @@
         s.boron_sample_seq = (s.boron_sample_seq || 0) + 1;
       }
     }
-    // 14. Fuel damage / melt.
+    // 14. Partial-uncovery hot node (#213), then fuel damage / melt at the peak.
+    TH.stepCladding(s, this.cfg, dt);
     TH.checkDamage(s, this.cfg);
 
     // Smoothed power rate for shrink-and-swell.
@@ -485,6 +486,7 @@
       primary_void_fraction: s.primary_void_fraction,   // inventory-driven (TMI) void — the FG-3 deception gate
 
       fuel_temp_c: s.fuel_temp_c, decay_heat_pct: s.decay_heat_pct, xenon_pct_eq: s.xenon_pct_eq,
+      clad_temp_c: s.clad_temp_c,   // PEAK exposed-clad temp — the partial-uncovery damage driver (#213)
       boron_ppm: s.boron_ppm, porv_open: s.porv_open, porv_stuck: s.porv_stuck, spray_stuck: !!s.spray_stuck,
       block_valve_open: s.block_valve_open,   // scenario-trigger hook (memory-free isolation grading)
       porv_tailpipe_temp_c: s.tailpipe_temp_c,   // PORV discharge-line temperature (feeds instruments.porv_tailpipe_temp)
