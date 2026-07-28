@@ -1877,21 +1877,43 @@
 
   // Live floating value labels at the right edge, one per trace, color-coded and
   // spread vertically so they never overlap (move with each line).
+  var _cfloatH = 0;   // measured chip height in px, cached after the first paint
   function drawFloats(items, H) {
     var floats = $('chartFloats'); if (!floats) return;
     if (!items.length) { floats.innerHTML = ''; return; }
-    // y in % of plot height; collision-spread with a min gap.
-    var GAP = 11; // percent
-    items.forEach(function (it) { it.pct = Math.max(2, Math.min(98, it.y / H * 100)); });
+    // The minimum separation has to come from the chip's REAL height. It was a fixed 11 %,
+    // which on the shipped 174 px gutter is 19.1 px against a 21 px chip — so any time two
+    // traces came close enough for the spread rule to fire, the chips it had just
+    // "separated" still overlapped by a couple of pixels and the numbers were unreadable.
+    // Measured once from the DOM and cached; the fallback matches the current styling.
+    var hostH = floats.clientHeight || H || 1;
+    var chipH = _cfloatH || 21;
+    var GAP = Math.min(45, ((chipH + 3) / hostH) * 100);   // percent, always > one chip
+    // `top` positions the chip's TOP edge, so the last slot has to leave room for its height
+    // or the bottom chip hangs out of the gutter.
+    var MIN = 0, MAX = Math.max(MIN, 100 - (chipH / hostH) * 100);
+    items.forEach(function (it) { it.pct = Math.max(MIN, Math.min(MAX, it.y / H * 100)); });
     items.sort(function (a, b) { return a.pct - b.pct; });
     for (var i = 1; i < items.length; i++) if (items[i].pct < items[i - 1].pct + GAP) items[i].pct = items[i - 1].pct + GAP;
-    // if the stack overflowed the bottom, push the whole column up
-    var overflow = items[items.length - 1].pct - 98;
-    if (overflow > 0) for (var j = 0; j < items.length; j++) items[j].pct = Math.max(2, items[j].pct - overflow);
+    // Shift the WHOLE column by ONE offset. The old version clamped each item with
+    // Math.max(2, …) while pushing up, which could collapse the gap between the top two
+    // items — i.e. the overflow fix could itself create the overlap it was preventing.
+    var overflow = items[items.length - 1].pct - MAX;
+    if (overflow > 0) for (var j = 0; j < items.length; j++) items[j].pct -= overflow;
+    // If that pushed the top out, the column genuinely does not fit — distribute evenly so
+    // the chips stay stacked and legible rather than piling up against the top edge.
+    if (items[0].pct < MIN) {
+      var step = (MAX - MIN) / Math.max(1, items.length - 1);
+      for (var k = 0; k < items.length; k++) items[k].pct = MIN + k * step;
+    }
     floats.innerHTML = items.map(function (it) {
       var col = it.hot ? lighten(it.ser.c) : it.ser.c;
       return '<span class="cfloat" style="top:' + it.pct.toFixed(1) + '%;color:' + col + '">' + it.ser.fmt(it.val) + '</span>';
     }).join('');
+    if (!_cfloatH) {
+      var first = floats.firstChild;
+      if (first && first.offsetHeight) _cfloatH = first.offsetHeight;
+    }
   }
 
   // ============================================================ commands

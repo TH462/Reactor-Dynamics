@@ -42,7 +42,15 @@
   // per-render buffer showed ~36 s of plant as a coarse staircase and called it three
   // minutes. HIST_MAX points across a 240 px sparkline is ~1.5 samples per pixel, which is
   // what makes the trace read as a curve rather than a series of steps.
-  var WINDOW_S = 180, HIST_MAX = 360, SAMPLE_S = WINDOW_S / HIST_MAX;
+  // Sample EVERY update (the board renders once per sim broadcast, ~10 Hz) and position the
+  // trace by TIME, not by index. Sampling on a slower fixed interval made the leading edge
+  // advance in visible steps; index positioning also made the whole trace slide and compress
+  // while the buffer filled. With a time axis the window is a true WINDOW_S regardless of
+  // sample rate or time acceleration, and the line advances as smoothly as the data arrives.
+  var WINDOW_S = 180, HIST_MAX = 2400;
+  // Cap how many points are actually DRAWN: past ~2 per pixel the extra points are invisible
+  // and only cost paint time. The newest sample is always kept so the leading edge is exact.
+  var DRAW_MAX = 460;
   // Smallest vertical window the sparkline will auto-scale to, as a fraction of full scale.
   // Caps how far instrument noise can be magnified — see paint().
   var MIN_WINDOW = 0.15;
@@ -127,6 +135,20 @@
       fontFamily: "'IBM Plex Sans',system-ui,sans-serif"
     } }, accentBar, labelEl, readRow, sparkWrap, gaugeSvg);
 
+    // Reuse SVG children instead of clear-and-append. The tile repaints ~10x a second and
+    // rebuilt its band rects and trace polylines from scratch each time; app.js already
+    // documents that mutating markup off the paint cycle lets the compositor present a
+    // half-built frame, which is what the vital strip's flicker was — worst during a
+    // transient, when the bands move as well. Pooling means an update is attribute writes
+    // on elements that already exist, so there is never an empty intermediate state.
+    function poolAt(g, i, tag) {
+      var el = g.childNodes[i];
+      if (!el) { el = document.createElementNS(RD.BoardH.svgNS, tag); g.appendChild(el); }
+      return el;
+    }
+    function poolTrim(g, n) { while (g.childNodes.length > n) g.removeChild(g.lastChild); }
+    function setAttrs(el, a) { for (var k in a) el.setAttribute(k, a[k]); }
+
     // ---------------------------------------------------------------- regions --
     function regions() {
       var span = (st.max - st.min) || 1;
@@ -155,25 +177,25 @@
     // Gauge bands span the full authored scale, so they only change if min/max or
     // the region bounds change — rebuilt from setBands(), not every frame.
     function rebuildGaugeBands() {
-      RD.BoardH.clear(gaugeBandsG);
-      var REG = regions(), span = (st.max - st.min) || 1;
+      var REG = regions(), span = (st.max - st.min) || 1, used = 0;
       REG.forEach(function (r) {
         var a = Math.max(st.min, isFinite(r.lo) ? r.lo : st.min);
         var b = Math.min(st.max, isFinite(r.hi) ? r.hi : st.max);
         if (b <= a) return;
         var x0 = ((a - st.min) / span) * GW, x1 = ((b - st.min) / span) * GW;
-        gaugeBandsG.appendChild(h('rect', {
+        setAttrs(poolAt(gaugeBandsG, used++, 'rect'), {
           x: x0.toFixed(1), y: 2, width: (x1 - x0).toFixed(1), height: 4,
           fill: REGION_COLORS[r.key], opacity: 0.75
-        }));
+        });
       });
+      poolTrim(gaugeBandsG, used);
     }
 
     // ------------------------------------------------------------------ paint --
     function paint() {
       if (!hist.length) return;
       var REG = regions();
-      var n = hist.length, cur = hist[n - 1];
+      var n = hist.length, cur = hist[n - 1].v;
 
       // Sparkline window auto-scales to what is visible, but with a FLOOR of MIN_WINDOW of
       // the tile's full scale. Without the floor a dead-steady plant fills the whole 36 px
@@ -182,13 +204,34 @@
       // showing the operator more information, it is showing them alarm where there is
       // none. With the floor, noise renders as the small wiggle it actually is and a real
       // excursion is the thing that moves the line.
-      var lo = Math.min.apply(null, hist), hi = Math.max.apply(null, hist);
+      // Decimate for DRAWING only — the buffer keeps every sample, the trace draws at most
+      // DRAW_MAX of them (the newest always included, so the leading edge is exact).
+      var pts = hist;
+      if (n > DRAW_MAX) {
+        var stride = Math.ceil(n / DRAW_MAX);
+        pts = [];
+        for (var q = 0; q < n; q += stride) pts.push(hist[q]);
+        if (pts[pts.length - 1] !== hist[n - 1]) pts.push(hist[n - 1]);
+      }
+      var m = pts.length;
+      var lo = Infinity, hi = -Infinity;
+      for (var w = 0; w < m; w++) { var vv = pts[w].v; if (vv < lo) lo = vv; if (vv > hi) hi = vv; }
       var floorSpan = (st.max - st.min) * MIN_WINDOW;
       if ((hi - lo) < floorSpan) {
         var mid = (hi + lo) / 2;
         lo = mid - floorSpan / 2; hi = mid + floorSpan / 2;
       }
-      function xs(i) { return n < 2 ? W - PAD : PAD + (i / (n - 1)) * (W - 2 * PAD); }
+      // x by TIME across a fixed WINDOW_S, so the trace scrolls at a constant rate instead
+      // of stretching to fill the width while the buffer fills.
+      var tNow = pts[m - 1].t, tHave = pts[0].t;
+      var useTime = (tNow != null && tHave != null && tNow > tHave);
+      var t0 = useTime ? Math.min(tHave, tNow - WINDOW_S) : 0;
+      var tSpan = useTime ? (tNow - t0) : 1;
+      function xs(i) {
+        if (m < 2) return W - PAD;
+        if (!useTime) return PAD + (i / (m - 1)) * (W - 2 * PAD);
+        return PAD + ((pts[i].t - t0) / tSpan) * (W - 2 * PAD);
+      }
       function ys(v) { return PAD + (1 - (v - lo) / (hi - lo)) * (H - 2 * PAD); }
       function colorAt(v) { return REGION_COLORS[regionAt(REG, v).key]; }
 
@@ -203,49 +246,53 @@
       // trace, split into one polyline per run of samples in the same region so the
       // line changes colour where it crosses a band edge; each run is extended one
       // sample so consecutive runs stay visually joined
-      RD.BoardH.clear(segsG);
-      var runStart = 0, runKey = regionAt(REG, hist[0]).key;
-      for (var i = 1; i <= n; i++) {
-        var k = i < n ? regionAt(REG, hist[i]).key : null;
+      var segUsed = 0;
+      var runStart = 0, runKey = regionAt(REG, pts[0].v).key;
+      for (var i = 1; i <= m; i++) {
+        var k = i < m ? regionAt(REG, pts[i].v).key : null;
         if (k === runKey) continue;
-        var end = Math.min(n - 1, i), seg = [];
-        for (var j = runStart; j <= end; j++) seg.push(xs(j).toFixed(1) + ',' + ys(hist[j]).toFixed(1));
-        segsG.appendChild(h('polyline', {
+        var end = Math.min(m - 1, i), seg = [];
+        for (var j = runStart; j <= end; j++) seg.push(xs(j).toFixed(1) + ',' + ys(pts[j].v).toFixed(1));
+        setAttrs(poolAt(segsG, segUsed++, 'polyline'), {
           points: seg.join(' '), fill: 'none', stroke: REGION_COLORS[runKey],
-          strokeWidth: 1.6, strokeLinejoin: 'round', strokeLinecap: 'round',
-          opacity: 0.9, vectorEffect: 'non-scaling-stroke'
-        }));
+          'stroke-width': 1.6, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+          opacity: 0.9, 'vector-effect': 'non-scaling-stroke'
+        });
         runStart = i; runKey = k;
       }
+      poolTrim(segsG, segUsed);
 
       // faint region shading behind the trace — tracks the auto-scaled window
-      RD.BoardH.clear(chartBandsG);
+      var bandUsed = 0;
       REG.forEach(function (r) {
         var top = isFinite(r.hi) ? r.hi : hi, bot = isFinite(r.lo) ? r.lo : lo;
         var y0 = Math.max(0, Math.min(H, ys(Math.min(top, hi))));
         var y1 = Math.max(0, Math.min(H, ys(Math.max(bot, lo))));
         if (y1 - y0 <= 0.3) return;
-        chartBandsG.appendChild(h('rect', {
+        setAttrs(poolAt(chartBandsG, bandUsed++, 'rect'), {
           x: 0, y: y0.toFixed(1), width: W, height: (y1 - y0).toFixed(1),
           fill: REGION_COLORS[r.key], opacity: 0.09
-        }));
+        });
       });
+      poolTrim(chartBandsG, bandUsed);
 
       var area = 'M' + xs(0).toFixed(1) + ',' + (H - PAD);
-      for (var a = 0; a < n; a++) area += ' L' + xs(a).toFixed(1) + ',' + ys(hist[a]).toFixed(1);
-      area += ' L' + xs(n - 1).toFixed(1) + ',' + (H - PAD) + ' Z';
+      for (var a = 0; a < m; a++) area += ' L' + xs(a).toFixed(1) + ',' + ys(pts[a].v).toFixed(1);
+      area += ' L' + xs(m - 1).toFixed(1) + ',' + (H - PAD) + ' Z';
       areaEl.setAttribute('d', area);
-      dotEl.setAttribute('cx', xs(n - 1).toFixed(1));
+      dotEl.setAttribute('cx', xs(m - 1).toFixed(1));
       dotEl.setAttribute('cy', ys(cur).toFixed(1));
 
       // gauge marker
       var pct = Math.max(0, Math.min(1, (cur - st.min) / ((st.max - st.min) || 1)));
       markerEl.setAttribute('x', (pct * GW).toFixed(1));
 
-      // trend from the slope of the recent window against the one before it
-      var kk = Math.min(8, Math.floor(n / 2)) || 1;
+      // Trend from the slope of the recent window against the one before it. Measured over
+      // a fixed span of SAMPLES, which is now ~10 per second — so compare tens of seconds,
+      // not the handful of samples the old slower buffer held.
+      var kk = Math.min(120, Math.floor(n / 2)) || 1;
       var recent = hist.slice(-kk), older = hist.slice(-2 * kk, -kk);
-      function avg(arr) { var s = 0; for (var q = 0; q < arr.length; q++) s += arr[q]; return s / (arr.length || 1); }
+      function avg(arr) { var s = 0; for (var q = 0; q < arr.length; q++) s += arr[q].v; return s / (arr.length || 1); }
       var ra = avg(recent), oa = older.length ? avg(older) : ra;
       var slope = (ra - oa) / ((hi - lo) || 1);
       if (slope > 0.03) { trendEl.textContent = '▲'; trendEl.style.color = '#6fe0a8'; }
@@ -284,20 +331,16 @@
       // tiny window instead of a smooth curve like the strip chart underneath. On sim time
       // the window is a true WINDOW_S at any time acceleration: at 3600x, SAMPLE_S passes
       // every frame and it simply samples every render.
-      if (t == null) { commit(st.value); }
-      else if (lastT == null || t - lastT >= SAMPLE_S) {
-        // Catch up in whole sample slots so a fast-forward lays down a correctly-spaced
-        // trace instead of one point per broadcast.
-        var slots = (lastT == null) ? 1 : Math.min(HIST_MAX, Math.floor((t - lastT) / SAMPLE_S));
-        for (var q = 0; q < slots; q++) commit(st.value);
-        lastT = (lastT == null) ? t : lastT + slots * SAMPLE_S;
+      lastT = t;
+      hist.push({ t: t, v: st.value });
+      // Drop by TIME, not by count, so the window is honest at any acceleration.
+      if (t != null) {
+        var cut = t - WINDOW_S, d = 0;
+        while (d < hist.length && hist[d].t != null && hist[d].t < cut) d++;
+        if (d) hist.splice(0, d);
       }
-      paint();
-    }
-
-    function commit(v) {
-      hist.push(v);
       if (hist.length > HIST_MAX) hist.splice(0, hist.length - HIST_MAX);
+      paint();
     }
 
     // Discard history — used when the sim rewinds or reloads, so the trace does not
