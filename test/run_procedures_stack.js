@@ -132,9 +132,21 @@ function standingCritical(snap, scramWasCommanded) {
   }).map(function (a) { return a.id; });
 }
 
+// RD_SEED re-runs this gate on a different instrument-noise stream
+// (`RD_SEED=7 node test/run_procedures_stack.js pwr_heatup`) without touching the
+// baseline — the default is unchanged, so the gate itself is unaffected. Same
+// convention as run_campaign.js.
+//
+// Added 2026-07-27b while reviewing #218. That fix moved a margin from 0.1 points
+// to 26, but it was derived and validated on seed 42 alone — and the defect it
+// fixed was a peak sitting 0.1 points under a trip setpoint, i.e. one decided by
+// noise. A gate pinned to a single seed cannot see that class of problem at all,
+// which is part of why this one survived.
+var SEED = Number(process.env.RD_SEED) || 42;
+
 function runProcedure(profKey, proc) {
   var P = PLANTS[profKey];
-  var svc = new RD.SimulationService({ seed: 42 });
+  var svc = new RD.SimulationService({ seed: SEED });
   svc.selectPlant(P.plant, proc.from, P.version, BARE ? { noDefaults: true } : undefined);
   svc.running = true;                       // gates drive tick() directly
   svc.timeAcceleration = ACCEL;
@@ -251,18 +263,38 @@ var KNOWN_FAILS = {
    * for the rest of the run against ZERO steam draw. Fixed in control_kernel.js:
    * minDelta no longer suppresses the step onto a rail. Measured: TRUE level now
    * holds 65.5 % across every hold (was 65.0 → 75.8 → collapse). */
-  /* #218 — pwr_heatup drives above P-9 (~50 % power) with the turbine offline, and the
-   * new Reactor Trip on Turbine Trip correctly scrams it (#216). A real plant would
-   * never sit above 50 % power with the turbine tripped, so the PROCEDURE is asking for
-   * something the protection is right to refuse — the heatup's own caution says it uses
-   * "10-30 % power", so it is overshooting its own stated band. Fix belongs in the
-   * procedure (cap the heatup below P-9), not in the plant. Boron is downstream of the
-   * scram, not independent. Strict xfail: reddens if the procedure is fixed. */
-  'pwr·pwr_heatup': {
-    'stack: no unexpected scram': '#218 heatup exceeds P-9',
-    'stack: no critical alarm standing at end': '#218 heatup exceeds P-9',
-    'step 17 boron_ppm > 900': '#218 (downstream of the P-9 scram)',
-  },
+  /* #218 (pwr_heatup) — RESOLVED 2026-07-27b, all three xfails removed.
+   *
+   * CORRECTION, same day, and worth reading before trusting any peak number here.
+   * I first reported the pre-fix peak as 49.9 % against a 50 % permissive and called
+   * it "a knife-edge sitting exactly on the setpoint", and called the procedure's
+   * "roughly 55 %" caution a stale number. Both claims were WRONG, and wrong for an
+   * instructive reason: 49.9 % was a CENSORED observation. The P-9 trip fired at
+   * 50 % and truncated the rise, so what I measured was where the protection cut the
+   * trajectory, not where it was heading. Re-measured with P-9 temporarily disabled,
+   * the free-running peak is 66.2 % (P-9 crossed at t=6045s, 16.2 points of
+   * overshoot). The caution's "roughly 55 %" was an UNDERSTATEMENT, not an error.
+   * Nor was it a knife-edge: swept across 8 seeds, the pre-fix procedure scrams on
+   * every one, and the post-fix procedure passes on every one.
+   *
+   * The lesson generalises: never read a peak off a run that a trip terminated. The
+   * trip is a censor, and the number it leaves behind is the setpoint, not the peak.
+   *
+   * Cause: step 14 diluted at a fixed 4300 s hold. Traced at 300 s resolution, Tavg
+   * reaches the no-load anchor at t~5700 — about 3800 s in — after which the dump
+   * pins temperature and the remaining ~500 s of dilution has nowhere to go but
+   * power: 6.1 % at t=5476, 19.5 % at t=5776, and on toward 66 % if nothing stops
+   * it. The step's own text already said to "secure the dilution as Tavg reaches the
+   * hot band"; the fixed hold just wasn't doing it. Hold 4300 -> 3900 stops dilution
+   * at arrival: peak 23.8 %, 26 points of margin.
+   *
+   * Verified as a COUNTERFACTUAL, not just a green gate (HR10): 8 seeds pre-fix, all
+   * 8 scram; 8 seeds post-fix, all 8 pass 19/19. RD_SEED was added to this runner to
+   * make that sweep possible — it had been pinned to seed 42, and a single-seed gate
+   * cannot see a noise-sensitive margin at all.
+   *
+   * The boron xfail was indeed downstream of the scram and cleared with it —
+   * confirmed by the gate, not assumed. */
 
   /* #208 — RBMK/BWR procedures that diverge under the stack. Those plants are ON
    * HOLD (see CLAUDE.md); these are recorded so the findings survive until they

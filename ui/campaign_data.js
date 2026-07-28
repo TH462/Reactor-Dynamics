@@ -62,9 +62,14 @@
         { kind: 'scenario', id: 'pwr_tmi2_p2', teaches: 'The replay: what the board said, what the plant did, and why they differed.' },
         { kind: 'scenario', id: 'pwr_tmi2_p3', teaches: 'Same shift, same board — but this time you know. Change history.' },
       ] },
-      // id stays 'act5' although the TMI-2 act displaced it to Act VI: act ids
-      // key saved campaign progress (rd_progress) — renaming would orphan it.
-      { id: 'act5', title: 'Act VI — The Reckoning', missions: [
+      // Renamed act5 -> act6 on 2026-07-27b (#158). The comment here used to say the
+      // id had to stay 'act5' because "act ids key saved campaign progress
+      // (rd_progress) — renaming would orphan it". That was not true: rd_progress
+      // only ever holds completed_scenarios, completed_procedures and hook_done
+      // (app.js recordCompletion/saveProgress), all keyed by SCENARIO id. Act ids
+      // are used solely to iterate and render (app.js:1322, :1358) and are never
+      // persisted, so there was nothing to orphan and nothing to migrate.
+      { id: 'act6', title: 'Act VI — The Reckoning', missions: [
         { kind: 'scenario', id: 'pwr_tmi', teaches: 'Mode 1 event → recover to Mode 3 — Three Mile Island, compressed: believe the physics, not one light.' },
         { kind: 'scenario', id: 'pwr_qualify', teaches: 'Mode 1 event, recover to Mode 3 — a leaking plant, a lying light, no hints. Qualify.' },
       ] },

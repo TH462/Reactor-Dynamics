@@ -132,23 +132,31 @@ body {
    column, enlarging the diagram further. */
 .demo-btn.on { color: var(--running); border-color: var(--running); }
 
-/* --midcol-w / --simcol-w are the two right tracks' MAXIMA, driven by
-   pwr_board.js fitColumns(): the diagram keeps the width it needs at full height
-   and the leftover — large on short-and-wide windows, where the board would
-   otherwise letterbox — is handed to these columns instead of sitting dead
-   beside the diagram. The values here are the floors used before/without that
-   measurement. */
+/* --simcol-w is the simulator track's MAXIMUM, driven by pwr_board.js fitColumns():
+   the diagram keeps the width it needs at full height and the leftover — large on
+   short-and-wide windows, where the board would otherwise letterbox — is handed to
+   that column instead of sitting dead beside the diagram. The value here is the
+   floor used before/without that measurement. */
 .app.pwr-synoptic {
-  --midcol-w: 340px;
   --simcol-w: 360px;
+  --bottomrow-h: 230px;
+  position: relative;   /* splitter handles are absolutely positioned over the grid */
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, var(--midcol-w)) minmax(320px, var(--simcol-w));
+  grid-template-columns: minmax(0, 1fr) minmax(320px, var(--simcol-w));
   grid-template-rows: minmax(0, 1fr);
-  grid-template-areas: "diagram midcol simcol";
+  grid-template-areas: "diagram simcol";
 }
 .app.pwr-synoptic > .plant-area { grid-area: diagram; min-width: 0; max-width: none; }
-.app.pwr-synoptic > .bottom-row { grid-area: midcol; min-width: 0; min-height: 0; flex-direction: column; }
 .app.pwr-synoptic > .right-col  { grid-area: simcol; min-width: 0; max-width: none; }
+
+/* The V2 board carries its own vital-parameter tile strip (six Indicator Panel
+   components across the top), which is what the shell's .gauge-strip used to provide.
+   Two copies of the same six readings is worse than one, and the shell copy is the one
+   that is NOT part of the diagram — so it is hidden here rather than deleted, because
+   RBMK/BWR still run the legacy plant display and genuinely need it. app.js keeps
+   building it; that is a few hidden nodes, and it means nothing breaks if a plant
+   without its own tiles is put back on this layout. */
+.app.pwr-synoptic > .plant-area > .gauge-strip { display: none; }
 
 /* keep the diagram's flex chain honest so the board fits its column width
    instead of overflowing (the .main-area link lacks min-width:0) */
@@ -156,34 +164,61 @@ body {
 .app.pwr-synoptic > .plant-area .view-area,
 .app.pwr-synoptic > .plant-area .pwr-board-wrap { min-width: 0; }
 
-/* middle column: time controls (present only in .sim-hidden) pinned on top,
-   then alarms, then the strip chart; alarms + chart split the remaining height */
-.app.pwr-synoptic > .bottom-row > .sim-controls { order: 1; flex: 0 0 auto; }
-.app.pwr-synoptic > .bottom-row > .alarm-panel  { order: 2; flex: 1 1 0; min-height: 0; }
-.app.pwr-synoptic > .bottom-row > .strip-chart  { order: 3; flex: 1 1 0; min-height: 0; }
+/* Under-the-diagram strip: chart and alarms side by side, and — only when the sim panel
+   is hidden (⛶) — the time controls tuck in at the left. Fixed height so the diagram
+   keeps the rest; the two panels split the width. */
+/* FIXED height, draggable — not `flex: 1 1 auto` (#233). Letting this row grow into the
+   leftover height fought the sim column for the same space and the DIAGRAM lost both ways:
+   a taller strip shortens the board, a shorter board needs less width, and fitColumns then
+   hands that freed width to the sim column, which shortens the board again. Two auto-growers
+   either side of a fit-to-height diagram is a feedback loop, not a layout. Pinning this row
+   breaks it; --bottomrow-h is the operator's to drag (see the splitters below). */
+.app.pwr-synoptic .plant-area > .bottom-row { flex: 0 0 var(--bottomrow-h); min-height: 150px; flex-direction: row; }
 
-/* ⛶ hides the right sim panel → two columns; the trend/alarms column grows into
-   the freed space (the diagram stays about its 3-column width) */
+/* Draggable panel edges (#233). The auto-fit is a good default, not a policy: drag the sim
+   panel's inner edge or the trend strip's top edge to trade space with the diagram. A drag
+   PINS that axis (persisted in localStorage) and fitColumns stops touching it. */
+.bd-split { position: absolute; z-index: 40; touch-action: none; }
+.bd-split::after {
+  content: ''; position: absolute; inset: 0; border-radius: 2px;
+  background: var(--accent, #4fe3ff); opacity: 0; transition: opacity .12s ease;
+}
+.bd-split:hover::after, .bd-split.bd-dragging::after { opacity: .55; }
+.bd-split-v { top: 0; bottom: 0; width: 9px; cursor: col-resize; }
+.bd-split-v::after { left: 3.5px; right: 3.5px; }
+.bd-split-h { height: 9px; cursor: row-resize; }
+.bd-split-h::after { top: 3.5px; bottom: 3.5px; }
+/* ⛶ removes the sim column, so there is no vertical edge left to drag. */
+.app.pwr-synoptic.sim-hidden .bd-split-v { display: none; }
+/* Stacked (narrow) layouts size themselves; dragging a track that isn't there is nonsense. */
+@media (max-width: 1200px) { .bd-split { display: none; } }
+.app.pwr-synoptic .plant-area > .bottom-row > .sim-controls { order: 1; flex: 0 0 auto; }
+.app.pwr-synoptic .plant-area > .bottom-row > .strip-chart  { order: 2; flex: 1 1 0; min-width: 0; }
+.app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel  { order: 3; flex: 1 1 0; min-width: 0; min-height: 0; }
+
+/* ⛶ hides the right sim panel → the diagram column takes the whole width */
 .app.pwr-synoptic.sim-hidden {
-  --midcol-w: 700px;
-  grid-template-columns: minmax(0, 1fr) minmax(400px, var(--midcol-w));
-  grid-template-areas: "diagram midcol";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "diagram";
 }
 .app.pwr-synoptic.sim-hidden > .right-col { display: none; }
 
-/* narrow screens: stack the columns so nothing overflows */
+/* narrow screens: stack the columns so nothing overflows. The chart+alarms strip rides
+   with the diagram now (it is inside .plant-area), so only the sim panel drops below. */
 @media (max-width: 1200px) {
   html, body { overflow: auto; }
   .app.pwr-synoptic {
     height: auto; min-height: 100vh;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 62vh auto auto;
-    grid-template-areas: "diagram" "midcol" "simcol";
+    grid-template-rows: 78vh auto;
+    grid-template-areas: "diagram" "simcol";
   }
   .app.pwr-synoptic.sim-hidden {
-    grid-template-rows: 70vh auto;
-    grid-template-areas: "diagram" "midcol";
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "diagram";
   }
+  /* stack chart above alarms rather than squeezing both into a narrow row */
+  .app.pwr-synoptic .plant-area > .bottom-row { flex: 0 0 auto; flex-direction: column; }
 }
 
 /* generic panel chrome */
@@ -465,6 +500,15 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .alarm-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .alarm-head .t { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); font-weight: 700; }
 .alarm-stack { flex: 1 1 auto; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 5px; }
+/* Under the diagram the alarm panel is wide and short, so a single column wastes the width
+   and buries anything past the first two or three. Two columns, filled top-to-bottom in
+   priority order (app.js sorts the stack), so the worst alarm is still the first thing read. */
+.app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel > .alarm-stack {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 5px; align-content: start;
+}
+.app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel > .alarm-stack > .alarm-empty {
+  grid-column: 1 / -1;
+}
 .alarm-empty { color: var(--muted); font-size: 11px; padding: 10px; text-align: center; font-style: italic; }
 .alarm-tile {
   display: flex; gap: 7px; align-items: flex-start; padding: 6px 8px; border-radius: 5px;

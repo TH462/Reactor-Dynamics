@@ -842,11 +842,23 @@
       ui_policy: this.uiPolicy ? JSON.parse(JSON.stringify(this.uiPolicy)) : null,
       highlight: this.highlight ? JSON.parse(JSON.stringify(this.highlight)) : null,
       level_complete: this.levelComplete ? JSON.parse(JSON.stringify(this.levelComplete)) : null,
+      // The operator-action memory is PROGRESS, not scratch (#142). An
+      // `operator_action` beat fires because a matching command descended since
+      // the last beat fired, and this list is the only record that it did — so
+      // dropping it on save meant a player who performed the action and then
+      // saved (or hit an auto-checkpoint, or rewound) came back with the beat
+      // still armed and no way to satisfy it but to do the action AGAIN. On a
+      // one-shot action there is no again, and the scenario softlocks.
+      actions_since_beat: JSON.parse(JSON.stringify(this._actionsSinceBeat)),
       follow: this.follow ? {
         procedure_id: this.follow.procedure_id,
         profile_key: this.follow.profile_key,
         idx: this.follow.idx,
         cmdSeen: this.follow.cmdSeen, sawSeen: this.follow.sawSeen,
+        // acc_streak is the count of consecutive evaluations the step's `acc`
+        // predicate has held; the step advances at ACC_STABLE_N. Restoring it as
+        // 0 silently rewound a partly-earned step.
+        acc_streak: this.follow.accStreak,
         done: this.follow.done,
       } : null,
       checklist: this.checklist ? {
@@ -856,6 +868,7 @@
         done: this.checklist.done.slice(),
         done_by: this.checklist.doneBy.slice(),
         cmdSeen: this.checklist.cmdSeen, sawSeen: this.checklist.sawSeen,
+        acc_streak: this.checklist.accStreak,
         complete: this.checklist.complete,
       } : null,
     };
@@ -873,11 +886,15 @@
       var cproc = null;
       if (cpool) for (var ci = 0; ci < cpool.length; ci++) if (cpool[ci].id === cs.procedure_id) cproc = cpool[ci];
       if (cproc) {
+        // acc_streak absent = a save written before #142; 0 is exactly what that
+        // save used to restore as, so old saves keep their old behaviour.
+        var cStreak = cs.acc_streak || 0;
         this.checklist = {
           proc: cproc, procedure_id: cs.procedure_id, profile_key: cs.profile_key,
           idx: cs.idx, done: (cs.done || []).slice(), doneBy: (cs.done_by || []).slice(),
           cmdSeen: !!cs.cmdSeen, sawSeen: !!cs.sawSeen,
-          accStreak: 0, accMetNow: false, gradedBy: null, complete: !!cs.complete,
+          accStreak: cStreak, accMetNow: cStreak >= ACC_STABLE_N,
+          gradedBy: null, complete: !!cs.complete,
         };
       } else if (typeof console !== 'undefined') {
         console.warn('InstructorLayer.loadState: checklist procedure "' + cs.procedure_id + '" not found — dropped.');
@@ -910,6 +927,9 @@
       this.uiPolicy = state.ui_policy || null;
       this.highlight = state.highlight || null;
       this.levelComplete = state.level_complete || null;
+      // Absent on pre-#142 saves; [] is what those restored as, so they are
+      // unchanged — they simply keep the old forgetfulness.
+      this._actionsSinceBeat = (state.actions_since_beat || []).slice();
     } else if (state.mode === 'follow') {
       var fs = state.follow;
       var pool = (RD.MANUAL_PROCEDURES && fs && fs.profile_key) ? RD.MANUAL_PROCEDURES[fs.profile_key] : null;
@@ -920,10 +940,12 @@
         return;
       }
       this.mode = 'follow';
+      var fStreak = fs.acc_streak || 0;   // absent on pre-#142 saves — see checklist above
       this.follow = {
         proc: proc, procedure_id: fs.procedure_id, profile_key: fs.profile_key,
         idx: fs.idx, cmdSeen: fs.cmdSeen, sawSeen: fs.sawSeen,
-        accStreak: 0, accMetNow: false, gradedBy: null, done: fs.done,
+        accStreak: fStreak, accMetNow: fStreak >= ACC_STABLE_N,
+        gradedBy: null, done: fs.done,
       };
       this.scenarioStartTime = state.scenario_start_time;
       this.lastBeatFireTime = state.last_beat_fire_time;

@@ -32,9 +32,98 @@ where the two differ or where judgment was exercised.
 | F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **RESOLVED (M6)** — highlights auto-reveal hidden controls on both mechanisms: RBMK/BWR `findPdControl()` switches the owning view tab (`app.js`); PWR `RD.PwrSynoptic.revealControl(label)` opens the owning card tab/section via the data-driven `SYN_CONTROL_MAP` (`pwr_synoptic.js`). `verify_manual_follow.js` now checks PWR controls through the same reveal path. |
 | F10 | M2/M8 | **RBMK automatic-regulator (AR) rod group** (user-directed): add a third, small-worth (~5–8% of the manual bank, no displacer), fine-step group — the authentic RBMK AR. The Automate rod channel drives IT (fixes the ±4%/step hold granularity); its diagram/control card carries its own AUTO/MAN selector mirroring the Automate channel; disengaging = taking manual control (the pre-Chernobyl condition — scenario beat material). Include AR in ORM; scram drives it in; keep the positive-scram displacer exclusively on the manual bank so the Chernobyl acceptance suite stays green. NO second manual group — the AR under manual override IS the fine manual bank. | planned | **RESOLVED (2026-07-07)** — built as specced (see the dated entry); the Chernobyl AR scenario beat is authored under F11. |
 | F12 | M8/test | **`run_e2e_controls` 28/30 — 2 pre-existing reds** (was 3; (c) *AUTO charging converged to match the leak* turned green with the 2026-07-22 P7 retune/SGTR re-anchor). (a) *PZR spray manual set reaches engine* — expects spray ≥45 % at the engine, gets 12; the spray-demand reach drifted. (b) *CVCS auto make-up holds inventory vs leak* — "auto holds ≥98 %" is not physical for a severity-1.0 SGTR (now 0.03 frac/s ≈ 40× CVCS make-up authority); re-baseline to the current trajectory or assert against a small leak the servo *can* match. | test | **open** — spray reach + one stale SGTR expectation |
+| F13 | M4 | **`clip()` is defined four times** (`control_kernel.js:47`, `pwr_control.js:360`, `rbmk_control.js:127`, `bwr_control.js:100`) and issue #156 files it as HR3 drift. It is not: HR3 is *plant specifics in shared code*, and this is a one-line pure clamp local to each IIFE. **Deliberately not deduplicated** — `control_kernel.js` loads **after** all three plant control modules in every load list, so a shared `RD.*.clip` resolves only at call time (a real load-order coupling), and the alternative is a new shared-utils file that must be added to every load list. Bought for 60 characters that cannot meaningfully drift. **Measured before deciding: `clip` is the ONLY duplicated helper** — every other module-level function in those four files is genuinely local. **Revisit trigger:** if a *second* shared helper appears, create the utils file then and move `clip` in with it. The **other** half of #156 (a PWR field read inside generic kernel machinery) WAS real and is fixed — and note it had **moved**: `_stepBang` was already clean, but the boron batch-dose work re-created the same leak in `_stepConc`. See `Diagnostic/TUNING_LOG.md` 2026-07-27b. | cleanup | **RESOLVED (2026-07-27b) — won't fix, deliberate. OWNER-APPROVED**: Claude recommended won't-fix with the reasoning above; owner replied *"Do as you suggest"* (2026-07-27), so the decision is the owner's and the reasoning is Claude's. Recording it that way because the first draft of this row said only "ruled won't-fix", which reads as owner authority for what was then an agent's recommendation — the exact laundering `CONTEXT.md` §HR-provenance warns about. #156 closed `status-deliberate`. The recurrence it exposed (the leak was fixed in `_stepBang`, then re-created in `_stepConc` ~40 lines below the comment warning against it) is spun out as **#227** — nothing gates HR3 in the kernel. |
 | F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **RESOLVED (2026-07-07)** — rbmk_ar + pwr_automation missions, auto_channels presets exercised end-to-end (startScenarioAuto gate harness), Chernobyl AR tie-in. Pre-existing missions deliberately left bare (triggers tuned against bare-plant trajectories). |
 
 ---
+
+## 2026-07-27d — V2 board polish (#231): alignment, dash rate, instrument sigmas
+
+Three playtest items off `e9dc316`. `run_all` **22/22 at baseline, unchanged** — no baseline
+moved. Full measurement in `Diagnostic/TUNING_LOG.md` (2026-07-27d); the decisions:
+
+- **The pressurizer offset is diagram data, not a nudge failure.** The issue's lead was to add
+  `Pressurizer` to `NUDGE_KINDS`; that cannot work — `gridNudge` removes **sub-grid residue
+  only**, so its authority is ±g/2 = ±2.5 px, and the measured error is 6. It is two authored
+  errors compounding: the design crop puts the vessel axis 10 px left of the tile centre, and
+  the tile sits 4 px right of the 1055 axis its neighbours (`ims2kt7fu64/c`, `imrppb3kuav/b`)
+  share. Corrected with a measured `translate(6px,84px)` in `comp_pressurizer.js`, and
+  **`board_check.html` now pins the result, not the offset** — three plumb assertions on the
+  scanned port coordinates, so a re-export that moves either tile fails instead of silently
+  restoring the jog. Same guard pattern as the `PIPE_TEMP` assertions below. board_check 56→59.
+- **One dash-rate conversion, two authoring surfaces.** Pipes author a `speed` multiplier;
+  components author a 0–100 `flow` slider. They were computing different numbers — fittings
+  `(0.45 + 1.1·flow/100)` = **1.55** at flow 100, pipes a hard 1.0 with `p.speed` discarded in
+  `buildPipes()` — so every fitting ran 55 % fast and the dashes stepped at each joint. Now
+  both call `StdPipe.dashSpeed()`, defined so the authored default on either surface is exactly
+  1.0. `p.speed` is now **honoured** rather than dropped: silently discarding authored data is
+  what made this hard to see. Consequence to accept — `pms2ktjq4ma` carries `speed: 1.05` (the
+  only one on the board, likely a stray slider) and now runs 5 % fast; fix it in the builder,
+  not in the renderer.
+- **RCS temperature sigmas move as a set.** `tavg` 0.17 → 0.05 °C, and `thot`/`tcold` with it,
+  because the board shows Tavg, T-hot, T-cold **and** ΔTavg on one screen — a steady average
+  over two jumpy legs is arithmetically impossible (HR9). `pzr_level` 0.3 → 0.12 %; `sg_level`
+  deliberately **left at 0.3** (narrow-range SG level genuinely bounces — the two sharing 0.3
+  was the tell that it was a copied default). `subcooling_margin` is derived with `noise: 0`,
+  so it fell with Tavg for free — which is why the filed table showed the two with an identical
+  σ. Re-sizing a sigma draws no extra PRNG numbers, so the noise **sequence** is unchanged; the
+  `noise: 0` rule in that block is about *adding* instruments, not re-sizing them.
+- **Stale premise cleared under a live decision.** `tile()`'s display-resolution comment
+  justified whole-unit digits by citing "σ 0.2–0.45 across the board". Three of six tiles are
+  now ~3x quieter, so the comment carries the new per-tile figures. The decision is unchanged
+  (0.09 is still close to a full 0.1 display step) — but a false premise left under a correct
+  decision is how the next agent gets it wrong.
+
+## 2026-07-27c — V2 board + circulating-water temperature
+
+**Board V2 (M8).** `pwr_board_data.js` regenerated from the Design builder's production
+snapshot (189 items / 37 pipes). Three new renderer pieces: `comp_indicator_panel.js`
+(vital-parameter tiles), `comp_tee.js` / `comp_cross.js` (pipe fittings), and a `readout`
+item kind (caption + reading as one item, so a relocated indication cannot drift from its
+label). Both fittings join `NUDGE_KINDS` — their ports sit at R=10, i.e. on the tile edges.
+
+- **Tile history is real, not seeded.** The design source seeds 44 jittered samples and
+  random-walks on a 500 ms timer so the card looks alive in the editor. Ported without it:
+  the buffer takes the real instrument value at render cadence and starts flat. A sparkline
+  is an instrument trace; 44 invented samples is fabricated instrument data (HR1).
+- **Tile bands come from the protection tables, not from fractions of the scale.** The
+  design falls back to "normal = 25–75 % of span", which would paint 100 % reactor power in
+  the grey acceptable band. `TILE_BANDS` reads `RD.PWR_CONTROL.protection` live, so a retune
+  moves the tile with it and a tile agrees with the annunciator. One-sided parameters
+  collapse their unused side onto min/max rather than inventing a limit.
+- **`selfTest` now guards id-keyed maps.** The re-export changed every pipe id that routed
+  through a new fitting, silently orphaning 12 of 27 `PIPE_TEMP` entries — the failure mode
+  is invisible (pipes revert to authored temps). Added assertions that every `PIPE_TEMP` key
+  and every `CONTROL_LABEL_MAP` target still exists, plus `readout` coverage in the value
+  check. **The builder's live doc is in browser localStorage; the project's `BUILTIN_DOC` is
+  a stale fallback** — a re-export has to come from the owner.
+- **`verify_e2e_ui`'s steam-flow check now asserts the layout claim** (#206), not just that
+  a number exists: steam flow must sit directly above feed flow in the same column. It also
+  passes against the V1 board, where `bdSteamFlow` sat in that same position — a stricter
+  test of the same behaviour, not one refitted to V2 (HR10).
+
+**Circulating-water temperature (M1, physics).** `condenser_cooling_available` stays a
+separate availability boolean (it is what `vacuum_decay` / `full_blackout` cut, and *no circ
+water* is not *warm circ water*). When cooling IS available, the vacuum target now comes from
+the CW inlet temperature: condensing temperature = CW inlet + range·load + TTD, and the
+backpressure is its saturation pressure.
+
+- **Own saturation curve for the condenser.** The plant-wide `T_sat` / `P_sat_from_T` pair is
+  a power law fitted to 0.1–10 MPa; at condenser pressures it puts Psat(32 °C) at 0.7 kPa
+  against a true 4.75 — nearly an order of magnitude out. `pSatLowKpa` (Antoine, 0–100 °C)
+  is used instead, checked at three points.
+- **Formulated as a delta against `cw_inlet_ref_c`**, so the reference condition reproduces
+  `vacuum_rated` exactly and every existing scenario, IC and save is bit-identical. Verified:
+  `run_all` 22/22 at baseline with no number moved. `cw_inlet_ref_c` is 80 °F precisely,
+  matching the board box default, so typing the default back in is also a no-op.
+- **Cold water is allowed above rated**, capped at `vacuum_max_kpa` 99.5 (the practical
+  condenser floor, ~1.8 kPa absolute — not the thermodynamic 101.3). Clipping at
+  `vacuum_rated` left the entire cold half of the operator's range doing nothing, which
+  reads as a broken control, and the winter uprate is real. Costs ~3 % above nameplate below
+  ~62 °F. **Open flag:** owner is testing this; revert to a hard `vacuum_rated` ceiling if
+  nameplate should be absolute.
+- `rhr_sink_c` rides the same temperature — the RHR heat exchanger rejects to the same circ
+  water — so the cooldown floor moves with it (~28 °C cold / ~61 °C hot).
 
 ## Cross-cutting decisions (apply to all modules)
 
@@ -490,11 +579,15 @@ pwr_steam_generator, pwr_instruments, pwr_engine}.js`
   `s.accumulator_valve_open` (default aligned/open) with `open_accumulator_valve` / `close_accumulator_valve`
   commands; `stepAccumulators` hard-gates flow on it, so a normal cooldown can depressurize below the
   check-valve setpoint without a spurious dump, and a mispositioned/leaking accumulator can be isolated.
-  Migrated on load to *open* (old-save behavior unchanged); exposed in `getTrueState`. **Deliberately left
+  Migrated on load to *open* (old-save behavior unchanged); exposed in `getTrueState`. ~~**Deliberately left
   as-is:** `accumulator_trip_mpa` stays at 1.5 MPa, **not** the real ~4.14 MPa / 600 psi check-valve
-  setpoint — that detune (documented at the config field) reserves accumulator action for a genuine
-  large-break LOCA rather than spuriously refilling a small break and masking the TMI inventory/void
-  lesson; revisiting it is a separate tuning decision, not part of this change. Verified new `run_pwr`
+  setpoint — that detune reserves accumulator action for a genuine large-break LOCA rather than
+  spuriously refilling a small break and masking the TMI inventory/void lesson; revisiting it is a
+  separate tuning decision, not part of this change.~~ **SUPERSEDED — struck 2026-07-27b.**
+  `pwr_config.js:512` is now `accumulator_trip_mpa: 4.14`, the real 600 psi setpoint. The "deliberately
+  left at 1.5" clause had been false for some time while still reading as a standing instruction not to
+  change it. Struck rather than annotated: a stale *prohibition* is worse than a stale fact, because the
+  next reader obeys it. Verified new `run_pwr`
   guard `eccs_cold_injection`: the quench magnitude matches `eccs_cooling_gain·q_inj·ΔT` exactly, the
   no-injection control stays flat, the self-limit holds at `eccs_temp_c`; the isolation valve blocks
   discharge and boration and preserves the full tank. Gates: PWR **26/26**, campaign **47/47**, ops

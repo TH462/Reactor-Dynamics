@@ -55,6 +55,9 @@
   <script src="../diagram/board/components/comp_turbine_generator.js"></script>
   <script src="../diagram/board/components/comp_condenser.js"></script>
   <script src="../diagram/board/components/comp_cooling_tower.js"></script>
+  <script src="../diagram/board/components/comp_tee.js"></script>
+  <script src="../diagram/board/components/comp_cross.js"></script>
+  <script src="../diagram/board/components/comp_indicator_panel.js"></script>
   <script src="../diagram/board/pwr_board_wiring.js"></script>
   <script src="../diagram/board/pwr_board.js"></script>
 
@@ -109,6 +112,26 @@
         return bad > 0;
       }).map(function (p) { return p.id; });
       ck('every pipe endpoint resolves', pendingPorts.length === 0, pendingPorts.join(','));
+
+      // ---- geometry: joints that must run plumb (#231) -------------------------
+      // The pressurizer's three centreline ports scanned 6 px LEFT of both fittings they
+      // join, so the surge line and the PORV tap each ran out of plumb between two
+      // horizontal flange bars — visible on the board as "the pressurizer sits a little
+      // left". comp_pressurizer.js corrects it with a measured translateX; these pin the
+      // RESULT rather than the offset, so a re-export that moves either tile fails here
+      // instead of silently restoring the jog.
+      (function () {
+        var P = RD.PwrBoard.ports();
+        function plumb(name, a, b, axis) {
+          var pa = P[a], pb = P[b];
+          if (!pa || !pb) { ck(name, false, 'missing port: ' + (pa ? b : a)); return; }
+          var d = pa[axis] - pb[axis];
+          ck(name + ' (' + axis + ' ' + pa[axis] + ' vs ' + pb[axis] + ')', Math.abs(d) <= 1, 'off by ' + d);
+        }
+        plumb('geom: pressurizer surge line plumb to the hot-leg tee', 'pressurizer/surge', 'ims2kt7fu64/c', 'x');
+        plumb('geom: pressurizer PORV tap plumb to the block valve', 'pressurizer/pressure-tap', 'imrppb3kuav/b', 'x');
+        plumb('geom: pressurizer relief nozzle on the vessel axis', 'pressurizer/relief-out', 'pressurizer/surge', 'x');
+      })();
 
       if (RD.PwrBoardDriver && RD.PwrBoardDriver.selfTest) {
         RD.PwrBoardDriver.selfTest(ck, svc, sentCommands);

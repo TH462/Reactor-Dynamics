@@ -20,7 +20,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Current status (2026-07-26f)
+## Current status (2026-07-27b)
 
 **PWR is the focus plant and is in good shape** — all PWR engine, behavior, and ops gates
 green. The open backlog is dominated by **RBMK and BWR operability tuning** (documented,
@@ -31,7 +31,7 @@ staleness** items.
 
 | Gate | State | Notes |
 |---|---|---|
-| **`run_all`** | **OK (21 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| **`run_all`** | **OK (22 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
 | `run_procedures_stack` | **22/22 (155/155)** | NEW 2026-07-26b — procedures through M4+M5+M6. **6** strict xfails, all RBMK/BWR (#208); the 7 `pwr_heatup` xfails cleared 2026-07-26c/d (#206, #210) |
 | `run_meltdown_stack` | **3/3 (21/21)** | NEW 2026-07-26d (#209) — the core-damage casualties driven **hands off** on the shipped lineup; asserts the automatic chain fires unprompted |
 | `run_pwr` | **32/32** | PWR engine-direct (+`load_above_rated_hold`, the #130 pin) |
@@ -39,10 +39,10 @@ staleness** items.
 | `run_bwr` | **15/15** | |
 | `run_behavior` | **35 / 0 xfail / 0 fail** | PWR behavior catalog — coverage-todo list **empty** (#131); +TR-12b MSIV break isolation (#199) |
 | `run_ops` | **57/68** | 2026-07-26d: harness rewired to the SHIPPED lineup (#209), so two PWR probes that silently assumed load-follow now command it; 11 open = RBMK/BWR + 1 deliberate red (see backlog) |
-| `run_m4`..`run_m7` | **19** / **19** / 16 / OK | stack layers — all green. m5's rewind red RESOLVED 2026-07-25 (#151): `lastInstruments` was not rebuilt on restore, so every blockable trip reported `asserted=false` |
+| `run_m4`..`run_m7` | **19** / **19** / **17** / OK | stack layers — all green. m6 16 → 17 on 2026-07-27b (#142), a save/restore test for the instructor's operator-action memory. m5's rewind red RESOLVED 2026-07-25 (#151): `lastInstruments` was not rebuilt on restore, so every blockable trip reported `asserted=false` |
 | `run_autoctl` | **20/20** | |
 | `run_scenarios` | **3/3** | flagships |
-| `run_campaign` | **51/51** (2932) | |
+| `run_campaign` | **51/51** (3024) | 2930 → 3024 on 2026-07-27b (#189) — the static passes now walk `RD.SCENARIOS` directly, so unwired and bonus-only scenarios are validated too |
 | `run_procedures` | **22/22 (101/101)** | engine-direct — see the layer table in CLAUDE.md before trusting it for anything M4 decides |
 | `run_meltdown` | **8/8** | PWR core-damage paths — all resolved; MD-6 fixed 2026-07-24 (time-dependent dryout depletion, §3.4) |
 | `run_checklist` | **24/24** | |
@@ -108,6 +108,423 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-28b — #234 resolved: the damping belonged in the INDICATOR, not the instrument  ✅🔬
+
+`run_all` back to **22 runners at baseline** (`run_campaign` 51/51, `run_e2e_controls` 35/35),
+board_check **60/60**. Owner agreed the diagnosis and approved the change.
+
+**The mistake, named.** #233 made instrument noise temporally correlated to stop the board
+looking twitchy. That is the right VISUAL model and the wrong PLACE: the instrument reading is
+the one number both the controller and the board consume, so correlating it changed what the
+plant ACTS ON in order to change what you SEE. An 8 s correlation sits inside the CVCS servo's
+20 s filter passband, so a servo designed to reject gauge noise started chasing it — that is
+`run_e2e_controls`. Any non-zero tau reproduced it (2/3/4/8 identical), which was the tell that
+it was structural and not tunable.
+
+**The fix.** One transmitter feeds both the control system and the panel meter, but the meter is
+damped harder — a human reading it wants steady, a controller wants responsive. So:
+- `instrument_noise_tau_s: 0` — measurement noise is WHITE again at the instrument. Controllers
+  see exactly what they saw at baseline, which is why both gates went green with no assertion
+  touched and no servo retuned.
+- `DISPLAY_DAMP` in `pwr_board_wiring.js` — a first-order filter per indication, applied in
+  `IN(s)` so every tile, readout, pipe colour and component prop is damped consistently, cached
+  once per snapshot.
+- **A first-order filter ON white noise PRODUCES correlated noise**, so the drifting look comes
+  out of the filter for free. It also shrinks displayed amplitude — at dt 1 s the displayed
+  sigma is sqrt(a/(2-a)) of the instrument's, a = dt/(tau+dt) — so ONE knob per indication
+  delivered both things the owner asked for ("still drifts a little", "amplitude may be too
+  much").
+
+**PROCESS vs MEASUREMENT noise is the rule that decides where a number lives.** `sg_level` keeps
+its `noise_tau: 2.5` at the INSTRUMENT, because narrow-range level noise is the water genuinely
+moving (boiling, shrink/swell) and the feed controller really does see it. Damping that at the
+indicator would be lying about the plant. Everything else is sensor wobble and is damped at the
+meter.
+
+**Instrument sigmas restored to their historical values** (tavg family 0.05 → 0.17, pzr_level
+0.12 → 0.3, power_range 0.14 → 0.2, sg_level 0.22 → 0.3). With the display doing the calming,
+the reduced sigmas stacked with it and the board went DEAD — most tiles showed zero digit
+changes per minute, which is worse than twitchy. Restoring the long-validated numbers is also
+the safest possible choice for the gates.
+
+**Measured, displayed (what the player sees), steady full power:**
+
+| tile | p-p filed in #231 | p-p now | digit changes/min: filed → now |
+|---|---|---|---|
+| Reactor power % | 1.17 | 0.53 | 213 → **35** |
+| Tavg °F | 2.45 | 0.53 | 218 → **3** |
+| Subcooling °F | 2.45 | 0.60 | 215 → **1** |
+| Primary pressure psi | 2.46 | 0.94 | 233 → **1** |
+| PZR level % | 1.64 | 0.60 | 216 → **0** |
+| SG level % | 1.55 | 0.78 | 224 → **1** |
+
+Power is deliberately the liveliest — excore flux genuinely wanders and operators read it to a
+tenth. The near-still tiles are correct: a real whole-unit indicator at steady state parks, and
+moves when the PLANT moves.
+
+**Guardrail:** `DAMP_STEP_SIGMA = 6` bypasses the filter on a step that large, so a scram, trip
+or break reads instantly. A laggy board is a worse sin than a twitchy one in a teaching sim.
+
+**Kept from #233 (both were genuine test defects, validated under BOTH noise models):**
+`run_e2e_controls`' `sgtrRun` and `run_campaign`'s Tavg trim loop each sampled an INSTANTANEOUS
+value of a noisy signal and now average. That only ever worked because white noise was
+annihilated inside a 20 s filter or a threshold; averaging is what an operator watching a needle
+does, and it is the stricter fixture either way.
+
+### 2026-07-28 — V2 board pass 2: Cherenkov, dash phase, correlated noise, layout  ⚠️🔬
+
+Owner playtest batch (8 items) plus a design-project import. **20/22 runners at baseline;
+`run_campaign` 50/51 and `run_e2e_controls` 33/35 are RED and tracked in #234 — NOT merged to
+`main`.** Everything below except the noise correlation is green.
+
+**Imported from the Claude Design project** (`DesignSync`, project 6ad9a164). `Production
+Ready.dc.html` is only a chrome-free wrapper around the builder's production snapshot — the
+real content is in the component files. Took three things:
+- **Cherenkov glow** (`Reactor Vessel v2.dc.html`) — driven by FISSION RATE, not reactivity,
+  so it is dark at zero power and grows/widens toward rated. Gotcha: the design defines
+  `cherCoreGrad` TWICE, the second time in `userSpaceOnUse`; `url(#id)` resolves to the FIRST
+  match, so the second block is dead and was not ported.
+- **The cold-leg nozzle moved** (viewBox cy 282 → 295). This alone fixed **#232** — the
+  accumulator tee jog fell from 5 px to 1 px (rounding) without touching the tee.
+- **`dashPhase` / `DASH_CYCLE_S`** (`pipes.js`) — see below.
+- **Do NOT wholesale-copy `pipes.js` over `std_pipe.js`.** The design's copy still has the OLD
+  4-stop aqua→purple water ramp; ours has the evolved heat-map ramp + operating-band expansion.
+  The two files have diverged in DIFFERENT directions — merge selectively, per feature.
+
+**Dash jitter (#233) was TWO bugs, and the design source only fixes one.**
+- *Spatial* (theirs): legs drawn in tile coordinates start their dash grid at the tile, so every
+  leg meets its pipe out of step. Fixed by `dashPhase(pts, dir, cyc, ox, oy)` — anchors the grid
+  to WORLD position, reverses -x/-y runs so arc length grows the same way everywhere, and applies
+  phase as a negative `animation-delay` (keyframes now anchor `from` as well as `to` so the
+  element's own `stroke-dashoffset` is not clobbered). Fittings pass their tile origin.
+- *Temporal* (ours, and the actual reported symptom): `comp_tee`/`comp_cross` called `rebuild()`
+  on EVERY snapshot, which replaces the geometry and restarts the CSS animation. At ~1 update/s
+  against a ~1.04 s dash cycle the dashes advanced most of a dash and snapped back — "jitter back
+  and forth". Fixed with a geometry dirty-check plus a `repaint()` that updates colour in place,
+  because TEMPERATURE is the prop that moves every snapshot and it only changes colour.
+- Also: `updatePipeFlowStates` now toggles `animationPlayState`, never `style.animation` — the
+  shorthand carries `animation-delay`, which is where the phase lives.
+
+**Layout: the diagram was being squeezed by a feedback loop, not by one bad number.**
+`.bottom-row` was `flex: 1 1 auto` (grow into spare height) while `fitColumns` handed spare WIDTH
+to the sim column. A taller strip shortens the board → a shorter board needs less width →
+`fitColumns` gives that width away → shorter again. Two auto-growers either side of a
+fit-to-height diagram is a loop. Fixed by pinning `--bottomrow-h` (default 230 px) and dropping
+`SIMCOL_MAX` 900 → 560; both edges are now draggable (`RD_BOARD_SPLIT` in localStorage), and a
+drag pins that axis so `fitColumns` stops touching it.
+
+**Instrument noise — three changes, two green and one red.**
+- GREEN: **signal-proportional noise** (`noise_ref`). An instrument whose process is off now
+  indicates a still zero. Verified 200 samples at hot full power: `hpi_flow`,
+  `accumulator_flow`, `primary_leak_flow`, `steam_dump_valve` all exactly `0.000e+0`. This is
+  the model the #217 note asked for, and it is what stopped the ECCS pipework animating with the
+  pump stopped — the pipes were reading ~1 gpm of noise as real flow.
+- GREEN: amplitude trims — `power_range` 0.2 → 0.14, `sg_level` 0.3 → 0.22 with a SHORT
+  `noise_tau` 2.5 (that one's character is genuinely fast hash, not drift).
+- **RESOLVED 2026-07-28b, see the entry above — temporal correlation** (AR(1), `instrument_noise_tau_s: 8`). Stationary sigma is
+  unchanged; only the crossing rate. Measured 60 s p-p at steady full power: Tavg 2.45 → 0.13 °F,
+  power 1.17 → 0.22 %, SG level 1.55 → 0.51 %. Over 1800 s the sigmas return to their configured
+  values, confirming the walk is stationary and not decaying.
+  **Both reds depend on the noise being WHITE.** `tau: 0` (keeping the new sigmas AND
+  `noise_ref`) makes both green; tau 2, 3, 4 and 8 all fail identically, so it is not tunable.
+  Both failing checks sample an INSTANTANEOUS value of a noisy signal, which only worked because
+  white noise was annihilated inside a 20 s filter or a threshold. Averaging fixed most of the
+  CVCS swing (4 %/14 % → 14 %/22 %) and none of `pwr_rod_auto`.
+  **Ruled out, do not repeat:** raising `cvcs_level_filter_tau` (the obvious "filter was sized
+  for white noise" hypothesis) makes it monotonically WORSE — 20 s → 14 %/22 %, 45 → 6 %/12 %,
+  60 → 4 %/10 %, 90 → 3 %/7 %. It is a TRANSIENT (the filtered error has not reached steady
+  state when sampled), not a noise-rejection problem. Value restored to 20.0.
+
+**Tile bands are mode-aware.** Tavg's green band is now the sliding Tavg program — `trefProgram()`
+exported from `pwr_control.js` so the tile draws the SAME reference the rods drive to, rather
+than approximating it. Below Mode 3 it becomes the cold-shutdown band. Primary pressure follows
+the live setpoint. The other four deliberately do not move; their references are protection
+setpoints, which do not change with mode.
+
+**Geometry patches.** `DOC_PATCHES` in the driver applies ABSOLUTE (therefore idempotent)
+corrections to the generated doc — the PORV drop and the turbine→condenser run were each 1–2 px
+off true vertical. When the owner fixes one in the builder the patch becomes a no-op instead of
+double-applying. `selfTest` asserts every target still resolves.
+
+### 2026-07-27d — #231 V2 board polish: all three items were mis-attributed, and measurement moved each one  ✅🔬
+
+Three playtest items off the V2 board landing (`e9dc316`). Every one had a plausible lead in
+the issue text; **two of the three leads were wrong**, and only measuring said so. `run_all`
+**22/22 at baseline** after, unchanged — no baseline moved.
+
+**Item 1 — the pressurizer sits left. The suggested lead (`NUDGE_KINDS`) cannot fix it.**
+The issue's first suggestion was to add `Pressurizer` to `NUDGE_KINDS` in
+`ui/diagram/board/pwr_board.js:32`. That is arithmetically impossible: `gridNudge` removes
+**sub-grid residue only**, so at `doc.grid = 5` its authority is ±2.5 px. Measured error is 6.
+
+- **Measured, not eyeballed** (scratch harness: mount the board headless, read
+  `RD.PwrBoard.ports()`, and for every pipe compare each end's port against the axis its
+  first/last segment should run along). The pressurizer's three centreline ports —
+  `relief-out`, `pressure-tap`, `surge`, all at viewBox x=100 — scanned at world **x 1049**.
+  Both fittings they join sit at **1055**: `ims2kt7fu64/c` (surge tee branch) and
+  `imrppb3kuav/b` (PORV block valve). So the surge line *and* the relief tap each ran 6 px out
+  of plumb between two horizontal flange bars. That is the whole reported symptom.
+- **It is TWO authored errors compounding**, which is why no single principled rule lands on
+  1055: the design's crop puts the vessel axis **10 px left of the tile centre** (viewBox spans
+  10..230, centre 120, vessel cx 100), and the tile itself (left 1005, width 108, centre 1059)
+  sits **4 px right** of the 1055 axis its neighbours share. Centring the crop gives 1059;
+  grid-snapping the current position gives 1050. Neither is right.
+- **Fix**: one measured `translate(6px,84px)` on the pressurizer svg
+  (`comp_pressurizer.js`), in canvas px, the same idiom as the existing `translateY(84px)`.
+  Three new `board_check.html` assertions pin the **result** (`pressurizer/surge` x ==
+  `ims2kt7fu64/c` x, etc.) rather than the offset, so a re-export that moves either tile fails
+  loudly instead of silently restoring the jog. board_check **56 → 59, 0 fail**.
+- **Not fixed, filed instead**: `ims3x2n4o2p/a` (accumulator tee) vs `reactorVessel/cold-in`
+  is a real **5 px** jog over a 10 px run. It is authored *tile* placement, not a component
+  crop — the tee wants `top 595`, not 600 — so it is a builder edit, not a code one.
+  The other jogs the harness found (condenser↔cooling tower 29 px, AFW tee → SG fw-in 14 px)
+  are authored diagonals and correct as drawn.
+
+**Item 2 — instrument noise. The issue's own numbers were right; the scope was one instrument
+too narrow.** `tavg` 0.17 → **0.05** °C, and `thot`/`tcold` with it; `pzr_level` 0.3 → **0.12** %.
+
+- **Why all three temperatures, not just Tavg** (HR9 — what should this plant do?): the board
+  shows **Tavg, T-hot, T-cold and ΔTavg (thot − tcold) on one screen**
+  (`pwr_board_wiring.js:290,339,340,539`). A rock-steady average over two legs each wandering
+  ±1.2 °F is arithmetically impossible. They are also the same RTDs in the same damped bypass
+  manifold. Checked before moving them: **nothing in `layers/control/` and no gate reads the
+  `thot`/`tcold` readings** — they are display + pipe colour only.
+- **Subcooling fell out for free.** `subcooling_margin` is derived (`pwr_instruments.js:120`:
+  `T_sat(P) − tavg`) with `noise: 0`, so its jitter *was* Tavg's. That is why the issue's table
+  showed subcooling and Tavg with an identical 0.32 σ — one instrument, reported twice.
+- **PRNG safety.** Changing a sigma draws no extra numbers, so the instrument noise **sequence**
+  is byte-identical — only the amplitude moves. (Contrast the `noise: 0` rule further down that
+  block, where *adding* a draw is what shifts every downstream instrument. That rule is about
+  adding/removing instruments, not re-sizing one.)
+- **Measured before/after, 60 s at steady full power, full stack, display units.** The two
+  instruments left alone reproducing the issue's own figures is what says the harness matches
+  the original measurement:
+
+  | tile | σ filed | σ now | |
+  |---|---|---|---|
+  | Tavg °F | 0.32 | **0.087** | −73 % |
+  | Subcooling °F | 0.32 | **0.087** | −73 %, derived |
+  | PZR level % | 0.28 | **0.118** | −58 % |
+  | Reactor power % | 0.21 | 0.205 | untouched ✔ |
+  | SG level % | 0.30 | 0.309 | untouched ✔ |
+
+- **SG level deliberately NOT matched to PZR level.** Narrow-range SG level genuinely bounces
+  (boiling, shrink/swell); pressurizer level is a steady dP reading on one large vessel. The two
+  sharing 0.3 was the tell that 0.3 was a copied default rather than a measurement.
+- **Knock-on caught**: `tile()`'s display-resolution comment justified whole-unit digits by
+  citing "sigma 0.2–0.45 across the board". That premise is now false for three of the six
+  tiles, so the comment was rewritten with the new per-tile figures. The *decision* is unchanged
+  — 0.09 is still close to a full 0.1 display step — but a stale premise left under a live
+  decision is how the next agent gets it wrong.
+
+**Item 3 — Tee/Cross dash rate. Root cause found; it was a constant, not a scale bug.**
+Both surfaces animate `stroke-dashoffset` 250 over `dur = 10.4/speed`, and for the fittings the
+`scale(1/sc)` compensation cancels exactly against the tile's viewBox mapping — so **equal `dur`
+== equal on-screen rate**, and the two were simply computing different `speed`:
+
+- fittings: `speed = (0.45 + 1.1 * flow/100) * speedMul` → **1.55** at the authored flow 100
+- pipes: hard 1.0, with the authored `p.speed` **dropped on the floor** in `buildPipes()`
+
+So every fitting ran 55 % fast — dashes slipping a full period against the pipe every ~1.9 s,
+which is exactly the visible stepping. Fix: one shared `StdPipe.dashSpeed(flowPct, speedMul)`
+where the authored default on **either** surface is exactly 1.0, used by `buildPipes()`,
+`comp_tee.js` and `comp_cross.js`. Verified in the DOM: 7/7 fittings and 26/27 pipes now at
+`10.4s`.
+
+- **The 27th pipe is deliberate and worth knowing about.** `pms2ktjq4ma` (SG hot-in → surge tee)
+  carries `speed: 1.05` — the only authored speed on the board, and almost certainly a stray
+  slider nudge. Now that authored speed is honoured it runs 5 % fast against the tee it joins
+  (a period every ~21 s, vs ~1.9 s before). Kept honoured rather than special-cased: silently
+  dropping authored data is half of what made this confusing. **Owner action: zero it in the
+  builder on the next export.**
+
+**Drive-by, forced by the manual maintenance rule.** A config change requires
+`gen_manual_reference.js` + `pack_manuals.js`. Regenerating showed the sigma edits produce **no**
+manual diff (the PWR entry is a reference-only stub — its `normal_values` instrument snapshots
+are RBMK/BWR only). What it *did* surface was pre-existing staleness from `e9dc316`:
+`cw_inlet_temp` had never been regenerated into `ui/manual_data.js`, and landed as a raw
+unlabelled id. Given an `IND` entry and regenerated. `run_procedures` 22/22, `run_checklist` 24/24.
+
+### 2026-07-27b — Three small issues (#189, #142, #156), and what measuring each one changed about it  ✅🔬
+
+A batch of three "easy" items. All three turned out to be filed slightly wrong, and in each
+case the *measurement* is the part worth keeping — the code change is small.
+
+**#189 — the campaign validator's two latent holes.** Filed as (1) validation is
+campaign-gated so an unwired scenario gets none, and (2) `checkTrigger` has no `default:` so a
+typo'd trigger type passes silently.
+
+- **Hole 1 confirmed, and it was wider than filed.** Four static passes walk the campaign
+  tree; *two of them* (`beat vocabulary, registers, endpoints` and `auto_channels`) walked
+  `acts` only, so a **bonus** mission was skipped as well. Measured: 36 scenarios, 0 unwired,
+  but **`pwr_sg_flood` is bonus-only** and was getting no beat-id-uniqueness, register or
+  `level_complete` check at all. All four passes now walk `RD.SCENARIOS` directly. Nothing
+  needed the campaign id — a scenario carries its own `plant_id`.
+- **Hole 2 was half wrong.** The issue said a typo'd type "passes validation silently". It
+  does not, for `b.trigger` and branch triggers: the legality pass at `run_campaign.js:164`
+  already checks `TRIGGERS.indexOf(tr.type)`. What it never does is **descend into
+  `gate.until` or `all`/`any` sub-triggers**, and the reference pass that *does* descend had
+  no `default:` arm. So the hole is real but lives in a different place than filed. The
+  default arm asserts membership in the existing `TRIGGERS` vocabulary rather than
+  `false` — `scram` and `manual` are legal and field-less, and fall through to it.
+- **Proved by injection, old vs new** (HR10 — the whole point is that these checks were
+  vacuous, so "it still passes" proves nothing). Ran the **real** Part 1 code, sliced at the
+  Part 2 marker, against deliberately corrupted scenarios:
+
+  | injected defect | pre-fix runner | post-fix runner |
+  |---|---|---|
+  | dangling `goto` in an unwired scenario | **passes — missed entirely** | caught |
+  | typo'd type on a `gate.until` | **passes — missed entirely** | caught |
+  | typo'd type in an `all`/`any` sub-trigger | caught (legality pass) | caught twice |
+  | dup beat id + missing register on a bonus-only scenario | **both missed** | both caught |
+
+  Clean: **51/51, 2930 → 3024 checks**, no reds. The +94 is the bonus scenario plus the new
+  default arm.
+
+**#142 — instructor save/restore drops progress.** Confirmed at `instructor_layer.js:880,926`
+(`accStreak: 0` hardcoded on both restore paths) and `_actionsSinceBeat` absent from
+`saveState()` entirely.
+
+- **The consequence is a softlock, not a cosmetic reset**, and that is worth naming because
+  the issue filed it as "progress tracking resets". `_actionsSinceBeat` is the *only* record
+  that an operator command descended since the last beat fired, which is exactly what an
+  `operator_action` trigger fires on. Perform the action → save → restore, and the beat is
+  still armed with nothing left to satisfy it. On a one-shot action there is no again. Three
+  authored beats trigger this way (`pwr_feedback.stabilized`, `pwr_load_follow.complete`,
+  `pwr_protection.stabilizing`), and the save path is not just the save button — auto
+  checkpoints and **rewind** go through it.
+- `accStreak` is the milder half: up to `ACC_STABLE_N` = 5 evaluations of credit lost.
+- Both now round-trip; absent fields default to the old values, so **pre-#142 saves load and
+  behave exactly as before** — asserted, not assumed.
+- **Gated, and the gate was validated against the old code.** New test in `run_m6`
+  (16/16 94 → **17/17 102**). Against the pre-fix instructor **5 of its 8 checks fail**,
+  including the softlock itself; the legacy-save check passes on **both** versions, which is
+  what makes it a backward-compatibility assertion rather than decoration.
+
+**#156 — kernel generality leaks. Both halves were stale; one is fixed, one should not be.**
+
+- **The `_stepBang` half is already fixed.** `control_kernel.js:961-985` has no plant field,
+  and carries the comment *"busyNote: optional per-plant status suffix (HR3 — no plant fields
+  here)"*. The audit item dates from 2026-07-16.
+- **The leak moved.** `charging_pump_running` is now in **`_stepConc`** (`:1007`), introduced
+  with the boron batch-dose work — i.e. the same HR3 leak was re-created in new code after
+  the old one was cleaned. Fixed the same way the kernel already solved it: a plant-supplied
+  `pausedWhen` predicate + `pausedNote`, mirroring `busyNote`. Behaviour is bit-identical —
+  `pausedNote` reproduces the old string and the unit comes from `def.sp.unit` (`'ppm'`).
+  The kernel's `control_state &&` null guard was carried *into the hook*, deliberately: moving
+  a guarded read into plant code is a silent way to turn a null check into a throw.
+- **The `clip()` half is not HR3, and it is now a recorded won't-fix** (owner ruling,
+  #156 closed `status-deliberate`, flag **F13**). HR3 is *"plant-specific behavior is data,
+  not hardcoded logic"*; four identical one-line clamps in four IIFEs is DRY, not HR3, and
+  the issue conflates them. **Measured before deciding: `clip` is the ONLY duplicated
+  helper** — `crossed`/`rodGroup`/`valueFieldFor` are kernel-only, `_tsat`/`trefProgram` are
+  PWR physics, `alarms`/`forVersion` are RBMK. So a shared-utils file would exist to hold one
+  60-character pure function, at the cost of either a load-order coupling (`control_kernel.js`
+  loads **after** all three plant modules, so `RD.*.clip` resolves only at call time) or
+  editing ~19 test-runner load lists plus `shell.html` and the `test_*.html` pages.
+  **Revisit trigger:** a second shared helper.
+- **The recurrence is the real finding, and it is spun out as #227.** The rule was stated
+  *in the file*, the fix pattern existed *in the file*, and the violation still came back and
+  shipped — because nothing gates it. Measured for that issue: 13 plant-specific identifier
+  sites in the kernel today, in three groups — the boron cluster (`bang`/`conc` kinds, which
+  the kernel's own comment at `:1024-1025` calls *"a conc-kind plant coupling"*, i.e. accepted
+  but never recorded as a decision), `valueFieldFor`'s command vocabulary (`:62-67`), and one
+  false positive worth remembering: **`:952` matched because `orm` is a substring of
+  `'n`*`orm`*`al'`** — so any such check needs a curated identifier list, not substrings.
+
+**Addendum — the HR3 guard (#227) and what verifying the backlog turned up.**
+
+- **`test/run_hr3.js` built — runner #22, 0.2 s, static.** The design choice worth keeping: the
+  plant vocabulary is **derived from the three engines**, not hand-listed, and the discrimination
+  falls out of the data — *a token all three plants define is a shared concept, not a plant
+  specific*, so `scrammed`/`rod_groups`/`power_pct` need no allow-list entry and never will.
+  Everything else needs a written reason. Validated by injection: the exact #156 leak → caught;
+  a fresh RBMK leak → caught; a stale allow-list entry → caught. It caught **three couplings I
+  had missed by hand**. **Limitation, learned the honest way:** my first RBMK injection did NOT
+  trip it, and the guard was right — I had written `instruments.orm`, and the real field is
+  `orm_display`. It matches real plant names, not invented ones.
+- **Two latent bugs found on its first run → #228, recorded not fixed** (both RBMK/BWR-facing).
+  The sharper one: the `__true_flow__` trip sentinel reads `pump_flow_pct`, which is
+  **`undefined` on RBMK and BWR** → `undefined/100` = NaN → `crossed(NaN,…)` is false, so a
+  future RBMK/BWR flow trip on that sentinel would **never fire and never say so**. Both plants
+  are flow-critical. Also `reset_rps` is sent by the kernel but handled only by `pwr_engine.js`.
+- **The backlog is roughly half stale — verify before working.** Of #158's seven residue items,
+  **five were already fixed or had moved**; three of the survivors have a real reason the
+  2026-07-16 audit did not see (`set_lpi` is a live deprecated alias with save-file
+  compatibility). **Two of the three "reasons" did not survive contact — including one I had
+  just written into this log.** (a) *"renaming `act5` orphans `rd_progress` keys"* is **false**:
+  `rd_progress` only ever holds `completed_scenarios`, `completed_procedures` and `hook_done`,
+  all keyed by SCENARIO id; act ids are used only to iterate and render (`app.js:1322, :1358`)
+  and are never persisted. Renamed to `act6`, nothing to migrate. (b) `buildTraining`'s standing
+  *"accepted — do not re-fix"* is **not an owner ruling** — it lives in
+  `PWR_SHIP_REVIEW_PLAN.md`, whose own header reads *"Created: 2026-07-19 (Fable) · Executor:
+  Opus"*, i.e. one agent instructing another, committed under the owner's name because that is
+  how agent work lands. It had also been overtaken twice (it "accepts" `dampInstruments`, since
+  retired under #217, and `clip()`, ruled on separately). Renamed to `refreshMissionSelect`.
+  Fixed the two that were genuinely mechanical: the `dampInstruments` no-op
+  stub + dead call site, and a **new** instance of the #156 pattern — `simulation_service.js:404`
+  claimed *"a manual scram never sets rps"*, which `control_kernel.js:204-207` stopped being
+  true; corrected, not collapsed, since the two reads still differ under an ATWS.
+- **`instruments.rps_scrammed` cannot fail** — it is a `status:` passthrough copied by
+  `_copyStatus` after the instrument loop, and `_applyFailure` only runs over `SOURCE` ids. So
+  it is identically `true_state.scrammed` on all three plants, and the remaining HR1 swaps at
+  `app.js:3310/3433` are **conformance cosmetics with zero behaviour delta**. Worth doing; not
+  worth claiming as a bug fix.
+- **#161(b) fixed, and it had spread.** Measured: PWR ops is **21/21 with ZERO fails**; all 11
+  reds are 7 RBMK + 4 BWR, and the deliberate C2 red is *one of the RBMK seven*, not a twelfth
+  item. Naming **P4** as an open target was wrong — and the wrong list had since been **copied
+  verbatim into `run_all.js`'s note**, so the authority file was asserting it too. Both
+  corrected together, with the measurement and its date inline. #161 stays open for (d) only:
+  `OPS_TUNING_REPORT.md` is still the 2026-07-06 body and needs a real refresh, not a
+  number-swap.
+
+**Addendum 2 — the instruction corpus was audited and cut, on an owner ruling.**
+
+Asked to confirm or revoke five standing directives, the owner could not identify any of them
+as his, and said: *"I think we have too many instructions in this project and it's starting to
+confuse the coding agents and gum up the works."* Measured: **~229,000 words of docs carrying
+~650 "do not / never / by design" phrases**, and `CLAUDE.md` — the first file every agent reads
+— was **7,462 words**, most of it fifteen stacked history entries duplicating this log.
+
+- **Four-line precedence rule added to `CLAUDE.md`**, which retires the other ~647 directives
+  without auditing them one by one: (1) only `CONTEXT.md` Hard Rules + `CLAUDE.md` bind;
+  (2) `Diagnostic/`, `BUILD_DECISIONS.md`, `Manuals/` are **record, not policy**; (3) **plans
+  expire when executed**; (4) no date + verbatim owner quote ⇒ **advisory**.
+- **`CLAUDE.md` cut 690 → 432 lines, 7,462 → 3,786 words** *(OWNER RULING, 2026-07-27:
+  "Execute the cut.")*. Verified first that this log is a **strict superset** of what was
+  removed — 7 entries for 07-25 against `CLAUDE.md`'s 5, 3-for-3 on 07-24 — so no content was
+  destroyed, only a second copy.
+- **Attribution is now mandatory** (`CONTEXT.md` §3, and on the canonical label issue #61):
+  `OWNER RULING (YYYY-MM-DD): "<their words>"`, or it is *your* recommendation and must be
+  labelled as such — including when approved, e.g. *"Claude's reasoning, owner-approved
+  2026-07-27 ('Do as you suggest')"*. F13 was rewritten this way retroactively; the first
+  draft said only "ruled won't-fix", which is the failure mode even though the owner did agree.
+- **Revoked:** `PWR_SHIP_REVIEW_PLAN.md` stamped **EXECUTED — historical record, not policy**
+  *(OWNER RULING: "Yes. Marking done.")*; Amendment A1's *"do not chase P4 without a new
+  ruling"* **revoked as moot** (PWR ops measures 21/21, zero fails); the C2 "Ruling: ship as a
+  documented limitation" **struck as a third copy** of #153 + its deliberately-red probe; the
+  unattributed *"Owner scope rulings … out of scope — do not add"* **downgraded** to "not
+  planned; propose with a reason".
+- **Two stale-and-still-binding statements struck**, both of which would have misled the next
+  reader: `pwr_control.js:68` said *"currently OFF … THIS PLANT DOES NOT HAVE IT"* about P-9
+  while `pwr_config.js:763` had it `true` — the comment narrating how a stale claim hardened
+  into "by design" had itself gone stale the same way — and `BUILD_DECISIONS.md:494`'s
+  *"deliberately left at 1.5 MPa"* against a config reading **4.14**.
+- **#229 filed** — P3-9 (decay heat undercounted through an un-scrammed runback) was blocked
+  by the A1 citation, not by a decision. Re-verified still open: the MD-5 fix broadened the
+  gate to `scrammed || _P < _decay` and its own comment says that is *"identical to the old
+  form … whenever P > decay (all at-power operation)"* — precisely P3-9's regime.
+
+**#210 closed — the promised seed sweep, finally run.** `pwr_rod_auto` on 7 seeds, peak SG
+level vs the 90 % P-14 trip: range **79.76 – 85.90**, spread **6.14**, mean 83.16, **worst
+margin 4.10 points, 0 scrams, 7/7 completed**. The filed 86.8 % is worse than anything measured
+today — the plant moved under the issue (#210's own `minDelta` fix, then #219's dump
+reference). Not a knife-edge, but the spread exceeds the worst-case margin, so the margin is
+noise-dominated: recorded as a watch item, deliberately not tuned, since tuning against an
+unobserved seed is fitting to noise. **Process lesson:** the first attempt burned 78 minutes
+and produced nothing because it printed only after all seeds finished *and* was piped through
+`tail` — stream per-iteration output from the start on any long sweep.
 
 ### 2026-07-27 — backlog sweep (8 issues closed) + #219: the dump reference was the bug, not the latch  ✅🔬
 
@@ -982,9 +1399,14 @@ units and ignores the display toggle (`pwr_board_wiring.js:19-24`) — owner wan
 deferred because it spans ~30 formatters plus the editable setpoint boxes' bounds and
 parse-back.
 
-**Owner scope rulings:** rod deviation (step counter vs RPI), generator electrical indications
-(MVAR/volts/frequency/breaker), AFD/ΔI and QPTR are **out of scope** — do not add. Radiation
-monitoring + containment instrumentation deferred to its own issue.
+**Scope — not planned** *(downgraded 2026-07-27 from "**Owner scope rulings** … out of scope —
+do not add". Asked directly, the owner could not confirm he made that call, and the entry
+carried no date or quote, so under the attribution rule in `CONTEXT.md` it is advisory, not
+binding. The scope guidance is still good; the prohibition was never his to enforce.)*
+Rod deviation (step counter vs RPI), generator electrical indications
+(MVAR/volts/frequency/breaker), AFD/ΔI and QPTR are **not planned** — propose one with a
+reason if you want it, rather than treating the omission as settled. Radiation monitoring +
+containment instrumentation deferred to its own issue.
 
 **Modeled but unused, decision pending:** `accumulator_flow`, `primary_leak_flow` (LOCA/SGTR
 break flow has no readout anywhere), `condensate_flow`; plus status booleans `rhr_active`,

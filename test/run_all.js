@@ -78,11 +78,25 @@ var BASELINES = {
   // ---- stack layers ----
   // 19/19 since 2026-07-25 (#151): +a save/restore round-trip test for trip blocks
   // and the derived `asserted` flags.
+  // NEW 2026-07-27b (#227) — static HR3 guard over control_kernel.js. Not a sim
+  // gate: it derives the plant vocabulary from all three engines and fails on any
+  // plant-specific name in the shared kernel that is not in its ALLOWED list with a
+  // reason. Exists because the leak #156 reported had ALREADY been fixed once in
+  // that file and was then re-created ~40 lines below the comment warning against
+  // it. The site count is part of the score on purpose: a NEW coupling shifts it
+  // and trips drift even when the author allow-lists it properly.
+  'run_hr3.js':            { code: 0, score: '32checks 0failed' },
   'run_m4.js':             { code: 0, score: '19/19 86passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   'run_m5.js':             { code: 0, score: '19/19 79passed' },
-  'run_m6.js':             { code: 0, score: '16/16 94passed' },
+  // 16 -> 17 suites, 94 -> 102 checks 2026-07-27 (#142): a new save/restore test for
+  // the instructor's operator-action memory and follow acc streak, both of which
+  // saveState dropped. Verified against the PRE-fix instructor, where 5 of its 8
+  // checks fail — including the softlock itself (an `operator_action` beat could
+  // never be credited after a restore). Its legacy-save check passes on both
+  // versions, which is the point: old saves keep their old behaviour.
+  'run_m6.js':             { code: 0, score: '17/17 102passed' },
   'run_m6ph.js':           { code: 0, score: '8/8 18passed' },
   'run_m7.js':             { code: 0, score: null },   // prints "M7 OK", no tally
 
@@ -94,7 +108,13 @@ var BASELINES = {
   // and railroaded every run to the bottled ending in 14 s, so the player had no decision
   // at all. It is now the post-trip EOP question: decay heat is on the code safeties, do
   // you restore the dump path? Check count 2931 -> 2930: one assertion merged, none lost.
-  'run_campaign.js':       { code: 0, score: '51/51 2930passed' },
+  // Check count 2930 -> 3024 2026-07-27 (#189), suites unchanged at 51: the four static
+  // passes now walk RD.SCENARIOS directly instead of the campaign tree, so a scenario
+  // that is unwired (zero validation before) or bonus-only (two of the four passes
+  // skipped it) is graded like any other. +94 checks, none red. Measured against the
+  // pre-fix runner: a dangling goto in an unwired scenario and a typo'd trigger type on
+  // a `gate.until` both passed silently; both now fail.
+  'run_campaign.js':       { code: 0, score: '51/51 3024passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
@@ -115,18 +135,27 @@ var BASELINES = {
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
-  // critical alarm standing, declared auto_channels engaged). Strict xfails 13 → 9 →
-  // **6** (2026-07-26c): pwr_heatup is now fully green — the last 3 fell when the PID
-  // output deadband stopped stranding a residual pump demand (#210). The remaining 6
-  // are all RBMK/BWR (#208, plants on hold).
+  // critical alarm standing, declared auto_channels engaged). Strict xfails 13 → 9 → 6
+  // (2026-07-26c, #210) → 9 again when P-9 was adopted (#218) → **6** (2026-07-27b, #218
+  // resolved). The remaining 6 are all RBMK/BWR (#208, plants on hold).
+  //
+  // Check count does NOT move on an xfail change — an xfail is still a check, just an
+  // annotated one — so the score string is the same either way. That is worth knowing
+  // before assuming this baseline is untouched: the 2026-07-27b #218 fix cleared three
+  // xfails without shifting a single number here.
   'run_procedures_stack.js': { code: 0, score: '22/22 155/155' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
     code: 1, score: '57/68 334passed 12failed',
-    note: 'Ops probes are tuning targets by design. The FAILs are documented RBMK/BWR ' +
-          'targets (P4, R1-R3, B2-B5) plus the deliberately-red C2 accel-latency probe ' +
-          '(#153, status-deliberate). See Diagnostic/OPS_TUNING_REPORT.md. ' +
+    note: 'Ops probes are tuning targets by design. Measured 2026-07-27b from ' +
+          'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; all 11 reds are ' +
+          '7 RBMK + 4 BWR, and the deliberately-red C2 accel-latency probe (#153, ' +
+          'status-deliberate) is one of the RBMK seven ("ABUSE [post] time-acceleration"), ' +
+          'not a twelfth item. The old wording here named "P4" among the open targets — ' +
+          'a P-prefixed probe is PWR and P4 has passed since 2026-07-22 (#161(b)). It was ' +
+          'wrong in CLAUDE.md and got copied into this note; both corrected together. ' +
+          'See Diagnostic/OPS_TUNING_REPORT.md. ' +
           '2026-07-26c (#209): 59/68 -> 57/68 when ops_harness was wired to the SHIPPED ' +
           'lineup (engageDefaults + startup lineup + stepAutomation, mirroring M5). The ' +
           'two PWR probes it broke were repaired (they silently assumed load-follow; the ' +

@@ -13,7 +13,111 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-_Nothing yet._
+## [Alpha 1.8.0] — 2026-07-28
+
+### Added
+- **New control-room diagram (V2).** The PWR board was re-authored in the Claude Design
+  "PWR Reactor" builder and rebuilt here: 189 items, 37 pipes. What changed for you:
+  - **A vital-parameter strip across the top** — reactor power, Tavg, subcooling margin,
+    primary pressure, pressurizer level and SG narrow-range level, each with a live trend
+    sparkline and a full-scale band. The bands are the plant's own trip and alarm
+    setpoints, read live from the protection tables, so a tile agrees with the annunciator
+    rather than approximating it. This replaces the old gauge strip in the shell, which
+    showed the same six readings a second time.
+  - **RHR has its own card** — `ALIGN` / `ISOLATE` / `AUTO` plus an `HX FLOW %` knob. RHR
+    is a suction alignment on the shared ECCS pump, not a pump of its own, which is why it
+    aligns rather than starts. The hot-leg suction valve is interlocked at 400 psi: press
+    ALIGN above that and the button visibly refuses to latch. The HX knob is your
+    cooldown-rate control and stays live under AUTO.
+  - **Steam dump setpoint is now a control** (29–1350 psi), sitting under the steam-pressure
+    reading so the gap between them is legible — at power the SG runs ~819 psi against a
+    1194 psi setpoint, which is *why* the dump is shut. Lowering it is how you cool the
+    plant down through the steam generator.
+  - **ECCS alignment readout** (`off` / `HPI` / `LPI` / `RHR`) — one pump, and this says
+    which of its two suctions it is drawing from.
+  - **AFW now reports RUNNING / STANDBY / SECURED.** STANDBY means armed and waiting for a
+    low-level signal; SECURED means you stopped it and disarmed the auto-start. Note the
+    run indication reads pump *demand*: with the discharge valve shut it will say RUNNING
+    while flow reads zero and discharge pressure pins at shutoff. That divergence is real,
+    and it is how TMI-2 went wrong.
+  - **Trend and alarms moved under the diagram**, freeing the middle column so the board
+    gets the width it needs.
+- **Circulating-water temperature is now a control** (40–100 °F, on the condenser cooling
+  card next to the vacuum reading). Warmer cooling water means the condenser can only pull
+  down to a warmer saturation temperature, so you lose vacuum, lose output at the same
+  steam flow, and sit closer to the low-vacuum turbine trip — the summer derate. It also
+  raises the RHR heat exchanger's sink, so a cooldown bottoms out warmer: ~28 °C on cold
+  water against ~61 °C on hot. At the default 80 °F the plant behaves exactly as before.
+
+### Added
+- **The core glows.** The reactor vessel now renders Cherenkov radiation — the blue light a
+  real core gives off underwater. It is driven by **fission rate, not by the rod position or
+  the reactivity**, so it is completely dark on a shutdown reactor and grows and widens as you
+  bring power up. Watching it come in as you pull rods is the point.
+- **You can resize the panels.** Drag the inner edge of the simulator panel, or the top edge of
+  the trend/alarm strip, to trade space with the diagram. Your sizing is remembered.
+
+### Changed
+- **The diagram is much bigger by default.** The trend strip and the simulator panel were both
+  set to absorb whatever space the diagram did not need — but a shorter diagram needs less
+  width, which freed more width for the panel, which shortened the diagram again. Both panels
+  now start at a sensible fixed size and the diagram keeps the rest; the panels still take up
+  spare space when your window shape leaves some, which was the intent all along.
+- **The board sits still unless something is happening.** Three separate causes:
+  - Every indication is now **damped the way a real panel meter is**, so a reading drifts
+    across its band instead of snapping limit-to-limit between samples. Measured at steady
+    full power, the last digit on the average-coolant-temperature tile now changes about
+    **3 times a minute instead of 218**, and reactor power — deliberately the liveliest
+    indication on the board, because excore power genuinely wanders — about 35 instead of 213.
+    The damping is per-indication: RTDs are heaviest, steam-generator level lightest, because
+    its bounce is the water really moving rather than the sensor wobbling.
+  - **An indication that is off now reads zero.** Noise scales with signal, so a stopped ECCS
+    pump indicates a still 0 gpm rather than hunting around 1, and a shut-down reactor's power
+    meter sits on zero. This also means excore power can be lively at 100 % and quiet at 1 %,
+    which it could never be with one fixed number.
+  - A damped meter never hides a real event: past a few sigma of change in one step the
+    damping is bypassed, so a scram or a break still reads instantly.
+  - The **ECCS pipework no longer animates with the pump stopped** — it was reading that 1 gpm
+    of noise as real flow.
+- **The vital-parameter bands follow the plant.** The green band on average coolant temperature
+  is now the *sliding Tavg program* — the same reference the rod controller is driving to — so
+  in Mode 1 you can see the band you are actually holding, and it slides as load changes. Below
+  Mode 3 it becomes the cold-shutdown band instead. Primary pressure's green band follows your
+  live pressurizer setpoint rather than the rated one, so it stays meaningful in Mode 5.
+- **Shutdown rod buttons latch.** One click drives the bank fully in or fully out on its own;
+  the button holds a yellow in-motion light while it travels; a second click stops it where it
+  is. It was press-and-hold, which is the wrong control for a bank that is only ever parked at
+  one end or the other.
+
+### Fixed
+- **Flow dashes in the tees and cross now flow.** They were jittering back and forth instead of
+  moving along the pipe: the fittings were being rebuilt from scratch on every update, which
+  restarted the animation about as often as one dash-length took to travel. They also now share
+  one dash grid anchored to the diagram, so dashes cross a joint without stepping.
+- **Two crooked pipes straightened** — the PORV discharge now drops straight down into its box,
+  and the turbine-to-condenser run is square instead of leaning (issue #232).
+- **Board polish from the V2 playtest** (issue #231). Three things you can see:
+  - **The pressurizer no longer sits off its own pipework.** Its centreline was 6 px left of
+    the surge tee below it and the PORV block valve above it, so the surge line and the relief
+    tap each ran slightly out of plumb between two horizontal flanges. Both now line up.
+  - **Fittings flow at the same speed as the pipes they join.** Tees and the cold-leg cross
+    animated their dashes 55 % faster than the runs either side, so the flow visibly stepped at
+    every joint. Both now read their speed from one shared rule.
+  - **The vital-parameter tiles sit still.** Average coolant temperature, subcooling margin and
+    pressurizer level were jittering roughly three times a second — Tavg by 2.5 °F peak to peak,
+    which is not what those instruments do. Tavg comes from RTDs in a damped bypass manifold and
+    barely moves; pressurizer level is a steady differential-pressure reading. Both are now ~3x
+    quieter (Tavg ±0.2 °F). Reactor power and steam-generator level are **unchanged and still
+    lively on purpose** — excore power genuinely wanders, and narrow-range SG level really does
+    bounce with boiling and shrink/swell. That contrast is now a real reading, not an artefact.
+- **Saving mid-scenario could strand you on a step you had already done** (issue #142). Some
+  scenario beats wait for you to *do* something — open a valve, switch load mode. The record
+  of having done it was not written into the save, so if you saved (or hit an automatic
+  checkpoint, or rewound) between the action and the beat reacting to it, the instructor came
+  back believing you had done nothing. On a one-shot action there is nothing to repeat, and
+  the scenario had no way forward. The same save also reset how far a walkthrough step had
+  progressed toward its acceptance check, quietly costing you up to five evaluations of
+  credit. Both now survive a save. Older save files still load and behave exactly as they did.
 
 ## [Alpha 1.7.1] — 2026-07-27
 

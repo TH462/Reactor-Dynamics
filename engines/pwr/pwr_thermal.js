@@ -90,7 +90,15 @@
     var e = cfg.emergency, Q_rhr = 0;
     if (s.rhr_active && s.condenser_cooling_available) {
       var hxFrac = (s.rhr_hx_fraction != null ? s.rhr_hx_fraction : 1);
-      Q_rhr = e.rhr_gain * hxFrac * Math.max(0, s.tavg_c - e.rhr_sink_c);
+      // The RHR heat exchanger rejects to the same circulating water the condenser uses, so
+      // its sink temperature moves with the CW inlet: warm circ water raises the floor a
+      // cooldown can reach and slows the approach to it. Referenced to cw_inlet_ref_c so the
+      // default is the calibrated rhr_sink_c exactly.
+      var tbc = (cfg.turbine || {});
+      var cwRef = tbc.cw_inlet_ref_c != null ? tbc.cw_inlet_ref_c : 26.7;
+      var cwNow = s.cw_inlet_temp_c != null ? s.cw_inlet_temp_c : cwRef;
+      var sink = e.rhr_sink_c + (cwNow - cwRef);
+      Q_rhr = e.rhr_gain * hxFrac * Math.max(0, s.tavg_c - sink);
     }
     // RCP heat: pump shaft work deposited in the coolant, scaled by flow — the
     // real no-load heat source (heats the plant if the heat sink is isolated),

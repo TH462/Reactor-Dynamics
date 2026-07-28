@@ -64,6 +64,9 @@
     // so the transmitter sees everything leaving the SG. Appended — PRNG order
     // preserved. See pwr_steam_generator.js `steam_out_total`.
     sg_steam_flow: 'steam_out_total',
+    // Circulating-water inlet temperature — the heat sink the condenser (and the RHR
+    // exchanger) has to work against. Appended last, so PRNG order is preserved.
+    cw_inlet_temp: 'cw_inlet_temp_c',
   };
 
   function PWRInstruments(config, seed) {
@@ -74,6 +77,8 @@
     // without touching PRNG draw order (still one draw per instrument), so saves/rewinds
     // and the scenario suite stay deterministic.
     this.noiseScale = (config.instrument_noise_scale != null) ? config.instrument_noise_scale : 1;
+    // Default noise correlation time (s). Per-instrument override: spec.noise_tau.
+    this.noiseTau = (config.instrument_noise_tau_s != null) ? config.instrument_noise_tau_s : 8;
     this.swell_factor = 0.8; // SG level shrink-and-swell [tune]
     this.defaults = config.physics_failures;
     this.seed = (seed >>> 0) || 0x9E3779B9;
@@ -82,6 +87,7 @@
     this.lagged = {};   // first-order lag buffers, per id
     this.reading = {};  // final indicated values, per id (what the UI/M4 read)
     this.failed = {};   // active instrument failures, per id
+    this._noiseState = {};  // AR(1) noise walk, per id (see _noise)
   }
 
   // Box-Muller using the saveable PRNG; advances and records the state each draw.
@@ -102,11 +108,61 @@
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 
+  // ---------------------------------------------------------------------------
+  // INSTRUMENT NOISE (#233) — two properties, both about how the board FEELS.
+  //
+  // 1. It DRIFTS. White noise re-drawn every step made every reading jump the full
+  //    width of its band between samples: an instant bam-bam from limit to limit,
+  //    which reads twitchy rather than alive. Real transmitter noise is band-limited
+  //    — it wanders. This is an AR(1) / Ornstein-Uhlenbeck walk with correlation time
+  //    `noise_tau` seconds. It leaves the STATIONARY sigma exactly as configured, so
+  //    every amplitude decision in pwr_config still means what it says; it only slows
+  //    how fast the reading crosses that band.
+  //
+  // 2. It SCALES WITH SIGNAL where zero means off. A constant absolute sigma made a
+  //    secured pump's flow indication wander around ±1 gpm instead of sitting on zero,
+  //    which is the single biggest source of "everything on this board twitches".
+  //    `noise_ref` = the reading at which the FULL sigma applies; below it the sigma
+  //    tapers linearly to nothing, so a process that is genuinely off indicates a
+  //    still zero. This is the signal-dependent model the #217 note asked for, and it
+  //    is why power_range can now be quiet at 1 % and lively at 100 % with one number.
+  //
+  // PRNG SAFETY: the draw is taken at the FULL configured sigma and scaled afterwards,
+  // never by passing a smaller sigma to _gauss. _gauss returns without drawing when
+  // sigma <= 0, so scaling the sigma would change the DRAW COUNT as a pump started and
+  // stopped, and the instrument PRNG is one continuous cross-step stream — every
+  // downstream instrument's noise would shift mid-run. One _gauss (two draws) per
+  // instrument per step, exactly as before.
+  // ---------------------------------------------------------------------------
+  PWRInstruments.prototype._noise = function (id, spec, dt, trueVal) {
+    var sigma = spec.noise * this.noiseScale;
+    if (!(sigma > 0)) return 0;                       // no draw — matches the old behaviour
+    var raw = this._gauss(0, sigma);
+    var tau = spec.noise_tau != null ? spec.noise_tau : this.noiseTau;
+    var prev = this._noiseState[id] || 0;
+    var n;
+    if (tau > 0 && dt > 0) {
+      // rho = exp(-dt/tau); the sqrt(1-rho^2) factor is what holds the stationary
+      // sigma at `sigma` instead of letting the walk shrink toward zero.
+      var rho = Math.exp(-dt / tau);
+      n = rho * prev + Math.sqrt(Math.max(0, 1 - rho * rho)) * raw;
+    } else {
+      n = raw;
+    }
+    this._noiseState[id] = n;
+    // Signal taper. Applied to the OUTPUT, not the sigma (see PRNG SAFETY above).
+    if (spec.noise_ref > 0) {
+      var f = Math.abs(trueVal) / spec.noise_ref;
+      n *= (f < 0 ? 0 : f > 1 ? 1 : f);
+    }
+    return n;
+  };
+
   // Initialize every reading to the (noise-free) true value — no startup transient.
   // Log instruments (spec.log — the source/intermediate-range nuclear detectors)
   // keep their LAG BUFFER in log10 domain, so lag and noise act per decade.
   PWRInstruments.prototype.reset = function (trueState, extras) {
-    this.lagged = {}; this.reading = {}; this.failed = {};
+    this.lagged = {}; this.reading = {}; this.failed = {}; this._noiseState = {};
     for (var id in SOURCE) {
       var v = trueState[SOURCE[id]];
       var spec = this.specs[id];
@@ -146,14 +202,14 @@
         if (this.lagged[id] == null || !isFinite(this.lagged[id])) this.lagged[id] = lv;
         var alphaL = dt / (spec.lag + dt);
         this.lagged[id] += alphaL * (lv - this.lagged[id]);
-        val = clip(Math.pow(10, this._gauss(this.lagged[id], spec.noise * this.noiseScale)), spec.range[0], spec.range[1]);
+        val = clip(Math.pow(10, this.lagged[id] + this._noise(id, spec, dt, trueVal)), spec.range[0], spec.range[1]);
       } else {
         // First-order lag (§8.1).
         var alpha = dt / (spec.lag + dt);
         this.lagged[id] += alpha * (trueVal - this.lagged[id]);
 
         // Noise (§8.2), then range peg (§8.3).
-        val = this._gauss(this.lagged[id], spec.noise * this.noiseScale);
+        val = this.lagged[id] + this._noise(id, spec, dt, trueVal);
         val = clip(val, spec.range[0], spec.range[1]);
       }
 
@@ -219,12 +275,18 @@
       failed: JSON.parse(JSON.stringify(this.failed)),
       rngState: this._rngState,
       seed: this.seed,
+      // The AR(1) walk carries state ACROSS steps, so a restore that skipped it would
+      // resume from zero noise and diverge from the run it restored — same class of bug
+      // as omitting a lag buffer. Old saves have no field; {} is the correct migration
+      // (it means "start the walk from rest", which is what reset() does).
+      noiseState: Object.assign({}, this._noiseState),
     };
   };
   PWRInstruments.prototype.load = function (s) {
     this.lagged = Object.assign({}, s.lagged);
     this.reading = Object.assign({}, s.reading);
     this.failed = JSON.parse(JSON.stringify(s.failed));
+    this._noiseState = Object.assign({}, s.noiseState || {});
     // Rename-in-place migrations (old saves): lpi_flow → hpi_flow (HPI/LPI merge).
     ['lagged', 'reading', 'failed'].forEach(function (k) {
       var o = this[k];

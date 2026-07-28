@@ -115,8 +115,10 @@ before the finale:
 | 29 | TMI-2 · Part 3 — Second Watch | [S] `pwr_tmi2_p3` | Same shift, same board — but this time you know. Change history |
 
 ### Act VI — The Reckoning (boss fight & qualification)
-*(As built the display title is "Act VI — The Reckoning"; the code act id in
-`ui/campaign_data.js` remains `'act5'` — only the TMI-2 act got a new id, `'act5_tmi2'`.)*
+*(As built the display title is "Act VI — The Reckoning", and since 2026-07-27b the code
+act id in `ui/campaign_data.js` matches it: `'act6'`. It was `'act5'` — kept that way on the
+belief that act ids keyed saved progress — until that was measured and found false: only
+scenario and procedure ids are persisted in `rd_progress`. The TMI-2 act is `'act5_tmi2'`.)*
 
 | # | Mission | Kind | Teaches |
 |---|---------|------|---------|

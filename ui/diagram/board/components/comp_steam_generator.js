@@ -166,6 +166,13 @@
       h('line', { x1: gx, y1: 0, x2: gx + gw, y2: 0, stroke: '#eaf4fb', strokeWidth: 1.6 }));
     gEls.push(markerGroup);
     gEls.push(h('text', { x: gx + gw / 2, y: gTop - 10, textAnchor: 'middle', fill: '#5b93b8', fontSize: 10, fontFamily: "'IBM Plex Mono',monospace", letterSpacing: '0.08em' }, 'LVL'));
+    // OFF by default on the V2 board (owner, 2026-07-27): SG narrow-range level is a
+    // vital-parameter tile in the top strip now, so the strip beside the vessel was a
+    // second copy of the same reading crowding the mimic. Kept behind a flag rather than
+    // deleted — the vessel cutaway shows WIDE range, so the narrow-range gauge is the only
+    // place the trip/alarm zones are drawn, and a layout that drops the tiles wants it back.
+    // markerGroup stays live either way; moving a detached node is harmless.
+    if (cfg.showGauge !== true) gEls = [];
 
     // ---- root svg (tight, controls-hidden viewBox crop) ----
     var svg = h('svg', {

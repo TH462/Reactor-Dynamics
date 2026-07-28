@@ -503,6 +503,7 @@
       condensate_pump_running: s.condensate_pump_running !== false,
       pump_running: s.pump_running, pump_flow_pct: s.pump_flow_pct, station_blackout: s.station_blackout,
       turbine_rpm: s.turbine_rpm, condenser_vacuum_kpa: s.condenser_vacuum_kpa,
+      cw_inlet_temp_c: s.cw_inlet_temp_c,
       condenser_cooling_available: s.condenser_cooling_available,
       scrammed: s.scrammed, melted: s.melted,
       destruction_cause: s.destruction_cause,   // 'none' | 'thermal_melt' — outcome-grading hook (sibling of fuel_damaged/melted)
@@ -581,6 +582,7 @@
       load_target_mwe: s.load_target_mwe,
       sg_imbalance: s.sg_imbalance_active
         ? (s.load_imbalance_mwe > 0 ? 'filling' : 'draining') : 'balanced',
+      cw_inlet_temp_c: s.cw_inlet_temp_c,   // circ-water inlet setting (set_condenser_cw_temp)
       steam_dump_pct: s.steam_dump_frac * 100,
       steam_dump_auto: s.steam_dump_override == null,
       steam_dump_setpoint: (s.steam_dump_setpoint != null ? s.steam_dump_setpoint : this.cfg.steam_generator.steam_dump_setpoint),
@@ -865,6 +867,16 @@
         // drops MAIN feedwater to zero (AFW is unaffected — separate train). Blocked
         // while blacked out (no AC power). See stepSecondary (condOK gate).
         if (!s.station_blackout) s.condensate_pump_running = !!cmd.running;
+        break;
+      // Circulating-water inlet temperature (°C). Not a plant control in the sense of a
+      // switch the operator throws — it is the heat sink the site is given, exposed so the
+      // effect is demonstrable: warm water costs vacuum, costs output, and raises the floor
+      // an RHR cooldown can reach. Clipped to the modelled range.
+      case 'set_condenser_cw_temp':
+        if (cmd.c == null || !isFinite(cmd.c)) break;
+        s.cw_inlet_temp_c = clip(cmd.c,
+          this.cfg.turbine.cw_inlet_min_c != null ? this.cfg.turbine.cw_inlet_min_c : 4.4,
+          this.cfg.turbine.cw_inlet_max_c != null ? this.cfg.turbine.cw_inlet_max_c : 37.8);
         break;
       case 'set_steam_dump_setpoint':
         // Operator no-load steam-dump target (MPa). Lowered during a cooldown so the
@@ -1258,6 +1270,10 @@
       afw_throttle_frac: 1.0, afw_flow_normalized: 0,   // AFW throttle (set_afw_flow) + delivered flow
 
       turbine_rpm: cfg.turbine.rpm_rated, condenser_vacuum_kpa: cfg.turbine.vacuum_rated,
+      // Circulating-water inlet temperature. Defaults to the reference the vacuum model is
+      // calibrated at, so an untouched plant behaves exactly as it did before CW temperature
+      // was modelled (see turbine.cw_inlet_ref_c).
+      cw_inlet_temp_c: cfg.turbine.cw_inlet_ref_c != null ? cfg.turbine.cw_inlet_ref_c : 26.7,
       generator_load: P0, turbine_demand_frac: P0, turbine_tripped: false,
       // Turbine governor valve tracks load demand (% open); starts matched to P0 so
       // steam_flow = (gov/100)·(P/Prated) reproduces the P0 steady state at reset.
@@ -1520,6 +1536,11 @@
     // state — seed it at the commanded setpoint (the save is settled there).
     if (s._pressure_sp_eff == null) s._pressure_sp_eff = s.pressure_setpoint;
     if (s.steam_dump_setpoint == null) s.steam_dump_setpoint = this.cfg.steam_generator.steam_dump_setpoint;
+    // Saves that predate the CW-temperature model restore at the reference temperature, so
+    // they replay with exactly the vacuum behaviour they were recorded under.
+    if (s.cw_inlet_temp_c == null) {
+      s.cw_inlet_temp_c = this.cfg.turbine.cw_inlet_ref_c != null ? this.cfg.turbine.cw_inlet_ref_c : 26.7;
+    }
     // Loop pressure nodes (loop-pressure rework 2026-07). Recomputed each step from
     // pressure_mpa/flow_frac, but seed them so getTrueState is valid pre-first-step.
     if (s.p_coldleg == null || s.p_hotleg == null || s.p_pumpsuction == null) {

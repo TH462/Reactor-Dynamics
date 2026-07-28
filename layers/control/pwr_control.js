@@ -65,11 +65,20 @@
       action: 'scram', condition: 'above_p9' },
   ];
 
-  // ---- Reactor Trip on Turbine Trip (P-9) — the ANTICIPATORY trip, currently OFF ----
+  // ---- Reactor Trip on Turbine Trip (P-9) — the ANTICIPATORY trip. ON. ----
   // Real Westinghouse PWRs trip the reactor whenever the turbine trips above P-9 (~50 %
   // power): losing the heat sink at high power is not something to wait out, so the trip
   // anticipates the transient rather than waiting for a process limit to be exceeded.
-  // THIS PLANT DOES NOT HAVE IT, and the absence has a tangled history (#216):
+  //
+  // THIS PLANT NOW HAS IT — `protection.turbine_trip_reactor_trip: true`
+  // (`pwr_config.js:763`), adopted 2026-07-26f after the #216 audit. This header said
+  // "currently OFF … THIS PLANT DOES NOT HAVE IT" for a day after that flag flipped,
+  // which is worth a moment: the comment narrating how a stale claim hardened into
+  // "by design" had gone stale in precisely the same way. Corrected 2026-07-27b.
+  // Keep the history below — it is why the trip exists, and it is the worked example
+  // behind HR9.
+  //
+  // The absence had a tangled history (#216):
   //   • 2026-07-18 — a general P-9 WAS implemented, it broke the `pwr_msiv` mission, and
   //     it was narrowed to the SG-level cause for that reason; the realistic version was
   //     deferred because "it would require re-authoring pwr_msiv around a reactor trip".
@@ -77,10 +86,11 @@
   //     DESIGN", and that claim was used to reject adding it (#215).
   //   • TR-8's genuine "physics, not anticipation" ruling (2026-07-21) POSTDATES the
   //     scoping by three days, so it rationalised the gap rather than causing it.
-  // Under HR9 ("err toward what real plants do") the presumption is now that it belongs.
-  // Built here and left DEFAULT-OFF pending the owner's ruling, so the blast radius can
-  // be measured by flipping one flag rather than guessed at. Flip
-  // `protection.turbine_trip_reactor_trip` in pwr_config.js to enable.
+  // Under HR9 ("err toward what real plants do") the presumption was that it belongs, and
+  // that is how it was ruled. It was built here DEFAULT-OFF first, so the blast radius
+  // could be measured by flipping one flag rather than guessed at — then turned ON, and
+  // `pwr_msiv` was re-authored around the trip instead of the trip being narrowed around
+  // the mission (#218). That ordering is the point: content followed the plant (HR9).
   //
   // NOT `blockable`, deliberately. `condition: 'above_p9'` IS the P-9 bypass: below 50 %
   // power the trip is bypassed AUTOMATICALLY, because there the plant genuinely can ride
@@ -458,6 +468,14 @@
       // the loop" — while pvDisplay:false keeps it off the Automate tab.
       pv: function (s) { return s.instruments.boron_analyzer; }, pvDisplay: false,
       sp: { capture: function (s) { return s.instruments.boron_analyzer; }, min: 0, max: 2500, unit: 'ppm', dp: 0, step: 10 },
+      // The dose rides charging flow, so with the charging pump stopped the
+      // totalizer pauses — mirroring the engine's own injection gate. The kernel
+      // asks the plant this rather than reading the CVCS field itself (HR3).
+      // The `s.control_state &&` guard is carried over verbatim from the kernel code
+      // this replaced — a missing control_state read as "not paused", and moving the
+      // check into the plant must not quietly turn that into a throw.
+      pausedWhen: function (s) { return !!(s.control_state && s.control_state.charging_pump_running === false); },
+      pausedNote: 'idle — charging pump OFF',
       // rate: real-plant scale — max RCS makeup (~150 gpm into ~90 000 gal) changes
       // concentration ~1.5 ppm/min ≈ 0.025 ppm/s; 0.05 is deliberately generous so a
       // dose lands in game-time (~0.5 pcm/s of reactivity at 10 pcm/ppm worth, gentle
@@ -553,7 +571,16 @@
     esf_systems: PWR_ESF_SYSTEMS,
   };
 
-  RD.PWR_CONTROL = { protection: PWR_PROTECTION };
+  // trefProgram is exported so the HMI can draw the SAME sliding Tavg program the rods are
+  // driving to, instead of approximating it (#233). A tile whose green band disagreed with
+  // the controller's reference would be worse than no band at all.
+  RD.PWR_CONTROL = {
+    protection: PWR_PROTECTION,
+    trefProgram: trefProgram,
+    TAVG_NOLOAD: TAVG_NOLOAD,
+    TAVG_FULLPOWER: TAVG_FULLPOWER,
+    TAVG_DEADBAND_C: 0.8   // rods_tavg lock-up band (±0.8 °C / ±1.5 °F)
+  };
   RD.PWR_PROTECTION = PWR_PROTECTION;                              // legacy name
   if (RD.PWR_CONFIG) RD.PWR_CONFIG.protection = PWR_PROTECTION;    // engine failure dispatch reads this
 

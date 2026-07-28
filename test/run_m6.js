@@ -331,6 +331,67 @@ T.push(test('Save/restore — mid-scenario progress round-trips via the registry
   delete RD.SCENARIOS.__m6test;
 }));
 
+// #142. Two pieces of PROGRESS used to be dropped by saveState: the operator-action
+// memory and the follow-mode acceptance streak. Both restored as "nothing has
+// happened yet", so a save (or an auto-checkpoint, or a rewind — all the same
+// path) silently undid work the player had already done. The action memory is the
+// serious one: an `operator_action` beat fires because a matching command
+// descended since the last beat fired, and this list is the only record of that,
+// so a one-shot action performed before the save could never be credited and the
+// scenario had no way forward.
+T.push(test('Save/restore — operator-action memory and acc streak are progress, not scratch (#142)', function (ck) {
+  RD.SCENARIOS = RD.SCENARIOS || {};
+  RD.SCENARIOS.__m6act = { id: '__m6act', beats: [
+    { id: 'b1', trigger: { type: 'time', value: 0 }, commentary: { learning: 'go', industry: 'GO' } },
+    { id: 'b2', trigger: { type: 'operator_action', command: 'open_porv' }, commentary: { learning: 'seen', industry: 'SEEN' } },
+  ] };
+  var x = instrWith(RD.SCENARIOS.__m6act);
+  x.it.step(snap(), 1);                                  // b1 fires, arming b2
+  ck('action beat armed', x.it.currentBeatId, x.it.currentBeatId === 'b2', 'b2');
+  x.it.handleCommand({ action: 'open_porv' });            // the one-shot the beat watches
+  var saved = JSON.parse(JSON.stringify(x.it.saveState()));
+  ck('save carries the action memory', (saved.actions_since_beat || []).length,
+    (saved.actions_since_beat || []).length === 1, '1 command');
+
+  var y = new RD.InstructorLayer(mockLayer());
+  y.loadState(saved);
+  y.step(snap(), 2);
+  ck('restored instructor credits the action (no softlock)', y.getMessage().message,
+    y.getMessage().message === 'seen', 'seen');
+
+  // A save written before #142 has no such field; it must still load, and behave
+  // exactly as it used to — the beat stays armed.
+  var legacy = JSON.parse(JSON.stringify(saved));
+  delete legacy.actions_since_beat;
+  var z = new RD.InstructorLayer(mockLayer());
+  z.loadState(legacy);
+  z.step(snap(), 2);
+  ck('pre-#142 save still loads, with its old behaviour', z.currentBeatId, z.currentBeatId === 'b2', 'b2 still armed');
+  delete RD.SCENARIOS.__m6act;
+
+  // Follow mode: a partly-earned acceptance streak (ACC_STABLE_N = 5) must survive.
+  RD.MANUAL_PROCEDURES = RD.MANUAL_PROCEDURES || {};
+  RD.MANUAL_PROCEDURES.pwr = RD.MANUAL_PROCEDURES.pwr || [];
+  RD.MANUAL_PROCEDURES.pwr.push(synthProc());
+  var f = followInstr();
+  f.it.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -10 });
+  var inBand = snap({ instruments: { power_range: 90 }, true_state: { power_pct: 90 } });
+  for (var i = 0; i < 3; i++) f.it.step(inBand, i);       // 3 of the 5 needed
+  var fsaved = JSON.parse(JSON.stringify(f.it.saveState()));
+  ck('save carries the partial acc streak', fsaved.follow && fsaved.follow.acc_streak,
+    fsaved.follow && fsaved.follow.acc_streak === 3, '3');
+  var g = new RD.InstructorLayer(mockLayer());
+  g.loadState(fsaved);
+  ck('streak restored, not zeroed', g.follow && g.follow.accStreak, g.follow && g.follow.accStreak === 3, '3');
+  g.step(inBand, 4);
+  ck('restored streak still short of the debounce', g.getSnapshotBlock().follow.step_index,
+    g.getSnapshotBlock().follow.step_index === 0, 'step 0');
+  g.step(inBand, 5);
+  ck('advances on the 5th evaluation, counting the 3 it was saved with',
+    g.getSnapshotBlock().follow.step_index, g.getSnapshotBlock().follow.step_index === 1, 'step 1');
+  RD.MANUAL_PROCEDURES.pwr = RD.MANUAL_PROCEDURES.pwr.filter(function (p) { return p.id !== 'p_test'; });
+}));
+
 T.push(test('Consume-flags + rebaseTime (rewind support)', function (ck) {
   var x = instrWith({ id: 't', beats: [
     { id: 'b1', trigger: { type: 'time', value: 0 }, speed: 30, commentary: { learning: 'x', industry: 'x' } },

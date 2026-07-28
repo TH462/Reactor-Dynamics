@@ -534,7 +534,11 @@
   //
   // Noise is now set per indication at the source (pwr_config instrument table), sized
   // against each readout's display step. One knob, in one place, sim-time correct.
-  function dampInstruments(s) { /* no-op — see above */ }
+  //
+  // The no-op stub and its call site are gone as of 2026-07-27b (#158): an empty
+  // function that every reader has to open the file to understand is worse than no
+  // function. This comment is the part worth keeping — it says why the board does
+  // NOT damp, which is the question someone will eventually come here to ask.
 
   // ============================================================ render snapshot
   // Rendering is coalesced onto requestAnimationFrame. The sim broadcasts from a
@@ -563,8 +567,10 @@
     });
   }
   function renderNow(s) {
-    var rawIns = s.instruments;   // capture BEFORE damping — the strip chart plots RAW, unsmoothed readings at every speed
-    dampInstruments(s);
+    // `rawIns` used to mean "captured BEFORE display damping". There is no damping
+    // any more (#217), so it is simply the instruments — kept as a named local
+    // because the chart paths below read it a few times (#158).
+    var rawIns = s.instruments;
     $('clock').textContent = 'T+' + hms(s.metadata.sim_time);
     $('clock').classList.toggle('running', s.metadata.running);
     $('clock').classList.toggle('accel', s.metadata.time_acceleration > 1);
@@ -1263,7 +1269,7 @@
     var c = campaign();
     if (c && finished && campaignMissions(c).some(function (m) { return m.id === finished; })) {
       var nxt = campaignFrontier();
-      if (nxt) { startMission(nxt); buildTraining(); return; }
+      if (nxt) { startMission(nxt); refreshMissionSelect(); return; }
     }
     if (latest) renderInstructor(latest);
   }
@@ -1300,7 +1306,7 @@
       var cp = p.completed_procedures || [];
       if (cp.indexOf(ui.follow.id) === -1) { cp.push(ui.follow.id); saveProgress({ completed_procedures: cp }); }
     }
-    buildTraining();
+    refreshMissionSelect();
   }
 
   // ---- Campaign (Path 3 wrapper — Blueprint/pwr_training_campaign.md) ----
@@ -1396,9 +1402,11 @@
     $('missionOverlay').hidden = false;
   }
   function closeMissionSelect() { $('missionOverlay').hidden = true; }
-  // Legacy name, still the "training lists changed" refresh hook (completion
-  // marks, active-scenario card): re-render the window if it's open.
-  function buildTraining() {
+  // Called whenever something that the mission window displays has changed
+  // (completion marks, the active-scenario card): re-render it if it is open.
+  // Was `buildTraining`, a leftover from the retired Training tab — renamed
+  // 2026-07-27b (#158) now that it does exactly one thing and says so.
+  function refreshMissionSelect() {
     if (!$('missionOverlay').hidden) renderMissionSelect();
   }
   function scenariosFor(key) {
@@ -2571,10 +2579,10 @@
     $('fbClose').addEventListener('click', function () { $('feedbackOverlay').hidden = true; });
     $('feedbackOverlay').addEventListener('click', function (e) { if (e.target === $('feedbackOverlay')) $('feedbackOverlay').hidden = true; });
     $('fbSend').addEventListener('click', function () { sendFeedback(); });
-    // Hide side panel (⛶) — hides the right simulator panel and moves the time
-    // controls (.sim-controls) atop the middle alarms/graph column so the plant
-    // diagram gets even more room; toggle to bring the panel back. The middle
-    // column (.bottom-row) is resolved live since positionBottomRow() places it.
+    // Hide side panel (⛶) — hides the right simulator panel and tucks the time
+    // controls (.sim-controls) into the chart/alarms strip under the diagram so the
+    // plant diagram gets the full width; toggle to bring the panel back. .bottom-row
+    // is resolved live rather than cached — positionBottomRow() owns where it lives.
     (function () {
       var appEl = document.querySelector('.app');
       var simControls = document.querySelector('.sim-controls');
@@ -2587,7 +2595,7 @@
         var midCol = document.querySelector('.bottom-row');
         if (hidden) {
           appEl.classList.add('sim-hidden');
-          if (midCol) midCol.insertBefore(simControls, midCol.firstChild);  // time controls → top of the middle column
+          if (midCol) midCol.insertBefore(simControls, midCol.firstChild);  // time controls → left end of the strip
           demoBtn.classList.add('on');
           demoBtn.title = 'Show the side panel';
         } else {
@@ -2618,7 +2626,7 @@
       var cc = e.target.closest('[data-camp-continue]');
       if (cc) {
         var fm = campaignFrontier(msel.engine);
-        if (fm) { closeMissionSelect(); if (fm.kind !== 'scenario') ensureEngine(msel.engine); startMission(fm); buildTraining(); }
+        if (fm) { closeMissionSelect(); if (fm.kind !== 'scenario') ensureEngine(msel.engine); startMission(fm); refreshMissionSelect(); }
         return;
       }
       var cs = e.target.closest('[data-camp-start]');
@@ -2626,12 +2634,12 @@
         var kv = cs.getAttribute('data-camp-start').split(':');
         closeMissionSelect();
         if (kv[0] !== 'scenario') ensureEngine(msel.engine);
-        startMission({ kind: kv[0], id: kv[1] }); buildTraining(); return;
+        startMission({ kind: kv[0], id: kv[1] }); refreshMissionSelect(); return;
       }
       var st = e.target.closest('[data-trstart]');
-      if (st) { closeMissionSelect(); startScenario(st.getAttribute('data-trstart')); buildTraining(); return; }
+      if (st) { closeMissionSelect(); startScenario(st.getAttribute('data-trstart')); refreshMissionSelect(); return; }
       if (e.target.closest('[data-trstop]')) {
-        ui.scenario = null; cmd({ action: 'stop_scenario' }); buildTraining();
+        ui.scenario = null; cmd({ action: 'stop_scenario' }); refreshMissionSelect();
         if (latest) renderInstructor(latest); return;
       }
       var ckq = e.target.closest('[data-checklist]');
@@ -2640,7 +2648,7 @@
       if (f) { closeMissionSelect(); ensureEngine(msel.engine); followProcedure(f.getAttribute('data-follow')); }
     });
     // First-run Hook invitation (prompted, never forced — Gameplay §7.1).
-    $('hookStart').addEventListener('click', function () { $('hookPrompt').hidden = true; startScenario('pwr_hook'); buildTraining(); });
+    $('hookStart').addEventListener('click', function () { $('hookPrompt').hidden = true; startScenario('pwr_hook'); refreshMissionSelect(); });
     $('hookSkip').addEventListener('click', function () { $('hookPrompt').hidden = true; saveProgress({ hook_done: true }); });
     // Global keyboard shortcuts (documented in the ? help card). Skipped while
     // typing in a field or holding a modifier; Space is left alone when a
@@ -3058,7 +3066,7 @@
     syncOverlayRow();   // per-plant settings rows (Values Display is legacy-view only)
     buildAdvFail();     // advanced instrument-failure panel follows the active plant
     var ps = $('pdScram'); if (ps && !ps.classList.contains('fired') && !ps.classList.contains('armed')) ps.textContent = prof().scramShort;
-    buildTraining();   // walkthrough list follows the active plant
+    refreshMissionSelect();   // walkthrough list follows the active plant
     latest = service.assembleSnapshot(); render(latest);
     if (!$('manualOverlay').hidden) renderManual();   // keep the manual in sync on plant switch
   }
@@ -3444,21 +3452,21 @@
   // PWR: single full-plant synoptic (Blueprint/new_diagram_controls.md) replaces
   // the 4-view plant display. RBMK/BWR keep the legacy display until their own
   // diagram specs exist.
-  // PWR uses a 3-column grid (diagram | strip-chart+alarms | sim panel), so the
-  // strip chart + alarms live in the MIDDLE column: move .bottom-row out from
-  // under the diagram to be a direct child of .app. Other plants keep it under
-  // the plant display. Idempotent.
-  function positionBottomRow(syn) {
-    var app = document.querySelector('.app');
+  // The strip chart + alarms (.bottom-row) sit UNDER the diagram, inside .plant-area,
+  // for every plant — which is where the static markup already puts them, so this is
+  // now just a guard that keeps them there.
+  //
+  // They used to be reparented out to a middle grid column for PWR (diagram |
+  // chart+alarms | sim panel). The V2 board reclaimed that space: it carries its own
+  // vital-parameter tile strip across the top, so the middle column was competing with
+  // the diagram for width while duplicating what the tiles already showed. Two columns
+  // (diagram over chart+alarms | sim panel) gives the board the room it needs and puts
+  // the trend directly beneath the plant it is trending. Idempotent.
+  function positionBottomRow() {
     var plant = document.querySelector('.plant-area');
-    var right = document.querySelector('.right-col');
     var bottom = document.querySelector('.bottom-row');
-    if (!app || !plant || !right || !bottom) return;
-    if (syn) {
-      if (bottom.parentNode !== app) app.insertBefore(bottom, right);
-    } else if (bottom.parentNode !== plant) {
-      plant.appendChild(bottom);
-    }
+    if (!plant || !bottom) return;
+    if (bottom.parentNode !== plant) plant.appendChild(bottom);
   }
 
   function buildPlantDisplay() {
@@ -3555,10 +3563,10 @@
     // optional ?follow=<procId> deep-link — loads a procedure into the Instructor block
     var fm = /[?&]follow=([a-z0-9_]+)/.exec(location.search || '');
     if (fm) followProcedure(fm[1]);
-    buildTraining();
+    refreshMissionSelect();
     // optional ?scenario=<id> deep-link — starts an M6 scenario directly
     var scm = /[?&]scenario=([a-z0-9_]+)/.exec(location.search || '');
-    if (scm && RD.SCENARIOS && RD.SCENARIOS[scm[1]]) { startScenario(scm[1]); buildTraining(); }
+    if (scm && RD.SCENARIOS && RD.SCENARIOS[scm[1]]) { startScenario(scm[1]); refreshMissionSelect(); }
     // First-run Hook invitation (Gameplay §7.1): plain loads only — any deep link
     // (search string) or a completed/declined hook suppresses it.
     if (!location.search && !progress().hook_done && RD.SCENARIOS && RD.SCENARIOS.pwr_hook) {

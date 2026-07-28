@@ -32,7 +32,8 @@
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
       '@keyframes bubbleRiseS{0%{transform:translateY(0);opacity:0}14%{opacity:1}82%{opacity:1}100%{transform:translateY(-80px);opacity:0}}' +
       '@keyframes bubbleRiseM{0%{transform:translateY(0);opacity:0}12%{opacity:1}85%{opacity:1}100%{transform:translateY(-130px);opacity:0}}' +
-      '@keyframes bubbleRiseL{0%{transform:translateY(0);opacity:0}10%{opacity:1}88%{opacity:1}100%{transform:translateY(-180px);opacity:0}}';
+      '@keyframes bubbleRiseL{0%{transform:translateY(0);opacity:0}10%{opacity:1}88%{opacity:1}100%{transform:translateY(-180px);opacity:0}}' +
+      '@keyframes cherBreathe{0%,100%{opacity:0.82}50%{opacity:1}}';
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -50,10 +51,11 @@
     var ids = {
       steel: gid + 'Steel', cflow: gid + 'Cflow', pool: gid + 'Pool', strip: gid + 'Strip',
       fuel: gid + 'Fuel', ctrl: gid + 'Ctrl', coreClip: gid + 'CoreClip',
-      poolClip: gid + 'PoolClip', stripClip: gid + 'StripClip', glow: gid + 'Glow', glow2: gid + 'Glow2'
+      poolClip: gid + 'PoolClip', stripClip: gid + 'StripClip', glow: gid + 'Glow', glow2: gid + 'Glow2',
+      cher: gid + 'Cher', cherCore: gid + 'CherCore'
     };
     var R = {};   // refs to dynamic elements
-    var st = { regFrac: 0.8333, shutFrac: 0.8333, power: 1, coreInv: 100, boil: 45, glow: true, showFlow: true, tcold: 290, thot: 320 };
+    var st = { regFrac: 0.8333, shutFrac: 0.8333, power: 1, coreInv: 100, boil: 45, glow: true, showFlow: true, tcold: 290, thot: 320, cherenkov: 70 };
     var last = {};
     var lastBoil = -1;
 
@@ -78,7 +80,25 @@
         h('rect', { x: 225, y: 0, width: tubeW, height: stripH }),
         h('rect', { x: 309, y: 0, width: tubeW, height: stripH })),
       h('filter', { id: ids.glow, x: '-40%', y: '-40%', width: '180%', height: '180%' }, h('feGaussianBlur', { stdDeviation: '9' })),
-      h('filter', { id: ids.glow2, x: '-60%', y: '-60%', width: '220%', height: '220%' }, h('feGaussianBlur', { stdDeviation: '11' }))
+      h('filter', { id: ids.glow2, x: '-60%', y: '-60%', width: '220%', height: '220%' }, h('feGaussianBlur', { stdDeviation: '11' })),
+      // CHERENKOV: electric-blue radiance from the core. Both gradients keep the default
+      // objectBoundingBox units so they stretch with the ellipse they fill — that way the
+      // falloff stays a true width-wise oval instead of a circle clipped to an oval.
+      // (The design source defines cherCoreGrad twice, the second time in userSpaceOnUse;
+      // url(#id) resolves to the FIRST match, so that second block is dead and is not ported.)
+      h('radialGradient', { id: ids.cher },
+        h('stop', { offset: '0', stopColor: '#a6e2ff', stopOpacity: 0.16 }),
+        h('stop', { offset: '0.46', stopColor: '#86d2ff', stopOpacity: 0.22 }),
+        h('stop', { offset: '0.6', stopColor: '#55b8ff', stopOpacity: 0.46 }),
+        h('stop', { offset: '0.71', stopColor: '#33a0ff', stopOpacity: 0.62 }),
+        h('stop', { offset: '0.82', stopColor: '#2286ff', stopOpacity: 0.46 }),
+        h('stop', { offset: '0.91', stopColor: '#1d74f7', stopOpacity: 0.3 }),
+        h('stop', { offset: '0.97', stopColor: '#1b6bf5', stopOpacity: 0.13 }),
+        h('stop', { offset: '1', stopColor: '#1b6bf5', stopOpacity: 0 })),
+      h('radialGradient', { id: ids.cherCore },
+        h('stop', { offset: '0', stopColor: '#cdefff', stopOpacity: 0.5 }),
+        h('stop', { offset: '0.45', stopColor: '#7fd0ff', stopOpacity: 0.3 }),
+        h('stop', { offset: '1', stopColor: '#5ab8ff', stopOpacity: 0 }))
     );
 
     // ---- rod bank group (statics + CSS-transform moving parts) ----
@@ -172,7 +192,7 @@
       d: 'M155,244 L155,538 A125 50 0 0 0 405,538 L405,244 Z M177,244 L177,465 Q177,471 183,471 L377,471 Q383,471 383,465 L383,244 Z'
     }));
     // outer casing liner, broken only at the cold-leg inlet on the right
-    svgKids.push(h('path', { d: 'M152,240 L152,539 A128 51 0 0 0 408,539 L408,296 M408,268 L408,240', fill: 'none', stroke: '#2c3f4c', strokeWidth: 5, strokeLinecap: 'round', strokeLinejoin: 'round' }));
+    svgKids.push(h('path', { d: 'M152,240 L152,539 A128 51 0 0 0 408,539 L408,309 M408,281 L408,240', fill: 'none', stroke: '#2c3f4c', strokeWidth: 5, strokeLinecap: 'round', strokeLinejoin: 'round' }));
     // inner (core-barrel) walls, ending at the lower support plate
     function barrelWall(xc) {
       return h('g', null,
@@ -237,12 +257,27 @@
     svgKids.push(connsG);
     // data-port markers (hot-out / cold-in) — positions and attrs verbatim
     svgKids.push(h('circle', { cx: 422, cy: 214, r: 0.75, fill: 'none', 'data-port': 'hot-out', 'data-fluid': 'hotLeg', 'data-dir': 'right', 'data-size': 'large', 'data-out': '1' }));
-    svgKids.push(h('circle', { cx: 422, cy: 282, r: 0.75, fill: 'none', 'data-port': 'cold-in', 'data-fluid': 'coldLeg', 'data-dir': 'right', 'data-size': 'large', 'data-out': '0' }));
+    svgKids.push(h('circle', { cx: 422, cy: 295, r: 0.75, fill: 'none', 'data-port': 'cold-in', 'data-fluid': 'coldLeg', 'data-dir': 'right', 'data-size': 'large', 'data-out': '0' }));
     // control rod banks
     svgKids.push(bankA.el);
     svgKids.push(bankB.el);
     // boiling bubbles, clipped to core water (children rebuilt when boil changes)
     svgKids.push(R.bubbleG = h('g', { clipPath: 'url(#' + ids.poolClip + ')' }));
+    // ---- CHERENKOV RADIANCE (overlay, on top of the core art) ----
+    // FISSION RATE sets the intensity, not transient reactivity: at zero power there is no
+    // glow at all, and it grows and widens toward rated power. `cherenkov` is a gain on top.
+    // Two nested groups on purpose: the breathing keyframes animate opacity, so they must sit
+    // on the INNER group — on the outer one they would overwrite the intensity opacity and
+    // the gain would collapse to on/off. Nested, the two opacities multiply.
+    R.cherHeart = h('ellipse', { cx: cx, cy: 365, fill: 'url(#' + ids.cherCore + ')' });
+    R.cherHalo = h('ellipse', { cx: cx, cy: 365, fill: 'url(#' + ids.cher + ')' });
+    R.cherWash = h('ellipse', { cx: cx, cy: 365, fill: 'url(#' + ids.cher + ')', opacity: 0.42 });
+    R.cherG = h('g', { style: { mixBlendMode: 'screen', pointerEvents: 'none' } },
+      h('g', { style: { animation: 'cherBreathe 4.2s ease-in-out infinite' } },
+        R.cherWash,      // widest, faintest wash — carries the light sideways past the casing
+        R.cherHalo,      // main lens, laid width-wise across the core
+        R.cherHeart));   // bright heart, same aspect so it never reads as a circle
+    svgKids.push(R.cherG);
 
     // compact (vessel-only) frame from the source (showControls:false path)
     var svg = h('svg', { viewBox: '100 -110 362 715', width: '100%', height: '100%', style: { overflow: 'visible' } }, svgKids);
@@ -293,6 +328,24 @@
       R.fuelglow.setAttribute('fill', fuelBase);
       R.fuelglow.setAttribute('opacity', String(fuelGlowOpacity * 0.28));
       show(R.fuelglow, glowOn && fuelGlowOpacity > 0.01);
+      applyCherenkov(p, glowOn);
+    }
+
+    // Cherenkov intensity AND size both track fission rate, so the glow grows out of the core
+    // as power comes up rather than switching on. Gated by `glow` with the other halos.
+    function applyCherenkov(p, glowOn) {
+      var pf = clamp(p, 0, 1);
+      var amt = (clamp(st.cherenkov, 0, 100) / 100) * pf;
+      var on = glowOn && amt > 0.004;
+      show(R.cherG, on);
+      if (!on) return;
+      R.cherG.setAttribute('opacity', String(Math.min(1, amt)));
+      R.cherWash.setAttribute('rx', String(118 + 52 * pf));
+      R.cherWash.setAttribute('ry', String(128 + 66 * pf));
+      R.cherHalo.setAttribute('rx', String(110 + 50 * pf));
+      R.cherHalo.setAttribute('ry', String(90 + 45 * pf));
+      R.cherHeart.setAttribute('rx', String(68 + 25 * pf));
+      R.cherHeart.setAttribute('ry', String(56 + 26 * pf));
     }
 
     // Coolant water color = TEMPERATURE, via the same global ramp as the pipes/valves.
@@ -380,21 +433,31 @@
       var s = curS, kP = 1 / s, D = 12; // 'large' standard bore, canvas px
       while (connsG.firstChild) connsG.removeChild(connsG.firstChild);
       connsG.setAttribute('transform', 'scale(' + kP.toFixed(4) + ')');
+      // Internal circulation streaks are hand-drawn (no casing/bore), but they must sit on the
+      // SAME dash grid and timebase as every K.pipe run or they drift out of phase with the
+      // cold-leg pipe that joins them — and hard-coding a duration silently breaks whenever
+      // the kit's period changes. Take both from the kit (#233).
+      var CYC = K.DASH_CYCLE_S || 1.04;
       function flowLine(pts) {
+        var scaled = pts.map(function (q) { return [q[0] * s, q[1] * s]; });
+        var ph = K.dashPhase ? K.dashPhase(scaled, 1, CYC) : { pts: scaled, dir: 1, offset: 0, delay: 0 };
         return h('polyline', {
-          points: pts.map(function (q) { return (q[0] * s) + ',' + (q[1] * s); }).join(' '),
+          points: ph.pts.map(function (q) { return q[0] + ',' + q[1]; }).join(' '),
           fill: 'none', stroke: '#7fb0dd', strokeWidth: D * 0.42, strokeLinecap: 'round', strokeLinejoin: 'round',
-          strokeDasharray: '10 15', opacity: 0.9,
-          style: { animation: 'stdPipeFlow 10.4s linear infinite' }
+          strokeDasharray: '10 15', strokeDashoffset: ph.offset, opacity: 0.9,
+          style: {
+            animation: (ph.dir < 0 ? 'stdPipeFlowRev ' : 'stdPipeFlow ') + CYC.toFixed(3) + 's linear infinite',
+            animationDelay: ph.delay.toFixed(3) + 's'
+          }
         });
       }
       // hot leg / cold leg: bare mating flanges at the vessel wall (no protruding stub);
       // the modular pipe in the full diagram connects straight to these.
       connsG.appendChild(K.flange({ x: 422 * s, y: 214 * s, angle: 0, d: D }));
-      connsG.appendChild(K.flange({ x: 422 * s, y: 282 * s, angle: 0, d: D }));
+      connsG.appendChild(K.flange({ x: 422 * s, y: 295 * s, angle: 0, d: D }));
       // uniform-width circulation: down both downcomer channels into the lower plenum pool
       R.connFlows = [
-        flowLine([[394, 288], [394, 500], [316, 536]]),
+        flowLine([[394, 301], [394, 500], [316, 536]]),
         flowLine([[166, 250], [166, 500], [246, 536]])
       ];
       R.connFlows.forEach(function (l) { connsG.appendChild(l); });
@@ -418,6 +481,7 @@
       if (props.showFlow != null) st.showFlow = !!props.showFlow;
       if (props.tcold != null) st.tcold = props.tcold;
       if (props.thot != null) st.thot = props.thot;
+      if (props.cherenkov != null) st.cherenkov = clamp(props.cherenkov, 0, 100);
       applyAll(false);
     }
 
