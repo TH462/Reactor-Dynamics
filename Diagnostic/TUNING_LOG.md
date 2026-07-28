@@ -109,6 +109,34 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28f — pipe-flow deep pass: all 37 pipes measured in five states (#236)  🔬
+
+Owner: "pipe flows are not correct on a few pipes — go deeper." Measured every pipe's
+animation play-state, EFFECTIVE visual direction (recovered from the flow polyline's point
+order vs the case polyline + animation name — the CSS name alone is not the direction), port
+`data-active`, and live color, at hot full power / AFW+ECCS started / post-scram / Mode 5.
+**All findings in #236, nothing fixed.** The mechanism map that made the findings legible:
+dashes run iff both endpoint ports are active; only VALVES (unconditional write) and PUMPS
+(change-gated write) ever produce inactive; fittings gate ports on contents-empty only and
+the big components not at all.
+
+1. **`comp_pump` gating never initializes** — ports created active, written only on change,
+   `lastOn=false`: a pump that starts OFF animates its pipes forever (RWST→ECCS suction at
+   full power; RCP/feed/charging in Mode 5).
+2. **Mode 5 shows forced circulation**: 23/37 pipes animate on a dead plant (`flowing:false`
+   stills fitting interiors but not their ports; SG/RV/turbine/condenser have no gating).
+3. **PORV line**: block valve wired without the `flowing` arg → PZR→block-valve animates in
+   every state while block-valve→PORV is paused — steam flows into a shut valve. (MSIV has
+   the same omission — main steam animates in Mode 5.)
+4. **AFW line self-contradicts**: valve gates on commanded `afw_active`, feed tee on measured
+   `afw_flow` — started-but-not-delivering AFW runs into a frozen downstream segment.
+5. **RCP plumbed backwards** (loop enters 'discharge', exits 'suction'), held visually
+   correct by an authored `flowDir:fwd` patch — port semantics inverted, fragile to re-export.
+
+Verified CORRECT: all 37 visual directions at power, dump/spray/ECCS-discharge/letdown/
+charging/accumulator gating, every live PIPE_TEMP color in every state, dash-grid phase.
+Test gap noted in #236: board_check pins pipe existence, not animation-vs-plant-state.
+
 ### 2026-07-28e — post-diagram-update verification sweep: findings only, nothing fixed (#235)  🔬
 
 Owner asked for a thorough check of the updated V2 board/UI, findings filed not fixed —
