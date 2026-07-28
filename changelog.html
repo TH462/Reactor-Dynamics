@@ -68,6 +68,21 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>Readable gauges: no flicker, no overlap, and a temperature scale that fits the mode</h2>
+      <span class="log-ver mono">Alpha 1.8.1</span>
+      <time class="log-date mono" datetime="2026-07-28">28 July 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag fixed">Fixed</span><strong>The vital&#8209;parameter tiles no longer flicker</strong>, especially during a transient. Their coloured bands follow the plant live, and un&#8209;rounded edges were rebuilding the gauge about ten times a second.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Readings no longer overlap their own captions.</strong> A units bug collapsed each tile's caption to a one&#8209;pixel line, letting the number paint on top of it &mdash; and silently dropped every bold weight on the board.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The tile trend lines are smooth.</strong> They sampled once per frame instead of once per plant step, covering barely thirty seconds of history as a coarse staircase. They now show a true three&#8209;minute window at any speed.</li>
+      <li><span class="log-tag added">Added</span><strong>Low coolant temperature alarm (P&#8209;12).</strong> The board warned and tripped on high Tavg but had nothing on the cold side, so an overcooling transient lit no warning. There is deliberately no low&#8209;Tavg trip &mdash; a PWR does not scram on low coolant temperature.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The average&#8209;coolant&#8209;temperature tile is scaled to the mode you are in</strong> &mdash; the hot operating window when hot, a cold&#8209;shutdown window below Mode&nbsp;3 &mdash; so the green programme band is a readable width instead of a hairline.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>A glowing core, a bigger board, and instruments that sit still</h2>
       <span class="log-ver mono">Alpha 1.8.0</span>
       <time class="log-date mono" datetime="2026-07-28">28 July 2026</time>

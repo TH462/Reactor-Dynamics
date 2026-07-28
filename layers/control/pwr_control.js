@@ -212,6 +212,17 @@
     { id: 'reactor_trip',      instrument: 'rps_scrammed',     direction: 'is_true', setpoint: null,  priority: 'critical', panel: 'A', label_learning: 'Reactor Trip',                     label_industry: 'REACTOR TRIP' },
     { id: 'high_flux',         instrument: 'power_range',      direction: 'high',    setpoint: 108.0, priority: 'critical', panel: 'A', label_learning: 'High Neutron Flux',                label_industry: 'HI FLUX' },
     { id: 'high_tavg',         instrument: 'tavg',             direction: 'high',    setpoint: 312.2, priority: 'warning',  panel: 'A', label_learning: 'High Coolant Temperature',        label_industry: 'HI TAVG' },
+    // LOW Tavg (#233 playtest): the board had a high alarm and a high scram and NOTHING on
+    // the cold side, so the tile's low region ran unbounded to the bottom of the meter and
+    // an overcooling transient annunciated nothing. 289 °C is the P-12 line — the classic
+    // low-Tavg permissive, ~8 °C below the no-load program anchor — so it is clear at hot
+    // standby (Tavg parks at ~297 after a trip) and comes in as soon as you are genuinely
+    // cooling below the hot operating band. It stands IN through a Mode 4/5 cooldown, which
+    // is correct: you are deliberately outside the band, and a real board tells you so.
+    // Deliberately an alarm and NOT a trip — a PWR does not scram on low Tavg. The real
+    // cold-side protections are this interlock and low-temperature overpressure protection,
+    // neither of which is a reactor trip.
+    { id: 'low_tavg',          instrument: 'tavg',             direction: 'low',     setpoint: 289.0, priority: 'warning',  panel: 'A', label_learning: 'Low Coolant Temperature',         label_industry: 'LO TAVG (P-12)' },
     { id: 'pzr_pressure_high', instrument: 'primary_pressure', direction: 'high',    setpoint: 15.86, priority: 'warning',  panel: 'A', label_learning: 'Pressurizer Pressure High',       label_industry: 'PZR PRESS HI' },
     { id: 'pzr_pressure_low',  instrument: 'primary_pressure', direction: 'low',     setpoint: 14.82, priority: 'warning',  panel: 'A', label_learning: 'Pressurizer Pressure Low',        label_industry: 'PZR PRESS LO' },
     { id: 'pzr_pressure_lolo', instrument: 'primary_pressure', direction: 'low',     setpoint: 12.41, priority: 'critical', panel: 'A', label_learning: 'Pressurizer Pressure Very Low',   label_industry: 'PZR PRESS LO LO' },

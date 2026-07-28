@@ -36,17 +36,13 @@
 
   var W = 240, H = 36, PAD = 5;   // sparkline viewBox
   var GW = W - 4;                 // gauge inner width
-  // Trace window: the last 3 minutes of SIM time, sampled evenly. Sampling on sim time
-  // rather than per render matters — the board renders at whatever rate the browser gives
-  // it, and the sim runs at up to 3600×, so a per-render buffer would cover three minutes
-  // of wall clock at 1× and about three seconds of it at speed. One sample every
-  // WINDOW_S / HIST_MAX seconds keeps the window honest at any time acceleration.
-  // Sample EVERY update — the same cadence the strip chart runs at — so the trace responds
-  // as fast as the plant does. The earlier 1-sample-per-2s window guaranteed exactly three
-  // minutes at any time acceleration, but at 1× it made the tiles feel dead: a rod pull
-  // took three samples to show. Fidelity wins; the buffer is sized to hold roughly three
-  // minutes at the normal render rate instead of enforcing it.
-  var HIST_MAX = 360;
+  // Trace window: the last WINDOW_S of SIM time, sampled evenly at SAMPLE_S. Sampling on
+  // sim time rather than per render is what keeps the window honest — the board renders at
+  // whatever rate the browser gives it (~10 Hz) and the sim can run at up to 3600x, so a
+  // per-render buffer showed ~36 s of plant as a coarse staircase and called it three
+  // minutes. HIST_MAX points across a 240 px sparkline is ~1.5 samples per pixel, which is
+  // what makes the trace read as a curve rather than a series of steps.
+  var WINDOW_S = 180, HIST_MAX = 360, SAMPLE_S = WINDOW_S / HIST_MAX;
   // Smallest vertical window the sparkline will auto-scale to, as a fraction of full scale.
   // Caps how far instrument noise can be magnified — see paint().
   var MIN_WINDOW = 0.15;
@@ -281,11 +277,27 @@
       // A rewind (or a reload to an earlier state) moves sim time BACKWARDS — drop the
       // stale tail rather than splicing a pre-rewind trace onto a post-rewind plant.
       var t = (props.t != null && isFinite(+props.t)) ? +props.t : null;
-      if (t != null && lastT != null && t < lastT) hist.length = 0;
-      if (t != null) lastT = t;
-      hist.push(st.value);
-      if (hist.length > HIST_MAX) hist.splice(0, hist.length - HIST_MAX);
+      if (t != null && lastT != null && t < lastT) { hist.length = 0; lastT = null; }
+      // Commit a sample every SAMPLE_S of SIM time, not once per render. The board renders
+      // at whatever rate the browser gives it (~10 Hz) while the sim advances 0.1 s a step,
+      // so a per-render buffer covered only ~36 s — the trace was a coarse staircase over a
+      // tiny window instead of a smooth curve like the strip chart underneath. On sim time
+      // the window is a true WINDOW_S at any time acceleration: at 3600x, SAMPLE_S passes
+      // every frame and it simply samples every render.
+      if (t == null) { commit(st.value); }
+      else if (lastT == null || t - lastT >= SAMPLE_S) {
+        // Catch up in whole sample slots so a fast-forward lays down a correctly-spaced
+        // trace instead of one point per broadcast.
+        var slots = (lastT == null) ? 1 : Math.min(HIST_MAX, Math.floor((t - lastT) / SAMPLE_S));
+        for (var q = 0; q < slots; q++) commit(st.value);
+        lastT = (lastT == null) ? t : lastT + slots * SAMPLE_S;
+      }
       paint();
+    }
+
+    function commit(v) {
+      hist.push(v);
+      if (hist.length > HIST_MAX) hist.splice(0, hist.length - HIST_MAX);
     }
 
     // Discard history — used when the sim rewinds or reloads, so the trace does not

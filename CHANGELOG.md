@@ -13,6 +13,37 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.1] — 2026-07-28
+
+### Fixed
+- **The vital-parameter tiles no longer flicker**, especially during a transient. Their
+  coloured bands are recomputed live from the plant (the Tavg band follows load, the pressure
+  band follows your setpoint), and the un-rounded edges were changing on every frame, so the
+  tile rebuilt its gauge about ten times a second. The edges are now rounded to whole display
+  units, so a band steps once when it means something instead of shimmering continuously.
+- **Readings no longer overlap their own captions.** A units bug in the board's DOM helper
+  emitted `line-height: 1.1` as `1.1px`, which collapsed each tile's caption to a 1-pixel line
+  box and let the reading paint on top of it. The same bug silently dropped every numeric
+  `font-weight`, so text meant to be bold was not.
+- **The tile trend lines are smooth.** They were sampling once per *frame* rather than once
+  per plant step, which covered barely thirty seconds of plant history as a coarse staircase.
+  They now sample on simulated time, so the trace is a true three-minute window at any
+  time-acceleration and reads like the strip chart underneath it.
+
+### Added
+- **Low coolant temperature alarm (P-12).** The board annunciated high Tavg and tripped on it,
+  but had nothing at all on the cold side — so an overcooling transient lit no warning, and the
+  temperature tile's scale ran unbounded to the bottom of the meter, leaving the operating band
+  an unreadable sliver. There is deliberately no low-Tavg *trip*: a PWR does not scram on low
+  coolant temperature, and the real cold-side protections are this interlock and low-temperature
+  overpressure protection.
+
+### Changed
+- **The average-coolant-temperature tile is scaled to the mode you are in** — the hot operating
+  window when the plant is hot, and a cold-shutdown window below Mode 3 — instead of always
+  spanning the meter's full 50–660 °F. The green programme band is now a readable width rather
+  than a hairline in a field of grey.
+
 ## [Alpha 1.8.0] — 2026-07-28
 
 ### Added

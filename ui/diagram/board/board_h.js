@@ -44,6 +44,21 @@
     return name.replace(/[A-Z]/g, function (m) { return '-' + m.toLowerCase(); });
   }
 
+  // CSS properties whose numeric values are RATIOS or COUNTS, not lengths. Appending 'px'
+  // to these produces an invalid declaration that the browser silently drops, so the
+  // property falls back to its inherited value and the symptom looks like a layout bug
+  // rather than a unit bug: `lineHeight: 1.1` became `1.1px`, which collapsed the vital-tile
+  // label to a 1.2px line box and let the reading paint on top of its own caption; every
+  // numeric `fontWeight` was dropped the same way, so nothing set that way was ever bold.
+  // Same list React maintains, trimmed to what this kit can emit.
+  var UNITLESS = {
+    opacity: 1, zIndex: 1, lineHeight: 1, fontWeight: 1, zoom: 1, order: 1,
+    flex: 1, flexGrow: 1, flexShrink: 1, columnCount: 1, aspectRatio: 1, scale: 1,
+    animationIterationCount: 1, gridRow: 1, gridColumn: 1,
+    // SVG presentation attributes reachable through style
+    fillOpacity: 1, strokeOpacity: 1, stopOpacity: 1, strokeDashoffset: 1, strokeMiterlimit: 1
+  };
+
   function applyStyle(el, style) {
     if (typeof style === 'string') { el.setAttribute('style', style); return; }
     for (var k in style) {
@@ -51,7 +66,7 @@
       var v = style[k];
       if (v == null) continue;
       if (k.indexOf('--') === 0) el.style.setProperty(k, String(v));
-      else el.style[k] = typeof v === 'number' && k !== 'opacity' && k !== 'zIndex' ? v + 'px' : String(v);
+      else el.style[k] = (typeof v === 'number' && !UNITLESS[k]) ? v + 'px' : String(v);
     }
   }
 

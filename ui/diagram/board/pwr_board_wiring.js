@@ -657,7 +657,7 @@
     // Tavg, °F. normHi is the top of the at-power Tavg program (~307 °C); below that covers
     // every mode down to cold shutdown, so the low side collapses.
     ims2immk7ks: { min: 50, max: 660, digits: 0,
-      tripLo: 50, alarmLo: 50, normLo: 50,
+      tripLo: 50, alarmLo: C2F(alarmSp('low_tavg', 289)), normLo: 50,
       normHi: 585, alarmHi: C2F(alarmSp('high_tavg', 312.2)), tripHi: C2F(tripSp('tavg', 'high', 335)) },
     // Subcooling margin, °F — a DELTA, so Cd2F (no 32° offset). More is better: the high
     // side collapses and the danger is all at the bottom, ending at 0 = coolant boiling.
@@ -694,6 +694,11 @@
   // Display window for a tile, derived from its bands. A one-sided parameter (reactor
   // power has no low-power trip) only gets the margin on the side that has a trip.
   function displayScale(b) {
+    // An explicit window wins. Tavg needs one: it has a high trip but NO low trip, so the
+    // derived scale ran from the meter's bottom (50 °F) to the trip and the green band was a
+    // sliver in a sea of grey. A parameter whose meaningful range depends on the plant mode
+    // cannot get a useful window from its protection setpoints alone.
+    if (b.winLo != null && b.winHi != null && b.winHi > b.winLo) return { min: b.winLo, max: b.winHi };
     var loActive = b.tripLo > b.min, hiActive = b.tripHi < b.max;
     if (loActive && hiActive) {
       var pad = RED_FRAC * (b.tripHi - b.tripLo) / (1 - 2 * RED_FRAC);
@@ -721,28 +726,39 @@
   // band in every mode the board can reach. Their references are the protection setpoints,
   // which is what TILE_BANDS already reads.
   var _CTL = (typeof RD !== 'undefined' && RD.PWR_CONTROL) || {};
+  // Band edges are QUANTISED to whole display units. They are recomputed every render from
+  // live signals (load for Tavg, the setpoint for pressure), and the tile rebuilds its gauge
+  // whenever a band edge changes — so unquantised edges churned at the ~10 Hz render rate and
+  // the whole strip flickered, worst exactly during a transient when load is moving. Rounding
+  // means an edge steps once per display unit instead of every frame.
+  function qz(v) { return Math.round(v); }
   function tavgBand(s) {
     var mode = (s.true_state && s.true_state.plant_mode) || null;
     var b = TILE_BANDS.ims2immk7ks;
     if (mode != null && mode >= 5) {
-      // Mode 5/6: no Tavg program. Normal is "cold" — RHR territory, below 200 °F.
-      return { normLo: b.min, normHi: 200 };
+      // Mode 5/6: no Tavg program. Normal is "cold" — RHR territory, below 200 °F. The
+      // window closes down with it, or a cold plant reads against an at-power scale.
+      return { normLo: b.min, normHi: 200, alarmHi: 250, winLo: b.min, winHi: 350 };
     }
-    if (!_CTL.trefProgram) return { normLo: b.normLo, normHi: b.normHi };
+    var out = { winLo: 540, winHi: 645 };   // the hot operating window, not the whole meter
+    if (!_CTL.trefProgram) { out.normLo = b.normLo; out.normHi = b.normHi; return out; }
     // Load reference is the same signal the rod channel uses (steam flow, 0..1).
     var load = Math.max(0, Math.min(1, IN(s).steam_flow || 0));
     var ref = _CTL.trefProgram(load);
-    // 2.5x the controller deadband: wide enough to read as a band on a ~90 °F-wide tile
-    // window, tight enough that leaving it means the rods are actually working.
-    var halfC = (_CTL.TAVG_DEADBAND_C || 0.8) * 2.5;
-    return { normLo: C2F(ref - halfC), normHi: C2F(ref + halfC) };
+    // 3.5x the controller's ±0.8 °C lockup band. The rods lock tighter than this, but Tavg
+    // legitimately wanders wider than the lockup band while load is moving, and a band
+    // narrower than ~10 °F is a hairline on a 105 °F window — unreadable is not useful.
+    var halfC = (_CTL.TAVG_DEADBAND_C || 0.8) * 3.5;
+    out.normLo = qz(C2F(ref - halfC));
+    out.normHi = qz(C2F(ref + halfC));
+    return out;
   }
   function pressureBand(s) {
     var sp = CS(s).pressure_setpoint;
     if (sp == null || !isFinite(sp)) sp = P_SET;
     return {
-      normLo: MPa2psi(sp - (_PZ.heater_band_mpa || 0.207)),
-      normHi: MPa2psi(sp + (_PZ.spray_band_mpa || 0.345))
+      normLo: qz(MPa2psi(sp - (_PZ.heater_band_mpa || 0.207))),
+      normHi: qz(MPa2psi(sp + (_PZ.spray_band_mpa || 0.345)))
     };
   }
   function bandsFor(id, s) {
@@ -750,7 +766,11 @@
     var mv = id === 'ims2immk7ks' ? tavgBand(s) : (id === 'ims2immsvn6' ? pressureBand(s) : null);
     if (!mv) return b;
     var out = {}; for (var k in b) out[k] = b[k];
-    out.normLo = mv.normLo; out.normHi = mv.normHi;
+    if (mv.normLo != null) out.normLo = mv.normLo;
+    if (mv.normHi != null) out.normHi = mv.normHi;
+    if (mv.alarmHi != null) out.alarmHi = mv.alarmHi;
+    if (mv.winLo != null) out.winLo = mv.winLo;
+    if (mv.winHi != null) out.winHi = mv.winHi;
     // A moving normal band must stay inside its own alarm/trip envelope, or a setpoint the
     // operator typed could paint green over red.
     if (out.normLo < out.alarmLo) out.normLo = out.alarmLo;
