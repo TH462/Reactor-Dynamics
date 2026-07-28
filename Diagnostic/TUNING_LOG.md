@@ -109,6 +109,35 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28e — post-diagram-update verification sweep: findings only, nothing fixed (#235)  🔬
+
+Owner asked for a thorough check of the updated V2 board/UI, findings filed not fixed —
+**all in GitHub #235**. Verified clean first: committed `pwr_board_data.js` is byte-identical
+to a fresh regen from `inbox/diagram_v2.json` (the 253-byte size gap is UTF-8 vs string
+length + CRLF — not content); board_check **PASS (59)**; `run_all --fast` 20 runners at
+baseline; `verify_e2e_ui` / `verify_manual_follow` / `run_e2e_controls` all at baseline; no
+page errors, no NaN readings, no diagonal pipe segments, all pipe endpoints resolve, RHR
+ALIGN interlock holds at pressure.
+
+Findings (details + measurements in #235):
+1. **ECCS card MODE readout is dead — always "OFF"**: `pwr_board_wiring.js:346` reads
+   `IN(s).eccs_mode`, but `eccs_mode` is only in `control_state`/true state, never
+   `instruments`. Mode 5 spawns RHR-aligned and the card still says OFF; a manual HPI start
+   flows with MODE OFF. selfTest checks the item is *wired*, not that the source exists —
+   that gap is the lesson.
+2. **Turbine pinned at 1800 rpm in Modes 3/5**: ICs author rpm 1800 untripped; the
+   not-tripped/no-load branch (`pwr_steam_generator.js:310-321`) has no friction term, so
+   zero steam ⇒ zero torque ⇒ 1800 forever. The old "1800 rpm while off" bug, back via the
+   third branch.
+3. **Chart legend prints SI ranges** (app.js:1839, no `conv()`, no units, no separators)
+   beside imperial chips.
+4-5. Authored-geometry clips: STEAM DUMP readout label (65 px box, 71 px text, 4 px valve
+   overlap) and DUMP SETPOINT hint "29-1350 psi" (105 px box, 112 px text). Builder-side.
+6. **board_check is 59 checks, not the "60/60" this log and CLAUDE.md record** — count was
+   never 60 in current code (one check *added* since #231). Doc drift, #161's failure mode.
+7. Question for ruling: Mode 5 spawns with 5 standing alarms (2 critical, incl. "RCP Trip"
+   for pumps that are *secured*). Low-Tavg standing is documented correct; the rest unruled.
+
 ### 2026-07-28d — flicker, trend cadence and chart labels: all three were measurement, not taste  ✅🔬
 
 `run_all` **22 at baseline**, board_check **60/60**. Alpha 1.8.2.
