@@ -37,6 +37,51 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-28j — #241 feature flags: the build ships everything, the CHANNEL decides what it offers
+
+`run_all` **24 runners at baseline** (+`run_flags` 16/16·290, +`verify_flags_ui` 48/48).
+The decisions:
+
+- **The discriminator is the deploy, not the branch file.** A per-branch config file is
+  the obvious answer and the wrong one: `develop → main` carries it across, so the merge
+  that publishes is also the merge that flips every flag on. `site/channel.js` is
+  **stamped at build time** by the existing Vercel step (`VERCEL_ENV`: production = `main`
+  = `public`, preview = `develop`), so one committed file gives a different answer on
+  either side of the merge and nothing is hand-edited per branch. The repo copy is the
+  `dev` placeholder, which is also what a clone or `file://` gets.
+- **Unregistered content fails CLOSED, and that is a gate failure, not a shrug.** An id
+  with no entry resolves off on the public channel — but silence is not a decision, so
+  `run_flags.js` fails when a scenario, procedure or campaign mission has no entry, and
+  when an entry points at content that has been renamed away. Adding content now forces
+  someone to answer "does this ship?".
+- **Areas and items are independent, deliberately.** A campaign mission is gated by its
+  own `scenario:`/`procedure:` entry and by `campaign` — not by `scenarios`. Turning an
+  area on does NOT imply its contents (`?flags=+campaign` alone still shows COMING SOON);
+  `?flags=all` is the show-me-everything form. Nesting would have made "vetted" ambiguous
+  at exactly the moment it matters — when the owner has cleared some of a list.
+- **Gating is not secrecy, and the code says so.** Gated content is still in the bundle
+  and still reachable by anyone who sets an override; that is how the owner checks a
+  preview feature on the live site (`?flags=1` → the panel, on any channel). It must never
+  be used as access control.
+- **The manual keeps its prose; only the instructed experiences are gated.** A gated
+  procedure still reads normally in the operator's manual — its ▶ Follow and 📋 Checklist
+  buttons are what disappear. Gating the chapter would have gutted a feature nobody flagged
+  as unvetted to protect one that was.
+- **Two gates because they answer different questions.** `run_flags.js` proves the registry
+  is complete and the resolver is right (asserted from BOTH sides — a resolver stuck at
+  `true` passes any one-sided test, and it does not throw, it publishes).
+  `verify_flags_ui.js` proves the control room OBEYS it. Both defects found while building
+  this were on the second side: `.set-row { display: flex }` beats the `hidden` attribute,
+  so the Features row stayed on screen while `element.hidden` read back `true` — hence every
+  assertion in that harness is on **visibility**, not properties — and the instructor card's
+  📋 picker was a second entry point to checklists that the first pass gated nowhere.
+- **Initial stages are the owner's call, recorded as data.** Free Play and the manual are
+  `public`; campaign, scenarios, walkthroughs and checklists are `preview`
+  (owner, 2026-07-28: *"Everything off except Free Play"*, with the vetting rationale in
+  #241). One consequence worth knowing: **the first-run Hook is a scenario**, so the public
+  channel currently opens with no intro offer. One line (`scenario:pwr_hook` → `public`)
+  restores it.
+
 ## 2026-07-28h — #237 UI/UX pass: the player owns the column; automation directives name real controls
 
 board_check **81/81**; `run_all` **22 at baseline**. Narrative in TUNING_LOG 2026-07-28l;

@@ -14,6 +14,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Feature flags: what the public site offers vs what is still being vetted (#241).**
+  Content ships in one bundle with the sim, so anything half-checked went live the moment
+  `develop` merged to `main`. There is now a registry — `site/flags.js` — that says, per
+  feature and per piece of content, whether it is `public` (shipped) or `preview` (in the
+  build, offered only on the development channel). The channel is stamped at deploy from
+  Vercel's environment (`site/channel.js`: production = `main` = `public`, preview =
+  `develop`), so the same file gives a different answer on either side of a merge and
+  nothing is hand-edited per branch. **A gated area shows a COMING SOON panel** in the
+  Plant & Mission window rather than an empty tab, gated items are simply not listed, and
+  landing-page copy that promises a gated feature swaps to an honest sentence
+  (`data-flag` / `data-flag-off`). A 🧪 **Features window** (Sim tab, development builds;
+  `?flags=1` anywhere) lists every flag with its stage and a switch, and a **view as
+  public/preview/dev** control re-resolves the whole app so you can look at `develop`
+  exactly as a visitor will. Overrides are per-browser and never change what ships.
+  **Initial state, by owner decision:** Free Play and the operator's manual are public;
+  the training campaign, scenarios, walkthroughs and live checklists are `preview` until
+  each has been played through and its line moves to `public`.
+  New gates: `test/run_flags.js` (registry coverage + resolution rules — new content
+  cannot ship unconsidered, a rename cannot silently drop a feature) and
+  `test/verify_flags_ui.js` (the control room actually obeys the flags, asserted on
+  visibility against a pinned production build).
 - **UI/UX pass from the #237 review** (owner-directed). The instructor card no longer
   steals the column on a message — new content while it is collapsed cues a count badge
   and a brief glow on its header instead, and the player owns the layout: the persona

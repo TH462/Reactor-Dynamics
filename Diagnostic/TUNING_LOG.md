@@ -31,7 +31,8 @@ staleness** items.
 
 | Gate | State | Notes |
 |---|---|---|
-| **`run_all`** | **OK (22 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| **`run_all`** | **OK (24 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| `run_flags` / `verify_flags_ui` | **16/16 (290)** / **48/48** | NEW 2026-07-28j (#241) — the feature-flag registry (coverage + resolution) and the control room actually obeying it |
 | `run_procedures_stack` | **22/22 (155/155)** | NEW 2026-07-26b — procedures through M4+M5+M6. **6** strict xfails, all RBMK/BWR (#208); the 7 `pwr_heatup` xfails cleared 2026-07-26c/d (#206, #210) |
 | `run_meltdown_stack` | **3/3 (21/21)** | NEW 2026-07-26d (#209) — the core-damage casualties driven **hands off** on the shipped lineup; asserts the automatic chain fires unprompted |
 | `run_pwr` | **32/32** | PWR engine-direct (+`load_above_rated_hold`, the #130 pin) |
@@ -108,6 +109,46 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-28n — #241 feature flags: ship the build, offer a subset  ✅
+
+The ask: toggle features off for the public site and on for `develop`, so unvetted
+scenarios / campaign / checklists don't reach visitors before the owner has played them.
+`run_all` **24 runners at baseline** (+2 new gates). Owner decisions taken in-session:
+**"Everything off except Free Play"** and **"Coming soon at area level, items hidden"**.
+
+- **Mechanism.** `site/flags.js` = registry (`public` | `preview` | `off` per feature and
+  per content id) + resolver. `site/channel.js` = the channel, **stamped at deploy** by the
+  existing Vercel build step from `VERCEL_ENV` (production/`main` → `public`, preview/
+  `develop` → `preview`; repo copy is `dev`). Resolution: override → `public` on →
+  `off` off → otherwise on unless the channel is `public`. **Unregistered ids fail closed.**
+- **Why not a per-branch config file** (the obvious first design): `develop → main` carries
+  it, so the merge that publishes also flips every flag on. The stamp is the only
+  discriminator that survives the merge without hand-editing.
+- **Toggles for the owner**: 🧪 Features window (Sim tab, dev builds; `?flags=1` on any
+  channel), one switch per flag, plus **view as public/preview/dev** which re-resolves the
+  whole app — that is how you look at `develop` as a visitor will. Overrides are
+  localStorage, per-browser, and never touch what ships. URL form `?flags=+id,-id` /
+  `all` / `none` is per-load and deliberately NOT persisted.
+- **Two defects found by driving the real page, not by reasoning about it** — both worth
+  remembering:
+  1. `.set-row { display: flex }` **beats the `hidden` attribute**. `featureRow.hidden`
+     read back `true` while the row sat on screen, so a DOM-property assertion passed and
+     the screenshot disproved it. Fixed with `.set-row[hidden] { display: none }`;
+     `verify_flags_ui.js` now asserts **visibility** everywhere, never properties.
+  2. **A second entry point to checklists** — the instructor card's 📋 picker
+     (`instrCklRow` / `toggleCklMenu`) — was gated nowhere in the first pass. When you gate
+     a feature, grep for *every* way in, not the one the issue names.
+- **Gates.** `run_flags.js` (16/16, 290 checks): registry coverage (every scenario,
+  procedure and campaign mission has an entry; no entry points at renamed-away content) +
+  resolution asserted from BOTH sides. Falsified before trusting — dropping an entry,
+  stubbing the resolver to `true`, typo'ing a call-site id and renaming content each turn
+  it red. `verify_flags_ui.js` (48/48): the control room obeys the flags, against a build
+  with `RD_CHANNEL` pinned to `public` (a real `main` deploy, reproduced without editing a
+  tracked file).
+- **Known consequence, not a bug:** the first-run **Hook is a scenario**, so the public
+  channel currently opens with no intro offer. `scenario:pwr_hook` → `public` restores it
+  the moment the owner is happy with it.
 
 ### 2026-07-28m — #237 comment items (missed in the first pass)  ✅
 

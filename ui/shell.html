@@ -96,7 +96,7 @@
           <button class="btn demo-btn" id="demoBtn" title="Hide the side panel — enlarge the diagram" data-scanner-hint="Hide side panel — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
         </div>
         <!-- What's running now — the always-visible mission entry point -->
-        <button class="sim-status" id="simStatus" data-scanner-hint="Current plant &amp; mission — click to switch reactors, start the training campaign, play a scenario, or follow a procedure walkthrough.">
+        <button class="sim-status" id="simStatus" data-scanner-hint="Current plant &amp; mission — click to switch reactors or change what you are running.">
           <span class="ss-a">⚛️</span><span class="ss-txt" id="simStatusText">—</span><span class="ss-chev">›</span>
         </button>
       </div>
@@ -162,9 +162,13 @@
           <div class="tabpane on" data-pane="sim">
             <div class="set-row"><span class="k">Plant</span><span class="mono" id="simPlantLbl">—</span></div>
             <div class="set-row"><span class="k">Mode</span><span class="mono" id="simModeLbl">Free Play</span></div>
-            <div class="set-row" data-scanner-hint="Plant &amp; Mission — choose the reactor, then free play (with a starting condition), the training campaign, a scenario, or a procedure walkthrough.">
+            <div class="set-row" data-scanner-hint="Plant &amp; Mission — choose the reactor, then free play (with a starting condition) or any guided content this build offers.">
               <span class="k">Change</span><button class="btn" id="missionBtn">⚛️ Plant &amp; Mission…</button></div>
             <div class="set-row"><span class="k">Reset</span><button class="btn" data-act="reset">Reset to initial state</button></div>
+            <!-- Feature flags (#241) — development only: the row hides itself on the
+                 public channel unless ?flags=1 asks for it (app.js initFeaturePanel). -->
+            <div class="set-row" id="featureRow" hidden data-scanner-hint="Features — which parts of the simulator this build offers. Preview features are playable here but hidden from the public website until they are vetted.">
+              <span class="k">Features</span><button class="btn" id="featureBtn">🧪 Features…</button></div>
             <div class="set-row"><span class="k">Save / Load</span><span><button class="btn" data-act="save">Save</button> <button class="btn" data-act="load">Load</button></span></div>
             <input type="file" id="loadFile" accept="application/json" style="display:none">
             <div class="g-section-title" style="margin-top:12px" data-scanner-hint="Reactivity Computer — net reactivity and reactor period. Use during approach to criticality.">Reactivity Computer</div>
@@ -217,6 +221,24 @@
         </div>
       </div>
 
+      <!-- Features window (#241) — the development toggle board: every flag in
+           site/flags.js with its stage, its effective state here, and a switch.
+           Overrides live in localStorage and affect this browser only; they never
+           change what the public site ships. Built by app.js. -->
+      <div class="mission-overlay" id="featureOverlay" hidden>
+        <div class="mission-modal">
+          <div class="mission-head">
+            <div class="mission-title">🧪 Features — development toggles</div>
+            <button class="btn" id="featureClose" aria-label="Close">✕ Close</button>
+          </div>
+          <div class="mission-body fl-body">
+            <div class="mp-right">
+              <div class="mp-content" id="featureContent"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Operator's Manual overlay — PWR renders the packed Manuals/*.md operator
            set (RD.MANUAL_MD) + live procedures; RBMK/BWR still use the generated
            RD.MANUAL reference until they get their own manual sets -->
@@ -257,8 +279,11 @@
             </div>
             <div class="help-sec">
               <h4>Where everything lives</h4>
-              <p><b>⚛️ Mission line</b> (top right, under the clock) — switch reactors, start the
-              training campaign, scenarios, or procedure walkthroughs.<br>
+              <!-- The clause promises gated content, so it follows the campaign flag (#241);
+                   RD.Flags.applyDom() swaps the span's text on a channel that lacks it. -->
+              <p><b>⚛️ Mission line</b> (top right, under the clock) — <span data-flag="campaign"
+              data-flag-off="switch reactors and pick your starting condition.">switch reactors, start the
+              training campaign, scenarios, or procedure walkthroughs.</span><br>
               <b>📖 Manual</b> — the Operator's Manual: controls, indications, setpoints, normal
               values, and followable procedures.<br>
               <b>⏪ Rewind</b> (by the strip chart) — go back in time. Failure is never Game Over;
@@ -330,6 +355,8 @@
        engine selector (Sim tab) switches between them at runtime. -->
   <script src="../site/version.js"></script>  <!-- deploy stamp; feedback reports carry it -->
   <script src="../site/release.js"></script>  <!-- player-facing Alpha X.Y.Z, shown by the logo -->
+  <script src="../site/channel.js"></script>  <!-- release channel: public | preview | dev -->
+  <script src="../site/flags.js"></script>    <!-- feature flags: what this channel OFFERS (#241) -->
   <script src="../engines/load_mode.js"></script>
   <script src="../engines/pwr/pwr_config.js"></script>
   <script src="../layers/control/pwr_control.js"></script>

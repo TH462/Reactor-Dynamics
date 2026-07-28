@@ -12,6 +12,11 @@
     -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
     <link rel="stylesheet" href="site/site.css">
+    <!-- Release channel + feature flags (#241). Loaded in <head> so the copy that
+         promises a gated feature is rewritten in the same paint: data-flag names
+         the flag, data-flag-off the sentence a visitor gets while it is in review. -->
+    <script src="site/channel.js"></script>
+    <script src="site/flags.js"></script>
     <!-- Vercel Web Analytics (cookieless page-view beacon; 404s harmlessly off-Vercel) -->
     <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -33,9 +38,10 @@
   <div class="alpha-note">🚧 Alpha build &middot; a work in progress — expect rough edges, missing pieces, and features that change.</div>
   <div class="alpha-note">🖥️ Desktop or laptop only &middot; the control room does not work on a phone or tablet yet.</div>
   <h1>Run a nuclear power plant<br>from your browser.</h1>
-  <p class="sub">Real reactor physics. Guided training campaigns, from first
-  criticality to Three Mile Island. Nothing to install — it all runs locally
-  in your browser.</p>
+  <p class="sub" data-flag="campaign"
+     data-flag-off="Real reactor physics — a whole plant, from cold shutdown to full power, with the operator manuals at your elbow. Nothing to install: it all runs locally in your browser.">Real
+  reactor physics. Guided training campaigns, from first criticality to Three
+  Mile Island. Nothing to install — it all runs locally in your browser.</p>
   <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
   <div class="hero-shot">
     <!-- Owner-provided screenshot; drop the asset in as site/hero.png.
@@ -51,7 +57,9 @@
     <a class="plant-card live" href="ui/shell.html?engine=pwr">
       <h3>PWR</h3>
       <div class="kind">Pressurized Water Reactor</div>
-      <p>The SLX‑100 — a compact 100 MWe single-loop plant, Westinghouse-style.
+      <p data-flag="campaign"
+         data-flag-off="The SLX‑100 — a compact 100 MWe single-loop plant, Westinghouse-style. Take it from cold shutdown to 100% power with the operator manuals at your elbow. The mission campaign and the TMI‑2 story module are in final review.">The
+      SLX‑100 — a compact 100 MWe single-loop plant, Westinghouse-style.
       The full experience: cold shutdown to 100% power, operator manuals, a
       mission campaign, and the TMI‑2 story module.</p>
       <span class="go">Operate&nbsp;→</span>
@@ -92,8 +100,10 @@
       a real, physical consequence.</p>
     </div>
     <div class="feature">
-      <h3>Guided campaigns</h3>
-      <p>An instructor watches the board and gates your progress through real
+      <h3 data-flag="campaign" data-flag-off="Guided campaigns — coming soon">Guided campaigns</h3>
+      <p data-flag="campaign"
+         data-flag-off="An instructor that watches the board and gates your progress through real procedures — startup, power maneuvers, casualty response. It is being played through mission by mission before it opens; the commercial-format operator manuals it teaches from are already in the control room.">An
+      instructor watches the board and gates your progress through real
       procedures — startup, power maneuvers, casualty response — with
       commercial-format operator manuals to study.</p>
     </div>
@@ -131,6 +141,9 @@
 </footer>
 
 <script src="site/version.js"></script>
-<script>document.getElementById('ver').textContent = window.RD_VERSION || '';</script>
+<script>
+  document.getElementById('ver').textContent = window.RD_VERSION || '';
+  if (window.RD && RD.Flags) RD.Flags.applyDom(document);   // gated-feature copy (#241)
+</script>
 </body>
 </html>

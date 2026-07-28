@@ -931,7 +931,9 @@
     if (cklRow) {
       var cklBusy = !!(ui.scenario || (s.instructor && (s.instructor.follow || s.instructor.chat ||
         s.instructor.checklist || s.instructor.level_complete)));
-      cklRow.hidden = cklBusy;
+      // …and only where this channel offers checklists at all (#241). The picker
+      // is a SECOND entry point to them, next to the manual's 📋 button.
+      cklRow.hidden = cklBusy || !flagOn('checklists');
       if (cklBusy) { var cm = $('cklMenu'); if (cm) cm.hidden = true; }
     }
     var fb = s.instructor && s.instructor.follow;
@@ -1271,7 +1273,9 @@
     var menu = $('cklMenu'); if (!menu) return;
     var show = force != null ? !!force : menu.hidden;
     if (show) {
-      var procs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return !x.narrative; });
+      var procs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) {
+        return !x.narrative && flagOn('procedure:' + x.id);
+      });
       menu.innerHTML = procs.length ? procs.map(function (p) {
         return '<button data-ckl-start="' + mesc(p.id) + '"><span class="ckl-cat">' + mesc(p.category) + '</span>' + mesc(p.title) + '</button>';
       }).join('') : '<div class="m-note">No procedures for this plant.</div>';
@@ -1432,10 +1436,12 @@
     if (m.kind === 'scenario') startScenario(m.id); else followProcedure(m.id);
   }
   // The next incomplete mission (the "frontier"), or null when all complete.
+  // Gated missions are skipped: "Continue campaign" must never start something
+  // this channel does not offer (#241).
   function campaignFrontier(key) {
     var c = campaign(key); if (!c) return null;
     var p = progress();
-    var ms = campaignMissions(c);
+    var ms = campaignMissions(c).filter(missionOn);
     for (var i = 0; i < ms.length; i++) if (!missionDone(ms[i], p)) return ms[i];
     return null;
   }
@@ -1443,7 +1449,10 @@
     var c = campaign(key);
     if (!c) return '<div class="m-note">No campaign for this plant yet — try the PWR.</div>';
     var p = progress();
-    var ms = campaignMissions(c);
+    // Progress counts what is OFFERED, so "12 / 12 missions" stays true on a
+    // channel that ships a subset rather than reading as a permanent shortfall.
+    var ms = campaignMissions(c).filter(missionOn);
+    if (!ms.length) return soonPanel('campaign');
     var doneCount = ms.filter(function (m) { return missionDone(m, p); }).length;
     var frontier = null;
     var h = '<div class="camp-head"><div class="camp-title">' + mesc(c.title) + '</div>' +
@@ -1454,8 +1463,10 @@
     else h += '<div class="camp-done">🏆 Campaign complete — Senior Reactor Operator</div>';
     h += '</div>';
     (c.acts || []).forEach(function (a) {
+      var acted = a.missions.filter(missionOn);
+      if (!acted.length) return;          // an act with nothing offered is not an empty heading
       h += '<div class="camp-act">' + mesc(a.title) + '</div>';
-      a.missions.forEach(function (m) {
+      acted.forEach(function (m) {
         var art = missionArtifact(m, key);
         var title = m.title || (art && art.title) || m.id;
         var done = missionDone(m, p);
@@ -1472,9 +1483,10 @@
           '</div>';
       });
     });
-    if (c.bonus && c.bonus.length) {
+    var bonus = (c.bonus || []).filter(missionOn);
+    if (bonus.length) {
       h += '<div class="camp-act">Bonus</div>';
-      c.bonus.forEach(function (m) {
+      bonus.forEach(function (m) {
         var art = missionArtifact(m, key);
         h += '<div class="camp-mission">' +
           '<span class="camp-mark">★</span>' +
@@ -1520,6 +1532,18 @@
   function procsFor(key) {
     return ((RD.MANUAL_PROCEDURES || {})[key] || []).filter(function (x) { return !x.narrative; });
   }
+  // ---- Feature flags (#241) — what THIS channel offers -------------------
+  // Gated content is still in the build; the window simply does not list it,
+  // and an area with nothing left to list says COMING SOON in its place rather
+  // than showing an empty tab. Resolution lives in site/flags.js; if that file
+  // is absent (an old harness page) everything falls back to visible, which is
+  // the pre-#241 behaviour.
+  function flagOn(id) { return !RD.Flags || RD.Flags.on(id); }
+  function missionOn(m) { return flagOn(m.kind + ':' + m.id); }
+  function soonPanel(area) {
+    return '<div class="mp-soon"><div class="mp-soon-tag">COMING SOON</div>' +
+      '<div class="m-note">' + mesc(RD.Flags ? RD.Flags.soon(area) : '') + '</div></div>';
+  }
   function renderMissionSelect() {
     // Step 1 — the plant column
     $('mpPlants').innerHTML = Object.keys(ENGINES).map(function (k) {
@@ -1543,6 +1567,7 @@
       msel.mode === 'scenarios' ? mpScenarios() : mpWalkthroughs();
   }
   function mpFree() {
+    if (!flagOn('free_play')) return soonPanel('free_play');
     var e = ENGINES[msel.engine];
     var states = PROFILES[e.plant].initStates;
     if (!states.some(function (s) { return s[0] === msel.init; })) msel.init = e.init;
@@ -1556,13 +1581,18 @@
     return h;
   }
   function mpCampaign() {
+    if (!flagOn('campaign')) return soonPanel('campaign');
     return '<div class="m-note" data-scanner-hint="Campaign — the guided path from first scram to a full qualification, in the recommended order. Completed missions stay replayable.">The guided path — zero to operator, in order. Every mission stays replayable.</div>' +
       campaignHtml(msel.engine);
   }
   function mpScenarios() {
+    if (!flagOn('scenarios')) return soonPanel('scenarios');
     var p = progress();
     var doneS = p.completed_scenarios || [];
-    var ids = scenariosFor(msel.engine);
+    var all = scenariosFor(msel.engine);
+    var ids = all.filter(function (id) { return flagOn('scenario:' + id); });
+    // Authored-but-gated is COMING SOON; genuinely none authored keeps its own line.
+    if (all.length && !ids.length) return soonPanel('scenarios');
     var h = '<div class="m-note">Instructor-led situations — one lesson each, played on this plant.</div>';
     return h + (ids.length ? ids.map(function (id) {
       var s = RD.SCENARIOS[id];
@@ -1576,16 +1606,121 @@
     }).join('') : '<div class="m-note">No scenarios for this plant yet.</div>');
   }
   function mpWalkthroughs() {
+    if (!flagOn('walkthroughs')) return soonPanel('walkthroughs');
     var p = progress();
-    var procs = procsFor(msel.engine);
+    var all = procsFor(msel.engine);
+    var procs = all.filter(function (x) { return flagOn('procedure:' + x.id); });
+    if (all.length && !procs.length) return soonPanel('walkthroughs');
     var doneP = p.completed_procedures || [];
     var h = '<div class="m-note">Follow a real procedure step by step — the Instructor checks each step off the instruments.</div>';
     return h + (procs.map(function (x) {
       return '<div class="tr-row"><span class="tr-ptitle">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(x.title) + '</span>' +
-        '<button class="btn" data-checklist="' + x.id + '" title="Run as a passive checklist against the live plant">📋</button>' +
+        (flagOn('checklists') ? '<button class="btn" data-checklist="' + x.id + '" title="Run as a passive checklist against the live plant">📋</button>' : '') +
         '<button class="btn" data-follow="' + x.id + '">▶ Follow</button></div>';
     }).join('') || '<div class="m-note">No procedures for this plant.</div>');
   }
+
+  // ============================================== Features window (#241)
+  // The development toggle board: every flag in site/flags.js, its stage, and
+  // what this browser currently resolves it to. Toggles write localStorage
+  // OVERRIDES — they change what you see, never what the site ships; the stage
+  // column is the shipped answer and only a code edit moves it.
+  //
+  // "View as" re-resolves the whole app against another channel, which is the
+  // one thing worth doing before a release: look at develop as the public will.
+  function openFeaturePanel() { renderFeaturePanel(); $('featureOverlay').hidden = false; }
+  function closeFeaturePanel() { $('featureOverlay').hidden = true; }
+  // Item labels come off the artifacts, not a second copy in the registry.
+  function flagLabel(id) {
+    var e = RD.Flags.entry(id);
+    if (e && e.kind === 'area') return e.label || id;
+    var kind = id.split(':')[0], key = id.split(':')[1];
+    if (kind === 'scenario') { var s = (RD.SCENARIOS || {})[key]; return s ? s.title : key; }
+    var procs = RD.MANUAL_PROCEDURES || {};
+    for (var k in procs) {
+      var hit = procs[k].filter(function (x) { return x.id === key; })[0];
+      if (hit) return hit.title;
+    }
+    return key;
+  }
+  function flagPlant(id) {
+    var key = id.indexOf(':') === -1 ? '' : id.split(':')[1];
+    var m = /^(pwr|rbmk|bwr)_/.exec(key);
+    return m ? m[1].toUpperCase() : '';
+  }
+  function renderFeaturePanel() {
+    var F = RD.Flags, ids = F.ids();
+    var ch = F.channel(), base = F.baseChannel();
+    var ovCount = Object.keys(F.overrides()).length;
+    var h = '<div class="m-note">What this build <em>offers</em>. Everything listed is in the bundle either way — a <span class="fl-stage fl-preview">preview</span> feature is playable here and hidden from the public site until it has been vetted and its line in <span class="mono">site/flags.js</span> moves to <span class="fl-stage fl-public">public</span>.</div>';
+    h += '<div class="fl-bar"><span class="k">This build</span><span class="mono">' + mesc(base) + '</span>' +
+      '<span class="k">View as</span><div class="seg" id="flChannel">' +
+      F.CHANNELS.map(function (c) {
+        return '<button class="' + (c === ch ? 'on' : '') + '" data-flch="' + c + '">' + c + '</button>';
+      }).join('') + '</div>' +
+      '<button class="btn" data-flreset="1"' + (ovCount ? '' : ' disabled') + '>Clear ' + ovCount + ' override' + (ovCount === 1 ? '' : 's') + '</button></div>';
+    if (ch !== base) h += '<div class="fl-warn">⚠ Viewing as <b>' + mesc(ch) + '</b> — this is not what this build is. Clear it to get back.</div>';
+    var urlOv = Object.keys(F.urlOverrides());
+    if (urlOv.length) h += '<div class="fl-warn">⚠ <span class="mono">?flags=</span> in the URL is overriding ' +
+      mesc(urlOv.join(', ')) + ' for this page load — it outranks the switches below. Drop it from the URL to use them.</div>';
+
+    var groups = [];
+    function group(title, list) { if (list.length) groups.push({ title: title, ids: list }); }
+    group('Features', ids.filter(function (id) { return F.entry(id).kind === 'area'; }));
+    ['PWR', 'RBMK', 'BWR'].forEach(function (pl) {
+      group(pl + ' — scenarios', ids.filter(function (id) { return id.indexOf('scenario:') === 0 && flagPlant(id) === pl; }));
+      group(pl + ' — procedures', ids.filter(function (id) { return id.indexOf('procedure:') === 0 && flagPlant(id) === pl; }));
+    });
+    groups.forEach(function (g) {
+      h += '<div class="g-section-title" style="margin-top:12px">' + mesc(g.title) + '</div>';
+      g.ids.forEach(function (id) {
+        var st = F.stage(id), ov = F.override(id), live = F.on(id);
+        h += '<div class="fl-row' + (live ? '' : ' off') + '">' +
+          '<button class="fl-sw' + (live ? ' on' : '') + '" data-flid="' + mesc(id) + '" role="switch" aria-checked="' + live + '" title="Override this flag in this browser">' +
+          (live ? 'ON' : 'OFF') + '</button>' +
+          '<span class="fl-name">' + mesc(flagLabel(id)) + '</span>' +
+          '<span class="fl-id mono">' + mesc(id) + '</span>' +
+          '<span class="fl-stage fl-' + mesc(st) + '">' + mesc(st) + '</span>' +
+          (ov != null ? '<span class="fl-ov" data-flclear="' + mesc(id) + '" title="Clear this override">overridden ✕</span>' : '') +
+          '</div>';
+      });
+    });
+    $('featureContent').innerHTML = h;
+  }
+  // A flag change can move anything the window or manual lists, so re-render both.
+  function featureChanged() {
+    renderFeaturePanel();
+    refreshMissionSelect();
+    if (!$('manualOverlay').hidden) renderManual();
+  }
+  function initFeaturePanel() {
+    if (!RD.Flags) return;
+    // Static shell copy that promises a gated feature (the help overlay's
+    // "where everything lives") swaps to an honest line — same mechanism the
+    // landing page uses.
+    RD.Flags.applyDom(document);
+    // Off the public channel the row is simply there; on it, ?flags=1 is the way
+    // in (checking a preview feature on the live site is a real need).
+    var show = RD.Flags.baseChannel() !== 'public' || /[?&]flags=/.test(location.search || '');
+    $('featureRow').hidden = !show;
+    $('featureBtn').addEventListener('click', openFeaturePanel);
+    $('featureClose').addEventListener('click', closeFeaturePanel);
+    $('featureOverlay').addEventListener('click', function (e) { if (e.target === $('featureOverlay')) closeFeaturePanel(); });
+    $('featureContent').addEventListener('click', function (e) {
+      var sw = e.target.closest('[data-flid]');
+      if (sw) { var id = sw.getAttribute('data-flid'); RD.Flags.setOverride(id, !RD.Flags.on(id)); featureChanged(); return; }
+      var cl = e.target.closest('[data-flclear]');
+      if (cl) { RD.Flags.setOverride(cl.getAttribute('data-flclear'), null); featureChanged(); return; }
+      var chb = e.target.closest('[data-flch]');
+      if (chb) {
+        var pick = chb.getAttribute('data-flch');
+        RD.Flags.viewAs(pick === RD.Flags.baseChannel() ? null : pick);   // picking your own channel clears the simulation
+        featureChanged(); return;
+      }
+      if (e.target.closest('[data-flreset]')) { RD.Flags.clearOverrides(); featureChanged(); }
+    });
+  }
+
   // Starting a plant-bound mission (campaign mission / walkthrough) from the
   // window may first need the window's plant to become the active one.
   // Scenarios don't: start_scenario resets to its own plant.
@@ -2750,6 +2885,7 @@
     $('missionBtn').addEventListener('click', openMissionSelect);
     $('simStatus').addEventListener('click', openMissionSelect);   // the always-visible entry point
     $('missionClose').addEventListener('click', closeMissionSelect);
+    initFeaturePanel();          // 🧪 Features — development toggles (#241)
     // Help overlay — the one-screen "how this control room works" guide.
     $('helpBtn').addEventListener('click', function () { $('helpOverlay').hidden = false; });
     $('helpClose').addEventListener('click', function () { $('helpOverlay').hidden = true; });
@@ -2840,6 +2976,7 @@
         if (!$('manualOverlay').hidden) closeManual();
         if (!$('missionOverlay').hidden) closeMissionSelect();
         if (!$('helpOverlay').hidden) $('helpOverlay').hidden = true;
+        if (!$('featureOverlay').hidden) closeFeaturePanel();
         if (!$('feedbackOverlay').hidden) $('feedbackOverlay').hidden = true;
         if (ui.rewindPick) toggleRewindPick(false);
         return;
@@ -3058,9 +3195,13 @@
   // when you actually Follow/run one (or expand). Accident walkthroughs pass false
   // (there the steps ARE the content). The .m-step DOM is still emitted either way.
   function mProcCard(pr, collapse) {
+    // The manual's PROSE is reference material and always readable; the two
+    // buttons are the instructed experiences, so they follow their flags (#241).
+    // A gated procedure therefore reads normally here — it just cannot be driven.
+    var item = 'procedure:' + pr.id;
     var h = '<div class="m-card"><div class="m-h">' + mesc(pr.title) + ' <span class="m-pill">' + mesc(pr.category) + '</span>' +
-      '<button class="btn m-follow" data-follow="' + mesc(pr.id) + '">▶ Follow in Instructor</button>' +
-      '<button class="btn m-follow" data-checklist="' + mesc(pr.id) + '" title="Run as a passive checklist against the live plant — no reset, steps auto-check off the instruments">📋 Checklist</button></div>';
+      (flagOn('walkthroughs') && flagOn(item) ? '<button class="btn m-follow" data-follow="' + mesc(pr.id) + '">▶ Follow in Instructor</button>' : '') +
+      (flagOn('checklists') && flagOn(item) ? '<button class="btn m-follow" data-checklist="' + mesc(pr.id) + '" title="Run as a passive checklist against the live plant — no reset, steps auto-check off the instruments">📋 Checklist</button>' : '') + '</div>';
     h += '<div class="m-sub">Start from: ' + mesc(pr.from) + '</div>';
     if (pr.purpose) h += '<p style="margin:8px 0">' + mesc(pr.purpose) + '</p>';
     if (pr.prereq && pr.prereq.length) h += '<div class="m-sub2">Prerequisites</div><ul class="m-ul">' + pr.prereq.map(function (x) { return '<li>' + mesc(x) + '</li>'; }).join('') + '</ul>';
@@ -3090,7 +3231,10 @@
     if (!procs.length) return '<p class="muted">No procedures authored for this plant yet.</p>';
     var order = ['startup', 'power', 'control', 'shutdown', 'emergency'];
     procs = procs.slice().sort(function (a, b) { return order.indexOf(a.category) - order.indexOf(b.category); });
-    var h = '<h2>Procedures</h2><p class="muted">Pick a procedure to Follow (guided, resets the plant) or run as a live 📋 Checklist against the plant as it sits. Expand a card to preview its steps.</p>';
+    var driveable = flagOn('walkthroughs') || flagOn('checklists');
+    var h = '<h2>Procedures</h2><p class="muted">' + (driveable
+      ? 'Pick a procedure to Follow (guided, resets the plant) or run as a live 📋 Checklist against the plant as it sits. Expand a card to preview its steps.'
+      : 'The written procedures for this plant. Expand a card to read its steps — the guided walkthroughs that drive them are still in review.') + '</p>';
     procs.forEach(function (pr) { h += mProcCard(pr, true); });
     return h;
   }
@@ -3772,8 +3916,11 @@
     var scm = /[?&]scenario=([a-z0-9_]+)/.exec(location.search || '');
     if (scm && RD.SCENARIOS && RD.SCENARIOS[scm[1]]) { startScenario(scm[1]); refreshMissionSelect(); }
     // First-run Hook invitation (Gameplay §7.1): plain loads only — any deep link
-    // (search string) or a completed/declined hook suppresses it.
-    if (!location.search && !progress().hook_done && RD.SCENARIOS && RD.SCENARIOS.pwr_hook) {
+    // (search string) or a completed/declined hook suppresses it. It offers a
+    // scenario, so it also follows that scenario's flag (#241): a channel that
+    // does not ship pwr_hook must not open the control room by advertising it.
+    if (!location.search && !progress().hook_done && RD.SCENARIOS && RD.SCENARIOS.pwr_hook &&
+        flagOn('scenarios') && flagOn('scenario:pwr_hook')) {
       $('hookPrompt').hidden = false;
     }
   }

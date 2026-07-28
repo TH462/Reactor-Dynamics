@@ -89,6 +89,15 @@ var BASELINES = {
   // it. The site count is part of the score on purpose: a NEW coupling shifts it
   // and trips drift even when the author allow-lists it properly.
   'run_hr3.js':            { code: 0, score: '32checks 0failed' },
+  // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
+  // website offers vs what is still being vetted on `develop`. Coverage half: every
+  // scenario, procedure and campaign mission has an entry and every entry still points
+  // at real content, so new content cannot ship unconsidered and a rename cannot
+  // silently drop a feature from production. Resolution half: the public/preview/dev
+  // rules asserted from BOTH sides, because a resolver stuck at "true" does not throw —
+  // it publishes. Check count moves with the content count (57 items today): adding a
+  // scenario shifts this baseline, which is the intended nudge to decide its stage.
+  'run_flags.js':          { code: 0, score: '16/16 290/290' },
   'run_m4.js':             { code: 0, score: '19/19 86passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
@@ -169,6 +178,15 @@ var BASELINES = {
   },
 
   // ---- browser gates (slow: Playwright + a throwaway http server) ----
+  // New 2026-07-28 (#241). Fast for a browser gate (~15 s, no http server — file://),
+  // so it is NOT marked slow. run_flags.js proves the registry and the resolver;
+  // this proves the CONTROL ROOM obeys them, which is where both defects found
+  // during the build actually were: a Features row that stayed on screen because
+  // .set-row's display:flex beats the `hidden` attribute (the DOM property read
+  // back true throughout — hence every assertion here is on VISIBILITY), and a
+  // second entry point to checklists in the instructor card that the first pass
+  // gated nowhere. It pins RD_CHANNEL to reproduce a real `main` deploy.
+  'verify_flags_ui.js':      { code: 0, score: '48/48' },
   'verify_e2e_ui.js':        { code: 0, score: '16screenshots', slow: true },
   'verify_manual_follow.js': { code: 0, score: '84checks', slow: true },
 };
