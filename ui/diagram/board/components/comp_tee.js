@@ -142,7 +142,12 @@
         portEls[L.id].setAttribute('data-phase', st.contents);
         portEls[L.id].setAttribute('data-temp', String(st.temp));
         portEls[L.id].setAttribute('data-out', fd > 0 ? '1' : '0');
-        portEls[L.id].setAttribute('data-active', (isEmpty || fd === 0) ? '0' : '1');
+        // Ports follow `moving`, not just leg direction: a fitting driven to
+        // flowing:false stills its interior dashes, and the pipes joined to it must
+        // stop with it — a still tee between moving pipes showed forced circulation
+        // on a dead plant (#236). Fittings never driven with flowing/flow keep their
+        // authored rate, so moving stays true and nothing changes for them.
+        portEls[L.id].setAttribute('data-active', (isEmpty || fd === 0 || !moving) ? '0' : '1');
       });
     }
 

@@ -47,6 +47,7 @@
       openFrac: 1,
       contents: cfg.contents != null ? cfg.contents : (cfg.fluid != null ? null : 'water'),
       temp: cfg.temp != null ? cfg.temp : 290,
+      flow: true,   // false = valve open but NOT flowing (no streak, no downstream animation)
       fl: null, wet: false
     };
 
@@ -140,13 +141,16 @@
     var applied = {};
     function applyState(force) {
       var openFrac = Math.max(0, Math.min(1, st.openFrac));
-      if (!force && applied.openFrac === openFrac && applied.contents === st.contents && applied.temp === st.temp) return;
-      applied.openFrac = openFrac; applied.contents = st.contents; applied.temp = st.temp;
+      if (!force && applied.openFrac === openFrac && applied.contents === st.contents && applied.temp === st.temp && applied.flow === st.flow) return;
+      applied.openFrac = openFrac; applied.contents = st.contents; applied.temp = st.temp; applied.flow = st.flow;
 
       var fl = st.contents ? K.phaseTempColor(st.contents, st.temp) : (K.FLUIDS[fluidKey] || K.FLUIDS.coldWater);
       var isEmpty = !!fl.empty;
       var open = openFrac >= 0.5; // binary pose (source used flow > 2%)
-      var wet = open && !isEmpty;
+      // st.flow gates an "open but not flowing" valve, same as comp_valve/_vertical — this
+      // variant used to drop the prop on the floor, so a driver's flowing:false was
+      // silently ignored on any horizontally-mounted valve (#236)
+      var wet = open && !isEmpty && st.flow;
       st.fl = fl; st.wet = wet;
 
       fluidStopA.setAttribute('stop-color', fl.flow);
@@ -162,7 +166,7 @@
       // (source only checked empty; the board rule adds openFrac > 0)
       var pTag = st.contents || '';
       var pTemp = st.contents != null ? String(st.temp) : '';
-      var active = (openFrac > 0 && !isEmpty) ? '1' : '0';
+      var active = (openFrac > 0 && !isEmpty && st.flow) ? '1' : '0';
       ['a', 'b'].forEach(function (id) {
         portEls[id].setAttribute('data-phase', pTag);
         portEls[id].setAttribute('data-temp', pTemp);
@@ -184,6 +188,7 @@
       if (props.openFrac != null) st.openFrac = props.openFrac;
       if (props.contents != null) st.contents = props.contents;
       if (props.temp != null) st.temp = props.temp;
+      if (props.flow != null) st.flow = !!props.flow;
       applyState(false);
     }
 

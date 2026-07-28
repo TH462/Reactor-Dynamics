@@ -37,6 +37,44 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-28g — board tells the truth about flow and speed: #235 defects + #236 pipe gating
+
+board_check **79/79** (was 59 — the recorded "60/60" never matched code, #235 F6);
+`run_all` **22 at baseline**. Narrative in `Diagnostic/TUNING_LOG.md` 2026-07-28k; the
+decisions:
+
+- **Pipe animation is plant state, and is now asserted as such.** New
+  `RD.PwrBoard.pipeFlowState(id)` API + board_check pins in three plant states (full
+  power / post-scram / Mode 5). The #236 class — 23/37 pipes circulating on a dead
+  plant — was invisible to every gate because the harness asserted pipe *existence* only.
+- **Port gating is the component's job, done on the FIRST update.** Three of the four
+  mechanism defects were "the first render never wrote the gate" or "the prop was
+  ignored" (`comp_pump` lastOn init, `comp_turbine_generator` missing data-active,
+  `comp_valve_horizontal` dropping `flow`); the fourth was fittings gating their interior
+  but not their ports. None was a wiring error — the wiring's signals were mostly right.
+- **The PORV line follows actual relief** (true-state `open && blockOpen`, the porv
+  comp's own truth): a dead-ended line is still when the valve is seated. Keeps the
+  TMI-2 lesson coherent — the tailpipe temp and the animation now agree.
+- **AFW gates on measured flow, not command** — one truth per line (matches the feed
+  tee; the run-light/flow divergence the card teaches is unaffected).
+- **RCP suction/discharge corrected via DOC_PATCHES**, which grew absolute
+  item/pipe prop patching (null = delete) for exactly this: builder-authored semantics
+  that render right only via a compensating override (`flowDir:'fwd'`) get fixed at the
+  source of truth the code owns, idempotently, until the builder is corrected.
+- **Turbine: windage exists** — the untripped/no-load branch coasts down like the
+  tripped one (it is the same physical state at zero steam); zero-load ICs spawn the
+  rotor at rest (`P0 > 0.01` — the subcritical states author `power: 1e-6`, so a bare
+  `> 0` is wrong). **Deviation note:** the branch's authored "accelerate toward
+  overspeed" was measured inert (≤ 0.02 rpm/s); the friction term formally retires it.
+  Recorded honestly in the branch comment and parked as a #238 deferred upgrade rather
+  than silently revived — reviving it is a behaviour change needing catalog + scenario.
+- **ECCS MODE reads CS** (the engine publishes `eccs_mode` in control_state only) —
+  chosen over exposing a new instrument: it is a lineup/command-surface mirror like its
+  neighbours, and adding an instrument would shift nothing else.
+- **Two label overflows were tracking, not width** — `.bd-ro-label` letter-spacing and
+  the number-hint 0.14em were the entire #235 F4/F5 overflows; fixed in code for every
+  tile of the class, with DOC_PATCHES moving the one tile that also sat under a valve.
+
 ## 2026-07-28f — decay heat is prompt+tracked, always; follow mode draws thermal output (#229, #132)
 
 `run_all` **22 runners at baseline** (`run_ops` back to exactly 57/68). Narrative in

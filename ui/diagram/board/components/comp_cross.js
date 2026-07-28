@@ -130,7 +130,9 @@
         portEls[id].setAttribute('data-phase', st.contents);
         portEls[id].setAttribute('data-temp', String(st.temp));
         portEls[id].setAttribute('data-out', fd > 0 ? '1' : '0');
-        portEls[id].setAttribute('data-active', (isEmpty || fd === 0) ? '0' : '1');
+        // Ports follow `moving` — see comp_tee.js: a fitting driven to flowing:false
+        // must stop the pipes joined to it, not just its interior dashes (#236).
+        portEls[id].setAttribute('data-active', (isEmpty || fd === 0 || !moving) ? '0' : '1');
       });
     }
 

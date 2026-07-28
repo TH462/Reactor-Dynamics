@@ -1833,10 +1833,13 @@
       }
       ranges[ser.id] = [h.lo, h.hi];
     });
-    // legend reflects the current (dynamic) range each line is scaled to
+    // legend reflects the current (dynamic) range each line is scaled to.
+    // Bounds render through the series' own fmt — the same conversion + unit suffix
+    // the float chips use — so the legend agrees with the chips in either display
+    // unit (it used to print raw internal SI beside imperial chips, #235).
     $('chartLegend').innerHTML = active.map(function (s) {
-      var r = ranges[s.id], sp = r[1] - r[0], dp = sp >= 10 ? 0 : sp >= 1 ? 1 : 2;
-      return '<span class="leg" style="color:' + s.c + '"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + r[0].toFixed(dp) + '–' + r[1].toFixed(dp) + '</b></span>';
+      var r = ranges[s.id];
+      return '<span class="leg" style="color:' + s.c + ';margin-right:10px"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + s.fmt(r[0]) + '–' + s.fmt(r[1]) + '</b></span>';
     }).join('');
     // horizontal gridlines — barely visible, thin; recede behind the traces
     [20, 40, 60, 80, 100].forEach(function (y) { html += '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#1e2831" stroke-width="0.5" vector-effect="non-scaling-stroke"/>'; });

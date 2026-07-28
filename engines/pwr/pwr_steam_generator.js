@@ -312,12 +312,20 @@
       // (a synchronous machine spins at rated at any load, incl. a light startup load).
       s.turbine_rpm += (tb.rpm_rated - s.turbine_rpm) / (tb.sync_tau || 0.5) * dt;
     } else {
-      // Connected but unloaded (a load reject before the trip): admission steam with
-      // the load gone accelerates the rotor toward the overspeed trip.
+      // Connected but unloaded: admission-steam torque against windage/bearing
+      // friction — the same coastdown the tripped branch models, because an
+      // unloaded rotor with no admission steam IS the tripped case physically.
+      // Without the friction term this branch held any rpm forever at zero steam,
+      // which is how Modes 3/5 (authored untripped, no load, no steam) pinned
+      // 1800 rpm on a cold plant (#235). NOTE the steam term is inert at the
+      // authored constants (torque_per_flow/inertia ≤ 0.02 rpm/s), so the
+      // "accelerates toward overspeed" this branch once claimed never actually
+      // happened — recorded in #238; reviving it is a tuning decision, not this fix.
       var net_torque = s.steam_flow_normalized * tb.torque_per_flow
                      - s.generator_load * tb.torque_per_load;
-      s.turbine_rpm += (net_torque / tb.turbine_inertia) * dt;
-      if (s.turbine_rpm < 0) s.turbine_rpm = 0;
+      s.turbine_rpm += (net_torque / tb.turbine_inertia
+                        - s.turbine_rpm / (tb.coastdown_tau || 40)) * dt;
+      if (s.turbine_rpm < 1) s.turbine_rpm = 0;
     }
 
     // A disconnected generator carries no grid load, so it produces no electrical

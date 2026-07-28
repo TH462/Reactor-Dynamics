@@ -151,7 +151,10 @@
       }
     });
 
-    var lastOn = false;       // rendered ON state (spd > 2), toggle click emits its inverse
+    var lastOn = null;        // rendered ON state (spd > 2), toggle click emits its inverse.
+                              // null (not false) so the FIRST update always writes the port
+                              // data-active gates — ports are authored '1', and a pump that
+                              // starts OFF must stop its pipes on render one (#236).
     var lastSpd = null;       // last applied display speed (0..100)
     var lastAnim = null;
     var lastTemp = void 0;

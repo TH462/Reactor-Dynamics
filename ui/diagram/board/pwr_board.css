@@ -151,7 +151,9 @@
   padding: 1px 2px; white-space: nowrap;
   font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
-.bd-readout .bd-ro-label { color: #7f96a8; letter-spacing: 0.06em; line-height: 1.25; }
+/* letter-spacing normal, not 0.06em: at 11 px mono the tracking cost "STEAM DUMP"
+   ~7 px and pushed it past its authored tile width (#235 finding 4) */
+.bd-readout .bd-ro-label { color: #7f96a8; letter-spacing: normal; line-height: 1.25; }
 .bd-readout .bd-ro-read { font-weight: 600; line-height: 1.15; }
 .bd-readout .bd-unit { color: #7f96a8; margin-left: -0.18em; }
 

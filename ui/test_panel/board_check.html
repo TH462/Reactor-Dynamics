@@ -264,6 +264,74 @@
       ticks(3);
       ck('func: SCRAM two-step trips the reactor', svc.assembleSnapshot().instruments.rps_scrammed === true);
 
+      // ---- pipe animation vs plant state (#236) --------------------------------
+      // The harness used to assert pipe EXISTENCE only, so a board showing forced
+      // circulation on a dead plant scored PASS. These pin play-state against the
+      // plant in three states: post-scram (dump carrying decay heat — just tripped
+      // above), then a fresh Mode 5 service, then implicitly the full-power state
+      // (the earlier interactive checks perturbed this svc, so its full-power pins
+      // ran on the fresh svc2 comparison below instead).
+      function pipeState(id) { return RD.PwrBoard.pipeFlowState(id); }
+      ticks(15);   // let the trip-open dump drive open on the Tavg error
+      RD.PwrBoard.render(svc.assembleSnapshot());
+      ck('pipe: post-scram steam dump line RUNNING (dump carries decay heat)',
+        pipeState('pmrr0u9nib3') === 'running', pipeState('pmrr0u9nib3'));
+      ck('pipe: post-scram PORV relief line PAUSED (PORV seated, dead-ended line)',
+        pipeState('pms3tda86bw') === 'paused', pipeState('pms3tda86bw'));
+
+      // Fresh hot-full-power service: the shipped default state, unperturbed.
+      var svcHfp = new RD.SimulationService({ plant_id: 'pwr', initial_state: 'hot_full_power' });
+      RD.PwrBoard.render(svcHfp.assembleSnapshot());
+      ck('pipe: full power hot leg RUNNING', pipeState('pms2ktjq4ma') === 'running', pipeState('pms2ktjq4ma'));
+      ck('pipe: full power main steam RUNNING', pipeState('pmrr0u4vgri') === 'running', pipeState('pmrr0u4vgri'));
+      ck('pipe: full power turbine exhaust RUNNING', pipeState('pmrr14xbt2h') === 'running', pipeState('pmrr14xbt2h'));
+      ck('pipe: full power RWST->ECCS suction PAUSED (HPI off; pump-init gate, #236)',
+        pipeState('pms3x1rbkod') === 'paused', pipeState('pms3x1rbkod'));
+      ck('pipe: full power PORV relief line PAUSED (dead-ended, PORV seated)',
+        pipeState('pms3tda86bw') === 'paused', pipeState('pms3tda86bw'));
+      ck('pipe: full power steam dump branch PAUSED (dump shut at power)',
+        pipeState('pmrr46oahnx') === 'paused', pipeState('pmrr46oahnx'));
+
+      // Cold Shutdown (Mode 5): RCPs secured, no steam, no feed — a dead plant must
+      // read STILL. 23 of 37 pipes animated here before #236.
+      var svc5 = new RD.SimulationService({ plant_id: 'pwr', initial_state: 'cold_shutdown' });
+      RD.PwrBoard.render(svc5.assembleSnapshot());
+      ck('pipe: Mode 5 hot leg PAUSED (RCPs secured)', pipeState('pms2ktjq4ma') === 'paused', pipeState('pms2ktjq4ma'));
+      ck('pipe: Mode 5 cold leg PAUSED', pipeState('pms2kozvu94') === 'paused', pipeState('pms2kozvu94'));
+      ck('pipe: Mode 5 main steam PAUSED (no steam flow)', pipeState('pmrr0u4vgri') === 'paused', pipeState('pmrr0u4vgri'));
+      ck('pipe: Mode 5 turbine exhaust PAUSED', pipeState('pmrr14xbt2h') === 'paused', pipeState('pmrr14xbt2h'));
+      ck('pipe: Mode 5 feed line PAUSED (no feed flow)', pipeState('pms31qjbqhy') === 'paused', pipeState('pms31qjbqhy'));
+
+      // #235 board defects, pinned in the same states:
+      function tileText(id) { var t = document.querySelector('[data-item="' + id + '"]'); return t ? t.textContent : ''; }
+      ck('readout: Mode 5 ECCS MODE shows RHR (was dead "OFF", #235)',
+        /RHR/.test(tileText('ims3w61jjbi')), tileText('ims3w61jjbi'));
+      var rpmTxt = (tileText('imrppee04aj').match(/-?\d+/) || ['NaN'])[0];
+      ck('readout: Mode 5 turbine rpm reads ~0 (was pinned 1800, #235)',
+        Math.abs(parseInt(rpmTxt, 10)) < 100, tileText('imrppee04aj'));
+      // authored-geometry corrections (DOC_PATCHES + label tracking, #235/#236):
+      var roLabel = document.querySelector('[data-item="imrzmlyafa3"] .bd-ro-label');
+      ck('geom: STEAM DUMP readout label fits its tile',
+        !!roLabel && roLabel.scrollWidth <= roLabel.parentElement.clientWidth,
+        roLabel && (roLabel.scrollWidth + ' vs ' + roLabel.parentElement.clientWidth));
+      ck('geom: STEAM DUMP readout clear of the dump valve tile',
+        (function () { var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (i) { return i.id === 'imrzmlyafa3'; })[0]; return it && it.left >= 1414; })());
+      ck('geom: NIS delta-T caption reads "Δ TEMP AVG"',
+        /Δ TEMP AVG/.test(tileText('imrsho1qu6t')), tileText('imrsho1qu6t'));
+      (function () {
+        var spTile = document.querySelector('[data-item="ims31tq7mgc"]');
+        var spLab = spTile && spTile.querySelector('div');
+        ck('geom: DUMP SETPOINT range hint fits its box',
+          !!spLab && spLab.scrollWidth <= spTile.clientWidth,
+          spLab && (spLab.scrollWidth + ' vs ' + spTile.clientWidth));
+      })();
+      (function () {
+        var P = RD.PwrBoard.ports();
+        var su = P['imrobpq4a70/suction'], di = P['imrobpq4a70/discharge'];
+        ck('geom: RCP suction on the loop-inlet (right) side, discharge on the outlet (#236)',
+          !!su && !!di && su.x > di.x, su && di && (su.x + ' vs ' + di.x));
+      })();
+
       out.push('', nFail === 0 ? 'ALL ' + nPass + ' CHECKS PASS' : nFail + ' FAILURES / ' + (nPass + nFail));
       document.getElementById('out').innerHTML = out.join('\n');
       document.title = (nFail === 0 ? 'PASS ' : 'FAIL ') + '— PWR Board checks';

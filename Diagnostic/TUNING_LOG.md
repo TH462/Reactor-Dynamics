@@ -109,6 +109,53 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28k — V2 board correctness pass: #235 defects + #236 pipe flows fixed  ✅
+
+Owner: "Work 235 and 236." Both closed. **board_check 59 → 79/79** — the #236 test gap
+(pipe animation vs plant state was never asserted) is closed with a new
+`RD.PwrBoard.pipeFlowState(id)` API + 20 pins across three plant states, and every #235
+finding is pinned too. `run_all` 22 runners at baseline.
+
+**#236 (pipe flows) — the mechanism fixes:**
+- `comp_pump.js`: `lastOn` init `false` → `null` so the FIRST update writes the port
+  gates. A pump spawning OFF left its pipes animating forever (RWST→ECCS suction at power).
+- `comp_tee.js`/`comp_cross.js`: port `data-active` now includes `!moving` — a fitting
+  driven `flowing:false` stops the pipes joined to it, not just its interior. This is what
+  stilled the Mode 5 primary loop (23/37 pipes animated on a dead plant before).
+- `comp_turbine_generator.js`: its ports had NO data-active attribute (missing ≠ '0' =
+  always-on); now gated on flowFrac.
+- **Fourth defect found while fixing: `comp_valve_horizontal` dropped the `flow` prop
+  entirely** — update() never read it, applyState never gated on it. Any horizontally
+  mounted valve (MSIV!) ignored its driver's flowing:false. Now matches the other variants.
+- Wiring: MSIV gains `flowing: sg_steam_flow > 0.01`; PORV block valve gains the porv
+  comp's own `open && blockOpen` truth (dead-ended line still when seated) + live satTempC
+  body (was static 250); AFW block valve gates on MEASURED afw_flow (was commanded
+  afw_active — the two halves of the line disagreed).
+- RCP suction/discharge swap (P5) done locally via DOC_PATCHES (extended to support
+  absolute item/pipe prop sets, null = delete): pump nozzle angles swapped so suction is
+  the loop-inlet side, pipes re-bound to the honest port names at the same positions,
+  compensating `flowDir:'fwd'` dropped. Idempotent; fold into the builder and delete.
+
+**#235 (board defects):**
+- ECCS MODE readout: `IN(s).eccs_mode` never existed — reads `CS(s)` now; Mode 5 shows RHR.
+- Turbine 1800 rpm in Modes 3/5: untripped/no-load branch gained the windage term
+  (`− rpm/coastdown_tau`); zero-load ICs (`P0 > 0.01` test — **gotcha: the subcritical
+  states author `power: 1e-6`, so `P0 > 0` is TRUE for them**) spawn rotor at rest.
+  **Finding: the branch's "accelerates toward overspeed" was already inert** (≤0.02 rpm/s
+  at authored constants, ~2.5 h to the trip; nothing tests it) — parked in #238.
+- Chart legend renders bounds through each series' `fmt` (same conversion+unit as the
+  chips) + entry margins.
+- Geometry WITHOUT re-export: DOC_PATCHES moves/widens the STEAM DUMP readout
+  (1416/72) and fixes "d TEMP AVG"→"Δ TEMP AVG"; `.bd-ro-label` letter-spacing normal
+  (tracking alone cost 7 px) and buildNumber hint 0.14em→0.06em (the whole DUMP SETPOINT
+  overflow).
+- Count drift (F6): "60/60" never matched code (was 59) — CLAUDE.md now records 79/79;
+  historical log entries left as written.
+
+**Open from the pass:** #235 F7 (Mode 5 standing alarms — needs ruling); surge-line
+static-direction limitation, RWST cross-tie cosmetic, natural-circ display note — all
+recorded in the #236 close-out comment.
+
 ### 2026-07-28j — #220 evidence pass: all ten real-plant claims verdicted against primary sources  ✅ (no code changed)
 
 Owner: "Do #220." The evidence pass the issue asked for — verdict + source per claim,

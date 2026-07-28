@@ -1275,7 +1275,10 @@
       rhr_valve_open: false, rhr_hx_fraction: 1.0, eccs_mode: 'off',
       afw_throttle_frac: 1.0, afw_flow_normalized: 0,   // AFW throttle (set_afw_flow) + delivered flow
 
-      turbine_rpm: cfg.turbine.rpm_rated, condenser_vacuum_kpa: cfg.turbine.vacuum_rated,
+      // Rotor at rated only when the state spawns with the generator carrying real
+      // load; the subcritical states (Modes 3/5, P0 = 1e-6) spawn with the turbine
+      // at rest — no admission steam and nothing to hold it at speed (#235).
+      turbine_rpm: P0 > 0.01 ? cfg.turbine.rpm_rated : 0, condenser_vacuum_kpa: cfg.turbine.vacuum_rated,
       // Circulating-water inlet temperature. Defaults to the reference the vacuum model is
       // calibrated at, so an untouched plant behaves exactly as it did before CW temperature
       // was modelled (see turbine.cw_inlet_ref_c).

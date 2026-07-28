@@ -343,7 +343,10 @@
     // Which alignment that one pump is in: RHR when the hot-leg suction valve is open, else
     // HPI/LPI by pressure regime, else off (pwr_engine.js:320). This is the readout that
     // makes the single-pump/two-suctions arrangement legible on the board.
-    ims3w61jjbi: function (s) { return String(IN(s).eccs_mode || 'off').toUpperCase(); },
+    // CS, not IN: the engine publishes eccs_mode in control_state only (pwr_engine.js:592) —
+    // reading instruments here left the readout at 'OFF' forever, including the shipped
+    // Mode 5 lineup that spawns RHR-aligned (#235).
+    ims3w61jjbi: function (s) { return String(CS(s).eccs_mode || 'off').toUpperCase(); },
     imrmstovyli: function (s) { return r0((IN(s).afw_flow || 0) * GPM_AFW); },                          // AFW flow gpm (true afw_flow)
     imrmsu1bl4r: function (s) { return r0(MPa2psi(IN(s).afw_discharge_pressure || 0)); },               // AFW discharge psi (true pump head)
     // AFW pump state. The V2 board draws no AFW pump — the card is the pump — so this is
@@ -543,9 +546,24 @@
     // openFrac = block valve open (operator-set); it only shows FLOW when AFW is actually
     // delivering (pumps demanded AND valve open). Shut it with the pumps running to recreate
     // TMI-2: run lights on, discharge-pressure at shutoff, but no water reaching the SG.
-    imrpp2g2m8k: function (s) { return valveProps(IN(s).afw_block_open === false ? 0 : 1, 'water', 60, IN(s).afw_active); }, // afw block valve
-    imrpp99kx2y: function (s) { return valveProps(IN(s).msiv_open ? 1 : 0, 'steam', satTempC(IN(s).steam_pressure)); },            // main steam isolation
-    imrppb3kuav: function (s) { return valveProps(CS(s).porv_block_open ? 1 : 0, 'steam', 250); },                                 // PORV block valve
+    // Flow gates on MEASURED afw_flow, not the commanded afw_active — the feed tee's AFW
+    // leg (ims31q71cmu legC) gates on delivery, and the two halves of one line must agree:
+    // gating here on the command showed supply→valve running while valve→tee sat still
+    // whenever AFW was demanded but not delivering (#236).
+    imrpp2g2m8k: function (s) { return valveProps(IN(s).afw_block_open === false ? 0 : 1, 'water', 60, (IN(s).afw_flow || 0) > 1e-4); }, // afw block valve
+    // Flow gates on total steam actually leaving the SG (turbine + dump) — an open MSIV on
+    // a steamless plant (Mode 5: 0 flow, 15 psi) is open but NOT flowing (#236).
+    imrpp99kx2y: function (s) { return valveProps(IN(s).msiv_open ? 1 : 0, 'steam', satTempC(IN(s).steam_pressure), (IN(s).sg_steam_flow || 0) > 0.01); },  // main steam isolation
+    // Flow gates on the PORV actually relieving — same true-state open×blockOpen the porv
+    // comp uses for its plume. The block valve is normally open, but a dead-ended relief
+    // line has no flow while the PORV is seated: without the gate the pressurizer→block
+    // segment animated steam into a shut valve in every state (#236). Body temp is live
+    // RCS saturation, same source as the pipes either side of it (was a static 250).
+    imrppb3kuav: function (s) {
+      var t = s.true_state || {};
+      var pOpen = t.porv_open != null ? !!t.porv_open : (IN(s).porv_indicator === 'open');
+      return valveProps(CS(s).porv_block_open ? 1 : 0, 'steam', satTempC(IN(s).primary_pressure), pOpen && CS(s).porv_block_open !== false);
+    },
     // accumulator shutoff (isolation) valve — normally OPEN/aligned, but the accumulators
     // only inject once RCS pressure falls below the 600 psi check-valve setpoint, so the
     // discharge only "flows" while accumulators_discharging (no flow into the Rx at power).
@@ -1040,23 +1058,59 @@
   // selfTest asserts every target still resolves, so a re-export that renames an id fails
   // loudly rather than silently dropping the correction.
   var DOC_PATCHES = {
-    // Turbine exhaust → condenser steam inlet. The route is authored orthogonally, but its
-    // two waypoints sit 1 px and 2 px off the ports they line up with, so both "vertical"
-    // legs lean. Pin them to the real port x.
-    pipes: { pmrr14xbt2h: { waypoints: [[1574, 340], [1553, 340]] } },
-    // PORV discharge → quench-tank box. The box's top port is authored 2 px left of the
-    // PORV outlet above it, so the drop leans instead of falling straight in.
-    items: { imrsi2svtgn: { ports: { ptmrsi3kjfr5: { off: 17 } } } }
+    pipes: {
+      // Turbine exhaust → condenser steam inlet. The route is authored orthogonally, but its
+      // two waypoints sit 1 px and 2 px off the ports they line up with, so both "vertical"
+      // legs lean. Pin them to the real port x.
+      pmrr14xbt2h: { waypoints: [[1574, 340], [1553, 340]] },
+      // RCP suction/discharge swap, pipe half (#236) — see the imrobpq4a70 item patch
+      // below. Same geometric endpoints (the two nozzle positions are unchanged); only
+      // the port NAMES they bind to change, so the loop enters at suction and leaves at
+      // discharge. The authored flowDir:'fwd' on the outlet pipe existed solely to
+      // overpower the backwards port semantics — with them corrected it is dropped and
+      // the direction comes from the ports, like every other pipe.
+      pms2kozvu94: { props: { to: 'imrobpq4a70/suction' } },
+      pms2kp1148p: { props: { from: 'imrobpq4a70/discharge', flowDir: null } }
+    },
+    items: {
+      // PORV discharge → quench-tank box. The box's top port is authored 2 px left of the
+      // PORV outlet above it, so the drop leans instead of falling straight in.
+      imrsi2svtgn: { ports: { ptmrsi3kjfr5: { off: 17 } } },
+      // STEAM DUMP readout (#235): authored left 1410 / width 65 — 4 px under the dump
+      // valve tile (ends 1414) and too narrow for its own label. 1416/72 clears the valve
+      // and, with the .bd-ro-label letter-spacing fix, fits "STEAM DUMP" with room.
+      imrzmlyafa3: { props: { left: 1416, width: 72 } },
+      // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
+      imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
+      // RCP suction/discharge swap, item half (#236): the loop physically enters this
+      // pump from the letdown tee on its RIGHT and leaves toward the charging tee on its
+      // LEFT, but the nozzles were authored suction-left/discharge-right — water entered
+      // at the discharge. Swapping the angles puts suction on the right and discharge on
+      // the left at the SAME positions, and the discharge nozzle art now faces the way
+      // the water actually goes.
+      imrobpq4a70: { props: { suctionAngle: 0, dischargeAngle: 180 } }
+    }
   };
   function applyDocPatches(doc) {
     if (!doc) return;
+    function setProps(target, props) {
+      for (var k in props) {
+        if (!Object.prototype.hasOwnProperty.call(props, k)) continue;
+        if (props[k] === null) delete target[k];
+        else target[k] = props[k];
+      }
+    }
     (doc.pipes || []).forEach(function (p) {
       var patch = DOC_PATCHES.pipes[p.id];
-      if (patch && patch.waypoints) p.waypoints = patch.waypoints.map(function (q) { return [q[0], q[1]]; });
+      if (!patch) return;
+      if (patch.waypoints) p.waypoints = patch.waypoints.map(function (q) { return [q[0], q[1]]; });
+      if (patch.props) setProps(p, patch.props);
     });
     (doc.items || []).forEach(function (it) {
       var patch = DOC_PATCHES.items[it.id];
-      if (!patch || !patch.ports) return;
+      if (!patch) return;
+      if (patch.props) setProps(it, patch.props);
+      if (!patch.ports) return;
       (it.ports || []).forEach(function (pt) {
         var pp = patch.ports[pt.id];
         if (pp && pp.off != null) pt.off = pp.off;

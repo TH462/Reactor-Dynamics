@@ -406,7 +406,9 @@
     var el = tileBase(it, 'nohgt');
     if (it.label) {
       var lab = h('div', null, it.label);
-      lab.style.cssText = 'color:#6b8598;font-family:' + MONO + ';font-size:' + (it.fontSize || 10) + 'px;letter-spacing:0.14em;margin-bottom:3px;white-space:nowrap';
+      // letter-spacing 0.06em, not 0.14em: at fontSize 14 the wide tracking alone put the
+      // DUMP SETPOINT hint "29-1350 psi" ~7 px past its authored box (#235 finding 5)
+      lab.style.cssText = 'color:#6b8598;font-family:' + MONO + ';font-size:' + (it.fontSize || 10) + 'px;letter-spacing:0.06em;margin-bottom:3px;white-space:nowrap';
       el.appendChild(lab);
     }
     var digits = it.digits == null ? 0 : it.digits;
@@ -690,6 +692,7 @@
       if (b.junction) underSvg.appendChild(K.junction({ x: b.x, y: b.y, d: d, fluid: fluidArg }));
       var flowEl = el.lastChild && el.lastChild.getAttribute && el.lastChild.getAttribute('stroke-dasharray') ? el.lastChild : null;
       pipeFlow.push({
+        id: p.id || null,
         fromKey: typeof p.from === 'string' ? p.from : null,
         toKey: typeof p.to === 'string' ? p.to : null,
         flowEl: flowEl
@@ -936,6 +939,17 @@
     refreshLayout: function () { layout(); if (scanPorts()) buildPipes(); },
     rescanPorts: function () { if (scanPorts()) buildPipes(); },
     ports: function () { return ports; },
+    // A pipe's dash animation state ('running' | 'paused') by pipe id, for the
+    // board_check pins — #236's findings all rendered as PASS while the harness
+    // asserted existence but never animation-vs-plant-state.
+    pipeFlowState: function (id) {
+      for (var i = 0; i < pipeFlow.length; i++) {
+        if (pipeFlow[i].id === id && pipeFlow[i].flowEl) {
+          return pipeFlow[i].flowEl.style.animationPlayState || 'running';
+        }
+      }
+      return null;
+    },
     lastSnapshot: function () { return lastSnap; },
     // Instructor-highlight hooks (parity with RD.PwrSynoptic). The driver owns the
     // control-label vocabulary; the renderer resolves it to a board tile to glow.

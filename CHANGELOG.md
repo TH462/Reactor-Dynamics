@@ -14,6 +14,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The board no longer shows flow that isn't happening** (#236). Pipe dash animation now
+  follows the plant everywhere: a Cold Shutdown plant reads still (previously 23 of 37
+  pipes animated — the whole primary loop, main steam, and the feed train "circulated" on
+  a dead plant), a pump that spawns stopped stops its pipes from the first frame, the
+  PORV relief line no longer streams steam into a shut valve in every state (it only flows
+  when the PORV is actually relieving — the TMI tell the tailpipe temperature already told
+  honestly), the AFW line agrees with itself (both halves gate on measured flow), the MSIV
+  goes still with no steam, and an unloaded turbine stops its inlet and exhaust lines. The
+  Mode 5 → Mode 1 missions now *show* what starting the RCPs, feed, and steam changes.
+  Also: the RCP was plumbed backwards (loop entered at the discharge nozzle, patched into
+  looking right) — its suction/discharge semantics are now correct via an idempotent doc
+  patch, so anything future keyed on port meaning renders true.
+- **V2 board defects from the #235 verification sweep.** The ECCS card's MODE readout was
+  dead (wired to a snapshot section that never carried it — it now reads the control state
+  and shows **RHR** in the shipped Mode 5 lineup from t = 0); the turbine no longer holds
+  1800 rpm on a cold steamless plant (the unloaded rotor branch gained the windage term it
+  was missing, and zero-load states spawn with the rotor at rest); the strip-chart legend
+  prints ranges in the display unit with proper separators (it printed raw internal SI
+  beside imperial chips); the STEAM DUMP readout no longer clips its label or sits under
+  the dump valve tile; the DUMP SETPOINT range hint fits its box; the NIS caption reads
+  "Δ TEMP AVG". `board_check` grew from 59 to **79** checks and now pins pipe animation
+  against plant state in three states, so none of this can regress silently.
 - **Decay heat no longer vanishes through an un-scrammed power reduction** (#229, #132).
   Total core heat is now prompt fission power plus the tracked decay-heat inventory,
   unconditionally (`Q = 0.93·P + decay`) — exactly identical at every steady state and

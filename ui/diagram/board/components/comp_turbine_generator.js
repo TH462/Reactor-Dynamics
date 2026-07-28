@@ -70,15 +70,19 @@
       h('filter', { key: 'glow', id: gid + 'Glow', x: '-60%', y: '-60%', width: '220%', height: '220%' }, [h('feGaussianBlur', { key: 0, stdDeviation: '10' })])
     ]));
 
-    // standardized medium steam-inlet port (the board draws the connecting stub to the TCV)
-    C.push(h('circle', { key: 'pmSteamIn', cx: 314, cy: 115, r: 0.75, fill: 'none', 'data-port': 'steam-in', 'data-fluid': 'steam', 'data-dir': 'left', 'data-size': 'medium', 'data-out': '0' }));
+    // standardized medium steam-inlet port (the board draws the connecting stub to the TCV).
+    // Ports carry data-active driven from flowFrac in update() — a port with NO data-active
+    // reads as always-flowing to updatePipeFlowStates, which kept the inlet stub and the
+    // exhaust-to-condenser pipe animating on a steamless plant (#236).
+    var portSteamIn, portExhaust;
+    C.push(h('circle', { key: 'pmSteamIn', ref: function (el) { portSteamIn = el; }, cx: 314, cy: 115, r: 0.75, fill: 'none', 'data-port': 'steam-in', 'data-fluid': 'steam', 'data-dir': 'left', 'data-size': 'medium', 'data-out': '0', 'data-active': '1' }));
 
     // turbine steam exhaust — outlet underneath the casing down toward the condenser (grey steam)
     // drawn before the casing so the casing's sloped underside overlaps it
     var exX = 560, exTopY = 213;
     C.push(h('rect', { key: 'exNoz', x: exX - 16, y: exTopY - 6, width: 32, height: 18, rx: 4, fill: 'url(#' + gid + 'SteelGrad)', stroke: '#223543', strokeWidth: 1.2 }));
     // standardized medium exhaust port (the board draws the connecting stub to the condenser)
-    C.push(h('circle', { key: 'pmExhaust', cx: exX, cy: exTopY + 12, r: 0.75, fill: 'none', 'data-port': 'exhaust-out', 'data-fluid': 'wetSteam', 'data-dir': 'down', 'data-size': 'medium', 'data-out': '1' }));
+    C.push(h('circle', { key: 'pmExhaust', ref: function (el) { portExhaust = el; }, cx: exX, cy: exTopY + 12, r: 0.75, fill: 'none', 'data-port': 'exhaust-out', 'data-fluid': 'wetSteam', 'data-dir': 'down', 'data-size': 'medium', 'data-out': '1', 'data-active': '1' }));
 
     // turbine casing (narrowed left/right; left edge stays put so the steam-inlet stub
     // doesn't have to move)
@@ -156,6 +160,10 @@
         turbGlow.style.display = (glowOn && open) ? '' : 'none';
         genGlow.style.display = (glowOn && open) ? '' : 'none';
         turbSteam.style.display = open ? '' : 'none';
+        // no steam through the machine → the inlet stub and exhaust line stop with it
+        var act = open ? '1' : '0';
+        if (portSteamIn) portSteamIn.setAttribute('data-active', act);
+        if (portExhaust) portExhaust.setAttribute('data-active', act);
       }
       var op = (0.3 + frac * 0.35).toFixed(3);
       if (op !== lastOp) { lastOp = op; turbSteam.setAttribute('opacity', op); }
