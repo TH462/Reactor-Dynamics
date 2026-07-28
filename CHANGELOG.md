@@ -13,6 +13,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The six vital tiles open with their trend line already drawn** (owner-directed). Each
+  tile plots the last three minutes, and it used to start from nothing — so for the first
+  three minutes of every session the trace was a short stub against the right-hand edge,
+  with the area fill's vertical riser stranded in the middle of an otherwise empty card.
+  It read as a rendering fault rather than as an empty buffer. The tiles now preload a
+  full three-minute window, **flat at the first reading**, the same steady-state preload
+  the strip chart below already takes: the board opens looking like a plant that has been
+  running at a stable operating point, which is the condition it is actually handed to you
+  in. The preload is flat by design — it asserts only that the reading was steady, and
+  never invents an excursion the plant did not have. Live data continues from it and
+  scrolls the preload out over the following three minutes.
+
 ### Added
 - **Feature flags: what the public site offers vs what is still being vetted (#241).**
   Content ships in one bundle with the sim, so anything half-checked went live the moment

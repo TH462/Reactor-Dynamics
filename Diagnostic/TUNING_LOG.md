@@ -110,6 +110,42 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28o — vital tiles preload a flat 3-minute trend  ✅
+
+The ask: *"I want the 6 vital gauges at the top to start with the full amount of data on
+the graph starting from a preload… make it seem like the plant has been running."* Then,
+after a first attempt: *"It should be flat as if the plant was at steady state just like
+the graph at the bottom. The issue that made me think it wasn't preloaded was an odd tail
+at the beginning of the trend line."*
+
+- **Fix.** `comp_indicator_panel.js:update()` now lays down a full `WINDOW_S` (180 s) of
+  flat samples at the first reading that carries sim time, gated on a `seeded` flag rather
+  than on an empty buffer — `build()` calls `update()` once with the authored config value
+  and **no `t`**, and that untimed placeholder must be dropped, not left anchoring the
+  trace. Re-seeds after a rewind and after `reset()`.
+- **What the "odd tail" actually was.** Not a missing preload — x is already on a fixed
+  180 s time axis, so a fresh trace is a stub against the right edge, and the area fill
+  rises vertically from the baseline at the trace's *left* end. That riser sat stranded
+  mid-card. With the preload the trace starts at `x = PAD`, so the riser is at the tile
+  edge where it belongs. Measured, not eyeballed: all six tiles span x `5.4 → 235` from
+  ~2 s in, y-span ≤ 1.2 px of a 26 px plot (flat), trend arrows `–`.
+- **This reverses a documented deliberate departure.** The file's header called out "NO
+  SYNTHETIC HISTORY" on HR1 grounds (an agent's call, not a ruling). Superseded by the
+  owner ruling above and rewritten in place with the quote. The HR1 line still holds where
+  it matters: the preload is **flat**, so it asserts only that the reading was steady and
+  never invents an excursion. A random walk would still be out.
+- **Wrong tree first, worth recording.** I spent the first pass in `ui/app.js`'s
+  `renderGauges` / `#gaugeStrip` — which *is* a six-gauge vital strip with sparklines, a
+  60 s window and a #237 flat preseed, and is **`display:none` on the PWR board**
+  (`.app.pwr-synoptic`). It is the legacy strip, live only for RBMK/BWR. Diagnosis was
+  `getBoundingClientRect()` returning zeros for elements that were plainly on screen. Those
+  edits were reverted whole. **If you are changing what the player sees on the PWR board,
+  confirm the element is the one being painted before editing** — `.bd-tile svg` under
+  `RD.PwrBoard`, not `#gaugeStrip`.
+- **Gates.** `board_check` **PASS** (0 fail / 912 checks), `verify_e2e_ui` **PASS** (16
+  screenshots), `verify_flags_ui` **48/48**, `verify_manual_follow` **PASS** (84 checks).
+  No engine/control/scenario file touched, so the non-browser runners are unaffected.
+
 ### 2026-07-28n — #241 feature flags: ship the build, offer a subset  ✅
 
 The ask: toggle features off for the public site and on for `develop`, so unvetted
