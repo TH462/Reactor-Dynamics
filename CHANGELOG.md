@@ -14,6 +14,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Decay heat no longer vanishes through an un-scrammed power reduction** (#229, #132).
+  Total core heat is now prompt fission power plus the tracked decay-heat inventory,
+  unconditionally (`Q = 0.93·P + decay`) — exactly identical at every steady state and
+  post-scram, but through a fast runback the ~5 % residual above the new power level now
+  persists on its real ~33-minute tail instead of disappearing the instant the rods move.
+  This also removes a step discontinuity in the old form's power-vs-decay switch. With the
+  residual real, turbine **follow mode now draws the reactor's thermal output rather than
+  its flux** (like a real pressure-mode follow governor): during a down-power the turbine
+  carries the decay residual — grid output briefly reads above nuclear indication, which is
+  true of real plants — and the return to power runs slightly cool while the decay
+  inventory rebuilds. A daily 100→50→100 % load-follow cycle completes cleanly where it
+  would otherwise bank the residual into a pressurizer-level trip. The normal-shutdown ops
+  probe now takes the generator offline before hot standby — the real procedure step it
+  could previously skip because a flux-tracking governor stopped drawing on its own.
 - **A core held partially uncovered is now damaged, as it must be** (#213). Previously the
   fuel model averaged the whole core, so with inventory anywhere above 50 % the fuel read
   fully cooled — a plant could sit at 60 % inventory (top of core exposed) indefinitely

@@ -216,6 +216,12 @@
       // a permanent imbalance that walks SG level into the high-level scram. The
       // pump's own 0..120 % runout clamp in setFeed is separate and stays.
       maxCoupledFeedFrac: 1.0,
+      // Follow mode draws the reactor's THERMAL output, not its flux (#229): with
+      // decay heat a separate lagging source, a runback leaves a ~2-5 % residual
+      // above fission power for tens of minutes, and a pressure-mode follow
+      // governor takes that steam like any other. Q ≡ P at steady state, so
+      // nothing moves outside transients.
+      extractFrac: function (s) { return s._Q_total != null ? s._Q_total : (s._P || 0); },
       setLoad: function (s, mwe, rated) {
         s.steam_demand_mwe = mwe;
         s.turbine_demand_frac = clip(mwe / rated, 0, 1.2);
@@ -273,23 +279,21 @@
     this._stepKinetics(rho, dt);
     // 3. Xenon / iodine.
     this._stepXenon(dt);
-    // 4. Heat generation. Decay heat tracks power continuously (above). During
-    //    operation it is embedded in P (rated = total thermal); once the fission
-    //    term collapses, decay heat is the residual source.
-    //    The switch is "has fission collapsed", NOT "did we scram": a scram is the
-    //    usual cause, but fission also collapses when an UNSCRAMMED core loses its
-    //    moderator (an ATWS during a LOCA — the core uncovers, voids out, and goes
-    //    subcritical without a rod insertion). Gating on s.scrammed alone left decay
-    //    heat switched off in exactly that case, so the worst real accident froze the
-    //    fuel at its current temp instead of heating to melt (meltdown battery MD-5).
-    //    Condition: scrammed OR prompt power has fallen below the decay-heat floor
-    //    (self-scaling, no magic constant). This is identical to the old form whenever
-    //    scrammed is true and whenever P > decay (all at-power operation), so the
-    //    post-scram tail and normal ops are unchanged; it only adds the missing source
-    //    in the unscrammed-fission-collapse regime.
+    // 4. Heat generation (#229/#132). Total thermal = PROMPT fission power + decay
+    //    heat, unconditionally: _P is scaled by (1 − f0), f0 = H1_0 + H2_0, and the
+    //    tracked decay inventory is always added. At every steady state this is
+    //    exactly _P (P·(1−f0) + f0·P), so all calibrations are unchanged; with
+    //    fission collapsed (scram, or an unscrammed uncovery/void-out — the MD-5
+    //    ATWS-during-LOCA case) it reduces to the decay tail, same as before. What
+    //    changes is the TRANSIENT: through a fast un-scrammed runback the decay
+    //    inventory lags on its τ≈33 min tail, so the ~5 % residual above the new
+    //    equilibrium is now counted instead of vanishing the instant the rods move —
+    //    the previous form treated decay as "embedded in P" at power, which is only
+    //    true in steady state, and its P-vs-decay switch also stepped Q_total
+    //    discontinuously when P crossed the decay floor. Both artifacts gone.
     this._stepDecay(dt);
-    var _decay = s._H1 + s._H2;
-    s._Q_total = s._P + ((s.scrammed || s._P < _decay) ? _decay : 0);
+    var _dc0 = this.cfg.kinetics.decay;
+    s._Q_total = s._P * (1 - (_dc0.H1_0 + _dc0.H2_0)) + (s._H1 + s._H2);
     // Emergency injection multiplier already on state; HPI flow computed in §9.
     // 5–6. Fuel and coolant temperatures (legs, true subcooling).
     TH.stepFuel(s, this.cfg, dt);

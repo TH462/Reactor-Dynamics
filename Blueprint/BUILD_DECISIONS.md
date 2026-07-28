@@ -37,6 +37,35 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-28f — decay heat is prompt+tracked, always; follow mode draws thermal output (#229, #132)
+
+`run_all` **22 runners at baseline** (`run_ops` back to exactly 57/68). Narrative in
+`Diagnostic/TUNING_LOG.md` 2026-07-28i; the decisions:
+
+- **`Q_total = P·(1−f0) + decay`, branchless** (`pwr_engine.js` step 4; f0 = H1_0+H2_0).
+  The old "decay embedded in P at power" form was true only in steady state; through an
+  un-scrammed runback it deleted the ~5 % residual (τ≈33 min) the instant the rods moved,
+  and its P-vs-decay switch stepped Q discontinuously. The new form is exactly identical at
+  every steady state and in every fission-collapsed regime (scram; MD-5's ATWS void-out),
+  so no calibration moved — the transient is the only change, and it is the fix. #132 was
+  the same defect deferred by a citation to an owner ruling that never existed (see #229).
+- **Follow mode gains `extractFrac`** (`load_mode.js` + `pwr_engine._loadModeOpts`): the
+  module's own intent — "the turbine extracts what the reactor makes" — implemented as
+  flux-tracking, which ceased to be the same thing the moment decay became a separate
+  source. A per-plant opts hook (PWR → `_Q_total`) rather than a change to the shared
+  `powerFrac`: RBMK/BWR are on hold and their gates must not move (BWR's twin defect filed
+  as #239). Consequence: on a down-power the turbine carries the residual (grid output
+  briefly above nuclear indication — prototypical), and without it the residual has NO
+  consumer — measured, the ops daily cycle banked +16 °C to the dump crack point and
+  tripped pzr-level-high on the up-ramp as the load-programmed dump reference closed the
+  only relief path.
+- **`ops_normal_shutdown` amended, validated both sides (HR10)**: the probe never took the
+  generator offline — invisible under flux-tracking follow (draw → ~0 subcritical), exposed
+  by honest physics (a synced follow turbine draws the decay steam and pins Tavg at 279 °C,
+  dump shut, no restoring force). The added `set_load_mode disconnected` is the real
+  procedure's step and makes the probe's own claim ("hot standby on the dump") literally
+  true; the amended probe passes on the PRE-#229 physics as well.
+
 ## 2026-07-28e — partial uncovery damages the core: exposed-clad hot node (#213)
 
 Owner-filed #213. `run_all` **22 runners at baseline** with `run_meltdown` **8 → 9** (new

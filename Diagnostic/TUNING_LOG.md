@@ -109,6 +109,42 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28i — decay-heat residual through un-scrammed runbacks + follow-mode draw (#229, #132)  ✅
+
+Owner: "Work #229." **Fixed, `run_all` 22 runners at baseline (`run_ops` back to exactly
+57/68 — the same 11 RBMK/BWR + C2).** #132 was the same defect behind a phantom ruling;
+both closed.
+
+**Physics** (`pwr_engine.js` step 4): `_Q_total = _P·(1−f0) + (_H1+_H2)`, f0 = H1_0+H2_0
+(0.07), **branchless**. Identical at every steady state (P·0.93 + 0.07·P = P) and in every
+fission-collapsed regime (scram, MD-5 ATWS void-out → pure decay tail), so all
+calibrations hold; through a runback the residual above the new equilibrium now persists
+on its τ≈33 min tail (measured: 6.6 % → 3.2 % over 45 min on a full collapse). Also kills
+the old form's Q step-discontinuity when P crossed the decay floor.
+
+**The consequential fix it forced** (`load_mode.js` + `pwr_engine._loadModeOpts`): follow
+mode tracked **flux** (`_P`) — correct only while Q ≡ P. With the residual real, a
+follow turbine pinned at indicated power leaves ~2 % of rated with NO consumer: measured,
+the ops daily cycle banked it into Tavg 314 (dump crack point), pzr 96.6 %, **trip on the
+up-ramp** (dump closes as its load-programmed reference rises — the stored energy never
+leaves). The module's own intent comment says "the turbine extracts what the reactor
+MAKES" — which is now `_Q_total` — so follow gains an `extractFrac` hook (PWR supplies
+Q_total; RBMK/BWR untouched, they fall back to `powerFrac`). Cycle now completes: pzr max
+55 %, Tavg on program, up-ramp runs correctly ~2 °C cool while the inventory rebuilds.
+
+**Probe amendment, validated BOTH sides (HR10)**: `ops_normal_shutdown` never took the
+generator offline — under flux-tracking follow that was invisible (draw → ~0 subcritical
+≈ offline), under honest physics the synced turbine draws the decay steam and pins Tavg at
+279 °C with the dump shut (any temperature is an equilibrium — no restoring force). Real
+shutdowns take the turbine offline at low load; the probe now does
+(`set_load_mode disconnected` before the standby soak) and its "hot standby on the dump"
+claim is finally literally true. The amended probe passes on the OLD physics too.
+
+**Gotcha:** `extractFrac` is a per-plant opts hook, not a change to shared `powerFrac` —
+RBMK (`rbmk_thermal` sets `_Q_total = Q_total` incl. graphite) and BWR (scram-gated decay,
+same pre-#229 pattern) would have moved. The BWR twin defect (decay gate ALSO missing the
+MD-5 fission-collapse form) is filed on hold: #239.
+
 ### 2026-07-28h — partial core uncovery now damages the core: exposed-clad hot node (#213)  ✅
 
 Owner-filed #213: "Core damage doesn't happen on partial core unrecovery." **Reproduced,

@@ -57,7 +57,6 @@
     var tau = s.load_follow_tau != null ? s.load_follow_tau : DEFAULT_TAU;
     var alpha = dt / (tau + dt);
     var rated = opts.mweRated;
-    var powerMwe = powerFrac(s) * rated;
     var feedMax = opts.maxCoupledFeedFrac != null ? opts.maxCoupledFeedFrac : DEFAULT_MAX_COUPLED_FEED_FRAC;
 
     if (s.load_mode === 'disconnected') {
@@ -87,7 +86,15 @@
         opts.setFeed(s, clip((s.steam_out_total != null ? s.steam_out_total : 0) + trim, 0, 1.2));
       }
     } else if (s.load_mode === 'follow') {
-      s.load_target_mwe += alpha * (powerMwe - s.load_target_mwe);
+      // Follow tracks what the reactor MAKES — its thermal output. Plants that
+      // distinguish prompt fission power from total heat (PWR since #229: decay
+      // heat is a separate, lagging source, so through a runback the plant makes
+      // ~2-5 % more heat than the flux instruments read) supply extractFrac; the
+      // turbine, like a real pressure-mode follow governor, draws the steam that
+      // heat actually generates. Without the hook this falls back to fission
+      // power — identical whenever Q ≡ P (steady state, and RBMK/BWR as built).
+      var makesFrac = opts.extractFrac ? opts.extractFrac(s) : powerFrac(s);
+      s.load_target_mwe += alpha * (makesFrac * rated - s.load_target_mwe);
       opts.setLoad(s, s.load_target_mwe, rated);
       if (s.feed_auto_coupled) opts.setFeed(s, clip(s.load_target_mwe / rated, 0, feedMax));
     } else {
@@ -112,7 +119,8 @@
     // The imbalance ANNUNCIATOR reads INDICATED power (the engine stashes the
     // previous step's power_range reading as s._ins_power_pct) — HR1: an
     // annunciator is an indication, not physics. The load-follow tracking
-    // above stays on true power: the turbine extracts what the reactor makes.
+    // above stays on true output (extractFrac / true power): the turbine
+    // extracts what the reactor makes.
     var indMwe = (s._ins_power_pct != null ? s._ins_power_pct / 100 : powerFrac(s)) * rated;
     s.load_imbalance_mwe = indMwe - s.load_target_mwe;
     s.sg_imbalance_active = Math.abs(s.load_imbalance_mwe) > IMBALANCE_FRAC * rated;

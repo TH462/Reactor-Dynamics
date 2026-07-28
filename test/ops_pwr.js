@@ -210,6 +210,15 @@
         var tSub = h.runUntil(function (ts) { return ts.reactivity_pcm < -500; }, 600);
         h.cmd('rod_stop', { group_id: 'control_rods' });
         ck('subcritical on rods alone', tSub >= 0 ? fmt(tSub, 0) + ' s' : 'timeout', tSub >= 0, '< 600 s');
+        // Take the generator OFFLINE — the real procedure's step this probe used to
+        // skip. It never mattered before #229 because follow-mode draw tracked flux
+        // (→ ~0 subcritical ≈ offline anyway); with decay heat now a separate source,
+        // a still-synced follow governor keeps drawing the ~5 % decay steam and PINS
+        // Tavg wherever the descent left it (any temperature is an equilibrium — no
+        // restoring force), so "hot standby on the dump" needs the dump actually
+        // carrying the plant. Passes on the pre-#229 physics too (draw was ~0 either
+        // way) — validated both sides.
+        h.cmd('set_load_mode', { mode: 'disconnected' });
         h.run(1200);   // hot standby on the dump
         var t = h.ts();
         ck('power at decay levels', fmt(t.power_pct, 2) + '%', t.power_pct < 3, '< 3%');
