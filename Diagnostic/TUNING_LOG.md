@@ -109,6 +109,46 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28j — #220 evidence pass: all ten real-plant claims verdicted against primary sources  ✅ (no code changed)
+
+Owner: "Do #220." The evidence pass the issue asked for — verdict + source per claim,
+**nothing fixed** (decisions get revisited with the evidence in hand). Full verdicts with
+verbatim quotes + ADAMS accession numbers: **#220 comment (2026-07-28)**.
+
+**Tally: 7 VERIFIED, 2 PARTLY VERIFIED, 1 verified-with-a-gap — none WRONG.** The recall
+was good; the value is the numbers now attached. Highlights:
+
+- **C-7 is real and #219's latch is structurally vindicated**: WTSM 11.2 (ML11223A294) —
+  loss-of-load signal (C-7) = ramp >5 %/min OR step >10 %, sensed from turbine impulse
+  pressure, arming the Tavg dump controller; C-8 = turbine-trip arm; C-9 = condenser
+  available. Our washout IS the ramp path. Open `[tune]` question: our 40 MWe arm is far
+  coarser than the real 10 %/5 %-per-min.
+- **Dump capacity: 40 % standard** ("In most Westinghouse units the capacity of the steam
+  dump system is 40%"), and **P-9's documented basis is exactly dump capacity** (WTSM 12.2).
+  RT-on-TT is anticipatory and **uncredited in safety analyses** (Salem TS Bases: "No
+  credit was taken"). Our 105 % dump is a named departure with an AP1000 analog (DCD 8.3
+  full-load rejection to house load) — but needs an HR9(c) declaration, and
+  `pwr_control.js:95-97` currently recites the REAL plant's capacity premise, not ours.
+- **P-9 = ~50 % nominal but plant-specific** (Vogtle moved to 40 % in 2007); plants without
+  P-9 arm at ~10 % via P-7 — the origin of "10 %" claims.
+- **1 DPM is a real administrative limit** (McGuire OP/1/A/6100/05 "Do not exceed a stable
+  startup rate of 1 DPM"; Turkey Point 2020: exceeded it, tripped on SR 1e5 cps — the
+  administrative/automatic split our plant reproduces). Our 1.5 DPM withdrawal *block* has
+  no real analog (real plants: IR rod stops on level, not rate) — teaching aid, name it.
+- **AFW start list verified** (WTSM 5.7 five-condition list); real plants use ONE lo-lo
+  level signal for both trip and AFW start — our 20 %/17 % split is an invention.
+- **Boron: grab-sample titration verified**; "plants abandoned boronometers" fragment
+  COULD NOT ESTABLISH — drop it from justifications.
+- **Stale comments found (recorded, not fixed)**: `pwr_steam_generator.js:162-164` still
+  says "no anticipatory reactor trip exists" (untrue since #216).
+
+**Gotcha (workflow):** nrc.gov 403s all non-browser fetches; Wayback `web.archive.org/web/2023id_/<url>`
++ curl with a browser UA gets the real PDFs. Spot-verified the load-bearing WTSM 11.2
+quotes verbatim from the extracted PDF text before posting — the subagent quotes were exact.
+
+**Proposed process fix (in the #220 comment, needs ruling):** prototypicality claims used
+to justify plant changes carry their source in the comment ("WTSM 11.2", ADAMS number).
+
 ### 2026-07-28i — decay-heat residual through un-scrammed runbacks + follow-mode draw (#229, #132)  ✅
 
 Owner: "Work #229." **Fixed, `run_all` 22 runners at baseline (`run_ops` back to exactly
