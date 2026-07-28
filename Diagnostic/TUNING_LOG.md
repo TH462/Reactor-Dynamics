@@ -109,6 +109,32 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28g — UI/UX review pass: instructor block measured, SI toggle, stale Automate refs (#235 comment, #237)  🔬
+
+Third pass of the verification effort: the control-room UI beyond the board. **Findings →
+comment on #235; improvement suggestions → new #237.** Nothing fixed.
+
+1. **Instructor block grow/shrink (owner-reported) is now measured, not felt.** Scenario
+   start takes the full column (810 px); ONE tools-tab click locks a permanent 422/422 split
+   — no way back to full chat or full tools while live (persona header, the only collapse
+   affordance, is hidden in chat mode; `setFocus('tools')` keeps the instructor expanded
+   whenever live, app.js:1626-1641). In free play every message dequeue steals the whole
+   column non-user (app.js:893) and "Standing by…" never gives it back — mostly latent
+   until the #212 free-play instructor lands (a manual scram drew zero commentary).
+2. **Units=SI is a mixed display**: chart chips convert (299°/15), the vitals strip and the
+   whole board stay US (573 F/2227 psi) — wiring hardcodes MPa2psi/C2F; tile bands are
+   documented US (pwr_board_wiring.js:637).
+3. **~30 player-facing directives point at the removed Automate tab** (manual_procedures 4,
+   scenarios 10+, Manuals 03/04 → manual_md, campaign_data). The live pwr_mode3_to_mode1
+   walkthrough step 3 tells the player to open it. HR9 canary; needs sweep + repack.
+4. "STEAM PRESS1194 psi" — steam-dump card label/value run together at 4 digits.
+
+Clean: 1366×768 layout, missions window, manual overlay, help, graph/failures tabs,
+follow-mode nav + highlight, alarm panel behavior, keyboard guards, chat story clock and
+reveal pacing. Suggestions filed as #237: no-steal attention cues + player-owned split for
+the instructor block, honest SI toggle (implement or disable like the Realistic button),
+Automate-tab content sweep, alarm timestamps, trend-arrow deadband, scenario failure-lock.
+
 ### 2026-07-28f — pipe-flow deep pass: all 37 pipes measured in five states (#236)  🔬
 
 Owner: "pipe flows are not correct on a few pipes — go deeper." Measured every pipe's
