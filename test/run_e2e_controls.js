@@ -162,9 +162,23 @@ console.log(B + 'PWR — recently-added controls' + X);
     t.handleCommand({ action: 'set_cvcs_auto', active: cvcsAuto });
     t.handleCommand({ action: 'inject_failure', failure_id: 'sgtr', severity: severity });
     step(t, 400);
+    // AVERAGE the servo output over a window; do NOT sample it once at step 400.
+    // charging_flow is driven by a filtered error on the INDICATED pzr level, so it carries
+    // the level instrument's noise. A single sample was only ever the mean because the noise
+    // was WHITE and the servo's 20 s filter annihilated it; once instrument noise became
+    // physically correlated (#233) a single sample stopped being representative and this
+    // check swung between 4 % and 14 % coverage on identical plants. Averaging measures the
+    // quantity the assertions are actually about — and it is the stricter test under BOTH
+    // noise models, which is why it is the right fixture rather than a workaround.
+    var nAvg = 120, chgSum = 0, leakSum = 0;
+    for (var q = 0; q < nAvg; q++) {
+      step(t, 1);
+      chgSum += t.engine.s.charging_flow || 0;
+      leakSum += t.engine.s.leak_flow || 0;
+    }
     return {
       svc: t, inv: t.engine.s.core_inventory_pct,
-      chg: t.engine.s.charging_flow || 0, leak: t.engine.s.leak_flow || 0,
+      chg: chgSum / nAvg, leak: leakSum / nAvg,
     };
   }
   var cvcsOn = sgtrRun(true, 0.2), cvcsOff = sgtrRun(false, 0.2);

@@ -74,6 +74,7 @@
     }, geomG, portEls.a, portEls.b, portEls.c);
 
     var scale = null;
+    var livePipes = [];   // K.pipe groups whose colour repaint() may update in place
 
     function legDir(id) { return st[id] === 'out' ? 1 : (st[id] === 'in' ? -1 : 0); }
 
@@ -85,22 +86,32 @@
       var anyOut = st.a === 'out' || st.b === 'out' || st.c === 'out';
       // flow only moves when something feeds the fitting AND something takes it away
       var moving = st.rate > 2 && !isEmpty && anyIn && anyOut;
-      // Shared with the board's pipe runs — see StdPipe.dashSpeed (#231). The design
-      // source's own curve (0.45 + 1.1 * rate/100) put a full-flow tee at 1.55x, so its
-      // dashes visibly stepped against the 1.0x pipes either side of the joint.
-      var speed = K.dashSpeed(st.rate, st.speedMul);
+      // Dash velocity tracks SPEED only. Pipes have no rate slider, so folding rate into the
+      // velocity (the design's old 0.45 + 1.1*rate/100 curve, which put a full-flow tee at
+      // 1.55x) made every fitting run at a different speed from the pipe it joins. RATE still
+      // gates whether flow moves at all, via `moving` above. (#231)
+      var speed = st.speedMul;
       var stubFluid = { phase: st.contents, temp: st.temp };
+      // World-space dash anchor (#233). Legs are drawn at (localViewBoxUnits * sc) and the
+      // embedded crop starts at viewBox 60,60, so subtracting vbMin*sc turns a local
+      // coordinate into a canvas one — for PHASE only, not for position. Without this the
+      // fitting's dash grid starts at its own tile and every leg meets its pipe out of step.
+      var phaseX = (cfg.left || 0) - 60 * sc;
+      var phaseY = (cfg.top || 0) - 60 * sc;
 
       function pt(L) { return [(CX + L.v[0] * R) * sc, (CY + L.v[1] * R) * sc]; }
 
       var geom = [];
+      livePipes = [];
       function drawLeg(id) {
         var L = legOf(id), p = pt(L), fd = legDir(id);
-        geom.push(K.pipe({
-          x1: CX * sc, y1: CY * sc, x2: p[0], y2: p[1], d: L.d,
+        var g = K.pipe({
+          x1: CX * sc, y1: CY * sc, x2: p[0], y2: p[1], d: L.d, phaseX: phaseX, phaseY: phaseY,
           fluid: fd === 0 ? { phase: 'empty' } : stubFluid,
           flow: moving && fd !== 0, dir: fd >= 0 ? 1 : -1, speed: speed
-        }));
+        });
+        geom.push(g);
+        if (fd !== 0) livePipes.push(g);
       }
       // branch first so the straight run paints over the joint
       drawLeg('c');
@@ -109,10 +120,11 @@
       var thru = (st.a === 'in' && st.b === 'out') || (st.b === 'in' && st.a === 'out');
       if (thru) {
         var pa = pt(legOf('a')), pb = pt(legOf('b'));
-        geom.push(K.pipe({
-          x1: pa[0], y1: pa[1], x2: pb[0], y2: pb[1], d: dM,
+        var gr = K.pipe({
+          x1: pa[0], y1: pa[1], x2: pb[0], y2: pb[1], d: dM, phaseX: phaseX, phaseY: phaseY,
           fluid: stubFluid, flow: moving, dir: st.a === 'in' ? 1 : -1, speed: speed
-        }));
+        });
+        geom.push(gr); livePipes.push(gr);
       } else {
         drawLeg('a'); drawLeg('b');
       }
@@ -140,10 +152,47 @@
       if (!scale || Math.abs(s - scale) / s > 0.015) { scale = s; rebuild(); }
     });
 
+    // Repaint the drawn legs' fluid colour WITHOUT touching the geometry. Live temperature
+    // arrives every snapshot, and rebuilding for it would restart the dash animation (below).
+    // A K.pipe group is [case, bore, flow] — same stacked-stroke order the board renderer
+    // relies on in updatePipeTemps().
+    function repaint() {
+      var c = K.phaseTempColor(st.contents, st.temp);
+      for (var i = 0; i < livePipes.length; i++) {
+        var kids = livePipes[i].childNodes;
+        if (kids[1]) kids[1].setAttribute('stroke', c.bore);
+        if (kids[2]) kids[2].setAttribute('stroke', c.flow);
+      }
+      LEGS.forEach(function (L) { portEls[L.id].setAttribute('data-temp', String(st.temp)); });
+    }
+
+    // rebuild() REPLACES the geometry, which restarts every CSS animation on it. update() is
+    // called at snapshot cadence (~1/s) and one dash cycle is ~1.04s, so rebuilding
+    // unconditionally meant each leg advanced most of a dash and then snapped back to its
+    // start phase — the dashes jittered back and forth instead of flowing (#233). Temperature
+    // is the prop that moves every snapshot and it only changes COLOUR, so it goes through
+    // repaint(); only a change the geometry or the animation actually depends on rebuilds.
+    function geomDirty(props) {
+      if (props.contents != null && props.contents !== st.contents) return true;
+      var rate = st.rate;
+      if (props.flowing != null) rate = props.flowing ? authoredRate : 0;
+      if (props.flow != null) rate = Math.max(0, Math.min(100, +props.flow));
+      if (rate !== st.rate) return true;
+      for (var i = 0; i < 3; i++) {
+        var id = ['a', 'b', 'c'][i], v = props['leg' + id.toUpperCase()];
+        if ((v === 'in' || v === 'out' || v === 'off') && v !== st[id]) return true;
+      }
+      return false;
+    }
+
     function update(props) {
       if (!props) return;
+      var rebuildNeeded = geomDirty(props);
       if (props.contents != null) st.contents = props.contents;
-      if (props.temp != null && isFinite(+props.temp)) st.temp = +props.temp;
+      var tempMoved = false;
+      if (props.temp != null && isFinite(+props.temp) && +props.temp !== st.temp) {
+        st.temp = +props.temp; tempMoved = true;
+      }
       // `flowing` gates the AUTHORED rate; `flow` overrides it outright. Prefer `flowing`:
       // the diagram's flow sliders exist so connected components can be matched for a
       // uniform dash speed, and a driver that writes a flat 100 throws that away. The
@@ -154,7 +203,8 @@
         var v = props['leg' + id.toUpperCase()];
         if (v === 'in' || v === 'out' || v === 'off') st[id] = v;
       });
-      rebuild();
+      if (rebuildNeeded) rebuild();
+      else if (tempMoved) repaint();
     }
 
     function destroy() { if (unwatch) { unwatch(); unwatch = null; } }

@@ -98,49 +98,70 @@
     return { bore: toHex(mix3(w, [0x06, 0x0a, 0x0e], 0.74)), flow: toHex(w), phase: 'water', temp: tempC };
   }
 
-  // ---------------------------------------------------------------------------
-  // DASH RATE — one conversion, two authoring surfaces (#231).
-  // A pipe run and the fitting it joins animate the same dashes, but the diagram
-  // authors them through different props: PIPES carry a `speed` multiplier, and
-  // COMPONENTS carry a 0–100 `flow` slider (plus an optional `speed`). Both must
-  // land on the same number or the dashes visibly step at the joint.
-  //   dashSpeed()  ==  dashSpeed(100)  ==  dashSpeed(100, 1)  ==  1
-  // i.e. anything left at its authored default on EITHER surface animates at the
-  // same rate. That is the whole point of the flow sliders — they exist so
-  // connected components can be matched, not so each one picks its own pace.
-  // Before this, fittings ran (0.45 + 1.1 * flow/100), so a full-flow tee animated
-  // at 1.55 — 55 % faster than every pipe on the board.
-  // Note the map is LINEAR: a fitting authored at flow 40 really does crawl at
-  // 0.4x. Nothing on the PWR board does (all seven fittings are at 100), but if
-  // you author a low flow, expect a slow line rather than a floor.
-  // ---------------------------------------------------------------------------
-  function dashSpeed(flowPct, speedMul) {
-    var f = (flowPct == null || !isFinite(+flowPct)) ? 100 : Math.max(0, Math.min(100, +flowPct));
-    var m = (speedMul == null || !isFinite(+speedMul) || +speedMul === 0) ? 1 : Math.max(0.1, Math.min(4, +speedMul));
-    return (f / 100) * m;
-  }
-
   // THE THREE STANDARD PIPE SIZES (bore diameter, canvas px). Every connection stub
   // and every inter-component run must use one of these -- no custom diameters.
   // STUB_LEN is the fixed stub length per size (base to flange face, canvas px).
   var SIZES = { small: 4, medium: 8, large: 12 };
   var STUB_LEN = { small: 20, medium: 26, large: 32 };
 
-  // Dash period is fixed (10+15=25) so the shared keyframe (-250 = 10 periods) loops seamlessly
-  // at every diameter; only the flow-line THICKNESS scales with d.
+  // Dash period is fixed (10+15=25) so the shared keyframe loops seamlessly at every
+  // diameter; only the flow-line THICKNESS scales with d.
   function ensureStyles() {
     if (document.getElementById('std-pipe-styles')) return;
     var s = document.createElement('style');
     s.id = 'std-pipe-styles';
+    // ONE dash period per cycle (DASH_PERIOD = 25). `from` is anchored explicitly as well as
+    // `to` so the element's own stroke-dashoffset — which carries the POSITION phase — is not
+    // clobbered by the animation; the phase is applied as a negative animation-delay instead.
     s.textContent =
-      '@keyframes stdPipeFlow{to{stroke-dashoffset:-250}}' +
-      '@keyframes stdPipeFlowRev{to{stroke-dashoffset:250}}';
+      '@keyframes stdPipeFlow{from{stroke-dashoffset:0}to{stroke-dashoffset:-25}}' +
+      '@keyframes stdPipeFlowRev{from{stroke-dashoffset:0}to{stroke-dashoffset:25}}';
     (document.head || document.documentElement).appendChild(s);
   }
 
   function pointsOf(o) {
-    if (o.points) return o.points.map(function (p) { return p[0] + ',' + p[1]; }).join(' ');
-    return o.x1 + ',' + o.y1 + ' ' + o.x2 + ',' + o.y2;
+    return ptArray(o).map(function (p) { return p[0] + ',' + p[1]; }).join(' ');
+  }
+  function ptArray(o) {
+    if (o.points) return o.points.map(function (p) { return [p[0], p[1]]; });
+    return [[o.x1, o.y1], [o.x2, o.y2]];
+  }
+
+  // ---------------------------------------------------------------------------
+  // DASH GRID (#231/#233). Every flowing stroke in the plant shares one 10-on/15-off
+  // period anchored to ABSOLUTE WORLD POSITION, so a canvas pipe and the leg of the
+  // tee/cross/valve it meets land on the same grid and the dashes cross the joint
+  // without a step.
+  //
+  // Two things have to be true, and both were wrong before:
+  //   1. Arc length must grow in the same world direction for EVERY run. A run drawn
+  //      in -x/-y is reversed (and its dir flipped) first — otherwise two legs of one
+  //      fitting sit on opposite phase grids and meet mismatched at the centre.
+  //   2. The phase must be measured in world space. A fitting draws its legs in TILE
+  //      coordinates, so without ox/oy its grid starts at the tile instead of the
+  //      canvas origin and every leg meets its pipe a fraction of a dash out of step.
+  //      Fittings pass their tile origin as phaseX/phaseY; canvas pipes are already in
+  //      world space and pass nothing.
+  //
+  // SPEED, not rate, sets dash velocity. Pipes have no rate slider, so folding a
+  // component's 0–100 `flow` into its velocity made every fitting run at a different
+  // speed from the pipe it joins. `rate`/`flow` still gates whether flow moves AT ALL.
+  // ---------------------------------------------------------------------------
+  var DASH_PERIOD = 25;
+  var DASH_CYCLE_S = 1.04;   // seconds per period at speed 1 (== the old 10.4s / 10 periods)
+
+  function dashPhase(pts, dir, cycleDur, ox, oy) {
+    var p = pts.slice();
+    var a = p[0], b = p[1] || p[0];
+    var horiz = Math.abs(b[1] - a[1]) <= Math.abs(b[0] - a[0]);
+    var back = horiz ? (b[0] < a[0]) : (b[1] < a[1]);
+    if (back) { p.reverse(); dir = -dir; }
+    var c0 = (horiz ? p[0][0] : p[0][1]) + (horiz ? (ox || 0) : (oy || 0));
+    var ph = ((c0 % DASH_PERIOD) + DASH_PERIOD) % DASH_PERIOD;   // 0..25 along the world axis
+    // forward keyframes run 0 → -25 and reverse 0 → +25, so the reverse case needs the
+    // complement to land on the same visual phase
+    var t = (dir < 0 ? (DASH_PERIOD - ph) % DASH_PERIOD : ph) / DASH_PERIOD;
+    return { pts: p, dir: dir, offset: -ph, delay: -(t * cycleDur) };
   }
   function resolveFluid(f) {
     if (f && typeof f === 'object') {
@@ -170,13 +191,18 @@
         h('polyline', { key: 'bore', points: pts, fill: 'none', stroke: fl.bore, strokeWidth: d, strokeLinecap: 'butt', strokeLinejoin: 'round' })
       ];
       if (o.flow !== false && !fl.empty) {
-        var dir = o.dir == null ? 1 : o.dir;
-        var dur = (10.4 / (o.speed || 1)).toFixed(2);
+        // 1.04s per dash period == the old 10.4s per ten periods, so speeds are unchanged
+        var cyc = DASH_CYCLE_S / (o.speed || 1);
+        var ph = dashPhase(ptArray(o), o.dir == null ? 1 : o.dir, cyc, o.phaseX, o.phaseY);
         kids.push(h('polyline', {
-          key: 'flow', points: pts, fill: 'none', stroke: fl.flow,
+          key: 'flow', points: ph.pts.map(function (q) { return q[0] + ',' + q[1]; }).join(' '),
+          fill: 'none', stroke: fl.flow,
           strokeWidth: Math.max(2, d * 0.42), strokeLinecap: 'round', strokeLinejoin: 'round',
-          strokeDasharray: '10 15', opacity: 0.92,
-          style: o.paused ? {} : { animation: (dir < 0 ? 'stdPipeFlowRev ' : 'stdPipeFlow ') + dur + 's linear infinite' }
+          strokeDasharray: '10 15', strokeDashoffset: ph.offset, opacity: 0.92,
+          style: o.paused ? {} : {
+            animation: (ph.dir < 0 ? 'stdPipeFlowRev ' : 'stdPipeFlow ') + cyc.toFixed(3) + 's linear infinite',
+            animationDelay: ph.delay.toFixed(3) + 's'
+          }
         }));
       }
       return h('g', { key: o.key }, kids);
@@ -230,7 +256,7 @@
       ]);
     }
 
-    return { pipe: pipe, flange: flange, stub: stub, junction: junction, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, dashSpeed: dashSpeed, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
+    return { pipe: pipe, flange: flange, stub: stub, junction: junction, dashPhase: dashPhase, DASH_PERIOD: DASH_PERIOD, DASH_CYCLE_S: DASH_CYCLE_S, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
   }
 
   // watchScale(svgEl, onChange): reports the svg's LAYOUT scale (CSS px per viewBox
@@ -255,5 +281,5 @@
     return function () { ro.disconnect(); };
   }
 
-  window.StdPipe = { createKit: createKit, watchScale: watchScale, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, dashSpeed: dashSpeed, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
+  window.StdPipe = { createKit: createKit, watchScale: watchScale, dashPhase: dashPhase, DASH_PERIOD: DASH_PERIOD, DASH_CYCLE_S: DASH_CYCLE_S, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
 })();

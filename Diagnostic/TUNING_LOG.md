@@ -109,6 +109,81 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28 — V2 board pass 2: Cherenkov, dash phase, correlated noise, layout  ⚠️🔬
+
+Owner playtest batch (8 items) plus a design-project import. **20/22 runners at baseline;
+`run_campaign` 50/51 and `run_e2e_controls` 33/35 are RED and tracked in #234 — NOT merged to
+`main`.** Everything below except the noise correlation is green.
+
+**Imported from the Claude Design project** (`DesignSync`, project 6ad9a164). `Production
+Ready.dc.html` is only a chrome-free wrapper around the builder's production snapshot — the
+real content is in the component files. Took three things:
+- **Cherenkov glow** (`Reactor Vessel v2.dc.html`) — driven by FISSION RATE, not reactivity,
+  so it is dark at zero power and grows/widens toward rated. Gotcha: the design defines
+  `cherCoreGrad` TWICE, the second time in `userSpaceOnUse`; `url(#id)` resolves to the FIRST
+  match, so the second block is dead and was not ported.
+- **The cold-leg nozzle moved** (viewBox cy 282 → 295). This alone fixed **#232** — the
+  accumulator tee jog fell from 5 px to 1 px (rounding) without touching the tee.
+- **`dashPhase` / `DASH_CYCLE_S`** (`pipes.js`) — see below.
+- **Do NOT wholesale-copy `pipes.js` over `std_pipe.js`.** The design's copy still has the OLD
+  4-stop aqua→purple water ramp; ours has the evolved heat-map ramp + operating-band expansion.
+  The two files have diverged in DIFFERENT directions — merge selectively, per feature.
+
+**Dash jitter (#233) was TWO bugs, and the design source only fixes one.**
+- *Spatial* (theirs): legs drawn in tile coordinates start their dash grid at the tile, so every
+  leg meets its pipe out of step. Fixed by `dashPhase(pts, dir, cyc, ox, oy)` — anchors the grid
+  to WORLD position, reverses -x/-y runs so arc length grows the same way everywhere, and applies
+  phase as a negative `animation-delay` (keyframes now anchor `from` as well as `to` so the
+  element's own `stroke-dashoffset` is not clobbered). Fittings pass their tile origin.
+- *Temporal* (ours, and the actual reported symptom): `comp_tee`/`comp_cross` called `rebuild()`
+  on EVERY snapshot, which replaces the geometry and restarts the CSS animation. At ~1 update/s
+  against a ~1.04 s dash cycle the dashes advanced most of a dash and snapped back — "jitter back
+  and forth". Fixed with a geometry dirty-check plus a `repaint()` that updates colour in place,
+  because TEMPERATURE is the prop that moves every snapshot and it only changes colour.
+- Also: `updatePipeFlowStates` now toggles `animationPlayState`, never `style.animation` — the
+  shorthand carries `animation-delay`, which is where the phase lives.
+
+**Layout: the diagram was being squeezed by a feedback loop, not by one bad number.**
+`.bottom-row` was `flex: 1 1 auto` (grow into spare height) while `fitColumns` handed spare WIDTH
+to the sim column. A taller strip shortens the board → a shorter board needs less width →
+`fitColumns` gives that width away → shorter again. Two auto-growers either side of a
+fit-to-height diagram is a loop. Fixed by pinning `--bottomrow-h` (default 230 px) and dropping
+`SIMCOL_MAX` 900 → 560; both edges are now draggable (`RD_BOARD_SPLIT` in localStorage), and a
+drag pins that axis so `fitColumns` stops touching it.
+
+**Instrument noise — three changes, two green and one red.**
+- GREEN: **signal-proportional noise** (`noise_ref`). An instrument whose process is off now
+  indicates a still zero. Verified 200 samples at hot full power: `hpi_flow`,
+  `accumulator_flow`, `primary_leak_flow`, `steam_dump_valve` all exactly `0.000e+0`. This is
+  the model the #217 note asked for, and it is what stopped the ECCS pipework animating with the
+  pump stopped — the pipes were reading ~1 gpm of noise as real flow.
+- GREEN: amplitude trims — `power_range` 0.2 → 0.14, `sg_level` 0.3 → 0.22 with a SHORT
+  `noise_tau` 2.5 (that one's character is genuinely fast hash, not drift).
+- **RED (#234): temporal correlation** (AR(1), `instrument_noise_tau_s: 8`). Stationary sigma is
+  unchanged; only the crossing rate. Measured 60 s p-p at steady full power: Tavg 2.45 → 0.13 °F,
+  power 1.17 → 0.22 %, SG level 1.55 → 0.51 %. Over 1800 s the sigmas return to their configured
+  values, confirming the walk is stationary and not decaying.
+  **Both reds depend on the noise being WHITE.** `tau: 0` (keeping the new sigmas AND
+  `noise_ref`) makes both green; tau 2, 3, 4 and 8 all fail identically, so it is not tunable.
+  Both failing checks sample an INSTANTANEOUS value of a noisy signal, which only worked because
+  white noise was annihilated inside a 20 s filter or a threshold. Averaging fixed most of the
+  CVCS swing (4 %/14 % → 14 %/22 %) and none of `pwr_rod_auto`.
+  **Ruled out, do not repeat:** raising `cvcs_level_filter_tau` (the obvious "filter was sized
+  for white noise" hypothesis) makes it monotonically WORSE — 20 s → 14 %/22 %, 45 → 6 %/12 %,
+  60 → 4 %/10 %, 90 → 3 %/7 %. It is a TRANSIENT (the filtered error has not reached steady
+  state when sampled), not a noise-rejection problem. Value restored to 20.0.
+
+**Tile bands are mode-aware.** Tavg's green band is now the sliding Tavg program — `trefProgram()`
+exported from `pwr_control.js` so the tile draws the SAME reference the rods drive to, rather
+than approximating it. Below Mode 3 it becomes the cold-shutdown band. Primary pressure follows
+the live setpoint. The other four deliberately do not move; their references are protection
+setpoints, which do not change with mode.
+
+**Geometry patches.** `DOC_PATCHES` in the driver applies ABSOLUTE (therefore idempotent)
+corrections to the generated doc — the PORV drop and the turbine→condenser run were each 1–2 px
+off true vertical. When the owner fixes one in the builder the patch becomes a no-op instead of
+double-applying. `selfTest` asserts every target still resolves.
+
 ### 2026-07-27d — #231 V2 board polish: all three items were mis-attributed, and measurement moved each one  ✅🔬
 
 Three playtest items off the V2 board landing (`e9dc316`). Every one had a plausible lead in

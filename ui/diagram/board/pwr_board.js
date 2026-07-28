@@ -103,7 +103,25 @@
   // Two columns since the V2 board: diagram (with the trend/alarm strip beneath it) and the
   // simulator panel. The middle alarms/chart column is gone, so ALL of the letterbox slack
   // now goes to the sim column — see fitColumns.
-  var SIMCOL_BASE = 360, SIMCOL_MAX = 900;   // simulator / tools / instructor / scanner
+  // SIMCOL_MAX was 900, which let the sim column swallow most of a wide window. Nothing in
+  // that panel needs 900 px — past ~560 it is whitespace, and every pixel past it comes off
+  // the diagram (see the feedback loop described on .bottom-row in shell.css). The operator
+  // can still drag past this: the cap governs the AUTOMATIC fit, not the manual one.
+  var SIMCOL_BASE = 360, SIMCOL_MAX = 560;   // simulator / tools / instructor / scanner
+  var SIMCOL_DRAG_MAX = 900, BOTTOM_MIN = 150, BOTTOM_MAX = 520;
+
+  // ---- manual panel sizing (splitters) ---------------------------------------------
+  // Once the operator drags an edge, that axis is THEIRS: fitColumns must stop moving it,
+  // or the next relayout would silently undo the drag. Persisted so the board opens the way
+  // they left it.
+  var SPLIT_KEY = 'RD_BOARD_SPLIT';
+  var manual = (function () {
+    try { return JSON.parse(localStorage.getItem(SPLIT_KEY) || '{}') || {}; } catch (e) { return {}; }
+  })();
+  function saveManual() {
+    try { localStorage.setItem(SPLIT_KEY, JSON.stringify(manual)); } catch (e) {}
+  }
+  var splitV = null, splitH = null;
 
   function cssPx(app, name, fallback) {
     var v = parseFloat(app.style.getPropertyValue(name));
@@ -116,10 +134,87 @@
   // gone (diagram now fills its column edge to edge) or the column hits SIMCOL_MAX.
   function fitColumns(app, r, b) {
     if (app.classList.contains('sim-hidden')) return;   // ⛶ — no column to give it to
+    if (manual.simW != null) return;                    // operator dragged it; hands off
     var sim = Math.min(SIMCOL_MAX, Math.max(SIMCOL_BASE, cssPx(app, '--simcol-w', SIMCOL_BASE)));
     var slack = r.width - r.height * (b.w / b.h);
     var want = Math.round(Math.min(SIMCOL_MAX, Math.max(SIMCOL_BASE, sim + slack)));
     if (Math.abs(want - sim) > 1.5) app.style.setProperty('--simcol-w', want + 'px');
+  }
+
+  // Create the two drag handles once, and keep them sitting on the edges they resize.
+  // They live on .app (not inside the diagram) because they straddle two grid tracks.
+  function ensureSplitters(app) {
+    if (!splitV) {
+      splitV = h('div', { className: 'bd-split bd-split-v', title: 'Drag to resize the simulator panel' });
+      splitV.addEventListener('pointerdown', function (e) { beginDrag(e, app, 'v'); });
+      app.appendChild(splitV);
+    }
+    if (!splitH) {
+      splitH = h('div', { className: 'bd-split bd-split-h', title: 'Drag to resize the trend / alarm strip' });
+      splitH.addEventListener('pointerdown', function (e) { beginDrag(e, app, 'h'); });
+      app.appendChild(splitH);
+    }
+  }
+
+  function positionSplitters(app) {
+    if (!splitV || !splitH) return;
+    var ar = app.getBoundingClientRect();
+    var right = app.querySelector('.right-col');
+    if (right) {
+      var rr = right.getBoundingClientRect();
+      splitV.style.left = (rr.left - ar.left - 4.5) + 'px';
+    }
+    var bottom = app.querySelector('.plant-area > .bottom-row');
+    if (bottom) {
+      var br = bottom.getBoundingClientRect();
+      splitH.style.top = (br.top - ar.top - 4.5) + 'px';
+      splitH.style.left = (br.left - ar.left) + 'px';
+      splitH.style.width = br.width + 'px';
+    }
+  }
+
+  function beginDrag(e, app, axis) {
+    e.preventDefault();
+    var el = axis === 'v' ? splitV : splitH;
+    el.classList.add('bd-dragging');
+    el.setPointerCapture(e.pointerId);
+    var ar = app.getBoundingClientRect();
+    var startSim = cssPx(app, '--simcol-w', SIMCOL_BASE);
+    var startBot = cssPx(app, '--bottomrow-h', 230);
+    var x0 = e.clientX, y0 = e.clientY;
+    function move(ev) {
+      if (axis === 'v') {
+        // Dragging LEFT widens the sim column (its inner edge moves left), so the delta
+        // is inverted relative to pointer motion.
+        var w = Math.max(320, Math.min(SIMCOL_DRAG_MAX, startSim - (ev.clientX - x0)));
+        w = Math.min(w, ar.width - 420);      // never squeeze the diagram out of existence
+        manual.simW = Math.round(w);
+        app.style.setProperty('--simcol-w', manual.simW + 'px');
+      } else {
+        var hgt = Math.max(BOTTOM_MIN, Math.min(BOTTOM_MAX, startBot - (ev.clientY - y0)));
+        hgt = Math.min(hgt, ar.height - 260);
+        manual.bottomH = Math.round(hgt);
+        app.style.setProperty('--bottomrow-h', manual.bottomH + 'px');
+      }
+      layout();
+    }
+    function up(ev) {
+      el.classList.remove('bd-dragging');
+      try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      saveManual();
+      layout();
+    }
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  }
+
+  function applyManual(app) {
+    if (manual.simW != null) app.style.setProperty('--simcol-w', manual.simW + 'px');
+    if (manual.bottomH != null) app.style.setProperty('--bottomrow-h', manual.bottomH + 'px');
   }
 
   function layout() {
@@ -145,8 +240,11 @@
       var app = plant.closest('.app.pwr-synoptic');
       if (!(typeof window.matchMedia === 'function' &&
             window.matchMedia('(max-width: 1200px)').matches)) {   // not the stacked template
+        ensureSplitters(app);
+        applyManual(app);
         fitColumns(app, r, b);
         r = wrap.getBoundingClientRect();               // re-measure after the reflow
+        positionSplitters(app);
       }
     } else if (plant) {
       var wantW = r.height * (b.w / b.h);                     // diagram width at full height
@@ -583,11 +681,10 @@
       var size = p.size || (ap && ap.size) || 'medium';
       var d = STD_SIZES[size] || 8;
       var fluidArg = p.phase ? { phase: p.phase, temp: p.temp } : p.fluid;
-      // Dash rate comes from the SAME conversion the fittings use (StdPipe.dashSpeed),
-      // so a Tee/Cross and the pipe it joins step together. The authored `speed` was
-      // previously dropped here entirely, which is half of why they disagreed (#231).
-      var el = K.pipe({ points: pts, d: d, fluid: fluidArg, dir: flowDir,
-                        speed: window.StdPipe.dashSpeed(p.flow, p.speed) });
+      // The authored `speed` was dropped here entirely before #231, which is half of why
+      // fittings and pipes disagreed. Canvas pipes are already in world coordinates, so
+      // they need no phaseX/phaseY — StdPipe anchors their dash grid directly.
+      var el = K.pipe({ points: pts, d: d, fluid: fluidArg, dir: flowDir, speed: p.speed });
       underSvg.appendChild(el);
       if (a.junction) underSvg.appendChild(K.junction({ x: a.x, y: a.y, d: d, fluid: fluidArg }));
       if (b.junction) underSvg.appendChild(K.junction({ x: b.x, y: b.y, d: d, fluid: fluidArg }));
@@ -595,8 +692,7 @@
       pipeFlow.push({
         fromKey: typeof p.from === 'string' ? p.from : null,
         toKey: typeof p.to === 'string' ? p.to : null,
-        flowEl: flowEl,
-        anim: flowEl ? flowEl.style.animation : ''
+        flowEl: flowEl
       });
       // A pipe with an id whose driver supplies a live temp gets its fluid color
       // (bore = static fill, flow = moving line) repainted each snapshot. bore is the
@@ -625,12 +721,17 @@
     }
   }
 
+  // Stop/start a pipe's dashes with animation-PLAY-STATE, never by rewriting
+  // `style.animation`. The shorthand carries animation-delay, and StdPipe puts the run's
+  // world dash PHASE in that delay (#233) — reassigning the shorthand would drop it and the
+  // pipe would rejoin its fitting a fraction of a dash out of step. Pausing also leaves the
+  // dashes where they stopped instead of snapping them back to phase 0.
+  // The board-wide freeze (.bd-frozen) uses `!important`, so it still wins over this.
   function updatePipeFlowStates() {
     pipeFlow.forEach(function (rec) {
       if (!rec.flowEl) return;
       var active = (!rec.fromKey || portActive(rec.fromKey)) && (!rec.toKey || portActive(rec.toKey));
-      var want = active ? rec.anim : 'none';
-      if (rec.flowEl.style.animation !== want) rec.flowEl.style.animation = want;
+      rec.flowEl.style.animationPlayState = active ? 'running' : 'paused';
       rec.flowEl.style.opacity = active ? 0.92 : 0.25;
     });
   }
@@ -646,6 +747,9 @@
     // regeneration). Appended once, deduped by id — mutating the shared doc is safe because
     // a second mount finds them already present. Must run before tiles are built below.
     var drv0 = driver();
+    // Absolute geometry corrections to the generated doc, applied before anything is built.
+    // See the driver's DOC_PATCHES for why these live in code rather than in board_data.
+    if (drv0 && drv0.docPatches) drv0.docPatches(doc);
     if (drv0 && drv0.extraItems) {
       var extra = drv0.extraItems() || [];
       for (var ei = 0; ei < extra.length; ei++) {
@@ -730,6 +834,10 @@
       releaseHandler = null;
     }
     if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
+    // The splitters are parented to .app, not to host, so host.innerHTML='' below does not
+    // reach them — remove them explicitly or a plant switch leaves dead handles behind.
+    [splitV, splitH].forEach(function (el) { if (el && el.parentNode) el.parentNode.removeChild(el); });
+    splitV = null; splitH = null;
     Object.keys(scramEls).forEach(function (k) { clearTimeout(scramEls[k].timer); });
     Object.keys(comps).forEach(function (k) {
       var inst = comps[k].inst;

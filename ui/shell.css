@@ -139,6 +139,8 @@ body {
    floor used before/without that measurement. */
 .app.pwr-synoptic {
   --simcol-w: 360px;
+  --bottomrow-h: 230px;
+  position: relative;   /* splitter handles are absolutely positioned over the grid */
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, var(--simcol-w));
   grid-template-rows: minmax(0, 1fr);
@@ -165,11 +167,31 @@ body {
 /* Under-the-diagram strip: chart and alarms side by side, and — only when the sim panel
    is hidden (⛶) — the time controls tuck in at the left. Fixed height so the diagram
    keeps the rest; the two panels split the width. */
-/* Grow into whatever height the diagram does not need, instead of sitting at a fixed
-   208px with dead space beneath. The board scales to fit, so on a tall window it leaves
-   height over — the trend and alarms take it, the same way the sim column takes the
-   leftover width. min-height keeps them usable when the diagram wants everything. */
-.app.pwr-synoptic .plant-area > .bottom-row { flex: 1 1 auto; min-height: 190px; max-height: 42%; flex-direction: row; }
+/* FIXED height, draggable — not `flex: 1 1 auto` (#233). Letting this row grow into the
+   leftover height fought the sim column for the same space and the DIAGRAM lost both ways:
+   a taller strip shortens the board, a shorter board needs less width, and fitColumns then
+   hands that freed width to the sim column, which shortens the board again. Two auto-growers
+   either side of a fit-to-height diagram is a feedback loop, not a layout. Pinning this row
+   breaks it; --bottomrow-h is the operator's to drag (see the splitters below). */
+.app.pwr-synoptic .plant-area > .bottom-row { flex: 0 0 var(--bottomrow-h); min-height: 150px; flex-direction: row; }
+
+/* Draggable panel edges (#233). The auto-fit is a good default, not a policy: drag the sim
+   panel's inner edge or the trend strip's top edge to trade space with the diagram. A drag
+   PINS that axis (persisted in localStorage) and fitColumns stops touching it. */
+.bd-split { position: absolute; z-index: 40; touch-action: none; }
+.bd-split::after {
+  content: ''; position: absolute; inset: 0; border-radius: 2px;
+  background: var(--accent, #4fe3ff); opacity: 0; transition: opacity .12s ease;
+}
+.bd-split:hover::after, .bd-split.bd-dragging::after { opacity: .55; }
+.bd-split-v { top: 0; bottom: 0; width: 9px; cursor: col-resize; }
+.bd-split-v::after { left: 3.5px; right: 3.5px; }
+.bd-split-h { height: 9px; cursor: row-resize; }
+.bd-split-h::after { top: 3.5px; bottom: 3.5px; }
+/* ⛶ removes the sim column, so there is no vertical edge left to drag. */
+.app.pwr-synoptic.sim-hidden .bd-split-v { display: none; }
+/* Stacked (narrow) layouts size themselves; dragging a track that isn't there is nonsense. */
+@media (max-width: 1200px) { .bd-split { display: none; } }
 .app.pwr-synoptic .plant-area > .bottom-row > .sim-controls { order: 1; flex: 0 0 auto; }
 .app.pwr-synoptic .plant-area > .bottom-row > .strip-chart  { order: 2; flex: 1 1 0; min-width: 0; }
 .app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel  { order: 3; flex: 1 1 0; min-width: 0; min-height: 0; }

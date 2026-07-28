@@ -571,7 +571,16 @@
     esf_systems: PWR_ESF_SYSTEMS,
   };
 
-  RD.PWR_CONTROL = { protection: PWR_PROTECTION };
+  // trefProgram is exported so the HMI can draw the SAME sliding Tavg program the rods are
+  // driving to, instead of approximating it (#233). A tile whose green band disagreed with
+  // the controller's reference would be worse than no band at all.
+  RD.PWR_CONTROL = {
+    protection: PWR_PROTECTION,
+    trefProgram: trefProgram,
+    TAVG_NOLOAD: TAVG_NOLOAD,
+    TAVG_FULLPOWER: TAVG_FULLPOWER,
+    TAVG_DEADBAND_C: 0.8   // rods_tavg lock-up band (±0.8 °C / ±1.5 °F)
+  };
   RD.PWR_PROTECTION = PWR_PROTECTION;                              // legacy name
   if (RD.PWR_CONFIG) RD.PWR_CONFIG.protection = PWR_PROTECTION;    // engine failure dispatch reads this
 

@@ -47,7 +47,47 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   raises the RHR heat exchanger's sink, so a cooldown bottoms out warmer: ~28 °C on cold
   water against ~61 °C on hot. At the default 80 °F the plant behaves exactly as before.
 
+### Added
+- **The core glows.** The reactor vessel now renders Cherenkov radiation — the blue light a
+  real core gives off underwater. It is driven by **fission rate, not by the rod position or
+  the reactivity**, so it is completely dark on a shutdown reactor and grows and widens as you
+  bring power up. Watching it come in as you pull rods is the point.
+- **You can resize the panels.** Drag the inner edge of the simulator panel, or the top edge of
+  the trend/alarm strip, to trade space with the diagram. Your sizing is remembered.
+
+### Changed
+- **The diagram is much bigger by default.** The trend strip and the simulator panel were both
+  set to absorb whatever space the diagram did not need — but a shorter diagram needs less
+  width, which freed more width for the panel, which shortened the diagram again. Both panels
+  now start at a sensible fixed size and the diagram keeps the rest; the panels still take up
+  spare space when your window shape leaves some, which was the intent all along.
+- **The board sits still unless something is happening.** Three separate causes:
+  - Instrument noise now **drifts** instead of being re-drawn from scratch every second. The
+    readings still move — the amplitude is unchanged — but they wander across their band over
+    ten seconds or so instead of snapping limit-to-limit between samples.
+  - **An indication that is off now reads zero.** Noise scales with signal, so a stopped ECCS
+    pump indicates a still 0 gpm rather than hunting around 1, and a shut-down reactor's power
+    meter sits on zero. This also means excore power can be lively at 100 % and quiet at 1 %,
+    which it could never be with one fixed number.
+  - The **ECCS pipework no longer animates with the pump stopped** — it was reading that 1 gpm
+    of noise as real flow.
+- **The vital-parameter bands follow the plant.** The green band on average coolant temperature
+  is now the *sliding Tavg program* — the same reference the rod controller is driving to — so
+  in Mode 1 you can see the band you are actually holding, and it slides as load changes. Below
+  Mode 3 it becomes the cold-shutdown band instead. Primary pressure's green band follows your
+  live pressurizer setpoint rather than the rated one, so it stays meaningful in Mode 5.
+- **Shutdown rod buttons latch.** One click drives the bank fully in or fully out on its own;
+  the button holds a yellow in-motion light while it travels; a second click stops it where it
+  is. It was press-and-hold, which is the wrong control for a bank that is only ever parked at
+  one end or the other.
+
 ### Fixed
+- **Flow dashes in the tees and cross now flow.** They were jittering back and forth instead of
+  moving along the pipe: the fittings were being rebuilt from scratch on every update, which
+  restarted the animation about as often as one dash-length took to travel. They also now share
+  one dash grid anchored to the diagram, so dashes cross a joint without stepping.
+- **Two crooked pipes straightened** — the PORV discharge now drops straight down into its box,
+  and the turbine-to-condenser run is square instead of leaning (issue #232).
 - **Board polish from the V2 playtest** (issue #231). Three things you can see:
   - **The pressurizer no longer sits off its own pipework.** Its centreline was 6 px left of
     the surge tee below it and the PORV block valve above it, so the surge line and the relief

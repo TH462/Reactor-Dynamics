@@ -614,9 +614,21 @@ test('pwr_rod_auto — manual Tavg trim, T-ref capture, override precedence', fu
   // Paced trim (the UI press pattern): 3 small insertions (4 fine steps ≈ one old
   // step), ~30 s settling between rounds — a burst overshoots (probed on the old
   // scale: 28 steps -> Tavg 298).
+  // Read the gauge the way an operator does — a short AVERAGE, not one instantaneous
+  // sample. Since #233 instrument noise is temporally correlated, so a single reading can
+  // sit a tenth of a degree off for tens of seconds; on one sample this loop ran an extra
+  // round, over-inserted by ~36 steps, and the later AUTO load restore then tripped the
+  // plant from too deep a starting point. Averaging is what a person watching the needle
+  // does, and it makes the loop behave identically under white and correlated noise.
+  function tavgRead(sv, n) {
+    var sum = 0, last = null;
+    for (var k = 0; k < n; k++) { last = sv.advanceCycles(1); sum += last.instruments.tavg; }
+    return { avg: sum / n, snap: last };
+  }
   for (var round = 0; round < 12; round++) {
-    snap = s.advanceCycles(1);
-    if (snap.instruments.tavg <= 305.5) break;
+    var rd = tavgRead(s, 8);
+    snap = rd.snap;
+    if (rd.avg <= 305.5) break;
     for (var p2 = 0; p2 < 3; p2++) { s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -4, speed: 'normal' }); settle(s, 1.5); }
     settle(s, 30);
   }

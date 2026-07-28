@@ -166,9 +166,13 @@
     imrpk8169ds: { press: function () { rodSpeed = 'slow'; }, active: function () { return rodSpeed === 'slow'; } },
     imrpk8grvcz: { press: function () { rodSpeed = 'normal'; }, active: function () { return rodSpeed === 'normal'; } },
     imrpk8kjsjs: { press: function () { rodSpeed = 'fast'; }, active: function () { return rodSpeed === 'fast'; } },
-    // --- Shutdown rods — same momentary tap-or-hold drive ---
-    imrpnyaxsb3: { hold: { group: 'shutdown_rods', direction: 1 } },
-    imrpnyf37ju: { hold: { group: 'shutdown_rods', direction: -1 } },
+    // --- Shutdown rods — LATCHED full-travel drive, not tap-or-hold (owner, 2026-07-28).
+    // The shutdown bank is not a trim control: it is parked fully out or driven fully in,
+    // so making the operator hold a button for the entire travel was the wrong affordance.
+    // One click starts it, the button holds a yellow in-motion light while it travels, a
+    // second click stops it wherever it is, and the latch clears itself at the limit. ---
+    imrpnyaxsb3: { press: function () { toggleLatchRod('shutdown_rods', 1); }, warn: function () { return latchActive('shutdown_rods', 1); } },
+    imrpnyf37ju: { press: function () { toggleLatchRod('shutdown_rods', -1); }, warn: function () { return latchActive('shutdown_rods', -1); } },
     // --- Steam dump: AUTO / OPEN / CLOSE ---
     imrppqg6mcc: { press: function () { cmd({ action: 'set_steam_dump', mode: 'auto' }); }, active: function (s) { return CS(s).steam_dump_auto; } },
     imrppquqg16: { press: function () { cmd({ action: 'set_steam_dump', mode: 'open' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) > 50; } },
@@ -629,14 +633,69 @@
     return { min: b.min, max: b.max };
   }
 
-  // Build a COMPPROPS entry for one tile: its fixed bands plus the live reading.
-  // TILE_BANDS is resolved INSIDE the returned function, not captured here: tile() is
+  // ---- mode-aware tile bands (#233) ------------------------------------------------
+  // The NORMAL (green) region of a tile is only useful if it says where the reading should
+  // be RIGHT NOW. Two of the six have a reference that moves with the plant, and both read
+  // as useless static bands without this: at power, Tavg's green band spanned 50–585 °F,
+  // so the operating point sat at the very top of an enormous green region and the operator
+  // could not tell what band they were holding.
+  //   - Tavg follows the SLIDING TAVG PROGRAM — the same trefProgram() the rod controller
+  //     drives to (exported from pwr_control.js), widened to a readable multiple of the
+  //     controller's own ±0.8 °C deadband. Below Mode 3 there is no program: the plant is
+  //     being cooled down, so the band becomes "cold-shutdown cold" instead.
+  //   - Primary pressure follows the LIVE pressurizer setpoint, not the rated one, so a
+  //     Mode 5 plant held at 2.8 MPa shows its own control band rather than the at-power one.
+  // The other four do NOT move, and that is deliberate, not an omission: reactor power,
+  // subcooling margin, pressurizer level and SG narrow-range level are held to the same
+  // band in every mode the board can reach. Their references are the protection setpoints,
+  // which is what TILE_BANDS already reads.
+  var _CTL = (typeof RD !== 'undefined' && RD.PWR_CONTROL) || {};
+  function tavgBand(s) {
+    var mode = (s.true_state && s.true_state.plant_mode) || null;
+    var b = TILE_BANDS.ims2immk7ks;
+    if (mode != null && mode >= 5) {
+      // Mode 5/6: no Tavg program. Normal is "cold" — RHR territory, below 200 °F.
+      return { normLo: b.min, normHi: 200 };
+    }
+    if (!_CTL.trefProgram) return { normLo: b.normLo, normHi: b.normHi };
+    // Load reference is the same signal the rod channel uses (steam flow, 0..1).
+    var load = Math.max(0, Math.min(1, IN(s).steam_flow || 0));
+    var ref = _CTL.trefProgram(load);
+    // 2.5x the controller deadband: wide enough to read as a band on a ~90 °F-wide tile
+    // window, tight enough that leaving it means the rods are actually working.
+    var halfC = (_CTL.TAVG_DEADBAND_C || 0.8) * 2.5;
+    return { normLo: C2F(ref - halfC), normHi: C2F(ref + halfC) };
+  }
+  function pressureBand(s) {
+    var sp = CS(s).pressure_setpoint;
+    if (sp == null || !isFinite(sp)) sp = P_SET;
+    return {
+      normLo: MPa2psi(sp - (_PZ.heater_band_mpa || 0.207)),
+      normHi: MPa2psi(sp + (_PZ.spray_band_mpa || 0.345))
+    };
+  }
+  function bandsFor(id, s) {
+    var b = TILE_BANDS[id];
+    var mv = id === 'ims2immk7ks' ? tavgBand(s) : (id === 'ims2immsvn6' ? pressureBand(s) : null);
+    if (!mv) return b;
+    var out = {}; for (var k in b) out[k] = b[k];
+    out.normLo = mv.normLo; out.normHi = mv.normHi;
+    // A moving normal band must stay inside its own alarm/trip envelope, or a setpoint the
+    // operator typed could paint green over red.
+    if (out.normLo < out.alarmLo) out.normLo = out.alarmLo;
+    if (out.normHi > out.alarmHi) out.normHi = out.alarmHi;
+    return out;
+  }
+
+  // Build a COMPPROPS entry for one tile: its bands plus the live reading.
+  // The bands are resolved INSIDE the returned function, not captured here: tile() is
   // called while the COMPPROPS object literal is being evaluated, which runs before the
   // `var TILE_BANDS = {…}` assignment below it. `var` hoists the declaration but not the
-  // value, so capturing eagerly read undefined and threw on the first render.
+  // value, so capturing eagerly read undefined and threw on the first render. (Since #233
+  // they also have to be resolved per-snapshot anyway — see bandsFor.)
   function tile(id, read) {
     return function (s) {
-      var b = TILE_BANDS[id];
+      var b = bandsFor(id, s);
       var sc = displayScale(b);
       var v = read(s);
       return {
@@ -881,6 +940,75 @@
     cmd({ action: 'rod_stop', group_id: holdingGroup });
     holdingGroup = null;
   }
+  // ---- geometry corrections to the GENERATED diagram (#233) --------------------------
+  // pwr_board_data.js is generated from the builder export and must not be hand-edited, but
+  // a few runs are authored a pixel or two off and read as visibly crooked pipes. Each entry
+  // sets an ABSOLUTE value, never a delta, so it is IDEMPOTENT: when the owner corrects one
+  // in the builder and re-exports, the patch quietly becomes a no-op instead of doubling up.
+  // Fold these back into the builder and delete them from here.
+  // selfTest asserts every target still resolves, so a re-export that renames an id fails
+  // loudly rather than silently dropping the correction.
+  var DOC_PATCHES = {
+    // Turbine exhaust → condenser steam inlet. The route is authored orthogonally, but its
+    // two waypoints sit 1 px and 2 px off the ports they line up with, so both "vertical"
+    // legs lean. Pin them to the real port x.
+    pipes: { pmrr14xbt2h: { waypoints: [[1574, 340], [1553, 340]] } },
+    // PORV discharge → quench-tank box. The box's top port is authored 2 px left of the
+    // PORV outlet above it, so the drop leans instead of falling straight in.
+    items: { imrsi2svtgn: { ports: { ptmrsi3kjfr5: { off: 17 } } } }
+  };
+  function applyDocPatches(doc) {
+    if (!doc) return;
+    (doc.pipes || []).forEach(function (p) {
+      var patch = DOC_PATCHES.pipes[p.id];
+      if (patch && patch.waypoints) p.waypoints = patch.waypoints.map(function (q) { return [q[0], q[1]]; });
+    });
+    (doc.items || []).forEach(function (it) {
+      var patch = DOC_PATCHES.items[it.id];
+      if (!patch || !patch.ports) return;
+      (it.ports || []).forEach(function (pt) {
+        var pp = patch.ports[pt.id];
+        if (pp && pp.off != null) pt.off = pp.off;
+      });
+    });
+  }
+
+  // ---- latched full-travel rod drive (the shutdown bank) ----------------------------
+  // Press once → the bank drives to that limit on its own; press again → it stops where it
+  // is. `latchedRod` is the UI's memory of "I asked for this and it has not finished yet",
+  // which is what the yellow light reports. It is deliberately NOT plant state: the engine
+  // owns the motion, and clearLatchIfDone() below retires the latch as soon as the plant
+  // says the travel is over — including a scram, which drives the bank in without the
+  // operator asking and must not leave a stale light on the WITHDRAW button.
+  var latchedRod = null;   // { group, direction } | null
+  function rodAtLimit(s, group, direction) {
+    var g = rodGroup(s, group);
+    if (!g) return false;
+    var pct = g.position_pct;
+    if (pct == null) return false;
+    return direction > 0 ? pct >= 99.9 : pct <= 0.1;
+  }
+  function toggleLatchRod(group, direction) {
+    var wasSame = !!(latchedRod && latchedRod.group === group && latchedRod.direction === direction);
+    if (latchedRod && latchedRod.group === group) {
+      cmd({ action: 'rod_stop', group_id: group });
+      latchedRod = null;
+      if (wasSame) return;              // second press on the SAME button = stop here
+    }
+    latchedRod = { group: group, direction: direction };
+    cmd({ action: 'rod_start', group_id: group, direction: direction, speed: rodSpeed });
+  }
+  function latchActive(group, direction) {
+    return !!(latchedRod && latchedRod.group === group && latchedRod.direction === direction);
+  }
+  function clearLatchIfDone(s) {
+    if (!latchedRod) return;
+    var done = rodAtLimit(s, latchedRod.group, latchedRod.direction) || !!IN(s).rps_scrammed;
+    if (!done) return;
+    cmd({ action: 'rod_stop', group_id: latchedRod.group });
+    latchedRod = null;
+  }
+
   // The momentary WITHDRAW/INSERT button for a rod group + direction (for keyboard drive).
   function rodButtonId(group, direction) {
     for (var id in BUTTONS) {
@@ -984,11 +1112,20 @@
       var n = blockedTripCount(s);
       return n > 0 ? n : null;
     },
+    // Yellow "in motion" light — currently the latched shutdown-rod drive. Distinct from
+    // bd-active (a selected mode) and bd-info (a standing lineup note): this one means
+    // something is MOVING right now because you asked it to.
+    buttonWarn: function (item, s) {
+      var b = BUTTONS[item.id];
+      return b && b.warn ? !!b.warn(s) : false;
+    },
     buttonDisabled: function () { return false; },
     // Control tiles to append to the board that aren't in the generated board_data.js.
     // No driver-injected items and no doc patching since V2 — see EXTRA_ITEMS above for
     // what used to be here and where each piece is authored now.
     extraItems: function () { return EXTRA_ITEMS; },
+    // Absolute, idempotent geometry corrections to the generated doc — see DOC_PATCHES.
+    docPatches: function (doc) { applyDocPatches(doc); },
     // Live fluid temperature (°C) for a pipe id, or null to keep its authored temp.
     // Lets the renderer repaint pipe fluid color each snapshot (see PIPE_TEMP).
     pipeTemp: function (id, s) { var f = PIPE_TEMP[id]; return f ? f(s) : null; },
@@ -1003,6 +1140,7 @@
       // Boron target-seeking now lives in the control/automation layer (the
       // 'boron_conc' channel) — the ON/OFF buttons and target number engage and set it.
       refreshTripBlocks(s);
+      clearLatchIfDone(s);
     },
     // instructor highlight vocabulary (consumed by pwr_board.revealControl / highlightLabels)
     controlLabelItem: function (label) { return CONTROL_LABEL_MAP[label] || null; },
@@ -1040,6 +1178,21 @@
         var miss = [];
         Object.keys(CONTROL_LABEL_MAP).forEach(function (label) {
           if (!live[CONTROL_LABEL_MAP[label]]) miss.push(label + '→' + CONTROL_LABEL_MAP[label]);
+        });
+        return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+      // A DOC_PATCHES entry that no longer resolves is a silently-dropped correction: the
+      // pipe just goes back to being crooked. Same failure mode as an orphaned PIPE_TEMP key.
+      ck('driver: every DOC_PATCHES target resolves', (function () {
+        var doc = window.RD_PWR_BOARD_DOC, miss = [];
+        var livePipes = {}; (doc.pipes || []).forEach(function (p) { livePipes[p.id] = 1; });
+        Object.keys(DOC_PATCHES.pipes).forEach(function (k) { if (!livePipes[k]) miss.push('pipe ' + k); });
+        Object.keys(DOC_PATCHES.items).forEach(function (k) {
+          var it = (doc.items || []).filter(function (i) { return i.id === k; })[0];
+          if (!it) { miss.push('item ' + k); return; }
+          Object.keys(DOC_PATCHES.items[k].ports || {}).forEach(function (pid) {
+            if (!(it.ports || []).some(function (p) { return p.id === pid; })) miss.push(k + '/' + pid);
+          });
         });
         return miss.length === 0 ? true : miss.join(',');
       })() === true);

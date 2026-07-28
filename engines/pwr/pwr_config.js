@@ -660,15 +660,19 @@
     // is wrong, not all of them.
     instrument_noise_scale: 1.0,
 
-    // NOTE on `power_range` noise (#217): its sigma is a CONSTANT ABSOLUTE value across
-    // a 0-200 % span, which is a modelling simplification — real excore NI noise is
-    // signal-dependent (counting statistics), so it is relatively larger at low flux and
-    // smaller at power. Consequence: a sigma sized to look "live" at 100 % power is
-    // ruinous at 1 % power, where the same absolute number is tens of percent of the
-    // reading and swamps a startup. It is therefore deliberately held at the QUIET end
-    // (0.2, ~0.2 x the 1 % display step) — chosen for the low-power case, not the
-    // at-power one. Raising it broke pwr_startup_challenge's approach, which is the
-    // honest symptom. A signal-proportional noise model would let both ends be right.
+    // Noise correlation time, seconds (#233). Instrument noise is an AR(1) walk, not a
+    // fresh white draw each step, so a reading DRIFTS across its band instead of jumping
+    // limit-to-limit between samples. This does not change any sigma below — it changes how
+    // fast the reading crosses it. Per-instrument override: `noise_tau`.
+    instrument_noise_tau_s: 8.0,
+
+    // RESOLVED (#233): `power_range` noise is no longer a constant absolute value. The note
+    // that stood here said a sigma sized to look live at 100 % power is ruinous at 1 %,
+    // where the same absolute number swamps a startup — so it was pinned at the quiet end
+    // (0.2) for the low-power case and could never be right at both. `noise_ref` is the
+    // signal-proportional model it asked for: full sigma at the reference reading, tapering
+    // to nothing below it. Both ends can now be right with one number, which is also what
+    // stops a shut-down plant's indications twitching.
     // ----------------------------------------------------------- instrument set
     // id → { measures, lag (s), noise sigma (instrument units), range[min,max] }.
     // Status booleans (no lag/noise) are listed under `status`.
@@ -676,7 +680,10 @@
       // power_range top-of-range must exceed the 120% trip setpoint: a reading
       // pegged at exactly the setpoint never satisfies a strict crossed() compare,
       // so the high-flux trip could never fire (same fix as the RBMK meter).
-      power_range:       { lag: 0.1, noise: 0.2,   range: [0, 200] },
+      // noise_ref 25 %: excore NI is a counting instrument, so its jitter is proportional to
+      // flux. Full sigma from a quarter power up; below that it tapers, so a startup at 1 %
+      // is quiet and a shut-down reactor indicates a still zero instead of hunting.
+      power_range:       { lag: 0.1, noise: 0.14,  range: [0, 200], noise_ref: 25 },
       // Range spans cold shutdown → hot: the meter must read true down in the cold band
       // (Mode 5 ~50 °C) instead of flooring at the at-power operating minimum. The UI Tavg
       // gauge auto-ranges its DISPLAY scale (fine operating band when hot, wide when cold).
@@ -703,24 +710,31 @@
       // plus shrink/swell make it one of the noisier indications in a plant), so the two
       // reading alike was the tell that 0.3 was a copied default rather than a measurement.
       pzr_level:         { lag: 2.0, noise: 0.12,  range: [0, 100] },
-      sg_level:          { lag: 3.0, noise: 0.3,   range: [0, 100] },
-      steam_flow:        { lag: 1.0, noise: 0.0006,  range: [0, 1.2] },
-      fw_flow:           { lag: 1.0, noise: 0.0006,  range: [0, 1.2] },
-      mwe_output:        { lag: 0.2, noise: 0.3,   range: [0, 130] },   // noise/range scaled with the 100 MWe rating
-      turbine_rpm:       { lag: 0.5, noise: 0.3,   range: [0, 2000] },
+      // sg_level keeps the largest sigma on the board ON PURPOSE — narrow-range level really
+      // does bounce (boiling plus shrink/swell). 0.3 → 0.22 with a SHORT correlation time:
+      // the character of this one is genuinely fast hash, not slow drift, so it stays lively
+      // where the RTDs went calm. That contrast is the reading, not an artefact.
+      sg_level:          { lag: 3.0, noise: 0.22,  range: [0, 100], noise_tau: 2.5 },
+      // Flow transmitters, normalized to rated. noise_ref ~2 % of rated: a dP cell across a
+      // shut line has no flow to be noisy about, so a secured pump indicates a still zero
+      // rather than hunting around it (#233 — the ECCS "1 gpm with the pump off" report).
+      steam_flow:        { lag: 1.0, noise: 0.0006,  range: [0, 1.2], noise_ref: 0.02 },
+      fw_flow:           { lag: 1.0, noise: 0.0006,  range: [0, 1.2], noise_ref: 0.02 },
+      mwe_output:        { lag: 0.2, noise: 0.3,   range: [0, 130], noise_ref: 10 },   // noise/range scaled with the 100 MWe rating
+      turbine_rpm:       { lag: 0.5, noise: 0.3,   range: [0, 2000], noise_ref: 200 },
       condenser_vacuum:  { lag: 5.0, noise: 1,  range: [0, 102] },
       // §8.8 synoptic additions — CVCS flows, SG pressure, chemistry, governor, ECCS
       // (LPI/accumulator), and Animation-HR1 helpers (steam dump, primary leak).
       // Sources track TRUE sim quantities, not command setpoints (see pwr_instruments SOURCE).
-      charging_flow:     { lag: 2.0, noise: 0.0006, range: [0, 0.12] },   // true CVCS charging (≠ setpoint under AUTO)
-      letdown_flow:      { lag: 2.0, noise: 0.0006, range: [0, 0.12] },   // true CVCS letdown
+      charging_flow:     { lag: 2.0, noise: 0.0006, range: [0, 0.12], noise_ref: 0.004 },   // true CVCS charging (≠ setpoint under AUTO)
+      letdown_flow:      { lag: 2.0, noise: 0.0006, range: [0, 0.12], noise_ref: 0.004 },   // true CVCS letdown
       steam_pressure:    { lag: 0.5, noise: 0.0034,  range: [0, 10.5] },   // SG secondary pressure, MPa (top of range = no-load saturation + margin)
       boron_analyzer:    { lag: 45,  noise: 0.3,   range: [0, 2500] },   // chemistry sample — slow (Realistic-only boron readout)
-      governor_valve:    { lag: 0.3, noise: 0.3,   range: [0, 100] },    // turbine admission valve %
-      hpi_flow:          { lag: 1.0, noise: 0.001, range: [0, 1.2] },    // merged HPI/LPI injection line, normalized to combined rated (renamed in place from lpi_flow — PRNG order preserved)
-      accumulator_flow:  { lag: 0.5, noise: 0.001, range: [0, 1.2] },    // passive accumulator injection, normalized
-      steam_dump_valve:  { lag: 0.3, noise: 0.3,   range: [0, 100] },    // turbine bypass valve % (Animation HR1)
-      primary_leak_flow: { lag: 0.2, noise: 0.0006, range: [0, 1.0] },    // LOCA/SGTR break flow, normalized (Animation HR1)
+      governor_valve:    { lag: 0.3, noise: 0.3,   range: [0, 100], noise_ref: 5 },    // turbine admission valve %
+      hpi_flow:          { lag: 1.0, noise: 0.001, range: [0, 1.2], noise_ref: 0.02 },    // merged HPI/LPI injection line, normalized to combined rated (renamed in place from lpi_flow — PRNG order preserved)
+      accumulator_flow:  { lag: 0.5, noise: 0.001, range: [0, 1.2], noise_ref: 0.02 },    // passive accumulator injection, normalized
+      steam_dump_valve:  { lag: 0.3, noise: 0.3,   range: [0, 100], noise_ref: 5 },    // turbine bypass valve % (Animation HR1)
+      primary_leak_flow: { lag: 0.2, noise: 0.0006, range: [0, 1.0], noise_ref: 0.01 },    // LOCA/SGTR break flow, normalized (Animation HR1)
       startup_rate:      { lag: 2.0, noise: 0.004,  range: [-5, 10] },    // SUR (dpm) — startup-range rate meter; feeds the rod-withdrawal interlock
       porv_tailpipe_temp:{ lag: 10.0, noise: 0.17,  range: [0, 250] },    // PORV discharge/quench-tank line temperature — the unalarmed indication that reveals a stuck-open PORV (TMI-2)
       // Nuclear instrumentation (startup ranges) — LOG-scale detectors (lag +

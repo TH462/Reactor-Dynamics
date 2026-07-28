@@ -69,6 +69,7 @@
     }, geomG, portEls.a, portEls.b, portEls.c, portEls.d);
 
     var scale = null;
+    var livePipes = [];   // K.pipe groups whose colour repaint() may update in place
 
     function legDir(id) { return st[id] === 'out' ? 1 : (st[id] === 'in' ? -1 : 0); }
 
@@ -80,21 +81,26 @@
       IDS.forEach(function (id) { if (st[id] === 'in') anyIn = true; if (st[id] === 'out') anyOut = true; });
       // flow only moves when something feeds the fitting AND something takes it away
       var moving = st.rate > 2 && !isEmpty && anyIn && anyOut;
-      // See comp_tee.js: one shared conversion (StdPipe.dashSpeed) so the fitting and the
-      // pipes it joins compute the same dash rate (#231).
-      var speed = K.dashSpeed(st.rate, st.speedMul);
+      // See comp_tee.js: dash velocity tracks SPEED only, `rate` only gates whether flow
+      // moves at all, and the phase anchor is world-space (#231/#233).
+      var speed = st.speedMul;
       var stubFluid = { phase: st.contents, temp: st.temp };
+      var phaseX = (cfg.left || 0) - 60 * sc;
+      var phaseY = (cfg.top || 0) - 60 * sc;
 
       function pt(id) { return [(CX + LEGV[id][0] * R) * sc, (CY + LEGV[id][1] * R) * sc]; }
 
       var geom = [];
+      livePipes = [];
       function drawLeg(id) {
         var p = pt(id), fd = legDir(id);
-        geom.push(K.pipe({
-          x1: CX * sc, y1: CY * sc, x2: p[0], y2: p[1], d: sizeOf(id),
+        var g = K.pipe({
+          x1: CX * sc, y1: CY * sc, x2: p[0], y2: p[1], d: sizeOf(id), phaseX: phaseX, phaseY: phaseY,
           fluid: fd === 0 ? { phase: 'empty' } : stubFluid,
           flow: moving && fd !== 0, dir: fd >= 0 ? 1 : -1, speed: speed
-        }));
+        });
+        geom.push(g);
+        if (fd !== 0) livePipes.push(g);
       }
       // A run whose two ends are in→out is drawn as ONE pipe so its dashes form a single
       // continuous pattern instead of two legs meeting out of phase at the joint.
@@ -102,10 +108,11 @@
         var thru = (st[p] === 'in' && st[q] === 'out') || (st[q] === 'in' && st[p] === 'out');
         if (!thru) { drawLeg(p); drawLeg(q); return; }
         var a = pt(p), b = pt(q);
-        geom.push(K.pipe({
-          x1: a[0], y1: a[1], x2: b[0], y2: b[1], d: d,
+        var gr = K.pipe({
+          x1: a[0], y1: a[1], x2: b[0], y2: b[1], d: d, phaseX: phaseX, phaseY: phaseY,
           fluid: stubFluid, flow: moving, dir: st[p] === 'in' ? 1 : -1, speed: speed
-        }));
+        });
+        geom.push(gr); livePipes.push(gr);
       }
       // vertical run first so the horizontal run paints over the joint
       drawRun('c', 'd', dB);
@@ -133,10 +140,40 @@
       if (!scale || Math.abs(s - scale) / s > 0.015) { scale = s; rebuild(); }
     });
 
+    // See comp_tee.js for both halves of this: colour is repainted in place, and the geometry
+    // is only rebuilt when something it depends on changed — rebuilding on every snapshot
+    // restarted the dash animation and made the dashes jitter instead of flow (#233).
+    function repaint() {
+      var c = K.phaseTempColor(st.contents, st.temp);
+      for (var i = 0; i < livePipes.length; i++) {
+        var kids = livePipes[i].childNodes;
+        if (kids[1]) kids[1].setAttribute('stroke', c.bore);
+        if (kids[2]) kids[2].setAttribute('stroke', c.flow);
+      }
+      IDS.forEach(function (id) { portEls[id].setAttribute('data-temp', String(st.temp)); });
+    }
+
+    function geomDirty(props) {
+      if (props.contents != null && props.contents !== st.contents) return true;
+      var rate = st.rate;
+      if (props.flowing != null) rate = props.flowing ? authoredRate : 0;
+      if (props.flow != null) rate = Math.max(0, Math.min(100, +props.flow));
+      if (rate !== st.rate) return true;
+      for (var i = 0; i < IDS.length; i++) {
+        var v = props['leg' + IDS[i].toUpperCase()];
+        if ((v === 'in' || v === 'out' || v === 'off') && v !== st[IDS[i]]) return true;
+      }
+      return false;
+    }
+
     function update(props) {
       if (!props) return;
+      var rebuildNeeded = geomDirty(props);
       if (props.contents != null) st.contents = props.contents;
-      if (props.temp != null && isFinite(+props.temp)) st.temp = +props.temp;
+      var tempMoved = false;
+      if (props.temp != null && isFinite(+props.temp) && +props.temp !== st.temp) {
+        st.temp = +props.temp; tempMoved = true;
+      }
       // See comp_tee.js: `flowing` gates the AUTHORED rate so the diagram's flow sliders
       // (which exist to match dash speed across connected components) survive.
       if (props.flowing != null) st.rate = props.flowing ? authoredRate : 0;
@@ -145,7 +182,8 @@
         var v = props['leg' + id.toUpperCase()];
         if (v === 'in' || v === 'out' || v === 'off') st[id] = v;
       });
-      rebuild();
+      if (rebuildNeeded) rebuild();
+      else if (tempMoved) repaint();
     }
 
     function destroy() { if (unwatch) { unwatch(); unwatch = null; } }
