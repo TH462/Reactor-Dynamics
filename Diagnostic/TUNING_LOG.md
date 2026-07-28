@@ -109,6 +109,105 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-27d — #231 V2 board polish: all three items were mis-attributed, and measurement moved each one  ✅🔬
+
+Three playtest items off the V2 board landing (`e9dc316`). Every one had a plausible lead in
+the issue text; **two of the three leads were wrong**, and only measuring said so. `run_all`
+**22/22 at baseline** after, unchanged — no baseline moved.
+
+**Item 1 — the pressurizer sits left. The suggested lead (`NUDGE_KINDS`) cannot fix it.**
+The issue's first suggestion was to add `Pressurizer` to `NUDGE_KINDS` in
+`ui/diagram/board/pwr_board.js:32`. That is arithmetically impossible: `gridNudge` removes
+**sub-grid residue only**, so at `doc.grid = 5` its authority is ±2.5 px. Measured error is 6.
+
+- **Measured, not eyeballed** (scratch harness: mount the board headless, read
+  `RD.PwrBoard.ports()`, and for every pipe compare each end's port against the axis its
+  first/last segment should run along). The pressurizer's three centreline ports —
+  `relief-out`, `pressure-tap`, `surge`, all at viewBox x=100 — scanned at world **x 1049**.
+  Both fittings they join sit at **1055**: `ims2kt7fu64/c` (surge tee branch) and
+  `imrppb3kuav/b` (PORV block valve). So the surge line *and* the relief tap each ran 6 px out
+  of plumb between two horizontal flange bars. That is the whole reported symptom.
+- **It is TWO authored errors compounding**, which is why no single principled rule lands on
+  1055: the design's crop puts the vessel axis **10 px left of the tile centre** (viewBox spans
+  10..230, centre 120, vessel cx 100), and the tile itself (left 1005, width 108, centre 1059)
+  sits **4 px right** of the 1055 axis its neighbours share. Centring the crop gives 1059;
+  grid-snapping the current position gives 1050. Neither is right.
+- **Fix**: one measured `translate(6px,84px)` on the pressurizer svg
+  (`comp_pressurizer.js`), in canvas px, the same idiom as the existing `translateY(84px)`.
+  Three new `board_check.html` assertions pin the **result** (`pressurizer/surge` x ==
+  `ims2kt7fu64/c` x, etc.) rather than the offset, so a re-export that moves either tile fails
+  loudly instead of silently restoring the jog. board_check **56 → 59, 0 fail**.
+- **Not fixed, filed instead**: `ims3x2n4o2p/a` (accumulator tee) vs `reactorVessel/cold-in`
+  is a real **5 px** jog over a 10 px run. It is authored *tile* placement, not a component
+  crop — the tee wants `top 595`, not 600 — so it is a builder edit, not a code one.
+  The other jogs the harness found (condenser↔cooling tower 29 px, AFW tee → SG fw-in 14 px)
+  are authored diagonals and correct as drawn.
+
+**Item 2 — instrument noise. The issue's own numbers were right; the scope was one instrument
+too narrow.** `tavg` 0.17 → **0.05** °C, and `thot`/`tcold` with it; `pzr_level` 0.3 → **0.12** %.
+
+- **Why all three temperatures, not just Tavg** (HR9 — what should this plant do?): the board
+  shows **Tavg, T-hot, T-cold and ΔTavg (thot − tcold) on one screen**
+  (`pwr_board_wiring.js:290,339,340,539`). A rock-steady average over two legs each wandering
+  ±1.2 °F is arithmetically impossible. They are also the same RTDs in the same damped bypass
+  manifold. Checked before moving them: **nothing in `layers/control/` and no gate reads the
+  `thot`/`tcold` readings** — they are display + pipe colour only.
+- **Subcooling fell out for free.** `subcooling_margin` is derived (`pwr_instruments.js:120`:
+  `T_sat(P) − tavg`) with `noise: 0`, so its jitter *was* Tavg's. That is why the issue's table
+  showed subcooling and Tavg with an identical 0.32 σ — one instrument, reported twice.
+- **PRNG safety.** Changing a sigma draws no extra numbers, so the instrument noise **sequence**
+  is byte-identical — only the amplitude moves. (Contrast the `noise: 0` rule further down that
+  block, where *adding* a draw is what shifts every downstream instrument. That rule is about
+  adding/removing instruments, not re-sizing one.)
+- **Measured before/after, 60 s at steady full power, full stack, display units.** The two
+  instruments left alone reproducing the issue's own figures is what says the harness matches
+  the original measurement:
+
+  | tile | σ filed | σ now | |
+  |---|---|---|---|
+  | Tavg °F | 0.32 | **0.087** | −73 % |
+  | Subcooling °F | 0.32 | **0.087** | −73 %, derived |
+  | PZR level % | 0.28 | **0.118** | −58 % |
+  | Reactor power % | 0.21 | 0.205 | untouched ✔ |
+  | SG level % | 0.30 | 0.309 | untouched ✔ |
+
+- **SG level deliberately NOT matched to PZR level.** Narrow-range SG level genuinely bounces
+  (boiling, shrink/swell); pressurizer level is a steady dP reading on one large vessel. The two
+  sharing 0.3 was the tell that 0.3 was a copied default rather than a measurement.
+- **Knock-on caught**: `tile()`'s display-resolution comment justified whole-unit digits by
+  citing "sigma 0.2–0.45 across the board". That premise is now false for three of the six
+  tiles, so the comment was rewritten with the new per-tile figures. The *decision* is unchanged
+  — 0.09 is still close to a full 0.1 display step — but a stale premise left under a live
+  decision is how the next agent gets it wrong.
+
+**Item 3 — Tee/Cross dash rate. Root cause found; it was a constant, not a scale bug.**
+Both surfaces animate `stroke-dashoffset` 250 over `dur = 10.4/speed`, and for the fittings the
+`scale(1/sc)` compensation cancels exactly against the tile's viewBox mapping — so **equal `dur`
+== equal on-screen rate**, and the two were simply computing different `speed`:
+
+- fittings: `speed = (0.45 + 1.1 * flow/100) * speedMul` → **1.55** at the authored flow 100
+- pipes: hard 1.0, with the authored `p.speed` **dropped on the floor** in `buildPipes()`
+
+So every fitting ran 55 % fast — dashes slipping a full period against the pipe every ~1.9 s,
+which is exactly the visible stepping. Fix: one shared `StdPipe.dashSpeed(flowPct, speedMul)`
+where the authored default on **either** surface is exactly 1.0, used by `buildPipes()`,
+`comp_tee.js` and `comp_cross.js`. Verified in the DOM: 7/7 fittings and 26/27 pipes now at
+`10.4s`.
+
+- **The 27th pipe is deliberate and worth knowing about.** `pms2ktjq4ma` (SG hot-in → surge tee)
+  carries `speed: 1.05` — the only authored speed on the board, and almost certainly a stray
+  slider nudge. Now that authored speed is honoured it runs 5 % fast against the tee it joins
+  (a period every ~21 s, vs ~1.9 s before). Kept honoured rather than special-cased: silently
+  dropping authored data is half of what made this confusing. **Owner action: zero it in the
+  builder on the next export.**
+
+**Drive-by, forced by the manual maintenance rule.** A config change requires
+`gen_manual_reference.js` + `pack_manuals.js`. Regenerating showed the sigma edits produce **no**
+manual diff (the PWR entry is a reference-only stub — its `normal_values` instrument snapshots
+are RBMK/BWR only). What it *did* surface was pre-existing staleness from `e9dc316`:
+`cw_inlet_temp` had never been regenerated into `ui/manual_data.js`, and landed as a raw
+unlabelled id. Given an `IND` entry and regenerated. `run_procedures` 22/22, `run_checklist` 24/24.
+
 ### 2026-07-27b — Three small issues (#189, #142, #156), and what measuring each one changed about it  ✅🔬
 
 A batch of three "easy" items. All three turned out to be filed slightly wrong, and in each

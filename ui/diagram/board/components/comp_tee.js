@@ -85,7 +85,10 @@
       var anyOut = st.a === 'out' || st.b === 'out' || st.c === 'out';
       // flow only moves when something feeds the fitting AND something takes it away
       var moving = st.rate > 2 && !isEmpty && anyIn && anyOut;
-      var speed = (0.45 + (st.rate / 100) * 1.1) * st.speedMul;
+      // Shared with the board's pipe runs — see StdPipe.dashSpeed (#231). The design
+      // source's own curve (0.45 + 1.1 * rate/100) put a full-flow tee at 1.55x, so its
+      // dashes visibly stepped against the 1.0x pipes either side of the joint.
+      var speed = K.dashSpeed(st.rate, st.speedMul);
       var stubFluid = { phase: st.contents, temp: st.temp };
 
       function pt(L) { return [(CX + L.v[0] * R) * sc, (CY + L.v[1] * R) * sc]; }

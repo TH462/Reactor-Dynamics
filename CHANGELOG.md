@@ -48,6 +48,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   water against ~61 °C on hot. At the default 80 °F the plant behaves exactly as before.
 
 ### Fixed
+- **Board polish from the V2 playtest** (issue #231). Three things you can see:
+  - **The pressurizer no longer sits off its own pipework.** Its centreline was 6 px left of
+    the surge tee below it and the PORV block valve above it, so the surge line and the relief
+    tap each ran slightly out of plumb between two horizontal flanges. Both now line up.
+  - **Fittings flow at the same speed as the pipes they join.** Tees and the cold-leg cross
+    animated their dashes 55 % faster than the runs either side, so the flow visibly stepped at
+    every joint. Both now read their speed from one shared rule.
+  - **The vital-parameter tiles sit still.** Average coolant temperature, subcooling margin and
+    pressurizer level were jittering roughly three times a second — Tavg by 2.5 °F peak to peak,
+    which is not what those instruments do. Tavg comes from RTDs in a damped bypass manifold and
+    barely moves; pressurizer level is a steady differential-pressure reading. Both are now ~3x
+    quieter (Tavg ±0.2 °F). Reactor power and steam-generator level are **unchanged and still
+    lively on purpose** — excore power genuinely wanders, and narrow-range SG level really does
+    bounce with boiling and shrink/swell. That contrast is now a real reading, not an artefact.
 - **Saving mid-scenario could strand you on a step you had already done** (issue #142). Some
   scenario beats wait for you to *do* something — open a valve, switch load mode. The record
   of having done it was not written into the save, so if you saved (or hit an automatic

@@ -157,9 +157,24 @@
     // the bottom of its panel card (the box behind it extends below the item tile), leaving
     // the authored PORV/relief valves above the dome with a short connecting pipe. Overflow
     // is visible, so the lowered vessel simply extends into the card area below the tile.
+    //
+    // translateX(6px) — the vessel's AXIS ALIGNMENT (#231). Measured on the V2 board: the
+    // three centreline ports (relief-out / pressure-tap / surge, all at viewBox x=100)
+    // scanned at world x 1049, while BOTH fittings they join — the surge tee's branch
+    // (ims2kt7fu64/c) and the PORV block valve (imrppb3kuav/b) — sit at 1055. The surge
+    // line and the PORV tap therefore each ran 6 px out of plumb between two horizontal
+    // flange bars, which is the "pressurizer sits a little left" the owner reported.
+    // The 6 px is two authored errors compounding: the design's crop puts the vessel axis
+    // 10 px LEFT of the tile centre (viewBox spans 10..230, centre 120, vessel cx 100),
+    // and the tile itself (left 1005, width 108, centre 1059) sits 4 px RIGHT of the 1055
+    // axis its neighbours share. Both are diagram-side, and the board is generated, so the
+    // correction lives here as one measured offset in CANVAS px (a CSS transform on the
+    // tile's own pixel space, exactly like the translateY above). board_check.html pins the
+    // result, so a re-export that moves either tile turns that check red instead of
+    // silently restoring the jog — if it does, re-measure, don't just bump this number.
     var svg = h('svg', {
       viewBox: '10 90 220 466', preserveAspectRatio: 'xMidYMid meet',
-      style: { width: '100%', height: '100%', overflow: 'visible', display: 'block', transform: 'translateY(84px)' }
+      style: { width: '100%', height: '100%', overflow: 'visible', display: 'block', transform: 'translate(6px,84px)' }
     },
       defs,
       h('path', { d: outer, fill: 'url(#' + ids.steel + ')', stroke: '#46596a', strokeWidth: 2.4 }),

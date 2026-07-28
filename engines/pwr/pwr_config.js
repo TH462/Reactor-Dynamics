@@ -680,11 +680,29 @@
       // Range spans cold shutdown → hot: the meter must read true down in the cold band
       // (Mode 5 ~50 °C) instead of flooring at the at-power operating minimum. The UI Tavg
       // gauge auto-ranges its DISPLAY scale (fine operating band when hot, wide when cold).
-      tavg:              { lag: 4.0, noise: 0.17,   range: [30, 343] },
-      thot:              { lag: 4.0, noise: 0.17,   range: [30, 343] },
-      tcold:             { lag: 4.0, noise: 0.17,   range: [30, 343] },
+      // RCS temperature sigmas 0.17 → 0.05 °C (#231). At 0.17 the board's Tavg tile jittered
+      // ±1.2 °F peak-to-peak with the last digit changing ~3.6 times a SECOND, which is not
+      // what a real Tavg does: these are RTDs in a damped bypass manifold and they sit very
+      // steady — ±0.2 °F is the honest number, and 0.05 °C ≈ 0.09 °F sigma lands there.
+      // All three move together because they are the same manifold and the board shows all
+      // of them: Tavg, T-hot, T-cold and ΔTavg (thot − tcold) are four tiles on one screen,
+      // so a steady average over two jumpy legs would be arithmetically impossible. Nothing
+      // in the control layer or any gate reads thot/tcold — they are display + pipe colour.
+      // Knock-on: subcooling_margin is DERIVED (Tsat(P) − tavg, noise 0), so its jitter was
+      // tavg's; it falls with it. Sigma changes draw no extra PRNG numbers, so the
+      // instrument noise SEQUENCE is unchanged — only its amplitude (cf. the noise:0 rule
+      // below, where adding a draw is what shifts everything downstream).
+      tavg:              { lag: 4.0, noise: 0.05,  range: [30, 343] },
+      thot:              { lag: 4.0, noise: 0.05,  range: [30, 343] },
+      tcold:             { lag: 4.0, noise: 0.05,  range: [30, 343] },
       primary_pressure:  { lag: 0.5, noise: 0.0034, range: [0, 20.7] },
-      pzr_level:         { lag: 2.0, noise: 0.3,   range: [0, 100] },
+      // pzr_level 0.3 → 0.12 % (#231). Real pressurizer level indication is a steady
+      // differential-pressure reading on a single large vessel — no boiling at the tap, no
+      // shrink/swell — and holds to a few tenths of a percent. Deliberately NOT matched to
+      // sg_level below, which keeps 0.3: narrow-range SG level genuinely bounces (boiling
+      // plus shrink/swell make it one of the noisier indications in a plant), so the two
+      // reading alike was the tell that 0.3 was a copied default rather than a measurement.
+      pzr_level:         { lag: 2.0, noise: 0.12,  range: [0, 100] },
       sg_level:          { lag: 3.0, noise: 0.3,   range: [0, 100] },
       steam_flow:        { lag: 1.0, noise: 0.0006,  range: [0, 1.2] },
       fw_flow:           { lag: 1.0, noise: 0.0006,  range: [0, 1.2] },

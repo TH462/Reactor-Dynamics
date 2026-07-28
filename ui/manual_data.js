@@ -470,6 +470,20 @@
           "alarms": []
         },
         {
+          "id": "cw_inlet_temp",
+          "name": "Circulating-Water Inlet Temperature",
+          "measures": "Temperature of the cooling water entering the condenser from the tower/river. Sets the achievable condenser vacuum, so it is the outside-world input to how much power the turbine can make on a given day.",
+          "unit": "°C",
+          "range": [
+            0,
+            45
+          ],
+          "lag_s": 20,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
+        },
+        {
           "id": "subcooling_margin",
           "name": "Subcooling Margin",
           "measures": "How far the coolant is from boiling (from indicated pressure & temperature). The truth-teller at TMI.",

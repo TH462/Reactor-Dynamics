@@ -583,7 +583,11 @@
       var size = p.size || (ap && ap.size) || 'medium';
       var d = STD_SIZES[size] || 8;
       var fluidArg = p.phase ? { phase: p.phase, temp: p.temp } : p.fluid;
-      var el = K.pipe({ points: pts, d: d, fluid: fluidArg, dir: flowDir });
+      // Dash rate comes from the SAME conversion the fittings use (StdPipe.dashSpeed),
+      // so a Tee/Cross and the pipe it joins step together. The authored `speed` was
+      // previously dropped here entirely, which is half of why they disagreed (#231).
+      var el = K.pipe({ points: pts, d: d, fluid: fluidArg, dir: flowDir,
+                        speed: window.StdPipe.dashSpeed(p.flow, p.speed) });
       underSvg.appendChild(el);
       if (a.junction) underSvg.appendChild(K.junction({ x: a.x, y: a.y, d: d, fluid: fluidArg }));
       if (b.junction) underSvg.appendChild(K.junction({ x: b.x, y: b.y, d: d, fluid: fluidArg }));

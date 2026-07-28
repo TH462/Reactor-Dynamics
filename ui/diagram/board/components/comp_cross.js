@@ -80,7 +80,9 @@
       IDS.forEach(function (id) { if (st[id] === 'in') anyIn = true; if (st[id] === 'out') anyOut = true; });
       // flow only moves when something feeds the fitting AND something takes it away
       var moving = st.rate > 2 && !isEmpty && anyIn && anyOut;
-      var speed = (0.45 + (st.rate / 100) * 1.1) * st.speedMul;
+      // See comp_tee.js: one shared conversion (StdPipe.dashSpeed) so the fitting and the
+      // pipes it joins compute the same dash rate (#231).
+      var speed = K.dashSpeed(st.rate, st.speedMul);
       var stubFluid = { phase: st.contents, temp: st.temp };
 
       function pt(id) { return [(CX + LEGV[id][0] * R) * sc, (CY + LEGV[id][1] * R) * sc]; }

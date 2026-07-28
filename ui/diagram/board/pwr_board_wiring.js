@@ -641,12 +641,17 @@
       var v = read(s);
       return {
         value: (v == null || !isFinite(v)) ? null : v,
-        // Display resolution, set so the last digit is SIGNAL, not noise. Measured at steady
-        // full power, instrument sigma in display units is 0.2–0.45 — so at one decimal the
-        // tenths place is pure jitter and flips on every render (~220 changes/minute, which
-        // is what made the strip unreadable). At whole units it flips occasionally, the way
-        // a real control-room indicator does. Reactor power keeps its decimal: NIS power
-        // genuinely wanders and operators read it to a tenth.
+        // Display resolution, set so the last digit is SIGNAL, not noise. At whole units a
+        // tile flips occasionally, the way a real control-room indicator does; at one decimal
+        // the tenths place was pure jitter and flipped on every render (~220 changes/minute,
+        // which is what made the strip unreadable). Reactor power keeps its decimal: NIS
+        // power genuinely wanders and operators read it to a tenth.
+        // Sigmas in display units, re-measured at steady full power after the #231 engine
+        // pass (60 s, hot_full_power): power 0.21 %, Tavg 0.09 °F, subcooling 0.09 °F,
+        // pressure 0.56 psi, PZR level 0.12 %, SG level 0.31 %. Tavg/subcooling/PZR level
+        // are ~3x quieter than when this was written (0.2–0.45 across the board), but even
+        // 0.09 is close to a full 0.1 display step, so whole units still hold — do not add a
+        // decimal back without re-measuring the tile you are changing.
         decimals: b.digits,
         // sim clock drives the tile's 3-minute sampling window (see comp_indicator_panel)
         t: (s.metadata && s.metadata.sim_time != null) ? s.metadata.sim_time : null,

@@ -37,6 +37,43 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-27d — V2 board polish (#231): alignment, dash rate, instrument sigmas
+
+Three playtest items off `e9dc316`. `run_all` **22/22 at baseline, unchanged** — no baseline
+moved. Full measurement in `Diagnostic/TUNING_LOG.md` (2026-07-27d); the decisions:
+
+- **The pressurizer offset is diagram data, not a nudge failure.** The issue's lead was to add
+  `Pressurizer` to `NUDGE_KINDS`; that cannot work — `gridNudge` removes **sub-grid residue
+  only**, so its authority is ±g/2 = ±2.5 px, and the measured error is 6. It is two authored
+  errors compounding: the design crop puts the vessel axis 10 px left of the tile centre, and
+  the tile sits 4 px right of the 1055 axis its neighbours (`ims2kt7fu64/c`, `imrppb3kuav/b`)
+  share. Corrected with a measured `translate(6px,84px)` in `comp_pressurizer.js`, and
+  **`board_check.html` now pins the result, not the offset** — three plumb assertions on the
+  scanned port coordinates, so a re-export that moves either tile fails instead of silently
+  restoring the jog. Same guard pattern as the `PIPE_TEMP` assertions below. board_check 56→59.
+- **One dash-rate conversion, two authoring surfaces.** Pipes author a `speed` multiplier;
+  components author a 0–100 `flow` slider. They were computing different numbers — fittings
+  `(0.45 + 1.1·flow/100)` = **1.55** at flow 100, pipes a hard 1.0 with `p.speed` discarded in
+  `buildPipes()` — so every fitting ran 55 % fast and the dashes stepped at each joint. Now
+  both call `StdPipe.dashSpeed()`, defined so the authored default on either surface is exactly
+  1.0. `p.speed` is now **honoured** rather than dropped: silently discarding authored data is
+  what made this hard to see. Consequence to accept — `pms2ktjq4ma` carries `speed: 1.05` (the
+  only one on the board, likely a stray slider) and now runs 5 % fast; fix it in the builder,
+  not in the renderer.
+- **RCS temperature sigmas move as a set.** `tavg` 0.17 → 0.05 °C, and `thot`/`tcold` with it,
+  because the board shows Tavg, T-hot, T-cold **and** ΔTavg on one screen — a steady average
+  over two jumpy legs is arithmetically impossible (HR9). `pzr_level` 0.3 → 0.12 %; `sg_level`
+  deliberately **left at 0.3** (narrow-range SG level genuinely bounces — the two sharing 0.3
+  was the tell that it was a copied default). `subcooling_margin` is derived with `noise: 0`,
+  so it fell with Tavg for free — which is why the filed table showed the two with an identical
+  σ. Re-sizing a sigma draws no extra PRNG numbers, so the noise **sequence** is unchanged; the
+  `noise: 0` rule in that block is about *adding* instruments, not re-sizing them.
+- **Stale premise cleared under a live decision.** `tile()`'s display-resolution comment
+  justified whole-unit digits by citing "σ 0.2–0.45 across the board". Three of six tiles are
+  now ~3x quieter, so the comment carries the new per-tile figures. The decision is unchanged
+  (0.09 is still close to a full 0.1 display step) — but a false premise left under a correct
+  decision is how the next agent gets it wrong.
+
 ## 2026-07-27c — V2 board + circulating-water temperature
 
 **Board V2 (M8).** `pwr_board_data.js` regenerated from the Design builder's production

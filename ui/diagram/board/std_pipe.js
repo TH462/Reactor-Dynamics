@@ -98,6 +98,28 @@
     return { bore: toHex(mix3(w, [0x06, 0x0a, 0x0e], 0.74)), flow: toHex(w), phase: 'water', temp: tempC };
   }
 
+  // ---------------------------------------------------------------------------
+  // DASH RATE — one conversion, two authoring surfaces (#231).
+  // A pipe run and the fitting it joins animate the same dashes, but the diagram
+  // authors them through different props: PIPES carry a `speed` multiplier, and
+  // COMPONENTS carry a 0–100 `flow` slider (plus an optional `speed`). Both must
+  // land on the same number or the dashes visibly step at the joint.
+  //   dashSpeed()  ==  dashSpeed(100)  ==  dashSpeed(100, 1)  ==  1
+  // i.e. anything left at its authored default on EITHER surface animates at the
+  // same rate. That is the whole point of the flow sliders — they exist so
+  // connected components can be matched, not so each one picks its own pace.
+  // Before this, fittings ran (0.45 + 1.1 * flow/100), so a full-flow tee animated
+  // at 1.55 — 55 % faster than every pipe on the board.
+  // Note the map is LINEAR: a fitting authored at flow 40 really does crawl at
+  // 0.4x. Nothing on the PWR board does (all seven fittings are at 100), but if
+  // you author a low flow, expect a slow line rather than a floor.
+  // ---------------------------------------------------------------------------
+  function dashSpeed(flowPct, speedMul) {
+    var f = (flowPct == null || !isFinite(+flowPct)) ? 100 : Math.max(0, Math.min(100, +flowPct));
+    var m = (speedMul == null || !isFinite(+speedMul) || +speedMul === 0) ? 1 : Math.max(0.1, Math.min(4, +speedMul));
+    return (f / 100) * m;
+  }
+
   // THE THREE STANDARD PIPE SIZES (bore diameter, canvas px). Every connection stub
   // and every inter-component run must use one of these -- no custom diameters.
   // STUB_LEN is the fixed stub length per size (base to flange face, canvas px).
@@ -208,7 +230,7 @@
       ]);
     }
 
-    return { pipe: pipe, flange: flange, stub: stub, junction: junction, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
+    return { pipe: pipe, flange: flange, stub: stub, junction: junction, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, dashSpeed: dashSpeed, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
   }
 
   // watchScale(svgEl, onChange): reports the svg's LAYOUT scale (CSS px per viewBox
@@ -233,5 +255,5 @@
     return function () { ro.disconnect(); };
   }
 
-  window.StdPipe = { createKit: createKit, watchScale: watchScale, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
+  window.StdPipe = { createKit: createKit, watchScale: watchScale, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, dashSpeed: dashSpeed, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
 })();
