@@ -219,14 +219,41 @@ async function testSteamFeedPair(page) {
         var e = document.querySelector('[data-item="' + id + '"]');
         return e ? e.textContent.trim() : null;
       };
-      return { steam: t('bdSteamFlow'), feed: t('imrsgkz4lq0'), gov: t('imrppej8ulo'), dump: t('imrppeg6g16') };
+      // Steam flow is read from the FEED-CARD instance (ims3wm0d0bu), not the one on the
+      // SG head: #206 is about steam flow being comparable with feed flow at the feed
+      // station, so that is the copy whose presence and scale this gate is asserting.
+      // (V1 called it bdSteamFlow and injected it from the driver; V2 authors it in the
+      // diagram. Same claim, new id.)
+      var box = function (id) {
+        var e = document.querySelector('[data-item="' + id + '"]');
+        if (!e) return null;
+        var r = e.getBoundingClientRect();
+        return { right: Math.round(r.right), top: Math.round(r.top) };
+      };
+      return { steam: t('ims3wm0d0bu'), feed: t('imrsgkz4lq0'), gov: t('imrppej8ulo'), dump: t('imrzmlyafa3'),
+               steamBox: box('ims3wm0d0bu'), feedBox: box('imrsgkz4lq0') };
     });
   };
   var num = function (t) { return t == null ? null : Number(String(t).replace(/[^0-9.-]/g, '')); };
 
   var atPower = await read('&ff=30');
   log.push('at power: steam=' + atPower.steam + ' feed=' + atPower.feed + ' gov=' + atPower.gov);
-  if (atPower.steam == null) throw new Error('STEAM FLOW readout (bdSteamFlow) is missing from the board');
+  if (atPower.steam == null) throw new Error('STEAM FLOW readout (ims3wm0d0bu) is missing from the board');
+  // #206 is a LAYOUT claim as much as a data one — steam flow only helps if it can be
+  // compared with feed flow at a glance, which is why it lives at the feed station in the
+  // same column rather than on the steam header. Assert the adjacency, not just presence,
+  // so a future re-author that scatters them fails here instead of silently undoing the fix.
+  // (This also held on the V1 board, where bdSteamFlow sat directly above imrsgkz4lq0 in
+  // the same right-anchored column — so it is a stricter test of the same behaviour, not a
+  // test refitted to the V2 layout.)
+  if (atPower.steamBox && atPower.feedBox) {
+    var dx = Math.abs(atPower.steamBox.right - atPower.feedBox.right);
+    var dy = atPower.feedBox.top - atPower.steamBox.top;
+    if (dx > 12 || dy < 0 || dy > 60) {
+      throw new Error('STEAM FLOW must sit directly above SG FEED RATE in the same column ' +
+        'for the three-element comparison (#206); got dx=' + dx + ' dy=' + dy);
+    }
+  }
   if (!/gpm/.test(atPower.steam) || !/gpm/.test(atPower.feed)) {
     throw new Error('STEAM FLOW and SG FEED RATE must share the gpm scale to be comparable, got ' +
       atPower.steam + ' vs ' + atPower.feed);

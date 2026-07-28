@@ -13,6 +13,40 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **New control-room diagram (V2).** The PWR board was re-authored in the Claude Design
+  "PWR Reactor" builder and rebuilt here: 189 items, 37 pipes. What changed for you:
+  - **A vital-parameter strip across the top** — reactor power, Tavg, subcooling margin,
+    primary pressure, pressurizer level and SG narrow-range level, each with a live trend
+    sparkline and a full-scale band. The bands are the plant's own trip and alarm
+    setpoints, read live from the protection tables, so a tile agrees with the annunciator
+    rather than approximating it. This replaces the old gauge strip in the shell, which
+    showed the same six readings a second time.
+  - **RHR has its own card** — `ALIGN` / `ISOLATE` / `AUTO` plus an `HX FLOW %` knob. RHR
+    is a suction alignment on the shared ECCS pump, not a pump of its own, which is why it
+    aligns rather than starts. The hot-leg suction valve is interlocked at 400 psi: press
+    ALIGN above that and the button visibly refuses to latch. The HX knob is your
+    cooldown-rate control and stays live under AUTO.
+  - **Steam dump setpoint is now a control** (29–1350 psi), sitting under the steam-pressure
+    reading so the gap between them is legible — at power the SG runs ~819 psi against a
+    1194 psi setpoint, which is *why* the dump is shut. Lowering it is how you cool the
+    plant down through the steam generator.
+  - **ECCS alignment readout** (`off` / `HPI` / `LPI` / `RHR`) — one pump, and this says
+    which of its two suctions it is drawing from.
+  - **AFW now reports RUNNING / STANDBY / SECURED.** STANDBY means armed and waiting for a
+    low-level signal; SECURED means you stopped it and disarmed the auto-start. Note the
+    run indication reads pump *demand*: with the discharge valve shut it will say RUNNING
+    while flow reads zero and discharge pressure pins at shutoff. That divergence is real,
+    and it is how TMI-2 went wrong.
+  - **Trend and alarms moved under the diagram**, freeing the middle column so the board
+    gets the width it needs.
+- **Circulating-water temperature is now a control** (40–100 °F, on the condenser cooling
+  card next to the vacuum reading). Warmer cooling water means the condenser can only pull
+  down to a warmer saturation temperature, so you lose vacuum, lose output at the same
+  steam flow, and sit closer to the low-vacuum turbine trip — the summer derate. It also
+  raises the RHR heat exchanger's sink, so a cooldown bottoms out warmer: ~28 °C on cold
+  water against ~61 °C on hot. At the default 80 °F the plant behaves exactly as before.
+
 ### Fixed
 - **Saving mid-scenario could strand you on a step you had already done** (issue #142). Some
   scenario beats wait for you to *do* something — open a valve, switch load mode. The record

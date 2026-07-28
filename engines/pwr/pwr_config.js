@@ -462,6 +462,30 @@
       coastdown_tau: 40.0,         // s rotor coastdown to rest after a trip/disconnect [tune]
       vacuum_rated: 96.5, vacuum_lost: 16.9,   // kPa [tune]
       vacuum_restore_tau: 10.0, vacuum_decay_tau: 30.0, // s [tune]
+      // ---- circulating-water temperature → achievable vacuum -------------------------
+      // The condenser can only pull the steam down to saturation at whatever temperature
+      // the cooling water can hold, so warm circ water means less vacuum, less output at
+      // the same steam flow, and a shorter walk to vacuum_trip_kpa. This is the summer
+      // derate, and it is the reason RHR shutdown cooling has a floor (see rhr_sink_c).
+      //
+      // Formulated as a DELTA against a reference so it is calibration-preserving: at
+      // cw_inlet_ref_c the target is EXACTLY vacuum_rated, bit-identical to the two-point
+      // model it replaces. Only departures from the reference move anything, so every
+      // existing scenario, IC and save behaves as before.
+      // Reference circ-water inlet = 80 °F, which is the board box's default, so typing the
+      // default back in reproduces the reference condition instead of nudging it.
+      cw_inlet_ref_c: 26.6667,
+      cw_range_c: 10.0,            // CW temperature rise across the condenser at full load [tune]
+      cw_ttd_c: 3.0,               // terminal difference: condensing steam above CW outlet [tune]
+      cw_inlet_min_c: 4.4, cw_inlet_max_c: 37.8,   // operator range, 40–100 °F
+      // Cold circ water buys vacuum ABOVE the rated value — the winter uprate is real, and
+      // capping the gain at vacuum_rated would leave the whole cold half of the operator's
+      // range doing nothing, which reads as a broken control. Ceiling is the practical
+      // condenser floor (~1.8 kPa absolute), not the thermodynamic 101.3. At 40 °F this
+      // yields ~29.3 inHg and a couple of percent above nameplate, which is what a real
+      // plant does in winter. Nothing in the default lineup reaches it: the reference
+      // condition still lands exactly on vacuum_rated.
+      vacuum_max_kpa: 99.5,
       vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer)
       mwe_rated: 100.0,            // MWe — THIS PLANT'S RATING (identity below; feel-plan P6) [tune]
       // Turbine governor / control valve: EHC load-control mode — the valve
@@ -705,6 +729,10 @@
       // also the right call: this transmitter measures the same steam as `steam_flow`,
       // so giving it an independent jitter would double-count the same noise source.
       sg_steam_flow:           { lag: 1.0, noise: 0, range: [0, 1.2] },
+      // Circulating-water inlet temperature, °C. Slow (a river/tower inlet does not move
+      // fast) and noise:0 per the rule above — appended last, so the RNG sequence is
+      // byte-identical to before this instrument existed.
+      cw_inlet_temp:           { lag: 20.0, noise: 0, range: [0, 45] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },

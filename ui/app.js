@@ -2579,10 +2579,10 @@
     $('fbClose').addEventListener('click', function () { $('feedbackOverlay').hidden = true; });
     $('feedbackOverlay').addEventListener('click', function (e) { if (e.target === $('feedbackOverlay')) $('feedbackOverlay').hidden = true; });
     $('fbSend').addEventListener('click', function () { sendFeedback(); });
-    // Hide side panel (⛶) — hides the right simulator panel and moves the time
-    // controls (.sim-controls) atop the middle alarms/graph column so the plant
-    // diagram gets even more room; toggle to bring the panel back. The middle
-    // column (.bottom-row) is resolved live since positionBottomRow() places it.
+    // Hide side panel (⛶) — hides the right simulator panel and tucks the time
+    // controls (.sim-controls) into the chart/alarms strip under the diagram so the
+    // plant diagram gets the full width; toggle to bring the panel back. .bottom-row
+    // is resolved live rather than cached — positionBottomRow() owns where it lives.
     (function () {
       var appEl = document.querySelector('.app');
       var simControls = document.querySelector('.sim-controls');
@@ -2595,7 +2595,7 @@
         var midCol = document.querySelector('.bottom-row');
         if (hidden) {
           appEl.classList.add('sim-hidden');
-          if (midCol) midCol.insertBefore(simControls, midCol.firstChild);  // time controls → top of the middle column
+          if (midCol) midCol.insertBefore(simControls, midCol.firstChild);  // time controls → left end of the strip
           demoBtn.classList.add('on');
           demoBtn.title = 'Show the side panel';
         } else {
@@ -3452,21 +3452,21 @@
   // PWR: single full-plant synoptic (Blueprint/new_diagram_controls.md) replaces
   // the 4-view plant display. RBMK/BWR keep the legacy display until their own
   // diagram specs exist.
-  // PWR uses a 3-column grid (diagram | strip-chart+alarms | sim panel), so the
-  // strip chart + alarms live in the MIDDLE column: move .bottom-row out from
-  // under the diagram to be a direct child of .app. Other plants keep it under
-  // the plant display. Idempotent.
-  function positionBottomRow(syn) {
-    var app = document.querySelector('.app');
+  // The strip chart + alarms (.bottom-row) sit UNDER the diagram, inside .plant-area,
+  // for every plant — which is where the static markup already puts them, so this is
+  // now just a guard that keeps them there.
+  //
+  // They used to be reparented out to a middle grid column for PWR (diagram |
+  // chart+alarms | sim panel). The V2 board reclaimed that space: it carries its own
+  // vital-parameter tile strip across the top, so the middle column was competing with
+  // the diagram for width while duplicating what the tiles already showed. Two columns
+  // (diagram over chart+alarms | sim panel) gives the board the room it needs and puts
+  // the trend directly beneath the plant it is trending. Idempotent.
+  function positionBottomRow() {
     var plant = document.querySelector('.plant-area');
-    var right = document.querySelector('.right-col');
     var bottom = document.querySelector('.bottom-row');
-    if (!app || !plant || !right || !bottom) return;
-    if (syn) {
-      if (bottom.parentNode !== app) app.insertBefore(bottom, right);
-    } else if (bottom.parentNode !== plant) {
-      plant.appendChild(bottom);
-    }
+    if (!plant || !bottom) return;
+    if (bottom.parentNode !== plant) plant.appendChild(bottom);
   }
 
   function buildPlantDisplay() {

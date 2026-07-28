@@ -11,6 +11,18 @@
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
   function T_sat(P) { return 179.47 * Math.pow(Math.max(P, 1e-6), 0.239); }
 
+  // Saturation pressure of water in kPa for 0–100 °C (Antoine, mmHg form).
+  //
+  // The plant-wide T_sat/P_sat_from_T pair is a power-law fitted to the 0.1–10 MPa range
+  // the RCS and SG live in; down at condenser pressures (a few kPa) it is wrong by nearly
+  // an order of magnitude — it puts Psat(32 °C) at 0.7 kPa against a true 4.75. The
+  // condenser needs the low-temperature curve, so it gets its own. Checked: 32 °C → 4.74
+  // (true 4.75), 45 °C → 9.56 (true 9.59), 66 °C → 26.1 (true 26.2).
+  function pSatLowKpa(tC) {
+    var t = clip(tC, 0, 100);
+    return Math.pow(10, 8.07131 - 1730.63 / (233.426 + t)) * 0.1333224;   // mmHg → kPa
+  }
+
   // Step 11 — SG level, secondary pressure/flow, feedwater + AFW.
   function stepSecondary(s, cfg, dt) {
     var sg = cfg.steam_generator;
@@ -258,9 +270,30 @@
   function stepTurbine(s, cfg, dt) {
     var tb = cfg.turbine;
 
-    // Vacuum: restores toward rated when condenser cooling is available, else
-    // decays slowly toward the lost value (a realistic lag).
-    var target = s.condenser_cooling_available ? tb.vacuum_rated : tb.vacuum_lost;
+    // Vacuum: restores toward the achievable value when condenser cooling is AVAILABLE,
+    // else decays slowly toward the lost value (a realistic lag). Availability stays a
+    // separate boolean — it is what the vacuum_decay and full_blackout malfunctions cut,
+    // and losing circ water entirely is not the same thing as circ water being warm.
+    //
+    // When cooling IS available, how much vacuum you get is set by the circulating-water
+    // temperature: the condenser pulls the exhaust down to saturation at the condensing
+    // temperature, which sits a terminal difference above the CW outlet. Expressed as the
+    // CHANGE in backpressure from the reference condition, so cw_inlet == cw_inlet_ref_c
+    // reproduces vacuum_rated exactly.
+    var target;
+    if (s.condenser_cooling_available) {
+      var cwRef = tb.cw_inlet_ref_c != null ? tb.cw_inlet_ref_c : 26.7;
+      var cw = s.cw_inlet_temp_c != null ? s.cw_inlet_temp_c : cwRef;
+      // Condensing temperature rises with CW inlet AND with load (more heat rejected =
+      // bigger rise across the tubes), so the derate bites hardest at full power.
+      var loadFrac = clip((s.power_pct || 0) / 100, 0, 1.2);
+      var span = (tb.cw_range_c != null ? tb.cw_range_c : 10) * loadFrac + (tb.cw_ttd_c != null ? tb.cw_ttd_c : 3);
+      var dP = pSatLowKpa(cw + span) - pSatLowKpa(cwRef + span);   // kPa of extra backpressure
+      target = clip(tb.vacuum_rated - dP, tb.vacuum_lost,
+        tb.vacuum_max_kpa != null ? tb.vacuum_max_kpa : tb.vacuum_rated);
+    } else {
+      target = tb.vacuum_lost;
+    }
     var tau = s.condenser_cooling_available ? tb.vacuum_restore_tau : tb.vacuum_decay_tau;
     s.condenser_vacuum_kpa += (target - s.condenser_vacuum_kpa) / tau * dt;
 

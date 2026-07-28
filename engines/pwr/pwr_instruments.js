@@ -64,6 +64,9 @@
     // so the transmitter sees everything leaving the SG. Appended — PRNG order
     // preserved. See pwr_steam_generator.js `steam_out_total`.
     sg_steam_flow: 'steam_out_total',
+    // Circulating-water inlet temperature — the heat sink the condenser (and the RHR
+    // exchanger) has to work against. Appended last, so PRNG order is preserved.
+    cw_inlet_temp: 'cw_inlet_temp_c',
   };
 
   function PWRInstruments(config, seed) {

@@ -26,7 +26,10 @@
 
   var CANVAS_W = 2400, CANVAS_H = 1600;
   var STD_SIZES = { small: 4, medium: 8, large: 12 };
-  var NUDGE_KINDS = { 'Pump': 1, 'Valve': 1, 'Valve Horizontal': 1, 'Valve Vertical': 1 };
+  // Components whose ports must land ON grid lines, so the pipe runs drawn between
+  // them stay straight. The Tee joins the list for the V2 diagram: all three of its
+  // flange faces sit at R=10 from centre, i.e. exactly on its tile edges.
+  var NUDGE_KINDS = { 'Pump': 1, 'Valve': 1, 'Valve Horizontal': 1, 'Valve Vertical': 1, 'Tee': 1, 'Cross': 1 };
   var MONO = '"IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace';
   var SANS = 'ui-sans-serif, "Segoe UI", system-ui, sans-serif';
   var BD_NUM_AUTO_COLOR = '#6b7d8a';   // greyed number = auto-driven (not operator-editable); cyan = editable
@@ -90,43 +93,33 @@
      and letterboxes — hundreds of px of dead space beside it while the alarms/trend
      and simulator columns stay pinned at their base widths.
 
-     fitColumns measures that dead space and hands it to those two columns (as the
-     --midcol-w / --simcol-w maxima the grid template reads), up to a cap past which
-     they are just whitespace themselves. Handing width away narrows the diagram
-     track by the same amount, so the next pass measures ~0 slack and settles; the
-     1.5px deadband keeps the ResizeObserver from chattering. Negative slack (the
-     columns hold width the board now needs) flows back the same way. */
-  var MIDCOL_BASE = 340, MIDCOL_MAX = 860;             // alarms + strip chart
-  var MIDCOL_SOLO_BASE = 700, MIDCOL_SOLO_MAX = 1200;  // …when ⛶ hides the simulator column
-  var SIMCOL_BASE = 360, SIMCOL_MAX = 520;             // simulator / tools / instructor / scanner
-  var MIDCOL_SHARE = 0.55;   // the trend/alarm column gets the larger half
+     fitColumns measures that dead space and hands it to the simulator column (as the
+     --simcol-w maximum the grid template reads), up to SIMCOL_MAX past which the column
+     is just whitespace itself. Handing width away narrows the diagram track by the same
+     amount, so the next pass measures ~0 slack and settles; the 1.5px deadband keeps the
+     ResizeObserver from chattering. Negative slack (the column holds width the board now
+     needs) flows back the same way. Since the V2 board there is no middle column — the
+     trend/alarm strip lives under the diagram — so it is the only recipient. */
+  // Two columns since the V2 board: diagram (with the trend/alarm strip beneath it) and the
+  // simulator panel. The middle alarms/chart column is gone, so ALL of the letterbox slack
+  // now goes to the sim column — see fitColumns.
+  var SIMCOL_BASE = 360, SIMCOL_MAX = 900;   // simulator / tools / instructor / scanner
 
   function cssPx(app, name, fallback) {
     var v = parseFloat(app.style.getPropertyValue(name));
     return isFinite(v) ? v : fallback;
   }
 
+  // The board scales to fit its column's HEIGHT, so a wide viewport leaves dead space to
+  // the left and right of the diagram — it cannot use the extra width. Measure that slack
+  // and hand it to the simulator column instead, which grows until either the slack is
+  // gone (diagram now fills its column edge to edge) or the column hits SIMCOL_MAX.
   function fitColumns(app, r, b) {
-    var solo = app.classList.contains('sim-hidden');   // ⛶ — no simulator column
-    var midBase = solo ? MIDCOL_SOLO_BASE : MIDCOL_BASE;
-    var midMax = solo ? MIDCOL_SOLO_MAX : MIDCOL_MAX;
-    var simBase = solo ? 0 : SIMCOL_BASE;
-    var simMax = solo ? 0 : SIMCOL_MAX;
-    // clamp the carried-over values to THIS mode's range — ⛶ swaps the bases, so
-    // the width the other mode parked in the var may be out of range here
-    var mid = Math.min(midMax, Math.max(midBase, cssPx(app, '--midcol-w', midBase)));
+    if (app.classList.contains('sim-hidden')) return;   // ⛶ — no column to give it to
     var sim = Math.min(SIMCOL_MAX, Math.max(SIMCOL_BASE, cssPx(app, '--simcol-w', SIMCOL_BASE)));
-    // dead space beside the board once it is scaled to the available height
     var slack = r.width - r.height * (b.w / b.h);
-    var total = Math.max(midBase + simBase,
-                Math.min(midMax + simMax, mid + (solo ? 0 : sim) + slack));
-    var grow = total - (midBase + simBase);
-    var gSim = Math.min(simMax - simBase, grow * (1 - MIDCOL_SHARE));
-    var gMid = Math.min(midMax - midBase, grow - gSim);
-    gSim = Math.min(simMax - simBase, grow - gMid);   // hand back what mid capped out on
-    var wantMid = Math.round(midBase + gMid), wantSim = Math.round(SIMCOL_BASE + gSim);
-    if (Math.abs(wantMid - mid) > 1.5) app.style.setProperty('--midcol-w', wantMid + 'px');
-    if (!solo && Math.abs(wantSim - sim) > 1.5) app.style.setProperty('--simcol-w', wantSim + 'px');
+    var want = Math.round(Math.min(SIMCOL_MAX, Math.max(SIMCOL_BASE, sim + slack)));
+    if (Math.abs(want - sim) > 1.5) app.style.setProperty('--simcol-w', want + 'px');
   }
 
   function layout() {
@@ -272,7 +265,9 @@
 
   function buildScram(it) {
     var labelEl = h('span', { style: { fontSize: (it.fontSize || 20) + 'px', fontWeight: 700, letterSpacing: '0.14em', lineHeight: 1 } }, it.label || 'SCRAM');
-    var subEl = h('span', { style: { fontSize: '9px', letterSpacing: '0.16em', opacity: 0.85 } }, 'PRESS TO ARM');
+    // marginTop clears the SCRAM word above it — the flex `gap` alone left the small caps
+    // crowding the descender line of the big label, which read as one cramped block.
+    var subEl = h('span', { style: { fontSize: '9px', letterSpacing: '0.16em', opacity: 0.85, marginTop: '3px' } }, 'PRESS TO ARM');
     var btn = h('button', { className: 'bd-scram' }, labelEl, subEl);
     var rec = { btn: btn, labelEl: labelEl, subEl: subEl, item: it, state: 'idle', timer: null };
     paintScram(rec, it);
@@ -379,6 +374,36 @@
     return el;
   }
 
+  // A `readout` is a labelled value: the caption and the reading travel as ONE item
+  // instead of a `text` tile placed next to a `value` tile. Introduced by the V2
+  // diagram for the three indications that sit away from their control card (steam
+  // dump %, charging gpm, letdown gpm), where a separately-positioned caption would
+  // drift if either tile moved. It registers in valueEls with the same record shape
+  // as buildValue, so the driver drives it through VALUES with no special casing —
+  // note `el` is the READING line, not the outer tile, so a driver-supplied colour
+  // lands on the number and leaves the caption muted.
+  function buildReadout(it) {
+    var el = tileBase(it, 'nohgt');
+    el.className += ' bd-readout';
+    var labelEl = h('div', { className: 'bd-ro-label' }, it.label || '');
+    labelEl.style.fontSize = Math.max(8, Math.round((it.fontSize || 16) * 0.66)) + 'px';
+
+    var readEl = h('div', { className: 'bd-ro-read' });
+    readEl.style.color = it.color || '#4fe3ff';
+    readEl.style.fontSize = (it.fontSize || 16) + 'px';
+    var valEl = document.createTextNode(it.value == null ? '' : String(it.value));
+    var unitEl = h('span', { className: 'bd-unit' }, it.unit || '');
+    unitEl.style.fontSize = Math.max(8, Math.round((it.fontSize || 16) * 0.68)) + 'px';
+    readEl.appendChild(valEl);
+    readEl.appendChild(document.createTextNode(' '));
+    readEl.appendChild(unitEl);
+
+    el.appendChild(labelEl);
+    el.appendChild(readEl);
+    valueEls[it.id] = { el: readEl, valEl: valEl, unitEl: unitEl, item: it };
+    return el;
+  }
+
   function buildComponent(it) {
     var el = tileBase(it);
     el.style.overflow = 'visible';
@@ -427,7 +452,7 @@
 
   var BUILDERS = {
     box: buildBox, text: buildText, button: buildButton, scram: buildScram,
-    number: buildNumber, value: buildValue, component: buildComponent
+    number: buildNumber, value: buildValue, readout: buildReadout, component: buildComponent
   };
 
   // ----------------------------------------------------------------- ports --
@@ -637,7 +662,7 @@
     // them. Boxes stay at their base z (pipeTop -1, else 0) and components at 0 (so a
     // control panel authored over a vessel edge still covers it); buttons/values/text/
     // numbers/scram lift to z-index 1.
-    var LIFT = { button: 1, value: 1, text: 1, number: 1, scram: 1 };
+    var LIFT = { button: 1, value: 1, readout: 1, text: 1, number: 1, scram: 1 };
     (doc.items || []).forEach(function (it) {
       var b = BUILDERS[it.kind];
       if (!b) return;

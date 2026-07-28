@@ -144,6 +144,10 @@
       h('line', { x1: barX - 3, y1: 0, x2: barX + barW + 7, y2: 0, stroke: '#eaf4fb', strokeWidth: 1.4, strokeDasharray: '4 3' }));
     gEls.push(wlMarker);
     gEls.push(h('text', { x: barX + barW / 2, y: barTop - 8, textAnchor: 'middle', fill: '#5b93b8', fontSize: 10, fontFamily: MONO, letterSpacing: '0.08em' }, 'LVL'));
+    // OFF by default on the V2 board (owner, 2026-07-27) — pressurizer level is a
+    // vital-parameter tile in the top strip now, so this strip duplicated it beside the
+    // vessel. Behind a flag rather than deleted; wlMarker stays live either way.
+    if (cfg.showGauge !== true) gEls = [];
 
     // ---- ports ----
     var sprayPort = h('circle', { cx: 32, cy: 124, r: 0.75, fill: 'none', 'data-port': 'spray-in', 'data-fluid': 'coldLeg', 'data-dir': 'left', 'data-size': 'small', 'data-out': '0', 'data-active': '0' });

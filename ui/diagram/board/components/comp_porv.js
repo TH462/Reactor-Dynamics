@@ -39,6 +39,24 @@
     var CYAN = '#4fe3ff';
     var FLANGE = '#4a5f6e', FLANGE_DK = '#243642';
     var cx = 85;
+    // ---- orientation (item `rot` / `flip`) -------------------------------------------
+    // These are PORV-specific props, not a generic tile transform: the builder passes them
+    // straight into this component (<dc-import name="PORV" flip rotate>), and a quarter
+    // turn there also swaps the item's width/height so the grab box still matches the art.
+    // FLIP mirrors the whole valve about the inlet centreline (x = cx), so the discharge
+    // swings to the other side while the bottom inlet nozzle stays put.
+    // ROT is quarter turns about (79, 81). The art overflows its box on the quarter turns
+    // (the valve is tall and narrow) — fine, the svg is overflow:visible — but every port's
+    // data-dir MUST turn with it or the pipe router leaves the fitting the wrong way.
+    var flip = cfg.flip === true;
+    var rq = ((Math.round((+cfg.rot || +cfg.rotate || 0) / 90) % 4) + 4) % 4;
+    var ROT_DIR = {
+      down:  ['down', 'left', 'up', 'right'],
+      left:  ['left', 'up', 'right', 'down'],
+      up:    ['up', 'right', 'down', 'left'],
+      right: ['right', 'down', 'left', 'up']
+    };
+    function rdir(d) { return (ROT_DIR[d] || ROT_DIR.right)[rq]; }
     var fluidKey = cfg.fluid || 'steam';
     var portSize = cfg.psize || 'small';
     var glowOn = cfg.glow == null ? true : !!cfg.glow;
@@ -103,8 +121,8 @@
     var outFlG = h('g', { key: 'outFl', transform: flTransform(54, 124) }, K.flange({ key: 'f', x: 54, y: 124, angle: 0, d: flD })); // outlet: horizontal pipe (left)
 
     // ---- connection ports (read by the board's scanPorts) — right at the flange face ----
-    var portIn = h('circle', { key: 'pIn', cx: cx, cy: 154, r: 0.75, fill: 'none', 'data-port': 'in', 'data-fluid': fluidKey, 'data-dir': 'down', 'data-size': portSize, 'data-out': '0', 'data-active': '0' });
-    var portOut = h('circle', { key: 'pOut', cx: 52, cy: 124, r: 0.75, fill: 'none', 'data-port': 'out', 'data-fluid': fluidKey, 'data-dir': 'left', 'data-size': portSize, 'data-out': '1', 'data-active': '0' });
+    var portIn = h('circle', { key: 'pIn', cx: cx, cy: 154, r: 0.75, fill: 'none', 'data-port': 'in', 'data-fluid': fluidKey, 'data-dir': rdir('down'), 'data-size': portSize, 'data-out': '0', 'data-active': '0' });
+    var portOut = h('circle', { key: 'pOut', cx: 52, cy: 124, r: 0.75, fill: 'none', 'data-port': 'out', 'data-fluid': fluidKey, 'data-dir': rdir(flip ? 'right' : 'left'), 'data-size': portSize, 'data-out': '1', 'data-active': '0' });
 
     // ---- click target + hover ring (hit must stay the adjacent sibling before the ring) ----
     var hit = h('circle', { key: 'hit', className: 'porv-hit', cx: cx, cy: 118, r: 46, fill: 'rgba(0,0,0,0)', style: { cursor: 'pointer' },
@@ -115,7 +133,16 @@
     // on-canvas size and the data-port markers land where the builder placed them — a
     // fixed-px svg centered in a smaller tile put the ports ~60px low and bent the pipes.
     var svg = h('svg', { viewBox: '44 5 70 152', preserveAspectRatio: 'xMidYMid meet', style: { width: '100%', height: '100%', overflow: 'visible', display: 'block' } },
-      h('g', { key: 'porvScene' }, [defs, ventG, glowC, bodyRect, bonnet, plugG, inFlG, outFlG, portIn, portOut, hit, hoverring]));
+      (function () {
+        // Rotate first, then mirror — SVG applies a transform list left to right, and this
+        // is the order the design source composes it in. Getting it backwards puts a
+        // rotated+flipped valve 180° out.
+        var xf = [rq ? 'rotate(' + (rq * 90) + ' 79 81)' : '',
+                  flip ? 'translate(' + (2 * cx) + ',0) scale(-1,1)' : ''].filter(Boolean).join(' ');
+        var g = h('g', { key: 'porvScene' }, [defs, ventG, glowC, bodyRect, bonnet, plugG, inFlG, outFlG, portIn, portOut, hit, hoverring]);
+        if (xf) g.setAttribute('transform', xf);
+        return g;
+      })());
 
     var unwatch = env.StdPipe.watchScale(svg, function (s) {
       if (Math.abs(s - sc) / s > 0.015) {

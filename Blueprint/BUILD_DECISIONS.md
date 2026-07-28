@@ -37,6 +37,57 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-27c — V2 board + circulating-water temperature
+
+**Board V2 (M8).** `pwr_board_data.js` regenerated from the Design builder's production
+snapshot (189 items / 37 pipes). Three new renderer pieces: `comp_indicator_panel.js`
+(vital-parameter tiles), `comp_tee.js` / `comp_cross.js` (pipe fittings), and a `readout`
+item kind (caption + reading as one item, so a relocated indication cannot drift from its
+label). Both fittings join `NUDGE_KINDS` — their ports sit at R=10, i.e. on the tile edges.
+
+- **Tile history is real, not seeded.** The design source seeds 44 jittered samples and
+  random-walks on a 500 ms timer so the card looks alive in the editor. Ported without it:
+  the buffer takes the real instrument value at render cadence and starts flat. A sparkline
+  is an instrument trace; 44 invented samples is fabricated instrument data (HR1).
+- **Tile bands come from the protection tables, not from fractions of the scale.** The
+  design falls back to "normal = 25–75 % of span", which would paint 100 % reactor power in
+  the grey acceptable band. `TILE_BANDS` reads `RD.PWR_CONTROL.protection` live, so a retune
+  moves the tile with it and a tile agrees with the annunciator. One-sided parameters
+  collapse their unused side onto min/max rather than inventing a limit.
+- **`selfTest` now guards id-keyed maps.** The re-export changed every pipe id that routed
+  through a new fitting, silently orphaning 12 of 27 `PIPE_TEMP` entries — the failure mode
+  is invisible (pipes revert to authored temps). Added assertions that every `PIPE_TEMP` key
+  and every `CONTROL_LABEL_MAP` target still exists, plus `readout` coverage in the value
+  check. **The builder's live doc is in browser localStorage; the project's `BUILTIN_DOC` is
+  a stale fallback** — a re-export has to come from the owner.
+- **`verify_e2e_ui`'s steam-flow check now asserts the layout claim** (#206), not just that
+  a number exists: steam flow must sit directly above feed flow in the same column. It also
+  passes against the V1 board, where `bdSteamFlow` sat in that same position — a stricter
+  test of the same behaviour, not one refitted to V2 (HR10).
+
+**Circulating-water temperature (M1, physics).** `condenser_cooling_available` stays a
+separate availability boolean (it is what `vacuum_decay` / `full_blackout` cut, and *no circ
+water* is not *warm circ water*). When cooling IS available, the vacuum target now comes from
+the CW inlet temperature: condensing temperature = CW inlet + range·load + TTD, and the
+backpressure is its saturation pressure.
+
+- **Own saturation curve for the condenser.** The plant-wide `T_sat` / `P_sat_from_T` pair is
+  a power law fitted to 0.1–10 MPa; at condenser pressures it puts Psat(32 °C) at 0.7 kPa
+  against a true 4.75 — nearly an order of magnitude out. `pSatLowKpa` (Antoine, 0–100 °C)
+  is used instead, checked at three points.
+- **Formulated as a delta against `cw_inlet_ref_c`**, so the reference condition reproduces
+  `vacuum_rated` exactly and every existing scenario, IC and save is bit-identical. Verified:
+  `run_all` 22/22 at baseline with no number moved. `cw_inlet_ref_c` is 80 °F precisely,
+  matching the board box default, so typing the default back in is also a no-op.
+- **Cold water is allowed above rated**, capped at `vacuum_max_kpa` 99.5 (the practical
+  condenser floor, ~1.8 kPa absolute — not the thermodynamic 101.3). Clipping at
+  `vacuum_rated` left the entire cold half of the operator's range doing nothing, which
+  reads as a broken control, and the winter uprate is real. Costs ~3 % above nameplate below
+  ~62 °F. **Open flag:** owner is testing this; revert to a hard `vacuum_rated` ceiling if
+  nameplate should be absolute.
+- `rhr_sink_c` rides the same temperature — the RHR heat exchanger rejects to the same circ
+  water — so the cooldown floor moves with it (~28 °C cold / ~61 °C hot).
+
 ## Cross-cutting decisions (apply to all modules)
 
 | Topic | Decision | Why |

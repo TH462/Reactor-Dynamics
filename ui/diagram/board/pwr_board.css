@@ -144,6 +144,17 @@
 .bd-value .bd-unit { color: #7f96a8; margin-left: -0.18em; }
 .bd-text { padding: 2px 4px; letter-spacing: 0.06em; white-space: pre-wrap; }
 
+/* ---- readout (caption + reading as one item; see buildReadout) ----
+   Left-anchored, unlike .bd-value: a readout carries its own width from the
+   diagram, so it is NOT pulled back by translateX(-100%). */
+.bd-readout {
+  padding: 1px 2px; white-space: nowrap;
+  font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+.bd-readout .bd-ro-label { color: #7f96a8; letter-spacing: 0.06em; line-height: 1.25; }
+.bd-readout .bd-ro-read { font-weight: 600; line-height: 1.15; }
+.bd-readout .bd-unit { color: #7f96a8; margin-left: -0.18em; }
+
 /* ---- popover menus (TRIP BLOCKS etc.) ---- */
 .bd-pop {
   position: absolute; z-index: 40; min-width: 240px;

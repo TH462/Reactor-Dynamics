@@ -132,23 +132,29 @@ body {
    column, enlarging the diagram further. */
 .demo-btn.on { color: var(--running); border-color: var(--running); }
 
-/* --midcol-w / --simcol-w are the two right tracks' MAXIMA, driven by
-   pwr_board.js fitColumns(): the diagram keeps the width it needs at full height
-   and the leftover — large on short-and-wide windows, where the board would
-   otherwise letterbox — is handed to these columns instead of sitting dead
-   beside the diagram. The values here are the floors used before/without that
-   measurement. */
+/* --simcol-w is the simulator track's MAXIMUM, driven by pwr_board.js fitColumns():
+   the diagram keeps the width it needs at full height and the leftover — large on
+   short-and-wide windows, where the board would otherwise letterbox — is handed to
+   that column instead of sitting dead beside the diagram. The value here is the
+   floor used before/without that measurement. */
 .app.pwr-synoptic {
-  --midcol-w: 340px;
   --simcol-w: 360px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, var(--midcol-w)) minmax(320px, var(--simcol-w));
+  grid-template-columns: minmax(0, 1fr) minmax(320px, var(--simcol-w));
   grid-template-rows: minmax(0, 1fr);
-  grid-template-areas: "diagram midcol simcol";
+  grid-template-areas: "diagram simcol";
 }
 .app.pwr-synoptic > .plant-area { grid-area: diagram; min-width: 0; max-width: none; }
-.app.pwr-synoptic > .bottom-row { grid-area: midcol; min-width: 0; min-height: 0; flex-direction: column; }
 .app.pwr-synoptic > .right-col  { grid-area: simcol; min-width: 0; max-width: none; }
+
+/* The V2 board carries its own vital-parameter tile strip (six Indicator Panel
+   components across the top), which is what the shell's .gauge-strip used to provide.
+   Two copies of the same six readings is worse than one, and the shell copy is the one
+   that is NOT part of the diagram — so it is hidden here rather than deleted, because
+   RBMK/BWR still run the legacy plant display and genuinely need it. app.js keeps
+   building it; that is a few hidden nodes, and it means nothing breaks if a plant
+   without its own tiles is put back on this layout. */
+.app.pwr-synoptic > .plant-area > .gauge-strip { display: none; }
 
 /* keep the diagram's flex chain honest so the board fits its column width
    instead of overflowing (the .main-area link lacks min-width:0) */
@@ -156,34 +162,41 @@ body {
 .app.pwr-synoptic > .plant-area .view-area,
 .app.pwr-synoptic > .plant-area .pwr-board-wrap { min-width: 0; }
 
-/* middle column: time controls (present only in .sim-hidden) pinned on top,
-   then alarms, then the strip chart; alarms + chart split the remaining height */
-.app.pwr-synoptic > .bottom-row > .sim-controls { order: 1; flex: 0 0 auto; }
-.app.pwr-synoptic > .bottom-row > .alarm-panel  { order: 2; flex: 1 1 0; min-height: 0; }
-.app.pwr-synoptic > .bottom-row > .strip-chart  { order: 3; flex: 1 1 0; min-height: 0; }
+/* Under-the-diagram strip: chart and alarms side by side, and — only when the sim panel
+   is hidden (⛶) — the time controls tuck in at the left. Fixed height so the diagram
+   keeps the rest; the two panels split the width. */
+/* Grow into whatever height the diagram does not need, instead of sitting at a fixed
+   208px with dead space beneath. The board scales to fit, so on a tall window it leaves
+   height over — the trend and alarms take it, the same way the sim column takes the
+   leftover width. min-height keeps them usable when the diagram wants everything. */
+.app.pwr-synoptic .plant-area > .bottom-row { flex: 1 1 auto; min-height: 190px; max-height: 42%; flex-direction: row; }
+.app.pwr-synoptic .plant-area > .bottom-row > .sim-controls { order: 1; flex: 0 0 auto; }
+.app.pwr-synoptic .plant-area > .bottom-row > .strip-chart  { order: 2; flex: 1 1 0; min-width: 0; }
+.app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel  { order: 3; flex: 1 1 0; min-width: 0; min-height: 0; }
 
-/* ⛶ hides the right sim panel → two columns; the trend/alarms column grows into
-   the freed space (the diagram stays about its 3-column width) */
+/* ⛶ hides the right sim panel → the diagram column takes the whole width */
 .app.pwr-synoptic.sim-hidden {
-  --midcol-w: 700px;
-  grid-template-columns: minmax(0, 1fr) minmax(400px, var(--midcol-w));
-  grid-template-areas: "diagram midcol";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "diagram";
 }
 .app.pwr-synoptic.sim-hidden > .right-col { display: none; }
 
-/* narrow screens: stack the columns so nothing overflows */
+/* narrow screens: stack the columns so nothing overflows. The chart+alarms strip rides
+   with the diagram now (it is inside .plant-area), so only the sim panel drops below. */
 @media (max-width: 1200px) {
   html, body { overflow: auto; }
   .app.pwr-synoptic {
     height: auto; min-height: 100vh;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 62vh auto auto;
-    grid-template-areas: "diagram" "midcol" "simcol";
+    grid-template-rows: 78vh auto;
+    grid-template-areas: "diagram" "simcol";
   }
   .app.pwr-synoptic.sim-hidden {
-    grid-template-rows: 70vh auto;
-    grid-template-areas: "diagram" "midcol";
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "diagram";
   }
+  /* stack chart above alarms rather than squeezing both into a narrow row */
+  .app.pwr-synoptic .plant-area > .bottom-row { flex: 0 0 auto; flex-direction: column; }
 }
 
 /* generic panel chrome */
@@ -465,6 +478,15 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .alarm-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .alarm-head .t { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); font-weight: 700; }
 .alarm-stack { flex: 1 1 auto; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 5px; }
+/* Under the diagram the alarm panel is wide and short, so a single column wastes the width
+   and buries anything past the first two or three. Two columns, filled top-to-bottom in
+   priority order (app.js sorts the stack), so the worst alarm is still the first thing read. */
+.app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel > .alarm-stack {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 5px; align-content: start;
+}
+.app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel > .alarm-stack > .alarm-empty {
+  grid-column: 1 / -1;
+}
 .alarm-empty { color: var(--muted); font-size: 11px; padding: 10px; text-align: center; font-style: italic; }
 .alarm-tile {
   display: flex; gap: 7px; align-items: flex-start; padding: 6px 8px; border-radius: 5px;
