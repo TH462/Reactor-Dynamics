@@ -45,6 +45,7 @@
     'EV-10': 'existing:run_pwr transient_loss_vacuum',
     'TR-1': 'probe (LOAD REJECTION — the ride-out case)', 'TR-1b': 'probe (turbine trip → P-9 scram, #216)',
     'TR-1c': 'probe (sub-threshold rejection — the arm cliff, declared §8.8, #219)',
+    'TR-1d': 'probe (PLANNED OFFLINE is not a turbine trip — #230)',
     'TR-2': 'probe', 'TR-3': 'probe',
     'TR-4': 'probe (lumped-RCP model: total-loss trip; P-8 single-loop needs multi-loop model)',
     'TR-5': 'probe', 'TR-6': 'existing:run_ops grid step + steam_dump_capacity_cap',
@@ -310,6 +311,55 @@
         ck('SG level held well clear of the lo-lo trip', fmt(h.range('sg_level_pct').min, 1),
           h.range('sg_level_pct').min >= 25, '≥ 25 %');
         ck('core intact', fmt(h.range('fuel_temp_c').max, 0), h.range('fuel_temp_c').max < 1200, '< 1200 °C');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    /* TR-1d (#230, owner ruling 2026-07-28) — the third member of the TR-1 family, and
+     * the one that says what `disconnect_grid` MEANS. Taking the generator off line is a
+     * planned evolution, not a turbine trip: the breaker opens, the stop valves do not
+     * slam, nothing latches, and P-9 is therefore never armed. Contrast TR-1 (load
+     * rejection, ride-out) and TR-1b (turbine trip → P-9 scram).
+     *
+     * This asserts the CLAIM, not the code (HR10). Every check below FAILS on the
+     * pre-#230 engine, where disconnect_grid called SG.tripTurbine: phase 1 scrammed
+     * instantly on `turbine_tripped is_true`, and phase 2 latched a turbine trip at 5 %
+     * power that armed P-9 for the rest of the evolution. Verified by running this probe
+     * against the old mapping before the fix landed. */
+    'TR-1d': function () {
+      return test('TR-1d planned offline — breaker opens, turbine NOT tripped, no reactor trip', function (ck) {
+        // ---- phase 1: at power. The dangerous case: pre-#230 this scrammed on P-9.
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('disconnect_grid', {});
+        h.run(300);
+        var t = h.ts();
+        ck('no reactor trip on a planned offline at 100 %', h.tripReason || 'none', h.tripTime == null, 'none');
+        ck('the turbine is NOT flagged tripped', String(!!t.turbine_tripped), !t.turbine_tripped, 'false');
+        ck('the unit is off line', String(t.load_mode), t.load_mode === 'disconnected', 'disconnected');
+        ck('the breaker is open — no electrical output', fmt(t.mwe_output, 1), t.mwe_output < 1, '≈ 0 MWe');
+        ck('the dump catches the rejected load', fmt(h.range('steam_dump_valve_pct').max, 0),
+          h.range('steam_dump_valve_pct').max >= 55, '≥ 55 %');
+        ck('no PORV lift through the evolution', fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < 16.20, '< 16.20');
+        ck('SG never approached the lo-lo trip', fmt(h.range('sg_level_pct').min, 1),
+          h.range('sg_level_pct').min >= 25, '≥ 25 %');
+        // The machine must be RE-SYNCHRONISABLE — a planned offline is reversible, which
+        // is most of the point of not tripping.
+        h.cmd('connect_grid', {});
+        h.run(120);
+        ck('connect_grid puts it back on line in follow', String(h.ts().load_mode),
+          h.ts().load_mode === 'follow' && !h.ts().turbine_tripped, 'follow, not tripped');
+
+        // ---- phase 2: the heatup case #230 was actually filed for. Off line at low
+        // power must not leave a latched trip lying in wait for the P-9 crossing.
+        var g = H('5_percent');
+        g.run(60);
+        g.cmd('disconnect_grid', {});
+        g.run(900);
+        ck('offline at ~5 % leaves no latched turbine trip after 900 s',
+          String(!!g.ts().turbine_tripped), !g.ts().turbine_tripped, 'false');
+        ck('and no reactor trip', g.tripReason || 'none', g.tripTime == null, 'none');
         T.checkSanity(ck, h);
       });
     },

@@ -64,7 +64,12 @@ var BASELINES = {
   // rejection just under it gets no fast dump and ends at the PORV. Owner ruled to KEEP
   // the threshold and DECLARE the cliff (DESIGN_COMPANION §8.8), so the probe pins BOTH
   // sides — 39 MWe lifts, 41 MWe is caught — and the declared behaviour cannot drift.
-  'run_behavior.js':       { code: 0, score: '37pass 0xfail' },
+  // 38 since 2026-07-28 (#230): +TR-1d. `disconnect_grid` — the operator's own take-it-
+  // off-line control — called the TURBINE TRIP path, so a planned offline latched a trip
+  // flag and armed P-9 for the rest of the evolution; measured, a disconnect at 100 %
+  // scrammed instantly and one during a heatup scrammed at the later P-9 crossing. Owner
+  // ruled it a planned offline (no trip). TR-1d pins that, and fails on the old mapping.
+  'run_behavior.js':       { code: 0, score: '38pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).

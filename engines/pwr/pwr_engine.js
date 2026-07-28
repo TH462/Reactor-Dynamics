@@ -672,14 +672,21 @@
         }
         break;
       case 'set_load_mode':
-        RD.LoadMode.setMode(s, cmd.mode, { tripFn: SG.tripTurbine, rated: this.cfg.turbine.mwe_rated });
+        // No tripFn: selecting 'disconnected' is the operator taking the unit off line,
+        // not tripping the turbine (#230 — see the note over RD.LoadMode.disconnect).
+        RD.LoadMode.setMode(s, cmd.mode, { rated: this.cfg.turbine.mwe_rated });
         break;
       case 'set_load_target':
         s.load_mode = 'manual';
         s.load_target_mwe = cmd.mwe;
         break;
       case 'disconnect_grid':
-        RD.LoadMode.disconnect(s, SG.tripTurbine);
+        // PLANNED OFFLINE — the generator breaker opens and the turbine is NOT tripped,
+        // so nothing latches and P-9 is never armed (#230, owner ruling 2026-07-28).
+        // A genuine turbine trip arrives by its own routes: 'trip_turbine' (the control
+        // layer's low-vacuum / overspeed actuation and the turbine_trip failure), a
+        // reactor trip via _scram, or an MSIV closure at load.
+        RD.LoadMode.offline(s);
         break;
       case 'connect_grid':
         RD.LoadMode.setMode(s, 'follow', { rated: this.cfg.turbine.mwe_rated });

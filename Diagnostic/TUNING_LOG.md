@@ -110,6 +110,44 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28p — #230: `disconnect_grid` is a PLANNED OFFLINE, not a turbine trip  ✅
+
+`status-needs-ruling` issue, settled. **OWNER RULING 2026-07-28: option 1, "Planned
+offline, no trip."**
+
+- **Verified first — the issue was live, not stale.** Measured engine+M4 before touching
+  anything: `disconnect_grid` @100 % → immediate scram, reason `turbine_tripped is_true`;
+  @6 % → latches `turbine_tripped`, still true 600 s later, only `connect_grid` clears it.
+- **The finding that decided it.** `set_load_target 0` @100 % → **no trip, turbine stays on
+  line**. That is what the TR-1 probe actually drives (`behavior_pwr.js:250`). So the
+  ride-out was already modelled as its own mechanism and this was a **command mapping**,
+  not a missing behaviour — which is why option 1 costs almost nothing.
+- **Change.** `RD.LoadMode.offline(s)` added beside `disconnect(s, tripFn)`; PWR's
+  `disconnect_grid` and `set_load_mode 'disconnected'` route to it. `setMode` now always
+  zeroes the target for 'disconnected' (it used to do that only when a `tripFn` was
+  passed, so a trip-free caller got the mode set and the target left standing). `_scram`,
+  MSIV-at-load and `trip_turbine` still trip for real. **RBMK/BWR untouched** — they still
+  pass `tripFn`, and they are on hold.
+- **Board.** The OFF lamp keyed on `turbine_tripped`, so after the fix a normal disconnect
+  left the whole FOLLOW/MAN/OFF selector dark. Re-keyed to `load_mode === 'disconnected'`
+  (the trip path sets it too, so both ways of being off line light it).
+- **TR-1d** added to the behaviour battery and the catalog. Per HR10 it was validated
+  against the OLD engine: the three claim-bearing checks FAIL there (`turbine_tripped
+  is_true` scram at 100 %, latched flag at 5 %) and pass here. `run_behavior` 37 → **38**;
+  BASELINES and CLAUDE.md updated together.
+- **`board_check` 84 → 95** (+11 on the selector). Ordering bit twice while writing them:
+  the harness stops the RCPs at full power near the top of its functional section, so the
+  plant is **already scrammed and turbine-tripped** long before the ESF block. The checks
+  now establish their own precondition (`connect_grid`) and hand the plant back tripped
+  and off line. A `precondition:` check states the assumption so the next failure says
+  which assumption broke.
+- **Known limitation, deliberately not fixed.** The rotor still coasts down after a planned
+  offline. A real unit holds rated speed on no-load steam ready to re-synchronise, but this
+  engine has no no-load admission model — the unloaded branch coasts to rest by the same
+  logic #235 added to stop cold Modes 3/5 pinning 1800 rpm. Protection semantics were the
+  ruling; speed-hold is a turbine-model question (cf. #238).
+- **Gates.** `run_all` **24 runners at baseline**, `board_check` **95/95**.
+
 ### 2026-07-28o — vital tiles preload a flat 3-minute trend  ✅
 
 The ask: *"I want the 6 vital gauges at the top to start with the full amount of data on
@@ -142,7 +180,8 @@ at the beginning of the trend line."*
   edits were reverted whole. **If you are changing what the player sees on the PWR board,
   confirm the element is the one being painted before editing** — `.bd-tile svg` under
   `RD.PwrBoard`, not `#gaugeStrip`.
-- **Gates.** `board_check` **PASS** (0 fail / 912 checks), `verify_e2e_ui` **PASS** (16
+- **Gates.** `board_check` **PASS** (84/84 — an earlier draft of this entry said "912
+  checks", which was a bad read of the harness output, not a new tally), `verify_e2e_ui` **PASS** (16
   screenshots), `verify_flags_ui` **48/48**, `verify_manual_follow` **PASS** (84 checks).
   No engine/control/scenario file touched, so the non-browser runners are unaffected.
 

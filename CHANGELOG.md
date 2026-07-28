@@ -14,6 +14,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Taking the generator off line is no longer a turbine trip (#230).** `disconnect_grid`
+  — the OFF position of the generator selector, and the command every "take it off line"
+  step issues — called the turbine-trip path. The stop valves slammed, `turbine_tripped`
+  latched, and above the P-9 power permissive (50 %) that trips the reactor. Measured: a
+  planned disconnect at full power scrammed the plant instantly, and one during a heatup
+  latched a trip at 5 % power that sat armed for the whole evolution and scrammed the
+  reactor the moment power later crossed 50 %. Opening the generator breaker is now what
+  it says it is — load to zero, the unit off line, **nothing tripped and nothing latched**,
+  and `connect_grid` re-synchronises. A real turbine trip still arrives by its own routes:
+  the low-vacuum and overspeed protection, the turbine-trip failure, a reactor trip, or
+  closing the MSIVs at load. The plant already modelled the ride-out separately (a full
+  load rejection with the turbine on line), so this was a mis-wired command, not a missing
+  behaviour. The board's OFF lamp now reads the unit's online/offline state rather than the
+  trip flag, so it lights either way. New behaviour probe **TR-1d** pins it, and
+  `board_check` gained 11 checks over the FOLLOW/MAN/OFF selector.
 - **The six vital tiles open with their trend line already drawn** (owner-directed). Each
   tile plots the last three minutes, and it used to start from nothing — so for the first
   three minutes of every session the trace was a short stub against the right-hand edge,

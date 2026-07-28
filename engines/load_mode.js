@@ -126,16 +126,49 @@
     s.sg_imbalance_active = Math.abs(s.load_imbalance_mwe) > IMBALANCE_FRAC * rated;
   }
 
+  // Take the unit off line. TWO DIFFERENT EVENTS share this path, and which one you
+  // get is decided by whether a `tripFn` is passed (#230):
+  //
+  //   disconnect(s, tripFn) — TURBINE TRIP. The stop valves slam shut. This is what a
+  //     reactor trip, an MSIV closure at load, or the turbine-trip failure produces,
+  //     and above the P-9 power permissive it is exactly what arms the reactor trip on
+  //     turbine trip. The `turbine_tripped` flag LATCHES until the operator restores
+  //     the machine (connect_grid).
+  //   offline(s) — PLANNED OFFLINE. The generator breaker opens, load goes to zero,
+  //     and the turbine is NOT tripped. Nothing latches, so P-9 is never armed.
+  //
+  // They used to be the same thing: `disconnect_grid`, the operator's own take-it-off-
+  // line control, called the trip path. So a planned offline during a heatup recorded a
+  // turbine trip at 0 % power, that flag persisted for the whole evolution, and the
+  // reactor scrammed the moment power later crossed P-9 — measured, and the reason #230
+  // was filed. The plant already modelled the ride-out separately (TR-1 drives it with
+  // `set_load_target 0`), so this was a command mapping, not a missing model.
+  // OWNER RULING 2026-07-28, #230 option 1: "Planned offline, no trip."
+  //
+  // NOTE the rotor still coasts down afterwards. A real unit holds rated speed on
+  // no-load steam, ready to re-synchronise, but this engine has no no-load admission
+  // model — an unloaded rotor with no steam coasts to rest by the same branch #235
+  // added to stop cold Modes 3/5 pinning 1800 rpm. Out of scope here: this ruling is
+  // about protection semantics. Speed-hold is a turbine-model question (cf. #238).
+  //
+  // RBMK/BWR still pass `tripFn` from their own `disconnect_grid` and are unchanged —
+  // they are on hold, and this is a per-plant call about what that command means.
   function disconnect(s, tripFn) {
     s.load_mode = 'disconnected';
     s.load_target_mwe = 0;
     if (tripFn) tripFn(s);
   }
 
+  function offline(s) { disconnect(s, null); }
+
   function setMode(s, mode, opts) {
     if (mode !== 'follow' && mode !== 'manual' && mode !== 'disconnected') return;
     s.load_mode = mode;
-    if (mode === 'disconnected' && opts && opts.tripFn) disconnect(s, opts.tripFn);
+    // Always route 'disconnected' through disconnect() so the load target is zeroed;
+    // whether it also trips is the caller's tripFn, per the note above. This used to be
+    // gated on `opts.tripFn` being present, which meant a caller that wanted a planned
+    // offline got the mode set but the target left standing.
+    if (mode === 'disconnected') disconnect(s, opts && opts.tripFn);
     if (mode === 'follow' && opts && opts.rated) {
       s.load_target_mwe = powerFrac(s) * opts.rated;
     }
@@ -147,6 +180,7 @@
     initState: initState,
     step: step,
     disconnect: disconnect,
+    offline: offline,
     setMode: setMode,
     clip: clip,
   };

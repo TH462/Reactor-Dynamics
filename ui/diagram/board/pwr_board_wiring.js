@@ -256,11 +256,17 @@
     // FOLLOW and MAN bring the turbine ONLINE — connect_grid clears a prior trip/
     // disconnect (if condenser vacuum permits) and closes the breaker; set_load_mode
     // alone never un-trips, which is why pressing FOLLOW used to do nothing after OFF.
-    // Lit state tracks the ACTUAL online/offline state (turbine_tripped): OFF lights
-    // only when the machine is truly offline, FOLLOW/MAN only while online in that mode.
+    // Lit state tracks the ACTUAL online/offline state: OFF lights only when the machine
+    // is truly offline, FOLLOW/MAN only while online in that mode.
+    // OFF reads load_mode, NOT turbine_tripped. Since #230 `disconnect_grid` is a PLANNED
+    // offline that does not trip the turbine, so keying the lamp on the trip flag left the
+    // whole three-way selector dark after a normal disconnect. load_mode covers both ways
+    // of being off line — the trip path sets it too (SG.tripTurbine) — which is what this
+    // lamp is actually reporting. The FOLLOW/MAN pair still exclude a tripped machine:
+    // a tripped turbine is not online in any mode, whatever load_mode last said.
     imro8ktzs3u: { press: function () { cmd({ action: 'connect_grid' }); }, active: function (s) { return !IN(s).turbine_tripped && CS(s).load_mode === 'follow'; } },
     imro8lddxi: { press: function () { cmd({ action: 'connect_grid' }); cmd({ action: 'set_load_mode', mode: 'manual' }); }, active: function (s) { return !IN(s).turbine_tripped && CS(s).load_mode === 'manual'; } },
-    imro8len0oi: { press: function () { cmd({ action: 'disconnect_grid' }); }, active: function (s) { return !!IN(s).turbine_tripped; } },
+    imro8len0oi: { press: function () { cmd({ action: 'disconnect_grid' }); }, active: function (s) { return !!IN(s).turbine_tripped || CS(s).load_mode === 'disconnected'; } },
     // --- SG feed pump: AUTO / MAN / OFF ---
     // AUTO = the three-element feedwater channel (feed_sg), which is the plant's real feed
     // automation and the free-play default. (The board used to read feed_auto_coupled, a

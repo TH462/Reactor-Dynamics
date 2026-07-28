@@ -255,6 +255,48 @@
       RD.PwrBoard.render(svc.assembleSnapshot());
       ck('feedback: AFW AUTO tile lit when armed', tileActive('imrmssr9ihq'));
 
+      // --- Generator FOLLOW / MAN / OFF: a planned offline is NOT a turbine trip (#230) ---
+      // The OFF lamp used to key on `turbine_tripped`. Once disconnect_grid became a planned
+      // offline that does not trip the turbine, that keying would have left the whole
+      // selector dark after a normal disconnect — a board defect no other gate covers.
+      //
+      // This block does NOT get an at-power plant: the RCP OFF click near the top of the
+      // functional section stops the pumps at full power, which scrams the reactor and
+      // trips the turbine. So it establishes the one precondition the claim actually needs
+      // — a turbine that is NOT tripped — drives its own events rather than borrowing the
+      // scram's, and puts the plant back as it found it (tripped, off line) so the pipe-
+      // animation checks below still see the state they were written against.
+      svc.handleCommand({ action: 'connect_grid' }); ticks(4);
+      var g0 = svc.assembleSnapshot();
+      ck('precondition: turbine not tripped before the offline checks',
+        g0.instruments.turbine_tripped === false, 'tripped=' + g0.instruments.turbine_tripped);
+      clickBtn('imro8len0oi'); ticks(4);
+      var g1 = svc.assembleSnapshot();
+      ck('func: OFF -> load_mode disconnected', (g1.control_state || {}).load_mode === 'disconnected',
+        (g1.control_state || {}).load_mode);
+      ck('func: a PLANNED offline does NOT trip the turbine (#230)',
+        g1.instruments.turbine_tripped === false, String(g1.instruments.turbine_tripped));
+      RD.PwrBoard.render(g1);
+      ck('feedback: OFF tile lit while off line', tileActive('imro8len0oi'));
+      ck('feedback: FOLLOW tile dark while off line', !tileActive('imro8ktzs3u'));
+      ck('feedback: MAN tile dark while off line', !tileActive('imro8lddxi'));
+      // the other half: a REAL turbine trip must still light OFF
+      svc.handleCommand({ action: 'trip_turbine' }); ticks(4);
+      var g2 = svc.assembleSnapshot();
+      ck('func: trip_turbine does trip the turbine', g2.instruments.turbine_tripped === true);
+      RD.PwrBoard.render(g2);
+      ck('feedback: OFF tile lit on a real turbine trip', tileActive('imro8len0oi'));
+      // FOLLOW must clear the trip and re-synchronise — a planned offline is reversible
+      clickBtn('imro8ktzs3u'); ticks(4);
+      var g3 = svc.assembleSnapshot();
+      RD.PwrBoard.render(g3);
+      ck('func: FOLLOW puts it back on line', (g3.control_state || {}).load_mode === 'follow' &&
+        g3.instruments.turbine_tripped === false, (g3.control_state || {}).load_mode);
+      ck('feedback: FOLLOW tile lit back on line', tileActive('imro8ktzs3u'));
+      ck('feedback: OFF tile dark back on line', !tileActive('imro8len0oi'));
+      // hand the plant back tripped and off line, the way this block found it
+      svc.handleCommand({ action: 'trip_turbine' }); ticks(4);
+
       // --- physics-perturbing checks LAST (they degrade the plant) ---
       // condensate pump has no board control (owner: it doesn't need operating), but the
       // engine still models it — securing it collapses main feed. Exercise via the command.
