@@ -13,6 +13,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.0] — 2026-07-28
+
 ### Added
 - **New control-room diagram (V2).** The PWR board was re-authored in the Claude Design
   "PWR Reactor" builder and rebuilt here: 189 items, 37 pipes. What changed for you:
@@ -62,13 +64,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   now start at a sensible fixed size and the diagram keeps the rest; the panels still take up
   spare space when your window shape leaves some, which was the intent all along.
 - **The board sits still unless something is happening.** Three separate causes:
-  - Instrument noise now **drifts** instead of being re-drawn from scratch every second. The
-    readings still move — the amplitude is unchanged — but they wander across their band over
-    ten seconds or so instead of snapping limit-to-limit between samples.
+  - Every indication is now **damped the way a real panel meter is**, so a reading drifts
+    across its band instead of snapping limit-to-limit between samples. Measured at steady
+    full power, the last digit on the average-coolant-temperature tile now changes about
+    **3 times a minute instead of 218**, and reactor power — deliberately the liveliest
+    indication on the board, because excore power genuinely wanders — about 35 instead of 213.
+    The damping is per-indication: RTDs are heaviest, steam-generator level lightest, because
+    its bounce is the water really moving rather than the sensor wobbling.
   - **An indication that is off now reads zero.** Noise scales with signal, so a stopped ECCS
     pump indicates a still 0 gpm rather than hunting around 1, and a shut-down reactor's power
     meter sits on zero. This also means excore power can be lively at 100 % and quiet at 1 %,
     which it could never be with one fixed number.
+  - A damped meter never hides a real event: past a few sigma of change in one step the
+    damping is bypassed, so a scram or a break still reads instantly.
   - The **ECCS pipework no longer animates with the pump stopped** — it was reading that 1 gpm
     of noise as real flow.
 - **The vital-parameter bands follow the plant.** The green band on average coolant temperature

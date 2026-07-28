@@ -109,6 +109,69 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28b — #234 resolved: the damping belonged in the INDICATOR, not the instrument  ✅🔬
+
+`run_all` back to **22 runners at baseline** (`run_campaign` 51/51, `run_e2e_controls` 35/35),
+board_check **60/60**. Owner agreed the diagnosis and approved the change.
+
+**The mistake, named.** #233 made instrument noise temporally correlated to stop the board
+looking twitchy. That is the right VISUAL model and the wrong PLACE: the instrument reading is
+the one number both the controller and the board consume, so correlating it changed what the
+plant ACTS ON in order to change what you SEE. An 8 s correlation sits inside the CVCS servo's
+20 s filter passband, so a servo designed to reject gauge noise started chasing it — that is
+`run_e2e_controls`. Any non-zero tau reproduced it (2/3/4/8 identical), which was the tell that
+it was structural and not tunable.
+
+**The fix.** One transmitter feeds both the control system and the panel meter, but the meter is
+damped harder — a human reading it wants steady, a controller wants responsive. So:
+- `instrument_noise_tau_s: 0` — measurement noise is WHITE again at the instrument. Controllers
+  see exactly what they saw at baseline, which is why both gates went green with no assertion
+  touched and no servo retuned.
+- `DISPLAY_DAMP` in `pwr_board_wiring.js` — a first-order filter per indication, applied in
+  `IN(s)` so every tile, readout, pipe colour and component prop is damped consistently, cached
+  once per snapshot.
+- **A first-order filter ON white noise PRODUCES correlated noise**, so the drifting look comes
+  out of the filter for free. It also shrinks displayed amplitude — at dt 1 s the displayed
+  sigma is sqrt(a/(2-a)) of the instrument's, a = dt/(tau+dt) — so ONE knob per indication
+  delivered both things the owner asked for ("still drifts a little", "amplitude may be too
+  much").
+
+**PROCESS vs MEASUREMENT noise is the rule that decides where a number lives.** `sg_level` keeps
+its `noise_tau: 2.5` at the INSTRUMENT, because narrow-range level noise is the water genuinely
+moving (boiling, shrink/swell) and the feed controller really does see it. Damping that at the
+indicator would be lying about the plant. Everything else is sensor wobble and is damped at the
+meter.
+
+**Instrument sigmas restored to their historical values** (tavg family 0.05 → 0.17, pzr_level
+0.12 → 0.3, power_range 0.14 → 0.2, sg_level 0.22 → 0.3). With the display doing the calming,
+the reduced sigmas stacked with it and the board went DEAD — most tiles showed zero digit
+changes per minute, which is worse than twitchy. Restoring the long-validated numbers is also
+the safest possible choice for the gates.
+
+**Measured, displayed (what the player sees), steady full power:**
+
+| tile | p-p filed in #231 | p-p now | digit changes/min: filed → now |
+|---|---|---|---|
+| Reactor power % | 1.17 | 0.53 | 213 → **35** |
+| Tavg °F | 2.45 | 0.53 | 218 → **3** |
+| Subcooling °F | 2.45 | 0.60 | 215 → **1** |
+| Primary pressure psi | 2.46 | 0.94 | 233 → **1** |
+| PZR level % | 1.64 | 0.60 | 216 → **0** |
+| SG level % | 1.55 | 0.78 | 224 → **1** |
+
+Power is deliberately the liveliest — excore flux genuinely wanders and operators read it to a
+tenth. The near-still tiles are correct: a real whole-unit indicator at steady state parks, and
+moves when the PLANT moves.
+
+**Guardrail:** `DAMP_STEP_SIGMA = 6` bypasses the filter on a step that large, so a scram, trip
+or break reads instantly. A laggy board is a worse sin than a twitchy one in a teaching sim.
+
+**Kept from #233 (both were genuine test defects, validated under BOTH noise models):**
+`run_e2e_controls`' `sgtrRun` and `run_campaign`'s Tavg trim loop each sampled an INSTANTANEOUS
+value of a noisy signal and now average. That only ever worked because white noise was
+annihilated inside a 20 s filter or a threshold; averaging is what an operator watching a needle
+does, and it is the stricter fixture either way.
+
 ### 2026-07-28 — V2 board pass 2: Cherenkov, dash phase, correlated noise, layout  ⚠️🔬
 
 Owner playtest batch (8 items) plus a design-project import. **20/22 runners at baseline;
@@ -159,7 +222,7 @@ drag pins that axis so `fitColumns` stops touching it.
   pump stopped — the pipes were reading ~1 gpm of noise as real flow.
 - GREEN: amplitude trims — `power_range` 0.2 → 0.14, `sg_level` 0.3 → 0.22 with a SHORT
   `noise_tau` 2.5 (that one's character is genuinely fast hash, not drift).
-- **RED (#234): temporal correlation** (AR(1), `instrument_noise_tau_s: 8`). Stationary sigma is
+- **RESOLVED 2026-07-28b, see the entry above — temporal correlation** (AR(1), `instrument_noise_tau_s: 8`). Stationary sigma is
   unchanged; only the crossing rate. Measured 60 s p-p at steady full power: Tavg 2.45 → 0.13 °F,
   power 1.17 → 0.22 %, SG level 1.55 → 0.51 %. Over 1800 s the sigmas return to their configured
   values, confirming the walk is stationary and not decaying.

@@ -660,11 +660,23 @@
     // is wrong, not all of them.
     instrument_noise_scale: 1.0,
 
-    // Noise correlation time, seconds (#233). Instrument noise is an AR(1) walk, not a
-    // fresh white draw each step, so a reading DRIFTS across its band instead of jumping
-    // limit-to-limit between samples. This does not change any sigma below — it changes how
-    // fast the reading crosses it. Per-instrument override: `noise_tau`.
-    instrument_noise_tau_s: 8.0,
+    // Noise correlation time, seconds (#233/#234). PROCESS vs MEASUREMENT noise — the split
+    // that decides whether a number belongs here or in the HMI:
+    //
+    //   MEASUREMENT noise (the sensor wobbles; the process is steady) stays WHITE here, at 0.
+    //   What makes a real board look calm is not a quiet transmitter, it is the INDICATOR's
+    //   own damping — and that is a display property, not a plant one. It lives in
+    //   pwr_board_wiring.js DISPLAY_DAMP. Correlating it here instead moved what the
+    //   CONTROLLERS act on, which is how #234 reddened two control-loop gates: an 8 s
+    //   correlation sits inside the CVCS servo's 20 s filter passband, so the servo started
+    //   chasing gauge noise it had previously been designed to reject.
+    //
+    //   PROCESS noise (the thing genuinely is moving) belongs HERE and stays correlated,
+    //   because a controller really does see it — see `sg_level`'s own `noise_tau` below.
+    //   Damping that at the indicator would be lying about the plant.
+    //
+    // Per-instrument override: `noise_tau`. Default 0 = white.
+    instrument_noise_tau_s: 0,
 
     // RESOLVED (#233): `power_range` noise is no longer a constant absolute value. The note
     // that stood here said a sigma sized to look live at 100 % power is ruinous at 1 %,
@@ -683,7 +695,7 @@
       // noise_ref 25 %: excore NI is a counting instrument, so its jitter is proportional to
       // flux. Full sigma from a quarter power up; below that it tapers, so a startup at 1 %
       // is quiet and a shut-down reactor indicates a still zero instead of hunting.
-      power_range:       { lag: 0.1, noise: 0.14,  range: [0, 200], noise_ref: 25 },
+      power_range:       { lag: 0.1, noise: 0.2,   range: [0, 200], noise_ref: 25 },
       // Range spans cold shutdown → hot: the meter must read true down in the cold band
       // (Mode 5 ~50 °C) instead of flooring at the at-power operating minimum. The UI Tavg
       // gauge auto-ranges its DISPLAY scale (fine operating band when hot, wide when cold).
@@ -699,9 +711,9 @@
       // tavg's; it falls with it. Sigma changes draw no extra PRNG numbers, so the
       // instrument noise SEQUENCE is unchanged — only its amplitude (cf. the noise:0 rule
       // below, where adding a draw is what shifts everything downstream).
-      tavg:              { lag: 4.0, noise: 0.05,  range: [30, 343] },
-      thot:              { lag: 4.0, noise: 0.05,  range: [30, 343] },
-      tcold:             { lag: 4.0, noise: 0.05,  range: [30, 343] },
+      tavg:              { lag: 4.0, noise: 0.17,  range: [30, 343] },
+      thot:              { lag: 4.0, noise: 0.17,  range: [30, 343] },
+      tcold:             { lag: 4.0, noise: 0.17,  range: [30, 343] },
       primary_pressure:  { lag: 0.5, noise: 0.0034, range: [0, 20.7] },
       // pzr_level 0.3 → 0.12 % (#231). Real pressurizer level indication is a steady
       // differential-pressure reading on a single large vessel — no boiling at the tap, no
@@ -709,12 +721,13 @@
       // sg_level below, which keeps 0.3: narrow-range SG level genuinely bounces (boiling
       // plus shrink/swell make it one of the noisier indications in a plant), so the two
       // reading alike was the tell that 0.3 was a copied default rather than a measurement.
-      pzr_level:         { lag: 2.0, noise: 0.12,  range: [0, 100] },
+      pzr_level:         { lag: 2.0, noise: 0.3,   range: [0, 100] },
       // sg_level keeps the largest sigma on the board ON PURPOSE — narrow-range level really
-      // does bounce (boiling plus shrink/swell). 0.3 → 0.22 with a SHORT correlation time:
-      // the character of this one is genuinely fast hash, not slow drift, so it stays lively
-      // where the RTDs went calm. That contrast is the reading, not an artefact.
-      sg_level:          { lag: 3.0, noise: 0.22,  range: [0, 100], noise_tau: 2.5 },
+      // does bounce (boiling plus shrink/swell). This is the one instrument whose noise is
+      // PROCESS noise rather than measurement noise: the level genuinely is moving, the feed
+      // controller genuinely sees it, and so it keeps a real correlation time here rather
+      // than being damped at the indicator. That contrast is the reading, not an artefact.
+      sg_level:          { lag: 3.0, noise: 0.3,   range: [0, 100], noise_tau: 2.5 },
       // Flow transmitters, normalized to rated. noise_ref ~2 % of rated: a dP cell across a
       // shut line has no flow to be noisy about, so a secured pump indicates a still zero
       // rather than hunting around it (#233 — the ECCS "1 gpm with the pump off" report).

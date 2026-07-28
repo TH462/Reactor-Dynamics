@@ -84,7 +84,78 @@
 
   function cmd(c) { if (ctxRef && ctxRef.cmd) ctxRef.cmd(c); }
   function CS(s) { return s.control_state || {}; }
-  function IN(s) { return s.instruments || {}; }
+  // ---- indicator damping (#234) -----------------------------------------------------
+  // Every board reading goes through here. This is the PANEL INDICATOR's own damping, not
+  // the transmitter's: one transmitter feeds both the control system and the meter, but the
+  // meter is damped harder because a human reading it wants it steady while a controller
+  // wants it responsive. Modelling it here rather than in the engine is the whole point —
+  // it changes what you SEE without changing what any controller ACTS ON, which is what
+  // went wrong in #234 when the correlation was applied at the instrument instead.
+  //
+  // A first-order filter on white noise PRODUCES correlated noise, so this delivers the
+  // drifting look directly. It also shrinks the displayed amplitude — at dt = 1 s the
+  // displayed sigma is sqrt(a/(2-a)) of the instrument's, a = dt/(tau+dt): about 0.45x at
+  // tau 2 s and 0.38x at tau 3 s. Both were asked for ("still drifts a little", "the
+  // amplitude may be too much"), and one knob per indication buys both.
+  //
+  // Time constants are per indication, by what the thing physically is — a single global
+  // number was wrong in both directions. Anything not listed is undamped: booleans, status
+  // flags, and the noise:0 instruments are already smooth.
+  var DISPLAY_DAMP = {
+    // RTDs in a damped bypass manifold — heaviest damping on the board
+    tavg: 3.5, thot: 3.5, tcold: 3.5,
+    subcooling_margin: 3,            // derived from tavg + pressure; damped in its own right
+    primary_pressure: 2.5, pzr_level: 2.5,
+    power_range: 2,                  // excore genuinely wanders — the liveliest of the calm ones
+    sg_level: 1.5,                   // fast PROCESS noise (boiling); damp lightly, keep it alive
+    steam_pressure: 3, steam_flow: 2, fw_flow: 2, sg_steam_flow: 2,
+    charging_flow: 3, letdown_flow: 3,
+    hpi_flow: 2, accumulator_flow: 2, primary_leak_flow: 2,
+    mwe_output: 2, turbine_rpm: 2, governor_valve: 2, steam_dump_valve: 2,
+    boron_analyzer: 6, startup_rate: 3, porv_tailpipe_temp: 5, condenser_vacuum: 4
+  };
+  // A damped indicator must never hide a real transient. Past this many sigma of change in
+  // one step the filter is bypassed, so a scram, a trip or a break reads instantly — which
+  // is also what a real meter does, since its damping is small against a step that size.
+  var DAMP_STEP_SIGMA = 6;
+  function _dampSigma(id) {
+    var spec = (_CFG.instruments || {})[id];
+    if (!spec) return 0;
+    if (spec.noise > 0) return spec.noise;
+    // Derived/noise-free indications still need a step threshold; use a slice of range.
+    var r = spec.range;
+    return (r && isFinite(r[1] - r[0])) ? (r[1] - r[0]) * 0.002 : 0;
+  }
+  var _damp = { t: null, vals: {}, snap: null, out: null };
+  function IN(s) {
+    var raw = (s && s.instruments) || {};
+    if (_damp.snap === s) return _damp.out;      // once per snapshot, not once per reader
+    var t = (s && s.metadata && s.metadata.sim_time != null) ? s.metadata.sim_time : null;
+    // Rewind, reset or a fresh mount restarts the filters; a pause (no time advance) holds
+    // them where they are rather than snapping back to the raw value.
+    var reseed = (t == null || _damp.t == null || t < _damp.t);
+    var dt = (!reseed && t != null && _damp.t != null) ? (t - _damp.t) : 0;
+    var out = {}, k;
+    for (k in raw) out[k] = raw[k];
+    for (k in DISPLAY_DAMP) {
+      var v = raw[k];
+      if (v == null || typeof v !== 'number' || !isFinite(v)) { delete _damp.vals[k]; continue; }
+      var prev = _damp.vals[k];
+      if (reseed || prev == null) { _damp.vals[k] = v; out[k] = v; continue; }
+      var sig = _dampSigma(k);
+      if (sig > 0 && Math.abs(v - prev) > DAMP_STEP_SIGMA * sig) { _damp.vals[k] = v; out[k] = v; continue; }
+      if (dt > 0) {
+        // dt is SIM time, so under time acceleration a = dt/(tau+dt) → 1 and the indicator
+        // settles the way a real one does when you look away for a minute.
+        prev += (v - prev) * (dt / (DISPLAY_DAMP[k] + dt));
+        _damp.vals[k] = prev;
+      }
+      out[k] = prev;
+    }
+    if (t != null) _damp.t = t;
+    _damp.snap = s; _damp.out = out;
+    return out;
+  }
   // Automation channel by id (boron concentration seeking lives in the control layer).
   function chan(s, id) {
     var ch = s.automation && s.automation.channels;

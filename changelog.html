@@ -68,6 +68,25 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>A glowing core, a bigger board, and instruments that sit still</h2>
+      <span class="log-ver mono">Alpha 1.8.0</span>
+      <time class="log-date mono" datetime="2026-07-28">28 July 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>The core glows.</strong> The reactor vessel now renders Cherenkov radiation, driven by fission rate rather than rod position &mdash; completely dark on a shutdown reactor, growing and widening as you bring power up.</li>
+      <li><span class="log-tag added">Added</span><strong>Resizable panels.</strong> Drag the inner edge of the simulator panel, or the top edge of the trend and alarm strip, to trade space with the diagram. Your sizing is remembered.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The diagram is much bigger by default.</strong> The panels either side of it were both set to absorb whatever space it did not need, which shrank it from both directions at once. They now start at a fixed size and the diagram keeps the rest.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The board sits still unless something is happening.</strong> Every indication is damped the way a real panel meter is, so readings drift rather than snapping between samples: at steady power the average&#8209;coolant&#8209;temperature tile now changes about 3 times a minute instead of 218. Reactor power stays the liveliest indication, because excore power genuinely wanders. A meter never hides a real event &mdash; a large step bypasses the damping, so a scram still reads instantly.</li>
+      <li><span class="log-tag changed">Changed</span><strong>An indication that is off now reads zero.</strong> Instrument noise scales with signal, so a stopped ECCS pump indicates a still 0&nbsp;gpm instead of hunting around 1, and a shut&#8209;down reactor's power meter sits on zero.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The vital&#8209;parameter bands follow the plant.</strong> The green band on average coolant temperature is now the sliding Tavg program &mdash; the same reference the rod controller drives to &mdash; so you can see the band you are actually holding, and it slides with load. Primary pressure follows your live pressurizer setpoint.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Shutdown rod buttons latch.</strong> One click drives the bank fully in or out, the button holds a yellow in&#8209;motion light while it travels, and a second click stops it where it is.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Flow dashes in the tees and cross now flow.</strong> They were jittering back and forth instead of moving along the pipe, and no longer step at a joint.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Straighter pipework.</strong> The pressurizer sits on its own pipe centreline, the PORV discharge drops straight into its box, and the turbine&#8209;to&#8209;condenser run is square.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>Plant picker, RHR naming, and a steam dump that scales with the event</h2>
       <span class="log-ver mono">Alpha 1.7.1</span>
       <time class="log-date mono" datetime="2026-07-27">27 July 2026</time>
