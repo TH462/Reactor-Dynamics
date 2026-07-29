@@ -32,13 +32,14 @@ staleness** items.
 | Gate | State | Notes |
 |---|---|---|
 | **`run_all`** | **OK (28 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
-| `run_hardrules` | **18 checks / 0 failed** | NEW 2026-07-29 — static guards for HR1 (protection reads instruments), HR5 (UI never touches the engine) and HR11 (a ruling needs a date + verbatim words). Declared-exception idiom: a true-state read in `layers/control/` is legal only if listed with the reason no instrument exists. HR2, HR6 and half of HR4 remain unguarded and §3 says so |
+| `run_hardrules` | **18 checks / 0 failed** | NEW 2026-07-29 — static guards for HR1 (protection reads instruments), HR5 (UI never touches the engine) and HR11 (a ruling needs a date + verbatim words). Declared-exception idiom: a true-state read in `layers/control/` is legal only if listed with the reason no instrument exists. 18 → 14 on 2026-07-29h (#247): **4 of the 5 declared HR1 debts paid**; the 1 left is RBMK (on hold). 14 → 18 on 2026-07-29i (#248) — HR12 added, and its `OWNER RULING` quote appears in four tracked files (including this log). Note the gate scans Diagnostic/ and Blueprint/, so WRITING UP a change moves this score — re-run it after the docs, not just after the code. HR2, HR6 and half of HR4 remain unguarded; HR10 and HR12 are **not gateable at all**, and §3 says so |
+| `run_hr3` | **29 checks / 0 failed** | 32 → 29 on 2026-07-29h (#247) — retiring the `__true_flow__` sentinel removed the kernel's only PWR-only `true_state` reference (half of #228; the `reset_rps` half stands) |
 | `run_contract` | **84 checks / 0 failed** | NEW 2026-07-28t (#225) — §6.3 `true_state` contract vs `getTrueState()`, both directions; PWR only (RBMK/BWR `skip`) |
 | `run_inspect` | **7/7 (35)** | NEW 2026-07-28s (#96) — inspection copy: orphaned keys, per-item coverage, dead manual citations, duplicate copy |
 | `run_flags` / `verify_flags_ui` | **16/16 (290)** / **48/48** | NEW 2026-07-28j (#241) — the feature-flag registry (coverage + resolution) and the control room actually obeying it |
 | `run_procedures_stack` | **22/22 (155/155)** | NEW 2026-07-26b — procedures through M4+M5+M6. **5** strict xfails, all RBMK/BWR (#208); the 7 `pwr_heatup` xfails cleared 2026-07-26c/d (#206, #210), `bwr_startup` 2026-07-29c (never a BWR defect — see **#245**) |
 | `run_meltdown_stack` | **3/3 (21/21)** | NEW 2026-07-26d (#209) — the core-damage casualties driven **hands off** on the shipped lineup; asserts the automatic chain fires unprompted |
-| `run_pwr` | **32/32** | PWR engine-direct (+`load_above_rated_hold`, the #130 pin) |
+| `run_pwr` | **32/32 (201)** | PWR engine-direct (+`load_above_rated_hold`, the #130 pin). 200 → 201 on 2026-07-29h (#247) — `transient_rcp_trip` now also asserts the `rcs_flow` channel follows truth below the setpoint, and reads the setpoint from the trip table instead of restating it |
 | `run_rbmk` | **23/23** | |
 | `run_bwr` | **15/15** | |
 | `run_behavior` | **35 / 0 xfail / 0 fail** | PWR behavior catalog — coverage-todo list **empty** (#131); +TR-12b MSIV break isolation (#199) |
@@ -46,7 +47,7 @@ staleness** items.
 | `run_m4`..`run_m7` | **25** / **19** / **17** / OK | stack layers — all green. m6 16 → 17 on 2026-07-27b (#142), a save/restore test for the instructor's operator-action memory. m5's rewind red RESOLVED 2026-07-25 (#151): `lastInstruments` was not rebuilt on restore, so every blockable trip reported `asserted=false` |
 | `run_autoctl` | **20/20** | |
 | `run_scenarios` | **3/3** | flagships |
-| `run_campaign` | **51/51** (3024) | 2930 → 3024 on 2026-07-27b (#189) — the static passes now walk `RD.SCENARIOS` directly, so unwired and bonus-only scenarios are validated too |
+| `run_campaign` | **51/51** (3025) | 2930 → 3024 on 2026-07-27b (#189) — the static passes now walk `RD.SCENARIOS` directly, so unwired and bonus-only scenarios are validated too. 3024 → 3025 on 2026-07-29i (#248) — `pwr_lof` now asserts the trip REASON, not just that something scrammed |
 | `run_procedures` | **22/22 (101/101)** | engine-direct — see the layer table in CLAUDE.md before trusting it for anything M4 decides |
 | `run_meltdown` | **9/9** | PWR core-damage paths — all resolved; +MD-9 partial-uncovery hold 2026-07-28e (#213, exposed-clad hot node); MD-6 fixed 2026-07-24 (time-dependent dryout depletion, §3.4) |
 | `run_checklist` | **24/24** | |
@@ -113,6 +114,139 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-29i — #248: low-flow setpoint 25 % → 90 %, and HR12  ✅
+
+**OWNER RULING, 2026-07-29:** *"Make the change to 90% as you recommend."* Adopted the real
+Westinghouse setpoint (WTSM 12.2 Table 12.2-1) and moved the block permissive from an
+unsourced 5 % to the real **P-7 (10 % power)**.
+
+**New Hard Rule — HR12** *(OWNER RULING, 2026-07-29: "if you make assertions about plant
+dynamics, you must back it up by testing them.")* Put in **§3 (binding)** rather than SOP,
+because SOP §1–4 is explicitly advisory and this was meant to bind. It is the dynamics
+counterpart of HR9 (which sources *static* facts to real-plant documents) and the mirror of
+HR10. Guard: **none possible**, stated as such — same as HR10.
+
+The rule earned itself inside this very change. The **strongest argument against 90 %** was
+mine: that RCP cavitation would cause spurious trips during depressurizations. Measured — of
+the depressurizing casualties only the large LOCA reaches 90 % (at 6 s), and it has already
+scrammed at **3 s** on low pressure; small LOCA, stuck-open PORV and SGTR never leave 100 %.
+The objection was simply **wrong**, and nothing but running the plant would have said so.
+
+**Measured (seed 42, M5 stack, hot_full_power + RCP trip):**
+
+| | healthy channel | stuck-high channel (100 %) |
+|---|---|---|
+| DNB onset (core_void ≥ 0.02) | **never** (peak 0.000) | 9 s (peak **0.60**) |
+| SCRAM | **1.8 s** on `rcs_flow low` | **35.3 s** on `primary_pressure high` |
+| peak fuel | 693 °C (unchanged) | 930 °C — damage is 1200 °C, core survives |
+| min indicated subcooling | 32.9 °C | **6.2 °C** (below the 11 °C caution) |
+
+For reference the old 25 % setpoint tripped at 16.2 s against a DNB onset of 10.9 s.
+
+**Two gates went red, and both were right to.** Neither was refitted:
+
+1. **`run_pwr` `transient_rcp_trip`** — the check `coastdown not instantaneous (τ≈8s)`
+   asserted `t > 4` where `t` was *time to the trip setpoint*. That was a **proxy**, true only
+   because the setpoint was 25 %; at 90 % flow crosses in 0.9 s and it failed, while the
+   coastdown itself never changed. Replaced with the claim it was standing in for: flow decays
+   exponentially to `natural_circ_flow`, so it passes **1/e of rated at t = τ**. Measured 8.0 s
+   against a config τ of 8.0, and independent of any trip (a scram does not touch `stepFlow`) —
+   so it passes on the OLD behaviour too, which per HR10 is what makes it a better test rather
+   than a refit.
+2. **`run_campaign` `pwr_lof`** — the "you waited → DNB" branch became unreachable (peak
+   core_void 0.000). **Content follows the plant (HR9)**: the scenario was re-authored, not the
+   setpoint reverted. It now injects the stuck channel alongside the pump trip, and the new
+   assertion checks the **trip reason** (`primary_pressure high`, not `rcs_flow low`) — because
+   "the assigned protection worked" and "a backstop caught a consequence" are the two outcomes
+   this lesson exists to distinguish, and only the reason tells them apart. 3024 → 3025.
+
+**A third gate caught me:** `run_manual_units` failed 4 sites on my own new §10.7 prose —
+SI with no US partner, including two temperature *differences* (subcooling) that convert
+×9/5 with no offset. Exactly what it is for.
+
+**Lesson worth keeping.** Removing a defect can make a lesson unreachable, and the reachable
+lesson was **better**: the old one taught operator anticipation via a fabricated late trip; the
+new one teaches that a single-channel trip is exactly as trustworthy as its one transmitter,
+using the failure #247 had just made injectable. When a plant fix orphans content, the content
+is usually resting on the defect.
+
+### 2026-07-29h — #247: the low-flow trip got an instrument  ✅
+
+**Paid four of the five HR1 debts the guard declared the day before** (2026-07-29g). Both PWR
+items turned out to be the same shape — a control-layer rule reading truth because nobody had
+built the indication — and both are now ordinary instrument reads.
+
+**Evidence pass first, per the SOP.** Nothing here was designed from recall:
+
+- **WTSM 3.2 Reactor Coolant System** (ML11223A213 §3.2.3): *"Elbow taps are used in the RCS
+  to indicate the status of the reactor coolant flow… The elbow flow instrument measures the
+  differential pressure between the inner and outer radius of the intermediate leg piping
+  elbow."* ΔP/ΔP₀ = (ω/ω₀)². *"The expected absolute accuracy of the channel is within ±10 %
+  and field results have shown the repeatability of the trip point to be within ±1 %. The
+  accident analysis for a loss-of-flow transient assumes an instrumentation error of ±3 %."*
+- **WTSM 12.2 RPS Trip Signals** (ML11223A301, Table 12.2-1 row 12): Low Reactor Coolant
+  Flow, **2/3 per loop**, **< 90 % of rated flow**; below **P-7 (10 %)** all low-flow trips
+  are blocked, above **P-8 (39 %)** one loop is enough.
+- **NUREG-1431 Bases** B 3.3.1A Function 10 (ML12100A228): *"Each RCS loop has three flow
+  detectors to monitor flow. The flow signals are not used for any control system input."*
+  P-8 there is *"approximately 48 % RTP"* — plant-specific, like P-9.
+- **WTSM 11.1 SG Water Level Control** (ML11223A293 §11.1.4): a feedwater isolation signal
+  *"causes automatic closure of all feed regulating and bypass valves (if open) and main
+  feedwater isolation valves"* and is one of four inputs that **override** the level control
+  system — which is exactly the stand-down the feed channel was trying to implement.
+
+**Two departures, recorded rather than quietly carried** (`Manuals/12` §10.7): this plant
+trips at **25 % of rated on ONE channel** with the block at 5 % power. The channel count
+follows from the plant being single-loop and every other protection function here being
+single-channel — and it is *what makes the teaching case work*, since 2-of-3 exists precisely
+to stop one lying transmitter mattering. The **setpoint** is the consequential one and was
+deliberately left alone: 25 % → 90 % moves the automatic trip from ~11 s into a coastdown to
+~1 s and rewrites what `pwr_lof` teaches, so it is a plant-identity decision, filed separately
+rather than smuggled in under an HR1 fix.
+
+**Three things that only showed up in the doing.**
+
+1. **`ctx.true_state.feedwater_isolated` never existed.** The feed channel's `offWhen` had
+   been reading an undefined field since it was written — `getTrueState()` exposes
+   `pump_flow_pct` but has never exposed `feedwater_isolated`. So the stand-down was dead
+   code that *looked* live, and the HR1 debt entry was hiding a plain bug underneath it.
+   Probed both ways after the fix: channel engaged before isolation, disengaged after, with
+   the authored note. Worth generalising — **an HR1 violation is a good place to look for a
+   second defect**, because a read nobody could see was also a read nobody tested.
+2. **A `noisy` failure on a noise-0 instrument is silently inert.** Appended instruments
+   ship at `noise: 0` (the cross-step PRNG rule — one extra draw per step shifts every
+   downstream instrument from that step on, which has already moved three marginal
+   endpoints). But `_applyFailure`'s noisy mode scales `spec.noise`, and `_gauss` returns
+   without drawing at sigma 0 — so the failure would have done **nothing**, on the one
+   instrument built specifically for failure injection. Added `noise_failure`, a sigma used
+   only when a failure is active: no baseline run has one, so the RNG sequence is
+   byte-identical. Anchored to the sourced ±1 % trip-point repeatability. Probed: span
+   92.2 → 107.4 % where inert would be a flat line.
+3. **The scenario was teaching the defect as a virtue.** `pwr_lof`'s beats told the player
+   the trip *reads true flow "because at coastdown speed a laggy signal would arrive too
+   late to matter"* — a justification for an unbuilt instrument, written into training
+   content, in the plant's flagship DNB lesson. HR9 in one line: content follows the plant.
+   Rewritten to point at the transmitter.
+
+**Measured, through the full M5 stack** (`hot_full_power`, RCP trip):
+
+| | |
+|---|---|
+| true flow < 25 % | 14.4 s |
+| `rcs_flow` indication < 25 % | 16.2 s |
+| SCRAM | **16.2 s**, reason `rcs_flow low` |
+| **stuck-high channel** injected | indication 100.0 %, true flow 0.0 %, **low-flow trip never fires** — caught later by `primary_pressure high` |
+
+The 1.8 s gap between truth and indication is the instrument, and it is the entire point:
+before this, that number was structurally zero.
+
+**Gates.** `run_all` green with three drifts, all intended and all in the right direction:
+`run_pwr` 200 → **201** checks (new assertion that the channel follows truth below setpoint —
+the old test hardcoded `0.25` and would have gone on passing against a stale number),
+`run_hardrules` 18 → **14** (four debts paid), `run_hr3` 32 → **29** (the sentinel was the
+kernel's only PWR-only true_state reference — half of #228). Everything else at baseline,
+including `run_procedures_stack`, `run_campaign`, `run_behavior`, `run_meltdown` and
+`run_ops`, which is the answer to the issue's own predicted fallout: the lag moved no endpoint.
 ### 2026-07-29i — #245: half the stack gate was running at 1×, and it had cost four filings  ✅
 
 **The bug.** `run_procedures_stack` sets `timeAcceleration = 10` once, at setup.
@@ -245,6 +379,7 @@ and not *HR1 satisfied*. **5 declared debts → #247**, the low-flow reactor tri
 that matters: it reads true pump flow because the RCS flow instrument was never built, which
 makes that trip **unteachable** in a simulator whose entire premise is that instruments lie.
 Not scheduled — owner: *"We are not going to do these sim changes in this convo."*
+*(Superseded: 4 of the 5 were paid the next session — see 2026-07-29h above.)*
 
 **Scan surface, verified rather than assumed.** Protection decisions live ONLY in
 `layers/control/`, and `getTrueState()`/`true_state` are the ONLY routes to truth in `layers/`

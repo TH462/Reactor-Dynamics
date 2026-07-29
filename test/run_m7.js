@@ -53,11 +53,12 @@ RD.ControlFailureLayer.prototype._evalTrips = function (ins) {
   // SABOTAGE: read true state instead of instruments — the exact HR1 violation
   // the protection-boundary checks exist to catch.
   var ts = this.engine.getTrueState();
-  var map = { power_range: 'power_pct', tavg: 'tavg_c', primary_pressure: 'pressure_mpa', pzr_level: 'pzr_level_pct', sg_level: 'sg_level_pct' };
+  var map = { power_range: 'power_pct', tavg: 'tavg_c', primary_pressure: 'pressure_mpa', pzr_level: 'pzr_level_pct', sg_level: 'sg_level_pct',
+              rcs_flow: 'pump_flow_pct' };   // #247 — was the `__true_flow__` sentinel; now a real instrument with a true-state twin
   var trips = this.config.trips || [];
   for (var i = 0; i < trips.length; i++) {
     var t = trips[i];
-    var v = (t.instrument === '__true_flow__') ? ts.pump_flow_pct / 100 : ts[map[t.instrument]];
+    var v = ts[map[t.instrument]];
     if (v == null) continue;
     var hit = (t.direction === 'high') ? v > t.setpoint : (t.direction === 'low') ? v < t.setpoint : false;
     if (hit && !this.rps.scrammed) { this.rps.scrammed = true; this.rps.last_trip_reason = t.instrument + ' ' + t.direction; this.handleCommand({ action: 'scram' }); }

@@ -76,6 +76,7 @@ function check(rule, file, line, text, why) {
 // one list, those two were indistinguishable from the genuine exceptions, and a
 // green gate would have read as "HR1 is clean" when the plant's most
 // safety-significant trip reads truth. That is laundering debt as compliance.
+// Both were paid four days later (#247) — the split worked as intended.
 //
 // So: EXCEPTION is settled and needs no further work. DEBT is a known violation
 // that is tracked, must carry an issue number, and is reported separately and
@@ -85,9 +86,13 @@ var HR1_EXCEPTION = {
   'control_kernel.js:readback': 'reading back whether a COMMAND took effect (RPS reset confirms truth.scrammed cleared), not deciding from a sensor. Same pattern as the rods-fully-inserted interlock. HR1 governs what protection DECIDES from; a command that lies about its own success would make the reset latch unfalsifiable.',
   'control_kernel.js:melted': 'no core-damage instrument exists, deliberately — a damage indication is post-ship scope. Used only to stop automation acting on a destroyed core, never to decide protection.',
 };
+// PWR DEBT: PAID 2026-07-29 (#247). Both PWR entries came off this list when the
+// instruments they were waiting on were built — `rcs_flow` (elbow-tap channel, feeds
+// the low-flow reactor trip) and `mfw_isolated` (MFIV position, feeds the three-element
+// feed channel's stand-down). Deleting them here is the point of the two-list split:
+// debt is meant to be *paid*, and a gate that would have let the reads sit in an
+// "allowed" list forever is the failure mode this shape exists to prevent.
 var HR1_DEBT = {
-  'control_kernel.js:_permTest/pump_flow': '#247 — the LOW-FLOW REACTOR TRIP reads true pump flow because no RCS flow instrument was ever built. A real PWR measures it (elbow taps / venturis) and a failed flow channel fooling that trip is exactly what this simulator exists to teach. The trip is currently unteachable. Not an exception — an unbuilt instrument.',
-  'pwr_control.js:feedwater_isolated': '#247 — no feedwater_isolated instrument exists (verified 2026-07-29 against getInstruments()). Gates an automation channel rather than a protection function, so lower consequence, but the same shape: a real plant has MFW isolation valve position indication.',
   'rbmk_control.js:scrammed_melted': 'UNREVIEWED — RBMK is ON HOLD. Recorded so the gate is honest about it rather than silent. Not assessed either way.',
 };
 var HR1_ALLOWED = {};
@@ -97,11 +102,9 @@ Object.keys(HR1_DEBT).forEach(function (k) { HR1_ALLOWED[k] = HR1_DEBT[k]; });
 // being read, because that is what the exception is actually about.
 function hr1Key(file, text) {
   var base = path.basename(file);
-  if (/pump_flow_pct/.test(text)) return 'control_kernel.js:_permTest/pump_flow';
   if (/true_state:\s*this\.engine\.getTrueState\(\)/.test(text)) return 'control_kernel.js:ctx';
   if (/melted/.test(text) && base === 'control_kernel.js') return 'control_kernel.js:melted';
   if (/var truth\s*=\s*this\.engine\.getTrueState\(\)/.test(text)) return 'control_kernel.js:readback';
-  if (/feedwater_isolated/.test(text)) return 'pwr_control.js:feedwater_isolated';
   if (base === 'rbmk_control.js') return 'rbmk_control.js:scrammed_melted';
   return null;
 }
@@ -240,7 +243,7 @@ var nDebt = findings.filter(function (f) { return f.why && HR1_DEBT[hr1Key(f.fil
 console.log('\n' + B + '──────────────────────────────────────────' + X);
 console.log(B + (bad ? R + 'HARD RULES GUARD: FAIL' : G + 'HARD RULES GUARD: OK') + X + '  ' +
   findings.length + ' checks, ' + bad + ' failed' +
-  (nDebt ? Y + '  ·  ' + nDebt + ' declared HR1 debt (#247)' + X : '') + X);
+  (nDebt ? Y + '  ·  ' + nDebt + ' declared HR1 debt' + X : '') + X);
 // Said plainly because the alternative is a green tick that means more than it should.
 if (nDebt) console.log(D + 'OK here means no UNDECLARED reads. It does not mean HR1 is satisfied —' +
   ' see the debt above.' + X);

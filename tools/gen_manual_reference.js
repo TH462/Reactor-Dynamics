@@ -165,6 +165,7 @@ var IND = {
   hpi_discharge_pressure: { n: 'Emergency Injection Discharge Pressure', m: 'HPI/LPI pump discharge pressure — read with flow to tell "running but blocked" from "running and delivering".', u: 'MPa' },
   accumulator_flow: { n: 'Accumulator Flow', m: 'Flow from the passive safety-injection accumulators, which discharge on their own once primary pressure falls below their cover-gas pressure.', u: '×rated' },
   primary_leak_flow:{ n: 'Primary Leak Rate', m: 'Indicated leakage out of the primary system.', u: '×rated' },
+  rcs_flow:         { n: 'RCS Loop Flow', m: 'Reactor coolant flow through the loop, percent of rated, from the elbow taps on the crossover-leg elbow (a differential-pressure measurement — nothing is inserted into the flow path). This is the channel the low-flow reactor trip reads, so it can lag, drift or fail like any other transmitter.', u: '%' },
 };
 
 // Safety limits (authored).

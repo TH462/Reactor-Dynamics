@@ -101,7 +101,7 @@ docs.
 > works… Go with your recommendations")*. There are ~229,000 words of docs here containing
 > ~650 "do not / never / by design" phrases. Four rules make that tractable:
 > 1. **Binding: the Hard Rules in `Blueprint/CONTEXT.md` §3, and this file.** Nothing else.
->    Nine rules, deliberately short. **`Blueprint/SOP.md` §1–4 is NOT binding** — it holds the
+>    Ten rules, deliberately short. **`Blueprint/SOP.md` §1–4 is NOT binding** — it holds the
 >    *how* (worked cases, failure modes, procedure) that used to bloat §3 to 200 lines. Read
 >    it for technique; do not cite it as authority. **§5 is the exception**: it records a
 >    direct owner instruction, quoted and dated, so it binds under rule 4 below — because the
@@ -130,7 +130,7 @@ to read everything.
 |---|---|
 | **Understand the whole system** | `README.md`, then `Blueprint/CONTEXT.md` (interfaces, hard rules, data contract). |
 | **Understand *why* it's built this way** | `Blueprint/DESIGN_COMPANION.md` (vision, rationale, deliberate exclusions, v2 roadmap). |
-| **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 9 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
+| **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 10 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
 | **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
 | **Build or modify a module** | `Blueprint/CONTEXT.md` **plus that one module's spec** (`Blueprint/M1`–`M8`) — and nothing else. |
@@ -161,6 +161,22 @@ a handful of UI/doc items.
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+- **The PWR's last HR1 hole is closed — the low-flow trip reads an instrument (2026-07-29,
+  #247).** `rcs_flow` is a real elbow-tap channel (% of rated, lag 1 s, injectable
+  failures); the `__true_flow__` sentinel is **deleted from every file**, and with it the
+  kernel's only PWR-only true_state reference (half of #228). A companion `mfw_isolated`
+  status indication replaced the feed channel's read of `true_state.feedwater_isolated` —
+  a field `getTrueState()` has **never exposed**, so that stand-down had never once fired.
+  Three things to know: a **stuck-high flow channel now masks a real loss of flow** (probed
+  — the low-flow trip never fires and `primary_pressure high` catches it instead), which is
+  the teaching case the instrument was built for; the setpoint went to the real **90 % of
+  rated, blocked below P-7 (10 %)** (#248, owner ruling) — measured, that trips at 1.8 s
+  where DNB onset is 10.9 s, so the old unsourced 25 % had been letting DNB happen; and a
+  new appended instrument still ships **noise: 0** (the cross-step PRNG rule), so it carries
+  `noise_failure` instead — without it an injected `noisy` failure would have been silently
+  inert. **`pwr_lof` was re-authored around the stuck channel**, because at 90 % a healthy
+  channel means nothing happens at all. **One channel, not 2-of-3, is the remaining declared
+  departure** (`Manuals/12` §10.7).
 - **Half the full-stack procedure gate was running at a tenth of its declared speed
   (2026-07-29, #245).** `run_procedures_stack` set `timeAcceleration = 10` once; the
   service's fast-forward dropout then returned it to 1× on the first alarm/scram and nothing
@@ -183,8 +199,9 @@ anything here that is standing procedure rather than news belongs in the list be
   was extracted from inside HR9. The *how* moved to **`Blueprint/SOP.md`** — advisory,
   except §5 which quotes an owner instruction. New `test/run_hardrules.js` guards HR1, HR5,
   HR11. **Read HR1's guard output before trusting it green:** it separates settled
-  *exceptions* from tracked *debt*, and the plant carries **5 debts (#247)** — the low-flow
-  reactor trip still reads TRUE flow, which makes that trip unteachable.
+  *exceptions* from tracked *debt*. It declared 5 debts on day one; **4 were paid within
+  the week (#247)** and **1 remains** (RBMK, unreviewed, on hold). The split working that
+  fast is the argument for it — one list would have called all five "allowed".
 
 - **The board explains itself, and the copy is gated (2026-07-28s, #96).** The System Scanner
   block is now the **inspection surface**: hover → one-line summary, click to expand → full
@@ -211,17 +228,7 @@ anything here that is standing procedure rather than news belongs in the list be
   `run_hr3` failed the first draft for exactly this). Sourced to NUREG-0700 Rev 4
   §4.1.2-7 / Table 4.1.
 
-- **`status`-class alarms arrive PRE-ACKNOWLEDGED (2026-07-29, #240 follow-up).** Owner
-  ruling. A status annunciator reports a lineup, not a demand for action, so `_evalAlarms`
-  raises it straight into `active_acknowledged` and `_attentionStop` no longer treats it as
-  a fast-forward dropout. The classification is the **effective** one, so a reclassified
-  tile counts. Three consequences: an auto-acked alarm that later **escalates** out of
-  `status` is handed back as `active_unacknowledged` (tracked in `layer.alarmAutoAcked`,
-  which saves/restores; an *operator* ack is never undone); the whole tier is affected, not
-  just #240's tiles (`hpi_active`, BWR `rcic_running`); and if you touch `_attentionStop`,
-  know that removing one dropout **lengthened a test run tenfold** — see **#245**, where
-  the harness's declared 10× was being cancelled by the first alarm and had caused a BWR
-  procedure defect to be misfiled.
+
 **Standing procedure — not part of the rotation above; these do not expire.**
 
 - **The board is the V2 diagram, and `pwr_board_data.js` is GENERATED.** Edit in the Claude
@@ -258,7 +265,7 @@ anything here that is standing procedure rather than news belongs in the list be
 - **Provenance matters more than it looks.** Many "owner rulings" in this repo were written by
   agents; all agent work commits under the owner's name, so git blame proves nothing. A ruling
   without a date and a verbatim owner quote is advisory — see `Blueprint/CONTEXT.md` §3.
-- **`test/run_hr3.js` guards HR3** in the shared control kernel; **`test/run_hardrules.js` guards HR1, HR5 and HR11** (HR2, HR6 and half of HR4 are still unguarded — §3 says so). `run_campaign` validates every
+- **`test/run_hr3.js` guards HR3** in the shared control kernel; **`test/run_hardrules.js` guards HR1, HR5 and HR11** (HR2, HR6 and half of HR4 are unguarded, and HR10/HR12 are not gateable at all — §3 says so in each case). `run_campaign` validates every
   scenario, not just campaign-wired ones.
 - **A new `true_state` field must be documented in the same change (2026-07-28, #225).**
   `test/run_contract.js` diffs `Object.keys(getTrueState())` against the §6.3 block in
@@ -318,7 +325,7 @@ turning green has to be acknowledged (update the baseline, close the issue) inst
 being silently absorbed. Same convention as the strict xfails in `run_meltdown` /
 `run_behavior`.
 
-Green at baseline: PWR **32/32 (200 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3024 checks)**,
+Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3025 checks)**,
 `run_m4` **25/25 (135 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **20/20**,
 `run_behavior` **38 pass / 0 xfail**, `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
@@ -328,7 +335,7 @@ Green at baseline: PWR **32/32 (200 checks)**, BWR **15/15**, RBMK **23/23**, ca
 were never plant defects at all — the harness was running 11 of its 22 procedures below the
 10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_hr3` **29 checks / 0 failed**, `run_hardrules` **18 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **35/35** (both F12 reds were stale expectations, fixed
@@ -573,18 +580,21 @@ Read this before editing any source file — the wiring is deliberate and easy t
   files that consume them (see the ordered list in any `test/run_*.js` and `ui/shell.html`).
 - **File naming.** Plant-specific files are prefixed `pwr_` / `rbmk_` / `bwr_`.
 - **Hard Rules are non-negotiable.** Before changing engine behaviour or the data
-  contract, read the **Hard Rules** in `Blueprint/CONTEXT.md` §3 — **nine rules, and the
+  contract, read the **Hard Rules** in `Blueprint/CONTEXT.md` §3 — **ten rules, and the
   list is meant to stay short.** Reorganized 2026-07-29: architecture (HR1–HR6) is split
-  from practice (HR9, HR10, HR11); each rule now names its **guard**; the *how* — worked
+  from practice (HR9, HR10, HR11, HR12); each rule now names its **guard**; the *how* — worked
   cases, failure modes, procedure — moved to **`Blueprint/SOP.md`**, which is advisory,
   not binding. HR7 (failure taxonomy → §11) and HR8 (params-in-code → §8) were retired
   from §3 as a convention and a scope boundary; their numbers are not reused, because
   ~580 citations point at these numbers.
-  The four you will actually trip over: **HR1** instruments-vs-truth · **HR5** commands
+  The five you will actually trip over: **HR1** instruments-vs-truth · **HR5** commands
   only flow down through the service · **HR9** the plant is the ground truth, content
-  follows the plant · **HR10** a passing test is not evidence the mechanism is right.
-  **HR11** (a ruling needs a date + the owner's verbatim words, or it is advisory) was
-  extracted from inside HR9 — it is cited constantly and was unfindable.
+  follows the plant · **HR10** a passing test is not evidence the mechanism is right ·
+  **HR12** an assertion about plant dynamics must be MEASURED — step the plant and quote
+  the number *(OWNER RULING, 2026-07-29: "if you make assertions about plant dynamics, you
+  must back it up by testing them.")*. **HR11** (a ruling needs a date + the owner's
+  verbatim words, or it is advisory) was extracted from inside HR9 — it is cited constantly
+  and was unfindable.
 - **Snapshot / save compatibility is a contract.** New snapshot fields must migrate
   older saves — follow the migration-note pattern in `CHANGELOG.md`.
 

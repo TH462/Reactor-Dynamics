@@ -167,6 +167,10 @@
         { id: 'xenon',    label: 'Xenon',    c: '#b05a8a', get: function (i) { return i.xenon_pct_eq; }, tru: function (t) { return t.xenon_pct_eq; }, range: [0, 250], fmt: function (v) { return v.toFixed(0) + '% eq'; } },
         { id: 'steam_p',  label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, tru: function (t) { return t.steam_pressure_mpa; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
         { id: 'sur',      label: 'Startup Rate', c: '#c0913e', get: function (i) { return i.startup_rate; }, tru: function (t) { return t.startup_rate_dpm; }, range: [-2, 3], fmt: function (v) { return v.toFixed(1) + ' DPM'; } },
+        // RCS loop flow (#247). The PWR was the only plant with no flow trend at all —
+        // RBMK has Channel Flow and BWR has Recirc Flow — which is what an unbuilt
+        // instrument looks like from the UI side. dLo marks the low-flow trip setpoint.
+        { id: 'rcs_flow', label: 'RCS Flow', c: '#5a8a9a', get: function (i) { return i.rcs_flow; }, tru: function (t) { return t.pump_flow_pct; }, range: [0, 120], dLo: 90, fmt: function (v) { return v.toFixed(0) + '%'; } },
       ],
     },
 
@@ -844,7 +848,7 @@
     'pzr_level low':           'Lo Pressurizer Level',
     'sg_level low':            'Lo SG Level',
     'sg_level high':           'Hi SG Level (P-14)',
-    '__true_flow__ low':       'Lo RCS Flow',
+    'rcs_flow low':            'Lo RCS Flow',
     'manual scram':            'Manual Trip'
   };
   function tripCauseLabel(reason) {

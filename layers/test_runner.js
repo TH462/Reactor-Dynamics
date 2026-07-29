@@ -185,9 +185,10 @@
     var cfg = this._protConfig(), instr = this._instrConfig(), ids = this._instrumentIds();
     var trips = cfg.trips, acts = cfg.actuations, alarms = cfg.alarms;
 
-    // Every referenced instrument exists (or is the documented __true_flow__ exception).
+    // Every referenced instrument exists. No trip is exempt any more — the PWR's
+    // `__true_flow__` sentinel was the only one and it was retired in #247.
     var missing = [];
-    trips.forEach(function (t) { if (t.instrument !== '__true_flow__' && !ids[t.instrument]) missing.push('trip:' + t.instrument); });
+    trips.forEach(function (t) { if (!ids[t.instrument]) missing.push('trip:' + t.instrument); });
     acts.forEach(function (a) { if (!ids[a.instrument]) missing.push('act:' + a.instrument); });
     alarms.forEach(function (a) { if (!ids[a.instrument]) missing.push('alarm:' + a.instrument); });
     emit('every referenced instrument exists in the set', missing.length === 0, 'none missing', missing.join(',') || 'none', 'config references an undefined instrument id');
@@ -195,7 +196,7 @@
     // Every numeric setpoint within its instrument's range.
     var oob = [];
     function inRange(iid, sp) { var sc = instr[iid]; if (!sc || !sc.range || sp == null) return true; return sp >= sc.range[0] && sp <= sc.range[1]; }
-    trips.forEach(function (t) { if (t.instrument !== '__true_flow__' && !inRange(t.instrument, t.setpoint)) oob.push('trip:' + t.instrument + '=' + t.setpoint); });
+    trips.forEach(function (t) { if (!inRange(t.instrument, t.setpoint)) oob.push('trip:' + t.instrument + '=' + t.setpoint); });
     alarms.forEach(function (a) { if (a.setpoint != null && !inRange(a.instrument, a.setpoint)) oob.push('alarm:' + a.id + '=' + a.setpoint); });
     acts.forEach(function (a) { if (a.setpoint != null && !inRange(a.instrument, a.setpoint)) oob.push('act:' + a.instrument + '=' + a.setpoint); });
     emit('every setpoint within its instrument range', oob.length === 0, 'all in range', oob.join(',') || 'none', 'a setpoint lies outside the gauge range');
@@ -203,7 +204,6 @@
     // Each trip has a less-extreme matching alarm that warns first (instrument-based trips only).
     var noWarn = [];
     trips.forEach(function (t) {
-      if (t.instrument === '__true_flow__') return; // documented exception (no instrument-based alarm)
       // BLOCKABLE startup trips (IR high flux, PR low setpoint) are exempt: the
       // "warning" is the blocking procedure itself (block above P-10 before
       // ascending), and a matching alarm would sit permanently lit at power.

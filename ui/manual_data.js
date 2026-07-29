@@ -485,6 +485,20 @@
           "alarms": []
         },
         {
+          "id": "rcs_flow",
+          "name": "RCS Loop Flow",
+          "measures": "Reactor coolant flow through the loop, percent of rated, from the elbow taps on the crossover-leg elbow (a differential-pressure measurement — nothing is inserted into the flow path). This is the channel the low-flow reactor trip reads, so it can lag, drift or fail like any other transmitter.",
+          "unit": "%",
+          "range": [
+            0,
+            120
+          ],
+          "lag_s": 1,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
+        },
+        {
           "id": "subcooling_margin",
           "name": "Subcooling Margin",
           "measures": "How far the coolant is from boiling (from indicated pressure & temperature). The truth-teller at TMI.",

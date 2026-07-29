@@ -789,6 +789,38 @@
       // fast) and noise:0 per the rule above — appended last, so the RNG sequence is
       // byte-identical to before this instrument existed.
       cw_inlet_temp:           { lag: 20.0, noise: 0, range: [0, 45] },
+      // ---------------------------------------------------------- RCS loop flow (#247)
+      // The elbow-tap flow channel that feeds the LOW-FLOW REACTOR TRIP. Built
+      // 2026-07-29; before that the trip read true `pump_flow_pct` through a
+      // `__true_flow__` sentinel and could not be fooled, lag or drift — the plant's
+      // most safety-significant unteachable trip.
+      //
+      // SOURCED (evidence pass 2026-07-29, WTSM 3.2 "Reactor Coolant System",
+      // ML11223A213 §3.2.3 "RCS Flow"):
+      //   · "Elbow taps are used in the RCS to indicate the status of the reactor
+      //     coolant flow… The elbow flow instrument measures the differential pressure
+      //     between the inner and outer radius of the intermediate leg piping elbow."
+      //     ΔP/ΔP0 = (ω/ω0)² — a dP cell, same class as steam_flow/fw_flow, hence the
+      //     same 1.0 s lag. No component is inserted in the flowpath.
+      //   · "The expected absolute accuracy of the channel is within ±10% and field
+      //     results have shown the repeatability of the trip point to be within ±1%.
+      //     The accident analysis for a loss-of-flow transient assumes an
+      //     instrumentation error of ±3%."  The ±1 % repeatability is the SHORT-TERM
+      //     jitter figure and is what `noise_failure` below is anchored to; the ±10 %
+      //     is calibration bias, which is what an injected `drift` failure models.
+      //
+      // Reads in % OF RATED FLOW, not normalized, because that is the unit the real
+      // trip is stated in ("< 90 % of rated flow") and what an operator reads.
+      //
+      // noise: 0 is DELIBERATE and is the rule for every appended instrument — the
+      // instrument PRNG is one continuous CROSS-STEP stream, so one extra draw per step
+      // shifts every instrument's noise from that step on (it has already moved three
+      // marginal endpoints; see sg_steam_flow above). `noise_failure` is the sigma an
+      // INJECTED `noisy` failure uses instead, which draws only while a failure is
+      // active — no baseline run has one, so the existing sequence is byte-identical.
+      // Without it a `noisy` flow-transmitter failure would be silently inert, and
+      // failure injection on this channel is the entire reason to build it.
+      rcs_flow:                { lag: 1.0, noise: 0, noise_failure: 0.5, range: [0, 120] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },
@@ -816,6 +848,16 @@
                'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating',
                // condensate pump run status (operator-controlled; gates main feedwater)
                'condensate_pump_running',
+               // MAIN FEEDWATER ISOLATION VALVE POSITION (#247) — shut/open. A real
+               // plant indicates MFIV position from limit switches in the control room
+               // (Westinghouse: a feedwater isolation signal "causes automatic closure
+               // of all feed regulating and bypass valves… and main feedwater isolation
+               // valves" and overrides the SG level control system — WTSM 11.1 §11.1.4,
+               // ML11223A293). The three-element feed channel stands down on THIS, not
+               // on true state: it used to read `true_state.feedwater_isolated`, a field
+               // getTrueState() never exposed, so the stand-down could never fire.
+               // Status passthrough — no lag/noise, no PRNG draw.
+               'mfw_isolated',
                // RCS boron grab sample (take_boron_sample): last lab RESULT (ppm,
                // null before the first sample), lab-pending flag, and a result
                // sequence counter consumers use to spot a fresh result. Passed
