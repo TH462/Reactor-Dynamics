@@ -176,7 +176,7 @@ Identical under the bare lineup, so this is not a lineup effect.
 - **HPI refills 98 → 120 % in about eight seconds, and 120.00 is a clamp.** The *direction* is
   prototypical; the *rate* looks fast and the clamp is a model bound. Not touched — changing a
   plant number needs an evidence pass against real plant documentation (owner SOP), and letting
-  a content gate vote on physics is exactly what HR9 forbids. Recommended as its own issue.
+  a content gate vote on physics is exactly what HR9 forbids. Filed as **#249**.
 - **`--lineup=bare` reports 2 stale xfails** (`rbmk_raise_power` step 1 on both versions), and
   did so before this change. `KNOWN_FAILS` is keyed by procedure, so it cannot express *fails on
   the default lineup, passes on bare* — which is the actual situation. Pre-existing, RBMK, not
