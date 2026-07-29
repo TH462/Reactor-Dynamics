@@ -112,7 +112,7 @@ var BASELINES = {
   // rule prints 105.8 °F — a thin margin reading comfortable. The first scripted
   // pass mis-classified eight sites exactly that way. Check count moves with the
   // manual's numbers, which is the intended nudge to re-run it after an edit.
-  'run_manual_units.js':   { code: 0, score: '186checks 0failed' },
+  'run_manual_units.js':   { code: 0, score: '220checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points

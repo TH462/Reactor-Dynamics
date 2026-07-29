@@ -43,6 +43,20 @@ var path = require('path');
 var DIR = path.join(__dirname, '..', 'Manuals');
 // The packed operator set. The dev-only working logs are not operator docs.
 var SKIP_FILE = /^(ISSUES_AND_FINDINGS|CAMPAIGN_MANUAL_DISCREPANCIES|CAMPAIGN_MODE_ALIGNMENT_SPEC)/;
+
+// The manual is not the only operator-facing prose that quotes plant numbers.
+// These two carry authored copy the player reads ON THE BOARD, and they drifted
+// to a different convention than the manual — the inspector had one line reading
+// "15.41 MPa (about 2235 psi)", i.e. the convention exactly backwards, while its
+// neighbours were US-only and the checklists were SI-only. Same rule, same gate.
+//
+// COMMAND PAYLOADS ARE NOT PROSE. `cmd: { action: 'set_pressure_setpoint', mpa: 15.41 }`
+// is an engine argument and stays SI — it carries no unit STRING, so the patterns
+// below never see it. Do not "convert" those.
+var SRC_FILES = [
+  path.join(__dirname, '..', 'ui', 'manual_procedures.js'),
+  path.join(__dirname, '..', 'ui', 'diagram', 'board', 'pwr_board_inspect.js'),
+];
 // The revision history quotes past values as a record of what changed ("Tavg
 // 304→297 °C"). Those are history, not plant values an operator would act on, so
 // they are exempt from the US-partner requirement — but any US (SI) pair written
@@ -92,15 +106,27 @@ var RULES = [
 var G = '\x1b[32m', R = '\x1b[31m', Y = '\x1b[33m', D = '\x1b[2m', B = '\x1b[1m', X = '\x1b[0m';
 var checked = 0, bad = [], orphans = [], diffSites = 0, seenDiff = {};
 
-fs.readdirSync(DIR).filter(function (f) {
+// One list: the packed manual set, then the board-facing source files.
+var TARGETS = fs.readdirSync(DIR).filter(function (f) {
   return /\.md$/.test(f) && !SKIP_FILE.test(f);
-}).forEach(function (file) {
-  var lines = fs.readFileSync(path.join(DIR, file), 'utf8').split('\n');
+}).map(function (f) { return { label: f, path: path.join(DIR, f), js: false }; })
+  .concat(SRC_FILES.map(function (p) {
+    return { label: path.basename(p), path: p, js: true };
+  }));
+
+TARGETS.forEach(function (target) {
+  var file = target.label;
+  var lines = fs.readFileSync(target.path, 'utf8').split('\n');
   var inFence = false;
+
+  // In a JS source only AUTHORED PROSE counts. A `//` comment is a note to the
+  // next developer, not something a player reads; holding it to the operator
+  // convention would add noise without protecting anyone.
+  function isProse(line) { return !target.js || !/^\s*(\/\/|\*|\/\*)/.test(line); }
 
   lines.forEach(function (line, i) {
     if (/^\s*```/.test(line)) { inFence = !inFence; return; }
-    if (inFence) return;
+    if (inFence || !isProse(line)) return;
 
     RULES.forEach(function (rule) {
       // "<us>[ – <us2>] UNIT_US (<si>[ – <si2>] UNIT_SI)" — also accepts "US / SI",
@@ -108,7 +134,7 @@ fs.readdirSync(DIR).filter(function (f) {
       // suffix (`90 °F/h (50 °C/h)`), and ~ / ± qualifiers on either side.
       var re = new RegExp(
         '(' + NUM + ')(?:\\s*[–—/-]\\s*[~±]?(' + NUM + '))?\\s*' + rule.us +
-        '(?:/h(?:r)?)?[*\\s]*[(/][*\\s~±]*(' + NUM + ')' +
+        '(?:/(?:h|hr|s|min))?[*\\s]*[(/][*\\s~±]*(' + NUM + ')' +
         '(?:\\s*[–—/-]\\s*[~±]?(' + NUM + '))?\\s*' + rule.si, 'g');
       var m;
       while ((m = re.exec(line))) {
@@ -146,7 +172,7 @@ fs.readdirSync(DIR).filter(function (f) {
   if (SKIP_ORPHANS.test(file)) return;
   lines.forEach(function (line, i) {
     if (/^\s*```/.test(line)) { inFence2 = !inFence2; return; }
-    if (inFence2) return;
+    if (inFence2 || !isProse(line)) return;
     // Prose that names a unit without quoting a plant value, and the one table
     // whose whole point is to define the conversions.
     if (/T_sat\(°C\)|not raw °C|tens of °C|× 145\.038|× 9\/5|× 0\.2953/.test(line)) return;
