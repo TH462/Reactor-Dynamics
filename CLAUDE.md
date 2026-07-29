@@ -161,6 +161,16 @@ a handful of UI/doc items.
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+- **The Hard Rules were reorganized, and they now have guards (2026-07-29).** §3 is **nine
+  rules**, split architecture (HR1–HR6) from practice (HR9, HR10, HR11), each naming its
+  guard. HR7/HR8 retired to §11 and §8 — **a demotion out of binding, stated as one**;
+  numbers are never reused (~580 citations). HR11 (a ruling needs a date + verbatim words)
+  was extracted from inside HR9. The *how* moved to **`Blueprint/SOP.md`** — advisory,
+  except §5 which quotes an owner instruction. New `test/run_hardrules.js` guards HR1, HR5,
+  HR11. **Read HR1's guard output before trusting it green:** it separates settled
+  *exceptions* from tracked *debt*, and the plant carries **5 debts (#247)** — the low-flow
+  reactor trip still reads TRUE flow, which makes that trip unteachable.
+
 - **The board explains itself, and the copy is gated (2026-07-28s, #96).** The System Scanner
   block is now the **inspection surface**: hover → one-line summary, click to expand → full
   description + a link into the manual section that documents the object. Board copy lives in
@@ -197,16 +207,6 @@ anything here that is standing procedure rather than news belongs in the list be
   know that removing one dropout **lengthened a test run tenfold** — see **#245**, where
   the harness's declared 10× was being cancelled by the first alarm and had caused a BWR
   procedure defect to be misfiled.
-- **The public site does not offer everything the build contains (2026-07-28j, #241).**
-  `site/flags.js` is the registry: each feature and each piece of content is `public`
-  (shipped) or `preview` (in the bundle, offered only off the public channel). The channel
-  is stamped at deploy (`site/channel.js` ← `VERCEL_ENV`; production = `main` = `public`).
-  **Today only Free Play and the manual are `public`** — campaign, scenarios, walkthroughs
-  and checklists are `preview` until the owner plays each through. Consequences for you:
-  content you add needs a registry line or `run_flags.js` fails (unregistered = hidden in
-  production), and any new **entry point** to gated content must consult `flagOn()` — the
-  first pass missed the instructor card's 📋 picker. Look at the public view with
-  `?channel=public`, or the 🧪 Features window (Sim tab on dev builds, `?flags=1` anywhere).
 **Standing procedure — not part of the rotation above; these do not expire.**
 
 - **The board is the V2 diagram, and `pwr_board_data.js` is GENERATED.** Edit in the Claude

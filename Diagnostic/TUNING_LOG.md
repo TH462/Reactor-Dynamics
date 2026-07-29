@@ -113,6 +113,45 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-29e — HR1's guard was laundering debt; SOP §5  ✅
+
+**The guard I wrote that morning was wrong in a way worth recording.** `run_hardrules`'s HR1
+allow-list had ONE category. Writing the reasons out is what exposed it: for two entries the
+honest reason was *"the instrument does not exist"*, which under HR9 argues for **building the
+instrument**, not excusing the read. Filed together, those were indistinguishable from the
+genuine exceptions — so a green gate would have read as *HR1 is clean* while the plant's most
+safety-significant trip reads truth.
+
+Now two categories. **EXCEPTION** is settled (ctx assembly, command read-back, no
+core-damage instrument). **DEBT** is a real violation, tracked, carrying an issue number,
+printed separately, with the summary line saying outright that OK means *no undeclared reads*
+and not *HR1 satisfied*. **5 declared debts → #247**, the low-flow reactor trip being the one
+that matters: it reads true pump flow because the RCS flow instrument was never built, which
+makes that trip **unteachable** in a simulator whose entire premise is that instruments lie.
+Not scheduled — owner: *"We are not going to do these sim changes in this convo."*
+
+**Scan surface, verified rather than assumed.** Protection decisions live ONLY in
+`layers/control/`, and `getTrueState()`/`true_state` are the ONLY routes to truth in `layers/`
+(no `engine.s`, no direct handle) — both grepped. I widened the scan to all of `layers/` so it
+would match the claim, then reverted: the service reads truth in ~16 legitimate places
+(snapshot assembly, which HR4 *requires*), and declaring them all would have buried the five
+that matter. Same failure the HR11 check needed rescuing from hours earlier.
+
+**Doc pass.** 16 HR7/HR8 citations across M1–M4, M6 and DESIGN_COMPANION resolve through the
+§3 retirement pointers — nothing dangles, deliberately not rewritten. §3 now also says plainly
+that retiring HR7/HR8 was a **demotion in binding force**, not a relocation.
+
+**SOP §5 — bring the recommendation with the question** *(OWNER RULING, 2026-07-29)*. Written
+from four failures in this same session, not from principle. A pointer also went into
+CLAUDE.md, because **SOP.md is not auto-loaded and CLAUDE.md is** — a rule about how an agent
+answers will not fire if it lives only where nobody looks mid-conversation. That exposed a
+contradiction (rule 1 said SOP.md is not binding; §5 quotes an owner instruction), now
+resolved: §5 binds because the *owner* said it, which is the only route by which anything in
+that file binds.
+
+**Gates.** `run_hardrules` 15 → 17 checks (the HR11 guard picked up the two new quoted
+rulings — the gate working). `run_all` **28 runners** at baseline.
+
 ### 2026-07-29d — the Hard Rules, sorted out: 10 → 9, each with a named guard  ✅
 
 *(Owner, 2026-07-29: "Some hard rules are system specific. Could any be put in SOPs or in
