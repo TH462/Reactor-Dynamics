@@ -149,6 +149,17 @@ body {
 .app.pwr-synoptic > .plant-area { grid-area: diagram; min-width: 0; max-width: none; }
 .app.pwr-synoptic > .right-col  { grid-area: simcol; min-width: 0; max-width: none; }
 
+/* PWR-only: hide the legacy 4-view switcher / status bar / control row, and let the
+   board own the whole view area. app.js empties those three containers on the PWR
+   path, but an empty container still takes its padding/border — so they are hidden,
+   not merely cleared. These four rules moved here from the retired V1 stylesheet
+   (ui/diagram/pwr_synoptic.css, #246): they were always shell hooks keyed on the
+   .app class, not V1 board styling, and the V2 board needs them. RBMK/BWR untouched. */
+.app.pwr-synoptic .view-switcher,
+.app.pwr-synoptic .status-bar,
+.app.pwr-synoptic .pd-controlbar { display: none; }
+.app.pwr-synoptic .view-area { padding: 0; overflow: hidden; }
+
 /* The V2 board carries its own vital-parameter tile strip (six Indicator Panel
    components across the top), which is what the shell's .gauge-strip used to provide.
    Two copies of the same six readings is worse than one, and the shell copy is the one
@@ -598,15 +609,21 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .help-sec h4 { margin: 0 0 4px; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-2); }
 .help-sec p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); }
 
-/* Feedback overlay form (reuses the help modal chrome) */
+/* Feedback overlay (reuses the help modal chrome). No longer a form — it carries
+   the address to write to plus the optional diagnostics download. */
 .fb-field { margin-bottom: 12px; }
 .fb-field label { display: block; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-2); margin-bottom: 4px; }
-.fb-field select, .fb-field textarea, .fb-field input[type="email"] { width: 100%; resize: vertical; }
-.fb-check { display: flex !important; align-items: center; gap: 8px; text-transform: none !important; letter-spacing: 0 !important; font-size: 13px !important; color: var(--text) !important; cursor: pointer; }
 .fb-hint { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
-.fb-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
 .fb-msg { font-size: 12px; color: var(--running); }
 .fb-msg.err { color: var(--caution); }
+.fb-lead { margin: 0 0 10px; font-size: 13px; line-height: 1.5; color: var(--text); }
+/* The address is the point of this panel, so it gets the size — and it wraps
+   rather than overflowing on a narrow window. */
+.fb-addr { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.fb-mail { font-size: 17px; color: var(--running); text-decoration: none; border-bottom: 1px dotted var(--running); word-break: break-all; }
+.fb-mail:hover { color: var(--text); border-bottom-color: var(--text); }
+.fb-diag { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.fb-ver { margin-top: 14px; }
 .help-keys { font-size: 11px; color: var(--text-2); }
 
 /* ===================================================== right col: instructor */

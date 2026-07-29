@@ -956,8 +956,8 @@
       return null;
     },
     lastSnapshot: function () { return lastSnap; },
-    // Instructor-highlight hooks (parity with RD.PwrSynoptic). The driver owns the
-    // control-label vocabulary; the renderer resolves it to a board tile to glow.
+    // Instructor-highlight hooks. The driver owns the control-label vocabulary;
+    // the renderer resolves it to a board tile to glow.
     revealControl: function (label) {
       var d = driver();
       if (!d || !d.controlLabelItem) return null;

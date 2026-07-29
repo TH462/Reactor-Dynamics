@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reactor⚛️Dynamics — Control Room</title>
   <link rel="stylesheet" href="shell.css">
-  <link rel="stylesheet" href="diagram/pwr_synoptic.css">
   <link rel="stylesheet" href="diagram/board/pwr_board.css">
   <!-- Vercel Web Analytics (cookieless page-view beacon; 404s harmlessly off-Vercel) -->
   <script defer src="/_vercel/insights/script.js"></script>
@@ -99,7 +98,7 @@
           <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant."
               data-scanner-detail="The manual set is written in commercial operator-manual format: general description, controls and indications, normal and emergency procedures, alarm response, setpoints and a glossary. Its procedures are replayed against the engine by the test suite, so the steps match the plant you are operating.">📖 Manual</button>
           <button class="btn help-btn" id="helpBtn" title="How this control room works" data-scanner-hint="Help — a one-screen guide to the board: the quiet-board colors, why instruments can lie, where the missions live, and the keyboard shortcuts.">?</button>
-          <button class="btn help-btn" id="fbBtn" title="Send feedback" data-scanner-hint="Feedback — report a bug or send feedback, optionally attaching this session's telemetry (plant data + your commands) so what you saw can be replayed.">💬</button>
+          <button class="btn help-btn" id="fbBtn" title="Send feedback" data-scanner-hint="Feedback — the address to send bug reports, physics corrections and general feedback to, plus an optional download of this session's telemetry (plant data + your commands) you can attach so what you saw can be replayed.">💬</button>
           <button class="btn demo-btn" id="demoBtn" title="Hide the side panel — enlarge the diagram" data-scanner-hint="Hide side panel — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
         </div>
         <!-- What's running now — the always-visible mission entry point -->
@@ -202,7 +201,7 @@
             <div class="set-row" data-scanner-hint="Fast-forward dropout — On drops the clock back to real time when something needs you: a scram, a new failure, or the first alarm on a quiet board. Later alarms in a casualty do not stop it. Off keeps fast-forward running through everything."
               data-scanner-detail="Only the FIRST alarm on an otherwise quiet board drops the clock — once a casualty is under way, the following alarms would drop you out every few seconds and the option would be useless. Off is the right setting when you are deliberately fast-forwarding through a long transient such as a xenon burn-off."><span class="k">Fast-forward dropout</span><div class="seg" id="attnSeg"><button class="on" data-attn="on">On</button><button data-attn="off">Off</button></div></div>
           </div>
-          <!-- (Dev tab removed — session telemetry still rides along with 💬 Feedback.) -->
+          <!-- (Dev tab removed — session telemetry is still downloadable from 💬 Feedback.) -->
         </div>
       </div>
 
@@ -318,9 +317,15 @@
         </div>
       </div>
 
-      <!-- Feedback overlay — player bug reports / feedback. Telemetry comes ONLY
-           from the live session (the diag recorder), never from a user file
-           (owner ruling). W1 packages a download; W2 swaps in POST /api/feedback. -->
+      <!-- Feedback overlay — player bug reports / feedback. This used to be an
+           in-app form that packaged a JSON report as a download, with a POST to
+           /api/feedback planned behind it; there is no such endpoint and the
+           download went nowhere anyone reads. It is now just the address to write
+           to (owner, 2026-07-29). The diagnostics download stays, because the
+           bundle is worth attaching to a bug report and this overlay is the only
+           place it is reachable from — the 'export-diag' action has no button.
+           Telemetry still comes ONLY from the live session recorder, never from a
+           user-supplied file (owner ruling). -->
       <div class="mission-overlay" id="feedbackOverlay" hidden>
         <div class="mission-modal help-modal fb-modal">
           <div class="mission-head">
@@ -328,33 +333,24 @@
             <button class="btn" id="fbClose" aria-label="Close">✕ Close</button>
           </div>
           <div class="help-body">
-            <div class="fb-field">
-              <label for="fbCategory">Category</label>
-              <select id="fbCategory" class="num-input">
-                <option value="bug">Bug report</option>
-                <option value="physics">Physics / procedure accuracy</option>
-                <option value="feedback">General feedback</option>
-              </select>
-            </div>
-            <div class="fb-field">
-              <label for="fbText">What happened?</label>
-              <textarea id="fbText" class="num-input mono" rows="5"
-                placeholder="What were you doing, what did you expect, and what did the board actually show?"></textarea>
-            </div>
-            <div class="fb-field">
-              <label class="fb-check"><input type="checkbox" id="fbAttach" checked>
-                Attach this session's telemetry</label>
-              <div class="fb-hint" id="fbAttachInfo">Plant readings, alarms, and the commands you issued —
-              so what you saw can be replayed. Nothing about you or your device.</div>
-            </div>
-            <div class="fb-field">
-              <label for="fbEmail2">Email (optional — only if you want a reply)</label>
-              <input type="email" id="fbEmail2" class="num-input" placeholder="">
-            </div>
-            <div class="fb-actions">
-              <button class="btn" id="fbSend">Package report ⭳</button>
+            <p class="fb-lead">Bug reports, physics or procedure corrections, and general
+              feedback are all welcome — email:</p>
+            <div class="fb-addr">
+              <a class="fb-mail mono" id="fbMail"
+                 href="mailto:reactordynamics@gmail.com?subject=Reactor%20Dynamics%20feedback">reactordynamics@gmail.com</a>
+              <button class="btn" id="fbCopy">Copy address</button>
               <span class="fb-msg" id="fbStatus"></span>
             </div>
+            <div class="fb-hint">What makes a report easy to act on: what you were doing, what you
+              expected, and what the board actually showed. If it is a physics or procedure
+              question, the plant mode and the readings you were reading it from.</div>
+            <div class="fb-field fb-diag">
+              <button class="btn" id="fbDiag">Download session diagnostics ⭳</button>
+              <div class="fb-hint">Optional, for a bug report — plant readings, alarms, and the
+                commands you issued this session, so what you saw can be replayed. Nothing about
+                you or your device. Attach the file to your email.</div>
+            </div>
+            <div class="fb-hint fb-ver" id="fbVer"></div>
           </div>
         </div>
       </div>
@@ -455,8 +451,6 @@
   <script src="manual_procedures.js"></script>
   <script src="md_render.js"></script>
   <script src="manual_md.js"></script>
-  <!-- PWR full-plant synoptic (legacy; kept for instructor highlight fallbacks) -->
-  <script src="diagram/pwr_synoptic.js"></script>
   <!-- PWR learning board — data-driven synoptic (Claude Design import); mounted by app.js when plant_id === 'pwr' -->
   <script src="diagram/board/board_h.js"></script>
   <script src="diagram/board/std_pipe.js"></script>

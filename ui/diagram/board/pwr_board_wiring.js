@@ -183,7 +183,7 @@
   // Each entry: press(s) issues command(s); active(s) -> selected highlight.
   var BUTTONS = {
     // --- HPI / ECCS ---
-    // AUTO/ON/OFF is a mutually-exclusive triad (mirrors pwr_synoptic.js): AUTO lights
+    // AUTO/ON/OFF is a mutually-exclusive triad: AUTO lights
     // when the ESF arm is 'auto'; ON/OFF light only while in MANUAL (arm !== 'auto').
     imrldymb837: { press: function () { cmd({ action: 'set_hpi', active: true }); }, active: function (s) { return !esfAuto(s, 'hpi') && IN(s).hpi_active; } },
     imrldz0wqds: { press: function () { cmd({ action: 'set_hpi', active: false }); }, active: function (s) { return !esfAuto(s, 'hpi') && !IN(s).hpi_active; } },
@@ -980,10 +980,12 @@
   }
 
   // ============================================================ instructor highlight
-  // Manual-procedure / campaign-beat control labels (the vocabulary validated against
-  // RD.PwrSynoptic.highlightLabels) → the board item that hosts that control. Glowing
-  // the enclosing box/panel lights the whole control group. Keep this covering the same
-  // label set as pwr_synoptic.js SYN_CONTROL_MAP or campaign highlights won't resolve.
+  // Manual-procedure / campaign-beat control labels → the board item that hosts that
+  // control. Glowing the enclosing box/panel lights the whole control group. This map
+  // IS the highlight vocabulary: app.js resolves every beat highlight through
+  // RD.PwrBoard.revealControl, and run_campaign validates campaign beats against
+  // controlLabels() below — so deleting a key here reddens that gate. (It used to be
+  // held in parity with the V1 synoptic's SYN_CONTROL_MAP, which was retired in #246.)
   var CONTROL_LABEL_MAP = {
     'Control Bank': 'imrpk3wvydp', 'Rod Speed': 'imrpk3wvydp', 'Rod motion': 'imrpk3wvydp',
     'Nudge': 'imrpk3wvydp', 'Shutdown Bank': 'imrpny66npx',
@@ -1006,13 +1008,13 @@
     'SR detector': 'imro6qutiht', 'NIS': 'imro6qutiht', '1/M Plot': 'imro6rctcgm',
     'Trip Blocks': 'imrsk4xz2dm',
     // Indication readouts — highlight vocabulary for checklist-step hover (glowLabels
-    // in ui/app.js). Not used by campaign beats, so no SYN_CONTROL_MAP parity needed.
+    // in ui/app.js). Not named by campaign beats, so run_campaign never demands them.
     '1/M Plot Tool': 'bdOneOverM', 'Source Range': 'imro6qutiht', 'Intermediate Range': 'imro6rctcgm',
     'Reactivity': 'imro6rdwwdn', 'Startup Rate': 'imro6qsncb9',
     // Tavg, plant pressure and SG level are no longer standalone readouts on the mimic —
     // V2 promoted all three into the vital-parameter tile strip, so these labels glow the
     // tile. (Highlighting an indication is checklist hover-glow only; campaign beats
-    // highlight controls, so there is no SYN_CONTROL_MAP parity to keep here.)
+    // highlight controls, so run_campaign never names these.)
     'Tavg': 'ims2immk7ks', 'Plant Pressure': 'ims2immsvn6', 'SG Level': 'ims2imn1nny',
     'Steam Flow': 'ims3wm0d0bu', 'Feed Flow': 'imrsgkz4lq0',
     // Aliases for the `control` strings the checklist steps use (so the step-hover

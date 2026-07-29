@@ -1001,7 +1001,7 @@
     }
     // Scenario prop: the maintenance tag over the AFW valve indication. Hidden
     // once its interaction is granted (the tag comes off the valve).
-    var pwrDisp = RD.PwrBoard || RD.PwrSynoptic;
+    var pwrDisp = RD.PwrBoard;
     if (pwrDisp && pwrDisp.setTag) {
       var tagId = ip && ip.tag;
       var chat = s.instructor && s.instructor.chat;
@@ -1416,8 +1416,7 @@
     if (!hl) return;
     var el = null;
     if (hl.control_label) {
-      var pwrDisp2 = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard
-                   : (RD.PwrSynoptic && RD.PwrSynoptic.isMounted() ? RD.PwrSynoptic : null);
+      var pwrDisp2 = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
       el = ui.plant === 'pwr'
         ? (pwrDisp2 ? pwrDisp2.revealControl(hl.control_label) : null)
         : findPdControl(hl.control_label, hl.view);
@@ -2557,26 +2556,31 @@
     var stamp = bundle.exported_at.slice(0, 16).replace(/:/g, '');   // 2026-07-07T0046
     downloadJSON(bundle, 'rd_diag_' + stamp + '_' + ui.plant + '.json');
   }
-  // Player feedback (💬) — telemetry comes ONLY from the live session recorder,
-  // never from a user-supplied file (owner ruling). W1 packages the report as a
-  // download; W2 replaces sendFeedback's tail with a POST to /api/feedback.
-  function sendFeedback() {
+  // Player feedback (💬). This was an in-app form that packaged a JSON report as a
+  // download, against a planned POST /api/feedback that was never built — so the
+  // file landed in the player's downloads folder and nowhere else. It is now just
+  // the address (owner, 2026-07-29); the diagnostics bundle is still offered
+  // separately, to attach by hand.
+  var FEEDBACK_EMAIL = 'reactordynamics@gmail.com';
+  function copyFeedbackEmail() {
     var status = $('fbStatus');
-    var body = $('fbText').value.trim();
-    if (!body) {
-      status.className = 'fb-msg err'; status.textContent = 'Say what happened first.';
-      return;
+    function ok() { status.className = 'fb-msg'; status.textContent = 'Address copied.'; }
+    // No clipboard API (older browser, or a non-secure origin — the control room
+    // runs happily from file://, where navigator.clipboard is undefined). Select
+    // the address instead, so ⌘/Ctrl-C still works and the failure is visible.
+    function fallback() {
+      var el = $('fbMail'), sel = window.getSelection && window.getSelection();
+      if (sel && el && document.createRange) {
+        var r = document.createRange(); r.selectNodeContents(el);
+        sel.removeAllRanges(); sel.addRange(r);
+        status.className = 'fb-msg'; status.textContent = 'Address selected — press Ctrl-C to copy.';
+      } else {
+        status.className = 'fb-msg err'; status.textContent = 'Copy failed — the address is ' + FEEDBACK_EMAIL;
+      }
     }
-    var report = {
-      schema_version: '1.0', kind: 'reactor_dynamics_feedback',
-      category: $('fbCategory').value, body: body,
-      email: $('fbEmail2').value.trim() || null,
-      site_version: (typeof window.RD_VERSION === 'string') ? window.RD_VERSION : null,
-      diag: $('fbAttach').checked ? buildDiagBundle() : null
-    };
-    downloadJSON(report, 'rd_feedback_' + report.category + '_' + ui.plant + '.json');
-    status.className = 'fb-msg';
-    status.textContent = 'Report packaged and downloaded — direct sending is coming soon.';
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(FEEDBACK_EMAIL).then(ok, fallback);
+    } else fallback();
   }
 
   var ACTS = {
@@ -3007,12 +3011,21 @@
     $('helpBtn').addEventListener('click', function () { $('helpOverlay').hidden = false; });
     $('helpClose').addEventListener('click', function () { $('helpOverlay').hidden = true; });
     $('helpOverlay').addEventListener('click', function (e) { if (e.target === $('helpOverlay')) $('helpOverlay').hidden = true; });
-    // Feedback overlay (💬) — status line resets each open so a stale
-    // "packaged" confirmation never greets a fresh report.
-    $('fbBtn').addEventListener('click', function () { $('fbStatus').textContent = ''; $('feedbackOverlay').hidden = false; });
+    // Feedback overlay (💬) — status line resets each open so a stale "copied"
+    // confirmation never greets a fresh visit. The version stamp is filled in
+    // here rather than in the markup: RD_VERSION is stamped at deploy time and is
+    // absent when the control room is opened straight off disk.
+    $('fbBtn').addEventListener('click', function () {
+      $('fbStatus').textContent = '';
+      $('fbVer').textContent = (typeof window.RD_VERSION === 'string' && window.RD_VERSION)
+        ? 'Build ' + window.RD_VERSION + ' — quoting this in a bug report says exactly which version you were on.'
+        : '';
+      $('feedbackOverlay').hidden = false;
+    });
     $('fbClose').addEventListener('click', function () { $('feedbackOverlay').hidden = true; });
     $('feedbackOverlay').addEventListener('click', function (e) { if (e.target === $('feedbackOverlay')) $('feedbackOverlay').hidden = true; });
-    $('fbSend').addEventListener('click', function () { sendFeedback(); });
+    $('fbCopy').addEventListener('click', copyFeedbackEmail);
+    $('fbDiag').addEventListener('click', function () { exportDiag(); });
     // Hide side panel (⛶) — hides the right simulator panel and tucks the time
     // controls (.sim-controls) into the chart/alarms strip under the diagram so the
     // plant diagram gets the full width; toggle to bring the panel back. .bottom-row
@@ -3752,8 +3765,8 @@
   function CG_ECCS() { return { l: 'ECCS', emergency: 1, hint: 'Emergency Core Cooling — high-pressure injection. AUTO actuates on low pressure.', seg: [{ l: 'Auto', act: 'eccs-auto', on: 1, run: 1 }, { l: 'On', act: 'eccs-on' }, { l: 'Off', act: 'eccs-off' }] }; }
   function CG_MSIV() { return { l: 'MSIV', hint: 'Main Steam Isolation Valve' + (ui.plant === 'bwr' ? ' — isolates main steam (closes the turbine path).' : ' — (steam-line isolation; modeled on the BWR; placeholder here).'), seg: [{ l: 'Open', act: 'msiv-open', on: 1 }, { l: 'Close', act: 'msiv-close', warn: 1 }] }; }
 
-  // (legacy PWR partial-loop diagrams retired — the synoptic in
-  //  ui/diagram/pwr_synoptic.js is the sole PWR plant display)
+  // (legacy PWR partial-loop diagrams retired — the V2 board in
+  //  ui/diagram/board/ is the sole PWR plant display)
 
 
   var PD = {
@@ -3952,7 +3965,7 @@
   function buildViews() {
     var area = $('viewArea'); pdRows = {};
     // Diagram view placeholder (RBMK/BWR keep the legacy plant display until
-    // their own synoptic specs exist; the PWR mounts ui/diagram/pwr_synoptic.js)
+    // their own board specs exist; the PWR mounts ui/diagram/board/pwr_board.js)
     var diagHtml =
       '<div class="view-placeholder"><span>Plant diagram — SVG in development</span><span class="placeholder-sub">Energy flow: Reactor → ' + (ui.plant === 'bwr' ? 'Vessel → Turbine' : 'Drums → Turbine') + '</span></div>';
     var html = '';
@@ -4068,7 +4081,6 @@
     positionBottomRow(syn);
     if (!syn) {
       if (RD.PwrBoard && RD.PwrBoard.isMounted()) RD.PwrBoard.unmount();
-      if (RD.PwrSynoptic && RD.PwrSynoptic.isMounted()) RD.PwrSynoptic.unmount();
     }
     if (syn) {
       $('statusBar').innerHTML = ''; $('viewTabs').innerHTML = ''; $('pdCtlRow').innerHTML = '';

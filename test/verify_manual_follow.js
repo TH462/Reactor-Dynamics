@@ -41,8 +41,9 @@ async function checkControlOnBar(page, prof, view, control) {
     // The PWR plant display is the learning board (no view bar): a control is
     // "on the board" when the board can reveal it (auto-switching the tab or
     // section it hides behind — the same path Instructor highlights use).
-    // RD.PwrSynoptic is retired for the PWR — it still loads, but never mounts,
-    // so probing it failed every bar-check regardless of the board's contents.
+    // This used to probe the V1 synoptic (RD.PwrSynoptic), which still loaded but
+    // never mounted, so every bar-check failed regardless of the board's contents
+    // (#149). The V1 module was deleted in #246; RD.PwrBoard is the only display.
     return page.evaluate(function (label) {
       var RD = globalThis.RD;
       return !!(RD.PwrBoard && RD.PwrBoard.isMounted() && RD.PwrBoard.revealControl(label));

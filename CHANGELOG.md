@@ -56,6 +56,64 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   was always undefined and the stand-down had **never once fired** in any session. It now
   reads MFIV position, and the channel drops out with the note *"off — main feedwater
   isolated (AFW has the SGs)"*.
+- **Feedback (💬) is now an email address, not a form** *(owner, 2026-07-29)*. The overlay used to
+  collect a category, a description and an optional reply address, then package the lot as a JSON
+  file the player downloaded — against a planned `POST /api/feedback` that was never built, so the
+  report landed in their downloads folder and nowhere anyone reads. It now shows
+  **reactordynamics@gmail.com** as a `mailto:` link with a copy button, a line on what makes a
+  report easy to act on, and the build stamp to quote.
+  The **session diagnostics download stays**, as a single button. It is the only place that bundle
+  is reachable from — the `export-diag` action has no button of its own — and it is worth attaching
+  to a bug report. Same rule as before: telemetry comes only from the live session recorder, never
+  from a user-supplied file.
+
+### Fixed
+- **The full-stack procedure gate was running half its procedures at a tenth of their declared
+  speed (#245).** `test/run_procedures_stack.js` set `timeAcceleration = 10` once at setup.
+  `SimulationService._attentionStop` then did its job — the first alarm or scram on a quiet
+  board snaps fast-forward back to real time so a human is not left behind the plant — and
+  nothing put it back. Measured: **11 of the 22 procedures** ran below 10× from as early as
+  **t = 2 s**, one of them for 416 consecutive ticks. Every step assertion downstream of that
+  point was being judged on a tenth of the sim time its author declared.
+  Fixed with `svc.attentionStops = false` — the dropout is a comfort feature for a human at
+  the board and a headless gate has no one to protect; `run_autoctl` had already reached the
+  same conclusion by another route — plus a new per-procedure assertion that the run actually
+  held its declared acceleration, so the harness can no longer claim 10× in its header while
+  the runs underneath it disagree. The mechanism itself stays covered by `run_m5`.
+  **Four "RBMK/BWR plant defects" were this bug.** `bwr_startup` step 2 was already known
+  (#240 follow-up); `rbmk_mcp_trip` step 2 on both RBMK versions and `bwr_sbo_rcic` step 3
+  (vessel level 25.4 % vs a required 40) join it — power had a tenth of the time to fall after
+  the pump trip, RCIC a tenth of the time to refill. All three pass on the sim time alone.
+  That is a green establishing the *mechanism*, not a clean bill of health for either plant:
+  both are on hold and nobody has re-derived those steps from the plant.
+  It also caught a stale PWR assertion. `pwr_stuck_porv` step 1 asserted `core_inventory_pct
+  < 100` at the end of a 30 s hold. Inventory does fall — 99.65 → 98.01 % by t = 6 s — but
+  automatic HPI actuates at 10.5 MPa and refills past nominal (117.6 % by t = 16 s, pressurizer
+  at 88 %, subcooling gone). That is the plant doing the right thing; it is TMI's own trap, the
+  solid pressurizer that invites throttling injection, which this procedure's caution warns
+  about. The step now asserts the leak was *seen* and checks subcooling — the diagnosis signal
+  its own text points the player at — at the end.
+  Baselines move with the fix: `run_procedures_stack` **22/22 155/155 → 178/178** (+22 the new
+  acceleration assertion, +1 the split above), strict xfails **5 → 2**; `run_procedures`
+  **101/101 → 102/102**.
+
+### Removed
+- **The V1 PWR board is gone (#246).** `ui/diagram/pwr_synoptic.js` (~100 KB) and
+  `pwr_synoptic.css` were superseded by the V2 board in `ui/diagram/board/` months ago, but
+  they were still parsed on every control-room load and never mounted. Deleted, along with
+  their dev harness `ui/test_panel/synoptic_check.html`, which could only exercise the
+  deleted module. The three `RD.PwrBoard || RD.PwrSynoptic` fallbacks in `ui/app.js`
+  collapse to `RD.PwrBoard` — the only PWR display there has been for some time.
+  Two pieces did **not** go with it. The four `.app.pwr-synoptic` rules at the top of the
+  V1 stylesheet were shell hooks keyed on the `.app` class, not V1 board styling, and the
+  V2 board needs them (`.view-area { padding: 0 }` in particular) — they moved into
+  `ui/shell.css`; the class name is unchanged. And `run_campaign` validated every PWR beat
+  highlight against the V1 module's `SYN_CONTROL_MAP`, which was already the wrong
+  authority: `app.js` resolves highlights through `RD.PwrBoard.revealControl`. It now
+  checks the board driver's `CONTROL_LABEL_MAP` (51 labels to V1's 34, a strict superset,
+  so nothing that used to resolve can now be hidden). Gates unchanged at baseline:
+  `run_campaign` 51/51 (3024 checks), `verify_manual_follow` PASS (84), `verify_e2e_ui`
+  PASS (16 screenshots), `run_inspect` 7/7, `board_check` 106/106.
 
 ### Changed
 - **The board now speaks the same units as the manual.** The dual-unit convention reached the

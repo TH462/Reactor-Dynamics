@@ -177,6 +177,20 @@ anything here that is standing procedure rather than news belongs in the list be
   inert. **`pwr_lof` was re-authored around the stuck channel**, because at 90 % a healthy
   channel means nothing happens at all. **One channel, not 2-of-3, is the remaining declared
   departure** (`Manuals/12` §10.7).
+- **Half the full-stack procedure gate was running at a tenth of its declared speed
+  (2026-07-29, #245).** `run_procedures_stack` set `timeAcceleration = 10` once; the
+  service's fast-forward dropout then returned it to 1× on the first alarm/scram and nothing
+  put it back — so **11 of 22 procedures** were judged on a *tenth* of the sim time their
+  steps assume, from as early as t = 2 s. Fixed with `svc.attentionStops = false` (a headless
+  gate has no operator to protect; `run_autoctl` had already made the same call) plus a
+  per-procedure assertion that the run held its declared acceleration, so it cannot recur
+  quietly. **Read this before trusting anything in #208:** four of its "RBMK/BWR plant
+  defects" (`bwr_startup`, `rbmk_mcp_trip` ×2, `bwr_sbo_rcic`) were this bug and passed on
+  the sim time alone — a green there proves the *mechanism*, not that either plant is right.
+  It also exposed a stale PWR assertion: `pwr_stuck_porv` step 1 asserted inventory below
+  100 % after 30 s, which only ever held because the run was starved — automatic HPI comes
+  in at 10.5 MPa and refills past nominal, which is TMI's solid-pressurizer trap and the
+  correct behaviour.
 
 - **The Hard Rules were reorganized, and they now have guards (2026-07-29).** §3 is **nine
   rules**, split architecture (HR1–HR6) from practice (HR9, HR10, HR11), each naming its
@@ -214,17 +228,7 @@ anything here that is standing procedure rather than news belongs in the list be
   `run_hr3` failed the first draft for exactly this). Sourced to NUREG-0700 Rev 4
   §4.1.2-7 / Table 4.1.
 
-- **`status`-class alarms arrive PRE-ACKNOWLEDGED (2026-07-29, #240 follow-up).** Owner
-  ruling. A status annunciator reports a lineup, not a demand for action, so `_evalAlarms`
-  raises it straight into `active_acknowledged` and `_attentionStop` no longer treats it as
-  a fast-forward dropout. The classification is the **effective** one, so a reclassified
-  tile counts. Three consequences: an auto-acked alarm that later **escalates** out of
-  `status` is handed back as `active_unacknowledged` (tracked in `layer.alarmAutoAcked`,
-  which saves/restores; an *operator* ack is never undone); the whole tier is affected, not
-  just #240's tiles (`hpi_active`, BWR `rcic_running`); and if you touch `_attentionStop`,
-  know that removing one dropout **lengthened a test run tenfold** — see **#245**, where
-  the harness's declared 10× was being cancelled by the first alarm and had caused a BWR
-  procedure defect to be misfiled.
+
 **Standing procedure — not part of the rotation above; these do not expire.**
 
 - **The board is the V2 diagram, and `pwr_board_data.js` is GENERATED.** Edit in the Claude
@@ -241,10 +245,13 @@ anything here that is standing procedure rather than news belongs in the list be
   against the fittings above and below it (#231), pipe **animation play-state vs plant
   state** in three states (#236), and the #235 board defects, for the same reason. **Run
   board_check (headless Edge, `--dump-dom`; `document.title` says PASS/FAIL) after any
-  board change** — it is not in `run_all`. Currently **95/95** (measured 2026-07-28p —
-  59 before the #235/#236 pins, +20 pipe-state/board-defect pins, +2 ROD AUTO, +3 from
-  the #237 comment items, +11 for the generator FOLLOW/MAN/OFF selector (#230); the
-  previously recorded "60/60" never matched the code, #235 finding 6).
+  board change** — it is not in `run_all`. Currently **106/106** (measured 2026-07-29 on
+  clean `develop` 5bf366f *and* after #246 — this line said 95/95, which was already stale
+  when written down; the count moves whenever a pin is added, so re-measure rather than
+  trusting it. History: 59 before the #235/#236 pins, +20 pipe-state/board-defect pins,
+  +2 ROD AUTO, +3 from the #237 comment items, +11 for the generator FOLLOW/MAN/OFF
+  selector (#230); the previously recorded "60/60" never matched the code either,
+  #235 finding 6).
   **Read the tally from the harness's own summary line** (`ALL n CHECKS PASS` /
   `n FAILURES / n`) — scraping the page for the last `n/n` pair picks up unrelated
   numbers and reports a nonsense total.
@@ -322,10 +329,11 @@ Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, ca
 `run_m4` **25/25 (135 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **20/20**,
 `run_behavior` **38 pass / 0 xfail**, `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
-`run_procedures` **22/22 (101/101 checks)**,
-`run_procedures_stack` **22/22 (155/155 checks, 5 strict xfails — all RBMK/BWR #208; the 7
-`pwr_heatup` xfails cleared 2026-07-26c/d via #206 + #210, and `bwr_startup` 2026-07-29 —
-that one was never a BWR defect, see #245)**, `run_checklist` **24/24**, `run_scenarios`
+`run_procedures` **22/22 (102/102 checks)**,
+`run_procedures_stack` **22/22 (178/178 checks, 2 strict xfails — both RBMK/BWR #208; the 7
+`pwr_heatup` xfails cleared 2026-07-26c/d via #206 + #210, and FOUR more on 2026-07-29 that
+were never plant defects at all — the harness was running 11 of its 22 procedures below the
+10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
 `run_contract` **84 checks / 0 failed**, `run_hr3` **29 checks / 0 failed**, `run_hardrules` **18 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
