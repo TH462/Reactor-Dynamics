@@ -13,6 +13,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Feedback (💬) is now an email address, not a form** *(owner, 2026-07-29)*. The overlay used to
+  collect a category, a description and an optional reply address, then package the lot as a JSON
+  file the player downloaded — against a planned `POST /api/feedback` that was never built, so the
+  report landed in their downloads folder and nowhere anyone reads. It now shows
+  **reactordynamics@gmail.com** as a `mailto:` link with a copy button, a line on what makes a
+  report easy to act on, and the build stamp to quote.
+  The **session diagnostics download stays**, as a single button. It is the only place that bundle
+  is reachable from — the `export-diag` action has no button of its own — and it is worth attaching
+  to a bug report. Same rule as before: telemetry comes only from the live session recorder, never
+  from a user-supplied file.
+
 ### Fixed
 - **The full-stack procedure gate was running half its procedures at a tenth of their declared
   speed (#245).** `test/run_procedures_stack.js` set `timeAcceleration = 10` once at setup.
