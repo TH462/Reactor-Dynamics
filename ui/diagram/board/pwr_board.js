@@ -982,6 +982,43 @@
       }
     },
     // Labels revealControl can resolve — every PWR beat highlight must name one.
-    highlightLabels: (function () { var d = RD.PwrBoardDriver; return d && d.controlLabels ? d.controlLabels() : []; })()
+    highlightLabels: (function () { var d = RD.PwrBoardDriver; return d && d.controlLabels ? d.controlLabels() : []; })(),
+
+    // ---- inspection (#96) ------------------------------------------------
+    // What an item IS, for the inspection block. The driver owns the copy (it is
+    // plant knowledge); the renderer only resolves elements to item ids.
+    inspect: function (id) { var d = driver(); return (d && d.inspectItem) ? d.inspectItem(id) : null; },
+    // The item id under a DOM node, or null. Tiles carry data-item, so a click
+    // target anywhere inside a control resolves to the control it belongs to.
+    itemIdFor: function (el) {
+      if (!el || !stage || !el.closest) return null;
+      var tile = el.closest('[data-item]');
+      return (tile && stage.contains(tile)) ? tile.getAttribute('data-item') : null;
+    },
+    // Geometric hit test, in client coordinates → item id. The DOM cannot answer
+    // for every object on the board: the reactor vessel is deliberately
+    // pointer-events:none so the rod buttons it overlaps stay clickable
+    // (buildStage), and it is the single most inspectable thing on the mimic.
+    // Resolve those by geometry instead, honouring the same paint order the
+    // stage uses (authored z, then authoring order) so the topmost item wins.
+    itemIdAt: function (clientX, clientY) {
+      var ss = stage && stageScale();
+      if (!ss) return null;
+      var x = (clientX - ss.rect.left) / ss.scale, y = (clientY - ss.rect.top) / ss.scale;
+      if (x < 0 || y < 0 || x > CANVAS_W || y > CANVAS_H) return null;
+      var best = null, bestKey = -Infinity, list = (doc && doc.items) || [];
+      for (var i = 0; i < list.length; i++) {
+        var it = list[i], w = it.width || 0, hgt = it.height || 0;
+        if (!w || !hgt) continue;                        // text/value tiles are auto-sized
+        if (x < it.left || x > it.left + w || y < it.top || y > it.top + hgt) continue;
+        var el = tiles[it.id];
+        var z = el && el.style.zIndex ? parseFloat(el.style.zIndex) : 0;
+        var key = z * 1e4 + i;                           // paint order: z first, then authoring order
+        if (key > bestKey) { bestKey = key; best = it.id; }
+      }
+      return best;
+    },
+    // The tile element for an item id — the thing the inspection glow goes on.
+    tileFor: function (id) { return (id && tiles[id]) || null; }
   };
 })();

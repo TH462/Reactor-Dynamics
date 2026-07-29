@@ -103,6 +103,13 @@ var BASELINES = {
   // it publishes. Check count moves with the content count (57 items today): adding a
   // scenario shifts this baseline, which is the intended nudge to decide its stage.
   'run_flags.js':          { code: 0, score: '16/16 290/290' },
+  // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
+  // Every way this rots is silent: an item id changes and its entry describes
+  // nothing; a new control inherits its card's summary and READS like a real
+  // answer; a manual citation outlives the section it names. All three are
+  // failures here. The check count moves with the board — a new control or
+  // indication shifts it, which is the intended nudge to write its copy.
+  'run_inspect.js':        { code: 0, score: '7/7 35/35' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   'run_m4.js':             { code: 0, score: '23/23 117passed' },

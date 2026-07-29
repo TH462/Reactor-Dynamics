@@ -13,6 +13,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The board explains itself — the inspection system (#96, merges #69).** The **System
+  Scanner** block on the right column is now a two-tier inspection surface. Point at
+  anything and it names the object and says what it does in one line; **click the block to
+  expand it** and the same hover gives the full account — how the thing behaves, what it is
+  wired to, and the trap that catches people — plus a **📖 Manual** link that opens the
+  operator's manual at the exact section documenting it. The choice is remembered between
+  sessions. Coverage is the whole PWR board: **160 authored entries** across every card,
+  control, component and indication, sourced from `Manuals/03` + `09` rather than written
+  from memory, with a containment fallback so an unlabelled caption answers with its card
+  (and says that it is doing so). The shell chrome, the gauges and the **active alarm tiles**
+  carry the same two tiers — a tile's detail is generated from the plant's own protection
+  table ("Comes in when Average Coolant Temp falls to 552.2 °F"), including the #240
+  reclassification note, so it cannot drift from a retune.
+  **No hover highlight** (owner, 2026-07-28): an early cut ringed whatever the cursor was
+  over and it read as noise. The Instructor's blue glow and the checklist's green preview
+  glow are untouched — those point at something you did not choose.
+
 ### Changed
 - **A cold plant no longer annunciates its own lineup as a casualty (#240).** A fresh Cold
   Shutdown (Mode 5) run spawned with **five standing unacknowledged alarms, two of them

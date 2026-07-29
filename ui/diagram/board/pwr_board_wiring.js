@@ -1337,6 +1337,14 @@
     // instructor highlight vocabulary (consumed by pwr_board.revealControl / highlightLabels)
     controlLabelItem: function (label) { return CONTROL_LABEL_MAP[label] || null; },
     controlLabels: function () { return Object.keys(CONTROL_LABEL_MAP); },
+    // Inspection copy (#96) — what an item IS, in two tiers, resolved through the
+    // registry's containment fallback so an unnamed sub-frame describes its card.
+    // Kept in pwr_board_inspect.js rather than here: it is prose about the plant,
+    // not wiring, and it is long enough to bury this file.
+    inspectItem: function (id) {
+      var I = RD.PwrBoardInspect;
+      return (I && I.entry) ? I.entry(id) : null;
+    },
     tagItem: function () { return TAG_ITEM; },
     // pumps rendered art-only (built-in control box suppressed) — see ART_ONLY_PUMPS
     suppressBuiltInControls: function (id) { return !!ART_ONLY_PUMPS[id]; },
@@ -1399,6 +1407,43 @@
         var miss = [];
         (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) {
           if (it.kind === 'number' && !NUMBERS[it.id]) miss.push(it.id);
+        });
+        return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+      // Inspection registry (#96). Same silent-failure mode as PIPE_TEMP and the
+      // highlight vocabulary: an orphaned key just stops describing anything, and
+      // a NEW item nobody wrote copy for reads as its card's summary — which looks
+      // deliberate. Assert both directions.
+      ck('driver: every inspect key is a live item', (function () {
+        var I = RD.PwrBoardInspect;
+        if (!I) return 'RD.PwrBoardInspect not loaded';
+        var live = {};
+        (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) { live[it.id] = 1; });
+        (EXTRA_ITEMS || []).forEach(function (it) { live[it.id] = 1; });
+        ['bdPzrTempVal', 'bdPzrHtrVal'].forEach(function (k) { live[k] = 1; });   // authored EXTRA_ITEMS values
+        var miss = I.ids().filter(function (k) { return !live[k]; });
+        var al = I.aliases();
+        Object.keys(al).forEach(function (k) { if (!live[k]) miss.push('alias ' + k); });
+        return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+      ck('driver: every board item inspects to something', (function () {
+        var I = RD.PwrBoardInspect;
+        if (!I) return 'RD.PwrBoardInspect not loaded';
+        var miss = [];
+        (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) {
+          if (!I.entry(it.id)) miss.push(it.kind + ':' + it.id);
+        });
+        return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+      // Every INTERACTIVE item gets copy of its own: inheriting the card's summary
+      // is right for a caption, wrong for a control the player can press.
+      ck('driver: every control has its own inspect entry', (function () {
+        var I = RD.PwrBoardInspect;
+        if (!I) return 'RD.PwrBoardInspect not loaded';
+        var miss = [];
+        (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) {
+          if (['button', 'number', 'scram'].indexOf(it.kind) < 0) return;
+          if (!I.own(it.id)) miss.push(it.kind + ':' + it.id);
         });
         return miss.length === 0 ? true : miss.join(',');
       })() === true);

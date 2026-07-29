@@ -31,7 +31,8 @@ staleness** items.
 
 | Gate | State | Notes |
 |---|---|---|
-| **`run_all`** | **OK (24 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| **`run_all`** | **OK (25 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| `run_inspect` | **7/7 (35)** | NEW 2026-07-28s (#96) — inspection copy: orphaned keys, per-item coverage, dead manual citations, duplicate copy |
 | `run_flags` / `verify_flags_ui` | **16/16 (290)** / **48/48** | NEW 2026-07-28j (#241) — the feature-flag registry (coverage + resolution) and the control room actually obeying it |
 | `run_procedures_stack` | **22/22 (155/155)** | NEW 2026-07-26b — procedures through M4+M5+M6. **6** strict xfails, all RBMK/BWR (#208); the 7 `pwr_heatup` xfails cleared 2026-07-26c/d (#206, #210) |
 | `run_meltdown_stack` | **3/3 (21/21)** | NEW 2026-07-26d (#209) — the core-damage casualties driven **hands off** on the shipped lineup; asserts the automatic chain fires unprompted |
@@ -109,6 +110,64 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-28s — #96: the inspection system (hover to name it, expand to learn it)  ✅
+
+**What shipped.** The System Scanner block became the **inspection surface** #96/#69 asked for:
+hover anything → `Title — one sentence`; **click the block** → the same hover gives the full
+paragraph, a note when the copy describes the whole card, and a **📖 Manual §x.y** button that
+opens the operator's manual at the section documenting that object. Expanded/collapsed persists.
+
+**Where the copy lives, and why it is split.**
+- `ui/diagram/board/pwr_board_inspect.js` — **160 entries** keyed by diagram item id, reached
+  through the driver (`RD.PwrBoardDriver.inspectItem`). Plant prose belongs with the wiring.
+- Chrome keeps the M8 §11 inline mechanism (`data-scanner-hint` + new `-detail` / `-doc` / `-sec`).
+- Gauge and alarm-tile detail is **generated**, never authored: gauges from `RD.MANUAL`
+  (measures / range / lag / alarms driven), alarm tiles from the plant's protection table
+  ("Comes in when Average Coolant Temp falls to 552.2 °F"), including the #240 "normally
+  classed warning" note. A retune moves the text; nobody has to remember to.
+
+**Three things worth knowing before touching it.**
+1. **Containment, not DOM.** Board tiles are absolutely-positioned *siblings*, so "which card is
+   this button on?" cannot be asked of the DOM. `boxOf()` answers it from the generated doc
+   (smallest box containing the item's centre) and an entry-less item inherits its card — which
+   is how the board is fully covered without an entry per authored caption.
+2. **Geometry for the unhittable.** `reactorVessel` is `pointer-events:none` so the rod buttons it
+   overlaps stay clickable — so the DOM never sees a hover on the single most inspectable object
+   on the mimic. `RD.PwrBoard.itemIdAt(x,y)` resolves those by geometry, honouring paint order
+   (authored z, then authoring order) so a lifted control still beats the card beneath it.
+3. **Two things the copy cannot be trusted on, so they are gated.** `test/run_inspect.js` (7/7,
+   35 checks) fails on an orphaned key, on any control/component/indication without its OWN entry
+   (inheriting a card's summary *reads* like a real answer), on duplicate copy, and on a **manual
+   citation whose section no longer exists** — which it caught on the first run: ten entries cited
+   §-numbers from manual 03 while pointing at 08/05. `board_check.html` pins the resolution half
+   (95 → **106 checks**).
+
+**Two defects found by driving the real app, not by the suites.**
+- The **manual link was unclickable**. Moving the pointer toward it crossed the block, which had
+  its own scanner hint, so the block re-rendered and detached the button mid-click. Fix: the
+  block never describes itself (`inspectResolve` returns null inside `#scannerPanel`) — which
+  also stops it wiping the text you are reading.
+- **Subcooling margin read "−18 to 181 °F"**. The generated gauge text converted a temperature
+  *difference* as an absolute, because the manual reference records its unit as `°C`. The gauge
+  definition already carries `dim: 'tempdiff'` for exactly this reason, so `instrDim()` asks the
+  gauge first and falls back to the unit string.
+
+**Owner directive mid-build (2026-07-28):** *"when mousing over something to have it show in the
+system scanner it should not highlight the object being moused over. the white box that now
+appears around objects the mouse is over is very annoying."* The first cut ringed the hovered
+object, per the merged text in #69. Removed — and `run_inspect` **pins its absence**, because the
+issue still asks for a glow and the next reader would put it back. `.instr-glow` / `.ckl-glow`
+stay: those mark something the player did not choose.
+
+**Still open:** #71 (the highlight system — instructor-driven and hover-driven bounding boxes) is
+untouched. It shares hit-target geometry with this, and `itemIdAt` / `tileFor` are the primitive
+it should consume rather than re-derive.
+
+**Gates:** `run_all` **25 runners** at baseline (new `run_inspect.js` 7/7 35/35); `board_check`
+**106/106**; `verify_e2e_ui` and `verify_manual_follow` unchanged and green.
+
+---
 
 ### 2026-07-28r — #240: mode- and lineup-dependent alarm classification  ✅
 

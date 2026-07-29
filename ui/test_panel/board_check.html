@@ -58,6 +58,7 @@
   <script src="../diagram/board/components/comp_tee.js"></script>
   <script src="../diagram/board/components/comp_cross.js"></script>
   <script src="../diagram/board/components/comp_indicator_panel.js"></script>
+  <script src="../diagram/board/pwr_board_inspect.js"></script>
   <script src="../diagram/board/pwr_board_wiring.js"></script>
   <script src="../diagram/board/pwr_board.js"></script>
 
@@ -390,6 +391,57 @@
         var su = P['imrobpq4a70/suction'], di = P['imrobpq4a70/discharge'];
         ck('geom: RCP suction on the loop-inlet (right) side, discharge on the outlet (#236)',
           !!su && !!di && su.x > di.x, su && di && (su.x + ' vs ' + di.x));
+      })();
+
+      // ---- inspection (#96): the board half of the inspection block -------------
+      // run_inspect.js gates the COPY (coverage, citations, no orphan keys). What
+      // needs a mounted board is the RESOLUTION: a DOM node → the item it belongs
+      // to, and the geometric fallback for tiles the pointer can never hit.
+      (function () {
+        var B = RD.PwrBoard;
+        var e1 = B.inspect('imrpk6qzjq8');                       // control-bank WITHDRAW
+        ck('inspect: a control describes itself', !!e1 && e1.inherited === false && /WITHDRAW/i.test(e1.title || ''),
+          e1 && e1.title);
+        var e2 = B.inspect('ims2jv3wydh');                       // "BORON CHEM" caption
+        ck('inspect: a caption inherits its card', !!e2 && e2.inherited === true && /Boron/i.test(e2.title || ''),
+          e2 && (e2.title + ' inherited=' + e2.inherited));
+        ck('inspect: an unknown id resolves to nothing', B.inspect('not-an-item') === null);
+
+        var btn = document.querySelector('[data-item="imrpk6qzjq8"] button');
+        ck('inspect: a click target resolves to its item', !!btn && B.itemIdFor(btn) === 'imrpk6qzjq8',
+          btn && B.itemIdFor(btn));
+
+        // The reactor vessel is deliberately click-through so the rod buttons it
+        // overlaps stay reachable — which is exactly why the DOM cannot resolve it
+        // and geometry has to. If the pointer-events ever come back, this pair says
+        // so rather than the inspection silently going quiet over the vessel.
+        var vt = B.tileFor('reactorVessel');
+        ck('inspect: the reactor vessel tile is click-through', !!vt && vt.style.pointerEvents === 'none',
+          vt && vt.style.pointerEvents);
+        (function () {
+          if (!vt) { ck('inspect: geometry resolves the reactor vessel', false, 'no tile'); return; }
+          var r = vt.getBoundingClientRect();
+          var id = B.itemIdAt(r.left + r.width / 2, r.top + r.height / 2);
+          ck('inspect: geometry resolves the reactor vessel', id === 'reactorVessel', id);
+        })();
+        // Paint order: a lifted control sitting on a card must win the hit test
+        // against the card underneath it.
+        (function () {
+          var t = B.tileFor('imrmtg3r8ez');                      // CHARGING AUTO, on the CHARGING card
+          if (!t) { ck('inspect: geometry honours paint order', false, 'no tile'); return; }
+          var r = t.getBoundingClientRect();
+          var id = B.itemIdAt(r.left + r.width / 2, r.top + r.height / 2);
+          ck('inspect: geometry honours paint order', id === 'imrmtg3r8ez', id);
+        })();
+        // Every control the instructor can point at is also inspectable — the two
+        // vocabularies name the same objects and must not drift apart.
+        (function () {
+          var miss = RD.PwrBoard.highlightLabels.filter(function (lab) {
+            var id = RD.PwrBoardDriver.controlLabelItem(lab);
+            return id && !B.inspect(id);
+          });
+          ck('inspect: every highlight target inspects', miss.length === 0, miss.join(','));
+        })();
       })();
 
       out.push('', nFail === 0 ? 'ALL ' + nPass + ' CHECKS PASS' : nFail + ' FAILURES / ' + (nPass + nFail));

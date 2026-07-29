@@ -37,6 +37,63 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-28s — #96 inspection system: the board explains itself, in two tiers
+
+**Decision: the System Scanner IS the inspection block — one surface, two tiers.** #96 and #69
+describe a new "inspection block"; the shipped Scanner (M8 §11) already occupied that role and
+that screen real estate. Building a second hover-driven explainer beside it would have split the
+copy and forced the player to learn which surface answers which hover. Collapsed it is the
+existing one-line hint; clicking it expands the same hover into the full account. **M8 §11 gains
+a §11.1** rather than being superseded.
+
+**Decision: board copy is DATA in the driver's half, chrome copy stays inline.** `pwr_board_inspect.js`
+holds 160 entries keyed by diagram item id, reached through `RD.PwrBoardDriver.inspectItem` —
+the same contract as `CONTROL_LABEL_MAP` / `PIPE_TEMP`, and for the same reason: the renderer
+holds no plant knowledge. Chrome (`data-scanner-hint` / `-detail` / `-doc` / `-sec`) keeps the
+inline mechanism, because a Play button has no plant meaning to look up. Gauge and alarm detail
+is **generated** from `RD.MANUAL` and the plant's protection table so it cannot drift from a
+retune — authoring range/lag/setpoints again would have been a second copy of numbers we already
+hold.
+
+**Decision: coverage by geometric containment, not by authoring every caption.** Board tiles are
+absolutely-positioned siblings (`buildStage`), so DOM ancestry cannot say which card a control
+belongs to. `boxOf()` derives it from the generated doc — smallest box containing the item's
+centre — and an item with no entry inherits its card, **flagged `inherited`** so the block can
+say it is describing the whole card. That flag matters: an unflagged group summary reads like a
+per-item answer, which is a quiet lie about coverage. Interactive items, components and
+indications are therefore required by gate to carry their **own** entry; only captions may inherit.
+
+**Decision: a geometric hit test alongside the DOM one.** `reactorVessel` is `pointer-events:none`
+so the rod buttons it overlaps stay clickable — meaning the DOM never sees a hover on the biggest
+object on the mimic. `RD.PwrBoard.itemIdAt(clientX, clientY)` resolves those by geometry, in the
+stage's own paint order (authored z, then authoring order). Used **only** when the DOM answers
+nothing, so a normal hover still resolves by DOM and pipes (which contain no items) stay silent.
+This is also the primitive **#71** should consume rather than re-derive.
+
+**Owner directive (2026-07-28), mid-build: no hover highlight.** *"when mousing over something to
+have it show in the system scanner it should not highlight the object being moused over. the white
+box that now appears around objects the mouse is over is very annoying."* The first cut drew a
+quiet ring, per the merged text in #69. Removed, and `run_inspect.js` **pins its absence** —
+the issue text still asks for a glow, so without the pin the next reader restores it in good
+faith. `.instr-glow` and `.ckl-glow` are untouched: they mark something the player did not choose,
+which is the case that needs a marker.
+
+**The gate exists because every failure mode here is silent.** `run_inspect.js` (7/7, 35 checks):
+orphaned keys, per-kind coverage, duplicate copy, and **manual citations resolved against the
+packed markdown** — which caught ten entries citing manual-03 section numbers while pointing at
+manuals 08/05 on its first run. `board_check.html` (95 → 106) pins the resolution half against a
+mounted board. The driver `selfTest` carries the same coverage assertions so a board change fails
+where the board is checked.
+
+**Two defects the suites could not have found — the app was driven.** (1) The Manual link was
+unclickable: reaching it meant crossing the block, whose own scanner hint re-rendered it and
+detached the button mid-click → the block now never describes itself. (2) The generated gauge text
+converted subcooling margin, a temperature *difference*, as an absolute (`−18 to 181 °F`), because
+the manual reference records its unit as `°C` → `instrDim()` asks the gauge's own `dim` first.
+Worth recording as a HR10 instance: both were green everywhere and wrong in the hand.
+
+---
+
 ## 2026-07-28r — #240 alarm condition processing: a cold plant is not a casualty
 
 `run_m4` **19/19 86 → 23/23 117**; everything else at baseline. Owner ruling 2026-07-28

@@ -38,6 +38,7 @@
     ctlVals: {},            // last value typed into each control-bar number input (id → value), so the shared bar doesn't revert on view switch
     manualSection: 'overview', // active section in the Operator's Manual overlay
     follow: null,           // { id, idx } — a procedure being followed in the Instructor block
+    inspectExpanded: false, // System Scanner expanded to its detail tier (#96); restored from localStorage
   };
   var service, latest = null, lastScrammed = false;
   // Operator automation now lives IN-STACK (layers/control/control_kernel.js);
@@ -121,10 +122,13 @@
       scram: 'REACTOR SCRAM', scramShort: 'SCRAM',
       initStates: [['hot_full_power', 'Hot Full Power'], ['50_percent', '50 % Power'], ['hot_zero_power', 'Hot Standby (Mode 3)'], ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
       defaultSeries: { power: true, tavg: true, pressure: true, sg_level: true },
+      // `instr` names the snapshot instrument the gauge reads — the key into the
+      // generated manual reference (RD.MANUAL indications) that the inspection
+      // block quotes range, lag and driven alarms from (#96).
       gauges: [
-        { id: 'power',   label: 'Reactor Power', lead: true, raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
-        { id: 'press',   label: 'Primary Pressure', raw: function (s) { return s.instruments.primary_pressure; }, dim: 'pressure', min: 0, max: 20.7, caution: 16.2, danger: 16.44, dp: 0 },
-        { id: 'tavg',    label: 'Avg Coolant Temp (Tavg)', raw: function (s) { return s.instruments.tavg; }, dim: 'temp', min: 250, max: 343, caution: 312, danger: 335, dp: 0,
+        { id: 'power',   label: 'Reactor Power', lead: true, instr: 'power_range', raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
+        { id: 'press',   label: 'Primary Pressure', instr: 'primary_pressure', raw: function (s) { return s.instruments.primary_pressure; }, dim: 'pressure', min: 0, max: 20.7, caution: 16.2, danger: 16.44, dp: 0 },
+        { id: 'tavg',    label: 'Avg Coolant Temp (Tavg)', instr: 'tavg', raw: function (s) { return s.instruments.tavg; }, dim: 'temp', min: 250, max: 343, caution: 312, danger: 335, dp: 0,
           // Auto-ranging: the operating band [250-343] when hot; a wide LOW-RANGE scale
           // [30-260] when cold (Mode 5 / heatup-cooldown) so one gauge covers both. 8°C
           // hysteresis around the operating minimum avoids flicker while crossing.
@@ -135,9 +139,9 @@
               ? { min: 30, max: 260, caution: null, danger: null, caution_lo: null, danger_lo: null, label: 'Avg Coolant Temp (Tavg) · LOW RANGE' }
               : { min: 250, max: 343, caution: 312, danger: 335, label: 'Avg Coolant Temp (Tavg)' };
           } },
-        { id: 'pzr',     label: 'Pressurizer Level (PZR)', raw: function (s) { return s.instruments.pzr_level; }, units: '%', min: 0, max: 100, caution_lo: 25, danger_lo: 12, dp: 0 },
-        { id: 'sg',      label: 'Steam Generator Level (SG)', raw: function (s) { return s.instruments.sg_level; }, units: '%', min: 0, max: 100, caution_lo: 30, danger_lo: 12, dp: 0 },
-        { id: 'subcool', label: 'Subcooling Margin', raw: function (s) { return s.instruments.subcooling_margin; }, dim: 'tempdiff', min: -28, max: 83, caution_lo: 11, danger_lo: 0, dp: 0 },
+        { id: 'pzr',     label: 'Pressurizer Level (PZR)', instr: 'pzr_level', raw: function (s) { return s.instruments.pzr_level; }, units: '%', min: 0, max: 100, caution_lo: 25, danger_lo: 12, dp: 0 },
+        { id: 'sg',      label: 'Steam Generator Level (SG)', instr: 'sg_level', raw: function (s) { return s.instruments.sg_level; }, units: '%', min: 0, max: 100, caution_lo: 30, danger_lo: 12, dp: 0 },
+        { id: 'subcool', label: 'Subcooling Margin', instr: 'subcooling_margin', raw: function (s) { return s.instruments.subcooling_margin; }, dim: 'tempdiff', min: -28, max: 83, caution_lo: 11, danger_lo: 0, dp: 0 },
       ],
       // `get` reads the INSTRUMENT (lag + noise + injectable sensor failures); `tru`
       // reads the same quantity from true_state. The chart picks between them per
@@ -347,6 +351,95 @@
     return 'safety_system';
   }
 
+  // ---- inspection copy for generated surfaces (#96) ------------------------
+  // Gauges and alarm tiles are built from data, so their detail text is built
+  // from the same data: the generated manual reference (RD.MANUAL — measures,
+  // range, lag, alarms per instrument) and the plant's protection table (alarm
+  // instrument, direction, setpoint). Authoring either by hand would be a second
+  // copy of numbers that already exist, and it would go stale on the next retune.
+  // Keyed by engine first, plant second: the RBMK ships as two engine keys
+  // (rbmk_pre / rbmk_post) over one plant's reference data.
+  function manualRef() { return (RD.MANUAL || {})[ui.engineKey] || (RD.MANUAL || {})[ui.plant] || null; }
+  function manualIndication(id) {
+    var m = manualRef(), list = m && m.indications;
+    if (!list) return null;
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+  // Does the packed manual for the active plant carry this document? Only the PWR
+  // manual set is written, so the citation link has to be conditional.
+  function manualDoc(id) {
+    var mm = (RD.MANUAL_MD || {})[ui.engineKey] || (RD.MANUAL_MD || {})[ui.plant];
+    return !!(mm && (mm.docs || []).some(function (d) { return d.id === id; }));
+  }
+  function alarmSpecs() {
+    var c = RD[String(ui.plant).toUpperCase() + '_CONTROL'];
+    return (c && c.protection && c.protection.alarms) || [];
+  }
+  function alarmSpec(id) {
+    var a = alarmSpecs();
+    for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return null;
+  }
+  // The dimension an instrument's value converts on, so a quoted range or setpoint
+  // follows the operator's US/SI selection instead of always reading SI.
+  //
+  // The GAUGE is asked first, because the manual reference records subcooling
+  // margin's unit as '°C' when it is a temperature DIFFERENCE — converting it as
+  // an absolute put the subcooling range at "−18 to 181 °F" instead of "−50 to
+  // 149". The gauge already carries the right dimension for exactly this reason.
+  function instrDim(instrId, u) {
+    var gs = prof().gauges || [];
+    for (var i = 0; i < gs.length; i++) if (gs[i].instr === instrId && gs[i].dim) return gs[i].dim;
+    return u === 'MPa' ? 'pressure' : u === '°C' ? 'temp' : u === 'kPa' ? 'vacuum' : null;
+  }
+  function fmtInstrValue(v, u, instrId) {
+    var dim = instrDim(instrId, u);
+    if (dim) return conv(v, dim).toFixed(dim === 'pressure' ? 0 : 1) + ' ' + unit(dim);
+    return String(v) + (u ? ' ' + u : '');
+  }
+  function gaugeDetail(g) {
+    var ind = g.instr ? manualIndication(g.instr) : null, bits = [];
+    if (ind) {
+      if (ind.measures) bits.push(ind.measures);
+      if (ind.range) bits.push('Indicating range ' + fmtInstrValue(ind.range[0], ind.unit, g.instr) +
+                               ' to ' + fmtInstrValue(ind.range[1], ind.unit, g.instr) + '.');
+      if (ind.lag_s) bits.push('About ' + ind.lag_s + ' s of instrument lag — it trails the plant.');
+      if (ind.alarms && ind.alarms.length) {
+        bits.push('Drives ' + ind.alarms.map(function (id) {
+          var sp = alarmSpec(id);
+          return sp ? (sp.label_industry || sp.label_learning || id) : id;
+        }).join(', ') + '.');
+      }
+    }
+    bits.push('The coloured bands are the alarm and trip setpoints. The needle reads the ' +
+              'instrument, which can be stuck, drifting or dead while the plant behind it is ' +
+              'fine — and the reverse (HR1).');
+    return bits.join(' ');
+  }
+  // Fuller account of an active alarm (M8 §11): what condition brought it in,
+  // sourced per-alarm from the plant's own protection table.
+  function alarmDetail(a) {
+    var sp = alarmSpec(a.id), out = [];
+    if (sp) {
+      var ind = manualIndication(sp.instrument);
+      var name = (ind && ind.name) || sp.instrument;
+      var dir = { high: 'rises to', low: 'falls to', is_true: 'goes true',
+                  is_open: 'shows open', is_false: 'goes false' }[sp.direction] || 'reaches';
+      out.push('Comes in when ' + name + ' ' + dir +
+               (sp.setpoint != null ? ' ' + fmtInstrValue(sp.setpoint, ind && ind.unit, sp.instrument) : '') + '.');
+      out.push('Annunciated off the INSTRUMENT: a failed transmitter can bring this in with the ' +
+               'plant healthy, or stay dark with the plant in trouble.');
+    }
+    if (a.base_priority) {
+      out.push('Normally classed ' + a.base_priority + ' — shown lower here because this condition ' +
+               'is the planned state of the plant in this mode or lineup.');
+    }
+    out.push('Click the tile to acknowledge; acknowledging silences the tile, it does not fix ' +
+             'anything. The response procedure is in Alarm Response.');
+    return out.join(' ');
+  }
+
   // ============================================================ build static DOM
   function buildGauges() {
     var strip = $('gaugeStrip'); strip.innerHTML = ''; gaugeHist = {}; gaugeTrend = {};
@@ -354,6 +447,14 @@
       var el = document.createElement('div');
       el.className = 'gauge' + (g.lead ? ' lead' : '');
       el.setAttribute('data-scanner-hint', g.label + ' — reads the instrument (lagged/noisy/fallible), not the true value.');
+      // Detail tier (#96): built from the generated manual reference rather than
+      // authored twice — range, lag and the alarms this instrument drives are
+      // already recorded there, per instrument, for every plant.
+      el.setAttribute('data-scanner-detail', gaugeDetail(g));
+      if (manualDoc('03_controls_and_indications')) {
+        el.setAttribute('data-scanner-doc', '03_controls_and_indications');
+        el.setAttribute('data-scanner-sec', '16.0');       // indication catalog
+      }
       el.innerHTML =
         '<div class="g-label"><span>' + g.label + '</span><span class="g-trend trend-flat" data-trend></span></div>' +
         '<div class="g-valrow">' +
@@ -807,8 +908,14 @@
       // do not realise a mode-defined change took effect, so the tile says what
       // it is NORMALLY classed as — the reworded label already says why.
       var prioTxt = a.priority + (a.base_priority ? ' (normally ' + a.base_priority + ')' : '');
+      // Inspection (#96): the tile carries both tiers. The summary is the tile's
+      // own facts; the detail says what condition brought it in, from the plant's
+      // protection table, and cites the alarm-response manual.
+      var docAttr = manualDoc('06_alarm_response')
+        ? ' data-scanner-doc="06_alarm_response" data-scanner-sec="3.0"' : '';
       return '<div class="alarm-tile ' + sev + unack + ' cat-' + cat + '" data-ack="' + a.id +
-        '" data-scanner-hint="' + esc(label) + ' — ' + prioTxt + ' alarm (' + cat + '), annunciated ' + stamp + ' sim time. Reads the instrument; click to acknowledge.">' +
+        '" data-scanner-hint="' + esc(label) + ' — ' + prioTxt + ' alarm (' + cat + '), annunciated ' + stamp + ' sim time. Reads the instrument; click to acknowledge."' +
+        ' data-scanner-detail="' + esc(alarmDetail(a)) + '"' + docAttr + '>' +
         '<div class="bar"></div><div class="body"><div class="label">' + label +
         '</div><div class="meta">' + cat + ' · ' + prioTxt + ' · ' + a.state.replace('active_', '') +
         (stamp ? ' · <span class="alarm-t mono">' + stamp + '</span>' : '') + '</div></div>' +
@@ -2211,7 +2318,7 @@
     // the Instructor card (its commentary carries the message); plant interlocks
     // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar.
     if (r && r.type === 'blocked') {
-      if (r.code === 'INTERLOCK' && r.message) $('scanner').innerHTML = '<strong>⛔ ' + mesc(r.message) + '</strong>';
+      if (r.code === 'INTERLOCK' && r.message) inspectFlash('⛔ Blocked', r.message);
       else { msgHold.bypass = true; setFocus('instructor'); }   // gate feedback jumps the dwell queue
       latest = service.assembleSnapshot(); render(latest);
     }
@@ -3030,15 +3137,147 @@
       if (service && service.checkpoints && service.checkpoints.length) toggleRewindPick();
     });
     document.querySelector('.chart-plot').addEventListener('click', rewindPickClick);
-    // System Scanner — hover OR tap (touch devices have no hover; a click on
-    // any hinted element also explains it, alongside whatever the click does).
-    function scannerShow(e) {
-      var el = e.target.closest('[data-scanner-hint]'); if (!el) return;
-      var hint = el.getAttribute('data-scanner-hint'), dash = hint.indexOf(' — ');
-      $('scanner').innerHTML = dash > -1 ? '<strong>' + hint.slice(0, dash) + '</strong>' + hint.slice(dash) : hint;
+    // System Scanner / inspection block — hover OR tap (touch devices have no
+    // hover; a click on any hinted element also explains it, alongside whatever
+    // the click does). See the inspect* helpers below for the two tiers.
+    document.body.addEventListener('mouseover', function (e) { inspectAt(e); });
+    document.body.addEventListener('click', function (e) { inspectAt(e); });
+    var sp = $('scannerPanel');
+    if (sp) sp.addEventListener('click', function (e) {
+      var m = e.target.closest && e.target.closest('[data-scan-doc]');
+      if (m) {
+        e.stopPropagation();                      // the link is not an expand click
+        openManualAt(m.getAttribute('data-scan-doc'), m.getAttribute('data-scan-sec'));
+        return;
+      }
+      inspectExpand();
+    });
+    inspectExpand(loadInspectExpanded());         // restore the operator's last choice
+  }
+
+  // ============================================ System Scanner / inspection (#96)
+  // One surface, two tiers. COLLAPSED it is the one-line summary of whatever the
+  // cursor is over; EXPANDED the same hover also gives the full description, says
+  // when the copy describes the enclosing card rather than the part, and links the
+  // manual section that documents the object.
+  //
+  // NO HOVER HIGHLIGHT (OWNER DIRECTIVE, 2026-07-28: "when mousing over something
+  // to have it show in the system scanner it should not highlight the object being
+  // moused over. the white box that now appears around objects the mouse is over is
+  // very annoying."). The first cut ringed the hovered object, per the merged issue
+  // text in #69. In use it is noise: the pointer is already the pointer, and a ring
+  // that follows it across a dense board flickers on every control you pass over.
+  // The Instructor's blue glow and the checklist's green preview glow stay — those
+  // point at something you did NOT choose, which is the case that needs a marker.
+  //
+  // Copy comes from two places, deliberately: the PWR board resolves through the
+  // driver's inspect registry (plant knowledge, keyed by diagram item id), while
+  // everything else in the shell carries `data-scanner-hint` / `-detail` inline —
+  // the M8 §11 mechanism, which needs no manifest for chrome that has no plant
+  // meaning. Nothing here reads a live value, so there is nothing to be stuck or
+  // misleading (HR1 does not apply to a surface with no instruments on it).
+  var inspectCur = null;        // the entry the block is describing
+
+  function loadInspectExpanded() {
+    try { return localStorage.getItem('rd_inspect_expanded') === '1'; } catch (e) { return false; }
+  }
+  // What is under the pointer, as an inspection entry (or null for "nothing to say").
+  function inspectResolve(e) {
+    var t = e.target;
+    if (!t || !t.closest) return null;
+    // The block never describes ITSELF. Two reasons, both found by driving it:
+    // pointing at the panel would wipe the description you are in the middle of
+    // reading, and — worse — the pointer has to cross the panel to reach the
+    // manual link, so re-rendering on the way there detached the button before
+    // the click landed. Hovering the block leaves it exactly as it is.
+    if (t.closest('#scannerPanel')) return null;
+    var board = (RD.PwrBoard && RD.PwrBoard.isMounted() && RD.PwrBoard.inspect) ? RD.PwrBoard : null;
+    if (board && t.closest('.pwr-board-stage')) {
+      // Tiles carry data-item, so any click target inside a control resolves to
+      // the control. The reactor vessel is pointer-events:none so the rod buttons
+      // beneath stay reachable (pwr_board buildStage) — over it the event lands on
+      // the bare stage, and geometry answers instead.
+      var id = board.itemIdFor(t) || board.itemIdAt(e.clientX, e.clientY);
+      var info = id ? board.inspect(id) : null;
+      if (info) {
+        return { key: 'item:' + (info.id || id), title: info.title, brief: info.brief,
+                 detail: info.detail, doc: info.doc, sec: info.sec,
+                 inherited: !!info.inherited };
+      }
     }
-    document.body.addEventListener('mouseover', scannerShow);
-    document.body.addEventListener('click', scannerShow);
+    var el = t.closest('[data-scanner-hint]');
+    if (!el) return null;
+    var hint = el.getAttribute('data-scanner-hint'), dash = hint.indexOf(' — ');
+    return { key: 'hint:' + hint,
+             title: dash > -1 ? hint.slice(0, dash) : null,
+             brief: dash > -1 ? hint.slice(dash + 3) : hint,
+             detail: el.getAttribute('data-scanner-detail') || null,
+             doc: el.getAttribute('data-scanner-doc') || null,
+             sec: el.getAttribute('data-scanner-sec') || null,
+             inherited: false };
+  }
+  function inspectAt(e) {
+    var res = inspectResolve(e);
+    // Persistence (§11): pointing at nothing keeps the last description on screen
+    // rather than blanking the block, so it stays readable while you act on it.
+    if (!res) return;
+    if (inspectCur && inspectCur.key === res.key) return;
+    inspectCur = res;
+    inspectRender();
+  }
+  function inspectRender() {
+    var box = $('scanner'); if (!box) return;
+    var it = inspectCur;
+    if (!it) { box.innerHTML = '<span class="idle">Hover or tap anything to see what it does.</span>'; return; }
+    var h = it.title ? '<strong>' + mesc(it.title) + '</strong> — ' + mesc(it.brief) : mesc(it.brief);
+    if (ui.inspectExpanded) {
+      if (it.detail) h += '<div class="scan-detail">' + mesc(it.detail) + '</div>';
+      var meta = [];
+      // An inherited entry describes the CARD, not the part under the cursor. Say
+      // so — a group summary read as a per-item one is a quiet lie about coverage.
+      if (it.inherited) meta.push('<span class="scan-hint">Describes this card as a whole.</span>');
+      if (it.doc) {
+        meta.push('<button class="scan-manual" data-scan-doc="' + esc(it.doc) + '" data-scan-sec="' +
+                  esc(it.sec || '') + '">📖 Manual' + (it.sec ? ' §' + mesc(it.sec) : '') + '</button>');
+      }
+      if (meta.length) h += '<div class="scan-meta">' + meta.join('') + '</div>';
+    }
+    box.innerHTML = h;
+  }
+  // A one-off message that takes over the block — an interlock refusing a command.
+  // It goes through the same state as a hover so expanding does not silently
+  // replace it with whatever was last inspected, and the next hover clears it.
+  function inspectFlash(title, msg) {
+    inspectCur = { key: 'flash:' + msg, title: title, brief: msg, detail: null, inherited: false };
+    inspectRender();
+  }
+  function inspectExpand(force) {
+    ui.inspectExpanded = force != null ? !!force : !ui.inspectExpanded;
+    var p = $('scannerPanel'); if (p) p.classList.toggle('expanded', ui.inspectExpanded);
+    var b = $('scannerToggle');
+    if (b) {
+      b.textContent = ui.inspectExpanded ? '⤡ Collapse' : '⤢ Expand';
+      b.setAttribute('aria-expanded', String(ui.inspectExpanded));
+    }
+    try { localStorage.setItem('rd_inspect_expanded', ui.inspectExpanded ? '1' : '0'); } catch (e) {}
+    inspectRender();
+  }
+  // Open the Operator's Manual on the document an inspection entry cites, and
+  // scroll to its numbered section. Headings render as "7.3 Letdown Orifices…",
+  // so the section number is the anchor — matched on a whole number segment so
+  // §9.1 cannot land on §9.10.
+  function openManualAt(docId, sec) {
+    if (docId) ui.manualSection = docId;
+    openManual();
+    if (!sec) return;
+    var content = $('manualContent'); if (!content) return;
+    var hs = content.querySelectorAll('h1,h2,h3,h4,h5');
+    for (var i = 0; i < hs.length; i++) {
+      var txt = hs[i].textContent.trim();
+      if (txt.indexOf(sec) !== 0) continue;
+      // whole-segment match: "9.1" must not land on "9.10 …"
+      if (/^\s*$/.test(txt.charAt(sec.length))) { hs[i].scrollIntoView({ block: 'start' }); return; }
+    }
   }
   function syncSeg(sel, val, attr) { document.querySelectorAll(sel).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-' + attr) === val); }); }
   // Physics Overlay control exists only in Learning (Education) mode — Realistic hides it entirely.

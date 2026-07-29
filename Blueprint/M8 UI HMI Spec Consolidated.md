@@ -725,6 +725,38 @@ sidesteps HR1 entirely — there is nothing here that can be stuck or misleading
 - **Register-aware (optional polish):** hint text may follow Learning vs Industry (fuller vs terser);
   not required for v1.
 
+### 11.1 Two tiers — the inspection block (#96, built 2026-07-28)
+
+The Scanner block **is** the inspection surface: clicking it expands it, and while expanded the
+same hover gives a fuller description instead of the one-liner.
+
+- **Collapsed** — `Title — one sentence`. What it is, what it does.
+- **Expanded** — adds the detail paragraph, a note when the copy describes the enclosing **card**
+  rather than the part under the cursor, and a **📖 Manual §x.y** button that opens the operator's
+  manual on the section that documents the object (matched on the section number, so §9.1 cannot
+  land on §9.10). The expanded/collapsed choice persists in `localStorage`.
+- **Where the copy lives.** Two sources, deliberately split:
+  - **The PWR board** resolves through `ui/diagram/board/pwr_board_inspect.js` (`RD.PwrBoardInspect`),
+    keyed by diagram item id and reached via the driver (`inspectItem`) — plant knowledge belongs
+    with the wiring, not the shell. An item with no entry of its own inherits the **smallest box
+    that geometrically contains it**: board tiles are absolutely-positioned siblings, so "which card
+    is this on?" is a geometry question, not a DOM one.
+  - **Everything else** carries `data-scanner-hint` / `data-scanner-detail` (+ optional
+    `data-scanner-doc` / `-sec`) inline — the mechanism above, unchanged. Gauge and alarm-tile detail
+    is **generated** from the manual reference and the plant's protection table, never authored twice.
+- **Hit targets.** `[data-item]` on the board; a **geometric fallback** covers tiles the pointer can
+  never reach (the reactor vessel is `pointer-events:none` so the rod buttons it overlaps stay
+  clickable). It honours the stage's paint order, so a lifted control beats the card beneath it.
+- **No hover highlight.** *(OWNER DIRECTIVE, 2026-07-28: "when mousing over something to have it show
+  in the system scanner it should not highlight the object being moused over. the white box that now
+  appears around objects the mouse is over is very annoying.")* The merged issue text (#69) asked for
+  a subtle glow on the hovered object; in use it is noise. `.instr-glow` (Instructor) and `.ckl-glow`
+  (checklist preview) stay — those mark something the player did **not** choose.
+- **The block never describes itself.** Hovering it would wipe the text being read, and the pointer
+  crossing it on the way to the Manual link detached the button mid-click.
+- **Gate:** `test/run_inspect.js` (orphaned keys, coverage, dead manual citations, duplicate copy)
+  plus resolution pins in `ui/test_panel/board_check.html`.
+
 Examples:
 
 ```
