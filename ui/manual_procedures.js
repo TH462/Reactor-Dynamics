@@ -29,7 +29,7 @@
   // ---- PWR -----------------------------------------------------------------
   var PWR = [
     {
-      id: 'pwr_heatup', category: 'startup',
+      id: 'pwr_heatup', category: 'startup', manual_ref: 'PWR-N03',
       title: 'Mode 5, Cold Shutdown → Mode 3, Hot Standby — plant heatup',
       purpose: 'Take the plant from cold shutdown to Hot Standby: start the Reactor Coolant Pumps, pressurize the primary, hand over the nuclear instruments, take the core critical for a low-power nuclear heatup, ride the temperature up to the no-load point, then settle back subcritical — hot, pressurized, and ready for a startup.',
       from: 'cold_shutdown',
@@ -104,7 +104,7 @@
       outcome: 'Plant at Mode 3, Hot Standby: hot, pressurized, subcritical with shutdown margin — ready for a reactor startup.',
     },
     {
-      id: 'pwr_startup', category: 'startup',
+      id: 'pwr_startup', category: 'startup', manual_ref: 'PWR-T03',
       title: 'Mode 3, Hot Standby → Mode 1, At Power — startup to power',
       purpose: 'Take the reactor from Mode 3, Hot Standby (subcritical, hot) through criticality (Mode 2, Startup), across the 5 % boundary into Mode 1, At Power, and put the turbine on line — the full startup. You will use the 1/M (inverse-count) plot to predict criticality, hand indication from the Source Range to the Intermediate Range, and watch the Startup Rate (SUR) and reactor period on the way up.',
       from: 'hot_zero_power',
@@ -212,7 +212,7 @@
       outcome: 'Reactor critical and in Mode 1, At Power with the generator on line; ready to continue the power ascension.',
     },
     {
-      id: 'pwr_raise_power', category: 'power',
+      id: 'pwr_raise_power', category: 'power', manual_ref: 'PWR-N07',
       title: 'Mode 1, At Power — raise power',
       purpose: 'Increase reactor power and electrical output by withdrawing rods a little and letting the turbine take more load. Rods lead, turbine follows — the PWR two-step every crew drills until it is boring.',
       from: '50_percent',
@@ -229,7 +229,7 @@
       outcome: 'Power and electrical output settle at a higher point.',
     },
     {
-      id: 'pwr_lower_power', category: 'power',
+      id: 'pwr_lower_power', category: 'power', manual_ref: 'PWR-N08',
       title: 'Mode 1, At Power — lower power',
       purpose: 'Reduce reactor power and load by inserting rods and reducing turbine demand. Turbine leads down, rods trim — the two-step in reverse.',
       from: 'hot_full_power',
@@ -245,7 +245,7 @@
       outcome: 'Power settles at a lower point; the plant remains stable.',
     },
     {
-      id: 'pwr_pressure_control', category: 'control',
+      id: 'pwr_pressure_control', category: 'control', manual_ref: 'PWR-N10',
       title: 'Mode 1, At Power — pressurizer pressure control',
       purpose: 'Hold primary pressure at ≈ 2235 psi (15.41 MPa) using the Pressurizer (PZR) heaters (raise) and spray (lower). Pressure is the subcooling guarantee — lose it, and the primary flirts with boiling.',
       from: 'hot_full_power',
@@ -262,7 +262,7 @@
       outcome: 'Primary pressure controllable via spray (down) and heaters (up).',
     },
     {
-      id: 'pwr_sg_level', category: 'control',
+      id: 'pwr_sg_level', category: 'control', manual_ref: 'PWR-N12',
       title: 'Mode 1, At Power — steam generator level control',
       purpose: 'Control Steam Generator (SG) water level with the Feed Pump. The SGs are the heat sink; their level is its fuel gauge. Normally the three-element feedwater controller (STEAM GEN FEED → AUTO on the board) holds level for you; this procedure is the manual skill underneath it.',
       from: 'hot_full_power',
@@ -280,7 +280,7 @@
       outcome: 'SG level responds to the feed pump as expected; the three-element controller is the normal driver.',
     },
     {
-      id: 'pwr_shutdown', category: 'shutdown',
+      id: 'pwr_shutdown', category: 'shutdown', manual_ref: 'PWR-N14',
       title: 'Mode 1, At Power → Mode 3, Hot Standby — normal shutdown',
       purpose: 'Shut the reactor down from Mode 1, At Power to Mode 3, Hot Standby: take the turbine off load, then insert the rods. Decay heat continues and must keep being removed.',
       from: 'hot_full_power',
@@ -296,7 +296,7 @@
       outcome: 'Reactor shut down at Mode 3, Hot Standby; decay heat being removed.',
     },
     {
-      id: 'pwr_loss_of_feedwater', category: 'emergency',
+      id: 'pwr_loss_of_feedwater', category: 'emergency', manual_ref: 'PWR-E01',
       title: 'Mode 1 emergency — loss of main feedwater',
       purpose: 'Main feedwater is gone and the Steam Generators (SG) are drying out. Trip the reactor and establish Auxiliary Feedwater (AFW) as the heat sink.',
       from: 'hot_full_power',
@@ -316,7 +316,7 @@
       outcome: 'Reactor tripped, secondary heat sink restored on AFW, core safe.',
     },
     {
-      id: 'pwr_rcp_trip', category: 'emergency',
+      id: 'pwr_rcp_trip', category: 'emergency', manual_ref: 'PWR-E02',
       title: 'Mode 1 emergency — RCP trip / loss of flow',
       purpose: 'A Reactor Coolant Pump (RCP) has tripped and coolant flow is falling. Confirm the protective trip and stabilize.',
       from: 'hot_full_power',
@@ -339,7 +339,7 @@
       outcome: 'Reactor safely shut down after loss of forced flow.',
     },
     {
-      id: 'pwr_stuck_porv', category: 'emergency',
+      id: 'pwr_stuck_porv', category: 'emergency', manual_ref: 'PWR-E07',
       title: 'Mode 1 emergency — stuck-open PORV recover (small-break LOCA)',
       purpose: 'The Power-Operated Relief Valve (PORV) is stuck open — a small-break Loss-Of-Coolant Accident (LOCA) — while its indicator may read closed. Diagnose on the subcooling margin and ISOLATE with the block valve. This is the TMI recovery that was missed in 1979.',
       from: 'hot_full_power',
@@ -359,7 +359,7 @@
       outcome: 'Leak isolated with the block valve; core stays covered — the recovery TMI missed.',
     },
     {
-      id: 'pwr_tmi', category: 'accident', narrative: true,
+      id: 'pwr_tmi', category: 'accident', narrative: true, manual_ref: 'PWR-E08',
       title: 'Three Mile Island (1979) — an accident of information',
       purpose: 'The famous accident where an indicator said a valve was shut while it was stuck open — so the crew throttled the very injection that would have saved the core.',
       from: 'hot_full_power',

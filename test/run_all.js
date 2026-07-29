@@ -129,6 +129,15 @@ var BASELINES = {
   // Check count = every field name on either side, so adding a true_state field moves
   // this baseline — the intended nudge to document it in the same change.
   'run_contract.js':       { code: 0, score: '84checks 0failed' },
+  // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
+  // procedures and the 10 executable checklists that run them. They referenced each
+  // other NOWHERE until now, so nothing could answer "which documented procedures can
+  // actually be run?" or "does this checklist still match its procedure?". Checks the
+  // manual_ref resolves, is unique, and that no PWR-xxx cross-reference dangles.
+  // COVERAGE (47 procedures with no checklist) is REPORTED, not enforced — the number
+  // is the work item, and a gate that failed on it would sit permanently red. Watch
+  // that line, not just the score.
+  'run_procdocs.js':       { code: 0, score: '23checks 0failed' },
   // New 2026-07-29 — the manual quotes US customary first with SI in parentheses
   // (owner request). This re-derives the US value from the SI value in every pair
   // and fails on bad arithmetic, on an SI quantity with no US partner, and on a
