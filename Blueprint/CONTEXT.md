@@ -218,8 +218,9 @@ ruling and move on. Then:
   an agent's own preference written in authoritative voice ("owner ruling:", "accepted — do not
   re-fix", "by design") becomes indistinguishable from the owner's, and the next agent obeys it.
   This has already happened at least twice: the P-9 "by design" line (#216), and
-  `PWR_SHIP_REVIEW_PLAN.md`'s "accepted — do not re-fix them", whose own header reads *"Created:
-  2026-07-19 (Fable) · Executor: Opus"* — one agent instructing another.
+  `PWR_SHIP_REVIEW_PLAN.md`'s "accepted — do not re-fix them", whose own header read *"Created:
+  2026-07-19 (Fable) · Executor: Opus"* — one agent instructing another. (That plan was retired
+  2026-07-29 once executed; `Blueprint/RETIRED.md` says how to read it again.)
   - Format: **`OWNER RULING (YYYY-MM-DD): "<their words>"`**. Anything else is *your*
     recommendation — label it as yours, including when the owner approved it: write
     *"Claude's reasoning, owner-approved 2026-07-27 ('Do as you suggest')"*, not "ruled".

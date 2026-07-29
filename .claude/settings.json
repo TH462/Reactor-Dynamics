@@ -1,4 +1,14 @@
 {
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          { "type": "command", "command": "node tools/hook_repack_manuals.js" }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(node test/run_all.js)",

@@ -24,11 +24,15 @@ docs.
 > cost a set of manual edits their attribution. A **branch does not isolate anything**;
 > only a separate working directory does.
 >
-> | Working tree | Branch |
-> |---|---|
-> | `C:\grok_build\Reactor_Dynamics` | `develop` — the primary tree |
-> | `C:\grok_build\RD_docs` | `docs` — second agent |
+> | Working tree | Branch | |
+> |---|---|---|
+> | `C:\grok_build\Reactor_Dynamics` | `develop` | **the main working branch — use this unless it is taken** |
+> | `C:\grok_build\RD_workbench` | `workbench` | the overflow lane, for when a second agent is already on `develop` |
 >
+> - **`workbench` is not a feature branch and has no standing content.** It exists only so a
+>   second agent has somewhere to work. **Fast-forward it to `develop` before you start**
+>   (`cd C:/grok_build/RD_workbench && git merge --ff-only develop`) — starting from a stale
+>   lane is how you get a merge conflict you did not have to have.
 > - **First thing in a session: `git worktree list` and `git status`.** Unexplained
 >   modified files that are not yours mean someone else is working — do not commit them,
 >   and say so to the owner.
@@ -91,7 +95,9 @@ docs.
 > 2. **`Diagnostic/`, `BUILD_DECISIONS.md` and `Manuals/` are RECORD, not policy** — they say
 >    what happened and why, not what you must do. Read them for evidence; don't obey them.
 > 3. **Plans expire when executed.** A phased work order stops binding the moment it is done
->    (`PWR_SHIP_REVIEW_PLAN.md` is the worked example — it governed for a week after finishing).
+>    (`PWR_SHIP_REVIEW_PLAN.md` was the worked example — it governed for a week after finishing,
+>    and was retired 2026-07-29; see `Blueprint/RETIRED.md`, which is where deleted documents
+>    are indexed so you can find one you did not know existed).
 > 4. **A directive with no date + verbatim owner quote is advisory.** Weigh it, say you did,
 >    move on. See `CONTEXT.md` §3 for the format and why.
 >
