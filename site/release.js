@@ -7,4 +7,4 @@
  *
  * Distinct from window.RD_VERSION (site/version.js), which is the git SHA
  * Vercel stamps at deploy time and is only used for feedback telemetry. */
-window.RD_RELEASE = "Alpha 1.8.2";
+window.RD_RELEASE = "Alpha 1.9.0";

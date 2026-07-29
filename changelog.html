@@ -68,6 +68,30 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>The board explains itself, and the manual matches the plant</h2>
+      <span class="log-ver mono">Alpha 1.9.0</span>
+      <time class="log-date mono" datetime="2026-07-29">29 July 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>Point at anything on the board and it tells you what it is.</strong> The System Scanner names the item and describes it in one line; click the block to expand it and the same hover gives the full account &mdash; how it behaves, what it is wired to, and the mistake it invites. Covers every card, control, component, indication and alarm tile.</li>
+      <li><span class="log-tag added">Added</span><strong>Every expanded description links into the manual</strong> at the exact section documenting that item.</li>
+      <li><span class="log-tag added">Added</span><strong>The manual now reads in US customary units first,</strong> with SI in parentheses &mdash; 2235&nbsp;psi (15.41&nbsp;MPa), 579&nbsp;&deg;F (304&nbsp;&deg;C).</li>
+      <li><span class="log-tag added">Added</span><strong>A new manual chapter on the simulation itself</strong> &mdash; what the physics model computes, what it simplifies, and what it does not model at all, so an indication you expect and cannot find is understood as absent rather than hidden.</li>
+      <li><span class="log-tag added">Added</span><strong>Two annunciators that were modelled but undocumented</strong> now have response procedures: low coolant temperature (P&#8209;12) and reactor coolant pump cavitation.</li>
+      <li><span class="log-tag changed">Changed</span><strong>A cold plant no longer annunciates its own lineup as a casualty.</strong> A Cold Shutdown start used to open with five standing alarms, two of them critical &mdash; but a cold plant <em>is</em> cold and depressurized and its pumps <em>are</em> stopped. Those now read as status and say why ("expected, plant depressurized"; "Reactor Coolant Pumps Secured"), while still showing their real readings. Hot Standby is deliberately excluded, and pumps lost to a trip still read as a trip in any mode.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Status annunciators arrive already acknowledged</strong> &mdash; they report a lineup, not a demand for action. If the condition stops being the planned state of the plant, the alarm escalates and un&#8209;acknowledges itself.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Partial core uncovery now damages the core.</strong> Holding the water level below the top of the fuel overheats the exposed cladding on a Three&nbsp;Mile&nbsp;Island timescale; refloading promptly still saves it.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The manual documents the plant you are actually operating.</strong> A full audit against the live simulator: the reactor trip on turbine trip above 50&nbsp;% power was never written down, Mode&nbsp;4 and Mode&nbsp;5 were still described as unavailable long after the full cooldown shipped, and two board controls were missing entirely.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Taking the generator off line no longer trips the reactor.</strong> The OFF position of the generator selector called the turbine&#8209;trip path, so a planned disconnect above 50&nbsp;% power scrammed the plant instantly &mdash; and one during a heatup latched a trip that fired the moment power later crossed 50&nbsp;%.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The pipes on the diagram follow the plant.</strong> Flow animation now reflects what is actually moving and how fast, rather than running whenever the line existed.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Decay heat is always present and always tracked</strong>, and turbine load&#8209;follow draws total thermal output rather than neutron power.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Alarms are timestamped</strong> with the simulated time they came in, so the order of a cascade can be read off the panel afterwards.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The trend tiles open with a full three&#8209;minute line already drawn</strong> instead of a stub against the right&#8209;hand edge.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>Steady gauges and a smooth trend line</h2>
       <span class="log-ver mono">Alpha 1.8.2</span>
       <time class="log-date mono" datetime="2026-07-28">28 July 2026</time>

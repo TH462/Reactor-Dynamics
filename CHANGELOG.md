@@ -13,6 +13,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.9.0] — 2026-07-29
+
 ### Changed
 - **The manual now reads in both unit systems — US customary first, SI in parentheses.**
   `2235 psi (15.41 MPa)`, `579.2 °F (304 °C)`, `28.5 inHg (96.5 kPa)`, across all 14 operator

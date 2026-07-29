@@ -33,8 +33,12 @@ Diagnostic/manual-audit.txt
 # for going public.
 inbox/
 
-# Coding-agent instructions — local only, not published (public overview is README.md)
-CLAUDE.md
+# NOTE: CLAUDE.md is TRACKED (2026-07-29). It was ignored here until a `git worktree`
+# gave a second agent a checkout with no orientation document at all, and the copy made
+# to fix that immediately became a second source of truth. Tracking it buys version
+# history for the instructions (so a rule that turns out to be wrong can be dated),
+# propagation to every worktree, and a backup. It contains no secrets; it will be
+# visible when the repo goes public, which is normal for the file.
 
 # Personal go-public checklist — local only, not published
 GO_PUBLIC_CHECKLIST.md
