@@ -140,7 +140,7 @@
       'Frame around the shutdown-bank step readout. See the Shutdown Bank card for what the number ' +
       'should read.', CI, '3.3'),
 
-    bdRodAuto: e('ROD AUTO',
+    ims5glucngg: e('ROD AUTO',
       'Hands the control bank to the Tavg automation channel — rods hold average coolant temperature.',
       'Engaging captures the CURRENT indicated Tavg as the reference and then holds it with variable ' +
       'rod speed inside a deadband of about ±0.8 °C. That capture is the trap: engage it while Tavg ' +
@@ -291,12 +291,12 @@
       'proxy and it can lie: during a LOCA a void in the hot leg pushes water INTO the pressurizer, so ' +
       'level rises while the plant is emptying. That is the TMI-2 trap. The water colour tracks live ' +
       'saturation temperature at RCS pressure.', CI, '5.4'),
-    bdPzrTempVal: e('Pressurizer Temperature',
+    ims5gq44zgr: e('Pressurizer Temperature',
       'Saturation temperature at current RCS pressure — how hot the pressurizer water is.',
       'Not a separate measurement: the pressurizer sits at saturation, so its temperature IS the ' +
       'saturation temperature of the pressure you are holding. It falls as the plant depressurizes ' +
       'and is the same source that colours the pressurizer water on the mimic.', CI, '5.0'),
-    bdPzrHtrVal: e('Heater Power',
+    ims5gprvl7n: e('Heater Power',
       'Live heater output as a percentage — what the heaters are actually doing.',
       'This is the indication half of the heater panel: under AUTO it shows the controller\'s demand, ' +
       'under MANUAL it shows your setting. Read it against pressure trend to see whether the heaters ' +
@@ -869,8 +869,8 @@
   // the card, which is the right answer.)
   var ALIASES = {
     imrshokxy4u: 'imro6rdwwdn',         // "REACTIVITY" caption on the mimic → the reactivity readout
-    bdPzrTempLbl: 'bdPzrTempVal',       // "PZR TEMP" caption beside the pressurizer (EXTRA_ITEMS)
-    bdPzrHtrLbl: 'bdPzrHtrVal'          // "HTR PWR" caption beside the pressurizer (EXTRA_ITEMS)
+    ims5gp0aicx: 'ims5gq44zgr',         // "PZR TEMP" caption beside the pressurizer
+    ims5gpdv96m: 'ims5gprvl7n'          // "HTR PWR" caption beside the pressurizer
   };
 
   // ================================================================ containment

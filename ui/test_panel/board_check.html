@@ -190,10 +190,10 @@
       // ROD AUTO toggle (EXTRA_ITEMS, #237) — the rods_tavg channel's board control.
       // The toggle reads the channel state off the RENDERED snapshot (SR DET pattern),
       // so re-render between clicks — in the app every broadcast does this.
-      clickBtn('bdRodAuto'); ticks(2);
+      clickBtn('ims5glucngg'); ticks(2);
       ck('func: ROD AUTO engages rods_tavg', !!(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
       RD.PwrBoard.render(svc.assembleSnapshot());
-      clickBtn('bdRodAuto'); ticks(2);
+      clickBtn('ims5glucngg'); ticks(2);
       ck('func: ROD AUTO again disengages rods_tavg', !(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
 
       // rods: the WITHDRAW/INSERT buttons are momentary (tap-or-hold). A quick TAP
@@ -346,10 +346,10 @@
       // PZR indication pair (EXTRA_ITEMS, #237): temperature = saturation at RCS
       // pressure (~653 °F at operating pressure), heater power = live actual output.
       (function () {
-        var tt = document.querySelector('[data-item="bdPzrTempVal"]');
+        var tt = document.querySelector('[data-item="ims5gq44zgr"]');
         var tv = tt ? parseInt((tt.textContent.match(/\d+/) || ['0'])[0], 10) : 0;
         ck('readout: PZR TEMP reads saturation (600-700 F at power)', tv > 600 && tv < 700, tt && tt.textContent);
-        var ht = document.querySelector('[data-item="bdPzrHtrVal"]');
+        var ht = document.querySelector('[data-item="ims5gprvl7n"]');
         ck('readout: PZR HTR PWR live indication numeric', !!ht && /\d/.test(ht.textContent), ht && ht.textContent);
       })();
 

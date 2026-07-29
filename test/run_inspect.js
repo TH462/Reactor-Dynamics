@@ -57,8 +57,10 @@ var EXTRA_IDS = (function () {
   var src = read('ui/diagram/board/pwr_board_wiring.js');
   var from = src.indexOf('var EXTRA_ITEMS');
   // …to the end of that array literal only — the file goes on to declare other
-  // `{ id: … }` lists (the blockable trips), which are not board tiles.
-  var block = src.slice(from, src.indexOf('\n  ];', from));
+  // `{ id: … }` lists (the blockable trips), which are not board tiles. Matching
+  // the first `];` (not a line-anchored one) keeps this right when the array is
+  // EMPTY and written inline, which is what it is today.
+  var block = src.slice(from, src.indexOf('];', from) + 2);
   var out = {}, m, re = /\{\s*id:\s*'([^']+)'/g;
   while ((m = re.exec(block)) !== null) out[m[1]] = true;
   return out;

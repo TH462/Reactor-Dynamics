@@ -52,6 +52,12 @@
   background: #10161d;
   /* Inactive = grey; the authored item color (--bd-color) is the ACTIVE-state color. */
   border: 1px solid #2f3f4b; color: #7c93a4;
+  /* The authored box IS the button — give the label the whole of it. The browser's
+     default 1px/6px button padding stole 12 px, which is why labels the diagram
+     sizes to fit (ROD AUTO, 1/M PLOT, FOLLOW) wrapped onto two lines here while
+     reading on one line in the builder. Labels with no space to break at (WITHDRAW)
+     were being squeezed instead. TRIP BLOCKS still wraps — it is authored to. */
+  padding: 1px 2px;
   letter-spacing: 0.12em; border-radius: 4px; cursor: pointer;
   font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;

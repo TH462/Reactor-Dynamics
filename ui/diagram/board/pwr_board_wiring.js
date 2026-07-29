@@ -222,7 +222,7 @@
     // Rod control AUTO (rods_tavg channel) — single toggle, lit when engaged. The channel
     // captures the CURRENT indicated Tavg as its reference on engage (control layer), so
     // the procedure guidance "engage it while Tavg is where you want it" is load-bearing.
-    bdRodAuto: { press: function (s) { var c = chan(s, 'rods_tavg'); cmd({ action: 'set_auto_channel', channel_id: 'rods_tavg', engaged: !(c && c.engaged) }); }, active: function (s) { var c = chan(s, 'rods_tavg'); return !!(c && c.engaged); } },
+    ims5glucngg: { press: function (s) { var c = chan(s, 'rods_tavg'); cmd({ action: 'set_auto_channel', channel_id: 'rods_tavg', engaged: !(c && c.engaged) }); }, active: function (s) { var c = chan(s, 'rods_tavg'); return !!(c && c.engaged); } },
     imrqp6com2b: { press: function () { cmd({ action: 'set_auto_channel', channel_id: 'boron_conc', engaged: true }); }, active: function (s) { var c = chan(s, 'boron_conc'); return !!(c && c.engaged); } },
     imrqp6avzkw: { press: function () { cmd({ action: 'set_auto_channel', channel_id: 'boron_conc', engaged: false }); }, active: function (s) { var c = chan(s, 'boron_conc'); return !(c && c.engaged); } },
     // --- Pressurizer spray: AUTO / MANUAL / OFF ---
@@ -309,24 +309,15 @@
   // analyzer splice are all either authored correctly now or refer to items V2 dropped.
   // Applying them against the V2 doc would MOVE things (the SCRAM patch forced top=335;
   // V2 authors it at 255), so they are deleted rather than kept "just in case".
-  var EXTRA_ITEMS = [
-    // ROD AUTO (#237): the rods_tavg automation channel had NO control anywhere in the
-    // shipped UI — its only AUTO/MAN buttons lived in the retired synoptic, while the
-    // pwr_rod_auto mission and two manual procedures directed players at the removed
-    // Automate tab. One toggle (SR DET pattern): lit = channel engaged; press = take
-    // it the other way. Sits in the strip freed by the TRIP BLOCKS resize (DOC_PATCHES).
-    { id: 'bdRodAuto', kind: 'button',
-      name: 'Rod Tavg auto channel toggle  ·  sim: set_auto_channel rods_tavg {engaged:!engaged}; lit ← channel engaged',
-      left: 645, top: 405, label: 'ROD AUTO', width: 85, height: 20, color: '#8ba4b6', fontSize: 11 },
-    // Pressurizer temperature + live heater power, right of the vessel's heater zone
-    // (#237, owner): the heater panel's % box reflects live power but reads as a
-    // command under AUTO; this is the INDICATION. Temp = saturation at RCS pressure —
-    // the same source that colors the pressurizer's water, so they always agree.
-    { id: 'bdPzrTempLbl', kind: 'text', name: '', left: 1118, top: 402, text: 'PZR TEMP', fontSize: 11, color: '#9fb3c4', weight: 600, mono: true },
-    { id: 'bdPzrTempVal', kind: 'value', name: 'PZR temperature  ·  sim: satTempC(in.primary_pressure) °C→°F', left: 1170, top: 416, value: '653', unit: 'F', color: '#5aad7c', fontSize: 14, rAnchor: true },
-    { id: 'bdPzrHtrLbl', kind: 'text', name: '', left: 1118, top: 436, text: 'HTR PWR', fontSize: 11, color: '#9fb3c4', weight: 600, mono: true },
-    { id: 'bdPzrHtrVal', kind: 'value', name: 'PZR heater LIVE power  ·  sim: cs.heater_power_pct (actual, auto or manual)', left: 1170, top: 450, value: '25', unit: '%', color: '#5aad7c', fontSize: 14, rAnchor: true }
-  ];
+  //   bdRodAuto     → authored as ims5glucngg (2026-07-28t re-export: the owner moved the
+  //       rod-card buttons, and ROD AUTO / TRIP BLOCKS now sit as an authored row under the
+  //       CONTROL and SHUTDOWN boxes, which were shortened to make room)
+  //   bdPzrTempLbl/Val, bdPzrHtrLbl/Val → authored as ims5gp0aicx / ims5gq44zgr and
+  //       ims5gpdv96m / ims5gprvl7n, beside the pressurizer where the injected pair sat
+  //
+  // EMPTY, and the emptier it stays the better: a driver-injected tile is invisible to the
+  // builder, so it cannot be moved by the person who owns the layout.
+  var EXTRA_ITEMS = [];
 
   // ================================================================ NUMBERS (editable)
   // set(v): issue command from the typed value; get(s): reflect current sim state.
@@ -395,8 +386,8 @@
     // PZR temperature + live heater power (EXTRA_ITEMS pair, #237). Heater reads the
     // engine's ACTUAL output (heater_power_frac) — under AUTO this is the proportional
     // controller's live demand, which the panel's editable % box shows greyed.
-    bdPzrTempVal: function (s) { return r0(C2F(satTempC(IN(s).primary_pressure))); },
-    bdPzrHtrVal: function (s) { return r0(CS(s).heater_power_pct || 0); },
+    ims5gq44zgr: function (s) { return r0(C2F(satTempC(IN(s).primary_pressure))); },
+    ims5gprvl7n: function (s) { return r0(CS(s).heater_power_pct || 0); },
     imro6qpci2d: function (s) { return r0(Cd2F(IN(s).thot - IN(s).tcold)); },                           // dTavg °F
     imro6qsncb9: function (s) { var v = IN(s).startup_rate || 0; return (v >= 0 ? '+' : '') + v.toFixed(2); }, // SUR DPM
     imro6qutiht: function (s) {                                                                          // source range cps (amber at SR→IR handoff)
@@ -1031,7 +1022,7 @@
     'Turbine — Connect Grid': 'imro8k5pzem',
     // The rods_tavg channel toggle (EXTRA_ITEMS, #237) — the control the old
     // "Automate → Reactor" directives now point at.
-    'Rod AUTO': 'bdRodAuto'
+    'Rod AUTO': 'ims5glucngg'
   };
   // The board item the maintenance tag hangs over (TMI-2 AFW discharge valve).
   var TAG_ITEM = 'imrpp2g2m8k';
@@ -1119,10 +1110,10 @@
       imrzmlyafa3: { props: { left: 1416, width: 72 } },
       // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
       imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
-      // TRIP BLOCKS resized 40 → 30 tall and dropped to 425 (matching the rod-card
-      // button height) to free the strip under the SHUTDOWN box for the ROD AUTO
-      // toggle (EXTRA_ITEMS, #237).
-      imrsk4xz2dm: { props: { top: 425, height: 30 } },
+      // (TRIP BLOCKS carried a top/height patch here until the 2026-07-28t re-export —
+      // the builder now authors it at 425/30, so the patch was pinning what the diagram
+      // already says. Dropped rather than kept: a patch that agrees with the doc is a
+      // silent trap the day the doc changes.)
       // STEAM DUMP card: at ≥1000 psi the right-anchored STEAM PRESS value grew left
       // into its caption ("STEAM PRESS1194 psi", #235 comment / #237). Move the value
       // anchor to the panel edge (matching its 1845-1855 siblings) and the caption
@@ -1419,8 +1410,7 @@
         if (!I) return 'RD.PwrBoardInspect not loaded';
         var live = {};
         (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) { live[it.id] = 1; });
-        (EXTRA_ITEMS || []).forEach(function (it) { live[it.id] = 1; });
-        ['bdPzrTempVal', 'bdPzrHtrVal'].forEach(function (k) { live[k] = 1; });   // authored EXTRA_ITEMS values
+        (EXTRA_ITEMS || []).forEach(function (it) { live[it.id] = 1; });   // empty today — see EXTRA_ITEMS
         var miss = I.ids().filter(function (k) { return !live[k]; });
         var al = I.aliases();
         Object.keys(al).forEach(function (k) { if (!live[k]) miss.push('alias ' + k); });
