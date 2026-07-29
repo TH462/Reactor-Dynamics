@@ -118,7 +118,11 @@ var BASELINES = {
   // `Blueprint/` as well as source, so **writing up your change moves the score after you
   // ran the gate**. Quote an owner ruling in the tuning log and the count goes up. Run
   // run_hardrules once more AFTER the docs are written, not just after the code.
-  'run_hardrules.js':      { code: 0, score: '18checks 0failed' },
+  // 18 → 20 checks (#252): two new OWNER RULING citations in CLAUDE.md — the
+  // warn-and-ask worktree occupancy check and the First Principles section. Both are
+  // CLAUDE.md-only process rules with no code behind them, which is this comment's
+  // point exactly: prose moves this score.
+  'run_hardrules.js':      { code: 0, score: '20checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

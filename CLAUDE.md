@@ -27,7 +27,33 @@ docs.
 > the assumption, move on. Full guidance, including the cases where it genuinely blocks:
 > `Blueprint/SOP.md` §5.
 
-> **You may not be the only agent in this repo. Check before you edit.** Two sessions
+> **The First Principles section — one optional paragraph, unhedged** *(OWNER RULING,
+> 2026-07-29: "I would label it the 'First Principles' section. The start and end should be
+> marked. I like your suggestion.")*. Any response may carry **one** delimited paragraph giving
+> the raw read: the blunt judgement, the disagreement with the framing of the request, the thing
+> the body would otherwise have softened into a menu of options.
+>
+> ```
+> **— FIRST PRINCIPLES —**
+> <one paragraph>
+> **— END FIRST PRINCIPLES —**
+> ```
+>
+> **Unhedged, not unaccountable.** What suppresses the blunt read is not a restriction, it is
+> habit — hedging, deferring to documents, ranking the cheap option first — so that is what the
+> section is exempt from. It is **not** exempt from the rules: **HR12 still binds** (an
+> unmeasured claim must say it is unmeasured; a rules-free zone for confident plant-dynamics
+> claims is precisely what #205 and #220 are the record of), so does HR11, no fabricated
+> sources, and it can never authorise an action or excuse a gate — it is commentary. **Optional
+> and never padded** — a slot filled every turn out of obligation trains the owner to skip it —
+> and it does not license a hedged body. **Most common trigger, the ranking disclosure:** when
+> your recommendation is the cheap or safe option and a higher-fidelity one exists that you are
+> *not* recommending, say which you would pick if fidelity were the only criterion. That is the
+> live miss it was written off (#251 — a fix that worked by tuning two errors to cancel,
+> recommended first: *"I dont want to fudge anything if i can help it… this kind of fidelity is
+> the point of this sim."*). `CLAUDE.md`-only and not gateable.
+
+> **You may not be the only agent in this repo. Check both lanes before you edit.** Two sessions
 > in one working directory will overwrite each other's files and sweep each other's
 > work into the wrong commit — this is not hypothetical, it happened on 2026-07-29 and
 > cost a set of manual edits their attribution. A **branch does not isolate anything**;
@@ -38,13 +64,36 @@ docs.
 > | `C:\grok_build\Reactor_Dynamics` | `develop` | **the main working branch — use this unless it is taken** |
 > | `C:\grok_build\RD_workbench` | `workbench` | the overflow lane, for when a second agent is already on `develop` |
 >
-> - **`workbench` is not a feature branch and has no standing content.** It exists only so a
->   second agent has somewhere to work. **Fast-forward it to `develop` before you start**
->   (`cd C:/grok_build/RD_workbench && git merge --ff-only develop`) — starting from a stale
->   lane is how you get a merge conflict you did not have to have.
-> - **First thing in a session: `git worktree list` and `git status`.** Unexplained
->   modified files that are not yours mean someone else is working — do not commit them,
->   and say so to the owner.
+> - **First thing in a session, check BOTH trees.** Occupancy is uncommitted modified files
+>   *plus* a **recent** commit — run all three lines, do not stop at the tree you are standing in:
+>   ```
+>   git worktree list
+>   git -C C:/grok_build/Reactor_Dynamics status --short && git log develop   -1 --format='%h %cr'
+>   git -C C:/grok_build/RD_workbench   status --short && git log workbench -1 --format='%h %cr'
+>   ```
+>   A commit inside the last hour or so means a live session; hours old means history.
+>   **Unmerged commits on `workbench` are NOT occupancy** — carrying work that has not reached
+>   `develop` yet is what the lane is *for*. On 2026-07-29 it held five such commits and was
+>   completely free. **The check is not one-shot: re-check before your first commit.** `develop`
+>   was quiet in one session's t=0 snapshot and picked up another session an hour in.
+> - **On a positive, WARN AND ASK — do not move on your own** *(OWNER RULING, 2026-07-29:
+>   "Maybe it shouldn't be automatic. The agent should warn the user and ask if they should use
+>   workbench." — and, refining it: "it should also check if there's an agent working in the
+>   workbench before moving.")*. Say what you found in each lane (which files, which commit, how
+>   recent), recommend, ask; SOP §5 shape. The detection misfires both ways — another live
+>   session, the owner's own uncommitted edits, and your own leftovers read identically, and only
+>   the owner can tell them apart cheaply. **Investigating in place while you wait is fine;
+>   editing, writing probe files and committing are not** — collisions come from writes.
+>   Normally recommend *yes, switch* when `develop` is busy and the workbench is clear: the risk
+>   is asymmetric, a needless move costs one merge. **If BOTH lanes look occupied, do not pick
+>   one** — say so and offer a third tree (below); that is the owner's call, not a default.
+>   **Absent a reply:** move to the workbench if it is clear, and say so; if both are busy, stay
+>   read-only and wait.
+> - **Starting on `workbench`: `git merge --ff-only develop` — and when it refuses, do a real
+>   `git merge develop`.** It is not a feature branch, it exists only so a second agent has
+>   somewhere to work, but `--ff-only` fails whenever the lane still carries unmerged work,
+>   which is the normal case (`fatal: Not possible to fast-forward, aborting.`). Expect the
+>   conflict files below, keep both sides, re-run `run_all`.
 > - A new tree comes from `git worktree add <path> <branch>`, and needs `node_modules`
 >   junctioned from the primary tree (it is gitignored, and the Playwright gates need it)
 >   plus an `inbox/` directory. `CLAUDE.md` now arrives with the checkout.
@@ -335,7 +384,7 @@ Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, ca
 were never plant defects at all — the harness was running 11 of its 22 procedures below the
 10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_hr3` **29 checks / 0 failed**, `run_hardrules` **18 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_hr3` **29 checks / 0 failed**, `run_hardrules` **20 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **35/35** (both F12 reds were stale expectations, fixed
@@ -605,7 +654,8 @@ and `Blueprint/`, `Manuals/`, `CHANGELOG.md` (docs). **Not** source of truth —
 mine these for intent: `terminals/` (raw session logs), `inbox/` (handoff drafts),
 `mcps/`, `node_modules/`, and the `Diagnostic/*.json` dumps (the `.md` reports are
 curated). **Local-only (kept out of the public GitHub repo):** `terminals/`, `mcps/`,
-`inbox/`, `Diagnostic/*.json`, `CLAUDE.md`, `GO_PUBLIC_CHECKLIST.md`. The curated
+`inbox/`, `Diagnostic/*.json`, `GO_PUBLIC_CHECKLIST.md`. (**Not** `CLAUDE.md` — it is tracked
+and goes public with the repo, as line 6 says.) The curated
 `Diagnostic/*.md` reports ARE published.
 
 ---
@@ -635,7 +685,7 @@ instructor + flagship scenarios).
   diagnostic overlay. Never soften the gap — the dissonance is the lesson.
 - **Two registers.** Every label/instructional string exists in a **Learning** register
   (plain language) and an **Industry** register (real plant terminology).
-- **Units.** SI internally (MPa, °C, %). The UI has a display-unit toggle (scoped OFF for the PWR board, which is US). **The `Manuals/` set quotes US customary FIRST with SI in parentheses** (owner, 2026-07-29) — `2235 psi (15.41 MPa)`. Temperature DIFFERENCES (subcooling margin, leg ΔT, DNB margin, deadbands, cooldown rates) convert ×9/5 with NO offset: 41 °C of subcooling is 73.8 °F, not 105.8. `test/run_manual_units.js` enforces both, across the manual AND the board-facing copy (`ui/manual_procedures.js`, `ui/diagram/board/pwr_board_inspect.js`). Engine command payloads stay SI.
+- **Units.** SI internally (MPa, °C, %). The UI has a display-unit toggle (scoped OFF for the PWR board, which is US). **US customary FIRST with SI in parentheses — `2235 psi (15.41 MPa)`, `565 °F (296 °C)` — in the `Manuals/` set AND in everything you hand the owner**: chat replies, issue bodies and comments, commit messages, `Diagnostic/` entries *(OWNER DIRECTIVE, 2026-07-29: "also add a gh issue to add to claude.md to always give me imperial numbers not SI.")*. Temperature DIFFERENCES and RATES (subcooling margin, leg ΔT, DNB margin, deadbands, heatup/cooldown rates) convert ×9/5 with NO offset — this is the one that gets written wrong: 41 °C of subcooling is 73.8 °F, not 105.8, and 21.8 °C/hr is 39.2 °F/hr. `test/run_manual_units.js` enforces it across the manual and the board-facing copy (`ui/manual_procedures.js`, `ui/diagram/board/pwr_board_inspect.js`); **agent prose is not gateable**, like HR10 and HR12 — a green run does not cover it. Engine internals stay SI and do not move: command payloads, config constants, `true_state`.
 - **Plant MODES** use commercial numbering, written **Mode N, Name** (e.g. *Mode 1, At
   Power*). Do not confuse with turbine load modes (Follow / Manual / Disconnected).
 - **This is an educational lumped-parameter plant,** not a full-scope replica of a
