@@ -132,7 +132,14 @@ alarm — reads the **instrument reading**. Without it a stuck indicator cannot 
 condition, and TMI cannot be reproduced. Where no instrument exists for a quantity the
 control layer genuinely needs, that is a **declared exception**, not a licence.
 **Guard:** `run_hardrules.js` — every true-state read in `layers/control/` must be listed
-with a reason.
+with a reason, in one of two categories. An **exception** is settled (snapshot plumbing,
+command read-back). **Debt** is a real violation that is tracked and carries an issue
+number. **A green run means "no undeclared reads", not "HR1 is satisfied"** — today the
+plant carries **5 declared debts (#247)**, the worst of which is that the low-flow reactor
+trip reads true pump flow because the RCS flow instrument was never built, which makes that
+trip unteachable. The two categories exist because the first cut had one list and the debt
+was indistinguishable from the exceptions, which is how a rule gets quietly retired by its
+own guard.
 
 **HR2 — The physics engine makes no control decisions.** The engine computes physics and
 exposes direct controls (insert rods, open this valve). The layer above decides when to use
@@ -233,8 +240,18 @@ and a quotation.
 - **HR8 — v1 plant parameters live in code, not external files.** Retired 2026-07-29: a
   **scope boundary**, not an invariant — it says what not to build. Moved to §8.
 
-Both retain their numbers for the ~46 existing citations. Neither is deleted; both are still
-in force as the convention and the scope decision they always were.
+**This is a demotion in binding force, and it should be read as one.** `CLAUDE.md` rule 1
+makes §3 binding and the rest of this document advisory, so moving these two out of §3 moves
+them out of "non-negotiable" and into "weigh it and say you did". That is the intent — both
+are things you would notice breaking, which is the admission test above — but "no plant
+config file system" went from non-negotiable to advisory in one change, and nobody should
+discover that by inference.
+
+Both retain their numbers, and **16 citations in the module specs (M1–M4, M6,
+DESIGN_COMPANION) still point at HR7/HR8** — those resolve here and are then redirected, so
+nothing dangles; they were deliberately not rewritten, because touching sixteen spec lines to
+avoid one hop is the worse trade. Neither rule is deleted. Both remain in force as the
+convention and the scope decision they always were.
 
 ---
 

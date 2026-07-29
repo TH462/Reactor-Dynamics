@@ -67,14 +67,32 @@ function check(rule, file, line, text, why) {
 // INSTRUMENTS. Where no instrument exists for a quantity the control layer
 // genuinely needs, §3 calls that a DECLARED exception — so each one is listed
 // here with the reason it cannot read an instrument instead.
-var HR1_ALLOWED = {
-  'control_kernel.js:_permTest/pump_flow': 'no primary-flow instrument exists; the low-flow trip permissive reads true pump flow. Documented in place as an HR1 exception.',
+// TWO CATEGORIES, and keeping them apart is the whole point.
+//
+// The first cut of this gate had ONE list called "allowed", and writing the
+// reasons out is what exposed the problem: for two entries the honest reason was
+// "the instrument does not exist" — which under HR9 ("err toward the real plant")
+// is an argument for BUILDING the instrument, not for excusing the read. Filed as
+// one list, those two were indistinguishable from the genuine exceptions, and a
+// green gate would have read as "HR1 is clean" when the plant's most
+// safety-significant trip reads truth. That is laundering debt as compliance.
+//
+// So: EXCEPTION is settled and needs no further work. DEBT is a known violation
+// that is tracked, must carry an issue number, and is reported separately and
+// loudly. **A green run means "no UNDECLARED reads", never "HR1 is satisfied".**
+var HR1_EXCEPTION = {
   'control_kernel.js:ctx': 'assembling the ctx object handed to channel callbacks — plumbing, not a decision. The rule binds what a callback READS from it.',
-  'control_kernel.js:melted': 'no core-damage instrument exists (a damage indication is post-ship). Used only to stop automation acting on a destroyed core.',
-  'pwr_control.js:feedwater_isolated': 'no feedwater_isolated instrument exists (verified 2026-07-29 against getInstruments()). The three-element feed channel stands down when MFW is isolated; the alternative is inferring it from fw_flow, which cannot distinguish isolation from a tripped pump.',
   'control_kernel.js:readback': 'reading back whether a COMMAND took effect (RPS reset confirms truth.scrammed cleared), not deciding from a sensor. Same pattern as the rods-fully-inserted interlock. HR1 governs what protection DECIDES from; a command that lies about its own success would make the reset latch unfalsifiable.',
-  'rbmk_control.js:scrammed_melted': 'RBMK, ON HOLD. Not reviewed; recorded so the gate is honest about it rather than silent.',
+  'control_kernel.js:melted': 'no core-damage instrument exists, deliberately — a damage indication is post-ship scope. Used only to stop automation acting on a destroyed core, never to decide protection.',
 };
+var HR1_DEBT = {
+  'control_kernel.js:_permTest/pump_flow': '#247 — the LOW-FLOW REACTOR TRIP reads true pump flow because no RCS flow instrument was ever built. A real PWR measures it (elbow taps / venturis) and a failed flow channel fooling that trip is exactly what this simulator exists to teach. The trip is currently unteachable. Not an exception — an unbuilt instrument.',
+  'pwr_control.js:feedwater_isolated': '#247 — no feedwater_isolated instrument exists (verified 2026-07-29 against getInstruments()). Gates an automation channel rather than a protection function, so lower consequence, but the same shape: a real plant has MFW isolation valve position indication.',
+  'rbmk_control.js:scrammed_melted': 'UNREVIEWED — RBMK is ON HOLD. Recorded so the gate is honest about it rather than silent. Not assessed either way.',
+};
+var HR1_ALLOWED = {};
+Object.keys(HR1_EXCEPTION).forEach(function (k) { HR1_ALLOWED[k] = HR1_EXCEPTION[k]; });
+Object.keys(HR1_DEBT).forEach(function (k) { HR1_ALLOWED[k] = HR1_DEBT[k]; });
 // Which allow-list key covers a given file:line. Keyed by the true-state field
 // being read, because that is what the exception is actually about.
 function hr1Key(file, text) {
@@ -88,6 +106,19 @@ function hr1Key(file, text) {
   return null;
 }
 var hr1Used = {};
+// SCAN SURFACE — `layers/control/` only, and here is why that is the whole rule and
+// not a convenient subset. Verified 2026-07-29:
+//   · protection, actuation and alarm decisions live ONLY in layers/control/
+//     (grepped for trips/_evalAlarms/_tripAsserted across layers/)
+//   · getTrueState() and `true_state` are the ONLY routes to engine truth in layers/
+//     — no `engine.s`, no direct state handle
+// so nothing that DECIDES can reach truth by a path this misses.
+//
+// Widening to all of layers/ was tried and reverted: the service reads true state
+// legitimately in ~16 places (snapshot assembly — HR4 REQUIRES it — and the
+// attention-stop's previous-tick comparison), none of which are decisions. Declaring
+// sixteen benign sites would have buried the five that matter, which is exactly the
+// failure the HR11 check already had to be rescued from.
 walk('layers/control', /\.js$/).forEach(function (rel) {
   var src = stripComments(fs.readFileSync(path.join(ROOT, rel), 'utf8')).split('\n');
   src.forEach(function (line, i) {
@@ -187,9 +218,16 @@ findings.forEach(function (f) { (byRule[f.rule] = byRule[f.rule] || []).push(f);
     console.log(R + '  ✗' + X + ' ' + f.file + ':' + f.line + D + '  ' + f.text + X);
   });
   if (r === 'HR1') {
-    all.filter(function (f) { return f.why; }).forEach(function (f) {
+    all.filter(function (f) { return f.why && HR1_EXCEPTION[hr1Key(f.file, f.text)]; }).forEach(function (f) {
       console.log(D + '  · ' + f.file + ':' + f.line + '  — ' + f.why.slice(0, 100) + X);
     });
+    var debt = all.filter(function (f) { return f.why && HR1_DEBT[hr1Key(f.file, f.text)]; });
+    if (debt.length) {
+      console.log(Y + '  ⚠ ' + debt.length + ' DECLARED DEBT — real HR1 violations, tracked, NOT excused:' + X);
+      debt.forEach(function (f) {
+        console.log(Y + '    ! ' + X + f.file + ':' + f.line + D + '  ' + f.why.slice(0, 96) + X);
+      });
+    }
   }
 });
 if (stale.length) {
@@ -198,7 +236,12 @@ if (stale.length) {
 }
 
 var bad = violations.length + stale.length;
+var nDebt = findings.filter(function (f) { return f.why && HR1_DEBT[hr1Key(f.file, f.text)]; }).length;
 console.log('\n' + B + '──────────────────────────────────────────' + X);
 console.log(B + (bad ? R + 'HARD RULES GUARD: FAIL' : G + 'HARD RULES GUARD: OK') + X + '  ' +
-  findings.length + ' checks, ' + bad + ' failed' + X);
+  findings.length + ' checks, ' + bad + ' failed' +
+  (nDebt ? Y + '  ·  ' + nDebt + ' declared HR1 debt (#247)' + X : '') + X);
+// Said plainly because the alternative is a green tick that means more than it should.
+if (nDebt) console.log(D + 'OK here means no UNDECLARED reads. It does not mean HR1 is satisfied —' +
+  ' see the debt above.' + X);
 process.exit(bad ? 1 : 0);
