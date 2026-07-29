@@ -161,6 +161,21 @@ a handful of UI/doc items.
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+- **Half the full-stack procedure gate was running at a tenth of its declared speed
+  (2026-07-29, #245).** `run_procedures_stack` set `timeAcceleration = 10` once; the
+  service's fast-forward dropout then returned it to 1× on the first alarm/scram and nothing
+  put it back — so **11 of 22 procedures** were judged on a *tenth* of the sim time their
+  steps assume, from as early as t = 2 s. Fixed with `svc.attentionStops = false` (a headless
+  gate has no operator to protect; `run_autoctl` had already made the same call) plus a
+  per-procedure assertion that the run held its declared acceleration, so it cannot recur
+  quietly. **Read this before trusting anything in #208:** four of its "RBMK/BWR plant
+  defects" (`bwr_startup`, `rbmk_mcp_trip` ×2, `bwr_sbo_rcic`) were this bug and passed on
+  the sim time alone — a green there proves the *mechanism*, not that either plant is right.
+  It also exposed a stale PWR assertion: `pwr_stuck_porv` step 1 asserted inventory below
+  100 % after 30 s, which only ever held because the run was starved — automatic HPI comes
+  in at 10.5 MPa and refills past nominal, which is TMI's solid-pressurizer trap and the
+  correct behaviour.
+
 - **The Hard Rules were reorganized, and they now have guards (2026-07-29).** §3 is **nine
   rules**, split architecture (HR1–HR6) from practice (HR9, HR10, HR11), each naming its
   guard. HR7/HR8 retired to §11 and §8 — **a demotion out of binding, stated as one**;
@@ -307,10 +322,11 @@ Green at baseline: PWR **32/32 (200 checks)**, BWR **15/15**, RBMK **23/23**, ca
 `run_m4` **25/25 (135 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **20/20**,
 `run_behavior` **38 pass / 0 xfail**, `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
-`run_procedures` **22/22 (101/101 checks)**,
-`run_procedures_stack` **22/22 (155/155 checks, 5 strict xfails — all RBMK/BWR #208; the 7
-`pwr_heatup` xfails cleared 2026-07-26c/d via #206 + #210, and `bwr_startup` 2026-07-29 —
-that one was never a BWR defect, see #245)**, `run_checklist` **24/24**, `run_scenarios`
+`run_procedures` **22/22 (102/102 checks)**,
+`run_procedures_stack` **22/22 (178/178 checks, 2 strict xfails — both RBMK/BWR #208; the 7
+`pwr_heatup` xfails cleared 2026-07-26c/d via #206 + #210, and FOUR more on 2026-07-29 that
+were never plant defects at all — the harness was running 11 of its 22 procedures below the
+10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
 `run_contract` **84 checks / 0 failed**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.

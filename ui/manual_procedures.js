@@ -341,7 +341,20 @@
       cautions: ['Do NOT trust the PORV position light — it shows the command, not reality.', 'Do NOT throttle High-Pressure Injection (HPI) on a rising Pressurizer level; the level rises even as inventory is lost.'],
       steps: [
         { text: 'The PORV is stuck open and its indicator reads closed. (Failures tab → inject PORV Stuck Open.) Inventory is leaking. Diagnose it on the SUBCOOLING readout (Power & Reactivity card), which erodes toward zero as coolant is lost.', control: '(observe subcooling)', target: 'recognize the leak',
-          cmd: { action: 'inject_failure', failure_id: 'stuck_porv_open' }, hold: 30, acc: { p: 'core_inventory_pct', op: '<', v: 100 } },
+          // `saw`, not `acc` (#245). The claim this step teaches is that inventory IS
+          // being lost — which it is, from injection to about t=8 s. It is not a claim
+          // about where inventory sits 30 s later, because by then automatic HPI has
+          // come in on low pressure and refilled past nominal (measured under the
+          // shipped lineup: 99.65 → 98.01 % by t=6, HPI actuates at 10.5 MPa, then
+          // 117.6 % by t=16 with the pressurizer at 88 % and subcooling gone). That is
+          // the plant doing the right thing — it is TMI's own trap, the solid
+          // pressurizer that invites throttling injection, and this procedure's own
+          // caution warns about it. An end-of-step `acc: core_inventory_pct < 100`
+          // contradicted it, and only ever passed because the harness was starving the
+          // run to ~3 s of sim time. The subcooling `acc` below is the diagnosis signal
+          // the step's own text points the player at, and it holds at both ends.
+          cmd: { action: 'inject_failure', failure_id: 'stuck_porv_open' }, hold: 30,
+          saw: { p: 'core_inventory_pct', op: '<', v: 100 }, acc: { p: 'subcooling_c', op: '<', v: 20 } },
         { text: 'Also mask the indicator, as at TMI: Failures tab → inject PORV Indicator Stuck Closed. Trust subcooling, not the PORV light.', control: '(observe PORV light vs subcooling)', target: 'trust subcooling, not the light',
           cmd: { action: 'inject_failure', failure_id: 'porv_indicator_stuck_closed' }, hold: 10 },
         { text: 'ISOLATE the leak: Relief Valves card → PORV Block Valve → Isolate. This stops the loss even though the PORV itself is stuck open.', control: 'PORV Block Valve', target: 'inventory stops falling',

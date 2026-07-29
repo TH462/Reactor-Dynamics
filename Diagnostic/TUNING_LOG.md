@@ -113,6 +113,79 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-29i — #245: half the stack gate was running at 1×, and it had cost four filings  ✅
+
+**The bug.** `run_procedures_stack` sets `timeAcceleration = 10` once, at setup.
+`SimulationService._attentionStop` then does exactly what it is designed to do for a *player* —
+the first alarm or scram on a quiet board snaps fast-forward back to real time — and nothing
+puts it back. Every tick after that advances 0.1 s instead of 1 s, for the rest of the
+procedure, while the harness's header goes on printing *10× accel*.
+
+**Measured, not estimated.** The issue reported ten dropout events. Instrumenting per-procedure
+instead of per-event gives the number that matters: **11 of the 22 procedures** ran below their
+declared acceleration, and the runs are long — 416 slow ticks in one, then 305, 141, 99, 96, 79,
+40, 40, 40, 31, 30. The earliest dropout is at **t = 2.0 s**. A procedure that trips at t = 4.5 s
+spends its entire remaining evolution at 1×.
+
+**Fix: `svc.attentionStops = false`.** Option 1 of the three in the issue. The dropout is a
+comfort feature for a human at the board; a headless gate has no one to protect, and
+`attentionStops` is the supported way to say so (it is the Settings → Fast-forward dropout
+toggle). `run_autoctl` had already reached the same conclusion by the other route — re-asserting
+the speed each cycle — and its comment says the same thing in different words, so this is not a
+new position in the repo, just a cheaper spelling of it. Coverage is unaffected: `run_m5` owns
+`_attentionStop` (scram/failure/alarm reasons, the on/off setting, survival across a restore).
+
+**And a guard, because the defect's whole character was silence.** Each procedure now asserts it
+held the declared acceleration for every tick, reporting the slow-tick count and the first
+offender. Validated as a **counterfactual** (HR10): with `attentionStops` restored the gate goes
+**11/22**, which is where the census above came from. A guard that only ever passes proves
+nothing.
+
+**Four filings under #208 were this bug, not plant defects.** `bwr_startup` step 2 was already
+known (2026-07-29c). `rbmk_mcp_trip` step 2 on **both** RBMK versions and `bwr_sbo_rcic` step 3
+join it — power had a tenth of the time to fall after the pump trip, RCIC a tenth of the time to
+refill (vessel level read 25.4 % against a required 40). All three pass on the sim time alone,
+with no plant change. **Read that carefully before reusing it:** what is established is the
+mechanism. Nobody has re-derived those steps from the plant, both plants are ON HOLD, and a
+genuinely slow ascent would be hidden by the same 10×. The remaining #208 entries deserve the
+same suspicion when RBMK/BWR reopen.
+
+**One PWR assertion was stale, and it is the interesting one.** `pwr_stuck_porv` step 1 asserted
+`core_inventory_pct < 100` at the end of a 30 s hold, and reddened at **117.59**. Probed under
+the shipped lineup:
+
+| t (s) | inventory % | pressure MPa | subcooling °C | HPI |
+|---|---|---|---|---|
+| 1.0 | 99.65 | 14.86 | 38.0 | off |
+| 6.0 | 98.01 | 12.82 | 26.2 | off |
+| 8.5 | 99.13 | 10.51 | 12.4 | **ON** |
+| 16.0 | 117.59 | 8.07 | −0.6 | ON |
+| 31.0 | 120.00 *(clamp)* | 7.01 | −0.6 | ON |
+
+The leak is real for ~8 s; then automatic HPI comes in on low pressure and refills past nominal
+with the pressurizer at 88 % and subcooling gone. **That is the plant being right** — it is
+TMI's own trap, the solid pressurizer that invites throttling injection, and this procedure's
+own `cautions` warn about it. The assertion contradicted the procedure it belonged to and only
+ever passed because the run was starved to ~3 s. Now `saw core_inventory_pct < 100` (the claim
+the step actually teaches — the leak happened) plus `acc subcooling_c < 20` (the diagnosis
+signal its text points the player at). Honest note on HR10: the `saw` holds on the old truncated
+run too, the subcooling `acc` does not — the truncated run is the defect, not a reference point.
+Identical under the bare lineup, so this is not a lineup effect.
+
+**Two things left open, deliberately.**
+- **HPI refills 98 → 120 % in about eight seconds, and 120.00 is a clamp.** The *direction* is
+  prototypical; the *rate* looks fast and the clamp is a model bound. Not touched — changing a
+  plant number needs an evidence pass against real plant documentation (owner SOP), and letting
+  a content gate vote on physics is exactly what HR9 forbids. Recommended as its own issue.
+- **`--lineup=bare` reports 2 stale xfails** (`rbmk_raise_power` step 1 on both versions), and
+  did so before this change. `KNOWN_FAILS` is keyed by procedure, so it cannot express *fails on
+  the default lineup, passes on bare* — which is the actual situation. Pre-existing, RBMK, not
+  in `run_all`.
+
+**Gates.** `run_procedures_stack` **22/22, 155/155 → 178/178** (+22 the acceleration assertion,
++1 the stuck-PORV split), strict xfails **5 → 2**; `run_procedures` **101/101 → 102/102**;
+`run_all` **28 runners at baseline**. `BASELINES`, CLAUDE.md and `CHANGELOG.md` updated together.
+
 ### 2026-07-29h — #246: the V1 board deleted, and the two things buried inside it  ✅
 
 **The deletion was the easy half.** `ui/diagram/pwr_synoptic.js` (~100 KB) + `.css` were the

@@ -13,6 +13,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The full-stack procedure gate was running half its procedures at a tenth of their declared
+  speed (#245).** `test/run_procedures_stack.js` set `timeAcceleration = 10` once at setup.
+  `SimulationService._attentionStop` then did its job — the first alarm or scram on a quiet
+  board snaps fast-forward back to real time so a human is not left behind the plant — and
+  nothing put it back. Measured: **11 of the 22 procedures** ran below 10× from as early as
+  **t = 2 s**, one of them for 416 consecutive ticks. Every step assertion downstream of that
+  point was being judged on a tenth of the sim time its author declared.
+  Fixed with `svc.attentionStops = false` — the dropout is a comfort feature for a human at
+  the board and a headless gate has no one to protect; `run_autoctl` had already reached the
+  same conclusion by another route — plus a new per-procedure assertion that the run actually
+  held its declared acceleration, so the harness can no longer claim 10× in its header while
+  the runs underneath it disagree. The mechanism itself stays covered by `run_m5`.
+  **Four "RBMK/BWR plant defects" were this bug.** `bwr_startup` step 2 was already known
+  (#240 follow-up); `rbmk_mcp_trip` step 2 on both RBMK versions and `bwr_sbo_rcic` step 3
+  (vessel level 25.4 % vs a required 40) join it — power had a tenth of the time to fall after
+  the pump trip, RCIC a tenth of the time to refill. All three pass on the sim time alone.
+  That is a green establishing the *mechanism*, not a clean bill of health for either plant:
+  both are on hold and nobody has re-derived those steps from the plant.
+  It also caught a stale PWR assertion. `pwr_stuck_porv` step 1 asserted `core_inventory_pct
+  < 100` at the end of a 30 s hold. Inventory does fall — 99.65 → 98.01 % by t = 6 s — but
+  automatic HPI actuates at 10.5 MPa and refills past nominal (117.6 % by t = 16 s, pressurizer
+  at 88 %, subcooling gone). That is the plant doing the right thing; it is TMI's own trap, the
+  solid pressurizer that invites throttling injection, which this procedure's caution warns
+  about. The step now asserts the leak was *seen* and checks subcooling — the diagnosis signal
+  its own text points the player at — at the end.
+  Baselines move with the fix: `run_procedures_stack` **22/22 155/155 → 178/178** (+22 the new
+  acceleration assertion, +1 the split above), strict xfails **5 → 2**; `run_procedures`
+  **101/101 → 102/102**.
+
 ### Removed
 - **The V1 PWR board is gone (#246).** `ui/diagram/pwr_synoptic.js` (~100 KB) and
   `pwr_synoptic.css` were superseded by the V2 board in `ui/diagram/board/` months ago, but

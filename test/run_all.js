@@ -193,7 +193,10 @@ var BASELINES = {
   //      load in FOLLOW, which is right for getting on line, then goes to MANUAL so both
   //      routes into Mode 1 leave the same lineup (the free-play preset was already
   //      MANUAL, so a player who learned via the checklist used to get a different board).
-  'run_procedures.js':     { code: 0, score: '22/22 101/101' },
+  //   +1 (#245) `pwr_stuck_porv` step 1 gained a `saw core_inventory_pct < 100`
+  //      alongside its `acc`, which became a subcooling check — see the note on that
+  //      step in ui/manual_procedures.js.
+  'run_procedures.js':     { code: 0, score: '22/22 102/102' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -204,11 +207,19 @@ var BASELINES = {
   // this harness losing 90 % of its sim time when a `status` annunciator snapped the
   // service's fast-forward dropout at t=2 s. See the note in run_procedures_stack.js.
   //
-  // Check count does NOT move on an xfail change — an xfail is still a check, just an
-  // annotated one — so the score string is the same either way. That is worth knowing
-  // before assuming this baseline is untouched: the 2026-07-27b #218 fix cleared three
-  // xfails without shifting a single number here.
-  'run_procedures_stack.js': { code: 0, score: '22/22 155/155' },
+  // → **2** (2026-07-29, #245): the dropout above was not a one-off. `attentionStops`
+  // is now OFF for this harness, and 11 of the 22 procedures turn out to have been
+  // running below their declared 10× — up to 416 ticks of a single run. Three more
+  // "#208 RBMK/BWR plant defects" cleared on the sim time alone (rbmk_mcp_trip ×2,
+  // bwr_sbo_rcic), making four in total that were one harness bug.
+  //
+  // Check count DOES move this time: 155 → 178. +22 is the new per-procedure
+  // assertion that the run held its declared acceleration throughout (#245's guard —
+  // the defect's whole character was that the header kept claiming 10× while the runs
+  // did not), and +1 is the `pwr_stuck_porv` split above. Otherwise the rule still
+  // holds — an xfail is a check either way, so clearing one moves no number here,
+  // which is why the 2026-07-27b #218 fix cleared three and shifted nothing.
+  'run_procedures_stack.js': { code: 0, score: '22/22 178/178' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
