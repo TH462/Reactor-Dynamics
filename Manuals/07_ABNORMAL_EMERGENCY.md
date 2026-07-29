@@ -573,7 +573,7 @@ break there is nothing to fall back on. Trip, and ride the cooldown out.
 | Step | Action |
 |------|--------|
 | 1 | **SCRAM**  
-| 2 | **MSIV Close** (two-press). **Downstream break: this terminates it** — steam pressure stops falling and the bottled generator re-pressurizes to its code safeties (9.31 MPa lift / 9.0 reseat), and you are now in the bottled-SG condition of alarm card **PWR-A23**. **Upstream break: it will not help** — steam pressure keeps falling; do not wait on it  
+| 2 | **MSIV Close** (two-press). **Downstream break: this terminates it** — steam pressure stops falling and the bottled generator re-pressurizes to its code safeties (1350 psi (9.31 MPa) lift / 9.0 reseat), and you are now in the bottled-SG condition of alarm card **PWR-A23**. **Upstream break: it will not help** — steam pressure keeps falling; do not wait on it  
 | 3 | Stop AFW/feed overfill into faulted path if level high  
 | 4 | Control pressure (spray/heaters) as primary cools  
 | 5 | Borate if return-to-power risk  

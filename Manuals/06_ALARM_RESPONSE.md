@@ -127,7 +127,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | Tavg ≥ **312.2 °C** (alarm); trip **335 °C** |
+| **Setpoint** | Tavg ≥ **594 °F (312.2 °C)** (alarm); trip **635 °F (335 °C)** |
 | **Means** | Average coolant temperature high — often load rejection, loss of heat sink, or power high vs steam demand. |
 | **Actions** | 1) Check power vs MWe / steam flow. 2) Check SG level and feed. 3) Insert rods / reduce power. 4) Restore heat sink (AFW if needed). 5) Verify pressure not also high. |
 
@@ -137,9 +137,9 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | ≥ **15.86 MPa** |
+| **Setpoint** | ≥ **2300 psi (15.86 MPa)** |
 | **Means** | Primary pressure high — toward PORV. |
-| **Actions** | 1) Verify spray AUTO/manual available (RCP running). 2) Reduce heat input (rods in / power). 3) Check load rejection / loss of steam demand. 4) Expect PORV auto-open near **16.20 MPa**. |
+| **Actions** | 1) Verify spray AUTO/manual available (RCP running). 2) Reduce heat input (rods in / power). 3) Check load rejection / loss of steam demand. 4) Expect PORV auto-open near **2350 psi (16.20 MPa)**. |
 
 ---
 
@@ -147,7 +147,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | ≤ **14.82 MPa** |
+| **Setpoint** | ≤ **2149 psi (14.82 MPa)** |
 | **Means** | Primary pressure low — subcooling at risk. |
 | **Actions** | 1) Energize heaters. 2) Secure excessive spray. 3) Check PORV/safety path and block valve. 4) Check leak / HPI need. 5) Watch subcooling. |
 
@@ -157,9 +157,9 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | ≤ **12.41 MPa** (also low-pressure SCRAM) |
+| **Setpoint** | ≤ **1800 psi (12.41 MPa)** (also low-pressure SCRAM) |
 | **Means** | Dangerously low RCS pressure. |
-| **Actions** | 1) Verify SCRAM. 2) Verify **HPI** actuation (~12.4 MPa AUTO if armed). 3) Isolate stuck PORV with **block valve** if indicated. 4) Stop spray. 5) Do not throttle HPI on PZR level alone. → **PWR-E07**, **E09** |
+| **Actions** | 1) Verify SCRAM. 2) Verify **HPI** actuation (~1798 psi (12.4 MPa) AUTO if armed). 3) Isolate stuck PORV with **block valve** if indicated. 4) Stop spray. 5) Do not throttle HPI on PZR level alone. → **PWR-E07**, **E09** |
 
 ---
 
@@ -169,7 +169,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Logic** | `porv_indicator` shows open |
 | **Means** | PORV is **indicated** open. Indicator can **lie closed** when actually open. |
-| **Actions** | 1) If pressure still high, opening may be proper — wait for reseat ~**15.86 MPa**. 2) If should be shut: command **PORV Close**. 3) Cross-check **subcooling**, pressure trend, **tailpipe temperature**. 4) If leak continues → **Isolate block valve** (**PWR-E07**). |
+| **Actions** | 1) If pressure still high, opening may be proper — wait for reseat ~**2300 psi (15.86 MPa)**. 2) If should be shut: command **PORV Close**. 3) Cross-check **subcooling**, pressure trend, **tailpipe temperature**. 4) If leak continues → **Isolate block valve** (**PWR-E07**). |
 
 ---
 
@@ -197,7 +197,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | Subcooling ≤ **11.1 °C** |
+| **Setpoint** | Subcooling ≤ **20 °F** (11.1 °C) |
 | **Means** | Approaching boiling in primary. |
 | **Actions** | 1) Raise pressure (heaters) and/or lower temperature (power/load). 2) Check for leak / open relief. 3) Prepare HPI. 4) **Trust this over a single PORV light.** |
 
@@ -207,7 +207,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | Subcooling ≤ **0 °C** |
+| **Setpoint** | Subcooling ≤ **0 °F** (0 °C) |
 | **Means** | Coolant at/above saturation — boiling / voiding. |
 | **Actions** | 1) Verify SCRAM if not already. 2) **HPI On** — do not throttle on high PZR level. 3) Isolate stuck PORV path. 4) Restore heat sink. 5) Treat as LOCA-class event. → **PWR-E07**, **E09**, **X01** |
 
@@ -349,7 +349,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | ≥ **9.0 MPa** (alarm); SG safeties ~**9.31 / 9.0 MPa** open/reseat |
+| **Setpoint** | ≥ **1305 psi (9.0 MPa)** (alarm); SG safeties ~**1350 / 1305 psi** (9.31 / 9.0 MPa) open/reseat |
 | **Means** | Secondary pressure high — often MSIV shut or loss of steam path. |
 | **Actions** | 1) Steam dump if available. 2) Reduce reactor power / verify trip. 3) Do not overfeed dry SG without procedure. |
 
@@ -359,7 +359,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | ≤ **84.7 kPa** |
+| **Setpoint** | ≤ **25 inHg (84.7 kPa)** |
 | **Means** | Vacuum degrading. |
 | **Actions** | 1) Reduce load. 2) Check vacuum failure injection. 3) Prepare for turbine trip. |
 
@@ -369,7 +369,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | ≤ **74.5 kPa** |
+| **Setpoint** | ≤ **22 inHg (74.5 kPa)** |
 | **Means** | Turbine protection vacuum trip region. |
 | **Actions** | 1) Verify turbine trip. 2) Control reactor/SG. → **PWR-E10** |
 
@@ -389,7 +389,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Logic** | `rcp_cavitating` true — suction-node subcooling `Tsat(P_suction) − Tcold` below ~8 °C on a running pump |
+| **Logic** | `rcp_cavitating` true — suction-node subcooling `Tsat(P_suction) − Tcold` below ~14.4 °F (8 °C) on a running pump |
 | **Means** | The RCS is approaching saturation at the pump suction — the pumps are drawing two-phase fluid, losing head and flow. A voiding / depressurizing primary. **Not** an instrument fault — believe it. |
 | **Actions** | 1) Cross-check **LO SUBCOOL / SUBCOOL LOST** and pressurizer pressure — treat as loss of subcooling. 2) Suspect a LOCA / stuck-open relief path; do **not** secure injection for level alone. 3) Restore subcooling (inject, arrest depressurization). 4) Per site EOPs, trip the RCPs if subcooling cannot be restored (avoid running cavitating pumps). → **PWR-E07 / X01** |
 
@@ -399,7 +399,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | Tavg ≤ **289 °C** — the **P-12** line, ~8 °C below the no-load Tavg program |
+| **Setpoint** | Tavg ≤ **552.2 °F** (289 °C) — the **P-12** line, ~14.4 °F (8 °C) below the no-load Tavg program |
 | **Means** | The primary is below the hot operating band. At power or at hot standby this is an **overcooling** transient: excess steam demand, a stuck-open dump or relief path, or an overfed steam generator. Moderator feedback adds positive reactivity as the primary cools, so an unattended overcool raises power. |
 | **Deliberately not a trip** | A PWR does not scram on low Tavg. The real cold-side protections are this permissive and low-temperature overpressure protection — neither is a reactor trip. |
 | **Actions** | 1) Find the steam path that is taking too much heat: steam dump position, PORV / SG safeties, turbine load against reactor power (**A28**). 2) Isolate or close it. 3) Watch power — Tavg falling with power *rising* is the overcool feeding itself. 4) Cross-check pressure and subcooling; a cooling primary shrinks and drops pressurizer level. |

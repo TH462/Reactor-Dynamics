@@ -22,11 +22,11 @@ These MODES follow the commercial PWR (Westinghouse-style Tech Spec) structure, 
 
 | MODE | Spoken name | Commercial name | Reactivity | Thermal power | RCS average temperature (class) | Trainer support |
 |------|-------------|-----------------|------------|---------------|---------------------------------|-----------------|
-| **1** | **Mode 1, At Power** | Power Operation | Critical (keff ≥ 0.99) | **> 5 %** | Hot (≥ ~177 °C / 350 °F class) | **[sim]** |
+| **1** | **Mode 1, At Power** | Power Operation | Critical (keff ≥ 0.99) | **> 5 %** | Hot (≥ ~350 °F / 176.7 °C class) | **[sim]** |
 | **2** | **Mode 2, Startup** | Startup | Critical | **≤ 5 %** | Hot | **[sim]** |
-| **3** | **Mode 3, Hot Standby** | Hot Standby | Subcritical (keff < 0.99) | ≈ 0 | Hot (NOP T/P ≈ 297 °C no-load / 15.41 MPa) | **[sim]** |
+| **3** | **Mode 3, Hot Standby** | Hot Standby | Subcritical (keff < 0.99) | ≈ 0 | Hot (NOP T/P ≈ 566.6 °F / 297 °C no-load, 2235 psi / 15.41 MPa) | **[sim]** |
 | **4** | **Mode 4, Hot Shutdown** | Hot Shutdown | Subcritical | ≈ 0 | Intermediate (between cold and hot) | **[sim]** (transit during heatup/cooldown) |
-| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical | ≈ 0 | Cold (≤ ~93 °C / 200 °F class) | **[sim]** — `cold_shutdown` initial condition |
+| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical | ≈ 0 | Cold (≤ ~200 °F / 93.3 °C class) | **[sim]** — `cold_shutdown` initial condition |
 | **6** | **Mode 6, Refueling** | Refueling | Deep subcritical | ≈ 0 | Cold; vessel head not fully tensioned | **Out of scope** |
 
 ### 2.1 Simulator initial-condition mapping
@@ -101,7 +101,7 @@ Mode 1, At Power at power (watchstanding)
 | A2 | Fill/vent RCS; establish RCP operation when permitted; use pump heat and controlled nuclear heat | Mode 5, Cold Shutdown → Four |
 | A3 | Draw and control pressurizer steam bubble; place heaters/spray in automatic | Mode 4, Hot Shutdown |
 | A4 | Heat and pressurize toward normal operating temperature and pressure within commercial heatup limits | Mode 4, Hot Shutdown |
-| A5 | Reach **Mode 3, Hot Standby**: subcritical, hot, P ≈ **15.41 MPa**, Tavg ≈ **297 °C** (no-load program), heat sink available | **Mode 3, Hot Standby** |
+| A5 | Reach **Mode 3, Hot Standby**: subcritical, hot, P ≈ **2235 psi (15.41 MPa)**, Tavg ≈ **566.6 °F (297 °C)** (no-load program), heat sink available | **Mode 3, Hot Standby** |
 
 **Simulator:** Phase A is now driveable — load the **`cold_shutdown`** initial condition (**Mode 5, Cold Shutdown**) and perform the heatup: raise the pressurizer setpoint to draw up to NOP pressure (`set_pressure_setpoint`), start the RCPs (`set_rcp`), keep the turbine offline so the SG bottles to no-load, then take the control bank out gently (watch SUR) to hold low power and heat the RCS to NOP. Or **skip Phase A** by loading **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**. Heatup *rate* is time-compressed and the heat source is controlled low-power nuclear heat, not the real pump-heat ramp.
 
@@ -142,7 +142,7 @@ Mode 1, At Power at power (watchstanding)
 | Step | Action | Acceptance |
 |------|--------|------------|
 | E1 | Ascend to ~100 % / ~100 MWe | Full-power **Mode 1, At Power** |
-| E2 | Verify P ≈ 15.41 MPa, SG ~65 %, PZR ~55 %, subcooling healthy | HFP band |
+| E2 | Verify P ≈ 2235 psi (15.41 MPa), SG ~65 %, PZR ~55 %, subcooling healthy | HFP band |
 
 ---
 
@@ -199,10 +199,10 @@ This is the deepest **fully simulated** shutdown state.
 | C1 | Borate to cold-shutdown margin (commercial) | Mode 3, Hot Standby |
 | C2 | Cooldown and depressurize within limits using steam dump / AFW / secondary | Mode 4, Hot Shutdown |
 | C3 | Place **RHR** in service when pressure/temperature permit | Mode 4, Hot Shutdown |
-| C4 | Continue to cold conditions (Tavg ≤ ~93 °C class) | **Mode 5, Cold Shutdown** |
+| C4 | Continue to cold conditions (Tavg ≤ ~199.4 °F (93 °C) class) | **Mode 5, Cold Shutdown** |
 | C5 | Secure secondary as appropriate; solid plant / cold solid per commercial practice | Mode 5, Cold Shutdown |
 
-**Simulator:** This is now driveable to a genuine cold end state: borate for shutdown margin, lower the steam-dump setpoint (`set_steam_dump_setpoint`) to cool the secondary and with it the primary, depressurize in step (`set_pressure_setpoint`, spray) keeping subcooling positive, place **RHR On** below the 2.76 MPa interlock, and **secure the RCPs** (`set_rcp`) so RHR draws the RCS to cold. Once RHR carries the cooldown, set its pace with **RHR Cooldown Rate (HX flow split)** (`set_rhr_hx`) — walk it up to hold the ~**50 °C/h** cooldown limit rather than opening full-through-the-exchanger on a hot plant. The cold end state matches the `cold_shutdown` IC. Cooldown *rate* is time-compressed. **PWR-N15** is the companion procedure.
+**Simulator:** This is now driveable to a genuine cold end state: borate for shutdown margin, lower the steam-dump setpoint (`set_steam_dump_setpoint`) to cool the secondary and with it the primary, depressurize in step (`set_pressure_setpoint`, spray) keeping subcooling positive, place **RHR On** below the 400 psi (2.76 MPa) interlock, and **secure the RCPs** (`set_rcp`) so RHR draws the RCS to cold. Once RHR carries the cooldown, set its pace with **RHR Cooldown Rate (HX flow split)** (`set_rhr_hx`) — walk it up to hold the ~**90 °F/h** (50 °C/h) cooldown limit rather than opening full-through-the-exchanger on a hot plant. The cold end state matches the `cold_shutdown` IC. Cooldown *rate* is time-compressed. **PWR-N15** is the companion procedure.
 
 ---
 

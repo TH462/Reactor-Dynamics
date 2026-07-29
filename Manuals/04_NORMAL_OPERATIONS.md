@@ -57,8 +57,8 @@ Initial condition **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**, 
 | Step | Action | Control / indication | Acceptance |
 |------|--------|----------------------|------------|
 | 1 | Confirm plant subcritical | Power & Reactivity / reactivity or power ~0 | Reactivity &lt; 0; power near source equilibrium |
-| 2 | Confirm hot operating temperature | Tavg ≈ **297 °C** (no-load program point) | At operating T (NOP) |
-| 3 | Confirm primary pressure | Primary pressure ≈ **15.41 MPa** | Near PZR setpoint |
+| 2 | Confirm hot operating temperature | Tavg ≈ **566.6 °F (297 °C)** (no-load program point) | At operating T (NOP) |
+| 3 | Confirm primary pressure | Primary pressure ≈ **2235 psi (15.41 MPa)** | Near PZR setpoint |
 | 4 | Confirm subcooling healthy | Subcooling bar | Typically tens of °C; green zone |
 | 5 | Confirm RCP running (forced flow) | RCP card / rcp_running | Pump running |
 | 6 | Confirm control bank fully inserted | Rod Control bar | Steps ≈ 0 withdrawn (inserted) |
@@ -102,7 +102,7 @@ Take the reactor from **Mode 3, Hot Standby** (subcritical, hot) to **Mode 2, St
 
 | Step | Action | Control | Acceptance |
 |------|--------|---------|------------|
-| 1 | Confirm subcritical, hot: Tavg ≈ 297 °C (no-load), P ≈ 15.41 MPa | Observe | Reactivity &lt; 0 |
+| 1 | Confirm subcritical, hot: Tavg ≈ 566.6 °F (297 °C) (no-load), P ≈ 2235 psi (15.41 MPa) | Observe | Reactivity &lt; 0 |
 | 2 | Confirm SR counting (hundreds of cps class); IR on scale when required for handoff | NIS / Power card | SR &gt; ~100 cps |
 | 3 | When IR ≥ **1e-10 A** (P-6), switch **SR detector OFF** | SR detector | SR de-energized; IR carries indication |
 | 4 | Set Rod Speed **Norm** for bulk withdrawal; **Slow** for final approach | Rod Speed | Speed selected |
@@ -125,10 +125,10 @@ Commercial heatup from **Mode 5, Cold Shutdown** through **Mode 4, Hot Shutdown*
 
 | Step | MODE | Action |
 |------|------|--------|
-| 1 | **Mode 5, Cold Shutdown** | Start from the `cold_shutdown` IC: subcritical, RCS cold (~2.5 MPa), RCPs secured, RHR aligned for shutdown cooling |
-| 2 | Mode 5, Cold Shutdown → **Mode 4, Hot Shutdown** | **Start the RCPs** (RCP → Run) for pump heat and SG coupling; **raise the Pressure SP** toward NOP (15.41 MPa) so the heaters pressurize (RHR auto-isolates above its 2.76 MPa / 400 psi interlock); hand the NIS over (SR → OFF) |
+| 1 | **Mode 5, Cold Shutdown** | Start from the `cold_shutdown` IC: subcritical, RCS cold (~363 psi (2.5 MPa)), RCPs secured, RHR aligned for shutdown cooling |
+| 2 | Mode 5, Cold Shutdown → **Mode 4, Hot Shutdown** | **Start the RCPs** (RCP → Run) for pump heat and SG coupling; **raise the Pressure SP** toward NOP (2235 psi (15.41 MPa)) so the heaters pressurize (RHR auto-isolates above its 400 psi (2.76 MPa) / 400 psi interlock); hand the NIS over (SR → OFF) |
 | 3 | **Mode 4, Hot Shutdown** | Ease the **Control Bank** out to take the reactor just critical; hold ~10 % power for nuclear heatup — the temperature defect trims reactivity, so keep trimming out to hold power; drive Tavg up |
-| 4 | → **Mode 3, Hot Standby** | At NOP T/P (≈ 297 °C no-load, 15.41 MPa), insert the bank / borate back subcritical; RCS held hot on pump heat |
+| 4 | → **Mode 3, Hot Standby** | At NOP T/P (≈ 566.6 °F (297 °C) no-load, 2235 psi (15.41 MPa)), insert the bank / borate back subcritical; RCS held hot on pump heat |
 
 **Simulator note:** the heat source for heatup is **nuclear** (RCP/PZR heat alone is far too small to reach NOP); the compressed rates make the evolution playable in minutes. The pressurizer **Pressure SP** and steam-dump **Dump SP** controls, RCP Run/Stop, and the `plant_mode` state are all as-built.
 
@@ -155,7 +155,7 @@ Operate stably in **Mode 2, Startup** (critical, ≤ 5 %) and through the early 
 | Step | Action | Acceptance |
 |------|--------|------------|
 | 1 | Hold power in Mode 2, Startup band (≤ 5 %) with small rod trims | SUR near 0; power stable ≤ 5 % |
-| 2 | Confirm Tavg and pressure near NOP | P ≈ 15.41 MPa; Tavg near operating |
+| 2 | Confirm Tavg and pressure near NOP | P ≈ 2235 psi (15.41 MPa); Tavg near operating |
 | 3 | Confirm SG level held (manual feed or three-element AUTO if reliable) | SG level not LO |
 | 4 | When raising toward Mode 1, At Power: above **10 %**, block IR high / PR low-setpoint as required | Blocks allowed only above P-10 |
 | 5 | Proceed to turbine roll (**PWR-N05**); declare **Mode 1, At Power** when power > 5 % | Ready for load / Mode 1, At Power |
@@ -221,7 +221,7 @@ In **Mode 1, At Power**, raise reactor power and electrical output to full-power
 | 3 | Raise Turbine Load to match (Manual) **or** use Follow | Turbine Load / Follow | MWe tracks power |
 | 4 | Hold at each plateau; check Tavg, pressure, SG level, subcooling | Observe | Stable board |
 | 5 | Re-engage feed AUTO and PZR AUTO as needed | Board AUTO controls | Controllers holding |
-| 6 | At ~92 % control bank withdrawn / HFP equilibrium, trim boron for critical hold | CVCS / rods | Power ~100 %; P ≈ 15.41 MPa; SG ~65 %; PZR ~55 % |
+| 6 | At ~92 % control bank withdrawn / HFP equilibrium, trim boron for critical hold | CVCS / rods | Power ~100 %; P ≈ 2235 psi (15.41 MPa); SG ~65 %; PZR ~55 % |
 | 7 | Optionally place ROD AUTO and load FOLLOW for steady operation | ROD AUTO · FOLLOW | Hands-off hold |
 
 ### Outcome
@@ -323,21 +323,21 @@ Operator can balance rods (fast, local) vs boron (slow, bulk) and anticipate xen
 ## PWR-N10 — Pressurizer pressure control
 
 ### Purpose
-Hold primary pressure near **15.41 MPa** using heaters (raise) and spray (lower).
+Hold primary pressure near **2235 psi (15.41 MPa)** using heaters (raise) and spray (lower).
 
 ### Prerequisites
 - PZR at normal level band; RCP running for effective spray.
 
 ### Precautions
 - Low pressure erodes **subcooling**.
-- High pressure approaches PORV (**16.20 MPa**) and safeties (**17.13 MPa**).
+- High pressure approaches PORV (**2350 psi (16.20 MPa)**) and safeties (**2485 psi (17.13 MPa)**).
 
 ### Procedure
 
 | Step | Action | Control | Acceptance |
 |------|--------|---------|------------|
 | 1 | Read primary pressure | PZR card | Know current P |
-| 2 | Prefer **AUTO** heaters/spray for steady ops | Heaters/Spray AUTO | Holding near 15.41 MPa |
+| 2 | Prefer **AUTO** heaters/spray for steady ops | Heaters/Spray AUTO | Holding near 2235 psi (15.41 MPa) |
 | 3 | To **lower** P: open spray (manual) briefly | PZR Spray | Pressure decreasing |
 | 4 | To **raise** P: energize heaters | PZR Heaters | Pressure increasing |
 | 5 | Return to AUTO | AUTO | Stable |
@@ -480,7 +480,7 @@ Cooldown from **Mode 3, Hot Standby** through **Mode 4, Hot Shutdown** to **Mode
 ### What is [sim]
 - Decay heat model active after power history.
 - **AFW** for secondary heat sink when main feed unavailable.
-- **RHR** control exists for low-pressure residual heat removal when permissives met (scrammed + low pressure band ~**2.76 MPa** / 400 psi for auto arm, tied to the suction-valve autoclosure interlock).
+- **RHR** control exists for low-pressure residual heat removal when permissives met (scrammed + low pressure band ~**400 psi (2.76 MPa)** / 400 psi for auto arm, tied to the suction-valve autoclosure interlock).
 - HPI/LPI and accumulators for inventory under low pressure / LOCA conditions.
 
 ### Narrative commercial path (Mode 3, Hot Standby → Mode 5, Cold Shutdown)
@@ -490,13 +490,13 @@ Cooldown from **Mode 3, Hot Standby** through **Mode 4, Hot Shutdown** to **Mode
 | 1 | **Mode 3, Hot Standby** | Hot standby/shutdown; borate to cold-shutdown margin |
 | 2 | → **Mode 4, Hot Shutdown** | Cooldown/depressurize within limits (steam dump / AFW / secondary) |
 | 3 | **Mode 4, Hot Shutdown** | Place **RHR** in service; continue cooldown |
-| 4 | → **Mode 5, Cold Shutdown** | RCS cold (≤ ~93 °C class); cold shutdown lineup |
+| 4 | → **Mode 5, Cold Shutdown** | RCS cold (≤ ~199.4 °F (93 °C) class); cold shutdown lineup |
 | 5 | Mode 5, Cold Shutdown | Refueling (**Mode 6, Refueling**) is **out of scope** |
 
 ### Simulator practice
 1. After **PWR-N14** (Mode 3, Hot Standby), keep AFW/feed maintaining SG level.  
 2. Borate to cold-shutdown margin; **lower the Dump SP** to vent the SG and cool the primary; **lower the Pressure SP** to bring pressure down with spray.  
-3. Below the ~2.76 MPa interlock, place **RHR** in service (auto-arms) and **secure the RCPs** to decouple the SG; ride the plant down to a genuine Mode 5 cold end state (rate compressed).
+3. Below the ~400 psi (2.76 MPa) interlock, place **RHR** in service (auto-arms) and **secure the RCPs** to decouple the SG; ride the plant down to a genuine Mode 5 cold end state (rate compressed).
 
 ### Outcome
 Operator can narrate Mode 3, Hot Standby → Mode 5, Cold Shutdown; understands decay-heat obligation and trainer limits.
@@ -509,11 +509,11 @@ Operator can narrate Mode 3, Hot Standby → Mode 5, Cold Shutdown; understands 
 |-----------|----------------|------|
 | Power | 100 % | Mode 1, At Power |
 | MWe | 1000 | Mode 1, At Power |
-| Primary pressure | 15.41 MPa | Mode 1, At Power–Three |
-| Tavg | ≈ 297–304 °C (no-load → full-power program) | Mode 1, At Power–Three (hot) |
+| Primary pressure | 2235 psi (15.41 MPa) | Mode 1, At Power–Three |
+| Tavg | ≈ 566.6 – 579.2 °F (297 – 304 °C) (no-load → full-power program) | Mode 1, At Power–Three (hot) |
 | PZR level | ~55 % | Mode 1, At Power |
 | SG level | ~65 % | Mode 1, At Power |
-| Subcooling | ~41 °C | Mode 1, At Power |
+| Subcooling | ~73.8 °F (41 °C) | Mode 1, At Power |
 | Control bank | ~92 % withdrawn | Mode 1, At Power |
 
 ---

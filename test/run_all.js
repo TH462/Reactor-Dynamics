@@ -104,6 +104,15 @@ var BASELINES = {
   // Check count = every field name on either side, so adding a true_state field moves
   // this baseline — the intended nudge to document it in the same change.
   'run_contract.js':       { code: 0, score: '84checks 0failed' },
+  // New 2026-07-29 — the manual quotes US customary first with SI in parentheses
+  // (owner request). This re-derives the US value from the SI value in every pair
+  // and fails on bad arithmetic, on an SI quantity with no US partner, and on a
+  // temperature DIFFERENCE converted with the absolute rule. That last class is
+  // the reason it exists: a 41 °C subcooling margin is 73.8 °F, and the absolute
+  // rule prints 105.8 °F — a thin margin reading comfortable. The first scripted
+  // pass mis-classified eight sites exactly that way. Check count moves with the
+  // manual's numbers, which is the intended nudge to re-run it after an edit.
+  'run_manual_units.js':   { code: 0, score: '186checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points

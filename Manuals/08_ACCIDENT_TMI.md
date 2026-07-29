@@ -79,7 +79,7 @@ This is an **accident of information**, not primarily of equipment unavailabilit
 |------|--------|
 | 1 | Start **Hot Full Power**, speed 1×–10× |
 | 2 | Optional: inject **Loss of Main Feedwater** (historical initiator) |
-| 3 | Observe pressure rise → PORV auto-open near **16.20 MPa** |
+| 3 | Observe pressure rise → PORV auto-open near **2350 psi (16.20 MPa)** |
 | 4 | Inject **PORV Stuck Open** |
 | 5 | Inject **PORV Indicator Stuck Closed** |
 | 6 | Watch the board without using Learning duals if practicing Realistic |
@@ -143,7 +143,7 @@ Recover a stuck-open PORV LOCA with possible lying indicator without core damage
 | 4 | Attempt PORV Close | PORV Close | May not work |
 | 5 | **Isolate PORV Block Valve** | Block Valve Isolate | Inventory loss stops |
 | 6 | Verify HPI running; leave on until subcooling/inventory healthy | HPI On / AUTO | Injection active as needed |
-| 7 | Stabilize pressure with heaters when leak isolated | PZR Heaters | P recovering toward 15.41 MPa class |
+| 7 | Stabilize pressure with heaters when leak isolated | PZR Heaters | P recovering toward 2235 psi (15.41 MPa) class |
 | 8 | Restore normal CVCS carefully | CVCS | Level control without losing subcooling |
 | 9 | Clear drill failures when complete | Failures tab | Clean board |
 
@@ -152,7 +152,7 @@ Leak isolated; core covered; plant in controlled Hot Shutdown — the recovery T
 
 ### Guard criteria (training)
 - Never melted.  
-- Prefer fuel temperature never ≥ **1200 °C** (cladding damage threshold in model).  
+- Prefer fuel temperature never ≥ **2192 °F (1200 °C)** (cladding damage threshold in model).  
 
 ---
 

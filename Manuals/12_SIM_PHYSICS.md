@@ -122,8 +122,8 @@ Net reactivity is the sum of six terms:
 |---|---|---|
 | Core excess | `rho_excess` = 0.10 | +10 000 pcm, held down by boron/rods/xenon |
 | Control + shutdown rods | worth 0.085 / 0.10 | 8500 / 10 000 pcm |
-| **Doppler** (fuel temperature) | −2.5 × 10⁻⁵ K⁻¹ | ≈ **−2.5 pcm/°C** of fuel |
-| **Moderator temperature (MTC)** | −2.0 × 10⁻⁴ K⁻¹ | ≈ **−20 pcm/°C** of Tavg |
+| **Doppler** (fuel temperature) | −2.5 × 10⁻⁵ K⁻¹ | ≈ **−1.39 pcm/°F** (−2.5 pcm/°C) of fuel |
+| **Moderator temperature (MTC)** | −2.0 × 10⁻⁴ K⁻¹ | ≈ **−11.1 pcm/°F** (−20 pcm/°C) of Tavg |
 | Boron | 1.0 × 10⁻⁴ per ppm | ≈ **−10 pcm/ppm** |
 | Xenon | worth 0.025 | 2500 pcm at equilibrium |
 
@@ -183,7 +183,7 @@ Saturation temperature is a single power-law fit:
 T_sat(°C) = 179.47 · P(MPa)^0.239
 ```
 
-It matches steam tables to **±2 °C over 5–17 MPa** — the range the RCS and the steam generator actually live in. Outside that range it is wrong, and the model knows it: **the condenser uses a completely separate low-temperature correlation** (an Antoine form), because at a few kPa the power-law fit is off by nearly an order of magnitude.
+It matches steam tables to **±3.6 °F (±2 °C) over 725 – 2466 psi (5 – 17 MPa)** — the range the RCS and the steam generator actually live in. Outside that range it is wrong, and the model knows it: **the condenser uses a completely separate low-temperature correlation** (an Antoine form), because at a few kPa the power-law fit is off by nearly an order of magnitude.
 
 There are **no enthalpy tables, no density tables, and no two-phase property model**. Every "flashing", "condensing" or "voiding" behaviour in this plant is an effective coefficient calibrated to produce the right direction and the right rough magnitude.
 
@@ -191,12 +191,12 @@ There are **no enthalpy tables, no density tables, and no two-phase property mod
 
 | Node | What it represents |
 |---|---|
-| **Fuel** | Bulk (whole-core-average) fuel temperature; ≈ 389 °C above coolant at rated |
+| **Fuel** | Bulk (whole-core-average) fuel temperature; ≈ 700.2 °F (389 °C) above coolant at rated |
 | **Exposed cladding** | Peak cladding temperature of the *uppermost, uncovered* fuel — see §5.5 |
 | **Coolant** | One average coolant temperature (Tavg), with hot/cold legs derived from it |
 | **Secondary** | SG saturation temperature from secondary pressure |
 
-Hot and cold legs are **derived**, not independent: `ΔT = 33 °C at rated`, scaled by power/flow, split symmetrically about Tavg. The split is **capped so the hot leg can never exceed saturation** — subcooled liquid cannot superheat. Any enthalpy rise beyond that cap is carried as core boiling instead of more temperature.
+Hot and cold legs are **derived**, not independent: `ΔT = 59.4 °F (33 °C) at rated`, scaled by power/flow, split symmetrically about Tavg. The split is **capped so the hot leg can never exceed saturation** — subcooled liquid cannot superheat. Any enthalpy rise beyond that cap is carried as core boiling instead of more temperature.
 
 ### 5.3 Heat transfer, and the four ways it degrades
 
@@ -204,7 +204,7 @@ Fuel-to-coolant heat transfer is a single coefficient that **collapses** under t
 
 | Degradation | Trigger | Effect |
 |---|---|---|
-| **DNB** | Hot-leg (core exit) subcooling falls to 8 °C | Fuel→coolant coefficient drops by more than 10× |
+| **DNB** | Hot-leg (core exit) subcooling falls to 14.4 °F (8 °C) | Fuel→coolant coefficient drops by more than 10× |
 | **Core uncovery** | Inventory below 50 % | Coefficient falls toward zero, proportionally |
 | **Partial uncovery** | Inventory between 70 % and 50 % | The exposed-cladding node heats (§5.5) |
 | **SG tube-bundle dryout** | Wide-range SG level below 30 % | Coolant→SG heat transfer falls to a small steam-side residual |
@@ -221,7 +221,7 @@ Fuel-to-coolant heat transfer is a single coefficient that **collapses** under t
 | **RCP shaft work** (≈ 0.55 % of rated at full flow) | in |
 | Coolant → steam generator | out |
 | **RHR** heat exchanger, when aligned | out |
-| **Cold ECCS injection quench** (RWST/accumulator water at 40 °C) | out |
+| **Cold ECCS injection quench** (RWST/accumulator water at 104 °F (40 °C)) | out |
 | **Break blowdown flash cooling** | out |
 
 Two of these deserve comment.
@@ -242,8 +242,8 @@ Damage is judged at the **peak** of the two nodes, because damage is local befor
 
 | Endpoint | Threshold |
 |---|---|
-| Cladding failure (`fuel_damaged`) | **1200 °C** |
-| Fuel melt (`melted`) | **2800 °C** |
+| Cladding failure (`fuel_damaged`) | **2192 °F (1200 °C)** |
+| Fuel melt (`melted`) | **5072 °F (2800 °C)** |
 
 The simulation **ends at fuel damage**. There is no containment, no source term, no release (§13).
 
@@ -258,10 +258,10 @@ The RCS is incompressible liquid everywhere except the pressurizer bubble, so th
 | Node | Offset at rated flow | Who reads it |
 |---|---|---|
 | Hot leg | reference (0) | Pressurizer surge line, RHR suction |
-| Cold leg | **+0.30 MPa** | ECCS, accumulators, letdown |
-| Pump suction | **−0.25 MPa** | RCP cavitation |
+| Cold leg | **+44 psi (0.30 MPa)** | ECCS, accumulators, letdown |
+| Pump suction | **−36 psi (0.25 MPa)** | RCP cavitation |
 
-Both offsets scale with flow² and **collapse to zero when the pumps coast down**. Implied pump head at rated is about 0.55 MPa (~80 psi).
+Both offsets scale with flow² and **collapse to zero when the pumps coast down**. Implied pump head at rated is about 80 psi (0.55 MPa) (~80 psi).
 
 There is only **one pressure gauge**, and it reads the reference. The node pressures are true state, not indications.
 
@@ -271,7 +271,7 @@ One pump. Spin-up time constant 3 s, coastdown 8 s.
 
 > **WARNING — no natural circulation.** `natural_circ_flow = 0`. When the pump stops, flow decays to **zero**, not to the 2–5 % a real PWR would establish. Loss-of-flow events in this trainer are therefore **more severe than reality**, not less. See §12.4.
 
-**Cavitation is modelled and it bites.** The pump suction is the lowest-pressure node and sees cold-leg-temperature water, so it saturates first as the loop voids. Below 8 °C of suction subcooling the running pump begins to cavitate, reaching full severity 8 °C further down, and **loses up to 70 % of its delivered flow** — a mechanical effect, not just an indication. This is the TMI-2 "the pumps were objecting" phenomenon. A stopped pump does not cavitate.
+**Cavitation is modelled and it bites.** The pump suction is the lowest-pressure node and sees cold-leg-temperature water, so it saturates first as the loop voids. Below 14.4 °F (8 °C) of suction subcooling the running pump begins to cavitate, reaching full severity 14.4 °F (8 °C) further down, and **loses up to 70 % of its delivered flow** — a mechanical effect, not just an indication. This is the TMI-2 "the pumps were objecting" phenomenon. A stopped pump does not cavitate.
 
 ### 6.3 Inventory
 
@@ -286,7 +286,7 @@ Flows enter the mass balance on **two different scales**, deliberately:
 
 Without that split, a 20 gpm letdown bleed would read as ~3 % of total inventory per second and drain the pressurizer in seconds. With it, an uncompensated orifice-A drain walks pressurizer level down about **2 % per minute** — minutes to notice and respond, which is the intended feel.
 
-**Letdown is pressure-driven, not commanded.** Two fixed orifices, each independently in or out; each passes flow proportional to √(cold-leg pressure − 2.4 MPa backpressure). So letdown **tails off toward zero as the RCS depressurises on a cooldown** — it is not a constant you dial in.
+**Letdown is pressure-driven, not commanded.** Two fixed orifices, each independently in or out; each passes flow proportional to √(cold-leg pressure − 348 psi (2.4 MPa) backpressure). So letdown **tails off toward zero as the RCS depressurises on a cooldown** — it is not a constant you dial in.
 
 **Charging in AUTO holds programmed pressurizer level**, reading the *indicated* level and the *indicated* Tavg through a 20-second damping filter. The level program and the physical thermal-expansion line are the **same line**, by construction — so a heat-up raises level and setpoint together, and thermal expansion can never read as a leak. A leak makes itself up because it lowers the level; no leak detection is involved.
 
@@ -296,14 +296,14 @@ Without that split, a 20 gpm letdown bleed would read as ~3 % of total inventory
 
 | Segment | Shutoff head | Character |
 |---|---|---|
-| High head | **16.44 MPa** | Low flow; the only segment in play at TMI pressures |
-| Low head | **4.5 MPa** | High flow; dominates in a large LOCA |
+| High head | **2384 psi (16.44 MPa)** | Low flow; the only segment in play at TMI pressures |
+| Low head | **653 psi (4.5 MPa)** | High flow; dominates in a large LOCA |
 
-**Accumulators** are passive, borated, and **finite**. They arm at **4.14 MPa** (600 psi — the real core-flood-tank / SIT cover-gas setpoint) through a check valve in series with a motor-operated isolation valve, and they deplete as they inject. Their nitrogen cover-gas pressure is computed and indicated as the tank empties — but it is **indication only**: injection is gated on cold-leg pressure against the fixed arming setpoint.
+**Accumulators** are passive, borated, and **finite**. They arm at **600 psi (4.14 MPa)** (600 psi — the real core-flood-tank / SIT cover-gas setpoint) through a check valve in series with a motor-operated isolation valve, and they deplete as they inject. Their nitrogen cover-gas pressure is computed and indicated as the tank empties — but it is **indication only**: injection is gated on cold-leg pressure against the fixed arming setpoint.
 
-**All emergency injection water is borated to 2500 ppm** and mixes into the core concentration, so ECCS injection adds negative reactivity — the shutdown-margin role of borated safety injection. It also enters at **40 °C**, removing sensible heat as it mixes (§5.4).
+**All emergency injection water is borated to 2500 ppm** and mixes into the core concentration, so ECCS injection adds negative reactivity — the shutdown-margin role of borated safety injection. It also enters at **104 °F (40 °C)**, removing sensible heat as it mixes (§5.4).
 
-**RHR** takes suction from the **hot leg** through a valve interlocked to 2.76 MPa (400 psi): it can only be opened below that pressure and **auto-closes** if pressure climbs back above it. It recirculates — hot leg → heat exchanger → cold leg — so it changes no inventory. Cooldown rate is throttled by the heat-exchanger flow split, and its sink temperature **moves with circulating-water temperature**, so warm circ water raises the floor a cooldown can reach.
+**RHR** takes suction from the **hot leg** through a valve interlocked to 400 psi (2.76 MPa) (400 psi): it can only be opened below that pressure and **auto-closes** if pressure climbs back above it. It recirculates — hot leg → heat exchanger → cold leg — so it changes no inventory. Cooldown rate is throttled by the heat-exchanger flow split, and its sink temperature **moves with circulating-water temperature**, so warm circ water raises the floor a cooldown can reach.
 
 ### 6.5 Two kinds of void, kept apart
 
@@ -324,11 +324,11 @@ Pressure is an integrator driven by a signed sum of effects — heaters up; spra
 
 Two behaviours are worth understanding at the board:
 
-**Spray cannot pull below core-exit saturation.** Its authority tapers to zero across a 3 MPa band above the saturation pressure of the *hot leg*. Below that the core exit flashes and boiling — not pressure control — takes over. This is self-limiting: on a real cooldown the hot leg falls too, so the floor tracks down and spray keeps working.
+**Spray cannot pull below core-exit saturation.** Its authority tapers to zero across a 435 psi (3 MPa) band above the saturation pressure of the *hot leg*. Below that the core exit flashes and boiling — not pressure control — takes over. This is self-limiting: on a real cooldown the hot leg falls too, so the floor tracks down and spray keeps working.
 
 **Spray is capacity-limited to 12 % of full flow.** It is sized for step insurges, not for a loss-of-heat-sink repressurisation. A TMI-style heat-up **outruns the spray and lifts the PORV** — as it must.
 
-**A raised pressure setpoint slews; a lowered one takes effect at once.** Heating a large subcooled pressurizer to a higher saturation point takes time regardless of heater margin, so the effective target walks up at 0.02 MPa/s (a full cold-to-NOP pressurization ≈ 11 simulated minutes). Depressurisation is spray- and cooling-limited on its own and needs no slew.
+**A raised pressure setpoint slews; a lowered one takes effect at once.** Heating a large subcooled pressurizer to a higher saturation point takes time regardless of heater margin, so the effective target walks up at 3 psi (0.02 MPa)/s (a full cold-to-NOP pressurization ≈ 11 simulated minutes). Depressurisation is spray- and cooling-limited on its own and needs no slew.
 
 ### 7.2 Saturation pinning
 
@@ -348,7 +348,7 @@ There is **no level integrator**, so level and inventory cannot silently drift a
 
 | Term | Behaviour |
 |---|---|
-| `base(Tavg)` | Thermal expansion — 2.5 % level per °C, anchored at 55 % for full-power Tavg, floored at 28 % |
+| `base(Tavg)` | Thermal expansion — 1.39 % level per °F (2.5 % per °C), anchored at 55 % for full-power Tavg, floored at 28 % |
 | Mass **deficit** | −100 % per inventory fraction — a deficit draws down the whole loop (shallow) |
 | Mass **surplus** | −300 % per inventory fraction — surplus packs into the steam space, the only compressible volume: the "going solid" regime |
 | **Void** | **+150 % per void fraction** — and it is saturation-gated |
@@ -359,12 +359,12 @@ That last row is **the TMI deception, and it is arithmetic**. Void fraction itse
 
 | Valve | Opens | Closes / reseats |
 |---|---|---|
-| **PORV** | 16.20 MPa (2350 psia) | 15.86 MPa (2300 psia) |
-| **Spring safeties** | 17.13 MPa (2485 psia) | 16.55 MPa (2400 psia) |
+| **PORV** | 2350 psi (16.20 MPa) (2350 psia) | 2300 psi (15.86 MPa) (2300 psia) |
+| **Spring safeties** | 2485 psi (17.13 MPa) (2485 psia) | 2400 psi (16.55 MPa) (2400 psia) |
 
 The **block valve** is upstream of the PORV. Closing it stops **all** flow through the PORV line — relief and inventory loss alike — regardless of PORV position. That is the TMI recovery action.
 
-**The tailpipe tells the truth when the indicator does not.** The discharge line downstream of the PORV and safeties reads a **warm 82 °C baseline** — the seat has always leaked a little, which is historically true at TMI-2 and precisely why the crew discounted a hot tailpipe — and heats toward 150 °C within ~30 s whenever relief flow passes. It cools slowly, over ~15 minutes, after isolation: a hot pipe stays hot.
+**The tailpipe tells the truth when the indicator does not.** The discharge line downstream of the PORV and safeties reads a **warm 179.6 °F (82 °C) baseline** — the seat has always leaked a little, which is historically true at TMI-2 and precisely why the crew discounted a hot tailpipe — and heats toward 302 °F (150 °C) within ~30 s whenever relief flow passes. It cools slowly, over ~15 minutes, after isolation: a hot pipe stays hot.
 
 ---
 
@@ -386,14 +386,14 @@ Reverse heat transfer — a secondary hotter than the primary, e.g. starting pum
 
 | Mode | Behaviour |
 |---|---|
-| **Pressure mode** (always) | Opens proportionally above the 8.23 MPa no-load setpoint |
+| **Pressure mode** (always) | Opens proportionally above the 1194 psi (8.23 MPa) no-load setpoint |
 | **Fast Tavg-error mode** (**armed**) | On a turbine trip, or a load rejection past the arm, drives open on Tavg error immediately |
 
 Capacity is **105 % of rated steam flow**. This plant's dump swallows a full load rejection with a small margin — which is *why* a turbine trip here is a transient the operator manages rather than a scram. It is also exactly what **cannot** save a loss-of-feed event, where the drying SG stops absorbing heat no matter what the dump vents.
 
 The fast mode's reference Tavg is **programmed on turbine load** — the same sliding program the rod controller uses — so the two cannot drift apart.
 
-> **WARNING — a declared, deliberate cliff.** The fast mode arms on a **rate**: a step load rejection must exceed **40 MWe**, or a ramp must exceed roughly 40 MWe/min. Measured: a **39 MWe rejection does not arm** and lifts the PORV (Tavg 318.9 °C); **41 MWe arms and is caught** (Tavg 304.5 °C). It is also **blind to staircases** — 60 MWe delivered as four 15 MWe steps never arms at all.
+> **WARNING — a declared, deliberate cliff.** The fast mode arms on a **rate**: a step load rejection must exceed **40 MWe**, or a ramp must exceed roughly 40 MWe/min. Measured: a **39 MWe rejection does not arm** and lifts the PORV (Tavg 606 °F (318.9 °C)); **41 MWe arms and is caught** (Tavg 580.1 °F (304.5 °C)). It is also **blind to staircases** — 60 MWe delivered as four 15 MWe steps never arms at all.
 >
 > This is a ruled, intentional limitation, not a defect. Lowering the arm is not the fix: an arm low enough to catch an ordinary 15 MWe dispatch cut would leave the dump venting forever, holding the reactor at 100 % and destroying the load-follow behaviour. The sub-threshold rejection is a manoeuvre **you** are expected to handle, and the PORV is the honest backstop when you don't.
 
@@ -407,7 +407,7 @@ Main feedwater requires the **condensate pump**, an available **condenser**, and
 
 ### 8.5 The MSIV and SG safeties
 
-**SG code safeties are upstream of the MSIV** (pop 9.31 MPa, reseat 9.0), above the 8.23 MPa dump setpoint. They are the relief that remains when the generator is bottled.
+**SG code safeties are upstream of the MSIV** (pop 1350 psi (9.31 MPa), reseat 9.0), above the 1194 psi (8.23 MPa) dump setpoint. They are the relief that remains when the generator is bottled.
 
 A **main steam line break is gated by break location.** A break *downstream* of the MSIV is isolable — shutting the valve stops the blowdown dead, and that is the operator's one real lever. A break *upstream*, between the SG and the valve, is on the wrong side of every isolation this single-loop plant owns and blows the generator down regardless.
 
@@ -561,7 +561,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 
 | Class | Trust | Examples |
 |---|---|---|
-| **Structural** — fixed physical constants and real-plant setpoints | High | β and Λ, six-group delayed data, fuel damage/melt thresholds, PORV and safety setpoints, the 4.14 MPa accumulator arming pressure, the 2.76 MPa RHR interlock |
+| **Structural** — fixed physical constants and real-plant setpoints | High | β and Λ, six-group delayed data, fuel damage/melt thresholds, PORV and safety setpoints, the 600 psi (4.14 MPa) accumulator arming pressure, the 400 psi (2.76 MPa) RHR interlock |
 | **Calibrated** — arbitrated by the physics acceptance suites | Directionally right, magnitude roughly right | Heat-transfer coefficients, decay-heat constants, level coefficients, dump and AFW capacities |
 | **Compressed** — deliberately faster than reality for training | Right in behaviour, wrong in duration | Boron adjust rate, grab-sample turnaround, cold-plant pressurisation slew, mode-transition pacing |
 | **Indicative** — display flavour derived from normalised internals | Illustrative | The gpm conversions (24 000 gpm RCS flow, 40 gpm charging, 20 gpm letdown, 100 gpm AFW) |

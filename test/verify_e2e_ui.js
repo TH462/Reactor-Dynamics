@@ -162,10 +162,14 @@ async function testUnitsAndInstructor(page) {
   // renders the markdown verbatim, which is authored in SI. So the manual reads
   // 1200 °C / 335 °C whichever way the toggle is set.
   //
-  // STRICT XFAIL — tracked as issue #111 ("units in the manual need to change with
-  // unit selection"). Asserted as a known gap so the gate can be honestly green while
-  // the gap stays visible: if the manual ever DOES convert, this errors and tells you
-  // to promote it to a real assertion. Do not delete without closing #111.
+  // STRICT XFAIL — was issue #111 ("units in the manual need to change with unit
+  // selection"). RESOLVED 2026-07-29 by a different route than #111 assumed: the
+  // manual now quotes BOTH systems inline, US customary first with SI in
+  // parentheses (owner request), so it is correct at either toggle setting and has
+  // no reason to re-render. The assertion below therefore still holds — and still
+  // earns its keep, because a future attempt to make the manual convert on the
+  // toggle would double-convert text that is already dual. `run_manual_units.js`
+  // is what now guards the manual's numbers. Keep this pinned.
   var siDoc = await page.locator('#manualContent .mdoc').first().textContent();
   var manualConverts = usDoc !== siDoc;
   log.push('XFAIL #111 manual unit conversion: ' + (manualConverts ? 'CONVERTS' : 'static SI (expected gap)'));

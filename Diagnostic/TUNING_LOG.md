@@ -112,6 +112,62 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-29d — manual goes dual-unit (US first, SI in parentheses)  ✅
+
+**Owner request.** All 14 operator documents now read `2235 psi (15.41 MPa)`, `579.2 °F
+(304 °C)`, `28.5 inHg (96.5 kPa)`. Conversions and rounding taken from the product's own
+`ui/app.js conv()` / `fmtInstrValue()` (pressure 0 dp, temperature 1 dp, vacuum 1 dp), so a
+number in the manual is the number on the gauge. US first is consistent with the board, whose
+SI toggle is *disabled* for the PWR (#237/#238).
+
+**THE LESSON: three conversion rules, and the third is a trap.** Temperature DIFFERENCES —
+subcooling margin, leg ΔT, DNB margin, rod-AUTO deadband, cooldown rate — convert ×9/5 with
+**no offset**. 41 °C of subcooling is **73.8 °F**; the absolute rule gives 105.8 °F, i.e. a
+thin margin rendered as a comfortable one. That is a danger-side error and it is invisible to
+proofreading.
+
+**Two scripted passes were thrown away before one worked.** Same failure mode both times —
+*classifying by line instead of by site*:
+1. **Line-keyword heuristic** ("does this line mention margin/ΔT?"): 8 wrong sites. It
+   converted the absolute leg temperatures 321/288 °C as differences (the line also carried
+   `ΔT ≈ 33 °C`) and the 289 °C P-12 Tavg setpoint as a difference (the line said "8 °C below
+   the no-load program") — 32 °F low on a real setpoint.
+2. **Exact-substring rewrite**: overlapping keys (`falls to 8 °C` vs `to 8 °C`) produced
+   nested output like `falls to 14.4 °F (falls to 14.4 °F (to 46.4 °F (8 °C)))`.
+3. **What worked**: script only the unambiguous classes (MPa, kPa, absolute °C) with an
+   explicit skip-list of line numbers, then hand-edit the ~35 judgement sites. `git checkout`
+   between attempts — the manuals were committed first precisely so this was cheap.
+
+**New gate `test/run_manual_units.js`** (182 checks; `run_all` baseline `182checks 0failed`).
+Fails three ways: bad arithmetic, an SI quantity with no US partner, and — the one that
+matters — a `DIFF_ONLY` value converted with the absolute rule, enforced **per site**.
+
+**The gate's own first design was too weak, and injecting the bug proved it.** v1 only checked
+that each difference quantity appeared as a difference *somewhere in the corpus*. Rewriting
+09's subcooling margin to 105.8 °F passed green, because 01 and 04 still carried a correct
+73.8 °F. Made per-site; the same injection now fails. **A corpus-wide assertion is not a
+per-site assertion** — worth remembering for any future "must appear somewhere" check.
+
+**The gate then caught my own allow-list.** I listed `50 °C` as always-a-difference for the
+RHR cooldown rate; it immediately failed two absolute uses (Mode 5 RCS ~122 °F, the RHR sink).
+The rate sites carry `/h` and validate as differences on their own, so the entry was wrong,
+not the manual. Left in the file as a worked example.
+
+**Validated against the old behaviour (HR10).** Green on the converted manual (182/0); **48
+failures** with 09 reverted to its SI-only form; **fails** on the injected wrong-rule margin.
+
+**#111 is resolved by a different route than it assumed.** The issue asked for the manual to
+re-render on the units toggle; authoring both systems inline makes it correct at either
+setting with no rendering path at all. The `verify_e2e_ui` xfail that pinned the gap is
+**kept** — it now guards against someone adding conversion-on-toggle to text that is already
+dual — and its comment says so.
+
+**Still SI-only, deliberately out of scope:** the board's inspection copy
+(`ui/diagram/board/pwr_board_inspect.js`) authors prose like "pressure falls to about
+12.4 MPa". The owner asked for the manual; the same treatment there is a follow-up.
+
+---
+
 ### 2026-07-29c — #240 follow-up: the `status` class does not demand an acknowledgment  ✅
 
 **Owner ruling** (on #240): *"I want status-class alarms to spawn (and arrive)

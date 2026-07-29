@@ -17,13 +17,13 @@
 |-----------|---------|------|
 | Reactor power | **100 %** | Mode 1, At Power |
 | Electrical output | **≈ 100 MWe** | Mode 1, At Power |
-| Primary pressure | **15.41 MPa** | Mode 1, At Power |
-| Tavg | **≈ 304 °C** | Mode 1, At Power |
-| Thot / Tcold | **≈ 321 / 288 °C** (ΔT ≈ 33 °C) | Mode 1, At Power |
+| Primary pressure | **2235 psi (15.41 MPa)** | Mode 1, At Power |
+| Tavg | **≈ 579.2 °F (304 °C)** | Mode 1, At Power |
+| Thot / Tcold | **≈ 609.8 / 550.4 °F** (321 / 288 °C) (ΔT ≈ 59.4 °F / 33 °C) | Mode 1, At Power |
 | Pressurizer level | **≈ 55 %** | Mode 1, At Power |
 | Steam Generator level | **≈ 65 %** | Mode 1, At Power |
-| Secondary steam pressure | **≈ 5.65 MPa** | Mode 1, At Power |
-| Subcooling margin | **≈ 41 °C** | Mode 1, At Power |
+| Secondary steam pressure | **≈ 819 psi (5.65 MPa)** | Mode 1, At Power |
+| Subcooling margin | **≈ 73.8 °F** (41 °C) | Mode 1, At Power |
 | Control bank position | **≈ 92 %** withdrawn | Mode 1, At Power |
 | Core inventory | **100 %** | Mode 1, At Power |
 | Decay heat (after long power run) | **≈ 7 %** at scram instant | — |
@@ -47,9 +47,9 @@
 |------------------------|-----------|----------|-------|
 | Power range (high) | high | **120 %** | Full-power high flux |
 | Power range (low setpoint) | high | **25 %** | Startup; blockable above P-10 |
-| Tavg | high | **335 °C** | |
-| Primary pressure | high | **16.44 MPa** | |
-| Primary pressure | low | **12.41 MPa** | |
+| Tavg | high | **635 °F (335 °C)** | |
+| Primary pressure | high | **2384 psi (16.44 MPa)** | |
+| Primary pressure | low | **1800 psi (12.41 MPa)** | |
 | PZR level | low | **12 %** | |
 | SG level | low | **17 %** | Lo-lo; AFW auto-starts just above (20 %) |
 | SG level (P-14) | high | **90 %** | High-high; reactor trip via P-9, condition **≥50 % power** |
@@ -57,7 +57,7 @@
 | Primary flow (true flow exception) | low | **0.25** normalized | Low-flow trip |
 | Source range | high | **1e5 cps** | When SR energized |
 | Intermediate range | high | **1.67e-3 A** | ~20 % class over-range; blockable above P-10 |
-| Primary pressure (SI trip, PI-3) | low | **12.4 MPa** | Reactor trip on safety injection; blockable below P-11 (13.6 MPa), auto-reinstates |
+| Primary pressure (SI trip, PI-3) | low | **1798 psi (12.4 MPa)** | Reactor trip on safety injection; blockable below P-11 (1973 psi (13.6 MPa)), auto-reinstates |
 | PZR level (PI-8) | high | **97 %** | Going-solid backstop; the 75 % alarm warns first |
 
 ### Permissives / blocks
@@ -67,8 +67,8 @@
 | **P-6** | IR ≥ **1e-10 A** | Allows SR de-energize |
 | **P-9** | Power ≥ **50 %** | Arms the **reactor trip on turbine trip** and the P-14 reactor trip; also gates the loss-of-MFW AFW start |
 | **P-10** | Power ≥ **10 %** | Allows IR/PR low-setpoint trip blocks |
-| **P-11** | Pressure ≥ **13.6 MPa** | Below it the SI trip may be blocked; auto-reinstates above |
-| **P-12** | Tavg low **289 °C** | LO TAVG annunciator (`PWR-A29`) |
+| **P-11** | Pressure ≥ **1973 psi (13.6 MPa)** | Below it the SI trip may be blocked; auto-reinstates above |
+| **P-12** | Tavg low **552.2 °F (289 °C)** | LO TAVG annunciator (`PWR-A29`) |
 | SR re-energize block | IR ≥ **1e-6 A** | Protects SR detector |
 
 ### Rod withdrawal interlock
@@ -85,30 +85,30 @@
 
 | Function | Instrument | Direction | Setpoint | Reset / notes |
 |----------|------------|-----------|----------|---------------|
-| Open PORV | primary_pressure | high | **16.20 MPa** | Close/reseat **15.86 MPa** |
-| Open PZR safety | primary_pressure | high | **17.13 MPa** | Reseat **16.55 MPa** |
-| HPI start (Safety Injection) | primary_pressure | low | **12.4 MPa** | ESF arm must be AUTO; arrives with the low-pressure trip |
+| Open PORV | primary_pressure | high | **2350 psi (16.20 MPa)** | Close/reseat **2300 psi (15.86 MPa)** |
+| Open PZR safety | primary_pressure | high | **2485 psi (17.13 MPa)** | Reseat **2400 psi (16.55 MPa)** |
+| HPI start (Safety Injection) | primary_pressure | low | **1798 psi (12.4 MPa)** | ESF arm must be AUTO; arrives with the low-pressure trip |
 | HPI start (SI on PZR level lo-lo) | pzr_level | low | **12 %** | Inventory-protecting SI path — fires with the 12 % low-level trip even if the heaters are holding pressure; re-arms above **20 %**; rides the HPI arm |
 | Letdown isolation | pzr_level | low | **17 %** | Closes both letdown orifices before the 12 % low-level trip; re-arms above **20 %**; restoration is a deliberate operator action (no auto-reopen) |
-| Feedwater isolation (on SI) | primary_pressure | low | **12.4 MPa** | Rides the HPI arm (PI-5) |
+| Feedwater isolation (on SI) | primary_pressure | low | **1798 psi (12.4 MPa)** | Rides the HPI arm (PI-5) |
 | AFW start | sg_level | low | **20 %** | ESF arm must be AUTO |
 | AFW start (loss of MFW, PI-4) | fw_flow | low | **0.10** normalized | Above P-9 (≥50 % power) |
-| MFW isolation + AFW start (P-4) | tavg | low | **300 °C** | Condition: reactor tripped — the post-trip MFW→AFW handoff |
-| RHR start | primary_pressure | low | **2.76 MPa** (400 psi) | Condition: scrammed; ties to the RHR suction-valve autoclosure interlock |
+| MFW isolation + AFW start (P-4) | tavg | low | **572 °F (300 °C)** | Condition: reactor tripped — the post-trip MFW→AFW handoff |
+| RHR start | primary_pressure | low | **400 psi (2.76 MPa)** (400 psi) | Condition: scrammed; ties to the RHR suction-valve autoclosure interlock |
 | SR re-energize assist | intermediate_range | low | **1e-10 A** | Actuation path as configured |
-| Open SG safety | steam_pressure | high | **9.31 MPa** | Reseat **9.0 MPa** |
-| Turbine trip (vacuum) | condenser_vacuum | low | **74.5 kPa** | Reset region **84.7 kPa** |
+| Open SG safety | steam_pressure | high | **1350 psi (9.31 MPa)** | Reseat **1305 psi (9.0 MPa)** |
+| Turbine trip (vacuum) | condenser_vacuum | low | **22 inHg (74.5 kPa)** | Reset region **25 inHg (84.7 kPa)** |
 | Turbine trip (overspeed) | turbine_rpm | high | **1980 RPM** | Reset below ~**1800 RPM** |
 | Turbine trip (SG hi-hi / P-14) | sg_level | high | **90 %** | Re-arm below **85 %** |
-| Steam dump (pressure mode) | steam_pressure | high | **8.23 MPa** | = Psat(297 °C), the no-load Tavg anchor; capacity **105 %** of rated steam flow |
-| Steam dump (trip-open mode) | tavg error | — | opens on (Tavg − 297)/8 °C | On turbine trip; needs the condenser (unavailable on lost vacuum / MSIV shut) |
+| Steam dump (pressure mode) | steam_pressure | high | **1194 psi (8.23 MPa)** | = Psat(566.6 °F (297 °C)), the no-load Tavg anchor; capacity **105 %** of rated steam flow |
+| Steam dump (trip-open mode) | tavg error | — | opens on the Tavg error above the no-load reference, full demand ~14.4 °F (8 °C) above it | On turbine trip; needs the condenser (unavailable on lost vacuum / MSIV shut) |
 | Spray flow cap | — | — | **12 %** of full spray flow | Sized for step insurges; cannot suppress a loss-of-heat-sink repressurization |
 | Main feedwater isolation (P-14) | sg_level | high | **90 %** | Latches (manual restore); AFW unaffected. Re-arm below **85 %** |
 
 ### HPI pump curve (merged HPI/LPI)
 
 - High-head trickle against operating pressure.  
-- High volume once depressurized (low-head region ~**4.5 MPa** class shutoff transition).  
+- High volume once depressurized (low-head region ~**653 psi (4.5 MPa)** class shutoff transition).  
 
 ### AFW delivery
 
@@ -131,16 +131,16 @@
 |----|------|------------|-----|----------|----------|
 | reactor_trip | REACTOR TRIP | rps_scrammed | true | — | critical |
 | high_flux | HI FLUX | power_range | high | **108 %** | critical |
-| high_tavg | HI TAVG | tavg | high | **312.2 °C** | warning |
-| low_tavg | LO TAVG (P-12) | tavg | low | **289 °C** | warning † |
-| pzr_pressure_high | PZR PRESS HI | primary_pressure | high | **15.86 MPa** | warning |
-| pzr_pressure_low | PZR PRESS LO | primary_pressure | low | **14.82 MPa** | warning † |
-| pzr_pressure_lolo | PZR PRESS LO LO | primary_pressure | low | **12.41 MPa** | critical † |
+| high_tavg | HI TAVG | tavg | high | **594 °F (312.2 °C)** | warning |
+| low_tavg | LO TAVG (P-12) | tavg | low | **552.2 °F (289 °C)** | warning † |
+| pzr_pressure_high | PZR PRESS HI | primary_pressure | high | **2300 psi (15.86 MPa)** | warning |
+| pzr_pressure_low | PZR PRESS LO | primary_pressure | low | **2149 psi (14.82 MPa)** | warning † |
+| pzr_pressure_lolo | PZR PRESS LO LO | primary_pressure | low | **1800 psi (12.41 MPa)** | critical † |
 | porv_open | PORV OPEN | porv_indicator | open | — | warning |
 | sur_high | SUR HI | startup_rate | high | **1 DPM** | caution |
 | sr_high_flux | SR HI FLUX | source_range | high | **5e4 cps** | caution |
-| subcooling_low | LO SUBCOOL | subcooling_margin | low | **11.1 °C** | warning |
-| subcooling_lost | SUBCOOL LOST | subcooling_margin | low | **0 °C** | critical |
+| subcooling_low | LO SUBCOOL | subcooling_margin | low | **20 °F** (11.1 °C) | warning |
+| subcooling_lost | SUBCOOL LOST | subcooling_margin | low | **0 °F** (0 °C) | critical |
 | pzr_level_high | PZR LVL HI | pzr_level | high | **75 %** | caution |
 | pzr_level_low | PZR LVL LO | pzr_level | low | **25 %** | warning |
 | pzr_level_lolo | PZR LVL LO LO | pzr_level | low | **12 %** | critical |
@@ -160,9 +160,9 @@
 | turbine_trip | TURB TRIP | steam_demand_low | true | — | warning † |
 | load_imbalance | LOAD IMBAL | sg_imbalance_active | true | > **4 %** of rated (4 MWe) | caution |
 | msiv_closed | MSIV SHUT | msiv_open | false | — | warning |
-| sg_press_high | SG PRESS HI | steam_pressure | high | **9.0 MPa** | caution |
-| cond_vac_low | COND VAC LO | condenser_vacuum | low | **84.7 kPa** | caution |
-| cond_vac_trip | COND VAC TRIP | condenser_vacuum | low | **74.5 kPa** | warning |
+| sg_press_high | SG PRESS HI | steam_pressure | high | **1305 psi (9.0 MPa)** | caution |
+| cond_vac_low | COND VAC LO | condenser_vacuum | low | **25 inHg (84.7 kPa)** | caution |
+| cond_vac_trip | COND VAC TRIP | condenser_vacuum | low | **22 inHg (74.5 kPa)** | warning |
 | rcp_cavitation | RCP CAVITATION | rcp_cavitating | true | — | warning |
 
 **Setpoints do not move with plant mode — priorities do.** Every setpoint above is fixed in every mode. What changes is **classification**: the annunciators marked **†** drop to **Status** in **Mode 4 or 5**, where the condition is the planned lineup rather than a casualty, and **‡** drops to Status whenever the pumps were stopped **by the handswitch** rather than lost. The alarm still comes in and still reads its instrument; the priority, the wording, and — because Status-class annunciators arrive pre-acknowledged — the ACK demand are what change. Full table, the exclusions, and what it does *not* cover: **06 §2.0**.
@@ -173,10 +173,10 @@
 
 | Limit | Value | Meaning |
 |-------|-------|---------|
-| Fuel cladding damage | **1200 °C** | Fission-product release begins (model) |
-| Fuel melt | **2800 °C** | Core melt (model) |
+| Fuel cladding damage | **2192 °F (1200 °C)** | Fission-product release begins (model) |
+| Fuel melt | **5072 °F (2800 °C)** | Core melt (model) |
 | Core uncovery heat-transfer collapse | Inventory &lt; **~50 %** | Fuel-to-coolant coupling degrades |
-| DNB entry (hot-leg subcooling) | **~8 °C** margin | Heat transfer degrades toward DNB regime |
+| DNB entry (hot-leg subcooling) | **~14.4 °F** (8 °C) margin | Heat transfer degrades toward DNB regime |
 
 ---
 
@@ -184,9 +184,9 @@
 
 | Parameter | Value |
 |-----------|-------|
-| Pressure setpoint | **15.41 MPa** |
-| Heater proportional band | **0.207 MPa** |
-| Spray proportional band | **0.345 MPa** |
+| Pressure setpoint | **2235 psi (15.41 MPa)** |
+| Heater proportional band | **30 psi (0.207 MPa)** |
+| Spray proportional band | **50 psi (0.345 MPa)** |
 
 ---
 
@@ -252,15 +252,15 @@ persists is either a transient in progress or a failed instrument.
 | Plant MODE | At Power (1) | At Power (1) | At Power (1) | Hot Standby (3) | Cold Shutdown (5) |
 | Reactor power (%) | 100 | ≈ 50 | ≈ 6 | ~0 (source) | ~0 |
 | Generator output (MWe) | 100 | ≈ 50 | ≈ 6 | 0 | 0 |
-| Tavg (°C) | 304 | ≈ 300 | ≈ 297 | 297 | 50 |
-| T-hot / T-cold (°C) | 321 / 288 | 309 / 292 | 298 / 296 | 297 / 297 | 50 / 50 |
-| Primary pressure (MPa) | 15.41 | 15.41 | 15.41 | 15.41 | 2.50 |
+| Tavg °F (°C) | 579.2 (304) | ≈ 572 (300) | ≈ 566.6 (297) | 566.6 (297) | 122 (50) |
+| T-hot / T-cold °F (°C) | 609.8 / 550.4 (321 / 288) | 588.2 / 557.6 (309 / 292) | 568.4 / 564.8 (298 / 296) | 566.6 / 566.6 (297 / 297) | 122 / 122 (50 / 50) |
+| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2235 (15.41) | 2235 (15.41) | 363 (2.50) |
 | Subcooling margin (°C) | ≈ 41 | ≈ 45 | ≈ 48 | ≈ 48 | ≈ 173 |
 | PZR level (%) | 55 | ≈ 46 | ≈ 38 | ≈ 37 | 30 |
 | SG level (%) | 65 | ≈ 64 | ≈ 65 | 65 | 65 |
-| SG / steam pressure (MPa) | 5.65 | ≈ 6.8 | ≈ 8.0 | 8.23 | ≈ 0.1 |
+| SG / steam pressure psi (MPa) | 819 (5.65) | ≈ 986 (6.8) | ≈ 1160 (8.0) | 1194 (8.23) | ≈ 15 (0.1) |
 | Steam / feed flow (norm.) | 1.00 | 0.50 | 0.06 | 0 | 0 |
-| Fuel average temp (°C) | ≈ 693 | ≈ 496 | ≈ 321 | 297 | 50 |
+| Fuel average temp °F (°C) | ≈ 1279.4 (693) | ≈ 924.8 (496) | ≈ 609.8 (321) | 566.6 (297) | 122 (50) |
 | Decay heat (%) | 7.0 | 3.5 | ≈ 0.4 | ≈ 0.5 | ~0 |
 | Xenon (% of equilibrium) | 100 | ≈ 66 | ≈ 11 | 0 | 0 |
 | Boron (ppm) | ≈ 747 | ≈ 837 | ≈ 846 | ≈ 363 | ≈ 919 |
@@ -276,10 +276,10 @@ persists is either a transient in progress or a failed instrument.
 
 Notes:
 
-- **PZR level rides the Tavg program** (2.5 %/°C, 55 % at full-power Tavg): the level column
+- **PZR level rides the Tavg program** (1.39 %/°F, 2.5 %/°C, 55 % at full-power Tavg): the level column
   IS the program — do not "correct" a 38 % level at low power, it is where the program wants it.
-- **Steam pressure rides the load**: full-power 5.65 MPa up to the 8.23 MPa no-load point
-  (= Psat of the 297 °C no-load Tavg anchor).
+- **Steam pressure rides the load**: full-power 819 psi (5.65 MPa) up to the 1194 psi (8.23 MPa) no-load point
+  (= Psat of the 566.6 °F (297 °C) no-load Tavg anchor).
 - **Boron differs per IC by design** (rod position and xenon differ); the `hot_zero_power`
   value is low because the control bank is fully inserted and xenon-free ≈ criticality is
   held down by rods, not boron.

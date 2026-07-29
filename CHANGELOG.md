@@ -13,6 +13,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The manual now reads in both unit systems — US customary first, SI in parentheses.**
+  `2235 psi (15.41 MPa)`, `579.2 °F (304 °C)`, `28.5 inHg (96.5 kPa)`, across all 14 operator
+  documents. US first because that is what the PWR board reads; SI alongside because that is
+  what the engine computes in and what every setpoint in the source is written in. Conversions
+  and rounding match the product's own `conv()` / `fmtInstrValue()`, so a number in the manual
+  is the number on the gauge.
+  **Temperature differences convert without the +32 offset**, and that distinction is the
+  reason this needed care: subcooling margin, leg ΔT, DNB margin, control deadbands and
+  cooldown rates are differences, so full-power subcooling is **73.8 °F (41 °C)** — applying
+  the absolute rule would print 105.8 °F and make a thin margin look comfortable.
+  New gate **`test/run_manual_units.js`** (182 checks) re-derives every US value from its SI
+  partner and fails three ways: bad arithmetic, an SI quantity left without a US partner, and
+  a difference converted with the absolute rule. The convention itself is documented in
+  `Manuals/README.md` §Units.
+  This also resolves the long-standing gap behind the `verify_e2e_ui` units xfail — the manual
+  is now correct at either toggle setting rather than needing to re-render on it.
+
 ### Fixed
 - **Manual currency audit — the manual now matches the plant it documents.** Every trip,
   actuation, alarm, failure, automation channel, instrument, engine command, initial condition

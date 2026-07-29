@@ -118,9 +118,9 @@ Describe every operator control and major indication on the PWR board, with purp
 
 | Zone | Margin | Meaning |
 |------|--------|---------|
-| Green | > **11 °C** | Healthy (above LO SUBCOOL) |
-| Yellow | 0–11 °C | Approaching saturation |
-| Red | < **0 °C** | Boiling / voiding risk |
+| Green | > **19.8 °F** (11 °C) | Healthy (above LO SUBCOOL) |
+| Yellow | 0 – 19.8 °F (0 – 11 °C) | Approaching saturation |
+| Red | < **0 °F** (0 °C) | Boiling / voiding risk |
 
 **WARNING:** Do not throttle HPI solely because PZR level is high if subcooling is eroding.
 
@@ -155,15 +155,15 @@ Blocks **auto-reinstate** when power falls below P-10.
 ### 5.1 Primary pressure indication
 
 - System reference pressure for the whole RCS (uniform model).  
-- Normal: **15.41 MPa**.  
+- Normal: **2235 psi (15.41 MPa)**.  
 
 ### 5.1a Pressure setpoint (Press SP)
 
 - The pressure-control **setpoint** (MPa) the AUTO heaters/spray drive toward, shown as a live
-  readout with a numeric **Press SP** box (0.1–17 MPa; engine clamps to the relief band).  
-- **Raise** it toward NOP (**15.41 MPa**) during a heatup — the heaters pressurize to the new target;
+  readout with a numeric **Press SP** box (15 – 2466 psi (0.1 – 17 MPa); engine clamps to the relief band).  
+- **Raise** it toward NOP (**2235 psi (15.41 MPa)**) during a heatup — the heaters pressurize to the new target;
   **lower** it during a cooldown so spray/relief brings pressure down. Used by the Mode-transition
-  missions. (MPa-denominated regardless of the US/SI display toggle, like the load setpoint.)
+  missions. (The box itself is MPa-denominated regardless of the US/SI display toggle, like the load setpoint.)
 
 ### 5.2 PZR Heaters
 
@@ -205,9 +205,9 @@ Blocks **auto-reinstate** when power falls below P-10.
 | Item | Detail |
 |------|--------|
 | **Purpose** | Power-Operated Relief Valve — rapid pressure relief |
-| **Auto** | Opens ~**16.20 MPa**, reseats ~**15.86 MPa** (control layer on pressure instrument) |
+| **Auto** | Opens ~**2350 psi (16.20 MPa)**, reseats ~**2300 psi (15.86 MPa)** (control layer on pressure instrument) |
 | **Indicator** | Shows **commanded** position — can disagree with actual (TMI) |
-| **Tailpipe temp** | Hot discharge (~150 °C class) can reveal steam passing while light says closed |
+| **Tailpipe temp** | Hot discharge (~302 °F (150 °C) class) can reveal steam passing while light says closed |
 
 **Procedure — if PORV should be shut but leak suspected**
 
@@ -229,7 +229,7 @@ Blocks **auto-reinstate** when power falls below P-10.
 ### 6.3 Safety valves (indication only)
 
 - Mechanical / control-actuated spring safeties.  
-- Open ≈ **17.13 MPa**, reseat ≈ **16.55 MPa**.  
+- Open ≈ **2485 psi (17.13 MPa)**, reseat ≈ **2400 psi (16.55 MPa)**.  
 - No direct operator open/close command.  
 
 ---
@@ -253,7 +253,7 @@ Blocks **auto-reinstate** when power falls below P-10.
 
 - Two fixed orifices, each independently **in** or **out** — four lineups: **off / A / B / A+B**.  
 - Removes coolant from the RCS (bleeds the cold leg to the letdown HX / VCT); lowers inventory / PZR level.  
-- Flow is **pressure-driven** (∝ √ΔP across the orifice, referenced to the 2.4 MPa letdown backpressure),
+- Flow is **pressure-driven** (∝ √ΔP across the orifice, referenced to the 348 psi (2.4 MPa) letdown backpressure),
   so it **tails off as RCS pressure falls** on a cooldown — it is not a throttled setpoint.  
 - Nominal at NOP: **A ≈ 3 %**, **B ≈ 4 %**, **A+B ≈ 7 %** of rated (A+B is max letdown — a net drain,
   exceeding normal charging, for level reduction / depressurization).  
@@ -305,7 +305,7 @@ displayed target snap to the lab number, so the next dose is computed from reali
 
 > **At full power, dilution moves Tavg, not power.** With the turbine at rated load the
 > reactor self-regulates back to ~100 % — the boron change appears as a Tavg change
-> (~0.5 °C per ppm). Use dilution to manage rod position / Tavg; move POWER with the
+> (~0.9 °F / 0.5 °C per ppm). Use dilution to manage rod position / Tavg; move POWER with the
 > turbine load. Below rated load, dilution does raise power.
 
 **Procedure — dilute for power rise (slow)**
@@ -356,7 +356,7 @@ displayed target snap to the lab number, so the next dose is computed from reali
 | Indication | Normal |
 |------------|--------|
 | SG level | ≈ **65 %** |
-| Steam pressure | ≈ **5.65 MPa** at power |
+| Steam pressure | ≈ **819 psi (5.65 MPa)** at power |
 
 **Shrink and swell:** On rapid load/power change, indicated level can move the **wrong way** briefly. Do not chase with large feed swings.
 
@@ -475,8 +475,8 @@ power is ~1000 gpm, at 6 % power it is ~50 gpm.
 | Control | Effect |
 |---------|--------|
 | **On / Off** | Start/stop merged high/low pressure injection |
-| **AUTO arm** | Actuates on low primary pressure (~**12.4 MPa**) when armed |
-| **Pump curve** | High-head trickle at operating pressure; high volume below ~**4.5 MPa** shutoff region |
+| **AUTO arm** | Actuates on low primary pressure (~**1798 psi (12.4 MPa)**) when armed |
+| **Pump curve** | High-head trickle at operating pressure; high volume below ~**653 psi (4.5 MPa)** shutoff region |
 | **Indication** | `hpi_flow`, HPI ACTIVE alarm/status |
 
 **Procedure — HPI on small-break LOCA / stuck PORV**
@@ -496,16 +496,16 @@ power is ~1000 gpm, at 6 % power it is ~50 gpm.
   Default **aligned (open)**. Isolate before depressurizing below the check-valve setpoint on a normal
   cooldown so the accumulators do **not** spuriously dump into the depressurized RCS; also used to isolate
   a leaking/mispositioned tank. A shut valve **blocks discharge at any pressure**.  
-- **Cold-water quench:** accumulator/ECCS water injects **cold** (RWST/SIT ~40 °C), so a large-break dump
+- **Cold-water quench:** accumulator/ECCS water injects **cold** (RWST/SIT ~104 °F (40 °C)), so a large-break dump
   **cools T-avg** as well as restoring inventory and boron.  
 
 ### 11.2 RHR
 
 | Control | Effect |
 |---------|--------|
-| **Suction valve Open / Shut** | The RHR hot-leg suction valve — the system's entry point. **Interlocked**: it will not open above ~**2.76 MPa** (400 psi) primary pressure, and autocloses if pressure rises back above the interlock (protects the low-pressure piping) |
+| **Suction valve Open / Shut** | The RHR hot-leg suction valve — the system's entry point. **Interlocked**: it will not open above ~**400 psi (2.76 MPa)** (400 psi) primary pressure, and autocloses if pressure rises back above the interlock (protects the low-pressure piping) |
 | **AUTO** | Arms the valve to open itself when scrammed and pressure is below the interlock |
-| **Cooldown Rate (HX flow split)** | Throttles how much RHR flow passes through the heat exchanger vs the bypass — this sets the **cooldown RATE without disturbing inventory**. Walk it up slowly to hold the ~**50 °C/h** cooldown limit; full HX flow on a hot plant overshoots the limit |
+| **Cooldown Rate (HX flow split)** | Throttles how much RHR flow passes through the heat exchanger vs the bypass — this sets the **cooldown RATE without disturbing inventory**. Walk it up slowly to hold the ~**122 °F (50 °C)/h** cooldown limit; full HX flow on a hot plant overshoots the limit |
 | **Indication** | `eccs_mode` shows **RHR** while the system is in service; primary temperature trend is the rate instrument |
 | **Scope** | The Mode 4→5 decay-heat path: below the interlock pressure RHR carries the plant to Cold Shutdown and holds it there (see `05_MODE_TRANSITIONS.md` PWR-T21) |
 
@@ -567,7 +567,7 @@ The **OFF** lamp lights on either condition — breaker open *or* turbine trippe
 |------|-----|
 | **AUTO** | Opens on high SG pressure / load rejection as configured |
 | **Manual % / Open** | Dump steam to condenser, bypass turbine |
-| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; 0.2–9.3 MPa, engine clamps to the SG-safety band) the AUTO dump holds. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. |
+| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; 29 – 1349 psi (0.2 – 9.3 MPa), engine clamps to the SG-safety band) the AUTO dump holds. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. |
 
 ### 12.4 Indications
 
@@ -590,7 +590,7 @@ The **OFF** lamp lights on either condition — breaker open *or* turbine trippe
 | Cooling available | Circulating water / cooling path status |
 | **CW inlet temp** | **Circulating-water inlet temperature — an operator setting**, not just an indication |
 
-**Low vacuum** → alarms → turbine trip at trip setpoint (~**74.5 kPa** instrument path).
+**Low vacuum** → alarms → turbine trip at trip setpoint (~**22 inHg (74.5 kPa)** instrument path).
 
 ### 13.1 Circulating-water inlet temperature (CW INLET TEMP)
 
@@ -607,7 +607,7 @@ penalty grows with load, because more heat is rejected across the tubes at high 
 **What it does:**
 
 - **Warm circ water** → less vacuum → **less MWe at the same steam flow**, and a shorter walk
-  to the **74.5 kPa** turbine trip. This is the summer derate, and it is real here.
+  to the **22 inHg (74.5 kPa)** turbine trip. This is the summer derate, and it is real here.
 - **Cold circ water** → vacuum **above** the rated value, and a couple of percent above
   nameplate output. The winter uprate is real too.
 - It also raises the floor an **RHR cooldown** can reach: the RHR heat exchanger rejects to
@@ -615,7 +615,7 @@ penalty grows with load, because more heat is rejected across the tubes at high 
   slows the approach to it (§11.2, and `05` PWR-T21).
 
 **CAUTION:** raising CW temperature at full power walks vacuum down toward the trip. Watch
-**COND VAC LO** (84.7 kPa) — it is the warning before **COND VAC TRIP** (74.5 kPa).
+**COND VAC LO** (25 inHg (84.7 kPa)) — it is the warning before **COND VAC TRIP** (22 inHg (74.5 kPa)).
 
 ---
 
@@ -635,7 +635,7 @@ penalty grows with load, because more heat is rejected across the tubes at high 
 ### 14.3 Rod AUTO (Tavg)
 
 - Captures **T-ref** from indicated Tavg at engage.  
-- Holds Tavg with variable rod speed and deadband (~±0.8 °C).  
+- Holds Tavg with variable rod speed and deadband (~±1.4 °F / ±0.8 °C).  
 - Manual rod motion → MAN.  
 - Drops out on scram.  
 
@@ -669,18 +669,18 @@ meter can still cross the 120 % trip.
 | source_range | cps | 1 – 1e6 | 0.5 s | Startup counts | SR HI FLUX |
 | intermediate_range | A | 1e-11 – 2e-3 | 0.5 s | SR handoff to ~10 % | — |
 | startup_rate | DPM | −5 – 10 | 2 s | Approach rate / interlock | SUR HI |
-| tavg | °C | 30 – 343 | 4 s | Thermal state / rod program | HI TAVG |
-| thot / tcold | °C | 30 – 343 | 4 s | ΔT, natural-circ check | — |
-| primary_pressure | MPa | 0 – 20.7 | 0.5 s | Subcooling / trips | PZR PRESS HI / LO / LO LO |
+| tavg | °F (°C) | 86 – 649.4 (30 – 343) | 4 s | Thermal state / rod program | HI TAVG |
+| thot / tcold | °F (°C) | 86 – 649.4 (30 – 343) | 4 s | ΔT, natural-circ check | — |
+| primary_pressure | psi (MPa) | 0 – 3002 (0 – 20.7) | 0.5 s | Subcooling / trips | PZR PRESS HI / LO / LO LO |
 | pzr_level | % | 0 – 100 | 2 s | Inventory (can mislead) | PZR LVL HI / LO / LO LO |
-| subcooling_margin | °C | −28 – 83 | derived | LOCA diagnosis | LO SUBCOOL, SUBCOOL LOST |
+| subcooling_margin | °F (°C) | −50.4 – 149.4 (−28 – 83) | derived | LOCA diagnosis | LO SUBCOOL, SUBCOOL LOST |
 | sg_level | % | 0 – 100 | 3 s | Heat sink (narrow range) | SG LVL HI HI / HI / LO / LO LO |
 | sg_level_wide | % | 0 – 100 | 4 s | Heat sink below the narrow taps (dryout diagnosis) | — |
 | steam_flow / fw_flow | ×rated | 0 – 1.2 | 1 s | Mass match — **`steam_flow` is TURBINE flow only** | — |
 | sg_steam_flow | ×rated | 0 – 1.2 | 1 s | **Total** steam leaving the SG (turbine + dump + safeties) — the main-steam-line transmitter, and what feed regulation must match | — |
-| cw_inlet_temp | °C (board °F) | 0 – 45 | 20 s | Circulating-water inlet — sets achievable vacuum and the RHR cooldown floor (§13.1) | — |
+| cw_inlet_temp | °F (°C) | 32 – 113 (0 – 45) | 20 s | Circulating-water inlet — sets achievable vacuum and the RHR cooldown floor (§13.1) | — |
 | condensate_flow | ×rated | 0 – 1.2 | 1 s | Hotwell → feed train | — |
-| steam_pressure | MPa | 0 – 10.5 | 0.5 s | SG / dump | SG PRESS HI |
+| steam_pressure | psi (MPa) | 0 – 1523 (0 – 10.5) | 0.5 s | SG / dump | SG PRESS HI |
 
 > **Trap — `steam_flow` vs `sg_steam_flow`.** With the turbine off line or tripped, the steam
 > dump carries the plant and **`steam_flow` reads ~0 while the generator is still boiling**.
@@ -692,17 +692,17 @@ meter can still cross the 120 % trip.
 | governor_valve | % | 0 – 100 | 0.3 s | Turbine admission | — |
 | mwe_output | MWe | 0 – 130 | 0.2 s | Grid | — |
 | turbine_rpm | RPM | 0 – 2000 | 0.5 s | Sync / overspeed | — |
-| condenser_vacuum | kPa | 0 – 102 | 5 s | Turbine health | COND VAC LO / TRIP |
+| condenser_vacuum | inHg (kPa) | 0 – 30.1 (0 – 102) | 5 s | Turbine health | COND VAC LO / TRIP |
 | boron_sample (CHEM) | ppm | 0 – 2500 | ~60 s lab | Chemistry grab sample — the boron reference | — |
 | charging_flow / letdown_flow | norm | 0 – 0.12 | 2 s | CVCS lineup | — |
 | hpi_flow | norm | 0 – 1.2 | 1 s | ECCS delivery | (HPI ACTIVE status) |
-| hpi_discharge_pressure | MPa | 0 – 18 | 0.5 s | Pump vs RCS head | — |
+| hpi_discharge_pressure | psi (MPa) | 0 – 2611 (0 – 18) | 0.5 s | Pump vs RCS head | — |
 | afw_flow | norm | 0 – 1.2 | 1 s | AFW delivery | — |
-| afw_discharge_pressure | MPa | 0 – 12 | 0.5 s | AFW pump health | — |
+| afw_discharge_pressure | psi (MPa) | 0 – 1740 (0 – 12) | 0.5 s | AFW pump health | — |
 | accumulator_flow | norm | 0 – 1.2 | 0.5 s | Passive injection | — |
 | primary_leak_flow | norm | 0 – 1 | 0.2 s | Identified leakage | — |
 | porv_indicator | open/closed | status | — | **May lie** (shows the command) | PORV OPEN |
-| porv_tailpipe_temp | °C | 0 – 250 | 10 s | Stuck PORV clue | — |
+| porv_tailpipe_temp | °F (°C) | 32 – 482 (0 – 250) | 10 s | Stuck PORV clue | — |
 
 ---
 
@@ -750,7 +750,7 @@ level will not admit it for several minutes. Re-engage AUTO when done — **PWR-
 ### 17.5 MSIV — “bottle the boiler” (Mode 1)
 
 1. **MSIV Close** (CONFIRM?) isolates main steam.  
-2. Turbine load rejects; SG pressure rises toward **SG safeties** (~9.31 MPa open).  
+2. Turbine load rejects; SG pressure rises toward **SG safeties** (~1350 psi (9.31 MPa) open).  
 3. With feed lost or reduced, SG level can fall toward LO-LO trip on a short clock.  
 4. Establish **AFW** / trip reactor as required.  
 

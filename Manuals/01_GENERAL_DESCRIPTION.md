@@ -21,13 +21,13 @@ A **Pressurized Water Reactor** keeps primary coolant water under high pressure 
 | Parameter | Nominal (hot full power) |
 |-----------|---------------------------|
 | Electrical output | ≈ **100 MWe** |
-| Primary pressure | **15.41 MPa** |
-| Average coolant temperature (Tavg) | ≈ **304 °C** |
-| Hot leg / cold leg | ≈ 321 / 288 °C (ΔT ≈ 33 °C at rated) |
+| Primary pressure | **2235 psi (15.41 MPa)** |
+| Average coolant temperature (Tavg) | ≈ **579.2 °F (304 °C)** |
+| Hot leg / cold leg | ≈ 609.8 / 550.4 °F (321 / 288 °C) (ΔT ≈ 59.4 °F / 33 °C at rated) |
 | Pressurizer (PZR) level | ≈ **55 %** |
 | Steam Generator level | ≈ **65 %** |
-| Secondary steam pressure | ≈ **5.65 MPa** |
-| Subcooling margin | ≈ **41 °C** |
+| Secondary steam pressure | ≈ **819 psi (5.65 MPa)** |
+| Subcooling margin | ≈ **73.8 °F** (41 °C) |
 
 **Why high primary pressure?** Subcooling margin (how far the coolant is from boiling) is the plant’s guarantee that the primary stays liquid. Lose pressure or overheat the coolant, and boiling (voids) begins — the lesson behind Three Mile Island.
 

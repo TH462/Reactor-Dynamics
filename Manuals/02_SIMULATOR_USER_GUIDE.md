@@ -193,7 +193,7 @@ Entry: status line under sim controls, or **Sim** tab → Plant & Mission.
 | `hot_full_power` | Hot Full Power | **Mode 1, At Power** | Critical ~100 %, ~100 MWe |
 | `50_percent` | 50 % Power | **Mode 1, At Power** | Critical mid-power (> 5 %) |
 | `hot_zero_power` | Hot Standby | **Mode 3, Hot Standby** | Subcritical, hot T/P, control bank in, SR on |
-| `cold_shutdown` | Cold Shutdown | **Mode 5, Cold Shutdown** | Subcritical, RCS ~50 °C / ~2.5 MPa, **RCPs secured**, **RHR in service**, SR on, PZR level 30 % |
+| `cold_shutdown` | Cold Shutdown | **Mode 5, Cold Shutdown** | Subcritical, RCS ~122 °F (50 °C) / ~363 psi (2.5 MPa), **RCPs secured**, **RHR in service**, SR on, PZR level 30 % |
 
 **NOTE:** **Mode 5, Cold Shutdown is a Free Play initial condition and the whole Mode 5 ↔ Mode 1 path is simulated** on integrated physics — start at Cold Shutdown and take the plant to power with **PWR-T20**, or run **PWR-T21** the other way. Mode 4, Hot Shutdown is the transit between them and is simulated too. Heatup and cooldown are **time-compressed**: the evolution is real, its duration is not. See `05_MODE_TRANSITIONS.md` and `12_SIM_PHYSICS.md` §14.
 

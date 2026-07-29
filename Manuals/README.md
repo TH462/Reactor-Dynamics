@@ -89,7 +89,21 @@ Do **not** confuse plant MODES with **turbine load modes** (Follow / Manual / Di
 
 ### Units
 
-This trainer uses **SI** internally (MPa, °C, %). Real US PWRs often display **psia / °F**. The UI has a display-unit toggle; these manuals quote the SI values used by the engine unless noted.
+**These manuals quote US customary units first, with SI in parentheses** — `2235 psi (15.41 MPa)`, `579.2 °F (304 °C)`. US first because that is what the PWR board reads; SI alongside because that is what the engine computes in, and what every setpoint in the source is written in.
+
+| Quantity | US | SI | Conversion |
+|----------|----|----|------------|
+| Pressure | **psi** (absolute) | MPa | × 145.038, whole psi |
+| Temperature | **°F** | °C | × 9/5 + 32, 1 dp |
+| Temperature **difference** | **°F** | °C | **× 9/5, no offset** — 1 dp |
+| Condenser vacuum | **inHg** | kPa | × 0.2953, 1 dp |
+| Level, power, flow | % / normalized — no conversion | | |
+
+**The difference row is not a footnote.** Subcooling margin, leg ΔT, DNB margin, control deadbands and cooldown *rates* are temperature **differences**: a subcooling margin of **73.8 °F** (41 °C) is what a healthy plant shows — applying the absolute rule instead would print 105.8 °F and make a thin margin look comfortable. Both forms appear in these manuals and both are checked mechanically — see below.
+
+Reactivity (pcm, Δk/k), startup rate (DPM), counts (cps), currents (A) and time have no US/SI distinction and are quoted once.
+
+**Every US (SI) pair in this set is verified by `node test/run_manual_units.js`**, which re-derives the US value from the SI value and fails on any arithmetic error or missing partner. If you edit a number here, run it.
 
 ### Instruments vs truth
 
