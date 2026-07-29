@@ -314,12 +314,24 @@ var KNOWN_FAILS = {
    *
    * #240's follow-up ruling (status-class alarms arrive pre-acknowledged, so a
    * status arrival is not an attention event) removed that dropout, the run got
-   * the 10× it declares, and the step passes on its own physics.
+   * the 10× it declares, and the step passes.
    *
-   * READ THIS BEFORE TRUSTING IT: the fix is in the SERVICE, not in the BWR. The
-   * remaining ten dropouts in this suite still cost their procedures 90 % of their
-   * sim time from the moment they fire — filed as **#245**. If that is fixed,
-   * several numbers here will move again. */
+   * WHAT THIS DOES **NOT** ESTABLISH — read before you treat the green as a
+   * clean bill of health for the BWR. What was demonstrated is the MECHANISM:
+   * the harness was starving the run of sim time, and it no longer is. Nobody
+   * has independently checked that BWR startup behaviour is otherwise right.
+   * "Passes once it gets the time its author intended" is a weaker claim than
+   * "the plant does the correct thing", and a genuinely slow ascent would be
+   * hidden by the same 10×. The original #208 filing may have been observing
+   * something real on top of this. It was not chased because BWR is ON HOLD
+   * (owner, 2026-07-29: "We are not working on the BWR right now") — so this is
+   * a note, not a deferral anyone has scheduled. **When BWR reopens, re-derive
+   * this step from the plant rather than inheriting the green.**
+   *
+   * Also: the fix is in the SERVICE, not in the BWR. The remaining ten dropouts
+   * in this suite still cost their procedures 90 % of their sim time from the
+   * moment they fire — filed as **#245**. If that is fixed, several numbers here
+   * will move again, this one included. */
   'bwr·bwr_sbo_rcic': { 'step 3 vessel_level_pct > 40': '#208 on-hold (B3 under the stack)' },
 };
 
