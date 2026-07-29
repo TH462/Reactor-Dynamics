@@ -110,6 +110,50 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28q — #205 evidence pass: reactivity balance sourced against real plant data  ✅ (no code changed)
+
+**New SOP, owner directive** *(2026-07-28: "All sim plant designs should be based on real
+plant documentation.")* — prototypicality claims are sourced, never recalled. Recorded in
+`CLAUDE.md` beside HR9/HR10.
+
+- **#205 closed as NOT A DEFECT.** The symptom reproduces exactly (`pwr_startup` ends at
+  13.6 % power, bank 244/912 = 26.8 % wd, boron 363 ppm start to finish, no boron command in
+  17 steps). Its *fix* is inverted: dilution is positive reactivity, so it drives the bank
+  DEEPER. Measured at fixed rods from `5_percent` — dilute 829→229 ppm ran power 6 → **256 %**;
+  borate 829→1429 ppm took it 6 → **0 %**.
+- **One of my own interim findings was wrong, recorded so it isn't repeated.** I claimed the
+  boron trend across the ascent is inverted (rises 363 → 734 ppm HZP→HFP). That compared two
+  states at *different rod positions* (25 % vs 92 % wd) and is meaningless. Normalised, the
+  balance closes: rods release 7230 pcm over that travel; power defect 3630 + extra boron
+  3710 = 7340 pcm (1.5 %). At fixed 92 % wd boron FALLS ~352 ppm across the ascent against a
+  363 ppm power defect — right direction, right magnitude.
+- **Every coefficient measures in range**: boron worth 10.0 pcm/ppm (real ~7–12), Doppler
+  defect −989 pcm (~1000–1400), equilibrium Xe 2500 pcm (~2700), moderator −141 pcm under the
+  Tavg program.
+- **The one outlier — rod worth 18 500 pcm** (control 8500 + shutdown 10 000) against **6466
+  pcm measured for ALL banks** at Watts Bar/BEAVRS. That is why rods hold the core at 363 ppm
+  and criticality lands at 25 % withdrawn where a real plant is near ARO at ~975 ppm. Parked
+  in **#238**, not fixed — it is a real physics constant.
+- **Sources** (nrc.gov 403s non-browser fetches; use `web.archive.org/web/2023id_/<url>` +
+  curl with a browser UA. No poppler on this box — `pip install --target ./pylibs pypdf` into
+  the scratchpad and extract text, don't try to Read the PDF):
+  - **BEAVRS / Watts Bar U1 Cycle 1 HZP physics tests**, OSTI 1991715 — *measured*: HZP ARO
+    critical boron 975 ppm; bank worths D 788 / C 1203 / B 1171 / A 548 pcm; all banks 6466
+    pcm; ITC ARO −1.75 pcm/°F.
+  - **WTSM 2.1 Reactor Physics Review**, ML11223A207 — the power defect is offset "in the form
+    of rod withdrawal **or** boron dilution"; minimum rod height rises with power (our RIL).
+  - **AP1000 DCD Ch. 4.3**, ML071580897 §4.3.2.4.16 — **MSHIM**: "power changes are primarily
+    accomplished using control rod motion alone… above 30 percent rated power… without the
+    need to change boron concentration." **A rod-driven ascent is prototypical**; #205's
+    "a real startup dilutes as it withdraws" is classic-Westinghouse practice, not a rule.
+- **Also recorded, not fixed:** `_trimToCritical` (`pwr_engine.js:1433`) hardcodes
+  `var margin = 0.01` (1000 pcm) for every subcritical IC — unnamed, not `[tune]`, not
+  per-IC. Measured cost of moving it: at 1500 pcm the startup ladder collapses (authored rod
+  bursts never reach criticality, `power_pct > 0.2` observes 0). Parked with the rod-worth
+  entry.
+- **Unsourced, flagged:** no numeric tech-spec Mode 3 SDM requirement found (the AP1000 DCD
+  defers to plant tech specs). An earlier "~1300 pcm" of mine was recall — do not act on it.
+
 ### 2026-07-28p — #230: `disconnect_grid` is a PLANNED OFFLINE, not a turbine trip  ✅
 
 `status-needs-ruling` issue, settled. **OWNER RULING 2026-07-28: option 1, "Planned
