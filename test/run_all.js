@@ -122,7 +122,7 @@ var BASELINES = {
   'run_inspect.js':        { code: 0, score: '7/7 35/35' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
-  'run_m4.js':             { code: 0, score: '23/23 117passed' },
+  'run_m4.js':             { code: 0, score: '25/25 135passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   'run_m5.js':             { code: 0, score: '19/19 79passed' },
@@ -173,7 +173,10 @@ var BASELINES = {
   // assertions only the stack can make (command accepted, no unexpected scram, no
   // critical alarm standing, declared auto_channels engaged). Strict xfails 13 → 9 → 6
   // (2026-07-26c, #210) → 9 again when P-9 was adopted (#218) → **6** (2026-07-27b, #218
-  // resolved). The remaining 6 are all RBMK/BWR (#208, plants on hold).
+  // resolved). The remaining 6 are all RBMK/BWR (#208, plants on hold) → **5**
+  // (2026-07-29, #240 follow-up): `bwr_startup` step 2 was never a BWR defect, it was
+  // this harness losing 90 % of its sim time when a `status` annunciator snapped the
+  // service's fast-forward dropout at t=2 s. See the note in run_procedures_stack.js.
   //
   // Check count does NOT move on an xfail change — an xfail is still a check, just an
   // annotated one — so the score string is the same either way. That is worth knowing

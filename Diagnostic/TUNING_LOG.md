@@ -35,14 +35,14 @@ staleness** items.
 | `run_contract` | **84 checks / 0 failed** | NEW 2026-07-28t (#225) — §6.3 `true_state` contract vs `getTrueState()`, both directions; PWR only (RBMK/BWR `skip`) |
 | `run_inspect` | **7/7 (35)** | NEW 2026-07-28s (#96) — inspection copy: orphaned keys, per-item coverage, dead manual citations, duplicate copy |
 | `run_flags` / `verify_flags_ui` | **16/16 (290)** / **48/48** | NEW 2026-07-28j (#241) — the feature-flag registry (coverage + resolution) and the control room actually obeying it |
-| `run_procedures_stack` | **22/22 (155/155)** | NEW 2026-07-26b — procedures through M4+M5+M6. **6** strict xfails, all RBMK/BWR (#208); the 7 `pwr_heatup` xfails cleared 2026-07-26c/d (#206, #210) |
+| `run_procedures_stack` | **22/22 (155/155)** | NEW 2026-07-26b — procedures through M4+M5+M6. **5** strict xfails, all RBMK/BWR (#208); the 7 `pwr_heatup` xfails cleared 2026-07-26c/d (#206, #210), `bwr_startup` 2026-07-29c (never a BWR defect — see **#245**) |
 | `run_meltdown_stack` | **3/3 (21/21)** | NEW 2026-07-26d (#209) — the core-damage casualties driven **hands off** on the shipped lineup; asserts the automatic chain fires unprompted |
 | `run_pwr` | **32/32** | PWR engine-direct (+`load_above_rated_hold`, the #130 pin) |
 | `run_rbmk` | **23/23** | |
 | `run_bwr` | **15/15** | |
 | `run_behavior` | **35 / 0 xfail / 0 fail** | PWR behavior catalog — coverage-todo list **empty** (#131); +TR-12b MSIV break isolation (#199) |
 | `run_ops` | **57/68** | 2026-07-26d: harness rewired to the SHIPPED lineup (#209), so two PWR probes that silently assumed load-follow now command it; 11 open = RBMK/BWR + 1 deliberate red (see backlog) |
-| `run_m4`..`run_m7` | **19** / **19** / **17** / OK | stack layers — all green. m6 16 → 17 on 2026-07-27b (#142), a save/restore test for the instructor's operator-action memory. m5's rewind red RESOLVED 2026-07-25 (#151): `lastInstruments` was not rebuilt on restore, so every blockable trip reported `asserted=false` |
+| `run_m4`..`run_m7` | **25** / **19** / **17** / OK | stack layers — all green. m6 16 → 17 on 2026-07-27b (#142), a save/restore test for the instructor's operator-action memory. m5's rewind red RESOLVED 2026-07-25 (#151): `lastInstruments` was not rebuilt on restore, so every blockable trip reported `asserted=false` |
 | `run_autoctl` | **20/20** | |
 | `run_scenarios` | **3/3** | flagships |
 | `run_campaign` | **51/51** (3024) | 2930 → 3024 on 2026-07-27b (#189) — the static passes now walk `RD.SCENARIOS` directly, so unwired and bonus-only scenarios are validated too |
@@ -111,6 +111,65 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-29c — #240 follow-up: the `status` class does not demand an acknowledgment  ✅
+
+**Owner ruling** (on #240): *"I want status-class alarms to spawn (and arrive)
+pre-acknowledged."* Source unchanged from the parent issue — NUREG-0700 Rev 4 (ML26022A094)
+Table 4.1, **Status-Alarm Separation**: *"separates status annunciators from alarms that
+require operator action."* The parent build had deliberately left this alone and flagged it,
+because it changes the whole `status` tier and not just #240's reclassified tiles.
+
+**What changed.** `control_kernel._evalAlarms` now raises a `status`-class alarm straight into
+`active_acknowledged`. The classification it uses is the **effective** one (`_effectivePriority`
+→ `_reclassify`), so a mode/lineup-reclassified tile counts as status. Measured on a fresh Cold
+Shutdown spawn: five annunciators, **zero unacknowledged**, header reads `Alarms` with no count,
+no ACK chips, tiles read `status (normally critical) · acknowledged`. Verified in the real board
+headless (`--dump-dom`, `?init=cold_shutdown&ff=20&run=1`), not just in the layer.
+
+Two things came with it that were not in the ruling but follow from it:
+
+- **Escalation hands the ACK back.** A tile the plant acknowledged for you, whose condition then
+  stops being planned (heatup past Mode 4; a real trip landing on top of a securing), returns to
+  `active_unacknowledged` and flashes. Without this, a genuine critical could sit lit and steady
+  having never flashed — the exact failure the ruling is meant to prevent. Tracked in
+  `layer.alarmAutoAcked` (saved/restored; absent in old saves → nothing auto-acked, the
+  conservative direction). An **operator** ack is never undone.
+- **A status arrival is no longer a fast-forward dropout** (`_attentionStop`). A tile that
+  arrives pre-acknowledged and then yanks the clock to 1× while toasting "new alarm" contradicts
+  itself. The transient-cadence flip is deliberately left alone — a shorter broadcast costs
+  nothing.
+
+**The invariant I had to restate, not break.** The parent's comment said "`_evalAlarms` never
+sees these rules". It does now, so the guarantee is stated as what it always actually was: a rule
+can never **stop, delay or invent** an annunciation — `_evalAlarms` decides clear→active from the
+instrument condition alone and consults a rule only to classify what it has already raised.
+
+**A filed BWR defect that was never a BWR defect (→ #245).** `bwr·bwr_startup` step 2
+`power_pct > 1` had been carried as a strict xfail under #208, i.e. filed as a plant defect.
+Instrumenting `speed_snap` showed the truth: at **t = 2.0 s** the BWR's `RCIC RUNNING` (priority
+`status`) came in on a quiet board, the attention stop snapped `timeAcceleration` 10× → 1×, and
+`run_procedures_stack` **never restores it** (`ACCEL` is set once, at :152). The procedure then
+covered a **tenth** of the sim time its steps assume and step 2 observed `power_pct = 0`. Remove
+the dropout, the run gets its declared 10×, and the step passes on its own physics. Entry removed
+with that explanation in place.
+
+**Ten more dropouts are still doing this** to other procedures in the same gate (measured, listed
+in #245) — five of them within the first 7 seconds of their run. `run_procedures_stack` is the
+only runner that sets `timeAcceleration`, so no other gate is exposed today. Not fixed here:
+fixing it will move several numbers in that gate, and that re-baselining is its own piece of work.
+
+**HR10.** Both new suites were run against the pre-ruling source: they fail wholesale, as they
+must. The regression checks inside them — *a warning alarm still arrives unacknowledged*, *an
+operator ack sticks* — pass on **both** sides, which is what makes them worth having. One
+pre-existing check was deliberately inverted by the ruling (`all active_unacknowledged` on the
+cold spawn); it is replaced by one pinning what it was actually there for (the tile is genuinely
+active and runs a normal lifecycle), with the change noted at the call site.
+
+**Gates.** `run_m4` **23/23 (117) → 25/25 (135)**; `run_procedures_stack` **22/22 (155/155)**
+with **6 → 5** strict xfails. `BASELINES`, CLAUDE.md and this file updated together. `run_all`
+**26 runners at baseline**. Docs: manual **06 §2.0** (+ **02 §8.1**, **09 §4.0**),
+`Blueprint/M8` §8.2, CHANGELOG.
 
 ### 2026-07-29b — manual currency audit against the as-built sim  ✅
 

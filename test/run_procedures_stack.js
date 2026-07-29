@@ -304,7 +304,22 @@ var KNOWN_FAILS = {
   'rbmk_post·rbmk_raise_power': { 'step 1 power_pct > 51': '#208 on-hold' },
   'rbmk_pre·rbmk_mcp_trip': { 'step 2 power_pct < 12': '#208 on-hold' },
   'rbmk_post·rbmk_mcp_trip': { 'step 2 power_pct < 12': '#208 on-hold' },
-  'bwr·bwr_startup': { 'step 2 power_pct > 1': '#208 on-hold' },
+  /* 'bwr·bwr_startup' — step 2 `power_pct > 1` REMOVED 2026-07-29. It was never a
+   * BWR physics defect. Measured cause: at t=2.0 s the BWR's RCIC RUNNING
+   * annunciator (priority `status`) came in on an otherwise quiet board, the
+   * service's attention stop counted it as "first alarm", and `timeAcceleration`
+   * dropped 10× → 1× — permanently, because this harness sets ACCEL once at line
+   * 152 and never restores it. The procedure then covered a TENTH of the sim time
+   * its steps assume, and step 2 observed power_pct = 0.
+   *
+   * #240's follow-up ruling (status-class alarms arrive pre-acknowledged, so a
+   * status arrival is not an attention event) removed that dropout, the run got
+   * the 10× it declares, and the step passes on its own physics.
+   *
+   * READ THIS BEFORE TRUSTING IT: the fix is in the SERVICE, not in the BWR. The
+   * remaining ten dropouts in this suite still cost their procedures 90 % of their
+   * sim time from the moment they fire — filed as **#245**. If that is fixed,
+   * several numbers here will move again. */
   'bwr·bwr_sbo_rcic': { 'step 3 vessel_level_pct > 40': '#208 on-hold (B3 under the stack)' },
 };
 

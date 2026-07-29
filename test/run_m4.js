@@ -531,21 +531,33 @@ T.push(test('#240 — Mode 3 keeps full severity (the mode floor must not reach 
      t.alarm('turbine_trip').priority === 'warning', 'warning');
 }));
 
-T.push(test('#240 — reclassification changes presentation only, never the alarm itself', function (ck) {
+T.push(test('#240 — reclassification never suppresses, delays or invents an annunciation', function (ck) {
   // The HR1 property the whole mechanism rests on: a rule may not suppress, delay
-  // or invent an annunciation. Same instrument condition, same lifecycle state —
-  // only priority and label differ. Passes pre-#240 as well (nothing was
-  // reclassified then, so the two lists were trivially equal).
+  // or invent an annunciation. Same instrument condition, same lifecycle — only
+  // priority, label, and (per the follow-up ruling) the ACK demand differ.
+  //
+  // CHANGED 2026-07-29 by the follow-up ruling ("I want status-class alarms to
+  // spawn (and arrive) pre-acknowledged"): this suite used to assert that every
+  // active tile read `active_unacknowledged`, which was true pre-ruling and is
+  // deliberately false now. What it was actually pinning — that a reclassified
+  // tile is genuinely ACTIVE and runs a normal lifecycle — is pinned below
+  // without pinning the ack state, which its own suite now owns.
   var s = new Stack('cold_shutdown');
   s.run(2);
   var alarms = s.layer.getAlarms();
   var active = alarms.filter(function (a) { return a.state !== 'clear'; });
-  ck('reclassified tiles still carry a normal lifecycle state', active.map(function (a) { return a.state; }).join(','),
-     active.every(function (a) { return a.state === 'active_unacknowledged'; }), 'all active_unacknowledged');
-  // Acknowledging works exactly as before through the reclassified tile.
-  s.layer.acknowledgeAlarm('rcp_trip');
-  ck('a reclassified alarm acknowledges normally', s.alarm('rcp_trip').state,
-     s.alarm('rcp_trip').state === 'active_acknowledged', 'active_acknowledged');
+  ck('reclassified tiles carry a real lifecycle state', active.map(function (a) { return a.state; }).join(','),
+     active.every(function (a) { return a.state === 'active_acknowledged' || a.state === 'active_unacknowledged'; }),
+     'all active_*');
+  // …and it ends normally: the condition goes away, the tile clears, whatever it
+  // was reclassified to. On its OWN stack — `s` must keep its reclassified tiles
+  // active for the restore check at the bottom of this suite.
+  var lc = new Stack('cold_shutdown');
+  lc.run(2);
+  lc.cmd({ action: 'set_rcp', running: true });
+  lc.run(2);
+  ck('a reclassified alarm clears normally', lc.alarm('rcp_trip').state,
+     lc.alarm('rcp_trip').state === 'clear', 'clear');
   // And a CLEAR alarm is never reclassified (there is nothing to present).
   ck('a clear alarm carries no base_priority', String(s.alarm('high_flux').base_priority),
      s.alarm('high_flux').base_priority === undefined, 'undefined');
@@ -573,6 +585,103 @@ T.push(test('#240 — reclassification changes presentation only, never the alar
      'pzr_pressure_lolo,rcp_trip');
   ck('the rules are restored afterwards', String(!!s.alarm('rcp_trip').base_priority),
      !!s.layer.getAlarms().find(function (a) { return a.id === 'rcp_trip'; }).base_priority, 'true');
+}));
+
+// ---------------------------------------------------------------------------
+// #240 follow-up — the STATUS class does not demand an acknowledgment.
+// Owner ruling 2026-07-29: "I want status-class alarms to spawn (and arrive)
+// pre-acknowledged." NUREG-0700 Rev 4 Table 4.1, Status-Alarm Separation:
+// "separates status annunciators from alarms that require operator action."
+//
+// This is the whole `status` tier, not only #240's reclassified tiles — the
+// authored ones (hpi_active here; RCIC RUNNING on the BWR) have never required
+// action either and demanded an ACK anyway.
+//
+// Both suites FAIL wholesale on the pre-ruling source (everything active spawned
+// unacknowledged), as they must. The regression checks inside them — a warning
+// alarm still arrives unacknowledged, an operator ack is never undone — pass on
+// BOTH sides, which is what makes them worth having.
+// ---------------------------------------------------------------------------
+
+T.push(test('#240 — a status-class alarm arrives pre-acknowledged; a real one still does not', function (ck) {
+  // (a) reclassified status: the whole cold-shutdown spawn.
+  var s = new Stack('cold_shutdown');
+  s.run(2);
+  var active = s.layer.getAlarms().filter(function (a) { return a.state !== 'clear'; });
+  var unack = active.filter(function (a) { return a.state === 'active_unacknowledged'; });
+  ck('the healthy cold spawn asks for no acknowledgment', unack.map(function (a) { return a.id; }).join(',') || 'none',
+     unack.length === 0, 'none');
+  ck('…and all five are still annunciating', active.length, active.length === 5, '5');
+  ck('every one reads acknowledged', active.map(function (a) { return a.state; }).join(','),
+     active.every(function (a) { return a.state === 'active_acknowledged'; }), 'all active_acknowledged');
+
+  // (b) AUTHORED status, with no reclassify rule anywhere near it.
+  var h = new Stack('hot_full_power');
+  h.run(1);
+  ck('HPI/LPI ACTIVE is authored `status`', h.alarm('hpi_active').priority,
+     h.alarm('hpi_active').priority === 'status', 'status');
+  ck('…with no rule involved', String(h.alarm('hpi_active').base_priority),
+     h.alarm('hpi_active').base_priority === undefined, 'undefined');
+  h.cmd({ action: 'set_hpi', active: true });
+  h.run(1);
+  ck('an authored status alarm arrives acknowledged too', h.alarm('hpi_active').state,
+     h.alarm('hpi_active').state === 'active_acknowledged', 'active_acknowledged');
+
+  // (c) The regression that matters: a real alarm is untouched. Passes pre-ruling.
+  h.cmd({ action: 'set_instrument_failure', instrument_id: 'tavg', mode: 'stuck', value: 320 });
+  h.run(1);
+  ck('a warning alarm still arrives UNACKNOWLEDGED', h.alarm('high_tavg').state,
+     h.alarm('high_tavg').state === 'active_unacknowledged', 'active_unacknowledged');
+  ck('…and still reads warning', h.alarm('high_tavg').priority,
+     h.alarm('high_tavg').priority === 'warning', 'warning');
+}));
+
+T.push(test('#240 — an auto-acknowledged alarm hands the ACK back when it escalates', function (ck) {
+  // The failure mode this exists to prevent: the plant acknowledges a tile
+  // because the condition is planned, the condition then stops being planned, and
+  // a genuine critical sits lit and steady having never flashed.
+  var s = new Stack('hot_full_power');
+  s.run(2);
+  s.cmd({ action: 'set_rcp', running: false });          // planned securing
+  s.run(2);
+  ck('secured pumps annunciate as status', s.alarm('rcp_trip').priority,
+     s.alarm('rcp_trip').priority === 'status', 'status');
+  ck('…and arrive acknowledged', s.alarm('rcp_trip').state,
+     s.alarm('rcp_trip').state === 'active_acknowledged', 'active_acknowledged');
+  s.cmd({ action: 'inject_failure', failure_id: 'rcp_trip' });   // now a casualty
+  s.run(2);
+  ck('the escalated alarm is critical again', s.alarm('rcp_trip').priority,
+     s.alarm('rcp_trip').priority === 'critical', 'critical');
+  ck('…and DEMANDS acknowledgment again', s.alarm('rcp_trip').state,
+     s.alarm('rcp_trip').state === 'active_unacknowledged', 'active_unacknowledged');
+  ck('the auto-ack bookkeeping was released', JSON.stringify(s.layer.alarmAutoAcked),
+     s.layer.alarmAutoAcked.rcp_trip === undefined, 'no rcp_trip entry');
+
+  // An OPERATOR acknowledgment is never handed back — only the plant's own is.
+  s.cmd({ action: 'acknowledge_alarm', alarm_id: 'rcp_trip' });
+  s.run(2);
+  ck('an operator ack sticks through the same evaluation', s.alarm('rcp_trip').state,
+     s.alarm('rcp_trip').state === 'active_acknowledged', 'active_acknowledged');
+
+  // Save/restore carries the distinction: without it, a restored cold plant would
+  // never hand its acknowledgments back on heatup.
+  var c = new Stack('cold_shutdown');
+  c.run(2);
+  ck('the cold spawn records what IT acknowledged', Object.keys(c.layer.alarmAutoAcked).sort().join(','),
+     Object.keys(c.layer.alarmAutoAcked).length === 5, '5 ids');
+  c.layer.loadState(c.layer.saveState());
+  ck('…and it round-trips', Object.keys(c.layer.alarmAutoAcked).sort().join(','),
+     Object.keys(c.layer.alarmAutoAcked).length === 5, '5 ids');
+  // Old saves predate the field: nothing is auto-acked, so nothing is handed
+  // back. Conservative — re-flashing a tile the operator dealt with is the
+  // harmful direction.
+  var legacy = c.layer.saveState();
+  delete legacy.alarmAutoAcked;
+  c.layer.loadState(legacy);
+  ck('an old save restores with no auto-acks', JSON.stringify(c.layer.alarmAutoAcked),
+     Object.keys(c.layer.alarmAutoAcked).length === 0, '{}');
+  ck('…and the alarm states themselves are unharmed', c.alarm('rcp_trip').state,
+     c.alarm('rcp_trip').state === 'active_acknowledged', 'active_acknowledged');
 }));
 
 // -------- report --------

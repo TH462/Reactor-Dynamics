@@ -122,6 +122,26 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   Owner ruling 2026-07-28; the design is sourced to NRC **NUREG-0700 Rev 4** (ML26022A094)
   §4.1.2-7 *Mode-Dependence Processing* and Table 4.1, whose own worked example is a
   low-pressure signal expected in cold shutdown.
+- **Status-class annunciators arrive pre-acknowledged (#240, owner ruling 2026-07-29).** A
+  **Status** tile reports a lineup, not a demand for action, so the board now acknowledges it
+  as it raises it: it comes in lit and steady instead of flashing with an ACK outstanding, it
+  is not counted in the Alarms header, and it no longer drops fast-forward back to real time.
+  A healthy Cold Shutdown spawn therefore presents its five standing annunciators and **asks
+  nothing of you** — while every condition is still on the board, still reading its own
+  instrument, and still clearing itself when it goes away. This is the whole Status tier, not
+  only the reclassified tiles: **HPI/LPI ACTIVE** and the BWR's **RCIC RUNNING** have never
+  required action either and demanded an acknowledgment anyway. Critical, Warning and Caution
+  are untouched.
+  If a Status tile's condition stops being planned — you heat past Mode 4, or a pump you had
+  secured actually trips — the annunciator **escalates to its normal priority and
+  un-acknowledges itself**, so it flashes then; an acknowledgment the *operator* made is never
+  taken back. Same source: NUREG-0700 Rev 4 Table 4.1 *Status-Alarm Separation*, "separates
+  status annunciators from alarms that require operator action."
+  This also cleared a filed **BWR** defect that was never a BWR defect: `bwr_startup` step 2
+  failed the full-stack procedure gate (#208) because at t = 2 s the RCIC RUNNING status tile
+  arrived on a quiet board, snapped the harness's declared 10× acceleration to 1×, and left
+  the procedure covering a tenth of the sim time its steps assume. Ten other dropouts in that
+  gate still do this — filed as a harness defect, not fixed here.
 - **Two annunciators the manual never documented are now written up** — **LO TAVG (P-12)**
   gains a full response procedure (**PWR-A29**) and **RCP CAVITATION** its setpoint row. Both
   were modelled and both were missing from the alarm index.

@@ -37,6 +37,63 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-29c — #240 follow-up: the `status` class does not demand an acknowledgment
+
+**Owner ruling** (comment on #240): *"I want status-class alarms to spawn (and arrive)
+pre-acknowledged."* The parent build had deliberately declined to do this unilaterally and
+flagged it, because it changes the whole `status` tier — `hpi_active` and the BWR's
+`rcic_running` have been priority `status` since they were written and demanded an ACK anyway.
+
+**Decision: implement it in the LIFECYCLE, not in presentation.** `_evalAlarms` raises a
+status-class alarm straight into `active_acknowledged`. The rejected alternative was to keep
+storing `active_unacknowledged` and let `getAlarms()` present it as acknowledged: that leaves
+`alarmStates` saying one thing and every consumer reading another, and `acknowledge_all_alarms`
+would still be silently touching it. If the plant has answered on the operator's behalf, the
+state should say so.
+
+**Decision: classify on the EFFECTIVE priority.** `_effectivePriority()` runs the #240
+`reclassify` rules, so a mode/lineup-reclassified tile is auto-acknowledged too — which is the
+whole point, since #240's five cold-shutdown tiles are the case that prompted the ruling.
+
+**Deviation from a comment I wrote a day earlier, stated rather than quietly edited.** The
+parent's block comment claimed "`_evalAlarms` never sees these rules". It does now. The
+guarantee that was actually load-bearing is unchanged and is now stated as such: a rule can
+never **stop, delay or invent** an annunciation — the clear→active transition is decided by the
+instrument condition alone, and a rule is consulted only to classify something already raised.
+HR1 is intact; the softening now extends to the ACK demand as well as priority and wording.
+
+**Addition not in the ruling, and why it is not scope creep: ESCALATION.** An auto-acknowledged
+tile whose condition stops being planned (heatup past Mode 4; a genuine trip landing on top of a
+secured pump) is returned to `active_unacknowledged`. Without it the ruling would *create* the
+failure it exists to prevent — a genuine critical, lit and steady, that never flashed. Requires
+one piece of new state (`alarmAutoAcked`, saved/restored) because auto-ack and operator-ack are
+otherwise indistinguishable, and an **operator** ack must never be handed back. Old saves have
+no field → nothing auto-acked → nothing escalates; the conservative direction.
+
+**Addition: a status arrival is not a fast-forward attention stop** (`_attentionStop`). A tile
+that arrives pre-acknowledged and then yanks the clock to 1× while toasting "new alarm"
+contradicts itself. Implemented as "the arrival must reach the board **unacknowledged**", which
+is exactly the set the plant did not answer for you — nothing but the control layer can produce
+a clear→acknowledged transition in one broadcast. The **transient cadence** flip deliberately
+still counts status arrivals: a shorter broadcast interval costs the operator nothing, and
+changing it would perturb broadcast timing for no benefit.
+
+**What that second addition uncovered — and a caution for whoever touches `_attentionStop`
+next.** `run_procedures_stack` sets `svc.timeAcceleration = 10` **once** and never restores it.
+The first alarm on a quiet board snapped it to 1× permanently, so procedures were covering a
+tenth of the sim time their steps assume. `bwr·bwr_startup` step 2 had been filed as a **BWR
+plant defect** (#208 strict xfail) purely because of this: at t = 2.0 s `RCIC RUNNING` — a
+`status` tile — took the dropout. Removing that one case gave the run its declared 10× and the
+step passes on its own physics; the xfail entry is removed with the measurement recorded at the
+site. **Ten more dropouts still do this** to other procedures in the same gate → **#245**, not
+fixed here because fixing it re-baselines that gate and that is its own piece of work.
+
+**Gates.** `run_m4` 23/23 (117) → **25/25 (135)**; `run_procedures_stack` 22/22 (155/155),
+strict xfails **6 → 5**. Both new suites fail wholesale on the pre-ruling source (HR10); their
+regression checks pass on both sides.
+
+---
+
 ## 2026-07-29a — #203 the manual's sim-physics chapter
 
 **Decision: a NEW chapter, not an expansion of `01` §8.0.** #203 asks for "the physics used for the

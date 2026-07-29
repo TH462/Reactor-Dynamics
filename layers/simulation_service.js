@@ -390,7 +390,13 @@
     if (!this.attentionStops) return null;          // operator turned dropouts off (Settings)
     if (this._snapScrammed(snap) && !this._prevScrammed) return 'scram';
     if (this._anyNewFailure(snap.active_failures)) return 'failure';
-    if (this._boardQuiet(this._prevAlarms) && this._anyAlarmNewlyFiring(snap.alarms, this._prevAlarms)) return 'alarm';
+    // …and the arrival has to be one that ASKS for something. A status-class tile
+    // arrives already acknowledged (#240 follow-up ruling) because it reports a
+    // lineup, not a casualty — yanking the clock out of fast-forward and toasting
+    // "new alarm" for one would contradict the tile it just drew. The transient
+    // cadence flip above is deliberately left alone: a shorter broadcast interval
+    // costs the operator nothing.
+    if (this._boardQuiet(this._prevAlarms) && this._anyAlarmNewlyFiring(snap.alarms, this._prevAlarms, true)) return 'alarm';
     return null;
   };
 
@@ -429,14 +435,20 @@
     return false;
   };
 
-  SimulationService.prototype._anyAlarmNewlyFiring = function (now, prev) {
+  // `requireUnacked`: count only arrivals that reach the board UNACKNOWLEDGED.
+  // Nothing but the control layer can produce a clear→acknowledged transition in
+  // one broadcast (an operator ack takes a cycle of its own), so that is exactly
+  // the set of alarms the plant answered on the operator's behalf.
+  SimulationService.prototype._anyAlarmNewlyFiring = function (now, prev, requireUnacked) {
     if (!prev) return false;
     var prevState = {};
     for (var i = 0; i < prev.length; i++) prevState[prev[i].id] = prev[i].state;
     for (var j = 0; j < now.length; j++) {
       var a = now[j];
       var wasClear = !prevState[a.id] || prevState[a.id] === 'clear';
-      if (wasClear && a.state !== 'clear') return true;
+      if (!wasClear || a.state === 'clear') continue;
+      if (requireUnacked && a.state !== 'active_unacknowledged') continue;
+      return true;
     }
     return false;
   };

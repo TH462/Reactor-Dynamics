@@ -156,6 +156,9 @@
     var alarms = this.config.alarms || [];
     this.alarmStates = {};
     for (var i = 0; i < alarms.length; i++) this.alarmStates[alarms[i].id] = 'clear';
+    // Which of the currently-active alarms were acknowledged BY THE PLANT rather
+    // than by the operator (#240) — see _evalAlarms. Cleared when the alarm clears.
+    this.alarmAutoAcked = {};
     // For each low alarm, find a less-extreme low sibling on the same instrument;
     // an alarm with one is an escalation (lo_lo) and fires only with its lo active.
     this._loSibling = {};
@@ -549,10 +552,37 @@
       if (active && sib) active = active && this._alarmRaw(sib, ins);
       var st = this.alarmStates[alarm.id];
       if (active) {
-        if (st === 'clear') st = 'active_unacknowledged';
+        // A `status`-class annunciation reports a LINEUP, not a demand for action,
+        // so the plant acknowledges it on the operator's behalf — it arrives lit
+        // and steady rather than flashing with an ACK chore attached. Owner ruling
+        // 2026-07-28 ("I want status-class alarms to spawn (and arrive)
+        // pre-acknowledged"), on NUREG-0700 Rev 4 Table 4.1 Status-Alarm
+        // Separation: "separates status annunciators from alarms that require
+        // operator action." This is the whole class, not just #240's reclassified
+        // tiles — an authored `status` alarm (hpi_active, RCIC RUNNING) has never
+        // required action either, and used to demand an ACK anyway.
+        //
+        // The classification is the EFFECTIVE one, so a mode/lineup rule decides
+        // it too. That still cannot suppress or delay anything: the clear→active
+        // transition below is decided by the instrument condition alone.
+        var isStatus = this._effectivePriority(alarm, ins) === 'status';
+        if (st === 'clear') {
+          st = isStatus ? 'active_acknowledged' : 'active_unacknowledged';
+          if (isStatus) this.alarmAutoAcked[alarm.id] = true;
+        } else if (this.alarmAutoAcked[alarm.id] && !isStatus) {
+          // ESCALATION. The condition held, but it stopped being the planned state
+          // of the plant (the mode moved on; a real trip landed on top of a
+          // securing). What the plant acknowledged for the operator it must now
+          // hand back — otherwise a genuine critical sits lit and steady, never
+          // having flashed, which is the exact failure the ruling exists to avoid.
+          // An OPERATOR ack is never undone: only auto-acked ids are tracked here.
+          st = 'active_unacknowledged';
+          delete this.alarmAutoAcked[alarm.id];
+        }
         // active_unacknowledged / active_acknowledged persist while condition holds
       } else {
         st = 'clear';
+        delete this.alarmAutoAcked[alarm.id];
       }
       this.alarmStates[alarm.id] = st;
     }
@@ -600,16 +630,19 @@
   // should be filtered… Alarms that are considered redundant or lower priority
   // should be suppressed (where users can retrieve them) rather than filtered."
   // That is also what HR1 demands — the condition is real and stays on the board;
-  // only its urgency and its wording change. A reclassify rule can therefore never
-  // stop an alarm annunciating, and _evalAlarms above never sees these rules.
+  // only its urgency, its wording, and (since the follow-up ruling) whether the
+  // tile demands an ACK change. A reclassify rule can therefore never stop, delay
+  // or invent an annunciation: _evalAlarms decides clear→active from the
+  // instrument condition alone, and consults a rule only to classify what it has
+  // already decided to raise.
   //
   // §4.3.6-3 cautions that personnel may misread an alarm if they do not realise a
   // mode-defined change has taken effect, so every reclassified label SAYS why
   // (e.g. "expected — plant is cold").
-  ControlLayer.prototype._reclassify = function (a) {
+  ControlLayer.prototype._reclassify = function (a, ins) {
     var rules = a.reclassify;
     if (!rules || !rules.length) return null;
-    var ins = this.lastInstruments || {};
+    ins = ins || this.lastInstruments || {};
     for (var i = 0; i < rules.length; i++) {
       var r = rules[i];
       // An unresolvable instrument NEVER matches: a rule can only ever soften an
@@ -620,6 +653,12 @@
       return r;
     }
     return null;
+  };
+
+  // The priority the operator actually sees: the authored one unless a rule fired.
+  ControlLayer.prototype._effectivePriority = function (a, ins) {
+    var rc = this._reclassify(a, ins);
+    return (rc && rc.priority) || a.priority;
   };
 
   // ------------------------------------------------------- snapshot sections (§9.5)
@@ -1244,6 +1283,7 @@
       rps: { scrammed: this.rps.scrammed, last_trip_reason: this.rps.last_trip_reason },
       activeFailures: this.activeFailures.map(function (f) { return { id: f.id, severity: f.severity }; }),
       alarmStates: Object.assign({}, this.alarmStates),
+      alarmAutoAcked: Object.assign({}, this.alarmAutoAcked),
       actuationFired: this.actuationFired.slice(),
       interlockActive: this.interlockActive.slice(),
       // NOTE: trip blocks ride inside `automation` (_saveAutomation → trip_blocks /
@@ -1262,6 +1302,12 @@
       if (def) this.activeFailures.push({ id: f.id, def: def, severity: f.severity });
     }
     this.alarmStates = Object.assign({}, st.alarmStates);
+    // Absent in saves made before #240's follow-up: an old save's acknowledgments
+    // are all operator acknowledgments as far as we can tell, so nothing is
+    // auto-acked and nothing gets handed back on escalation. That is the
+    // conservative direction — the harmful error would be re-flashing a tile the
+    // operator had already dealt with.
+    this.alarmAutoAcked = Object.assign({}, st.alarmAutoAcked || {});
     var nActs = (this.config.actuations || []).length;
     var nIls = (this.config.interlocks || []).length;
     this.actuationFired = (st.actuationFired && st.actuationFired.length === nActs)

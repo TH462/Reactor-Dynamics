@@ -445,6 +445,12 @@ Each alarm reports `state ∈ active_unacknowledged | active_acknowledged | clea
   stops for that alarm.
 - **Clear** — gives one brief return-to-normal pulse, then **drops out of the stack**.
 
+A `status`-priority alarm arrives in **active, acknowledged** — the control layer acknowledges it as it
+raises it, because a status annunciator reports a lineup rather than a demand for action (#240 follow-up
+ruling, NUREG-0700 Rev 4 Table 4.1 Status-Alarm Separation). The UI needs no special case: it renders the
+state it is given. If the condition later stops being the planned state of the plant, the control layer
+escalates the tile and returns it to **unacknowledged**, so it flashes then.
+
 A Master Acknowledge control is available but not prominent (`acknowledge_all_alarms`) — good alarm
 management means acknowledging individually.
 
