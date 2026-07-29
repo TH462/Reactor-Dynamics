@@ -34,6 +34,23 @@
  * full-power subcooling margin from 73.8 °F to 105.8 °F passed a green gate.
  * Verified by injecting exactly that; it now fails.
  *
+ * WHAT THIS GATE IS SCORED ON: **failures only**, deliberately — not the number of
+ * pairs it checked. That is the opposite of `run_hr3`, `run_contract` and
+ * `run_inspect`, where the count IS part of the baseline on purpose.
+ *
+ * The difference is what a moving count MEANS. There, it moves when someone adds a
+ * plant coupling, a `true_state` field or a board item — a decision that deserves a
+ * second look, so the baseline bump is useful friction. Here it moves whenever
+ * anyone edits any number in any sentence, including pure prose work. Scored that
+ * way it bumped four times in the session that introduced it (182 → 186 → 215 →
+ * 218 → 220), every one of them noise. A gate that cries during ordinary edits
+ * teaches the next person to update the number without reading it, which is worse
+ * than not having the gate.
+ *
+ * So the coverage counts are printed for a human to read and kept OFF the scraped
+ * tally line. If you add checks here, the baseline does not move; if something is
+ * actually wrong, it does.
+ *
  *   node test/run_manual_units.js
  */
 'use strict';
@@ -219,9 +236,13 @@ if (unusedDiff.length) {
   console.log(D + '\n  Delete them, or restore the text they guarded.' + X + '\n');
 }
 
+// SCORED ON FAILURES ONLY — the coverage counts are printed on the line ABOVE, where
+// run_all's scraper will not reach them. See the "what this gate is scored on" note in
+// the header for why this one differs from run_hr3 / run_contract.
 var fails = bad.length + orphans.length + unusedDiff.length;
 console.log(B + '──────────────────────────────────────────' + X);
-console.log(B + (fails ? R + 'MANUAL UNITS: FAIL' : G + 'MANUAL UNITS: OK') + X + '  ' +
-  checked + ' checks, ' + fails + ' failed' +
-  D + '  (' + diffSites + ' temperature-difference sites)' + X);
+console.log(D + checked + ' pairs · ' + diffSites + ' temperature-difference sites · ' +
+  TARGETS.length + ' files' + X);
+console.log(B + (fails ? R + 'MANUAL UNITS: FAIL' : G + 'MANUAL UNITS: OK') + X +
+  '  ' + fails + ' failed' + X);
 process.exit(fails ? 1 : 0);

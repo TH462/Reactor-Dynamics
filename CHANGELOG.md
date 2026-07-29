@@ -26,9 +26,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   arms at **1799 psi (12.4 MPa)**, the RHR suction valve is interlocked at **400 psi
   (2.76 MPa)**, and the rod-AUTO deadband is **±1.4 °F (±0.8 °C)** — a temperature difference,
   so no offset.
-  `test/run_manual_units.js` now covers both source files as well as the manual (**218
-  checks**), so the three surfaces cannot drift apart again. **Engine command payloads stay
-  SI** — `cmd: { mpa: 8.23 }` is an argument, not a reading — as do developer comments.
+  `test/run_manual_units.js` now covers both source files as well as the manual, so the three
+  surfaces cannot drift apart again. **Engine command payloads stay SI** — `cmd: { mpa: 8.23 }`
+  is an argument, not a reading — as do developer comments.
+- **The units gate is scored on failures, not on how much it checked.** Its coverage count moves
+  whenever any number in any sentence is edited, so baselining it produced four meaningless
+  drift bumps in one session and would have trained the next author to rewrite the number
+  without reading it. It now reports coverage for a human and is graded only on whether
+  anything is wrong. `run_hr3`, `run_contract` and `run_inspect` keep their counts in the
+  baseline on purpose — theirs move when a real decision is made.
 
 ## [Alpha 1.9.0] — 2026-07-29
 
