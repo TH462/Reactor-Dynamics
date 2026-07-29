@@ -37,6 +37,36 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-29a — #203 the manual's sim-physics chapter
+
+**Decision: a NEW chapter, not an expansion of `01` §8.0.** #203 asks for "the physics used for the
+sim and the simplifications, important omissions and other useful info". `01_GENERAL_DESCRIPTION.md`
+§8.0 already holds a seven-row simplifications table — but `01` is the *orientation* document an
+operator reads before free play, and the honest-scope material is reference the operator returns to,
+not preamble. Growing §8.0 into it would have buried the plant description under caveats. §8.0 stays
+a summary and now points at `12`.
+
+**Decision: simplifications and omissions are SEPARATE sections.** §12 is "modelled, but simply";
+§13 is "not there at all". Collapsing them is what makes a scope document useless — an operator
+hunting for a containment pressure indication needs "it does not exist", not "it is approximate".
+§12 also answers, per row, *does this change what I should do?* — because most simplifications
+don't, and the two that do (**no natural circulation**, **no sensor voting**) are exactly the ones
+that make the trainer HARSHER than reality and therefore must not be read as conservative.
+
+**Decision: numbers are graded by trustworthiness (§14).** Structural (β, Λ, damage thresholds, real
+setpoints like the 4.14 MPa accumulator arming pressure) · calibrated (heat-transfer coefficients,
+level gains) · deliberately time-compressed (boron rate, lab turnaround, pressurization slew) ·
+display flavour (the gpm conversions). Without that grading a reader has no way to know that 2500 ppm
+RWST boron and 24 000 gpm RCS flow are different kinds of claim.
+
+**Written from the engine, and it caught two stale documents.** `01` §8.0's cold-ops row still said
+Mode 5/4 was `[narr]` and that Free Play starts in Mode 3 — false since the Mode 5↔1 transition
+shipped on integrated physics. And `DESIGN_COMPANION` §8.16's "levels are geometric fill" is now only
+half true: SG level has a real narrow/wide window. The first was corrected; the second was left as
+historical record with the current position stated in the new chapter.
+
+---
+
 ## 2026-07-28t — #225 the §6.3 true_state contract, documented and gated
 
 **The filed number was stale, and that is the whole argument.** #225 reported 41 of 82 PWR

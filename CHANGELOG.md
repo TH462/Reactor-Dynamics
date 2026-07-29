@@ -14,6 +14,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **The manual now says what the simulator actually computes — `12_SIM_PHYSICS.md` (#203).** A new
+  chapter, **Simulation Physics & Model Scope**, in the in-app manual between the crosswalk and the
+  revision history. It covers the model class and the fixed 0.02 s step (and what time acceleration
+  really does — more steps, never a bigger step), the per-step computation order, point kinetics and
+  the six-term reactivity balance, the thermal nodes and the **four ways heat transfer degrades**
+  (DNB at the core exit, uncovery, the exposed-cladding hot node, SG tube-bundle dryout *and its
+  depletion*), the one-pressure-state primary with its quasi-static node ΔPs, the derived pressurizer
+  level that makes the TMI deception arithmetic rather than a trick, the secondary and its declared
+  steam-dump cliff, and the instrument layer that sits between truth and the operator.
+  Three sections are the point of the chapter: **§11** the engine ↔ control-layer boundary (the
+  engine models hydraulics and decides nothing — even code-safety logic reads an instrument);
+  **§12** the deliberate simplifications, each answering *does this change what I should do?*; and
+  **§13** what is not modelled at all, so an indication you expect and cannot find is understood as
+  absent rather than hidden. **§14** grades numbers by how much to trust them — structural,
+  calibrated, deliberately time-compressed, or display flavour.
+  Written from the as-built engine and config rather than from prose, and it names the places the
+  trainer is *harsher* than reality: **no natural circulation** (flow decays to zero on pump loss)
+  and **no sensor voting** (one failed transmitter is decisive).
+  Also corrected `01_GENERAL_DESCRIPTION.md` §8.0, whose cold-ops row still said Mode 5/4 was
+  narrative-only and that Free Play starts in Mode 3 — both stale since the Mode 5↔1 transition
+  shipped on integrated physics.
 - **The `true_state` contract is now documented in full, and gated (#225).** All **29**
   PWR fields that `getTrueState()` emits but `Blueprint/CONTEXT.md` §6.3 never described
   are documented — the loop pressure distribution (`p_coldleg`/`p_hotleg`/`p_pumpsuction`),

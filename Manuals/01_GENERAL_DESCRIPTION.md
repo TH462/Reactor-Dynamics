@@ -156,14 +156,17 @@ These are **never** called Mode 1, At Power / Mode 5, Cold Shutdown.
 | Topic | Real plant | This trainer |
 |-------|------------|--------------|
 | Rod banks | Multiple banks + overlap | One control + one shutdown |
-| RCS loops | Multi-loop with individual RCPs | Single lumped loop |
-| Cold ops (Mode 5 / Mode 4) | Multi-hour heatup/cooldown | **[narr]** only — Free Play starts Mode 3, Hot Standby |
-| Containment / dose | Full models | Not modeled |
-| Instrument channels | Redundant trains | Single sensors (can fail) |
+| RCS loops | Multi-loop with individual RCPs | Single lumped loop — and this plant genuinely *is* single-loop |
+| Cold ops (Mode 5 / Mode 4) | Multi-hour heatup/cooldown | **[sim]** on integrated physics — Free Play can start in **Mode 5, Cold Shutdown**; the full loop is **PWR-T20** / **PWR-T21**. Pacing is deliberately time-compressed. |
+| Containment / dose | Full models | Not modeled — the simulation ends at fuel damage |
+| Instrument channels | Redundant trains | Single sensors (can fail) — so instrument failures bite *harder* here than in a voting plant |
 | Point kinetics | Spatial power shape | Point model (lumped) |
 | Decay heat | Detailed groups | Two-term model (~7 % at scram after power run) |
+| Natural circulation | 2–5 % flow on pump loss | **Not modeled** — flow decays to zero, so loss of flow is *more* severe here than reality |
 
 Where the model understates reality, training commentary and these manuals say so.
+
+**This table is a summary.** The full account — what the engine actually computes, every deliberate simplification, and everything that is not modeled at all — is `12_SIM_PHYSICS.md`.
 
 ---
 

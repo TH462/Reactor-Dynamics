@@ -31,6 +31,7 @@ var DOCS = [
   '09_SETPOINTS_LIMITS.md',
   '10_GLOSSARY.md',
   '11_CAMPAIGN_CROSSWALK.md',
+  '12_SIM_PHYSICS.md',
   '00_REVISION_HISTORY.md',
 ];
 

@@ -112,6 +112,39 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-29a — #203: the manual gets a sim-physics chapter  ✅ (no code changed)
+
+**What shipped.** `Manuals/12_SIM_PHYSICS.md` — the honest-scope chapter the manual set never had.
+Packed into the in-app manual (`tools/pack_manuals.js` DOCS + repack), listed in `Manuals/README.md`,
+Rev 5 in `00_REVISION_HISTORY.md`.
+
+**Sourced from the engine, not from prose.** Every number was read out of `pwr_config.js` and the
+five physics modules before it was written down. That is the reason the chapter is worth having: the
+prose docs it would otherwise have been summarised from are demonstrably stale in places (see below).
+
+**Found stale while writing it** — both corrected in the same change:
+- `01_GENERAL_DESCRIPTION.md` §8.0 cold-ops row: *"[narr] only — Free Play starts Mode 3, Hot
+  Standby"*. Both halves false since the Mode 5↔1 work — `cold_shutdown` is a Free Play IC
+  (`ui/app.js:123`) and PWR-T20/T21 are `[sim]`. Corrected, and a **no natural circulation** row
+  added, since that is the one simplification that makes the trainer *harsher* than reality.
+- `DESIGN_COMPANION.md` §8.16 ("levels are geometric fill, not calibrated spans") is now only half
+  true — SG level DOES have a real narrow/wide window (`sg_wr_lo/hi` 30–75). The new chapter states
+  the current position (§12.12); the companion entry was left alone as the historical record.
+
+**Two claims I nearly wrote from recall, and didn't:**
+- `tavg_rate_c_per_hr` looked like it should cite a Tech-Spec heatup limit. Grepped: no such limit
+  exists in `pwr_config.js` or `pwr_control.js`. The engine computes the rate and enforces nothing.
+- `accumulator_pressure_mpa` reads like the injection driver. `stepAccumulators`
+  (`pwr_primary.js:99`) gates injection on cold-leg pressure vs the **fixed** `accumulator_trip_mpa`.
+  Indication only. (Same trap as #225 — twice in two sessions, so it is worth naming.)
+
+**Verified in the product, not just packed.** Playwright: open the manual the way a player does,
+chapter 12 is in the nav, the body renders, 22 tables, zero page errors.
+
+**Gates.** `run_all` **26/26 at baseline**. No engine, control or scenario code touched.
+
+---
+
 ### 2026-07-28t — #225: the §6.3 `true_state` contract, documented in full and gated  ✅
 
 **What shipped.** Two halves, and the second is the durable one.

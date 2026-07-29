@@ -40,6 +40,7 @@ These manuals are training documentation derived from `Blueprint/` design specs,
 | [`09_SETPOINTS_LIMITS.md`](09_SETPOINTS_LIMITS.md) | Setpoints & limits | Looking up trips, actuations, alarms, normal values |
 | [`10_GLOSSARY.md`](10_GLOSSARY.md) | Glossary | Looking up acronyms and terms |
 | [`11_CAMPAIGN_CROSSWALK.md`](11_CAMPAIGN_CROSSWALK.md) | Campaign ↔ manuals map | Matching missions to N/T/E procedures |
+| [`12_SIM_PHYSICS.md`](12_SIM_PHYSICS.md) | Simulation physics & model scope | Asking what the sim actually computes, what it simplifies, and what it does not model at all |
 | [`CAMPAIGN_MODE_ALIGNMENT_SPEC.md`](CAMPAIGN_MODE_ALIGNMENT_SPEC.md) | Campaign change spec | What to change in campaign code (not done yet) |
 | [`CAMPAIGN_MANUAL_DISCREPANCIES.md`](CAMPAIGN_MANUAL_DISCREPANCIES.md) | Discrepancies log | Manuals vs campaign gaps |
 | [`ISSUES_AND_FINDINGS.md`](ISSUES_AND_FINDINGS.md) | Issues & findings log | Known sim/doc/code gaps found while writing these manuals |
