@@ -13,6 +13,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The board now speaks the same units as the manual.** The dual-unit convention reached the
+  manual last release but stopped at the board, leaving three conventions live at once: the
+  **live checklist / procedure steps** were SI-only (*"Set the Steam Dump Setpoint back to the
+  no-load anchor (8.23 MPa)"*), the **System Scanner's inspection copy** was a mix of US-only
+  and SI-only, and one Scanner entry had the convention exactly backwards (*"15.41 MPa (about
+  2235 psi)"*). A player reading a step target in MPa and a gauge in psi had to convert in
+  their head, on a board that is US everywhere else.
+  All 28 sites converted. A checklist step target now reads **1194 psi (8.23 MPa)**, the PORV
+  entry opens near **2350 psi (16.20 MPa)** and reseats about **2300 psi (15.86 MPa)**, HPI
+  arms at **1799 psi (12.4 MPa)**, the RHR suction valve is interlocked at **400 psi
+  (2.76 MPa)**, and the rod-AUTO deadband is **±1.4 °F (±0.8 °C)** — a temperature difference,
+  so no offset.
+  `test/run_manual_units.js` now covers both source files as well as the manual, so the three
+  surfaces cannot drift apart again. **Engine command payloads stay SI** — `cmd: { mpa: 8.23 }`
+  is an argument, not a reading — as do developer comments.
+- **The units gate is scored on failures, not on how much it checked.** Its coverage count moves
+  whenever any number in any sentence is edited, so baselining it produced four meaningless
+  drift bumps in one session and would have trained the next author to rewrite the number
+  without reading it. It now reports coverage for a human and is graded only on whether
+  anything is wrong. `run_hr3`, `run_contract` and `run_inspect` keep their counts in the
+  baseline on purpose — theirs move when a real decision is made.
+
 ## [Alpha 1.9.0] — 2026-07-29
 
 ### Changed

@@ -113,7 +113,7 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
-### 2026-07-29e — HR1's guard was laundering debt; SOP §5  ✅
+### 2026-07-29g — HR1's guard was laundering debt; SOP §5  ✅
 
 **The guard I wrote that morning was wrong in a way worth recording.** `run_hardrules`'s HR1
 allow-list had ONE category. Writing the reasons out is what exposed it: for two entries the
@@ -152,7 +152,7 @@ that file binds.
 **Gates.** `run_hardrules` 15 → 17 checks (the HR11 guard picked up the two new quoted
 rulings — the gate working). `run_all` **28 runners** at baseline.
 
-### 2026-07-29d — the Hard Rules, sorted out: 10 → 9, each with a named guard  ✅
+### 2026-07-29f — the Hard Rules, sorted out: 10 → 9, each with a named guard  ✅
 
 *(Owner, 2026-07-29: "Some hard rules are system specific. Could any be put in SOPs or in
 system specific rules? I think we may have too many hard rules. We should keep hard rules
@@ -212,6 +212,45 @@ three were caught, and removing them returned the gate to green.
 **Gates.** `run_all` **27 → 28 runners**, all at baseline.
 
 
+### 2026-07-29e — the board joins the manual's unit convention (checklists + inspector)  ✅
+
+**Owner request, and the obvious completion of -29d.** The dual-unit convention had reached the
+manual and stopped at the board, so three conventions were live at once:
+
+| Surface | Was |
+|---|---|
+| Live checklist / procedure steps (`ui/manual_procedures.js`) | **SI-only** — `target: '8.23 MPa'` |
+| Scanner inspection copy (`ui/diagram/board/pwr_board_inspect.js`) | **mixed** — some entries US-only (`180 °F`), some SI-only (`12.4 MPa`) |
+| One Scanner entry | **backwards** — `15.41 MPa (about 2235 psi)` |
+
+A player read a step target in MPa against a gauge in psi, on a board that is US everywhere
+else. 28 sites converted.
+
+**Extended the existing gate rather than writing a second one.** `run_manual_units.js` now scans
+`Manuals/*.md` **plus** the two source files (218 checks). Two source-specific rules:
+- **Only authored prose counts.** `//` comment lines are skipped — a note to the next developer
+  is not something a player reads, and holding it to the operator convention is noise.
+- **Command payloads are not prose.** `cmd: { action: 'set_pressure_setpoint', mpa: 15.41 }` is
+  an engine argument and stays SI. It carries no unit *string*, so the patterns never see it —
+  but that is luck rather than design, so the file says so explicitly.
+
+**Gotcha worth keeping: `git show HEAD:file > file` CORRUPTED a UTF-8 source under Git Bash.**
+Used it to revert `pwr_board_inspect.js` for the HR10 old-behaviour check. The redirect produced
+a file the same byte length as HEAD but truncated mid-character at the tail; the browser threw
+`SyntaxError: Unexpected end of input` and every inspection entry returned null. **The text-only
+gate still passed — it does not parse the file.** Two lessons: use `git checkout -- <file>` for
+reverts, and when a *source* file is edited, prove it still PARSES (`node -e "require(...)"`),
+not just that the text gate is green. Caught only because the browser probe ran afterwards.
+
+**Validated (HR10).** Gate fails with 8 errors against the pre-conversion inspector and passes
+after; `run_inspect` 7/7, `run_checklist` 24/24, `run_procedures` 22/22, `run_procedures_stack`
+22/22, `run_campaign` 51/51. Browser probe: 160 inspection entries resolve, no page errors, and
+the copy the board serves is the converted copy.
+
+**`run_all` 27/27 at baseline.** First change made in the **workbench tree/branch**
+(`C:/grok_build/RD_workbench`, branch `workbench`) per the owner's instruction.
+
+---
 
 ### 2026-07-29d — manual goes dual-unit (US first, SI in parentheses)  ✅
 

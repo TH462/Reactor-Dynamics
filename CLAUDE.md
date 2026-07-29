@@ -309,7 +309,7 @@ Green at baseline: PWR **32/32 (200 checks)**, BWR **15/15**, RBMK **23/23**, ca
 `pwr_heatup` xfails cleared 2026-07-26c/d via #206 + #210, and `bwr_startup` 2026-07-29 —
 that one was never a BWR defect, see #245)**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_manual_units` **182 checks / 0 failed**, `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **35/35** (both F12 reds were stale expectations, fixed
@@ -606,7 +606,7 @@ instructor + flagship scenarios).
   diagnostic overlay. Never soften the gap — the dissonance is the lesson.
 - **Two registers.** Every label/instructional string exists in a **Learning** register
   (plain language) and an **Industry** register (real plant terminology).
-- **Units.** SI internally (MPa, °C, %). The UI has a display-unit toggle (scoped OFF for the PWR board, which is US). **The `Manuals/` set quotes US customary FIRST with SI in parentheses** (owner, 2026-07-29) — `2235 psi (15.41 MPa)`. Temperature DIFFERENCES (subcooling margin, leg ΔT, DNB margin, deadbands, cooldown rates) convert ×9/5 with NO offset: 41 °C of subcooling is 73.8 °F, not 105.8. `test/run_manual_units.js` enforces both.
+- **Units.** SI internally (MPa, °C, %). The UI has a display-unit toggle (scoped OFF for the PWR board, which is US). **The `Manuals/` set quotes US customary FIRST with SI in parentheses** (owner, 2026-07-29) — `2235 psi (15.41 MPa)`. Temperature DIFFERENCES (subcooling margin, leg ΔT, DNB margin, deadbands, cooldown rates) convert ×9/5 with NO offset: 41 °C of subcooling is 73.8 °F, not 105.8. `test/run_manual_units.js` enforces both, across the manual AND the board-facing copy (`ui/manual_procedures.js`, `ui/diagram/board/pwr_board_inspect.js`). Engine command payloads stay SI.
 - **Plant MODES** use commercial numbering, written **Mode N, Name** (e.g. *Mode 1, At
   Power*). Do not confuse with turbine load modes (Follow / Manual / Disconnected).
 - **This is an educational lumped-parameter plant,** not a full-scope replica of a

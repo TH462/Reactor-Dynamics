@@ -119,9 +119,17 @@ var BASELINES = {
   // temperature DIFFERENCE converted with the absolute rule. That last class is
   // the reason it exists: a 41 °C subcooling margin is 73.8 °F, and the absolute
   // rule prints 105.8 °F — a thin margin reading comfortable. The first scripted
-  // pass mis-classified eight sites exactly that way. Check count moves with the
-  // manual's numbers, which is the intended nudge to re-run it after an edit.
-  'run_manual_units.js':   { code: 0, score: '186checks 0failed' },
+  // pass mis-classified eight sites exactly that way.
+  //
+  // SCORED ON FAILURES ONLY — deliberately unlike run_hr3 / run_contract /
+  // run_inspect above, where the moving count IS the point. Theirs moves when
+  // someone adds a coupling, a true_state field or a board item: a decision worth a
+  // second look. This one's moves whenever any number in any sentence is edited,
+  // including pure prose work — it bumped four times in the session that added it
+  // (182 → 186 → 215 → 218 → 220), all noise. Baselining that would train the next
+  // author to rewrite the number without reading it. Coverage is printed on the
+  // line above the tally, out of the scraper's reach.
+  'run_manual_units.js':   { code: 0, score: '0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
