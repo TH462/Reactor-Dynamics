@@ -27,31 +27,33 @@ docs.
 > the assumption, move on. Full guidance, including the cases where it genuinely blocks:
 > `Blueprint/SOP.md` §5.
 
-> **The First Principles section — one optional paragraph, unhedged** *(OWNER RULING,
-> 2026-07-29: "I would label it the 'First Principles' section. The start and end should be
-> marked. I like your suggestion.")*. Any response may carry **one** delimited paragraph giving
-> the raw read: the blunt judgement, the disagreement with the framing of the request, the thing
-> the body would otherwise have softened into a menu of options.
+> **The First Principles section — a CANARY, not an essay** *(OWNER RULING, 2026-07-29: "I would
+> label it the 'First Principles' section. The start and end should be marked."; narrowed hours
+> later, on the first two in the wild: "the first principles section is usually too long. I
+> consider it a canary. Something to tell me if there's something that needs to be looked into.
+> It doesn't need to be verbose.")*. Any response may carry one delimited block giving the raw
+> read — the blunt judgement, the disagreement with the framing, the thing the body would have
+> softened into a menu:
 >
 > ```
 > **— FIRST PRINCIPLES —**
-> <one paragraph>
+> <ONE concern. Two or three sentences, ~50 words.>
 > **— END FIRST PRINCIPLES —**
 > ```
 >
-> **Unhedged, not unaccountable.** What suppresses the blunt read is not a restriction, it is
-> habit — hedging, deferring to documents, ranking the cheap option first — so that is what the
-> section is exempt from. It is **not** exempt from the rules: **HR12 still binds** (an
-> unmeasured claim must say it is unmeasured; a rules-free zone for confident plant-dynamics
-> claims is precisely what #205 and #220 are the record of), so does HR11, no fabricated
-> sources, and it can never authorise an action or excuse a gate — it is commentary. **Optional
-> and never padded** — a slot filled every turn out of obligation trains the owner to skip it —
-> and it does not license a hedged body. **Most common trigger, the ranking disclosure:** when
-> your recommendation is the cheap or safe option and a higher-fidelity one exists that you are
-> *not* recommending, say which you would pick if fidelity were the only criterion. That is the
-> live miss it was written off (#251 — a fix that worked by tuning two errors to cancel,
-> recommended first: *"I dont want to fudge anything if i can help it… this kind of fidelity is
-> the point of this sim."*). `CLAUDE.md`-only and not gateable.
+> **One concern, not a survey** — the first two drafts each crammed in three, which is what made
+> them too long. Two candidates: ship the one you would most regret him not seeing. Needs more
+> than three sentences: then the canary is a short line plus an offer to expand, or an issue.
+> Same sense as HR9's — it says *look here*, it settles nothing.
+>
+> **Unhedged, not unaccountable.** Exempt from habit (hedging, deferring to documents, ranking
+> the cheap option first), never from the rules: **HR12 still binds** — an unmeasured claim must
+> say so, since a rules-free zone for confident plant-dynamics claims is what #205 and #220 are
+> the record of — as do HR11 and no-fabricated-sources, and it can never authorise an action or
+> excuse a gate. **Optional and never padded**: a slot filled every turn trains the owner to skip
+> it. **Two triggers worth knowing** — the *ranking disclosure* (your recommendation is the safe
+> option and a higher-fidelity one exists you are not recommending: say which you would pick on
+> fidelity alone, #251), and a doubt about your own work you would otherwise bury. Not gateable.
 
 > **You may not be the only agent in this repo. Check both lanes before you edit.** Two sessions
 > in one working directory will overwrite each other's files and sweep each other's
