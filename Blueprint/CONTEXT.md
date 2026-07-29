@@ -453,26 +453,72 @@ physical-quantity vocabulary.
 "true_state": {
     "power_pct": number, "tavg_c": number, "thot_c": number, "tcold_c": number,
     "pressure_mpa": number, "pzr_level_pct": number, "sg_level_pct": number,
+    "sg_level_wide_pct": number,      // WIDE-range SG level — the whole vessel column (tube sheet → separators),
+                                      //   i.e. the integrated inventory state. `sg_level_pct` above is the narrow
+                                      //   (working) range derived from it as an sg_wr_lo..sg_wr_hi window; narrow
+                                      //   PEGS on an overfill or a dryout, wide keeps reading. Feeds the UI water column.
     "steam_flow_normalized": number, "fw_flow_normalized": number, "mwe_output": number,
+    "steam_out_total": number,        // TOTAL steam leaving the SG (turbine + dump + safeties) — the source behind
+                                      //   the `sg_steam_flow` main-steam-line instrument, and the flow feed regulation
+                                      //   must actually match. TRAP: `steam_flow_normalized` above is TURBINE flow
+                                      //   ALONE, and reads ~0 whenever the steam dump is carrying the plant.
     "subcooling_c": number,           // derived from TRUE P and T (diagnostic; the operator's value is the instrument)
     "core_inventory_pct": number,     // primary coolant mass
+    "p_coldleg": number, "p_hotleg": number, "p_pumpsuction": number,   // loop pressure distribution (MPa). Cold leg =
+                                      //   pump discharge (highest; the ECCS/letdown datum), pump suction = between SG
+                                      //   and RCP (lowest; the cavitation datum), hot leg = pressurizer reference.
+                                      //   There are no per-node GAUGES — the one primary_pressure instrument reads pressure_mpa.
+    "suction_subcool_c": number,      // subcooling margin at the pump-suction node (°C) — the cavitation driver
+    "rcp_cavitation_frac": number,    // RCP cavitation severity, 0–1
+    "rcp_cavitating": bool,           // the annunciated cavitation flag — TMI-2's "the pumps are objecting" noise
+    "core_void_fraction": number,     // FLUX-driven boiling in the core (DNB at power); 0 in TMI/normal ops
+    "primary_void_fraction": number,  // INVENTORY-driven void (loop voiding, TMI) — the FG-3 deception gate.
+                                      //   Distinct from core_void_fraction: different cause, different lesson.
     "fuel_temp_c": number, "decay_heat_pct": number, "xenon_pct_eq": number, "boron_ppm": float,
+    "clad_temp_c": number,            // PEAK exposed-clad temperature — the partial-uncovery damage driver (#213).
+                                      //   Above fuel/coolant temps whenever the core is partly uncovered.
     "porv_open": bool,                // actual valve position
     "spray_stuck": bool,              // pressurizer spray valve mechanically stuck open — beats the auto
                                       //   controller AND any operator demand, the way porv_stuck beats
                                       //   porv_demand. Note spray_auto can read TRUE while this is true:
                                       //   the controller really is in auto, the valve just isn't listening.
+    "block_valve_open": bool,         // PORV block (isolation) valve position — the memory-free isolation-grading
+                                      //   hook for scenarios; shutting it is what stops a stuck-open PORV
     "porv_stuck": bool, "hpi_active": bool, "hpi_flow_normalized": float, "afw_active": bool,   // hpi_* = the ONE merged HPI/LPI emergency-injection system (two-segment pump curve; flow normalized to combined rated)
+    "hpi_discharge_pressure_mpa": float,   // HPI/charging pump discharge head — RCS pressure + the pump margin,
+                                      //   clamped to shutoff head; 0 when HPI is not injecting
     "afw_pump_running": bool,         // AFW PUMP demand (run lights, honest) — distinct from delivered flow afw_active; the TMI-2 pumps-running/valves-shut split
+    "afw_blocked": bool,              // AFW block/discharge valve SHUT — pumps can run against it (the TMI-2 tag-out)
+    "afw_discharge_pressure_mpa": float,   // AFW discharge head: SG pressure + margin while delivering, pinned at
+                                      //   SHUTOFF when demanded into a blocked discharge, 0 when not demanded.
+                                      //   Deadheaded-at-shutoff is the tell that separates afw_blocked from afw_active=false.
     "afw_flow_normalized": float,     // TRUE delivered AFW flow (capacity × throttle × level hold; 0 when blocked)
+    "condensate_flow_normalized": float,   // TRUE main-feed / condensate flow (main feed only — excludes AFW)
+    "condensate_pump_running": bool,  // condensate pump state — operator-controlled, and it GATES main feed
     "porv_tailpipe_temp_c": number,   // PORV discharge/quench-tank line temperature — warm baseline (seat leakage), hot while relief flows; feeds instruments.porv_tailpipe_temp (the TMI-2 tell)
     "fuel_damaged": bool,             // latched when fuel exceeds fuel_damage_c — scenario outcome-grading hook
     "pump_running": bool, "pump_flow_pct": number, "station_blackout": bool,
     "turbine_rpm": float, "condenser_vacuum_kpa": number,
+    "turbine_tripped": bool,          // turbine trip LATCHED. Arms the P-9 anticipatory scram and is what the
+                                      //   board's lit states key on. A planned `disconnect_grid` is NOT a trip (#230).
+    "cw_inlet_temp_c": number,        // circulating-water inlet temperature (set_condenser_cw_temp) — the
+                                      //   condenser's heat-sink boundary condition, hence backpressure and MWe
     "scrammed": bool, "melted": bool, "steam_demand_mwe": float,
+    "destruction_cause": string,      // "none" | "thermal_melt" — outcome-grading hook, sibling of fuel_damaged/melted
+                                      //   (same field as the RBMK/BWR blocks below, minus the steam-explosion case)
+    "load_mode": string,              // "follow" | "manual" | "disconnected" — the TURBINE load mode.
+                                      //   NOT a plant MODE; see plant_mode below.
+    "load_target_mwe": float,         // commanded electrical load
+    "load_imbalance_mwe": float,      // indicated MWe − load_target_mwe (signed: + = generating above target)
+    "sg_imbalance_active": bool,      // |load_imbalance_mwe| past the 4 %-of-rated annunciator threshold
     "steam_pressure_mpa": number,     // secondary/SG pressure (surfaced for the UI loop diagram)
     "condenser_cooling_available": bool,   // condenser heat-sink availability (also §8.8 status)
     "reactivity_pcm": float, "startup_rate_dpm": float, "reactor_period_s": float,  // reactivity proxies — reactivity computer / SUR / period; display/derived only, NEVER fed to trips (HR1). The PWR carries a startup_rate INSTRUMENT (lagged/noisy twin of the SUR proxy) that feeds the rod-withdrawal interlock — an M4 command block with its own annunciator, not a protection trip.
+    "plant_mode": number,             // DERIVED commercial plant MODE 1–6, from power, reactivity and Tavg
+    "plant_mode_name": string,        // its name ("At Power", "Hot Shutdown", "Cold Shutdown", …) — write as *Mode N, Name*
+    "tavg_rate_c_per_hr": float,      // RCS heatup/cooldown rate (°C/hr), signed — the Mode 5↔1 transition
+                                      //   indication. The engine computes it every step; no engine limit is
+                                      //   enforced on it (the Tech-Spec-style rate limit lives in procedures).
     "sr_counts_cps": float, "ir_amps": float, "sr_energized": bool,   // nuclear instrumentation: Source Range counts (0 when de-energized; feeds the log instrument source_range + the 1e5 cps startup trip), Intermediate Range chamber current (feeds intermediate_range), SR switch state
     "msiv_open": bool, "sg_safety_open": bool,   // main steam isolation valve + SG code safeties (upstream of the MSIV)
     // Synoptic additions (governor / ECCS / CVCS true flows — feed the §8.8 instruments; additive):
@@ -482,6 +528,11 @@ physical-quantity vocabulary.
     "leak_flow": float,               // primary break flow, normalized (LOCA/SGTR) — feeds instruments.primary_leak_flow
     "steam_dump_valve_pct": number,   // steam-dump/bypass valve position, 0–100 % — feeds instruments.steam_dump_valve
     "accumulators_discharging": bool, "accumulator_flow_normalized": float, "accumulator_volume_pct": number,  // passive accumulators (finite volume)
+    "accumulator_pressure_mpa": number,   // N2 cover-gas pressure (the board's SIT pressure readout). INDICATION
+                                      //   ONLY: injection is gated on cold-leg pressure vs the FIXED
+                                      //   accumulator_trip_mpa setpoint, not on this. Falls as the tank empties
+                                      //   (isothermal gas expansion), which is why real injection tails off.
+    "accumulator_valve_open": bool,   // discharge isolation valve position (shut = the tank cannot inject at all)
     "rhr_active": bool, "rhr_valve_open": bool, "eccs_mode": string,   // RHR (formerly DHR) aligned = hot-leg suction valve open; eccs_mode = "HPI"|"LPI"|"RHR"|"off" for the ECCS card
 }
 ```

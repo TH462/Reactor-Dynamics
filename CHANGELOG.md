@@ -14,6 +14,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **The `true_state` contract is now documented in full, and gated (#225).** All **29**
+  PWR fields that `getTrueState()` emits but `Blueprint/CONTEXT.md` §6.3 never described
+  are documented — the loop pressure distribution (`p_coldleg`/`p_hotleg`/`p_pumpsuction`),
+  RCP cavitation (`suction_subcool_c`, `rcp_cavitation_frac`, `rcp_cavitating`), the two
+  distinct void fractions, wide-range SG level, `steam_out_total`, `clad_temp_c`, the AFW
+  block/discharge state, plant MODE and heatup rate, load mode, `turbine_tripped`,
+  `destruction_cause` and the accumulator/condensate/discharge-pressure indications. Several
+  carry the trap that made them worth documenting — `steam_flow_normalized` is TURBINE flow
+  alone and reads ~0 whenever the dump is carrying the plant, `sg_level_pct` pegs on an
+  overfill while `sg_level_wide_pct` keeps reading, and `accumulator_pressure_mpa` is
+  indication only (injection is gated on the fixed setpoint, not on it).
+  New gate **`test/run_contract.js`** diffs `Object.keys(getTrueState())` against the §6.3
+  block and fails in **both** directions: an undocumented field, or a documented field the
+  engine no longer emits. Nothing had ever compared the two, which is how the gap reached
+  41-of-82 — and how #144 came to be filed against a field that *was* documented. PWR only;
+  the RBMK/BWR blocks are registered `skip` (on hold, never audited).
 - **The board explains itself — the inspection system (#96, merges #69).** The **System
   Scanner** block on the right column is now a two-tier inspection surface. Point at
   anything and it names the object and says what it does in one line; **click the block to

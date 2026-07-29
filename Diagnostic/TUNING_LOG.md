@@ -31,7 +31,8 @@ staleness** items.
 
 | Gate | State | Notes |
 |---|---|---|
-| **`run_all`** | **OK (25 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| **`run_all`** | **OK (26 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| `run_contract` | **84 checks / 0 failed** | NEW 2026-07-28t (#225) — §6.3 `true_state` contract vs `getTrueState()`, both directions; PWR only (RBMK/BWR `skip`) |
 | `run_inspect` | **7/7 (35)** | NEW 2026-07-28s (#96) — inspection copy: orphaned keys, per-item coverage, dead manual citations, duplicate copy |
 | `run_flags` / `verify_flags_ui` | **16/16 (290)** / **48/48** | NEW 2026-07-28j (#241) — the feature-flag registry (coverage + resolution) and the control room actually obeying it |
 | `run_procedures_stack` | **22/22 (155/155)** | NEW 2026-07-26b — procedures through M4+M5+M6. **6** strict xfails, all RBMK/BWR (#208); the 7 `pwr_heatup` xfails cleared 2026-07-26c/d (#206, #210) |
@@ -110,6 +111,49 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-28t — #225: the §6.3 `true_state` contract, documented in full and gated  ✅
+
+**What shipped.** Two halves, and the second is the durable one.
+
+1. **All 29 undocumented PWR `true_state` fields** now carry a line in `Blueprint/CONTEXT.md`
+   §6.3, placed beside the fields they relate to rather than appended as a block.
+2. **`test/run_contract.js`** (new gate, in `run_all`'s `BASELINES` at `84checks 0failed`)
+   diffs `Object.keys(getTrueState())` against the §6.3 block and fails **both** directions:
+   an engine field with no doc line, and a doc line for a field the engine no longer emits.
+
+**The filed count was wrong, and that is the finding.** #225 said 41 of 82. Measured before
+acting: **29 of 84**. Twelve of the 41 had been documented in the interim synoptic-additions
+pass; **two fields the issue never listed had appeared since** (`clad_temp_c` #213,
+`cw_inlet_temp_c`). A hand-written list of missing fields drifted in both directions while it
+sat in the issue — which is the argument for item 2 over item 1. Probe:
+`Object.keys(new RD.PWREngine().getTrueState())` vs the fenced block under `**PWR:**`.
+
+**Gate validated against the OLD behaviour (HR10).** Three runs, not one: against
+`git show HEAD:Blueprint/CONTEXT.md` it fails with exactly the 29 named; against the new file
+it passes; with a phantom key injected into the block it fails `STALE 1`. A gate that only
+passes on the change it shipped with is a refit, not a check.
+
+**Two things checked rather than inferred** (both would have shipped wrong):
+- `accumulator_pressure_mpa` reads like the injection driver. It is not — `stepAccumulators`
+  (`pwr_primary.js:99`) gates injection on cold-leg pressure vs the **fixed**
+  `accumulator_trip_mpa`; the cover-gas pressure is indication only. The first draft of the
+  doc line said the opposite.
+- `tavg_rate_c_per_hr` looked like it should cite the Tech-Spec heatup limit. Grepped: no such
+  limit exists anywhere in `pwr_config.js` or `pwr_control.js` — the engine computes the rate
+  and enforces nothing. The line now says so instead of inventing 55 °C/hr from recall.
+
+**Design notes worth carrying.** The engine side is a **union over all 5 initial conditions**,
+so a state-conditional field still counts. The doc parse is **fail-loud**: a renamed heading
+yields zero keys and the runner exits 2 rather than reporting a clean 0-of-0 — a doc-diffing
+gate that passes when it stops finding the doc turns green into evidence. RBMK/BWR are
+registered in `PLANTS` with a `skip` reason (on hold; their blocks were never audited), so
+reopening is one flag each.
+
+**Still open.** The RBMK and BWR §6.3 blocks have never been diffed. Do it when those plants
+reopen — expect red.
+
+---
 
 ### 2026-07-28s — #96: the inspection system (hover to name it, expand to learn it)  ✅
 

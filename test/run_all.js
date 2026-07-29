@@ -94,6 +94,16 @@ var BASELINES = {
   // it. The site count is part of the score on purpose: a NEW coupling shifts it
   // and trips drift even when the author allow-lists it properly.
   'run_hr3.js':            { code: 0, score: '32checks 0failed' },
+  // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
+  // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
+  // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
+  // noticed only because #144 was filed against a field that WAS documented. By the
+  // time #225 was worked its own list had rotted (12 documented since, 2 new fields
+  // added), which is the argument for a gate rather than a list. PWR only: RBMK/BWR
+  // are on hold and their blocks were never audited, so they are registered `skip`.
+  // Check count = every field name on either side, so adding a true_state field moves
+  // this baseline — the intended nudge to document it in the same change.
+  'run_contract.js':       { code: 0, score: '84checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points

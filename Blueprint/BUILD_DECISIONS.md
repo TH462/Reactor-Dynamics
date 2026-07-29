@@ -25,7 +25,7 @@ where the two differ or where judgment was exercised.
 | F2 | M1 | `sg_overfeed` failure `override_value: 1.2` is applied to `set_feedwater_flow {pct}` (0–100), so it underfeeds (1.2%) rather than overfeeds (~120%). Untested, not flagship. | data bug | **RESOLVED** — value fixed to 120 (pct-units slip, see `pwr_control.js` comment) and now tested end-to-end: `ops_pwr ops_sg_overfeed_p14` (2026-07-19) drives the failure under M4 to the full P-14 response. |
 | F3 | M1/M4 | The M1/M4 seam: command-override failures' persistent effects live in the engine (M1), while interception lives in M4. M4 forwards *and* intercepts. M7 will scrutinize this. | seam | **open** — validate in M7 |
 | F4 | M4 | `degraded_hpi` is typed `command_override` but its real effect is an engine HPI-flow multiplier (the spec itself flags this, M4 §7). Implemented via the engine hook. | taxonomy | **RESOLVED** (2026-07-27, #143) — `degraded_hpi` and `afw_failure` are both `physics_parameter` now (`pwr_control.js:285,289`, effects `degrade_hpi` / `block_afw`). Both are persistent physical states, not command interceptions, so the typing matches HR7. |
-| F5 | M1 | `fuel_damaged` (cladding failure at 1200 °C) is internal, not in the §6.3 `true_state` contract. Consumers must use `fuel_temp_c`/`melted`. | contract | **RESOLVED** (2026-07-27, #144) — it is in the contract, `CONTEXT.md:395`. Consumers may read it directly. The flag outlived the fix. **But**: measured against `getTrueState()`, **41 of 82 PWR fields are still undocumented** in §6.3 — `fuel_damaged` was the one that got fixed, not the only one missing. Tracked separately. |
+| F5 | M1 | `fuel_damaged` (cladding failure at 1200 °C) is internal, not in the §6.3 `true_state` contract. Consumers must use `fuel_temp_c`/`melted`. | contract | **RESOLVED** (2026-07-27, #144) — it is in the contract, `CONTEXT.md:395`. Consumers may read it directly. The flag outlived the fix. **But**: measured against `getTrueState()`, **41 of 82 PWR fields are still undocumented** in §6.3 — `fuel_damaged` was the one that got fixed, not the only one missing. Tracked separately as #225, **RESOLVED 2026-07-28t**: all documented, and `test/run_contract.js` now gates the diff both ways. Note the 41 had itself rotted by the time it was worked — 29 of 84 when re-measured. |
 | F6 | M5 | Acceleration is realized as fixed-0.02 s step **count**, not by scaling `dt` (CONTEXT §4's literal `dt_effective` diverges — verified). Every engine (M2/M3) must stay stable at 0.02 s; the service never hands them a larger dt. | deviation | **RESOLVED** — all three stable at 0.02 s. M2 fine with explicit Euler. **M3 needed an IMPLICIT prompt term** (its Λ=5e-5 makes explicit Euler unstable at 0.02 s: dt·β/Λ=2.6>2 — see M3 D1); still first-order, so the fixed-0.02 s contract holds for every engine. The service never needs a smaller dt. |
 | F7 | M8 | Alarm system-category (left-bar color, M8 §8.5) is derived UI-side by keyword (`alarmCategory()`), because M1's alarm data has no `category`. Should move into the plant profile alongside `tile_label`/`scanner_hint`. | data | **open** — add to engine alarm config |
 | F9 | M5/M6·PH/M7 | Integration tests assert `rod_nudge` reaches the engine **instantly** (`210 → 200`), but the engine now does a **rate-limited nudge** (drives a `nudge_target` over sim time — the "rod control reworked" change). The one-step assertion sees `210→210` and fails. **Pre-existing** (reproduces on clean HEAD; unrelated to the BOP work) — the stale check needs to step the sim forward after nudging. | test | **open** — fix the 3 integration tests to run the sim after `rod_nudge` |
@@ -34,6 +34,59 @@ where the two differ or where judgment was exercised.
 | F12 | M8/test | **`run_e2e_controls` 28/30 — 2 pre-existing reds** (was 3; (c) *AUTO charging converged to match the leak* turned green with the 2026-07-22 P7 retune/SGTR re-anchor). (a) *PZR spray manual set reaches engine* — expects spray ≥45 % at the engine, gets 12; the spray-demand reach drifted. (b) *CVCS auto make-up holds inventory vs leak* — "auto holds ≥98 %" is not physical for a severity-1.0 SGTR (now 0.03 frac/s ≈ 40× CVCS make-up authority); re-baseline to the current trajectory or assert against a small leak the servo *can* match. | test | **open** — spray reach + one stale SGTR expectation |
 | F13 | M4 | **`clip()` is defined four times** (`control_kernel.js:47`, `pwr_control.js:360`, `rbmk_control.js:127`, `bwr_control.js:100`) and issue #156 files it as HR3 drift. It is not: HR3 is *plant specifics in shared code*, and this is a one-line pure clamp local to each IIFE. **Deliberately not deduplicated** — `control_kernel.js` loads **after** all three plant control modules in every load list, so a shared `RD.*.clip` resolves only at call time (a real load-order coupling), and the alternative is a new shared-utils file that must be added to every load list. Bought for 60 characters that cannot meaningfully drift. **Measured before deciding: `clip` is the ONLY duplicated helper** — every other module-level function in those four files is genuinely local. **Revisit trigger:** if a *second* shared helper appears, create the utils file then and move `clip` in with it. The **other** half of #156 (a PWR field read inside generic kernel machinery) WAS real and is fixed — and note it had **moved**: `_stepBang` was already clean, but the boron batch-dose work re-created the same leak in `_stepConc`. See `Diagnostic/TUNING_LOG.md` 2026-07-27b. | cleanup | **RESOLVED (2026-07-27b) — won't fix, deliberate. OWNER-APPROVED**: Claude recommended won't-fix with the reasoning above; owner replied *"Do as you suggest"* (2026-07-27), so the decision is the owner's and the reasoning is Claude's. Recording it that way because the first draft of this row said only "ruled won't-fix", which reads as owner authority for what was then an agent's recommendation — the exact laundering `CONTEXT.md` §HR-provenance warns about. #156 closed `status-deliberate`. The recurrence it exposed (the leak was fixed in `_stepBang`, then re-created in `_stepConc` ~40 lines below the comment warning against it) is spun out as **#227** — nothing gates HR3 in the kernel. |
 | F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **RESOLVED (2026-07-07)** — rbmk_ar + pwr_automation missions, auto_channels presets exercised end-to-end (startScenarioAuto gate harness), Chernobyl AR tie-in. Pre-existing missions deliberately left bare (triggers tuned against bare-plant trajectories). |
+
+---
+
+## 2026-07-28t — #225 the §6.3 true_state contract, documented and gated
+
+**The filed number was stale, and that is the whole argument.** #225 reported 41 of 82 PWR
+`getTrueState()` fields undocumented in `CONTEXT.md` §6.3. Re-measured before acting (per the
+verify-first rule): **29 of 84**. Twelve of the filed 41 had been documented in the interim
+synoptic-additions pass, and **two fields the issue never listed had appeared since** —
+`clad_temp_c` (#213) and `cw_inlet_temp_c`. So in the days a hand-written list sat in an issue,
+it drifted in *both* directions. A list cannot hold this; only a gate can.
+
+**Decision: the gate fails BOTH ways, not just on undocumented fields.** `test/run_contract.js`
+reports an engine field missing from §6.3 (undiscoverable, or consumed anyway with no stated
+meaning) **and** a documented field the engine no longer emits (a contract promising something
+the snapshot does not carry — worse, because a consumer will code against it). The second half
+is what would have caught a rename; the first half alone would let `foo` → `foo_c` read as
+"one new undocumented field" and leave the phantom in place.
+
+**Decision: the engine side is a UNION over every initial condition, not one reset.** Today
+`getTrueState()` returns a fixed object literal so the key set is constant, but that is an
+implementation detail one conditional spread would end. Unioning over `initial_states` (5 for
+the PWR) makes a field that only exists in one plant state still part of the contract, and
+costs nothing.
+
+**Decision: the parse is fail-loud.** A renamed §6.3 heading or a reshaped block yields zero
+documented keys — the runner exits 2 with an explicit message rather than reporting a clean
+0-of-0. A doc-diffing gate that silently passes when it stops finding the doc is worse than no
+gate, because the green is now evidence.
+
+**Check count = every field name on either side (84).** Adding a `true_state` field shifts the
+baseline in `run_all.js` even when the author dutifully documents it — the same deliberate
+friction as `run_hr3`'s site count. Documenting a field should be part of adding it, not a
+follow-up someone files.
+
+**Scope: PWR only.** RBMK and BWR are registered in `PLANTS` with a `skip` reason rather than
+omitted, so reopening them is one flag each — but their §6.3 blocks have never been diffed and
+turning them on today is expected to be red. That is work for when the plants reopen (#225
+says so explicitly).
+
+**Documented with the traps, not just the names.** Several of the 29 exist precisely because
+two similar fields mean different things, and the one-liners say which:
+`steam_flow_normalized` is TURBINE flow alone and reads ~0 whenever the dump carries the plant
+(`steam_out_total` is the real steam-line flow); `sg_level_pct` pegs on an overfill/dryout while
+`sg_level_wide_pct` keeps reading; `core_void_fraction` is flux-driven DNB and
+`primary_void_fraction` is inventory-driven loop voiding; `accumulator_pressure_mpa` is
+indication only — injection is gated on cold-leg pressure vs a **fixed** `accumulator_trip_mpa`,
+not on the computed cover-gas pressure. That last one was checked in `pwr_primary.stepAccumulators`
+rather than inferred from the field name, which is how the first draft of the line came out wrong.
+
+**Gate validated against the OLD behaviour (HR10).** Run against `HEAD:Blueprint/CONTEXT.md` it
+fails with exactly the 29; against the new file it passes; with a phantom key injected it fails
+`STALE 1`. Passing only on the change would have made it a refit.
 
 ---
 
