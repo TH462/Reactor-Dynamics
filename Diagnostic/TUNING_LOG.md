@@ -32,7 +32,7 @@ staleness** items.
 | Gate | State | Notes |
 |---|---|---|
 | **`run_all`** | **OK (28 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
-| `run_hardrules` | **18 checks / 0 failed** | NEW 2026-07-29 — static guards for HR1 (protection reads instruments), HR5 (UI never touches the engine) and HR11 (a ruling needs a date + verbatim words). Declared-exception idiom: a true-state read in `layers/control/` is legal only if listed with the reason no instrument exists. 18 → 14 on 2026-07-29h (#247): **4 of the 5 declared HR1 debts paid**; the 1 left is RBMK (on hold). 14 → 18 on 2026-07-29i (#248) — HR12 added, and its `OWNER RULING` quote appears in four tracked files (including this log). Note the gate scans Diagnostic/ and Blueprint/, so WRITING UP a change moves this score — re-run it after the docs, not just after the code. HR2, HR6 and half of HR4 remain unguarded; HR10 and HR12 are **not gateable at all**, and §3 says so |
+| `run_hardrules` | **19 checks / 0 failed** | NEW 2026-07-29 — static guards for HR1 (protection reads instruments), HR5 (UI never touches the engine) and HR11 (a ruling needs a date + verbatim words). Declared-exception idiom: a true-state read in `layers/control/` is legal only if listed with the reason no instrument exists. 18 → 14 on 2026-07-29h (#247): **4 of the 5 declared HR1 debts paid**; the 1 left is RBMK (on hold). 14 → 18 on 2026-07-29i (#248) — HR12 added, and its `OWNER RULING` quote appears in four tracked files (including this log). 18 → 19 on 2026-07-29j (#251) — one more HR11 site, the owner's "long term fix" ruling quoted in this log's entry. Worked example of the warning that follows: the CODE change moved nothing here; writing it up did. Note the gate scans Diagnostic/ and Blueprint/, so WRITING UP a change moves this score — re-run it after the docs, not just after the code. HR2, HR6 and half of HR4 remain unguarded; HR10 and HR12 are **not gateable at all**, and §3 says so |
 | `run_hr3` | **29 checks / 0 failed** | 32 → 29 on 2026-07-29h (#247) — retiring the `__true_flow__` sentinel removed the kernel's only PWR-only `true_state` reference (half of #228; the `reset_rps` half stands) |
 | `run_contract` | **84 checks / 0 failed** | NEW 2026-07-28t (#225) — §6.3 `true_state` contract vs `getTrueState()`, both directions; PWR only (RBMK/BWR `skip`) |
 | `run_inspect` | **7/7 (35)** | NEW 2026-07-28s (#96) — inspection copy: orphaned keys, per-item coverage, dead manual citations, duplicate copy |
@@ -113,6 +113,99 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-29j — #251: the pump-heat netting is gone, and the plant can heat itself  ✅
+
+**OWNER RULING, 2026-07-29:** *"Lets go with the long term fix. I dont want to fudge anything
+if i can help it. we should do it first becuase this kind of fidelity is the point of this
+sim."* — the structural fix, not the one-line gate.
+
+**The defect.** `pwr_steam_generator.js` computed steam generation as
+`max(0, Q_sg − Q_pump) / latent_heat_secondary`, booked in its comment as "SG blowdown/ambient
+losses". It was not that: it was sized to cancel RCP pump heat *identically at every flow*,
+because the turbine's steam demand was computed from core power alone and the extra ~0.55 %
+had no sink. The consequence nobody had costed: **a heatup on pump heat was mathematically
+impossible.** The steam side could not start boiling until `Q_sg` exceeded `Q_pump`, but
+`Q_sg = h_sg·(Tavg − Tsec)` settles at exactly `Q_pump` and stops.
+
+**Measured (HR12).** `cold_shutdown` IC, RCPs started, pressurized to 2235 psi (15.41 MPa),
+no rod motion at all. As built it **stalls at 218.69 °F (103.72 °C)** — a stable attractor,
+not a slow approach: Tsec 218.37 °F, steam pressure pinned on its 14.5 psi floor, and
+ΔT = 0.321 °F = `Q_pump/h_sg` to three decimals, forever.
+
+**The fix, in three parts.**
+
+1. **The SG boils off whatever crosses it.** `steam_generation_rate = Q_sg / (latent_heat_secondary
+   × (1 + pump_heat_frac))`. Rated steam flow is now the flow made by **NSSS rated heat** —
+   rated core heat *plus* full-flow pump heat — which is how a real plant rates its steam
+   generators (NSSS thermal power, not core thermal power). Two places in the engine already
+   assumed exactly this (`pwr_engine:1125,1199` and the dump's `t_fullpower`), which is the
+   evidence the netting was the anomaly.
+2. **The governor draws it.** `_loadModeOpts.extractFrac` returns
+   `(_Q_total + pump_heat_frac·flow_frac) / (1 + pump_heat_frac)` — one term further than #229,
+   for the same reason. **Note what this did NOT need:** the issue's plan step 3 expected to
+   recalibrate `steam_flow_rated` and add headroom above the governor's `clip(…, 0, 1)`.
+   Normalizing both sides on NSSS rated heat instead means 100 % core power at full flow is
+   *exactly* 1.0 — rated steam flow, rated MWe — so `steam_flow_rated` stays 1.0, the clip
+   stays, and "100 %" still means 100 % on every gauge. That was the whole risk item in the
+   plan and it evaporated.
+3. **The cold IC had to stop being synchronised to the grid.** `_buildState` set
+   `load_mode: 'follow'` unconditionally, so a Mode 5 plant spawned "following" at 50 °C with
+   `generator_load = 1e-6` — #235 parked the rotor for the subcritical states and left the
+   mode. Invisible while the SG cancelled pump heat. With the netting gone the follow governor
+   cracks to **6.2 %** on the pump-heat demand and drains the heatup: measured, it re-stalled
+   at **306.05 °F (152.25 °C)** with the same 0.321 °F ΔT signature. Now one `onLine = P0 > 0.01`
+   predicate drives rotor speed, breaker, governor and load mode together, so they cannot
+   disagree again. **This was the real second half of the bug and the issue did not name it.**
+
+**Measured after, against the pinned before-numbers.**
+
+| | before | after |
+|---|---|---|
+| Full power, 4 sim-h | 819.47 psi, 100.00 MWe, 579.33 °F, zero drift | **identical to 2 dp** |
+| 50 % load (follow), 3 sim-h | 990.60 psi, 50.13 %, 572.89 °F | 995.25 psi, 49.67 %, 573.20 °F |
+| Manual 100/75/50/25 MWe, 4 sim-h | — | max drift **−2.07 psi**; no creep at any load |
+| Disconnected ride-out, 2 h | +3.36 psi | +3.68 psi |
+| Heatup, no rods | **stalls 218.69 °F** | **548 °F in 10.71 plant-h** |
+
+So **step 5 of the plan needs nothing**: MANUAL and DISCONNECTED do not drift, and no second
+compensation term was added. The heatup profile: Mode 4 (200 °F) at 0.28 h, Mode 3 (548 °F) at
+10.71 h, arriving ρ = **−6287 pcm** on 919 ppm with the bank still at its cold-shutdown
+position. Average **39.8 °F/hr (22.1 °C/hr)**, steady **~32 °F/hr** after the first hour; the
+first hour reads **111.5 °F/hr** because the pressurization is fast, not the ramp. Feed lineup
+makes no difference (bottled SG → nothing boils off → nothing to replace; level holds 65.6 %) —
+the plan's step 6 worry about cold feedwater as a heat sink does not bite. Rate control:
+securing an RCP → **0.1 °F/hr**; the steam dump is far too coarse, 5 % manual demand is ~10×
+pump-heat generation and *reverses* the heatup at **−83.4 °F/hr**.
+
+**The mission was re-authored around the real mechanism.** `pwr_mode5_to_mode3` no longer takes
+the core critical: pressurize → start pumps → bottle the SG → ride 10.7 plant-hours up → arrive
+hot and still subcritical, which is what Mode 3 actually is. The approach to criticality left;
+it already lives in `pwr_startup_challenge` / `pwr_return_to_mode1`. `setup_commands` is now
+empty in both Mode-5 missions — their `disconnect_grid` became a no-op when the IC started
+spawning off line.
+
+**HR10 — the new gate was validated against the OLD behaviour.** `run_campaign`'s heatup test
+was rewritten to drive only `set_rcp` + `set_pressure_setpoint` (no rod command exists in the
+driver) and asserts **0 steps of rod motion** and peak power < 0.01 %. I then temporarily
+restored the netting and re-ran it: it **fails** on "heatup reaches an endpoint". So the gate
+demonstrably catches the regression it claims to, rather than merely passing today.
+
+**Content corrected (HR9 — content follows the plant).** Six places asserted that pump heat
+could not do this, all now false: `Manuals/04` PWR-N03 sequence + simulator note, `Manuals/05`
+§2.2/Phase A ×3, `Manuals/CAMPAIGN_MODE_ALIGNMENT_SPEC` §honesty, `Blueprint/pwr_training_campaign`
+row 3a, and `ui/manual_procedures.js`'s `pwr_heatup` cautions. Manuals repacked.
+
+**Deliberately NOT done:** `pwr_heatup` (PWR-N03) is still an 18-step *nuclear* heatup. It is
+gated by two runners and cross-bound to a checklist (#254), and re-authoring it as a pump-heat
+evolution is a separate deliverable that also collides with #253's curriculum redesign. Its
+false claims were corrected and it was reframed as the nuclear variant; the re-authoring is
+filed as a follow-up.
+
+**Gates:** `run_all` **29 runners at baseline**. One baseline moved: `run_campaign`
+**3025 → 3026 checks** (+2 new assertions, −1 highlight from the beat that left). PWR ops still
+**21/21 with zero fails** — checked per-plant from `ops_results.json`, not inferred from the
+57/68 total, because a PWR red swapping with an RBMK green nets to the same number.
 
 ### 2026-07-29i — #248: low-flow setpoint 25 % → 90 %, and HR12  ✅
 

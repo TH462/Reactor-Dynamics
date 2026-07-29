@@ -69,7 +69,7 @@ the start — revised 2026-07-07).
 ### Act II — The Physics (reactor behavior in your hands)
 | # | Mission | Kind | Teaches |
 |---|---------|------|---------|
-| 3a | The Big Warm-Up | [S] `pwr_mode5_to_mode3` **NEW 2026-07** | The cold heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby: pressurize, start RCPs, SR→IR handoff, approach to criticality, nuclear heatup to NOP, settle subcritical Hot Standby |
+| 3a | The Big Warm-Up | [S] `pwr_mode5_to_mode3` **NEW 2026-07, re-authored #251** | The cold heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby **on pump heat, reactor never critical**: pressurize, start RCPs, bottle the SG, ride 10.7 plant-hours up to NOP, arrive hot and subcritical. The approach to criticality is deliberately NOT here — it is mission 4 |
 | 4 | Critical! | [P] `pwr_startup` | The real approach-to-criticality procedure, end to end (SR/IR, the handoff, 1/M) |
 | 5 | The Reactor That Pushes Back | [S] `pwr_feedback` **NEW** | Doppler + moderator temperature coefficient; why a PWR is self-stabilizing; power follows steam demand |
 | 6 | Poisoned | [S] `pwr_xenon` **NEW** | Xenon-135: builds after power drops, chokes the core, decays away; why plants can't always restart immediately |

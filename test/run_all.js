@@ -118,7 +118,7 @@ var BASELINES = {
   // `Blueprint/` as well as source, so **writing up your change moves the score after you
   // ran the gate**. Quote an owner ruling in the tuning log and the count goes up. Run
   // run_hardrules once more AFTER the docs are written, not just after the code.
-  'run_hardrules.js':      { code: 0, score: '18checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '19checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -205,7 +205,7 @@ var BASELINES = {
   // trip did NOT actuate and a backup caught the event. Asserting only "something
   // scrammed" cannot tell "the assigned protection worked" from "a backstop caught a
   // consequence", which is the entire lesson after the stuck-channel rewrite.
-  'run_campaign.js':       { code: 0, score: '51/51 3025passed' },
+  'run_campaign.js':       { code: 0, score: '51/51 3026passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they

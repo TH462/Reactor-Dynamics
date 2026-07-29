@@ -14,6 +14,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **The plant can now heat itself up from cold on pump heat alone, with the reactor never
+  started** (#251). The steam generator used to subtract reactor-coolant-pump heat out of its
+  own steam balance — a correction term sized to cancel pump heat exactly, because the turbine
+  drew steam for core power only and the extra 0.55 % had nowhere to go. The side effect nobody
+  had costed: a heatup on pump heat was *mathematically impossible*, stalling dead at
+  **218.69 °F (103.72 °C)** forever. The turbine's demand now includes pump heat and the SG
+  boils off everything that crosses it, with rated steam flow defined against NSSS rated heat
+  (core + pump) the way a real plant rates its generators. Measured: Mode 5 → Mode 3 in
+  **10.71 plant-hours** at an average **39.8 °F/hr (22.1 °C/hr)** with **no rod motion at all**,
+  arriving at 548 °F (286.7 °C) and −6287 pcm. Full-power behaviour is unchanged to two
+  decimal places.
+- **A cold plant is no longer synchronised to the grid.** The Mode 3 and Mode 5 initial
+  conditions spawned with the turbine in load-follow and the generator carrying 1e-6 of load,
+  while the rotor sat at rest — half-fixed in an earlier change. They now spawn properly off
+  line (breaker open, planned offline, not tripped). This mattered the moment pump heat became
+  real: a following governor cracks open and drains the heatup.
+- **"The Big Warm-Up" (Mode 5 → Mode 3) has been re-authored around the real evolution.** It no
+  longer takes the reactor critical to warm the plant up. Pressurize, start the pumps, bottle
+  the steam generator, and ride the temperature up on pump heat — arriving hot and *still
+  subcritical*, which is what Hot Standby actually means. The approach to criticality moved out
+  to the missions that already teach it.
 - **The low-flow reactor trip now fires at 90 % of rated flow, not 25 %** (#248). This is the
   real Westinghouse setpoint, and the block permissive moved to the real P-7 (10 % power).
   Measured on an RCP trip from full power: the trip now fires at **1.8 s**, where DNB onset

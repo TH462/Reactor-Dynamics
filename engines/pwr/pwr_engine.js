@@ -221,7 +221,22 @@
       // above fission power for tens of minutes, and a pressure-mode follow
       // governor takes that steam like any other. Q ≡ P at steady state, so
       // nothing moves outside transients.
-      extractFrac: function (s) { return s._Q_total != null ? s._Q_total : (s._P || 0); },
+      //
+      // RCP PUMP HEAT is the remaining term in that sum (#251). The turbine's demand
+      // is what the steam generator has to boil, and the SG boils everything that
+      // crosses it — pump shaft work included — so the governor draws that steam too.
+      // Without it pump heat had no sink and had to be cancelled inside the SG, which
+      // made a heatup on pump heat impossible (see pwr_steam_generator).
+      //
+      // Both terms are fractions of rated CORE heat; the denominator renormalizes them
+      // onto rated STEAM flow, which is made by rated core heat PLUS full-flow pump
+      // heat (the same NSSS-rated normalizer the SG uses). So 100 % core power at full
+      // flow is exactly 1.0 — rated steam flow, rated MWe — and the governor's clip at
+      // 1.0 needs no headroom bolted on.
+      extractFrac: function (s) {
+        var pf = cfg.thermal.pump_heat_frac || 0;
+        return ((s._Q_total != null ? s._Q_total : (s._P || 0)) + pf * (s.flow_frac || 0)) / (1 + pf);
+      },
       setLoad: function (s, mwe, rated) {
         s.steam_demand_mwe = mwe;
         s.turbine_demand_frac = clip(mwe / rated, 0, 1.2);
@@ -1183,6 +1198,11 @@
   PWREngine.prototype._buildState = function (name) {
     var cfg = this.cfg, init = cfg.initial_states[name] || cfg.initial_states.hot_full_power;
     var P0 = init.power;
+    // Is the unit ON LINE in this initial condition? One predicate for the whole
+    // turbine/generator block below (rotor speed, breaker, governor, load mode), so
+    // they cannot disagree the way they did before #251. The subcritical states
+    // (Modes 3/5, P0 = 1e-6) are off line; anything carrying real load is on.
+    var onLine = P0 > 0.01;
 
     // Sliding Tavg program (SS-2, catalog §8.1). Tavg is anchored to the load-
     // programmed reference — a LINEAR interpolation in load between the no-load
@@ -1317,18 +1337,27 @@
       // Rotor at rated only when the state spawns with the generator carrying real
       // load; the subcritical states (Modes 3/5, P0 = 1e-6) spawn with the turbine
       // at rest — no admission steam and nothing to hold it at speed (#235).
-      turbine_rpm: P0 > 0.01 ? cfg.turbine.rpm_rated : 0, condenser_vacuum_kpa: cfg.turbine.vacuum_rated,
+      turbine_rpm: onLine ? cfg.turbine.rpm_rated : 0, condenser_vacuum_kpa: cfg.turbine.vacuum_rated,
       // Circulating-water inlet temperature. Defaults to the reference the vacuum model is
       // calibrated at, so an untouched plant behaves exactly as it did before CW temperature
       // was modelled (see turbine.cw_inlet_ref_c).
       cw_inlet_temp_c: cfg.turbine.cw_inlet_ref_c != null ? cfg.turbine.cw_inlet_ref_c : 26.7,
-      generator_load: P0, turbine_demand_frac: P0, turbine_tripped: false,
+      generator_load: onLine ? P0 : 0, turbine_demand_frac: onLine ? P0 : 0, turbine_tripped: false,
       // Turbine governor valve tracks load demand (% open); starts matched to P0 so
       // steam_flow = (gov/100)·(P/Prated) reproduces the P0 steady state at reset.
-      governor_valve_pct: clip(P0, 0, 1) * 100,
-      condenser_cooling_available: true, steam_demand_mwe: P0 * cfg.turbine.mwe_rated,
-      mwe_output: P0 * cfg.turbine.mwe_rated,
-      load_mode: 'follow', load_target_mwe: P0 * cfg.turbine.mwe_rated,
+      governor_valve_pct: onLine ? clip(P0, 0, 1) * 100 : 0,
+      condenser_cooling_available: true, steam_demand_mwe: onLine ? P0 * cfg.turbine.mwe_rated : 0,
+      mwe_output: onLine ? P0 * cfg.turbine.mwe_rated : 0,
+      // ...and the LOAD MODE has to agree with the rotor. The subcritical states spawn
+      // OFF LINE — planned offline, not tripped (#230), which is what Modes 3 and 5
+      // physically are: breaker open, no admission steam, nothing to follow. #235 already
+      // parked the rotor for them and left the mode on 'follow', so a cold plant spawned
+      // "synchronised" at 50 °C with generator_load = 1e-6. That was invisible while the
+      // SG cancelled pump heat; with the netting gone (#251) the follow governor cracks
+      // to ~6 % on the pump-heat demand and DRAINS the heatup — measured, a Mode 5 heatup
+      // re-stalls at 306.05 °F (152.25 °C) with the same ΔT = 0.321 °F signature.
+      load_mode: onLine ? 'follow' : 'disconnected',
+      load_target_mwe: onLine ? P0 * cfg.turbine.mwe_rated : 0,
       load_follow_tau: RD.LoadMode.DEFAULT_TAU, feed_auto_coupled: true,
       load_imbalance_mwe: 0, sg_imbalance_active: false,
 
