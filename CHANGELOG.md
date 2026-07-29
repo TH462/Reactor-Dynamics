@@ -13,6 +13,26 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The low-flow reactor trip now fires at 90 % of rated flow, not 25 %** (#248). This is the
+  real Westinghouse setpoint, and the block permissive moved to the real P-7 (10 % power).
+  Measured on an RCP trip from full power: the trip now fires at **1.8 s**, where DNB onset
+  is at **10.9 s** — it protects the core about nine seconds before the hot channel can boil.
+  The old 25 % fired at 16.2 s, roughly five seconds *after* DNB began; its entire practical
+  effect was to let the core boil first. Scanned for spurious trips: small LOCA, stuck-open
+  PORV and SGTR never drop flow below 90 % at all, and the large LOCA has already scrammed on
+  low pressure three seconds before it gets there. The TMI flagship is untouched.
+- **"Loss of Coolant Flow" has been re-authored around a stuck flow transmitter.** With the
+  faster trip a healthy plant simply trips in under two seconds and nothing happens — the old
+  lesson (*hesitate and it boils*) became unreachable, correctly, because no real plant lets
+  flow coast to a quarter of rated. So the scenario now trips the pump **and** sticks its flow
+  channel at 100 %. The low-flow trip never fires at all; the core boils, and the reactor is
+  finally caught 35 s later by the **high-pressure** trip — a different instrument catching a
+  consequence. Subcooling margin is the indication still telling the truth. The lesson is no
+  longer "trip fast", it is **"a single-channel trip is exactly as trustworthy as its one
+  transmitter"**, which is what real plants answer with three detectors per loop and 2-of-3
+  coincidence.
+
 ### Added
 - **RCS Loop Flow is now an instrument, and the low-flow reactor trip reads it** (#247).
   The trip that protects the core against a loss of forced flow used to read **true**

@@ -480,15 +480,13 @@ Until 2026-07-29 the **low-flow reactor trip read true flow**, because no flow i
 
 **RCS Loop Flow** is modelled on the real measurement: **elbow taps** on the crossover-leg 90° elbow, reading the differential pressure between the inner and outer radius of the bend, with ΔP ∝ flow². Nothing is inserted into the flow path. Real accuracy figures for this channel are ±10 % absolute, with trip-point repeatability around ±1 %.
 
-Two things about this plant's version are **departures from a real Westinghouse unit**, and both are deliberate:
+The **setpoint is the real one — 90 % of rated, blocked below P-7 (10 % power)**. Adopted 2026-07-29, replacing an unsourced 25 % / 5 % pair. Measured on an RCP trip from full power: the indication crosses 90 % at **1.8 s** and DNB onset is at **10.9 s**, so the trip now fires about nine seconds *before* the hot channel can boil. The old 25 % setpoint fired at 16.2 s — about five seconds *after* it. Its entire practical effect was to let DNB happen.
 
-| | This plant | A real Westinghouse PWR |
-|---|---|---|
-| **Channels** | One channel | **Three flow detectors per loop**, tripping on 2-of-3 |
-| **Setpoint** | **25 % of rated** — roughly 11 s into a coastdown | **< 90 % of rated** — roughly 1 s in |
-| **Block** | Below **5 %** power | Below **P-7** (10 % power); above **P-8** (~39–48 %) one loop is enough |
+**One departure remains, and it is deliberate: this plant has ONE flow channel**, where a real Westinghouse unit has **three detectors per loop and trips on 2-of-3**. That follows from the plant being single-loop and from every other protection function here being single-channel too — but be clear about what it costs, because it is the thing this event is now built to teach:
 
-The single channel follows from the plant being single-loop and from every other protection function here being single-channel too. It is also what makes the teaching case work: a **stuck-high flow transmitter can mask a real loss of flow**, which 2-of-3 coincidence is specifically designed to prevent. The setpoint is the more consequential difference: at 25 % the automatic trip arrives *after* the core exit has already reached DNB onset, so the trained response to a loss of forced flow here is an **immediate manual trip** rather than waiting for the RPS — see `04` PWR-N13 and `06` PWR-E02.
+> A **stuck-high flow transmitter defeats the low-flow trip completely.** Measured, with the channel stuck at 100 % and the pump tripped: DNB onset at 9 s, core void peaking at 0.60, fuel reaching ~1706 °F (930 °C) against a damage threshold of 2192 °F (1200 °C), and the reactor finally scrammed at **~35 s on HIGH PRIMARY PRESSURE** — a different channel, a different instrument, catching a *consequence*. RCS Flow - Low never actuates at all. 2-of-3 coincidence exists precisely to stop one lying transmitter from doing this.
+
+The surviving indication in that event is **subcooling margin**, which falls to 11.2 °F (6.2 °C) — below its 19.8 °F (11 °C) caution — while the flow gauge still reads 100 %. That is the cross-check the scenario asks for; see `04` PWR-N13 and `06` PWR-E02.
 
 ---
 

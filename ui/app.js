@@ -170,7 +170,7 @@
         // RCS loop flow (#247). The PWR was the only plant with no flow trend at all —
         // RBMK has Channel Flow and BWR has Recirc Flow — which is what an unbuilt
         // instrument looks like from the UI side. dLo marks the low-flow trip setpoint.
-        { id: 'rcs_flow', label: 'RCS Flow', c: '#5a8a9a', get: function (i) { return i.rcs_flow; }, tru: function (t) { return t.pump_flow_pct; }, range: [0, 120], dLo: 25, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'rcs_flow', label: 'RCS Flow', c: '#5a8a9a', get: function (i) { return i.rcs_flow; }, tru: function (t) { return t.pump_flow_pct; }, range: [0, 120], dLo: 90, fmt: function (v) { return v.toFixed(0) + '%'; } },
       ],
     },
 

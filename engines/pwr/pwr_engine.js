@@ -2051,7 +2051,20 @@
         h.cmd({ action: 'inject_failure', failure_id: 'rcp_trip' });
         var t = h.runUntil(function (ts) { return ts.pump_flow_pct <= sp; }, 60);
         ck('flow coasts down below the low-flow setpoint (' + sp + ' %)', t >= 0 ? t.toFixed(1) + 's' : 'never', t >= 0, 'reaches setpoint');
-        ck('coastdown not instantaneous (τ≈8s)', t.toFixed(1), t > 4, '> 4s');
+        // COASTDOWN TIME CONSTANT, measured where the setpoint cannot reach it. This
+        // check used to assert `t > 4` on the line above — time to the TRIP SETPOINT —
+        // which was a proxy for "the pump coasts, it does not stop dead". It was only
+        // ever true because the setpoint was 25 %: at the real 90 % (#248) flow crosses
+        // in 0.9 s and the proxy failed, though the coastdown itself never changed.
+        // So assert the claim directly (HR10): flow decays exponentially to
+        // natural_circ_flow with pump_coastdown_tau, so it passes 1/e of rated at t = τ.
+        // Independent of any trip — a scram does not touch stepFlow. Measured 8.0 s
+        // against a config τ of 8.0, and unchanged by the setpoint move (this same run
+        // scrams at 1.8 s now and did at 16.2 s before; both give 8.0 s).
+        var tau = h.eng.cfg.primary.pump_coastdown_tau;
+        var te = h.runUntil(function (ts) { return ts.pump_flow_pct <= 36.8; }, 60);
+        ck('coastdown obeys its time constant (1/e of rated at τ=' + tau + 's)',
+          te >= 0 ? te.toFixed(1) + 's' : 'never', te >= 0 && Math.abs(te - tau) < 1.0, tau + 's ± 1');
         // …and the CHANNEL the trip actually reads follows it down (#247). Truth
         // crossing the setpoint is not the trip firing — `rcs_flow` lags by 1 s, and
         // before this instrument existed the trip read truth and could not lag at all.

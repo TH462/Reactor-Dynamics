@@ -41,22 +41,30 @@
     // depressurized/low-power init and re-arms above P-7. At power it is never blocked —
     // a real RCP trip / loss of flow (pwr_lof) still scrams.
     //
-    // TWO IDENTITY DEPARTURES, both recorded rather than quietly carried, both filed:
-    //   · SETPOINT. Real Westinghouse: "< 90 % of rated flow", 2/3 channels per loop,
-    //     P-7 (10 % power) blocks it and P-8 (39–48 %) makes a single loop enough
-    //     (WTSM 12.2 Table 12.2-1, ML11223A301; NUREG-1431 Bases B 3.3.1A Function 10,
-    //     ML12100A228 — "Each RCS loop has three flow detectors… The LCO requires three
-    //     Reactor Coolant Flow - Low channels per loop"). This plant trips at 25 % of
-    //     rated on ONE channel with the block permissive at 5 % power. The 25 % has no
-    //     source and is ~11 s into a coastdown rather than ~1 s; changing it rewrites
-    //     what pwr_lof teaches, so it is a separate decision — see the follow-up issue.
-    //   · CHANNEL COUNT. One channel, not 2/3 — this plant is single-loop and every
-    //     other protection function here is single-channel too, so 2/3 coincidence on
-    //     flow alone would be inconsistent with the whole instrument model. It is also
-    //     what makes a stuck-high flow transmitter able to mask a real loss of flow,
-    //     which is the teaching case the instrument was built for.
-    { id: 'lo_flow', instrument: 'rcs_flow', direction: 'low', setpoint: 25.0, action: 'scram', // % of rated
-      blockable: true, block_permissive: { instrument: 'power_range', direction: 'low', setpoint: 5.0 } },
+    // SETPOINT: 90 % of rated, blocked below 10 % power (P-7). Both are the real
+    // Westinghouse numbers — WTSM 12.2 Table 12.2-1 row 12 (ML11223A301): "Low Reactor
+    // Coolant Flow · 2/3 per loop · < 90 % of rated flow", and "All the reactor coolant
+    // low flow trips are automatically blocked below the P-7 setpoint (10 % power)".
+    // Adopted 2026-07-29 (#248, owner ruling) replacing an unsourced 25 % / 5 % pair.
+    //
+    // MEASURED, not reasoned (HR12), on hot_full_power + RCP trip through the M5 stack:
+    // the indication crosses 90 % at 1.8 s and 25 % at 16.2 s, and DNB onset
+    // (core_void ≥ 0.02) is at 10.9 s. So 90 % trips ~9 s BEFORE the hot channel boils
+    // and 25 % tripped ~5 s after it — the old setpoint's whole effect was to let DNB
+    // happen. Scanned for spurious trips too: of the depressurizing casualties only the
+    // large LOCA reaches 90 % (at 6 s, on RCP cavitation) and it has already scrammed at
+    // 3 s on low pressure; small LOCA, stuck-open PORV (the TMI opener) and SGTR never
+    // leave 100 %. The TMI flagship is untouched.
+    //
+    // ONE REMAINING IDENTITY DEPARTURE, recorded rather than quietly carried: this trip
+    // is ONE channel, not 2/3 per loop (NUREG-1431 Bases B 3.3.1A Fn 10, ML12100A228:
+    // "Each RCS loop has three flow detectors… The LCO requires three Reactor Coolant
+    // Flow - Low channels per loop"). The plant is single-loop and every other protection
+    // function here is single-channel, so 2/3 on flow alone would be inconsistent with
+    // the whole instrument model — and 2/3 exists precisely to stop one lying transmitter
+    // mattering, which would delete the stuck-high teaching case #247 built this for.
+    { id: 'lo_flow', instrument: 'rcs_flow', direction: 'low', setpoint: 90.0, action: 'scram', // % of rated
+      blockable: true, block_permissive: { instrument: 'power_range', direction: 'low', setpoint: 10.0 } },
     // Startup nuclear-instrumentation trips (the startup safety net):
     // SR high flux at shutdown — 1e5 cps ≈ 0.02 % power; live only while the
     // detector is energized (secure the SR during the SR→IR handoff or trip).

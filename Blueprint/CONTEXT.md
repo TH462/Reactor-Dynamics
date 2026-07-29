@@ -106,7 +106,7 @@ connects directly to the Instructor.
 ## 3. The Hard Rules (non-negotiable)
 
 **What belongs here.** A hard rule is a property this project may not trade away, and the
-list is meant to stay short — nine rules. The test for admission is: *can this be violated
+list is meant to stay short — **ten rules**. The test for admission is: *can this be violated
 silently?* A convention you would notice breaking is a convention, not a hard rule.
 Everything that failed that test lives elsewhere and is **advisory**: engine/layer
 conventions in §11, v1 scope boundaries in §8, and how to *apply* these rules — the worked
@@ -231,6 +231,33 @@ owner's, and the next agent obeys it.
 
 **Guard:** `run_hardrules.js` — every `OWNER RULING` in tracked markdown must carry a date
 and a quotation.
+
+**HR12 — An assertion about plant dynamics must be MEASURED. Run the plant and quote the
+number.** *(OWNER RULING, 2026-07-29: "if you make assertions about plant dynamics, you must
+back it up by testing them.")*
+
+If you write that flow coasts down in about ten seconds, that a trip fires before DNB, that a
+transient is survivable, that a change "won't move anything" — **step the plant and read it**,
+then put the measured value in the claim. Reasoning from the config, from a correlation, from
+another agent's summary, or from what the code looks like it should do is **not** measurement.
+This is the dynamics counterpart of HR9 (which sources *static* plant facts to real-plant
+documents) and the mirror of HR10: HR10 says a passing test is not evidence the mechanism is
+right; HR12 says an unmeasured assertion is not evidence of anything at all.
+
+- **It applies to the claims you make while deciding, not just to what ships.** The reason for
+  the rule is that a wrong intermediate claim silently steers the whole change — #247's
+  strongest argument against a 90 % low-flow setpoint was that RCP cavitation would cause
+  spurious trips during depressurizations. Measured: only the large LOCA reaches 90 %, and it
+  has already scrammed three seconds earlier on low pressure. The objection was **wrong**, and
+  nothing but running the plant would have said so.
+- **Quote the number, not the verdict.** "Flow < 90 % at 1.8 s, DNB onset at 10.9 s" survives
+  a later retuning by being checkable. "Trips well before DNB" does not.
+- **A scratch probe is enough** to make a decision; a claim that outlives the session belongs
+  in a gate. Say which one you did.
+
+**Guard:** none possible — a rule about honesty in prose cannot be gated, same as HR10, and
+saying so is better than implying a green run covers it. `run_pwr` / `run_behavior` /
+`run_ops` are where measured dynamics get pinned once a claim is worth keeping.
 
 ---
 

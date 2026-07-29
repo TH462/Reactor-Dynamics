@@ -417,7 +417,8 @@ Describe RCP operation and limitations in this trainer.
 Single representative RCP. Start/stop maps approximately to clearing or injecting loss-of-flow conditions; full multi-loop outage procedures are simplified.
 
 ### Precautions
-- **Do not** stop RCP at power except for drill/emergency direction — low flow trips the reactor.
+- **Do not** stop RCP at power except for drill/emergency direction — low flow trips the reactor within about two seconds.
+- Flow indication is **one channel**. If the pump is gone and the flow gauge disagrees, believe the pump: the trip reads that same gauge and will not fire. See `12` §10.7.
 - Spray effectiveness requires flow.
 
 ### Procedure — verify running (normal)
@@ -431,8 +432,8 @@ Single representative RCP. Start/stop maps approximately to clearing or injectin
 
 | Step | Action | Acceptance |
 |------|--------|------------|
-| 1 | **Trip the reactor manually** — do not wait for the low-flow trip | Scrammed |
-| 1a | If not tripped manually, confirm the automatic low-flow trip (RCS flow < 25 %) | Scrammed |
+| 1 | Confirm the automatic reactor trip on low flow (RCS flow < 90 %, ~2 s) | Scrammed |
+| 1a | **If it did not come, trip manually and do not wait.** The low-flow trip is a SINGLE channel — cross-check RCP status, Tavg and subcooling margin against the flow indication | Scrammed |
 | 2 | Remove turbine load if not already disconnected | 0 MWe |
 | 3 | Establish decay heat removal (natural circulation / AFW as needed) | Core safe |
 

@@ -990,9 +990,13 @@ test('pwr_lof — loss of flow: both branches reach an endpoint, DNB physics fir
     }
   }
 
-  // Automatics branch: do nothing — the hot channel boils (DNB), then the
-  // __true_flow__ low-flow trip scrams the reactor. Track peak core void to
-  // prove the new DNB physics actually engaged.
+  // Automatics branch: do nothing. The scenario injects a STUCK-HIGH flow channel
+  // alongside the pump trip (#248), so the low-flow trip is fed a healthy signal and
+  // never actuates at all — the hot channel boils and the reactor is finally caught by
+  // the HIGH-PRESSURE trip ~35 s in. Assert the reason, not just that something
+  // scrammed: "a backup caught it" and "the assigned protection worked" are the two
+  // outcomes this lesson exists to tell apart, and only the trip reason distinguishes
+  // them. Track peak core void to prove the DNB physics actually engaged.
   var s2 = startScenario('pwr_lof');
   var peakVoid = 0;
   s2.subscribe(function (sn) { if (sn.true_state.core_void_fraction > peakVoid) peakVoid = sn.true_state.core_void_fraction; });
@@ -1000,8 +1004,10 @@ test('pwr_lof — loss of flow: both branches reach an endpoint, DNB physics fir
   ck('decision beat fires (automatics run)', !!dec2, !!dec2, 'pump_trips fired');
   if (dec2) {
     var doneB = runUntil(s2, function (sn) { return lc(sn); }, 300);
-    ck('inaction → DNB then low-flow trip endpoint', doneB ? lc(doneB).title : 'never (fired: ' + Array.from(s2.instructor.firedBeats) + ')', !!doneB && /Low-Flow Trip/.test(lc(doneB).title), 'Caught by the Low-Flow Trip');
+    ck('inaction → DNB then backup-trip endpoint', doneB ? lc(doneB).title : 'never (fired: ' + Array.from(s2.instructor.firedBeats) + ')', !!doneB && /Backup Trip/.test(lc(doneB).title), 'Caught by a Backup Trip');
     ck('the hot channel actually boiled (DNB / core_void engaged)', 'peak core_void=' + peakVoid.toFixed(3), peakVoid > 0.02, '> 0.02');
+    // The point of the lesson: the trip assigned to this event did NOT fire.
+    if (doneB) ck('the low-flow trip never actuated — a backup caught it', doneB.rps_state.last_trip_reason, doneB.rps_state.last_trip_reason === 'primary_pressure high', 'primary_pressure high, not rcs_flow low');
     if (doneB) ck('endpoint arrives scrammed and undamaged', 'scram=' + doneB.rps_state.scrammed + ' melted=' + doneB.true_state.melted, doneB.rps_state.scrammed === true && doneB.true_state.melted === false, 'scrammed, not melted');
   }
 });

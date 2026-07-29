@@ -110,7 +110,15 @@ var BASELINES = {
   // read — so there are four fewer true-state reads in layers/control/ to declare. The
   // one that remains is the unreviewed RBMK entry. Watch the DEBT line, not just the
   // score: a green run still only means "no undeclared reads".
-  'run_hardrules.js':      { code: 0, score: '14checks 0failed' },
+  // 14 → 18 checks (#248): HR12 was added to §3 (an assertion about plant dynamics must
+  // be MEASURED), and its OWNER RULING quote appears in FOUR tracked files — CONTEXT.md,
+  // CLAUDE.md, and twice in TUNING_LOG.md's write-up. All declared (date + verbatim words).
+  //
+  // HEADS UP, this will bite you: the HR11 half of this gate scans `Diagnostic/` and
+  // `Blueprint/` as well as source, so **writing up your change moves the score after you
+  // ran the gate**. Quote an owner ruling in the tuning log and the count goes up. Run
+  // run_hardrules once more AFTER the docs are written, not just after the code.
+  'run_hardrules.js':      { code: 0, score: '18checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -184,7 +192,11 @@ var BASELINES = {
   // skipped it) is graded like any other. +94 checks, none red. Measured against the
   // pre-fix runner: a dangling goto in an unwired scenario and a typo'd trigger type on
   // a `gate.until` both passed silently; both now fail.
-  'run_campaign.js':       { code: 0, score: '51/51 3024passed' },
+  // 3024 → 3025 (#248): pwr_lof's automatics branch gained a check that the low-flow
+  // trip did NOT actuate and a backup caught the event. Asserting only "something
+  // scrammed" cannot tell "the assigned protection worked" from "a backstop caught a
+  // consequence", which is the entire lesson after the stuck-channel rewrite.
+  'run_campaign.js':       { code: 0, score: '51/51 3025passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
