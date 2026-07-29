@@ -68,7 +68,7 @@ These manuals are training documentation derived from `Blueprint/` design specs,
 | **CAUTION** | Action that can damage equipment, trip the unit, or violate a training limit |
 | **NOTE** | Clarifying information; not a required action |
 | **[sim]** | Fully step-followable in this trainer |
-| **[narr]** | Narrative / context only — cold heatup/cooldown rates are **not** modeled |
+| **[narr]** | Narrative / context only — not step-followable on the board |
 
 ### Plant MODES (commercial numbering)
 
@@ -79,8 +79,8 @@ These manuals are training documentation derived from `Blueprint/` design specs,
 | **1** | **Mode 1, At Power** | Critical, power **> 5 %**, RCS hot | [sim] |
 | **2** | **Mode 2, Startup** | Critical, power **≤ 5 %**, RCS hot | [sim] |
 | **3** | **Mode 3, Hot Standby** | Subcritical, RCS hot | [sim] |
-| **4** | **Mode 4, Hot Shutdown** | Subcritical, intermediate T | [narr] |
-| **5** | **Mode 5, Cold Shutdown** | Subcritical, cold | [narr] |
+| **4** | **Mode 4, Hot Shutdown** | Subcritical, intermediate T | [sim] |
+| **5** | **Mode 5, Cold Shutdown** | Subcritical, cold | [sim] — a Free Play initial condition |
 | **6** | **Mode 6, Refueling** | Head detensioned / refueling | Out of scope |
 
 Do **not** confuse plant MODES with **turbine load modes** (Follow / Manual / Disconnected).

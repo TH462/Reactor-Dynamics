@@ -7,7 +7,7 @@
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
 
-**Plant MODES:** Mode 1, At Power = Power Operation (power > 5 %); Mode 2, Startup = Startup (critical ≤ 5 %); Mode 3, Hot Standby = Hot Standby; Mode 4 / Mode 5 = cooldown path **[narr]**. See `05_MODE_TRANSITIONS.md`.
+**Plant MODES:** Mode 1, At Power = Power Operation (power > 5 %); Mode 2, Startup = Startup (critical ≤ 5 %); Mode 3, Hot Standby = Hot Standby; **Mode 4, Hot Shutdown and Mode 5, Cold Shutdown are simulated** — `cold_shutdown` is a Free Play initial condition and the full heatup/cooldown runs on integrated physics. See `05_MODE_TRANSITIONS.md`.
 
 ---
 
@@ -53,6 +53,7 @@
 | PZR level | low | **12 %** | |
 | SG level | low | **17 %** | Lo-lo; AFW auto-starts just above (20 %) |
 | SG level (P-14) | high | **90 %** | High-high; reactor trip via P-9, condition **≥50 % power** |
+| **Turbine trip (P-9)** | turbine tripped | — | **Reactor trip on turbine trip**, condition **≥50 % power** (P-9). Above P-9 a turbine trip scrams the reactor *immediately* — it is not a ride-out. Below P-9 there is no reactor trip and the steam dump carries the transient. A **planned offline** (generator OFF / `disconnect_grid`) is **not** a turbine trip and never arms this — see `03` §12.1 |
 | Primary flow (true flow exception) | low | **0.25** normalized | Low-flow trip |
 | Source range | high | **1e5 cps** | When SR energized |
 | Intermediate range | high | **1.67e-3 A** | ~20 % class over-range; blockable above P-10 |
@@ -64,7 +65,10 @@
 | Name | Value | Effect |
 |------|-------|--------|
 | **P-6** | IR ≥ **1e-10 A** | Allows SR de-energize |
+| **P-9** | Power ≥ **50 %** | Arms the **reactor trip on turbine trip** and the P-14 reactor trip; also gates the loss-of-MFW AFW start |
 | **P-10** | Power ≥ **10 %** | Allows IR/PR low-setpoint trip blocks |
+| **P-11** | Pressure ≥ **13.6 MPa** | Below it the SI trip may be blocked; auto-reinstates above |
+| **P-12** | Tavg low **289 °C** | LO TAVG annunciator (`PWR-A29`) |
 | SR re-energize block | IR ≥ **1e-6 A** | Protects SR detector |
 
 ### Rod withdrawal interlock
@@ -161,7 +165,7 @@
 | cond_vac_trip | COND VAC TRIP | condenser_vacuum | low | **74.5 kPa** | warning |
 | rcp_cavitation | RCP CAVITATION | rcp_cavitating | true | — | warning |
 
-**Setpoints do not move with plant mode — priorities do.** Every setpoint above is fixed in every mode. What changes is **classification**: the annunciators marked **†** drop to **Status** in **Mode 4 or 5**, where the condition is the planned lineup rather than a casualty, and **‡** drops to Status whenever the pumps were stopped **by the handswitch** rather than lost. The alarm still comes in and still reads its instrument; only the priority and the wording change. Full table, the exclusions, and what it does *not* cover: **06 §2.0**.
+**Setpoints do not move with plant mode — priorities do.** Every setpoint above is fixed in every mode. What changes is **classification**: the annunciators marked **†** drop to **Status** in **Mode 4 or 5**, where the condition is the planned lineup rather than a casualty, and **‡** drops to Status whenever the pumps were stopped **by the handswitch** rather than lost. The alarm still comes in and still reads its instrument; the priority, the wording, and — because Status-class annunciators arrive pre-acknowledged — the ACK demand are what change. Full table, the exclusions, and what it does *not* cover: **06 §2.0**.
 
 ---
 
@@ -234,8 +238,10 @@
 
 ## 11.0 Normal values by initial condition
 
-Expected readings at each Free Play starting state, captured from the live engine after
-settling (60 s at the steady-power states, 5 s otherwise). Use this table to verify a
+Expected readings at each named engine initial condition, captured from the live engine after
+settling (60 s at the steady-power states, 5 s otherwise). Four are offered in the Free Play
+picker — `hot_full_power`, `50_percent`, `hot_zero_power`, `cold_shutdown`; **`5_percent` is
+scenario-only** and is listed here as a reference point for low-power work. Use this table to verify a
 healthy board after selecting an IC, and as the "what should this read?" reference during
 evolutions. At steady state the **indicated** values track these true values through each
 instrument's lag and noise (see `03_CONTROLS_AND_INDICATIONS.md` §16.0) — a mismatch that

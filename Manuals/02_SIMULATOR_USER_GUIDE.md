@@ -34,7 +34,7 @@ Provide step-by-step instructions to launch the simulator, navigate the human-ma
 | 1 | Click the mission/status line or open **Plant & Mission** |
 | 2 | Select **PWR** |
 | 3 | Choose **Free Play** or a training mission |
-| 4 | Select initial condition: **Hot Full Power**, **50 % Power**, or **Hot Standby** |
+| 4 | Select initial condition: **Hot Full Power**, **50 % Power**, **Hot Standby** (Mode 3), or **Cold Shutdown** (Mode 5) |
 | 5 | Press **Play** if paused; set speed **1×** until familiar |
 
 ---
@@ -52,7 +52,7 @@ The PWR uses a **single full-plant synoptic diagram** as the sole control surfac
 │   (margin cards + CVCS / accumulator panels on equipment)   ││ Sim Failures Graph        │
 │                                                             ││ Settings                  │
 ├──────────────────────────────┬──────────────────────────────┤├ System Scanner ───────────┤
-│ Strip chart (trends)         │ Alarm panel                  ││ hover descriptions        │
+│ Strip chart (trends)         │ Alarm panel                  ││ hover = name; click = full │
 └──────────────────────────────┴──────────────────────────────┘└───────────────────────────┘
 ```
 
@@ -95,8 +95,30 @@ Headline instruments (always instrument readings):
 |--------|----------|
 | **Sim controls** | Play/Pause, speed 1× / 10× / 60× / 600× / 3600×, Save, Manual, Help |
 | **Instructor** | Scenario commentary, gates, walkthrough step grading |
-| **Tools** | Sim, Failures, Graph, Settings |
-| **System Scanner** | Short description of hovered element |
+| **Tools** | Sim, Failures, Graph, Settings, Dev |
+| **System Scanner** | **The inspection surface — hover anything to name it; click the block to expand it** (§3.4) |
+
+### 3.4 System Scanner — the inspection surface
+
+The Scanner answers "what is this?" in **two tiers**, and it covers the whole board: every
+card, control, component and indication, plus the shell chrome, the gauges and the active
+alarm tiles.
+
+| Tier | How | What you get |
+|------|-----|--------------|
+| **Collapsed** | Point at anything | The name and one sentence — what the thing does |
+| **Expanded** | **Click the Scanner block**, then point | The full account: how it behaves, what it is wired to, and the trap that catches people |
+
+Expanded entries carry a **📖 Manual** link that opens the on-screen Operator's Manual **at
+the exact section documenting that item** — the fastest route from "what is this knob" to the
+procedure that uses it. The collapsed/expanded choice is remembered between sessions.
+
+Alarm-tile detail is **generated from the plant's own protection table**, so it states the
+real setpoint in your selected units and cannot drift from a retune.
+
+**NOTE:** hovering does **not** ring or highlight the element. The only glows on the board are
+the Instructor's (blue) and the checklist's step preview (green) — both of which point at
+something you did *not* choose to look at.
 
 ---
 
@@ -153,7 +175,7 @@ Entry: status line under sim controls, or **Sim** tab → Plant & Mission.
 
 1. **Plant** — PWR / RBMK (pre or post) / BWR  
 2. **Mode** — Free Play, campaign mission, or scenario  
-3. **Initial condition** — for Free Play: Hot Full Power, 50 % Power, Hot Standby  
+3. **Initial condition** — for Free Play: Hot Full Power, 50 % Power, Hot Standby (Mode 3), Cold Shutdown (Mode 5)  
 
 ### 5.2 Free Play vs training
 
@@ -171,8 +193,11 @@ Entry: status line under sim controls, or **Sim** tab → Plant & Mission.
 | `hot_full_power` | Hot Full Power | **Mode 1, At Power** | Critical ~100 %, ~100 MWe |
 | `50_percent` | 50 % Power | **Mode 1, At Power** | Critical mid-power (> 5 %) |
 | `hot_zero_power` | Hot Standby | **Mode 3, Hot Standby** | Subcritical, hot T/P, control bank in, SR on |
+| `cold_shutdown` | Cold Shutdown | **Mode 5, Cold Shutdown** | Subcritical, RCS ~50 °C / ~2.5 MPa, **RCPs secured**, **RHR in service**, SR on, PZR level 30 % |
 
-**NOTE:** There is **no Mode 5, Cold Shutdown** initial condition. Mode 5, Cold Shutdown → Mode 3, Hot Standby is **[narr]** only. To practice **Mode 5, Cold Shutdown → Mode 1, At Power**, read **PWR-T20** Phase A, then start Free Play in **Mode 3, Hot Standby** and continue Phases B–E on the board. See `05_MODE_TRANSITIONS.md`.
+**NOTE:** **Mode 5, Cold Shutdown is a Free Play initial condition and the whole Mode 5 ↔ Mode 1 path is simulated** on integrated physics — start at Cold Shutdown and take the plant to power with **PWR-T20**, or run **PWR-T21** the other way. Mode 4, Hot Shutdown is the transit between them and is simulated too. Heatup and cooldown are **time-compressed**: the evolution is real, its duration is not. See `05_MODE_TRANSITIONS.md` and `12_SIM_PHYSICS.md` §14.
+
+**NOTE:** the engine also carries a `5_percent` state used by scenarios and the reference tables in `09` §11.0. It is **not** offered in the Free Play picker.
 
 ---
 
@@ -267,6 +292,7 @@ Developer diagnostics — not required for operator training. Treat as out-of-sc
 - Alarms stack when active; color/priority coded (critical / warning / caution / status).
 - Hover an alarm to highlight related diagram components.
 - **A** acknowledges all.
+- **Status**-class tiles arrive already acknowledged — they report a lineup, not a demand for action. See `06_ALARM_RESPONSE.md` §2.0.
 
 **Philosophy:** Alarms read instruments. A stuck sensor can **hide** a real condition or create a false one.
 
@@ -286,8 +312,11 @@ During missions:
 ## 9.0 On-screen Operator’s Manual
 
 - **M** or 📖 opens the integrated manual for the active plant.
-- Sections include Overview, Procedures, Accidents, Alarm Response, Controls, Indications, Setpoints, Normal Values, Failures, Glossary.
-- This `Manuals/` folder is the expanded commercial-format library.
+- **The in-app manual IS this document set.** It renders the same commercial-format chapters
+  you are reading now — Read Me First, `01`–`12`, and the revision history — so there is no
+  second, thinner in-product reference to keep track of.
+- The **📖 Manual** link in an expanded Scanner entry (§3.4) opens it **at the relevant
+  section**, which is usually faster than navigating the chapter list.
 
 ---
 
@@ -298,7 +327,7 @@ During missions:
 | 1 | Launch PWR Free Play at Hot Full Power (**Mode 1, At Power**) | §2, §5 |
 | 2 | Identify Power, Pressure, Tavg, Subcool, SG level | §3.1 |
 | 3 | Practice SCRAM arming on Rod card (do not fire yet) | §4.3 |
-| 4 | Set load mode Manual → 900 MWe; observe steam flow / Tavg | `03`, `05` |
+| 4 | Select **MAN** on the generator card → set load ≈ **90 MWe**; observe steam flow / Tavg | `03`, `05` |
 | 5 | Restore Follow | `05` |
 | 6 | Pause; open Manual (M); find trip setpoints | `09` |
 | 7 | Load Hot Standby (**Mode 3, Hot Standby**); practice criticality → **Mode 2, Startup** | PWR-N02, **PWR-T03** |

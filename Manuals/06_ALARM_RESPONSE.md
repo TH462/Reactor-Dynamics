@@ -21,11 +21,15 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 | **Caution** | Off-normal; may not need immediate action | Monitor; correct if trend worsens |
 | **Status** | System state change (e.g. HPI running) | Verify expected vs unexpected |
 
+**Status annunciators arrive already acknowledged.** A Status tile reports a *lineup*, not a demand for action, so the board acknowledges it for you: it comes in lit and steady rather than flashing with an ACK outstanding, it is not counted in the Alarms header, and it does not drop fast-forward back to real time. It is still on the board, still shows its real reading, and still clears itself when the condition goes away. Only Critical, Warning and Caution require your acknowledgment.
+
+If a Status tile's condition stops being the planned state of the plant — you heat up past Mode 4, or a pump you had secured actually trips — the annunciator **escalates back to its normal priority and un-acknowledges itself**, flashing as a new alarm. An acknowledgment *you* made is never taken back.
+
 ### Mode- and lineup-dependent classification
 
 Some conditions are a **casualty at power and the planned lineup when shut down**. A cold plant *is* cold, *is* depressurized, and its reactor coolant pumps *are* stopped — annunciating that as a depressurization with tripped pumps would bury a normal Mode 5 board under critical alarms and train the crew to ignore them.
 
-The board therefore **reclassifies** these alarms rather than removing them. The annunciator still comes in, still requires acknowledgment, and still shows the real reading; only its **priority drops to Status** and its text changes to say why. A reclassified tile reads, e.g., `status (normally critical)`.
+The board therefore **reclassifies** these alarms rather than removing them. The annunciator still comes in and still shows the real reading; its **priority drops to Status** and its text changes to say why. A reclassified tile reads, e.g., `status (normally critical)`. Because it is now Status-class, it also arrives **acknowledged** — a healthy Mode 5 spawn presents five standing annunciators and asks nothing of you.
 
 | Annunciator | Reclassified to Status when | Reads |
 |-------------|------------------------------|-------|
@@ -326,7 +330,8 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Logic** | `steam_demand_low` true |
 | **Means** | Turbine not accepting load / tripped. |
-| **Actions** | 1) Expect reactor power/Tavg response. 2) Verify SCRAM if required by plant. 3) Steam dump for pressure. 4) Control SG level. → **PWR-E03** |
+| **Actions** | 1) **Above 50 % power (P-9), expect an automatic REACTOR TRIP with the turbine trip** — confirm it and go to the post-trip response. 2) Below P-9, expect reactor power/Tavg response and match or scram as conditions require. 3) Steam dump for pressure. 4) Control SG level. → **PWR-E03** |
+| **NOTE** | A **planned offline** (generator **OFF**) is not a turbine trip and does not arm P-9. |
 
 ---
 

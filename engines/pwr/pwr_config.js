@@ -845,12 +845,17 @@
     // Switches for protective functions whose PRESENCE is a live design question, so the
     // answer is a flag rather than a fork. See the block comment in pwr_control.js.
     protection_options: {
-      // Reactor Trip on Turbine Trip above P-9 (~50 % power) — prototypical Westinghouse,
-      // absent here for historical reasons that did not survive audit (#216). Default OFF
-      // preserves today's behaviour; flip to true to measure or adopt it. Turning it ON
-      // will legitimately change TR-1 and TR-8 in the behaviour catalog and re-shape the
-      // `pwr_msiv` mission — under HR9 that is content following the plant, not a
-      // regression.
+      // Reactor Trip on Turbine Trip above P-9 (~50 % power) — prototypical Westinghouse.
+      // It was absent here for historical reasons that did not survive audit, and was
+      // ADOPTED 2026-07-26 (#216, commit 2fb0b78): this plant now scrams on a turbine trip
+      // above P-9. TR-1/TR-8 and the `pwr_msiv` mission moved with it — content following
+      // the plant under HR9, not a regression.
+      //
+      // The comment here used to say "Default OFF preserves today's behaviour", which stayed
+      // put when the value was flipped and then read as documentation that the plant does NOT
+      // carry this trip. It does. A turbine trip at power scrams; a load rejection does not,
+      // and a planned offline (`disconnect_grid`, #230) is not a turbine trip at all.
+      // Documented in Manuals 09 §2.0, 06 PWR-A22 and 07 PWR-E03.
       turbine_trip_reactor_trip: true,
     },
 

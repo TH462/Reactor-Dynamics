@@ -137,21 +137,33 @@ Shutdown; cooled without fuel damage.
 
 ### Symptoms
 - TURB TRIP / steam demand low  
-- Power and Tavg respond (heatup if nuclear power remains)  
-- Possible reactor trip depending on severity/response  
+- **Above 50 % power (P-9): REACTOR TRIP, automatically and immediately** — expect the scram
+  with the turbine trip, not after it  
+- Below P-9: no reactor trip; power and Tavg respond and the steam dump carries the transient  
+- Steam dump drives open on Tavg error; SG level shrinks then recovers  
+
+**WARNING — a turbine trip above P-9 scrams the reactor.** This plant carries **Reactor Trip
+on Turbine Trip** (P-9, ≥ 50 % power). Do not plan to "ride out" a turbine trip at power. What
+this plant rides out is a **load rejection** — the generator taking less load with the turbine
+still on line — which is a different event and does not arm P-9.
+
+**A planned offline is not a turbine trip.** Taking the generator off line with the **OFF**
+selector (`disconnect_grid`) opens the breaker: load goes to zero, the stop valves stay open,
+no trip latches, and P-9 never arms. It is reversible with **FOLLOW** or **MAN**. See `03` §12.1.
 
 ### Immediate actions
 
 | Step | Action |
 |------|--------|
 | 1 | Verify 0 MWe |
-| 2 | Insert rods / SCRAM if pressure/Tavg challenge |
+| 2 | **Above P-9: confirm the automatic reactor trip and go to the post-trip response.** Below P-9: insert rods to match the lost load, or SCRAM if pressure/Tavg is challenged |
 | 3 | Steam dump as needed for secondary pressure |
 | 4 | Control SG level (swell/shrink) |
 | 5 | Stabilize at Hot Shutdown or low power per drill |
 
 ### Acceptance
-Load rejected safely; nuclear power matched or scrammed; no SG dryout or flood.
+Load rejected safely; above P-9 the reactor tripped automatically and the plant is stable on
+the dump and AFW; below P-9 nuclear power matched or scrammed. No SG dryout or flood.
 
 ### Note — high-high SG level (P-14)
 A **high-high SG level (≥90 %)** — from overfeed or a steam-line-break level swell — trips the

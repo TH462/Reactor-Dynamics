@@ -517,11 +517,30 @@ power is ~1000 gpm, at 6 % power it is ~50 gpm.
 
 ### 12.1 Load mode
 
-| Mode | Operator action | Behavior |
+The generator card carries a three-position selector: **FOLLOW / MAN / OFF**.
+
+| Position | Operator action | Behavior |
 |------|-----------------|----------|
-| **Follow** | Select Follow / connect grid path | Load tracks reactor power (lag ~45 s) |
-| **Manual** | Select Manual or move load slider | Operator sets MWe target |
-| **Disconnected** | Open breaker / trip / SCRAM | 0 MWe |
+| **FOLLOW** | Press **FOLLOW** (`connect_grid`) | Synchronises and loads; load tracks reactor power (lag ~45 s) |
+| **MAN** | Press **MAN**, or move the load slider | Synchronises and loads; operator sets the MWe target |
+| **OFF** | Press **OFF** (`disconnect_grid`) | Breaker open, **0 MWe** — a **planned offline** |
+
+**A planned offline is NOT a turbine trip.** Pressing **OFF** opens the generator breaker:
+load goes to zero, but the **stop valves stay open**, no trip latches, and **P-9 is never
+armed** — so it does not scram the reactor and it is fully reversible with FOLLOW or MAN.
+A real turbine trip arrives by its own routes: low vacuum, overspeed, the P-14 high-high SG
+level actuation, a reactor trip, MSIV closure at load, or the injected `turbine_trip` failure.
+
+**WARNING:** a genuine **turbine trip above 50 % power (P-9) scrams the reactor** — see `09`
+§2.0 and **PWR-E03**. What this plant rides out is a *load rejection*, not a turbine trip.
+
+**NOTE — selecting a mode does not un-trip the machine.** FOLLOW and MAN go through
+`connect_grid`, which clears a prior trip and re-synchronises; a bare load-mode selection on a
+tripped turbine does nothing. If the machine is tripped and the card looks unresponsive, that
+is what you are seeing — press **FOLLOW** or **MAN**, not the load slider.
+
+The **OFF** lamp lights on either condition — breaker open *or* turbine tripped — so read
+**TURB TRIP** to tell a planned offline from a trip.
 
 ### 12.2 Turbine Load (MWe)
 
@@ -569,8 +588,34 @@ power is ~1000 gpm, at 6 % power it is ~50 gpm.
 |------------|---------|
 | Condenser vacuum | Required for turbine operation |
 | Cooling available | Circulating water / cooling path status |
+| **CW inlet temp** | **Circulating-water inlet temperature — an operator setting**, not just an indication |
 
 **Low vacuum** → alarms → turbine trip at trip setpoint (~**74.5 kPa** instrument path).
+
+### 13.1 Circulating-water inlet temperature (CW INLET TEMP)
+
+The condenser can only pull the exhaust down to saturation at whatever temperature the
+cooling water can hold, so **circ-water temperature sets how much vacuum you get** — and the
+penalty grows with load, because more heat is rejected across the tubes at high power.
+
+| Property | Value |
+|----------|-------|
+| Command | `set_condenser_cw_temp` |
+| Range | **40 – 100 °F** (4.4 – 37.8 °C) |
+| Reference | **80 °F** (26.7 °C) — the default; at the reference the plant makes exactly rated vacuum |
+
+**What it does:**
+
+- **Warm circ water** → less vacuum → **less MWe at the same steam flow**, and a shorter walk
+  to the **74.5 kPa** turbine trip. This is the summer derate, and it is real here.
+- **Cold circ water** → vacuum **above** the rated value, and a couple of percent above
+  nameplate output. The winter uprate is real too.
+- It also raises the floor an **RHR cooldown** can reach: the RHR heat exchanger rejects to
+  the same circulating water, so warm circ water both raises the achievable temperature and
+  slows the approach to it (§11.2, and `05` PWR-T21).
+
+**CAUTION:** raising CW temperature at full power walks vacuum down toward the trip. Watch
+**COND VAC LO** (84.7 kPa) — it is the warning before **COND VAC TRIP** (74.5 kPa).
 
 ---
 
@@ -631,9 +676,18 @@ meter can still cross the 120 % trip.
 | subcooling_margin | °C | −28 – 83 | derived | LOCA diagnosis | LO SUBCOOL, SUBCOOL LOST |
 | sg_level | % | 0 – 100 | 3 s | Heat sink (narrow range) | SG LVL HI HI / HI / LO / LO LO |
 | sg_level_wide | % | 0 – 100 | 4 s | Heat sink below the narrow taps (dryout diagnosis) | — |
-| steam_flow / fw_flow | ×rated | 0 – 1.2 | 1 s | Mass match | — |
+| steam_flow / fw_flow | ×rated | 0 – 1.2 | 1 s | Mass match — **`steam_flow` is TURBINE flow only** | — |
+| sg_steam_flow | ×rated | 0 – 1.2 | 1 s | **Total** steam leaving the SG (turbine + dump + safeties) — the main-steam-line transmitter, and what feed regulation must match | — |
+| cw_inlet_temp | °C (board °F) | 0 – 45 | 20 s | Circulating-water inlet — sets achievable vacuum and the RHR cooldown floor (§13.1) | — |
 | condensate_flow | ×rated | 0 – 1.2 | 1 s | Hotwell → feed train | — |
 | steam_pressure | MPa | 0 – 10.5 | 0.5 s | SG / dump | SG PRESS HI |
+
+> **Trap — `steam_flow` vs `sg_steam_flow`.** With the turbine off line or tripped, the steam
+> dump carries the plant and **`steam_flow` reads ~0 while the generator is still boiling**.
+> Feed regulation follows `sg_steam_flow`; load-following consumers (the Tavg program, the rod
+> channel) follow `steam_flow`. Reading the wrong one during a ride-out is how an SG drains
+> with the flow gauge apparently at zero.
+
 | steam_dump_valve | % | 0 – 100 | 0.3 s | Dump/bypass position | — |
 | governor_valve | % | 0 – 100 | 0.3 s | Turbine admission | — |
 | mwe_output | MWe | 0 – 130 | 0.2 s | Grid | — |
@@ -724,7 +778,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | Boron chemistry sample (§7.5) | `take_boron_sample` | — |
 | Charging pump On/Off (§7.1) | `set_charging_pump` | `{running}` |
 | Charging flow (§7.2) | `set_charging_flow` | `{normalized}` |
-| Letdown valve (§7.3) | `set_letdown_flow` | `{normalized}` |
+| Letdown orifices A / B (§7.3) | `set_letdown_orifices` | `{a, b}` |
 | CVCS inventory AUTO (§7.4) | `set_cvcs_auto` | `{active}` |
 | PZR heaters (§5.2) | `set_heater` | `{power_pct}` |
 | PZR spray (§5.3) | `set_spray` | `{open}` |
@@ -735,8 +789,13 @@ Listed for cross-reference — normal operation never requires typing a command.
 | Feed pump nudge (§9.2) | `feed_pump_nudge` | `{delta_pct}` |
 | AFW start / stop (§10) | `set_afw` | `{active}` |
 | AFW throttle (§10) | `set_afw_flow` | `{pct}` |
+| AFW block / discharge valve (§10) | `set_afw_block` | `{open}` |
 | ESF auto re-arm (§17.4) | `set_esf_auto` | `{system, auto}` |
+| Accumulator discharge isolation (§11.1) | `open_accumulator_valve` / `close_accumulator_valve` | — |
+| Generator **FOLLOW / MAN** (§12.1) | `connect_grid` (+ `set_load_mode`) | — / `{mode}` |
+| Generator **OFF** — planned offline (§12.1) | `disconnect_grid` | — |
 | Turbine load (§12.2) | `set_steam_demand` | `{mwe}` |
+| CW inlet temperature (§13.1) | `set_condenser_cw_temp` | `{c}` |
 | Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode | pct}` |
 | Pressure setpoint box (§5) | `set_pressure_setpoint` | `{mpa}` |
 | Steam-dump setpoint box (§12.3) | `set_steam_dump_setpoint` | `{mpa}` |

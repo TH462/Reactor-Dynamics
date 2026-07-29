@@ -107,14 +107,16 @@ This trainer uses **commercial PWR MODE numbers**. In prose, say **Mode 1, At Po
 | **1** | **Mode 1, At Power** | Power Operation | Critical, thermal power **> 5 %**, RCS hot | `hot_full_power`, `50_percent` **[sim]** |
 | **2** | **Mode 2, Startup** | Startup | Critical, power **≤ 5 %**, RCS hot | After approach to criticality **[sim]** |
 | **3** | **Mode 3, Hot Standby** | Hot Standby | Subcritical, RCS hot at NOP T/P | `hot_zero_power` **[sim]** |
-| **4** | **Mode 4, Hot Shutdown** | Hot Shutdown | Subcritical, intermediate RCS temperature | Cooldown path **[narr]** |
-| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical, RCS cold | **[narr]** only — no cold IC |
+| **4** | **Mode 4, Hot Shutdown** | Hot Shutdown | Subcritical, intermediate RCS temperature | Heatup / cooldown transit **[sim]** |
+| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical, RCS cold | `cold_shutdown` **[sim]** — a Free Play initial condition |
 | **6** | **Mode 6, Refueling** | Refueling | Head detensioned / refueling | **Out of scope** |
 
-**Full commercial paths** (see `05_MODE_TRANSITIONS.md`):
+**Full commercial paths** (see `05_MODE_TRANSITIONS.md`) — both run **on integrated physics**, end to end on the board:
 
-- **Mode 5, Cold Shutdown → Mode 1, At Power** — procedure **PWR-T20** (heatup narrative, then sim from Mode 3, Hot Standby).  
-- **Mode 1, At Power → Mode 5, Cold Shutdown** — procedure **PWR-T21** (sim down to Mode 3, Hot Standby, then cooldown narrative).  
+- **Mode 5, Cold Shutdown → Mode 1, At Power** — procedure **PWR-T20**, starting from the `cold_shutdown` initial condition.  
+- **Mode 1, At Power → Mode 5, Cold Shutdown** — procedure **PWR-T21**, down to a cold, depressurized plant on RHR.  
+
+**NOTE:** heatup and cooldown are deliberately **time-compressed** — the evolution is real, its duration is not. See `12_SIM_PHYSICS.md` §14.
 
 **Sim-only everyday path:** Mode 3, Hot Standby ↔ Mode 1, At Power (**PWR-T03** / **PWR-T04**).
 

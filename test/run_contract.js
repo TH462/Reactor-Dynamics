@@ -126,10 +126,13 @@ PLANTS.forEach(function (p) {
 
   // Union over every initial condition: a field that only exists in one plant
   // state is still part of the contract.
+  // NOTE the argument shape: `reset()` takes a COMMAND OBJECT, and `reset('cold_shutdown')`
+  // silently falls back to hot_full_power (pwr_engine.js:1140) — so a string here would
+  // make this loop five identical resets while claiming to cover five plant states.
   var eng = p.engine();
   var fields = {};
   p.states().forEach(function (ic) {
-    eng.reset(ic);
+    eng.reset({ plant_id: p.id.toLowerCase(), initial_state: ic });
     Object.keys(eng.getTrueState()).forEach(function (k) { fields[k] = true; });
   });
 

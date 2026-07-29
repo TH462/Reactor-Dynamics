@@ -44,7 +44,7 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 | **BOP** | Balance of Plant — turbine, condenser, feedwater, and related secondary systems. |
 | **CVCS** | Chemical & Volume Control System — charging, letdown, boron adjust, inventory make-up. |
 | **Critical / Criticality** | Steady chain reaction: reactivity ≈ 0; power neither grows nor dies away on its own. |
-| **Cold Shutdown** | Real-plant mode with RCS cool and depressurized — **[narr]** only in this trainer. |
+| **Cold Shutdown** | RCS cool and depressurized, RHR carrying the heat sink — **Mode 5, Cold Shutdown**. **[sim]**: a Free Play initial condition, and the full path to and from power runs on integrated physics (**PWR-T20** / **PWR-T21**). |
 
 ## D
 
@@ -71,8 +71,8 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 | **Heat sink** | Where core heat goes — primarily the Steam Generators (secondary water/steam). |
 | **Hot Full Power (HFP)** | ~100 % power, ~100 MWe, equilibrium — full-power **Mode 1, At Power**. |
 | **Hot Standby** | Subcritical, hot, at operating temperature and pressure — **Mode 3, Hot Standby**. |
-| **Hot Shutdown** | Subcritical with RCS not yet cold — commercial **Mode 4, Hot Shutdown** class; post-trip hot board in this trainer is still treated as Mode 3, Hot Standby by temperature until cooldown **[narr]**. |
-| **Cold Shutdown** | Subcritical and cold — **Mode 5, Cold Shutdown** **[narr]** only in this trainer. |
+| **Hot Shutdown** | Subcritical with RCS not yet cold — commercial **Mode 4, Hot Shutdown**. **[sim]**: the trainer derives it from power, reactivity and Tavg, so it is what the board declares while transiting between Mode 3 and Mode 5. A post-trip board still at operating temperature is Mode 3, Hot Standby by temperature class. |
+| **Cold Shutdown** | Subcritical and cold — **Mode 5, Cold Shutdown**. **[sim]** — see the Cold Shutdown entry under **C**. |
 | **HPI / LPI** | High- / Low-Pressure Injection — merged emergency injection with a two-segment pump curve. |
 | **HR1** | Simulator hard rule: protection and alarms read **instruments**, never true state. |
 

@@ -112,6 +112,57 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-29b — manual currency audit against the as-built sim  ✅
+
+**Method — diff, don't read.** Dumped the live plant to JSON (14 trips, 17 actuations, 30
+alarms, 23 failures, 8 automation channels, 34 instruments, 58 engine commands, 5 initial
+conditions, 34 campaign missions) and diffed each set against the packed manual text, then
+hand-checked every hit. Scratch harness: `dump_plant.js` + `coverage.js`. Reading the manuals
+for plausibility would have missed most of what follows.
+
+**The one that mattered.** The plant adopted **Reactor Trip on Turbine Trip (P-9)** in
+`2fb0b78` (#216) and **no operator document said so**. `09` §2.0 listed 13 of the 14 trips;
+`06` PWR-A22 said "verify SCRAM if required by plant"; `07` PWR-E03 said "possible reactor
+trip depending on severity/response" and told the operator to insert rods. All three now state
+it, with the three-way distinction the plant actually makes: **load rejection** → ride-out,
+**turbine trip above P-9** → scram, **planned offline** (`disconnect_grid`, #230) → neither.
+
+**The config comment was lying too.** `protection_options.turbine_trip_reactor_trip` still
+carried *"Default OFF preserves today's behaviour"* next to a value of `true` — the comment
+stayed put when the value flipped, so the source read as documentation that the plant does NOT
+have the trip. Rewritten with the adoption date and commit.
+
+**A cluster, not scattered errors.** Six documents (`01`, `02`, `08`, `09`, `10`, `README`)
+still described Mode 4/5 as `[narr]` with "no cold IC". One event — the Mode 5↔1 work — went
+un-propagated, and `11_CAMPAIGN_CROSSWALK` was the *only* doc that had been updated. Worth
+remembering: when a capability lands, grep the whole manual set for the claim it invalidates.
+
+**Two board controls were never documented**: circulating-water inlet temperature
+(`set_condenser_cw_temp` — it drives vacuum, MWe *and* the RHR cooldown floor) and the
+generator FOLLOW/MAN/OFF selector. Both now have sections.
+
+**Found in my own work, and fixed (HR10).** `run_contract.js` (shipped yesterday, #225)
+claimed to union `getTrueState()` keys "over every initial condition" — but `reset()` takes a
+**command object**, and `reset('cold_shutdown')` silently falls back to `hot_full_power`
+(`pwr_engine.js:1140`). The loop was five identical resets. The gate still passed and still
+caught everything (getTrueState returns a fixed literal), but the claim was false. Fixed to
+`reset({plant_id, initial_state})`, still 84/0, and the argument-shape trap is now a comment
+in the file. **This is the exact failure HR10 warns about: a green gate proving less than its
+comment claims.**
+
+**Gates.** Everything the audit could touch is green: `run_pwr` 32/32, `run_behavior` 38/0,
+`run_campaign` 51/51, `run_procedures` 22/22, `run_checklist` 24/24, `run_contract` 84/0,
+`run_flags` 16/16, `run_inspect` 7/7, `verify_manual_follow` PASS.
+
+**Pre-existing red, NOT from this work** — `run_all` shows two drifts caused by another
+session's in-flight edits to `layers/control/control_kernel.js`, `layers/simulation_service.js`
+and `test/run_m4.js` (all uncommitted in the tree): `run_m4` 23/23→**25/25 135** (new suites)
+and `run_procedures_stack` 22/22→**21/22**, whose single failure is a **BWR** stale xfail
+(`bwr_startup` step 2 XPASSes, #208, on hold). Left alone deliberately — absorbing another
+session's baseline move would hide it.
+
+---
+
 ### 2026-07-29a — #203: the manual gets a sim-physics chapter  ✅ (no code changed)
 
 **What shipped.** `Manuals/12_SIM_PHYSICS.md` — the honest-scope chapter the manual set never had.

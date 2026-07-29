@@ -13,6 +13,40 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **Manual currency audit — the manual now matches the plant it documents.** Every trip,
+  actuation, alarm, failure, automation channel, instrument, engine command, initial condition
+  and campaign mission was dumped from the live plant and diffed against the manual set. What
+  the diff found:
+  - **A protection function the manual never documented.** This plant adopted **Reactor Trip
+    on Turbine Trip (P-9, ≥ 50 % power)**, and the manual still told the operator to ride a
+    turbine trip out — **09 §2.0** had no row for it, **06 PWR-A22** said "verify SCRAM if
+    required by plant", and **07 PWR-E03** said "possible reactor trip depending on
+    severity/response". All three corrected, with the distinction that matters spelled out:
+    a **load rejection** is ridden out, a **turbine trip above P-9 scrams**, and a **planned
+    offline is neither**. Permissives **P-9, P-11, P-12** added to the permissives table.
+  - **The cold end of the plant was still documented as narrative.** Six documents — **01**,
+    **02**, **08**, **09**, **10** and the **README** — still said Mode 4/5 were `[narr]` and
+    that there is no cold initial condition, long after the Mode 5 ↔ 1 path shipped on
+    integrated physics. Cleared everywhere, with `cold_shutdown` added to the Free Play
+    initial-condition tables and its board lineup described.
+  - **Two board controls the manual never mentioned.** **Circulating-water inlet temperature**
+    (new **03 §13.1** — the summer derate, the winter uprate, and the floor it puts under an
+    RHR cooldown) and the generator **FOLLOW / MAN / OFF** selector (**03 §12.1**), including
+    why selecting a load mode does not un-trip a tripped machine.
+  - **A command reference that named a command no control issues.** `set_letdown_flow` →
+    `set_letdown_orifices`; added the grid, CW-temperature, AFW-block and accumulator-valve
+    commands.
+  - **UI drift.** The **System Scanner** was still described as one-line hover text (**02
+    §3.4** now documents both tiers and the 📖 deep link), **02 §9.0** still described the
+    retired generated manual, and a `900 MWe` load target survived on a 100 MWe plant.
+  - **03 §16.0** gained `sg_steam_flow` and `cw_inlet_temp`, plus the trap that
+    `steam_flow` is turbine flow alone and reads ~0 while the dump carries the plant.
+
+  Verified unchanged and correct: all 30 alarm setpoints, the 17 automatic actuations, all 23
+  failures, the 34 campaign missions, the per-initial-condition normal values in 09 §11.0, and
+  the rod-drive, pressurizer-band and damage-limit tables.
+
 ### Added
 - **The manual now says what the simulator actually computes — `12_SIM_PHYSICS.md` (#203).** A new
   chapter, **Simulation Physics & Model Scope**, in the in-app manual between the crosswalk and the
