@@ -92,6 +92,9 @@ docs.
 > works… Go with your recommendations")*. There are ~229,000 words of docs here containing
 > ~650 "do not / never / by design" phrases. Four rules make that tractable:
 > 1. **Binding: the Hard Rules in `Blueprint/CONTEXT.md` §3, and this file.** Nothing else.
+>    Nine rules, deliberately short. **`Blueprint/SOP.md` is NOT binding** — it holds the
+>    *how* (worked cases, failure modes, procedure) that used to bloat §3 to 200 lines. Read
+>    it for technique; do not cite it as authority.
 > 2. **`Diagnostic/`, `BUILD_DECISIONS.md` and `Manuals/` are RECORD, not policy** — they say
 >    what happened and why, not what you must do. Read them for evidence; don't obey them.
 > 3. **Plans expire when executed.** A phased work order stops binding the moment it is done
@@ -115,6 +118,8 @@ to read everything.
 |---|---|
 | **Understand the whole system** | `README.md`, then `Blueprint/CONTEXT.md` (interfaces, hard rules, data contract). |
 | **Understand *why* it's built this way** | `Blueprint/DESIGN_COMPANION.md` (vision, rationale, deliberate exclusions, v2 roadmap). |
+| **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 9 rules, each names its guard), then **`Blueprint/SOP.md`** for the worked cases and technique (advisory). |
+| **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
 | **Build or modify a module** | `Blueprint/CONTEXT.md` **plus that one module's spec** (`Blueprint/M1`–`M8`) — and nothing else. |
 | **Know what changed recently** | `CHANGELOG.md` (skimmable) → `Blueprint/BUILD_DECISIONS.md` (dense engineering rationale, tuning, gate tallies). |
 | **Operate the plant / look up a control, setpoint, or procedure** | `Manuals/` — start at `Manuals/README.md` (commercial-format PWR operator manuals). |
@@ -136,7 +141,7 @@ to read everything.
 _Last updated: **2026-07-29**._
 
 **Where the PWR is.** All PWR engine, behaviour, ops and stack gates green; `run_all` is
-**27 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
+**28 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
 a handful of UI/doc items.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.**
@@ -222,7 +227,7 @@ anything here that is standing procedure rather than news belongs in the list be
 - **Provenance matters more than it looks.** Many "owner rulings" in this repo were written by
   agents; all agent work commits under the owner's name, so git blame proves nothing. A ruling
   without a date and a verbatim owner quote is advisory — see `Blueprint/CONTEXT.md` §3.
-- **`test/run_hr3.js`** guards HR3 in the shared control kernel; `run_campaign` validates every
+- **`test/run_hr3.js` guards HR3** in the shared control kernel; **`test/run_hardrules.js` guards HR1, HR5 and HR11** (HR2, HR6 and half of HR4 are still unguarded — §3 says so). `run_campaign` validates every
   scenario, not just campaign-wired ones.
 - **A new `true_state` field must be documented in the same change (2026-07-28, #225).**
   `test/run_contract.js` diffs `Object.keys(getTrueState())` against the §6.3 block in
@@ -376,7 +381,7 @@ harness is testing a plant the player never gets.
 | **engine + M4** (looks full-stack, isn't) | `run_ops`, `run_behavior`, `run_m4` |
 | **full stack** (M4+M5+M6) | `run_procedures_stack`, `run_m5`, `run_m6`/`run_m6ph` (integration halves), `run_m7`, `run_autoctl`, `run_campaign`, `run_checklist`, `run_scenarios`, `run_e2e_controls` |
 | **browser** | `verify_e2e_ui`, `verify_manual_follow` (the latter never plays the sim — control-surface reachability only) |
-| **static** (source/doc/registry consistency — the plant is never stepped) | `run_hr3`, `run_contract` (resets the engine to read its field list, never runs it), `run_inspect`, `run_flags` |
+| **static** (source/doc/registry consistency — the plant is never stepped) | `run_hr3`, `run_hardrules`, `run_contract` (resets the engine to read its field list, never runs it), `run_inspect`, `run_flags` |
 
 Engine-direct is the right choice for isolated-physics acceptance; the mistake is *relying*
 on it for anything the control layer decides. **When you write a procedure, scenario, or
@@ -535,11 +540,19 @@ Read this before editing any source file — the wiring is deliberate and easy t
 - **Load order matters.** `pwr_config.js` / control modules load before the engine
   files that consume them (see the ordered list in any `test/run_*.js` and `ui/shell.html`).
 - **File naming.** Plant-specific files are prefixed `pwr_` / `rbmk_` / `bwr_`.
-- **Hard Rules are non-negotiable.** Before changing engine behavior or the data
-  contract, read the numbered **Hard Rules (HR1–HR10)** in `Blueprint/CONTEXT.md`
-  (HR1 = instruments-vs-truth; HR5 = commands only ever flow down through the service;
-  **HR9 = the plant is the ground truth — content follows the plant, never the reverse**;
-  **HR10 = a passing test is not evidence the mechanism is right**).
+- **Hard Rules are non-negotiable.** Before changing engine behaviour or the data
+  contract, read the **Hard Rules** in `Blueprint/CONTEXT.md` §3 — **nine rules, and the
+  list is meant to stay short.** Reorganized 2026-07-29: architecture (HR1–HR6) is split
+  from practice (HR9, HR10, HR11); each rule now names its **guard**; the *how* — worked
+  cases, failure modes, procedure — moved to **`Blueprint/SOP.md`**, which is advisory,
+  not binding. HR7 (failure taxonomy → §11) and HR8 (params-in-code → §8) were retired
+  from §3 as a convention and a scope boundary; their numbers are not reused, because
+  ~580 citations point at these numbers.
+  The four you will actually trip over: **HR1** instruments-vs-truth · **HR5** commands
+  only flow down through the service · **HR9** the plant is the ground truth, content
+  follows the plant · **HR10** a passing test is not evidence the mechanism is right.
+  **HR11** (a ruling needs a date + the owner's verbatim words, or it is advisory) was
+  extracted from inside HR9 — it is cited constantly and was unfindable.
 - **Snapshot / save compatibility is a contract.** New snapshot fields must migrate
   older saves — follow the migration-note pattern in `CHANGELOG.md`.
 

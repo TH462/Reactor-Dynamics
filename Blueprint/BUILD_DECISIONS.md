@@ -3688,7 +3688,7 @@ the repo is private, keep-raw event retention with a 100 MB tripwire). Built in 
 
 ### Website W1 addendum — in-sim feedback, no player uploads (2026-07-19)
 
-**OWNER RULING: players can never upload their own files.** Feedback telemetry attaches
+**OWNER RULING (2026-07-19) — verbatim not recorded, so advisory under HR11: players can never upload their own files.** Feedback telemetry attaches
 ONLY from the live session. Spec §6 updated.
 
 - `ui/app.js`: `exportDiag()` split into `buildDiagBundle()` (returns the schema-1.0

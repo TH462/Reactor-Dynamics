@@ -94,6 +94,15 @@ var BASELINES = {
   // it. The site count is part of the score on purpose: a NEW coupling shifts it
   // and trips drift even when the author allow-lists it properly.
   'run_hr3.js':            { code: 0, score: '32checks 0failed' },
+  // New 2026-07-29 — the guards for the OTHER hard rules. CONTEXT.md §3 now requires
+  // every rule to name its guard, and three had none: HR1 (protection reads
+  // instruments), HR5 (commands descend; the UI never touches the engine) and HR11 (a
+  // ruling needs a date and verbatim words). Same declared-exception idiom as run_hr3:
+  // a true-state read in layers/control/ is legal only if listed with the reason no
+  // instrument exists for it, so the count moving means a NEW coupling — allow-listing
+  // one properly still trips drift, which is the intent. HR2, HR6 and half of HR4 are
+  // still unguarded and §3 says so out loud.
+  'run_hardrules.js':      { code: 0, score: '15checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

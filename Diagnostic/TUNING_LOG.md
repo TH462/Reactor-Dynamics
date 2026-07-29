@@ -31,7 +31,8 @@ staleness** items.
 
 | Gate | State | Notes |
 |---|---|---|
-| **`run_all`** | **OK (26 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| **`run_all`** | **OK (28 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| `run_hardrules` | **15 checks / 0 failed** | NEW 2026-07-29 — static guards for HR1 (protection reads instruments), HR5 (UI never touches the engine) and HR11 (a ruling needs a date + verbatim words). Declared-exception idiom: a true-state read in `layers/control/` is legal only if listed with the reason no instrument exists. HR2, HR6 and half of HR4 remain unguarded and §3 says so |
 | `run_contract` | **84 checks / 0 failed** | NEW 2026-07-28t (#225) — §6.3 `true_state` contract vs `getTrueState()`, both directions; PWR only (RBMK/BWR `skip`) |
 | `run_inspect` | **7/7 (35)** | NEW 2026-07-28s (#96) — inspection copy: orphaned keys, per-item coverage, dead manual citations, duplicate copy |
 | `run_flags` / `verify_flags_ui` | **16/16 (290)** / **48/48** | NEW 2026-07-28j (#241) — the feature-flag registry (coverage + resolution) and the control room actually obeying it |
@@ -111,6 +112,67 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-29d — the Hard Rules, sorted out: 10 → 9, each with a named guard  ✅
+
+*(Owner, 2026-07-29: "Some hard rules are system specific. Could any be put in SOPs or in
+system specific rules? I think we may have too many hard rules. We should keep hard rules
+concise." — and "I agree hard rules should have guards.")*
+
+**§3 went from 199 lines to 135, and the rules from 10 to 9.** The test applied for admission
+was *can this be violated silently?* — a convention you would notice breaking is a convention,
+not a hard rule.
+
+- **HR7 (failure taxonomy) → §11 Conventions.** A placement convention, not an invariant, and
+  one already amended once by the 2026-07-16 relief-valve ruling.
+- **HR8 (params live in code) → §8 v1 Scope.** It says what *not to build*, which is what §8 is.
+- **HR11 extracted from inside HR9**: "a ruling needs a date and the owner's verbatim words, or
+  it is advisory." Not a new rule — it already existed, buried seventy lines inside a rule about
+  something else, while being one of the most-cited things in the repo.
+- Everything that was *elaboration* — worked cases, failure modes, procedure — moved to the new
+  **`Blueprint/SOP.md`**, which is explicitly **advisory, not binding** (CLAUDE.md rule 1 now
+  says so, so it cannot quietly acquire authority).
+
+**NOT renumbered, and that was the important call.** Measured first: **~580 citations** across
+25 repo files and 11 memory files point at these numbers, and `test/run_hr3.js` is *named* for
+one. Renumbering would have invalidated every one. HR7/HR8 keep their numbers as retired
+pointers; retired numbers are never reused.
+
+**Guards — new `test/run_hardrules.js` (15 checks).** §3 now requires every rule to name its
+guard, and three had none:
+
+- **HR1** — every true-state read in `layers/control/` must be *declared* with the reason no
+  instrument exists. Eight sites, all now written down; the interesting one was
+  `pwr_control.js:577` reading `feedwater_isolated`, which turned out legitimate — **verified
+  against `getInstruments()` that no such instrument exists**, rather than assumed either way.
+- **HR5** — no direct engine command call from `ui/`. Clean; the only `applyCommand` in `ui/`
+  is in a markdown reference.
+- **HR11** — every formal `OWNER RULING` carries a date and a quotation. Found **three real
+  violations**, including one I had written that morning in `RETIRED.md`. Two are the same
+  genuine ruling whose verbatim words were never recorded; those now carry an explicit
+  *"verbatim not recorded, so advisory under HR11"* marker — declaring the gap rather than
+  hiding it, the same idiom `run_hr3` uses.
+
+HR2, HR6 and half of HR4 are still unguarded, and §3 states that rather than implying coverage.
+
+**Three defects in my own gate, found by testing it rather than trusting it (HR10).**
+1. The first HR11 cut matched case-insensitively and flagged **71 sites** — narrative prose in
+   the log and changelog ("many *owner rulings* in this repo were written by agents"). A gate
+   that cries wolf seventy times gets ignored, so it now matches only the formal uppercase
+   marker, with the limitation written down.
+2. Comment-stripping deleted block comments outright, collapsing their newlines and **shifting
+   every subsequent line number** — the gate reported a real violation at the wrong place.
+   Comment bodies are blanked in situ now.
+3. A false *pass*: the multi-line window for a wrapped ruling crossed a **markdown table row**
+   and borrowed the next row's date, vouching for an undated ruling. A table row is now its own
+   window.
+
+Then falsified deliberately: a probe violation of each of the three rules was planted, all
+three were caught, and removing them returned the gate to green.
+
+**Gates.** `run_all` **27 → 28 runners**, all at baseline.
+
+
 
 ### 2026-07-29d — manual goes dual-unit (US first, SI in parentheses)  ✅
 
@@ -1473,7 +1535,7 @@ confuse the coding agents and gum up the works."* Measured: **~229,000 words of 
   2026-07-27 ('Do as you suggest')"*. F13 was rewritten this way retroactively; the first
   draft said only "ruled won't-fix", which is the failure mode even though the owner did agree.
 - **Revoked:** `PWR_SHIP_REVIEW_PLAN.md` stamped **EXECUTED — historical record, not policy**
-  *(OWNER RULING: "Yes. Marking done.")*; Amendment A1's *"do not chase P4 without a new
+  *(OWNER RULING, 2026-07-27: "Yes. Marking done.")*; Amendment A1's *"do not chase P4 without a new
   ruling"* **revoked as moot** (PWR ops measures 21/21, zero fails); the C2 "Ruling: ship as a
   documented limitation" **struck as a third copy** of #153 + its deliberately-red probe; the
   unattributed *"Owner scope rulings … out of scope — do not add"* **downgraded** to "not

@@ -105,200 +105,136 @@ connects directly to the Instructor.
 
 ## 3. The Hard Rules (non-negotiable)
 
-**HR1 — Protection and alarms read instruments, never true state.** Every automatic
-decision a real plant makes from sensor data — every trip, every safety actuation, every
-alarm — reads the **instrument reading**, not the true physical value. This is the rule
-that makes the defining principle real; without it, a stuck indicator can't mask a real
-condition and TMI can't be reproduced.
+**What belongs here.** A hard rule is a property this project may not trade away, and the
+list is meant to stay short — nine rules. The test for admission is: *can this be violated
+silently?* A convention you would notice breaking is a convention, not a hard rule.
+Everything that failed that test lives elsewhere and is **advisory**: engine/layer
+conventions in §11, v1 scope boundaries in §8, and how to *apply* these rules — the worked
+cases, the failure modes, the procedure — in **`Blueprint/SOP.md`**.
 
-**HR2 — The physics engine makes no control decisions.** The engine computes physics. It
-exposes direct controls (insert rods, open this valve, set this flow); the layer above
-decides when to use them. No "if pressure high then open valve" inside the engine.
+**Every rule names its guard.** A rule with no gate holds only as long as the next author
+happens to read the neighbouring comment. HR3 was stated *inside* the kernel, immediately
+above the fix pattern for it, and was violated again forty lines below that comment (#156,
+#227). Where a guard reads *none*, that is a known gap someone should close, not an
+omission.
 
-**HR3 — Plant-specific behavior is data, not hardcoded logic.** Trip setpoints, alarm
-thresholds, gauge ranges, safety logic, instrument characteristics — all configuration
-consumed by general code. The code that evaluates a trip does not contain `2385`; it reads
-the setpoint from the plant's config.
-
-**HR4 — The snapshot always carries both true state and instrument readings**, as distinct
-sections, every cycle. The UI reads instruments; diagnostic overlays and the Test Runner
-read true state. Never collapsed into one.
-
-**HR5 — Commands flow down through the layers; the UI never reaches the engine directly.**
-A command enters at the top and descends: Instructor (may gate) → Control & Failure (may
-intercept) → engine. Gating and failure-interception depend on this path.
-
-**HR6 — Instrument behavior is computed inside the engine's time step**, using the same
-time delta as the physics. Lag is a *simulated-time* constant: a 4-second sensor delay is
-4 seconds of simulated time regardless of time acceleration. Applied outside the step, lag
-would distort under acceleration — exactly when transients are being studied.
-
-**HR7 — Failures are of two kinds and live in two places.** A failure that modifies a
-physical parameter with no operator control (leak, tube rupture, loss of offsite power) is
-**physics** and lives in the **engine**. A failure that overrides/ignores a command (stuck
-valve, failed rod, tripped turbine) is **command-level** and lives in the **Control &
-Failure Layer**, where commands pass through. *(as built — 2026-07-16 design ruling)*
-Mechanical relief-valve pop/reseat and turbine protection (low vacuum, overspeed) are
-implemented as **control-layer actuations** reading instruments and issuing commands; the
-engine keeps only valve state + flow hydraulics. So HR7's "stuck valve / tripped turbine =
-command-level" now applies **uniformly** — even the spring safeties are interceptable.
-
-**HR8 — In v1, plant parameters live in code, not external files.** Each plant's parameters
-are structured configuration **objects** in JavaScript. No config file system, loader, or
-inheritance scheme (beyond the RBMK's internal pre/post sharing). HR3 still applies — the
-parameters are data, just expressed in JS — so a future externalization is an extraction,
-not a redesign.
-
-**HR9 — The plant is the ground truth. Content follows the plant, never the reverse.**
-The only question that decides a tuning or behaviour change is **"what should this plant
-actually do?"** — never "what keeps this mission green?" *(owner ruling, 2026-07-26)*
-
-Authority runs in one direction, highest first:
-
-1. **Physics and prototypicality** — what a real plant of this type actually does.
-   **Err toward the real plant.** This is a teaching simulator: when a choice is open, the
-   prototypical answer is the right one, because the thing being taught is how real plants
-   behave. A departure needs a reason beyond "it plays better".
-2. **This plant's deliberate identity** — the ruled-on character choices (100 MWe
-   single-loop, TMI canon). These are **named departures from prototypicality, not a
-   parallel authority**: a deviation is legitimate only if it is (a) explicitly ruled on,
-   (b) recorded with the reason, and (c) **declared as a simplification wherever it
-   understates reality** (§Domain conventions — *"where a simplification understates
-   reality, say so plainly"*). An identity claim that cannot point at its ruling is not an
-   identity claim; it is an unexamined default, and prototypicality wins.
-3. **The behaviour catalog and physics acceptance suites** (`run_behavior`, `run_pwr`,
-   `run_ops`) — these *encode* 1 and 2, which is what earns them the right to arbitrate
-   tuning. A catalog row is only as authoritative as the physics behind it: a row that
-   turns out to contradict real-plant behaviour without a recorded ruling is a **defect in
-   the catalog**, not a licence.
-4. **Control and protection setpoints.**
-5. **Authored content** — campaign missions, procedures, checklists, manual prose.
-6. **Gate expectations for that content** — `run_campaign`, `run_procedures*`,
-   `run_checklist`.
-
-**Nothing at 5–6 may cause a change at 1–4.** When authored content breaks after a plant
-change, the default presumption is that *the content is stale*.
-
-This is what the `[tune]` convention means by "arbitrated by the scenario suite": level 3,
-the suites that state intended behaviour independently of any story. Campaign missions only
-*observe* the plant. The failure mode the rule exists to prevent is a content-level
-expectation quietly acquiring the authority of a behaviour specification — at which point
-the gate that should protect the plant is enforcing a story instead, and the plant is being
-bent to keep a paragraph true.
-
-**Broken content is a canary, not an authority.** Read it — occasionally it means the plant
-change really was wrong. But settle that against levels 1–3, and say out loud which
-behaviour you are treating as ground truth and why.
-
-**A ruling is not a conversation-stopper — question the owner's decisions too.**
-*(owner instruction, 2026-07-26: "we should question my own decisions because they may have
-been made with inaccurate assumptions")* A ruling is only as good as the premise it was made
-on, and premises go stale: the plant changes, a measurement turns out wrong, or the ruling was
-given on a summary that was itself mistaken.
-
-**This is targeted, not a standing re-audit** *(owner, same day: "we don't need to question
-every decision made — that would be a lot; let's be more targeted")*. Do not re-litigate
-settled rulings on principle. Raise one when you have a **specific reason to doubt its
-premise** — you are working in that area and the facts do not match, a measurement contradicts
-it, or its stated justification points at something that has since changed. Otherwise take the
-ruling and move on. Then:
-
-- **Record the premise, not just the decision.** A ruling written as a bare verdict cannot be
-  re-examined later, because nobody can tell what it assumed. This is exactly how the P-9 gap
-  became "by design" (#216): the decision survived, its provenance did not.
-- **When you find a ruling whose premise no longer holds, say so** — surface it with the
-  evidence rather than deferring to it. Deferring to a ruling you have reason to doubt is not
-  respect; it launders an error into a standing rule.
-- **Beware of citing a ruling for something it did not decide.** Check what was actually ruled
-  on, not what the ruling is now being used to justify. Stretching one onto an adjacent case
-  is the most common way a level-2 claim appears out of nowhere.
-- **A ruling needs a DATE and the owner's VERBATIM WORDS, or it is not a ruling** *(owner,
-  2026-07-27: "Make the verbatim quote mandatory as you say")*. All agent work is committed
-  under the owner's name, so git blame proves nothing about who decided what. Without a quote,
-  an agent's own preference written in authoritative voice ("owner ruling:", "accepted — do not
-  re-fix", "by design") becomes indistinguishable from the owner's, and the next agent obeys it.
-  This has already happened at least twice: the P-9 "by design" line (#216), and
-  `PWR_SHIP_REVIEW_PLAN.md`'s "accepted — do not re-fix them", whose own header read *"Created:
-  2026-07-19 (Fable) · Executor: Opus"* — one agent instructing another. (That plan was retired
-  2026-07-29 once executed; `Blueprint/RETIRED.md` says how to read it again.)
-  - Format: **`OWNER RULING (YYYY-MM-DD): "<their words>"`**. Anything else is *your*
-    recommendation — label it as yours, including when the owner approved it: write
-    *"Claude's reasoning, owner-approved 2026-07-27 ('Do as you suggest')"*, not "ruled".
-  - **An unattributed directive is advisory, not binding.** Weigh it on its merits and say
-    you did. Do not treat it as settled, and do not propagate it.
-
-**The dangerous case is not the crude one.** "Deepen the shrink so the mission's trip stays
-unavoidable" is obviously an inversion. Harder: a change that looks like genuine
-plant-correctness *and* happens to rescue the content — you cannot tell motive from outcome,
-so you have to settle it on the physics alone.
-
-**And beware of using level 2 to dismiss level 1.** Working #215 I reached for exactly that:
-real Westinghouse PWRs trip the reactor on turbine trip above P-9, this plant has no such
-trip, and I ruled the gap acceptable because `TR-1` pins turbine-trip *ride-out* as the
-plant's character. That reasoning is only valid if the ruling actually covers the case — and
-here it may not: in a real plant **load rejection** is the ride-out case, while a **turbine
-trip** (stop valves slamming shut) is precisely what P-9 arms the reactor trip for. If `TR-1`
-conflates the two, then the catalog row is the defect and the missing trip is real. *(Open —
-see the P-9 question raised 2026-07-26.)* The lesson: an identity deviation must be checked
-against **what it was actually ruled on for**, not stretched to cover an adjacent case that
-happens to need covering.
+**The numbers are stable and retired numbers are never reused.** HR7 and HR8 were retired
+2026-07-29 rather than renumbered: roughly 580 citations across the specs, manuals, tests
+and tuning log point at these numbers, and `test/run_hr3.js` is named for one.
 
 ---
 
+### Architecture — invariants the running system can violate
+
+**HR1 — Protection and alarms read instruments, never true state.** Every automatic
+decision a real plant makes from sensor data — every trip, every safety actuation, every
+alarm — reads the **instrument reading**. Without it a stuck indicator cannot mask a real
+condition, and TMI cannot be reproduced. Where no instrument exists for a quantity the
+control layer genuinely needs, that is a **declared exception**, not a licence.
+**Guard:** `run_hardrules.js` — every true-state read in `layers/control/` must be listed
+with a reason.
+
+**HR2 — The physics engine makes no control decisions.** The engine computes physics and
+exposes direct controls (insert rods, open this valve). The layer above decides when to use
+them. No `if pressure high then open valve` inside the engine.
+**Guard:** none — reviewed by hand. The nearest proxy is HR1's exception list growing.
+
+**HR3 — Plant-specific behaviour is data, not hardcoded logic.** Trip setpoints, alarm
+thresholds, gauge ranges, safety logic, instrument characteristics: configuration consumed
+by general code. The code that evaluates a trip does not contain `2385`.
+**Guard:** `run_hr3.js` — derives the plant vocabulary from all three engines and fails on
+any plant-specific name in the shared kernel that is not declared with a reason.
+
+**HR4 — Every snapshot carries both true state and instrument readings**, as distinct
+sections, every cycle. The UI reads instruments; diagnostic overlays and the Test Runner
+read truth. Never collapsed into one.
+**Guard:** `run_contract.js` — partial. It gates that the §6.3 `true_state` block and
+`getTrueState()` agree in both directions; nothing yet asserts both sections are present in
+an assembled snapshot.
+
+**HR5 — Commands flow down through the layers; the UI never reaches the engine directly.**
+A command enters at the top and descends: Instructor (may gate) → Control & Failure (may
+intercept) → engine. Gating and failure-interception depend on that path existing.
+**Guard:** `run_hardrules.js` — no direct engine command call from `ui/`.
+
+**HR6 — Instrument behaviour is computed inside the engine's time step**, using the same
+time delta as the physics. Lag is a *simulated-time* constant: a 4-second sensor delay is
+4 seconds of sim time at any acceleration. Applied outside the step, lag would distort
+exactly when transients are being studied.
+**Guard:** none. A behavioural probe (same transient at 1× and 10×, compare lag) would
+close this.
+
+---
+
+### Practice — how the work is done
+
+**HR9 — The plant is the ground truth. Content follows the plant, never the reverse.**
+*(owner ruling, 2026-07-26.)* The only question that decides a tuning or behaviour change is
+**"what should this plant actually do?"** — never "what keeps this mission green?"
+
+Authority runs one way, highest first:
+
+1. **Physics and prototypicality** — what a real plant of this type does. Err toward the
+   real plant; a departure needs a reason beyond "it plays better".
+2. **This plant's ruled-on identity** — named departures from prototypicality, legitimate
+   only if explicitly ruled on, recorded with the reason, and declared as a simplification
+   where they understate reality. An identity claim that cannot point at its ruling is an
+   unexamined default, and prototypicality wins.
+3. **The behaviour catalog and physics acceptance suites** (`run_behavior`, `run_pwr`,
+   `run_ops`) — they *encode* 1 and 2, which is what earns them the right to arbitrate.
+4. **Control and protection setpoints.**
+5. **Authored content** — missions, procedures, checklists, manual prose.
+6. **Gate expectations for that content** — `run_campaign`, `run_procedures*`, `run_checklist`.
+
+**Nothing at 5–6 may cause a change at 1–4.** When authored content breaks after a plant
+change, presume the content is stale. Broken content is **a canary, not an authority**:
+read it, then settle it against 1–3 and say which behaviour you are treating as ground truth.
+**Guard:** none possible — this is a judgement rule. `SOP.md` §1 carries the worked cases,
+including the one where applying it wrongly nearly cost the plant a real protection function.
+
 **HR10 — A passing test is not evidence the mechanism is right. Tests assert the claim,
-never the current behaviour.** *(2026-07-27, after the same failure surfaced three times in
-one session — #200, #206/#219, #219.)*
+never the current behaviour.** *(owner, 2026-07-27: "Tests should check to make sure the sim
+does what it's INTENDED to do, not just check that it does what it already does.")*
 
-> **"Tests should check to make sure the sim does what it's INTENDED to do, not just check
-> that it does what it already does."** *(owner, 2026-07-27 — the rule in one line.)*
+A test written from observed behaviour can only confirm the behaviour it was written from,
+including the parts that are wrong — it locks in the defect and reports coverage while doing
+it. **If you cannot say why a mechanism is right without citing which tests pass, you have
+not finished.** If you move a test, validate the new form against the OLD behaviour too:
+passing on both makes it a better test; passing only on your change means you refitted it,
+and you must say so.
+**Guard:** none possible, and that is the point — a green gate reads as proof rather than as
+a story someone wrote. `SOP.md` §2 has the three shapes this takes, each with a case from
+this repo.
 
-That distinction is the whole rule. A test written from observed behaviour can only ever
-confirm the behaviour it was written from, including the parts that are wrong — it locks in
-the defect and reports coverage while doing it. A test written from the **intent** can fail,
-which is the only reason to have it.
+**HR11 — A ruling needs a DATE and the owner's VERBATIM WORDS, or it is advisory.**
+*(owner, 2026-07-27: "Make the verbatim quote mandatory as you say".)* Extracted from HR9 on
+2026-07-29 because it is cited constantly and was buried seventy lines inside a different
+rule. All agent work is committed under the owner's name, so git blame proves nothing about
+who decided what. Without a quote, an agent's own preference written in authoritative voice
+("owner ruling:", "accepted — do not re-fix", "by design") becomes indistinguishable from the
+owner's, and the next agent obeys it.
 
-HR9 says content must not vote on physics. HR10 is the same inversion one level up: **test
-outcomes driving design.** It is more dangerous than the content version, because a green
-gate reads as proof rather than as a story someone wrote.
+- Format: **`OWNER RULING (YYYY-MM-DD): "<their words>"`**. Anything else is *your*
+  recommendation — label it as yours, including when the owner approved it: write *"Claude's
+  reasoning, owner-approved 2026-07-27 ('Do as you suggest')"*, not "ruled".
+- **An unattributed directive is advisory.** Weigh it on its merits, say you did, and do not
+  propagate it as settled.
 
-Three shapes, all found in this repo:
+**Guard:** `run_hardrules.js` — every `OWNER RULING` in tracked markdown must carry a date
+and a quotation.
 
-1. **Mechanism fitted to a suite.** #219's steam-dump arm was arrived at by three attempts,
-   each prompted by a red gate, until all gates passed. Three probes accepting a mechanism
-   says only that those three probes accept it. Measured afterwards, the mechanism had a
-   one-megawatt cliff — a 39 MWe rejection lifted the PORV where 41 MWe was caught — and was
-   blind to staircased rejections entirely. **No probe covered either case, so nothing was
-   red.** If you cannot state why a mechanism is right *without* citing which tests pass,
-   you have not finished.
-2. **A test driven through the one path the bug does not break.** `TR-11` exercised
-   `stuck_open_spray` through the only command form the broken override actually intercepted,
-   with a comment recording that the two forms which *defeated* the failure were deliberately
-   left unpinned "so the fix does not have to fight a test" (#200). The defect was documented
-   inside its own regression test and remained shipped for months.
-3. **A test that pins an incidental value instead of its claim.** `verify_e2e_ui` sampled feed
-   flow 120 s after a turbine trip and asserted `> 30 gpm`. Its stated claim was that feed
-   *tracks total steam flow*; at that moment the old plant read feed 60 against steam 80, so it
-   cleared the bar **without tracking at all**. When legitimate physics moved the transient, it
-   failed — and blamed the wrong component in its error message.
+---
 
-**What to do instead**
+### Retired
 
-- **Derive first, then test.** Reach for a mechanism because it is what the plant should do.
-  A test suite is how you check that; it is not where the answer comes from.
-- **When a change reddens a gate, ask what the gate was really asserting** before touching
-  either side. It may be pinning a fixture, a transient, or the very defect you are fixing
-  (see also *test preconditions vs assertions*).
-- **Probe the edges you did not design for.** Every threshold has two sides and every latch
-  has a reset; measure both. Most defects here lived where no probe looked, not where one was
-  wrong.
-- **If you must move a test, validate the new form against the OLD behaviour too.** If it
-  passes on both, it is a better test. If it passes only on your change, you refitted it —
-  say so out loud and expect to be challenged.
-- **Assert the claim in the words of the claim.** "Feed tracks steam within 15 gpm" survives a
-  transient shifting; "feed > 30" does not, and never tested tracking.
-- **A declared behaviour that nothing measures is only a comment** — but a measurement with no
-  stated claim is only a number. Pin both sides of a deliberate discontinuity (catalog TR-1c is
-  the worked example).
+- **HR7 — failure taxonomy** (physics failures in the engine, command-level failures in the
+  control layer). Retired 2026-07-29: a **placement convention**, not an invariant, and one
+  already amended once by the 2026-07-16 relief-valve ruling. Moved to §11 Conventions.
+- **HR8 — v1 plant parameters live in code, not external files.** Retired 2026-07-29: a
+  **scope boundary**, not an invariant — it says what not to build. Moved to §8.
+
+Both retain their numbers for the ~46 existing citations. Neither is deleted; both are still
+in force as the convention and the scope decision they always were.
 
 ---
 
@@ -853,6 +789,11 @@ to manual action), and **the three flagship scenarios plus a library of smaller 
 deferred — resist the instinct to build outward before the core is solid):
 
 - Plant configuration *file* system / loader / inheritance, a plant editor, or custom plants.
+  **Plant parameters live in code** — structured configuration *objects* in JavaScript, one
+  set per plant (beyond the RBMK's internal pre/post sharing). HR3 still applies: they are
+  data, just expressed in JS, so a future externalization is an extraction, not a redesign.
+  *(Was HR8; retired from §3 on 2026-07-29 — a scope boundary saying what not to build,
+  which is what this section is for, rather than an invariant the code can violate.)*
 - User-facing profile testing, shareable validation reports, a plant-creation wizard, or a
   community plant library. (The dev-only Test Runner serves the developer.)
 - Multi-user, accounts, authentication, cloud persistence, classroom infrastructure.
@@ -980,6 +921,18 @@ scenario tests. There is no shared engine module and no shared engine code.
 ---
 
 ## 11. Conventions
+
+- **Failure taxonomy — two kinds, two places** *(was HR7; retired from §3 on 2026-07-29 as a
+  placement convention rather than an invariant — it had already been amended once, and a
+  misplacement is caught by review, not silently)*. A failure that modifies a physical
+  parameter with no operator control (leak, tube rupture, loss of offsite power) is
+  **physics** and lives in the **engine**. A failure that overrides or ignores a command
+  (stuck valve, failed rod, tripped turbine) is **command-level** and lives in the **Control
+  & Failure Layer**, where commands pass through. *(As built — 2026-07-16 design ruling.)*
+  Mechanical relief-valve pop/reseat and turbine protection (low vacuum, overspeed) are
+  implemented as **control-layer actuations** reading instruments and issuing commands; the
+  engine keeps only valve state and flow hydraulics. So "stuck valve / tripped turbine =
+  command-level" applies **uniformly** — even the spring safeties are interceptable.
 
 - **Flows (taxonomy).** *Actual* flows are **normalized to rated** (1.0 = rated) and carry the
   `_normalized` suffix — every flow in a mass/level balance uses this one scale, so the balance
