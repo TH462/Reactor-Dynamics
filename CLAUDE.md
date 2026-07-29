@@ -161,6 +161,21 @@ a handful of UI/doc items.
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+- **The PWR's last HR1 hole is closed — the low-flow trip reads an instrument (2026-07-29,
+  #247).** `rcs_flow` is a real elbow-tap channel (% of rated, lag 1 s, injectable
+  failures); the `__true_flow__` sentinel is **deleted from every file**, and with it the
+  kernel's only PWR-only true_state reference (half of #228). A companion `mfw_isolated`
+  status indication replaced the feed channel's read of `true_state.feedwater_isolated` —
+  a field `getTrueState()` has **never exposed**, so that stand-down had never once fired.
+  Three things to know: a **stuck-high flow channel now masks a real loss of flow** (probed
+  — the low-flow trip never fires and `primary_pressure high` catches it instead), which is
+  the teaching case the instrument was built for; the setpoint is still **25 % of rated on
+  one channel** where a real Westinghouse plant is **< 90 % on 2-of-3 per loop** (sourced,
+  departure recorded in `Manuals/12` §10.7, filed separately — it is a behaviour decision,
+  not part of the HR1 fix); and a new appended instrument still ships **noise: 0** (the
+  cross-step PRNG rule), so it carries `noise_failure` instead — without it an injected
+  `noisy` failure would have been silently inert.
+
 - **The Hard Rules were reorganized, and they now have guards (2026-07-29).** §3 is **nine
   rules**, split architecture (HR1–HR6) from practice (HR9, HR10, HR11), each naming its
   guard. HR7/HR8 retired to §11 and §8 — **a demotion out of binding, stated as one**;
@@ -168,8 +183,9 @@ anything here that is standing procedure rather than news belongs in the list be
   was extracted from inside HR9. The *how* moved to **`Blueprint/SOP.md`** — advisory,
   except §5 which quotes an owner instruction. New `test/run_hardrules.js` guards HR1, HR5,
   HR11. **Read HR1's guard output before trusting it green:** it separates settled
-  *exceptions* from tracked *debt*, and the plant carries **5 debts (#247)** — the low-flow
-  reactor trip still reads TRUE flow, which makes that trip unteachable.
+  *exceptions* from tracked *debt*. It declared 5 debts on day one; **4 were paid within
+  the week (#247)** and **1 remains** (RBMK, unreviewed, on hold). The split working that
+  fast is the argument for it — one list would have called all five "allowed".
 
 - **The board explains itself, and the copy is gated (2026-07-28s, #96).** The System Scanner
   block is now the **inspection surface**: hover → one-line summary, click to expand → full
@@ -300,7 +316,7 @@ turning green has to be acknowledged (update the baseline, close the issue) inst
 being silently absorbed. Same convention as the strict xfails in `run_meltdown` /
 `run_behavior`.
 
-Green at baseline: PWR **32/32 (200 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3024 checks)**,
+Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3024 checks)**,
 `run_m4` **25/25 (135 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **20/20**,
 `run_behavior` **38 pass / 0 xfail**, `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
@@ -309,7 +325,7 @@ Green at baseline: PWR **32/32 (200 checks)**, BWR **15/15**, RBMK **23/23**, ca
 `pwr_heatup` xfails cleared 2026-07-26c/d via #206 + #210, and `bwr_startup` 2026-07-29 —
 that one was never a BWR defect, see #245)**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_hr3` **29 checks / 0 failed**, `run_hardrules` **14 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **35/35** (both F12 reds were stale expectations, fixed

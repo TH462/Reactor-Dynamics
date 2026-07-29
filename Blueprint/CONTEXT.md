@@ -134,12 +134,14 @@ control layer genuinely needs, that is a **declared exception**, not a licence.
 **Guard:** `run_hardrules.js` — every true-state read in `layers/control/` must be listed
 with a reason, in one of two categories. An **exception** is settled (snapshot plumbing,
 command read-back). **Debt** is a real violation that is tracked and carries an issue
-number. **A green run means "no undeclared reads", not "HR1 is satisfied"** — today the
-plant carries **5 declared debts (#247)**, the worst of which is that the low-flow reactor
-trip reads true pump flow because the RCS flow instrument was never built, which makes that
-trip unteachable. The two categories exist because the first cut had one list and the debt
-was indistinguishable from the exceptions, which is how a rule gets quietly retired by its
-own guard.
+number. **A green run means "no undeclared reads", not "HR1 is satisfied"** — read the debt
+line. The two categories exist because the first cut had one list and the debt was
+indistinguishable from the exceptions, which is how a rule gets quietly retired by its own
+guard. The split earned itself in four days: of the 5 debts it declared on 2026-07-29, the
+**4 PWR ones were paid the same week (#247)** — the low-flow reactor trip now reads an
+`rcs_flow` elbow-tap channel instead of true pump flow, and the feed channel's stand-down
+reads MFIV position instead of a true-state field that never existed. **1 remains**, in
+`rbmk_control.js`, unreviewed because that plant is on hold.
 
 **HR2 — The physics engine makes no control decisions.** The engine computes physics and
 exposes direct controls (insert rods, open this valve). The layer above decides when to use

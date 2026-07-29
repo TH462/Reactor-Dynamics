@@ -13,6 +13,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **RCS Loop Flow is now an instrument, and the low-flow reactor trip reads it** (#247).
+  The trip that protects the core against a loss of forced flow used to read **true**
+  coolant flow directly — it could not lag, could not drift, and could not be fooled by a
+  failed transmitter. On a simulator built around the premise that instruments lie, that
+  made the single most safety-significant trip on the plant **impossible to train on**. It
+  was carried for two years as "the one documented HR1 exception"; it was not an exception,
+  it was an instrument nobody had built.
+  `rcs_flow` models the real measurement — **elbow taps** on the crossover-leg 90° elbow,
+  reading differential pressure across the bend (ΔP ∝ flow²), nothing inserted into the flow
+  path. It reads in **% of rated**, lags 1 s, appears as an **RCS Flow** trend, and accepts
+  the full failure set. The setpoint is unchanged at **25 % of rated**.
+  What this buys, measured end to end: inject a **stuck-high** flow transmitter, trip the
+  RCP, and the flow indication sits at 100 % while the true flow reaches zero — **the
+  low-flow trip never fires**, and the reactor is eventually caught by high primary pressure
+  instead, several seconds later and for a different reason. That is a genuine new event to
+  train on, and it was unreachable before.
+- **Main feedwater isolation valve position indication** (#247). The three-element feed
+  channel is supposed to stand down when main feed isolates, handing the steam generators to
+  AFW. It read a true-state field that **`getTrueState()` has never exposed**, so the value
+  was always undefined and the stand-down had **never once fired** in any session. It now
+  reads MFIV position, and the channel drops out with the note *"off — main feedwater
+  isolated (AFW has the SGs)"*.
+
 ### Changed
 - **The board now speaks the same units as the manual.** The dual-unit convention reached the
   manual last release but stopped at the board, leaving three conventions live at once: the

@@ -49,7 +49,7 @@ var BASELINES = {
   // (a boolean in the OPERATOR'S demand field, which is why any set_spray cleared
   // it); it is now s.spray_stuck, and a legacy save carrying the old encoding must
   // keep the failure rather than silently healing on load.
-  'run_pwr.js':            { code: 0, score: '32/32 200passed' },
+  'run_pwr.js':            { code: 0, score: '32/32 201passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
@@ -93,7 +93,10 @@ var BASELINES = {
   // that file and was then re-created ~40 lines below the comment warning against
   // it. The site count is part of the score on purpose: a NEW coupling shifts it
   // and trips drift even when the author allow-lists it properly.
-  'run_hr3.js':            { code: 0, score: '32checks 0failed' },
+  // 32 → 29 checks (#247): the `__true_flow__` sentinel was the kernel's only reference to
+  // a PWR-only true_state field, so retiring it removed three plant-token couplings and
+  // paid half of #228. Fewer checks here means fewer leaks to check, not less checking.
+  'run_hr3.js':            { code: 0, score: '29checks 0failed' },
   // New 2026-07-29 — the guards for the OTHER hard rules. CONTEXT.md §3 now requires
   // every rule to name its guard, and three had none: HR1 (protection reads
   // instruments), HR5 (commands descend; the UI never touches the engine) and HR11 (a
@@ -102,7 +105,12 @@ var BASELINES = {
   // instrument exists for it, so the count moving means a NEW coupling — allow-listing
   // one properly still trips drift, which is the intent. HR2, HR6 and half of HR4 are
   // still unguarded and §3 says so out loud.
-  'run_hardrules.js':      { code: 0, score: '18checks 0failed' },
+  // 18 → 14 checks (#247): four of the five declared HR1 debts were PAID — three
+  // `__true_flow__` reads in the kernel plus the feed channel's `feedwater_isolated`
+  // read — so there are four fewer true-state reads in layers/control/ to declare. The
+  // one that remains is the unreviewed RBMK entry. Watch the DEBT line, not just the
+  // score: a green run still only means "no undeclared reads".
+  'run_hardrules.js':      { code: 0, score: '14checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

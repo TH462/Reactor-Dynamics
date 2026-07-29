@@ -474,9 +474,21 @@ SG narrow-range level indication moves **the wrong way** on a fast power change 
 
 Source range (counts/s) and intermediate range (chamber amps) carry their lag and noise **in the log domain**, so a decade of lag is a decade at any level and noise sigma is in decades. Source range reads zero when its high voltage is de-energised.
 
-### 10.7 The one documented exception
+### 10.7 RCS loop flow — and why the trip that reads it changed
 
-The **low-flow reactor trip reads true flow**, not an instrument. It is the only such exception in the plant and it is marked as one in the source. Every other trip and actuation reads an indication.
+Until 2026-07-29 the **low-flow reactor trip read true flow**, because no flow instrument had ever been built. It was the last exception in the plant, and it meant the single most safety-significant trip could not lag, could not drift, and could not be fooled — so it could not be *taught*. It now reads `rcs_flow`, an ordinary instrument with lag and injectable failures, and **there is no exception left**: every trip and actuation on this plant reads an indication.
+
+**RCS Loop Flow** is modelled on the real measurement: **elbow taps** on the crossover-leg 90° elbow, reading the differential pressure between the inner and outer radius of the bend, with ΔP ∝ flow². Nothing is inserted into the flow path. Real accuracy figures for this channel are ±10 % absolute, with trip-point repeatability around ±1 %.
+
+Two things about this plant's version are **departures from a real Westinghouse unit**, and both are deliberate:
+
+| | This plant | A real Westinghouse PWR |
+|---|---|---|
+| **Channels** | One channel | **Three flow detectors per loop**, tripping on 2-of-3 |
+| **Setpoint** | **25 % of rated** — roughly 11 s into a coastdown | **< 90 % of rated** — roughly 1 s in |
+| **Block** | Below **5 %** power | Below **P-7** (10 % power); above **P-8** (~39–48 %) one loop is enough |
+
+The single channel follows from the plant being single-loop and from every other protection function here being single-channel too. It is also what makes the teaching case work: a **stuck-high flow transmitter can mask a real loss of flow**, which 2-of-3 coincidence is specifically designed to prevent. The setpoint is the more consequential difference: at 25 % the automatic trip arrives *after* the core exit has already reached DNB onset, so the trained response to a loss of forced flow here is an **immediate manual trip** rather than waiting for the RPS — see `04` PWR-N13 and `06` PWR-E02.
 
 ---
 

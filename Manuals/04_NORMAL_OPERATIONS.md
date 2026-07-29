@@ -431,7 +431,8 @@ Single representative RCP. Start/stop maps approximately to clearing or injectin
 
 | Step | Action | Acceptance |
 |------|--------|------------|
-| 1 | Confirm automatic reactor trip on low flow | Scrammed |
+| 1 | **Trip the reactor manually** — do not wait for the low-flow trip | Scrammed |
+| 1a | If not tripped manually, confirm the automatic low-flow trip (RCS flow < 25 %) | Scrammed |
 | 2 | Remove turbine load if not already disconnected | 0 MWe |
 | 3 | Establish decay heat removal (natural circulation / AFW as needed) | Core safe |
 

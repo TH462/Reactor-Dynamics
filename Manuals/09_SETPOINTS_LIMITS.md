@@ -54,7 +54,7 @@
 | SG level | low | **17 %** | Lo-lo; AFW auto-starts just above (20 %) |
 | SG level (P-14) | high | **90 %** | High-high; reactor trip via P-9, condition **≥50 % power** |
 | **Turbine trip (P-9)** | turbine tripped | — | **Reactor trip on turbine trip**, condition **≥50 % power** (P-9). Above P-9 a turbine trip scrams the reactor *immediately* — it is not a ride-out. Below P-9 there is no reactor trip and the steam dump carries the transient. A **planned offline** (generator OFF / `disconnect_grid`) is **not** a turbine trip and never arms this — see `03` §12.1 |
-| Primary flow (true flow exception) | low | **0.25** normalized | Low-flow trip |
+| RCS loop flow | low | **25 % of rated** | Low-flow trip; reads the `rcs_flow` elbow-tap channel. Blockable below **5 % power** (this plant's P-7 analog), auto-reinstates above. Real Westinghouse plants trip at **< 90 % of rated** on 2-of-3 channels per loop with P-7 at 10 % — see `12` §10.7 for the departure and why |
 | Source range | high | **1e5 cps** | When SR energized |
 | Intermediate range | high | **1.67e-3 A** | ~20 % class over-range; blockable above P-10 |
 | Primary pressure (SI trip, PI-3) | low | **1798 psi (12.4 MPa)** | Reactor trip on safety injection; blockable below P-11 (1973 psi (13.6 MPa)), auto-reinstates |

@@ -417,6 +417,10 @@
       safety_relief_active: s.safety_open || s.safety_flow > 0,
       rcp_cavitating: !!s.rcp_cavitating,
       condensate_pump_running: s.condensate_pump_running !== false,
+      // Main feedwater isolation valve position (#247) — the indication the feed
+      // channel stands down on. Latched by P-4/P-14/SI isolation and cleared by an
+      // operator restore; see the `feedwater_isolated` latch in applyCommand.
+      mfw_isolated: !!s.feedwater_isolated,
       // Reactor/turbine load imbalance — the SG filling/draining annunciator (#211).
       // Already computed HR1-correctly in load_mode.js from INDICATED power vs the
       // load target, > 4 % of rated. It was reaching true_state and getControlState
@@ -1771,11 +1775,11 @@
   // instrument values against the trip table and scrams; used only to demonstrate
   // that the physics reaches trip-worthy conditions.
   function rpsWouldTrip(eng) {
-    var ins = eng.getInstruments(), ts = eng.getTrueState();
+    var ins = eng.getInstruments();
     var trips = eng.getProtectionConfig().trips, reasons = [];
     for (var i = 0; i < trips.length; i++) {
       var t = trips[i];
-      var v = t.instrument === '__true_flow__' ? ts.pump_flow_pct / 100 : ins[t.instrument];
+      var v = ins[t.instrument];   // every trip is instrument-backed since #247
       if (v == null) continue;
       if (t.direction === 'high' && v >= t.setpoint) reasons.push(t.instrument + ' high');
       if (t.direction === 'low' && v <= t.setpoint) reasons.push(t.instrument + ' low');
@@ -2040,10 +2044,19 @@
       return test('Transient — RCP trip / loss of flow', function (ck) {
         var h = new Harness('hot_full_power');
         h.run(10);
+        // Read the setpoint from the trip table rather than restating it — this test
+        // used to hardcode 0.25 and would have gone on passing against a stale number.
+        var ft = h.eng.getProtectionConfig().trips.filter(function (t) { return t.id === 'lo_flow'; })[0];
+        var sp = ft ? ft.setpoint : 25;
         h.cmd({ action: 'inject_failure', failure_id: 'rcp_trip' });
-        var t = h.runUntil(function (ts) { return ts.pump_flow_pct / 100 <= 0.25; }, 60);
-        ck('flow coasts down below low-flow trip', t >= 0 ? t.toFixed(1) + 's' : 'never', t >= 0, '< 0.25');
+        var t = h.runUntil(function (ts) { return ts.pump_flow_pct <= sp; }, 60);
+        ck('flow coasts down below the low-flow setpoint (' + sp + ' %)', t >= 0 ? t.toFixed(1) + 's' : 'never', t >= 0, 'reaches setpoint');
         ck('coastdown not instantaneous (τ≈8s)', t.toFixed(1), t > 4, '> 4s');
+        // …and the CHANNEL the trip actually reads follows it down (#247). Truth
+        // crossing the setpoint is not the trip firing — `rcs_flow` lags by 1 s, and
+        // before this instrument existed the trip read truth and could not lag at all.
+        var ti = h.runUntil(function (ts, ins) { return ins.rcs_flow <= sp; }, 30);
+        ck('the rcs_flow channel follows truth below the setpoint', ti >= 0 ? ti.toFixed(1) + 's' : 'never', ti >= 0, 'indication crosses too');
       });
     },
 

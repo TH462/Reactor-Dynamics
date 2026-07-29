@@ -98,9 +98,11 @@ var ALLOWED = {
   boron_sample_seq: 'conc channel re-baselines from the PWR lab sample — accepted coupling',
 
   // --- known leaks, allowed ONLY so this gate can go green on today's code -----
-  // Both were found BY this gate and are filed, not fixed. Delete the entry when
-  // the issue closes — that is what makes the gate notice the fix.
-  pump_flow_pct: 'KNOWN LEAK, filed as #228: the `__true_flow__` trip sentinel reads a PWR-only true_state field',
+  // Found BY this gate and filed, not fixed. Delete the entry when the issue closes —
+  // that is what makes the gate notice the fix. `pump_flow_pct` was deleted 2026-07-29:
+  // #247 replaced the `__true_flow__` sentinel with the `rcs_flow` instrument, so the
+  // kernel no longer names a PWR-only true_state field. That is half of #228; the
+  // reset_rps half stands.
   reset_rps: 'KNOWN LEAK, filed as #228: the kernel sends reset_rps, which only the PWR engine handles',
 };
 

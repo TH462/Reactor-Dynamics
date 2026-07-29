@@ -67,6 +67,13 @@
     // Circulating-water inlet temperature — the heat sink the condenser (and the RHR
     // exchanger) has to work against. Appended last, so PRNG order is preserved.
     cw_inlet_temp: 'cw_inlet_temp_c',
+    // RCS LOOP FLOW, % of rated — the elbow-tap flow channel that feeds the low-flow
+    // reactor trip (#247). Until 2026-07-29 that trip read `pump_flow_pct` out of true
+    // state through a `__true_flow__` sentinel, because this instrument did not exist;
+    // it was the plant's largest HR1 hole and made the trip unteachable. Appended last,
+    // so every instrument above still draws its noise first and the PRNG order of the
+    // existing set is unchanged. See pwr_config.js `rcs_flow` for the sourcing.
+    rcs_flow: 'pump_flow_pct',
   };
 
   function PWRInstruments(config, seed) {
@@ -237,12 +244,19 @@
   PWRInstruments.prototype._applyFailure = function (id, val, trueVal, spec, dt) {
     var f = this.failed[id];
     if (!f) return val;
+    // Sigma a `noisy` failure scales. Normally the instrument's own sigma — but an
+    // instrument shipped at noise 0 (the rule for every APPENDED instrument, since a
+    // baseline draw would shift the cross-step PRNG stream) would make `noisy` a silent
+    // no-op, because _gauss returns without drawing at sigma 0. `noise_failure` is the
+    // declared fallback for those. It draws only while a failure is ACTIVE, which no
+    // baseline run has, so the existing noise sequence is untouched (#247).
+    var fSigma = spec.noise > 0 ? spec.noise : (spec.noise_failure || 0);
     switch (f.mode) {
       case 'stuck': return f.value;                      // frozen at injection value
       case 'drift': f.offset += f.rate * dt; return trueVal + f.offset; // sim-time correct (HR6)
       case 'noisy': return spec.log
-        ? clip(Math.pow(10, this._gauss(this.lagged[id], spec.noise * f.scale)), spec.range[0], spec.range[1])
-        : clip(this._gauss(this.lagged[id], spec.noise * f.scale), spec.range[0], spec.range[1]);
+        ? clip(Math.pow(10, this._gauss(this.lagged[id], fSigma * f.scale)), spec.range[0], spec.range[1])
+        : clip(this._gauss(this.lagged[id], fSigma * f.scale), spec.range[0], spec.range[1]);
       case 'dead':  return spec.range[0];                // bottoms out
       default:      return val;
     }

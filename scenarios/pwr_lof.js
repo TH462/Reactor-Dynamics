@@ -7,9 +7,13 @@
  * (hot leg) climbs toward saturation. If nothing is done, the hot channel reaches
  * the boiling point: departure from nucleate boiling (DNB), core_void_fraction
  * rises, fuel→coolant heat transfer collapses and the fuel heats up — until the
- * low-flow trip scrams the reactor. That trip reads TRUE coolant flow directly (an
- * HR1-documented exception), because at coastdown speed a lagging instrument would
- * be too slow.
+ * low-flow trip scrams the reactor.
+ *
+ * That trip used to read TRUE coolant flow through a `__true_flow__` sentinel, and the
+ * beats below used to TEACH that as a virtue ("a lagging meter would arrive too late").
+ * It was not a virtue, it was an unbuilt instrument (#247): a trip that cannot be
+ * fooled by a failed transmitter is a trip no one can be trained on. Since 2026-07-29
+ * it reads the `rcs_flow` elbow-tap channel like every other trip on the plant.
  *
  * The interactive lesson is the reflex a loss of forced flow demands: trip FIRST.
  * A manual trip in the first few seconds collapses power before the coolant can
@@ -19,7 +23,7 @@
  *
  * Probed trajectory (seed 42, rcp_trip through the full M5 stack): flow coasts to
  * ~25 % over ~10 s; with no action thot pins at Tsat ~9 s in, core_void peaks 0.063,
- * fuel 693→786 °C, and the __true_flow__ low-flow trip scrams at ~11 s. A manual
+ * fuel 693→786 °C, and the low-flow trip scrams at ~11 s. A manual
  * scram inside ~6 s holds fuel at 693 °C with core_void 0. Beats trigger on that
  * real response: the "you waited" branch fires on core_void_fraction crossing 0.02
  * (a true_state author hook — the PWR has no void gauge), the recovery on the scram.
@@ -82,21 +86,21 @@
       { id: 'boiling',
         trigger: { type: 'delay', value: 0.5 },
         commentary: {
-          learning: 'You waited — and now watch the core outlet. Flow has fallen far enough that the hot channel has reached saturation and is beginning to boil: this is departure from nucleate boiling, DNB. The steam film chokes heat transfer out of the fuel, so the fuel temperature is climbing. The reactor MUST trip on low flow now — and its low-flow trip reads TRUE coolant flow directly, not a lagging meter, because at coastdown speed a laggy signal would arrive too late to matter.',
-          industry: 'Held. Core exit reached saturation — DNB onset, core_void rising, fuel→coolant transfer degrading, fuel heating. The low-flow trip (reads __true_flow__, an HR1 exception — no flow instrument in v1) must actuate now.',
+          learning: 'You waited — and now watch the core outlet. Flow has fallen far enough that the hot channel has reached saturation and is beginning to boil: this is departure from nucleate boiling, DNB. The steam film chokes heat transfer out of the fuel, so the fuel temperature is climbing. The reactor MUST trip on low flow now — and note what it is waiting on: the RCS flow indication, a transmitter like any other, with its own lag. The trip does not see the coolant. It sees a gauge.',
+          industry: 'Held. Core exit reached saturation — DNB onset, core_void rising, fuel→coolant transfer degrading, fuel heating. The low-flow trip (reads the `rcs_flow` elbow-tap channel) must actuate now.',
         },
         advance: 'wait_for_trigger' },
 
       { id: 'auto_tripped',
         trigger: { type: 'scram' },
         commentary: {
-          learning: 'There — the low-flow trip fired and scrammed the reactor. Power collapsed, the boiling cleared, the fuel is already cooling. The core was never damaged: that fast, true-flow trip is exactly what stands between a lost pump and a boiling core. But notice how close it ran — the hot channel boiled for a few seconds first. A trained operator trips on a pump loss without waiting for the automatics. One honest note: this simulation does not model natural circulation, so with the pumps off the flow reads zero — in a real plant, buoyancy would keep a slow flow moving to carry the decay heat away.',
-          industry: 'RPS low-flow trip actuated; power → decay heat, core_void cleared, fuel cooling. Core undamaged — the fast true-flow trip is the DNB protection. Trained response is still an immediate manual trip. Model honesty (M6 §13): natural circulation not modeled (flow reads 0 with pumps off); the DNB heatup and trip are faithful.',
+          learning: 'There — the low-flow trip fired and scrammed the reactor. Power collapsed, the boiling cleared, the fuel is already cooling. The core was never damaged. But notice how close it ran: the hot channel boiled for a few seconds first, and everything that saved you was downstream of one flow transmitter. A trained operator trips on a pump loss without waiting for the automatics. One honest note: this simulation does not model natural circulation, so with the pumps off the flow reads zero — in a real plant, buoyancy would keep a slow flow moving to carry the decay heat away.',
+          industry: 'RPS low-flow trip actuated; power → decay heat, core_void cleared, fuel cooling. Core undamaged. Trained response is still an immediate manual trip — the automatic trip is single-channel and arrives after DNB onset. Model honesty (M6 §13): natural circulation not modeled (flow reads 0 with pumps off); the DNB heatup and trip are faithful.',
         },
         level_complete: {
           title: 'Loss of Flow — Caught by the Low-Flow Trip',
-          outcome_learning: 'The hot channel boiled briefly, then the fast low-flow trip scrammed the reactor and saved the core. Now you have seen why that trip has to be quick — and reads true flow.',
-          outcome_industry: 'DNB onset was terminated by the __true_flow__ low-flow trip before fuel damage. Safe, but late — the trained response is an immediate manual trip on loss of forced flow.',
+          outcome_learning: 'The hot channel boiled briefly, then the low-flow trip scrammed the reactor and saved the core. Now you have seen how little margin that trip is working with — and that it is reading a gauge, not the coolant.',
+          outcome_industry: 'DNB onset was terminated by the low-flow trip before fuel damage. Safe, but late — the trained response is an immediate manual trip on loss of forced flow.',
           actions: ['continue', 'retry'],
         },
         advance: 'end' },
