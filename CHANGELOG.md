@@ -13,6 +13,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Removed
+- **The V1 PWR board is gone (#246).** `ui/diagram/pwr_synoptic.js` (~100 KB) and
+  `pwr_synoptic.css` were superseded by the V2 board in `ui/diagram/board/` months ago, but
+  they were still parsed on every control-room load and never mounted. Deleted, along with
+  their dev harness `ui/test_panel/synoptic_check.html`, which could only exercise the
+  deleted module. The three `RD.PwrBoard || RD.PwrSynoptic` fallbacks in `ui/app.js`
+  collapse to `RD.PwrBoard` — the only PWR display there has been for some time.
+  Two pieces did **not** go with it. The four `.app.pwr-synoptic` rules at the top of the
+  V1 stylesheet were shell hooks keyed on the `.app` class, not V1 board styling, and the
+  V2 board needs them (`.view-area { padding: 0 }` in particular) — they moved into
+  `ui/shell.css`; the class name is unchanged. And `run_campaign` validated every PWR beat
+  highlight against the V1 module's `SYN_CONTROL_MAP`, which was already the wrong
+  authority: `app.js` resolves highlights through `RD.PwrBoard.revealControl`. It now
+  checks the board driver's `CONTROL_LABEL_MAP` (51 labels to V1's 34, a strict superset,
+  so nothing that used to resolve can now be hidden). Gates unchanged at baseline:
+  `run_campaign` 51/51 (3024 checks), `verify_manual_follow` PASS (84), `verify_e2e_ui`
+  PASS (16 screenshots), `run_inspect` 7/7, `board_check` 106/106.
+
 ### Changed
 - **The board now speaks the same units as the manual.** The dual-unit convention reached the
   manual last release but stopped at the board, leaving three conventions live at once: the

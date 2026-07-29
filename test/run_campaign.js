@@ -16,6 +16,7 @@
 'use strict';
 var path = require('path');
 function load(p) { require(path.join(__dirname, '..', p)); }
+global.window = global;                       // board scripts attach to window.RD
 [
   'engines/load_mode.js',
   'engines/pwr/pwr_config.js', 'layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js',
@@ -41,7 +42,11 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'scenarios/bwr_tour.js', 'scenarios/bwr_recirc.js', 'scenarios/bwr_isolation.js',
   'scenarios/bwr_fukushima.js', 'scenarios/bwr_qualify.js',
   'ui/manual_procedures.js', 'ui/campaign_data.js',
-  'ui/diagram/pwr_synoptic.js',   // safe headless: top level only defines functions/data
+  // The board DRIVER only (not the renderer) — it owns CONTROL_LABEL_MAP, the
+  // vocabulary the highlight check below validates against. Safe headless: top
+  // level only defines functions/data. Its data + inspect deps load first.
+  'ui/diagram/board/pwr_board_data.js', 'ui/diagram/board/pwr_board_inspect.js',
+  'ui/manual_md.js', 'ui/diagram/board/pwr_board_wiring.js',
 ].forEach(load);
 var RD = globalThis.RD;
 
@@ -209,10 +214,18 @@ test('campaign scenarios — beat vocabulary, registers, endpoints', function (c
 });
 
 // Every highlight a campaign beat names must resolve to something that can
-// actually glow: PWR control labels against the synoptic's SYN_CONTROL_MAP
-// (exported as highlightLabels), gauge ids against the per-plant gauge strip
+// actually glow: PWR control labels against the board driver's CONTROL_LABEL_MAP
+// (exported as controlLabels()), gauge ids against the per-plant gauge strip
 // (mirrors app.js PROFILES). Playtest finding: four PWR beats named labels
 // the map did not know, and pwr_sg_flood pointed at a nonexistent gauge id.
+//
+// The pool was the retired V1 synoptic's SYN_CONTROL_MAP until #246. That was the
+// wrong authority even before the file was deleted: app.js resolves a highlight
+// through RD.PwrBoard.revealControl, so the board's map is what decides whether a
+// label glows. The board map is a strict SUPERSET of the V1 one (51 labels vs 34 —
+// the 17 extras are indication labels the checklist hover uses), so the swap
+// cannot hide a beat that used to resolve, and every extra it now accepts is a
+// label that does in fact glow.
 var GAUGE_IDS = {
   pwr:  ['power', 'press', 'tavg', 'pzr', 'sg', 'subcool'],
   rbmk: ['power', 'steam_p', 'drum', 'flow', 'void', 'orm'],
@@ -233,10 +246,10 @@ test('campaign highlights — every named control/gauge resolves on the board', 
     (sc.beats || []).forEach(function (b) {
       if (!b.highlight) return;
       if (b.highlight.control_label) {
-        var pool = pid === 'pwr' ? RD.PwrSynoptic.highlightLabels : (PD_LABELS[pid] || []);
+        var pool = pid === 'pwr' ? RD.PwrBoardDriver.controlLabels() : (PD_LABELS[pid] || []);
         var known = pool.indexOf(b.highlight.control_label) !== -1;
         ck(sc.id + '.' + b.id + ' control highlight resolves (' + b.highlight.control_label + ')',
-          b.highlight.control_label, known, pid === 'pwr' ? 'a SYN_CONTROL_MAP label' : 'a PD view-bar label');
+          b.highlight.control_label, known, pid === 'pwr' ? 'a CONTROL_LABEL_MAP label' : 'a PD view-bar label');
       }
       if (b.highlight.instrument_id) {
         var ids = GAUGE_IDS[pid] || [];

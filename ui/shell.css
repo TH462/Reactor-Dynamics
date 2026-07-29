@@ -149,6 +149,17 @@ body {
 .app.pwr-synoptic > .plant-area { grid-area: diagram; min-width: 0; max-width: none; }
 .app.pwr-synoptic > .right-col  { grid-area: simcol; min-width: 0; max-width: none; }
 
+/* PWR-only: hide the legacy 4-view switcher / status bar / control row, and let the
+   board own the whole view area. app.js empties those three containers on the PWR
+   path, but an empty container still takes its padding/border — so they are hidden,
+   not merely cleared. These four rules moved here from the retired V1 stylesheet
+   (ui/diagram/pwr_synoptic.css, #246): they were always shell hooks keyed on the
+   .app class, not V1 board styling, and the V2 board needs them. RBMK/BWR untouched. */
+.app.pwr-synoptic .view-switcher,
+.app.pwr-synoptic .status-bar,
+.app.pwr-synoptic .pd-controlbar { display: none; }
+.app.pwr-synoptic .view-area { padding: 0; overflow: hidden; }
+
 /* The V2 board carries its own vital-parameter tile strip (six Indicator Panel
    components across the top), which is what the shell's .gauge-strip used to provide.
    Two copies of the same six readings is worse than one, and the shell copy is the one

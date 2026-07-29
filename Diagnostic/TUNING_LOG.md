@@ -113,6 +113,49 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-29h — #246: the V1 board deleted, and the two things buried inside it  ✅
+
+**The deletion was the easy half.** `ui/diagram/pwr_synoptic.js` (~100 KB) + `.css` were the
+V1 PWR board, superseded by `ui/diagram/board/` and shipped-but-never-mounted ever since. Gone,
+with `ui/test_panel/synoptic_check.html` (its 55-check DOM harness — it mounts `RD.PwrSynoptic`,
+so it could only ever test the deleted module) and the three `RD.PwrBoard || RD.PwrSynoptic`
+fallbacks in `app.js`. Row in `Blueprint/RETIRED.md`.
+
+**What made it not a `git rm`** — two live dependencies that a grep for `PwrSynoptic` does
+*not* find, both worth recording because the shape recurs:
+
+1. **The stylesheet was not all V1 styling.** Its first four rules are `.app.pwr-synoptic`
+   shell hooks — hide the legacy view switcher / status bar / control row, and
+   `.view-area { padding: 0; overflow: hidden }`. The class is still toggled by `app.js` and
+   the **V2** board is what sits in that view area, so deleting the file wholesale would have
+   put padding back under the board and un-hidden three containers `app.js` only *empties*.
+   Moved into `ui/shell.css` beside the grid rules that already own that class. The tell was
+   the file's own header comment saying the sizing rules had already been migrated out —
+   i.e. someone had done this once and stopped halfway.
+2. **`run_campaign` was validating PWR beat highlights against V1's `SYN_CONTROL_MAP`.** That
+   was the wrong authority *before* the deletion, not because of it: `app.js` resolves a
+   highlight through `RD.PwrBoard.revealControl`, so what actually decides whether a label
+   glows is the board driver's `CONTROL_LABEL_MAP`. The gate was checking one map and the
+   product used another; they only agreed by hand-maintained parity, which two board comments
+   asked future editors to keep. Swapped to `RD.PwrBoardDriver.controlLabels()`, and the
+   parity instructions deleted — the board map is now simply the vocabulary.
+
+   **Diffed before swapping, not after** (HR10 — a green 51/51 either way proves nothing about
+   which pool is right): board 51 labels, V1 34, and V1 ⊂ board exactly. So the swap cannot
+   hide a beat that used to resolve, and the 17 extras it newly accepts are the indication
+   labels checklist hover already glows. `run_campaign` needed `global.window = global` to
+   load the driver headless (board scripts attach to `window.RD`); no engine or layer file
+   branches on `typeof window`, so that is inert for everything else it loads.
+
+**A stale number found on the way.** CLAUDE.md recorded `board_check` at **95/95**. Measured
+**106/106** — and, importantly, 106 on clean `develop` 5bf366f too, so it was already stale
+when written rather than moved by this change. Corrected, with a note to re-measure rather
+than trust the line.
+
+**Gates** (the four the issue named, plus the campaign gate): `run_campaign` **51/51 (3024)**,
+`verify_manual_follow` **PASS (84)**, `verify_e2e_ui` **PASS (16 screenshots)**, `run_inspect`
+**7/7 (35)**, `board_check` **106/106**, `run_all` **28 runners at baseline**.
+
 ### 2026-07-29g — HR1's guard was laundering debt; SOP §5  ✅
 
 **The guard I wrote that morning was wrong in a way worth recording.** `run_hardrules`'s HR1

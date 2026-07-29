@@ -997,7 +997,7 @@
     }
     // Scenario prop: the maintenance tag over the AFW valve indication. Hidden
     // once its interaction is granted (the tag comes off the valve).
-    var pwrDisp = RD.PwrBoard || RD.PwrSynoptic;
+    var pwrDisp = RD.PwrBoard;
     if (pwrDisp && pwrDisp.setTag) {
       var tagId = ip && ip.tag;
       var chat = s.instructor && s.instructor.chat;
@@ -1412,8 +1412,7 @@
     if (!hl) return;
     var el = null;
     if (hl.control_label) {
-      var pwrDisp2 = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard
-                   : (RD.PwrSynoptic && RD.PwrSynoptic.isMounted() ? RD.PwrSynoptic : null);
+      var pwrDisp2 = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
       el = ui.plant === 'pwr'
         ? (pwrDisp2 ? pwrDisp2.revealControl(hl.control_label) : null)
         : findPdControl(hl.control_label, hl.view);
@@ -3748,8 +3747,8 @@
   function CG_ECCS() { return { l: 'ECCS', emergency: 1, hint: 'Emergency Core Cooling — high-pressure injection. AUTO actuates on low pressure.', seg: [{ l: 'Auto', act: 'eccs-auto', on: 1, run: 1 }, { l: 'On', act: 'eccs-on' }, { l: 'Off', act: 'eccs-off' }] }; }
   function CG_MSIV() { return { l: 'MSIV', hint: 'Main Steam Isolation Valve' + (ui.plant === 'bwr' ? ' — isolates main steam (closes the turbine path).' : ' — (steam-line isolation; modeled on the BWR; placeholder here).'), seg: [{ l: 'Open', act: 'msiv-open', on: 1 }, { l: 'Close', act: 'msiv-close', warn: 1 }] }; }
 
-  // (legacy PWR partial-loop diagrams retired — the synoptic in
-  //  ui/diagram/pwr_synoptic.js is the sole PWR plant display)
+  // (legacy PWR partial-loop diagrams retired — the V2 board in
+  //  ui/diagram/board/ is the sole PWR plant display)
 
 
   var PD = {
@@ -3948,7 +3947,7 @@
   function buildViews() {
     var area = $('viewArea'); pdRows = {};
     // Diagram view placeholder (RBMK/BWR keep the legacy plant display until
-    // their own synoptic specs exist; the PWR mounts ui/diagram/pwr_synoptic.js)
+    // their own board specs exist; the PWR mounts ui/diagram/board/pwr_board.js)
     var diagHtml =
       '<div class="view-placeholder"><span>Plant diagram — SVG in development</span><span class="placeholder-sub">Energy flow: Reactor → ' + (ui.plant === 'bwr' ? 'Vessel → Turbine' : 'Drums → Turbine') + '</span></div>';
     var html = '';
@@ -4064,7 +4063,6 @@
     positionBottomRow(syn);
     if (!syn) {
       if (RD.PwrBoard && RD.PwrBoard.isMounted()) RD.PwrBoard.unmount();
-      if (RD.PwrSynoptic && RD.PwrSynoptic.isMounted()) RD.PwrSynoptic.unmount();
     }
     if (syn) {
       $('statusBar').innerHTML = ''; $('viewTabs').innerHTML = ''; $('pdCtlRow').innerHTML = '';
