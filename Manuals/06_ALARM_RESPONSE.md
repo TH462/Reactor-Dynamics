@@ -21,6 +21,26 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 | **Caution** | Off-normal; may not need immediate action | Monitor; correct if trend worsens |
 | **Status** | System state change (e.g. HPI running) | Verify expected vs unexpected |
 
+### Mode- and lineup-dependent classification
+
+Some conditions are a **casualty at power and the planned lineup when shut down**. A cold plant *is* cold, *is* depressurized, and its reactor coolant pumps *are* stopped — annunciating that as a depressurization with tripped pumps would bury a normal Mode 5 board under critical alarms and train the crew to ignore them.
+
+The board therefore **reclassifies** these alarms rather than removing them. The annunciator still comes in, still requires acknowledgment, and still shows the real reading; only its **priority drops to Status** and its text changes to say why. A reclassified tile reads, e.g., `status (normally critical)`.
+
+| Annunciator | Reclassified to Status when | Reads |
+|-------------|------------------------------|-------|
+| PZR PRESS LO (**A05**) | Mode 4 or 5 | *Pressurizer Pressure Low — expected, plant depressurized* |
+| PZR PRESS LO LO (**A06**) | Mode 4 or 5 | *Pressurizer Pressure Very Low — expected, plant depressurized* |
+| LO TAVG / P-12 (**A29**) | Mode 4 or 5 | *Coolant Temperature Low — expected, plant is cold* |
+| TURB TRIP (**A22**) | Mode 4 or 5 | *Turbine Secured — no steam demand* |
+| RCP TRIP (**A19**) | pumps stopped **by the RCP handswitch** | *Reactor Coolant Pumps Secured* |
+
+**What this does NOT do — read this before you rely on it.**
+
+- **Mode 3, Hot Standby is excluded.** Post-trip and hot-standby operation keeps every alarm above at full severity. A depressurization or a loss of the pumps in Mode 3 reads exactly as it always did.
+- **RCP TRIP is keyed to the handswitch, not to the mode.** Securing the pumps at power reads *Secured*; a pump lost to a trip, a coastdown or a blackout reads **RCP TRIP, critical** in *any* mode, including Mode 5.
+- **A real leak during a cooldown will read as Status on the pressure annunciators.** The alarms that distinguish it — **LO SUBCOOL / SUBCOOL LOST (A10/A11)** and **PZR LVL LO / LO LO (A13/A14)** — are never reclassified. In Modes 4 and 5, treat *those* as your inventory alarms; pressure alone will not tell you.
+
 ### Global immediate actions (any alarm flood)
 
 1. **Stop** what is making it worse (stop rod withdrawal, stop load step).  
@@ -71,6 +91,7 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 | PWR-A26 | COND VAC TRIP | warning | B |
 | PWR-A27 | RCP CAVITATION | warning | B |
 | PWR-A28 | LOAD IMBAL | caution | B |
+| PWR-A29 | LO TAVG (P-12) | warning | A |
 
 ---
 
@@ -366,6 +387,18 @@ Provide operator response for each modeled PWR annunciator. Alarms read **instru
 | **Logic** | `rcp_cavitating` true — suction-node subcooling `Tsat(P_suction) − Tcold` below ~8 °C on a running pump |
 | **Means** | The RCS is approaching saturation at the pump suction — the pumps are drawing two-phase fluid, losing head and flow. A voiding / depressurizing primary. **Not** an instrument fault — believe it. |
 | **Actions** | 1) Cross-check **LO SUBCOOL / SUBCOOL LOST** and pressurizer pressure — treat as loss of subcooling. 2) Suspect a LOCA / stuck-open relief path; do **not** secure injection for level alone. 3) Restore subcooling (inject, arrest depressurization). 4) Per site EOPs, trip the RCPs if subcooling cannot be restored (avoid running cavitating pumps). → **PWR-E07 / X01** |
+
+---
+
+## PWR-A29 — Low Coolant Temperature (LO TAVG / P-12)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Tavg ≤ **289 °C** — the **P-12** line, ~8 °C below the no-load Tavg program |
+| **Means** | The primary is below the hot operating band. At power or at hot standby this is an **overcooling** transient: excess steam demand, a stuck-open dump or relief path, or an overfed steam generator. Moderator feedback adds positive reactivity as the primary cools, so an unattended overcool raises power. |
+| **Deliberately not a trip** | A PWR does not scram on low Tavg. The real cold-side protections are this permissive and low-temperature overpressure protection — neither is a reactor trip. |
+| **Actions** | 1) Find the steam path that is taking too much heat: steam dump position, PORV / SG safeties, turbine load against reactor power (**A28**). 2) Isolate or close it. 3) Watch power — Tavg falling with power *rising* is the overcool feeding itself. 4) Cross-check pressure and subcooling; a cooling primary shrinks and drops pressurizer level. |
+| **In Mode 4 or 5** | **Expected.** A cooldown is meant to take Tavg here, so the annunciator reclassifies to **Status** and reads *"expected, plant is cold"* (§2.0). |
 
 ---
 

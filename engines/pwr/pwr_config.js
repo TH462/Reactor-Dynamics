@@ -792,7 +792,14 @@
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },
-      status: ['rps_scrammed', 'rcp_running', 'hpi_active', 'station_blackout',
+      status: ['rps_scrammed', 'rcp_running',
+               // RCPs stopped by an operator lineup decision, not by a trip/
+               // coastdown/blackout; and the declared plant MODE (1–6). Both feed
+               // alarm condition processing (#240) — see the `reclassify` rules in
+               // pwr_control.js. Status passthroughs, so neither draws a PRNG
+               // number and the instrument noise stream is unchanged.
+               'rcp_secured', 'plant_mode',
+               'hpi_active', 'station_blackout',
                'steam_demand_low', 'rod_at_limit', 'sr_energized', 'msiv_open', 'sg_safety_open',
                // P-9 permissive (≥50 % power) that gates the high-high SG (P-14) reactor
                // trip — read as a condition by the p14_reactor_trip trip.

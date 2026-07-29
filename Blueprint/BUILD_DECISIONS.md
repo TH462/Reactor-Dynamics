@@ -37,6 +37,38 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-28r — #240 alarm condition processing: a cold plant is not a casualty
+
+`run_m4` **19/19 86 → 23/23 117**; everything else at baseline. Owner ruling 2026-07-28
+("Go with #1 Mode-dependent severity/suppression and number 2"). The decisions:
+
+- **The premise was sourced before it was built, and it held.** "Real plants use
+  mode-dependent alarm suppression" was recall. NRC **NUREG-0700 Rev 4** (ML26022A094)
+  **§4.1.2-7** states the rule; **Table 4.1**'s worked example is *our* case verbatim (a
+  low-pressure signal expected in cold shutdown); **Table 4.1 Status-Alarm Separation** is
+  option 2 by name; **§4.1.2-8** (system configuration processing) is why the RCP rule keys
+  on the handswitch. Two design constraints came from the same document rather than taste:
+  **reclassify, never filter** ("suppressed, where users can retrieve them, rather than
+  filtered"), and **§4.3.6-3** — say that a mode-defined change took effect, hence the
+  reworded labels and `status (normally critical)`.
+- **Reclassification is presentation-only, by construction.** `reclassify` rules are
+  resolved in `getAlarms()`; `_evalAlarms` never sees them. A rule therefore *cannot*
+  suppress, delay or invent an annunciation — it can only soften one that already fired,
+  and an unresolvable instrument falls through to the authored priority. That is what keeps
+  HR1 intact: the alarm still reads its own instrument and still enters the lifecycle.
+- **The rule shape is data, not a mode API.** First draft used `modes: [4,5]` and read
+  `ins.plant_mode` in the kernel — an HR3 violation that `run_hr3` (#227) failed on
+  immediately. The shipped form carries `instrument` + `in` from the plant module, so the
+  general kernel names no plant field. Worth recording: **that gate paid for itself the
+  first time a new feature touched the kernel.**
+- **Mode 3 is excluded on purpose, and that is the load-bearing decision.** Hot Standby is
+  where a plant sits post-trip and where a genuine depressurization must read at full
+  severity. It is also self-protecting — primary Tavg pins near 300 °C for every modelled
+  break, so a LOCA cannot demote its own alarms by dragging the plant "cold". The residual
+  (a real leak *during* a Mode 4/5 cooldown reads Status on the pressure annunciators) is
+  written into the manual as an instruction, with the never-reclassified inventory alarms
+  named as the ones to trust there.
+
 ## 2026-07-28j — #241 feature flags: the build ships everything, the CHANNEL decides what it offers
 
 `run_all` **24 runners at baseline** (+`run_flags` 16/16·290, +`verify_flags_ui` 48/48).

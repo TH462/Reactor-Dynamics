@@ -387,6 +387,17 @@
       power_rate: s._power_rate,
       rps_scrammed: s.scrammed,
       rcp_running: s.pump_running,
+      // Pumps stopped by an operator lineup decision rather than lost. Reads the
+      // same handswitch position a real board does — it is the *reason* the
+      // annunciator has, and the RCP alarm reclassifies on it (#240).
+      rcp_secured: !s.pump_running && !!s.rcp_secured,
+      // Derived plant MODE (1–6). A classification, not a transducer: the operator
+      // declares the mode from power, reactivity and Tavg, all of which ARE
+      // indicated. Exposed as a status passthrough so the control layer can read it
+      // without reaching into true state, and it is used ONLY to reclassify an
+      // alarm that has already annunciated from its own instrument — never to
+      // decide whether an alarm exists, so HR1 is untouched (#240).
+      plant_mode: plantModeOf(s.power_pct, (s._rho || 0) * 1e5, s.tavg_c).mode,
       hpi_active: s.hpi_active,
       station_blackout: s.station_blackout,
       steam_demand_low: s.turbine_tripped || s.turbine_demand_frac < 0.05,
@@ -873,7 +884,15 @@
         // Reactor coolant pumps on/off. Secured in cold shutdown (RHR provides
         // forced circulation) and started during heatup to add pump heat and
         // couple the SG. Blocked while the station is blacked out (no AC power).
-        if (!s.station_blackout) s.pump_running = !!cmd.running;
+        //
+        // rcp_secured records WHY the pumps are stopped: by this command (a lineup
+        // decision) rather than by a trip, a coastdown or a blackout. The board
+        // annunciates the same `rcp_running is_false` condition either way, but a
+        // planned securing is a status, not a casualty (#240) — see the
+        // reclassify rule on the `rcp_trip` alarm. Set only when the command
+        // actually took effect, so a securing refused by the blackout gate does
+        // not relabel a genuine loss of the pumps.
+        if (!s.station_blackout) { s.pump_running = !!cmd.running; s.rcp_secured = !cmd.running; }
         break;
       case 'set_condensate_pump':
         // Condensate pump on/off. It feeds the feed-pump suction, so securing it
@@ -999,10 +1018,15 @@
     }
     if (def.type === 'physics_parameter') {
       switch (def.effect) {
-        case 'coast_down_pumps': s.pump_running = false; break;
-        case 'stop_pump': s.pump_running = false; break;
+        // Every route by which the pumps stop WITHOUT an operator securing them
+        // clears rcp_secured, so the RCP annunciator reads as the casualty it is
+        // (#240). A pump lost to a fault while the plant sat secured must go back
+        // to reading RCP TRIP, hence the clear on all three, not just the running
+        // case.
+        case 'coast_down_pumps': s.pump_running = false; s.rcp_secured = false; break;
+        case 'stop_pump': s.pump_running = false; s.rcp_secured = false; break;
         case 'full_blackout':
-          s.station_blackout = true; s.pump_running = false;
+          s.station_blackout = true; s.pump_running = false; s.rcp_secured = false;
           s.condenser_cooling_available = false; s.main_feedwater_available = false;
           break;
         case 'vacuum_decay': s.condenser_cooling_available = false; break;
@@ -1246,6 +1270,10 @@
       accumulator_valve_open: true,           // motor-operated discharge isolation valve (default aligned)
       _eccs_inj_inv: 0,                       // cold-injection throughput for the stepCoolant quench term
       flow_frac: 1.0, pump_flow_pct: 100, pump_running: true, station_blackout: false,
+      // Pumps stopped BY THE OPERATOR (lineup) rather than by a trip/coastdown/
+      // blackout — the RCP annunciator's status-vs-casualty discriminator (#240).
+      // False here because the base state runs them; the cold-shutdown IC sets it.
+      rcp_secured: false,
       // RCP cavitation (suction-node subcooling; pwr_primary.stepCavitation).
       suction_subcool_c: 0, rcp_cavitation_frac: 0, rcp_cavitating: false,
       // Nuclear instrumentation: SR energized only where the state says so (startup lineup).
@@ -1363,7 +1391,9 @@
       s._H1 = 0; s._H2 = 0; s.decay_heat_pct = 0;
       // RCPs secured; RHR forced circulation provides flow. flow_frac 0 decouples
       // the SG from the primary (heat path is RHR, not the steam generator).
-      s.pump_running = false; s.flow_frac = 0; s.pump_flow_pct = 0;
+      // rcp_secured: this is the planned cold lineup, not a lost pump — the board
+      // must say SECURED, not TRIP (#240).
+      s.pump_running = false; s.flow_frac = 0; s.pump_flow_pct = 0; s.rcp_secured = true;
       // RHR aligned for shutdown cooling (the low pressure satisfies the interlock).
       s.rhr_valve_open = true; s.rhr_active = true; s.rhr_hx_fraction = 1.0; s.eccs_mode = 'RHR';
       // Secondary secured, cold and depressurized (indicated near atmospheric — the
@@ -1521,6 +1551,16 @@
     // Older saves have no isolation valve — default aligned (open) so behavior is
     // unchanged; the quench throughput recomputes on the first step.
     if (s.accumulator_valve_open == null) s.accumulator_valve_open = true;
+    // RCP secured-vs-tripped discriminator (#240). A save written before this
+    // flag existed carries no record of WHY the pumps are stopped, so infer the
+    // benign reading from the rest of the lineup: stopped pumps with RHR in
+    // service and no blackout is the cold-shutdown lineup. Anything else defaults
+    // to "not secured", i.e. the old behaviour (RCP TRIP) — the conservative way
+    // round, since mislabelling a real trip as a planned securing is the harmful
+    // error and mislabelling a securing as a trip is only the old annoyance.
+    if (s.rcp_secured == null) {
+      s.rcp_secured = (s.pump_running === false && !!s.rhr_active && !s.station_blackout);
+    }
     if (s._eccs_inj_inv == null) s._eccs_inj_inv = 0;
     // Feed pump (replaced direct feedwater-flow demand).
     if (s.feed_pump_speed_pct == null) s.feed_pump_speed_pct = (s.feedwater_demand_frac || 0) * 100;

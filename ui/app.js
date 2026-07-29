@@ -801,10 +801,16 @@
         if (cause) label += ' — ' + cause;
       }
       var stamp = alarmSeen[a.id] != null ? alarmClock(alarmSeen[a.id]) : '';
+      // Mode/lineup-reclassified tile (#240): the control layer dropped this
+      // alarm's urgency because the condition is the planned state of the plant.
+      // NUREG-0700 §4.3.6-3 warns that personnel can misread an alarm when they
+      // do not realise a mode-defined change took effect, so the tile says what
+      // it is NORMALLY classed as — the reworded label already says why.
+      var prioTxt = a.priority + (a.base_priority ? ' (normally ' + a.base_priority + ')' : '');
       return '<div class="alarm-tile ' + sev + unack + ' cat-' + cat + '" data-ack="' + a.id +
-        '" data-scanner-hint="' + esc(label) + ' — ' + a.priority + ' alarm (' + cat + '), annunciated ' + stamp + ' sim time. Reads the instrument; click to acknowledge.">' +
+        '" data-scanner-hint="' + esc(label) + ' — ' + prioTxt + ' alarm (' + cat + '), annunciated ' + stamp + ' sim time. Reads the instrument; click to acknowledge.">' +
         '<div class="bar"></div><div class="body"><div class="label">' + label +
-        '</div><div class="meta">' + cat + ' · ' + a.priority + ' · ' + a.state.replace('active_', '') +
+        '</div><div class="meta">' + cat + ' · ' + prioTxt + ' · ' + a.state.replace('active_', '') +
         (stamp ? ' · <span class="alarm-t mono">' + stamp + '</span>' : '') + '</div></div>' +
         chip + '<div class="glyph">' + glyph + '</div></div>';
     }).join('');

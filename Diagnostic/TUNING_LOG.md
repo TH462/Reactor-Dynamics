@@ -110,6 +110,93 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-28r — #240: mode- and lineup-dependent alarm classification  ✅
+
+**Owner ruling** *(2026-07-28, on #240: "Go with #1 Mode-dependent severity/suppression and
+number 2.")* — reclassify by mode, and reword RCP TRIP when the pumps were secured rather
+than lost. Option 3 (spawn pre-acknowledged) was **not** chosen; see the open item below.
+
+**The defect, reproduced before touching anything.** A fresh `cold_shutdown` spawn stood up
+**5 unacknowledged alarms, 2 critical** (`pzr_pressure_lolo`, `rcp_trip`). All five
+conditions are true; all five are what a planned Mode 5 lineup *is*.
+
+**Evidence pass first (the SOP from 2026-07-28q), and it paid.** The issue's premise —
+"real plants handle this with mode-dependent alarm suppression" — was recall, and it turns
+out to be sourceable almost verbatim:
+
+- **NUREG-0700 Rev 4** (ML26022A094) **§4.1.2-7 Mode-Dependence Processing**: *"If a
+  component's status or parameter value represents a fault in some plant modes and not
+  others, it should be alarmed only in the appropriate modes."*
+- **Table 4.1** (Nuisance / Plant Mode Relationship) and its class description gives *our
+  exact case* as the worked example: *"the signal for a low-pressure condition may be
+  eliminated during modes when this condition is expected, such as startup and cold
+  shutdown, but be maintained when it is not expected, such as during normal operations."*
+- **Table 4.1** (Nuisance / **Status-Alarm Separation**): *"separates status annunciators
+  from alarms that require operator action"* — that is option 2, named.
+- **§4.1.2-8 System Configuration Processing**: a reading *"may not be relevant when the
+  fluid system is taken out of service"* — the secured-RCP case, and the reason that rule
+  keys on the handswitch rather than on the mode.
+- Two guard-rails came from the same document rather than from taste. **Reclassify, never
+  filter**: *"only alarms that can be demonstrated to have no operational significance to
+  users should be filtered… Alarms that are considered redundant or lower priority should
+  be suppressed (where users can retrieve them) rather than filtered."* And **§4.3.6-3**,
+  which warns personnel may misread an alarm if they do not realise a mode-defined change
+  took effect — hence every reclassified label says *why*, and the tile reads
+  `status (normally critical)`.
+- Fetch: nrc.gov 403s non-browser requests; `web.archive.org/web/2023id_/<url>` + curl with
+  a browser UA worked, then pypdf into the scratchpad (no poppler on this box).
+
+**Built.** `reclassify` — an ordered rule list on an alarm spec, resolved in
+`control_kernel.getAlarms()`. A rule matches on `instrument` + `in` (a reading among listed
+values) and/or `condition` (a boolean status instrument), and supplies a replacement
+priority and labels. It can only ever *soften*: `_evalAlarms` never sees these rules, so a
+rule cannot suppress, delay or invent an annunciation, and an unresolvable instrument falls
+through to the authored priority. New status instruments `plant_mode` and `rcp_secured`
+(passthroughs — no PRNG draw, so the noise stream is byte-identical).
+
+**HR3 caught the first draft.** The rule shape was originally `modes: [4,5]`, which put
+`ins.plant_mode` — a PWR instrument name — in the general kernel. `run_hr3` failed
+(`:611 plant_mode [pwr]`). Fixed properly rather than allow-listed: the rule now carries the
+instrument name as data, so the kernel names no plant field. *That gate earned its keep.*
+
+**Scope decisions, stated because they are where this can go wrong:**
+- **Modes 4 AND 5** for the cold-side rules. A cooldown crosses both pressure setpoints long
+  before Tavg reaches 93 °C (RHR entry is 2.76 MPa), so a Mode-5-only rule would still bury
+  a planned cooldown.
+- **Mode 3 deliberately excluded.** It is where the plant sits post-trip and where a real
+  depressurization must read at full severity. It is also self-protecting: primary Tavg pins
+  near 300 °C for every modelled break, so a LOCA cannot demote its own alarms by dragging
+  the plant "cold".
+- **RCP keys on the handswitch, not the mode** — securing at power is planned; a pump lost
+  in Mode 5 is still a casualty. `rcp_secured` is set by `set_rcp{running:false}` only when
+  the command takes effect, and cleared by *every* fault route (`stop_pump`,
+  `coast_down_pumps`, `full_blackout`). Old saves infer it from the lineup and default to
+  "not secured" — the conservative direction.
+- **Residual, not hidden:** a real leak during a Mode 4/5 cooldown reads as Status on the
+  pressure annunciators. The alarms that distinguish it (`subcooling_low/lost`,
+  `pzr_level_low/lolo`) carry no rule and stay critical. Written into the manual as an
+  instruction, not buried in a comment.
+
+**Gates.** `run_m4` **19/19 86 → 23/23 117** (four new suites; `BASELINES` + CLAUDE.md
+updated together). Everything else at baseline; `run_all` green. Per HR10 the new suites were
+run against the **pre-#240 source** (`git stash` of the four files, tests kept): every
+substantive check in the two "must not move" suites passes on the old code — PZR PRESS LO
+stays warning, LO LO stays critical, TURB TRIP stays warning post-trip, lifecycle and ACK
+unchanged — and the only pre-#240 failures there are checks reading machinery that did not
+yet exist. Both "must change" suites fail wholesale on the old code. One suite also strips
+the rules at runtime and asserts the old two criticals return, so the gate is measuring the
+rules and not some property of the cold IC.
+
+**Found while there (fixed, small):** the manual's alarm index was missing two modelled
+annunciators — **LO TAVG (P-12)**, which now has a response procedure (**PWR-A29**), and
+**RCP CAVITATION**, which now has its setpoint row. Manuals repacked; revision history Rev 4.
+
+**Open, owner's call — recorded on #240.** The five tiles still spawn **unacknowledged**;
+only their severity and wording changed, since option 3 was not chosen. NUREG-0700's
+"status-alarm separation" arguably says a `status`-class tile should not demand operator
+action at all — but that is a question about the whole `status` tier (`hpi_active` has
+always required ACK), not about this fix, so it was not changed unilaterally.
+
 ### 2026-07-28q — #205 evidence pass: reactivity balance sourced against real plant data  ✅ (no code changed)
 
 **New SOP, owner directive** *(2026-07-28: "All sim plant designs should be based on real

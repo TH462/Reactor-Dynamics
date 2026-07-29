@@ -128,9 +128,10 @@
 | reactor_trip | REACTOR TRIP | rps_scrammed | true | — | critical |
 | high_flux | HI FLUX | power_range | high | **108 %** | critical |
 | high_tavg | HI TAVG | tavg | high | **312.2 °C** | warning |
+| low_tavg | LO TAVG (P-12) | tavg | low | **289 °C** | warning † |
 | pzr_pressure_high | PZR PRESS HI | primary_pressure | high | **15.86 MPa** | warning |
-| pzr_pressure_low | PZR PRESS LO | primary_pressure | low | **14.82 MPa** | warning |
-| pzr_pressure_lolo | PZR PRESS LO LO | primary_pressure | low | **12.41 MPa** | critical |
+| pzr_pressure_low | PZR PRESS LO | primary_pressure | low | **14.82 MPa** | warning † |
+| pzr_pressure_lolo | PZR PRESS LO LO | primary_pressure | low | **12.41 MPa** | critical † |
 | porv_open | PORV OPEN | porv_indicator | open | — | warning |
 | sur_high | SUR HI | startup_rate | high | **1 DPM** | caution |
 | sr_high_flux | SR HI FLUX | source_range | high | **5e4 cps** | caution |
@@ -149,16 +150,18 @@
 | sg_level_high | SG LVL HI | sg_level | high | **75 %** | caution |
 | sg_level_low | SG LVL LO | sg_level | low | **30 %** | warning |
 | sg_level_lolo | SG LVL LO LO | sg_level | low | **17 %** | critical |
-| rcp_trip | RCP TRIP | rcp_running | false | — | critical |
+| rcp_trip | RCP TRIP | rcp_running | false | — | critical ‡ |
 | hpi_active | HPI/LPI ACTIVE | hpi_active | true | — | status |
 | sbo | SBO | station_blackout | true | — | critical |
-| turbine_trip | TURB TRIP | steam_demand_low | true | — | warning |
+| turbine_trip | TURB TRIP | steam_demand_low | true | — | warning † |
 | load_imbalance | LOAD IMBAL | sg_imbalance_active | true | > **4 %** of rated (4 MWe) | caution |
 | msiv_closed | MSIV SHUT | msiv_open | false | — | warning |
 | sg_press_high | SG PRESS HI | steam_pressure | high | **9.0 MPa** | caution |
 | cond_vac_low | COND VAC LO | condenser_vacuum | low | **84.7 kPa** | caution |
 | cond_vac_trip | COND VAC TRIP | condenser_vacuum | low | **74.5 kPa** | warning |
 | rcp_cavitation | RCP CAVITATION | rcp_cavitating | true | — | warning |
+
+**Setpoints do not move with plant mode — priorities do.** Every setpoint above is fixed in every mode. What changes is **classification**: the annunciators marked **†** drop to **Status** in **Mode 4 or 5**, where the condition is the planned lineup rather than a casualty, and **‡** drops to Status whenever the pumps were stopped **by the handswitch** rather than lost. The alarm still comes in and still reads its instrument; only the priority and the wording change. Full table, the exclusions, and what it does *not* cover: **06 §2.0**.
 
 ---
 

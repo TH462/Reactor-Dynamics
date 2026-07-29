@@ -431,6 +431,150 @@ T.push(test('P-14 / P-9 — below 50% power, high-high SG trips turbine + isolat
   ck('NO reactor trip below P-9 (the cascade is power-gated)', String(s.layer.rps.scrammed), s.layer.rps.scrammed === false, 'not scrammed');
 }));
 
+// ---------------------------------------------------------------------------
+// #240 — alarm CONDITION PROCESSING. Owner ruling 2026-07-28: mode-dependent
+// severity (option 1) + reword the RCP annunciator when the pumps were secured
+// rather than tripped (option 2). Sourced to NUREG-0700 Rev 4 (ML26022A094)
+// §4.1.2-7 / Table 4.1 — see the comment block over ControlLayer._reclassify.
+//
+// The four suites below are deliberately split into the two claims that MUST
+// change and the two that MUST NOT. The must-nots pin what the reclassification
+// is forbidden to touch, which is the half of this feature that can go wrong
+// silently (HR10).
+//
+// Validated against the OLD behaviour, 2026-07-28 (`git stash` of the four source
+// files, this file kept): every SUBSTANTIVE check in the two must-not suites
+// passes pre-#240 — PZR PRESS LO stays warning, PZR PRESS LO LO stays critical,
+// TURB TRIP stays warning post-trip, the lifecycle and ACK behaviour are
+// unchanged, and stripping the rules reproduces the old two standing criticals.
+// The only pre-#240 failures there are the checks that read machinery which did
+// not yet exist (`plant_mode`, `base_priority`), which cannot be satisfied on
+// either side. Both must-change suites fail wholesale pre-#240, as they should.
+// ---------------------------------------------------------------------------
+
+T.push(test('#240 — a planned Mode 5 lineup annunciates as STATUS, not as a casualty', function (ck) {
+  var s = new Stack('cold_shutdown');
+  s.run(2);
+  ck('plant declares Mode 5', String(s.ins().plant_mode), s.ins().plant_mode === 5, '5');
+  var active = s.layer.getAlarms().filter(function (a) { return a.state !== 'clear'; });
+  var crit = active.filter(function (a) { return a.priority === 'critical'; });
+  // The headline defect: two CRITICAL alarms standing on a healthy, planned
+  // cold-shutdown spawn. Pre-#240 this observed 2 (pzr_pressure_lolo, rcp_trip).
+  ck('no critical alarm stands on a healthy cold plant', crit.map(function (a) { return a.id; }).join(',') || 'none',
+     crit.length === 0, 'none');
+  // …but every condition is still annunciated. Reclassify must never filter.
+  ck('all five conditions still annunciate', active.length, active.length === 5, '5');
+  ['low_tavg', 'pzr_pressure_low', 'pzr_pressure_lolo', 'rcp_trip', 'turbine_trip'].forEach(function (id) {
+    var a = s.alarm(id);
+    ck(id + ' reads status', a && a.priority, a && a.priority === 'status', 'status');
+    // §4.3.6-3: personnel must not be left to guess that a mode-defined change
+    // took effect — the tile says why, and reports what it was authored as.
+    ck(id + ' says it was reclassified', a && a.base_priority, a && !!a.base_priority, 'a base priority');
+  });
+  ck('the RCP tile reads SECURED, not TRIP', s.alarm('rcp_trip').tile_label,
+     /Secured/.test(s.alarm('rcp_trip').tile_label), 'Reactor Coolant Pumps Secured');
+}));
+
+T.push(test('#240 — the RCP annunciator discriminates SECURED from TRIPPED, in any mode', function (ck) {
+  // Option 2 is keyed on the handswitch, NOT on the plant mode: securing at power
+  // is planned, and a pump lost in Mode 5 is still a casualty. Both directions.
+  var s = new Stack('hot_full_power');
+  s.run(2);
+  s.cmd({ action: 'set_rcp', running: false });
+  s.run(2);
+  ck('secured by command at power → status', s.alarm('rcp_trip').priority, s.alarm('rcp_trip').priority === 'status', 'status');
+  ck('…and reads SECURED', s.alarm('rcp_trip').tile_label, /Secured/.test(s.alarm('rcp_trip').tile_label), 'Secured');
+  // A fault ON TOP of a securing must revert the tile — the pumps are now lost,
+  // whatever the operator intended a moment ago.
+  s.cmd({ action: 'inject_failure', failure_id: 'rcp_trip' });
+  s.run(2);
+  ck('a trip injected on top reverts to critical', s.alarm('rcp_trip').priority, s.alarm('rcp_trip').priority === 'critical', 'critical');
+  ck('…and reads TRIP again', s.alarm('rcp_trip').tile_label, /Trip/.test(s.alarm('rcp_trip').tile_label), 'Reactor Coolant Pump Trip');
+  // The mirror case: a genuine loss of the pumps in the COLD plant, where a
+  // mode-based rule would have wrongly called it planned.
+  var c = new Stack('cold_shutdown');
+  c.run(2);
+  c.cmd({ action: 'set_rcp', running: true });     // heatup: pumps started
+  c.run(2);
+  ck('RCP alarm clears once the pumps run', c.alarm('rcp_trip').state, c.alarm('rcp_trip').state === 'clear', 'clear');
+  c.cmd({ action: 'inject_failure', failure_id: 'rcp_trip' });
+  c.run(2);
+  ck('a pump lost in Mode 5 still reads CRITICAL', c.alarm('rcp_trip').priority,
+     c.alarm('rcp_trip').priority === 'critical', 'critical');
+}));
+
+T.push(test('#240 — Mode 3 keeps full severity (the mode floor must not reach Hot Standby)', function (ck) {
+  // Hot Standby is where a plant sits after a trip and where a real
+  // depressurization must read at full severity. This suite passes on the
+  // pre-#240 code too: it pins what must NOT move.
+  var s = new Stack('hot_zero_power');   // the Mode 3, Hot Standby IC
+  s.run(2);
+  ck('plant declares Mode 3', String(s.ins().plant_mode), s.ins().plant_mode === 3, '3');
+  // Drive the pressure indication below both alarm setpoints without touching
+  // the mode (a stuck transmitter — the alarm layer reads instruments, HR1).
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'primary_pressure', mode: 'stuck', value: 12.0 });
+  s.run(2);
+  ck('PZR PRESS LO stays a warning in Mode 3', s.alarm('pzr_pressure_low').priority,
+     s.alarm('pzr_pressure_low').priority === 'warning', 'warning');
+  ck('PZR PRESS LO LO stays CRITICAL in Mode 3', s.alarm('pzr_pressure_lolo').priority,
+     s.alarm('pzr_pressure_lolo').priority === 'critical', 'critical');
+  ck('neither carries a base_priority (no rule fired)', String(s.alarm('pzr_pressure_lolo').base_priority),
+     s.alarm('pzr_pressure_lolo').base_priority === undefined, 'undefined');
+  // The post-trip case for the turbine annunciator: after a scram the plant is in
+  // Mode 3 with the turbine tripped, and that is real news, not a lineup.
+  var t = new Stack('hot_full_power');
+  t.run(2);
+  t.cmd({ action: 'scram' });
+  t.run(60);
+  ck('post-trip plant is in Mode 3', String(t.ins().plant_mode), t.ins().plant_mode === 3, '3');
+  ck('TURB TRIP stays a warning post-trip', t.alarm('turbine_trip').priority,
+     t.alarm('turbine_trip').priority === 'warning', 'warning');
+}));
+
+T.push(test('#240 — reclassification changes presentation only, never the alarm itself', function (ck) {
+  // The HR1 property the whole mechanism rests on: a rule may not suppress, delay
+  // or invent an annunciation. Same instrument condition, same lifecycle state —
+  // only priority and label differ. Passes pre-#240 as well (nothing was
+  // reclassified then, so the two lists were trivially equal).
+  var s = new Stack('cold_shutdown');
+  s.run(2);
+  var alarms = s.layer.getAlarms();
+  var active = alarms.filter(function (a) { return a.state !== 'clear'; });
+  ck('reclassified tiles still carry a normal lifecycle state', active.map(function (a) { return a.state; }).join(','),
+     active.every(function (a) { return a.state === 'active_unacknowledged'; }), 'all active_unacknowledged');
+  // Acknowledging works exactly as before through the reclassified tile.
+  s.layer.acknowledgeAlarm('rcp_trip');
+  ck('a reclassified alarm acknowledges normally', s.alarm('rcp_trip').state,
+     s.alarm('rcp_trip').state === 'active_acknowledged', 'active_acknowledged');
+  // And a CLEAR alarm is never reclassified (there is nothing to present).
+  ck('a clear alarm carries no base_priority', String(s.alarm('high_flux').base_priority),
+     s.alarm('high_flux').base_priority === undefined, 'undefined');
+  // Falsification: with the rules stripped, the Mode 5 spawn must go back to
+  // reading two criticals. This is what proves the suite above is measuring the
+  // rules and not some incidental property of the cold IC.
+  //
+  // The alarm SPECS are shared module-level objects (config.alarms is a concat,
+  // but its elements are not copies), so this saves and restores rather than
+  // deleting — leaving them stripped would silently disarm any later suite.
+  var bare = new Stack('cold_shutdown');
+  var saved = bare.layer.config.alarms.map(function (a) { return a.reclassify; });
+  bare.layer.config.alarms.forEach(function (a) { delete a.reclassify; });
+  var bareCrit;
+  try {
+    bare.run(2);
+    bareCrit = bare.layer.getAlarms().filter(function (a) {
+      return a.state !== 'clear' && a.priority === 'critical';
+    });
+  } finally {
+    bare.layer.config.alarms.forEach(function (a, i) { if (saved[i]) a.reclassify = saved[i]; });
+  }
+  ck('without the rules, the old 2 criticals return', bareCrit.map(function (a) { return a.id; }).join(','),
+     bareCrit.length === 2 && bareCrit.map(function (a) { return a.id; }).sort().join(',') === 'pzr_pressure_lolo,rcp_trip',
+     'pzr_pressure_lolo,rcp_trip');
+  ck('the rules are restored afterwards', String(!!s.alarm('rcp_trip').base_priority),
+     !!s.layer.getAlarms().find(function (a) { return a.id === 'rcp_trip'; }).base_priority, 'true');
+}));
+
 // -------- report --------
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', RST = '\x1b[0m', BOLD = '\x1b[1m';
 var pass = 0, fail = 0;

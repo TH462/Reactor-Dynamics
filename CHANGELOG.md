@@ -14,6 +14,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **A cold plant no longer annunciates its own lineup as a casualty (#240).** A fresh Cold
+  Shutdown (Mode 5) run spawned with **five standing unacknowledged alarms, two of them
+  critical** — Pressurizer Pressure Very Low, RCP Trip, Pressurizer Pressure Low, Low
+  Coolant Temperature, Turbine Trip. Every one of those conditions is *true*, and every one
+  is what a planned cold shutdown is supposed to look like: the RCS is deliberately cold and
+  depressurized, and the reactor coolant pumps are deliberately stopped. Annunciating that as
+  a depressurization event with tripped pumps teaches the operator that a board full of
+  standing criticals is normal — the exact habit this simulator exists to break. Those five
+  now **reclassify to Status and reword to say why** ("expected, plant is cold";
+  "Reactor Coolant Pumps **Secured**"), and a reclassified tile shows what it is normally
+  classed as (`status (normally critical)`). **Nothing is hidden**: the alarm still comes in,
+  still reads its instrument, still acknowledges. Two deliberate limits — **Mode 3, Hot
+  Standby is excluded**, so a real depressurization or loss of the pumps post-trip reads at
+  full severity; and the RCP annunciator keys on the **handswitch**, not the mode, so pumps
+  lost to a trip, coastdown or blackout read **RCP TRIP, critical** in any mode, including
+  Mode 5. Manual: new **06 §2.0** table with the exclusions, cross-referenced from **09 §4.0**.
+  Owner ruling 2026-07-28; the design is sourced to NRC **NUREG-0700 Rev 4** (ML26022A094)
+  §4.1.2-7 *Mode-Dependence Processing* and Table 4.1, whose own worked example is a
+  low-pressure signal expected in cold shutdown.
+- **Two annunciators the manual never documented are now written up** — **LO TAVG (P-12)**
+  gains a full response procedure (**PWR-A29**) and **RCP CAVITATION** its setpoint row. Both
+  were modelled and both were missing from the alarm index.
 - **Taking the generator off line is no longer a turbine trip (#230).** `disconnect_grid`
   — the OFF position of the generator selector, and the command every "take it off line"
   step issues — called the turbine-trip path. The stop valves slammed, `turbine_tripped`

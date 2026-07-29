@@ -208,6 +208,41 @@
   // Alarms — every alarm setpoint is less extreme than the matching trip so the
   // alarm warns first; lo_lo escalates lo. Panel A = reactor/primary, B = secondary/systems.
   // { id, instrument, direction, setpoint, priority, panel, label_learning, label_industry }
+  //
+  // ALARM CONDITION PROCESSING (#240, owner ruling 2026-07-28: "Go with #1
+  // Mode-dependent severity/suppression and number 2"). Some conditions are the
+  // planned lineup rather than a casualty: a Mode 5 plant IS cold, IS
+  // depressurized, and its RCPs ARE stopped. Annunciating those as a
+  // depressurization event with tripped pumps trains the operator to normalize a
+  // standing alarm flood — the TMI habit this sim exists to break. The `reclassify`
+  // rules below (resolved in control_kernel.getAlarms) drop such an alarm to
+  // `status` and reword it to say WHY. The alarm still annunciates and still shows:
+  // nothing is filtered, only reclassified. Mechanism, sources and the HR1 argument
+  // are documented over ControlLayer.prototype._reclassify.
+  //
+  // Two scope decisions worth having on record:
+  //   * MODE 4 IS INCLUDED with Mode 5 on the cold-side alarms. A cooldown crosses
+  //     both pressure setpoints long before Tavg reaches 93 °C (RHR entry is at
+  //     2.76 MPa), so a Mode-5-only rule would still bury a planned cooldown in
+  //     critical alarms. Mode 6 is not modelled (plantModeOf never returns it), so
+  //     it is not listed — an unreachable rule is dead code, not caution.
+  //   * MODE 3 IS DELIBERATELY EXCLUDED, and that is what keeps the rules honest.
+  //     Hot Standby is where a plant sits after a trip and where a genuine
+  //     depressurization or loss of the pumps must read at full severity. It is
+  //     also the mode a hot casualty stays in: primary Tavg pins near 300 °C for
+  //     every modelled break, so a LOCA cannot demote its own alarms by dragging
+  //     the plant "cold". Residual risk, stated rather than hidden: a real
+  //     depressurization DURING a cooldown (Modes 4/5) does read as status on
+  //     these five. The inventory alarms that distinguish it — subcooling lost,
+  //     PZR level lo-lo — carry no reclassify rule and stay critical.
+  // Modes in which the RCS is deliberately below the hot operating band: 4 (Hot
+  // Shutdown) and 5 (Cold Shutdown). Named once so the four cold-side rules cannot
+  // drift apart, and so widening or narrowing the window is one edit with one
+  // rationale (see the scope note above). The rules pair it with the instrument
+  // that carries the mode — the kernel names neither (HR3), it just resolves
+  // `instrument`/`in` against whatever this file gives it.
+  var COLD_MODES = [4, 5];
+
   var PWR_ALARMS_A = [
     { id: 'reactor_trip',      instrument: 'rps_scrammed',     direction: 'is_true', setpoint: null,  priority: 'critical', panel: 'A', label_learning: 'Reactor Trip',                     label_industry: 'REACTOR TRIP' },
     { id: 'high_flux',         instrument: 'power_range',      direction: 'high',    setpoint: 108.0, priority: 'critical', panel: 'A', label_learning: 'High Neutron Flux',                label_industry: 'HI FLUX' },
@@ -222,10 +257,16 @@
     // Deliberately an alarm and NOT a trip — a PWR does not scram on low Tavg. The real
     // cold-side protections are this interlock and low-temperature overpressure protection,
     // neither of which is a reactor trip.
-    { id: 'low_tavg',          instrument: 'tavg',             direction: 'low',     setpoint: 289.0, priority: 'warning',  panel: 'A', label_learning: 'Low Coolant Temperature',         label_industry: 'LO TAVG (P-12)' },
+    // …and once the plant is DELIBERATELY cold (Modes 4/5) it reads as the status
+    // it is rather than a warning — the condition still stands in, exactly as the
+    // comment above requires, but a cooldown is not a casualty (#240).
+    { id: 'low_tavg',          instrument: 'tavg',             direction: 'low',     setpoint: 289.0, priority: 'warning',  panel: 'A', label_learning: 'Low Coolant Temperature',         label_industry: 'LO TAVG (P-12)',
+      reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Coolant Temperature Low — expected, plant is cold', label_industry: 'LO TAVG (P-12) — EXPECTED' }] },
     { id: 'pzr_pressure_high', instrument: 'primary_pressure', direction: 'high',    setpoint: 15.86, priority: 'warning',  panel: 'A', label_learning: 'Pressurizer Pressure High',       label_industry: 'PZR PRESS HI' },
-    { id: 'pzr_pressure_low',  instrument: 'primary_pressure', direction: 'low',     setpoint: 14.82, priority: 'warning',  panel: 'A', label_learning: 'Pressurizer Pressure Low',        label_industry: 'PZR PRESS LO' },
-    { id: 'pzr_pressure_lolo', instrument: 'primary_pressure', direction: 'low',     setpoint: 12.41, priority: 'critical', panel: 'A', label_learning: 'Pressurizer Pressure Very Low',   label_industry: 'PZR PRESS LO LO' },
+    { id: 'pzr_pressure_low',  instrument: 'primary_pressure', direction: 'low',     setpoint: 14.82, priority: 'warning',  panel: 'A', label_learning: 'Pressurizer Pressure Low',        label_industry: 'PZR PRESS LO',
+      reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Pressurizer Pressure Low — expected, plant depressurized', label_industry: 'PZR PRESS LO — EXPECTED' }] },
+    { id: 'pzr_pressure_lolo', instrument: 'primary_pressure', direction: 'low',     setpoint: 12.41, priority: 'critical', panel: 'A', label_learning: 'Pressurizer Pressure Very Low',   label_industry: 'PZR PRESS LO LO',
+      reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Pressurizer Pressure Very Low — expected, plant depressurized', label_industry: 'PZR PRESS LO LO — EXPECTED' }] },
     { id: 'porv_open',         instrument: 'porv_indicator',   direction: 'is_open', setpoint: null,  priority: 'warning',  panel: 'A', label_learning: 'Pressure Relief Valve Open',      label_industry: 'PORV OPEN' },
     // 2.0 → 1.0 DPM (issue #134): the alarm sat above the rate a real startup
     // ever reaches, so it never warned before the withdrawal block. 1.0 is the
@@ -245,11 +286,24 @@
     { id: 'sg_level_high',  instrument: 'sg_level',         direction: 'high',     setpoint: 75.0, priority: 'caution',  panel: 'B', label_learning: 'Steam Generator Level High',     label_industry: 'SG LVL HI' },
     { id: 'sg_level_low',   instrument: 'sg_level',         direction: 'low',      setpoint: 30.0, priority: 'warning',  panel: 'B', label_learning: 'Steam Generator Level Low',      label_industry: 'SG LVL LO' },
     { id: 'sg_level_lolo',  instrument: 'sg_level',         direction: 'low',      setpoint: 17.0, priority: 'critical', panel: 'B', label_learning: 'Steam Generator Level Critical Low', label_industry: 'SG LVL LO LO' },
-    { id: 'rcp_trip',       instrument: 'rcp_running',      direction: 'is_false', setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Reactor Coolant Pump Trip',     label_industry: 'RCP TRIP' },
+    // RCP annunciator. Keyed on `rcp_running is_false`, so it comes in whenever the
+    // pumps are stopped — but stopped BY COMMAND is a lineup, not a casualty, and
+    // that distinction is not a mode question: securing the pumps in Mode 3 for
+    // natural circulation is equally planned, and losing one in Mode 5 during a
+    // heatup is equally a trip. So this rule reads the handswitch (`rcp_secured`,
+    // cleared by every fault route in pwr_engine), not the plant mode (#240).
+    { id: 'rcp_trip',       instrument: 'rcp_running',      direction: 'is_false', setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Reactor Coolant Pump Trip',     label_industry: 'RCP TRIP',
+      reclassify: [{ condition: 'rcp_secured', priority: 'status', label_learning: 'Reactor Coolant Pumps Secured', label_industry: 'RCP SECURED' }] },
     { id: 'rcp_cavitation', instrument: 'rcp_cavitating',   direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Reactor Coolant Pump Cavitation', label_industry: 'RCP CAVITATION' },
     { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
     { id: 'sbo',            instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
-    { id: 'turbine_trip',   instrument: 'steam_demand_low', direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Turbine Trip / Low Steam Demand', label_industry: 'TURB TRIP' },
+    // Turbine trip / low steam demand. Reclassified in Modes 4/5 ONLY: below the
+    // hot band the machine is secured by design and RHR is the heat sink, so zero
+    // steam demand is the lineup. Mode 3 keeps the warning on purpose — that is
+    // where the plant lands after a trip from power, and the annunciator is
+    // carrying real news there.
+    { id: 'turbine_trip',   instrument: 'steam_demand_low', direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Turbine Trip / Low Steam Demand', label_industry: 'TURB TRIP',
+      reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Turbine Secured — no steam demand', label_industry: 'TURB SECURED' }] },
     // Reactor/turbine LOAD IMBALANCE — reactor power and turbine load have diverged by
     // more than 4 % of rated (load_mode.js IMBALANCE_FRAC, from INDICATED power). The SG
     // is filling or draining as a result. Manuals/09 §8 has documented this annunciator

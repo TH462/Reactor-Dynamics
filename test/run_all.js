@@ -103,7 +103,9 @@ var BASELINES = {
   // it publishes. Check count moves with the content count (57 items today): adding a
   // scenario shifts this baseline, which is the intended nudge to decide its stage.
   'run_flags.js':          { code: 0, score: '16/16 290/290' },
-  'run_m4.js':             { code: 0, score: '19/19 86passed' },
+  // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
+  // mode/lineup-dependent alarm classification.
+  'run_m4.js':             { code: 0, score: '23/23 117passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   'run_m5.js':             { code: 0, score: '19/19 79passed' },

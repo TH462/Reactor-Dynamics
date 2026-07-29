@@ -567,17 +567,81 @@
     return null;
   };
 
+  // Alarm CONDITION PROCESSING (#240) — an alarm's condition can be true and yet
+  // mean something different depending on the plant's mode or the lineup of the
+  // equipment it watches. `reclassify` is an ordered rule list on the alarm spec;
+  // the FIRST matching rule supplies a replacement priority and (optionally)
+  // replacement labels. Rules match on:
+  //   instrument + in — that instrument's reading is one of the listed values
+  //   condition       — that boolean status instrument reads true
+  // Both may be given, in which case both must hold.
+  //
+  // HR3: the kernel names NO instrument here. Which instrument carries the mode,
+  // and which values count as "cold", are the plant's data and live in its control
+  // module — the first draft hardcoded `ins.plant_mode` and run_hr3 caught it.
+  //
+  // Sourced, not recalled (NUREG-0700 Rev 4, ML26022A094 — the NRC's HSI design
+  // review guidelines):
+  //   §4.1.2-7 Mode-Dependence Processing — "If a component's status or parameter
+  //     value represents a fault in some plant modes and not others, it should be
+  //     alarmed only in the appropriate modes."
+  //   Table 4.1, Nuisance/Plant Mode Relationship + the class description — "the
+  //     signal for a low-pressure condition may be eliminated during modes when
+  //     this condition is expected, such as startup and cold shutdown, but be
+  //     maintained when it is not expected, such as during normal operations."
+  //     Our Mode-5 pressurizer alarms are literally that example.
+  //   Table 4.1, Nuisance/Status-Alarm Separation — "separates status annunciators
+  //     from alarms that require operator action" (RCP TRIP vs RCPs SECURED).
+  //   §4.1.2-8 System Configuration Processing — a reading "may not be relevant
+  //     when the fluid system is taken out of service" (the secured-RCP case).
+  //
+  // Deliberately RECLASSIFY, never delete: the guidelines also warn that "only
+  // alarms that can be demonstrated to have no operational significance to users
+  // should be filtered… Alarms that are considered redundant or lower priority
+  // should be suppressed (where users can retrieve them) rather than filtered."
+  // That is also what HR1 demands — the condition is real and stays on the board;
+  // only its urgency and its wording change. A reclassify rule can therefore never
+  // stop an alarm annunciating, and _evalAlarms above never sees these rules.
+  //
+  // §4.3.6-3 cautions that personnel may misread an alarm if they do not realise a
+  // mode-defined change has taken effect, so every reclassified label SAYS why
+  // (e.g. "expected — plant is cold").
+  ControlLayer.prototype._reclassify = function (a) {
+    var rules = a.reclassify;
+    if (!rules || !rules.length) return null;
+    var ins = this.lastInstruments || {};
+    for (var i = 0; i < rules.length; i++) {
+      var r = rules[i];
+      // An unresolvable instrument NEVER matches: a rule can only ever soften an
+      // alarm, so a missing reading must fall through to the authored priority
+      // rather than silently demote it.
+      if (r.instrument && (!(r.instrument in ins) || r.in.indexOf(ins[r.instrument]) === -1)) continue;
+      if (r.condition && !this._evaluateCondition(r.condition, ins)) continue;
+      return r;
+    }
+    return null;
+  };
+
   // ------------------------------------------------------- snapshot sections (§9.5)
   ControlLayer.prototype.getAlarms = function () {
     var alarms = this.config.alarms || [], out = [], reg = this.register;
     for (var i = 0; i < alarms.length; i++) {
       var a = alarms[i];
+      // Only an ACTIVE alarm is reclassified — a clear one has no presentation to
+      // change, and resolving rules for it would only cost work per snapshot.
+      var rc = (this.alarmStates[a.id] !== 'clear') ? this._reclassify(a) : null;
+      var lrn = (rc && rc.label_learning) || a.label_learning;
+      var ind = (rc && rc.label_industry) || a.label_industry;
       out.push({
         id: a.id,
         state: this.alarmStates[a.id],
-        priority: a.priority,
+        priority: (rc && rc.priority) || a.priority,
+        // The authored classification, kept alongside so a consumer can tell that
+        // a tile has been reclassified rather than authored this way (and so the
+        // UI can say so). Absent when no rule fired.
+        base_priority: rc ? a.priority : undefined,
         panel: a.panel,
-        tile_label: reg === 'industry' ? a.label_industry : a.label_learning,
+        tile_label: reg === 'industry' ? ind : lrn,
       });
     }
     return out;
