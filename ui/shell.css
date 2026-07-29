@@ -733,9 +733,18 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
    adds the full description, the card an item belongs to, and a link into the
    manual section that documents it. The whole panel is the click target — the
    ⤢ button only makes that affordance visible. */
-.scanner { flex: 0 0 auto; min-height: 78px; cursor: pointer; }
+/* FIXED height, both states (owner, 2026-07-28: "the jumping up and down when
+   moving the mouse over things is annoying"). The block used to size to its
+   text, so every hover across the board re-laid-out the whole right column and
+   the Instructor panel above it jumped. The body is a constant box that scrolls
+   its own overflow instead — collapsed fits the longest summary (~4 lines),
+   expanded is a stable reading pane. */
+.scanner { flex: 0 0 auto; cursor: pointer; }
 .scanner .panel-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.scanner .body { padding: 8px 10px; font-size: 12px; color: var(--text-2); line-height: 1.45; }
+.scanner .body {
+  padding: 8px 10px; font-size: 12px; color: var(--text-2); line-height: 1.45;
+  height: 74px; overflow-y: auto; overscroll-behavior: contain;
+}
 .scanner .body strong { color: var(--text); }
 .scanner .idle { color: var(--muted); font-style: italic; }
 .scan-exp {
@@ -744,11 +753,11 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
   padding: 1px 6px; cursor: pointer; text-transform: uppercase;
 }
 .scan-exp:hover { color: var(--text); border-color: var(--text-2); }
-/* Expanded: the detail paragraph appears and the block is allowed to grow, but
-   it is capped and scrolls — a long entry must never push the tools panel off
-   the column. */
+/* Expanded: a taller pane of the SAME fixed size for every entry — a long
+   description scrolls inside it rather than growing the panel. Viewport-relative
+   so it stays usable on a laptop, clamped so it cannot eat the column. */
 .scanner.expanded { cursor: default; }
-.scanner.expanded .body { max-height: 40vh; overflow-y: auto; }
+.scanner.expanded .body { height: 28vh; min-height: 200px; max-height: 260px; }
 .scan-detail { margin-top: 6px; color: var(--text-2); }
 .scan-meta {
   margin-top: 6px; font-size: 11px; color: var(--muted);

@@ -160,6 +160,14 @@ object, per the merged text in #69. Removed — and `run_inspect` **pins its abs
 issue still asks for a glow and the next reader would put it back. `.instr-glow` / `.ckl-glow`
 stay: those mark something the player did not choose.
 
+**Fixed size, both states** *(owner, 2026-07-28: "the jumping up and down when moving the mouse
+over things is annoying")*. The block sized to its text, so every hover across the board re-laid
+out the right column and the Instructor panel above it jumped. The body is now a constant box
+that scrolls its own overflow: **74 px collapsed**, **28vh (200–260 px) expanded**. Measured over
+an 8-item sweep at 1700×1000 and 1366×768 — panel height and the Instructor panel's top are each
+a single value, and the longest entry on the board (Control Bank, 98-char brief / 384-char detail)
+still fits without scrolling at the smaller viewport.
+
 **Still open:** #71 (the highlight system — instructor-driven and hover-driven bounding boxes) is
 untouched. It shares hit-target geometry with this, and `itemIdAt` / `tileFor` are the primitive
 it should consume rather than re-derive.
