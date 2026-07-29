@@ -18,6 +18,15 @@ bullets** (drop the oldest), and nothing here may duplicate `Diagnostic/TUNING_L
 When in doubt about a number, prefer the as-built engine/config values over prose
 docs.
 
+> **When you ask the owner something, bring the recommendation with it** *(OWNER RULING,
+> 2026-07-29: "I think we should add to SOP to have you automatically give your recommendation
+> when asking for my input so I don't have to keep asking for it.")*. Lead with the answer you
+> would give and why, then the alternatives — a neutral menu is a recommendation you declined
+> to make. Say what you will do if there is no reply, and what would change your mind. Rank
+> them if there are several. And do not ask at all when the call is routine: make it, state
+> the assumption, move on. Full guidance, including the cases where it genuinely blocks:
+> `Blueprint/SOP.md` §5.
+
 > **You may not be the only agent in this repo. Check before you edit.** Two sessions
 > in one working directory will overwrite each other's files and sweep each other's
 > work into the wrong commit — this is not hypothetical, it happened on 2026-07-29 and
@@ -92,9 +101,12 @@ docs.
 > works… Go with your recommendations")*. There are ~229,000 words of docs here containing
 > ~650 "do not / never / by design" phrases. Four rules make that tractable:
 > 1. **Binding: the Hard Rules in `Blueprint/CONTEXT.md` §3, and this file.** Nothing else.
->    Nine rules, deliberately short. **`Blueprint/SOP.md` is NOT binding** — it holds the
+>    Nine rules, deliberately short. **`Blueprint/SOP.md` §1–4 is NOT binding** — it holds the
 >    *how* (worked cases, failure modes, procedure) that used to bloat §3 to 200 lines. Read
->    it for technique; do not cite it as authority.
+>    it for technique; do not cite it as authority. **§5 is the exception**: it records a
+>    direct owner instruction, quoted and dated, so it binds under rule 4 below — because the
+>    owner said it, not because SOP.md says it. That is the only way anything in that file
+>    binds, and it is why every entry there must carry its quote.
 > 2. **`Diagnostic/`, `BUILD_DECISIONS.md` and `Manuals/` are RECORD, not policy** — they say
 >    what happened and why, not what you must do. Read them for evidence; don't obey them.
 > 3. **Plans expire when executed.** A phased work order stops binding the moment it is done
@@ -118,7 +130,8 @@ to read everything.
 |---|---|
 | **Understand the whole system** | `README.md`, then `Blueprint/CONTEXT.md` (interfaces, hard rules, data contract). |
 | **Understand *why* it's built this way** | `Blueprint/DESIGN_COMPANION.md` (vision, rationale, deliberate exclusions, v2 roadmap). |
-| **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 9 rules, each names its guard), then **`Blueprint/SOP.md`** for the worked cases and technique (advisory). |
+| **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 9 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
+| **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
 | **Build or modify a module** | `Blueprint/CONTEXT.md` **plus that one module's spec** (`Blueprint/M1`–`M8`) — and nothing else. |
 | **Know what changed recently** | `CHANGELOG.md` (skimmable) → `Blueprint/BUILD_DECISIONS.md` (dense engineering rationale, tuning, gate tallies). |

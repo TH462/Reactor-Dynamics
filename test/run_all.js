@@ -102,7 +102,7 @@ var BASELINES = {
   // instrument exists for it, so the count moving means a NEW coupling — allow-listing
   // one properly still trips drift, which is the intent. HR2, HR6 and half of HR4 are
   // still unguarded and §3 says so out loud.
-  'run_hardrules.js':      { code: 0, score: '15checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '17checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

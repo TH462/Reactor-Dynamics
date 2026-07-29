@@ -32,7 +32,7 @@ staleness** items.
 | Gate | State | Notes |
 |---|---|---|
 | **`run_all`** | **OK (28 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
-| `run_hardrules` | **15 checks / 0 failed** | NEW 2026-07-29 — static guards for HR1 (protection reads instruments), HR5 (UI never touches the engine) and HR11 (a ruling needs a date + verbatim words). Declared-exception idiom: a true-state read in `layers/control/` is legal only if listed with the reason no instrument exists. HR2, HR6 and half of HR4 remain unguarded and §3 says so |
+| `run_hardrules` | **17 checks / 0 failed** | NEW 2026-07-29 — static guards for HR1 (protection reads instruments), HR5 (UI never touches the engine) and HR11 (a ruling needs a date + verbatim words). Declared-exception idiom: a true-state read in `layers/control/` is legal only if listed with the reason no instrument exists. HR2, HR6 and half of HR4 remain unguarded and §3 says so |
 | `run_contract` | **84 checks / 0 failed** | NEW 2026-07-28t (#225) — §6.3 `true_state` contract vs `getTrueState()`, both directions; PWR only (RBMK/BWR `skip`) |
 | `run_inspect` | **7/7 (35)** | NEW 2026-07-28s (#96) — inspection copy: orphaned keys, per-item coverage, dead manual citations, duplicate copy |
 | `run_flags` / `verify_flags_ui` | **16/16 (290)** / **48/48** | NEW 2026-07-28j (#241) — the feature-flag registry (coverage + resolution) and the control room actually obeying it |

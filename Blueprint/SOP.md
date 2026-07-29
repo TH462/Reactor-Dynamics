@@ -1,10 +1,16 @@
-# SOP — how to apply the Hard Rules
+# SOP — standard operating procedure for agents
+
+Sections 1–4 are **how to apply the Hard Rules**. Section 5 is **how to work with the
+owner**, which is procedure of a different kind and is why this file is no longer titled for
+the rules alone.
 
 **Status: ADVISORY, not binding.** The binding rules are the Hard Rules in
 `Blueprint/CONTEXT.md` §3 and `CLAUDE.md` — nothing else, including this file. What lives
 here is the *how*: the worked cases, the failure modes each rule was written from, and the
 procedure that has been found to work. Read it for evidence and technique; do not obey it as
-policy, and do not cite it as authority.
+policy, and do not cite it as authority. *(The one exception is §5, which records a direct
+owner instruction and is quoted as such — it binds because the owner said it, not because
+this file says it.)*
 
 It exists because §3 was ~200 lines and most of that was not the rules — it was the
 elaboration around them. Rules that long stop being read. *(Owner, 2026-07-29: "I think we
@@ -153,3 +159,59 @@ The **method**, which is what belongs here:
   *and* one of the investigating agent's own interim findings.
 - If you cannot source it, say so plainly and mark the claim unverified rather than acting
   on it.
+
+---
+
+## 5. Asking the owner — always bring a recommendation
+
+**OWNER RULING (2026-07-29): "I think we should add to SOP to have you automatically give
+your recommendation when asking for my input so I don't have to keep asking for it."**
+
+When you put a decision to the owner, the recommendation is part of the question, not a
+follow-up. Making them ask "what do you recommend?" is a wasted round trip, and it is the
+round trip that happens most often.
+
+### What a question with a recommendation looks like
+
+- **Lead with the answer you would give**, then the reason, then the alternatives. Not a
+  neutral menu — a menu is a recommendation you declined to make.
+- **Say what you will do if they do not reply.** Most questions have a defensible default;
+  name it. "I'll assume X unless you say otherwise" turns a blocking question into a
+  proceeding one.
+- **Say what would change your mind.** A recommendation with its own hinge attached is worth
+  more than a verdict, because it tells the owner which fact to supply.
+- **Rank when there are several.** "Do A, B and C?" is three questions pretending to be one;
+  if you would do them in an order, say the order.
+- **Using `AskUserQuestion`:** the recommended option goes first, labelled *(Recommended)*.
+  Same rule, enforced by the tool.
+
+### Do not ask at all when you should not
+
+The rule cuts both ways. **Most decisions are not the owner's** — they are routine judgement
+calls, and asking is its own kind of offloading. Make the call, state the assumption you made,
+and move on. Reserve real questions for: it changes what gets built, it is expensive or hard
+to reverse, or being wrong would waste the work.
+
+### Where it genuinely blocks
+
+Some things must not proceed on an assumption — a plant-behaviour change, anything
+outward-facing, anything destructive. Even then, **still recommend.** "I recommend X and want
+your go-ahead before starting because it changes a protection function" is a better sentence
+than "how do you want to handle this?"
+
+### Worked failures, from the session that produced this rule (2026-07-29)
+
+Every one of these is a place the owner had to ask for something that should have been in the
+original message:
+
+- *"It can ride the next release — or I can cut Alpha 1.9.1 now. Your call."* Two options, no
+  lean, on a decision I had all the information for. The recommendation was obvious once
+  asked: ride the next release, because the staleness is manual prose, not a functional break.
+- *"Want me to fix #1 now, and open issues for #2 and #3?"* Three items bundled into one
+  question with no ordering and no view on which mattered. #1 was a factual error in a binding
+  document and should have been named as the urgent one.
+- *"Want me to run both now?"* — where "both" were two cheap read-only greps I could simply
+  have run and reported.
+- Counter-example, done right: the branch name. Recommended `workbench`, gave the reasoning
+  (generic, distinct, no collision with "benchmark"), offered two alternates, and flagged the
+  design question the name implied. That is the shape.
