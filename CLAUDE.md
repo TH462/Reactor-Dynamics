@@ -87,8 +87,13 @@ docs.
 >   Normally recommend *yes, switch* when `develop` is busy and the workbench is clear: the risk
 >   is asymmetric, a needless move costs one merge. **If BOTH lanes look occupied, do not pick
 >   one** — say so and offer a third tree (below); that is the owner's call, not a default.
->   **Absent a reply:** move to the workbench if it is clear, and say so; if both are busy, stay
->   read-only and wait.
+>   **Absent a reply: stay read-only and say what you are waiting on** *(OWNER RULING,
+>   2026-07-29: "lets go with your recommendation.", on the recommendation to cut the earlier
+>   draft's no-reply default)* — **the heuristic never gets an action.** The first draft moved to
+>   the workbench on its own whenever it looked clear; that was an agent proposal marked "for the
+>   owner to rule on" and never ruled on. It also fires on the *common* false positive — your own
+>   leftovers in the tree you just started in — while the case where guessing wrong is genuinely
+>   expensive is the case where the owner is present to answer in seconds.
 > - **Starting on `workbench`: `git merge --ff-only develop` — and when it refuses, do a real
 >   `git merge develop`.** It is not a feature branch, it exists only so a second agent has
 >   somewhere to work, but `--ff-only` fails whenever the lane still carries unmerged work,
@@ -384,7 +389,7 @@ Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, ca
 were never plant defects at all — the harness was running 11 of its 22 procedures below the
 10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_hr3` **29 checks / 0 failed**, `run_hardrules` **20 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_hr3` **29 checks / 0 failed**, `run_hardrules` **21 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **35/35** (both F12 reds were stale expectations, fixed
