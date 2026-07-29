@@ -13,7 +13,7 @@
  * TAVG in at 312 °C; the steam dump never lifts (the feed channel keeps the
  * secondary in balance — the old coupled-feed lineup parked at ~840 on the
  * dump ceiling instead); SG level pinned ~65 % while the pump walks 100→~80 %.
- * And NO load step trips the unit any more — even 1000→0 rides — so the
+ * And NO load step trips the unit any more — even 100→0 rides — so the
  * grid_lost branch is the scram catch (manual scram / off-script hands), not
  * a load-rejection story.
  */
@@ -44,7 +44,7 @@
 
       // Prompt + branch watch: the 80 MW step leads on; the scram branch is
       // the softlock-proof catch. Probed: with the three-element feed engaged
-      // the unit RIDES even a deep dispatch step (1000→0 tested) — a trip
+      // the unit RIDES even a deep dispatch step (100→0 tested) — a trip
       // here means a manual scram or hands on something off-script.
       { id: 'ramp_down',
         trigger: { type: 'delay', value: 26.0 },
@@ -72,7 +72,7 @@
       { id: 'ramp_up',
         trigger: { type: 'delay', value: 300.0 },
         commentary: {
-          learning: 'Dawn. Alarm clocks, toasters, trains — the grid is waking up hungry. Take the slider back up to 1000 MW. Watch the same chain run in reverse: more steam drawn, cold-leg cools a touch, the core wakes up to meet it — and on the Steam & Flow card the feed controller walks the pump back up as the steam draw grows. Smooth hands — the plant likes gradual asks, and the last hundred megawatts take the longest.',
+          learning: 'Dawn. Alarm clocks, toasters, trains — the grid is waking up hungry. Take the slider back up to 100 MW. Watch the same chain run in reverse: more steam drawn, cold-leg cools a touch, the core wakes up to meet it — and on the Steam & Flow card the feed controller walks the pump back up as the steam draw grows. Smooth hands — the plant likes gradual asks, and the last hundred megawatts take the longest.',
           industry: 'Morning pickup: target 100 MWe. Reverse coupling: increased steam draw → cooler return → +ρ via MTC → power ascension to rated (expect several minutes on the final approach). Feedwater tracks via the three-element channel.',
         },
         speed: 1,

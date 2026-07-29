@@ -321,13 +321,19 @@
       purpose: 'A Reactor Coolant Pump (RCP) has tripped and coolant flow is falling. Confirm the protective trip and stabilize.',
       from: 'hot_full_power',
       prereq: ['At-power operation.'],
-      cautions: ['Low flow lets heat build locally — the low-flow trip protects the core.'],
+      cautions: [
+        'Low flow lets heat build locally — the low-flow trip protects the core, and at 90 % of rated flow it acts in about two seconds.',
+        'RCS flow is a SINGLE channel. If the pump is gone and the flow indication disagrees, believe the pump: the trip reads that same channel and will not fire.',
+      ],
       steps: [
-        { text: 'The pump has tripped — coolant flow is coasting down. (Failures tab → inject RCP Trip.) The reactor trips automatically on low flow.', control: '(observe flow)', target: 'reactor trips',
+        { text: 'The pump has tripped — coolant flow is coasting down. (Failures tab → inject RCP Trip.) The reactor trips automatically on low RCS flow, below 90 % of rated.', control: '(observe RCS flow)', target: 'reactor trips',
           cmd: { action: 'inject_failure', failure_id: 'rcp_trip' }, hold: 15 },
         { text: 'Trip the reactor if it has not already tripped, and remove turbine load.', control: 'SCRAM', target: 'power collapsing',
           cmd: { action: 'scram' }, hold: 30, acc: { p: 'power_pct', op: '<', v: 8 } },
-        obs('Confirm shutdown and adequate cooling on natural circulation / decay heat.', { p: 'melted', op: '<', v: 1 }),
+        // "natural circulation" removed 2026-07-29: natural_circ_flow is 0.0 and this
+        // plant does not model it, so the step asked the operator to confirm cooling by
+        // a mechanism that does not exist. Decay-heat removal here is through the SGs.
+        obs('Confirm shutdown, and decay heat going to the steam generators (AFW as required).', { p: 'melted', op: '<', v: 1 }),
       ],
       guard: { never_melted: true },
       outcome: 'Reactor safely shut down after loss of forced flow.',

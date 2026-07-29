@@ -117,8 +117,8 @@
         trigger: { type: 'delay', value: 3.0 },
         commands: [{ action: 'set_load_target', mwe: 100 }],
         commentary: {
-          learning: 'It has the pump — the channel reads "holding". Now watch a professional work: I am taking the turbine back to 1000 MW, the same move that just made you sweat. Steam draw rises, the channel feels the mismatch through its flow elements, and it walks the pump up almost before the level twitches. Hands off — watch the level trace stay flat while half the secondary reorganizes underneath it.',
-          industry: 'Load restored to 1000 MWe under automatic feed. Expect feedforward response: pump speed tracks steam flow, level deviation minimal. Monitor the channel status and SG level through the ramp.',
+          learning: 'It has the pump — the channel reads "holding". Now watch a professional work: I am taking the turbine back to 100 MW, the same move that just made you sweat. Steam draw rises, the channel feels the mismatch through its flow elements, and it walks the pump up almost before the level twitches. Hands off — watch the level trace stay flat while half the secondary reorganizes underneath it.',
+          industry: 'Load restored to 100 MWe under automatic feed. Expect feedforward response: pump speed tracks steam flow, level deviation minimal. Monitor the channel status and SG level through the ramp.',
         },
         branches: [
           { trigger: { type: 'scram' }, goto: 'tripped' },
@@ -138,7 +138,7 @@
         level_complete: {
           title: 'Feeding the Boilers — Level Held',
           outcome_learning: 'You held the boilers by hand through a load swing, then handed the job to the specialist — and learned it hands the pump right back the moment you speak up.',
-          outcome_industry: 'Manual feedwater control and three-element channel engagement validated through a 1000→950→1000 MWe swing; SG level held within band.',
+          outcome_industry: 'Manual feedwater control and three-element channel engagement validated through a 100→95→100 MWe swing; SG level held within band.',
           actions: ['continue', 'retry'],
         },
         advance: 'end' },

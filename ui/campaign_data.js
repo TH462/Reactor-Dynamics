@@ -41,7 +41,7 @@
         { kind: 'procedure', id: 'pwr_raise_power', teaches: 'Mode 1, At Power — coordinated power escalation.' },
         { kind: 'scenario', id: 'pwr_load_follow', teaches: 'Mode 1 — follow the grid with the load-mode controls; three-element feed minding the boilers.' },
         { kind: 'scenario', id: 'pwr_automation', teaches: 'Mode 1 — plant automation: put the plant on automatic and be the dispatcher.' },
-        { kind: 'scenario', id: 'pwr_shift_exam', teaches: 'CHECKPOINT — Mode 1 dispatch, 850↔1000 MWe: your tools, your call. Graded.' },
+        { kind: 'scenario', id: 'pwr_shift_exam', teaches: 'CHECKPOINT — Mode 1 dispatch, 85↔100 MWe: your tools, your call. Graded.' },
         { kind: 'procedure', id: 'pwr_lower_power', teaches: 'Mode 1, At Power — coming down under control.' },
         { kind: 'procedure', id: 'pwr_shutdown', teaches: 'Mode 1, At Power → Mode 3, Hot Standby — decay heat never sleeps.' },
         { kind: 'scenario', id: 'pwr_mode3_to_mode5', teaches: 'Mode 3, Hot Standby → Mode 5, Cold Shutdown — the controlled cooldown: borate, cool, depressurize, place RHR.' },
@@ -51,8 +51,11 @@
         { kind: 'scenario', id: 'pwr_protection', teaches: 'Mode 1 upset — the reactor protection system, and how to read an alarm flood.' },
         { kind: 'scenario', id: 'pwr_esf', teaches: 'Mode 1 — the ESF AUTO/MAN arms: safety systems that fire themselves, until you touch them.' },
         { kind: 'procedure', id: 'pwr_loss_of_feedwater', teaches: 'Mode 1 — losing the heat sink; AFW to the rescue (→ Mode 3, Hot Standby if tripped).' },
-        { kind: 'procedure', id: 'pwr_rcp_trip', teaches: 'Mode 1 — losing forced flow: the RCP trip and natural circulation.' },
-        { kind: 'scenario', id: 'pwr_lof', teaches: 'Mode 1 — loss of flow: the hot channel boils, and the trip that has to be fast.' },
+        // "and natural circulation" removed 2026-07-29: this plant sets natural_circ_flow
+        // to 0.0 and does not model it, so the mission promised a mechanism the sim has
+        // never had. Say what it does teach.
+        { kind: 'procedure', id: 'pwr_rcp_trip', teaches: 'Mode 1 — losing forced flow: the RCP trip, the fast scram that follows, and getting to a stable hot shutdown.' },
+        { kind: 'scenario', id: 'pwr_lof', teaches: 'Mode 1 — a lost pump and a flow gauge that disagrees: the low-flow trip never comes, and why one channel is not enough.' },
         { kind: 'scenario', id: 'pwr_slb', teaches: 'Mode 1 — a steam line break: why cooling the plant can raise its power.' },
         { kind: 'scenario', id: 'pwr_msiv', teaches: 'Mode 1 — bottle the boiler: the MSIV, the code safeties, and a two-minute clock.' },
         { kind: 'procedure', id: 'pwr_stuck_porv', teaches: 'Mode 1 — the stuck relief valve: your TMI rehearsal.' },
