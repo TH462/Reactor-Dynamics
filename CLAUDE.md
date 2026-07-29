@@ -210,13 +210,31 @@ to read everything.
 _Last updated: **2026-07-29**._
 
 **Where the PWR is.** All PWR engine, behaviour, ops and stack gates green; `run_all` is
-**28 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
+**29 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
 a handful of UI/doc items.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.**
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+- **The plant can heat itself up now — the pump-heat netting is deleted (2026-07-29, #251).**
+  The SG used to subtract RCP heat out of its own steam balance (`max(0, Q_sg − Q_pump)`,
+  booked as "blowdown/ambient losses"), sized to cancel it identically at every flow because
+  the turbine drew steam for core power alone. Consequence nobody had costed: **a heatup on
+  pump heat was mathematically impossible** — measured, a stable attractor at 218.69 °F
+  (103.72 °C) with ΔT pinned at `Q_pump/h_sg`, forever. Now the SG boils everything that
+  crosses it and the follow governor draws it, both normalized on **NSSS rated heat** (core +
+  pump), which is how a real plant rates its generators. Three things to know: the issue's
+  "risky" step — recalibrating `steam_flow_rated` and giving the governor headroom — **was not
+  needed**, because normalizing both sides makes rated come out exactly 1.0, so every gauge
+  still reads 100 % at 100 %; the **cold IC was spawning synchronised to the grid**
+  (`load_mode: 'follow'`, `generator_load = 1e-6`, rotor at rest — #235 fixed half of it), and
+  with pump heat real the follow governor cracked to 6.2 % and re-stalled the heatup at
+  306.05 °F, so Modes 3/5 now spawn off line on one `onLine` predicate; and **`pwr_mode5_to_mode3`
+  was re-authored** — 10.71 plant-hours at 39.8 °F/hr with **no rod motion**, arriving hot and
+  still subcritical, which is what Mode 3 actually is. The new gate was verified to **fail**
+  with the netting restored. `pwr_heatup` (PWR-N03) is still the nuclear variant — deliberately
+  not re-authored, filed as follow-up.
 - **The PWR's last HR1 hole is closed — the low-flow trip reads an instrument (2026-07-29,
   #247).** `rcs_flow` is a real elbow-tap channel (% of rated, lag 1 s, injectable
   failures); the `__true_flow__` sentinel is **deleted from every file**, and with it the
@@ -272,17 +290,6 @@ anything here that is standing procedure rather than news belongs in the list be
   **hovering must not highlight the object** (owner, 2026-07-28 — the ring an early cut drew
   was "very annoying"), which `run_inspect` pins because the issue text asks for the opposite.
 
-- **An alarm's priority is not fixed — it can be reclassified by mode or lineup
-  (2026-07-28r, #240).** An alarm spec may carry `reclassify` rules (`layers/control/
-  pwr_control.js`, resolved in `control_kernel.getAlarms`): when the condition is the
-  *planned* state of the plant, the tile drops to `status` and reworders itself
-  (Mode 4/5 cold-side alarms; RCP TRIP → SECURED on the handswitch). Two things to know
-  before you touch alarms: a rule can only ever **soften** — `_evalAlarms` decides
-  clear→active from the instrument condition alone and consults a rule only to classify
-  what it has already raised, so nothing can be suppressed or delayed — and a rule carries
-  its instrument name as **data**, because the kernel may not name a plant field (HR3;
-  `run_hr3` failed the first draft for exactly this). Sourced to NUREG-0700 Rev 4
-  §4.1.2-7 / Table 4.1.
 
 
 **Standing procedure — not part of the rotation above; these do not expire.**
@@ -381,7 +388,7 @@ turning green has to be acknowledged (update the baseline, close the issue) inst
 being silently absorbed. Same convention as the strict xfails in `run_meltdown` /
 `run_behavior`.
 
-Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3025 checks)**,
+Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3026 checks)**,
 `run_m4` **25/25 (135 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **20/20**,
 `run_behavior` **38 pass / 0 xfail**, `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
@@ -391,7 +398,7 @@ Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, ca
 were never plant defects at all — the harness was running 11 of its 22 procedures below the
 10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_hr3` **29 checks / 0 failed**, `run_hardrules` **21 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_hr3` **29 checks / 0 failed**, `run_hardrules` **22 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **35/35** (both F12 reds were stale expectations, fixed

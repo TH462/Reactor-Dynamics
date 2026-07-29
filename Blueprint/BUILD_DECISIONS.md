@@ -37,6 +37,62 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-29j — #251: the SG boils everything that crosses it; the pump-heat netting deleted
+
+**Claim.** Rated steam flow is the flow made by **NSSS rated heat** — rated core heat *plus*
+full-flow RCP pump heat — not by core heat alone. Both the SG's generation rate and the follow
+governor's demand are normalized on that, and the correction term that used to cancel pump heat
+inside the steam balance is gone.
+
+**Why.** `pwr_steam_generator.js` computed `max(0, Q_sg − Q_pump)/latent_heat_secondary`, booked
+as "SG blowdown/ambient losses". It was not losses: it was sized to cancel pump heat identically
+at every flow, because `extractFrac` drew steam for core power only and the extra 0.55 % had no
+sink. The uncosted consequence: the steam side could never start boiling below `Q_pump`, and
+`Q_sg = h_sg·(Tavg − Tsec)` settles at exactly `Q_pump`. **Measured: a pump-heat heatup is a
+stable attractor at 218.69 °F (103.72 °C), ΔT = 0.321 °F = `Q_pump/h_sg` to three decimals,
+forever.** A real plant rates its steam generators on NSSS thermal power, not core thermal power
+— the difference *is* pump heat — and two places in this engine already assumed that
+(`pwr_engine:1125,1199`, and the dump's `t_fullpower`), which is the evidence the netting was the
+anomaly rather than the rest.
+
+**The normalization choice, and what it bought.** The issue's plan expected step 3 —
+recalibrating `steam_flow_rated` and giving the governor headroom above its `clip(…, 0, 1)` — to
+be "the step that carries risk". Normalizing *both* sides on NSSS rated heat instead
+(`latent_heat_secondary × (1 + pump_heat_frac)` in the SG, `/(1 + pump_heat_frac)` in
+`extractFrac`) makes 100 % core power at full flow come out **exactly 1.0**. So
+`steam_flow_rated` stays 1.0, the clip stays, rated MWe stays 100, and "100 %" still means
+100 % on the steam-flow gauge and in `load_target_mwe`. The alternative — leaving the demand at
+1.0055 and raising the clip — would have put every rated reading 0.55 % over full scale. The
+risk item in the plan evaporated rather than being managed.
+
+**Deviation from the filed plan, recorded as one.** Plan step 5 (measure MANUAL/DISCONNECTED
+drift, decide whether they need a sink) was measured and needs **nothing**: manual at
+100/75/50/25 MWe drifts at most **−2.07 psi over 4 sim-h**, disconnected ride-out +3.68 psi vs
++3.36 before. No second compensation term was added, per the plan's own instruction not to.
+
+**The half the issue did not name.** `_buildState` set `load_mode: 'follow'` unconditionally, so
+the subcritical ICs (Modes 3 and 5) spawned *synchronised* — breaker closed, `generator_load =
+1e-6` — while #235 had already parked their rotor at rest. Harmless while the SG cancelled pump
+heat; with the netting gone the follow governor cracks to **6.2 %** on the pump-heat demand and
+drains the heatup, re-stalling it at **306.05 °F (152.25 °C)** with the same ΔT signature. Now a
+single `onLine = P0 > 0.01` predicate drives rotor speed, breaker, governor position and load
+mode together — they cannot disagree again. Off line here is a **planned offline, not a trip**
+(#230): nothing latches, so P-9 is never armed on a cold plant.
+
+**Result, measured with no rod motion at all.** Mode 4 (200 °F / 93.3 °C) at 0.28 plant-h;
+Mode 3 (548 °F / 286.7 °C) at **10.71 plant-h**; ρ = −6287 pcm on 919 ppm with the bank at its
+cold-shutdown position. Average **39.8 °F/hr (22.1 °C/hr)**, steady ~32 °F/hr after the first
+hour (the first hour's 111.5 °F/hr is the compressed pressurization). Full power is unchanged to
+two decimals. Rate control: secure an RCP → 0.1 °F/hr; the steam dump is far too coarse (5 %
+manual demand ≈ 10× pump-heat generation, reverses the heatup at −83.4 °F/hr).
+
+**HR10.** The new `run_campaign` heatup gate contains **no rod command at all** and asserts 0
+steps of rod motion plus peak power < 0.01 %. It was validated against the OLD behaviour: with
+the netting temporarily restored it **fails** on "heatup reaches an endpoint". `run_campaign`
+baseline 3025 → **3026**.
+
+---
+
 ## 2026-07-29c — #240 follow-up: the `status` class does not demand an acknowledgment
 
 **Owner ruling** (comment on #240): *"I want status-class alarms to spawn (and arrive)

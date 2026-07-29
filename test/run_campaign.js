@@ -1083,21 +1083,46 @@ function heatupStep(s, shutdown) {
   else if (t.power_pct < Pt * 0.8 && t.startup_rate_dpm < 1.0) s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 4, speed: 'slow' });
 }
 
-test('pwr_mode5_to_mode3 — cold heatup reaches Hot Standby, no fuel damage', function (ck) {
+// THE PUMP-HEAT HEATUP DRIVER (#251) — deliberately smaller than heatupStep above,
+// and deliberately containing NO ROD COMMAND. A Mode 5 → Mode 3 heatup is done on
+// RCP shaft work with the reactor subcritical throughout; the only operator actions
+// are "start the pumps" and "take it up to pressure". Feed is left alone on purpose:
+// the SG is bottled (turbine off line, dumps shut) so nothing boils off and nothing
+// needs replacing — measured, level holds at 65.6 % the whole way.
+function pumpHeatStep(s) {
+  s.handleCommand({ action: 'set_rcp', running: true });
+  s.handleCommand({ action: 'set_pressure_setpoint', mpa: 15.41 });
+}
+
+test('pwr_mode5_to_mode3 — cold heatup reaches Hot Standby on PUMP HEAT, no rod motion', function (ck) {
   var s = startScenario('pwr_mode5_to_mode3');
-  s.handleCommand({ action: 'set_speed', value: 60 });
-  var maxFuel = 0;
+  // A headless gate has no operator to protect, and this run raises cold-plant alarms
+  // from the first seconds; without this the fast-forward dropout returns the sim to 1×
+  // and the 10.7 plant-hour heatup never finishes inside the budget (#245).
+  s.attentionStops = false;
+  s.handleCommand({ action: 'set_speed', value: 300 });
+  var maxFuel = 0, maxPower = 0, rod0 = s.engine.rod_groups[0].steps, rodMoved = 0;
   var snap = runUntil(s, function (sn) {
     var t = s.engine.getTrueState(); if (t.fuel_temp_c > maxFuel) maxFuel = t.fuel_temp_c;
-    heatupStep(s, t.tavg_c >= 296);                     // heat, then settle subcritical once hot
+    if (t.power_pct > maxPower) maxPower = t.power_pct;
+    var d = Math.abs(s.engine.rod_groups[0].steps - rod0); if (d > rodMoved) rodMoved = d;
+    pumpHeatStep(s);
     return lc(sn);
-  }, 30000);
+  }, 60000);                                            // 16.7 plant-h; the heatup measures 10.71
   ck('heatup reaches an endpoint', !!snap, !!snap, 'level_complete');
   if (snap) {
     ck('endpoint is the Hot Standby card', lc(snap).title, /Hot Standby/i.test(lc(snap).title), 'Hot Standby — Reached');
     var tf = s.engine.getTrueState();
     ck('hot at NOP temperature', tf.tavg_c.toFixed(1), tf.tavg_c > 285, '> 285 °C');
     ck('subcritical Hot Standby (Mode 3)', 'mode=' + tf.plant_mode + ' rho=' + tf.reactivity_pcm.toFixed(0), tf.plant_mode === 3 && tf.reactivity_pcm < 0, 'Mode 3, subcritical');
+    // THE #251 GUARD. The plant heated itself: no rod ever moved and the core never
+    // went critical. If the pump-heat netting is ever restored — in the SG's steam
+    // balance, or by taking pump heat back out of the turbine's demand — the plant
+    // stalls at 218.69 °F (103.72 °C) and this test times out at the check above
+    // rather than quietly reverting to a fission-driven heatup.
+    ck('NO ROD MOTION — the heatup ran on pump heat', rodMoved + ' steps', rodMoved === 0, '0 steps');
+    ck('core never went critical', 'peak power ' + maxPower.toExponential(1) + ' %',
+      maxPower < 0.01, '< 0.01 %');
     ck('no fuel damage on the way up', maxFuel.toFixed(0), maxFuel < 1200 && !s.engine.s.fuel_damaged, '< 1200 °C');
     // The heatup crosses the P-11 lo-press band with the trip auto-blocked at
     // cold init and auto-reinstated on the way up — a spuriously-scrammed plant

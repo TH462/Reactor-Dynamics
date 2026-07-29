@@ -366,10 +366,16 @@
 
     // ------------------------------------------------- steam generator / second
     steam_generator: {
-      latent_heat_secondary: 19.45, // normalizes steam_generation_rate to ~1.0 at rated [tune]
+      // Heat that makes one unit of steam. The SG normalizes on NSSS RATED HEAT —
+      // this × (1 + thermal.pump_heat_frac), i.e. rated core heat PLUS full-flow RCP
+      // pump heat — so steam_generation_rate is 1.0 at 100 % core power with all pumps
+      // running, and rated steam flow is the flow that heat actually makes (#251).
+      // Do not read this constant alone as "the rated heat": the pump-heat factor is
+      // applied at the use site, pwr_steam_generator stepSecondary. [tune]
+      latent_heat_secondary: 19.45,
       K_sg_level: 5.0, K_steam_pressure: 2.0, // [tune]
       steam_p_rated: 5.65,         // MPa secondary operating pressure [tune]
-      steam_flow_rated: 1.0,       // [tune]
+      steam_flow_rated: 1.0,       // rated steam flow, in those normalized units [tune]
       sg_level_nominal: 65.0,      // % at hot_full_power
       // Wide-range level window: the whole-vessel wide range is the integrated inventory
       // (clamped only at the physical vessel bounds 0/100); the NARROW working range is the
