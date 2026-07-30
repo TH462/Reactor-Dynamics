@@ -175,8 +175,11 @@
     imro6qutiht: e('Source Range indication',
       'Neutron counts per second — the shutdown-core flux instrument. Amber at the SR→IR handoff.',
       'Logarithmic, 1 to 1e6 cps. Watch it double as rods come out: the doubling rate IS the ' +
-      'approach to criticality, which is what the 1/M plot formalises. Amber at 5e4 cps is the cue ' +
-      'to complete the handoff and secure the detector before the 1e5 cps high-flux trip.', CI, '4.3'),
+      'approach to criticality, which is what the 1/M plot formalises. The number itself carries ' +
+      'the limits: amber at 5e4 cps is the cue to complete the handoff, RED at 1e5 cps is the ' +
+      'high-flux trip that ends the ascent, and once you secure the detector it goes grey — that ' +
+      'trip is conditional on the detector being energized, so there is no live limit here ' +
+      'afterwards.', CI, '4.3'),
     bdSrDetector: e('SR DET',
       'Energizes or secures the source-range detector. Interlocked both ways (P-6).',
       'Lit means energized and counting. You cannot secure it until the intermediate range is on ' +
@@ -192,7 +195,10 @@
       'Intermediate-range detector current in amps — 1e-11 to 2e-3, logarithmic.',
       'Reads amps, not percent: the scale is logarithmic because flux is. Its high-flux trip is one ' +
       'of the two blocked deliberately during a startup, since a normal ascent walks straight ' +
-      'through the setpoint below P-10.', CI, '4.3'),
+      'through the setpoint below P-10. The number goes amber within half a decade of that trip ' +
+      '(1.67e-3 A) and red at it — then grey once you block it above P-10, because a blocked trip ' +
+      'is not a limit you can run into. This is the middle rung of the startup net: P-10 at 10 %, ' +
+      'this at about 20 %, the power-range low setpoint at 25 %.', CI, '4.3'),
     ims175yp3k8: e('Startup Rate',
       'How fast power is changing, in decades per minute — the rate instrument for a startup.',
       'Startup rate is the operator\'s real-time reactivity feedback. Target 1 DPM or less on ' +
@@ -201,7 +207,9 @@
     imro6qsncb9: e('Startup Rate indication',
       'Startup rate in decades per minute — positive is rising power, negative falling.',
       'A 2-second lag sits between the core and this number, which is why a big held withdrawal is ' +
-      'already too much by the time the meter shows it. Watch the trend, not the instant value.', CI, '4.0'),
+      'already too much by the time the meter shows it. Watch the trend, not the instant value. ' +
+      'Amber at 1.0 DPM is the SUR HI alarm; red at 1.5 DPM means the rod WITHDRAWAL BLOCK is on — ' +
+      'not a trip, a command block, and it releases below 0.8 DPM. Insertion is never blocked.', CI, '4.0'),
     ims175ay22g: e('ΔT Average',
       'Core temperature rise: hot leg minus cold leg. A direct read on thermal power.',
       'With flow constant, ΔT is proportional to core power — and unlike the flux instruments it ' +
@@ -852,7 +860,13 @@
       'RCS pressure in psi — normally about 2235 psi at power.',
       'Pressure keeps the coolant liquid. Read it with temperature rather than alone: the same ' +
       'pressure is comfortable at 550 °F and boiling at 620 °F, which is what the subcooling margin ' +
-      'tile computes for you.', CI, '5.1'),
+      'tile computes for you. The bands follow the protection that is actually in force: at power ' +
+      'the low-pressure reactor trip sits at 1800 psi in red, but on a depressurized plant the P-11 ' +
+      'permissive has BLOCKED that trip and the SI signal with it, so the low band goes away, the ' +
+      'tile reads LO TRIP BLKD and rescales to the pressure you are actually holding on heaters. ' +
+      'Pressurize past 1972 psi and the block reinstates itself and the red band comes back. This ' +
+      'is why a cold plant at 363 psi reads green and a LOCA at 363 psi reads hard red — same ' +
+      'number, opposite meanings, and the difference is which trips are armed.', CI, '5.1'),
     ims2immxl2s: e('Subcooling Margin',
       'How far the coolant is from boiling, in °F. The primary accident diagnostic.',
       'It combines pressure and temperature into the one question that matters during a LOCA: is the ' +

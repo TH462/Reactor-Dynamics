@@ -76,7 +76,7 @@
       decimals: Math.max(0, Math.round(num(cfg.digits != null ? cfg.digits : cfg.decimals, 1))),
       min: num(cfg.min, 0),
       max: num(cfg.max, 100),
-      note: '',
+      note: '', noteKind: 'trip',
       normLo: null, normHi: null, alarmLo: null, alarmHi: null, tripLo: null, tripHi: null
     };
     var hist = [];
@@ -106,6 +106,11 @@
     // exception marker, not a permanent caption, and a caption on every tile every second is
     // one nobody reads. It sits in the label row rather than on its own line because the tile
     // is 114 px tall and the sparkline is what would have paid for the extra row.
+    // `noteKind` picks the colour from the same region palette the bands use, because the note
+    // is not always a warning: a limit you can hit is `trip` (red), whereas protection that is
+    // deliberately bypassed for the plant mode you are in is `ok` (grey-blue) — the control
+    // layer already reclassifies those alarms to `status` priority when cold, and painting the
+    // tile red for the expected state would contradict its own annunciator.
     var noteEl = h('div', { style: {
       flex: 'none', display: 'none', color: REGION_COLORS.trip,
       fontFamily: "'IBM Plex Sans',system-ui,sans-serif",
@@ -343,9 +348,11 @@
       // it is unaffected), null/'' clears it, a string shows it.
       if (props.note !== undefined) {
         var note = props.note || '';
-        if (note !== st.note) {
-          st.note = note;
+        var kind = REGION_COLORS[props.noteKind] ? props.noteKind : 'trip';
+        if (note !== st.note || kind !== st.noteKind) {
+          st.note = note; st.noteKind = kind;
           noteEl.textContent = note;
+          noteEl.style.color = REGION_COLORS[kind];
           noteEl.style.display = note ? '' : 'none';
         }
       }

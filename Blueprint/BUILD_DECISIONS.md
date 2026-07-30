@@ -37,6 +37,43 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-30f — #270/#271: indications key on ARMED PROTECTION, never on plant mode
+
+**The decision, now applied board-wide: an indication shows the protection in force, and the
+discriminator is the ARMED/BLOCKED state — not `plant_mode`.** The tempting alternative for #270
+was "if Mode 5, use cold bands". It is wrong for a reason worth recording: a Mode 5 plant at
+400 psi and a **LOCA** at 400 psi are the same reading and must look different. Armed state
+separates them for free — measured through a real `large_loca`, `trip_blocks` stays `{}` all the
+way down to 15 psi, so the hot window and red band persist exactly where they should.
+
+**Deviation recorded: the note colour is now a region key, not always red.** `noteKind: 'ok'` for
+"bypassed for the mode you are in", because the control layer already reclassifies those alarms to
+`status` priority when cold. A red note would have made the tile contradict its own annunciator.
+
+**Two latent defects surfaced under #270, both found by printing values rather than reading code.**
+`bandsFor` applied `alarmHi` and never `alarmLo` — the only mode-aware helper that existed set the
+high side, so the low path had never run. And its clamps are one-sided, so a band that has moved
+far can be crossed over itself; that produced the Mode 5 inversion where a correct 363 psi painted
+TRIP RED. The inversion guard is central, not per-helper. **It also masked the `alarmLo` bug into a
+zero-width `2149..2149` band** — a guard can hide the defect it guards against, which is why the
+pin asserts the band's value, not just its ordering.
+
+**#271 — presentation follows the channel.** The NIS readouts are `value` items: bare log-ranging
+numbers with no region model, so the indication is the colour of the number (the mechanism the SR
+readout has used since #105) rather than a band or a tile. Three calls: *approaching* is measured
+in **decades** (0.5), because per-cent is meaningless on a log scale; **grey when not armed**;
+and SUR's red marks the rod-withdrawal **interlock** at 1.5 DPM, not a trip — it has none.
+Thresholds are read from the alarm/interlock tables and resolved **lazily**, since `_PROT` is
+assigned below them.
+
+**Explicitly not done:** on-board numeric threshold annotations for the NIS channels. No room in
+that panel, and the tiles' note slot does not exist for `value` items. The numbers live in the
+inspect copy — colour is for the limit you must *notice*, text for the limit you want to *read*.
+
+board_check **113 → 127**, injection-verified in both directions.
+
+---
+
 ## 2026-07-30e — #263 item 2: the creep step is derived, and its INPUTS are what got gated
 
 **The decision: derive the number rather than declare it empirical**, which was the other option

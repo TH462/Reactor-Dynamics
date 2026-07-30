@@ -14,6 +14,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **A cold plant read as a scram on the pressure gauge, and the nuclear instruments never
+  showed their trip points** (#270, #271) — the rest of the work #267 started. Every board
+  indication now follows the protection that is **actually armed**, not the setpoint table.
+
+  On a depressurized plant the P-11 permissive blocks the low-pressure reactor trip and the
+  safety-injection signal with it. PRIMARY PRESSURE painted the red band anyway, and the
+  damage went further than a stale colour: at Cold Shutdown the marker sat **off the gauge
+  entirely** and the normal band inverted itself, so a perfectly correct **363 psi
+  (2.50 MPa)** read as **trip red** while the alarm list beside it said *"Pressurizer
+  Pressure Low — expected, plant depressurized"*. The tile now collapses the low band, reads
+  `LO TRIP BLKD`, and rescales to the pressure you are actually holding on heaters —
+  pressurize past **1972 psi (13.60 MPa)** and the block reinstates itself and the red band
+  comes back. A LOCA is unaffected: those trips stay armed all the way down, so a hot plant
+  losing pressure still reads hard red. Same number, opposite meanings.
+
+  The **source range, intermediate range and startup rate** readouts were bare numbers. Two
+  of the three rungs of the startup net lived there and neither was visible — the source
+  range went amber at its handoff caution but marked its **1e5 cps** trip no differently, and
+  the intermediate range's trip, the one that catches a missed block, showed nothing at all.
+  All three now colour against their live limits: amber approaching, red at the limit, and
+  **grey once the trip is blocked or the detector is secured** — because a defeated trip is
+  not something you can run into, and saying otherwise would teach the opposite of what
+  blocking it accomplished.
 - **The reactor power gauge showed a 120 % trip while the plant was set to trip at 25 %**
   (#267). Through a startup the power-range **low setpoint** reactor trip is armed at
   **25 %**, and it can only be blocked once you are above the P-10 permissive at **10 %**.

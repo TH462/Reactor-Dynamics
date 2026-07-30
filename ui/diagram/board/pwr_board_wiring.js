@@ -395,15 +395,40 @@
     ims5gq44zgr: function (s) { return r0(C2F(satTempC(IN(s).primary_pressure))); },
     ims5gprvl7n: function (s) { return r0(CS(s).heater_power_pct || 0); },
     imro6qpci2d: function (s) { return r0(Cd2F(IN(s).thot - IN(s).tcold)); },                           // dTavg °F
-    imro6qsncb9: function (s) { var v = IN(s).startup_rate || 0; return (v >= 0 ? '+' : '') + v.toFixed(2); }, // SUR DPM
-    imro6qutiht: function (s) {                                                                          // source range cps (amber at SR→IR handoff)
+    // SUR, DPM (#271). NOT a log channel and it has no trip — the limits are the `sur_high`
+    // ALARM at 1.0 and the rod-withdrawal INTERLOCK at 1.5 (clearing below 0.8), which is a
+    // command block rather than a scram. Red therefore means "the withdrawal block is on", not
+    // "you are about to trip", and that is the more useful thing to say here.
+    imro6qsncb9: function (s) {
+      var v = IN(s).startup_rate || 0;
+      var text = (v >= 0 ? '+' : '') + v.toFixed(2);
+      var color = v >= surBlockDpm() ? NIS_TRIP_COLOR
+                : v >= surAlarmDpm() ? SR_HANDOFF_COLOR : SR_NORMAL_COLOR;
+      return { text: text, color: color };
+    },
+    imro6qutiht: function (s) {                                                                          // source range cps
       var sr = IN(s).source_range;
       // Amber at the SR high-flux CAUTION (pwr_control 'sr_high_flux', 5e4 cps): the cue to
-      // finish the SR→IR handoff and secure the SR detector before its 1e5 cps high-flux trip.
-      var handoff = sr != null && isFinite(sr) && sr >= SR_HANDOFF_CPS;
-      return { text: fmtExp(sr), color: handoff ? SR_HANDOFF_COLOR : SR_NORMAL_COLOR };
+      // finish the SR→IR handoff and secure the SR detector. RED at the 1e5 cps trip that ends
+      // the ascent — which the readout never showed, so the caution and the scram looked alike.
+      // Grey once the detector is secured: `sr_high` is `condition: 'sr_energized'`, so after
+      // the handoff there is no live limit on this channel at all.
+      var live = !!IN(s).sr_energized;
+      var trip = nisArmed('source_range', 'high', s);
+      var color = !live ? NIS_IDLE_COLOR
+                : (sr != null && isFinite(sr) && trip != null && sr >= trip) ? NIS_TRIP_COLOR
+                : (sr != null && isFinite(sr) && sr >= SR_HANDOFF_CPS) ? SR_HANDOFF_COLOR
+                : SR_NORMAL_COLOR;
+      return { text: fmtExp(sr), color: color };
     },
-    imro6rctcgm: function (s) { return fmtExp(IN(s).intermediate_range); },                              // IR amps (log scale, amps — like SR; was a mislabeled µA integer that read "0"/"1")
+    // IR amps (log scale, like SR). The `ir_high` trip at 1.67e-3 A is the middle rung of the
+    // startup net and was completely invisible: the readout was a plain number, so the trip that
+    // catches a missed block gave no warning at all. Grey once blocked above P-10 (#271).
+    imro6rctcgm: function (s) {
+      var ir = IN(s).intermediate_range;
+      var trip = nisArmed('intermediate_range', 'high', s);
+      return { text: fmtExp(ir), color: nisLogColor(ir, trip, trip != null) };
+    },
     imro6rdwwdn: function (s) { var r = (s.true_state && s.true_state.reactivity_pcm) || 0; return (r >= 0 ? '+' : '') + r0(r); }, // reactivity pcm
     // Reactor period (s) — teaching readout under REACTIVITY. ∞ when steady.
     bdRxPeriod: function (s) {
@@ -487,6 +512,47 @@
   // (matches pwr_control 'sr_high_flux' = 5e4 cps), prompting the operator to secure the SR
   // before its 1e5 cps trip. SR_NORMAL_COLOR is the authored green on the SR indication item.
   var SR_HANDOFF_CPS = 5.0e4, SR_HANDOFF_COLOR = '#D9A441' /* --caution */, SR_NORMAL_COLOR = '#5aad7c';
+  var NIS_TRIP_COLOR = '#ff6a4d' /* --critical, the tiles' trip red */;
+  var NIS_IDLE_COLOR = '#7f95a5' /* the tiles' "acceptable" grey — no live limit to run into */;
+
+  // ---- NIS threshold indication (#271) ----------------------------------------------
+  // The startup net ladders P-10 (10 %) < IR high (~20 %) < PR low setpoint (25 %). #267 made
+  // the PR rung visible on the power tile; these are the other two, plus the startup rate.
+  // They are `value` items — bare log-ranging numbers with no region model to paint a band on —
+  // so the indication is the COLOUR OF THE NUMBER, on the same mechanism the SR readout has used
+  // for the handoff cue since #105.
+  //
+  // Driven by ARMED protection, like the tiles: a blocked or non-live trip has no colour, because
+  // there is nothing there to run into. `ir_high` is blockable above P-10 and the startup net
+  // expects you to block it; `sr_high` carries `condition: 'sr_energized'` and dies with the
+  // detector. Colouring a defeated trip would teach the opposite of what the block accomplished.
+  //
+  // On a LOG channel "approaching" cannot be a percentage — 50 % of 1.67e-3 A is half a decade
+  // short and reads as nowhere near. NIS_NEAR_DECADES is how close in DECADES counts as amber.
+  var NIS_NEAR_DECADES = 0.5;
+  // Resolved LAZILY, not captured. `_PROT` is a `var` assigned further down the file, so reading
+  // it at this point would take `undefined` — the same load-order trap tile() already documents.
+  function surAlarmDpm() { return alarmSp('sur_high', 1.0); }
+  function surBlockDpm() {
+    var il = _PROT.interlocks || [];
+    for (var i = 0; i < il.length; i++) {
+      if (il[i].instrument === 'startup_rate' && il[i].direction === 'high' &&
+          (il[i].blocks || []).indexOf('rod_start') >= 0) return il[i].setpoint;
+    }
+    return 1.5;
+  }
+  function nisArmed(instrument, direction, s) {
+    var t = limitingArmedTrip(instrument, direction, s);
+    return (t && t.setpoint != null && isFinite(t.setpoint)) ? t.setpoint : null;
+  }
+  // Colour a log-scaled reading against its armed trip: red at or past it, amber within
+  // NIS_NEAR_DECADES below it, otherwise the authored green. Grey when nothing is armed.
+  function nisLogColor(v, sp, live) {
+    if (!live || sp == null) return NIS_IDLE_COLOR;
+    if (!(v > 0) || !isFinite(v)) return SR_NORMAL_COLOR;
+    if (v >= sp) return NIS_TRIP_COLOR;
+    return (Math.log10(sp) - Math.log10(v) <= NIS_NEAR_DECADES) ? SR_HANDOFF_COLOR : SR_NORMAL_COLOR;
+  }
   function fmtExp(v) { if (!v || v <= 0) return '0'; var e = Math.floor(Math.log10(v)); var m = v / Math.pow(10, e); return m.toFixed(1) + 'e' + e; }
   function accIsolated(s) { return CS(s).accumulator_valve_open === false; }
   function accFill(s) { var t = s.true_state || {}; return t.accumulator_volume_pct != null ? t.accumulator_volume_pct : 78; }
@@ -871,13 +937,48 @@
     return { normHi: qz(p10), alarmHi: qz(p10), tripHi: qz(lim.setpoint),
              note: 'TRIP ' + qz(lim.setpoint) + '%' };
   }
+  // Primary pressure — the low side follows WHAT IS ARMED, same rule as power (#270).
+  //
+  // `primary_pressure low` carries two reactor trips (`lo_press` 12.41 MPa / 1800 psi and
+  // `si_trip` 12.4 MPa) and BOTH are blocked at a depressurized initial condition by the P-11
+  // permissive, auto-reinstating above 13.6 MPa (1972 psi) during the heatup. The tile painted
+  // the red band anyway, and the consequences were worse than a stale band. MEASURED at
+  // `cold_shutdown` before this fix, with the plant correctly holding 363 psi:
+  //   - the display window was 1736–2449 psi, so the marker sat at −192.6 % of scale — off the
+  //     gauge entirely;
+  //   - `normLo` clamped up to 2149 while `normHi` tracked the live setpoint at 413, an
+  //     INVERTED normal band, so `regionAt()` fell through to the first region and painted a
+  //     perfectly correct 363 psi in TRIP RED.
+  //
+  // Cold, there is no armed low-side boundary to draw: the trips are blocked, and the
+  // `pzr_pressure_low` / `pzr_pressure_lolo` alarms already `reclassify` to `status` priority in
+  // cold modes, so the annunciator is calling them expected while the tile called them a scram.
+  // The low regions collapse and the window runs from 0 to just above the control band, which is
+  // the range that actually means something on a plant being held on heaters.
+  //
+  // The window is keyed on ARMED PROTECTION, not on plant mode, and that is the point: a Mode 5
+  // plant at 400 psi and a LOCA at 400 psi are the same reading and must not look the same. In a
+  // LOCA the setpoint stays at NOP, P-11 is satisfied on the way down, the trips are armed, and
+  // this returns the authored hot bands with the red band intact.
   function pressureBand(s) {
+    var b = TILE_BANDS.ims2immsvn6;
     var sp = CS(s).pressure_setpoint;
     if (sp == null || !isFinite(sp)) sp = P_SET;
-    return {
+    var out = {
       normLo: qz(MPa2psi(sp - (_PZ.heater_band_mpa || 0.207))),
       normHi: qz(MPa2psi(sp + (_PZ.spray_band_mpa || 0.345)))
     };
+    if (!s || !s.rps_state) return out;                                // no RPS section → authored
+    if (limitingArmedTrip('primary_pressure', 'low', s)) return out;   // armed → authored, red intact
+    out.tripLo = b.min;
+    out.alarmLo = b.min;
+    out.winLo = b.min;
+    out.winHi = qz(out.normHi + 0.15 * (out.normHi - b.min));
+    // `ok`, not `trip`: bypassed-for-the-mode is a status indication, and a red note here would
+    // say the opposite of what the reclassified alarms say.
+    out.note = 'LO TRIP BLKD';
+    out.noteKind = 'ok';
+    return out;
   }
   function bandsFor(id, s) {
     var b = TILE_BANDS[id];
@@ -889,17 +990,29 @@
     if (mv.normLo != null) out.normLo = mv.normLo;
     if (mv.normHi != null) out.normHi = mv.normHi;
     if (mv.alarmHi != null) out.alarmHi = mv.alarmHi;
+    // alarmLo was missing here until #270 — the only mode-aware helper that existed set alarmHi
+    // and never its opposite, so a helper collapsing the LOW alarm silently kept the authored
+    // one and the clamp below then dragged the normal band up to it.
+    if (mv.alarmLo != null) out.alarmLo = mv.alarmLo;
     // A live trip bound moves the RED edge, so it must move the display window with it —
     // displayScale() derives the window from tripLo/tripHi.
     if (mv.tripHi != null) out.tripHi = mv.tripHi;
     if (mv.tripLo != null) out.tripLo = mv.tripLo;
     if (mv.note != null) out.note = mv.note;
+    if (mv.noteKind != null) out.noteKind = mv.noteKind;
     if (mv.winLo != null) out.winLo = mv.winLo;
     if (mv.winHi != null) out.winHi = mv.winHi;
     // A moving normal band must stay inside its own alarm/trip envelope, or a setpoint the
     // operator typed could paint green over red.
     if (out.normLo < out.alarmLo) out.normLo = out.alarmLo;
     if (out.normHi > out.alarmHi) out.normHi = out.alarmHi;
+    // …but the two clamps above are ONE-SIDED, and applied to a normal band that has moved a
+    // long way they can cross it over itself. Measured in Mode 5 before #270: normLo clamped up
+    // to 2149 while normHi tracked the setpoint at 413, and `regionAt()` — which returns the
+    // first region whose top exceeds the reading — then fell through to the bottom TRIP region
+    // and painted a correct 363 psi red. A tile must not be able to say that, whichever band
+    // moves next, so the inversion is closed here rather than in each mode-aware helper.
+    if (out.normHi < out.normLo) out.normHi = out.normLo;
     return out;
   }
 
@@ -936,7 +1049,7 @@
         tripLo: b.tripLo, tripHi: b.tripHi,
         // '' (not null) so the tile CLEARS a stale note rather than keeping the last one —
         // `undefined` means "leave alone" in the component's tri-state contract.
-        note: b.note || ''
+        note: b.note || '', noteKind: b.noteKind || 'trip'
       };
     };
   }
@@ -1479,6 +1592,97 @@
       // tripBackstop must not depend on table order — the defect this fixes was order-dependent.
       ck('driver: power backstop is order-independent',
         tripBackstop('power_range', 'high', null) === 120, tripBackstop('power_range', 'high', null));
+
+      // ---- pressure tile follows the ARMED low trip (#270) -------------------------------
+      // MEASURED at `cold_shutdown` before the fix, with the plant correctly holding 363 psi:
+      // the marker sat at −192.6 % of scale and `normLo` clamped to 2149 while `normHi` tracked
+      // the setpoint at 413 — an INVERTED band, so a correct reading painted TRIP RED.
+      function pressTile(spMPa, blocks) {
+        var t = { instruments: {}, control_state: { pressure_setpoint: spMPa },
+                  true_state: { plant_mode: blocks ? 5 : 1 }, metadata: { sim_time: 100 } };
+        if (blocks) t.rps_state = { trip_blocks: blocks, scrammed: false };
+        else if (blocks === null) { /* no rps_state at all */ }
+        else t.rps_state = { trip_blocks: {}, scrammed: false };
+        return COMPPROPS.ims2immsvn6(t);
+      }
+      var qCold = pressTile(2.5, { lo_press: true, si_trip: true });
+      var qHeat = pressTile(15.41, { lo_press: true, si_trip: true });   // setpoint at NOP, still blocked
+      var qHot = pressTile(15.41, false);
+      var qBare = pressTile(15.41, null);
+      // Cold: no armed low boundary, so the low regions collapse and the NORMAL band is the
+      // live control band — not the at-power one clamped on top of it.
+      ck('driver: pressure tile collapses the low trip band when P-11 has blocked it',
+        qCold.tripLo === 0 && qCold.alarmLo === 0, 'tripLo ' + qCold.tripLo + ', alarmLo ' + qCold.alarmLo);
+      ck('driver: pressure tile shows the COLD control band, not the at-power one',
+        qCold.normLo === 333 && qCold.normHi === 413, qCold.normLo + '..' + qCold.normHi + ' psi');
+      ck('driver: pressure tile puts a Mode 5 plant on scale', Math.round(qCold.max) === 475,
+        'window ' + qCold.min.toFixed(0) + '..' + qCold.max.toFixed(0) + ' psi (363 psi reads ' +
+        (100 * (363 - qCold.min) / (qCold.max - qCold.min)).toFixed(0) + ' %)');
+      // `ok`, not `trip`: bypassed-for-the-mode is a status indication, and the low pressure
+      // alarms already reclassify to `status` priority in cold modes.
+      ck('driver: pressure tile says the low trip is blocked, in the status colour',
+        qCold.note === 'LO TRIP BLKD' && qCold.noteKind === 'ok', JSON.stringify(qCold.note) + '/' + qCold.noteKind);
+      // Mid-heatup: the setpoint is at NOP but P-11 is not satisfied yet, so the reading must
+      // still be on scale — this is the case a setpoint-keyed window would have got wrong.
+      ck('driver: pressure tile keeps a depressurized plant on scale after the setpoint goes to NOP',
+        qHeat.min === 0 && Math.round(qHeat.max) === 2628, 'window ' + qHeat.min + '..' + qHeat.max.toFixed(0));
+      // Armed (at power, and through a LOCA — measured, the trips never block on the way down):
+      // authored bands, red intact, no note. Pegged low IN RED is the correct LOCA reading.
+      // Rounded: these are the SI setpoints converted, so 12.41 MPa is 1799.92 psi, not 1800.
+      ck('driver: pressure tile keeps its red band while the low trip is ARMED',
+        Math.round(qHot.tripLo) === 1800 && Math.round(qHot.alarmLo) === 2149 && qHot.note === '',
+        qHot.tripLo.toFixed(0) + '/' + qHot.alarmLo.toFixed(0) + '/' + JSON.stringify(qHot.note));
+      ck('driver: pressure tile falls back to authored bands with no rps_state',
+        Math.round(qBare.tripLo) === 1800 && qBare.note === '',
+        qBare.tripLo.toFixed(0) + '/' + JSON.stringify(qBare.note));
+      // ---- NIS readouts show their thresholds (#271) --------------------------------------
+      // The startup net is P-10 (10 %) < IR high (~20 %) < PR low setpoint (25 %). #267 made the
+      // PR rung visible; these are the other two. Before this, SR went amber at its handoff
+      // caution and NOTHING marked either trip — so on the channel whose whole job is to catch a
+      // missed block, the caution and the scram looked identical, and IR looked like nothing.
+      function nis(id, ins, blocks) {
+        return RD.PwrBoardDriver.valueFor({ id: id }, {
+          instruments: ins, control_state: {}, true_state: { plant_mode: 2 },
+          metadata: { sim_time: 10 }, rps_state: { trip_blocks: blocks || {}, scrammed: false }
+        });
+      }
+      ck('driver: SR readout goes RED at its 1e5 cps trip, not just amber at the caution',
+        nis('imro6qutiht', { source_range: 1.2e5, sr_energized: true }).color === NIS_TRIP_COLOR &&
+        nis('imro6qutiht', { source_range: 6e4, sr_energized: true }).color === SR_HANDOFF_COLOR,
+        'trip ' + nis('imro6qutiht', { source_range: 1.2e5, sr_energized: true }).color +
+        ', caution ' + nis('imro6qutiht', { source_range: 6e4, sr_energized: true }).color);
+      // `sr_high` is condition: 'sr_energized' — after the handoff there is no live limit here.
+      ck('driver: SR readout goes neutral once the detector is secured',
+        nis('imro6qutiht', { source_range: 6e4, sr_energized: false }).color === NIS_IDLE_COLOR,
+        nis('imro6qutiht', { source_range: 6e4, sr_energized: false }).color);
+      ck('driver: IR readout marks its trip and warns within half a decade',
+        nis('imro6rctcgm', { intermediate_range: 2e-3 }).color === NIS_TRIP_COLOR &&
+        nis('imro6rctcgm', { intermediate_range: 8e-4 }).color === SR_HANDOFF_COLOR &&
+        nis('imro6rctcgm', { intermediate_range: 1e-8 }).color === SR_NORMAL_COLOR,
+        [2e-3, 8e-4, 1e-8].map(function (v) { return nis('imro6rctcgm', { intermediate_range: v }).color; }).join(' '));
+      // Blocked above P-10 by the startup net's own procedure — colouring a defeated trip would
+      // teach the opposite of what the block accomplished.
+      ck('driver: IR readout goes neutral once ir_high is blocked',
+        nis('imro6rctcgm', { intermediate_range: 2e-3 }, { ir_high: true }).color === NIS_IDLE_COLOR,
+        nis('imro6rctcgm', { intermediate_range: 2e-3 }, { ir_high: true }).color);
+      // SUR has no trip: red means the ROD WITHDRAWAL BLOCK is on (1.5 DPM), amber the alarm (1.0).
+      ck('driver: SUR readout marks the 1.0 alarm and the 1.5 withdrawal block',
+        nis('imro6qsncb9', { startup_rate: 0.3 }).color === SR_NORMAL_COLOR &&
+        nis('imro6qsncb9', { startup_rate: 1.1 }).color === SR_HANDOFF_COLOR &&
+        nis('imro6qsncb9', { startup_rate: 1.6 }).color === NIS_TRIP_COLOR,
+        [0.3, 1.1, 1.6].map(function (v) { return nis('imro6qsncb9', { startup_rate: v }).color; }).join(' '));
+      // Both thresholds come from the protection tables, not literals — a retune must move them.
+      ck('driver: SUR thresholds are read from the alarm and interlock tables',
+        surAlarmDpm() === 1.0 && surBlockDpm() === 1.5, surAlarmDpm() + ' / ' + surBlockDpm());
+
+      // The clamps in bandsFor are one-sided and CAN cross a moved band over itself.
+      ck('driver: no tile can emit an inverted normal band', (function () {
+        var bad = [];
+        [qCold, qHeat, qHot, qBare, pArmed, pBlocked, pBare].forEach(function (p, i) {
+          if (p.normHi < p.normLo) bad.push(i + ':' + p.normLo + '>' + p.normHi);
+        });
+        return bad.length === 0 ? true : bad.join(',');
+      })() === true);
       // Same failure mode for the highlight vocabulary: a dead target silently stops
       // glowing, and the campaign/checklist gates only cover part of the label set.
       ck('driver: every highlight target exists', (function () {

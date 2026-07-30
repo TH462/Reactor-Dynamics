@@ -115,6 +115,74 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30f — #270/#271: the rest of the board now reads ARMED protection, not the setpoint table  ✅
+
+The two follow-ups #267 spun off. Same principle throughout: **an indication shows the protection
+that is in force right now**, and a blocked trip has no colour because there is nothing to hit.
+
+**#270 — the pressure tile was worse than filed.** The issue said it "paints a low-trip red band
+that is BLOCKED in Mode 5". Measured at `cold_shutdown`, holding a correct **363 psi (2.50 MPa)**:
+
+- display window **1736–2449 psi**, so the marker sat at **−192.6 % of scale** — off the gauge;
+- `normLo` clamped up to **2149** while `normHi` tracked the live setpoint at **413** — an
+  **inverted** normal band. `regionAt()` returns the first region whose top exceeds the reading,
+  so it fell through to the bottom TRIP region and painted a correct reading **red**, while the
+  annunciator two panels away said *"Pressurizer Pressure Low — expected, plant depressurized"*.
+
+Fixed by giving pressure the same armed-trip resolver power got: no armed low trip ⇒ the low
+regions collapse, the window runs 0 → just above the control band, and the note reads
+`LO TRIP BLKD` in the **status** colour rather than red (the control layer already reclassifies
+those alarms to `status` when cold; a red note would contradict its own annunciator).
+
+**Keyed on armed protection, NOT on plant mode, and that is the whole design.** A Mode 5 plant at
+400 psi and a LOCA at 400 psi are the same reading and must not look alike. Measured through a
+real `large_loca` from full power: `trip_blocks` stays **{}** the whole way down — 1054 psi at
+10 s, 537 at 30 s, **15 psi at 60 s** — so the tile keeps the hot window and the red band, and
+pegged-low-in-red is the correct LOCA reading. It was only wrong in Mode 5.
+
+**Two bugs found underneath it, both by measuring rather than by reading the code.**
+
+1. **`bandsFor` applied `alarmHi` but never `alarmLo`.** The only mode-aware helper that existed
+   set the high side, so nothing had ever exercised the low one. My first cut collapsed `alarmLo`
+   and the clamp silently kept the authored 2149 anyway — the band came out **2149..2149**, a
+   zero-width normal region, and it looked plausible until printed.
+2. **The clamps in `bandsFor` are one-sided and can cross a band over itself.** That is what
+   produced the Mode 5 inversion. Closed centrally (`if (out.normHi < out.normLo) …`) rather than
+   in each helper, since the next moving band would have hit it too. Worth noting the guard
+   *masked* bug 1 into a zero-width band instead of an inverted one — a guard can hide the thing
+   it is guarding against, which is why the pin asserts the band's VALUE and not just its order.
+
+**#271 — the NIS readouts.** The startup net ladders P-10 (10 %) < IR high (~20 %) < PR low
+setpoint (25 %). #267 made the PR rung visible; the other two were invisible. Source range went
+amber at its 5e4 cps handoff caution and marked its **1e5 cps trip no differently**, so on the
+channel whose job is to catch a missed block, the caution and the scram looked identical.
+Intermediate range — the rung that actually catches you — was a plain uncoloured number.
+
+These are `value` items, bare log-ranging numbers with no region model, so the indication is the
+**colour of the number**, on the mechanism the SR readout has used since #105. Three decisions
+worth keeping:
+
+- **"Approaching" is measured in DECADES, not per cent.** On a log channel 50 % of 1.67e-3 A is
+  half a decade short and reads as nowhere near. `NIS_NEAR_DECADES = 0.5`.
+- **Grey when not armed.** `ir_high` blocked above P-10, or `sr_high` after the detector is
+  secured (it carries `condition: 'sr_energized'`), means no live limit — colouring a defeated
+  trip teaches the opposite of what the block accomplished.
+- **SUR's red is not a trip.** It has no trip: 1.0 DPM is the `sur_high` alarm and 1.5 DPM is the
+  rod-withdrawal *interlock*, a command block that releases below 0.8. Both read from the alarm
+  and interlock tables, resolved **lazily** — `_PROT` is a `var` assigned further down the file,
+  so capturing at definition time takes `undefined`, the same load-order trap `tile()` documents.
+
+**Verification.** board_check **113 → 127**. Injection-verified both ways: restoring the
+always-paint-the-red-band behaviour reddens 5 of the 8 pressure pins with the measured defect in
+the output (`363 psi reads −193 %`, band `2149..2149`), and reverting IR/SUR to plain numbers
+reddens 3 of the 6 NIS pins. The pins that stay green in each case are the armed-state fallbacks,
+which is what makes them fallbacks rather than duplicates. `run_all` **OK, 32 runners at baseline**.
+
+**Not done, deliberately:** no on-board numeric annotation of the NIS thresholds ("TRIP 1e5"
+beside the reading). The three readouts sit in a dense NIS panel with no room, and the tiles'
+note slot does not exist for `value` items. The numbers are in the inspect copy instead, which is
+where a threshold you want to *read* belongs; the colour is for the threshold you need to *notice*.
+
 ### 2026-07-30e — #263 item 2 CLOSED: the swept 26 turns out to be the derived 26  ✅
 
 **The last thing open on #263.** `pwr_startup`'s creep step was found by sweeping 22 / 26 / 30
