@@ -144,7 +144,7 @@ var BASELINES = {
   // number, by design -- HR11 counts dated owner quotes wherever they are tracked.
   // 28 -> 29: Manuals/00's Rev 14 row quotes the 2026-07-30 ruling with its date, and the
   // HR11 half of this gate counts dated owner quotes wherever they are tracked.
-  'run_hardrules.js':      { code: 0, score: '29checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '32checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -261,6 +261,18 @@ var BASELINES = {
   // the band, and the excess the creep leaves. Injection-verified: a 3.2 % rod-worth retune
   // reddens all four. Before this the 26 was a swept number with nothing holding its inputs.
   'run_reactivity.js':     { code: 0, score: '27checks 0failed' },
+  // NEW 2026-07-30 (#249/#273) — "can the plant reach its own setpoints?" Part A is static
+  // and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their
+  // instrument's declared range, because `crossed()` is strict and a setpoint on the edge
+  // can never fire (the C1 lesson, finally a gate). Part B is dynamic and deliberately
+  // small: it DRIVES the plant and watches the indicated channel cross, which is the only
+  // way to catch a clamp — pzr_level's range is [0,100] and its trip is 97, so Part A was
+  // perfectly happy while the level physically could not exceed 88.00 %. That is what let
+  // `pwr_mode3_to_mode5`'s "arrived UNscrammed" pass for months over a full accumulator
+  // dump. Injection-verified: B1 goes red (peak 89.01 %) on the pre-#249
+  // `level_per_mass_surplus` of 300. ADD A CASE HERE whenever you write an assertion that
+  // a trip did NOT fire — that claim is worth exactly what the gauge can reach.
+  'run_reachability.js':   { code: 0, score: '55checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   'run_m4.js':             { code: 0, score: '25/25 135passed' },
@@ -295,7 +307,15 @@ var BASELINES = {
   // trip did NOT actuate and a backup caught the event. Asserting only "something
   // scrammed" cannot tell "the assigned protection worked" from "a backstop caught a
   // consequence", which is the entire lesson after the stuck-channel rewrite.
-  'run_campaign.js':       { code: 0, score: '51/51 3026passed' },
+  // 3026 → 3038 (2026-07-30, #273): the Mode 3 → Mode 5 cooldown gained an
+  // accumulator-isolation beat (+9 structural checks from the campaign validator) and
+  // THREE endpoint assertions. The cooldown had been dumping all four accumulators —
+  // measured endpoint accum_vol 0.0 %, boron 2310 ppm against a 2500 ppm SIT charge,
+  // inventory pegged at the mass clip — and the suite's "arrived UNscrammed" check did
+  // not catch it, because indicated pzr level could not reach its 97 % trip (#249). The
+  // new checks assert the ENDPOINT STATE rather than the absence of a trip; all three
+  // go red with the isolation removed.
+  'run_campaign.js':       { code: 0, score: '51/51 3038passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they

@@ -14,6 +14,39 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The pressurizer could not go water-solid on injection — the exact thing Three Mile
+  Island is about** (#249) — and the clamp that caused it was hiding a second bug.
+
+  Emergency injection into an intact reactor coolant system pinned indicated pressurizer
+  level at exactly **88.00 %** and left it there forever. Not a slow fill: a hard stop. The
+  level term for surplus inventory was set to a number nobody had ever derived, so the
+  model ran out of inventory headroom before the gauge ran out of scale. It is now fitted to
+  real geometry — the pressurizer steam space is **5.8 %** of reactor coolant system volume
+  (Beaver Valley 2 UFSAR Tables 5.1-1/5.4-12, plus the Westinghouse systems manual's
+  full-power steam fraction), and that is the whole distance between normal level and solid.
+  Measured, injection now carries the level to **100 %**, through the 97 % high-level trip,
+  the way the procedure's own caution says it will.
+
+- **The by-the-book cooldown dumped all four safety-injection accumulators** (#273).
+
+  Taking the plant from Hot Standby to Cold Shutdown walked straight past the accumulators'
+  **600 psi (4.14 MPa)** nitrogen cover pressure with their discharge valve still open, so
+  every tank emptied itself into the reactor coolant system. The plant arrived at Cold
+  Shutdown with **no passive injection left**, boron dragged to **2,310 ppm**, and the
+  coolant system overfilled. Nothing on the board was wrong — but nothing told you to
+  isolate them, and blocking Safety Injection at the start of the cooldown does not cover
+  them (that blocks pumps; these are pressure and a check valve).
+
+  The cooldown now has an isolation step at **1000 psig (6.89 MPa)**, which is where a real
+  plant stops requiring the accumulators available (NRC Standard Technical Specifications
+  LCO 3.5.1, and the low-temperature overpressure lineup that requires them isolated).
+
+### Added
+- **A gate that asks whether the plant can reach its own trip setpoints.** The two bugs
+  above went unseen because a test asserted the reactor "never tripped" on a gauge that
+  could not physically get to the trip point. `test/run_reachability.js` checks both halves:
+  every one of the 50 protection and alarm thresholds sits inside its instrument's range,
+  and the ones that matter are driven on the real plant until the needle actually crosses.
 - **A cold plant read as a scram on the pressure gauge, and the nuclear instruments never
   showed their trip points** (#270, #271) — the rest of the work #267 started. Every board
   indication now follows the protection that is **actually armed**, not the setpoint table.

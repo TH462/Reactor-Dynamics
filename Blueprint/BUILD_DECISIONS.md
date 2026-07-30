@@ -37,6 +37,59 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-30g — #249/#273: the surplus axis is fitted, and "could the gauge even get there?" is now a gate
+
+**Decision 1 — `level_per_mass_surplus` is fitted to real geometry, not chosen.** 300 → **776 %/frac**
+*(OWNER RULING, 2026-07-30: "249 - fit it.")*. The derivation is the pressurizer steam space as a
+fraction of RCS volume: 0.40 × 1,400 ft³ ÷ 9,650 ft³ = **0.0580** (BVPS-2 UFSAR Tables 5.1-1 and
+5.4-12, ML22144A118; full-power steam fraction from WTSM 3.2 Table 3.2-2, ML11223A213). This sim
+spans 45 points of level from nominal to solid, so 45 / 0.058 = 776. **The soft step is stated in
+the config**: it assumes indicated level ≈ volumetric fraction, which is this sim's convention and
+not necessarily a real calibrated span.
+
+This was not cosmetic. At 300 the going-solid coordinate was 0.15 wide and `primary.mass_max` (1.2)
+clipped inventory **before** the gauge ran out of scale, so with `base(Tavg)` at its 28 % floor —
+which every quench below 559.8 °F (293.2 °C) reaches — indicated level pinned at exactly
+28 + 300×0.20 = **88.00 %** and stayed. **The plant could not go water-solid on injection**, which is
+the single behaviour the TMI content is built on.
+
+**Decision 2 — the shared CVCS gain was NOT scaled with it, and the first recommendation to do so
+was wrong.** The documented 83 s loop τ is the **deficit** branch (`level_per_mass` 100); scaling
+`cvcs_charge_per_level` to hold a surplus-side τ would have slowed leak make-up to 215 s to fix a
+number on the other branch. The servo is simply faster on the surplus side now (27.8 → 10.7 s), and
+measured, it does not hunt. `mass_max` also stays at 1.2: 1.06 is the physical figure but costs the
+going-solid endpoint (peak 96.83 %), and it is no longer binding on that path anyway.
+
+**Decision 3 — accumulator isolation is procedural, at a sourced pressure.** #273. The cooldown now
+isolates at **1000 psig (6.89 MPa)**: NUREG-1431 Rev 4.0 (ML12100A222) **LCO 3.5.1** applicability is
+*"MODES 1 and 2, MODE 3 with RCS pressure > [1000] psig"*, and LTOP **LCO 3.4.12** requires the system
+operable *"with … the accumulators isolated"* (**SR 3.4.12.3**). **Deliberately not an interlock.**
+An automatic closure would have been easy and is how the RHR suction valve works at 400 psi
+(2.76 MPa), but real plants isolate accumulators procedurally and the whole point of the beat is
+that the player learns the passive tanks are not covered by the SI block. Whether an interlock
+*should* back it up is left open on #273 rather than decided here.
+
+**Decision 4 — new gate `run_reachability.js` (55 checks), and why it has two halves that do not
+overlap.** The generalisation of what went wrong: an assertion that a trip never fired is worth
+exactly what the gauge can reach, and nothing checked that.
+- **Part A (static, all 50 thresholds)** — every trip/actuation/alarm setpoint must sit **strictly**
+  inside its instrument's declared range, because `crossed()` is strict. This is the long-standing
+  C1 lesson turned into a gate.
+- **Part B (dynamic, small)** — Part A would **never** have caught this: `pzr_level`'s range is
+  [0,100] and its trip is 97, so the static check was perfectly happy while the level physically
+  could not exceed 88.00 %. Only stepping the plant finds a clamp. Injection-verified: B1 reports
+  peak 89.01 % and goes red on the pre-fit 300.
+- **A probe must name its mechanism.** B2's first draft drove the low-level scram with letdown and
+  failed at 29.6 % — correct plant behaviour, because the 17 % letdown isolation exists to shut
+  "before the 12 % pzr-level reactor trip". A reachability probe that does not name how it expects
+  to reach the setpoint just re-discovers an interlock and calls it a defect.
+
+**Gate effect.** `run_all` 32 → **33 runners**; `run_campaign` 3026 → **3038 checks** (the new beat
+plus three endpoint assertions, all injection-verified red). `run_behavior`, `run_pwr`,
+`run_meltdown` and `run_procedures_stack` are **unchanged** — the fit cost nothing elsewhere.
+
+---
+
 ## 2026-07-30f — #270/#271: indications key on ARMED PROTECTION, never on plant mode
 
 **The decision, now applied board-wide: an indication shows the protection in force, and the

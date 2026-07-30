@@ -248,13 +248,32 @@ to read everything.
 _Last updated: **2026-07-29**._
 
 **Where the PWR is.** All PWR engine, behaviour, ops and stack gates green; `run_all` is
-**32 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
+**33 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
 a handful of UI/doc items.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.**
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+- **The pressurizer could not go water-solid on injection, and that hid a full accumulator
+  dump on every cooldown (2026-07-30, #249 → #273).** `level_per_mass_surplus` was an
+  underived 300, so `mass_max` clipped inventory before the gauge ran out of scale: HPI into an
+  intact RCS pinned indicated level at **exactly 88.00 %** (`level_prog_floor` 28 + 300 × the
+  clipped 0.20) and left it there — the plant could not perform the TMI trap it is built around.
+  Now **fitted to real geometry** *(OWNER RULING, 2026-07-30: "249 - fit it.")*: the pressurizer
+  steam space is **5.8 %** of RCS volume (BVPS-2 UFSAR 5.1-1/5.4-12 + WTSM 3.2 Table 3.2-2), so
+  45 points of level ÷ 0.058 = **776**. Three things to know. **`cvcs_charge_per_level` was NOT
+  scaled with it** — my own first recommendation, and wrong: the documented 83 s loop τ is the
+  *deficit* branch, so scaling the shared gain would have slowed leak make-up to 215 s to fix a
+  surplus-side number. **The fit made an existing check real rather than breaking it**: with the
+  level able to reach its 97 % trip, `pwr_mode3_to_mode5`'s long-green "arrived UNscrammed"
+  assertion immediately fired — the by-the-book cooldown had been walking past the accumulators'
+  **600 psi (4.14 MPa)** cover gas with the discharge valve open and emptying all four (measured
+  endpoint `accum_vol 0.0 %`, boron **2310 ppm** against a 2500 ppm charge). Isolation now
+  happens at **1000 psig (6.89 MPa)**, sourced to NUREG-1431 LCO 3.5.1 and LTOP SR 3.4.12.3.
+  And **the failure mode itself is now gated** — `run_reachability` (55 checks), because an
+  assertion that a trip never fired is worth exactly what the gauge can reach. **`Manuals/05`
+  still has no isolation step, so #273 stays open.**
 - **The moderator coefficient was a constant, and it made the plant go critical COLD
   (2026-07-29l, #260).** `alpha_MTC` applied a flat −11.11 pcm/°F from 122 °F to 579 °F — a
   −4944 pcm moderator defect over a heatup, 494 ppm of dilution, a third of it charged below
@@ -335,20 +354,6 @@ anything here that is standing procedure rather than news belongs in the list be
   inert. **`pwr_lof` was re-authored around the stuck channel**, because at 90 % a healthy
   channel means nothing happens at all. **One channel, not 2-of-3, is the remaining declared
   departure** (`Manuals/12` §10.7).
-- **Half the full-stack procedure gate was running at a tenth of its declared speed
-  (2026-07-29, #245).** `run_procedures_stack` set `timeAcceleration = 10` once; the
-  service's fast-forward dropout then returned it to 1× on the first alarm/scram and nothing
-  put it back — so **11 of 22 procedures** were judged on a *tenth* of the sim time their
-  steps assume, from as early as t = 2 s. Fixed with `svc.attentionStops = false` (a headless
-  gate has no operator to protect; `run_autoctl` had already made the same call) plus a
-  per-procedure assertion that the run held its declared acceleration, so it cannot recur
-  quietly. **Read this before trusting anything in #208:** four of its "RBMK/BWR plant
-  defects" (`bwr_startup`, `rbmk_mcp_trip` ×2, `bwr_sbo_rcic`) were this bug and passed on
-  the sim time alone — a green there proves the *mechanism*, not that either plant is right.
-  It also exposed a stale PWR assertion: `pwr_stuck_porv` step 1 asserted inventory below
-  100 % after 30 s, which only ever held because the run was starved — automatic HPI comes
-  in at 10.5 MPa and refills past nominal, which is TMI's solid-pressurizer trap and the
-  correct behaviour.
 
 **Standing procedure — not part of the rotation above; these do not expire.**
 
@@ -429,13 +434,13 @@ not a changelog.**
 **Current gate baselines — `node test/run_all.js` is now the authority.**
 
 > Since 2026-07-25 the baselines live as **data** in the `BASELINES` map at the top of
-> `test/run_all.js`, not as prose here. Run it; it compares all 32 runners against that
+> `test/run_all.js`, not as prose here. Run it; it compares all 33 runners against that
 > map and exits non-zero on any drift. Prose baselines are what rotted (this section
 > claimed `run_m5` **19/19** while its own status text said 18/19 — issue #161). **If
 > you move a number, update `BASELINES` and this section together.**
 
 ```
-node test/run_all.js            # all 32 runners (~6 min)
+node test/run_all.js            # all 33 runners (~6 min)
 node test/run_all.js --fast     # skip the 2 Playwright gates (~2.5 min)
 node test/run_all.js --only run_pwr,run_ops
 node test/run_all.js --record   # print observed results as a BASELINES block
@@ -446,7 +451,7 @@ turning green has to be acknowledged (update the baseline, close the issue) inst
 being silently absorbed. Same convention as the strict xfails in `run_meltdown` /
 `run_behavior`.
 
-Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3026 checks)**,
+Green at baseline: PWR **32/32 (202 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3038 checks)**,
 `run_m4` **25/25 (135 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **20/20**,
 `run_behavior` **38 pass / 0 xfail**, `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
@@ -456,7 +461,7 @@ Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, ca
 were never plant defects at all — the harness was running 11 of its 22 procedures below the
 10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_reactivity` **27 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve. 23 → 27 on 2026-07-30, #263 item 2: the four inputs `pwr_startup`'s 26-step creep is DERIVED from — startup-IC boron, critical position, differential bank worth, and the excess the creep leaves), `run_hr3` **29 checks / 0 failed**, `run_hardrules` **28 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_portable` **112 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `run_manual_rev` **12 checks / 0 failed** (the manual set's revision history — table shape, set-wide stamp agreement, content-digest seal, pack currency; IS baselined, because unlike `run_manual_units` its checks are structural and do not move on prose. **A chapter edited with no revision row reddens it** — the failure it was written for, after six content changes went unrecorded), `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_reactivity` **27 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve. 23 → 27 on 2026-07-30, #263 item 2: the four inputs `pwr_startup`'s 26-step creep is DERIVED from — startup-IC boron, critical position, differential bank worth, and the excess the creep leaves), `run_hr3` **29 checks / 0 failed**, `run_reachability` **55 checks / 0 failed** (NEW 2026-07-30, #249/#273 — **can the plant reach its own setpoints?** Part A is static and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their instrument's declared range, since `crossed()` is strict. Part B DRIVES the plant and watches the indicated channel cross, which is the only half that can catch a clamp — `pzr_level`'s range is [0,100] and its trip is 97, so Part A was perfectly happy while the level physically could not exceed 88.00 %, and that is what let a full accumulator dump hide behind an "arrived UNscrammed" check for months. **Add a case here whenever you assert that a trip did NOT fire** — that claim is worth exactly what the gauge can reach), `run_hardrules` **32 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)** (29 → 32 on 2026-07-30, #249: three new HR11 ruling sites carrying `"249 - fit it."` — CLAUDE.md, BUILD_DECISIONS, TUNING_LOG. Writing a change up moves this gate, so re-run it AFTER the docs), `run_portable` **116 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `run_manual_rev` **12 checks / 0 failed** (the manual set's revision history — table shape, set-wide stamp agreement, content-digest seal, pack currency; IS baselined, because unlike `run_manual_units` its checks are structural and do not move on prose. **A chapter edited with no revision row reddens it** — the failure it was written for, after six content changes went unrecorded), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **39/39** (both F12 reds were stale expectations, fixed
@@ -506,7 +511,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 32 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 33 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi

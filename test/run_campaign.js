@@ -1168,7 +1168,7 @@ test('pwr_mode3_to_mode5 — controlled cooldown reaches Cold Shutdown', functio
   //  - CVCS AUTO make-up holds PZR level against the cooldown shrink (manual
   //    charging management fought the servo and lost — pzr_level low scram).
   var noLoadSp = RD.PWR_CONFIG.steam_generator.steam_dump_setpoint;
-  var below = false, blockedLP = false, lastT = null, dumpSp = noLoadSp, prSp = 15.41;
+  var below = false, blockedLP = false, accIso = false, lastT = null, dumpSp = noLoadSp, prSp = 15.41;
   var snap = runUntil(s, function (sn) {
     var t = s.engine.getTrueState();
     var dtSim = lastT == null ? 0 : s.simTime - lastT; lastT = s.simTime;
@@ -1187,6 +1187,13 @@ test('pwr_mode3_to_mode5 — controlled cooldown reaches Cold Shutdown', functio
       s.handleCommand({ action: 'set_trip_block', trip_id: 'si_trip', blocked: true });
       if (!(rb && rb.type === 'blocked')) blockedLP = true;   // accepted (retry next sample if refused)
     }
+    // #273 — isolate the SI accumulators at 1000 psig (6.89 MPa), the beat the
+    // scenario now teaches (NUREG-1431 LCO 3.5.1 applicability / LTOP SR 3.4.12.3).
+    // Without it the descent past their 600 psi (4.14 MPa) cover gas dumped all four
+    // into the RCS: measured endpoint accum_vol 0.0 %, boron 2310 ppm, inventory
+    // pegged at mass_max. The "arrived UNscrammed" check below did NOT catch that —
+    // it passed anyway, because indicated pzr level could not reach its 97 % trip.
+    if (!accIso && t.pressure_mpa < 6.89) { accIso = true; s.handleCommand({ action: 'close_accumulator_valve' }); }
     if (!below && t.pressure_mpa < 2.76) { below = true; s.handleCommand({ action: 'set_rhr', active: true }); s.handleCommand({ action: 'set_rhr_hx', pct: 100 }); s.handleCommand({ action: 'set_rcp', running: false }); }
     s.handleCommand({ action: 'set_boron_adjust', rate: t.reactivity_pcm < -2500 ? 0 : 4.0 });
     if (t.pzr_level_pct > 58) s.handleCommand({ action: 'set_letdown_orifices', a: true, b: false });
@@ -1207,6 +1214,20 @@ test('pwr_mode3_to_mode5 — controlled cooldown reaches Cold Shutdown', functio
     ck('arrived UNscrammed (lo_press bypass worked)',
       'rps=' + snap.rps_state.scrammed + ' eng=' + tf.scrammed,
       snap.rps_state.scrammed === false && tf.scrammed === false, 'false/false');
+    // #273 THE GUARD. Until 2026-07-30 this cooldown dumped every accumulator on the
+    // way down and arrived at accum_vol 0.0 % / boron 2310 ppm / inventory clipped at
+    // 120 %, and NOTHING here noticed — the UNscrammed check above passed regardless,
+    // because indicated pzr level physically could not reach its 97 % trip (#249).
+    // Assert the ENDPOINT STATE, not the absence of a trip: a "never tripped" check is
+    // only worth what the gauge can reach. The scenario's own closing line claims this
+    // state "matches the cold_shutdown initial condition" — so hold it to that.
+    ck('accumulators arrived INTACT and isolated (not dumped — #273)',
+      'vol=' + tf.accumulator_volume_pct.toFixed(1) + ' % valve_open=' + tf.accumulator_valve_open,
+      tf.accumulator_volume_pct > 99 && tf.accumulator_valve_open === false, '> 99 %, isolated');
+    ck('did not overfill the RCS on the way down', 'inv=' + tf.core_inventory_pct.toFixed(2) + ' %',
+      tf.core_inventory_pct < 110, '< 110 %');
+    ck('boron is a cooldown boration, not an RWST flood', tf.boron_ppm.toFixed(0) + ' ppm',
+      tf.boron_ppm < 2000, '< 2000 ppm (SIT charge is 2500)');
   }
 });
 

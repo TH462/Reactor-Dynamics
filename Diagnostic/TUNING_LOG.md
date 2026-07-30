@@ -115,6 +115,65 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30h — #249 FITTED and #273 FIXED, and a new gate for the class of bug that hid them  ✅
+
+*(OWNER RULING, 2026-07-30: "249 - fit it.")* — so the surplus axis is fitted to the sourced
+geometry, the cooldown that the old pin was masking is fixed, and the failure mode itself
+("a check that a trip never fired, on a gauge that could not reach it") now has a guard.
+`run_all --fast` **OK, 31 runners at baseline**.
+
+**1. `level_per_mass_surplus` 300 → 776** (`pwr_config.js`). Derivation is in the config
+comment: pressurizer steam space ÷ RCS volume = 0.40 × 1,400 ft³ ÷ 9,650 ft³ = **0.0580**
+(BVPS-2 UFSAR Tables 5.1-1 / 5.4-12; WTSM 3.2 Table 3.2-2), and this sim spans 45 points of
+level from nominal to solid, so 45 / 0.0580 = **776 %/frac**. **The plant can go water-solid on
+injection again** — measured peak indicated level 100.00 %, against 88.00 % before.
+
+**I did NOT touch `cvcs_charge_per_level`, and my own recommendation to do so was wrong.** The
+documented loop τ of 83 s is the **deficit** branch (`level_per_mass` 100); scaling the shared
+gain to fix a surplus-side number would have slowed leak make-up to 215 s. The servo is simply
+faster on the surplus side now (27.8 → 10.7 s); measured, it does not hunt. `mass_max` also
+stays at 1.2 — 1.06 is the physical figure but it costs the going-solid endpoint (peak 96.83 %),
+and it is no longer binding on that path anyway (solid lands at Δm 0.058 hot, 0.093 floored).
+
+**2. #273 — the cooldown now isolates the accumulators.** New `isolate_accumulators` beat in
+`scenarios/pwr_mode3_to_mode5.js` at **1000 psig (6.89 MPa)**, which is where a real plant stops
+requiring them: **NUREG-1431 Rev 4.0** (ML12100A222) **LCO 3.5.1** *"APPLICABILITY: MODES 1 and
+2, MODE 3 with RCS pressure > [1000] psig"*, and LTOP **LCO 3.4.12** requires the system operable
+*"with … the accumulators isolated"* (**SR 3.4.12.3** *"Verify each accumulator is isolated."*).
+That leaves 2.75 MPa of margin above this plant's 600 psi (4.14 MPa) arming pressure, so a player
+who takes the cue never sees a discharge. The campaign driver does the same at the same
+pressure, and the suite gained **three endpoint assertions** — accumulators intact and isolated,
+inventory < 110 %, boron < 2,000 ppm. All three go red with the isolation removed.
+
+**The fit made an existing vacuous check real.** With 776 in place, the suite's *old* "arrived
+UNscrammed" assertion **also** fires on the un-isolated cooldown. It had been passing for months
+over a full four-tank dump.
+
+**3. NEW GATE — `test/run_reachability.js` (55 checks).** The generalisation, because the shape
+is not a one-off: *every* "never scrammed" / "no alarm" assertion in this repo carries the hidden
+premise that the trip was reachable, and nothing checked it.
+
+- **Part A, static, total coverage.** All **50** PWR trip/actuation/alarm thresholds must sit
+  **strictly** inside their instrument's declared `range` — `crossed()` is strict, so a setpoint
+  on the edge can never fire. This is the C1 lesson (`power_range` widened to [0,200]) finally
+  turned into a gate instead of a paragraph in this log. All 50 pass today.
+- **Part B, dynamic, deliberately small.** Part A would **never** have caught #249: `pzr_level`'s
+  range is [0,100] and its trip is 97, so the static check is perfectly happy while the level
+  physically cannot exceed 88.00 %. Only stepping the plant finds a clamp. B1 pins that injection
+  can take the pressurizer past its 97 % trip; **injection-verified — it reports peak 89.01 % and
+  goes red on the old 300.**
+- **A wrong first draft, recorded because it is the lesson.** B2 originally drove the low-level
+  scram with **letdown**, and failed at 29.6 %. That was *correct plant behaviour*: the letdown
+  isolation at 17 % exists precisely so it "shuts before the 12 % pzr-level reactor trip,
+  arresting the drop" (`pwr_control.js:208`). **A reachability probe must name the mechanism it
+  expects to reach the setpoint by**, or it re-discovers an interlock and calls it a defect. B2
+  now drives it with a break.
+
+**Deferred, deliberately.** `Manuals/05_MODE_TRANSITIONS.md` still has no accumulator-isolation
+step, so **#273 stays open** — the workbench lane had all 13 manual documents modified while this
+was being written, and a three-way conflict on a file another session is rewriting is not worth
+the prose. Same reason `Manuals/12` §14 does not yet name ECCS pacing in its **Compressed** class.
+
 ### 2026-07-30g — #249 evidence pass: the refill rate is 22–440× real, and the clamp hiding it also hid a spurious accumulator dump  🔶 (no code changed)
 
 **#249 asked three questions about the post-stuck-PORV HPI refill. Answered: one is correct
