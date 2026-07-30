@@ -70,10 +70,15 @@ attachment:
 node tools/make_portable.js      # -> dist/Reactor_Dynamics_Alpha_1.9.0.html  (~2.5 MB)
 ```
 
-That inlines every script and stylesheet into one self-contained page you can double-click
-on a machine with no network, no Node, and no install. (ZIP it before emailing — some mail
-providers strip `.html` attachments.) `test/run_portable.js` is the gate that keeps it
-buildable.
+On Windows you can also just **double-click `tools\make_portable.cmd`**, which runs the
+above and zips the result for email. Do *not* double-click the `.js` — Windows hands a
+`.js` file to Windows Script Host rather than Node, which fails with the misleading
+`Syntax error, Code: 800A03EA`.
+
+Either route inlines every script and stylesheet into one self-contained page you can
+double-click on a machine with no network, no Node, and no install. (Send the `.zip`, not
+the `.html` — some mail providers strip `.html` attachments.) `test/run_portable.js` is the
+gate that keeps it buildable.
 
 ## How it's built
 

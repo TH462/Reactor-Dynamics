@@ -123,12 +123,12 @@ if (require.main === module) {
   fs.writeFileSync(out, b.html, 'utf8');
 
   const kb = n => (n / 1024).toFixed(0) + ' KB';
-  console.log('\nPORTABLE BUILD — ' + release());
+  console.log('\nPORTABLE BUILD - ' + release());
   console.log('  inlined      ' + b.js.length + ' scripts, ' + b.css.length + ' stylesheets');
   b.dropped.forEach(s => console.log('  dropped      ' + s + '  (declared: analytics beacon)'));
   console.log('  out          ' + path.relative(ROOT, out).replace(/\\/g, '/'));
   console.log('  size         ' + kb(Buffer.byteLength(b.html)));
-  console.log('\nOpen it by double-clicking — no server, no network, no install.');
+  console.log('\nOpen it by double-clicking: no server, no network, no install.');
   console.log('Emailing it: ZIP it first. Several mail providers silently strip or');
   console.log('quarantine .html attachments, and the recipient sees nothing at all.\n');
 }

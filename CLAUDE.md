@@ -440,8 +440,12 @@ The control-room UI is `ui/shell.html` (loads engines + layers, wired through
 **Offline / portable:** it already runs from `file://` with no server — nothing loads
 anything at runtime. `node tools/make_portable.js` collapses the control room into one
 self-contained `dist/Reactor_Dynamics_<version>.html` (~2.5 MB) you can email or carry on a
-stick. `test/run_portable.js` is what keeps that possible; read its header before adding
-any runtime load.
+stick; `tools/make_portable.cmd` is the double-clickable wrapper (builds + zips, and exists
+because double-clicking the `.js` gets Windows Script Host, not Node — `800A03EA`).
+`test/run_portable.js` is what keeps that possible; read its header before adding any
+runtime load. **A batch file must stay pure ASCII** — cmd reads it in the OEM code page, and
+one UTF-8 em dash inside an `if (…)` block ends the block early and runs the prose as
+commands.
 
 ## Running the tests
 
