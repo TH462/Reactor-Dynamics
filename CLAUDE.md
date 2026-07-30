@@ -18,6 +18,30 @@ bullets** (drop the oldest), and nothing here may duplicate `Diagnostic/TUNING_L
 When in doubt about a number, prefer the as-built engine/config values over prose
 docs.
 
+> **End with what is STILL OUTSTANDING** *(OWNER DIRECTIVE, 2026-07-30: "I would like to add to
+> claude.md to have the ai place a 'Still Outstanding' summary at the bottom so i know exactly
+> what still need to be done with respect to the task the ai is working on. This summary should
+> include a recommendation for what to work on next.")*. Close any response that leaves work
+> unfinished with a delimited block, last thing before you stop:
+>
+> ```
+> **— STILL OUTSTANDING —**
+> - <item> — <why it is not done: not started / blocked on X / needs your ruling>
+> **Next:** <the ONE thing you recommend, and why>
+> **— END STILL OUTSTANDING —**
+> ```
+>
+> **Scope it to the task in hand**, not the whole backlog — the owner is asking "where are we on
+> *this*", and a list of everything open answers a different question. **Name what blocks each
+> item**: "not started", "waiting on your ruling" and "blocked by another session" are different
+> facts and only one of them is yours to clear. **One recommendation, not a menu** — same rule as
+> the block above.
+>
+> **Omit it entirely when nothing is outstanding**, and say so in a sentence instead. A section
+> that appears every turn stops being read, which is the failure mode the First Principles rule
+> already names. It is a *status report*: it never substitutes for asking when a decision
+> genuinely blocks (SOP §5), and it never turns an unmeasured claim into a plan (HR12).
+
 > **When you ask the owner something, bring the recommendation with it** *(OWNER RULING,
 > 2026-07-29: "I think we should add to SOP to have you automatically give your recommendation
 > when asking for my input so I don't have to keep asking for it.")*. Lead with the answer you
