@@ -55,3 +55,7 @@ GO_PUBLIC_CHECKLIST.md
 # Local harness / IDE artifacts (not part of the sim)
 mcps/
 terminals/
+
+# Generated at deploy by site/make_download.js (see #258): the offline zip is built
+# from the commit being deployed, so a committed copy could only ever be stale.
+download/

@@ -1,5 +1,5 @@
 {
-  "buildCommand": "node site/stamp_version.js",
+  "buildCommand": "node site/stamp_version.js && node site/make_download.js",
   "outputDirectory": ".",
   "rewrites": [
     { "source": "/sim", "destination": "/ui/shell.html" }

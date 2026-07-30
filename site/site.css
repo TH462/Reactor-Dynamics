@@ -230,3 +230,15 @@ a.disabled { pointer-events: none; cursor: default; opacity: 0.4; text-decoratio
 }
 .site-footer .links { margin-top: 8px; display: flex; gap: 18px; flex-wrap: wrap; }
 .site-footer a { color: var(--text-2); }
+
+/* Download page — the primary action. Deliberately the only button of its size on the
+   site: the page exists to do one thing. */
+.btn-download {
+  display: inline-block; padding: 14px 26px; margin: 8px 0 4px;
+  background: var(--accent, #2f81f7); color: #fff; border-radius: 8px;
+  font-size: 17px; font-weight: 600; text-decoration: none;
+  border: 1px solid rgba(255,255,255,.14);
+}
+.btn-download:hover { filter: brightness(1.08); text-decoration: none; }
+.btn-download .mono { opacity: .72; font-weight: 400; font-size: 14px; }
+.dl-note { color: var(--text-2); font-size: 14px; margin-top: 4px; }
