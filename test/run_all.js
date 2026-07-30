@@ -210,7 +210,19 @@ var BASELINES = {
   // run_manual_units checks unit conversions, run_campaign checks mission behaviour,
   // and #260 sat wrong in the prose for weeks with both green. Verified by injection:
   // putting the old 629 ppm back into one cell reddens it (table 629 vs plant 834.2).
-  'run_reactivity.js':     { code: 0, score: '16checks 0failed' },
+  // 16 -> 21 checks (#263): a SECOND anchor. The curve was fit at one temperature and
+  // validated at none, and the boron crossover came from a WTSM 2.1 statement its own
+  // figure contradicted. BEAVRS Cycle 1 HZP measured ITCs at three boron concentrations
+  // settle it at 986 ppm -- the 1400 we briefly shipped was 4.3x too negative at ARO.
+  // Two stale checks here were REPLACED, not relaxed: the -17 pcm/degF WTSM anchor is no
+  // longer what sets the scale (the owner's at-power ruling is), and the cold/hot
+  // separation check is now a GAP test rather than an absolute ppm threshold, because the
+  // absolute one needed bumping every recalibration -- a check tracking the plant instead
+  // of the claim.
+  // 21 -> 23 (#263 item 3): HFP boron has NO measured anchor of its own, so what is
+  // gated is its DERIVATION from the HZP anchor plus the power defect and xenon, and
+  // the declared departure from the real 750 ppm comparable being xenon-dominated.
+  'run_reactivity.js':     { code: 0, score: '23checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   'run_m4.js':             { code: 0, score: '25/25 135passed' },
@@ -319,7 +331,12 @@ var BASELINES = {
   // back true throughout — hence every assertion here is on VISIBILITY), and a
   // second entry point to checklists in the instructor card that the first pass
   // gated nowhere. It pins RD_CHANNEL to reproduce a real `main` deploy.
-  'verify_flags_ui.js':      { code: 0, score: '48/48' },
+  // 48 -> 47 (#263 item 6): one VACUOUS negative assertion DELETED, not repaired --
+  // `!/The full experience/` on a phrase the site rewrite removed, so it could never fail.
+  // A check that cannot fail is worse than no check, because it reads as coverage. The
+  // over-promise guard it was part of now lives where the promise does (the hero negative
+  // and the features coming-soon check), both re-pointed and verified by injection.
+  'verify_flags_ui.js':      { code: 0, score: '47/47' },
   'verify_e2e_ui.js':        { code: 0, score: '16screenshots', slow: true },
   'verify_manual_follow.js': { code: 0, score: '84checks', slow: true },
 };

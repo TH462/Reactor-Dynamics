@@ -213,21 +213,31 @@
      cell against pwr_engine's own reactivity model, so this table cannot go stale
      without reddening a gate. Do not hand-edit the numbers. -->
 
+> **What pins this curve.** Two independent anchors, and they constrain different
+> things. **Shape** — the boron dependence — is *measured*: the BEAVRS / Watts Bar U1
+> Cycle 1 HZP physics tests (OSTI 1991715, Table IV) report isothermal temperature
+> coefficients at three boron concentrations (975 ppm → −1.75 pcm/°F, 902 → −4.65,
+> 810 → −8.01), which put the moderator coefficient's zero crossing at **986 ppm**.
+> **Level** — the ARO critical boron at hot zero power — is also measured, at
+> **975 ppm** from the same tests. **Magnitude** at the full-power reference is *not*
+> measured: it is the owner's 2026-07-21 ruling of −20 pcm/°C, a plant-identity
+> choice. `test/run_reactivity.js` checks all three.
+
 **Critical boron concentration (ppm) by Tavg and control-bank position**, shutdown bank
 withdrawn, no xenon, zero power:
 
 | Tavg | bank IN (0) | 25 % (228) | 50 % (456) | 75 % (684) | ARO (912) |
 |---|---|---|---|---|---|
-| 122 °F (50.0 °C) | 834 | 870 | 982 | 1094 | 1130 |
-| 200 °F (93.3 °C) | 812 | 849 | 964 | 1078 | 1115 |
-| 250 °F (121.1 °C) | 796 | 833 | 950 | 1067 | 1104 |
-| 300 °F (148.9 °C) | 776 | 815 | 934 | 1054 | 1092 |
-| 350 °F (176.7 °C) | 754 | 794 | 916 | 1039 | 1078 |
-| 400 °F (204.4 °C) | 727 | 768 | 894 | 1021 | 1062 |
-| 450 °F (232.2 °C) | 693 | 736 | 867 | 999 | 1042 |
-| 500 °F (260.0 °C) | 651 | 696 | 834 | 973 | 1018 |
-| 545 °F (285.0 °C) | 603 | 651 | 797 | 943 | 990 |
-| 566.6 °F (297.0 °C) | 576 | 625 | 775 | 926 | 975 |
+| 122 °F (50.0 °C) | 781 | 809 | 898 | 986 | 1015 |
+| 200 °F (93.3 °C) | 766 | 796 | 888 | 980 | 1010 |
+| 250 °F (121.1 °C) | 755 | 786 | 881 | 975 | 1006 |
+| 300 °F (148.9 °C) | 742 | 774 | 872 | 970 | 1002 |
+| 350 °F (176.7 °C) | 727 | 760 | 863 | 965 | 998 |
+| 400 °F (204.4 °C) | 707 | 742 | 851 | 959 | 994 |
+| 450 °F (232.2 °C) | 682 | 720 | 836 | 952 | 990 |
+| 500 °F (260.0 °C) | 649 | 690 | 817 | 943 | 984 |
+| 545 °F (285.0 °C) | 608 | 653 | 793 | 933 | 978 |
+| 566.6 °F (297.0 °C) | 583 | 631 | 779 | 927 | 975 |
 
 **Differential boron worth (pcm/ppm).** It is **larger cold** — denser water carries more
 boron atoms per unit volume — so the same dilution buys more reactivity at 122 °F than at
@@ -235,7 +245,7 @@ power. Use the value for the temperature you are actually at.
 
 | Tavg | 122 °F | 250 °F | 350 °F | 450 °F | 545 °F | 566.6 °F |
 |---|---|---|---|---|---|---|
-| pcm/ppm | 13.75 | 13.17 | 12.53 | 11.65 | 10.50 | 10.19 |
+| pcm/ppm | 17.36 | 16.22 | 14.97 | 13.24 | 10.99 | 10.38 |
 
 **Control-bank integral worth** (pcm added, withdrawing from fully inserted). The curve is
 an S: least effective at either end, most effective mid-travel.
@@ -248,8 +258,8 @@ an S: least effective at either end, most effective mid-travel.
 ### 7.5.1 Reading the table — and the one rule that matters
 
 > **WARNING — do not dilute toward a hot boron figure while the plant is cold.** Read the
-> first column of the table again: with the bank inserted, critical boron is **834 ppm at
-> 122 °F** and only **576 ppm at 566.6 °F**. A number that is comfortably subcritical hot is
+> first column of the table again: with the bank inserted, critical boron is **781 ppm at
+> 122 °F** and only **583 ppm at 566.6 °F**. A number that is comfortably subcritical hot is
 > **critical, or worse, cold.** This is not a modelling quirk — cold water is a better
 > moderator, so a cold core needs *more* poison to stay shut down. Reaching Mode 3 at the
 > no-load temperature **before** you dilute is what makes the dilution safe.

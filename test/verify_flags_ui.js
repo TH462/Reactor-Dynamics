@@ -198,8 +198,13 @@ function pinChannel(ch) {
     !/Guided\s+training/.test(await page.textContent('.hero .sub')));
   ck('landing public: the feature block says coming soon',
     /Guided\s+training\s+—\s+coming soon/.test(await page.textContent('.features')));
-  ck('landing public: the PWR card drops "the full experience"',
-    !/The full experience/.test(await page.textContent('.plant-card.live')));
+  // REMOVED (#263 item 6): this was `!/The full experience/` on the PWR card, and the
+  // phrase has not existed anywhere in the site since the card was rewritten — so the
+  // check could never fail. Second vacuous negative in this file; the other was the hero
+  // one three lines up. Do not re-add it: the card carries no `data-flag` any more, so it
+  // makes no channel-dependent promise to guard, and the over-promise guard now lives
+  // where the promise does — the hero negative above and the features coming-soon check.
+  // A negative assertion is only worth its line if the pattern still appears SOMEWHERE.
   ck('landing public: the page still sells the plant',
     /Real reactor physics/.test(await page.textContent('.hero .sub')));
   await ctx.close();

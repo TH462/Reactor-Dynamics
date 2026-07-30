@@ -119,9 +119,44 @@
       // says ~1400 ppm. We take 1400 (an explicit statement beats a figure
       // reading); the residual is that we give −10.9 pcm/°F at 500 °F/500 ppm where
       // the figure reads −8. Owner ruling 2026-07-29. [tune]
-      mod_anchor_pcm_per_f: -17.0, // MTC of UNBORATED water at mod_anchor_temp_f
+      // --- SHAPE: measured. SCALE: ruled. The two come from different places, and
+      //     which is which matters, so it is stated here rather than inferred (#263).
+      //
+      // The boron crossover is the MEASURED one. BEAVRS / Watts Bar U1 Cycle 1 HZP
+      // physics tests, Table IV of the Polaris-PARCS benchmark (OSTI 1991715) — three
+      // *measured* isothermal temperature coefficients at three boron concentrations,
+      // all at the HZP no-load temperature:
+      //     ARO   975 ppm   ITC -1.75 pcm/°F
+      //     D in  902 ppm   ITC -4.65 pcm/°F
+      //     C in  810 ppm   ITC -8.01 pcm/°F
+      // Those fit a straight line in boron to within 0.09 pcm/°F. ITC = MTC + the fuel
+      // (Doppler) coefficient, so removing our alpha_D puts the MTC zero crossing at
+      // **986 ppm**. This SETTLES the contradiction recorded below: WTSM 2.1's figure
+      // reading implied ~944 ppm and its text said ~1400. The figure was right.
+      //
+      // We shipped 1400 for a day (#260) and it was wrong: it gave -7.52 pcm/°F at
+      // BEAVRS's ARO condition against a measured -1.75, **4.3× too negative**, and the
+      // error shrank as boron fell — the signature of this exact parameter being off.
+      mod_boron_zero_ppm: 986.0,   // MEASURED (BEAVRS ITC fit); was 1400 (#260 → #263)
+      //
+      // The scale is NOT sourced, and that is deliberate. With the crossover fixed at
+      // 986, the anchor value is solved so the moderator coefficient at the full-power
+      // reference equals **-2.0e-4 K⁻¹** — the owner's ruling of 2026-07-21, which is a
+      // plant-identity choice about how the core feels on a load change, not a
+      // measurement. Re-solve it if mod_boron_zero_ppm, alpha_D or the HFP boron moves;
+      // test/run_reactivity.js pins the result.
+      //
+      // KNOWN RESIDUAL, do not "fix" it silently. BEAVRS's three points imply a 0-ppm
+      // curve near -37 pcm/°F at 557 °F; honouring both them and the -20 pcm/°C ruling
+      // is impossible under a linear-in-boron form, because the measured slope
+      // (+0.0379 pcm/°F per ppm) and a 986 ppm crossover together force the 0-ppm
+      // magnitude. We honour the ruling and accept under-predicting |ITC| by 0.88 at
+      // 902 ppm and 1.64 at 810 ppm; the ARO point matches to 0.05. Fitting all three
+      // instead would put the at-power coefficient near -27 pcm/°C and re-open the
+      // 2026-07-21 ruling — that is the higher-fidelity option and it is the owner's
+      // call, tracked in #263.
+      mod_anchor_pcm_per_f: -23.48, // 0-ppm MTC at mod_anchor_temp_f; SOLVED, not sourced
       mod_anchor_temp_f: 500.0,
-      mod_boron_zero_ppm: 1400.0,  // boron at which MTC crosses zero
       // Compressed-liquid water density at ~15.5 MPa (2250 psi), kg/m³, as a cubic
       // in °C — least-squares over IAPWS-IF97 from 20–340 °C, max residual
       // 3.1 kg/m³. Only the SHAPE is load-bearing (the coefficient above carries
@@ -173,7 +208,7 @@
       // zero there and purely perturbative+stabilizing on a transient (M1 §4);
       // boron is then trimmed to make the net reactivity critical.
       //
-      // 0.10 → 0.086776 (#260): this constant has no direct observable, so it is
+      // 0.10 → 0.086776 (#260) → 0.087557 (#263, re-solved on the measured 986 ppm crossover): this constant has no direct observable, so it is
       // SOLVED rather than tuned — it is whatever makes HZP ARO critical boron come
       // out at the one real number we have measured startup data for. BEAVRS /
       // Watts Bar U1 Cycle 1 HZP physics tests (OSTI 1991715): **HZP ARO critical
@@ -181,7 +216,7 @@
       // block, the rod worths or boron_worth_per_ppm move — see the derivation in
       // Diagnostic/TUNING_LOG.md 2026-07-29 and test/run_reactivity.js, which pins
       // the 975 ppm target so this cannot drift silently. [tune]
-      rho_excess: 0.086776,        // [tune]
+      rho_excess: 0.087557,        // [tune]
       // Chemical & Volume Control System (CVCS). Boron chemistry is decoupled from
       // net charging−letdown: borate/dilute change concentration at boron_adjust_rate
       // (needs the charging pump). Charging/letdown control primary INVENTORY; auto

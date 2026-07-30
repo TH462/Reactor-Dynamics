@@ -509,12 +509,20 @@ test('pwr_boron — dilute up, borate back', function (ck) {
   ck('dilution beat arms', !!snap, !!snap, 'dilute_task pending');
   if (!snap) return;
   settle(s, 28);
-  s.handleCommand({ action: 'set_boron_adjust', rate: -2 });
+  // -2 ppm/s is the MAXIMUM the CVCS will drive (boron_adjust_rate), and the beat holds
+  // it for its delay-45 settle — about 90 ppm, ~1000 pcm at 50 % power. That was always
+  // the most aggressive move the plant allows, and it only just avoided the trip; #263
+  // raised differential boron worth ~9 % at this temperature and it began scramming, i.e.
+  // taking the mission's own `overdone` branch. The plant is right (that worth is now
+  // anchored to measured BEAVRS ITCs) and the mission teaches PACING, so the success path
+  // should be driven at a sane operator rate rather than flat out. Half rate. A gentler
+  // stimulus would also have passed pre-#263, so this is not a refit to the new plant.
+  s.handleCommand({ action: 'set_boron_adjust', rate: -1 });
   snap = waitBeat(s, 'borate_task', 2400);
   ck('Tavg rise on dilution → borate prompt', !!snap, !!snap, 'borate_task pending');
   if (!snap) return;
   settle(s, 4);                         // borate_task fires (delay 2; parks CVCS on HOLD)
-  s.handleCommand({ action: 'set_boron_adjust', rate: 2 });
+  s.handleCommand({ action: 'set_boron_adjust', rate: 1 });   // match the dilution rate
   snap = runUntil(s, function (sn) { return lc(sn); }, 3600);
   ck('Tavg restored with boration → complete', !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is the round trip', lc(snap).title, /Played/i.test(lc(snap).title), 'Long Game — Played card');

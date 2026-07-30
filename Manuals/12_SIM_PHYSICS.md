@@ -140,6 +140,23 @@ WTSM 2.2 *Reactivity Balance Calculations* (ML11216A051) Table 2.2-1 for a real 
 makes hot-zero-power all-rods-out critical boron come out at **975 ppm**, the figure measured in
 the BEAVRS / Watts Bar Unit 1 Cycle 1 hot-zero-power physics tests.
 
+> **DECLARED DEPARTURE — boron at power reads low against a real plant.** This plant runs
+> **618 ppm** at full power. A real Westinghouse 4-loop at 100 EFPD runs **750 ppm** (the
+> worked exercise in WTSM 2.2, ML11216A051). The difference is not an error and it is not
+> hidden: our figure is *derived*, not fitted. Walk it from the one measured anchor — hot
+> zero power, all rods out, **975 ppm** — and the terms are Doppler −990 pcm, moderator
+> −139, control bank to its 92 % operating position −76, and equilibrium xenon −2500, for
+> −3705 pcm net, which is 371 ppm at 10.0 pcm/ppm. 975 − 371 = 604, against the engine's
+> 618 — the 14 ppm residual is the moderator term being linearised over that boron change.
+> `test/run_reactivity.js` gates this derivation.
+>
+> **Most of the gap is xenon.** Our equilibrium xenon worth is 2500 pcm, which is 250 ppm of
+> boron on its own, and it is a `[tune]` value rather than a measurement. The rest is that
+> the 975 ppm anchor is beginning-of-life with no xenon while the 750 ppm comparable is
+> 100 effective full-power days in — different burnup, so not the same quantity. Pinning
+> boron at power would need a *measured* hot-full-power anchor; the BEAVRS benchmark
+> publishes its HFP critical boron only as a figure, so we do not have one. Tracked in #263.
+
 ### 4.3.1 The moderator coefficient is not a constant
 
 Moderator reactivity tracks moderator **density**, not temperature:

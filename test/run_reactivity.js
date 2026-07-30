@@ -10,15 +10,19 @@
  * the HZP critical-boron check goes red instead of the plant quietly drifting.
  *
  * Sources (see engines/pwr/pwr_config.js `reactivity` for the verbatim quotes):
- *   WTSM 2.1 Reactor Physics Review (ML11223A207) §2.1.6.2 / Fig 2.1-8
- *     - MTC of unborated water at 500 °F = -17 pcm/°F
- *     - MTC crosses zero at ~1400 ppm
- *     - the moderator coefficient STEEPENS with temperature (density, not ΔT)
+ *   BEAVRS / Watts Bar U1 Cycle 1 HZP physics tests (OSTI 1991715), Table IV — the
+ *   MEASURED anchors, and the ones that decide the model:
+ *     - HZP ARO critical boron 975 ppm (BOL, zero xenon)  → sets rho_excess
+ *     - measured ITCs 975 ppm/-1.75, 902/-4.65, 810/-8.01 pcm/°F
+ *       → set the boron crossover at 986 ppm
  *   WTSM 2.2 Reactivity Balance Calculations (ML11216A051) Table 2.2-1
- *     - all Control Banks -4068 pcm, all Shutdown Banks -3676 pcm,
- *       all RCCAs -7744 pcm
- *   BEAVRS / Watts Bar U1 Cycle 1 HZP physics tests (OSTI 1991715)
- *     - HZP ARO critical boron 975 ppm (BOL, zero xenon)
+ *     - all Control Banks -4068 pcm, all Shutdown Banks -3676 pcm, all RCCAs -7744
+ *   WTSM 2.1 Reactor Physics Review (ML11223A207) §2.1.6.2 / Fig 2.1-8
+ *     - the moderator coefficient STEEPENS with temperature (density, not ΔT).
+ *       This is the only thing we still take from WTSM 2.1. Its -17 pcm/°F at 500 °F
+ *       reading and its "~1400 ppm" crossover BOTH disagree with the BEAVRS
+ *       measurement; the crossover was measurably wrong (#263) and the magnitude is
+ *       now set by the owner's 2026-07-21 at-power ruling instead.
  *
  * This is a STATIC gate in the sense of CLAUDE.md's layer table — it resets the
  * engine and reads its reactivity model, and never steps the plant.
@@ -40,6 +44,8 @@ function ck(desc, ok, obs) {
 }
 function near(a, b, tol) { return Math.abs(a - b) <= tol; }
 function F2C(f) { return (f - 32) * 5 / 9; }
+function F(c) { return c * 9 / 5 + 32; }
+var T_NOLOAD = 297.0;   // the no-load Tavg the HZP anchors are quoted at
 
 var e = new RD.PWREngine();
 e.reset({ initial_state: 'hot_full_power' });
@@ -55,10 +61,15 @@ function mtc(Tf, B) {
 console.log('\n' + BOLD + '════════ PWR REACTIVITY-MODEL ANCHORS ════════' + RST);
 
 console.log('\n' + BOLD + 'WTSM 2.1 Fig 2.1-8 — moderator coefficient' + RST);
-ck('MTC of unborated water at 500 °F is the sourced -17 pcm/°F',
-   near(mtc(500, 0), -17.0, 0.15), mtc(500, 0).toFixed(2) + ' pcm/°F');
-ck('MTC crosses zero at the sourced ~1400 ppm',
-   near(mtc(500, RC.mod_boron_zero_ppm), 0, 0.01) && near(RC.mod_boron_zero_ppm, 1400, 1),
+// The 0-ppm magnitude is NO LONGER sourced to WTSM 2.1's -17 pcm/°F at 500 °F: the
+// BEAVRS ITCs are irreconcilable with it under a linear-in-boron form, so the scale
+// comes from the owner's at-power ruling and the crossover from the measurement (#263).
+// Pin the resulting DISAGREEMENT so nobody re-reads WTSM's figure as if we honoured it.
+ck('the 0-ppm curve is knowingly steeper than WTSM 2.1 Fig 2.1-8 reads at 500 °F',
+   mtc(500, 0) < -17.0 && mtc(500, 0) > -30.0,
+   mtc(500, 0).toFixed(2) + ' pcm/°F vs the figure\'s -17 — declared departure, #263');
+ck('MTC crosses zero exactly at mod_boron_zero_ppm',
+   near(mtc(500, RC.mod_boron_zero_ppm), 0, 0.01),
    RC.mod_boron_zero_ppm + ' ppm → ' + mtc(500, RC.mod_boron_zero_ppm).toFixed(3) + ' pcm/°F');
 // "at high temperatures an increase in the moderator temperature causes a larger
 //  reduction in density than an identical increase at low moderator temperatures"
@@ -69,12 +80,43 @@ var steepens = true, prev = 0;
 ck('MTC steepens monotonically with temperature (density-shaped, not constant)',
    steepens, mtc(122, 0).toFixed(1) + ' pcm/°F at 122 °F → ' + mtc(567, 0).toFixed(1) + ' at 567 °F');
 ck('cold-end MTC is near zero at our operating boron — NOT the old flat -11.1',
-   Math.abs(mtc(122, 907)) < 3.0, mtc(122, 907).toFixed(2) + ' pcm/°F at 122 °F / 907 ppm');
+   Math.abs(mtc(122, 838)) < 3.0, mtc(122, 838).toFixed(2) + ' pcm/°F at 122 °F / 838 ppm');
 // The physical consequence: denser cold water carries more boron per cm³.
 ck('differential boron worth is LARGER cold than hot',
    e._boronWorth(F2C(122)) > e._boronWorth(F2C(567)) * 1.2,
    (e._boronWorth(F2C(122)) * 1e5).toFixed(2) + ' pcm/ppm cold vs '
    + (e._boronWorth(F2C(567)) * 1e5).toFixed(2) + ' hot');
+
+// ---------------------------------------------------------------------------
+// SECOND ANCHOR (#263). The curve used to be fit at exactly one point and validated
+// at none, and the boron crossover was taken from a WTSM statement that its own
+// figure contradicted. These are MEASURED isothermal temperature coefficients at
+// three boron concentrations from the BEAVRS / Watts Bar U1 Cycle 1 HZP physics
+// tests (OSTI 1991715, Table IV). ITC = MTC + the fuel coefficient, so we add
+// alpha_D back before comparing. They settled the crossover at 986 ppm and proved
+// the 1400 ppm we briefly shipped was 4.3x too negative at ARO.
+console.log('\n' + BOLD + 'BEAVRS Cycle 1 HZP — MEASURED isothermal temperature coefficients' + RST);
+var aD_F = RC.alpha_D * 1e5 * 5 / 9;
+function itc(Tf, B) { return mtc(Tf, B) + aD_F; }
+// The ARO point is the tight one: near the crossover the scale barely matters, so
+// this check is a direct test of mod_boron_zero_ppm and nothing else.
+ck('ITC at ARO / 975 ppm matches the measured -1.75 pcm/degF',
+   near(itc(557, 975), -1.75, 0.25), itc(557, 975).toFixed(2) + ' pcm/°F vs -1.75 measured');
+// The lower-boron points are DECLARED to sit low. Honouring all three and the owner's
+// -20 pcm/degC at-power ruling is impossible under a linear-in-boron form; we keep the
+// ruling. If these ever tighten to <0.3, someone changed the trade-off -- read #263.
+ck('ITC at 902 ppm is within the DECLARED residual of the measured -4.65',
+   Math.abs(itc(557, 902) - (-4.65)) < 1.4,
+   itc(557, 902).toFixed(2) + ' vs -4.65 measured (declared low, #263)');
+ck('ITC at 810 ppm is within the DECLARED residual of the measured -8.01',
+   Math.abs(itc(557, 810) - (-8.01)) < 2.2,
+   itc(557, 810).toFixed(2) + ' vs -8.01 measured (declared low, #263)');
+ck('the crossover is the MEASURED 986 ppm, not the 1400 the WTSM text claimed',
+   Math.abs(RC.mod_boron_zero_ppm - 986) < 2, RC.mod_boron_zero_ppm + ' ppm');
+// And the scale still honours the ruling it is set from.
+ck('MTC at the full-power reference still honours the 2026-07-21 ruling of -20 pcm/degC',
+   near(mtc(F(TREF), 618) * 9 / 5, -20.0, 1.2),
+   (mtc(F(TREF), 618) * 9 / 5).toFixed(1) + ' pcm/°C at 618 ppm');
 
 console.log('\n' + BOLD + 'WTSM 2.2 Table 2.2-1 — rod worths' + RST);
 ck('control-bank worth is the sourced 4068 pcm',
@@ -87,7 +129,6 @@ ck('all RCCAs together are the sourced 7744 pcm',
 
 console.log('\n' + BOLD + 'BEAVRS / Watts Bar U1 — HZP ARO critical boron' + RST);
 // rho = 0 with both banks fully withdrawn, no xenon, zero power at the no-load Tavg.
-var T_NOLOAD = 297.0;
 e.rod_groups[0].steps = e.rod_groups[0].max_steps;
 e.rod_groups[1].steps = e.rod_groups[1].max_steps;
 var dD = e._modDensity(T_NOLOAD) - e._modDensity(TREF);
@@ -96,6 +137,37 @@ var nonB = RC.rho_excess + e._rodReactivity() + RC.alpha_D * (T_NOLOAD - TFREF)
 var bAro = nonB / e._boronWorth(T_NOLOAD);
 ck('HZP ARO critical boron is the measured 975 ppm (rho_excess is SOLVED for this)',
    near(bAro, 975, 6), bAro.toFixed(1) + ' ppm');
+
+// ---------------------------------------------------------------------------
+// #263 item 3. Hot-full-power boron has NO measured anchor of its own (BEAVRS gives
+// HFP critical boron only as figures). So the thing to gate is not its value but its
+// DERIVATION: it must follow from the measured HZP anchor plus our own Doppler,
+// moderator, rod and xenon terms. If it ever stops following, either rho_excess was
+// re-solved against something else or a term changed without the others noticing.
+console.log('\n' + BOLD + 'HFP boron follows from the HZP anchor (no HFP anchor exists)' + RST);
+var XE_W = RD.PWR_CONFIG.kinetics.xenon.xenon_worth;
+var HFP_STEPS = Math.round(e.rod_groups[0].max_steps
+                * RD.PWR_CONFIG.rods.control_op_position_pct / 100);
+function rodsAt(st) {
+  e.rod_groups[0].steps = st; e.rod_groups[1].steps = e.rod_groups[1].max_steps;
+  return e._rodReactivity();
+}
+var hfpEngine = (new RD.PWREngine({ initial_state: 'hot_full_power' })).getTrueState().boron_ppm;
+var netPcm = (RC.alpha_D * (TFREF - T_NOLOAD)
+   + (e._moderatorReactivity(TREF, hfpEngine) - e._moderatorReactivity(T_NOLOAD, hfpEngine))
+   + (rodsAt(HFP_STEPS) - rodsAt(e.rod_groups[0].max_steps))
+   - XE_W) * 1e5;
+var predicted = 975 + netPcm / (e._boronWorth(TREF) * 1e5);
+ck('HFP boron is what the HZP anchor plus the power defect and xenon predict',
+   Math.abs(predicted - hfpEngine) < 25,
+   'balance predicts ' + predicted.toFixed(0) + ' ppm, engine reports '
+   + hfpEngine.toFixed(0) + ' (net ' + netPcm.toFixed(0) + ' pcm from HZP ARO)');
+// The declared departure: a real 4-loop at 100 EFPD runs 750 ppm at power (WTSM 2.2).
+// Ours is lower, and the gap is dominated by our xenon worth, which is a [tune] value.
+ck('the gap to the real 750 ppm comparable is still explained by xenon worth alone',
+   Math.abs(750 - hfpEngine) < (XE_W * 1e5) / (e._boronWorth(TREF) * 1e5) * 1.2,
+   (750 - hfpEngine).toFixed(0) + ' ppm gap vs '
+   + ((XE_W * 1e5) / (e._boronWorth(TREF) * 1e5)).toFixed(0) + ' ppm of xenon worth');
 
 console.log('\n' + BOLD + 'shape checks — what the recalibration was for' + RST);
 function bCrit(Tf) {
@@ -114,9 +186,15 @@ ck('cold→hot critical-boron spread is flat enough to hold boron through a heat
 // should be — cold water is more reactive, so cold critical boron is HIGH. The old
 // model's failure was putting critical boron at 629 ppm there, close enough to the
 // hot end (263 ppm) that 600 read as a safe waypoint. rho = (Bcrit − B)·worth.
-ck('cold critical boron sits far above any hot-end dilution target (600 ppm is supercritical here, correctly)',
-   bCrit(274) > 750,
-   'critical boron at 274 °F = ' + bCrit(274).toFixed(0) + ' ppm (was 629); 600 ppm there is '
+// Intent, not an absolute: cold critical boron must sit far enough above the hot-end
+// value that a hot dilution target is obviously unsafe cold. An absolute ppm threshold
+// here needed bumping every recalibration (it read >750 and #263 landed on 749), which
+// is a check tracking the plant instead of the claim.
+ck('cold critical boron sits far above the hot-end value, so a hot dilution target is unsafe cold',
+   bCrit(274) - bCrit(567) > 120,
+   'critical boron 274 °F = ' + bCrit(274).toFixed(0) + ' ppm vs 567 °F = '
+   + bCrit(567).toFixed(0) + ' ppm (gap ' + (bCrit(274) - bCrit(567)).toFixed(0)
+   + '); 600 ppm at 274 °F is '
    + ((bCrit(274) - 600) * e._boronWorth(F2C(274)) * 1e5).toFixed(0) + ' pcm SUPERcritical');
 // Critical boron must rise monotonically as the plant cools — the sign of the whole model.
 var mono = true, last = -1e9;

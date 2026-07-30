@@ -45,6 +45,25 @@
  * A previous revision of this file's own docs claimed the endpoint difference was a
  * physics gain. It was a measurement-window artifact. Do not re-introduce that claim.
  *
+ * WHICH LAYER THESE NUMBERS COME FROM (#263 item 5). The table above was measured
+ * ENGINE-DIRECT, and this mission runs FULL-STACK under run_campaign. That mismatch is
+ * the trap CLAUDE.md's layer table exists for, so here is what was checked rather than
+ * assumed:
+ *   - The REACTIVITY claims (ρ, boron, control-bank position) are layer-independent, and
+ *     this was verified statically, not by a run. `getStartupLineup()` returns [] for
+ *     cold_shutdown — the stack applies no extra commands. `boron_conc` IS defaultOn, but
+ *     its setpoint captures the current analyzer reading, so it holds boron where it finds
+ *     it rather than driving it anywhere, and `manual_overrides: ['set_boron_adjust']`
+ *     takes it to MAN the moment a procedure orders a dilution. Nothing moves the rods.
+ *   - The TIMING claims (plant-hours to each milestone) may differ modestly full-stack,
+ *     because `feed_sg` replaces the engine's coupled-feed fallback and feed flow changes
+ *     how fast the SG carries heat away. **This was NOT measured.** Two attempts to drive
+ *     12 plant-hours through the service from Node exceeded ten minutes of wall clock
+ *     without finishing; a cycle-at-a-time service loop is far too slow for a ride this
+ *     long. Treat the hour figures as engine-direct and approximate at full stack.
+ * If you need trustworthy full-stack timings, drive them from a gate that already has the
+ * service warm (run_campaign) rather than standing a fresh one up per measurement.
+ *
  * Honesty: the WALL CLOCK is compressed (time acceleration), and the pressurization
  * is fast. The heat source and the rate are no longer fictional.
  */
