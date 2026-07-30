@@ -308,20 +308,19 @@
         </div>
       </div>
 
-      <!-- Quick tour — offered from the SIMULATION PAUSED overlay and from Help -->
-      <div class="mission-overlay" id="tourOverlay" hidden>
-        <div class="mission-modal help-modal tour-modal">
-          <div class="mission-head">
-            <div class="mission-title" id="tourTitle">Quick tour</div>
-            <button class="btn" id="tourClose" aria-label="Close">✕ Close</button>
-          </div>
-          <div class="help-body">
-            <div id="tourStep" class="tour-step"></div>
-            <div class="tour-nav">
-              <button class="btn" id="tourPrev" type="button">← Back</button>
-              <span class="tour-prog mono" id="tourProg"></span>
-              <button class="btn" id="tourNext" type="button">Next →</button>
-            </div>
+      <!-- Quick tour — coach-marks: highlight a control and tip next to it.
+           Offered from SIMULATION PAUSED and Help. Not a centered modal. -->
+      <div class="tour-root" id="tourRoot" hidden>
+        <div class="tour-scrim" id="tourScrim" aria-hidden="true"></div>
+        <div class="tour-spot" id="tourSpot" aria-hidden="true"></div>
+        <div class="tour-tip" id="tourTip" role="dialog" aria-modal="true" aria-labelledby="tourTitle">
+          <div class="tour-tip-title" id="tourTitle"></div>
+          <div class="tour-tip-body" id="tourBody"></div>
+          <div class="tour-tip-nav">
+            <button class="btn" type="button" id="tourPrev">← Back</button>
+            <span class="tour-prog mono" id="tourProg"></span>
+            <button class="btn" type="button" id="tourSkip">Skip</button>
+            <button class="btn" type="button" id="tourNext">Next →</button>
           </div>
         </div>
       </div>

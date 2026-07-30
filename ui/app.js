@@ -3130,7 +3130,7 @@
         if (!$('manualOverlay').hidden) closeManual();
         if (!$('missionOverlay').hidden) closeMissionSelect();
         if (!$('helpOverlay').hidden) $('helpOverlay').hidden = true;
-        if ($('tourOverlay') && !$('tourOverlay').hidden) closeTour();
+        if (tourOn) closeTour();
         if (!$('featureOverlay').hidden) closeFeaturePanel();
         if (!$('feedbackOverlay').hidden) $('feedbackOverlay').hidden = true;
         if (ui.rewindPick) toggleRewindPick(false);
@@ -3334,85 +3334,236 @@
     syncSeg('[data-phys]', ui.physOverlay ? 'on' : 'off', 'phys');
   }
 
-  // ---- Quick tour (pause overlay + Help) ---------------------------------
+  // ---- Quick tour: coach-marks (highlight target + tip beside it) ----------
+  // Not a centered modal — each step points at a real control so a newcomer
+  // can find it on the board.
   var TOUR_STEPS = [
     {
-      title: 'Welcome',
-      body: '<p>This is a high-fidelity plant you can <b>learn</b> on and then ' +
-        '<b>train</b> on — same physics for both. This tour is a short map of the ' +
-        'control room. Close it anytime with ✕ or Esc; press <b>Play</b> when you ' +
-        'are ready to run the plant.</p>'
+      sel: '#viewArea',
+      place: 'right',
+      title: 'The plant',
+      body: '<p>This diagram <b>is</b> the plant. Operate rods, pumps, valves, ' +
+        'feed, and the turbine here — not in a separate menu.</p>'
     },
     {
-      title: 'The plant (left)',
-      body: '<p>The big diagram is the plant. Operate rods, pumps, valves, feed, ' +
-        'and the turbine <b>on the board</b>. The strip of numbers across the top ' +
-        'is the vital few (power, temperature, pressure, levels). Hover anything ' +
-        'for the <b>System Scanner</b> (bottom right) — short summary, or Full ' +
-        'description for more and a Manual link.</p>'
+      sel: '#gaugeStrip',
+      place: 'bottom',
+      title: 'Vital gauges',
+      body: '<p>Power, temperature, subcooling, pressure, and levels — the ' +
+        'readings you watch first. They turn amber/red when something is off.</p>'
     },
     {
-      title: 'Alarms and trends',
-      body: '<p>The alarm stack and strip chart sit beside the board. Alarms ' +
-        'read instruments (and can lie if a channel fails). <b>Green</b> is ' +
-        'running/normal; <b>amber</b> is abnormal; <b>red</b> is a problem or ' +
-        'trip; <b>cyan</b> means you can click or type. Use <b>Rewind</b> on the ' +
-        'chart to go back and try again.</p>'
+      sel: '.alarm-panel',
+      place: 'left',
+      title: 'Alarms',
+      body: '<p>Annunciators read instruments (and can lie if a channel fails). ' +
+        'Click a tile to acknowledge. Empty is good news.</p>'
     },
     {
-      title: 'Instructor and checklists',
-      body: '<p>The right-hand <b>Instructor</b> panel is free-play coaching by ' +
-        'default. Its title changes when a checklist, procedure, or scenario is ' +
-        'running. Open <b>Checklists</b> for interactive procedures that check ' +
-        'themselves off the instruments — the best next step after this tour.</p>'
+      sel: '.strip-chart',
+      place: 'top',
+      title: 'Trends &amp; rewind',
+      body: '<p>Multi-parameter strip chart. <b>Rewind</b> restores an earlier ' +
+        'plant state so you can try again — failure is not game over.</p>'
     },
     {
-      title: 'Operate, Manual, Mission',
-      body: '<p><b>Operate</b> (tools tab) is plant, mode, reset, and save/load. ' +
-        '<b>Manual</b> is the full operator set. <b>Plant &amp; Mission</b> (under ' +
-        'the clock) picks a starting condition or guided content. ' +
-        '<b>Inject Failure</b> is for deliberate casualties once you are comfortable.</p>'
+      sel: '#instructorCard',
+      place: 'left',
+      title: 'Instructor',
+      body: '<p>Free-play coaching lives here. The title changes when a checklist, ' +
+        'procedure, or scenario is running. Expand the card to read more.</p>',
+      prep: function () {
+        var c = $('instructorCard');
+        if (c) { c.classList.remove('collapsed'); c.classList.add('expanded'); }
+      }
     },
     {
-      title: 'Next steps',
-      body: '<p>Press <b>Play</b>, then try a cold-plant heatup or open a ' +
-        '<b>Checklist</b>. Use <b>Help</b> anytime for the short reference, and ' +
-        '<b>Contact</b> to email bugs or questions (you can attach session ' +
-        'diagnostics). The plant will not wait forever — but rewind is there if ' +
-        'you need it.</p>'
+      sel: '#cklOpenBtn',
+      place: 'left',
+      title: 'Checklists',
+      body: '<p>Interactive procedures that check themselves off the instruments. ' +
+        'Best next step after this tour — hover a step to glow the controls it names.</p>',
+      prep: function () {
+        var c = $('instructorCard');
+        if (c) { c.classList.remove('collapsed'); c.classList.add('expanded'); }
+        // Only unhide when this channel offers checklists (#241).
+        if (typeof flagOn === 'function' && flagOn('checklists')) {
+          var row = $('instrCklRow');
+          if (row) row.hidden = false;
+        }
+      },
+      // If checklists are gated off or the button is not visible, use Instructor.
+      fallback: '#instructorCard'
+    },
+    {
+      sel: '#toolsCard',
+      place: 'left',
+      title: 'Operate &amp; tools',
+      body: '<p><b>Operate</b> — plant, mode, reset, save/load. ' +
+        '<b>Inject Failure</b> when you are ready for casualties. ' +
+        '<b>Graph</b> and <b>Settings</b> for trends and units.</p>',
+      prep: function () {
+        var t = document.querySelector('#tabbar [data-tab="operate"]');
+        if (t) t.click();
+      }
+    },
+    {
+      sel: '#manualBtn',
+      place: 'bottom',
+      title: 'Manual',
+      body: '<p>Full operator manuals: controls, procedures, alarms, and setpoints. ' +
+        'Same plant you are sitting.</p>'
+    },
+    {
+      sel: '#simStatus',
+      place: 'bottom',
+      title: 'Plant &amp; Mission',
+      body: '<p>Starting condition and guided content. Switching restarts the plant ' +
+        'from a clean initial state.</p>'
+    },
+    {
+      sel: '#scannerPanel',
+      place: 'left',
+      title: 'System Scanner',
+      body: '<p>Hover anything on the board. Summary first; <b>Full description</b> ' +
+        'for detail and a Manual link.</p>'
+    },
+    {
+      sel: '#playBtn',
+      place: 'bottom',
+      title: 'Press Play when ready',
+      body: '<p>Starts the clock. The pause overlay (and this tour) leave when you ' +
+        'run. Use <b>Help</b> anytime; open a <b>Checklist</b> to practice a procedure.</p>'
     }
   ];
   var tourIdx = 0;
+  var tourLiveEl = null;
+  var tourOn = false;
+
+  function tourElVisible(el) {
+    if (!el) return false;
+    if (el.closest && el.closest('[hidden]')) return false;
+    var r = el.getBoundingClientRect();
+    return r.width > 2 && r.height > 2;
+  }
+  function tourResolveEl(step) {
+    if (!step) return null;
+    var el = step.sel ? document.querySelector(step.sel) : null;
+    if (!tourElVisible(el) && step.fallback) el = document.querySelector(step.fallback);
+    return tourElVisible(el) ? el : null;
+  }
+
+  function tourClearLive() {
+    if (tourLiveEl) {
+      tourLiveEl.classList.remove('tour-target-live');
+      tourLiveEl = null;
+    }
+  }
+
   function openTour(i) {
-    if (!$('tourOverlay')) return;
+    if (!$('tourRoot')) return;
     tourIdx = Math.max(0, Math.min(TOUR_STEPS.length - 1, i || 0));
-    $('tourOverlay').hidden = false;
+    tourOn = true;
+    $('tourRoot').hidden = false;
+    document.body.classList.add('tour-active');
     renderTour();
   }
   function closeTour() {
-    if ($('tourOverlay')) $('tourOverlay').hidden = true;
+    tourOn = false;
+    tourClearLive();
+    if ($('tourRoot')) $('tourRoot').hidden = true;
+    document.body.classList.remove('tour-active');
+  }
+  function placeTourTip(target, place) {
+    var tip = $('tourTip'), spot = $('tourSpot');
+    if (!tip || !spot) return;
+    var pad = 6;
+    var r = target.getBoundingClientRect();
+    var tw = Math.min(320, window.innerWidth - 24);
+    var th = tip.offsetHeight || 160;
+    // Spotlight box
+    spot.style.top = Math.max(0, r.top - pad) + 'px';
+    spot.style.left = Math.max(0, r.left - pad) + 'px';
+    spot.style.width = Math.min(window.innerWidth, r.width + pad * 2) + 'px';
+    spot.style.height = Math.min(window.innerHeight, r.height + pad * 2) + 'px';
+    spot.hidden = false;
+
+    var gap = 12;
+    var top, left;
+    var prefer = place || 'bottom';
+    // Preferred side, then flip if it would leave the viewport.
+    function fit(side) {
+      if (side === 'bottom') {
+        top = r.bottom + gap; left = r.left + r.width / 2 - tw / 2;
+      } else if (side === 'top') {
+        top = r.top - th - gap; left = r.left + r.width / 2 - tw / 2;
+      } else if (side === 'left') {
+        top = r.top + r.height / 2 - th / 2; left = r.left - tw - gap;
+      } else { // right
+        top = r.top + r.height / 2 - th / 2; left = r.right + gap;
+      }
+    }
+    fit(prefer);
+    if (left < 8) left = 8;
+    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+    if (top < 8) {
+      if (prefer === 'top') fit('bottom');
+      top = Math.max(8, top);
+    }
+    if (top + th > window.innerHeight - 8) {
+      if (prefer === 'bottom') fit('top');
+      top = Math.min(top, window.innerHeight - th - 8);
+      top = Math.max(8, top);
+    }
+    tip.style.width = tw + 'px';
+    tip.style.top = top + 'px';
+    tip.style.left = left + 'px';
   }
   function renderTour() {
-    var step = TOUR_STEPS[tourIdx]; if (!step) return;
-    if ($('tourTitle')) $('tourTitle').textContent = step.title;
-    if ($('tourStep')) $('tourStep').innerHTML = step.body;
-    if ($('tourProg')) $('tourProg').textContent = (tourIdx + 1) + ' / ' + TOUR_STEPS.length;
-    var prev = $('tourPrev'), next = $('tourNext');
-    if (prev) prev.disabled = tourIdx <= 0;
-    if (next) next.textContent = tourIdx >= TOUR_STEPS.length - 1 ? 'Done' : 'Next →';
+    if (!tourOn || !$('tourRoot')) return;
+    var step = TOUR_STEPS[tourIdx];
+    if (!step) { closeTour(); return; }
+    tourClearLive();
+    try { if (step.prep) step.prep(); } catch (e) {}
+    // Allow layout (expand card / show checklist) to settle before measuring.
+    requestAnimationFrame(function () {
+      if (!tourOn) return;
+      var el = tourResolveEl(step);
+      if (!el) {
+        // Skip missing targets rather than stalling the tour.
+        if (tourIdx < TOUR_STEPS.length - 1) { tourIdx++; renderTour(); }
+        else closeTour();
+        return;
+      }
+      try { el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); } catch (e2) {}
+      el.classList.add('tour-target-live');
+      tourLiveEl = el;
+      if ($('tourTitle')) $('tourTitle').textContent = step.title;
+      if ($('tourBody')) $('tourBody').innerHTML = step.body;
+      if ($('tourProg')) $('tourProg').textContent = (tourIdx + 1) + ' / ' + TOUR_STEPS.length;
+      var prev = $('tourPrev'), next = $('tourNext');
+      if (prev) prev.disabled = tourIdx <= 0;
+      if (next) next.textContent = tourIdx >= TOUR_STEPS.length - 1 ? 'Done' : 'Next →';
+      // Second frame: after scroll/expand, tip height is known.
+      requestAnimationFrame(function () {
+        if (!tourOn || !tourLiveEl) return;
+        placeTourTip(tourLiveEl, step.place);
+      });
+    });
   }
   function initTour() {
-    if (!$('tourOverlay')) return;
-    $('tourClose').addEventListener('click', closeTour);
-    $('tourOverlay').addEventListener('click', function (e) {
-      if (e.target === $('tourOverlay')) closeTour();
-    });
+    if (!$('tourRoot')) return;
     $('tourPrev').addEventListener('click', function () {
       if (tourIdx > 0) { tourIdx--; renderTour(); }
     });
     $('tourNext').addEventListener('click', function () {
       if (tourIdx >= TOUR_STEPS.length - 1) closeTour();
       else { tourIdx++; renderTour(); }
+    });
+    $('tourSkip').addEventListener('click', closeTour);
+    $('tourScrim').addEventListener('click', closeTour);
+    window.addEventListener('resize', function () {
+      if (tourOn) renderTour();
     });
   }
   function applyUnitsMode(units) {

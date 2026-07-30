@@ -609,13 +609,54 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .help-body { padding: 14px 18px; overflow: auto; }
 .help-sec { margin-bottom: 14px; }
 .help-sec h4 { margin: 0 0 4px; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-2); }
-.tour-step { min-height: 120px; color: var(--text-2); font-size: 14px; line-height: 1.55; }
-.tour-step p { margin: 0 0 0.6em; }
-.tour-nav {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);
+/* ---- Coach-mark tour (spotlight + tip beside the target) ---- */
+.tour-root {
+  position: fixed; inset: 0; z-index: 9500; pointer-events: none;
 }
-.tour-prog { color: var(--muted); font-size: 12px; }
+.tour-root:not([hidden]) { display: block; }
+.tour-scrim {
+  position: fixed; inset: 0; pointer-events: auto;
+  /* Dim is carried by the spot's box-shadow so the target stays clear */
+  background: transparent;
+}
+.tour-spot {
+  position: fixed; pointer-events: none;
+  border: 2px solid var(--normal);
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 2px rgba(91, 179, 196, 0.35),
+    0 0 0 9999px rgba(0, 0, 0, 0.58);
+  transition: top 0.15s ease, left 0.15s ease, width 0.15s ease, height 0.15s ease;
+}
+.tour-tip {
+  position: fixed; pointer-events: auto;
+  width: min(320px, calc(100vw - 24px));
+  background: var(--bg-elevated);
+  border: 1px solid var(--normal);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  padding: 12px 14px 12px;
+  color: var(--text-2);
+  font-size: 13px; line-height: 1.5;
+  z-index: 9501;
+}
+.tour-tip-title {
+  margin: 0 0 6px; font-size: 13px; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text);
+}
+.tour-tip-body p { margin: 0 0 0.5em; }
+.tour-tip-body p:last-child { margin-bottom: 0; }
+.tour-tip-nav {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+}
+.tour-tip-nav .btn { font-size: 12px; padding: 4px 10px; }
+.tour-prog { color: var(--muted); font-size: 11px; margin-right: auto; }
+/* Raised above the dim while a tour step points at it */
+.tour-target-live {
+  position: relative;
+  z-index: 9502 !important;
+}
 .instr-idle { font-size: 12px; line-height: 1.45; color: var(--text-2); }
 .instr-idle-lead { margin: 0 0 8px; color: var(--text); }
 .instr-idle-list { margin: 0 0 10px; padding-left: 1.2em; }
