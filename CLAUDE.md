@@ -214,7 +214,7 @@ to read everything.
 _Last updated: **2026-07-29**._
 
 **Where the PWR is.** All PWR engine, behaviour, ops and stack gates green; `run_all` is
-**31 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
+**32 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
 a handful of UI/doc items.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.**
@@ -395,13 +395,13 @@ not a changelog.**
 **Current gate baselines — `node test/run_all.js` is now the authority.**
 
 > Since 2026-07-25 the baselines live as **data** in the `BASELINES` map at the top of
-> `test/run_all.js`, not as prose here. Run it; it compares all 31 runners against that
+> `test/run_all.js`, not as prose here. Run it; it compares all 32 runners against that
 > map and exits non-zero on any drift. Prose baselines are what rotted (this section
 > claimed `run_m5` **19/19** while its own status text said 18/19 — issue #161). **If
 > you move a number, update `BASELINES` and this section together.**
 
 ```
-node test/run_all.js            # all 31 runners (~6 min)
+node test/run_all.js            # all 32 runners (~6 min)
 node test/run_all.js --fast     # skip the 2 Playwright gates (~2.5 min)
 node test/run_all.js --only run_pwr,run_ops
 node test/run_all.js --record   # print observed results as a BASELINES block
@@ -422,7 +422,7 @@ Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, ca
 were never plant defects at all — the harness was running 11 of its 22 procedures below the
 10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_reactivity` **23 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve), `run_hr3` **29 checks / 0 failed**, `run_hardrules` **28 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_portable` **112 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_reactivity` **23 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve), `run_hr3` **29 checks / 0 failed**, `run_hardrules` **28 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_portable` **112 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `run_manual_rev` **12 checks / 0 failed** (the manual set's revision history — table shape, set-wide stamp agreement, content-digest seal, pack currency; IS baselined, because unlike `run_manual_units` its checks are structural and do not move on prose. **A chapter edited with no revision row reddens it** — the failure it was written for, after six content changes went unrecorded), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **39/39** (both F12 reds were stale expectations, fixed
@@ -472,7 +472,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 31 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 32 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi
@@ -542,6 +542,14 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   migration-note pattern in `CHANGELOG.md`); re-run `run_m7.js`. **A new/renamed/removed
   `true_state` field also needs its §6.3 line in `Blueprint/CONTEXT.md`** — `run_contract.js`
   fails until it has one, and fails again if a documented field disappears (#225).
+- **Any `Manuals/*.md` content change** → three steps, in order, or `run_manual_rev.js`
+  reddens: (1) add a row at the **top** of the table in `Manuals/00_REVISION_HISTORY.md`
+  (newest first — the set revision is **set-wide**, one number for all 13 documents);
+  (2) `node tools/stamp_manual_revision.js` to propagate it and re-seal the content
+  digests; (3) `node tools/pack_manuals.js` so the in-app copy carries it. The digest is
+  the point: **editing a chapter without recording it is a red gate**, which is how six
+  changes (#247, #248, #251, #260 ×2, the gpm scale fix, #263) came to be missing from
+  the history while ten chapters still read `Revision: 0`.
 - **Then update** `CHANGELOG.md`, the `Project status` section above, and
   `Blueprint/BUILD_DECISIONS.md` if a decision or flag changed.
 - **On release (merge `develop` → `main`)** → add the player-facing `changelog.html`

@@ -34,7 +34,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   **19.9 pcm/ppm cold against 10.5 at power**, and a runaway on the startup challenge
   self-limits more, so overshooting the band takes more banked reactivity than it did.
   Nothing in the reactivity curve is set by preference any more.
-
+- **The operator manuals' revision history was two weeks and six changes out of date.** Five
+  entries were missing — the low-flow trip's new instrument and setpoint, the pump-heat heatup
+  that re-authored two chapters, the reactivity recalibration and its new Estimated Critical
+  Condition table, the charging/letdown flow correction, and the reactivity curve's second
+  anchor. Every one of those changed numbers an operator reads. Ten of the thirteen documents
+  also still said "Revision 0", and the contents page said Revision 2 from two weeks earlier.
+  All five entries are now written, the revision is a single set-wide number carried by every
+  document, and the history table reads newest-first throughout — it had been half ascending
+  and half descending, so there was no clear place to add a new entry. A gate now fails if a
+  chapter is edited without recording it.
 - **The manual quoted a charging and letdown flow the board never showed.** Section 12 said
   **40 gpm** maximum charging and **20 gpm** normal letdown, where the board's charging box tops
   out at **60 gpm** and its orifice-A letdown reads **30 gpm**. Two conversion scales were being
