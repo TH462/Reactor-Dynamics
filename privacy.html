@@ -7,7 +7,6 @@
     <meta name="description" content="What Reactor Dynamics collects (very little) and why.">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
     <link rel="stylesheet" href="site/site.css">
-    <!-- Vercel Web Analytics (cookieless page-view beacon; 404s harmlessly off-Vercel) -->
     <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
@@ -15,54 +14,45 @@
 <header class="site-header">
   <div class="bar">
     <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
+    <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
     <nav class="site-nav">
       <a href="ui/shell.html?engine=pwr">Simulator</a>
       <a href="about.html">About</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
     </nav>
   </div>
 </header>
 
 <main class="page">
   <h1>Privacy</h1>
-  <p class="lede">The short version: no accounts, no cookies, no ads, no
-  cross-site tracking. The simulator runs entirely in your browser.</p>
+  <p class="lede">Short version: no accounts, no ads, no cross-site tracking.
+  The simulator runs in your browser.</p>
 
-  <h2>Right now</h2>
-  <p>The simulator runs locally in your browser tab; your plant state and
-  progress stay on your machine (in your browser&rsquo;s local storage) and are
-  never uploaded.</p>
-  <p>The only thing collected is an anonymous <strong>page-view count</strong>,
-  through Vercel Web Analytics — the host this site is served from. For each
-  page you open it records the page address, the referring link, and coarse
-  device information (country, device type, browser, operating system). It sets
-  <strong>no cookies</strong>, stores no persistent identifier, and cannot follow
-  you to other sites. Nothing you do <em>inside</em> the simulator is recorded.</p>
+  <h2>What is collected</h2>
+  <p>Your plant state and training progress stay on your machine (browser local
+  storage) and are never uploaded by the simulator.</p>
+  <p>The only automatic collection is an anonymous <strong>page-view
+  count</strong> from Vercel Web Analytics (the host for this site): page
+  address, referring link, and coarse device info (country, device type,
+  browser, OS). It sets <strong>no cookies</strong>, stores no persistent
+  identifier, and cannot follow you to other sites. Nothing you do
+  <em>inside</em> the simulator is recorded that way.</p>
 
-  <h2>Planned: anonymous usage telemetry</h2>
-  <p>A future update will add lightweight, anonymous telemetry so I can see
-  how the simulator is used and which training missions need work. When it
-  ships, this page will be updated, and here is what it will and won&rsquo;t
-  do:</p>
-  <ul>
-    <li>A random anonymous ID is generated in your browser — it is not derived
-    from you or your device, and it identifies a browser, not a person.</li>
-    <li>Events describe simulator usage: which plant you loaded, session
-    length, mission pass/fail. No free text, no keystrokes, no personal
-    information.</li>
-    <li>Your country (two-letter code only) is inferred server-side from the
-    request. Your IP address is <strong>never stored</strong>.</li>
-    <li>There will be a setting to turn telemetry off entirely.</li>
-  </ul>
+  <h2>Email you send</h2>
+  <p>If you write to
+  <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>,
+  you choose what to include. Optionally attach a session diagnostics file from
+  the simulator (plant state and command history from that session — not a
+  profile of your device). Mail is used only to reply; it is not sold or shared
+  for advertising.</p>
 
-  <h2>Feedback by email</h2>
-  <p>Bug reports and comments go by email to
-  <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.
-  You choose what to send. Optionally, the simulator can download a session
-  diagnostics file (plant state and command history from the live session —
-  nothing about your device or identity) that you can attach if it helps.</p>
+  <h2>Later</h2>
+  <p>If anonymous usage telemetry is ever added inside the simulator, this page
+  will be updated first, and there will be a way to turn it off.</p>
 
   <h2>Contact</h2>
-  <p>Questions? Email
+  <p>Privacy questions:
   <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</p>
 </main>
 
@@ -75,6 +65,7 @@
       <a href="changelog.html">Changelog</a>
       <a href="privacy.html">Privacy</a>
       <a href="legal.html">Legal</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
       <span id="ver" class="mono"></span>
     </div>
   </div>

@@ -7,7 +7,6 @@
     <meta name="description" content="Terms of use, safety disclaimer, and licensing for Reactor Dynamics.">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
     <link rel="stylesheet" href="site/site.css">
-    <!-- Vercel Web Analytics (cookieless page-view beacon; 404s harmlessly off-Vercel) -->
     <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
@@ -15,9 +14,12 @@
 <header class="site-header">
   <div class="bar">
     <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
+    <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
     <nav class="site-nav">
       <a href="ui/shell.html?engine=pwr">Simulator</a>
       <a href="about.html">About</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
     </nav>
   </div>
 </header>
@@ -33,11 +35,12 @@
   substitute for licensed operator training.</div>
 
   <h2>1. Educational use &amp; safety disclaimer</h2>
-  <p>Reactor Dynamics is a teaching tool. Its physics are simplified,
-  lumped-parameter models tuned to illustrate how plants behave and to
-  reproduce the conditions behind historical accidents — not to reproduce any
-  specific reactor to engineering fidelity. Setpoints, procedures, and behavior
-  are approximations chosen for learning.</p>
+  <p>Reactor Dynamics is a teaching tool with <strong>high-fidelity,
+  operator-relevant plant physics</strong> — coupled systems modeled so that
+  startups, maneuvers, trips, and failures behave in ways you can reason about
+  with real PWR practice. It is <strong>not</strong> a licensing code, a safety
+  analysis tool, or a digital twin of any named licensed unit, and it must not
+  be treated as one.</p>
   <p>You must <strong>not</strong> rely on this simulator, its operator manuals,
   or any output it produces for the operation, design, maintenance, licensing,
   or safety analysis of any real nuclear plant or other industrial system, nor
@@ -117,6 +120,7 @@
       <a href="changelog.html">Changelog</a>
       <a href="privacy.html">Privacy</a>
       <a href="legal.html">Legal</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
       <span id="ver" class="mono"></span>
     </div>
   </div>
