@@ -168,6 +168,20 @@ var BASELINES = {
   // author to rewrite the number without reading it. Coverage is printed on the
   // line above the tally, out of the scraper's reach.
   'run_manual_units.js':   { code: 0, score: '0failed' },
+  // New 2026-07-30 — the manual set's revision history. UNLIKE run_manual_units above,
+  // this one IS baselined on its check count: the checks are structural (table shape,
+  // stamp agreement, digest seal, pack currency), so the count moves only when a check
+  // is added, never on prose. Written because the revision history had stopped being
+  // written: SIX content changes (#247, #248, #251, #260 twice, the gpm display-scale
+  // fix, #263 — revs 9–13) landed in the chapters with no row in the table, over two
+  // weeks, while ten of thirteen chapters still read "Revision: 0" and README.md read
+  // "Revision: 2, 2026-07-16". The load-bearing check is the CONTENT DIGEST one: a
+  // chapter edited with no revision row reddens this gate, which is the only check here
+  // that catches the failure that actually happened. The other three catch bookkeeping
+  // that disagrees with itself — necessary, but a set can be perfectly self-consistent
+  // and still describe last week's plant. What it CANNOT check is whether a row's prose
+  // is true; that is HR10/HR12 territory and the runner header says so.
+  'run_manual_rev.js':     { code: 0, score: '12checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points

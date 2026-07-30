@@ -115,6 +115,94 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30b — the manual's revision history had stopped being written  ✅
+
+**Found by asking "are the manuals up to date?" and checking instead of answering.** Content was
+fine — pack in sync, `run_manual_units` 0 failed, `run_procdocs` 23/23, `run_checklist` 24/24,
+and a full currency audit against the as-built sim as recently as Rev 6. The **revision history**
+was not.
+
+**Six content changes had landed with no row in the table**, spanning two weeks and 207 inserted
+lines across five files: **#247** and **#248** (the low-flow trip reading an instrument, setpoint
+25 % → 90 %), **#251** (pump-heat heatup — which *re-authored* 04 and 05), **#260** twice (the
+density-shaped moderator coefficient, then a new 09 §7.5 ECC table), the **gpm display-scale**
+fix, and **#263** (the second reactivity anchor). Operator-facing numbers — heatup timings, trip
+setpoints, critical boron — all changed, with the one document whose entire job is to say what
+changed silent about every one of them.
+
+**And the per-document stamps were worse than silent, they were false.** Ten of thirteen chapters
+read `**Revision:** 0`, including `12_SIM_PHYSICS.md` — *created* at Rev 5 and edited three times
+since. `README.md` read `Revision: 2, 2026-07-16`: six revisions and two weeks behind.
+
+**A contributing cause worth naming: the table had no top.** Rows 0–3 sat **ascending** above a
+**descending** 4–8, so "add a row at the top" was genuinely ambiguous. Now strictly newest-first
+(13 → 0) with the convention stated in the file.
+
+**What was built.**
+- **Revs 9–13 written**, reconstructed from `git log` — one row per change-set, each naming the
+  sections touched and the numbers that moved.
+- **The revision is now SET-WIDE**: one number, carried by all 13 documents. I had recommended
+  *deleting* the per-chapter stamps; I changed my mind on implementing it — a set-wide number that
+  is mechanically checked keeps the commercial format the set is emulating, and the tool removes
+  the friction that made thirteen hand-maintained stamps rot in the first place.
+- **`tools/stamp_manual_revision.js`** — propagates the newest row's number into every chapter and
+  `README.md`, and re-seals per-chapter **content digests**. Deliberately NOT wired into
+  `pack_manuals`: a pack happens often and would silently absorb the very change the digest exists
+  to catch.
+- **`test/run_manual_rev.js`** — 12 checks. Table well-formed, strictly newest-first, no
+  duplicate/missing revs, dates non-decreasing; every document and `README` stamped at the newest
+  rev; the `Set revision` header agrees; digests sealed; and the **packed in-app copy** carries it
+  (a revision recorded but not packed is invisible in the product).
+
+**Negative-tested, all five redden** — the gate was not trusted on a green:
+
+| injected fault | |
+|---|---|
+| chapter prose edited, no rev row | **REDDENS** |
+| chapter stamp left behind at an old rev | **REDDENS** |
+| table returned to ascending order | **REDDENS** |
+| README date stale | **REDDENS** |
+| packed copy not refreshed | **REDDENS** |
+
+The first is the load-bearing one — it is the failure that actually happened, and the only check
+here that catches it. The other four catch bookkeeping that disagrees with itself: necessary, but
+a set can be perfectly self-consistent and still describe last week's plant. **What the gate
+cannot check is whether a row's prose is TRUE** — a row can be well-formed, stamped, sealed and
+still describe the change wrongly. Same class as HR10/HR12, and the runner header says so rather
+than leaving a reader to assume green means accurate.
+
+**One implementation of the digest, shared.** The gate does not re-implement it — it spawns the
+tool with `--check`, so the sealing and checking logic cannot drift apart. That drift is exactly
+what this whole entry is about.
+
+Gates: `run_manual_rev` **12 checks / 0 failed** (new, baselined — its checks are structural, so
+unlike `run_manual_units` the count does not move on prose), `run_all` **32 runners**.
+
+**LESSON, and it cost real risk: `git status` shows ONE `M` per file, no matter how many authors
+wrote it.** This work was started in the primary tree while another session was live in it. When I
+moved to `workbench` I captured my changes with `git diff -- Manuals/ ui/manual_md.js` — and
+`Manuals/09` and `Manuals/12` were carrying **their** in-flight #263-item-1 edits (a new
+2026-07-30 owner ruling, a −26.8 pcm/°C refit, a regenerated ECC table) *underneath* my one-line
+`**Revision:**` stamp. A single `M` per file, two authors, and I had checked occupancy by reading
+the file list — which cannot distinguish them. My `git checkout -- Manuals/` then discarded their
+copy; they had re-made it by the time I looked, so nothing was lost, but that was luck, not
+process.
+
+The tell was a **red gate, not the file list**: `run_reactivity` failed in `workbench` because
+their new ECC table was being checked against `pwr_config.js` *without* their matching refit, which
+had stayed behind in the other tree. `run_hardrules` also drifted 24 → 25 on their ruling quote.
+Both cleared the moment their content was reverted out of my copy — which is also how I confirmed
+neither drift was mine.
+
+**So: when you must lift work out of a shared tree, diff by HUNK and attribute each one, do not
+`git diff` a directory.** And treat an unexplained red in the destination lane as a provenance
+question before treating it as a defect. Their refit supersedes the 2026-07-21 −20 pcm/°C ruling
+that Rev 13's row still cites as current; **that is correct for the committed state at 07381d1**,
+and their change will need its own **Rev 14** row when it lands — which the digest check will now
+insist on.
+
+---
+
 ### 2026-07-30a — the manual quoted a charging/letdown gpm the board never showed  ✅
 
 **Found by pulling on the loose end of 2026-07-29n.** There are two places a normalized CVCS
