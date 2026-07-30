@@ -120,8 +120,15 @@ const htmlPath = path.join(ROOT, 'dist', htmlName);
 // The portable build is gitignored, so on a fresh deploy checkout it will not exist.
 // Build it rather than failing: that is the entire point of doing this at deploy.
 if (!fs.existsSync(htmlPath)) {
-  cp.execFileSync(process.execPath, [path.join(ROOT, 'tools', 'make_portable.js')],
-                  { cwd: ROOT, stdio: 'inherit' });
+  const bundler = path.join(ROOT, 'tools', 'make_portable.js');
+  if (!fs.existsSync(bundler)) {
+    // This is what a deploy failure looks like when .vercelignore excludes the bundler:
+    // a bare ENOENT from execFileSync that says nothing about WHY. Alpha 1.10.0 failed
+    // exactly here. Say the actual cause.
+    throw new Error('tools/make_portable.js is missing. If this is a Vercel build, it is'
+      + ' being excluded by .vercelignore — the buildCommand needs it. See #258.');
+  }
+  cp.execFileSync(process.execPath, [bundler], { cwd: ROOT, stdio: 'inherit' });
 }
 const html = fs.readFileSync(htmlPath);
 

@@ -366,13 +366,13 @@ anything here that is standing procedure rather than news belongs in the list be
   against the fittings above and below it (#231), pipe **animation play-state vs plant
   state** in three states (#236), and the #235 board defects, for the same reason. **Run
   board_check (headless Edge, `--dump-dom`; `document.title` says PASS/FAIL) after any
-  board change** — it is not in `run_all`. Currently **106/106** (measured 2026-07-29 on
-  clean `develop` 5bf366f *and* after #246 — this line said 95/95, which was already stale
-  when written down; the count moves whenever a pin is added, so re-measure rather than
-  trusting it. History: 59 before the #235/#236 pins, +20 pipe-state/board-defect pins,
-  +2 ROD AUTO, +3 from the #237 comment items, +11 for the generator FOLLOW/MAN/OFF
-  selector (#230); the previously recorded "60/60" never matched the code either,
-  #235 finding 6).
+  board change** — it is not in `run_all`. Currently **113/113** (measured 2026-07-30 on
+  `workbench` after #267 — this line said 95/95 once, which was already stale when written
+  down; the count moves whenever a pin is added, so re-measure rather than trusting it.
+  History: 59 before the #235/#236 pins, +20 pipe-state/board-defect pins, +2 ROD AUTO,
+  +3 from the #237 comment items, +11 for the generator FOLLOW/MAN/OFF selector (#230),
+  **+7 for the power tile's armed-trip bands (#267)**; the previously recorded "60/60"
+  never matched the code either, #235 finding 6).
   **Read the tally from the harness's own summary line** (`ALL n CHECKS PASS` /
   `n FAILURES / n`) — scraping the page for the last `n/n` pair picks up unrelated
   numbers and reports a nonsense total.
@@ -667,9 +667,12 @@ integration branch; `main` is stable/release. Do not commit straight to `main`.
   **Immediately before the merge, add the website changelog entry + version number.**
 - Keep `develop` current with `main` (fast-forward) before starting new work.
 
-> **Once the repo is public, releasing becomes a PR.** Going public (#196) turns on a
-> branch ruleset requiring a pull request before merging to `main`, at which point
-> `git push origin main` is **rejected** and the direct merge above stops working. Use:
+> **The repo IS public and `main` IS protected — releasing is a PR** (2026-07-30, #196).
+> A branch ruleset requires a pull request before merging to `main`, blocks force-push and
+> deletion, and allows only the merge method, so `git push origin main` is **rejected** and
+> the direct merge above no longer works. Approvals are set to **0** deliberately — GitHub
+> forbids approving your own PR, so any higher number would block every merge on a
+> solo-maintained repo. Use:
 >
 > ```
 > gh pr create --base main --head develop --title "Release Alpha X.Y.Z — <headline>" --body-file <path>

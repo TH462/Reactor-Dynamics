@@ -694,10 +694,40 @@
   // A one-sided parameter collapses its unused side by pinning those bounds to min/max —
   // e.g. reactor power has no low-power alarm, so everything from 0 to rated reads normal.
   var _PROT = (RD.PWR_CONTROL && RD.PWR_CONTROL.protection) || RD.PWR_PROTECTION || {};
+  // FIRST match in table order. Fine where a parameter has exactly one trip on that side;
+  // where it has more than one, use tripBackstop() instead — `power_range high` carries two
+  // (120 % and the 25 % low setpoint) and this quietly returned whichever was authored first.
   function tripSp(instrument, direction, fallback) {
     var t = _PROT.trips || [], i;
     for (i = 0; i < t.length; i++) if (t[i].instrument === instrument && t[i].direction === direction) return t[i].setpoint;
     return fallback;
+  }
+  // The LEAST limiting trip on a side — the backstop that is always armed. Order-independent,
+  // so re-authoring the protection table cannot silently move a tile's static band.
+  function tripBackstop(instrument, direction, fallback) {
+    var t = _PROT.trips || [], out = null, i;
+    for (i = 0; i < t.length; i++) {
+      if (t[i].instrument !== instrument || t[i].direction !== direction || t[i].setpoint == null) continue;
+      if (out == null) { out = t[i].setpoint; continue; }
+      out = (direction === 'low') ? Math.min(out, t[i].setpoint) : Math.max(out, t[i].setpoint);
+    }
+    return out == null ? fallback : out;
+  }
+  // The most limiting trip on a side that is ARMED RIGHT NOW — blocked trips excluded.
+  // Returns null when the snapshot carries no RPS section (load order, or a plant with no
+  // control layer attached), so a caller can fall back to the authored band rather than
+  // reading "nothing is blocked" out of an absent section.
+  function limitingArmedTrip(instrument, direction, s) {
+    if (!s || !s.rps_state) return null;
+    var t = _PROT.trips || [], blocks = s.rps_state.trip_blocks || {}, out = null, i;
+    for (i = 0; i < t.length; i++) {
+      if (t[i].instrument !== instrument || t[i].direction !== direction || t[i].setpoint == null) continue;
+      if (t[i].id && blocks[t[i].id]) continue;
+      if (out == null) { out = t[i]; continue; }
+      var better = (direction === 'low') ? (t[i].setpoint > out.setpoint) : (t[i].setpoint < out.setpoint);
+      if (better) out = t[i];
+    }
+    return out;
   }
   function alarmSp(id, fallback) {
     var a = _PROT.alarms || [], i;
@@ -707,9 +737,11 @@
   var P_SET = _PZ.P_setpoint || 15.41;
   var TILE_BANDS = {
     // Reactor power, % rated. High side only — any power below rated is a legitimate state.
+    // tripHi is the BACKSTOP (120 %); the 25 % power-range low setpoint is armed during a
+    // startup and overrides it live — see powerBand().
     imrzl4b7g9m: { min: 0, max: 130, digits: 1,
       tripLo: 0, alarmLo: 0, normLo: 0,
-      normHi: 100, alarmHi: alarmSp('high_flux', 108), tripHi: tripSp('power_range', 'high', 120) },
+      normHi: 100, alarmHi: alarmSp('high_flux', 108), tripHi: tripBackstop('power_range', 'high', 120) },
     // Tavg, °F. normHi is the top of the at-power Tavg program (~307 °C); below that covers
     // every mode down to cold shutdown, so the low side collapses.
     ims2immk7ks: { min: 50, max: 660, digits: 0,
@@ -809,6 +841,36 @@
     out.normHi = qz(C2F(ref + halfC));
     return out;
   }
+  // Reactor power — the band follows WHICH POWER TRIP IS ARMED (#267).
+  //
+  // `power_range high` carries TWO trips: the 120 % backstop, and the 25 % POWER-RANGE LOW
+  // SETPOINT, which is armed at every startup initial condition and blockable only above
+  // P-10 (10 %). MEASURED on engine+M4 from `5_percent`: with the low setpoint armed,
+  // 26 % scrams (`power_range high`) and 24 % does not; blocked, 26 % is clear and 121 %
+  // scrams. The tile showed 120 % in every one of those cases, because tripSp() took the
+  // first table match — so the operator climbing out of Mode 3 saw green all the way to a
+  // scram at a fifth of the indicated trip.
+  //
+  // Armed, the tile reads as the startup ladder the plant actually enforces:
+  //   green to P-10 (10 %) | amber P-10 → 25 % — block the startup trips HERE | red above.
+  // The amber band is not decoration: it is the window in which blocking is permitted, so
+  // its width is the operator's margin. Blocking the trip collapses it and the tile reopens
+  // to the at-power scale; dropping back below P-10 auto-reinstates the block and the band
+  // returns with it. displayScale() then rescales 0–131.9 % → 0–27.5 %, which is what makes
+  // the low-power ascent legible on a linear meter at all.
+  function powerBand(s) {
+    var b = TILE_BANDS.imrzl4b7g9m;
+    var lim = limitingArmedTrip('power_range', 'high', s);
+    if (!lim || !(lim.setpoint < b.tripHi)) return null;   // backstop only → authored bands stand
+    var p10 = (_PROT.trip_block_permissive || {}).setpoint;
+    if (p10 == null || !isFinite(p10) || !(p10 < lim.setpoint)) p10 = lim.setpoint;
+    // normHi === alarmHi collapses the grey "acceptable" band to nothing, so the region
+    // above P-10 reads amber rather than as more headroom.
+    // The note names the limit. Only shown while a lower trip is armed — at power the tile
+    // is working to its authored 120 % band and has nothing exceptional to say.
+    return { normHi: qz(p10), alarmHi: qz(p10), tripHi: qz(lim.setpoint),
+             note: 'TRIP ' + qz(lim.setpoint) + '%' };
+  }
   function pressureBand(s) {
     var sp = CS(s).pressure_setpoint;
     if (sp == null || !isFinite(sp)) sp = P_SET;
@@ -819,12 +881,19 @@
   }
   function bandsFor(id, s) {
     var b = TILE_BANDS[id];
-    var mv = id === 'ims2immk7ks' ? tavgBand(s) : (id === 'ims2immsvn6' ? pressureBand(s) : null);
+    var mv = id === 'ims2immk7ks' ? tavgBand(s)
+           : (id === 'ims2immsvn6' ? pressureBand(s)
+           : (id === 'imrzl4b7g9m' ? powerBand(s) : null));
     if (!mv) return b;
     var out = {}; for (var k in b) out[k] = b[k];
     if (mv.normLo != null) out.normLo = mv.normLo;
     if (mv.normHi != null) out.normHi = mv.normHi;
     if (mv.alarmHi != null) out.alarmHi = mv.alarmHi;
+    // A live trip bound moves the RED edge, so it must move the display window with it —
+    // displayScale() derives the window from tripLo/tripHi.
+    if (mv.tripHi != null) out.tripHi = mv.tripHi;
+    if (mv.tripLo != null) out.tripLo = mv.tripLo;
+    if (mv.note != null) out.note = mv.note;
     if (mv.winLo != null) out.winLo = mv.winLo;
     if (mv.winHi != null) out.winHi = mv.winHi;
     // A moving normal band must stay inside its own alarm/trip envelope, or a setpoint the
@@ -864,7 +933,10 @@
         min: sc.min, max: sc.max,
         normLo: b.normLo, normHi: b.normHi,
         alarmLo: b.alarmLo, alarmHi: b.alarmHi,
-        tripLo: b.tripLo, tripHi: b.tripHi
+        tripLo: b.tripLo, tripHi: b.tripHi,
+        // '' (not null) so the tile CLEARS a stale note rather than keeping the last one —
+        // `undefined` means "leave alone" in the component's tri-state contract.
+        note: b.note || ''
       };
     };
   }
@@ -1375,6 +1447,38 @@
         var miss = Object.keys(PIPE_TEMP).filter(function (k) { return !live[k]; });
         return miss.length === 0 ? true : miss.join(',');
       })() === true);
+      // ---- power tile follows the ARMED power trip (#267) --------------------------------
+      // The tile used to read 120 % in every state, because tripSp() took the first
+      // `power_range high` row and the table happens to author the backstop first. MEASURED
+      // on engine+M4 from `5_percent`: with pr_low_setpoint armed, 26 % scrams and 24 % does
+      // not — so the gauge was showing a limit ~5x above the one the plant enforces for the
+      // whole of a startup. These pin the three states rather than the one that was wrong.
+      function powerTile(blocks) {
+        var t = { instruments: { power_range: 5 }, control_state: {}, true_state: { plant_mode: 3 },
+                  metadata: { sim_time: 100 } };
+        if (blocks) t.rps_state = { trip_blocks: blocks, scrammed: false };
+        return COMPPROPS.imrzl4b7g9m(t);
+      }
+      var pArmed = powerTile({}), pBlocked = powerTile({ pr_low_setpoint: true }), pBare = powerTile(null);
+      // Armed (every startup IC): green to P-10, amber P-10 -> 25 %, red above, and the
+      // window closes down so the low-power ascent is legible on a linear meter.
+      ck('driver: power tile trips at 25 % while pr_low_setpoint is armed',
+        pArmed.tripHi === 25 && pArmed.alarmHi === 10 && pArmed.normHi === 10, pArmed.tripHi + '/' + pArmed.alarmHi + '/' + pArmed.normHi);
+      ck('driver: power tile rescales to the armed trip', Math.round(pArmed.max) === 27, pArmed.max.toFixed(1));
+      ck('driver: power tile names the armed trip', pArmed.note === 'TRIP 25%', JSON.stringify(pArmed.note));
+      // Blocked above P-10: back to the authored at-power band, and the note clears rather
+      // than sticking at its last value.
+      ck('driver: power tile returns to 120 % when the low setpoint is blocked',
+        pBlocked.tripHi === 120 && pBlocked.alarmHi === 108 && pBlocked.normHi === 100, pBlocked.tripHi + '/' + pBlocked.alarmHi + '/' + pBlocked.normHi);
+      ck('driver: power tile clears its note when blocked', pBlocked.note === '', JSON.stringify(pBlocked.note));
+      // No RPS section (load order / no control layer): fall back to the authored band.
+      // Reading "nothing is blocked" out of an absent section would peg a full-power plant
+      // against a 27 % scale.
+      ck('driver: power tile falls back to authored bands with no rps_state',
+        pBare.tripHi === 120 && pBare.note === '', pBare.tripHi + '/' + JSON.stringify(pBare.note));
+      // tripBackstop must not depend on table order — the defect this fixes was order-dependent.
+      ck('driver: power backstop is order-independent',
+        tripBackstop('power_range', 'high', null) === 120, tripBackstop('power_range', 'high', null));
       // Same failure mode for the highlight vocabulary: a dead target silently stops
       // glowing, and the campaign/checklist gates only cover part of the label set.
       ck('driver: every highlight target exists', (function () {

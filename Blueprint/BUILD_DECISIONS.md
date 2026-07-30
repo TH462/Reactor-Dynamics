@@ -37,6 +37,45 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-30c — #267: the vital tile's red band follows the ARMED trip, not the first table row
+
+**The decision: a tile band is resolved per-snapshot from the trips that are actually armed, and
+a trip is treated as disarmed ONLY when it is BLOCKED** (`rps_state.trip_blocks`), never when a
+`condition` merely fails to hold. Conditions (`above_p9`, `sr_energized`) flip on their own in
+seconds; a block is deliberate and recorded. The conservative rule can only add warning regions,
+never remove one the operator did not remove themselves.
+
+**Why it was wrong.** `power_range high` has two trips — 120 % and `pr_low_setpoint` 25 % — and
+`tripSp()` returns the **first table match**. The table authors the backstop first, so the tile
+read 120 % everywhere, including at the three ICs (`hot_zero_power`, `5_percent`,
+`cold_shutdown`) where the armed limit is 25 %. Measured on engine+M4: armed, **26 % scrams and
+24 % does not**; blocked, 26 % is clear and 121 % scrams.
+
+**Deviation from the source component, recorded.** `comp_indicator_panel.js` gains an optional
+`note` — a short right-aligned annotation in the label row, shown only when the tile's limit is
+**not** its at-power default. It is an *exception marker*, not a caption: a caption present on
+every tile every second is one nobody reads, and the tile is 114 px tall, so a permanent extra
+row would have been paid for out of the sparkline. Tri-state on purpose (`undefined` = leave
+alone, `''` = clear, string = show) so a driver that never sets it is unaffected.
+
+**Band layout while the low setpoint is armed** — `normHi === alarmHi === P-10` collapses the grey
+"acceptable" region to nothing, so 10 → 25 % reads **amber** rather than as headroom. That amber
+band's width is the operator's blocking window, which is the thing being taught.
+
+**Guards.** `tripBackstop()` (least-limiting, order-independent) replaces `tripSp()` for the
+static base, and is pinned — re-authoring the protection table can no longer move a tile's band
+silently. board_check **106 → 113**; the 7 pins were **verified by injection** (stub `powerBand()`
+to `return null` → exactly the 3 discriminating pins go red with the old values, the 3 fallback
+pins stay green). `run_all` **OK, 32 runners**.
+
+**Open, deliberately not done here.** `primary_pressure low` has the same shape (`lo_press`,
+`si_trip`, both blocked at a depressurized init) and is still on the static resolver, so a Mode 5
+plant at 400 psi reads pegged in a red band for a trip that is not armed. It needs the
+`normLo`-vs-`alarmLo` clamp revisited at the same time or the green band lands wrong. Follow-up
+on #267.
+
+---
+
 ## 2026-07-29m — #194: no CVCS retune; the gate check was measuring 0.48 τ
 
 **The decision: do NOT retune CVCS. No plant code changed.** #194 held that CVCS make-up covers

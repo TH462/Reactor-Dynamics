@@ -219,6 +219,55 @@ findings.forEach(function (f) { (byRule[f.rule] = byRule[f.rule] || []).push(f);
   }
 });
 
+// ---------------------------------------------------------------------------
+// THE DEPLOY BUILD MUST BE ABLE TO RUN.
+//
+// vercel.json's buildCommand runs scripts that require other files; .vercelignore
+// decides what the build machine actually receives. Those two are edited
+// independently and nothing compared them — so Alpha 1.10.0 deployed with `tools`
+// ignored while the buildCommand shelled out to tools/make_portable.js. The deploy
+// failed with "Command ... exited with 1" and the release never went live, while
+// every local build worked, because locally nothing is ignored.
+//
+// Ignore-file semantics are the trap: a file inside an excluded DIRECTORY cannot be
+// re-included, so excluding `tools` excludes the bundler whatever follows it.
+var vercelCfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
+var ignoreLines = fs.readFileSync(path.join(ROOT, '.vercelignore'), 'utf8')
+  .split('\n').map(function (l) { return l.trim(); })
+  .filter(function (l) { return l && l.charAt(0) !== '#'; });
+
+var buildScripts = (vercelCfg.buildCommand || '').match(/[\w.\/-]+\.js/g) || [];
+var needed = buildScripts.slice();
+buildScripts.forEach(function (rel) {
+  var abs = path.join(ROOT, rel);
+  if (!fs.existsSync(abs)) return;
+  var src = fs.readFileSync(abs, 'utf8'), m;
+  // path.join(ROOT, 'tools', 'make_portable.js')  — how a build script names a sibling
+  var re = /path\.join\(\s*ROOT\s*,\s*'([\w.-]+)'\s*,\s*'([\w.-]+\.js)'\s*\)/g;
+  while ((m = re.exec(src))) needed.push(m[1] + '/' + m[2]);
+});
+needed = needed.filter(function (v, i, a) { return a.indexOf(v) === i; });
+
+function vercelIgnored(rel) {
+  var parts = rel.split('/');
+  for (var i = 0; i < ignoreLines.length; i++) {
+    var pat = ignoreLines[i].replace(/\/$/, '');
+    if (pat === rel) return pat;
+    for (var d = 1; d < parts.length; d++) {
+      if (pat === parts.slice(0, d).join('/')) return pat;
+    }
+  }
+  return null;
+}
+
+needed.forEach(function (rel) {
+  if (!fs.existsSync(path.join(ROOT, rel))) return;
+  var pat = vercelIgnored(rel);
+  findings.push({ ok: !pat, id: 'deploy:' + rel });
+  if (pat) violations.push('DEPLOY: ' + rel + ' is needed by vercel.json buildCommand but ' +
+    '.vercelignore excludes it via "' + pat + '"');
+});
+
 var stale = staleDrop.concat(staleLoad);
 if (stale.length) {
   console.log('\n' + Y + B + 'STALE declarations (' + stale.length + ')' + X);
