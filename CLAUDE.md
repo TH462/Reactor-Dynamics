@@ -214,12 +214,30 @@ to read everything.
 _Last updated: **2026-07-29**._
 
 **Where the PWR is.** All PWR engine, behaviour, ops and stack gates green; `run_all` is
-**29 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
+**30 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
 a handful of UI/doc items.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.**
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
+
+- **The sim ships as ONE emailable `.html` file now, and that is gated (2026-07-29k).**
+  `node tools/make_portable.js` → `dist/Reactor_Dynamics_<version>.html`: the 94 scripts +
+  2 stylesheets `ui/shell.html` loads, inlined in document order, 2.55 MB, runs by
+  double-clicking with no server and no network. **Nothing in the sim had to change** — the
+  no-module-system convention had already bought offline operation (plain `<script src>`
+  loads over `file://`; an ES module is CORS-blocked), and there is no `fetch` anywhere, no
+  web font and no image in the whole runtime. Measured: the bundle makes **1 network request
+  (itself)** against 99 for the folder build, 0 page errors, and reaches a state identical to
+  it across 60 sampled board values. Three things to know: **`test/run_portable.js` (112
+  checks) is the only thing asserting "nothing loads at runtime"** — a `fetch()` added for a
+  good reason leaves every other gate green and breaks the emailed file on a stranger's
+  machine, so treat a red there as a real defect and not a tooling nuisance; its scan surface
+  is **read out of `ui/shell.html`**, so a new `<script src>` is covered automatically and
+  **shifts the baseline** on purpose; and a relative `url()` in the CSS is a bundle hazard
+  even though it works on the site, because an inlined `<style>` resolves against the
+  document's directory. **ZIP the file before emailing** — several mail providers strip
+  `.html` attachments silently.
 
 - **The plant can heat itself up now — the pump-heat netting is deleted (2026-07-29, #251).**
   The SG used to subtract RCP heat out of its own steam balance (`max(0, Q_sg − Q_pump)`,
@@ -280,21 +298,6 @@ anything here that is standing procedure rather than news belongs in the list be
   *exceptions* from tracked *debt*. It declared 5 debts on day one; **4 were paid within
   the week (#247)** and **1 remains** (RBMK, unreviewed, on hold). The split working that
   fast is the argument for it — one list would have called all five "allowed".
-
-- **The board explains itself, and the copy is gated (2026-07-28s, #96).** The System Scanner
-  block is now the **inspection surface**: hover → one-line summary, click to expand → full
-  description + a link into the manual section that documents the object. Board copy lives in
-  `ui/diagram/board/pwr_board_inspect.js` (160 entries, keyed by diagram item id, reached
-  through the driver's `inspectItem`); chrome copy stays inline as `data-scanner-hint` /
-  `-detail`; gauge and alarm detail is **generated** from `RD.MANUAL` + the protection table.
-  Three things to know before you touch it: an item with no entry inherits the **smallest box
-  containing it** (geometry, not DOM — tiles are absolutely-positioned siblings); a new
-  control/component/indication **fails `run_inspect.js`** until it has its own entry, and a
-  manual citation is resolved against the packed markdown, so a dead §number is a red; and
-  **hovering must not highlight the object** (owner, 2026-07-28 — the ring an early cut drew
-  was "very annoying"), which `run_inspect` pins because the issue text asks for the opposite.
-
-
 
 **Standing procedure — not part of the rotation above; these do not expire.**
 
@@ -375,13 +378,13 @@ not a changelog.**
 **Current gate baselines — `node test/run_all.js` is now the authority.**
 
 > Since 2026-07-25 the baselines live as **data** in the `BASELINES` map at the top of
-> `test/run_all.js`, not as prose here. Run it; it compares all 27 runners against that
+> `test/run_all.js`, not as prose here. Run it; it compares all 30 runners against that
 > map and exits non-zero on any drift. Prose baselines are what rotted (this section
 > claimed `run_m5` **19/19** while its own status text said 18/19 — issue #161). **If
 > you move a number, update `BASELINES` and this section together.**
 
 ```
-node test/run_all.js            # all 27 runners (~6 min)
+node test/run_all.js            # all 30 runners (~6 min)
 node test/run_all.js --fast     # skip the 2 Playwright gates (~2.5 min)
 node test/run_all.js --only run_pwr,run_ops
 node test/run_all.js --record   # print observed results as a BASELINES block
@@ -402,7 +405,7 @@ Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, ca
 were never plant defects at all — the harness was running 11 of its 22 procedures below the
 10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_hr3` **29 checks / 0 failed**, `run_hardrules` **22 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_hr3` **29 checks / 0 failed**, `run_hardrules` **22 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_portable` **112 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **35/35** (both F12 reds were stale expectations, fixed
@@ -434,6 +437,12 @@ The control-room UI is `ui/shell.html` (loads engines + layers, wired through
 `ui/app.js`). Standalone engine test pages: `test_pwr.html`, `test_rbmk.html`,
 `test_bwr.html`.
 
+**Offline / portable:** it already runs from `file://` with no server — nothing loads
+anything at runtime. `node tools/make_portable.js` collapses the control room into one
+self-contained `dist/Reactor_Dynamics_<version>.html` (~2.5 MB) you can email or carry on a
+stick. `test/run_portable.js` is what keeps that possible; read its header before adding
+any runtime load.
+
 ## Running the tests
 
 Plain Node CLI runners (no framework, no `package.json`). Engine/layer files are
@@ -441,7 +450,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 27 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 30 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi

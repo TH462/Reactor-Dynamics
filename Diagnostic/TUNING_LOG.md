@@ -31,11 +31,12 @@ staleness** items.
 
 | Gate | State | Notes |
 |---|---|---|
-| **`run_all`** | **OK (28 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
+| **`run_all`** | **OK (30 runners)** | **THE aggregate gate — `node test/run_all.js`; baselines are data in its `BASELINES` map, not prose** |
 | `run_hardrules` | **19 checks / 0 failed** | NEW 2026-07-29 — static guards for HR1 (protection reads instruments), HR5 (UI never touches the engine) and HR11 (a ruling needs a date + verbatim words). Declared-exception idiom: a true-state read in `layers/control/` is legal only if listed with the reason no instrument exists. 18 → 14 on 2026-07-29h (#247): **4 of the 5 declared HR1 debts paid**; the 1 left is RBMK (on hold). 14 → 18 on 2026-07-29i (#248) — HR12 added, and its `OWNER RULING` quote appears in four tracked files (including this log). 18 → 19 on 2026-07-29j (#251) — one more HR11 site, the owner's "long term fix" ruling quoted in this log's entry. Worked example of the warning that follows: the CODE change moved nothing here; writing it up did. Note the gate scans Diagnostic/ and Blueprint/, so WRITING UP a change moves this score — re-run it after the docs, not just after the code. HR2, HR6 and half of HR4 remain unguarded; HR10 and HR12 are **not gateable at all**, and §3 says so |
 | `run_hr3` | **29 checks / 0 failed** | 32 → 29 on 2026-07-29h (#247) — retiring the `__true_flow__` sentinel removed the kernel's only PWR-only `true_state` reference (half of #228; the `reset_rps` half stands) |
 | `run_contract` | **84 checks / 0 failed** | NEW 2026-07-28t (#225) — §6.3 `true_state` contract vs `getTrueState()`, both directions; PWR only (RBMK/BWR `skip`) |
 | `run_inspect` | **7/7 (35)** | NEW 2026-07-28s (#96) — inspection copy: orphaned keys, per-item coverage, dead manual citations, duplicate copy |
+| `run_portable` | **112 checks / 0 failed** | NEW 2026-07-29k — guards the OFFLINE / single-file build (`tools/make_portable.js`). Asserts nothing in the runtime **loads** anything at runtime (13 patterns over the 94 scripts `ui/shell.html` ships, read from the file so it widens itself), no web font or relative `url()` in the 2 stylesheets, and then **builds the bundle** and asserts the deliverable has no loading attribute left. Injection-verified (fetch / CDN tag / `@font-face` / `<img src>` / ES `export` each go red on the matching check). Check count moves with the shipped asset list — a new `<script src>` shifts the baseline, which is the intended nudge to re-verify the portable build |
 | `run_flags` / `verify_flags_ui` | **16/16 (290)** / **48/48** | NEW 2026-07-28j (#241) — the feature-flag registry (coverage + resolution) and the control room actually obeying it |
 | `run_procedures_stack` | **22/22 (155/155)** | NEW 2026-07-26b — procedures through M4+M5+M6. **5** strict xfails, all RBMK/BWR (#208); the 7 `pwr_heatup` xfails cleared 2026-07-26c/d (#206, #210), `bwr_startup` 2026-07-29c (never a BWR defect — see **#245**) |
 | `run_meltdown_stack` | **3/3 (21/21)** | NEW 2026-07-26d (#209) — the core-damage casualties driven **hands off** on the shipped lineup; asserts the automatic chain fires unprompted |
@@ -113,6 +114,88 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-29k — a portable single-file build, and the gate that keeps it possible  ✅
+
+**The ask.** *"i want to create a portable, offline version of this sim. how can i do that? is
+it possible?"* — then, once the options were on the table, *"i want to be able to email it.
+lets go with option c."*
+
+**The finding, before any code: it was already offline.** Measured rather than assumed. Loaded
+`file:///…/ui/shell.html` in headless Edge and probed it:
+
+| | measured |
+|---|---|
+| `fetch` / `XMLHttpRequest` / `import()` in the repo | **none, anywhere** |
+| external assets (CDN, web font, `@font-face`, image) | **none** — the runtime dirs contain no binary file at all, only `.gitkeep` |
+| operator's manual | already pre-packed into `ui/manual_md.js` (280 KB), not loaded |
+| `localStorage` on the `file://` origin | **works** (saves, flags, board state) |
+| physics | **integrates** — `?inject=stuck_porv_open`, reactor power 100.0 % → 0.8 %, T-avg 570 → 558 °F (299 → 292 °C), 8 alarms latched, scram in |
+| page errors | **0** |
+
+So the no-module-system convention (`CLAUDE.md`, *Code conventions*) had already bought offline
+operation for free — plain `<script src>` loads fine over `file://` where an ES module is
+CORS-blocked. The only failures were two absolute-path Vercel analytics beacons (`defer`, fail
+silently) and `site/hero.png`, a placeholder already missing on the deployed site.
+
+**What was actually missing was not offline — it was *one file*.** A folder is not something you
+can email. `tools/make_portable.js` inlines the 94 scripts + 2 stylesheets `ui/shell.html`
+lists, in document order, into a 2.55 MB self-contained page.
+
+**Verified against the multi-file build, not just "it opened":** the bundle issues **1 network
+request (itself)** vs 99 for the folder build, 0 failed, 0 page errors, and after the same
+injection every one of 60 sampled board values is **identical** — power 0.8 %, T-avg 558 °F
+(292 °C), primary 1068 psi (7.36 MPa), 8 alarms, 75 board ports, 51 `RD` keys.
+
+**Three fixups the bundler makes, each because a single file has no folder around it:** the two
+Vercel beacons are dropped (**declared with reasons — an undeclared external tag throws, it is
+never a warning**, because silently shipping one is the whole failure mode); the logo's
+`../index.html` has no sibling to point at and is repointed at the public site; and the ⚛️
+favicon is embedded as a `data:` URI. Escaping matters in one real place — `std_pipe.js:6`
+documents its component with `<script src="./pipes.js">` **inside a JS comment**, and unescaped
+that closes the tag early and spills the rest of the file into the page as text.
+
+**The gate — `test/run_portable.js`, 112 checks.** Filed as the *First Principles* concern in
+the same session: the single-file build rests entirely on "nothing loads anything at runtime",
+and **no other gate asserted that**. The failure is maximally quiet — a `fetch('Manuals/12.md')`
+added for a good reason keeps the *other* 29 runners green and the deployed site perfect, and
+breaks the emailed file on a recipient's machine where nobody will ever report it back.
+
+- **Scan surface is the shipped asset list, read out of `ui/shell.html`** — not a sweep of
+  `engines/ layers/ ui/`. It cannot miss a file that ships or flag one that does not
+  (`ui/test_panel/*` harnesses and `tools/` may fetch whatever they like), and it widens itself
+  the moment a `<script src>` is added, with nobody remembering to update a directory list.
+- Also checks the stylesheets for `@font-face` **and for relative `url()`** — a relative `url()`
+  works on the site but breaks once inlined, because a `<style>` block resolves against the
+  *document's* directory, not the stylesheet's.
+- Then **builds the bundle and asserts the deliverable**, not only the sources.
+
+**Verified by injection, per HR10 — a green gate is not evidence it works.** Five failures were
+injected into real files and reverted: a `fetch()`, an undeclared CDN `<script>`, an
+`@font-face`, an `<img src>` in the markup, and an ES `export`. Each turned it red **on the
+matching check** (the CDN case also made the bundler throw, which is correct), and the restored
+tree returned to 112/0.
+
+**Three of the gate's first four findings were the gate's own fault, which is worth recording.**
+It flagged `src="./pipes.js"` — the string inside `std_pipe.js`'s comment, inside an inlined
+`<script>` body, which a browser never parses as HTML and which the measured request count of 1
+disproves outright. Fixed by blanking `<script>`/`<style>` **bodies** before scanning for
+loading attributes, since a body is not markup; the `<img src>` injection above confirms the
+narrowed check still bites. It also failed two sentinels I had **guessed** — `RD.PwrEngine` and
+`RD.ControlKernel`; the real globals are **`RD.PWREngine`** and **`RD.ControlLayer`**. A
+sentinel for a name that never existed fails forever and reads as a broken bundle rather than a
+broken test. Only the fourth finding was real: `dist/` was not gitignored.
+
+**Lane note.** Started on `develop`; the owner reported another agent there, so this was built in
+`C:\grok_build\RD_workbench` on `workbench` — which was verified clear first (clean tree, zero
+unmerged commits, same SHA `0f3a015`, `node_modules` + `inbox/` present), per `CLAUDE.md`'s
+two-lane rule. No project file in the `develop` tree was touched.
+
+**Open follow-ups.** The landing page (`index.html`) and the other site pages are **not**
+bundled — the deliverable is the control room alone, which is what "email me the sim" means, but
+a portable *site* is a different tool. The build is not wired into the release process either:
+nothing regenerates `dist/` at a `develop` → `main` merge, so an emailed file is only ever as
+current as the last manual run.
 
 ### 2026-07-29j — #251: the pump-heat netting is gone, and the plant can heat itself  ✅
 
