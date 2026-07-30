@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feedback — Reactor Dynamics</title>
-    <meta name="description" content="Send feedback or a bug report, with session telemetry attached.">
+    <meta name="description" content="Send feedback or a bug report by email.">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
     <link rel="stylesheet" href="site/site.css">
     <!-- Vercel Web Analytics (cookieless page-view beacon; 404s harmlessly off-Vercel) -->
@@ -18,56 +18,21 @@
     <nav class="site-nav">
       <a href="ui/shell.html?engine=pwr">Simulator</a>
       <a class="disabled" aria-disabled="true" title="Coming soon">About</a>
-      <a class="disabled" aria-disabled="true" title="Coming soon">Feedback</a>
     </nav>
   </div>
 </header>
 
 <main class="page">
   <h1>Feedback &amp; bug reports</h1>
-  <p class="lede">Something broke, or something's wrong about the physics or
-  procedures? Tell me.</p>
+  <p class="lede">Email is the way in now — there is no web form.</p>
 
-  <div class="notice"><strong>Reporting a bug from inside the simulator is
-  best.</strong> Click the <strong>💬</strong> button in the control room — it
-  can attach your current session&rsquo;s telemetry (plant readings and the
-  commands you issued) so what you saw can be replayed exactly. This page is
-  for general feedback without telemetry. Direct submission is coming soon;
-  for now, the form packages your report into a file you can download and
-  hold onto.</div>
+  <p>Write to
+  <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.
+  For a bug, say what you were doing, what you expected, and what the board
+  showed. Inside the simulator, the <strong>💬</strong> button copies that
+  address and can download a session diagnostics file you can attach.</p>
 
-  <!-- W2 wires this form to POST /api/feedback (WEBSITE_SPEC.md §6-7). The
-       field names and honeypot are already the shapes the API will expect. -->
-  <form id="fbForm">
-    <div class="field">
-      <label for="fbCat">Category</label>
-      <select id="fbCat" name="category">
-        <option value="bug">Bug report</option>
-        <option value="physics">Physics / procedure accuracy</option>
-        <option value="feedback">General feedback</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label for="fbBody">What happened?</label>
-      <textarea id="fbBody" name="body" required
-        placeholder="What were you doing, what did you expect, and what did the board actually show?"></textarea>
-    </div>
-
-    <div class="field">
-      <label for="fbEmail">Email (optional)</label>
-      <input type="email" id="fbEmail" name="email" placeholder="only if you want a reply">
-    </div>
-
-    <!-- honeypot: humans never see it; the W2 API rejects submissions that fill it -->
-    <div class="field hp" aria-hidden="true">
-      <label for="fbWeb">Website</label>
-      <input type="text" id="fbWeb" name="website" tabindex="-1" autocomplete="off">
-    </div>
-
-    <button type="submit" class="btn">Package report</button>
-    <div class="form-msg" id="fbMsg" role="status"></div>
-  </form>
+  <p><a href="index.html">← Back to the home page</a></p>
 </main>
 
 <footer class="site-footer">
@@ -77,7 +42,6 @@
     <div class="links">
       <a class="disabled" aria-disabled="true" title="Coming soon">About</a>
       <a href="changelog.html">Changelog</a>
-      <a class="disabled" aria-disabled="true" title="Coming soon">Feedback</a>
       <a href="privacy.html">Privacy</a>
       <a href="legal.html">Legal</a>
       <span id="ver" class="mono"></span>
@@ -86,36 +50,6 @@
 </footer>
 
 <script src="site/version.js"></script>
-<script>
-document.getElementById('ver').textContent = window.RD_VERSION || '';
-
-// W1 fallback: assemble the report into a downloadable JSON bundle. W2 replaces
-// the handler body with a POST to /api/feedback; the bundle schema below is the
-// same payload the API will receive. Telemetry is never attached here — reports
-// with telemetry come from the in-simulator 💬 flow only (no user file uploads).
-(function () {
-  var form = document.getElementById('fbForm');
-  var msg = document.getElementById('fbMsg');
-  form.addEventListener('submit', function (ev) {
-    ev.preventDefault();
-    var bundle = {
-      schema_version: '1.0',
-      kind: 'reactor_dynamics_feedback',
-      category: document.getElementById('fbCat').value,
-      body: document.getElementById('fbBody').value,
-      email: document.getElementById('fbEmail').value || null,
-      site_version: window.RD_VERSION || null,
-      diag: null
-    };
-    var blob = new Blob([JSON.stringify(bundle, null, 1)], { type: 'application/json' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'rd_feedback_' + bundle.category + '.json';
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(a.href);
-    msg.textContent = 'Report packaged and downloaded. Hold onto it — direct submission lands here soon.';
-  });
-})();
-</script>
+<script>document.getElementById('ver').textContent = window.RD_VERSION || '';</script>
 </body>
 </html>
