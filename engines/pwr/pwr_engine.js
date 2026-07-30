@@ -77,6 +77,48 @@
     return rho;
   };
 
+  // ------------------------------------------------- moderator density (§4, #260)
+  // Compressed-liquid water density (kg/m³) at RCS pressure, cubic in °C. The
+  // moderator reactivity effect tracks DENSITY, so MTC steepens with temperature
+  // on its own instead of being a constant — see the sourced derivation in
+  // pwr_config.js `mod_*`.
+  PWREngine.prototype._modDensity = function (Tc) {
+    var k = this.cfg.reactivity.mod_density_cubic;
+    return k[0] + k[1] * Tc + k[2] * Tc * Tc + k[3] * Tc * Tc * Tc;
+  };
+
+  // Δk/k per (kg/m³) of moderator density change, for UNBORATED water. Solved once
+  // from the WTSM 2.1 anchor (−17 pcm/°F at 500 °F, 0 ppm) so the anchor is the
+  // calibration and this is never hand-tuned.
+  PWREngine.prototype._modCoeff = function () {
+    if (this._mod_k == null) {
+      var rc = this.cfg.reactivity;
+      var Ta = (rc.mod_anchor_temp_f - 32) * 5 / 9;
+      var k = rc.mod_density_cubic;
+      var dPrime = k[1] + 2 * k[2] * Ta + 3 * k[3] * Ta * Ta;   // (kg/m³)/°C
+      // anchor is pcm per °F → Δk/k per °C
+      this._mod_k = (rc.mod_anchor_pcm_per_f * 9 / 5 * 1e-5) / dPrime;
+    }
+    return this._mod_k;
+  };
+
+  // Moderator reactivity relative to the reference temperature, at boron B (ppm).
+  // Linear in B, which is what keeps _trimToCritical a closed-form solve.
+  PWREngine.prototype._moderatorReactivity = function (Tc, B) {
+    var rc = this.cfg.reactivity;
+    var dD = this._modDensity(Tc) - this._modDensity(this.T_coolant_ref);
+    return this._modCoeff() * (1 - B / rc.mod_boron_zero_ppm) * dD;
+  };
+
+  // Differential boron worth (Δk/k per ppm) at temperature Tc — the direct term
+  // plus the density coupling, so it is larger cold. Exposed because
+  // _trimToCritical and the reactivity gate both need it.
+  PWREngine.prototype._boronWorth = function (Tc) {
+    var rc = this.cfg.reactivity;
+    var dD = this._modDensity(Tc) - this._modDensity(this.T_coolant_ref);
+    return rc.boron_worth_per_ppm + this._modCoeff() * dD / rc.mod_boron_zero_ppm;
+  };
+
   PWREngine.prototype._totalReactivity = function () {
     var s = this.s, rc = this.cfg.reactivity;
     var rho_rods = this._rodReactivity();
@@ -87,14 +129,17 @@
       rho_rods += s._fail.stuck_rod.worth_held * rc.rod_worth_total * insertedFrac;
     }
     var rho_doppler = rc.alpha_D * (s.fuel_temp_c - this.T_fuel_ref);
-    var rho_mtc = rc.alpha_MTC * (s.tavg_c - this.T_coolant_ref);
     // Reactivity follows the mixing-lagged core boron (see boron_mix_tau_s), so power tracks
     // the indicated level instead of leading it. Falls back to boron_ppm before the lag state
-    // exists (first step / a migrated save).
-    var rho_boron = -rc.boron_worth_per_ppm * (s.boron_reactive != null ? s.boron_reactive : s.boron_ppm);
+    // exists (first step / a migrated save). The moderator term reads the SAME lagged
+    // concentration — the boron-expansion effect is boron sitting in the core, so a
+    // dilution must not change MTC before it has mixed.
+    var B = (s.boron_reactive != null ? s.boron_reactive : s.boron_ppm);
+    var rho_mod = this._moderatorReactivity(s.tavg_c, B);
+    var rho_boron = -rc.boron_worth_per_ppm * B;
     var X_eq = this._X_eq;
     var rho_xenon = -this.cfg.kinetics.xenon.xenon_worth * (s._X / X_eq);
-    return rc.rho_excess + rho_rods + rho_doppler + rho_mtc + rho_boron + rho_xenon;
+    return rc.rho_excess + rho_rods + rho_doppler + rho_mod + rho_boron + rho_xenon;
   };
 
   // ----------------------------------------------------- point kinetics (§3)
@@ -1488,15 +1533,20 @@
     if (this.T_fuel_ref == null) { this.T_fuel_ref = s.fuel_temp_c; this.T_coolant_ref = s.tavg_c; }
     var rho_rods = this._rodReactivity();
     var rho_doppler = rc.alpha_D * (s.fuel_temp_c - this.T_fuel_ref);
-    var rho_mtc = rc.alpha_MTC * (s.tavg_c - this.T_coolant_ref);
     var rho_xenon = -this.cfg.kinetics.xenon.xenon_worth * (s._X / this._X_eq);
-    var nonBoron = rc.rho_excess + rho_rods + rho_doppler + rho_mtc + rho_xenon;
+    // The moderator term is linear in boron (#260), so it splits into a
+    // boron-independent part that joins nonBoron and a per-ppm part that joins the
+    // boron worth. Total: ρ = nonBoron − B·worth(T). Still one division, no iteration.
+    var dD = this._modDensity(s.tavg_c) - this._modDensity(this.T_coolant_ref);
+    var nonBoron = rc.rho_excess + rho_rods + rho_doppler + rho_xenon
+                 + this._modCoeff() * dD;
+    var worth = this._boronWorth(s.tavg_c);
     if (this.cfg.initial_states[name] && this.cfg.initial_states[name].subcritical) {
       // ρ_boron = -(nonBoron) - margin  → ρ_total = -margin (subcritical).
       var margin = 0.01;
-      s.boron_ppm = Math.max(0, (nonBoron + margin) / rc.boron_worth_per_ppm);
+      s.boron_ppm = Math.max(0, (nonBoron + margin) / worth);
     } else {
-      s.boron_ppm = Math.max(0, nonBoron / rc.boron_worth_per_ppm);
+      s.boron_ppm = Math.max(0, nonBoron / worth);
     }
     s.boron_reactive = s.boron_ppm;   // the mixing lag starts settled at the trimmed concentration
     s._rho = this._totalReactivity();

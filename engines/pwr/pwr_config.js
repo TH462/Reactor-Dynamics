@@ -77,15 +77,59 @@
     // ----------------------------------------------------------- reactivity fb
     reactivity: {
       alpha_D: -2.5e-5,            // Doppler, K^-1 (defect ≈ 970 pcm over the 389 °C fuel rise — realistic) [tune]
-      // MTC recalibrated −3.3e-5 → −2.0e-4 (owner ruling 2026-07-21, teaching goal):
-      // with the old value an un-trimmed 15 % load cut parked Tavg +18 °C (the
-      // coolant had to swing that far to shed the power) — at −20 pcm/°C (real-PWR
-      // range) the same cut delivers the ask exactly and parks Tavg +7 °C. Sets the
-      // EV-11 mismatch, the TR-1 ride-out equilibrium (parks ~64 % / +16 °C / pzr
-      // ~94 %), and load-follow self-regulation to real-like magnitudes, and makes
-      // the PI-8 high-level trip implementable (97 % clears the ride-out swell).
-      alpha_MTC: -2.0e-4,          // moderator temperature coeff, K^-1 [tune]
-      boron_worth_per_ppm: 1.0e-4, // [tune]
+      // ---------------------------------------------------------------------
+      // MODERATOR REACTIVITY — density-shaped and boron-scaled (#260).
+      //
+      // History. This was a single constant `alpha_MTC`, recalibrated −3.3e-5 →
+      // −2.0e-4 K^-1 (owner ruling 2026-07-21, teaching goal) because at the old
+      // value an un-trimmed 15 % load cut parked Tavg +18 °C; −20 pcm/°C delivers
+      // the ask exactly and parks it +7 °C. That number was right AT POWER and it
+      // survives here (see `mod_*` below — the sourced curve reproduces it to
+      // within 10 % at the operating point, which is the strongest argument for
+      // this shape). What it could not do was hold at COLD conditions: applied
+      // uniformly from 122 °F to 579 °F it integrated to a −4944 pcm moderator
+      // defect over the Mode 5→3 heatup (494 ppm of dilution to buy back), where a
+      // real plant at this boron charges roughly −1700 pcm and almost none of it
+      // below 274 °F. Consequence the owner hit in free play: critical boron fell
+      // 819 → 263 ppm across the heatup, so 600 ppm — a number that looks safe next
+      // to the hot end — was CRITICAL at 274 °F, and the SR high-flux trip fired.
+      //
+      // The model. Moderator reactivity tracks moderator DENSITY, not temperature:
+      //    ρ_mod(T,B) = mod_coeff · (1 − B/mod_boron_zero_ppm) · (d(T) − d(T_ref))
+      // where d(T) is relative water density. MTC = dρ_mod/dT then steepens with
+      // temperature on its own, because the density derivative does. Sourced to
+      // WTSM 2.1 Reactor Physics Review (ML11223A207) §2.1.6.2 / Figure 2.1-8:
+      //   "Moderator density changes are not linear. At high temperatures an
+      //    increase in the moderator temperature causes a larger reduction in
+      //    density than an identical increase at low moderator temperatures."
+      //   "using the 0 ppm curve, if the moderator temperature is initially at
+      //    500°F and its temperature is increased by 1°F, -17 pcm of reactivity
+      //    would be added to the core."                      → the anchor below
+      //   "At boric acid concentrations greater than approximately 1400 ppm, the
+      //    MTC is positive."                                 → the crossover below
+      //
+      // Two things fall out that used to be missing, and neither is fitted:
+      //   - differential boron worth is LARGER cold (13.8 pcm/ppm at 122 °F vs
+      //     10.0 at power) — denser water carries more boron atoms per cm³;
+      //   - MTC weakens toward zero as boron rises, the real BOL/positive-MTC
+      //     mechanism. Our plant peaks ~1100 ppm so it never goes positive.
+      //
+      // NOTE the source disagrees with itself on how strong the boron term is: the
+      // 500 ppm / −8 pcm figure reading implies MTC = 0 at ~944 ppm, while the text
+      // says ~1400 ppm. We take 1400 (an explicit statement beats a figure
+      // reading); the residual is that we give −10.9 pcm/°F at 500 °F/500 ppm where
+      // the figure reads −8. Owner ruling 2026-07-29. [tune]
+      mod_anchor_pcm_per_f: -17.0, // MTC of UNBORATED water at mod_anchor_temp_f
+      mod_anchor_temp_f: 500.0,
+      mod_boron_zero_ppm: 1400.0,  // boron at which MTC crosses zero
+      // Compressed-liquid water density at ~15.5 MPa (2250 psi), kg/m³, as a cubic
+      // in °C — least-squares over IAPWS-IF97 from 20–340 °C, max residual
+      // 3.1 kg/m³. Only the SHAPE is load-bearing (the coefficient above carries
+      // the reactivity scale), but keep it honest: it is a real density curve.
+      mod_density_cubic: [1.017739e3, -4.939192e-1, 2.496834e-4, -5.916719e-6],
+      // ---------------------------------------------------------------------
+      boron_worth_per_ppm: 1.0e-4, // DIRECT term only; the density coupling above
+                                   // adds the temperature dependence [tune]
       // Boron mixing/transport lag (s): borated/diluted water must circulate the RCS loop and
       // homogenize before it changes CORE reactivity, so reactivity follows a first-order-lagged
       // concentration, not the instantaneous injected value. Without it, power moved the moment
@@ -94,7 +138,24 @@
       // power's response into step with the indication. Scenarios that steer on boron (pwr_boron)
       // must allow for the resulting inertia (gentle rates, room to overshoot). [tune]
       boron_mix_tau_s: 30.0,
-      rod_worth_total: 0.085,      // total control-group worth (~8500 pcm) [tune]
+      // Rod worths recalibrated to real measured values (#260/#238, owner ruling
+      // 2026-07-29). Was 8500 (control) + 10000 (shutdown) = 18 500 pcm, which is
+      // 2.4–2.9× every real number we can source and was the single biggest
+      // distortion in the reactivity balance: with a 8500 pcm control bank, critical
+      // boron with the bank inserted fell to 263 ppm at HZP against ~975 ARO, so
+      // every rods-in state sat at an absurdly low boron.
+      // WTSM 2.2 Reactivity Balance Calculations (ML11216A051) Table 2.2-1, a real
+      // Westinghouse 4-loop at 100 EFPD:
+      //   Worth of all RCCAs           (-)7744 pcm
+      //   Worth of all Control Banks   (-)4068 pcm
+      //   Worth of all Shutdown Banks  (-)3676 pcm
+      //   Worth of most reactive rod   (+)1040 pcm
+      // Cross-check, BEAVRS / Watts Bar U1 Cycle 1 HZP physics tests (OSTI 1991715,
+      // measured): control banks D+C+B+A = 788+1203+1171+548 = 3710 pcm, all banks
+      // 6466 pcm. We take the WTSM values; both land in the same place and neither
+      // is anywhere near 18 500. One lumped bank still carries the whole control
+      // worth that a real plant spreads over four banks — that simplification stays.
+      rod_worth_total: 0.04068,    // control-group worth (4068 pcm) [tune]
       // Integral-worth-curve flattening (owner, low-power feel). The rod worth follows an
       // S-curve (scruve); its differential worth peaks 2× the average at mid-core, so near
       // the startup critical band a 1-step move inserted ~48 pcm (peak ~74) and power ran on
@@ -105,13 +166,22 @@
       // (Per-step pcm numbers above are on the old 228-step drive; the 912-step fine drive
       // is ×4 finer — see rods.max_steps.) [tune]
       rod_worth_curve_flatten: 0.8,
-      rod_worth_shutdown: 0.10,    // shutdown-group worth (shutdown margin) [tune]
+      rod_worth_shutdown: 0.03676, // shutdown-group worth (3676 pcm) [tune]
       // Core excess reactivity, held down by boron/rods/xenon at the operating
       // point. The reference temps (T_fuel_ref/T_coolant_ref) are set at init to
-      // the settled hot_full_power temps, so the Doppler/MTC feedbacks are zero
-      // there and purely perturbative+stabilizing on a transient (M1 §4); boron
-      // is then trimmed to make the net reactivity critical.
-      rho_excess: 0.10,            // [tune]
+      // the settled hot_full_power temps, so the Doppler/moderator feedbacks are
+      // zero there and purely perturbative+stabilizing on a transient (M1 §4);
+      // boron is then trimmed to make the net reactivity critical.
+      //
+      // 0.10 → 0.086776 (#260): this constant has no direct observable, so it is
+      // SOLVED rather than tuned — it is whatever makes HZP ARO critical boron come
+      // out at the one real number we have measured startup data for. BEAVRS /
+      // Watts Bar U1 Cycle 1 HZP physics tests (OSTI 1991715): **HZP ARO critical
+      // boron 975 ppm** (BOL, zero xenon). Re-solve it if alpha_D, the moderator
+      // block, the rod worths or boron_worth_per_ppm move — see the derivation in
+      // Diagnostic/TUNING_LOG.md 2026-07-29 and test/run_reactivity.js, which pins
+      // the 975 ppm target so this cannot drift silently. [tune]
+      rho_excess: 0.086776,        // [tune]
       // Chemical & Volume Control System (CVCS). Boron chemistry is decoupled from
       // net charging−letdown: borate/dilute change concentration at boron_adjust_rate
       // (needs the charging pump). Charging/letdown control primary INVENTORY; auto
