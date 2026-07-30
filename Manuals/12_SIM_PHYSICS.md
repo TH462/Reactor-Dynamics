@@ -347,7 +347,9 @@ Flows enter the mass balance on **two different scales**, deliberately:
 | **Accident scale**, 1:1 | Leaks, PORV/safety relief, HPI/LPI, accumulators | Tuned for accident pacing |
 | **CVCS scale**, × 0.012 | Charging, letdown | Tens of gpm against a whole RCS |
 
-Without that split, a 20 gpm letdown bleed would read as ~3 % of total inventory per second and drain the pressurizer in seconds. With it, an uncompensated orifice-A drain walks pressurizer level down about **2 % per minute** — minutes to notice and respond, which is the intended feel.
+Without that split, a 30 gpm letdown bleed would read as ~3 % of total inventory per second and drain the pressurizer in seconds. With it, an uncompensated orifice-A drain walks pressurizer level down about **2 % per minute** — minutes to notice and respond, which is the intended feel.
+
+Because the two scales are independent, **no single RCS volume reconciles them** — the gpm figures below are pacing flavour attached to the CVCS scale, and comparing them with real-plant flows or Tech Spec leakage limits is a category error, not a fidelity gap to close.
 
 **Letdown is pressure-driven, not commanded.** Two fixed orifices, each independently in or out; each passes flow proportional to √(cold-leg pressure − 348 psi (2.4 MPa) backpressure). So letdown **tails off toward zero as the RCS depressurises on a cooldown** — it is not a constant you dial in.
 
@@ -637,7 +639,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 | **Structural** — fixed physical constants and real-plant setpoints | High | β and Λ, six-group delayed data, fuel damage/melt thresholds, PORV and safety setpoints, the 600 psi (4.14 MPa) accumulator arming pressure, the 400 psi (2.76 MPa) RHR interlock |
 | **Calibrated** — arbitrated by the physics acceptance suites | Directionally right, magnitude roughly right | Heat-transfer coefficients, decay-heat constants, level coefficients, dump and AFW capacities |
 | **Compressed** — deliberately faster than reality for training | Right in behaviour, wrong in duration | Boron adjust rate, grab-sample turnaround, cold-plant pressurisation slew, mode-transition pacing |
-| **Indicative** — display flavour derived from normalised internals | Illustrative | The gpm conversions (24 000 gpm RCS flow, 40 gpm charging, 20 gpm letdown, 100 gpm AFW) |
+| **Indicative** — display flavour derived from normalised internals | Illustrative | The gpm conversions (24 000 gpm RCS flow, 60 gpm charging, 30 gpm letdown, 100 gpm AFW) |
 
 > **NOTE.** The plant's absolute ratings — ≈ 300 MWt, ≈ 100 MWe, one loop, one SG, one RCP — are a **design choice**, not a measurement of any real unit. The SLX-100 is its own plant.
 

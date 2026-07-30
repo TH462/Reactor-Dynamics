@@ -115,6 +115,54 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30a — the manual quoted a charging/letdown gpm the board never showed  ✅
+
+**Found by pulling on the loose end of 2026-07-29n.** There are two places a normalized CVCS
+flow becomes gpm, and they disagreed by exactly 1.5×:
+
+| | charging (0.06 normalized) | letdown orifice A (0.030) | gpm per normalized unit |
+|---|---|---|---|
+| `pwr_config.js` `identity` block — **documentation, 0 code consumers** | 40 | 20 | 666.7 |
+| `pwr_board_wiring.js` `GPM_CHARGING`/`GPM_LETDOWN` — **LIVE, what the player reads** | **60** | **30** | 1000 |
+
+`Manuals/12` §Fidelity quoted the *dead* block, so the in-app manual said 40 gpm charging while
+the board's charging box tops out at **60** and its orifice-A letdown readout shows **30**. A
+number the player can read in two places disagreed with itself, and nothing compared them.
+
+**Scope, measured before deciding — narrower than it first looked.** Only those two conflict.
+**AFW agrees** (config 100 gpm vs board `0.15 × GPM_AFW 640 = 96`). **RCS flow does not
+conflict**: the board renders it as % of rated (since #247), so the config's 24 000 gpm is never
+displayed. And a regex sweep of `Manuals/*.md` + `ui/manual_procedures.js` found **no procedure
+step that instructs a charging gpm value**, so no authored content depended on either number.
+
+**Fixed toward the BOARD**, on three grounds: the live value beats a dead one when they
+disagree; the board's convention is coherent (`GPM_CHARGING = GPM_LETDOWN = GPM_FEED = 1000`, one
+full-scale across CVCS and feed) where 666.7 has no stated rationale; and 60 gpm sits inside the
+real normal-charging band (~40–90 gpm) where 40 sits at its floor — *that last point is recall,
+not an evidence pass, and was used only as a tiebreaker.* Nothing the player sees moved, so
+`verify_e2e_ui` and the board could not shift.
+
+**The guard is the point, not the two numbers.** A doc block that must be hand-synced with a live
+constant is precisely what drifted, and it is the same failure as #261 — prose cannot be
+contradicted. `test/run_manual_units.js` now cross-checks `pwr_board_wiring.js` against the
+config block and against `Manuals/12` §Fidelity. **Negative-tested on five failure modes, all
+redden:** config charging reverted to 40; config letdown reverted to 20; the manual saying 40;
+the board's two full-scales made to differ; and a board constant *renamed* (the read fails
+loudly rather than silently skipping). It lives in the units gate because that is what it is —
+the manual quoting a number the plant does not display — and that gate is scored on failures
+only, so it shifts no baseline.
+
+**Not a fidelity defect, and the manual now says so out loud.** These gpm are pacing flavour:
+60 gpm ≡ `charging_max · cvcs_inventory_gain` = 7.2e-4 inventory-frac/s implies a total RCS of
+~1389 gal (5.3 m³), roughly 6× small for a 300 MWt plant, and accident flows deliberately run on
+a separate 1:1 scale — so **no single RCS volume reconciles them.** `Manuals/12` already classed
+the conversions as "Indicative … Illustrative"; it now also states that comparing them with
+real-plant flows or Tech Spec leakage limits is a category error rather than a gap to close,
+because I made exactly that comparison in #262 with the old wording in front of me.
+
+Gates: `run_manual_units` 0 failed (251 pairs), `run_all` **31 runners at baseline**. Manuals
+repacked (`tools/pack_manuals.js`) so the in-app copy carries both numbers.
+
 ### 2026-07-29n — #261: the cycles-as-seconds trap, swept  ✅
 
 Follow-up to 2026-07-29m. `advanceCycles(n)` advances **broadcast cycles**, not seconds, and
@@ -134,16 +182,68 @@ were already correct and one was already fixed:
 | `run_autoctl` | `run(simSeconds)` looping `simSeconds` cycles | **wrong — measured below** |
 
 **`run_autoctl` was delivering 91.7 % of the sim time it asked for.** Its `run(simSeconds)`
-looped one cycle per requested second on the strength of a comment reading "~1 s sim per cycle
-at 10×" — true only at the steady cadence. Instrumented across the whole suite: **226 calls,
-8565 s requested, 7858.0 s actually elapsed (ratio 0.917), 12 calls more than 5 % short.**
-Every shortfall lands inside a transient, which is precisely what the automation probes exist
-to watch. Same failure shape as **#245** (a gate silently running below its declared sim rate),
-reached through the *cadence* rather than the *acceleration*.
+looped one cycle per requested second. Instrumented across the whole suite: **226 calls, 8565 s
+requested, 7858.0 s actually elapsed (ratio 0.9175 — an 8.3 % AGGREGATE shortfall). 15 of 226
+calls (6.6 %) under-delivered, 211 were exact, and ZERO over-delivered. Worst single call:
+15.50 s against a requested 30 s, ratio 0.517** — off by 2×, not by 8 %. Every shortfall lands
+inside a transient, which is precisely what the automation probes exist to watch. Same failure
+shape as **#245** (a gate silently running below its declared sim rate), reached through the
+*cadence* rather than the *acceleration*.
+
+**Be fair to the comment that was there — this is subtler than "nobody checked."** It read,
+verbatim: `// ~1 s sim per cycle at 10× (transient cadence shortens a cycle; overshoot is fine)`.
+The author **named the exact mechanism.** What failed was the *sizing*, and the direction of the
+reassurance: "overshoot is fine" is about `Math.ceil` overshooting the cycle *count*, which
+delivers **more** sim time — and measured, nothing ever over-delivered. So the note disclosed the
+real risk and then waved off its opposite, leaving a 2× undershoot reading as a rounding detail.
+An earlier draft of this entry, and the first #261 close comment, quoted only the "~1 s per cycle
+at 10×" half and made the author look unaware when they were not — corrected here and on the
+issue. **The lesson is therefore NOT "write the assumption down": that was done, and the
+mechanism was named correctly. It is that prose cannot be contradicted — assert the invariant in
+code, because a correctly-identified mechanism can still be mis-sized and nothing will object.**
 
 Fixed to drive on `service.simTime`. **`run_autoctl` stays 20/20 with the full budget** — so,
 unlike #245, none of these probes had been passing *because* they were starved. That is the
 result worth recording: the bug was real, and it happened not to have bought any false greens.
+
+**Follow-up, 2026-07-30: was `run_autoctl` 20/20 actually MEANINGFUL after the fix?** The first
+write-up rested that on "still 20/20", which is the weak form of the claim (HR10). Verified
+properly by dumping every check's *observed value* under old and new timing and diffing:
+
+- **13 of 20 suites were starved**, not the "12 calls" first reported — worst `PWR · rod channel
+  disengages itself on scram` at **ratio 0.517** (30 s asked, 15.50 s delivered), then `RBMK · AR
+  defaults to AUTO` 0.600 and the `HR1 probe` 0.625. New aggregate ratio is **1.0002**.
+- **No suite changed verdict**, and nearly every physics observation moved **< 1 %**. Two moved
+  *toward* their setpoint (BWR vessel level 48.0 → 50.0 and 51.3 → 49.9), i.e. the longer run is
+  the kinder one. So nothing was passing *because* it was starved — the original claim survives,
+  now on evidence rather than on a tally.
+- **One check was window-dependent and its margin nearly halved.** `BWR · all-auto holds full
+  power` "sparse commands" went **273 → 363** against a `<500` limit — margin 45.4 % → 27.4 % —
+  while the underlying *rate* did not move at all (0.606 → 0.605 cmd/s). Channel output is
+  period/deadband gated, so a raw command count is a rate in disguise; the suite is named
+  "(10 min)" and had been running 7.5 min. Not a false green, but the one assertion here that a
+  pure timing change could redden with no controller change. **Fixed:** both sparseness checks now
+  assert **commands per sim-minute** (`autoCmdRate`), thresholds being the old ones divided by
+  their 600 s window — identical meaning at 10 min, indifferent to the window. PWR 3.0/min against
+  `<30`, BWR 36.3/min against `<50`.
+
+**Two inherited claims from the 2026-07-29n write-up, checked rather than repeated.**
+- *"Same failure shape as #245, four filings"* — **verified, and not from CLAUDE.md.**
+  `run_procedures_stack.js` itself annotates all four as removed with the #245 fix:
+  `rbmk_pre·rbmk_mcp_trip` and `rbmk_post·rbmk_mcp_trip` step 2, `bwr·bwr_sbo_rcic` step 3,
+  `bwr·bwr_startup` step 2. #245's *body* says "at least one" only because it was written before
+  the fix cleared the other three.
+- *"≈ 33 gpm held, 40 gpm authority"* — **provenance fine, my USE of it was not.** The mapping is
+  declared config data (`pwr_config.js` plant block: `charging_max_gpm: 40`,
+  `letdown_normal_gpm: 20`), explicitly labelled *"Display conversions … (manual/UI flavor,
+  [tune])"*, with **zero consumers in code**, and `Manuals/12` §Fidelity already classes the gpm
+  conversions as *"Indicative — display flavour … Illustrative"*. But they do **not** reconcile
+  with the mass balance: 40 gpm ≡ 7.2e-4 inventory-frac/s implies a total RCS of **926 gallons
+  (3.50 m³)** — about 10× small for a 300 MWt plant, giving a 2.3 s loop transit against a real
+  ~10 s. At a plausible 35 m³ the same 7.2e-4 frac/s would be ~400 gpm, not 40. **So gpm figures
+  here are pacing flavour and must not be compared to a real Tech Spec leakage band** — which is
+  what #262's framing did; corrected there. `cvcs_inventory_gain` is `[tune]`, sized for feel, and
+  says so; the repo is internally honest, the error was downstream in my prose.
 
 **Also done.** `advanceCycles` now carries the warning at its definition
 (`layers/simulation_service.js`) with both worked cases; `run_e2e_controls`'s `step()` is
