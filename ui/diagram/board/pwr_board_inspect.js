@@ -345,9 +345,13 @@
       'continues after a trip — a shut-down reactor still needs a heat sink.', CI, '4.0'),
     imrzl4b7g9m: e('Reactor Power',
       'Neutron power as a percentage of rated — the power-range instrument.',
-      'Reads 0–200 % on purpose: the meter has to stay on scale past the 120 % high-flux trip, so a ' +
-      'pegged reading would hide the trip rather than show it. It measures FLUX, which leads thermal ' +
-      'power — after a trip flux collapses while decay heat does not.', CI, '4.1'),
+      'The scale and the coloured bands follow WHICH POWER TRIP IS ARMED. Through a startup the ' +
+      'power-range LOW SETPOINT trip sits at 25 %, so the meter reads to 27 % and shows green to ' +
+      'P-10 (10 %), amber from there up to the trip — that amber band is the window in which you ' +
+      'are allowed to block it — and red above. Block it and the meter reopens to the at-power ' +
+      'scale with the 120 % trip at the top; drop back below P-10 and the block reinstates itself ' +
+      'and the 25 % band comes back. It measures FLUX, which leads thermal power — after a trip ' +
+      'flux collapses while decay heat does not.', CI, '4.1'),
     imrobpq4a70: e('Reactor Coolant Pump',
       'The RCP — forced primary flow. One representative pump on this plant.',
       'Running, it circulates coolant through the core and steam generator and provides the driving ' +
