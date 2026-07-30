@@ -115,6 +115,97 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30g — #249 evidence pass: the refill rate is 22–440× real, and the clamp hiding it also hid a spurious accumulator dump  🔶 (no code changed)
+
+**#249 asked three questions about the post-stuck-PORV HPI refill. Answered: one is correct
+as-built, one is compressed-by-design, and one is a real defect that turned out to be masking
+a second, larger one.** Nothing changed — the fix needs an owner ruling (below). Working tree
+restored; `run_all --fast` **OK, 30 runners at baseline** before and after.
+
+**Sources** (evidence-pass SOP; nrc.gov 403s non-browser fetches, Wayback `2023id_` + browser UA):
+
+- **WTSM 5.2 ECCS** (ML11223A220) Table 5.2-3: 2 centrifugal charging pumps, design flow
+  **150 gpm** each, developed head at max flow 1,400 psig, shutoff **2,670 psig**. Table 5.2-6:
+  2 safety injection pumps, **425 gpm** each, shutoff **1,520 psig**. §: *"At very low RCS
+  pressures, the two high head injection trains deliver a combined flow rate of up to several
+  hundred gpm."*
+- **WTSM 3.2 RCS** (ML11223A213) Table 3.2-2: pressurizer **1,800 ft³**, full-power water
+  **1,080 ft³**, full-power steam **720 ft³** — so full-power level is **60 % by volume**.
+  Table 3.2-5: PORV relieving capacity **210,000 lb/hr** per valve.
+- **BVPS-2 UFSAR Ch. 5** (ML22144A118) Table 5.1-1: *"Total system volume including pressurizer
+  and surge line (ft3) **9,650**"*, nominal operating pressure 2,235 psig, 2,900 MWt, 3 loops.
+  Table 5.4-12: pressurizer internal volume **1,400 ft³**.
+- **TMI-2** (NRC Backgrounder): HPI auto-started ≈ 2 min; the crew throttled at 04:05:15 with
+  pressurizer level off scale — **≈ 3 min of full injection before the trap sprang**.
+
+**The one number everything turns on.** Pressurizer steam space ÷ RCS volume =
+0.40 × 1,400 ft³ ÷ 9,650 ft³ = **5.8 %**. *That is the entire physical headroom between
+full-power level and water-solid* — a real RCS is a rigid liquid-filled volume, so "120 % of
+inventory" is not a state a plant can occupy.
+
+**Measured** (`test/measure_stack.js`, full stack, seed 4242, `hot_full_power`, shipped lineup,
+stuck-open PORV at t = 1 s):
+
+| | sim | sourced real | ratio |
+|---|---|---|---|
+| gross injection at 1,165 psi (8.03 MPa) | **3.05 %/s** | 0.0069–0.0265 %/s (300–1,150 gpm ÷ 72,180 gal) | **115–440×** |
+| inventory 97.7 → 120.0 % | **10 s** | — (unreachable state) | — |
+| pressurizer 52.4 → 90.6 % | **10 s** | 3.6–14 min to solid; TMI ≈ 3 min | **22–84×** |
+| HPI at NOP, no break | 0.255 %/s | ≈ 0.005 %/s | ≈ 55× |
+
+**Verdicts on the three items.**
+
+1. **Rate — compressed by design, and NOT independently tunable.** It belongs in the
+   `Manuals/12` §14 **Compressed** class ("right in behaviour, wrong in duration"), which does
+   not currently name it. It cannot be moved alone: `hpi_flow_max`/`porv_flow_max` (accident
+   scale), `level_per_mass_surplus` (the going-solid axis) and `cvcs_charge_per_level` (the
+   servo tuned against it — loop τ 27.8 s → 10.7 s if the surplus axis is fitted) are one set.
+2. **The 120.00 pin — a real defect, and worse than "a clamp".** `mass_max: 1.2` is what pins
+   **indicated pressurizer level at exactly 88.00 %**: 88 = `level_prog_floor` 28 +
+   `level_per_mass_surplus` 300 × the clipped surplus 0.20. `base(Tavg)` floors below
+   **559.8 °F (293.2 °C)**, which every quench crosses. **So the plant can never read
+   water-solid on injection — which is the TMI lesson it is built to teach.** Injection-verified
+   (`set_hpi` at HFP, 1500 ticks; cfg is a module singleton — restore between runs or run N
+   inherits run N−1's patch, which cost me one bogus table):
+
+   | variant | inventory | peak pzr level | solid? |
+   |---|---|---|---|
+   | **baseline** (mass_max 1.2 / floor 28 / surplus 300) | clips 120.00 | **88.00** | **no** |
+   | mass_max 1.5 only | 134.83 | 100.00 | yes |
+   | level_prog_floor 0 only | clips 120.00 | 71.53 | no — *worse* |
+   | **level_per_mass_surplus 776 (sourced) only** | clips 120.00 | **100.00** | **yes** |
+   | surplus 776 + mass_max 1.06 (both sourced) | clips 106.00 | 96.83 | no |
+
+   776 = the 45 points of level between nominal (55 %) and solid ÷ the sourced 0.058 surplus.
+   It assumes indicated level ≈ volumetric fraction, which is this sim's convention but not
+   necessarily a real calibrated span — stated rather than hidden.
+3. **Subcooling ≈ −1.2 °F (−0.66 °C) — correct, not a defect.** The RCS is saturated with a
+   break open; it rides the saturation line down. Nothing to fix.
+
+**The finding that matters more than #249.** With the sourced 776, `run_all --fast` drifts
+**exactly one** runner — `run_campaign` 51/51 → 50/51, on `pwr_mode3_to_mode5` "arrived
+UNscrammed". Instrumenting **both** sides showed the cooldown was already wrong and the 88 %
+pin was hiding it. Baseline endpoint, measured:
+
+```
+lvl=88.0  inv=120.00  tavg=202.5 °F (94.7 °C)  scram=false
+accum_vol=0.0 %  accum_disch=false  hpi=false  boron=2310 ppm
+```
+
+The accumulators are **empty** and boron sits at **2,310 ppm** against a 2,500 ppm SIT charge:
+the by-the-book cooldown descends through the **600 psi (4.14 MPa)** arming pressure **without
+isolating the accumulators**, so all four dump into the RCS and inventory pegs at the clip. The
+check has been green only because the level indication is structurally incapable of reaching the
+97 % high-level trip — **HR10, exactly**. Filed as **#273**; backlog row S14.
+
+Nothing tells the player to isolate them: **zero** occurrences of "accumulator" in
+`ui/campaign_data.js` and in `Manuals/05_MODE_TRANSITIONS.md`. The engine's own cooldown driver
+does it right (`pwr_engine.js:1833` — closes below arming + 0.35 MPa), which is why no
+engine-direct gate ever saw it, and the heatup procedure re-opens a lineup the cooldown never
+establishes: *"Re-align the Safety Injection accumulators (isolated for the cold lineup)"*
+(`ui/manual_procedures.js:58`). Board indication does exist (SIT fill + N₂ psig,
+`pwr_board_wiring.js:558/561`), so it is visible if you look — not silent.
+
 ### 2026-07-30f — #270/#271: the rest of the board now reads ARMED protection, not the setpoint table  ✅
 
 The two follow-ups #267 spun off. Same principle throughout: **an indication shows the protection
@@ -4160,7 +4251,8 @@ real smell worth a look during this effort.
 
 | ID | Plant | Observation | Why it might matter |
 |---|---|---|---|
-| **S1** | PWR | `abuse_porv_walkaway` end state shows inventory 120 % (clip at `mass_max`) with pzr level 7 % — the overfill/level bookkeeping disagree | A level/inventory contradiction is exactly the class of bug the derived-level rework was meant to kill; worth confirming it's just the clip |
+| **S1** | PWR | `abuse_porv_walkaway` end state shows inventory 120 % (clip at `mass_max`) with pzr level 7 % — the overfill/level bookkeeping disagree | **ANSWERED 2026-07-30g (#249): it is the clip, and the clip is load-bearing.** `mass_max` 1.2 is 3.4× the sourced physical headroom (5.8 % of RCS volume — BVPS-2 Table 5.1-1 + WTSM 3.2 Table 3.2-2), and it pins indicated pzr level at exactly 88.00 % on any quench, so the plant **cannot read water-solid on injection**. Injection-verified; see the session entry. Awaiting an owner ruling on the retune |
+| **S14** (#273) | PWR | **The by-the-book Mode 3 → Mode 5 cooldown dumps all four accumulators.** Measured endpoint: `accum_vol=0.0 %`, `boron=2310 ppm` (SIT charge is 2,500), `inv=120.00 %` clipped. Nothing tells the player to isolate them — **zero** "accumulator" mentions in `ui/campaign_data.js` or `Manuals/05_MODE_TRANSITIONS.md` | Found 2026-07-30g while working #249. The cooldown crosses the 600 psi (4.14 MPa) SIT arming pressure with the discharge valve still open. Invisible until now because the 88 % level pin (S1) kept the overfill below the 97 % high-level trip — the `pwr_mode3_to_mode5` "arrived UNscrammed" check has been passing **for the wrong reason (HR10)**. The engine's own driver isolates correctly (`pwr_engine.js:1833`); the heatup procedure re-opens a lineup the cooldown never establishes (`ui/manual_procedures.js:58`) |
 | **S2** | PWR | LOFW warning-to-trip window is only ~4 s (`ops_loss_of_feedwater_handsoff`) | Too fast for a player to react — consider slowing SG boil-down slightly |
 | **S3** | PWR | **RESOLVED (2026-07-25, issue #134)** — and the suspicion in this row was wrong. Not a physics/rod-worth problem: the plant parks at 1.8–3.5 % when the excess reactivity is removed in ONE drive, and at 10–20 % when it is tapped out. The real causes were the checklist recipe (+45/−8, target "5–15 %", `acc: power_pct > 5`), a caution that blamed the lumped core for it, and an inert rate protection (alarm 2.0 / block 2.5 DPM against a peak of 1.82). See session entry | Was: startup feel — maybe a stronger low-power Doppler bite or gentler mid-curve differential rod worth |
 | **S4** | PWR | 50 % xenon swing may be a touch small (peak ~106 % vs ~113 % on the daily cycle) | Fine for v1; note if xenon scenarios feel flat |
