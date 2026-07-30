@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physics — Reactor Dynamics</title>
+    <meta name="description" content="What the Reactor Dynamics plant model computes, how the systems couple, and what is left out.">
+    <meta property="og:title" content="Physics — Reactor Dynamics">
+    <meta property="og:description" content="What is modeled in the Reactor Dynamics plant simulator, and what is not.">
+    <meta property="og:image" content="site/hero.png">
+    <meta property="og:type" content="website">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
+    <link rel="stylesheet" href="site/site.css">
+    <script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
+    <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
+    <nav class="site-nav">
+      <a href="ui/shell.html?engine=pwr">Simulator</a>
+      <a href="about.html">About</a>
+      <a href="download.html">Download</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <h1>Physics behind the simulator</h1>
+  <p class="lede">A short account of what the plant model actually does. This
+  is the technical companion to the
+  <a href="about.html">About</a> page.</p>
+
+  <p>The simulator is a real-time model of the systems an operator works with.
+  It is built for training and teaching, not for licensing a plant or replacing
+  a full engineering code. The goal is that heatup, load changes, trips, and
+  failures behave in ways you can explain with ordinary reactor-plant physics
+  — without claiming a one-to-one digital twin of any named unit.</p>
+
+  <h2>Core and reactivity</h2>
+  <ul>
+    <li><strong>Point kinetics with delayed neutrons</strong> — power does not
+    jump instantly. Startup rate and reactor period are real controls; that is
+    how you approach criticality without racing the core.</li>
+    <li><strong>Feedbacks from the plant</strong> — fuel temperature (Doppler),
+    coolant temperature, dissolved boron, and xenon. Pull rods and the plant
+    answers; heat the fuel and reactivity falls; poison builds after high power
+    and after a trip.</li>
+    <li><strong>Rods and boron</strong> — the two main operator handles for
+    criticality and slower long-term control.</li>
+  </ul>
+
+  <h2>Heat and the primary system</h2>
+  <ul>
+    <li>Fission power and <strong>decay heat</strong> both put energy into the
+    coolant. After a scram the core is still a heat source.</li>
+    <li><strong>Reactor coolant</strong> carries that heat to the steam
+    generator. Pump status and flow matter.</li>
+    <li>The <strong>pressurizer</strong> holds pressure and level with heaters,
+    spray, and relief. Inventory, temperature, and pressure stay linked the way
+    they do on a real board.</li>
+  </ul>
+
+  <h2>Steam generator and secondary</h2>
+  <ul>
+    <li>Primary heat boils secondary water. Steam flow, feedwater, and level
+    are one continuous balance.</li>
+    <li>Main feed, auxiliary feed, dumps, and isolation change how heat leaves
+    the plant.</li>
+  </ul>
+
+  <h2>Turbine and grid</h2>
+  <ul>
+    <li>Turbine, condenser, generator, and grid connection close the loop.
+    Electrical load is a steam demand: change load and the primary feels it.
+    Trip the turbine or lose the heat sink and the energy has to go somewhere
+    else.</li>
+  </ul>
+
+  <h2>Protection and automation</h2>
+  <ul>
+    <li>Trips, interlocks, and safeguards act from <strong>what the instruments
+    show</strong> — with lag, noise, and possible failure — the same rule real
+    boards live under.</li>
+    <li>Charging, letdown, and boron systems move inventory and reactivity on
+    both operator and automatic timescales.</li>
+  </ul>
+
+  <h2>What you should expect</h2>
+  <p>A plant that heats, cools, goes critical, makes steam, makes power, trips,
+  and fails in ways that match textbook pressurized-water-reactor behavior for
+  an operator.</p>
+  <p>You should <strong>not</strong> expect a full 3-D core map, a complete
+  containment engineering suite, or a certified copy of one licensed unit.
+  Detail is spent where the operator feels it; the rest is simplified on
+  purpose.</p>
+
+  <h2>More detail</h2>
+  <p>The in-sim operator manual includes a chapter on simulation physics and
+  model scope (what is computed, what is simplified, and what is missing). Open
+  Manual from the control room for that longer write-up.</p>
+
+  <p><a href="about.html">← Back to About</a></p>
+</main>
+
+<footer class="site-footer">
+  <div class="inner">
+    <div>Reactor Dynamics is an educational simulation — not engineering
+    software, and no substitute for real operator training.</div>
+    <div class="links">
+      <a href="about.html">About</a>
+      <a class="active" href="physics.html">Physics</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="legal.html">Legal</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
+      <span id="ver" class="mono"></span>
+    </div>
+  </div>
+</footer>
+
+<script src="site/version.js"></script>
+<script>document.getElementById('ver').textContent = window.RD_VERSION || '';</script>
+</body>
+</html>

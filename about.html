@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>About — Reactor Dynamics</title>
-    <meta name="description" content="An educational nuclear plant simulator with high-fidelity physics — simple enough to learn on, realistic enough for real maneuvers and failures.">
+    <meta name="description" content="What Reactor Dynamics is: a browser-based nuclear plant trainer you can learn and practice on.">
     <meta property="og:title" content="About — Reactor Dynamics">
-    <meta property="og:description" content="Educational nuclear plant simulator with high-fidelity physics — learn plant operation, practice real work.">
+    <meta property="og:description" content="A browser-based nuclear plant trainer. Learn the basics, then practice startups, load changes, and failures on the same plant.">
     <meta property="og:image" content="site/hero.png">
     <meta property="og:type" content="website">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
@@ -31,144 +31,63 @@
 
 <main class="page">
   <h1>About Reactor Dynamics</h1>
-  <p class="lede">An educational nuclear power plant simulator with
-  <strong>realistic, high-fidelity physics</strong>. Simple enough to teach
-  someone new to nuclear power how a plant is operated — and serious enough
-  that you can practice real maneuvers, failures, and recovery on the same
-  model.</p>
-  <p>Nothing to install. It runs in your browser.</p>
+  <p class="lede">Reactor Dynamics is a nuclear power plant simulator that runs
+  in your browser. It is meant for learning how a plant is run, and for
+  practicing the same work later — startups, load changes, trips, and
+  failures — on one continuous model.</p>
+  <p>Nothing to install. Desktop or laptop only for now.</p>
 
-  <h2>Why this exists</h2>
-  <p>Most people never get near a control room. The few training tools that
-  are &ldquo;real&rdquo; are built for licensed operators and are too heavy,
-  too specialized, or simply unavailable. Games and demos that <em>are</em>
-  available usually cut the physics until the plant cannot teach anything that
-  survives contact with a real procedure.</p>
-  <p>This project sits in the middle on purpose:</p>
-  <ul>
-    <li><strong>Educational first.</strong> You should be able to sit down
-    without a nuclear background and learn what the board is for: pressure,
-    temperature, level, rods, boron, steam, feed, turbine, alarms, and the
-    order of a startup.</li>
-    <li><strong>Physics that stay honest.</strong> The model is not a cartoon
-    power bar. Heat, reactivity, inventory, steam, and the balance of plant
-    couple the way they do in a real PWR, so a load change, a heatup, a trip,
-    or a leak has consequences you can reason about.</li>
-    <li><strong>One plant, two depths.</strong> The same board that teaches
-    &ldquo;what is Mode&nbsp;3?&rdquo; is the board you use for a careful power
-    ascension, a stuck relief valve, loss of feed, or a night of bad
-    indications. You do not graduate out of the model — you go deeper into
-    it.</li>
-  </ul>
-  <p>If you want a score chase, this is the wrong product. If you want to
-  <strong>understand and operate a plant</strong>, it is built for that.</p>
+  <h2>What it is for</h2>
+  <p>Most people never sit a control room. Licensed training tools are hard
+  to get. Toy sims often drop the physics until the plant cannot teach a real
+  procedure. This project tries to sit between those two: plain enough to
+  start without a nuclear background, and detailed enough that a load change
+  or a stuck valve still has consequences you can follow.</p>
+  <p>It is not a game about scores. It is a plant you operate.</p>
 
-  <h2>Who it is for</h2>
+  <h2>Who might use it</h2>
   <ul>
-    <li>People who have never operated anything nuclear and want the basics
-    done right</li>
-    <li>Students and instructors who need a living plant, not a slide deck</li>
-    <li>Engineers and enthusiasts who want realistic maneuvers and failure
-    practice without a full-scope training center</li>
-    <li>Anyone who wants to see <em>why</em> procedures are written the way
-    they are, by running them</li>
+    <li>People new to nuclear who want the basics done carefully</li>
+    <li>Students and instructors who want a plant on the screen, not only slides</li>
+    <li>Anyone who wants to practice maneuvers or failures without a full
+    training center</li>
   </ul>
 
   <h2>What you can do</h2>
-  <p><strong>Learn the basics of plant operation.</strong> Bring a cold plant
-  up, pressurize, start pumps, heat to hot standby, approach criticality, raise
-  power, connect the generator, and hold steady state. Commercial-format
-  manuals sit in the room. A guided campaign can walk you through the path;
-  free play lets you stay on the board as long as you need.</p>
-  <p><strong>Practice real work.</strong> Load changes, boration and dilution,
-  feed and level control, trips and recovery, and injected failures — stuck
-  valves, pump trips, sensor problems, loss of heat sink. The plant does not
-  reset its physics for beginners: simpler lessons use the same model as harder
-  ones.</p>
-  <p><strong>Playable plant today.</strong> A compact Westinghouse-style
-  <strong>pressurized water reactor</strong> (on the order of
-  <strong>100&nbsp;MWe</strong>), single loop, full path from cold shutdown to
-  at-power operation. BWR and RBMK physics exist in the project; their control
-  rooms are not ready for the public board yet.</p>
+  <p>Bring a cold plant up: pressurize, start the pumps, heat to hot standby,
+  approach criticality, raise power, connect the generator, and hold steady.
+  Operator manuals are in the control room. Free play leaves you on the board;
+  guided missions (when offered) walk a path for you.</p>
+  <p>You can also change load, adjust boron, run feed and level control, trip
+  and recover, and inject failures — stuck valves, pump trips, bad sensors,
+  loss of heat sink. Beginners and harder sessions use the same plant model.</p>
 
-  <h2>The physics (what &ldquo;high fidelity&rdquo; means here)</h2>
-  <p>The plant is a <strong>coupled, real-time model</strong> of the systems an
-  operator actually runs. It is educational software — not a licensing code or
-  a digital twin of a named unit — but the mechanisms that dominate operator
-  decisions are modeled in enough depth that behavior stays prototypical.</p>
+  <h2>What is playable today</h2>
+  <p>A compact pressurized water reactor (PWR), roughly 100&nbsp;MWe, one coolant
+  loop. Cold shutdown through full power is one continuous path. Two other
+  reactor types (boiling-water and graphite-channel) have physics engines in
+  the project; their public control rooms are not ready yet.</p>
 
-  <h3>Core and reactivity</h3>
-  <ul>
-    <li><strong>Point kinetics with delayed neutrons</strong> — power does not
-    jump; period and startup rate are real, and that is how you approach
-    criticality safely.</li>
-    <li><strong>Reactivity feedbacks that fight (or help) you</strong> — fuel
-    temperature (Doppler), moderator temperature, soluble boron, and xenon.
-    Pull rods and the plant answers; heat the fuel and reactivity falls; poison
-    builds after high power and after a trip.</li>
-    <li><strong>Rods and boron</strong> as the two main operator handles for
-    criticality and long-term control.</li>
-  </ul>
-
-  <h3>Heat and the primary system</h3>
-  <ul>
-    <li>Fission power and <strong>decay heat</strong> both put energy into the
-    coolant — the core is still a heat source after a scram.</li>
-    <li><strong>Reactor coolant</strong> carries that heat to the steam
-    generator; pump status and flow matter.</li>
-    <li><strong>Pressurizer</strong> control of pressure and level (heaters,
-    spray, relief) — inventory, temperature, and pressure stay linked the way
-    they do on a real board.</li>
-  </ul>
-
-  <h3>Steam generator and secondary</h3>
-  <ul>
-    <li>Primary heat boils secondary water; <strong>steam flow, feedwater, and
-    level</strong> are a continuous balance.</li>
-    <li>Main feed and auxiliary feed, dumps, and isolation change how heat
-    leaves the plant.</li>
-  </ul>
-
-  <h3>Balance of plant</h3>
-  <ul>
-    <li><strong>Turbine, condenser, generator, and grid</strong> — load is a
-    steam demand. Change load and the primary feels it. Trip the turbine or
-    lose the heat sink and the plant has to handle the energy another way.</li>
-  </ul>
-
-  <h3>Protection and automation</h3>
-  <ul>
-    <li>Trips, interlocks, and engineered safeguards act from <strong>what the
-    instruments show</strong>, with lag, noise, and possible failure — the same
-    rule real boards live under.</li>
-    <li>Charging, letdown, and boron systems move inventory and reactivity on
-    operator and automatic timescales.</li>
-  </ul>
-
-  <p><strong>What you should expect.</strong> A plant that heats, cools, goes
-  critical, makes steam, makes power, trips, and fails in ways you can explain
-  with textbook PWR physics. You should not expect multi-dimensional core maps,
-  full containment engineering suites, or a certified replica of one licensed
-  unit. Fidelity here means <strong>operator-relevant realism</strong>, not
-  infinite detail.</p>
-
-  <h2>Instruments and truth</h2>
-  <p>You run on <strong>instrument readings</strong>, not a god-view of every
-  true variable. That is how plants are operated, and it is how some of the
-  hardest lessons (including failures and historical accidents) actually work.
-  The physics are still running underneath; the skill is operating
-  <em>through</em> the board.</p>
+  <h2>What you see on the board</h2>
+  <p>You work from instrument readings — lagged, noisy, and able to fail — not
+  a god-view of every true number. That is how real boards work, and it is how
+  some of the hardest lessons (including historical accidents) actually happen.
+  The plant still runs underneath; you have to operate through the panel.</p>
 
   <h2>How it runs</h2>
-  <p>Plain web technology: open it, run the plant locally in the browser on a
-  desktop or laptop. No account required for the simulation itself. Campaigns,
-  manuals, free play, and failure injection are in the control room.</p>
+  <p>Ordinary web pages and JavaScript. No account required for the simulation
+  itself. Open the site or a local copy and go into the control room.</p>
+
+  <h2>Physics</h2>
+  <p>If you would like to see the physics behind this simulator — what is
+  modeled, how the systems couple, and what is left out on purpose — see
+  <a href="physics.html">Physics behind the simulator</a>.</p>
 
   <h2>Contact</h2>
-  <p>Questions, bugs, or &ldquo;this doesn&rsquo;t match plant behavior&rdquo;?
+  <p>Questions, bugs, or &ldquo;this does not match plant behavior&rdquo;?
   Email <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.
-  In the simulator, the <strong>💬</strong> button gives you that address and
-  can download session diagnostics to attach.</p>
+  In the simulator, the Contact control gives you that address and can download
+  session diagnostics to attach.</p>
 
   <p style="color: var(--text-2); margin-top: 2rem;">Reactor Dynamics is an
   educational simulation. It is not a substitute for licensed operator training
@@ -182,6 +101,7 @@
     software, and no substitute for real operator training.</div>
     <div class="links">
       <a class="active" href="about.html">About</a>
+      <a href="physics.html">Physics</a>
       <a href="changelog.html">Changelog</a>
       <a href="privacy.html">Privacy</a>
       <a href="legal.html">Legal</a>
