@@ -115,6 +115,64 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30c — #267: the power gauge advertised a trip five times higher than the armed one  ✅
+
+**The defect.** `power_range high` carries **two** reactor trips: the 120 % backstop and
+`pr_low_setpoint` at **25 %** — the at-power half of the startup net, blockable only above the
+P-10 permissive at 10 %. The board's vital tile resolved its red band with
+`tripSp('power_range','high')`, which returns the **first match in table order**, and the table
+authors the backstop first. So the tile read **120 %** in every plant state.
+
+**Measured, not reasoned** (engine+M4 from `5_percent`, trip logic driven on the instrument the
+trip actually reads):
+
+| `pr_low_setpoint` | `power_range` | result |
+|---|---|---|
+| armed | 26 % | **scram** (`power_range high`) |
+| armed | 24 % | no trip |
+| blocked | 26 % | no trip |
+| blocked | 121 % | scram |
+
+`pr_low_setpoint` is armed at **`hot_zero_power`, `5_percent` and `cold_shutdown`** — i.e. every
+initial condition a startup begins from. The operator climbing out of Mode 3 therefore read green
+across the whole meter up to a scram at a fifth of the indicated limit.
+
+**The fix.** `powerBand()` in `pwr_board_wiring.js` resolves the **most limiting ARMED** trip per
+snapshot — blocked trips excluded, read from `rps_state.trip_blocks`. Armed, the tile lays out the
+ladder the plant enforces: **green to P-10 (10 %) · amber 10 → 25 % · red above**, window
+0–131.9 % → **0–27.5 %** so a low-power ascent is legible on a linear meter at all. The amber band
+is not decoration — its width *is* the operator's blocking window. A red `TRIP 25%` note in the
+tile's label row names the limit, because a coloured region cannot say *which* trip. Blocked, the
+tile is byte-identical to before (green 0–100, grey 100–108, amber 108–120, red 120+, no note).
+Rendered band rects were read out of the live DOM rather than eyeballed.
+
+**Three things worth carrying forward.**
+
+1. **`tripSp()` is order-dependent and was being used on a parameter with two trips.** Added
+   `tripBackstop()` (least-limiting, order-independent) for the static base and pinned it, so
+   re-authoring the protection table cannot silently move a tile's band again. Worth grepping for
+   other `tripSp` callers on multi-trip parameters — `primary_pressure low` has two
+   (`lo_press` 12.41, `si_trip` 12.4) and is **not** yet on the live resolver (see backlog).
+2. **A band is dropped only when the trip is BLOCKED, never when a `condition` is merely unmet.**
+   Conditions (`above_p9`, `sr_energized`) flip on their own within seconds; a block is a
+   deliberate, recorded state. The conservative rule can only ever *add* warning regions.
+3. **No `rps_state` ⇒ authored bands.** Reading "nothing is blocked" out of an absent snapshot
+   section would peg a full-power plant against a 27 % scale. Pinned.
+
+**Verification.** `board_check` **106 → 113**, and the 7 new pins were **verified by injection** —
+with `powerBand()` stubbed to `return null`, exactly the 3 discriminating pins go red reporting the
+old values (`120/108/100`, window `131.9`, note `""`) while the 3 fallback pins and the backstop
+pin stay green, which is what makes them fallbacks rather than duplicates. `run_all` **OK, 32
+runners at baseline**. Also corrected the tile's inspect copy, which claimed "Reads 0–200 % on
+purpose" — that is the **instrument's** range (so `crossed()` can fire at 120, see Part 1), never
+the tile's, which was 0–131.9.
+
+**Still open:** the pressure tile has the same shape of bug in Mode 5 — `lo_press` and `si_trip`
+are both blocked at a depressurized init, yet the tile still paints its 12.41 MPa (1800 psi) red
+band, so a cold plant held at 400 psi reads pegged in the red against a trip that is not armed.
+Deliberately **not** changed here: unlike power it also needs the `normLo`-vs-`alarmLo` clamp
+revisited or the green band lands in the wrong place. Filed as a follow-up on #267.
+
 ### 2026-07-30b — the manual's revision history had stopped being written  ✅
 
 **Found by asking "are the manuals up to date?" and checking instead of answering.** Content was

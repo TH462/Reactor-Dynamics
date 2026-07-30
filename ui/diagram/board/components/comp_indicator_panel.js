@@ -76,6 +76,7 @@
       decimals: Math.max(0, Math.round(num(cfg.digits != null ? cfg.digits : cfg.decimals, 1))),
       min: num(cfg.min, 0),
       max: num(cfg.max, 100),
+      note: '',
       normLo: null, normHi: null, alarmLo: null, alarmHi: null, tripLo: null, tripHi: null
     };
     var hist = [];
@@ -92,10 +93,28 @@
     } });
 
     var labelEl = h('div', { style: {
-      flex: 'none', color: '#96abbb', fontFamily: "'IBM Plex Sans',system-ui,sans-serif",
+      minWidth: 0, color: '#96abbb', fontFamily: "'IBM Plex Sans',system-ui,sans-serif",
       fontSize: labelSize + 'px', fontWeight: 500, letterSpacing: '0.01em', lineHeight: 1.1,
       overflowWrap: 'break-word'
     } }, st.label);
+
+    // EXCEPTION NOTE (#267) — a short right-aligned annotation naming the limit the reading
+    // is currently working to, shown only when that limit is NOT the tile's at-power default.
+    // A coloured region says "there is a boundary there"; it cannot say WHICH trip, and the
+    // operator has no other way to find out without opening the trip-blocks popover. Hidden
+    // when empty, so a tile with nothing exceptional to report is unchanged — this is an
+    // exception marker, not a permanent caption, and a caption on every tile every second is
+    // one nobody reads. It sits in the label row rather than on its own line because the tile
+    // is 114 px tall and the sparkline is what would have paid for the extra row.
+    var noteEl = h('div', { style: {
+      flex: 'none', display: 'none', color: REGION_COLORS.trip,
+      fontFamily: "'IBM Plex Sans',system-ui,sans-serif",
+      fontSize: Math.max(9, labelSize - 2) + 'px', fontWeight: 700, letterSpacing: '0.02em',
+      lineHeight: 1.1, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums'
+    } }, '');
+    var labelRow = h('div', { style: {
+      flex: 'none', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '6px'
+    } }, labelEl, noteEl);
 
     var valEl = h('span', { style: {
       fontFamily: "'IBM Plex Sans',system-ui,sans-serif", fontSize: valueSize + 'px',
@@ -143,7 +162,7 @@
       position: 'relative', overflow: 'hidden',
       display: 'flex', flexDirection: 'column', gap: gap + 'px',
       fontFamily: "'IBM Plex Sans',system-ui,sans-serif"
-    } }, accentBar, labelEl, readRow, sparkWrap, gaugeSvg);
+    } }, accentBar, labelRow, readRow, sparkWrap, gaugeSvg);
 
     // Reuse SVG children instead of clear-and-append. The tile repaints ~10x a second and
     // rebuilt its band rects and trace polylines from scratch each time; app.js already
@@ -320,6 +339,16 @@
         if (props[k] != null && props[k] !== st[k]) { st[k] = +props[k]; bandsChanged = true; }
       });
       if (props.label != null && props.label !== st.label) { st.label = props.label; labelEl.textContent = st.label; }
+      // `note` is tri-state on purpose: undefined leaves it alone (a driver that never sets
+      // it is unaffected), null/'' clears it, a string shows it.
+      if (props.note !== undefined) {
+        var note = props.note || '';
+        if (note !== st.note) {
+          st.note = note;
+          noteEl.textContent = note;
+          noteEl.style.display = note ? '' : 'none';
+        }
+      }
       if (props.unit != null) st.unit = props.unit;
       if (props.decimals != null) st.decimals = Math.max(0, Math.round(+props.decimals));
       if (bandsChanged) rebuildGaugeBands();

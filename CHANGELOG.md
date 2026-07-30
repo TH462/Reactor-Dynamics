@@ -14,6 +14,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The reactor power gauge showed a 120 % trip while the plant was set to trip at 25 %**
+  (#267). Through a startup the power-range **low setpoint** reactor trip is armed at
+  **25 %**, and it can only be blocked once you are above the P-10 permissive at **10 %**.
+  The gauge never showed it: the tile took the *first* power trip in the protection table,
+  which happens to be the 120 % backstop, so an operator climbing out of Mode 3 read green
+  all the way to a scram at a fifth of the indicated limit. Measured — with the low setpoint
+  armed, **26 % scrams and 24 % does not**.
+
+  The tile now follows whichever power trip is actually armed. While the low setpoint is
+  live the meter reads to 27 % and lays out the startup ladder: **green to P-10 (10 %),
+  amber from there up to the trip — that amber band is the window in which blocking is
+  permitted — and red above 25 %**, with a red `TRIP 25%` annotation naming the limit. Block
+  the trip and the meter reopens to the at-power scale with 120 % at the top and the
+  annotation clears; drop back below P-10 and the block reinstates itself and the band comes
+  back with it. **At power nothing changed** — the bands are identical to before.
 - **The moderator model was re-fitted to measured plant data, and the reactor is more
   self-regulating than it was yesterday** (#263). The previous fix (#260) took the
   boron dependence of the moderator coefficient from a written statement in a training
