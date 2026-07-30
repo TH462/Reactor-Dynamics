@@ -16,15 +16,34 @@
  * approach to criticality — those beats already live in `pwr_startup_challenge`
  * and `pwr_return_to_mode1`, which is where an approach to criticality belongs.
  *
- * MEASURED on the as-built plant, cold_shutdown IC, no rod motion at all:
- *   Mode 4 (200 °F / 93.3 °C)          0.28 plant-h
- *   Mode 3 (545 °F / 285 °C)          10.61 plant-h
- *   Mode 3 (548 °F / 286.7 °C)        10.71 plant-h, ρ = −6287 pcm, 919 ppm boron
- *   average rate                       39.8 °F/hr (22.1 °C/hr)
- *   steady rate after the first hour   ~32 °F/hr (17.8 °C/hr)
+ * MEASURED on the as-built plant, cold_shutdown IC, no rod motion at all
+ * (re-measured 2026-07-29 after the #260 reactivity recalibration):
+ *   enters Mode 4                       0.27 plant-h  (200 °F / 93.3 °C at 0.28)
+ *   enters Mode 3                       4.57 plant-h  (350 °F / 176.7 °C at 4.55)
+ *   450 °F (232.2 °C)                  7.63 plant-h
+ *   545 °F (285.0 °C)                 10.61 plant-h
+ *   settles 567.0 °F (297.2 °C)       11.39 plant-h, ρ = −3377 pcm, 907 ppm boron,
+ *                                       power 3.0e-5 %, control bank still 0/912
+ *   average rate                       39.1 °F/hr (21.7 °C/hr)
+ *   steady rate after the first hour    32.1 °F/hr (17.8 °C/hr)
  *   first hour                        111.5 °F/hr — the compressed pressurization,
  *                                      not the pump-heat ramp (see the honesty note
  *                                      in the `ride_up` beat)
+ *
+ * READ THE DIFF CAREFULLY, because it is easy to mis-attribute. **The thermal ride
+ * did not change**: 545 °F still arrives at 10.61 plant-h, the first hour is still
+ * 111.5 °F/hr, and the steady rate is still ~32 °F/hr. Pump heat does not care what
+ * the moderator coefficient is, and at 3e-5 % power fission contributes nothing
+ * thermally. Two things DID change:
+ *   1. **Arrival reactivity: −6287 → −3377 pcm on 907 (was 919) ppm.** That is #260 —
+ *      the old model charged a moderator defect over three times too large on the way
+ *      up, so it arrived far more subcritical than it should have.
+ *   2. **The endpoint reads 567.0 °F, not 548 °F.** This is NOT a 19 °F improvement.
+ *      567 °F is the no-load anchor where the steam dump opens and Tavg stops; the old
+ *      figure was where an earlier measurement's window ended, not where the plant
+ *      settles. Run it to the settling point and both models reach the anchor.
+ * A previous revision of this file's own docs claimed the endpoint difference was a
+ * physics gain. It was a measurement-window artifact. Do not re-introduce that claim.
  *
  * Honesty: the WALL CLOCK is compressed (time acceleration), and the pressurization
  * is fast. The heat source and the rate are no longer fictional.
@@ -96,7 +115,7 @@
         ] },
         commentary: {
           learning: 'That is Mode 3, Hot Standby: hot at operating temperature and pressure, and subcritical with a very large margin — the control bank is exactly where it started and the boron never moved. That last part is worth sitting with, because it is the whole definition. Hot Standby is not a low power level; it is a HOT plant with the chain reaction off. You have not started a reactor yet. The approach to criticality is the next mission, and it begins from this board.',
-          industry: 'Mode 3, Hot Standby reached: NOP T/P, reactor subcritical (measured on arrival: ρ = −6287 pcm at 919 ppm, control bank at its cold-shutdown position, power 2e-5 %). Heatup evolution complete with zero rod motion. This is the hot_zero_power board the startup missions begin from.',
+          industry: 'Mode 3, Hot Standby reached: NOP T/P, reactor subcritical (measured on arrival: ρ = −3377 pcm at 907 ppm, control bank at its cold-shutdown position, power 3e-5 %). Heatup evolution complete with zero rod motion. This is the hot_zero_power board the startup missions begin from.',
         },
         highlight: { control_label: null, instrument_id: 'tavg' },
         level_complete: {

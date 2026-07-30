@@ -195,16 +195,102 @@
 
 | Parameter | Value |
 |-----------|-------|
-| Control bank max steps | **912** fully withdrawn (fine-step drive; one step ≈ 9 pcm ≈ 1.5 ¢ in the startup critical band) |
+| Control bank max steps | **912** fully withdrawn (fine-step drive; one step ≈ 6.5 pcm ≈ 1 ¢ in the startup critical band) |
 | Speed slow / normal / fast | **0.533 / 3.20 / 4.80 steps/s** (32 / 192 / 288 steps/min — same fraction-of-travel rates as the pre-fine-step drive) |
 | Scram insertion time (control) | **~2.5 s** full travel |
 | Scram insertion time (shutdown) | **~2.0 s** |
 | Insertion limit (RIL) | **Power-dependent.** Not applicable below **5 %** power; above it the % withdrawn floor ramps linearly from **5 %** to **70 %** at 100 % power (≈ 10 % withdrawn at 12 % power, 70 % at full power). Drives the ROD INS LIMIT alarm and stops the automatic rod channel inserting further. The bank sits at 92 % withdrawn across the load range, so the limit means "the bank is abnormally deep for this power" |
 | Control worth (total group) | **4068 pcm** (`rod_worth_total = 0.04068`) — WTSM 2.2 Table 2.2-1, all control banks |
 | Shutdown worth (total group) | **3676 pcm** (`rod_worth_shutdown = 0.03676`) — same source, all shutdown banks; all RCCAs together **7744 pcm** |
-| Shutdown group worth | **0.10** reactivity units |
 
 ---
+
+---
+
+## 7.5 Estimated Critical Condition (ECC) — reference data
+
+<!-- ECC-BCRIT-TABLE: generated from the engine; test/run_reactivity.js verifies every
+     cell against pwr_engine's own reactivity model, so this table cannot go stale
+     without reddening a gate. Do not hand-edit the numbers. -->
+
+**Critical boron concentration (ppm) by Tavg and control-bank position**, shutdown bank
+withdrawn, no xenon, zero power:
+
+| Tavg | bank IN (0) | 25 % (228) | 50 % (456) | 75 % (684) | ARO (912) |
+|---|---|---|---|---|---|
+| 122 °F (50.0 °C) | 834 | 870 | 982 | 1094 | 1130 |
+| 200 °F (93.3 °C) | 812 | 849 | 964 | 1078 | 1115 |
+| 250 °F (121.1 °C) | 796 | 833 | 950 | 1067 | 1104 |
+| 300 °F (148.9 °C) | 776 | 815 | 934 | 1054 | 1092 |
+| 350 °F (176.7 °C) | 754 | 794 | 916 | 1039 | 1078 |
+| 400 °F (204.4 °C) | 727 | 768 | 894 | 1021 | 1062 |
+| 450 °F (232.2 °C) | 693 | 736 | 867 | 999 | 1042 |
+| 500 °F (260.0 °C) | 651 | 696 | 834 | 973 | 1018 |
+| 545 °F (285.0 °C) | 603 | 651 | 797 | 943 | 990 |
+| 566.6 °F (297.0 °C) | 576 | 625 | 775 | 926 | 975 |
+
+**Differential boron worth (pcm/ppm).** It is **larger cold** — denser water carries more
+boron atoms per unit volume — so the same dilution buys more reactivity at 122 °F than at
+power. Use the value for the temperature you are actually at.
+
+| Tavg | 122 °F | 250 °F | 350 °F | 450 °F | 545 °F | 566.6 °F |
+|---|---|---|---|---|---|---|
+| pcm/ppm | 13.75 | 13.17 | 12.53 | 11.65 | 10.50 | 10.19 |
+
+**Control-bank integral worth** (pcm added, withdrawing from fully inserted). The curve is
+an S: least effective at either end, most effective mid-travel.
+
+| Position | 10 % | 25 % | 35 % | 50 % | 65 % | 75 % | 90 % | ARO |
+|---|---|---|---|---|---|---|---|---|
+| steps | 91 | 228 | 319 | 456 | 593 | 684 | 821 | 912 |
+| pcm added | 102 | 499 | 1003 | 2034 | 3065 | 3569 | 3966 | 4068 |
+
+### 7.5.1 Reading the table — and the one rule that matters
+
+> **WARNING — do not dilute toward a hot boron figure while the plant is cold.** Read the
+> first column of the table again: with the bank inserted, critical boron is **834 ppm at
+> 122 °F** and only **576 ppm at 566.6 °F**. A number that is comfortably subcritical hot is
+> **critical, or worse, cold.** This is not a modelling quirk — cold water is a better
+> moderator, so a cold core needs *more* poison to stay shut down. Reaching Mode 3 at the
+> no-load temperature **before** you dilute is what makes the dilution safe.
+>
+> This is exactly how the real procedure handles it. WTSM 2.2 *Reactivity Balance
+> Calculations* (ML11216A051), Attachment 2.2-1, note on line O: *"Since T avg is required to
+> be >541°F, the reactivity change from moderator temperature is considered negligible."* A
+> real ECC is only ever computed **hot**, which is why a real operator never faces this
+> question. Our plant will let you drive it cold and dilute anyway; the source-range
+> high-flux trip at 1e5 cps is the backstop, and it is the last one.
+
+**The acceptance band.** Attachment 2.2-1 line Q brackets the prediction at **±750 pcm**
+around the estimated critical position, or the rod insertion limit, whichever is tighter. On
+this plant's lumped bank a mid-travel critical point near **318 steps** gives a band of
+roughly **159 to 421 steps**. Criticality outside that band means the estimate was wrong —
+stop and re-work it, do not keep pulling.
+
+### 7.5.2 The calculation
+
+Adapted from WTSM 2.2 Attachment 2.2-1 (Delta Rho Method). Work from a **last known critical
+condition**; every line is a reactivity difference between then and the startup you are
+planning.
+
+| Line | Quantity | Source |
+|---|---|---|
+| A | Bank worth at the desired startup critical position | §7.5 integral-worth table |
+| B | Bank worth at the last known critical condition | same table |
+| C | **C = A − B** | |
+| D | Power defect at the last known critical condition, × (−1) | §11.0 by initial condition |
+| E | Present boron | CHEM SAMPLE (there is no live boron meter) |
+| F | Boron at the last known critical condition | records |
+| G | Differential boron worth **at your present Tavg** | §7.5 boron-worth table |
+| H | **H = (E − F) × G** | |
+| I / J / K | Xenon at startup / at last critical / **K = I − J** | 2500 pcm at equilibrium full power |
+| O | **O = C + D + H + K** | the reactivity change needed |
+| P | **P = O / G** — positive means **borate**, negative means **dilute** | |
+
+> **NOTE.** The real worksheet also carries samarium (lines L–N) and drops the moderator term
+> because Tavg is required above 541 °F. This plant does not model samarium separately, and it
+> *will* let you sit below 541 °F — so if you are cold, the moderator term is **not**
+> negligible and the §7.5 table, not this worksheet, is your reference.
 
 ## 8.0 Operator training limits (authored standards)
 

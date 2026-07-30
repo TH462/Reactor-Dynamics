@@ -133,6 +133,50 @@ ck('the Mode 5 IC boron is above cold critical boron, so the plant spawns subcri
    bIC.toFixed(0) + ' ppm vs ' + bCrit(122).toFixed(0) + ' critical, rho = '
    + (m5.s._rho * 1e5).toFixed(0) + ' pcm');
 
+// ---------------------------------------------------------------------------
+// The published ECC curve must match the plant.
+//
+// This is the part that matters most for #260's actual lesson. The reactivity
+// numbers were right in the config and WRONG in the prose for weeks, and no gate
+// covered prose: run_manual_units checks unit CONVERSIONS, run_campaign checks
+// mission BEHAVIOUR, and neither notices a manual table that quotes a critical
+// boron the plant does not have. Manuals/09 §7.5 is the operator's ECC reference —
+// if it drifts, an operator dilutes to a number the plant does not agree with,
+// which is the whole of the #260 event. So parse it and compare every cell.
+console.log('\n' + BOLD + 'Manuals/09 §7.5 — the published ECC curve vs the plant' + RST);
+var fs = require('fs');
+var md = fs.readFileSync(path.join(__dirname, '..', 'Manuals', '09_SETPOINTS_LIMITS.md'), 'utf8');
+var COLS = [0, 228, 456, 684, 912];          // the table's bank positions, in steps
+var rows = [], bad = [], seenMarker = md.indexOf('ECC-BCRIT-TABLE') >= 0;
+md.split(/\r?\n/).forEach(function (line) {
+  // | 122 °F (50.0 °C) | 834 | 870 | 982 | 1094 | 1130 |
+  var m = line.match(/^\|\s*([\d.]+)\s*°F\s*\([\d.]+\s*°C\)\s*\|([^|]+\|){5}\s*$/);
+  if (!m) return;
+  var cells = line.split('|').slice(2, 7).map(function (c) { return parseFloat(c.trim()); });
+  if (cells.some(isNaN)) return;
+  rows.push({ Tf: parseFloat(m[1]), cells: cells });
+});
+rows.forEach(function (r) {
+  COLS.forEach(function (steps, i) {
+    var Tc = F2C(r.Tf);
+    e.rod_groups[0].steps = steps;
+    e.rod_groups[1].steps = e.rod_groups[1].max_steps;
+    var dD = e._modDensity(Tc) - e._modDensity(TREF);
+    var live = (RC.rho_excess + e._rodReactivity() + RC.alpha_D * (Tc - TFREF)
+                + e._modCoeff() * dD) / e._boronWorth(Tc);
+    if (Math.abs(live - r.cells[i]) > 1.0) {
+      bad.push(r.Tf + ' °F / ' + steps + ' steps: table ' + r.cells[i]
+               + ' vs plant ' + live.toFixed(1));
+    }
+  });
+});
+ck('the ECC table carries its do-not-hand-edit marker', seenMarker,
+   seenMarker ? 'present' : 'MISSING — the table is no longer identifiable');
+ck('the ECC table was found and has all ten temperature rows', rows.length === 10,
+   rows.length + ' rows parsed');
+ck('every published critical-boron cell matches the plant within 1 ppm', bad.length === 0,
+   bad.length ? bad.slice(0, 3).join(' · ') : (rows.length * COLS.length) + ' cells verified');
+
 console.log('\n' + BOLD + '──────────────────────────────────────────' + RST);
 console.log(BOLD + (nFail ? RED : GREEN) + nPass + ' checks passed / ' + nFail + ' failed' + RST + '\n');
 process.exit(nFail ? 1 : 0);

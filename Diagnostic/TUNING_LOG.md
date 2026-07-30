@@ -204,9 +204,15 @@ observables, not absolute ppm.
 `CONTEXT.md`, `M1 pwr engine.md`, `PLAYTEST_CHECKLIST.md`. **Left flagged, not overwritten:**
 `PWR_BEHAVIOR_CATALOG` PI-9's −9,604 pcm and the accumulator's 243 s were measured at
 **engine+M4**; my re-measurements are **engine-direct** and therefore not comparable (CLAUDE.md's
-layer warning). The held-worth arithmetic *was* corrected (0.4 × 4068 = **1627 pcm**), and the
-catalog now says plainly that PI-9's *"nearly 3× the held worth in spare margin"* premise is
-down to ~1.26× — the #199 ruling stands, its cushion does not.
+layer warning). The held-worth arithmetic *was* corrected (0.4 × 4068 = **1627 pcm**).
+**Both were then re-measured properly and one of my own conclusions was wrong.** At
+engine+M4 — the layer the catalog used — the stuck-rod SLB ends at **ρ = −27,458 pcm,
+16.9× the held worth**, because safety injection fires and carries the primary to 2500 ppm.
+My engine-direct probe read −2049 pcm (1.26×) because that layer has **no HPI at all**. I
+flagged the non-comparability and then drew a conclusion from the number anyway — "the
+cushion is largely gone" — which was exactly backwards. Withdrawn in the catalog. The
+lesson is the one CLAUDE.md's layer table already teaches: quoting the caveat does not
+license the inference.
 
 **Still open, tracked in #260.** No **Estimated Critical Condition** anywhere — real startups
 compute one before diluting (WTSM 2.2 §2.2.3 + Attachment 2.2-1); we have no ECC procedure, no

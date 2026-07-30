@@ -204,7 +204,13 @@ var BASELINES = {
   // `rho_excess` has NO direct observable: it is solved so HZP ARO lands on 975. If you
   // move alpha_D, either rod worth or boron_worth_per_ppm without re-solving it, the
   // 975 ppm check is what goes red instead of the plant drifting quietly.
-  'run_reactivity.js':     { code: 0, score: '13checks 0failed' },
+  // 13 -> 16 checks: the gate now also parses Manuals/09 §7.5's published ECC
+  // critical-boron table and compares all 50 cells against the engine. That table is
+  // what an operator dilutes against, and NOTHING covered prose numbers before —
+  // run_manual_units checks unit conversions, run_campaign checks mission behaviour,
+  // and #260 sat wrong in the prose for weeks with both green. Verified by injection:
+  // putting the old 629 ppm back into one cell reddens it (table 629 vs plant 834.2).
+  'run_reactivity.js':     { code: 0, score: '16checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   'run_m4.js':             { code: 0, score: '25/25 135passed' },
