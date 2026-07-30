@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>About — Reactor Dynamics</title>
-    <meta name="description" content="Learn plant operation (the what) and plant dynamics (the why) on a nuclear power plant you run in the browser.">
+    <meta name="description" content="A nuclear plant you run in the browser — learn plant operation and the dynamics that drive it.">
     <meta property="og:title" content="About — Reactor Dynamics">
-    <meta property="og:description" content="Learn what operators do and why the plant responds that way — on a PWR you run in the browser.">
+    <meta property="og:description" content="Learn plant operation and plant dynamics on a pressurized-water reactor you run in the browser.">
     <meta property="og:image" content="site/hero.png">
     <meta property="og:type" content="website">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
@@ -38,97 +38,81 @@
 
 <main class="page">
   <h1>About Reactor Dynamics</h1>
-  <p class="lede">A nuclear power plant you can run in the browser — built so
-  you can learn <strong>what</strong> operators do and <strong>why</strong> the
-  plant responds the way it does.</p>
+  <p class="lede">A nuclear power plant you can run in the browser. Learn
+  <strong>what</strong> operators do and <strong>why</strong> the plant responds
+  the way it does — operation and dynamics together.</p>
 
   <p>Nothing to install, no account. Desktop or laptop for now.</p>
 
-  <p style="margin: 24px 0 8px;">
+  <p class="page-cta">
     <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
   </p>
 
-  <div class="hero-shot" style="padding: 0; margin: 28px 0 8px;">
+  <div class="hero-shot page-hero">
     <img src="site/hero.png" alt="The Reactor Dynamics PWR control-room interface"
          onerror="this.parentNode.style.display='none'">
   </div>
 
   <h2>What this is</h2>
-  <p>A pressurized-water plant you operate in the browser — from cold shutdown
-  to full power on one continuous model. You can start with no nuclear
-  background; the plant still behaves like a plant when you change load, trip
-  the unit, or break something on purpose.</p>
-  <p>The point is to learn two things together:</p>
+  <p>A pressurized-water plant in the browser, cold shutdown to full power on
+  one continuous model. You operate the board. Two things to take away:</p>
   <ul>
-    <li><strong>What</strong> — plant operation: the board, the procedures, the
-    order of a startup, how you hold power and recover from upsets.</li>
-    <li><strong>Why</strong> — plant dynamics and the physics behind them: how
-    heat, reactivity, inventory, steam, and the turbine couple, so the board
-    makes sense instead of feeling like a black box.</li>
+    <li><strong>What</strong> — plant operation: startup order, holding power,
+    procedures, recovery from upsets.</li>
+    <li><strong>Why</strong> — plant dynamics: how heat, reactivity, inventory,
+    steam, and the turbine couple so the board’s behavior makes sense.</li>
   </ul>
   <p>You learn the what by running the plant. You learn the why from how it
-  responds — and, if you want the model spelled out, from the
-  <a href="physics.html">Physics</a> page and the in-sim manual.</p>
-  <p>It is not a score chase. You run the board.</p>
+  responds — and from the written model on the
+  <a href="physics.html">Physics</a> page and in the in-sim manual if you want
+  the equations and limits spelled out.</p>
 
   <h2>What you can do</h2>
   <ul>
-    <li><strong>Bring a cold plant to life.</strong> Pressurize the system,
-    start the reactor coolant pumps, heat to hot standby, pull rods to
-    criticality, raise power, put the generator on the grid, and carry the
-    plant to 100%.</li>
+    <li><strong>Bring a cold plant to life.</strong> Pressurize, start the
+    reactor coolant pumps, heat to hot standby, go critical, raise power, put
+    the generator on the grid, and take the plant to 100%.</li>
     <li><strong>Keep it online.</strong> Load changes, boration and dilution,
-    feedwater and level control, holding steady through the slow chemistry of
-    xenon.</li>
-    <li><strong>Work plant casualties.</strong> Reactor trips and recovery,
-    stuck valves, pump trips, steam generator tube leaks, loss of heat sink —
-    injected on your terms, or arriving without warning.</li>
+    feedwater and level control, holding steady through xenon.</li>
+    <li><strong>Work plant casualties.</strong> Trips and recovery, stuck
+    valves, pump trips, steam generator tube leaks, loss of heat sink — on your
+    terms or without warning.</li>
   </ul>
-  <p>The Three Mile Island sequence is here if you want it: stuck-open relief,
-  inventory loss, and the recovery path that mattered. You can step into that
-  event or work past it.</p>
-  <p>Every session uses the same plant model. An easier session is a gentler
-  scenario, not a simpler plant.</p>
-  <p>Commercial-format operator manuals are in the control room. Free play is
-  always available. A guided training campaign — missions that watch the board
-  and walk real procedures — is available where the release offers it; otherwise
-  free play and the manuals still stand alone.</p>
+  <p>Optional: the Three Mile Island sequence (stuck-open relief, inventory
+  loss, recovery). Same plant model for every session — an easier run is a
+  gentler scenario, not a simpler plant.</p>
+  <p>Operator manuals are in the control room. Free play is always available.
+  Guided missions are offered when that part of the release is turned on.</p>
 
   <h2>The plant</h2>
   <p>A compact pressurized water reactor: about 100&nbsp;MWe, one coolant loop,
-  one steam generator — small enough to learn whole, complete enough to behave
-  like a plant. Cold shutdown to full power is one continuous path; nothing is
-  a cutscene.</p>
-  <p>Two more reactor types sit in the project — a boiling-water plant and a
-  graphite-channel RBMK — with working physics engines. Their public control
-  rooms are not ready yet.</p>
+  one steam generator. Cold shutdown to full power is one continuous path.</p>
+  <p>A boiling-water plant and a graphite-channel RBMK have physics engines in
+  the project; their public control rooms are not ready yet.</p>
 
   <h2>Where it runs</h2>
-  <p>Any modern desktop browser. The simulation runs on your machine — from
-  this site, from a local copy, or as a
-  <a href="download.html">single downloadable file</a> that works with no
-  internet connection.</p>
+  <p>A modern desktop browser. The simulation runs on your machine — this site,
+  a local copy, or a
+  <a href="download.html">single downloadable file</a> for offline use.</p>
 
   <h2>Contact</h2>
   <p>Questions, bugs, or &ldquo;this does not match plant behavior&rdquo;?
   Email <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.
-  In the simulator, Contact gives you that address and can download session
-  diagnostics to attach.</p>
+  In the simulator, Contact has that address and optional session diagnostics
+  to attach.</p>
 
-  <h2>Physics (the why)</h2>
-  <p>Operation teaches the what. For the why in writing — what the model
-  computes, how the systems couple, what numbers are pinned to published plant
-  data, and what is left out — see
+  <h2>Physics</h2>
+  <p>For the written why — what the model computes, how systems couple, what is
+  pinned to published data, what is left out — see
   <a href="physics.html">Physics behind the simulator</a>.</p>
 
-  <p style="margin: 32px 0 0;">
+  <p class="page-cta page-cta-bottom">
     <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
   </p>
 
-  <p style="color: var(--text-2); margin-top: 2rem;">Reactor Dynamics is an
-  educational simulation. It is not a substitute for licensed operator training
-  and must not be used to operate, design, or analyze a real nuclear
-  facility.</p>
+  <p class="page-disclaimer">Reactor Dynamics is an educational simulation. It
+  is not a substitute for licensed operator training and must not be used to
+  operate, design, or analyze a real nuclear facility.</p>
 </main>
 
 <footer class="site-footer">
@@ -149,6 +133,6 @@
 
 <script src="site/version.js"></script>
 <script>document.getElementById('ver').textContent = window.RD_VERSION || '';</script>
-  <script src="site/nav.js"></script>
+<script src="site/nav.js"></script>
 </body>
 </html>

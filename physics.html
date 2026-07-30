@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Physics — Reactor Dynamics</title>
-    <meta name="description" content="How the Reactor Dynamics plant model works: point kinetics, lumped thermal-hydraulics, parameters fitted to published plant data, and what is left out.">
+    <meta name="description" content="Plant dynamics and the model behind them: point kinetics, lumped thermal-hydraulics, parameters fitted to published data, and deliberate limits.">
     <meta property="og:title" content="Physics — Reactor Dynamics">
-    <meta property="og:description" content="What the plant model computes, what numbers are anchored to, and what is deliberately left out.">
+    <meta property="og:description" content="What the plant model computes, what numbers are anchored to, and what is left out.">
     <meta property="og:image" content="site/hero.png">
     <meta property="og:type" content="website">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
@@ -38,126 +38,108 @@
 
 <main class="page">
   <h1>Physics behind the simulator</h1>
-  <p class="lede">The <strong>why</strong> behind the board: plant dynamics and
-  the physics that drive them. Written for readers with a science or engineering
-  background. The <strong>what</strong> — operating the plant — is on the
-  <a href="about.html">About</a> page and in the control room.</p>
+  <p class="lede">Plant dynamics and the physics that drive them — the
+  <strong>why</strong> behind what you see when you operate the plant. For
+  science or engineering readers. Operating the plant (the
+  <strong>what</strong>) is on <a href="about.html">About</a> and in the
+  control room.</p>
 
   <p><strong>In brief:</strong> six-group point kinetics · lumped primary and
-  secondary · protection and automation on instrument channels · parameters
-  fitted to published plant data · no spatial core, not a named digital twin.</p>
+  secondary · protection driven from board channels · parameters fitted to
+  published plant data · no spatial core · not a named digital twin.</p>
 
-  <p>Reactor Dynamics is a real-time, lumped-parameter model of a single-loop
-  pressurized water reactor of roughly 100&nbsp;MWe. Core, primary loop,
-  pressurizer, steam generator, turbine-generator, and the control and
-  protection systems advance as one coupled system in sub-second steps — real
-  time or accelerated. It is built so you can learn plant behavior by running
-  it, and understand that behavior by seeing how the model is put together —
-  training, not licensing. The bar we aim for: operator-visible dynamics should
-  match ordinary plant physics, and pinned numbers should come from published
-  plant data rather than guesswork.</p>
+  <p>The model is a real-time, lumped-parameter single-loop pressurized water
+  reactor of roughly 100&nbsp;MWe. Core, primary, pressurizer, steam generator,
+  turbine-generator, and control/protection advance as one coupled system in
+  sub-second steps (real time or accelerated).</p>
+  <p>Training, not licensing. We aim for operator-visible dynamics that match
+  ordinary plant physics, with pinned numbers taken from published plant data
+  rather than guesswork.</p>
 
   <h2>Core and reactivity</h2>
   <ul>
     <li><strong>Point kinetics, six delayed-neutron groups</strong>, with
-    standard U-235 group constants (β<sub>eff</sub>&nbsp;≈&nbsp;0.65%). Reactor
-    period and startup rate fall out of the kinetics and drive the source- and
-    intermediate-range nuclear instrumentation, so approaching criticality is an
-    exercise in rate control, not a scripted event.</li>
-    <li><strong>Reactivity feedbacks:</strong> Doppler (fuel temperature),
-    moderator feedback that tracks coolant <em>density</em> rather than a
-    constant temperature coefficient, dissolved boron, and xenon.</li>
-    <li><strong>Xenon as an explicit decay chain</strong> — I-135 → Xe-135 with
-    their real half-lives (6.6&nbsp;h and 9.1&nbsp;h): production, decay, and
-    flux burnout. After power changes and after a trip, the poison moves on those
-    timescales (there is still no spatial peaking — see limits below).</li>
+    standard U-235 group constants (β<sub>eff</sub>&nbsp;≈&nbsp;0.65%, matching
+    the engine’s group sum). Period and startup rate come out of the kinetics
+    and drive the source- and intermediate-range nuclear instruments, so
+    approach to criticality is rate control, not a scripted jump.</li>
+    <li><strong>Feedbacks:</strong> Doppler (fuel temperature), moderator
+    feedback from coolant <em>density</em> (not a single fixed temperature
+    coefficient), dissolved boron, and xenon.</li>
+    <li><strong>Xenon</strong> as I-135 → Xe-135 with production, decay, and
+    flux burnout on their half-lives (as coded). After power changes and after
+    a trip, poison moves on those timescales. There is no spatial peaking (see
+    limits below).</li>
   </ul>
   <p><strong>Reactivity parameters are fitted to measurements, not chosen.</strong>
-  Rod bank worths come from a Westinghouse training-simulator dataset
-  (4068&nbsp;pcm control banks, 3676&nbsp;pcm shutdown banks). Moderator
-  coefficients are least-squares fits to the three measured hot-zero-power
-  isothermal temperature coefficients in MIT&rsquo;s BEAVRS benchmark
-  (−1.75&nbsp;pcm/°F at 975&nbsp;ppm boron, −4.65 at 902, −8.01 at 810), with
-  residuals under 0.1&nbsp;pcm/°F at those points. Core excess reactivity is
-  then solved so hot-zero-power, all-rods-out critical boron lands on
-  BEAVRS&rsquo;s measured 975&nbsp;ppm.</p>
+  Rod bank worths use a Westinghouse training-simulator dataset (4068&nbsp;pcm
+  control, 3676&nbsp;pcm shutdown — as in the live config). Moderator
+  coefficients are least-squares fits to three measured hot-zero-power
+  isothermal temperature coefficients from MIT&rsquo;s BEAVRS benchmark
+  (−1.75&nbsp;pcm/°F at 975&nbsp;ppm boron, −4.65 at 902, −8.01 at 810). Core
+  excess reactivity is solved so hot-zero-power, all-rods-out critical boron
+  lands on BEAVRS&rsquo;s measured 975&nbsp;ppm.</p>
 
   <h2>Thermal-hydraulics</h2>
   <ul>
-    <li><strong>Lumped two-node core thermal model</strong> — a fuel node and a
-    coolant node with first-order heat transfer between them and onward to the
-    steam generator. Decay heat is a separate source that persists after
-    shutdown: a scrammed core is still a heat source, and the plant has to deal
-    with it.</li>
-    <li><strong>The pressurizer</strong> couples RCS inventory, thermal
-    expansion, and steam-space thermodynamics, with heaters, spray, and relief.
-    Geometry is taken from a real plant final safety analysis report — steam
-    space 5.8% of RCS volume (Beaver Valley Unit 2 UFSAR) — so a given insurge
-    or outsurge moves indicated level the way that volume says it should.</li>
-    <li><strong>Degraded regimes are modeled, not fenced off.</strong>
-    Subcooling is tracked; steam generator heat transfer collapses as the tube
-    bundle uncovers; the primary can void; the pressurizer can go solid. The
-    accidents worth training live in those regimes, so the model has to as
-    well.</li>
+    <li><strong>Two-node core thermal model</strong> — fuel and coolant nodes,
+    first-order heat transfer to the steam generator. Decay heat continues
+    after shutdown; a scrammed core is still a heat source.</li>
+    <li><strong>Pressurizer</strong> — inventory, thermal expansion, and
+    steam-space thermodynamics with heaters, spray, and relief. Steam-space
+    share of RCS volume is taken from Beaver Valley Unit 2 UFSAR (5.8%), so
+    insurge/outsurge move level with that geometry.</li>
+    <li><strong>Degraded regimes stay open.</strong> Subcooling is tracked; SG
+    heat transfer falls as tubes uncover; primary can void; pressurizer can go
+    solid. Those regimes are where the hard training cases live.</li>
   </ul>
 
   <h2>Secondary plant and electrical</h2>
   <ul>
-    <li>Primary heat boils secondary water. Steam flow, feedwater (main and
-    auxiliary), and steam generator level form one continuous mass-energy
-    balance; dumps and isolation change where the heat goes.</li>
-    <li>Turbine, condenser, and generator close the loop. Electrical load is a
-    steam demand: change load and the primary feels it through steam generator
-    pressure and temperature. Condenser performance depends on circulating-water
-    temperature. Trip the turbine or lose the heat sink and the stored energy
-    has to go somewhere — the plant makes you deal with that.</li>
+    <li>Primary heat boils secondary water. Steam, main/aux feed, and SG level
+    share one mass-energy balance; dumps and isolation change where heat
+    goes.</li>
+    <li>Turbine, condenser, and generator close the loop. Load is a steam
+    demand — change it and the primary feels it. Lose the turbine or the heat
+    sink and stored energy has to go somewhere.</li>
   </ul>
 
   <h2>Instrumentation and protection</h2>
-  <p>Board readings are instrument channels: lag, noise, and optional stuck or
-  drifting failures. Trips, interlocks, engineered safeguards, and automatic
-  controllers act on those channels — not on a private true-state feed.</p>
+  <p>Board readings are instrument channels (lag, noise; optional stuck or
+  drift). Trips, interlocks, safeguards, and automatic controllers use those
+  channel values as inputs.</p>
 
   <h2>How we know it behaves</h2>
   <ul>
-    <li><strong>Sourced, not recalled.</strong> Plant numbers — setpoints,
-    worths, volumes, coefficients — change with a citation to a primary document
-    (utility FSARs, NRC standard technical specifications, measured benchmarks
-    such as BEAVRS). Citations are recorded in the repository with the
-    change.</li>
-    <li><strong>Gated by automated tests on every change:</strong> physics
-    acceptance scenarios, a plant behavior catalog, procedure replays through
-    the full control stack, and checks that trip setpoints sit inside the range
-    their instruments can indicate. The live suite lives in the repo and grows
-    with the plant.</li>
-    <li><strong>Open source.</strong> The model is AGPL-licensed and
-    <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">on
-    GitHub</a>. If you want the exact equation, read the code.</li>
+    <li><strong>Sourced, not recalled.</strong> Setpoints, worths, volumes, and
+    coefficients change with a citation to a primary document (FSARs, NRC
+    standard technical specifications, benchmarks such as BEAVRS), recorded in
+    the repo with the change.</li>
+    <li><strong>Automated gates</strong> cover physics scenarios, behavior
+    checks, and procedure replays through the control stack. The suite is in
+    the repository and changes with the plant.</li>
+    <li><strong>Open source</strong> (AGPL) on
+    <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
+    — the equations are in the engine files.</li>
   </ul>
 
   <h2>What is deliberately left out</h2>
   <ul>
-    <li><strong>No spatial core.</strong> Point kinetics: no 3-D flux map, no
-    nodal power distribution. Power-shape management is not a task on this
-    board.</li>
-    <li><strong>One loop, lumped nodes.</strong> No subchannel
-    thermal-hydraulics; thermal limits are lumped indicators, not hot-channel
-    calculations.</li>
-    <li><strong>No full containment engineering suite.</strong> Core-damage
-    paths are modeled far enough to teach progression — not to analyze a
-    licensing case.</li>
-    <li><strong>Not a digital twin of any named unit.</strong> A composite plant
-    anchored to published data from several real ones; no single unit will match
-    it line for line.</li>
+    <li><strong>No spatial core</strong> — no 3-D flux map or nodal power
+    shape.</li>
+    <li><strong>One loop, lumped nodes</strong> — no subchannel TH; thermal
+    limits are lumped, not hot-channel.</li>
+    <li><strong>No full containment engineering suite</strong> — core-damage
+    paths go far enough to teach progression, not licensing analysis.</li>
+    <li><strong>Not a digital twin of a named unit</strong> — composite plant
+    from published data; no single plant will match line for line.</li>
   </ul>
-  <p>Detail is spent where the operator feels it; the rest is simplified on
-  purpose. Where a simplification understates reality, the in-sim manual says
-  so.</p>
+  <p>Detail goes where the operator feels it; the rest is simplified on
+  purpose. Where that understates reality, the in-sim manual says so.</p>
 
   <h2>More detail</h2>
-  <p>The operator manual inside the simulator has a chapter on simulation
-  physics and model scope. Open Manual from the control room for that write-up,
-  or read the engines in
+  <p>In the control room, Manual includes a chapter on simulation physics and
+  model scope. Or read the engines in
   <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">the
   repository</a>.</p>
 
@@ -182,6 +164,6 @@
 
 <script src="site/version.js"></script>
 <script>document.getElementById('ver').textContent = window.RD_VERSION || '';</script>
-  <script src="site/nav.js"></script>
+<script src="site/nav.js"></script>
 </body>
 </html>
