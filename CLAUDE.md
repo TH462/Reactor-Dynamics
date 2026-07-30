@@ -55,7 +55,7 @@ docs.
 > option and a higher-fidelity one exists you are not recommending: say which you would pick on
 > fidelity alone, #251), and a doubt about your own work you would otherwise bury. Not gateable.
 
-> **You may not be the only agent in this repo. Check both lanes before you edit.** Two sessions
+> **You may not be the only agent in this repo. Check all lanes before you edit.** Two sessions
 > in one working directory will overwrite each other's files and sweep each other's
 > work into the wrong commit — this is not hypothetical, it happened on 2026-07-29 and
 > cost a set of manual edits their attribution. A **branch does not isolate anything**;
@@ -64,20 +64,23 @@ docs.
 > | Working tree | Branch | |
 > |---|---|---|
 > | `C:\grok_build\Reactor_Dynamics` | `develop` | **the main working branch — use this unless it is taken** |
-> | `C:\grok_build\RD_workbench` | `workbench` | the overflow lane, for when a second agent is already on `develop` |
+> | `C:\grok_build\RD_workbench` | `workbench` | overflow lane 1, for when a second agent is already on `develop` |
+> | `C:\grok_build\RD_backshop` | `backshop` | overflow lane 2, same rules as workbench (third concurrent agent) |
 >
-> - **First thing in a session, check BOTH trees.** Occupancy is uncommitted modified files
->   *plus* a **recent** commit — run all three lines, do not stop at the tree you are standing in:
+> - **First thing in a session, check ALL trees.** Occupancy is uncommitted modified files
+>   *plus* a **recent** commit — run all four lines, do not stop at the tree you are standing in:
 >   ```
 >   git worktree list
 >   git -C C:/grok_build/Reactor_Dynamics status --short && git log develop   -1 --format='%h %cr'
 >   git -C C:/grok_build/RD_workbench   status --short && git log workbench -1 --format='%h %cr'
+>   git -C C:/grok_build/RD_backshop    status --short && git log backshop  -1 --format='%h %cr'
 >   ```
 >   A commit inside the last hour or so means a live session; hours old means history.
->   **Unmerged commits on `workbench` are NOT occupancy** — carrying work that has not reached
->   `develop` yet is what the lane is *for*. On 2026-07-29 it held five such commits and was
->   completely free. **The check is not one-shot: re-check before your first commit.** `develop`
->   was quiet in one session's t=0 snapshot and picked up another session an hour in.
+>   **Unmerged commits on `workbench` / `backshop` are NOT occupancy** — carrying work that has
+>   not reached `develop` yet is what those lanes are *for*. On 2026-07-29 workbench held five
+>   such commits and was completely free. **The check is not one-shot: re-check before your
+>   first commit.** `develop` was quiet in one session's t=0 snapshot and picked up another
+>   session an hour in.
 > - **On a positive, WARN AND ASK — do not move on your own** *(OWNER RULING, 2026-07-29:
 >   "Maybe it shouldn't be automatic. The agent should warn the user and ask if they should use
 >   workbench." — and, refining it: "it should also check if there's an agent working in the
@@ -86,9 +89,10 @@ docs.
 >   session, the owner's own uncommitted edits, and your own leftovers read identically, and only
 >   the owner can tell them apart cheaply. **Investigating in place while you wait is fine;
 >   editing, writing probe files and committing are not** — collisions come from writes.
->   Normally recommend *yes, switch* when `develop` is busy and the workbench is clear: the risk
->   is asymmetric, a needless move costs one merge. **If BOTH lanes look occupied, do not pick
->   one** — say so and offer a third tree (below); that is the owner's call, not a default.
+>   Normally recommend *yes, switch* when `develop` is busy and an overflow lane is clear: the
+>   risk is asymmetric, a needless move costs one merge. Prefer **workbench** first, then
+>   **backshop**. **If ALL overflow lanes look occupied, do not pick one** — say so and offer a
+>   further tree; that is the owner's call, not a default.
 >   **Absent a reply: stay read-only and say what you are waiting on** *(OWNER RULING,
 >   2026-07-29: "lets go with your recommendation.", on the recommendation to cut the earlier
 >   draft's no-reply default)* — **the heuristic never gets an action.** The first draft moved to
@@ -96,10 +100,10 @@ docs.
 >   owner to rule on" and never ruled on. It also fires on the *common* false positive — your own
 >   leftovers in the tree you just started in — while the case where guessing wrong is genuinely
 >   expensive is the case where the owner is present to answer in seconds.
-> - **Starting on `workbench`: `git merge --ff-only develop` — and when it refuses, do a real
->   `git merge develop`.** It is not a feature branch, it exists only so a second agent has
->   somewhere to work, but `--ff-only` fails whenever the lane still carries unmerged work,
->   which is the normal case (`fatal: Not possible to fast-forward, aborting.`). Expect the
+> - **Starting on `workbench` or `backshop`: `git merge --ff-only develop` — and when it refuses,
+>   do a real `git merge develop`.** Neither is a feature branch; each exists only so another
+>   agent has somewhere to work, but `--ff-only` fails whenever the lane still carries unmerged
+>   work, which is the normal case (`fatal: Not possible to fast-forward, aborting.`). Expect the
 >   conflict files below, keep both sides, re-run `run_all`.
 > - A new tree comes from `git worktree add <path> <branch>`, and needs `node_modules`
 >   junctioned from the primary tree (it is gitignored, and the Playwright gates need it)
