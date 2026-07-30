@@ -18,6 +18,16 @@ bullets** (drop the oldest), and nothing here may duplicate `Diagnostic/TUNING_L
 When in doubt about a number, prefer the as-built engine/config values over prose
 docs.
 
+> **Be brief. Facts, numbers, decisions** *(OWNER DIRECTIVE, 2026-07-30: "I would also like to
+> adjust the conciseness of replies. Most replies are a bit too long. I need just the facts and
+> important information to know what the ai did and to make decisions.")*. Lead with what
+> changed and the number that shows it. **Cut**: restating the request, narrating what you are
+> about to do, reasoning nobody asked for, re-explaining a decision already made, and the
+> victory lap after a green gate. **Keep**: measurements, deltas, what broke and why, and
+> anything that changes what he does next. Detail belongs in the commit message, the issue or
+> `Diagnostic/TUNING_LOG.md` — the reply is not where the record lives. The two delimited blocks
+> below are already bounded; this does not shrink them further.
+
 > **End with what is STILL OUTSTANDING** *(OWNER DIRECTIVE, 2026-07-30: "I would like to add to
 > claude.md to have the ai place a 'Still Outstanding' summary at the bottom so i know exactly
 > what still need to be done with respect to the task the ai is working on. This summary should
