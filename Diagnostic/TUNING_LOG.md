@@ -115,6 +115,63 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30g — the 600 s hold checked: the #263 derivation is NOT circular, but it is ±2 steps  ✅
+
+**Why this was checked.** 2026-07-30e derived `pwr_startup`'s 26-step creep as
+`decades ÷ hold → DPM → ρ → steps`. Every input was measured **except the divisor**: the 600 s
+hold is an authored number in the same file, and if it had been chosen to make the sweep land,
+the "derivation" would have been one authored number derived from another — exactly the failure
+#263 item 2 was filed about. Nobody asked; the doubt was mine and it was worth clearing.
+
+**Result: not circular.** From `git log -S` on the step, across #260 (`24427bb`):
+
+| | 1/M bursts | creep | hold |
+|---|---|---|---|
+| before #260 | 120+50+30+15+8 = **223** | **11 steps** | **600 s** |
+| after #260 | 138+90+44+22+12 = **306** | **26 steps** | **600 s** |
+
+The hold was already 600 and **did not move** when the plant did. #260 re-solved the rod worths,
+the whole burst ladder changed and the creep went 11 → 26 against a fixed hold. It was not
+co-fitted.
+
+**Out-of-sample validation, which is the part that matters.** That history hands over a free HR10
+test: the derivation should reproduce **11** on a plant it was never fitted to. Extracted the
+pre-#260 engine + config at `24427bb~1` into a scratch tree and ran the identical script:
+
+| | pre-#260 | current |
+|---|---|---|
+| boron at IC | 363.1 ppm | 682.9 ppm |
+| critical position | 224 (bursts end 223) | 319 (bursts end 306) |
+| steps to critical | 1 | 13 |
+| power at last burst | 9.66e-4 % | 6.25e-4 % |
+| decades to 1 % | 3.02 | 3.20 |
+| required ascent over 600 s | 0.302 DPM | 0.320 DPM |
+| differential worth | **9.50 pcm/step** | **6.70 pcm/step** |
+| **derived creep** | **10.8** | **27.7** |
+| **authored creep** | **11** | **26** |
+
+Different boron, different critical position, different rod worth — the same relationship lands
+on the authored value both times.
+
+**But the write-up was more precise than the method.** Run as a script rather than by hand the
+current-plant excess is **14.7 steps, not 13**, so the derivation predicts **27.7 against 26**.
+It is good to about **±2 steps**, and the reason is real: **SUR is not constant at a fixed rod
+position** — 13 steps above critical measures 0.339 DPM at 120 s and 0.285 at 240 s, so "the ρ
+that gives 0.32 DPM" is a band, not a number. The acceptance is ±4 steps wide so 26 sits inside
+comfortably, but the clean `13 + 13 = 26` reads like a formula that returns 26 exactly, and it
+does not. Corrected in the file.
+
+**One thing still unsourced, recorded rather than fixed:** the manual's own low-power hold
+procedure — **PWR-N04** in `Manuals/04` — specifies **no duration at all**; its acceptance is
+"SUR near 0; power stable ≤ 5 %". Nothing sources 600 s. The honest claim is therefore *the creep
+is derived GIVEN the hold*, and the hold remains authored. That is a weaker statement than
+2026-07-30e made, and it is the true one.
+
+**Carrying forward:** the check took ~20 minutes and turned a claim I had already shipped, closed
+an issue on, and written into three files into a *better* claim with out-of-sample evidence behind
+it. `git log -S` on the value being questioned is the cheapest provenance tool here — it answered
+"was this co-fitted?" directly, and it handed over the old plant to test against for free.
+
 ### 2026-07-30f — #270/#271: the rest of the board now reads ARMED protection, not the setpoint table  ✅
 
 The two follow-ups #267 spun off. Same principle throughout: **an indication shows the protection

@@ -190,6 +190,29 @@
           //
           //   creep = 13 (to critical) + 13 (excess) = 26 steps.
           //
+          // PRECISION — stated because that arithmetic reads cleaner than it is. Run as a script
+          // rather than by hand, the excess comes out 14.7 steps, so the derivation predicts 27.7
+          // against the 26 authored. It is good to about ±2 steps, NOT exact, and the reason is
+          // that SUR is not constant at a fixed rod position: the same 13 steps above critical
+          // measures 0.339 DPM at 120 s and 0.285 DPM at 240 s, so "the ρ that gives 0.32 DPM" is
+          // a band rather than a number. The acceptance below is ±4 steps wide, so 26 sits inside
+          // comfortably — but do not read this as a formula that returns 26 exactly.
+          //
+          // VALIDATED OUT OF SAMPLE — the HR10 "check it against the OLD behaviour too" test, and
+          // the reason this is a derivation rather than a restatement of the sweep. The 600 s hold
+          // PREDATES this creep and did not move when the plant did: before #260 the 1/M bursts
+          // were 120+50+30+15+8 = 223 and the creep was ELEVEN steps, at the same 600 s. Running
+          // the identical derivation against that plant — different boron (363 ppm), different
+          // critical position (224), different differential worth (9.50 pcm/step) — predicts
+          // 10.8 steps against the 11 that was authored. A relationship that lands on the authored
+          // value for two different plants, one of which it was never fitted to, is doing real work.
+          //
+          // So the hold is NOT co-fitted with the creep, which was the obvious way this could have
+          // been circular. It is still an AUTHORED number though: the manual's own low-power hold
+          // (PWR-N04, `Manuals/04`) specifies no duration at all — its acceptance is "SUR near 0;
+          // power stable ≤ 5 %". Nothing sources 600 s. What is derived is the creep GIVEN the
+          // hold, and that is the honest claim.
+          //
           // Confirmed at the layer this procedure actually runs at (full stack, via
           // test/measure_stack.js, not engine-direct — #266): ρ settles at +78 pcm after the
           // creep, SUR holds 0.27–0.30 DPM through the ascent, and the level-off lands at
