@@ -55,6 +55,37 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   coincidence.
 
 ### Added
+- **A portable single-file build — the whole control room as one `.html` you can email.**
+  `node tools/make_portable.js` inlines all **94 scripts and 2 stylesheets** that
+  `ui/shell.html` loads, in document order, into one **2.55 MB** self-contained file that
+  runs by double-clicking: no server, no install, no network, no unzipping into the right
+  folder. Measured in headless Edge: the bundle issues **1 network request — itself** — and
+  reaches a state identical to the multi-file build across all 60 sampled board values
+  (reactor power 0.8 %, T-avg 558 °F (292 °C), primary 1068 psi (7.36 MPa), 8 alarms) after
+  the same stuck-PORV injection, with **zero page errors**.
+  Nothing about the simulator had to change to make this work: every runtime file is
+  already a plain global-namespace script, there is no `fetch` anywhere in the codebase, the
+  operator's manual is pre-packed into `ui/manual_md.js`, and there are **no images and no
+  web fonts at all**. The sim could always run from `file://` — what it could not do was
+  travel as a single attachment. Three fixups are all the bundler adds: the two Vercel
+  analytics beacons are dropped (declared, with reasons — an undeclared external tag is a
+  hard build error, never a warning), the logo's `../index.html` link is repointed at the
+  public site since a single file has no sibling landing page, and the ⚛️ favicon is
+  embedded as a `data:` URI so an emailed file still gets a labelled browser tab.
+  The build is **not minified** — the source stays readable, which is also what keeps
+  AGPL §13 honest when the file is handed to someone. Output goes to the gitignored `dist/`.
+  *Emailing it: ZIP it first — several mail providers silently strip `.html` attachments.*
+- **`test/run_portable.js` guards the offline build** (**112 checks**). The single-file build
+  works only because of a property no other gate asserted: **nothing in the runtime loads
+  anything at runtime.** That is the kind of property that dies quietly — a
+  `fetch('Manuals/12.md')` added for an excellent reason leaves every other gate green and
+  the deployed site perfect, and breaks the *emailed* file on a stranger's machine where
+  nobody will ever report it. The gate scans exactly the assets `ui/shell.html` ships (read
+  out of the file, so it widens itself when a script is added) for 13 load patterns, checks
+  the stylesheets for web fonts and for relative `url()`s that would break once inlined,
+  then **builds the bundle and asserts the deliverable itself** has no loading attribute
+  left. Verified by injection rather than by passing: a `fetch`, a CDN `<script>`, an
+  `@font-face`, an `<img src>` and an ES `export` each turn it red on the matching check.
 - **RCS Loop Flow is now an instrument, and the low-flow reactor trip reads it** (#247).
   The trip that protects the core against a loss of forced flow used to read **true**
   coolant flow directly — it could not lag, could not drift, and could not be fooled by a

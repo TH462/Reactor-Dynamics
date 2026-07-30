@@ -179,6 +179,19 @@ var BASELINES = {
   // failures here. The check count moves with the board — a new control or
   // indication shifts it, which is the intended nudge to write its copy.
   'run_inspect.js':        { code: 0, score: '7/7 35/35' },
+  // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
+  // The sim runs from file:// with no server only because nothing in the runtime loads
+  // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no
+  // image. Every other gate is blind to that. A `fetch('Manuals/12.md')` added for a good
+  // reason keeps the deployed site perfect and breaks the EMAILED file — on a recipient's
+  // machine, silently, with nobody to report it. Scans exactly the 94 scripts + 2
+  // stylesheets ui/shell.html ships (read from the file, so it widens itself), then BUILDS
+  // the bundle and asserts the deliverable has no loading attribute left. Verified by
+  // injection: a fetch, a CDN <script>, an @font-face, an <img src> and an `export` each
+  // turn it red on the matching check. Check count moves with the shipped asset list — a
+  // new <script src> shifts this baseline, which is the intended nudge to re-verify that
+  // the portable build still builds.
+  'run_portable.js':       { code: 0, score: '112checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   'run_m4.js':             { code: 0, score: '25/25 135passed' },

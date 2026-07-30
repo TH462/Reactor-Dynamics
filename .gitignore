@@ -21,6 +21,12 @@ node_modules/
 *.save.json
 exports/
 
+# Portable single-file builds from tools/make_portable.js — a ~2.5 MB generated
+# artifact rebuilt from ui/shell.html in one command, so committing it would only
+# create a second copy of the whole runtime that can silently fall out of date.
+# test/run_portable.js fails if this line goes missing.
+dist/
+
 # Diagnostic JSON — session-diagnosis exports (Dev tab) and regenerated result
 # dumps (behavior_results.json, ops_results.json). Kept out of the public repo;
 # the curated Diagnostic/*.md reports ARE tracked and published.
