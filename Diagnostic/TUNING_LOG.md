@@ -115,6 +115,59 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30e — #263 item 2 CLOSED: the swept 26 turns out to be the derived 26  ✅
+
+**The last thing open on #263.** `pwr_startup`'s creep step was found by sweeping 22 / 26 / 30
+and keeping the one that landed inside the authored 1–3 % band — refitting content until the
+gate passes, the thing HR10 warns against, and I had called it out for the 1/M milestones and
+not for this. Derived now, every link measured:
+
+| link | measured |
+|---|---|
+| the five authored 1/M bursts, 138+90+44+22+12 | **306 steps** |
+| critical position at the startup IC (683 ppm) | **319 steps** — ρ(318) = −3.1, ρ(319) = +3.5 pcm |
+| ⇒ steps just to reach critical | 13 |
+| power at the last plotted point (ρ = −90 pcm) | **6.25e-4 %** |
+| level-off target — the point of adding heat | ≈ 1 % |
+| decades to cover, log₁₀(1 / 6.25e-4) | **3.20** |
+| the authored hold before the level-off drive | **600 s** |
+| ⇒ the ascent must average | **0.32 DPM** |
+| ρ producing 0.32 DPM (measured at a held position) | ≈ **85 pcm** |
+| differential bank worth through the band | **6.70 pcm/step** (1.03 ¢) |
+| ⇒ steps of excess | 85 / 6.70 ≈ **13** |
+| **creep = 13 + 13** | **26 steps** |
+
+**Confirmed at the layer the procedure actually runs at** — full stack via the new
+`test/measure_stack.js`, not engine-direct (#266's lesson applied the same day it was learned):
+ρ settles at **+78 pcm** after the creep against 80 engine-direct, SUR holds **0.27–0.30 DPM**
+through the ascent, and the level-off lands at **1.04 %** against 1.004 % engine-direct. The
+layer moves nothing here.
+
+The sweep's rejected neighbours fail for the reason the derivation predicts rather than by
+accident: **22 → 53 pcm → 0.10 %** (short of the point of adding heat), **30 → 107 pcm → 3.40 %**
+(past the band). The acceptance is about ±4 steps wide. Recorded in the file: **26 is tied to the
+600 s hold below it**, because what is actually fixed is decades-per-minute × minutes — move one
+without the other and the derivation breaks.
+
+**New guard, and it is the part that lasts.** `run_reactivity` **23 → 27 checks**, pinning the
+four inputs the derivation stands on. Before this, nothing held them: a rod-worth retune would
+have left `run_procedures_stack` green-or-not with no indication that the *published reason* for
+26 had stopped being true. **Injection-verified** — a 3.2 % bump to `rod_worth_total` moves
+criticality 319 → 314 and the excess 87 → 123 pcm and reddens all four. The first cut of the
+differential-worth check had a ±0.15 tolerance and **the injection walked straight past it** at
+6.82; tightened to ±0.05, which is honest for a deterministic static computation with no noise
+in it. A guard the injection test walks past is not a guard.
+
+**Two prose numbers checked in passing (HR12), one wrong.** The caution's *"a gentle 1 DPM ramp
+means carrying ~+200 pcm"* is **right** — measured, 208.6 pcm gives 0.91 DPM at 120 s. But
+*"this plant starts Mode 3 at 674 ppm … criticality near 318 steps"* was stale: the IC is
+**682.9 ppm** and criticality is at **319**. 674 appeared nowhere else — not in `Manuals/09`,
+not in the gated ECC table — so nothing was going to catch it. Corrected to 683 / 319, and both
+now sit behind the new pins.
+
+**#263 is fully closed.** Item 1 (owner ruling, fit the measurement) and items 3/4/6 landed
+earlier; item 5 was settled by #266 on 2026-07-30d; this is item 2.
+
 ### 2026-07-30d — #266: the measurement gap did not exist; `start()` was advancing in wall time  ✅
 
 **#266's diagnosis was wrong, and this entry is mostly the correction.** It held that a long

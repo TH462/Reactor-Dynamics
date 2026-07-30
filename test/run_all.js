@@ -256,7 +256,11 @@ var BASELINES = {
   // 21 -> 23 (#263 item 3): HFP boron has NO measured anchor of its own, so what is
   // gated is its DERIVATION from the HZP anchor plus the power defect and xenon, and
   // the declared departure from the real 750 ppm comparable being xenon-dominated.
-  'run_reactivity.js':     { code: 0, score: '23checks 0failed' },
+  // 23 → 27 (2026-07-30, #263 item 2): the four inputs `pwr_startup`'s 26-step creep is
+  // DERIVED from — startup-IC boron, the critical position, differential bank worth through
+  // the band, and the excess the creep leaves. Injection-verified: a 3.2 % rod-worth retune
+  // reddens all four. Before this the 26 was a swept number with nothing holding its inputs.
+  'run_reactivity.js':     { code: 0, score: '27checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   'run_m4.js':             { code: 0, score: '25/25 135passed' },

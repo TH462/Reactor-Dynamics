@@ -37,6 +37,37 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-30e — #263 item 2: the creep step is derived, and its INPUTS are what got gated
+
+**The decision: derive the number rather than declare it empirical**, which was the other option
+#263 offered. `pwr_startup`'s 26-step creep came from a 22/26/30 sweep kept for landing inside the
+authored 1–3 % band. It is now
+
+    creep = (critical position − the 306 steps of plotted 1/M bursts) + (excess ρ / differential worth)
+          = (319 − 306) + (85 pcm / 6.70 pcm/step)
+          = 13 + 13 = 26
+
+with the excess itself derived, not chosen: the level-off must cover **3.20 decades** (6.25e-4 % →
+1 %) in the authored **600 s** hold, which is **0.32 DPM**, which measures at ~85 pcm.
+
+**What got gated is the DERIVATION'S INPUTS, not the number.** `run_reactivity` 23 → 27. Gating
+"the creep is 26" would have been a tautology — the file says 26. Gating the four quantities 26 is
+computed *from* means a retune that invalidates the reasoning reddens even when the procedure still
+happens to pass. This is the #263 item-6 lesson (greens that mean nothing) applied preventively.
+
+**The tolerance was wrong on the first cut and the injection test is what said so.** ±0.15 pcm/step
+on the differential worth let a 3.2 % rod-worth retune through at 6.82 while the other three checks
+caught it. Tightened to ±0.05 — defensible because this is a deterministic static computation with
+no noise. Recorded because the general rule is worth more than the number: **a guard the injection
+test walks past is not a guard**, and the injection test only told us because it was run.
+
+**Layer discipline, one day after learning it.** The derivation was confirmed full-stack through
+`test/measure_stack.js` (#266) before being written down — +78 pcm vs 80 engine-direct, level-off
+1.04 % vs 1.004 %. The layer moves nothing here, but that is now a measured statement rather than
+an assumed one.
+
+---
+
 ## 2026-07-30d — #266: no service change; the harness was driving the plant through a real timer
 
 **The decision: change NOTHING in `simulation_service.js`.** #266 proposed a `measure`-mode
