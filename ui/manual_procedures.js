@@ -167,7 +167,7 @@
           hl: ['SR detector', 'Source Range', 'Intermediate Range'] },
         { text: 'Creep up on criticality: withdraw at Slow in single steps. The reactor goes critical and power begins to climb — watch the Startup Rate (SUR) and keep the reactor period long.',
           control: 'Control Bank', target: 'critical, SUR ≤ 1 DPM, period ≥ 30 s',
-          note: 'One fine step is ~1.5 ¢ near the band. If the period drops below 30 s, stop or insert — the reactor is accelerating.',
+          note: 'One fine step is ~1 ¢ (6.54 pcm) near the band. If the period drops below 30 s, stop or insert — the reactor is accelerating. The 26 steps are DERIVED, not chosen by eye. The inhour equation on this plant\'s own kinetics (β = 0.006502, Λ = 0.01 s) says a 90-second period costs +81 pcm; step 10 leaves the core at −92 pcm; one step is worth 6.54 pcm here. (81 + 92) / 6.54 = 26.4. Measured, 26 steps land ρ = +78 pcm, period 94 s, SUR 0.28 DPM. Ninety seconds is three times the 30-second floor this step asks for and well under the 1 DPM alarm — that gap is the margin an operator needs to see a ramp and still stop it. Aiming at the 30-second floor itself would take 42 steps and leave none.',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 26, speed: 'slow' }, hold: 600,
           saw: { p: 'startup_rate_dpm', op: '>', v: 0 }, acc: { p: 'power_pct', op: '>', v: 0.2 },
           hl: ['Control Bank', 'Startup Rate', 'Intermediate Range'] },
