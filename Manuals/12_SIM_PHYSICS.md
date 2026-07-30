@@ -120,14 +120,60 @@ Net reactivity is the sum of six terms:
 
 | Term | Coefficient | In operator units |
 |---|---|---|
-| Core excess | `rho_excess` = 0.10 | +10 000 pcm, held down by boron/rods/xenon |
-| Control + shutdown rods | worth 0.085 / 0.10 | 8500 / 10 000 pcm |
+| Core excess | `rho_excess` = 0.086776 | +8678 pcm, held down by boron/rods/xenon |
+| Control + shutdown rods | worth 0.04068 / 0.03676 | 4068 / 3676 pcm (all RCCAs **7744 pcm**) |
 | **Doppler** (fuel temperature) | −2.5 × 10⁻⁵ K⁻¹ | ≈ **−1.39 pcm/°F** (−2.5 pcm/°C) of fuel |
-| **Moderator temperature (MTC)** | −2.0 × 10⁻⁴ K⁻¹ | ≈ **−11.1 pcm/°F** (−20 pcm/°C) of Tavg |
-| Boron | 1.0 × 10⁻⁴ per ppm | ≈ **−10 pcm/ppm** |
+| **Moderator** (density-shaped) | see §4.3.1 | **−2 pcm/°F cold → −8 pcm/°F hot** at operating boron |
+| Boron (direct term) | 1.0 × 10⁻⁴ per ppm | ≈ **−10 pcm/ppm**, plus the density coupling below |
 | Xenon | worth 0.025 | 2500 pcm at equilibrium |
 
-Both temperature coefficients are **referenced to the settled full-power condition**, so they are exactly zero there and act purely as stabilising perturbations on a transient. That is a modelling convenience, not a claim that a real core has zero defect at power.
+The Doppler coefficient is **referenced to the settled full-power condition**, so it is exactly
+zero there and acts purely as a stabilising perturbation on a transient. That is a modelling
+convenience, not a claim that a real core has zero defect at power. The moderator term shares
+the same reference.
+
+**Every number in this table is either sourced to a real-plant document or solved from one, and
+`test/run_reactivity.js` pins the sourced ones.** The rod worths are the measured values in
+WTSM 2.2 *Reactivity Balance Calculations* (ML11216A051) Table 2.2-1 for a real Westinghouse
+4-loop — all control banks 4068 pcm, all shutdown banks 3676 pcm, all RCCAs 7744 pcm.
+`rho_excess` has no direct observable, so it is **solved** rather than tuned: it is whatever
+makes hot-zero-power all-rods-out critical boron come out at **975 ppm**, the figure measured in
+the BEAVRS / Watts Bar Unit 1 Cycle 1 hot-zero-power physics tests.
+
+### 4.3.1 The moderator coefficient is not a constant
+
+Moderator reactivity tracks moderator **density**, not temperature:
+
+> ρ_mod(T, B) = `mod_coeff` · (1 − B / 1400) · ( d(T) − d(T_ref) )
+
+where *d* is relative water density (a cubic in °C fitted to IAPWS-IF97 at 2248 psi (15.5 MPa)).
+The moderator temperature coefficient is the slope of that, so it **steepens on its own as the
+plant heats** — because the density derivative does — and **weakens as boron rises**, because
+boric acid expanding out of the core is a positive contribution that partly cancels the
+moderator loss. Both behaviours are sourced to WTSM 2.1 *Reactor Physics Review* (ML11223A207)
+§2.1.6.2 and Figure 2.1-8, which states that at 500 °F unborated water gives −17 pcm/°F, that
+500 ppm gives −8 pcm/°F at the same temperature, and that above roughly **1400 ppm the
+coefficient goes positive**. This plant peaks near 1100 ppm, so it never reaches that.
+
+| Tavg | 0 ppm | 900 ppm |
+|---|---|---|
+| 122 °F (50 °C) | −5.6 pcm/°F | −2.0 pcm/°F |
+| 350 °F (176.7 °C) | −10.4 pcm/°F | −3.7 pcm/°F |
+| 566.6 °F (297 °C) | −20.8 pcm/°F | −7.4 pcm/°F |
+
+**Two consequences fall out of the model rather than being tuned in.** Differential boron worth
+is **larger cold** — 13.8 pcm/ppm at 122 °F against 10.0 pcm/ppm at power — because denser water
+carries more boron atoms per unit volume. And **critical boron falls only gently** across a
+heatup: 834 ppm cold to 575 ppm hot with the control bank inserted, 1130 ppm to 975 ppm all-rods
+out. That is why boron is held roughly constant through a heatup and the dilution is done hot,
+which is what a real startup does.
+
+Before this was corrected, a single constant of −11.1 pcm/°F was applied from 122 °F to 579 °F.
+It integrated to a **−4944 pcm** moderator defect over the heatup — 494 ppm of dilution to buy
+back, a third of it charged below 274 °F — and it collapsed critical boron from 819 ppm cold to
+263 ppm hot. The practical consequence, and how it was found: **600 ppm, a value that looks safe
+next to the hot end, was critical at 274 °F**, and diluting toward it in a Mode 5 → Mode 1 run
+took the reactor critical cold and tripped it on source-range high flux.
 
 **Rod worth follows an S-curve** — least effective near fully in or fully out, most effective mid-core — with the peak deliberately flattened to about 90 % of the textbook curve. The reason is a teaching one: the single lumped bank carries the **full control worth that a real plant spreads over four banks**, so an unflattened curve made one step near the critical band worth far more than a real bank-D step.
 

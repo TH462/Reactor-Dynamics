@@ -200,7 +200,8 @@
 | Scram insertion time (control) | **~2.5 s** full travel |
 | Scram insertion time (shutdown) | **~2.0 s** |
 | Insertion limit (RIL) | **Power-dependent.** Not applicable below **5 %** power; above it the % withdrawn floor ramps linearly from **5 %** to **70 %** at 100 % power (≈ 10 % withdrawn at 12 % power, 70 % at full power). Drives the ROD INS LIMIT alarm and stops the automatic rod channel inserting further. The bank sits at 92 % withdrawn across the load range, so the limit means "the bank is abnormally deep for this power" |
-| Control worth (total group) | **~8500 pcm** class (`rod_worth_total = 0.085`) |
+| Control worth (total group) | **4068 pcm** (`rod_worth_total = 0.04068`) — WTSM 2.2 Table 2.2-1, all control banks |
+| Shutdown worth (total group) | **3676 pcm** (`rod_worth_shutdown = 0.03676`) — same source, all shutdown banks; all RCCAs together **7744 pcm** |
 | Shutdown group worth | **0.10** reactivity units |
 
 ---

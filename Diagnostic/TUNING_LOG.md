@@ -115,6 +115,107 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-29l — #260: the moderator coefficient is density-shaped, and the rod worths are real  ✅
+
+**How it was found.** Owner, free play, Mode 5 → Mode 1. Plant up to 2235 psi (15.41 MPa) and
+274 °F (134.4 °C); diluted toward 600 ppm; the source range climbed away and ended in a high
+source-range flux trip. Owner's read: *"in this region there is too much reactivity (−60 pcm)
+with a low amount of boron. When doing mode 3 → mode 1 with 567 °F and 363 ppm it does not do
+this, reactivity is about −1000 pcm."* **The trip was correct protective action.** The defect
+was why 600 ppm was critical at 274 °F.
+
+**Measured, before (clean `develop` 0f3a015).** Critical boron with the control bank inserted:
+819 ppm at 122 °F, **629 at 274 °F**, 426 at 437 °F, 263 at 567 °F. `alpha_MTC` was one
+constant, −11.11 pcm/°F, applied over the whole range — a **−4944 pcm** moderator defect
+across the heatup, 494 ppm of dilution, a third of it charged below 274 °F.
+
+**The evidence pass.** WTSM 2.1 (ML11223A207) §2.1.6.2 / Fig 2.1-8: *"Moderator density changes
+are not linear. At high temperatures an increase in the moderator temperature causes a larger
+reduction in density than an identical increase at low moderator temperatures"*; the 0 ppm curve
+reads −17 pcm/°F at 500 °F; the 500 ppm curve −8 pcm/°F there; and *"At boric acid
+concentrations greater than approximately 1400 ppm, the MTC is positive."* Modelled on a
+density-shaped curve anchored to those, the real defect at 919 ppm over the same heatup is
+**−133 to −1692 pcm** — 3× to 37× smaller than ours — and almost none of it below 274 °F.
+
+**The source disagrees with itself, and that is recorded rather than smoothed over.** The
+500 ppm / −8 pcm figure reading implies MTC = 0 at ~944 ppm; the text says ~1400 ppm. We took
+**1400** — an explicit statement beats a figure reading — and the residual is that we give
+−10.9 pcm/°F at 500 °F/500 ppm where the figure reads −8.
+
+**The fix** *(OWNER RULING, 2026-07-29: "do the full reactivity calibration for fidelity. I dont
+want to have to fix things twice.")*. `alpha_MTC` deleted; moderator reactivity is now
+`C_mod · (1 − B/1400) · (d(T) − d(T_ref))` with *d* = relative water density (cubic fit to
+IAPWS-IF97 at 2248 psi / 15.5 MPa, max residual 3.1 kg/m³). **It stays linear in boron**, so
+`_trimToCritical` remains a closed-form solve — no iteration. Rod worths to WTSM 2.2
+(ML11216A051) Table 2.2-1: control 8500 → **4068**, shutdown 10 000 → **3676** (all RCCAs 7744;
+BEAVRS cross-check, all banks 6466). `rho_excess` 0.10 → **0.086776**, **solved** — it has no
+direct observable — so HZP ARO critical boron lands on the measured **975 ppm** (BEAVRS / Watts
+Bar U1 Cycle 1). Supersedes #238.
+
+**Three things worth knowing.**
+
+1. **The owner's 2026-07-21 `alpha_MTC` ruling survives.** The sourced curve gives −21.9 pcm/°C
+   at the operating point against the ruled −20.0 — within 9 %. That ruling was right *at
+   power*; it was only wrong extrapolated to cold. That agreement is the strongest evidence the
+   shape is correct, and it is why every at-power gate held.
+2. **Two properties fell out unfitted.** Differential boron worth is now larger cold
+   (13.8 pcm/ppm at 122 °F vs 10.0 at power) — denser water, more boron atoms per cm³. And
+   critical boron went nearly flat: **834 → 575 ppm** rods-in, **1130 → 975** ARO, spread
+   556 → 259 ppm. Boron is now held through the heatup and diluted hot, which is real practice.
+3. **The event now reads correctly, not "better".** 600 ppm at 274 °F is **+2434 pcm
+   SUPERcritical**, because critical boron there is 787 ppm and cold water *should* be more
+   reactive. What changed is that the Mode 5 IC starts at 907 ppm, so a dilution toward 600
+   crosses the line early and visibly instead of 600 looking like a safe waypoint between 919
+   and 263. **I told the owner the opposite first** — an earlier estimate that pinned the hot
+   end at the old 263 ppm said 600 ppm would be subcritical. That was wrong and was corrected.
+
+**Content re-authored (HR9).** `pwr_startup`: 1/M bursts 120/50/30/15/8 → **138/90/44/22/12**
+(criticality moved from step 224 to **318**, solved and confirmed at 321); final approach
+11/−6/16 → 26/−8/22. It now goes critical at step 11, levels at **1.01 %** against the authored
+"1–3 %" target, crosses to 10.9 %, grid on at 11.2 MWe. `pwr_heatup`: the authored dilution
+drove a **runaway to 119 % power and 638 °F** — −0.12 → **−0.055 ppm/s**, now landing 569 °F
+at 5–7 %. **Consequence:** the gentler ride no longer reaches the 20 %/25 % startup trips, so
+those blocking steps are **precautionary now, not load-bearing** — kept, with the measured rates
+that do reach them written into the caution. Source-range milestones re-derived from measurement
+(620/1000/1800/3300/6200 → 550/850/1400/2250/3500); **that is the one assertion moved to match
+the plant, and it is called out rather than buried.**
+
+**Lesson worth keeping — I shipped a gate that passed for the wrong reason.** The first cut of
+`run_reactivity.js` asserted the owner's event as *"600 ppm at 274 °F is comfortably
+subcritical"* and computed `(600 − Bcrit)·worth`, reporting −2434 pcm. The sign is backwards:
+ρ = (Bcrit − B)·worth. It went green and would have written a false claim into the guard for
+the very thing the change was about. Caught only by comparing it against the earlier
+hand-measurement. **A green check is not evidence the check is right** — HR10 applies to the
+gates I write, not just the ones I inherit.
+
+**New guard.** `test/run_reactivity.js`, 13 checks: the −17 pcm/°F anchor, the 1400 ppm
+crossover, monotonic steepening with temperature, near-zero cold MTC, the three rod worths, HZP
+ARO 975 ppm, monotonic critical boron on cooldown, and the Mode 5 IC sitting above cold critical
+boron. `rho_excess` is solved, so this is what goes red if `alpha_D`, a rod worth or
+`boron_worth_per_ppm` moves without a re-solve.
+
+**Gates.** `run_all` **OK, 31 runners at baseline**. `run_campaign` held **51/51 (3026 checks)**
+through a change that moved every boron number and both rod worths — the missions steer on
+observables, not absolute ppm.
+
+**Docs re-measured, and two deliberately NOT.** `Manuals/12` §4.3 rewritten (+ new §4.3.1),
+`Manuals/09` §203, `Manuals/05` §106 (re-measured: **11.39 plant-hours** cold to
+**567.0 °F (297.2 °C)** on pump heat with no rod motion, arriving ρ = **−3377 pcm on 907 ppm**),
+`CONTEXT.md`, `M1 pwr engine.md`, `PLAYTEST_CHECKLIST.md`. **Left flagged, not overwritten:**
+`PWR_BEHAVIOR_CATALOG` PI-9's −9,604 pcm and the accumulator's 243 s were measured at
+**engine+M4**; my re-measurements are **engine-direct** and therefore not comparable (CLAUDE.md's
+layer warning). The held-worth arithmetic *was* corrected (0.4 × 4068 = **1627 pcm**), and the
+catalog now says plainly that PI-9's *"nearly 3× the held worth in spare margin"* premise is
+down to ~1.26× — the #199 ruling stands, its cushion does not.
+
+**Still open, tracked in #260.** No **Estimated Critical Condition** anywhere — real startups
+compute one before diluting (WTSM 2.2 §2.2.3 + Attachment 2.2-1); we have no ECC procedure, no
+critical-boron-vs-Tavg curve and no caution as boron nears critical for the current Tavg. That is
+what would have stopped this event before the trip. Also: one lumped control bank still carries
+all four banks' worth, and the Mode 5 IC's −1000 pcm is exactly the Tech Spec minimum (measured,
+it yields a *realistic* critical rod height — ~25 % withdrawn against the WTSM 2.2 exercise's
+desired 26 % — so it was left alone).
+
 ### 2026-07-29k — a portable single-file build, and the gate that keeps it possible  ✅
 
 **The ask.** *"i want to create a portable, offline version of this sim. how can i do that? is

@@ -1010,7 +1010,7 @@ scenario tests. There is no shared engine module and no shared engine code.
   feedback coefficients (per-K, i.e. Δk/k per K), and rod worths are all fractions, so the
   kinetics `((ρ−β)/Λ)·P + Σλᵢcᵢ` is dimensionally uniform across all three engines. **pcm** and
   **dollars** are *display/derived only* (1 pcm = 1e−5 Δk/k; 1 $ = β). Where a value is shown in
-  pcm — M1's rod worth (`0.085`, ≈ 8500 pcm) or M2's per-group `worth_pcm` (which feeds the ORM
+  pcm — M1's rod worth (`0.04068`, 4068 pcm since #260; was `0.085`) or M2's per-group `worth_pcm` (which feeds the ORM
   rod-equivalent **ratio**, where the unit cancels) — it is a presentation of the same fraction
   and is never fed back into the kinetics in pcm.
 - **Energy deposition (units).** The prompt-excursion energy metric stays in **cal/g** (rate in

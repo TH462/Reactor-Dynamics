@@ -193,7 +193,7 @@ function scruve(pos\_norm) {            // pos\_norm: 0 = fully inserted, 1 = fu
 // 0 when fully withdrawn, maximally negative when fully inserted
 ```
 
-`rod\_worth\_total = 0.085` (total control-group worth, \~8500 pcm) **\[tune]**. Sum the control
+`rod\_worth\_total = 0.04068` (control-group worth, 4068 pcm — WTSM 2.2 Table 2.2-1, all control banks; was `0.085`/8500 pcm before #260) **\[tune]**. Sum the control
 group and (when inserted on scram) the shutdown group — shutdown-group worth
 `rod\_worth\_shutdown = 0.10` **\[tune]** *(as built, `pwr\_config.js`)*.
 
@@ -692,7 +692,7 @@ while (step\_accumulator >= 1.0) {
 
 Selectable speeds: slow 32 steps/min (0.533/s), normal 192 (3.20/s), fast 288 (4.80/s).
 `max\_steps = 912` — the **fine-step drive** (rod-granularity retune 2026-07-23): the single
-lumped bank carries the full ~8500 pcm a real plant spreads over ~4 banks × 228 steps, so
+lumped bank carries the full 4068 pcm a real plant spreads over ~4 banks × 228 steps, so
 912 (= 4 × 228, the real total-travel equivalent) puts one step at ~9 pcm (~1.4 ¢) in the
 startup critical band — real bank-D differential worth. Speeds are ×4 in steps/s so travel
 in fraction-of-span per second (and every tuned evolution) is unchanged from the original

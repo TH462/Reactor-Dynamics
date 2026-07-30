@@ -37,6 +37,50 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-29l — #260: moderator reactivity is density-shaped; rod worths and `rho_excess` re-solved
+
+**The decision.** Delete `alpha_MTC` as a constant. Moderator reactivity becomes
+`C_mod · (1 − B/mod_boron_zero_ppm) · (d(T) − d(T_ref))`, *d* = relative water density. Rod
+worths go to the measured real values; `rho_excess` becomes a **solved** quantity rather than a
+tuned one. *(OWNER RULING, 2026-07-29: "do the full reactivity calibration for fidelity. I dont
+want to have to fix things twice.")*
+
+**Why a constant was wrong, and what it cost.** A flat −11.11 pcm/°F from 122 °F to 579 °F
+integrates to a −4944 pcm moderator defect over a Mode 5 → Mode 3 heatup — 494 ppm of dilution,
+a third of it charged below 274 °F — and collapses critical boron from 819 ppm cold to 263 hot.
+The operator-visible consequence, found in free play: **600 ppm was critical at 274 °F**, so
+diluting toward a value that looks safe next to the hot end took the reactor critical cold.
+
+**What each number is anchored to.** WTSM 2.1 (ML11223A207) Fig 2.1-8 gives the shape (density,
+not ΔT), the −17 pcm/°F unborated point at 500 °F, and the ~1400 ppm zero crossing. WTSM 2.2
+(ML11216A051) Table 2.2-1 gives control banks 4068 pcm and shutdown banks 3676 pcm. BEAVRS /
+Watts Bar U1 Cycle 1 gives HZP ARO critical boron 975 ppm, which is what `rho_excess` is solved
+against. `test/run_reactivity.js` pins all of it.
+
+**The alternative that was rejected.** Reshaping the moderator term alone, holding the hot end
+pinned, was the scoped option and it was recommended first. It was rejected by the owner because
+it fixes the *shape* while leaving the absolute boron scale wrong — rod worth at 18 500 pcm was
+2.4× anything sourceable and had collapsed rods-in critical boron to 263 ppm at HZP. Doing both
+at once avoided re-authoring the same content twice. **This supersedes the rod-worth concern
+parked in #238.**
+
+**Why the at-power tuning survived.** The sourced curve gives −21.9 pcm/°C at the operating
+point against the −20.0 ruled on 2026-07-21 — within 9 %. The 2026-07-21 ruling was right at
+power and only wrong extrapolated to cold, which is why EV-11, the TR-1 ride-out, PI-8 and the
+load-follow behaviours all held without retuning.
+
+**Consequences accepted.** `pwr_startup` and `pwr_heatup` were re-authored (HR9 — content follows
+the plant); the source-range count-rate milestones were re-derived from measurement, which is the
+one assertion moved to match the plant and is called out as such. `pwr_heatup`'s ride is now
+gentle enough (≈7 % peak) that its two startup-trip blocking steps are precautionary rather than
+load-bearing — kept deliberately, with the measured dilution rates that *do* reach the trips
+recorded in the caution. PI-9's *"nearly 3× the held worth in spare margin"* premise is down to
+~1.26×: the #199 ruling stands, its cushion does not.
+
+**Open.** No Estimated Critical Condition exists anywhere (WTSM 2.2 §2.2.3) — the thing that
+would have stopped this event before the trip. One lumped control bank still carries all four
+banks' worth. Tracked in #260.
+
 ## 2026-07-29j — #251: the SG boils everything that crosses it; the pump-heat netting deleted
 
 **Claim.** Rated steam flow is the flow made by **NSSS rated heat** — rated core heat *plus*

@@ -126,7 +126,12 @@ var BASELINES = {
   // prose moves this score. 22 is MEASURED on the merged tree, not 19+3 arithmetic — the
   // two branches each moved this number and a mechanical conflict resolution would have
   // shipped one side's.
-  'run_hardrules.js':      { code: 0, score: '22checks 0failed' },
+    // 22 -> 24 checks (#260): the reactivity recalibration's OWNER RULING ("do the full
+  // reactivity calibration for fidelity") is quoted with its date in TUNING_LOG.md and
+  // BUILD_DECISIONS.md, and the HR11 half of this gate scans tracked docs for exactly that
+  // shape. Two new declared quotes = two new checks. This is the gate working, not drift to
+  // paper over -- but it does mean quoting a ruling in a tracked doc moves this number.
+  'run_hardrules.js':      { code: 0, score: '24checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -239,7 +244,7 @@ var BASELINES = {
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
   // discriminate where the originals could not.
-  'run_e2e_controls.js':   { code: 0, score: '35/35' },
+  'run_e2e_controls.js':   { code: 0, score: '39/39' },
   // 96 → 100 checks, both from the pwr_startup rebuild:
   //   +1 (#134) the level-off now holds the point of adding heat at 1–3 %, and
   //      crossing the 5 % boundary into Mode 1 is its own deliberate step

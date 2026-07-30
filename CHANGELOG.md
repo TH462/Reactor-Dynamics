@@ -13,6 +13,38 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The moderator temperature coefficient is no longer a constant, and the reactor no longer
+  goes critical cold at 600 ppm** (#260). A single MTC of −11.1 pcm/°F (−20 pcm/°C) was
+  applied from 122 °F (50 °C) all the way to 579 °F (304 °C). Over a Mode 5 → Mode 3 heatup
+  that integrates to a **−4944 pcm** moderator defect — 494 ppm of dilution to buy back, a
+  third of it charged below 274 °F (134 °C) — and it collapsed critical boron from 819 ppm
+  cold to 263 ppm hot. Found in free play: at **2235 psi (15.41 MPa) and 274 °F (134.4 °C)**,
+  diluting toward **600 ppm** — a number that looks safe next to the hot end — took the
+  reactor critical and tripped it on source-range high flux. The trip was correct; the reason
+  600 ppm was critical was not.
+
+  Moderator reactivity now tracks moderator **density**, so the coefficient steepens as the
+  plant heats and weakens as boron rises, both sourced to WTSM 2.1 *Reactor Physics Review*
+  (ML11223A207) Figure 2.1-8. Rod worths went to the measured values in WTSM 2.2
+  (ML11216A051) Table 2.2-1 — control banks **8500 → 4068 pcm**, shutdown **10 000 →
+  3676 pcm** (all RCCAs 7744; the old 18 500 was 2.4× anything sourceable). Core excess
+  reactivity is now **solved**, not tuned, so hot-zero-power all-rods-out critical boron lands
+  on the **975 ppm** measured in the BEAVRS / Watts Bar Unit 1 Cycle 1 physics tests.
+
+  For an operator: critical boron now runs **834 → 575 ppm** across a heatup with the control
+  bank in (was 819 → 263), and **1130 → 975 ppm** all-rods-out. Boron is held roughly
+  constant through the heatup and the dilution is done hot, which is what a real startup does.
+  Differential boron worth is now larger cold (13.8 pcm/ppm at 122 °F against 10.0 at power),
+  which falls out of the density model rather than being tuned in.
+
+  **Two procedures were re-authored** because the plant changed under them (HR9). `pwr_startup`:
+  the 1/M withdrawal bursts are now 138/90/44/22/12 steps (criticality moved from step 224 to
+  318). `pwr_heatup`: the authored dilution drove a runaway to 119 % power and 638 °F on the
+  new model, so it is gentler — the ride now tops out near 7 % instead of 10–30 %, which is
+  the prototypical shape for a nuclear heatup, and the two startup-trip blocking steps became
+  precautionary rather than load-bearing.
+
 ### Changed
 - **The plant can now heat itself up from cold on pump heat alone, with the reactor never
   started** (#251). The steam generator used to subtract reactor-coolant-pump heat out of its

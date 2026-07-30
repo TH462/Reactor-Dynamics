@@ -221,6 +221,25 @@ a handful of UI/doc items.
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+- **The moderator coefficient was a constant, and it made the plant go critical COLD
+  (2026-07-29l, #260).** `alpha_MTC` applied a flat −11.11 pcm/°F from 122 °F to 579 °F — a
+  −4944 pcm moderator defect over a heatup, 494 ppm of dilution, a third of it charged below
+  274 °F. Critical boron therefore fell 819 → 263 ppm across the heatup, and **600 ppm was
+  critical at 274 °F**: the owner diluted toward it in free play and tripped on source-range
+  high flux. Moderator reactivity now tracks **density** (WTSM 2.1 Fig 2.1-8: the coefficient
+  steepens with temperature and goes to zero near 1400 ppm), rod worths went to the measured
+  WTSM 2.2 values (**8500 → 4068** control, **10 000 → 3676** shutdown; 18 500 was 2.4× anything
+  sourceable), and `rho_excess` is now **solved** so HZP ARO critical boron lands on BEAVRS's
+  measured **975 ppm**. Three things to know: **the 2026-07-21 `alpha_MTC` ruling survived** —
+  the sourced curve reproduces −20 pcm/°C to within 9 % at the operating point, which is why
+  every at-power gate held untouched; **600 ppm at 274 °F is now +2434 pcm SUPERcritical and
+  that is correct** — cold water is more reactive, and what changed is that critical boron is
+  no longer a moving target you cross without noticing (834 → 575 rods-in, spread 556 →
+  259 ppm); and **`run_reactivity.js`'s first cut passed for the wrong reason** — it asserted
+  the event with the reactivity sign inverted, went green, and would have enshrined a false
+  claim in the guard for the thing being fixed. `pwr_startup` and `pwr_heatup` were re-authored
+  (the latter's old dilution drove a runaway to **119 % power and 638 °F**). Still open: there
+  is **no Estimated Critical Condition** anywhere, which is what would have stopped the event.
 - **The sim ships as ONE emailable `.html` file now, and that is gated (2026-07-29k).**
   `node tools/make_portable.js` → `dist/Reactor_Dynamics_<version>.html`: the 94 scripts +
   2 stylesheets `ui/shell.html` loads, inlined in document order, 2.55 MB, runs by
@@ -287,17 +306,6 @@ anything here that is standing procedure rather than news belongs in the list be
   100 % after 30 s, which only ever held because the run was starved — automatic HPI comes
   in at 10.5 MPa and refills past nominal, which is TMI's solid-pressurizer trap and the
   correct behaviour.
-
-- **The Hard Rules were reorganized, and they now have guards (2026-07-29).** §3 is **nine
-  rules**, split architecture (HR1–HR6) from practice (HR9, HR10, HR11), each naming its
-  guard. HR7/HR8 retired to §11 and §8 — **a demotion out of binding, stated as one**;
-  numbers are never reused (~580 citations). HR11 (a ruling needs a date + verbatim words)
-  was extracted from inside HR9. The *how* moved to **`Blueprint/SOP.md`** — advisory,
-  except §5 which quotes an owner instruction. New `test/run_hardrules.js` guards HR1, HR5,
-  HR11. **Read HR1's guard output before trusting it green:** it separates settled
-  *exceptions* from tracked *debt*. It declared 5 debts on day one; **4 were paid within
-  the week (#247)** and **1 remains** (RBMK, unreviewed, on hold). The split working that
-  fast is the argument for it — one list would have called all five "allowed".
 
 **Standing procedure — not part of the rotation above; these do not expire.**
 
@@ -405,7 +413,7 @@ Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, ca
 were never plant defects at all — the harness was running 11 of its 22 procedures below the
 10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_hr3` **29 checks / 0 failed**, `run_hardrules` **22 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_portable` **112 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_reactivity` **13 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve), `run_hr3` **29 checks / 0 failed**, `run_hardrules` **24 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_portable` **112 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **35/35** (both F12 reds were stale expectations, fixed
