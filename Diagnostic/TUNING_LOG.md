@@ -134,12 +134,25 @@ were already correct and one was already fixed:
 | `run_autoctl` | `run(simSeconds)` looping `simSeconds` cycles | **wrong — measured below** |
 
 **`run_autoctl` was delivering 91.7 % of the sim time it asked for.** Its `run(simSeconds)`
-looped one cycle per requested second on the strength of a comment reading "~1 s sim per cycle
-at 10×" — true only at the steady cadence. Instrumented across the whole suite: **226 calls,
-8565 s requested, 7858.0 s actually elapsed (ratio 0.917), 12 calls more than 5 % short.**
-Every shortfall lands inside a transient, which is precisely what the automation probes exist
-to watch. Same failure shape as **#245** (a gate silently running below its declared sim rate),
-reached through the *cadence* rather than the *acceleration*.
+looped one cycle per requested second. Instrumented across the whole suite: **226 calls, 8565 s
+requested, 7858.0 s actually elapsed (ratio 0.9175 — an 8.3 % AGGREGATE shortfall). 15 of 226
+calls (6.6 %) under-delivered, 211 were exact, and ZERO over-delivered. Worst single call:
+15.50 s against a requested 30 s, ratio 0.517** — off by 2×, not by 8 %. Every shortfall lands
+inside a transient, which is precisely what the automation probes exist to watch. Same failure
+shape as **#245** (a gate silently running below its declared sim rate), reached through the
+*cadence* rather than the *acceleration*.
+
+**Be fair to the comment that was there — this is subtler than "nobody checked."** It read,
+verbatim: `// ~1 s sim per cycle at 10× (transient cadence shortens a cycle; overshoot is fine)`.
+The author **named the exact mechanism.** What failed was the *sizing*, and the direction of the
+reassurance: "overshoot is fine" is about `Math.ceil` overshooting the cycle *count*, which
+delivers **more** sim time — and measured, nothing ever over-delivered. So the note disclosed the
+real risk and then waved off its opposite, leaving a 2× undershoot reading as a rounding detail.
+An earlier draft of this entry, and the first #261 close comment, quoted only the "~1 s per cycle
+at 10×" half and made the author look unaware when they were not — corrected here and on the
+issue. **The lesson is therefore NOT "write the assumption down": that was done, and the
+mechanism was named correctly. It is that prose cannot be contradicted — assert the invariant in
+code, because a correctly-identified mechanism can still be mis-sized and nothing will object.**
 
 Fixed to drive on `service.simTime`. **`run_autoctl` stays 20/20 with the full budget** — so,
 unlike #245, none of these probes had been passing *because* they were starved. That is the
