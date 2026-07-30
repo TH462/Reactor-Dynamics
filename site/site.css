@@ -170,6 +170,9 @@ a.disabled { pointer-events: none; cursor: default; opacity: 0.4; text-decoratio
   font-size: 20px; margin: 36px 0 10px;
   text-transform: none; letter-spacing: 0; color: var(--text);
 }
+.page h3 {
+  font-size: 16px; margin: 20px 0 8px; font-weight: 600; color: var(--text);
+}
 .page p, .page li { color: var(--text-2); }
 .page strong { color: var(--text); }
 
