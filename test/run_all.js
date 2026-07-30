@@ -192,6 +192,14 @@ var BASELINES = {
   // new <script src> shifts this baseline, which is the intended nudge to re-verify that
   // the portable build still builds.
   'run_portable.js':       { code: 0, score: '112checks 0failed' },
+  // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
+  // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
+  // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
+  // temperature, the three WTSM 2.2 rod worths, and BEAVRS HZP ARO 975 ppm.
+  // `rho_excess` has NO direct observable: it is solved so HZP ARO lands on 975. If you
+  // move alpha_D, either rod worth or boron_worth_per_ppm without re-solving it, the
+  // 975 ppm check is what goes red instead of the plant drifting quietly.
+  'run_reactivity.js':     { code: 0, score: '13checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   'run_m4.js':             { code: 0, score: '25/25 135passed' },
