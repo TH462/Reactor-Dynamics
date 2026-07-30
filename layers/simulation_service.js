@@ -665,6 +665,22 @@
 
   // Convenience for tests / headless drivers: advance N broadcast cycles
   // synchronously (no timers), honoring play/pause via `running`.
+  //
+  // *** n IS CYCLES, NOT SECONDS. *** One cycle is `_stepsPerBroadcast()` physics
+  // steps = timeAcceleration × (broadcastMs / 1000) of SIM TIME — 0.1 s at the 10 Hz
+  // default, and only 0.05 s once `_updateCadence` decides it is in a transient
+  // (NORMAL_MS 100 → TRANSIENT_MS 50). So the sim time a cycle buys you is NOT
+  // constant within a single run, and `advanceCycles(400)` is 40 s at 1×, not 400 s.
+  //
+  // If you want a duration, DRIVE OFF `simTime` — `var t = svc.simTime + secs; while
+  // (svc.simTime < t) svc.advanceCycles(1);` — do not divide seconds by an assumed
+  // cycle length. Two gates were wrong about this: #194 read a settled equilibrium off
+  // an 83 s control loop after 40 s and filed a plant defect that did not exist (a
+  // non-defect that reached an owner ruling before anyone checked PHYSICS_DT), and
+  // #261/run_autoctl's `run(simSeconds)` looped cycles on a "~1 s per cycle at 10×"
+  // assumption and delivered 91.7 % of its requested sim time, every shortfall landing
+  // inside the transients it was there to measure. See also #245, the same "gate
+  // running below its declared sim rate" failure reached through timeAcceleration.
   SimulationService.prototype.advanceCycles = function (n) {
     var last = null;
     var wasRunning = this.running;

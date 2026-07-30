@@ -115,6 +115,51 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-29n — #261: the cycles-as-seconds trap, swept  ✅
+
+Follow-up to 2026-07-29m. `advanceCycles(n)` advances **broadcast cycles**, not seconds, and
+the sim time a cycle buys is **not even constant within one run** — `_updateCadence` halves
+`broadcastMs` (100 → 50 ms) on a transient, so a cycle goes from 0.1 s to 0.05 s at 1×.
+
+**The sweep — measured, and smaller than feared.** Seven harnesses call `advanceCycles`. Five
+were already correct and one was already fixed:
+
+| harness | how it drives | verdict |
+|---|---|---|
+| `run_campaign` | `settle(s, secs)` / `runUntil(…, simBudget)` on `s.simTime` | correct |
+| `run_scenarios` | `start = s.simTime` | correct |
+| `run_m5` | computes `dtCycle = s.broadcastMs / 1000` explicitly | correct — and the only file that already knew |
+| `run_m6`, `run_m6ph` | small bare cycle counts, no duration claimed | fine |
+| `run_e2e_controls` | `step(s, n)` | **was the #194 defect**; fixed |
+| `run_autoctl` | `run(simSeconds)` looping `simSeconds` cycles | **wrong — measured below** |
+
+**`run_autoctl` was delivering 91.7 % of the sim time it asked for.** Its `run(simSeconds)`
+looped one cycle per requested second on the strength of a comment reading "~1 s sim per cycle
+at 10×" — true only at the steady cadence. Instrumented across the whole suite: **226 calls,
+8565 s requested, 7858.0 s actually elapsed (ratio 0.917), 12 calls more than 5 % short.**
+Every shortfall lands inside a transient, which is precisely what the automation probes exist
+to watch. Same failure shape as **#245** (a gate silently running below its declared sim rate),
+reached through the *cadence* rather than the *acceleration*.
+
+Fixed to drive on `service.simTime`. **`run_autoctl` stays 20/20 with the full budget** — so,
+unlike #245, none of these probes had been passing *because* they were starved. That is the
+result worth recording: the bug was real, and it happened not to have bought any false greens.
+
+**Also done.** `advanceCycles` now carries the warning at its definition
+(`layers/simulation_service.js`) with both worked cases; `run_e2e_controls`'s `step()` is
+renamed **`cycles()`** (the lying name was the root cause — `step(s, 400)` reads as seconds)
+with a new `secs()` beside it, and its own windows now pass **sim seconds** rather than cycle
+counts. Same 39/39, same measured numbers, honest units.
+
+**One thing to know if you touch this:** renaming `step` → `cycles` collided with a `cycles`
+parameter inside `sgtrRun`, which shadowed the helper and threw immediately. Caught by the
+runner, not by review — the rename is mechanical but not free.
+
+Gates: `run_e2e_controls` **39/39**, `run_autoctl` **20/20**, `run_all` **31 runners at
+baseline**. No plant code changed.
+
+---
+
 ### 2026-07-29m — #194: CVCS holds leaks fine; the measurement counted cycles as seconds  ✅
 
 **Disposition: NOT A DEFECT. No plant code changed.** #194 reported that CVCS make-up covers a

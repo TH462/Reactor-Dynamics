@@ -27,7 +27,15 @@ function svc(plant, init, dv) {
   s.selectPlant(plant, init, dv || null);
   return s;
 }
-function step(s, n) { for (var i = 0; i < (n || 50); i++) s.advanceCycles(1); }
+// Advance n BROADCAST CYCLES — 0.1 s of sim time each at the 10 Hz default, and only
+// 0.05 s once the service decides it is in a transient. Named `cycles` and not `step`
+// on purpose (#261): as `step(s, 400)` it read as seconds, and #194 was filed,
+// cross-referenced from this file and owner-ruled on the strength of a "400 s" window
+// that was really 40 s. If you want a DURATION, use secs() below.
+function cycles(s, n) { for (var i = 0; i < (n || 50); i++) s.advanceCycles(1); }
+// Advance a duration of SIM TIME — cadence- and acceleration-proof. Prefer this whenever
+// the assertion is about how far a plant or a controller has actually got.
+function secs(s, t) { var end = s.simTime + t; while (s.simTime < end) s.advanceCycles(1); }
 function ck(desc, ok, obs, exp) {
   if (ok) { pass++; console.log(G + '  ✓' + X + ' ' + desc + ' (' + obs + ')'); }
   else { fail++; console.log(R + '  ✗' + X + ' ' + desc + ' [expected ' + exp + ', got ' + obs + ']'); }
@@ -41,13 +49,13 @@ console.log(B + 'PWR — recently-added controls' + X);
   var s = svc('pwr', 'hot_full_power');
   var before = rodSteps(s);
   s.handleCommand({ action: 'scram' });
-  step(s, 300);
+  cycles(s, 300);
   var after = rodSteps(s);
   ck('linear scram drives control rods to 0 steps', after === 0, after, 0);
 
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'set_heater', power_pct: 80 });
-  step(s, 20);
+  cycles(s, 20);
   var heatPct = s.engine.s.heater_power_frac * 100;
   ck('PZR heater manual set reaches engine', heatPct >= 75, heatPct.toFixed(0), '>=75');
 
@@ -61,21 +69,21 @@ console.log(B + 'PWR — recently-added controls' + X);
   var sprayCap = RD.PWR_CONFIG.pressurizer.spray_flow_max * 100;
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'set_spray', pct: sprayCap / 2 });
-  step(s, 20);
+  cycles(s, 20);
   var sprayLo = s.engine.s.spray_flow_frac * 100;
   ck('PZR spray manual set below the cap reaches engine untouched',
     Math.abs(sprayLo - sprayCap / 2) < 0.5, sprayLo.toFixed(1), (sprayCap / 2).toFixed(1));
 
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'set_spray', pct: 50 });
-  step(s, 20);
+  cycles(s, 20);
   var sprayPct = s.engine.s.spray_flow_frac * 100;
   ck('PZR spray manual set above the cap is clamped to it (CC-5)',
     Math.abs(sprayPct - sprayCap) < 0.5, sprayPct.toFixed(1), sprayCap.toFixed(1) + ' (cap)');
 
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'open_porv' });
-  step(s, 10);
+  cycles(s, 10);
   ck('manual PORV open command', s.engine.s.porv_demand === 'open', s.engine.s.porv_demand, 'open');
 
   s = svc('pwr', 'hot_full_power');
@@ -117,14 +125,14 @@ console.log(B + 'PWR — recently-added controls' + X);
   s = svc('pwr', 'hot_full_power');
   var boron0 = s.engine.s.boron_ppm;
   s.handleCommand({ action: 'set_boron_adjust', rate: 5 });
-  step(s, 50);
+  cycles(s, 50);
   ck('borate raises boron ppm (charging pump on)', s.engine.s.boron_ppm > boron0, s.engine.s.boron_ppm.toFixed(0), '>' + boron0.toFixed(0));
 
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'set_charging_pump', running: false });
   var boronOff = s.engine.s.boron_ppm;
   s.handleCommand({ action: 'set_boron_adjust', rate: 5 });
-  step(s, 50);
+  cycles(s, 50);
   ck('borate inert with charging pump off', s.engine.s.boron_ppm === boronOff, s.engine.s.boron_ppm.toFixed(0), boronOff.toFixed(0));
 
   s = svc('pwr', 'hot_full_power');
@@ -133,7 +141,7 @@ console.log(B + 'PWR — recently-added controls' + X);
 
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'set_letdown_orifices', a: true, b: false });
-  step(s, 20);
+  cycles(s, 20);
   ck('letdown orifice A → pressure-driven flow', s.engine.s.letdown_flow >= 0.02, s.engine.s.letdown_flow.toFixed(3), '>=0.02');
 
   // §8.8 CVCS AUTO make-up vs a leak — DIFFERENTIAL, not an absolute band.
@@ -146,7 +154,7 @@ console.log(B + 'PWR — recently-added controls' + X);
   //     it. (The old comment's "loses ~10 % over the window" was an order of magnitude
   //     out.)
   //
-  // MIND THE UNITS: `step()` advances BROADCAST CYCLES, and one cycle is 0.1 s of sim
+  // MIND THE UNITS: `cycles()` advances BROADCAST CYCLES, and one cycle is 0.1 s of sim
   // time (NORMAL_MS 100 / PHYSICS_DT 0.02 = 5 physics steps). So 400 cycles is 40 s,
   // NOT 400 s. Earlier revisions of this comment block said "the 400 s window"
   // throughout, and that slip is the whole of #194: it made a 40 s reading of an 83 s
@@ -164,12 +172,15 @@ console.log(B + 'PWR — recently-added controls' + X);
   //
   // Letdown (the free-play Orifice A preset) is closed first so charging balances the
   // LEAK alone rather than leak + letdown make-up.
-  function sgtrRun(cvcsAuto, severity, cycles) {
+  // simSeconds is SIM TIME, driven through secs() — not a cycle count (#261). The
+  // default 40 s is what the old `step(t, 400)` actually delivered, minus the cadence
+  // shortfall; the equilibrium checks below pass an explicit, much longer window.
+  function sgtrRun(cvcsAuto, severity, simSeconds) {
     var t = svc('pwr', 'hot_full_power');
     t.handleCommand({ action: 'set_letdown_orifices', a: false, b: false });
     t.handleCommand({ action: 'set_cvcs_auto', active: cvcsAuto });
     t.handleCommand({ action: 'inject_failure', failure_id: 'sgtr', severity: severity });
-    step(t, cycles || 400);
+    secs(t, simSeconds || 40);
     // AVERAGE the servo output over a window; do NOT sample it once at the end.
     // charging_flow is driven by a filtered error on the INDICATED pzr level, so it carries
     // the level instrument's noise. A single sample was only ever the mean because the noise
@@ -180,7 +191,7 @@ console.log(B + 'PWR — recently-added controls' + X);
     // noise models, which is why it is the right fixture rather than a workaround.
     var nAvg = 120, chgSum = 0, leakSum = 0, invStart = t.engine.s.core_inventory_pct;
     for (var q = 0; q < nAvg; q++) {
-      step(t, 1);
+      cycles(t, 1);
       chgSum += t.engine.s.charging_flow || 0;
       leakSum += t.engine.s.leak_flow || 0;
     }
@@ -227,20 +238,23 @@ console.log(B + 'PWR — recently-added controls' + X);
   //     level droop* = leak / (gain * charge_per_level)      [% of level]
   //     loop tau     = 1 / (gain * charge_per_level * level_per_mass)  = 83 s
   //
-  // WHY THE WINDOW IS 4000 CYCLES. tau is 83 s, so the 400 cycles (40 s) the plumbing
-  // checks above use is HALF A TIME CONSTANT — the servo has barely started. This is
-  // exactly what #194 tripped over: a check here asserted coverage was "a consistent
-  // 10..50 % of the leak, equal across leak sizes" and read ~24 % every time. Both
-  // halves of that were artifacts of the window. Coverage was equal across severities
-  // because the loop is LINEAR (every leak sits at the same fraction of its own
-  // approach at a given time), and it was ~24 % because 40 s is 0.48 tau. Measured at
-  // 4000 cycles (400 s ~= 4.8 tau) the same plant covers 97-100 % and inventory is
-  // flat. The old check pinned a transient as a steady-state property and put a
-  // non-defect ("no leak is ever held in equilibrium") into an issue and an owner
-  // ruling. Do not shorten these runs; if the loop is ever retuned, scale them off tau.
+  // WHY THE WINDOW IS 400 SECONDS. tau is 83 s, so the 40 s the plumbing checks above
+  // use is HALF A TIME CONSTANT — the servo has barely started. This is exactly what
+  // #194 tripped over: a check here asserted coverage was "a consistent 10..50 % of the
+  // leak, equal across leak sizes" and read ~24 % every time. Both halves of that were
+  // artifacts of the window. Coverage was equal across severities because the loop is
+  // LINEAR (every leak sits at the same fraction of its own approach at a given time),
+  // and it was ~24 % because 40 s is 0.48 tau. Measured at 4.8 tau the same plant covers
+  // 97-100 % and inventory is flat. The old check pinned a transient as a steady-state
+  // property and put a non-defect ("no leak is ever held in equilibrium") into an issue
+  // and an owner ruling.
+  //
+  // Windows here are SIM SECONDS, not cycles (#261) — the whole misreading came from a
+  // cycle count that looked like seconds. Do not shorten these; if the loop is ever
+  // retuned, scale them off tau.
   var rcv = RD.PWR_CONFIG.reactivity, gain = rcv.cvcs_inventory_gain;
   var cpl = rcv.cvcs_charge_per_level, lpm = RD.PWR_CONFIG.pressurizer.level_per_mass;
-  var SETTLE = 4000;                       // cycles = 400 s ~= 4.8 loop time constants
+  var SETTLE = 400;                        // sim seconds ~= 4.8 loop time constants
   var leakA = sgtrRun(true, 0.004, SETTLE), leakB = sgtrRun(true, 0.008, SETTLE);
   var covA = leakA.chg * gain / leakA.leak, covB = leakB.chg * gain / leakB.leak;
   ck('CVCS make-up scales with the leak (proportional servo)',
@@ -310,17 +324,17 @@ console.log('\n' + B + 'RBMK — recently-added controls' + X);
 (function () {
   var s = svc('rbmk', 'full_power', 'pre_chernobyl');
   s.handleCommand({ action: 'set_turbine_load', mwe: 400 });
-  step(s, 30);
+  cycles(s, 30);
   var mwe = s.engine.s.steam_to_turbine * s.engine.cfg.turbine.mwe_rated;
   ck('turbine load set lowers demand', mwe <= 450, mwe.toFixed(0), '<=450');
 
   s = svc('rbmk', 'full_power', 'pre_chernobyl');
-  step(s, 250);   // 5 s steady
+  cycles(s, 250);   // 5 s steady
   s.handleCommand({ action: 'inject_failure', failure_id: 'pressure_tube_rupture', severity: 0.5 });
-  step(s, 400);   // 8 s drain (matches engine §14 eccs harness)
+  cycles(s, 400);   // 8 s drain (matches engine §14 eccs harness)
   var drumLow = s.engine.s.drum_level_pct;
   s.handleCommand({ action: 'set_eccs', active: true });
-  step(s, 500);   // 10 s recovery
+  cycles(s, 500);   // 10 s recovery
   ck('ECCS recovers drum level after rupture', s.engine.s.drum_level_pct > drumLow, s.engine.s.drum_level_pct.toFixed(1) + ' (was ' + drumLow.toFixed(1), 'higher');
   ck('ECCS active flag', s.engine.s.eccs_active === true, s.engine.s.eccs_active, true);
 })();
@@ -329,23 +343,23 @@ console.log('\n' + B + 'BWR — recently-added controls' + X);
 (function () {
   var s = svc('bwr', 'full_power');
   s.handleCommand({ action: 'set_steam_dump', mode: 'open' });
-  step(s, 20);
+  cycles(s, 20);
   ck('steam dump open', s.engine.s.steam_dump_override >= 0.9, s.engine.s.steam_dump_override, '>=0.9');
 
   s = svc('bwr', 'post_scram_sbo');
   s.handleCommand({ action: 'set_ic', active: true });
-  step(s, 200);
+  cycles(s, 200);
   ck('IC active on SBO', s.engine.s.ic_active === true, s.engine.s.ic_active, true);
 
   s = svc('bwr', 'full_power');
   s.handleCommand({ action: 'start_lpcs' });
-  step(s, 20);
+  cycles(s, 20);
   s.handleCommand({ action: 'stop_lpcs' });
   ck('core spray stop', !s.engine.s.lpcs_running, s.engine.s.lpcs_running, false);
 
   s = svc('bwr', 'full_power');
   s.handleCommand({ action: 'initiate_slc' });
-  step(s, 10);
+  cycles(s, 10);
   s.handleCommand({ action: 'stop_slc' });
   ck('SLC stop', !s.engine.s.slc_active, s.engine.s.slc_active, false);
 })();
