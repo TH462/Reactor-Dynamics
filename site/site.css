@@ -60,10 +60,48 @@ a:hover { text-decoration: underline; }
   padding: 2px 9px; font-size: 11px; font-weight: 700; letter-spacing: 1.4px;
   line-height: 1.4; white-space: nowrap;
 }
-.site-nav { margin-left: auto; display: flex; gap: 22px; flex-wrap: wrap; justify-content: flex-end; }
-.site-nav a { color: var(--text-2); font-size: 14px; }
-.site-nav a:hover { color: var(--text); text-decoration: none; }
-.site-nav a.active { color: var(--text); }
+/* Burger + dropdown (site menu) */
+.nav-wrap {
+  margin-left: auto;
+  position: relative;
+  flex: 0 0 auto;
+}
+.nav-burger {
+  display: flex; flex-direction: column; justify-content: center; gap: 5px;
+  width: 40px; height: 36px; padding: 8px 9px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius); cursor: pointer;
+  color: var(--text-2);
+}
+.nav-burger:hover { border-color: var(--normal); color: var(--text); }
+.nav-burger span {
+  display: block; height: 2px; width: 100%;
+  background: currentColor; border-radius: 1px;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.nav-burger.is-open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.nav-burger.is-open span:nth-child(2) { opacity: 0; }
+.nav-burger.is-open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+.site-nav {
+  display: none;
+  position: absolute; top: calc(100% + 8px); right: 0;
+  min-width: 200px;
+  flex-direction: column; gap: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 6px 0;
+  z-index: 20;
+}
+.site-nav.is-open { display: flex; }
+.site-nav a {
+  display: block; color: var(--text-2); font-size: 14px;
+  padding: 10px 16px; text-decoration: none; white-space: nowrap;
+}
+.site-nav a:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); text-decoration: none; }
+.site-nav a.active { color: var(--text); font-weight: 600; }
 /* Disabled links: intentional "not yet" (e.g. gated features), not broken links. */
 a.disabled { pointer-events: none; cursor: default; opacity: 0.4; text-decoration: none; }
 

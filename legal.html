@@ -15,13 +15,20 @@
   <div class="bar">
     <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
     <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
-    <nav class="site-nav">
+    <div class="nav-wrap">
+      <button type="button" class="nav-burger" id="navBurger"
+              aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="site-nav" id="siteNav">
       <a href="ui/shell.html?engine=pwr">Simulator</a>
       <a href="about.html">About</a>
+      <a href="physics.html">Physics</a>
       <a href="download.html">Download</a>
       <a href="changelog.html">Changelog</a>
       <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
-    </nav>
+      </nav>
+    </div>
   </div>
 </header>
 
@@ -130,5 +137,6 @@
 
 <script src="site/version.js"></script>
 <script>document.getElementById('ver').textContent = window.RD_VERSION || '';</script>
+  <script src="site/nav.js"></script>
 </body>
 </html>

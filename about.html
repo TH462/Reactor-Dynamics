@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>About — Reactor Dynamics</title>
-    <meta name="description" content="What Reactor Dynamics is: a browser-based nuclear plant trainer you can learn and practice on.">
+    <meta name="description" content="Run a nuclear power plant in your browser. Take a cold plant to full power, work real failures on real physics, and learn why operators do things the way they do.">
     <meta property="og:title" content="About — Reactor Dynamics">
-    <meta property="og:description" content="A browser-based nuclear plant trainer. Learn the basics, then practice startups, load changes, and failures on the same plant.">
+    <meta property="og:description" content="Run a nuclear power plant in your browser. Cold shutdown to full power, real procedures, real failures — on one continuous plant model.">
     <meta property="og:image" content="site/hero.png">
     <meta property="og:type" content="website">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
@@ -19,75 +19,102 @@
   <div class="bar">
     <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
     <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
-    <nav class="site-nav">
+    <div class="nav-wrap">
+      <button type="button" class="nav-burger" id="navBurger"
+              aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="site-nav" id="siteNav">
       <a href="ui/shell.html?engine=pwr">Simulator</a>
       <a class="active" href="about.html">About</a>
+      <a href="physics.html">Physics</a>
       <a href="download.html">Download</a>
       <a href="changelog.html">Changelog</a>
       <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
-    </nav>
+      </nav>
+    </div>
   </div>
 </header>
 
 <main class="page">
   <h1>About Reactor Dynamics</h1>
-  <p class="lede">Reactor Dynamics is a nuclear power plant simulator that runs
-  in your browser. It is meant for learning how a plant is run, and for
-  practicing the same work later — startups, load changes, trips, and
-  failures — on one continuous model.</p>
-  <p>Nothing to install. Desktop or laptop only for now.</p>
+  <p class="lede">A nuclear power plant you can run from your browser. Take a
+  cold, quiet plant all the way to full power, hold it there through whatever
+  goes wrong, and learn — hands on the controls — why real operators do things
+  the way they do.</p>
 
-  <h2>What it is for</h2>
-  <p>Most people never sit a control room. Licensed training tools are hard
-  to get. Toy sims often drop the physics until the plant cannot teach a real
-  procedure. This project tries to sit between those two: plain enough to
-  start without a nuclear background, and detailed enough that a load change
-  or a stuck valve still has consequences you can follow.</p>
+  <p>Nothing to install, no account. Desktop or laptop for now.</p>
+
+  <p style="margin: 24px 0 8px;">
+    <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
+  </p>
+
+  <div class="hero-shot" style="padding: 0; margin: 28px 0 8px;">
+    <img src="site/hero.png" alt="The Reactor Dynamics PWR control-room interface"
+         onerror="this.parentNode.style.display='none'">
+  </div>
+
+  <h2>What this is</h2>
+  <p>Real control-room training is locked inside licensed facilities, on
+  machines the public never touches. Reactor Dynamics brings that kind of
+  hands-on plant operation to anyone with a browser: plain enough to start
+  with no nuclear background, and faithful enough that a load change or a
+  stuck valve has consequences you can trace and reason about.</p>
   <p>It is not a game about scores. It is a plant you operate.</p>
 
-  <h2>Who might use it</h2>
-  <ul>
-    <li>People new to nuclear who want the basics done carefully</li>
-    <li>Students and instructors who want a plant on the screen, not only slides</li>
-    <li>Anyone who wants to practice maneuvers or failures without a full
-    training center</li>
-  </ul>
-
   <h2>What you can do</h2>
-  <p>Bring a cold plant up: pressurize, start the pumps, heat to hot standby,
-  approach criticality, raise power, connect the generator, and hold steady.
-  Operator manuals are in the control room. Free play leaves you on the board;
-  guided missions (when offered) walk a path for you.</p>
-  <p>You can also change load, adjust boron, run feed and level control, trip
-  and recover, and inject failures — stuck valves, pump trips, bad sensors,
-  loss of heat sink. Beginners and harder sessions use the same plant model.</p>
+  <ul>
+    <li><strong>Bring a cold plant to life.</strong> Pressurize the system,
+    start the reactor coolant pumps, heat to hot standby, pull rods to
+    criticality, raise power, put the generator on the grid, and carry the
+    plant to 100%.</li>
+    <li><strong>Run it like a job.</strong> Load changes, boration and
+    dilution, feedwater and level control, holding a steady board through the
+    slow chemistry of xenon.</li>
+    <li><strong>Work real casualties.</strong> Reactor trips and recovery,
+    stuck valves, pump trips, failed sensors, steam generator tube leaks, loss
+    of heat sink — injected on your terms, or arriving without warning.</li>
+  </ul>
+  <p>That includes the classics. The Three Mile Island sequence is here — the
+  stuck-open relief valve, the indicator that claimed it was shut, and the
+  slowly draining reactor behind them both. You can walk into the same trap,
+  or catch it in time.</p>
+  <p>Every session runs on the same physics, from first tutorial to worst
+  casualty. There is no easy mode: an easier session is a gentler scenario,
+  not a simpler plant.</p>
+  <p>Commercial-format operator manuals are in the control room, and a guided
+  training campaign — an instructor that watches the board and gates your
+  progress through real procedures — is rolling out alongside free play.</p>
 
-  <h2>What is playable today</h2>
-  <p>A compact pressurized water reactor (PWR), roughly 100&nbsp;MWe, one coolant
-  loop. Cold shutdown through full power is one continuous path. Two other
-  reactor types (boiling-water and graphite-channel) have physics engines in
-  the project; their public control rooms are not ready yet.</p>
+  <h2>The plant</h2>
+  <p>A compact pressurized water reactor: about 100&nbsp;MWe, one coolant
+  loop, one steam generator — small enough to learn whole, complete enough to
+  behave like a plant. Cold shutdown to full power is one continuous path on
+  one continuous model; nothing is a cutscene.</p>
+  <p>Two more reactor types are built into the project — a boiling-water plant
+  and a Chernobyl-type RBMK — with working physics engines. Their control
+  rooms open later.</p>
 
-  <h2>What you see on the board</h2>
-  <p>You work from instrument readings — lagged, noisy, and able to fail — not
-  a god-view of every true number. That is how real boards work, and it is how
-  some of the hardest lessons (including historical accidents) actually happen.
-  The plant still runs underneath; you have to operate through the panel.</p>
-
-  <h2>How it runs</h2>
-  <p>Ordinary web pages and JavaScript. No account required for the simulation
-  itself. Open the site or a local copy and go into the control room.</p>
-
-  <h2>Physics</h2>
-  <p>If you would like to see the physics behind this simulator — what is
-  modeled, how the systems couple, and what is left out on purpose — see
-  <a href="physics.html">Physics behind the simulator</a>.</p>
+  <h2>Where it runs</h2>
+  <p>Any modern desktop browser. The simulation runs entirely on your machine
+  — from this site, from a local copy, or as a
+  <a href="download.html">single downloadable file</a> that works with no
+  internet connection at all.</p>
 
   <h2>Contact</h2>
   <p>Questions, bugs, or &ldquo;this does not match plant behavior&rdquo;?
   Email <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.
   In the simulator, the Contact control gives you that address and can download
   session diagnostics to attach.</p>
+
+  <h2>Physics</h2>
+  <p>If you would like to see the physics behind this simulator — what is
+  modeled, how the systems couple, and what is left out — see
+  <a href="physics.html">Physics behind the simulator</a>.</p>
+
+  <p style="margin: 32px 0 0;">
+    <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
+  </p>
 
   <p style="color: var(--text-2); margin-top: 2rem;">Reactor Dynamics is an
   educational simulation. It is not a substitute for licensed operator training
@@ -113,5 +140,6 @@
 
 <script src="site/version.js"></script>
 <script>document.getElementById('ver').textContent = window.RD_VERSION || '';</script>
+  <script src="site/nav.js"></script>
 </body>
 </html>
