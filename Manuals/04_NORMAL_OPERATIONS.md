@@ -2,7 +2,7 @@
 
 **Document:** PWR-NOP-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Revision:** 0  
+**Revision:** 14  
 
 ---
 
@@ -126,11 +126,13 @@ Commercial heatup from **Mode 5, Cold Shutdown** through **Mode 4, Hot Shutdown*
 | Step | MODE | Action |
 |------|------|--------|
 | 1 | **Mode 5, Cold Shutdown** | Start from the `cold_shutdown` IC: subcritical, RCS cold (~363 psi (2.5 MPa)), RCPs secured, RHR aligned for shutdown cooling |
-| 2 | Mode 5, Cold Shutdown → **Mode 4, Hot Shutdown** | **Start the RCPs** (RCP → Run) for pump heat and SG coupling; **raise the Pressure SP** toward NOP (2235 psi (15.41 MPa)) so the heaters pressurize (RHR auto-isolates above its 400 psi (2.76 MPa) / 400 psi interlock); hand the NIS over (SR → OFF) |
-| 3 | **Mode 4, Hot Shutdown** | Ease the **Control Bank** out to take the reactor just critical; hold ~10 % power for nuclear heatup — the temperature defect trims reactivity, so keep trimming out to hold power; drive Tavg up |
-| 4 | → **Mode 3, Hot Standby** | At NOP T/P (≈ 566.6 °F (297 °C) no-load, 2235 psi (15.41 MPa)), insert the bank / borate back subcritical; RCS held hot on pump heat |
+| 2 | Mode 5, Cold Shutdown → **Mode 4, Hot Shutdown** | **Start the RCPs** (RCP → Run) — this is the heat source, and the SG needs the flow to see it; **raise the Pressure SP** toward NOP (2235 psi (15.41 MPa)) so the heaters pressurize (RHR auto-isolates above its 400 psi (2.76 MPa) interlock, removing the cold sink) |
+| 3 | **Mode 4, Hot Shutdown** | Keep the turbine off line and the dumps shut so the SG stays **bottled** — heat crossing the tubes then has nowhere to go but into secondary pressure, which rides up with Tavg. Monitor Tavg and its rate; **no rod motion, the reactor stays subcritical** |
+| 4 | → **Mode 3, Hot Standby** | Arrive at NOP T/P (2235 psi (15.41 MPa), Tavg ≈ 548 °F (286.7 °C)) hot and still subcritical. Nothing to insert or borate — the bank never came out |
 
-**Simulator note:** the heat source for heatup is **nuclear** (RCP/PZR heat alone is far too small to reach NOP); the compressed rates make the evolution playable in minutes. The pressurizer **Pressure SP** and steam-dump **Dump SP** controls, RCP Run/Stop, and the `plant_mode` state are all as-built.
+**Simulator note:** the heat source for heatup is the **reactor coolant pumps** — `pump_heat_frac`, 0.55 % of rated core heat at full flow — plus the pressurizer heaters, and the core **never goes critical**. Measured on the as-built plant with no rod motion: Mode 4 (200 °F / 93.3 °C) at 0.28 plant-hours, Mode 3 (548 °F / 286.7 °C) at **10.71 plant-hours**, averaging **39.8 °F/hr (22.1 °C/hr)** and settling to a steady **~32 °F/hr (17.8 °C/hr)** after the first hour. What is compressed is the **wall clock** (time acceleration), not the evolution: the plant-hours are real. The first hour reads 111.5 °F/hr because the pressurization itself is fast, not because the pump-heat ramp is. The pressurizer **Pressure SP** and steam-dump **Dump SP** controls, RCP Run/Stop, and the `plant_mode` state are all as-built.
+
+> **Rate control.** The steam dump is a **coarse** lever at these powers: measured, a 5 % manual dump demand is roughly ten times pump-heat generation and reverses the heatup at −83 °F/hr. To slow or hold a heatup, secure an RCP — measured, that takes the rate to 0.1 °F/hr.
 
 ### Outcome
 Operator drives Mode 5, Cold Shutdown → Mode 3, Hot Standby on the board and arrives subcritical-and-hot at Hot Standby (the board **PWR-N01** begins from).
@@ -417,7 +419,8 @@ Describe RCP operation and limitations in this trainer.
 Single representative RCP. Start/stop maps approximately to clearing or injecting loss-of-flow conditions; full multi-loop outage procedures are simplified.
 
 ### Precautions
-- **Do not** stop RCP at power except for drill/emergency direction — low flow trips the reactor.
+- **Do not** stop RCP at power except for drill/emergency direction — low flow trips the reactor within about two seconds.
+- Flow indication is **one channel**. If the pump is gone and the flow gauge disagrees, believe the pump: the trip reads that same gauge and will not fire. See `12` §10.7.
 - Spray effectiveness requires flow.
 
 ### Procedure — verify running (normal)
@@ -431,7 +434,8 @@ Single representative RCP. Start/stop maps approximately to clearing or injectin
 
 | Step | Action | Acceptance |
 |------|--------|------------|
-| 1 | Confirm automatic reactor trip on low flow | Scrammed |
+| 1 | Confirm the automatic reactor trip on low flow (RCS flow < 90 %, ~2 s) | Scrammed |
+| 1a | **If it did not come, trip manually and do not wait.** The low-flow trip is a SINGLE channel — cross-check RCP status, Tavg and subcooling margin against the flow indication | Scrammed |
 | 2 | Remove turbine load if not already disconnected | 0 MWe |
 | 3 | Establish decay heat removal (natural circulation / AFW as needed) | Core safe |
 

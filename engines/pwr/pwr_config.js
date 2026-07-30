@@ -44,11 +44,28 @@
       mwt_rated: 300.0,                 // core thermal rating, MW
       mwe_rated: 100.0,                 // gross electrical rating, MW (= turbine.mwe_rated)
       loops: 1, steam_generators: 1, rcps: 1,
-      // Display conversions for normalized flows (manual/UI flavor, [tune]):
-      rcs_flow_gpm: 24000,              // rated reactor coolant flow
-      charging_max_gpm: 40,             // = charging_max 0.06 normalized
-      letdown_normal_gpm: 20,           // = orifice A 0.030 normalized
-      afw_gpm: 100,                     // = afw_flow_frac 0.15 normalized
+      // Display conversions for normalized flows (manual/UI flavor, [tune]).
+      //
+      // NOT READ BY ANY CODE — the live scale is `GPM_CHARGING` / `GPM_LETDOWN` / `GPM_AFW`
+      // in `ui/diagram/board/pwr_board_wiring.js`, which is what the board actually renders.
+      // This block is documentation for the manual, and it MUST track those constants. It
+      // did not: charging read 40 and letdown 20 here (a 666.7 gpm-per-normalized-unit
+      // scale) while the board has always used a single 1000 full-scale for CVCS and feed
+      // alike — so the board showed a 0–60 gpm charging box and a 30 gpm orifice-A letdown
+      // while `Manuals/12` quoted 40 and 20. A 1.5× split on numbers the player can read in
+      // both places. Corrected to the board's scale; `test/run_manual_units.js` now
+      // cross-checks the two files so it cannot drift again.
+      //
+      // These are PACING FLAVOUR, not physical mass flow, and must not be compared against
+      // real-plant flows or Tech Spec leakage limits. 60 gpm ≡ charging_max ·
+      // cvcs_inventory_gain = 7.2e-4 inventory-frac/s implies a total RCS of ~1389 gal
+      // (5.3 m³), roughly 6× small for a 300 MWt plant — and accident flows deliberately run
+      // on a separate 1:1 scale, so NO single RCS volume makes both true. See `Manuals/12`
+      // §Fidelity ("Indicative … Illustrative") and the #194 / #261 write-ups.
+      rcs_flow_gpm: 24000,              // rated RCS flow (not displayed — the board shows % of rated)
+      charging_max_gpm: 60,             // = charging_max 0.06 normalized × GPM_CHARGING 1000
+      letdown_normal_gpm: 30,           // = orifice A 0.030 normalized × GPM_LETDOWN 1000
+      afw_gpm: 100,                     // = afw_flow_frac 0.15 normalized × GPM_AFW 640 ≈ 96
     },
 
     // ---------------------------------------------------------------- kinetics
@@ -77,15 +94,95 @@
     // ----------------------------------------------------------- reactivity fb
     reactivity: {
       alpha_D: -2.5e-5,            // Doppler, K^-1 (defect ≈ 970 pcm over the 389 °C fuel rise — realistic) [tune]
-      // MTC recalibrated −3.3e-5 → −2.0e-4 (owner ruling 2026-07-21, teaching goal):
-      // with the old value an un-trimmed 15 % load cut parked Tavg +18 °C (the
-      // coolant had to swing that far to shed the power) — at −20 pcm/°C (real-PWR
-      // range) the same cut delivers the ask exactly and parks Tavg +7 °C. Sets the
-      // EV-11 mismatch, the TR-1 ride-out equilibrium (parks ~64 % / +16 °C / pzr
-      // ~94 %), and load-follow self-regulation to real-like magnitudes, and makes
-      // the PI-8 high-level trip implementable (97 % clears the ride-out swell).
-      alpha_MTC: -2.0e-4,          // moderator temperature coeff, K^-1 [tune]
-      boron_worth_per_ppm: 1.0e-4, // [tune]
+      // ---------------------------------------------------------------------
+      // MODERATOR REACTIVITY — density-shaped and boron-scaled (#260).
+      //
+      // History. This was a single constant `alpha_MTC`, recalibrated −3.3e-5 →
+      // −2.0e-4 K^-1 (owner ruling 2026-07-21, teaching goal) because at the old
+      // value an un-trimmed 15 % load cut parked Tavg +18 °C; −20 pcm/°C delivers
+      // the ask exactly and parks it +7 °C. That number was right AT POWER and it
+      // survives here (see `mod_*` below — the sourced curve reproduces it to
+      // within 10 % at the operating point, which is the strongest argument for
+      // this shape). What it could not do was hold at COLD conditions: applied
+      // uniformly from 122 °F to 579 °F it integrated to a −4944 pcm moderator
+      // defect over the Mode 5→3 heatup (494 ppm of dilution to buy back), where a
+      // real plant at this boron charges roughly −1700 pcm and almost none of it
+      // below 274 °F. Consequence the owner hit in free play: critical boron fell
+      // 819 → 263 ppm across the heatup, so 600 ppm — a number that looks safe next
+      // to the hot end — was CRITICAL at 274 °F, and the SR high-flux trip fired.
+      //
+      // The model. Moderator reactivity tracks moderator DENSITY, not temperature:
+      //    ρ_mod(T,B) = mod_coeff · (1 − B/mod_boron_zero_ppm) · (d(T) − d(T_ref))
+      // where d(T) is relative water density. MTC = dρ_mod/dT then steepens with
+      // temperature on its own, because the density derivative does. Sourced to
+      // WTSM 2.1 Reactor Physics Review (ML11223A207) §2.1.6.2 / Figure 2.1-8:
+      //   "Moderator density changes are not linear. At high temperatures an
+      //    increase in the moderator temperature causes a larger reduction in
+      //    density than an identical increase at low moderator temperatures."
+      //   "using the 0 ppm curve, if the moderator temperature is initially at
+      //    500°F and its temperature is increased by 1°F, -17 pcm of reactivity
+      //    would be added to the core."                      → the anchor below
+      //   "At boric acid concentrations greater than approximately 1400 ppm, the
+      //    MTC is positive."                                 → the crossover below
+      //
+      // Two things fall out that used to be missing, and neither is fitted:
+      //   - differential boron worth is LARGER cold (13.8 pcm/ppm at 122 °F vs
+      //     10.0 at power) — denser water carries more boron atoms per cm³;
+      //   - MTC weakens toward zero as boron rises, the real BOL/positive-MTC
+      //     mechanism. Our plant peaks ~1100 ppm so it never goes positive.
+      //
+      // NOTE the source disagrees with itself on how strong the boron term is: the
+      // 500 ppm / −8 pcm figure reading implies MTC = 0 at ~944 ppm, while the text
+      // says ~1400 ppm. We take 1400 (an explicit statement beats a figure
+      // reading); the residual is that we give −10.9 pcm/°F at 500 °F/500 ppm where
+      // the figure reads −8. Owner ruling 2026-07-29. [tune]
+      // --- SHAPE: measured. SCALE: ruled. The two come from different places, and
+      //     which is which matters, so it is stated here rather than inferred (#263).
+      //
+      // The boron crossover is the MEASURED one. BEAVRS / Watts Bar U1 Cycle 1 HZP
+      // physics tests, Table IV of the Polaris-PARCS benchmark (OSTI 1991715) — three
+      // *measured* isothermal temperature coefficients at three boron concentrations,
+      // all at the HZP no-load temperature:
+      //     ARO   975 ppm   ITC -1.75 pcm/°F
+      //     D in  902 ppm   ITC -4.65 pcm/°F
+      //     C in  810 ppm   ITC -8.01 pcm/°F
+      // Those fit a straight line in boron to within 0.09 pcm/°F. ITC = MTC + the fuel
+      // (Doppler) coefficient, so removing our alpha_D puts the MTC zero crossing at
+      // **986 ppm**. This SETTLES the contradiction recorded below: WTSM 2.1's figure
+      // reading implied ~944 ppm and its text said ~1400. The figure was right.
+      //
+      // We shipped 1400 for a day (#260) and it was wrong: it gave -7.52 pcm/°F at
+      // BEAVRS's ARO condition against a measured -1.75, **4.3× too negative**, and the
+      // error shrank as boron fell — the signature of this exact parameter being off.
+      mod_boron_zero_ppm: 986.0,   // MEASURED (BEAVRS ITC fit); was 1400 (#260 → #263)
+      //
+      // The scale is now MEASURED too *(OWNER RULING, 2026-07-30: "for 263 item 1 fit
+      // the measurement.")*. Both parameters are least-squares fitted to the same three
+      // BEAVRS ITCs: the line through them is ITC(B) = 0.03788·B − 38.730 pcm/°F, which
+      // after removing alpha_D gives a 0-ppm curve of −37.34 pcm/°F at 557 °F and a
+      // crossover at 985.8 ppm — the crossover the previous fit already had, now
+      // confirmed by a two-parameter fit rather than assumed. Expressed at this block's
+      // 500 °F anchor through the density shape, that is −31.43 pcm/°F.
+      //
+      // WHAT THIS RULING COST AND BOUGHT, because it overturned an earlier one. It
+      // SUPERSEDES the owner's 2026-07-21 ruling that the coefficient at the full-power
+      // reference should be -2.0e-4 K⁻¹: the plant now runs **-2.68e-4 K⁻¹
+      // (-26.8 pcm/°C)** there, 34 % stronger, so the core tracks load more tightly and
+      // an un-trimmed cut parks Tavg less high than the 2026-07-21 write-up describes.
+      // In exchange the model stops disagreeing with the measurement: residuals against
+      // all three points fall from 0.05 / 0.88 / 1.64 pcm/°F to ≤0.09. The previous
+      // calibration's "known residual" note is gone because the residual is gone.
+      // Re-solve BOTH if alpha_D or the ITC data changes; test/run_reactivity.js pins it.
+      mod_anchor_pcm_per_f: -31.43, // 0-ppm MTC at mod_anchor_temp_f; MEASURED (fitted)
+      mod_anchor_temp_f: 500.0,
+      // Compressed-liquid water density at ~15.5 MPa (2250 psi), kg/m³, as a cubic
+      // in °C — least-squares over IAPWS-IF97 from 20–340 °C, max residual
+      // 3.1 kg/m³. Only the SHAPE is load-bearing (the coefficient above carries
+      // the reactivity scale), but keep it honest: it is a real density curve.
+      mod_density_cubic: [1.017739e3, -4.939192e-1, 2.496834e-4, -5.916719e-6],
+      // ---------------------------------------------------------------------
+      boron_worth_per_ppm: 1.0e-4, // DIRECT term only; the density coupling above
+                                   // adds the temperature dependence [tune]
       // Boron mixing/transport lag (s): borated/diluted water must circulate the RCS loop and
       // homogenize before it changes CORE reactivity, so reactivity follows a first-order-lagged
       // concentration, not the instantaneous injected value. Without it, power moved the moment
@@ -94,7 +191,24 @@
       // power's response into step with the indication. Scenarios that steer on boron (pwr_boron)
       // must allow for the resulting inertia (gentle rates, room to overshoot). [tune]
       boron_mix_tau_s: 30.0,
-      rod_worth_total: 0.085,      // total control-group worth (~8500 pcm) [tune]
+      // Rod worths recalibrated to real measured values (#260/#238, owner ruling
+      // 2026-07-29). Was 8500 (control) + 10000 (shutdown) = 18 500 pcm, which is
+      // 2.4–2.9× every real number we can source and was the single biggest
+      // distortion in the reactivity balance: with a 8500 pcm control bank, critical
+      // boron with the bank inserted fell to 263 ppm at HZP against ~975 ARO, so
+      // every rods-in state sat at an absurdly low boron.
+      // WTSM 2.2 Reactivity Balance Calculations (ML11216A051) Table 2.2-1, a real
+      // Westinghouse 4-loop at 100 EFPD:
+      //   Worth of all RCCAs           (-)7744 pcm
+      //   Worth of all Control Banks   (-)4068 pcm
+      //   Worth of all Shutdown Banks  (-)3676 pcm
+      //   Worth of most reactive rod   (+)1040 pcm
+      // Cross-check, BEAVRS / Watts Bar U1 Cycle 1 HZP physics tests (OSTI 1991715,
+      // measured): control banks D+C+B+A = 788+1203+1171+548 = 3710 pcm, all banks
+      // 6466 pcm. We take the WTSM values; both land in the same place and neither
+      // is anywhere near 18 500. One lumped bank still carries the whole control
+      // worth that a real plant spreads over four banks — that simplification stays.
+      rod_worth_total: 0.04068,    // control-group worth (4068 pcm) [tune]
       // Integral-worth-curve flattening (owner, low-power feel). The rod worth follows an
       // S-curve (scruve); its differential worth peaks 2× the average at mid-core, so near
       // the startup critical band a 1-step move inserted ~48 pcm (peak ~74) and power ran on
@@ -105,13 +219,22 @@
       // (Per-step pcm numbers above are on the old 228-step drive; the 912-step fine drive
       // is ×4 finer — see rods.max_steps.) [tune]
       rod_worth_curve_flatten: 0.8,
-      rod_worth_shutdown: 0.10,    // shutdown-group worth (shutdown margin) [tune]
+      rod_worth_shutdown: 0.03676, // shutdown-group worth (3676 pcm) [tune]
       // Core excess reactivity, held down by boron/rods/xenon at the operating
       // point. The reference temps (T_fuel_ref/T_coolant_ref) are set at init to
-      // the settled hot_full_power temps, so the Doppler/MTC feedbacks are zero
-      // there and purely perturbative+stabilizing on a transient (M1 §4); boron
-      // is then trimmed to make the net reactivity critical.
-      rho_excess: 0.10,            // [tune]
+      // the settled hot_full_power temps, so the Doppler/moderator feedbacks are
+      // zero there and purely perturbative+stabilizing on a transient (M1 §4);
+      // boron is then trimmed to make the net reactivity critical.
+      //
+      // 0.10 → 0.086776 (#260) → 0.087557 → 0.087544 (#263, re-solved again when the moderator SCALE was fitted to the measurement too): this constant has no direct observable, so it is
+      // SOLVED rather than tuned — it is whatever makes HZP ARO critical boron come
+      // out at the one real number we have measured startup data for. BEAVRS /
+      // Watts Bar U1 Cycle 1 HZP physics tests (OSTI 1991715): **HZP ARO critical
+      // boron 975 ppm** (BOL, zero xenon). Re-solve it if alpha_D, the moderator
+      // block, the rod worths or boron_worth_per_ppm move — see the derivation in
+      // Diagnostic/TUNING_LOG.md 2026-07-29 and test/run_reactivity.js, which pins
+      // the 975 ppm target so this cannot drift silently. [tune]
+      rho_excess: 0.087544,        // [tune]
       // Chemical & Volume Control System (CVCS). Boron chemistry is decoupled from
       // net charging−letdown: borate/dilute change concentration at boron_adjust_rate
       // (needs the charging pump). Charging/letdown control primary INVENTORY; auto
@@ -366,10 +489,16 @@
 
     // ------------------------------------------------- steam generator / second
     steam_generator: {
-      latent_heat_secondary: 19.45, // normalizes steam_generation_rate to ~1.0 at rated [tune]
+      // Heat that makes one unit of steam. The SG normalizes on NSSS RATED HEAT —
+      // this × (1 + thermal.pump_heat_frac), i.e. rated core heat PLUS full-flow RCP
+      // pump heat — so steam_generation_rate is 1.0 at 100 % core power with all pumps
+      // running, and rated steam flow is the flow that heat actually makes (#251).
+      // Do not read this constant alone as "the rated heat": the pump-heat factor is
+      // applied at the use site, pwr_steam_generator stepSecondary. [tune]
+      latent_heat_secondary: 19.45,
       K_sg_level: 5.0, K_steam_pressure: 2.0, // [tune]
       steam_p_rated: 5.65,         // MPa secondary operating pressure [tune]
-      steam_flow_rated: 1.0,       // [tune]
+      steam_flow_rated: 1.0,       // rated steam flow, in those normalized units [tune]
       sg_level_nominal: 65.0,      // % at hot_full_power
       // Wide-range level window: the whole-vessel wide range is the integrated inventory
       // (clamped only at the physical vessel bounds 0/100); the NARROW working range is the
@@ -789,6 +918,38 @@
       // fast) and noise:0 per the rule above — appended last, so the RNG sequence is
       // byte-identical to before this instrument existed.
       cw_inlet_temp:           { lag: 20.0, noise: 0, range: [0, 45] },
+      // ---------------------------------------------------------- RCS loop flow (#247)
+      // The elbow-tap flow channel that feeds the LOW-FLOW REACTOR TRIP. Built
+      // 2026-07-29; before that the trip read true `pump_flow_pct` through a
+      // `__true_flow__` sentinel and could not be fooled, lag or drift — the plant's
+      // most safety-significant unteachable trip.
+      //
+      // SOURCED (evidence pass 2026-07-29, WTSM 3.2 "Reactor Coolant System",
+      // ML11223A213 §3.2.3 "RCS Flow"):
+      //   · "Elbow taps are used in the RCS to indicate the status of the reactor
+      //     coolant flow… The elbow flow instrument measures the differential pressure
+      //     between the inner and outer radius of the intermediate leg piping elbow."
+      //     ΔP/ΔP0 = (ω/ω0)² — a dP cell, same class as steam_flow/fw_flow, hence the
+      //     same 1.0 s lag. No component is inserted in the flowpath.
+      //   · "The expected absolute accuracy of the channel is within ±10% and field
+      //     results have shown the repeatability of the trip point to be within ±1%.
+      //     The accident analysis for a loss-of-flow transient assumes an
+      //     instrumentation error of ±3%."  The ±1 % repeatability is the SHORT-TERM
+      //     jitter figure and is what `noise_failure` below is anchored to; the ±10 %
+      //     is calibration bias, which is what an injected `drift` failure models.
+      //
+      // Reads in % OF RATED FLOW, not normalized, because that is the unit the real
+      // trip is stated in ("< 90 % of rated flow") and what an operator reads.
+      //
+      // noise: 0 is DELIBERATE and is the rule for every appended instrument — the
+      // instrument PRNG is one continuous CROSS-STEP stream, so one extra draw per step
+      // shifts every instrument's noise from that step on (it has already moved three
+      // marginal endpoints; see sg_steam_flow above). `noise_failure` is the sigma an
+      // INJECTED `noisy` failure uses instead, which draws only while a failure is
+      // active — no baseline run has one, so the existing sequence is byte-identical.
+      // Without it a `noisy` flow-transmitter failure would be silently inert, and
+      // failure injection on this channel is the entire reason to build it.
+      rcs_flow:                { lag: 1.0, noise: 0, noise_failure: 0.5, range: [0, 120] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       porv_indicator:    { boolean: true },
@@ -816,6 +977,16 @@
                'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating',
                // condensate pump run status (operator-controlled; gates main feedwater)
                'condensate_pump_running',
+               // MAIN FEEDWATER ISOLATION VALVE POSITION (#247) — shut/open. A real
+               // plant indicates MFIV position from limit switches in the control room
+               // (Westinghouse: a feedwater isolation signal "causes automatic closure
+               // of all feed regulating and bypass valves… and main feedwater isolation
+               // valves" and overrides the SG level control system — WTSM 11.1 §11.1.4,
+               // ML11223A293). The three-element feed channel stands down on THIS, not
+               // on true state: it used to read `true_state.feedwater_isolated`, a field
+               // getTrueState() never exposed, so the stand-down could never fire.
+               // Status passthrough — no lag/noise, no PRNG draw.
+               'mfw_isolated',
                // RCS boron grab sample (take_boron_sample): last lab RESULT (ppm,
                // null before the first sample), lab-pending flag, and a result
                // sequence counter consumers use to spot a fresh result. Passed

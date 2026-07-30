@@ -77,6 +77,48 @@
     return rho;
   };
 
+  // ------------------------------------------------- moderator density (§4, #260)
+  // Compressed-liquid water density (kg/m³) at RCS pressure, cubic in °C. The
+  // moderator reactivity effect tracks DENSITY, so MTC steepens with temperature
+  // on its own instead of being a constant — see the sourced derivation in
+  // pwr_config.js `mod_*`.
+  PWREngine.prototype._modDensity = function (Tc) {
+    var k = this.cfg.reactivity.mod_density_cubic;
+    return k[0] + k[1] * Tc + k[2] * Tc * Tc + k[3] * Tc * Tc * Tc;
+  };
+
+  // Δk/k per (kg/m³) of moderator density change, for UNBORATED water. Solved once
+  // from the WTSM 2.1 anchor (−17 pcm/°F at 500 °F, 0 ppm) so the anchor is the
+  // calibration and this is never hand-tuned.
+  PWREngine.prototype._modCoeff = function () {
+    if (this._mod_k == null) {
+      var rc = this.cfg.reactivity;
+      var Ta = (rc.mod_anchor_temp_f - 32) * 5 / 9;
+      var k = rc.mod_density_cubic;
+      var dPrime = k[1] + 2 * k[2] * Ta + 3 * k[3] * Ta * Ta;   // (kg/m³)/°C
+      // anchor is pcm per °F → Δk/k per °C
+      this._mod_k = (rc.mod_anchor_pcm_per_f * 9 / 5 * 1e-5) / dPrime;
+    }
+    return this._mod_k;
+  };
+
+  // Moderator reactivity relative to the reference temperature, at boron B (ppm).
+  // Linear in B, which is what keeps _trimToCritical a closed-form solve.
+  PWREngine.prototype._moderatorReactivity = function (Tc, B) {
+    var rc = this.cfg.reactivity;
+    var dD = this._modDensity(Tc) - this._modDensity(this.T_coolant_ref);
+    return this._modCoeff() * (1 - B / rc.mod_boron_zero_ppm) * dD;
+  };
+
+  // Differential boron worth (Δk/k per ppm) at temperature Tc — the direct term
+  // plus the density coupling, so it is larger cold. Exposed because
+  // _trimToCritical and the reactivity gate both need it.
+  PWREngine.prototype._boronWorth = function (Tc) {
+    var rc = this.cfg.reactivity;
+    var dD = this._modDensity(Tc) - this._modDensity(this.T_coolant_ref);
+    return rc.boron_worth_per_ppm + this._modCoeff() * dD / rc.mod_boron_zero_ppm;
+  };
+
   PWREngine.prototype._totalReactivity = function () {
     var s = this.s, rc = this.cfg.reactivity;
     var rho_rods = this._rodReactivity();
@@ -87,14 +129,17 @@
       rho_rods += s._fail.stuck_rod.worth_held * rc.rod_worth_total * insertedFrac;
     }
     var rho_doppler = rc.alpha_D * (s.fuel_temp_c - this.T_fuel_ref);
-    var rho_mtc = rc.alpha_MTC * (s.tavg_c - this.T_coolant_ref);
     // Reactivity follows the mixing-lagged core boron (see boron_mix_tau_s), so power tracks
     // the indicated level instead of leading it. Falls back to boron_ppm before the lag state
-    // exists (first step / a migrated save).
-    var rho_boron = -rc.boron_worth_per_ppm * (s.boron_reactive != null ? s.boron_reactive : s.boron_ppm);
+    // exists (first step / a migrated save). The moderator term reads the SAME lagged
+    // concentration — the boron-expansion effect is boron sitting in the core, so a
+    // dilution must not change MTC before it has mixed.
+    var B = (s.boron_reactive != null ? s.boron_reactive : s.boron_ppm);
+    var rho_mod = this._moderatorReactivity(s.tavg_c, B);
+    var rho_boron = -rc.boron_worth_per_ppm * B;
     var X_eq = this._X_eq;
     var rho_xenon = -this.cfg.kinetics.xenon.xenon_worth * (s._X / X_eq);
-    return rc.rho_excess + rho_rods + rho_doppler + rho_mtc + rho_boron + rho_xenon;
+    return rc.rho_excess + rho_rods + rho_doppler + rho_mod + rho_boron + rho_xenon;
   };
 
   // ----------------------------------------------------- point kinetics (§3)
@@ -221,7 +266,22 @@
       // above fission power for tens of minutes, and a pressure-mode follow
       // governor takes that steam like any other. Q ≡ P at steady state, so
       // nothing moves outside transients.
-      extractFrac: function (s) { return s._Q_total != null ? s._Q_total : (s._P || 0); },
+      //
+      // RCP PUMP HEAT is the remaining term in that sum (#251). The turbine's demand
+      // is what the steam generator has to boil, and the SG boils everything that
+      // crosses it — pump shaft work included — so the governor draws that steam too.
+      // Without it pump heat had no sink and had to be cancelled inside the SG, which
+      // made a heatup on pump heat impossible (see pwr_steam_generator).
+      //
+      // Both terms are fractions of rated CORE heat; the denominator renormalizes them
+      // onto rated STEAM flow, which is made by rated core heat PLUS full-flow pump
+      // heat (the same NSSS-rated normalizer the SG uses). So 100 % core power at full
+      // flow is exactly 1.0 — rated steam flow, rated MWe — and the governor's clip at
+      // 1.0 needs no headroom bolted on.
+      extractFrac: function (s) {
+        var pf = cfg.thermal.pump_heat_frac || 0;
+        return ((s._Q_total != null ? s._Q_total : (s._P || 0)) + pf * (s.flow_frac || 0)) / (1 + pf);
+      },
       setLoad: function (s, mwe, rated) {
         s.steam_demand_mwe = mwe;
         s.turbine_demand_frac = clip(mwe / rated, 0, 1.2);
@@ -417,6 +477,10 @@
       safety_relief_active: s.safety_open || s.safety_flow > 0,
       rcp_cavitating: !!s.rcp_cavitating,
       condensate_pump_running: s.condensate_pump_running !== false,
+      // Main feedwater isolation valve position (#247) — the indication the feed
+      // channel stands down on. Latched by P-4/P-14/SI isolation and cleared by an
+      // operator restore; see the `feedwater_isolated` latch in applyCommand.
+      mfw_isolated: !!s.feedwater_isolated,
       // Reactor/turbine load imbalance — the SG filling/draining annunciator (#211).
       // Already computed HR1-correctly in load_mode.js from INDICATED power vs the
       // load target, > 4 % of rated. It was reaching true_state and getControlState
@@ -1179,6 +1243,11 @@
   PWREngine.prototype._buildState = function (name) {
     var cfg = this.cfg, init = cfg.initial_states[name] || cfg.initial_states.hot_full_power;
     var P0 = init.power;
+    // Is the unit ON LINE in this initial condition? One predicate for the whole
+    // turbine/generator block below (rotor speed, breaker, governor, load mode), so
+    // they cannot disagree the way they did before #251. The subcritical states
+    // (Modes 3/5, P0 = 1e-6) are off line; anything carrying real load is on.
+    var onLine = P0 > 0.01;
 
     // Sliding Tavg program (SS-2, catalog §8.1). Tavg is anchored to the load-
     // programmed reference — a LINEAR interpolation in load between the no-load
@@ -1313,18 +1382,27 @@
       // Rotor at rated only when the state spawns with the generator carrying real
       // load; the subcritical states (Modes 3/5, P0 = 1e-6) spawn with the turbine
       // at rest — no admission steam and nothing to hold it at speed (#235).
-      turbine_rpm: P0 > 0.01 ? cfg.turbine.rpm_rated : 0, condenser_vacuum_kpa: cfg.turbine.vacuum_rated,
+      turbine_rpm: onLine ? cfg.turbine.rpm_rated : 0, condenser_vacuum_kpa: cfg.turbine.vacuum_rated,
       // Circulating-water inlet temperature. Defaults to the reference the vacuum model is
       // calibrated at, so an untouched plant behaves exactly as it did before CW temperature
       // was modelled (see turbine.cw_inlet_ref_c).
       cw_inlet_temp_c: cfg.turbine.cw_inlet_ref_c != null ? cfg.turbine.cw_inlet_ref_c : 26.7,
-      generator_load: P0, turbine_demand_frac: P0, turbine_tripped: false,
+      generator_load: onLine ? P0 : 0, turbine_demand_frac: onLine ? P0 : 0, turbine_tripped: false,
       // Turbine governor valve tracks load demand (% open); starts matched to P0 so
       // steam_flow = (gov/100)·(P/Prated) reproduces the P0 steady state at reset.
-      governor_valve_pct: clip(P0, 0, 1) * 100,
-      condenser_cooling_available: true, steam_demand_mwe: P0 * cfg.turbine.mwe_rated,
-      mwe_output: P0 * cfg.turbine.mwe_rated,
-      load_mode: 'follow', load_target_mwe: P0 * cfg.turbine.mwe_rated,
+      governor_valve_pct: onLine ? clip(P0, 0, 1) * 100 : 0,
+      condenser_cooling_available: true, steam_demand_mwe: onLine ? P0 * cfg.turbine.mwe_rated : 0,
+      mwe_output: onLine ? P0 * cfg.turbine.mwe_rated : 0,
+      // ...and the LOAD MODE has to agree with the rotor. The subcritical states spawn
+      // OFF LINE — planned offline, not tripped (#230), which is what Modes 3 and 5
+      // physically are: breaker open, no admission steam, nothing to follow. #235 already
+      // parked the rotor for them and left the mode on 'follow', so a cold plant spawned
+      // "synchronised" at 50 °C with generator_load = 1e-6. That was invisible while the
+      // SG cancelled pump heat; with the netting gone (#251) the follow governor cracks
+      // to ~6 % on the pump-heat demand and DRAINS the heatup — measured, a Mode 5 heatup
+      // re-stalls at 306.05 °F (152.25 °C) with the same ΔT = 0.321 °F signature.
+      load_mode: onLine ? 'follow' : 'disconnected',
+      load_target_mwe: onLine ? P0 * cfg.turbine.mwe_rated : 0,
       load_follow_tau: RD.LoadMode.DEFAULT_TAU, feed_auto_coupled: true,
       load_imbalance_mwe: 0, sg_imbalance_active: false,
 
@@ -1455,15 +1533,20 @@
     if (this.T_fuel_ref == null) { this.T_fuel_ref = s.fuel_temp_c; this.T_coolant_ref = s.tavg_c; }
     var rho_rods = this._rodReactivity();
     var rho_doppler = rc.alpha_D * (s.fuel_temp_c - this.T_fuel_ref);
-    var rho_mtc = rc.alpha_MTC * (s.tavg_c - this.T_coolant_ref);
     var rho_xenon = -this.cfg.kinetics.xenon.xenon_worth * (s._X / this._X_eq);
-    var nonBoron = rc.rho_excess + rho_rods + rho_doppler + rho_mtc + rho_xenon;
+    // The moderator term is linear in boron (#260), so it splits into a
+    // boron-independent part that joins nonBoron and a per-ppm part that joins the
+    // boron worth. Total: ρ = nonBoron − B·worth(T). Still one division, no iteration.
+    var dD = this._modDensity(s.tavg_c) - this._modDensity(this.T_coolant_ref);
+    var nonBoron = rc.rho_excess + rho_rods + rho_doppler + rho_xenon
+                 + this._modCoeff() * dD;
+    var worth = this._boronWorth(s.tavg_c);
     if (this.cfg.initial_states[name] && this.cfg.initial_states[name].subcritical) {
       // ρ_boron = -(nonBoron) - margin  → ρ_total = -margin (subcritical).
       var margin = 0.01;
-      s.boron_ppm = Math.max(0, (nonBoron + margin) / rc.boron_worth_per_ppm);
+      s.boron_ppm = Math.max(0, (nonBoron + margin) / worth);
     } else {
-      s.boron_ppm = Math.max(0, nonBoron / rc.boron_worth_per_ppm);
+      s.boron_ppm = Math.max(0, nonBoron / worth);
     }
     s.boron_reactive = s.boron_ppm;   // the mixing lag starts settled at the trimmed concentration
     s._rho = this._totalReactivity();
@@ -1771,11 +1854,11 @@
   // instrument values against the trip table and scrams; used only to demonstrate
   // that the physics reaches trip-worthy conditions.
   function rpsWouldTrip(eng) {
-    var ins = eng.getInstruments(), ts = eng.getTrueState();
+    var ins = eng.getInstruments();
     var trips = eng.getProtectionConfig().trips, reasons = [];
     for (var i = 0; i < trips.length; i++) {
       var t = trips[i];
-      var v = t.instrument === '__true_flow__' ? ts.pump_flow_pct / 100 : ins[t.instrument];
+      var v = ins[t.instrument];   // every trip is instrument-backed since #247
       if (v == null) continue;
       if (t.direction === 'high' && v >= t.setpoint) reasons.push(t.instrument + ' high');
       if (t.direction === 'low' && v <= t.setpoint) reasons.push(t.instrument + ' low');
@@ -1904,13 +1987,28 @@
         var h = new Harness('hot_full_power');
         h.run(30);
         var p_before = h.ts().power_pct;
-        // Real-like MTC (−20 pcm/°C, P4/P5 recalibration): the coolant fights a
-        // small withdrawal hard, so the settled rise is ~0.1 % — direction is the
-        // physics being pinned, not magnitude.
+        // The coolant fights a small withdrawal hard, so the settled POWER rise is
+        // tiny — direction is the physics being pinned, not magnitude (and the
+        // original comment said so). The margin shrank again when the moderator
+        // coefficient was fitted to the BEAVRS measurement (#263, owner ruling
+        // 2026-07-30): −20 → −26.8 pcm/°C settles the rise at ~0.03 %, under the
+        // 0.05 floor this used to carry.
+        //
+        // So do not just lower the floor — it would need lowering again on the next
+        // retune, which is a check tracking the plant instead of the claim. At power
+        // the TURBINE sets power and the rods set temperature, so the durable
+        // signature of a withdrawal is Tavg rising, and that assertion gets STRONGER
+        // as the coefficient strengthens rather than weaker. Both are pinned; the
+        // Tavg one is the one that means something. Verified against the pre-#263
+        // plant too, where Tavg also rose — so this is a better test, not a refit.
+        var t_before = h.ts().tavg_c;
         h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 32 }); // withdraw
         h.run(120);
         var p_with = h.ts().power_pct;
-        ck('power rises on withdraw', p_with.toFixed(2), p_with > p_before + 0.05, '> ' + p_before.toFixed(2));
+        ck('power rises on withdraw', p_with.toFixed(3), p_with > p_before + 0.01, '> ' + p_before.toFixed(3));
+        ck('Tavg rises on withdraw (the signature that survives a stronger MTC)',
+          h.ts().tavg_c.toFixed(2) + ' °C', h.ts().tavg_c > t_before + 0.05,
+          '> ' + t_before.toFixed(2));
         ck('re-settles (stable)', h.eng.s._rho.toExponential(2), Math.abs(h.eng.s._rho) < 1e-3, 'near critical');
         var p_mid = h.ts().power_pct;
         h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -32 }); // insert back
@@ -2040,10 +2138,32 @@
       return test('Transient — RCP trip / loss of flow', function (ck) {
         var h = new Harness('hot_full_power');
         h.run(10);
+        // Read the setpoint from the trip table rather than restating it — this test
+        // used to hardcode 0.25 and would have gone on passing against a stale number.
+        var ft = h.eng.getProtectionConfig().trips.filter(function (t) { return t.id === 'lo_flow'; })[0];
+        var sp = ft ? ft.setpoint : 25;
         h.cmd({ action: 'inject_failure', failure_id: 'rcp_trip' });
-        var t = h.runUntil(function (ts) { return ts.pump_flow_pct / 100 <= 0.25; }, 60);
-        ck('flow coasts down below low-flow trip', t >= 0 ? t.toFixed(1) + 's' : 'never', t >= 0, '< 0.25');
-        ck('coastdown not instantaneous (τ≈8s)', t.toFixed(1), t > 4, '> 4s');
+        var t = h.runUntil(function (ts) { return ts.pump_flow_pct <= sp; }, 60);
+        ck('flow coasts down below the low-flow setpoint (' + sp + ' %)', t >= 0 ? t.toFixed(1) + 's' : 'never', t >= 0, 'reaches setpoint');
+        // COASTDOWN TIME CONSTANT, measured where the setpoint cannot reach it. This
+        // check used to assert `t > 4` on the line above — time to the TRIP SETPOINT —
+        // which was a proxy for "the pump coasts, it does not stop dead". It was only
+        // ever true because the setpoint was 25 %: at the real 90 % (#248) flow crosses
+        // in 0.9 s and the proxy failed, though the coastdown itself never changed.
+        // So assert the claim directly (HR10): flow decays exponentially to
+        // natural_circ_flow with pump_coastdown_tau, so it passes 1/e of rated at t = τ.
+        // Independent of any trip — a scram does not touch stepFlow. Measured 8.0 s
+        // against a config τ of 8.0, and unchanged by the setpoint move (this same run
+        // scrams at 1.8 s now and did at 16.2 s before; both give 8.0 s).
+        var tau = h.eng.cfg.primary.pump_coastdown_tau;
+        var te = h.runUntil(function (ts) { return ts.pump_flow_pct <= 36.8; }, 60);
+        ck('coastdown obeys its time constant (1/e of rated at τ=' + tau + 's)',
+          te >= 0 ? te.toFixed(1) + 's' : 'never', te >= 0 && Math.abs(te - tau) < 1.0, tau + 's ± 1');
+        // …and the CHANNEL the trip actually reads follows it down (#247). Truth
+        // crossing the setpoint is not the trip firing — `rcs_flow` lags by 1 s, and
+        // before this instrument existed the trip read truth and could not lag at all.
+        var ti = h.runUntil(function (ts, ins) { return ins.rcs_flow <= sp; }, 30);
+        ck('the rcs_flow channel follows truth below the setpoint', ti >= 0 ? ti.toFixed(1) + 's' : 'never', ti >= 0, 'indication crosses too');
       });
     },
 

@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reactor⚛️Dynamics — Control Room</title>
   <link rel="stylesheet" href="shell.css">
-  <link rel="stylesheet" href="diagram/pwr_synoptic.css">
   <link rel="stylesheet" href="diagram/board/pwr_board.css">
   <!-- Vercel Web Analytics (cookieless page-view beacon; 404s harmlessly off-Vercel) -->
   <script defer src="/_vercel/insights/script.js"></script>
@@ -95,25 +94,25 @@
               data-scanner-detail="Acceleration runs the same physics faster, not a coarser model. Fast-forward dropout (a Settings option) can drop the clock back to real time when something needs you — a scram, a new failure, or the first alarm on a quiet board.">
             <button class="on" data-speed="1">1×</button><button data-speed="10">10×</button><button data-speed="60">60×</button><button data-speed="600">600×</button><button data-speed="3600">3600×</button>
           </div>
-          <button class="btn save-btn" data-act="save" data-scanner-hint="Save — downloads the full simulation state as JSON.">💾</button>
           <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant."
-              data-scanner-detail="The manual set is written in commercial operator-manual format: general description, controls and indications, normal and emergency procedures, alarm response, setpoints and a glossary. Its procedures are replayed against the engine by the test suite, so the steps match the plant you are operating.">📖 Manual</button>
-          <button class="btn help-btn" id="helpBtn" title="How this control room works" data-scanner-hint="Help — a one-screen guide to the board: the quiet-board colors, why instruments can lie, where the missions live, and the keyboard shortcuts.">?</button>
-          <button class="btn help-btn" id="fbBtn" title="Send feedback" data-scanner-hint="Feedback — report a bug or send feedback, optionally attaching this session's telemetry (plant data + your commands) so what you saw can be replayed.">💬</button>
-          <button class="btn demo-btn" id="demoBtn" title="Hide the side panel — enlarge the diagram" data-scanner-hint="Hide side panel — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
+              data-scanner-detail="The manual set is written in commercial operator-manual format: general description, controls and indications, normal and emergency procedures, alarm response, setpoints and a glossary. Its procedures are replayed against the engine by the test suite, so the steps match the plant you are operating.">Manual</button>
+          <button class="btn text-btn" id="helpBtn" title="How this control room works" data-scanner-hint="Help — a short guide to the board, the right-hand panels, and where to learn next.">Help</button>
+          <button class="btn text-btn" id="fbBtn" title="Send feedback by email" data-scanner-hint="Contact — email address for bug reports and feedback, plus optional session diagnostics to attach.">Contact</button>
+          <button class="btn demo-btn" id="demoBtn" title="Board focus — hide the side panel and enlarge the plant diagram" data-scanner-hint="Board focus — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
         </div>
         <!-- What's running now — the always-visible mission entry point -->
         <button class="sim-status" id="simStatus" data-scanner-hint="Current plant &amp; mission — click to switch reactors or change what you are running."
               data-scanner-detail="One window covers both choices: which reactor, and whether you are in free play (with a starting plant condition) or running guided content. Switching either one restarts the simulation from a fresh initial condition.">
-          <span class="ss-a">⚛️</span><span class="ss-txt" id="simStatusText">—</span><span class="ss-chev">›</span>
+          <span class="ss-txt" id="simStatusText">—</span><span class="ss-chev">›</span>
         </button>
       </div>
 
-      <!-- Instructor panel (§9) — collapsed by default; shows latest message only -->
+      <!-- Multi-use right panel: Instructor (default free-play coach), scenario voices,
+           checklists, walkthroughs — title is set dynamically by app.js. -->
       <div class="panel instructor collapsed" id="instructorCard">
         <div class="persona">
-          <div class="icon">🎓</div>
-          <div class="role">Shift Supervisor</div>
+          <div class="icon" id="instrIcon" aria-hidden="true"></div>
+          <div class="role" id="instrRole">Instructor</div>
           <span class="instr-badge" id="instrBadge" hidden></span>
         </div>
         <div class="instr-body">
@@ -124,7 +123,7 @@
              passive checklist whose steps check themselves off the instruments -->
         <div class="instr-ckl" id="instrCklRow" hidden>
           <button class="btn" id="cklOpenBtn" data-scanner-hint="Checklists — call up a procedure as a checklist in the chat; each step checks itself off the instruments while you operate."
-              data-scanner-detail="The checklist watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before.">📋 Checklists</button>
+              data-scanner-detail="The checklist watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before.">Checklists</button>
           <div class="ckl-menu" id="cklMenu" hidden></div>
         </div>
         <!-- Walkthrough (follow) nav — shown only while following a procedure -->
@@ -145,20 +144,19 @@
       <!-- Tools Block (§10) — expanded by default; collapses to its tab strip -->
       <div class="panel tools expanded" id="toolsCard">
         <div class="tabbar" id="tabbar">
-          <button class="on" data-tab="sim">Sim</button>
-          <button data-tab="failures">Failures</button>
+          <button class="on" data-tab="operate">Operate</button>
+          <button data-tab="failures">Inject Failure</button>
           <button data-tab="graph">Graph</button>
           <button data-tab="settings">Settings</button>
         </div>
         <div class="tab-body">
-          <!-- Failures tab — built by app.js from M4's catalog -->
+          <!-- Inject Failure — built by app.js from M4's catalog -->
           <div class="tabpane" data-pane="failures">
             <div id="failList"></div>
             <div class="advanced-exp" id="advExpToggle" data-scanner-hint="Advanced instrument failure — fail any single instrument (stuck, drifting, noisy, or dead) while the plant behind it stays real. The board will lie to you (HR1)."
               data-scanner-detail="The plant keeps behaving correctly; only the reading changes. That gap is the lesson — every serious accident in this simulator turns on an operator believing an instrument instead of cross-checking it against another one.">▸ Advanced instrument failure (instrument × mode × value)</div>
             <div class="adv-fail" id="advFailPanel" hidden></div>
           </div>
-          <!-- (Automate tab removed — all operator automations live on the board diagram.) -->
           <!-- Graph tab — parameter toggles for the strip chart -->
           <div class="tabpane" data-pane="graph">
             <div class="g-section-title">Plot parameters</div>
@@ -168,52 +166,33 @@
             </div>
             <div class="set-row"><span class="k">Export</span><button class="btn" data-act="export-csv">CSV ⭳</button></div>
           </div>
-          <!-- Sim tab — active plant/mode summary + the Plant & Mission window (default/leftmost) -->
-          <div class="tabpane on" data-pane="sim">
+          <!-- Operate — session controls (default tab) -->
+          <div class="tabpane on" data-pane="operate">
             <div class="set-row"><span class="k">Plant</span><span class="mono" id="simPlantLbl">—</span></div>
             <div class="set-row"><span class="k">Mode</span><span class="mono" id="simModeLbl">Free Play</span></div>
             <div class="set-row" data-scanner-hint="Plant &amp; Mission — choose the reactor, then free play (with a starting condition) or any guided content this build offers.">
-              <span class="k">Change</span><button class="btn" id="missionBtn">⚛️ Plant &amp; Mission…</button></div>
+              <span class="k">Change</span><button class="btn" id="missionBtn">Plant &amp; Mission…</button></div>
             <div class="set-row"><span class="k">Reset</span><button class="btn" data-act="reset">Reset to initial state</button></div>
-            <!-- Feature flags (#241) — development only: the row hides itself on the
-                 public channel unless ?flags=1 asks for it (app.js initFeaturePanel). -->
             <div class="set-row" id="featureRow" hidden data-scanner-hint="Features — which parts of the simulator this build offers. Preview features are playable here but hidden from the public website until they are vetted."
               data-scanner-detail="The same bundle ships everywhere; a release channel decides what it offers. Preview content is finished in the build but not yet played end to end by the author, so the public site shows a coming-soon panel in its place.">
-              <span class="k">Features</span><button class="btn" id="featureBtn">🧪 Features…</button></div>
+              <span class="k">Features</span><button class="btn" id="featureBtn">Features…</button></div>
             <div class="set-row"><span class="k">Save / Load</span><span><button class="btn" data-act="save">Save</button> <button class="btn" data-act="load">Load</button></span></div>
             <input type="file" id="loadFile" accept="application/json" style="display:none">
-            <div class="g-section-title" style="margin-top:12px" data-scanner-hint="Reactivity Computer — net reactivity and reactor period. Use during approach to criticality."
-              data-scanner-detail="A teaching overlay, not a plant instrument: real crews infer reactivity from rate meters and rod-worth curves. Net reactivity near zero with a long period is a critical, steady core; positive reactivity means power is climbing however slowly the meters move.">Reactivity Computer</div>
-            <div class="set-row"><span class="k">Net reactivity ρ</span><span class="mono" id="rxReactivity">— pcm</span></div>
-            <div class="set-row"><span class="k">Reactor period</span><span class="mono" id="rxPeriod">— s</span></div>
           </div>
-          <!-- Settings tab -->
+          <!-- Settings -->
           <div class="tabpane" data-pane="settings">
-            <div class="set-row" data-scanner-hint="Diagram Mode — Teaching adds labels, color, and physics annotations to the synoptic; Realistic is the quiet board: indications and status only (HR1)."
-              data-scanner-detail="The Realistic board is what a control room actually gives you — status and numbers, no explanations. Teaching mode adds the layer a textbook would. The plant is identical in both; only what the display is willing to tell you changes.">
-              <span class="k">Diagram Mode</span><div class="seg" id="modeSeg"><button class="on" data-mode="learning">Teaching</button><button data-mode="realistic" disabled title="Realistic board not available yet — the realistic PWR diagram is still in design.">Realistic</button></div></div>
-            <div class="set-row" id="overlayRow" data-scanner-hint="Physics Overlay — Learning only. On shows the full physics layer (reactivity, period, inventory, void, P–S ΔT, ghosts); off keeps the quiet teaching board."
-              data-scanner-detail="This is the explicit true-state overlay: it shows quantities no plant instrument measures, such as core inventory and void fraction. It is off by default because the normal operator condition is to see only instruments, which is what makes a failed one able to mislead.">
-              <span class="k">Physics Overlay</span><div class="seg" id="physSeg"><button class="on" data-phys="off">Off</button><button data-phys="on">On</button></div></div>
-            <div class="set-row" id="valuesRow" data-scanner-hint="Values Display — the legacy RBMK/BWR All view can show instrument readings, true physical values, or both side by side."><span class="k">Values Display</span><div class="seg" id="overlaySeg2"><button class="on" data-overlay="instruments">Instruments</button><button data-overlay="true">True</button><button data-overlay="both">Both</button></div></div>
+            <div class="g-section-title">Display</div>
+            <div class="set-row" id="valuesRow" data-scanner-hint="Values Display — show instrument readings, true plant values, or both (where the plant display supports it).">
+              <span class="k">Values</span><div class="seg" id="overlaySeg2"><button class="on" data-overlay="instruments">Instruments</button><button data-overlay="true">True</button><button data-overlay="both">Both</button></div></div>
+            <div class="set-row"><span class="k">Units</span><div class="seg" id="unitsSeg"><button class="on" data-units="US">US</button><button data-units="SI">SI</button></div></div>
             <div class="set-row" data-scanner-hint="Terminology — Plain language spells things out for learners; Industry uses real plant terms and acronyms."
               data-scanner-detail="Every label and instructional string exists in both registers. Industry is the vocabulary you would hear in a real control room (and in the manuals); Plain language says the same thing in full words. Switching affects labels and alarm text, never plant behaviour."><span class="k">Terminology</span><div class="seg" id="registerSeg"><button class="on" data-register="learning">Plain language</button><button data-register="industry">Industry</button></div></div>
-            <div class="set-row"><span class="k">Units</span><div class="seg" id="unitsSeg"><button class="on" data-units="US">US</button><button data-units="SI">SI</button></div></div>
+            <div class="set-row" id="overlayRow" data-scanner-hint="Physics Overlay — on the Physics Diagram, show extra true-state teaching quantities (inventory, void, ghosts). Off keeps the quieter labeled board."
+              data-scanner-detail="This is an explicit true-state overlay: quantities no plant instrument measures. Off by default so the normal condition is instruments only.">
+              <span class="k">Physics Overlay</span><div class="seg" id="physSeg"><button class="on" data-phys="off">Off</button><button data-phys="on">On</button></div></div>
+            <div class="g-section-title" style="margin-top:12px">Simulation</div>
             <div class="set-row" data-scanner-hint="Fast-forward dropout — On drops the clock back to real time when something needs you: a scram, a new failure, or the first alarm on a quiet board. Later alarms in a casualty do not stop it. Off keeps fast-forward running through everything."
               data-scanner-detail="Only the FIRST alarm on an otherwise quiet board drops the clock — once a casualty is under way, the following alarms would drop you out every few seconds and the option would be useless. Off is the right setting when you are deliberately fast-forwarding through a long transient such as a xenon burn-off."><span class="k">Fast-forward dropout</span><div class="seg" id="attnSeg"><button class="on" data-attn="on">On</button><button data-attn="off">Off</button></div></div>
-          </div>
-          <!-- (Dev tab removed — session telemetry still rides along with 💬 Feedback.) -->
-        </div>
-      </div>
-
-      <!-- First-run invitation (M6 Hook §7.1) — prompted, never forced -->
-      <div class="hook-prompt" id="hookPrompt" hidden>
-        <div class="hook-card">
-          <div class="hook-title">⚛️ First time in the control room?</div>
-          <div class="hook-body">Take the 60-second intro: something is about to go wrong, and you get to press the big red button — then rewind time and see what it protected. Replayable any time — click the ⚛️ mission line above to open Plant &amp; Mission.</div>
-          <div class="hook-actions">
-            <button class="btn" id="hookStart">▶ Start the intro</button>
-            <button class="btn" id="hookSkip">Not now</button>
           </div>
         </div>
       </div>
@@ -224,7 +203,7 @@
       <div class="mission-overlay" id="missionOverlay" hidden>
         <div class="mission-modal">
           <div class="mission-head">
-            <div class="mission-title">⚛️ Plant &amp; Mission</div>
+            <div class="mission-title">Plant &amp; Mission</div>
             <button class="btn" id="missionClose" aria-label="Close">✕ Close</button>
           </div>
           <div class="mission-body">
@@ -244,7 +223,7 @@
       <div class="mission-overlay" id="featureOverlay" hidden>
         <div class="mission-modal">
           <div class="mission-head">
-            <div class="mission-title">🧪 Features — development toggles</div>
+            <div class="mission-title">Features — development toggles</div>
             <button class="btn" id="featureClose" aria-label="Close">✕ Close</button>
           </div>
           <div class="mission-body fl-body">
@@ -273,88 +252,113 @@
         </div>
       </div>
 
-      <!-- Help overlay — a one-screen "how this control room works" guide -->
+      <!-- Help overlay — short control-room guide -->
       <div class="mission-overlay" id="helpOverlay" hidden>
         <div class="mission-modal help-modal">
           <div class="mission-head">
-            <div class="mission-title">❓ How this control room works</div>
+            <div class="mission-title">How this control room works</div>
             <button class="btn" id="helpClose" aria-label="Close">✕ Close</button>
           </div>
           <div class="help-body">
             <div class="help-sec">
-              <h4>The board is quiet on purpose</h4>
-              <p>A healthy plant is a dark board. Color appears only when something needs you: amber
-              means caution, red means alarm. An empty alarm panel is itself information.</p>
+              <h4>Learn on a real plant model</h4>
+              <p>The left side is the plant — operate rods, pumps, valves, feed, and the turbine
+              there. The right column is the simulator: time, session, Instructor / checklists,
+              tools, and the System Scanner. Same high-fidelity physics whether you are learning
+              the basics or practicing failures.</p>
             </div>
             <div class="help-sec">
-              <h4>You operate through instruments — and instruments can lie</h4>
-              <p>Every number on this board comes from a sensor that lags, drifts, and can fail.
-              The plant's protection systems read the same sensors you do. At Three Mile Island a
-              valve indicator read <i>closed</i> while the valve was stuck open — this simulator will
-              do that to you, on purpose, with no visual tell. Cross-check your indications.</p>
+              <h4>Where to start</h4>
+              <p><b>Play</b> starts the clock (the board shows SIMULATION PAUSED until you do).<br>
+              <b>Instructor</b> (right column) — free-play coaching and, later, guided voices.<br>
+              <b>Checklists</b> — interactive procedures that check themselves off the instruments.<br>
+              <b>Manual</b> — full operator reference and written procedures.<br>
+              <b>Plant &amp; Mission</b> (under the clock) — starting condition and guided content.<br>
+              <b>System Scanner</b> — hover anything on the board for what it is and how to use it.</p>
             </div>
             <div class="help-sec">
-              <h4>Where everything lives</h4>
-              <!-- The clause promises gated content, so it follows the campaign flag (#241);
-                   RD.Flags.applyDom() swaps the span's text on a channel that lacks it. -->
-              <p><b>⚛️ Mission line</b> (top right, under the clock) — <span data-flag="campaign"
-              data-flag-off="switch reactors and pick your starting condition.">switch reactors, start the
-              training campaign, scenarios, or procedure walkthroughs.</span><br>
-              <b>📖 Manual</b> — the Operator's Manual: controls, indications, setpoints, normal
-              values, and followable procedures.<br>
-              <b>⏪ Rewind</b> (by the strip chart) — go back in time. Failure is never Game Over;
-              rewind and try a different path. In free play, press it and then <b>click the moment
-              you want on the strip chart</b> — every checkpoint in the window becomes a jump
-              target; in a scenario or walkthrough it steps back one checkpoint.<br>
-              <b>System Scanner</b> (bottom right) — hover or tap anything on the board and the
-              scanner tells you what it is and what it's for.</p>
+              <h4>Colors on this Physics Diagram</h4>
+              <p><b>Green</b> — running / normal.&nbsp;
+              <b>Yellow / amber</b> — abnormal or alarm caution.&nbsp;
+              <b>Red</b> — problem or automatic protection (trip).&nbsp;
+              <b>Cyan</b> — you can type or click here.&nbsp;
+              <b>Grey</b> numbers — OK but not ideal, no alarm yet.</p>
             </div>
             <div class="help-sec">
-              <h4>Keyboard shortcuts</h4>
-              <p class="mono help-keys">Space&nbsp;— play / pause · 1–5 — speed steps · A — acknowledge all alarms ·
+              <h4>Instruments can lag or lie</h4>
+              <p>You operate through instruments, and protection reads those same instruments.
+              A failed or stuck channel can mislead you on purpose — cross-check readings. That
+              is part of how real plants are run, not a game trick.</p>
+            </div>
+            <div class="help-sec">
+              <h4>Rewind &amp; speed</h4>
+              <p><b>Rewind</b> (by the strip chart) restores an earlier plant state so you can try
+              again. <b>Speed</b> runs the same physics faster; optional fast-forward dropout drops
+              you back to 1× when something needs attention.</p>
+            </div>
+            <div class="help-sec">
+              <h4>Keyboard</h4>
+              <p class="mono help-keys">Space — play / pause · 1–5 — speed · A — ack all alarms ·
               M — manual · ? — this guide · Esc — close / cancel</p>
+            </div>
+            <div class="help-sec">
+              <button class="btn" id="helpTourBtn" type="button">Open the quick tour</button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Feedback overlay — player bug reports / feedback. Telemetry comes ONLY
-           from the live session (the diag recorder), never from a user file
-           (owner ruling). W1 packages a download; W2 swaps in POST /api/feedback. -->
+      <!-- Quick tour — coach-marks: highlight a control and tip next to it.
+           Offered from SIMULATION PAUSED and Help. Not a centered modal. -->
+      <div class="tour-root" id="tourRoot" hidden>
+        <div class="tour-scrim" id="tourScrim" aria-hidden="true"></div>
+        <div class="tour-spot" id="tourSpot" aria-hidden="true"></div>
+        <div class="tour-tip" id="tourTip" role="dialog" aria-modal="true" aria-labelledby="tourTitle">
+          <div class="tour-tip-title" id="tourTitle"></div>
+          <div class="tour-tip-body" id="tourBody"></div>
+          <div class="tour-tip-nav">
+            <button class="btn" type="button" id="tourPrev">← Back</button>
+            <span class="tour-prog mono" id="tourProg"></span>
+            <button class="btn" type="button" id="tourSkip">Skip</button>
+            <button class="btn" type="button" id="tourNext">Next →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feedback overlay — player bug reports / feedback. This used to be an
+           in-app form that packaged a JSON report as a download, with a POST to
+           /api/feedback planned behind it; there is no such endpoint and the
+           download went nowhere anyone reads. It is now just the address to write
+           to (owner, 2026-07-29). The diagnostics download stays, because the
+           bundle is worth attaching to a bug report and this overlay is the only
+           place it is reachable from — the 'export-diag' action has no button.
+           Telemetry still comes ONLY from the live session recorder, never from a
+           user-supplied file (owner ruling). -->
       <div class="mission-overlay" id="feedbackOverlay" hidden>
         <div class="mission-modal help-modal fb-modal">
           <div class="mission-head">
-            <div class="mission-title">💬 Send feedback</div>
+            <div class="mission-title">Send feedback</div>
             <button class="btn" id="fbClose" aria-label="Close">✕ Close</button>
           </div>
           <div class="help-body">
-            <div class="fb-field">
-              <label for="fbCategory">Category</label>
-              <select id="fbCategory" class="num-input">
-                <option value="bug">Bug report</option>
-                <option value="physics">Physics / procedure accuracy</option>
-                <option value="feedback">General feedback</option>
-              </select>
-            </div>
-            <div class="fb-field">
-              <label for="fbText">What happened?</label>
-              <textarea id="fbText" class="num-input mono" rows="5"
-                placeholder="What were you doing, what did you expect, and what did the board actually show?"></textarea>
-            </div>
-            <div class="fb-field">
-              <label class="fb-check"><input type="checkbox" id="fbAttach" checked>
-                Attach this session's telemetry</label>
-              <div class="fb-hint" id="fbAttachInfo">Plant readings, alarms, and the commands you issued —
-              so what you saw can be replayed. Nothing about you or your device.</div>
-            </div>
-            <div class="fb-field">
-              <label for="fbEmail2">Email (optional — only if you want a reply)</label>
-              <input type="email" id="fbEmail2" class="num-input" placeholder="">
-            </div>
-            <div class="fb-actions">
-              <button class="btn" id="fbSend">Package report ⭳</button>
+            <p class="fb-lead">Bug reports, physics or procedure corrections, and general
+              feedback are all welcome — email:</p>
+            <div class="fb-addr">
+              <a class="fb-mail mono" id="fbMail"
+                 href="mailto:reactordynamics@gmail.com?subject=Reactor%20Dynamics%20feedback">reactordynamics@gmail.com</a>
+              <button class="btn" id="fbCopy">Copy address</button>
               <span class="fb-msg" id="fbStatus"></span>
             </div>
+            <div class="fb-hint">What makes a report easy to act on: what you were doing, what you
+              expected, and what the board actually showed. If it is a physics or procedure
+              question, the plant mode and the readings you were reading it from.</div>
+            <div class="fb-field fb-diag">
+              <button class="btn" id="fbDiag">Download session diagnostics ⭳</button>
+              <div class="fb-hint">Optional, for a bug report — plant readings, alarms, and the
+                commands you issued this session, so what you saw can be replayed. Nothing about
+                you or your device. Attach the file to your email.</div>
+            </div>
+            <div class="fb-hint fb-ver" id="fbVer"></div>
           </div>
         </div>
       </div>
@@ -369,7 +373,7 @@
         <div class="panel-title">
           <span>System Scanner</span>
           <button class="scan-exp" id="scannerToggle" aria-expanded="false"
-                  title="Expand — hovering then gives the full description">⤢ Expand</button>
+                  title="Show the full description when you hover">Full description</button>
         </div>
         <div class="body" id="scanner"><span class="idle">Hover or tap anything to see what it does.</span></div>
       </div>
@@ -455,8 +459,6 @@
   <script src="manual_procedures.js"></script>
   <script src="md_render.js"></script>
   <script src="manual_md.js"></script>
-  <!-- PWR full-plant synoptic (legacy; kept for instructor highlight fallbacks) -->
-  <script src="diagram/pwr_synoptic.js"></script>
   <!-- PWR learning board — data-driven synoptic (Claude Design import); mounted by app.js when plant_id === 'pwr' -->
   <script src="diagram/board/board_h.js"></script>
   <script src="diagram/board/std_pipe.js"></script>

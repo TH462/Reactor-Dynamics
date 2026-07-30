@@ -150,6 +150,20 @@ function runProcedure(profKey, proc) {
   svc.selectPlant(P.plant, proc.from, P.version, BARE ? { noDefaults: true } : undefined);
   svc.running = true;                       // gates drive tick() directly
   svc.timeAcceleration = ACCEL;
+  // …and it has to STAY at ACCEL. `_attentionStop` drops fast-forward to 1× on the
+  // first alarm/scram/failure on a quiet board and nothing puts it back, so this
+  // harness used to declare 10× and then run most procedures at 1× from a few
+  // seconds in — every step downstream judged on a TENTH of the sim time its author
+  // declared. That is what misfiled `bwr_startup` step 2 as a BWR plant defect
+  // (#245; see the removed xfail below). The dropout is a comfort feature for a
+  // HUMAN at the board — a headless gate has no one to protect — and `attentionStops`
+  // is the supported way to say so (it is the Settings → Fast-forward dropout
+  // toggle). `run_autoctl` expresses the same rule differently, by re-asserting the
+  // speed each cycle; both say "a headless probe gets its full sim-time budget".
+  // The mechanism itself is covered by run_m5 (scram/failure/alarm reasons, the
+  // on/off setting, and its survival across a state restore), so turning it off
+  // here costs no coverage.
+  svc.attentionStops = false;
 
   var checks = [];
   var casualty = !!CASUALTY_CATEGORIES[proc.category];
@@ -165,6 +179,11 @@ function runProcedure(profKey, proc) {
       scramStep = curStep; scramReason = snap.rps_state.last_trip_reason || '(no reason given)';
     }
   }
+
+  // Ticks that advanced less sim time than SEC_PER_TICK claims. Asserted below, so
+  // #245 cannot come back quietly: the whole defect was that the harness went on
+  // reporting "10× accel" in its header while the runs underneath it did not.
+  var slowTicks = 0, firstSlow = null;
 
   var curStep = 0, lastSnap = null;
   (proc.steps || []).forEach(function (st, idx) {
@@ -182,6 +201,12 @@ function runProcedure(profKey, proc) {
       var s = svc.tick();
       if (!s) continue;
       lastSnap = s;
+      if (s.metadata && s.metadata.time_acceleration < ACCEL) {
+        if (!slowTicks) firstSlow = 'step ' + curStep + ' @ t=' + s.metadata.sim_time.toFixed(1) +
+          ' → ' + s.metadata.time_acceleration + '×' +
+          (s.metadata.speed_snap ? ' (' + s.metadata.speed_snap.reason + ')' : '');
+        slowTicks++;
+      }
       observe(s);
       if (st.saw && pred(s.true_state, st.saw)) sawHit = true;
     }
@@ -194,9 +219,13 @@ function runProcedure(profKey, proc) {
   });
   if (!lastSnap) lastSnap = svc._assembleWithInstructor();
 
-  // ---- the four stack-only assertions ----
+  // ---- the stack-only assertions ----
   checks.push({ d: 'stack: every step command accepted', pass: refusals.length === 0,
     obs: refusals.length ? refusals.join('; ') : 'all accepted' });
+
+  // The run got the sim time its steps were written against (#245).
+  checks.push({ d: 'stack: ran at the declared ' + ACCEL + '× throughout', pass: slowTicks === 0,
+    obs: slowTicks ? slowTicks + ' slow ticks, first at ' + firstSlow : ACCEL + '× for every tick' });
 
   if (!casualty) {
     // "Unexpected" means the plant tripped without the procedure asking it to, or
@@ -302,8 +331,21 @@ var KNOWN_FAILS = {
    * and the annotation must be removed. */
   'rbmk_pre·rbmk_raise_power': { 'step 1 power_pct > 51': '#208 on-hold' },
   'rbmk_post·rbmk_raise_power': { 'step 1 power_pct > 51': '#208 on-hold' },
-  'rbmk_pre·rbmk_mcp_trip': { 'step 2 power_pct < 12': '#208 on-hold' },
-  'rbmk_post·rbmk_mcp_trip': { 'step 2 power_pct < 12': '#208 on-hold' },
+  /* 'rbmk_pre·rbmk_mcp_trip' / 'rbmk_post·rbmk_mcp_trip' — step 2 `power_pct < 12`
+   * REMOVED 2026-07-29 with the #245 fix, and 'bwr·bwr_sbo_rcic' step 3
+   * `vessel_level_pct > 40` (was 25.38) with them. Same story as bwr_startup above,
+   * three more times: each ran at 1× from an early dropout, so each was judged on a
+   * TENTH of its declared sim time — power had a tenth of the time to fall after the
+   * pump trip, RCIC a tenth of the time to refill the vessel. Given their intended
+   * 10×, all three pass. That is FOUR "RBMK/BWR plant defects" under #208 that were
+   * one test-harness bug; #208's remaining entries deserve the same suspicion when
+   * those plants reopen.
+   *
+   * The same caveat as bwr_startup applies and is the whole point of repeating it:
+   * this establishes the MECHANISM, not that the RBMK or the BWR is right. Nobody
+   * has re-derived these steps from the plant. Not chased — both plants are ON HOLD
+   * (owner, 2026-07-29: "We are not working on the BWR right now"). **When they
+   * reopen, re-derive rather than inheriting the green.** */
   /* 'bwr·bwr_startup' — step 2 `power_pct > 1` REMOVED 2026-07-29. It was never a
    * BWR physics defect. Measured cause: at t=2.0 s the BWR's RCIC RUNNING
    * annunciator (priority `status`) came in on an otherwise quiet board, the
@@ -314,13 +356,28 @@ var KNOWN_FAILS = {
    *
    * #240's follow-up ruling (status-class alarms arrive pre-acknowledged, so a
    * status arrival is not an attention event) removed that dropout, the run got
-   * the 10× it declares, and the step passes on its own physics.
+   * the 10× it declares, and the step passes.
    *
-   * READ THIS BEFORE TRUSTING IT: the fix is in the SERVICE, not in the BWR. The
-   * remaining ten dropouts in this suite still cost their procedures 90 % of their
-   * sim time from the moment they fire — filed as **#245**. If that is fixed,
-   * several numbers here will move again. */
-  'bwr·bwr_sbo_rcic': { 'step 3 vessel_level_pct > 40': '#208 on-hold (B3 under the stack)' },
+   * WHAT THIS DOES **NOT** ESTABLISH — read before you treat the green as a
+   * clean bill of health for the BWR. What was demonstrated is the MECHANISM:
+   * the harness was starving the run of sim time, and it no longer is. Nobody
+   * has independently checked that BWR startup behaviour is otherwise right.
+   * "Passes once it gets the time its author intended" is a weaker claim than
+   * "the plant does the correct thing", and a genuinely slow ascent would be
+   * hidden by the same 10×. The original #208 filing may have been observing
+   * something real on top of this. It was not chased because BWR is ON HOLD
+   * (owner, 2026-07-29: "We are not working on the BWR right now") — so this is
+   * a note, not a deferral anyone has scheduled. **When BWR reopens, re-derive
+   * this step from the plant rather than inheriting the green.**
+   *
+   * Also: the fix is in the SERVICE, not in the BWR. The remaining ten dropouts
+   * in this suite still cost their procedures 90 % of their sim time from the
+   * moment they fire — filed as **#245**. If that is fixed, several numbers here
+   * will move again, this one included.
+   *
+   * FIXED 2026-07-29 (#245): `svc.attentionStops = false` at the top of
+   * runProcedure, and a per-procedure assertion that the run held the declared
+   * acceleration throughout. Three more xfails cleared with it — see below. */
 };
 
 var suites = 0, suitesPass = 0, total = 0, passed = 0, narr = 0, skipped = 0, xfails = 0, xpassBad = 0;

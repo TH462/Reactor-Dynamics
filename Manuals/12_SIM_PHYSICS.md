@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLX-100** (Single-Loop eXperimental, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 0  
+**Revision:** 14  
 
 ---
 
@@ -120,14 +120,77 @@ Net reactivity is the sum of six terms:
 
 | Term | Coefficient | In operator units |
 |---|---|---|
-| Core excess | `rho_excess` = 0.10 | +10 000 pcm, held down by boron/rods/xenon |
-| Control + shutdown rods | worth 0.085 / 0.10 | 8500 / 10 000 pcm |
+| Core excess | `rho_excess` = 0.087544 | +8754 pcm, held down by boron/rods/xenon |
+| Control + shutdown rods | worth 0.04068 / 0.03676 | 4068 / 3676 pcm (all RCCAs **7744 pcm**) |
 | **Doppler** (fuel temperature) | −2.5 × 10⁻⁵ K⁻¹ | ≈ **−1.39 pcm/°F** (−2.5 pcm/°C) of fuel |
-| **Moderator temperature (MTC)** | −2.0 × 10⁻⁴ K⁻¹ | ≈ **−11.1 pcm/°F** (−20 pcm/°C) of Tavg |
-| Boron | 1.0 × 10⁻⁴ per ppm | ≈ **−10 pcm/ppm** |
+| **Moderator** (density-shaped) | see §4.3.1 | **−1 pcm/°F cold → −3 pcm/°F hot** at operating boron |
+| Boron (direct term) | 1.0 × 10⁻⁴ per ppm | ≈ **−10 pcm/ppm**, plus the density coupling below |
 | Xenon | worth 0.025 | 2500 pcm at equilibrium |
 
-Both temperature coefficients are **referenced to the settled full-power condition**, so they are exactly zero there and act purely as stabilising perturbations on a transient. That is a modelling convenience, not a claim that a real core has zero defect at power.
+The Doppler coefficient is **referenced to the settled full-power condition**, so it is exactly
+zero there and acts purely as a stabilising perturbation on a transient. That is a modelling
+convenience, not a claim that a real core has zero defect at power. The moderator term shares
+the same reference.
+
+**Every number in this table is either sourced to a real-plant document or solved from one, and
+`test/run_reactivity.js` pins the sourced ones.** The rod worths are the measured values in
+WTSM 2.2 *Reactivity Balance Calculations* (ML11216A051) Table 2.2-1 for a real Westinghouse
+4-loop — all control banks 4068 pcm, all shutdown banks 3676 pcm, all RCCAs 7744 pcm.
+`rho_excess` has no direct observable, so it is **solved** rather than tuned: it is whatever
+makes hot-zero-power all-rods-out critical boron come out at **975 ppm**, the figure measured in
+the BEAVRS / Watts Bar Unit 1 Cycle 1 hot-zero-power physics tests.
+
+> **DECLARED DEPARTURE — boron at power reads low against a real plant.** This plant runs
+> **618 ppm** at full power. A real Westinghouse 4-loop at 100 EFPD runs **750 ppm** (the
+> worked exercise in WTSM 2.2, ML11216A051). The difference is not an error and it is not
+> hidden: our figure is *derived*, not fitted. Walk it from the one measured anchor — hot
+> zero power, all rods out, **975 ppm** — and the terms are Doppler −990 pcm, moderator
+> −186, control bank to its 92 % operating position −76, and equilibrium xenon −2500, for
+> −3752 pcm net, which is 357 ppm at 10.5 pcm/ppm. 975 − 357 = 618, against the engine's
+> 618 — the 14 ppm residual is the moderator term being linearised over that boron change.
+> `test/run_reactivity.js` gates this derivation.
+>
+> **Most of the gap is xenon.** Our equilibrium xenon worth is 2500 pcm, which is 250 ppm of
+> boron on its own, and it is a `[tune]` value rather than a measurement. The rest is that
+> the 975 ppm anchor is beginning-of-life with no xenon while the 750 ppm comparable is
+> 100 effective full-power days in — different burnup, so not the same quantity. Pinning
+> boron at power would need a *measured* hot-full-power anchor; the BEAVRS benchmark
+> publishes its HFP critical boron only as a figure, so we do not have one. Tracked in #263.
+
+### 4.3.1 The moderator coefficient is not a constant
+
+Moderator reactivity tracks moderator **density**, not temperature:
+
+> ρ_mod(T, B) = `mod_coeff` · (1 − B / 1400) · ( d(T) − d(T_ref) )
+
+where *d* is relative water density (a cubic in °C fitted to IAPWS-IF97 at 2248 psi (15.5 MPa)).
+The moderator temperature coefficient is the slope of that, so it **steepens on its own as the
+plant heats** — because the density derivative does — and **weakens as boron rises**, because
+boric acid expanding out of the core is a positive contribution that partly cancels the
+moderator loss. Both behaviours are sourced to WTSM 2.1 *Reactor Physics Review* (ML11223A207)
+§2.1.6.2 and Figure 2.1-8, which states that at 500 °F unborated water gives −17 pcm/°F, that
+500 ppm gives −8 pcm/°F at the same temperature, and that above roughly **1400 ppm the
+coefficient goes positive**. This plant peaks near 1100 ppm, so it never reaches that.
+
+| Tavg | 0 ppm | 900 ppm |
+|---|---|---|
+| 122 °F (50 °C) | −10.3 pcm/°F | −0.9 pcm/°F |
+| 350 °F (176.7 °C) | −19.3 pcm/°F | −1.7 pcm/°F |
+| 566.6 °F (297 °C) | −38.5 pcm/°F | −3.4 pcm/°F |
+
+**Two consequences fall out of the model rather than being tuned in.** Differential boron worth
+is **larger cold** — 19.9 pcm/ppm at 122 °F against 10.5 pcm/ppm at power — because denser water
+carries more boron atoms per unit volume. And **critical boron falls only gently** across a
+heatup: 806 ppm cold to 588 ppm hot with the control bank inserted, 1011 ppm to 975 ppm all-rods
+out. That is why boron is held roughly constant through a heatup and the dilution is done hot,
+which is what a real startup does.
+
+Before this was corrected, a single constant of −11.1 pcm/°F was applied from 122 °F to 579 °F.
+It integrated to a **−4944 pcm** moderator defect over the heatup — 494 ppm of dilution to buy
+back, a third of it charged below 274 °F — and it collapsed critical boron from 819 ppm cold to
+263 ppm hot. The practical consequence, and how it was found: **600 ppm, a value that looks safe
+next to the hot end, was critical at 274 °F**, and diluting toward it in a Mode 5 → Mode 1 run
+took the reactor critical cold and tripped it on source-range high flux.
 
 **Rod worth follows an S-curve** — least effective near fully in or fully out, most effective mid-core — with the peak deliberately flattened to about 90 % of the textbook curve. The reason is a teaching one: the single lumped bank carries the **full control worth that a real plant spreads over four banks**, so an unflattened curve made one step near the critical band worth far more than a real bank-D step.
 
@@ -284,7 +347,9 @@ Flows enter the mass balance on **two different scales**, deliberately:
 | **Accident scale**, 1:1 | Leaks, PORV/safety relief, HPI/LPI, accumulators | Tuned for accident pacing |
 | **CVCS scale**, × 0.012 | Charging, letdown | Tens of gpm against a whole RCS |
 
-Without that split, a 20 gpm letdown bleed would read as ~3 % of total inventory per second and drain the pressurizer in seconds. With it, an uncompensated orifice-A drain walks pressurizer level down about **2 % per minute** — minutes to notice and respond, which is the intended feel.
+Without that split, a 30 gpm letdown bleed would read as ~3 % of total inventory per second and drain the pressurizer in seconds. With it, an uncompensated orifice-A drain walks pressurizer level down about **2 % per minute** — minutes to notice and respond, which is the intended feel.
+
+Because the two scales are independent, **no single RCS volume reconciles them** — the gpm figures below are pacing flavour attached to the CVCS scale, and comparing them with real-plant flows or Tech Spec leakage limits is a category error, not a fidelity gap to close.
 
 **Letdown is pressure-driven, not commanded.** Two fixed orifices, each independently in or out; each passes flow proportional to √(cold-leg pressure − 348 psi (2.4 MPa) backpressure). So letdown **tails off toward zero as the RCS depressurises on a cooldown** — it is not a constant you dial in.
 
@@ -474,9 +539,19 @@ SG narrow-range level indication moves **the wrong way** on a fast power change 
 
 Source range (counts/s) and intermediate range (chamber amps) carry their lag and noise **in the log domain**, so a decade of lag is a decade at any level and noise sigma is in decades. Source range reads zero when its high voltage is de-energised.
 
-### 10.7 The one documented exception
+### 10.7 RCS loop flow — and why the trip that reads it changed
 
-The **low-flow reactor trip reads true flow**, not an instrument. It is the only such exception in the plant and it is marked as one in the source. Every other trip and actuation reads an indication.
+Until 2026-07-29 the **low-flow reactor trip read true flow**, because no flow instrument had ever been built. It was the last exception in the plant, and it meant the single most safety-significant trip could not lag, could not drift, and could not be fooled — so it could not be *taught*. It now reads `rcs_flow`, an ordinary instrument with lag and injectable failures, and **there is no exception left**: every trip and actuation on this plant reads an indication.
+
+**RCS Loop Flow** is modelled on the real measurement: **elbow taps** on the crossover-leg 90° elbow, reading the differential pressure between the inner and outer radius of the bend, with ΔP ∝ flow². Nothing is inserted into the flow path. Real accuracy figures for this channel are ±10 % absolute, with trip-point repeatability around ±1 %.
+
+The **setpoint is the real one — 90 % of rated, blocked below P-7 (10 % power)**. Adopted 2026-07-29, replacing an unsourced 25 % / 5 % pair. Measured on an RCP trip from full power: the indication crosses 90 % at **1.8 s** and DNB onset is at **10.9 s**, so the trip now fires about nine seconds *before* the hot channel can boil. The old 25 % setpoint fired at 16.2 s — about five seconds *after* it. Its entire practical effect was to let DNB happen.
+
+**One departure remains, and it is deliberate: this plant has ONE flow channel**, where a real Westinghouse unit has **three detectors per loop and trips on 2-of-3**. That follows from the plant being single-loop and from every other protection function here being single-channel too — but be clear about what it costs, because it is the thing this event is now built to teach:
+
+> A **stuck-high flow transmitter defeats the low-flow trip completely.** Measured, with the channel stuck at 100 % and the pump tripped: DNB onset at 9 s, core void peaking at 0.60, fuel reaching ~1706 °F (930 °C) against a damage threshold of 2192 °F (1200 °C), and the reactor finally scrammed at **~35 s on HIGH PRIMARY PRESSURE** — a different channel, a different instrument, catching a *consequence*. RCS Flow - Low never actuates at all. 2-of-3 coincidence exists precisely to stop one lying transmitter from doing this.
+
+The surviving indication in that event is **subcooling margin**, which falls to 11.2 °F (6.2 °C) — below its 19.8 °F (11 °C) caution — while the flow gauge still reads 100 %. That is the cross-check the scenario asks for; see `04` PWR-N13 and `06` PWR-E02.
 
 ---
 
@@ -564,7 +639,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 | **Structural** — fixed physical constants and real-plant setpoints | High | β and Λ, six-group delayed data, fuel damage/melt thresholds, PORV and safety setpoints, the 600 psi (4.14 MPa) accumulator arming pressure, the 400 psi (2.76 MPa) RHR interlock |
 | **Calibrated** — arbitrated by the physics acceptance suites | Directionally right, magnitude roughly right | Heat-transfer coefficients, decay-heat constants, level coefficients, dump and AFW capacities |
 | **Compressed** — deliberately faster than reality for training | Right in behaviour, wrong in duration | Boron adjust rate, grab-sample turnaround, cold-plant pressurisation slew, mode-transition pacing |
-| **Indicative** — display flavour derived from normalised internals | Illustrative | The gpm conversions (24 000 gpm RCS flow, 40 gpm charging, 20 gpm letdown, 100 gpm AFW) |
+| **Indicative** — display flavour derived from normalised internals | Illustrative | The gpm conversions (24 000 gpm RCS flow, 60 gpm charging, 30 gpm letdown, 100 gpm AFW) |
 
 > **NOTE.** The plant's absolute ratings — ≈ 300 MWt, ≈ 100 MWe, one loop, one SG, one RCP — are a **design choice**, not a measurement of any real unit. The SLX-100 is its own plant.
 

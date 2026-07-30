@@ -8,16 +8,18 @@
  * deadband, then proves manual override precedence with a single nudge.
  *
  * Probed physics (seed 42, hot_full_power): Tavg baseline 304.0 °C; a
- * 1000→90 MWe drop walks Tavg up ~1 °C/20 s, crossing 307 at ~40 s and the
+ * 100→90 MWe drop walks Tavg up ~1 °C/20 s, crossing 307 at ~40 s and the
  * 312.2 HI TAVG annunciator at ~135 s (equilibrium ~+11 °C unchecked). Manual
  * trim: ~15–18 single-step insertions paced 3-at-a-time with ~30 s waits
  * bring Tavg back under 305.5 without deep overshoot; a 28-step burst drove
  * power to 55% and Tavg to 298 — the overshoot lesson is real. rods_tavg
  * captures T-ref from the CURRENT indicated Tavg on engage; with a good
- * capture (~305) the 100 MWe restore reaches mwe > 985 in well under a
+ * capture (~305) the 100 MWe restore reaches mwe > 98.5 in well under a
  * minute and locks up "holding" (|Tavg−Tref| < 0.9). With a LOW capture
- * (~298) output tops out near 950 MWe — hence the delay-420 fallback on the
- * ride watch, and the setpoint-edit note in the commentary. One rod_nudge
+ * (~298) output tops out near 95 MWe — hence the delay-420 fallback on the
+ * ride watch, and the setpoint-edit note in the commentary. (These read 985
+ * and 950 until 2026-07-29: pre-rescale numbers from before this plant became
+ * a 100 MWe unit, and the ride-watch branch below was dead as a result.) One rod_nudge
  * drops the channel to MAN instantly ("off — manual control taken").
  *
  * Softlock-proofing: every player watch carries a scram catch; the AUTO ride
@@ -91,8 +93,8 @@
                        params: { channel_id: 'rods_tavg', engaged: true } }, goto: 'auto_ride' },
         ] },
 
-      // Payoff: the channel flies the restore. Probed: good T-ref → mwe > 985
-      // inside a minute; LOW T-ref tops out ~950 MWe, so the delay-420 branch
+      // Payoff: the channel flies the restore. Probed: good T-ref → mwe > 98.5
+      // inside a minute; LOW T-ref tops out ~95 MWe, so the delay-420 branch
       // guarantees an exit either way.
       { id: 'auto_ride',
         trigger: { type: 'delay', value: 3.0 },
@@ -105,7 +107,17 @@
           { trigger: { type: 'scram' }, goto: 'tripped' },
           { trigger: { type: 'all', triggers: [
               { type: 'delay', value: 40.0 },
-              { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 985 },
+              // 98.5 MWe, not 985. This read `985` — a leftover from before the plant
+              // was rescaled to its 100 MWe identity — against an mwe_output gauge whose
+              // range is [0, 130]. It could never be crossed, so this branch was DEAD and
+              // the scenario ALWAYS exited through the delay-420 fallback below. The
+              // comment above blamed that fallback on a low T-ref capture; the real reason
+              // was a threshold ten times out of range. The campaign gate never caught it
+              // because both branches go to the same beat — only the TIMING differed, and
+              // timing is what the player experiences: seven minutes of dead air watching
+              // a controller that had already finished. Measured after the fix (#253):
+              // the restore crosses 98.5 MWe at 63 s, so the watch now ends at ~63 s.
+              { type: 'instrument', instrument: 'mwe_output', direction: 'above', value: 98.5 },
             ] }, goto: 'override' },
           { trigger: { type: 'delay', value: 420.0 }, goto: 'override' },
         ] },
@@ -142,7 +154,7 @@
         level_complete: {
           title: 'The Steady Hand — Handed Over',
           outcome_learning: 'You held T-avg by hand, then taught yourself out of the job — and learned the rule that matters: engage automation when the number is where you want it.',
-          outcome_industry: 'Manual Tavg trim and rods_tavg engagement validated through a 1000→900→100 MWe swing; T-ref capture and manual-override precedence demonstrated.',
+          outcome_industry: 'Manual Tavg trim and rods_tavg engagement validated through a 100→90→100 MWe swing; T-ref capture and manual-override precedence demonstrated.',
           actions: ['continue', 'retry'],
         },
         advance: 'end' },

@@ -48,9 +48,6 @@ function pinChannel(ch) {
 
   // The first-run hook is a modal that eats clicks. Hide it (rather than pressing
   // Skip, which would persist hook_done) once its own assertion is made.
-  async function hideHook(page) {
-    await page.evaluate(function () { var h = document.getElementById('hookPrompt'); if (h) h.hidden = true; });
-  }
   async function openMission(page, tab) {
     var open = await page.evaluate(function () { return !document.getElementById('missionOverlay').hidden; });
     if (!open) await page.click('#missionBtn');
@@ -69,13 +66,21 @@ function pinChannel(ch) {
   // ------------------------------------------------------- the dev build
   var b = await build(null);
   ck('dev: build reports the dev channel', await b.page.evaluate(function () { return RD.Flags.baseChannel(); }) === 'dev');
-  ck('dev: first-run hook IS offered', await b.page.isVisible('#hookPrompt'));
-  await hideHook(b.page);
+  // RETIRED (owner ruling, 2026-07-30: the training campaign help copy "is being removed
+  // and replaced with something else… going to open with a short tour instead", and the
+  // campaign is being closely owner-directed). bf41f67 deleted #hookPrompt and the "start
+  // the training campaign" help copy, so TWO PAIRED GUARDS lost their subject:
+  //   dev "first-run hook IS offered"       + public "first-run hook is NOT offered"
+  //   dev "help guide promises the campaign" + public "no longer promises the campaign"
+  // In each pair the dev half FAILED and the public half went VACUOUS — passing because its
+  // pattern no longer appears anywhere, which is how a deleted test passes. Third and fourth
+  // instance of that in this one file today: it is a structural weakness of paired flag
+  // guards, not bad luck. Retired rather than re-pointed at #tourOverlay, because the tour
+  // carries NO data-flag — it shows on BOTH channels, so the channel distinction these
+  // guarded no longer exists. Re-point them only if the tour is deliberately gated later.
   ck('dev: Features row is offered', await b.page.isVisible('#featureRow'));
   ck('dev: the checklist picker is offered', await b.page.isVisible('#instrCklRow'));
   var camp = await openMission(b.page, 'campaign');
-  ck('dev: the help guide promises the campaign',
-    /start the\s+training campaign/.test(await b.page.textContent('#helpOverlay')));
   ck('dev: campaign lists its missions', /Act I/.test(camp) && !/COMING SOON/.test(camp), camp.slice(0, 60));
   ck('dev: campaign missions are startable',
     (await b.page.$$('#mpContent [data-camp-start]')).length > 20);
@@ -88,12 +93,9 @@ function pinChannel(ch) {
   // ------------------------------------ the public build (what `main` deploys)
   b = await build('public');
   ck('public: build reports the public channel', await b.page.evaluate(function () { return RD.Flags.baseChannel(); }) === 'public');
-  ck('public: first-run hook is NOT offered', !(await b.page.isVisible('#hookPrompt')));
   ck('public: Features row is not on screen', !(await b.page.isVisible('#featureRow')));
   ck('public: the checklist picker is not on screen', !(await b.page.isVisible('#instrCklRow')));
   var help = await b.page.textContent('#helpOverlay');
-  ck('public: the help guide no longer promises the campaign', !/training campaign/.test(help));
-  ck('public: …and still says what the mission line does', /switch reactors/.test(help));
   ck('public: free play is still offered', /Start Free Play/.test(await openMission(b.page, 'free')));
   var tabs = ['campaign', 'scenarios', 'walkthroughs'];
   for (var i = 0; i < tabs.length; i++) {
@@ -161,7 +163,6 @@ function pinChannel(ch) {
 
   // ---------------------------------------------- the panel drives the app
   b = await build(null);
-  await hideHook(b.page);
   await b.page.click('#featureBtn');
   ck('panel: lists every registered flag',
     (await b.page.$$('.fl-row')).length === await b.page.evaluate(function () { return RD.Flags.ids().length; }));
@@ -187,7 +188,7 @@ function pinChannel(ch) {
   var ctx = await browser.newContext();
   var page = await ctx.newPage();
   await page.goto(LANDING);
-  ck('landing dev: the campaign promise stands', /Guided training campaigns/.test(await page.textContent('.hero .sub')));
+  ck('landing dev: the campaign promise stands', /Guided\s+training/.test(await page.textContent('.hero .sub')));
   await ctx.close();
 
   ctx = await browser.newContext();
@@ -195,11 +196,16 @@ function pinChannel(ch) {
   page = await ctx.newPage();
   await page.goto(LANDING);
   ck('landing public: the hero no longer promises campaigns',
-    !/Guided training campaigns/.test(await page.textContent('.hero .sub')));
+    !/Guided\s+training/.test(await page.textContent('.hero .sub')));
   ck('landing public: the feature block says coming soon',
-    /Guided campaigns — coming soon/.test(await page.textContent('.features')));
-  ck('landing public: the PWR card drops "the full experience"',
-    !/The full experience/.test(await page.textContent('.plant-card.live')));
+    /Guided\s+training\s+—\s+coming soon/.test(await page.textContent('.features')));
+  // REMOVED (#263 item 6): this was `!/The full experience/` on the PWR card, and the
+  // phrase has not existed anywhere in the site since the card was rewritten — so the
+  // check could never fail. Second vacuous negative in this file; the other was the hero
+  // one three lines up. Do not re-add it: the card carries no `data-flag` any more, so it
+  // makes no channel-dependent promise to guard, and the over-promise guard now lives
+  // where the promise does — the hero negative above and the features coming-soon check.
+  // A negative assertion is only worth its line if the pattern still appears SOMEWHERE.
   ck('landing public: the page still sells the plant',
     /Real reactor physics/.test(await page.textContent('.hero .sub')));
   await ctx.close();

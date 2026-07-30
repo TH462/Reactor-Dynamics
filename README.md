@@ -60,6 +60,26 @@ python3 -m http.server
 The control-room UI lives at `ui/shell.html` (the PWR card on the landing page
 deep-links to `ui/shell.html?engine=pwr`).
 
+### Offline, in one file
+
+There is nothing to load at runtime — no `fetch`, no modules, no web fonts, no images —
+so the sim runs straight from `file://` with no server at all. To carry it as a single
+attachment:
+
+```
+node tools/make_portable.js      # -> dist/Reactor_Dynamics_Alpha_1.9.0.html  (~2.5 MB)
+```
+
+On Windows you can also just **double-click `tools\make_portable.cmd`**, which runs the
+above and zips the result for email. Do *not* double-click the `.js` — Windows hands a
+`.js` file to Windows Script Host rather than Node, which fails with the misleading
+`Syntax error, Code: 800A03EA`.
+
+Either route inlines every script and stylesheet into one self-contained page you can
+double-click on a machine with no network, no Node, and no install. (Send the `.zip`, not
+the `.html` — some mail providers strip `.html` attachments.) `test/run_portable.js` is the
+gate that keeps it buildable.
+
 ## How it's built
 
 A layered stack — **snapshots flow up, commands flow down**; each layer talks only to

@@ -18,20 +18,127 @@ bullets** (drop the oldest), and nothing here may duplicate `Diagnostic/TUNING_L
 When in doubt about a number, prefer the as-built engine/config values over prose
 docs.
 
-> **You may not be the only agent in this repo. Check before you edit.** Two sessions
+> **Be brief. Facts, numbers, decisions** *(OWNER DIRECTIVE, 2026-07-30: "I would also like to
+> adjust the conciseness of replies. Most replies are a bit too long. I need just the facts and
+> important information to know what the ai did and to make decisions.")*. Lead with what
+> changed and the number that shows it. **Cut**: restating the request, narrating what you are
+> about to do, reasoning nobody asked for, re-explaining a decision already made, and the
+> victory lap after a green gate. **Keep**: measurements, deltas, what broke and why, and
+> anything that changes what he does next. Detail belongs in the commit message, the issue or
+> `Diagnostic/TUNING_LOG.md` — the reply is not where the record lives. The two delimited blocks
+> below are already bounded; this does not shrink them further.
+
+> **End with what is STILL OUTSTANDING** *(OWNER DIRECTIVE, 2026-07-30: "I would like to add to
+> claude.md to have the ai place a 'Still Outstanding' summary at the bottom so i know exactly
+> what still need to be done with respect to the task the ai is working on. This summary should
+> include a recommendation for what to work on next.")*. Close any response that leaves work
+> unfinished with a delimited block, last thing before you stop:
+>
+> ```
+> **— STILL OUTSTANDING —**
+> - <item> — <why it is not done: not started / blocked on X / needs your ruling>
+> **Next:** <the ONE thing you recommend, and why>
+> **— END STILL OUTSTANDING —**
+> ```
+>
+> **Scope it to the task in hand**, not the whole backlog — the owner is asking "where are we on
+> *this*", and a list of everything open answers a different question. **Name what blocks each
+> item**: "not started", "waiting on your ruling" and "blocked by another session" are different
+> facts and only one of them is yours to clear. **One recommendation, not a menu** — same rule as
+> the block above.
+>
+> **Omit it entirely when nothing is outstanding**, and say so in a sentence instead. A section
+> that appears every turn stops being read, which is the failure mode the First Principles rule
+> already names. It is a *status report*: it never substitutes for asking when a decision
+> genuinely blocks (SOP §5), and it never turns an unmeasured claim into a plan (HR12).
+
+> **When you ask the owner something, bring the recommendation with it** *(OWNER RULING,
+> 2026-07-29: "I think we should add to SOP to have you automatically give your recommendation
+> when asking for my input so I don't have to keep asking for it.")*. Lead with the answer you
+> would give and why, then the alternatives — a neutral menu is a recommendation you declined
+> to make. Say what you will do if there is no reply, and what would change your mind. Rank
+> them if there are several. And do not ask at all when the call is routine: make it, state
+> the assumption, move on. Full guidance, including the cases where it genuinely blocks:
+> `Blueprint/SOP.md` §5.
+
+> **The First Principles section — a CANARY, not an essay** *(OWNER RULING, 2026-07-29: "I would
+> label it the 'First Principles' section. The start and end should be marked."; narrowed hours
+> later, on the first two in the wild: "the first principles section is usually too long. I
+> consider it a canary. Something to tell me if there's something that needs to be looked into.
+> It doesn't need to be verbose.")*. Any response may carry one delimited block giving the raw
+> read — the blunt judgement, the disagreement with the framing, the thing the body would have
+> softened into a menu:
+>
+> ```
+> **— FIRST PRINCIPLES —**
+> <ONE concern. Two or three sentences, ~50 words.>
+> **— END FIRST PRINCIPLES —**
+> ```
+>
+> **One concern, not a survey** — the first two drafts each crammed in three, which is what made
+> them too long. Two candidates: ship the one you would most regret him not seeing. Needs more
+> than three sentences: then the canary is a short line plus an offer to expand, or an issue.
+> Same sense as HR9's — it says *look here*, it settles nothing.
+>
+> **Unhedged, not unaccountable.** Exempt from habit (hedging, deferring to documents, ranking
+> the cheap option first), never from the rules: **HR12 still binds** — an unmeasured claim must
+> say so, since a rules-free zone for confident plant-dynamics claims is what #205 and #220 are
+> the record of — as do HR11 and no-fabricated-sources, and it can never authorise an action or
+> excuse a gate. **Optional and never padded**: a slot filled every turn trains the owner to skip
+> it. **Two triggers worth knowing** — the *ranking disclosure* (your recommendation is the safe
+> option and a higher-fidelity one exists you are not recommending: say which you would pick on
+> fidelity alone, #251), and a doubt about your own work you would otherwise bury. Not gateable.
+
+> **You may not be the only agent in this repo. Check all lanes before you edit.** Two sessions
 > in one working directory will overwrite each other's files and sweep each other's
 > work into the wrong commit — this is not hypothetical, it happened on 2026-07-29 and
 > cost a set of manual edits their attribution. A **branch does not isolate anything**;
 > only a separate working directory does.
 >
-> | Working tree | Branch |
-> |---|---|
-> | `C:\grok_build\Reactor_Dynamics` | `develop` — the primary tree |
-> | `C:\grok_build\RD_docs` | `docs` — second agent |
+> | Working tree | Branch | |
+> |---|---|---|
+> | `C:\grok_build\Reactor_Dynamics` | `develop` | **the main working branch — use this unless it is taken** |
+> | `C:\grok_build\RD_workbench` | `workbench` | overflow lane 1, for when a second agent is already on `develop` |
+> | `C:\grok_build\RD_backshop` | `backshop` | overflow lane 2, same rules as workbench (third concurrent agent) |
 >
-> - **First thing in a session: `git worktree list` and `git status`.** Unexplained
->   modified files that are not yours mean someone else is working — do not commit them,
->   and say so to the owner.
+> - **First thing in a session, check ALL trees.** Occupancy is uncommitted modified files
+>   *plus* a **recent** commit — run all four lines, do not stop at the tree you are standing in:
+>   ```
+>   git worktree list
+>   git -C C:/grok_build/Reactor_Dynamics status --short && git log develop   -1 --format='%h %cr'
+>   git -C C:/grok_build/RD_workbench   status --short && git log workbench -1 --format='%h %cr'
+>   git -C C:/grok_build/RD_backshop    status --short && git log backshop  -1 --format='%h %cr'
+>   ```
+>   A commit inside the last hour or so means a live session; hours old means history.
+>   **Unmerged commits on `workbench` / `backshop` are NOT occupancy** — carrying work that has
+>   not reached `develop` yet is what those lanes are *for*. On 2026-07-29 workbench held five
+>   such commits and was completely free. **The check is not one-shot: re-check before your
+>   first commit.** `develop` was quiet in one session's t=0 snapshot and picked up another
+>   session an hour in.
+> - **On a positive, WARN AND ASK — do not move on your own** *(OWNER RULING, 2026-07-29:
+>   "Maybe it shouldn't be automatic. The agent should warn the user and ask if they should use
+>   workbench." — and, refining it: "it should also check if there's an agent working in the
+>   workbench before moving.")*. Say what you found in each lane (which files, which commit, how
+>   recent), recommend, ask; SOP §5 shape. The detection misfires both ways — another live
+>   session, the owner's own uncommitted edits, and your own leftovers read identically, and only
+>   the owner can tell them apart cheaply. **Investigating in place while you wait is fine;
+>   editing, writing probe files and committing are not** — collisions come from writes.
+>   Normally recommend *yes, switch* when `develop` is busy and an overflow lane is clear: the
+>   risk is asymmetric, a needless move costs one merge. Prefer **workbench** first, then
+>   **backshop**. **If ALL overflow lanes look occupied, do not pick one** — say so and offer a
+>   further tree; that is the owner's call, not a default.
+>   **Absent a reply: stay read-only and say what you are waiting on** *(OWNER RULING,
+>   2026-07-29: "lets go with your recommendation.", on the recommendation to cut the earlier
+>   draft's no-reply default)* — **the heuristic never gets an action.** The first draft moved to
+>   the workbench on its own whenever it looked clear; that was an agent proposal marked "for the
+>   owner to rule on" and never ruled on. It also fires on the *common* false positive — your own
+>   leftovers in the tree you just started in — while the case where guessing wrong is genuinely
+>   expensive is the case where the owner is present to answer in seconds.
+> - **Starting on `workbench` or `backshop`: `git merge --ff-only develop` — and when it refuses,
+>   do a real `git merge develop`.** Neither is a feature branch; each exists only so another
+>   agent has somewhere to work, but `--ff-only` fails whenever the lane still carries unmerged
+>   work, which is the normal case (`fatal: Not possible to fast-forward, aborting.`). Expect the
+>   conflict files below, keep both sides, re-run `run_all`.
 > - A new tree comes from `git worktree add <path> <branch>`, and needs `node_modules`
 >   junctioned from the primary tree (it is gitignored, and the Playwright gates need it)
 >   plus an `inbox/` directory. `CLAUDE.md` now arrives with the checkout.
@@ -88,10 +195,18 @@ docs.
 > works… Go with your recommendations")*. There are ~229,000 words of docs here containing
 > ~650 "do not / never / by design" phrases. Four rules make that tractable:
 > 1. **Binding: the Hard Rules in `Blueprint/CONTEXT.md` §3, and this file.** Nothing else.
+>    Ten rules, deliberately short. **`Blueprint/SOP.md` §1–4 is NOT binding** — it holds the
+>    *how* (worked cases, failure modes, procedure) that used to bloat §3 to 200 lines. Read
+>    it for technique; do not cite it as authority. **§5 is the exception**: it records a
+>    direct owner instruction, quoted and dated, so it binds under rule 4 below — because the
+>    owner said it, not because SOP.md says it. That is the only way anything in that file
+>    binds, and it is why every entry there must carry its quote.
 > 2. **`Diagnostic/`, `BUILD_DECISIONS.md` and `Manuals/` are RECORD, not policy** — they say
 >    what happened and why, not what you must do. Read them for evidence; don't obey them.
 > 3. **Plans expire when executed.** A phased work order stops binding the moment it is done
->    (`PWR_SHIP_REVIEW_PLAN.md` is the worked example — it governed for a week after finishing).
+>    (`PWR_SHIP_REVIEW_PLAN.md` was the worked example — it governed for a week after finishing,
+>    and was retired 2026-07-29; see `Blueprint/RETIRED.md`, which is where deleted documents
+>    are indexed so you can find one you did not know existed).
 > 4. **A directive with no date + verbatim owner quote is advisory.** Weigh it, say you did,
 >    move on. See `CONTEXT.md` §3 for the format and why.
 >
@@ -109,6 +224,9 @@ to read everything.
 |---|---|
 | **Understand the whole system** | `README.md`, then `Blueprint/CONTEXT.md` (interfaces, hard rules, data contract). |
 | **Understand *why* it's built this way** | `Blueprint/DESIGN_COMPANION.md` (vision, rationale, deliberate exclusions, v2 roadmap). |
+| **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 10 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
+| **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
+| **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
 | **Build or modify a module** | `Blueprint/CONTEXT.md` **plus that one module's spec** (`Blueprint/M1`–`M8`) — and nothing else. |
 | **Know what changed recently** | `CHANGELOG.md` (skimmable) → `Blueprint/BUILD_DECISIONS.md` (dense engineering rationale, tuning, gate tallies). |
 | **Operate the plant / look up a control, setpoint, or procedure** | `Manuals/` — start at `Manuals/README.md` (commercial-format PWR operator manuals). |
@@ -130,59 +248,108 @@ to read everything.
 _Last updated: **2026-07-29**._
 
 **Where the PWR is.** All PWR engine, behaviour, ops and stack gates green; `run_all` is
-**27 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
+**32 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
 a handful of UI/doc items.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.**
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
-- **The board explains itself, and the copy is gated (2026-07-28s, #96).** The System Scanner
-  block is now the **inspection surface**: hover → one-line summary, click to expand → full
-  description + a link into the manual section that documents the object. Board copy lives in
-  `ui/diagram/board/pwr_board_inspect.js` (160 entries, keyed by diagram item id, reached
-  through the driver's `inspectItem`); chrome copy stays inline as `data-scanner-hint` /
-  `-detail`; gauge and alarm detail is **generated** from `RD.MANUAL` + the protection table.
-  Three things to know before you touch it: an item with no entry inherits the **smallest box
-  containing it** (geometry, not DOM — tiles are absolutely-positioned siblings); a new
-  control/component/indication **fails `run_inspect.js`** until it has its own entry, and a
-  manual citation is resolved against the packed markdown, so a dead §number is a red; and
-  **hovering must not highlight the object** (owner, 2026-07-28 — the ring an early cut drew
-  was "very annoying"), which `run_inspect` pins because the issue text asks for the opposite.
+- **The moderator coefficient was a constant, and it made the plant go critical COLD
+  (2026-07-29l, #260).** `alpha_MTC` applied a flat −11.11 pcm/°F from 122 °F to 579 °F — a
+  −4944 pcm moderator defect over a heatup, 494 ppm of dilution, a third of it charged below
+  274 °F. Critical boron therefore fell 819 → 263 ppm across the heatup, and **600 ppm was
+  critical at 274 °F**: the owner diluted toward it in free play and tripped on source-range
+  high flux. Moderator reactivity now tracks **density**, rod worths went to the measured
+  WTSM 2.2 values (**8500 → 4068** control, **10 000 → 3676** shutdown; 18 500 was 2.4× anything
+  sourceable), and `rho_excess` is **solved** so HZP ARO critical boron lands on BEAVRS's
+  measured **975 ppm**. **Then #263 re-did the moderator model AGAIN, and that is the version
+  you are looking at** — do not trust a 1400 ppm crossover or a −20 pcm/°C at-power figure if
+  you meet one in older prose. #260 took its boron crossover from a WTSM 2.1 statement its own
+  figure contradicted; the BEAVRS Cycle 1 HZP tests publish **three measured isothermal
+  coefficients** (975 ppm/−1.75, 902/−4.65, 810/−8.01 pcm/°F) which settle it at **986 ppm**
+  and showed #260 was **4.3× too negative** at ARO. *(OWNER RULING, 2026-07-30: "for 263 item 1
+  fit the measurement.")* — so **both** parameters are fitted to those points, residuals ≤0.09,
+  and the at-power coefficient is now **−26.8 pcm/°C, SUPERSEDING the 2026-07-21 ruling of
+  −20**. Three things to know: **at-power behaviour did NOT survive untouched** — a 34 %
+  stronger coefficient put `run_pwr`'s rod-withdrawal power rise under its 0.05 floor, so that
+  probe now pins **Tavg** rising, the signature that strengthens rather than weakens as the
+  coefficient does; **600 ppm at 274 °F is +3158 pcm SUPERcritical and that is correct** —
+  cold water is more reactive, and what changed is that critical boron is no longer a moving
+  target you cross without noticing (806 → 587 rods-in, spread 556 → 219 ppm); and
+  **`run_reactivity.js`'s first cut passed for the wrong reason** — it asserted the event with
+  the reactivity sign inverted, went green, and would have enshrined a false claim in the guard
+  for the thing being fixed, which is why every check written beside a fix is now proven to go
+  **red by injection** before it counts as green. `pwr_startup` and `pwr_heatup` were re-authored
+  (the latter's old dilution drove a runaway to **119 % power and 638 °F**). Still open: there
+  is **no Estimated Critical Condition** anywhere, which is what would have stopped the event.
+- **The sim ships as ONE emailable `.html` file now, and that is gated (2026-07-29k).**
+  `node tools/make_portable.js` → `dist/Reactor_Dynamics_<version>.html`: the 94 scripts +
+  2 stylesheets `ui/shell.html` loads, inlined in document order, 2.55 MB, runs by
+  double-clicking with no server and no network. **Nothing in the sim had to change** — the
+  no-module-system convention had already bought offline operation (plain `<script src>`
+  loads over `file://`; an ES module is CORS-blocked), and there is no `fetch` anywhere, no
+  web font and no image in the whole runtime. Measured: the bundle makes **1 network request
+  (itself)** against 99 for the folder build, 0 page errors, and reaches a state identical to
+  it across 60 sampled board values. Three things to know: **`test/run_portable.js` (112
+  checks) is the only thing asserting "nothing loads at runtime"** — a `fetch()` added for a
+  good reason leaves every other gate green and breaks the emailed file on a stranger's
+  machine, so treat a red there as a real defect and not a tooling nuisance; its scan surface
+  is **read out of `ui/shell.html`**, so a new `<script src>` is covered automatically and
+  **shifts the baseline** on purpose; and a relative `url()` in the CSS is a bundle hazard
+  even though it works on the site, because an inlined `<style>` resolves against the
+  document's directory. **ZIP the file before emailing** — several mail providers strip
+  `.html` attachments silently.
 
-- **An alarm's priority is not fixed — it can be reclassified by mode or lineup
-  (2026-07-28r, #240).** An alarm spec may carry `reclassify` rules (`layers/control/
-  pwr_control.js`, resolved in `control_kernel.getAlarms`): when the condition is the
-  *planned* state of the plant, the tile drops to `status` and reworders itself
-  (Mode 4/5 cold-side alarms; RCP TRIP → SECURED on the handswitch). Two things to know
-  before you touch alarms: a rule can only ever **soften** — `_evalAlarms` decides
-  clear→active from the instrument condition alone and consults a rule only to classify
-  what it has already raised, so nothing can be suppressed or delayed — and a rule carries
-  its instrument name as **data**, because the kernel may not name a plant field (HR3;
-  `run_hr3` failed the first draft for exactly this). Sourced to NUREG-0700 Rev 4
-  §4.1.2-7 / Table 4.1.
+- **The plant can heat itself up now — the pump-heat netting is deleted (2026-07-29, #251).**
+  The SG used to subtract RCP heat out of its own steam balance (`max(0, Q_sg − Q_pump)`,
+  booked as "blowdown/ambient losses"), sized to cancel it identically at every flow because
+  the turbine drew steam for core power alone. Consequence nobody had costed: **a heatup on
+  pump heat was mathematically impossible** — measured, a stable attractor at 218.69 °F
+  (103.72 °C) with ΔT pinned at `Q_pump/h_sg`, forever. Now the SG boils everything that
+  crosses it and the follow governor draws it, both normalized on **NSSS rated heat** (core +
+  pump), which is how a real plant rates its generators. Three things to know: the issue's
+  "risky" step — recalibrating `steam_flow_rated` and giving the governor headroom — **was not
+  needed**, because normalizing both sides makes rated come out exactly 1.0, so every gauge
+  still reads 100 % at 100 %; the **cold IC was spawning synchronised to the grid**
+  (`load_mode: 'follow'`, `generator_load = 1e-6`, rotor at rest — #235 fixed half of it), and
+  with pump heat real the follow governor cracked to 6.2 % and re-stalled the heatup at
+  306.05 °F, so Modes 3/5 now spawn off line on one `onLine` predicate; and **`pwr_mode5_to_mode3`
+  was re-authored** — 10.71 plant-hours at 39.8 °F/hr with **no rod motion**, arriving hot and
+  still subcritical, which is what Mode 3 actually is. The new gate was verified to **fail**
+  with the netting restored. `pwr_heatup` (PWR-N03) is still the nuclear variant — deliberately
+  not re-authored, filed as follow-up.
+- **The PWR's last HR1 hole is closed — the low-flow trip reads an instrument (2026-07-29,
+  #247).** `rcs_flow` is a real elbow-tap channel (% of rated, lag 1 s, injectable
+  failures); the `__true_flow__` sentinel is **deleted from every file**, and with it the
+  kernel's only PWR-only true_state reference (half of #228). A companion `mfw_isolated`
+  status indication replaced the feed channel's read of `true_state.feedwater_isolated` —
+  a field `getTrueState()` has **never exposed**, so that stand-down had never once fired.
+  Three things to know: a **stuck-high flow channel now masks a real loss of flow** (probed
+  — the low-flow trip never fires and `primary_pressure high` catches it instead), which is
+  the teaching case the instrument was built for; the setpoint went to the real **90 % of
+  rated, blocked below P-7 (10 %)** (#248, owner ruling) — measured, that trips at 1.8 s
+  where DNB onset is 10.9 s, so the old unsourced 25 % had been letting DNB happen; and a
+  new appended instrument still ships **noise: 0** (the cross-step PRNG rule), so it carries
+  `noise_failure` instead — without it an injected `noisy` failure would have been silently
+  inert. **`pwr_lof` was re-authored around the stuck channel**, because at 90 % a healthy
+  channel means nothing happens at all. **One channel, not 2-of-3, is the remaining declared
+  departure** (`Manuals/12` §10.7).
+- **Half the full-stack procedure gate was running at a tenth of its declared speed
+  (2026-07-29, #245).** `run_procedures_stack` set `timeAcceleration = 10` once; the
+  service's fast-forward dropout then returned it to 1× on the first alarm/scram and nothing
+  put it back — so **11 of 22 procedures** were judged on a *tenth* of the sim time their
+  steps assume, from as early as t = 2 s. Fixed with `svc.attentionStops = false` (a headless
+  gate has no operator to protect; `run_autoctl` had already made the same call) plus a
+  per-procedure assertion that the run held its declared acceleration, so it cannot recur
+  quietly. **Read this before trusting anything in #208:** four of its "RBMK/BWR plant
+  defects" (`bwr_startup`, `rbmk_mcp_trip` ×2, `bwr_sbo_rcic`) were this bug and passed on
+  the sim time alone — a green there proves the *mechanism*, not that either plant is right.
+  It also exposed a stale PWR assertion: `pwr_stuck_porv` step 1 asserted inventory below
+  100 % after 30 s, which only ever held because the run was starved — automatic HPI comes
+  in at 10.5 MPa and refills past nominal, which is TMI's solid-pressurizer trap and the
+  correct behaviour.
 
-- **`status`-class alarms arrive PRE-ACKNOWLEDGED (2026-07-29, #240 follow-up).** Owner
-  ruling. A status annunciator reports a lineup, not a demand for action, so `_evalAlarms`
-  raises it straight into `active_acknowledged` and `_attentionStop` no longer treats it as
-  a fast-forward dropout. The classification is the **effective** one, so a reclassified
-  tile counts. Three consequences: an auto-acked alarm that later **escalates** out of
-  `status` is handed back as `active_unacknowledged` (tracked in `layer.alarmAutoAcked`,
-  which saves/restores; an *operator* ack is never undone); the whole tier is affected, not
-  just #240's tiles (`hpi_active`, BWR `rcic_running`); and if you touch `_attentionStop`,
-  know that removing one dropout **lengthened a test run tenfold** — see **#245**, where
-  the harness's declared 10× was being cancelled by the first alarm and had caused a BWR
-  procedure defect to be misfiled.
-- **The public site does not offer everything the build contains (2026-07-28j, #241).**
-  `site/flags.js` is the registry: each feature and each piece of content is `public`
-  (shipped) or `preview` (in the bundle, offered only off the public channel). The channel
-  is stamped at deploy (`site/channel.js` ← `VERCEL_ENV`; production = `main` = `public`).
-  **Today only Free Play and the manual are `public`** — campaign, scenarios, walkthroughs
-  and checklists are `preview` until the owner plays each through. Consequences for you:
-  content you add needs a registry line or `run_flags.js` fails (unregistered = hidden in
-  production), and any new **entry point** to gated content must consult `flagOn()` — the
-  first pass missed the instructor card's 📋 picker. Look at the public view with
-  `?channel=public`, or the 🧪 Features window (Sim tab on dev builds, `?flags=1` anywhere).
 **Standing procedure — not part of the rotation above; these do not expire.**
 
 - **The board is the V2 diagram, and `pwr_board_data.js` is GENERATED.** Edit in the Claude
@@ -199,10 +366,13 @@ anything here that is standing procedure rather than news belongs in the list be
   against the fittings above and below it (#231), pipe **animation play-state vs plant
   state** in three states (#236), and the #235 board defects, for the same reason. **Run
   board_check (headless Edge, `--dump-dom`; `document.title` says PASS/FAIL) after any
-  board change** — it is not in `run_all`. Currently **95/95** (measured 2026-07-28p —
-  59 before the #235/#236 pins, +20 pipe-state/board-defect pins, +2 ROD AUTO, +3 from
-  the #237 comment items, +11 for the generator FOLLOW/MAN/OFF selector (#230); the
-  previously recorded "60/60" never matched the code, #235 finding 6).
+  board change** — it is not in `run_all`. Currently **106/106** (measured 2026-07-29 on
+  clean `develop` 5bf366f *and* after #246 — this line said 95/95, which was already stale
+  when written down; the count moves whenever a pin is added, so re-measure rather than
+  trusting it. History: 59 before the #235/#236 pins, +20 pipe-state/board-defect pins,
+  +2 ROD AUTO, +3 from the #237 comment items, +11 for the generator FOLLOW/MAN/OFF
+  selector (#230); the previously recorded "60/60" never matched the code either,
+  #235 finding 6).
   **Read the tally from the harness's own summary line** (`ALL n CHECKS PASS` /
   `n FAILURES / n`) — scraping the page for the last `n/n` pair picks up unrelated
   numbers and reports a nonsense total.
@@ -216,7 +386,7 @@ anything here that is standing procedure rather than news belongs in the list be
 - **Provenance matters more than it looks.** Many "owner rulings" in this repo were written by
   agents; all agent work commits under the owner's name, so git blame proves nothing. A ruling
   without a date and a verbatim owner quote is advisory — see `Blueprint/CONTEXT.md` §3.
-- **`test/run_hr3.js`** guards HR3 in the shared control kernel; `run_campaign` validates every
+- **`test/run_hr3.js` guards HR3** in the shared control kernel; **`test/run_hardrules.js` guards HR1, HR5 and HR11** (HR2, HR6 and half of HR4 are unguarded, and HR10/HR12 are not gateable at all — §3 says so in each case). `run_campaign` validates every
   scenario, not just campaign-wired ones.
 - **A new `true_state` field must be documented in the same change (2026-07-28, #225).**
   `test/run_contract.js` diffs `Object.keys(getTrueState())` against the §6.3 block in
@@ -259,13 +429,13 @@ not a changelog.**
 **Current gate baselines — `node test/run_all.js` is now the authority.**
 
 > Since 2026-07-25 the baselines live as **data** in the `BASELINES` map at the top of
-> `test/run_all.js`, not as prose here. Run it; it compares all 27 runners against that
+> `test/run_all.js`, not as prose here. Run it; it compares all 32 runners against that
 > map and exits non-zero on any drift. Prose baselines are what rotted (this section
 > claimed `run_m5` **19/19** while its own status text said 18/19 — issue #161). **If
 > you move a number, update `BASELINES` and this section together.**
 
 ```
-node test/run_all.js            # all 27 runners (~6 min)
+node test/run_all.js            # all 32 runners (~6 min)
 node test/run_all.js --fast     # skip the 2 Playwright gates (~2.5 min)
 node test/run_all.js --only run_pwr,run_ops
 node test/run_all.js --record   # print observed results as a BASELINES block
@@ -276,20 +446,22 @@ turning green has to be acknowledged (update the baseline, close the issue) inst
 being silently absorbed. Same convention as the strict xfails in `run_meltdown` /
 `run_behavior`.
 
-Green at baseline: PWR **32/32 (200 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3024 checks)**,
+Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3026 checks)**,
 `run_m4` **25/25 (135 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **20/20**,
 `run_behavior` **38 pass / 0 xfail**, `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
-`run_procedures` **22/22 (101/101 checks)**,
-`run_procedures_stack` **22/22 (155/155 checks, 5 strict xfails — all RBMK/BWR #208; the 7
-`pwr_heatup` xfails cleared 2026-07-26c/d via #206 + #210, and `bwr_startup` 2026-07-29 —
-that one was never a BWR defect, see #245)**, `run_checklist` **24/24**, `run_scenarios`
+`run_procedures` **22/22 (102/102 checks)**,
+`run_procedures_stack` **22/22 (178/178 checks, 2 strict xfails — both RBMK/BWR #208; the 7
+`pwr_heatup` xfails cleared 2026-07-26c/d via #206 + #210, and FOUR more on 2026-07-29 that
+were never plant defects at all — the harness was running 11 of its 22 procedures below the
+10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_manual_units` **182 checks / 0 failed**, `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_reactivity` **23 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve), `run_hr3` **29 checks / 0 failed**, `run_hardrules` **28 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_portable` **112 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `run_manual_rev` **12 checks / 0 failed** (the manual set's revision history — table shape, set-wide stamp agreement, content-digest seal, pack currency; IS baselined, because unlike `run_manual_units` its checks are structural and do not move on prose. **A chapter edited with no revision row reddens it** — the failure it was written for, after six content changes went unrecorded), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
-Also green: `run_e2e_controls` **35/35** (both F12 reds were stale expectations, fixed
-2026-07-25, #150).
+Also green: `run_e2e_controls` **39/39** (both F12 reds were stale expectations, fixed
+2026-07-25, #150; 35 → 39 on 2026-07-29 when the CVCS droop check was rebuilt to measure
+at equilibrium instead of half a time constant into the transient — #194).
 
 **One tracked red**, carrying a `note` in `BASELINES`: `run_ops` **57/68** — probes are
 tuning targets by design. **Measured 2026-07-27b from `Diagnostic/ops_results.json`:
@@ -317,6 +489,16 @@ The control-room UI is `ui/shell.html` (loads engines + layers, wired through
 `ui/app.js`). Standalone engine test pages: `test_pwr.html`, `test_rbmk.html`,
 `test_bwr.html`.
 
+**Offline / portable:** it already runs from `file://` with no server — nothing loads
+anything at runtime. `node tools/make_portable.js` collapses the control room into one
+self-contained `dist/Reactor_Dynamics_<version>.html` (~2.5 MB) you can email or carry on a
+stick; `tools/make_portable.cmd` is the double-clickable wrapper (builds + zips, and exists
+because double-clicking the `.js` gets Windows Script Host, not Node — `800A03EA`).
+`test/run_portable.js` is what keeps that possible; read its header before adding any
+runtime load. **A batch file must stay pure ASCII** — cmd reads it in the OEM code page, and
+one UTF-8 em dash inside an `if (…)` block ends the block early and runs the prose as
+commands.
+
 ## Running the tests
 
 Plain Node CLI runners (no framework, no `package.json`). Engine/layer files are
@@ -324,7 +506,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 27 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 32 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi
@@ -370,7 +552,7 @@ harness is testing a plant the player never gets.
 | **engine + M4** (looks full-stack, isn't) | `run_ops`, `run_behavior`, `run_m4` |
 | **full stack** (M4+M5+M6) | `run_procedures_stack`, `run_m5`, `run_m6`/`run_m6ph` (integration halves), `run_m7`, `run_autoctl`, `run_campaign`, `run_checklist`, `run_scenarios`, `run_e2e_controls` |
 | **browser** | `verify_e2e_ui`, `verify_manual_follow` (the latter never plays the sim — control-surface reachability only) |
-| **static** (source/doc/registry consistency — the plant is never stepped) | `run_hr3`, `run_contract` (resets the engine to read its field list, never runs it), `run_inspect`, `run_flags` |
+| **static** (source/doc/registry consistency — the plant is never stepped) | `run_hr3`, `run_hardrules`, `run_contract` (resets the engine to read its field list, never runs it), `run_inspect`, `run_flags` |
 
 Engine-direct is the right choice for isolated-physics acceptance; the mistake is *relying*
 on it for anything the control layer decides. **When you write a procedure, scenario, or
@@ -394,6 +576,14 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   migration-note pattern in `CHANGELOG.md`); re-run `run_m7.js`. **A new/renamed/removed
   `true_state` field also needs its §6.3 line in `Blueprint/CONTEXT.md`** — `run_contract.js`
   fails until it has one, and fails again if a documented field disappears (#225).
+- **Any `Manuals/*.md` content change** → three steps, in order, or `run_manual_rev.js`
+  reddens: (1) add a row at the **top** of the table in `Manuals/00_REVISION_HISTORY.md`
+  (newest first — the set revision is **set-wide**, one number for all 13 documents);
+  (2) `node tools/stamp_manual_revision.js` to propagate it and re-seal the content
+  digests; (3) `node tools/pack_manuals.js` so the in-app copy carries it. The digest is
+  the point: **editing a chapter without recording it is a red gate**, which is how six
+  changes (#247, #248, #251, #260 ×2, the gpm scale fix, #263) came to be missing from
+  the history while ten chapters still read `Revision: 0`.
 - **Then update** `CHANGELOG.md`, the `Project status` section above, and
   `Blueprint/BUILD_DECISIONS.md` if a decision or flag changed.
 - **On release (merge `develop` → `main`)** → add the player-facing `changelog.html`
@@ -529,11 +719,22 @@ Read this before editing any source file — the wiring is deliberate and easy t
 - **Load order matters.** `pwr_config.js` / control modules load before the engine
   files that consume them (see the ordered list in any `test/run_*.js` and `ui/shell.html`).
 - **File naming.** Plant-specific files are prefixed `pwr_` / `rbmk_` / `bwr_`.
-- **Hard Rules are non-negotiable.** Before changing engine behavior or the data
-  contract, read the numbered **Hard Rules (HR1–HR10)** in `Blueprint/CONTEXT.md`
-  (HR1 = instruments-vs-truth; HR5 = commands only ever flow down through the service;
-  **HR9 = the plant is the ground truth — content follows the plant, never the reverse**;
-  **HR10 = a passing test is not evidence the mechanism is right**).
+- **Hard Rules are non-negotiable.** Before changing engine behaviour or the data
+  contract, read the **Hard Rules** in `Blueprint/CONTEXT.md` §3 — **ten rules, and the
+  list is meant to stay short.** Reorganized 2026-07-29: architecture (HR1–HR6) is split
+  from practice (HR9, HR10, HR11, HR12); each rule now names its **guard**; the *how* — worked
+  cases, failure modes, procedure — moved to **`Blueprint/SOP.md`**, which is advisory,
+  not binding. HR7 (failure taxonomy → §11) and HR8 (params-in-code → §8) were retired
+  from §3 as a convention and a scope boundary; their numbers are not reused, because
+  ~580 citations point at these numbers.
+  The five you will actually trip over: **HR1** instruments-vs-truth · **HR5** commands
+  only flow down through the service · **HR9** the plant is the ground truth, content
+  follows the plant · **HR10** a passing test is not evidence the mechanism is right ·
+  **HR12** an assertion about plant dynamics must be MEASURED — step the plant and quote
+  the number *(OWNER RULING, 2026-07-29: "if you make assertions about plant dynamics, you
+  must back it up by testing them.")*. **HR11** (a ruling needs a date + the owner's
+  verbatim words, or it is advisory) was extracted from inside HR9 — it is cited constantly
+  and was unfindable.
 - **Snapshot / save compatibility is a contract.** New snapshot fields must migrate
   older saves — follow the migration-note pattern in `CHANGELOG.md`.
 
@@ -544,7 +745,8 @@ and `Blueprint/`, `Manuals/`, `CHANGELOG.md` (docs). **Not** source of truth —
 mine these for intent: `terminals/` (raw session logs), `inbox/` (handoff drafts),
 `mcps/`, `node_modules/`, and the `Diagnostic/*.json` dumps (the `.md` reports are
 curated). **Local-only (kept out of the public GitHub repo):** `terminals/`, `mcps/`,
-`inbox/`, `Diagnostic/*.json`, `CLAUDE.md`, `GO_PUBLIC_CHECKLIST.md`. The curated
+`inbox/`, `Diagnostic/*.json`, `GO_PUBLIC_CHECKLIST.md`. (**Not** `CLAUDE.md` — it is tracked
+and goes public with the repo, as line 6 says.) The curated
 `Diagnostic/*.md` reports ARE published.
 
 ---
@@ -574,7 +776,7 @@ instructor + flagship scenarios).
   diagnostic overlay. Never soften the gap — the dissonance is the lesson.
 - **Two registers.** Every label/instructional string exists in a **Learning** register
   (plain language) and an **Industry** register (real plant terminology).
-- **Units.** SI internally (MPa, °C, %). The UI has a display-unit toggle (scoped OFF for the PWR board, which is US). **The `Manuals/` set quotes US customary FIRST with SI in parentheses** (owner, 2026-07-29) — `2235 psi (15.41 MPa)`. Temperature DIFFERENCES (subcooling margin, leg ΔT, DNB margin, deadbands, cooldown rates) convert ×9/5 with NO offset: 41 °C of subcooling is 73.8 °F, not 105.8. `test/run_manual_units.js` enforces both.
+- **Units.** SI internally (MPa, °C, %). The UI has a display-unit toggle (scoped OFF for the PWR board, which is US). **US customary FIRST with SI in parentheses — `2235 psi (15.41 MPa)`, `565 °F (296 °C)` — in the `Manuals/` set AND in everything you hand the owner**: chat replies, issue bodies and comments, commit messages, `Diagnostic/` entries *(OWNER DIRECTIVE, 2026-07-29: "also add a gh issue to add to claude.md to always give me imperial numbers not SI.")*. Temperature DIFFERENCES and RATES (subcooling margin, leg ΔT, DNB margin, deadbands, heatup/cooldown rates) convert ×9/5 with NO offset — this is the one that gets written wrong: 41 °C of subcooling is 73.8 °F, not 105.8, and 21.8 °C/hr is 39.2 °F/hr. `test/run_manual_units.js` enforces it across the manual and the board-facing copy (`ui/manual_procedures.js`, `ui/diagram/board/pwr_board_inspect.js`); **agent prose is not gateable**, like HR10 and HR12 — a green run does not cover it. Engine internals stay SI and do not move: command payloads, config constants, `true_state`.
 - **Plant MODES** use commercial numbering, written **Mode N, Name** (e.g. *Mode 1, At
   Power*). Do not confuse with turbine load modes (Follow / Manual / Disconnected).
 - **This is an educational lumped-parameter plant,** not a full-scope replica of a

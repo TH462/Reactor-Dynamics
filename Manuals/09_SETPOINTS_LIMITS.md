@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-01  
 **Title:** Operating Limits and Protection Setpoints — PWR  
-**Revision:** 2  
+**Revision:** 14  
 **Source:** As-built `pwr_control.js`, `pwr_config.js`; normal values captured from the live engine  
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
@@ -54,7 +54,7 @@
 | SG level | low | **17 %** | Lo-lo; AFW auto-starts just above (20 %) |
 | SG level (P-14) | high | **90 %** | High-high; reactor trip via P-9, condition **≥50 % power** |
 | **Turbine trip (P-9)** | turbine tripped | — | **Reactor trip on turbine trip**, condition **≥50 % power** (P-9). Above P-9 a turbine trip scrams the reactor *immediately* — it is not a ride-out. Below P-9 there is no reactor trip and the steam dump carries the transient. A **planned offline** (generator OFF / `disconnect_grid`) is **not** a turbine trip and never arms this — see `03` §12.1 |
-| Primary flow (true flow exception) | low | **0.25** normalized | Low-flow trip |
+| RCS loop flow | low | **90 % of rated** | Low-flow trip; reads the `rcs_flow` elbow-tap channel. Blockable below **P-7 (10 % power)**, auto-reinstates above. Real Westinghouse setpoint. **One channel, not 2-of-3** — see `12` §10.7 for that departure and what it costs |
 | Source range | high | **1e5 cps** | When SR energized |
 | Intermediate range | high | **1.67e-3 A** | ~20 % class over-range; blockable above P-10 |
 | Primary pressure (SI trip, PI-3) | low | **1798 psi (12.4 MPa)** | Reactor trip on safety injection; blockable below P-11 (1973 psi (13.6 MPa)), auto-reinstates |
@@ -66,6 +66,7 @@
 |------|-------|--------|
 | **P-6** | IR ≥ **1e-10 A** | Allows SR de-energize |
 | **P-9** | Power ≥ **50 %** | Arms the **reactor trip on turbine trip** and the P-14 reactor trip; also gates the loss-of-MFW AFW start |
+| **P-7** | Power ≥ **10 %** | Arms the **low-flow reactor trip**; below it the trip may be blocked (RCPs are secured in Mode 5, where RHR provides circulation) and it auto-reinstates above |
 | **P-10** | Power ≥ **10 %** | Allows IR/PR low-setpoint trip blocks |
 | **P-11** | Pressure ≥ **1973 psi (13.6 MPa)** | Below it the SI trip may be blocked; auto-reinstates above |
 | **P-12** | Tavg low **552.2 °F (289 °C)** | LO TAVG annunciator (`PWR-A29`) |
@@ -194,15 +195,116 @@
 
 | Parameter | Value |
 |-----------|-------|
-| Control bank max steps | **912** fully withdrawn (fine-step drive; one step ≈ 9 pcm ≈ 1.5 ¢ in the startup critical band) |
+| Control bank max steps | **912** fully withdrawn (fine-step drive; one step ≈ 6.5 pcm ≈ 1 ¢ in the startup critical band) |
 | Speed slow / normal / fast | **0.533 / 3.20 / 4.80 steps/s** (32 / 192 / 288 steps/min — same fraction-of-travel rates as the pre-fine-step drive) |
 | Scram insertion time (control) | **~2.5 s** full travel |
 | Scram insertion time (shutdown) | **~2.0 s** |
 | Insertion limit (RIL) | **Power-dependent.** Not applicable below **5 %** power; above it the % withdrawn floor ramps linearly from **5 %** to **70 %** at 100 % power (≈ 10 % withdrawn at 12 % power, 70 % at full power). Drives the ROD INS LIMIT alarm and stops the automatic rod channel inserting further. The bank sits at 92 % withdrawn across the load range, so the limit means "the bank is abnormally deep for this power" |
-| Control worth (total group) | **~8500 pcm** class (`rod_worth_total = 0.085`) |
-| Shutdown group worth | **0.10** reactivity units |
+| Control worth (total group) | **4068 pcm** (`rod_worth_total = 0.04068`) — WTSM 2.2 Table 2.2-1, all control banks |
+| Shutdown worth (total group) | **3676 pcm** (`rod_worth_shutdown = 0.03676`) — same source, all shutdown banks; all RCCAs together **7744 pcm** |
 
 ---
+
+---
+
+## 7.5 Estimated Critical Condition (ECC) — reference data
+
+<!-- ECC-BCRIT-TABLE: generated from the engine; test/run_reactivity.js verifies every
+     cell against pwr_engine's own reactivity model, so this table cannot go stale
+     without reddening a gate. Do not hand-edit the numbers. -->
+
+> **What pins this curve.** Two independent anchors, and they constrain different
+> things. **Shape** — the boron dependence — is *measured*: the BEAVRS / Watts Bar U1
+> Cycle 1 HZP physics tests (OSTI 1991715, Table IV) report isothermal temperature
+> coefficients at three boron concentrations (975 ppm → −1.75 pcm/°F, 902 → −4.65,
+> 810 → −8.01), which put the moderator coefficient's zero crossing at **986 ppm**.
+> **Level** — the ARO critical boron at hot zero power — is also measured, at
+> **975 ppm** from the same tests. **Magnitude** is measured too: both parameters are
+> least-squares fitted to those same three points *(OWNER RULING, 2026-07-30: "for 263
+> item 1 fit the measurement.")*, which **supersedes** the earlier 2026-07-21 ruling
+> pinning the full-power coefficient at −20 pcm/°C. The plant runs **−26.8 pcm/°C**
+> there now, and reproduces all three measured coefficients to within 0.09 pcm/°F
+> instead of missing two of them by 0.88 and 1.64. `test/run_reactivity.js` checks
+> every one of them, and nothing in this curve is set by preference any more.
+
+**Critical boron concentration (ppm) by Tavg and control-bank position**, shutdown bank
+withdrawn, no xenon, zero power:
+
+| Tavg | bank IN (0) | 25 % (228) | 50 % (456) | 75 % (684) | ARO (912) |
+|---|---|---|---|---|---|
+| 122 °F (50.0 °C) | 806 | 832 | 909 | 986 | 1011 |
+| 200 °F (93.3 °C) | 792 | 819 | 900 | 980 | 1007 |
+| 250 °F (121.1 °C) | 782 | 809 | 893 | 976 | 1004 |
+| 300 °F (148.9 °C) | 769 | 797 | 885 | 972 | 1001 |
+| 350 °F (176.7 °C) | 753 | 783 | 875 | 967 | 997 |
+| 400 °F (204.4 °C) | 732 | 764 | 863 | 961 | 993 |
+| 450 °F (232.2 °C) | 705 | 740 | 847 | 954 | 989 |
+| 500 °F (260.0 °C) | 668 | 707 | 826 | 945 | 984 |
+| 545 °F (285.0 °C) | 619 | 663 | 799 | 934 | 978 |
+| 566.6 °F (297.0 °C) | 588 | 635 | 781 | 928 | 975 |
+
+**Differential boron worth (pcm/ppm).** It is **larger cold** — denser water carries more
+boron atoms per unit volume — so the same dilution buys more reactivity at 122 °F than at
+power. Use the value for the temperature you are actually at.
+
+| Tavg | 122 °F | 250 °F | 350 °F | 450 °F | 545 °F | 566.6 °F |
+|---|---|---|---|---|---|---|
+| pcm/ppm | 19.86 | 18.32 | 16.65 | 14.33 | 11.32 | 10.51 |
+
+**Control-bank integral worth** (pcm added, withdrawing from fully inserted). The curve is
+an S: least effective at either end, most effective mid-travel.
+
+| Position | 10 % | 25 % | 35 % | 50 % | 65 % | 75 % | 90 % | ARO |
+|---|---|---|---|---|---|---|---|---|
+| steps | 91 | 228 | 319 | 456 | 593 | 684 | 821 | 912 |
+| pcm added | 102 | 499 | 1003 | 2034 | 3065 | 3569 | 3966 | 4068 |
+
+### 7.5.1 Reading the table — and the one rule that matters
+
+> **WARNING — do not dilute toward a hot boron figure while the plant is cold.** Read the
+> first column of the table again: with the bank inserted, critical boron is **806 ppm at
+> 122 °F** and only **588 ppm at 566.6 °F**. A number that is comfortably subcritical hot is
+> **critical, or worse, cold.** This is not a modelling quirk — cold water is a better
+> moderator, so a cold core needs *more* poison to stay shut down. Reaching Mode 3 at the
+> no-load temperature **before** you dilute is what makes the dilution safe.
+>
+> This is exactly how the real procedure handles it. WTSM 2.2 *Reactivity Balance
+> Calculations* (ML11216A051), Attachment 2.2-1, note on line O: *"Since T avg is required to
+> be >541°F, the reactivity change from moderator temperature is considered negligible."* A
+> real ECC is only ever computed **hot**, which is why a real operator never faces this
+> question. Our plant will let you drive it cold and dilute anyway; the source-range
+> high-flux trip at 1e5 cps is the backstop, and it is the last one.
+
+**The acceptance band.** Attachment 2.2-1 line Q brackets the prediction at **±750 pcm**
+around the estimated critical position, or the rod insertion limit, whichever is tighter. On
+this plant's lumped bank a mid-travel critical point near **318 steps** gives a band of
+roughly **159 to 421 steps**. Criticality outside that band means the estimate was wrong —
+stop and re-work it, do not keep pulling.
+
+### 7.5.2 The calculation
+
+Adapted from WTSM 2.2 Attachment 2.2-1 (Delta Rho Method). Work from a **last known critical
+condition**; every line is a reactivity difference between then and the startup you are
+planning.
+
+| Line | Quantity | Source |
+|---|---|---|
+| A | Bank worth at the desired startup critical position | §7.5 integral-worth table |
+| B | Bank worth at the last known critical condition | same table |
+| C | **C = A − B** | |
+| D | Power defect at the last known critical condition, × (−1) | §11.0 by initial condition |
+| E | Present boron | CHEM SAMPLE (there is no live boron meter) |
+| F | Boron at the last known critical condition | records |
+| G | Differential boron worth **at your present Tavg** | §7.5 boron-worth table |
+| H | **H = (E − F) × G** | |
+| I / J / K | Xenon at startup / at last critical / **K = I − J** | 2500 pcm at equilibrium full power |
+| O | **O = C + D + H + K** | the reactivity change needed |
+| P | **P = O / G** — positive means **borate**, negative means **dilute** | |
+
+> **NOTE.** The real worksheet also carries samarium (lines L–N) and drops the moderator term
+> because Tavg is required above 541 °F. This plant does not model samarium separately, and it
+> *will* let you sit below 541 °F — so if you are cold, the moderator term is **not**
+> negligible and the §7.5 table, not this worksheet, is your reference.
 
 ## 8.0 Operator training limits (authored standards)
 

@@ -2,7 +2,7 @@
 
 **Document:** PWR-MT-01  
 **Title:** Plant MODE Transitions (Mode 1, At Power through Mode 6, Refueling)  
-**Revision:** 2  
+**Revision:** 14  
 
 ---
 
@@ -48,11 +48,11 @@ These MODES follow the commercial PWR (Westinghouse-style Tech Spec) structure, 
 |--------------|--------|
 | Mode 3, Hot Standby → Mode 2, Startup → Mode 1, At Power | Fully **[sim]** |
 | Mode 1, At Power → Mode 2, Startup → Mode 3, Hot Standby | Fully **[sim]** |
-| Mode 5, Cold Shutdown → Mode 4, Hot Shutdown → Mode 3, Hot Standby | **[sim]** — start from `cold_shutdown`, pressurize + start RCPs, take critical and heat to NOP |
+| Mode 5, Cold Shutdown → Mode 4, Hot Shutdown → Mode 3, Hot Standby | **[sim]** — start from `cold_shutdown`, pressurize + start RCPs, heat to NOP on pump heat with the reactor subcritical |
 | Mode 3, Hot Standby → Mode 4, Hot Shutdown → Mode 5, Cold Shutdown | **[sim]** — borate, cool the secondary, depressurize, place RHR, secure RCPs |
 | Mode 6, Refueling | Not modeled |
 
-**NOTE:** The **full commercial story** Mode 5, Cold Shutdown → Mode 1, At Power → Mode 5, Cold Shutdown is now driveable **end to end on the board** from the `cold_shutdown` initial condition. Heatup/cooldown *rates* are time-compressed (the lumped model is not wall-clock accurate), and the trainer supplies the heatup with controlled low-power nuclear heat rather than the real pump-heat-dominated ramp — see the honesty notes below.
+**NOTE:** The **full commercial story** Mode 5, Cold Shutdown → Mode 1, At Power → Mode 5, Cold Shutdown is now driveable **end to end on the board** from the `cold_shutdown` initial condition. The heatup runs on the **real pump-heat ramp** with the reactor subcritical throughout — measured, 10.71 plant-hours at an average 39.8 °F/hr (22.1 °C/hr) — so what is compressed is the **wall clock** (time acceleration), not the evolution. See the honesty notes below.
 
 ### 2.3 Turbine load modes (not plant MODES)
 
@@ -98,12 +98,14 @@ Mode 1, At Power at power (watchstanding)
 | Step | Action | MODE after step |
 |------|--------|-----------------|
 | A1 | Plant in **Mode 5, Cold Shutdown**: subcritical, RCS cold, solid or bubble per commercial practice | Mode 5, Cold Shutdown |
-| A2 | Fill/vent RCS; establish RCP operation when permitted; use pump heat and controlled nuclear heat | Mode 5, Cold Shutdown → Four |
+| A2 | Fill/vent RCS; establish RCP operation when permitted; heat on **pump heat**, reactor subcritical | Mode 5, Cold Shutdown → Four |
 | A3 | Draw and control pressurizer steam bubble; place heaters/spray in automatic | Mode 4, Hot Shutdown |
 | A4 | Heat and pressurize toward normal operating temperature and pressure within commercial heatup limits | Mode 4, Hot Shutdown |
 | A5 | Reach **Mode 3, Hot Standby**: subcritical, hot, P ≈ **2235 psi (15.41 MPa)**, Tavg ≈ **566.6 °F (297 °C)** (no-load program), heat sink available | **Mode 3, Hot Standby** |
 
-**Simulator:** Phase A is now driveable — load the **`cold_shutdown`** initial condition (**Mode 5, Cold Shutdown**) and perform the heatup: raise the pressurizer setpoint to draw up to NOP pressure (`set_pressure_setpoint`), start the RCPs (`set_rcp`), keep the turbine offline so the SG bottles to no-load, then take the control bank out gently (watch SUR) to hold low power and heat the RCS to NOP. Or **skip Phase A** by loading **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**. Heatup *rate* is time-compressed and the heat source is controlled low-power nuclear heat, not the real pump-heat ramp.
+**Simulator:** Phase A is now driveable — load the **`cold_shutdown`** initial condition (**Mode 5, Cold Shutdown**) and perform the heatup: start the RCPs (`set_rcp`), raise the pressurizer setpoint to draw up to NOP pressure (`set_pressure_setpoint`), and keep the turbine off line with the dumps shut so the SG **bottles**. That is the whole evolution — heat crossing the tubes has no steam sink, so it goes into secondary pressure, and the plant rides up on pump heat with **the control bank never leaving its cold-shutdown position**. Re-measured with no rod motion after the #260 reactivity recalibration: **11.39 plant-hours** cold to **567.0 °F (297.2 °C)** — the no-load anchor — arriving at **ρ = −3377 pcm on 907 ppm**, control bank still at 0 of 912 steps. It ends *less* subcritical than the −6287 pcm recorded before #260 because the old model charged a moderator defect over three times too large on the way up. **The thermal ride is unchanged** — 545 °F (285.0 °C) still arrives at 10.61 plant-hours and the steady rate is still 32.1 °F/hr (17.8 °C/hr) — because pump heat does not depend on the moderator coefficient. The endpoint reads 567.0 °F rather than the older 548 °F because 567 °F is the no-load anchor where the dump opens and Tavg stops, and this run was carried to that settling point; it is a measurement-window difference, **not** a 19 °F physics gain. Or **skip Phase A** by loading **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**.
+
+The approach to criticality is **not** part of this phase — it is Phase C, and in the campaign it lives in `pwr_startup_challenge` and `pwr_return_to_mode1`. Heating a plant to Hot Standby on fission is what the simulator used to do, because the steam generator netted pump heat out of its own steam balance and a pump-heat heatup stalled at 218.69 °F (103.72 °C); that was a modelling fudge and it is gone (#251).
 
 ### Phase B — Mode 3, Hot Standby lineup **[sim]** → PWR-N01
 

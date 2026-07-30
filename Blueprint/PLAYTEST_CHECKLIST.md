@@ -37,7 +37,7 @@ they're all one-line constants.
 | **Scram recovery (PI-7):** after any trip — `reset_rps` refused while a trip signal stands or rods are out; then reset, withdraw, restart under the startup net | Recovery should feel procedural, not magic | — |
 
 **PI-8 — RESOLVED (owner ruling: recalibrate the power defect, done 2026-07-21).**
-`alpha_MTC` went −3.3e-5 → −2.0e-4 (real-PWR range): an un-trimmed 15 % cut now parks
+**`alpha_MTC` no longer exists as a constant — #260 replaced it with a density-shaped, boron-scaled moderator model.** Read the knob references above as "the moderator term"; it still sets these magnitudes, and the sourced curve lands within 9 % of −2.0e-4 K⁻¹ at the operating point, so the tuning below still describes the plant. Historical note: `alpha_MTC` went −3.3e-5 → −2.0e-4 (real-PWR range): an un-trimmed 15 % cut now parks
 ~+7 °C, and the high-pzr-level trip is in at **97 %** (clears the ride-out swell; the
 75 % alarm warns first). Playtest check: flood the plant with max charging, letdown off
 — PI-8 should scram in seconds ("going solid" caught). Then try the same with the

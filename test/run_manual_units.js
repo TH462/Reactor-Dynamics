@@ -34,6 +34,23 @@
  * full-power subcooling margin from 73.8 °F to 105.8 °F passed a green gate.
  * Verified by injecting exactly that; it now fails.
  *
+ * WHAT THIS GATE IS SCORED ON: **failures only**, deliberately — not the number of
+ * pairs it checked. That is the opposite of `run_hr3`, `run_contract` and
+ * `run_inspect`, where the count IS part of the baseline on purpose.
+ *
+ * The difference is what a moving count MEANS. There, it moves when someone adds a
+ * plant coupling, a `true_state` field or a board item — a decision that deserves a
+ * second look, so the baseline bump is useful friction. Here it moves whenever
+ * anyone edits any number in any sentence, including pure prose work. Scored that
+ * way it bumped four times in the session that introduced it (182 → 186 → 215 →
+ * 218 → 220), every one of them noise. A gate that cries during ordinary edits
+ * teaches the next person to update the number without reading it, which is worse
+ * than not having the gate.
+ *
+ * So the coverage counts are printed for a human to read and kept OFF the scraped
+ * tally line. If you add checks here, the baseline does not move; if something is
+ * actually wrong, it does.
+ *
  *   node test/run_manual_units.js
  */
 'use strict';
@@ -43,6 +60,20 @@ var path = require('path');
 var DIR = path.join(__dirname, '..', 'Manuals');
 // The packed operator set. The dev-only working logs are not operator docs.
 var SKIP_FILE = /^(ISSUES_AND_FINDINGS|CAMPAIGN_MANUAL_DISCREPANCIES|CAMPAIGN_MODE_ALIGNMENT_SPEC)/;
+
+// The manual is not the only operator-facing prose that quotes plant numbers.
+// These two carry authored copy the player reads ON THE BOARD, and they drifted
+// to a different convention than the manual — the inspector had one line reading
+// "15.41 MPa (about 2235 psi)", i.e. the convention exactly backwards, while its
+// neighbours were US-only and the checklists were SI-only. Same rule, same gate.
+//
+// COMMAND PAYLOADS ARE NOT PROSE. `cmd: { action: 'set_pressure_setpoint', mpa: 15.41 }`
+// is an engine argument and stays SI — it carries no unit STRING, so the patterns
+// below never see it. Do not "convert" those.
+var SRC_FILES = [
+  path.join(__dirname, '..', 'ui', 'manual_procedures.js'),
+  path.join(__dirname, '..', 'ui', 'diagram', 'board', 'pwr_board_inspect.js'),
+];
 // The revision history quotes past values as a record of what changed ("Tavg
 // 304→297 °C"). Those are history, not plant values an operator would act on, so
 // they are exempt from the US-partner requirement — but any US (SI) pair written
@@ -92,15 +123,27 @@ var RULES = [
 var G = '\x1b[32m', R = '\x1b[31m', Y = '\x1b[33m', D = '\x1b[2m', B = '\x1b[1m', X = '\x1b[0m';
 var checked = 0, bad = [], orphans = [], diffSites = 0, seenDiff = {};
 
-fs.readdirSync(DIR).filter(function (f) {
+// One list: the packed manual set, then the board-facing source files.
+var TARGETS = fs.readdirSync(DIR).filter(function (f) {
   return /\.md$/.test(f) && !SKIP_FILE.test(f);
-}).forEach(function (file) {
-  var lines = fs.readFileSync(path.join(DIR, file), 'utf8').split('\n');
+}).map(function (f) { return { label: f, path: path.join(DIR, f), js: false }; })
+  .concat(SRC_FILES.map(function (p) {
+    return { label: path.basename(p), path: p, js: true };
+  }));
+
+TARGETS.forEach(function (target) {
+  var file = target.label;
+  var lines = fs.readFileSync(target.path, 'utf8').split('\n');
   var inFence = false;
+
+  // In a JS source only AUTHORED PROSE counts. A `//` comment is a note to the
+  // next developer, not something a player reads; holding it to the operator
+  // convention would add noise without protecting anyone.
+  function isProse(line) { return !target.js || !/^\s*(\/\/|\*|\/\*)/.test(line); }
 
   lines.forEach(function (line, i) {
     if (/^\s*```/.test(line)) { inFence = !inFence; return; }
-    if (inFence) return;
+    if (inFence || !isProse(line)) return;
 
     RULES.forEach(function (rule) {
       // "<us>[ – <us2>] UNIT_US (<si>[ – <si2>] UNIT_SI)" — also accepts "US / SI",
@@ -108,7 +151,7 @@ fs.readdirSync(DIR).filter(function (f) {
       // suffix (`90 °F/h (50 °C/h)`), and ~ / ± qualifiers on either side.
       var re = new RegExp(
         '(' + NUM + ')(?:\\s*[–—/-]\\s*[~±]?(' + NUM + '))?\\s*' + rule.us +
-        '(?:/h(?:r)?)?[*\\s]*[(/][*\\s~±]*(' + NUM + ')' +
+        '(?:/(?:h|hr|s|min))?[*\\s]*[(/][*\\s~±]*(' + NUM + ')' +
         '(?:\\s*[–—/-]\\s*[~±]?(' + NUM + '))?\\s*' + rule.si, 'g');
       var m;
       while ((m = re.exec(line))) {
@@ -146,7 +189,7 @@ fs.readdirSync(DIR).filter(function (f) {
   if (SKIP_ORPHANS.test(file)) return;
   lines.forEach(function (line, i) {
     if (/^\s*```/.test(line)) { inFence2 = !inFence2; return; }
-    if (inFence2) return;
+    if (inFence2 || !isProse(line)) return;
     // Prose that names a unit without quoting a plant value, and the one table
     // whose whole point is to define the conversions.
     if (/T_sat\(°C\)|not raw °C|tens of °C|× 145\.038|× 9\/5|× 0\.2953/.test(line)) return;
@@ -193,9 +236,92 @@ if (unusedDiff.length) {
   console.log(D + '\n  Delete them, or restore the text they guarded.' + X + '\n');
 }
 
-var fails = bad.length + orphans.length + unusedDiff.length;
+// ---------------------------------------------------------------- gpm display scale
+// The gpm figures the manual quotes must match the scale the BOARD actually renders.
+//
+// There are two places a normalized flow becomes gpm: `GPM_CHARGING`/`GPM_LETDOWN` in
+// `ui/diagram/board/pwr_board_wiring.js` (LIVE — this is what the player reads), and the
+// `identity` display block in `engines/pwr/pwr_config.js` (documentation, zero code
+// consumers, and what `Manuals/12` §Fidelity quotes). They drifted 1.5×: the config block
+// and the manual said 40 gpm charging / 20 gpm letdown on a 666.7-per-normalized-unit
+// scale, while the board has always used a single 1000 full-scale — a 0–60 gpm charging box
+// and a 30 gpm orifice-A letdown. Nothing compared them, so a number the player can read in
+// two places disagreed with itself.
+//
+// This lives in the units gate because that is what it is: the manual quoting a number the
+// plant does not display. It is NOT a physical-fidelity check — these gpm are pacing
+// flavour and `Manuals/12` says so.
+var gpmBad = [];
+(function () {
+  var wiring = fs.readFileSync(path.join(__dirname, '..', 'ui', 'diagram', 'board',
+    'pwr_board_wiring.js'), 'utf8');
+  var cfgSrc = fs.readFileSync(path.join(__dirname, '..', 'engines', 'pwr',
+    'pwr_config.js'), 'utf8');
+  function grab(src, name, re) {
+    var m = src.match(re);
+    if (!m) { gpmBad.push(name + ' — could not be read (renamed or reformatted?)'); return null; }
+    return parseFloat(m[1]);
+  }
+  var gpmCharging = grab(wiring, 'GPM_CHARGING (board)', /GPM_CHARGING\s*=\s*(\d+(?:\.\d+)?)/);
+  var gpmLetdown  = grab(wiring, 'GPM_LETDOWN (board)',  /GPM_LETDOWN\s*=\s*(\d+(?:\.\d+)?)/);
+  var chgMax      = grab(cfgSrc, 'reactivity.charging_max', /charging_max:\s*(\d+(?:\.\d+)?)/);
+  var chgGpm      = grab(cfgSrc, 'identity.charging_max_gpm', /charging_max_gpm:\s*(\d+(?:\.\d+)?)/);
+  var ldGpm       = grab(cfgSrc, 'identity.letdown_normal_gpm', /letdown_normal_gpm:\s*(\d+(?:\.\d+)?)/);
+  if (gpmCharging == null || gpmLetdown == null || chgMax == null ||
+      chgGpm == null || ldGpm == null) return;
+
+  // The board deliberately uses ONE full-scale constant for CVCS (and feed). If these ever
+  // diverge, "gpm" stops meaning one thing on the board and the checks below are moot.
+  if (gpmCharging !== gpmLetdown) {
+    gpmBad.push('board GPM_CHARGING (' + gpmCharging + ') != GPM_LETDOWN (' + gpmLetdown +
+      ') — the board is meant to share one CVCS full-scale');
+  }
+  // charging: exactly derivable, so assert it exactly.
+  var wantChg = chgMax * gpmCharging;
+  if (Math.abs(chgGpm - wantChg) > 0.5) {
+    gpmBad.push('identity.charging_max_gpm is ' + chgGpm + ' but the board renders charging_max ' +
+      chgMax + ' x GPM_CHARGING ' + gpmCharging + ' = ' + wantChg + ' gpm');
+  }
+  // letdown: orifice A is pressure-driven, so its normalized flow is not a bare constant —
+  // 0.030 at NOP is the nominal pwr_config's own letdown comment states and the board's
+  // 30 gpm readout reflects. If a coefficient retune moves that nominal, update both sides
+  // and this number together.
+  var LETDOWN_A_NOMINAL = 0.030;
+  var wantLd = LETDOWN_A_NOMINAL * gpmLetdown;
+  if (Math.abs(ldGpm - wantLd) > 0.5) {
+    gpmBad.push('identity.letdown_normal_gpm is ' + ldGpm + ' but orifice A nominal ' +
+      LETDOWN_A_NOMINAL + ' x GPM_LETDOWN ' + gpmLetdown + ' = ' + wantLd + ' gpm');
+  }
+  // ...and the manual must quote the same two numbers it documents.
+  var fid = fs.readFileSync(path.join(DIR, '12_SIM_PHYSICS.md'), 'utf8')
+    .split('\n').filter(function (l) { return /\*\*Indicative\*\*/.test(l); })[0];
+  if (!fid) {
+    gpmBad.push('Manuals/12 §Fidelity "Indicative" row not found — the manual side is unguarded');
+  } else {
+    [[chgGpm, 'charging'], [ldGpm, 'letdown']].forEach(function (p) {
+      var re = new RegExp('(\\d+(?:\\.\\d+)?)\\s*gpm\\s+' + p[1]);
+      var m = fid.match(re);
+      if (!m) gpmBad.push('Manuals/12 §Fidelity does not quote a "N gpm ' + p[1] + '" figure');
+      else if (Math.abs(parseFloat(m[1]) - p[0]) > 0.5) {
+        gpmBad.push('Manuals/12 §Fidelity says ' + m[1] + ' gpm ' + p[1] +
+          ', config/board say ' + p[0]);
+      }
+    });
+  }
+})();
+if (gpmBad.length) {
+  console.log(R + B + 'GPM DISPLAY-SCALE MISMATCH (' + gpmBad.length + ')' + X);
+  gpmBad.forEach(function (m) { console.log(R + '  ✗' + X + ' ' + m); });
+  console.log(D + '\n  The board wiring is the LIVE scale; pwr_config identity + Manuals/12 follow it.' + X + '\n');
+}
+
+// SCORED ON FAILURES ONLY — the coverage counts are printed on the line ABOVE, where
+// run_all's scraper will not reach them. See the "what this gate is scored on" note in
+// the header for why this one differs from run_hr3 / run_contract.
+var fails = bad.length + orphans.length + unusedDiff.length + gpmBad.length;
 console.log(B + '──────────────────────────────────────────' + X);
-console.log(B + (fails ? R + 'MANUAL UNITS: FAIL' : G + 'MANUAL UNITS: OK') + X + '  ' +
-  checked + ' checks, ' + fails + ' failed' +
-  D + '  (' + diffSites + ' temperature-difference sites)' + X);
+console.log(D + checked + ' pairs · ' + diffSites + ' temperature-difference sites · ' +
+  TARGETS.length + ' files' + X);
+console.log(B + (fails ? R + 'MANUAL UNITS: FAIL' : G + 'MANUAL UNITS: OK') + X +
+  '  ' + fails + ' failed' + X);
 process.exit(fails ? 1 : 0);

@@ -16,6 +16,7 @@
 'use strict';
 var path = require('path');
 function load(p) { require(path.join(__dirname, '..', p)); }
+global.window = global;                       // board scripts attach to window.RD
 [
   'engines/load_mode.js',
   'engines/pwr/pwr_config.js', 'layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js',
@@ -41,7 +42,11 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'scenarios/bwr_tour.js', 'scenarios/bwr_recirc.js', 'scenarios/bwr_isolation.js',
   'scenarios/bwr_fukushima.js', 'scenarios/bwr_qualify.js',
   'ui/manual_procedures.js', 'ui/campaign_data.js',
-  'ui/diagram/pwr_synoptic.js',   // safe headless: top level only defines functions/data
+  // The board DRIVER only (not the renderer) — it owns CONTROL_LABEL_MAP, the
+  // vocabulary the highlight check below validates against. Safe headless: top
+  // level only defines functions/data. Its data + inspect deps load first.
+  'ui/diagram/board/pwr_board_data.js', 'ui/diagram/board/pwr_board_inspect.js',
+  'ui/manual_md.js', 'ui/diagram/board/pwr_board_wiring.js',
 ].forEach(load);
 var RD = globalThis.RD;
 
@@ -209,10 +214,18 @@ test('campaign scenarios — beat vocabulary, registers, endpoints', function (c
 });
 
 // Every highlight a campaign beat names must resolve to something that can
-// actually glow: PWR control labels against the synoptic's SYN_CONTROL_MAP
-// (exported as highlightLabels), gauge ids against the per-plant gauge strip
+// actually glow: PWR control labels against the board driver's CONTROL_LABEL_MAP
+// (exported as controlLabels()), gauge ids against the per-plant gauge strip
 // (mirrors app.js PROFILES). Playtest finding: four PWR beats named labels
 // the map did not know, and pwr_sg_flood pointed at a nonexistent gauge id.
+//
+// The pool was the retired V1 synoptic's SYN_CONTROL_MAP until #246. That was the
+// wrong authority even before the file was deleted: app.js resolves a highlight
+// through RD.PwrBoard.revealControl, so the board's map is what decides whether a
+// label glows. The board map is a strict SUPERSET of the V1 one (51 labels vs 34 —
+// the 17 extras are indication labels the checklist hover uses), so the swap
+// cannot hide a beat that used to resolve, and every extra it now accepts is a
+// label that does in fact glow.
 var GAUGE_IDS = {
   pwr:  ['power', 'press', 'tavg', 'pzr', 'sg', 'subcool'],
   rbmk: ['power', 'steam_p', 'drum', 'flow', 'void', 'orm'],
@@ -233,10 +246,10 @@ test('campaign highlights — every named control/gauge resolves on the board', 
     (sc.beats || []).forEach(function (b) {
       if (!b.highlight) return;
       if (b.highlight.control_label) {
-        var pool = pid === 'pwr' ? RD.PwrSynoptic.highlightLabels : (PD_LABELS[pid] || []);
+        var pool = pid === 'pwr' ? RD.PwrBoardDriver.controlLabels() : (PD_LABELS[pid] || []);
         var known = pool.indexOf(b.highlight.control_label) !== -1;
         ck(sc.id + '.' + b.id + ' control highlight resolves (' + b.highlight.control_label + ')',
-          b.highlight.control_label, known, pid === 'pwr' ? 'a SYN_CONTROL_MAP label' : 'a PD view-bar label');
+          b.highlight.control_label, known, pid === 'pwr' ? 'a CONTROL_LABEL_MAP label' : 'a PD view-bar label');
       }
       if (b.highlight.instrument_id) {
         var ids = GAUGE_IDS[pid] || [];
@@ -496,12 +509,20 @@ test('pwr_boron — dilute up, borate back', function (ck) {
   ck('dilution beat arms', !!snap, !!snap, 'dilute_task pending');
   if (!snap) return;
   settle(s, 28);
-  s.handleCommand({ action: 'set_boron_adjust', rate: -2 });
+  // -2 ppm/s is the MAXIMUM the CVCS will drive (boron_adjust_rate), and the beat holds
+  // it for its delay-45 settle — about 90 ppm, ~1000 pcm at 50 % power. That was always
+  // the most aggressive move the plant allows, and it only just avoided the trip; #263
+  // raised differential boron worth ~9 % at this temperature and it began scramming, i.e.
+  // taking the mission's own `overdone` branch. The plant is right (that worth is now
+  // anchored to measured BEAVRS ITCs) and the mission teaches PACING, so the success path
+  // should be driven at a sane operator rate rather than flat out. Half rate. A gentler
+  // stimulus would also have passed pre-#263, so this is not a refit to the new plant.
+  s.handleCommand({ action: 'set_boron_adjust', rate: -1 });
   snap = waitBeat(s, 'borate_task', 2400);
   ck('Tavg rise on dilution → borate prompt', !!snap, !!snap, 'borate_task pending');
   if (!snap) return;
   settle(s, 4);                         // borate_task fires (delay 2; parks CVCS on HOLD)
-  s.handleCommand({ action: 'set_boron_adjust', rate: 2 });
+  s.handleCommand({ action: 'set_boron_adjust', rate: 1 });   // match the dilution rate
   snap = runUntil(s, function (sn) { return lc(sn); }, 3600);
   ck('Tavg restored with boration → complete', !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is the round trip', lc(snap).title, /Played/i.test(lc(snap).title), 'Long Game — Played card');
@@ -720,8 +741,21 @@ test('pwr_startup_challenge — runaway coast lands on the overshoot card, not a
       s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 40, speed: 'normal' });
       bites++;
     }
-    return sn.instruments.power_range > 1.0;
+    return sn.instruments.power_range > 2.0;
   }, 1200);
+  // STOP POINT 1 % -> 2 % (#263, owner ruling 2026-07-30 to fit the measurement).
+  // Fitting the moderator coefficient to the BEAVRS ITCs took it -20 -> -26.8 pcm/degC,
+  // 34 % stronger, so more of the banked reactivity lands as temperature and less as
+  // power: stopping at 1 % no longer coasts past the band, and the run ends on
+  // "Startup Ended - Window Closed" instead of the overshoot card. Diagnosed by
+  // extending the coast window first -- it reached an endpoint, just the wrong one, so
+  // this is a MAGNITUDE change and not a timing one.
+  //
+  // The scenario's lesson is unchanged and is why the stimulus moved rather than the
+  // assertion: banked reactivity cannot be subtracted by the withdrawal inhibit. A more
+  // self-regulating core simply means you must bank more of it to overshoot. Stopping at
+  // 2 % would also have overshot on the pre-#263 plant (which coasted 1 % -> 12.6 %), so
+  // this drives the same lesson harder rather than refitting to the new plant.
   s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
   ck('criticality reached', !!snap, !!snap, 'power > 1 %');
   snap = runUntil(s, function (sn) { return lc(sn); }, 900);
@@ -990,9 +1024,13 @@ test('pwr_lof — loss of flow: both branches reach an endpoint, DNB physics fir
     }
   }
 
-  // Automatics branch: do nothing — the hot channel boils (DNB), then the
-  // __true_flow__ low-flow trip scrams the reactor. Track peak core void to
-  // prove the new DNB physics actually engaged.
+  // Automatics branch: do nothing. The scenario injects a STUCK-HIGH flow channel
+  // alongside the pump trip (#248), so the low-flow trip is fed a healthy signal and
+  // never actuates at all — the hot channel boils and the reactor is finally caught by
+  // the HIGH-PRESSURE trip ~35 s in. Assert the reason, not just that something
+  // scrammed: "a backup caught it" and "the assigned protection worked" are the two
+  // outcomes this lesson exists to tell apart, and only the trip reason distinguishes
+  // them. Track peak core void to prove the DNB physics actually engaged.
   var s2 = startScenario('pwr_lof');
   var peakVoid = 0;
   s2.subscribe(function (sn) { if (sn.true_state.core_void_fraction > peakVoid) peakVoid = sn.true_state.core_void_fraction; });
@@ -1000,8 +1038,10 @@ test('pwr_lof — loss of flow: both branches reach an endpoint, DNB physics fir
   ck('decision beat fires (automatics run)', !!dec2, !!dec2, 'pump_trips fired');
   if (dec2) {
     var doneB = runUntil(s2, function (sn) { return lc(sn); }, 300);
-    ck('inaction → DNB then low-flow trip endpoint', doneB ? lc(doneB).title : 'never (fired: ' + Array.from(s2.instructor.firedBeats) + ')', !!doneB && /Low-Flow Trip/.test(lc(doneB).title), 'Caught by the Low-Flow Trip');
+    ck('inaction → DNB then backup-trip endpoint', doneB ? lc(doneB).title : 'never (fired: ' + Array.from(s2.instructor.firedBeats) + ')', !!doneB && /Backup Trip/.test(lc(doneB).title), 'Caught by a Backup Trip');
     ck('the hot channel actually boiled (DNB / core_void engaged)', 'peak core_void=' + peakVoid.toFixed(3), peakVoid > 0.02, '> 0.02');
+    // The point of the lesson: the trip assigned to this event did NOT fire.
+    if (doneB) ck('the low-flow trip never actuated — a backup caught it', doneB.rps_state.last_trip_reason, doneB.rps_state.last_trip_reason === 'primary_pressure high', 'primary_pressure high, not rcs_flow low');
     if (doneB) ck('endpoint arrives scrammed and undamaged', 'scram=' + doneB.rps_state.scrammed + ' melted=' + doneB.true_state.melted, doneB.rps_state.scrammed === true && doneB.true_state.melted === false, 'scrammed, not melted');
   }
 });
@@ -1064,21 +1104,46 @@ function heatupStep(s, shutdown) {
   else if (t.power_pct < Pt * 0.8 && t.startup_rate_dpm < 1.0) s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 4, speed: 'slow' });
 }
 
-test('pwr_mode5_to_mode3 — cold heatup reaches Hot Standby, no fuel damage', function (ck) {
+// THE PUMP-HEAT HEATUP DRIVER (#251) — deliberately smaller than heatupStep above,
+// and deliberately containing NO ROD COMMAND. A Mode 5 → Mode 3 heatup is done on
+// RCP shaft work with the reactor subcritical throughout; the only operator actions
+// are "start the pumps" and "take it up to pressure". Feed is left alone on purpose:
+// the SG is bottled (turbine off line, dumps shut) so nothing boils off and nothing
+// needs replacing — measured, level holds at 65.6 % the whole way.
+function pumpHeatStep(s) {
+  s.handleCommand({ action: 'set_rcp', running: true });
+  s.handleCommand({ action: 'set_pressure_setpoint', mpa: 15.41 });
+}
+
+test('pwr_mode5_to_mode3 — cold heatup reaches Hot Standby on PUMP HEAT, no rod motion', function (ck) {
   var s = startScenario('pwr_mode5_to_mode3');
-  s.handleCommand({ action: 'set_speed', value: 60 });
-  var maxFuel = 0;
+  // A headless gate has no operator to protect, and this run raises cold-plant alarms
+  // from the first seconds; without this the fast-forward dropout returns the sim to 1×
+  // and the 10.7 plant-hour heatup never finishes inside the budget (#245).
+  s.attentionStops = false;
+  s.handleCommand({ action: 'set_speed', value: 300 });
+  var maxFuel = 0, maxPower = 0, rod0 = s.engine.rod_groups[0].steps, rodMoved = 0;
   var snap = runUntil(s, function (sn) {
     var t = s.engine.getTrueState(); if (t.fuel_temp_c > maxFuel) maxFuel = t.fuel_temp_c;
-    heatupStep(s, t.tavg_c >= 296);                     // heat, then settle subcritical once hot
+    if (t.power_pct > maxPower) maxPower = t.power_pct;
+    var d = Math.abs(s.engine.rod_groups[0].steps - rod0); if (d > rodMoved) rodMoved = d;
+    pumpHeatStep(s);
     return lc(sn);
-  }, 30000);
+  }, 60000);                                            // 16.7 plant-h; the heatup measures 10.71
   ck('heatup reaches an endpoint', !!snap, !!snap, 'level_complete');
   if (snap) {
     ck('endpoint is the Hot Standby card', lc(snap).title, /Hot Standby/i.test(lc(snap).title), 'Hot Standby — Reached');
     var tf = s.engine.getTrueState();
     ck('hot at NOP temperature', tf.tavg_c.toFixed(1), tf.tavg_c > 285, '> 285 °C');
     ck('subcritical Hot Standby (Mode 3)', 'mode=' + tf.plant_mode + ' rho=' + tf.reactivity_pcm.toFixed(0), tf.plant_mode === 3 && tf.reactivity_pcm < 0, 'Mode 3, subcritical');
+    // THE #251 GUARD. The plant heated itself: no rod ever moved and the core never
+    // went critical. If the pump-heat netting is ever restored — in the SG's steam
+    // balance, or by taking pump heat back out of the turbine's demand — the plant
+    // stalls at 218.69 °F (103.72 °C) and this test times out at the check above
+    // rather than quietly reverting to a fission-driven heatup.
+    ck('NO ROD MOTION — the heatup ran on pump heat', rodMoved + ' steps', rodMoved === 0, '0 steps');
+    ck('core never went critical', 'peak power ' + maxPower.toExponential(1) + ' %',
+      maxPower < 0.01, '< 0.01 %');
     ck('no fuel damage on the way up', maxFuel.toFixed(0), maxFuel < 1200 && !s.engine.s.fuel_damaged, '< 1200 °C');
     // The heatup crosses the P-11 lo-press band with the trip auto-blocked at
     // cold init and auto-reinstated on the way up — a spuriously-scrammed plant

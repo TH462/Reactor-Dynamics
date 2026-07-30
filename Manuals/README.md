@@ -3,8 +3,8 @@
 **Plant:** Pressurized Water Reactor (PWR)  
 **Trainer:** Reactor⚛️Dynamics educational plant simulator  
 **Document set:** Commercial-style operating manuals for training use  
-**Revision:** 2  
-**Date:** 2026-07-16  
+**Revision:** 14  
+**Date:** 2026-07-30  
 
 ---
 
@@ -103,7 +103,11 @@ Do **not** confuse plant MODES with **turbine load modes** (Follow / Manual / Di
 
 Reactivity (pcm, Δk/k), startup rate (DPM), counts (cps), currents (A) and time have no US/SI distinction and are quoted once.
 
-**Every US (SI) pair in this set is verified by `node test/run_manual_units.js`**, which re-derives the US value from the SI value and fails on any arithmetic error or missing partner. If you edit a number here, run it.
+**Every US (SI) pair is verified by `node test/run_manual_units.js`**, which re-derives the US value from the SI value and fails on any arithmetic error, any missing partner, and any temperature *difference* converted with the absolute rule. If you edit a number here, run it.
+
+**The convention is not just the manual's — it is the operator's, so it holds wherever the plant quotes a number to the player.** The same gate enforces it in the **live checklist and procedure steps** (`ui/manual_procedures.js`) and the **System Scanner's inspection copy** (`ui/diagram/board/pwr_board_inspect.js`): a step target reads *1194 psi (8.23 MPa)*, the PORV entry reads *2350 psi (16.20 MPa)*, the rod-AUTO deadband reads *±1.4 °F (±0.8 °C)*.
+
+Two things stay SI, deliberately: **engine command payloads** (`cmd: { mpa: 8.23 }` is an argument, not a reading) and **developer comments** in those source files.
 
 ### Instruments vs truth
 

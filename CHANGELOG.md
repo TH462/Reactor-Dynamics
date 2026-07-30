@@ -13,6 +13,253 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The moderator model was re-fitted to measured plant data, and the reactor is more
+  self-regulating than it was yesterday** (#263). The previous fix (#260) took the
+  boron dependence of the moderator coefficient from a written statement in a training
+  manual; that manual's own figure disagreed with it. The **BEAVRS / Watts Bar Unit 1
+  Cycle 1 startup physics tests** publish three *measured* temperature coefficients at
+  three boron concentrations, and they settle it — #260's value was **4.3× too negative**
+  at the all-rods-out condition.
+
+  Both parameters are now least-squares fitted to those measurements, reproducing all
+  three to within 0.09 pcm/°F. **The coefficient at full power is 34 % stronger**
+  (−20 → −26.8 pcm/°C), which supersedes an earlier tuning ruling: the core now fights a
+  rod withdrawal harder, so a small withdrawal at power shows up as **temperature rather
+  than power** — which is what a real plant does, since the turbine sets power and the
+  rods set temperature.
+
+  For an operator: critical boron runs **806 → 587 ppm** across a heatup with the control
+  bank in (spread 556 → 219 ppm since #260 began), differential boron worth is
+  **19.9 pcm/ppm cold against 10.5 at power**, and a runaway on the startup challenge
+  self-limits more, so overshooting the band takes more banked reactivity than it did.
+  Nothing in the reactivity curve is set by preference any more.
+- **The operator manuals' revision history was two weeks and six changes out of date.** Five
+  entries were missing — the low-flow trip's new instrument and setpoint, the pump-heat heatup
+  that re-authored two chapters, the reactivity recalibration and its new Estimated Critical
+  Condition table, the charging/letdown flow correction, and the reactivity curve's second
+  anchor. Every one of those changed numbers an operator reads. Ten of the thirteen documents
+  also still said "Revision 0", and the contents page said Revision 2 from two weeks earlier.
+  All five entries are now written, the revision is a single set-wide number carried by every
+  document, and the history table reads newest-first throughout — it had been half ascending
+  and half descending, so there was no clear place to add a new entry. A gate now fails if a
+  chapter is edited without recording it.
+- **The manual quoted a charging and letdown flow the board never showed.** Section 12 said
+  **40 gpm** maximum charging and **20 gpm** normal letdown, where the board's charging box tops
+  out at **60 gpm** and its orifice-A letdown reads **30 gpm**. Two conversion scales were being
+  kept in two separate files and had drifted 1.5 × apart, with the manual quoting the one no code
+  reads. The manual now matches the board, and a gate cross-checks the two so they cannot
+  separate again. **No displayed value changed** — only the documentation that was wrong about it.
+  Section 12 also now says plainly that these gallons-per-minute figures are display flavour for
+  pacing, not physical flow rates to be measured against a real plant.
+- **The moderator temperature coefficient is no longer a constant, and the reactor no longer
+  goes critical cold at 600 ppm** (#260). A single MTC of −11.1 pcm/°F (−20 pcm/°C) was
+  applied from 122 °F (50 °C) all the way to 579 °F (304 °C). Over a Mode 5 → Mode 3 heatup
+  that integrates to a **−4944 pcm** moderator defect — 494 ppm of dilution to buy back, a
+  third of it charged below 274 °F (134 °C) — and it collapsed critical boron from 819 ppm
+  cold to 263 ppm hot. Found in free play: at **2235 psi (15.41 MPa) and 274 °F (134.4 °C)**,
+  diluting toward **600 ppm** — a number that looks safe next to the hot end — took the
+  reactor critical and tripped it on source-range high flux. The trip was correct; the reason
+  600 ppm was critical was not.
+
+  Moderator reactivity now tracks moderator **density**, so the coefficient steepens as the
+  plant heats and weakens as boron rises, both sourced to WTSM 2.1 *Reactor Physics Review*
+  (ML11223A207) Figure 2.1-8. Rod worths went to the measured values in WTSM 2.2
+  (ML11216A051) Table 2.2-1 — control banks **8500 → 4068 pcm**, shutdown **10 000 →
+  3676 pcm** (all RCCAs 7744; the old 18 500 was 2.4× anything sourceable). Core excess
+  reactivity is now **solved**, not tuned, so hot-zero-power all-rods-out critical boron lands
+  on the **975 ppm** measured in the BEAVRS / Watts Bar Unit 1 Cycle 1 physics tests.
+
+  For an operator: critical boron now runs **834 → 575 ppm** across a heatup with the control
+  bank in (was 819 → 263), and **1130 → 975 ppm** all-rods-out. Boron is held roughly
+  constant through the heatup and the dilution is done hot, which is what a real startup does.
+  Differential boron worth is now larger cold (13.8 pcm/ppm at 122 °F against 10.0 at power),
+  which falls out of the density model rather than being tuned in.
+
+  **Two procedures were re-authored** because the plant changed under them (HR9). `pwr_startup`:
+  the 1/M withdrawal bursts are now 138/90/44/22/12 steps (criticality moved from step 224 to
+  318). `pwr_heatup`: the authored dilution drove a runaway to 119 % power and 638 °F on the
+  new model, so it is gentler — the ride now tops out near 7 % instead of 10–30 %, which is
+  the prototypical shape for a nuclear heatup, and the two startup-trip blocking steps became
+  precautionary rather than load-bearing.
+
+### Changed
+- **The plant can now heat itself up from cold on pump heat alone, with the reactor never
+  started** (#251). The steam generator used to subtract reactor-coolant-pump heat out of its
+  own steam balance — a correction term sized to cancel pump heat exactly, because the turbine
+  drew steam for core power only and the extra 0.55 % had nowhere to go. The side effect nobody
+  had costed: a heatup on pump heat was *mathematically impossible*, stalling dead at
+  **218.69 °F (103.72 °C)** forever. The turbine's demand now includes pump heat and the SG
+  boils off everything that crosses it, with rated steam flow defined against NSSS rated heat
+  (core + pump) the way a real plant rates its generators. Measured: Mode 5 → Mode 3 in
+  **10.71 plant-hours** at an average **39.8 °F/hr (22.1 °C/hr)** with **no rod motion at all**,
+  arriving at 548 °F (286.7 °C) and −6287 pcm. Full-power behaviour is unchanged to two
+  decimal places.
+- **A cold plant is no longer synchronised to the grid.** The Mode 3 and Mode 5 initial
+  conditions spawned with the turbine in load-follow and the generator carrying 1e-6 of load,
+  while the rotor sat at rest — half-fixed in an earlier change. They now spawn properly off
+  line (breaker open, planned offline, not tripped). This mattered the moment pump heat became
+  real: a following governor cracks open and drains the heatup.
+- **"The Big Warm-Up" (Mode 5 → Mode 3) has been re-authored around the real evolution.** It no
+  longer takes the reactor critical to warm the plant up. Pressurize, start the pumps, bottle
+  the steam generator, and ride the temperature up on pump heat — arriving hot and *still
+  subcritical*, which is what Hot Standby actually means. The approach to criticality moved out
+  to the missions that already teach it.
+- **The low-flow reactor trip now fires at 90 % of rated flow, not 25 %** (#248). This is the
+  real Westinghouse setpoint, and the block permissive moved to the real P-7 (10 % power).
+  Measured on an RCP trip from full power: the trip now fires at **1.8 s**, where DNB onset
+  is at **10.9 s** — it protects the core about nine seconds before the hot channel can boil.
+  The old 25 % fired at 16.2 s, roughly five seconds *after* DNB began; its entire practical
+  effect was to let the core boil first. Scanned for spurious trips: small LOCA, stuck-open
+  PORV and SGTR never drop flow below 90 % at all, and the large LOCA has already scrammed on
+  low pressure three seconds before it gets there. The TMI flagship is untouched.
+- **"Loss of Coolant Flow" has been re-authored around a stuck flow transmitter.** With the
+  faster trip a healthy plant simply trips in under two seconds and nothing happens — the old
+  lesson (*hesitate and it boils*) became unreachable, correctly, because no real plant lets
+  flow coast to a quarter of rated. So the scenario now trips the pump **and** sticks its flow
+  channel at 100 %. The low-flow trip never fires at all; the core boils, and the reactor is
+  finally caught 35 s later by the **high-pressure** trip — a different instrument catching a
+  consequence. Subcooling margin is the indication still telling the truth. The lesson is no
+  longer "trip fast", it is **"a single-channel trip is exactly as trustworthy as its one
+  transmitter"**, which is what real plants answer with three detectors per loop and 2-of-3
+  coincidence.
+
+### Added
+- **A portable single-file build — the whole control room as one `.html` you can email.**
+  `node tools/make_portable.js` inlines all **94 scripts and 2 stylesheets** that
+  `ui/shell.html` loads, in document order, into one **2.55 MB** self-contained file that
+  runs by double-clicking: no server, no install, no network, no unzipping into the right
+  folder. Measured in headless Edge: the bundle issues **1 network request — itself** — and
+  reaches a state identical to the multi-file build across all 60 sampled board values
+  (reactor power 0.8 %, T-avg 558 °F (292 °C), primary 1068 psi (7.36 MPa), 8 alarms) after
+  the same stuck-PORV injection, with **zero page errors**.
+  Nothing about the simulator had to change to make this work: every runtime file is
+  already a plain global-namespace script, there is no `fetch` anywhere in the codebase, the
+  operator's manual is pre-packed into `ui/manual_md.js`, and there are **no images and no
+  web fonts at all**. The sim could always run from `file://` — what it could not do was
+  travel as a single attachment. Three fixups are all the bundler adds: the two Vercel
+  analytics beacons are dropped (declared, with reasons — an undeclared external tag is a
+  hard build error, never a warning), the logo's `../index.html` link is repointed at the
+  public site since a single file has no sibling landing page, and the ⚛️ favicon is
+  embedded as a `data:` URI so an emailed file still gets a labelled browser tab.
+  The build is **not minified** — the source stays readable, which is also what keeps
+  AGPL §13 honest when the file is handed to someone. Output goes to the gitignored `dist/`.
+  *Emailing it: ZIP it first — several mail providers silently strip `.html` attachments.*
+- **`test/run_portable.js` guards the offline build** (**112 checks**). The single-file build
+  works only because of a property no other gate asserted: **nothing in the runtime loads
+  anything at runtime.** That is the kind of property that dies quietly — a
+  `fetch('Manuals/12.md')` added for an excellent reason leaves every other gate green and
+  the deployed site perfect, and breaks the *emailed* file on a stranger's machine where
+  nobody will ever report it. The gate scans exactly the assets `ui/shell.html` ships (read
+  out of the file, so it widens itself when a script is added) for 13 load patterns, checks
+  the stylesheets for web fonts and for relative `url()`s that would break once inlined,
+  then **builds the bundle and asserts the deliverable itself** has no loading attribute
+  left. Verified by injection rather than by passing: a `fetch`, a CDN `<script>`, an
+  `@font-face`, an `<img src>` and an ES `export` each turn it red on the matching check.
+- **RCS Loop Flow is now an instrument, and the low-flow reactor trip reads it** (#247).
+  The trip that protects the core against a loss of forced flow used to read **true**
+  coolant flow directly — it could not lag, could not drift, and could not be fooled by a
+  failed transmitter. On a simulator built around the premise that instruments lie, that
+  made the single most safety-significant trip on the plant **impossible to train on**. It
+  was carried for two years as "the one documented HR1 exception"; it was not an exception,
+  it was an instrument nobody had built.
+  `rcs_flow` models the real measurement — **elbow taps** on the crossover-leg 90° elbow,
+  reading differential pressure across the bend (ΔP ∝ flow²), nothing inserted into the flow
+  path. It reads in **% of rated**, lags 1 s, appears as an **RCS Flow** trend, and accepts
+  the full failure set. The setpoint is unchanged at **25 % of rated**.
+  What this buys, measured end to end: inject a **stuck-high** flow transmitter, trip the
+  RCP, and the flow indication sits at 100 % while the true flow reaches zero — **the
+  low-flow trip never fires**, and the reactor is eventually caught by high primary pressure
+  instead, several seconds later and for a different reason. That is a genuine new event to
+  train on, and it was unreachable before.
+- **Main feedwater isolation valve position indication** (#247). The three-element feed
+  channel is supposed to stand down when main feed isolates, handing the steam generators to
+  AFW. It read a true-state field that **`getTrueState()` has never exposed**, so the value
+  was always undefined and the stand-down had **never once fired** in any session. It now
+  reads MFIV position, and the channel drops out with the note *"off — main feedwater
+  isolated (AFW has the SGs)"*.
+- **Feedback (💬) is now an email address, not a form** *(owner, 2026-07-29)*. The overlay used to
+  collect a category, a description and an optional reply address, then package the lot as a JSON
+  file the player downloaded — against a planned `POST /api/feedback` that was never built, so the
+  report landed in their downloads folder and nowhere anyone reads. It now shows
+  **reactordynamics@gmail.com** as a `mailto:` link with a copy button, a line on what makes a
+  report easy to act on, and the build stamp to quote.
+  The **session diagnostics download stays**, as a single button. It is the only place that bundle
+  is reachable from — the `export-diag` action has no button of its own — and it is worth attaching
+  to a bug report. Same rule as before: telemetry comes only from the live session recorder, never
+  from a user-supplied file.
+
+### Fixed
+- **The full-stack procedure gate was running half its procedures at a tenth of their declared
+  speed (#245).** `test/run_procedures_stack.js` set `timeAcceleration = 10` once at setup.
+  `SimulationService._attentionStop` then did its job — the first alarm or scram on a quiet
+  board snaps fast-forward back to real time so a human is not left behind the plant — and
+  nothing put it back. Measured: **11 of the 22 procedures** ran below 10× from as early as
+  **t = 2 s**, one of them for 416 consecutive ticks. Every step assertion downstream of that
+  point was being judged on a tenth of the sim time its author declared.
+  Fixed with `svc.attentionStops = false` — the dropout is a comfort feature for a human at
+  the board and a headless gate has no one to protect; `run_autoctl` had already reached the
+  same conclusion by another route — plus a new per-procedure assertion that the run actually
+  held its declared acceleration, so the harness can no longer claim 10× in its header while
+  the runs underneath it disagree. The mechanism itself stays covered by `run_m5`.
+  **Four "RBMK/BWR plant defects" were this bug.** `bwr_startup` step 2 was already known
+  (#240 follow-up); `rbmk_mcp_trip` step 2 on both RBMK versions and `bwr_sbo_rcic` step 3
+  (vessel level 25.4 % vs a required 40) join it — power had a tenth of the time to fall after
+  the pump trip, RCIC a tenth of the time to refill. All three pass on the sim time alone.
+  That is a green establishing the *mechanism*, not a clean bill of health for either plant:
+  both are on hold and nobody has re-derived those steps from the plant.
+  It also caught a stale PWR assertion. `pwr_stuck_porv` step 1 asserted `core_inventory_pct
+  < 100` at the end of a 30 s hold. Inventory does fall — 99.65 → 98.01 % by t = 6 s — but
+  automatic HPI actuates at 10.5 MPa and refills past nominal (117.6 % by t = 16 s, pressurizer
+  at 88 %, subcooling gone). That is the plant doing the right thing; it is TMI's own trap, the
+  solid pressurizer that invites throttling injection, which this procedure's caution warns
+  about. The step now asserts the leak was *seen* and checks subcooling — the diagnosis signal
+  its own text points the player at — at the end.
+  Baselines move with the fix: `run_procedures_stack` **22/22 155/155 → 178/178** (+22 the new
+  acceleration assertion, +1 the split above), strict xfails **5 → 2**; `run_procedures`
+  **101/101 → 102/102**.
+
+### Removed
+- **The V1 PWR board is gone (#246).** `ui/diagram/pwr_synoptic.js` (~100 KB) and
+  `pwr_synoptic.css` were superseded by the V2 board in `ui/diagram/board/` months ago, but
+  they were still parsed on every control-room load and never mounted. Deleted, along with
+  their dev harness `ui/test_panel/synoptic_check.html`, which could only exercise the
+  deleted module. The three `RD.PwrBoard || RD.PwrSynoptic` fallbacks in `ui/app.js`
+  collapse to `RD.PwrBoard` — the only PWR display there has been for some time.
+  Two pieces did **not** go with it. The four `.app.pwr-synoptic` rules at the top of the
+  V1 stylesheet were shell hooks keyed on the `.app` class, not V1 board styling, and the
+  V2 board needs them (`.view-area { padding: 0 }` in particular) — they moved into
+  `ui/shell.css`; the class name is unchanged. And `run_campaign` validated every PWR beat
+  highlight against the V1 module's `SYN_CONTROL_MAP`, which was already the wrong
+  authority: `app.js` resolves highlights through `RD.PwrBoard.revealControl`. It now
+  checks the board driver's `CONTROL_LABEL_MAP` (51 labels to V1's 34, a strict superset,
+  so nothing that used to resolve can now be hidden). Gates unchanged at baseline:
+  `run_campaign` 51/51 (3024 checks), `verify_manual_follow` PASS (84), `verify_e2e_ui`
+  PASS (16 screenshots), `run_inspect` 7/7, `board_check` 106/106.
+
+### Changed
+- **The board now speaks the same units as the manual.** The dual-unit convention reached the
+  manual last release but stopped at the board, leaving three conventions live at once: the
+  **live checklist / procedure steps** were SI-only (*"Set the Steam Dump Setpoint back to the
+  no-load anchor (8.23 MPa)"*), the **System Scanner's inspection copy** was a mix of US-only
+  and SI-only, and one Scanner entry had the convention exactly backwards (*"15.41 MPa (about
+  2235 psi)"*). A player reading a step target in MPa and a gauge in psi had to convert in
+  their head, on a board that is US everywhere else.
+  All 28 sites converted. A checklist step target now reads **1194 psi (8.23 MPa)**, the PORV
+  entry opens near **2350 psi (16.20 MPa)** and reseats about **2300 psi (15.86 MPa)**, HPI
+  arms at **1799 psi (12.4 MPa)**, the RHR suction valve is interlocked at **400 psi
+  (2.76 MPa)**, and the rod-AUTO deadband is **±1.4 °F (±0.8 °C)** — a temperature difference,
+  so no offset.
+  `test/run_manual_units.js` now covers both source files as well as the manual, so the three
+  surfaces cannot drift apart again. **Engine command payloads stay SI** — `cmd: { mpa: 8.23 }`
+  is an argument, not a reading — as do developer comments.
+- **The units gate is scored on failures, not on how much it checked.** Its coverage count moves
+  whenever any number in any sentence is edited, so baselining it produced four meaningless
+  drift bumps in one session and would have trained the next author to rewrite the number
+  without reading it. It now reports coverage for a human and is graded only on whether
+  anything is wrong. `run_hr3`, `run_contract` and `run_inspect` keep their counts in the
+  baseline on purpose — theirs move when a real decision is made.
+
 ## [Alpha 1.9.0] — 2026-07-29
 
 ### Changed

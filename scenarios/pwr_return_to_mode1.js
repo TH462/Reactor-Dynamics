@@ -9,8 +9,11 @@
  * a low power up in temperature — but this time you do NOT stop at Hot Standby:
  * you keep the reactor making power and cross NOP into Mode 1, At Power.
  *
- * Honesty: the heatup RATE is time-compressed and the heat source is controlled
- * fission (the lumped heat capacity makes pump-heat heatup impractical).
+ * Honesty: the wall clock is compressed (time acceleration). The heat source is NOT
+ * fictional — this mission drives the heatup on fission because it is going straight
+ * on to power and the criticality is the point, but the plant no longer needs it to:
+ * since #251 pump heat alone makes Hot Standby in 10.71 plant-hours with the reactor
+ * subcritical, which is what `pwr_mode5_to_mode3` now teaches.
  */
 ;(function (RD) {
   'use strict';
@@ -23,16 +26,18 @@
     design_version: null,
     initial_state: 'cold_shutdown',
     mode: 'guided',
-    // No dump-setpoint override: the config default IS the no-load anchor (FG-2).
-    setup_commands: [{ action: 'disconnect_grid' }],
+    // No setup commands: the cold_shutdown IC now spawns OFF LINE (#251), so the
+    // `disconnect_grid` that used to sit here is a no-op. No dump-setpoint override
+    // either — the config default IS the no-load anchor (FG-2).
+    setup_commands: [],
     description: 'The full startup Mode 5, Cold Shutdown → Mode 2, Startup → Mode 1, At Power: heat the cold plant, take it critical, and ride the power up past 5 % into power operation — the other half of the round trip.',
     beats: [
 
       { id: 'from_mode5',
         trigger: { type: 'time', value: 2.0 },
         commentary: {
-          learning: 'Back on the cold board — Mode 5, Cold Shutdown. In "Cooling Down" you brought a plant here from power; now you close the loop and take one all the way back UP. The first half is the heatup you learned in "The Big Warm-Up" — but this time you will not stop at Hot Standby. You will keep the reactor making power and cross into Mode 1, At Power. Same honesty as before: the rate is compressed, and the heat is controlled fission.',
-          industry: 'Mode 5, Cold Shutdown. Objective: full startup to Mode 1, At Power (> 5 % at NOP). Same heatup as pwr_mode5_to_mode3, continued through criticality and power ascension rather than settling at Hot Standby. Rate time-compressed; heat source is controlled fission.',
+          learning: 'Back on the cold board — Mode 5, Cold Shutdown. In "Cooling Down" you brought a plant here from power; now you close the loop and take one all the way back UP. The first half is the heatup you learned in "The Big Warm-Up" — but this time you will not stop at Hot Standby. You will keep the reactor making power and cross into Mode 1, At Power. One difference from "The Big Warm-Up": there you let the pumps do the heating and never started the reactor. Here you are going to power anyway, so you take it critical early and heat on fission — faster, and the criticality is the point.',
+          industry: 'Mode 5, Cold Shutdown. Objective: full startup to Mode 1, At Power (> 5 % at NOP). Unlike pwr_mode5_to_mode3 (pump-heat heatup, subcritical throughout) this one goes critical during the heatup and continues into power ascension. Wall clock compressed via time acceleration.',
         },
         highlight: { control_label: null, instrument_id: 'tavg' },
         advance: 'wait_for_trigger' },

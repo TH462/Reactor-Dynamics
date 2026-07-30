@@ -86,15 +86,27 @@
     var Q_sg = s._Q_coolant_to_sg != null
       ? s._Q_coolant_to_sg
       : cfg.thermal.h_sg * s.flow_frac * (s.tavg_c - s.t_secondary_c);
-    // RCP pump heat crosses the SG with the core heat, but the behavioral
-    // turbine draws steam for the CORE power only — booking the extra ~0.55 %
-    // as steam made the secondary pressure creep for hours until power sagged
-    // out of band (probed). Net it out of the steam-side balance here (treat it
-    // as SG blowdown/ambient losses); every primary-side pump-heat effect
-    // (no-load heatup with the sink isolated, post-trip cooldown change) lives
-    // in the coolant node and is unaffected.
-    var Q_pump = cfg.thermal.heat_gen_coeff * (cfg.thermal.pump_heat_frac || 0) * s.flow_frac;
-    var steam_generation_rate = Math.max(0, Q_sg - Q_pump) / sg.latent_heat_secondary;
+    // THE SG BOILS OFF WHATEVER HEAT CROSSES IT — core heat and RCP pump heat alike.
+    // Rated steam flow is therefore the flow made by NSSS RATED HEAT (rated core heat
+    // PLUS full-flow pump heat), not by core heat alone, which is how a real plant
+    // rates its steam generators: NSSS thermal power, not core thermal power (a
+    // Westinghouse 4-loop quotes core 3411 MWt / NSSS 3425 MWt — the difference IS
+    // pump heat). Normalizing the generation rate on that is what lets this line carry
+    // no correction term at all: pump heat gets a real steam sink at power, because the
+    // follow governor's demand is normalized the same way (pwr_engine
+    // `_loadModeOpts.extractFrac`), and a bottled SG at no load pressurizes on pump
+    // heat exactly as a real one does.
+    //
+    // It used to be NETTED OUT here — `Math.max(0, Q_sg − Q_pump)`, booked in the
+    // comment as "SG blowdown/ambient losses". It was not that: it was sized to cancel
+    // pump heat identically at every flow, and it made a heatup on pump heat
+    // MATHEMATICALLY IMPOSSIBLE. The steam side could not start boiling until Q_sg
+    // exceeded Q_pump, but Q_sg = h_sg·(Tavg − Tsec) settles at exactly Q_pump and
+    // stops — measured, a stable attractor at Tavg 218.69 °F (103.72 °C) with
+    // ΔT = 0.321 °F = Q_pump/h_sg to three decimals, and it sits there forever. That
+    // is why the Mode 5 → Mode 3 mission had to take the reactor critical to heat the
+    // plant up. Issue #251.
+    var steam_generation_rate = Q_sg / (sg.latent_heat_secondary * (1 + (cfg.thermal.pump_heat_frac || 0)));
 
     // B2 — steam dump / turbine bypass: vents steam straight to the condenser,
     // bypassing the turbine, to control SG pressure on a turbine trip / load

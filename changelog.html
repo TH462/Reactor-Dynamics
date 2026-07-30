@@ -15,10 +15,13 @@
 <header class="site-header">
   <div class="bar">
     <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
+    <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
     <nav class="site-nav">
       <a href="ui/shell.html?engine=pwr">Simulator</a>
-      <a class="disabled" aria-disabled="true" title="Coming soon">About</a>
-      <a class="disabled" aria-disabled="true" title="Coming soon">Feedback</a>
+      <a href="about.html">About</a>
+      <a href="download.html">Download</a>
+      <a class="active" href="changelog.html">Changelog</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
     </nav>
   </div>
 </header>
@@ -65,6 +68,26 @@
   </article>
 
        ================================================================== -->
+
+  <article class="log-entry">
+    <div class="log-head">
+      <h2>Take it offline, and a reactor that behaves like the measurements say</h2>
+      <span class="log-ver mono">Alpha 1.10.0</span>
+      <time class="log-date mono" datetime="2026-07-30">30 July 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>The whole simulator now ships as a single HTML file you can download and run offline.</strong> No install, no server, no folder &mdash; open it from your desktop, or email it to someone. There is a <a href="download.html">Download</a> page in the menu; the file is zipped, and the copy offered is always built from the same code as this site.</li>
+      <li><span class="log-tag added">Added</span><strong>A short guided tour on first pause,</strong> pointing at each control in place rather than burying it in a dialog, plus an Instructor that talks you through free play.</li>
+      <li><span class="log-tag added">Added</span><strong>An About page and a rebuilt public site,</strong> and feedback now goes straight to an email address instead of a form that only produced a file.</li>
+      <li><span class="log-tag added">Added</span><strong>An Estimated Critical Condition table in the manual</strong> &mdash; critical boron by coolant temperature and rod position, the reference a real operator works out before diluting toward criticality.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The reactor&rsquo;s response to temperature is now fitted to measured plant data.</strong> Startup physics tests from a real pressurized water reactor set how strongly the coolant pushes back as it heats, and how boron weakens that effect. The core is noticeably more self&#8209;regulating: a small rod withdrawal at power now shows up as temperature rather than power, which is what a real plant does.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Control and shutdown rod worths are the real measured values,</strong> replacing figures roughly 2.4&times; larger than anything a real plant publishes.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Diluting boron while the plant was still cold could take the reactor critical unexpectedly.</strong> Critical boron fell far too steeply as the plant heated, so a concentration that is safe hot was critical cold &mdash; and a heatup toward full power could trip on source&#8209;range high flux. Critical boron is now nearly flat across a heatup, so boron is held steady while heating and adjusted hot.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The plant can heat itself from cold on pump heat alone,</strong> reactor never started &mdash; which is what a real heatup is. It previously stalled at 219&nbsp;&deg;F because pump heat was cancelled out of the steam balance.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The low reactor coolant flow trip reads a real flow instrument</strong> at the real 90&nbsp;% setpoint, so a stuck flow indication can now mask a genuine loss of flow &mdash; as it would in a plant.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The manual quoted charging and letdown flows the board never showed,</strong> and its revision history had stopped being written. Both corrected, and both are now checked automatically.</li>
+    </ul>
+  </article>
 
   <article class="log-entry">
     <div class="log-head">
@@ -287,10 +310,10 @@
     </ul>
   </article>
 
-  <p style="margin-top:32px">Found a bug, or want to suggest something? The
-  <a class="disabled" aria-disabled="true" title="Coming soon">feedback page</a> comes straight to me, and there is
-  a 💬 button inside the simulator that can attach your session so I can see
-  what actually happened.</p>
+  <p style="margin-top:32px">Found a bug, or want to suggest something? Email me at
+  <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.
+  Inside the simulator, the 💬 button copies that address and can download a
+  session diagnostics file you can attach so I can see what actually happened.</p>
 </main>
 
 <footer class="site-footer">
@@ -298,11 +321,11 @@
     <div>Reactor Dynamics is an educational simulation — not engineering
     software, and no substitute for real operator training.</div>
     <div class="links">
-      <a class="disabled" aria-disabled="true" title="Coming soon">About</a>
-      <a href="changelog.html">Changelog</a>
-      <a class="disabled" aria-disabled="true" title="Coming soon">Feedback</a>
+      <a href="about.html">About</a>
+      <a class="active" href="changelog.html">Changelog</a>
       <a href="privacy.html">Privacy</a>
       <a href="legal.html">Legal</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
       <span id="ver" class="mono"></span>
     </div>
   </div>

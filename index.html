@@ -4,17 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reactor Dynamics — run a nuclear power plant in your browser</title>
-    <meta name="description" content="Educational browser-based nuclear power plant simulator. Real reactor physics, guided training campaigns, three plant types. Nothing to install.">
-    <!--
-      ReactorDynamics.com landing page (Phase W1, Blueprint/WEBSITE_SPEC.md).
-      Replaces the old meta-refresh redirect; the control room still lives at
-      ui/shell.html and the plant cards deep-link via the existing ?engine= param.
-    -->
+    <meta name="description" content="Educational browser-based PWR simulator with high-fidelity plant physics. Learn plant operation; practice real maneuvers and failures. Nothing to install.">
+    <meta property="og:title" content="Reactor Dynamics — run a nuclear power plant in your browser">
+    <meta property="og:description" content="Educational PWR simulator with high-fidelity plant physics. Learn operation; practice maneuvers and failures. Runs in the browser.">
+    <meta property="og:image" content="site/hero.png">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Reactor Dynamics — run a nuclear power plant in your browser">
+    <meta name="twitter:description" content="Educational PWR simulator with high-fidelity plant physics. Learn operation; practice maneuvers and failures.">
+    <meta name="twitter:image" content="site/hero.png">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
     <link rel="stylesheet" href="site/site.css">
-    <!-- Release channel + feature flags (#241). Loaded in <head> so the copy that
-         promises a gated feature is rewritten in the same paint: data-flag names
-         the flag, data-flag-off the sentence a visitor gets while it is in review. -->
+    <!-- Release channel + feature flags (#241). Loaded in <head> so gated copy
+         rewrites in the same paint. -->
     <script src="site/channel.js"></script>
     <script src="site/flags.js"></script>
     <!-- Vercel Web Analytics (cookieless page-view beacon; 404s harmlessly off-Vercel) -->
@@ -28,113 +30,113 @@
     <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
     <nav class="site-nav">
       <a href="ui/shell.html?engine=pwr">Simulator</a>
-      <a class="disabled" aria-disabled="true" title="Coming soon">About</a>
-      <a class="disabled" aria-disabled="true" title="Coming soon">Feedback</a>
+      <a href="about.html">About</a>
+      <a href="download.html">Download</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
     </nav>
   </div>
 </header>
 
 <section class="hero">
-  <div class="alpha-note">🚧 Alpha build &middot; a work in progress — expect rough edges, missing pieces, and features that change.</div>
-  <div class="alpha-note">🖥️ Desktop or laptop only &middot; the control room does not work on a phone or tablet yet.</div>
+  <div class="alpha-note">🚧 Alpha · desktop or laptop only — not for phones or tablets yet</div>
   <h1>Run a nuclear power plant<br>from your browser.</h1>
   <p class="sub" data-flag="campaign"
-     data-flag-off="Real reactor physics — a whole plant, from cold shutdown to full power, with the operator manuals at your elbow. Nothing to install: it all runs locally in your browser.">Real
-  reactor physics. Guided training campaigns, from first criticality to Three
-  Mile Island. Nothing to install — it all runs locally in your browser.</p>
+     data-flag-off="Real reactor physics — a whole plant, from cold shutdown to full power. Nothing to install: it all runs locally in your browser.">Real
+  reactor physics — a whole plant, from cold shutdown to full power. Guided
+  training when you&rsquo;re ready. Nothing to install — it all runs locally in
+  your browser.</p>
   <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
   <div class="hero-shot">
-    <!-- Owner-provided screenshot; drop the asset in as site/hero.png.
-         Until it exists, onerror collapses the frame and the page reads fine. -->
+    <!-- Full PWR control-room board (site/hero.png). onerror collapses the frame
+         if the asset is missing so the page still reads cleanly. -->
     <img src="site/hero.png" alt="The Reactor Dynamics PWR control-room interface"
          onerror="this.parentNode.style.display='none'">
   </div>
 </section>
 
 <section class="section" id="plants">
-  <h2>Choose your plant</h2>
-  <div class="plants">
+  <h2>The plant</h2>
+  <div class="plants-live">
     <a class="plant-card live" href="ui/shell.html?engine=pwr">
       <h3>PWR</h3>
       <div class="kind">Pressurized Water Reactor</div>
-      <p data-flag="campaign"
-         data-flag-off="The SLX‑100 — a compact 100 MWe single-loop plant, Westinghouse-style. Take it from cold shutdown to 100% power with the operator manuals at your elbow. The mission campaign and the TMI‑2 story module are in final review.">The
-      SLX‑100 — a compact 100 MWe single-loop plant, Westinghouse-style.
-      The full experience: cold shutdown to 100% power, operator manuals, a
-      mission campaign, and the TMI‑2 story module.</p>
+      <p>A small, complete PWR — one coolant loop, steam generator, turbine, and
+      grid. Built for learning and training: heat up, go critical, make power,
+      run procedures, and work real failures.</p>
       <span class="go">Operate&nbsp;→</span>
     </a>
+  </div>
+  <p class="plants-later-label">Coming later</p>
+  <div class="plants-later">
     <div class="plant-card soon">
       <h3>BWR</h3>
       <div class="kind">Boiling Water Reactor</div>
-      <p>GE-style direct-cycle plant, Fukushima-era design. The physics engine
-      is complete — its control room is under construction.</p>
-      <span class="badge-soon">COMING SOON</span>
+      <p>Direct-cycle boiling-water plant. Physics engine is in the project;
+      the public control room is not ready yet.</p>
+      <span class="badge-soon">LATER</span>
     </div>
     <div class="plant-card soon">
       <h3>RBMK</h3>
-      <div class="kind">Graphite-Moderated Channel Reactor</div>
-      <p>Chernobyl-era Soviet design, in pre- and post-accident configurations.
-      The physics engine is complete — its control room is under construction.</p>
-      <span class="badge-soon">COMING SOON</span>
+      <div class="kind">Graphite-moderated channel reactor</div>
+      <p>Channel-type plant in pre- and post-1986 configurations. Physics engine
+      is in the project; the public control room is not ready yet.</p>
+      <span class="badge-soon">LATER</span>
     </div>
   </div>
 </section>
 
 <section class="section">
-  <h2>What makes it different</h2>
+  <h2>What you get</h2>
   <div class="features">
     <div class="feature">
-      <h3>Reactivity you can feel</h3>
-      <p>The core runs on point-kinetics with six delayed-neutron groups, and it
-      pushes back: Doppler and moderator-temperature feedback, boron worth, and
-      xenon poisoning all move the reactivity in real time. Watch net reactivity
-      and reactor period as you approach criticality, and feel the coefficients
-      fight — or amplify — every move you make.</p>
+      <h3>Learn plant operation</h3>
+      <p>Sit a real board without a nuclear background. Pressure, temperature,
+      level, rods, boron, steam, feed, turbine, and alarms — and the order of a
+      startup from cold shutdown to power.</p>
     </div>
     <div class="feature">
       <h3>A whole plant, modeled</h3>
-      <p>Decay heat, two-phase steam generators, pressurizer level and pressure
-      control, and a full balance of plant from the core through the turbine to
-      the grid — coupled thermal-hydraulics where every valve, pump, and rod has
-      a real, physical consequence.</p>
+      <p>High-fidelity coupled physics: core and reactivity feedbacks, decay heat,
+      pressurizer, steam generator, feedwater, turbine, and grid. A load change
+      or a trip has consequences you can reason about.</p>
     </div>
     <div class="feature">
-      <h3 data-flag="campaign" data-flag-off="Guided campaigns — coming soon">Guided campaigns</h3>
+      <h3>Practice real work</h3>
+      <p>Load changes, trips, recovery, and injectable failures — stuck valves,
+      pump trips, sensor problems — on the same physics you learned on. You
+      operate through instruments, the way a plant is actually run.</p>
+    </div>
+    <div class="feature">
+      <h3 data-flag="campaign" data-flag-off="Guided training — coming soon">Guided training</h3>
       <p data-flag="campaign"
-         data-flag-off="An instructor that watches the board and gates your progress through real procedures — startup, power maneuvers, casualty response. It is being played through mission by mission before it opens; the commercial-format operator manuals it teaches from are already in the control room.">An
+         data-flag-off="An instructor that watches the board and gates your progress through real procedures is in final review. Free play and the commercial-format operator manuals are open now.">An
       instructor watches the board and gates your progress through real
       procedures — startup, power maneuvers, casualty response — with
-      commercial-format operator manuals to study.</p>
-    </div>
-    <div class="feature">
-      <h3>Break it on purpose</h3>
-      <p>Inject stuck valves, failed sensors, and pump trips, then diagnose the
-      casualty from a board that isn&rsquo;t telling you the whole truth.</p>
+      commercial-format operator manuals in the room.</p>
     </div>
   </div>
 </section>
 
-<section class="section">
-  <h2>About</h2>
-  <p style="color: var(--text-2); max-width: 640px;">Reactor Dynamics is an
-  educational simulator built to teach how nuclear plants actually behave —
-  including the conditions behind Three Mile Island, Chernobyl, and Fukushima.
-  <a class="disabled" aria-disabled="true" title="Coming soon">Read more →</a></p>
+<section class="section contact-strip">
+  <p>Questions or bugs?
+  <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>
+  · <a href="changelog.html">What&rsquo;s new</a>
+  · <a href="about.html">About the project</a></p>
 </section>
 
 <footer class="site-footer">
   <div class="inner">
     <div>Reactor Dynamics is an educational simulation — not engineering
     software, and no substitute for real operator training.</div>
-    <div style="margin-top: 8px;">Comments, questions, or feedback? I&rsquo;d
-    love to hear from you — email <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
+    <div style="margin-top: 8px;">Comments, questions, or feedback? Email
+    <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
     <div class="links">
-      <a class="disabled" aria-disabled="true" title="Coming soon">About</a>
+      <a href="about.html">About</a>
       <a href="changelog.html">Changelog</a>
-      <a class="disabled" aria-disabled="true" title="Coming soon">Feedback</a>
       <a href="privacy.html">Privacy</a>
       <a href="legal.html">Legal</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
       <span id="ver" class="mono"></span>
     </div>
   </div>
@@ -143,7 +145,7 @@
 <script src="site/version.js"></script>
 <script>
   document.getElementById('ver').textContent = window.RD_VERSION || '';
-  if (window.RD && RD.Flags) RD.Flags.applyDom(document);   // gated-feature copy (#241)
+  if (window.RD && RD.Flags) RD.Flags.applyDom(document);
 </script>
 </body>
 </html>

@@ -7,8 +7,9 @@
  * The engine itself acts on none of it — it only exposes the instruments these
  * rules read and the controls they drive.
  *
- * All setpoints read INSTRUMENTS (HR1), in SI units (MPa / °C / % / normalized),
- * with the single documented exception `__true_flow__` (no flow instrument in v1).
+ * All setpoints read INSTRUMENTS (HR1), in SI units (MPa / °C / % / normalized).
+ * There is no longer any exception: the low-flow trip's `__true_flow__` sentinel was
+ * retired 2026-07-29 when the `rcs_flow` elbow-tap channel was built (#247).
  * Attaches RD.PWR_CONTROL, plus the legacy names RD.PWR_PROTECTION and
  * RD.PWR_CONFIG.protection (the engine's failure dispatch reads the latter);
  * loads after pwr_config.js.
@@ -32,12 +33,38 @@
       blockable: true, block_permissive: { instrument: 'primary_pressure', direction: 'low', setpoint: 13.6 } },
     { instrument: 'pzr_level',        direction: 'low',  setpoint: 12.0,   action: 'scram' }, // %
     { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,   action: 'scram' }, // % lo-lo (AFW auto-starts just above, 20 %)
-    // Low-flow reactor trip. Bypassable below the P-7 low-power permissive (5 %): the
-    // RCPs are secured in cold shutdown (RHR provides circulation), so the trip is
-    // blocked at a depressurized/low-power init and re-arms above P-7. At power it is
-    // never blocked — a real RCP trip / loss of flow (pwr_lof) still scrams.
-    { id: 'lo_flow', instrument: '__true_flow__', direction: 'low', setpoint: 0.25, action: 'scram', // HR1 exception
-      blockable: true, block_permissive: { instrument: 'power_range', direction: 'low', setpoint: 5.0 } },
+    // Low-flow reactor trip. Reads the `rcs_flow` ELBOW-TAP CHANNEL (% of rated) as of
+    // 2026-07-29 (#247); until then it read true `pump_flow_pct` through a
+    // `__true_flow__` sentinel, so it could not be lagged, fooled or drifted and the
+    // trip was unteachable. Bypassable below the P-7 low-power permissive: the RCPs are
+    // secured in cold shutdown (RHR provides circulation), so the trip is blocked at a
+    // depressurized/low-power init and re-arms above P-7. At power it is never blocked —
+    // a real RCP trip / loss of flow (pwr_lof) still scrams.
+    //
+    // SETPOINT: 90 % of rated, blocked below 10 % power (P-7). Both are the real
+    // Westinghouse numbers — WTSM 12.2 Table 12.2-1 row 12 (ML11223A301): "Low Reactor
+    // Coolant Flow · 2/3 per loop · < 90 % of rated flow", and "All the reactor coolant
+    // low flow trips are automatically blocked below the P-7 setpoint (10 % power)".
+    // Adopted 2026-07-29 (#248, owner ruling) replacing an unsourced 25 % / 5 % pair.
+    //
+    // MEASURED, not reasoned (HR12), on hot_full_power + RCP trip through the M5 stack:
+    // the indication crosses 90 % at 1.8 s and 25 % at 16.2 s, and DNB onset
+    // (core_void ≥ 0.02) is at 10.9 s. So 90 % trips ~9 s BEFORE the hot channel boils
+    // and 25 % tripped ~5 s after it — the old setpoint's whole effect was to let DNB
+    // happen. Scanned for spurious trips too: of the depressurizing casualties only the
+    // large LOCA reaches 90 % (at 6 s, on RCP cavitation) and it has already scrammed at
+    // 3 s on low pressure; small LOCA, stuck-open PORV (the TMI opener) and SGTR never
+    // leave 100 %. The TMI flagship is untouched.
+    //
+    // ONE REMAINING IDENTITY DEPARTURE, recorded rather than quietly carried: this trip
+    // is ONE channel, not 2/3 per loop (NUREG-1431 Bases B 3.3.1A Fn 10, ML12100A228:
+    // "Each RCS loop has three flow detectors… The LCO requires three Reactor Coolant
+    // Flow - Low channels per loop"). The plant is single-loop and every other protection
+    // function here is single-channel, so 2/3 on flow alone would be inconsistent with
+    // the whole instrument model — and 2/3 exists precisely to stop one lying transmitter
+    // mattering, which would delete the stuck-high teaching case #247 built this for.
+    { id: 'lo_flow', instrument: 'rcs_flow', direction: 'low', setpoint: 90.0, action: 'scram', // % of rated
+      blockable: true, block_permissive: { instrument: 'power_range', direction: 'low', setpoint: 10.0 } },
     // Startup nuclear-instrumentation trips (the startup safety net):
     // SR high flux at shutdown — 1e5 cps ≈ 0.02 % power; live only while the
     // detector is energized (secure the SR during the SR→IR handoff or trip).
@@ -574,7 +601,10 @@
     { id: 'feed_sg', kind: 'pid', group: 'Secondary',
       // CC-3: the channel stands down (visible note) when main feedwater is
       // isolated — P-4 post-trip handoff or P-14/SI isolation. AFW has the SGs.
-      offWhen: function (ctx) { return !!(ctx.true_state && ctx.true_state.feedwater_isolated); },
+      // Reads the MFIV POSITION INDICATION (HR1). It used to read
+      // `ctx.true_state.feedwater_isolated`, which getTrueState() has never exposed —
+      // so the value was always undefined and the stand-down never once fired (#247).
+      offWhen: function (ctx) { return !!(ctx.instruments && ctx.instruments.mfw_isolated); },
       offNote: 'off — main feedwater isolated (AFW has the SGs)',
       label: 'Feed pump → SG level (three-element)',
       hint: 'Three-element feedwater control — steam-generator level (element 1) plus the steam-flow vs feed-flow mismatch (elements 2 & 3) drive the feed pump speed. Engaging takes the pump off the load coupling; a manual pump command (nudge/set) takes the channel back to MAN.',

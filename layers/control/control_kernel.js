@@ -7,7 +7,9 @@
  * plant-specific literals — every setpoint, threshold, and failure definition is
  * DATA it consumes from the per-plant control module (layers/control/<plant>_control.js,
  * reached through the engine's protection config; HR3). Its rules read INSTRUMENT
- * readings, never true state (HR1), bar the documented `__true_flow__` exception.
+ * readings, never true state (HR1) — with no exception since 2026-07-29, when the
+ * low-flow trip's `__true_flow__` sentinel was retired against a real flow channel
+ * (#247, which also closed the HR3 leak #228: the sentinel named a PWR-only field).
  *
  * Commands descend through this layer (HR5): an auto-actuation or a trip scram is
  * issued through the SAME handleCommand path as an operator command, so a
@@ -305,8 +307,8 @@
     return this.getSnapshotSections();
   };
 
-  // Responsibility 1 — trips (§3). Any firing scrams; reads instruments (HR1)
-  // except the documented __true_flow__ exception. Extensions (M4b trip blocks):
+  // Responsibility 1 — trips (§3). Any firing scrams; reads instruments (HR1),
+  // with no exception. Extensions (M4b trip blocks):
   //   condition  — the trip evaluates only while the condition holds (e.g. the
   //                SR high-flux trip only while the detector is energized);
   //   blockable  — the trip can be manually blocked (set_trip_block) while the
@@ -319,9 +321,7 @@
       var t = trips[i];
       if (t.condition && !this._evaluateCondition(t.condition)) continue;
       if (t.blockable && t.id && this.tripBlocks[t.id]) continue;
-      var value = (t.instrument === '__true_flow__')
-        ? this.engine.getTrueState().pump_flow_pct / 100   // HR1 exception: no flow instrument
-        : ins[t.instrument];
+      var value = ins[t.instrument];
       if (crossed(value, t.direction, t.setpoint) && !this.rps.scrammed) {
         this.rps.scrammed = true;
         this.rps.last_trip_reason = t.instrument + ' ' + t.direction;
@@ -343,9 +343,7 @@
       var t = trips[i];
       if (t.condition && !this._evaluateCondition(t.condition)) continue;
       if (t.blockable && t.id && this.tripBlocks[t.id]) continue;
-      var value = (t.instrument === '__true_flow__')
-        ? this.engine.getTrueState().pump_flow_pct / 100
-        : ins[t.instrument];
+      var value = ins[t.instrument];
       if (crossed(value, t.direction, t.setpoint)) {
         return { type: 'refused', code: 'TRIP_SIGNAL_PRESENT',
                  detail: t.instrument + ' ' + t.direction + ' still asserted' };
@@ -378,14 +376,11 @@
     return this._permTest(this.config.trip_block_permissive, ins);
   };
   // Is a trip currently asserted (would fire this instant if unblocked)? Same read
-  // path as _evalTrips, incl. the __true_flow__ HR1 exception. Drives the manual
-  // block rule: block only while NOT asserted; clearing is locked while asserted.
+  // path as _evalTrips. Drives the manual block rule: block only while NOT asserted;
+  // clearing is locked while asserted.
   ControlLayer.prototype._tripAsserted = function (t, ins) {
     if (t.condition && !this._evaluateCondition(t.condition)) return false;
-    var value = (t.instrument === '__true_flow__')
-      ? this.engine.getTrueState().pump_flow_pct / 100
-      : (ins || {})[t.instrument];
-    return crossed(value, t.direction, t.setpoint);
+    return crossed((ins || {})[t.instrument], t.direction, t.setpoint);
   };
 
   // Westinghouse auto-reinstate: a trip block clears itself the moment ITS permissive

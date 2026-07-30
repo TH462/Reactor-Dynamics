@@ -31,9 +31,172 @@ where the two differ or where judgment was exercised.
 | F9 | M5/M6·PH/M7 | Integration tests assert `rod_nudge` reaches the engine **instantly** (`210 → 200`), but the engine now does a **rate-limited nudge** (drives a `nudge_target` over sim time — the "rod control reworked" change). The one-step assertion sees `210→210` and fails. **Pre-existing** (reproduces on clean HEAD; unrelated to the BOP work) — the stale check needs to step the sim forward after nudging. | test | **open** — fix the 3 integration tests to run the sim after `rod_nudge` |
 | F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **RESOLVED (M6)** — highlights auto-reveal hidden controls on both mechanisms: RBMK/BWR `findPdControl()` switches the owning view tab (`app.js`); PWR `RD.PwrSynoptic.revealControl(label)` opens the owning card tab/section via the data-driven `SYN_CONTROL_MAP` (`pwr_synoptic.js`). `verify_manual_follow.js` now checks PWR controls through the same reveal path. |
 | F10 | M2/M8 | **RBMK automatic-regulator (AR) rod group** (user-directed): add a third, small-worth (~5–8% of the manual bank, no displacer), fine-step group — the authentic RBMK AR. The Automate rod channel drives IT (fixes the ±4%/step hold granularity); its diagram/control card carries its own AUTO/MAN selector mirroring the Automate channel; disengaging = taking manual control (the pre-Chernobyl condition — scenario beat material). Include AR in ORM; scram drives it in; keep the positive-scram displacer exclusively on the manual bank so the Chernobyl acceptance suite stays green. NO second manual group — the AR under manual override IS the fine manual bank. | planned | **RESOLVED (2026-07-07)** — built as specced (see the dated entry); the Chernobyl AR scenario beat is authored under F11. |
-| F12 | M8/test | **`run_e2e_controls` 28/30 — 2 pre-existing reds** (was 3; (c) *AUTO charging converged to match the leak* turned green with the 2026-07-22 P7 retune/SGTR re-anchor). (a) *PZR spray manual set reaches engine* — expects spray ≥45 % at the engine, gets 12; the spray-demand reach drifted. (b) *CVCS auto make-up holds inventory vs leak* — "auto holds ≥98 %" is not physical for a severity-1.0 SGTR (now 0.03 frac/s ≈ 40× CVCS make-up authority); re-baseline to the current trajectory or assert against a small leak the servo *can* match. | test | **open** — spray reach + one stale SGTR expectation |
+| F12 | M8/test | **`run_e2e_controls` 28/30 — 2 pre-existing reds** (was 3; (c) *AUTO charging converged to match the leak* turned green with the 2026-07-22 P7 retune/SGTR re-anchor). (a) *PZR spray manual set reaches engine* — expects spray ≥45 % at the engine, gets 12; the spray-demand reach drifted. (b) *CVCS auto make-up holds inventory vs leak* — "auto holds ≥98 %" is not physical for a severity-1.0 SGTR (now 0.03 frac/s ≈ 40× CVCS make-up authority); re-baseline to the current trajectory or assert against a small leak the servo *can* match. | test | **RESOLVED (2026-07-25, #150 — 35/35; then 2026-07-29m, #194 — 39/39)** Both original reds were stale expectations, not regressions (spray has an owner-ruled flow cap; "auto holds ≥98 %" is unphysical at severity 1.0). **But the #150 rebuild introduced a worse check than the one it replaced**: *"CVCS covers a consistent fraction of the leak (droop)"* asserted coverage stayed inside 10–50 % and equal across leak sizes — measured 400 **cycles** in, i.e. 40 s of sim time against an 83 s control loop. It pinned a transient as a steady-state property and is the whole source of #194's false claim that no leak is ever held. Now five checks measured at 4.8 τ against the **config-derived** equilibrium. Negative control: the old check *passes* on a deliberately-broken servo and *fails* on the healthy plant — it was inverted. |
 | F13 | M4 | **`clip()` is defined four times** (`control_kernel.js:47`, `pwr_control.js:360`, `rbmk_control.js:127`, `bwr_control.js:100`) and issue #156 files it as HR3 drift. It is not: HR3 is *plant specifics in shared code*, and this is a one-line pure clamp local to each IIFE. **Deliberately not deduplicated** — `control_kernel.js` loads **after** all three plant control modules in every load list, so a shared `RD.*.clip` resolves only at call time (a real load-order coupling), and the alternative is a new shared-utils file that must be added to every load list. Bought for 60 characters that cannot meaningfully drift. **Measured before deciding: `clip` is the ONLY duplicated helper** — every other module-level function in those four files is genuinely local. **Revisit trigger:** if a *second* shared helper appears, create the utils file then and move `clip` in with it. The **other** half of #156 (a PWR field read inside generic kernel machinery) WAS real and is fixed — and note it had **moved**: `_stepBang` was already clean, but the boron batch-dose work re-created the same leak in `_stepConc`. See `Diagnostic/TUNING_LOG.md` 2026-07-27b. | cleanup | **RESOLVED (2026-07-27b) — won't fix, deliberate. OWNER-APPROVED**: Claude recommended won't-fix with the reasoning above; owner replied *"Do as you suggest"* (2026-07-27), so the decision is the owner's and the reasoning is Claude's. Recording it that way because the first draft of this row said only "ruled won't-fix", which reads as owner authority for what was then an agent's recommendation — the exact laundering `CONTEXT.md` §HR-provenance warns about. #156 closed `status-deliberate`. The recurrence it exposed (the leak was fixed in `_stepBang`, then re-created in `_stepConc` ~40 lines below the comment warning against it) is spun out as **#227** — nothing gates HR3 in the kernel. |
 | F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **RESOLVED (2026-07-07)** — rbmk_ar + pwr_automation missions, auto_channels presets exercised end-to-end (startScenarioAuto gate harness), Chernobyl AR tie-in. Pre-existing missions deliberately left bare (triggers tuned against bare-plant trajectories). |
+
+---
+
+## 2026-07-29m — #194: no CVCS retune; the gate check was measuring 0.48 τ
+
+**The decision: do NOT retune CVCS. No plant code changed.** #194 held that CVCS make-up covers
+a constant ~24 % of any leak, so "inventory never stabilises for any leak size" — and the owner
+ruled it an artifact, directing *"more proportional gain, or a slow integral term"* to make CVCS
+hold a small identified leak. **Measurement refutes the premise: it already holds every leak
+inside its authority at ~100 % coverage.** Retuning would have deleted the droop cue the same
+ruling asked to preserve, to fix a system that was not broken. Recommended closing as
+not-a-defect. See `Diagnostic/TUNING_LOG.md` 2026-07-29m for the full measured tables.
+
+**The mistake, and why it survived so long.** `step(n)` in `run_e2e_controls` advances
+**broadcast cycles** (0.1 s of sim time each), not seconds. The issue body and the test file's
+comment block both labelled the 400-cycle window "400 s". It is 40 s, against a loop whose time
+constant is 83 s — every number in #194 was read at **0.48 τ**. Coverage looked constant across
+leak sizes because the loop is **linear** (at a fixed time every leak sits at the same fraction
+of its own approach), which was misread as a droop artifact.
+
+**Why the derived form is the right assertion (HR10).** The equilibrium follows from config
+alone — `deficit* = leak / (gain · charge_per_level · level_per_mass)` — and predicts the parked
+inventory to two decimals (99.00 / 98.01 predicted, 99.00 / 98.01 measured). The replaced check
+had been written *from the observation*, so it enshrined the artifact. The negative control is
+the point worth keeping: weakening the servo 10× to build the plant #194 described makes the old
+check **pass** and three of the four new ones **fail**, while on the healthy, unchanged plant the
+old check **fails** and all four new ones pass. A check can be green, cited across three
+documents, and still be pointed the wrong way round.
+
+**Gate:** `run_e2e_controls` **35/35 → 39/39** (1.2 s → 2.5 s). One follow-up filed: the
+cycles-as-seconds trap in the shared `step()` helper.
+
+---
+
+## 2026-07-30a — #263: shape AND scale are measured; the 2026-07-21 at-power ruling is superseded
+
+**The decision** *(OWNER RULING, 2026-07-30: "for 263 item 1 fit the measurement.")*. Fit
+both moderator parameters to the three measured BEAVRS Cycle 1 HZP isothermal temperature
+coefficients rather than fitting one and setting the other by preference.
+
+**Why the previous split did not hold.** #260 shipped "shape measured, scale ruled": the
+crossover from data, the magnitude from the owner's 2026-07-21 −20 pcm/°C. That was
+defensible while the crossover came from a WTSM 2.1 *statement* — but the same BEAVRS
+table that supplied the crossover also constrains the slope, and the two together force
+the magnitude. Honouring the measurement and the ruling simultaneously is impossible under
+a linear-in-boron form. The owner chose the measurement.
+
+**What it costs, and why that is acceptable.** The at-power coefficient goes −20 →
+**−26.8 pcm/°C**. A stronger coefficient means the core absorbs a rod withdrawal as
+temperature rather than power — which is the prototypical behaviour at power, where the
+turbine sets power and the rods set temperature. The plant is *more* self-regulating, not
+less realistic. The supersession is recorded in three places and pinned by
+`test/run_reactivity.js` so it cannot silently revert.
+
+**What it bought.** Residuals against all three measured points 0.05/0.88/1.64 → ≤0.09
+pcm/°F. The gate's tolerances tightened 1.4/2.2 → 0.3 — there is no declared departure left
+to permit. **Nothing in the reactivity curve is set by preference any more**, which was the
+open question #263 was filed to close.
+
+**Precedent worth keeping.** Two probes were re-authored to assert the claim rather than
+track the plant: `run_pwr`'s withdrawal check now pins **Tavg** (which strengthens as the
+coefficient strengthens) instead of a power threshold that would need lowering at every
+retune, and `run_reactivity`'s cold/hot separation became a **gap** test instead of an
+absolute ppm floor. Both were validated against the pre-change plant, so they are better
+tests rather than refits.
+
+## 2026-07-29l — #260: moderator reactivity is density-shaped; rod worths and `rho_excess` re-solved
+
+**The decision.** Delete `alpha_MTC` as a constant. Moderator reactivity becomes
+`C_mod · (1 − B/mod_boron_zero_ppm) · (d(T) − d(T_ref))`, *d* = relative water density. Rod
+worths go to the measured real values; `rho_excess` becomes a **solved** quantity rather than a
+tuned one. *(OWNER RULING, 2026-07-29: "do the full reactivity calibration for fidelity. I dont
+want to have to fix things twice.")*
+
+**Why a constant was wrong, and what it cost.** A flat −11.11 pcm/°F from 122 °F to 579 °F
+integrates to a −4944 pcm moderator defect over a Mode 5 → Mode 3 heatup — 494 ppm of dilution,
+a third of it charged below 274 °F — and collapses critical boron from 819 ppm cold to 263 hot.
+The operator-visible consequence, found in free play: **600 ppm was critical at 274 °F**, so
+diluting toward a value that looks safe next to the hot end took the reactor critical cold.
+
+**What each number is anchored to.** WTSM 2.1 (ML11223A207) Fig 2.1-8 gives the shape (density,
+not ΔT), the −17 pcm/°F unborated point at 500 °F, and the ~1400 ppm zero crossing. WTSM 2.2
+(ML11216A051) Table 2.2-1 gives control banks 4068 pcm and shutdown banks 3676 pcm. BEAVRS /
+Watts Bar U1 Cycle 1 gives HZP ARO critical boron 975 ppm, which is what `rho_excess` is solved
+against. `test/run_reactivity.js` pins all of it.
+
+**The alternative that was rejected.** Reshaping the moderator term alone, holding the hot end
+pinned, was the scoped option and it was recommended first. It was rejected by the owner because
+it fixes the *shape* while leaving the absolute boron scale wrong — rod worth at 18 500 pcm was
+2.4× anything sourceable and had collapsed rods-in critical boron to 263 ppm at HZP. Doing both
+at once avoided re-authoring the same content twice. **This supersedes the rod-worth concern
+parked in #238.**
+
+**Why the at-power tuning survived.** The sourced curve gives −21.9 pcm/°C at the operating
+point against the −20.0 ruled on 2026-07-21 — within 9 %. The 2026-07-21 ruling was right at
+power and only wrong extrapolated to cold, which is why EV-11, the TR-1 ride-out, PI-8 and the
+load-follow behaviours all held without retuning.
+
+**Consequences accepted.** `pwr_startup` and `pwr_heatup` were re-authored (HR9 — content follows
+the plant); the source-range count-rate milestones were re-derived from measurement, which is the
+one assertion moved to match the plant and is called out as such. `pwr_heatup`'s ride is now
+gentle enough (≈7 % peak) that its two startup-trip blocking steps are precautionary rather than
+load-bearing — kept deliberately, with the measured dilution rates that *do* reach the trips
+recorded in the caution. PI-9's *"nearly 3× the held worth in spare margin"* premise is down to
+~1.26×: the #199 ruling stands, its cushion does not.
+
+**Open.** No Estimated Critical Condition exists anywhere (WTSM 2.2 §2.2.3) — the thing that
+would have stopped this event before the trip. One lumped control bank still carries all four
+banks' worth. Tracked in #260.
+
+## 2026-07-29j — #251: the SG boils everything that crosses it; the pump-heat netting deleted
+
+**Claim.** Rated steam flow is the flow made by **NSSS rated heat** — rated core heat *plus*
+full-flow RCP pump heat — not by core heat alone. Both the SG's generation rate and the follow
+governor's demand are normalized on that, and the correction term that used to cancel pump heat
+inside the steam balance is gone.
+
+**Why.** `pwr_steam_generator.js` computed `max(0, Q_sg − Q_pump)/latent_heat_secondary`, booked
+as "SG blowdown/ambient losses". It was not losses: it was sized to cancel pump heat identically
+at every flow, because `extractFrac` drew steam for core power only and the extra 0.55 % had no
+sink. The uncosted consequence: the steam side could never start boiling below `Q_pump`, and
+`Q_sg = h_sg·(Tavg − Tsec)` settles at exactly `Q_pump`. **Measured: a pump-heat heatup is a
+stable attractor at 218.69 °F (103.72 °C), ΔT = 0.321 °F = `Q_pump/h_sg` to three decimals,
+forever.** A real plant rates its steam generators on NSSS thermal power, not core thermal power
+— the difference *is* pump heat — and two places in this engine already assumed that
+(`pwr_engine:1125,1199`, and the dump's `t_fullpower`), which is the evidence the netting was the
+anomaly rather than the rest.
+
+**The normalization choice, and what it bought.** The issue's plan expected step 3 —
+recalibrating `steam_flow_rated` and giving the governor headroom above its `clip(…, 0, 1)` — to
+be "the step that carries risk". Normalizing *both* sides on NSSS rated heat instead
+(`latent_heat_secondary × (1 + pump_heat_frac)` in the SG, `/(1 + pump_heat_frac)` in
+`extractFrac`) makes 100 % core power at full flow come out **exactly 1.0**. So
+`steam_flow_rated` stays 1.0, the clip stays, rated MWe stays 100, and "100 %" still means
+100 % on the steam-flow gauge and in `load_target_mwe`. The alternative — leaving the demand at
+1.0055 and raising the clip — would have put every rated reading 0.55 % over full scale. The
+risk item in the plan evaporated rather than being managed.
+
+**Deviation from the filed plan, recorded as one.** Plan step 5 (measure MANUAL/DISCONNECTED
+drift, decide whether they need a sink) was measured and needs **nothing**: manual at
+100/75/50/25 MWe drifts at most **−2.07 psi over 4 sim-h**, disconnected ride-out +3.68 psi vs
++3.36 before. No second compensation term was added, per the plan's own instruction not to.
+
+**The half the issue did not name.** `_buildState` set `load_mode: 'follow'` unconditionally, so
+the subcritical ICs (Modes 3 and 5) spawned *synchronised* — breaker closed, `generator_load =
+1e-6` — while #235 had already parked their rotor at rest. Harmless while the SG cancelled pump
+heat; with the netting gone the follow governor cracks to **6.2 %** on the pump-heat demand and
+drains the heatup, re-stalling it at **306.05 °F (152.25 °C)** with the same ΔT signature. Now a
+single `onLine = P0 > 0.01` predicate drives rotor speed, breaker, governor position and load
+mode together — they cannot disagree again. Off line here is a **planned offline, not a trip**
+(#230): nothing latches, so P-9 is never armed on a cold plant.
+
+**Result, measured with no rod motion at all.** Mode 4 (200 °F / 93.3 °C) at 0.28 plant-h;
+Mode 3 (548 °F / 286.7 °C) at **10.71 plant-h**; ρ = −6287 pcm on 919 ppm with the bank at its
+cold-shutdown position. Average **39.8 °F/hr (22.1 °C/hr)**, steady ~32 °F/hr after the first
+hour (the first hour's 111.5 °F/hr is the compressed pressurization). Full power is unchanged to
+two decimals. Rate control: secure an RCP → 0.1 °F/hr; the steam dump is far too coarse (5 %
+manual demand ≈ 10× pump-heat generation, reverses the heatup at −83.4 °F/hr).
+
+**HR10.** The new `run_campaign` heatup gate contains **no rod command at all** and asserts 0
+steps of rod motion plus peak power < 0.01 %. It was validated against the OLD behaviour: with
+the netting temporarily restored it **fails** on "heatup reaches an endpoint". `run_campaign`
+baseline 3025 → **3026**.
 
 ---
 
@@ -1338,7 +1501,7 @@ The §18 flagship is the acceptance centerpiece; the numbers were tuned so the t
 | # | Topic | Decision | Why |
 |---|-------|----------|-----|
 | C1 | **M1/M4 seam** | M4 **forwards** every `inject_failure`/`clear_failure` to the engine **and** holds command-override failures to intercept commands in flight | M1 implements each failure's *persistent state* in the engine (the "hooks", M1 §9) — e.g. `loss_of_feedwater` must stop feedwater whether or not a command is sent, which per-command interception alone can't do. M4 still intercepts (transform/block, incl. the plant's own auto-actuation/scram commands). Complementary, never contradictory. **→ Flag F3.** |
-| C2 | **`__true_flow__` trip** | Reads `engine.getTrueState().pump_flow_pct / 100` | M1's `true_state` exposes `pump_flow_pct`, not the `flow_frac` named in M4 §3; same quantity, /100. The one documented HR1 exception. |
+| C2 | **`__true_flow__` trip** | ~~Reads `engine.getTrueState().pump_flow_pct / 100`~~ — **RETIRED 2026-07-29 (#247).** The low-flow trip now reads the `rcs_flow` elbow-tap instrument (% of rated, setpoint 25). | Called "the one documented HR1 exception" for two years, and it was not an exception — it was an **unbuilt instrument**. A trip that cannot be lagged, drifted or stuck is a trip nobody can be trained on, which is the opposite of what this simulator is for. `run_hardrules.js` (2026-07-29) forced the distinction by making every author write the *reason*, and the honest reason here was "the instrument does not exist". **There is now no HR1 exception in the PWR trip table.** |
 | C3 | **`last_trip_reason`** | Stored as `"<instrument> <direction>"` (e.g. `"sg_level low"`) | CONTEXT §6.2 types it `string`; a terse, human-readable descriptor. |
 | C4 | **lo/lo_lo escalation** | A low alarm with a less-extreme low sibling on the same instrument fires only when the sibling's condition also holds | Implements M4 §5. Auto-satisfied by threshold ordering, but the guard is explicit for robustness. |
 | C5 | **Alarm snapshot list** | Every alarm is emitted each cycle with its current `state` (including `clear`) | The UI annunciator (M8) is a fixed tile set; it needs all tiles, lit by `state`/`priority`. |
@@ -3688,7 +3851,7 @@ the repo is private, keep-raw event retention with a 100 MB tripwire). Built in 
 
 ### Website W1 addendum — in-sim feedback, no player uploads (2026-07-19)
 
-**OWNER RULING: players can never upload their own files.** Feedback telemetry attaches
+**OWNER RULING (2026-07-19) — verbatim not recorded, so advisory under HR11: players can never upload their own files.** Feedback telemetry attaches
 ONLY from the live session. Spec §6 updated.
 
 - `ui/app.js`: `exportDiag()` split into `buildDiagBundle()` (returns the schema-1.0

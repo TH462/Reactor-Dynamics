@@ -81,7 +81,7 @@
 
       // Hold credited — the dawn call. Grade needs settled output AND a sane
       // SG at least 30 s after the call (reading time; both probed routes
-      // deliver 985+ well clear of the band edges).
+      // deliver 98.5+ well clear of the band edges).
       { id: 'pickup_call',
         trigger: { type: 'delay', value: 1.0 },
         commentary: {

@@ -49,7 +49,13 @@ var BASELINES = {
   // (a boolean in the OPERATOR'S demand field, which is why any set_spray cleared
   // it); it is now s.spray_stuck, and a legacy save carrying the old encoding must
   // keep the failure rather than silently healing on load.
-  'run_pwr.js':            { code: 0, score: '32/32 200passed' },
+  // 201 -> 202 (#263): control_response now also pins Tavg rising on a withdrawal. The
+  // power-rise margin shrank to ~0.03 % when the moderator coefficient was fitted to the
+  // BEAVRS measurement (-20 -> -26.8 pcm/degC), under the old 0.05 floor. Lowering that
+  // floor would just need lowering again next retune; at power the turbine sets power and
+  // the rods set temperature, so Tavg rising is the signature that STRENGTHENS as the
+  // coefficient does. Both are pinned now.
+  'run_pwr.js':            { code: 0, score: '32/32 202passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
@@ -93,7 +99,52 @@ var BASELINES = {
   // that file and was then re-created ~40 lines below the comment warning against
   // it. The site count is part of the score on purpose: a NEW coupling shifts it
   // and trips drift even when the author allow-lists it properly.
-  'run_hr3.js':            { code: 0, score: '32checks 0failed' },
+  // 32 → 29 checks (#247): the `__true_flow__` sentinel was the kernel's only reference to
+  // a PWR-only true_state field, so retiring it removed three plant-token couplings and
+  // paid half of #228. Fewer checks here means fewer leaks to check, not less checking.
+  'run_hr3.js':            { code: 0, score: '29checks 0failed' },
+  // New 2026-07-29 — the guards for the OTHER hard rules. CONTEXT.md §3 now requires
+  // every rule to name its guard, and three had none: HR1 (protection reads
+  // instruments), HR5 (commands descend; the UI never touches the engine) and HR11 (a
+  // ruling needs a date and verbatim words). Same declared-exception idiom as run_hr3:
+  // a true-state read in layers/control/ is legal only if listed with the reason no
+  // instrument exists for it, so the count moving means a NEW coupling — allow-listing
+  // one properly still trips drift, which is the intent. HR2, HR6 and half of HR4 are
+  // still unguarded and §3 says so out loud.
+  // 18 → 14 checks (#247): four of the five declared HR1 debts were PAID — three
+  // `__true_flow__` reads in the kernel plus the feed channel's `feedwater_isolated`
+  // read — so there are four fewer true-state reads in layers/control/ to declare. The
+  // one that remains is the unreviewed RBMK entry. Watch the DEBT line, not just the
+  // score: a green run still only means "no undeclared reads".
+  // 14 → 18 checks (#248): HR12 was added to §3 (an assertion about plant dynamics must
+  // be MEASURED), and its OWNER RULING quote appears in FOUR tracked files — CONTEXT.md,
+  // CLAUDE.md, and twice in TUNING_LOG.md's write-up. All declared (date + verbatim words).
+  //
+  // HEADS UP, this will bite you: the HR11 half of this gate scans `Diagnostic/` and
+  // `Blueprint/` as well as source, so **writing up your change moves the score after you
+  // ran the gate**. Quote an owner ruling in the tuning log and the count goes up. Run
+  // run_hardrules once more AFTER the docs are written, not just after the code.
+  // 18 → 19 checks (#251): one new OWNER RULING citation for the turbine-extraction fix.
+  // 19 → 22 checks (#252): three more, all in CLAUDE.md and all CLAUDE.md-only process
+  // rules with no code behind them — the warn-and-ask worktree occupancy check, its
+  // no-reply default (ruled read-only-and-wait after the first draft shipped an unratified
+  // agent proposal), and the First Principles section. This comment's point, twice over:
+  // prose moves this score. 22 is MEASURED on the merged tree, not 19+3 arithmetic — the
+  // two branches each moved this number and a mechanical conflict resolution would have
+  // shipped one side's.
+    // 22 -> 24 checks (#260): the reactivity recalibration's OWNER RULING ("do the full
+  // reactivity calibration for fidelity") is quoted with its date in TUNING_LOG.md and
+  // BUILD_DECISIONS.md, and the HR11 half of this gate scans tracked docs for exactly that
+  // shape. Two new declared quotes = two new checks. This is the gate working, not drift to
+  // paper over -- but it does mean quoting a ruling in a tracked doc moves this number.
+  // 24 -> 25 (#263): the 2026-07-30 "fit the measurement" ruling is quoted with its date
+  // in a tracked file, and the HR11 half of this gate counts exactly that.
+  // 25 -> 28 (#263 records): the 2026-07-30 ruling is quoted with its date in
+  // TUNING_LOG.md, BUILD_DECISIONS.md and CLAUDE.md. Writing the record moves this
+  // number, by design -- HR11 counts dated owner quotes wherever they are tracked.
+  // 28 -> 29: Manuals/00's Rev 14 row quotes the 2026-07-30 ruling with its date, and the
+  // HR11 half of this gate counts dated owner quotes wherever they are tracked.
+  'run_hardrules.js':      { code: 0, score: '29checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -104,15 +155,46 @@ var BASELINES = {
   // Check count = every field name on either side, so adding a true_state field moves
   // this baseline — the intended nudge to document it in the same change.
   'run_contract.js':       { code: 0, score: '84checks 0failed' },
+  // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
+  // procedures and the 10 executable checklists that run them. They referenced each
+  // other NOWHERE until now, so nothing could answer "which documented procedures can
+  // actually be run?" or "does this checklist still match its procedure?". Checks the
+  // manual_ref resolves, is unique, and that no PWR-xxx cross-reference dangles.
+  // COVERAGE (47 procedures with no checklist) is REPORTED, not enforced — the number
+  // is the work item, and a gate that failed on it would sit permanently red. Watch
+  // that line, not just the score.
+  'run_procdocs.js':       { code: 0, score: '23checks 0failed' },
   // New 2026-07-29 — the manual quotes US customary first with SI in parentheses
   // (owner request). This re-derives the US value from the SI value in every pair
   // and fails on bad arithmetic, on an SI quantity with no US partner, and on a
   // temperature DIFFERENCE converted with the absolute rule. That last class is
   // the reason it exists: a 41 °C subcooling margin is 73.8 °F, and the absolute
   // rule prints 105.8 °F — a thin margin reading comfortable. The first scripted
-  // pass mis-classified eight sites exactly that way. Check count moves with the
-  // manual's numbers, which is the intended nudge to re-run it after an edit.
-  'run_manual_units.js':   { code: 0, score: '186checks 0failed' },
+  // pass mis-classified eight sites exactly that way.
+  //
+  // SCORED ON FAILURES ONLY — deliberately unlike run_hr3 / run_contract /
+  // run_inspect above, where the moving count IS the point. Theirs moves when
+  // someone adds a coupling, a true_state field or a board item: a decision worth a
+  // second look. This one's moves whenever any number in any sentence is edited,
+  // including pure prose work — it bumped four times in the session that added it
+  // (182 → 186 → 215 → 218 → 220), all noise. Baselining that would train the next
+  // author to rewrite the number without reading it. Coverage is printed on the
+  // line above the tally, out of the scraper's reach.
+  'run_manual_units.js':   { code: 0, score: '0failed' },
+  // New 2026-07-30 — the manual set's revision history. UNLIKE run_manual_units above,
+  // this one IS baselined on its check count: the checks are structural (table shape,
+  // stamp agreement, digest seal, pack currency), so the count moves only when a check
+  // is added, never on prose. Written because the revision history had stopped being
+  // written: SIX content changes (#247, #248, #251, #260 twice, the gpm display-scale
+  // fix, #263 — revs 9–13) landed in the chapters with no row in the table, over two
+  // weeks, while ten of thirteen chapters still read "Revision: 0" and README.md read
+  // "Revision: 2, 2026-07-16". The load-bearing check is the CONTENT DIGEST one: a
+  // chapter edited with no revision row reddens this gate, which is the only check here
+  // that catches the failure that actually happened. The other three catch bookkeeping
+  // that disagrees with itself — necessary, but a set can be perfectly self-consistent
+  // and still describe last week's plant. What it CANNOT check is whether a row's prose
+  // is true; that is HR10/HR12 territory and the runner header says so.
+  'run_manual_rev.js':     { code: 0, score: '12checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -121,7 +203,9 @@ var BASELINES = {
   // rules asserted from BOTH sides, because a resolver stuck at "true" does not throw —
   // it publishes. Check count moves with the content count (57 items today): adding a
   // scenario shifts this baseline, which is the intended nudge to decide its stage.
-  'run_flags.js':          { code: 0, score: '16/16 290/290' },
+  // 290 -> 289 (bf41f67, the leaner control chrome): one flag-gated element left the board.
+  // Verified as theirs by running this gate on backshop at its own commit before merging.
+  'run_flags.js':          { code: 0, score: '16/16 289/289' },
   // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
   // Every way this rots is silent: an item id changes and its entry describes
   // nothing; a new control inherits its card's summary and READS like a real
@@ -129,6 +213,45 @@ var BASELINES = {
   // failures here. The check count moves with the board — a new control or
   // indication shifts it, which is the intended nudge to write its copy.
   'run_inspect.js':        { code: 0, score: '7/7 35/35' },
+  // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
+  // The sim runs from file:// with no server only because nothing in the runtime loads
+  // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no
+  // image. Every other gate is blind to that. A `fetch('Manuals/12.md')` added for a good
+  // reason keeps the deployed site perfect and breaks the EMAILED file — on a recipient's
+  // machine, silently, with nobody to report it. Scans exactly the 94 scripts + 2
+  // stylesheets ui/shell.html ships (read from the file, so it widens itself), then BUILDS
+  // the bundle and asserts the deliverable has no loading attribute left. Verified by
+  // injection: a fetch, a CDN <script>, an @font-face, an <img src> and an `export` each
+  // turn it red on the matching check. Check count moves with the shipped asset list — a
+  // new <script src> shifts this baseline, which is the intended nudge to re-verify that
+  // the portable build still builds.
+  'run_portable.js':       { code: 0, score: '112checks 0failed' },
+  // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
+  // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
+  // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
+  // temperature, the three WTSM 2.2 rod worths, and BEAVRS HZP ARO 975 ppm.
+  // `rho_excess` has NO direct observable: it is solved so HZP ARO lands on 975. If you
+  // move alpha_D, either rod worth or boron_worth_per_ppm without re-solving it, the
+  // 975 ppm check is what goes red instead of the plant drifting quietly.
+  // 13 -> 16 checks: the gate now also parses Manuals/09 §7.5's published ECC
+  // critical-boron table and compares all 50 cells against the engine. That table is
+  // what an operator dilutes against, and NOTHING covered prose numbers before —
+  // run_manual_units checks unit conversions, run_campaign checks mission behaviour,
+  // and #260 sat wrong in the prose for weeks with both green. Verified by injection:
+  // putting the old 629 ppm back into one cell reddens it (table 629 vs plant 834.2).
+  // 16 -> 21 checks (#263): a SECOND anchor. The curve was fit at one temperature and
+  // validated at none, and the boron crossover came from a WTSM 2.1 statement its own
+  // figure contradicted. BEAVRS Cycle 1 HZP measured ITCs at three boron concentrations
+  // settle it at 986 ppm -- the 1400 we briefly shipped was 4.3x too negative at ARO.
+  // Two stale checks here were REPLACED, not relaxed: the -17 pcm/degF WTSM anchor is no
+  // longer what sets the scale (the owner's at-power ruling is), and the cold/hot
+  // separation check is now a GAP test rather than an absolute ppm threshold, because the
+  // absolute one needed bumping every recalibration -- a check tracking the plant instead
+  // of the claim.
+  // 21 -> 23 (#263 item 3): HFP boron has NO measured anchor of its own, so what is
+  // gated is its DERIVATION from the HZP anchor plus the power defect and xenon, and
+  // the declared departure from the real 750 ppm comparable being xenon-dominated.
+  'run_reactivity.js':     { code: 0, score: '23checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   'run_m4.js':             { code: 0, score: '25/25 135passed' },
@@ -159,12 +282,16 @@ var BASELINES = {
   // skipped it) is graded like any other. +94 checks, none red. Measured against the
   // pre-fix runner: a dangling goto in an unwired scenario and a typo'd trigger type on
   // a `gate.until` both passed silently; both now fail.
-  'run_campaign.js':       { code: 0, score: '51/51 3024passed' },
+  // 3024 → 3025 (#248): pwr_lof's automatics branch gained a check that the low-flow
+  // trip did NOT actuate and a backup caught the event. Asserting only "something
+  // scrammed" cannot tell "the assigned protection worked" from "a backstop caught a
+  // consequence", which is the entire lesson after the stuck-channel rewrite.
+  'run_campaign.js':       { code: 0, score: '51/51 3026passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
   // discriminate where the originals could not.
-  'run_e2e_controls.js':   { code: 0, score: '35/35' },
+  'run_e2e_controls.js':   { code: 0, score: '39/39' },
   // 96 → 100 checks, both from the pwr_startup rebuild:
   //   +1 (#134) the level-off now holds the point of adding heat at 1–3 %, and
   //      crossing the 5 % boundary into Mode 1 is its own deliberate step
@@ -176,7 +303,10 @@ var BASELINES = {
   //      load in FOLLOW, which is right for getting on line, then goes to MANUAL so both
   //      routes into Mode 1 leave the same lineup (the free-play preset was already
   //      MANUAL, so a player who learned via the checklist used to get a different board).
-  'run_procedures.js':     { code: 0, score: '22/22 101/101' },
+  //   +1 (#245) `pwr_stuck_porv` step 1 gained a `saw core_inventory_pct < 100`
+  //      alongside its `acc`, which became a subcooling check — see the note on that
+  //      step in ui/manual_procedures.js.
+  'run_procedures.js':     { code: 0, score: '22/22 102/102' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -187,11 +317,19 @@ var BASELINES = {
   // this harness losing 90 % of its sim time when a `status` annunciator snapped the
   // service's fast-forward dropout at t=2 s. See the note in run_procedures_stack.js.
   //
-  // Check count does NOT move on an xfail change — an xfail is still a check, just an
-  // annotated one — so the score string is the same either way. That is worth knowing
-  // before assuming this baseline is untouched: the 2026-07-27b #218 fix cleared three
-  // xfails without shifting a single number here.
-  'run_procedures_stack.js': { code: 0, score: '22/22 155/155' },
+  // → **2** (2026-07-29, #245): the dropout above was not a one-off. `attentionStops`
+  // is now OFF for this harness, and 11 of the 22 procedures turn out to have been
+  // running below their declared 10× — up to 416 ticks of a single run. Three more
+  // "#208 RBMK/BWR plant defects" cleared on the sim time alone (rbmk_mcp_trip ×2,
+  // bwr_sbo_rcic), making four in total that were one harness bug.
+  //
+  // Check count DOES move this time: 155 → 178. +22 is the new per-procedure
+  // assertion that the run held its declared acceleration throughout (#245's guard —
+  // the defect's whole character was that the header kept claiming 10× while the runs
+  // did not), and +1 is the `pwr_stuck_porv` split above. Otherwise the rule still
+  // holds — an xfail is a check either way, so clearing one moves no number here,
+  // which is why the 2026-07-27b #218 fix cleared three and shifted nothing.
+  'run_procedures_stack.js': { code: 0, score: '22/22 178/178' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
@@ -222,7 +360,17 @@ var BASELINES = {
   // back true throughout — hence every assertion here is on VISIBILITY), and a
   // second entry point to checklists in the instructor card that the first pass
   // gated nowhere. It pins RD_CHANNEL to reproduce a real `main` deploy.
-  'verify_flags_ui.js':      { code: 0, score: '48/48' },
+  // 48 -> 47 (#263 item 6): one VACUOUS negative assertion DELETED, not repaired --
+  // `!/The full experience/` on a phrase the site rewrite removed, so it could never fail.
+  // A check that cannot fail is worse than no check, because it reads as coverage. The
+  // over-promise guard it was part of now lives where the promise does (the hero negative
+  // and the features coming-soon check), both re-pointed and verified by injection.
+  // 47 -> 42 (owner ruling 2026-07-30): the training campaign help copy is being replaced
+  // by a short tour, so TWO PAIRED channel-honesty guards lost their subject. In each pair
+  // the dev half failed and the public half went VACUOUS -- passing because its pattern no
+  // longer appears anywhere. Retired rather than re-pointed at #tourOverlay: the tour has no
+  // data-flag, so it shows on both channels and the distinction they guarded is gone.
+  'verify_flags_ui.js':      { code: 0, score: '42/42' },
   'verify_e2e_ui.js':        { code: 0, score: '16screenshots', slow: true },
   'verify_manual_follow.js': { code: 0, score: '84checks', slow: true },
 };

@@ -4,7 +4,7 @@
  * A guided walk down the energy path at full power: fission heat → primary
  * loop → steam generator boundary → turbine/generator → condenser → back to
  * the SG — then the pressurizer as the guardian of the liquid state. The
- * player's hands-on proof: throttle the generator to 900 MW in Manual and
+ * player's hands-on proof: throttle the generator to 90 MW in Manual and
  * watch the whole chain respond, then hand it back to Follow.
  *
  * Highlights point at synoptic cards/instruments (Gameplay §5); triggers are
@@ -59,13 +59,13 @@
         advance: 'wait_for_trigger' },
 
       // The hands-on proof. The beat fires (prompt), then its branches watch:
-      // the gentle 900 MW ask leads on; a greedy ask big enough to trip the
+      // the gentle 90 MW ask leads on; a greedy ask big enough to trip the
       // plant on load rejection lands on the load_lost card (playtest fix —
       // previously the mission had no trip path and softlocked).
       { id: 'act_load',
         trigger: { type: 'delay', value: 20.0 },
         commentary: {
-          learning: 'Your turn. Prove the chain is real: on the Turbine-Generator card, switch Load to MANUAL and slide the target down to 900 MW — one modest step; big cuts shock the machine. You are asking the grid side for less power — watch what happens upstream: steam flow drops, and the reactor quietly follows. Go ahead.',
+          learning: 'Your turn. Prove the chain is real: on the Turbine-Generator card, switch Load to MANUAL and slide the target down to 90 MW — one modest step; big cuts shock the machine. You are asking the grid side for less power — watch what happens upstream: steam flow drops, and the reactor quietly follows. Go ahead.',
           industry: 'Operator action: Turbine-Generator card → Load mode MANUAL, target 90 MWe (limit dispatch steps ~10 MWe). Observe steam flow and reactor power tracking the reduced demand — no rod motion required.',
         },
         highlight: { control_label: 'Mode', instrument_id: null },
@@ -80,7 +80,7 @@
       { id: 'act_restore',
         trigger: { type: 'delay', value: 2.0 },
         commentary: {
-          learning: 'See it? Less steam drawn, and the reactor answered by making less heat — nobody touched the control rods. Output reads your 900 almost exactly: the governor is a real regulator, opening its valve as the loop warms so the grid gets precisely what was asked. The reactor paid for it upstream — Tavg is riding about fifteen degrees hotter, the loop absorbing the mismatch a crew would trim away with rods or boron. Now ask it back: slide the target up to 1000 MW, and once output reads full power, set Load mode to FOLLOW to hand the plant back to the grid.',
+          learning: 'See it? Less steam drawn, and the reactor answered by making less heat — nobody touched the control rods. Output reads your 90 almost exactly: the governor is a real regulator, opening its valve as the loop warms so the grid gets precisely what was asked. The reactor paid for it upstream — Tavg is riding about fifteen degrees hotter, the loop absorbing the mismatch a crew would trim away with rods or boron. Now ask it back: slide the target up to 100 MW, and once output reads full power, set Load mode to FOLLOW to hand the plant back to the grid.',
           industry: 'Demand reduction propagated up the chain: governor (pressure-compensated — delivered ≈ demand) → steam flow → primary ΔT → power, rods untouched; Tavg rises ~+15 °C absorbing the mismatch pending reactivity support. Restore: target 100 MWe, then load mode FOLLOW once at rated.',
         },
         branches: [

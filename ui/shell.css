@@ -25,23 +25,21 @@
   --text-2: #98A3AF;
   --muted: #69757F;
   --disabled: #3A434D;
-  /* Semantic state */
-  --normal: #5BB3C4;        /* calm cyan — subtle "selected/interactive" hint only */
-  --caution: #D9A441;       /* muted amber */
-  --critical: #E5484D;      /* scan red — reserved for alarms/trips */
-  --running: #46A35E;       /* energized green (scan): pumps running, breaker closed, armed */
-  /* Calmer green for steady information surfaces (rod fills) so they stay quiet. */
+  /* Semantic state (board / chrome)
+     green  = running / normal
+     amber  = abnormal and/or caution alarms
+     red    = problem and/or automatic protection (trip)
+     cyan   = available for user input
+     grey   = OK but not ideal, no alarm */
+  --normal: #5BB3C4;        /* cyan — interactive / selected / editable */
+  --caution: #D9A441;       /* amber — caution / abnormal */
+  --critical: #E5484D;      /* red — trip / critical */
+  --running: #46A35E;       /* green — energized, running, healthy normal */
   --running-muted: #35704A;
   --stopped: #586673;
   --trend-up: #FB923C;
   --trend-down: #67E8F9;
   --core-glow: #00C4FF;
-  /* Alarm system-category hues (§8.1 / §15) — five distinct, legible */
-  --cat-reactivity: #C084FC;
-  --cat-coolant: #38BDF8;
-  --cat-power: #FBBF24;
-  --cat-instrument: #2DD4BF;
-  --cat-safety_system: #F472B6;
 
   --radius: 6px;
   --gap: 8px;
@@ -148,6 +146,17 @@ body {
 }
 .app.pwr-synoptic > .plant-area { grid-area: diagram; min-width: 0; max-width: none; }
 .app.pwr-synoptic > .right-col  { grid-area: simcol; min-width: 0; max-width: none; }
+
+/* PWR-only: hide the legacy 4-view switcher / status bar / control row, and let the
+   board own the whole view area. app.js empties those three containers on the PWR
+   path, but an empty container still takes its padding/border — so they are hidden,
+   not merely cleared. These four rules moved here from the retired V1 stylesheet
+   (ui/diagram/pwr_synoptic.css, #246): they were always shell hooks keyed on the
+   .app class, not V1 board styling, and the V2 board needs them. RBMK/BWR untouched. */
+.app.pwr-synoptic .view-switcher,
+.app.pwr-synoptic .status-bar,
+.app.pwr-synoptic .pd-controlbar { display: none; }
+.app.pwr-synoptic .view-area { padding: 0; overflow: hidden; }
 
 /* The V2 board carries its own vital-parameter tile strip (six Indicator Panel
    components across the top), which is what the shell's .gauge-strip used to provide.
@@ -525,18 +534,23 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .alarm-tile .label { font-size: 12px; font-weight: 600; line-height: 1.2; }
 .alarm-tile .meta { font-size: 10px; color: var(--text-2); margin-top: 2px; }
 .alarm-tile .glyph { font-size: 13px; }
-.alarm-tile.crit { border-color: rgba(239,68,68,.5); }
+.alarm-tile.crit { border-color: rgba(229, 72, 77, 0.55); }
 .alarm-tile.crit .glyph { color: var(--critical); }
+.alarm-tile.crit .bar { background: var(--critical); }
 .alarm-tile.warn .glyph { color: var(--caution); }
-.alarm-tile.unack.crit { animation: flash2 .5s steps(1) infinite; }
-.alarm-tile.unack.warn { animation: flash1 1s steps(1) infinite; }
-@keyframes flash2 { 50% { background: #3a1f22; } }
-@keyframes flash1 { 50% { background: #322a1a; } }
-.cat-reactivity .bar { background: var(--cat-reactivity); }
-.cat-coolant .bar { background: var(--cat-coolant); }
-.cat-power .bar { background: var(--cat-power); }
-.cat-instrument .bar { background: var(--cat-instrument); }
-.cat-safety_system .bar { background: var(--cat-safety_system); }
+.alarm-tile.warn .bar { background: var(--caution); }
+/* Only unacked critical tiles flash — warnings stay solid amber so a flood
+   does not strobe the whole panel. */
+.alarm-tile.unack.crit {
+  animation: alarmCritFlash 0.9s steps(1, end) infinite;
+}
+@keyframes alarmCritFlash {
+  0%, 100% { background: transparent; }
+  50% { background: rgba(229, 72, 77, 0.18); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .alarm-tile.unack.crit { animation: none; box-shadow: inset 0 0 0 1px var(--critical); }
+}
 
 /* ===================================================== right col: sim ctrls */
 .sim-controls {
@@ -577,8 +591,8 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 /* selected speed: subtle cyan outline (not a saturated fill — the clock turns
    amber to warn that time is accelerated; the selector itself stays quiet). */
 .speed button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--normal); }
-.save-btn { flex: 0 0 auto; }
-.help-btn { flex: 0 0 auto; width: 26px; padding: 4px 0; font-weight: 700; }
+.text-btn { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; font-weight: 600; }
+.demo-btn { flex: 0 0 auto; min-width: 28px; padding: 4px 8px; }
 
 /* What's running now — the always-visible mission entry point (click → Plant & Mission) */
 .sim-status {
@@ -587,26 +601,96 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
   border-radius: 6px; color: var(--text-2); font-size: 11px; cursor: pointer; text-align: left;
 }
 .sim-status:hover { color: var(--text); border-color: var(--normal); }
-.sim-status .ss-a { flex: 0 0 auto; }
 .sim-status .ss-txt { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sim-status .ss-chev { flex: 0 0 auto; color: var(--muted); font-size: 13px; }
 
-/* Help overlay — reuses the mission-modal chrome, narrower and content-sized */
+/* Help / tour — reuses the mission-modal chrome, narrower and content-sized */
 .help-modal { width: min(560px, 96vw); height: auto; max-height: min(84vh, 760px); }
 .help-body { padding: 14px 18px; overflow: auto; }
 .help-sec { margin-bottom: 14px; }
 .help-sec h4 { margin: 0 0 4px; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-2); }
+/* ---- Coach-mark tour (spotlight + tip beside the target) ---- */
+.tour-root {
+  position: fixed; inset: 0; z-index: 9500; pointer-events: none;
+}
+.tour-root:not([hidden]) { display: block; }
+.tour-scrim {
+  position: fixed; inset: 0; pointer-events: auto;
+  /* Dim is carried by the spot's box-shadow so the target stays clear */
+  background: transparent;
+}
+.tour-spot {
+  position: fixed; pointer-events: none;
+  border: 2px solid var(--normal);
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 2px rgba(91, 179, 196, 0.35),
+    0 0 0 9999px rgba(0, 0, 0, 0.58);
+  transition: top 0.15s ease, left 0.15s ease, width 0.15s ease, height 0.15s ease;
+}
+.tour-tip {
+  position: fixed; pointer-events: auto;
+  width: min(320px, calc(100vw - 24px));
+  background: var(--bg-elevated);
+  border: 1px solid var(--normal);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  padding: 12px 14px 12px;
+  color: var(--text-2);
+  font-size: 13px; line-height: 1.5;
+  z-index: 9501;
+}
+.tour-tip-title {
+  margin: 0 0 6px; font-size: 13px; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text);
+}
+.tour-tip-body p { margin: 0 0 0.5em; }
+.tour-tip-body p:last-child { margin-bottom: 0; }
+.tour-tip-nav {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+}
+.tour-tip-nav .btn { font-size: 12px; padding: 4px 10px; }
+.tour-prog { color: var(--muted); font-size: 11px; margin-right: auto; }
+/* Raised above the dim while a tour step points at it */
+.tour-target-live {
+  position: relative;
+  z-index: 9502 !important;
+}
+.instr-idle { font-size: 12px; line-height: 1.45; color: var(--text-2); }
+.instr-idle-lead { margin: 0 0 8px; color: var(--text); }
+.instr-idle-list { margin: 0 0 10px; padding-left: 1.2em; }
+.instr-idle-list li { margin-bottom: 4px; }
+.instr-idle-more { margin: 0; font-size: 11px; color: var(--muted); }
+.btn.linkish {
+  display: inline; padding: 0; border: none; background: none;
+  color: var(--normal); font-size: inherit; font-weight: 600; cursor: pointer;
+  text-decoration: underline;
+}
+.btn.linkish:hover { color: var(--text); }
+.persona .icon:empty { display: none; }
+.persona .icon:not(:empty) {
+  width: 22px; height: 22px; border-radius: 4px; background: var(--bg-elevated);
+  border: 1px solid var(--border); font-size: 11px; display: flex;
+  align-items: center; justify-content: center; color: var(--text-2);
+}
 .help-sec p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); }
 
-/* Feedback overlay form (reuses the help modal chrome) */
+/* Feedback overlay (reuses the help modal chrome). No longer a form — it carries
+   the address to write to plus the optional diagnostics download. */
 .fb-field { margin-bottom: 12px; }
 .fb-field label { display: block; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-2); margin-bottom: 4px; }
-.fb-field select, .fb-field textarea, .fb-field input[type="email"] { width: 100%; resize: vertical; }
-.fb-check { display: flex !important; align-items: center; gap: 8px; text-transform: none !important; letter-spacing: 0 !important; font-size: 13px !important; color: var(--text) !important; cursor: pointer; }
 .fb-hint { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
-.fb-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
 .fb-msg { font-size: 12px; color: var(--running); }
 .fb-msg.err { color: var(--caution); }
+.fb-lead { margin: 0 0 10px; font-size: 13px; line-height: 1.5; color: var(--text); }
+/* The address is the point of this panel, so it gets the size — and it wraps
+   rather than overflowing on a narrow window. */
+.fb-addr { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.fb-mail { font-size: 17px; color: var(--running); text-decoration: none; border-bottom: 1px dotted var(--running); word-break: break-all; }
+.fb-mail:hover { color: var(--text); border-bottom-color: var(--text); }
+.fb-diag { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.fb-ver { margin-top: 14px; }
 .help-keys { font-size: 11px; color: var(--text-2); }
 
 /* ===================================================== right col: instructor */
@@ -1328,7 +1412,7 @@ select.num-input { width: auto; }
 .chat-sup  .chat-txt { border-left: 3px solid var(--stopped); }
 .chat-supx .chat-txt { border-left: 3px solid var(--normal); }      /* supervisor reacting to the player */
 .chat-aux  .chat-txt { border-left: 3px solid var(--border); color: var(--text-2); }
-.chat-chief .chat-txt { border-left: 3px solid var(--cat-reactivity, #C084FC); }
+.chat-chief .chat-txt { border-left: 3px solid #C084FC; }
 .chat-sys  .chat-txt {
   font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px;
   color: var(--caution); border-left: 3px solid var(--caution); background: rgba(217,164,65,.06);

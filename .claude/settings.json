@@ -1,0 +1,75 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          { "type": "command", "command": "node tools/hook_repack_manuals.js" }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(node test/run_all.js)",
+      "Bash(node test/run_all.js *)",
+      "Bash(node test/run_ops.js)",
+      "Bash(node test/run_ops.js *)",
+      "Bash(node test/run_campaign.js)",
+      "Bash(node test/run_campaign.js *)",
+      "Bash(node test/run_pwr.js)",
+      "Bash(node test/run_pwr.js *)",
+      "Bash(node test/run_behavior.js)",
+      "Bash(node test/run_behavior.js *)",
+      "Bash(node test/run_e2e_controls.js)",
+      "Bash(node test/run_e2e_controls.js *)",
+      "Bash(node test/run_autoctl.js)",
+      "Bash(node test/run_autoctl.js *)",
+      "Bash(node test/run_procedures.js)",
+      "Bash(node test/run_procedures.js *)",
+      "Bash(node test/run_procedures_stack.js)",
+      "Bash(node test/run_procedures_stack.js *)",
+      "Bash(node test/run_m4.js)",
+      "Bash(node test/run_m4.js *)",
+      "Bash(node test/run_m5.js)",
+      "Bash(node test/run_m5.js *)",
+      "Bash(node test/run_m6.js)",
+      "Bash(node test/run_m6.js *)",
+      "Bash(node test/run_m6ph.js)",
+      "Bash(node test/run_m6ph.js *)",
+      "Bash(node test/run_m7.js)",
+      "Bash(node test/run_m7.js *)",
+      "Bash(node test/run_meltdown.js)",
+      "Bash(node test/run_meltdown.js *)",
+      "Bash(node test/run_meltdown_stack.js)",
+      "Bash(node test/run_meltdown_stack.js *)",
+      "Bash(node test/run_checklist.js)",
+      "Bash(node test/run_checklist.js *)",
+      "Bash(node test/run_scenarios.js)",
+      "Bash(node test/run_scenarios.js *)",
+      "Bash(node test/run_hr3.js)",
+      "Bash(node test/run_hr3.js *)",
+      "Bash(node test/run_contract.js)",
+      "Bash(node test/run_contract.js *)",
+      "Bash(node test/run_inspect.js)",
+      "Bash(node test/run_inspect.js *)",
+      "Bash(node test/run_flags.js)",
+      "Bash(node test/run_flags.js *)",
+      "Bash(node test/run_manual_units.js)",
+      "Bash(node test/run_manual_units.js *)",
+      "Bash(node test/run_rbmk.js)",
+      "Bash(node test/run_rbmk.js *)",
+      "Bash(node test/run_bwr.js)",
+      "Bash(node test/run_bwr.js *)",
+      "Bash(node test/verify_e2e_ui.js)",
+      "Bash(node test/verify_e2e_ui.js *)",
+      "Bash(node test/verify_flags_ui.js)",
+      "Bash(node test/verify_flags_ui.js *)",
+      "Bash(node test/verify_manual_follow.js)",
+      "Bash(node test/verify_manual_follow.js *)",
+      "Bash(node tools/pack_manuals.js)",
+      "Bash(node tools/gen_manual_reference.js)",
+      "Bash(node tools/gen_board_data.js)"
+    ]
+  }
+}

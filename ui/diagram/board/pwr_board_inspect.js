@@ -143,7 +143,7 @@
     ims5glucngg: e('ROD AUTO',
       'Hands the control bank to the Tavg automation channel — rods hold average coolant temperature.',
       'Engaging captures the CURRENT indicated Tavg as the reference and then holds it with variable ' +
-      'rod speed inside a deadband of about ±0.8 °C. That capture is the trap: engage it while Tavg ' +
+      'rod speed inside a deadband of about ±1.4 °F (±0.8 °C). That capture is the trap: engage it while Tavg ' +
       'is far from where you want it and the rods will drive hard toward the wrong number. Any manual ' +
       'rod motion drops the channel to manual, and so does a scram.', CI, '14.3'),
 
@@ -216,6 +216,12 @@
       'This is the reactivity computer, and it reads TRUE state: real plants infer reactivity from ' +
       'rate meters and rod worth curves rather than measuring it. Treat it as the teaching overlay ' +
       'it is — positive means power is climbing, zero means critical and steady.', CI, '4.1'),
+    bdRxPeriod: e('Reactor period',
+      'Reactor period in seconds — time for power to change by a factor of e.',
+      'Teaching readout under REACTIVITY (true state), not a field instrument. Near criticality ' +
+      'you want a long period (tens of seconds or more); a short period means power is changing ' +
+      'fast. ∞ means essentially steady.', CI, '4.1'),
+    bdRxPeriodLbl: 'bdRxPeriod',
     bdOneOverM: e('1/M PLOT',
       'Opens the inverse-count-rate plot — the standard approach-to-criticality tool.',
       'Plot the inverse of source-range count rate against rod position: as the core approaches ' +
@@ -256,7 +262,7 @@
       'and not your command. Type a number and you take the heaters manual at that power.', CI, '5.2'),
     imrsg8b7b9o: e('Pressure Setpoint',
       'The primary pressure the AUTO heaters and spray drive toward, in psi.',
-      'Normal operating pressure is 15.41 MPa (about 2235 psi). Raise the setpoint during a heatup ' +
+      'Normal operating pressure is 2235 psi (15.41 MPa). Raise the setpoint during a heatup ' +
       'and the heaters pressurize toward it; lower it on a cooldown and spray brings pressure down. ' +
       'The engine clamps the entry into the relief band, so you cannot set a target the safeties ' +
       'would immediately fight.', CI, '5.1a'),
@@ -305,7 +311,7 @@
     // ------------------------------------------------------------ relief valves
     porv: e('PORV',
       'Power-operated relief valve — the pressurizer\'s controlled steam vent.',
-      'Opens automatically near 16.20 MPa and reseats about 15.86 MPa, relieving primary pressure ' +
+      'Opens automatically near 2350 psi (16.20 MPa) and reseats about 2300 psi (15.86 MPa), relieving primary pressure ' +
       'into the relief line. The schematic shows TRUE disc position; the PORV status light beside it ' +
       'shows the COMMAND. At TMI-2 those two disagreed for over two hours — a stuck-open valve with a ' +
       'light reading closed drained the core.', CI, '6.1'),
@@ -503,9 +509,9 @@
     imrzpfd4qox: e('ECCS Control',
       'Starts, stops or arms emergency core cooling — high and low pressure injection on one train.',
       'START and STOP are manual operation; AUTO arms the system to actuate on its own when primary ' +
-      'pressure falls to about 12.4 MPa. Manual action takes the system out of AUTO — press AUTO to ' +
+      'pressure falls to about 1799 psi (12.4 MPa). Manual action takes the system out of AUTO — press AUTO to ' +
       're-arm. The pump delivers a high-head trickle at operating pressure and real volume once the ' +
-      'plant is below about 4.5 MPa.', CI, '11.0'),
+      'plant is below about 653 psi (4.5 MPa).', CI, '11.0'),
     imrldymb837: e('START (ECCS)',
       'Starts emergency injection by hand.',
       'Takes the system to MANUAL, which disarms the automatic actuation until you press AUTO again. ' +
@@ -574,7 +580,7 @@
       'Residual heat removal — the shutdown cooling path. An alignment, not a separate pump.',
       'ALIGN opens the hot-leg suction valve and puts the shared train on decay-heat removal; ISOLATE ' +
       'shuts it; AUTO arms it to open itself after a trip once pressure allows. The valve is ' +
-      'interlocked at 2.76 MPa (400 psi) and force-closes if pressure comes back up — the low-pressure ' +
+      'interlocked at 400 psi (2.76 MPa) and force-closes if pressure comes back up — the low-pressure ' +
       'piping cannot take RCS pressure.', CI, '11.2'),
     ims3wg27iif: e('ALIGN (RHR)',
       'Opens the RHR hot-leg suction valve — puts the plant on shutdown cooling.',
@@ -592,7 +598,7 @@
     ims3xu86zm5: e('RHR HX Flow',
       'How much RHR flow goes through the heat exchanger rather than the bypass — the cooldown RATE knob.',
       'This sets cooling rate without disturbing inventory. Walk it up slowly: full heat-exchanger flow ' +
-      'on a hot plant overshoots the 50 °C/h cooldown limit, and the primary temperature trend is the ' +
+      'on a hot plant overshoots the 90 °F/h (50 °C/h) cooldown limit, and the primary temperature trend is the ' +
       'only rate instrument you have.', CI, '11.2'),
 
     // -------------------------------------------------- steam generator and feed

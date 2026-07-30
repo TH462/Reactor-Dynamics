@@ -132,7 +132,7 @@ Rule: payloads are context, not content — no free text in telemetry events.
 
 ## 6. Feedback & bug reports
 
-**OWNER RULING (2026-07-19): players can never upload their own files.** Telemetry
+**OWNER RULING (2026-07-19) — verbatim not recorded, so advisory under HR11: players can never upload their own files.** Telemetry
 attaches ONLY from the live session, via the in-sim flow below. The site form is
 text-only (`diag: null` always); `/api/feedback` rejects any `diag` payload whose
 request doesn't originate from the in-sim path shape.

@@ -167,6 +167,10 @@
         { id: 'xenon',    label: 'Xenon',    c: '#b05a8a', get: function (i) { return i.xenon_pct_eq; }, tru: function (t) { return t.xenon_pct_eq; }, range: [0, 250], fmt: function (v) { return v.toFixed(0) + '% eq'; } },
         { id: 'steam_p',  label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, tru: function (t) { return t.steam_pressure_mpa; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
         { id: 'sur',      label: 'Startup Rate', c: '#c0913e', get: function (i) { return i.startup_rate; }, tru: function (t) { return t.startup_rate_dpm; }, range: [-2, 3], fmt: function (v) { return v.toFixed(1) + ' DPM'; } },
+        // RCS loop flow (#247). The PWR was the only plant with no flow trend at all —
+        // RBMK has Channel Flow and BWR has Recirc Flow — which is what an unbuilt
+        // instrument looks like from the UI side. dLo marks the low-flow trip setpoint.
+        { id: 'rcs_flow', label: 'RCS Flow', c: '#5a8a9a', get: function (i) { return i.rcs_flow; }, tru: function (t) { return t.pump_flow_pct; }, range: [0, 120], dLo: 90, fmt: function (v) { return v.toFixed(0) + '%'; } },
       ],
     },
 
@@ -343,6 +347,8 @@
   function rodGroup(s, fn) { return s.control_state.rod_groups.filter(function (x) { return x.function === fn; })[0]; }
 
   // Alarm → system category (UI-side keyword map across the three plants).
+  // System family for scanner/meta text only — tiles no longer color-code by
+  // category (priority carries the color: red / amber / grey).
   function alarmCategory(id) {
     if (/flux|power|rod|orm|reactivity|az/.test(id)) return 'reactivity';
     if (/press|subcool|pzr|rcp|void|drum|vessel|level|flow|coolant/.test(id)) return 'coolant';
@@ -687,7 +693,7 @@
 
     applyUiPolicy(s);
     renderGauges(s);
-    renderAlarms(s); renderInstructor(s); renderReactimeter(s); renderFailures(s);
+    renderAlarms(s); renderInstructor(s); renderFailures(s);
     updateSimSummary();
     // alarm tint on the CSF gauge strip while anything is unacknowledged
     $('gaugeStrip').classList.toggle('alarm-tint', s.alarms.some(function (a) { return a.state === 'active_unacknowledged'; }));
@@ -821,15 +827,8 @@
     return 'q-normal';
   }
 
-  function renderReactimeter(s) {
-    var t = s.true_state;
-    // Sign off the NUMBER, not the rounded string: a tiny negative ρ rounds to the string
-    // "-0", which coerces to -0 and passes `>= 0`, so the old form printed "+-0 pcm".
-    var sgn = function (n) { var r = n.toFixed(0); if (r === '-0') r = '0'; return (r.charAt(0) === '-' ? '' : '+') + r; };
-    $('rxReactivity').textContent = t.reactivity_pcm != null ? sgn(t.reactivity_pcm) + ' pcm' : '— pcm';
-    var per = t.reactor_period_s;
-    $('rxPeriod').textContent = per == null ? '— (PWR only)' : (!isFinite(per) || Math.abs(per) > 9999) ? '∞ (steady)' : per.toFixed(0) + ' s';
-  }
+  // Reactivity ρ and reactor period live on the PWR Physics Diagram (under
+  // REACTIVITY), not in the Operate tab.
 
   // Friendly cause for the Reactor Trip alarm, keyed by rps_state.last_trip_reason
   // ("<instrument> <direction>", set in control_kernel on the first trip to fire).
@@ -844,7 +843,7 @@
     'pzr_level low':           'Lo Pressurizer Level',
     'sg_level low':            'Lo SG Level',
     'sg_level high':           'Hi SG Level (P-14)',
-    '__true_flow__ low':       'Lo RCS Flow',
+    'rcs_flow low':            'Lo RCS Flow',
     'manual scram':            'Manual Trip'
   };
   function tripCauseLabel(reason) {
@@ -913,7 +912,7 @@
       // protection table, and cites the alarm-response manual.
       var docAttr = manualDoc('06_alarm_response')
         ? ' data-scanner-doc="06_alarm_response" data-scanner-sec="3.0"' : '';
-      return '<div class="alarm-tile ' + sev + unack + ' cat-' + cat + '" data-ack="' + a.id +
+      return '<div class="alarm-tile ' + sev + unack + '" data-ack="' + a.id +
         '" data-scanner-hint="' + esc(label) + ' — ' + prioTxt + ' alarm (' + cat + '), annunciated ' + stamp + ' sim time. Reads the instrument; click to acknowledge."' +
         ' data-scanner-detail="' + esc(alarmDetail(a)) + '"' + docAttr + '>' +
         '<div class="bar"></div><div class="body"><div class="label">' + label +
@@ -997,7 +996,7 @@
     }
     // Scenario prop: the maintenance tag over the AFW valve indication. Hidden
     // once its interaction is granted (the tag comes off the valve).
-    var pwrDisp = RD.PwrBoard || RD.PwrSynoptic;
+    var pwrDisp = RD.PwrBoard;
     if (pwrDisp && pwrDisp.setTag) {
       var tagId = ip && ip.tag;
       var chat = s.instructor && s.instructor.chat;
@@ -1027,6 +1026,33 @@
     if (nav) nav.hidden = mode !== 'follow';
     if (ack) ack.hidden = mode !== 'scenario';
   }
+  // Multi-use panel title: Instructor (default free play), Checklist, Procedure,
+  // scenario title, or a speaking role when the content carries one.
+  function setInstrRole(title) {
+    var roleEl = $('instrRole') || document.querySelector('#instructorCard .persona .role');
+    if (roleEl) roleEl.textContent = title || 'Instructor';
+  }
+  var IDLE_INSTR_HTML =
+    '<div class="instr-idle">' +
+    '<p class="instr-idle-lead">Free play — operate the plant on the left. This panel is your coach and checklist host.</p>' +
+    '<ol class="instr-idle-list">' +
+    '<li><b>Play</b> starts the clock (or click SIMULATION PAUSED on the board).</li>' +
+    '<li><b>System Scanner</b> (below) — hover anything on the board for what it is.</li>' +
+    '<li><b>Checklists</b> — interactive procedures that check themselves off the instruments.</li>' +
+    '<li><b>Manual</b> — full operator reference and written procedures.</li>' +
+    '<li><b>Plant &amp; Mission</b> (under the clock) — starting condition and guided training.</li>' +
+    '</ol>' +
+    '<p class="instr-idle-more">More help: <button type="button" class="btn linkish" data-open-help="1">Help</button> · ' +
+    '<button type="button" class="btn linkish" data-open-tour="1">Quick tour</button> · ' +
+    'advanced failures under <b>Inject Failure</b>.</p>' +
+    '</div>';
+  function showIdleInstructor() {
+    setInstrRole('Instructor');
+    var cur = $('instrCurrent');
+    if (!cur) return;
+    cur.classList.add('instr-standby');
+    cur.innerHTML = IDLE_INSTR_HTML;
+  }
   function renderInstructor(s) {
     // Rewind is live whenever a checkpoint exists (beats / follow steps / sandbox).
     var noCp = !(service && service.checkpoints && service.checkpoints.length);
@@ -1044,13 +1070,18 @@
     if (cklRow) {
       var cklBusy = !!(ui.scenario || (s.instructor && (s.instructor.follow || s.instructor.chat ||
         s.instructor.checklist || s.instructor.level_complete)));
-      // …and only where this channel offers checklists at all (#241). The picker
-      // is a SECOND entry point to them, next to the manual's 📋 button.
       cklRow.hidden = cklBusy || !flagOn('checklists');
       if (cklBusy) { var cm = $('cklMenu'); if (cm) cm.hidden = true; }
     }
     var fb = s.instructor && s.instructor.follow;
-    if (fb) { ui.follow = { id: fb.procedure_id }; syncInstrNav('follow'); renderFollow(s); return; }
+    if (fb) {
+      ui.follow = { id: fb.procedure_id };
+      syncInstrNav('follow');
+      var prF = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === fb.procedure_id; })[0];
+      setInstrRole(prF && prF.title ? prF.title : 'Procedure');
+      renderFollow(s);
+      return;
+    }
     if (ui.follow) ui.follow = null;              // the snapshot says the follow ended
     // Chat-mode scenarios (TMI-2 M5): a scrolling multi-speaker transcript
     // replaces the single-slot commentary card. Level-complete renders inline.
@@ -1059,10 +1090,16 @@
     // Auto-checklist (Path 3): chat-style bubble list, one bubble per step,
     // checking itself off the instruments while the operator plays on.
     var ckb = s.instructor && s.instructor.checklist;
-    if (ckb) { syncInstrNav('ckl'); renderChecklist(s, ckb); return; }
+    if (ckb) {
+      syncInstrNav('ckl');
+      var prC = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ckb.procedure_id; })[0];
+      setInstrRole(prC && prC.title ? ('Checklist · ' + prC.title) : 'Checklist');
+      renderChecklist(s, ckb);
+      return;
+    }
     if (cklState.key) resetCkl();
     var lc = s.instructor && s.instructor.level_complete;
-    if (lc) { syncInstrNav('lc'); msgHold.queue = []; msgHold.shown = null; renderLevelComplete(s, lc); return; }
+    if (lc) { syncInstrNav('lc'); msgHold.queue = []; msgHold.shown = null; setInstrRole('Instructor'); renderLevelComplete(s, lc); return; }
     syncInstrNav(ui.scenario ? 'scenario' : 'idle');
     lastLcKey = null;
     var cur = $('instrCurrent');
@@ -1080,14 +1117,15 @@
     if (msgHold.queue.length && dwellMet) {
       msgHold.shown = msgHold.queue.shift();
       msgHold.at = now;
+      setInstrRole(ui.scenario ? 'Instructor' : 'Instructor');
       cur.textContent = msgHold.shown; cur.classList.remove('instr-standby');
       // No focus steal (#237): the collapsed card already shows this line
       // one-line ellipsized — cue the header and let the player expand.
       instrAttention();
     } else if (!msg && !msgHold.queue.length && dwellMet) {
-      if (msgHold.shown !== null || cur.textContent !== 'Standing by…') {
+      if (msgHold.shown !== null || !cur.querySelector('.instr-idle')) {
         msgHold.shown = null;
-        cur.textContent = 'Standing by…'; cur.classList.add('instr-standby');
+        showIdleInstructor();
       }
     }
   }
@@ -1103,8 +1141,7 @@
     chatState = { sid: null, shown: 0, nextAt: 0, instantThrough: 0, rev: -1, reg: null, storySec: null, lastT: null, btnKey: null, skipBid: null, lcKey: null };
     var card = $('instructorCard');
     if (card) card.classList.remove('chat-mode');
-    var roleEl = document.querySelector('#instructorCard .persona .role');
-    if (roleEl) roleEl.textContent = 'Shift Supervisor';
+    setInstrRole('Instructor');
   }
   var CHAT_SPEAKERS = {
     sup: 'Shift Supervisor', supx: 'Shift Supervisor', aux: 'Aux Operator',
@@ -1193,9 +1230,8 @@
       // SCENE (scenario title), never a speaker: the transcript's per-line
       // headers carry who is talking, and a fixed speaker up top would lie
       // whenever anyone else speaks (instructor-vs-supervisor register rule).
-      var roleEl = document.querySelector('#instructorCard .persona .role');
       var sc0 = sid && RD.SCENARIOS ? RD.SCENARIOS[sid] : null;
-      if (roleEl) roleEl.textContent = (sc0 && sc0.title) ? sc0.title : 'Scenario';
+      setInstrRole((sc0 && sc0.title) ? sc0.title : 'Scenario');
     }
     var logEl = $('chatLog');
     // One-at-a-time reveal on a real-time reading cadence. Player-outgoing
@@ -1307,7 +1343,7 @@
     card.classList.add('chat-mode');
     cur.classList.remove('instr-standby');
     var h = '<div class="ckl-log" id="cklLog">';
-    h += '<div class="ckl-head">📋 <b>' + mesc(pr.title) + '</b>' +
+    h += '<div class="ckl-head"><b>' + mesc(pr.title) + '</b>' +
       '<div class="m-note">Auto-checklist — steps check themselves off the instruments while you operate.</div></div>';
     for (var i = 0; i < pr.steps.length; i++) {
       var st = pr.steps[i];
@@ -1335,11 +1371,11 @@
       h += '</div></div>';
     }
     if (ck.complete) {
-      h += '<div class="ckl-complete">✅ <b>Checklist complete</b>' +
+      h += '<div class="ckl-complete"><b>Checklist complete</b>' +
         (pr.outcome ? '<div class="m-note">' + mesc(pr.outcome) + '</div>' : '') + '</div>';
     }
     h += '</div>';
-    h += '<div class="ckl-btns"><button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : '✕ End checklist') + '</button></div>';
+    h += '<div class="ckl-btns"><button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End checklist') + '</button></div>';
     cur.innerHTML = h;
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
@@ -1412,8 +1448,7 @@
     if (!hl) return;
     var el = null;
     if (hl.control_label) {
-      var pwrDisp2 = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard
-                   : (RD.PwrSynoptic && RD.PwrSynoptic.isMounted() ? RD.PwrSynoptic : null);
+      var pwrDisp2 = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
       el = ui.plant === 'pwr'
         ? (pwrDisp2 ? pwrDisp2.revealControl(hl.control_label) : null)
         : findPdControl(hl.control_label, hl.view);
@@ -2553,26 +2588,31 @@
     var stamp = bundle.exported_at.slice(0, 16).replace(/:/g, '');   // 2026-07-07T0046
     downloadJSON(bundle, 'rd_diag_' + stamp + '_' + ui.plant + '.json');
   }
-  // Player feedback (💬) — telemetry comes ONLY from the live session recorder,
-  // never from a user-supplied file (owner ruling). W1 packages the report as a
-  // download; W2 replaces sendFeedback's tail with a POST to /api/feedback.
-  function sendFeedback() {
+  // Player feedback (💬). This was an in-app form that packaged a JSON report as a
+  // download, against a planned POST /api/feedback that was never built — so the
+  // file landed in the player's downloads folder and nowhere else. It is now just
+  // the address (owner, 2026-07-29); the diagnostics bundle is still offered
+  // separately, to attach by hand.
+  var FEEDBACK_EMAIL = 'reactordynamics@gmail.com';
+  function copyFeedbackEmail() {
     var status = $('fbStatus');
-    var body = $('fbText').value.trim();
-    if (!body) {
-      status.className = 'fb-msg err'; status.textContent = 'Say what happened first.';
-      return;
+    function ok() { status.className = 'fb-msg'; status.textContent = 'Address copied.'; }
+    // No clipboard API (older browser, or a non-secure origin — the control room
+    // runs happily from file://, where navigator.clipboard is undefined). Select
+    // the address instead, so ⌘/Ctrl-C still works and the failure is visible.
+    function fallback() {
+      var el = $('fbMail'), sel = window.getSelection && window.getSelection();
+      if (sel && el && document.createRange) {
+        var r = document.createRange(); r.selectNodeContents(el);
+        sel.removeAllRanges(); sel.addRange(r);
+        status.className = 'fb-msg'; status.textContent = 'Address selected — press Ctrl-C to copy.';
+      } else {
+        status.className = 'fb-msg err'; status.textContent = 'Copy failed — the address is ' + FEEDBACK_EMAIL;
+      }
     }
-    var report = {
-      schema_version: '1.0', kind: 'reactor_dynamics_feedback',
-      category: $('fbCategory').value, body: body,
-      email: $('fbEmail2').value.trim() || null,
-      site_version: (typeof window.RD_VERSION === 'string') ? window.RD_VERSION : null,
-      diag: $('fbAttach').checked ? buildDiagBundle() : null
-    };
-    downloadJSON(report, 'rd_feedback_' + report.category + '_' + ui.plant + '.json');
-    status.className = 'fb-msg';
-    status.textContent = 'Report packaged and downloaded — direct sending is coming soon.';
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(FEEDBACK_EMAIL).then(ok, fallback);
+    } else fallback();
   }
 
   var ACTS = {
@@ -2893,18 +2933,8 @@
     // Settings → Values Display (Instruments / True / Both) drives the legacy All view.
     var oseg = $('overlaySeg2');
     if (oseg) oseg.addEventListener('click', function (e) { var b = e.target.closest('[data-overlay]'); if (!b) return; ui.overlay = b.getAttribute('data-overlay'); syncSeg('[data-overlay]', ui.overlay, 'overlay'); if (latest && ui.plant !== 'pwr') renderPdAll(latest); });
-    // Settings → Diagram Mode (Education = Learning | Realistic) + Physics Overlay (Learning only) — PWR synoptic
-    var mseg = $('modeSeg');
-    if (mseg) mseg.addEventListener('click', function (e) {
-      var b = e.target.closest('[data-mode]'); if (!b || b.disabled) return;
-      // The learning board has no realistic (quiet-board) rendering yet, so the
-      // Realistic option is disabled — the diagram stays in Teaching mode.
-      ui.diagMode = b.getAttribute('data-mode');
-      if (ui.diagMode === 'realistic') ui.physOverlay = false;
-      chartRange = {};   // the chart swaps between physics and instruments with the mode — re-fit the axes
-      syncOverlayRow();
-      if (latest) render(latest);
-    });
+    // Physics Overlay (Physics Diagram teaching layer). Diagram Mode UI removed —
+    // the board is always the Physics Diagram until a realistic board ships.
     var pseg = $('physSeg');
     if (pseg) pseg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-phys]'); if (!b) return;
@@ -2998,21 +3028,35 @@
     $('missionBtn').addEventListener('click', openMissionSelect);
     $('simStatus').addEventListener('click', openMissionSelect);   // the always-visible entry point
     $('missionClose').addEventListener('click', closeMissionSelect);
-    initFeaturePanel();          // 🧪 Features — development toggles (#241)
-    // Help overlay — the one-screen "how this control room works" guide.
+    initFeaturePanel();          // Features — development toggles (#241)
+    // Help + quick tour (also offered from SIMULATION PAUSED on the board).
     $('helpBtn').addEventListener('click', function () { $('helpOverlay').hidden = false; });
     $('helpClose').addEventListener('click', function () { $('helpOverlay').hidden = true; });
     $('helpOverlay').addEventListener('click', function (e) { if (e.target === $('helpOverlay')) $('helpOverlay').hidden = true; });
-    // Feedback overlay (💬) — status line resets each open so a stale
-    // "packaged" confirmation never greets a fresh report.
-    $('fbBtn').addEventListener('click', function () { $('fbStatus').textContent = ''; $('feedbackOverlay').hidden = false; });
+    if ($('helpTourBtn')) $('helpTourBtn').addEventListener('click', function () {
+      $('helpOverlay').hidden = true; openTour(0);
+    });
+    initTour();
+    // Contact (email) overlay — status line resets each open. RD_VERSION is stamped
+    // at deploy time and may be absent when opened straight off disk.
+    $('fbBtn').addEventListener('click', function () {
+      $('fbStatus').textContent = '';
+      $('fbVer').textContent = (typeof window.RD_VERSION === 'string' && window.RD_VERSION)
+        ? 'Build ' + window.RD_VERSION + ' — quoting this in a bug report says exactly which version you were on.'
+        : '';
+      $('feedbackOverlay').hidden = false;
+    });
     $('fbClose').addEventListener('click', function () { $('feedbackOverlay').hidden = true; });
     $('feedbackOverlay').addEventListener('click', function (e) { if (e.target === $('feedbackOverlay')) $('feedbackOverlay').hidden = true; });
-    $('fbSend').addEventListener('click', function () { sendFeedback(); });
-    // Hide side panel (⛶) — hides the right simulator panel and tucks the time
-    // controls (.sim-controls) into the chart/alarms strip under the diagram so the
-    // plant diagram gets the full width; toggle to bring the panel back. .bottom-row
-    // is resolved live rather than cached — positionBottomRow() owns where it lives.
+    $('fbCopy').addEventListener('click', copyFeedbackEmail);
+    $('fbDiag').addEventListener('click', function () { exportDiag(); });
+    // Instructor idle links (Help / Tour) — delegated so re-rendered HTML works.
+    $('instructorCard').addEventListener('click', function (e) {
+      if (e.target.closest('[data-open-help]')) { e.preventDefault(); $('helpOverlay').hidden = false; return; }
+      if (e.target.closest('[data-open-tour]')) { e.preventDefault(); openTour(0); return; }
+    });
+    // Board focus — hides the right simulator panel and tucks the time controls
+    // into the chart/alarms strip so the plant diagram gets the full width.
     (function () {
       var appEl = document.querySelector('.app');
       var simControls = document.querySelector('.sim-controls');
@@ -3027,12 +3071,12 @@
           appEl.classList.add('sim-hidden');
           if (midCol) midCol.insertBefore(simControls, midCol.firstChild);  // time controls → left end of the strip
           demoBtn.classList.add('on');
-          demoBtn.title = 'Show the side panel';
+          demoBtn.title = 'Exit board focus — show the side panel';
         } else {
           appEl.classList.remove('sim-hidden');
           rightColEl.insertBefore(simControls, rightColEl.firstChild);      // time controls → back atop the right panel
           demoBtn.classList.remove('on');
-          demoBtn.title = 'Hide the side panel — enlarge the diagram';
+          demoBtn.title = 'Board focus — hide the side panel and enlarge the plant diagram';
         }
       });
     })();
@@ -3077,18 +3121,16 @@
       var f = e.target.closest('[data-follow]');
       if (f) { closeMissionSelect(); ensureEngine(msel.engine); followProcedure(f.getAttribute('data-follow')); }
     });
-    // First-run Hook invitation (prompted, never forced — Gameplay §7.1).
-    $('hookStart').addEventListener('click', function () { $('hookPrompt').hidden = true; startScenario('pwr_hook'); refreshMissionSelect(); });
-    $('hookSkip').addEventListener('click', function () { $('hookPrompt').hidden = true; saveProgress({ hook_done: true }); });
-    // Global keyboard shortcuts (documented in the ? help card). Skipped while
-    // typing in a field or holding a modifier; Space is left alone when a
-    // button/control has focus so native activation (incl. rod hold) still works.
+    // Global keyboard shortcuts (documented in Help). Skipped while typing
+    // in a field or holding a modifier; Space is left alone when a button has
+    // focus so native activation (incl. rod hold) still works.
     var SPEED_KEYS = { '1': 1, '2': 10, '3': 60, '4': 600, '5': 3600 };
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         if (!$('manualOverlay').hidden) closeManual();
         if (!$('missionOverlay').hidden) closeMissionSelect();
         if (!$('helpOverlay').hidden) $('helpOverlay').hidden = true;
+        if (tourOn) closeTour();
         if (!$('featureOverlay').hidden) closeFeaturePanel();
         if (!$('feedbackOverlay').hidden) $('feedbackOverlay').hidden = true;
         if (ui.rewindPick) toggleRewindPick(false);
@@ -3238,7 +3280,7 @@
       if (it.inherited) meta.push('<span class="scan-hint">Describes this card as a whole.</span>');
       if (it.doc) {
         meta.push('<button class="scan-manual" data-scan-doc="' + esc(it.doc) + '" data-scan-sec="' +
-                  esc(it.sec || '') + '">📖 Manual' + (it.sec ? ' §' + mesc(it.sec) : '') + '</button>');
+                  esc(it.sec || '') + '">Manual' + (it.sec ? ' §' + mesc(it.sec) : '') + '</button>');
       }
       if (meta.length) h += '<div class="scan-meta">' + meta.join('') + '</div>';
     }
@@ -3256,7 +3298,7 @@
     var p = $('scannerPanel'); if (p) p.classList.toggle('expanded', ui.inspectExpanded);
     var b = $('scannerToggle');
     if (b) {
-      b.textContent = ui.inspectExpanded ? '⤡ Collapse' : '⤢ Expand';
+      b.textContent = ui.inspectExpanded ? 'Summary only' : 'Full description';
       b.setAttribute('aria-expanded', String(ui.inspectExpanded));
     }
     try { localStorage.setItem('rd_inspect_expanded', ui.inspectExpanded ? '1' : '0'); } catch (e) {}
@@ -3285,10 +3327,244 @@
   // synoptic owns its truth presentation, so the row is hidden (an on-screen
   // setting must never silently do nothing).
   function syncOverlayRow() {
-    var row = $('overlayRow'); if (row) row.style.display = ui.diagMode === 'realistic' ? 'none' : '';
-    var vr = $('valuesRow'); if (vr) vr.style.display = ui.plant === 'pwr' ? 'none' : '';
-    syncSeg('[data-mode]', ui.diagMode, 'mode');
+    // Physics Overlay only applies on the Physics Diagram (always, until a
+    // realistic board ships). Values display is available on every plant.
+    var row = $('overlayRow'); if (row) row.style.display = '';
+    var vr = $('valuesRow'); if (vr) vr.style.display = '';
     syncSeg('[data-phys]', ui.physOverlay ? 'on' : 'off', 'phys');
+  }
+
+  // ---- Quick tour: coach-marks (highlight target + tip beside it) ----------
+  // Not a centered modal — each step points at a real control so a newcomer
+  // can find it on the board.
+  var TOUR_STEPS = [
+    {
+      sel: '#viewArea',
+      place: 'right',
+      title: 'The plant',
+      body: '<p>This diagram <b>is</b> the plant. Operate rods, pumps, valves, ' +
+        'feed, and the turbine here — not in a separate menu.</p>'
+    },
+    {
+      sel: '#gaugeStrip',
+      place: 'bottom',
+      title: 'Vital gauges',
+      body: '<p>Power, temperature, subcooling, pressure, and levels — the ' +
+        'readings you watch first. They turn amber/red when something is off.</p>'
+    },
+    {
+      sel: '.alarm-panel',
+      place: 'left',
+      title: 'Alarms',
+      body: '<p>Annunciators read instruments (and can lie if a channel fails). ' +
+        'Click a tile to acknowledge. Empty is good news.</p>'
+    },
+    {
+      sel: '.strip-chart',
+      place: 'top',
+      title: 'Trends &amp; rewind',
+      body: '<p>Multi-parameter strip chart. <b>Rewind</b> restores an earlier ' +
+        'plant state so you can try again — failure is not game over.</p>'
+    },
+    {
+      sel: '#instructorCard',
+      place: 'left',
+      title: 'Instructor',
+      body: '<p>Free-play coaching lives here. The title changes when a checklist, ' +
+        'procedure, or scenario is running. Expand the card to read more.</p>',
+      prep: function () {
+        var c = $('instructorCard');
+        if (c) { c.classList.remove('collapsed'); c.classList.add('expanded'); }
+      }
+    },
+    {
+      sel: '#cklOpenBtn',
+      place: 'left',
+      title: 'Checklists',
+      body: '<p>Interactive procedures that check themselves off the instruments. ' +
+        'Best next step after this tour — hover a step to glow the controls it names.</p>',
+      prep: function () {
+        var c = $('instructorCard');
+        if (c) { c.classList.remove('collapsed'); c.classList.add('expanded'); }
+        // Only unhide when this channel offers checklists (#241).
+        if (typeof flagOn === 'function' && flagOn('checklists')) {
+          var row = $('instrCklRow');
+          if (row) row.hidden = false;
+        }
+      },
+      // If checklists are gated off or the button is not visible, use Instructor.
+      fallback: '#instructorCard'
+    },
+    {
+      sel: '#toolsCard',
+      place: 'left',
+      title: 'Operate &amp; tools',
+      body: '<p><b>Operate</b> — plant, mode, reset, save/load. ' +
+        '<b>Inject Failure</b> when you are ready for casualties. ' +
+        '<b>Graph</b> and <b>Settings</b> for trends and units.</p>',
+      prep: function () {
+        var t = document.querySelector('#tabbar [data-tab="operate"]');
+        if (t) t.click();
+      }
+    },
+    {
+      sel: '#manualBtn',
+      place: 'bottom',
+      title: 'Manual',
+      body: '<p>Full operator manuals: controls, procedures, alarms, and setpoints. ' +
+        'Same plant you are sitting.</p>'
+    },
+    {
+      sel: '#simStatus',
+      place: 'bottom',
+      title: 'Plant &amp; Mission',
+      body: '<p>Starting condition and guided content. Switching restarts the plant ' +
+        'from a clean initial state.</p>'
+    },
+    {
+      sel: '#scannerPanel',
+      place: 'left',
+      title: 'System Scanner',
+      body: '<p>Hover anything on the board. Summary first; <b>Full description</b> ' +
+        'for detail and a Manual link.</p>'
+    },
+    {
+      sel: '#playBtn',
+      place: 'bottom',
+      title: 'Press Play when ready',
+      body: '<p>Starts the clock. The pause overlay (and this tour) leave when you ' +
+        'run. Use <b>Help</b> anytime; open a <b>Checklist</b> to practice a procedure.</p>'
+    }
+  ];
+  var tourIdx = 0;
+  var tourLiveEl = null;
+  var tourOn = false;
+
+  function tourElVisible(el) {
+    if (!el) return false;
+    if (el.closest && el.closest('[hidden]')) return false;
+    var r = el.getBoundingClientRect();
+    return r.width > 2 && r.height > 2;
+  }
+  function tourResolveEl(step) {
+    if (!step) return null;
+    var el = step.sel ? document.querySelector(step.sel) : null;
+    if (!tourElVisible(el) && step.fallback) el = document.querySelector(step.fallback);
+    return tourElVisible(el) ? el : null;
+  }
+
+  function tourClearLive() {
+    if (tourLiveEl) {
+      tourLiveEl.classList.remove('tour-target-live');
+      tourLiveEl = null;
+    }
+  }
+
+  function openTour(i) {
+    if (!$('tourRoot')) return;
+    tourIdx = Math.max(0, Math.min(TOUR_STEPS.length - 1, i || 0));
+    tourOn = true;
+    $('tourRoot').hidden = false;
+    document.body.classList.add('tour-active');
+    renderTour();
+  }
+  function closeTour() {
+    tourOn = false;
+    tourClearLive();
+    if ($('tourRoot')) $('tourRoot').hidden = true;
+    document.body.classList.remove('tour-active');
+  }
+  function placeTourTip(target, place) {
+    var tip = $('tourTip'), spot = $('tourSpot');
+    if (!tip || !spot) return;
+    var pad = 6;
+    var r = target.getBoundingClientRect();
+    var tw = Math.min(320, window.innerWidth - 24);
+    var th = tip.offsetHeight || 160;
+    // Spotlight box
+    spot.style.top = Math.max(0, r.top - pad) + 'px';
+    spot.style.left = Math.max(0, r.left - pad) + 'px';
+    spot.style.width = Math.min(window.innerWidth, r.width + pad * 2) + 'px';
+    spot.style.height = Math.min(window.innerHeight, r.height + pad * 2) + 'px';
+    spot.hidden = false;
+
+    var gap = 12;
+    var top, left;
+    var prefer = place || 'bottom';
+    // Preferred side, then flip if it would leave the viewport.
+    function fit(side) {
+      if (side === 'bottom') {
+        top = r.bottom + gap; left = r.left + r.width / 2 - tw / 2;
+      } else if (side === 'top') {
+        top = r.top - th - gap; left = r.left + r.width / 2 - tw / 2;
+      } else if (side === 'left') {
+        top = r.top + r.height / 2 - th / 2; left = r.left - tw - gap;
+      } else { // right
+        top = r.top + r.height / 2 - th / 2; left = r.right + gap;
+      }
+    }
+    fit(prefer);
+    if (left < 8) left = 8;
+    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+    if (top < 8) {
+      if (prefer === 'top') fit('bottom');
+      top = Math.max(8, top);
+    }
+    if (top + th > window.innerHeight - 8) {
+      if (prefer === 'bottom') fit('top');
+      top = Math.min(top, window.innerHeight - th - 8);
+      top = Math.max(8, top);
+    }
+    tip.style.width = tw + 'px';
+    tip.style.top = top + 'px';
+    tip.style.left = left + 'px';
+  }
+  function renderTour() {
+    if (!tourOn || !$('tourRoot')) return;
+    var step = TOUR_STEPS[tourIdx];
+    if (!step) { closeTour(); return; }
+    tourClearLive();
+    try { if (step.prep) step.prep(); } catch (e) {}
+    // Allow layout (expand card / show checklist) to settle before measuring.
+    requestAnimationFrame(function () {
+      if (!tourOn) return;
+      var el = tourResolveEl(step);
+      if (!el) {
+        // Skip missing targets rather than stalling the tour.
+        if (tourIdx < TOUR_STEPS.length - 1) { tourIdx++; renderTour(); }
+        else closeTour();
+        return;
+      }
+      try { el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); } catch (e2) {}
+      el.classList.add('tour-target-live');
+      tourLiveEl = el;
+      if ($('tourTitle')) $('tourTitle').textContent = step.title;
+      if ($('tourBody')) $('tourBody').innerHTML = step.body;
+      if ($('tourProg')) $('tourProg').textContent = (tourIdx + 1) + ' / ' + TOUR_STEPS.length;
+      var prev = $('tourPrev'), next = $('tourNext');
+      if (prev) prev.disabled = tourIdx <= 0;
+      if (next) next.textContent = tourIdx >= TOUR_STEPS.length - 1 ? 'Done' : 'Next →';
+      // Second frame: after scroll/expand, tip height is known.
+      requestAnimationFrame(function () {
+        if (!tourOn || !tourLiveEl) return;
+        placeTourTip(tourLiveEl, step.place);
+      });
+    });
+  }
+  function initTour() {
+    if (!$('tourRoot')) return;
+    $('tourPrev').addEventListener('click', function () {
+      if (tourIdx > 0) { tourIdx--; renderTour(); }
+    });
+    $('tourNext').addEventListener('click', function () {
+      if (tourIdx >= TOUR_STEPS.length - 1) closeTour();
+      else { tourIdx++; renderTour(); }
+    });
+    $('tourSkip').addEventListener('click', closeTour);
+    $('tourScrim').addEventListener('click', closeTour);
+    window.addEventListener('resize', function () {
+      if (tourOn) renderTour();
+    });
   }
   function applyUnitsMode(units) {
     ui.units = units;
@@ -3748,8 +4024,8 @@
   function CG_ECCS() { return { l: 'ECCS', emergency: 1, hint: 'Emergency Core Cooling — high-pressure injection. AUTO actuates on low pressure.', seg: [{ l: 'Auto', act: 'eccs-auto', on: 1, run: 1 }, { l: 'On', act: 'eccs-on' }, { l: 'Off', act: 'eccs-off' }] }; }
   function CG_MSIV() { return { l: 'MSIV', hint: 'Main Steam Isolation Valve' + (ui.plant === 'bwr' ? ' — isolates main steam (closes the turbine path).' : ' — (steam-line isolation; modeled on the BWR; placeholder here).'), seg: [{ l: 'Open', act: 'msiv-open', on: 1 }, { l: 'Close', act: 'msiv-close', warn: 1 }] }; }
 
-  // (legacy PWR partial-loop diagrams retired — the synoptic in
-  //  ui/diagram/pwr_synoptic.js is the sole PWR plant display)
+  // (legacy PWR partial-loop diagrams retired — the V2 board in
+  //  ui/diagram/board/ is the sole PWR plant display)
 
 
   var PD = {
@@ -3948,7 +4224,7 @@
   function buildViews() {
     var area = $('viewArea'); pdRows = {};
     // Diagram view placeholder (RBMK/BWR keep the legacy plant display until
-    // their own synoptic specs exist; the PWR mounts ui/diagram/pwr_synoptic.js)
+    // their own board specs exist; the PWR mounts ui/diagram/board/pwr_board.js)
     var diagHtml =
       '<div class="view-placeholder"><span>Plant diagram — SVG in development</span><span class="placeholder-sub">Energy flow: Reactor → ' + (ui.plant === 'bwr' ? 'Vessel → Turbine' : 'Drums → Turbine') + '</span></div>';
     var html = '';
@@ -4064,7 +4340,6 @@
     positionBottomRow(syn);
     if (!syn) {
       if (RD.PwrBoard && RD.PwrBoard.isMounted()) RD.PwrBoard.unmount();
-      if (RD.PwrSynoptic && RD.PwrSynoptic.isMounted()) RD.PwrSynoptic.unmount();
     }
     if (syn) {
       $('statusBar').innerHTML = ''; $('viewTabs').innerHTML = ''; $('pdCtlRow').innerHTML = '';
@@ -4076,6 +4351,8 @@
         // #237 (owner): the SIMULATION PAUSED veil is clickable to resume. Route
         // through the play button so its ▶/⏸ state stays the single source of truth.
         resume: function () { if (!service.running) $('playBtn').click(); },
+        // Quick tour from the pause overlay (newcomer path).
+        openTour: function () { openTour(0); },
       });
       return;
     }
@@ -4136,7 +4413,11 @@
     var tbm = /[?&]tab=(failures|graph|sim|settings|training)/.exec(location.search || '');
     if (tbm) {
       if (tbm[1] === 'training') openMissionSelect();
-      else { var tbtn = document.querySelector('#tabbar [data-tab="' + tbm[1] + '"]'); if (tbtn) tbtn.click(); }
+      else {
+        var tabId = tbm[1] === 'sim' ? 'operate' : tbm[1];
+        var tbtn = document.querySelector('#tabbar [data-tab="' + tabId + '"]');
+        if (tbtn) tbtn.click();
+      }
     }
     // optional ?missions=1 deep-link — opens the Plant & Mission window
     // (?mmode=free|campaign|scenarios|walkthroughs picks the mode — dev/screenshots)
@@ -4160,14 +4441,8 @@
     // optional ?scenario=<id> deep-link — starts an M6 scenario directly
     var scm = /[?&]scenario=([a-z0-9_]+)/.exec(location.search || '');
     if (scm && RD.SCENARIOS && RD.SCENARIOS[scm[1]]) { startScenario(scm[1]); refreshMissionSelect(); }
-    // First-run Hook invitation (Gameplay §7.1): plain loads only — any deep link
-    // (search string) or a completed/declined hook suppresses it. It offers a
-    // scenario, so it also follows that scenario's flag (#241): a channel that
-    // does not ship pwr_hook must not open the control room by advertising it.
-    if (!location.search && !progress().hook_done && RD.SCENARIOS && RD.SCENARIOS.pwr_hook &&
-        flagOn('scenarios') && flagOn('scenario:pwr_hook')) {
-      $('hookPrompt').hidden = false;
-    }
+    // Free-play Instructor idle coaching (Help / Checklists / tour pointers).
+    showIdleInstructor();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

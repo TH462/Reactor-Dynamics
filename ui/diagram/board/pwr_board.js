@@ -794,13 +794,30 @@
     // Clicking the paused veil resumes (#237, owner) — the box is the most obvious
     // thing on a paused screen, so it is also the resume control. ctx.resume is
     // supplied by the shell (it owns the play button state); without it the veil
-    // stays a passive notice.
+    // stays a passive notice. Tour is a separate button so it does not resume.
+    var pauseKids = [
+      h('div', { className: 'pwr-paused-main' }, 'SIMULATION PAUSED'),
+      h('div', { className: 'pwr-paused-sub' }, ctx && ctx.resume
+        ? 'Click here or press ▶ Play to start'
+        : 'Press ▶ Play to start')
+    ];
+    if (ctx && ctx.openTour) {
+      pauseKids.push(h('button', {
+        type: 'button',
+        className: 'pwr-paused-tour',
+        'data-tour': '1',
+        onClick: function (e) {
+          if (e && e.stopPropagation) e.stopPropagation();
+          ctx.openTour();
+        }
+      }, 'Take a quick tour'));
+    }
     pausedEl = h('div', { className: 'pwr-board-paused' },
       h('div', { className: 'pwr-paused-box' + (ctx && ctx.resume ? ' pwr-paused-click' : ''),
-        onClick: function () { if (ctx && ctx.resume) ctx.resume(); } }, [
-        h('div', { className: 'pwr-paused-main' }, 'SIMULATION PAUSED'),
-        h('div', { className: 'pwr-paused-sub' }, ctx && ctx.resume ? 'Click here (or press ▶ Play) to start' : 'Press ▶ Play to start')
-      ]));
+        onClick: function (e) {
+          if (e && e.target && e.target.closest && e.target.closest('[data-tour]')) return;
+          if (ctx && ctx.resume) ctx.resume();
+        } }, pauseKids));
     wrap.appendChild(stage);
     wrap.appendChild(pausedEl);
     host.appendChild(wrap);
@@ -956,8 +973,8 @@
       return null;
     },
     lastSnapshot: function () { return lastSnap; },
-    // Instructor-highlight hooks (parity with RD.PwrSynoptic). The driver owns the
-    // control-label vocabulary; the renderer resolves it to a board tile to glow.
+    // Instructor-highlight hooks. The driver owns the control-label vocabulary;
+    // the renderer resolves it to a board tile to glow.
     revealControl: function (label) {
       var d = driver();
       if (!d || !d.controlLabelItem) return null;
