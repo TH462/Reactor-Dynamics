@@ -115,6 +115,100 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-29m — #194: CVCS holds leaks fine; the measurement counted cycles as seconds  ✅
+
+**Disposition: NOT A DEFECT. No plant code changed.** #194 reported that CVCS make-up covers a
+constant ~24 % of any leak, so "inventory never stabilises for any leak size, however small —
+there is no leak this plant's CVCS can actually hold." The owner ruled it an artifact on
+2026-07-25 and reclassified `type-decision` → `type-tuning`, directing: *"make CVCS able to
+hold a small identified leak in equilibrium, as a real charging system does — more proportional
+gain, or a slow integral term."* **Measurement says it already does, and did all along.** The
+retune was not performed; adding integral action would have deleted the droop cue the same
+ruling said to preserve.
+
+**The error.** `run_e2e_controls`'s `step(t, n)` helper advances **broadcast cycles**, not
+seconds. One cycle is 0.1 s of sim time (`NORMAL_MS` 100 ms ÷ `PHYSICS_DT` 0.02 = 5 physics
+steps). So the issue's `step(t, 400)` window — labelled "400 s" in the issue body *and*
+throughout the comment block in the test file — is **40 s**. The CVCS level loop's time
+constant is 83 s. Every number in #194 was read at **0.48 τ**, before the servo had meaningfully
+responded.
+
+**Measured (full stack, `hot_full_power`, letdown shut, CVCS AUTO, SGTR injected, seed 42;
+plant unchanged from the tree that produced the original table).**
+
+| leak (frac/s) | % of CVCS authority | coverage @40 s | coverage @400 s | inventory parks at | pzr level droop |
+|---|---|---|---|---|---|
+| 1.49e-5 | 2 % | 25.6 % | ~90 %¹ | 99.87 % | 0.13 % |
+| 5.98e-5 | 8 % | 23.8 % | **97.0 %** | 99.50 % | 0.51 % |
+| 2.39e-4 | 33 % | 26.0 % | **99.2 %** | 98.01 % | 2.05 % |
+| 5.98e-4 | 83 % | 26.4 % | **99.7 %** | 95.02 % | 5.13 % |
+| 6.62e-4 | 92 % | 32.8 % | 80.3 % | **never — saturated** | runs away |
+
+¹ the 2 %-authority case bounces 83–101 % between sampling windows: the leak signal is below
+the pzr-level instrument's noise floor. Inventory is dead flat from 220 s, so it *is* held —
+the coverage ratio is just a noisy way to read it at that size.
+
+Inventory drift over a 12 s window at equilibrium is ≤ 0.004 %, held out to 3020 s of sim time.
+
+**Why coverage looked constant.** The loop is **linear**, so at any fixed time every leak sits
+at the same *fraction* of its own approach to equilibrium. "~24 % for every severity" was not
+evidence of a droop artifact — it was evidence of linearity, misread. A P-only servo has a
+steady-state *offset*, not a permanent *shortfall*: it charges until the level error commands
+make-up equal to the leak, then parks.
+
+**The equilibrium is derivable from config, and matches to two decimals.** With letdown shut,
+`dm/dt = charging·gain − leak`, `charging = charge_per_level·err`, `err = level_per_mass·deficit`:
+
+```
+deficit*   = leak / (gain · charge_per_level · level_per_mass)
+droop*     = leak / (gain · charge_per_level)          [% of level]
+loop tau   = 1 / (gain · charge_per_level · level_per_mass)  = 83 s
+```
+
+Predicted vs measured parked inventory: **99.00 / 99.00** and **98.01 / 98.01**. The
+`pwr_config.js` comment that quantifies the droop ("a 2.4e-4 leak → ~2 %, visible but **held**")
+was correct and already said so. Nothing in the engine or config needed touching.
+
+**CVCS authority is `charging_max · gain` = 7.2e-4 frac/s**, ≈ 40 gpm on the orifice-A gauge
+scale (0.030 ≡ 20 gpm). It holds anything up to ~83 % of that (≈ 33 gpm) with the level parked
+5.1 % low; past ~92 % the pump saturates and the plant is genuinely lost. So the teaching
+property #194 wanted stated — "you cannot charge your way out of a *big* leak" — is real, and
+it coexists with "a small identified leak is made up," which is what a real charging system
+does. *(Not evidence-passed against a specific plant's charging capacity — the 40 gpm figure is
+this sim's own gauge scale, not a sourced prototypicality claim.)*
+
+**The gate check was inverted (HR10).** `run_e2e_controls` asserted *"CVCS covers a consistent
+fraction of the leak, not all of it (droop)"* — coverage equal across leak sizes and inside
+10–50 %. Written from the 40 s observation, it pinned a transient as a steady-state property.
+Negative control, weakening `cvcs_charge_per_level` 10× (τ 83 s → 833 s) to build the plant
+#194 actually described:
+
+| | healthy plant (unchanged) | servo weakened 10× |
+|---|---|---|
+| the 4 new equilibrium checks | **all pass** | **3 of 4 fail** |
+| the old droop check | **FAILS** | **PASSES** |
+
+The old check was **blind to the exact defect it was worded to describe**, and red on the plant
+that behaves correctly. Replaced with five checks measured at 4000 cycles (400 s ≈ 4.8 τ):
+convergence to 95–105 % coverage; inventory parked (|drift| < 0.02 %/12 s); parked inventory
+within 0.1 % of the **config-derived** equilibrium above; the droop cue surviving (a held leak
+still parks level below program, and 2× the leak parks it 2× lower); and a leak beyond
+`charging_max` explicitly *not* held. Because no plant code moved, these pass on the
+pre-existing behaviour — they are not refits. `run_e2e_controls` **35/35 → 39/39**, runtime
+1.2 s → 2.5 s.
+
+**Lessons.**
+- **`step(n)` / `advanceCycles(n)` is CYCLES — 0.1 s each, or 0.05 s once the service drops to
+  `TRANSIENT_MS`.** Any harness comment that says "the N s window" while passing N to `step()`
+  is off by 10×. This one slip produced a filed issue, a cross-referenced gate rewrite, an
+  owner ruling, and a directive to retune a healthy system. Filed separately.
+- **Assert equilibria against the config-derived law, not a recorded run.** The derived form
+  caught this immediately; the observed form had enshrined the artifact.
+- **A control-loop assertion must state its window in time constants.** "400 cycles" means
+  nothing; "0.48 τ" would have stopped this at the first reading.
+
+---
+
 ### 2026-07-29l — #260: the moderator coefficient is density-shaped, and the rod worths are real  ✅
 
 **How it was found.** Owner, free play, Mode 5 → Mode 1. Plant up to 2235 psi (15.41 MPa) and
@@ -3481,7 +3575,7 @@ when it's fixed. RBMK/BWR items are the bulk of the remaining ops-suite reds.
 
 | ID | Symptom | Suspected cause | Fix direction | Status |
 |---|---|---|---|---|
-| **F12** — **RESOLVED 2026-07-25** (#150) | `run_e2e_controls` 28/30 -> 35/35: (a) PZR spray manual set reaches engine only 12 (want ≥45); (b) "CVCS auto make-up holds inventory vs leak ≥98 %" | (a) spray-demand reach drifted; (b) stale expectation — severity-1.0 SGTR is now 0.03 frac/s (~40× CVCS make-up), so "auto holds ≥98 %" isn't physical | **Neither was a regression.** (a) spray has an owner-ruled flow cap (`spray_flow_max` 0.12, CC-5) applied to the operator override too, so 12 IS the cap — now asserts below-cap passthrough + at-cap clamping, read from config. (b) rebuilt as differential checks (OFF stops charging / ON commands it / auto measurably slows the loss). A third check that was PASSING was also meaningless: it compared `charging_flow` to `leak_flow` directly, which are different scales (`cvcs_inventory_gain` 0.012 vs 1:1). | **RESOLVED 2026-07-25 (#150)** — 35/35. Raised #194: in mass terms CVCS covers a constant ~24 % of any leak, so none is ever held |
+| **F12** — **RESOLVED 2026-07-25** (#150) | `run_e2e_controls` 28/30 -> 35/35: (a) PZR spray manual set reaches engine only 12 (want ≥45); (b) "CVCS auto make-up holds inventory vs leak ≥98 %" | (a) spray-demand reach drifted; (b) stale expectation — severity-1.0 SGTR is now 0.03 frac/s (~40× CVCS make-up), so "auto holds ≥98 %" isn't physical | **Neither was a regression.** (a) spray has an owner-ruled flow cap (`spray_flow_max` 0.12, CC-5) applied to the operator override too, so 12 IS the cap — now asserts below-cap passthrough + at-cap clamping, read from config. (b) rebuilt as differential checks (OFF stops charging / ON commands it / auto measurably slows the loss). A third check that was PASSING was also meaningless: it compared `charging_flow` to `leak_flow` directly, which are different scales (`cvcs_inventory_gain` 0.012 vs 1:1). | **RESOLVED 2026-07-25 (#150)** — 35/35. Raised #194: in mass terms CVCS covers a constant ~24 % of any leak, so none is ever held — **that last claim is RETRACTED (2026-07-29m, #194): the ~24 % was a 40 s reading of an 83 s control loop, measured in CYCLES mistaken for seconds. CVCS holds every leak inside its authority at ~100 % coverage. Now 39/39.** |
 | **UI-1** | `verify_e2e_ui` FAIL — pwr/primary board controls "not found" by the harness | **This suspected cause was WRONG** — the file never referenced `RD.PwrSynoptic`. Real causes: (a) `REQUIRED_ACTS` demanded 14 `data-act` buttons the board path deliberately never emits (`ui/app.js:3413`, `:3459-3460` return before `populateControlBar`); (b) the manual-units block clicked `[data-msec="setpoints"]`, renamed `09_setpoints_limits` by the manual-md unification | Probe 21 board labels via `RD.PwrBoard.revealControl()` (same path Instructor highlights use); re-point the manual section | **RESOLVED 2026-07-25 (#148)** — PASS (16 screenshots). Surfaced #111: the packed manual ignores the units toggle entirely, now a strict xfail here |
 | **UI-2** | `verify_manual_follow` 30 PWR bar-checks fail | Retired-`PwrSynoptic`-probe — correct for THIS file: it probed `RD.PwrSynoptic.isMounted()`, and the retired module still loads (global exists) but never mounts, so every PWR bar-check was a false negative | Swap to `RD.PwrBoard` (identical `isMounted`/`revealControl` API) | **RESOLVED 2026-07-25 (#149)** — one line; FAILED (30) → PASS (84 checks), delta verified against the pre-fix file |
 
