@@ -225,7 +225,12 @@ var BASELINES = {
   // turn it red on the matching check. Check count moves with the shipped asset list — a
   // new <script src> shifts this baseline, which is the intended nudge to re-verify that
   // the portable build still builds.
-  'run_portable.js':       { code: 0, score: '112checks 0failed' },
+  // 112 -> 116: also checks that every file vercel.json's buildCommand needs is not
+  // excluded by .vercelignore. Alpha 1.10.0's deploy failed exactly there -- `tools`
+  // was ignored while the buildCommand shelled out to tools/make_portable.js -- and no
+  // local build could catch it, because locally nothing is ignored. Injection-verified:
+  // re-excluding `tools` reddens it.
+  'run_portable.js':       { code: 0, score: '116checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with

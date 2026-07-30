@@ -118,12 +118,18 @@ Three outcomes, not two:
 |---|---|---|
 | A JSON array with a rule targeting `main` | Ruleset **on** | PR |
 | `[]` | Ruleset **off** | Direct |
-| **`403` "Upgrade to GitHub Pro or make this repository public"** | Repo is still **private** — rulesets are a paid/public feature, so none can be in force | Direct |
+| **`403` "Upgrade to GitHub Pro or make this repository public"** | Repo was private — rulesets are a paid/public feature, so none could be in force | Direct |
 
-The 403 is not an error to work around and not "ruleset off" — it is the API declining to
-answer. The inference that makes it safe is specific: rulesets cannot exist on a private
-free repo, so `main` is unprotected and the direct push will succeed. **When #196 flips the
-repo public this stops being true**, and the same command will start returning real data.
+**As of 2026-07-30 this repo is PUBLIC and a ruleset is active on `main`, so the PR path is
+the live one.** The 403 row is kept because it is the answer you get on any private fork or
+clone, and because it is not an error to work around and not "ruleset off" — it is the API
+declining to answer.
+
+The active ruleset requires a pull request, blocks force-push and deletion, and allows only
+the **merge** method. Note `required_approving_review_count` is **0** on purpose: GitHub does
+not let you approve your own PR, so on a solo-maintained repo any non-zero value would block
+every merge permanently. Raise it only when there is a second maintainer.
+
 Re-check every release rather than remembering last time's answer.
 
 **Ruleset on (PR required):**

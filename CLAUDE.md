@@ -667,9 +667,12 @@ integration branch; `main` is stable/release. Do not commit straight to `main`.
   **Immediately before the merge, add the website changelog entry + version number.**
 - Keep `develop` current with `main` (fast-forward) before starting new work.
 
-> **Once the repo is public, releasing becomes a PR.** Going public (#196) turns on a
-> branch ruleset requiring a pull request before merging to `main`, at which point
-> `git push origin main` is **rejected** and the direct merge above stops working. Use:
+> **The repo IS public and `main` IS protected — releasing is a PR** (2026-07-30, #196).
+> A branch ruleset requires a pull request before merging to `main`, blocks force-push and
+> deletion, and allows only the merge method, so `git push origin main` is **rejected** and
+> the direct merge above no longer works. Approvals are set to **0** deliberately — GitHub
+> forbids approving your own PR, so any higher number would block every merge on a
+> solo-maintained repo. Use:
 >
 > ```
 > gh pr create --base main --head develop --title "Release Alpha X.Y.Z — <headline>" --body-file <path>

@@ -4,7 +4,18 @@ test
 Diagnostic
 inbox
 mcps
-tools
+# NOT the whole of tools/: vercel.json's buildCommand runs site/make_download.js, which
+# shells out to tools/make_portable.js to build the offline download. Excluding the
+# directory made the deploy fail with exit 1 (Alpha 1.10.0). Ignore-file semantics do not
+# let you re-include a file inside an excluded directory, so the dev-only tools are listed
+# individually instead. A new tool added here ships to the deploy unless you add it — that
+# fails OPEN (a slightly larger bundle) rather than breaking the build.
+tools/gen_board_data.js
+tools/gen_manual_reference.js
+tools/hook_repack_manuals.js
+tools/make_portable.cmd
+tools/pack_manuals.js
+tools/stamp_manual_revision.js
 Blueprint
 terminals
 Manuals
