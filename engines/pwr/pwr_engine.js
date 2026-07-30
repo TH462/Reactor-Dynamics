@@ -445,6 +445,10 @@
     return {
       porv_commanded_open: s.porv_demand === 'open',
       power_rate: s._power_rate,
+      // Full-power Tavg the pressurizer level program is anchored to. Computed at init
+      // (_computeEquilibriumTemps), not a config constant, so the instrument model cannot
+      // reach it on its own — it derives pzr_level_dev against this (#262).
+      tavg_fp: s._tavg_fp,
       rps_scrammed: s.scrammed,
       rcp_running: s.pump_running,
       // Pumps stopped by an operator lineup decision rather than lost. Reads the

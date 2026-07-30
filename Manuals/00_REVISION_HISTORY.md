@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 14 (2026-07-30)  
+**Set revision:** 15 (2026-07-30)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -18,6 +18,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 15 | 2026-07-30 | **Two new annunciators for the leak a plant holds without telling you** (#262, owner ruling). A reactor coolant leak small enough for charging to keep up is held indefinitely, and — measured full-stack across the whole holdable band — pressurizer level parks between **52.0 % and 54.1 %**, while the nearest existing alarm, **PZR LVL LO**, sits at 25 %. Nothing annunciated: the plant lost inventory silently with make-up near its limit. **New 06 PWR-A30 (CHG FLOW HI)** is the cue — charging is a level controller, so it works hard only because something is pulling level down, and it is the sensitive channel by an order of magnitude (0.0383 → 0.0585 across the band, against 0.0297 steady and a 0.0323 peak through a 100 → 90 MWe load change). **New 06 PWR-A31 (PZR LVL DEV LO)** says make-up has *lost* it, and is a **deviation from the level program** rather than an absolute setpoint because level legitimately swings over eight percentage points on a load change — measured, 55.00 → 63.26 % while the program moved +8.25, leaving the deviation at 0.01. The pair is a diagnosis: A30 alone is a held leak, A30 with A31 means make-up is losing. Index table extended to 31 cards. | Small-leak annunciation |
 | 14 | 2026-07-30 | **The moderator coefficient's magnitude is measured too, superseding the 2026-07-21 ruling** (#263). Rev 13 recorded that *shape* and *level* were measured while *magnitude* at the full-power reference was the owner's −20 pcm/°C plant-identity ruling. That is no longer the case *(OWNER RULING, 2026-07-30: "for 263 item 1 fit the measurement.")*: **both** moderator parameters are now least-squares fitted to the same three measured BEAVRS isothermal coefficients, reproducing all three to within **0.09 pcm/°F** where the previous calibration missed two of them by 0.88 and 1.64. The full-power coefficient is now **−26.8 pcm/°C**, 34 % stronger, so the core absorbs a rod withdrawal as temperature rather than power — which is what a real plant does at power. **09 §7.5** tables regenerated (critical boron 806 → 588 ppm bank-in; boron worth 19.9 cold / 10.5 hot pcm/ppm) and its "what pins this curve" note rewritten — nothing in that curve is set by preference any more. **12 §4.3/§4.3.1** values and the hot-full-power boron derivation updated to match. | Measurement-fit pass |
 | 13 | 2026-07-30 | **Reactivity curve given a second anchor, and the moderator zero-crossing corrected** (#263). **09 §7.4** now states what pins the curve and separates the three claims by evidence class: *shape* is measured (BEAVRS / Watts Bar U1 Cycle 1 HZP physics tests, OSTI 1991715 Table IV — isothermal coefficients at 975/902/810 ppm putting the moderator zero crossing at **986 ppm**), *level* is measured (ARO hot-zero-power critical boron **975 ppm**, same tests), and *magnitude* at the full-power reference is **not** measured — it is the owner's 2026-07-21 −20 pcm/°C plant-identity ruling. The **09 §7.5 ECC table** was regenerated against the corrected curve. **12** gained the matching note. | Reactivity anchor session |
 | 12 | 2026-07-30 | **The gpm figures the manual quoted were not the ones the board shows.** §Fidelity said **40 gpm** charging and **20 gpm** letdown; the board's charging box tops out at **60 gpm** and its orifice-A letdown reads **30 gpm** — two conversion scales kept in two files, drifted 1.5× apart, with the manual quoting the one no code reads. **12 §Fidelity** and **§CVCS scale** corrected to 60/30. §CVCS scale also now states that because the CVCS and accident scales are independent, **no single RCS volume reconciles them**, so comparing these gpm with real-plant flows or Tech Spec leakage limits is a category error rather than a fidelity gap to close. `test/run_manual_units.js` cross-checks the manual, the config block and the board wiring so they cannot separate again. | gpm display-scale pass |
@@ -59,14 +60,14 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 14 (2026-07-30). A mismatch means a chapter changed with no
+     Sealed at Rev 15 (2026-07-30). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md c2015d3574814966
      02_SIMULATOR_USER_GUIDE.md e4faa6ae38d6a47d
      03_CONTROLS_AND_INDICATIONS.md f1b3b88c0a391fab
      04_NORMAL_OPERATIONS.md 952100f181ace21c
      05_MODE_TRANSITIONS.md 169df0c3ca146abf
-     06_ALARM_RESPONSE.md c6eecd46d77bda2d
+     06_ALARM_RESPONSE.md d69196711ce64d0e
      07_ABNORMAL_EMERGENCY.md 762d720f0eaf617b
      08_ACCIDENT_TMI.md d6a3ff47c6786021
      09_SETPOINTS_LIMITS.md e797ad24b98e3ca9

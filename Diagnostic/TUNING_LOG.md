@@ -115,6 +115,80 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30h — #262: the small-leak cue pair, and the measurement that overturned my own recommendation  ✅
+
+*(OWNER RULING, 2026-07-30: "Add the alarm as you suggest")* — on a recommendation that turned
+out to be **half wrong**, which is the part of this entry worth reading.
+
+**The gap.** A leak inside CVCS make-up authority is held indefinitely. Measured full-stack across
+the whole holdable band, pressurizer level parks between **52.0 % and 54.1 %**; the nearest existing
+alarm, `pzr_level_low`, is at **25 %**. Nothing annunciated anywhere in the band — the plant loses
+inventory silently with charging near maximum.
+
+**What I recommended, and why it was wrong.** I proposed a level-deviation alarm at **−2 %** as the
+small-leak cue, on a measured 30:1 signal-to-noise. That number came from comparing level against a
+**fixed 55 %** with CVCS not holding. Measured properly — full stack, CVCS in AUTO, deviation
+against the live **program**:
+
+| case | deviation (final / worst) | charging (final / max) | DEV_LO | CHG_HI |
+|---|---|---|---|---|
+| no leak, 40 min | 0.60 / **−1.79** | 0.0297 / 0.0321 | clear | clear |
+| 100 → 90 MWe load change | 0.11 / −1.51 | 0.0293 / 0.0323 | clear | clear |
+| sev 0.0002 (held) | −0.40 / −2.47 | **0.0383** | clear | **ALARM** |
+| sev 0.0004 (held) | −1.23 / −3.31 | **0.0467** | clear | **ALARM** |
+| sev 0.0007 (held, edge) | **−1.77** / −4.42 | **0.0585** | clear | **ALARM** |
+| sev 0.001 (unheld) | **−25.95** | 0.0594 | **ALARM** | **ALARM** |
+| sev 0.0014 (unheld) | **−35.90** | 0.0600 | **ALARM** | **ALARM** |
+
+**A controller doing its job erases the signal you wanted to alarm on.** With CVCS holding, the
+deviation across the entire holdable band reaches **−1.77 %** against a **−1.79 %** settling
+excursion with *no leak at all*. Signal-to-noise ≈ 1:1. It cannot be made into a small-leak cue by
+tightening, because tightening fires on the settle. Obvious in hindsight; only measurement said so.
+
+**So the two alarms swapped jobs:**
+
+- **`charging_high` (0.036, 60 % of max) is the cue.** Charging is the sensitive channel by an order
+  of magnitude and barely responds to load (0.0293–0.0323 through a 10 % load change), so the
+  setpoint clears the load peak by 11 % and still catches the *smallest* holdable leak.
+- **`pzr_level_dev_low` (−10 %) says make-up is no longer HOLDING.** Useless while CVCS keeps up,
+  unambiguous the moment it does not, because the gap either side is **6×**: worst held excursion
+  −4.42, first unheld case −25.95. It also beats `pzr_level_low` to the condition — at sev 0.001
+  the deviation is −25.95 while absolute level is still 28.6 %.
+
+**Why a deviation instrument at all.** Level is programmed against Tavg, so it legitimately swings:
+measured over 100 → 90 MWe, indicated level went **55.00 → 63.26 %** while the program went
+**+8.25**, leaving the deviation at **0.01**. Deviation is an inventory signal by construction, and
+any absolute setpoint tight enough to see a leak early would fire on every load change.
+
+**Build notes.** `pzr_level_dev` is derived from the **indicated** level and **indicated** Tavg —
+same construction as `subcooling_margin`, so it inherits their lag and any failure (a stuck Tavg
+transmitter corrupts the program here as it would on a real board). It calls the plant's own
+`levelBase()` rather than restating the program line, so the two cannot drift apart; `tavg_fp` is
+computed at init rather than a config constant, so the engine hands it over in `_instrExtras`. Not
+in `SOURCE`, so it draws no PRNG number and the cross-step noise stream is unchanged — the appended-
+instrument rule satisfied the same way `subcooling_margin` satisfies it. **No `true_state` field
+added**, so `run_contract` is untouched.
+
+**One trap worth recording.** The first verification ran engine+M4 and showed `charging_flow` at
+**0.0000** with the leak unheld — CVCS never engaged, because `engageDefaults()`/`stepAutomation()`
+only have callers in the service. Every number in the table above is full-stack for that reason.
+That is the CLAUDE.md layer table biting for the third time this session.
+
+**Manuals.** Rev 14 → **15**: new **06 PWR-A30 (CHG FLOW HI)** and **PWR-A31 (PZR LVL DEV LO)**
+response cards plus index rows, stamped and repacked. A30 alone reads as a held leak; A30 with A31
+means make-up has lost it — the pair is the diagnosis, and each card says what the *other* one being
+absent implies.
+
+**Still open on #262:** the failure entry itself. The owner scoped this turn to the alarms, so the
+small-leak failure is not built. Note for whoever does: the issue's stated CVCS authority of
+**7.2e-4 frac/s is the letdown-isolated figure** — with letdown in service the real ceiling is
+**~3.5e-4**, so the new failure's 0–100 % must map onto that or the top half of its own slider will
+be unholdable.
+
+**Gates.** `run_all` **OK, 32 runners at baseline**; board_check **127/127**; `run_manual_rev` 12/0;
+`run_manual_units` 0 failed. Adding two alarms moved no baseline — nothing in the gate set counts
+alarms, which is worth knowing.
+
 ### 2026-07-30g — the 600 s hold checked: the #263 derivation is NOT circular, but it is ±2 steps  ✅
 
 **Why this was checked.** 2026-07-30e derived `pwr_startup`'s 26-step creep as

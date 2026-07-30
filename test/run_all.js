@@ -144,7 +144,10 @@ var BASELINES = {
   // number, by design -- HR11 counts dated owner quotes wherever they are tracked.
   // 28 -> 29: Manuals/00's Rev 14 row quotes the 2026-07-30 ruling with its date, and the
   // HR11 half of this gate counts dated owner quotes wherever they are tracked.
-  'run_hardrules.js':      { code: 0, score: '29checks 0failed' },
+  // 29 -> 30 (2026-07-30, #262): the TUNING_LOG entry for the small-leak alarm pair quotes the
+  // "Add the alarm as you suggest" ruling. WRITING UP a change moves this score, not just making
+  // it — re-run this gate after the docs, which is why the code-only run came back at baseline.
+  'run_hardrules.js':      { code: 0, score: '30checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

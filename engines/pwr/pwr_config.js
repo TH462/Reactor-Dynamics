@@ -952,6 +952,21 @@
       rcs_flow:                { lag: 1.0, noise: 0, noise_failure: 0.5, range: [0, 120] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
+      // Pressurizer level DEVIATION from its program, % (#262). Derived from the INDICATED
+      // level and the INDICATED Tavg, so it inherits both channels' lag and any failure on
+      // them — the same construction as subcooling_margin, for the same HR1 reason.
+      //
+      // WHY A DEVIATION AND NOT A LOW-LEVEL SETPOINT. Level is programmed against Tavg, so
+      // it legitimately moves a long way on a load change. MEASURED over a 100 → 90 MWe
+      // ramp: indicated level went 55.00 → 63.26 % (+8.26) while the program went +8.25, so
+      // the deviation stayed at 0.01. It is therefore an INVENTORY signal by construction —
+      // the mass term is the only thing that can move it — and an absolute low-level alarm
+      // set tight enough to see a small leak would fire on every load change instead.
+      //
+      // Range ±40 covers the program floor clip at the bottom of a cooldown without pegging.
+      // Not in SOURCE, so it draws no PRNG number and the cross-step noise stream is
+      // unchanged (the appended-instrument rule).
+      pzr_level_dev:     { lag: 0,   noise: 0,     range: [-40, 40], derived: true },
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running',
                // RCPs stopped by an operator lineup decision, not by a trip/

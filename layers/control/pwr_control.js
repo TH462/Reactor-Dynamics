@@ -307,6 +307,43 @@
     { id: 'pzr_level_low',     instrument: 'pzr_level',        direction: 'low',     setpoint: 25.0,  priority: 'warning',  panel: 'A', label_learning: 'Pressurizer Level Low',           label_industry: 'PZR LVL LO' },
     { id: 'pzr_level_lolo',    instrument: 'pzr_level',        direction: 'low',     setpoint: 12.0,  priority: 'critical', panel: 'A', label_learning: 'Pressurizer Level Very Low',      label_industry: 'PZR LVL LO LO' },
     { id: 'rod_limit',         instrument: 'rod_at_limit',     direction: 'is_true', setpoint: null,  priority: 'warning',  panel: 'A', label_learning: 'Control Rods — Insertion Limit',  label_industry: 'ROD INS LIMIT' },
+    // ---- the small-leak cue pair (#262, owner ruling 2026-07-30) ----------------------
+    // A leak inside CVCS make-up authority is HELD, and that is the problem: the plant
+    // quietly loses inventory with charging near maximum and, before these two, nothing
+    // annunciated. MEASURED full-stack across the whole holdable band, level parks between
+    // 52.0 % and 54.1 % — the nearest existing alarm, `pzr_level_low`, is at 25 %, so it is
+    // 27 to 29 points away and never fires. The exercise ("level drifting, charging has come
+    // up to meet it, find your leak") had no cue at all.
+    //
+    // THE TWO DO DIFFERENT JOBS, and which does which was settled by measurement AGAINST the
+    // recommendation that proposed them. The first cut set the deviation alarm at −2 % as the
+    // small-leak cue. Measured full-stack, that is wrong: **a controller doing its job erases
+    // the signal you wanted to alarm on.** With CVCS in AUTO holding level, the deviation
+    // across the whole holdable band reaches only −1.77 %, against a −1.79 % settling excursion
+    // with NO leak at all. Signal-to-noise ≈ 1:1. It is not a small-leak cue and cannot be made
+    // into one by tightening, because tightening fires on the settle.
+    //
+    //   CHARGING FLOW is the small-leak cue — the sensitive channel by an order of magnitude.
+    //   Measured at 30 min: 0.0383 / 0.0460 / 0.0585 across severities 0.0002 / 0.0004 / 0.0007,
+    //   against 0.0297 steady and a 0.0323 maximum through a 100 → 90 MWe load change. 0.036
+    //   (60 % of the 0.06 maximum) clears the load-change peak by 11 % and catches EVERY
+    //   holdable leak including the smallest.
+    //
+    //   LEVEL DEVIATION says MAKE-UP IS NO LONGER HOLDING. It is useless while CVCS keeps up and
+    //   unambiguous the moment it does not, because the gap either side is a factor of six:
+    //       held, worst transient (sev 0.0007)   −4.42 %
+    //       first unheld case  (sev 0.001)      −26.67 %
+    //   −10.0 % sits in the middle of that gap — 2.3x clear of the worst held excursion, 2.7x
+    //   below the first unheld one. It also beats `pzr_level_low` to it: at sev 0.001 the
+    //   deviation is −26.7 while absolute level is still 28.0 %, above the 25 % alarm. And
+    //   unlike an absolute setpoint it is load-independent: over 100 → 90 MWe indicated level
+    //   moved 55.00 → 63.26 % while the program moved +8.25, leaving the deviation at 0.01.
+    //
+    // Together they are a diagnosis and not just a cue: charging high ALONE is a leak inside
+    // make-up authority; both together mean make-up has lost it. Both `caution` — find-it-and-
+    // fix-it conditions, not casualties. [tune]
+    { id: 'pzr_level_dev_low', instrument: 'pzr_level_dev',    direction: 'low',     setpoint: -10.0, priority: 'caution',  panel: 'A', label_learning: 'Pressurizer Level Below Program — make-up is not holding', label_industry: 'PZR LVL DEV LO' },
+    { id: 'charging_high',     instrument: 'charging_flow',    direction: 'high',    setpoint: 0.036, priority: 'caution',  panel: 'A', label_learning: 'Charging Flow High — make-up is working hard',            label_industry: 'CHG FLOW HI' },
   ];
   var PWR_ALARMS_B = [
     { id: 'sg_level_hihi',  instrument: 'sg_level',         direction: 'high',     setpoint: 88.0, priority: 'critical', panel: 'B', label_learning: 'Steam Generator Level High-High (P-14)', label_industry: 'SG LVL HI HI' },
