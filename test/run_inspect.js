@@ -136,6 +136,13 @@ test('copy quality', function (ck) {
   var noTitle = [], noBrief = [], noDetail = [], longBrief = [], shortDetail = [], unpunctuated = [];
   I.ids().forEach(function (id) {
     var e = I.own(id);
+    // A STRING value is an ALIAS to another entry's copy, not an entry with copy of its
+    // own -- `bdRxPeriodLbl: 'bdRxPeriod'`. It must be skipped BEFORE the title check,
+    // not after: an alias exists precisely to borrow copy, so demanding it carry a title
+    // is demanding the thing it was written to avoid. The alias mechanism has its own
+    // check, 'every alias resolves'. This was the first alias in the file (bf41f67), so
+    // the loop had never met the case.
+    if (typeof e === 'string') return;
     if (!e.title) noTitle.push(id);
     if (!e.brief) noBrief.push(id);
     if (!e.detail) noDetail.push(id);

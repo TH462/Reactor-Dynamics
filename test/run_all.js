@@ -142,7 +142,9 @@ var BASELINES = {
   // 25 -> 28 (#263 records): the 2026-07-30 ruling is quoted with its date in
   // TUNING_LOG.md, BUILD_DECISIONS.md and CLAUDE.md. Writing the record moves this
   // number, by design -- HR11 counts dated owner quotes wherever they are tracked.
-  'run_hardrules.js':      { code: 0, score: '28checks 0failed' },
+  // 28 -> 29: Manuals/00's Rev 14 row quotes the 2026-07-30 ruling with its date, and the
+  // HR11 half of this gate counts dated owner quotes wherever they are tracked.
+  'run_hardrules.js':      { code: 0, score: '29checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -201,7 +203,9 @@ var BASELINES = {
   // rules asserted from BOTH sides, because a resolver stuck at "true" does not throw —
   // it publishes. Check count moves with the content count (57 items today): adding a
   // scenario shifts this baseline, which is the intended nudge to decide its stage.
-  'run_flags.js':          { code: 0, score: '16/16 290/290' },
+  // 290 -> 289 (bf41f67, the leaner control chrome): one flag-gated element left the board.
+  // Verified as theirs by running this gate on backshop at its own commit before merging.
+  'run_flags.js':          { code: 0, score: '16/16 289/289' },
   // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
   // Every way this rots is silent: an item id changes and its entry describes
   // nothing; a new control inherits its card's summary and READS like a real
@@ -361,7 +365,12 @@ var BASELINES = {
   // A check that cannot fail is worse than no check, because it reads as coverage. The
   // over-promise guard it was part of now lives where the promise does (the hero negative
   // and the features coming-soon check), both re-pointed and verified by injection.
-  'verify_flags_ui.js':      { code: 0, score: '47/47' },
+  // 47 -> 42 (owner ruling 2026-07-30): the training campaign help copy is being replaced
+  // by a short tour, so TWO PAIRED channel-honesty guards lost their subject. In each pair
+  // the dev half failed and the public half went VACUOUS -- passing because its pattern no
+  // longer appears anywhere. Retired rather than re-pointed at #tourOverlay: the tour has no
+  // data-flag, so it shows on both channels and the distinction they guarded is gone.
+  'verify_flags_ui.js':      { code: 0, score: '42/42' },
   'verify_e2e_ui.js':        { code: 0, score: '16screenshots', slow: true },
   'verify_manual_follow.js': { code: 0, score: '84checks', slow: true },
 };
