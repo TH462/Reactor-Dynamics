@@ -90,14 +90,25 @@ function rig(plant, initState, dv, keepDefaults) {
     },
     setSp: function (id, v) { service.handleCommand({ action: 'set_auto_setpoint', channel_id: id, value: v }); },
     cmd: function (c) { if (c && c.action === 'set_speed') intendedSpeed = c.value; return service.handleCommand(c); },
-    run: function (simSeconds) {   // ~1 s sim per cycle at 10× (transient cadence shortens a cycle; overshoot is fine)
+    run: function (simSeconds) {
+      // Runs simSeconds of SIM TIME. Driven off service.simTime, NOT a cycle count
+      // (#261): one broadcast cycle is `broadcastMs`/1000 × acceleration of sim time,
+      // and `broadcastMs` HALVES (NORMAL_MS 100 → TRANSIENT_MS 50) whenever the
+      // service decides it is in a transient. The old form looped `simSeconds` cycles
+      // and leaned on "~1 s per cycle at 10×", which is true only at the steady
+      // cadence — measured across this suite it delivered 7858 s against 8565 s
+      // requested (91.7 %), with 12 of 226 calls more than 5 % short, every shortfall
+      // during exactly the transients the probes exist to watch. Same failure shape as
+      // #245 (a gate silently running below its declared sim rate), reached through the
+      // cadence instead of the acceleration.
+      //
       // Re-assert the intended speed each cycle. The interactive attention-stop
       // (auto-decelerate to 1× on a new alarm/scram/failure — simulation_service
       // §_attentionStop) is a UI speed policy for a human at the board; a headless
       // automation probe must still get its full sim-time budget, so we override
       // the snap-back here. Automation correctness is independent of speed policy.
-      var res;
-      for (var i = 0; i < Math.ceil(simSeconds); i++) {
+      var res, target = service.simTime + Math.ceil(simSeconds), guard = 0;
+      while (service.simTime < target && guard++ < 2000000) {
         if (service.timeAcceleration !== intendedSpeed) service.handleCommand({ action: 'set_speed', value: intendedSpeed });
         res = service.advanceCycles(1);
       }
