@@ -87,8 +87,22 @@ still works and the version is right before you ship. `download.html` links the 
 `download/latest.zip`, so it never needs editing per release.
 
 > **Local success is not production success.** `make_download.js` running here does not prove
-> it runs in the Vercel build. After deploying, fetch `download/latest.zip` from the live site
-> and confirm it exists and unzips before telling anyone the Download button works.
+> it runs in the Vercel build. After deploying, verify against the live site — **and verify in
+> this order**, because a bare 404 is ambiguous:
+>
+> ```bash
+> curl -sL https://reactordynamics.com/site/version.js    # deployed COMMIT stamp
+> curl -sL https://reactordynamics.com/site/release.js    # deployed VERSION
+> curl -sIL https://reactordynamics.com/download/latest.zip
+> ```
+>
+> If the commit stamp is not the one you just released, **the deploy has not run** and every
+> 404 below it is meaningless — that commit does not contain the files. Only once the stamp
+> matches does a missing zip mean the deploy build failed. Checking the zip alone will make
+> you report a broken build that is actually a pending deploy: that happened on the very
+> first run of this skill (Alpha 1.10.0, site still serving ae2233c/1.9.0).
+>
+> Note the site 308-redirects, so use `curl -L`.
 
 ## 5. Merge to `main`
 
@@ -154,5 +168,6 @@ git -C C:/grok_build/RD_backshop  merge --ff-only develop
 - [ ] Merged the way the ruleset check indicated
 - [ ] Annotated tag pushed separately
 - [ ] All three lanes fast-forwarded to the released commit
-- [ ] **After the deploy lands:** fetch `download/latest.zip` from the LIVE site and confirm
-      it exists and unzips. Local build success does not prove the deploy build ran.
+- [ ] **After the deploy lands:** confirm the live `site/version.js` carries the released
+      commit FIRST, then that `download/latest.zip` exists and unzips. A 404 before the
+      stamp matches means “not deployed yet”, not “build broken”.
