@@ -44,11 +44,28 @@
       mwt_rated: 300.0,                 // core thermal rating, MW
       mwe_rated: 100.0,                 // gross electrical rating, MW (= turbine.mwe_rated)
       loops: 1, steam_generators: 1, rcps: 1,
-      // Display conversions for normalized flows (manual/UI flavor, [tune]):
-      rcs_flow_gpm: 24000,              // rated reactor coolant flow
-      charging_max_gpm: 40,             // = charging_max 0.06 normalized
-      letdown_normal_gpm: 20,           // = orifice A 0.030 normalized
-      afw_gpm: 100,                     // = afw_flow_frac 0.15 normalized
+      // Display conversions for normalized flows (manual/UI flavor, [tune]).
+      //
+      // NOT READ BY ANY CODE — the live scale is `GPM_CHARGING` / `GPM_LETDOWN` / `GPM_AFW`
+      // in `ui/diagram/board/pwr_board_wiring.js`, which is what the board actually renders.
+      // This block is documentation for the manual, and it MUST track those constants. It
+      // did not: charging read 40 and letdown 20 here (a 666.7 gpm-per-normalized-unit
+      // scale) while the board has always used a single 1000 full-scale for CVCS and feed
+      // alike — so the board showed a 0–60 gpm charging box and a 30 gpm orifice-A letdown
+      // while `Manuals/12` quoted 40 and 20. A 1.5× split on numbers the player can read in
+      // both places. Corrected to the board's scale; `test/run_manual_units.js` now
+      // cross-checks the two files so it cannot drift again.
+      //
+      // These are PACING FLAVOUR, not physical mass flow, and must not be compared against
+      // real-plant flows or Tech Spec leakage limits. 60 gpm ≡ charging_max ·
+      // cvcs_inventory_gain = 7.2e-4 inventory-frac/s implies a total RCS of ~1389 gal
+      // (5.3 m³), roughly 6× small for a 300 MWt plant — and accident flows deliberately run
+      // on a separate 1:1 scale, so NO single RCS volume makes both true. See `Manuals/12`
+      // §Fidelity ("Indicative … Illustrative") and the #194 / #261 write-ups.
+      rcs_flow_gpm: 24000,              // rated RCS flow (not displayed — the board shows % of rated)
+      charging_max_gpm: 60,             // = charging_max 0.06 normalized × GPM_CHARGING 1000
+      letdown_normal_gpm: 30,           // = orifice A 0.030 normalized × GPM_LETDOWN 1000
+      afw_gpm: 100,                     // = afw_flow_frac 0.15 normalized × GPM_AFW 640 ≈ 96
     },
 
     // ---------------------------------------------------------------- kinetics

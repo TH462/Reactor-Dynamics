@@ -115,6 +115,54 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30a — the manual quoted a charging/letdown gpm the board never showed  ✅
+
+**Found by pulling on the loose end of 2026-07-29n.** There are two places a normalized CVCS
+flow becomes gpm, and they disagreed by exactly 1.5×:
+
+| | charging (0.06 normalized) | letdown orifice A (0.030) | gpm per normalized unit |
+|---|---|---|---|
+| `pwr_config.js` `identity` block — **documentation, 0 code consumers** | 40 | 20 | 666.7 |
+| `pwr_board_wiring.js` `GPM_CHARGING`/`GPM_LETDOWN` — **LIVE, what the player reads** | **60** | **30** | 1000 |
+
+`Manuals/12` §Fidelity quoted the *dead* block, so the in-app manual said 40 gpm charging while
+the board's charging box tops out at **60** and its orifice-A letdown readout shows **30**. A
+number the player can read in two places disagreed with itself, and nothing compared them.
+
+**Scope, measured before deciding — narrower than it first looked.** Only those two conflict.
+**AFW agrees** (config 100 gpm vs board `0.15 × GPM_AFW 640 = 96`). **RCS flow does not
+conflict**: the board renders it as % of rated (since #247), so the config's 24 000 gpm is never
+displayed. And a regex sweep of `Manuals/*.md` + `ui/manual_procedures.js` found **no procedure
+step that instructs a charging gpm value**, so no authored content depended on either number.
+
+**Fixed toward the BOARD**, on three grounds: the live value beats a dead one when they
+disagree; the board's convention is coherent (`GPM_CHARGING = GPM_LETDOWN = GPM_FEED = 1000`, one
+full-scale across CVCS and feed) where 666.7 has no stated rationale; and 60 gpm sits inside the
+real normal-charging band (~40–90 gpm) where 40 sits at its floor — *that last point is recall,
+not an evidence pass, and was used only as a tiebreaker.* Nothing the player sees moved, so
+`verify_e2e_ui` and the board could not shift.
+
+**The guard is the point, not the two numbers.** A doc block that must be hand-synced with a live
+constant is precisely what drifted, and it is the same failure as #261 — prose cannot be
+contradicted. `test/run_manual_units.js` now cross-checks `pwr_board_wiring.js` against the
+config block and against `Manuals/12` §Fidelity. **Negative-tested on five failure modes, all
+redden:** config charging reverted to 40; config letdown reverted to 20; the manual saying 40;
+the board's two full-scales made to differ; and a board constant *renamed* (the read fails
+loudly rather than silently skipping). It lives in the units gate because that is what it is —
+the manual quoting a number the plant does not display — and that gate is scored on failures
+only, so it shifts no baseline.
+
+**Not a fidelity defect, and the manual now says so out loud.** These gpm are pacing flavour:
+60 gpm ≡ `charging_max · cvcs_inventory_gain` = 7.2e-4 inventory-frac/s implies a total RCS of
+~1389 gal (5.3 m³), roughly 6× small for a 300 MWt plant, and accident flows deliberately run on
+a separate 1:1 scale — so **no single RCS volume reconciles them.** `Manuals/12` already classed
+the conversions as "Indicative … Illustrative"; it now also states that comparing them with
+real-plant flows or Tech Spec leakage limits is a category error rather than a gap to close,
+because I made exactly that comparison in #262 with the old wording in front of me.
+
+Gates: `run_manual_units` 0 failed (251 pairs), `run_all` **31 runners at baseline**. Manuals
+repacked (`tools/pack_manuals.js`) so the in-app copy carries both numbers.
+
 ### 2026-07-29n — #261: the cycles-as-seconds trap, swept  ✅
 
 Follow-up to 2026-07-29m. `advanceCycles(n)` advances **broadcast cycles**, not seconds, and

@@ -14,6 +14,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The manual quoted a charging and letdown flow the board never showed.** Section 12 said
+  **40 gpm** maximum charging and **20 gpm** normal letdown, where the board's charging box tops
+  out at **60 gpm** and its orifice-A letdown reads **30 gpm**. Two conversion scales were being
+  kept in two separate files and had drifted 1.5 × apart, with the manual quoting the one no code
+  reads. The manual now matches the board, and a gate cross-checks the two so they cannot
+  separate again. **No displayed value changed** — only the documentation that was wrong about it.
+  Section 12 also now says plainly that these gallons-per-minute figures are display flavour for
+  pacing, not physical flow rates to be measured against a real plant.
 - **The moderator temperature coefficient is no longer a constant, and the reactor no longer
   goes critical cold at 600 ppm** (#260). A single MTC of −11.1 pcm/°F (−20 pcm/°C) was
   applied from 122 °F (50 °C) all the way to 579 °F (304 °C). Over a Mode 5 → Mode 3 heatup

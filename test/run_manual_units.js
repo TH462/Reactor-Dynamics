@@ -236,10 +236,89 @@ if (unusedDiff.length) {
   console.log(D + '\n  Delete them, or restore the text they guarded.' + X + '\n');
 }
 
+// ---------------------------------------------------------------- gpm display scale
+// The gpm figures the manual quotes must match the scale the BOARD actually renders.
+//
+// There are two places a normalized flow becomes gpm: `GPM_CHARGING`/`GPM_LETDOWN` in
+// `ui/diagram/board/pwr_board_wiring.js` (LIVE — this is what the player reads), and the
+// `identity` display block in `engines/pwr/pwr_config.js` (documentation, zero code
+// consumers, and what `Manuals/12` §Fidelity quotes). They drifted 1.5×: the config block
+// and the manual said 40 gpm charging / 20 gpm letdown on a 666.7-per-normalized-unit
+// scale, while the board has always used a single 1000 full-scale — a 0–60 gpm charging box
+// and a 30 gpm orifice-A letdown. Nothing compared them, so a number the player can read in
+// two places disagreed with itself.
+//
+// This lives in the units gate because that is what it is: the manual quoting a number the
+// plant does not display. It is NOT a physical-fidelity check — these gpm are pacing
+// flavour and `Manuals/12` says so.
+var gpmBad = [];
+(function () {
+  var wiring = fs.readFileSync(path.join(__dirname, '..', 'ui', 'diagram', 'board',
+    'pwr_board_wiring.js'), 'utf8');
+  var cfgSrc = fs.readFileSync(path.join(__dirname, '..', 'engines', 'pwr',
+    'pwr_config.js'), 'utf8');
+  function grab(src, name, re) {
+    var m = src.match(re);
+    if (!m) { gpmBad.push(name + ' — could not be read (renamed or reformatted?)'); return null; }
+    return parseFloat(m[1]);
+  }
+  var gpmCharging = grab(wiring, 'GPM_CHARGING (board)', /GPM_CHARGING\s*=\s*(\d+(?:\.\d+)?)/);
+  var gpmLetdown  = grab(wiring, 'GPM_LETDOWN (board)',  /GPM_LETDOWN\s*=\s*(\d+(?:\.\d+)?)/);
+  var chgMax      = grab(cfgSrc, 'reactivity.charging_max', /charging_max:\s*(\d+(?:\.\d+)?)/);
+  var chgGpm      = grab(cfgSrc, 'identity.charging_max_gpm', /charging_max_gpm:\s*(\d+(?:\.\d+)?)/);
+  var ldGpm       = grab(cfgSrc, 'identity.letdown_normal_gpm', /letdown_normal_gpm:\s*(\d+(?:\.\d+)?)/);
+  if (gpmCharging == null || gpmLetdown == null || chgMax == null ||
+      chgGpm == null || ldGpm == null) return;
+
+  // The board deliberately uses ONE full-scale constant for CVCS (and feed). If these ever
+  // diverge, "gpm" stops meaning one thing on the board and the checks below are moot.
+  if (gpmCharging !== gpmLetdown) {
+    gpmBad.push('board GPM_CHARGING (' + gpmCharging + ') != GPM_LETDOWN (' + gpmLetdown +
+      ') — the board is meant to share one CVCS full-scale');
+  }
+  // charging: exactly derivable, so assert it exactly.
+  var wantChg = chgMax * gpmCharging;
+  if (Math.abs(chgGpm - wantChg) > 0.5) {
+    gpmBad.push('identity.charging_max_gpm is ' + chgGpm + ' but the board renders charging_max ' +
+      chgMax + ' x GPM_CHARGING ' + gpmCharging + ' = ' + wantChg + ' gpm');
+  }
+  // letdown: orifice A is pressure-driven, so its normalized flow is not a bare constant —
+  // 0.030 at NOP is the nominal pwr_config's own letdown comment states and the board's
+  // 30 gpm readout reflects. If a coefficient retune moves that nominal, update both sides
+  // and this number together.
+  var LETDOWN_A_NOMINAL = 0.030;
+  var wantLd = LETDOWN_A_NOMINAL * gpmLetdown;
+  if (Math.abs(ldGpm - wantLd) > 0.5) {
+    gpmBad.push('identity.letdown_normal_gpm is ' + ldGpm + ' but orifice A nominal ' +
+      LETDOWN_A_NOMINAL + ' x GPM_LETDOWN ' + gpmLetdown + ' = ' + wantLd + ' gpm');
+  }
+  // ...and the manual must quote the same two numbers it documents.
+  var fid = fs.readFileSync(path.join(DIR, '12_SIM_PHYSICS.md'), 'utf8')
+    .split('\n').filter(function (l) { return /\*\*Indicative\*\*/.test(l); })[0];
+  if (!fid) {
+    gpmBad.push('Manuals/12 §Fidelity "Indicative" row not found — the manual side is unguarded');
+  } else {
+    [[chgGpm, 'charging'], [ldGpm, 'letdown']].forEach(function (p) {
+      var re = new RegExp('(\\d+(?:\\.\\d+)?)\\s*gpm\\s+' + p[1]);
+      var m = fid.match(re);
+      if (!m) gpmBad.push('Manuals/12 §Fidelity does not quote a "N gpm ' + p[1] + '" figure');
+      else if (Math.abs(parseFloat(m[1]) - p[0]) > 0.5) {
+        gpmBad.push('Manuals/12 §Fidelity says ' + m[1] + ' gpm ' + p[1] +
+          ', config/board say ' + p[0]);
+      }
+    });
+  }
+})();
+if (gpmBad.length) {
+  console.log(R + B + 'GPM DISPLAY-SCALE MISMATCH (' + gpmBad.length + ')' + X);
+  gpmBad.forEach(function (m) { console.log(R + '  ✗' + X + ' ' + m); });
+  console.log(D + '\n  The board wiring is the LIVE scale; pwr_config identity + Manuals/12 follow it.' + X + '\n');
+}
+
 // SCORED ON FAILURES ONLY — the coverage counts are printed on the line ABOVE, where
 // run_all's scraper will not reach them. See the "what this gate is scored on" note in
 // the header for why this one differs from run_hr3 / run_contract.
-var fails = bad.length + orphans.length + unusedDiff.length;
+var fails = bad.length + orphans.length + unusedDiff.length + gpmBad.length;
 console.log(B + '──────────────────────────────────────────' + X);
 console.log(D + checked + ' pairs · ' + diffSites + ' temperature-difference sites · ' +
   TARGETS.length + ' files' + X);
