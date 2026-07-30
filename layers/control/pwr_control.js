@@ -410,6 +410,51 @@
                                    // = 0.03 normalized ≈ ½ HPI's high-head rated flow. The label
                                    // reads an honest 0–100 % of full rupture.
                                    severity_meta: { label: 'Rupture Severity', unit: '% of full rupture', min: 0, max: 100, default: 40 }, display: 'Steam Generator Tube Rupture' },
+    // RCP SEAL LEAK — the everyday leak, and the only one CVCS can hold (#262).
+    //
+    // WHY IT EXISTS. Until this entry the catalog had exactly two `primary_leak` failures and
+    // BOTH are casualties: `sgtr` (a tube rupture, which teaches the SGTR EOP) and `large_loca`
+    // (a cold-leg break, correctly far beyond make-up). There was no containment-side
+    // "identified leakage" case at all — the bread-and-butter CVCS lesson the charging system
+    // exists for. Worse, it was UNREACHABLE rather than merely missing: the severity slider is
+    // `<input type="range" min="0" max="100">` with step 1, so the finest injectable
+    // `large_loca` is severity 0.01 = 5.0e-3 frac/s, about 7x beyond what charging can hold.
+    // You could not get there by turning the LOCA down; the control has no such position.
+    //
+    // THE RANGE IS THE WHOLE POINT: every position on this slider is HOLDABLE. leak_flow is
+    // `severity · (meta.max/100) · leak_scale`, so 0–100 maps onto 0 → 3.5e-4 inventory-frac/s.
+    //
+    // That ceiling is MEASURED, and it is half the figure #262 was filed with. The issue derived
+    // authority as `charging_max · cvcs_inventory_gain` = 7.2e-4, which assumes letdown is
+    // ISOLATED. In the normal lineup letdown sits at 0.03, so net make-up authority is
+    // `(0.06 − 0.03) · 0.012` = 3.6e-4. Measured full-stack at 30 min, leak injected at t=30 s:
+    //     3.5e-4  level 52.8 %, charging 0.0585 of 0.0600  — HELD, at the edge
+    //     5.0e-4  level 28.6 %, charging SATURATED          — not held
+    //     7.0e-4  level 18.7 %                              — not held; only stabilises once
+    //                                                          letdown isolates on low level
+    // Sizing this 0–7.2e-4 would therefore have left the top HALF of its own slider unholdable,
+    // which is the exact defect the issue was opened about.
+    //
+    // NOT ΔP-modulated (no `leak_to_sg`): this is a containment-side leak, so unlike an SGTR it
+    // does not stop when you depressurize to steam-generator pressure. You fix it by finding it.
+    //
+    // The slider unit is "% of make-up capacity" deliberately — self-referential, and no gpm.
+    // The repo's gpm are display flavour that do not reconcile with the mass balance, so quoting
+    // one here would invite exactly the real-Tech-Spec comparison #262 had to retract. What the
+    // player sees instead is the board's own charging gauge climbing to meet it.
+    //
+    // Cue: `charging_high` (PWR-A30) comes in from about severity 0.2 up; `pzr_level_dev_low`
+    // (PWR-A31) does NOT anywhere on the range, because make-up is holding — that is the lesson.
+    // Measured at 30 min: 0.25 → charging 0.0367, 0.50 → 0.0439, 0.75 → 0.0519, 1.00 → 0.0585,
+    // level 55.0 / 54.3 / 53.0 / 52.8. Every position is held.
+    //
+    // THE BOTTOM ~20 % IS DELIBERATELY BELOW THE ALARM. At severity 0.15 charging reaches only
+    // 0.0344 against the 0.036 setpoint — elevated on the gauge, not annunciated. That is a real
+    // condition (leakage below the alarm point, found by trending rather than by a horn) and not
+    // a gap to close: the load-change peak is 0.0323, so a setpoint low enough to catch 0.15
+    // would sit within 5 % of normal load manoeuvring and start crying wolf.
+    rcp_seal_leak:               { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 3.5e-4,
+                                   severity_meta: { label: 'Leak Rate', unit: '% of make-up capacity', min: 0, max: 100, default: 40 }, display: 'Reactor Coolant Pump Seal Leak' },
     rcp_trip:                    { type: 'physics_parameter', category: 'coolant', effect: 'stop_pump', display: 'RCP Trip' },
     loss_of_condenser_vacuum:    { type: 'physics_parameter', category: 'power', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },
     // degraded_hpi and afw_failure are PHYSICS-side (HR7): both are persistent

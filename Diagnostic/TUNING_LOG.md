@@ -115,6 +115,68 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30i — #262: the everyday leak exists now, and its ceiling is half the filed figure  ✅
+
+The failure entry, completing #262 (the alarm pair landed in 2026-07-30h).
+
+**What was missing, and it was worse than "missing".** The catalog held two `primary_leak`
+failures and both are casualties: `sgtr` (teaches the SGTR EOP) and `large_loca` (a cold-leg
+break, correctly far beyond make-up). No containment-side *identified leakage* case at all. And
+it was **unreachable**, not merely absent: every severity control is
+`<input type="range" min="0" max="100">` with step 1, so the smallest injectable `large_loca` is
+severity 0.01 = **5.0e-3 frac/s**, about **7× beyond what charging can hold**. You could not get
+there by turning the LOCA down — the control has no such position, so a finer slider step would
+not have fixed it either (0–50 % rated flow across 100 steps cannot resolve the 0–0.14 % band).
+
+**`rcp_seal_leak`** — containment-side, **not** ΔP-modulated (unlike an SGTR it does not stop
+when you depressurize), whole range holdable. The engine computes
+`leak = severity · (meta.max/100) · leak_scale`, so `max: 100` with `leak_scale: 3.5e-4` maps
+0–100 % cleanly onto 0 → 3.5e-4 inventory-frac/s.
+
+**The ceiling is half what the issue was filed with, and getting that wrong would have
+reintroduced the defect.** #262 derived authority as `charging_max · cvcs_inventory_gain` =
+**7.2e-4**, which assumes letdown is ISOLATED. In the normal lineup letdown sits at 0.03, so net
+make-up authority is `(0.06 − 0.03) · 0.012` = **3.6e-4**. Measured full-stack at 30 min:
+
+| leak | level | charging | held? |
+|---|---|---|---|
+| 3.5e-4 | 52.8 % | 0.0585 of 0.0600 | **yes**, at the edge |
+| 5.0e-4 | 28.6 % | saturated | no |
+| 7.0e-4 | 18.7 % | saturated | no — only stabilises once letdown isolates on low level |
+
+Sizing the slider 0–7.2e-4 would have left its **top half unholdable** — precisely the thing the
+issue exists to fix.
+
+**Verified across the whole range**, 30 min each, full stack:
+
+| severity | charging | level | CHG FLOW HI | PZR LVL DEV LO |
+|---|---|---|---|---|
+| 0.25 | 0.0367 | 55.0 % | **ALARM** | clear |
+| 0.50 | 0.0439 | 54.3 % | **ALARM** | clear |
+| 0.75 | 0.0519 | 53.0 % | **ALARM** | clear |
+| 1.00 | 0.0585 | 52.8 % | **ALARM** | clear |
+
+Every position held; the cue fires; the deviation alarm stays quiet because make-up is *holding*,
+which is the lesson.
+
+**The bottom ~20 % is deliberately below the alarm.** At severity 0.15 charging reaches 0.0344
+against the 0.036 setpoint — elevated on the gauge, not annunciated. Left that way on purpose:
+the load-change peak is 0.0323, so a setpoint low enough to catch 0.15 would sit within 5 % of
+normal manoeuvring. "Leakage below the alarm point, found by trending" is a real condition, not a
+gap.
+
+**Slider unit is "% of make-up capacity", deliberately not gpm.** The repo's gpm are display
+flavour that do not reconcile with the mass balance (see 2026-07-30's gpm pass), so quoting one
+here would invite exactly the real-Tech-Spec comparison #262 had to retract in its own thread.
+
+**Manuals Rev 15 → 16:** new **07 PWR-E23** card, index row, and the §2.1 slider table (23
+failures, eight sliders). The card leads on what the board will **not** tell you — PZR LVL LO
+never comes in, because a held leak parks level around 52–54 % against a 25 % setpoint — and on
+PZR LVL DEV LO's silence being information rather than absence of a problem.
+
+**#262 is complete.** Gates: `run_all` **OK, 32 runners**; `run_manual_rev` 12/0;
+`run_manual_units` 0 failed; failure catalog 23 → 24 entries.
+
 ### 2026-07-30h — #262: the small-leak cue pair, and the measurement that overturned my own recommendation  ✅
 
 *(OWNER RULING, 2026-07-30: "Add the alarm as you suggest")* — on a recommendation that turned
