@@ -66,7 +66,12 @@ console.log('\n' + BOLD + 'WTSM 2.1 Fig 2.1-8 — moderator coefficient' + RST);
 // comes from the owner's at-power ruling and the crossover from the measurement (#263).
 // Pin the resulting DISAGREEMENT so nobody re-reads WTSM's figure as if we honoured it.
 ck('the 0-ppm curve is knowingly steeper than WTSM 2.1 Fig 2.1-8 reads at 500 °F',
-   mtc(500, 0) < -17.0 && mtc(500, 0) > -30.0,
+   // The gap to WTSM 2.1's figure WIDENED when the scale was fitted to the measurement
+   // (owner ruling 2026-07-30): -23.48 -> -31.43 at 500 °F against the figure's -17.
+   // That is what the ruling cost and it is meant to stay visible. The bound is -40
+   // because Fig 2.1-8's own vertical axis bottoms there, so past that we would be
+   // claiming something the source's chart cannot even show.
+   mtc(500, 0) < -17.0 && mtc(500, 0) > -40.0,
    mtc(500, 0).toFixed(2) + ' pcm/°F vs the figure\'s -17 — declared departure, #263');
 ck('MTC crosses zero exactly at mod_boron_zero_ppm',
    near(mtc(500, RC.mod_boron_zero_ppm), 0, 0.01),
@@ -102,20 +107,22 @@ function itc(Tf, B) { return mtc(Tf, B) + aD_F; }
 // this check is a direct test of mod_boron_zero_ppm and nothing else.
 ck('ITC at ARO / 975 ppm matches the measured -1.75 pcm/degF',
    near(itc(557, 975), -1.75, 0.25), itc(557, 975).toFixed(2) + ' pcm/°F vs -1.75 measured');
-// The lower-boron points are DECLARED to sit low. Honouring all three and the owner's
-// -20 pcm/degC at-power ruling is impossible under a linear-in-boron form; we keep the
-// ruling. If these ever tighten to <0.3, someone changed the trade-off -- read #263.
-ck('ITC at 902 ppm is within the DECLARED residual of the measured -4.65',
-   Math.abs(itc(557, 902) - (-4.65)) < 1.4,
-   itc(557, 902).toFixed(2) + ' vs -4.65 measured (declared low, #263)');
-ck('ITC at 810 ppm is within the DECLARED residual of the measured -8.01',
-   Math.abs(itc(557, 810) - (-8.01)) < 2.2,
-   itc(557, 810).toFixed(2) + ' vs -8.01 measured (declared low, #263)');
+// All three points are now FITTED, not just the ARO one -- the owner ruled 2026-07-30
+// to fit the measurement and supersede the 2026-07-21 at-power number. These tolerances
+// are tight on purpose: the previous calibration sat 0.88 and 1.64 low here and that was
+// a declared departure. If they ever need loosening, the trade-off changed -- read #263.
+ck('ITC at 902 ppm matches the measured -4.65',
+   Math.abs(itc(557, 902) - (-4.65)) < 0.3,
+   itc(557, 902).toFixed(2) + ' vs -4.65 measured');
+ck('ITC at 810 ppm matches the measured -8.01',
+   Math.abs(itc(557, 810) - (-8.01)) < 0.3,
+   itc(557, 810).toFixed(2) + ' vs -8.01 measured');
 ck('the crossover is the MEASURED 986 ppm, not the 1400 the WTSM text claimed',
    Math.abs(RC.mod_boron_zero_ppm - 986) < 2, RC.mod_boron_zero_ppm + ' ppm');
-// And the scale still honours the ruling it is set from.
-ck('MTC at the full-power reference still honours the 2026-07-21 ruling of -20 pcm/degC',
-   near(mtc(F(TREF), 618) * 9 / 5, -20.0, 1.2),
+// The at-power coefficient is now an OUTPUT of the fit, not an input. Pinned so the
+// supersession of the 2026-07-21 ruling stays visible rather than drifting back.
+ck('MTC at the full-power reference is the fitted -26.8 pcm/degC (SUPERSEDES the 2026-07-21 -20)',
+   near(mtc(F(TREF), 618) * 9 / 5, -26.8, 1.2),
    (mtc(F(TREF), 618) * 9 / 5).toFixed(1) + ' pcm/°C at 618 ppm');
 
 console.log('\n' + BOLD + 'WTSM 2.2 Table 2.2-1 — rod worths' + RST);

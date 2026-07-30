@@ -120,10 +120,10 @@ Net reactivity is the sum of six terms:
 
 | Term | Coefficient | In operator units |
 |---|---|---|
-| Core excess | `rho_excess` = 0.086776 | +8678 pcm, held down by boron/rods/xenon |
+| Core excess | `rho_excess` = 0.087544 | +8754 pcm, held down by boron/rods/xenon |
 | Control + shutdown rods | worth 0.04068 / 0.03676 | 4068 / 3676 pcm (all RCCAs **7744 pcm**) |
 | **Doppler** (fuel temperature) | −2.5 × 10⁻⁵ K⁻¹ | ≈ **−1.39 pcm/°F** (−2.5 pcm/°C) of fuel |
-| **Moderator** (density-shaped) | see §4.3.1 | **−2 pcm/°F cold → −8 pcm/°F hot** at operating boron |
+| **Moderator** (density-shaped) | see §4.3.1 | **−1 pcm/°F cold → −3 pcm/°F hot** at operating boron |
 | Boron (direct term) | 1.0 × 10⁻⁴ per ppm | ≈ **−10 pcm/ppm**, plus the density coupling below |
 | Xenon | worth 0.025 | 2500 pcm at equilibrium |
 
@@ -145,8 +145,8 @@ the BEAVRS / Watts Bar Unit 1 Cycle 1 hot-zero-power physics tests.
 > worked exercise in WTSM 2.2, ML11216A051). The difference is not an error and it is not
 > hidden: our figure is *derived*, not fitted. Walk it from the one measured anchor — hot
 > zero power, all rods out, **975 ppm** — and the terms are Doppler −990 pcm, moderator
-> −139, control bank to its 92 % operating position −76, and equilibrium xenon −2500, for
-> −3705 pcm net, which is 371 ppm at 10.0 pcm/ppm. 975 − 371 = 604, against the engine's
+> −186, control bank to its 92 % operating position −76, and equilibrium xenon −2500, for
+> −3752 pcm net, which is 357 ppm at 10.5 pcm/ppm. 975 − 357 = 618, against the engine's
 > 618 — the 14 ppm residual is the moderator term being linearised over that boron change.
 > `test/run_reactivity.js` gates this derivation.
 >
@@ -174,14 +174,14 @@ coefficient goes positive**. This plant peaks near 1100 ppm, so it never reaches
 
 | Tavg | 0 ppm | 900 ppm |
 |---|---|---|
-| 122 °F (50 °C) | −5.6 pcm/°F | −2.0 pcm/°F |
-| 350 °F (176.7 °C) | −10.4 pcm/°F | −3.7 pcm/°F |
-| 566.6 °F (297 °C) | −20.8 pcm/°F | −7.4 pcm/°F |
+| 122 °F (50 °C) | −10.3 pcm/°F | −0.9 pcm/°F |
+| 350 °F (176.7 °C) | −19.3 pcm/°F | −1.7 pcm/°F |
+| 566.6 °F (297 °C) | −38.5 pcm/°F | −3.4 pcm/°F |
 
 **Two consequences fall out of the model rather than being tuned in.** Differential boron worth
-is **larger cold** — 13.8 pcm/ppm at 122 °F against 10.0 pcm/ppm at power — because denser water
+is **larger cold** — 19.9 pcm/ppm at 122 °F against 10.5 pcm/ppm at power — because denser water
 carries more boron atoms per unit volume. And **critical boron falls only gently** across a
-heatup: 834 ppm cold to 575 ppm hot with the control bank inserted, 1130 ppm to 975 ppm all-rods
+heatup: 806 ppm cold to 588 ppm hot with the control bank inserted, 1011 ppm to 975 ppm all-rods
 out. That is why boron is held roughly constant through a heatup and the dilution is done hot,
 which is what a real startup does.
 

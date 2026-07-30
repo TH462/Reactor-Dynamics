@@ -741,8 +741,21 @@ test('pwr_startup_challenge — runaway coast lands on the overshoot card, not a
       s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: 40, speed: 'normal' });
       bites++;
     }
-    return sn.instruments.power_range > 1.0;
+    return sn.instruments.power_range > 2.0;
   }, 1200);
+  // STOP POINT 1 % -> 2 % (#263, owner ruling 2026-07-30 to fit the measurement).
+  // Fitting the moderator coefficient to the BEAVRS ITCs took it -20 -> -26.8 pcm/degC,
+  // 34 % stronger, so more of the banked reactivity lands as temperature and less as
+  // power: stopping at 1 % no longer coasts past the band, and the run ends on
+  // "Startup Ended - Window Closed" instead of the overshoot card. Diagnosed by
+  // extending the coast window first -- it reached an endpoint, just the wrong one, so
+  // this is a MAGNITUDE change and not a timing one.
+  //
+  // The scenario's lesson is unchanged and is why the stimulus moved rather than the
+  // assertion: banked reactivity cannot be subtracted by the withdrawal inhibit. A more
+  // self-regulating core simply means you must bank more of it to overshoot. Stopping at
+  // 2 % would also have overshot on the pre-#263 plant (which coasted 1 % -> 12.6 %), so
+  // this drives the same lesson harder rather than refitting to the new plant.
   s.handleCommand({ action: 'rod_stop', group_id: 'control_rods' });
   ck('criticality reached', !!snap, !!snap, 'power > 1 %');
   snap = runUntil(s, function (sn) { return lc(sn); }, 900);

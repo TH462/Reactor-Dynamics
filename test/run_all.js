@@ -49,7 +49,13 @@ var BASELINES = {
   // (a boolean in the OPERATOR'S demand field, which is why any set_spray cleared
   // it); it is now s.spray_stuck, and a legacy save carrying the old encoding must
   // keep the failure rather than silently healing on load.
-  'run_pwr.js':            { code: 0, score: '32/32 201passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
+  // 201 -> 202 (#263): control_response now also pins Tavg rising on a withdrawal. The
+  // power-rise margin shrank to ~0.03 % when the moderator coefficient was fitted to the
+  // BEAVRS measurement (-20 -> -26.8 pcm/degC), under the old 0.05 floor. Lowering that
+  // floor would just need lowering again next retune; at power the turbine sets power and
+  // the rods set temperature, so Tavg rising is the signature that STRENGTHENS as the
+  // coefficient does. Both are pinned now.
+  'run_pwr.js':            { code: 0, score: '32/32 202passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
@@ -131,7 +137,9 @@ var BASELINES = {
   // BUILD_DECISIONS.md, and the HR11 half of this gate scans tracked docs for exactly that
   // shape. Two new declared quotes = two new checks. This is the gate working, not drift to
   // paper over -- but it does mean quoting a ruling in a tracked doc moves this number.
-  'run_hardrules.js':      { code: 0, score: '24checks 0failed' },
+  // 24 -> 25 (#263): the 2026-07-30 "fit the measurement" ruling is quoted with its date
+  // in a tracked file, and the HR11 half of this gate counts exactly that.
+  'run_hardrules.js':      { code: 0, score: '25checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

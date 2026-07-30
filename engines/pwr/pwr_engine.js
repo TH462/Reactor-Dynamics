@@ -1987,13 +1987,28 @@
         var h = new Harness('hot_full_power');
         h.run(30);
         var p_before = h.ts().power_pct;
-        // Real-like MTC (−20 pcm/°C, P4/P5 recalibration): the coolant fights a
-        // small withdrawal hard, so the settled rise is ~0.1 % — direction is the
-        // physics being pinned, not magnitude.
+        // The coolant fights a small withdrawal hard, so the settled POWER rise is
+        // tiny — direction is the physics being pinned, not magnitude (and the
+        // original comment said so). The margin shrank again when the moderator
+        // coefficient was fitted to the BEAVRS measurement (#263, owner ruling
+        // 2026-07-30): −20 → −26.8 pcm/°C settles the rise at ~0.03 %, under the
+        // 0.05 floor this used to carry.
+        //
+        // So do not just lower the floor — it would need lowering again on the next
+        // retune, which is a check tracking the plant instead of the claim. At power
+        // the TURBINE sets power and the rods set temperature, so the durable
+        // signature of a withdrawal is Tavg rising, and that assertion gets STRONGER
+        // as the coefficient strengthens rather than weaker. Both are pinned; the
+        // Tavg one is the one that means something. Verified against the pre-#263
+        // plant too, where Tavg also rose — so this is a better test, not a refit.
+        var t_before = h.ts().tavg_c;
         h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 32 }); // withdraw
         h.run(120);
         var p_with = h.ts().power_pct;
-        ck('power rises on withdraw', p_with.toFixed(2), p_with > p_before + 0.05, '> ' + p_before.toFixed(2));
+        ck('power rises on withdraw', p_with.toFixed(3), p_with > p_before + 0.01, '> ' + p_before.toFixed(3));
+        ck('Tavg rises on withdraw (the signature that survives a stronger MTC)',
+          h.ts().tavg_c.toFixed(2) + ' °C', h.ts().tavg_c > t_before + 0.05,
+          '> ' + t_before.toFixed(2));
         ck('re-settles (stable)', h.eng.s._rho.toExponential(2), Math.abs(h.eng.s._rho) < 1e-3, 'near critical');
         var p_mid = h.ts().power_pct;
         h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -32 }); // insert back
