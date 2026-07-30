@@ -187,7 +187,7 @@ function pinChannel(ch) {
   var ctx = await browser.newContext();
   var page = await ctx.newPage();
   await page.goto(LANDING);
-  ck('landing dev: the campaign promise stands', /Guided training campaigns/.test(await page.textContent('.hero .sub')));
+  ck('landing dev: the campaign promise stands', /Guided\s+training/.test(await page.textContent('.hero .sub')));
   await ctx.close();
 
   ctx = await browser.newContext();
@@ -195,9 +195,9 @@ function pinChannel(ch) {
   page = await ctx.newPage();
   await page.goto(LANDING);
   ck('landing public: the hero no longer promises campaigns',
-    !/Guided training campaigns/.test(await page.textContent('.hero .sub')));
+    !/Guided\s+training/.test(await page.textContent('.hero .sub')));
   ck('landing public: the feature block says coming soon',
-    /Guided campaigns — coming soon/.test(await page.textContent('.features')));
+    /Guided\s+training\s+—\s+coming soon/.test(await page.textContent('.features')));
   ck('landing public: the PWR card drops "the full experience"',
     !/The full experience/.test(await page.textContent('.plant-card.live')));
   ck('landing public: the page still sells the plant',
