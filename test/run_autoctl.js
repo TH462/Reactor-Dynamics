@@ -136,6 +136,21 @@ function autoCmds(r) {
            c.action !== 'set_hpi' && c.action !== 'set_afw' && c.action !== 'set_lpi' && c.action !== 'set_rhr';
   });
 }
+// Automation traffic as a RATE — commands per minute of SIM TIME (#261).
+//
+// The sparseness checks below used to assert a raw COUNT against a window stated only
+// in the check's own name ("<300 auto commands in 10 min"). Channel output is gated by
+// period/deadband, so that count is a rate in disguise and scales with however much sim
+// time the run actually got. Measured when run() was fixed to deliver its full budget:
+// the BWR probe went 273 → 363 commands with the rate unmoved at 0.606 → 0.605 cmd/s,
+// and its margin under `<500` halved from 45.4 % to 27.4 % — a gate that would redden on
+// a pure timing change, with no change in controller behaviour. Thresholds below are the
+// old ones divided by the 600 s window, so they mean exactly the same thing at 10 min and
+// are now indifferent to the window.
+function autoCmdRate(r) {
+  var mins = r.service.simTime / 60;
+  return mins > 0 ? autoCmds(r).length / mins : 0;
+}
 
 // ================================================================== PWR
 test('PWR · all-auto holds hot full power (10 min)', function (ck) {
@@ -151,7 +166,7 @@ test('PWR · all-auto holds hot full power (10 min)', function (ck) {
   ck('tavg at setpoint', i.tavg.toFixed(2) + ' vs sp ' + sp.toFixed(2), near(i.tavg, sp, 1.0), 'sp±1.0');
   ck('pressure in band', t.pressure_mpa.toFixed(2), near(t.pressure_mpa, 15.41, 0.35), '15.41±0.35');
   ck('SG level at setpoint', i.sg_level.toFixed(1), near(i.sg_level, r.chan('feed_sg').setpoint, 3), 'sp±3');
-  ck('sparse commands', autoCmds(r).length, autoCmds(r).length < 300, '<300 auto commands in 10 min');
+  ck('sparse commands', autoCmdRate(r).toFixed(1) + '/min', autoCmdRate(r) < 30, '<30 auto commands per sim-minute');
 });
 
 test('PWR · all-auto except grid: demand swing 1000→700→1000', function (ck) {
@@ -314,7 +329,7 @@ test('BWR · all-auto holds full power (10 min)', function (ck) {
   ck('no scram', scrammed(r), !scrammed(r), 'false');
   ck('power at setpoint', t.power_pct.toFixed(1) + ' vs sp ' + sp.toFixed(1), near(t.power_pct, sp, 2.5), 'sp±2.5');
   ck('vessel level at setpoint', i.vessel_level.toFixed(1), near(i.vessel_level, r.chan('feed_level').setpoint, 4), 'sp±4');
-  ck('sparse commands', autoCmds(r).length, autoCmds(r).length < 500, '<500');
+  ck('sparse commands', autoCmdRate(r).toFixed(1) + '/min', autoCmdRate(r) < 50, '<50 auto commands per sim-minute');
 });
 
 test('BWR · auto power maneuver 100→80% via recirculation', function (ck) {

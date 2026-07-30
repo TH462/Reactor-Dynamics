@@ -158,6 +158,45 @@ Fixed to drive on `service.simTime`. **`run_autoctl` stays 20/20 with the full b
 unlike #245, none of these probes had been passing *because* they were starved. That is the
 result worth recording: the bug was real, and it happened not to have bought any false greens.
 
+**Follow-up, 2026-07-30: was `run_autoctl` 20/20 actually MEANINGFUL after the fix?** The first
+write-up rested that on "still 20/20", which is the weak form of the claim (HR10). Verified
+properly by dumping every check's *observed value* under old and new timing and diffing:
+
+- **13 of 20 suites were starved**, not the "12 calls" first reported — worst `PWR · rod channel
+  disengages itself on scram` at **ratio 0.517** (30 s asked, 15.50 s delivered), then `RBMK · AR
+  defaults to AUTO` 0.600 and the `HR1 probe` 0.625. New aggregate ratio is **1.0002**.
+- **No suite changed verdict**, and nearly every physics observation moved **< 1 %**. Two moved
+  *toward* their setpoint (BWR vessel level 48.0 → 50.0 and 51.3 → 49.9), i.e. the longer run is
+  the kinder one. So nothing was passing *because* it was starved — the original claim survives,
+  now on evidence rather than on a tally.
+- **One check was window-dependent and its margin nearly halved.** `BWR · all-auto holds full
+  power` "sparse commands" went **273 → 363** against a `<500` limit — margin 45.4 % → 27.4 % —
+  while the underlying *rate* did not move at all (0.606 → 0.605 cmd/s). Channel output is
+  period/deadband gated, so a raw command count is a rate in disguise; the suite is named
+  "(10 min)" and had been running 7.5 min. Not a false green, but the one assertion here that a
+  pure timing change could redden with no controller change. **Fixed:** both sparseness checks now
+  assert **commands per sim-minute** (`autoCmdRate`), thresholds being the old ones divided by
+  their 600 s window — identical meaning at 10 min, indifferent to the window. PWR 3.0/min against
+  `<30`, BWR 36.3/min against `<50`.
+
+**Two inherited claims from the 2026-07-29n write-up, checked rather than repeated.**
+- *"Same failure shape as #245, four filings"* — **verified, and not from CLAUDE.md.**
+  `run_procedures_stack.js` itself annotates all four as removed with the #245 fix:
+  `rbmk_pre·rbmk_mcp_trip` and `rbmk_post·rbmk_mcp_trip` step 2, `bwr·bwr_sbo_rcic` step 3,
+  `bwr·bwr_startup` step 2. #245's *body* says "at least one" only because it was written before
+  the fix cleared the other three.
+- *"≈ 33 gpm held, 40 gpm authority"* — **provenance fine, my USE of it was not.** The mapping is
+  declared config data (`pwr_config.js` plant block: `charging_max_gpm: 40`,
+  `letdown_normal_gpm: 20`), explicitly labelled *"Display conversions … (manual/UI flavor,
+  [tune])"*, with **zero consumers in code**, and `Manuals/12` §Fidelity already classes the gpm
+  conversions as *"Indicative — display flavour … Illustrative"*. But they do **not** reconcile
+  with the mass balance: 40 gpm ≡ 7.2e-4 inventory-frac/s implies a total RCS of **926 gallons
+  (3.50 m³)** — about 10× small for a 300 MWt plant, giving a 2.3 s loop transit against a real
+  ~10 s. At a plausible 35 m³ the same 7.2e-4 frac/s would be ~400 gpm, not 40. **So gpm figures
+  here are pacing flavour and must not be compared to a real Tech Spec leakage band** — which is
+  what #262's framing did; corrected there. `cvcs_inventory_gain` is `[tune]`, sized for feel, and
+  says so; the repo is internally honest, the error was downstream in my prose.
+
 **Also done.** `advanceCycles` now carries the warning at its definition
 (`layers/simulation_service.js`) with both worked cases; `run_e2e_controls`'s `step()` is
 renamed **`cycles()`** (the lying name was the root cause — `step(s, 400)` reads as seconds)
