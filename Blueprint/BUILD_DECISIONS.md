@@ -68,6 +68,38 @@ cycles-as-seconds trap in the shared `step()` helper.
 
 ---
 
+## 2026-07-30a — #263: shape AND scale are measured; the 2026-07-21 at-power ruling is superseded
+
+**The decision** *(OWNER RULING, 2026-07-30: "for 263 item 1 fit the measurement.")*. Fit
+both moderator parameters to the three measured BEAVRS Cycle 1 HZP isothermal temperature
+coefficients rather than fitting one and setting the other by preference.
+
+**Why the previous split did not hold.** #260 shipped "shape measured, scale ruled": the
+crossover from data, the magnitude from the owner's 2026-07-21 −20 pcm/°C. That was
+defensible while the crossover came from a WTSM 2.1 *statement* — but the same BEAVRS
+table that supplied the crossover also constrains the slope, and the two together force
+the magnitude. Honouring the measurement and the ruling simultaneously is impossible under
+a linear-in-boron form. The owner chose the measurement.
+
+**What it costs, and why that is acceptable.** The at-power coefficient goes −20 →
+**−26.8 pcm/°C**. A stronger coefficient means the core absorbs a rod withdrawal as
+temperature rather than power — which is the prototypical behaviour at power, where the
+turbine sets power and the rods set temperature. The plant is *more* self-regulating, not
+less realistic. The supersession is recorded in three places and pinned by
+`test/run_reactivity.js` so it cannot silently revert.
+
+**What it bought.** Residuals against all three measured points 0.05/0.88/1.64 → ≤0.09
+pcm/°F. The gate's tolerances tightened 1.4/2.2 → 0.3 — there is no declared departure left
+to permit. **Nothing in the reactivity curve is set by preference any more**, which was the
+open question #263 was filed to close.
+
+**Precedent worth keeping.** Two probes were re-authored to assert the claim rather than
+track the plant: `run_pwr`'s withdrawal check now pins **Tavg** (which strengthens as the
+coefficient strengthens) instead of a power threshold that would need lowering at every
+retune, and `run_reactivity`'s cold/hot separation became a **gap** test instead of an
+absolute ppm floor. Both were validated against the pre-change plant, so they are better
+tests rather than refits.
+
 ## 2026-07-29l — #260: moderator reactivity is density-shaped; rod worths and `rho_excess` re-solved
 
 **The decision.** Delete `alpha_MTC` as a constant. Moderator reactivity becomes

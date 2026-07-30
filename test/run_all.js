@@ -139,7 +139,10 @@ var BASELINES = {
   // paper over -- but it does mean quoting a ruling in a tracked doc moves this number.
   // 24 -> 25 (#263): the 2026-07-30 "fit the measurement" ruling is quoted with its date
   // in a tracked file, and the HR11 half of this gate counts exactly that.
-  'run_hardrules.js':      { code: 0, score: '25checks 0failed' },
+  // 25 -> 28 (#263 records): the 2026-07-30 ruling is quoted with its date in
+  // TUNING_LOG.md, BUILD_DECISIONS.md and CLAUDE.md. Writing the record moves this
+  // number, by design -- HR11 counts dated owner quotes wherever they are tracked.
+  'run_hardrules.js':      { code: 0, score: '28checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

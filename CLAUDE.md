@@ -226,18 +226,27 @@ anything here that is standing procedure rather than news belongs in the list be
   −4944 pcm moderator defect over a heatup, 494 ppm of dilution, a third of it charged below
   274 °F. Critical boron therefore fell 819 → 263 ppm across the heatup, and **600 ppm was
   critical at 274 °F**: the owner diluted toward it in free play and tripped on source-range
-  high flux. Moderator reactivity now tracks **density** (WTSM 2.1 Fig 2.1-8: the coefficient
-  steepens with temperature and goes to zero near 1400 ppm), rod worths went to the measured
+  high flux. Moderator reactivity now tracks **density**, rod worths went to the measured
   WTSM 2.2 values (**8500 → 4068** control, **10 000 → 3676** shutdown; 18 500 was 2.4× anything
-  sourceable), and `rho_excess` is now **solved** so HZP ARO critical boron lands on BEAVRS's
-  measured **975 ppm**. Three things to know: **the 2026-07-21 `alpha_MTC` ruling survived** —
-  the sourced curve reproduces −20 pcm/°C to within 9 % at the operating point, which is why
-  every at-power gate held untouched; **600 ppm at 274 °F is now +2434 pcm SUPERcritical and
-  that is correct** — cold water is more reactive, and what changed is that critical boron is
-  no longer a moving target you cross without noticing (834 → 575 rods-in, spread 556 →
-  259 ppm); and **`run_reactivity.js`'s first cut passed for the wrong reason** — it asserted
-  the event with the reactivity sign inverted, went green, and would have enshrined a false
-  claim in the guard for the thing being fixed. `pwr_startup` and `pwr_heatup` were re-authored
+  sourceable), and `rho_excess` is **solved** so HZP ARO critical boron lands on BEAVRS's
+  measured **975 ppm**. **Then #263 re-did the moderator model AGAIN, and that is the version
+  you are looking at** — do not trust a 1400 ppm crossover or a −20 pcm/°C at-power figure if
+  you meet one in older prose. #260 took its boron crossover from a WTSM 2.1 statement its own
+  figure contradicted; the BEAVRS Cycle 1 HZP tests publish **three measured isothermal
+  coefficients** (975 ppm/−1.75, 902/−4.65, 810/−8.01 pcm/°F) which settle it at **986 ppm**
+  and showed #260 was **4.3× too negative** at ARO. *(OWNER RULING, 2026-07-30: "for 263 item 1
+  fit the measurement.")* — so **both** parameters are fitted to those points, residuals ≤0.09,
+  and the at-power coefficient is now **−26.8 pcm/°C, SUPERSEDING the 2026-07-21 ruling of
+  −20**. Three things to know: **at-power behaviour did NOT survive untouched** — a 34 %
+  stronger coefficient put `run_pwr`'s rod-withdrawal power rise under its 0.05 floor, so that
+  probe now pins **Tavg** rising, the signature that strengthens rather than weakens as the
+  coefficient does; **600 ppm at 274 °F is +3158 pcm SUPERcritical and that is correct** —
+  cold water is more reactive, and what changed is that critical boron is no longer a moving
+  target you cross without noticing (806 → 587 rods-in, spread 556 → 219 ppm); and
+  **`run_reactivity.js`'s first cut passed for the wrong reason** — it asserted the event with
+  the reactivity sign inverted, went green, and would have enshrined a false claim in the guard
+  for the thing being fixed, which is why every check written beside a fix is now proven to go
+  **red by injection** before it counts as green. `pwr_startup` and `pwr_heatup` were re-authored
   (the latter's old dilution drove a runaway to **119 % power and 638 °F**). Still open: there
   is **no Estimated Critical Condition** anywhere, which is what would have stopped the event.
 - **The sim ships as ONE emailable `.html` file now, and that is gated (2026-07-29k).**
@@ -413,7 +422,7 @@ Green at baseline: PWR **32/32 (201 checks)**, BWR **15/15**, RBMK **23/23**, ca
 were never plant defects at all — the harness was running 11 of its 22 procedures below the
 10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_reactivity` **23 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve), `run_hr3` **29 checks / 0 failed**, `run_hardrules` **24 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_portable` **112 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_reactivity` **23 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve), `run_hr3` **29 checks / 0 failed**, `run_hardrules` **28 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)**, `run_portable` **112 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `verify_flags_ui` **48/48**,
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **39/39** (both F12 reds were stale expectations, fixed

@@ -354,6 +354,79 @@ pre-existing behaviour — they are not refits. `run_e2e_controls` **35/35 → 3
 
 ---
 
+### 2026-07-30a — #263: the second anchor, and it proved #260's crossover wrong  ✅
+
+**Why this exists.** #260 left the critical-boron curve **fit at one temperature and
+validated at none**, and took its boron crossover from WTSM 2.1's *text* ("approximately
+1400 ppm") over WTSM 2.1's own *figure* (~944). I filed #263 against my own work saying
+so. The owner asked for the second anchor to be found.
+
+**The anchor.** BEAVRS / Watts Bar U1 Cycle 1 HZP physics tests, Table IV of the
+Polaris-PARCS benchmark (OSTI 1991715) — **measured** isothermal temperature coefficients
+at three boron concentrations: **975 ppm/−1.75, 902/−4.65, 810/−8.01 pcm/°F**. Three
+points, not the one asked for, fitting a line to within **0.09 pcm/°F**. Removing alpha_D
+puts the MTC zero crossing at **986 ppm**. **The figure was right and the text was wrong**,
+and #260 was **4.3× too negative** at ARO (−7.52 against a measured −1.75) with the error
+shrinking as boron fell — the fingerprint of exactly that parameter being off.
+
+**The ruling** *(OWNER RULING, 2026-07-30: "for 263 item 1 fit the measurement.")*. Both
+parameters least-squares fitted: `mod_anchor_pcm_per_f` −23.48 → **−31.43**,
+`mod_boron_zero_ppm` 1400 → **986**, `rho_excess` → **0.087544**. Fitting both independently
+**re-derived the 985.8 ppm crossover the earlier one-parameter fit had assumed** — two
+different fits of the same data agreeing on a parameter neither was forced to.
+
+**What it cost.** The at-power coefficient is **−26.8 pcm/°C, superseding the 2026-07-21
+ruling of −20**. Recorded as a supersession in the config, the gate and `Manuals/09` §7.5
+rather than overwritten, and the gate pins the new value so it cannot drift back. The
+gate's residual tolerances **tightened** 1.4/2.2 → 0.3: the declared departure is gone, so
+it no longer permits one.
+
+**Three consequences, each traced rather than tuned away.**
+
+1. **`run_pwr` 201 → 202.** `control_response`'s "power rises on withdraw" carried a 0.05
+   floor sized for a −20 pcm/°C plant; at −26.8 the settled rise is ~0.03 %. Its own
+   comment said *"direction is the physics being pinned, not magnitude"*, so lowering the
+   floor would just need lowering again next retune — a check tracking the plant instead of
+   the claim. At power the turbine sets power and the rods set temperature, so **Tavg
+   rising** is the signature that *strengthens* as the coefficient does. Added; it holds on
+   the pre-#263 plant too, so it is a better test, not a refit.
+2. **`run_campaign`: the startup-challenge runaway stop point 1 % → 2 %.** Diagnosed as
+   **magnitude** by first ruling out timing — extending the coast window reached an
+   endpoint, just the *wrong* one ("Window Closed" not "Band Overshot"). A stronger
+   coefficient banks more of the withdrawal into temperature. The lesson is unchanged; you
+   must bank more of it, and 2 % would have overshot on the old plant too.
+3. **`pwr_heatup` dilution re-derived from the ECC table, not swept.** Mode 5 IC 857 ppm,
+   §7.5 gives 723 ppm critical at the bank's 366 steps → 134 ppm over 3900 s = −0.0344, and
+   the plant landed on exactly **ρ = −4 pcm**. That table has now predicted the plant twice,
+   independently of the gate that checks the two against each other. Shipped **−0.039** for
+   arrival margin (the derived rate is the *equilibrium* boron, so the plant only
+   asymptotes toward the band).
+
+**The other #263 items.** HFP boron 618 ppm is **derived, not fitted** — from the measured
+975 anchor: Doppler −990, moderator, bank −76, xenon −2500 → 604 against the engine's 618,
+the residual being the moderator term linearised over that boron change; the gap to the
+real 750 ppm comparable is dominated by our **xenon worth, a `[tune]` value**. The #261
+`simulation_service.js` change is comment-only and correct. One **vacuous negative
+assertion** was found and deleted (`!/The full experience/`, on a phrase a site rewrite had
+removed, so it could never fail) — the audit that found it was 3-for-4 false positives, so
+it is a technique worth keeping and not worth gating.
+
+**Two self-inflicted faults, both caught only by the gate, both recorded because catching
+them is not the same as me catching them.** (1) I wrote `the step's window` into a
+**single-quoted JS string** in `ui/manual_procedures.js`; the ASCII apostrophe terminated
+it and eleven runners died at 0.1 s — drifts that looked like a physics catastrophe and
+were a syntax error. `node -e "require(...)"` takes a second. (2) Before that, my
+`Manuals/09` and `Manuals/12` edits were **reverted on disk after I reported them done**;
+`git diff` showed the files clean. Both have one shape: reporting work complete without
+verifying it landed.
+
+**Gates.** `run_all` **OK, 31 runners at baseline**. `run_hardrules` 24 → 25 (the new dated
+ruling quote, which is what its HR11 half counts).
+
+**Still open.** `pwr_startup` step 11 (26 steps) remains empirical rather than derived, and
+the full-stack measurement tooling gap is **#266** — filed because two of the four defects
+in this whole effort came from numbers measured at the wrong layer.
+
 ### 2026-07-29l — #260: the moderator coefficient is density-shaped, and the rod worths are real  ✅
 
 **How it was found.** Owner, free play, Mode 5 → Mode 1. Plant up to 2235 psi (15.41 MPa) and

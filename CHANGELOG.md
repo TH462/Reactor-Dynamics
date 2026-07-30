@@ -14,6 +14,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The moderator model was re-fitted to measured plant data, and the reactor is more
+  self-regulating than it was yesterday** (#263). The previous fix (#260) took the
+  boron dependence of the moderator coefficient from a written statement in a training
+  manual; that manual's own figure disagreed with it. The **BEAVRS / Watts Bar Unit 1
+  Cycle 1 startup physics tests** publish three *measured* temperature coefficients at
+  three boron concentrations, and they settle it — #260's value was **4.3× too negative**
+  at the all-rods-out condition.
+
+  Both parameters are now least-squares fitted to those measurements, reproducing all
+  three to within 0.09 pcm/°F. **The coefficient at full power is 34 % stronger**
+  (−20 → −26.8 pcm/°C), which supersedes an earlier tuning ruling: the core now fights a
+  rod withdrawal harder, so a small withdrawal at power shows up as **temperature rather
+  than power** — which is what a real plant does, since the turbine sets power and the
+  rods set temperature.
+
+  For an operator: critical boron runs **806 → 587 ppm** across a heatup with the control
+  bank in (spread 556 → 219 ppm since #260 began), differential boron worth is
+  **19.9 pcm/ppm cold against 10.5 at power**, and a runaway on the startup challenge
+  self-limits more, so overshooting the band takes more banked reactivity than it did.
+  Nothing in the reactivity curve is set by preference any more.
+
 - **The manual quoted a charging and letdown flow the board never showed.** Section 12 said
   **40 gpm** maximum charging and **20 gpm** normal letdown, where the board's charging box tops
   out at **60 gpm** and its orifice-A letdown reads **30 gpm**. Two conversion scales were being
