@@ -525,6 +525,8 @@ node test/run_meltdown.js MD-5  # one path by id
 node test/run_procedures_stack.js          # the SAME procedures through M4+M5+M6 (see below)
 node test/run_procedures_stack.js pwr_startup   # one by id
 node test/run_procedures_stack.js --lineup=bare # the noDefaults/campaign lineup
+node test/measure_stack.js --for=12h --every=1h --watch=tavg_c,pressure_mpa
+                                # TAKE A NUMBER from a long FULL-STACK evolution (see below)
 ```
 
 `test/ops_*.js`, `test/*_harness.js`, and `test/verify_*.js` are supporting
@@ -559,6 +561,15 @@ on it for anything the control layer decides. **When you write a procedure, scen
 behaviour assertion, ask which layer owns the effect you are asserting.** Known open
 consequences: **#209** (`run_behavior`/`run_ops` certify on a lineup that never ships),
 **#206**/**#208** (procedures green engine-direct, broken under the stack).
+
+**To take an ad-hoc number, use `node test/measure_stack.js`** — full stack, any IC/duration/
+scheduled commands, US-first units, and it stamps the LAYER into its own output so a
+wrong-layer figure is visible in the artifact (#266). **Never drive a measurement with
+`svc.start()`**: it arms `setTimeout(broadcastMs)` and advances in WALL time — measured, 5.0 s
+of wall bought 48.0 s of sim at 10×, which is why #266 believed a long full-stack ride was
+impossible and published two engine-direct numbers instead (one 13× wrong). Driving `tick()`
+directly, 12 plant-hours is **~35 s** and cost is linear in sim duration; per cycle it is
+**87.9 % `engine.step`**, so there is no per-cycle overhead worth optimising.
 
 ## Definition of done
 

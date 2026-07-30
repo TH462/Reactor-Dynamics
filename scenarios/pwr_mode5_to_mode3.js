@@ -16,14 +16,15 @@
  * approach to criticality — those beats already live in `pwr_startup_challenge`
  * and `pwr_return_to_mode1`, which is where an approach to criticality belongs.
  *
- * MEASURED on the as-built plant, cold_shutdown IC, no rod motion at all
- * (re-measured 2026-07-29 after the #260 reactivity recalibration):
+ * MEASURED on the as-built plant, cold_shutdown IC, no rod motion at all —
+ * **at BOTH layers, and they agree to every digit** (re-measured 2026-07-30, #266):
  *   enters Mode 4                       0.27 plant-h  (200 °F / 93.3 °C at 0.28)
  *   enters Mode 3                       4.57 plant-h  (350 °F / 176.7 °C at 4.55)
  *   450 °F (232.2 °C)                  7.63 plant-h
  *   545 °F (285.0 °C)                 10.61 plant-h
- *   settles 567.0 °F (297.2 °C)       11.39 plant-h, ρ = −3377 pcm, 907 ppm boron,
- *                                       power 3.0e-5 %, control bank still 0/912
+ *   reaches 566 °F                     11.28 plant-h
+ *   settles 567.0 °F (297.2 °C)        ρ = −2828 pcm, 856.8 ppm boron,
+ *                                       power 3.5e-5 %, control bank still 0/912
  *   average rate                       39.1 °F/hr (21.7 °C/hr)
  *   steady rate after the first hour    32.1 °F/hr (17.8 °C/hr)
  *   first hour                        111.5 °F/hr — the compressed pressurization,
@@ -35,9 +36,11 @@
  * 111.5 °F/hr, and the steady rate is still ~32 °F/hr. Pump heat does not care what
  * the moderator coefficient is, and at 3e-5 % power fission contributes nothing
  * thermally. Two things DID change:
- *   1. **Arrival reactivity: −6287 → −3377 pcm on 907 (was 919) ppm.** That is #260 —
- *      the old model charged a moderator defect over three times too large on the way
- *      up, so it arrived far more subcritical than it should have.
+ *   1. **Arrival reactivity: −6287 → −3377 → −2828 pcm, on 919 → 907 → 856.8 ppm.** The
+ *      first move is #260 — the old model charged a moderator defect over three times too
+ *      large on the way up, so it arrived far more subcritical than it should have. The
+ *      second is #263's least-squares refit of that model against the three measured BEAVRS
+ *      isothermal coefficients; this header carried the pre-refit figures for a day.
  *   2. **The endpoint reads 567.0 °F, not 548 °F.** This is NOT a 19 °F improvement.
  *      567 °F is the no-load anchor where the steam dump opens and Tavg stops; the old
  *      figure was where an earlier measurement's window ended, not where the plant
@@ -45,24 +48,36 @@
  * A previous revision of this file's own docs claimed the endpoint difference was a
  * physics gain. It was a measurement-window artifact. Do not re-introduce that claim.
  *
- * WHICH LAYER THESE NUMBERS COME FROM (#263 item 5). The table above was measured
- * ENGINE-DIRECT, and this mission runs FULL-STACK under run_campaign. That mismatch is
- * the trap CLAUDE.md's layer table exists for, so here is what was checked rather than
- * assumed:
- *   - The REACTIVITY claims (ρ, boron, control-bank position) are layer-independent, and
- *     this was verified statically, not by a run. `getStartupLineup()` returns [] for
- *     cold_shutdown — the stack applies no extra commands. `boron_conc` IS defaultOn, but
- *     its setpoint captures the current analyzer reading, so it holds boron where it finds
- *     it rather than driving it anywhere, and `manual_overrides: ['set_boron_adjust']`
- *     takes it to MAN the moment a procedure orders a dilution. Nothing moves the rods.
- *   - The TIMING claims (plant-hours to each milestone) may differ modestly full-stack,
- *     because `feed_sg` replaces the engine's coupled-feed fallback and feed flow changes
- *     how fast the SG carries heat away. **This was NOT measured.** Two attempts to drive
- *     12 plant-hours through the service from Node exceeded ten minutes of wall clock
- *     without finishing; a cycle-at-a-time service loop is far too slow for a ride this
- *     long. Treat the hour figures as engine-direct and approximate at full stack.
- * If you need trustworthy full-stack timings, drive them from a gate that already has the
- * service warm (run_campaign) rather than standing a fresh one up per measurement.
+ * WHICH LAYER THESE NUMBERS COME FROM (#263 item 5) — SETTLED 2026-07-30, and the answer
+ * is that it makes NO DIFFERENCE HERE. This mission runs FULL-STACK under run_campaign
+ * (`startScenario` selects the plant with `noDefaults: true`), and the table was originally
+ * measured ENGINE-DIRECT. That mismatch is the trap CLAUDE.md's layer table exists for, so
+ * it was run BOTH WAYS with the same two commands (`set_rcp`, `set_pressure_setpoint`):
+ *
+ *                    engine-direct   full stack    delta
+ *     Mode 4          0.27 plant-h   0.27 plant-h  0.00 h
+ *     Mode 3          4.57 plant-h   4.57 plant-h  0.00 h
+ *     450 °F          7.63 plant-h   7.63 plant-h  0.00 h
+ *     545 °F         10.61 plant-h  10.61 plant-h  0.00 h
+ *     566 °F         11.28 plant-h  11.28 plant-h  0.00 h
+ *   and at 12 plant-hours every state value matches: 567.0 °F, −2828 pcm, 856.8 ppm,
+ *   3.54e-5 % power, 2235 psi, SG 65.0 %, fw_flow 0.0053.
+ *
+ * The prior worry was that `feed_sg` replacing the engine's coupled-feed fallback would
+ * change how fast the SG carries heat away. Measured, it does not — feed flow at the end is
+ * 0.0053 normalized either way, because a subcritical plant on pump heat barely boils and
+ * both feed paths sit at the same near-zero demand. The REACTIVITY claims were already
+ * argued layer-independent statically (`getStartupLineup()` returns [] for cold_shutdown;
+ * `boron_conc` captures the current analyzer reading as its setpoint so it holds boron
+ * rather than driving it; nothing moves the rods) and the run now confirms it.
+ *
+ * The old note here said 12 plant-hours "exceeded ten minutes of wall clock without
+ * finishing" and told you to borrow a warm service from run_campaign. **That was wrong and
+ * is retracted** (#266): the two attempts were driven through `svc.start()`, which arms
+ * `setTimeout(broadcastMs)` and therefore advances in WALL time. Drive `tick()` directly and
+ * this whole 12-plant-hour ride is ~34 s. Use `node test/measure_stack.js` — it takes the
+ * ICs, duration, watched fields and scheduled commands on the command line, never calls
+ * `start()`, and stamps the layer into its own output.
  *
  * Honesty: the WALL CLOCK is compressed (time acceleration), and the pressurization
  * is fast. The heat source and the rate are no longer fictional.

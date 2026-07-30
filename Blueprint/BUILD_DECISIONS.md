@@ -37,6 +37,41 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-30d — #266: no service change; the harness was driving the plant through a real timer
+
+**The decision: change NOTHING in `simulation_service.js`.** #266 proposed a `measure`-mode
+advance that skips snapshot/instructor work when nothing is subscribed. Profiled first (its own
+checkbox 1), that work is **~5 %** of wall clock and `engine.step` is **87.9 %** — the optimisation
+would have bought nothing and added a second code path through the one layer whose job is to be
+the single way commands reach the plant (HR5). Cost is linear in sim duration (six plant-hours at
+0.98× drift) and the checkpoint ring is capped, so there is nothing to fix.
+
+**What was actually wrong** was the caller: `start()` arms `setTimeout(this.broadcastMs)` and
+advances in **wall** time (measured: 5.0 s of wall = 48.0 s of sim at accel 10×). 30 plant-minutes
+costs 3.1 real minutes that way, 31.3 if an attention stop drops acceleration to 1× (#245) — and
+**~2 seconds** driving `tick()` directly. `board_check.html` had the warning in a local comment;
+it was never generalised, so it is now in CLAUDE.md's layer section.
+
+**Delivered `test/measure_stack.js`** rather than a service change. Deliberately a HARNESS, not a
+gate: `run_all` discovers `/^(run|verify)_.*\.js$/`, so this name is outside the gate list on
+purpose — it produces numbers, it does not assert them, and a baseline on a measurement tool would
+be a baseline on the plant's behaviour in disguise.
+
+Three properties it commits to: the **layer is stamped in its own output** (#266 checkbox 4,
+alongside lineup and the #153 protection granularity); every column prints its **source**, since
+`tavg_c` and `tavg` differ by exactly the HR1 gap; and units are **US-first with SI in
+parentheses** at the point of production, deltas/rates converting ×9/5 with no offset. An unknown
+option or unresolvable field is a hard error — the first cut accepted a typo'd `--wach` and
+printed a correct-looking table from the default field set.
+
+**Settled as a side effect:** #263 item 5. `pwr_mode5_to_mode3` measured at both layers is
+identical to every digit (all five milestones 0.00 h apart, every 12-hour state value equal), so
+the header's "may differ modestly, NOT measured" caveat is retired. Its ρ/boron figures were stale
+by #263's refit and are corrected (−3377 → −2828 pcm, 907 → 856.8 ppm) — a staleness the layer
+question had been masking.
+
+---
+
 ## 2026-07-30c — #267: the vital tile's red band follows the ARMED trip, not the first table row
 
 **The decision: a tile band is resolved per-snapshot from the trips that are actually armed, and

@@ -115,6 +115,89 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30d — #266: the measurement gap did not exist; `start()` was advancing in wall time  ✅
+
+**#266's diagnosis was wrong, and this entry is mostly the correction.** It held that a long
+full-stack evolution could not be measured — "a cycle-at-a-time service loop from Node cannot
+cover a 12-plant-hour ride", two attempts "exceeded ten minutes of wall clock without finishing",
+one for a bounded 30-plant-minute segment — and named per-cycle overhead (snapshot construction,
+instructor beats, alarm scanning) as the suspect. Its own first checkbox said **profile before
+optimising**. Profiled:
+
+| phase | share of wall clock |
+|---|---|
+| `engine.step` | **87.9 %** |
+| `engine.getTrueState` | 7.9 % |
+| `layer.stepAutomation` | 4.6 % |
+| everything else (snapshot, alarms, instructor, checkpoints, broadcast) | **~5 %** |
+
+So there is no per-cycle overhead worth optimising and **no `measure`-mode advance is needed**.
+Nor is anything superlinear: six consecutive plant-hours cost 2977 / 2892 / 2863 / 2862 / 2844 /
+2907 ms (last/first **0.98×**) and the checkpoint ring stays capped at 32. Acceleration barely
+matters either — one plant-hour is 4.0 s at 1× and 3.1 s at 3600× — because the physics dt is
+**fixed**, so you pay for sim *duration*, not tick count.
+
+**The actual cause, measured.** `SimulationService.start()` arms `setTimeout(this.broadcastMs)`,
+so it advances in **wall** time:
+
+| drive method | 30 plant-minutes |
+|---|---|
+| `svc.start()` at accel 10× | **3.1 real minutes** (5.0 s of wall bought 48.0 s of sim = 9.6× real) |
+| `svc.start()` after an attention stop drops accel to 1× (#245) | **31.3 real minutes** |
+| `svc.tick()` / `advanceCycles()` in a loop | **~2 seconds** |
+
+That last row is the same configuration #266 describes as impossible. The 31.3-minute row is the
+reported symptom to the digit, and it is #245 again — the attention-stop dropout silently
+returning acceleration to 1× — reached through a different door. `board_check.html` already
+carried the warning in a comment (*"do NOT use play/pause — start() arms a real timer"*); it was
+never generalised.
+
+**Delivered: `test/measure_stack.js`.** Full stack (M4+M5+M6), CLI-driven — `--ic`, `--for`,
+`--every`, `--watch`, `--accel`, `--lineup`, repeatable `--cmd='<t>:<json>'`, `--csv`. It never
+calls `start()`. Three things it does deliberately:
+
+1. **Stamps the LAYER in its own output** (#266 checkbox 4), with the lineup, the acceleration
+   and the resulting protection granularity (#153). A wrong-layer figure is now visible in the
+   artifact instead of found a day later in a catalog entry.
+2. **Prints the SOURCE of every column** — `tavg_c` (truth) and `tavg` (the instrument) are
+   different numbers and HR1 is the reason.
+3. **US customary first, SI in parentheses**, applied where the numbers are produced. Deltas and
+   rates (`subcooling_c`, `tavg_rate_c_per_hr`, `subcooling_margin`) convert ×9/5 with no offset.
+
+An unknown `--option` or an unresolvable `--watch` field is a **hard error**. First cut accepted
+`--wach=tavg_c` silently and ran the default field set — a table that looks entirely correct is
+the exact failure this harness exists to stop.
+
+**Used it to settle #263 item 5 / #266's second named defect.** `pwr_mode5_to_mode3`'s milestone
+table was published engine-direct on a mission that runs full-stack, and the header said the
+timings "may differ modestly… **this was NOT measured**". Run both ways with the same two
+commands:
+
+|  | engine-direct | full stack | delta |
+|---|---|---|---|
+| Mode 4 | 0.27 plant-h | 0.27 plant-h | **0.00 h** |
+| Mode 3 | 4.57 | 4.57 | 0.00 h |
+| 450 °F (232.2 °C) | 7.63 | 7.63 | 0.00 h |
+| 545 °F (285.0 °C) | 10.61 | 10.61 | 0.00 h |
+| 566 °F (296.7 °C) | 11.28 | 11.28 | 0.00 h |
+
+Identical to every digit, and so is every state value at 12 plant-hours. The worry was `feed_sg`
+replacing the engine's coupled-feed fallback; measured, feed flow ends at 0.0053 normalized either
+way, because a subcritical plant on pump heat barely boils and both feed paths sit at the same
+near-zero demand. **The layer was not the problem on this one — but the header was stale anyway**:
+it read ρ = −3377 pcm on 907 ppm, and the plant is now at **−2828 pcm on 856.8 ppm**, because
+#263's refit landed the day after the header was written. Both corrected in the file.
+
+**Two things worth carrying forward.**
+
+- **A performance claim is a plant-dynamics claim's poor cousin, and HR12 should have caught it.**
+  "Ten minutes without finishing" was written down as a property of the *system* when it was a
+  property of *how it was driven*, and it then propagated into a scenario header telling the next
+  agent not to bother. One profile would have shown 87.9 % engine.step.
+- **The incentive #266 named was real even though its diagnosis was not.** Reaching for
+  engine-direct because it finishes is what produced PI-9's 13× error. That incentive is now gone
+  for a different reason than the issue proposed: the correct measurement finishes in 35 seconds.
+
 ### 2026-07-30c — #267: the power gauge advertised a trip five times higher than the armed one  ✅
 
 **The defect.** `power_range high` carries **two** reactor trips: the 120 % backstop and
