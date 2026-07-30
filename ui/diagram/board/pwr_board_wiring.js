@@ -315,9 +315,15 @@
   //   bdPzrTempLbl/Val, bdPzrHtrLbl/Val → authored as ims5gp0aicx / ims5gq44zgr and
   //       ims5gpdv96m / ims5gprvl7n, beside the pressurizer where the injected pair sat
   //
-  // EMPTY, and the emptier it stays the better: a driver-injected tile is invisible to the
-  // builder, so it cannot be moved by the person who owns the layout.
-  var EXTRA_ITEMS = [];
+  // EMPTY when possible — a driver-injected tile is invisible to the builder.
+  // Period sits under the REACTIVITY readout (true-state teaching quantity, same
+  // family as ρ pcm). Coordinates match the authored REACTIVITY / pcm pair.
+  var EXTRA_ITEMS = [
+    { id: 'bdRxPeriodLbl', kind: 'text', name: 'Reactor period label',
+      left: 885, top: 490, text: 'PERIOD', fontSize: 12, color: '#8ba4b6', weight: 600, mono: true },
+    { id: 'bdRxPeriod', kind: 'value', name: 'Reactor period  ·  sim: true_state.reactor_period_s',
+      left: 960, top: 505, value: '∞', unit: 's', color: '#8ba4b6', fontSize: 14, rAnchor: true }
+  ];
 
   // ================================================================ NUMBERS (editable)
   // set(v): issue command from the typed value; get(s): reflect current sim state.
@@ -399,6 +405,13 @@
     },
     imro6rctcgm: function (s) { return fmtExp(IN(s).intermediate_range); },                              // IR amps (log scale, amps — like SR; was a mislabeled µA integer that read "0"/"1")
     imro6rdwwdn: function (s) { var r = (s.true_state && s.true_state.reactivity_pcm) || 0; return (r >= 0 ? '+' : '') + r0(r); }, // reactivity pcm
+    // Reactor period (s) — teaching readout under REACTIVITY. ∞ when steady.
+    bdRxPeriod: function (s) {
+      var per = s.true_state && s.true_state.reactor_period_s;
+      if (per == null) return { text: '—', unit: 's' };
+      if (!isFinite(per) || Math.abs(per) > 9999) return { text: '∞', unit: 's' };
+      return { text: String(Math.round(per)), unit: 's' };
+    },
     imrpk4pjcpd: function (s) { var g = rodGroup(s, 'control_rods'); return g ? g.steps : 0; },         // control rod steps
     imrpnzfsfcx: function (s) { var g = rodGroup(s, 'shutdown_rods'); return g ? g.steps : 0; },        // shutdown rod steps
     imrppee04aj: function (s) { return r0(IN(s).turbine_rpm); },                                        // turbine rpm
@@ -1010,7 +1023,7 @@
     // Indication readouts — highlight vocabulary for checklist-step hover (glowLabels
     // in ui/app.js). Not named by campaign beats, so run_campaign never demands them.
     '1/M Plot Tool': 'bdOneOverM', 'Source Range': 'imro6qutiht', 'Intermediate Range': 'imro6rctcgm',
-    'Reactivity': 'imro6rdwwdn', 'Startup Rate': 'imro6qsncb9',
+    'Reactivity': 'imro6rdwwdn', 'Reactor Period': 'bdRxPeriod', 'Startup Rate': 'imro6qsncb9',
     // Tavg, plant pressure and SG level are no longer standalone readouts on the mimic —
     // V2 promoted all three into the vital-parameter tile strip, so these labels glow the
     // tile. (Highlighting an indication is checklist hover-glow only; campaign beats

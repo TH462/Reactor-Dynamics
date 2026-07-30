@@ -216,6 +216,12 @@
       'This is the reactivity computer, and it reads TRUE state: real plants infer reactivity from ' +
       'rate meters and rod worth curves rather than measuring it. Treat it as the teaching overlay ' +
       'it is — positive means power is climbing, zero means critical and steady.', CI, '4.1'),
+    bdRxPeriod: e('Reactor period',
+      'Reactor period in seconds — time for power to change by a factor of e.',
+      'Teaching readout under REACTIVITY (true state), not a field instrument. Near criticality ' +
+      'you want a long period (tens of seconds or more); a short period means power is changing ' +
+      'fast. ∞ means essentially steady.', CI, '4.1'),
+    bdRxPeriodLbl: 'bdRxPeriod',
     bdOneOverM: e('1/M PLOT',
       'Opens the inverse-count-rate plot — the standard approach-to-criticality tool.',
       'Plot the inverse of source-range count rate against rod position: as the core approaches ' +
