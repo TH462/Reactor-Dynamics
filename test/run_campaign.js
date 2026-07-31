@@ -1187,13 +1187,13 @@ test('pwr_mode3_to_mode5 — controlled cooldown reaches Cold Shutdown', functio
       s.handleCommand({ action: 'set_trip_block', trip_id: 'si_trip', blocked: true });
       if (!(rb && rb.type === 'blocked')) blockedLP = true;   // accepted (retry next sample if refused)
     }
-    // #273 — isolate the SI accumulators at 1000 psig (6.89 MPa), the beat the
+    // #273 — isolate the SI accumulators at 1000 psi (6.895 MPa), the beat the
     // scenario now teaches (NUREG-1431 LCO 3.5.1 applicability / LTOP SR 3.4.12.3).
     // Without it the descent past their 600 psi (4.14 MPa) cover gas dumped all four
     // into the RCS: measured endpoint accum_vol 0.0 %, boron 2310 ppm, inventory
     // pegged at mass_max. The "arrived UNscrammed" check below did NOT catch that —
     // it passed anyway, because indicated pzr level could not reach its 97 % trip.
-    if (!accIso && t.pressure_mpa < 6.89) { accIso = true; s.handleCommand({ action: 'close_accumulator_valve' }); }
+    if (!accIso && t.pressure_mpa < 6.895) { accIso = true; s.handleCommand({ action: 'close_accumulator_valve' }); }
     if (!below && t.pressure_mpa < 2.76) { below = true; s.handleCommand({ action: 'set_rhr', active: true }); s.handleCommand({ action: 'set_rhr_hx', pct: 100 }); s.handleCommand({ action: 'set_rcp', running: false }); }
     s.handleCommand({ action: 'set_boron_adjust', rate: t.reactivity_pcm < -2500 ? 0 : 4.0 });
     if (t.pzr_level_pct > 58) s.handleCommand({ action: 'set_letdown_orifices', a: true, b: false });

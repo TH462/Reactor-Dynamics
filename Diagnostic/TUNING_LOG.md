@@ -115,6 +115,67 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30l — #273 item 1: the manual now carries the isolation step (and its mirror), and the interlock question got its evidence pass  ✅
+
+**Item 1 done.** It was deferred in 2026-07-30k only because the workbench lane had all 13
+manual documents open; that lane merged at `a3e552f`, so the prose landed.
+
+- **`04` PWR-N15 and `05` Phase C both gained an isolation step** at **1000 psi (6.895 MPa)**
+  — narrative table + simulator practice in N15, table step C3 + the Simulator paragraph in
+  Phase C. Neither chapter had contained the word *accumulator* before. Both carry the note
+  that these are passive tanks and that the SI block set entering the cooldown blocks
+  **pumps**, not them.
+- **`05` Phase A gained the matching re-align step, A5** — not scope creep. A manual that
+  teaches isolation on the way down and says nothing on the way up trades one silent hazard
+  for the mirror hazard: the Mode 5 IC ships with `accumulator_valve_open: false`
+  (`pwr_engine.js:1505`), and **nothing in the manual set re-aligned them** — the only two
+  sites that do are the engine's internal `_driveHeatup` (`:1795`) and one step in
+  `ui/manual_procedures.js:59`. A free-play manual heatup therefore reaches Mode 1 with no
+  passive injection and no cue. Filed as a follow-up rather than fixed in code here.
+- **One number, not two.** `1000 psig (6.89 MPa)` failed `run_manual_units` twice over: the
+  checker does not recognise `psig` as the US half of a pair, and 6.89 MPa is 999.31 psi,
+  0.69 outside the 0.6 psi tolerance. Rather than quote a setpoint the arithmetic disowns,
+  **1000 psi (6.895 MPa)** is now the single value in the manual, the scenario trigger
+  (`scenarios/pwr_mode3_to_mode5.js:80`) and the campaign driver
+  (`test/run_campaign.js:1196`). The verbatim NUREG quote keeps its own `psig`, as a quote
+  should.
+
+**Item 2 — the interlock question — evidence pass run, and it settles the opposite way from
+"probably yes".** Two primaries, independently:
+
+- **U.S. EPR FSAR Tier 2 §7.6.1.2.2** (ML091671514), *Safety Injection Accumulator
+  Interlocks*: *"Each isolation valve is interlocked to remain open above a specified RCS
+  pressure value. This pressure value is the permissive P12 threshold."* … *"when RCS
+  pressure increases above the P12 threshold, the PS provides automatic signals to open the
+  accumulator isolation valves. Once the valves are verified to be in the open position,
+  control power is removed from the valves to prevent inadvertent closure."* … *"after RCS
+  pressure decreases below the P12 threshold, the operator is prompted to manually
+  acknowledge P12, which allows the isolation valves to be closed."*
+- **NUREG-1431 Rev 4.0 Bases B 3.5.1, SR 3.5.1.5** (ML12100A228): *"Verification that power
+  is removed from each accumulator isolation valve operator when the RCS pressure is
+  ≥ [2000] psig ensures that an active failure could not result in the undetected closure of
+  an accumulator motor operated isolation valve."*
+- **Bases B 3.3.3** (post-accident monitoring) names the cooldown decision as an **operator**
+  decision read off an instrument: RCS pressure is used *"to determine whether to close
+  accumulator isolation valves during a controlled cooldown/depressurization."*
+
+So every automatic signal a real plant puts on this valve is an **open** signal, and the
+hazard the design guards is **spurious closure** — the exact opposite of an autoclose. There
+is also a mechanical reason an autoclose is unsafe here rather than merely unprototypical:
+the discharge gate is a conjunction, `aligned && p_coldleg < 4.14 MPa`
+(`pwr_primary.js:99`), so any pressure-keyed autoclose must fire at or above 600 psi to beat
+the discharge — which is the identical condition **every modelled LOCA** satisfies. It would
+suppress accumulator injection in all of them unless it carried an SI-actuation exemption.
+(That is the gate's logic, read statically; the engine's own selftest already measures the
+half that matters — *"isolated accumulators do not discharge"*, `pwr_engine.js:2561`.)
+
+Recommendation put to the owner: **no autoclose**; instead the two-sided real interlock —
+block `close_accumulator_valve` above the permissive, auto-**open** on the way up, and an
+annunciator at the isolation decision point on the way down. Awaiting the ruling.
+
+**Gates:** `run_all` **OK, 33 runners at baseline**; `run_manual_units` 266 pairs / 0 failed;
+`run_manual_rev` 12 / 0 (set Rev **17**).
+
 ### 2026-07-30k — #249 FITTED and #273 FIXED, and a new gate for the class of bug that hid them  ✅
 
 *(OWNER RULING, 2026-07-30: "249 - fit it.")* — so the surplus axis is fitted to the sourced

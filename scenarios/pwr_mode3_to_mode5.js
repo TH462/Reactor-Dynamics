@@ -69,7 +69,7 @@
       // it because indicated pzr level could not reach its 97 % trip (#249) — the
       // "arrived UNscrammed" check was passing for the wrong reason.
       //
-      // 1000 psig (6.89 MPa) is where a real plant stops requiring them, so it is
+      // 1000 psi (6.895 MPa) is where a real plant stops requiring them, so it is
       // where the isolation belongs: NUREG-1431 Rev 4.0 LCO 3.5.1 APPLICABILITY is
       // "MODES 1 and 2, MODE 3 with RCS pressure > [1000] psig", and LTOP LCO 3.4.12
       // requires the LTOP system operable "with ... the accumulators isolated"
@@ -77,10 +77,10 @@
       // 2.75 MPa of margin above this plant's arming pressure, so a player who does
       // the step on cue never sees a discharge at all.
       { id: 'isolate_accumulators',
-        trigger: { type: 'true_state', field: 'pressure_mpa', direction: 'below', value: 6.89 },
+        trigger: { type: 'true_state', field: 'pressure_mpa', direction: 'below', value: 6.895 },
         commentary: {
           learning: 'Stop and ISOLATE THE ACCUMULATORS before you go any lower. Those are passive tanks of borated water held under a nitrogen blanket at 600 psi (4.14 MPa) — nothing switches them on, they simply dump the moment RCS pressure falls below their cover gas. That is exactly what you want in a Loss-Of-Coolant Accident and exactly what you do not want on a planned cooldown: you would flood the reactor coolant system with 2500 ppm borated water, empty every tank, and arrive at Cold Shutdown with no passive injection left. Blocking Safety Injection at the start did not cover these — SI is pumps, and these are pressure and a check valve. Close the accumulator discharge valve now.',
-          industry: 'Isolate the SI accumulators. Below 1000 psig (6.89 MPa) they are no longer required OPERABLE (NUREG-1431 LCO 3.5.1), and the LTOP lineup requires them isolated (LCO 3.4.12 / SR 3.4.12.3). Passive injection is not covered by the P-11 SI block: discharge is check-valve driven off the 4.14 MPa cover gas. Close the motor-operated discharge isolation valve before the depressurization reaches it.',
+          industry: 'Isolate the SI accumulators. Below 1000 psi (6.895 MPa) they are no longer required OPERABLE (NUREG-1431 LCO 3.5.1), and the LTOP lineup requires them isolated (LCO 3.4.12 / SR 3.4.12.3). Passive injection is not covered by the P-11 SI block: discharge is check-valve driven off the 4.14 MPa cover gas. Close the motor-operated discharge isolation valve before the depressurization reaches it.',
         },
         highlight: { control_label: 'Accumulator valve', instrument_id: 'press' },
         speed: 60,

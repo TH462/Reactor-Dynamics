@@ -2,7 +2,7 @@
 
 **Document:** PWR-NOP-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Revision:** 16  
+**Revision:** 17  
 
 ---
 
@@ -493,14 +493,26 @@ Cooldown from **Mode 3, Hot Standby** through **Mode 4, Hot Shutdown** to **Mode
 |------|------|--------|
 | 1 | **Mode 3, Hot Standby** | Hot standby/shutdown; borate to cold-shutdown margin |
 | 2 | → **Mode 4, Hot Shutdown** | Cooldown/depressurize within limits (steam dump / AFW / secondary) |
-| 3 | **Mode 4, Hot Shutdown** | Place **RHR** in service; continue cooldown |
-| 4 | → **Mode 5, Cold Shutdown** | RCS cold (≤ ~199.4 °F (93 °C) class); cold shutdown lineup |
-| 5 | Mode 5, Cold Shutdown | Refueling (**Mode 6, Refueling**) is **out of scope** |
+| 3 | **Mode 4, Hot Shutdown** | **Isolate the SI accumulators** passing **1000 psi (6.895 MPa)**, before RCS pressure reaches their **600 psi (4.14 MPa)** cover gas |
+| 4 | **Mode 4, Hot Shutdown** | Place **RHR** in service; continue cooldown |
+| 5 | → **Mode 5, Cold Shutdown** | RCS cold (≤ ~199.4 °F (93 °C) class); cold shutdown lineup |
+| 6 | Mode 5, Cold Shutdown | Refueling (**Mode 6, Refueling**) is **out of scope** |
+
+> **Step 3 is the one operators skip.** The accumulators are passive — nitrogen behind a check
+> valve — and the SI block you set entering the cooldown blocks *pumps*, not these tanks.
+> Nothing automatic shuts them. Ride past 600 psi (4.14 MPa) with the discharge valve open and
+> all four dump: the plant reaches Mode 5 water-solid, the SITs read empty, and RCS boron is
+> dragged toward the 2500 ppm tank charge, so any LOCA drill from that state has no passive
+> injection. Real plants isolate here under administrative control, not on an automatic signal
+> (NUREG-1431 Rev 4.0 LCO 3.5.1 applies in *"MODE 3 with RCS pressure > [1000] psig"*; LTOP
+> SR 3.4.12.3 *"Verify each accumulator is isolated."*). **PWR-T20 / 05 Phase A step A5**
+> re-aligns them on the heatup.
 
 ### Simulator practice
 1. After **PWR-N14** (Mode 3, Hot Standby), keep AFW/feed maintaining SG level.  
 2. Borate to cold-shutdown margin; **lower the Dump SP** to vent the SG and cool the primary; **lower the Pressure SP** to bring pressure down with spray.  
-3. Below the ~400 psi (2.76 MPa) interlock, place **RHR** in service (auto-arms) and **secure the RCPs** to decouple the SG; ride the plant down to a genuine Mode 5 cold end state (rate compressed).
+3. Passing **1000 psi (6.895 MPa)** on the way down, **isolate the SI accumulators** — shut the discharge valve on the ECCS side of the board (`close_accumulator_valve`). Confirm the SIT fill and cover-gas indications hold steady afterwards.  
+4. Below the ~400 psi (2.76 MPa) interlock, place **RHR** in service (auto-arms) and **secure the RCPs** to decouple the SG; ride the plant down to a genuine Mode 5 cold end state (rate compressed).
 
 ### Outcome
 Operator can narrate Mode 3, Hot Standby → Mode 5, Cold Shutdown; understands decay-heat obligation and trainer limits.

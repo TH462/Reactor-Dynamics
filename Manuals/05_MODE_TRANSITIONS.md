@@ -2,7 +2,7 @@
 
 **Document:** PWR-MT-01  
 **Title:** Plant MODE Transitions (Mode 1, At Power through Mode 6, Refueling)  
-**Revision:** 16  
+**Revision:** 17  
 
 ---
 
@@ -101,7 +101,8 @@ Mode 1, At Power at power (watchstanding)
 | A2 | Fill/vent RCS; establish RCP operation when permitted; heat on **pump heat**, reactor subcritical | Mode 5, Cold Shutdown → Four |
 | A3 | Draw and control pressurizer steam bubble; place heaters/spray in automatic | Mode 4, Hot Shutdown |
 | A4 | Heat and pressurize toward normal operating temperature and pressure within commercial heatup limits | Mode 4, Hot Shutdown |
-| A5 | Reach **Mode 3, Hot Standby**: subcritical, hot, P ≈ **2235 psi (15.41 MPa)**, Tavg ≈ **566.6 °F (297 °C)** (no-load program), heat sink available | **Mode 3, Hot Standby** |
+| A5 | **Re-align the SI accumulators** once RCS pressure is above their **600 psi (4.14 MPa)** cover gas — they must be aligned before **1000 psi (6.895 MPa)** (NUREG-1431 LCO 3.5.1). The cold lineup leaves them isolated; nothing opens them for you | Mode 4, Hot Shutdown |
+| A6 | Reach **Mode 3, Hot Standby**: subcritical, hot, P ≈ **2235 psi (15.41 MPa)**, Tavg ≈ **566.6 °F (297 °C)** (no-load program), heat sink available | **Mode 3, Hot Standby** |
 
 **Simulator:** Phase A is now driveable — load the **`cold_shutdown`** initial condition (**Mode 5, Cold Shutdown**) and perform the heatup: start the RCPs (`set_rcp`), raise the pressurizer setpoint to draw up to NOP pressure (`set_pressure_setpoint`), and keep the turbine off line with the dumps shut so the SG **bottles**. That is the whole evolution — heat crossing the tubes has no steam sink, so it goes into secondary pressure, and the plant rides up on pump heat with **the control bank never leaving its cold-shutdown position**. Re-measured with no rod motion after the #260 reactivity recalibration: **11.39 plant-hours** cold to **567.0 °F (297.2 °C)** — the no-load anchor — arriving at **ρ = −3377 pcm on 907 ppm**, control bank still at 0 of 912 steps. It ends *less* subcritical than the −6287 pcm recorded before #260 because the old model charged a moderator defect over three times too large on the way up. **The thermal ride is unchanged** — 545 °F (285.0 °C) still arrives at 10.61 plant-hours and the steady rate is still 32.1 °F/hr (17.8 °C/hr) — because pump heat does not depend on the moderator coefficient. The endpoint reads 567.0 °F rather than the older 548 °F because 567 °F is the no-load anchor where the dump opens and Tavg stops, and this run was carried to that settling point; it is a measurement-window difference, **not** a 19 °F physics gain. Or **skip Phase A** by loading **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**.
 
@@ -200,11 +201,23 @@ This is the deepest **fully simulated** shutdown state.
 |------|--------|-----------------|
 | C1 | Borate to cold-shutdown margin (commercial) | Mode 3, Hot Standby |
 | C2 | Cooldown and depressurize within limits using steam dump / AFW / secondary | Mode 4, Hot Shutdown |
-| C3 | Place **RHR** in service when pressure/temperature permit | Mode 4, Hot Shutdown |
-| C4 | Continue to cold conditions (Tavg ≤ ~199.4 °F (93 °C) class) | **Mode 5, Cold Shutdown** |
-| C5 | Secure secondary as appropriate; solid plant / cold solid per commercial practice | Mode 5, Cold Shutdown |
+| C3 | **Isolate the SI accumulators** while descending through **1000 psi (6.895 MPa)** — before RCS pressure reaches their **600 psi (4.14 MPa)** cover gas | Mode 4, Hot Shutdown |
+| C4 | Place **RHR** in service when pressure/temperature permit | Mode 4, Hot Shutdown |
+| C5 | Continue to cold conditions (Tavg ≤ ~199.4 °F (93 °C) class) | **Mode 5, Cold Shutdown** |
+| C6 | Secure secondary as appropriate; solid plant / cold solid per commercial practice | Mode 5, Cold Shutdown |
 
-**Simulator:** This is now driveable to a genuine cold end state: borate for shutdown margin, lower the steam-dump setpoint (`set_steam_dump_setpoint`) to cool the secondary and with it the primary, depressurize in step (`set_pressure_setpoint`, spray) keeping subcooling positive, place **RHR On** below the 400 psi (2.76 MPa) interlock, and **secure the RCPs** (`set_rcp`) so RHR draws the RCS to cold. Once RHR carries the cooldown, set its pace with **RHR Cooldown Rate (HX flow split)** (`set_rhr_hx`) — walk it up to hold the ~**90 °F/h** (50 °C/h) cooldown limit rather than opening full-through-the-exchanger on a hot plant. The cold end state matches the `cold_shutdown` IC. Cooldown *rate* is time-compressed. **PWR-N15** is the companion procedure.
+> **C3 is not optional.** The accumulators are passive: nitrogen behind a check valve. Nothing
+> automatic shuts them, and the SI block set at the start of the cooldown blocks *pumps*, not
+> these tanks. Carry the discharge isolation valve open past 600 psi (4.14 MPa) and all four
+> dump into the RCS — the plant arrives at Mode 5 water-solid, with the accumulators empty and
+> RCS boron dragged up toward the 2500 ppm tank charge. Watch the SIT fill and cover-gas
+> indications on the ECCS side of the board. Isolating at 1000 psig leaves 400 psi (2.76 MPa)
+> of margin. Real plants isolate here too, under administrative control rather than on an
+> automatic signal (NUREG-1431 Rev 4.0 LCO 3.5.1, applicable in *"MODE 3 with RCS pressure
+> > [1000] psig"*; LTOP SR 3.4.12.3 *"Verify each accumulator is isolated."*). **Re-align them
+> on the way back up** — Phase A step A5.
+
+**Simulator:** This is now driveable to a genuine cold end state: borate for shutdown margin, lower the steam-dump setpoint (`set_steam_dump_setpoint`) to cool the secondary and with it the primary, depressurize in step (`set_pressure_setpoint`, spray) keeping subcooling positive, **isolate the accumulators at 1000 psi (6.895 MPa)** (discharge valve on the board's ECCS side, `close_accumulator_valve`), place **RHR On** below the 400 psi (2.76 MPa) interlock, and **secure the RCPs** (`set_rcp`) so RHR draws the RCS to cold. Once RHR carries the cooldown, set its pace with **RHR Cooldown Rate (HX flow split)** (`set_rhr_hx`) — walk it up to hold the ~**90 °F/h** (50 °C/h) cooldown limit rather than opening full-through-the-exchanger on a hot plant. The cold end state matches the `cold_shutdown` IC. Cooldown *rate* is time-compressed. **PWR-N15** is the companion procedure.
 
 ---
 

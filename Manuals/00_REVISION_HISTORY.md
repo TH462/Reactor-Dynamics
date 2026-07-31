@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 16 (2026-07-30)  
+**Set revision:** 17 (2026-07-30)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -18,6 +18,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 17 | 2026-07-30 | **The cooldown tells you to isolate the accumulators — it never did** (#273). The Mode 3 → Mode 5 path descended through the accumulators' **600 psi (4.14 MPa)** cover gas with the discharge valve open, dumping all four into the RCS: measured endpoint `accum_vol 0.0 %`, boron **2310 ppm** against a 2500 ppm tank charge, the plant water-solid at Mode 5. Neither **04 PWR-N15** nor **05 Phase C** contained the word *accumulator*. Both now carry an isolation step at **1000 psi (6.895 MPa)** — sourced, not picked: NUREG-1431 Rev 4.0 **LCO 3.5.1** applies in *"MODE 3 with RCS pressure > [1000] psig"* and LTOP **SR 3.4.12.3** reads *"Verify each accumulator is isolated."* — leaving 400 psi (2.76 MPa) of margin above the cover gas. Both steps carry the note that these are **passive** tanks and the SI block set entering the cooldown blocks *pumps*, not them. **05 Phase A gained the matching re-align step (A5)**, because a manual that isolates on the way down and never re-aligns on the way up trades one silent hazard for another: the cold lineup leaves them shut and nothing opens them for you. Phase C steps renumbered C3–C6, Phase A A5–A6, N15 narrative 3–6. | Accumulator-isolation step |
 | 16 | 2026-07-30 | **The everyday leak now exists — new 07 PWR-E23, RCP Seal Leak** (#262). The failure catalog had two primary leaks and both were casualties: a tube rupture and a cold-leg break. There was no containment-side *identified leakage* case, the one the charging system exists for — and it was **unreachable**, not merely absent: the severity slider steps in whole per cent, so the smallest injectable Large LOCA is about **7× beyond what charging can hold**. `rcp_seal_leak` maps its whole 0–100 % range onto **0 → 3.5e-4 inventory-frac/s**, so *every* position is held. That ceiling is measured, and it is half the figure the issue was filed with: net make-up authority is `(charging − letdown) × gain`, and quoting it letdown-isolated would have left the top half of the new slider unholdable. **07 §2.1** slider table and index extended (23 failures, eight sliders). The card leads on what the board will **not** tell you — PZR LVL LO never comes in, because a held leak parks level around 52–54 % against a 25 % setpoint. | Small-leak failure |
 | 15 | 2026-07-30 | **Two new annunciators for the leak a plant holds without telling you** (#262, owner ruling). A reactor coolant leak small enough for charging to keep up is held indefinitely, and — measured full-stack across the whole holdable band — pressurizer level parks between **52.0 % and 54.1 %**, while the nearest existing alarm, **PZR LVL LO**, sits at 25 %. Nothing annunciated: the plant lost inventory silently with make-up near its limit. **New 06 PWR-A30 (CHG FLOW HI)** is the cue — charging is a level controller, so it works hard only because something is pulling level down, and it is the sensitive channel by an order of magnitude (0.0383 → 0.0585 across the band, against 0.0297 steady and a 0.0323 peak through a 100 → 90 MWe load change). **New 06 PWR-A31 (PZR LVL DEV LO)** says make-up has *lost* it, and is a **deviation from the level program** rather than an absolute setpoint because level legitimately swings over eight percentage points on a load change — measured, 55.00 → 63.26 % while the program moved +8.25, leaving the deviation at 0.01. The pair is a diagnosis: A30 alone is a held leak, A30 with A31 means make-up is losing. Index table extended to 31 cards. | Small-leak annunciation |
 | 14 | 2026-07-30 | **The moderator coefficient's magnitude is measured too, superseding the 2026-07-21 ruling** (#263). Rev 13 recorded that *shape* and *level* were measured while *magnitude* at the full-power reference was the owner's −20 pcm/°C plant-identity ruling. That is no longer the case *(OWNER RULING, 2026-07-30: "for 263 item 1 fit the measurement.")*: **both** moderator parameters are now least-squares fitted to the same three measured BEAVRS isothermal coefficients, reproducing all three to within **0.09 pcm/°F** where the previous calibration missed two of them by 0.88 and 1.64. The full-power coefficient is now **−26.8 pcm/°C**, 34 % stronger, so the core absorbs a rod withdrawal as temperature rather than power — which is what a real plant does at power. **09 §7.5** tables regenerated (critical boron 806 → 588 ppm bank-in; boron worth 19.9 cold / 10.5 hot pcm/ppm) and its "what pins this curve" note rewritten — nothing in that curve is set by preference any more. **12 §4.3/§4.3.1** values and the hot-full-power boron derivation updated to match. | Measurement-fit pass |
@@ -61,13 +62,13 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 16 (2026-07-30). A mismatch means a chapter changed with no
+     Sealed at Rev 17 (2026-07-30). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md c2015d3574814966
      02_SIMULATOR_USER_GUIDE.md e4faa6ae38d6a47d
      03_CONTROLS_AND_INDICATIONS.md f1b3b88c0a391fab
-     04_NORMAL_OPERATIONS.md 952100f181ace21c
-     05_MODE_TRANSITIONS.md 169df0c3ca146abf
+     04_NORMAL_OPERATIONS.md c126a7856370fb82
+     05_MODE_TRANSITIONS.md 3b06dff310dcef99
      06_ALARM_RESPONSE.md d69196711ce64d0e
      07_ABNORMAL_EMERGENCY.md 6dff7768a1d726de
      08_ACCIDENT_TMI.md d6a3ff47c6786021

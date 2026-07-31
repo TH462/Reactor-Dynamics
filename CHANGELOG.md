@@ -14,6 +14,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The cooldown procedures now tell you to isolate the accumulators** (#273) — manual set
+  **Rev 17**. `04` PWR-N15 and `05` Phase C both descended past the accumulators' 600 psi
+  (4.14 MPa) cover gas without a word about them; neither chapter contained the term. Both
+  now carry an isolation step at **1000 psi (6.895 MPa)** (NUREG-1431 LCO 3.5.1
+  applicability; LTOP SR 3.4.12.3), with the note that these are passive tanks and that the
+  SI block set entering the cooldown blocks *pumps*, not them. `05` Phase A gained the
+  matching **re-align** step — the cold lineup ships with the accumulators isolated and
+  nothing in the manual set had ever opened them again. The isolation pressure is now one
+  number across the manual, the scenario trigger and the campaign driver.
+
 - **The pressurizer could not go water-solid on injection — the exact thing Three Mile
   Island is about** (#249) — and the clamp that caused it was hiding a second bug.
 
