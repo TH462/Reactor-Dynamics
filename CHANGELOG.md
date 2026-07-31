@@ -21,23 +21,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.1.0] — 2026-07-31
-
-> **Version numbering restarted here** *(OWNER DIRECTIVE, 2026-07-31: "I want to reset the
-> alpha built number to 1.1.0 and reset the change-logs on the site. … Very few people have
-> seen the site yet and they are all people I know/testers.")*. The player-facing
-> `changelog.html` was collapsed to a single high-level entry for the public launch. This
-> file keeps the full engineering record: everything that shipped as **Alpha 1.10.0** and
-> **1.11.0**, plus the work that was unreleased at the reset, is below under this heading,
-> and the releases before that are preserved verbatim under the catch-all further down.
->
-> Note the numbers went DOWN (1.11.0 → 1.1.0). Tags `v1.10.0` and `v1.11.0` still exist and
-> now sort ABOVE the current release; the offline download also renames itself from
-> `Reactor_Dynamics_Alpha_1.11.0.zip` to `..._1.1.0.zip`, which reads as a downgrade to
-> anyone holding the old file. Both were accepted deliberately — the audience is a handful
-> of known testers.
-
-
 ### Added
 <<<<<<< HEAD
 - **You can reset the SCRAM now, and the board tells you what is holding it** (#75, closing
@@ -206,6 +189,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `RD_RELEASE` is a full `Alpha X.Y.Z`. All seven were proven to go **red by injection**
   before being counted green.
 
+## [Alpha 1.11.0] — 2026-07-30
 
 ### Added
 - **The board now tells you to isolate the accumulators — SI ACCUM ALIGNED < 1000 PSI**
@@ -370,6 +354,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   annotation clears; drop back below P-10 and the block reinstates itself and the band comes
   back with it. **At power nothing changed** — the bands are identical to before.
 
+## [Alpha 1.10.0] — 2026-07-30
 
 ### Fixed
 - **The moderator model was re-fitted to measured plant data, and the reactor is more
@@ -618,12 +603,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   anything is wrong. `run_hr3`, `run_contract` and `run_inspect` keep their counts in the
   baseline on purpose — theirs move when a real decision is made.
 
-## [Alpha 1.9.0 and earlier] — up to 2026-07-29
-
-_Pre-reset numbering, preserved verbatim. Demoted to sub-headings so the release gate sees
-one current version heading; nothing here was edited._
-
-### [Alpha 1.9.0] — 2026-07-29
+## [Alpha 1.9.0] — 2026-07-29
 
 ### Changed
 - **The manual now reads in both unit systems — US customary first, SI in parentheses.**
@@ -908,7 +888,7 @@ one current version heading; nothing here was edited._
   *Migration note:* the new `clad_temp_c` state field is lazily initialized on the first
   step (to the hot-leg temperature), so saves written before this change load unchanged.
 
-### [Alpha 1.8.2] — 2026-07-28
+## [Alpha 1.8.2] — 2026-07-28
 
 ### Fixed
 - **The vital-parameter tiles no longer flicker at all.** The previous fix stopped their
@@ -927,7 +907,7 @@ one current version heading; nothing here was edited._
   now measured from the number's real height, and if the column ever cannot fit it distributes
   evenly instead of piling up at the top edge.
 
-### [Alpha 1.8.1] — 2026-07-28
+## [Alpha 1.8.1] — 2026-07-28
 
 ### Fixed
 - **The vital-parameter tiles no longer flicker**, especially during a transient. Their
@@ -958,7 +938,7 @@ one current version heading; nothing here was edited._
   spanning the meter's full 50–660 °F. The green programme band is now a readable width rather
   than a hairline in a field of grey.
 
-### [Alpha 1.8.0] — 2026-07-28
+## [Alpha 1.8.0] — 2026-07-28
 
 ### Added
 - **New control-room diagram (V2).** The PWR board was re-authored in the Claude Design
@@ -1064,7 +1044,7 @@ one current version heading; nothing here was edited._
   progressed toward its acceptance check, quietly costing you up to five evaluations of
   credit. Both now survive a save. Older save files still load and behave exactly as they did.
 
-### [Alpha 1.7.1] — 2026-07-27
+## [Alpha 1.7.1] — 2026-07-27
 
 ### Changed
 - **The steam dump's temperature reference now slides with turbine load** (issue #219). It was
@@ -1122,7 +1102,7 @@ one current version heading; nothing here was edited._
   the OS temp dir (a hardcoded session id). It now writes to `Diagnostic/`, with an optional
   argv override (issue #159).
 
-### [Alpha 1.7.0] — 2026-07-27
+## [Alpha 1.7.0] — 2026-07-27
 
 ### Added
 - **Reactor Trip on Turbine Trip (P-9).** Above ~50 % power a turbine trip now trips the reactor,
@@ -1310,7 +1290,7 @@ one current version heading; nothing here was edited._
   `inject_failure` by `failure_id`), so blocking the power-range trip does not also tick
   the intermediate-range step.
 
-### [Alpha 1.6.1 and earlier] — up to 2026-07-24
+## [Alpha 1.6.1 and earlier] — up to 2026-07-24
 
 _Everything below this line predates the convention above: it was kept as one running
 `[Unreleased]` log and was never cut per release, so it is not separated by version.
