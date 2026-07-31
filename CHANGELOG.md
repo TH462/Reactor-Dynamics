@@ -13,6 +13,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **Resetting the reactor protection system on the RBMK or the BWR blamed the rods for
+  something that was not their fault** (#228).
+
+  After a scram, the trip breakers reset only once the rods are fully in — a real
+  interlock, and the simulator models it. On those two plants the reset was refused with
+  *"trip breakers reset only with all rods inserted"* **while every rod read 0.0 %**, fully
+  inserted. There was no way to clear the scram, and the message pointed at the one thing
+  that was already correct.
+
+  The cause was two layers deep. The shared control system had always sent the reset
+  command to the reactor, but only the pressurised-water reactor knew what to do with it;
+  the other two answered "I do not understand that", the control system discarded the
+  reply, and then inferred a reason from the fact that the plant was still tripped. Both
+  reactors now implement the reset, and a reply the control system cannot act on is passed
+  back to you instead of being replaced by a guess.
+
+  Filed as a latent problem on the grounds that those plants have no control panel yet.
+  Measuring it showed it was not latent in the way the report assumed — the refusal was
+  already reachable, and already wrong.
+
 ### Added
 - **The board now tells you to isolate the accumulators — SI ACCUM ALIGNED < 1000 PSI**
   (#273, closing it). A caution annunciator on panel B at **1000 psi (6.895 MPa)**, and the

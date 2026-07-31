@@ -360,8 +360,19 @@
       }
     }
     this._resettingRps = true;
-    try { this._sendInternal({ action: 'reset_rps' }); }
+    var engineResp;
+    try { engineResp = this._sendInternal({ action: 'reset_rps' }); }
     finally { this._resettingRps = false; }
+    // An engine that cannot perform the reset must SAY so. Its response used to be
+    // discarded, and RODS_NOT_INSERTED below was then reached by INFERENCE from
+    // `scrammed` still being true — so an engine with no handler at all produced a
+    // refusal naming a precondition that was in fact satisfied. MEASURED before the fix
+    // on RBMK and BWR with every rod at 0.0 %: engine returned COMMAND_ERROR 'unknown
+    // action', operator was told "trip breakers reset only with all rods inserted"
+    // (#228). Both engines implement it now, so this is a backstop rather than the live
+    // path — which is precisely when a silent inference is most dangerous, because
+    // nothing routine exercises it.
+    if (engineResp && engineResp.type === 'error') return engineResp;
     var truth = this.engine.getTrueState();
     if (!truth.scrammed) {
       this.rps.scrammed = false;

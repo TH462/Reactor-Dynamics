@@ -102,7 +102,12 @@ var BASELINES = {
   // 32 → 29 checks (#247): the `__true_flow__` sentinel was the kernel's only reference to
   // a PWR-only true_state field, so retiring it removed three plant-token couplings and
   // paid half of #228. Fewer checks here means fewer leaks to check, not less checking.
-  'run_hr3.js':            { code: 0, score: '29checks 0failed' },
+  // 29 -> 27 on 2026-07-31 (#228): RBMK and BWR now implement `reset_rps`, which the
+  // kernel had always been sending to an engine that only the PWR handled. The token is
+  // shared by all three plants now, so it stops being a finding — and the known-leak list
+  // in run_hr3.js is EMPTY for the first time. Fewer checks means fewer leaks, not less
+  // checking; the gate reddened on its own stale entry before anyone edited the list.
+  'run_hr3.js':            { code: 0, score: '27checks 0failed' },
   // New 2026-07-29 — the guards for the OTHER hard rules. CONTEXT.md §3 now requires
   // every rule to name its guard, and three had none: HR1 (protection reads
   // instruments), HR5 (commands descend; the UI never touches the engine) and HR11 (a
@@ -306,7 +311,9 @@ var BASELINES = {
   // 20 → 21 on 2026-07-31 (#214): a stand-down note is the only account of why a channel
   // switched itself off, and it is now on screen, so its LIFETIME is gated — it must be
   // retired when its cause clears, without re-engaging the channel.
-  'run_autoctl.js':        { code: 0, score: '21/21' },
+  // 21 -> 24 on 2026-07-31 (#228): the RPS reset, run for ALL THREE plants. The defect
+  // hid for months because every test that touched reset_rps was PWR-only.
+  'run_autoctl.js':        { code: 0, score: '24/24' },
   // Back to 51/51 2026-07-26 (#218): pwr_msiv re-authored for P-9. The mission had been
   // a RACE — reopen before an automatic low-SG trip — and with the scram now landing at
   // closure that race is gone; worse, the decision beat's `scram` branch fired instantly
