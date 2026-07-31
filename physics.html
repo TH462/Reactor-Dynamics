@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physics — Reactor Dynamics</title>
+    <meta name="description" content="SLX-100 plant overview and how the model works: layout, energy path, core power, primary and secondary heat, and deliberate limits.">
+    <meta property="og:title" content="Physics — Reactor Dynamics">
+    <meta property="og:description" content="The SLX-100 plant and the physics engine behind it.">
+    <meta property="og:image" content="site/hero.png">
+    <meta property="og:type" content="website">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
+    <link rel="stylesheet" href="site/site.css">
+    <script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
+    <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
+    <div class="nav-wrap">
+      <button type="button" class="nav-burger" id="navBurger"
+              aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="site-nav" id="siteNav">
+      <a href="ui/shell.html?engine=pwr">Simulator</a>
+      <a href="about.html">About</a>
+      <a class="active" href="physics.html">Physics</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="download.html">Download</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </div>
+</header>
+
+<main class="page">
+  <h1>Physics behind the simulator</h1>
+
+  <h2>The plant — SLX-100</h2>
+  <p>The <strong>SLX-100</strong> (Single-Loop eXperimental) is a compact
+  PWR of about 100&nbsp;MWe: one RCS loop (core, RCP,
+  U-tube SG, pressurizer), BOP, CVCS, ECCS, RHR, and RPS/ESF. Cold shutdown
+  through full power is one continuous plant.</p>
+
+  <p><strong>Model in short:</strong> six-group point kinetics · lumped heat
+  and mass balances · load coupled through the secondary · protection on
+  instrument channels · degraded regimes open · no spatial core.</p>
+
+  <h2>Core power and reactivity</h2>
+  <ul>
+    <li><strong>Point kinetics</strong>, six delayed-neutron groups — one
+    average power, no flux shape. Period and startup rate drive the nuclear
+    instruments.</li>
+    <li><strong>Reactivity terms:</strong> rods (S-curve bank worth), Doppler
+    (fuel temperature), moderator from coolant <em>density</em> (not a fixed
+    MTC), boron, xenon, and core excess.</li>
+    <li><strong>I–Xe</strong> chain with burnout — whole-core only, no spatial
+    oscillation.</li>
+    <li><strong>Decay heat</strong> with power-history dependence (two-term
+    exponential production).</li>
+  </ul>
+
+  <h2>Heat, pressure, and inventory</h2>
+  <ul>
+    <li><strong>Lumped nodes</strong> (fuel, cladding hot node, coolant,
+    secondary) with first-order heat transfer — not a TH systems code.</li>
+    <li><strong>Pressurizer</strong> thermodynamics (heaters, spray, PORV /
+    safeties); solid and empty ends are reachable.</li>
+    <li><strong>Inventory</strong> from CVCS, ECCS, accumulators, leaks, and
+    relief. Subcooling tracked; primary can void; RCP cavitation from suction
+    margin.</li>
+    <li><strong>Degraded regimes stay open</strong> — uncovered SG tubes cut
+    heat transfer; voided primary and solid pressurizer are allowed states,
+    not clamped out.</li>
+  </ul>
+
+  <h2>Secondary and electrical</h2>
+  <ul>
+    <li>SG mass-energy balance couples steam, feed, dumps, and isolation to
+    primary heat removal.</li>
+    <li>Turbine / condenser / generator: load is a steam demand on the
+    primary; loss of turbine or heat sink leaves energy in the plant.</li>
+  </ul>
+
+  <h2>Instruments and protection</h2>
+  <p>Board quantities are lagged instrument channels (optional stuck/drift).
+  Trips, interlocks, safeguards, and automatic controllers take those channel
+  values — not true state. A failed transmitter misleads both the operator and
+  the automation.</p>
+
+  <h2>What is left out on purpose</h2>
+  <ul>
+    <li>No spatial neutronics or xenon tilt.</li>
+    <li>One loop, lumped nodes — no multi-loop or subchannel TH.</li>
+    <li>No containment / LOCA licensing stack (core-damage paths for training
+    progression only).</li>
+    <li>Not a digital twin of a named unit.</li>
+  </ul>
+  <p>Coefficients, step order, and declared departures: simulation-physics
+  chapter in the in-sim manual, or the engine sources on
+  <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
+  (AGPL).</p>
+
+  <p><a href="about.html">← Back to About</a></p>
+</main>
+
+<footer class="site-footer">
+  <div class="inner">
+    <div>Reactor Dynamics is an educational simulation — not engineering
+    software, and no substitute for real operator training.</div>
+    <div style="margin-top: 8px;">Comments, questions, or feedback? Email
+    <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
+    <div class="links">
+      <a href="about.html">About</a>
+      <a href="physics.html">Physics</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="legal.html">Legal</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
+      <span id="ver" class="mono"></span>
+    </div>
+  </div>
+</footer>
+
+
+<script src="site/version.js"></script>
+<script src="site/nav.js"></script>
+</body>
+</html>

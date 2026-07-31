@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>About — Reactor Dynamics</title>
-    <meta name="description" content="An educational nuclear plant simulator with high-fidelity physics — simple enough to learn on, realistic enough for real maneuvers and failures.">
+    <meta name="description" content="A nuclear plant you run in the browser — learn plant operation and the dynamics that drive it.">
     <meta property="og:title" content="About — Reactor Dynamics">
-    <meta property="og:description" content="Educational nuclear plant simulator with high-fidelity physics — learn plant operation, practice real work.">
+    <meta property="og:description" content="Learn plant operation and plant dynamics on a pressurized-water reactor you run in the browser.">
     <meta property="og:image" content="site/hero.png">
     <meta property="og:type" content="website">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
@@ -19,169 +19,119 @@
   <div class="bar">
     <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
     <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
-    <nav class="site-nav">
+    <div class="nav-wrap">
+      <button type="button" class="nav-burger" id="navBurger"
+              aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="site-nav" id="siteNav">
       <a href="ui/shell.html?engine=pwr">Simulator</a>
       <a class="active" href="about.html">About</a>
+      <a href="physics.html">Physics</a>
+      <a href="roadmap.html">Roadmap</a>
       <a href="download.html">Download</a>
       <a href="changelog.html">Changelog</a>
       <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
-    </nav>
+      </nav>
+    </div>
   </div>
 </header>
 
 <main class="page">
   <h1>About Reactor Dynamics</h1>
-  <p class="lede">An educational nuclear power plant simulator with
-  <strong>realistic, high-fidelity physics</strong>. Simple enough to teach
-  someone new to nuclear power how a plant is operated — and serious enough
-  that you can practice real maneuvers, failures, and recovery on the same
-  model.</p>
-  <p>Nothing to install. It runs in your browser.</p>
+  <p class="lede">A nuclear power plant you can run in the browser. Learn
+  <strong>what</strong> operators do and <strong>why</strong> the plant responds
+  the way it does — operation and dynamics together.</p>
 
-  <h2>Why this exists</h2>
-  <p>Most people never get near a control room. The few training tools that
-  are &ldquo;real&rdquo; are built for licensed operators and are too heavy,
-  too specialized, or simply unavailable. Games and demos that <em>are</em>
-  available usually cut the physics until the plant cannot teach anything that
-  survives contact with a real procedure.</p>
-  <p>This project sits in the middle on purpose:</p>
-  <ul>
-    <li><strong>Educational first.</strong> You should be able to sit down
-    without a nuclear background and learn what the board is for: pressure,
-    temperature, level, rods, boron, steam, feed, turbine, alarms, and the
-    order of a startup.</li>
-    <li><strong>Physics that stay honest.</strong> The model is not a cartoon
-    power bar. Heat, reactivity, inventory, steam, and the balance of plant
-    couple the way they do in a real PWR, so a load change, a heatup, a trip,
-    or a leak has consequences you can reason about.</li>
-    <li><strong>One plant, two depths.</strong> The same board that teaches
-    &ldquo;what is Mode&nbsp;3?&rdquo; is the board you use for a careful power
-    ascension, a stuck relief valve, loss of feed, or a night of bad
-    indications. You do not graduate out of the model — you go deeper into
-    it.</li>
-  </ul>
-  <p>If you want a score chase, this is the wrong product. If you want to
-  <strong>understand and operate a plant</strong>, it is built for that.</p>
+  <p>Nothing to install, no account. Desktop or laptop for now.</p>
 
-  <h2>Who it is for</h2>
+  <p class="page-cta">
+    <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
+  </p>
+
+  <div class="hero-shot page-hero">
+    <img src="site/hero.png" alt="The Reactor Dynamics PWR control-room interface"
+         onerror="this.parentNode.style.display='none'">
+  </div>
+
+  <h2>What this is</h2>
+  <p>A pressurized-water plant in the browser, cold shutdown to full power on
+  one continuous model. You operate the board. Two things to take away:</p>
   <ul>
-    <li>People who have never operated anything nuclear and want the basics
-    done right</li>
-    <li>Students and instructors who need a living plant, not a slide deck</li>
-    <li>Engineers and enthusiasts who want realistic maneuvers and failure
-    practice without a full-scope training center</li>
-    <li>Anyone who wants to see <em>why</em> procedures are written the way
-    they are, by running them</li>
+    <li><strong>What</strong> — plant operation: startup order, holding power,
+    procedures, recovery from upsets.</li>
+    <li><strong>Why</strong> — plant dynamics: how heat, reactivity, inventory,
+    steam, and the turbine couple so the board’s behavior makes sense.</li>
   </ul>
+  <p>You learn the what by running the plant. You learn the why from how it
+  responds — and from the written model on the
+  <a href="physics.html">Physics</a> page and in the in-sim manual if you want
+  the equations and limits spelled out.</p>
 
   <h2>What you can do</h2>
-  <p><strong>Learn the basics of plant operation.</strong> Bring a cold plant
-  up, pressurize, start pumps, heat to hot standby, approach criticality, raise
-  power, connect the generator, and hold steady state. Commercial-format
-  manuals sit in the room. A guided campaign can walk you through the path;
-  free play lets you stay on the board as long as you need.</p>
-  <p><strong>Practice real work.</strong> Load changes, boration and dilution,
-  feed and level control, trips and recovery, and injected failures — stuck
-  valves, pump trips, sensor problems, loss of heat sink. The plant does not
-  reset its physics for beginners: simpler lessons use the same model as harder
-  ones.</p>
-  <p><strong>Playable plant today.</strong> A compact Westinghouse-style
-  <strong>pressurized water reactor</strong> (on the order of
-  <strong>100&nbsp;MWe</strong>), single loop, full path from cold shutdown to
-  at-power operation. BWR and RBMK physics exist in the project; their control
-  rooms are not ready for the public board yet.</p>
-
-  <h2>The physics (what &ldquo;high fidelity&rdquo; means here)</h2>
-  <p>The plant is a <strong>coupled, real-time model</strong> of the systems an
-  operator actually runs. It is educational software — not a licensing code or
-  a digital twin of a named unit — but the mechanisms that dominate operator
-  decisions are modeled in enough depth that behavior stays prototypical.</p>
-
-  <h3>Core and reactivity</h3>
   <ul>
-    <li><strong>Point kinetics with delayed neutrons</strong> — power does not
-    jump; period and startup rate are real, and that is how you approach
-    criticality safely.</li>
-    <li><strong>Reactivity feedbacks that fight (or help) you</strong> — fuel
-    temperature (Doppler), moderator temperature, soluble boron, and xenon.
-    Pull rods and the plant answers; heat the fuel and reactivity falls; poison
-    builds after high power and after a trip.</li>
-    <li><strong>Rods and boron</strong> as the two main operator handles for
-    criticality and long-term control.</li>
+    <li><strong>Bring a cold plant to life.</strong> Pressurize, start the
+    reactor coolant pumps, heat to hot standby, go critical, raise power, put
+    the generator on the grid, and take the plant to 100%.</li>
+    <li><strong>Keep it online.</strong> Load changes, boration and dilution,
+    feedwater and level control, holding steady through xenon.</li>
+    <li><strong>Work plant casualties.</strong> Trips and recovery, stuck
+    valves, pump trips, steam generator tube leaks, loss of heat sink — on your
+    terms or without warning.</li>
   </ul>
+  <p>Optional: the Three Mile Island sequence (stuck-open relief, inventory
+  loss, recovery). Same plant model for every session — an easier run is a
+  gentler scenario, not a simpler plant.</p>
+  <p>Operator manuals are in the control room. Free play is always available.</p>
 
-  <h3>Heat and the primary system</h3>
-  <ul>
-    <li>Fission power and <strong>decay heat</strong> both put energy into the
-    coolant — the core is still a heat source after a scram.</li>
-    <li><strong>Reactor coolant</strong> carries that heat to the steam
-    generator; pump status and flow matter.</li>
-    <li><strong>Pressurizer</strong> control of pressure and level (heaters,
-    spray, relief) — inventory, temperature, and pressure stay linked the way
-    they do on a real board.</li>
-  </ul>
+  <h2>Coming next</h2>
+  <p>In work: a full <strong>training campaign</strong>, instructor-led
+  <strong>scenarios</strong>, <strong>live checklists</strong> that tick off
+  against the plant, step-by-step <strong>procedure walkthroughs</strong>, and
+  control rooms for the <strong>BWR</strong> and <strong>RBMK</strong> plants
+  (their physics engines already exist). See the
+  <a href="roadmap.html">Roadmap</a> for short descriptions of each.</p>
 
-  <h3>Steam generator and secondary</h3>
-  <ul>
-    <li>Primary heat boils secondary water; <strong>steam flow, feedwater, and
-    level</strong> are a continuous balance.</li>
-    <li>Main feed and auxiliary feed, dumps, and isolation change how heat
-    leaves the plant.</li>
-  </ul>
+  <h2>The plant</h2>
+  <p>A compact pressurized water reactor: about 100&nbsp;MWe, one coolant loop,
+  one steam generator. Cold shutdown to full power is one continuous path. Other
+  plant types are on the <a href="roadmap.html">Roadmap</a>.</p>
 
-  <h3>Balance of plant</h3>
-  <ul>
-    <li><strong>Turbine, condenser, generator, and grid</strong> — load is a
-    steam demand. Change load and the primary feels it. Trip the turbine or
-    lose the heat sink and the plant has to handle the energy another way.</li>
-  </ul>
-
-  <h3>Protection and automation</h3>
-  <ul>
-    <li>Trips, interlocks, and engineered safeguards act from <strong>what the
-    instruments show</strong>, with lag, noise, and possible failure — the same
-    rule real boards live under.</li>
-    <li>Charging, letdown, and boron systems move inventory and reactivity on
-    operator and automatic timescales.</li>
-  </ul>
-
-  <p><strong>What you should expect.</strong> A plant that heats, cools, goes
-  critical, makes steam, makes power, trips, and fails in ways you can explain
-  with textbook PWR physics. You should not expect multi-dimensional core maps,
-  full containment engineering suites, or a certified replica of one licensed
-  unit. Fidelity here means <strong>operator-relevant realism</strong>, not
-  infinite detail.</p>
-
-  <h2>Instruments and truth</h2>
-  <p>You run on <strong>instrument readings</strong>, not a god-view of every
-  true variable. That is how plants are operated, and it is how some of the
-  hardest lessons (including failures and historical accidents) actually work.
-  The physics are still running underneath; the skill is operating
-  <em>through</em> the board.</p>
-
-  <h2>How it runs</h2>
-  <p>Plain web technology: open it, run the plant locally in the browser on a
-  desktop or laptop. No account required for the simulation itself. Campaigns,
-  manuals, free play, and failure injection are in the control room.</p>
+  <h2>Where it runs</h2>
+  <p>A modern desktop browser. The simulation runs on your machine — this site,
+  a local copy, or a
+  <a href="download.html">single downloadable file</a> for offline use.</p>
 
   <h2>Contact</h2>
-  <p>Questions, bugs, or &ldquo;this doesn&rsquo;t match plant behavior&rdquo;?
+  <p>Questions, bugs, or &ldquo;this does not match plant behavior&rdquo;?
   Email <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.
-  In the simulator, the <strong>💬</strong> button gives you that address and
-  can download session diagnostics to attach.</p>
+  In the simulator, Contact has that address and optional session diagnostics
+  to attach.</p>
 
-  <p style="color: var(--text-2); margin-top: 2rem;">Reactor Dynamics is an
-  educational simulation. It is not a substitute for licensed operator training
-  and must not be used to operate, design, or analyze a real nuclear
-  facility.</p>
+  <h2>Physics</h2>
+  <p>For the written why — what the model computes, how systems couple, what is
+  pinned to published data, what is left out — see
+  <a href="physics.html">Physics behind the simulator</a>.</p>
+
+  <p class="page-cta page-cta-bottom">
+    <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
+  </p>
+
+  <p class="page-disclaimer">Reactor Dynamics is an educational simulation. It
+  is not a substitute for licensed operator training and must not be used to
+  operate, design, or analyze a real nuclear facility.</p>
 </main>
 
 <footer class="site-footer">
   <div class="inner">
     <div>Reactor Dynamics is an educational simulation — not engineering
     software, and no substitute for real operator training.</div>
+    <div style="margin-top: 8px;">Comments, questions, or feedback? Email
+    <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
     <div class="links">
-      <a class="active" href="about.html">About</a>
+      <a href="about.html">About</a>
+      <a href="physics.html">Physics</a>
+      <a href="roadmap.html">Roadmap</a>
       <a href="changelog.html">Changelog</a>
       <a href="privacy.html">Privacy</a>
       <a href="legal.html">Legal</a>
@@ -191,7 +141,8 @@
   </div>
 </footer>
 
+
 <script src="site/version.js"></script>
-<script>document.getElementById('ver').textContent = window.RD_VERSION || '';</script>
+<script src="site/nav.js"></script>
 </body>
 </html>

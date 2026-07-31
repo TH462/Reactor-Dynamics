@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reactor Dynamics — run a nuclear power plant in your browser</title>
-    <meta name="description" content="Educational browser-based PWR simulator with high-fidelity plant physics. Learn plant operation; practice real maneuvers and failures. Nothing to install.">
+    <meta name="description" content="Browser-based pressurized water reactor trainer. Learn plant operation; practice startups, load changes, and failures. Nothing to install.">
     <meta property="og:title" content="Reactor Dynamics — run a nuclear power plant in your browser">
-    <meta property="og:description" content="Educational PWR simulator with high-fidelity plant physics. Learn operation; practice maneuvers and failures. Runs in the browser.">
+    <meta property="og:description" content="Browser-based PWR trainer. Learn plant operation; practice startups, load changes, and failures. Runs in the browser.">
     <meta property="og:image" content="site/hero.png">
     <meta property="og:type" content="website">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Reactor Dynamics — run a nuclear power plant in your browser">
-    <meta name="twitter:description" content="Educational PWR simulator with high-fidelity plant physics. Learn operation; practice maneuvers and failures.">
+    <meta name="twitter:description" content="Browser-based PWR trainer. Learn plant operation; practice startups, load changes, and failures.">
     <meta name="twitter:image" content="site/hero.png">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
     <link rel="stylesheet" href="site/site.css">
@@ -28,13 +28,21 @@
   <div class="bar">
     <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
     <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
-    <nav class="site-nav">
+    <div class="nav-wrap">
+      <button type="button" class="nav-burger" id="navBurger"
+              aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="site-nav" id="siteNav">
       <a href="ui/shell.html?engine=pwr">Simulator</a>
       <a href="about.html">About</a>
+      <a href="physics.html">Physics</a>
+      <a href="roadmap.html">Roadmap</a>
       <a href="download.html">Download</a>
       <a href="changelog.html">Changelog</a>
       <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
-    </nav>
+      </nav>
+    </div>
   </div>
 </header>
 
@@ -53,76 +61,45 @@
     <img src="site/hero.png" alt="The Reactor Dynamics PWR control-room interface"
          onerror="this.parentNode.style.display='none'">
   </div>
-</section>
-
-<section class="section" id="plants">
-  <h2>The plant</h2>
-  <div class="plants-live">
-    <a class="plant-card live" href="ui/shell.html?engine=pwr">
-      <h3>PWR</h3>
-      <div class="kind">Pressurized Water Reactor</div>
-      <p>A small, complete PWR — one coolant loop, steam generator, turbine, and
-      grid. Built for learning and training: heat up, go critical, make power,
-      run procedures, and work real failures.</p>
-      <span class="go">Operate&nbsp;→</span>
-    </a>
-  </div>
-  <p class="plants-later-label">Coming later</p>
-  <div class="plants-later">
-    <div class="plant-card soon">
-      <h3>BWR</h3>
-      <div class="kind">Boiling Water Reactor</div>
-      <p>Direct-cycle boiling-water plant. Physics engine is in the project;
-      the public control room is not ready yet.</p>
-      <span class="badge-soon">LATER</span>
-    </div>
-    <div class="plant-card soon">
-      <h3>RBMK</h3>
-      <div class="kind">Graphite-moderated channel reactor</div>
-      <p>Channel-type plant in pre- and post-1986 configurations. Physics engine
-      is in the project; the public control room is not ready yet.</p>
-      <span class="badge-soon">LATER</span>
-    </div>
-  </div>
+  <p class="hero-intro">The live plant is the <strong>SLX-100</strong>, a
+  compact single-loop PWR (~100&nbsp;MWe) — cold shutdown to full power, with
+  procedures and failures on the same model. Start with
+  <a href="about.html">About</a> for what this is and how to approach it.</p>
 </section>
 
 <section class="section">
-  <h2>What you get</h2>
+  <h2>What&rsquo;s here</h2>
   <div class="features">
     <div class="feature">
-      <h3>Learn plant operation</h3>
-      <p>Sit a real board without a nuclear background. Pressure, temperature,
-      level, rods, boron, steam, feed, turbine, and alarms — and the order of a
-      startup from cold shutdown to power.</p>
+      <h3>Plant operation</h3>
+      <p>Run the board: rods, boron, pressurizer, feed, steam, turbine, and
+      alarms. Learn the order of a startup and how to hold the plant online —
+      the <strong>what</strong> operators do. Free play and commercial-format
+      manuals are in the control room.</p>
     </div>
     <div class="feature">
-      <h3>A whole plant, modeled</h3>
-      <p>High-fidelity coupled physics: core and reactivity feedbacks, decay heat,
-      pressurizer, steam generator, feedwater, turbine, and grid. A load change
-      or a trip has consequences you can reason about.</p>
+      <h3>Plant dynamics</h3>
+      <p>Core, primary, steam generator, and turbine are one coupled model. A
+      load change or a trip has consequences you can reason about — the
+      <strong>why</strong> behind the board. Model form and limits are on the
+      <a href="physics.html">Physics</a> page.</p>
     </div>
     <div class="feature">
-      <h3>Practice real work</h3>
-      <p>Load changes, trips, recovery, and injectable failures — stuck valves,
-      pump trips, sensor problems — on the same physics you learned on. You
-      operate through instruments, the way a plant is actually run.</p>
+      <h3>Casualties and recovery</h3>
+      <p>Trips, stuck valves, pump trips, sensor failures, tube leaks, loss of
+      heat sink — inject them yourself or take them when they come. Same plant
+      for every session; easier runs are gentler scenarios, not a simpler
+      model.</p>
     </div>
     <div class="feature">
       <h3 data-flag="campaign" data-flag-off="Guided training — coming soon">Guided training</h3>
       <p data-flag="campaign"
-         data-flag-off="An instructor that watches the board and gates your progress through real procedures is in final review. Free play and the commercial-format operator manuals are open now.">An
-      instructor watches the board and gates your progress through real
-      procedures — startup, power maneuvers, casualty response — with
-      commercial-format operator manuals in the room.</p>
+         data-flag-off="An instructor that watches the board and gates progress through real procedures is in work. Free play and the manuals are open now — see the Roadmap.">An
+      instructor watches the board and gates progress through procedures —
+      startup, power maneuvers, casualty response — with the manuals open in
+      the room.</p>
     </div>
   </div>
-</section>
-
-<section class="section contact-strip">
-  <p>Questions or bugs?
-  <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>
-  · <a href="changelog.html">What&rsquo;s new</a>
-  · <a href="about.html">About the project</a></p>
 </section>
 
 <footer class="site-footer">
@@ -133,6 +110,8 @@
     <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
     <div class="links">
       <a href="about.html">About</a>
+      <a href="physics.html">Physics</a>
+      <a href="roadmap.html">Roadmap</a>
       <a href="changelog.html">Changelog</a>
       <a href="privacy.html">Privacy</a>
       <a href="legal.html">Legal</a>
@@ -143,8 +122,8 @@
 </footer>
 
 <script src="site/version.js"></script>
+<script src="site/nav.js"></script>
 <script>
-  document.getElementById('ver').textContent = window.RD_VERSION || '';
   if (window.RD && RD.Flags) RD.Flags.applyDom(document);
 </script>
 </body>
