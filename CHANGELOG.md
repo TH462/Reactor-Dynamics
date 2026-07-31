@@ -22,6 +22,45 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The reactor is protected the same at 3600× as at 1×** (#153). Trips, actuations,
+  interlocks and alarms were evaluated exactly **once per broadcast**, so the interval
+  between two protection evaluations was `timeAcceleration × broadcastMs` — how well the
+  plant was protected depended on which speed button you had pressed.
+
+  **What that cost.** Measured full stack (PWR `50_percent`, `continuous_rod_withdrawal`
+  severity 1.0, seed 42): indicated flux sits above its 120 % setpoint for only **8.74 sim
+  seconds**. At 1×/10×/60× the plant tripped on `power_range high` at **9.1 s**. At **256×
+  and 600× that trip was never evaluated at all** — the plant tripped 16.5 s and 50.9 s
+  late on `primary_pressure high`, a slower parameter that merely happened to still be
+  above its setpoint when the next evaluation landed, so the board named the wrong cause.
+  At **700× and above — including the 3600× the speed selector ships** — nothing fired: one
+  evaluation every 360 sim s, a **135.9 %** power excursion beginning and ending inside a
+  single broadcast, and `scrammed` still false on the far side of it.
+
+  **The fix.** Protection now runs on a **sim-time cadence** capped at `PROTECTION_DT`
+  (0.1 s) inside the substep loop. Measured 1× → 3600×, the scram lands at **9.14 → 9.32 s**,
+  always on `power_range high`, with peak power **121.6 → 121.9 %** and peak fuel
+  **1012 → 1012 °F (544 → 544 °C)**. **1× is byte-identical** to the old path by
+  construction: a 1× broadcast is exactly `PROTECTION_DT`, so the in-loop guard hands that
+  evaluation to the existing post-loop call.
+
+  **What this does not change.** The *snapshot* reporting a scram is still one per
+  broadcast, and always will be — you cannot render faster than you broadcast. What no
+  longer varies is when the plant actually acts. The attention-stop dropout was never a
+  substitute: it is computed from the snapshot assembled *after* the cycle has run, so at
+  3600× it dropped the clock six plant-minutes after the excursion it was meant to catch.
+
+  Applies to all three plants — the owner lifted the RBMK hold for this fix *(OWNER,
+  2026-07-31: "You can fix RBMK too")*. `test/ops_harness.js` moved with it: its
+  `evalEvery` was an independent copy of the M5 cadence, and leaving it would have left the
+  ops suites certifying a plant no player can produce (the inverse of #209).
+
+  Gates: `run_m5` 83 → **90 checks** (new suite, 5 of its 7 checks red by injection on the
+  pre-fix service); `run_ops` 57/68 → **58/68**, the deliberately-red C2 accel-latency probe
+  going green because the defect was fixed, not because the test was weakened. All three
+  accel probes (PWR, RBMK, BWR) now report identical trip delay at 1× and 256×.
+  `run_campaign` 51/51 and `run_procedures_stack` 22/22 are unmoved.
+
 - **A synchronised turbine no longer coasts to a stop, and the MWe gauge now reads the
   turbine instead of the reactor** (#284). Two defects in one file, with one cause: nothing
   in the plant model ever asked what the turbine was *admitted* as opposed to what the core

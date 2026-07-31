@@ -38,6 +38,35 @@
   var CADENCE_REF_MS = 500;        // thresholds were defined against this interval
   var DEFAULT_SEED = 0x1A2B3C4D;
 
+  // Longest SIM time protection may go un-evaluated (#153). Trips, actuations,
+  // interlocks and alarms used to be evaluated exactly ONCE per broadcast, so the
+  // interval between two protection evaluations was `timeAcceleration × broadcastMs`
+  // — a plant property set by a UI speed button. Measured full stack (PWR
+  // `50_percent`, `continuous_rod_withdrawal` sev 1.0, seed 42): indicated flux sits
+  // above its 120 % setpoint for only 8.74 sim s, so at 1×/10×/60× the plant tripped
+  // on `power_range high` at 9.1 s; at 256× and 600× that trip was MISSED and the
+  // plant tripped 16.5 s / 50.9 s late on `primary_pressure high` — a slower
+  // parameter that merely happened to still be over when the evaluation landed; and
+  // at 700× and above, including the 3600× the speed selector ships, NOTHING fired:
+  // one evaluation every 360 sim s, the whole 135.9 % excursion inside a single
+  // broadcast, `scrammed` still false on the far side of it.
+  //
+  // 0.1 s is chosen so 1× is BYTE-IDENTICAL to the old path: a 1× broadcast is
+  // 0.1 sim s = 5 steps, the accumulator reaches the cap exactly on the final step,
+  // and the `i < steps - 1` guard below hands that evaluation to the existing
+  // post-loop call. Above 1× it is the point of the fix.
+  //
+  // The attention-stop dropout is NOT a substitute and never could be: it is computed
+  // in `_assembleWithInstructor`, from the snapshot assembled AFTER the cycle has
+  // already run, so it drops the clock one full broadcast late — at 3600× that is six
+  // plant-minutes after the excursion it was meant to catch.
+  //
+  // Cost is not the objection it was recorded as. Measured: `layer.evaluate` 7.85 µs
+  // against `engine.step` 18.80 µs, so a 3600× cycle (18 000 steps, 338 ms of step)
+  // pays +1.4 ms, **+0.4 %**. Evaluating every step would be +42 % and buys nothing —
+  // instrument lag is coarser than 0.1 s.
+  var PROTECTION_DT = 0.1;
+
   // Plant id → engine constructor. RBMK/BWR register when M2/M3 land.
   function engineCtor(plantId) {
     if (plantId === 'pwr') return RD.PWREngine;
@@ -171,12 +200,25 @@
   SimulationService.prototype.tick = function () {
     if (!this.running || !this.engine) return null;
     var steps = this._stepsPerBroadcast();
+    var sinceEval = 0;
     for (var i = 0; i < steps; i++) {
       // Automation channels run in-stack at physics rate (fixed sim-time
       // cadence inside), reading the previous step's instruments — so
       // controllers behave identically at any time acceleration.
       if (this.layer.stepAutomation) this.layer.stepAutomation(PHYSICS_DT);
       this.engine.step(PHYSICS_DT);
+      // Protection is on a SIM-time cadence, not a per-broadcast one (#153): the
+      // reactor gets the same protection at 3600× as at 1×. The last step is left
+      // to the post-loop call below so the evaluation the snapshot is assembled
+      // from is always the one taken on the final readings — that also makes 1×
+      // (5 steps, cap reached exactly at i = 4) identical to the old single call.
+      // `getInstruments()` is a pure read of `instruments.reading`; the noise PRNG
+      // advances inside `engine.step`, so evaluating more often perturbs no stream.
+      sinceEval += PHYSICS_DT;
+      if (sinceEval >= PROTECTION_DT && i < steps - 1) {
+        this.layer.evaluate(this.engine.getInstruments());
+        sinceEval = 0;
+      }
     }
     this.layer.evaluate(this.engine.getInstruments());      // trips/actuations/alarms on the new readings (HR1)
     this.simTime += steps * PHYSICS_DT;

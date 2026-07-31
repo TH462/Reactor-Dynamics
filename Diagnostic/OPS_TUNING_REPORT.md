@@ -127,15 +127,38 @@ threshold 1200 °C) and only trips on lagging `tavg high`; BWR `abuse\_rod\_yank
 **Fix:** widen `power\_range` range to `\[0, 200]` in `pwr\_config.js` and `bwr\_config.js`
 (regen manual). Acceptance: those two tests' "capped by protection" checks.
 
-### C2 — Protection latency grows with time acceleration
+### C2 — Protection latency grows with time acceleration — **RESOLVED 2026-07-31 (#153)**
 
-M5 evaluates M4 once per broadcast (fixed wall cadence), so at 256× the RPS checks the plant
+M5 evaluated M4 once per broadcast (fixed wall cadence), so at 256× the RPS checked the plant
 every \~13 **sim**-seconds. RBMK `abuse\_accel\_latency`: identical rod runaway trips in
 **2.0 s at 1× (peak 131 %) vs 16 s at 256× → steam explosion**. The same mechanism softens
 PWR/BWR outcomes less only because their excursions are slower.
 **Fix:** evaluate trips inside the physics-step loop (every N steps of *sim* time, e.g.
 0.1 s), or auto-drop acceleration to 1× when any alarm is newly active. The first is a
 small change in `simulation\_service.tick()`.
+
+> **Fixed 2026-07-31 — the first option, at exactly the 0.1 s this section proposed.**
+> `PROTECTION_DT = 0.1` sim s, evaluated inside `tick()`'s substep loop, with the last step
+> left to the existing post-loop call so 1× stays byte-identical. The second option was
+> never viable and is worth recording as such: the attention-stop dropout is computed from
+> the snapshot assembled **after** the cycle has run, so it is always one broadcast late —
+> at 3600× that is six plant-minutes after the excursion.
+>
+> **The PWR was worse off than this section assumed.** "Softens outcomes less" understates
+> it. Measured full stack (`50_percent`, `continuous_rod_withdrawal` sev 1.0, seed 42):
+> indicated flux clears its 120 % setpoint for only **8.74 sim s**, so at 256× and 600× the
+> high-flux trip was **never evaluated** and the plant tripped 16.5 s / 50.9 s late on
+> `primary_pressure high` — the wrong signal, after a **136 %** excursion. At **700× and
+> above, including the 3600× the speed selector ships, nothing fired at all.** The
+> "PWR safe at 256×" ruling this report carried was also measuring a speed the UI does not
+> offer.
+>
+> Post-fix, 1× → 3600×: scram **9.14 → 9.32 s**, always `power_range high`, peak power
+> **121.6 → 121.9 %**. `ops_harness.js`'s `evalEvery` was updated to match M5 (it was an
+> independent copy of the old cadence). All three accel probes now report identical trip
+> delay at 1× and 256×; the deliberately-red RBMK one is **green because the defect was
+> fixed, not because the test was weakened** *(OWNER, 2026-07-31: "You can fix RBMK too")*.
+> Scoreboard **57/68 → 58/68**. Full write-up: `Diagnostic/TUNING_LOG.md` 2026-07-31f.
 
 ### C3 — There is no way back from a scram (forgiveness gap)
 

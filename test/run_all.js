@@ -176,7 +176,16 @@ var BASELINES = {
   // write-up did, by quoting #230's "Planned offline, no trip." ruling to explain why the
   // new `isOnLine` predicate deliberately EXCLUDES `turbine_tripped`. Another worked example
   // of the warning above: re-run this after the docs, not after the code.
-  'run_hardrules.js':      { code: 0, score: '40checks 0failed' },
+  // 40 -> 39 on 2026-07-31 (#153), and this one goes DOWN — the first time it has. Nothing
+  // was un-ruled: CLAUDE.md's "Recent themes" list is capped at 5 bullets, "adding one means
+  // deleting the oldest", and the bullet that aged out (#260/#263) carried a formally-marked
+  // `OWNER RULING, 2026-07-30: "for 263 item 1 fit the measurement."`. This gate counts
+  // OCCURRENCES of the uppercase marker, so a mandated rotation drops the count by one. The
+  // ruling itself is intact in four other tracked files (BUILD_DECISIONS.md, TUNING_LOG.md
+  // x2, Manuals/00 + 09), which is what was checked before accepting the drop. #153's own
+  // owner quote ("You can fix RBMK too") uses the plain `OWNER,` form the themes list already
+  // uses elsewhere, which this gate deliberately does not scan (see its SCOPE note).
+  'run_hardrules.js':      { code: 0, score: '39checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -348,7 +357,17 @@ var BASELINES = {
   // any acceleration. The added checks pile up 360 sim-s with the wall clock frozen
   // and require ZERO checkpoints — verified against the pre-fix service, where that
   // one alone lays 21 and 6 of the 8 checks in the suite go red.
-  'run_m5.js':             { code: 0, score: '19/19 83passed' },
+  // 19 -> 20 suites, 83 -> 90 checks 2026-07-31 (#153): protection is now evaluated on
+  // a SIM-time cadence (PROTECTION_DT 0.1 s) instead of once per broadcast, so trip
+  // latency no longer scales with the UI speed button. The new suite drives a rod
+  // runaway at 1x and 3600x and reads the RPS latch at PHYSICS rate — the snapshot
+  // reporting a scram is still once per broadcast and always will be, so asserting the
+  // reported latency would pin the board refresh, not the plant. Verified by injection
+  // against the pre-fix service: 5 of its 7 checks go red, including 'trips at all'
+  // (at 3600x the old service ran a 135.9 % excursion and NEVER tripped) and the
+  // evaluation rate at 0.003/sim-s against its >=5 floor. BOTH 1x checks stay green on
+  // the old body, which is the proof that 1x behaviour is unchanged.
+  'run_m5.js':             { code: 0, score: '20/20 90passed' },
   // 16 -> 17 suites, 94 -> 102 checks 2026-07-27 (#142): a new save/restore test for
   // the instructor's operator-action memory and follow acc streak, both of which
   // saveState dropped. Verified against the PRE-fix instructor, where 5 of its 8
@@ -449,12 +468,18 @@ var BASELINES = {
     // (pinned at mass_max) with pressurizer level 7 %, and the probe printed both numbers
     // on an `info` line every run while asserting neither — which is exactly why it went
     // unnoticed. The defect itself was fixed by #249; this is the guard it never got.
-    code: 1, score: '57/68 335passed 12failed',
-    note: 'Ops probes are tuning targets by design. Measured 2026-07-27b from ' +
-          'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; all 11 reds are ' +
-          '7 RBMK + 4 BWR, and the deliberately-red C2 accel-latency probe (#153, ' +
-          'status-deliberate) is one of the RBMK seven ("ABUSE [post] time-acceleration"), ' +
-          'not a twelfth item. The old wording here named "P4" among the open targets — ' +
+    // 57/68 -> 58/68 on 2026-07-31 (#153): the deliberately-red C2 accel-latency probe
+    // went GREEN because the defect it guarded was fixed, not because the test was
+    // weakened — M5 now evaluates protection on a sim-time cadence (PROTECTION_DT) and
+    // ops_harness's evalEvery mirrors it, so latency no longer scales with `accel` on
+    // any plant. All THREE accel probes (PWR, RBMK [post], BWR) now report identical
+    // trip delay at 1x and 256x. Owner lifted the RBMK hold for this fix ("You can fix
+    // RBMK too", 2026-07-31).
+    code: 1, score: '58/68 336passed 11failed',
+    note: 'Ops probes are tuning targets by design. Measured 2026-07-31 from ' +
+          'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; the 10 reds are ' +
+          '6 RBMK + 4 BWR. The C2 accel-latency probe was the RBMK seventh and is now ' +
+          'green (#153 fixed). The old wording here named "P4" among the open targets — ' +
           'a P-prefixed probe is PWR and P4 has passed since 2026-07-22 (#161(b)). It was ' +
           'wrong in CLAUDE.md and got copied into this note; both corrected together. ' +
           'See Diagnostic/OPS_TUNING_REPORT.md. ' +

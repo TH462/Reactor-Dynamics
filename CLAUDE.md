@@ -279,6 +279,36 @@ a handful of UI/doc items.
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+- **Protection was evaluated once per broadcast, so a UI speed button set how well the
+  reactor was protected (2026-07-31, #153).** `tick()` ran N physics steps and then called
+  `layer.evaluate()` **once**, making the interval between two protection evaluations
+  `timeAcceleration × broadcastMs`. Measured full stack (PWR `50_percent`,
+  `continuous_rod_withdrawal` sev 1.0, seed 42): indicated flux sits above its 120 %
+  setpoint for only **8.74 sim s**, so at 1×/10×/60× the plant tripped on `power_range
+  high` at **9.1 s** — but at **256× and 600× that trip was never evaluated**, and the
+  plant tripped 16.5 s / 50.9 s late on `primary_pressure high`, a slower parameter that
+  merely happened to still be over when the evaluation landed. At **700× and above,
+  including the 3600× the speed selector ships**, nothing fired at all: one evaluation
+  every 360 sim s, a **135.9 %** excursion start to finish inside a single broadcast, and
+  `scrammed` still false on the far side. Protection is on a **sim-time cadence** now
+  (`PROTECTION_DT` 0.1 s): measured 1× → 3600×, the scram lands at **9.14 → 9.32 s**, always
+  on `power_range high`, peak power **121.6 → 121.9 %**. Four things to know. **The issue's
+  own premise was never true** — it argued safety "at 256×", but the speed selector has
+  offered 600× and 3600× since the first M8 commit, and 256× is not selectable; the
+  `status-deliberate` label rested on a ruling that `PWR_SHIP_REVIEW_2026-07.md` §C2 had
+  **already retracted as agent-authored**, so the label made the defect harder to find than
+  no label would have. **The recorded cost objection was wrong**: `layer.evaluate` is 7.85 µs
+  against `engine.step` 18.80 µs, so a 3600× cycle pays **+1.4 ms on 338 ms, +0.4 %**. **1× is
+  byte-identical by construction** — a 1× broadcast is exactly `PROTECTION_DT`, so the in-loop
+  guard hands that evaluation to the existing post-loop call; on the pre-fix service both 1×
+  checks in the new suite stay green while five others go red. And **`ops_harness.js` had to
+  move with it** — its `evalEvery` was an independent copy of the M5 cadence, so leaving it
+  would have left the ops suites certifying a plant no player can produce, the inverse of
+  #209. `run_m5` 83 → **90 checks**; `run_ops` 57/68 → **58/68**, the deliberately-red C2
+  probe going green because the defect was fixed, not because the test was weakened *(OWNER,
+  2026-07-31: "You can fix RBMK too")*. `run_campaign` 51/51 and `run_procedures_stack` 22/22
+  are unmoved — ten times the evaluations perturbed no authored content.
+
 - **The rewind ring measured the wrong clock, so it evaporated exactly when you needed it
   (2026-07-31, #137).** Free-play checkpoints were laid every 15 **sim** seconds, so the
   32-slot ring always spanned the same slice of the *plant's* life and progressively less of
@@ -385,34 +415,6 @@ anything here that is standing procedure rather than news belongs in the list be
   the first discharge by only ~1 plant-minute** on a brisk cooldown, so the procedure step is
   the defence and the annunciator is the backstop; both compressed rates are now declared in
   `Manuals/12` §14.1.
-- **The moderator coefficient was a constant, and it made the plant go critical COLD
-  (2026-07-29l, #260).** `alpha_MTC` applied a flat −11.11 pcm/°F from 122 °F to 579 °F — a
-  −4944 pcm moderator defect over a heatup, 494 ppm of dilution, a third of it charged below
-  274 °F. Critical boron therefore fell 819 → 263 ppm across the heatup, and **600 ppm was
-  critical at 274 °F**: the owner diluted toward it in free play and tripped on source-range
-  high flux. Moderator reactivity now tracks **density**, rod worths went to the measured
-  WTSM 2.2 values (**8500 → 4068** control, **10 000 → 3676** shutdown; 18 500 was 2.4× anything
-  sourceable), and `rho_excess` is **solved** so HZP ARO critical boron lands on BEAVRS's
-  measured **975 ppm**. **Then #263 re-did the moderator model AGAIN, and that is the version
-  you are looking at** — do not trust a 1400 ppm crossover or a −20 pcm/°C at-power figure if
-  you meet one in older prose. #260 took its boron crossover from a WTSM 2.1 statement its own
-  figure contradicted; the BEAVRS Cycle 1 HZP tests publish **three measured isothermal
-  coefficients** (975 ppm/−1.75, 902/−4.65, 810/−8.01 pcm/°F) which settle it at **986 ppm**
-  and showed #260 was **4.3× too negative** at ARO. *(OWNER RULING, 2026-07-30: "for 263 item 1
-  fit the measurement.")* — so **both** parameters are fitted to those points, residuals ≤0.09,
-  and the at-power coefficient is now **−26.8 pcm/°C, SUPERSEDING the 2026-07-21 ruling of
-  −20**. Three things to know: **at-power behaviour did NOT survive untouched** — a 34 %
-  stronger coefficient put `run_pwr`'s rod-withdrawal power rise under its 0.05 floor, so that
-  probe now pins **Tavg** rising, the signature that strengthens rather than weakens as the
-  coefficient does; **600 ppm at 274 °F is +3158 pcm SUPERcritical and that is correct** —
-  cold water is more reactive, and what changed is that critical boron is no longer a moving
-  target you cross without noticing (806 → 587 rods-in, spread 556 → 219 ppm); and
-  **`run_reactivity.js`'s first cut passed for the wrong reason** — it asserted the event with
-  the reactivity sign inverted, went green, and would have enshrined a false claim in the guard
-  for the thing being fixed, which is why every check written beside a fix is now proven to go
-  **red by injection** before it counts as green. `pwr_startup` and `pwr_heatup` were re-authored
-  (the latter's old dilution drove a runaway to **119 % power and 638 °F**). Still open: there
-  is **no Estimated Critical Condition** anywhere, which is what would have stopped the event.
 **Standing procedure — not part of the rotation above; these do not expire.**
 
 - **The board is the V2 diagram, and `pwr_board_data.js` is GENERATED.** Edit in the Claude
@@ -522,7 +524,7 @@ push to `main` for Alpha 1.10.0 and the #272 release PR. Nobody noticed for thre
 which is the argument for a required status check and against a badge (#191).
 
 Green at baseline: PWR **32/32 (202 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3038 checks)**,
-`run_m4` **28/28 (156 checks)**, `run_m5` **19/19 (83 checks)** (79 → 83 on 2026-07-31, #137 — the free-play checkpoint cadence became REAL time. The load-bearing check piles up **360 sim-s with the wall clock frozen** and requires ZERO checkpoints; the pre-fix service lays **21** there. `_now()` is a prototype seam because a headless runner burns no wall time — without it this cadence is untestable), `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **24/24**,
+`run_m4` **28/28 (156 checks)**, `run_m5` **20/20 (90 checks)** (83 → 90 on 2026-07-31, #153 — protection moved off the per-broadcast cadence onto a **sim-time** one, so trip latency is no longer a function of the UI speed button. The new suite reads the RPS latch at **physics rate**, deliberately not the reported latency: a 3600× broadcast covers 360 sim s, so the *snapshot* carrying a scram is still once per broadcast and always will be — asserting that would pin the board refresh, not the plant. Injection: 5 of 7 red on the old service, and **both 1× checks stay green**, which is what proves 1× is unchanged. 79 → 83 earlier the same day, #137 — the free-play checkpoint cadence became REAL time. The load-bearing check piles up **360 sim-s with the wall clock frozen** and requires ZERO checkpoints; the pre-fix service lays **21** there. `_now()` is a prototype seam because a headless runner burns no wall time — without it this cadence is untestable), `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **24/24**,
 `run_behavior` **40 pass / 0 xfail** (38 → 39 on 2026-07-31, #135: **TR-14**, the SOURCED loss-of-feedwater drain rate. It exists because moving `K_sg_level` by **3.6×** left all 32 runners green — nothing in the suite asserted how fast a steam generator empties, so the constant could drift back unnoticed. Fails at 13.0 s against its 25–60 s band on the old value. 39 → 40 same day, #284: **TR-1e** — nothing in the suite compared what the turbine was ADMITTED against what the reactor MADE, because every other check runs where the two agree, so a **2× error on a board gauge** sat behind 34 green runners. Fails 3 checks on the old engine), `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
 `run_procedures` **22/22 (102/102 checks)**,
@@ -531,7 +533,7 @@ Green at baseline: PWR **32/32 (202 checks)**, BWR **15/15**, RBMK **23/23**, ca
 were never plant defects at all — the harness was running 11 of its 22 procedures below the
 10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **138 checks / 0 failed** (84 → 138 on 2026-07-31, #157 — it now guards a second contract: every alarm on all three plants declares a `category`, which the UI used to keyword-match off the alarm id), `run_reactivity` **27 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve. 23 → 27 on 2026-07-30, #263 item 2: the four inputs `pwr_startup`'s 26-step creep is DERIVED from — startup-IC boron, critical position, differential bank worth, and the excess the creep leaves), `run_hr3` **27 checks / 0 failed** (29 → 27 on 2026-07-31, #228), `run_reachability` **58 checks / 0 failed** (NEW 2026-07-30, #249/#273 — **can the plant reach its own setpoints?** Part A is static and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their instrument's declared range, since `crossed()` is strict. Part B DRIVES the plant and watches the indicated channel cross, which is the only half that can catch a clamp — `pzr_level`'s range is [0,100] and its trip is 97, so Part A was perfectly happy while the level physically could not exceed 88.00 %, and that is what let a full accumulator dump hide behind an "arrived UNscrammed" check for months. **Add a case here whenever you assert that a trip did NOT fire** — that claim is worth exactly what the gauge can reach), `run_hardrules` **40 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)** (this line once said 28 while the gate was at 29. It counts dated owner quotes wherever they are tracked, so **writing a change up moves it, not just making the change** — re-run it AFTER the docs. 39 → 40 on 2026-07-31 (#284) is that rule again, cleanly: the engine fix moved nothing, and the BUILD_DECISIONS write-up moved it by quoting #230's ruling. 39 was MEASURED on the merged tree: `develop` took it 29 → 39 across #249/#273/#276 and `workbench` 29 → 32 (#249, three sites carrying `"249 - fit it."`) independently, so neither branch figure was right and a mechanical resolution would have shipped a drift), `run_release` **8 checks / 0 failed** (pre-release mode — re-arms to more on the first real version) (NEW 2026-07-31 — **release bookkeeping**: `site/release.js`, `changelog.html` and `CHANGELOG.md` must agree on what shipped. Written because the `CHANGELOG.md` roll — renaming `## [Unreleased]` to the version — was skipped for **Alpha 1.10.0 AND 1.11.0**, leaving 434 lines of two shipped releases filed as unreleased with the newest heading reading 1.9.0. **Nothing downstream reads that heading**, so nothing went red and nobody noticed; a CLAUDE.md note and a release-skill step already said to do it, and they are what failed. Verified against the real pre-fix file, not a synthetic one: 3 checks red. The count moves with the number of released versions — every `changelog.html` entry down to the oldest one `CHANGELOG.md` still names individually is cross-checked, so **a release adds a check**), `run_portable` **124 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list; +7 on 2026-07-30 for the DOWNLOAD section, #275, which guards the *delivery* rather than the artifact: the site's download button is stamped with the release version by `site/nav.js`, and every way that wiring can break leaves a button that still works and still hands out `latest.zip`), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `run_manual_rev` **12 checks / 0 failed** (the manual set's revision history — table shape, set-wide stamp agreement, content-digest seal, pack currency; IS baselined, because unlike `run_manual_units` its checks are structural and do not move on prose. **A chapter edited with no revision row reddens it** — the failure it was written for, after six content changes went unrecorded), `verify_flags_ui` **42/42** (this line said 48/48 from the day it was written; `BASELINES`
+`run_contract` **138 checks / 0 failed** (84 → 138 on 2026-07-31, #157 — it now guards a second contract: every alarm on all three plants declares a `category`, which the UI used to keyword-match off the alarm id), `run_reactivity` **27 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve. 23 → 27 on 2026-07-30, #263 item 2: the four inputs `pwr_startup`'s 26-step creep is DERIVED from — startup-IC boron, critical position, differential bank worth, and the excess the creep leaves), `run_hr3` **27 checks / 0 failed** (29 → 27 on 2026-07-31, #228), `run_reachability` **58 checks / 0 failed** (NEW 2026-07-30, #249/#273 — **can the plant reach its own setpoints?** Part A is static and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their instrument's declared range, since `crossed()` is strict. Part B DRIVES the plant and watches the indicated channel cross, which is the only half that can catch a clamp — `pzr_level`'s range is [0,100] and its trip is 97, so Part A was perfectly happy while the level physically could not exceed 88.00 %, and that is what let a full accumulator dump hide behind an "arrived UNscrammed" check for months. **Add a case here whenever you assert that a trip did NOT fire** — that claim is worth exactly what the gauge can reach), `run_hardrules` **39 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)** (this line once said 28 while the gate was at 29. It counts dated owner quotes wherever they are tracked, so **writing a change up moves it, not just making the change** — re-run it AFTER the docs. 40 → 39 on 2026-07-31 (#153) is the first time it has gone DOWN, and nothing was un-ruled: the themes list above is capped at 5, the bullet that aged out carried a formally-marked ruling, and this gate counts **occurrences** of the marker — so **the mandated rotation costs a check.** Before accepting the drop, confirm the ruling survives elsewhere (that one is in four other tracked files). 39 → 40 on 2026-07-31 (#284) was that rule the other way, cleanly: the engine fix moved nothing, and the BUILD_DECISIONS write-up moved it by quoting #230's ruling. 39 was MEASURED on the merged tree: `develop` took it 29 → 39 across #249/#273/#276 and `workbench` 29 → 32 (#249, three sites carrying `"249 - fit it."`) independently, so neither branch figure was right and a mechanical resolution would have shipped a drift), `run_release` **8 checks / 0 failed** (pre-release mode — re-arms to more on the first real version) (NEW 2026-07-31 — **release bookkeeping**: `site/release.js`, `changelog.html` and `CHANGELOG.md` must agree on what shipped. Written because the `CHANGELOG.md` roll — renaming `## [Unreleased]` to the version — was skipped for **Alpha 1.10.0 AND 1.11.0**, leaving 434 lines of two shipped releases filed as unreleased with the newest heading reading 1.9.0. **Nothing downstream reads that heading**, so nothing went red and nobody noticed; a CLAUDE.md note and a release-skill step already said to do it, and they are what failed. Verified against the real pre-fix file, not a synthetic one: 3 checks red. The count moves with the number of released versions — every `changelog.html` entry down to the oldest one `CHANGELOG.md` still names individually is cross-checked, so **a release adds a check**), `run_portable` **124 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list; +7 on 2026-07-30 for the DOWNLOAD section, #275, which guards the *delivery* rather than the artifact: the site's download button is stamped with the release version by `site/nav.js`, and every way that wiring can break leaves a button that still works and still hands out `latest.zip`), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `run_manual_rev` **12 checks / 0 failed** (the manual set's revision history — table shape, set-wide stamp agreement, content-digest seal, pack currency; IS baselined, because unlike `run_manual_units` its checks are structural and do not move on prose. **A chapter edited with no revision row reddens it** — the failure it was written for, after six content changes went unrecorded), `verify_flags_ui` **42/42** (this line said 48/48 from the day it was written; `BASELINES`
 always said 42 and the gate has always scored 42),
 `verify_e2e_ui` **PASS (16 screenshots)** (scored on screenshots, so its sections are free to add — `testRewindPicker` arrived 2026-07-31 with #137 and moves nothing here), `verify_manual_follow` **PASS (84 checks)**.
 
@@ -545,11 +547,13 @@ the first half-second after a scram and the rods are seated before the later che
 the ~1–3 s window where that config is the only thing binding was never asserted. Injection
 found it; reading the tests did not).
 
-**One tracked red**, carrying a `note` in `BASELINES`: `run_ops` **57/68** — probes are
-tuning targets by design. **Measured 2026-07-27b from `Diagnostic/ops_results.json`:
-PWR is 21/21 with ZERO fails; all 11 reds are 7 RBMK + 4 BWR**, and the deliberately-red
-C2 accel-latency probe (#153) is one of the RBMK seven (*ABUSE [post] time-acceleration*),
-not a separate twelfth item. This paragraph previously named **P4** among the open
+**One tracked red**, carrying a `note` in `BASELINES`: `run_ops` **58/68** — probes are
+tuning targets by design. **Measured 2026-07-31 from `Diagnostic/ops_results.json`:
+PWR is 21/21 with ZERO fails; the 10 reds are 6 RBMK + 4 BWR.** The deliberately-red C2
+accel-latency probe (#153) was the RBMK seventh and is **green as of 2026-07-31 — because
+the defect was fixed, not because the test was weakened**; all three accel probes (PWR,
+RBMK *[post]*, BWR) now report the same trip delay at 1× and 256×. This paragraph
+previously named **P4** among the open
 targets — a P-prefixed probe is PWR, and P4 has passed since 2026-07-22. That error was
 then copied verbatim into `run_all.js`'s `note`, so it drifted in two places (#161(b));
 both are corrected together. (**P7 resolved 2026-07-22**, CVCS letdown/charging enter the

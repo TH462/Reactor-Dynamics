@@ -470,6 +470,73 @@ T.push(test('Rewind — ring cap evicts the oldest checkpoint', function (ck) {
   ck('oldest entries evicted (FIFO)', oldest.toFixed(1) + ' s', oldest > 0.5, '> first pushes');
 }));
 
+// Protection is a PLANT property, not a UI speed-button property (#153).
+//
+// Until this shipped, `tick()` evaluated trips/actuations/alarms exactly once per
+// broadcast, so the interval between two protection evaluations was
+// `timeAcceleration × broadcastMs`. Measured on the pre-fix service, this same probe
+// at 3600× ran the plant through a 135.9 % power excursion and NEVER TRIPPED — the
+// first evaluation landed 360 sim s later with power already back at 56.7 %.
+//
+// PROVEN BY INJECTION, not by reading the diff: restore the old body (delete the
+// in-loop evaluate, keeping only the post-loop call) and this test goes red on four
+// checks — 'trips at 3600×' (no trip at all), both 'same trip' / 'same sim time'
+// checks, and the 3600× evaluation-rate check at 0.003 evals/sim s against its ≥5
+// floor. The 1× checks stay green either way, which is the point: 1× is byte-
+// identical, because a 1× broadcast is exactly PROTECTION_DT and the in-loop guard
+// hands that evaluation to the post-loop call.
+//
+// Deliberately NOT asserted: the exact trip latency. A 3600× broadcast covers 360
+// sim s, so the SNAPSHOT reporting the scram is still once per broadcast and always
+// will be — you cannot render faster than you broadcast. What must not vary is when
+// the plant actually acts, so this reads the RPS latch at physics rate.
+T.push(test('Protection cadence — bounded in SIM time, not per broadcast (#153)', function (ck) {
+  // Drive the runaway at `accel` and report when the RPS actually latched, sampled
+  // at physics rate (0.02 s) rather than at the broadcast boundary.
+  function runaway(accel) {
+    var s = new RD.SimulationService({ seed: 42 });
+    s.selectPlant('pwr', '50_percent', null);
+    s.running = true; s.attentionStops = true; s.timeAcceleration = accel;
+    var eng = s.engine, origStep = eng.step, origEval = s.layer.evaluate.bind(s.layer);
+    var armed = false, tFine = 0, scramT = null, reason = null, peak = 0, evals = 0;
+    s.layer.evaluate = function (ins) { evals++; return origEval(ins); };
+    eng.step = function (dt) {
+      var r = origStep.call(this, dt);
+      if (armed) {
+        tFine += dt;
+        var ts = this.getTrueState();
+        if (ts.power_pct > peak) peak = ts.power_pct;
+        if (scramT == null && s.layer.rps && s.layer.rps.scrammed) { scramT = tFine; reason = s.layer.rps.last_trip_reason; }
+      }
+      return r;
+    };
+    var t0 = s.simTime + 20; while (s.simTime < t0) s.advanceCycles(1);
+    armed = true; evals = 0;
+    s.handleCommand({ action: 'inject_failure', failure_id: 'continuous_rod_withdrawal', severity: 1.0 });
+    var end = s.simTime + 400;
+    while (s.simTime < end) { s.advanceCycles(1); if (scramT != null && tFine > scramT + 30) break; }
+    return { scram: scramT, reason: reason, peak: peak, rate: evals / tFine };
+  }
+
+  var slow = runaway(1), fast = runaway(3600);
+
+  ck('1×: trips on high flux', slow.reason || 'NO TRIP', slow.reason === 'power_range high', 'power_range high');
+  ck('3600×: trips at all', fast.reason || 'NO TRIP', fast.scram != null, 'a trip');
+  ck('3600×: same trip as 1× (not a slower parameter catching it late)',
+    fast.reason || 'NO TRIP', fast.reason === slow.reason, slow.reason);
+  ck('3600×: same sim time as 1× (within 1 s)',
+    fast.scram != null ? fast.scram.toFixed(2) + ' s vs ' + slow.scram.toFixed(2) + ' s' : 'NO TRIP',
+    fast.scram != null && Math.abs(fast.scram - slow.scram) < 1.0, '|Δ| < 1.0 s');
+  // The excursion itself: the pre-fix 3600× peak was 135.9 %, against 121.6 % at 1×.
+  ck('3600×: excursion no worse than 1× (within 3 points)',
+    fast.peak.toFixed(1) + ' % vs ' + slow.peak.toFixed(1) + ' %',
+    Math.abs(fast.peak - slow.peak) < 3.0, '|Δ| < 3.0 points');
+  // ≥5/sim s is half the 0.1 s cadence — loose enough not to pin the exact interleave,
+  // tight enough that the pre-fix 3600× rate (0.003) cannot squeak through.
+  ck('1×: protection evaluated ≥5 times per sim second', slow.rate.toFixed(1) + ' /s', slow.rate >= 5, '≥ 5');
+  ck('3600×: protection evaluated ≥5 times per sim second', fast.rate.toFixed(1) + ' /s', fast.rate >= 5, '≥ 5');
+}));
+
 // -------- report --------
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', RST = '\x1b[0m', BOLD = '\x1b[1m';
 var pass = 0, fail = 0;

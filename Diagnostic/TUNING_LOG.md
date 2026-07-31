@@ -105,8 +105,11 @@ config/setpoint change also triggers the **manual maintenance rule**:
 - **HR1 — instruments vs truth.** Automation and the level servo read the *indicated*
   (lagged/noisy/failable) value, not truth. A stiffer servo amplifies gauge noise; damp the
   error, don't just raise the gain (see the P7 `cvcs_level_filter_tau` fix).
-- **Protection cadence scales with acceleration** (C2). M5 evaluates M4 once per broadcast,
-  so at 256× the RPS checks the plant every ~13 sim-seconds — slow to catch fast excursions.
+- ~~**Protection cadence scales with acceleration** (C2). M5 evaluates M4 once per broadcast,
+  so at 256× the RPS checks the plant every ~13 sim-seconds — slow to catch fast excursions.~~
+  **RESOLVED 2026-07-31f (#153)** — protection is on a sim-time cadence (`PROTECTION_DT`
+  0.1 s) now, on all three plants. It was worse than "slow": above 600× the trip was never
+  evaluated during the excursion at all. See the session entry.
 - **Meter range vs trip setpoint** (C1). `crossed()` is strict (`value > setpoint`); a meter
   that clips *at* its trip setpoint can never fire it. PWR/BWR `power_range` widened to
   `[0,200]` for exactly this.
@@ -114,6 +117,86 @@ config/setpoint change also triggers the **manual maintenance rule**:
 ---
 
 ## Part 2 — Session log (newest first)
+
+### 2026-07-31f — #153: a UI speed button decided how well the reactor was protected  ✅
+
+*(OWNER, 2026-07-31: "You can fix RBMK too" — lifting the RBMK hold for this fix, which is
+why the shared cadence change and `ops_harness.js` cover all three plants.)*
+
+**The defect.** `simulation_service.tick()` ran N fixed-dt physics steps and then called
+`layer.evaluate()` — trips, actuations, interlocks, alarms — **once**. So the interval
+between two protection evaluations was `timeAcceleration × broadcastMs`: a plant property
+set by which speed button the player had pressed.
+
+**Measured, full stack (M4+M5+M6), PWR `50_percent`, `continuous_rod_withdrawal` sev 1.0,
+seed 42.** Scram time read at physics rate, peak sampled inside `engine.step` — sampling
+once per broadcast at 3600× misses the excursion and makes a runaway look *tamer* the
+faster you run it, which is a trap worth naming.
+
+| accel | scram at | trip reason | true peak power | peak fuel |
+|---|---|---|---|---|
+| 1× | 9.14 s | `power_range high` | 121.6 % | 1012 °F (544 °C) |
+| 60× | 9.14 s | `power_range high` | 121.4 % | 1012 °F (544 °C) |
+| 256× | **25.60 s** | **`primary_pressure high`** | **136.5 %** | 1194 °F (646 °C) |
+| 600× | **60.00 s** | **`primary_pressure high`** | **135.9 %** | 1192 °F (645 °C) |
+| 700× / 900× / 3600× | **NO TRIP** | — | **135.9 %** | 1192 °F (644 °C) |
+
+Indicated flux is above its 120 % setpoint for only **8.74 sim seconds**. Once the
+evaluation interval exceeds that window the trip cannot be seen at all. Traced at 3600×
+(one evaluation every **360 sim s**): true peak 135.9 % at t+12.9 s, indicated peak 136.3 %
+at t+13.0 s, first evaluation at t+360.0 s with power already back to 56.7 % and `scrammed`
+still `false`. The whole excursion lived inside one broadcast.
+
+**Four things worth carrying forward.**
+
+1. **The issue's premise was never true, not merely stale.** #153 argued the PWR was "safe
+   at 256×". The speed selector has offered **600× and 3600× since the first M8 commit**
+   (484d5e0) and does not offer 256× at all — so the ruling, the issue body and the
+   `abuse_accel_latency` probe were all measuring a speed no player can select, two of them
+   *below* two speeds every player can. Check what the UI ships before certifying a range.
+2. **`status-deliberate` made this harder to find than no label would have.** It carried no
+   dated owner quote, and `Diagnostic/PWR_SHIP_REVIEW_2026-07.md` §C2 had **already struck
+   its own ruling** as agent-authored — so the label was advisory under HR11 while reading
+   as standing law. It also recorded a cost objection ("the shared-cadence fix is not
+   low-risk") that measurement disproves: `layer.evaluate` **7.85 µs** vs `engine.step`
+   **18.80 µs**, so a 3600× cycle (18 000 steps, 338 ms of step) pays **+1.4 ms, +0.4 %**.
+3. **256× "passing" was the worst outcome, not a near miss.** The probe scored green
+   asserting only *tripped* and *not melted*. The plant did trip — on the wrong signal, 16.5 s
+   late, after a 136 % excursion, because a slower parameter happened to still be over when
+   the evaluation landed. HR10 exactly: the check confirmed the behaviour it observed,
+   including the wrong part. **Assert which trip and when, not that something happened.**
+4. **The attention-stop dropout could never have covered this.** It is computed in
+   `_assembleWithInstructor`, from the snapshot assembled *after* the cycle has run — so it
+   is always one broadcast late, which at 3600× is six plant-minutes. It protects the *next*
+   transient, never this one.
+
+**The fix.** `PROTECTION_DT = 0.1` sim s, evaluated inside the substep loop, with the final
+step left to the existing post-loop call so the snapshot is always assembled from the
+evaluation taken on the final readings. **1× is byte-identical**: a 1× broadcast is exactly
+`PROTECTION_DT` (5 steps), the accumulator reaches the cap on the last step, and the
+`i < steps - 1` guard hands it to the post-loop call. Two risks checked before writing it —
+`getInstruments()` is a pure read of `instruments.reading` (the noise PRNG advances inside
+`engine.step`, so extra evaluations perturb no stream, cf. the appended-instrument PRNG
+rule), and `ControlLayer.evaluate` holds no per-call state, only config loops.
+
+Post-fix, 1× → 3600×: scram **9.14 → 9.32 s**, always `power_range high`, peak power
+**121.6 → 121.9 %**, ~10 evaluations per sim second at every speed.
+
+**`test/ops_harness.js` moved with it.** Its `evalEvery` was an independent copy of the M5
+cadence (`accel × broadcast / dt`); leaving it would have left the ops suites certifying a
+plant no player can produce — the inverse of #209, same class of error.
+
+**Gates.** `run_m5` 19/19 83 → **20/20 90 checks** (new suite; **5 of its 7 checks red by
+injection** on the pre-fix service, including *trips at all* and the evaluation rate at
+0.003/sim-s against a ≥5 floor — while **both 1× checks stay green**, which is the proof
+that 1× is unchanged). `run_ops` 57/68 → **58/68**: the deliberately-red C2 probe went green
+**because the defect was fixed**, and all three accel probes (PWR, RBMK *[post]*, BWR) now
+report identical trip delay at 1× and 256×. PWR stays 21/21 with zero fails; the 10
+remaining reds are 6 RBMK + 4 BWR. `run_campaign` 51/51 (3038 checks) and
+`run_procedures_stack` 22/22 (178 checks) unmoved — ten times the evaluations perturbed no
+authored content, which was the real risk in this change.
+
+---
 
 ### 2026-07-31e — #137: the rewind ring measured the wrong clock, and the picker aimed at the wrong axis  ✅
 
