@@ -302,7 +302,11 @@ var BASELINES = {
   // downstream reads that heading, so nothing went red; the CLAUDE.md note and the release
   // skill's step are what failed, which is the argument for a gate rather than a louder note.
   // VERIFIED against the real pre-fix file, not a synthetic one: 3 checks red.
-  'run_release.js':        { code: 0, score: '18checks 0failed' },
+  // 18 -> 11 on 2026-07-31: the version was reset to Alpha 1.1.0 and changelog.html
+  // collapsed to ONE published entry for the public launch, so there are far fewer
+  // cross-checks to make. The count is a function of how many entries exist, not of how
+  // much is checked — every rule still runs.
+  'run_release.js':        { code: 0, score: '11checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   // 26 -> 28 on 2026-07-31 (#125): the PORV's operator switch is a SEPARATE command from
