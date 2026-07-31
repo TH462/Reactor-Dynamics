@@ -244,8 +244,17 @@ the setpoints are 13 points apart, so at the old drain rate no spacing change co
 a few seconds. This backlog line had it right and the issue did not. Pinned by **TR-14** in
 `run_behavior`, which nothing did before — the 3.6× change left all 32 gates green.
 * `abuse\_porv\_walkaway` is TMI-with-honest-instruments and survives hands-off (trip → HPI).
-Oddity: end state shows inventory 120 % (clip at `mass\_max`) with pzr level 7 % — the
-overfill/level bookkeeping disagree; worth a look.
+**RESOLVED 2026-07-31 (#136).** This line read: *"Oddity: end state shows inventory 120 %
+(clip at `mass\_max`) with pzr level 7 % — the overfill/level bookkeeping disagree; worth a
+look."* Re-measured: the end state is now **120.0 % inventory / 100.0 % level** — solid, and
+the two gauges agree. Fixed by **#249**, not by anything done for #136: `level_per_mass_surplus`
+was an underived 300, so `mass_max` clipped inventory *before* the gauge ran out of scale and
+indicated level physically could not express a surplus. Fitting it to real pressurizer geometry
+(**776**, the steam space as 5.8 % of RCS volume) is what made the overfill readable — the same
+defect that was hiding a full accumulator dump. The clip still pins inventory at 120 % and that
+remains correct. **Now asserted rather than observed**: this probe gained a both-gauges-agree
+check (335 passed, was 334), because these two numbers were printed on an `info` line every run
+and asserted on none. It reddens at 88.0 % level on the pre-#249 gain.
 * Startup: the SUR interlock works exactly as intended (267 blocks during a yank, 0–1
 during a careful approach), but after criticality the sim coasts to \~20 % power even when
 leveled with counter-insertion. Real practice stabilizes < 5 %. Consider a slightly

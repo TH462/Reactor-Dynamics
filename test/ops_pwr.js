@@ -588,6 +588,27 @@
           h.range('core_inventory_pct').min > 60, '> 60%');
         ck.info('min subcooling', fmt(h.range('subcooling_c').min, 1) + ' °C');
         ck.info('pressure floor', fmt(h.range('pressure_mpa').min, 2) + ' MPa');
+        // THE TWO GAUGES MUST TELL THE SAME STORY (#136). This end state used to read
+        // inventory 120 % (pinned at mass_max) with pressurizer level 7 % — an overfilled
+        // RCS whose level gauge said nearly empty. Both cannot be right, and nothing caught
+        // it because the line below was an `info`, not an assertion: the numbers were
+        // printed on every run and asserted on none.
+        //
+        // Resolved by #249, not here — `level_per_mass_surplus` was an underived 300, so
+        // `mass_max` clipped inventory before the gauge ran out of scale and indicated level
+        // simply could not express a surplus. Fitting it to real pressurizer geometry (776)
+        // is what made the overfill readable, and it is the same defect that was hiding a
+        // full accumulator dump behind an "arrived UNscrammed" check.
+        //
+        // Measured now: inventory 120.0 %, level 100.0 % — solid, which is what a 45-minute
+        // hands-off feed-and-bleed with HPI running against an open PORV should look like.
+        // Threshold 95, not 90: the defect's signature is level PINNED at exactly 88.00 %
+        // (level_prog_floor 28 + 300 × the clipped 0.20), so a 90 % bar would clear it by
+        // two points. Healthy reads 100.0. 95 sits with margin on both sides — verified by
+        // injection, restoring level_per_mass_surplus to its pre-#249 300 reddens this.
+        ck('overfilled RCS reads overfilled on BOTH gauges, not just one (#136)',
+          fmt(t.core_inventory_pct, 1) + '% inv / ' + fmt(t.pzr_level_pct, 1) + '% level',
+          !(t.core_inventory_pct > 105 && t.pzr_level_pct < 95), 'inv high ⇒ level solid');
         ck.info('state at +45 min: P / pzr level / inv', fmt(t.pressure_mpa, 2) + ' / ' + fmt(t.pzr_level_pct, 0) + '% / ' + fmt(t.core_inventory_pct, 0) + '%');
         T.checkSanity(ck, h);
       });

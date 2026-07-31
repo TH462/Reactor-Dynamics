@@ -21,6 +21,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The overfill/level contradiction in `abuse_porv_walkaway` is gone, and is now asserted**
+  (#136, closing it). The probe used to end at **120 % primary inventory with 7 % pressurizer
+  level** — an overfilled RCS whose level gauge read nearly empty. Re-measured: **120.0 %
+  inventory / 100.0 % level**, solid, and the two gauges agree.
+
+  **Fixed by #249, not by this issue.** `level_per_mass_surplus` was an underived 300, so
+  `mass_max` clipped inventory *before* the gauge ran out of scale — indicated level could
+  not express a surplus at all. Fitting it to real pressurizer geometry (776, the steam
+  space as 5.8 % of RCS volume) is what made the overfill readable, and it is the same
+  defect that was hiding a full accumulator dump behind an "arrived UNscrammed" check.
+
+  **What this issue contributes is the guard it never had.** Both numbers were printed on
+  an `info` line every single run and asserted on none, which is exactly how a
+  contradiction that obvious survived three months. The probe now asserts that an
+  overfilled RCS reads overfilled on *both* gauges (`run_ops` 334 → 335 passed). Verified
+  by injection: restoring the pre-#249 gain reddens it at the defect’s own signature
+  value — level pinned at **88.0 %**.
+
 ### Changed
 - **The steam generator drains at a real plant's rate now** (#135, closing it). `K_sg_level`
   **5.0 → 1.37**. A total loss of main feedwater at full power used to take the plant from

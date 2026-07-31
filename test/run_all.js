@@ -427,7 +427,12 @@ var BASELINES = {
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
-    code: 1, score: '57/68 334passed 12failed',
+    // 334 -> 335 passed on 2026-07-31 (#136): abuse_porv_walkaway now ASSERTS that an
+    // overfilled RCS reads overfilled on both gauges. It used to end at inventory 120 %
+    // (pinned at mass_max) with pressurizer level 7 %, and the probe printed both numbers
+    // on an `info` line every run while asserting neither — which is exactly why it went
+    // unnoticed. The defect itself was fixed by #249; this is the guard it never got.
+    code: 1, score: '57/68 335passed 12failed',
     note: 'Ops probes are tuning targets by design. Measured 2026-07-27b from ' +
           'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; all 11 reds are ' +
           '7 RBMK + 4 BWR, and the deliberately-red C2 accel-latency probe (#153, ' +
