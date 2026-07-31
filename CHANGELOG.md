@@ -13,6 +13,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Settings tab trimmed** (#277). Removed **Values**, **Terminology**, and **Physics
+  Overlay** — unused on the shipping PWR board. Units, fast-forward dropout, and About
+  remain.
+
 ### Added
 - **Settings → About: Disclaimer, License, and Changelog popups** (#259). The portable
   single-file build is only the control room, so a recipient offline had no route to the

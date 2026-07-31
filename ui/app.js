@@ -988,11 +988,11 @@
         // TMI-2 p1/p3 run Realistic so the chart keeps the deception, p2 runs Learning
         // so the reveal can show the physics. Re-fit the axes across the swap.
         if (ui.diagMode !== want) chartRange = {};
-        ui.diagMode = want; ui.physOverlay = wantOv; syncOverlayRow();
+        ui.diagMode = want; ui.physOverlay = wantOv;
       }
     } else if (uiPolicyPrev) {
       ui.diagMode = uiPolicyPrev.diagMode; ui.physOverlay = uiPolicyPrev.physOverlay;
-      uiPolicyPrev = null; syncOverlayRow();
+      uiPolicyPrev = null;
     }
     // Scenario prop: the maintenance tag over the AFW valve indication. Hidden
     // once its interaction is granted (the tag comes off the valve).
@@ -2930,19 +2930,10 @@
       // has no #ffBadge, so every speed click threw before the segment could repaint.
       cmd({ action: 'set_speed', value: +b.getAttribute('data-speed') });
     });
-    // Settings → Values Display (Instruments / True / Both) drives the legacy All view.
-    var oseg = $('overlaySeg2');
-    if (oseg) oseg.addEventListener('click', function (e) { var b = e.target.closest('[data-overlay]'); if (!b) return; ui.overlay = b.getAttribute('data-overlay'); syncSeg('[data-overlay]', ui.overlay, 'overlay'); if (latest && ui.plant !== 'pwr') renderPdAll(latest); });
-    // Physics Overlay (Physics Diagram teaching layer). Diagram Mode UI removed —
-    // the board is always the Physics Diagram until a realistic board ships.
-    var pseg = $('physSeg');
-    if (pseg) pseg.addEventListener('click', function (e) {
-      var b = e.target.closest('[data-phys]'); if (!b) return;
-      ui.physOverlay = b.getAttribute('data-phys') === 'on';
-      if (latest) render(latest);
-    });
-    syncOverlayRow();
-    $('registerSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-register]'); if (!b) return; ui.register = b.getAttribute('data-register'); cmd({ action: 'set_register', value: ui.register }); });
+    // Settings: Units only under Display (#277 removed Values / Terminology /
+    // Physics Overlay). RBMK/BWR All-view Instruments/True/Both still lives on
+    // the plant display itself (#pdOverlaySeg). Register + physOverlay keep
+    // their defaults; stack still accepts set_register for tests.
     $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
     var aseg = $('attnSeg');
     if (aseg) aseg.addEventListener('click', function (e) {
@@ -3392,17 +3383,6 @@
     }
   }
   function syncSeg(sel, val, attr) { document.querySelectorAll(sel).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-' + attr) === val); }); }
-  // Physics Overlay control exists only in Learning (Education) mode — Realistic hides it entirely.
-  // Values Display drives only the legacy RBMK/BWR All view — on the PWR the
-  // synoptic owns its truth presentation, so the row is hidden (an on-screen
-  // setting must never silently do nothing).
-  function syncOverlayRow() {
-    // Physics Overlay only applies on the Physics Diagram (always, until a
-    // realistic board ships). Values display is available on every plant.
-    var row = $('overlayRow'); if (row) row.style.display = '';
-    var vr = $('valuesRow'); if (vr) vr.style.display = '';
-    syncSeg('[data-phys]', ui.physOverlay ? 'on' : 'off', 'phys');
-  }
 
   // ---- Quick tour: coach-marks (highlight target + tip beside it) ----------
   // Not a centered modal — each step points at a real control so a newcomer
@@ -3998,7 +3978,6 @@
     // normal lineup (M5 selectPlant → engageDefaults); the tab just rebuilds.
     buildAutomate();
     buildPlantDisplay();
-    syncOverlayRow();   // per-plant settings rows (Values Display is legacy-view only)
     buildAdvFail();     // advanced instrument-failure panel follows the active plant
     var ps = $('pdScram'); if (ps && !ps.classList.contains('fired') && !ps.classList.contains('armed')) ps.textContent = prof().scramShort;
     refreshMissionSelect();   // walkthrough list follows the active plant
@@ -4468,7 +4447,6 @@
     var dm = /[?&]mode=(realistic|learning|education)/.exec(location.search || '');
     if (dm) { ui.diagMode = dm[1] === 'realistic' ? 'realistic' : 'learning'; }
     if (/[?&]phys=1/.test(location.search || '') && ui.diagMode !== 'realistic') ui.physOverlay = true;
-    syncOverlayRow();
     var im = /[?&]inject=([a-z0-9_,]+)/.exec(location.search || '');
     if (im) im[1].split(',').forEach(function (id) { service.handleCommand({ action: 'inject_failure', failure_id: id, severity: 1 }); });
     var ffm = /[?&]ff=(\d+)/.exec(location.search || '');
