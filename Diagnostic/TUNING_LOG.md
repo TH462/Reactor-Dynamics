@@ -118,6 +118,61 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31h — #224: the stale map was not a lookup, it was the browser gate's coverage list  ✅
+
+**The filed defect.** `test/audit_manual_controls.js` reported **32 mismatches, exit 1** —
+`STEP_UI` in `test/manual_ui_map.js` had not moved through the #197 1/M rebuild, the #202
+Mode 3 → Mode 1 work, or the #206 heatup repairs. It was not in `run_all` (not a `run_*.js`,
+so auto-discovery never saw it), which is why nobody knew.
+
+**The part the issue did not know.** `verify_manual_follow.js` **iterates `STEP_UI`, not the
+procedure steps**. So the table is that gate's *coverage list*: an unmapped step is not
+merely unmapped, it is **unverified**, and the gate reports a confident PASS over whatever
+remains. Measured: **17 of the 45 controlled PWR steps**, `pwr_heatup` at **zero**. A stale
+lookup table had quietly halved a browser gate.
+
+**The issue's own caveat, checked first** — *"I have not checked whether all 33 are genuine
+defects or whether some are the map being right and the auditor's matching being too
+strict."* Neither, as it turned out. Every one of the **45 controlled steps resolves against
+the board's control vocabulary** — no procedure has ever named a control the player cannot
+reach. The 32 lines were the map's absence, nothing more. Two entries were also positively
+wrong (`pwr_startup` i:3 pinned `Control Bank` where the pill reads `1/M Plot`, i:7 pinned
+`SR detector` where it reads `Control Bank`) — both from steps inserted above them.
+
+**Three things to know.**
+
+1. **`VIEW_CONTROLS.pwr` was a hand copy of a display that no longer exists.** It mirrored
+   `ui/app.js` PD[].controls, but the PWR plant display is the learning BOARD, with no view
+   bar, and app.js resolves a control through `RD.PwrBoard.revealControl`. Nine labels the
+   authored procedures use — `RCP Run/Stop`, `Dump SP`, `Pressure SP`, `Accumulator valve`,
+   `Trip Blocks`, `Boron control`, `1/M Plot`, `Turbine — Connect Grid`, `Rod AUTO` — were
+   absent from the copy while being perfectly reachable, so filling `STEP_UI` against it
+   would have manufactured false failures. PWR now reads the board's own
+   `CONTROL_LABEL_MAP` via `PwrBoardDriver.controlLabels()` — the authority `revealControl`
+   resolves against, and the one `run_campaign` already validates beat highlights against.
+   One source, three consumers. `view` is recorded as `'board'` and is decorative on this
+   plant; `verify_manual_follow` already ignored it here.
+2. **Filling the table without fixing the loops would have cost minutes for no assurance.**
+   The bar check re-navigated per entry with `&view=<v>` — **a parameter nothing in
+   `ui/app.js` reads**, so every load rendered the identical page — and the follow check
+   reloaded and re-clicked `next` *i* times per entry, O(n²) in procedure length
+   (`pwr_heatup` alone: 153 clicks, 17 page loads). Both walk once now. Measured: **84 → 174
+   checks for 115 s → 132 s**.
+3. **The auditor is a gate now** (`test/run_manual_controls.js`), so auto-discovery finds it
+   and `BASELINES` pins it — which is the only thing that stops this recurring. #159 said
+   manual-run harnesses drift and fixed the cosmetic half (a report written to a dead scratch
+   directory); this is the half that mattered. Injection-verified four ways: a dropped entry
+   (step reported UNVERIFIED), a pill/entry mismatch, an entry with no step behind it, and a
+   procedure naming a control absent from the board. **The third injection is worth
+   recording** — my first attempt used `Reactor Coolant Pumps (RCP)` as the "unreachable"
+   label and the check stayed green, because that label *is* on the board. A negative
+   assertion proved with a name that exists proves nothing.
+
+`run_all` **34 → 35 runners**. `run_manual_controls` **116 checks** (2 per controlled step),
+`verify_manual_follow` 84 → **174**. Nothing else moved.
+
+---
+
 ### 2026-07-31g — #220: the P-9 permissive was reading the plant, not the gauge  ✅
 
 **What #220 was.** An issue against my own recall: a run of decisions had been justified by

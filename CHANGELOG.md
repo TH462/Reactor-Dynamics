@@ -22,6 +22,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The startup and heatup procedures are checked against the board again** (#224). The
+  table that pins each procedure step to the control it names had not been updated through
+  three rounds of procedure re-authoring — and that table is what the browser gate walks, so
+  an unlisted step was not merely unmapped, it was **unverified**. Measured: 17 of the 45
+  controlled PWR steps were covered, with the whole of *Plant Heatup* at zero, and the gate
+  reported a clean pass over what was left.
+
+  All 45 were then checked against the board's own control vocabulary and **all 45 resolve** —
+  no procedure has ever pointed at a control the player cannot reach. Two entries were
+  pointing at the wrong step, both from steps having been inserted above them.
+
+  Coverage is now 58 steps and the browser gate runs **174 checks**, up from 84, in about the
+  same time as before.
+
 - **A failed power-range channel no longer leaves the P-9 permissive armed** (#220). The
   P-9 interlock — ~50 % power, and the thing that arms the SG hi-hi reactor trip, Reactor
   Trip on Turbine Trip, and the loss-of-main-feed AFW start — was computed from **true**

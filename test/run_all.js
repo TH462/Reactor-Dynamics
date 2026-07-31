@@ -262,6 +262,17 @@ var BASELINES = {
   // and still describe last week's plant. What it CANNOT check is whether a row's prose
   // is true; that is HR10/HR12 territory and the runner header says so.
   'run_manual_rev.js':     { code: 0, score: '12checks 0failed' },
+  // NEW 2026-07-31 (#224) — was `test/audit_manual_controls.js`, which is exactly why it is
+  // here: not a `run_*.js`, so auto-discovery never saw it, so it had no baseline, so it sat
+  // at **32 mismatches / exit 1** through the #197 / #202 / #206 procedure re-authoring with
+  // nothing to say so. #159 predicted this about manual-run harnesses and fixed the cosmetic
+  // half; this is the half that mattered.
+  //
+  // It guards more than its name: `STEP_UI` is the COVERAGE LIST for verify_manual_follow,
+  // which iterates the table rather than the steps — so an unmapped step is UNVERIFIED, not
+  // merely unmapped. Count moves when a controlled procedure step is added or removed
+  // (2 checks per step: the mapping, and the reverse entry-has-a-step check).
+  'run_manual_controls.js': { code: 0, score: '116checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -535,7 +546,19 @@ var BASELINES = {
   // data-flag, so it shows on both channels and the distinction they guarded is gone.
   'verify_flags_ui.js':      { code: 0, score: '42/42' },
   'verify_e2e_ui.js':        { code: 0, score: '16screenshots', slow: true },
-  'verify_manual_follow.js': { code: 0, score: '84checks', slow: true },
+  // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
+  // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
+  // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,
+  // and the table had not moved through three procedure re-authorings: it named 17 of the
+  // 45 controlled PWR steps, with `pwr_heatup` at ZERO, and this gate reported a confident
+  // PASS over the slice that was left. Filling the table is what moved the number.
+  //
+  // Runtime is 115 s -> 132 s for 2.1x the checks, because the per-entry page loads went
+  // with it: the bar loop re-navigated with `&view=`, a parameter ui/app.js does not read,
+  // so every load rendered the identical page; and the follow loop reloaded and re-clicked
+  // `next` i times per entry, O(n^2) in procedure length. Both walk once now. Filling the
+  // table WITHOUT that would have added minutes for no extra assurance.
+  'verify_manual_follow.js': { code: 0, score: '174checks', slow: true },
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run

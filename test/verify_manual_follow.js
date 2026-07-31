@@ -57,6 +57,16 @@ async function checkControlOnBar(page, prof, view, control) {
   return labels.indexOf(control) >= 0;
 }
 
+// Click a view tab if this plant has a view bar. The PWR board has none (its controls are
+// revealed by RD.PwrBoard.revealControl, not by a bar), so this is a no-op there.
+async function selectView(page, v) {
+  await page.evaluate(function (view) {
+    var tabs = document.querySelectorAll('#viewTabs [data-view]');
+    for (var i = 0; i < tabs.length; i++) { if (tabs[i].getAttribute('data-view') === view) tabs[i].click(); }
+  }, v);
+  await page.waitForTimeout(400);
+}
+
 async function verifyProcedure(page, prof, proc) {
   var expects = map.STEP_UI[proc.id];
   if (!expects) return [];
@@ -95,13 +105,24 @@ async function verifyProcedure(page, prof, proc) {
     }
   }
 
+  // ---- bar check. ONE page load for the whole procedure (#224).
+  //
+  // This used to `goto(...&view=<v>)` once per entry. Two things were wrong with that:
+  // `&view=` is read by NOTHING in ui/app.js — grep it — so every one of those loads
+  // rendered the identical page, and the view is actually selected by clicking the tab
+  // (which the follow loop below already does). N identical page loads per procedure was
+  // affordable only while STEP_UI covered 17 steps; filling it to 58 would have made this
+  // gate several minutes slower for no extra assurance. Load once, click the tab when the
+  // plant has one, check each entry.
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof, { waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForTimeout(500);
+  var lastView = null;
   for (var b = 0; b < expects.length; b++) {
     var exb = expects[b];
     var stb = proc.steps[exb.i];
     if (!stb || !stb.control) continue;
     var vb = exb.view === 'scram' ? 'primary' : exb.view;
-    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof + '&view=' + vb, { waitUntil: 'networkidle', timeout: 90000 });
-    await page.waitForTimeout(500);
+    if (vb !== lastView) { await selectView(page, vb); lastView = vb; }
     if (!(await checkControlOnBar(page, prof, exb.view, stb.control))) {
       fails++;
       log.push('FAIL ' + prof + ' · ' + proc.id + ' step ' + (exb.i + 1) + ': "' + stb.control + '" not on ' + exb.view + ' bar');
@@ -110,19 +131,24 @@ async function verifyProcedure(page, prof, proc) {
     }
   }
 
-  for (var f = 0; f < expects.length; f++) {
-    var exf = expects[f];
+  // ---- Instructor-follow check. ONE page load, walking FORWARD (#224).
+  //
+  // This used to reload the page per entry and then click `next` i times to get back to
+  // step i — O(n²) clicks in the length of the procedure. `pwr_heatup` alone (entries at
+  // i = 1…17) would have cost 153 clicks and 17 page loads. The follow pane only ever
+  // moves forward, and the entries are in step order, so walk it once: 17 clicks, 1 load.
+  // Sorted defensively — an out-of-order entry would otherwise silently skip a step.
+  var ordered = expects.slice().sort(function (p, q) { return p.i - q.i; });
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof + '&follow=' + proc.id, { waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForTimeout(400);
+  var at = 0;
+  for (var f = 0; f < ordered.length; f++) {
+    var exf = ordered[f];
     var stf = proc.steps[exf.i];
     if (!stf || !stf.control || /^\(observe/.test(stf.control)) continue;
-    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof + '&follow=' + proc.id, { waitUntil: 'networkidle', timeout: 90000 });
-    await page.waitForTimeout(400);
-    for (var n = 0; n < exf.i; n++) { await page.click('[data-fnav="next"]'); await page.waitForTimeout(200); }
+    while (at < exf.i) { await page.click('[data-fnav="next"]'); await page.waitForTimeout(200); at++; }
     var fv = exf.view === 'scram' ? 'primary' : exf.view;
-    await page.evaluate(function (v) {
-      var tabs = document.querySelectorAll('#viewTabs [data-view]');
-      for (var i = 0; i < tabs.length; i++) { if (tabs[i].getAttribute('data-view') === v) tabs[i].click(); }
-    }, fv);
-    await page.waitForTimeout(400);
+    await selectView(page, fv);
     var instrCtrl = await page.evaluate(function () {
       var el = document.getElementById('instrCurrent');
       var m = el && el.innerHTML.match(/Control:\s*<b>([^<]+)<\/b>/);

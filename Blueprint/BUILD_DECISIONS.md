@@ -37,6 +37,72 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-31h — #224: a stale lookup table had quietly halved a browser gate
+
+**The filed defect was 32 mismatches in `STEP_UI`.** The real one is what `STEP_UI` is for:
+`verify_manual_follow.js` **iterates the table, not the procedure steps**, so it is that
+gate's coverage list. An unmapped step is **unverified**, not merely unmapped. Measured
+2026-07-31: **17 of 45** controlled PWR steps covered, `pwr_heatup` at **zero**, gate green.
+
+### The decision: PWR's control vocabulary is the board's, not a hand copy
+
+`VIEW_CONTROLS.pwr` mirrored `ui/app.js` PD[].controls by hand. The PWR plant display has
+had no view bar since the board replaced the V1 synoptic (#246) — app.js resolves a control
+through `RD.PwrBoard.revealControl`. So the mirror described a display that does not exist,
+and nine labels the authored procedures use (`RCP Run/Stop`, `Dump SP`, `Pressure SP`,
+`Accumulator valve`, `Trip Blocks`, `Boron control`, `1/M Plot`, `Turbine — Connect Grid`,
+`Rod AUTO`) were missing from it while being perfectly reachable. **Filling `STEP_UI`
+against that list would have produced 9 false failures and an argument about which was
+right.**
+
+PWR now reads `PwrBoardDriver.controlLabels()` — the board's own `CONTROL_LABEL_MAP`. That
+is the authority `revealControl` resolves against, and the one `run_campaign` already
+validates campaign beat highlights against, so this is a third consumer of one source
+rather than a fourth source. RBMK/BWR keep their listed view bars: those plants still have
+one, and are on hold.
+
+`view` becomes decorative for PWR (recorded `'board'`). `verify_manual_follow` already
+ignored it on this plant.
+
+### The finding that changed the shape of the fix
+
+Every one of the **45 controlled steps resolves** against the board vocabulary. There was
+never a procedure pointing at an unreachable control — the issue's caveat (*"some may be the
+map being right and the auditor being too strict"*) resolved to a third answer: the map was
+simply absent, and the auditor was right about that.
+
+### Why the loops had to be rewritten to accept the coverage
+
+Tripling `STEP_UI` triples what `verify_manual_follow` walks, and it walked expensively:
+
+| loop | was | why it was wasteful |
+|---|---|---|
+| bar check | one `goto(...&view=<v>)` per entry | **`&view=` is read by nothing in `ui/app.js`** — every load rendered the identical page |
+| follow check | reload + click `next` *i* times per entry | O(n²) in procedure length; `pwr_heatup` alone = 153 clicks, 17 loads |
+
+Both walk once now (the follow pane only moves forward, and entries are step-ordered —
+sorted defensively so an out-of-order entry cannot silently skip a step). **84 → 174 checks
+for 115 s → 132 s.** Filling the table without this would have added minutes and no
+assurance.
+
+### The gate
+
+`audit_manual_controls.js` → **`test/run_manual_controls.js`**, so auto-discovery finds it
+and it carries a baseline. That rename *is* the fix for the recurrence: #159 already
+observed that manual-run harnesses drift and fixed the cosmetic half (a report written into
+a dead scratch directory); the half that mattered was that nothing ran it.
+
+Injection-verified four ways: dropped entry → step reported UNVERIFIED; pill/entry mismatch;
+entry with no step behind it; procedure naming a control absent from the board. **Worth
+recording:** the first attempt at that last one used `Reactor Coolant Pumps (RCP)` as the
+"unreachable" label and stayed green — because that label *is* on the board. A negative
+assertion demonstrated with a name that exists demonstrates nothing.
+
+`run_all` **34 → 35 runners**; `run_manual_controls` 116 checks; `verify_manual_follow`
+84 → 174. Nothing else moved.
+
+---
+
 ## 2026-07-31g — #220: the revisit. A permissive that could not be fooled, and a guard that said it could not exist
 
 **Context.** #220's evidence pass (2026-07-27) verdicted ten "real Westinghouse PWRs do X"

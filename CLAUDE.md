@@ -272,7 +272,7 @@ to read everything.
 _Last updated: **2026-07-29**._
 
 **Where the PWR is.** All PWR engine, behaviour, ops and stack gates green; `run_all` is
-**34 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
+**35 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
 a handful of UI/doc items.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.**
@@ -387,28 +387,27 @@ anything here that is standing procedure rather than news belongs in the list be
   no manual load step of any magnitude trips this plant, and its "1000 → 500 MWe" example
   predates the SLX-100 identity.
 
-- **The SCRAM button's RESET half was inert from the day it was drawn, and 18 green checks
-  did not notice (2026-07-31, #75).** The board has read **PRESS TO RESET** under SCRAMMED
-  since it was built; `onScramReset` was an empty stub commented *"no engine reset command;
-  visual only"*, which was false when it was written — the engine's `reset_rps` (with its
-  rods-in interlock) and the kernel's `resetRps()` permissive both existed and were both
-  green under an ops probe. Three finished halves, never joined: pressing produced no reset,
-  no refusal and no message. **The refusal was invisible in code too** — `resetRps()`
-  returned `type: 'refused'`, a shape returned by two lines and read by *nothing* in the
-  repository, so a correctly-computed refusal went into a branch that does not exist. It now
-  returns the `blocked` + `INTERLOCK` shape `app.js` already flashes. **The permissive is
-  STATE now**, from the same evaluator the press uses, so the caption names what is holding
-  it (*TRIP SIGNAL STANDING* / *RODS NOT AT BOTTOM* / *PRESS TO RESET*) and the board cannot
-  promise a reset the plant will refuse. Rod bottom became a `rods_fully_in` status word
-  sharing one constant with the engine interlock (HR1); the permissive list is plant config,
-  so the kernel stayed generic and **`run_hr3` is unmoved at 29** — #228's leak was not
-  widened. Measured (hot full power, seed 42): turbine trip holds ~1 s, rod bottom ~2 s more,
-  available ~t+4 s; a loss of feedwater keeps it blocked on *low steam generator level*
-  indefinitely, which is the teaching case. **The lesson to carry: with 18 checks written
-  and green, deleting the ENTIRE permissive config left the suite green** — the standing
-  turbine trip covers the first half-second and the rods are seated before the later checks
-  run, so the one window where that config binds was never asserted. HR10, exactly as
-  written. `run_e2e_controls` 39 → 59, `board_check` 138 → 143, manual **Rev 20** (03 §3.5.1).
+- **The map that pins procedure steps to controls was the browser gate's COVERAGE LIST, and
+  it had gone stale (2026-07-31, #224).** `STEP_UI` in `test/manual_ui_map.js` reported 32
+  mismatches — but the filed defect understated it: **`verify_manual_follow.js` iterates that
+  table, not the procedure steps**, so an unmapped step is **UNVERIFIED**, not merely unmapped.
+  Measured: **17 of the 45** controlled PWR steps covered, `pwr_heatup` at **zero**, and the
+  gate reporting a confident PASS over the slice that was left. Three things to know. **The
+  issue's own caveat resolved to a third answer** — it asked whether the 32 were real defects
+  or an over-strict auditor; neither, **all 45 steps resolve** against the board's control
+  vocabulary, so no procedure has ever named a control the player cannot reach.
+  **`VIEW_CONTROLS.pwr` was a hand copy of a display that no longer exists**: the PWR plant
+  display is the learning BOARD with no view bar, and nine labels the procedures use
+  (`RCP Run/Stop`, `Dump SP`, `Trip Blocks`, `1/M Plot`…) were absent from the copy while
+  being perfectly reachable — filling the table against it would have manufactured nine false
+  failures. PWR now reads `PwrBoardDriver.controlLabels()`, the same `CONTROL_LABEL_MAP`
+  `revealControl` resolves and `run_campaign` already validates beat highlights against. And
+  **the loops had to be rewritten to afford the coverage**: the bar check re-navigated per
+  entry with `&view=`, **a parameter nothing in `ui/app.js` reads**, and the follow check
+  reloaded and re-clicked `next` *i* times per entry (O(n²) — `pwr_heatup` alone: 153 clicks).
+  Both walk once now: **84 → 174 checks for 115 → 132 s**. The auditor is
+  `run_manual_controls.js` now so auto-discovery baselines it, which is the only thing that
+  stops a fourth recurrence (`run_all` **34 → 35 runners**).
 
 **Standing procedure — not part of the rotation above; these do not expire.**
 
@@ -489,13 +488,13 @@ not a changelog.**
 **Current gate baselines — `node test/run_all.js` is now the authority.**
 
 > Since 2026-07-25 the baselines live as **data** in the `BASELINES` map at the top of
-> `test/run_all.js`, not as prose here. Run it; it compares all 34 runners against that
+> `test/run_all.js`, not as prose here. Run it; it compares all 35 runners against that
 > map and exits non-zero on any drift. Prose baselines are what rotted (this section
 > claimed `run_m5` **19/19** while its own status text said 18/19 — issue #161). **If
 > you move a number, update `BASELINES` and this section together.**
 
 ```
-node test/run_all.js            # all 34 runners (~6 min)
+node test/run_all.js            # all 35 runners (~6 min)
 node test/run_all.js --fast     # skip the 2 Playwright gates (~2.5 min)
 node test/run_all.js --only run_pwr,run_ops
 node test/run_all.js --record   # print observed results as a BASELINES block
@@ -507,7 +506,7 @@ being silently absorbed. Same convention as the strict xfails in `run_meltdown` 
 `run_behavior`.
 
 **CI runs the same command on every push and PR to `main`/`develop`**
-(`.github/workflows/gates.yml`, ~8 min) — all 34 runners, browser gates included; it
+(`.github/workflows/gates.yml`, ~8 min) — all 35 runners, browser gates included; it
 installs playwright into `./node_modules` from a scratch prefix and asserts no manifest
 appeared in the repo root. **Check it after you push** — `gh run list --workflow=gates.yml
 --limit 3`. It ran `--fast` with no install from 2026-07-27, which worked until
@@ -530,7 +529,7 @@ were never plant defects at all — the harness was running 11 of its 22 procedu
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
 `run_contract` **138 checks / 0 failed** (84 → 138 on 2026-07-31, #157 — it now guards a second contract: every alarm on all three plants declares a `category`, which the UI used to keyword-match off the alarm id), `run_reactivity` **27 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve. 23 → 27 on 2026-07-30, #263 item 2: the four inputs `pwr_startup`'s 26-step creep is DERIVED from — startup-IC boron, critical position, differential bank worth, and the excess the creep leaves), `run_hr3` **27 checks / 0 failed** (29 → 27 on 2026-07-31, #228), `run_reachability` **58 checks / 0 failed** (NEW 2026-07-30, #249/#273 — **can the plant reach its own setpoints?** Part A is static and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their instrument's declared range, since `crossed()` is strict. Part B DRIVES the plant and watches the indicated channel cross, which is the only half that can catch a clamp — `pzr_level`'s range is [0,100] and its trip is 97, so Part A was perfectly happy while the level physically could not exceed 88.00 %, and that is what let a full accumulator dump hide behind an "arrived UNscrammed" check for months. **Add a case here whenever you assert that a trip did NOT fire** — that claim is worth exactly what the gauge can reach), `run_hardrules` **48 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)** (39 → 48 on 2026-07-31 (#220) is TWO movements netted: **+11 from code** — the first code move this gate has ever had — and **−2 from prose**, the themes-list rotation again taking two OWNER RULING markers with the bullet that aged out (both confirmed surviving in other tracked files first). The +11 is a new **HR1(b)** block. The HR1 scan declared in writing that "nothing that DECIDES can reach truth by a path this misses" — false, and `above_p9` was the path: a trip's `condition:` key is a status word the ENGINE computes from truth and hands over, invisible to a scan looking for `true_state`. Every permissive key is now declared with its provenance and the instrument-derived ones are checked against the engine line defining them; injection-verified three ways. This line once said 28 while the gate was at 29. It counts dated owner quotes wherever they are tracked, so **writing a change up moves it, not just making the change** — re-run it AFTER the docs. 40 → 39 on 2026-07-31 (#153) is the first time it has gone DOWN, and nothing was un-ruled: the themes list above is capped at 5, the bullet that aged out carried a formally-marked ruling, and this gate counts **occurrences** of the marker — so **the mandated rotation costs a check.** Before accepting the drop, confirm the ruling survives elsewhere (that one is in four other tracked files). 39 → 40 on 2026-07-31 (#284) was that rule the other way, cleanly: the engine fix moved nothing, and the BUILD_DECISIONS write-up moved it by quoting #230's ruling. 39 was MEASURED on the merged tree: `develop` took it 29 → 39 across #249/#273/#276 and `workbench` 29 → 32 (#249, three sites carrying `"249 - fit it."`) independently, so neither branch figure was right and a mechanical resolution would have shipped a drift), `run_release` **8 checks / 0 failed** (pre-release mode — re-arms to more on the first real version) (NEW 2026-07-31 — **release bookkeeping**: `site/release.js`, `changelog.html` and `CHANGELOG.md` must agree on what shipped. Written because the `CHANGELOG.md` roll — renaming `## [Unreleased]` to the version — was skipped for **Alpha 1.10.0 AND 1.11.0**, leaving 434 lines of two shipped releases filed as unreleased with the newest heading reading 1.9.0. **Nothing downstream reads that heading**, so nothing went red and nobody noticed; a CLAUDE.md note and a release-skill step already said to do it, and they are what failed. Verified against the real pre-fix file, not a synthetic one: 3 checks red. The count moves with the number of released versions — every `changelog.html` entry down to the oldest one `CHANGELOG.md` still names individually is cross-checked, so **a release adds a check**), `run_portable` **124 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list; +7 on 2026-07-30 for the DOWNLOAD section, #275, which guards the *delivery* rather than the artifact: the site's download button is stamped with the release version by `site/nav.js`, and every way that wiring can break leaves a button that still works and still hands out `latest.zip`), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `run_manual_rev` **12 checks / 0 failed** (the manual set's revision history — table shape, set-wide stamp agreement, content-digest seal, pack currency; IS baselined, because unlike `run_manual_units` its checks are structural and do not move on prose. **A chapter edited with no revision row reddens it** — the failure it was written for, after six content changes went unrecorded), `verify_flags_ui` **42/42** (this line said 48/48 from the day it was written; `BASELINES`
 always said 42 and the gate has always scored 42),
-`verify_e2e_ui` **PASS (16 screenshots)** (scored on screenshots, so its sections are free to add — `testRewindPicker` arrived 2026-07-31 with #137 and moves nothing here), `verify_manual_follow` **PASS (84 checks)**.
+`verify_e2e_ui` **PASS (16 screenshots)** (scored on screenshots, so its sections are free to add — `testRewindPicker` arrived 2026-07-31 with #137 and moves nothing here), `verify_manual_follow` **PASS (174 checks)** (84 → 174 on 2026-07-31, #224 — NOT new assertions, the same ones finally applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in `test/manual_ui_map.js` rather than the procedure steps, so **that table is its coverage list** and an unmapped step is UNVERIFIED, not merely unmapped: measured, 17 of the 45 controlled PWR steps, `pwr_heatup` at ZERO, gate green. Runtime only 115 → 132 s because the per-entry page loads went too — the bar loop re-navigated with `&view=`, which **nothing in `ui/app.js` reads**), `run_manual_controls` **116 checks / 0 failed** (NEW 2026-07-31, #224 — was `test/audit_manual_controls.js`, and that is the whole point: not a `run_*.js`, so auto-discovery never saw it, so it had no baseline, so it sat at 32 mismatches / exit 1 through three procedure re-authorings. Guards that every controlled procedure step names a control the board can actually reveal AND is covered by the browser gate. Count moves with controlled steps, 2 checks each).
 
 Also green: `run_e2e_controls` **59/59** (both F12 reds were stale expectations, fixed
 2026-07-25, #150; 35 → 39 on 2026-07-29 when the CVCS droop check was rebuilt to measure
@@ -587,7 +586,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 34 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 35 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi
