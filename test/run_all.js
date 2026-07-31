@@ -297,7 +297,11 @@ var BASELINES = {
   'run_reachability.js':   { code: 0, score: '58checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
-  'run_m4.js':             { code: 0, score: '26/26 147passed' },
+  // 26 -> 28 on 2026-07-31 (#125): the PORV's operator switch is a SEPARATE command from
+  // automatic relief (`open_porv_manual` vs `open_porv`), so a scenario can lock the
+  // operator out — TMI-2 does — without touching overpressure protection. The third
+  // check is the one that matters: relief must still lift while the switch is locked.
+  'run_m4.js':             { code: 0, score: '28/28 156passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   'run_m5.js':             { code: 0, score: '19/19 79passed' },

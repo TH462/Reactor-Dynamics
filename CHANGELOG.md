@@ -13,6 +13,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **You can click the pressuriser relief valve open and shut** (#125).
+
+  The PORV on the board has always looked clickable — it highlights under the pointer
+  and shows a hand cursor — but nothing was wired behind it, so the click did nothing.
+  It now works: click to lift the valve, click again to shut it.
+
+  Giving the operator that switch needed care, because the same command was doing two
+  unrelated jobs. A real relief valve has two separate inputs to one solenoid: the
+  automatic signal that lifts it on high pressure, and the operator's switch on the
+  panel. Here they were the same command, so there was no way to hand the operator a
+  switch without also handing them the automatic protection — and no way for a training
+  scenario to take the switch away without disabling relief along with it.
+
+  They are separate now. **Scenarios can lock out the manual switch**, and the Three Mile
+  Island scenarios do: that accident turns on not being able to tell an open valve from a
+  shut one, and it stops teaching anything if you can sit on the switch and work the valve
+  yourself. Locking the switch does **not** disable relief — the valve still lifts on high
+  pressure exactly as before, which is measured and gated rather than assumed. Closing is
+  never locked, because closing it is the Three Mile Island action itself, and watching
+  that fail against a stuck valve is the entire lesson.
+
 ### Fixed
 - **Alarm tiles told you the wrong system for a third of the alarms** (#157).
 

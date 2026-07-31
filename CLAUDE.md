@@ -479,7 +479,7 @@ push to `main` for Alpha 1.10.0 and the #272 release PR. Nobody noticed for thre
 which is the argument for a required status check and against a badge (#191).
 
 Green at baseline: PWR **32/32 (202 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3038 checks)**,
-`run_m4` **26/26 (147 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **24/24**,
+`run_m4` **28/28 (156 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **24/24**,
 `run_behavior` **38 pass / 0 xfail**, `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
 `run_procedures` **22/22 (102/102 checks)**,
