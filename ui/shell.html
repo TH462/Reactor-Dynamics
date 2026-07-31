@@ -56,11 +56,11 @@
           <div class="scrubber">
             <span class="lbl mono" id="chartWindowLbl">−5:00</span>
             <div class="track" id="scrubTrack" data-scanner-hint="Timeline — you are at LIVE. Click the track (or the Rewind button) to pick an earlier moment to rewind to."
-              data-scanner-detail="The plant keeps periodic checkpoints as it runs. Picking a moment restores the whole simulation to it — plant state, alarms and instructor progress — so you can try a different action from the same starting point. It is a teaching tool, not an undo: everything after the chosen moment is discarded."><div class="head"></div></div>
+              data-scanner-detail="The plant keeps a checkpoint every 20 seconds of REAL time — on a wall clock, not the plant's — so the marks always cover roughly the last ten minutes of your session however fast you are running. Picking a moment restores the whole simulation to it — plant state, alarms and instructor progress — so you can try a different action from the same starting point. It is a teaching tool, not an undo: everything after the chosen moment is discarded."><div class="head"></div></div>
             <span class="lbl mono">LIVE</span>
             <button class="btn ghost" id="chartRewindBtn" disabled
-              data-scanner-hint="Rewind — jump back to an earlier moment. In free play, pick the moment on the graph; in a scenario or walkthrough it steps back one checkpoint."
-              data-scanner-detail="In free play you choose the moment; inside a scenario or walkthrough the checkpoints are authored, one per step, and Rewind steps back to the last of them. The button is disabled until at least one checkpoint exists.">⏪ Rewind</button>
+              data-scanner-hint="Rewind — jump back to an earlier moment. Press it, then click the moment you want on the graph."
+              data-scanner-detail="You always choose the moment; there is no one-step rewind. In free play the marks are laid every 20 seconds of real time, so a fast-forward still leaves you somewhere to land — each mark just covers more of the plant's life. Inside a scenario or walkthrough the marks are the authored checkpoints, one per beat or step. While you are picking, the graph widens to show every mark you can reach and the clock is paused. The button is disabled until at least one checkpoint exists.">⏪ Rewind</button>
           </div>
         </div>
 
@@ -130,14 +130,14 @@
         <div class="instr-nav" id="instrNav" hidden>
           <button class="btn" data-fnav="prev" data-scanner-hint="Previous step — go back one procedure step.">◀ Prev</button>
           <button class="btn" data-fnav="next" data-scanner-hint="Next step — advance to the next procedure step.">Next ▶</button>
-          <button class="btn" data-fnav="rewind" title="Rewind to the last checkpoint" data-scanner-hint="Rewind — restore the checkpoint taken at the start of this step." disabled>⏪ Rewind</button>
+          <button class="btn" data-fnav="rewind" title="Rewind — pick a moment on the graph" data-scanner-hint="Rewind — pick a moment on the graph to restore. The marks are the checkpoints taken at the start of each step." disabled>⏪ Rewind</button>
           <button class="btn" data-fnav="restart" title="Restart procedure" data-scanner-hint="Restart — start this procedure over from its initial state.">↺</button>
           <button class="btn" data-fnav="stop" title="Stop following" data-scanner-hint="Stop — leave the walkthrough and return to free play.">✕</button>
         </div>
         <!-- Scenario continue — shown only when a scenario's commentary is on screen -->
         <div class="instr-ack" id="instrAckRow" hidden>
           <button class="ack-btn" id="instrAck" data-scanner-hint="Acknowledge — tell the Instructor you've read this and are ready to continue.">Acknowledge</button>
-          <button class="btn" data-fnav="rewind" title="Rewind to the last checkpoint" data-scanner-hint="Rewind — go back to the last checkpoint and try a different path." disabled>⏪ Rewind</button>
+          <button class="btn" data-fnav="rewind" title="Rewind — pick a moment on the graph" data-scanner-hint="Rewind — pick a moment on the graph and try a different path from there." disabled>⏪ Rewind</button>
         </div>
       </div>
 

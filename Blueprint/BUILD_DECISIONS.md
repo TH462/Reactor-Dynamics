@@ -37,6 +37,58 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-31e — #137: rewind is a picker on a wall clock, and two of the issue's four items were wrong
+
+**Decision 1 — the free-play checkpoint cadence is measured in REAL time**
+*(OWNER, 2026-07-31: "The rewind cadence should be 20 seconds real time not sim time.")*.
+`SANDBOX_CP_SPACING_S = 15` sim-s → `SANDBOX_CP_SPACING_MS = 20000` wall-ms, sampled inside
+`tick()` so a throttled tab lays its checkpoint late rather than not at all. Measured at ring
+saturation: the old ring spanned **465.9 / 46.5 / 9.3 / 3.1 real seconds** at 1× / 10× / 60× /
+600×; the new one spans **620.0 at every acceleration**, with a slot covering 12,000 sim s at
+600× (~103 plant-hours reachable). `_now()` is a **prototype seam**, not a convenience: a
+headless runner burns no wall time, so without it no gate in this repo can see the cadence at
+all.
+
+**Decision 2 — the picker is the ONLY player rewind path.** All four entry points (strip-chart
+⏪, scrub track, walkthrough/scenario nav ⏪, failure-card ⏪) open pick mode. Nothing
+player-facing now issues a non-`exact` rewind.
+
+**Decision 3 — pick mode WIDENS the plot to the whole ring.** Consequence of decision 1 that
+the issue did not cost: at 600× the slots are 12,000 sim s apart and the widest chart window is
+1800 s, so a cadence fix on its own ships a picker whose every mark is off the left edge. One
+`chartExtent()` now serves both `drawChart` and `rewindPickClick`, widening to the oldest
+checkpoint while picking; axis labels go `h:mm:ss` past ten minutes.
+
+**Decision 4 — truncation STAYS.** The issue asked for a deliberate ruling on `_rewind`'s
+`checkpoints.length = idx + 1`. Keeping it: the rewound-to moment is the new present, and the
+plant does not follow from a retained "future" that was computed off abandoned state — the
+chart already pops samples ahead of `sim_time` for the same reason. It is stated in the
+timeline's scanner copy ("a teaching tool, not an undo") rather than left to be discovered.
+
+**Two of the issue's items were WRONG, and are recorded here because both look authoritative.**
+
+- *"[the `exact` path] has never had a player-facing way in"* — the picker shipped **2026-07-23**
+  (`2e86c00`), two days before the issue was filed. What was true is that it was **broken**:
+  `rewindPickClick` inverted `chartBuf`'s full `CHART_RECORD_SEC` extent while `drawChart`
+  plotted the marks over `ui.window`, up to 6× narrower. Measured, headless Edge: clicking the
+  mark drawn at **T+19 s** landed the plant at **T+0**; after the fix, **0.0 s** of error.
+- *"the exact-time guard and the `_rewindCursor` walk-back … exist only to make repeated single
+  presses escape a failure card [and] are dead weight"* — **declined**. They also guard the
+  **beat** path, which the same issue forbids touching. A `rewind:` beat deliberately does not
+  checkpoint (`layers/instructor_layer.js:295-299`), so two consecutive rewind beats are exactly
+  the "every rewind restores the same newest checkpoint" case the walk-back exists for, and the
+  exact-time guard is what lets a beat's rewind reach earlier than the checkpoint it just laid.
+  Deleting them regresses authored content with no gate watching. Their comments now say they
+  are beat-path guards.
+
+**Gates.** `run_m5` 19/19, **79 → 83 checks**; the discriminating one accumulates 360 sim-s with
+the wall clock frozen and requires zero checkpoints (pre-fix: 21, and 6 of the suite's 8 checks
+red). `verify_e2e_ui` gains `testRewindPicker` — no baseline move, it scores screenshots. That
+section's load-bearing check **clicks the second-oldest mark and reads the clock back**; pressing
+the button and counting marks would pass on all three defects, which is the HR10 point.
+
+---
+
 ## 2026-07-31d — #284: the test was the LOAD, not the BREAKER; and the gauge read the CORE, not the turbine
 
 **Found while disproving #138**, which was filed as "aggressive Manual load cuts can trip the

@@ -127,6 +127,22 @@ docs.
 >   risk is asymmetric, a needless move costs one merge. Prefer **workbench** first, then
 >   **backshop**. **If ALL overflow lanes look occupied, do not pick one** — say so and offer a
 >   further tree; that is the owner's call, not a default.
+> - **NEVER MERGE INTO `develop` UNLESS THE OWNER SAYS SO** *(OWNER DIRECTIVE, 2026-07-31:
+>   "We need a rule to never merge unless I say so. Develop was being worked")*. Commit on
+>   your lane, gate it, say it is ready — and **stop there**. The merge is the owner's call,
+>   every time, not a step you finish the task with.
+>
+>   **This exists because an agent talked itself into it.** On 2026-07-31 I correctly held a
+>   merge when `develop` had 24 uncommitted files, then merged twenty minutes later on my own
+>   reasoning that "my merge does not touch their file". That reasoning is not wrong so much
+>   as **not mine to apply**: it moves a shared branch under someone who is mid-change, and
+>   the only person who knows whether that is survivable is the owner. A clean `git status`
+>   is NOT permission either — the other session may simply be between commits.
+>
+>   Applies to `git merge`, fast-forwards, and anything that moves `develop`. Pushing a lane
+>   is already forbidden below, so "committed on the lane, gated, waiting" is the correct
+>   end state for a finished task.
+>
 > - **The lanes are LOCAL. Never `git push origin workbench` / `backshop`** *(OWNER DIRECTIVE,
 >   2026-07-31: "I don't want the workbench or backshop trees pushed to gh. Gh should only have
 >   main and develop.")*. Commit on the lane, merge to `develop`, push `develop`. The repo is
@@ -263,6 +279,33 @@ a handful of UI/doc items.
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+- **The rewind ring measured the wrong clock, so it evaporated exactly when you needed it
+  (2026-07-31, #137).** Free-play checkpoints were laid every 15 **sim** seconds, so the
+  32-slot ring always spanned the same slice of the *plant's* life and progressively less of
+  *yours*: measured at saturation, **465.9 real seconds at 1× but 9.3 at 60× and 3.1 at
+  600×** — gone in precisely the case (a long fast-forward) the feature exists for. The
+  cadence is **20 s of wall clock** now *(OWNER, 2026-07-31: "The rewind cadence should be 20
+  seconds real time not sim time.")*, so the ring spans **620.0 real seconds at every
+  acceleration** (measured 1×/10×/60×) and each slot just covers more sim — ~103 plant-hours
+  reachable at 600×. Three things to know. **The cadence fix alone would have shipped a
+  picker with nothing to click**: at 600× the slots are 12,000 sim s apart and the widest
+  chart window is 1800 s, so every mark it creates lands off the left edge — the plot now
+  widens to the whole ring while you are picking, which is the half of the ask that answers
+  *"for long fast forwards we need a way to go back far enough"*. **The picker was already
+  there and already wrong** — the issue said the `exact` path "has never had a player-facing
+  way in", but it shipped 2026-07-23, inverting `chartBuf`'s full 30-minute record while the
+  plot drew `ui.window`; measured, clicking the mark at **T+19 s** landed the plant at
+  **T+0**, and both sides now read one `chartExtent()`. And **the issue's item 2 was
+  declined**: it called the exact-time guard and the `_rewindCursor` walk-back dead weight
+  once the one-step button went, but they are the **beat** path's guards too — a `rewind:`
+  beat deliberately does not checkpoint, so consecutive ones hit the exact case they were
+  written for, and nothing would have caught the regression. **`_now()` is a prototype seam
+  because a headless runner burns no wall time**: without it the entire cadence is invisible
+  to every gate here. `run_m5` 79 → **83 checks** (injection: the pre-fix service lays 21
+  checkpoints where the new one requires zero), `verify_e2e_ui` gains a `testRewindPicker`
+  section whose load-bearing check clicks a specific mark and reads the clock back — pressing
+  the button and counting marks passes on all three defects.
+
 - **A synchronised turbine coasted to a stop, and the MWe gauge read the reactor instead of
   the turbine (2026-07-31, #284 — found while disproving #138).** Two defects in one file
   with one cause: **nothing in the model ever asked what the turbine was ADMITTED as against
@@ -370,24 +413,6 @@ anything here that is standing procedure rather than news belongs in the list be
   **red by injection** before it counts as green. `pwr_startup` and `pwr_heatup` were re-authored
   (the latter's old dilution drove a runaway to **119 % power and 638 °F**). Still open: there
   is **no Estimated Critical Condition** anywhere, which is what would have stopped the event.
-- **The sim ships as ONE emailable `.html` file now, and that is gated (2026-07-29k).**
-  `node tools/make_portable.js` → `dist/Reactor_Dynamics_<version>.html`: the 94 scripts +
-  2 stylesheets `ui/shell.html` loads, inlined in document order, 2.55 MB, runs by
-  double-clicking with no server and no network. **Nothing in the sim had to change** — the
-  no-module-system convention had already bought offline operation (plain `<script src>`
-  loads over `file://`; an ES module is CORS-blocked), and there is no `fetch` anywhere, no
-  web font and no image in the whole runtime. Measured: the bundle makes **1 network request
-  (itself)** against 99 for the folder build, 0 page errors, and reaches a state identical to
-  it across 60 sampled board values. Three things to know: **`test/run_portable.js` (112
-  checks) is the only thing asserting "nothing loads at runtime"** — a `fetch()` added for a
-  good reason leaves every other gate green and breaks the emailed file on a stranger's
-  machine, so treat a red there as a real defect and not a tooling nuisance; its scan surface
-  is **read out of `ui/shell.html`**, so a new `<script src>` is covered automatically and
-  **shifts the baseline** on purpose; and a relative `url()` in the CSS is a bundle hazard
-  even though it works on the site, because an inlined `<style>` resolves against the
-  document's directory. **ZIP the file before emailing** — several mail providers strip
-  `.html` attachments silently.
-
 **Standing procedure — not part of the rotation above; these do not expire.**
 
 - **The board is the V2 diagram, and `pwr_board_data.js` is GENERATED.** Edit in the Claude
@@ -497,7 +522,7 @@ push to `main` for Alpha 1.10.0 and the #272 release PR. Nobody noticed for thre
 which is the argument for a required status check and against a badge (#191).
 
 Green at baseline: PWR **32/32 (202 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3038 checks)**,
-`run_m4` **28/28 (156 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **24/24**,
+`run_m4` **28/28 (156 checks)**, `run_m5` **19/19 (83 checks)** (79 → 83 on 2026-07-31, #137 — the free-play checkpoint cadence became REAL time. The load-bearing check piles up **360 sim-s with the wall clock frozen** and requires ZERO checkpoints; the pre-fix service lays **21** there. `_now()` is a prototype seam because a headless runner burns no wall time — without it this cadence is untestable), `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **24/24**,
 `run_behavior` **40 pass / 0 xfail** (38 → 39 on 2026-07-31, #135: **TR-14**, the SOURCED loss-of-feedwater drain rate. It exists because moving `K_sg_level` by **3.6×** left all 32 runners green — nothing in the suite asserted how fast a steam generator empties, so the constant could drift back unnoticed. Fails at 13.0 s against its 25–60 s band on the old value. 39 → 40 same day, #284: **TR-1e** — nothing in the suite compared what the turbine was ADMITTED against what the reactor MADE, because every other check runs where the two agree, so a **2× error on a board gauge** sat behind 34 green runners. Fails 3 checks on the old engine), `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
 `run_procedures` **22/22 (102/102 checks)**,
@@ -508,7 +533,7 @@ were never plant defects at all — the harness was running 11 of its 22 procedu
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
 `run_contract` **138 checks / 0 failed** (84 → 138 on 2026-07-31, #157 — it now guards a second contract: every alarm on all three plants declares a `category`, which the UI used to keyword-match off the alarm id), `run_reactivity` **27 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve. 23 → 27 on 2026-07-30, #263 item 2: the four inputs `pwr_startup`'s 26-step creep is DERIVED from — startup-IC boron, critical position, differential bank worth, and the excess the creep leaves), `run_hr3` **27 checks / 0 failed** (29 → 27 on 2026-07-31, #228), `run_reachability` **58 checks / 0 failed** (NEW 2026-07-30, #249/#273 — **can the plant reach its own setpoints?** Part A is static and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their instrument's declared range, since `crossed()` is strict. Part B DRIVES the plant and watches the indicated channel cross, which is the only half that can catch a clamp — `pzr_level`'s range is [0,100] and its trip is 97, so Part A was perfectly happy while the level physically could not exceed 88.00 %, and that is what let a full accumulator dump hide behind an "arrived UNscrammed" check for months. **Add a case here whenever you assert that a trip did NOT fire** — that claim is worth exactly what the gauge can reach), `run_hardrules` **40 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)** (this line once said 28 while the gate was at 29. It counts dated owner quotes wherever they are tracked, so **writing a change up moves it, not just making the change** — re-run it AFTER the docs. 39 → 40 on 2026-07-31 (#284) is that rule again, cleanly: the engine fix moved nothing, and the BUILD_DECISIONS write-up moved it by quoting #230's ruling. 39 was MEASURED on the merged tree: `develop` took it 29 → 39 across #249/#273/#276 and `workbench` 29 → 32 (#249, three sites carrying `"249 - fit it."`) independently, so neither branch figure was right and a mechanical resolution would have shipped a drift), `run_release` **8 checks / 0 failed** (pre-release mode — re-arms to more on the first real version) (NEW 2026-07-31 — **release bookkeeping**: `site/release.js`, `changelog.html` and `CHANGELOG.md` must agree on what shipped. Written because the `CHANGELOG.md` roll — renaming `## [Unreleased]` to the version — was skipped for **Alpha 1.10.0 AND 1.11.0**, leaving 434 lines of two shipped releases filed as unreleased with the newest heading reading 1.9.0. **Nothing downstream reads that heading**, so nothing went red and nobody noticed; a CLAUDE.md note and a release-skill step already said to do it, and they are what failed. Verified against the real pre-fix file, not a synthetic one: 3 checks red. The count moves with the number of released versions — every `changelog.html` entry down to the oldest one `CHANGELOG.md` still names individually is cross-checked, so **a release adds a check**), `run_portable` **124 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list; +7 on 2026-07-30 for the DOWNLOAD section, #275, which guards the *delivery* rather than the artifact: the site's download button is stamped with the release version by `site/nav.js`, and every way that wiring can break leaves a button that still works and still hands out `latest.zip`), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `run_manual_rev` **12 checks / 0 failed** (the manual set's revision history — table shape, set-wide stamp agreement, content-digest seal, pack currency; IS baselined, because unlike `run_manual_units` its checks are structural and do not move on prose. **A chapter edited with no revision row reddens it** — the failure it was written for, after six content changes went unrecorded), `verify_flags_ui` **42/42** (this line said 48/48 from the day it was written; `BASELINES`
 always said 42 and the gate has always scored 42),
-`verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
+`verify_e2e_ui` **PASS (16 screenshots)** (scored on screenshots, so its sections are free to add — `testRewindPicker` arrived 2026-07-31 with #137 and moves nothing here), `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **59/59** (both F12 reds were stale expectations, fixed
 2026-07-25, #150; 35 → 39 on 2026-07-29 when the CVCS droop check was rebuilt to measure

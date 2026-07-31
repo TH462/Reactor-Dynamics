@@ -1504,10 +1504,10 @@
     setFocus('instructor');
   }
   function levelCompleteAction(a) {
-    // Reset the commentary queue on rewind: without this, cards from the
-    // abandoned timeline churn through the dwell queue after each press
-    // (seen in the az5 rematch playthrough).
-    if (a === 'rewind') { lastLcKey = null; resetInstrFlow(); cmd({ action: 'rewind', steps: 1 }); return; }
+    // Rewind from a failure card opens the picker like every other ⏪ (#137), so
+    // escaping back to the decision point is one click on it rather than repeated
+    // presses walking backwards. The commentary queue is dropped at the pick.
+    if (a === 'rewind') { lastLcKey = null; rewindPressed(); return; }
     if (a === 'retry') {
       lastLcKey = null;
       if (ui.follow) { followRetry(); return; }
@@ -1918,13 +1918,14 @@
     closeManual(); setFocus('instructor', true);
     if (latest) renderInstructor(latest);
   }
-  // Rewind entry point (Instructor card ⏪ + strip-chart ⏪): during instructed
-  // content it steps back one authored checkpoint; in free play it opens the
-  // pick-a-moment mode on the strip chart (sandbox checkpoints every 15 sim-s).
-  function rewindPressed() {
-    if (ui.follow || ui.scenario) { resetInstrFlow(); cmd({ action: 'rewind', steps: 1 }); return; }
-    toggleRewindPick();
-  }
+  // Rewind entry point (Instructor card ⏪, strip-chart ⏪, scrub track, failure
+  // card ⏪). It ALWAYS opens pick-a-moment mode on the strip chart — there is no
+  // one-step rewind any more (#137, OWNER 2026-07-31: "I don't think there should
+  // be a rewind one step button. Make the user pick from the checkpoints on the
+  // graph."). Inside a scenario or walkthrough the marks are the authored
+  // checkpoints (one per beat / follow step) rather than free-play's periodic
+  // ones, so the same gesture lands you on a decision point.
+  function rewindPressed() { toggleRewindPick(); }
   function toggleRewindPick(on) {
     ui.rewindPick = on != null ? !!on : !ui.rewindPick;
     var chart = document.querySelector('.strip-chart');
@@ -1943,7 +1944,11 @@
     var rect = document.querySelector('.chart-plot').getBoundingClientRect();
     // traces occupy only the left CHART_PLOT_FRAC of the plot (right gutter = value chips)
     var frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / (rect.width * CHART_PLOT_FRAC)));
-    var t0 = chartBuf[0].t, t1 = chartBuf[chartBuf.length - 1].t;
+    // The SAME extent drawChart plotted the marks against. This used to read the
+    // whole chartBuf (up to CHART_RECORD_SEC) while the plot drew ui.window, so at
+    // the default 5-minute window with 30 minutes of history a click resolved to a
+    // moment ~6× further back than the one under the cursor.
+    var ext = chartExtent(), t0 = ext.t0, t1 = ext.t1;
     var tPick = t0 + frac * (t1 - t0);
     var best = 0, bd = Infinity;
     for (var i = 0; i < cps.length; i++) {
@@ -1951,8 +1956,11 @@
       if (d < bd) { bd = d; best = i; }
     }
     toggleRewindPick(false);
+    // Drop the commentary queue: without this, cards from the abandoned timeline
+    // churn through the dwell queue after the jump (az5 rematch playthrough).
+    resetInstrFlow();
     // exact: the pick names a specific checkpoint — M5 must not apply the
-    // repeated-press walk-back clamp to it (playtest follow-up).
+    // consecutive-rewind walk-back clamp to it (playtest follow-up).
     cmd({ action: 'rewind', steps: cps.length - best, exact: true });
   }
 
@@ -2139,6 +2147,32 @@
   var LANE_LO = 0.14, LANE_HI = 0.86;   // lane centres span this much of the plot
   function laneOf(i, n) { return n < 2 ? 0.5 : LANE_HI - i * (LANE_HI - LANE_LO) / (n - 1); }
 
+  // The plot's x extent — ONE definition, because drawChart and the rewind picker
+  // must agree on it. Normally the strip-chart window: the axis always spans the
+  // full ui.window and data enters at the right, scrolling left, rather than the
+  // span growing until it fills. t1 is the latest sample; t0 is exactly one window
+  // behind it.
+  //
+  // In rewind-pick mode it WIDENS to cover the whole checkpoint ring (#137). On a
+  // real-time checkpoint cadence a fast-forward lays its checkpoints hours of sim
+  // apart, while the widest window is 30 min — so at any speed worth rewinding
+  // through, every reachable checkpoint sat off the left edge and the picker had
+  // nothing to click. The traces then occupy only the right-hand sliver, which is
+  // honest: chartBuf keeps CHART_RECORD_SEC of trend and no more.
+  function chartExtent() {
+    if (!chartBuf.length) return { t0: 0, t1: 0, span: 1 };
+    var t1 = chartBuf[chartBuf.length - 1].t;
+    var t0 = t1 - ui.window;
+    var cps = ui.rewindPick && service ? (service.checkpoints || []) : [];
+    if (cps.length) {
+      var oldest = cps[0].metadata.sim_time;
+      // a margin so the oldest mark is not welded to the axis and stays clickable
+      if (oldest < t0) t0 = oldest - (t1 - oldest) * 0.04;
+    }
+    if (t1 - t0 < 1e-6) t0 = t1 - 1;
+    return { t0: t0, t1: t1, span: t1 - t0 };
+  }
+
   function drawChart() {
     var svg = $('chartCanvas'), floats = $('chartFloats'), W = 400, H = 120;
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
@@ -2149,10 +2183,7 @@
       }).join('');
       svg.innerHTML = ''; if (floats) floats.innerHTML = ''; return;
     }
-    // Fixed strip-chart window: the axis always spans the full ui.window and data
-    // enters at the right, scrolling left — rather than the span growing until it
-    // fills. t1 is the latest sample; t0 is exactly one window behind it.
-    var t1 = chartBuf[chartBuf.length - 1].t, t0 = t1 - ui.window, span = ui.window || 1;
+    var ext = chartExtent(), t1 = ext.t1, t0 = ext.t0, span = ext.span;
     var PW = W * CHART_PLOT_FRAC;   // traces stop short of the right edge; value chips live in the gutter
     var html = '';
     // Downsample the VISIBLE window [t0, t1] into fixed TIME buckets — one per plot
@@ -2295,11 +2326,16 @@
     drawFloats(lastY, H);
     // low-profile x-axis
     var ax = $('chartXAxis'); ax.innerHTML = '';
+    // Seconds read fine over a 30-min window; a rewind-pick span can be many hours
+    // of sim, where "−72000s" is unreadable. Switch to h:mm:ss past ten minutes.
+    var axLong = span > 600;
     for (var i = 0; i <= 5; i++) {
       var rel = (t0 + span * i / 5) - t1;
-      var sp = document.createElement('span'); sp.textContent = rel === 0 ? '0' : Math.round(rel) + 's'; ax.appendChild(sp);
+      var sp = document.createElement('span');
+      sp.textContent = rel === 0 ? '0' : '−' + (axLong ? hms(-rel) : Math.round(-rel) + 's');
+      ax.appendChild(sp);
     }
-    $('chartWindowLbl').textContent = '−' + hms(ui.window).slice(3);
+    $('chartWindowLbl').textContent = '−' + (span > 3600 ? hms(span) : hms(span).slice(3));
   }
 
   // Live floating value labels at the right edge, one per trace, color-coded and

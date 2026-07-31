@@ -109,7 +109,8 @@
     // Each entry is a full saveState() — engine + instruments (lag/PRNG) + M4 +
     // instructor progress — so a rewind is a bit-exact, deterministic restore.
     this.checkpoints = [];
-    this._rewindCursor = null;         // last rewound-to index; walks repeated ⏪ presses back
+    this._rewindCursor = null;         // last rewound-to index; walks consecutive beat rewinds back
+    this._lastSandboxCpMs = null;      // wall clock of the last free-play checkpoint (#137)
 
     if (opts.plant_id) {
       this.selectPlant(opts.plant_id, opts.initial_state || 'hot_full_power', opts.design_version || null);
@@ -145,6 +146,7 @@
     this.broadcastMs = NORMAL_MS;
     this.checkpoints = [];             // a fresh plant invalidates the rewind ring
     this._rewindCursor = null;
+    this._lastSandboxCpMs = null;
     // Restore the selected register into the rebuilt layer/instructor.
     this.layer.handleCommand({ action: 'set_register', value: this.activeRegister });
     if (this.instructor.setRegister) this.instructor.setRegister(this.activeRegister);
@@ -187,14 +189,32 @@
   };
 
   // Sandbox rewind (free play): with no scenario/walkthrough loaded the ring
-  // fills on a fixed sim-time cadence instead of beat boundaries, so the player
-  // can always jump back. Never runs while the Instructor owns the ring — an
+  // fills on a fixed cadence instead of beat boundaries, so the player can
+  // always jump back. Never runs while the Instructor owns the ring — an
   // authored rewind's step arithmetic depends on exact ring contents.
-  var SANDBOX_CP_SPACING_S = 15;
+  //
+  // The cadence is REAL time, not sim time (#137, OWNER 2026-07-31: "The rewind
+  // cadence should be 20 seconds real time not sim time."). A sim-time cadence
+  // made the ring span REWIND_CAP × spacing of *sim* seconds at every
+  // acceleration, so the faster you ran the less of your own life you could go
+  // back through — measured, the whole 32-slot ring covered 465.9 s of real time
+  // at 1× but only 3.1 s at 600×, which is precisely the case (a long
+  // fast-forward) where the player needs to reach back. On a wall clock the ring
+  // always spans about REWIND_CAP × 20 s ≈ 10.7 minutes of the player's life,
+  // and each slot covers more sim the faster you run.
+  //
+  // Measured off tick(), not off a timer, so a throttled or backgrounded tab
+  // simply lays the checkpoint on its first tick after the interval rather than
+  // losing it. `_now` is a seam so tests can drive the clock (a headless runner
+  // burns no wall time, so a real Date.now() cadence would never fire).
+  var SANDBOX_CP_SPACING_MS = 20000;
+  SimulationService.prototype._now = function () { return Date.now(); };
   SimulationService.prototype._maybeSandboxCheckpoint = function () {
     if (this.instructor && this.instructor.mode) return;
-    var last = this.checkpoints[this.checkpoints.length - 1];
-    if (!last || this.simTime - last.metadata.sim_time >= SANDBOX_CP_SPACING_S) this._pushCheckpoint();
+    var now = this._now();
+    if (this._lastSandboxCpMs != null && now - this._lastSandboxCpMs < SANDBOX_CP_SPACING_MS) return;
+    this._lastSandboxCpMs = now;
+    this._pushCheckpoint();
   };
 
   SimulationService.prototype._stepsPerBroadcast = function () {
@@ -282,17 +302,25 @@
       // reach strictly earlier state.
       if (idx === this.checkpoints.length - 1 && idx >= 0 &&
           Math.abs(this.checkpoints[idx].metadata.sim_time - this.simTime) < 1e-9) idx--;
-      // Repeated presses with no new progress since the last rewind (no
-      // checkpoint pushed) walk back one boundary each. Without this, the
-      // broadcasts that tick between two ⏪ presses defeat the exact-time guard
-      // above and every press restores the same newest checkpoint — a failure
-      // card could never be escaped back to its decision point (playtest).
+      // Consecutive rewinds with no new progress between them (no checkpoint
+      // pushed) walk back one boundary each. Without this, the broadcasts that
+      // tick in between defeat the exact-time guard above and every one restores
+      // the same newest checkpoint — the state could never be escaped.
+      //
+      // This is now a BEAT-path guard only. Every player-facing rewind is a pick
+      // (`exact`) since #137, so no repeated single press reaches here; what does
+      // is two `rewind:` beats firing with no beat between them, because a rewind
+      // beat deliberately does not also checkpoint (instructor_layer :295-299).
       if (this._rewindCursor != null && idx >= this._rewindCursor) idx = this._rewindCursor - 1;
     }
     var target = idx >= 0 ? this.checkpoints[idx] : null;
     if (!target) return null;
     this.checkpoints.length = idx + 1;
     this._rewindCursor = idx;
+    // The rewound-to moment is the new present: restart the free-play cadence from
+    // here, so the next sandbox checkpoint lands a full interval later instead of
+    // immediately on top of the target.
+    this._lastSandboxCpMs = this._now();
     return this._restore(target, scope === 'world', silent);
   };
 
@@ -552,6 +580,7 @@
         if (this.instructor.unload) this.instructor.unload();
         this.checkpoints = [];
         this._rewindCursor = null;
+        this._lastSandboxCpMs = null;   // free play resumes — lay slot 0 on the next tick
         var snap2 = this._assembleWithInstructor();
         this._broadcast(snap2);
         return snap2;
@@ -619,6 +648,7 @@
     if (!engineCtor(state.metadata.plant_id)) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown plant_id in save', received: state.metadata.plant_id };
     this.checkpoints = [];             // a user file-load invalidates the rewind ring
     this._rewindCursor = null;
+    this._lastSandboxCpMs = null;
     return this._restore(state, false);
   };
 
