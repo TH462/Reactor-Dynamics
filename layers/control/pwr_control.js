@@ -452,7 +452,16 @@
     // the first crossing below the 400 psi (2.76 MPa) interlock and never re-arms — while
     // the engine AUTO-CLOSES the suction valve on any repressurization back above it. Both
     // halves are correct on their own and a real plant re-opens that valve deliberately,
-    // not automatically; what was missing was any indication that it had gone. Measured
+    // not automatically; what was missing was any indication that it had gone. SOURCED
+    // (evidence pass 2026-07-31, NUREG-0933 Issue 99, "RCS/RHR Suction Line Valve
+    // Interlock on PWRs", Rev. 3): "Two basic features are incorporated in the interlock
+    // design: (1) an automatic closure signal on high RCS pressure (typically 600 psig),
+    // and (2) a block of the MANUAL OPEN SIGNAL at a lower RCS pressure (typically 425
+    // psig)." A real plant has NO automatic open at all — the interlock only blocks the
+    // operator's open — so this permissive is already more automatic than the real thing
+    // and a one-shot is the closer of the two options. That issue's own resolution was
+    // Generic Letter 88-17: improved INSTRUMENTATION, procedures and administrative
+    // controls — i.e. tell the operator, which is what this annunciator does. Measured
     // before this: a cooldown whose pressure controller sat just above the interlock ended
     // scrammed at 1.95 MPa (283 psi) BELOW it with the arm still in AUTO, its permissive
     // condition still true, RHR shut — and the only tell on the board was the ECCS card

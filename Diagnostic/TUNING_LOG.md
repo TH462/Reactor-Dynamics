@@ -115,6 +115,59 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31j — #287 evidence pass: a real plant has NO automatic RHR open at all  ✅
+
+The #287 ruling was shipped with its prototypicality argument marked **recall, unverified**.
+Sourced now, and the evidence is stronger than the recall was — plus it found two things the
+recall did not.
+
+**Primary: NUREG-0933 Issue 99, "RCS/RHR Suction Line Valve Interlock on PWRs" (Rev. 3).**
+Verbatim:
+
+> *"Two basic features are incorporated in the interlock design: (1) an automatic closure
+> signal on high RCS pressure (typically 600 psig), and (2) a block of the manual open signal
+> at a lower RCS pressure (typically 425 psig)."*
+
+**1. The ruling is confirmed, and for a better reason than the one given.** The real interlock
+blocks a **manual open** — there is no automatic open in the design at all. Our auto-entry
+permissive is therefore already a simplification *in the permissive direction*, so between
+"one-shot" and "re-arms", one-shot is unambiguously the closer of the two. The recall argument
+("a real plant re-opens deliberately") happened to be right; the sourced version is that the
+question of re-arming does not arise on a real plant, because nothing opens it for you.
+
+**2. It corroborates the annunciator independently.** Issue 99 exists because inadvertent RHR
+suction valve closure is a *frequent* event: **27 events through 1981**, **0.12 unplanned
+closures per plant-year**, consequence *"the potential for RHR pump damage and loss of decay
+heat removal by the RHR system."* Its resolution was **Generic Letter 88-17** — improved
+**instrumentation**, procedures and administrative controls. Annunciation, not automation,
+which is precisely what "Keep it and enunciate" bought.
+
+**3. It found a fidelity gap the recall missed — filed as #288, NOT changed.** The real design
+uses **two separated setpoints**: block-open ~425 psig, autoclose ~600 psig (WTSM §5.1, ADAMS
+ML11223A219, gives 425/585 for valves 8701/8702). About **175 psi of deadband**, autoclose
+*above* the open permissive. **This plant uses ONE constant, `rhr_valve_interlock_mpa` = 400
+psi (2.76 MPa), for both** — zero deadband, so the valve chatters across the boundary, and with
+a one-shot permissive the first chatter is permanent. That is exactly the #287 sequence: a
+cooldown holding 409 psi (2.82 MPa), *just* above the line, aligned RHR and then bounced back
+over it. With a 425/600 split neither half of that could happen. Recommendation on #288 is to
+add a separate `rhr_autoclose_mpa` ≈ 600 psig and leave the 400 psi open permissive alone —
+one constant, one comparison, sourced on both sides, and `rhr_valve_and_mode` still passes
+because it drives its repressurization to 5.0 MPa.
+
+**Worth knowing for the next pass:** Issue 99's resolution also records that *"removal of the
+ACI be recommended, but not required"* — the autoclosure interlock was itself judged a net
+risk. Not acted on; removing a modelled protection on a recommended-not-required line is a
+bigger call than #288 needs, and ours is pinned by `run_pwr`.
+
+**Fetch note:** nrc.gov still 403s non-browser requests. The GI-99 page came through
+`web.archive.org/web/2023id_/<url>` with a browser UA, as the 2026-07-28q note says. The
+ML11223A219 PDF fetched but extracted only its title page — it is a scan, so the WTSM figures
+here are from the search index rather than from the document text, and are marked as the
+weaker of the two citations. **Issue 99 is the one the claims rest on.**
+
+Manual set **Rev 24** — 06 PWR-A33 carries the primary quote and the event history.
+
+
 ### 2026-07-31i — #287 ruled and shipped: the RHR permissive stays one-shot, losing it now annunciates  ✅
 
 *(OWNER RULING, 2026-07-31: "Keep it and enunciate")*
