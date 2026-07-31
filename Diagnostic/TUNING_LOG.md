@@ -115,6 +115,44 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31i — #287 ruled and shipped: the RHR permissive stays one-shot, losing it now annunciates  ✅
+
+*(OWNER RULING, 2026-07-31: "Keep it and enunciate")*
+
+**What was kept.** The RHR auto-entry permissive fires once below the 400 psi (2.76 MPa)
+interlock and never re-arms, and the engine auto-closes the suction valve on any
+repressurization above it. Both stay. A real plant re-opens that valve deliberately, not
+automatically, and the measured harm was that the loss was *invisible*, not that it happened.
+
+**What was added.** `rhr_not_aligned` — **06 PWR-A33, RHR NOT IN SERVICE**, warning, panel B.
+
+**The gate is the interesting part, and my first cut was wrong.** I drafted it as
+`primary_pressure < 2.76` conditioned on `['rps_scrammed', '!rhr_active']`. Measured against
+the Mode 5 IC: **`rps_scrammed` reads FALSE in cold shutdown** — the plant was never tripped,
+it is simply cold — so the alarm could not fire in the one regime where losing shutdown
+cooling is most dangerous, which is exactly the regime it exists for. Re-gated to
+`instrument: rhr_active, is_false` with `condition: {instrument: 'plant_mode', in: [4,5]}`.
+Mode is what says "RHR is the heat sink here"; pressure is not (RHR is correctly unaligned
+through all of Modes 1–3, so a pressure gate stands in through every cooldown).
+
+Verified: Mode 5 aligned → clear; Mode 5 with RHR lost → **active_unacknowledged**; Mode 1 at
+power with RHR unaligned → clear.
+
+**Kernel additions, all generic (HR3 intact, `run_hr3` unmoved at 27).** Alarm `condition` now
+accepts an **array** (AND over terms), a leading **`!`** (negation), and
+**`{instrument, in:[…]}`** — the last being the same shape the #240 reclassify rules already
+use, so a plant expresses "while in these modes" one way rather than two.
+
+**Gates.** `run_m4` 32 → **33** (the probe pins the annunciation, the priority, that it is NOT
+auto-acknowledged, that operator re-alignment clears it, that it stays quiet at power, and —
+as ruled-on behaviour now — that the actuation carries no `reset_below`). Injection-verified:
+deleting the alarm and giving the permissive a `reset_below` each redden it. `run_contract`
+138 → **139** (every alarm declares a category). `run_reachability` **unmoved at 58** — Part A
+audits numeric thresholds against instrument ranges and this is a status alarm with none; it
+briefly read 59 while the alarm was still drafted as a pressure threshold. `run_hardrules`
+39 → **42**, the ruling cited at each site that acts on it. Manual set **Rev 23**.
+
+
 ### 2026-07-31h — `ops_cooldown_to_rhr` made real, and a rule for the claims that keep not holding up  ✅
 
 *(OWNER, 2026-07-31: "This seems to happen a lot, a claim is made that doesn't hold up to

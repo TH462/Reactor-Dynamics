@@ -461,6 +461,59 @@ T.push(test('acknowledge_all_alarms clears every standing alarm at once (#154)',
   ck('a later alarm still arrives unacknowledged', unack().length, unack().length >= 1, '≥ 1');
 }));
 
+T.push(test('#287 — losing shutdown cooling annunciates; the permissive stays one-shot', function (ck) {
+  // OWNER RULING, 2026-07-31: "Keep it and enunciate". The RHR auto-entry permissive
+  // fires once below the 400 psi (2.76 MPa) interlock and never re-arms, while the
+  // engine AUTO-CLOSES the suction valve on any repressurization above it. That pairing
+  // is deliberate — a real plant re-opens that valve on purpose, not automatically — so
+  // what was added is the INDICATION, not a re-arm.
+  //
+  // Gated on the MODE, not on the RPS latch. The first cut of this alarm asked for
+  // `rps_scrammed`, and measured, a Mode 5 plant reads `rps_scrammed = false` — it was
+  // never tripped, it is simply cold — so the alarm could not fire in the one regime
+  // where losing shutdown cooling is most dangerous. Mode is what says "RHR is the heat
+  // sink here".
+  var m5 = new Stack('cold_shutdown');
+  m5.run(3);
+  var st = function (s2) { return s2.alarm('rhr_not_aligned').state; };
+  ck('Mode 5 with cooling in service is quiet', m5.ins().plant_mode + '/' + st(m5),
+    m5.ins().plant_mode === 5 && st(m5) === 'clear', 'mode 5, clear');
+  m5.cmd({ action: 'set_rhr', active: false });        // the loss — however it arises
+  m5.run(3);
+  ck('losing RHR in Mode 5 ANNUNCIATES', st(m5), st(m5) !== 'clear', 'active');
+  ck('it is a warning on panel B, not a casualty alarm', m5.alarm('rhr_not_aligned').priority,
+    m5.alarm('rhr_not_aligned').priority === 'warning', 'warning');
+  ck('and it is NOT auto-acknowledged — this is news, not a lineup',
+    st(m5), st(m5) === 'active_unacknowledged', 'active_unacknowledged');
+  // Nothing re-aligns it on its own: the permissive is one-shot AND its condition
+  // (rps_scrammed) is false in Mode 5, so the operator owns the recovery.
+  ck('nothing re-aligns RHR by itself (the ruled-on one-shot)', m5.ts().rhr_active,
+    m5.ts().rhr_active === false, 'false');
+  m5.cmd({ action: 'set_rhr', active: true });
+  m5.run(3);
+  ck('operator re-alignment clears it', st(m5) + ' (rhr_active=' + m5.ts().rhr_active + ')',
+    st(m5) === 'clear' && m5.ts().rhr_active === true, 'clear');
+  // At power RHR is not aligned either, and that is entirely normal — the alarm must
+  // not fire outside the regime, or it is standing for the whole of Mode 1.
+  var hot = new Stack('hot_full_power');
+  hot.run(3);
+  ck('at power, RHR unaligned is NORMAL and stays quiet',
+    'mode ' + hot.ins().plant_mode + ', rhr_active=' + hot.ts().rhr_active + ', ' + st(hot),
+    hot.ts().rhr_active === false && st(hot) === 'clear', 'clear');
+  // The permissive is one-shot BY CONSTRUCTION, and that is now a ruled-on property:
+  // pin the absence of a reset so a later edit cannot quietly make it re-arm. (The
+  // engine's auto-close half is pinned engine-direct in run_pwr rhr_valve_and_mode.)
+  var acts = (RD.PWR_PROTECTION || RD.PWRControl || {}).actuations ||
+             (hot.layer.config && hot.layer.config.actuations) || [];
+  var rhrAct = acts.filter(function (a) { return a.action === 'set_rhr' && a.active === true; })[0];
+  ck('the RHR entry actuation exists', !!rhrAct, !!rhrAct, 'found');
+  if (rhrAct) {
+    ck('…and carries NO reset — it is one-shot by construction (#287 ruling)',
+      'reset_below=' + rhrAct.reset_below + ' reset_action=' + rhrAct.reset_action,
+      rhrAct.reset_below === undefined && rhrAct.reset_action === undefined, 'neither set');
+  }
+}));
+
 T.push(test('Failure bookkeeping — re-inject updates severity in place; snapshot {id,severity}', function (ck) {
   var s = new Stack('hot_full_power');
   s.cmd({ action: 'inject_failure', failure_id: 'sgtr', severity: 0.3 });

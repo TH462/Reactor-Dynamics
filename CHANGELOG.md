@@ -21,6 +21,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Losing shutdown cooling now annunciates — `RHR NOT IN SERVICE` (06 PWR-A33)** (#287)
+  *(OWNER RULING, 2026-07-31: "Keep it and enunciate")*. The RHR auto-entry permissive is
+  **one-shot** — it fires on the first crossing below 400 psi (2.76 MPa) and never re-arms —
+  while the engine **auto-closes** the suction valve on any repressurization back above the
+  interlock. Both halves are right on their own, and a real plant re-opens that valve
+  deliberately rather than automatically, so the permissive **stays one-shot**; what was
+  missing was any indication that RHR had gone. Measured before this: a cooldown whose
+  pressure-control setpoint sat just above the interlock finished **scrammed at 283 psi
+  (1.95 MPa), below the entry pressure, with the arm still in AUTO, its permissive condition
+  still true and RHR shut** — the only board tell being the ECCS card quietly reading LPI
+  instead of RHR.
+
+  The tile is gated on **Mode 4/5 plus the valve position**. Not on pressure: RHR is correctly
+  unaligned through all of Modes 1–3, so a pressure gate would stand in through every cooldown.
+  And **not on the reactor-trip latch** — measured, a Mode 5 plant reads `rps_scrammed = false`
+  because it was never scrammed, it is simply cold, which made the first cut of this alarm
+  impossible to raise in the one mode where losing RHR matters most. Alarm `condition` gained
+  two generic forms to express it (an array is an AND, a leading `!` negates, and
+  `{instrument, in:[…]}` matches the shape the #240 reclassify rules already use); the kernel
+  still names no instrument. `run_m4` 32 → 33, manual set **Rev 23**.
+
 ### Testing
 - **`ops_cooldown_to_rhr` now performs the evolution it is named for.** The probe is titled
   *"hot standby toward RHR entry (400 psi / 2.76 MPa)"* and never got there: its RHR check was

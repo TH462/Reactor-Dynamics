@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 22 (2026-07-31)  
+**Set revision:** 23 (2026-07-31)  
 **Set revision:** 20 (2026-07-30)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
@@ -19,6 +19,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 23 | 2026-07-31 | **Losing shutdown cooling now annunciates — new 06 PWR-A33 (RHR NOT IN SERVICE)** (#287). The RHR auto-entry permissive is **one-shot**: it fires on the first crossing below **400 psi (2.76 MPa)** and never re-arms, while the engine **auto-closes** the suction valve on any repressurization back above the interlock. Both halves are correct on their own — a real plant re-opens that valve deliberately, not automatically — but paired, a brief repressurization removed automatic RHR entry permanently with nothing to say so. Measured: a cooldown whose pressure-control setpoint sat just above the interlock finished **scrammed at 283 psi (1.95 MPa), below the entry pressure, with the arm still in AUTO, its permissive condition still true, and RHR shut** — the only board indication being the ECCS card quietly reading LPI instead of RHR. *(OWNER RULING, 2026-07-31: "Keep it and enunciate")* — so the permissive stays one-shot and the **indication** is what was missing. The tile is gated on **Mode 4/5 and the valve position**, not on pressure (RHR is correctly unaligned through all of Modes 1–3) and not on the reactor-trip latch: a Mode 5 plant reads **not tripped**, because it was never scrammed, which made the first cut of this alarm impossible to get in the one mode where losing RHR matters most. Index table extended to 33 cards. | Shutdown-cooling annunciation |
 | 22 | 2026-07-31 | **The steam generator drains at a real plant rate now, and the loss-of-feedwater card says what to expect** (#135). `K_sg_level` **5.0 → 1.37**: at 5.0 the entire narrow range held **twenty seconds** of full-power steaming, so a total loss of main feedwater took the plant from 64.5 % level to the lo-lo trip in **12.9 s** and left only **2.9 s** between the SG LVL LO warning and the scram. **Fitted to a real transient, not chosen**: Ginna UFSAR Chapter 15 Table 15.2-4, *"TIME SEQUENCE OF EVENTS FOR LOSS OF NORMAL FEEDWATER FLOW"* (NRC ADAMS ML20339A101, Rev 29 11/2020) gives main feedwater stopping at 20 s and the low-low level trip setpoint reached at 55 s — **35 s**. This plant runs 65 % nominal and trips at 17 %, so 48 points of span over 35 s = **1.37 %/s**. Measured after: warning at 29 s, AFW at 37 s, trip at 40 s. **07 PWR-E01** gained a *Timing — what to expect* section carrying those numbers and the point that matters: **you are not going to prevent the trip**, even restoring feed on the warning, and that is prototypical — a real loss of normal feedwater trips the reactor on low-low level and that trip is the credited protection. | LOFW drain rate |
 | 21 | 2026-07-31 | **The SCRAM control resets, and the board says what is holding it** (#75). The button had read **PRESS TO RESET** since it was built while its handler did nothing at all — pressing it produced no reset, no refusal and no message, because the engine reset command and the control-layer permissive both existed and nothing joined them. New **03 §3.5.1** documents the RPS reset as a control: it re-closes the trip breakers, it does **not** withdraw rods or restart the reactor, and it is gated on two permissives — **no trip signal standing** (a breaker will not hold in against a live trip signal) and **rods at bottom** (the physical interlock). The caption under SCRAMMED names whichever is holding, so the condition is readable without pressing anything, and a blocked press is refused with the reason annunciated. The teaching point is in the text: after a loss of feedwater the reset stays blocked on low steam generator level until the heat sink is restored, so **recovery is procedural, not a button**. **06 PWR-A01** Recovery now points at the procedure. | RPS reset control |
 | 20 | 2026-07-30 | **Settings tab trimmed** (#277). Removed Values, Terminology, and Physics Overlay from the control-room Settings surface — unused on the shipping PWR board. **02 §6.0** and **§7.5** now list what remains: units, fast-forward dropout, and About (disclaimer / license / changelog from #259). | Settings trim |
@@ -68,14 +69,14 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 22 (2026-07-31). A mismatch means a chapter changed with no
+     Sealed at Rev 23 (2026-07-31). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md c2015d3574814966
      02_SIMULATOR_USER_GUIDE.md 6e42c7bf1da77668
      03_CONTROLS_AND_INDICATIONS.md 14ed5d898eacb8b0
      04_NORMAL_OPERATIONS.md 2801fee62906b878
      05_MODE_TRANSITIONS.md 3b06dff310dcef99
-     06_ALARM_RESPONSE.md ea3b45df546cfded
+     06_ALARM_RESPONSE.md b9c141b93bfff3bd
      07_ABNORMAL_EMERGENCY.md 5b597e8be620e445
      08_ACCIDENT_TMI.md d6a3ff47c6786021
      09_SETPOINTS_LIMITS.md 1da724739c74f657

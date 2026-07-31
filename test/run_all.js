@@ -197,7 +197,10 @@ var BASELINES = {
   // themes cap and this gate pull against each other: rotating a bullet out can redden a
   // baseline with no change to the record. Check where else the quote lives before
   // restoring a bullet to chase the number.
-  'run_hardrules.js':      { code: 0, score: '39checks 0failed' },
+  // 39 -> 41 on 2026-07-31 (#287): the gate counts dated owner quotes wherever they are
+  // tracked, and "Keep it and enunciate" is cited at each site that acts on it — the
+  // alarm definition, the probe that guards it, and the manual revision row.
+  'run_hardrules.js':      { code: 0, score: '43checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -211,7 +214,9 @@ var BASELINES = {
   // alarm on every plant must declare a `category` from a closed vocabulary. It used to
   // be keyword-matched off the alarm id in ui/app.js, wrong for 13 of the PWR's 33.
   // All three plants here, unlike the PWR-only §6.3 half.
-  'run_contract.js':       { code: 0, score: '138checks 0failed' },
+  // 138 -> 139 on 2026-07-31 (#287): the new `rhr_not_aligned` annunciator, which
+  // like every alarm must declare a `category` (#157).
+  'run_contract.js':       { code: 0, score: '139checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -337,6 +342,10 @@ var BASELINES = {
   // thresholds were picked up by Part A automatically, without anyone adding a case. That is
   // the design — a new setpoint gets range-checked for free, and the count moving is the
   // nudge to notice it. 50 → 52 thresholds audited.
+  // Unmoved at 58 by #287's annunciator, and that is correct: Part A audits NUMERIC
+  // thresholds against their instrument's declared range, and `rhr_not_aligned` is a
+  // status alarm (`rhr_active` is_false, setpoint null) with no range to sit inside.
+  // It briefly read 59 while the alarm was drafted as a pressure threshold.
   'run_reachability.js':   { code: 0, score: '58checks 0failed' },
   // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
   // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
@@ -368,7 +377,12 @@ var BASELINES = {
   // interception PRECEDENCE (first-injected wins), and `acknowledge_all_alarms`,
   // which was only ever asserted as "the instructor gate does not block it". All four
   // verified red by injecting the defect they guard.
-  'run_m4.js':             { code: 0, score: '32/32 176passed' },
+  // 32 -> 33 on 2026-07-31 (#287): losing shutdown cooling annunciates. Gated on the
+  // MODE, not the RPS latch — measured, a Mode 5 plant reads `rps_scrammed = false`
+  // (it was never tripped, it is simply cold), so the first cut of this alarm could
+  // not fire in the one regime where losing RHR matters most. The probe also pins the
+  // permissive staying ONE-SHOT, which is now ruled-on behaviour.
+  'run_m4.js':             { code: 0, score: '33/33 185passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
