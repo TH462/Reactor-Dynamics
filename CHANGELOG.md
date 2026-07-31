@@ -21,6 +21,31 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The steam dump is 40 % of rated steam flow — the real Westinghouse capacity.** It was
+  105 %, which meant the plant could swallow a total loss of load without noticing:
+  measured, average coolant temperature rose to 305 °C (581 °F) and power held at 97.5 %.
+  Nothing was learned from that, and the reactor trip on turbine trip could not be
+  demonstrated, only asserted — its whole premise is that the dump *cannot* absorb a
+  turbine trip from high power.
+
+  **What you will see now.** A **50 % loss of load** — the case the real capacity is sized
+  for — still needs no trip and lifts nothing: the dump goes to its stop and the reactor
+  runs itself back about 10 %, which is exactly the division of labour a real plant is
+  designed around. Beyond that the dump is at its limit and the plant has to shed the rest
+  itself. A **full** load rejection from 100 % still does not scram, but it is an event
+  now: the dump saturates, the core runs back to ~46 % on moderator feedback, temperature
+  peaks near 608 °F (320 °C), the pressurizer level climbs to within a point and a half of
+  its going-solid trip with the level alarm sounding, and the **PORV lifts** as the
+  designed backstop. Then you walk it down at your own pace, as before.
+
+  A real plant of this class does not ride out a full rejection either — its design case is
+  50 % — so the relief valve doing its job is the plant being honest about where its margins
+  end, not a fault. The dump is still lost with the condenser (vacuum, blackout).
+
+  Manuals **01**, **09** and **12** updated (set Rev 23); **12** gains a description of what
+  happens past the dump's limit.
+
 ### Fixed
 - **The startup and heatup procedures are checked against the board again** (#224). The
   table that pins each procedure step to the control it names had not been updated through

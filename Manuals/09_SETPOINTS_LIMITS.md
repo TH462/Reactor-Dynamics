@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-01  
 **Title:** Operating Limits and Protection Setpoints — PWR  
-**Revision:** 22  
+**Revision:** 23  
 **Source:** As-built `pwr_control.js`, `pwr_config.js`; normal values captured from the live engine  
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
@@ -101,7 +101,7 @@
 | Turbine trip (vacuum) | condenser_vacuum | low | **22 inHg (74.5 kPa)** | Reset region **25 inHg (84.7 kPa)** |
 | Turbine trip (overspeed) | turbine_rpm | high | **1980 RPM** | Reset below ~**1800 RPM** |
 | Turbine trip (SG hi-hi / P-14) | sg_level | high | **90 %** | Re-arm below **85 %** |
-| Steam dump (pressure mode) | steam_pressure | high | **1194 psi (8.23 MPa)** | = Psat(566.6 °F (297 °C)), the no-load Tavg anchor; capacity **105 %** of rated steam flow |
+| Steam dump (pressure mode) | steam_pressure | high | **1194 psi (8.23 MPa)** | = Psat(566.6 °F (297 °C)), the no-load Tavg anchor; capacity **40 %** of rated steam flow (prototypical — sized for a 50 % loss of load with a ~10 % reactor step) |
 | Steam dump (trip-open mode) | tavg error | — | opens on the Tavg error above the no-load reference, full demand ~14.4 °F (8 °C) above it | On turbine trip; needs the condenser (unavailable on lost vacuum / MSIV shut) |
 | Spray flow cap | — | — | **12 %** of full spray flow | Sized for step insurges; cannot suppress a loss-of-heat-sink repressurization |
 | Main feedwater isolation (P-14) | sg_level | high | **90 %** | Latches (manual restore); AFW unaffected. Re-arm below **85 %** |

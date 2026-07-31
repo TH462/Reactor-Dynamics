@@ -56,7 +56,7 @@ Feel is set by capacity *ratios*, not absolute numbers. These are the levers the
 
 | Ratio | Today | Direction | Sets the feel of | Phase |
 |---|---|---|---|---|
-| Steam dump ÷ rated steam flow | **1.05 — SET (P4)** | ride-out enabler; vacuum/condenser-gated | Turbine trip = maneuver, not scram (FG-4) | done |
+| Steam dump ÷ rated steam flow | **0.40 — SET (2026-07-31)** | the PROTOTYPICAL Westinghouse capacity (WTSM §11.2, ML11223A294); vacuum/condenser-gated | Sized for a 50 % loss of load (40 % dump + a ~10 % core step — **TR-1g**). Past that the ladder runs and the dump is a finite resource you can drive to its stop — which is what makes the P-9 trip demonstrable instead of declared | done |
 | Spray ÷ heat-sink-loss insurge | wins (K 1.7, uncapped) | **must lose** (flow cap) | PORV lifts in the TMI opener (FG-6) | P5 |
 | Spray ÷ normal step insurge | wins | still wins | Step insurges stay arrested | P5 |
 | Full-SGTR leak ÷ charging_max | **0.12 ÷ 0.06 — SET (P5)**, ΔP-scaled to zero at SG pressure | leak wins 2×; depressurization kills it | Full SGTR *forces* trip + SI; the EOP works (FG-6) | done |
@@ -130,12 +130,13 @@ a real limit is reached — and then they mean it.*
 
 | ID | Behavior | Tier | Probe | Status |
 |----|----------|------|-------|--------|
-| TR-1 | **Turbine trip @100 %: NO reactor trip.** Dump (1.05×) picks up the load; the rod-less core self-parks ~75 % with Tavg/level high (asking for trim); the operator walks it to the no-load anchor at their own pace. Probe drives both phases | C | probe | **PASS** (P4, 2026-07-21) |
+| TR-1 | **FULL load rejection @100 %: NO reactor trip, and the ladder runs in order.** The dump goes to its 40 % stop and STAYS there, so the core sheds the rest through MTC — self-parks ~46 % with Tavg 320.1 °C — the **PORV lifts at 16.37 MPa as the designed backstop** and the pressurizer safety does not; SG safeties graze 9.32. The operator then walks it to the no-load anchor at their own pace. A real Westinghouse plant does not ride a full rejection either (its design case is 50 %), so the relief lifts are prototypical. Contrast **TR-1g** (the 50 % case, which must stay clean) | C | probe | **PASS** (re-banded 2026-07-31 for the 40 % dump) |
+| TR-1g | **50 % loss of load: no trip, no relief lift — THE case the 40 % capacity is sized for.** *"designed for 40 percent of rated steam flow… in conjunction with a 10 percent reactor power decrease, of 50 percent rated steam flow without a trip"* (STPEGS UFSAR §10.4.4, ML22140A078). Measured, this plant reproduces the documented SPLIT: dump saturates at 40 %, core takes a 10.7 % step to 89.3 %, Tavg peaks 307.4 °C, nothing lifts. Ours comes from MTC rather than rod control — same division of labour, different mechanism. This is the check that says 40 % is ENOUGH | C | probe | **PASS** (NEW 2026-07-31) |
 | TR-1c | **Sub-threshold load rejection: operator-managed, PORV is the backstop.** Below the C-7 arm (`dump_load_reject_mwe` 40 MWe) the fast dump does not arm at all — 39 MWe rejected hands-off reaches Tavg 318.9 °C and lifts the PORV; 41 MWe arms and is caught at 304.5 °C with no lift. **Declared simplification** (DESIGN_COMPANION §8.21), not a defect: any armed system has a threshold, and lowering it destroys the EV-11 load-follow lesson. Probe pins BOTH sides so the cliff cannot move silently | C | probe | **PASS** (ruled 2026-07-27, #219) |
 | TR-1d | **Planned offline is NOT a turbine trip.** `disconnect_grid` opens the generator breaker: load → 0, the stop valves stay open, `turbine_tripped` never sets, so **P-9 is never armed** and the evolution is reversible (`connect_grid` re-synchronises). At 100 % the dump catches the rejected load exactly as in TR-1; at 5 % nothing latches, so a later P-9 crossing is not carrying a trip from the start of the heatup. A real turbine trip still arrives by its own routes — `trip_turbine` (low-vacuum/overspeed actuation, `turbine_trip` failure), a reactor trip, or MSIV closure at load. Contrast TR-1 (load rejection) and TR-1b (turbine trip → P-9 scram) | C | probe | **PASS** (ruled 2026-07-28, #230) |
 | TR-1f | **P-9 is an INSTRUMENT reading, and a failed power-range channel defeats it.** The real permissive comes off the nuclear instrumentation and nothing else — *"actuated at approximately 50% power as determined by two-out-of-four NIS power range detectors"* (NUREG-1431 Rev 4 Bases B 3.3.1, ML12100A228). Ours read true `power_pct`, so the permissive gating **two reactor trips and the loss-of-main-feed AFW start** could not be fooled by the channel it reads (HR1). Measured: channel stuck at 40 % with the core at 100 % still scrammed on a turbine trip at +0.5 s; de-armed, the plant rides the trip out on the 105 % dump instead, and the SG hi-hi does its un-gated half (isolate feed, trip the turbine) without scramming — trips 59 s later on `sg_level low`, a genuine limit. **Declared departure** (DESIGN_COMPANION §8.11): one channel, not 2/4, so a single failure defeats it here where a real plant out-votes it | C | probe | **PASS** (2026-07-31, #220) |
 | TR-6 | 50 % load rejection: a non-event — dump + rods absorb, Tavg returns to program | C | ops grid step | PASS — re-band P3/P4 |
-| CC-7 | Steam dump: holds no-load Tavg at HZP; capacity 1.05× (ride-out); **unavailable on lost vacuum/condenser** (engine gate) | C | dump-cap probe + TR-8 | **PASS** (P4) |
+| CC-7 | Steam dump: holds no-load Tavg at HZP; capacity **0.40×**, the prototypical Westinghouse value; **unavailable on lost vacuum/condenser** (engine gate) | C | dump-cap probe + TR-8 | **PASS** (capacity re-set 2026-07-31) |
 | TR-8 | Loss of vacuum @100 %: turbine trips, dump unavailable, **feed dies with the hotwell** (condensate needs the condenser) → SG drains → **genuine-limit trip (SG lo-lo), not anticipation**; tended, the operator runs back | C | probe | **PASS** (P4) |
 | TR-9 | SG overfill: P-14 at 90 % → turbine trip + FW isolation, reset 85 % | C | ops p14 + run_pwr | PASS |
 
@@ -230,10 +231,14 @@ safety 17.13 MPa, with reseats ordered below lifts):
 
 ## 11. Red-line hotspots — RULED (owner, 2026-07-21)
 
-1. **TR-1/CC-7 dump capacity — RULED: Claude's call, playtest-adjustable.** Decision:
-   **1.05 × rated steam flow** — full ride-out with a small margin, but the stored-heat
-   burst at trip still swings Tavg visibly before settling (tempo principle: interesting,
-   then manageable). Revisit after playtesting.
+1. **TR-1/CC-7 dump capacity — SUPERSEDED 2026-07-31.** The P4 decision was
+   **1.05 x rated steam flow** (Claude's call, playtest-adjustable, "revisit after
+   playtesting"). Revisited: **0.40** *(OWNER RULING, 2026-07-31: "Let's change it to
+   40%.")*, the prototypical Westinghouse capacity (WTSM 11.2, ML11223A294). The 1.05
+   figure was never sourced, and measured it produced a NON-EVENT - a total loss of load
+   reached Tavg 305.3 C with power holding 97.5 %, i.e. the plant barely noticed, which is
+   the opposite of the tempo principle it was chosen to serve. See DESIGN_COMPANION 8.17
+   (retired) and #220.
 2. **TR-15 shrink demo — RULED: yes**, owner picks from the two-tuning demo in P4.
 3. **TR-8 untended endpoint — RULED: yes** — high-pressure trip by physics.
 4. **TR-13 single-SG EOP — RULED: yes**, with a required manual/instructor note that

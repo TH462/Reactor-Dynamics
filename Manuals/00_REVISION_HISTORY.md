@@ -2,8 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 22 (2026-07-31)  
-**Set revision:** 20 (2026-07-30)  
+**Set revision:** 23 (2026-07-31)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -19,6 +18,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 23 | 2026-07-31 | **The steam dump is 40 % of rated steam flow, the prototypical Westinghouse capacity** *(OWNER RULING, 2026-07-31: "Let's change it to 40%.")*. Was 105 %, an unsourced feel value from the 2026-07-21 tuning pass; #220's evidence pass established the real one — *"In most Westinghouse units the capacity of the steam dump system is 40%"* (NRC Westinghouse Technology Systems Manual §11.2, ADAMS ML11223A294) — sized for a **50 % loss of load**: 40 % into the condenser plus about a 10 % reduction from the reactor (STPEGS UFSAR §10.4.4, ML22140A078). Measured, this plant reproduces that split: a 100 → 50 MWe rejection saturates the dump and settles the core at 89.3 %, nothing lifting. **01** and **09** carry the new capacity; **new 12 prose** describes what happens past it — a full rejection still does not scram, but the dump sits at its stop, the core runs back to ~46 %, Tavg peaks near **608 °F (320 °C)** and the **PORV lifts** as the designed backstop. A real plant of this class does not ride out a full rejection either, so this is the plant being honest about where its margins end. | Steam dump capacity |
 | 22 | 2026-07-31 | **The steam generator drains at a real plant rate now, and the loss-of-feedwater card says what to expect** (#135). `K_sg_level` **5.0 → 1.37**: at 5.0 the entire narrow range held **twenty seconds** of full-power steaming, so a total loss of main feedwater took the plant from 64.5 % level to the lo-lo trip in **12.9 s** and left only **2.9 s** between the SG LVL LO warning and the scram. **Fitted to a real transient, not chosen**: Ginna UFSAR Chapter 15 Table 15.2-4, *"TIME SEQUENCE OF EVENTS FOR LOSS OF NORMAL FEEDWATER FLOW"* (NRC ADAMS ML20339A101, Rev 29 11/2020) gives main feedwater stopping at 20 s and the low-low level trip setpoint reached at 55 s — **35 s**. This plant runs 65 % nominal and trips at 17 %, so 48 points of span over 35 s = **1.37 %/s**. Measured after: warning at 29 s, AFW at 37 s, trip at 40 s. **07 PWR-E01** gained a *Timing — what to expect* section carrying those numbers and the point that matters: **you are not going to prevent the trip**, even restoring feed on the warning, and that is prototypical — a real loss of normal feedwater trips the reactor on low-low level and that trip is the credited protection. | LOFW drain rate |
 | 21 | 2026-07-31 | **The SCRAM control resets, and the board says what is holding it** (#75). The button had read **PRESS TO RESET** since it was built while its handler did nothing at all — pressing it produced no reset, no refusal and no message, because the engine reset command and the control-layer permissive both existed and nothing joined them. New **03 §3.5.1** documents the RPS reset as a control: it re-closes the trip breakers, it does **not** withdraw rods or restart the reactor, and it is gated on two permissives — **no trip signal standing** (a breaker will not hold in against a live trip signal) and **rods at bottom** (the physical interlock). The caption under SCRAMMED names whichever is holding, so the condition is readable without pressing anything, and a blocked press is refused with the reason annunciated. The teaching point is in the text: after a loss of feedwater the reset stays blocked on low steam generator level until the heat sink is restored, so **recovery is procedural, not a button**. **06 PWR-A01** Recovery now points at the procedure. | RPS reset control |
 | 20 | 2026-07-30 | **Settings tab trimmed** (#277). Removed Values, Terminology, and Physics Overlay from the control-room Settings surface — unused on the shipping PWR board. **02 §6.0** and **§7.5** now list what remains: units, fast-forward dropout, and About (disclaimer / license / changelog from #259). | Settings trim |
@@ -68,9 +68,9 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 22 (2026-07-31). A mismatch means a chapter changed with no
+     Sealed at Rev 23 (2026-07-31). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
-     01_GENERAL_DESCRIPTION.md c2015d3574814966
+     01_GENERAL_DESCRIPTION.md 084d5a7df10229c3
      02_SIMULATOR_USER_GUIDE.md 6e42c7bf1da77668
      03_CONTROLS_AND_INDICATIONS.md 14ed5d898eacb8b0
      04_NORMAL_OPERATIONS.md 2801fee62906b878
@@ -78,9 +78,9 @@
      06_ALARM_RESPONSE.md ea3b45df546cfded
      07_ABNORMAL_EMERGENCY.md 5b597e8be620e445
      08_ACCIDENT_TMI.md d6a3ff47c6786021
-     09_SETPOINTS_LIMITS.md 1da724739c74f657
+     09_SETPOINTS_LIMITS.md 5087ad5b2fe38add
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md d9691773480afc25
-     12_SIM_PHYSICS.md a70010fc2d2d3d37
+     12_SIM_PHYSICS.md ccc3022b353df42d
      README.md c5df6473d93e6a6e
 -->

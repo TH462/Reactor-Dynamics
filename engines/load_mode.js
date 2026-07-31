@@ -79,10 +79,13 @@
         // regulation. Reads the SG level instrument (HR1), one step lagged.
         var lvl = s._ins_sg_level != null ? s._ins_sg_level : (s.sg_level_pct != null ? s.sg_level_pct : 65);
         var trim = 0.002 * (65 - lvl);
-        // Keeps the 1.2 ceiling, NOT feedMax: this branch matches an
-        // ACTUAL measured draw, and with the dump wide open (capacity 105 % of rated
-        // steam flow) plus safeties, that draw genuinely can exceed rated. Clamping it
-        // to 1.0 here would under-feed a real ride-out.
+        // Keeps the 1.2 ceiling, NOT feedMax: this branch matches an ACTUAL measured
+        // draw, and turbine plus a wide-open dump plus lifted safeties genuinely can
+        // exceed rated. Clamping it to 1.0 here would under-feed a real ride-out.
+        // (The PWR dump was 105 % of rated on its own when this was written; it is 40 %
+        // since 2026-07-31, so the dump alone no longer gets there — but the safeties
+        // are exactly what lift during a full rejection at 40 %, and this is shared
+        // cross-plant code. The ceiling is not a PWR dump number and must not track one.)
         opts.setFeed(s, clip((s.steam_out_total != null ? s.steam_out_total : 0) + trim, 0, 1.2));
       }
     } else if (s.load_mode === 'follow') {

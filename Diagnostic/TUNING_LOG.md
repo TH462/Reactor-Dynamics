@@ -118,6 +118,85 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31i — the steam dump goes to 40 %: a departure closed rather than justified  ✅
+
+*(OWNER RULING, 2026-07-31: "Let's change it to 40%.")* — after the owner asked "should we
+consider lowering the dump?" and then "why shouldn't we change it to 40%?"
+
+**Where this came from.** #220's evidence pass sourced the real capacity — *"In most
+Westinghouse units the capacity of the steam dump system is 40%"* (WTSM §11.2, ML11223A294)
+— and the same day the departure was formally declared as §8.17. It is now **retired**: the
+gap was closed instead.
+
+**The recommendation I gave first was 0.60, and it did not survive the owner's challenge.**
+My argument was that the real 40 % is sized for *their* plant and ours needs **58 %** for
+the same criterion, so 0.60 copied the criterion rather than the number. The 58 % figure was
+measuring the wrong thing. The real design is 40 % dump **+ a 10 % rod-control step** =
+50 % loss of load (STPEGS UFSAR §10.4.4, ML22140A078). Measured at 0.40 this plant does
+exactly that: dump saturates at 40 %, core settles at **89.3 %** — a **10.7 % step**. The
+58 % is what the dump peaks at when it is allowed to do the whole job and no runback is
+needed, which is a fact about the oversized dump, not about the criterion. Recorded because
+the error is instructive: I derived a number from a measurement that did not bear on the
+question, and it took "why not 40?" to surface it.
+
+**Measured, the full sweep** (`hot_full_power`, seed 42):
+
+| event | 1.05 | 0.40 |
+|---|---|---|
+| turbine trip @100 % | scram +0.5 s, Tavg 304.5 °C | **identical** — scram +0.5 s, Tavg 307.2 °C |
+| 50 % loss of load | no trip, dump 58 %, power 98.8 % | no trip, **no lift**, dump saturated, power **89.3 %** |
+| full 100 % rejection | no trip, Tavg 305.3 °C, power **97.5 %** | no trip, Tavg **321.2 °C**, power **46.3 %**, PORV **16.37**, SG safeties graze **9.32** |
+
+**Turbine trip is indifferent to the capacity** — P-9 scrams immediately and decay heat is
+~6 %, so the cap is never approached. SG pressure peaks at 8.08 MPa either way, under the
+9.31 safety, which is the other thing the real 40 % is sized for. So the ONLY thing 105 %
+ever bought was a clean full rejection.
+
+**Three things to know.**
+
+1. **The teaching argument is the whole case, and it is two-sided.** At 105 % the P-9 trip's
+   own premise — *"a turbine trip will cause a load rejection beyond the capacity of the
+   Steam Dump System"* (NUREG-1431 Bases Function 16, ML12100A228) — was FALSE here, so the
+   interlock was something a student had to be told. At 40 % it is demonstrable. And the
+   dump becomes a finite resource that can be driven to its stop, which is where the
+   division of labour between dump and reactor becomes visible at all.
+2. **The FG-4 signature was not lost — it was RESTORED.** `PLAYTEST_CHECKLIST` describes the
+   approved experience as *"self-parks ~64 % power with Tavg ~319 and pzr level ~93-94 %
+   (PZR LVL HI blaring, just under the 97 % going-solid trip) — stable but loudly asking for
+   trim."* At 1.05 nothing produced that: Tavg 305.3, power 97.5 %, a non-event. At 0.40 the
+   rejection gives **46 % power, Tavg 320.1, pzr level 95.6 %** against the 97 % trip. The
+   checklist row was ALSO describing a turbine trip, which has scrammed since #216 — both
+   corrections are now in it. **Margin to going-solid is 1.4 points** and is reported as a
+   `ck.info` rather than hidden in a band, because that is the number the next person
+   tightening this knob needs.
+3. **Authored content did not move at all.** `run_campaign` 51/51 / 3038 checks,
+   `run_procedures_stack` 22/22, `run_ops` 58/68 — all unchanged, including the Mode 5 ↔ 1
+   cooldown and heatup missions, which was the one blast-radius unknown I had flagged as
+   unmeasured. A plant-level capacity change perturbing zero authored content is worth
+   noting rather than assuming.
+
+**Five probes re-banded, not weakened, and one added.** TR-1, TR-1d, TR-1e, TR-1f, PI-8 all
+carried bands minted at the P4 freeze from the 105 % dump. **TR-1 asserted a NON-EVENT** —
+"dump carries near-full power (90..103 %)", "no PORV lift" — and now asserts the
+defence-in-depth ladder running in order, with the **PORV check written POSITIVELY** so that
+restoring enough capacity to suppress the lift has to come and edit the line rather than
+slide through a band. New **TR-1g** is the check that says 40 % is ENOUGH: the 50 % loss of
+load, no trip, no lift, and the documented 40 %+10 % split pinned explicitly. Without it,
+lowering the dump further would go unnoticed until someone drove a full rejection.
+
+**Found in passing:** `Manuals/00_REVISION_HISTORY.md` carried **two** `**Set revision:**`
+header lines — a stale `20 (2026-07-30)` directly under the live one, hand-added in 85264ad
+(#277). The existing check matches the FIRST occurrence and the stamper rewrites the FIRST
+occurrence, so it was invisible to both while contradicting the set-wide revision in the one
+document whose job is to state it. Removed, and `run_manual_rev` now counts them (12 → 13,
+injection-verified).
+
+Gates: `run_behavior` 41 → **42**, `run_manual_rev` 12 → **13**, `run_hardrules` 48 → **50**
+(the dated owner quote, in tracked files — prose, as documented). Manual set **Rev 23**
+(01, 09, 12). Everything else at baseline; **35 runners green**.
+
+---
+
 ### 2026-07-31h — #224: the stale map was not a lookup, it was the browser gate's coverage list  ✅
 
 **The filed defect.** `test/audit_manual_controls.js` reported **32 mismatches, exit 1** —

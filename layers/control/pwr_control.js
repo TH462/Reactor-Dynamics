@@ -111,21 +111,27 @@
   // NOT credited in the safety analyses — *"No credit was taken in the accident analyses
   // for operation of these trips"* (Salem TS Bases, ML18093A272).
   //
-  // THE REAL PLANT'S PRIMARY REASON DOES NOT APPLY HERE, and this header recited it
-  // anyway until #220. Theirs is dump capacity: P-9 sits at 50 % because *"for turbine
-  // trips from 50% power or less, sufficient steam dump capacity is available for excess
-  // energy removal"* (WTSM §12.2) — above that a 40 % dump simply cannot take it. THIS
-  // plant's dump is 105 % (§8.17, a declared departure), so it can. What justifies the
-  // trip here is the other two, both of which survive an oversized dump:
+  // THE REAL PLANT'S REASON NOW APPLIES HERE TOO, and for two days it did not. Theirs is
+  // dump capacity: P-9 sits at 50 % because *"for turbine trips from 50% power or less,
+  // sufficient steam dump capacity is available for excess energy removal"* (WTSM §12.2)
+  // — above that a 40 % dump cannot take it. This plant's dump was 105 %, so it could,
+  // and the interlock was something a student had to be TOLD rather than shown. The dump
+  // is **0.40** as of 2026-07-31 *(OWNER RULING: "Let's change it to 40%.")*, so the
+  // premise above is this plant's premise: drive a full rejection and watch the dump hit
+  // its stop.
+  //
+  // Two justifications stand alongside it and are worth keeping in view, because they are
+  // what make the trip defence-in-depth rather than arithmetic:
   //   • the dump depends on the CONDENSER (real interlock C-9: vacuum + a circ-water
   //     pump, or the valves lose their air), and a turbine trip's cause frequently
   //     removes it — TR-8 is exactly that case, and it trips on a genuine limit instead;
-  //   • it is anticipatory defence-in-depth, uncredited in reality too, so "the plant
-  //     could survive without it" was never the test.
+  //   • the trip is uncredited in the real safety analyses, so "the plant could survive
+  //     without it" was never the test.
   // Owner's question that produced this note (2026-07-26): *"If the steam dump can handle
   // a full load do we need the turbine trip? I thought those were related for some
-  // reason."* They are related — that IS the real justification — and the answer is that
-  // ours is kept for the residual two, not the capacity argument.
+  // reason."* They are related, that IS the real justification, and the answer at the time
+  // was "kept for the residual two". Resizing the dump made the question moot instead of
+  // answered, which is the better outcome — see #220 and the config comment.
   //
   // THIS PLANT NOW HAS IT — `protection.turbine_trip_reactor_trip: true`
   // (`pwr_config.js:763`), adopted 2026-07-26f after the #216 audit. This header said

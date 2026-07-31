@@ -103,6 +103,14 @@ var sm = src.match(/^\*\*Set revision:\*\* *(\d+) *\((\d{4}-\d{2}-\d{2})\)/m);
 ck('the "Set revision" header matches the newest row',
   !!sm && parseInt(sm[1], 10) === newest.rev && sm[2] === newest.date,
   sm ? sm[1] + ' (' + sm[2] + ')' : 'missing');
+// …and there is only ONE of them. The check above matches the FIRST occurrence, and the
+// stamper rewrites the first occurrence, so a second line is invisible to both while
+// contradicting the set-wide revision in the one document whose job is to state it.
+// Found 2026-07-31 carrying a stale "Set revision: 20 (2026-07-30)" directly under the
+// live 23 — arrived by hand in 85264ad (#277) and had survived three stampings, because
+// nothing counted. The revision is SET-WIDE: one number, stated once.
+var smAll = src.match(/^\*\*Set revision:\*\*/gm) || [];
+ck('exactly one "Set revision" header line', smAll.length === 1, smAll.length + ' found');
 
 // ---- 3. the digests — the check that catches an unrecorded edit ---------------
 // Delegated to the tool in --check mode so the sealing logic and the checking logic

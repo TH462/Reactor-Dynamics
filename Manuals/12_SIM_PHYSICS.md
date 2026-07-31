@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLX-100** (Single-Loop eXperimental, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 22  
+**Revision:** 23  
 
 ---
 
@@ -454,7 +454,11 @@ Reverse heat transfer — a secondary hotter than the primary, e.g. starting pum
 | **Pressure mode** (always) | Opens proportionally above the 1194 psi (8.23 MPa) no-load setpoint |
 | **Fast Tavg-error mode** (**armed**) | On a turbine trip, or a load rejection past the arm, drives open on Tavg error immediately |
 
-Capacity is **105 % of rated steam flow**. This plant's dump swallows a full load rejection with a small margin — which is *why* a turbine trip here is a transient the operator manages rather than a scram. It is also exactly what **cannot** save a loss-of-feed event, where the drying SG stops absorbing heat no matter what the dump vents.
+Capacity is **40 % of rated steam flow** — the prototypical Westinghouse value, sized for a **50 % loss of load**: 40 % into the condenser plus roughly a 10 % reduction from the reactor itself. Measured on this plant, a 100 → 50 MWe rejection saturates the dump at 40 % and settles the core at 89.3 %, with no trip and nothing lifting.
+
+Past that the dump is at its stop and the reactor has to shed the difference. A **full** load rejection from 100 % still does not scram, but the ladder runs: dump saturated, core running back to ~46 % on moderator feedback, average coolant temperature peaking near **608 °F (320 °C)**, the **PORV lifting** at 2350 psi (16.20 MPa) as the designed backstop, and the steam generator safeties just reaching their setpoint. A real plant of this class does not ride out a full rejection either — its design case is 50 % — so this is the plant telling you the truth about where its margins end.
+
+Capacity is also exactly what **cannot** save a loss-of-feed event, where the drying steam generator stops absorbing heat no matter what the dump vents.
 
 The fast mode's reference Tavg is **programmed on turbine load** — the same sliding program the rod controller uses — so the two cannot drift apart.
 

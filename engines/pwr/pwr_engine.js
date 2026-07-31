@@ -2890,15 +2890,17 @@
     },
 
     // Steam-dump capacity cap (e28f7b0): a full-open dump is limited to
-    // steam_dump_max (~50% of rated steam flow) on BOTH the manual override and
-    // the auto demand — deleting the cap previously failed nothing.
+    // steam_dump_max on BOTH the manual override and the auto demand — deleting
+    // the cap previously failed nothing.
     steam_dump_capacity_cap: function () {
       return test('Steam dump — capacity capped at steam_dump_max on manual full-open', function (ck) {
         var h = new Harness('hot_full_power');
         var cap = h.eng.cfg.steam_generator.steam_dump_max;
-        // FG-4 ride-out plant (feel-plan P4): the dump swallows a full load
-        // rejection with a small margin — ~105 % of rated steam flow.
-        ck('cap is the ride-out capacity (~1.05 of rated)', cap.toFixed(2), cap >= 1.0 && cap <= 1.15, '1.00..1.15');
+        // 40 % of rated steam flow, the prototypical Westinghouse capacity (WTSM §11.2,
+        // ML11223A294) — owner ruling 2026-07-31, was 1.05. The band is deliberately
+        // tight: this number is now SOURCED, not a feel knob, so drifting off it should
+        // require saying so rather than sliding inside a wide band.
+        ck('cap is the prototypical capacity (0.40 of rated)', cap.toFixed(2), cap >= 0.38 && cap <= 0.42, '0.38..0.42');
         h.run(5);
         h.cmd({ action: 'set_steam_dump', mode: 'open' });
         var maxFrac = 0;
@@ -2907,9 +2909,12 @@
           if (h.eng.s.steam_dump_frac > maxFrac) maxFrac = h.eng.s.steam_dump_frac;
         }
         ck('manual full-open never exceeds the cap', maxFrac.toFixed(3), maxFrac <= cap + 1e-9, '≤ ' + cap);
-        // The manual override commands 0..1 of valve travel (1.0 = full open);
-        // the 1.05 cap is auto-demand headroom above rated, so full-open flows 1.0.
-        ck('dump is actually flowing near rated at full-open', maxFrac.toFixed(3), maxFrac > 0.95, '> 0.95');
+        // The manual override commands 0..1 of valve travel (1.0 = full open) and the cap
+        // then binds it. This check asserted "> 0.95" while the cap was 1.05 — i.e. that
+        // full-open flowed near RATED, which was only true because the cap sat above 1.0
+        // and never bound. At a real 40 % capacity full-open IS the cap, so what the check
+        // must say is that the valve actually reaches its stop.
+        ck('manual full-open actually reaches the cap', maxFrac.toFixed(3), maxFrac > cap - 0.01, '≈ ' + cap);
       });
     },
 

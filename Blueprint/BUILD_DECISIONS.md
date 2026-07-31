@@ -37,6 +37,90 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-31i — the steam dump goes to 40 %: closing a departure instead of justifying it
+
+*(OWNER RULING, 2026-07-31: "Let's change it to 40%.")*
+
+### The decision
+
+`steam_dump_max` **1.05 → 0.40**, the prototypical Westinghouse capacity (WTSM §11.2,
+ML11223A294). §8.17 — declared as a named departure earlier the same day under #220 — is
+**retired**: the gap is closed rather than documented. The 1.05 was never sourced; it came
+from the 2026-07-21 feel pass as "Claude's call, playtest-adjustable, revisit after
+playtesting", and this is that revisit.
+
+### The argument that failed, recorded because it is the instructive part
+
+My first recommendation was **0.60**, on the reasoning that the real 40 % is sized for
+*their* plant while ours needs **58 %** for the same criterion — so 0.60 copied the design
+*criterion* rather than the *number*. The owner asked why not 40, and the argument did not
+survive: the real design is 40 % dump **plus a 10 % rod-control step** (STPEGS UFSAR
+§10.4.4, ML22140A078), and at 0.40 this plant reproduces that split — dump saturates, core
+settles at **89.3 %**, a 10.7 % step. The 58 % figure is what the dump peaks at when it does
+the whole job and no runback is required. It was a real measurement of the wrong quantity,
+and I had presented it as the load-bearing reason.
+
+### Measured
+
+| event | 1.05 | 0.40 |
+|---|---|---|
+| turbine trip @100 % | scram +0.5 s, Tavg 304.5 °C | **indifferent** — +0.5 s, 307.2 °C |
+| 50 % loss of load | no trip, dump 58 %, power 98.8 % | no trip, **no lift**, dump saturated, power 89.3 % |
+| full 100 % rejection | no trip, Tavg 305.3, power **97.5 %** | no trip, Tavg **321.2**, power 46.3 %, PORV **16.37**, SG safety graze 9.32 |
+
+Turbine trip never approaches the cap (P-9 scrams; decay heat ~6 %), and SG pressure peaks
+at 8.08 MPa either way — under the 9.31 safety, the other thing the real 40 % is sized for.
+**The only thing 105 % bought was a clean full rejection**, which is beyond a real
+Westinghouse plant's design case anyway.
+
+### Why this is the teaching choice, not a fidelity tax
+
+Two effects, both of which point the same way and neither of which is about the number:
+
+- **The P-9 trip becomes demonstrable.** Its premise is *"Above the P-9 setpoint, a turbine
+  trip will cause a load rejection beyond the capacity of the Steam Dump System"*
+  (NUREG-1431 Bases Function 16, ML12100A228). At 105 % that was false for this plant, so
+  the interlock could only be asserted. This is the coherence problem the owner spotted on
+  2026-07-26 — resized, the question is moot rather than answered.
+- **The dump becomes a finite resource.** It can be driven to its stop, and past it the core
+  has to shed the difference. That handover is the plant dynamics lesson, and at 105 % it
+  never occurred.
+
+**FG-4 is restored, not sacrificed.** `PLAYTEST_CHECKLIST` describes the approved signature
+as *"self-parks ~64 % power with Tavg ~319 and pzr level ~93-94 % (PZR LVL HI blaring, just
+under the 97 % going-solid trip)"*. At 1.05 nothing produced that. At 0.40 the rejection
+gives 46 % power, Tavg 320.1, pzr level 95.6 % against the 97 % trip. That row was also
+describing a *turbine trip*, which has scrammed since #216 — both corrections applied.
+
+### The gates
+
+**Authored content did not move**: `run_campaign` 51/51 (3038 checks) including the
+Mode 5 ↔ 1 cooldown and heatup missions, `run_procedures_stack` 22/22, `run_ops` 58/68. The
+cooldown was the one blast-radius unknown flagged as unmeasured before the ruling; it is
+measured now.
+
+Five probes re-banded — TR-1, TR-1d, TR-1e, TR-1f, PI-8, all carrying P4-freeze bands. **TR-1
+was pinning a non-event** ("dump carries near-full power (90..103 %)", "no PORV lift") and
+now pins the ladder running in order, with the **PORV assertion written POSITIVELY** so that
+restoring capacity enough to suppress the lift must edit the line rather than pass through a
+band. New **TR-1g** pins the 50 % design case and the documented 40 %+10 % split — the check
+that says 40 % is *enough*, without which a further reduction would go unnoticed until
+someone drove a full rejection. PI-8 now reports **margin to going-solid (1.4 points)** as an
+info line rather than burying it in a band.
+
+`run_behavior` 41 → **42**, `run_hardrules` 48 → **50** (prose: the dated owner quote),
+`run_manual_rev` 12 → **13** (below). Manual set **Rev 23** — 01, 09 and new 12 prose.
+
+### Found in passing: two `Set revision` lines
+
+`Manuals/00_REVISION_HISTORY.md` carried a stale `**Set revision:** 20 (2026-07-30)` directly
+under the live one, hand-added in 85264ad (#277). The `run_manual_rev` check matches the
+FIRST occurrence and `stamp_manual_revision.js` rewrites the FIRST occurrence, so it was
+invisible to both — through three stampings — while contradicting the set-wide revision in
+the one document whose job is to state it. Removed; the gate now counts them.
+
+---
+
 ## 2026-07-31h — #224: a stale lookup table had quietly halved a browser gate
 
 **The filed defect was 32 mismatches in `STEP_UI`.** The real one is what `STEP_UI` is for:

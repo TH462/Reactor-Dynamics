@@ -175,24 +175,24 @@
       var tavg_err = (s._ins_tavg != null ? s._ins_tavg : s.tavg_c) - tref_dump;
       dump = Math.max(dump, clip(tavg_err / (sg.dump_trip_mode_band_c || 8.0), 0, 1));
     }
-    // Physical capacity of the turbine-bypass/dump. THIS PLANT (FG-4 ride-out,
-    // feel-plan P4, owner ruling 2026-07-21): ~105 % of rated steam flow, so a full
-    // LOAD REJECTION is caught by the dump alone.
+    // Physical capacity of the turbine-bypass/dump: **40 % of rated steam flow**, the
+    // prototypical value *(OWNER RULING, 2026-07-31: "Let's change it to 40%.")* —
+    // *"In most Westinghouse units the capacity of the steam dump system is 40%"* (NRC
+    // Westinghouse Technology Systems Manual §11.2, ML11223A294). Sized in the real plant
+    // for a 50 % loss of load (40 % dump + a 10 % rod step) and to keep the SG safeties
+    // seated on a trip from 100 %; measured, this plant reproduces both. Derivation,
+    // measurements and the teaching argument live at the constant, in `pwr_config.js`.
     //
-    // A DECLARED DEPARTURE, not the prototypical number (§8.17, #220). Most Westinghouse
-    // units are at 40 %: *"The capacity of the steam dump system depends on the individual
-    // plant's load rejection capability. In most Westinghouse units the capacity of the
-    // steam dump system is 40%."* (NRC Westinghouse Technology Systems Manual §11.2,
-    // ML11223A294). Full-load ride-through is a real objective in some modern designs —
-    // the AP1000 is *"designed to sustain a load rejection from 100 percent power with the
-    // turbine generator continuing stable operation while supplying the plant house loads"*
-    // (AP1000 DCD Rev. 19 §8.3, ML11171A483) — it is just not classic Westinghouse.
+    // THIS COMMENT HAS BEEN WRONG TWICE, which is worth a moment given what it guards.
+    // It read "(no anticipatory reactor trip exists)" — true when written, FALSE from
+    // 2026-07-26 when #216 turned Reactor Trip on Turbine Trip ON. Corrected by #220 to
+    // say the 105 % capacity spoke only to the load-rejection case. Then the capacity
+    // itself moved. A comment carrying a NUMBER and a CONSEQUENCE will rot at whichever
+    // of the two changes first; keep the number where the constant is.
     //
-    // This comment used to read "(no anticipatory reactor trip exists)". That was true
-    // when it was written and FALSE from 2026-07-26, when #216 turned Reactor Trip on
-    // Turbine Trip ON: above P-9 a turbine trip scrams (TR-1b), and only a load rejection
-    // with the turbine still on line is ridden out (TR-1). The two events are different
-    // design cases and the 105 % capacity only speaks to the second.
+    // What survives unchanged: a turbine trip above P-9 scrams (TR-1b) and a load
+    // rejection with the turbine on line is ridden out (TR-1). Those are different design
+    // cases in the real plant too, and the capacity only ever spoke to the second.
     //
     // The cap still rate-limits an operator slamming the dump open on a cooldown. Applies
     // to both the manual override and the auto proportional demand.

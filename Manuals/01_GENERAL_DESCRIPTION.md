@@ -3,8 +3,8 @@
 **Document:** PWR-GD-01  
 **Plant:** Pressurized Water Reactor (PWR)  
 **Plant:** **SLX-100** (Single-Loop eXperimental, 100 MWe)
-**Rating:** ≈ 100 MWe / ≈ 300 MWt — a compact **single-loop experimental PWR** (one reactor coolant pump, one U-tube steam generator, one main steam line). Small and generously margined by design: the ~105 % steam dump rides out a full load rejection, and reactor trips are reserved for genuine limits.  
-**Revision:** 22  
+**Rating:** ≈ 100 MWe / ≈ 300 MWt — a compact **single-loop experimental PWR** (one reactor coolant pump, one U-tube steam generator, one main steam line). Small and generously margined by design, and reactor trips are reserved for genuine limits. The steam dump is sized at **40 %** of rated steam flow, the prototypical Westinghouse capacity: a **50 % loss of load** is absorbed with no trip and no relief lift, and a larger rejection is ridden out by the reactor itself running back, with the PORV as the backstop.  
+**Revision:** 23  
 
 ---
 

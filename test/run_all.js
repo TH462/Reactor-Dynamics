@@ -95,7 +95,21 @@ var BASELINES = {
   // engine (a channel stuck at 40 % with the core at 100 % still scrammed at +0.5 s, and the
   // SG hi-hi leg scrammed at +0.2 s). Legs A/C are the calibration pins — with a healthy
   // channel NOTHING moves, which is what makes it a sensing fix rather than a protection one.
-  'run_behavior.js':       { code: 0, score: '41pass 0xfail' },
+  // 42 since 2026-07-31: the steam dump went 1.05 -> 0.40, the PROTOTYPICAL Westinghouse
+  // capacity *(OWNER RULING: "Let's change it to 40%.")*, and +TR-1g is the check that says
+  // 40 % is ENOUGH — a 50 % loss of load with no trip and no relief lift, which is the case
+  // the real capacity is sized for. Without it, lowering the dump further would go unnoticed
+  // until someone drove a full rejection.
+  //
+  // FIVE probes were re-banded, not weakened: TR-1, TR-1d, TR-1e, TR-1f, PI-8 all carried
+  // bands minted at the P4 freeze from a 105 % dump. TR-1 in particular asserted "dump
+  // carries near-full power (90..103 %)" and "no PORV lift" — i.e. it pinned a NON-EVENT
+  // (measured at 1.05: Tavg 305.3 °C, power 97.5 % through a total loss of load). It now
+  // asserts the defence-in-depth ladder running in order — dump saturates, core sheds the
+  // rest to 46 %, PORV lifts as the designed backstop, pressurizer safety does not — and
+  // the PORV check is deliberately POSITIVE, so restoring enough capacity to suppress the
+  // lift has to come and edit this line rather than sliding through a band.
+  'run_behavior.js':       { code: 0, score: '42pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -207,7 +221,12 @@ var BASELINES = {
   // offending expression; an undeclared new permissive reddens 1; a declaration matching
   // nothing is STALE and reddens too. The count moves when a permissive is added, not when
   // a doc is written — unlike the HR11 half above.
-  'run_hardrules.js':      { code: 0, score: '48checks 0failed' },
+  // 48 -> 53 on 2026-07-31: the steam-dump resize, and this is the gate's documented
+  // prose behaviour rather than anything about the code — the OWNER RULING quote ("Let's
+  // change it to 40%.") is carried, dated, at the constant and in the manual revision row,
+  // and HR11 counts dated owner quotes wherever they are tracked. Re-run this AFTER the
+  // docs, not after the code.
+  'run_hardrules.js':      { code: 0, score: '53checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -261,7 +280,13 @@ var BASELINES = {
   // that disagrees with itself — necessary, but a set can be perfectly self-consistent
   // and still describe last week's plant. What it CANNOT check is whether a row's prose
   // is true; that is HR10/HR12 territory and the runner header says so.
-  'run_manual_rev.js':     { code: 0, score: '12checks 0failed' },
+  // 12 -> 13 on 2026-07-31: +'exactly one Set revision header line'. The existing check
+  // matches the FIRST occurrence and the stamper rewrites the FIRST occurrence, so a second
+  // line was invisible to both while contradicting the set-wide revision in the one document
+  // whose job is to state it. Found carrying a stale 'Set revision: 20 (2026-07-30)' directly
+  // under the live 23 — hand-added in 85264ad (#277), survived three stampings. Verified by
+  // injection: restoring the second line reddens it.
+  'run_manual_rev.js':     { code: 0, score: '13checks 0failed' },
   // NEW 2026-07-31 (#224) — was `test/audit_manual_controls.js`, which is exactly why it is
   // here: not a `run_*.js`, so auto-discovery never saw it, so it had no baseline, so it sat
   // at **32 mismatches / exit 1** through the #197 / #202 / #206 procedure re-authoring with
