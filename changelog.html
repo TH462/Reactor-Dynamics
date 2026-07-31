@@ -79,6 +79,24 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>The board tells you what it is doing, and what you forgot to do</h2>
+      <span class="log-ver mono">Alpha 1.11.0</span>
+      <time class="log-date mono" datetime="2026-07-30">30 July 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>A status word on the feedwater control,</strong> in the corner of the SG FEED card. It reads HOLDING, SAT HI, SAT LO, ISOLATED, MANUAL or OFF &mdash; so a controller that is still lit AUTO but has run out of authority to correct now says so, instead of looking healthy while the level refuses to move.</li>
+      <li><span class="log-tag added">Added</span><strong>Every automatic control now explains itself on the board,</strong> including the reason it switched itself off. Those explanations existed but were rendered nowhere.</li>
+      <li><span class="log-tag added">Added</span><strong>Three new annunciators.</strong> CHG&nbsp;FLOW&nbsp;HI and PZR&nbsp;LVL&nbsp;DEV&nbsp;LO are a pair that diagnose a coolant leak: the first says make&#8209;up is working hard, the two together say make&#8209;up is losing. SI&nbsp;ACCUM&nbsp;ALIGNED warns that the safety injection accumulators are still lined up as you depressurize past the point they should be isolated.</li>
+      <li><span class="log-tag added">Added</span><strong>A reactor coolant pump seal leak failure,</strong> the everyday leak the charging system exists for. Every setting on its severity slider is one the plant can hold, so it is a diagnosis exercise rather than an accident &mdash; and the pressurizer level alarm never comes in, which is the point.</li>
+      <li><span class="log-tag added">Added</span><strong>Physics and Roadmap pages on the site,</strong> plus a menu that works on a phone.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A by&#8209;the&#8209;book cooldown emptied all four safety injection accumulators.</strong> Nothing isolated them on the way down and no procedure mentioned them, so the plant reached cold shutdown with no passive injection left and its coolant boron dragged up. The cooldown and heatup procedures now carry the step, and the new annunciator backs it up.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The pressurizer could not be filled solid by emergency injection</strong> &mdash; the exact trap Three Mile Island turned on. Indicated level stuck at 88&nbsp;% however much was injected; it now runs the full scale, and its high&#8209;level trip is reachable.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Alarm bands on the power, pressure and neutron&#8209;flux displays follow the protection that is actually armed,</strong> rather than a fixed table &mdash; so blocking a trip now moves the band that shows it.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>Take it offline, and a reactor that behaves like the measurements say</h2>
       <span class="log-ver mono">Alpha 1.10.0</span>
       <time class="log-date mono" datetime="2026-07-30">30 July 2026</time>
