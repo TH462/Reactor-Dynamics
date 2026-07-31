@@ -115,6 +115,27 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30o — #275: the offline download was arriving called `latest.zip`  ✅
+
+No plant change. The site's Download button had a **bare** `download` attribute on a
+deliberately-stable `download/latest.zip` href, so that basename is what the visitor's browser
+saved — no product name, no *Alpha*, no version, and nothing to tell it from the copy they
+pulled three releases ago. The zip's **contents** were always correctly named, and
+`site/make_download.js` has always written a correctly-named versioned copy beside
+`latest.zip`; only the wrapper the visitor actually receives was anonymous.
+
+Fixed by stamping the name from `site/release.js` (`site/nav.js`, same mechanism that already
+puts `RD_VERSION` in the footer) rather than by versioning the href, so **no new per-release
+edit** was created. Measured in headless Edge over `file://`:
+`download="Reactor_Dynamics_Alpha_1.11.0.zip"`, identical to what the build writes. With JS
+off it still saves, as `latest.zip` — no worse than before, which is the right way for it to
+fail.
+
+`run_portable.js` **116 → 123**, new `DOWNLOAD` rule: every way that wiring breaks leaves a
+button that still works and still downloads, so nothing else would ever have gone red. All
+seven checks driven red by injection first. Rationale, the two rejected alternatives, and the
+one thing deliberately left alone: `Blueprint/BUILD_DECISIONS.md` **2026-07-30i**.
+
 ### 2026-07-30n — #276 RULED: re-aligning the accumulators stays procedural, so the procedure had to actually contain the step  ✅
 
 *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of

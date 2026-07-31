@@ -26,6 +26,12 @@
  * like. It also maintains itself — a new <script src> is scanned the moment it is added,
  * with nobody remembering to widen a directory list here.
  *
+ * IT ALSO GUARDS THE DELIVERY, not just the artifact: that vercel.json's buildCommand can
+ * still see the files it shells out to (.vercelignore killed the Alpha 1.10.0 deploy), and
+ * that the zip download.html hands a visitor arrives NAMED — product, Alpha, version —
+ * rather than as an anonymous `latest.zip` (#275). Both are couplings between files edited
+ * independently, and neither fails anywhere a person would look.
+ *
  * WHAT IT DOES NOT COVER. A runtime load assembled from string fragments
  * (`window['fet'+'ch']`) defeats it, as does one added to a file the shell does not load
  * and then reached indirectly. It is a tripwire on the honest mistake, which is the one
@@ -196,6 +202,66 @@ var ignore = fs.existsSync(path.join(ROOT, '.gitignore'))
 check('DIST', '.gitignore', 'dist/ ignored', /^\s*dist\/?\s*$/m.test(ignore)
   ? 'a 2.5 MB generated file cannot be committed by accident' : null);
 
+// ---- F. the download the SITE hands out is named ------------------------------
+// The bundle above is only half the delivery: download.html serves it as a zip, and for
+// its whole life that zip arrived on the visitor's machine called `latest.zip` (#275) —
+// no product name, no Alpha, no version, indistinguishable from every other latest.zip
+// in a downloads folder, and impossible to tell apart from the copy they pulled three
+// releases ago.
+//
+// The href stays the stable path on purpose (make_download.js writes it so this page
+// needs no per-release edit), so the NAME comes from an `download=` attribute stamped by
+// site/nav.js out of window.RD_RELEASE. That is three files that must agree, none of
+// which fails visibly when one of them stops: drop the release.js tag and the stamp
+// silently no-ops, rename the anchor's id and it no-ops, change the prefix in one place
+// and the site hands out a name the build never produced. Nothing else here would notice.
+var dlHtml = fs.readFileSync(path.join(ROOT, 'download.html'), 'utf8');
+var navSrc = fs.readFileSync(path.join(ROOT, 'site', 'nav.js'), 'utf8');
+var mkDlSrc = fs.readFileSync(path.join(ROOT, 'site', 'make_download.js'), 'utf8');
+
+var anchor = /<a\b[^>]*\bid="dlZip"[^>]*>/.exec(dlHtml);
+check('DOWNLOAD', 'download.html', 'download button carries id="dlZip"',
+  anchor ? 'the hook nav.js stamps' : null);
+check('DOWNLOAD', 'download.html', 'button href is the stable download/latest.zip',
+  anchor && /href="download\/latest\.zip"/.test(anchor[0])
+    ? 'make_download.js writes this path every deploy' : null);
+check('DOWNLOAD', 'download.html', 'bare download attribute kept as the no-JS fallback',
+  anchor && /\sdownload(?=[\s>])/.test(anchor[0]) ? 'saves as latest.zip if JS is off' : null);
+
+// Script ORDER, not just presence: nav.js reads RD_RELEASE at DOMContentLoaded, so a
+// release.js tag placed after it would still be a silent no-op on a slow parse.
+var iRel = dlHtml.indexOf('src="site/release.js"');
+var iNav = dlHtml.indexOf('src="site/nav.js"');
+check('DOWNLOAD', 'download.html', 'loads site/release.js before site/nav.js',
+  iRel >= 0 && iNav >= 0 && iRel < iNav
+    ? 'RD_RELEASE is defined by the time nav.js runs'
+    : null);
+check('DOWNLOAD', 'site/nav.js', 'stamps the dlZip button',
+  /getElementById\('dlZip'\)/.test(navSrc) && /setAttribute\('download'/.test(navSrc)
+    ? 'sets the saved filename from RD_RELEASE' : null);
+
+// The two spellings of the same filename must be one filename. Pull the three literals
+// out of each source rather than re-implementing the name here — a copy in this file
+// would be a fourth place to drift.
+function zipNameParts(src) {
+  var pre = /'(Reactor_Dynamics_)'/.exec(src);
+  var san = /replace\((\/\[\^[^/]*\]\+\/g)\s*,\s*'_'\)/.exec(src);
+  var ext = /'(\.zip)'/.exec(src);
+  return [pre && pre[1], san && san[1], ext && ext[1]].join(' | ');
+}
+var navName = zipNameParts(navSrc), buildName = zipNameParts(mkDlSrc);
+check('DOWNLOAD', 'site/nav.js vs site/make_download.js',
+  'same zip name: ' + navName,
+  navName === buildName && navName.indexOf('null') < 0
+    ? 'the offered name is the name that was built'
+    : null);
+
+// RD_RELEASE is the one source of truth for all of it, and it is hand-edited.
+check('DOWNLOAD', 'site/release.js', 'RD_RELEASE is an Alpha X.Y.Z string',
+  /RD_RELEASE\s*=\s*"Alpha \d+\.\d+\.\d+"/.test(
+    fs.readFileSync(path.join(ROOT, 'site', 'release.js'), 'utf8'))
+    ? 'names the product AND the version, which is what the file is called' : null);
+
 // ---------------------------------------------------------------- report
 var byRule = {};
 findings.forEach(function (f) { (byRule[f.rule] = byRule[f.rule] || []).push(f); });
@@ -203,7 +269,7 @@ findings.forEach(function (f) { (byRule[f.rule] = byRule[f.rule] || []).push(f);
 // of this loop skipped any empty rule, which meant the gate's HEADLINE assertion printed
 // NOTHING on a green run. A check you cannot see is a check nobody believes ran, so LOADS
 // always reports, with the scan coverage standing in for the (correctly empty) finding list.
-['TAGS', 'LOADS', 'CSS', 'BUNDLE', 'DIST'].forEach(function (r) {
+['TAGS', 'LOADS', 'CSS', 'BUNDLE', 'DIST', 'DOWNLOAD'].forEach(function (r) {
   var all = byRule[r] || [], bad = all.filter(function (f) { return !f.why; });
   if (!all.length && r !== 'LOADS') return;
   console.log('\n' + B + (bad.length ? R + 'FAIL' : G + 'PASS') + X + '  ' + B + r + X +

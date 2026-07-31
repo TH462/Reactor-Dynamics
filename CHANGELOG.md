@@ -35,6 +35,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   pacing, are now declared in **12 §14.1**.
 
 ### Fixed
+- **The offline download arrives with a NAME on it** (#275, closing it). The Download page's
+  button saved the file as **`latest.zip`** — no product, no *Alpha*, no version, and
+  indistinguishable from the copy you pulled three releases ago once it is sitting in a
+  downloads folder. It now saves as **`Reactor_Dynamics_Alpha_1.11.0.zip`**, which is the
+  same name `site/make_download.js` gives the versioned copy it writes at every deploy.
+  Measured in headless Edge from `file://`: `download="Reactor_Dynamics_Alpha_1.11.0.zip"`.
+
+  The `href` deliberately still points at the stable `download/latest.zip`, so **no
+  per-release edit was added** — the saved name is stamped from `site/release.js` (the one
+  hand-edited version string) by `site/nav.js`, which already does exactly this for the
+  footer's build stamp. With JS off the bare `download` attribute in the markup still saves,
+  as `latest.zip`, i.e. today's behaviour: the failure mode is *no worse than before*, not
+  *a wrong version number*. The zip's **contents** were always named correctly
+  (`Reactor_Dynamics_Alpha_1.11.0.html`); only the wrapper was anonymous.
+
+  **`test/run_portable.js` gained a DOWNLOAD section (116 → 123 checks)** because every part
+  of this fails silently — drop the `release.js` tag, rename the anchor, or change the
+  filename prefix in one of the two places that spell it, and the button still works, still
+  downloads, and quietly hands out the wrong name. It pins the id, the stable href, the no-JS
+  fallback, the script *order* (nav.js reads `RD_RELEASE` at `DOMContentLoaded`), the stamp
+  itself, that `nav.js` and `make_download.js` build the identical name, and that
+  `RD_RELEASE` is a full `Alpha X.Y.Z`. All seven were proven to go **red by injection**
+  before being counted green.
+
 - **The heatup procedure re-aligns the accumulators** (#276) — `04` PWR-N03 step 4. The cold
   lineup ships with them isolated and **nothing opens them automatically**: re-alignment is
   procedural by design *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to
