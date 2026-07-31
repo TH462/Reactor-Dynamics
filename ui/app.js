@@ -3050,6 +3050,40 @@
     $('feedbackOverlay').addEventListener('click', function (e) { if (e.target === $('feedbackOverlay')) $('feedbackOverlay').hidden = true; });
     $('fbCopy').addEventListener('click', copyFeedbackEmail);
     $('fbDiag').addEventListener('click', function () { exportDiag(); });
+    // About docs (#259) — Settings → Disclaimer / License / Changelog. Content is
+    // packed into RD.SITE_DOCS so the portable single-file build has them offline.
+    (function initSiteDocs() {
+      function openSiteDoc(id) {
+        var docs = (RD && RD.SITE_DOCS) || {};
+        var d = docs[id];
+        if (!d) return;
+        $('docTitle').textContent = d.title || id;
+        $('docBody').innerHTML = d.html || '';
+        $('docBody').scrollTop = 0;
+        $('docOverlay').hidden = false;
+      }
+      function closeSiteDoc() { $('docOverlay').hidden = true; }
+      var settingsPane = document.querySelector('[data-pane="settings"]');
+      if (settingsPane) {
+        settingsPane.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-site-doc]');
+          if (!b) return;
+          openSiteDoc(b.getAttribute('data-site-doc'));
+        });
+      }
+      if ($('docClose')) $('docClose').addEventListener('click', closeSiteDoc);
+      if ($('docOverlay')) {
+        $('docOverlay').addEventListener('click', function (e) {
+          if (e.target === $('docOverlay')) closeSiteDoc();
+        });
+      }
+      // Logo version chip — same changelog the Settings button opens.
+      if ($('logoVer')) {
+        $('logoVer').style.cursor = 'pointer';
+        $('logoVer').title = 'Release version — open the changelog';
+        $('logoVer').addEventListener('click', function () { openSiteDoc('changelog'); });
+      }
+    })();
     // Instructor idle links (Help / Tour) — delegated so re-rendered HTML works.
     $('instructorCard').addEventListener('click', function (e) {
       if (e.target.closest('[data-open-help]')) { e.preventDefault(); $('helpOverlay').hidden = false; return; }
@@ -3133,6 +3167,7 @@
         if (tourOn) closeTour();
         if (!$('featureOverlay').hidden) closeFeaturePanel();
         if (!$('feedbackOverlay').hidden) $('feedbackOverlay').hidden = true;
+        if ($('docOverlay') && !$('docOverlay').hidden) $('docOverlay').hidden = true;
         if (ui.rewindPick) toggleRewindPick(false);
         return;
       }

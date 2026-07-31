@@ -193,6 +193,16 @@
             <div class="g-section-title" style="margin-top:12px">Simulation</div>
             <div class="set-row" data-scanner-hint="Fast-forward dropout — On drops the clock back to real time when something needs you: a scram, a new failure, or the first alarm on a quiet board. Later alarms in a casualty do not stop it. Off keeps fast-forward running through everything."
               data-scanner-detail="Only the FIRST alarm on an otherwise quiet board drops the clock — once a casualty is under way, the following alarms would drop you out every few seconds and the option would be useless. Off is the right setting when you are deliberately fast-forwarding through a long transient such as a xenon burn-off."><span class="k">Fast-forward dropout</span><div class="seg" id="attnSeg"><button class="on" data-attn="on">On</button><button data-attn="off">Off</button></div></div>
+            <div class="g-section-title" style="margin-top:12px">About</div>
+            <div class="set-row" data-scanner-hint="About — the alpha disclaimer, the software licence, and what changed in each release. Works offline in the portable build too."
+              data-scanner-detail="These open in-app popups packed from the site pages (legal.html, changelog.html). A single-file download has no sibling site pages, so the text ships inside the control room (#259).">
+              <span class="k">About</span>
+              <span class="set-about-btns">
+                <button class="btn" type="button" data-site-doc="disclaimer">Disclaimer</button>
+                <button class="btn" type="button" data-site-doc="license">License</button>
+                <button class="btn" type="button" data-site-doc="changelog">Changelog</button>
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -322,6 +332,19 @@
             <button class="btn" type="button" id="tourSkip">Skip</button>
             <button class="btn" type="button" id="tourNext">Next →</button>
           </div>
+        </div>
+      </div>
+
+      <!-- About docs (#259) — Disclaimer / License / Changelog. Content is packed
+           into RD.SITE_DOCS by tools/pack_site_docs.js so a portable single-file
+           build still has them offline (the site pages are not in the bundle). -->
+      <div class="mission-overlay" id="docOverlay" hidden>
+        <div class="mission-modal doc-modal">
+          <div class="mission-head">
+            <div class="mission-title" id="docTitle">About</div>
+            <button class="btn" id="docClose" aria-label="Close">✕ Close</button>
+          </div>
+          <div class="doc-body" id="docBody"></div>
         </div>
       </div>
 
@@ -480,6 +503,7 @@
   <script src="diagram/board/pwr_board_inspect.js"></script>
   <script src="diagram/board/pwr_board_wiring.js"></script>
   <script src="diagram/board/pwr_board.js"></script>
+  <script src="site_docs.js"></script>  <!-- packed disclaimer / license / changelog (#259) -->
   <script src="app.js"></script>
 </body>
 </html>

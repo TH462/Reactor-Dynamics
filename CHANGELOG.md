@@ -14,6 +14,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Settings → About: Disclaimer, License, and Changelog popups** (#259). The portable
+  single-file build is only the control room, so a recipient offline had no route to the
+  alpha disclaimer, the licence, or the player-facing changelog. Those three open as
+  in-app modals; content is packed from `legal.html` / `changelog.html` by
+  `node tools/pack_site_docs.js` into `ui/site_docs.js` (same pattern as the manuals).
+  The logo version chip also opens the changelog.
+
 - **The board now tells you to isolate the accumulators — SI ACCUM ALIGNED < 1000 PSI**
   (#273, closing it). A caution annunciator on panel B at **1000 psi (6.895 MPa)**, and the
   first alarm in the plant **gated on a lineup as well as a reading**: it also requires the

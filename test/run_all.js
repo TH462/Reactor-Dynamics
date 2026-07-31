@@ -239,7 +239,10 @@ var BASELINES = {
   // was ignored while the buildCommand shelled out to tools/make_portable.js -- and no
   // local build could catch it, because locally nothing is ignored. Injection-verified:
   // re-excluding `tools` reddens it.
-  'run_portable.js':       { code: 0, score: '116checks 0failed' },
+  // 116 -> 117: #259 packs legal.html + changelog.html into ui/site_docs.js (one more
+  // <script src> on the shell), so Settings can open Disclaimer / License / Changelog
+  // offline in the portable build.
+  'run_portable.js':       { code: 0, score: '117checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
