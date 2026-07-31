@@ -144,7 +144,16 @@ var BASELINES = {
   // number, by design -- HR11 counts dated owner quotes wherever they are tracked.
   // 28 -> 29: Manuals/00's Rev 14 row quotes the 2026-07-30 ruling with its date, and the
   // HR11 half of this gate counts dated owner quotes wherever they are tracked.
-  'run_hardrules.js':      { code: 0, score: '29checks 0failed' },
+  // 29 -> 30 (2026-07-30, #262): the TUNING_LOG entry for the small-leak alarm pair quotes the
+  // "Add the alarm as you suggest" ruling. WRITING UP a change moves this score, not just making
+  // it — re-run this gate after the docs, which is why the code-only run came back at baseline.
+  // 29 -> 32 (2026-07-30, #249): three more sites carrying "249 - fit it." — CLAUDE.md,
+  // BUILD_DECISIONS.md, TUNING_LOG.md.
+  // 33 MEASURED ON THE MERGED TREE (2026-07-30), not 30 and not 32: `develop` and `workbench`
+  // BOTH moved this number from 29, and the merge carries both sides' quotes. Taking either
+  // side's figure would have shipped a drift. This is the second time this exact trap has been
+  // recorded here — see the "22 is MEASURED on the merged tree" note above.
+  'run_hardrules.js':      { code: 0, score: '39checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -256,10 +265,30 @@ var BASELINES = {
   // 21 -> 23 (#263 item 3): HFP boron has NO measured anchor of its own, so what is
   // gated is its DERIVATION from the HZP anchor plus the power defect and xenon, and
   // the declared departure from the real 750 ppm comparable being xenon-dominated.
-  'run_reactivity.js':     { code: 0, score: '23checks 0failed' },
+  // 23 → 27 (2026-07-30, #263 item 2): the four inputs `pwr_startup`'s 26-step creep is
+  // DERIVED from — startup-IC boron, the critical position, differential bank worth through
+  // the band, and the excess the creep leaves. Injection-verified: a 3.2 % rod-worth retune
+  // reddens all four. Before this the 26 was a swept number with nothing holding its inputs.
+  'run_reactivity.js':     { code: 0, score: '27checks 0failed' },
+  // NEW 2026-07-30 (#249/#273) — "can the plant reach its own setpoints?" Part A is static
+  // and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their
+  // instrument's declared range, because `crossed()` is strict and a setpoint on the edge
+  // can never fire (the C1 lesson, finally a gate). Part B is dynamic and deliberately
+  // small: it DRIVES the plant and watches the indicated channel cross, which is the only
+  // way to catch a clamp — pzr_level's range is [0,100] and its trip is 97, so Part A was
+  // perfectly happy while the level physically could not exceed 88.00 %. That is what let
+  // `pwr_mode3_to_mode5`'s "arrived UNscrammed" pass for months over a full accumulator
+  // dump. Injection-verified: B1 goes red (peak 89.01 %) on the pre-#249
+  // `level_per_mass_surplus` of 300. ADD A CASE HERE whenever you write an assertion that
+  // a trip did NOT fire — that claim is worth exactly what the gauge can reach.
+  // 55 → 57 on the develop+workbench merge (2026-07-30): #262's two `pzr_level_dev` alarm
+  // thresholds were picked up by Part A automatically, without anyone adding a case. That is
+  // the design — a new setpoint gets range-checked for free, and the count moving is the
+  // nudge to notice it. 50 → 52 thresholds audited.
+  'run_reachability.js':   { code: 0, score: '58checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
-  'run_m4.js':             { code: 0, score: '25/25 135passed' },
+  'run_m4.js':             { code: 0, score: '26/26 147passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   'run_m5.js':             { code: 0, score: '19/19 79passed' },
@@ -274,7 +303,10 @@ var BASELINES = {
   'run_m7.js':             { code: 0, score: null },   // prints "M7 OK", no tally
 
   // ---- control, campaign, procedures ----
-  'run_autoctl.js':        { code: 0, score: '20/20' },
+  // 20 → 21 on 2026-07-31 (#214): a stand-down note is the only account of why a channel
+  // switched itself off, and it is now on screen, so its LIFETIME is gated — it must be
+  // retired when its cause clears, without re-engaging the channel.
+  'run_autoctl.js':        { code: 0, score: '21/21' },
   // Back to 51/51 2026-07-26 (#218): pwr_msiv re-authored for P-9. The mission had been
   // a RACE — reopen before an automatic low-SG trip — and with the scram now landing at
   // closure that race is gone; worse, the decision beat's `scram` branch fired instantly
@@ -291,7 +323,15 @@ var BASELINES = {
   // trip did NOT actuate and a backup caught the event. Asserting only "something
   // scrammed" cannot tell "the assigned protection worked" from "a backstop caught a
   // consequence", which is the entire lesson after the stuck-channel rewrite.
-  'run_campaign.js':       { code: 0, score: '51/51 3026passed' },
+  // 3026 → 3038 (2026-07-30, #273): the Mode 3 → Mode 5 cooldown gained an
+  // accumulator-isolation beat (+9 structural checks from the campaign validator) and
+  // THREE endpoint assertions. The cooldown had been dumping all four accumulators —
+  // measured endpoint accum_vol 0.0 %, boron 2310 ppm against a 2500 ppm SIT charge,
+  // inventory pegged at the mass clip — and the suite's "arrived UNscrammed" check did
+  // not catch it, because indicated pzr level could not reach its 97 % trip (#249). The
+  // new checks assert the ENDPOINT STATE rather than the absence of a trip; all three
+  // go red with the isolation removed.
+  'run_campaign.js':       { code: 0, score: '51/51 3038passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they

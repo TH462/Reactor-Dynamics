@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLX-100** (Single-Loop eXperimental, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 14  
+**Revision:** 19  
 
 ---
 
@@ -638,10 +638,18 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 |---|---|---|
 | **Structural** — fixed physical constants and real-plant setpoints | High | β and Λ, six-group delayed data, fuel damage/melt thresholds, PORV and safety setpoints, the 600 psi (4.14 MPa) accumulator arming pressure, the 400 psi (2.76 MPa) RHR interlock |
 | **Calibrated** — arbitrated by the physics acceptance suites | Directionally right, magnitude roughly right | Heat-transfer coefficients, decay-heat constants, level coefficients, dump and AFW capacities |
-| **Compressed** — deliberately faster than reality for training | Right in behaviour, wrong in duration | Boron adjust rate, grab-sample turnaround, cold-plant pressurisation slew, mode-transition pacing |
+| **Compressed** — deliberately faster than reality for training | Right in behaviour, wrong in duration | Boron adjust rate, grab-sample turnaround, cold-plant pressurisation slew, mode-transition pacing, **ECCS injection pacing** and **cooldown depressurisation rate** — see §14.1 |
 | **Indicative** — display flavour derived from normalised internals | Illustrative | The gpm conversions (24 000 gpm RCS flow, 60 gpm charging, 30 gpm letdown, 100 gpm AFW) |
 
 > **NOTE.** The plant's absolute ratings — ≈ 300 MWt, ≈ 100 MWe, one loop, one SG, one RCP — are a **design choice**, not a measurement of any real unit. The SLX-100 is its own plant.
+
+### 14.1 Two Compressed rates worth knowing by name
+
+Both were previously undeclared, which made them read as fidelity rather than as choices.
+
+**ECCS injection pacing is 22–440× real.** Emergency injection refills the reactor coolant system far faster than any real high-pressure charging or safety-injection train could. The rate is a single normalised inventory gain, not a pump curve against system head, so it does not slow as the system refills the way a real train does. **What this means for you:** the *sequence* is right — injection starts on its actuation setpoint, it borates the coolant, it recovers level and subcooling — but **any time-to-recover number from an injection transient is not a plant number.** Do not read "level recovered in two minutes" as anything but "level recovered". The behaviour to learn from is the TMI one: what injection does to indicated pressurizer level, and why that indication can mislead you into throttling it.
+
+**Cooldown depressurisation is compressed too, and it narrows one cue.** A real plant takes a good part of an hour to walk from 1000 psi (6.895 MPa) to the accumulators' 600 psi (4.14 MPa) cover gas. Driven briskly here, that band is crossed in about **1 minute of plant time** — measured full-stack. That is the entire window between the **SI ACCUM ALIGNED** annunciator (**06 PWR-A32**) coming in and the first accumulator discharge. At 30× time acceleration it is a couple of seconds of wall clock. **What this means for you:** isolate the accumulators on schedule at 1000 psi as the procedure says (**PWR-N15** step 3, **05** Phase C step C3) rather than waiting for the annunciator to prompt you, and slow the acceleration through that band. The cue is a backstop, not a timer you can run against.
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Document:** PWR-ARP-01  
 **Title:** Annunciator Response — PWR  
-**Revision:** 14  
+**Revision:** 19  
 
 ---
 
@@ -96,6 +96,9 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A27 | RCP CAVITATION | warning | B |
 | PWR-A28 | LOAD IMBAL | caution | B |
 | PWR-A29 | LO TAVG (P-12) | warning | A |
+| PWR-A30 | CHG FLOW HI | caution | A |
+| PWR-A31 | PZR LVL DEV LO | caution | A |
+| PWR-A32 | SI ACCUM ALIGNED &lt; 1000 PSI | caution | B |
 
 ---
 
@@ -404,6 +407,51 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Deliberately not a trip** | A PWR does not scram on low Tavg. The real cold-side protections are this permissive and low-temperature overpressure protection — neither is a reactor trip. |
 | **Actions** | 1) Find the steam path that is taking too much heat: steam dump position, PORV / SG safeties, turbine load against reactor power (**A28**). 2) Isolate or close it. 3) Watch power — Tavg falling with power *rising* is the overcool feeding itself. 4) Cross-check pressure and subcooling; a cooling primary shrinks and drops pressurizer level. |
 | **In Mode 4 or 5** | **Expected.** A cooldown is meant to take Tavg here, so the annunciator reclassifies to **Status** and reads *"expected, plant is cold"* (§2.0). |
+
+---
+
+## PWR-A30 — Charging Flow High (CHG FLOW HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Charging flow ≥ **60 % of maximum** |
+| **Means** | The chemical and volume control system is making up more than it normally does. Charging is a **level controller**: it only works this hard because pressurizer level is being pulled down. Something is taking inventory out of the reactor coolant system. |
+| **Why this alarm exists** | A leak small enough for charging to keep up is **held indefinitely** and moves level only a per cent or two — far above the **PZR LVL LO** alarm at 25 %, which never comes in. Without this annunciator the plant would lose inventory silently with make-up near its limit. This is the one that tells you to look. |
+| **Automatic actions** | None. Charging is already responding; that response *is* the indication. |
+| **Immediate operator actions** | 1) Confirm level is at or below its program (**A31** if the deviation is large). 2) Check letdown is not isolated or throttled — the same alarm comes in if charging is making up for letdown that was shut. 3) Look for the leak: containment sump and humidity, pressurizer relief tank pressure and temperature (a weeping PORV or safety), steam generator activity (**PWR-E05**, tube leak). 4) Log the charging demand and trend it — a rising demand at steady load means a growing leak. |
+| **If not expected** | Treat as unidentified reactor coolant leakage. If charging reaches its maximum and level still falls, make-up has lost the leak — see **A31** and **PWR-E04**. |
+| **Watch for** | Deliberate level changes. Raising the level setpoint, or drawing a pressurizer bubble, sends charging high for a legitimate reason. Check what was asked for before hunting a leak. |
+
+---
+
+## PWR-A31 — Pressurizer Level Below Program (PZR LVL DEV LO)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Indicated level ≥ **10 %** below its programmed value |
+| **Means** | **Make-up is no longer holding.** Level is programmed against Tavg, so it is *supposed* to move on a load change — this alarm measures the gap between where level is and where the program says it should be, which only opens when mass is actually leaving the system faster than charging replaces it. |
+| **Why a deviation and not a low level** | Level legitimately swings more than eight percentage points across a normal load change, so any absolute setpoint tight enough to catch a leak early would come in every time load moved. The deviation does not move on load at all. It also beats **PZR LVL LO** to the condition: this alarm comes in while absolute level is still around 28 %. |
+| **Automatic actions** | None at this alarm. Charging is already at or near maximum. |
+| **Immediate operator actions** | 1) Verify charging at maximum and letdown isolated — recover any make-up capacity that is being wasted. 2) Confirm subcooling margin and pressure; falling level with falling pressure is a leak, falling level with rising pressure is not. 3) Enter **PWR-E04** (loss of reactor coolant). 4) Prepare for safety injection if level continues down toward **PZR LVL LO LO** at 12 %. |
+| **Companion alarm** | **A30** normally comes in first and stays in. **A30 alone** = a leak inside make-up authority, held. **A30 with A31** = make-up has lost it. That pair is the diagnosis. |
+| **If A31 comes in without A30** | Charging is *not* working hard, so this is probably not a leak — suspect the level or Tavg instrument, or charging isolated. Cross-check level against the wide-range indication and Tavg against the loop temperatures. |
+
+---
+
+## PWR-A32 — Accumulators Still Lined Up (SI ACCUM ALIGNED &lt; 1000 PSI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Primary pressure below **1000 psi (6.895 MPa)** **and** the accumulator discharge isolation valve still **open** |
+| **Means** | The safety-injection accumulators are aligned to the reactor coolant system and pressure has entered the band where they should be isolated. They are **passive**: nitrogen behind a check valve. Nothing automatic shuts them, and the safety-injection block set entering a cooldown blocks **pumps**, not these tanks. |
+| **Why gated on the valve** | Pressure alone is not the condition. A Mode 5 plant is below this setpoint all day with the tanks correctly isolated, and an alarm on pressure alone would stand in permanently and be normalized. This one clears the moment you isolate — and never comes in at all if you isolate on schedule. |
+| **Automatic actions** | **None, deliberately.** There is no autoclose interlock. Real plants power these valves *open* and remove control power to prevent inadvertent closure; the closure is the operator's, made off this indication. An automatic closure keyed on falling pressure would also shut them during a **LOCA**, which is precisely when they must inject. |
+| **Immediate operator actions** | **On a planned cooldown:** isolate the accumulators — shut the discharge isolation valve on the ECCS side of the board. Confirm SIT fill and cover-gas pressure hold steady afterwards. See **PWR-N15** step 3 and **05** Phase C step C3. |
+| **On a LOCA or unplanned depressurization** | **Do not isolate.** The same annunciator here means passive injection is about to start, which is the design intent. The tile states a lineup, not an order — deciding which situation you are in is the point of it. |
+| **If it stays in after you isolate** | The valve did not shut. Check its position indication; the alarm reads valve position, not the command. |
+| **If you see it with the tanks already empty** | It came in about **1 minute of plant time** before the first discharge on a brisk cooldown, and it stays lit afterwards. Lit tile plus SIT fill at 0 % is the post-mortem: this is why the tanks emptied and why RCS boron rose toward the 2500 ppm accumulator charge. |
+| **Watch for** | **Time acceleration.** That ~1 plant-minute of warning is a couple of seconds of wall clock at 30×. Cooldown rates in this trainer are compressed (see **12** §14) — slow down through the band rather than relying on reaction time. |
+| **What this tile does NOT cover** | **The heatup.** There is no annunciator for accumulators left *isolated* on the way up, and no automatic open signal — re-alignment is procedural by design *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto opening them.")*. This tile is silent in that case, because shut tanks are the condition it clears on. **PWR-N03** step 4 is the only thing that catches it; run it. |
 
 ---
 

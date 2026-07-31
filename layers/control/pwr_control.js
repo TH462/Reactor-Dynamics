@@ -307,6 +307,43 @@
     { id: 'pzr_level_low',     instrument: 'pzr_level',        direction: 'low',     setpoint: 25.0,  priority: 'warning',  panel: 'A', label_learning: 'Pressurizer Level Low',           label_industry: 'PZR LVL LO' },
     { id: 'pzr_level_lolo',    instrument: 'pzr_level',        direction: 'low',     setpoint: 12.0,  priority: 'critical', panel: 'A', label_learning: 'Pressurizer Level Very Low',      label_industry: 'PZR LVL LO LO' },
     { id: 'rod_limit',         instrument: 'rod_at_limit',     direction: 'is_true', setpoint: null,  priority: 'warning',  panel: 'A', label_learning: 'Control Rods — Insertion Limit',  label_industry: 'ROD INS LIMIT' },
+    // ---- the small-leak cue pair (#262, owner ruling 2026-07-30) ----------------------
+    // A leak inside CVCS make-up authority is HELD, and that is the problem: the plant
+    // quietly loses inventory with charging near maximum and, before these two, nothing
+    // annunciated. MEASURED full-stack across the whole holdable band, level parks between
+    // 52.0 % and 54.1 % — the nearest existing alarm, `pzr_level_low`, is at 25 %, so it is
+    // 27 to 29 points away and never fires. The exercise ("level drifting, charging has come
+    // up to meet it, find your leak") had no cue at all.
+    //
+    // THE TWO DO DIFFERENT JOBS, and which does which was settled by measurement AGAINST the
+    // recommendation that proposed them. The first cut set the deviation alarm at −2 % as the
+    // small-leak cue. Measured full-stack, that is wrong: **a controller doing its job erases
+    // the signal you wanted to alarm on.** With CVCS in AUTO holding level, the deviation
+    // across the whole holdable band reaches only −1.77 %, against a −1.79 % settling excursion
+    // with NO leak at all. Signal-to-noise ≈ 1:1. It is not a small-leak cue and cannot be made
+    // into one by tightening, because tightening fires on the settle.
+    //
+    //   CHARGING FLOW is the small-leak cue — the sensitive channel by an order of magnitude.
+    //   Measured at 30 min: 0.0383 / 0.0460 / 0.0585 across severities 0.0002 / 0.0004 / 0.0007,
+    //   against 0.0297 steady and a 0.0323 maximum through a 100 → 90 MWe load change. 0.036
+    //   (60 % of the 0.06 maximum) clears the load-change peak by 11 % and catches EVERY
+    //   holdable leak including the smallest.
+    //
+    //   LEVEL DEVIATION says MAKE-UP IS NO LONGER HOLDING. It is useless while CVCS keeps up and
+    //   unambiguous the moment it does not, because the gap either side is a factor of six:
+    //       held, worst transient (sev 0.0007)   −4.42 %
+    //       first unheld case  (sev 0.001)      −26.67 %
+    //   −10.0 % sits in the middle of that gap — 2.3x clear of the worst held excursion, 2.7x
+    //   below the first unheld one. It also beats `pzr_level_low` to it: at sev 0.001 the
+    //   deviation is −26.7 while absolute level is still 28.0 %, above the 25 % alarm. And
+    //   unlike an absolute setpoint it is load-independent: over 100 → 90 MWe indicated level
+    //   moved 55.00 → 63.26 % while the program moved +8.25, leaving the deviation at 0.01.
+    //
+    // Together they are a diagnosis and not just a cue: charging high ALONE is a leak inside
+    // make-up authority; both together mean make-up has lost it. Both `caution` — find-it-and-
+    // fix-it conditions, not casualties. [tune]
+    { id: 'pzr_level_dev_low', instrument: 'pzr_level_dev',    direction: 'low',     setpoint: -10.0, priority: 'caution',  panel: 'A', label_learning: 'Pressurizer Level Below Program — make-up is not holding', label_industry: 'PZR LVL DEV LO' },
+    { id: 'charging_high',     instrument: 'charging_flow',    direction: 'high',    setpoint: 0.036, priority: 'caution',  panel: 'A', label_learning: 'Charging Flow High — make-up is working hard',            label_industry: 'CHG FLOW HI' },
   ];
   var PWR_ALARMS_B = [
     { id: 'sg_level_hihi',  instrument: 'sg_level',         direction: 'high',     setpoint: 88.0, priority: 'critical', panel: 'B', label_learning: 'Steam Generator Level High-High (P-14)', label_industry: 'SG LVL HI HI' },
@@ -323,6 +360,44 @@
       reclassify: [{ condition: 'rcp_secured', priority: 'status', label_learning: 'Reactor Coolant Pumps Secured', label_industry: 'RCP SECURED' }] },
     { id: 'rcp_cavitation', instrument: 'rcp_cavitating',   direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Reactor Coolant Pump Cavitation', label_industry: 'RCP CAVITATION' },
     { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
+    // SI ACCUMULATORS STILL ALIGNED BELOW 1000 psi (6.895 MPa) — the cooldown cue (#273).
+    //
+    // Why it exists. A by-the-book cooldown used to walk straight through the tanks'
+    // 600 psi (4.14 MPa) cover gas with the discharge valve open and dump all four into
+    // the RCS — measured endpoint accum_vol 0.0 %, boron 2310 ppm against a 2500 ppm
+    // charge, the plant arriving at Mode 5 water-solid. The board could show it (SIT fill
+    // and N2 pressure are both wired) but nothing SAID it, so the mission beat was the
+    // only thing that ever caught it and free play repeated the dump every time.
+    //
+    // Why it is an annunciator and NOT an interlock. Every automatic signal a real plant
+    // puts on this valve is an OPEN signal, and the hazard the design guards is spurious
+    // CLOSURE: "Each isolation valve is interlocked to remain open above a specified RCS
+    // pressure value" and "control power is removed from the valves to prevent inadvertent
+    // closure" (U.S. EPR FSAR Tier 2 §7.6.1.2.2, ML091671514); "Verification that power is
+    // removed from each accumulator isolation valve operator when the RCS pressure is
+    // >= [2000] psig ensures that an active failure could not result in the undetected
+    // closure" (NUREG-1431 Rev 4.0 Bases B 3.5.1 SR 3.5.1.5, ML12100A228). The closure
+    // itself stays the OPERATOR's, off this indication — B 3.3.3 names that decision
+    // exactly: RCS pressure is used "to determine whether to close accumulator isolation
+    // valves during a controlled cooldown/depressurization". An autoclose would also be
+    // unsafe here rather than merely unprototypical: discharge is gated on
+    // `aligned && p_coldleg < 4.14 MPa` (pwr_primary.stepAccumulators), so any
+    // pressure-keyed autoclose must fire at or above the cover gas to beat it — the same
+    // condition every modelled LOCA satisfies.
+    //
+    // Setpoint: 1000 psi (6.895 MPa), where LCO 3.5.1 stops requiring the accumulators
+    // OPERABLE ("MODE 3 with RCS pressure > [1000] psig") and LTOP SR 3.4.12.3 starts
+    // requiring them isolated. 400 psi (2.76 MPa) of margin above the cover gas.
+    //
+    // GATED ON THE LINEUP, not on pressure alone — `accum_valve_open`. Isolate and it
+    // clears; a Mode 5 plant that is already isolated never sees it, which is why it
+    // needs no mode reclassify rule. It DOES stand in during a LOCA, and that is correct
+    // and deliberate: there the same fact means "passive injection is about to start".
+    // The label is therefore stated as a lineup, not as an order — the operator decides
+    // which of the two situations they are in, which is the whole point of the cue.
+    { id: 'accum_aligned',  instrument: 'primary_pressure', direction: 'low',      setpoint: 6.895, priority: 'caution',  panel: 'B',
+      condition: 'accum_valve_open',
+      label_learning: 'Accumulators Still Lined Up — RCS Below Their Isolation Pressure', label_industry: 'SI ACCUM ALIGNED < 1000 PSI' },
     { id: 'sbo',            instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
     // Turbine trip / low steam demand. Reclassified in Modes 4/5 ONLY: below the
     // hot band the machine is secured by design and RHR is the heat sink, so zero
@@ -373,6 +448,51 @@
                                    // = 0.03 normalized ≈ ½ HPI's high-head rated flow. The label
                                    // reads an honest 0–100 % of full rupture.
                                    severity_meta: { label: 'Rupture Severity', unit: '% of full rupture', min: 0, max: 100, default: 40 }, display: 'Steam Generator Tube Rupture' },
+    // RCP SEAL LEAK — the everyday leak, and the only one CVCS can hold (#262).
+    //
+    // WHY IT EXISTS. Until this entry the catalog had exactly two `primary_leak` failures and
+    // BOTH are casualties: `sgtr` (a tube rupture, which teaches the SGTR EOP) and `large_loca`
+    // (a cold-leg break, correctly far beyond make-up). There was no containment-side
+    // "identified leakage" case at all — the bread-and-butter CVCS lesson the charging system
+    // exists for. Worse, it was UNREACHABLE rather than merely missing: the severity slider is
+    // `<input type="range" min="0" max="100">` with step 1, so the finest injectable
+    // `large_loca` is severity 0.01 = 5.0e-3 frac/s, about 7x beyond what charging can hold.
+    // You could not get there by turning the LOCA down; the control has no such position.
+    //
+    // THE RANGE IS THE WHOLE POINT: every position on this slider is HOLDABLE. leak_flow is
+    // `severity · (meta.max/100) · leak_scale`, so 0–100 maps onto 0 → 3.5e-4 inventory-frac/s.
+    //
+    // That ceiling is MEASURED, and it is half the figure #262 was filed with. The issue derived
+    // authority as `charging_max · cvcs_inventory_gain` = 7.2e-4, which assumes letdown is
+    // ISOLATED. In the normal lineup letdown sits at 0.03, so net make-up authority is
+    // `(0.06 − 0.03) · 0.012` = 3.6e-4. Measured full-stack at 30 min, leak injected at t=30 s:
+    //     3.5e-4  level 52.8 %, charging 0.0585 of 0.0600  — HELD, at the edge
+    //     5.0e-4  level 28.6 %, charging SATURATED          — not held
+    //     7.0e-4  level 18.7 %                              — not held; only stabilises once
+    //                                                          letdown isolates on low level
+    // Sizing this 0–7.2e-4 would therefore have left the top HALF of its own slider unholdable,
+    // which is the exact defect the issue was opened about.
+    //
+    // NOT ΔP-modulated (no `leak_to_sg`): this is a containment-side leak, so unlike an SGTR it
+    // does not stop when you depressurize to steam-generator pressure. You fix it by finding it.
+    //
+    // The slider unit is "% of make-up capacity" deliberately — self-referential, and no gpm.
+    // The repo's gpm are display flavour that do not reconcile with the mass balance, so quoting
+    // one here would invite exactly the real-Tech-Spec comparison #262 had to retract. What the
+    // player sees instead is the board's own charging gauge climbing to meet it.
+    //
+    // Cue: `charging_high` (PWR-A30) comes in from about severity 0.2 up; `pzr_level_dev_low`
+    // (PWR-A31) does NOT anywhere on the range, because make-up is holding — that is the lesson.
+    // Measured at 30 min: 0.25 → charging 0.0367, 0.50 → 0.0439, 0.75 → 0.0519, 1.00 → 0.0585,
+    // level 55.0 / 54.3 / 53.0 / 52.8. Every position is held.
+    //
+    // THE BOTTOM ~20 % IS DELIBERATELY BELOW THE ALARM. At severity 0.15 charging reaches only
+    // 0.0344 against the 0.036 setpoint — elevated on the gauge, not annunciated. That is a real
+    // condition (leakage below the alarm point, found by trending rather than by a horn) and not
+    // a gap to close: the load-change peak is 0.0323, so a setpoint low enough to catch 0.15
+    // would sit within 5 % of normal load manoeuvring and start crying wolf.
+    rcp_seal_leak:               { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 3.5e-4,
+                                   severity_meta: { label: 'Leak Rate', unit: '% of make-up capacity', min: 0, max: 100, default: 40 }, display: 'Reactor Coolant Pump Seal Leak' },
     rcp_trip:                    { type: 'physics_parameter', category: 'coolant', effect: 'stop_pump', display: 'RCP Trip' },
     loss_of_condenser_vacuum:    { type: 'physics_parameter', category: 'power', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },
     // degraded_hpi and afw_failure are PHYSICS-side (HR7): both are persistent

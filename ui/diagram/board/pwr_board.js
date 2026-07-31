@@ -1005,6 +1005,10 @@
     // What an item IS, for the inspection block. The driver owns the copy (it is
     // plant knowledge); the renderer only resolves elements to item ids.
     inspect: function (id) { var d = driver(); return (d && d.inspectItem) ? d.inspectItem(id) : null; },
+    // Live automation-channel status for an item (#214), or null. Unlike inspect(),
+    // this is a function of the SNAPSHOT, so the caller has to re-ask it per broadcast
+    // — a value resolved once on pointer-over would freeze the moment the pointer did.
+    liveNote: function (id, s) { var d = driver(); return (d && d.liveNote) ? d.liveNote(id, s) : null; },
     // The item id under a DOM node, or null. Tiles carry data-item, so a click
     // target anywhere inside a control resolves to the control it belongs to.
     itemIdFor: function (el) {

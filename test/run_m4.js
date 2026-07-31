@@ -684,6 +684,59 @@ T.push(test('#240 — an auto-acknowledged alarm hands the ACK back when it esca
      c.alarm('rcp_trip').state === 'active_acknowledged', 'active_acknowledged');
 }));
 
+// #273 — the accumulator-isolation cue, and the lineup gate that makes it usable.
+//
+// THIS IS THE BY-INJECTION PROOF. The interesting checks are 4 and 5: the alarm must go
+// ACTIVE on a cold plant whose discharge valve is still open, and CLEAR the moment it is
+// shut. Checks 2 and 3 are the other half — an alarm that also fires at power, or in the
+// shipped Mode 5 lineup where the tanks are correctly isolated, would be a nuisance tile
+// and would have been "green" against pressure alone. The whole point of `condition` is
+// that pressure alone is not the condition.
+T.push(test('#273 — SI ACCUM ALIGNED annunciates on the lineup, not on pressure alone', function (ck) {
+  var ins = function (s) { return s.engine.getInstruments(); };
+
+  // 1. the indication exists and tracks the valve (it is what the gate reads).
+  var v = new Stack('hot_zero_power', 7).run(2);
+  ck('accum_valve_open is an indication', 'accum_valve_open' in ins(v), 'accum_valve_open' in ins(v), 'present');
+  ck('…and reads ALIGNED by default', ins(v).accum_valve_open, ins(v).accum_valve_open === true, 'true');
+  v.cmd({ action: 'close_accumulator_valve' }); v.run(1);
+  ck('…follows the isolate command', ins(v).accum_valve_open, ins(v).accum_valve_open === false, 'false');
+  v.cmd({ action: 'open_accumulator_valve' }); v.run(1);
+  ck('…and the re-align command', ins(v).accum_valve_open, ins(v).accum_valve_open === true, 'true');
+
+  // 2. at power — aligned, but nowhere near the setpoint. Must be silent.
+  var h = new Stack('hot_full_power', 7).run(20);
+  ck('silent at power (aligned, 2235 psi)', h.alarm('accum_aligned').state,
+     h.alarm('accum_aligned').state === 'clear', 'clear');
+
+  // 3. the shipped Mode 5 lineup is ALREADY isolated — silent, with no mode rule needed.
+  var c = new Stack('cold_shutdown', 7).run(20);
+  ck('cold_shutdown ships isolated', ins(c).accum_valve_open, ins(c).accum_valve_open === false, 'false');
+  ck('…so the cue is silent in Mode 5', c.alarm('accum_aligned').state,
+     c.alarm('accum_aligned').state === 'clear', 'clear');
+
+  // 4. THE INJECTION. Same cold plant, valve left aligned — the #273 defect state.
+  var d = new Stack('cold_shutdown', 7).run(5);
+  d.cmd({ action: 'open_accumulator_valve' }); d.run(5);
+  var p = ins(d).primary_pressure;
+  ck('cold + ALIGNED annunciates', d.alarm('accum_aligned').state,
+     d.alarm('accum_aligned').state !== 'clear', 'not clear');
+  ck('…below the 1000 psi (6.895 MPa) setpoint', (p * 145.038).toFixed(0) + ' psi', p < 6.895, '< 1000 psi');
+  ck('…as a caution, not a status (it wants an ACK)', d.alarm('accum_aligned').priority,
+     d.alarm('accum_aligned').priority === 'caution', 'caution');
+
+  // 5. …and isolating is what clears it. This is the operator action the cue exists for.
+  d.cmd({ action: 'close_accumulator_valve' }); d.run(5);
+  ck('isolating clears the cue', d.alarm('accum_aligned').state,
+     d.alarm('accum_aligned').state === 'clear', 'clear');
+
+  // 6. the conditioned alarm must NOT have been paired as a lo_lo escalation of the
+  // pressurizer low-pressure tiles that share its instrument (control_kernel
+  // _buildAlarmModel). If it had been, it would silently require their condition too.
+  ck('not paired as an escalation of a pzr-pressure tile', String(d.layer._loSibling['accum_aligned']),
+     !d.layer._loSibling['accum_aligned'], 'undefined');
+}));
+
 // -------- report --------
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', RST = '\x1b[0m', BOLD = '\x1b[1m';
 var pass = 0, fail = 0;

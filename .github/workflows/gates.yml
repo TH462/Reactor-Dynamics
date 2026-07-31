@@ -1,28 +1,44 @@
 # The aggregate gate, run on every push and pull request.
 #
-# `node test/run_all.js --fast` runs 19 of the 21 runners and compares each against
-# the BASELINES map at the top of that file. Drift is symmetric — a runner scoring
-# BETTER than its baseline fails too, so a red turning green has to be acknowledged
-# rather than silently absorbed.
+# `node test/run_all.js` runs all 33 runners and compares each against the BASELINES
+# map at the top of that file. Drift is symmetric — a runner scoring BETTER than its
+# baseline fails too, so a red turning green has to be acknowledged rather than
+# silently absorbed.
 #
-# --fast skips the two Playwright gates (verify_e2e_ui, verify_manual_follow), which
-# need a browser download. Everything else is plain Node with no dependencies at all —
-# there is no package.json and nothing to install. Run those two locally before a
-# release merge; see CLAUDE.md, "Definition of done".
+# THERE IS STILL NO package.json, AND THERE MUST NOT BE ONE. Three runners
+# (verify_flags_ui, verify_e2e_ui, verify_manual_follow) `require('playwright')`,
+# which is why the first version of this workflow — `--fast`, no install — was red on
+# every single run from 2026-07-27 to 2026-07-31: --fast only skips the two gates
+# carrying `slow: true`, and verify_flags_ui is not one of them (it takes 8 s, so
+# calling it slow would be a lie). #191 was filed believing a browser in CI required
+# conceding a manifest. It does not: npm installs into a scratch --prefix outside the
+# checkout, and the result is copied to ./node_modules — which is gitignored, and is
+# exactly how the local trees are already arranged (playwright is vendored there, not
+# declared). The repo root stays manifest-free.
+#
+# Keep PW_VERSION equal to the version vendored in the local trees, or CI and the
+# owner's machine are running different browsers. Check with:
+#   node -e "console.log(require('./node_modules/playwright/package.json').version)"
 
 name: gates
 
 on:
   push:
-    branches: [main, develop]
+    # workbench/backshop are included so a lane is gated BEFORE it merges to develop,
+    # and so a change to this workflow can be proven on a lane instead of landing on
+    # develop untested — which is how the --fast version shipped broken.
+    branches: [main, develop, workbench, backshop]
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
 
+env:
+  PW_VERSION: 1.61.1
+
 jobs:
   aggregate-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
@@ -31,8 +47,37 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Aggregate gate (21 runners, Playwright pair skipped)
-        run: node test/run_all.js --fast
+      # Browser binaries are ~150 MB and version-pinned; restoring them turns a
+      # ~60 s download into a few seconds. A miss just downloads, so this is never
+      # load-bearing for correctness.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ env.PW_VERSION }}
+
+      - name: Vendor playwright into ./node_modules (no manifest in the repo)
+        run: |
+          # cd in a subshell, NOT `npm --prefix`: npm init honours --prefix
+          # inconsistently across versions, and the version that ignores it writes
+          # package.json into the repo root — the one outcome this must never have.
+          mkdir -p "$RUNNER_TEMP/pw"
+          ( cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null && \
+            npm install --no-audit --no-fund "playwright@$PW_VERSION" )
+          cp -r "$RUNNER_TEMP/pw/node_modules" ./node_modules
+          npx playwright install --with-deps chromium
+
+      # node_modules/ is gitignored, so the checkout must still be clean here. If it
+      # is not, the install leaked a manifest or a lockfile into the repo root and the
+      # "no package.json" property this project holds has quietly been given up.
+      - name: Assert the checkout is still manifest-free
+        run: |
+          test ! -f package.json || { echo "::error::a package.json appeared in the repo root"; exit 1; }
+          test ! -f package-lock.json || { echo "::error::a package-lock.json appeared in the repo root"; exit 1; }
+          git status --porcelain
+
+      - name: Aggregate gate (all 33 runners)
+        run: node test/run_all.js
 
       - name: Upload diagnostic reports
         if: always()

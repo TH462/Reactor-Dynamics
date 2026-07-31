@@ -428,10 +428,43 @@
                                    // → 55 % full power) [tune]
       level_per_mass: 100.0,       // % level per inventory-fraction DEFICIT below nominal (a deficit
                                    // draws down the whole loop) [tune]
-      level_per_mass_surplus: 300.0, // % level per inventory-fraction SURPLUS above nominal — steeper,
-                                   // because surplus packs into the pressurizer steam space, the only
-                                   // compressible volume: the "going solid" regime (TMI b9: HPI packing
-                                   // +0.16 mass must read > the 75 % high alarm) [tune]
+      // % level per inventory-fraction SURPLUS above nominal — steeper than the deficit
+      // branch, because surplus packs into the pressurizer steam space, the only
+      // compressible volume: the "going solid" regime.
+      //
+      // FITTED TO REAL GEOMETRY 2026-07-30 (#249, OWNER RULING 2026-07-30: "249 - fit it.").
+      // Was 300, which was never derived from anything. The physical surplus between
+      // full-power level and water-solid is the pressurizer STEAM SPACE as a fraction of
+      // RCS volume:
+      //     BVPS-2 UFSAR Table 5.1-1 (ML22144A118) — total RCS incl. pressurizer and
+      //       surge line = 9,650 ft³; Table 5.4-12 — pressurizer = 1,400 ft³
+      //     WTSM 3.2 Table 3.2-2 (ML11223A213) — full-power steam volume is 720 of
+      //       1,800 ft³, i.e. 40 % of the vessel
+      //     ⇒ 0.40 × 1,400 / 9,650 = 0.0580 of RCS volume. THAT IS THE WHOLE HEADROOM.
+      // This sim spans nominal (55 %) → solid (100 %) = 45 points of level, so
+      //     45 / 0.0580 = 776 %/frac.
+      // Assumes indicated level ≈ volumetric fraction — this sim's convention, not
+      // necessarily a real calibrated span. Stated because it is the one soft step.
+      //
+      // WHY IT HAD TO MOVE, not just "for fidelity". At 300 the going-solid coordinate
+      // was 0.15 wide, and `primary.mass_max` (1.2) clipped inventory BEFORE the
+      // pressurizer could read solid: with base(Tavg) at its 28 % floor — which every
+      // quench below 559.8 °F (293.2 °C) reaches — indicated level pinned at exactly
+      // 28 + 300×0.20 = 88.00 % and stayed there. Measured, HPI at HFP: inventory
+      // clipped at 120.00 %, level 88.00 %, forever. So THE PLANT COULD NOT GO SOLID ON
+      // INJECTION — the TMI lesson it is built around. Injection-verified: 776 reaches
+      // 100.0 % with mass_max untouched; raising mass_max instead "works" but reads
+      // 134.8 % inventory, and zeroing the floor makes it worse (peak 71.5 %).
+      // `mass_max` is no longer binding on this path (solid lands at Δm 0.058 hot,
+      // 0.093 floored) — it is now a far-away numerical guard, which is what it should
+      // always have been.
+      //
+      // NOT changed alongside it: `cvcs_charge_per_level`. An earlier draft proposed
+      // scaling it to hold the loop τ — that was wrong, because the documented τ (83 s)
+      // is the DEFICIT branch (level_per_mass 100) and scaling the gain would have
+      // slowed leak make-up to 215 s to fix a surplus-side number. The servo is simply
+      // faster on the surplus side now (27.8 → 10.7 s); measured, it does not hunt. [tune]
+      level_per_mass_surplus: 776.0,
       level_per_void: 150.0,       // % level per void-fraction — the TMI lift. Calibrated so the
                                    // story-clock void (~0.2 as HPI fires) lifts level past the 75 %
                                    // high alarm (the "going solid" call that throttles HPI), and deep
@@ -952,6 +985,21 @@
       rcs_flow:                { lag: 1.0, noise: 0, noise_failure: 0.5, range: [0, 120] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
+      // Pressurizer level DEVIATION from its program, % (#262). Derived from the INDICATED
+      // level and the INDICATED Tavg, so it inherits both channels' lag and any failure on
+      // them — the same construction as subcooling_margin, for the same HR1 reason.
+      //
+      // WHY A DEVIATION AND NOT A LOW-LEVEL SETPOINT. Level is programmed against Tavg, so
+      // it legitimately moves a long way on a load change. MEASURED over a 100 → 90 MWe
+      // ramp: indicated level went 55.00 → 63.26 % (+8.26) while the program went +8.25, so
+      // the deviation stayed at 0.01. It is therefore an INVENTORY signal by construction —
+      // the mass term is the only thing that can move it — and an absolute low-level alarm
+      // set tight enough to see a small leak would fire on every load change instead.
+      //
+      // Range ±40 covers the program floor clip at the bottom of a cooldown without pegging.
+      // Not in SOURCE, so it draws no PRNG number and the cross-step noise stream is
+      // unchanged (the appended-instrument rule).
+      pzr_level_dev:     { lag: 0,   noise: 0,     range: [-40, 40], derived: true },
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running',
                // RCPs stopped by an operator lineup decision, not by a trip/
@@ -974,6 +1022,10 @@
                'sg_imbalance_active',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
                'afw_active', 'afw_pump_running', 'afw_block_open', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
+               // SI accumulator discharge isolation valve position (#273) — what the
+               // `accum_aligned` annunciator is gated on. Position, not flow: by the time
+               // `accumulators_discharging` goes true the tanks are already emptying.
+               'accum_valve_open',
                'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating',
                // condensate pump run status (operator-controlled; gates main feedwater)
                'condensate_pump_running',

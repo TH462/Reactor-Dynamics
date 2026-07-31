@@ -2,7 +2,7 @@
 
 **Document:** PWR-EOP-01  
 **Title:** Failure Response — PWR Trainer  
-**Revision:** 14  
+**Revision:** 19  
 
 ---
 
@@ -39,12 +39,13 @@ Provide symptoms, automatic response, immediate operator actions, recovery, and 
 | PWR-E20 | Tavg Sensor Drifting | instrument |
 | PWR-E21 | Pressurizer Level Sensor Stuck | instrument |
 | PWR-E22 | Pressurizer Level Sensor Failed Low | instrument |
+| PWR-E23 | Reactor Coolant Pump Seal Leak | coolant |
 
 **Combined drills:** E07 + E08 = TMI indicator deception (see **PWR-X01**).
 
 ### 2.1 Failure severity sliders
 
-Most failures inject at a fixed severity; seven carry a slider (Tools → Failures). The slider
+Most failures inject at a fixed severity; eight carry a slider (Tools → Failures). The slider
 is the failure's physical size — the response procedures below apply at any setting.
 
 | Failure | Slider | Range | Default |
@@ -56,6 +57,7 @@ is the failure's physical size — the response procedures below apply at any se
 | Rod Stuck on Scram (E18) | Rod Worth Held | 0 – 40 % of total | 20 % |
 | Main Steam Line Break, downstream (E19) | Break Size | 0 – 100 % effective area | 30 % |
 | Main Steam Line Break, upstream (E19u) | Break Size | 0 – 100 % effective area | 30 % |
+| RCP Seal Leak (E23) | Leak Rate | 0 – 100 % of make-up capacity | 40 % |
 
 ---
 
@@ -670,6 +672,57 @@ One failed sensor removes the very protection sized for the error it causes.
 
 ### Acceptance
 No solid-pressurizer event; inventory managed on diverse indications.
+
+---
+
+## PWR-E23 — Reactor Coolant Pump Seal Leak
+
+### Failure
+`rcp_seal_leak` — a small containment-side primary leak; severity is the **leak rate as a
+percentage of make-up capacity** (default 40 %, max 100 %). Unlike every other leak in this
+chapter, **every setting of this slider is inside what charging can replace.**
+
+### Why this one is different
+E06 (SGTR) and E09 (Large LOCA) are casualties: they outrun make-up, force a trip and drive an
+EOP. This one does not. Charging simply comes up and holds it, indefinitely, and the plant will
+sit there losing coolant to containment for as long as you let it. It is the everyday leak the
+chemical and volume control system exists to make up — and the one that teaches you to read the
+board rather than react to it.
+
+It is also **not ΔP-modulated**. An SGTR stops when you depressurize to steam-generator pressure;
+this one does not care what the primary is at. You do not terminate it from the control room.
+
+### Symptoms
+- **CHG FLOW HI (A30)** — the cue, and usually the only alarm you get
+- Charging flow steady and high; letdown unchanged
+- Pressurizer level a per cent or two below program, and *stable* there — not falling
+- **No** reactor trip, no ESF actuation, no subcooling loss
+- At low severity, no alarm at all — only an elevated charging trend
+
+### What the board will NOT tell you
+**PZR LVL LO does not come in.** It is set at 25 % and a held leak parks level around 52–54 %.
+If you are waiting for a level alarm to tell you there is a leak, you will wait for the whole
+shift. Likewise **PZR LVL DEV LO (A31) stays clear** — the deviation only opens when make-up
+*stops* holding, so its silence here is information, not the absence of a problem.
+
+### Immediate actions
+
+| Step | Action |
+|------|--------|
+| 1 | Confirm the make-up is real: charging high with letdown normal, level at or just below program, subcooling healthy |
+| 2 | Rule out the impostors — letdown isolated or throttled, or a deliberate level-setpoint change, produce the same alarm |
+| 3 | Locate it: containment sump level and humidity, pressurizer relief tank pressure/temperature (a weeping PORV or safety), steam generator activity (a tube leak is **E06** territory) |
+| 4 | Trend the charging demand at steady load. Flat = a stable leak you can plan around; rising = it is growing |
+| 5 | Plan a shutdown on your own terms rather than waiting for make-up to lose it |
+
+### If it grows past make-up
+**PZR LVL DEV LO (A31)** comes in, charging saturates, and level starts a genuine descent. That
+is no longer this procedure — go to the loss-of-coolant response and be ready for safety
+injection at **PZR LVL LO LO (12 %)**.
+
+### Acceptance
+Leak identified and its size trended, with the plant still in a stable, alarm-quiet condition —
+no trip, no ESF, and the decision to shut down made deliberately rather than forced.
 
 ---
 

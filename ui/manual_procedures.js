@@ -109,7 +109,7 @@
       purpose: 'Take the reactor from Mode 3, Hot Standby (subcritical, hot) through criticality (Mode 2, Startup), across the 5 % boundary into Mode 1, At Power, and put the turbine on line — the full startup. You will use the 1/M (inverse-count) plot to predict criticality, hand indication from the Source Range to the Intermediate Range, and watch the Startup Rate (SUR) and reactor period on the way up.',
       from: 'hot_zero_power',
       prereq: ['Plant at Mode 3, Hot Standby: subcritical, hot, at operating temperature/pressure.', 'Reactor Coolant Pumps (RCP) running — forced flow established.', 'Control bank inserted; shutdown bank parked withdrawn; boron high (the plant is held subcritical).'],
-      cautions: ['Withdraw in small bursts, letting the count rate settle between them — target SUR ≤ 1 decade per minute (DPM) and reactor period ≥ 30 s. The SUR HI alarm comes in at 1 DPM and rod withdrawal is blocked at 1.5 DPM (clearing below 0.8); insertion is never blocked. The fine-step drive (912 steps full travel) puts one step at roughly 1 ¢ (6.5 pcm) near the critical band — single-step nudges at Slow for the final approach.', 'Plot ENOUGH 1/M points. The prediction always reads high early and walks down as you add points, so an early estimate is not a target — it is an upper bound. Two points predict ~step 711 against a true ~318; three still say ~484. It takes about six, with the bursts shrinking as you close in, to get within a couple of steps. Never withdraw straight to the predicted position — creep up on it.', 'Work out where criticality should be BEFORE you move a rod — an estimated critical condition, not a guess. The worksheet and the reference curves are in manual 09 §7.5: bank integral worth, differential boron worth at your Tavg, and critical boron by temperature and bank position. This plant starts Mode 3 at 674 ppm with the bank in, which puts criticality near 318 steps — about 35 % withdrawn, comfortably inside the insertion limit. The prediction carries a ±750 pcm acceptance band (roughly 159 to 421 steps here); criticality outside it means the estimate was wrong, so stop and re-work it rather than continuing to pull. The 1/M plot is how you close on the prediction, not a substitute for having made one.', 'Secure the Source Range BEFORE its counts reach the amber high-flux caution (the SR high-flux trip at 1e5 cps will scram the ascent). Once the Intermediate Range is on scale, the handoff is safe.', 'Mind the Steam Generator. Below the point of adding heat it barely moves, but from the moment power starts warming the coolant the SG boils down, and on this ascent the turbine is still offline — the steam dump is drawing steam nobody is replacing. Hold level with the three-element Feed AUTO channel (step 3). If you let auxiliary feedwater take it instead, AFW parks the level at about 21 % — inside the amber band, four points above the low-low trip — and holds it there indefinitely.', 'Below the point of adding heat there is no temperature feedback to hold you anywhere — power goes wherever the reactivity you left in takes it, however small. Sustaining even a gentle 1 DPM ramp means carrying ~+200 pcm, and ALL of it has to come back out to level off. Take it out in one decisive drive, not in taps: the plant runs while you tap.'],
+      cautions: ['Withdraw in small bursts, letting the count rate settle between them — target SUR ≤ 1 decade per minute (DPM) and reactor period ≥ 30 s. The SUR HI alarm comes in at 1 DPM and rod withdrawal is blocked at 1.5 DPM (clearing below 0.8); insertion is never blocked. The fine-step drive (912 steps full travel) puts one step at roughly 1 ¢ (6.5 pcm) near the critical band — single-step nudges at Slow for the final approach.', 'Plot ENOUGH 1/M points. The prediction always reads high early and walks down as you add points, so an early estimate is not a target — it is an upper bound. Two points predict ~step 711 against a true ~318; three still say ~484. It takes about six, with the bursts shrinking as you close in, to get within a couple of steps. Never withdraw straight to the predicted position — creep up on it.', 'Work out where criticality should be BEFORE you move a rod — an estimated critical condition, not a guess. The worksheet and the reference curves are in manual 09 §7.5: bank integral worth, differential boron worth at your Tavg, and critical boron by temperature and bank position. This plant starts Mode 3 at 683 ppm with the bank in, which puts criticality near 319 steps — about 35 % withdrawn, comfortably inside the insertion limit. The prediction carries a ±750 pcm acceptance band (roughly 159 to 421 steps here); criticality outside it means the estimate was wrong, so stop and re-work it rather than continuing to pull. The 1/M plot is how you close on the prediction, not a substitute for having made one.', 'Secure the Source Range BEFORE its counts reach the amber high-flux caution (the SR high-flux trip at 1e5 cps will scram the ascent). Once the Intermediate Range is on scale, the handoff is safe.', 'Mind the Steam Generator. Below the point of adding heat it barely moves, but from the moment power starts warming the coolant the SG boils down, and on this ascent the turbine is still offline — the steam dump is drawing steam nobody is replacing. Hold level with the three-element Feed AUTO channel (step 3). If you let auxiliary feedwater take it instead, AFW parks the level at about 21 % — inside the amber band, four points above the low-low trip — and holds it there indefinitely.', 'Below the point of adding heat there is no temperature feedback to hold you anywhere — power goes wherever the reactivity you left in takes it, however small. Sustaining even a gentle 1 DPM ramp means carrying ~+200 pcm, and ALL of it has to come back out to level off. Take it out in one decisive drive, not in taps: the plant runs while you tap.'],
       steps: [
         { text: 'Confirm the plant is ready: subcritical — the Source Range count rate is steady, not climbing — hot (Tavg ≈ 566.6 °F / 297 °C, the no-load point), pressurized (≈ 2233 psi / 15.4 MPa), Reactor Coolant Pumps running.',
           control: '(observe)', target: 'subcritical, hot, pumps running', hold: 2,
@@ -167,7 +167,62 @@
           hl: ['SR detector', 'Source Range', 'Intermediate Range'] },
         { text: 'Creep up on criticality: withdraw at Slow in single steps. The reactor goes critical and power begins to climb — watch the Startup Rate (SUR) and keep the reactor period long.',
           control: 'Control Bank', target: 'critical, SUR ≤ 1 DPM, period ≥ 30 s',
-          note: 'One fine step is ~1.5 ¢ near the band. If the period drops below 30 s, stop or insert — the reactor is accelerating.',
+          note: 'One fine step is ~1 ¢ (6.70 pcm) near the band. If the period drops below 30 s, stop or insert — the reactor is accelerating.',
+          // WHERE 26 COMES FROM (#263 item 2). It was originally found by SWEEPING 22 / 26 / 30
+          // and keeping the one that landed inside the authored 1–3 % band — refitting content
+          // until the gate passes, which is what HR10 warns against. Derived 2026-07-30, and the
+          // sweep's answer turns out to be the derived one. Every link measured:
+          //
+          //   the five plotted bursts sum to 138+90+44+22+12  = 306 steps
+          //   critical position at the startup IC (683 ppm)   = 319 steps   [ρ(318) = −3.1,
+          //                                                                  ρ(319) = +3.5 pcm]
+          //   so reaching critical costs                        13 steps
+          //
+          //   power at the last plotted point (ρ = −90 pcm)  = 6.25e-4 %
+          //   the level-off target, the point of adding heat  ≈ 1 %
+          //   decades to cover  log10(1 / 6.25e-4)            = 3.20
+          //   the authored hold before the level-off drive    = 600 s = 10 min
+          //   ⇒ the ascent must average                         0.32 DPM
+          //   ρ that produces 0.32 DPM (measured, held at a fixed position)
+          //                                                   ≈ 85 pcm
+          //   differential bank worth through the band        = 6.70 pcm/step (1.03 ¢)
+          //   ⇒ steps of excess                                 85 / 6.70 ≈ 13
+          //
+          //   creep = 13 (to critical) + 13 (excess) = 26 steps.
+          //
+          // PRECISION — stated because that arithmetic reads cleaner than it is. Run as a script
+          // rather than by hand, the excess comes out 14.7 steps, so the derivation predicts 27.7
+          // against the 26 authored. It is good to about ±2 steps, NOT exact, and the reason is
+          // that SUR is not constant at a fixed rod position: the same 13 steps above critical
+          // measures 0.339 DPM at 120 s and 0.285 DPM at 240 s, so "the ρ that gives 0.32 DPM" is
+          // a band rather than a number. The acceptance below is ±4 steps wide, so 26 sits inside
+          // comfortably — but do not read this as a formula that returns 26 exactly.
+          //
+          // VALIDATED OUT OF SAMPLE — the HR10 "check it against the OLD behaviour too" test, and
+          // the reason this is a derivation rather than a restatement of the sweep. The 600 s hold
+          // PREDATES this creep and did not move when the plant did: before #260 the 1/M bursts
+          // were 120+50+30+15+8 = 223 and the creep was ELEVEN steps, at the same 600 s. Running
+          // the identical derivation against that plant — different boron (363 ppm), different
+          // critical position (224), different differential worth (9.50 pcm/step) — predicts
+          // 10.8 steps against the 11 that was authored. A relationship that lands on the authored
+          // value for two different plants, one of which it was never fitted to, is doing real work.
+          //
+          // So the hold is NOT co-fitted with the creep, which was the obvious way this could have
+          // been circular. It is still an AUTHORED number though: the manual's own low-power hold
+          // (PWR-N04, `Manuals/04`) specifies no duration at all — its acceptance is "SUR near 0;
+          // power stable ≤ 5 %". Nothing sources 600 s. What is derived is the creep GIVEN the
+          // hold, and that is the honest claim.
+          //
+          // Confirmed at the layer this procedure actually runs at (full stack, via
+          // test/measure_stack.js, not engine-direct — #266): ρ settles at +78 pcm after the
+          // creep, SUR holds 0.27–0.30 DPM through the ascent, and the level-off lands at
+          // 1.04 %. Engine-direct gives 80 pcm and 1.004 %; the layer moves nothing here.
+          //
+          // The sweep's neighbours fail for the reason the derivation predicts, not by accident:
+          // 22 steps leaves 53 pcm and levels off at 0.10 % (short of the point of adding heat),
+          // 30 leaves 107 pcm and reaches 3.40 % (past the band). The band is ~±4 steps wide.
+          // MOVE THIS NUMBER ONLY WITH THE HOLD: 26 is tied to the 600 s hold below it, because
+          // what is being fixed is decades-per-minute × minutes.
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 26, speed: 'slow' }, hold: 600,
           saw: { p: 'startup_rate_dpm', op: '>', v: 0 }, acc: { p: 'power_pct', op: '>', v: 0.2 },
           hl: ['Control Bank', 'Startup Rate', 'Intermediate Range'] },

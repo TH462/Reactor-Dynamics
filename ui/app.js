@@ -3244,7 +3244,12 @@
       if (info) {
         return { key: 'item:' + (info.id || id), title: info.title, brief: info.brief,
                  detail: info.detail, doc: info.doc, sec: info.sec,
-                 inherited: !!info.inherited };
+                 inherited: !!info.inherited,
+                 // Carry the board item id so the RENDER can ask for this control's live
+                 // automation-channel status every paint (#214). Resolving the status
+                 // here instead would pin it to the instant the pointer arrived, and the
+                 // block does not re-resolve while the pointer sits still.
+                 liveItem: id };
       }
     }
     var el = t.closest('[data-scanner-hint]');
@@ -3267,11 +3272,29 @@
     inspectCur = res;
     inspectRender();
   }
+  // The live automation-channel status for whatever the block is describing (#214),
+  // or null. Read fresh from `latest` on every render — see inspectLiveTick.
+  var _liveLast = null;
+  function inspectLive() {
+    var it = inspectCur;
+    if (!it || !it.liveItem || !latest) return null;
+    if (!(RD.PwrBoard && RD.PwrBoard.isMounted() && RD.PwrBoard.liveNote)) return null;
+    return RD.PwrBoard.liveNote(it.liveItem, latest);
+  }
   function inspectRender() {
     var box = $('scanner'); if (!box) return;
     var it = inspectCur;
     if (!it) { box.innerHTML = '<span class="idle">Hover or tap anything to see what it does.</span>'; return; }
     var h = it.title ? '<strong>' + mesc(it.title) + '</strong> — ' + mesc(it.brief) : mesc(it.brief);
+    // What this control's channel is doing RIGHT NOW, above the authored copy. The
+    // stand-down cases are the whole point: an unlit AUTO lamp says the channel is off
+    // but never why, and 'off — main feedwater isolated (AFW has the SGs)' is the
+    // sentence that turns a mystery dropout into a lesson.
+    var live = inspectLive();
+    _liveLast = live ? live.text : null;      // render is the one place this is stamped
+    if (live) {
+      h += '<span class="scan-live' + (live.engaged ? ' on' : '') + '">' + mesc(live.text) + '</span>';
+    }
     if (ui.inspectExpanded) {
       if (it.detail) h += '<div class="scan-detail">' + mesc(it.detail) + '</div>';
       var meta = [];
@@ -3285,6 +3308,18 @@
       if (meta.length) h += '<div class="scan-meta">' + meta.join('') + '</div>';
     }
     box.innerHTML = h;
+  }
+  // Per-broadcast refresh, and ONLY while a live entry is on screen (#214). The block
+  // otherwise repaints on pointer-move alone, so a channel that stood itself down while
+  // the operator held the pointer over its AUTO button would have gone on reporting the
+  // state it was in when they arrived. Re-rendering unconditionally would instead fight
+  // the persistence rule above (§11: pointing at nothing keeps the last description) and
+  // repaint the block ten times a second for no reason, so this is gated on there being
+  // something live to say, and on the text having actually changed.
+  function inspectLiveTick() {
+    var live = inspectLive();
+    if ((live ? live.text : null) === _liveLast) return;
+    inspectRender();                          // which re-stamps _liveLast
   }
   // A one-off message that takes over the block — an interlock refusing a command.
   // It goes through the same state as a hover so expanding does not silently
@@ -4369,6 +4404,7 @@
     service.subscribe(render);
     service.subscribe(diagTick);
     service.subscribe(renderAutomate);   // channels run in-stack; the tab just re-renders per broadcast
+    service.subscribe(inspectLiveTick);  // #214: keep a displayed channel status from freezing
     if (RD.OneOverM) { RD.OneOverM.init({ getSnap: autoSnap, cmd: cmd }); service.subscribe(RD.OneOverM.tick); }
     bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)

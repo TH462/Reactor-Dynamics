@@ -37,6 +37,189 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-30h — #249/#273: the surplus axis is fitted, and "could the gauge even get there?" is now a gate
+
+**Decision 1 — `level_per_mass_surplus` is fitted to real geometry, not chosen.** 300 → **776 %/frac**
+*(OWNER RULING, 2026-07-30: "249 - fit it.")*. The derivation is the pressurizer steam space as a
+fraction of RCS volume: 0.40 × 1,400 ft³ ÷ 9,650 ft³ = **0.0580** (BVPS-2 UFSAR Tables 5.1-1 and
+5.4-12, ML22144A118; full-power steam fraction from WTSM 3.2 Table 3.2-2, ML11223A213). This sim
+spans 45 points of level from nominal to solid, so 45 / 0.058 = 776. **The soft step is stated in
+the config**: it assumes indicated level ≈ volumetric fraction, which is this sim's convention and
+not necessarily a real calibrated span.
+
+This was not cosmetic. At 300 the going-solid coordinate was 0.15 wide and `primary.mass_max` (1.2)
+clipped inventory **before** the gauge ran out of scale, so with `base(Tavg)` at its 28 % floor —
+which every quench below 559.8 °F (293.2 °C) reaches — indicated level pinned at exactly
+28 + 300×0.20 = **88.00 %** and stayed. **The plant could not go water-solid on injection**, which is
+the single behaviour the TMI content is built on.
+
+**Decision 2 — the shared CVCS gain was NOT scaled with it, and the first recommendation to do so
+was wrong.** The documented 83 s loop τ is the **deficit** branch (`level_per_mass` 100); scaling
+`cvcs_charge_per_level` to hold a surplus-side τ would have slowed leak make-up to 215 s to fix a
+number on the other branch. The servo is simply faster on the surplus side now (27.8 → 10.7 s), and
+measured, it does not hunt. `mass_max` also stays at 1.2: 1.06 is the physical figure but costs the
+going-solid endpoint (peak 96.83 %), and it is no longer binding on that path anyway.
+
+**Decision 3 — accumulator isolation is procedural, at a sourced pressure.** #273. The cooldown now
+isolates at **1000 psig (6.89 MPa)**: NUREG-1431 Rev 4.0 (ML12100A222) **LCO 3.5.1** applicability is
+*"MODES 1 and 2, MODE 3 with RCS pressure > [1000] psig"*, and LTOP **LCO 3.4.12** requires the system
+operable *"with … the accumulators isolated"* (**SR 3.4.12.3**). **Deliberately not an interlock.**
+An automatic closure would have been easy and is how the RHR suction valve works at 400 psi
+(2.76 MPa), but real plants isolate accumulators procedurally and the whole point of the beat is
+that the player learns the passive tanks are not covered by the SI block. Whether an interlock
+*should* back it up is left open on #273 rather than decided here.
+
+**Decision 4 — new gate `run_reachability.js` (55 checks), and why it has two halves that do not
+overlap.** The generalisation of what went wrong: an assertion that a trip never fired is worth
+exactly what the gauge can reach, and nothing checked that.
+- **Part A (static, all 50 thresholds)** — every trip/actuation/alarm setpoint must sit **strictly**
+  inside its instrument's declared range, because `crossed()` is strict. This is the long-standing
+  C1 lesson turned into a gate.
+- **Part B (dynamic, small)** — Part A would **never** have caught this: `pzr_level`'s range is
+  [0,100] and its trip is 97, so the static check was perfectly happy while the level physically
+  could not exceed 88.00 %. Only stepping the plant finds a clamp. Injection-verified: B1 reports
+  peak 89.01 % and goes red on the pre-fit 300.
+- **A probe must name its mechanism.** B2's first draft drove the low-level scram with letdown and
+  failed at 29.6 % — correct plant behaviour, because the 17 % letdown isolation exists to shut
+  "before the 12 % pzr-level reactor trip". A reachability probe that does not name how it expects
+  to reach the setpoint just re-discovers an interlock and calls it a defect.
+
+**Gate effect.** `run_all` 32 → **33 runners**; `run_campaign` 3026 → **3038 checks** (the new beat
+plus three endpoint assertions, all injection-verified red). `run_behavior`, `run_pwr`,
+`run_meltdown` and `run_procedures_stack` are **unchanged** — the fit cost nothing elsewhere.
+## 2026-07-30g — #262: a failure whose ENTIRE severity range is inside make-up authority
+
+**The decision: size `rcp_seal_leak` so every slider position is holdable**, rather than adding a
+finer step to `large_loca`. The finer step cannot work — 0–50 % rated flow across 100 integer
+steps cannot resolve the 0–0.14 % band where a holdable leak lives, and the smallest injectable
+LOCA is already ~7× beyond charging. The gap was **unreachable**, not merely uncovered, which is
+why it needed its own `severity_meta` rather than a control tweak.
+
+**The ceiling is measured and is HALF the figure the issue was filed with.** #262 derived
+authority as `charging_max · cvcs_inventory_gain` = 7.2e-4, which silently assumes letdown is
+isolated. With letdown in service the net is `(0.06 − 0.03) · 0.012` = **3.6e-4**; measured, 3.5e-4
+holds (charging 0.0585 of 0.0600) and 5.0e-4 does not. Sizing the slider to the filed number would
+have left its **top half unholdable** — reintroducing the exact defect. Recorded because the error
+class matters: an authority figure quoted without its lineup is not a number, it is half a number.
+
+**Deviation from the source issue, deliberate:** the slider unit is "% of make-up capacity", not
+gpm. The repo's gpm are display flavour that do not reconcile with the mass balance, and quoting
+one here would invite the real-Tech-Spec comparison this very issue had to retract in its own
+thread. Self-referential units cannot be mis-compared.
+
+**The bottom ~20 % of the range is below the alarm on purpose.** Severity 0.15 puts charging at
+0.0344 against a 0.036 setpoint — visible as a trend, not annunciated. The load-change peak is
+0.0323, so catching 0.15 would mean a setpoint within 5 % of normal manoeuvring. Leakage below the
+alarm point is a real condition, and building the failure so its whole range alarms would have
+been less honest, not more complete.
+
+Manuals Rev 15 → 16 (new 07 PWR-E23 + index + slider table). `run_all` OK, 32 runners.
+
+---
+
+## 2026-07-30f — #270/#271: indications key on ARMED PROTECTION, never on plant mode
+
+**The decision, now applied board-wide: an indication shows the protection in force, and the
+discriminator is the ARMED/BLOCKED state — not `plant_mode`.** The tempting alternative for #270
+was "if Mode 5, use cold bands". It is wrong for a reason worth recording: a Mode 5 plant at
+400 psi and a **LOCA** at 400 psi are the same reading and must look different. Armed state
+separates them for free — measured through a real `large_loca`, `trip_blocks` stays `{}` all the
+way down to 15 psi, so the hot window and red band persist exactly where they should.
+
+**Deviation recorded: the note colour is now a region key, not always red.** `noteKind: 'ok'` for
+"bypassed for the mode you are in", because the control layer already reclassifies those alarms to
+`status` priority when cold. A red note would have made the tile contradict its own annunciator.
+
+**Two latent defects surfaced under #270, both found by printing values rather than reading code.**
+`bandsFor` applied `alarmHi` and never `alarmLo` — the only mode-aware helper that existed set the
+high side, so the low path had never run. And its clamps are one-sided, so a band that has moved
+far can be crossed over itself; that produced the Mode 5 inversion where a correct 363 psi painted
+TRIP RED. The inversion guard is central, not per-helper. **It also masked the `alarmLo` bug into a
+zero-width `2149..2149` band** — a guard can hide the defect it guards against, which is why the
+pin asserts the band's value, not just its ordering.
+
+**#271 — presentation follows the channel.** The NIS readouts are `value` items: bare log-ranging
+numbers with no region model, so the indication is the colour of the number (the mechanism the SR
+readout has used since #105) rather than a band or a tile. Three calls: *approaching* is measured
+in **decades** (0.5), because per-cent is meaningless on a log scale; **grey when not armed**;
+and SUR's red marks the rod-withdrawal **interlock** at 1.5 DPM, not a trip — it has none.
+Thresholds are read from the alarm/interlock tables and resolved **lazily**, since `_PROT` is
+assigned below them.
+
+**Explicitly not done:** on-board numeric threshold annotations for the NIS channels. No room in
+that panel, and the tiles' note slot does not exist for `value` items. The numbers live in the
+inspect copy — colour is for the limit you must *notice*, text for the limit you want to *read*.
+
+board_check **113 → 127**, injection-verified in both directions.
+
+---
+
+## 2026-07-30e — #263 item 2: the creep step is derived, and its INPUTS are what got gated
+
+**The decision: derive the number rather than declare it empirical**, which was the other option
+#263 offered. `pwr_startup`'s 26-step creep came from a 22/26/30 sweep kept for landing inside the
+authored 1–3 % band. It is now
+
+    creep = (critical position − the 306 steps of plotted 1/M bursts) + (excess ρ / differential worth)
+          = (319 − 306) + (85 pcm / 6.70 pcm/step)
+          = 13 + 13 = 26
+
+with the excess itself derived, not chosen: the level-off must cover **3.20 decades** (6.25e-4 % →
+1 %) in the authored **600 s** hold, which is **0.32 DPM**, which measures at ~85 pcm.
+
+**What got gated is the DERIVATION'S INPUTS, not the number.** `run_reactivity` 23 → 27. Gating
+"the creep is 26" would have been a tautology — the file says 26. Gating the four quantities 26 is
+computed *from* means a retune that invalidates the reasoning reddens even when the procedure still
+happens to pass. This is the #263 item-6 lesson (greens that mean nothing) applied preventively.
+
+**The tolerance was wrong on the first cut and the injection test is what said so.** ±0.15 pcm/step
+on the differential worth let a 3.2 % rod-worth retune through at 6.82 while the other three checks
+caught it. Tightened to ±0.05 — defensible because this is a deterministic static computation with
+no noise. Recorded because the general rule is worth more than the number: **a guard the injection
+test walks past is not a guard**, and the injection test only told us because it was run.
+
+**Layer discipline, one day after learning it.** The derivation was confirmed full-stack through
+`test/measure_stack.js` (#266) before being written down — +78 pcm vs 80 engine-direct, level-off
+1.04 % vs 1.004 %. The layer moves nothing here, but that is now a measured statement rather than
+an assumed one.
+
+---
+
+## 2026-07-30d — #266: no service change; the harness was driving the plant through a real timer
+
+**The decision: change NOTHING in `simulation_service.js`.** #266 proposed a `measure`-mode
+advance that skips snapshot/instructor work when nothing is subscribed. Profiled first (its own
+checkbox 1), that work is **~5 %** of wall clock and `engine.step` is **87.9 %** — the optimisation
+would have bought nothing and added a second code path through the one layer whose job is to be
+the single way commands reach the plant (HR5). Cost is linear in sim duration (six plant-hours at
+0.98× drift) and the checkpoint ring is capped, so there is nothing to fix.
+
+**What was actually wrong** was the caller: `start()` arms `setTimeout(this.broadcastMs)` and
+advances in **wall** time (measured: 5.0 s of wall = 48.0 s of sim at accel 10×). 30 plant-minutes
+costs 3.1 real minutes that way, 31.3 if an attention stop drops acceleration to 1× (#245) — and
+**~2 seconds** driving `tick()` directly. `board_check.html` had the warning in a local comment;
+it was never generalised, so it is now in CLAUDE.md's layer section.
+
+**Delivered `test/measure_stack.js`** rather than a service change. Deliberately a HARNESS, not a
+gate: `run_all` discovers `/^(run|verify)_.*\.js$/`, so this name is outside the gate list on
+purpose — it produces numbers, it does not assert them, and a baseline on a measurement tool would
+be a baseline on the plant's behaviour in disguise.
+
+Three properties it commits to: the **layer is stamped in its own output** (#266 checkbox 4,
+alongside lineup and the #153 protection granularity); every column prints its **source**, since
+`tavg_c` and `tavg` differ by exactly the HR1 gap; and units are **US-first with SI in
+parentheses** at the point of production, deltas/rates converting ×9/5 with no offset. An unknown
+option or unresolvable field is a hard error — the first cut accepted a typo'd `--wach` and
+printed a correct-looking table from the default field set.
+
+**Settled as a side effect:** #263 item 5. `pwr_mode5_to_mode3` measured at both layers is
+identical to every digit (all five milestones 0.00 h apart, every 12-hour state value equal), so
+the header's "may differ modestly, NOT measured" caveat is retired. Its ρ/boron figures were stale
+by #263's refit and are corrected (−3377 → −2828 pcm, 907 → 856.8 ppm) — a staleness the layer
+question had been masking.
+
+---
+
 ## 2026-07-30c — #267: the vital tile's red band follows the ARMED trip, not the first table row
 
 **The decision: a tile band is resolved per-snapshot from the trips that are actually armed, and

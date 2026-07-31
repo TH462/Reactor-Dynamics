@@ -853,6 +853,16 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 }
 .scan-manual:hover { text-decoration: underline; }
 .scan-hint { font-style: italic; }
+/* Live automation-channel status (#214) — what the control the pointer is over is
+   ACTUALLY doing, as against the authored copy around it. Its own block so the two
+   never read as one sentence: everything else in the scanner is fixed prose, this
+   line changes under you. Monospace and dimmed in MANUAL, lit in AUTO, matching how
+   the board itself distinguishes the two. */
+.scan-live {
+  display: block; margin-top: 5px; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11px; letter-spacing: .02em; color: var(--muted);
+}
+.scan-live.on { color: var(--running); }
 /* NO hover ring on the inspected object (owner, 2026-07-28) — the first cut drew
    one and it reads as noise, flickering across every control the pointer passes.
    The glows that remain (.instr-glow, .ckl-glow) point at something the player did

@@ -178,7 +178,26 @@
     }
     this.reading.porv_indicator = (extras && extras.porv_commanded_open) ? 'open' : 'closed';
     this.reading.subcooling_margin = T_sat(this.reading.primary_pressure) - this.reading.tavg;
+    this.reading.pzr_level_dev = this._levelDev(extras);
     this._copyStatus(extras);
+  };
+
+  // Pressurizer level deviation from PROGRAM (#262), in % of span. Derived from the
+  // INDICATED level and the INDICATED Tavg, so it inherits their lag and any failure on
+  // them — a stuck Tavg transmitter corrupts the program here exactly as it would on a
+  // real board. Same construction as subcooling_margin, for the same HR1 reason.
+  //
+  // Calls the plant's OWN levelBase() rather than restating the program line: the two must
+  // not be able to drift apart, and this file already carries one deliberate formula
+  // duplication (T_sat) which is enough. `tavg_fp` is the full-power Tavg the program is
+  // anchored to — computed at init rather than a config constant, so the engine stashes it
+  // on state and hands it over in extras.
+  PWRInstruments.prototype._levelDev = function (extras) {
+    var lb = RD.pwrPressurizer && RD.pwrPressurizer.levelBase;
+    if (!lb) return 0;
+    var prog = lb({ tavg_c: this.reading.tavg, _tavg_fp: (extras || {}).tavg_fp }, this.cfg);
+    var spec = this.specs.pzr_level_dev, dev = this.reading.pzr_level - prog;
+    return spec ? clip(dev, spec.range[0], spec.range[1]) : dev;
   };
 
   PWRInstruments.prototype._copyStatus = function (extras) {
@@ -236,6 +255,9 @@
     this.reading.subcooling_margin = clip(
       T_sat(this.reading.primary_pressure) - this.reading.tavg,
       this.specs.subcooling_margin.range[0], this.specs.subcooling_margin.range[1]);
+
+    // Level deviation from program (#262) — the inventory cue. See _levelDev.
+    this.reading.pzr_level_dev = this._levelDev(extras);
 
     this._copyStatus(extras);
     return this.reading;

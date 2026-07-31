@@ -13,7 +13,153 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The board now tells you to isolate the accumulators — SI ACCUM ALIGNED < 1000 PSI**
+  (#273, closing it). A caution annunciator on panel B at **1000 psi (6.895 MPa)**, and the
+  first alarm in the plant **gated on a lineup as well as a reading**: it also requires the
+  discharge isolation valve indication to read *open*, so a correctly-isolated Mode 5 plant —
+  which sits below that pressure all day — never sees it. Isolate and it clears; isolate on
+  schedule and it never comes in.
+
+  **There is no autoclose interlock, and that is the decision, not an omission.** Real plants
+  power these valves *open* and remove control power to prevent inadvertent closure; the
+  closure is the operator's, made off RCS pressure indication. An automatic closure keyed on
+  falling pressure would also shut the accumulators during a LOCA, which is exactly when they
+  must inject. The tile therefore states a lineup rather than an order — on a LOCA the same
+  annunciation means the opposite thing.
+
+  **Measured, and worth knowing before you rely on it:** on a brisk cooldown the cue precedes
+  the first discharge by about **one minute of plant time** — under two seconds of wall clock
+  at 30×. The procedure step is the defence; the annunciator is the backstop and the
+  post-mortem. Both compressed rates behind that number, and the 22–440× ECCS injection
+  pacing, are now declared in **12 §14.1**.
+
 ### Fixed
+- **The heatup procedure re-aligns the accumulators** (#276) — `04` PWR-N03 step 4. The cold
+  lineup ships with them isolated and **nothing opens them automatically**: re-alignment is
+  procedural by design *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to
+  the procedure instead of auto opening them.")*, so the procedure is the only thing that
+  catches it. Skip the step and you reach Mode 1 with no passive injection. The **SI ACCUM
+  ALIGNED** annunciator does **not** cover this — it clears on shut tanks, so it is silent on
+  exactly this case, and its card now says so.
+
+- **The cooldown procedures now tell you to isolate the accumulators** (#273) — manual set
+  **Rev 17**. `04` PWR-N15 and `05` Phase C both descended past the accumulators' 600 psi
+  (4.14 MPa) cover gas without a word about them; neither chapter contained the term. Both
+  now carry an isolation step at **1000 psi (6.895 MPa)** (NUREG-1431 LCO 3.5.1
+  applicability; LTOP SR 3.4.12.3), with the note that these are passive tanks and that the
+  SI block set entering the cooldown blocks *pumps*, not them. `05` Phase A gained the
+  matching **re-align** step — the cold lineup ships with the accumulators isolated and
+  nothing in the manual set had ever opened them again. The isolation pressure is now one
+  number across the manual, the scenario trigger and the campaign driver.
+
+- **When an automatic controller switched itself off, the board never said why** (#214).
+
+  Every automatic control carries a one-line account of what it is doing — and, when it
+  stands itself down, the reason. None of it was on screen anywhere. The panel that used
+  to print it was removed when the automatic controls moved onto the board diagram, and
+  nothing replaced it, so the explanations had been written into a dead end.
+
+  This matters most in the case it was written for. Isolate main feedwater and the
+  three-element level controller drops out on its own — correctly, auxiliary feedwater
+  now has the steam generators — but all you saw was the AUTO light going dark and the
+  MANUAL light coming on, with nothing to say why your level control had just abandoned
+  you. Hovering any automatic control now reports what its channel is doing, in the
+  System Scanner block, under the description: **MANUAL — off — main feedwater isolated
+  (AFW has the SGs)**.
+
+  The feed card also carries a permanent status word in its top-right corner —
+  **HOLDING** in green when the controller is actually regulating, amber for everything
+  else: **ISOLATED**, **MANUAL**, **OFF**, and **SAT HI / SAT LO**. That last pair is the
+  one worth knowing about. It means the controller is still in AUTO and still trying, but
+  the feed pump is against a stop and there is nothing left to correct with — the AUTO
+  light says you are covered when you are not. The card title was shortened to *SG FEED*
+  to make room, the way the steam dump status already sits in its corner.
+
+  Two things had to be true for that to be worth showing. The line follows the plant
+  while you hold the pointer still — the scanner otherwise only repaints when the pointer
+  moves, so a controller that tripped out while you were reading about it would have gone
+  on reporting the state it was in when you arrived. And the reason is now retired when it
+  stops being true: restore feedwater and the message clears instead of insisting the
+  plant is still isolated. The controller stays off either way — standing it back up is
+  the operator's call, which is the entire point of a stand-down.
+
+- **Continuous integration had been red on every run for three days, across two releases**
+  (#191).
+
+  The GitHub Actions gate ran `run_all.js --fast`, which skips the runners marked slow so
+  that no browser has to be downloaded. Three test runners need a browser, not two — and
+  the third, `verify_flags_ui`, is not marked slow because it only takes 8 seconds. So it
+  ran, found no browser, and failed. Every run from **2026-07-28 20:49 UTC** — one hour
+  after that runner was added — to 2026-07-31 was red: **32 consecutive failures**,
+  including the push to `main` for Alpha 1.10.0 and the #272 release pull request. Every
+  other runner passed on every one of them; the gate was correctly reporting a real drift,
+  and the drift was in the workflow.
+
+  It now runs the **full 33-runner gate with all three browser gates**, in about 8 minutes.
+  The reason it did not before was the belief that a browser in continuous integration
+  requires adding an npm manifest to a project that has deliberately never had one. It does
+  not: the browser is installed into a scratch directory outside the checkout and copied
+  into the ignored `node_modules/`, which is exactly how the local machines are already set
+  up. A step in the workflow fails the build if a manifest ever appears in the repository
+  root, so that property cannot be given up by accident.
+
+- **The pressurizer could not go water-solid on injection — the exact thing Three Mile
+  Island is about** (#249) — and the clamp that caused it was hiding a second bug.
+
+  Emergency injection into an intact reactor coolant system pinned indicated pressurizer
+  level at exactly **88.00 %** and left it there forever. Not a slow fill: a hard stop. The
+  level term for surplus inventory was set to a number nobody had ever derived, so the
+  model ran out of inventory headroom before the gauge ran out of scale. It is now fitted to
+  real geometry — the pressurizer steam space is **5.8 %** of reactor coolant system volume
+  (Beaver Valley 2 UFSAR Tables 5.1-1/5.4-12, plus the Westinghouse systems manual's
+  full-power steam fraction), and that is the whole distance between normal level and solid.
+  Measured, injection now carries the level to **100 %**, through the 97 % high-level trip,
+  the way the procedure's own caution says it will.
+
+- **The by-the-book cooldown dumped all four safety-injection accumulators** (#273).
+
+  Taking the plant from Hot Standby to Cold Shutdown walked straight past the accumulators'
+  **600 psi (4.14 MPa)** nitrogen cover pressure with their discharge valve still open, so
+  every tank emptied itself into the reactor coolant system. The plant arrived at Cold
+  Shutdown with **no passive injection left**, boron dragged to **2,310 ppm**, and the
+  coolant system overfilled. Nothing on the board was wrong — but nothing told you to
+  isolate them, and blocking Safety Injection at the start of the cooldown does not cover
+  them (that blocks pumps; these are pressure and a check valve).
+
+  The cooldown now has an isolation step at **1000 psig (6.89 MPa)**, which is where a real
+  plant stops requiring the accumulators available (NRC Standard Technical Specifications
+  LCO 3.5.1, and the low-temperature overpressure lineup that requires them isolated).
+
+### Added
+- **A gate that asks whether the plant can reach its own trip setpoints.** The two bugs
+  above went unseen because a test asserted the reactor "never tripped" on a gauge that
+  could not physically get to the trip point. `test/run_reachability.js` checks both halves:
+  every one of the 50 protection and alarm thresholds sits inside its instrument's range,
+  and the ones that matter are driven on the real plant until the needle actually crosses.
+- **A cold plant read as a scram on the pressure gauge, and the nuclear instruments never
+  showed their trip points** (#270, #271) — the rest of the work #267 started. Every board
+  indication now follows the protection that is **actually armed**, not the setpoint table.
+
+  On a depressurized plant the P-11 permissive blocks the low-pressure reactor trip and the
+  safety-injection signal with it. PRIMARY PRESSURE painted the red band anyway, and the
+  damage went further than a stale colour: at Cold Shutdown the marker sat **off the gauge
+  entirely** and the normal band inverted itself, so a perfectly correct **363 psi
+  (2.50 MPa)** read as **trip red** while the alarm list beside it said *"Pressurizer
+  Pressure Low — expected, plant depressurized"*. The tile now collapses the low band, reads
+  `LO TRIP BLKD`, and rescales to the pressure you are actually holding on heaters —
+  pressurize past **1972 psi (13.60 MPa)** and the block reinstates itself and the red band
+  comes back. A LOCA is unaffected: those trips stay armed all the way down, so a hot plant
+  losing pressure still reads hard red. Same number, opposite meanings.
+
+  The **source range, intermediate range and startup rate** readouts were bare numbers. Two
+  of the three rungs of the startup net lived there and neither was visible — the source
+  range went amber at its handoff caution but marked its **1e5 cps** trip no differently, and
+  the intermediate range's trip, the one that catches a missed block, showed nothing at all.
+  All three now colour against their live limits: amber approaching, red at the limit, and
+  **grey once the trip is blocked or the detector is secured** — because a defeated trip is
+  not something you can run into, and saying otherwise would teach the opposite of what
+  blocking it accomplished.
 - **The reactor power gauge showed a 120 % trip while the plant was set to trip at 25 %**
   (#267). Through a startup the power-range **low setpoint** reactor trip is armed at
   **25 %**, and it can only be blocked once you are above the P-10 permissive at **10 %**.

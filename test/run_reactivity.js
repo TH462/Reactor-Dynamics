@@ -262,6 +262,44 @@ ck('the ECC table was found and has all ten temperature rows', rows.length === 1
 ck('every published critical-boron cell matches the plant within 1 ppm', bad.length === 0,
    bad.length ? bad.slice(0, 3).join(' · ') : (rows.length * COLS.length) + ' cells verified');
 
+// ---------------------------------------------------------------------------------
+// THE TWO INPUTS `pwr_startup`'s CREEP STEP IS DERIVED FROM (#263 item 2).
+//
+// That procedure withdraws 26 steps to take the reactor critical and leave a controlled
+// ascent behind it. 26 is not a swept number any more — it is
+//     (critical position − the 306 steps of plotted bursts) + (excess ρ / differential worth)
+// so if either quantity moves and the procedure does not, the derivation is silently wrong
+// and the ascent lands outside the authored 1–3 % band. `run_procedures_stack` would catch a
+// gross break; it would NOT tell you the reason, and a few steps of drift can sit inside its
+// acceptance while the published derivation quietly stops being true.
+//
+// ENGINE values, so this stays a static check — the engine is reset and read, never stepped.
+// Both were confirmed at the full-stack layer before being pinned (#266).
+console.log('\n' + BOLD + 'the derivation behind pwr_startup\'s 26-step creep' + RST);
+(function () {
+  function fresh() { return new RD.PWREngine({ initial_state: 'hot_zero_power', seed: 7 }); }
+  function rhoAt(steps) { var y = fresh(); y.rod_groups[0].steps = steps; return y._totalReactivity() * 1e5; }
+  var ts = fresh().getTrueState();
+  var crit = null;
+  for (var s = 250; s <= 400 && crit == null; s++) if (rhoAt(s) >= 0) crit = s;
+  var PLOTTED = 306, CREEP = 26;   // the five authored 1/M bursts: 138+90+44+22+12
+  ck('the startup IC sits at 683 ppm with the bank in', near(ts.boron_ppm, 683, 2),
+     ts.boron_ppm.toFixed(1) + ' ppm');
+  ck('criticality is at step 319, 13 past the last plotted 1/M burst', crit === 319,
+     'critical at ' + crit + ', bursts end at ' + PLOTTED);
+  var dw = (rhoAt(crit + 15) - rhoAt(crit)) / 15;
+  // ±0.05 (0.7 %), not ±0.15: this is a deterministic static computation with no noise in it,
+  // and at ±0.15 a 3.2 % rod-worth retune still slid through at 6.82 while the other three
+  // checks here caught it. A guard the injection test walks past is not a guard.
+  ck('differential bank worth through the critical band is 6.70 pcm/step', near(dw, 6.70, 0.05),
+     dw.toFixed(2) + ' pcm/step (' + (dw / 6.5).toFixed(2) + ' ¢)');
+  // The point of the whole derivation: the creep must leave the excess that the 600 s hold
+  // needs to cover 3.20 decades at ~0.32 DPM. Measured, that is ~85 pcm.
+  var excess = rhoAt(PLOTTED + CREEP) - rhoAt(crit);
+  ck('the authored 26-step creep leaves ~85 pcm of excess (the 0.32 DPM ascent)',
+     near(excess, 85, 12), excess.toFixed(0) + ' pcm above critical');
+})();
+
 console.log('\n' + BOLD + '──────────────────────────────────────────' + RST);
 console.log(BOLD + (nFail ? RED : GREEN) + nPass + ' checks passed / ' + nFail + ' failed' + RST + '\n');
 process.exit(nFail ? 1 : 0);
