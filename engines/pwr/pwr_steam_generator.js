@@ -319,20 +319,30 @@
       // it does NOT hold rated (that was the "1800 rpm while off" bug).
       s.turbine_rpm += (0 - s.turbine_rpm) / (tb.coastdown_tau || 40) * dt;
       if (s.turbine_rpm < 1) s.turbine_rpm = 0;
-    } else if (s.generator_load > 0) {
+    } else if (RD.LoadMode.isOnLine(s)) {
       // Synchronised to the grid: the grid holds the generator at rated speed
       // (a synchronous machine spins at rated at any load, incl. a light startup load).
+      //
+      // The test is the BREAKER, not the load. It used to ask `generator_load > 0`, so
+      // an operator sliding the Manual load target to 0 MWe while synchronised fell into
+      // the offline branch below and coasted the rotor 1800 -> 0 rpm over ~5 plant-minutes
+      // with the breaker still closed and `turbine_tripped` false — #284, measured. A
+      // machine tied to the grid does not decelerate at zero load; it motors.
       s.turbine_rpm += (tb.rpm_rated - s.turbine_rpm) / (tb.sync_tau || 0.5) * dt;
     } else {
-      // Connected but unloaded: admission-steam torque against windage/bearing
-      // friction — the same coastdown the tripped branch models, because an
+      // OFF LINE (breaker open, untripped): admission-steam torque against windage/
+      // bearing friction — the same coastdown the tripped branch models, because an
       // unloaded rotor with no admission steam IS the tripped case physically.
       // Without the friction term this branch held any rpm forever at zero steam,
       // which is how Modes 3/5 (authored untripped, no load, no steam) pinned
-      // 1800 rpm on a cold plant (#235). NOTE the steam term is inert at the
-      // authored constants (torque_per_flow/inertia ≤ 0.02 rpm/s), so the
+      // 1800 rpm on a cold plant (#235) — those ICs are authored `disconnected`, so
+      // they still land here after #284 moved the on-line case out. NOTE the steam term
+      // is inert at the authored constants (torque_per_flow/inertia ≤ 0.02 rpm/s), so the
       // "accelerates toward overspeed" this branch once claimed never actually
       // happened — recorded in #238; reviving it is a tuning decision, not this fix.
+      // A real unit holds rated on no-load steam ready to re-synchronise; this engine
+      // has no no-load admission model, and that limitation is unchanged (see the note
+      // over RD.LoadMode.disconnect).
       var net_torque = s.steam_flow_normalized * tb.torque_per_flow
                      - s.generator_load * tb.torque_per_load;
       s.turbine_rpm += (net_torque / tb.turbine_inertia
@@ -342,8 +352,26 @@
 
     // A disconnected generator carries no grid load, so it produces no electrical
     // output regardless of shaft speed.
+    //
+    // Output follows the steam the TURBINE is admitted, not the heat the REACTOR makes
+    // (#284). This used to read `power_pct / 100`, which ignores both the governor and
+    // the steam dump — so during a load rejection, with the dump venting the difference
+    // to the condenser, the board still read full electrical output: measured, a
+    // `set_load_target 50 MWe` ask at hot full power settled at 98.8 MWe indicated with
+    // the dump at 48 %. The operator asked for 50 and the gauge said 99.
+    //
+    // CALIBRATION IS PRESERVED EXACTLY: `steam_flow_rated` is 1.0 in these normalized
+    // units and the governor sits at 100 % at rated pressure, so `steam_flow_normalized`
+    // is 1.0 at rated and this is bit-identical to the old form at 100 % power. What
+    // moves is every state where flux and turbine admission DISAGREE — a rejection ride-
+    // out, an MSIV closure (steam_flow_normalized is forced to 0 above), and the decay-
+    // heat tail after a trip.
+    //
+    // The pressure term is already inside `steam_flow_normalized`, so a plant that
+    // over-delivers on stored SG energy walks back down as the secondary sags rather
+    // than holding an unphysical output.
     s.mwe_output = s.turbine_tripped ? 0
-      : (s.power_pct / 100) * tb.mwe_rated * (s.turbine_rpm / tb.rpm_rated) * (s.condenser_vacuum_kpa / tb.vacuum_rated);
+      : s.steam_flow_normalized * tb.mwe_rated * (s.turbine_rpm / tb.rpm_rated) * (s.condenser_vacuum_kpa / tb.vacuum_rated);
     if (s.mwe_output < 0) s.mwe_output = 0;
   }
 

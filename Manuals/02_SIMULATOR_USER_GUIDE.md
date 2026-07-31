@@ -2,7 +2,7 @@
 
 **Document:** PWR-SIM-01  
 **Title:** Reactor⚛️Dynamics — PWR Trainer Operation  
-**Revision:** 19  
+**Revision:** 22  
 
 ---
 
@@ -209,7 +209,7 @@ Entry: status line under sim controls, or **Sim** tab → Plant & Mission.
 | **Realistic** | Quiet board — indications and status only; no physics teaching overlays |
 | **Physics Overlay** | Learning only — reactivity (pcm), period, inventory, void, etc. |
 
-**Settings** tab holds register (Learning / Industry terminology), units, and related options.
+**Settings** tab holds units, fast-forward dropout, and About (disclaimer / license / changelog).
 
 **WARNING:** In Realistic mode, the PORV indicator can lie with **no** dual Actual column and **no** relief animation — exactly as at TMI. Practice there before qualification exams.
 
@@ -275,9 +275,9 @@ brightens when its parameter is in an alarm band.
 
 ### 7.5 Settings
 
-- Learning / Industry register (board labels).
-- Unit display preferences.
-- Diagram / teaching mode options.
+- Unit display (US / SI).
+- Fast-forward dropout (on / off).
+- About — Disclaimer, License, and Changelog (in-app; works offline in the portable build).
 
 ### 7.6 Dev
 

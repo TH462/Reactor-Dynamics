@@ -46,11 +46,13 @@
     'TR-1': 'probe (LOAD REJECTION — the ride-out case)', 'TR-1b': 'probe (turbine trip → P-9 scram, #216)',
     'TR-1c': 'probe (sub-threshold rejection — the arm cliff, declared §8.8, #219)',
     'TR-1d': 'probe (PLANNED OFFLINE is not a turbine trip — #230)',
+    'TR-1e': 'probe (grid holds the rotor at zero load; MWe follows the turbine — #284)',
     'TR-2': 'probe', 'TR-3': 'probe',
     'TR-4': 'probe (lumped-RCP model: total-loss trip; P-8 single-loop needs multi-loop model)',
     'TR-5': 'probe', 'TR-6': 'existing:run_ops grid step + steam_dump_capacity_cap',
     'TR-7': 'probe', 'TR-8': 'probe',
     'TR-9': 'existing:run_ops sg_overfeed_p14 + run_pwr feedwater_isolation',
+    'TR-14': 'probe (LOFW drain rate vs Ginna UFSAR Table 15.2-4 — the SOURCED anchor, #135)',
     // TR-11: the catalog row ("heaters lose, low-P trip unless isolated") predates
     // the P5 spray capacity cap — measured under the cap the heaters WIN, and the
     // probe pins that end state. See the probe comment and Diagnostic/TUNING_LOG.md.
@@ -326,6 +328,82 @@
      * instantly on `turbine_tripped is_true`, and phase 2 latched a turbine trip at 5 %
      * power that armed P-9 for the rest of the evolution. Verified by running this probe
      * against the old mapping before the fix landed. */
+    /* TR-1e (#284) — THE GRID HOLDS THE ROTOR, AND THE GAUGE READS THE TURBINE.
+     * Two defects that shared a file and a cause, both invisible to 34 green runners.
+     *
+     * (1) The rated-speed hold asked `generator_load > 0` instead of asking whether the
+     *     BREAKER was closed, so an operator sliding the Manual load target to 0 MWe while
+     *     synchronised fell into the OFFLINE coastdown branch: measured, 1800 -> 0 rpm over
+     *     ~5 plant-minutes with `turbine_tripped` false and the unit still on line. A
+     *     synchronous machine tied to the grid spins at rated at ANY load, including zero.
+     * (2) `mwe_output` was derived from `power_pct` — the heat the REACTOR makes — so it
+     *     ignored both the governor and the steam dump. Measured, a 50 MWe ask at hot full
+     *     power settled at 98.8 MWe indicated with the dump venting 48 % to the condenser.
+     *     The operator asked for 50 and the gauge said 99.
+     *
+     * WHY THIS PROBE AND NOT A UNIT TEST: nothing in the suite compared what the turbine
+     * was ADMITTED against what the reactor MADE. Every existing check runs at states where
+     * the two agree (steady power, or a trip that zeroes both), which is exactly why a 2x
+     * error on a board gauge survived. The third leg pins #235's fix from the other side —
+     * off line the rotor MUST still coast, or this fix has traded one bug for the old one.
+     *
+     * VERIFIED BY INJECTION, not by writing it beside the fix: with both engine lines
+     * reverted this probe fails 3 checks — the rotor pair reads 0 rpm (end and minimum),
+     * and the rejection leg reads 98.78 MWe against its 50 ±3 band. The other legs stay
+     * green on the old engine BY DESIGN: leg C and leg D are the two things this fix must
+     * NOT change, so a red there would mean the fix broke something, not that it worked. */
+    'TR-1e': function () {
+      return test('TR-1e synchronised at zero load — the grid holds the rotor; MWe follows the turbine', function (ck) {
+        // ---- leg A: Manual load target 0 MWe while ON LINE. The rotor must not slow.
+        var z = H('hot_full_power');
+        z.run(30);
+        z.cmd('set_load_target', { mwe: 0 });
+        z.run(600);                                  // 10 plant-min — 2x the old decay time
+        var tz = z.ts();
+        ck('still on line — the breaker never opened', String(tz.load_mode),
+          tz.load_mode === 'manual', 'manual');
+        ck('and not tripped', String(!!tz.turbine_tripped), !tz.turbine_tripped, 'false');
+        ck('the grid holds the rotor at rated (was 0 rpm — #284)', fmt(tz.turbine_rpm, 0),
+          near(tz.turbine_rpm, 1800, 20), '1800 ±20 rpm');
+        ck('rotor never sagged at any point in the run', fmt(z.range('turbine_rpm').min, 0),
+          z.range('turbine_rpm').min >= 1780, '≥ 1780 rpm');
+        ck('zero load asked, zero output delivered', fmt(tz.mwe_output, 2),
+          tz.mwe_output < 1, '< 1 MWe');
+
+        // ---- leg B: the gauge must read the TURBINE, not the core. Above the C-7 arm the
+        // dump carries the rejection and the reactor stays up — the one state where the two
+        // numbers disagree by 2x, and the state the old formula got wrong.
+        var d = H('hot_full_power');
+        d.run(30);
+        d.cmd('set_load_target', { mwe: 50 });
+        d.run(600);
+        var td = d.ts();
+        ck('the dump is carrying the rejection', fmt(td.steam_dump_valve_pct, 0),
+          td.steam_dump_valve_pct > 30, '> 30 %');
+        ck('the reactor is still up near full power', fmt(td.power_pct, 1),
+          td.power_pct > 90, '> 90 %');
+        ck('but the generator delivers what was ASKED, not what the core makes (was 98.8)',
+          fmt(td.mwe_output, 2), near(td.mwe_output, 50, 3), '50 ±3 MWe');
+
+        // ---- leg C: #235 must stay fixed. OFF line, the rotor still coasts to rest.
+        var o = H('hot_full_power');
+        o.run(30);
+        o.cmd('disconnect_grid', {});
+        o.run(600);
+        ck('off line the rotor still coasts down (#235 not re-broken)', fmt(o.ts().turbine_rpm, 0),
+          o.ts().turbine_rpm < 100, '< 100 rpm');
+
+        // ---- leg D: rated calibration is untouched. steam_flow_rated is 1.0 in these
+        // normalized units, so the new form is bit-identical to the old at 100 % power —
+        // if this moves, the swap was not calibration-preserving after all.
+        var r = H('hot_full_power');
+        r.run(300);
+        ck('rated output unchanged by the reformulation', fmt(r.ts().mwe_output, 2),
+          near(r.ts().mwe_output, 100, 0.5), '100 ±0.5 MWe');
+        T.checkSanity(ck, z);
+      });
+    },
+
     'TR-1d': function () {
       return test('TR-1d planned offline — breaker opens, turbine NOT tripped, no reactor trip', function (ck) {
         // ---- phase 1: at power. The dangerous case: pre-#230 this scrammed on P-9.
@@ -360,6 +438,68 @@
         ck('offline at ~5 % leaves no latched turbine trip after 900 s',
           String(!!g.ts().turbine_tripped), !g.ts().turbine_tripped, 'false');
         ck('and no reactor trip', g.tripReason || 'none', g.tripTime == null, 'none');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    /* TR-14 (#135) — HOW FAST DOES THE SG ACTUALLY DRAIN? The sourced anchor for
+     * `K_sg_level`, and the gate that did not exist when it mattered.
+     *
+     * WHY THIS PROBE EXISTS AT ALL. `K_sg_level` was moved 5.0 → 1.37 — a 3.6× change to a
+     * physics constant — and **every one of the 32 gates stayed green**. Nothing in the
+     * suite asserted how fast a steam generator empties, so the constant could sit at a
+     * value that drained the entire narrow range in twenty seconds of full-power steaming,
+     * and could drift straight back tomorrow with nothing to say so. That is the HR10 case
+     * in its purest form: a green suite was not evidence, it was silence.
+     *
+     * THE SOURCE — Ginna UFSAR Chapter 15, Table 15.2-4, "TIME SEQUENCE OF EVENTS FOR LOSS
+     * OF NORMAL FEEDWATER FLOW" (NRC ADAMS ML20339A101, Rev 29 11/2020, p.102 of 276):
+     *     Main feedwater flow stops                          20 s
+     *     Low-low steam generator water level trip setpoint   55 s
+     *     Rod motion begins and turbine tripped               57 s
+     * 35 s from feed loss to the lo-lo trip. The plant used to do it in 12.9 s.
+     *
+     * The band is deliberately WIDE (25–60 s). What is being pinned is that this plant
+     * drains on a real plant's timescale, not that a single-loop 100 MWe teaching PWR
+     * reproduces Ginna to the second — it has its own narrow-range span and level program,
+     * and claiming otherwise would be the false precision HR12 exists to stop. A band this
+     * wide still fails hard on the old value: 12.9 s is less than half the floor.
+     *
+     * The window check is the ISSUE's actual complaint (#135: "~4 s, too short to read the
+     * alarm and act"). Note what it does NOT assert — that the transient becomes savable.
+     * Measured: clearing the failure the instant the alarm comes in still trips, at 40.6 s.
+     * That is correct and prototypical; a real loss of normal feedwater trips the reactor
+     * on lo-lo level, and it is the credited trip in the analysis above. The window is for
+     * reading the board, not for preventing the trip. */
+    'TR-14': function () {
+      return test('TR-14 loss of feedwater — SG drains on a real plant timescale (Ginna Tbl 15.2-4)', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        var t0 = h.t();
+        h.cmd('inject_failure', { failure_id: 'loss_of_feedwater', severity: 1.0 });
+        // Sample finely enough to catch the alarm crossing: at the OLD drain rate the whole
+        // warning-to-trip leg was under 3 s, so a coarse sweep would have missed it entirely.
+        var warnAt = null, prev = h.ins().sg_level;
+        for (var i = 0; i < 4000 && h.tripTime == null; i++) {
+          h.run(0.5);
+          var v = h.ins().sg_level;
+          if (warnAt == null && prev >= 30 && v < 30) warnAt = h.t() - t0;
+          prev = v;
+        }
+        var tripAt = h.tripTime == null ? null : h.tripTime - t0;
+
+        ck('the plant trips on SG level, not on something else',
+          h.tripReason || 'none', /sg_level/.test(h.tripReason || ''), 'sg_level low');
+        ck('feed loss → lo-lo trip is on a real timescale (Ginna: 35 s)',
+          tripAt == null ? 'never' : fmt(tripAt, 1) + ' s',
+          tripAt != null && tripAt >= 25 && tripAt <= 60, '25–60 s');
+        ck('the low-level warning arrives before the trip',
+          warnAt == null ? 'never' : fmt(warnAt, 1) + ' s', warnAt != null && tripAt != null && warnAt < tripAt,
+          'warning first');
+        // #135's complaint, pinned. 2.9 s measured before the fit; ~11.6 s after.
+        ck('warning-to-trip window is long enough to read the board (#135)',
+          (warnAt == null || tripAt == null) ? 'n/a' : fmt(tripAt - warnAt, 1) + ' s',
+          warnAt != null && tripAt != null && (tripAt - warnAt) >= 7, '≥ 7 s');
         T.checkSanity(ck, h);
       });
     },

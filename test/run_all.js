@@ -75,7 +75,21 @@ var BASELINES = {
   // flag and armed P-9 for the rest of the evolution; measured, a disconnect at 100 %
   // scrammed instantly and one during a heatup scrammed at the later P-9 crossing. Owner
   // ruled it a planned offline (no trip). TR-1d pins that, and fails on the old mapping.
-  'run_behavior.js':       { code: 0, score: '38pass 0xfail' },
+  // 39 since 2026-07-31 (#135): +TR-14, the SOURCED loss-of-feedwater drain rate. Ginna
+  // UFSAR Table 15.2-4 (ADAMS ML20339A101) gives 35 s from feed loss to the lo-lo trip;
+  // this plant did it in 12.9 s. `K_sg_level` 5.0 -> 1.37 fixes that, and the probe exists
+  // because moving a physics constant by 3.6x left ALL 32 gates green — nothing in the
+  // suite asserted how fast a steam generator empties, so the value could drift back with
+  // nothing to say so. Fails at 13.0 s against its 25-60 s band on the old constant.
+  // 40 since 2026-07-31 (#284): +TR-1e. Two turbine-model defects that shared a cause —
+  // nothing in the suite ever compared what the turbine was ADMITTED against what the
+  // reactor MADE, because every other check runs where the two agree. (a) The rated-speed
+  // hold asked `generator_load > 0` rather than whether the BREAKER was shut, so a Manual
+  // load target of 0 MWe while synchronised coasted the rotor 1800 -> 0 rpm with the unit
+  // still on line; (b) `mwe_output` was derived from `power_pct`, ignoring the governor
+  // and the dump, so a 50 MWe ask read 98.8 MWe indicated with the dump venting 48 %.
+  // Fails 3 checks on the old engine (0 rpm end and minimum, 98.78 MWe vs a 50 ±3 band).
+  'run_behavior.js':       { code: 0, score: '40pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -102,7 +116,12 @@ var BASELINES = {
   // 32 → 29 checks (#247): the `__true_flow__` sentinel was the kernel's only reference to
   // a PWR-only true_state field, so retiring it removed three plant-token couplings and
   // paid half of #228. Fewer checks here means fewer leaks to check, not less checking.
-  'run_hr3.js':            { code: 0, score: '29checks 0failed' },
+  // 29 -> 27 on 2026-07-31 (#228): RBMK and BWR now implement `reset_rps`, which the
+  // kernel had always been sending to an engine that only the PWR handled. The token is
+  // shared by all three plants now, so it stops being a finding — and the known-leak list
+  // in run_hr3.js is EMPTY for the first time. Fewer checks means fewer leaks, not less
+  // checking; the gate reddened on its own stale entry before anyone edited the list.
+  'run_hr3.js':            { code: 0, score: '27checks 0failed' },
   // New 2026-07-29 — the guards for the OTHER hard rules. CONTEXT.md §3 now requires
   // every rule to name its guard, and three had none: HR1 (protection reads
   // instruments), HR5 (commands descend; the UI never touches the engine) and HR11 (a
@@ -153,7 +172,11 @@ var BASELINES = {
   // BOTH moved this number from 29, and the merge carries both sides' quotes. Taking either
   // side's figure would have shipped a drift. This is the second time this exact trap has been
   // recorded here — see the "22 is MEASURED on the merged tree" note above.
-  'run_hardrules.js':      { code: 0, score: '39checks 0failed' },
+  // 40 since 2026-07-31 (#284): the fix itself moved nothing here — the BUILD_DECISIONS
+  // write-up did, by quoting #230's "Planned offline, no trip." ruling to explain why the
+  // new `isOnLine` predicate deliberately EXCLUDES `turbine_tripped`. Another worked example
+  // of the warning above: re-run this after the docs, not after the code.
+  'run_hardrules.js':      { code: 0, score: '40checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -163,7 +186,11 @@ var BASELINES = {
   // are on hold and their blocks were never audited, so they are registered `skip`.
   // Check count = every field name on either side, so adding a true_state field moves
   // this baseline — the intended nudge to document it in the same change.
-  'run_contract.js':       { code: 0, score: '84checks 0failed' },
+  // 84 -> 138 on 2026-07-31 (#157): the same file now guards a SECOND contract — every
+  // alarm on every plant must declare a `category` from a closed vocabulary. It used to
+  // be keyword-matched off the alarm id in ui/app.js, wrong for 13 of the PWR's 33.
+  // All three plants here, unlike the PWR-only §6.3 half.
+  'run_contract.js':       { code: 0, score: '138checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -239,7 +266,11 @@ var BASELINES = {
   // was ignored while the buildCommand shelled out to tools/make_portable.js -- and no
   // local build could catch it, because locally nothing is ignored. Injection-verified:
   // re-excluding `tools` reddens it.
-  'run_portable.js':       { code: 0, score: '116checks 0failed' },
+  // Two increments landed together: #275 added the DOWNLOAD section (116 -> 123) and #259
+  // packs legal.html + changelog.html into ui/site_docs.js, one more <script src> on the
+  // shell, so Settings can open Disclaimer / License / Changelog offline in the portable
+  // build. The merged figure is MEASURED, not 123 + 1 arithmetic.
+  'run_portable.js':       { code: 0, score: '124checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
@@ -286,12 +317,38 @@ var BASELINES = {
   // the design — a new setpoint gets range-checked for free, and the count moving is the
   // nudge to notice it. 50 → 52 thresholds audited.
   'run_reachability.js':   { code: 0, score: '58checks 0failed' },
+  // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
+  // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
+  // "## [Unreleased]" to the version) was skipped for Alpha 1.10.0 AND 1.11.0 — 434 lines of
+  // two shipped releases filed as unreleased, newest version heading reading 1.9.0. Nothing
+  // downstream reads that heading, so nothing went red; the CLAUDE.md note and the release
+  // skill's step are what failed, which is the argument for a gate rather than a louder note.
+  // VERIFIED against the real pre-fix file, not a synthetic one: 3 checks red.
+  // 18 -> 11 on 2026-07-31: the version was reset to Alpha 1.1.0 and changelog.html
+  // collapsed to ONE published entry for the public launch, so there are far fewer
+  // cross-checks to make. The count is a function of how many entries exist, not of how
+  // much is checked — every rule still runs.
+  // 11 -> 8 on 2026-07-31: PRE-RELEASE mode. RD_RELEASE is "Pre Alpha", the build is
+  // identified by SHA, and changelog.html correctly has NO published entries — so the
+  // released-state rules stand down. They re-arm on the FORMAT: set RD_RELEASE to
+  // "Alpha 1.0.0" on launch day and this goes back up. Verified by injection — with a
+  // version set and the changelog still empty it fails 3 ways.
+  'run_release.js':        { code: 0, score: '8checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
-  'run_m4.js':             { code: 0, score: '26/26 147passed' },
+  // 26 -> 28 on 2026-07-31 (#125): the PORV's operator switch is a SEPARATE command from
+  // automatic relief (`open_porv_manual` vs `open_porv`), so a scenario can lock the
+  // operator out — TMI-2 does — without touching overpressure protection. The third
+  // check is the one that matters: relief must still lift while the switch is locked.
+  'run_m4.js':             { code: 0, score: '28/28 156passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
-  'run_m5.js':             { code: 0, score: '19/19 79passed' },
+  // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
+  // time, so the free-play rewind ring covers the same slice of the PLAYER's life at
+  // any acceleration. The added checks pile up 360 sim-s with the wall clock frozen
+  // and require ZERO checkpoints — verified against the pre-fix service, where that
+  // one alone lays 21 and 6 of the 8 checks in the suite go red.
+  'run_m5.js':             { code: 0, score: '19/19 83passed' },
   // 16 -> 17 suites, 94 -> 102 checks 2026-07-27 (#142): a new save/restore test for
   // the instructor's operator-action memory and follow acc streak, both of which
   // saveState dropped. Verified against the PRE-fix instructor, where 5 of its 8
@@ -306,7 +363,9 @@ var BASELINES = {
   // 20 → 21 on 2026-07-31 (#214): a stand-down note is the only account of why a channel
   // switched itself off, and it is now on screen, so its LIFETIME is gated — it must be
   // retired when its cause clears, without re-engaging the channel.
-  'run_autoctl.js':        { code: 0, score: '21/21' },
+  // 21 -> 24 on 2026-07-31 (#228): the RPS reset, run for ALL THREE plants. The defect
+  // hid for months because every test that touched reset_rps was PWR-only.
+  'run_autoctl.js':        { code: 0, score: '24/24' },
   // Back to 51/51 2026-07-26 (#218): pwr_msiv re-authored for P-9. The mission had been
   // a RACE — reopen before an automatic low-SG trip — and with the scram now landing at
   // closure that race is gone; worse, the decision beat's `scram` branch fired instantly
@@ -336,7 +395,14 @@ var BASELINES = {
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
   // discriminate where the originals could not.
-  'run_e2e_controls.js':   { code: 0, score: '39/39' },
+  // 39 -> 59 on 2026-07-31 (#75): the RPS reset from the board. The SCRAM button drew
+  // "PRESS TO RESET" with an empty handler, and the kernel's refusal used a `type:
+  // 'refused'` shape that NOTHING read — so an early press did nothing, silently. 20
+  // checks: the permissive as state, the refusal in the shape app.js flashes, operator
+  // text with no instrument ids in it, and the rod-bottom window (~1-3 s) that the first
+  // cut of these tests left uncovered — injection proved the whole permissive config
+  // could be deleted with every other check still green.
+  'run_e2e_controls.js':   { code: 0, score: '59/59' },
   // 96 → 100 checks, both from the pwr_startup rebuild:
   //   +1 (#134) the level-off now holds the point of adding heat at 1–3 %, and
   //      crossing the 5 % boundary into Mode 1 is its own deliberate step
@@ -378,7 +444,12 @@ var BASELINES = {
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
-    code: 1, score: '57/68 334passed 12failed',
+    // 334 -> 335 passed on 2026-07-31 (#136): abuse_porv_walkaway now ASSERTS that an
+    // overfilled RCS reads overfilled on both gauges. It used to end at inventory 120 %
+    // (pinned at mass_max) with pressurizer level 7 %, and the probe printed both numbers
+    // on an `info` line every run while asserting neither — which is exactly why it went
+    // unnoticed. The defect itself was fixed by #249; this is the guard it never got.
+    code: 1, score: '57/68 335passed 12failed',
     note: 'Ops probes are tuning targets by design. Measured 2026-07-27b from ' +
           'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; all 11 reds are ' +
           '7 RBMK + 4 BWR, and the deliberately-red C2 accel-latency probe (#153, ' +

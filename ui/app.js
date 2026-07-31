@@ -346,16 +346,20 @@
   function prof() { return PROFILES[ui.plant]; }
   function rodGroup(s, fn) { return s.control_state.rod_groups.filter(function (x) { return x.function === fn; })[0]; }
 
-  // Alarm → system category (UI-side keyword map across the three plants).
-  // System family for scanner/meta text only — tiles no longer color-code by
-  // category (priority carries the color: red / amber / grey).
-  function alarmCategory(id) {
-    if (/flux|power|rod|orm|reactivity|az/.test(id)) return 'reactivity';
-    if (/press|subcool|pzr|rcp|void|drum|vessel|level|flow|coolant/.test(id)) return 'coolant';
-    if (/sg|turbine|cond|tavg|steam|recirc/.test(id)) return 'power';
-    if (/sensor|indicator/.test(id)) return 'instrument';
-    return 'safety_system';
-  }
+  // Alarm → system family, for the tile's meta line and the scanner hint. Tiles do
+  // not colour-code by it (priority carries the colour: red / amber / grey).
+  //
+  // AUTHORED DATA since #157 — it used to be keyword-matched off the alarm id here,
+  // which was wrong for 13 of the PWR's 33. The failure was quiet and self-inflicted:
+  // `charging_high` fell through every rule to 'safety_system' because the word "flow"
+  // lives in its LABEL (CHG FLOW HI) and the matcher read the id; `sur_high` did the
+  // same on both PWR and RBMK; `sg_press_high` matched "press" and was filed under
+  // coolant despite being secondary steam. Renaming an alarm silently re-categorised it.
+  //
+  // No fallback on purpose. A missing category renders as '—' and `run_contract.js` fails,
+  // rather than a guess quietly standing in for authored data — the whole defect here
+  // was a plausible-looking guess nobody could see was wrong.
+  function alarmCategory(a) { return (a && a.category) || '—'; }
 
   // ---- inspection copy for generated surfaces (#96) ------------------------
   // Gauges and alarm tiles are built from data, so their detail text is built
@@ -886,7 +890,7 @@
     if (title) title.textContent = nUnack ? 'Alarms (' + nUnack + ')' : 'Alarms';
     if (!active.length) { stack.innerHTML = '<div class="alarm-empty">— no active alarms —</div>'; return; }
     stack.innerHTML = active.map(function (a) {
-      var cat = alarmCategory(a.id);
+      var cat = alarmCategory(a);
       var sev = a.priority === 'critical' ? 'crit' : a.priority === 'warning' ? 'warn' : '';
       var unack = a.state === 'active_unacknowledged' ? ' unack' : '';
       var glyph = a.priority === 'critical' ? '⚠' : a.priority === 'warning' ? '△' : '●';
@@ -988,11 +992,11 @@
         // TMI-2 p1/p3 run Realistic so the chart keeps the deception, p2 runs Learning
         // so the reveal can show the physics. Re-fit the axes across the swap.
         if (ui.diagMode !== want) chartRange = {};
-        ui.diagMode = want; ui.physOverlay = wantOv; syncOverlayRow();
+        ui.diagMode = want; ui.physOverlay = wantOv;
       }
     } else if (uiPolicyPrev) {
       ui.diagMode = uiPolicyPrev.diagMode; ui.physOverlay = uiPolicyPrev.physOverlay;
-      uiPolicyPrev = null; syncOverlayRow();
+      uiPolicyPrev = null;
     }
     // Scenario prop: the maintenance tag over the AFW valve indication. Hidden
     // once its interaction is granted (the tag comes off the valve).
@@ -1500,10 +1504,10 @@
     setFocus('instructor');
   }
   function levelCompleteAction(a) {
-    // Reset the commentary queue on rewind: without this, cards from the
-    // abandoned timeline churn through the dwell queue after each press
-    // (seen in the az5 rematch playthrough).
-    if (a === 'rewind') { lastLcKey = null; resetInstrFlow(); cmd({ action: 'rewind', steps: 1 }); return; }
+    // Rewind from a failure card opens the picker like every other ⏪ (#137), so
+    // escaping back to the decision point is one click on it rather than repeated
+    // presses walking backwards. The commentary queue is dropped at the pick.
+    if (a === 'rewind') { lastLcKey = null; rewindPressed(); return; }
     if (a === 'retry') {
       lastLcKey = null;
       if (ui.follow) { followRetry(); return; }
@@ -1914,13 +1918,14 @@
     closeManual(); setFocus('instructor', true);
     if (latest) renderInstructor(latest);
   }
-  // Rewind entry point (Instructor card ⏪ + strip-chart ⏪): during instructed
-  // content it steps back one authored checkpoint; in free play it opens the
-  // pick-a-moment mode on the strip chart (sandbox checkpoints every 15 sim-s).
-  function rewindPressed() {
-    if (ui.follow || ui.scenario) { resetInstrFlow(); cmd({ action: 'rewind', steps: 1 }); return; }
-    toggleRewindPick();
-  }
+  // Rewind entry point (Instructor card ⏪, strip-chart ⏪, scrub track, failure
+  // card ⏪). It ALWAYS opens pick-a-moment mode on the strip chart — there is no
+  // one-step rewind any more (#137, OWNER 2026-07-31: "I don't think there should
+  // be a rewind one step button. Make the user pick from the checkpoints on the
+  // graph."). Inside a scenario or walkthrough the marks are the authored
+  // checkpoints (one per beat / follow step) rather than free-play's periodic
+  // ones, so the same gesture lands you on a decision point.
+  function rewindPressed() { toggleRewindPick(); }
   function toggleRewindPick(on) {
     ui.rewindPick = on != null ? !!on : !ui.rewindPick;
     var chart = document.querySelector('.strip-chart');
@@ -1939,7 +1944,11 @@
     var rect = document.querySelector('.chart-plot').getBoundingClientRect();
     // traces occupy only the left CHART_PLOT_FRAC of the plot (right gutter = value chips)
     var frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / (rect.width * CHART_PLOT_FRAC)));
-    var t0 = chartBuf[0].t, t1 = chartBuf[chartBuf.length - 1].t;
+    // The SAME extent drawChart plotted the marks against. This used to read the
+    // whole chartBuf (up to CHART_RECORD_SEC) while the plot drew ui.window, so at
+    // the default 5-minute window with 30 minutes of history a click resolved to a
+    // moment ~6× further back than the one under the cursor.
+    var ext = chartExtent(), t0 = ext.t0, t1 = ext.t1;
     var tPick = t0 + frac * (t1 - t0);
     var best = 0, bd = Infinity;
     for (var i = 0; i < cps.length; i++) {
@@ -1947,8 +1956,11 @@
       if (d < bd) { bd = d; best = i; }
     }
     toggleRewindPick(false);
+    // Drop the commentary queue: without this, cards from the abandoned timeline
+    // churn through the dwell queue after the jump (az5 rematch playthrough).
+    resetInstrFlow();
     // exact: the pick names a specific checkpoint — M5 must not apply the
-    // repeated-press walk-back clamp to it (playtest follow-up).
+    // consecutive-rewind walk-back clamp to it (playtest follow-up).
     cmd({ action: 'rewind', steps: cps.length - best, exact: true });
   }
 
@@ -2135,6 +2147,32 @@
   var LANE_LO = 0.14, LANE_HI = 0.86;   // lane centres span this much of the plot
   function laneOf(i, n) { return n < 2 ? 0.5 : LANE_HI - i * (LANE_HI - LANE_LO) / (n - 1); }
 
+  // The plot's x extent — ONE definition, because drawChart and the rewind picker
+  // must agree on it. Normally the strip-chart window: the axis always spans the
+  // full ui.window and data enters at the right, scrolling left, rather than the
+  // span growing until it fills. t1 is the latest sample; t0 is exactly one window
+  // behind it.
+  //
+  // In rewind-pick mode it WIDENS to cover the whole checkpoint ring (#137). On a
+  // real-time checkpoint cadence a fast-forward lays its checkpoints hours of sim
+  // apart, while the widest window is 30 min — so at any speed worth rewinding
+  // through, every reachable checkpoint sat off the left edge and the picker had
+  // nothing to click. The traces then occupy only the right-hand sliver, which is
+  // honest: chartBuf keeps CHART_RECORD_SEC of trend and no more.
+  function chartExtent() {
+    if (!chartBuf.length) return { t0: 0, t1: 0, span: 1 };
+    var t1 = chartBuf[chartBuf.length - 1].t;
+    var t0 = t1 - ui.window;
+    var cps = ui.rewindPick && service ? (service.checkpoints || []) : [];
+    if (cps.length) {
+      var oldest = cps[0].metadata.sim_time;
+      // a margin so the oldest mark is not welded to the axis and stays clickable
+      if (oldest < t0) t0 = oldest - (t1 - oldest) * 0.04;
+    }
+    if (t1 - t0 < 1e-6) t0 = t1 - 1;
+    return { t0: t0, t1: t1, span: t1 - t0 };
+  }
+
   function drawChart() {
     var svg = $('chartCanvas'), floats = $('chartFloats'), W = 400, H = 120;
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
@@ -2145,10 +2183,7 @@
       }).join('');
       svg.innerHTML = ''; if (floats) floats.innerHTML = ''; return;
     }
-    // Fixed strip-chart window: the axis always spans the full ui.window and data
-    // enters at the right, scrolling left — rather than the span growing until it
-    // fills. t1 is the latest sample; t0 is exactly one window behind it.
-    var t1 = chartBuf[chartBuf.length - 1].t, t0 = t1 - ui.window, span = ui.window || 1;
+    var ext = chartExtent(), t1 = ext.t1, t0 = ext.t0, span = ext.span;
     var PW = W * CHART_PLOT_FRAC;   // traces stop short of the right edge; value chips live in the gutter
     var html = '';
     // Downsample the VISIBLE window [t0, t1] into fixed TIME buckets — one per plot
@@ -2291,11 +2326,16 @@
     drawFloats(lastY, H);
     // low-profile x-axis
     var ax = $('chartXAxis'); ax.innerHTML = '';
+    // Seconds read fine over a 30-min window; a rewind-pick span can be many hours
+    // of sim, where "−72000s" is unreadable. Switch to h:mm:ss past ten minutes.
+    var axLong = span > 600;
     for (var i = 0; i <= 5; i++) {
       var rel = (t0 + span * i / 5) - t1;
-      var sp = document.createElement('span'); sp.textContent = rel === 0 ? '0' : Math.round(rel) + 's'; ax.appendChild(sp);
+      var sp = document.createElement('span');
+      sp.textContent = rel === 0 ? '0' : '−' + (axLong ? hms(-rel) : Math.round(-rel) + 's');
+      ax.appendChild(sp);
     }
-    $('chartWindowLbl').textContent = '−' + hms(ui.window).slice(3);
+    $('chartWindowLbl').textContent = '−' + (span > 3600 ? hms(span) : hms(span).slice(3));
   }
 
   // Live floating value labels at the right edge, one per trace, color-coded and
@@ -2930,19 +2970,10 @@
       // has no #ffBadge, so every speed click threw before the segment could repaint.
       cmd({ action: 'set_speed', value: +b.getAttribute('data-speed') });
     });
-    // Settings → Values Display (Instruments / True / Both) drives the legacy All view.
-    var oseg = $('overlaySeg2');
-    if (oseg) oseg.addEventListener('click', function (e) { var b = e.target.closest('[data-overlay]'); if (!b) return; ui.overlay = b.getAttribute('data-overlay'); syncSeg('[data-overlay]', ui.overlay, 'overlay'); if (latest && ui.plant !== 'pwr') renderPdAll(latest); });
-    // Physics Overlay (Physics Diagram teaching layer). Diagram Mode UI removed —
-    // the board is always the Physics Diagram until a realistic board ships.
-    var pseg = $('physSeg');
-    if (pseg) pseg.addEventListener('click', function (e) {
-      var b = e.target.closest('[data-phys]'); if (!b) return;
-      ui.physOverlay = b.getAttribute('data-phys') === 'on';
-      if (latest) render(latest);
-    });
-    syncOverlayRow();
-    $('registerSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-register]'); if (!b) return; ui.register = b.getAttribute('data-register'); cmd({ action: 'set_register', value: ui.register }); });
+    // Settings: Units only under Display (#277 removed Values / Terminology /
+    // Physics Overlay). RBMK/BWR All-view Instruments/True/Both still lives on
+    // the plant display itself (#pdOverlaySeg). Register + physOverlay keep
+    // their defaults; stack still accepts set_register for tests.
     $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
     var aseg = $('attnSeg');
     if (aseg) aseg.addEventListener('click', function (e) {
@@ -3050,6 +3081,40 @@
     $('feedbackOverlay').addEventListener('click', function (e) { if (e.target === $('feedbackOverlay')) $('feedbackOverlay').hidden = true; });
     $('fbCopy').addEventListener('click', copyFeedbackEmail);
     $('fbDiag').addEventListener('click', function () { exportDiag(); });
+    // About docs (#259) — Settings → Disclaimer / License / Changelog. Content is
+    // packed into RD.SITE_DOCS so the portable single-file build has them offline.
+    (function initSiteDocs() {
+      function openSiteDoc(id) {
+        var docs = (RD && RD.SITE_DOCS) || {};
+        var d = docs[id];
+        if (!d) return;
+        $('docTitle').textContent = d.title || id;
+        $('docBody').innerHTML = d.html || '';
+        $('docBody').scrollTop = 0;
+        $('docOverlay').hidden = false;
+      }
+      function closeSiteDoc() { $('docOverlay').hidden = true; }
+      var settingsPane = document.querySelector('[data-pane="settings"]');
+      if (settingsPane) {
+        settingsPane.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-site-doc]');
+          if (!b) return;
+          openSiteDoc(b.getAttribute('data-site-doc'));
+        });
+      }
+      if ($('docClose')) $('docClose').addEventListener('click', closeSiteDoc);
+      if ($('docOverlay')) {
+        $('docOverlay').addEventListener('click', function (e) {
+          if (e.target === $('docOverlay')) closeSiteDoc();
+        });
+      }
+      // Logo version chip — same changelog the Settings button opens.
+      if ($('logoVer')) {
+        $('logoVer').style.cursor = 'pointer';
+        $('logoVer').title = 'Release version — open the changelog';
+        $('logoVer').addEventListener('click', function () { openSiteDoc('changelog'); });
+      }
+    })();
     // Instructor idle links (Help / Tour) — delegated so re-rendered HTML works.
     $('instructorCard').addEventListener('click', function (e) {
       if (e.target.closest('[data-open-help]')) { e.preventDefault(); $('helpOverlay').hidden = false; return; }
@@ -3133,6 +3198,7 @@
         if (tourOn) closeTour();
         if (!$('featureOverlay').hidden) closeFeaturePanel();
         if (!$('feedbackOverlay').hidden) $('feedbackOverlay').hidden = true;
+        if ($('docOverlay') && !$('docOverlay').hidden) $('docOverlay').hidden = true;
         if (ui.rewindPick) toggleRewindPick(false);
         return;
       }
@@ -3357,17 +3423,6 @@
     }
   }
   function syncSeg(sel, val, attr) { document.querySelectorAll(sel).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-' + attr) === val); }); }
-  // Physics Overlay control exists only in Learning (Education) mode — Realistic hides it entirely.
-  // Values Display drives only the legacy RBMK/BWR All view — on the PWR the
-  // synoptic owns its truth presentation, so the row is hidden (an on-screen
-  // setting must never silently do nothing).
-  function syncOverlayRow() {
-    // Physics Overlay only applies on the Physics Diagram (always, until a
-    // realistic board ships). Values display is available on every plant.
-    var row = $('overlayRow'); if (row) row.style.display = '';
-    var vr = $('valuesRow'); if (vr) vr.style.display = '';
-    syncSeg('[data-phys]', ui.physOverlay ? 'on' : 'off', 'phys');
-  }
 
   // ---- Quick tour: coach-marks (highlight target + tip beside it) ----------
   // Not a centered modal — each step points at a real control so a newcomer
@@ -3963,7 +4018,6 @@
     // normal lineup (M5 selectPlant → engageDefaults); the tab just rebuilds.
     buildAutomate();
     buildPlantDisplay();
-    syncOverlayRow();   // per-plant settings rows (Values Display is legacy-view only)
     buildAdvFail();     // advanced instrument-failure panel follows the active plant
     var ps = $('pdScram'); if (ps && !ps.classList.contains('fired') && !ps.classList.contains('armed')) ps.textContent = prof().scramShort;
     refreshMissionSelect();   // walkthrough list follows the active plant
@@ -4433,7 +4487,6 @@
     var dm = /[?&]mode=(realistic|learning|education)/.exec(location.search || '');
     if (dm) { ui.diagMode = dm[1] === 'realistic' ? 'realistic' : 'learning'; }
     if (/[?&]phys=1/.test(location.search || '') && ui.diagMode !== 'realistic') ui.physOverlay = true;
-    syncOverlayRow();
     var im = /[?&]inject=([a-z0-9_,]+)/.exec(location.search || '');
     if (im) im[1].split(',').forEach(function (id) { service.handleCommand({ action: 'inject_failure', failure_id: id, severity: 1 }); });
     var ffm = /[?&]ff=(\d+)/.exec(location.search || '');

@@ -372,6 +372,65 @@ test('Automation reads instruments, not truth (HR1 probe)', function (ck) {
   ck('controller chased the lying instrument (true level fell)', t.sg_level_pct.toFixed(1) + ' from ' + before.toFixed(1), t.sg_level_pct < before - 3, 'true level drops >3%');
 });
 
+// ---------------------------------------------------------------- RPS reset (#228)
+// The kernel has always SENT `reset_rps` and only the PWR engine had a handler. It also
+// DISCARDED the engine's response and reached RODS_NOT_INSERTED by inference from
+// `scrammed` still being true — so on RBMK and BWR the operator was refused with "trip
+// breakers reset only with all rods inserted" while every rod read 0.0 %. A refusal that
+// names a satisfied precondition is worse than no reset at all: it sends you hunting a
+// rod fault that does not exist.
+//
+// Run for ALL THREE plants deliberately. The defect was invisible for months precisely
+// because every test that touched reset_rps was PWR-only (ops_pwr.js), which is the same
+// wrong-layer/wrong-plant blind spot CLAUDE.md warns about.
+[['pwr', 'hot_full_power', null], ['rbmk', '50_percent', 'post_chernobyl'], ['bwr', 'full_power', null]]
+.forEach(function (P) {
+  test(P[0].toUpperCase() + ' · RPS reset works, and refuses for the RIGHT reason (#228)', function (ck) {
+    var r = rig(P[0], P[1], P[2]);
+    r.run(10);
+    ck('not scrammed to begin with', scrammed(r), !scrammed(r), 'false');
+
+    r.cmd({ action: 'scram' });
+    r.run(5);
+    ck('scram latched', scrammed(r), scrammed(r), 'true');
+
+    // Rods are still travelling: the interlock must hold, and it must be the ROD
+    // interlock talking — not an engine that simply has no handler.
+    var early = r.cmd({ action: 'reset_rps' });
+    var rods = r.snap().control_state.rod_groups || [];
+    var allIn = rods.every(function (g) { return g.position_pct <= 2.0; });
+    if (!allIn) {
+      // Assert the INTENT, not the envelope. #228 wrote this against `{type:'refused',
+      // code:'RODS_NOT_INSERTED'}`; #75 then normalised every RPS refusal to
+      // `{type:'blocked', code:'INTERLOCK', reason:'RODS_NOT_INSERTED'}` on purpose, and
+      // this check went red on the merge for pinning the old shape rather than the claim.
+      // What it actually cares about: the plant said no, and it named the ROD interlock
+      // when it did. Both spellings satisfy that, and neither is COMMAND_ERROR.
+      var named = early && (early.code === 'RODS_NOT_INSERTED' || early.reason === 'RODS_NOT_INSERTED');
+      ck('reset refused while the rods are still out, naming the rod interlock',
+        early && ((early.code || '') + '/' + (early.reason || '')),
+        !!(early && (early.type === 'refused' || early.type === 'blocked') && named),
+        'refused|blocked + RODS_NOT_INSERTED');
+    }
+    ck('a refusal is never COMMAND_ERROR — the engine must implement the reset',
+      early ? (early.code || early.type) : 'null', !(early && early.code === 'COMMAND_ERROR'),
+      'not COMMAND_ERROR');
+
+    r.run(180);                                  // let every group drive fully in
+    rods = r.snap().control_state.rod_groups || [];
+    ck('all rods inserted after the scram',
+      rods.map(function (g) { return g.id + '=' + g.position_pct.toFixed(1); }).join(' '),
+      rods.length > 0 && rods.every(function (g) { return g.position_pct <= 2.0; }), 'all <= 2 %');
+
+    var resp = r.cmd({ action: 'reset_rps' });
+    r.run(2);
+    // The claim: with the stated precondition satisfied, the reset is ACCEPTED. Before
+    // #228 this returned RODS_NOT_INSERTED on rbmk/bwr with the rods measurably in.
+    ck('reset accepted once the rods are in', JSON.stringify(resp), resp == null, 'null');
+    ck('scram latch cleared', scrammed(r), !scrammed(r), 'false');
+  });
+});
+
 // A stand-down note is the ONLY statement of why a channel switched itself off, and
 // #214 put it on screen (the System Scanner). That makes its lifetime load-bearing:
 // stepAutomation skips disengaged channels, so before this the note was write-once and

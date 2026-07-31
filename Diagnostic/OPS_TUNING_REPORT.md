@@ -229,12 +229,32 @@ containment floor. Spray water is Tcold liquid — physically it cannot pull pre
 
 ### P7 — Notes / positives
 
-* `ops\_loss\_of\_feedwater\_handsoff` is a model response: SG-low alarm at +40 s, AFW
-auto-start, trip at +44 s, level recovery, subcooling held. (Warning-to-trip window is
-only \~4 s — consider slowing SG boil-down slightly to give a player a fighting chance.)
+* `ops\_loss\_of\_feedwater\_handsoff` is a model response: SG-low alarm, AFW auto-start,
+trip, level recovery, subcooling held.
+**RESOLVED 2026-07-31 (#135) — and the diagnosis in this line was wrong.** It read "warning-to-trip
+window is only ~4 s — consider slowing SG boil-down slightly". Two corrections. The window was
+**2.9 s**, not 4 (measured full-stack; the +40/+44 s figures above were engine+M4 and included the
+feed-pump coastdown). And "slightly" understated it by a factor of three: the cause was
+`K_sg_level` at **5.0**, i.e. the entire narrow range holding **twenty seconds** of full-power
+steaming — measured, true level 64.5 → 3.1 % in 13 s. Now **fitted to a real transient**:
+Ginna UFSAR Table 15.2-4 (ADAMS ML20339A101) gives **35 s** from feed loss to the lo-lo trip, so
+48 points of span / 35 s = **1.37 %/s**. Trip now at 40.5 s, window **11.6 s**. GitHub #135 filed
+this as "a setpoint/lag question, not a physics change" — that was **arithmetically impossible**:
+the setpoints are 13 points apart, so at the old drain rate no spacing change could buy more than
+a few seconds. This backlog line had it right and the issue did not. Pinned by **TR-14** in
+`run_behavior`, which nothing did before — the 3.6× change left all 32 gates green.
 * `abuse\_porv\_walkaway` is TMI-with-honest-instruments and survives hands-off (trip → HPI).
-Oddity: end state shows inventory 120 % (clip at `mass\_max`) with pzr level 7 % — the
-overfill/level bookkeeping disagree; worth a look.
+**RESOLVED 2026-07-31 (#136).** This line read: *"Oddity: end state shows inventory 120 %
+(clip at `mass\_max`) with pzr level 7 % — the overfill/level bookkeeping disagree; worth a
+look."* Re-measured: the end state is now **120.0 % inventory / 100.0 % level** — solid, and
+the two gauges agree. Fixed by **#249**, not by anything done for #136: `level_per_mass_surplus`
+was an underived 300, so `mass_max` clipped inventory *before* the gauge ran out of scale and
+indicated level physically could not express a surplus. Fitting it to real pressurizer geometry
+(**776**, the steam space as 5.8 % of RCS volume) is what made the overfill readable — the same
+defect that was hiding a full accumulator dump. The clip still pins inventory at 120 % and that
+remains correct. **Now asserted rather than observed**: this probe gained a both-gauges-agree
+check (335 passed, was 334), because these two numbers were printed on an `info` line every run
+and asserted on none. It reddens at 88.0 % level on the pre-#249 gain.
 * Startup: the SUR interlock works exactly as intended (267 blocks during a yank, 0–1
 during a careful approach), but after criticality the sim coasts to \~20 % power even when
 leveled with counter-insertion. Real practice stabilizes < 5 %. Consider a slightly

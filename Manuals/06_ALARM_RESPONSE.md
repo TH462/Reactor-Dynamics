@@ -2,7 +2,7 @@
 
 **Document:** PWR-ARP-01  
 **Title:** Annunciator Response — PWR  
-**Revision:** 19  
+**Revision:** 22  
 
 ---
 
@@ -111,7 +111,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Automatic actions** | Rods drive in; load → Disconnected |
 | **Immediate operator actions** | 1) Verify power falling and rods inserting. 2) Verify turbine load rejected. 3) Ensure heat sink (SG level / AFW). 4) Check pressure, inventory, subcooling. 5) Diagnose cause (first-out / failures). |
 | **If not expected** | Manual SCRAM if power not falling; treat as ATWS path (**PWR-E13**). |
-| **Recovery** | Stabilize Hot Shutdown (**PWR-T06**). Do not hasty restart. |
+| **Recovery** | Stabilize Hot Shutdown (**PWR-T06**). Clear the tripping condition, then reset the RPS at the SCRAM control (**03 §3.5.1**) — the reset is permissive-gated and its caption names whatever is holding it. Do not hasty restart. |
 
 ---
 

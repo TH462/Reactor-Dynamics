@@ -1,7 +1,14 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "node site/stamp_version.js && node site/make_download.js",
   "outputDirectory": ".",
   "rewrites": [
     { "source": "/sim", "destination": "/ui/shell.html" }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "workbench": false,
+      "backshop": false
+    }
+  }
 }

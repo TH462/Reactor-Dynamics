@@ -161,6 +161,24 @@
 
   function offline(s) { disconnect(s, null); }
 
+  // IS THE GENERATOR BREAKER CLOSED? The one question that decides whether the grid is
+  // holding the rotor, and it is NOT the same question as "is the machine carrying load"
+  // — a synchronous machine tied to the grid spins at rated at ANY load, including zero,
+  // and will motor rather than decelerate.
+  //
+  // It exists because the PWR turbine model asked it as `generator_load > 0` (#284), so
+  // an operator sliding the Manual load target to 0 MWe while synchronised dropped into
+  // the OFFLINE coastdown branch: measured, the rotor walked 1800 -> 0 rpm over ~5 plant-
+  // minutes with `turbine_tripped` false and the breaker still closed. The load test is
+  // right for the case it was written for (#235: cold Modes 3/5, authored untripped with
+  // no load and no steam, pinning 1800 rpm) — but those ICs are authored `disconnected`,
+  // so keying on the breaker keeps that fix and drops the on-line case out of it.
+  //
+  // `turbine_tripped` is deliberately NOT part of this predicate: a trip and an open
+  // breaker are different events (#230, owner ruling 2026-07-28 "Planned offline, no
+  // trip") and callers that care about the trip test it separately.
+  function isOnLine(s) { return s.load_mode !== 'disconnected'; }
+
   function setMode(s, mode, opts) {
     if (mode !== 'follow' && mode !== 'manual' && mode !== 'disconnected') return;
     s.load_mode = mode;
@@ -181,6 +199,7 @@
     step: step,
     disconnect: disconnect,
     offline: offline,
+    isOnLine: isOnLine,
     setMode: setMode,
     clip: clip,
   };

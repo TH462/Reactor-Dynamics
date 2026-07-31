@@ -44,7 +44,17 @@
   // Spread into per-part beats: Object.assign({id, trigger, dialogue}, PHYS.x).
   TMI2.PHYS = {
     // The AFW discharge valves went shut with the surveillance test last shift.
-    setup: [{ action: 'inject_failure', failure_id: 'afw_failure' }],
+    //
+    // The PORV switch is locked out for the whole of TMI-2 (#125). The lesson is that you
+    // cannot tell an open PORV from a closed one, because the light shows the SIGNAL and
+    // not the disc — and it evaporates if the player can sit on the switch and work the
+    // valve themselves. Only `open_porv_manual` is refused: `close_porv` stays available
+    // because it IS the TMI-2 action and the stuck valve defeating it is the whole point,
+    // and the automatic relief that lifts the valve at the trip is a different command
+    // again, so `porvLift` below is untouched.
+    setup: [{ action: 'inject_failure', failure_id: 'afw_failure' },
+            { action: 'set_action_lock', action_id: 'open_porv_manual',
+              message: 'The PORV control switch is not yours to work in this exercise.' }],
     // T+0 — condensate polisher → condensate pumps → feed pumps → turbine.
     lofw: { inject_failures: ['loss_of_feedwater'] },
     // The trip transient lifts the PORV (enacted; the indicator shows OPEN).

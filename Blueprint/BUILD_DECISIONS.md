@@ -27,13 +27,371 @@ where the two differ or where judgment was exercised.
 | F4 | M4 | `degraded_hpi` is typed `command_override` but its real effect is an engine HPI-flow multiplier (the spec itself flags this, M4 §7). Implemented via the engine hook. | taxonomy | **RESOLVED** (2026-07-27, #143) — `degraded_hpi` and `afw_failure` are both `physics_parameter` now (`pwr_control.js:285,289`, effects `degrade_hpi` / `block_afw`). Both are persistent physical states, not command interceptions, so the typing matches HR7. |
 | F5 | M1 | `fuel_damaged` (cladding failure at 1200 °C) is internal, not in the §6.3 `true_state` contract. Consumers must use `fuel_temp_c`/`melted`. | contract | **RESOLVED** (2026-07-27, #144) — it is in the contract, `CONTEXT.md:395`. Consumers may read it directly. The flag outlived the fix. **But**: measured against `getTrueState()`, **41 of 82 PWR fields are still undocumented** in §6.3 — `fuel_damaged` was the one that got fixed, not the only one missing. Tracked separately as #225, **RESOLVED 2026-07-28t**: all documented, and `test/run_contract.js` now gates the diff both ways. Note the 41 had itself rotted by the time it was worked — 29 of 84 when re-measured. |
 | F6 | M5 | Acceleration is realized as fixed-0.02 s step **count**, not by scaling `dt` (CONTEXT §4's literal `dt_effective` diverges — verified). Every engine (M2/M3) must stay stable at 0.02 s; the service never hands them a larger dt. | deviation | **RESOLVED** — all three stable at 0.02 s. M2 fine with explicit Euler. **M3 needed an IMPLICIT prompt term** (its Λ=5e-5 makes explicit Euler unstable at 0.02 s: dt·β/Λ=2.6>2 — see M3 D1); still first-order, so the fixed-0.02 s contract holds for every engine. The service never needs a smaller dt. |
-| F7 | M8 | Alarm system-category (left-bar color, M8 §8.5) is derived UI-side by keyword (`alarmCategory()`), because M1's alarm data has no `category`. Should move into the plant profile alongside `tile_label`/`scanner_hint`. | data | **open** — add to engine alarm config |
+| F7 | M8 | Alarm system-category (left-bar color, M8 §8.5) is derived UI-side by keyword (`alarmCategory()`), because M1's alarm data has no `category`. Should move into the plant profile alongside `tile_label`/`scanner_hint`. | data | **RESOLVED (2026-07-31, #157)** — `category` is authored beside `panel:` in each plant control module, projected through `getActiveAlarms()`, and read by the UI. The keyword matcher is gone; there is deliberately NO fallback, so a missing category renders `—` and `run_contract.js` fails (84 → 138 checks, all three plants, closed vocabulary). **Measured before the change: 13 of the PWR's 33 were wrong or arguable** — the matcher read alarm IDS while the words it looked for often live in LABELS, so `charging_high` (CHG FLOW HI) fell through every rule to `safety_system`, `sur_high` did the same on PWR and RBMK, and `sg_press_high` matched "press" into `coolant` despite being secondary steam. |
 | F9 | M5/M6·PH/M7 | Integration tests assert `rod_nudge` reaches the engine **instantly** (`210 → 200`), but the engine now does a **rate-limited nudge** (drives a `nudge_target` over sim time — the "rod control reworked" change). The one-step assertion sees `210→210` and fails. **Pre-existing** (reproduces on clean HEAD; unrelated to the BOP work) — the stale check needs to step the sim forward after nudging. | test | **open** — fix the 3 integration tests to run the sim after `rod_nudge` |
 | F8 | M8 | Control sections were made a **tabbed strip** (one section shown at a time), a user-directed deviation from M8 §5 ("always visible — not tabs, not collapsible"), to keep the control band skinny. Revisit whether tabbing the controls is acceptable for the real Instructor (M6) flow, where a scenario may need to highlight a control in a non-active tab. | deviation | **RESOLVED (M6)** — highlights auto-reveal hidden controls on both mechanisms: RBMK/BWR `findPdControl()` switches the owning view tab (`app.js`); PWR `RD.PwrSynoptic.revealControl(label)` opens the owning card tab/section via the data-driven `SYN_CONTROL_MAP` (`pwr_synoptic.js`). `verify_manual_follow.js` now checks PWR controls through the same reveal path. |
 | F10 | M2/M8 | **RBMK automatic-regulator (AR) rod group** (user-directed): add a third, small-worth (~5–8% of the manual bank, no displacer), fine-step group — the authentic RBMK AR. The Automate rod channel drives IT (fixes the ±4%/step hold granularity); its diagram/control card carries its own AUTO/MAN selector mirroring the Automate channel; disengaging = taking manual control (the pre-Chernobyl condition — scenario beat material). Include AR in ORM; scram drives it in; keep the positive-scram displacer exclusively on the manual bank so the Chernobyl acceptance suite stays green. NO second manual group — the AR under manual override IS the fine manual bank. | planned | **RESOLVED (2026-07-07)** — built as specced (see the dated entry); the Chernobyl AR scenario beat is authored under F11. |
 | F12 | M8/test | **`run_e2e_controls` 28/30 — 2 pre-existing reds** (was 3; (c) *AUTO charging converged to match the leak* turned green with the 2026-07-22 P7 retune/SGTR re-anchor). (a) *PZR spray manual set reaches engine* — expects spray ≥45 % at the engine, gets 12; the spray-demand reach drifted. (b) *CVCS auto make-up holds inventory vs leak* — "auto holds ≥98 %" is not physical for a severity-1.0 SGTR (now 0.03 frac/s ≈ 40× CVCS make-up authority); re-baseline to the current trajectory or assert against a small leak the servo *can* match. | test | **RESOLVED (2026-07-25, #150 — 35/35; then 2026-07-29m, #194 — 39/39)** Both original reds were stale expectations, not regressions (spray has an owner-ruled flow cap; "auto holds ≥98 %" is unphysical at severity 1.0). **But the #150 rebuild introduced a worse check than the one it replaced**: *"CVCS covers a consistent fraction of the leak (droop)"* asserted coverage stayed inside 10–50 % and equal across leak sizes — measured 400 **cycles** in, i.e. 40 s of sim time against an 83 s control loop. It pinned a transient as a steady-state property and is the whole source of #194's false claim that no leak is ever held. Now five checks measured at 4.8 τ against the **config-derived** equilibrium. Negative control: the old check *passes* on a deliberately-broken servo and *fails* on the healthy plant — it was inverted. |
 | F13 | M4 | **`clip()` is defined four times** (`control_kernel.js:47`, `pwr_control.js:360`, `rbmk_control.js:127`, `bwr_control.js:100`) and issue #156 files it as HR3 drift. It is not: HR3 is *plant specifics in shared code*, and this is a one-line pure clamp local to each IIFE. **Deliberately not deduplicated** — `control_kernel.js` loads **after** all three plant control modules in every load list, so a shared `RD.*.clip` resolves only at call time (a real load-order coupling), and the alternative is a new shared-utils file that must be added to every load list. Bought for 60 characters that cannot meaningfully drift. **Measured before deciding: `clip` is the ONLY duplicated helper** — every other module-level function in those four files is genuinely local. **Revisit trigger:** if a *second* shared helper appears, create the utils file then and move `clip` in with it. The **other** half of #156 (a PWR field read inside generic kernel machinery) WAS real and is fixed — and note it had **moved**: `_stepBang` was already clean, but the boron batch-dose work re-created the same leak in `_stepConc`. See `Diagnostic/TUNING_LOG.md` 2026-07-27b. | cleanup | **RESOLVED (2026-07-27b) — won't fix, deliberate. OWNER-APPROVED**: Claude recommended won't-fix with the reasoning above; owner replied *"Do as you suggest"* (2026-07-27), so the decision is the owner's and the reasoning is Claude's. Recording it that way because the first draft of this row said only "ruled won't-fix", which reads as owner authority for what was then an agent's recommendation — the exact laundering `CONTEXT.md` §HR-provenance warns about. #156 closed `status-deliberate`. The recurrence it exposed (the leak was fixed in `_stepBang`, then re-created in `_stepConc` ~40 lines below the comment warning against it) is spun out as **#227** — nothing gates HR3 in the kernel. |
 | F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **RESOLVED (2026-07-07)** — rbmk_ar + pwr_automation missions, auto_channels presets exercised end-to-end (startScenarioAuto gate harness), Chernobyl AR tie-in. Pre-existing missions deliberately left bare (triggers tuned against bare-plant trajectories). |
+
+---
+
+## 2026-07-31e — #137: rewind is a picker on a wall clock, and two of the issue's four items were wrong
+
+**Decision 1 — the free-play checkpoint cadence is measured in REAL time**
+*(OWNER, 2026-07-31: "The rewind cadence should be 20 seconds real time not sim time.")*.
+`SANDBOX_CP_SPACING_S = 15` sim-s → `SANDBOX_CP_SPACING_MS = 20000` wall-ms, sampled inside
+`tick()` so a throttled tab lays its checkpoint late rather than not at all. Measured at ring
+saturation: the old ring spanned **465.9 / 46.5 / 9.3 / 3.1 real seconds** at 1× / 10× / 60× /
+600×; the new one spans **620.0 at every acceleration**, with a slot covering 12,000 sim s at
+600× (~103 plant-hours reachable). `_now()` is a **prototype seam**, not a convenience: a
+headless runner burns no wall time, so without it no gate in this repo can see the cadence at
+all.
+
+**Decision 2 — the picker is the ONLY player rewind path.** All four entry points (strip-chart
+⏪, scrub track, walkthrough/scenario nav ⏪, failure-card ⏪) open pick mode. Nothing
+player-facing now issues a non-`exact` rewind.
+
+**Decision 3 — pick mode WIDENS the plot to the whole ring.** Consequence of decision 1 that
+the issue did not cost: at 600× the slots are 12,000 sim s apart and the widest chart window is
+1800 s, so a cadence fix on its own ships a picker whose every mark is off the left edge. One
+`chartExtent()` now serves both `drawChart` and `rewindPickClick`, widening to the oldest
+checkpoint while picking; axis labels go `h:mm:ss` past ten minutes.
+
+**Decision 4 — truncation STAYS.** The issue asked for a deliberate ruling on `_rewind`'s
+`checkpoints.length = idx + 1`. Keeping it: the rewound-to moment is the new present, and the
+plant does not follow from a retained "future" that was computed off abandoned state — the
+chart already pops samples ahead of `sim_time` for the same reason. It is stated in the
+timeline's scanner copy ("a teaching tool, not an undo") rather than left to be discovered.
+
+**Two of the issue's items were WRONG, and are recorded here because both look authoritative.**
+
+- *"[the `exact` path] has never had a player-facing way in"* — the picker shipped **2026-07-23**
+  (`2e86c00`), two days before the issue was filed. What was true is that it was **broken**:
+  `rewindPickClick` inverted `chartBuf`'s full `CHART_RECORD_SEC` extent while `drawChart`
+  plotted the marks over `ui.window`, up to 6× narrower. Measured, headless Edge: clicking the
+  mark drawn at **T+19 s** landed the plant at **T+0**; after the fix, **0.0 s** of error.
+- *"the exact-time guard and the `_rewindCursor` walk-back … exist only to make repeated single
+  presses escape a failure card [and] are dead weight"* — **declined**. They also guard the
+  **beat** path, which the same issue forbids touching. A `rewind:` beat deliberately does not
+  checkpoint (`layers/instructor_layer.js:295-299`), so two consecutive rewind beats are exactly
+  the "every rewind restores the same newest checkpoint" case the walk-back exists for, and the
+  exact-time guard is what lets a beat's rewind reach earlier than the checkpoint it just laid.
+  Deleting them regresses authored content with no gate watching. Their comments now say they
+  are beat-path guards.
+
+**Gates.** `run_m5` 19/19, **79 → 83 checks**; the discriminating one accumulates 360 sim-s with
+the wall clock frozen and requires zero checkpoints (pre-fix: 21, and 6 of the suite's 8 checks
+red). `verify_e2e_ui` gains `testRewindPicker` — no baseline move, it scores screenshots. That
+section's load-bearing check **clicks the second-oldest mark and reads the clock back**; pressing
+the button and counting marks would pass on all three defects, which is the HR10 point.
+
+---
+
+## 2026-07-31d — #284: the test was the LOAD, not the BREAKER; and the gauge read the CORE, not the turbine
+
+**Found while disproving #138**, which was filed as "aggressive Manual load cuts can trip the
+plant". They do not — measured across cuts of 10/35/39/50/80/100 MWe at hot full power, full
+stack: no scram and no PORV lift in any of them. Two other things turned up in the traces.
+
+### The decision: what does "synchronised" mean in this model?
+
+`stepTurbine` had three branches — tripped, "synchronised", and "connected but unloaded" — and
+the second was selected by **`generator_load > 0`**. That conflates two different questions. A
+synchronous machine tied to the grid spins at rated at **any** load, including zero; it motors
+rather than decelerates. The load tells you what it is *doing*, the breaker tells you what is
+*holding* it.
+
+The consequence was measurable and absurd: `set_load_target 0 MWe` while synchronised sent the
+rotor **1800 → 0 rpm over ~5 plant-minutes** with `turbine_tripped` false, `load_mode` still
+`manual`, and the breaker never opened.
+
+**Ruled: the predicate is the breaker.** New shared `RD.LoadMode.isOnLine(s)` —
+`s.load_mode !== 'disconnected'`. Two deliberate choices inside it:
+
+- **`turbine_tripped` is NOT part of it.** A trip and an open breaker are different events —
+  that is #230's ruling (*OWNER RULING 2026-07-28: "Planned offline, no trip."*), and callers
+  that care about the trip already test it separately. Folding it in here would quietly
+  re-merge the two concepts #230 separated.
+- **It lives in `load_mode.js`, not in the PWR engine.** `load_mode` is the shared module that
+  owns the concept; open-coding `!== 'disconnected'` at a third site is how the
+  `generator_load > 0` shortcut got written in the first place.
+
+**Why this does not re-break #235.** The coastdown branch exists because cold Modes 3/5 spawn
+untripped with no load and no steam, and without a friction term they pinned 1800 rpm on a cold
+plant. Those ICs are authored `load_mode: 'disconnected'` (`pwr_engine.js:1446`,
+`onLine ? 'follow' : 'disconnected'`), so they still take the coastdown branch. Leg C of the new
+probe asserts that from the other side, so an over-reaching future fix reddens rather than
+silently restoring #235.
+
+**Unchanged:** the engine still has no no-load admission model, so an off-line untripped rotor
+coasts rather than holding rated ready to re-synchronise. That limitation was already declared
+in the note over `RD.LoadMode.disconnect` and is out of scope here (cf. #238).
+
+### The second defect: `mwe_output` was never a turbine number
+
+```
+s.mwe_output = (s.power_pct / 100) * mwe_rated * (rpm / rpm_rated) * (vacuum / vacuum_rated)
+```
+
+It reads the heat the **reactor** makes and ignores the governor and the steam dump entirely.
+Every existing check ran at a state where flux and turbine admission agree — steady power, or a
+trip that zeroes both — so **a 2× error on a board gauge sat behind 34 green runners**.
+Measured, `set_load_target 50 MWe` at hot full power: **98.8 MWe indicated with the dump venting
+48 %** to the condenser. The operator asked for 50, the gauge said 99.
+
+Now driven by `steam_flow_normalized` — turbine admission. Same case reads **50.02 MWe**.
+
+**Calibration is preserved exactly, not approximately.** `steam_flow_rated` is 1.0 in these
+normalized units and the governor sits at 100 % at rated pressure, so the new form is identical
+to the old at full power. Verified against the five shipped ICs and the table `Manuals/09` §12
+publishes — `hot_full_power` 100.0, `50_percent` 50.00, `5_percent` 6.36, `hot_zero_power` 0,
+`cold_shutdown` 0 — so no manual edit was required. What moves is only the states where the two
+numbers **disagree**: a rejection ride-out, an MSIV closure (`steam_flow_normalized` is forced
+to 0 there), and the decay-heat tail after a trip. The pressure term already lives inside
+`steam_flow_normalized`, so a plant over-delivering on stored SG energy walks back down as the
+secondary sags instead of holding an unphysical output.
+
+### The gate
+
+`run_behavior` 39 → 40 — **TR-1e**, four legs: the rotor holds rated at zero load on line, the
+gauge follows the ask through a dump ride-out, the rotor still coasts off line (#235), and rated
+output is unchanged.
+
+**Verified by injection, not written beside the fix.** With both engine lines reverted it fails
+**3 checks** — 0 rpm at end, 0 rpm minimum, and 98.78 MWe against a 50 ±3 band. Legs C and D stay
+green on the old engine *by design*: they assert what the fix must **not** change, so a red there
+would mean the fix over-reached rather than that it worked.
+
+`board_check` 143/143 unchanged.
+
+---
+
+## 2026-07-31c — #135: the SG drained 2.7× too fast, and no gate could tell
+
+**The issue was NOT stale, and its stated fix was arithmetically impossible.** #135 filed the
+loss-of-feedwater warning-to-trip window at "~4 s" and said *"widening it is a setpoint/lag
+question in `layers/control/pwr_control.js`, not a physics change."* Measured full-stack: the
+window is **2.9 s**, and the setpoints are 13 percentage points apart (SG LVL LO 30 %, lo-lo
+trip 17 %) on a level falling at 4.7 %/s. **No setpoint move could fix it** — even doubling
+the spacing buys about six seconds. The repo's own `TUNING_LOG` backlog row S2 had the right
+instinct (*"consider slowing SG boil-down"*) and the GitHub issue contradicted it.
+
+**The real statement.** `d(level)/dt = K_sg_level × (feed − steam)`, both normalized to rated,
+so with feed lost and steam at rated **`K_sg_level` IS the drain rate in %/s**. At 5.0 the
+entire narrow range held **twenty seconds of full-power steaming** — measured, true level
+64.5 % → 3.1 % in 13 s, lo-lo trip at 12.9 s.
+
+**SOURCED, not chosen** (evidence-pass SOP). Ginna UFSAR Chapter 15, Table 15.2-4, *"TIME
+SEQUENCE OF EVENTS FOR LOSS OF NORMAL FEEDWATER FLOW"* (NRC ADAMS **ML20339A101**, Rev 29
+11/2020, p.102 of 276): main feedwater stops at **20 s**, low-low level trip setpoint reached
+at **55 s** — **35 s**. This plant runs 65 % nominal and trips at 17 %, so 48 points over 35 s
+= **1.371 %/s**. `K_sg_level` **5.0 → 1.37**. Measured after: trip at 40.5 s (the extra ~5 s is
+this sim's 8 s feed-pump coastdown, where the analysis stops flow instantly), window 11.6 s.
+**What is fitted is the TIME, not the geometry** — Ginna's narrow-range span and level program
+are its own, and no claim is made that a single-loop 100 MWe teaching plant matches them.
+
+**Control got BETTER, and that was measured before it was claimed.** Full stack, before/after:
+steady hold over 30 min **2.35 → 2.11** points of band; a 100 → 80 MWe ramp swings **9.8 → 5.4**
+points and settles **64.38 → 65.12** against 65 nominal. Lower level-per-imbalance gain means
+less level swing for the same flow mismatch, so **the three-element feed controller did not
+need retuning** — the risk this change was expected to carry did not materialise.
+
+**What it deliberately does NOT buy: a savable transient.** Clearing the failure the instant
+the alarm arrives still trips, at 40.6 s. That is correct. A real loss of normal feedwater
+**trips the reactor on low-low SG level** — it is the credited trip in the Ginna analysis
+above — so the window is for reading the board, not for preventing the trip. #135 asked for
+"long enough for a player to read the alarm, diagnose, and act"; the prototypical answer gives
+the first two and refuses the third, and that is the answer HR9 requires.
+
+**THE GATE GAP IS THE REAL FINDING.** A 3.6× change to a physics constant left **all 32
+runners green**. Nothing in the suite asserted how fast a steam generator empties, so the
+value could have drifted back with nothing to say so. New probe **TR-14** in `behavior_pwr.js`
+pins the sourced anchor: trip 25–60 s after feed loss (band deliberately wide — the claim is
+"a real plant's timescale", not "Ginna to the second"), warning before trip, window ≥ 7 s.
+Verified by injection: at the old 5.0 it fails at **13.0 s** against the floor and **3.0 s**
+against the window. `run_behavior` **38 → 39**.
+
+**One gate did move, and it was a FIXTURE, not the assertion.** `verify_e2e_ui` sampled the
+post-turbine-trip feed/steam tracking at `ff=240`, a time its own comment says was chosen to
+be past the post-trip level swell. With the plant 3.6× slower that transient outlasts 240 s
+and feed is legitimately still 0. Moved to **`ff=600`** — and **validated against the OLD
+drain rate too** (HR10): measured feed vs steam in gpm at 240 s old 63/63 vs new 0/64; at
+600 s old 53/56 vs new 57/56. It passes on both plants, so the sample point is better rather
+than refitted, and the assertion itself is untouched.
+
+---
+
+## 2026-07-31b — #75: the RPS reset was three finished halves that had never been joined
+
+**What was actually wrong.** The issue asked for a reset affordance and its interlock, and
+triage said the engine side already worked and only the UI and the permissive were missing.
+Both true, and both understated it. Three pieces existed:
+
+1. **Engine** — `reset_rps` in `applyCommand`, with the rods-fully-inserted interlock. Green
+   under an ops probe (`abuse_scram_then_recover`, PI-7/C3) since it landed.
+2. **Kernel** — `resetRps()`, which computed the standing-trip permissive properly and
+   returned a labelled refusal.
+3. **Board** — a SCRAM button that has drawn **PRESS TO RESET** since the day it was built.
+
+None of them reached each other. `onScramReset` was an empty stub carrying the comment
+*"no engine reset command; visual only"* — false when it was written and false ever since.
+And the kernel's refusal used `type: 'refused'`, a shape returned by exactly two lines in
+the repository and **read by nothing**: not the service, not `app.js`, not a test, not the
+spec. So the measured operator experience was: press the button that says PRESS TO RESET,
+receive no reset, no refusal, and no message.
+
+**Decision 1 — the refusal joins the existing interlock contract rather than inventing a
+path.** `{ type: 'blocked', code: 'INTERLOCK', reason, message }`. `app.js` already flashes
+exactly that to the scanner bar, so the operator-facing half needed no UI plumbing at all —
+the orphan shape was the whole reason a working refusal was invisible. `reason` keeps the
+specific code (`TRIP_SIGNAL_PRESENT` / `RODS_NOT_INSERTED`) for the board and the tests.
+The alternative — teaching `app.js` about a second refusal type — was rejected because the
+interlock comment already describes this case word for word: *the plant is protecting
+itself, not malfunctioning, so the caller gets a labelled refusal*.
+
+**Decision 2 — the permissive is STATE, not just a response.** A refusal you only discover
+by pressing is barely better than silence. `getRpsState()` now carries `reset_permitted` and
+`reset_block`, computed by the **same** evaluator the command path uses (`rpsResetBlock`),
+so the caption and the refusal are one fact. A board that said PRESS TO RESET while the
+plant would refuse would be a new lie in place of the old one.
+
+**Decision 3 — rod bottom became an instrument, and the permissive became config.** The
+engine's interlock reads `position_pct` truth; the kernel must not. A new **`rods_fully_in`**
+status word carries it (no lag, no noise, no PRNG draw — the appended-instrument rule), and
+both it and the engine interlock read one `RODS_IN_PCT` constant, so the lamp and the latch
+cannot drift. The permissive list itself lives in `pwr_control.js` as
+**`rps_reset_permissive`**, evaluated generically by the kernel — so this did **not** widen
+#228's declared `reset_rps` leak, and `run_hr3` is unmoved at 29 checks. RBMK/BWR define no
+list and fall back to the engine's own refusal, which is the correct no-op for plants on hold.
+
+**Decision 4 — instrument ids are not operator language.** The first cut of the refusal read
+*"turbine_tripped is still is_true"*. Measured — that really is the first thing standing in
+the way of a reset after a hot-full-power scram, so it is the sentence an operator would
+have met. A per-channel `instrument_labels` map in plant config fixes it (one map, not a
+label per trip: `power_range` backs two trips, `primary_pressure` three). The template also
+suppresses the direction word for `is_true` trips, after the second cut produced *"the the
+turbine trip trip signal"*.
+
+**Measured timeline**, hot full power, manual scram, seed 42: turbine trip holds the reset
+for ~1 s → rod bottom holds it ~2 s more → available from ~t+4 s. Under a loss of feedwater
+it stays blocked on *low steam generator level* indefinitely; under a large LOCA on *low
+reactor coolant pressure*. That is the behaviour the issue wanted — recovery that is
+procedural rather than a button.
+
+**The tests missed the case that mattered, and injection is what said so.** With 18 checks
+written and green, deleting the entire `rps_reset_permissive` config left the suite at
+**57/57**: the standing turbine trip covers the first half-second and the rods are seated
+long before the later checks run, so the rod-bottom window (~1–3 s) — the one window where
+that config is the binding constraint — was never asserted. Two checks now sit inside it,
+and the same deletion reddens. This is HR10 in its plainest form: eighteen passing checks
+were not evidence the mechanism was right.
+
+`run_e2e_controls` **39 → 59**, `board_check` **138 → 143** (the board pins include the
+original defect: restoring the empty handler reddens it). Manual set **Rev 20** — the reset
+is documented as a control in **03 §3.5.1**, with **06 PWR-A01** Recovery pointing at it.
+
+---
+
+## 2026-07-31a — the CHANGELOG roll was skipped twice; the instruction was not the fix, the gate is
+
+**What was wrong.** Alpha **1.10.0** and **1.11.0** both merged to `main` without renaming
+`CHANGELOG.md`'s `## [Unreleased]` heading. 434 lines covering two shipped releases sat filed
+as work-in-flight, and the newest version heading in the developer changelog read **1.9.0** —
+two versions behind `changelog.html` and `site/release.js`, which were both correct.
+
+**Why it survived.** Nothing downstream reads that heading. `[Unreleased]` looks exactly as
+plausible as `[Alpha 1.11.0]` to a reader, to a renderer, and to every gate in the suite. Both
+CLAUDE.md's *Definition of done* and the `release-to-main` skill's checklist already said to do
+it — **the instruction is what failed**, and repeating it louder would have been the same
+intervention that had already not worked twice.
+
+**Reconstructing the boundary — measured, not judged.** Entries had been inserted at the **top
+of existing `### Added` / `### Fixed` subsections** rather than appended to the block, so the
+two releases were interleaved and no contiguous line range separated them. The split came from
+extracting the `[Unreleased]` block at tags `v1.10.0` and `v1.11.0` and diffing against `HEAD`:
+two clean insertion hunks (`1a2,22`, `2a24,163`) place 1.11.0's Added and Fixed entries above
+1.10.0's, seam between **#271** (armed-protection alarm bands → 1.11.0) and **#263** (moderator
+re-fit → 1.10.0). **Independently confirmed**: `changelog.html`'s 1.11.0 and 1.10.0 entries were
+written at release time, never touched since, and split at exactly the same place. The rewrite
+was verified content-neutral — sorted non-blank lines before/after differ by precisely the four
+added heading lines, nothing moved between releases.
+
+**Decision — a new static gate, `test/run_release.js` (18 checks).** It asserts the three files
+that describe a release say the same thing: `site/release.js` names a full `Alpha X.Y.Z`;
+`changelog.html`'s newest live entry is that version; **`CHANGELOG.md`'s newest version heading
+is that version** (the check the gate exists for); dates agree across both changelogs for every
+version `CHANGELOG.md` still names individually; both files are strictly newest-first; and
+`[Unreleased]` exists exactly once, above everything.
+
+Two parsing traps worth knowing. `changelog.html` carries a **fully-formed specimen entry**
+(`Alpha 1.5.0`) inside its `ADDING AN ENTRY` comment — read as data it makes the newest
+published version look like 1.5.0, so comments are stripped first. And `## [Alpha 1.6.1 and
+earlier]` is a deliberate catch-all for the pre-history, so the cross-check floors at the
+oldest individually-named version rather than demanding a heading per site entry.
+
+**Verified against the real failure, not a synthetic one** (HR10): run against `CHANGELOG.md`
+exactly as it stood before this fix, it reports 3 red — the wrong newest heading, plus 1.11.0
+and 1.10.0 published on the site and absent from the file. All 18 checks were driven red by
+injection. `run_all` is **33 → 34 runners**.
+
+**Also fixed: the skill never actually said to do it.** `release-to-main` covered
+`changelog.html` and `site/release.js` and stopped there — the `CHANGELOG.md` roll appeared
+only in that file's own header comment. It now has the step, the reason it is easy to skip, and
+`run_release.js` on the checklist **before the merge**, since after the merge it is a red gate
+on `main`.
+
+---
+
+## 2026-07-30i — #275: the download is named by the release string, not by the path it is served from
+
+**The defect.** `download.html`'s button carried a **bare** `download` attribute on
+`href="download/latest.zip"`, so the browser saved the file under the href's own basename:
+**`latest.zip`**. No product name, no *Alpha*, no version. `site/make_download.js` had always
+written a correctly-named versioned copy (`Reactor_Dynamics_Alpha_1.11.0.zip`) beside it, and
+the HTML *inside* the zip has been correctly named since the bundler was written — the
+anonymous wrapper was the only broken link in the chain, and it is the only one the visitor
+ever sees.
+
+**Decision — stamp the name, do not move the link.** The stable href is deliberate
+(`make_download.js`'s own comment: "download.html links a STABLE path so it never needs
+editing per release"), and pointing it at the versioned file would have bought a correct
+filename for a **new hand-edit in the release procedure** — in a repo where the Alpha 1.10.0
+and 1.11.0 developer-changelog rolls were both missed, adding a fourth thing to remember is
+the wrong currency. So the href stays, and `site/nav.js` sets `download=` from
+`window.RD_RELEASE` at `DOMContentLoaded`. `nav.js` already stamps `RD_VERSION` into the
+footer the same way, and `site/release.js` is already the one hand-edited version string that
+`make_portable.js` and `make_download.js` both read. **Net new per-release steps: zero.**
+
+**Two alternatives rejected.** (1) *Rewrite `download.html` at build time*, the way
+`stamp_version.js` writes `version.js` — but those are declared generated placeholders, while
+`download.html` is hand-authored source, and mutating it at deploy makes the local file
+silently differ from the deployed one. (2) *`Content-Disposition` in `vercel.json`* — puts the
+version in a third hand-edited file.
+
+**Degradation is the point.** With JS off, the bare `download` attribute is still in the
+markup and the file still saves — as `latest.zip`, i.e. exactly today's behaviour. The failure
+mode is *no better than before*, never *a confidently wrong version number*, which is the
+failure mode a hard-coded fallback would have had.
+
+**Gated: `run_portable.js` +7 checks (116 → 123), new `DOWNLOAD` rule.** Every way this
+wiring breaks leaves a button that still works and still downloads — drop the `release.js`
+tag, rename the anchor id, load the scripts in the wrong order, or change the filename prefix
+in one of the two files that spell it, and nothing anywhere goes red while the site quietly
+hands out the wrong name. The section pins all of that plus the no-JS fallback, and asserts
+`nav.js` and `make_download.js` construct the **identical** name by extracting the prefix,
+the sanitizer regex and the extension from each source rather than re-spelling the name here
+(which would be a fourth place to drift). **All seven were driven red by injection** — eight
+mutations, each caught — before being counted green (HR10; the `verify-checks-by-injection`
+rule). Measured after: headless Edge over `file://` reports
+`download="Reactor_Dynamics_Alpha_1.11.0.zip"`, byte-identical to what `make_download.js`
+writes.
+
+**Noted, not fixed:** `make_download.js`'s sweep of stale artifacts matches `*.zip` only, so a
+leftover `Reactor_Dynamics_Alpha_1.10.0.html` persists in a local `download/`. `download/` is
+gitignored and Vercel checks out fresh, so nothing stale can deploy; it is local litter, and
+out of this issue's scope.
 
 ---
 

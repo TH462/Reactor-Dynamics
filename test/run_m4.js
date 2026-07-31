@@ -34,6 +34,7 @@ Stack.prototype.run = function (seconds) {
 Stack.prototype.ts = function () { return this.engine.getTrueState(); };
 Stack.prototype.ins = function () { return this.engine.getInstruments(); };
 Stack.prototype.alarm = function (id) { return this.layer.getAlarms().find(function (a) { return a.id === id; }); };
+Stack.prototype.auto = function () { return this.layer.getAutomationState(); };
 
 function test(name, fn) {
   var checks = [];
@@ -84,6 +85,57 @@ T.push(test('TMI — porv_open alarm suppressed by the lying indicator', functio
   ck('PORV truly open', s.ts().porv_open, s.ts().porv_open === true, true);
   ck('indicator reads closed', s.ins().porv_indicator, s.ins().porv_indicator === 'closed', 'closed');
   ck('porv_open alarm does NOT annunciate', s.alarm('porv_open').state, s.alarm('porv_open').state === 'clear', 'clear');
+}));
+
+// ---------------------------------------------------------------- PORV manual switch (#125)
+// A real PORV takes two independent inputs to one solenoid: the automatic pressurizer-
+// pressure channel and the operator's control switch. They were ONE command here, which is
+// why the operator had no PORV control at all — the only way to give them one was to widen
+// the command automatic relief already used, and then nothing could tell an operator lift
+// from a relief lift. `open_porv_manual` is the operator's switch; `open_porv` stays the
+// automatic and scenario-authored one (owner's design, 2026-07-31).
+T.push(test('PORV — the operator switch is separate from automatic relief (#125)', function (ck) {
+  var s = new Stack('hot_full_power');
+  s.run(1);
+  ck('nothing locked by default', JSON.stringify(s.auto().action_locks), (s.auto().action_locks || []).length === 0, '[]');
+  var r = s.cmd({ action: 'open_porv_manual' });
+  ck('operator can open it', JSON.stringify(r), r == null, 'null');
+  s.run(2);
+  ck('valve truly open', s.ts().porv_open, s.ts().porv_open === true, true);
+  s.cmd({ action: 'close_porv' }); s.run(2);
+  ck('and truly closed again', s.ts().porv_open, s.ts().porv_open === false, false);
+}));
+
+// The third check here is the one that matters. Locking the operator's switch must never
+// disable overpressure protection — that would turn a teaching lockout into a safety
+// defect, and it is exactly what a single shared command would have produced.
+T.push(test('PORV — a scenario can lock the operator switch, and relief still works (#125)', function (ck) {
+  var s = new Stack('hot_full_power');
+  s.run(1);
+  s.cmd({ action: 'set_action_lock', action_id: 'open_porv_manual' });
+  ck('snapshot lists the locked action', JSON.stringify(s.auto().action_locks),
+    (s.auto().action_locks || []).indexOf('open_porv_manual') >= 0, "['open_porv_manual']");
+
+  // REFUSED, not silently dropped — a dead-looking button is the failure mode this repo
+  // keeps finding, so the board has to be able to say why.
+  var r = s.cmd({ action: 'open_porv_manual' });
+  ck('operator open is refused with a reason', r && r.code, !!(r && r.code === 'ACTION_LOCKED'), 'ACTION_LOCKED');
+  s.run(2);
+  ck('and the valve did not move', s.ts().porv_open, s.ts().porv_open === false, false);
+
+  // close_porv is deliberately NOT locked: it is the TMI-2 action itself, and it has to
+  // stay available so the stuck-valve interception can lie to the operator.
+  var rc = s.cmd({ action: 'close_porv' });
+  ck('close is still allowed', JSON.stringify(rc), rc == null, 'null');
+
+  // Automatic relief is a DIFFERENT command and is untouched. Drive pressure up on the
+  // heaters and watch the valve lift anyway.
+  s.cmd({ action: 'set_spray', pct: 0 });
+  s.cmd({ action: 'set_heater', power_pct: 100 });
+  var lifted = false;
+  for (var i = 0; i < 40 && !lifted; i++) { s.run(15); lifted = s.ts().porv_open === true; }
+  ck('AUTOMATIC relief still lifts while the operator switch is locked',
+    lifted + ' @ ' + s.ins().primary_pressure.toFixed(2) + ' MPa', lifted === true, true);
 }));
 
 T.push(test('ATWS — failure_to_scram: trip signal present, reactor not shut down', function (ck) {

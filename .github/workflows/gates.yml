@@ -1,6 +1,6 @@
 # The aggregate gate, run on every push and pull request.
 #
-# `node test/run_all.js` runs all 33 runners and compares each against the BASELINES
+# `node test/run_all.js` runs all 34 runners and compares each against the BASELINES
 # map at the top of that file. Drift is symmetric — a runner scoring BETTER than its
 # baseline fails too, so a red turning green has to be acknowledged rather than
 # silently absorbed.
@@ -24,10 +24,20 @@ name: gates
 
 on:
   push:
-    # workbench/backshop are included so a lane is gated BEFORE it merges to develop,
-    # and so a change to this workflow can be proven on a lane instead of landing on
-    # develop untested — which is how the --fast version shipped broken.
-    branches: [main, develop, workbench, backshop]
+    # main and develop ONLY *(OWNER DIRECTIVE, 2026-07-31: "I don't want the workbench or
+    # backshop trees pushed to gh. Gh should only have main and develop.")*. The lanes are
+    # local worktrees — scratch space so a second and third agent have somewhere to work —
+    # and the repo is public, so publishing them puts work-in-progress on display for no
+    # benefit now that the machine is backed up off-site.
+    #
+    # This briefly listed workbench/backshop (2026-07-31, #191) so a lane could be gated
+    # before merging. That is given up deliberately, and it costs something real: a change
+    # to THIS FILE can now only be proven by landing it on develop, which is exactly how
+    # the --fast version shipped broken and stayed red for 32 runs. If you need to prove a
+    # CI change again, push the lane temporarily, add it here, and delete both afterwards —
+    # vercel.json already refuses to build those branch names, so a temporary push cannot
+    # spring a preview site on the owner the way it did the first time.
+    branches: [main, develop]
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
@@ -76,7 +86,7 @@ jobs:
           test ! -f package-lock.json || { echo "::error::a package-lock.json appeared in the repo root"; exit 1; }
           git status --porcelain
 
-      - name: Aggregate gate (all 33 runners)
+      - name: Aggregate gate (all 34 runners)
         run: node test/run_all.js
 
       - name: Upload diagnostic reports

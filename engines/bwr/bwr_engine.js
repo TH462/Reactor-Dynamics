@@ -330,6 +330,26 @@
       case 'scram':
         if (!s.scram_blocked) this._scram();
         break;
+      case 'reset_rps':
+        // The engine half of an RPS reset — the exact inverse of _scram, minus the
+        // turbine (a reset re-closes the trip breakers; it does not put the unit back on
+        // the grid). The breakers reset only with the rods in, the same physical
+        // interlock the PWR models; the control layer refuses while any trip signal
+        // still stands. `position_pct` is the contract convention (100 = withdrawn) on
+        // all three plants, so <= 2 % is "inserted" here exactly as it is there.
+        //
+        // Added 2026-07-31 (#228). The kernel has always SENT this and only the PWR
+        // engine had a handler, so here the reset returned COMMAND_ERROR, the kernel
+        // discarded it, and the operator was told RODS_NOT_INSERTED — measured, with
+        // every rod reading 0.0 %. A refusal naming a precondition that is satisfied is
+        // worse than no reset at all.
+        if (s.scrammed && this.rod_groups.every(function (g) { return g.position_pct <= 2.0; })) {
+          s.scrammed = false;
+          this.rod_groups.forEach(function (g) {
+            g.scrammed = false; g.moving = false; g.velocity = 0; g.nudge_target = null;
+          });
+        }
+        break;
       case 'set_recirc_flow':
         s.recirc_setpoint_pct = clip(cmd.pct, 0, this.cfg.recirc.max_setpoint_pct);
         s.recirc_pump_running = true;

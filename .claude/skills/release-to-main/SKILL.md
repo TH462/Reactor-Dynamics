@@ -30,8 +30,16 @@ node test/run_all.js                     # AGGREGATE GATE: OK
 The scheme is **`Alpha X.Y.Z` = Platform . Feature . Refinement**:
 
 - **X** — platform milestone (new reactor type, engine overhaul, alpha→beta). Rare.
-- **Y** — a new *player-facing* feature. **Resets Z to 0.**
-- **Z** — bug fixes, tuning, refinements.
+- **Y** — a **major change or genuinely new capability** — something that did not exist
+  before and that you would list on the Roadmap. **Resets Z to 0.**
+- **Z** — everything else, **including player-facing changes and fixes**, as long as they
+  improve something the sim already did.
+
+**Y is for NEW things, not for VISIBLE things** *(OWNER DIRECTIVE, 2026-07-31)*. Y used to
+read "a new *player-facing* feature", which caught nearly every release — the version ran
+**1.2.0 → 1.11.0 in eight days**. The operative test: **could you add it to the Roadmap as a
+line item?** New system/scenario/mode/page → Y. A better or fixed version of something
+already there → Z, however visible it is.
 
 ```bash
 grep -n "log-ver" changelog.html | head -3     # first LIVE entry, not the template comment
@@ -62,6 +70,30 @@ record and stay dense; this one does not.
 If anything about the **offline download** changed — what is in it, how it is packaged, how you get it — say so here and check `download.html` still matches. That page is the only route a player has to the download, and it is easy to ship a release where the file changed and the page describing it did not.
 
 Then set the same version in `site/release.js` (`RD_RELEASE`). The two must match.
+
+### …and roll `CHANGELOG.md` in the same breath — this is the step that gets skipped
+
+Rename the developer changelog's `## [Unreleased]` heading to the version being shipped and
+open a fresh empty one above it:
+
+```markdown
+## [Unreleased]
+
+## [Alpha X.Y.Z] — YYYY-MM-DD      <- was "## [Unreleased]"
+```
+
+The date must be the same one you just wrote into `changelog.html`.
+
+**Do not skip this because it looks like bookkeeping.** It was skipped for **Alpha 1.10.0 and
+again for 1.11.0** — 434 lines covering two shipped releases sat under `[Unreleased]` with the
+newest version heading in the file reading 1.9.0. It went unnoticed because nothing downstream
+reads that heading: the file parses, renders and reads plausibly either way. And it compounds —
+by the third release the boundaries between versions can only be recovered by diffing the file
+at each tag, which is what it took to repair it.
+
+`node test/run_release.js` now fails if you skip it (it also cross-checks the dates and the
+version across all three files). **Run it before the merge, not after** — after the merge it
+is a red gate on `main`.
 
 ## 4. Check the offline download, but do NOT hand-publish it
 
@@ -166,6 +198,10 @@ git -C C:/grok_build/RD_backshop  merge --ff-only develop
 - [ ] Version decided by **reading** `changelog.html` + `site/release.js`, and they agree
 - [ ] `changelog.html` entry added at the top, player-facing, dated both ways
 - [ ] `site/release.js` bumped to match
+- [ ] **`CHANGELOG.md`'s `## [Unreleased]` renamed to `## [Alpha X.Y.Z] — YYYY-MM-DD`**, same
+      date as the site entry, with a fresh empty `[Unreleased]` above it — skipped twice
+      before it was gated
+- [ ] `node test/run_release.js` → **OK** (all three files agree), run BEFORE the merge
 - [ ] **`make_portable.js` + `make_download.js` re-run after the bump**, `run_portable`
       green, filename carries the new version — as VERIFICATION; neither artifact is
       committed, the deploy builds the published one

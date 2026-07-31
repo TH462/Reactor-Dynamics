@@ -2,7 +2,7 @@
 
 **Document:** PWR-CI-01  
 **Title:** Control Station Inventory and Operating Instructions  
-**Revision:** 19  
+**Revision:** 22  
 
 ---
 
@@ -94,6 +94,37 @@ Describe every operator control and major indication on the PWR board, with purp
 2. Confirm SCRAM.  
 3. Verify **REACTOR TRIP** alarm, power falling, rods inserting.  
 4. Verify heat sink (SG level / AFW) and inventory.  
+
+#### 3.5.1 RPS reset — clearing the trip latch
+
+Once tripped, the control reads **SCRAMMED** and becomes the **RPS reset**. Resetting
+re-closes the reactor trip breakers; it does **not** withdraw rods and it does **not**
+restart the reactor. The rods stay where they are until you deliberately withdraw them,
+under the startup net.
+
+The reset is **permissive-gated** — it will not take until both conditions hold:
+
+| Permissive | Why | Caption when it is holding |
+|---|---|---|
+| **No trip signal standing** | A breaker will not hold in against a live trip signal. Whatever tripped the plant has to have cleared first. | *TRIP SIGNAL STANDING* |
+| **Rods at bottom** | The physical interlock: the breakers reset with the rods in. | *RODS NOT AT BOTTOM* |
+
+The caption under **SCRAMMED** tells you which one is holding, so you do not have to press
+the control to find out. When both are satisfied it reads **PRESS TO RESET**.
+
+Pressing while blocked is refused and the reason is annunciated — it costs nothing, and it
+names the condition. A trip you have not actually fixed keeps the plant latched: after a
+loss of feedwater, for example, the reset stays blocked on low steam generator level until
+the heat sink is restored. **Recovery is procedural, not a button.**
+
+**Procedure — RPS reset**
+
+1. Diagnose and clear the condition that tripped the plant.  
+2. Verify rods at bottom.  
+3. Verify the caption reads **PRESS TO RESET**.  
+4. Press to reset; verify the **REACTOR TRIP** alarm clears.  
+5. Withdraw rods only under the startup net (**04 §PWR-N02**), and only if restart is
+   intended — see the xenon caution in **04 §7.0**.
 
 ---
 

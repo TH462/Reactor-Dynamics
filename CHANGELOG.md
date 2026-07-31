@@ -10,10 +10,323 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 > below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
 > empty `## [Unreleased]` above it. The version must match the top entry of
 > `changelog.html` and the string in `site/release.js`.
+>
+> **`node test/run_release.js` enforces that** (2026-07-31). This paragraph on its own did not:
+> the roll was skipped for **Alpha 1.10.0 and again for 1.11.0**, and 434 lines covering two
+> shipped releases sat below as unreleased while the newest version heading here read 1.9.0.
+> It survives being skipped because nothing downstream reads these headings — the file renders
+> and reads plausibly either way — and it compounds, because once two releases are merged into
+> one block the boundaries can only be recovered by diffing this file at each tag. Which is
+> what it took.
 
 ## [Unreleased]
 
+### Fixed
+- **A synchronised turbine no longer coasts to a stop, and the MWe gauge now reads the
+  turbine instead of the reactor** (#284). Two defects in one file, with one cause: nothing
+  in the plant model ever asked what the turbine was *admitted* as opposed to what the core
+  *made*.
+
+  **The rotor.** The rated-speed hold was gated on `generator_load > 0` — on the **load**,
+  not on the **breaker**. So sliding the Manual load target to **0 MWe while synchronised**
+  dropped the machine into the offline coastdown branch: measured, **1800 → 0 rpm over ~5
+  plant-minutes**, with `turbine_tripped` false, `load_mode` still `manual`, and the breaker
+  never opened. A synchronous machine tied to the grid spins at rated at any load, including
+  zero — it motors rather than decelerates. The test is now the breaker
+  (`RD.LoadMode.isOnLine`, new and shared), so the on-line case holds 1800 rpm and the
+  offline case is untouched. That matters: the coastdown branch is load-bearing for **#235**,
+  where cold Modes 3/5 spawn untripped with no load and no steam and used to pin 1800 rpm on
+  a cold plant. Those ICs are authored `disconnected`, so they keep the coastdown and #235
+  stays fixed — pinned from both sides by the new probe.
+
+  **The gauge.** `mwe_output` was computed from `power_pct`, which ignores the governor and
+  the steam dump entirely. During a load rejection the dump vents the difference to the
+  condenser while the reactor stays up — so the board read **full electrical output for
+  steam that never reached the turbine**. Measured, a `set_load_target 50 MWe` ask at hot
+  full power settled at **98.8 MWe indicated with the dump at 48 %**: the operator asked for
+  50 and the gauge said 99. It now follows `steam_flow_normalized` (turbine admission), and
+  the same case reads **50.02 MWe**.
+
+  **Calibration is preserved exactly.** `steam_flow_rated` is 1.0 in these normalized units
+  and the governor sits at 100 % at rated pressure, so the new form is identical to the old
+  at full power. Verified across every shipped initial condition — `hot_full_power` 100.0,
+  `50_percent` 50.00, `5_percent` 6.36, `hot_zero_power` 0, `cold_shutdown` 0 — which is the
+  table `Manuals/09` §12 publishes, unchanged. What moves is only the states where flux and
+  turbine admission **disagree**: a rejection ride-out, an MSIV closure, and the decay-heat
+  tail after a trip.
+
+  Found while investigating **#138**, which is closed as stale in the same batch — no manual
+  load step of any magnitude trips this plant (cuts of 10/35/39/50/80/100 MWe: no scram, no
+  PORV lift).
+
+- **The overfill/level contradiction in `abuse_porv_walkaway` is gone, and is now asserted**
+  (#136, closing it). The probe used to end at **120 % primary inventory with 7 % pressurizer
+  level** — an overfilled RCS whose level gauge read nearly empty. Re-measured: **120.0 %
+  inventory / 100.0 % level**, solid, and the two gauges agree.
+
+  **Fixed by #249, not by this issue.** `level_per_mass_surplus` was an underived 300, so
+  `mass_max` clipped inventory *before* the gauge ran out of scale — indicated level could
+  not express a surplus at all. Fitting it to real pressurizer geometry (776, the steam
+  space as 5.8 % of RCS volume) is what made the overfill readable, and it is the same
+  defect that was hiding a full accumulator dump behind an "arrived UNscrammed" check.
+
+  **What this issue contributes is the guard it never had.** Both numbers were printed on
+  an `info` line every single run and asserted on none, which is exactly how a
+  contradiction that obvious survived three months. The probe now asserts that an
+  overfilled RCS reads overfilled on *both* gauges (`run_ops` 334 → 335 passed). Verified
+  by injection: restoring the pre-#249 gain reddens it at the defect’s own signature
+  value — level pinned at **88.0 %**.
+
+### Changed
+- **Rewind is a checkpoint picker on a real-time cadence** (#137, closing it)
+  *(OWNER, 2026-07-31: "I don't think there should be a rewind one step button. Make the user
+  pick from the checkpoints on the graph. For long fast forwards we need a way to go back far
+  enough. The rewind cadence should be 20 seconds real time not sim time.")*.
+
+  **The cadence UNIT was the bug, not the interval.** Free-play checkpoints were laid every
+  15 *sim* seconds, so the 32-slot ring always spanned the same amount of the plant's life and
+  progressively less of yours. Measured, ring saturated: **465.9 real seconds at 1×, 46.5 at
+  10×, 9.3 at 60×, 3.1 at 600×** — it evaporated in exactly the case (a long fast-forward)
+  where reaching back is the point. On a 20-second wall clock the ring now spans **620.0 real
+  seconds at every acceleration** (measured at 1×, 10× and 60×), and each slot simply covers
+  more sim the faster you run — 12,000 sim s per slot at 600×, so ~103 plant-hours are
+  reachable instead of 31 minutes. Measured off `tick()` rather than a timer, so a throttled or
+  backgrounded tab lays its checkpoint on the first tick after the interval instead of losing
+  it.
+
+- **The ⏪ button no longer rewinds — it opens the picker, everywhere.** Free play already
+  picked from the graph; the walkthrough, scenario and failure-card buttons still stepped back
+  one checkpoint. All four now open pick mode, so the marks are the authored beat/step
+  checkpoints inside instructed content and the periodic ones in free play. Escaping a failure
+  card is a click on the decision point rather than repeated presses walking backwards. A
+  rewind still discards everything after the moment you pick — deliberate, and now said in the
+  timeline's scanner text: it is a teaching tool, not an undo.
+
+### Fixed
+- **Clicking the graph in rewind-pick mode landed on the wrong moment** (#137). The picker
+  inverted `chartBuf`'s full 30-minute record while the plot drew only the selected window, so
+  a click resolved against a time base up to 6× too wide. Measured in headless Edge: clicking
+  the mark at **T+19 s** landed the plant at **T+0**. Both now read one `chartExtent()`, and
+  the same click lands with **0.0 s** of error.
+- **In pick mode the plot widens to cover the whole checkpoint ring** (#137). With a real-time
+  cadence a fast-forward lays its checkpoints hours of sim apart while the widest window is 30
+  minutes — every reachable checkpoint sat off the left edge and the picker had nothing to
+  click. The x-axis switches to `h:mm:ss` past ten minutes so the widened span is readable.
+
+- **The steam generator drains at a real plant's rate now** (#135, closing it). `K_sg_level`
+  **5.0 → 1.37**. A total loss of main feedwater at full power used to take the plant from
+  64.5 % steam generator level to the low-low trip in **12.9 s**, leaving **2.9 s** between
+  the SG LVL LO warning and the scram. Now: warning at ~29 s, AFW auto-start at ~37 s, trip
+  at ~40 s — about **11 s** of warning.
+
+  **Fitted to a real transient, not chosen.** Ginna UFSAR Chapter 15, Table 15.2-4, *"TIME
+  SEQUENCE OF EVENTS FOR LOSS OF NORMAL FEEDWATER FLOW"* (NRC ADAMS ML20339A101, Rev 29
+  11/2020): main feedwater stops at 20 s, low-low level trip setpoint reached at 55 s — **35
+  s**. This plant runs 65 % nominal and trips at 17 %, so 48 points of span over 35 s =
+  1.37 %/s. What is fitted is the **time**, not the geometry.
+
+  **The issue's own proposed fix could not have worked.** #135 filed this as "a setpoint/lag
+  question… not a physics change". The setpoints are 13 points apart on a level that was
+  falling at 4.7 %/s, so no spacing change buys more than a few seconds. The cause was that
+  the entire narrow range held **twenty seconds of full-power steaming**.
+
+  **Control got better, not worse** — measured, before/after: steady hold over 30 min 2.35 →
+  2.11 points of band; a 100 → 80 MWe ramp swings 9.8 → 5.4 points and settles closer to
+  nominal. A lower level-per-imbalance gain swings less for the same flow mismatch, so the
+  three-element feed controller needed no retuning.
+
+  **You still cannot save the transient, and that is correct.** Restoring feed the instant
+  the alarm arrives still trips, at 40.6 s — a real loss of normal feedwater trips the
+  reactor on low-low level, and that is the credited protection for the event. The window is
+  for reading the board, not for chasing the trip. Manual set **Rev 22**: **07 PWR-E01** now
+  carries a *Timing — what to expect* section saying exactly that.
+
+  **The finding behind the finding:** a 3.6× change to a physics constant left **all 32
+  gates green**. Nothing asserted how fast a steam generator empties. New probe **TR-14**
+  (`run_behavior` 38 → 39) pins the sourced anchor and fails at 13.0 s on the old value. One
+  gate did move — `verify_e2e_ui`'s post-trip sample time, a fixture calibrated to the old
+  drain rate — and the new sample point was validated against the **old** behaviour too, so
+  it is a better test rather than a refit.
+
+- **Settings tab trimmed** (#277). Removed **Values**, **Terminology**, and **Physics
+  Overlay** — unused on the shipping PWR board. Units, fast-forward dropout, and About
+  remain.
+
 ### Added
+- **You can reset the SCRAM now, and the board tells you what is holding it** (#75, closing
+  it). After a trip the SCRAM control reads **SCRAMMED** and becomes the RPS reset: press it
+  and the reactor trip breakers re-close. It does **not** withdraw rods or restart the
+  reactor — the rods stay where they are until you deliberately withdraw them under the
+  startup net.
+- **You can click the pressuriser relief valve open and shut** (#125).
+
+  The PORV on the board has always looked clickable — it highlights under the pointer
+  and shows a hand cursor — but nothing was wired behind it, so the click did nothing.
+  It now works: click to lift the valve, click again to shut it.
+
+  Giving the operator that switch needed care, because the same command was doing two
+  unrelated jobs. A real relief valve has two separate inputs to one solenoid: the
+  automatic signal that lifts it on high pressure, and the operator's switch on the
+  panel. Here they were the same command, so there was no way to hand the operator a
+  switch without also handing them the automatic protection — and no way for a training
+  scenario to take the switch away without disabling relief along with it.
+
+  They are separate now. **Scenarios can lock out the manual switch**, and the Three Mile
+  Island scenarios do: that accident turns on not being able to tell an open valve from a
+  shut one, and it stops teaching anything if you can sit on the switch and work the valve
+  yourself. Locking the switch does **not** disable relief — the valve still lifts on high
+  pressure exactly as before, which is measured and gated rather than assumed. Closing is
+  never locked, because closing it is the Three Mile Island action itself, and watching
+  that fail against a stuck valve is the entire lesson.
+
+### Fixed
+- **Alarm tiles told you the wrong system for a third of the alarms** (#157).
+
+  Every alarm tile carries a system family on its second line — *coolant · warning ·
+  unacknowledged*. That family was never recorded anywhere; the interface guessed it by
+  looking for keywords in the alarm's internal name. Measured, it was wrong or arguable
+  for **13 of the pressurised-water reactor's 33 alarms**.
+
+  The guesses failed in ways nobody could see. *CHG FLOW HI* was filed under safety
+  systems rather than coolant, because the word "flow" is in the label an operator reads
+  and not in the internal name the guesswork read. *SUR HI* — a reactivity alarm on both
+  the pressurised-water reactor and the RBMK — matched nothing at all and fell through to
+  safety systems. *SG PRESS HI* matched "press" and was filed as coolant even though it is
+  secondary steam. Renaming any alarm could silently re-file it.
+
+  Each alarm now states its own family, next to the panel it annunciates on. There is
+  deliberately no fallback guess: an alarm that fails to state one shows a dash and fails
+  the build, rather than quietly showing a plausible answer that happens to be wrong.
+
+- **Resetting the reactor protection system on the RBMK or the BWR blamed the rods for
+  something that was not their fault** (#228).
+
+  After a scram, the trip breakers reset only once the rods are fully in — a real
+  interlock, and the simulator models it. On those two plants the reset was refused with
+  *"trip breakers reset only with all rods inserted"* **while every rod read 0.0 %**, fully
+  inserted. There was no way to clear the scram, and the message pointed at the one thing
+  that was already correct.
+
+  The cause was two layers deep. The shared control system had always sent the reset
+  command to the reactor, but only the pressurised-water reactor knew what to do with it;
+  the other two answered "I do not understand that", the control system discarded the
+  reply, and then inferred a reason from the fact that the plant was still tripped. Both
+  reactors now implement the reset, and a reply the control system cannot act on is passed
+  back to you instead of being replaced by a guess.
+
+  Filed as a latent problem on the grounds that those plants have no control panel yet.
+  Measuring it showed it was not latent in the way the report assumed — the refusal was
+  already reachable, and already wrong.
+
+### Added
+- **The board now tells you to isolate the accumulators — SI ACCUM ALIGNED < 1000 PSI**
+  (#273, closing it). A caution annunciator on panel B at **1000 psi (6.895 MPa)**, and the
+  first alarm in the plant **gated on a lineup as well as a reading**: it also requires the
+  discharge isolation valve indication to read *open*, so a correctly-isolated Mode 5 plant —
+  which sits below that pressure all day — never sees it. Isolate and it clears; isolate on
+  schedule and it never comes in.
+
+  **The button had said "PRESS TO RESET" since the day it was built, and it did nothing.**
+  Not "did nothing useful" — the handler was an empty stub carrying a comment claiming no
+  engine reset command existed. One did: the engine has had `reset_rps` with its rods-in
+  interlock, and the control layer its permissive, for as long as the button has drawn that
+  caption. The three had simply never been joined. An operator pressed it and got no reset,
+  no refusal and no message at all.
+
+  **The refusal was invisible even in code.** The kernel returned a `type: 'refused'` shape
+  that *nothing in the repository read* — not the service, not the UI, not a test, not the
+  spec. Measured: an early press returned a perfectly good labelled refusal straight into a
+  branch that does not exist. It now returns the same `blocked` + `INTERLOCK` shape every
+  other plant interlock uses, so the reason reaches the scanner bar through the path that
+  was already there.
+
+  **The permissive is now readable BEFORE you press.** Two conditions gate the reset — no
+  trip signal standing (a breaker will not hold in against a live trip signal) and rods at
+  bottom — and the caption under SCRAMMED names whichever is holding: *TRIP SIGNAL STANDING*,
+  *RODS NOT AT BOTTOM*, or *PRESS TO RESET* when it will take. One evaluator answers both the
+  caption and the press, so the board cannot promise a reset the plant will refuse. Measured
+  on a hot-full-power scram: the turbine trip holds it for the first second, rod bottom for
+  about two more, and it is available from roughly t+4 s.
+
+  **The teaching case is the point.** A trip you have not actually fixed keeps the plant
+  latched — after a loss of feedwater the reset stays blocked on *low steam generator level*
+  until the heat sink is restored, and after a large LOCA on *low reactor coolant pressure*.
+  Recovery is procedural, not a button. Documented as a control in **03 §3.5.1** (manual set
+  **Rev 20**), with **06 PWR-A01** Recovery pointing at it.
+
+  Three things worth knowing. Rod bottom is a new **`rods_fully_in` status word**, so the
+  permissive reads an indication rather than engine truth (HR1) and shares one threshold
+  constant with the engine's own interlock — they cannot drift apart. The permissive itself
+  is **plant config** (`rps_reset_permissive` in `pwr_control.js`), so the shared kernel
+  stays plant-agnostic and #228's existing `reset_rps` leak was not widened — `run_hr3` is
+  unmoved at 29. And the first cut of the tests **missed the rod-bottom window entirely**:
+  injection proved the whole permissive config could be deleted with every check still
+  green, because the standing turbine trip covers the first half-second and the rods are
+  down before the later checks run. A check now sits inside that window.
+
+  Gated: `run_e2e_controls` **39 → 59**, `board_check` **138 → 143**. All 25 new checks
+  driven red by injection, including the original defect — restoring the empty handler
+  reddens the board harness.
+
+### Fixed
+- **Two shipped releases were still filed as unreleased, and the roll is now gated.** Alpha
+  **1.10.0** and **1.11.0** both merged to `main` without their `## [Unreleased]` heading being
+  renamed, so 434 lines covering two releases sat in this file as work-in-flight and the newest
+  version heading read **1.9.0** — two versions behind the site. Both are now rolled, dated
+  **2026-07-30** to match `changelog.html`.
+
+  **The boundaries were not guessed.** Entries had been inserted at the top of existing
+  `### Added` / `### Fixed` subsections rather than appended, so the two releases were
+  interleaved, not stacked. The split comes from diffing this file's `[Unreleased]` block as it
+  stood at tags `v1.10.0` and `v1.11.0` against `HEAD`, which puts the seam between #271
+  (armed-protection alarm bands, 1.11.0) and #263 (the moderator re-fit, 1.10.0) — and
+  `changelog.html`'s own two entries, written at the time and never touched since, split at
+  exactly the same place. Verified content-neutral: sorted non-blank lines before and after
+  differ by precisely the four heading lines added, nothing moved between releases.
+
+  **Gated by the new `test/run_release.js` (18 checks).** `site/release.js`, `changelog.html`
+  and this file must agree on what shipped: the newest version heading here must be the string
+  in `release.js`, dates must match across both changelogs, both must be newest-first, and
+  `[Unreleased]` must exist exactly once and sit above everything. It survives being skipped
+  precisely because **nothing downstream reads these headings** — the file renders and reads
+  plausibly either way — so a note was never going to be enough; CLAUDE.md and the release
+  skill both already said to do it. Proven against the **real** pre-fix file rather than a
+  synthetic one: 3 checks red, naming both missing versions. All 18 driven red by injection.
+
+- **The offline download arrives with a NAME on it** (#275, closing it). The Download page's
+  button saved the file as **`latest.zip`** — no product, no *Alpha*, no version, and
+  indistinguishable from the copy you pulled three releases ago once it is sitting in a
+  downloads folder. It now saves as **`Reactor_Dynamics_Alpha_1.11.0.zip`**, which is the
+  same name `site/make_download.js` gives the versioned copy it writes at every deploy.
+  Measured in headless Edge from `file://`: `download="Reactor_Dynamics_Alpha_1.11.0.zip"`.
+
+  The `href` deliberately still points at the stable `download/latest.zip`, so **no
+  per-release edit was added** — the saved name is stamped from `site/release.js` (the one
+  hand-edited version string) by `site/nav.js`, which already does exactly this for the
+  footer's build stamp. With JS off the bare `download` attribute in the markup still saves,
+  as `latest.zip`, i.e. today's behaviour: the failure mode is *no worse than before*, not
+  *a wrong version number*. The zip's **contents** were always named correctly
+  (`Reactor_Dynamics_Alpha_1.11.0.html`); only the wrapper was anonymous.
+
+  **`test/run_portable.js` gained a DOWNLOAD section (116 → 123 checks)** because every part
+  of this fails silently — drop the `release.js` tag, rename the anchor, or change the
+  filename prefix in one of the two places that spell it, and the button still works, still
+  downloads, and quietly hands out the wrong name. It pins the id, the stable href, the no-JS
+  fallback, the script *order* (nav.js reads `RD_RELEASE` at `DOMContentLoaded`), the stamp
+  itself, that `nav.js` and `make_download.js` build the identical name, and that
+  `RD_RELEASE` is a full `Alpha X.Y.Z`. All seven were proven to go **red by injection**
+  before being counted green.
+
+## [Alpha 1.11.0] — 2026-07-30
+
+### Added
+- **Settings → About: Disclaimer, License, and Changelog popups** (#259). The portable
+  single-file build is only the control room, so a recipient offline had no route to the
+  alpha disclaimer, the licence, or the player-facing changelog. Those three open as
+  in-app modals; content is packed from `legal.html` / `changelog.html` by
+  `node tools/pack_site_docs.js` into `ui/site_docs.js` (same pattern as the manuals).
+  The logo version chip also opens the changelog.
+
 - **The board now tells you to isolate the accumulators — SI ACCUM ALIGNED < 1000 PSI**
   (#273, closing it). A caution annunciator on panel B at **1000 psi (6.895 MPa)**, and the
   first alarm in the plant **gated on a lineup as well as a reading**: it also requires the
@@ -175,6 +488,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   the trip and the meter reopens to the at-power scale with 120 % at the top and the
   annotation clears; drop back below P-10 and the block reinstates itself and the band comes
   back with it. **At power nothing changed** — the bands are identical to before.
+
+## [Alpha 1.10.0] — 2026-07-30
+
+### Fixed
 - **The moderator model was re-fitted to measured plant data, and the reactor is more
   self-regulating than it was yesterday** (#263). The previous fix (#260) took the
   boron dependence of the moderator coefficient from a written statement in a training

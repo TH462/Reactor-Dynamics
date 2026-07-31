@@ -115,6 +115,251 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31e — #137: the rewind ring measured the wrong clock, and the picker aimed at the wrong axis  ✅
+
+*(OWNER, 2026-07-31: "I don't think there should be a rewind one step button. Make the user
+pick from the checkpoints on the graph. For long fast forwards we need a way to go back far
+enough. The rewind cadence should be 20 seconds real time not sim time.")*
+
+**The issue's analysis was right about the cadence and stale about the picker.** It said the
+`exact` rewind path "has never had a player-facing way in" — the picker was built 2026-07-23
+(`2e86c00`), two days before the issue was filed, and free play has used it ever since. Three
+separate defects were live, and the issue named one of them.
+
+**1. The cadence unit (the one the issue named).** `SANDBOX_CP_SPACING_S = 15` *sim* seconds
+means the ring always spans `REWIND_CAP × spacing` of the **plant's** life, so the faster you
+run the less of **your own** life it reaches. Measured, ring saturated at 32 slots:
+
+| accel | ring span, SIM s | ring span, **REAL s** |
+|---|---|---|
+| 1× | 465.9 | **465.9** |
+| 10× | 465.0 | **46.5** |
+| 60× | 558.0 | **9.3** |
+| 600× | 1860.0 | **3.1** |
+
+Now `SANDBOX_CP_SPACING_MS = 20000` on a wall clock: **620.0 real seconds at 1×, 10× and 60×
+alike** (measured; 31 intervals × 20 s), and each slot covers more sim the faster you run —
+12,000 sim s per slot at 600×, i.e. ~103 plant-hours reachable against 31 minutes before. The
+clock is sampled inside `tick()` rather than from a timer, so a throttled tab lays its
+checkpoint on the first tick after the interval instead of dropping it. **`_now()` is a
+prototype seam** because a headless runner burns no wall time — without it the entire cadence
+is invisible to every gate in the repo, which is why the test asserts through it.
+
+**2. The picker inverted a different time base than the plot drew.** `drawChart` placed the
+marks over `[t1 − ui.window, t1]`; `rewindPickClick` inverted `[chartBuf[0].t, chartBuf.last.t]`
+— up to `CHART_RECORD_SEC` = 1800 s, i.e. **6× too wide at the default 5-minute window**.
+Measured in headless Edge: clicking the mark drawn at **T+19 s** landed the plant at **T+0**.
+Both now read one `chartExtent()`; the same click lands at **T+19, error 0.0 s**. Verified by
+injection — restoring the two-line old mapping reddens it.
+
+**3. A real-time cadence would have put every checkpoint off-screen.** At 600× the slots are
+12,000 sim s apart and the widest window is 1800 s, so the marks the fix creates would have
+been unreachable — the picker "working" with nothing to click. `chartExtent()` widens to the
+whole ring while pick mode is on (axis in `h:mm:ss` past ten minutes). This is the half of the
+owner's ask — *"for long fast forwards we need a way to go back far enough"* — that the cadence
+change alone does not deliver.
+
+**The one-step button is gone from all four entry points** (strip-chart ⏪, scrub track,
+walkthrough/scenario nav ⏪, failure-card ⏪); every one opens the picker. Inside instructed
+content the marks are the authored beat/step checkpoints, so escaping a failure card is one
+click on the decision point.
+
+**What the issue asked for and did NOT get, deliberately: the press-semantics machinery stays.**
+It called the exact-time guard and the `_rewindCursor` walk-back "dead weight… they exist *only*
+to make repeated single presses escape a failure card". They are also the **beat** path's
+guards, and the same issue forbids touching it. A `rewind:` beat deliberately does not
+checkpoint (`instructor_layer.js:295-299`), so two consecutive rewind beats hit exactly the
+"restores the same newest checkpoint forever" case the walk-back was written for, and the
+exact-time guard is what makes a beat's own rewind reach strictly earlier than the checkpoint
+it just laid. Deleting them would have been a silent regression in authored content with no
+gate to catch it. The comments now say they are beat-path guards.
+
+**Gates.** `run_m5` **19/19, 79 → 83 checks** (baseline moved). The load-bearing new check
+piles up **360 sim-s with the wall clock frozen and requires ZERO checkpoints** — injection
+against the pre-fix service lays **21** there and reddens 6 of the suite's 8. `verify_e2e_ui`
+gains a `testRewindPicker` section (no baseline move — it scores screenshots): it presses ⏪,
+asserts pick mode opened *and the clock did not move* (a one-step press would have moved it),
+requires ≥4 marks after five cadence intervals, then **clicks the second-oldest mark and reads
+the clock back**. That last check is the only one of the three that survives all three defects
+— pressing the button and counting marks passes on a broken inversion.
+
+### 2026-07-31d — #138 was stale; the measurement that proved it found #284  ✅
+
+**Asked to check #138 for staleness first. It was stale — twice over, in opposite
+directions.** Filed as "aggressive Manual load cuts (e.g. 1000 → 500 MWe) can trip the plant;
+some missions lack trip-catch branches".
+
+**The trip half does not reproduce at any step size.** Measured full stack (M4+M5+M6),
+`hot_full_power`, free-play lineup, accel 10×, seed 4242, 20 plant-min per case, step at
+t+60 s:
+
+| target | cut | scram | end power | end Tavg | dump |
+|---|---|---|---|---|---|
+| 90 MWe | 10 | no | 89.4 % | 585.0 °F (307.2 °C) | 0 % |
+| 65 MWe | 35 | no | 63.0 % | 598.8 °F (315.0 °C) | 0 % |
+| 61 MWe | 39 | no | 58.7 % | 600.9 °F (316.1 °C) | 0 % |
+| 50 MWe | 50 | no | 98.8 % | 580.0 °F (304.4 °C) | 48 % |
+| 20 MWe | 80 | no | 98.0 % | 580.4 °F (304.7 °C) | 77 % |
+| 0 MWe | 100 | no | 97.5 % | 580.7 °F (304.8 °C) | 96 % |
+
+Two reasons it expired: **"1000 → 500 MWe" describes a plant that no longer exists** (the
+2026-07-21 identity ruling made this the SLX-100, `mwe_rated` 100.0), and **#219 built the
+catch** — above `dump_load_reject_mwe` (40 MWe) the fast dump arms and the plant rides out;
+below it the Tavg program absorbs the step. Worst case is the *sub-arm* cut at 600.9 °F
+(316.1 °C): annunciates HI TAVG at 594.0 °F (312.2 °C), **34.1 °F (18.9 °C)** below the Tavg
+scram at 635.0 °F (335.0 °C). Nothing gets near it.
+
+**The trip-catch half had already been fixed and had gone stale the other way** — `pwr_tour`
+carries the `load_lost` beat, but it is now unreachable and its prose still teaches *"the
+reactor tripped rather than ride the shock"* (HR9). Not repaired in place *(OWNER DIRECTIVE,
+2026-07-31: "Don’t edit the scenario they are being completely redone.")*. #138 closed;
+`ISSUES_AND_FINDINGS.md` I-24 marked DISPROVEN with the measurement.
+
+**#284, found while measuring — two turbine defects sharing one cause.** Nothing in the model
+ever asked what the turbine was **admitted** as against what the core **made**, because every
+existing check runs where the two agree.
+
+1. **A synchronised rotor coasted to rest.** The rated-speed hold asked `generator_load > 0`
+   — the **load**, not the **breaker**. `set_load_target 0 MWe` while synchronised therefore
+   fell into the offline coastdown branch: measured **1800 → 0 rpm over ~5 plant-minutes**,
+   `turbine_tripped` false, `load_mode` still `manual`, breaker never opened. Fixed with a new
+   shared predicate `RD.LoadMode.isOnLine(s)` (`load_mode !== 'disconnected'`), deliberately
+   **not** including `turbine_tripped` — a trip and an open breaker are different events
+   (#230). Now holds 1800 rpm.
+2. **`mwe_output` was derived from `power_pct`.** It ignored the governor and the dump, so
+   during a rejection the board read full output for steam that never reached the turbine:
+   a 50 MWe ask settled at **98.8 MWe indicated with the dump at 48 %**. Now follows
+   `steam_flow_normalized`; the same case reads **50.02 MWe**.
+
+**Why the fix does not re-break #235.** The coastdown branch exists because cold Modes 3/5
+spawn untripped with no load and no steam and used to pin 1800 rpm. Those ICs are authored
+`load_mode: 'disconnected'` (`pwr_engine.js:1446`), so they still take the coastdown branch —
+pinned from that side by leg C of the new probe, which would redden if the fix over-reached.
+
+**Calibration preserved exactly.** `steam_flow_rated` is 1.0 in these normalized units, so the
+new form is identical to the old at rated. Verified across every shipped IC —
+`hot_full_power` 100.0, `50_percent` 50.00, `5_percent` 6.36, `hot_zero_power` 0,
+`cold_shutdown` 0 — matching the `Manuals/09` §12 table, which therefore needed no edit.
+
+**The lesson worth carrying: a 2× error on a board gauge survived 34 green runners** because
+no check ever compared turbine admission against core power. `run_behavior` gains **TR-1e**
+(39 → 40), and it was **verified by injection, not written beside its fix** — reverting both
+engine lines reddens 3 checks (0 rpm end and minimum, 98.78 MWe against a 50 ±3 band). Legs C
+and D stay green on the old engine *by design*: they assert the two things the fix must not
+change, so a red there would mean the fix over-reached.
+
+**Also noticed, not fixed** (out of scope, filed here so it is not lost): `behavior_pwr.js`'s
+`COVERAGE` map declares the key **`TR-14` twice** — once as the #135 LOFW drain probe and
+once as `'existing:campaign SBO fact'`. The second wins, so the coverage report describes
+TR-14 wrongly. Cosmetic; the probe itself runs and passes.
+
+### 2026-07-31c — #135: the SG drained 2.7× too fast, and nothing in the suite could tell  ✅
+
+**Checked for staleness first, as asked — it was not stale, and its stated fix was
+arithmetically impossible.** #135 said the LOFW warning-to-trip window is "~4 s" and that
+"widening it is a setpoint/lag question… not a physics change". Measured full-stack: **2.9 s**.
+The setpoints are 13 points apart (LO 30 %, lo-lo 17 %) on a level falling at 4.7 %/s, so no
+spacing change buys more than a few seconds. Backlog row **S2** in this file had the right
+instinct — *"slowing SG boil-down"* — and the issue contradicted it. S2 was right; the issue
+was wrong; both are now updated.
+
+**The number.** `d(level)/dt = K_sg_level × (feed − steam)` normalized to rated, so with feed
+lost `K_sg_level` IS the drain rate in %/s. At **5.0** the whole narrow range held **twenty
+seconds** of full-power steaming (true level 64.5 → 3.1 % in 13 s).
+
+**SOURCED.** Ginna UFSAR Ch.15 Table 15.2-4 (NRC ADAMS **ML20339A101**, Rev 29 11/2020,
+p.102): feed stops 20 s, lo-lo trip setpoint reached 55 s → **35 s**. 48 points of this
+plant's span / 35 s = **1.37 %/s**. `K_sg_level` **5.0 → 1.37**; trip now 40.5 s, window
+11.6 s. The **time** is fitted, not the geometry.
+
+**The expected risk did not materialise.** Measured before/after: steady hold 2.35 → **2.11**
+points of band; 100 → 80 MWe ramp 9.8 → **5.4** points, settling 64.38 → **65.12**. Lower gain
+= less swing per unit mismatch, so the three-element feed channel needed **no retuning**.
+
+**Not savable, deliberately.** Clearing the failure on the alarm still trips at 40.6 s — a real
+LOFW trips on lo-lo level and that is the credited protection. The window is for reading the
+board. **07 PWR-E01** says so (manual **Rev 22**).
+
+**The lesson: a 3.6× physics change left ALL 32 gates green.** Nothing asserted SG drain rate.
+New **TR-14** in `behavior_pwr.js` pins it (25–60 s band, window ≥ 7 s) and fails at 13.0 s on
+the old constant; `run_behavior` **38 → 39**. The one gate that did move — `verify_e2e_ui`'s
+`ff=240` post-trip sample — was a **fixture** calibrated to the old drain rate, moved to
+`ff=600` and **validated against the old behaviour too**, so it is a better sample point, not a
+refit. Detail: `Blueprint/BUILD_DECISIONS.md` **2026-07-31c**.
+
+### 2026-07-31b — #75: the SCRAM button resets now; it had been inert since it was built  ✅
+
+No plant physics change. The board's SCRAM control has read **PRESS TO RESET** since the day
+it was drawn, and `onScramReset` was an empty stub commented *"no engine reset command;
+visual only"* — false when written. The engine's `reset_rps` (with its rods-in interlock) and
+the kernel's `resetRps()` permissive both existed and were both green under an ops probe.
+Three finished halves, never joined.
+
+**The refusal was invisible in code too.** `resetRps()` returned `type: 'refused'`, a shape
+returned by two lines and read by **nothing** — service, `app.js`, tests, spec, all blind to
+it. So a working, correctly-computed refusal went into a branch that does not exist. Now
+`{type:'blocked', code:'INTERLOCK', reason, message}`, which `app.js` already flashes.
+
+**The permissive is state now**, not just a response: `getRpsState()` carries
+`reset_permitted` / `reset_block` from the *same* evaluator the press uses, so the caption
+under SCRAMMED names what is holding — *TRIP SIGNAL STANDING*, *RODS NOT AT BOTTOM*, or
+*PRESS TO RESET*. Rod bottom became a `rods_fully_in` status word sharing one threshold
+constant with the engine interlock (HR1), and the permissive list is plant config, so the
+kernel stayed plant-agnostic and **`run_hr3` is unmoved at 29** — #228's leak was not widened.
+
+**Measured** (hot full power, manual scram, seed 42): turbine trip holds ~1 s → rod bottom
+~2 s more → available ~t+4 s. Loss of feedwater keeps it blocked on *low steam generator
+level*; large LOCA on *low reactor coolant pressure*.
+
+**Lesson worth keeping — 18 green checks were not evidence.** Deleting the entire
+`rps_reset_permissive` config left the suite at 57/57, because the standing turbine trip
+covers the first half-second and the rods are seated before the later checks run: the
+rod-bottom window (~1–3 s), the only window where that config binds, was untested. Found by
+injection, not by reading. `run_e2e_controls` **39 → 59**, `board_check` **138 → 143**,
+manual **Rev 20** (03 §3.5.1). Detail: `Blueprint/BUILD_DECISIONS.md` **2026-07-31b**.
+
+### 2026-07-31a — two shipped releases were still filed as unreleased; the roll is now gated  ✅
+
+No plant change. Alpha **1.10.0** and **1.11.0** both merged to `main` without `CHANGELOG.md`'s
+`## [Unreleased]` heading being renamed — 434 lines of two releases filed as work-in-flight,
+newest version heading reading **1.9.0** while the site correctly said 1.11.0. Both rolled,
+dated 2026-07-30.
+
+**The seam was measured, not judged.** Entries had been inserted at the top of existing
+`### Added`/`### Fixed` subsections, so the two releases were *interleaved*; the split came
+from diffing the `[Unreleased]` block at tags `v1.10.0` and `v1.11.0` against HEAD, and lands
+between #271 (1.11.0) and #263 (1.10.0). `changelog.html`'s two entries — written at release
+time, untouched since — split at the same place. Content-neutral: sorted non-blank lines
+before/after differ by exactly the four added heading lines.
+
+**New gate `test/run_release.js` (18 checks)**, `run_all` 33 → 34 runners. The three files that
+describe a release must agree. This needed a gate rather than a note because *nothing
+downstream reads those headings* — CLAUDE.md and the `release-to-main` skill both already said
+to do it, and that is precisely what failed, twice. Proven against the **real** pre-fix file:
+3 red, naming both missing versions. All 18 driven red by injection. Detail:
+`Blueprint/BUILD_DECISIONS.md` **2026-07-31a**.
+
+### 2026-07-30o — #275: the offline download was arriving called `latest.zip`  ✅
+
+No plant change. The site's Download button had a **bare** `download` attribute on a
+deliberately-stable `download/latest.zip` href, so that basename is what the visitor's browser
+saved — no product name, no *Alpha*, no version, and nothing to tell it from the copy they
+pulled three releases ago. The zip's **contents** were always correctly named, and
+`site/make_download.js` has always written a correctly-named versioned copy beside
+`latest.zip`; only the wrapper the visitor actually receives was anonymous.
+
+Fixed by stamping the name from `site/release.js` (`site/nav.js`, same mechanism that already
+puts `RD_VERSION` in the footer) rather than by versioning the href, so **no new per-release
+edit** was created. Measured in headless Edge over `file://`:
+`download="Reactor_Dynamics_Alpha_1.11.0.zip"`, identical to what the build writes. With JS
+off it still saves, as `latest.zip` — no worse than before, which is the right way for it to
+fail.
+
+`run_portable.js` **116 → 123**, new `DOWNLOAD` rule: every way that wiring breaks leaves a
+button that still works and still downloads, so nothing else would ever have gone red. All
+seven checks driven red by injection first. Rationale, the two rejected alternatives, and the
+one thing deliberately left alone: `Blueprint/BUILD_DECISIONS.md` **2026-07-30i**.
+
 ### 2026-07-30n — #276 RULED: re-aligning the accumulators stays procedural, so the procedure had to actually contain the step  ✅
 
 *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of
@@ -4654,9 +4899,9 @@ real smell worth a look during this effort.
 
 | ID | Plant | Observation | Why it might matter |
 |---|---|---|---|
-| **S1** | PWR | `abuse_porv_walkaway` end state shows inventory 120 % (clip at `mass_max`) with pzr level 7 % — the overfill/level bookkeeping disagree | **ANSWERED 2026-07-30j (#249): it is the clip, and the clip is load-bearing.** `mass_max` 1.2 is 3.4× the sourced physical headroom (5.8 % of RCS volume — BVPS-2 Table 5.1-1 + WTSM 3.2 Table 3.2-2), and it pins indicated pzr level at exactly 88.00 % on any quench, so the plant **cannot read water-solid on injection**. Injection-verified; see the session entry. Awaiting an owner ruling on the retune |
+| **S1** | PWR | `abuse_porv_walkaway` end state shows inventory 120 % (clip at `mass_max`) with pzr level 7 % — the overfill/level bookkeeping disagree | **ANSWERED 2026-07-30j (#249): it is the clip, and the clip is load-bearing.** `mass_max` 1.2 is 3.4× the sourced physical headroom (5.8 % of RCS volume — BVPS-2 Table 5.1-1 + WTSM 3.2 Table 3.2-2), and it pins indicated pzr level at exactly 88.00 % on any quench, so the plant **cannot read water-solid on injection**. Injection-verified; see the session entry. **RESOLVED 2026-07-31 (#136 closed).** The retune was ruled and landed *(OWNER RULING, 2026-07-30: "249 - fit it.")* — `level_per_mass_surplus` 300 → **776**, fitted to the pressurizer steam space as 5.8 % of RCS volume. Re-measured on this probe: the end state is now **120.0 % inventory / 100.0 % level** — solid, and the two gauges agree. The clip is still what pins inventory at 120 %, and that remains load-bearing and correct; what changed is that indicated level can now express the surplus instead of pinning at 88.00 %. **Now ASSERTED**, not just observed: `abuse_porv_walkaway` gained a both-gauges-agree check (run_ops 334 → 335 passed), because the two numbers had been printed on an `info` line every run and asserted on none — which is the whole reason this survived. Reddens by injection at 88.0 % on the pre-#249 gain |
 | **S14** (#273) | PWR | **The by-the-book Mode 3 → Mode 5 cooldown dumps all four accumulators.** Measured endpoint: `accum_vol=0.0 %`, `boron=2310 ppm` (SIT charge is 2,500), `inv=120.00 %` clipped. Nothing tells the player to isolate them — **zero** "accumulator" mentions in `ui/campaign_data.js` or `Manuals/05_MODE_TRANSITIONS.md` | Found 2026-07-30j while working #249. The cooldown crosses the 600 psi (4.14 MPa) SIT arming pressure with the discharge valve still open. Invisible until now because the 88 % level pin (S1) kept the overfill below the 97 % high-level trip — the `pwr_mode3_to_mode5` "arrived UNscrammed" check has been passing **for the wrong reason (HR10)**. The engine's own driver isolates correctly (`pwr_engine.js:1833`); the heatup procedure re-opens a lineup the cooldown never establishes (`ui/manual_procedures.js:58`) |
-| **S2** | PWR | LOFW warning-to-trip window is only ~4 s (`ops_loss_of_feedwater_handsoff`) | Too fast for a player to react — consider slowing SG boil-down slightly |
+| **S2** | PWR | **RESOLVED (2026-07-31, issue #135)** — and this row was right where the GitHub issue was wrong. The window was **2.9 s**, not ~4, and #135 filed it as "a setpoint/lag question… not a physics change", which was arithmetically impossible: the setpoints are 13 points apart, so at the old drain rate no spacing could buy more than a few seconds. "Slowing SG boil-down" was the correct instinct and "slightly" understated it 3.6×. `K_sg_level` **5.0 → 1.37**, fitted to Ginna UFSAR Table 15.2-4 (ADAMS ML20339A101): 35 s from feed loss to lo-lo trip. Window now **11.6 s**. Pinned by TR-14 | Was: too fast for a player to react — consider slowing SG boil-down slightly |
 | **S3** | PWR | **RESOLVED (2026-07-25, issue #134)** — and the suspicion in this row was wrong. Not a physics/rod-worth problem: the plant parks at 1.8–3.5 % when the excess reactivity is removed in ONE drive, and at 10–20 % when it is tapped out. The real causes were the checklist recipe (+45/−8, target "5–15 %", `acc: power_pct > 5`), a caution that blamed the lumped core for it, and an inert rate protection (alarm 2.0 / block 2.5 DPM against a peak of 1.82). See session entry | Was: startup feel — maybe a stronger low-power Doppler bite or gentler mid-curve differential rod worth |
 | **S4** | PWR | 50 % xenon swing may be a touch small (peak ~106 % vs ~113 % on the daily cycle) | Fine for v1; note if xenon scenarios feel flat |
 | **S5** | RBMK | Zero-flow aftermath too forgiving — post-trip fuel sits ~570 °C indefinitely, never dries out/damages | Real consequence is boil-off→dryout over tens of minutes; scale `h_fc` with channel flow at decay levels |

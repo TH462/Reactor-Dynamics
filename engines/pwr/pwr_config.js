@@ -529,7 +529,38 @@
       // Do not read this constant alone as "the rated heat": the pump-heat factor is
       // applied at the use site, pwr_steam_generator stepSecondary. [tune]
       latent_heat_secondary: 19.45,
-      K_sg_level: 5.0, K_steam_pressure: 2.0, // [tune]
+      // K_sg_level FITTED TO A REAL LOSS-OF-FEEDWATER TRANSIENT (#135), 5.0 -> 1.37.
+      //
+      // The level integrates the feed/steam imbalance: d(level)/dt = K_sg_level x
+      // (feedwater_flow - steam_out), both normalized to rated. So with feed lost and steam
+      // at rated, K IS the drain rate in %/s -- and at 5.0 the entire narrow range held
+      // TWENTY SECONDS of full-power steaming. Measured full-stack: true level 64.5 % ->
+      // 3.1 % in 13 s, lo-lo reactor trip 12.9 s after the failure.
+      //
+      // SOURCE -- Ginna UFSAR Chapter 15, Table 15.2-4, "TIME SEQUENCE OF EVENTS FOR LOSS OF
+      // NORMAL FEEDWATER FLOW" (NRC ADAMS ML20339A101, Rev 29 11/2020, p.102 of 276):
+      //     Main feedwater flow stops                            20 s
+      //     Low-low steam generator water level trip setpoint     55 s
+      //     Rod motion begins and turbine tripped                 57 s
+      // i.e. 35 s from feed loss to the lo-lo trip. The sim was ~2.7x too fast.
+      //
+      // THE FIT: this plant runs 65 % nominal and trips at 17 %, so 48 points of span must
+      // take 35 s -> 48/35 = 1.371 %/s. Measured after: trip at 40.5 s (the extra ~5 s is
+      // this sim's 8 s feed-pump coastdown, where the analysis stops flow instantly).
+      // What is fitted is the TIME, not the geometry -- Ginna's narrow-range span and level
+      // program are its own, and no claim is made that they match this single-loop plant.
+      //
+      // CONTROL GOT BETTER, NOT WORSE -- measured, full stack, before/after: steady-state
+      // hold over 30 min 2.35 -> 2.11 points of band; a 100 -> 80 MWe ramp swings 9.8 -> 5.4
+      // points and settles 64.38 -> 65.12 against a 65 nominal. Lower level-per-imbalance
+      // gain means less level swing for the same flow mismatch, so the feed controller did
+      // NOT need retuning.
+      //
+      // What this does NOT buy is a savable transient: clearing the failure the instant the
+      // alarm comes in still trips, at 40.6 s. That is correct -- a real loss of normal
+      // feedwater DOES trip the reactor on lo-lo level (it is the credited trip in the Ginna
+      // analysis above). The window is for reading the board, not for preventing the trip.
+      K_sg_level: 1.37, K_steam_pressure: 2.0, // [tune]
       steam_p_rated: 5.65,         // MPa secondary operating pressure [tune]
       steam_flow_rated: 1.0,       // rated steam flow, in those normalized units [tune]
       sg_level_nominal: 65.0,      // % at hot_full_power
@@ -1010,6 +1041,9 @@
                'rcp_secured', 'plant_mode',
                'hpi_active', 'station_blackout',
                'steam_demand_low', 'rod_at_limit', 'sr_energized', 'msiv_open', 'sg_safety_open',
+               // Rod bottom (#75) — read by the RPS-reset permissive in pwr_control.js, so
+               // the board can say whether a reset will be accepted before it is attempted.
+               'rods_fully_in',
                // P-9 permissive (≥50 % power) that gates the high-high SG (P-14) reactor
                // trip — read as a condition by the p14_reactor_trip trip.
                'above_p9',

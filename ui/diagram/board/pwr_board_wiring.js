@@ -1131,7 +1131,14 @@
     imrpp2g2m8k: function (open) { cmd({ action: 'set_afw_block', open: open }); },   // AFW block valve (independent of pump START/STOP)
     imrpp99kx2y: function (open) { cmd({ action: open ? 'open_msiv' : 'close_msiv' }); },
     imrppb3kuav: function (open) { cmd({ action: open ? 'open_block_valve' : 'close_block_valve' }); },
-    imrppxt2aqd: function (open) { cmd({ action: open ? 'open_accumulator_valve' : 'close_accumulator_valve' }); }
+    imrppxt2aqd: function (open) { cmd({ action: open ? 'open_accumulator_valve' : 'close_accumulator_valve' }); },
+    // The PORV itself (#125). comp_porv has ALWAYS drawn a hit circle, a hover ring and a
+    // pointer cursor and emitted onControl('toggle') — it was built to be operated and
+    // then never wired, so the click landed on nothing. Opening uses the OPERATOR's
+    // command (`open_porv_manual`), which a scenario can lock out; closing uses the shared
+    // `close_porv`, deliberately, because that is the TMI-2 action and a stuck valve
+    // defeating it is the lesson.
+    porv: function (open) { cmd({ action: open ? 'open_porv_manual' : 'close_porv' }); }
   };
   // EVERY pump renders art-only (no built-in toggle) — pump control lives entirely in the
   // separate buttons/panels, so a pump's control space never shifts its art and bends pipes:
@@ -1255,6 +1262,17 @@
   // IS the highlight vocabulary: app.js resolves every beat highlight through
   // RD.PwrBoard.revealControl, and run_campaign validates campaign beats against
   // controlLabels() below — so deleting a key here reddens that gate. (It used to be
+  // SCRAM-button caption per RPS-reset refusal code (#75). Deliberately terse: the strip
+  // under SCRAMMED is 9 px with wide tracking, so the full sentence goes to the scanner bar
+  // on the press (the kernel's register-aware `message`) and this says only which condition
+  // is holding. An unrecognised code falls back to a plain RESET BLOCKED rather than
+  // rendering a raw enum at the operator.
+  var SCRAM_RESET_NOTE = {
+    RODS_NOT_INSERTED:   'RODS NOT AT BOTTOM',
+    TRIP_SIGNAL_PRESENT: 'TRIP SIGNAL STANDING',
+    PERMISSIVE_NOT_MET:  'PERMISSIVE NOT MET',
+  };
+
   // held in parity with the V1 synoptic's SYN_CONTROL_MAP, which was retired in #246.)
   var CONTROL_LABEL_MAP = {
     'Control Bank': 'imrpk3wvydp', 'Rod Speed': 'imrpk3wvydp', 'Rod motion': 'imrpk3wvydp',
@@ -1528,8 +1546,22 @@
       if (action === 'toggle' && VALVE_TOGGLE[item.id]) VALVE_TOGGLE[item.id](!!value);
     },
     onScram: function () { cmd({ action: 'scram' }); },
-    onScramReset: function () { /* no engine reset command; visual only */ },
+    // The button has drawn "PRESS TO RESET" since it was built, and until #75 this handler
+    // was empty with a comment claiming no engine reset command existed. One does — the
+    // engine has had `reset_rps` (with its rods-in interlock) and the kernel its permissive
+    // for as long as the button has. Pressing it simply did nothing, silently, which is
+    // worse than the button not offering the reset at all.
+    onScramReset: function () { cmd({ action: 'reset_rps' }); },
     scramFired: function (s) { return IN(s).rps_scrammed; },
+    // Caption under SCRAMMED: whether a reset will be accepted, and if not, why — read
+    // from the kernel's permissive so the board never re-derives protection logic. The
+    // operator should not have to press an inert button to discover the plant is not ready.
+    scramResetNote: function (s) {
+      var rps = (s && s.rps_state) || {};
+      if (!rps.scrammed) return null;
+      if (rps.reset_block) return { text: SCRAM_RESET_NOTE[rps.reset_block.reason] || 'RESET BLOCKED', ready: false };
+      return { text: 'PRESS TO RESET', ready: true };
+    },
     valueFor: function (item, s) {
       var f = VALUES[item.id];
       if (!f) return null;
@@ -1679,6 +1711,39 @@
           ? true : JSON.stringify(r);
       })() === true);
       ck('driver: liveNote is null for an item that owns no channel', liveNoteFor('imrppee04aj', s) === null);
+      // ---- the SCRAM button's RESET half (#75) --------------------------------------------
+      // The button drew "PRESS TO RESET" from the day it was built while onScramReset was an
+      // empty stub, so an operator pressed it and nothing happened at all — no reset, no
+      // refusal, no message. Nothing anywhere caught that, because a handler that does
+      // nothing looks exactly like a handler that works. This pin is the one that would have.
+      ck('driver: the SCRAM reset actually sends reset_rps', (function () {
+        var sent = [], saved = ctxRef;
+        ctxRef = { cmd: function (c) { sent.push(c && c.action); } };
+        try { RD.PwrBoardDriver.onScramReset({}); } finally { ctxRef = saved; }
+        return sent.length === 1 && sent[0] === 'reset_rps' ? true : JSON.stringify(sent);
+      })() === true);
+      // The caption is read off the kernel's permissive, never re-derived here. Three
+      // states, and the blocked ones must say WHICH condition — "RESET BLOCKED" alone
+      // tells the operator nothing they cannot already see.
+      function srn(rpsState) { return RD.PwrBoardDriver.scramResetNote({ rps_state: rpsState }); }
+      ck('driver: no reset caption on an unscrammed plant', srn({ scrammed: false }) === null);
+      ck('driver: caption invites the reset when the permissive is satisfied', (function () {
+        var n = srn({ scrammed: true, reset_permitted: true, reset_block: null });
+        return n && n.ready === true && n.text === 'PRESS TO RESET' ? true : JSON.stringify(n);
+      })() === true);
+      ck('driver: caption names the condition holding the reset off', (function () {
+        var a = srn({ scrammed: true, reset_block: { reason: 'RODS_NOT_INSERTED' } });
+        var b = srn({ scrammed: true, reset_block: { reason: 'TRIP_SIGNAL_PRESENT' } });
+        return a && a.ready === false && a.text === 'RODS NOT AT BOTTOM' &&
+               b && b.ready === false && b.text === 'TRIP SIGNAL STANDING'
+          ? true : JSON.stringify([a, b]);
+      })() === true);
+      // An unrecognised code must degrade to plain English, not render a raw enum at the
+      // operator — the kernel may grow a reason this map has not learned yet.
+      ck('driver: an unknown reset-block code falls back rather than leaking the enum', (function () {
+        var n = srn({ scrammed: true, reset_block: { reason: 'SOMETHING_NEW' } });
+        return n && n.ready === false && n.text === 'RESET BLOCKED' ? true : JSON.stringify(n);
+      })() === true);
       // ---- the SG FEED corner status word (#214) -----------------------------------------
       // Switched on CODES, never on the note's English. These pin the mapping, including
       // the one that matters most: SAT reads AUTO on the lamp while the controller has no

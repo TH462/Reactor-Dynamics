@@ -99,11 +99,15 @@ var ALLOWED = {
 
   // --- known leaks, allowed ONLY so this gate can go green on today's code -----
   // Found BY this gate and filed, not fixed. Delete the entry when the issue closes —
-  // that is what makes the gate notice the fix. `pump_flow_pct` was deleted 2026-07-29:
-  // #247 replaced the `__true_flow__` sentinel with the `rcs_flow` instrument, so the
-  // kernel no longer names a PWR-only true_state field. That is half of #228; the
-  // reset_rps half stands.
-  reset_rps: 'KNOWN LEAK, filed as #228: the kernel sends reset_rps, which only the PWR engine handles',
+  // that is what makes the gate notice the fix.
+  //
+  // THIS SECTION IS NOW EMPTY, and both entries left the way it was designed for.
+  // `pump_flow_pct` went 2026-07-29 (#247): the `__true_flow__` sentinel was replaced by
+  // the `rcs_flow` instrument, so the kernel no longer names a PWR-only true_state field.
+  // `reset_rps` went 2026-07-31 (#228): RBMK and BWR now implement the handler the kernel
+  // had always been sending, so the token is shared by all three plants and stops being a
+  // finding at all — which made this entry STALE, and the gate failed on it before anyone
+  // touched this list. That is the whole point of scoring stale entries as failures.
 };
 
 // ---------------------------------------------------------------- vocabulary
