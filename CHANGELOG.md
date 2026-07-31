@@ -21,14 +21,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Settings tab trimmed** (#277). Removed **Values**, **Terminology**, and **Physics
+  Overlay** — unused on the shipping PWR board. Units, fast-forward dropout, and About
+  remain.
+
 ### Added
-<<<<<<< HEAD
 - **You can reset the SCRAM now, and the board tells you what is holding it** (#75, closing
   it). After a trip the SCRAM control reads **SCRAMMED** and becomes the RPS reset: press it
   and the reactor trip breakers re-close. It does **not** withdraw rods or restart the
   reactor — the rods stay where they are until you deliberately withdraw them under the
   startup net.
-=======
 - **You can click the pressuriser relief valve open and shut** (#125).
 
   The PORV on the board has always looked clickable — it highlights under the pointer
@@ -96,7 +99,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   discharge isolation valve indication to read *open*, so a correctly-isolated Mode 5 plant —
   which sits below that pressure all day — never sees it. Isolate and it clears; isolate on
   schedule and it never comes in.
->>>>>>> workbench
 
   **The button had said "PRESS TO RESET" since the day it was built, and it did nothing.**
   Not "did nothing useful" — the handler was an empty stub carrying a comment claiming no
@@ -192,6 +194,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Alpha 1.11.0] — 2026-07-30
 
 ### Added
+- **Settings → About: Disclaimer, License, and Changelog popups** (#259). The portable
+  single-file build is only the control room, so a recipient offline had no route to the
+  alpha disclaimer, the licence, or the player-facing changelog. Those three open as
+  in-app modals; content is packed from `legal.html` / `changelog.html` by
+  `node tools/pack_site_docs.js` into `ui/site_docs.js` (same pattern as the manuals).
+  The logo version chip also opens the changelog.
+
 - **The board now tells you to isolate the accumulators — SI ACCUM ALIGNED < 1000 PSI**
   (#273, closing it). A caution annunciator on panel B at **1000 psi (6.895 MPa)**, and the
   first alarm in the plant **gated on a lineup as well as a reading**: it also requires the

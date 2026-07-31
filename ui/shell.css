@@ -607,6 +607,64 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 /* Help / tour — reuses the mission-modal chrome, narrower and content-sized */
 .help-modal { width: min(560px, 96vw); height: auto; max-height: min(84vh, 760px); }
 .help-body { padding: 14px 18px; overflow: auto; }
+
+/* About docs (#259) — Disclaimer / License / Changelog. Wider and scrollable so
+   the full changelog fits; content is packed HTML from the site pages. */
+.mission-modal.doc-modal {
+  width: min(720px, 96vw); height: min(84vh, 800px);
+}
+.doc-body {
+  flex: 1; min-height: 0; overflow: auto;
+  padding: 14px 18px 22px;
+  font-size: 13px; line-height: 1.55; color: var(--text);
+}
+.doc-body h2 {
+  margin: 1.1em 0 0.4em; font-size: 13px; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-2); border: none; padding: 0;
+}
+.doc-body h2:first-child { margin-top: 0; }
+.doc-body p { margin: 0 0 0.75em; }
+.doc-body ul { margin: 0 0 0.9em; padding-left: 1.25em; }
+.doc-body li { margin-bottom: 0.4em; }
+.doc-body a { color: var(--normal); }
+.doc-body code {
+  font-family: var(--mono, ui-monospace, monospace); font-size: 12px;
+  background: var(--bg-elevated); padding: 1px 4px; border-radius: 3px;
+}
+.doc-body .notice, .doc-body .doc-alpha {
+  background: rgba(217, 164, 65, 0.10); border: 1px solid var(--caution);
+  border-radius: 6px; padding: 10px 12px; margin: 0 0 14px;
+  color: var(--text-2); font-size: 13px;
+}
+.doc-body .notice strong, .doc-body .doc-alpha { color: var(--caution); font-weight: 600; }
+.doc-body .lede { color: var(--text-2); margin-bottom: 1em; }
+.doc-body .log-entry {
+  border-top: 1px solid var(--border); padding-top: 16px; margin-top: 18px;
+}
+.doc-body .log-entry:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+.doc-body .log-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+.doc-body .log-head h2 {
+  margin: 0; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--text);
+}
+.doc-body .log-ver {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.4px; color: var(--normal);
+  border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px;
+}
+.doc-body .log-date { color: var(--muted); font-size: 12px; margin-left: auto; }
+.doc-body .log-entry ul { margin: 10px 0 0; padding-left: 0; list-style: none; }
+.doc-body .log-entry li { margin-bottom: 8px; font-size: 13px; line-height: 1.5; }
+.doc-body .log-tag {
+  display: inline-block; min-width: 56px; margin-right: 6px;
+  font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase;
+  text-align: center; padding: 1px 5px; border-radius: 3px;
+  border: 1px solid currentColor; vertical-align: 1px;
+}
+.doc-body .log-tag.added { color: var(--running, #79d297); }
+.doc-body .log-tag.changed { color: var(--normal); }
+.doc-body .log-tag.fixed { color: var(--caution); }
+.set-about-btns { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .help-sec { margin-bottom: 14px; }
 .help-sec h4 { margin: 0 0 4px; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-2); }
 /* ---- Coach-mark tour (spotlight + tip beside the target) ---- */
