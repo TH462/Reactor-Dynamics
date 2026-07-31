@@ -10,31 +10,42 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 > below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
 > empty `## [Unreleased]` above it. The version must match the top entry of
 > `changelog.html` and the string in `site/release.js`.
+>
+> **`node test/run_release.js` enforces that** (2026-07-31). This paragraph on its own did not:
+> the roll was skipped for **Alpha 1.10.0 and again for 1.11.0**, and 434 lines covering two
+> shipped releases sat below as unreleased while the newest version heading here read 1.9.0.
+> It survives being skipped because nothing downstream reads these headings — the file renders
+> and reads plausibly either way — and it compounds, because once two releases are merged into
+> one block the boundaries can only be recovered by diffing this file at each tag. Which is
+> what it took.
 
 ## [Unreleased]
 
-### Added
-- **The board now tells you to isolate the accumulators — SI ACCUM ALIGNED < 1000 PSI**
-  (#273, closing it). A caution annunciator on panel B at **1000 psi (6.895 MPa)**, and the
-  first alarm in the plant **gated on a lineup as well as a reading**: it also requires the
-  discharge isolation valve indication to read *open*, so a correctly-isolated Mode 5 plant —
-  which sits below that pressure all day — never sees it. Isolate and it clears; isolate on
-  schedule and it never comes in.
-
-  **There is no autoclose interlock, and that is the decision, not an omission.** Real plants
-  power these valves *open* and remove control power to prevent inadvertent closure; the
-  closure is the operator's, made off RCS pressure indication. An automatic closure keyed on
-  falling pressure would also shut the accumulators during a LOCA, which is exactly when they
-  must inject. The tile therefore states a lineup rather than an order — on a LOCA the same
-  annunciation means the opposite thing.
-
-  **Measured, and worth knowing before you rely on it:** on a brisk cooldown the cue precedes
-  the first discharge by about **one minute of plant time** — under two seconds of wall clock
-  at 30×. The procedure step is the defence; the annunciator is the backstop and the
-  post-mortem. Both compressed rates behind that number, and the 22–440× ECCS injection
-  pacing, are now declared in **12 §14.1**.
-
 ### Fixed
+- **Two shipped releases were still filed as unreleased, and the roll is now gated.** Alpha
+  **1.10.0** and **1.11.0** both merged to `main` without their `## [Unreleased]` heading being
+  renamed, so 434 lines covering two releases sat in this file as work-in-flight and the newest
+  version heading read **1.9.0** — two versions behind the site. Both are now rolled, dated
+  **2026-07-30** to match `changelog.html`.
+
+  **The boundaries were not guessed.** Entries had been inserted at the top of existing
+  `### Added` / `### Fixed` subsections rather than appended, so the two releases were
+  interleaved, not stacked. The split comes from diffing this file's `[Unreleased]` block as it
+  stood at tags `v1.10.0` and `v1.11.0` against `HEAD`, which puts the seam between #271
+  (armed-protection alarm bands, 1.11.0) and #263 (the moderator re-fit, 1.10.0) — and
+  `changelog.html`'s own two entries, written at the time and never touched since, split at
+  exactly the same place. Verified content-neutral: sorted non-blank lines before and after
+  differ by precisely the four heading lines added, nothing moved between releases.
+
+  **Gated by the new `test/run_release.js` (18 checks).** `site/release.js`, `changelog.html`
+  and this file must agree on what shipped: the newest version heading here must be the string
+  in `release.js`, dates must match across both changelogs, both must be newest-first, and
+  `[Unreleased]` must exist exactly once and sit above everything. It survives being skipped
+  precisely because **nothing downstream reads these headings** — the file renders and reads
+  plausibly either way — so a note was never going to be enough; CLAUDE.md and the release
+  skill both already said to do it. Proven against the **real** pre-fix file rather than a
+  synthetic one: 3 checks red, naming both missing versions. All 18 driven red by injection.
+
 - **The offline download arrives with a NAME on it** (#275, closing it). The Download page's
   button saved the file as **`latest.zip`** — no product, no *Alpha*, no version, and
   indistinguishable from the copy you pulled three releases ago once it is sitting in a
@@ -59,6 +70,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `RD_RELEASE` is a full `Alpha X.Y.Z`. All seven were proven to go **red by injection**
   before being counted green.
 
+## [Alpha 1.11.0] — 2026-07-30
+
+### Added
+- **The board now tells you to isolate the accumulators — SI ACCUM ALIGNED < 1000 PSI**
+  (#273, closing it). A caution annunciator on panel B at **1000 psi (6.895 MPa)**, and the
+  first alarm in the plant **gated on a lineup as well as a reading**: it also requires the
+  discharge isolation valve indication to read *open*, so a correctly-isolated Mode 5 plant —
+  which sits below that pressure all day — never sees it. Isolate and it clears; isolate on
+  schedule and it never comes in.
+
+  **There is no autoclose interlock, and that is the decision, not an omission.** Real plants
+  power these valves *open* and remove control power to prevent inadvertent closure; the
+  closure is the operator's, made off RCS pressure indication. An automatic closure keyed on
+  falling pressure would also shut the accumulators during a LOCA, which is exactly when they
+  must inject. The tile therefore states a lineup rather than an order — on a LOCA the same
+  annunciation means the opposite thing.
+
+  **Measured, and worth knowing before you rely on it:** on a brisk cooldown the cue precedes
+  the first discharge by about **one minute of plant time** — under two seconds of wall clock
+  at 30×. The procedure step is the defence; the annunciator is the backstop and the
+  post-mortem. Both compressed rates behind that number, and the 22–440× ECCS injection
+  pacing, are now declared in **12 §14.1**.
+
+### Fixed
 - **The heatup procedure re-aligns the accumulators** (#276) — `04` PWR-N03 step 4. The cold
   lineup ships with them isolated and **nothing opens them automatically**: re-alignment is
   procedural by design *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to
@@ -199,6 +234,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   the trip and the meter reopens to the at-power scale with 120 % at the top and the
   annotation clears; drop back below P-10 and the block reinstates itself and the band comes
   back with it. **At power nothing changed** — the bands are identical to before.
+
+## [Alpha 1.10.0] — 2026-07-30
+
+### Fixed
 - **The moderator model was re-fitted to measured plant data, and the reactor is more
   self-regulating than it was yesterday** (#263). The previous fix (#260) took the
   boron dependence of the moderator coefficient from a written statement in a training

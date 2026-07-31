@@ -115,6 +115,27 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31a — two shipped releases were still filed as unreleased; the roll is now gated  ✅
+
+No plant change. Alpha **1.10.0** and **1.11.0** both merged to `main` without `CHANGELOG.md`'s
+`## [Unreleased]` heading being renamed — 434 lines of two releases filed as work-in-flight,
+newest version heading reading **1.9.0** while the site correctly said 1.11.0. Both rolled,
+dated 2026-07-30.
+
+**The seam was measured, not judged.** Entries had been inserted at the top of existing
+`### Added`/`### Fixed` subsections, so the two releases were *interleaved*; the split came
+from diffing the `[Unreleased]` block at tags `v1.10.0` and `v1.11.0` against HEAD, and lands
+between #271 (1.11.0) and #263 (1.10.0). `changelog.html`'s two entries — written at release
+time, untouched since — split at the same place. Content-neutral: sorted non-blank lines
+before/after differ by exactly the four added heading lines.
+
+**New gate `test/run_release.js` (18 checks)**, `run_all` 33 → 34 runners. The three files that
+describe a release must agree. This needed a gate rather than a note because *nothing
+downstream reads those headings* — CLAUDE.md and the `release-to-main` skill both already said
+to do it, and that is precisely what failed, twice. Proven against the **real** pre-fix file:
+3 red, naming both missing versions. All 18 driven red by injection. Detail:
+`Blueprint/BUILD_DECISIONS.md` **2026-07-31a**.
+
 ### 2026-07-30o — #275: the offline download was arriving called `latest.zip`  ✅
 
 No plant change. The site's Download button had a **bare** `download` attribute on a

@@ -286,6 +286,14 @@ var BASELINES = {
   // the design — a new setpoint gets range-checked for free, and the count moving is the
   // nudge to notice it. 50 → 52 thresholds audited.
   'run_reachability.js':   { code: 0, score: '58checks 0failed' },
+  // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
+  // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
+  // "## [Unreleased]" to the version) was skipped for Alpha 1.10.0 AND 1.11.0 — 434 lines of
+  // two shipped releases filed as unreleased, newest version heading reading 1.9.0. Nothing
+  // downstream reads that heading, so nothing went red; the CLAUDE.md note and the release
+  // skill's step are what failed, which is the argument for a gate rather than a louder note.
+  // VERIFIED against the real pre-fix file, not a synthetic one: 3 checks red.
+  'run_release.js':        { code: 0, score: '18checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   'run_m4.js':             { code: 0, score: '26/26 147passed' },

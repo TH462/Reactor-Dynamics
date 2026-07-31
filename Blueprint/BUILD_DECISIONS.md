@@ -37,6 +37,56 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-31a — the CHANGELOG roll was skipped twice; the instruction was not the fix, the gate is
+
+**What was wrong.** Alpha **1.10.0** and **1.11.0** both merged to `main` without renaming
+`CHANGELOG.md`'s `## [Unreleased]` heading. 434 lines covering two shipped releases sat filed
+as work-in-flight, and the newest version heading in the developer changelog read **1.9.0** —
+two versions behind `changelog.html` and `site/release.js`, which were both correct.
+
+**Why it survived.** Nothing downstream reads that heading. `[Unreleased]` looks exactly as
+plausible as `[Alpha 1.11.0]` to a reader, to a renderer, and to every gate in the suite. Both
+CLAUDE.md's *Definition of done* and the `release-to-main` skill's checklist already said to do
+it — **the instruction is what failed**, and repeating it louder would have been the same
+intervention that had already not worked twice.
+
+**Reconstructing the boundary — measured, not judged.** Entries had been inserted at the **top
+of existing `### Added` / `### Fixed` subsections** rather than appended to the block, so the
+two releases were interleaved and no contiguous line range separated them. The split came from
+extracting the `[Unreleased]` block at tags `v1.10.0` and `v1.11.0` and diffing against `HEAD`:
+two clean insertion hunks (`1a2,22`, `2a24,163`) place 1.11.0's Added and Fixed entries above
+1.10.0's, seam between **#271** (armed-protection alarm bands → 1.11.0) and **#263** (moderator
+re-fit → 1.10.0). **Independently confirmed**: `changelog.html`'s 1.11.0 and 1.10.0 entries were
+written at release time, never touched since, and split at exactly the same place. The rewrite
+was verified content-neutral — sorted non-blank lines before/after differ by precisely the four
+added heading lines, nothing moved between releases.
+
+**Decision — a new static gate, `test/run_release.js` (18 checks).** It asserts the three files
+that describe a release say the same thing: `site/release.js` names a full `Alpha X.Y.Z`;
+`changelog.html`'s newest live entry is that version; **`CHANGELOG.md`'s newest version heading
+is that version** (the check the gate exists for); dates agree across both changelogs for every
+version `CHANGELOG.md` still names individually; both files are strictly newest-first; and
+`[Unreleased]` exists exactly once, above everything.
+
+Two parsing traps worth knowing. `changelog.html` carries a **fully-formed specimen entry**
+(`Alpha 1.5.0`) inside its `ADDING AN ENTRY` comment — read as data it makes the newest
+published version look like 1.5.0, so comments are stripped first. And `## [Alpha 1.6.1 and
+earlier]` is a deliberate catch-all for the pre-history, so the cross-check floors at the
+oldest individually-named version rather than demanding a heading per site entry.
+
+**Verified against the real failure, not a synthetic one** (HR10): run against `CHANGELOG.md`
+exactly as it stood before this fix, it reports 3 red — the wrong newest heading, plus 1.11.0
+and 1.10.0 published on the site and absent from the file. All 18 checks were driven red by
+injection. `run_all` is **33 → 34 runners**.
+
+**Also fixed: the skill never actually said to do it.** `release-to-main` covered
+`changelog.html` and `site/release.js` and stopped there — the `CHANGELOG.md` roll appeared
+only in that file's own header comment. It now has the step, the reason it is easy to skip, and
+`run_release.js` on the checklist **before the merge**, since after the merge it is a red gate
+on `main`.
+
+---
+
 ## 2026-07-30i — #275: the download is named by the release string, not by the path it is served from
 
 **The defect.** `download.html`'s button carried a **bare** `download` attribute on
