@@ -279,6 +279,14 @@ a handful of UI/doc items.
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+> **Evicting a bullet: RESCUE THE TRAP FIRST.** Before you delete the oldest, ask what in it
+> would still burn someone a month from now — a stale number that is still quoted in older
+> prose, a wrong premise that got copied, a gotcha with no other home. Move that to the
+> standing list below as **one line**, then drop the rest. The cap is there so the list stays
+> readable, not so knowledge expires with the news: on 2026-07-31 the #260/#263 bullet was
+> rotated out intact and took its "do not trust a 1400 ppm crossover" warning with it, which
+> is the failure this paragraph exists to stop.
+
 - **Five automation channels could have been doing nothing, and the gate still read 24/24
   (2026-07-31, #286, split from #154).** `run_autoctl` engaged **seven channels at once** and
   asserted **aggregate** plant state — power, Tavg, pressure, SG level — so every band could
@@ -411,6 +419,15 @@ anything here that is standing procedure rather than news belongs in the list be
 
 **Standing procedure — not part of the rotation above; these do not expire.**
 
+- **The moderator model was re-done TWICE, and older prose still quotes the dead numbers**
+  (#260 then #263; rescued from the themes rotation 2026-07-31). If you meet a **1400 ppm
+  boron crossover** or a **−20 pcm/°C** at-power moderator coefficient in any document, it is
+  stale — both were superseded. The live values are fitted to the three measured BEAVRS
+  Cycle 1 HZP isothermal coefficients: at-power **−26.8 pcm/°C**, HZP ARO critical boron
+  **986 ppm**, control bank **4068** / shutdown **3676** pcm. `run_reactivity` is what pins
+  them, and it reddens if a rod worth or `alpha_D` moves without a re-solve. Still open:
+  there is **no Estimated Critical Condition** anywhere, which is what would have stopped the
+  free-play event that started #260.
 - **The board is the V2 diagram, and `pwr_board_data.js` is GENERATED.** Edit in the Claude
   Design "PWR Reactor" builder, re-export to `inbox/Diagram V2.json`, run
   `node tools/gen_board_data.js`, then re-point ids in `pwr_board_wiring.js`. **The builder's
@@ -517,9 +534,9 @@ before that commit**; the following **32 runs were red without exception**, incl
 push to `main` for Alpha 1.10.0 and the #272 release PR. Nobody noticed for three days,
 which is the argument for a required status check and against a badge (#191).
 
-Green at baseline: PWR **32/32 (202 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3038 checks)**,
-`run_m4` **28/28 (156 checks)**, `run_m5` **19/19 (83 checks)** (79 → 83 on 2026-07-31, #137 — the free-play checkpoint cadence became REAL time. The load-bearing check piles up **360 sim-s with the wall clock frozen** and requires ZERO checkpoints; the pre-fix service lays **21** there. `_now()` is a prototype seam because a headless runner burns no wall time — without it this cadence is untestable), `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **30/30** (24 → 30 on 2026-07-31, #286 — the suite engaged **seven channels at once** and asserted AGGREGATE plant state, so a dead channel hid behind its neighbours. Measured by neutering the kernel: `cvcs_makeup`, `boron_trim`, `grid_follow`, `boron_conc` and the ENGAGE half of `steam_dump` were each a complete no-op at a green 24/24, and **`boron_conc` is `defaultOn`** — inert in every free-play lineup. If you repeat that injection, neuter the **engage direction only**: the rig stands every channel down at t=0, so blanking the disengage too leaves the plant in the IC's own AUTO, and two probes then pass against a dead channel),
-`run_behavior` **40 pass / 0 xfail** (38 → 39 on 2026-07-31, #135: **TR-14**, the SOURCED loss-of-feedwater drain rate. It exists because moving `K_sg_level` by **3.6×** left all 32 runners green — nothing in the suite asserted how fast a steam generator empties, so the constant could drift back unnoticed. Fails at 13.0 s against its 25–60 s band on the old value. 39 → 40 same day, #284: **TR-1e** — nothing in the suite compared what the turbine was ADMITTED against what the reactor MADE, because every other check runs where the two agree, so a **2× error on a board gauge** sat behind 34 green runners. Fails 3 checks on the old engine), `run_meltdown` **9 pass / 0 xfail**,
+Green at baseline: PWR **36/36 (237 checks)** (32 → 36 on 2026-07-31, #154 item 11 — four engine surfaces asserted NOWHERE: the pressurizer **code safeties** (`s.safety_open` had zero references in the tree; only the SG safeties were ever asserted), **`porv_tailpipe_temp`** (the TMI/Davis-Besse tell the flagship teaches), the TMI-2 **blocked-AFW** device (only ever asserted FALSE) and the **unknown-command** path. `save_migration` went 8 → 20 of the 29 `_migrateState` defaults, including the `rcp_secured` INFERENCE (#240) — the one judgement call in the migration, unasserted both ways. Layer note: the code valves are a COMMANDED state in the engine and their pop/reseat SETPOINTS are an M4 actuation, so the threshold half lives in `run_m4`; measured, a real transient cannot reach them at all — the high-pressure reactor trip caps indicated pressure at **2460 psi (16.96 MPa)**, under the 2484 psi (17.13 MPa) pop, so only an ATWS or a failed instrument gets there), BWR **15/15**, RBMK **23/23**, campaign **51/51 (3038 checks)**,
+`run_m4` **32/32 (176 checks)** (28 → 32 on 2026-07-31, #154 item 6 — four kernel internals with no test at all: actuation **`reset_below`** (a comment recorded the shipped PORV-flapping inversion; nothing pinned the fix), numeric **`override_value`** interception (five PWR failures use it and the intercepted-command path was never once observed), interception **precedence** (first-injected wins — the probe distinguishes it from last-wins, so both halves invert under injection), and **`acknowledge_all_alarms`**, previously asserted only as "the instructor gate does not block it"), `run_m5` **22/22 (96 checks)** (79 → 83 on 2026-07-31, #137 — the free-play checkpoint cadence became REAL time. The load-bearing check piles up **360 sim-s with the wall clock frozen** and requires ZERO checkpoints; the pre-fix service lays **21** there. `_now()` is a prototype seam because a headless runner burns no wall time — without it this cadence is untestable), `run_m6` **18/18 (117 checks)** (#154 item 7 — chat-mode transcript mechanics: the story clock, the **time-skip divider** (first line of the beat only, or the UI repeats it down an ordinary exchange) and the **`CHAT_LOG_CAP`** ring, which matters because the snapshot passes the log BY REFERENCE every broadcast), `run_m6ph` **8/8**, `run_autoctl` **30/30** (24 → 30 on 2026-07-31, #286 — the suite engaged **seven channels at once** and asserted AGGREGATE plant state, so a dead channel hid behind its neighbours. Measured by neutering the kernel: `cvcs_makeup`, `boron_trim`, `grid_follow`, `boron_conc` and the ENGAGE half of `steam_dump` were each a complete no-op at a green 24/24, and **`boron_conc` is `defaultOn`** — inert in every free-play lineup. If you repeat that injection, neuter the **engage direction only**: the rig stands every channel down at t=0, so blanking the disengage too leaves the plant in the IC's own AUTO, and two probes then pass against a dead channel),
+`run_behavior` **40 pass / 0 xfail** (38 → 39 on 2026-07-31, #135: **TR-14**, the SOURCED loss-of-feedwater drain rate. It exists because moving `K_sg_level` by **3.6×** left all 32 runners green — nothing in the suite asserted how fast a steam generator empties, so the constant could drift back unnoticed. Fails at 13.0 s against its 25–60 s band on the old value. 39 → 40 same day, #284: **TR-1e** — nothing in the suite compared what the turbine was ADMITTED against what the reactor MADE, because every other check runs where the two agree, so a **2× error on a board gauge** sat behind 34 green runners. Fails 3 checks on the old engine), `run_meltdown` **10 pass / 0 xfail** (9 → 10 on 2026-07-31, #154 item 9 — **MD-10, feed and bleed**. MD-6 took the total loss of the secondary heat sink to core damage and nothing anywhere exercised the RECOVERY, so the suite proved only that the plant CAN be lost that way. Measured: unmitigated damages at **4040 s** peaking at **691 °F (366 °C)** Tavg; with the PORV open and HPI running, peak fuel **1162 °F (628 °C)**, no damage, inventory held above 100 %),
 `run_meltdown_stack` **3/3 (21/21 checks)**,
 `run_procedures` **22/22 (102/102 checks)**,
 `run_procedures_stack` **22/22 (178/178 checks, 2 strict xfails — both RBMK/BWR #208; the 7
@@ -541,7 +558,13 @@ the first half-second after a scram and the rods are seated before the later che
 the ~1–3 s window where that config is the only thing binding was never asserted. Injection
 found it; reading the tests did not).
 
-**One tracked red**, carrying a `note` in `BASELINES`: `run_ops` **57/68** — probes are
+**One tracked red**, carrying a `note` in `BASELINES`: `run_ops` **58/69** (57/68 → 58/69 on
+2026-07-31, #154 item 9: **`ops_shutdown_dilution`** — every other reactivity probe in the file
+runs AT POWER, where the subcritical multiplication it measures does not exist, so the regime
+that produced the owner's free-play source-range trip (#260) had no probe at all. Diluting
+Mode 5 at the tuned 0.05 ppm/s makeup rate and walking away, the source-range high-flux trip
+fires at **1248 s** with **59 ppm** removed, boron 857 → 798. **The failure count is unmoved
+at 12** — this added a pass, not a red) — probes are
 tuning targets by design. **Measured 2026-07-27b from `Diagnostic/ops_results.json`:
 PWR is 21/21 with ZERO fails; all 11 reds are 7 RBMK + 4 BWR**, and the deliberately-red
 C2 accel-latency probe (#153) is one of the RBMK seven (*ABUSE [post] time-acceleration*),

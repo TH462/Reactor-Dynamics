@@ -470,6 +470,103 @@ T.push(test('Rewind — ring cap evicts the oldest checkpoint', function (ck) {
   ck('oldest entries evicted (FIFO)', oldest.toFixed(1) + ' s', oldest > 0.5, '> first pushes');
 }));
 
+// --------------------------------------------------------------------------
+// The two rewind guards and the save/load COMMAND path (#154 item 7). #137
+// narrowed `_rewindCursor` to the beat path but did not remove it, and it had
+// never had a test; `exact` was covered end-to-end in the browser gate and
+// nowhere at this level, which is where its semantics actually live.
+
+T.push(test('Rewind — consecutive presses with no new progress WALK BACK (#154)', function (ck) {
+  var s = new RD.SimulationService({ seed: 7 });
+  s.selectPlant('pwr', 'hot_full_power', null);
+  for (var i = 0; i < 6; i++) { s.advanceCycles(1); s._pushCheckpoint(); }
+  // 7, not 6: the first free-play tick lays checkpoint 0 on the sandbox cadence
+  // before the loop's own pushes. Read the ring rather than assume its length.
+  var times = s.checkpoints.map(function (c) { return c.metadata.sim_time; });
+  ck('a ring of increasing checkpoints', times.length,
+    times.length === 7 && times[times.length - 1] > times[0], '7, increasing');
+  var first = s.handleCommand({ action: 'rewind', steps: 1 });
+  var t1 = first.metadata.sim_time;
+  // A broadcast between the presses is what makes this hard: it advances simTime
+  // past the checkpoint just landed on, so the exact-time guard no longer fires and
+  // every later press would restore that SAME checkpoint forever — the state could
+  // never be escaped. Since #137 this is reached by two `rewind:` beats in a row
+  // (a rewind beat deliberately does not checkpoint), which is why the guard stayed.
+  s.advanceCycles(1);
+  var second = s.handleCommand({ action: 'rewind', steps: 1 });
+  var t2 = second.metadata.sim_time;
+  ck('the second press lands STRICTLY earlier', t1.toFixed(2) + ' → ' + t2.toFixed(2),
+    t2 < t1 - 1e-9, '< ' + t1.toFixed(2) + ' s');
+  s.advanceCycles(1);
+  var third = s.handleCommand({ action: 'rewind', steps: 1 });
+  ck('and keeps walking back, one boundary per press', third.metadata.sim_time.toFixed(2),
+    third.metadata.sim_time < t2 - 1e-9, '< ' + t2.toFixed(2) + ' s');
+}));
+
+T.push(test('Rewind — `exact` names a checkpoint and skips the press guards (#154)', function (ck) {
+  function ringOf(n) {
+    var s = new RD.SimulationService({ seed: 7 });
+    s.selectPlant('pwr', 'hot_full_power', null);
+    for (var i = 0; i < n; i++) { s.advanceCycles(1); s._pushCheckpoint(); }
+    return s;
+  }
+  var a = ringOf(6);
+  var N = a.checkpoints.length;                      // 7 — the free-play tick lays one too
+  var newest = a.checkpoints[N - 1].metadata.sim_time;
+  var pick4 = a.checkpoints[N - 4].metadata.sim_time;   // what steps:4 must name
+  // The picker's contract: the mark the player clicked is the state they get. A
+  // non-exact steps:1 here lands one EARLIER, because the newest checkpoint is the
+  // current moment and press semantics require strictly-earlier state — correct for
+  // a press, wrong for a pick. Both halves are asserted so the two cannot converge.
+  var exact1 = a.handleCommand({ action: 'rewind', steps: 1, exact: true });
+  ck('exact steps:1 restores the NEWEST checkpoint itself', exact1.metadata.sim_time.toFixed(2),
+    Math.abs(exact1.metadata.sim_time - newest) < 1e-9, newest.toFixed(2) + ' s');
+  var press = ringOf(6).handleCommand({ action: 'rewind', steps: 1 });
+  ck('…where a PRESS at the same moment lands one earlier', press.metadata.sim_time.toFixed(2),
+    press.metadata.sim_time < newest - 1e-9, '< ' + newest.toFixed(2) + ' s');
+  // Steps count back from the END of the ring, so steps:4 names index N−4.
+  var exact4 = ringOf(6).handleCommand({ action: 'rewind', steps: 4, exact: true });
+  ck('exact steps:4 restores checkpoint index N−4', exact4.metadata.sim_time.toFixed(2),
+    Math.abs(exact4.metadata.sim_time - pick4) < 1e-9, pick4.toFixed(2) + ' s');
+  // A pick past the ring is an error, not a silent clamp to the oldest.
+  var tooFar = ringOf(6).handleCommand({ action: 'rewind', steps: 99, exact: true });
+  ck('a pick past the ring errors cleanly', JSON.stringify(tooFar && tooFar.type),
+    tooFar && tooFar.type === 'error', 'error');
+}));
+
+T.push(test('save_state / load_state as COMMANDS round-trip through the service (#154)', function (ck) {
+  // `load_state` has one caller (run_autoctl); `save_state` as a COMMAND had none —
+  // every other test reaches for svc.saveState() directly, so that dispatch line
+  // was never once exercised.
+  var s = new RD.SimulationService({ seed: 7 });
+  s.selectPlant('pwr', 'hot_full_power', null);
+  s.handleCommand({ action: 'set_speed', value: 10 });
+  s.advanceCycles(30);
+  s.handleCommand({ action: 'open_porv' });
+  s.advanceCycles(5);
+  var saved = s.handleCommand({ action: 'save_state' });
+  ck('save_state returns a save payload', !!(saved && typeof saved === 'object'),
+    !!(saved && typeof saved === 'object'), 'an object');
+  var atSave = s.simTime;
+  ck('PORV was open at save', String(s.engine.getTrueState().porv_open),
+    s.engine.getTrueState().porv_open === true, 'true');
+  // Move the plant somewhere else entirely, then load the payload back.
+  s.handleCommand({ action: 'close_porv' });
+  s.advanceCycles(40);
+  ck('plant moved on after the save', s.simTime > atSave, s.simTime > atSave, '> ' + atSave.toFixed(1) + ' s');
+  s.handleCommand({ action: 'load_state', state: saved });
+  ck('load_state restored the saved sim time', s.simTime.toFixed(2),
+    Math.abs(s.simTime - atSave) < 1e-9, atSave.toFixed(2) + ' s');
+  ck('…and the saved plant state with it', String(s.engine.getTrueState().porv_open),
+    s.engine.getTrueState().porv_open === true, 'true');
+  // The payload must survive the trip a real save takes — through JSON and back.
+  var s2 = new RD.SimulationService({ seed: 7 });
+  s2.selectPlant('pwr', 'hot_full_power', null);
+  s2.handleCommand({ action: 'load_state', state: JSON.parse(JSON.stringify(saved)) });
+  ck('a JSON round-trip of the payload loads into a fresh service', s2.simTime.toFixed(2),
+    Math.abs(s2.simTime - atSave) < 1e-9, atSave.toFixed(2) + ' s');
+}));
+
 // -------- report --------
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', RST = '\x1b[0m', BOLD = '\x1b[1m';
 var pass = 0, fail = 0;

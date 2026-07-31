@@ -115,6 +115,66 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31g — #154 finished: sixteen unasserted surfaces closed, one filed item disproved  ✅
+
+Follows 2026-07-31f, which verdicted the omnibus. This is the execution of what stood.
+
+**One filed item was stale in the OTHER direction, and I had repeated it.** The review's
+"the RHR 400 psi (2.76 MPa) interlock is untested" is wrong: `run_pwr`'s `rhr_valve_and_mode`
+covers it completely — open refused above the interlock, valve opens below, `rhr_active`
+mirrors it, `eccs_mode` reads RHR, and a repressurization **auto-closes** it. What is true is
+the narrower thing the review also said: `ops_cooldown_to_rhr` never issues `set_rhr` and its
+RHR check is `ck.info`. My 2026-07-31f comment carried the wider claim; corrected here.
+
+**Closed, with the gate each landed in:**
+
+- **M4 kernel** (`run_m4` 28 → 32, 156 → 176 checks). `reset_below` direction; numeric
+  `override_value` interception; interception precedence; `acknowledge_all_alarms`. All four
+  verified red by injecting the specific defect they guard — the historical `value >
+  reset_below` inversion, a `_withValue` that does not write the field, a first-wins → last-
+  wins flip, and an ack-all that returns without touching `alarmStates`.
+- **M5 / M6** (`run_m5` 19 → 22, `run_m6` 17 → 18). `_rewindCursor` walk-back; `exact` at
+  service level; `save_state` as a command; chat story clock / `time_skip` / `CHAT_LOG_CAP`.
+- **PWR engine** (`run_pwr` 32 → 36, 202 → 237 checks). Pressurizer code safeties;
+  `porv_tailpipe_temp`; the blocked-AFW device; the unknown-command path; `save_migration`
+  8 → 20 of 29 fields.
+- **Casualty / ops** (`run_meltdown` 9 → 10, `run_ops` 57/68 → 58/69). MD-10 feed and bleed;
+  `ops_shutdown_dilution`.
+
+**Four things worth carrying.**
+
+**The code safeties cannot be reached by a plant transient.** Driving 100 % heaters with the
+PORV blocked, indicated pressure peaks at **2460 psi (16.96 MPa)** — under the **2484 psi
+(17.13 MPa)** pop — because the high-pressure **reactor trip** gets there first. Only an ATWS
+or a failed instrument reaches the code valves. That is why the engine probe commands them
+directly and the *threshold* half sits in `run_m4` on a stuck instrument: in the engine the
+valves are a COMMANDED state and the setpoints are an M4 actuation. Layer discipline, not a
+workaround. (Unrelieved and with no protection at all, the same drive reaches **6224 psi
+(42.91 MPa)** — worth knowing the pressurizer has no internal ceiling of its own.)
+
+**Two first drafts passed for the wrong reason, both from the harness rather than the plant.**
+`Harness.autoM4` emulates M4's mechanical protections *including the reseat*, so an explicit
+`open_pzr_safety` was shut again inside the measurement window — relief flow read **0** one
+second after the pop, and the pressure drop that "proved" relief had happened in between.
+Turning the emulation off for probes that own the valve fixed both. Same family as the #286
+injection that lied: **the harness is part of the experiment.**
+
+**A predicate that can never be true reads exactly like a plant that never does the thing.**
+The first code-safety probe waited on `true_state.pzr_safety_open`, which does not exist —
+the PZR safety surfaces as the **`safety_relief_active`** status instrument, and
+`pzr_safety_open` is the SG spelling. It reported "never popped" for 3000 s, which I first
+read as a physics finding. Check the field exists before believing a negative.
+
+**`ops_shutdown_dilution` measures a number nothing else in the repo does**: how much
+dilution the shutdown margin absorbs before protection acts — **59 ppm, 1248 s**, boron
+857 → 798, at the tuned 0.05 ppm/s makeup rate. It is `ck.info`, deliberately: it moves with
+any boron- or rod-worth change, and #260/#263 moved both. It is also the closest thing the
+suite has to a guard on the free-play event that started #260 — noting again that there is
+still **no Estimated Critical Condition** anywhere, which is what would actually have
+stopped it.
+
+Aggregate gate OK, 34 runners at baseline. `run_hardrules` unmoved at 39.
+
 ### 2026-07-31f — #154 re-verified end to end, and #286: five automation channels could have been doing nothing  ✅
 
 **Half of #154 was already dead.** The omnibus lists coverage gaps ranked in the

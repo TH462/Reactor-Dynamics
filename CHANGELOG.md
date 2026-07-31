@@ -22,6 +22,54 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Testing
+- **#154's remaining coverage gaps closed — sixteen kernel, service, instructor and engine
+  surfaces that shipped with no assertion at all.** The omnibus was re-verified first, and
+  about half of it was already dead (all five TMI-2 Part-3 endings, the follow-mode
+  save/restore branch, cold-init trip blocks, the PORV block valve, most of the "missing ops
+  evolutions"). One filed item was **stale in the other direction**: the RHR 400 psi
+  (2.76 MPa) interlock is fully covered in `run_pwr` — refuse above, open below, autoclose on
+  repressurization — it is only the *ops probe* that never issues `set_rhr`.
+
+  What was actually missing, now closed:
+
+  - **M4 kernel** (`run_m4` 28 → 32): actuation **`reset_below`** — a comment recorded the
+    shipped PORV-flapping inversion and nothing pinned the fix; numeric **`override_value`**
+    interception, used by five PWR failures with the intercepted-command path never once
+    observed; interception **precedence** (first-injected wins, and the probe distinguishes
+    that from last-wins rather than merely detecting *an* override); and
+    **`acknowledge_all_alarms`**, previously asserted only as "the instructor gate does not
+    block it".
+  - **M5 / M6** (`run_m5` 19 → 22, `run_m6` 17 → 18): the **`_rewindCursor`** walk-back that
+    stops consecutive rewinds restoring the same checkpoint for ever; world rewind
+    **`exact`** at service level, where its semantics live (it was covered only end-to-end in
+    the browser gate); **`save_state` as a command**, whose dispatch line had no caller; and
+    the chat transcript's **story clock**, **time-skip divider** and **`CHAT_LOG_CAP`** ring.
+  - **PWR engine** (`run_pwr` 32 → 36): the pressurizer **code safeties** — `s.safety_open`
+    had zero references in the entire test tree, so the last mechanical line of primary
+    overpressure protection was unproven; **`porv_tailpipe_temp`**, the TMI-2 / Davis-Besse
+    tell the flagship scenario teaches, which heats 98 % in two minutes and cools 12 % in the
+    same span — that asymmetry *is* the lesson; the TMI-2 **blocked-AFW** device, previously
+    only ever asserted false; and the **unknown-command** error path. `save_migration` went
+    from **8 to 20** of the 29 fields `_migrateState` defaults, including the `rcp_secured`
+    inference (#240) — the one judgement call in the migration, unasserted in both directions.
+  - **Casualty and ops** (`run_meltdown` 9 → 10, `run_ops` 57/68 → 58/69): **MD-10, feed and
+    bleed** — MD-6 took the total loss of the secondary heat sink to core damage and nothing
+    exercised the *recovery*, so the suite proved only that the plant can be lost that way
+    (measured: unmitigated damages at 4040 s peaking at 691 °F (366 °C) Tavg; with the PORV
+    open and HPI running, peak fuel 1162 °F (628 °C) and no damage). And
+    **`ops_shutdown_dilution`**, the regime that produced the owner's free-play source-range
+    trip (#260): every other reactivity probe runs at power, where the subcritical
+    multiplication it measures does not exist. Diluting Mode 5 at the tuned 0.05 ppm/s makeup
+    rate and walking away, the source-range trip fires at 1248 s with 59 ppm removed.
+
+  Worth carrying from writing them: the code safeties **cannot be reached by a plant
+  transient** — the high-pressure reactor trip caps indicated pressure at 2460 psi
+  (16.96 MPa), below the 2484 psi (17.13 MPa) pop — so only an ATWS or a failed instrument
+  gets there, and the probe drives them directly. Two first drafts also passed for the wrong
+  reason: the engine harness emulates M4's protections *including the reseat*, and left on it
+  shut the valve inside the measurement window (relief flow read 0 one second after an
+  explicit pop).
+
 - **Five automation channels could have been doing nothing, and the gate would still have
   read 24/24** (#286, split out of #154 item 10). `run_autoctl` engaged **seven channels at
   once** and asserted **aggregate** plant state — power, Tavg, pressure, SG level — so any

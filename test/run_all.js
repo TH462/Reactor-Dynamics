@@ -55,7 +55,15 @@ var BASELINES = {
   // floor would just need lowering again next retune; at power the turbine sets power and
   // the rods set temperature, so Tavg rising is the signature that STRENGTHENS as the
   // coefficient does. Both are pinned now.
-  'run_pwr.js':            { code: 0, score: '32/32 202passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
+  // 32 → 36 on 2026-07-31 (#154 item 11): four engine surfaces that shipped with no
+  // assertion anywhere — the pressurizer CODE SAFETIES (`s.safety_open` had zero
+  // references in the whole test tree; only the SG safeties were ever asserted),
+  // `porv_tailpipe_temp` (the TMI/Davis-Besse tell the flagship teaches), the
+  // TMI-2 blocked-AFW device (only ever asserted FALSE), and the unknown-command
+  // error path. save_migration also went from 8 asserted fields to 20 of the 29
+  // _migrateState defaults, including the `rcp_secured` INFERENCE (#240), which is
+  // the one judgement call in the migration and was unasserted both ways.
+  'run_pwr.js':            { code: 0, score: '36/36 237passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
@@ -93,7 +101,12 @@ var BASELINES = {
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
-  'run_meltdown.js':       { code: 0, score: '9pass 0xfail' },
+  // 9 → 10 on 2026-07-31 (#154 item 9): MD-10, feed and bleed. MD-6 took the total
+  // loss of the secondary heat sink to core damage; nothing anywhere exercised the
+  // RECOVERY, so the suite proved only that the plant can be lost that way. Measured:
+  // unmitigated damages at 4040 s peaking at 366 °C Tavg; with the PORV open and HPI
+  // running, peak fuel 628 °C, no damage, inventory held above 100 %.
+  'run_meltdown.js':       { code: 0, score: '10pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at
   // all, so its MD-4/MD-8 PROTECTION claims are proven with the operator hand-
@@ -348,7 +361,14 @@ var BASELINES = {
   // automatic relief (`open_porv_manual` vs `open_porv`), so a scenario can lock the
   // operator out — TMI-2 does — without touching overpressure protection. The third
   // check is the one that matters: relief must still lift while the switch is locked.
-  'run_m4.js':             { code: 0, score: '28/28 156passed' },
+  // 28 → 32 on 2026-07-31 (#154 item 6): four kernel internals with no test at all —
+  // actuation `reset_below` (a comment recorded the shipped PORV-flapping inversion
+  // and nothing pinned the fix), numeric `override_value` interception (five PWR
+  // failures use it; the intercepted-command path was never once observed),
+  // interception PRECEDENCE (first-injected wins), and `acknowledge_all_alarms`,
+  // which was only ever asserted as "the instructor gate does not block it". All four
+  // verified red by injecting the defect they guard.
+  'run_m4.js':             { code: 0, score: '32/32 176passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
@@ -356,14 +376,25 @@ var BASELINES = {
   // any acceleration. The added checks pile up 360 sim-s with the wall clock frozen
   // and require ZERO checkpoints — verified against the pre-fix service, where that
   // one alone lays 21 and 6 of the 8 checks in the suite go red.
-  'run_m5.js':             { code: 0, score: '19/19 83passed' },
+  // 19 → 22 on 2026-07-31 (#154 item 7): the `_rewindCursor` walk-back (#137 narrowed
+  // it to the beat path but did not remove it, and it had never had a test), world
+  // rewind `exact` at THIS level (it was covered only end-to-end in the browser gate,
+  // and this is where its semantics live), and `save_state` as a COMMAND — every
+  // other caller reaches for svc.saveState() directly, so that dispatch line was
+  // unexercised.
+  'run_m5.js':             { code: 0, score: '22/22 96passed' },
   // 16 -> 17 suites, 94 -> 102 checks 2026-07-27 (#142): a new save/restore test for
   // the instructor's operator-action memory and follow acc streak, both of which
   // saveState dropped. Verified against the PRE-fix instructor, where 5 of its 8
   // checks fail — including the softlock itself (an `operator_action` beat could
   // never be credited after a restore). Its legacy-save check passes on both
   // versions, which is the point: old saves keep their old behaviour.
-  'run_m6.js':             { code: 0, score: '17/17 102passed' },
+  // 17 → 18 on 2026-07-31 (#154 item 7): chat-mode transcript mechanics. run_campaign
+  // drives a chat scenario and asserts the log grows — the story clock, the time-skip
+  // divider (first line of the beat only, or the UI repeats it down an ordinary
+  // exchange) and the CHAT_LOG_CAP ring had no unit coverage. The cap matters: the
+  // snapshot passes the log BY REFERENCE every broadcast.
+  'run_m6.js':             { code: 0, score: '18/18 117passed' },
   'run_m6ph.js':           { code: 0, score: '8/8 18passed' },
   'run_m7.js':             { code: 0, score: null },   // prints "M7 OK", no tally
 
@@ -465,7 +496,13 @@ var BASELINES = {
     // (pinned at mass_max) with pressurizer level 7 %, and the probe printed both numbers
     // on an `info` line every run while asserting neither — which is exactly why it went
     // unnoticed. The defect itself was fixed by #249; this is the guard it never got.
-    code: 1, score: '57/68 335passed 12failed',
+    // 57/68 -> 58/69 on 2026-07-31 (#154 item 9): +ops_shutdown_dilution. Every other
+    // reactivity probe in the file runs AT POWER, where the subcritical multiplication
+    // it measures does not exist — so the regime that produced the owner's free-play
+    // source-range trip (#260) had no probe at all. Measured: diluting Mode 5 at the
+    // tuned 0.05 ppm/s makeup rate and walking away, the source-range high-flux trip
+    // fires at 1248 s, 59 ppm removed, boron 857 -> 798. The failure count is unmoved.
+    code: 1, score: '58/69 344passed 12failed',
     note: 'Ops probes are tuning targets by design. Measured 2026-07-27b from ' +
           'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; all 11 reds are ' +
           '7 RBMK + 4 BWR, and the deliberately-red C2 accel-latency probe (#153, ' +

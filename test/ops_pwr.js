@@ -742,6 +742,50 @@
         T.checkSanity(ck, h);
       });
     },
+
+    // An UNATTENDED BORON DILUTION in the shutdown regime (#154 item 9). This is
+    // the evolution that actually bit the owner in free play and became #260: in
+    // Mode 5 the plant is held subcritical by boron, dilution adds reactivity with
+    // no rod motion and no power to watch, and the only thing between the operator
+    // and an inadvertent criticality is the source-range instrumentation. Every
+    // other reactivity probe in this file runs AT POWER, where the subcritical
+    // multiplication measured here does not exist.
+    ops_shutdown_dilution: function () {
+      return test('OPS shutdown dilution — subcritical multiplication and the source-range catch', function (ck) {
+        var h = H('cold_shutdown');
+        h.run(60);
+        var b0 = h.ts().boron_ppm, p0 = h.ts().power_pct;
+        ck('starts subcritical and quiet', fmt(b0, 0) + ' ppm, ' + p0.toExponential(2) + ' % power',
+          p0 < 0.01, '< 0.01 % power');
+        // Dilute at the tuned makeup rate (0.05 ppm/s) and walk away — the free-play
+        // mistake. Nothing is touched again; protection is the only actor.
+        h.cmd('set_boron_adjust', { rate: -0.05 });
+        h.run(3600);
+        var t = h.ts();
+        var removed = b0 - t.boron_ppm;
+        // The plant must NOT quietly go critical: the source-range high-flux trip is
+        // the design defence, and it is what fired in the real event.
+        ck('protection acted before criticality', h.tripReason || 'none', h.tripTime != null, 'a trip');
+        ck('…and it was the SOURCE RANGE that caught it', h.tripReason || 'none',
+          /source[_ ]range/i.test(h.tripReason || ''), 'source_range high');
+        ck('power rose measurably first — subcritical multiplication is modelled',
+          p0.toExponential(2) + ' → ' + h.range('power_pct').max.toExponential(2) + ' %',
+          h.range('power_pct').max > p0 * 2, '> 2× the starting count rate');
+        ck('no fuel damage', t.melted, !t.melted, 'false');
+        // The tuning-relevant number: how much dilution the shutdown margin absorbs
+        // before protection acts. Informational — it moves with any boron-worth or
+        // rod-worth change, and #260/#263 moved both. Derived from the trip TIME,
+        // not from the endpoint: nothing stops the dilution when the trip fires, so
+        // the boron at the end of the hour is far below the boron at the trip.
+        ck.info('time to trip (s)', h.tripTime != null ? fmt(h.tripTime, 0) : 'none');
+        ck.info('boron removed WHEN protection acted (ppm)',
+          h.tripTime != null ? fmt(0.05 * (h.tripTime - 60), 0) : 'n/a');
+        ck.info('boron at trip (ppm)', h.tripTime != null ? fmt(b0 - 0.05 * (h.tripTime - 60), 0) : 'n/a');
+        ck.info('boron after the full hour, dilution never secured (ppm)', fmt(t.boron_ppm, 0));
+        ck.info('total removed over the hour (ppm)', fmt(removed, 0));
+        T.checkSanity(ck, h);
+      });
+    },
   };
 
   OPS.runAll = function () {

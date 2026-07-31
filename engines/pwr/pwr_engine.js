@@ -2680,6 +2680,22 @@
         legacy._fail.steam_break = { active: true, size: 0.4 };
         // Pre-#200 stuck-open spray: encoded as a boolean in the operator's demand field.
         delete legacy.spray_stuck; legacy.spray_override = true;
+        // #154: this probe asserted 8 of the 29 fields _migrateState defaults, so
+        // most of the migration was carried by "it did not throw". Strip the rest
+        // of the load-bearing ones too — every field below is one a save written
+        // before its rework simply does not have.
+        delete legacy.sg_level_wide_pct; delete legacy.accumulator_valve_open;
+        delete legacy.msiv_open; delete legacy.feed_pump_speed_pct;
+        delete legacy.condensate_pump_running; delete legacy.condensate_flow_normalized;
+        delete legacy.afw_throttle_frac; delete legacy.afw_flow_normalized;
+        delete legacy.afw_discharge_pressure_mpa; delete legacy.steam_out_total;
+        delete legacy.sr_energized; delete legacy.sr_counts_cps; delete legacy.ir_amps;
+        delete legacy.rhr_hx_fraction; delete legacy._eccs_inj_inv;
+        // rcp_secured (#240) is INFERRED, not defaulted: a pre-#240 save has no
+        // record of WHY the pumps are stopped, so the lineup has to say. This one
+        // is the judgement call in the whole migration and it was unasserted.
+        delete legacy.rcp_secured;
+        legacy.feedwater_demand_frac = 0.42;   // the old demand form → feed pump speed
         // Load into a fresh engine; its cfg supplies the migration defaults.
         var h2 = new Harness('hot_full_power');
         h2.eng.loadState({ schema: save.schema, s: legacy, rod_groups: save.rod_groups,
@@ -2701,6 +2717,44 @@
         ck('legacy stuck-open spray survives as a physical flag, demand back to auto',
           'spray_stuck=' + s.spray_stuck + ' override=' + s.spray_override,
           s.spray_stuck === true && s.spray_override === null, 'stuck=true, override=null');
+        // ---- the fields this probe used to leave to "it did not throw" (#154) ----
+        var sgw = cfg.steam_generator;
+        ck('sg_level_wide seeded from the narrow level through the window',
+          s.sg_level_wide_pct.toFixed(2) + ' % wide',
+          s.sg_level_wide_pct > sgw.sg_wr_lo && s.sg_level_wide_pct < sgw.sg_wr_hi,
+          'inside [' + sgw.sg_wr_lo + ',' + sgw.sg_wr_hi + ']');
+        ck('accumulator isolation defaults ALIGNED (old behaviour preserved)',
+          String(s.accumulator_valve_open), s.accumulator_valve_open === true, 'true');
+        ck('MSIV defaults open', String(s.msiv_open), s.msiv_open === true, 'true');
+        ck('legacy feedwater_demand_frac 0.42 → feed pump speed 42 %',
+          s.feed_pump_speed_pct.toFixed(1), Math.abs(s.feed_pump_speed_pct - 42) < 1e-9, '42.0 %');
+        ck('condensate pump defaults ON — main feed unchanged for an old save',
+          String(s.condensate_pump_running), s.condensate_pump_running === true, 'true');
+        ck('AFW throttle defaults to full, flow to zero',
+          s.afw_throttle_frac + ' / ' + s.afw_flow_normalized,
+          s.afw_throttle_frac === 1.0 && s.afw_flow_normalized === 0, '1.0 / 0');
+        ck('RHR HX split defaults to full flow', String(s.rhr_hx_fraction), s.rhr_hx_fraction === 1.0, '1.0');
+        ck('NIS source/intermediate range seeded, not undefined',
+          s.sr_energized + ' / ' + s.sr_counts_cps + ' / ' + s.ir_amps,
+          s.sr_energized === false && s.sr_counts_cps === 0 && s.ir_amps === 0, 'false / 0 / 0');
+        ck('steam_out_total seeded from the turbine flow the save does carry',
+          String(s.steam_out_total), typeof s.steam_out_total === 'number' && isFinite(s.steam_out_total), 'a finite number');
+        // rcp_secured is the INFERENCE, and this save has pumps RUNNING — so the
+        // benign "planned securing" reading must NOT be invented. The conservative
+        // direction matters: mislabelling a real trip as a planned securing is the
+        // harmful error, mislabelling a securing as a trip is only the old annoyance.
+        ck('rcp_secured inferred false for a save with the pumps running',
+          String(s.rcp_secured), s.rcp_secured === false, 'false');
+        // …and the other side of that inference: stopped pumps + RHR in service +
+        // no blackout IS the cold-shutdown lineup, which reads as SECURED.
+        var cold = JSON.parse(JSON.stringify(save.s));
+        delete cold.rcp_secured;
+        cold.pump_running = false; cold.rhr_active = true; cold.station_blackout = false;
+        var h3 = new Harness('hot_full_power');
+        h3.eng.loadState({ schema: save.schema, s: cold, rod_groups: save.rod_groups,
+          active_failures: save.active_failures, instruments: save.instruments, refs: save.refs });
+        ck('…and TRUE for a legacy cold-shutdown lineup', String(h3.eng.s.rcp_secured),
+          h3.eng.s.rcp_secured === true, 'true');
         // A half-migrated state must step cleanly (no NaN leaking from a missing field).
         h2.run(2);
         var t = h2.ts();
@@ -2869,6 +2923,181 @@
     // Steam-dump capacity cap (e28f7b0): a full-open dump is limited to
     // steam_dump_max (~50% of rated steam flow) on BOTH the manual override and
     // the auto demand — deleting the cap previously failed nothing.
+    // ------------------------------------------------------------------ #154
+    // Engine surfaces that shipped with no assertion anywhere (item 11). The
+    // first three are TMI-canon devices sitting on the flagship path.
+
+    // The pressurizer code safeties. Only the SG safeties were ever asserted
+    // (behavior_pwr TR-5); `s.safety_open` had ZERO references in the whole test
+    // tree, so the last mechanical line of primary overpressure protection was
+    // unproven — including that it RESEATS rather than latching open.
+    // LAYERS: the code valves are a COMMANDED state here (`open_pzr_safety` /
+    // `close_pzr_safety`) and the engine owns only the HYDRAULICS — the pop and
+    // reseat SETPOINTS are an M4 actuation (pwr_control PWR_ACTUATIONS, the same
+    // reset_below path the PORV uses), so the threshold half is asserted in
+    // run_m4 and this half is the valve itself. Measured while writing this: an
+    // unrelieved pressurizer driven by 100 % heaters reaches 42.91 MPa (6224 psi),
+    // and with the safeties in service instrument pressure peaks at 16.96 MPa
+    // (2460 psi) — under the 17.13 pop — because the high-pressure REACTOR TRIP
+    // gets there first. Reaching the code valves from a plant transient therefore
+    // needs an ATWS, which is why this drives them directly.
+    pzr_code_safeties: function () {
+      return test('Pressurizer code safeties — relieve while open, reseat shut, bound the pressure', function (ck) {
+        var h = new Harness('hot_full_power');
+        // The harness emulates M4's mechanical protections, INCLUDING the reseat —
+        // leave it on and it shuts the valve inside the measurement window (measured:
+        // flow read 0 one second after an explicit pop, because the emulated
+        // actuation had already reseated it). This probe owns the valve, so the
+        // emulation goes off and the commands below are the only actor.
+        h.autoM4 = false;
+        var pz = h.eng.cfg.pressurizer;
+        h.run(5);
+        ck('shut in normal operation', h.eng.s.safety_open, h.eng.s.safety_open === false, 'false');
+        ck('no relief flow when shut', h.eng.s.safety_flow.toFixed(5), h.eng.s.safety_flow === 0, '0');
+        ck('pop is above reseat (a real hysteresis band)',
+          pz.safety_open_mpa.toFixed(2) + ' > ' + pz.safety_reseat_mpa.toFixed(2),
+          pz.safety_open_mpa > pz.safety_reseat_mpa, 'open > reseat');
+        // Block the PORV so the code valves are the ONLY relief path, and heat the
+        // pressurizer hard. This is the overpressure case they exist for, and why
+        // the block valve is not a substitute for them.
+        h.cmd({ action: 'close_block_valve' });
+        h.cmd({ action: 'set_heater', power_pct: 100 });
+        h.cmd({ action: 'set_spray', pct: 0 });
+        h.run(200);
+        var unrelieved = h.ts().pressure_mpa;
+        h.cmd({ action: 'open_pzr_safety' });
+        h.run(1);
+        ck('open → relieving', h.eng.s.safety_flow.toFixed(5), h.eng.s.safety_flow > 0, '> 0');
+        ck('the status instrument reports relief', String(h.ins().safety_relief_active),
+          h.ins().safety_relief_active === true, 'true');
+        h.run(300);
+        var relieved = h.ts().pressure_mpa;
+        ck('relief pulls pressure DOWN against 100 % heaters',
+          unrelieved.toFixed(2) + ' → ' + relieved.toFixed(2) + ' MPa (' +
+          (unrelieved * 145.038).toFixed(0) + ' → ' + (relieved * 145.038).toFixed(0) + ' psi)',
+          relieved < unrelieved, '< ' + unrelieved.toFixed(2) + ' MPa');
+        // Reseat. A code safety that latches open is a small-break LOCA — the
+        // Davis-Besse / TMI-2 failure mode itself.
+        h.cmd({ action: 'close_pzr_safety' });
+        h.run(1);
+        ck('reseat stops the flow', h.eng.s.safety_flow.toFixed(5), h.eng.s.safety_flow === 0, '0');
+        ck('and the status instrument clears', String(h.ins().safety_relief_active),
+          h.ins().safety_relief_active === false, 'false');
+        h.run(200);
+        ck('pressure climbs again once the path is shut', h.ts().pressure_mpa.toFixed(2) + ' MPa',
+          h.ts().pressure_mpa > relieved, '> ' + relieved.toFixed(2) + ' MPa');
+      });
+    },
+
+    // porv_tailpipe_temp — the honest-but-unalarmed indication that revealed the
+    // stuck-open PORV at TMI-2 (~80 min) and Davis-Besse (~20 min). It is THE
+    // diagnostic the flagship scenario teaches, and nothing asserted it moved.
+    porv_tailpipe_temp: function () {
+      return test('PORV tailpipe temperature — the TMI tell: hot while relieving, slow to cool', function (ck) {
+        var h = new Harness('hot_full_power');
+        var p = h.eng.cfg.pressurizer;
+        h.run(5);
+        var cold = h.ts().porv_tailpipe_temp_c;
+        ck('sits at the leaky-seat baseline when shut',
+          cold.toFixed(1) + ' °C (' + (cold * 9 / 5 + 32).toFixed(0) + ' °F)',
+          Math.abs(cold - p.tailpipe_ambient_c) < 1.0, p.tailpipe_ambient_c + ' °C');
+        h.cmd({ action: 'open_porv' });
+        h.run(120);                      // 4 heat time-constants
+        var hot = h.ts().porv_tailpipe_temp_c;
+        var hotFloor = p.tailpipe_ambient_c + 0.8 * (p.tailpipe_hot_c - p.tailpipe_ambient_c);
+        ck('heats toward the discharge temperature while relieving',
+          hot.toFixed(1) + ' °C (' + (hot * 9 / 5 + 32).toFixed(0) + ' °F)',
+          hot > hotFloor, '> ' + hotFloor.toFixed(1) + ' °C');
+        // The lesson is the ASYMMETRY: it heats in seconds and cools over a quarter
+        // of an hour, so a line still hot long after the valve "shut" is the tell.
+        // A symmetric time constant would destroy the teaching point.
+        h.cmd({ action: 'close_porv' });
+        h.run(120);                      // the same elapsed time, cooling
+        var cooling = h.ts().porv_tailpipe_temp_c;
+        var heatedFrac = (hot - cold) / (p.tailpipe_hot_c - p.tailpipe_ambient_c);
+        var cooledFrac = (hot - cooling) / (hot - p.tailpipe_ambient_c);
+        var stillHot = p.tailpipe_ambient_c + 0.5 * (p.tailpipe_hot_c - p.tailpipe_ambient_c);
+        ck('still clearly hot 2 min after reseat — the tell persists',
+          cooling.toFixed(1) + ' °C (' + (cooling * 9 / 5 + 32).toFixed(0) + ' °F)',
+          cooling > stillHot, '> ' + stillHot.toFixed(1) + ' °C');
+        ck('cools far slower than it heats (the diagnostic asymmetry)',
+          'heated ' + (heatedFrac * 100).toFixed(0) + ' % vs cooled ' + (cooledFrac * 100).toFixed(0) + ' % in 120 s',
+          cooledFrac < heatedFrac / 2, 'cooled fraction < half the heated fraction');
+        // A code safety lifting heats the SAME line — they share the discharge
+        // header, so the indication does not say WHICH valve is passing. Pop the
+        // valve rather than poking safety_flow: the engine recomputes that field
+        // from `safety_open` every step, so a written value is gone next step.
+        var h2 = new Harness('hot_full_power');
+        h2.autoM4 = false;                     // as above: the emulated reseat would shut it
+        h2.run(5);
+        h2.cmd({ action: 'open_pzr_safety' });
+        h2.run(60);
+        ck('code-safety flow heats the shared header too',
+          h2.ts().porv_tailpipe_temp_c.toFixed(1) + ' °C',
+          h2.ts().porv_tailpipe_temp_c > cold + 5, '> ' + (cold + 5).toFixed(1) + ' °C');
+      });
+    },
+
+    // The TMI-2 blocked-AFW device. `afw_blocked` was referenced once in the test
+    // tree and only ever asserted FALSE — the state that matters (the AFW block
+    // valves shut, as they were at TMI-2 for the first eight minutes) never was.
+    afw_blocked_device: function () {
+      return test('AFW blocked — pumps run, valves shut, nothing reaches the generator', function (ck) {
+        var h = new Harness('hot_full_power');
+        h.run(5);
+        h.cmd({ action: 'scram' });
+        h.cmd({ action: 'isolate_feedwater', active: true });   // main feed gone: AFW is the only feed
+        h.cmd({ action: 'set_afw', active: true });
+        h.run(120);
+        var flowing = h.ts().afw_flow_normalized;
+        ck('AFW delivers with the path open', flowing.toFixed(4), flowing > 0, '> 0');
+        var lvlOpen = h.ts().sg_level_pct;
+        // Now the TMI-2 lineup: pumps told to run, discharge path shut. The run
+        // indication stays honest — that is the whole point of the device, that the
+        // board says AFW is running while nothing arrives.
+        var h2 = new Harness('hot_full_power');
+        h2.run(5);
+        h2.cmd({ action: 'scram' });
+        h2.cmd({ action: 'isolate_feedwater', active: true });
+        h2.cmd({ action: 'inject_failure', failure_id: 'afw_failure', severity: 1.0 });
+        h2.cmd({ action: 'set_afw', active: true });
+        h2.run(120);
+        ck('the block latched', h2.eng.s.afw_blocked, h2.eng.s.afw_blocked === true, 'true');
+        ck('no AFW reaches the generator', h2.ts().afw_flow_normalized.toFixed(4),
+          h2.ts().afw_flow_normalized === 0, '0');
+        ck('…and the generator is worse off for it',
+          h2.ts().sg_level_pct.toFixed(1) + ' vs ' + lvlOpen.toFixed(1) + ' % with AFW',
+          h2.ts().sg_level_pct < lvlOpen, '< ' + lvlOpen.toFixed(1) + ' %');
+        // Discharge pressure reads SHUTOFF head with the path blocked — a running
+        // pump deadheaded, which is what the real indication showed.
+        ck('discharge pressure reads pump shutoff head',
+          h2.ts().afw_discharge_pressure_mpa.toFixed(2) + ' MPa',
+          Math.abs(h2.ts().afw_discharge_pressure_mpa - h2.eng.cfg.steam_generator.afw_shutoff_mpa) < 1e-6,
+          h2.eng.cfg.steam_generator.afw_shutoff_mpa + ' MPa');
+      });
+    },
+
+    // The unknown-command error path — the engine's contract for a command it does
+    // not implement, and what a UI or scenario typo actually hits.
+    unknown_command: function () {
+      return test('Unknown command — a COMMAND_ERROR, not a throw and not a silent pass', function (ck) {
+        var h = new Harness('hot_full_power');
+        h.run(1);
+        var r = h.cmd({ action: 'polish_the_reactor', pct: 11 });
+        ck('returns an error object', JSON.stringify(r && r.type), r && r.type === 'error', 'error');
+        ck('carries the COMMAND_ERROR code', r && r.code, r && r.code === 'COMMAND_ERROR', 'COMMAND_ERROR');
+        ck('echoes the command back for diagnosis', JSON.stringify(r && r.received && r.received.action),
+          r && r.received && r.received.action === 'polish_the_reactor', 'polish_the_reactor');
+        // A KNOWN command must still return null — the error path must not have
+        // swallowed the normal one.
+        ck('a known command still returns null', JSON.stringify(h.cmd({ action: 'open_porv' })),
+          h.cmd({ action: 'open_porv' }) === null, 'null');
+        h.run(1);
+        ck('and the plant still steps cleanly afterwards', isFinite(h.ts().pressure_mpa),
+          isFinite(h.ts().pressure_mpa), 'finite');
+      });
+    },
+
     steam_dump_capacity_cap: function () {
       return test('Steam dump — capacity capped at steam_dump_max on manual full-open', function (ck) {
         var h = new Harness('hot_full_power');
@@ -2938,7 +3167,9 @@
       'merged_injection_curve', 'rhr_valve_and_mode', 'msiv_closure_at_power', 'rcp_cavitation',
       'eccs_boration', 'eccs_cold_injection', 'loop_pressure_nodes', 'letdown_orifice_lineup', 'save_migration', 'mode5_controls',
       'cvcs_level_control', 'pressure_saturation_bounds', 'feedwater_isolation',
-      'accumulator_arming_boundary', 'steam_dump_capacity_cap'];
+      'accumulator_arming_boundary', 'steam_dump_capacity_cap',
+      // #154 item 11
+      'pzr_code_safeties', 'porv_tailpipe_temp', 'afw_blocked_device', 'unknown_command'];
     var results = [];
     for (var i = 0; i < order.length; i++) results.push(PWRScenarioTests[order[i]]());
     return results;
