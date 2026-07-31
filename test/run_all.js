@@ -144,7 +144,16 @@ var BASELINES = {
   // number, by design -- HR11 counts dated owner quotes wherever they are tracked.
   // 28 -> 29: Manuals/00's Rev 14 row quotes the 2026-07-30 ruling with its date, and the
   // HR11 half of this gate counts dated owner quotes wherever they are tracked.
-  'run_hardrules.js':      { code: 0, score: '32checks 0failed' },
+  // 29 -> 30 (2026-07-30, #262): the TUNING_LOG entry for the small-leak alarm pair quotes the
+  // "Add the alarm as you suggest" ruling. WRITING UP a change moves this score, not just making
+  // it — re-run this gate after the docs, which is why the code-only run came back at baseline.
+  // 29 -> 32 (2026-07-30, #249): three more sites carrying "249 - fit it." — CLAUDE.md,
+  // BUILD_DECISIONS.md, TUNING_LOG.md.
+  // 33 MEASURED ON THE MERGED TREE (2026-07-30), not 30 and not 32: `develop` and `workbench`
+  // BOTH moved this number from 29, and the merge carries both sides' quotes. Taking either
+  // side's figure would have shipped a drift. This is the second time this exact trap has been
+  // recorded here — see the "22 is MEASURED on the merged tree" note above.
+  'run_hardrules.js':      { code: 0, score: '33checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -272,7 +281,11 @@ var BASELINES = {
   // dump. Injection-verified: B1 goes red (peak 89.01 %) on the pre-#249
   // `level_per_mass_surplus` of 300. ADD A CASE HERE whenever you write an assertion that
   // a trip did NOT fire — that claim is worth exactly what the gauge can reach.
-  'run_reachability.js':   { code: 0, score: '55checks 0failed' },
+  // 55 → 57 on the develop+workbench merge (2026-07-30): #262's two `pzr_level_dev` alarm
+  // thresholds were picked up by Part A automatically, without anyone adding a case. That is
+  // the design — a new setpoint gets range-checked for free, and the count moving is the
+  // nudge to notice it. 50 → 52 thresholds audited.
+  'run_reachability.js':   { code: 0, score: '57checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   'run_m4.js':             { code: 0, score: '25/25 135passed' },

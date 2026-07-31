@@ -4,7 +4,7 @@
 **Plant:** Pressurized Water Reactor (PWR)  
 **Plant:** **SLX-100** (Single-Loop eXperimental, 100 MWe)
 **Rating:** ≈ 100 MWe / ≈ 300 MWt — a compact **single-loop experimental PWR** (one reactor coolant pump, one U-tube steam generator, one main steam line). Small and generously margined by design: the ~105 % steam dump rides out a full load rejection, and reactor trips are reserved for genuine limits.  
-**Revision:** 14  
+**Revision:** 16  
 
 ---
 

@@ -37,7 +37,7 @@ where the two differ or where judgment was exercised.
 
 ---
 
-## 2026-07-30g — #249/#273: the surplus axis is fitted, and "could the gauge even get there?" is now a gate
+## 2026-07-30h — #249/#273: the surplus axis is fitted, and "could the gauge even get there?" is now a gate
 
 **Decision 1 — `level_per_mass_surplus` is fitted to real geometry, not chosen.** 300 → **776 %/frac**
 *(OWNER RULING, 2026-07-30: "249 - fit it.")*. The derivation is the pressurizer steam space as a
@@ -87,6 +87,33 @@ exactly what the gauge can reach, and nothing checked that.
 **Gate effect.** `run_all` 32 → **33 runners**; `run_campaign` 3026 → **3038 checks** (the new beat
 plus three endpoint assertions, all injection-verified red). `run_behavior`, `run_pwr`,
 `run_meltdown` and `run_procedures_stack` are **unchanged** — the fit cost nothing elsewhere.
+## 2026-07-30g — #262: a failure whose ENTIRE severity range is inside make-up authority
+
+**The decision: size `rcp_seal_leak` so every slider position is holdable**, rather than adding a
+finer step to `large_loca`. The finer step cannot work — 0–50 % rated flow across 100 integer
+steps cannot resolve the 0–0.14 % band where a holdable leak lives, and the smallest injectable
+LOCA is already ~7× beyond charging. The gap was **unreachable**, not merely uncovered, which is
+why it needed its own `severity_meta` rather than a control tweak.
+
+**The ceiling is measured and is HALF the figure the issue was filed with.** #262 derived
+authority as `charging_max · cvcs_inventory_gain` = 7.2e-4, which silently assumes letdown is
+isolated. With letdown in service the net is `(0.06 − 0.03) · 0.012` = **3.6e-4**; measured, 3.5e-4
+holds (charging 0.0585 of 0.0600) and 5.0e-4 does not. Sizing the slider to the filed number would
+have left its **top half unholdable** — reintroducing the exact defect. Recorded because the error
+class matters: an authority figure quoted without its lineup is not a number, it is half a number.
+
+**Deviation from the source issue, deliberate:** the slider unit is "% of make-up capacity", not
+gpm. The repo's gpm are display flavour that do not reconcile with the mass balance, and quoting
+one here would invite the real-Tech-Spec comparison this very issue had to retract in its own
+thread. Self-referential units cannot be mis-compared.
+
+**The bottom ~20 % of the range is below the alarm on purpose.** Severity 0.15 puts charging at
+0.0344 against a 0.036 setpoint — visible as a trend, not annunciated. The load-change peak is
+0.0323, so catching 0.15 would mean a setpoint within 5 % of normal manoeuvring. Leakage below the
+alarm point is a real condition, and building the failure so its whole range alarms would have
+been less honest, not more complete.
+
+Manuals Rev 15 → 16 (new 07 PWR-E23 + index + slider table). `run_all` OK, 32 runners.
 
 ---
 

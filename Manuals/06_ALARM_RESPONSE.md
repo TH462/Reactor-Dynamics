@@ -2,7 +2,7 @@
 
 **Document:** PWR-ARP-01  
 **Title:** Annunciator Response — PWR  
-**Revision:** 14  
+**Revision:** 16  
 
 ---
 
@@ -96,6 +96,8 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A27 | RCP CAVITATION | warning | B |
 | PWR-A28 | LOAD IMBAL | caution | B |
 | PWR-A29 | LO TAVG (P-12) | warning | A |
+| PWR-A30 | CHG FLOW HI | caution | A |
+| PWR-A31 | PZR LVL DEV LO | caution | A |
 
 ---
 
@@ -404,6 +406,34 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Deliberately not a trip** | A PWR does not scram on low Tavg. The real cold-side protections are this permissive and low-temperature overpressure protection — neither is a reactor trip. |
 | **Actions** | 1) Find the steam path that is taking too much heat: steam dump position, PORV / SG safeties, turbine load against reactor power (**A28**). 2) Isolate or close it. 3) Watch power — Tavg falling with power *rising* is the overcool feeding itself. 4) Cross-check pressure and subcooling; a cooling primary shrinks and drops pressurizer level. |
 | **In Mode 4 or 5** | **Expected.** A cooldown is meant to take Tavg here, so the annunciator reclassifies to **Status** and reads *"expected, plant is cold"* (§2.0). |
+
+---
+
+## PWR-A30 — Charging Flow High (CHG FLOW HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Charging flow ≥ **60 % of maximum** |
+| **Means** | The chemical and volume control system is making up more than it normally does. Charging is a **level controller**: it only works this hard because pressurizer level is being pulled down. Something is taking inventory out of the reactor coolant system. |
+| **Why this alarm exists** | A leak small enough for charging to keep up is **held indefinitely** and moves level only a per cent or two — far above the **PZR LVL LO** alarm at 25 %, which never comes in. Without this annunciator the plant would lose inventory silently with make-up near its limit. This is the one that tells you to look. |
+| **Automatic actions** | None. Charging is already responding; that response *is* the indication. |
+| **Immediate operator actions** | 1) Confirm level is at or below its program (**A31** if the deviation is large). 2) Check letdown is not isolated or throttled — the same alarm comes in if charging is making up for letdown that was shut. 3) Look for the leak: containment sump and humidity, pressurizer relief tank pressure and temperature (a weeping PORV or safety), steam generator activity (**PWR-E05**, tube leak). 4) Log the charging demand and trend it — a rising demand at steady load means a growing leak. |
+| **If not expected** | Treat as unidentified reactor coolant leakage. If charging reaches its maximum and level still falls, make-up has lost the leak — see **A31** and **PWR-E04**. |
+| **Watch for** | Deliberate level changes. Raising the level setpoint, or drawing a pressurizer bubble, sends charging high for a legitimate reason. Check what was asked for before hunting a leak. |
+
+---
+
+## PWR-A31 — Pressurizer Level Below Program (PZR LVL DEV LO)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Indicated level ≥ **10 %** below its programmed value |
+| **Means** | **Make-up is no longer holding.** Level is programmed against Tavg, so it is *supposed* to move on a load change — this alarm measures the gap between where level is and where the program says it should be, which only opens when mass is actually leaving the system faster than charging replaces it. |
+| **Why a deviation and not a low level** | Level legitimately swings more than eight percentage points across a normal load change, so any absolute setpoint tight enough to catch a leak early would come in every time load moved. The deviation does not move on load at all. It also beats **PZR LVL LO** to the condition: this alarm comes in while absolute level is still around 28 %. |
+| **Automatic actions** | None at this alarm. Charging is already at or near maximum. |
+| **Immediate operator actions** | 1) Verify charging at maximum and letdown isolated — recover any make-up capacity that is being wasted. 2) Confirm subcooling margin and pressure; falling level with falling pressure is a leak, falling level with rising pressure is not. 3) Enter **PWR-E04** (loss of reactor coolant). 4) Prepare for safety injection if level continues down toward **PZR LVL LO LO** at 12 %. |
+| **Companion alarm** | **A30** normally comes in first and stays in. **A30 alone** = a leak inside make-up authority, held. **A30 with A31** = make-up has lost it. That pair is the diagnosis. |
+| **If A31 comes in without A30** | Charging is *not* working hard, so this is probably not a leak — suspect the level or Tavg instrument, or charging isolated. Cross-check level against the wide-range indication and Tavg against the loop temperatures. |
 
 ---
 

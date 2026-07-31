@@ -115,7 +115,7 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
-### 2026-07-30h — #249 FITTED and #273 FIXED, and a new gate for the class of bug that hid them  ✅
+### 2026-07-30k — #249 FITTED and #273 FIXED, and a new gate for the class of bug that hid them  ✅
 
 *(OWNER RULING, 2026-07-30: "249 - fit it.")* — so the surplus axis is fitted to the sourced
 geometry, the cooldown that the old pin was masking is fixed, and the failure mode itself
@@ -174,7 +174,7 @@ step, so **#273 stays open** — the workbench lane had all 13 manual documents 
 was being written, and a three-way conflict on a file another session is rewriting is not worth
 the prose. Same reason `Manuals/12` §14 does not yet name ECCS pacing in its **Compressed** class.
 
-### 2026-07-30g — #249 evidence pass: the refill rate is 22–440× real, and the clamp hiding it also hid a spurious accumulator dump  🔶 (no code changed)
+### 2026-07-30j — #249 evidence pass: the refill rate is 22–440× real, and the clamp hiding it also hid a spurious accumulator dump  🔶 (no code changed)
 
 **#249 asked three questions about the post-stuck-PORV HPI refill. Answered: one is correct
 as-built, one is compressed-by-design, and one is a real defect that turned out to be masking
@@ -264,6 +264,198 @@ engine-direct gate ever saw it, and the heatup procedure re-opens a lineup the c
 establishes: *"Re-align the Safety Injection accumulators (isolated for the cold lineup)"*
 (`ui/manual_procedures.js:58`). Board indication does exist (SIT fill + N₂ psig,
 `pwr_board_wiring.js:558/561`), so it is visible if you look — not silent.
+### 2026-07-30i — #262: the everyday leak exists now, and its ceiling is half the filed figure  ✅
+
+The failure entry, completing #262 (the alarm pair landed in 2026-07-30h).
+
+**What was missing, and it was worse than "missing".** The catalog held two `primary_leak`
+failures and both are casualties: `sgtr` (teaches the SGTR EOP) and `large_loca` (a cold-leg
+break, correctly far beyond make-up). No containment-side *identified leakage* case at all. And
+it was **unreachable**, not merely absent: every severity control is
+`<input type="range" min="0" max="100">` with step 1, so the smallest injectable `large_loca` is
+severity 0.01 = **5.0e-3 frac/s**, about **7× beyond what charging can hold**. You could not get
+there by turning the LOCA down — the control has no such position, so a finer slider step would
+not have fixed it either (0–50 % rated flow across 100 steps cannot resolve the 0–0.14 % band).
+
+**`rcp_seal_leak`** — containment-side, **not** ΔP-modulated (unlike an SGTR it does not stop
+when you depressurize), whole range holdable. The engine computes
+`leak = severity · (meta.max/100) · leak_scale`, so `max: 100` with `leak_scale: 3.5e-4` maps
+0–100 % cleanly onto 0 → 3.5e-4 inventory-frac/s.
+
+**The ceiling is half what the issue was filed with, and getting that wrong would have
+reintroduced the defect.** #262 derived authority as `charging_max · cvcs_inventory_gain` =
+**7.2e-4**, which assumes letdown is ISOLATED. In the normal lineup letdown sits at 0.03, so net
+make-up authority is `(0.06 − 0.03) · 0.012` = **3.6e-4**. Measured full-stack at 30 min:
+
+| leak | level | charging | held? |
+|---|---|---|---|
+| 3.5e-4 | 52.8 % | 0.0585 of 0.0600 | **yes**, at the edge |
+| 5.0e-4 | 28.6 % | saturated | no |
+| 7.0e-4 | 18.7 % | saturated | no — only stabilises once letdown isolates on low level |
+
+Sizing the slider 0–7.2e-4 would have left its **top half unholdable** — precisely the thing the
+issue exists to fix.
+
+**Verified across the whole range**, 30 min each, full stack:
+
+| severity | charging | level | CHG FLOW HI | PZR LVL DEV LO |
+|---|---|---|---|---|
+| 0.25 | 0.0367 | 55.0 % | **ALARM** | clear |
+| 0.50 | 0.0439 | 54.3 % | **ALARM** | clear |
+| 0.75 | 0.0519 | 53.0 % | **ALARM** | clear |
+| 1.00 | 0.0585 | 52.8 % | **ALARM** | clear |
+
+Every position held; the cue fires; the deviation alarm stays quiet because make-up is *holding*,
+which is the lesson.
+
+**The bottom ~20 % is deliberately below the alarm.** At severity 0.15 charging reaches 0.0344
+against the 0.036 setpoint — elevated on the gauge, not annunciated. Left that way on purpose:
+the load-change peak is 0.0323, so a setpoint low enough to catch 0.15 would sit within 5 % of
+normal manoeuvring. "Leakage below the alarm point, found by trending" is a real condition, not a
+gap.
+
+**Slider unit is "% of make-up capacity", deliberately not gpm.** The repo's gpm are display
+flavour that do not reconcile with the mass balance (see 2026-07-30's gpm pass), so quoting one
+here would invite exactly the real-Tech-Spec comparison #262 had to retract in its own thread.
+
+**Manuals Rev 15 → 16:** new **07 PWR-E23** card, index row, and the §2.1 slider table (23
+failures, eight sliders). The card leads on what the board will **not** tell you — PZR LVL LO
+never comes in, because a held leak parks level around 52–54 % against a 25 % setpoint — and on
+PZR LVL DEV LO's silence being information rather than absence of a problem.
+
+**#262 is complete.** Gates: `run_all` **OK, 32 runners**; `run_manual_rev` 12/0;
+`run_manual_units` 0 failed; failure catalog 23 → 24 entries.
+
+### 2026-07-30h — #262: the small-leak cue pair, and the measurement that overturned my own recommendation  ✅
+
+*(OWNER RULING, 2026-07-30: "Add the alarm as you suggest")* — on a recommendation that turned
+out to be **half wrong**, which is the part of this entry worth reading.
+
+**The gap.** A leak inside CVCS make-up authority is held indefinitely. Measured full-stack across
+the whole holdable band, pressurizer level parks between **52.0 % and 54.1 %**; the nearest existing
+alarm, `pzr_level_low`, is at **25 %**. Nothing annunciated anywhere in the band — the plant loses
+inventory silently with charging near maximum.
+
+**What I recommended, and why it was wrong.** I proposed a level-deviation alarm at **−2 %** as the
+small-leak cue, on a measured 30:1 signal-to-noise. That number came from comparing level against a
+**fixed 55 %** with CVCS not holding. Measured properly — full stack, CVCS in AUTO, deviation
+against the live **program**:
+
+| case | deviation (final / worst) | charging (final / max) | DEV_LO | CHG_HI |
+|---|---|---|---|---|
+| no leak, 40 min | 0.60 / **−1.79** | 0.0297 / 0.0321 | clear | clear |
+| 100 → 90 MWe load change | 0.11 / −1.51 | 0.0293 / 0.0323 | clear | clear |
+| sev 0.0002 (held) | −0.40 / −2.47 | **0.0383** | clear | **ALARM** |
+| sev 0.0004 (held) | −1.23 / −3.31 | **0.0467** | clear | **ALARM** |
+| sev 0.0007 (held, edge) | **−1.77** / −4.42 | **0.0585** | clear | **ALARM** |
+| sev 0.001 (unheld) | **−25.95** | 0.0594 | **ALARM** | **ALARM** |
+| sev 0.0014 (unheld) | **−35.90** | 0.0600 | **ALARM** | **ALARM** |
+
+**A controller doing its job erases the signal you wanted to alarm on.** With CVCS holding, the
+deviation across the entire holdable band reaches **−1.77 %** against a **−1.79 %** settling
+excursion with *no leak at all*. Signal-to-noise ≈ 1:1. It cannot be made into a small-leak cue by
+tightening, because tightening fires on the settle. Obvious in hindsight; only measurement said so.
+
+**So the two alarms swapped jobs:**
+
+- **`charging_high` (0.036, 60 % of max) is the cue.** Charging is the sensitive channel by an order
+  of magnitude and barely responds to load (0.0293–0.0323 through a 10 % load change), so the
+  setpoint clears the load peak by 11 % and still catches the *smallest* holdable leak.
+- **`pzr_level_dev_low` (−10 %) says make-up is no longer HOLDING.** Useless while CVCS keeps up,
+  unambiguous the moment it does not, because the gap either side is **6×**: worst held excursion
+  −4.42, first unheld case −25.95. It also beats `pzr_level_low` to the condition — at sev 0.001
+  the deviation is −25.95 while absolute level is still 28.6 %.
+
+**Why a deviation instrument at all.** Level is programmed against Tavg, so it legitimately swings:
+measured over 100 → 90 MWe, indicated level went **55.00 → 63.26 %** while the program went
+**+8.25**, leaving the deviation at **0.01**. Deviation is an inventory signal by construction, and
+any absolute setpoint tight enough to see a leak early would fire on every load change.
+
+**Build notes.** `pzr_level_dev` is derived from the **indicated** level and **indicated** Tavg —
+same construction as `subcooling_margin`, so it inherits their lag and any failure (a stuck Tavg
+transmitter corrupts the program here as it would on a real board). It calls the plant's own
+`levelBase()` rather than restating the program line, so the two cannot drift apart; `tavg_fp` is
+computed at init rather than a config constant, so the engine hands it over in `_instrExtras`. Not
+in `SOURCE`, so it draws no PRNG number and the cross-step noise stream is unchanged — the appended-
+instrument rule satisfied the same way `subcooling_margin` satisfies it. **No `true_state` field
+added**, so `run_contract` is untouched.
+
+**One trap worth recording.** The first verification ran engine+M4 and showed `charging_flow` at
+**0.0000** with the leak unheld — CVCS never engaged, because `engageDefaults()`/`stepAutomation()`
+only have callers in the service. Every number in the table above is full-stack for that reason.
+That is the CLAUDE.md layer table biting for the third time this session.
+
+**Manuals.** Rev 14 → **15**: new **06 PWR-A30 (CHG FLOW HI)** and **PWR-A31 (PZR LVL DEV LO)**
+response cards plus index rows, stamped and repacked. A30 alone reads as a held leak; A30 with A31
+means make-up has lost it — the pair is the diagnosis, and each card says what the *other* one being
+absent implies.
+
+**Still open on #262:** the failure entry itself. The owner scoped this turn to the alarms, so the
+small-leak failure is not built. Note for whoever does: the issue's stated CVCS authority of
+**7.2e-4 frac/s is the letdown-isolated figure** — with letdown in service the real ceiling is
+**~3.5e-4**, so the new failure's 0–100 % must map onto that or the top half of its own slider will
+be unholdable.
+
+**Gates.** `run_all` **OK, 32 runners at baseline**; board_check **127/127**; `run_manual_rev` 12/0;
+`run_manual_units` 0 failed. Adding two alarms moved no baseline — nothing in the gate set counts
+alarms, which is worth knowing.
+
+### 2026-07-30g — the 600 s hold checked: the #263 derivation is NOT circular, but it is ±2 steps  ✅
+
+**Why this was checked.** 2026-07-30e derived `pwr_startup`'s 26-step creep as
+`decades ÷ hold → DPM → ρ → steps`. Every input was measured **except the divisor**: the 600 s
+hold is an authored number in the same file, and if it had been chosen to make the sweep land,
+the "derivation" would have been one authored number derived from another — exactly the failure
+#263 item 2 was filed about. Nobody asked; the doubt was mine and it was worth clearing.
+
+**Result: not circular.** From `git log -S` on the step, across #260 (`24427bb`):
+
+| | 1/M bursts | creep | hold |
+|---|---|---|---|
+| before #260 | 120+50+30+15+8 = **223** | **11 steps** | **600 s** |
+| after #260 | 138+90+44+22+12 = **306** | **26 steps** | **600 s** |
+
+The hold was already 600 and **did not move** when the plant did. #260 re-solved the rod worths,
+the whole burst ladder changed and the creep went 11 → 26 against a fixed hold. It was not
+co-fitted.
+
+**Out-of-sample validation, which is the part that matters.** That history hands over a free HR10
+test: the derivation should reproduce **11** on a plant it was never fitted to. Extracted the
+pre-#260 engine + config at `24427bb~1` into a scratch tree and ran the identical script:
+
+| | pre-#260 | current |
+|---|---|---|
+| boron at IC | 363.1 ppm | 682.9 ppm |
+| critical position | 224 (bursts end 223) | 319 (bursts end 306) |
+| steps to critical | 1 | 13 |
+| power at last burst | 9.66e-4 % | 6.25e-4 % |
+| decades to 1 % | 3.02 | 3.20 |
+| required ascent over 600 s | 0.302 DPM | 0.320 DPM |
+| differential worth | **9.50 pcm/step** | **6.70 pcm/step** |
+| **derived creep** | **10.8** | **27.7** |
+| **authored creep** | **11** | **26** |
+
+Different boron, different critical position, different rod worth — the same relationship lands
+on the authored value both times.
+
+**But the write-up was more precise than the method.** Run as a script rather than by hand the
+current-plant excess is **14.7 steps, not 13**, so the derivation predicts **27.7 against 26**.
+It is good to about **±2 steps**, and the reason is real: **SUR is not constant at a fixed rod
+position** — 13 steps above critical measures 0.339 DPM at 120 s and 0.285 at 240 s, so "the ρ
+that gives 0.32 DPM" is a band, not a number. The acceptance is ±4 steps wide so 26 sits inside
+comfortably, but the clean `13 + 13 = 26` reads like a formula that returns 26 exactly, and it
+does not. Corrected in the file.
+
+**One thing still unsourced, recorded rather than fixed:** the manual's own low-power hold
+procedure — **PWR-N04** in `Manuals/04` — specifies **no duration at all**; its acceptance is
+"SUR near 0; power stable ≤ 5 %". Nothing sources 600 s. The honest claim is therefore *the creep
+is derived GIVEN the hold*, and the hold remains authored. That is a weaker statement than
+2026-07-30e made, and it is the true one.
+
+**Carrying forward:** the check took ~20 minutes and turned a claim I had already shipped, closed
+an issue on, and written into three files into a *better* claim with out-of-sample evidence behind
+it. `git log -S` on the value being questioned is the cheapest provenance tool here — it answered
+"was this co-fitted?" directly, and it handed over the old plant to test against for free.
 
 ### 2026-07-30f — #270/#271: the rest of the board now reads ARMED protection, not the setpoint table  ✅
 
@@ -4310,8 +4502,8 @@ real smell worth a look during this effort.
 
 | ID | Plant | Observation | Why it might matter |
 |---|---|---|---|
-| **S1** | PWR | `abuse_porv_walkaway` end state shows inventory 120 % (clip at `mass_max`) with pzr level 7 % — the overfill/level bookkeeping disagree | **ANSWERED 2026-07-30g (#249): it is the clip, and the clip is load-bearing.** `mass_max` 1.2 is 3.4× the sourced physical headroom (5.8 % of RCS volume — BVPS-2 Table 5.1-1 + WTSM 3.2 Table 3.2-2), and it pins indicated pzr level at exactly 88.00 % on any quench, so the plant **cannot read water-solid on injection**. Injection-verified; see the session entry. Awaiting an owner ruling on the retune |
-| **S14** (#273) | PWR | **The by-the-book Mode 3 → Mode 5 cooldown dumps all four accumulators.** Measured endpoint: `accum_vol=0.0 %`, `boron=2310 ppm` (SIT charge is 2,500), `inv=120.00 %` clipped. Nothing tells the player to isolate them — **zero** "accumulator" mentions in `ui/campaign_data.js` or `Manuals/05_MODE_TRANSITIONS.md` | Found 2026-07-30g while working #249. The cooldown crosses the 600 psi (4.14 MPa) SIT arming pressure with the discharge valve still open. Invisible until now because the 88 % level pin (S1) kept the overfill below the 97 % high-level trip — the `pwr_mode3_to_mode5` "arrived UNscrammed" check has been passing **for the wrong reason (HR10)**. The engine's own driver isolates correctly (`pwr_engine.js:1833`); the heatup procedure re-opens a lineup the cooldown never establishes (`ui/manual_procedures.js:58`) |
+| **S1** | PWR | `abuse_porv_walkaway` end state shows inventory 120 % (clip at `mass_max`) with pzr level 7 % — the overfill/level bookkeeping disagree | **ANSWERED 2026-07-30j (#249): it is the clip, and the clip is load-bearing.** `mass_max` 1.2 is 3.4× the sourced physical headroom (5.8 % of RCS volume — BVPS-2 Table 5.1-1 + WTSM 3.2 Table 3.2-2), and it pins indicated pzr level at exactly 88.00 % on any quench, so the plant **cannot read water-solid on injection**. Injection-verified; see the session entry. Awaiting an owner ruling on the retune |
+| **S14** (#273) | PWR | **The by-the-book Mode 3 → Mode 5 cooldown dumps all four accumulators.** Measured endpoint: `accum_vol=0.0 %`, `boron=2310 ppm` (SIT charge is 2,500), `inv=120.00 %` clipped. Nothing tells the player to isolate them — **zero** "accumulator" mentions in `ui/campaign_data.js` or `Manuals/05_MODE_TRANSITIONS.md` | Found 2026-07-30j while working #249. The cooldown crosses the 600 psi (4.14 MPa) SIT arming pressure with the discharge valve still open. Invisible until now because the 88 % level pin (S1) kept the overfill below the 97 % high-level trip — the `pwr_mode3_to_mode5` "arrived UNscrammed" check has been passing **for the wrong reason (HR10)**. The engine's own driver isolates correctly (`pwr_engine.js:1833`); the heatup procedure re-opens a lineup the cooldown never establishes (`ui/manual_procedures.js:58`) |
 | **S2** | PWR | LOFW warning-to-trip window is only ~4 s (`ops_loss_of_feedwater_handsoff`) | Too fast for a player to react — consider slowing SG boil-down slightly |
 | **S3** | PWR | **RESOLVED (2026-07-25, issue #134)** — and the suspicion in this row was wrong. Not a physics/rod-worth problem: the plant parks at 1.8–3.5 % when the excess reactivity is removed in ONE drive, and at 10–20 % when it is tapped out. The real causes were the checklist recipe (+45/−8, target "5–15 %", `acc: power_pct > 5`), a caution that blamed the lumped core for it, and an inert rate protection (alarm 2.0 / block 2.5 DPM against a peak of 1.82). See session entry | Was: startup feel — maybe a stronger low-power Doppler bite or gentler mid-curve differential rod worth |
 | **S4** | PWR | 50 % xenon swing may be a touch small (peak ~106 % vs ~113 % on the daily cycle) | Fine for v1; note if xenon scenarios feel flat |
