@@ -494,7 +494,7 @@ which is the argument for a required status check and against a badge (#191).
 
 Green at baseline: PWR **32/32 (202 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3038 checks)**,
 `run_m4` **28/28 (156 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **24/24**,
-`run_behavior` **38 pass / 0 xfail**, `run_meltdown` **9 pass / 0 xfail**,
+`run_behavior` **39 pass / 0 xfail** (38 → 39 on 2026-07-31, #135: **TR-14**, the SOURCED loss-of-feedwater drain rate. It exists because moving `K_sg_level` by **3.6×** left all 32 runners green — nothing in the suite asserted how fast a steam generator empties, so the constant could drift back unnoticed. Fails at 13.0 s against its 25–60 s band on the old value), `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
 `run_procedures` **22/22 (102/102 checks)**,
 `run_procedures_stack` **22/22 (178/178 checks, 2 strict xfails — both RBMK/BWR #208; the 7

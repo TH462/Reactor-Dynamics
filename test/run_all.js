@@ -75,7 +75,13 @@ var BASELINES = {
   // flag and armed P-9 for the rest of the evolution; measured, a disconnect at 100 %
   // scrammed instantly and one during a heatup scrammed at the later P-9 crossing. Owner
   // ruled it a planned offline (no trip). TR-1d pins that, and fails on the old mapping.
-  'run_behavior.js':       { code: 0, score: '38pass 0xfail' },
+  // 39 since 2026-07-31 (#135): +TR-14, the SOURCED loss-of-feedwater drain rate. Ginna
+  // UFSAR Table 15.2-4 (ADAMS ML20339A101) gives 35 s from feed loss to the lo-lo trip;
+  // this plant did it in 12.9 s. `K_sg_level` 5.0 -> 1.37 fixes that, and the probe exists
+  // because moving a physics constant by 3.6x left ALL 32 gates green — nothing in the
+  // suite asserted how fast a steam generator empties, so the value could drift back with
+  // nothing to say so. Fails at 13.0 s against its 25-60 s band on the old constant.
+  'run_behavior.js':       { code: 0, score: '39pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).

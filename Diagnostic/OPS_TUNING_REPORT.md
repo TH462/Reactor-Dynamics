@@ -229,9 +229,20 @@ containment floor. Spray water is Tcold liquid — physically it cannot pull pre
 
 ### P7 — Notes / positives
 
-* `ops\_loss\_of\_feedwater\_handsoff` is a model response: SG-low alarm at +40 s, AFW
-auto-start, trip at +44 s, level recovery, subcooling held. (Warning-to-trip window is
-only \~4 s — consider slowing SG boil-down slightly to give a player a fighting chance.)
+* `ops\_loss\_of\_feedwater\_handsoff` is a model response: SG-low alarm, AFW auto-start,
+trip, level recovery, subcooling held.
+**RESOLVED 2026-07-31 (#135) — and the diagnosis in this line was wrong.** It read "warning-to-trip
+window is only ~4 s — consider slowing SG boil-down slightly". Two corrections. The window was
+**2.9 s**, not 4 (measured full-stack; the +40/+44 s figures above were engine+M4 and included the
+feed-pump coastdown). And "slightly" understated it by a factor of three: the cause was
+`K_sg_level` at **5.0**, i.e. the entire narrow range holding **twenty seconds** of full-power
+steaming — measured, true level 64.5 → 3.1 % in 13 s. Now **fitted to a real transient**:
+Ginna UFSAR Table 15.2-4 (ADAMS ML20339A101) gives **35 s** from feed loss to the lo-lo trip, so
+48 points of span / 35 s = **1.37 %/s**. Trip now at 40.5 s, window **11.6 s**. GitHub #135 filed
+this as "a setpoint/lag question, not a physics change" — that was **arithmetically impossible**:
+the setpoints are 13 points apart, so at the old drain rate no spacing change could buy more than
+a few seconds. This backlog line had it right and the issue did not. Pinned by **TR-14** in
+`run_behavior`, which nothing did before — the 3.6× change left all 32 gates green.
 * `abuse\_porv\_walkaway` is TMI-with-honest-instruments and survives hands-off (trip → HPI).
 Oddity: end state shows inventory 120 % (clip at `mass\_max`) with pzr level 7 % — the
 overfill/level bookkeeping disagree; worth a look.

@@ -22,6 +22,41 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **The steam generator drains at a real plant's rate now** (#135, closing it). `K_sg_level`
+  **5.0 → 1.37**. A total loss of main feedwater at full power used to take the plant from
+  64.5 % steam generator level to the low-low trip in **12.9 s**, leaving **2.9 s** between
+  the SG LVL LO warning and the scram. Now: warning at ~29 s, AFW auto-start at ~37 s, trip
+  at ~40 s — about **11 s** of warning.
+
+  **Fitted to a real transient, not chosen.** Ginna UFSAR Chapter 15, Table 15.2-4, *"TIME
+  SEQUENCE OF EVENTS FOR LOSS OF NORMAL FEEDWATER FLOW"* (NRC ADAMS ML20339A101, Rev 29
+  11/2020): main feedwater stops at 20 s, low-low level trip setpoint reached at 55 s — **35
+  s**. This plant runs 65 % nominal and trips at 17 %, so 48 points of span over 35 s =
+  1.37 %/s. What is fitted is the **time**, not the geometry.
+
+  **The issue's own proposed fix could not have worked.** #135 filed this as "a setpoint/lag
+  question… not a physics change". The setpoints are 13 points apart on a level that was
+  falling at 4.7 %/s, so no spacing change buys more than a few seconds. The cause was that
+  the entire narrow range held **twenty seconds of full-power steaming**.
+
+  **Control got better, not worse** — measured, before/after: steady hold over 30 min 2.35 →
+  2.11 points of band; a 100 → 80 MWe ramp swings 9.8 → 5.4 points and settles closer to
+  nominal. A lower level-per-imbalance gain swings less for the same flow mismatch, so the
+  three-element feed controller needed no retuning.
+
+  **You still cannot save the transient, and that is correct.** Restoring feed the instant
+  the alarm arrives still trips, at 40.6 s — a real loss of normal feedwater trips the
+  reactor on low-low level, and that is the credited protection for the event. The window is
+  for reading the board, not for chasing the trip. Manual set **Rev 22**: **07 PWR-E01** now
+  carries a *Timing — what to expect* section saying exactly that.
+
+  **The finding behind the finding:** a 3.6× change to a physics constant left **all 32
+  gates green**. Nothing asserted how fast a steam generator empties. New probe **TR-14**
+  (`run_behavior` 38 → 39) pins the sourced anchor and fails at 13.0 s on the old value. One
+  gate did move — `verify_e2e_ui`'s post-trip sample time, a fixture calibrated to the old
+  drain rate — and the new sample point was validated against the **old** behaviour too, so
+  it is a better test rather than a refit.
+
 - **Settings tab trimmed** (#277). Removed **Values**, **Terminology**, and **Physics
   Overlay** — unused on the shipping PWR board. Units, fast-forward dropout, and About
   remain.

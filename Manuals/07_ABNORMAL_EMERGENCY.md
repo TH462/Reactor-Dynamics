@@ -2,7 +2,7 @@
 
 **Document:** PWR-EOP-01  
 **Title:** Failure Response — PWR Trainer  
-**Revision:** 21  
+**Revision:** 22  
 
 ---
 
@@ -87,6 +87,19 @@ is the failure's physical size — the response procedures below apply at any se
 ### Automatic
 - Low SG level → SCRAM (~17 %, lo-lo)  
 - AFW AUTO start ~20 % if armed (established just above the trip)  
+
+### Timing — what to expect
+
+From a total loss of main feedwater at full power, measured: **SG LVL LO** (30 %) at about
+**29 s**, AFW auto-start at about **37 s**, **SG LVL LO LO** and the reactor trip at about
+**40 s**. That leaves roughly **11 s** between the first warning and the trip.
+
+**Expect the trip. You are not going to prevent it.** Even restoring feed the instant the
+warning comes in still trips the plant — the feed pump takes time to come back up while the
+generator keeps boiling. That is prototypical, not a limitation: a real loss of normal
+feedwater trips the reactor on low-low steam generator level, and that trip is the credited
+protection for the event. Use the window to confirm the diagnosis and to check that AFW is
+lined up and coming, not to chase the trip.
 
 ### Immediate actions
 
