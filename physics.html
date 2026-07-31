@@ -42,88 +42,68 @@
 
   <h2>The plant — SLX-100</h2>
   <p>The <strong>SLX-100</strong> (Single-Loop eXperimental) is a compact
-  pressurized water reactor of about 100&nbsp;MWe. One coolant loop — core,
-  reactor coolant pump, U-tube steam generator, pressurizer on the hot leg —
-  plus secondary plant (steam, turbine-generator, condenser, feed) and the
-  usual support and protection systems.</p>
+  PWR of about 100&nbsp;MWe: one RCS loop (core, RCP,
+  U-tube SG, pressurizer), BOP, CVCS, ECCS, RHR, and RPS/ESF. Cold shutdown
+  through full power is one continuous plant.</p>
 
-  <p>Primary heat crosses the steam generator into secondary steam that drives
-  the turbine. The pressurizer holds primary pressure; steam demand is the load
-  the primary feels. Cold shutdown through full power runs on the same
-  model.</p>
-
-  <p><strong>Model in short:</strong> point kinetics with delayed neutrons ·
-  lumped heat and mass balances · secondary demand coupled to the primary ·
-  protection on instrument channels · accident regimes open · no spatial
-  core.</p>
+  <p><strong>Model in short:</strong> six-group point kinetics · lumped heat
+  and mass balances · load coupled through the secondary · protection on
+  instrument channels · degraded regimes open · no spatial core.</p>
 
   <h2>Core power and reactivity</h2>
   <ul>
-    <li><strong>Point kinetics</strong> — the core is one average power level,
-    not a 3-D flux map. Delayed neutrons (six groups) set how fast power can
-    rise or fall, so reactor period and startup rate are real quantities on
-    the nuclear instruments.</li>
-    <li><strong>What moves power:</strong> control rods, fuel temperature
-    (Doppler), coolant density, dissolved boron, and xenon. Moderator feedback
-    follows density, not a single fixed temperature coefficient.</li>
-    <li><strong>Xenon</strong> builds and burns on iodine/xenon timescales after
-    power changes and after a trip. The model tracks whole-core poison only —
-    not local peaking or spatial oscillation.</li>
-    <li><strong>Decay heat</strong> continues after a scram and depends on how
-    long the core was at power. A freshly started core and a post-trip core are
-    different heat sources even with rods fully in.</li>
+    <li><strong>Point kinetics</strong>, six delayed-neutron groups — one
+    average power, no flux shape. Period and startup rate drive the nuclear
+    instruments.</li>
+    <li><strong>Reactivity terms:</strong> rods (S-curve bank worth), Doppler
+    (fuel temperature), moderator from coolant <em>density</em> (not a fixed
+    MTC), boron, xenon, and core excess.</li>
+    <li><strong>I–Xe</strong> chain with burnout — whole-core only, no spatial
+    oscillation.</li>
+    <li><strong>Decay heat</strong> with power-history dependence (two-term
+    exponential production).</li>
   </ul>
 
   <h2>Heat, pressure, and inventory</h2>
   <ul>
-    <li><strong>Lumped thermal model</strong> — a few nodes (fuel, cladding,
-    coolant, secondary) exchange heat with simple transfer laws. Enough to get
-    the operator-visible temperatures and rates right; not a full fluid-dynamics
-    code.</li>
-    <li><strong>Pressurizer</strong> — a steam bubble, heaters, spray, and
-    relief. Level moves with inventory and thermal expansion. The plant can go
-    solid (full of water) or empty the bubble — those ends are allowed.</li>
-    <li><strong>Coolant inventory</strong> — charging, letdown, safety injection,
-    accumulators, leaks, and relief all change mass. Subcooling is tracked;
-    the primary can void; pumps can cavitate if suction margin is lost.</li>
-    <li><strong>Hard cases stay open.</strong> Steam-generator tubes that uncover
-    transfer less heat; a voided primary and a solid pressurizer are reachable
-    states. Those regimes are where many of the training accidents live — the
-    model does not clamp them away.</li>
+    <li><strong>Lumped nodes</strong> (fuel, cladding hot node, coolant,
+    secondary) with first-order heat transfer — not a TH systems code.</li>
+    <li><strong>Pressurizer</strong> thermodynamics (heaters, spray, PORV /
+    safeties); solid and empty ends are reachable.</li>
+    <li><strong>Inventory</strong> from CVCS, ECCS, accumulators, leaks, and
+    relief. Subcooling tracked; primary can void; RCP cavitation from suction
+    margin.</li>
+    <li><strong>Degraded regimes stay open</strong> — uncovered SG tubes cut
+    heat transfer; voided primary and solid pressurizer are allowed states,
+    not clamped out.</li>
   </ul>
 
-  <h2>Steam side and generator</h2>
+  <h2>Secondary and electrical</h2>
   <ul>
-    <li>Primary heat boils secondary water. Steam flow, feedwater, dumps, and
-    isolation share one balance, so operator actions on the secondary change
-    how heat leaves the core.</li>
-    <li>Turbine, condenser, and generator close the loop. Electrical load is a
-    steam demand: raise or lower it and the primary feels it. Lose the turbine
-    or the heat sink and the stored energy still has to go somewhere.</li>
+    <li>SG mass-energy balance couples steam, feed, dumps, and isolation to
+    primary heat removal.</li>
+    <li>Turbine / condenser / generator: load is a steam demand on the
+    primary; loss of turbine or heat sink leaves energy in the plant.</li>
   </ul>
 
   <h2>Instruments and protection</h2>
-  <p>Gauges are instrument channels — lagged, and able to stick or drift when
-  failures are injected. Reactor trips, interlocks, safeguards, and automatic
-  controllers use those channel readings, not hidden “true” plant values. A
-  bad transmitter can mislead both you and the automation.</p>
+  <p>Board quantities are lagged instrument channels (optional stuck/drift).
+  Trips, interlocks, safeguards, and automatic controllers take those channel
+  values — not true state. A failed transmitter misleads both the operator and
+  the automation.</p>
 
   <h2>What is left out on purpose</h2>
   <ul>
-    <li><strong>No spatial core</strong> — no 3-D flux shape or hot-spot map.</li>
-    <li><strong>One loop, lumped nodes</strong> — not multi-loop detail or
-    subchannel thermal-hydraulics.</li>
-    <li><strong>No full containment / LOCA engineering suite</strong> —
-    core-damage paths go far enough to teach progression, not licensing
-    analysis.</li>
-    <li><strong>Not a named plant twin</strong> — a composite ~100&nbsp;MWe
-    plant built so ordinary operator-visible dynamics behave right.</li>
+    <li>No spatial neutronics or xenon tilt.</li>
+    <li>One loop, lumped nodes — no multi-loop or subchannel TH.</li>
+    <li>No containment / LOCA licensing stack (core-damage paths for training
+    progression only).</li>
+    <li>Not a digital twin of a named unit.</li>
   </ul>
-  <p>Detail is spent where you feel it on the board. For coefficients, step
-  order, and declared departures, see the simulation-physics chapter in the
-  in-sim manual, or the engine sources on
+  <p>Coefficients, step order, and declared departures: simulation-physics
+  chapter in the in-sim manual, or the engine sources on
   <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
-  (open source, AGPL).</p>
+  (AGPL).</p>
 
   <p><a href="about.html">← Back to About</a></p>
 </main>
