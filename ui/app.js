@@ -346,16 +346,20 @@
   function prof() { return PROFILES[ui.plant]; }
   function rodGroup(s, fn) { return s.control_state.rod_groups.filter(function (x) { return x.function === fn; })[0]; }
 
-  // Alarm → system category (UI-side keyword map across the three plants).
-  // System family for scanner/meta text only — tiles no longer color-code by
-  // category (priority carries the color: red / amber / grey).
-  function alarmCategory(id) {
-    if (/flux|power|rod|orm|reactivity|az/.test(id)) return 'reactivity';
-    if (/press|subcool|pzr|rcp|void|drum|vessel|level|flow|coolant/.test(id)) return 'coolant';
-    if (/sg|turbine|cond|tavg|steam|recirc/.test(id)) return 'power';
-    if (/sensor|indicator/.test(id)) return 'instrument';
-    return 'safety_system';
-  }
+  // Alarm → system family, for the tile's meta line and the scanner hint. Tiles do
+  // not colour-code by it (priority carries the colour: red / amber / grey).
+  //
+  // AUTHORED DATA since #157 — it used to be keyword-matched off the alarm id here,
+  // which was wrong for 13 of the PWR's 33. The failure was quiet and self-inflicted:
+  // `charging_high` fell through every rule to 'safety_system' because the word "flow"
+  // lives in its LABEL (CHG FLOW HI) and the matcher read the id; `sur_high` did the
+  // same on both PWR and RBMK; `sg_press_high` matched "press" and was filed under
+  // coolant despite being secondary steam. Renaming an alarm silently re-categorised it.
+  //
+  // No fallback on purpose. A missing category renders as '—' and `run_contract.js` fails,
+  // rather than a guess quietly standing in for authored data — the whole defect here
+  // was a plausible-looking guess nobody could see was wrong.
+  function alarmCategory(a) { return (a && a.category) || '—'; }
 
   // ---- inspection copy for generated surfaces (#96) ------------------------
   // Gauges and alarm tiles are built from data, so their detail text is built
@@ -886,7 +890,7 @@
     if (title) title.textContent = nUnack ? 'Alarms (' + nUnack + ')' : 'Alarms';
     if (!active.length) { stack.innerHTML = '<div class="alarm-empty">— no active alarms —</div>'; return; }
     stack.innerHTML = active.map(function (a) {
-      var cat = alarmCategory(a.id);
+      var cat = alarmCategory(a);
       var sev = a.priority === 'critical' ? 'crit' : a.priority === 'warning' ? 'warn' : '';
       var unack = a.state === 'active_unacknowledged' ? ' unack' : '';
       var glyph = a.priority === 'critical' ? '⚠' : a.priority === 'warning' ? '△' : '●';

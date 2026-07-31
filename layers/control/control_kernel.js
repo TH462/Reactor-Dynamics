@@ -702,6 +702,12 @@
         // UI can say so). Absent when no rule fired.
         base_priority: rc ? a.priority : undefined,
         panel: a.panel,
+        // System family, AUTHORED in the plant profile (#157). The UI used to derive
+        // this by keyword-matching the alarm id, which made it silently wrong whenever
+        // an id did not happen to contain the right word — measured, 13 of the PWR's 33
+        // were wrong or arguable, e.g. `charging_high` fell through to 'safety_system'
+        // because the word "flow" is in its LABEL (CHG FLOW HI) and the matcher reads ids.
+        category: a.category,
         tile_label: reg === 'industry' ? ind : lrn,
       });
     }

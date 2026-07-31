@@ -14,6 +14,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Alarm tiles told you the wrong system for a third of the alarms** (#157).
+
+  Every alarm tile carries a system family on its second line — *coolant · warning ·
+  unacknowledged*. That family was never recorded anywhere; the interface guessed it by
+  looking for keywords in the alarm's internal name. Measured, it was wrong or arguable
+  for **13 of the pressurised-water reactor's 33 alarms**.
+
+  The guesses failed in ways nobody could see. *CHG FLOW HI* was filed under safety
+  systems rather than coolant, because the word "flow" is in the label an operator reads
+  and not in the internal name the guesswork read. *SUR HI* — a reactivity alarm on both
+  the pressurised-water reactor and the RBMK — matched nothing at all and fell through to
+  safety systems. *SG PRESS HI* matched "press" and was filed as coolant even though it is
+  secondary steam. Renaming any alarm could silently re-file it.
+
+  Each alarm now states its own family, next to the panel it annunciates on. There is
+  deliberately no fallback guess: an alarm that fails to state one shows a dash and fails
+  the build, rather than quietly showing a plausible answer that happens to be wrong.
+
 - **Resetting the reactor protection system on the RBMK or the BWR blamed the rods for
   something that was not their fault** (#228).
 

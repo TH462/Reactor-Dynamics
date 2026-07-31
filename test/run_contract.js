@@ -48,6 +48,11 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'engines/pwr/pwr_steam_generator.js',
   'engines/pwr/pwr_instruments.js',
   'engines/pwr/pwr_engine.js',
+  // The RBMK/BWR CONTROL modules only — for the alarm-category section at the bottom
+  // (#157), which covers all three plants. Their ENGINES are deliberately not loaded:
+  // the §6.3 half above is PWR-only and stays that way (see PLANTS `skip`).
+  'engines/rbmk/rbmk_config.js', 'layers/control/rbmk_control.js',
+  'engines/bwr/bwr_config.js',   'layers/control/bwr_control.js',
 ].forEach(load);
 
 var RD = globalThis.RD;
@@ -168,8 +173,64 @@ PLANTS.forEach(function (p) {
   }
 });
 
+// ============================================================ alarm category (#157)
+// The SECOND contract this file guards — the same failure in a different place: a value
+// the UI consumes that nobody declared. `alarmCategory()` used to infer an alarm's system
+// family by keyword-matching its ID. Measured, that was wrong or arguable for 13 of the
+// PWR's 33, because the words it looks for live in LABELS as often as in ids —
+// `charging_high` (CHG FLOW HI) fell through every rule to 'safety_system' since "flow"
+// is not in the id. It is authored data now, and this asserts every alarm on every plant
+// declares one, from a closed vocabulary.
+//
+// ALL THREE PLANTS, unlike the §6.3 half above. The category is authored beside the alarm
+// so there is nothing plant-specific to audit — and RBMK's `sur_high` carried exactly the
+// same miscategorisation the PWR's did, which is the argument for not scoping it to PWR.
+var CATEGORIES = { reactivity: 1, coolant: 1, power: 1, instrument: 1, safety_system: 1 };
+var ALARM_SETS = [
+  ['pwr',  function () { return RD.PWR_CONTROL.protection.alarms; }],
+  ['rbmk', function () { return RD.RBMK_CONTROL.forVersion('post_chernobyl').alarms; }],
+  ['bwr',  function () { return RD.BWR_CONTROL.protection.alarms; }],
+];
+console.log('\n' + B + 'Alarm system-category — authored, not inferred (#157)' + X);
+ALARM_SETS.forEach(function (set) {
+  var id = set[0], list;
+  try { list = set[1]() || []; }
+  catch (e) {
+    console.log(R + '  ✗ ' + id + X + '  could not read alarms: ' + e.message);
+    totalBad++; totalChecks++; return;
+  }
+  // Fail loud on an empty list. A reshaped profile that yields zero alarms would
+  // otherwise report a clean pass over nothing at all — the same shape of lie the
+  // §6.3 parse above is deliberately fail-loud about.
+  if (!list.length) {
+    console.log(R + '  ✗ ' + id + X + '  no alarms found — profile reshaped?');
+    totalBad++; totalChecks++; return;
+  }
+  var missing = list.filter(function (a) { return !a.category; }).map(function (a) { return a.id; });
+  var unknown = list.filter(function (a) { return a.category && !CATEGORIES[a.category]; })
+                    .map(function (a) { return a.id + '=' + a.category; });
+  var seen = {};
+  list.forEach(function (a) { if (a.category) seen[a.category] = 1; });
+  totalChecks += list.length;
+  totalBad += missing.length + unknown.length;
+  console.log(((missing.length || unknown.length) ? R + '  ✗ ' : G + '  ✓ ') + id + X + '  ' +
+    list.length + ' alarms' + (missing.length || unknown.length ? '' : ', all categorised') +
+    D + '  (' + Object.keys(seen).sort().join(', ') + ')' + X);
+  if (missing.length) {
+    console.log(R + '    NO CATEGORY (' + missing.length + ')' + X);
+    missing.forEach(function (k) { console.log(R + '      ✗' + X + ' ' + k); });
+    console.log(D + '      Add `category:` beside `panel:` in the plant control module. The UI\n' +
+      '      renders a missing category as "—" and does NOT guess, by design (#157).' + X);
+  }
+  if (unknown.length) {
+    console.log(R + '    NOT IN THE VOCABULARY (' + unknown.length + ')' + X);
+    unknown.forEach(function (k) { console.log(R + '      ✗' + X + ' ' + k); });
+    console.log(D + '      Allowed: ' + Object.keys(CATEGORIES).join(', ') + X);
+  }
+});
+
 console.log('\n' + B + '──────────────────────────────────────────' + X);
 console.log(B + (totalBad ? R + 'CONTRACT GUARD: FAIL' : G + 'CONTRACT GUARD: OK') + X + '  ' +
   totalChecks + ' checks, ' + totalBad + ' failed' +
-  D + (totalBad ? '' : '  (engine and §6.3 agree exactly)') + X);
+  D + (totalBad ? '' : '  (§6.3 agrees exactly; every alarm declares a category)') + X);
 process.exit(totalBad ? 1 : 0);

@@ -66,20 +66,20 @@
   function alarms(orm_min) {
     return {
       a: [
-        { id: 'reactor_trip',   instrument: 'rps_scrammed',  direction: 'is_true', setpoint: null,    priority: 'critical', panel: 'A', label_learning: 'Reactor Scram (AZ-5)',                 label_industry: 'AZ-5 SCRAM' },
-        { id: 'high_power',     instrument: 'power_range',   direction: 'high',    setpoint: 110.0,   priority: 'critical', panel: 'A', label_learning: 'High Reactor Power',                    label_industry: 'HI POWER' },
-        { id: 'orm_low',        instrument: 'orm_display',   direction: 'low',     setpoint: orm_min, priority: 'critical', panel: 'A', label_learning: 'Operating Reactivity Margin Too Low',   label_industry: 'ORM LO' },
-        { id: 'sur_high',       instrument: 'startup_rate',  direction: 'high',    setpoint: 3.0,     priority: 'caution',  panel: 'A', label_learning: 'Startup Rate High',                     label_industry: 'SUR HI' },
-        { id: 'void_high',      instrument: 'void_fraction', direction: 'high',    setpoint: 0.70,    priority: 'warning',  panel: 'A', label_learning: 'High Coolant Voiding',                  label_industry: 'HI VOID' },
-        { id: 'fuel_temp_high', instrument: 'fuel_temp',     direction: 'high',    setpoint: 1500.0,  priority: 'warning',  panel: 'A', label_learning: 'High Fuel Temperature',                 label_industry: 'HI FUEL T' },
+        { id: 'reactor_trip',   instrument: 'rps_scrammed',  direction: 'is_true', setpoint: null,    priority: 'critical', panel: 'A', category: 'safety_system', label_learning: 'Reactor Scram (AZ-5)',                 label_industry: 'AZ-5 SCRAM' },
+        { id: 'high_power',     instrument: 'power_range',   direction: 'high',    setpoint: 110.0,   priority: 'critical', panel: 'A', category: 'reactivity', label_learning: 'High Reactor Power',                    label_industry: 'HI POWER' },
+        { id: 'orm_low',        instrument: 'orm_display',   direction: 'low',     setpoint: orm_min, priority: 'critical', panel: 'A', category: 'reactivity', label_learning: 'Operating Reactivity Margin Too Low',   label_industry: 'ORM LO' },
+        { id: 'sur_high',       instrument: 'startup_rate',  direction: 'high',    setpoint: 3.0,     priority: 'caution',  panel: 'A', category: 'reactivity', label_learning: 'Startup Rate High',                     label_industry: 'SUR HI' },
+        { id: 'void_high',      instrument: 'void_fraction', direction: 'high',    setpoint: 0.70,    priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'High Coolant Voiding',                  label_industry: 'HI VOID' },
+        { id: 'fuel_temp_high', instrument: 'fuel_temp',     direction: 'high',    setpoint: 1500.0,  priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'High Fuel Temperature',                 label_industry: 'HI FUEL T' },
       ],
       b: [
-        { id: 'steam_press_high', instrument: 'steam_pressure', direction: 'high',    setpoint: 7.6,  priority: 'warning',  panel: 'B', label_learning: 'Steam Drum Pressure High',     label_industry: 'DRUM PRESS HI' },
-        { id: 'steam_press_low',  instrument: 'steam_pressure', direction: 'low',     setpoint: 6.4,  priority: 'warning',  panel: 'B', label_learning: 'Steam Drum Pressure Low',      label_industry: 'DRUM PRESS LO' },
-        { id: 'drum_level_low',   instrument: 'drum_level',     direction: 'low',     setpoint: 20.0, priority: 'warning',  panel: 'B', label_learning: 'Steam Drum Level Low',         label_industry: 'DRUM LVL LO' },
-        { id: 'drum_level_lolo',  instrument: 'drum_level',     direction: 'low',     setpoint: 10.0, priority: 'critical', panel: 'B', label_learning: 'Steam Drum Level Critical Low', label_industry: 'DRUM LVL LO LO' },
-        { id: 'flow_low',         instrument: 'channel_flow',   direction: 'low',     setpoint: 50.0, priority: 'warning',  panel: 'B', label_learning: 'Low Coolant Flow',            label_industry: 'LO FLOW' },
-        { id: 'eps_bypass',       instrument: 'eps_bypassed',   direction: 'is_true', setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Emergency Protection Bypassed', label_industry: 'EPS BYPASS' },
+        { id: 'steam_press_high', instrument: 'steam_pressure', direction: 'high',    setpoint: 7.6,  priority: 'warning',  panel: 'B', category: 'power', label_learning: 'Steam Drum Pressure High',     label_industry: 'DRUM PRESS HI' },
+        { id: 'steam_press_low',  instrument: 'steam_pressure', direction: 'low',     setpoint: 6.4,  priority: 'warning',  panel: 'B', category: 'power', label_learning: 'Steam Drum Pressure Low',      label_industry: 'DRUM PRESS LO' },
+        { id: 'drum_level_low',   instrument: 'drum_level',     direction: 'low',     setpoint: 20.0, priority: 'warning',  panel: 'B', category: 'coolant', label_learning: 'Steam Drum Level Low',         label_industry: 'DRUM LVL LO' },
+        { id: 'drum_level_lolo',  instrument: 'drum_level',     direction: 'low',     setpoint: 10.0, priority: 'critical', panel: 'B', category: 'coolant', label_learning: 'Steam Drum Level Critical Low', label_industry: 'DRUM LVL LO LO' },
+        { id: 'flow_low',         instrument: 'channel_flow',   direction: 'low',     setpoint: 50.0, priority: 'warning',  panel: 'B', category: 'coolant', label_learning: 'Low Coolant Flow',            label_industry: 'LO FLOW' },
+        { id: 'eps_bypass',       instrument: 'eps_bypassed',   direction: 'is_true', setpoint: null, priority: 'warning',  panel: 'B', category: 'safety_system', label_learning: 'Emergency Protection Bypassed', label_industry: 'EPS BYPASS' },
       ],
     };
   }

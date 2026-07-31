@@ -168,7 +168,11 @@ var BASELINES = {
   // are on hold and their blocks were never audited, so they are registered `skip`.
   // Check count = every field name on either side, so adding a true_state field moves
   // this baseline — the intended nudge to document it in the same change.
-  'run_contract.js':       { code: 0, score: '84checks 0failed' },
+  // 84 -> 138 on 2026-07-31 (#157): the same file now guards a SECOND contract — every
+  // alarm on every plant must declare a `category` from a closed vocabulary. It used to
+  // be keyword-matched off the alarm id in ui/app.js, wrong for 13 of the PWR's 33.
+  // All three plants here, unlike the PWR-only §6.3 half.
+  'run_contract.js':       { code: 0, score: '138checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
