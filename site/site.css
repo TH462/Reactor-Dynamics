@@ -60,6 +60,10 @@ a:hover { text-decoration: underline; }
   padding: 2px 9px; font-size: 11px; font-weight: 700; letter-spacing: 1.4px;
   line-height: 1.4; white-space: nowrap;
 }
+.brand-ver {
+  color: var(--muted); font-size: 12px; white-space: nowrap;
+  margin-left: -4px; /* sit close to ALPHA */
+}
 /* Burger + dropdown (site menu) */
 .nav-wrap {
   margin-left: auto;
@@ -201,14 +205,6 @@ a.disabled { pointer-events: none; cursor: default; opacity: 0.4; text-decoratio
 }
 .feature h3 { margin: 0 0 6px; font-size: 16px; }
 .feature p { margin: 0; color: var(--text-2); font-size: 14px; }
-
-/* =========================================================== contact strip */
-.contact-strip {
-  padding-top: 8px; padding-bottom: 8px;
-}
-.contact-strip p {
-  margin: 0; color: var(--text-2); font-size: 15px;
-}
 
 /* ============================================================ content pages */
 .page { max-width: 760px; margin: 0 auto; padding: 48px 20px 64px; }
