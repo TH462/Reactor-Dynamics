@@ -37,6 +37,61 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-31c — #135: the SG drained 2.7× too fast, and no gate could tell
+
+**The issue was NOT stale, and its stated fix was arithmetically impossible.** #135 filed the
+loss-of-feedwater warning-to-trip window at "~4 s" and said *"widening it is a setpoint/lag
+question in `layers/control/pwr_control.js`, not a physics change."* Measured full-stack: the
+window is **2.9 s**, and the setpoints are 13 percentage points apart (SG LVL LO 30 %, lo-lo
+trip 17 %) on a level falling at 4.7 %/s. **No setpoint move could fix it** — even doubling
+the spacing buys about six seconds. The repo's own `TUNING_LOG` backlog row S2 had the right
+instinct (*"consider slowing SG boil-down"*) and the GitHub issue contradicted it.
+
+**The real statement.** `d(level)/dt = K_sg_level × (feed − steam)`, both normalized to rated,
+so with feed lost and steam at rated **`K_sg_level` IS the drain rate in %/s**. At 5.0 the
+entire narrow range held **twenty seconds of full-power steaming** — measured, true level
+64.5 % → 3.1 % in 13 s, lo-lo trip at 12.9 s.
+
+**SOURCED, not chosen** (evidence-pass SOP). Ginna UFSAR Chapter 15, Table 15.2-4, *"TIME
+SEQUENCE OF EVENTS FOR LOSS OF NORMAL FEEDWATER FLOW"* (NRC ADAMS **ML20339A101**, Rev 29
+11/2020, p.102 of 276): main feedwater stops at **20 s**, low-low level trip setpoint reached
+at **55 s** — **35 s**. This plant runs 65 % nominal and trips at 17 %, so 48 points over 35 s
+= **1.371 %/s**. `K_sg_level` **5.0 → 1.37**. Measured after: trip at 40.5 s (the extra ~5 s is
+this sim's 8 s feed-pump coastdown, where the analysis stops flow instantly), window 11.6 s.
+**What is fitted is the TIME, not the geometry** — Ginna's narrow-range span and level program
+are its own, and no claim is made that a single-loop 100 MWe teaching plant matches them.
+
+**Control got BETTER, and that was measured before it was claimed.** Full stack, before/after:
+steady hold over 30 min **2.35 → 2.11** points of band; a 100 → 80 MWe ramp swings **9.8 → 5.4**
+points and settles **64.38 → 65.12** against 65 nominal. Lower level-per-imbalance gain means
+less level swing for the same flow mismatch, so **the three-element feed controller did not
+need retuning** — the risk this change was expected to carry did not materialise.
+
+**What it deliberately does NOT buy: a savable transient.** Clearing the failure the instant
+the alarm arrives still trips, at 40.6 s. That is correct. A real loss of normal feedwater
+**trips the reactor on low-low SG level** — it is the credited trip in the Ginna analysis
+above — so the window is for reading the board, not for preventing the trip. #135 asked for
+"long enough for a player to read the alarm, diagnose, and act"; the prototypical answer gives
+the first two and refuses the third, and that is the answer HR9 requires.
+
+**THE GATE GAP IS THE REAL FINDING.** A 3.6× change to a physics constant left **all 32
+runners green**. Nothing in the suite asserted how fast a steam generator empties, so the
+value could have drifted back with nothing to say so. New probe **TR-14** in `behavior_pwr.js`
+pins the sourced anchor: trip 25–60 s after feed loss (band deliberately wide — the claim is
+"a real plant's timescale", not "Ginna to the second"), warning before trip, window ≥ 7 s.
+Verified by injection: at the old 5.0 it fails at **13.0 s** against the floor and **3.0 s**
+against the window. `run_behavior` **38 → 39**.
+
+**One gate did move, and it was a FIXTURE, not the assertion.** `verify_e2e_ui` sampled the
+post-turbine-trip feed/steam tracking at `ff=240`, a time its own comment says was chosen to
+be past the post-trip level swell. With the plant 3.6× slower that transient outlasts 240 s
+and feed is legitimately still 0. Moved to **`ff=600`** — and **validated against the OLD
+drain rate too** (HR10): measured feed vs steam in gpm at 240 s old 63/63 vs new 0/64; at
+600 s old 53/56 vs new 57/56. It passes on both plants, so the sample point is better rather
+than refitted, and the assertion itself is untouched.
+
+---
+
 ## 2026-07-31b — #75: the RPS reset was three finished halves that had never been joined
 
 **What was actually wrong.** The issue asked for a reset affordance and its interlock, and

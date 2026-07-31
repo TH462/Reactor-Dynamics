@@ -280,7 +280,19 @@ async function testSteamFeedPair(page) {
   // (old 67 vs steam 66; new 64 vs 64), so this is a settled point, not a refit to one of
   // them. At 120 s the old physics read feed 60 against steam 80 — it cleared the old
   // `> 30` bar without tracking at all, which is why that bar is replaced below.
-  var tripped = await read('&inject=turbine_trip&ff=240');
+  // ff=240 → 600 on 2026-07-31 (#135). The sample time is a FIXTURE, not the assertion,
+  // and it was calibrated to a steam generator that drained 3.6× too fast: `K_sg_level`
+  // went 5.0 → 1.37 to match Ginna UFSAR Table 15.2-4, so the post-trip level swell the
+  // comment above describes now takes proportionally longer to unload and 240 s lands
+  // inside it. Measured feed vs steam (gpm) after the trip:
+  //     240 s   old: 63 vs 63 ✓     new:  0 vs 64 ✗   ← inside the transient
+  //     420 s   old: 59 vs 63 ✓     new: 60 vs 63 ✓
+  //     600 s   old: 53 vs 56 ✓     new: 57 vs 56 ✓
+  // 600 s is past the transient on BOTH plants, which is what makes this a better sample
+  // point rather than a refit to the new one (HR10): the check still passes on the old
+  // drain rate, so nothing was weakened to accommodate the change. The ASSERTION below is
+  // untouched — feed must track the TOTAL steam draw, and 0 gpm against 64 still fails.
+  var tripped = await read('&inject=turbine_trip&ff=600');
   log.push('turbine tripped: steam=' + tripped.steam + ' feed=' + tripped.feed +
            ' gov=' + tripped.gov + ' dump=' + tripped.dump);
   if (!(num(tripped.gov) < 20)) throw new Error('turbine_trip did not shut the governor (gov=' + tripped.gov + ')');

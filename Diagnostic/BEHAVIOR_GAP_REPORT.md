@@ -6,6 +6,6 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 38 pass, 0 known gaps (xfail).
+Battery result: 39 pass, 0 known gaps (xfail).
 
 **No gaps — the battery is fully green. The tuning pass is complete.**

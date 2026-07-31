@@ -115,6 +115,40 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31c — #135: the SG drained 2.7× too fast, and nothing in the suite could tell  ✅
+
+**Checked for staleness first, as asked — it was not stale, and its stated fix was
+arithmetically impossible.** #135 said the LOFW warning-to-trip window is "~4 s" and that
+"widening it is a setpoint/lag question… not a physics change". Measured full-stack: **2.9 s**.
+The setpoints are 13 points apart (LO 30 %, lo-lo 17 %) on a level falling at 4.7 %/s, so no
+spacing change buys more than a few seconds. Backlog row **S2** in this file had the right
+instinct — *"slowing SG boil-down"* — and the issue contradicted it. S2 was right; the issue
+was wrong; both are now updated.
+
+**The number.** `d(level)/dt = K_sg_level × (feed − steam)` normalized to rated, so with feed
+lost `K_sg_level` IS the drain rate in %/s. At **5.0** the whole narrow range held **twenty
+seconds** of full-power steaming (true level 64.5 → 3.1 % in 13 s).
+
+**SOURCED.** Ginna UFSAR Ch.15 Table 15.2-4 (NRC ADAMS **ML20339A101**, Rev 29 11/2020,
+p.102): feed stops 20 s, lo-lo trip setpoint reached 55 s → **35 s**. 48 points of this
+plant's span / 35 s = **1.37 %/s**. `K_sg_level` **5.0 → 1.37**; trip now 40.5 s, window
+11.6 s. The **time** is fitted, not the geometry.
+
+**The expected risk did not materialise.** Measured before/after: steady hold 2.35 → **2.11**
+points of band; 100 → 80 MWe ramp 9.8 → **5.4** points, settling 64.38 → **65.12**. Lower gain
+= less swing per unit mismatch, so the three-element feed channel needed **no retuning**.
+
+**Not savable, deliberately.** Clearing the failure on the alarm still trips at 40.6 s — a real
+LOFW trips on lo-lo level and that is the credited protection. The window is for reading the
+board. **07 PWR-E01** says so (manual **Rev 22**).
+
+**The lesson: a 3.6× physics change left ALL 32 gates green.** Nothing asserted SG drain rate.
+New **TR-14** in `behavior_pwr.js` pins it (25–60 s band, window ≥ 7 s) and fails at 13.0 s on
+the old constant; `run_behavior` **38 → 39**. The one gate that did move — `verify_e2e_ui`'s
+`ff=240` post-trip sample — was a **fixture** calibrated to the old drain rate, moved to
+`ff=600` and **validated against the old behaviour too**, so it is a better sample point, not a
+refit. Detail: `Blueprint/BUILD_DECISIONS.md` **2026-07-31c**.
+
 ### 2026-07-31b — #75: the SCRAM button resets now; it had been inert since it was built  ✅
 
 No plant physics change. The board's SCRAM control has read **PRESS TO RESET** since the day
@@ -4729,7 +4763,7 @@ real smell worth a look during this effort.
 |---|---|---|---|
 | **S1** | PWR | `abuse_porv_walkaway` end state shows inventory 120 % (clip at `mass_max`) with pzr level 7 % — the overfill/level bookkeeping disagree | **ANSWERED 2026-07-30j (#249): it is the clip, and the clip is load-bearing.** `mass_max` 1.2 is 3.4× the sourced physical headroom (5.8 % of RCS volume — BVPS-2 Table 5.1-1 + WTSM 3.2 Table 3.2-2), and it pins indicated pzr level at exactly 88.00 % on any quench, so the plant **cannot read water-solid on injection**. Injection-verified; see the session entry. Awaiting an owner ruling on the retune |
 | **S14** (#273) | PWR | **The by-the-book Mode 3 → Mode 5 cooldown dumps all four accumulators.** Measured endpoint: `accum_vol=0.0 %`, `boron=2310 ppm` (SIT charge is 2,500), `inv=120.00 %` clipped. Nothing tells the player to isolate them — **zero** "accumulator" mentions in `ui/campaign_data.js` or `Manuals/05_MODE_TRANSITIONS.md` | Found 2026-07-30j while working #249. The cooldown crosses the 600 psi (4.14 MPa) SIT arming pressure with the discharge valve still open. Invisible until now because the 88 % level pin (S1) kept the overfill below the 97 % high-level trip — the `pwr_mode3_to_mode5` "arrived UNscrammed" check has been passing **for the wrong reason (HR10)**. The engine's own driver isolates correctly (`pwr_engine.js:1833`); the heatup procedure re-opens a lineup the cooldown never establishes (`ui/manual_procedures.js:58`) |
-| **S2** | PWR | LOFW warning-to-trip window is only ~4 s (`ops_loss_of_feedwater_handsoff`) | Too fast for a player to react — consider slowing SG boil-down slightly |
+| **S2** | PWR | **RESOLVED (2026-07-31, issue #135)** — and this row was right where the GitHub issue was wrong. The window was **2.9 s**, not ~4, and #135 filed it as "a setpoint/lag question… not a physics change", which was arithmetically impossible: the setpoints are 13 points apart, so at the old drain rate no spacing could buy more than a few seconds. "Slowing SG boil-down" was the correct instinct and "slightly" understated it 3.6×. `K_sg_level` **5.0 → 1.37**, fitted to Ginna UFSAR Table 15.2-4 (ADAMS ML20339A101): 35 s from feed loss to lo-lo trip. Window now **11.6 s**. Pinned by TR-14 | Was: too fast for a player to react — consider slowing SG boil-down slightly |
 | **S3** | PWR | **RESOLVED (2026-07-25, issue #134)** — and the suspicion in this row was wrong. Not a physics/rod-worth problem: the plant parks at 1.8–3.5 % when the excess reactivity is removed in ONE drive, and at 10–20 % when it is tapped out. The real causes were the checklist recipe (+45/−8, target "5–15 %", `acc: power_pct > 5`), a caution that blamed the lumped core for it, and an inert rate protection (alarm 2.0 / block 2.5 DPM against a peak of 1.82). See session entry | Was: startup feel — maybe a stronger low-power Doppler bite or gentler mid-curve differential rod worth |
 | **S4** | PWR | 50 % xenon swing may be a touch small (peak ~106 % vs ~113 % on the daily cycle) | Fine for v1; note if xenon scenarios feel flat |
 | **S5** | RBMK | Zero-flow aftermath too forgiving — post-trip fuel sits ~570 °C indefinitely, never dries out/damages | Real consequence is boil-off→dryout over tens of minutes; scale `h_fc` with channel flow at decay levels |
