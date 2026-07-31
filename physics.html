@@ -41,40 +41,21 @@
   <h1>Physics behind the simulator</h1>
 
   <h2>The plant — SLX-100</h2>
-  <p>The engine runs a compact pressurized water reactor named
-  <strong>SLX-100</strong> (Single-Loop eXperimental): about
-  <strong>100&nbsp;MWe / 300&nbsp;MWt</strong>. Primary coolant stays liquid
-  under high pressure; heat crosses a steam generator into a separate secondary
-  loop that drives the turbine-generator. The two loops never mix.</p>
+  <p>The <strong>SLX-100</strong> (Single-Loop eXperimental) is a compact
+  pressurized water reactor of about 100&nbsp;MWe. One coolant loop — core,
+  reactor coolant pump, U-tube steam generator, pressurizer on the hot leg —
+  plus secondary plant (steam, turbine-generator, condenser, feed) and the
+  usual support and protection systems.</p>
 
-  <p><strong>Layout.</strong> One reactor coolant loop — core, one reactor
-  coolant pump, one U-tube steam generator, and a pressurizer on the hot leg —
-  plus the secondary plant (main steam, turbine-generator, condenser,
-  feedwater) and the usual support systems (chemical and volume control,
-  emergency injection, residual heat removal, protection). That is the whole
-  plant on the board: small on purpose, so heatup, power operation, and
-  casualties all sit on one continuous model.</p>
+  <p>Primary heat crosses the steam generator into secondary steam that drives
+  the turbine. The pressurizer holds primary pressure; steam demand is the load
+  the primary feels. Cold shutdown through full power runs on the same real-time
+  model.</p>
 
-  <p><strong>Energy path.</strong> Fission heat → primary coolant (hot leg →
-  steam-generator tubes → cold leg → pump → core) → secondary steam → turbine
-  → electrical output. The pressurizer holds primary pressure with heaters,
-  spray, and relief. Steam demand on the secondary is what the primary “feels”
-  as load.</p>
-
-  <p>At hot full power the primary runs near <strong>2235&nbsp;psi
-  (15.41&nbsp;MPa)</strong> and average coolant temperature near
-  <strong>579&nbsp;°F (304&nbsp;°C)</strong>, with roughly
-  <strong>74&nbsp;°F (41&nbsp;°C)</strong> of subcooling margin. Modes run from
-  cold shutdown through full power on the same physics.</p>
-
-  <p>The sections below describe how that plant is computed in real time —
-  training fidelity, not a licensing code or a twin of a named commercial
-  unit.</p>
-
-  <p><strong>Model in short:</strong> one average core power (point kinetics)
-  with delayed neutrons · lumped heat and mass balances · steam demand coupled
-  to the primary · protection that reads instruments · accident regimes left
-  open · no spatial core map.</p>
+  <p><strong>Model in short:</strong> point kinetics with delayed neutrons ·
+  lumped heat and mass balances · secondary demand coupled to the primary ·
+  protection on instrument channels · accident regimes open · no spatial
+  core.</p>
 
   <h2>Core power and reactivity</h2>
   <ul>
