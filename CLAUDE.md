@@ -371,13 +371,13 @@ anything here that is standing procedure rather than news belongs in the list be
   against the fittings above and below it (#231), pipe **animation play-state vs plant
   state** in three states (#236), and the #235 board defects, for the same reason. **Run
   board_check (headless Edge, `--dump-dom`; `document.title` says PASS/FAIL) after any
-  board change** — it is not in `run_all`. Currently **131/131** (measured 2026-07-31 on
+  board change** — it is not in `run_all`. Currently **138/138** (measured 2026-07-31 on
   `workbench` after #214 — this line said 95/95 once, which was already stale when
   written down; the count moves whenever a pin is added, so re-measure rather than trusting
   it. History: 59 before the #235/#236 pins, +20 pipe-state/board-defect pins, +2 ROD AUTO,
   +3 from the #237 comment items, +11 for the generator FOLLOW/MAN/OFF selector (#230),
   **+7 power tile armed-trip bands (#267), +8 pressure tile (#270), +6 NIS thresholds
-  (#271), +4 ITEM_CHANNEL / liveNote (#214)**; the previously recorded "60/60" never
+  (#271), +4 ITEM_CHANNEL / liveNote and +7 the SG FEED corner status (#214)**; the previously recorded "60/60" never
   matched the code either, #235 finding 6).
   **Read the tally from the harness's own summary line** (`ALL n CHECKS PASS` /
   `n FAILURES / n`) — scraping the page for the last `n/n` pair picks up unrelated

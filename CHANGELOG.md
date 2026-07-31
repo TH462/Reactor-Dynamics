@@ -29,6 +29,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   System Scanner block, under the description: **MANUAL — off — main feedwater isolated
   (AFW has the SGs)**.
 
+  The feed card also carries a permanent status word in its top-right corner —
+  **HOLDING** in green when the controller is actually regulating, amber for everything
+  else: **ISOLATED**, **MANUAL**, **OFF**, and **SAT HI / SAT LO**. That last pair is the
+  one worth knowing about. It means the controller is still in AUTO and still trying, but
+  the feed pump is against a stop and there is nothing left to correct with — the AUTO
+  light says you are covered when you are not. The card title was shortened to *SG FEED*
+  to make room, the way the steam dump status already sits in its corner.
+
   Two things had to be true for that to be worth showing. The line follows the plant
   while you hold the pointer still — the scanner otherwise only repaints when the pointer
   moves, so a controller that tripped out while you were reading about it would have gone

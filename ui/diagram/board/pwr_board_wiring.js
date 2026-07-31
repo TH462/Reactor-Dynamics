@@ -182,8 +182,37 @@
     imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc',                      // boron ON / OFF
     imrpq29jo7t: 'boron_conc',                                                 // boron target ppm
     imrsgjmrjfg: 'feed_sg', imrsgjuh7l0: 'feed_sg', imrsgjwq1q0: 'feed_sg',    // feed AUTO / MAN / OFF
-    imro8xhy2me: 'feed_sg'                                                     // SG feed rate setpoint box
+    imro8xhy2me: 'feed_sg',                                                    // SG feed rate setpoint box
+    bdFeedStatus: 'feed_sg'                                                    // the corner status word itself
   };
+  // ---- the SG FEED corner status word (#214) --------------------------------------
+  // The one-word compression of what the scanner says in a sentence. Switched on CODES
+  // (`stand_down`, `saturated`) rather than on the note's English — the note is prose
+  // written for a human, and a UI that pattern-matched it would break silently the first
+  // time someone reworded it.
+  //
+  // AMBER for everything that is not "the controller has this": a stood-down channel and
+  // an operator-driven one are both states where nobody should assume level is being
+  // regulated. SAT is the #210 case — engaged, at a rail, and unable to correct — which
+  // reads AUTO on the lamp and is the most dangerous of the lot, because the lamp says
+  // the controller has it and the controller does not.
+  var BD_OK = '#5aad7c', BD_WARN = '#d8a657';
+  function feedStatus(s) {
+    var c = chan(s, 'feed_sg');
+    if (!c) return { text: '—', color: BD_WARN };
+    if (!c.engaged) {
+      if (c.stand_down === 'condition') return { text: 'ISOLATED', color: BD_WARN };
+      if (c.stand_down === 'scram' || c.stand_down === 'dead') return { text: 'TRIPPED', color: BD_WARN };
+      // No recorded stand-down: the operator is simply driving it. Distinguish a pump
+      // that is actually stopped, because "MANUAL" over a dead pump reads as though
+      // someone is holding a feed rate when nothing is being fed at all.
+      return (CS(s).feed_pump_speed_pct || 0) <= 0
+        ? { text: 'OFF', color: BD_WARN } : { text: 'MANUAL', color: BD_WARN };
+    }
+    if (c.saturated === 'hi') return { text: 'SAT HI', color: BD_WARN };
+    if (c.saturated === 'lo') return { text: 'SAT LO', color: BD_WARN };
+    return { text: 'HOLDING', color: BD_OK };
+  }
   // Module scope so selfTest can reach it — the driver object literal cannot call its
   // own methods from inside selfTest.
   function liveNoteFor(id, s) {
@@ -353,7 +382,18 @@
     { id: 'bdRxPeriodLbl', kind: 'text', name: 'Reactor period label',
       left: 885, top: 490, text: 'PERIOD', fontSize: 12, color: '#8ba4b6', weight: 600, mono: true },
     { id: 'bdRxPeriod', kind: 'value', name: 'Reactor period  ·  sim: true_state.reactor_period_s',
-      left: 960, top: 505, value: '∞', unit: 's', color: '#8ba4b6', fontSize: 14, rAnchor: true }
+      left: 960, top: 505, value: '∞', unit: 's', color: '#8ba4b6', fontSize: 14, rAnchor: true },
+    // Feed controller status, in the SG FEED card's top-right corner (#214). The AUTO/MAN
+    // lamps say THAT the controller is off; nothing said WHY. Same shape as the steam dump
+    // status (imrppq5r7kw): rAnchor, so `left` is the RIGHT edge.
+    //
+    // It fits only because DOC_PATCHES shortens the card title to 'SG FEED'. MEASURED: the
+    // full 'STEAM GEN FEED' runs to x=1812, and the longest status word (ISOLATED, 73 px at
+    // fontSize 15) has to start at 1782 — a 30 px overlap. Owner's call, 2026-07-31: "you
+    // could shorten STEAM GEN to SG and fit it in the corner just like steam dump."
+    { id: 'bdFeedStatus', kind: 'value',
+      name: 'SG feed controller status  ·  sim: automation feed_sg engaged / stand_down / saturated',
+      left: 1855, top: 548, value: 'HOLDING', unit: '', color: '#5aad7c', fontSize: 15, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -475,6 +515,7 @@
     imrppeh5hkb: function (s) { return r0(IN(s).mwe_output); },                                         // generator MW
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
     imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
+    bdFeedStatus: function (s) { return feedStatus(s); },                                              // SG feed controller status (#214)
     imrppyp0wfo: function (s) { return accN2Psi(s); },                                                  // accumulator N2 psig
     imrppztrng1: function (s) { return IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
     imrpq0n2ujv: function (s) { return r0(accFill(s)); },                                               // accumulator fill %
@@ -1357,7 +1398,15 @@
       // at the discharge. Swapping the angles puts suction on the right and discharge on
       // the left at the SAME positions, and the discharge nozzle art now faces the way
       // the water actually goes.
-      imrobpq4a70: { props: { suctionAngle: 0, dischargeAngle: 180 } }
+      imrobpq4a70: { props: { suctionAngle: 0, dischargeAngle: 180 } },
+      // SG FEED card title, shortened from 'STEAM GEN FEED' to free its top-right corner
+      // for the feed controller status word (#214, bdFeedStatus in EXTRA_ITEMS). MEASURED:
+      // the full title runs to x=1812 and the longest status word (ISOLATED, 73 px at
+      // fontSize 15) starts at 1782 — a 30 px overlap. Owner's call, 2026-07-31: "you could
+      // shorten STEAM GEN to SG and fit it in the corner just like steam dump." A patch
+      // rather than a builder edit because pwr_board_data.js is REGENERATED — the same
+      // change made in the builder is lost the next time anyone re-exports.
+      imrqxsodu5j: { props: { title: 'SG FEED' } }
     }
   };
   function applyDocPatches(doc) {
@@ -1630,6 +1679,36 @@
           ? true : JSON.stringify(r);
       })() === true);
       ck('driver: liveNote is null for an item that owns no channel', liveNoteFor('imrppee04aj', s) === null);
+      // ---- the SG FEED corner status word (#214) -----------------------------------------
+      // Switched on CODES, never on the note's English. These pin the mapping, including
+      // the one that matters most: SAT reads AUTO on the lamp while the controller has no
+      // authority left, so a green HOLDING there would be the board vouching for a
+      // controller that has stopped controlling (#210).
+      function fs(engaged, standDown, saturated, pumpPct) {
+        return feedStatus({ automation: { channels: [ { id: 'feed_sg', engaged: engaged,
+                              stand_down: standDown || null, saturated: saturated || null } ] },
+                            control_state: { feed_pump_speed_pct: pumpPct == null ? 100 : pumpPct } });
+      }
+      ck('driver: feed status HOLDING when engaged and off the rails', fs(true).text === 'HOLDING', fs(true).text);
+      ck('driver: feed status is GREEN only when holding',
+        fs(true).color === BD_OK && fs(true, null, 'hi').color === BD_WARN &&
+        fs(false, 'condition').color === BD_WARN);
+      ck('driver: feed status SAT HI / SAT LO at a rail while still ENGAGED',
+        fs(true, null, 'hi').text === 'SAT HI' && fs(true, null, 'lo').text === 'SAT LO',
+        fs(true, null, 'hi').text + '/' + fs(true, null, 'lo').text);
+      ck('driver: feed status ISOLATED on a plant-condition stand-down',
+        fs(false, 'condition').text === 'ISOLATED', fs(false, 'condition').text);
+      ck('driver: feed status MANUAL when the operator has it and the pump is running',
+        fs(false, 'manual', null, 100).text === 'MANUAL', fs(false, 'manual', null, 100).text);
+      ck('driver: feed status OFF, not MANUAL, when the pump is actually stopped',
+        fs(false, null, null, 0).text === 'OFF', fs(false, null, null, 0).text);
+      // The corner only exists because the card title was shortened. If a re-export or an
+      // owner edit restores the long title, the status word overlaps it — silently, since
+      // both still render. Pin the patch that makes the room.
+      ck('driver: DOC_PATCHES shortened the SG FEED card title', (function () {
+        var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === 'imrqxsodu5j'; })[0];
+        return it && it.title === 'SG FEED' ? true : (it ? it.title : 'card missing');
+      })() === true);
       // ---- power tile follows the ARMED power trip (#267) --------------------------------
       // The tile used to read 120 % in every state, because tripSp() took the first
       // `power_range high` row and the table happens to author the backstop first. MEASURED

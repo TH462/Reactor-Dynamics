@@ -646,6 +646,15 @@
       'set, with no level feedback at all, which is safe only while you keep feed matched to steam. ' +
       'There is no speed that is safe at every power — matching flow is about 1000 gpm at full load ' +
       'and 50 gpm at 6 %.', CI, '9.2'),
+    bdFeedStatus: e('SG FEED status',
+      'What the feedwater controller is doing: HOLDING, SAT HI/LO, ISOLATED, MANUAL or OFF.',
+      'The AUTO and MAN lamps tell you WHICH mode the controller is in; this tells you whether it is ' +
+      'actually regulating. HOLDING (green) is the only state where level is being looked after for ' +
+      'you. ISOLATED means the controller stood itself down because main feedwater shut — auxiliary ' +
+      'feedwater has the generators and nobody is trimming level. SAT HI / SAT LO is the trap: the ' +
+      'lamp still reads AUTO, but the pump is against a stop with no authority left to correct with, ' +
+      'so level keeps going the way it is already going. Hover any feed control for the full ' +
+      'sentence.', CI, '14.1'),
     imrsgjmrjfg: e('AUTO (feed)',
       'Engages the three-element feedwater controller.',
       'It captures current level as its setpoint on engage, so engage it at a level you are happy to ' +

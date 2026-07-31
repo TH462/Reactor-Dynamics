@@ -98,7 +98,7 @@
       // 'manual' | null), so a stand-down note can be retired when the thing that
       // caused it clears. Without it the note is write-once — see stepAutomation.
       var ch = { def: chDefs[ci], engaged: false, sp: null, spEff: null, I: 0, lastAct: null,
-                 lastSent: null, note: '', standDown: null, bangMode: 'idle', pvF: null, pvNow: null, rate: null,
+                 lastSent: null, note: '', standDown: null, sat: null, bangMode: 'idle', pvF: null, pvNow: null, rate: null,
                  concMode: 'hold', concBasis: null, concLastSp: null, concSampleSeq: null };
       this.channels.push(ch);
       this.byId[chDefs[ci].id] = ch;
@@ -852,7 +852,7 @@
     }
     c.engaged = !!on;
     c.note = '';
-    c.standDown = null;      // callers that stand a channel DOWN re-set this immediately below
+    c.standDown = null; c.sat = null;      // callers that stand a channel DOWN re-set this immediately below
     if (on) {
       // Setpoint captures the CURRENT reading (hold the plant where the
       // operator had it); integrator preload = bumpless transfer.
@@ -989,6 +989,10 @@
 
   ControlLayer.prototype._stepPid = function (c, ctx, t, dt) {
     var def = c.def;
+    // Cleared every evaluation and re-asserted only by the rail branch below. Latching
+    // it would repeat the mistake the stand-down notes made: a saturation flag that
+    // outlives the saturation is a board tile lying about the controller's authority.
+    c.sat = null;
     if (c.pvF == null) return;
     var pv = c.pvF;
     var ff = def.ff ? def.ff(ctx) : 0;
@@ -1028,6 +1032,10 @@
       // means "error inside the deadband"; this is "error is real but I am not
       // moving", and if the output is pinned at a bound the operator needs to know
       // the channel is out of authority — a feed controller cannot pump water OUT.
+      // `sat` is the same fact as a CODE, so a board tile can show it without matching
+      // English against the strings above. The board needs this (#214) and prose is the
+      // wrong contract for it — reword the note and a silent string match breaks.
+      c.sat  = (u <= def.uMin + 1e-9) ? 'lo' : (u >= def.uMax - 1e-9) ? 'hi' : null;
       c.note = (u <= def.uMin + 1e-9) ? 'at minimum output — no authority to correct'
              : (u >= def.uMax - 1e-9) ? 'at maximum output — no authority to correct'
              : 'steady';
@@ -1211,6 +1219,9 @@
         // UI 2026-07-23 while remaining the conc channel's internal seed/re-anchor).
         pv: def.pvDisplay === false ? null : pv,
         note: c.note || '',
+        // Machine-readable twin of the note, for surfaces that must not parse prose (#214).
+        stand_down: c.standDown || null,
+        saturated: c.engaged ? (c.sat || null) : null,
         standby: !!(c.engaged && def.standby && def.standby(ctx, this)),
       };
       if (def.sp) {
@@ -1240,7 +1251,7 @@
     for (var i = 0; i < this.channels.length; i++) {
       var c = this.channels[i];
       ch[c.def.id] = { engaged: c.engaged, sp: c.sp, spEff: c.spEff, I: c.I, lastAct: c.lastAct,
-                       lastSent: c.lastSent, note: c.note, standDown: c.standDown, bangMode: c.bangMode, pvF: c.pvF, rate: c.rate,
+                       lastSent: c.lastSent, note: c.note, standDown: c.standDown, sat: c.sat, bangMode: c.bangMode, pvF: c.pvF, rate: c.rate,
                        concMode: c.concMode, concBasis: c.concBasis, concLastSp: c.concLastSp,
                        concSampleSeq: c.concSampleSeq };
     }
@@ -1264,7 +1275,8 @@
         // standDown absent = an OLD SAVE (pre-#214). Null is the safe migration: the
         // note simply keeps its saved text until the channel is next toggled, which is
         // exactly the pre-#214 behaviour, rather than being wrongly retired on load.
-        c.note = sv.note || ''; c.standDown = sv.standDown || null; c.bangMode = sv.bangMode || 'idle';
+        c.note = sv.note || ''; c.standDown = sv.standDown || null; c.sat = sv.sat || null;
+        c.bangMode = sv.bangMode || 'idle';
         c.pvF = sv.pvF != null ? sv.pvF : null; c.rate = sv.rate != null ? sv.rate : null;
         // conc batch state: an old save (pre-batch) has none — open the books at
         // the saved target so no phantom dose starts on load.
@@ -1274,7 +1286,7 @@
         c.concSampleSeq = sv.concSampleSeq != null ? sv.concSampleSeq : null;   // null → latch on first evaluation
       } else {
         c.engaged = false; c.sp = null; c.spEff = null; c.I = 0; c.lastAct = null;
-        c.lastSent = null; c.note = ''; c.standDown = null; c.bangMode = 'idle'; c.pvF = null; c.rate = null;
+        c.lastSent = null; c.note = ''; c.standDown = null; c.sat = null; c.bangMode = 'idle'; c.pvF = null; c.rate = null;
         c.concMode = 'hold'; c.concBasis = null; c.concLastSp = null; c.concSampleSeq = null;
       }
       c.pvNow = null;
