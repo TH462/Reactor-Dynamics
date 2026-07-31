@@ -1022,6 +1022,10 @@
                'sg_imbalance_active',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
                'afw_active', 'afw_pump_running', 'afw_block_open', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
+               // SI accumulator discharge isolation valve position (#273) — what the
+               // `accum_aligned` annunciator is gated on. Position, not flow: by the time
+               // `accumulators_discharging` goes true the tanks are already emptying.
+               'accum_valve_open',
                'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating',
                // condensate pump run status (operator-controlled; gates main feedwater)
                'condensate_pump_running',

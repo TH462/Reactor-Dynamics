@@ -360,6 +360,44 @@
       reclassify: [{ condition: 'rcp_secured', priority: 'status', label_learning: 'Reactor Coolant Pumps Secured', label_industry: 'RCP SECURED' }] },
     { id: 'rcp_cavitation', instrument: 'rcp_cavitating',   direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Reactor Coolant Pump Cavitation', label_industry: 'RCP CAVITATION' },
     { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
+    // SI ACCUMULATORS STILL ALIGNED BELOW 1000 psi (6.895 MPa) — the cooldown cue (#273).
+    //
+    // Why it exists. A by-the-book cooldown used to walk straight through the tanks'
+    // 600 psi (4.14 MPa) cover gas with the discharge valve open and dump all four into
+    // the RCS — measured endpoint accum_vol 0.0 %, boron 2310 ppm against a 2500 ppm
+    // charge, the plant arriving at Mode 5 water-solid. The board could show it (SIT fill
+    // and N2 pressure are both wired) but nothing SAID it, so the mission beat was the
+    // only thing that ever caught it and free play repeated the dump every time.
+    //
+    // Why it is an annunciator and NOT an interlock. Every automatic signal a real plant
+    // puts on this valve is an OPEN signal, and the hazard the design guards is spurious
+    // CLOSURE: "Each isolation valve is interlocked to remain open above a specified RCS
+    // pressure value" and "control power is removed from the valves to prevent inadvertent
+    // closure" (U.S. EPR FSAR Tier 2 §7.6.1.2.2, ML091671514); "Verification that power is
+    // removed from each accumulator isolation valve operator when the RCS pressure is
+    // >= [2000] psig ensures that an active failure could not result in the undetected
+    // closure" (NUREG-1431 Rev 4.0 Bases B 3.5.1 SR 3.5.1.5, ML12100A228). The closure
+    // itself stays the OPERATOR's, off this indication — B 3.3.3 names that decision
+    // exactly: RCS pressure is used "to determine whether to close accumulator isolation
+    // valves during a controlled cooldown/depressurization". An autoclose would also be
+    // unsafe here rather than merely unprototypical: discharge is gated on
+    // `aligned && p_coldleg < 4.14 MPa` (pwr_primary.stepAccumulators), so any
+    // pressure-keyed autoclose must fire at or above the cover gas to beat it — the same
+    // condition every modelled LOCA satisfies.
+    //
+    // Setpoint: 1000 psi (6.895 MPa), where LCO 3.5.1 stops requiring the accumulators
+    // OPERABLE ("MODE 3 with RCS pressure > [1000] psig") and LTOP SR 3.4.12.3 starts
+    // requiring them isolated. 400 psi (2.76 MPa) of margin above the cover gas.
+    //
+    // GATED ON THE LINEUP, not on pressure alone — `accum_valve_open`. Isolate and it
+    // clears; a Mode 5 plant that is already isolated never sees it, which is why it
+    // needs no mode reclassify rule. It DOES stand in during a LOCA, and that is correct
+    // and deliberate: there the same fact means "passive injection is about to start".
+    // The label is therefore stated as a lineup, not as an order — the operator decides
+    // which of the two situations they are in, which is the whole point of the cue.
+    { id: 'accum_aligned',  instrument: 'primary_pressure', direction: 'low',      setpoint: 6.895, priority: 'caution',  panel: 'B',
+      condition: 'accum_valve_open',
+      label_learning: 'Accumulators Still Lined Up — RCS Below Their Isolation Pressure', label_industry: 'SI ACCUM ALIGNED < 1000 PSI' },
     { id: 'sbo',            instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
     // Turbine trip / low steam demand. Reclassified in Modes 4/5 ONLY: below the
     // hot band the machine is secured by design and RHR is the heat sink, so zero

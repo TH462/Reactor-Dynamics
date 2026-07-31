@@ -153,7 +153,7 @@ var BASELINES = {
   // BOTH moved this number from 29, and the merge carries both sides' quotes. Taking either
   // side's figure would have shipped a drift. This is the second time this exact trap has been
   // recorded here — see the "22 is MEASURED on the merged tree" note above.
-  'run_hardrules.js':      { code: 0, score: '33checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '34checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -285,10 +285,10 @@ var BASELINES = {
   // thresholds were picked up by Part A automatically, without anyone adding a case. That is
   // the design — a new setpoint gets range-checked for free, and the count moving is the
   // nudge to notice it. 50 → 52 thresholds audited.
-  'run_reachability.js':   { code: 0, score: '57checks 0failed' },
+  'run_reachability.js':   { code: 0, score: '58checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
-  'run_m4.js':             { code: 0, score: '25/25 135passed' },
+  'run_m4.js':             { code: 0, score: '26/26 147passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   'run_m5.js':             { code: 0, score: '19/19 79passed' },

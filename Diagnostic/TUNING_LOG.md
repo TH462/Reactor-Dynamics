@@ -115,6 +115,69 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30m — #273 CLOSED: the cue shipped, the interlock did not, and the warning margin is thinner than the fix  ✅
+
+*(OWNER RULING, 2026-07-30: "do as you suggest.")* — on the recommendation in 2026-07-30l: no
+autoclose, build the annunciator.
+
+**What shipped.** `accum_aligned` / **SI ACCUM ALIGNED < 1000 PSI** (06 PWR-A32, panel B,
+caution) at **1000 psi (6.895 MPa)**. Three pieces:
+
+- **A new indication, `accum_valve_open`** (`pwr_engine.js` indications block, registered in
+  the config status list). Position, not flow — `accumulators_discharging` only goes true once
+  the tanks are already emptying, which is a full instrument-lag too late to be a cue. Status
+  passthrough, so it draws no PRNG number (the cross-step stream rule).
+- **A generic `condition` field on the alarm schema** (`control_kernel._evalAlarms`), reusing
+  the same `_evaluateCondition` the trips and actuations already use. Kernel stays
+  plant-agnostic (HR3); it reads instruments (HR1); it can only ever narrow, since an
+  unresolvable name evaluates false.
+- **A guard in `_buildAlarmModel`: a conditioned alarm is never lo_lo-paired.** Sibling pairing
+  is "same instrument, less-extreme low sibling", and `primary_pressure` already carries
+  `pzr_pressure_low` (14.82) and `_lolo` (12.41). Today the pairing would be a **no-op** —
+  6.895 is far below both — and that is exactly the kind of coupling that rots silently when a
+  setpoint later moves. One line, stated rather than left to be discovered.
+
+**Why the gate is the interesting part.** Pressure alone was never the condition. A Mode 5
+plant sits below 1000 psi indefinitely with the tanks correctly isolated, so an ungated alarm
+would stand in permanently and be normalized — the exact habit this sim exists to break.
+**Proven by injection**: with the `condition` line removed, three of the six `run_m4` checks go
+red (*silent in Mode 5*, *isolating clears the cue*, *not paired as an escalation*). `run_m4`
+25/25 135 → **26/26 147**.
+
+**THE MEASUREMENT THAT MATTERS, and it is not flattering.** Full-stack (M4+M5+M6), the campaign
+cooldown driver, run twice:
+
+| cooldown | cue annunciated | first discharge | margin | accum end |
+|---|---|---|---|---|
+| **not isolated** | 1.9 plant-min @ **1000 psi (6.894 MPa)** | 2.7 plant-min | **0.9 plant-min** | **0.0 %** |
+| **isolated at 1000 psi** | never | never | — | **100 %** |
+
+**~54 plant-seconds of warning**, which at 30× is under two seconds of wall clock. So the
+annunciator does **not** on its own make the defect safe — the procedure step does, and the cue
+is a backstop plus a post-mortem (it stays lit after the dump, beside SIT fill at 0 %). Two
+honest consequences, both now written down rather than left implicit: the margin is a
+**compression artifact**, not a setpoint problem — a real plant takes most of an hour across
+that band — and **isolating on schedule means the cue never comes in at all**, so it cannot be
+used to confirm you did it right. Both are stated in **06 PWR-A32** and in the new
+**12 §14.1**.
+
+**The setpoint was NOT raised to buy margin.** 1000 psi is sourced (LCO 3.5.1 applicability /
+LTOP SR 3.4.12.3); moving it to make a number look better would have traded a sourced value for
+an invented one, which is what #260 and #263 are the record of.
+
+**Item 3 done in the same pass.** New **12 §14.1** names the two Compressed rates that had been
+left implicit: **ECCS injection pacing is 22–440× real** (so no time-to-recover figure from an
+injection transient is a plant number — the TMI *behaviour* is what to learn, not the duration),
+and the cooldown depressurisation rate above.
+
+**Gates:** `run_all` **OK, 33 runners at baseline** (`run_m4` 26/26 147, `run_reachability`
+57 → **58**); board_check **127/127**; manual set **Rev 18**, `run_manual_units` 272 pairs / 0,
+`run_manual_rev` 12 / 0.
+
+**Still open, deliberately:** **#276**, the auto-OPEN half — a free-play heatup still arrives at
+Mode 1 with the tanks isolated. It was piece (2) of the recommendation and was not authorised;
+prose-mitigated only, in 05 Phase A step A5.
+
 ### 2026-07-30l — #273 item 1: the manual now carries the isolation step (and its mirror), and the interlock question got its evidence pass  ✅
 
 **Item 1 done.** It was deferred in 2026-07-30k only because the workbench lane had all 13

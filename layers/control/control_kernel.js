@@ -167,6 +167,13 @@
     for (var a = 0; a < alarms.length; a++) {
       var A = alarms[a];
       if (A.direction !== 'low') continue;
+      // A CONDITIONED alarm is never an escalation of a bare one (#273). Pairing is
+      // "same instrument, less-extreme sibling", which reads a lineup-gated annunciator
+      // deep on the scale as a lo_lo and would silently make it require its sibling's
+      // condition too. Today that would be a no-op — the accumulator cue sits at
+      // 6.895 MPa, far below the 12.41 MPa lo_lo — and a no-op coupling is exactly the
+      // kind that rots unnoticed when a setpoint later moves.
+      if (A.condition) continue;
       var sib = null;
       for (var b = 0; b < alarms.length; b++) {
         var B = alarms[b];
@@ -542,6 +549,12 @@
     for (var i = 0; i < alarms.length; i++) {
       var alarm = alarms[i];
       var active = this._alarmRaw(alarm, ins);
+      // Optional LINEUP GATE (#273): an alarm may name a boolean indication that must
+      // also hold. Same evaluator the trips and actuations use, so it reads INSTRUMENTS
+      // (HR1) and the condition is plant DATA, not kernel knowledge (HR3). It can only
+      // ever narrow — an unresolvable name evaluates false, so a missing indication
+      // silences the alarm rather than firing it on a condition nobody checked.
+      if (active && alarm.condition) active = this._evaluateCondition(alarm.condition, ins);
       // lo_lo escalation: fires only once its lo sibling's condition holds.
       var sib = this._loSibling[alarm.id];
       if (active && sib) active = active && this._alarmRaw(sib, ins);

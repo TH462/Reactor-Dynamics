@@ -477,6 +477,16 @@
       rhr_active: s.rhr_active,
       rhr_valve_open: !!s.rhr_valve_open,
       accumulators_discharging: s.accumulators_discharging,
+      // SI accumulator discharge isolation valve POSITION (#273). `accumulators_discharging`
+      // above is flow — it only goes true once the tanks are already emptying, which is one
+      // instrument-lag too late to be a cue. A real plant indicates this valve's position
+      // from limit switches and the operator isolates off it during a cooldown ("RCS pressure
+      // … to determine whether to close accumulator isolation valves during a controlled
+      // cooldown/depressurization", NUREG-1431 Rev 4.0 Bases B 3.3.3, ML12100A228). The
+      // `accum_aligned` annunciator in pwr_control.js is gated on THIS, so the cue is about
+      // the lineup rather than about pressure alone. Status passthrough — no lag, no noise,
+      // no PRNG draw (see the appended-instrument rule in the config's status list).
+      accum_valve_open: s.accumulator_valve_open !== false,
       condenser_cooling_available: s.condenser_cooling_available,
       safety_relief_active: s.safety_open || s.safety_flow > 0,
       rcp_cavitating: !!s.rcp_cavitating,

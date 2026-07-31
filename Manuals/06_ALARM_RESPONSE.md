@@ -2,7 +2,7 @@
 
 **Document:** PWR-ARP-01  
 **Title:** Annunciator Response — PWR  
-**Revision:** 17  
+**Revision:** 18  
 
 ---
 
@@ -98,6 +98,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A29 | LO TAVG (P-12) | warning | A |
 | PWR-A30 | CHG FLOW HI | caution | A |
 | PWR-A31 | PZR LVL DEV LO | caution | A |
+| PWR-A32 | SI ACCUM ALIGNED &lt; 1000 PSI | caution | B |
 
 ---
 
@@ -434,6 +435,22 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Immediate operator actions** | 1) Verify charging at maximum and letdown isolated — recover any make-up capacity that is being wasted. 2) Confirm subcooling margin and pressure; falling level with falling pressure is a leak, falling level with rising pressure is not. 3) Enter **PWR-E04** (loss of reactor coolant). 4) Prepare for safety injection if level continues down toward **PZR LVL LO LO** at 12 %. |
 | **Companion alarm** | **A30** normally comes in first and stays in. **A30 alone** = a leak inside make-up authority, held. **A30 with A31** = make-up has lost it. That pair is the diagnosis. |
 | **If A31 comes in without A30** | Charging is *not* working hard, so this is probably not a leak — suspect the level or Tavg instrument, or charging isolated. Cross-check level against the wide-range indication and Tavg against the loop temperatures. |
+
+---
+
+## PWR-A32 — Accumulators Still Lined Up (SI ACCUM ALIGNED &lt; 1000 PSI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Primary pressure below **1000 psi (6.895 MPa)** **and** the accumulator discharge isolation valve still **open** |
+| **Means** | The safety-injection accumulators are aligned to the reactor coolant system and pressure has entered the band where they should be isolated. They are **passive**: nitrogen behind a check valve. Nothing automatic shuts them, and the safety-injection block set entering a cooldown blocks **pumps**, not these tanks. |
+| **Why gated on the valve** | Pressure alone is not the condition. A Mode 5 plant is below this setpoint all day with the tanks correctly isolated, and an alarm on pressure alone would stand in permanently and be normalized. This one clears the moment you isolate — and never comes in at all if you isolate on schedule. |
+| **Automatic actions** | **None, deliberately.** There is no autoclose interlock. Real plants power these valves *open* and remove control power to prevent inadvertent closure; the closure is the operator's, made off this indication. An automatic closure keyed on falling pressure would also shut them during a **LOCA**, which is precisely when they must inject. |
+| **Immediate operator actions** | **On a planned cooldown:** isolate the accumulators — shut the discharge isolation valve on the ECCS side of the board. Confirm SIT fill and cover-gas pressure hold steady afterwards. See **PWR-N15** step 3 and **05** Phase C step C3. |
+| **On a LOCA or unplanned depressurization** | **Do not isolate.** The same annunciator here means passive injection is about to start, which is the design intent. The tile states a lineup, not an order — deciding which situation you are in is the point of it. |
+| **If it stays in after you isolate** | The valve did not shut. Check its position indication; the alarm reads valve position, not the command. |
+| **If you see it with the tanks already empty** | It came in about **1 minute of plant time** before the first discharge on a brisk cooldown, and it stays lit afterwards. Lit tile plus SIT fill at 0 % is the post-mortem: this is why the tanks emptied and why RCS boron rose toward the 2500 ppm accumulator charge. |
+| **Watch for** | **Time acceleration.** That ~1 plant-minute of warning is a couple of seconds of wall clock at 30×. Cooldown rates in this trainer are compressed (see **12** §14) — slow down through the band rather than relying on reaction time. |
 
 ---
 

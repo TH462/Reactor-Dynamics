@@ -13,6 +13,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The board now tells you to isolate the accumulators — SI ACCUM ALIGNED < 1000 PSI**
+  (#273, closing it). A caution annunciator on panel B at **1000 psi (6.895 MPa)**, and the
+  first alarm in the plant **gated on a lineup as well as a reading**: it also requires the
+  discharge isolation valve indication to read *open*, so a correctly-isolated Mode 5 plant —
+  which sits below that pressure all day — never sees it. Isolate and it clears; isolate on
+  schedule and it never comes in.
+
+  **There is no autoclose interlock, and that is the decision, not an omission.** Real plants
+  power these valves *open* and remove control power to prevent inadvertent closure; the
+  closure is the operator's, made off RCS pressure indication. An automatic closure keyed on
+  falling pressure would also shut the accumulators during a LOCA, which is exactly when they
+  must inject. The tile therefore states a lineup rather than an order — on a LOCA the same
+  annunciation means the opposite thing.
+
+  **Measured, and worth knowing before you rely on it:** on a brisk cooldown the cue precedes
+  the first discharge by about **one minute of plant time** — under two seconds of wall clock
+  at 30×. The procedure step is the defence; the annunciator is the backstop and the
+  post-mortem. Both compressed rates behind that number, and the 22–440× ECCS injection
+  pacing, are now declared in **12 §14.1**.
+
 ### Fixed
 - **The cooldown procedures now tell you to isolate the accumulators** (#273) — manual set
   **Rev 17**. `04` PWR-N15 and `05` Phase C both descended past the accumulators' 600 psi
