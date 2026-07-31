@@ -43,7 +43,11 @@
   <strong>offline</strong> — on a machine with no internet connection, or one where
   you would rather not depend on this site being up.</p>
 
-  <p><a class="btn-download" href="download/latest.zip" download>Download Reactor Dynamics
+  <!-- The href is the STABLE path site/make_download.js writes, so this page never needs
+       editing per release. The SAVED filename is stamped from site/release.js by
+       site/nav.js (#275) — a file called "latest.zip" on someone's desktop says nothing
+       about what it is or how old it is. The bare `download` here is the no-JS fallback. -->
+  <p><a class="btn-download" id="dlZip" href="download/latest.zip" download>Download Reactor Dynamics
   <span class="mono">(.zip)</span></a></p>
 
   <p class="dl-note">You do not need this to play. The
@@ -100,6 +104,7 @@
 
 
 <script src="site/version.js"></script>
+  <script src="site/release.js"></script>  <!-- Alpha X.Y.Z — names the saved zip (#275) -->
   <script src="site/nav.js"></script>
 </body>
 </html>

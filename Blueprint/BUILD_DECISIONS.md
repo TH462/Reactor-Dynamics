@@ -37,6 +37,57 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-30i — #275: the download is named by the release string, not by the path it is served from
+
+**The defect.** `download.html`'s button carried a **bare** `download` attribute on
+`href="download/latest.zip"`, so the browser saved the file under the href's own basename:
+**`latest.zip`**. No product name, no *Alpha*, no version. `site/make_download.js` had always
+written a correctly-named versioned copy (`Reactor_Dynamics_Alpha_1.11.0.zip`) beside it, and
+the HTML *inside* the zip has been correctly named since the bundler was written — the
+anonymous wrapper was the only broken link in the chain, and it is the only one the visitor
+ever sees.
+
+**Decision — stamp the name, do not move the link.** The stable href is deliberate
+(`make_download.js`'s own comment: "download.html links a STABLE path so it never needs
+editing per release"), and pointing it at the versioned file would have bought a correct
+filename for a **new hand-edit in the release procedure** — in a repo where the Alpha 1.10.0
+and 1.11.0 developer-changelog rolls were both missed, adding a fourth thing to remember is
+the wrong currency. So the href stays, and `site/nav.js` sets `download=` from
+`window.RD_RELEASE` at `DOMContentLoaded`. `nav.js` already stamps `RD_VERSION` into the
+footer the same way, and `site/release.js` is already the one hand-edited version string that
+`make_portable.js` and `make_download.js` both read. **Net new per-release steps: zero.**
+
+**Two alternatives rejected.** (1) *Rewrite `download.html` at build time*, the way
+`stamp_version.js` writes `version.js` — but those are declared generated placeholders, while
+`download.html` is hand-authored source, and mutating it at deploy makes the local file
+silently differ from the deployed one. (2) *`Content-Disposition` in `vercel.json`* — puts the
+version in a third hand-edited file.
+
+**Degradation is the point.** With JS off, the bare `download` attribute is still in the
+markup and the file still saves — as `latest.zip`, i.e. exactly today's behaviour. The failure
+mode is *no better than before*, never *a confidently wrong version number*, which is the
+failure mode a hard-coded fallback would have had.
+
+**Gated: `run_portable.js` +7 checks (116 → 123), new `DOWNLOAD` rule.** Every way this
+wiring breaks leaves a button that still works and still downloads — drop the `release.js`
+tag, rename the anchor id, load the scripts in the wrong order, or change the filename prefix
+in one of the two files that spell it, and nothing anywhere goes red while the site quietly
+hands out the wrong name. The section pins all of that plus the no-JS fallback, and asserts
+`nav.js` and `make_download.js` construct the **identical** name by extracting the prefix,
+the sanitizer regex and the extension from each source rather than re-spelling the name here
+(which would be a fourth place to drift). **All seven were driven red by injection** — eight
+mutations, each caught — before being counted green (HR10; the `verify-checks-by-injection`
+rule). Measured after: headless Edge over `file://` reports
+`download="Reactor_Dynamics_Alpha_1.11.0.zip"`, byte-identical to what `make_download.js`
+writes.
+
+**Noted, not fixed:** `make_download.js`'s sweep of stale artifacts matches `*.zip` only, so a
+leftover `Reactor_Dynamics_Alpha_1.10.0.html` persists in a local `download/`. `download/` is
+gitignored and Vercel checks out fresh, so nothing stale can deploy; it is local litter, and
+out of this issue's scope.
+
+---
+
 ## 2026-07-30h — #249/#273: the surplus axis is fitted, and "could the gauge even get there?" is now a gate
 
 **Decision 1 — `level_per_mass_surplus` is fitted to real geometry, not chosen.** 300 → **776 %/frac**

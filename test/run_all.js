@@ -244,7 +244,7 @@ var BASELINES = {
   // was ignored while the buildCommand shelled out to tools/make_portable.js -- and no
   // local build could catch it, because locally nothing is ignored. Injection-verified:
   // re-excluding `tools` reddens it.
-  'run_portable.js':       { code: 0, score: '116checks 0failed' },
+  'run_portable.js':       { code: 0, score: '123checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
