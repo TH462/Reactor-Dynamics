@@ -81,7 +81,15 @@ var BASELINES = {
   // because moving a physics constant by 3.6x left ALL 32 gates green — nothing in the
   // suite asserted how fast a steam generator empties, so the value could drift back with
   // nothing to say so. Fails at 13.0 s against its 25-60 s band on the old constant.
-  'run_behavior.js':       { code: 0, score: '39pass 0xfail' },
+  // 40 since 2026-07-31 (#284): +TR-1e. Two turbine-model defects that shared a cause —
+  // nothing in the suite ever compared what the turbine was ADMITTED against what the
+  // reactor MADE, because every other check runs where the two agree. (a) The rated-speed
+  // hold asked `generator_load > 0` rather than whether the BREAKER was shut, so a Manual
+  // load target of 0 MWe while synchronised coasted the rotor 1800 -> 0 rpm with the unit
+  // still on line; (b) `mwe_output` was derived from `power_pct`, ignoring the governor
+  // and the dump, so a 50 MWe ask read 98.8 MWe indicated with the dump venting 48 %.
+  // Fails 3 checks on the old engine (0 rpm end and minimum, 98.78 MWe vs a 50 ±3 band).
+  'run_behavior.js':       { code: 0, score: '40pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -164,7 +172,11 @@ var BASELINES = {
   // BOTH moved this number from 29, and the merge carries both sides' quotes. Taking either
   // side's figure would have shipped a drift. This is the second time this exact trap has been
   // recorded here — see the "22 is MEASURED on the merged tree" note above.
-  'run_hardrules.js':      { code: 0, score: '39checks 0failed' },
+  // 40 since 2026-07-31 (#284): the fix itself moved nothing here — the BUILD_DECISIONS
+  // write-up did, by quoting #230's "Planned offline, no trip." ruling to explain why the
+  // new `isOnLine` predicate deliberately EXCLUDES `turbine_tripped`. Another worked example
+  // of the warning above: re-run this after the docs, not after the code.
+  'run_hardrules.js':      { code: 0, score: '40checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

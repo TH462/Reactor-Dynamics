@@ -37,6 +37,85 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-31d — #284: the test was the LOAD, not the BREAKER; and the gauge read the CORE, not the turbine
+
+**Found while disproving #138**, which was filed as "aggressive Manual load cuts can trip the
+plant". They do not — measured across cuts of 10/35/39/50/80/100 MWe at hot full power, full
+stack: no scram and no PORV lift in any of them. Two other things turned up in the traces.
+
+### The decision: what does "synchronised" mean in this model?
+
+`stepTurbine` had three branches — tripped, "synchronised", and "connected but unloaded" — and
+the second was selected by **`generator_load > 0`**. That conflates two different questions. A
+synchronous machine tied to the grid spins at rated at **any** load, including zero; it motors
+rather than decelerates. The load tells you what it is *doing*, the breaker tells you what is
+*holding* it.
+
+The consequence was measurable and absurd: `set_load_target 0 MWe` while synchronised sent the
+rotor **1800 → 0 rpm over ~5 plant-minutes** with `turbine_tripped` false, `load_mode` still
+`manual`, and the breaker never opened.
+
+**Ruled: the predicate is the breaker.** New shared `RD.LoadMode.isOnLine(s)` —
+`s.load_mode !== 'disconnected'`. Two deliberate choices inside it:
+
+- **`turbine_tripped` is NOT part of it.** A trip and an open breaker are different events —
+  that is #230's ruling (*OWNER RULING 2026-07-28: "Planned offline, no trip."*), and callers
+  that care about the trip already test it separately. Folding it in here would quietly
+  re-merge the two concepts #230 separated.
+- **It lives in `load_mode.js`, not in the PWR engine.** `load_mode` is the shared module that
+  owns the concept; open-coding `!== 'disconnected'` at a third site is how the
+  `generator_load > 0` shortcut got written in the first place.
+
+**Why this does not re-break #235.** The coastdown branch exists because cold Modes 3/5 spawn
+untripped with no load and no steam, and without a friction term they pinned 1800 rpm on a cold
+plant. Those ICs are authored `load_mode: 'disconnected'` (`pwr_engine.js:1446`,
+`onLine ? 'follow' : 'disconnected'`), so they still take the coastdown branch. Leg C of the new
+probe asserts that from the other side, so an over-reaching future fix reddens rather than
+silently restoring #235.
+
+**Unchanged:** the engine still has no no-load admission model, so an off-line untripped rotor
+coasts rather than holding rated ready to re-synchronise. That limitation was already declared
+in the note over `RD.LoadMode.disconnect` and is out of scope here (cf. #238).
+
+### The second defect: `mwe_output` was never a turbine number
+
+```
+s.mwe_output = (s.power_pct / 100) * mwe_rated * (rpm / rpm_rated) * (vacuum / vacuum_rated)
+```
+
+It reads the heat the **reactor** makes and ignores the governor and the steam dump entirely.
+Every existing check ran at a state where flux and turbine admission agree — steady power, or a
+trip that zeroes both — so **a 2× error on a board gauge sat behind 34 green runners**.
+Measured, `set_load_target 50 MWe` at hot full power: **98.8 MWe indicated with the dump venting
+48 %** to the condenser. The operator asked for 50, the gauge said 99.
+
+Now driven by `steam_flow_normalized` — turbine admission. Same case reads **50.02 MWe**.
+
+**Calibration is preserved exactly, not approximately.** `steam_flow_rated` is 1.0 in these
+normalized units and the governor sits at 100 % at rated pressure, so the new form is identical
+to the old at full power. Verified against the five shipped ICs and the table `Manuals/09` §12
+publishes — `hot_full_power` 100.0, `50_percent` 50.00, `5_percent` 6.36, `hot_zero_power` 0,
+`cold_shutdown` 0 — so no manual edit was required. What moves is only the states where the two
+numbers **disagree**: a rejection ride-out, an MSIV closure (`steam_flow_normalized` is forced
+to 0 there), and the decay-heat tail after a trip. The pressure term already lives inside
+`steam_flow_normalized`, so a plant over-delivering on stored SG energy walks back down as the
+secondary sags instead of holding an unphysical output.
+
+### The gate
+
+`run_behavior` 39 → 40 — **TR-1e**, four legs: the rotor holds rated at zero load on line, the
+gauge follows the ask through a dump ride-out, the rotor still coasts off line (#235), and rated
+output is unchanged.
+
+**Verified by injection, not written beside the fix.** With both engine lines reverted it fails
+**3 checks** — 0 rpm at end, 0 rpm minimum, and 98.78 MWe against a 50 ±3 band. Legs C and D stay
+green on the old engine *by design*: they assert what the fix must **not** change, so a red there
+would mean the fix over-reached rather than that it worked.
+
+`board_check` 143/143 unchanged.
+
+---
+
 ## 2026-07-31c — #135: the SG drained 2.7× too fast, and no gate could tell
 
 **The issue was NOT stale, and its stated fix was arithmetically impossible.** #135 filed the

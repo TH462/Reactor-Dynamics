@@ -22,6 +22,43 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **A synchronised turbine no longer coasts to a stop, and the MWe gauge now reads the
+  turbine instead of the reactor** (#284). Two defects in one file, with one cause: nothing
+  in the plant model ever asked what the turbine was *admitted* as opposed to what the core
+  *made*.
+
+  **The rotor.** The rated-speed hold was gated on `generator_load > 0` — on the **load**,
+  not on the **breaker**. So sliding the Manual load target to **0 MWe while synchronised**
+  dropped the machine into the offline coastdown branch: measured, **1800 → 0 rpm over ~5
+  plant-minutes**, with `turbine_tripped` false, `load_mode` still `manual`, and the breaker
+  never opened. A synchronous machine tied to the grid spins at rated at any load, including
+  zero — it motors rather than decelerates. The test is now the breaker
+  (`RD.LoadMode.isOnLine`, new and shared), so the on-line case holds 1800 rpm and the
+  offline case is untouched. That matters: the coastdown branch is load-bearing for **#235**,
+  where cold Modes 3/5 spawn untripped with no load and no steam and used to pin 1800 rpm on
+  a cold plant. Those ICs are authored `disconnected`, so they keep the coastdown and #235
+  stays fixed — pinned from both sides by the new probe.
+
+  **The gauge.** `mwe_output` was computed from `power_pct`, which ignores the governor and
+  the steam dump entirely. During a load rejection the dump vents the difference to the
+  condenser while the reactor stays up — so the board read **full electrical output for
+  steam that never reached the turbine**. Measured, a `set_load_target 50 MWe` ask at hot
+  full power settled at **98.8 MWe indicated with the dump at 48 %**: the operator asked for
+  50 and the gauge said 99. It now follows `steam_flow_normalized` (turbine admission), and
+  the same case reads **50.02 MWe**.
+
+  **Calibration is preserved exactly.** `steam_flow_rated` is 1.0 in these normalized units
+  and the governor sits at 100 % at rated pressure, so the new form is identical to the old
+  at full power. Verified across every shipped initial condition — `hot_full_power` 100.0,
+  `50_percent` 50.00, `5_percent` 6.36, `hot_zero_power` 0, `cold_shutdown` 0 — which is the
+  table `Manuals/09` §12 publishes, unchanged. What moves is only the states where flux and
+  turbine admission **disagree**: a rejection ride-out, an MSIV closure, and the decay-heat
+  tail after a trip.
+
+  Found while investigating **#138**, which is closed as stale in the same batch — no manual
+  load step of any magnitude trips this plant (cuts of 10/35/39/50/80/100 MWe: no scram, no
+  PORV lift).
+
 - **The overfill/level contradiction in `abuse_porv_walkaway` is gone, and is now asserted**
   (#136, closing it). The probe used to end at **120 % primary inventory with 7 % pressurizer
   level** — an overfilled RCS whose level gauge read nearly empty. Re-measured: **120.0 %

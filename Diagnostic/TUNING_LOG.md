@@ -115,6 +115,76 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31d — #138 was stale; the measurement that proved it found #284  ✅
+
+**Asked to check #138 for staleness first. It was stale — twice over, in opposite
+directions.** Filed as "aggressive Manual load cuts (e.g. 1000 → 500 MWe) can trip the plant;
+some missions lack trip-catch branches".
+
+**The trip half does not reproduce at any step size.** Measured full stack (M4+M5+M6),
+`hot_full_power`, free-play lineup, accel 10×, seed 4242, 20 plant-min per case, step at
+t+60 s:
+
+| target | cut | scram | end power | end Tavg | dump |
+|---|---|---|---|---|---|
+| 90 MWe | 10 | no | 89.4 % | 585.0 °F (307.2 °C) | 0 % |
+| 65 MWe | 35 | no | 63.0 % | 598.8 °F (315.0 °C) | 0 % |
+| 61 MWe | 39 | no | 58.7 % | 600.9 °F (316.1 °C) | 0 % |
+| 50 MWe | 50 | no | 98.8 % | 580.0 °F (304.4 °C) | 48 % |
+| 20 MWe | 80 | no | 98.0 % | 580.4 °F (304.7 °C) | 77 % |
+| 0 MWe | 100 | no | 97.5 % | 580.7 °F (304.8 °C) | 96 % |
+
+Two reasons it expired: **"1000 → 500 MWe" describes a plant that no longer exists** (the
+2026-07-21 identity ruling made this the SLX-100, `mwe_rated` 100.0), and **#219 built the
+catch** — above `dump_load_reject_mwe` (40 MWe) the fast dump arms and the plant rides out;
+below it the Tavg program absorbs the step. Worst case is the *sub-arm* cut at 600.9 °F
+(316.1 °C): annunciates HI TAVG at 594.0 °F (312.2 °C), **34.1 °F (18.9 °C)** below the Tavg
+scram at 635.0 °F (335.0 °C). Nothing gets near it.
+
+**The trip-catch half had already been fixed and had gone stale the other way** — `pwr_tour`
+carries the `load_lost` beat, but it is now unreachable and its prose still teaches *"the
+reactor tripped rather than ride the shock"* (HR9). Not repaired in place *(OWNER DIRECTIVE,
+2026-07-31: "Don’t edit the scenario they are being completely redone.")*. #138 closed;
+`ISSUES_AND_FINDINGS.md` I-24 marked DISPROVEN with the measurement.
+
+**#284, found while measuring — two turbine defects sharing one cause.** Nothing in the model
+ever asked what the turbine was **admitted** as against what the core **made**, because every
+existing check runs where the two agree.
+
+1. **A synchronised rotor coasted to rest.** The rated-speed hold asked `generator_load > 0`
+   — the **load**, not the **breaker**. `set_load_target 0 MWe` while synchronised therefore
+   fell into the offline coastdown branch: measured **1800 → 0 rpm over ~5 plant-minutes**,
+   `turbine_tripped` false, `load_mode` still `manual`, breaker never opened. Fixed with a new
+   shared predicate `RD.LoadMode.isOnLine(s)` (`load_mode !== 'disconnected'`), deliberately
+   **not** including `turbine_tripped` — a trip and an open breaker are different events
+   (#230). Now holds 1800 rpm.
+2. **`mwe_output` was derived from `power_pct`.** It ignored the governor and the dump, so
+   during a rejection the board read full output for steam that never reached the turbine:
+   a 50 MWe ask settled at **98.8 MWe indicated with the dump at 48 %**. Now follows
+   `steam_flow_normalized`; the same case reads **50.02 MWe**.
+
+**Why the fix does not re-break #235.** The coastdown branch exists because cold Modes 3/5
+spawn untripped with no load and no steam and used to pin 1800 rpm. Those ICs are authored
+`load_mode: 'disconnected'` (`pwr_engine.js:1446`), so they still take the coastdown branch —
+pinned from that side by leg C of the new probe, which would redden if the fix over-reached.
+
+**Calibration preserved exactly.** `steam_flow_rated` is 1.0 in these normalized units, so the
+new form is identical to the old at rated. Verified across every shipped IC —
+`hot_full_power` 100.0, `50_percent` 50.00, `5_percent` 6.36, `hot_zero_power` 0,
+`cold_shutdown` 0 — matching the `Manuals/09` §12 table, which therefore needed no edit.
+
+**The lesson worth carrying: a 2× error on a board gauge survived 34 green runners** because
+no check ever compared turbine admission against core power. `run_behavior` gains **TR-1e**
+(39 → 40), and it was **verified by injection, not written beside its fix** — reverting both
+engine lines reddens 3 checks (0 rpm end and minimum, 98.78 MWe against a 50 ±3 band). Legs C
+and D stay green on the old engine *by design*: they assert the two things the fix must not
+change, so a red there would mean the fix over-reached.
+
+**Also noticed, not fixed** (out of scope, filed here so it is not lost): `behavior_pwr.js`'s
+`COVERAGE` map declares the key **`TR-14` twice** — once as the #135 LOFW drain probe and
+once as `'existing:campaign SBO fact'`. The second wins, so the coverage report describes
+TR-14 wrongly. Cosmetic; the probe itself runs and passes.
+
 ### 2026-07-31c — #135: the SG drained 2.7× too fast, and nothing in the suite could tell  ✅
 
 **Checked for staleness first, as asked — it was not stale, and its stated fix was

@@ -263,6 +263,29 @@ a handful of UI/doc items.
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+- **A synchronised turbine coasted to a stop, and the MWe gauge read the reactor instead of
+  the turbine (2026-07-31, #284 — found while disproving #138).** Two defects in one file
+  with one cause: **nothing in the model ever asked what the turbine was ADMITTED as against
+  what the core MADE**, because every existing check runs at a state where the two agree. So
+  a **2× error on a board gauge sat behind 34 green runners**. (a) The rated-speed hold was
+  gated on `generator_load > 0` — the **load**, not the **breaker** — so sliding the Manual
+  target to **0 MWe while synchronised** dropped into the offline coastdown branch: measured
+  **1800 → 0 rpm over ~5 plant-minutes**, `turbine_tripped` false, breaker never opened. A
+  machine tied to the grid motors, it does not decelerate. (b) `mwe_output` came from
+  `power_pct`, ignoring the governor and the dump, so during a rejection the board read full
+  output for steam that never reached the turbine — a 50 MWe ask settled at **98.8 MWe with
+  the dump at 48 %**; it now reads **50.02**. Three things to know. The fix is a new shared
+  **`RD.LoadMode.isOnLine(s)`**, and it deliberately **excludes `turbine_tripped`** — a trip
+  and an open breaker are different events (#230). It does **not** re-break **#235**: the
+  coastdown branch is still what cold Modes 3/5 take, because those ICs are authored
+  `disconnected`, and the new probe pins that side too. And **calibration is exact, not
+  approximate** — `steam_flow_rated` is 1.0 in these normalized units, so the new form is
+  identical to the old at rated, verified across all five shipped ICs against the
+  `Manuals/09` §12 table, which needed no edit. `run_behavior` 39 → 40 (**TR-1e**, verified
+  by injection: 3 checks red on the old engine). **#138 closed as stale** in the same batch —
+  no manual load step of any magnitude trips this plant, and its "1000 → 500 MWe" example
+  predates the SLX-100 identity.
+
 - **The SCRAM button's RESET half was inert from the day it was drawn, and 18 green checks
   did not notice (2026-07-31, #75).** The board has read **PRESS TO RESET** under SCRAMMED
   since it was built; `onScramReset` was an empty stub commented *"no engine reset command;
@@ -364,25 +387,6 @@ anything here that is standing procedure rather than news belongs in the list be
   even though it works on the site, because an inlined `<style>` resolves against the
   document's directory. **ZIP the file before emailing** — several mail providers strip
   `.html` attachments silently.
-
-- **The plant can heat itself up now — the pump-heat netting is deleted (2026-07-29, #251).**
-  The SG used to subtract RCP heat out of its own steam balance (`max(0, Q_sg − Q_pump)`,
-  booked as "blowdown/ambient losses"), sized to cancel it identically at every flow because
-  the turbine drew steam for core power alone. Consequence nobody had costed: **a heatup on
-  pump heat was mathematically impossible** — measured, a stable attractor at 218.69 °F
-  (103.72 °C) with ΔT pinned at `Q_pump/h_sg`, forever. Now the SG boils everything that
-  crosses it and the follow governor draws it, both normalized on **NSSS rated heat** (core +
-  pump), which is how a real plant rates its generators. Three things to know: the issue's
-  "risky" step — recalibrating `steam_flow_rated` and giving the governor headroom — **was not
-  needed**, because normalizing both sides makes rated come out exactly 1.0, so every gauge
-  still reads 100 % at 100 %; the **cold IC was spawning synchronised to the grid**
-  (`load_mode: 'follow'`, `generator_load = 1e-6`, rotor at rest — #235 fixed half of it), and
-  with pump heat real the follow governor cracked to 6.2 % and re-stalled the heatup at
-  306.05 °F, so Modes 3/5 now spawn off line on one `onLine` predicate; and **`pwr_mode5_to_mode3`
-  was re-authored** — 10.71 plant-hours at 39.8 °F/hr with **no rod motion**, arriving hot and
-  still subcritical, which is what Mode 3 actually is. The new gate was verified to **fail**
-  with the netting restored. `pwr_heatup` (PWR-N03) is still the nuclear variant — deliberately
-  not re-authored, filed as follow-up.
 
 **Standing procedure — not part of the rotation above; these do not expire.**
 
@@ -494,7 +498,7 @@ which is the argument for a required status check and against a badge (#191).
 
 Green at baseline: PWR **32/32 (202 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3038 checks)**,
 `run_m4` **28/28 (156 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **24/24**,
-`run_behavior` **39 pass / 0 xfail** (38 → 39 on 2026-07-31, #135: **TR-14**, the SOURCED loss-of-feedwater drain rate. It exists because moving `K_sg_level` by **3.6×** left all 32 runners green — nothing in the suite asserted how fast a steam generator empties, so the constant could drift back unnoticed. Fails at 13.0 s against its 25–60 s band on the old value), `run_meltdown` **9 pass / 0 xfail**,
+`run_behavior` **40 pass / 0 xfail** (38 → 39 on 2026-07-31, #135: **TR-14**, the SOURCED loss-of-feedwater drain rate. It exists because moving `K_sg_level` by **3.6×** left all 32 runners green — nothing in the suite asserted how fast a steam generator empties, so the constant could drift back unnoticed. Fails at 13.0 s against its 25–60 s band on the old value. 39 → 40 same day, #284: **TR-1e** — nothing in the suite compared what the turbine was ADMITTED against what the reactor MADE, because every other check runs where the two agree, so a **2× error on a board gauge** sat behind 34 green runners. Fails 3 checks on the old engine), `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
 `run_procedures` **22/22 (102/102 checks)**,
 `run_procedures_stack` **22/22 (178/178 checks, 2 strict xfails — both RBMK/BWR #208; the 7
@@ -502,7 +506,7 @@ Green at baseline: PWR **32/32 (202 checks)**, BWR **15/15**, RBMK **23/23**, ca
 were never plant defects at all — the harness was running 11 of its 22 procedures below the
 10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **138 checks / 0 failed** (84 → 138 on 2026-07-31, #157 — it now guards a second contract: every alarm on all three plants declares a `category`, which the UI used to keyword-match off the alarm id), `run_reactivity` **27 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve. 23 → 27 on 2026-07-30, #263 item 2: the four inputs `pwr_startup`'s 26-step creep is DERIVED from — startup-IC boron, critical position, differential bank worth, and the excess the creep leaves), `run_hr3` **27 checks / 0 failed** (29 → 27 on 2026-07-31, #228), `run_reachability` **58 checks / 0 failed** (NEW 2026-07-30, #249/#273 — **can the plant reach its own setpoints?** Part A is static and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their instrument's declared range, since `crossed()` is strict. Part B DRIVES the plant and watches the indicated channel cross, which is the only half that can catch a clamp — `pzr_level`'s range is [0,100] and its trip is 97, so Part A was perfectly happy while the level physically could not exceed 88.00 %, and that is what let a full accumulator dump hide behind an "arrived UNscrammed" check for months. **Add a case here whenever you assert that a trip did NOT fire** — that claim is worth exactly what the gauge can reach), `run_hardrules` **39 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)** (this line once said 28 while the gate was at 29. It counts dated owner quotes wherever they are tracked, so **writing a change up moves it, not just making the change** — re-run it AFTER the docs. 39 is MEASURED on the merged tree: `develop` took it 29 → 39 across #249/#273/#276 and `workbench` 29 → 32 (#249, three sites carrying `"249 - fit it."`) independently, so neither branch figure was right and a mechanical resolution would have shipped a drift), `run_release` **8 checks / 0 failed** (pre-release mode — re-arms to more on the first real version) (NEW 2026-07-31 — **release bookkeeping**: `site/release.js`, `changelog.html` and `CHANGELOG.md` must agree on what shipped. Written because the `CHANGELOG.md` roll — renaming `## [Unreleased]` to the version — was skipped for **Alpha 1.10.0 AND 1.11.0**, leaving 434 lines of two shipped releases filed as unreleased with the newest heading reading 1.9.0. **Nothing downstream reads that heading**, so nothing went red and nobody noticed; a CLAUDE.md note and a release-skill step already said to do it, and they are what failed. Verified against the real pre-fix file, not a synthetic one: 3 checks red. The count moves with the number of released versions — every `changelog.html` entry down to the oldest one `CHANGELOG.md` still names individually is cross-checked, so **a release adds a check**), `run_portable` **124 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list; +7 on 2026-07-30 for the DOWNLOAD section, #275, which guards the *delivery* rather than the artifact: the site's download button is stamped with the release version by `site/nav.js`, and every way that wiring can break leaves a button that still works and still hands out `latest.zip`), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `run_manual_rev` **12 checks / 0 failed** (the manual set's revision history — table shape, set-wide stamp agreement, content-digest seal, pack currency; IS baselined, because unlike `run_manual_units` its checks are structural and do not move on prose. **A chapter edited with no revision row reddens it** — the failure it was written for, after six content changes went unrecorded), `verify_flags_ui` **42/42** (this line said 48/48 from the day it was written; `BASELINES`
+`run_contract` **138 checks / 0 failed** (84 → 138 on 2026-07-31, #157 — it now guards a second contract: every alarm on all three plants declares a `category`, which the UI used to keyword-match off the alarm id), `run_reactivity` **27 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve. 23 → 27 on 2026-07-30, #263 item 2: the four inputs `pwr_startup`'s 26-step creep is DERIVED from — startup-IC boron, critical position, differential bank worth, and the excess the creep leaves), `run_hr3` **27 checks / 0 failed** (29 → 27 on 2026-07-31, #228), `run_reachability` **58 checks / 0 failed** (NEW 2026-07-30, #249/#273 — **can the plant reach its own setpoints?** Part A is static and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their instrument's declared range, since `crossed()` is strict. Part B DRIVES the plant and watches the indicated channel cross, which is the only half that can catch a clamp — `pzr_level`'s range is [0,100] and its trip is 97, so Part A was perfectly happy while the level physically could not exceed 88.00 %, and that is what let a full accumulator dump hide behind an "arrived UNscrammed" check for months. **Add a case here whenever you assert that a trip did NOT fire** — that claim is worth exactly what the gauge can reach), `run_hardrules` **40 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)** (this line once said 28 while the gate was at 29. It counts dated owner quotes wherever they are tracked, so **writing a change up moves it, not just making the change** — re-run it AFTER the docs. 39 → 40 on 2026-07-31 (#284) is that rule again, cleanly: the engine fix moved nothing, and the BUILD_DECISIONS write-up moved it by quoting #230's ruling. 39 was MEASURED on the merged tree: `develop` took it 29 → 39 across #249/#273/#276 and `workbench` 29 → 32 (#249, three sites carrying `"249 - fit it."`) independently, so neither branch figure was right and a mechanical resolution would have shipped a drift), `run_release` **8 checks / 0 failed** (pre-release mode — re-arms to more on the first real version) (NEW 2026-07-31 — **release bookkeeping**: `site/release.js`, `changelog.html` and `CHANGELOG.md` must agree on what shipped. Written because the `CHANGELOG.md` roll — renaming `## [Unreleased]` to the version — was skipped for **Alpha 1.10.0 AND 1.11.0**, leaving 434 lines of two shipped releases filed as unreleased with the newest heading reading 1.9.0. **Nothing downstream reads that heading**, so nothing went red and nobody noticed; a CLAUDE.md note and a release-skill step already said to do it, and they are what failed. Verified against the real pre-fix file, not a synthetic one: 3 checks red. The count moves with the number of released versions — every `changelog.html` entry down to the oldest one `CHANGELOG.md` still names individually is cross-checked, so **a release adds a check**), `run_portable` **124 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list; +7 on 2026-07-30 for the DOWNLOAD section, #275, which guards the *delivery* rather than the artifact: the site's download button is stamped with the release version by `site/nav.js`, and every way that wiring can break leaves a button that still works and still hands out `latest.zip`), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `run_manual_rev` **12 checks / 0 failed** (the manual set's revision history — table shape, set-wide stamp agreement, content-digest seal, pack currency; IS baselined, because unlike `run_manual_units` its checks are structural and do not move on prose. **A chapter edited with no revision row reddens it** — the failure it was written for, after six content changes went unrecorded), `verify_flags_ui` **42/42** (this line said 48/48 from the day it was written; `BASELINES`
 always said 42 and the gate has always scored 42),
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
