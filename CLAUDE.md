@@ -779,11 +779,28 @@ from the developer `CHANGELOG.md`. **Every release gets a version number and a
 
 - **When** — immediately *before* merging `develop` → `main`. One entry per release.
 - **Version** — `Alpha X.Y.Z` = **Platform . Feature . Refinement**. Read the top entry
-  and bump the highest-significance digit in the release: **X** platform milestone (new
-  reactor type, engine overhaul, alpha→beta — rare); **Y** a new player-facing feature
-  (resets Z to 0); **Z** bug fixes / tuning / small refinements. **Do not trust a version
-  written here** — read the top entry of `changelog.html` and `site/release.js`, which must
-  always agree with each other. (This line said `1.6.1` while the site was on `1.8.2`.)
+  and bump the highest-significance digit in the release:
+  - **X** platform milestone (new reactor type, engine overhaul, alpha→beta). Rare.
+  - **Y** a **major change or a genuinely new capability** — something that did not exist
+    before and that you would list on the Roadmap. **Resets Z to 0.**
+  - **Z** everything else — **including player-facing changes and fixes**, as long as they
+    improve something the sim already did.
+
+  **Y IS FOR NEW THINGS, NOT FOR VISIBLE THINGS** *(OWNER DIRECTIVE, 2026-07-31: "I think we
+  should have the y part of the change number be for major changes or feature additions in
+  order to reduce the change number blowup. Z is for smaller changes and fixes even if they
+  are player facing.")*. This rule used to read "**Y** — a new player-facing feature", which
+  caught nearly every release, because almost everything here is player-facing eventually.
+  Measured: the version went **1.2.0 → 1.11.0 in eight days**, and the owner then asked
+  whether to roll it back (recommended against — the runaway was the *rule*, not the number;
+  see `CHANGELOG.md` 2026-07-31). **The operative test: could you add it to the Roadmap as a
+  line item?** New system, new scenario, new mode, new page → **Y**. Better/clearer/fixed
+  version of something already there → **Z**, however visible it is.
+
+  **Do not trust a version written here** — read the top entry of `changelog.html` and
+  `site/release.js`, which must always agree with each other. (This line said `1.6.1` while
+  the site was on `1.8.2`.) `run_release.js` gates that agreement but explicitly **not** the
+  digit choice: which digit fits is judgement and is not parseable.
 - **The entry** — add a new `<article class="log-entry">` at the TOP (newest-first):
   the **version** (`<span class="log-ver mono">Alpha X.Y.Z</span>`), the **date**
   (visible text *and* `datetime="YYYY-MM-DD"`), and a brief **player-facing** summary.

@@ -30,8 +30,16 @@ node test/run_all.js                     # AGGREGATE GATE: OK
 The scheme is **`Alpha X.Y.Z` = Platform . Feature . Refinement**:
 
 - **X** — platform milestone (new reactor type, engine overhaul, alpha→beta). Rare.
-- **Y** — a new *player-facing* feature. **Resets Z to 0.**
-- **Z** — bug fixes, tuning, refinements.
+- **Y** — a **major change or genuinely new capability** — something that did not exist
+  before and that you would list on the Roadmap. **Resets Z to 0.**
+- **Z** — everything else, **including player-facing changes and fixes**, as long as they
+  improve something the sim already did.
+
+**Y is for NEW things, not for VISIBLE things** *(OWNER DIRECTIVE, 2026-07-31)*. Y used to
+read "a new *player-facing* feature", which caught nearly every release — the version ran
+**1.2.0 → 1.11.0 in eight days**. The operative test: **could you add it to the Roadmap as a
+line item?** New system/scenario/mode/page → Y. A better or fixed version of something
+already there → Z, however visible it is.
 
 ```bash
 grep -n "log-ver" changelog.html | head -3     # first LIVE entry, not the template comment
