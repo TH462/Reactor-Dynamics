@@ -385,13 +385,14 @@ anything here that is standing procedure rather than news belongs in the list be
   against the fittings above and below it (#231), pipe **animation play-state vs plant
   state** in three states (#236), and the #235 board defects, for the same reason. **Run
   board_check (headless Edge, `--dump-dom`; `document.title` says PASS/FAIL) after any
-  board change** — it is not in `run_all`. Currently **127/127** (measured 2026-07-30 on
-  `workbench` after #270/#271 — this line said 95/95 once, which was already stale when
+  board change** — it is not in `run_all`. Currently **138/138** (measured 2026-07-31 on
+  `workbench` after #214 — this line said 95/95 once, which was already stale when
   written down; the count moves whenever a pin is added, so re-measure rather than trusting
   it. History: 59 before the #235/#236 pins, +20 pipe-state/board-defect pins, +2 ROD AUTO,
   +3 from the #237 comment items, +11 for the generator FOLLOW/MAN/OFF selector (#230),
   **+7 power tile armed-trip bands (#267), +8 pressure tile (#270), +6 NIS thresholds
-  (#271)**; the previously recorded "60/60" never matched the code either, #235 finding 6).
+  (#271), +4 ITEM_CHANNEL / liveNote and +7 the SG FEED corner status (#214)**; the previously recorded "60/60" never
+  matched the code either, #235 finding 6).
   **Read the tally from the harness's own summary line** (`ALL n CHECKS PASS` /
   `n FAILURES / n`) — scraping the page for the last `n/n` pair picks up unrelated
   numbers and reports a nonsense total.
@@ -465,8 +466,20 @@ turning green has to be acknowledged (update the baseline, close the issue) inst
 being silently absorbed. Same convention as the strict xfails in `run_meltdown` /
 `run_behavior`.
 
+**CI runs the same command on every push and PR to `main`/`develop`**
+(`.github/workflows/gates.yml`, ~8 min) — all 33 runners, browser gates included; it
+installs playwright into `./node_modules` from a scratch prefix and asserts no manifest
+appeared in the repo root. **Check it after you push** — `gh run list --workflow=gates.yml
+--limit 3`. It ran `--fast` with no install from 2026-07-27, which worked until
+`verify_flags_ui.js` arrived (#241, 2026-07-28 20:49 UTC): that gate needs playwright but
+is not marked `slow: true`, so `--fast` runs it and it dies `MODULE_NOT_FOUND` in a
+checkout where `node_modules/` is gitignored. Last green was **2026-07-28T19:52Z, one hour
+before that commit**; the following **32 runs were red without exception**, including the
+push to `main` for Alpha 1.10.0 and the #272 release PR. Nobody noticed for three days,
+which is the argument for a required status check and against a badge (#191).
+
 Green at baseline: PWR **32/32 (202 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3038 checks)**,
-`run_m4` **26/26 (147 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **20/20**,
+`run_m4` **26/26 (147 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **21/21**,
 `run_behavior` **38 pass / 0 xfail**, `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
 `run_procedures` **22/22 (102/102 checks)**,
@@ -475,7 +488,8 @@ Green at baseline: PWR **32/32 (202 checks)**, BWR **15/15**, RBMK **23/23**, ca
 were never plant defects at all — the harness was running 11 of its 22 procedures below the
 10× it declares, so their steps got a tenth of their sim time (#245))**, `run_checklist` **24/24**, `run_scenarios`
 **3/3**, `run_m7` **OK**, `run_flags` **16/16 (290 checks)**, `run_inspect` **7/7 (35 checks)**,
-`run_contract` **84 checks / 0 failed**, `run_reactivity` **27 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve. 23 → 27 on 2026-07-30, #263 item 2: the four inputs `pwr_startup`'s 26-step creep is DERIVED from — startup-IC boron, critical position, differential bank worth, and the excess the creep leaves), `run_hr3` **29 checks / 0 failed**, `run_reachability` **58 checks / 0 failed** (NEW 2026-07-30, #249/#273 — **can the plant reach its own setpoints?** Part A is static and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their instrument's declared range, since `crossed()` is strict. Part B DRIVES the plant and watches the indicated channel cross, which is the only half that can catch a clamp — `pzr_level`'s range is [0,100] and its trip is 97, so Part A was perfectly happy while the level physically could not exceed 88.00 %, and that is what let a full accumulator dump hide behind an "arrived UNscrammed" check for months. **Add a case here whenever you assert that a trip did NOT fire** — that claim is worth exactly what the gauge can reach), `run_hardrules` **39 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)** (this line once said 28 while the gate was at 29. It counts dated owner quotes wherever they are tracked, so **writing a change up moves it, not just making the change** — re-run it AFTER the docs. 33 is MEASURED on the merged tree: `develop` took it 29 → 32 (#249, three sites carrying `"249 - fit it."`) and `workbench` took it 29 → 30 (#262) independently, so neither branch figure was right and a mechanical resolution would have shipped a drift), `run_portable` **116 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `run_manual_rev` **12 checks / 0 failed** (the manual set's revision history — table shape, set-wide stamp agreement, content-digest seal, pack currency; IS baselined, because unlike `run_manual_units` its checks are structural and do not move on prose. **A chapter edited with no revision row reddens it** — the failure it was written for, after six content changes went unrecorded), `verify_flags_ui` **48/48**,
+`run_contract` **84 checks / 0 failed**, `run_reactivity` **27 checks / 0 failed** (#260 — pins the SOURCED reactivity anchors; `rho_excess` is solved against BEAVRS's 975 ppm HZP ARO critical boron, so this is what reddens if a rod worth or `alpha_D` moves without a re-solve. 23 → 27 on 2026-07-30, #263 item 2: the four inputs `pwr_startup`'s 26-step creep is DERIVED from — startup-IC boron, critical position, differential bank worth, and the excess the creep leaves), `run_hr3` **29 checks / 0 failed**, `run_reachability` **58 checks / 0 failed** (NEW 2026-07-30, #249/#273 — **can the plant reach its own setpoints?** Part A is static and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their instrument's declared range, since `crossed()` is strict. Part B DRIVES the plant and watches the indicated channel cross, which is the only half that can catch a clamp — `pzr_level`'s range is [0,100] and its trip is 97, so Part A was perfectly happy while the level physically could not exceed 88.00 %, and that is what let a full accumulator dump hide behind an "arrived UNscrammed" check for months. **Add a case here whenever you assert that a trip did NOT fire** — that claim is worth exactly what the gauge can reach), `run_hardrules` **39 checks / 0 failed (1 declared HR1 debt — RBMK, on hold)** (this line once said 28 while the gate was at 29. It counts dated owner quotes wherever they are tracked, so **writing a change up moves it, not just making the change** — re-run it AFTER the docs. 39 is MEASURED on the merged tree: `develop` took it 29 → 39 across #249/#273/#276 and `workbench` 29 → 32 (#249, three sites carrying `"249 - fit it."`) independently, so neither branch figure was right and a mechanical resolution would have shipped a drift), `run_portable` **116 checks / 0 failed** (the offline single-file build — count moves with the shipped asset list), `run_manual_units` **0 failed** (scored on failures only — the coverage count moves on ordinary prose edits, so it is deliberately NOT in the baseline), `run_manual_rev` **12 checks / 0 failed** (the manual set's revision history — table shape, set-wide stamp agreement, content-digest seal, pack currency; IS baselined, because unlike `run_manual_units` its checks are structural and do not move on prose. **A chapter edited with no revision row reddens it** — the failure it was written for, after six content changes went unrecorded), `verify_flags_ui` **42/42** (this line said 48/48 from the day it was written; `BASELINES`
+always said 42 and the gate has always scored 42),
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
 Also green: `run_e2e_controls` **39/39** (both F12 reds were stale expectations, fixed

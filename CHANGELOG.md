@@ -53,6 +53,57 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   nothing in the manual set had ever opened them again. The isolation pressure is now one
   number across the manual, the scenario trigger and the campaign driver.
 
+- **When an automatic controller switched itself off, the board never said why** (#214).
+
+  Every automatic control carries a one-line account of what it is doing — and, when it
+  stands itself down, the reason. None of it was on screen anywhere. The panel that used
+  to print it was removed when the automatic controls moved onto the board diagram, and
+  nothing replaced it, so the explanations had been written into a dead end.
+
+  This matters most in the case it was written for. Isolate main feedwater and the
+  three-element level controller drops out on its own — correctly, auxiliary feedwater
+  now has the steam generators — but all you saw was the AUTO light going dark and the
+  MANUAL light coming on, with nothing to say why your level control had just abandoned
+  you. Hovering any automatic control now reports what its channel is doing, in the
+  System Scanner block, under the description: **MANUAL — off — main feedwater isolated
+  (AFW has the SGs)**.
+
+  The feed card also carries a permanent status word in its top-right corner —
+  **HOLDING** in green when the controller is actually regulating, amber for everything
+  else: **ISOLATED**, **MANUAL**, **OFF**, and **SAT HI / SAT LO**. That last pair is the
+  one worth knowing about. It means the controller is still in AUTO and still trying, but
+  the feed pump is against a stop and there is nothing left to correct with — the AUTO
+  light says you are covered when you are not. The card title was shortened to *SG FEED*
+  to make room, the way the steam dump status already sits in its corner.
+
+  Two things had to be true for that to be worth showing. The line follows the plant
+  while you hold the pointer still — the scanner otherwise only repaints when the pointer
+  moves, so a controller that tripped out while you were reading about it would have gone
+  on reporting the state it was in when you arrived. And the reason is now retired when it
+  stops being true: restore feedwater and the message clears instead of insisting the
+  plant is still isolated. The controller stays off either way — standing it back up is
+  the operator's call, which is the entire point of a stand-down.
+
+- **Continuous integration had been red on every run for three days, across two releases**
+  (#191).
+
+  The GitHub Actions gate ran `run_all.js --fast`, which skips the runners marked slow so
+  that no browser has to be downloaded. Three test runners need a browser, not two — and
+  the third, `verify_flags_ui`, is not marked slow because it only takes 8 seconds. So it
+  ran, found no browser, and failed. Every run from **2026-07-28 20:49 UTC** — one hour
+  after that runner was added — to 2026-07-31 was red: **32 consecutive failures**,
+  including the push to `main` for Alpha 1.10.0 and the #272 release pull request. Every
+  other runner passed on every one of them; the gate was correctly reporting a real drift,
+  and the drift was in the workflow.
+
+  It now runs the **full 33-runner gate with all three browser gates**, in about 8 minutes.
+  The reason it did not before was the belief that a browser in continuous integration
+  requires adding an npm manifest to a project that has deliberately never had one. It does
+  not: the browser is installed into a scratch directory outside the checkout and copied
+  into the ignored `node_modules/`, which is exactly how the local machines are already set
+  up. A step in the workflow fails the build if a manifest ever appears in the repository
+  root, so that property cannot be given up by accident.
+
 - **The pressurizer could not go water-solid on injection — the exact thing Three Mile
   Island is about** (#249) — and the clamp that caused it was hiding a second bug.
 

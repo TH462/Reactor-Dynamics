@@ -372,6 +372,44 @@ test('Automation reads instruments, not truth (HR1 probe)', function (ck) {
   ck('controller chased the lying instrument (true level fell)', t.sg_level_pct.toFixed(1) + ' from ' + before.toFixed(1), t.sg_level_pct < before - 3, 'true level drops >3%');
 });
 
+// A stand-down note is the ONLY statement of why a channel switched itself off, and
+// #214 put it on screen (the System Scanner). That makes its lifetime load-bearing:
+// stepAutomation skips disengaged channels, so before this the note was write-once and
+// went on asserting a condition that had since cleared. MEASURED on the old code —
+// isolate feedwater, restore it, and feed_sg still read 'off — main feedwater isolated
+// (AFW has the SGs)' forever. These assert the note is retired with its cause, and that
+// clearing it does NOT quietly re-engage the channel: standing back up is the operator's
+// call, which is the entire point of a stand-down.
+test('A stand-down note is retired when its cause clears (#214)', function (ck) {
+  var r = rig('pwr', 'hot_full_power');
+  r.engage(['feed_sg']);
+  r.run(30);
+  var c = function () { return r.snap().automation.channels.filter(function (x) { return x.id === 'feed_sg'; })[0]; };
+  ck('engaged before the isolation', c().engaged, c().engaged === true, 'true');
+
+  r.cmd({ action: 'isolate_feedwater', active: true });
+  r.run(15);
+  var iso = c();
+  ck('isolation stands the channel down', iso.engaged, iso.engaged === false, 'false');
+  ck('…and says why', JSON.stringify(iso.note), /main feedwater isolated/.test(iso.note), 'names the isolation');
+
+  r.cmd({ action: 'isolate_feedwater', active: false });
+  r.run(15);
+  var back = c();
+  // The claim under test. Without the standDown bookkeeping this string persists.
+  ck('note is retired once feedwater is restored', JSON.stringify(back.note), back.note === '', '""');
+  ck('but the channel stays OFF — re-engaging is the operator\'s call', back.engaged, back.engaged === false, 'false');
+
+  // A manual takeover is NOT a plant condition: nothing clears it but the operator.
+  r.cmd({ action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true });
+  r.run(10);
+  r.cmd({ action: 'set_feed_pump_speed', pct: 100 });   // what the board's MAN button issues
+  r.run(30);
+  var man = c();
+  ck('manual takeover notes itself', JSON.stringify(man.note), /manual control taken/.test(man.note), 'names the takeover');
+  ck('…and does not time out on its own', man.engaged, man.engaged === false, 'false');
+});
+
 test('Instructed content gets a clean board + its authored preset (M5)', function (ck) {
   // start_scenario must not inherit free-play channel state: defaults are
   // skipped, then the scenario's auto_channels engage.

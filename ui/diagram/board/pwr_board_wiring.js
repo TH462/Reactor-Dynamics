@@ -163,6 +163,66 @@
     for (var i = 0; i < ch.length; i++) if (ch[i].id === id) return ch[i];
     return null;
   }
+  // ---- live channel status for the System Scanner (#214) --------------------------
+  // Every automation channel carries a `note`: what it is doing, and when it stands
+  // itself down, WHY. Nothing rendered it. The Automate tab that printed it was deleted
+  // when the automations moved onto this board, so `ui/app.js`'s note line has been
+  // unreachable ever since — and the notes are not decoration. MEASURED on the full
+  // stack: press MAN on the feed card and feed_sg reads 'off — manual control taken';
+  // isolate feedwater and it reads 'off — main feedwater isolated (AFW has the SGs)'
+  // while the board shows nothing but a dark AUTO lamp and a lit MAN one. A player who
+  // isolates feedwater watches their level controller drop out for no stated reason.
+  //
+  // Keyed by the board item that OWNS the channel, so hovering that control reports it.
+  // Note the deleted line guarded on `on && c.note` — engaged only. That guard was
+  // itself part of the defect: every note worth reading belongs to a channel that has
+  // just stood DOWN. Disengaged channels are reported here deliberately.
+  var ITEM_CHANNEL = {
+    ims5glucngg: 'rods_tavg',                                                  // ROD AUTO
+    imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc',                      // boron ON / OFF
+    imrpq29jo7t: 'boron_conc',                                                 // boron target ppm
+    imrsgjmrjfg: 'feed_sg', imrsgjuh7l0: 'feed_sg', imrsgjwq1q0: 'feed_sg',    // feed AUTO / MAN / OFF
+    imro8xhy2me: 'feed_sg',                                                    // SG feed rate setpoint box
+    bdFeedStatus: 'feed_sg'                                                    // the corner status word itself
+  };
+  // ---- the SG FEED corner status word (#214) --------------------------------------
+  // The one-word compression of what the scanner says in a sentence. Switched on CODES
+  // (`stand_down`, `saturated`) rather than on the note's English — the note is prose
+  // written for a human, and a UI that pattern-matched it would break silently the first
+  // time someone reworded it.
+  //
+  // AMBER for everything that is not "the controller has this": a stood-down channel and
+  // an operator-driven one are both states where nobody should assume level is being
+  // regulated. SAT is the #210 case — engaged, at a rail, and unable to correct — which
+  // reads AUTO on the lamp and is the most dangerous of the lot, because the lamp says
+  // the controller has it and the controller does not.
+  var BD_OK = '#5aad7c', BD_WARN = '#d8a657';
+  function feedStatus(s) {
+    var c = chan(s, 'feed_sg');
+    if (!c) return { text: '—', color: BD_WARN };
+    if (!c.engaged) {
+      if (c.stand_down === 'condition') return { text: 'ISOLATED', color: BD_WARN };
+      if (c.stand_down === 'scram' || c.stand_down === 'dead') return { text: 'TRIPPED', color: BD_WARN };
+      // No recorded stand-down: the operator is simply driving it. Distinguish a pump
+      // that is actually stopped, because "MANUAL" over a dead pump reads as though
+      // someone is holding a feed rate when nothing is being fed at all.
+      return (CS(s).feed_pump_speed_pct || 0) <= 0
+        ? { text: 'OFF', color: BD_WARN } : { text: 'MANUAL', color: BD_WARN };
+    }
+    if (c.saturated === 'hi') return { text: 'SAT HI', color: BD_WARN };
+    if (c.saturated === 'lo') return { text: 'SAT LO', color: BD_WARN };
+    return { text: 'HOLDING', color: BD_OK };
+  }
+  // Module scope so selfTest can reach it — the driver object literal cannot call its
+  // own methods from inside selfTest.
+  function liveNoteFor(id, s) {
+    var cid = ITEM_CHANNEL[id];
+    if (!cid || !s) return null;
+    var c = chan(s, cid);
+    if (!c) return null;
+    return { channel: cid, engaged: !!c.engaged, note: c.note || '',
+             text: (c.engaged ? 'AUTO' : 'MANUAL') + (c.note ? ' — ' + c.note : '') };
+  }
   // ESF arm state by system id ('auto' | 'manual'); the AUTO buttons highlight when armed.
   function esfAuto(s, id) {
     var e = s.automation && s.automation.esf;
@@ -322,7 +382,18 @@
     { id: 'bdRxPeriodLbl', kind: 'text', name: 'Reactor period label',
       left: 885, top: 490, text: 'PERIOD', fontSize: 12, color: '#8ba4b6', weight: 600, mono: true },
     { id: 'bdRxPeriod', kind: 'value', name: 'Reactor period  ·  sim: true_state.reactor_period_s',
-      left: 960, top: 505, value: '∞', unit: 's', color: '#8ba4b6', fontSize: 14, rAnchor: true }
+      left: 960, top: 505, value: '∞', unit: 's', color: '#8ba4b6', fontSize: 14, rAnchor: true },
+    // Feed controller status, in the SG FEED card's top-right corner (#214). The AUTO/MAN
+    // lamps say THAT the controller is off; nothing said WHY. Same shape as the steam dump
+    // status (imrppq5r7kw): rAnchor, so `left` is the RIGHT edge.
+    //
+    // It fits only because DOC_PATCHES shortens the card title to 'SG FEED'. MEASURED: the
+    // full 'STEAM GEN FEED' runs to x=1812, and the longest status word (ISOLATED, 73 px at
+    // fontSize 15) has to start at 1782 — a 30 px overlap. Owner's call, 2026-07-31: "you
+    // could shorten STEAM GEN to SG and fit it in the corner just like steam dump."
+    { id: 'bdFeedStatus', kind: 'value',
+      name: 'SG feed controller status  ·  sim: automation feed_sg engaged / stand_down / saturated',
+      left: 1855, top: 548, value: 'HOLDING', unit: '', color: '#5aad7c', fontSize: 15, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -444,6 +515,7 @@
     imrppeh5hkb: function (s) { return r0(IN(s).mwe_output); },                                         // generator MW
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
     imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
+    bdFeedStatus: function (s) { return feedStatus(s); },                                              // SG feed controller status (#214)
     imrppyp0wfo: function (s) { return accN2Psi(s); },                                                  // accumulator N2 psig
     imrppztrng1: function (s) { return IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
     imrpq0n2ujv: function (s) { return r0(accFill(s)); },                                               // accumulator fill %
@@ -1326,7 +1398,15 @@
       // at the discharge. Swapping the angles puts suction on the right and discharge on
       // the left at the SAME positions, and the discharge nozzle art now faces the way
       // the water actually goes.
-      imrobpq4a70: { props: { suctionAngle: 0, dischargeAngle: 180 } }
+      imrobpq4a70: { props: { suctionAngle: 0, dischargeAngle: 180 } },
+      // SG FEED card title, shortened from 'STEAM GEN FEED' to free its top-right corner
+      // for the feed controller status word (#214, bdFeedStatus in EXTRA_ITEMS). MEASURED:
+      // the full title runs to x=1812 and the longest status word (ISOLATED, 73 px at
+      // fontSize 15) starts at 1782 — a 30 px overlap. Owner's call, 2026-07-31: "you could
+      // shorten STEAM GEN to SG and fit it in the corner just like steam dump." A patch
+      // rather than a builder edit because pwr_board_data.js is REGENERATED — the same
+      // change made in the builder is lost the next time anyone re-exports.
+      imrqxsodu5j: { props: { title: 'SG FEED' } }
     }
   };
   function applyDocPatches(doc) {
@@ -1536,6 +1616,13 @@
       var I = RD.PwrBoardInspect;
       return (I && I.entry) ? I.entry(id) : null;
     },
+    // Live automation-channel status for an item, or null if it owns no channel (#214).
+    // Returns the mode word plus the channel's own note, so the scanner can say
+    // "MANUAL — off — main feedwater isolated (AFW has the SGs)" rather than leaving
+    // the player to infer a stand-down from an unlit lamp. This is CONTROL state (what
+    // the automation is doing), the same class as the AUTO lamp two pixels away — not
+    // an instrument reading, so HR1's instruments-vs-truth line is not crossed here.
+    liveNote: function (id, s) { return liveNoteFor(id, s); },
     tagItem: function () { return TAG_ITEM; },
     // pumps rendered art-only (built-in control box suppressed) — see ART_ONLY_PUMPS
     suppressBuiltInControls: function (id) { return !!ART_ONLY_PUMPS[id]; },
@@ -1559,6 +1646,68 @@
         (window.RD_PWR_BOARD_DOC.pipes || []).forEach(function (p) { live[p.id] = 1; });
         var miss = Object.keys(PIPE_TEMP).filter(function (k) { return !live[k]; });
         return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+      // ---- live channel status for the scanner (#214) ------------------------------------
+      // ITEM_CHANNEL is keyed by diagram item id, the same fragile contract as PIPE_TEMP
+      // above: an item the owner deletes or re-draws leaves an orphan key that fails
+      // SILENTLY — the control simply stops reporting its channel, which looks exactly
+      // like a channel with nothing to say.
+      ck('driver: every ITEM_CHANNEL key is a live item id', (function () {
+        var live = {};
+        (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) { live[it.id] = 1; });
+        (EXTRA_ITEMS || []).forEach(function (it) { live[it.id] = 1; });
+        var miss = Object.keys(ITEM_CHANNEL).filter(function (k) { return !live[k]; });
+        return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+      // …and every channel it names is a real channel, or the control reports nothing
+      // while looking perfectly wired.
+      ck('driver: every ITEM_CHANNEL target is a live channel', (function () {
+        var have = {};
+        ((s.automation && s.automation.channels) || []).forEach(function (c) { have[c.id] = 1; });
+        var miss = Object.keys(ITEM_CHANNEL).filter(function (k) { return !have[ITEM_CHANNEL[k]]; });
+        return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+      // The note that MATTERS belongs to a channel that has just stood itself down —
+      // 'off — main feedwater isolated (AFW has the SGs)' is the only account of why the
+      // AUTO lamp went dark. The deleted Automate-tab line guarded on `engaged && note`,
+      // which would have hidden precisely that case; this pins the disengaged branch.
+      ck('driver: liveNote reports a DISENGAGED channel, not just an engaged one', (function () {
+        var fake = { automation: { channels: [
+          { id: 'feed_sg', engaged: false, note: 'off — main feedwater isolated (AFW has the SGs)' } ] } };
+        var r = liveNoteFor('imrsgjmrjfg', fake);
+        return r && r.text === 'MANUAL — off — main feedwater isolated (AFW has the SGs)'
+          ? true : JSON.stringify(r);
+      })() === true);
+      ck('driver: liveNote is null for an item that owns no channel', liveNoteFor('imrppee04aj', s) === null);
+      // ---- the SG FEED corner status word (#214) -----------------------------------------
+      // Switched on CODES, never on the note's English. These pin the mapping, including
+      // the one that matters most: SAT reads AUTO on the lamp while the controller has no
+      // authority left, so a green HOLDING there would be the board vouching for a
+      // controller that has stopped controlling (#210).
+      function fs(engaged, standDown, saturated, pumpPct) {
+        return feedStatus({ automation: { channels: [ { id: 'feed_sg', engaged: engaged,
+                              stand_down: standDown || null, saturated: saturated || null } ] },
+                            control_state: { feed_pump_speed_pct: pumpPct == null ? 100 : pumpPct } });
+      }
+      ck('driver: feed status HOLDING when engaged and off the rails', fs(true).text === 'HOLDING', fs(true).text);
+      ck('driver: feed status is GREEN only when holding',
+        fs(true).color === BD_OK && fs(true, null, 'hi').color === BD_WARN &&
+        fs(false, 'condition').color === BD_WARN);
+      ck('driver: feed status SAT HI / SAT LO at a rail while still ENGAGED',
+        fs(true, null, 'hi').text === 'SAT HI' && fs(true, null, 'lo').text === 'SAT LO',
+        fs(true, null, 'hi').text + '/' + fs(true, null, 'lo').text);
+      ck('driver: feed status ISOLATED on a plant-condition stand-down',
+        fs(false, 'condition').text === 'ISOLATED', fs(false, 'condition').text);
+      ck('driver: feed status MANUAL when the operator has it and the pump is running',
+        fs(false, 'manual', null, 100).text === 'MANUAL', fs(false, 'manual', null, 100).text);
+      ck('driver: feed status OFF, not MANUAL, when the pump is actually stopped',
+        fs(false, null, null, 0).text === 'OFF', fs(false, null, null, 0).text);
+      // The corner only exists because the card title was shortened. If a re-export or an
+      // owner edit restores the long title, the status word overlaps it — silently, since
+      // both still render. Pin the patch that makes the room.
+      ck('driver: DOC_PATCHES shortened the SG FEED card title', (function () {
+        var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === 'imrqxsodu5j'; })[0];
+        return it && it.title === 'SG FEED' ? true : (it ? it.title : 'card missing');
       })() === true);
       // ---- power tile follows the ARMED power trip (#267) --------------------------------
       // The tile used to read 120 % in every state, because tripSp() took the first
