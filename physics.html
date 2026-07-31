@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Physics — Reactor Dynamics</title>
-    <meta name="description" content="How the plant model works: core power and feedbacks, primary and secondary heat, open accident regimes, and what is deliberately left out.">
+    <meta name="description" content="SLX-100 plant overview and how the model works: layout, energy path, core power, primary and secondary heat, and deliberate limits.">
     <meta property="og:title" content="Physics — Reactor Dynamics">
-    <meta property="og:description" content="What the plant model computes, how the systems couple, and where the simplifications are.">
+    <meta property="og:description" content="The SLX-100 plant and the physics engine behind it.">
     <meta property="og:image" content="site/hero.png">
     <meta property="og:type" content="website">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
@@ -39,16 +39,42 @@
 
 <main class="page">
   <h1>Physics behind the simulator</h1>
-  <p>This is a real-time model of a single-loop pressurized water reactor of
-  roughly 100&nbsp;MWe. Core, primary coolant, pressurizer, steam generator,
-  turbine-generator, and protection advance together every small time step.
-  It is built for training and learning plant dynamics — not for licensing
-  analysis or as a digital twin of a named unit.</p>
 
-  <p><strong>In short:</strong> one average core power (point kinetics) with
-  delayed neutrons · lumped heat and mass balances · steam demand felt on the
-  primary · protection that reads instruments · accident regimes left open ·
-  no spatial core map.</p>
+  <h2>The plant — SLX-100</h2>
+  <p>The engine runs a compact pressurized water reactor named
+  <strong>SLX-100</strong> (Single-Loop eXperimental): about
+  <strong>100&nbsp;MWe / 300&nbsp;MWt</strong>. Primary coolant stays liquid
+  under high pressure; heat crosses a steam generator into a separate secondary
+  loop that drives the turbine-generator. The two loops never mix.</p>
+
+  <p><strong>Layout.</strong> One reactor coolant loop — core, one reactor
+  coolant pump, one U-tube steam generator, and a pressurizer on the hot leg —
+  plus the secondary plant (main steam, turbine-generator, condenser,
+  feedwater) and the usual support systems (chemical and volume control,
+  emergency injection, residual heat removal, protection). That is the whole
+  plant on the board: small on purpose, so heatup, power operation, and
+  casualties all sit on one continuous model.</p>
+
+  <p><strong>Energy path.</strong> Fission heat → primary coolant (hot leg →
+  steam-generator tubes → cold leg → pump → core) → secondary steam → turbine
+  → electrical output. The pressurizer holds primary pressure with heaters,
+  spray, and relief. Steam demand on the secondary is what the primary “feels”
+  as load.</p>
+
+  <p>At hot full power the primary runs near <strong>2235&nbsp;psi
+  (15.41&nbsp;MPa)</strong> and average coolant temperature near
+  <strong>579&nbsp;°F (304&nbsp;°C)</strong>, with roughly
+  <strong>74&nbsp;°F (41&nbsp;°C)</strong> of subcooling margin. Modes run from
+  cold shutdown through full power on the same physics.</p>
+
+  <p>The sections below describe how that plant is computed in real time —
+  training fidelity, not a licensing code or a twin of a named commercial
+  unit.</p>
+
+  <p><strong>Model in short:</strong> one average core power (point kinetics)
+  with delayed neutrons · lumped heat and mass balances · steam demand coupled
+  to the primary · protection that reads instruments · accident regimes left
+  open · no spatial core map.</p>
 
   <h2>Core power and reactivity</h2>
   <ul>
