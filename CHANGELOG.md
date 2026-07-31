@@ -14,6 +14,26 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Continuous integration had been red on every run for three days, across two releases**
+  (#191).
+
+  The GitHub Actions gate ran `run_all.js --fast`, which skips the runners marked slow so
+  that no browser has to be downloaded. Three test runners need a browser, not two — and
+  the third, `verify_flags_ui`, is not marked slow because it only takes 8 seconds. So it
+  ran, found no browser, and failed. Every run from **2026-07-28 20:49 UTC** — one hour
+  after that runner was added — to 2026-07-31 was red: **32 consecutive failures**,
+  including the push to `main` for Alpha 1.10.0 and the #272 release pull request. Every
+  other runner passed on every one of them; the gate was correctly reporting a real drift,
+  and the drift was in the workflow.
+
+  It now runs the **full 33-runner gate with all three browser gates**, in about 8 minutes.
+  The reason it did not before was the belief that a browser in continuous integration
+  requires adding an npm manifest to a project that has deliberately never had one. It does
+  not: the browser is installed into a scratch directory outside the checkout and copied
+  into the ignored `node_modules/`, which is exactly how the local machines are already set
+  up. A step in the workflow fails the build if a manifest ever appears in the repository
+  root, so that property cannot be given up by accident.
+
 - **The pressurizer could not go water-solid on injection — the exact thing Three Mile
   Island is about** (#249) — and the clamp that caused it was hiding a second bug.
 
