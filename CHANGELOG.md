@@ -22,6 +22,41 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Rewind is a checkpoint picker on a real-time cadence** (#137, closing it)
+  *(OWNER, 2026-07-31: "I don't think there should be a rewind one step button. Make the user
+  pick from the checkpoints on the graph. For long fast forwards we need a way to go back far
+  enough. The rewind cadence should be 20 seconds real time not sim time.")*.
+
+  **The cadence UNIT was the bug, not the interval.** Free-play checkpoints were laid every
+  15 *sim* seconds, so the 32-slot ring always spanned the same amount of the plant's life and
+  progressively less of yours. Measured, ring saturated: **465.9 real seconds at 1×, 46.5 at
+  10×, 9.3 at 60×, 3.1 at 600×** — it evaporated in exactly the case (a long fast-forward)
+  where reaching back is the point. On a 20-second wall clock the ring now spans **620.0 real
+  seconds at every acceleration** (measured at 1×, 10× and 60×), and each slot simply covers
+  more sim the faster you run — 12,000 sim s per slot at 600×, so ~103 plant-hours are
+  reachable instead of 31 minutes. Measured off `tick()` rather than a timer, so a throttled or
+  backgrounded tab lays its checkpoint on the first tick after the interval instead of losing
+  it.
+
+- **The ⏪ button no longer rewinds — it opens the picker, everywhere.** Free play already
+  picked from the graph; the walkthrough, scenario and failure-card buttons still stepped back
+  one checkpoint. All four now open pick mode, so the marks are the authored beat/step
+  checkpoints inside instructed content and the periodic ones in free play. Escaping a failure
+  card is a click on the decision point rather than repeated presses walking backwards. A
+  rewind still discards everything after the moment you pick — deliberate, and now said in the
+  timeline's scanner text: it is a teaching tool, not an undo.
+
+### Fixed
+- **Clicking the graph in rewind-pick mode landed on the wrong moment** (#137). The picker
+  inverted `chartBuf`'s full 30-minute record while the plot drew only the selected window, so
+  a click resolved against a time base up to 6× too wide. Measured in headless Edge: clicking
+  the mark at **T+19 s** landed the plant at **T+0**. Both now read one `chartExtent()`, and
+  the same click lands with **0.0 s** of error.
+- **In pick mode the plot widens to cover the whole checkpoint ring** (#137). With a real-time
+  cadence a fast-forward lays its checkpoints hours of sim apart while the widest window is 30
+  minutes — every reachable checkpoint sat off the left edge and the picker had nothing to
+  click. The x-axis switches to `h:mm:ss` past ten minutes so the widened span is readable.
+
 - **The steam generator drains at a real plant's rate now** (#135, closing it). `K_sg_level`
   **5.0 → 1.37**. A total loss of main feedwater at full power used to take the plant from
   64.5 % steam generator level to the low-low trip in **12.9 s**, leaving **2.9 s** between

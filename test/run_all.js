@@ -331,7 +331,12 @@ var BASELINES = {
   'run_m4.js':             { code: 0, score: '28/28 156passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
-  'run_m5.js':             { code: 0, score: '19/19 79passed' },
+  // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
+  // time, so the free-play rewind ring covers the same slice of the PLAYER's life at
+  // any acceleration. The added checks pile up 360 sim-s with the wall clock frozen
+  // and require ZERO checkpoints — verified against the pre-fix service, where that
+  // one alone lays 21 and 6 of the 8 checks in the suite go red.
+  'run_m5.js':             { code: 0, score: '19/19 83passed' },
   // 16 -> 17 suites, 94 -> 102 checks 2026-07-27 (#142): a new save/restore test for
   // the instructor's operator-action memory and follow acc streak, both of which
   // saveState dropped. Verified against the PRE-fix instructor, where 5 of its 8

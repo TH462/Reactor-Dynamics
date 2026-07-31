@@ -115,6 +115,74 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31d — #137: the rewind ring measured the wrong clock, and the picker aimed at the wrong axis  ✅
+
+*(OWNER, 2026-07-31: "I don't think there should be a rewind one step button. Make the user
+pick from the checkpoints on the graph. For long fast forwards we need a way to go back far
+enough. The rewind cadence should be 20 seconds real time not sim time.")*
+
+**The issue's analysis was right about the cadence and stale about the picker.** It said the
+`exact` rewind path "has never had a player-facing way in" — the picker was built 2026-07-23
+(`2e86c00`), two days before the issue was filed, and free play has used it ever since. Three
+separate defects were live, and the issue named one of them.
+
+**1. The cadence unit (the one the issue named).** `SANDBOX_CP_SPACING_S = 15` *sim* seconds
+means the ring always spans `REWIND_CAP × spacing` of the **plant's** life, so the faster you
+run the less of **your own** life it reaches. Measured, ring saturated at 32 slots:
+
+| accel | ring span, SIM s | ring span, **REAL s** |
+|---|---|---|
+| 1× | 465.9 | **465.9** |
+| 10× | 465.0 | **46.5** |
+| 60× | 558.0 | **9.3** |
+| 600× | 1860.0 | **3.1** |
+
+Now `SANDBOX_CP_SPACING_MS = 20000` on a wall clock: **620.0 real seconds at 1×, 10× and 60×
+alike** (measured; 31 intervals × 20 s), and each slot covers more sim the faster you run —
+12,000 sim s per slot at 600×, i.e. ~103 plant-hours reachable against 31 minutes before. The
+clock is sampled inside `tick()` rather than from a timer, so a throttled tab lays its
+checkpoint on the first tick after the interval instead of dropping it. **`_now()` is a
+prototype seam** because a headless runner burns no wall time — without it the entire cadence
+is invisible to every gate in the repo, which is why the test asserts through it.
+
+**2. The picker inverted a different time base than the plot drew.** `drawChart` placed the
+marks over `[t1 − ui.window, t1]`; `rewindPickClick` inverted `[chartBuf[0].t, chartBuf.last.t]`
+— up to `CHART_RECORD_SEC` = 1800 s, i.e. **6× too wide at the default 5-minute window**.
+Measured in headless Edge: clicking the mark drawn at **T+19 s** landed the plant at **T+0**.
+Both now read one `chartExtent()`; the same click lands at **T+19, error 0.0 s**. Verified by
+injection — restoring the two-line old mapping reddens it.
+
+**3. A real-time cadence would have put every checkpoint off-screen.** At 600× the slots are
+12,000 sim s apart and the widest window is 1800 s, so the marks the fix creates would have
+been unreachable — the picker "working" with nothing to click. `chartExtent()` widens to the
+whole ring while pick mode is on (axis in `h:mm:ss` past ten minutes). This is the half of the
+owner's ask — *"for long fast forwards we need a way to go back far enough"* — that the cadence
+change alone does not deliver.
+
+**The one-step button is gone from all four entry points** (strip-chart ⏪, scrub track,
+walkthrough/scenario nav ⏪, failure-card ⏪); every one opens the picker. Inside instructed
+content the marks are the authored beat/step checkpoints, so escaping a failure card is one
+click on the decision point.
+
+**What the issue asked for and did NOT get, deliberately: the press-semantics machinery stays.**
+It called the exact-time guard and the `_rewindCursor` walk-back "dead weight… they exist *only*
+to make repeated single presses escape a failure card". They are also the **beat** path's
+guards, and the same issue forbids touching it. A `rewind:` beat deliberately does not
+checkpoint (`instructor_layer.js:295-299`), so two consecutive rewind beats hit exactly the
+"restores the same newest checkpoint forever" case the walk-back was written for, and the
+exact-time guard is what makes a beat's own rewind reach strictly earlier than the checkpoint
+it just laid. Deleting them would have been a silent regression in authored content with no
+gate to catch it. The comments now say they are beat-path guards.
+
+**Gates.** `run_m5` **19/19, 79 → 83 checks** (baseline moved). The load-bearing new check
+piles up **360 sim-s with the wall clock frozen and requires ZERO checkpoints** — injection
+against the pre-fix service lays **21** there and reddens 6 of the suite's 8. `verify_e2e_ui`
+gains a `testRewindPicker` section (no baseline move — it scores screenshots): it presses ⏪,
+asserts pick mode opened *and the clock did not move* (a one-step press would have moved it),
+requires ≥4 marks after five cadence intervals, then **clicks the second-oldest mark and reads
+the clock back**. That last check is the only one of the three that survives all three defects
+— pressing the button and counting marks passes on a broken inversion.
+
 ### 2026-07-31c — #135: the SG drained 2.7× too fast, and nothing in the suite could tell  ✅
 
 **Checked for staleness first, as asked — it was not stale, and its stated fix was

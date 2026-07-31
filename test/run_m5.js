@@ -397,25 +397,47 @@ T.push(test('Rewind — world scope rolls the plant back but the teacher remembe
   delete RD.SCENARIOS.__m5w;
 }));
 
-T.push(test('Rewind — sandbox checkpoints tick on a sim-time cadence in free play only', function (ck) {
+// #137. The cadence is REAL time, not sim time — the ring must always cover about
+// the same slice of the PLAYER's life, because that is the clock a player has. On
+// the old sim-time cadence a 32-slot ring spanned 465.9 real seconds at 1× but only
+// 3.1 at 600× (measured), i.e. it evaporated in exactly the case — a long
+// fast-forward — where reaching back matters. `_now` is the injected wall clock: a
+// headless runner burns no real time, so the whole cadence is invisible without it.
+T.push(test('Rewind — sandbox checkpoints tick on a REAL-time cadence in free play only', function (ck) {
   var s = new RD.SimulationService({ seed: 7 });
+  var wall = 1000000;                        // ms; frozen unless a check advances it
+  s._now = function () { return wall; };
   s.selectPlant('pwr', 'hot_full_power', null);
   s.advanceCycles(1);
   ck('first free-play tick lays checkpoint 0', s.checkpoints.length, s.checkpoints.length === 1, '1');
+  // The discriminating check: pile up sim time with the wall clock stopped. On the
+  // old sim-time cadence this alone laid ~24 checkpoints.
   s.handleCommand({ action: 'set_speed', value: 60 });
-  s.advanceCycles(6);                                    // 6 s wall-equiv → 36 s sim at 60×
-  ck('spacing is sim-time (~15 s), not broadcast count', s.checkpoints.length + ' after ~36 sim-s', s.checkpoints.length === 3, '3');
+  s.advanceCycles(60);                       // 360 sim s at 60×, 0 real s
+  ck('360 sim-s with the wall clock frozen lays none', s.checkpoints.length + ' after ' + s.simTime.toFixed(0) + ' sim-s', s.checkpoints.length === 1, '1');
+  wall += 19999; s.advanceCycles(1);
+  ck('19.999 real-s is short of the interval', s.checkpoints.length, s.checkpoints.length === 1, '1');
+  wall += 1; s.advanceCycles(1);
+  ck('the 20th real second lays the next', s.checkpoints.length, s.checkpoints.length === 2, '2');
+  wall += 20000; s.advanceCycles(1);
+  ck('and the next, at any acceleration', s.checkpoints.length, s.checkpoints.length === 3, '3');
   var atRewind = s.checkpoints[1].metadata.sim_time;
   var back = s.handleCommand({ action: 'rewind', steps: 2 });
   ck('sandbox rewind restores a periodic checkpoint', back.metadata.sim_time.toFixed(1) + ' s', Math.abs(back.metadata.sim_time - atRewind) < 1e-9, atRewind.toFixed(1) + ' s');
+  // A rewind restarts the cadence from the moment landed on, so the next slot is a
+  // full interval away instead of sitting on top of the target.
+  s.advanceCycles(1);
+  ck('no checkpoint immediately after a rewind', s.checkpoints.length, s.checkpoints.length === 2, '2');
 
-  // During a scenario the Instructor owns the ring: no periodic pushes.
+  // During a scenario the Instructor owns the ring: no periodic pushes. The wall
+  // clock is advanced well past the interval so this asserts the instructor guard
+  // rather than a stopped clock.
   RD.SCENARIOS = RD.SCENARIOS || {};
   RD.SCENARIOS.__m5sb = { id: '__m5sb', plant_id: 'pwr', initial_state: 'hot_full_power', design_version: null,
     beats: [{ id: 'b1', trigger: { type: 'time', value: 0.1 }, commentary: { learning: 'x', industry: 'x' } }] };
   s.handleCommand({ action: 'start_scenario', scenario_id: '__m5sb' });
   s.handleCommand({ action: 'set_speed', value: 60 });
-  s.advanceCycles(10);                                   // 60 s sim — would be ~4 periodic pushes
+  for (var w = 0; w < 10; w++) { wall += 20000; s.advanceCycles(1); }   // 200 real s — would be 10 periodic pushes
   ck('no periodic checkpoints while a scenario owns the ring', s.checkpoints.length + ' (load + 1 beat)', s.checkpoints.length === 2, '2');
   s.handleCommand({ action: 'stop_scenario' });
   delete RD.SCENARIOS.__m5sb;

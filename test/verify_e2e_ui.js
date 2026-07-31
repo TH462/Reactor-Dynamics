@@ -316,6 +316,109 @@ async function testSteamFeedPair(page) {
   return log.join('\n');
 }
 
+/* The rewind PICKER is the only way back (#137, OWNER 2026-07-31: "I don't think
+ * there should be a rewind one step button. Make the user pick from the checkpoints
+ * on the graph.").
+ *
+ * Worth gating because all three halves of it are separately deletable and none of
+ * them announces its own absence: the button can go back to issuing a one-step
+ * `rewind` (the plant still rewinds, so nothing looks broken), drawChart's cp-marks
+ * can be dropped by a chart refactor (pick mode still "works", you just cannot see
+ * what you are aiming at), and the click inversion can drift off drawChart's time
+ * base — which is exactly what it had done: the picker inverted chartBuf's full
+ * 30-minute extent while the plot drew ui.window, so clicking the mark at T+19 s
+ * landed the plant at T+0 (measured, headless Edge, both before and after).
+ *
+ * The MARK-CLICK is the load-bearing check. Pressing the button and counting marks
+ * would pass on all three defects; only clicking a specific mark and reading back
+ * the clock pins the mapping. It aims at the second-oldest mark on purpose — the
+ * newest and the oldest are both reachable by a broken inversion that clamps. */
+async function testRewindPicker(page) {
+  var log = [];
+  var VBW = 400, PLOT_FRAC = 0.86;                 // mirror ui/app.js drawChart
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&run=1',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForTimeout(800);
+
+  // Drive M5's wall clock instead of waiting on it. The cadence is 20 REAL seconds
+  // now, so laying the four or five marks this needs would otherwise cost 80-100 s
+  // of gate time. `_now` is a prototype method precisely so it can be substituted;
+  // seeding from the page's own Date.now() keeps it monotonic with what the service
+  // has already stamped. Sim time still advances for real, at 60x, so the marks land
+  // far enough apart to aim between.
+  await page.evaluate(function () {
+    globalThis.__wall = Date.now();
+    globalThis.RD.SimulationService.prototype._now = function () { return globalThis.__wall; };
+  });
+  await page.click('#speed [data-speed="60"]');
+  for (var k = 0; k < 5; k++) {
+    await page.evaluate(function () { globalThis.__wall += 20000; });
+    await page.waitForTimeout(700);                // ~42 sim s per slot at 60x
+  }
+
+  var clockSec = async function () {
+    var t = await page.textContent('#clock');
+    var m = /T\+(\d+):(\d+):(\d+)/.exec(t || '');
+    return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) : NaN;
+  };
+  var tLive = await clockSec();
+  log.push('live clock: T+' + tLive + ' s');
+  if (!(tLive > 0)) throw new Error('sim clock never advanced (T+' + tLive + ') — cannot test rewind');
+
+  if (await page.evaluate(function () { return document.getElementById('chartRewindBtn').disabled; })) {
+    throw new Error('⏪ Rewind is disabled after ' + tLive + ' s of free play — no checkpoint was laid');
+  }
+  await page.click('#chartRewindBtn');
+  await page.waitForTimeout(300);
+
+  var st = await page.evaluate(function () {
+    var r = document.querySelector('.chart-plot').getBoundingClientRect();
+    return {
+      picking: document.querySelector('.strip-chart').classList.contains('rewind-pick'),
+      hint: !document.getElementById('rewindHint').hidden,
+      paused: document.getElementById('playBtn').classList.contains('paused'),
+      marks: Array.from(document.querySelectorAll('#chartCanvas .cp-mark'))
+        .map(function (m) { return parseFloat(m.getAttribute('x1')); })
+        .sort(function (a, b) { return a - b; }),
+      axis0: (document.querySelectorAll('#chartXAxis span')[0] || {}).textContent || '',
+      left: r.left, top: r.top, w: r.width, h: r.height,
+    };
+  });
+  // The button must open pick mode, NOT rewind on its own — a one-step press would
+  // have moved the clock and left rewind-pick off.
+  if (!st.picking || !st.hint) {
+    throw new Error('⏪ Rewind did not open pick mode (picking=' + st.picking + ' hint=' + st.hint +
+      ') — it is still issuing a one-step rewind. See #137.');
+  }
+  if (!st.paused) throw new Error('pick mode must pause the clock — picking a moment on a moving graph is a carnival game');
+  if (await clockSec() !== tLive) throw new Error('pressing ⏪ rewound the plant instead of opening the picker (#137)');
+  if (st.marks.length < 4) throw new Error('the plot shows ' + st.marks.length + ' checkpoint marks after 5 cadence ' +
+    'intervals — the free-play ring is not filling on the wall clock (#137)');
+  log.push('pick mode: ' + st.marks.length + ' marks, axis starts ' + st.axis0);
+
+  // Invert drawChart's own placement: x = (t - t0)/span * PW.
+  var m = /(\d+):(\d+):(\d+)/.exec(st.axis0);
+  var span = m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) : (/(\d+)s/.exec(st.axis0) ? +(/(\d+)s/.exec(st.axis0)[1]) : 0);
+  if (!(span > 0)) throw new Error('could not read the plotted span from the x-axis ("' + st.axis0 + '")');
+  var t0 = tLive - span, PW = VBW * PLOT_FRAC;
+  var mx = st.marks[1];
+  var expected = t0 + (mx / PW) * span;
+  log.push('aiming at mark x=' + mx.toFixed(1) + ' → expected T+' + expected.toFixed(1) + ' s');
+
+  await page.mouse.click(st.left + (mx / VBW) * st.w, st.top + st.h * 0.5);
+  await page.waitForTimeout(600);
+  var landed = await clockSec();
+  log.push('landed T+' + landed + ' s (error ' + (landed - expected).toFixed(1) + ' s)');
+  if (Math.abs(landed - expected) > 6) {
+    throw new Error('clicking the checkpoint mark at T+' + expected.toFixed(0) + ' s landed the plant at T+' +
+      landed + ' s — the picker is not inverting the same time base drawChart plotted the marks against. See #137.');
+  }
+  if (await page.evaluate(function () { return document.querySelector('.strip-chart').classList.contains('rewind-pick'); })) {
+    throw new Error('pick mode stayed open after the pick');
+  }
+  return log.join('\n');
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -340,6 +443,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'instructor-units.log'), iuLog);
     var sfLog = await testSteamFeedPair(page);
     fs.writeFileSync(path.join(SCRATCH, 'steam-feed-pair.log'), sfLog);
+    var rpLog = await testRewindPicker(page);
+    fs.writeFileSync(path.join(SCRATCH, 'rewind-picker.log'), rpLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
