@@ -23,6 +23,13 @@
 
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
+  // Rod-bottom threshold, in % withdrawn. Two things read it and they MUST agree: the
+  // `reset_rps` interlock below (the trip breakers only reset with the rods in) and the
+  // `rods_fully_in` status word the control layer's reset permissive reads (#75). Before
+  // this constant existed only the interlock had the number, so the board could not tell
+  // the operator whether a reset would be accepted without trying it and finding out.
+  var RODS_IN_PCT = 2.0;
+
 
   // S-curve rod worth: rods least effective near fully in/out, most in the middle.
   // pos_norm: 0 = fully inserted, 1 = fully withdrawn.
@@ -467,6 +474,14 @@
       steam_demand_low: s.turbine_tripped || s.turbine_demand_frac < 0.05,
       above_p9: (s.power_pct || 0) > 50,   // P-9 permissive: gates the high-high SG (P-14) reactor trip
       rod_at_limit: this._controlGroup().at_insertion_limit,
+      // Rod bottom — every group at or below RODS_IN_PCT. A real board carries a rod
+      // bottom light per rod and the operator reads them before attempting an RPS
+      // reset; this is the lumped equivalent, and it is what makes the reset permissive
+      // readable BEFORE the press instead of only as a refusal after it (#75). Exposed
+      // as a status passthrough so the control layer never reaches into true state for
+      // it (HR1) and the permissive stays config-driven (HR3). Draws no PRNG number, so
+      // the instrument noise stream is unchanged — the appended-instrument rule.
+      rods_fully_in: this.rod_groups.every(function (g) { return g.position_pct <= RODS_IN_PCT; }),
       sr_energized: !!s.sr_energized,
       msiv_open: s.msiv_open !== false,
       sg_safety_open: !!s.sg_safety_open,
@@ -755,7 +770,7 @@
         // breakers; the rods stay in until deliberately withdrawn, and the
         // startup net governs the re-ascent). The control layer refuses the
         // reset while any trip signal still stands; this is the engine half.
-        if (s.scrammed && this.rod_groups.every(function (g) { return g.position_pct <= 2.0; })) {
+        if (s.scrammed && this.rod_groups.every(function (g) { return g.position_pct <= RODS_IN_PCT; })) {
           s.scrammed = false;
           this.rod_groups.forEach(function (g) { g.scrammed = false; g.moving = false; g.velocity = 0; g.nudge_target = null; g.coast_remaining_s = 0; });
         }

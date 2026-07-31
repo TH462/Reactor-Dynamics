@@ -345,19 +345,70 @@
   // breakers will not hold in against an asserted trip. The engine half enforces
   // the rods-fully-inserted interlock; success is read back from engine truth so
   // an interception (ATWS-style) cannot leave the RPS state lying.
-  ControlLayer.prototype.resetRps = function () {
+  // Why an RPS reset would be refused right now, or null if it would be accepted.
+  // ONE evaluator, deliberately: it answers both the operator's press (resetRps below)
+  // and the board's permissive indication (getRpsState), so the lamp and the button can
+  // never disagree about whether a reset is available. Reads INSTRUMENTS only (HR1) and
+  // is entirely config-driven (HR3) — the standing-trip scan comes from the plant's own
+  // trip table, and everything else from its `rps_reset_permissive` list, so this stays
+  // plant-agnostic even though only the PWR defines one today.
+  //
+  // Returns { reason, message } — `reason` is the machine-readable code, `message` is
+  // register-aware operator text.
+  ControlLayer.prototype.rpsResetBlock = function (ins) {
     if (!this.rps.scrammed) return null;
-    var ins = this.engine.instruments.reading || {};
+    ins = ins || this.lastInstruments || {};
+
+    // A breaker will not hold in against a live trip signal — the most fundamental
+    // refusal, so it is checked first. Blocked and condition-gated trips are skipped
+    // exactly as they are when the trip is evaluated, or a blocked trip would keep the
+    // plant latched on a signal the operator has already been allowed to dismiss.
     var trips = this.config.trips || [];
     for (var i = 0; i < trips.length; i++) {
       var t = trips[i];
       if (t.condition && !this._evaluateCondition(t.condition)) continue;
       if (t.blockable && t.id && this.tripBlocks[t.id]) continue;
-      var value = ins[t.instrument];
-      if (crossed(value, t.direction, t.setpoint)) {
-        return { type: 'refused', code: 'TRIP_SIGNAL_PRESENT',
-                 detail: t.instrument + ' ' + t.direction + ' still asserted' };
+      if (crossed(ins[t.instrument], t.direction, t.setpoint)) {
+        // Name the CHANNEL, not its id, and never render the raw direction enum: an
+        // `is_true` trip has no high/low to speak of, and "turbine_tripped is still
+        // is_true" is not a sentence you show an operator.
+        var name = (this.config.instrument_labels || {})[t.instrument] || t.instrument;
+        // A measured trip reads "the low reactor coolant pressure trip"; a status trip
+        // ('is_true') has no high/low and already names itself, so it stays "the turbine
+        // trip" rather than gaining a second "trip".
+        var meas = (t.direction === 'high' || t.direction === 'low');
+        var phrase = meas ? (t.direction + ' ' + name + ' trip') : name;
+        return { reason: 'TRIP_SIGNAL_PRESENT',
+                 message: (this.register === 'industry'
+                   ? 'RPS RESET BLOCKED — ' + phrase + ' still asserted'
+                   : 'Cannot reset yet: the ' + phrase + ' is still asserted. It has to ' +
+                     'clear before the breakers will hold in.') };
       }
+    }
+
+    var perms = this.config.rps_reset_permissive || [];
+    for (var j = 0; j < perms.length; j++) {
+      var p = perms[j];
+      if (crossed(ins[p.instrument], p.direction, p.setpoint)) continue;
+      return { reason: p.reason || 'PERMISSIVE_NOT_MET',
+               message: (this.register === 'industry' ? p.message_industry : p.message_learning) ||
+                        'Blocked by an RPS reset permissive.' };
+    }
+    return null;
+  };
+
+  ControlLayer.prototype.resetRps = function () {
+    if (!this.rps.scrammed) return null;
+    var block = this.rpsResetBlock(this.engine.instruments.reading || {});
+    if (block) {
+      // 'blocked' + INTERLOCK, NOT the old orphan `type: 'refused'`. That shape was
+      // returned by exactly two lines in this file and read by NOTHING — not the
+      // service, not the UI, not a test — so every refusal of an RPS reset was silently
+      // swallowed and the operator got no feedback at all (#75, measured). This is the
+      // plant protecting itself and handing back a labelled refusal, which is precisely
+      // what the interlock contract above already means, so it reuses it and the UI's
+      // existing scanner-bar path works with no change. `reason` keeps the specific code.
+      return { type: 'blocked', code: 'INTERLOCK', reason: block.reason, message: block.message };
     }
     this._resettingRps = true;
     try { this._sendInternal({ action: 'reset_rps' }); }
@@ -368,8 +419,14 @@
       this.rps.last_trip_reason = null;
       return null;
     }
-    return { type: 'refused', code: 'RODS_NOT_INSERTED',
-             detail: 'trip breakers reset only with all rods inserted' };
+    // The permissive said yes and the engine still refused. That is not an operator
+    // error — the engine's own rods-in interlock is the authority and this is the
+    // backstop for an engine whose plant declares no `rps_reset_permissive` to mirror
+    // it (RBMK/BWR today), or for an ATWS-style interception of the reset itself.
+    return { type: 'blocked', code: 'INTERLOCK', reason: 'RODS_NOT_INSERTED',
+             message: (this.register === 'industry'
+               ? 'RPS RESET BLOCKED — rods not at bottom'
+               : 'The trip breakers only reset with all rods inserted.') };
   };
 
   // The permissive gating a trip's block: its own `block_permissive` when it carries
@@ -715,10 +772,17 @@
         can_clear: blocked   // clearing a block is always allowed
       };
     });
+    // RPS reset permissive for the UI (#75): can the operator reset the latch right now,
+    // and if not, why. Same evaluator the command path uses, so the button's caption and
+    // the refusal it would get are one fact rather than two that can drift apart. null
+    // when not scrammed — there is nothing to reset.
+    var resetBlock = this.rpsResetBlock(ins);
     return { scrammed: this.rps.scrammed, last_trip_reason: this.rps.last_trip_reason,
              trip_blocks: Object.assign({}, this.tripBlocks),
              manual_trip_blocks: Object.assign({}, this.manualTripBlocks),
-             trip_block_status: status };
+             trip_block_status: status,
+             reset_permitted: !!this.rps.scrammed && !resetBlock,
+             reset_block: resetBlock };
   };
 
   ControlLayer.prototype.getSnapshotSections = function () {

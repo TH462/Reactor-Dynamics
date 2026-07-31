@@ -394,12 +394,21 @@
   function paintScram(rec, it) {
     var st = rec.state;
     var fired = st === 'fired', armed = st === 'armed';
+    // While SCRAMMED the sub-caption is the RPS-reset permissive (#75): whether pressing
+    // will actually reset, or which condition is holding it. rec.note comes from the
+    // driver each render; absent one the old unconditional "PRESS TO RESET" stands, which
+    // is what every non-PWR board still gets.
+    var note = fired ? (rec.note || null) : null;
     rec.labelEl.textContent = fired ? 'SCRAMMED' : (armed ? 'CONFIRM' : (it.label || 'SCRAM'));
-    rec.subEl.textContent = fired ? 'PRESS TO RESET' : (armed ? 'PRESS AGAIN TO TRIP' : 'PRESS TO ARM');
+    rec.subEl.textContent = fired ? (note ? note.text : 'PRESS TO RESET')
+                                  : (armed ? 'PRESS AGAIN TO TRIP' : 'PRESS TO ARM');
     rec.btn.style.background = fired ? '#3a0e0e' : (armed ? '#5a1408' : '#0a2417');
     rec.btn.style.border = '3px solid ' + (fired ? '#ff5a4d' : (armed ? '#ffb400' : '#3d7a58'));
     rec.btn.style.color = fired ? '#ff7a6a' : (armed ? '#ffd166' : '#5a9575');
     rec.btn.style.animation = armed ? 'bdScramPulse 0.8s ease-in-out infinite' : 'none';
+    // A blocked reset is dimmed rather than hidden — the operator can still press it and
+    // get the full reason in the scanner bar, which is how they learn what to wait for.
+    rec.subEl.style.opacity = (note && !note.ready) ? '0.6' : '0.85';
   }
 
   function buildNumber(it) {
@@ -942,7 +951,16 @@
         var rec = scramEls[id];
         var fired = d.scramFired ? !!d.scramFired(s) : false;
         var want = fired ? 'fired' : (rec.state === 'fired' ? 'idle' : rec.state);
-        if (want !== rec.state) { rec.state = want; paintScram(rec, rec.item); }
+        // The reset permissive can change WITHOUT the fired state changing — rods seating,
+        // a trip signal clearing — so the note is compared on its own. Repainting only on
+        // a state transition would freeze the caption at whatever it read the instant the
+        // scram latched, which is exactly the case the operator is waiting on.
+        var note = (fired && d.scramResetNote) ? d.scramResetNote(s) : null;
+        var noteKey = note ? note.text + '|' + note.ready : '';
+        if (want !== rec.state || noteKey !== rec.noteKey) {
+          rec.state = want; rec.note = note; rec.noteKey = noteKey;
+          paintScram(rec, rec.item);
+        }
       });
       if (d.afterRender) d.afterRender(s);
     }

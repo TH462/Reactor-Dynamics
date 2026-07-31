@@ -37,6 +37,77 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-31b — #75: the RPS reset was three finished halves that had never been joined
+
+**What was actually wrong.** The issue asked for a reset affordance and its interlock, and
+triage said the engine side already worked and only the UI and the permissive were missing.
+Both true, and both understated it. Three pieces existed:
+
+1. **Engine** — `reset_rps` in `applyCommand`, with the rods-fully-inserted interlock. Green
+   under an ops probe (`abuse_scram_then_recover`, PI-7/C3) since it landed.
+2. **Kernel** — `resetRps()`, which computed the standing-trip permissive properly and
+   returned a labelled refusal.
+3. **Board** — a SCRAM button that has drawn **PRESS TO RESET** since the day it was built.
+
+None of them reached each other. `onScramReset` was an empty stub carrying the comment
+*"no engine reset command; visual only"* — false when it was written and false ever since.
+And the kernel's refusal used `type: 'refused'`, a shape returned by exactly two lines in
+the repository and **read by nothing**: not the service, not `app.js`, not a test, not the
+spec. So the measured operator experience was: press the button that says PRESS TO RESET,
+receive no reset, no refusal, and no message.
+
+**Decision 1 — the refusal joins the existing interlock contract rather than inventing a
+path.** `{ type: 'blocked', code: 'INTERLOCK', reason, message }`. `app.js` already flashes
+exactly that to the scanner bar, so the operator-facing half needed no UI plumbing at all —
+the orphan shape was the whole reason a working refusal was invisible. `reason` keeps the
+specific code (`TRIP_SIGNAL_PRESENT` / `RODS_NOT_INSERTED`) for the board and the tests.
+The alternative — teaching `app.js` about a second refusal type — was rejected because the
+interlock comment already describes this case word for word: *the plant is protecting
+itself, not malfunctioning, so the caller gets a labelled refusal*.
+
+**Decision 2 — the permissive is STATE, not just a response.** A refusal you only discover
+by pressing is barely better than silence. `getRpsState()` now carries `reset_permitted` and
+`reset_block`, computed by the **same** evaluator the command path uses (`rpsResetBlock`),
+so the caption and the refusal are one fact. A board that said PRESS TO RESET while the
+plant would refuse would be a new lie in place of the old one.
+
+**Decision 3 — rod bottom became an instrument, and the permissive became config.** The
+engine's interlock reads `position_pct` truth; the kernel must not. A new **`rods_fully_in`**
+status word carries it (no lag, no noise, no PRNG draw — the appended-instrument rule), and
+both it and the engine interlock read one `RODS_IN_PCT` constant, so the lamp and the latch
+cannot drift. The permissive list itself lives in `pwr_control.js` as
+**`rps_reset_permissive`**, evaluated generically by the kernel — so this did **not** widen
+#228's declared `reset_rps` leak, and `run_hr3` is unmoved at 29 checks. RBMK/BWR define no
+list and fall back to the engine's own refusal, which is the correct no-op for plants on hold.
+
+**Decision 4 — instrument ids are not operator language.** The first cut of the refusal read
+*"turbine_tripped is still is_true"*. Measured — that really is the first thing standing in
+the way of a reset after a hot-full-power scram, so it is the sentence an operator would
+have met. A per-channel `instrument_labels` map in plant config fixes it (one map, not a
+label per trip: `power_range` backs two trips, `primary_pressure` three). The template also
+suppresses the direction word for `is_true` trips, after the second cut produced *"the the
+turbine trip trip signal"*.
+
+**Measured timeline**, hot full power, manual scram, seed 42: turbine trip holds the reset
+for ~1 s → rod bottom holds it ~2 s more → available from ~t+4 s. Under a loss of feedwater
+it stays blocked on *low steam generator level* indefinitely; under a large LOCA on *low
+reactor coolant pressure*. That is the behaviour the issue wanted — recovery that is
+procedural rather than a button.
+
+**The tests missed the case that mattered, and injection is what said so.** With 18 checks
+written and green, deleting the entire `rps_reset_permissive` config left the suite at
+**57/57**: the standing turbine trip covers the first half-second and the rods are seated
+long before the later checks run, so the rod-bottom window (~1–3 s) — the one window where
+that config is the binding constraint — was never asserted. Two checks now sit inside it,
+and the same deletion reddens. This is HR10 in its plainest form: eighteen passing checks
+were not evidence the mechanism was right.
+
+`run_e2e_controls` **39 → 59**, `board_check` **138 → 143** (the board pins include the
+original defect: restoring the empty handler reddens it). Manual set **Rev 20** — the reset
+is documented as a control in **03 §3.5.1**, with **06 PWR-A01** Recovery pointing at it.
+
+---
+
 ## 2026-07-31a — the CHANGELOG roll was skipped twice; the instruction was not the fix, the gate is
 
 **What was wrong.** Alpha **1.10.0** and **1.11.0** both merged to `main` without renaming

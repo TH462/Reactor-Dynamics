@@ -1010,6 +1010,9 @@
                'rcp_secured', 'plant_mode',
                'hpi_active', 'station_blackout',
                'steam_demand_low', 'rod_at_limit', 'sr_energized', 'msiv_open', 'sg_safety_open',
+               // Rod bottom (#75) — read by the RPS-reset permissive in pwr_control.js, so
+               // the board can say whether a reset will be accepted before it is attempted.
+               'rods_fully_in',
                // P-9 permissive (≥50 % power) that gates the high-high SG (P-14) reactor
                // trip — read as a condition by the p14_reactor_trip trip.
                'above_p9',

@@ -147,6 +147,55 @@
   // above 10 % power-range power, and auto-clear (reinstate) below it.
   var PWR_TRIP_BLOCK_PERMISSIVE = { instrument: 'power_range', direction: 'high', setpoint: 10.0 };
 
+  // Operator-facing names for instrument channels (#75). Instrument ids are source
+  // identifiers, not words to put in front of an operator: the first cut of the RPS-reset
+  // refusal read *"turbine_tripped is still is_true"*, which is a sentence only a
+  // programmer can parse. Measured on a hot-full-power scram — that really is the first
+  // thing standing in the way of a reset, so it is the message an operator would have met.
+  //
+  // One map rather than a label per trip, because several trips share a channel
+  // (`power_range` has two, `primary_pressure` three, `pzr_level` and `sg_level` two each)
+  // and the channel is what the refusal is naming. Anything else that has to say an
+  // instrument's name out loud should read this rather than inventing a second list.
+  var PWR_INSTRUMENT_LABELS = {
+    power_range:        'reactor power',
+    source_range:       'source-range flux',
+    intermediate_range: 'intermediate-range flux',
+    tavg:               'average coolant temperature',
+    primary_pressure:   'reactor coolant pressure',
+    pzr_level:          'pressurizer level',
+    sg_level:           'steam generator level',
+    rcs_flow:           'reactor coolant flow',
+    // No article and no trailing "trip" on any of these — the message template supplies
+    // both, and a label carrying its own produced "the the turbine trip trip signal".
+    turbine_tripped:    'turbine trip',
+  };
+
+  // RPS RESET PERMISSIVE (#75) — the conditions that must hold before the trip breakers
+  // will re-close, as DATA so the shared kernel stays plant-agnostic (HR3). The kernel
+  // evaluates these against instruments only (HR1) and exposes the result as state, so the
+  // board can tell the operator whether a reset will be accepted BEFORE they press it —
+  // rather than the operator pressing an inert button and learning nothing, which is what
+  // the board did until this landed.
+  //
+  // Ordering is the message the operator gets when more than one condition fails, so the
+  // physically-first one comes first: the rods drop in seconds, the trip signal may stand
+  // for minutes. The standing-trip scan is separate and runs FIRST (it is derived from the
+  // trip table itself, not listed here) — a breaker will not hold in against a live trip
+  // signal, which is the more fundamental refusal.
+  //
+  // Prototypicality: a real reset is a two-part act — the trip signal must have cleared and
+  // the operator then resets the RPS by hand; the rods stay in until deliberately withdrawn.
+  // Rod bottom is the indication a crew checks before attempting it. NUREG-1431 Rev 4.0
+  // Bases B 3.3.1 describes the reactor trip breakers and the manual reset; the rods-in
+  // interlock is also enforced in the engine (`reset_rps`), which remains the authority —
+  // this table is what makes it VISIBLE.
+  var PWR_RPS_RESET_PERMISSIVE = [
+    { instrument: 'rods_fully_in', direction: 'is_true', reason: 'RODS_NOT_INSERTED',
+      message_learning: 'The control rods are not all the way in yet — wait for them to seat before resetting.',
+      message_industry: 'RPS RESET BLOCKED — rods not at bottom' },
+  ];
+
   // Auto-actuation — reads instruments, issues commands (which pass through M4
   // interception, so a stuck PORV defeats the reclose).
   var PWR_ACTUATIONS = [
@@ -776,6 +825,8 @@
   var PWR_PROTECTION = {
     trips: PWR_TRIPS,
     trip_block_permissive: PWR_TRIP_BLOCK_PERMISSIVE,
+    rps_reset_permissive: PWR_RPS_RESET_PERMISSIVE,
+    instrument_labels: PWR_INSTRUMENT_LABELS,
     actuations: PWR_ACTUATIONS,
     alarms: PWR_ALARMS_A.concat(PWR_ALARMS_B),
     alarms_panel_a: PWR_ALARMS_A,

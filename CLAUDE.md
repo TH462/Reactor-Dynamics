@@ -255,6 +255,29 @@ a handful of UI/doc items.
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+- **The SCRAM button's RESET half was inert from the day it was drawn, and 18 green checks
+  did not notice (2026-07-31, #75).** The board has read **PRESS TO RESET** under SCRAMMED
+  since it was built; `onScramReset` was an empty stub commented *"no engine reset command;
+  visual only"*, which was false when it was written — the engine's `reset_rps` (with its
+  rods-in interlock) and the kernel's `resetRps()` permissive both existed and were both
+  green under an ops probe. Three finished halves, never joined: pressing produced no reset,
+  no refusal and no message. **The refusal was invisible in code too** — `resetRps()`
+  returned `type: 'refused'`, a shape returned by two lines and read by *nothing* in the
+  repository, so a correctly-computed refusal went into a branch that does not exist. It now
+  returns the `blocked` + `INTERLOCK` shape `app.js` already flashes. **The permissive is
+  STATE now**, from the same evaluator the press uses, so the caption names what is holding
+  it (*TRIP SIGNAL STANDING* / *RODS NOT AT BOTTOM* / *PRESS TO RESET*) and the board cannot
+  promise a reset the plant will refuse. Rod bottom became a `rods_fully_in` status word
+  sharing one constant with the engine interlock (HR1); the permissive list is plant config,
+  so the kernel stayed generic and **`run_hr3` is unmoved at 29** — #228's leak was not
+  widened. Measured (hot full power, seed 42): turbine trip holds ~1 s, rod bottom ~2 s more,
+  available ~t+4 s; a loss of feedwater keeps it blocked on *low steam generator level*
+  indefinitely, which is the teaching case. **The lesson to carry: with 18 checks written
+  and green, deleting the ENTIRE permissive config left the suite green** — the standing
+  turbine trip covers the first half-second and the rods are seated before the later checks
+  run, so the one window where that config binds was never asserted. HR10, exactly as
+  written. `run_e2e_controls` 39 → 59, `board_check` 138 → 143, manual **Rev 20** (03 §3.5.1).
+
 - **The pressurizer could not go water-solid on injection, and that hid a full accumulator
   dump on every cooldown (2026-07-30, #249 → #273).** `level_per_mass_surplus` was an
   underived 300, so `mass_max` clipped inventory before the gauge ran out of scale: HPI into an
@@ -352,22 +375,6 @@ anything here that is standing procedure rather than news belongs in the list be
   still subcritical, which is what Mode 3 actually is. The new gate was verified to **fail**
   with the netting restored. `pwr_heatup` (PWR-N03) is still the nuclear variant — deliberately
   not re-authored, filed as follow-up.
-- **The PWR's last HR1 hole is closed — the low-flow trip reads an instrument (2026-07-29,
-  #247).** `rcs_flow` is a real elbow-tap channel (% of rated, lag 1 s, injectable
-  failures); the `__true_flow__` sentinel is **deleted from every file**, and with it the
-  kernel's only PWR-only true_state reference (half of #228). A companion `mfw_isolated`
-  status indication replaced the feed channel's read of `true_state.feedwater_isolated` —
-  a field `getTrueState()` has **never exposed**, so that stand-down had never once fired.
-  Three things to know: a **stuck-high flow channel now masks a real loss of flow** (probed
-  — the low-flow trip never fires and `primary_pressure high` catches it instead), which is
-  the teaching case the instrument was built for; the setpoint went to the real **90 % of
-  rated, blocked below P-7 (10 %)** (#248, owner ruling) — measured, that trips at 1.8 s
-  where DNB onset is 10.9 s, so the old unsourced 25 % had been letting DNB happen; and a
-  new appended instrument still ships **noise: 0** (the cross-step PRNG rule), so it carries
-  `noise_failure` instead — without it an injected `noisy` failure would have been silently
-  inert. **`pwr_lof` was re-authored around the stuck channel**, because at 90 % a healthy
-  channel means nothing happens at all. **One channel, not 2-of-3, is the remaining declared
-  departure** (`Manuals/12` §10.7).
 
 **Standing procedure — not part of the rotation above; these do not expire.**
 
@@ -385,13 +392,12 @@ anything here that is standing procedure rather than news belongs in the list be
   against the fittings above and below it (#231), pipe **animation play-state vs plant
   state** in three states (#236), and the #235 board defects, for the same reason. **Run
   board_check (headless Edge, `--dump-dom`; `document.title` says PASS/FAIL) after any
-  board change** — it is not in `run_all`. Currently **138/138** (measured 2026-07-31 on
-  `workbench` after #214 — this line said 95/95 once, which was already stale when
+  board change** — it is not in `run_all`. Currently **143/143** (measured 2026-07-31 on `develop` after #75 — this line said 95/95 once, which was already stale when
   written down; the count moves whenever a pin is added, so re-measure rather than trusting
   it. History: 59 before the #235/#236 pins, +20 pipe-state/board-defect pins, +2 ROD AUTO,
   +3 from the #237 comment items, +11 for the generator FOLLOW/MAN/OFF selector (#230),
   **+7 power tile armed-trip bands (#267), +8 pressure tile (#270), +6 NIS thresholds
-  (#271), +4 ITEM_CHANNEL / liveNote and +7 the SG FEED corner status (#214)**; the previously recorded "60/60" never
+  (#271), +4 ITEM_CHANNEL / liveNote, +7 the SG FEED corner status (#214) and +5 the SCRAM button's RESET half (#75) — including a pin on the ORIGINAL defect, so restoring the empty handler reddens it**; the previously recorded "60/60" never
   matched the code either, #235 finding 6).
   **Read the tally from the harness's own summary line** (`ALL n CHECKS PASS` /
   `n FAILURES / n`) — scraping the page for the last `n/n` pair picks up unrelated
@@ -492,9 +498,15 @@ were never plant defects at all — the harness was running 11 of its 22 procedu
 always said 42 and the gate has always scored 42),
 `verify_e2e_ui` **PASS (16 screenshots)**, `verify_manual_follow` **PASS (84 checks)**.
 
-Also green: `run_e2e_controls` **39/39** (both F12 reds were stale expectations, fixed
+Also green: `run_e2e_controls` **59/59** (both F12 reds were stale expectations, fixed
 2026-07-25, #150; 35 → 39 on 2026-07-29 when the CVCS droop check was rebuilt to measure
-at equilibrium instead of half a time constant into the transient — #194).
+at equilibrium instead of half a time constant into the transient — #194; **39 → 59 on
+2026-07-31, #75**, the RPS reset from the board. Worth knowing for the next person writing
+checks here: the first cut of those 20 was 18 checks, all green, and deleting the ENTIRE
+`rps_reset_permissive` config still left the suite green — the standing turbine trip covers
+the first half-second after a scram and the rods are seated before the later checks run, so
+the ~1–3 s window where that config is the only thing binding was never asserted. Injection
+found it; reading the tests did not).
 
 **One tracked red**, carrying a `note` in `BASELINES`: `run_ops` **57/68** — probes are
 tuning targets by design. **Measured 2026-07-27b from `Diagnostic/ops_results.json`:

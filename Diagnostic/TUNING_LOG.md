@@ -115,6 +115,37 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31b — #75: the SCRAM button resets now; it had been inert since it was built  ✅
+
+No plant physics change. The board's SCRAM control has read **PRESS TO RESET** since the day
+it was drawn, and `onScramReset` was an empty stub commented *"no engine reset command;
+visual only"* — false when written. The engine's `reset_rps` (with its rods-in interlock) and
+the kernel's `resetRps()` permissive both existed and were both green under an ops probe.
+Three finished halves, never joined.
+
+**The refusal was invisible in code too.** `resetRps()` returned `type: 'refused'`, a shape
+returned by two lines and read by **nothing** — service, `app.js`, tests, spec, all blind to
+it. So a working, correctly-computed refusal went into a branch that does not exist. Now
+`{type:'blocked', code:'INTERLOCK', reason, message}`, which `app.js` already flashes.
+
+**The permissive is state now**, not just a response: `getRpsState()` carries
+`reset_permitted` / `reset_block` from the *same* evaluator the press uses, so the caption
+under SCRAMMED names what is holding — *TRIP SIGNAL STANDING*, *RODS NOT AT BOTTOM*, or
+*PRESS TO RESET*. Rod bottom became a `rods_fully_in` status word sharing one threshold
+constant with the engine interlock (HR1), and the permissive list is plant config, so the
+kernel stayed plant-agnostic and **`run_hr3` is unmoved at 29** — #228's leak was not widened.
+
+**Measured** (hot full power, manual scram, seed 42): turbine trip holds ~1 s → rod bottom
+~2 s more → available ~t+4 s. Loss of feedwater keeps it blocked on *low steam generator
+level*; large LOCA on *low reactor coolant pressure*.
+
+**Lesson worth keeping — 18 green checks were not evidence.** Deleting the entire
+`rps_reset_permissive` config left the suite at 57/57, because the standing turbine trip
+covers the first half-second and the rods are seated before the later checks run: the
+rod-bottom window (~1–3 s), the only window where that config binds, was untested. Found by
+injection, not by reading. `run_e2e_controls` **39 → 59**, `board_check` **138 → 143**,
+manual **Rev 20** (03 §3.5.1). Detail: `Blueprint/BUILD_DECISIONS.md` **2026-07-31b**.
+
 ### 2026-07-31a — two shipped releases were still filed as unreleased; the roll is now gated  ✅
 
 No plant change. Alpha **1.10.0** and **1.11.0** both merged to `main` without `CHANGELOG.md`'s

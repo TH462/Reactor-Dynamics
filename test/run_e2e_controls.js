@@ -364,6 +364,110 @@ console.log('\n' + B + 'BWR — recently-added controls' + X);
   ck('SLC stop', !s.engine.s.slc_active, s.engine.s.slc_active, false);
 })();
 
+// ---------------------------------------------------------------------------
+// PWR — RPS RESET FROM THE BOARD (#75)
+//
+// The SCRAM button has drawn "PRESS TO RESET" since it was built and its handler was
+// empty. The engine's `reset_rps` and the kernel's permissive both existed the whole
+// time; what was missing was the wire between them and any way for the operator to see
+// WHY a reset would be refused. Worse, the kernel's refusal used a `type: 'refused'`
+// shape that nothing in the codebase read — not the service, not the UI, not a test —
+// so an early press was swallowed in silence.
+//
+// These drive the FULL STACK, which is the only layer where this is real: the permissive
+// is kernel state and reaches the board through the snapshot.
+console.log('\n' + B + 'PWR — RPS reset from the board (#75)' + X);
+(function () {
+  function rps(s) { return s.assembleSnapshot().rps_state; }
+
+  // --- the permissive is STATE, so the board can show it before the press ---------
+  var s = svc('pwr', 'hot_full_power');
+  secs(s, 10);
+  ck('unscrammed plant offers no reset', rps(s).reset_permitted === false, rps(s).reset_permitted, false);
+
+  s.handleCommand({ action: 'scram' });
+  secs(s, 0.5);
+  var early = rps(s);
+  ck('immediately after the scram a reset is NOT permitted',
+    early.reset_permitted === false && !!early.reset_block, early.reset_permitted, false);
+  ck('…and the block names a machine-readable reason',
+    early.reset_block.reason === 'TRIP_SIGNAL_PRESENT' || early.reset_block.reason === 'RODS_NOT_INSERTED',
+    early.reset_block.reason, 'TRIP_SIGNAL_PRESENT|RODS_NOT_INSERTED');
+
+  // --- pressing early is REFUSED, and refused in a shape the UI actually shows -----
+  var r = s.handleCommand({ action: 'reset_rps' });
+  ck('an early press is refused', !!r && r.type === 'blocked', r && r.type, 'blocked');
+  // app.js cmd() flashes the scanner bar on type 'blocked' + code INTERLOCK. This is the
+  // whole point of the change: the old 'refused' shape was read by nothing at all.
+  ck('…in the shape app.js flashes to the operator',
+    !!r && r.code === 'INTERLOCK' && !!r.message, r && r.code, 'INTERLOCK + message');
+  ck('…and still carries the specific reason', !!r && !!r.reason, r && r.reason, 'a reason code');
+  // Operator text, not source identifiers. The first cut read "turbine_tripped is still
+  // is_true", which is a sentence only a programmer can parse.
+  ck('the refusal names a channel, not an instrument id',
+    !!r && !/_/.test(r.message) && r.message.indexOf('is_true') < 0, r && r.message, 'no ids, no enums');
+
+  // --- the ROD-BOTTOM permissive has a window of its own --------------------------
+  // Between the turbine-trip signal clearing and the rods seating there are a couple of
+  // seconds where rod bottom is the only thing holding the reset off. Without a check
+  // sitting IN that window the whole `rps_reset_permissive` config could be deleted and
+  // every other check here would stay green — verified by injection, it did. Then the
+  // board would invite a reset while the rods were still dropping and the engine's own
+  // interlock would refuse it, which is the exact class of lie #75 exists to remove.
+  // Measured on this seed: rods are at 11.3 %/0.0 % at t+2 s, trip signal already clear.
+  secs(s, 1.5);   // t+0.5 s (the early press above) -> t+2 s
+  var mid = rps(s);
+  ck('while the rods are still dropping, rod bottom is what blocks the reset',
+    mid.reset_permitted === false && !!mid.reset_block &&
+    mid.reset_block.reason === 'RODS_NOT_INSERTED',
+    mid.reset_block && mid.reset_block.reason, 'RODS_NOT_INSERTED');
+  ck('…and the board is told so in words',
+    !!mid.reset_block && /rods/i.test(mid.reset_block.message),
+    mid.reset_block && mid.reset_block.message, 'mentions the rods');
+
+  // --- rods seat, nothing is standing, the reset is accepted ----------------------
+  secs(s, 10);
+  var ready = rps(s);
+  ck('with the rods in and nothing standing, a reset IS permitted',
+    ready.reset_permitted === true && !ready.reset_block, ready.reset_permitted, true);
+  var ok = s.handleCommand({ action: 'reset_rps' });
+  ck('the press is accepted', ok === null, ok, 'null');
+  ck('…and the latch clears', rps(s).scrammed === false, rps(s).scrammed, false);
+  ck('…leaving nothing to reset', rps(s).reset_permitted === false, rps(s).reset_permitted, false);
+
+  // --- rod bottom is an INSTRUMENT the permissive reads (HR1), not engine truth ----
+  var s2 = svc('pwr', 'hot_full_power');
+  secs(s2, 10);
+  ck('rods_fully_in reads false at power', s2.engine.getInstruments().rods_fully_in === false,
+    s2.engine.getInstruments().rods_fully_in, false);
+  s2.handleCommand({ action: 'scram' });
+  secs(s2, 10);
+  ck('rods_fully_in reads true once the rods are seated',
+    s2.engine.getInstruments().rods_fully_in === true, s2.engine.getInstruments().rods_fully_in, true);
+
+  // --- THE TEACHING CASE: a standing trip signal holds the reset off ---------------
+  // Recovery has to feel procedural. After a loss of feedwater the SG level trip stays
+  // asserted, so the plant cannot be reset until the operator has actually fixed the
+  // condition — and the board says which condition that is.
+  var s3 = svc('pwr', 'hot_full_power');
+  secs(s3, 10);
+  s3.handleCommand({ action: 'inject_failure', failure_id: 'loss_of_feedwater', severity: 1.0 });
+  secs(s3, 400);
+  var stuck = rps(s3);
+  ck('loss of feedwater scrams the plant', stuck.scrammed === true, stuck.scrammed, true);
+  ck('…and the reset stays blocked on the standing trip signal',
+    stuck.reset_permitted === false && stuck.reset_block &&
+    stuck.reset_block.reason === 'TRIP_SIGNAL_PRESENT',
+    stuck.reset_block && stuck.reset_block.reason, 'TRIP_SIGNAL_PRESENT');
+  ck('…naming the channel the operator has to fix',
+    !!stuck.reset_block && stuck.reset_block.message.indexOf('steam generator level') >= 0,
+    stuck.reset_block && stuck.reset_block.message, 'names steam generator level');
+  var r3 = s3.handleCommand({ action: 'reset_rps' });
+  ck('…and pressing anyway is refused, not silently ignored',
+    !!r3 && r3.type === 'blocked' && r3.reason === 'TRIP_SIGNAL_PRESENT', r3 && r3.reason, 'TRIP_SIGNAL_PRESENT');
+  ck('…the plant stays latched', rps(s3).scrammed === true, rps(s3).scrammed, true);
+})();
+
 console.log('\n' + B + '──────────' + X);
 console.log(B + 'E2E controls: ' + (fail ? R : G) + pass + '/' + (pass + fail) + X);
 process.exit(fail ? 1 : 0);

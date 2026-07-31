@@ -21,6 +21,55 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **You can reset the SCRAM now, and the board tells you what is holding it** (#75, closing
+  it). After a trip the SCRAM control reads **SCRAMMED** and becomes the RPS reset: press it
+  and the reactor trip breakers re-close. It does **not** withdraw rods or restart the
+  reactor — the rods stay where they are until you deliberately withdraw them under the
+  startup net.
+
+  **The button had said "PRESS TO RESET" since the day it was built, and it did nothing.**
+  Not "did nothing useful" — the handler was an empty stub carrying a comment claiming no
+  engine reset command existed. One did: the engine has had `reset_rps` with its rods-in
+  interlock, and the control layer its permissive, for as long as the button has drawn that
+  caption. The three had simply never been joined. An operator pressed it and got no reset,
+  no refusal and no message at all.
+
+  **The refusal was invisible even in code.** The kernel returned a `type: 'refused'` shape
+  that *nothing in the repository read* — not the service, not the UI, not a test, not the
+  spec. Measured: an early press returned a perfectly good labelled refusal straight into a
+  branch that does not exist. It now returns the same `blocked` + `INTERLOCK` shape every
+  other plant interlock uses, so the reason reaches the scanner bar through the path that
+  was already there.
+
+  **The permissive is now readable BEFORE you press.** Two conditions gate the reset — no
+  trip signal standing (a breaker will not hold in against a live trip signal) and rods at
+  bottom — and the caption under SCRAMMED names whichever is holding: *TRIP SIGNAL STANDING*,
+  *RODS NOT AT BOTTOM*, or *PRESS TO RESET* when it will take. One evaluator answers both the
+  caption and the press, so the board cannot promise a reset the plant will refuse. Measured
+  on a hot-full-power scram: the turbine trip holds it for the first second, rod bottom for
+  about two more, and it is available from roughly t+4 s.
+
+  **The teaching case is the point.** A trip you have not actually fixed keeps the plant
+  latched — after a loss of feedwater the reset stays blocked on *low steam generator level*
+  until the heat sink is restored, and after a large LOCA on *low reactor coolant pressure*.
+  Recovery is procedural, not a button. Documented as a control in **03 §3.5.1** (manual set
+  **Rev 20**), with **06 PWR-A01** Recovery pointing at it.
+
+  Three things worth knowing. Rod bottom is a new **`rods_fully_in` status word**, so the
+  permissive reads an indication rather than engine truth (HR1) and shares one threshold
+  constant with the engine's own interlock — they cannot drift apart. The permissive itself
+  is **plant config** (`rps_reset_permissive` in `pwr_control.js`), so the shared kernel
+  stays plant-agnostic and #228's existing `reset_rps` leak was not widened — `run_hr3` is
+  unmoved at 29. And the first cut of the tests **missed the rod-bottom window entirely**:
+  injection proved the whole permissive config could be deleted with every check still
+  green, because the standing turbine trip covers the first half-second and the rods are
+  down before the later checks run. A check now sits inside that window.
+
+  Gated: `run_e2e_controls` **39 → 59**, `board_check` **138 → 143**. All 25 new checks
+  driven red by injection, including the original defect — restoring the empty handler
+  reddens the board harness.
+
 ### Fixed
 - **Two shipped releases were still filed as unreleased, and the roll is now gated.** Alpha
   **1.10.0** and **1.11.0** both merged to `main` without their `## [Unreleased]` heading being

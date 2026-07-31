@@ -344,7 +344,14 @@ var BASELINES = {
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
   // discriminate where the originals could not.
-  'run_e2e_controls.js':   { code: 0, score: '39/39' },
+  // 39 -> 59 on 2026-07-31 (#75): the RPS reset from the board. The SCRAM button drew
+  // "PRESS TO RESET" with an empty handler, and the kernel's refusal used a `type:
+  // 'refused'` shape that NOTHING read — so an early press did nothing, silently. 20
+  // checks: the permissive as state, the refusal in the shape app.js flashes, operator
+  // text with no instrument ids in it, and the rod-bottom window (~1-3 s) that the first
+  // cut of these tests left uncovered — injection proved the whole permissive config
+  // could be deleted with every other check still green.
+  'run_e2e_controls.js':   { code: 0, score: '59/59' },
   // 96 → 100 checks, both from the pwr_startup rebuild:
   //   +1 (#134) the level-off now holds the point of adding heat at 1–3 %, and
   //      crossing the 5 % boundary into Mode 1 is its own deliberate step
