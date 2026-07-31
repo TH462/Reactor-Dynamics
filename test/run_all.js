@@ -176,7 +176,15 @@ var BASELINES = {
   // write-up did, by quoting #230's "Planned offline, no trip." ruling to explain why the
   // new `isOnLine` predicate deliberately EXCLUDES `turbine_tripped`. Another worked example
   // of the warning above: re-run this after the docs, not after the code.
-  'run_hardrules.js':      { code: 0, score: '40checks 0failed' },
+  // 40 -> 39 on 2026-07-31 (#286): the CLAUDE.md *Recent themes* list is capped at five
+  // bullets, and adding this session's meant dropping the oldest (#260/#263) — which
+  // carried the "for 263 item 1 fit the measurement." quote. That ruling is NOT lost; it
+  // still stands in BUILD_DECISIONS.md, TUNING_LOG.md and Manuals/00_REVISION_HISTORY.md,
+  // so this is one fewer CITATION SITE, not one fewer ruling. Worth knowing that the
+  // themes cap and this gate pull against each other: rotating a bullet out can redden a
+  // baseline with no change to the record. Check where else the quote lives before
+  // restoring a bullet to chase the number.
+  'run_hardrules.js':      { code: 0, score: '39checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -365,7 +373,15 @@ var BASELINES = {
   // retired when its cause clears, without re-engaging the channel.
   // 21 -> 24 on 2026-07-31 (#228): the RPS reset, run for ALL THREE plants. The defect
   // hid for months because every test that touched reset_rps was PWR-only.
-  'run_autoctl.js':        { code: 0, score: '24/24' },
+  // 24 → 30 on 2026-07-31 (#154 item 10): six DISCRIMINATING per-channel probes.
+  // The suite engaged SEVEN channels at once and asserted aggregate plant state —
+  // power, Tavg, pressure, SG level — so a dead channel hid behind the others.
+  // MEASURED by neutering the kernel (channel reports `engaged`, does nothing):
+  // `cvcs_makeup`, `boron_trim`, `grid_follow`, `boron_conc` and the ENGAGE half of
+  // `steam_dump` were each a complete no-op at a green 24/24, and `boron_conc` is
+  // `defaultOn` — it shipped inert in every free-play preset lineup. Each new probe
+  // engages ONE channel and was verified red by injection.
+  'run_autoctl.js':        { code: 0, score: '30/30' },
   // Back to 51/51 2026-07-26 (#218): pwr_msiv re-authored for P-9. The mission had been
   // a RACE — reopen before an automatic low-SG trip — and with the scram now landing at
   // closure that race is gone; worse, the decision beat's `scram` branch fired instantly

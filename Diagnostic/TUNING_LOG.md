@@ -115,6 +115,66 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31f — #154 re-verified end to end, and #286: five automation channels could have been doing nothing  ✅
+
+**Half of #154 was already dead.** The omnibus lists coverage gaps ranked in the
+2026-07-19 review (§4 items 6–11); every sub-item was re-checked against the tree at
+`4a97a9f` rather than inherited. **Closed by later work**: all five TMI-2 Part-3 endings
+(item 8 entirely — `run_campaign.js:1531-1615`, each ending asserted with distinguishing
+physics, not a title match), the follow-mode save/restore branch (#142 built exactly that
+test), cold-init trip blocks and `_loadAutomation` re-derivation (`run_m4.js:241`, :358),
+the PORV block valve, world-rewind `exact` (browser level, #137), and most of item 9's
+"missing ops evolutions" — SBO, ATWS, SLB, instrument-failure and large-LOCA all exist,
+at other layers than ops probes. Full verdict table in the issue comment.
+
+**Still open exactly as filed, 12 days on**: `reset_below` has zero references in `test/`;
+`porv_tailpipe_temp` and the pressurizer code safeties (`s.safety_open`, `pwr_engine.js:907`)
+are unasserted anywhere — only the *SG* safeties are; `ops_cooldown_to_rhr` still never
+issues `set_rhr` and its RHR check is still `ck.info`; the `save_migration` test asserts
+**8** of the **29** fields `_migrateState` defaults, missing `rcp_secured` (#240's
+*inference*, the one with a judgement call in it).
+
+**Item 10 was the one worth splitting (#286), because it is the only one with measured
+evidence and one channel ships inert.** `run_autoctl` engaged **seven channels at once** and
+asserted **aggregate** plant state — power, Tavg, pressure, SG level — so any band could be
+held by a channel other than the one under test. Neutering the kernel (channel reports
+`engaged`, does nothing) and re-running the gate:
+
+| channel | gate with the channel DEAD |
+|---|---|
+| `cvcs_makeup`, `boron_trim`, `grid_follow`, `boron_conc` | **24/24** |
+| `steam_dump` (engage direction) | **24/24** |
+| `pzr_pressure` | 24/24 blanked / 23/24 when engaging drives the plant to MANUAL |
+| `rods_tavg` 23/24, `feed_sg` 21/24, BWR `turbine_pressure` 22/24 | discriminated — two of these are review claims now **stale** |
+
+Three things to carry.
+
+**`boron_conc` is `defaultOn`** — it is in every free-play preset lineup, so it could have
+been a complete no-op in the shipped product with nothing to say so. **`steam_dump`'s single
+incidental red was not a steam-dump test**: blanking it reddened only *"PWR · RPS reset works,
+and refuses for the RIGHT reason (#228)"*, and only through the **disengage** path (the scram
+stand-down) — engaging the channel could have done nothing at all. And **the first injection
+lied**: blanking a `mode` channel's *disengage* as well as its engage leaves the plant in
+whatever AUTO the initial condition shipped with — the rig's own t=0 stand-down is what puts
+it in manual — so the `steam_dump` and `pzr_pressure` probes **passed against a dead channel**
+until the injection was narrowed to the engage direction only. A first pass would have shipped
+two probes that prove nothing, which is HR10 arriving through the back door of the *probe*
+rather than the test.
+
+**Fixed**: six probes, each engaging **one** channel plus only what it `requires`, asserting
+an effect nothing else in the lineup can produce. `cvcs_makeup` holds pzr level against an
+open letdown orifice (**54.9 %** vs **22.5 %** dead); `boron_trim` answers rods driven past
+`hi` = 96 % with a dilute and recovers them to **88.6 %** against **100.0 %** — out of travel
+— when dead; `boron_conc` lands a 40 ppm Mode 5 batch dose at **897.0 ppm** on an 897 target
+and *stops there* for another 30 min (the totalizer is spent, it is not a servo); `grid_follow`
+walks demand off a pinned **100.0 MWe** ask onto reactor power; `steam_dump` carries a turbine
+trip at **1121 psi (7.73 MPa)** with the safeties shut, against **1368 psi (9.43 MPa)** and
+*safeties lifting* when dead; `pzr_pressure` restores **2235 psi (15.41 MPa)** exactly, where
+a dead channel drifts to **2323 psi (16.02 MPa)**. All six verified red by injection, each
+failing on its substantive physical checks and each reddening **only its own suite**.
+`run_autoctl` **24 → 30**. Not addressed: BWR `rods_trim` and RBMK `grid_follow`/`steam_dump`
+are undiscriminated too — those plants are on hold.
+
 ### 2026-07-31e — #137: the rewind ring measured the wrong clock, and the picker aimed at the wrong axis  ✅
 
 *(OWNER, 2026-07-31: "I don't think there should be a rewind one step button. Make the user

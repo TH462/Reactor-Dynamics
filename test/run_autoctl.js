@@ -129,6 +129,12 @@ function meanPower(r, secs) {
   return sum / n;
 }
 function scrammed(r) { var s = r.snap(); return !!(s.rps_state.scrammed || s.true_state.scrammed); }
+// Control-bank position — what the `bang` channels arbitrate on (kernel rodGroup()).
+function rodPos(r) {
+  var g = r.snap().control_state.rod_groups || [];
+  for (var i = 0; i < g.length; i++) if (/control/.test(g[i].id)) return g[i].position_pct;
+  return null;
+}
 // Automation-issued commands only (exclude protection traffic for sparseness).
 function autoCmds(r) {
   return r.sent.filter(function (c) {
@@ -247,6 +253,164 @@ test('PWR · rod channel disengages itself on scram', function (ck) {
   ck('scrammed', scrammed(r), scrammed(r), 'true');
   ck('rod channel off', c.engaged, !c.engaged, 'false');
   ck('note explains why', c.note, /scram/.test(c.note), 'mentions scram');
+});
+
+// ---------------------------------------------------------------------------
+// DISCRIMINATING per-channel probes (#154 item 10).
+//
+// The suite above engages SEVEN channels at once and asserts aggregate plant
+// state — power, Tavg, pressure, SG level. Any one of those bands can be held by
+// a channel that is not the one under test, so a dead channel hides. MEASURED by
+// injection on 2026-07-31: with the kernel neutered so a channel reports
+// `engaged` and does nothing, `cvcs_makeup`, `boron_trim`, `grid_follow`,
+// `boron_conc` and (on the ENGAGE direction) `steam_dump` were each a complete
+// no-op at a green 24/24. `boron_conc` is `defaultOn`, so it ships inert in every
+// free-play preset lineup.
+//
+// Each probe below therefore engages ONE channel — plus only what it `requires` —
+// and asserts an effect nothing else in the lineup can produce. Every check was
+// verified to go RED against the neutered kernel; the dead-channel number is
+// quoted beside each band so a future edit can tell a real regression from a
+// re-fit. The expected values are what the plant does, not what the suite wanted:
+// where automation cannot fully win (cvcs against both letdown orifices) the
+// probe uses the case it can.
+//
+// If you repeat that injection, neuter the ENGAGE direction ONLY. Blanking a
+// `mode` channel's disengage as well makes the probe LIE: the rig stands every
+// channel down at t=0, and it is that disengage which puts the plant into manual,
+// so blanking both leaves it in whatever AUTO the initial condition shipped with
+// and the plant holds itself. Measured — with both directions blanked, the
+// steam_dump and pzr_pressure probes below pass against a completely dead
+// channel; with only engage blanked they fail on four and two checks.
+test('PWR · cvcs_makeup HOLDS primary inventory against letdown (#154)', function (ck) {
+  var r = rig('pwr', 'hot_full_power');
+  r.engage(['cvcs_makeup']);
+  // One orifice is a deficit automatic make-up can actually carry; both together
+  // exceed max charging and the level falls either way (55 → 44 auto / 16.9 dead),
+  // which would assert "falls slower", not "holds".
+  r.cmd({ action: 'set_letdown_orifices', a: true, b: false });
+  var l0 = inst(r).pzr_level, lo = l0;
+  for (var k = 0; k < 60; k++) { r.run(15); if (inst(r).pzr_level < lo) lo = inst(r).pzr_level; }
+  ck('charging went to AUTO on engage', r.snap().control_state.cvcs_auto,
+    r.snap().control_state.cvcs_auto === true, 'true');
+  // Measured: 54.9 % held with the channel, 22.5 % with it dead.
+  ck('level held against an open letdown orifice', inst(r).pzr_level.toFixed(1),
+    near(inst(r).pzr_level, l0, 3), l0.toFixed(1) + ' ±3 % (dead channel: 22.5)');
+  ck('and never dipped on the way', lo.toFixed(1), lo > l0 - 3, '> ' + (l0 - 3).toFixed(1) + ' %');
+  ck('no scram', scrammed(r), !scrammed(r), 'false');
+});
+
+test('PWR · boron_trim buys back rod travel at the top of the bank (#154)', function (ck) {
+  var r = rig('pwr', 'hot_full_power');
+  r.engage(['rods_tavg', 'boron_trim']);
+  // Borate gently by hand (0.05 ppm/s — the tuned makeup rate; 0.5 is a firehose
+  // that scrams the plant) until the auto rods have walked out past `hi` = 96 %.
+  // From the HFP lineup they start at 92.0 %, so this is ~3 plant-minutes.
+  r.cmd({ action: 'set_boron_adjust', rate: 0.05 });
+  var guard = 0;
+  while (rodPos(r) < 96 && guard++ < 60 && !scrammed(r)) r.run(60);
+  r.cmd({ action: 'set_boron_adjust', rate: 0 });
+  var posHigh = rodPos(r);
+  ck('rods driven out past the dilute threshold', posHigh.toFixed(1), posHigh >= 96, '≥ 96 %');
+  r.run(2400);
+  var dilutes = r.sent.filter(function (c) { return c.action === 'set_boron_adjust' && c.rate < 0; });
+  ck('the channel answered with a DILUTE', dilutes.length, dilutes.length >= 1, '≥ 1 dilute command');
+  // Measured: rods recover to 88.6 % (inside hiStop = 90). With the channel dead
+  // they keep going and park at 100.0 — out of travel, which is the exact loss of
+  // control authority this channel exists to prevent.
+  ck('rods walked back into band', rodPos(r).toFixed(1), rodPos(r) <= 90, '≤ 90 % (dead channel: 100.0)');
+  ck('channel reports in band', JSON.stringify(r.chan('boron_trim').note),
+    /in band/.test(r.chan('boron_trim').note), 'in band');
+  ck('no scram', scrammed(r), !scrammed(r), 'false');
+});
+
+test('PWR · boron_conc delivers a metered dose and STOPS (#154)', function (ck) {
+  // Mode 5, not at power: this is where a plant actually meters batch boron, and
+  // at power the dose is a reactivity event rather than a chemistry one. Measured
+  // with the control bank in manual (this channel does not engage the rods), even
+  // a 10 ppm ask trips the plant — the test would then be asserting the trip.
+  var r = rig('pwr', 'cold_shutdown');
+  r.engage(['boron_conc']);
+  var b0 = ts(r).boron_ppm, target = Math.round(b0) + 40;
+  r.setSp('boron_conc', target);
+  r.run(1800);
+  // Measured: 857 → 897.0 against an 897 target. Dead channel: 856.8, i.e. the
+  // ask is simply ignored.
+  ck('dose delivered to target', ts(r).boron_ppm.toFixed(1),
+    near(ts(r).boron_ppm, target, 3), target + ' ±3 ppm (dead channel: unmoved)');
+  var bDone = ts(r).boron_ppm;
+  r.run(1800);
+  // The totalizer stops the dose — it does NOT close the loop on the analyzer, so
+  // a delivered dose must not keep creeping. This half also fails on a channel
+  // that seeks continuously.
+  ck('and stops there — the totalizer is spent, not a servo', ts(r).boron_ppm.toFixed(1),
+    near(ts(r).boron_ppm, bDone, 1), bDone.toFixed(1) + ' ±1 ppm after another 30 min');
+  ck('no scram', scrammed(r), !scrammed(r), 'false');
+});
+
+test('PWR · grid_follow walks turbine demand off the pinned full-load ask (#154)', function (ck) {
+  var r = rig('pwr', 'hot_full_power');
+  r.engage(['grid_follow']);
+  ck('load mode is FOLLOW', r.snap().control_state.load_mode,
+    r.snap().control_state.load_mode === 'follow', 'follow');
+  r.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -40, speed: 'normal' });
+  r.run(900);
+  var demand = r.snap().control_state.steam_demand_mwe, power = ts(r).power_pct;
+  // In MANUAL the demand is a setpoint the operator owns: it sits at EXACTLY the
+  // 100 MWe it was left at however far power falls (measured 100.0 with the
+  // channel dead, against 96.2 in follow). A bigger insertion separates them
+  // further but takes the manual case to a trip on the overcool, which would let
+  // this pass for the wrong reason.
+  ck('demand came off the full-load ask', demand.toFixed(1), demand < 99, '< 99 MWe (dead channel: 100.0)');
+  ck('demand tracks reactor power', demand.toFixed(1) + ' vs power ' + power.toFixed(1),
+    near(demand, power, 1.0), 'power ±1.0');
+  ck('no scram', scrammed(r), !scrammed(r), 'false');
+});
+
+test('PWR · steam_dump carries a turbine trip off the code safeties (#154)', function (ck) {
+  var r = rig('pwr', 'hot_full_power');
+  r.engage(['steam_dump']);
+  r.run(30);
+  r.cmd({ action: 'inject_failure', failure_id: 'turbine_trip' });
+  var peak = 0, dmax = 0, lifted = false;
+  for (var k = 0; k < 600; k++) {
+    r.run(1);
+    var t = ts(r), c = r.snap().control_state;
+    if (t.steam_pressure_mpa > peak) peak = t.steam_pressure_mpa;
+    if ((c.steam_dump_pct || 0) > dmax) dmax = c.steam_dump_pct;
+    if (t.sg_safety_open) lifted = true;
+  }
+  ck('dump went to AUTO on engage', r.snap().control_state.steam_dump_auto,
+    r.snap().control_state.steam_dump_auto === true, 'true');
+  ck('dump opened for the rejection', dmax.toFixed(1), dmax > 20, '> 20 % (measured 92.9)');
+  // The whole point of the channel: the bypass takes the steam the turbine stopped
+  // taking, so the generator never reaches its code safeties. Measured peak 7.73 MPa
+  // (1121 psi) with the channel, 9.43 MPa (1368 psi) with it dead — and dead, the
+  // safeties DO lift.
+  ck('SG pressure stayed off the safeties', peak.toFixed(2) + ' MPa', peak < 9.0,
+    '< 9.0 MPa / 1305 psi (dead channel: 9.43)');
+  ck('code safeties never lifted', String(lifted), lifted === false, 'false (dead channel: true)');
+});
+
+test('PWR · pzr_pressure returns the plant to its pressure setpoint (#154)', function (ck) {
+  var r = rig('pwr', 'hot_full_power');
+  // Manual spray is a fire-hose: any opening drops indicated pressure to ~7.5 MPa
+  // and trips the plant on low pressure, so this is deliberately the POST-TRIP
+  // pressure-restoration case rather than an at-power one.
+  r.cmd({ action: 'set_spray', pct: 40 });
+  r.run(90);
+  var dip = ts(r).pressure_mpa;
+  r.cmd({ action: 'set_spray', pct: 0 });
+  r.engage(['pzr_pressure']);
+  r.run(900);
+  ck('spray blast dropped pressure', dip.toFixed(2) + ' MPa', dip < 12.0, '< 12.0 MPa');
+  ck('heaters and spray both in AUTO', r.snap().control_state.heater_auto + '/' + r.snap().control_state.spray_auto,
+    r.snap().control_state.heater_auto === true && r.snap().control_state.spray_auto === true, 'true/true');
+  // Measured 15.41 MPa (2235 psi) — exactly the setpoint. With the channel dead the
+  // plant self-repressurizes past it to 16.02 MPa (2323 psi) with nothing checking
+  // the rise.
+  ck('pressure recovered to setpoint', ts(r).pressure_mpa.toFixed(2) + ' MPa',
+    near(ts(r).pressure_mpa, 15.41, 0.15), '15.41 ±0.15 MPa (dead channel: 16.02)');
 });
 
 // ================================================================== RBMK

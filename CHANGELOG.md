@@ -21,6 +21,39 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Testing
+- **Five automation channels could have been doing nothing, and the gate would still have
+  read 24/24** (#286, split out of #154 item 10). `run_autoctl` engaged **seven channels at
+  once** and asserted **aggregate** plant state — power, Tavg, pressure, SG level — so any
+  band could be held by a channel other than the one under test, and a dead channel hid
+  behind its neighbours.
+
+  **Measured**, by neutering the kernel so a channel reports `engaged` and does nothing:
+  `cvcs_makeup`, `boron_trim`, `grid_follow`, `boron_conc` and the *engage* half of
+  `steam_dump` were each a complete no-op at a green **24/24**. Two of those matter beyond
+  the gate: **`boron_conc` is `defaultOn`**, so it is in every free-play preset lineup and
+  could have shipped inert; and `steam_dump`'s single incidental red came from a *different
+  feature's* test (#228's RPS reset) catching only the scram stand-down, so engaging the
+  channel could have done nothing at all.
+
+  Six probes added, each engaging **one** channel plus only what it `requires` and asserting
+  what nothing else in the lineup can produce — `cvcs_makeup` holds pressurizer level against
+  an open letdown orifice (**54.9 %** vs **22.5 %** dead); `boron_trim` answers rods driven
+  past 96 % with a dilute and recovers them to **88.6 %** instead of letting them park at
+  **100 %**, out of travel; `boron_conc` lands a 40 ppm Mode 5 batch dose on target and
+  *stops* (the totalizer is spent, it is not a servo); `grid_follow` walks turbine demand off
+  a pinned **100.0 MWe** ask onto reactor power; `steam_dump` carries a turbine trip at
+  **1121 psi (7.73 MPa)** with the code safeties shut, against **1368 psi (9.43 MPa)** and
+  safeties lifting when dead; `pzr_pressure` restores **2235 psi (15.41 MPa)** exactly, where
+  a dead channel lets the plant drift to **2323 psi (16.02 MPa)**.
+
+  Every check was verified **red by injection** before counting as green. Worth carrying:
+  when injecting against a `mode` channel, neuter the **engage direction only** — the rig
+  stands every channel down at t=0, and blanking that *disengage* too leaves the plant in
+  whatever AUTO the initial condition shipped with, where it holds itself. With both
+  directions blanked the `steam_dump` and `pzr_pressure` probes **pass against a dead
+  channel**. `run_autoctl` **24 → 30**.
+
 ### Fixed
 - **A synchronised turbine no longer coasts to a stop, and the MWe gauge now reads the
   turbine instead of the reactor** (#284). Two defects in one file, with one cause: nothing
