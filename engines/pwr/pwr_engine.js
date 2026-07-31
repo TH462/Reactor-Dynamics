@@ -837,7 +837,20 @@
         // Clamped to the physical relief band so it can't command past the safeties.
         s.pressure_setpoint = clip(cmd.mpa, 0.1, this.cfg.pressurizer.safety_open_mpa);
         break;
-      case 'open_porv':
+      // TWO INPUTS, ONE SOLENOID (#125, owner's design). A real PORV takes an automatic
+      // signal from the pressurizer-pressure channel AND the operator's control switch —
+      // separate circuits into the same valve. Modelling both as one command made "who
+      // opened it?" unanswerable, which is why the operator had no PORV control at all:
+      // the only way to give them one was to widen the command automatic relief already
+      // used, and then no scenario could tell an operator lift from a relief lift.
+      //
+      // The engine treats them IDENTICALLY on purpose. It is one valve, and the demand it
+      // ends up holding is the same either way; the distinction lives one layer up, where
+      // the control layer can refuse the operator's switch without touching relief. Both
+      // set `porv_demand`, so the indicator stays command-based and the TMI-2 lie is
+      // unaffected — a manual close still reads CLOSED over a valve stuck open.
+      case 'open_porv':          // automatic relief, and scenario-authored lifts
+      case 'open_porv_manual':   // the operator's control switch — M4 may refuse this one
         s.porv_demand = 'open';
         break;
       case 'close_porv':

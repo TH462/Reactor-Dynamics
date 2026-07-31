@@ -22,11 +22,81 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+<<<<<<< HEAD
 - **You can reset the SCRAM now, and the board tells you what is holding it** (#75, closing
   it). After a trip the SCRAM control reads **SCRAMMED** and becomes the RPS reset: press it
   and the reactor trip breakers re-close. It does **not** withdraw rods or restart the
   reactor — the rods stay where they are until you deliberately withdraw them under the
   startup net.
+=======
+- **You can click the pressuriser relief valve open and shut** (#125).
+
+  The PORV on the board has always looked clickable — it highlights under the pointer
+  and shows a hand cursor — but nothing was wired behind it, so the click did nothing.
+  It now works: click to lift the valve, click again to shut it.
+
+  Giving the operator that switch needed care, because the same command was doing two
+  unrelated jobs. A real relief valve has two separate inputs to one solenoid: the
+  automatic signal that lifts it on high pressure, and the operator's switch on the
+  panel. Here they were the same command, so there was no way to hand the operator a
+  switch without also handing them the automatic protection — and no way for a training
+  scenario to take the switch away without disabling relief along with it.
+
+  They are separate now. **Scenarios can lock out the manual switch**, and the Three Mile
+  Island scenarios do: that accident turns on not being able to tell an open valve from a
+  shut one, and it stops teaching anything if you can sit on the switch and work the valve
+  yourself. Locking the switch does **not** disable relief — the valve still lifts on high
+  pressure exactly as before, which is measured and gated rather than assumed. Closing is
+  never locked, because closing it is the Three Mile Island action itself, and watching
+  that fail against a stuck valve is the entire lesson.
+
+### Fixed
+- **Alarm tiles told you the wrong system for a third of the alarms** (#157).
+
+  Every alarm tile carries a system family on its second line — *coolant · warning ·
+  unacknowledged*. That family was never recorded anywhere; the interface guessed it by
+  looking for keywords in the alarm's internal name. Measured, it was wrong or arguable
+  for **13 of the pressurised-water reactor's 33 alarms**.
+
+  The guesses failed in ways nobody could see. *CHG FLOW HI* was filed under safety
+  systems rather than coolant, because the word "flow" is in the label an operator reads
+  and not in the internal name the guesswork read. *SUR HI* — a reactivity alarm on both
+  the pressurised-water reactor and the RBMK — matched nothing at all and fell through to
+  safety systems. *SG PRESS HI* matched "press" and was filed as coolant even though it is
+  secondary steam. Renaming any alarm could silently re-file it.
+
+  Each alarm now states its own family, next to the panel it annunciates on. There is
+  deliberately no fallback guess: an alarm that fails to state one shows a dash and fails
+  the build, rather than quietly showing a plausible answer that happens to be wrong.
+
+- **Resetting the reactor protection system on the RBMK or the BWR blamed the rods for
+  something that was not their fault** (#228).
+
+  After a scram, the trip breakers reset only once the rods are fully in — a real
+  interlock, and the simulator models it. On those two plants the reset was refused with
+  *"trip breakers reset only with all rods inserted"* **while every rod read 0.0 %**, fully
+  inserted. There was no way to clear the scram, and the message pointed at the one thing
+  that was already correct.
+
+  The cause was two layers deep. The shared control system had always sent the reset
+  command to the reactor, but only the pressurised-water reactor knew what to do with it;
+  the other two answered "I do not understand that", the control system discarded the
+  reply, and then inferred a reason from the fact that the plant was still tripped. Both
+  reactors now implement the reset, and a reply the control system cannot act on is passed
+  back to you instead of being replaced by a guess.
+
+  Filed as a latent problem on the grounds that those plants have no control panel yet.
+  Measuring it showed it was not latent in the way the report assumed — the refusal was
+  already reachable, and already wrong.
+
+### Added
+- **The board now tells you to isolate the accumulators — SI ACCUM ALIGNED < 1000 PSI**
+  (#273, closing it). A caution annunciator on panel B at **1000 psi (6.895 MPa)**, and the
+  first alarm in the plant **gated on a lineup as well as a reading**: it also requires the
+  discharge isolation valve indication to read *open*, so a correctly-isolated Mode 5 plant —
+  which sits below that pressure all day — never sees it. Isolate and it clears; isolate on
+  schedule and it never comes in.
+>>>>>>> workbench
 
   **The button had said "PRESS TO RESET" since the day it was built, and it did nothing.**
   Not "did nothing useful" — the handler was an empty stub carrying a comment claiming no

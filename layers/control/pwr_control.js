@@ -320,9 +320,9 @@
   var COLD_MODES = [4, 5];
 
   var PWR_ALARMS_A = [
-    { id: 'reactor_trip',      instrument: 'rps_scrammed',     direction: 'is_true', setpoint: null,  priority: 'critical', panel: 'A', label_learning: 'Reactor Trip',                     label_industry: 'REACTOR TRIP' },
-    { id: 'high_flux',         instrument: 'power_range',      direction: 'high',    setpoint: 108.0, priority: 'critical', panel: 'A', label_learning: 'High Neutron Flux',                label_industry: 'HI FLUX' },
-    { id: 'high_tavg',         instrument: 'tavg',             direction: 'high',    setpoint: 312.2, priority: 'warning',  panel: 'A', label_learning: 'High Coolant Temperature',        label_industry: 'HI TAVG' },
+    { id: 'reactor_trip',      instrument: 'rps_scrammed',     direction: 'is_true', setpoint: null,  priority: 'critical', panel: 'A', category: 'safety_system', label_learning: 'Reactor Trip',                     label_industry: 'REACTOR TRIP' },
+    { id: 'high_flux',         instrument: 'power_range',      direction: 'high',    setpoint: 108.0, priority: 'critical', panel: 'A', category: 'reactivity', label_learning: 'High Neutron Flux',                label_industry: 'HI FLUX' },
+    { id: 'high_tavg',         instrument: 'tavg',             direction: 'high',    setpoint: 312.2, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'High Coolant Temperature',        label_industry: 'HI TAVG' },
     // LOW Tavg (#233 playtest): the board had a high alarm and a high scram and NOTHING on
     // the cold side, so the tile's low region ran unbounded to the bottom of the meter and
     // an overcooling transient annunciated nothing. 289 °C is the P-12 line — the classic
@@ -336,26 +336,26 @@
     // …and once the plant is DELIBERATELY cold (Modes 4/5) it reads as the status
     // it is rather than a warning — the condition still stands in, exactly as the
     // comment above requires, but a cooldown is not a casualty (#240).
-    { id: 'low_tavg',          instrument: 'tavg',             direction: 'low',     setpoint: 289.0, priority: 'warning',  panel: 'A', label_learning: 'Low Coolant Temperature',         label_industry: 'LO TAVG (P-12)',
+    { id: 'low_tavg',          instrument: 'tavg',             direction: 'low',     setpoint: 289.0, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Low Coolant Temperature',         label_industry: 'LO TAVG (P-12)',
       reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Coolant Temperature Low — expected, plant is cold', label_industry: 'LO TAVG (P-12) — EXPECTED' }] },
-    { id: 'pzr_pressure_high', instrument: 'primary_pressure', direction: 'high',    setpoint: 15.86, priority: 'warning',  panel: 'A', label_learning: 'Pressurizer Pressure High',       label_industry: 'PZR PRESS HI' },
-    { id: 'pzr_pressure_low',  instrument: 'primary_pressure', direction: 'low',     setpoint: 14.82, priority: 'warning',  panel: 'A', label_learning: 'Pressurizer Pressure Low',        label_industry: 'PZR PRESS LO',
+    { id: 'pzr_pressure_high', instrument: 'primary_pressure', direction: 'high',    setpoint: 15.86, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure High',       label_industry: 'PZR PRESS HI' },
+    { id: 'pzr_pressure_low',  instrument: 'primary_pressure', direction: 'low',     setpoint: 14.82, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure Low',        label_industry: 'PZR PRESS LO',
       reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Pressurizer Pressure Low — expected, plant depressurized', label_industry: 'PZR PRESS LO — EXPECTED' }] },
-    { id: 'pzr_pressure_lolo', instrument: 'primary_pressure', direction: 'low',     setpoint: 12.41, priority: 'critical', panel: 'A', label_learning: 'Pressurizer Pressure Very Low',   label_industry: 'PZR PRESS LO LO',
+    { id: 'pzr_pressure_lolo', instrument: 'primary_pressure', direction: 'low',     setpoint: 12.41, priority: 'critical', panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure Very Low',   label_industry: 'PZR PRESS LO LO',
       reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Pressurizer Pressure Very Low — expected, plant depressurized', label_industry: 'PZR PRESS LO LO — EXPECTED' }] },
-    { id: 'porv_open',         instrument: 'porv_indicator',   direction: 'is_open', setpoint: null,  priority: 'warning',  panel: 'A', label_learning: 'Pressure Relief Valve Open',      label_industry: 'PORV OPEN' },
+    { id: 'porv_open',         instrument: 'porv_indicator',   direction: 'is_open', setpoint: null,  priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressure Relief Valve Open',      label_industry: 'PORV OPEN' },
     // 2.0 → 1.0 DPM (issue #134): the alarm sat above the rate a real startup
     // ever reaches, so it never warned before the withdrawal block. 1.0 is the
     // admin startup-rate limit the checklist teaches, and lands one step below
     // the 1.5 DPM rod-withdrawal block — caution first, then the physical stop.
-    { id: 'sur_high',          instrument: 'startup_rate',     direction: 'high',    setpoint: 1.0,   priority: 'caution',  panel: 'A', label_learning: 'Startup Rate High',               label_industry: 'SUR HI' },
-    { id: 'sr_high_flux',      instrument: 'source_range',     direction: 'high',    setpoint: 5.0e4, priority: 'caution',  panel: 'A', label_learning: 'Source Range Count Rate High',    label_industry: 'SR HI FLUX' },
-    { id: 'subcooling_low',    instrument: 'subcooling_margin', direction: 'low',    setpoint: 11.1,  priority: 'warning',  panel: 'A', label_learning: 'Low Subcooling Margin',           label_industry: 'LO SUBCOOL' },
-    { id: 'subcooling_lost',   instrument: 'subcooling_margin', direction: 'low',    setpoint: 0.0,   priority: 'critical', panel: 'A', label_learning: 'Subcooling Lost — Coolant Boiling', label_industry: 'SUBCOOL LOST' },
-    { id: 'pzr_level_high',    instrument: 'pzr_level',        direction: 'high',    setpoint: 75.0,  priority: 'caution',  panel: 'A', label_learning: 'Pressurizer Level High',          label_industry: 'PZR LVL HI' },
-    { id: 'pzr_level_low',     instrument: 'pzr_level',        direction: 'low',     setpoint: 25.0,  priority: 'warning',  panel: 'A', label_learning: 'Pressurizer Level Low',           label_industry: 'PZR LVL LO' },
-    { id: 'pzr_level_lolo',    instrument: 'pzr_level',        direction: 'low',     setpoint: 12.0,  priority: 'critical', panel: 'A', label_learning: 'Pressurizer Level Very Low',      label_industry: 'PZR LVL LO LO' },
-    { id: 'rod_limit',         instrument: 'rod_at_limit',     direction: 'is_true', setpoint: null,  priority: 'warning',  panel: 'A', label_learning: 'Control Rods — Insertion Limit',  label_industry: 'ROD INS LIMIT' },
+    { id: 'sur_high',          instrument: 'startup_rate',     direction: 'high',    setpoint: 1.0,   priority: 'caution',  panel: 'A', category: 'reactivity', label_learning: 'Startup Rate High',               label_industry: 'SUR HI' },
+    { id: 'sr_high_flux',      instrument: 'source_range',     direction: 'high',    setpoint: 5.0e4, priority: 'caution',  panel: 'A', category: 'reactivity', label_learning: 'Source Range Count Rate High',    label_industry: 'SR HI FLUX' },
+    { id: 'subcooling_low',    instrument: 'subcooling_margin', direction: 'low',    setpoint: 11.1,  priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Low Subcooling Margin',           label_industry: 'LO SUBCOOL' },
+    { id: 'subcooling_lost',   instrument: 'subcooling_margin', direction: 'low',    setpoint: 0.0,   priority: 'critical', panel: 'A', category: 'coolant', label_learning: 'Subcooling Lost — Coolant Boiling', label_industry: 'SUBCOOL LOST' },
+    { id: 'pzr_level_high',    instrument: 'pzr_level',        direction: 'high',    setpoint: 75.0,  priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level High',          label_industry: 'PZR LVL HI' },
+    { id: 'pzr_level_low',     instrument: 'pzr_level',        direction: 'low',     setpoint: 25.0,  priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Low',           label_industry: 'PZR LVL LO' },
+    { id: 'pzr_level_lolo',    instrument: 'pzr_level',        direction: 'low',     setpoint: 12.0,  priority: 'critical', panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Very Low',      label_industry: 'PZR LVL LO LO' },
+    { id: 'rod_limit',         instrument: 'rod_at_limit',     direction: 'is_true', setpoint: null,  priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Insertion Limit',  label_industry: 'ROD INS LIMIT' },
     // ---- the small-leak cue pair (#262, owner ruling 2026-07-30) ----------------------
     // A leak inside CVCS make-up authority is HELD, and that is the problem: the plant
     // quietly loses inventory with charging near maximum and, before these two, nothing
@@ -391,24 +391,24 @@
     // Together they are a diagnosis and not just a cue: charging high ALONE is a leak inside
     // make-up authority; both together mean make-up has lost it. Both `caution` — find-it-and-
     // fix-it conditions, not casualties. [tune]
-    { id: 'pzr_level_dev_low', instrument: 'pzr_level_dev',    direction: 'low',     setpoint: -10.0, priority: 'caution',  panel: 'A', label_learning: 'Pressurizer Level Below Program — make-up is not holding', label_industry: 'PZR LVL DEV LO' },
-    { id: 'charging_high',     instrument: 'charging_flow',    direction: 'high',    setpoint: 0.036, priority: 'caution',  panel: 'A', label_learning: 'Charging Flow High — make-up is working hard',            label_industry: 'CHG FLOW HI' },
+    { id: 'pzr_level_dev_low', instrument: 'pzr_level_dev',    direction: 'low',     setpoint: -10.0, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Below Program — make-up is not holding', label_industry: 'PZR LVL DEV LO' },
+    { id: 'charging_high',     instrument: 'charging_flow',    direction: 'high',    setpoint: 0.036, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Charging Flow High — make-up is working hard',            label_industry: 'CHG FLOW HI' },
   ];
   var PWR_ALARMS_B = [
-    { id: 'sg_level_hihi',  instrument: 'sg_level',         direction: 'high',     setpoint: 88.0, priority: 'critical', panel: 'B', label_learning: 'Steam Generator Level High-High (P-14)', label_industry: 'SG LVL HI HI' },
-    { id: 'sg_level_high',  instrument: 'sg_level',         direction: 'high',     setpoint: 75.0, priority: 'caution',  panel: 'B', label_learning: 'Steam Generator Level High',     label_industry: 'SG LVL HI' },
-    { id: 'sg_level_low',   instrument: 'sg_level',         direction: 'low',      setpoint: 30.0, priority: 'warning',  panel: 'B', label_learning: 'Steam Generator Level Low',      label_industry: 'SG LVL LO' },
-    { id: 'sg_level_lolo',  instrument: 'sg_level',         direction: 'low',      setpoint: 17.0, priority: 'critical', panel: 'B', label_learning: 'Steam Generator Level Critical Low', label_industry: 'SG LVL LO LO' },
+    { id: 'sg_level_hihi',  instrument: 'sg_level',         direction: 'high',     setpoint: 88.0, priority: 'critical', panel: 'B', category: 'power', label_learning: 'Steam Generator Level High-High (P-14)', label_industry: 'SG LVL HI HI' },
+    { id: 'sg_level_high',  instrument: 'sg_level',         direction: 'high',     setpoint: 75.0, priority: 'caution',  panel: 'B', category: 'power', label_learning: 'Steam Generator Level High',     label_industry: 'SG LVL HI' },
+    { id: 'sg_level_low',   instrument: 'sg_level',         direction: 'low',      setpoint: 30.0, priority: 'warning',  panel: 'B', category: 'power', label_learning: 'Steam Generator Level Low',      label_industry: 'SG LVL LO' },
+    { id: 'sg_level_lolo',  instrument: 'sg_level',         direction: 'low',      setpoint: 17.0, priority: 'critical', panel: 'B', category: 'power', label_learning: 'Steam Generator Level Critical Low', label_industry: 'SG LVL LO LO' },
     // RCP annunciator. Keyed on `rcp_running is_false`, so it comes in whenever the
     // pumps are stopped — but stopped BY COMMAND is a lineup, not a casualty, and
     // that distinction is not a mode question: securing the pumps in Mode 3 for
     // natural circulation is equally planned, and losing one in Mode 5 during a
     // heatup is equally a trip. So this rule reads the handswitch (`rcp_secured`,
     // cleared by every fault route in pwr_engine), not the plant mode (#240).
-    { id: 'rcp_trip',       instrument: 'rcp_running',      direction: 'is_false', setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Reactor Coolant Pump Trip',     label_industry: 'RCP TRIP',
+    { id: 'rcp_trip',       instrument: 'rcp_running',      direction: 'is_false', setpoint: null, priority: 'critical', panel: 'B', category: 'coolant', label_learning: 'Reactor Coolant Pump Trip',     label_industry: 'RCP TRIP',
       reclassify: [{ condition: 'rcp_secured', priority: 'status', label_learning: 'Reactor Coolant Pumps Secured', label_industry: 'RCP SECURED' }] },
-    { id: 'rcp_cavitation', instrument: 'rcp_cavitating',   direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Reactor Coolant Pump Cavitation', label_industry: 'RCP CAVITATION' },
-    { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
+    { id: 'rcp_cavitation', instrument: 'rcp_cavitating',   direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', category: 'coolant', label_learning: 'Reactor Coolant Pump Cavitation', label_industry: 'RCP CAVITATION' },
+    { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
     // SI ACCUMULATORS STILL ALIGNED BELOW 1000 psi (6.895 MPa) — the cooldown cue (#273).
     //
     // Why it exists. A by-the-book cooldown used to walk straight through the tanks'
@@ -444,16 +444,16 @@
     // and deliberate: there the same fact means "passive injection is about to start".
     // The label is therefore stated as a lineup, not as an order — the operator decides
     // which of the two situations they are in, which is the whole point of the cue.
-    { id: 'accum_aligned',  instrument: 'primary_pressure', direction: 'low',      setpoint: 6.895, priority: 'caution',  panel: 'B',
+    { id: 'accum_aligned',  instrument: 'primary_pressure', direction: 'low',      setpoint: 6.895, priority: 'caution',  panel: 'B', category: 'safety_system',
       condition: 'accum_valve_open',
       label_learning: 'Accumulators Still Lined Up — RCS Below Their Isolation Pressure', label_industry: 'SI ACCUM ALIGNED < 1000 PSI' },
-    { id: 'sbo',            instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
+    { id: 'sbo',            instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', category: 'safety_system', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
     // Turbine trip / low steam demand. Reclassified in Modes 4/5 ONLY: below the
     // hot band the machine is secured by design and RHR is the heat sink, so zero
     // steam demand is the lineup. Mode 3 keeps the warning on purpose — that is
     // where the plant lands after a trip from power, and the annunciator is
     // carrying real news there.
-    { id: 'turbine_trip',   instrument: 'steam_demand_low', direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Turbine Trip / Low Steam Demand', label_industry: 'TURB TRIP',
+    { id: 'turbine_trip',   instrument: 'steam_demand_low', direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', category: 'power', label_learning: 'Turbine Trip / Low Steam Demand', label_industry: 'TURB TRIP',
       reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Turbine Secured — no steam demand', label_industry: 'TURB SECURED' }] },
     // Reactor/turbine LOAD IMBALANCE — reactor power and turbine load have diverged by
     // more than 4 % of rated (load_mode.js IMBALANCE_FRAC, from INDICATED power). The SG
@@ -462,11 +462,11 @@
     // silent while a rod-only power reduction in MANUAL dragged Tavg 304 → 130 °C with
     // no alarm and no trip anywhere (#211). Caution, not warning: on this ride-out plant
     // an imbalance is a cue to act, not a limit being approached.
-    { id: 'load_imbalance', instrument: 'sg_imbalance_active', direction: 'is_true', setpoint: null, priority: 'caution', panel: 'B', label_learning: 'Reactor/Turbine Load Imbalance — SG filling or draining', label_industry: 'LOAD IMBAL' },
-    { id: 'msiv_closed',    instrument: 'msiv_open',        direction: 'is_false', setpoint: null, priority: 'warning',  panel: 'B', label_learning: 'Main Steam Isolated (MSIV Shut)', label_industry: 'MSIV SHUT' },
-    { id: 'sg_press_high',  instrument: 'steam_pressure',   direction: 'high',     setpoint: 9.0,  priority: 'caution',  panel: 'B', label_learning: 'Steam Generator Pressure High',   label_industry: 'SG PRESS HI' },
-    { id: 'cond_vac_low',   instrument: 'condenser_vacuum', direction: 'low',      setpoint: 84.7, priority: 'caution',  panel: 'B', label_learning: 'Condenser Vacuum Low',           label_industry: 'COND VAC LO' },
-    { id: 'cond_vac_trip',  instrument: 'condenser_vacuum', direction: 'low',      setpoint: 74.5, priority: 'warning',  panel: 'B', label_learning: 'Condenser Vacuum Trip Level',    label_industry: 'COND VAC TRIP' },
+    { id: 'load_imbalance', instrument: 'sg_imbalance_active', direction: 'is_true', setpoint: null, priority: 'caution', panel: 'B', category: 'power', label_learning: 'Reactor/Turbine Load Imbalance — SG filling or draining', label_industry: 'LOAD IMBAL' },
+    { id: 'msiv_closed',    instrument: 'msiv_open',        direction: 'is_false', setpoint: null, priority: 'warning',  panel: 'B', category: 'power', label_learning: 'Main Steam Isolated (MSIV Shut)', label_industry: 'MSIV SHUT' },
+    { id: 'sg_press_high',  instrument: 'steam_pressure',   direction: 'high',     setpoint: 9.0,  priority: 'caution',  panel: 'B', category: 'power', label_learning: 'Steam Generator Pressure High',   label_industry: 'SG PRESS HI' },
+    { id: 'cond_vac_low',   instrument: 'condenser_vacuum', direction: 'low',      setpoint: 84.7, priority: 'caution',  panel: 'B', category: 'power', label_learning: 'Condenser Vacuum Low',           label_industry: 'COND VAC LO' },
+    { id: 'cond_vac_trip',  instrument: 'condenser_vacuum', direction: 'low',      setpoint: 74.5, priority: 'warning',  panel: 'B', category: 'power', label_learning: 'Condenser Vacuum Trip Level',    label_industry: 'COND VAC TRIP' },
   ];
 
   // Failures (kind per HR7). physics_parameter → implemented in the engine;

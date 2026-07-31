@@ -61,17 +61,17 @@
   // Alarms — every alarm setpoint less extreme than the matching trip. Panel A =
   // reactor/vessel, B = systems.
   var BWR_ALARMS_A = [
-    { id: 'reactor_trip',      instrument: 'rps_scrammed',     direction: 'is_true', setpoint: null, priority: 'critical', panel: 'A', label_learning: 'Reactor Scram',                  label_industry: 'REACTOR SCRAM' },
-    { id: 'vessel_level_low',  instrument: 'vessel_level',     direction: 'low',     setpoint: 30.0, priority: 'warning',  panel: 'A', label_learning: 'Vessel Level Low',               label_industry: 'VESSEL LVL LO' },
-    { id: 'vessel_level_lolo', instrument: 'vessel_level',     direction: 'low',     setpoint: 10.0, priority: 'critical', panel: 'A', label_learning: 'Vessel Level Critical Low',      label_industry: 'VESSEL LVL LO LO' },
-    { id: 'vessel_press_hi',   instrument: 'vessel_pressure',  direction: 'high',    setpoint: 7.24, priority: 'warning',  panel: 'A', label_learning: 'Vessel Pressure High',           label_industry: 'VESSEL PRESS HI' },
-    { id: 'vessel_press_lo',   instrument: 'vessel_pressure',  direction: 'low',     setpoint: 5.86, priority: 'warning',  panel: 'A', label_learning: 'Vessel Pressure Low',            label_industry: 'VESSEL PRESS LO' },
-    { id: 'high_power',        instrument: 'power_range',      direction: 'high',    setpoint: 108.0, priority: 'critical', panel: 'A', label_learning: 'High Reactor Power',            label_industry: 'HI POWER' },
+    { id: 'reactor_trip',      instrument: 'rps_scrammed',     direction: 'is_true', setpoint: null, priority: 'critical', panel: 'A', category: 'safety_system', label_learning: 'Reactor Scram',                  label_industry: 'REACTOR SCRAM' },
+    { id: 'vessel_level_low',  instrument: 'vessel_level',     direction: 'low',     setpoint: 30.0, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Vessel Level Low',               label_industry: 'VESSEL LVL LO' },
+    { id: 'vessel_level_lolo', instrument: 'vessel_level',     direction: 'low',     setpoint: 10.0, priority: 'critical', panel: 'A', category: 'coolant', label_learning: 'Vessel Level Critical Low',      label_industry: 'VESSEL LVL LO LO' },
+    { id: 'vessel_press_hi',   instrument: 'vessel_pressure',  direction: 'high',    setpoint: 7.24, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Vessel Pressure High',           label_industry: 'VESSEL PRESS HI' },
+    { id: 'vessel_press_lo',   instrument: 'vessel_pressure',  direction: 'low',     setpoint: 5.86, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Vessel Pressure Low',            label_industry: 'VESSEL PRESS LO' },
+    { id: 'high_power',        instrument: 'power_range',      direction: 'high',    setpoint: 108.0, priority: 'critical', panel: 'A', category: 'reactivity', label_learning: 'High Reactor Power',            label_industry: 'HI POWER' },
   ];
   var BWR_ALARMS_B = [
-    { id: 'rcic_running',  instrument: 'rcic_status',      direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', label_learning: 'RCIC Running',                label_industry: 'RCIC RUNNING' },
-    { id: 'sbo',           instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
-    { id: 'battery_low',   instrument: 'battery_pct',      direction: 'low',      setpoint: 20.0, priority: 'warning',  panel: 'B', label_learning: 'Battery Power Low',           label_industry: 'BATT LO' },
+    { id: 'rcic_running',  instrument: 'rcic_status',      direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'RCIC Running',                label_industry: 'RCIC RUNNING' },
+    { id: 'sbo',           instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', category: 'safety_system', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
+    { id: 'battery_low',   instrument: 'battery_pct',      direction: 'low',      setpoint: 20.0, priority: 'warning',  panel: 'B', category: 'safety_system', label_learning: 'Battery Power Low',           label_industry: 'BATT LO' },
   ];
 
   // Failures (kind per HR7). physics_parameter → implemented in the engine;

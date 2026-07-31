@@ -92,6 +92,10 @@
     this._autoT = 0;          // automation clock, sim-s since plant selection (saved)
     this._autoAcc = 0;        // sim-s accumulated toward the next channel evaluation
     this._internal = false;   // true while a channel/actuation output is descending
+    // Operator actions a scenario has withheld (#125). The layer is rebuilt on every
+    // selectPlant, so this empty default IS the reset — leaving a scenario cannot
+    // strand a lockout on a free-play board.
+    this.actionLocks = {};
     var chDefs = this.config.channels || [];
     for (var ci = 0; ci < chDefs.length; ci++) {
       // `standDown` records WHY a disengaged channel is off ('condition' | 'scram' |
@@ -201,6 +205,24 @@
       case 'set_auto_setpoint':        return this.setAutoSetpoint(command.channel_id, command.value);
       case 'set_esf_auto':             return this.setEsfAuto(command.system, command.auto);
       case 'set_trip_block':           return this.setTripBlock(command.trip_id, command.blocked);
+      // Scenario-settable lockout of an OPERATOR ACTION (#125). Authored content sets it
+      // in setup_commands; it is not an operator control and has no board button.
+      //
+      // The action is DATA (`action_id`), never a name in this file. The first cut wrote
+      // `case 'open_porv_manual'` here and run_hr3 immediately failed it — a PWR command
+      // name in the shared kernel is exactly the HR3 leak that guard exists for. Making it
+      // generic is also just better: the repo had NO way for a scenario to withhold a
+      // control, and now every plant has one.
+      case 'set_action_lock': {
+        var lockAct = command.action_id;
+        if (!lockAct) {
+          return { type: 'error', code: 'COMMAND_ERROR',
+                   message: 'set_action_lock needs action_id', received: command };
+        }
+        if (command.locked === false) delete this.actionLocks[lockAct];
+        else this.actionLocks[lockAct] = command.message || true;
+        return null;
+      }
       case 'reset_rps':
         if (!this._resettingRps) return this.resetRps();
         break;   // in-flight engine forward: fall through to interception + engine
@@ -225,6 +247,15 @@
     // manual_overrides disengages that channel — taking the control by hand
     // kicks its automation to MAN (self-issued channel outputs are exempt).
     // Likewise an operator command on an ESF system disarms its auto (M4b ESF arms).
+    // A locked action is REFUSED, not silently dropped — a dead-looking control is the
+    // failure mode this repo keeps finding. Operator commands only: the plant's own
+    // actuations descend _internal and must never be lockable, or "withhold this control
+    // from the student" would quietly mean "disable this protection".
+    if (!this._internal && command && command.action && this.actionLocks[command.action]) {
+      var lk = this.actionLocks[command.action];
+      return { type: 'refused', code: 'ACTION_LOCKED',
+               message: typeof lk === 'string' ? lk : 'That control is locked out for this exercise.' };
+    }
     if (!this._internal) { this._manualOverrideScan(command); this._esfManualScan(command); }
 
     // Interlocks (M4 §4b): condition-latched command blocks that read instruments
@@ -411,8 +442,19 @@
       return { type: 'blocked', code: 'INTERLOCK', reason: block.reason, message: block.message };
     }
     this._resettingRps = true;
-    try { this._sendInternal({ action: 'reset_rps' }); }
+    var engineResp;
+    try { engineResp = this._sendInternal({ action: 'reset_rps' }); }
     finally { this._resettingRps = false; }
+    // An engine that cannot perform the reset must SAY so. Its response used to be
+    // discarded, and RODS_NOT_INSERTED below was then reached by INFERENCE from
+    // `scrammed` still being true — so an engine with no handler at all produced a
+    // refusal naming a precondition that was in fact satisfied. MEASURED before the fix
+    // on RBMK and BWR with every rod at 0.0 %: engine returned COMMAND_ERROR 'unknown
+    // action', operator was told "trip breakers reset only with all rods inserted"
+    // (#228). Both engines implement it now, so this is a backstop rather than the live
+    // path — which is precisely when a silent inference is most dangerous, because
+    // nothing routine exercises it.
+    if (engineResp && engineResp.type === 'error') return engineResp;
     var truth = this.engine.getTrueState();
     if (!truth.scrammed) {
       this.rps.scrammed = false;
@@ -748,6 +790,12 @@
         // UI can say so). Absent when no rule fired.
         base_priority: rc ? a.priority : undefined,
         panel: a.panel,
+        // System family, AUTHORED in the plant profile (#157). The UI used to derive
+        // this by keyword-matching the alarm id, which made it silently wrong whenever
+        // an id did not happen to contain the right word — measured, 13 of the PWR's 33
+        // were wrong or arguable, e.g. `charging_high` fell through to 'safety_system'
+        // because the word "flow" is in its LABEL (CHG FLOW HI) and the matcher reads ids.
+        category: a.category,
         tile_label: reg === 'industry' ? ind : lrn,
       });
     }
@@ -1320,6 +1368,10 @@
         result.esf[sys.id] = this.esfAuto[sys.id] ? 'auto' : 'manual';
       }
     }
+    // Actions this exercise has withheld (#125). Surfaced so the board can render a
+    // control as LOCKED rather than dead — a button that silently does nothing is the
+    // failure mode this repo keeps finding, not an acceptable way to disable something.
+    result.action_locks = Object.keys(this.actionLocks);
     return result;
   };
 
@@ -1333,12 +1385,15 @@
                        concSampleSeq: c.concSampleSeq };
     }
     return { t: this._autoT, acc: this._autoAcc, channels: ch, esf: Object.assign({}, this.esfAuto),
+             action_locks: Object.assign({}, this.actionLocks),
              trip_blocks: Object.assign({}, this.tripBlocks),
              manual_trip_blocks: Object.assign({}, this.manualTripBlocks) };
   };
 
   ControlLayer.prototype._loadAutomation = function (au) {
     this._autoT = au && au.t != null ? au.t : 0;
+    // Absent in a pre-#125 save: nothing locked, which is the free-play state.
+    this.actionLocks = Object.assign({}, (au && au.action_locks) || {});
     this._autoAcc = au && au.acc != null ? au.acc : 0;
     for (var i = 0; i < this.channels.length; i++) {
       var c = this.channels[i];

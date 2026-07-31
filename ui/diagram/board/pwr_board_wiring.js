@@ -1131,7 +1131,14 @@
     imrpp2g2m8k: function (open) { cmd({ action: 'set_afw_block', open: open }); },   // AFW block valve (independent of pump START/STOP)
     imrpp99kx2y: function (open) { cmd({ action: open ? 'open_msiv' : 'close_msiv' }); },
     imrppb3kuav: function (open) { cmd({ action: open ? 'open_block_valve' : 'close_block_valve' }); },
-    imrppxt2aqd: function (open) { cmd({ action: open ? 'open_accumulator_valve' : 'close_accumulator_valve' }); }
+    imrppxt2aqd: function (open) { cmd({ action: open ? 'open_accumulator_valve' : 'close_accumulator_valve' }); },
+    // The PORV itself (#125). comp_porv has ALWAYS drawn a hit circle, a hover ring and a
+    // pointer cursor and emitted onControl('toggle') — it was built to be operated and
+    // then never wired, so the click landed on nothing. Opening uses the OPERATOR's
+    // command (`open_porv_manual`), which a scenario can lock out; closing uses the shared
+    // `close_porv`, deliberately, because that is the TMI-2 action and a stuck valve
+    // defeating it is the lesson.
+    porv: function (open) { cmd({ action: open ? 'open_porv_manual' : 'close_porv' }); }
   };
   // EVERY pump renders art-only (no built-in toggle) — pump control lives entirely in the
   // separate buttons/panels, so a pump's control space never shifts its art and bends pipes:
