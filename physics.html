@@ -60,11 +60,13 @@
 
   <h2>Core and reactivity</h2>
   <ul>
-    <li><strong>Point kinetics, six delayed-neutron groups</strong>, with
-    standard U-235 group constants (β<sub>eff</sub>&nbsp;≈&nbsp;0.65%, matching
-    the engine’s group sum). Period and startup rate come out of the kinetics
-    and drive the source- and intermediate-range nuclear instruments, so
-    approach to criticality is rate control, not a scripted jump.</li>
+    <li><strong>Point kinetics</strong> — the core is treated as one average
+    power level (no spatial flux map). Prompt neutrons would make power jump
+    almost instantly; <strong>delayed neutrons</strong>, tracked in six groups
+    with standard fission-product timescales, slow the response so reactor
+    period and startup rate are real quantities. Those rates drive the source-
+    and intermediate-range nuclear instruments, so going critical is about
+    controlling how fast power rises, not a scripted jump to “critical.”</li>
     <li><strong>Feedbacks:</strong> Doppler (fuel temperature), moderator
     feedback from coolant <em>density</em> (not a single fixed temperature
     coefficient), dissolved boron, and xenon.</li>
