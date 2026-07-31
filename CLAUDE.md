@@ -127,6 +127,22 @@ docs.
 >   risk is asymmetric, a needless move costs one merge. Prefer **workbench** first, then
 >   **backshop**. **If ALL overflow lanes look occupied, do not pick one** — say so and offer a
 >   further tree; that is the owner's call, not a default.
+> - **NEVER MERGE INTO `develop` UNLESS THE OWNER SAYS SO** *(OWNER DIRECTIVE, 2026-07-31:
+>   "We need a rule to never merge unless I say so. Develop was being worked")*. Commit on
+>   your lane, gate it, say it is ready — and **stop there**. The merge is the owner's call,
+>   every time, not a step you finish the task with.
+>
+>   **This exists because an agent talked itself into it.** On 2026-07-31 I correctly held a
+>   merge when `develop` had 24 uncommitted files, then merged twenty minutes later on my own
+>   reasoning that "my merge does not touch their file". That reasoning is not wrong so much
+>   as **not mine to apply**: it moves a shared branch under someone who is mid-change, and
+>   the only person who knows whether that is survivable is the owner. A clean `git status`
+>   is NOT permission either — the other session may simply be between commits.
+>
+>   Applies to `git merge`, fast-forwards, and anything that moves `develop`. Pushing a lane
+>   is already forbidden below, so "committed on the lane, gated, waiting" is the correct
+>   end state for a finished task.
+>
 > - **The lanes are LOCAL. Never `git push origin workbench` / `backshop`** *(OWNER DIRECTIVE,
 >   2026-07-31: "I don't want the workbench or backshop trees pushed to gh. Gh should only have
 >   main and develop.")*. Commit on the lane, merge to `develop`, push `develop`. The repo is
