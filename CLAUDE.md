@@ -371,13 +371,14 @@ anything here that is standing procedure rather than news belongs in the list be
   against the fittings above and below it (#231), pipe **animation play-state vs plant
   state** in three states (#236), and the #235 board defects, for the same reason. **Run
   board_check (headless Edge, `--dump-dom`; `document.title` says PASS/FAIL) after any
-  board change** — it is not in `run_all`. Currently **127/127** (measured 2026-07-30 on
-  `workbench` after #270/#271 — this line said 95/95 once, which was already stale when
+  board change** — it is not in `run_all`. Currently **131/131** (measured 2026-07-31 on
+  `workbench` after #214 — this line said 95/95 once, which was already stale when
   written down; the count moves whenever a pin is added, so re-measure rather than trusting
   it. History: 59 before the #235/#236 pins, +20 pipe-state/board-defect pins, +2 ROD AUTO,
   +3 from the #237 comment items, +11 for the generator FOLLOW/MAN/OFF selector (#230),
   **+7 power tile armed-trip bands (#267), +8 pressure tile (#270), +6 NIS thresholds
-  (#271)**; the previously recorded "60/60" never matched the code either, #235 finding 6).
+  (#271), +4 ITEM_CHANNEL / liveNote (#214)**; the previously recorded "60/60" never
+  matched the code either, #235 finding 6).
   **Read the tally from the harness's own summary line** (`ALL n CHECKS PASS` /
   `n FAILURES / n`) — scraping the page for the last `n/n` pair picks up unrelated
   numbers and reports a nonsense total.
@@ -464,7 +465,7 @@ push to `main` for Alpha 1.10.0 and the #272 release PR. Nobody noticed for thre
 which is the argument for a required status check and against a badge (#191).
 
 Green at baseline: PWR **32/32 (202 checks)**, BWR **15/15**, RBMK **23/23**, campaign **51/51 (3038 checks)**,
-`run_m4` **25/25 (135 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **20/20**,
+`run_m4` **25/25 (135 checks)**, `run_m5` **19/19**, `run_m6` **17/17 (102 checks)**, `run_m6ph` **8/8**, `run_autoctl` **21/21**,
 `run_behavior` **38 pass / 0 xfail**, `run_meltdown` **9 pass / 0 xfail**,
 `run_meltdown_stack` **3/3 (21/21 checks)**,
 `run_procedures` **22/22 (102/102 checks)**,

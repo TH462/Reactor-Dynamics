@@ -303,7 +303,10 @@ var BASELINES = {
   'run_m7.js':             { code: 0, score: null },   // prints "M7 OK", no tally
 
   // ---- control, campaign, procedures ----
-  'run_autoctl.js':        { code: 0, score: '20/20' },
+  // 20 → 21 on 2026-07-31 (#214): a stand-down note is the only account of why a channel
+  // switched itself off, and it is now on screen, so its LIFETIME is gated — it must be
+  // retired when its cause clears, without re-engaging the channel.
+  'run_autoctl.js':        { code: 0, score: '21/21' },
   // Back to 51/51 2026-07-26 (#218): pwr_msiv re-authored for P-9. The mission had been
   // a RACE — reopen before an automatic low-SG trip — and with the scram now landing at
   // closure that race is gone; worse, the decision beat's `scram` branch fired instantly

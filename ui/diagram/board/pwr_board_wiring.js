@@ -163,6 +163,37 @@
     for (var i = 0; i < ch.length; i++) if (ch[i].id === id) return ch[i];
     return null;
   }
+  // ---- live channel status for the System Scanner (#214) --------------------------
+  // Every automation channel carries a `note`: what it is doing, and when it stands
+  // itself down, WHY. Nothing rendered it. The Automate tab that printed it was deleted
+  // when the automations moved onto this board, so `ui/app.js`'s note line has been
+  // unreachable ever since — and the notes are not decoration. MEASURED on the full
+  // stack: press MAN on the feed card and feed_sg reads 'off — manual control taken';
+  // isolate feedwater and it reads 'off — main feedwater isolated (AFW has the SGs)'
+  // while the board shows nothing but a dark AUTO lamp and a lit MAN one. A player who
+  // isolates feedwater watches their level controller drop out for no stated reason.
+  //
+  // Keyed by the board item that OWNS the channel, so hovering that control reports it.
+  // Note the deleted line guarded on `on && c.note` — engaged only. That guard was
+  // itself part of the defect: every note worth reading belongs to a channel that has
+  // just stood DOWN. Disengaged channels are reported here deliberately.
+  var ITEM_CHANNEL = {
+    ims5glucngg: 'rods_tavg',                                                  // ROD AUTO
+    imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc',                      // boron ON / OFF
+    imrpq29jo7t: 'boron_conc',                                                 // boron target ppm
+    imrsgjmrjfg: 'feed_sg', imrsgjuh7l0: 'feed_sg', imrsgjwq1q0: 'feed_sg',    // feed AUTO / MAN / OFF
+    imro8xhy2me: 'feed_sg'                                                     // SG feed rate setpoint box
+  };
+  // Module scope so selfTest can reach it — the driver object literal cannot call its
+  // own methods from inside selfTest.
+  function liveNoteFor(id, s) {
+    var cid = ITEM_CHANNEL[id];
+    if (!cid || !s) return null;
+    var c = chan(s, cid);
+    if (!c) return null;
+    return { channel: cid, engaged: !!c.engaged, note: c.note || '',
+             text: (c.engaged ? 'AUTO' : 'MANUAL') + (c.note ? ' — ' + c.note : '') };
+  }
   // ESF arm state by system id ('auto' | 'manual'); the AUTO buttons highlight when armed.
   function esfAuto(s, id) {
     var e = s.automation && s.automation.esf;
@@ -1536,6 +1567,13 @@
       var I = RD.PwrBoardInspect;
       return (I && I.entry) ? I.entry(id) : null;
     },
+    // Live automation-channel status for an item, or null if it owns no channel (#214).
+    // Returns the mode word plus the channel's own note, so the scanner can say
+    // "MANUAL — off — main feedwater isolated (AFW has the SGs)" rather than leaving
+    // the player to infer a stand-down from an unlit lamp. This is CONTROL state (what
+    // the automation is doing), the same class as the AUTO lamp two pixels away — not
+    // an instrument reading, so HR1's instruments-vs-truth line is not crossed here.
+    liveNote: function (id, s) { return liveNoteFor(id, s); },
     tagItem: function () { return TAG_ITEM; },
     // pumps rendered art-only (built-in control box suppressed) — see ART_ONLY_PUMPS
     suppressBuiltInControls: function (id) { return !!ART_ONLY_PUMPS[id]; },
@@ -1560,6 +1598,38 @@
         var miss = Object.keys(PIPE_TEMP).filter(function (k) { return !live[k]; });
         return miss.length === 0 ? true : miss.join(',');
       })() === true);
+      // ---- live channel status for the scanner (#214) ------------------------------------
+      // ITEM_CHANNEL is keyed by diagram item id, the same fragile contract as PIPE_TEMP
+      // above: an item the owner deletes or re-draws leaves an orphan key that fails
+      // SILENTLY — the control simply stops reporting its channel, which looks exactly
+      // like a channel with nothing to say.
+      ck('driver: every ITEM_CHANNEL key is a live item id', (function () {
+        var live = {};
+        (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) { live[it.id] = 1; });
+        (EXTRA_ITEMS || []).forEach(function (it) { live[it.id] = 1; });
+        var miss = Object.keys(ITEM_CHANNEL).filter(function (k) { return !live[k]; });
+        return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+      // …and every channel it names is a real channel, or the control reports nothing
+      // while looking perfectly wired.
+      ck('driver: every ITEM_CHANNEL target is a live channel', (function () {
+        var have = {};
+        ((s.automation && s.automation.channels) || []).forEach(function (c) { have[c.id] = 1; });
+        var miss = Object.keys(ITEM_CHANNEL).filter(function (k) { return !have[ITEM_CHANNEL[k]]; });
+        return miss.length === 0 ? true : miss.join(',');
+      })() === true);
+      // The note that MATTERS belongs to a channel that has just stood itself down —
+      // 'off — main feedwater isolated (AFW has the SGs)' is the only account of why the
+      // AUTO lamp went dark. The deleted Automate-tab line guarded on `engaged && note`,
+      // which would have hidden precisely that case; this pins the disengaged branch.
+      ck('driver: liveNote reports a DISENGAGED channel, not just an engaged one', (function () {
+        var fake = { automation: { channels: [
+          { id: 'feed_sg', engaged: false, note: 'off — main feedwater isolated (AFW has the SGs)' } ] } };
+        var r = liveNoteFor('imrsgjmrjfg', fake);
+        return r && r.text === 'MANUAL — off — main feedwater isolated (AFW has the SGs)'
+          ? true : JSON.stringify(r);
+      })() === true);
+      ck('driver: liveNote is null for an item that owns no channel', liveNoteFor('imrppee04aj', s) === null);
       // ---- power tile follows the ARMED power trip (#267) --------------------------------
       // The tile used to read 120 % in every state, because tripSp() took the first
       // `power_range high` row and the table happens to author the backstop first. MEASURED

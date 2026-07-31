@@ -14,6 +14,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **When an automatic controller switched itself off, the board never said why** (#214).
+
+  Every automatic control carries a one-line account of what it is doing — and, when it
+  stands itself down, the reason. None of it was on screen anywhere. The panel that used
+  to print it was removed when the automatic controls moved onto the board diagram, and
+  nothing replaced it, so the explanations had been written into a dead end.
+
+  This matters most in the case it was written for. Isolate main feedwater and the
+  three-element level controller drops out on its own — correctly, auxiliary feedwater
+  now has the steam generators — but all you saw was the AUTO light going dark and the
+  MANUAL light coming on, with nothing to say why your level control had just abandoned
+  you. Hovering any automatic control now reports what its channel is doing, in the
+  System Scanner block, under the description: **MANUAL — off — main feedwater isolated
+  (AFW has the SGs)**.
+
+  Two things had to be true for that to be worth showing. The line follows the plant
+  while you hold the pointer still — the scanner otherwise only repaints when the pointer
+  moves, so a controller that tripped out while you were reading about it would have gone
+  on reporting the state it was in when you arrived. And the reason is now retired when it
+  stops being true: restore feedwater and the message clears instead of insisting the
+  plant is still isolated. The controller stays off either way — standing it back up is
+  the operator's call, which is the entire point of a stand-down.
+
 - **Continuous integration had been red on every run for three days, across two releases**
   (#191).
 

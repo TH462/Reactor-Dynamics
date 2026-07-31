@@ -94,8 +94,11 @@
     this._internal = false;   // true while a channel/actuation output is descending
     var chDefs = this.config.channels || [];
     for (var ci = 0; ci < chDefs.length; ci++) {
+      // `standDown` records WHY a disengaged channel is off ('condition' | 'scram' |
+      // 'manual' | null), so a stand-down note can be retired when the thing that
+      // caused it clears. Without it the note is write-once — see stepAutomation.
       var ch = { def: chDefs[ci], engaged: false, sp: null, spEff: null, I: 0, lastAct: null,
-                 lastSent: null, note: '', bangMode: 'idle', pvF: null, pvNow: null, rate: null,
+                 lastSent: null, note: '', standDown: null, bangMode: 'idle', pvF: null, pvNow: null, rate: null,
                  concMode: 'hold', concBasis: null, concLastSp: null, concSampleSeq: null };
       this.channels.push(ch);
       this.byId[chDefs[ci].id] = ch;
@@ -812,6 +815,7 @@
           def.group_id && cmd.group_id && cmd.group_id !== def.group_id) continue;
       this._toggleChannel(c, false);
       c.note = 'off — manual control taken';
+      c.standDown = 'manual';    // never auto-clears: the operator has the control until they hand it back
     }
   };
 
@@ -848,6 +852,7 @@
     }
     c.engaged = !!on;
     c.note = '';
+    c.standDown = null;      // callers that stand a channel DOWN re-set this immediately below
     if (on) {
       // Setpoint captures the CURRENT reading (hold the plant where the
       // operator had it); integrator preload = bumpless transfer.
@@ -902,15 +907,30 @@
     for (var i = 0; i < this.channels.length; i++) {
       var c = this.channels[i], def = c.def;
       if (def.kind === 'mode') continue;                    // the engine runs these
-      if (!c.engaged) continue;
+      // A DISENGAGED channel is skipped below, so whatever note stood it down used to
+      // freeze there for good. That was invisible while nothing rendered `note` (#214 —
+      // the Automate tab that printed it was deleted), and becomes a false statement the
+      // moment it is on screen. MEASURED before the fix: isolate feedwater and feed_sg
+      // reads 'off — main feedwater isolated (AFW has the SGs)'; RESTORE feedwater and it
+      // still reads exactly that, because this loop never looked at it again.
+      // Retire the note when its cause clears — but NEVER re-engage here. Standing a
+      // channel back up is the operator's call (that is the whole point of a stand-down),
+      // so this clears the explanation and leaves the channel off.
+      if (!c.engaged) {
+        if (c.standDown === 'condition' && !(def.offWhen && def.offWhen(ctx))) { c.note = ''; c.standDown = null; }
+        else if (c.standDown === 'scram' && !scrammed && !dead) { c.note = ''; c.standDown = null; }
+        continue;
+      }
       if (dead || (scrammed && def.offOnScram)) {           // stand down, visibly
         this._toggleChannel(c, false, ctx);
         c.note = dead ? 'off — core destroyed' : 'off — reactor scrammed';
+        c.standDown = dead ? 'dead' : 'scram';              // 'dead' never clears — the core does not come back
         continue;
       }
       if (def.offWhen && def.offWhen(ctx)) {                // plant-condition stand-down (e.g. P-4 FWI)
         this._toggleChannel(c, false, ctx);
         c.note = def.offNote || 'off — plant condition';
+        c.standDown = 'condition';
         continue;
       }
       if (def.requires && !(this.byId[def.requires] && this.byId[def.requires].engaged)) {
@@ -1220,7 +1240,7 @@
     for (var i = 0; i < this.channels.length; i++) {
       var c = this.channels[i];
       ch[c.def.id] = { engaged: c.engaged, sp: c.sp, spEff: c.spEff, I: c.I, lastAct: c.lastAct,
-                       lastSent: c.lastSent, note: c.note, bangMode: c.bangMode, pvF: c.pvF, rate: c.rate,
+                       lastSent: c.lastSent, note: c.note, standDown: c.standDown, bangMode: c.bangMode, pvF: c.pvF, rate: c.rate,
                        concMode: c.concMode, concBasis: c.concBasis, concLastSp: c.concLastSp,
                        concSampleSeq: c.concSampleSeq };
     }
@@ -1241,7 +1261,10 @@
         c.I = sv.I != null ? sv.I : 0;
         c.lastAct = sv.lastAct != null ? sv.lastAct : null;
         c.lastSent = sv.lastSent != null ? sv.lastSent : null;
-        c.note = sv.note || ''; c.bangMode = sv.bangMode || 'idle';
+        // standDown absent = an OLD SAVE (pre-#214). Null is the safe migration: the
+        // note simply keeps its saved text until the channel is next toggled, which is
+        // exactly the pre-#214 behaviour, rather than being wrongly retired on load.
+        c.note = sv.note || ''; c.standDown = sv.standDown || null; c.bangMode = sv.bangMode || 'idle';
         c.pvF = sv.pvF != null ? sv.pvF : null; c.rate = sv.rate != null ? sv.rate : null;
         // conc batch state: an old save (pre-batch) has none — open the books at
         // the saved target so no phantom dose starts on load.
@@ -1251,7 +1274,7 @@
         c.concSampleSeq = sv.concSampleSeq != null ? sv.concSampleSeq : null;   // null → latch on first evaluation
       } else {
         c.engaged = false; c.sp = null; c.spEff = null; c.I = 0; c.lastAct = null;
-        c.lastSent = null; c.note = ''; c.bangMode = 'idle'; c.pvF = null; c.rate = null;
+        c.lastSent = null; c.note = ''; c.standDown = null; c.bangMode = 'idle'; c.pvF = null; c.rate = null;
         c.concMode = 'hold'; c.concBasis = null; c.concLastSp = null; c.concSampleSeq = null;
       }
       c.pvNow = null;
