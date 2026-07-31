@@ -115,6 +115,34 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-30n — #276 RULED: re-aligning the accumulators stays procedural, so the procedure had to actually contain the step  ✅
+
+*(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of
+auto opening them.")* — declining the auto-OPEN actuation recommended in 2026-07-30m. **No code
+change; a manual change the ruling makes mandatory.**
+
+**Why this was not simply "close it".** The ruling makes **04 PWR-N03** the *sole* defence on the
+heatup side, and PWR-N03 did not have the step. The `cold_shutdown` lineup ships with the
+accumulators isolated (`pwr_engine.js:1505` — correct, the plant sits below their cover gas) and
+nothing in that procedure ever opened them again, so a by-the-book heatup reached Mode 1 with no
+passive injection. **New step 4**, re-align above the 600 psi (4.14 MPa) cover gas and before
+1000 psi (6.895 MPa), with a note saying explicitly that nothing does it for you. Before this,
+the only two sites that re-aligned were the engine's internal `_driveHeatup` (`:1795`) and one
+step in `ui/manual_procedures.js:59` — neither of which is the free-play player.
+
+**And the annunciator had to disclaim itself.** `accum_aligned` (06 PWR-A32) clears *on shut
+tanks*, so it is structurally **silent** on this case. A tile that looks like it covers both
+directions of the same valve and only covers one is worse than no tile — so the card now says so
+in its own row. Manual set **Rev 19**.
+
+**HR11 fired on my own draft and was right.** The first cut of that row cited
+`*(OWNER RULING, 2026-07-30)*` with the date but no verbatim quote; `run_hardrules` went red on
+it (HR11, 32 sites / 1 undeclared). Fixed by quoting. The gate moved 34 → **36** — two new
+citation sites, both carrying their words.
+
+**Not built, and now not open either:** the auto-OPEN actuation. Recorded as the owner's call
+with the quote, so a future agent does not re-propose it as an oversight.
+
 ### 2026-07-30m — #273 CLOSED: the cue shipped, the interlock did not, and the warning margin is thinner than the fix  ✅
 
 *(OWNER RULING, 2026-07-30: "do as you suggest.")* — on the recommendation in 2026-07-30l: no

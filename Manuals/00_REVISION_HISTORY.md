@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 18 (2026-07-30)  
+**Set revision:** 19 (2026-07-30)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -18,6 +18,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 19 | 2026-07-30 | **Re-aligning the accumulators is procedural, and the procedure that had to do it did not** (#276). *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto opening them.")* — so no automatic open signal, which makes **04 PWR-N03** the sole defence on the heatup side. It had no such step: the `cold_shutdown` lineup ships with the tanks isolated (correct — the plant sits below their cover gas), and nothing in that procedure ever opened them again, so a by-the-book heatup reached Mode 1 with **no passive injection**. New **step 4** re-aligns them once RCS pressure is above the **600 psi (4.14 MPa)** cover gas and before **1000 psi (6.895 MPa)**, where LCO 3.5.1 starts requiring them OPERABLE, with a note that this step is the operator's and nothing does it for them. **06 PWR-A32** gained the matching disclaimer: that annunciator is the *cooldown* cue and is **silent** on this case, because shut tanks are the condition it clears on — an alarm that looks like it covers both directions and does not is worse than none. | Heatup re-align step |
 | 18 | 2026-07-30 | **The board now says "isolate the accumulators", and two Compressed rates stop being undeclared** (#273, closing it). **New 06 PWR-A32 (SI ACCUM ALIGNED &lt; 1000 PSI)** — the first annunciator gated on a **lineup** as well as a reading: it requires the discharge isolation valve indication to read *open* as well as pressure below **1000 psi (6.895 MPa)**, so a correctly-isolated Mode 5 plant, which sits below that pressure indefinitely, never sees it. The card leads on what the plant will **not** do: **there is no autoclose interlock, deliberately.** Real plants power these valves *open* and remove control power to prevent inadvertent closure (U.S. EPR FSAR §7.6.1.2.2; NUREG-1431 Bases B 3.5.1 SR 3.5.1.5), and the closure decision is the operator's, read off RCS pressure (Bases B 3.3.3). An autoclose would also shut them during a **LOCA**, which is when they must inject. The card therefore states a lineup rather than an order, because on a LOCA the same tile means the opposite. **09 Panel B** gained the row and the §-note on lineup gating. **New 12 §14.1** names two Compressed rates that had been left implicit: **ECCS injection pacing is 22–440× real** (so no time-to-recover number from an injection transient is a plant number), and the **cooldown depressurisation rate** compresses the 1000 → 600 psi band to about **one minute of plant time** — measured full-stack, and that is the whole warning window the new annunciator has, which is why the procedure step and not the cue is the primary defence. | Accumulator cue + Compressed rates |
 | 17 | 2026-07-30 | **The cooldown tells you to isolate the accumulators — it never did** (#273). The Mode 3 → Mode 5 path descended through the accumulators' **600 psi (4.14 MPa)** cover gas with the discharge valve open, dumping all four into the RCS: measured endpoint `accum_vol 0.0 %`, boron **2310 ppm** against a 2500 ppm tank charge, the plant water-solid at Mode 5. Neither **04 PWR-N15** nor **05 Phase C** contained the word *accumulator*. Both now carry an isolation step at **1000 psi (6.895 MPa)** — sourced, not picked: NUREG-1431 Rev 4.0 **LCO 3.5.1** applies in *"MODE 3 with RCS pressure > [1000] psig"* and LTOP **SR 3.4.12.3** reads *"Verify each accumulator is isolated."* — leaving 400 psi (2.76 MPa) of margin above the cover gas. Both steps carry the note that these are **passive** tanks and the SI block set entering the cooldown blocks *pumps*, not them. **05 Phase A gained the matching re-align step (A5)**, because a manual that isolates on the way down and never re-aligns on the way up trades one silent hazard for another: the cold lineup leaves them shut and nothing opens them for you. Phase C steps renumbered C3–C6, Phase A A5–A6, N15 narrative 3–6. | Accumulator-isolation step |
 | 16 | 2026-07-30 | **The everyday leak now exists — new 07 PWR-E23, RCP Seal Leak** (#262). The failure catalog had two primary leaks and both were casualties: a tube rupture and a cold-leg break. There was no containment-side *identified leakage* case, the one the charging system exists for — and it was **unreachable**, not merely absent: the severity slider steps in whole per cent, so the smallest injectable Large LOCA is about **7× beyond what charging can hold**. `rcp_seal_leak` maps its whole 0–100 % range onto **0 → 3.5e-4 inventory-frac/s**, so *every* position is held. That ceiling is measured, and it is half the figure the issue was filed with: net make-up authority is `(charging − letdown) × gain`, and quoting it letdown-isolated would have left the top half of the new slider unholdable. **07 §2.1** slider table and index extended (23 failures, eight sliders). The card leads on what the board will **not** tell you — PZR LVL LO never comes in, because a held leak parks level around 52–54 % against a 25 % setpoint. | Small-leak failure |
@@ -63,14 +64,14 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 18 (2026-07-30). A mismatch means a chapter changed with no
+     Sealed at Rev 19 (2026-07-30). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md c2015d3574814966
      02_SIMULATOR_USER_GUIDE.md e4faa6ae38d6a47d
      03_CONTROLS_AND_INDICATIONS.md f1b3b88c0a391fab
-     04_NORMAL_OPERATIONS.md c126a7856370fb82
+     04_NORMAL_OPERATIONS.md 2801fee62906b878
      05_MODE_TRANSITIONS.md 3b06dff310dcef99
-     06_ALARM_RESPONSE.md 6029d8958bfe5bc3
+     06_ALARM_RESPONSE.md bf5c7fa16617ed56
      07_ABNORMAL_EMERGENCY.md 6dff7768a1d726de
      08_ACCIDENT_TMI.md d6a3ff47c6786021
      09_SETPOINTS_LIMITS.md 1da724739c74f657

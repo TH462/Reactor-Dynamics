@@ -35,6 +35,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   pacing, are now declared in **12 §14.1**.
 
 ### Fixed
+- **The heatup procedure re-aligns the accumulators** (#276) — `04` PWR-N03 step 4. The cold
+  lineup ships with them isolated and **nothing opens them automatically**: re-alignment is
+  procedural by design *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to
+  the procedure instead of auto opening them.")*, so the procedure is the only thing that
+  catches it. Skip the step and you reach Mode 1 with no passive injection. The **SI ACCUM
+  ALIGNED** annunciator does **not** cover this — it clears on shut tanks, so it is silent on
+  exactly this case, and its card now says so.
+
 - **The cooldown procedures now tell you to isolate the accumulators** (#273) — manual set
   **Rev 17**. `04` PWR-N15 and `05` Phase C both descended past the accumulators' 600 psi
   (4.14 MPa) cover gas without a word about them; neither chapter contained the term. Both
