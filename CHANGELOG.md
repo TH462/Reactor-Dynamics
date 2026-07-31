@@ -22,6 +22,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Testing
+- **`ops_cooldown_to_rhr` now performs the evolution it is named for.** The probe is titled
+  *"hot standby toward RHR entry (400 psi / 2.76 MPa)"* and never got there: its RHR check was
+  an `info` line reading `false`, and the check that *named* its 90 °F/hr (50 °C/h) ramp was
+  `Tavg after 2 h < 527 °F (275 °C)` — one-sided and landing at **195 °F (90.7 °C)**, so it
+  could not detect the plant cooling at **185 °F/hr (103 °C/h)**, double the rate its own
+  driver paces to. Three defects behind that, all in the driver rather than the plant: it never
+  throttled the **RHR heat exchanger**, which is the cooldown-rate control below the interlock
+  (the last 21 minutes ran at 567 °F/hr / 315 °C/h at full HX flow); it never isolated the
+  **accumulators** at 1000 psig, so all four dumped into the RCS (#273's signature — boron
+  2270 ppm, inventory pinned at 120 %); and its saturation-following pressure setpoint asks for
+  **409 psi (2.82 MPa)** at the temperature RHR comes in, *above* the 400 psi interlock. Now:
+  rate held at exactly 50 °C/h, RHR aligns at 103 min and stays aligned, accumulators isolated
+  at 51 min, boron **623 ppm**, inventory **100.0 %**. Six info lines became real checks, all
+  verified red by injection; `run_ops` 344 → 350 passed with the failure count unmoved at 12.
 - **#154's remaining coverage gaps closed — sixteen kernel, service, instructor and engine
   surfaces that shipped with no assertion at all.** The omnibus was re-verified first, and
   about half of it was already dead (all five TMI-2 Part-3 endings, the follow-mode

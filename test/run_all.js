@@ -502,7 +502,16 @@ var BASELINES = {
     // source-range trip (#260) had no probe at all. Measured: diluting Mode 5 at the
     // tuned 0.05 ppm/s makeup rate and walking away, the source-range high-flux trip
     // fires at 1248 s, 59 ppm removed, boron 857 -> 798. The failure count is unmoved.
-    code: 1, score: '58/69 344passed 12failed',
+    // 344 -> 350 passed on 2026-07-31: ops_cooldown_to_rhr's three INFO lines became
+    // real checks. It is named 'toward RHR entry' and never got there — measured, it
+    // cooled at 103 C/h against the 50 C/h its own driver paces to, and the check that
+    // NAMED that ramp was `Tavg after 2 h < 275 C`, one-sided and landing at 90.7, so it
+    // could not see a doubled rate in either direction. The driver now throttles the RHR
+    // heat exchanger (the actual rate control below the interlock), isolates the
+    // accumulators at 1000 psig per #273, and runs 3 h because a properly paced cooldown
+    // only reaches the interlock at about two hours. Rate now 50 C/h exactly, RHR aligned
+    // at 103 min, boron 2270 -> 623 ppm, inventory 120 -> 100 %. Failure count unmoved.
+    code: 1, score: '58/69 350passed 12failed',
     note: 'Ops probes are tuning targets by design. Measured 2026-07-27b from ' +
           'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; all 11 reds are ' +
           '7 RBMK + 4 BWR, and the deliberately-red C2 accel-latency probe (#153, ' +

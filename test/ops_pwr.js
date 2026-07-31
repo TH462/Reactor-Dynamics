@@ -243,23 +243,83 @@
         // ~50 °C/h Tavg ramp (the real admin limit), walk pressure down with
         // spray inside a guarded subcooling band. (Full dump crash-cools the
         // sim in minutes — measured separately; that's a tuning finding.)
-        var t0 = h.t(), T0 = h.ts().tavg_c;
-        h.run(7200, function (hh, t) {
+        var t0 = h.t(), T0 = h.ts().tavg_c, rhrAt = null, accumIsolatedAt = null;
+        // THREE HOURS, not two (#154 follow-up). At a properly paced rate the plant
+        // reaches the RHR interlock only at about the two-hour mark, so a 2 h run
+        // ended just short of the entry this probe is named for — it went in at 99
+        // min before only because it was cooling at 103 °C/h (185 °F/hr).
+        h.run(10800, function (hh, t) {
           var ts = hh.ts(), ins = hh.ins();
           // Real cooldown procedure: walk the PRESSURE SETPOINT down with the
           // temperature (heaters follow instead of fighting the capped spray —
           // the old fire-hose spray simply overpowered them, feel-plan P5).
           var psp = Math.max(Math.pow(Math.max(ts.tavg_c + 30, 1) / 179.47, 1 / 0.239), 2.0);
+          // Below ~3.5 MPa the saturation-following setpoint has to be capped UNDER
+          // the 400 psi (2.76 MPa) RHR interlock, because at the temperature RHR
+          // comes in (~200 °C / 392 °F) the formula asks for 2.82 MPa — above it.
+          // Left uncapped the driver fights itself: RHR aligns, the pressure
+          // controller pushes back over the interlock, the engine AUTO-CLOSES the
+          // suction valve (by design, run_pwr rhr_valve_and_mode) and the M4
+          // permissive never re-fires because it is one-shot. Measured: the plant
+          // finished at 1.95 MPa (283 psi), scrammed, below the interlock, with RHR
+          // shut and nothing saying so. Filed separately — a probe must not depend
+          // on it either way.
+          if (ts.pressure_mpa < 3.5) psp = Math.min(psp, 2.4);
           hh.cmd('set_pressure_setpoint', { mpa: Math.min(psp, 15.41) });
           if (ts.hpi_active && ins.subcooling_margin > 25) hh.cmd('set_hpi', { active: false });
           var tavgTarget = T0 - 50 * ((t - t0) / 3600);
           hh.cmd('set_steam_dump', { pct: ins.tavg > tavgTarget ? 12 : 0 });
           if (ins.subcooling_margin > 40) hh.cmd('set_spray', { pct: 60 });   // walk pressure down with the temp
           else hh.cmd('set_spray', { pct: 0 });
+          // Below the 400 psi (2.76 MPa) interlock the ESF actuation aligns RHR on
+          // its own (pwr_control PWR_ACTUATIONS, gated on rps_scrammed) — the probe
+          // never commands it. Once on RHR the heat exchanger IS the cooldown-rate
+          // control, and this driver used to leave it wide open: measured, the
+          // dump-paced phase tracked its ramp to 201 °C (394 °F) by the time RHR
+          // came in at 99 min, and the last 21 minutes then fell to 90.7 °C
+          // (195 °F) — 315 °C/h (567 °F/hr), about 6× the admin limit being paced
+          // to. Throttle the HX the way an operator holds a rate.
+          if (ts.rhr_active) hh.cmd('set_rhr_hx', { fraction: ins.tavg > tavgTarget ? 0.25 : 0.02 });
+          if (rhrAt === null && ts.rhr_active) rhrAt = t - t0;
+          // Isolate the accumulators at 1000 psig (6.89 MPa), per 04/05 since #273.
+          // Without it the cooldown walks straight past their 600 psi (4.14 MPa)
+          // cover gas with the discharge valve open and empties all four into the
+          // RCS — measured on the old form: boron 2270 ppm and inventory pinned at
+          // 120 %. The procedure was fixed in #273; this probe was never taught it.
+          if (accumIsolatedAt === null && ts.pressure_mpa < 6.89) {
+            hh.cmd('close_accumulator_valve');
+            accumIsolatedAt = t - t0;
+          }
         });
         var t = h.ts();
-        ck('~50 °C/h ramp achieved (Tavg after 2 h)', fmt(t.tavg_c, 1), t.tavg_c < 275, '< 275 °C');
+        var rate = (T0 - t.tavg_c) / ((h.t() - t0) / 3600);
+        // This used to read `Tavg after 2 h < 275 °C` — one-sided, and 330 °F clear
+        // of the value it actually landed on, so it could not detect the plant
+        // cooling at DOUBLE the rate its own driver was pacing to (measured 103 °C/h
+        // against the 50 °C/h in the check's name). A rate check has to be two-sided.
+        ck('cooldown held near the 50 °C/h (90 °F/hr) admin limit', fmt(rate, 0) + ' °C/h',
+          rate > 42 && rate < 58, '42..58 °C/h');
         ck('pressure walked down with the cooldown', fmt(t.pressure_mpa, 2), t.pressure_mpa < 10.0, '< 10 MPa');
+        // The evolution this probe is NAMED for. It used to be an info line, and it
+        // reported `false` for the whole 2 h run without anything noticing.
+        var interlock = h.eng.cfg.emergency.rhr_valve_interlock_mpa;
+        ck('reached RHR entry — below the 400 psi (2.76 MPa) interlock', fmt(t.pressure_mpa, 2) + ' MPa',
+          t.pressure_mpa < interlock, '< ' + fmt(interlock, 2) + ' MPa');
+        ck('RHR aligned itself on the ESF permissive (never commanded here)', String(t.rhr_active),
+          t.rhr_active === true, 'true');
+        ck('…and it STAYED aligned to the end of the cooldown', String(h.eng.s.rhr_valve_open),
+          h.eng.s.rhr_valve_open === true, 'true');
+        ck('RHR came in during the run, not at the last sample',
+          rhrAt == null ? 'never' : fmt(rhrAt / 60, 0) + ' min',
+          rhrAt != null && rhrAt < (h.t() - t0) - 600, '> 10 min before the end');
+        // #273: without isolating at 1000 psig the cooldown walks past the
+        // accumulators' 600 psi (4.14 MPa) cover gas and empties all four. Measured
+        // on the un-isolated form: boron 2270 ppm and inventory pinned at 120 %.
+        ck('accumulators isolated on the way down (#273)',
+          accumIsolatedAt == null ? 'never' : fmt(accumIsolatedAt / 60, 0) + ' min',
+          accumIsolatedAt != null, 'isolated');
+        ck('…so they did NOT dump into the RCS', fmt(t.boron_ppm, 0) + ' ppm, inventory ' + fmt(t.core_inventory_pct, 1) + ' %',
+          t.boron_ppm < 1000 && t.core_inventory_pct < 110, '< 1000 ppm and < 110 % (un-isolated: 2270 ppm / 120 %)');
         // Tolerance −1 °C, not a hard 0: the probe's coarse bang-bang spray driver reacts to
         // the (indicated) subcooling margin, so the exact trajectory shifts a few tenths with
         // any instrument-noise/tuning change and can momentarily touch saturation. The intent

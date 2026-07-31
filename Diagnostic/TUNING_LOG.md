@@ -115,6 +115,59 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31h — `ops_cooldown_to_rhr` made real, and a rule for the claims that keep not holding up  ✅
+
+*(OWNER, 2026-07-31: "This seems to happen a lot, a claim is made that doesn't hold up to
+testing. How can we keep it from happening?")*
+
+**The rule, and it is mine, not a ruling.** HR12 binds assertions about **plant dynamics** —
+step the plant, quote the number. The class that keeps failing is the neighbouring one HR12
+does not name: **coverage claims**. *"X is untested"*, *"the gate covers Y"*, *"nothing asserts
+Z"*. Those are equally measurable with a tool this repo already uses on new checks: **to prove
+something is untested, break it and run the gate.** Neuter the channel, invert the comparison,
+delete the config; if nothing reddens, it is untested as a measurement rather than as an
+opinion. #286 found five inert automation channels behind a green 24/24 that way. Skipping it
+is how, the same day, I repeated this repo's own claim that the RHR interlock was untested
+(`run_pwr` covers it fully) and predicted this probe stopped at 10 MPa when it reaches
+**283 psi (1.95 MPa)**. Added to CLAUDE.md's standing list, attributed and dated. **Inherited
+claims are the dangerous ones** — repeating a review's sentence in your own voice launders an
+aged assertion into a fresh one.
+
+**The probe, which was three defects deep — all in its DRIVER, not the plant.** It is titled
+*"toward RHR entry (400 psi / 2.76 MPa)"*, its RHR check was an `info` line reading `false`,
+and the check that named its 50 °C/h ramp was `Tavg after 2 h < 275 °C` — one-sided, landing
+at **90.7 °C**, so it could not see the plant cooling at **103 °C/h (185 °F/hr)**, double the
+paced rate.
+
+1. **The RHR heat exchanger was never throttled.** Below the interlock the HX split *is* the
+   rate control. Measured: the dump-paced phase tracked its ramp to 201 °C by the time RHR
+   came in at 99 min, then the last 21 minutes fell to 90.7 °C — **315 °C/h (567 °F/hr)** at
+   `rhr_hx_fraction = 1`, about 6× the limit being paced to.
+2. **The accumulators were never isolated.** The cooldown walked past their 600 psi (4.14 MPa)
+   cover gas with the discharge valve open and emptied all four — #273's signature exactly,
+   boron **2270 ppm** and inventory pinned at **120 %**. #273 fixed the *procedure* (04/05);
+   this probe was never taught it.
+3. **Its own pressure setpoint sat above the interlock.** The saturation-following formula
+   asks **2.82 MPa (409 psi)** at the ~200 °C where RHR comes in — above the 2.76 MPa
+   interlock — so the driver fought itself.
+
+Now: rate **50 °C/h exactly**, RHR aligns at **103 min** and stays aligned, accumulators
+isolated at **51 min**, boron **623 ppm**, inventory **100.0 %**, subcooling minimum +8.9 °C
+(it used to touch −0.4). Six info lines are real checks; `run_ops` 344 → **350 passed**,
+failure count **unmoved at 12** — no new red. All verified by injection: removing the HX
+throttle reddens the rate check (71 °C/h), removing the isolation reddens the accumulator
+check (2271 ppm), uncapping the setpoint reddens both RHR-alignment checks.
+
+**And defect 3 uncovered a real plant question — #287, filed for a ruling, NOT patched.** The
+engine **auto-closes** the RHR suction valve on a repressurization above the interlock (by
+design, pinned by `rhr_valve_and_mode`), and the M4 permissive that opened it is **one-shot**:
+no `reset_below`, so `actuationFired` latches on the first crossing and never re-arms. Measured
+endpoint — the plant sits **scrammed, at 1.95 MPa below the interlock, `esfAuto.rhr` still AUTO
+and the permissive's condition still true, with RHR shut** and no alarm saying so. There is a
+prototypicality argument for keeping the one-shot (real suction-valve interlocks re-open
+deliberately, not automatically), so my recommendation is **keep it and add the annunciation** —
+but that argument is **recall and marked unverified**; it needs an evidence pass.
+
 ### 2026-07-31g — #154 finished: sixteen unasserted surfaces closed, one filed item disproved  ✅
 
 Follows 2026-07-31f, which verdicted the omnibus. This is the execution of what stood.

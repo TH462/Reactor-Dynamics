@@ -459,6 +459,20 @@ anything here that is standing procedure rather than news belongs in the list be
 - **Verify a claim before you act on it.** Roughly half the issues touched on 2026-07-27 were
   stale or mis-framed — leaks already fixed, "reasons" that measurement disproved, premises
   copied between files. Read `Diagnostic/TUNING_LOG.md`'s top entry, then check the code.
+- **A claim about COVERAGE is an unmeasured claim — prove it by injection** *(my call,
+  2026-07-31; not an owner ruling)*. HR12 binds assertions about plant dynamics: step the
+  plant, quote the number. The class that keeps going wrong is the neighbouring one it does
+  **not** name — *"X is untested"*, *"the gate covers Y"*, *"nothing asserts Z"* — and those
+  are just as measurable, with a tool the repo already uses. **To prove something is untested,
+  break it and run the gate.** Neuter the channel, invert the comparison, delete the config,
+  and see what reddens; if nothing does, it is untested as a *measurement* rather than as an
+  opinion. That is how #286 found five inert automation channels behind a green 24/24 — and
+  skipping it is how, the same day, I repeated this repo's own claim that the RHR 400 psi
+  (2.76 MPa) interlock was untested when `run_pwr` covers it fully, and predicted its cooldown
+  probe stopped at 10 MPa when it actually reaches **283 psi (1.95 MPa)**. One run caught both.
+  **Inherited claims are the risky ones**: a sentence from a review, an issue body or this file
+  has usually aged, and repeating it in your own voice launders it into a fresh assertion.
+  Either say "the 2026-07-19 review says X, unverified", or go and measure.
 - **Provenance matters more than it looks.** Many "owner rulings" in this repo were written by
   agents; all agent work commits under the owner's name, so git blame proves nothing. A ruling
   without a date and a verbatim owner quote is advisory — see `Blueprint/CONTEXT.md` §3.
