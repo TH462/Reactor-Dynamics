@@ -127,6 +127,14 @@ docs.
 >   risk is asymmetric, a needless move costs one merge. Prefer **workbench** first, then
 >   **backshop**. **If ALL overflow lanes look occupied, do not pick one** — say so and offer a
 >   further tree; that is the owner's call, not a default.
+> - **The lanes are LOCAL. Never `git push origin workbench` / `backshop`** *(OWNER DIRECTIVE,
+>   2026-07-31: "I don't want the workbench or backshop trees pushed to gh. Gh should only have
+>   main and develop.")*. Commit on the lane, merge to `develop`, push `develop`. The repo is
+>   PUBLIC, so a pushed lane puts work-in-progress on display, and the machine is backed up
+>   off-site so the remote buys no safety. This is written down because an agent pushed both
+>   lanes on 2026-07-31 to get CI on them — which also created a **Vercel preview site per
+>   push**, which is how the owner found out. `vercel.json` now refuses to build those branch
+>   names, and `gates.yml` no longer lists them.
 >   **Absent a reply: stay read-only and say what you are waiting on** *(OWNER RULING,
 >   2026-07-29: "lets go with your recommendation.", on the recommendation to cut the earlier
 >   draft's no-reply default)* — **the heuristic never gets an action.** The first draft moved to
