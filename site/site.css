@@ -145,6 +145,11 @@ a.disabled { pointer-events: none; cursor: default; opacity: 0.4; text-decoratio
   border: 1px solid var(--border);
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
 }
+.hero-intro {
+  max-width: 640px; margin: 24px auto 0; padding: 0 20px;
+  color: var(--text-2); font-size: 15px; line-height: 1.55;
+  text-align: center;
+}
 
 /* ================================================================ sections */
 .section { max-width: var(--content); margin: 0 auto; padding: 48px 20px; }
