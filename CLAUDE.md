@@ -272,8 +272,13 @@ anything here that is standing procedure rather than news belongs in the list be
   endpoint `accum_vol 0.0 %`, boron **2310 ppm** against a 2500 ppm charge). Isolation now
   happens at **1000 psig (6.89 MPa)**, sourced to NUREG-1431 LCO 3.5.1 and LTOP SR 3.4.12.3.
   And **the failure mode itself is now gated** — `run_reachability` (55 checks), because an
-  assertion that a trip never fired is worth exactly what the gauge can reach. **`Manuals/05`
-  still has no isolation step, so #273 stays open.**
+  assertion that a trip never fired is worth exactly what the gauge can reach. **`04` and `05`
+  now carry the isolation step at 1000 psi (6.895 MPa)** (manual set Rev 17) — and `05` Phase A
+  the matching **re-align**, because the Mode 5 IC ships with the tanks isolated and nothing in
+  the manual set had ever opened them (#276). **#273 stays open on the interlock call**: the
+  evidence pass settled it against an autoclose — every automatic signal a real plant puts on
+  that valve is an **open** signal, and the discharge gate `aligned && p < 4.14 MPa` means any
+  pressure-keyed autoclose would suppress accumulator injection in every modelled LOCA.
 - **The moderator coefficient was a constant, and it made the plant go critical COLD
   (2026-07-29l, #260).** `alpha_MTC` applied a flat −11.11 pcm/°F from 122 °F to 579 °F — a
   −4944 pcm moderator defect over a heatup, 494 ppm of dilution, a third of it charged below
