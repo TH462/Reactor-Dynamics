@@ -391,7 +391,16 @@ async function testRewindPicker(page) {
       ') — it is still issuing a one-step rewind. See #137.');
   }
   if (!st.paused) throw new Error('pick mode must pause the clock — picking a moment on a moving graph is a carnival game');
-  if (await clockSec() !== tLive) throw new Error('pressing ⏪ rewound the plant instead of opening the picker (#137)');
+  // NOT "the clock is unchanged" — the plant is running at 60x, so it legitimately
+  // advances several sim-seconds between the read above and the press. That form
+  // passed on one branch and failed on the merge for pure timing reasons, which is
+  // the tell that it was never asserting what it claimed. What a one-step rewind
+  // does, and pick mode cannot, is move the clock BACKWARDS.
+  var tAfterPress = await clockSec();
+  if (tAfterPress < tLive) {
+    throw new Error('pressing ⏪ rewound the plant (T+' + tLive + ' → T+' + tAfterPress +
+      ') instead of opening the picker (#137)');
+  }
   if (st.marks.length < 4) throw new Error('the plot shows ' + st.marks.length + ' checkpoint marks after 5 cadence ' +
     'intervals — the free-play ring is not filling on the wall clock (#137)');
   log.push('pick mode: ' + st.marks.length + ' marks, axis starts ' + st.axis0);
@@ -400,7 +409,11 @@ async function testRewindPicker(page) {
   var m = /(\d+):(\d+):(\d+)/.exec(st.axis0);
   var span = m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) : (/(\d+)s/.exec(st.axis0) ? +(/(\d+)s/.exec(st.axis0)[1]) : 0);
   if (!(span > 0)) throw new Error('could not read the plotted span from the x-axis ("' + st.axis0 + '")');
-  var t0 = tLive - span, PW = VBW * PLOT_FRAC;
+  // t1 is the moment the plot was DRAWN at — i.e. after pick mode froze the clock —
+  // not the reading from before the press. They differ by however much sim elapsed
+  // while the click was in flight, and using the earlier one shifts every mark's
+  // expected time by that amount.
+  var t0 = tAfterPress - span, PW = VBW * PLOT_FRAC;
   var mx = st.marks[1];
   var expected = t0 + (mx / PW) * span;
   log.push('aiming at mark x=' + mx.toFixed(1) + ' → expected T+' + expected.toFixed(1) + ' s');
@@ -412,6 +425,12 @@ async function testRewindPicker(page) {
   if (Math.abs(landed - expected) > 6) {
     throw new Error('clicking the checkpoint mark at T+' + expected.toFixed(0) + ' s landed the plant at T+' +
       landed + ' s — the picker is not inverting the same time base drawChart plotted the marks against. See #137.');
+  }
+  // …and that it went back at all. A picker that lands on the newest checkpoint for
+  // every click satisfies the tolerance above whenever the aim happens to be near
+  // the right edge, so pin the direction separately.
+  if (!(landed < tAfterPress - 10)) {
+    throw new Error('the pick did not rewind: clock T+' + tAfterPress + ' → T+' + landed);
   }
   if (await page.evaluate(function () { return document.querySelector('.strip-chart').classList.contains('rewind-pick'); })) {
     throw new Error('pick mode stayed open after the pick');
