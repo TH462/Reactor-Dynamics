@@ -117,6 +117,14 @@ var hr1Used = {};
 //     — no `engine.s`, no direct state handle
 // so nothing that DECIDES can reach truth by a path this misses.
 //
+// THAT LAST SENTENCE WAS WRONG, and it stayed wrong for two days (#220). A decision
+// can reach truth without naming it: the engine computes a `condition:` STATUS WORD
+// from true state and hands it over, and inside layers/control/ it looks like any
+// other reading. `above_p9` — two reactor trips and an AFW auto-start — was doing
+// exactly that. The HR1(b) block below closes it, and is kept separate rather than
+// folded in because it scans a different surface (permissive keys, then the engine
+// line that defines them) and would otherwise hide inside this one's tally.
+//
 // Widening to all of layers/ was tried and reverted: the service reads true state
 // legitimately in ~16 places (snapshot assembly — HR4 REQUIRES it — and the
 // attention-stop's previous-tick comparison), none of which are decisions. Declaring
@@ -130,6 +138,90 @@ walk('layers/control', /\.js$/).forEach(function (rel) {
     if (key) hr1Used[key] = true;
     check('HR1', rel, i + 1, line.trim().slice(0, 90), key ? HR1_ALLOWED[key] : null);
   });
+});
+
+// ================================================= HR1(b) — the PERMISSIVE surface
+// The scan above claimed, in writing, that "nothing that DECIDES can reach truth by a
+// path this misses". That was FALSE, and #220 found it: a trip's `condition:` key is a
+// STATUS WORD the engine computes and hands over, so from inside layers/control/ it is
+// indistinguishable from an instrument — no `getTrueState()`, no `true_state`, nothing
+// for the scan to see. `above_p9` was computed from true `power_pct` and gated two
+// reactor trips and the loss-of-main-feed AFW start. Measured before the fix: the
+// power-range channel stuck at 40 % with the core at 100 % still scrammed on a turbine
+// trip. A permissive that cannot be fooled by the channel it reads is exactly what HR1
+// forbids, and this gate said OK for as long as the leak existed.
+//
+// So every `condition:` key gating a trip, actuation or alarm must be DECLARED here with
+// where its value comes from. Four kinds:
+//   instrument — derived from an instrument reading. CHECKED, not just declared: the
+//                defining line inside the engine's _instrExtras() must reach through
+//                `_ins_*` or `instruments.reading`. This is the kind that would have
+//                caught #220 on the day it was written.
+//   lineup     — a handswitch or valve position. A real board indicates these directly;
+//                there is no transducer to fool, and the position IS the indication.
+//   latch      — a fact the control layer itself owns (the RPS trip latch), never a
+//                measurement. Reading your own state back is not sensing.
+//   hold       — RBMK/BWR, ON HOLD. Recorded so the gate is honest rather than silent;
+//                not assessed either way, same convention as HR1_DEBT above.
+var HR1_CONDITION = {
+  'pwr:above_p9': { kind: 'instrument',
+    why: 'P-9, ~50 % power. Real one is "determined by two-out-of-four NIS power range detectors" (NUREG-1431 Rev 4 Bases B 3.3.1, ML12100A228), so it is a nuclear-instrument reading and nothing else. Gates two reactor trips + the loss-of-main-feed AFW start. Read truth until #220; probe TR-1f pins the behaviour.' },
+  'pwr:sr_energized': { kind: 'lineup',
+    why: 'source-range detector handswitch position. The switch IS the indication — de-energised detectors do not read low, they read nothing, which is why the SR high-flux trip is conditioned on the switch rather than on the count rate.' },
+  'pwr:rcp_secured': { kind: 'lineup',
+    why: 'RCP handswitch position — the reason the annunciator has for a stopped pump (#240). Reclassifies an alarm that has already annunciated from its own instrument; never decides whether one exists.' },
+  'pwr:accum_valve_open': { kind: 'lineup',
+    why: 'accumulator discharge valve position (#273). A real board has a valve position light; the alarm is gated on the LINEUP as well as the reading, which is the whole point of that alarm.' },
+  'pwr:rps_scrammed': { kind: 'latch',
+    why: 'the RPS trip latch — the control layer reading back its own state, not sensing the plant. Same standing as control_kernel.js:readback above.' },
+  'bwr:ads_open': { kind: 'hold', why: 'BWR is ON HOLD. Recorded, not assessed.' },
+  'bwr:hpci_unavailable': { kind: 'hold', why: 'BWR is ON HOLD. Recorded, not assessed.' },
+};
+var condUsed = {};
+// The engine's _instrExtras() body, per plant — where a status word is computed.
+function instrExtrasBody(plant) {
+  var rel = 'engines/' + plant + '/' + plant + '_engine.js';
+  var abs = path.join(ROOT, rel);
+  if (!fs.existsSync(abs)) return null;
+  var src = stripComments(fs.readFileSync(abs, 'utf8'));
+  var start = src.indexOf('_instrExtras = function');
+  if (start < 0) return null;
+  // To the next prototype method — the extras object is the whole of this function.
+  var end = src.indexOf('.prototype.', start + 10);
+  return { rel: rel, text: src.slice(start, end < 0 ? src.length : end), offset: start, src: src };
+}
+var extrasCache = {};
+walk('layers/control', /_control\.js$/).forEach(function (rel) {
+  var plant = path.basename(rel).replace('_control.js', '');
+  var src = stripComments(fs.readFileSync(path.join(ROOT, rel), 'utf8')).split('\n');
+  src.forEach(function (line, i) {
+    var m = /condition:\s*'([a-z_0-9]+)'/.exec(line);
+    if (!m) return;
+    var key = plant + ':' + m[1];
+    condUsed[key] = true;
+    var decl = HR1_CONDITION[key];
+    if (!decl) {
+      check('HR1', rel, i + 1, "condition: '" + m[1] + "' — permissive with no declared source", null);
+      return;
+    }
+    if (decl.kind !== 'instrument') { check('HR1', rel, i + 1, "condition: '" + m[1] + "' (" + decl.kind + ')', decl.why); return; }
+    // Declared as instrument-derived — prove it at the definition.
+    if (extrasCache[plant] === undefined) extrasCache[plant] = instrExtrasBody(plant);
+    var ex = extrasCache[plant];
+    var def = ex && new RegExp('(^|\\n)\\s*' + m[1] + '\\s*:([^\\n]*)').exec(ex.text);
+    var ok = def && /_ins_|instruments\s*\.\s*reading/.test(def[2]);
+    check('HR1', rel, i + 1, "condition: '" + m[1] + "' (instrument-derived)",
+      ok ? decl.why : null);
+    if (!ok) {
+      violations[violations.length - 1].text = "condition: '" + m[1] + "' is declared instrument-derived, but "
+        + (def ? (ex.rel + ' computes it from true state: ' + def[2].trim().slice(0, 60)) : 'no definition found in _instrExtras()');
+    }
+  });
+});
+// A declaration that matches nothing has stopped describing the code (same rule as
+// the allow-lists above — that is how an allow-list quietly becomes fiction).
+Object.keys(HR1_CONDITION).forEach(function (k) {
+  if (!condUsed[k]) check('HR1', 'test/run_hardrules.js', 0, 'STALE declaration — no permissive uses ' + k, null);
 });
 
 // ============================================================ HR5

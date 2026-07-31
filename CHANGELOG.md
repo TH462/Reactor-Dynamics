@@ -22,6 +22,41 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **A failed power-range channel no longer leaves the P-9 permissive armed** (#220). The
+  P-9 interlock — ~50 % power, and the thing that arms the SG hi-hi reactor trip, Reactor
+  Trip on Turbine Trip, and the loss-of-main-feed AFW start — was computed from **true**
+  reactor power rather than from the nuclear instrument. The real one comes off the NIS
+  power-range detectors and nothing else, so ours could not be fooled by the channel it is
+  supposed to be reading.
+
+  **Measured** (hot full power, seed 42): with the power-range channel stuck at 40 % and
+  the core genuinely at 100 %, a turbine trip still scrammed at **+0.5 s** and an SG
+  overfeed still scrammed at **+0.2 s**. It now de-arms: the turbine trip is ridden out on
+  the steam dump, and the SG hi-hi still isolates feed and trips the turbine but does not
+  scram — the plant trips **59 s later on SG level low**, a real limit rather than an
+  anticipated one.
+
+  **Nothing changes with a healthy instrument** — that is the point, and it is why 34 green
+  runners never saw it. New probe **TR-1f** fails the channel deliberately, because that is
+  the only state in which the difference exists (4 checks red on the old engine).
+
+  A **single** failed channel defeats the permissive here, where a real plant out-votes it
+  two-of-four; that follows from the existing no-voting simplification and is now declared
+  (`DESIGN_COMPANION` §8.20) rather than implied.
+
+### Changed
+- **Four departures from real-plant practice are now written down instead of implied**
+  (#220, from the evidence pass against NRC primaries): the steam dump at 105 % of rated
+  flow where most Westinghouse units are at 40 % (§8.17); the 1.5 DPM rod-withdrawal block,
+  which has no real analog — the 1.0 DPM alarm and the source-range flux trip either side of
+  it do (§8.18); the AFW auto-start sitting 3 points above the SG lo-lo trip where the real
+  plant uses one signal at one setpoint (§8.19); and P-9 / turbine-trip sensing at status
+  level rather than from stop-valve position and autostop oil pressure (§8.20).
+- **Board copy: the boron reading.** It said real plants "do not trust an online
+  boronometer". The sourced position is narrower — boron is determined by chemistry grab
+  sample and titration and tech specs require periodic verification, and while online
+  boronometers do exist at some plants, nothing relies on one. Corrected to match.
+
 - **The reactor is protected the same at 3600× as at 1×** (#153). Trips, actuations,
   interlocks and alarms were evaluated exactly **once per broadcast**, so the interval
   between two protection evaluations was `timeAcceleration × broadcastMs` — how well the

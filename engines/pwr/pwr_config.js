@@ -612,10 +612,29 @@
       // is the full-power coolant equilibrium; _buildState interpolates linearly in
       // load and DERIVES each state's secondary pressure to be a true steady state.
       // steam_dump_max 1.05 (feel-plan P4, owner ruling 2026-07-21): the RIDE-OUT
-      // enabler (FG-4). This plant's dump swallows a full load rejection with a
-      // small margin, so a turbine trip is a transient the operator manages — not
-      // a scram. The stored-heat burst still swings Tavg visibly before settling
-      // (tempo principle). Unavailable when the condenser is lost (vacuum/SBO).
+      // enabler (FG-4). This plant's dump swallows a full LOAD REJECTION with a small
+      // margin, so a rejection with the turbine still on line is a transient the
+      // operator manages — not a scram (TR-1). The stored-heat burst still swings Tavg
+      // visibly before settling (tempo principle). Unavailable when the condenser is
+      // lost (vacuum/SBO).
+      //
+      // A TURBINE TRIP IS NOT THAT CASE, and this comment said it was until #220. Since
+      // #216 a turbine trip above P-9 scrams (TR-1b) — the two are distinct design cases
+      // in the real plant too: *"Above the P-9 setpoint, a turbine trip will cause a load
+      // rejection beyond the capacity of the Steam Dump System… Below the P-9 setpoint, a
+      // load rejection can be accommodated by the Steam Dump System."* (NUREG-1431 Rev 4
+      // Bases, Function 16, ML12100A228).
+      //
+      // DECLARED DEPARTURE (§8.17, #220): 105 % is far outside the classic envelope —
+      // *"In most Westinghouse units the capacity of the steam dump system is 40%"* (WTSM
+      // §11.2, ML11223A294), sized for a 50 % loss of load (40 % dump + a 10 % rod step)
+      // and to keep the SG safeties seated on a trip from 100 %. Keeping BOTH the 105 %
+      // dump and the P-9 trip is coherent, but not for the real plant's reason: the two
+      // justifications that survive an oversized dump are that the dump depends on the
+      // CONDENSER (real interlock C-9; a turbine trip's cause often removes it — TR-8
+      // models exactly that) and that the trip is anticipatory defence-in-depth that the
+      // safety analyses take no credit for anyway (*"No credit was taken in the accident
+      // analyses for operation of these trips"* — Salem TS Bases, ML18093A272).
       steam_dump_setpoint: 8.23, steam_dump_band: 0.25, steam_dump_max: 1.05, // [tune] = Psat(297 °C) anchor; ride-out capacity
       // LOAD-REJECTION arm for the fast-open (Tavg-error) dump mode — the C-7 class
       // interlock. The fast mode used to arm on `turbine_tripped` ALONE, even though its
@@ -649,7 +668,7 @@
       // low enough to catch a 15 MWe cut vents forever (above). RULED 2026-07-27 (#219,
       // owner): KEEP 40 MWe and DECLARE the cliff. The sub-threshold rejection is a
       // manoeuvre the operator handles, and the PORV is the honest backstop when they
-      // don't. Recorded as a named simplification, DESIGN_COMPANION §8.8, catalog TR-1c,
+      // don't. Recorded as a named simplification, DESIGN_COMPANION §8.21, catalog TR-1c,
       // and pinned BOTH SIDES by behaviour probe TR-1c so it cannot move silently. [tune]
       dump_load_reject_mwe: 40.0,
       // ...and the mismatch below which the latch RESETS: the reactor has come back to

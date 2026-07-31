@@ -472,7 +472,30 @@
       hpi_active: s.hpi_active,
       station_blackout: s.station_blackout,
       steam_demand_low: s.turbine_tripped || s.turbine_demand_frac < 0.05,
-      above_p9: (s.power_pct || 0) > 50,   // P-9 permissive: gates the high-high SG (P-14) reactor trip
+      // P-9 permissive, ~50 % power. Gates THREE protection decisions: the SG hi-hi
+      // (P-14) reactor trip, Reactor Trip on Turbine Trip, and the loss-of-main-feed
+      // AFW auto-start (all in pwr_control.js).
+      //
+      // Reads the POWER-RANGE INSTRUMENT, not `s.power_pct` (#220). The real permissive
+      // is derived from the nuclear instrumentation and nothing else — NUREG-1431 Rev 4
+      // Bases B 3.3.1 (ML12100A228): *"The Power Range Neutron Flux, P-9 interlock is
+      // actuated at approximately 50% power as determined by two-out-of-four NIS power
+      // range detectors."* A permissive computed from truth cannot be fooled by the
+      // channel it is supposed to be reading, which is HR1 exactly: protection decides
+      // from indications. MEASURED before the fix — power_range stuck at 40 % with true
+      // power at 100 % still armed P-9 and scrammed on a turbine trip; after, it does
+      // not, and the plant rides the trip out on the dump instead (probe TR-1f).
+      //
+      // DECLARED DEPARTURE: one channel, not two-out-of-four (§8.11, "no sensor
+      // redundancy / voting") — so here a SINGLE failed channel defeats the permissive
+      // where a real plant would out-vote it. That makes instrument failure more
+      // teachable, not less, and §8.11 already owns the trade.
+      //
+      // One step of lag, like every other instrument feedback in this file: _instrExtras
+      // runs INSIDE instruments.update(), so `reading` is still the previous step's.
+      // Falls back to truth only when there is no reading yet (engine reset seeds the
+      // instruments from truth anyway).
+      above_p9: (s._ins_power_pct != null ? s._ins_power_pct : (s.power_pct || 0)) > 50,
       rod_at_limit: this._controlGroup().at_insertion_limit,
       // Rod bottom — every group at or below RODS_IN_PCT. A real board carries a rod
       // bottom light per rod and the operator reads them before attempting an RPS

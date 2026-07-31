@@ -32,6 +32,15 @@
     { id: 'lo_press', instrument: 'primary_pressure', direction: 'low', setpoint: 12.41, action: 'scram', // MPa
       blockable: true, block_permissive: { instrument: 'primary_pressure', direction: 'low', setpoint: 13.6 } },
     { instrument: 'pzr_level',        direction: 'low',  setpoint: 12.0,   action: 'scram' }, // %
+    // SG lo-lo. AFW auto-starts 3 points ABOVE it, at 20 % — a DECLARED DEPARTURE
+    // (§8.19, #220 claim 6). The real plant uses ONE signal at ONE setpoint for both:
+    // *"1. Low-low water level in any single steam generator…"* is the first of the five
+    // AFW auto-start conditions (WTSM §5.7, ML11223A229), and it is the same low-low
+    // level function that trips the reactor (NUREG-1431 Tables 3.3.1-1 / 3.3.2-1). The
+    // offset is ours, and it buys the operator a visible "AFW started, level still
+    // falling" window that a single-setpoint plant does not give a lone trainee. Our
+    // other two starts DO match the real list — loss of main feed above P-9 is their
+    // condition 3, and the SI start is their condition 4.
     { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,   action: 'scram' }, // % lo-lo (AFW auto-starts just above, 20 %)
     // Low-flow reactor trip. Reads the `rcs_flow` ELBOW-TAP CHANNEL (% of rated) as of
     // 2026-07-29 (#247); until then it read true `pump_flow_pct` through a
@@ -93,9 +102,30 @@
   ];
 
   // ---- Reactor Trip on Turbine Trip (P-9) — the ANTICIPATORY trip. ON. ----
+  // SOURCED (#220 evidence pass; every claim below is quoted, none is recalled).
   // Real Westinghouse PWRs trip the reactor whenever the turbine trips above P-9 (~50 %
-  // power): losing the heat sink at high power is not something to wait out, so the trip
-  // anticipates the transient rather than waiting for a process limit to be exceeded.
+  // power) — sensed from 4/4 stop valves closed or 2/3 low autostop oil pressure, armed
+  // above P-9 (or above P-7 at ~10 % in units with no P-9 installed; WTSM §12.2,
+  // ML11223A301). It is classed ANTICIPATORY: *"provided to anticipate probable plant
+  // transients and to minimize the resulting thermal transient on the RCS"*, and it is
+  // NOT credited in the safety analyses — *"No credit was taken in the accident analyses
+  // for operation of these trips"* (Salem TS Bases, ML18093A272).
+  //
+  // THE REAL PLANT'S PRIMARY REASON DOES NOT APPLY HERE, and this header recited it
+  // anyway until #220. Theirs is dump capacity: P-9 sits at 50 % because *"for turbine
+  // trips from 50% power or less, sufficient steam dump capacity is available for excess
+  // energy removal"* (WTSM §12.2) — above that a 40 % dump simply cannot take it. THIS
+  // plant's dump is 105 % (§8.17, a declared departure), so it can. What justifies the
+  // trip here is the other two, both of which survive an oversized dump:
+  //   • the dump depends on the CONDENSER (real interlock C-9: vacuum + a circ-water
+  //     pump, or the valves lose their air), and a turbine trip's cause frequently
+  //     removes it — TR-8 is exactly that case, and it trips on a genuine limit instead;
+  //   • it is anticipatory defence-in-depth, uncredited in reality too, so "the plant
+  //     could survive without it" was never the test.
+  // Owner's question that produced this note (2026-07-26): *"If the steam dump can handle
+  // a full load do we need the turbine trip? I thought those were related for some
+  // reason."* They are related — that IS the real justification — and the answer is that
+  // ours is kept for the residual two, not the capacity argument.
   //
   // THIS PLANT NOW HAS IT — `protection.turbine_trip_reactor_trip: true`
   // (`pwr_config.js:763`), adopted 2026-07-26f after the #216 audit. This header said
@@ -603,6 +633,18 @@
   // genuine rate control matching the ≤1 DPM the startup checklist already
   // teaches; the by-the-book ascent peaks at 0.92 DPM, so the block is real
   // margin, not a nuisance. [tune]
+  //
+  // SOURCED (#220 claim 7): the ≤1 DPM half is prototypical and procedurally binding —
+  // *"Do not exceed a stable startup rate of 1 DPM."* (Duke McGuire OP/1/A/6100/05
+  // Limits & Precautions 2.1, ML20077E732), echoed at Turkey Point (*"establish a steady
+  // state SUR of 1.0 dpm or less"*, NRC Special Inspection ML20344A126). Our `sur_high`
+  // alarm sits exactly there. But the WITHDRAWAL BLOCK below is OURS — a DECLARED
+  // DEPARTURE (§8.18). Real plants have no automatic SUR trip or rate-based rod stop;
+  // the administrative limit is enforced by the operator and the automatic backstop is a
+  // flux level, not a rate. Turkey Point 2020 is the worked case: the crew went to 3.0
+  // DPM indicated against the 1.0 limit and the plant tripped on SOURCE-RANGE HIGH FLUX
+  // at 1e5 cps — which this plant also has. The block is a teaching aid that makes the
+  // administrative limit enforceable by a single operator with no shift behind them.
   var PWR_INTERLOCKS = [
     { instrument: 'startup_rate', direction: 'high', setpoint: 1.5, clears_below: 0.8,
       blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true,

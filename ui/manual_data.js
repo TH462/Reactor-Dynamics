@@ -245,7 +245,7 @@
         {
           "id": "boron_analyzer",
           "name": "Boron Concentration (lab sample)",
-          "measures": "Boron concentration in the primary coolant, from a chemistry sample — NOT a live board indication. Real plants sample; they do not trust an online boronometer. Take a sample to refresh it.",
+          "measures": "Boron concentration in the primary coolant, from a chemistry sample — NOT a live board indication. Real plants determine boron by chemistry grab sample and titration, and their tech specs require periodic verification of the concentration, not a live instrument. Some plants do have an online boronometer; nothing relies on one. Take a sample to refresh it.",
           "unit": "ppm",
           "range": [
             0,

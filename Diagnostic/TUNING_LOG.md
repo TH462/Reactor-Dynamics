@@ -118,6 +118,102 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31g — #220: the P-9 permissive was reading the plant, not the gauge  ✅
+
+**What #220 was.** An issue against my own recall: a run of decisions had been justified by
+*"this is what a real Westinghouse PWR does"*, and not one of those claims had a source.
+The evidence pass ran 2026-07-27 and verdicted all ten against NRC primaries — **7 verified,
+2 partly, 1 with a gap, none wrong** — but it was deliberately scoped to *evidence only*
+(*"Do not fix anything… the decisions get revisited afterwards"*). This is the revisit.
+
+**The defect the evidence pass found and did not chase.** Claim 1's verdict carried a
+one-line departure note: the real P-9 is *"actuated at approximately 50% power as determined
+by two-out-of-four NIS power range detectors"* (NUREG-1431 Rev 4 Bases B 3.3.1,
+ML12100A228), while ours read `s.power_pct` — **true** power. That permissive gates
+**three** protection decisions: the SG hi-hi (P-14) reactor trip, Reactor Trip on Turbine
+Trip, and the loss-of-main-feed AFW auto-start. **MEASURED** (`hot_full_power`, seed 42):
+with the power-range channel **stuck at 40 %** and the core genuinely at **100 %**, a
+turbine trip still scrammed at **+0.5 s**, and an SG overfeed still scrammed on
+`sg_level high` at **+0.2 s**. A permissive that cannot be fooled by the channel it is
+supposed to be reading is HR1 inverted, in the most expensive place available.
+
+Fixed: `above_p9` now reads the power-range instrument (`_ins_power_pct`, the same
+one-step-lag stash the AFW level hold, the CVCS program and the dump's Tref already use).
+Post-fix, the same injection **de-arms** P-9 — the turbine trip is ridden out on the 105 %
+dump instead, and the SG hi-hi does its un-gated half (isolate feed, trip the turbine)
+without scramming, then trips **59 s later on `sg_level low`**, a genuine limit. That is
+the FG-4 plant's honest failure path with the anticipation removed.
+
+**With a healthy channel NOTHING moves** — all 34 runners green at baseline before the new
+checks were added. That is what makes this a *sensing* fix rather than a protection change,
+and it is also exactly why nothing caught it.
+
+**Four things to know.**
+
+1. **The HR1 gate said OK the whole time, and its own comment said why it couldn't have.**
+   `run_hardrules.js` scans `layers/control/` for `getTrueState()` / `true_state` and
+   asserted, in writing, that *"nothing that DECIDES can reach truth by a path this
+   misses"*. False. A trip's `condition:` key is a **status word the engine computes and
+   hands over** — from inside the control layer it is indistinguishable from an instrument,
+   with no truth reference for the scan to see. New **HR1(b)** block: every `condition:`
+   key gating a trip, actuation or alarm must be declared as `instrument` / `lineup` /
+   `latch` / `hold`, and the ones declared instrument-derived are **checked against the
+   engine line that defines them**. Verified by injection three ways — the pre-fix engine
+   line reddens 3 checks *naming the offending expression*, an undeclared permissive
+   reddens 1, and a declaration matching nothing is STALE and reddens too. `run_hardrules`
+   39 → **50**.
+2. **Probe TR-1f, and it is the only way the difference is observable.** With a healthy
+   channel every leg is identical either side of the fix, so the probe has to fail the
+   instrument to see anything at all. Injection-verified: **4 checks red** on the old
+   engine, covering both P-9 consumers. Legs A and C are calibration pins — if they ever
+   move, the swap was not sensing-only after all. `run_behavior` 40 → **41**.
+3. **Combined with §8.11 (no voting), a single failed channel now defeats the permissive**
+   where a real plant out-votes it 2-of-4. Declared, not waived (§8.20). It makes
+   instrument failure *more* teachable, which is the same trade §8.11 already took.
+4. **Two code comments were carrying the REAL plant's premise for behaviour this plant has
+   deliberately departed from** — the drift class #220 exists to catch, and the evidence
+   pass named both. `pwr_steam_generator.js` still said the dump catches a full rejection
+   *"(no anticipatory reactor trip exists)"*, true when written and **false since #216**
+   flipped Reactor Trip on Turbine Trip ON; `pwr_config.js` still said *"a turbine trip is a
+   transient the operator manages — not a scram"*, which above P-9 it is not. And the P-9
+   trip header recited the real justification — dump capacity — which is precisely the one
+   that **does not apply here**, because ours is 105 % and theirs is 40 %.
+
+**The owner's question, now answered in the file that needed it.** *(OWNER, 2026-07-26:
+"If the steam dump can handle a full load do we need the turbine trip? I thought those were
+related for some reason.")* They are related, and the recollection was right: P-9 sits at
+50 % because *"for turbine trips from 50% power or less, sufficient steam dump capacity is
+available for excess energy removal"* (WTSM §12.2, ML11223A301). With a 105 % dump that
+argument is gone. What survives is (a) the dump depends on the **condenser** — real
+interlock C-9, and a turbine trip's cause frequently removes it, which is TR-8 exactly —
+and (b) the trip is **anticipatory defence-in-depth that the safety analyses take no credit
+for** even in reality (*"No credit was taken in the accident analyses for operation of these
+trips"*, Salem TS Bases, ML18093A272). So: keep both, for the residual two reasons, and say
+so where the code is read.
+
+**Four departures declared** (DESIGN_COMPANION §8, the HR9(c) home): **§8.17** the 105 %
+dump vs the prototypical 40 % (WTSM §11.2, ML11223A294), with the AP1000 house-load analog;
+**§8.18** the 1.5 DPM rod-withdrawal block — the 1.0 DPM alarm is the real administrative
+limit and the 1e5 cps SR trip is the real backstop, but the *block between them* is ours;
+**§8.19** the AFW 20 % / scram 17 % offset, where the real plant uses one signal at one
+setpoint (WTSM §5.7, ML11223A229); **§8.20** P-9 / turbine-trip sensing at status level
+rather than stop-valve position and autostop oil pressure.
+
+**Housekeeping in the same pass.** The #219 dump-arm cliff was filed as a **duplicate
+§8.8** (the pressurizer already had it) and cited by number from four places — renumbered
+**§8.21**, all four repointed. And the board's boron inspection copy claimed real plants
+*"do not trust an online boronometer"*; claim 8 verified the method (grab-sample titration,
+tech-spec verification, no LCO requiring an online instrument) but **could not establish**
+the distrust fragment, so the copy now says what the sources support. `Manuals/03` already
+had it right (*"exist at some plants but are not relied upon"*), so no manual revision.
+
+**Still open on #220** — the 40 MWe C-7 arm threshold is far coarser than the real
+10 % step / 5 %-per-minute (WTSM §11.2). That is a `[tune]` question, already ruled on once
+(#219, 2026-07-27, keep-and-declare) and already fenced by TR-1c on both sides. Not
+re-opened here.
+
+---
+
 ### 2026-07-31f — #153: a UI speed button decided how well the reactor was protected  ✅
 
 *(OWNER, 2026-07-31: "You can fix RBMK too" — lifting the RBMK hold for this fix, which is

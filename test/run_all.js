@@ -89,7 +89,13 @@ var BASELINES = {
   // still on line; (b) `mwe_output` was derived from `power_pct`, ignoring the governor
   // and the dump, so a 50 MWe ask read 98.8 MWe indicated with the dump venting 48 %.
   // Fails 3 checks on the old engine (0 rpm end and minimum, 98.78 MWe vs a 50 ±3 band).
-  'run_behavior.js':       { code: 0, score: '40pass 0xfail' },
+  // 41 since 2026-07-31 (#220): +TR-1f — the P-9 permissive is an INSTRUMENT reading. It
+  // read true `power_pct`, so a permissive gating two reactor trips and the AFW start could
+  // not be fooled by the channel it reads. Verified by injection: 4 checks red on the old
+  // engine (a channel stuck at 40 % with the core at 100 % still scrammed at +0.5 s, and the
+  // SG hi-hi leg scrammed at +0.2 s). Legs A/C are the calibration pins — with a healthy
+  // channel NOTHING moves, which is what makes it a sensing fix rather than a protection one.
+  'run_behavior.js':       { code: 0, score: '41pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -185,7 +191,23 @@ var BASELINES = {
   // x2, Manuals/00 + 09), which is what was checked before accepting the drop. #153's own
   // owner quote ("You can fix RBMK too") uses the plain `OWNER,` form the themes list already
   // uses elsewhere, which this gate deliberately does not scan (see its SCOPE note).
-  'run_hardrules.js':      { code: 0, score: '39checks 0failed' },
+  // 39 -> 48 on 2026-07-31 (#220). TWO movements, opposite signs, and the net is what is
+  // baselined: +11 from a NEW HR1(b) block (code), then -2 when the CLAUDE.md themes list
+  // rotated its oldest bullet out and took two OWNER RULING markers with it (prose — both
+  // verified surviving in other tracked files before the drop was accepted, per the note
+  // above). Same rotation cost recorded at #153. The +11 half, and this one is a code
+  // check, not a prose count. The HR1 scan above declared in writing that "nothing that
+  // DECIDES can reach truth by a path this misses" — false. A trip's `condition:` key is a
+  // status word the ENGINE computes and hands over, so from inside layers/control/ it is
+  // indistinguishable from an instrument and the scan cannot see it. `above_p9` was
+  // computed from true `power_pct` and gated two reactor trips plus the loss-of-main-feed
+  // AFW start. Every permissive key is now declared with its provenance, and the ones
+  // declared instrument-derived are CHECKED against the engine line that defines them.
+  // Verified by injection three ways: the pre-#220 engine line reddens 3 checks naming the
+  // offending expression; an undeclared new permissive reddens 1; a declaration matching
+  // nothing is STALE and reddens too. The count moves when a permissive is added, not when
+  // a doc is written — unlike the HR11 half above.
+  'run_hardrules.js':      { code: 0, score: '48checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

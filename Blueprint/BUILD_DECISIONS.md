@@ -37,6 +37,95 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-31g — #220: the revisit. A permissive that could not be fooled, and a guard that said it could not exist
+
+**Context.** #220's evidence pass (2026-07-27) verdicted ten "real Westinghouse PWRs do X"
+claims against NRC primaries — 7 verified, 2 partly, 1 with a gap, **none wrong** — and was
+deliberately scoped to evidence only. This is the revisit it deferred.
+
+### The decision: a permissive is an instrument reading, and P-9 was not one
+
+`above_p9` was `(s.power_pct || 0) > 50` — **true** reactor power. It gates three protection
+decisions (SG hi-hi reactor trip, Reactor Trip on Turbine Trip, loss-of-main-feed AFW start).
+The real one is *"actuated at approximately 50% power as determined by two-out-of-four NIS
+power range detectors"* (NUREG-1431 Rev 4 Bases B 3.3.1, ML12100A228) — a nuclear-instrument
+reading and nothing else.
+
+**Measured before** (hot full power, seed 42, power-range channel stuck at 40 % with the core
+at 100 %): turbine trip → scram at **+0.5 s**; SG overfeed → scram on `sg_level high` at
+**+0.2 s**. **After**: neither. The turbine trip is ridden out on the 105 % dump; the hi-hi
+still isolates feed and trips the turbine, and the plant trips **59 s later on `sg_level low`**.
+
+Reads `_ins_power_pct` — the existing one-step-lag stash the AFW level hold, the CVCS level
+program and the dump's Tref program already sense through. No new instrument, no new PRNG
+draw. With a healthy channel the behaviour is unchanged, which is both the safety argument
+for the change and the reason 34 green runners never saw the defect.
+
+**Why this is a departure to declare rather than waive.** Combined with §8.11 (no sensor
+redundancy or voting), a **single** failed channel now defeats the permissive where a real
+2-of-4 arrangement out-votes it. §8.11 already took that trade explicitly — *"makes instrument
+failure more impactful — acceptable and arguably more educational"* — so this inherits it, and
+§8.20 records the inheritance rather than leaving it implied.
+
+### The guard blind spot: a decision can reach truth without naming it
+
+`run_hardrules.js` scans `layers/control/` for `getTrueState()` / `true_state`, and its
+SCOPE note asserted in writing that *"nothing that DECIDES can reach truth by a path this
+misses"*. That sentence was false when written. A trip's **`condition:` key is a status word
+the ENGINE computes and hands over** — inside the control layer there is no truth reference
+to see. `above_p9` was that path.
+
+New **HR1(b)** block: every `condition:` key gating a trip, actuation or alarm is declared as
+`instrument` / `lineup` / `latch` / `hold`, and the ones declared instrument-derived are
+**verified against the engine line that defines them** — a declaration alone would have been
+bookkeeping. Injection-verified three ways: the pre-fix engine line reddens 3 checks and
+prints the offending expression; an undeclared permissive reddens 1; a stale declaration
+reddens too. `run_hardrules` **39 → 50**.
+
+Kept as a separate block rather than folded into the HR1 scan because it walks a different
+surface (permissive keys, then engine definitions) and would otherwise vanish inside the
+other's tally — the same reasoning that split HR1_EXCEPTION from HR1_DEBT.
+
+### The comments that carried someone else's premise
+
+The drift class #220 exists to catch, found twice by the evidence pass and fixed here:
+
+| Site | Said | Why it was wrong |
+|---|---|---|
+| `pwr_steam_generator.js` | dump catches a full rejection *"(no anticipatory reactor trip exists)"* | True when written; **false since #216** turned Reactor Trip on Turbine Trip ON |
+| `pwr_config.js` | *"a turbine trip is a transient the operator manages — not a scram"* | Above P-9 it is a scram. Load rejection and turbine trip are distinct design cases in the real plant too (NUREG-1431 Bases, Function 16) |
+| `pwr_control.js` P-9 header | the real plant's justification, recited straight | Theirs is **dump capacity** — *"for turbine trips from 50% power or less, sufficient steam dump capacity is available"* (WTSM §12.2, ML11223A301). Ours is 105 %, so that argument is gone here |
+
+**The owner's question, settled** *(OWNER, 2026-07-26: "If the steam dump can handle a full
+load do we need the turbine trip? I thought those were related for some reason.")* — they
+are related, and that recollection was exactly right. Keep the trip, but for the two reasons
+that survive an oversized dump: the dump depends on the **condenser** (real interlock C-9; a
+turbine trip's cause frequently removes it — TR-8 is that case), and it is **uncredited
+anticipatory defence-in-depth** in reality too (*"No credit was taken in the accident analyses
+for operation of these trips"*, Salem TS Bases, ML18093A272). Written into the header where
+the code is read, not only into an issue thread.
+
+### Departures declared (DESIGN_COMPANION §8 — the HR9(c) home)
+
+**§8.17** steam dump 105 % vs the prototypical 40 % (WTSM §11.2, ML11223A294), with the
+AP1000 house-load analog · **§8.18** the 1.5 DPM rod-withdrawal block, which has no real
+analog while the 1.0 DPM administrative limit and the 1e5 cps source-range backstop either
+side of it both do · **§8.19** the AFW 20 % / scram 17 % offset against one real signal at
+one setpoint (WTSM §5.7, ML11223A229) · **§8.20** P-9 and turbine-trip sensing at status
+level rather than stop-valve position and autostop oil pressure.
+
+Housekeeping: the #219 dump-arm cliff was filed as a **duplicate §8.8** and cited by number
+from four places — renumbered **§8.21**, all four repointed.
+
+### Gates
+
+`run_behavior` 40 → **41** (**TR-1f**; 4 checks red on the old engine, and the probe must
+*fail the instrument* to observe anything at all — legs A and C are the calibration pins).
+`run_hardrules` 39 → **50**. Everything else unmoved: all 34 runners green at baseline before
+the new checks were added, which is the measurement that says this is a sensing fix.
+
+---
+
 ## 2026-07-31e — #137: rewind is a picker on a wall clock, and two of the issue's four items were wrong
 
 **Decision 1 — the free-play checkpoint cadence is measured in REAL time**

@@ -44,9 +44,10 @@
     'EV-8': 'existing:run_ops xenon 8h', 'EV-9': 'existing:run_campaign startup ×2',
     'EV-10': 'existing:run_pwr transient_loss_vacuum',
     'TR-1': 'probe (LOAD REJECTION — the ride-out case)', 'TR-1b': 'probe (turbine trip → P-9 scram, #216)',
-    'TR-1c': 'probe (sub-threshold rejection — the arm cliff, declared §8.8, #219)',
+    'TR-1c': 'probe (sub-threshold rejection — the arm cliff, declared §8.21, #219)',
     'TR-1d': 'probe (PLANNED OFFLINE is not a turbine trip — #230)',
     'TR-1e': 'probe (grid holds the rotor at zero load; MWe follows the turbine — #284)',
+    'TR-1f': 'probe (P-9 reads the NIS channel, not truth — #220)',
     'TR-2': 'probe', 'TR-3': 'probe',
     'TR-4': 'probe (lumped-RCP model: total-loss trip; P-8 single-loop needs multi-loop model)',
     'TR-5': 'probe', 'TR-6': 'existing:run_ops grid step + steam_dump_capacity_cap',
@@ -404,6 +405,87 @@
       });
     },
 
+    /* TR-1f (#220) — the P-9 permissive is an INSTRUMENT reading. The real one is
+     * derived from the nuclear instrumentation and nothing else: *"The Power Range
+     * Neutron Flux, P-9 interlock is actuated at approximately 50% power as determined
+     * by two-out-of-four NIS power range detectors."* (NUREG-1431 Rev 4 Bases B 3.3.1,
+     * ML12100A228). Ours read `s.power_pct` — TRUE power — so a permissive that gates
+     * two reactor trips and an AFW auto-start could not be fooled by the channel it is
+     * supposed to be reading. HR1, in the one place it is most expensive.
+     *
+     * Asserts the CLAIM, not the code (HR10). Verified by injection: on the pre-fix
+     * engine leg B FAILS — the plant scrams on P-9 with the power-range channel reading
+     * 40 %. Legs A and C are the calibration pins: with a healthy channel NOTHING moves,
+     * which is what makes this a sensing fix rather than a protection change.
+     *
+     * DECLARED DEPARTURE (§8.11): one channel, not two-out-of-four, so a single failed
+     * channel defeats the permissive here where a real plant out-votes it. That is the
+     * lesson, not a defect — and it is the ONLY way the difference is observable. */
+    'TR-1f': function () {
+      return test('TR-1f P-9 reads the NIS channel — a failed power range defeats the permissive', function (ck) {
+        // ---- leg A: healthy channel, the TR-1b behaviour must be untouched.
+        var a = H('hot_full_power');
+        a.run(30);
+        ck('indicated power tracks truth when the channel is healthy',
+          fmt(a.ins().power_range, 1) + ' vs ' + fmt(a.ts().power_pct, 1),
+          Math.abs(a.ins().power_range - a.ts().power_pct) < 10, 'within 10 %');
+        a.cmd('inject_failure', { failure_id: 'turbine_trip' });
+        var dtA = a.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 120);
+        ck('turbine trip still scrams on P-9 (TR-1b unmoved)',
+          dtA >= 0 ? fmt(dtA, 1) + ' s — ' + (a.tripReason || '?') : 'no trip in 120 s',
+          dtA >= 0 && dtA <= 5 && /turbine_tripped/.test(a.tripReason || ''), '≤ 5 s on turbine_tripped');
+
+        // ---- leg B: the channel fails LOW, below the 50 % setpoint, while the reactor
+        // is genuinely at full power. P-9 must de-arm — the permissive believes its
+        // instrument. Above P-10 (10 %) deliberately, so the IR/SR trips stay bypassed
+        // and the only thing this leg can be measuring is P-9.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('set_instrument_failure', { instrument_id: 'power_range', mode: 'stuck', value: 40.0 });
+        b.run(20);
+        ck('channel stuck below the P-9 setpoint', fmt(b.ins().power_range, 1), b.ins().power_range < 50, '< 50 %');
+        ck('while the reactor is really at power', fmt(b.ts().power_pct, 1), b.ts().power_pct > 90, '> 90 %');
+        ck('not already scrammed by something else', String(!!b.ts().scrammed), !b.ts().scrammed, 'false');
+        b.cmd('inject_failure', { failure_id: 'turbine_trip' });
+        var dtB = b.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
+        ck('P-9 is DE-ARMED — no anticipatory scram (was: scram at +0.5 s)',
+          dtB >= 0 ? 'scram at +' + fmt(dtB, 1) + ' s on ' + b.tripReason : 'no scram in 300 s',
+          dtB < 0, 'no scram');
+        // …and the plant is then exactly the ride-out case: the 105 % dump takes it.
+        ck('the dump carries the load instead', fmt(b.range('steam_dump_valve_pct').max, 0),
+          b.range('steam_dump_valve_pct').max >= 55, '≥ 55 %');
+        ck('no PORV lift while it rides out', fmt(b.range('pressure_mpa').max, 2),
+          b.range('pressure_mpa').max < 16.20, '< 16.20 MPa');
+
+        // ---- leg C: the OTHER P-9 consumer, the SG hi-hi (P-14) reactor trip. Same
+        // failed channel: the hi-hi must still isolate feed and trip the turbine, but
+        // must NOT scram, because P-9 is what arms that leg.
+        var c = H('hot_full_power');
+        c.run(30);
+        c.cmd('set_instrument_failure', { instrument_id: 'power_range', mode: 'stuck', value: 40.0 });
+        c.run(20);
+        c.cmd('inject_failure', { failure_id: 'sg_overfeed' });
+        // The hi-hi's un-gated half fires first: isolate feed + trip the turbine. Catch it
+        // there, because the feed isolation carries `reset_below: 85` and has already let
+        // go by the end of the run — asserting it at the end pins a transient that is gone.
+        var dtIso = c.runUntil(function (ts) { return !!ts.turbine_tripped; }, 600);
+        ck('hi-hi still did its un-gated half — turbine tripped',
+          dtIso >= 0 ? '+' + fmt(dtIso, 1) + ' s' : 'never', dtIso >= 0, 'yes');
+        ck('…and the reactor was NOT scrammed at that moment (P-14 is P-9-gated)',
+          String(!!c.ts().scrammed), !c.ts().scrammed, 'false');
+        var dtC = c.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 600);
+        // The P-14 leg is `sg_level high`. What DOES happen is the sub-P-9 behaviour —
+        // hi-hi isolates feed and trips the turbine, and the plant then trips ~2.5 min
+        // later on `sg_level low`, a genuine limit reached by draining the bottled SG.
+        // Measured: +153.0 s. That is the ride-out plant's honest failure path (FG-4),
+        // and it is what "anticipation removed" is supposed to look like.
+        ck('the P-14 leg did NOT scram — P-9 is what arms it',
+          dtC >= 0 ? 'scram at +' + fmt(dtC, 1) + ' s on ' + c.tripReason : 'no scram in 600 s',
+          !/sg_level high/.test(c.tripReason || ''), 'not sg_level high');
+        T.checkSanity(ck, a);
+      });
+    },
+
     'TR-1d': function () {
       return test('TR-1d planned offline — breaker opens, turbine NOT tripped, no reactor trip', function (ck) {
         // ---- phase 1: at power. The dangerous case: pre-#230 this scrammed on P-9.
@@ -531,12 +613,12 @@
      * to run power to 114 %. Any armed system has a threshold, and any threshold is a
      * discontinuity — so a rejection just UNDER `dump_load_reject_mwe` is a manoeuvre the
      * operator has to handle, and hands-off it ends at the PORV. That is a named
-     * simplification (DESIGN_COMPANION §8.8), not a defect, and this probe pins BOTH sides
+     * simplification (DESIGN_COMPANION §8.21), not a defect, and this probe pins BOTH sides
      * of the cliff so it cannot move silently. Lowering the arm is not the fix: an arm low
      * enough to catch an ordinary 15 MWe dispatch cut leaves the dump venting the difference
      * forever, holding the reactor at 100 % and destroying the EV-11 load-follow lesson. */
     'TR-1c': function () {
-      return test('TR-1c sub-threshold load rejection — the C-7 arm is a cliff (declared, §8.8)', function (ck) {
+      return test('TR-1c sub-threshold load rejection — the C-7 arm is a cliff (declared, §8.21)', function (ck) {
         var arm = RD.PWR_CONFIG.steam_generator.dump_load_reject_mwe;
         ck.info('arm threshold under test', fmt(arm, 0) + ' MWe');
 
