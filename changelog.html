@@ -86,33 +86,16 @@
 
        ================================================================== -->
 
-  <article class="log-entry">
-    <div class="log-head">
-      <h2>Offline download, a guided tour, and a reactor fitted to measured data</h2>
-      <span class="log-ver mono">Alpha 1.11.0</span>
-      <time class="log-date mono" datetime="2026-07-30">30 July 2026</time>
-    </div>
-    <p class="log-note">Version numbers restart here. Everything below was built and tested with a small group before the simulator was shown publicly, and the per&#8209;release history has been folded into this single summary. The full engineering record is kept in the repository.</p>
-    <ul>
-      <li><span class="log-tag added">Added</span><strong>The whole simulator downloads as one file and runs offline.</strong> No install, no server &mdash; open it and it works, including on a machine that has never seen it before.</li>
-      <li><span class="log-tag added">Added</span><strong>A guided tour on first pause,</strong> an About page and a rebuilt public site with Physics and Roadmap pages, and a menu that works on a phone.</li>
-      <li><span class="log-tag added">Added</span><strong>The board explains itself.</strong> Point at anything and it tells you what it is, what it is wired to, and the trap that catches people &mdash; and every description links into the operator&rsquo;s manual.</li>
-      <li><span class="log-tag added">Added</span><strong>Automatic controls now say what they are doing,</strong> including the reason one switched itself off. The feedwater control carries a status word, so a controller still lit AUTO but out of authority to correct says so instead of looking healthy while the level refuses to move.</li>
-            <li><span class="log-tag added">Added</span><strong>New annunciators for diagnosing a leak</strong> and for safety injection accumulators left lined up during a cooldown, plus a reactor coolant pump seal leak to practise on &mdash; sized so every setting is one the plant can hold, making it a diagnosis exercise rather than an accident.</li>
-      <li><span class="log-tag changed">Changed</span><strong>The reactor&rsquo;s response to temperature is fitted to measured plant data,</strong> and control and shutdown rod worths are the real measured values rather than estimates.</li>
-      <li><span class="log-tag changed">Changed</span><strong>The plant can heat itself from cold on pump heat alone,</strong> the way a real one does.</li>
-      <li><span class="log-tag fixed">Fixed</span><strong>The pressurizer could not be filled solid by emergency injection</strong> &mdash; the exact trap Three Mile Island turned on. Indicated level stuck part&#8209;way up the scale however much was injected; it now runs the full range and its high&#8209;level trip is reachable.</li>
-      <li><span class="log-tag fixed">Fixed</span><strong>A by&#8209;the&#8209;book cooldown emptied all four safety injection accumulators,</strong> leaving the plant at cold shutdown with no passive injection left. The procedures now carry the isolation step.</li>
-      <li><span class="log-tag fixed">Fixed</span><strong>Diluting boron while the plant was still cold could take the reactor critical unexpectedly.</strong></li>
-      <li><span class="log-tag fixed">Fixed</span><strong>Alarm bands follow the protection that is actually armed,</strong> so blocking a trip moves the band that shows it.</li>
-      <li><span class="log-tag fixed">Fixed</span><strong>The low reactor coolant flow trip reads a real flow instrument</strong> rather than a hidden true value, so it can lag, drift and fail like any other channel.</li>
-          </ul>
+  <article class="log-note-block">
+    <h2>Awaiting public launch</h2>
+    <p>This build is <strong>pre&#8209;alpha</strong>. It has no version number yet &mdash; it
+       identifies itself by build SHA in the footer, which is the number to quote in a bug
+       report. The changelog starts at <strong>Alpha 1.0.0</strong> on public launch day;
+       until then, changes are tracked in the repository.</p>
+    <p>The first release covers the <strong>pressurised water reactor</strong>. The RBMK and
+       BWR are out of scope for it and will follow later.</p>
   </article>
 
-  <p style="margin-top:32px">Found a bug, or want to suggest something? Email me at
-  <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.
-  Inside the simulator, the 💬 button copies that address and can download a
-  session diagnostics file you can attach so I can see what actually happened.</p>
 </main>
 
 <footer class="site-footer">

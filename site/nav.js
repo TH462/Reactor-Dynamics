@@ -8,7 +8,12 @@
     else fn();
   }
   ready(function () {
-    var label = (typeof window.RD_VERSION === 'string') ? window.RD_VERSION : '';
+    // "Pre Alpha · a3f9c21" — the label says what this is, the SHA says WHICH build.
+    // Both, deliberately: the SHA is the identifier a bug report needs, and a tester
+    // should not have to open the feedback dialog to find it.
+    var sha = (typeof window.RD_VERSION === 'string') ? window.RD_VERSION : '';
+    var rel = (typeof window.RD_RELEASE === 'string') ? window.RD_RELEASE : '';
+    var label = rel && sha ? rel + ' · ' + sha : (rel || sha);
     var foot = document.getElementById('ver');
     if (foot) foot.textContent = label;
 

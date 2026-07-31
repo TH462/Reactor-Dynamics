@@ -257,10 +257,21 @@ check('DOWNLOAD', 'site/nav.js vs site/make_download.js',
     : null);
 
 // RD_RELEASE is the one source of truth for all of it, and it is hand-edited.
-check('DOWNLOAD', 'site/release.js', 'RD_RELEASE is an Alpha X.Y.Z string',
-  /RD_RELEASE\s*=\s*"Alpha \d+\.\d+\.\d+"/.test(
-    fs.readFileSync(path.join(ROOT, 'site', 'release.js'), 'utf8'))
-    ? 'names the product AND the version, which is what the file is called' : null);
+//
+// PRE-RELEASE MODE (2026-07-31), matching run_release.js. Before the public launch there is
+// no version at all: RD_RELEASE reads "Pre Alpha" and the build is identified by its SHA.
+// This check used to demand Alpha X.Y.Z unconditionally, which is the SECOND gate to pin
+// that format — it was missed when the pre-release mode went into run_release.js and this
+// is what caught it. Either shape is valid; what must never be valid is an EMPTY or
+// malformed string, because the download names itself from this.
+var relSrc = fs.readFileSync(path.join(ROOT, 'site', 'release.js'), 'utf8');
+var relStr = (/RD_RELEASE\s*=\s*"([^"]*)"/.exec(relSrc) || [])[1];
+check('DOWNLOAD', 'site/release.js', 'RD_RELEASE = ' + JSON.stringify(relStr),
+  /^Alpha \d+\.\d+\.\d+$/.test(relStr || '')
+    ? 'names the product AND the version, which is what the file is called'
+    : (relStr && relStr.trim()
+        ? 'PRE-RELEASE: no version yet — the download carries this name and the SHA identifies the build'
+        : null));
 
 // ---------------------------------------------------------------- report
 var byRule = {};
