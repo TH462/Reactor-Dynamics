@@ -310,7 +310,12 @@ var BASELINES = {
   // collapsed to ONE published entry for the public launch, so there are far fewer
   // cross-checks to make. The count is a function of how many entries exist, not of how
   // much is checked — every rule still runs.
-  'run_release.js':        { code: 0, score: '11checks 0failed' },
+  // 11 -> 8 on 2026-07-31: PRE-RELEASE mode. RD_RELEASE is "Pre Alpha", the build is
+  // identified by SHA, and changelog.html correctly has NO published entries — so the
+  // released-state rules stand down. They re-arm on the FORMAT: set RD_RELEASE to
+  // "Alpha 1.0.0" on launch day and this goes back up. Verified by injection — with a
+  // version set and the changelog still empty it fails 3 ways.
+  'run_release.js':        { code: 0, score: '8checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   // 26 -> 28 on 2026-07-31 (#125): the PORV's operator switch is a SEPARATE command from

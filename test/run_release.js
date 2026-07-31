@@ -54,9 +54,18 @@ function read(rel) { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); }
 var relSrc = read('site/release.js');
 var relM = /RD_RELEASE\s*=\s*"([^"]+)"/.exec(relSrc);
 var RELEASE = relM ? relM[1] : null;
+// PRE-RELEASE MODE (2026-07-31). Before the public launch this project has no version
+// number at all: the build identifies itself by SHA and RD_RELEASE reads "Pre Alpha".
+// "Nothing has been released yet" is a VALID state, not a violation, so the gate has to be
+// able to express it — otherwise the only way to stay green is to invent a version, which
+// is the exact dishonesty the pre-release label exists to remove.
+//
+// The switch is the FORMAT, so nothing has to be remembered: set RD_RELEASE to
+// "Alpha 1.0.0" on launch day (#282) and every released-state rule below arms itself.
+var RELEASED = !!(RELEASE && /^Alpha \d+\.\d+\.\d+$/.test(RELEASE));
 check('VERSION', 'site/release.js', 'RD_RELEASE = ' + JSON.stringify(RELEASE),
-  RELEASE && /^Alpha \d+\.\d+\.\d+$/.test(RELEASE)
-    ? 'a full Alpha X.Y.Z — the download names itself from this' : null);
+  RELEASED ? 'a full Alpha X.Y.Z — the download names itself from this'
+           : (RELEASE ? 'PRE-RELEASE: no version yet; the build is identified by SHA' : null));
 
 // -- changelog.html: the player-facing entries ----------------------------------
 // Comments are stripped FIRST. The file carries a fully-formed "Alpha 1.5.0" specimen entry
@@ -83,11 +92,14 @@ var mdVers = mdHeads.filter(function (h) { return /^Alpha \d+\.\d+\.\d+$/.test(h
 
 // ---------------------------------------------------------------- A. changelog.html
 check('SITE', 'changelog.html', 'published entries found (' + siteEntries.length + ')',
-  siteEntries.length ? 'outside the ADDING AN ENTRY template comment' : null);
+  RELEASED ? (siteEntries.length ? 'outside the ADDING AN ENTRY template comment' : null)
+           : (siteEntries.length === 0 ? 'none yet, correctly — nothing has been released' : null));
 
 var topSite = siteEntries[0];
-check('SITE', 'changelog.html', 'newest entry is ' + (topSite ? topSite.ver : '<none>'),
-  topSite && topSite.ver === RELEASE ? 'agrees with site/release.js' : null);
+if (RELEASED) {
+  check('SITE', 'changelog.html', 'newest entry is ' + (topSite ? topSite.ver : '<none>'),
+    topSite && topSite.ver === RELEASE ? 'agrees with site/release.js' : null);
+}
 
 // The date is written twice on purpose — machine-readable and human-readable — and the two
 // are edited by hand in the same tag, which is exactly where a copy-paste from the entry
@@ -134,11 +146,15 @@ check('MD', 'CHANGELOG.md', '[Unreleased] sits above every version heading',
 // THE CHECK THIS GATE EXISTS FOR. Rolling the heading is the step that was skipped, and
 // skipping it leaves a file that parses, reads plausibly, and is wrong.
 var topMd = mdVers[0];
-check('MD', 'CHANGELOG.md', 'newest version heading is ' + (topMd ? topMd.raw : '<none>') +
-  ' (release.js says ' + RELEASE + ')',
-  topMd && topMd.raw === RELEASE
-    ? 'the shipped release has been rolled out of [Unreleased]'
-    : null);
+// Before the first release there is nothing to have rolled: work in flight legitimately
+// sits under [Unreleased] and the newest version heading belongs to the pre-launch history.
+if (RELEASED) {
+  check('MD', 'CHANGELOG.md', 'newest version heading is ' + (topMd ? topMd.raw : '<none>') +
+    ' (release.js says ' + RELEASE + ')',
+    topMd && topMd.raw === RELEASE
+      ? 'the shipped release has been rolled out of [Unreleased]'
+      : null);
+}
 
 var mdOOO = descending(mdVers, function (h) { return h.raw; });
 check('MD', 'CHANGELOG.md', 'version headings are newest-first',
