@@ -22,6 +22,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Mode 4 alarm behaviour was tested nowhere** (#294). `COLD_MODES = [4, 5]` in
+  `layers/control/pwr_control.js` gates six alarm behaviours — the #287 RHR alarm's
+  `condition`, plus four reclassify rules that turn expected cold-plant indications into
+  `status` instead of leaving them as warnings. Every existing probe exercised **Mode 5
+  only**. Measured by injection: narrowing it to `[5]` left `run_m4`, `run_pwr`, `run_ops`,
+  `run_contract`, `run_reachability` and `run_hardrules` **all green** at 185/240/351/139/58/75
+  — the Mode 4 half could have been deleted outright without a gate objecting.
+  - **What it suppresses is not cosmetic.** On a correctly depressurized cold plant the
+    injected form raises a spurious **CRITICAL** (`pzr_pressure_lolo`) — a casualty alarm on
+    a plant depressurized exactly as the procedure intends — plus three spurious warnings,
+    **and loses `rhr_not_aligned` (06 PWR-A33) entirely**, the one alarm carrying real news,
+    because its condition stops matching.
+  - **Three of the five deltas are priority-only**, on alarms that still appear either way.
+    A presence check cannot see those, so the probe asserts the priority.
+  - **Mode 4 is where a plant spends most of a cooldown from power**, and where the #287
+    sequence actually lands (measured: that cooldown ends Mode 4 at 147.5 °C / 297 °F,
+    280 psi / 1.93 MPa). The existing #287 probe reaches its loss with an operator
+    `set_rhr active:false` in Mode 5; the new one reaches Mode 4 the way the plant really
+    does — **losing the heat sink and heating on decay + pump heat**, Mode 4 at 1000 sim s
+    for about a second of wall — so the mechanism under test is the engine's, not the
+    probe's, and no temperature is hand-set.
+  - No behaviour changed: the plant was already correct. `run_m4` **33/33 (185) → 34/34
+    (194)**; 5 checks red on the injected config.
+
 - **HR11's guard checked one of the two markers the repo uses** (#290). `run_hardrules.js`
   requires every ruling citation to carry a date *and* the owner's verbatim words —
   otherwise it is indistinguishable from an agent's own preference in authoritative voice.

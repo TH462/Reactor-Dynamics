@@ -514,6 +514,68 @@ T.push(test('#287 — losing shutdown cooling annunciates; the permissive stays 
   }
 }));
 
+T.push(test('#294 — MODE 4 is a cold mode too: the whole COLD_MODES half was untested', function (ck) {
+  // `COLD_MODES = [4, 5]` (pwr_control.js) gates SIX behaviours: the #287 alarm's
+  // `condition`, plus four reclassify rules that turn expected cold-plant indications
+  // into `status` instead of leaving them as warnings. Everything above this test
+  // exercises Mode 5 only, and MEASURED, narrowing COLD_MODES to `[5]` left run_m4,
+  // run_pwr, run_ops, run_contract, run_reachability and run_hardrules ALL GREEN —
+  // 185/240/351/139/58/75, every one at baseline. So the Mode 4 half could be deleted
+  // outright without a gate objecting.
+  //
+  // What that injection actually does to a correctly-cooled-down plant: low_tavg and
+  // pzr_pressure_low revert to warnings, turbine_trip reverts to a warning, and
+  // pzr_pressure_lolo comes back as a CRITICAL — a casualty alarm on a plant that is
+  // depressurized exactly as the procedure intends — while the one alarm carrying real
+  // news, RHR NOT IN SERVICE, vanishes entirely because its condition no longer matches.
+  //
+  // Mode 4 matters because it is where a plant spends most of a cooldown from power, and
+  // it is where the #287 sequence actually lands (measured: the cooldown ends Mode 4 at
+  // 147.5 °C / 297 °F, 280 psi / 1.93 MPa). The test above reaches its loss with an
+  // operator `set_rhr active:false` in Mode 5; this one reaches Mode 4 the way the plant
+  // really does — by LOSING shutdown cooling and heating up on decay + pump heat — so the
+  // mechanism is the engine's, not the probe's.
+  var m4 = new Stack('cold_shutdown');
+  m4.run(3);
+  // CLAUDE.md trap: the engine silently ignores a string IC. Assert it rather than trust it.
+  ck('IC really is Mode 5 cold shutdown', m4.ins().plant_mode + ', ' + m4.ts().tavg_c.toFixed(1) + ' °C',
+    m4.ins().plant_mode === 5 && m4.ts().tavg_c < 93, 'mode 5, < 93 °C');
+  m4.cmd({ action: 'set_rhr', active: false });   // lose the heat sink
+  m4.cmd({ action: 'set_rcp', running: true });   // pump heat does the rest
+  var t = 0;
+  while (t < 6000 && m4.ins().plant_mode !== 4) { m4.run(100); t += 100; }
+  m4.run(600);   // walk clear of the 93 °C boundary rather than asserting on top of it
+  var tavg = m4.ts().tavg_c;
+  ck('the plant heated into Mode 4 on its own', 'mode ' + m4.ins().plant_mode + ', ' +
+    tavg.toFixed(1) + ' °C (' + (tavg * 9 / 5 + 32).toFixed(0) + ' °F) after ' + t + ' s',
+    m4.ins().plant_mode === 4 && tavg > 93 && tavg < 177, 'mode 4, 93..177 °C');
+  var pr = function (id) { var a = m4.alarm(id); return a ? a.priority : 'absent'; };
+  var stOf = function (id) { var a = m4.alarm(id); return a ? a.state : 'absent'; };
+  // The four reclassifications. These are the ones that revert under the injection, and
+  // three of them still APPEAR either way — only their priority moves — which is exactly
+  // what a presence-only check cannot see. Assert the priority.
+  [['low_tavg', 'coolant cold'], ['pzr_pressure_low', 'pzr depressurized'],
+   ['pzr_pressure_lolo', 'pzr very low'], ['turbine_trip', 'turbine secured']
+  ].forEach(function (p) {
+    ck('Mode 4: ' + p[0] + ' reads STATUS, not a warning (' + p[1] + ')', pr(p[0]),
+      pr(p[0]) === 'status', 'status');
+  });
+  // The one that must NOT be downgraded — losing the heat sink is news in Mode 4 just as
+  // it is in Mode 5. Under the injection this reads 'absent', not a softer priority.
+  ck('Mode 4: losing RHR still ANNUNCIATES as a warning', pr('rhr_not_aligned') + '/' + stOf('rhr_not_aligned'),
+    pr('rhr_not_aligned') === 'warning' && stOf('rhr_not_aligned') === 'active_unacknowledged',
+    'warning, active_unacknowledged');
+  // …and the operator owns the recovery here too. Pressure is below the block-open
+  // permissive, so re-alignment is available — the point is that nothing did it for him.
+  ck('nothing re-aligned RHR by itself in Mode 4 either', m4.ts().rhr_active,
+    m4.ts().rhr_active === false, 'false');
+  m4.cmd({ action: 'set_rhr', active: true });
+  m4.run(20);
+  ck('operator re-alignment clears it, still in Mode 4',
+    'mode ' + m4.ins().plant_mode + ', ' + stOf('rhr_not_aligned'),
+    m4.ins().plant_mode === 4 && stOf('rhr_not_aligned') === 'clear', 'mode 4, clear');
+}));
+
 T.push(test('Failure bookkeeping — re-inject updates severity in place; snapshot {id,severity}', function (ck) {
   var s = new Stack('hot_full_power');
   s.cmd({ action: 'inject_failure', failure_id: 'sgtr', severity: 0.3 });

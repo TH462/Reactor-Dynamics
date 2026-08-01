@@ -20,6 +20,66 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-01 (#287 verify + #294 — Mode 4 was tested nowhere, workbench)
+
+**#287 re-measured, not re-read.** The issue was `status-work-complete` with a ruling, a
+shipped alarm and an evidence pass — but the comment claiming #288's deadband made the
+original failure sequence unreachable was an **assertion about plant dynamics that had never
+been driven** since the split landed. Both halves measured on the current tree:
+
+- **Uncapped cooldown** (the original #287 driver): RHR aligns at 118 min, rebound peaks at
+  **423 psi (2.92 MPa)** — above the 400 psi block-open, well below the 600 psi autoclose —
+  and the valve **never drops out**. Ends 278 psi (1.92 MPa), Mode 4, RHR in service. The
+  claim holds; that is what the deadband is for.
+- **Deliberate repressurization to 715 psi (4.93 MPa)**: valve auto-closes at 124 min, never
+  re-opens (the one-shot, as ruled), plant ends Mode 4 with RHR shut — **and A33 fires**. The
+  path the ruling left open on purpose still works, and its mitigation is real.
+
+**#294 — and the pass turned up a gap.** `COLD_MODES = [4, 5]` gates **six** alarm
+behaviours (A33's `condition` + four reclassify rules). Narrowing it to `[5]` left
+**`run_m4` 185, `run_pwr` 240, `run_ops` 351/11, `run_contract` 139, `run_reachability` 58,
+`run_hardrules` 75 — every one at baseline.** The Mode 4 half could have been deleted and no
+gate would have said a word.
+
+**Three things worth carrying forward.**
+
+**1. What Mode 4 coverage buys, measured on a real cooldown end state.** Not a style point:
+
+| alarm | shipped | Mode 4 dropped |
+|---|---|---|
+| `low_tavg` | status | **warning** |
+| `pzr_pressure_low` | status | **warning** |
+| `pzr_pressure_lolo` | status | **critical** |
+| `turbine_trip` | status | **warning** |
+| `rhr_not_aligned` | **warning, fires** | **absent** |
+
+A spurious **CRITICAL** on a plant depressurized exactly as the procedure intends, and the
+loss of the one alarm carrying news.
+
+**2. Three of the five deltas are PRIORITY-ONLY.** `low_tavg`, `pzr_pressure_low`,
+`pzr_pressure_lolo` and `turbine_trip` all still **appear** under the injection — only their
+priority moves. A presence check (`alarm is active`) cannot see that at all, which is a
+plausible way to write this probe and would have caught nothing. Assert the priority.
+
+**3. Reach Mode 4 by DRIVING the plant, not by setting a temperature.** `plant_mode` derives
+from **true** Tavg, so the obvious fixture is `engine.s.tavg_c = 150`. Measured, that works —
+but it makes the probe assert its own fixture. Driving it is cheap and honest: from
+`cold_shutdown`, **secure RHR and start the RCPs**, and decay + pump heat carry the plant into
+Mode 4 in **1000 sim s / ~1 s wall**. That is also the #287 mechanism (losing the heat sink)
+rather than an operator command, so the probe covers a path the Mode 5 test does not. Run
+another 600 s past the crossing — it lands at 93.3 °C, right on the 93 °C boundary, and a
+probe should not assert on top of one.
+
+**Gate:** `run_m4` 33/33 (185) → **34/34 (194)**; 5 checks red on the injected config, green
+restored. No plant behaviour changed — this is coverage, not a fix.
+
+**One stale rationale left alone.** `ops_cooldown_to_rhr`'s setpoint-cap comment still says
+the uncapped driver loses RHR to the one-shot. Post-#288 that is false (measurement 1 above);
+the cap now only stops the driver fighting itself around the permissive. Not filed — a stale
+*reason*, not a wrong number — but worth fixing when that file is next touched.
+
+---
+
 ## Session log — 2026-08-01 (#290 — HR11 guarded one marker of two, workbench)
 
 **The gate for "a ruling needs a date and the owner's verbatim words" matched

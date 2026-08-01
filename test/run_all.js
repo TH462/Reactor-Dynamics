@@ -493,7 +493,16 @@ var BASELINES = {
   // (it was never tripped, it is simply cold), so the first cut of this alarm could
   // not fire in the one regime where losing RHR matters most. The probe also pins the
   // permissive staying ONE-SHOT, which is now ruled-on behaviour.
-  'run_m4.js':             { code: 0, score: '33/33 185passed' },
+  // 33 -> 34 on 2026-08-01 (#294): the MODE 4 half of `COLD_MODES = [4, 5]` was tested
+  // NOWHERE. Measured by injection — narrowing it to `[5]` left run_m4, run_pwr, run_ops,
+  // run_contract, run_reachability and run_hardrules all green at 185/240/351/139/58/75,
+  // so the Mode 4 half could have been deleted outright without a gate objecting. What it
+  // suppresses is real: on a correctly depressurized cold plant the injected form gives a
+  // spurious CRITICAL (`pzr_pressure_lolo`), three spurious warnings, and loses A33 — the
+  // one alarm carrying news — entirely. The probe reaches Mode 4 the way the plant really
+  // does, by losing the heat sink and heating on decay + pump heat, not by hand-setting a
+  // temperature; 5 checks red on the injected config.
+  'run_m4.js':             { code: 0, score: '34/34 194passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
