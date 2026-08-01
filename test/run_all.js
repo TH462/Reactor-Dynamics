@@ -249,7 +249,7 @@ var BASELINES = {
   // COVERAGE (47 procedures with no checklist) is REPORTED, not enforced — the number
   // is the work item, and a gate that failed on it would sit permanently red. Watch
   // that line, not just the score.
-  // +2 on 2026-07-31 (#255): pwr_heatup_nuclear / PWR-N03a adds one checklist pair
+  // +2 on 2026-07-31 (#255): pwr_heatup_nuclear / PWR-N01a adds one checklist pair
   // (names a manual procedure + is defined). Coverage is still reported, not scored.
   'run_procdocs.js':       { code: 0, score: '25checks 0failed' },
   // New 2026-07-29 — the manual quotes US customary first with SI in parentheses
@@ -500,7 +500,7 @@ var BASELINES = {
   //      alongside its `acc`, which became a subcooling check — see the note on that
   //      step in ui/manual_procedures.js.
   // 22/22 102 → 23/23 115 on 2026-07-31 (#255): pwr_heatup is the pump-heat
-  // sequence; pwr_heatup_nuclear keeps the old nuclear training path as PWR-N03a.
+  // sequence; pwr_heatup_nuclear keeps the old nuclear training path as PWR-N01a.
   'run_procedures.js':     { code: 0, score: '23/23 115/115' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four

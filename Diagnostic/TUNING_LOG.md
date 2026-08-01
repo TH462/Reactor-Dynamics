@@ -20,17 +20,35 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-07-31 (N-procedure renumber, backshop)
+
+**Option B: normal-ops IDs renumbered to plant sequence** (manual redesign baseline).
+
+| New ID | Was | Title |
+|---|---|---|
+| **PWR-N01** | N03 | Heatup Mode 5 → 3 (pump heat) |
+| **PWR-N01a** | N03a | Nuclear heatup (training) |
+| **PWR-N02** | N01 | Mode 3 lineup / prerequisites |
+| **PWR-N03** | N02 | Approach to criticality |
+| N04–N15 | same | Unchanged |
+
+**04** regrouped A/B/C/D; body reordered. Cross-refs + `manual_ref` updated. Rev **25**.
+
+---
+
 ## Session log — 2026-07-31 (#255, backshop)
 
-**PWR-N03 / `pwr_heatup` re-authored as pump-heat heatup; nuclear path kept as PWR-N03a.**
+**`pwr_heatup` re-authored as pump-heat heatup; nuclear path kept as training variant.**
 
-The manual already described N03 as pump heat after #251; the executable checklist was still
-the 18-step nuclear ride. Split:
+*(IDs below are as of #255 / Rev 24 — renumbered in the session above to N01 / N01a.)*
 
-| ID | Checklist | Role |
+The manual already described the commercial heatup as pump heat after #251; the executable
+checklist was still the 18-step nuclear ride. Split:
+
+| ID (Rev 24) | Checklist | Role |
 |---|---|---|
-| **PWR-N03** | `pwr_heatup` | Prototypical: RCPs + bottle SG + ride (~11 plant-h), never critical |
-| **PWR-N03a** | `pwr_heatup_nuclear` | Training: criticality + dilution ride + insert/borate |
+| heatup (then N03) | `pwr_heatup` | Prototypical: RCPs + bottle SG + ride (~11 plant-h), never critical |
+| nuclear (then N03a) | `pwr_heatup_nuclear` | Training: criticality + dilution ride + insert/borate |
 
 **Measured full-stack** (`measure_stack`, cold_shutdown, default lineup): Mode 3 entry ~4.7 h;
 546.8 °F (286.0 °C) at 10.67 h; settles **567.0 °F (297.2 °C)** at **11.3 h**, ρ = **−2828 pcm**,

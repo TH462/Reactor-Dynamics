@@ -3,7 +3,7 @@
 **Plant:** Pressurized Water Reactor (PWR)  
 **Trainer:** Reactor⚛️Dynamics educational plant simulator  
 **Document set:** Commercial-style operating manuals for training use  
-**Revision:** 24  
+**Revision:** 25  
 **Date:** 2026-07-31  
 **Date:** 2026-07-30  
 
@@ -54,7 +54,7 @@ These manuals are training documentation derived from `Blueprint/` design specs,
 
 | Prefix | Meaning | Example |
 |--------|---------|---------|
-| **PWR-N##** | Normal operations | PWR-N02 Approach to criticality |
+| **PWR-N##** | Normal operations | PWR-N03 Approach to criticality |
 | **PWR-T##** | Plant MODE transitions | PWR-T03 Mode 3, Hot Standby → Mode 1, At Power; PWR-T20 Mode 5, Cold Shutdown → Mode 1, At Power |
 | **PWR-C##** | Control / system procedure | PWR-C10 Pressurizer pressure control |
 | **PWR-A##** | Alarm response | PWR-A09 LO SUBCOOL |

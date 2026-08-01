@@ -2,7 +2,7 @@
 
 **Document:** PWR-NOP-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Revision:** 24  
+**Revision:** 25  
 
 ---
 
@@ -14,22 +14,42 @@ Provide step-followable **normal operating procedures** for the Reactor⚛️Dyn
 
 ## 2.0 Procedure index
 
+Numbered in **plant sequence** — cold → power → continuous control → cold.
+Master paths: **PWR-T20** (Mode 5 → Mode 1) and **PWR-T21** (Mode 1 → Mode 5) in `05_MODE_TRANSITIONS.md`.
+
+### A. Startup path (Mode 5, Cold Shutdown → Mode 1, At Power)
+
 | ID | Title | MODE focus | Scope |
 |----|-------|------------|-------|
-| PWR-N01 | Prerequisites & plant lineup (Mode 3, Hot Standby) | Mode 3, Hot Standby | [sim] |
-| PWR-N02 | Approach to criticality (Mode 3, Hot Standby → Mode 2, Startup) | 3 → 2 | [sim] |
-| PWR-N03 | Heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby (pump heat) | 5 → 4 → 3 | [sim] |
-| PWR-N03a | Nuclear heatup Mode 5 → Mode 3 (training variant) | 5 → 4 → 3 | [sim] |
+| PWR-N01 | Heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby (pump heat) | 5 → 4 → 3 | [sim] |
+| PWR-N01a | Nuclear heatup Mode 5 → Mode 3 (training variant) | 5 → 4 → 3 | [sim] |
+| PWR-N02 | Prerequisites & plant lineup (Mode 3, Hot Standby) | Mode 3, Hot Standby | [sim] |
+| PWR-N03 | Approach to criticality (Mode 3, Hot Standby → Mode 2, Startup) | 3 → 2 | [sim] |
 | PWR-N04 | Mode 2, Startup low-power operation & POAH | Mode 2, Startup | [sim] |
-| PWR-N05 | Turbine roll & generator synchronization | Mode 2, Startup → One | [sim] |
+| PWR-N05 | Turbine roll & generator synchronization | Mode 2, Startup → Mode 1 | [sim] |
 | PWR-N06 | Power ascension in Mode 1, At Power to 100 % | Mode 1, At Power | [sim] |
+
+### B. At-power maneuvers
+
+| ID | Title | MODE focus | Scope |
+|----|-------|------------|-------|
 | PWR-N07 | Power maneuvering — raise power (Mode 1, At Power) | Mode 1, At Power | [sim] |
 | PWR-N08 | Power maneuvering — lower power (Mode 1, At Power) | Mode 1, At Power | [sim] |
-| PWR-N09 | Boron & reactivity management (incl. xenon) | Mode 1, At Power–Three | [sim] |
-| PWR-N10 | Pressurizer pressure control | Mode 1, At Power–Three | [sim] |
-| PWR-N11 | Pressurizer level control (CVCS) | Mode 1, At Power–Three | [sim] |
-| PWR-N12 | Steam Generator level & feedwater control | Mode 1, At Power–Two | [sim] |
-| PWR-N13 | Reactor Coolant Pump (RCP) operation | Mode 1, At Power–Three | [sim, approx] |
+
+### C. Continuous control (Modes 1–3)
+
+| ID | Title | MODE focus | Scope |
+|----|-------|------------|-------|
+| PWR-N09 | Boron & reactivity management (incl. xenon) | Mode 1–3 | [sim] |
+| PWR-N10 | Pressurizer pressure control | Mode 1–3 | [sim] |
+| PWR-N11 | Pressurizer level control (CVCS) | Mode 1–3 | [sim] |
+| PWR-N12 | Steam Generator level & feedwater control | Mode 1–2 | [sim] |
+| PWR-N13 | Reactor Coolant Pump (RCP) operation | Mode 1–3 | [sim, approx] |
+
+### D. Shutdown path (Mode 1, At Power → Mode 5, Cold Shutdown)
+
+| ID | Title | MODE focus | Scope |
+|----|-------|------------|-------|
 | PWR-N14 | Normal shutdown Mode 1, At Power → Mode 3, Hot Standby | 1 → 3 | [sim] |
 | PWR-N15 | Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (RHR) | 3 → 4 → 5 | [sim] |
 
@@ -37,7 +57,68 @@ Provide step-followable **normal operating procedures** for the Reactor⚛️Dyn
 
 ---
 
-## PWR-N01 — Prerequisites & plant lineup (Mode 3, Hot Standby)
+## PWR-N01 — Heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby (pump heat) **[sim]**
+
+### Purpose
+Commercial heatup from **Mode 5, Cold Shutdown** through **Mode 4, Hot Shutdown** to **Mode 3, Hot Standby** on **reactor-coolant-pump heat alone**, reactor **subcritical throughout**. Driveable on the board from the `cold_shutdown` IC (live checklist `pwr_heatup`, mission `pwr_mode5_to_mode3`, master path **PWR-T20**). See **05_MODE_TRANSITIONS §3.0**. Nuclear training variant: **PWR-N01a**.
+
+### Sequence (simulated, rates compressed)
+
+| Step | MODE | Action | Control |
+|------|------|--------|---------|
+| 1 | **Mode 5, Cold Shutdown** | Confirm cold IC: subcritical, RCS ~363 psi (2.5 MPa), RCPs secured, RHR aligned | (observe) |
+| 2 | Mode 5 → **Mode 4** | **Start the RCPs** (RCP → Run) — heat source; SG needs the flow | RCP Run/Stop |
+| 3 | Mode 5 / 4 | Confirm generator **off line** (Disconnect Grid). Cold plant spawns off line; do not reconnect | Turbine Load |
+| 4 | Mode 5 / 4 | Engage **Feed AUTO** at cold 65 % so the three-element channel captures the right setpoint | Feed Pumps |
+| 5 | Mode 5 / 4 | Set **Dump SP** to the no-load anchor (1194 psi / 8.23 MPa); leave dump **shut** so the SG bottles | Dump SP |
+| 6 | Mode 5 → 4 | **Raise Pressure SP** to 2235 psi (15.41 MPa); heaters pressurize; RHR auto-isolates above 400 psi (2.76 MPa) | Pressure SP |
+| 7 | **Mode 4** | **Re-align the SI accumulators** once RCS is above **600 psi (4.14 MPa)** cover gas and before **1000 psi (6.895 MPa)** | Accumulator valve |
+| 8 | Mode 4 → **Mode 3** | Ride Tavg up — **no rod motion, no dilution**. Arrive hot and still subcritical at the no-load band | (observe) |
+
+> **Step 7 is yours, and nothing does it for you.** The `cold_shutdown` lineup ships with the
+> accumulators **isolated** — correct for Mode 5, since the plant sits below their cover gas —
+> and **re-alignment is deliberately procedural: there is no automatic open signal** *(OWNER
+> RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto
+> opening them.")*. Skip it and you reach Mode 1 with **no passive injection**, and the board
+> will not tell you: the **SI ACCUM ALIGNED** annunciator (**06 PWR-A32**) is the cue for the
+> *cooldown*, and it is silent on exactly this case because the tanks being shut is what it
+> checks for. Verify valve position and SIT fill on the ECCS side of the board before you
+> declare Mode 3. Cooldown counterpart: **PWR-N15** step 3.
+
+**Simulator note (measured full-stack, 2026-07-31, cold_shutdown IC, no rod motion):** Mode 4 with pressure already at 2235 psi (15.41 MPa) by ~20 plant-min; Mode 3 entry (~350 °F (176.7 °C)) at **~4.7 plant-h**; **546.8 °F (286.0 °C)** at **10.67 plant-h**; settles **567.0 °F (297.2 °C)** at **11.3 plant-h** with **ρ = −2828 pcm** on **856.8 ppm**, power **3.5e-5 %**, control bank still at 0, SG level held ~65 % by `feed_sg`. Steady rate after the first hour **~32 °F/hr (17.8 °C/hr)**. What is compressed is the **wall clock** (time acceleration), not the evolution. Heat source: `pump_heat_frac` 0.55 % of rated at full flow plus pressurizer heaters.
+
+> **Rate control.** The steam dump is a **coarse** lever at these powers: measured, a 5 % manual dump demand is roughly ten times pump-heat generation and reverses the heatup at −83 °F/hr (−46 °C/hr). To slow or hold a heatup, secure an RCP — measured, that takes the rate to ~0.1 °F/hr.
+
+### Outcome
+Operator drives Mode 5 → Mode 3 on the board and arrives **subcritical-and-hot** at Hot Standby (the board **PWR-N02** / **PWR-N03** begins from). Zero rod motion.
+
+---
+
+
+## PWR-N01a — Nuclear heatup Mode 5 → Mode 3 (training variant) **[sim]**
+
+### Purpose
+Same end state as **PWR-N01** (Mode 3, Hot Standby: hot, pressurized, subcritical), but the heat source is **deliberate low-power fission**: block the startup trips, take the core critical while cold, dilute to ride temperature up, then insert and borate back to subcritical. Live checklist `pwr_heatup_nuclear`. **Not** the prototypical heatup — run it for approach-to-criticality and protection-blocking practice around a deliberate power excursion. The mission heatup (`pwr_mode5_to_mode3`) and the default checklist use **PWR-N01**.
+
+### Sequence (summary)
+
+| Phase | Action |
+|-------|--------|
+| Setup | Start RCPs, confirm grid off, Feed AUTO, Dump SP to no-load, Pressure SP to NOP, re-align accumulators |
+| Protection | Secure SR detector; block IR HIGH and PR low-setpoint (precautionary for the power band) |
+| Criticality | Withdraw control bank in bursts (1/M), creep to critical |
+| Nuclear ride | Slow dilution (~−0.039 ppm/s) until Tavg enters the no-load band; power typically 1–7 % |
+| Shutdown margin | Secure dilution, drive bank in, borate ≥ ~900 ppm, settle subcritical at Hot Standby |
+
+**Precautions:** critical boron is **higher cold** than hot — dilute cold carefully (manual **09 §7.5**). Mixing lag ~30 s. Engage Feed AUTO before the ride or a standing manual demand floods the SG. See the live checklist cautions for measured dilution margins and P-9 risk if dilution is left running.
+
+### Outcome
+Mode 3, Hot Standby via the nuclear path, with shutdown margin restored. Prefer **PWR-N01** for the commercial heatup; use this for training only.
+
+---
+
+
+## PWR-N02 — Prerequisites & plant lineup (Mode 3, Hot Standby)
 
 ### Purpose
 Verify the plant is correctly lined up in **Mode 3, Hot Standby** before approach to criticality.
@@ -50,7 +131,7 @@ Initial condition **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**, 
 - Free Play or mission allowing operator control.
 
 ### Precautions
-- Do not withdraw rods until N01 checks complete.
+- Do not withdraw rods until N02 checks complete.
 - Confirm no unexpected active failures unless the drill requires them.
 
 ### Procedure
@@ -73,11 +154,12 @@ Initial condition **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**, 
 | 14 | Set time acceleration **1×–10×** max for startup | Speed selector | Operator can follow SUR |
 
 ### Outcome
-Plant verified in **Mode 3, Hot Standby**; ready for **PWR-N02** (enter Mode 2, Startup).
+Plant verified in **Mode 3, Hot Standby**; ready for **PWR-N03** (enter Mode 2, Startup).
 
 ---
 
-## PWR-N02 — Approach to criticality (Mode 3, Hot Standby → Mode 2, Startup)
+
+## PWR-N03 — Approach to criticality (Mode 3, Hot Standby → Mode 2, Startup)
 
 ### Purpose
 Take the reactor from **Mode 3, Hot Standby** (subcritical, hot) to **Mode 2, Startup** (critical, power ≤ 5 %) by withdrawing Control Rods, watching Startup Rate (SUR) and reactor period.
@@ -86,7 +168,7 @@ Take the reactor from **Mode 3, Hot Standby** (subcritical, hot) to **Mode 2, St
 [sim] From **Mode 3, Hot Standby**.
 
 ### Prerequisites
-- **PWR-N01** complete (Mode 3, Hot Standby lineup).
+- **PWR-N02** complete (Mode 3, Hot Standby lineup).
 - Control bank inserted; SR energized; RCP running.
 
 ### Precautions
@@ -117,64 +199,6 @@ Reactor in **Mode 2, Startup** (critical, controlled power ≤ 5 %); ready for *
 
 ---
 
-## PWR-N03 — Heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby (pump heat) **[sim]**
-
-### Purpose
-Commercial heatup from **Mode 5, Cold Shutdown** through **Mode 4, Hot Shutdown** to **Mode 3, Hot Standby** on **reactor-coolant-pump heat alone**, reactor **subcritical throughout**. Driveable on the board from the `cold_shutdown` IC (live checklist `pwr_heatup`, mission `pwr_mode5_to_mode3`, master path **PWR-T20**). See **05_MODE_TRANSITIONS §3.0**. Nuclear training variant: **PWR-N03a**.
-
-### Sequence (simulated, rates compressed)
-
-| Step | MODE | Action | Control |
-|------|------|--------|---------|
-| 1 | **Mode 5, Cold Shutdown** | Confirm cold IC: subcritical, RCS ~363 psi (2.5 MPa), RCPs secured, RHR aligned | (observe) |
-| 2 | Mode 5 → **Mode 4** | **Start the RCPs** (RCP → Run) — heat source; SG needs the flow | RCP Run/Stop |
-| 3 | Mode 5 / 4 | Confirm generator **off line** (Disconnect Grid). Cold plant spawns off line; do not reconnect | Turbine Load |
-| 4 | Mode 5 / 4 | Engage **Feed AUTO** at cold 65 % so the three-element channel captures the right setpoint | Feed Pumps |
-| 5 | Mode 5 / 4 | Set **Dump SP** to the no-load anchor (1194 psi / 8.23 MPa); leave dump **shut** so the SG bottles | Dump SP |
-| 6 | Mode 5 → 4 | **Raise Pressure SP** to 2235 psi (15.41 MPa); heaters pressurize; RHR auto-isolates above 400 psi (2.76 MPa) | Pressure SP |
-| 7 | **Mode 4** | **Re-align the SI accumulators** once RCS is above **600 psi (4.14 MPa)** cover gas and before **1000 psi (6.895 MPa)** | Accumulator valve |
-| 8 | Mode 4 → **Mode 3** | Ride Tavg up — **no rod motion, no dilution**. Arrive hot and still subcritical at the no-load band | (observe) |
-
-> **Step 7 is yours, and nothing does it for you.** The `cold_shutdown` lineup ships with the
-> accumulators **isolated** — correct for Mode 5, since the plant sits below their cover gas —
-> and **re-alignment is deliberately procedural: there is no automatic open signal** *(OWNER
-> RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto
-> opening them.")*. Skip it and you reach Mode 1 with **no passive injection**, and the board
-> will not tell you: the **SI ACCUM ALIGNED** annunciator (**06 PWR-A32**) is the cue for the
-> *cooldown*, and it is silent on exactly this case because the tanks being shut is what it
-> checks for. Verify valve position and SIT fill on the ECCS side of the board before you
-> declare Mode 3. Cooldown counterpart: **PWR-N15** step 3.
-
-**Simulator note (measured full-stack, 2026-07-31, cold_shutdown IC, no rod motion):** Mode 4 with pressure already at 2235 psi (15.41 MPa) by ~20 plant-min; Mode 3 entry (~350 °F (176.7 °C)) at **~4.7 plant-h**; **546.8 °F (286.0 °C)** at **10.67 plant-h**; settles **567.0 °F (297.2 °C)** at **11.3 plant-h** with **ρ = −2828 pcm** on **856.8 ppm**, power **3.5e-5 %**, control bank still at 0, SG level held ~65 % by `feed_sg`. Steady rate after the first hour **~32 °F/hr (17.8 °C/hr)**. What is compressed is the **wall clock** (time acceleration), not the evolution. Heat source: `pump_heat_frac` 0.55 % of rated at full flow plus pressurizer heaters.
-
-> **Rate control.** The steam dump is a **coarse** lever at these powers: measured, a 5 % manual dump demand is roughly ten times pump-heat generation and reverses the heatup at −83 °F/hr (−46 °C/hr). To slow or hold a heatup, secure an RCP — measured, that takes the rate to ~0.1 °F/hr.
-
-### Outcome
-Operator drives Mode 5 → Mode 3 on the board and arrives **subcritical-and-hot** at Hot Standby (the board **PWR-N01** / **PWR-N02** begins from). Zero rod motion.
-
----
-
-## PWR-N03a — Nuclear heatup Mode 5 → Mode 3 (training variant) **[sim]**
-
-### Purpose
-Same end state as **PWR-N03** (Mode 3, Hot Standby: hot, pressurized, subcritical), but the heat source is **deliberate low-power fission**: block the startup trips, take the core critical while cold, dilute to ride temperature up, then insert and borate back to subcritical. Live checklist `pwr_heatup_nuclear`. **Not** the prototypical heatup — run it for approach-to-criticality and protection-blocking practice around a deliberate power excursion. The mission heatup (`pwr_mode5_to_mode3`) and the default checklist use **PWR-N03**.
-
-### Sequence (summary)
-
-| Phase | Action |
-|-------|--------|
-| Setup | Start RCPs, confirm grid off, Feed AUTO, Dump SP to no-load, Pressure SP to NOP, re-align accumulators |
-| Protection | Secure SR detector; block IR HIGH and PR low-setpoint (precautionary for the power band) |
-| Criticality | Withdraw control bank in bursts (1/M), creep to critical |
-| Nuclear ride | Slow dilution (~−0.039 ppm/s) until Tavg enters the no-load band; power typically 1–7 % |
-| Shutdown margin | Secure dilution, drive bank in, borate ≥ ~900 ppm, settle subcritical at Hot Standby |
-
-**Precautions:** critical boron is **higher cold** than hot — dilute cold carefully (manual **09 §7.5**). Mixing lag ~30 s. Engage Feed AUTO before the ride or a standing manual demand floods the SG. See the live checklist cautions for measured dilution margins and P-9 risk if dilution is left running.
-
-### Outcome
-Mode 3, Hot Standby via the nuclear path, with shutdown margin restored. Prefer **PWR-N03** for the commercial heatup; use this for training only.
-
----
 
 ## PWR-N04 — Mode 2, Startup low-power operation & Point of Adding Heat (POAH)
 
@@ -182,7 +206,7 @@ Mode 3, Hot Standby via the nuclear path, with shutdown margin restored. Prefer 
 Operate stably in **Mode 2, Startup** (critical, ≤ 5 %) and through the early climb; recognize when fission heat exceeds losses (POAH concept). Crossing **> 5 %** enters **Mode 1, At Power**.
 
 ### Prerequisites
-- **Mode 2, Startup** per **PWR-N02**.
+- **Mode 2, Startup** per **PWR-N03**.
 - Heat sink available (SG inventory).
 
 ### Precautions
@@ -203,6 +227,7 @@ Operate stably in **Mode 2, Startup** (critical, ≤ 5 %) and through the early 
 Stable Mode 2, Startup; ready to roll turbine and enter Mode 1, At Power.
 
 ---
+
 
 ## PWR-N05 — Turbine roll & generator synchronization (Mode 2, Startup → Mode 1, At Power)
 
@@ -237,6 +262,7 @@ Generator carrying load; plant in or entering **Mode 1, At Power**; nuclear–el
 
 ---
 
+
 ## PWR-N06 — Power ascension in Mode 1, At Power to 100 %
 
 ### Purpose
@@ -268,6 +294,7 @@ Full-power **Mode 1, At Power** equilibrium ready for normal maneuvering or watc
 
 ---
 
+
 ## PWR-N07 — Power maneuvering — raise power (Mode 1, At Power)
 
 ### Purpose
@@ -293,6 +320,7 @@ Increase reactor power and electrical output within **Mode 1, At Power** from a 
 Stable higher power and MWe.
 
 ---
+
 
 ## PWR-N08 — Power maneuvering — lower power (Mode 1, At Power)
 
@@ -322,6 +350,7 @@ Reduce reactor power and load within **Mode 1, At Power** (or down through Mode 
 Stable lower power plateau.
 
 ---
+
 
 ## PWR-N09 — Boron & reactivity management (including xenon)
 
@@ -359,6 +388,7 @@ Operator can balance rods (fast, local) vs boron (slow, bulk) and anticipate xen
 
 ---
 
+
 ## PWR-N10 — Pressurizer pressure control
 
 ### Purpose
@@ -386,6 +416,7 @@ Pressure controllable; subcooling protected.
 
 ---
 
+
 ## PWR-N11 — Pressurizer level control (CVCS)
 
 ### Purpose
@@ -411,6 +442,7 @@ Control pressurizer level / primary inventory with charging and letdown.
 Level controllable under normal (non-voiding) conditions.
 
 ---
+
 
 ## PWR-N12 — Steam Generator level & feedwater control
 
@@ -447,6 +479,7 @@ SG level controlled; operator understands MANUAL override semantics.
 
 ---
 
+
 ## PWR-N13 — Reactor Coolant Pump (RCP) operation **[approx]**
 
 ### Purpose
@@ -481,6 +514,7 @@ Operator treats RCP as critical for at-power forced flow.
 
 ---
 
+
 ## PWR-N14 — Normal shutdown Mode 1, At Power → Mode 3, Hot Standby
 
 ### Purpose
@@ -512,6 +546,7 @@ Shut the reactor down from **Mode 1, At Power** (or Mode 2, Startup) to **Mode 3
 **Mode 3, Hot Standby** — reactor shut down, hot; decay heat being removed. Continue to Mode 5, Cold Shutdown via **PWR-N15** / **PWR-T21** (driveable, rate-compressed).
 
 ---
+
 
 ## PWR-N15 — Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (RHR) **[sim]**
 
@@ -576,4 +611,4 @@ Operator can narrate Mode 3, Hot Standby → Mode 5, Cold Shutdown; understands 
 - `05_MODE_TRANSITIONS.md`  
 - `03_CONTROLS_AND_INDICATIONS.md`  
 - `06_ALARM_RESPONSE.md`  
-- `07_ABNORMAL_EMERGENCY.md`  
+- `07_ABNORMAL_EMERGENCY.md`

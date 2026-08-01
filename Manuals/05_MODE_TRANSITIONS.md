@@ -2,7 +2,7 @@
 
 **Document:** PWR-MT-01  
 **Title:** Plant MODE Transitions (Mode 1, At Power through Mode 6, Refueling)  
-**Revision:** 24  
+**Revision:** 25  
 
 ---
 
@@ -93,7 +93,7 @@ Mode 1, At Power         [sim]
 Mode 1, At Power at power (watchstanding)
 ```
 
-### Phase A — Mode 5, Cold Shutdown → Mode 4, Hot Shutdown → Mode 3, Hot Standby **[sim, rate-compressed]**
+### Phase A — Mode 5, Cold Shutdown → Mode 4, Hot Shutdown → Mode 3, Hot Standby **[sim, rate-compressed]** → **PWR-N01**
 
 | Step | Action | MODE after step |
 |------|--------|-----------------|
@@ -108,21 +108,21 @@ Mode 1, At Power at power (watchstanding)
 
 The approach to criticality is **not** part of this phase — it is Phase C, and in the campaign it lives in `pwr_startup_challenge` and `pwr_return_to_mode1`. Heating a plant to Hot Standby on fission is what the simulator used to do, because the steam generator netted pump heat out of its own steam balance and a pump-heat heatup stalled at 218.69 °F (103.72 °C); that was a modelling fudge and it is gone (#251).
 
-### Phase B — Mode 3, Hot Standby lineup **[sim]** → PWR-N01
+### Phase B — Mode 3, Hot Standby lineup **[sim]** → PWR-N02
 
 | Step | Action | Ref |
 |------|--------|-----|
 | B1 | Free Play → PWR → **Hot Standby** (Mode 3, Hot Standby) | PWR-T01 |
-| B2 | Complete Mode 3, Hot Standby prerequisites and lineup | **PWR-N01** |
+| B2 | Complete Mode 3, Hot Standby prerequisites and lineup | **PWR-N02** |
 | B3 | Confirm subcritical, SR on, control bank in, RCP running, SG available | Mode 3, Hot Standby ready |
 
 **Acceptance:** Board is **Mode 3, Hot Standby** (Hot Standby).
 
-### Phase C — Mode 3, Hot Standby → Mode 2, Startup **[sim]** → PWR-N02
+### Phase C — Mode 3, Hot Standby → Mode 2, Startup **[sim]** → PWR-N03
 
 | Step | Action | Ref |
 |------|--------|-----|
-| C1 | SR→IR handoff when P-6 met; withdraw Control Bank watching SUR | **PWR-N02** |
+| C1 | SR→IR handoff when P-6 met; withdraw Control Bank watching SUR | **PWR-N03** |
 | C2 | Achieve criticality; hold power **≤ 5 %** | — |
 | C3 | Declare **Mode 2, Startup** when critical and power ≤ 5 % | Mode 2, Startup |
 
@@ -230,7 +230,7 @@ This is the deepest **fully simulated** shutdown state.
 | 1 | Plant & Mission → **PWR** → Free Play |
 | 2 | Initial condition **Hot Standby** |
 | 3 | Confirm **Mode 3, Hot Standby**: subcritical, hot, SR on, control bank inserted |
-| 4 | Speed 1×; Play; perform **PWR-N01** |
+| 4 | Speed 1×; Play; perform **PWR-N02** |
 
 ### PWR-T02 — Enter Free Play in Mode 1, At Power
 
@@ -245,7 +245,7 @@ This is the deepest **fully simulated** shutdown state.
 
 | Step | Transition | Procedure |
 |------|------------|-----------|
-| 1 | Mode 3, Hot Standby → Mode 2, Startup | **PWR-N02** |
+| 1 | Mode 3, Hot Standby → Mode 2, Startup | **PWR-N03** |
 | 2 | Mode 2, Startup low-power hold | **PWR-N04** |
 | 3 | Turbine on line | **PWR-N05** |
 | 4 | Power > 5 % → **Mode 1, At Power** | **PWR-N06** |
@@ -297,7 +297,7 @@ See **§4.0** (full master path).
 
 | Step | Action |
 |------|--------|
-| 1 | **PWR-N01** then **PWR-N02** |
+| 1 | **PWR-N02** then **PWR-N03** |
 | 2 | Hold power ≤ 5 % |
 | 3 | Do not enter Mode 1, At Power until ready |
 
