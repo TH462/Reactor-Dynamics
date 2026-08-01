@@ -2,7 +2,7 @@
 
 **Document:** PWR-CI-01  
 **Title:** Control Station Inventory and Operating Instructions  
-**Revision:** 26  
+**Revision:** 8  
 
 ---
 
@@ -123,7 +123,7 @@ the heat sink is restored. **Recovery is procedural, not a button.**
 2. Verify rods at bottom.  
 3. Verify the caption reads **PRESS TO RESET**.  
 4. Press to reset; verify the **REACTOR TRIP** alarm clears.  
-5. Withdraw rods only under the startup net (**04 §PWR-N02**), and only if restart is
+5. Withdraw rods only under the startup net (**04 §PWR-N03**), and only if restart is
    intended — see the xenon caution in **04 §7.0**.
 
 ---
@@ -744,7 +744,7 @@ These topics appear as dedicated **campaign** missions; manuals cover them here 
 ### 17.1 1/M and NIS handoff (Mode 3 → Mode 2)
 
 - Source Range counts show subcritical multiplication as rods withdraw (1/M idea: counts rise as you approach criticality).  
-- When Intermediate Range ≥ **1e-10 A** (P-6), secure **SR detector** — see **PWR-T13** / **PWR-N02**.  
+- When Intermediate Range ≥ **1e-10 A** (P-6), secure **SR detector** — see **PWR-T13** / **PWR-N03**.  
 - Campaign mission `pwr_startup` / `pwr_startup_challenge` grade this path; manuals do not auto-grade.
 
 ### 17.2 Rod AUTO — T-ref capture trap (Mode 1)

@@ -20,6 +20,60 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-07-31 (04 NOP content rewrite, backshop)
+
+**Chapter 04 rewritten as commercial NOPs (Rev 1).** Real-plant shape from WTSM heatup
+outline (ML023040286), NUREG-1431 accumulator LCO/SR, San Onofre-class cooldown SOP
+structure (ML13310A240), and this plant’s ECC/1/M numbers (09 §7.5 + `pwr_startup`).
+
+**Plant tests (after rewrite):** `run_procedures` **23/23 (115)**; stack green on
+`pwr_heatup` (18), `pwr_heatup_nuclear`, `pwr_startup` (21), `pwr_raise_power`,
+`pwr_lower_power`, `pwr_shutdown`, `pwr_pressure_control`, `pwr_sg_level`.
+`run_manual_units` 0 failed; `run_procdocs` 25/0; `run_manual_rev` 13/0.
+
+---
+
+## Session log — 2026-07-31 (N-procedure renumber, backshop)
+
+**Option B: normal-ops IDs renumbered to plant sequence** (manual redesign baseline).
+
+| New ID | Was | Title |
+|---|---|---|
+| **PWR-N01** | N03 | Heatup Mode 5 → 3 (pump heat) |
+| **PWR-N01a** | N03a | Nuclear heatup (training) |
+| **PWR-N02** | N01 | Mode 3 lineup / prerequisites |
+| **PWR-N03** | N02 | Approach to criticality |
+| N04–N15 | same | Unchanged |
+
+**04** regrouped A/B/C/D; body reordered. Cross-refs + `manual_ref` updated. Rev **25**.
+
+---
+
+## Session log — 2026-07-31 (#255, backshop)
+
+**`pwr_heatup` re-authored as pump-heat heatup; nuclear path kept as training variant.**
+
+*(IDs below are as of #255 / Rev 24 — renumbered in the session above to N01 / N01a.)*
+
+The manual already described the commercial heatup as pump heat after #251; the executable
+checklist was still the 18-step nuclear ride. Split:
+
+| ID (Rev 24) | Checklist | Role |
+|---|---|---|
+| heatup (then N03) | `pwr_heatup` | Prototypical: RCPs + bottle SG + ride (~11 plant-h), never critical |
+| nuclear (then N03a) | `pwr_heatup_nuclear` | Training: criticality + dilution ride + insert/borate |
+
+**Measured full-stack** (`measure_stack`, cold_shutdown, default lineup): Mode 3 entry ~4.7 h;
+546.8 °F (286.0 °C) at 10.67 h; settles **567.0 °F (297.2 °C)** at **11.3 h**, ρ = **−2828 pcm**,
+856.8 ppm, power 3.5e-5 %, bank still 0, SG ~65 %. Engine-direct and full-stack procedure
+gates both green on the new scripts (guards: never `reactivity_pcm > 0`, never `power_pct > 1`).
+
+**Gates:** `run_procedures` **23/23 (115)**, `run_procedures_stack` **23/23 (196)**,
+`run_procdocs` **25/0**, `run_manual_controls` **128/0**, `run_manual_units` **0 failed**,
+`run_manual_rev` **13/0**, `run_flags` **16/16 (292)**. BASELINES updated.
+
+---
+
 ## Current status (2026-07-27b)
 
 **PWR is the focus plant and is in good shape** — all PWR engine, behavior, and ops gates

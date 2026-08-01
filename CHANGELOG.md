@@ -172,6 +172,34 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   directions blanked the `steam_dump` and `pzr_pressure` probes **pass against a dead
   channel**. `run_autoctl` **24 → 30**.
 ### Changed
+- **Dropped the nuclear-from-cold heatup path** (was training-only N01a /
+  `pwr_heatup_nuclear`). Not a commercial NOP — heatup is subcritical (**N01**);
+  approach to criticality is hot (**N03**).
+
+- **04 Normal Operating Procedures rewritten in commercial NOP format (Rev 1).** Every
+  N01–N15 procedure now has purpose / applicability / prerequisites / precautions /
+  stepped acceptance / outcome. Heatup and approach aligned to WTSM / NUREG-1431 shape
+  and plant-tested checklists. HFP electrical band corrected to **100 MWe**.
+
+- **Manual set revision counter reset to Rev 0.** Pre-public history zeroed; public
+  counting starts after go-public. Development rows remain in git.
+
+- **Normal operating procedures renumbered to plant sequence** (manual redesign baseline).
+  IDs now follow cold → power → continuous control → cold: **N01** heatup, **N01a** nuclear
+  training heatup, **N02** Mode 3 lineup, **N03** approach to criticality; **N04–N15**
+  unchanged. **04** regrouped (A/B/C/D) and body reordered. Cross-refs in **02/03/05/06/11**
+  and live `manual_ref`s updated. (Former N01/N02/N03/N03a map is in manual Rev 25.)
+
+- **PWR-N01 is the pump-heat heatup; the nuclear path is PWR-N01a** (#255). The live
+  checklist `pwr_heatup` was still the 18-step nuclear ride from before pump heat worked.
+  It is now the commercial heatup: start the RCPs, confirm the grid off, Feed AUTO, Dump SP
+  to the no-load anchor, raise Pressure SP, re-align the SI accumulators, and ride Tavg up
+  with **zero rod motion**. The old nuclear sequence is kept as **PWR-N01a** /
+  `pwr_heatup_nuclear` for approach-to-criticality and trip-blocking practice. Measured
+  full-stack: settles **567.0 °F (297.2 °C)** at **11.3 plant-h**, **ρ = −2828 pcm** on
+  **856.8 ppm**, power **3.5e-5 %**. Both procedures green under `run_procedures` and
+  `run_procedures_stack`.
+
 - **The steam dump is 40 % of rated steam flow — the real Westinghouse capacity.** It was
   105 %, which meant the plant could swallow a total loss of load without noticing:
   measured, average coolant temperature rose to 305 °C (581 °F) and power held at 97.5 %.

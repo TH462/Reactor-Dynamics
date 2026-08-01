@@ -274,7 +274,15 @@ var BASELINES = {
   // side whole, or adding the deltas, is precisely the "mechanical BASELINES resolution
   // silently takes the wrong number" failure CLAUDE.md warns about.
   // Measured on the merged tree: 62. Not 57, not 48, and not 57+5 or 48+14 either.
-  'run_hardrules.js':      { code: 0, score: '62checks 0failed' },
+  // 62 -> 58 on 2026-08-01 (develop <- backshop): the pre-public revision reset collapsed
+  // 00_REVISION_HISTORY's 27 rows into a Rev 0 baseline, and three of them carried OWNER
+  // RULING citations ("for 263 item 1 fit the measurement.", "lets leave opening of the
+  // accumulators to the procedure instead of auto opening them.", "Let's change it to 40%.").
+  // CITATION SITES lost, not rulings — all three were confirmed still cited in other tracked
+  // files before this number was lowered (3, 1 and 4 files respectively). The accumulator one
+  // now survives in TUNING_LOG.md ALONE, which is thin; if that entry is ever rotated, the
+  // ruling goes with it.
+  'run_hardrules.js':      { code: 0, score: '58checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -299,6 +307,7 @@ var BASELINES = {
   // COVERAGE (47 procedures with no checklist) is REPORTED, not enforced — the number
   // is the work item, and a gate that failed on it would sit permanently red. Watch
   // that line, not just the score.
+  // 25 → 23 on 2026-07-31: nuclear-from-cold heatup checklist removed (not a commercial NOP).
   'run_procdocs.js':       { code: 0, score: '23checks 0failed' },
   // New 2026-07-29 — the manual quotes US customary first with SI in parentheses
   // (owner request). This re-derives the US value from the SI value in every pair
@@ -347,7 +356,8 @@ var BASELINES = {
   // which iterates the table rather than the steps — so an unmapped step is UNVERIFIED, not
   // merely unmapped. Count moves when a controlled procedure step is added or removed
   // (2 checks per step: the mapping, and the reverse entry-has-a-step check).
-  'run_manual_controls.js': { code: 0, score: '116checks 0failed' },
+  // 128 → 94 on 2026-07-31: nuclear-from-cold heatup STEP_UI map removed (17 steps).
+  'run_manual_controls.js': { code: 0, score: '94checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -358,6 +368,7 @@ var BASELINES = {
   // scenario shifts this baseline, which is the intended nudge to decide its stage.
   // 290 -> 289 (bf41f67, the leaner control chrome): one flag-gated element left the board.
   // Verified as theirs by running this gate on backshop at its own commit before merging.
+  // 292 → 289 on 2026-07-31: procedure:pwr_heatup_nuclear flag removed.
   'run_flags.js':          { code: 0, score: '16/16 289/289' },
   // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
   // Every way this rots is silent: an item id changes and its entry describes
@@ -585,7 +596,8 @@ var BASELINES = {
   //   +1 (#245) `pwr_stuck_porv` step 1 gained a `saw core_inventory_pct < 100`
   //      alongside its `acc`, which became a subcooling check — see the note on that
   //      step in ui/manual_procedures.js.
-  'run_procedures.js':     { code: 0, score: '22/22 102/102' },
+  // 23/23 115 → 22/22 99 on 2026-07-31: nuclear-from-cold heatup procedure removed.
+  'run_procedures.js':     { code: 0, score: '22/22 99/99' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -608,7 +620,8 @@ var BASELINES = {
   // did not), and +1 is the `pwr_stuck_porv` split above. Otherwise the rule still
   // holds — an xfail is a check either way, so clearing one moves no number here,
   // which is why the 2026-07-27b #218 fix cleared three and shifted nothing.
-  'run_procedures_stack.js': { code: 0, score: '22/22 178/178' },
+  // 23/23 196 → 22/22 176 on 2026-07-31: nuclear-from-cold heatup stack path removed.
+  'run_procedures_stack.js': { code: 0, score: '22/22 176/176' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
@@ -694,7 +707,17 @@ var BASELINES = {
   // so every load rendered the identical page; and the follow loop reloaded and re-clicked
   // `next` i times per entry, O(n^2) in procedure length. Both walk once now. Filling the
   // table WITHOUT that would have added minutes for no extra assurance.
-  'verify_manual_follow.js': { code: 0, score: '174checks', slow: true },
+  // 174 -> 141 on 2026-08-01 (develop <- backshop): the commercial-NOP rewrite of
+  // 04_NORMAL_OPERATIONS consolidated procedure steps, so there are fewer steps to walk.
+  // Backshop updated run_procedures (102->99), run_procedures_stack (178->176) and
+  // run_manual_controls (116->94) for the same change but not this one, because it is a
+  // `slow: true` Playwright gate and --fast skips it. THE DROP WAS CHECKED, NOT ASSUMED:
+  // #224's whole lesson is that this gate iterates STEP_UI, so a smaller number can mean
+  // lost COVERAGE rather than less work. run_manual_controls is what tells the two apart
+  // and it reports "controlled procedure steps: 47, mapped: 47, all covered" — nothing is
+  // unmapped, so this is content shrink. Measured 141 on backshop at its own commit too,
+  // so the merge carried it faithfully.
+  'verify_manual_follow.js': { code: 0, score: '141checks', slow: true },
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run

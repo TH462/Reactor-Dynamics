@@ -1,7 +1,7 @@
 # 11 — Campaign ↔ Manuals Crosswalk
 
 **Document:** PWR-XW-01  
-**Revision:** 26  
+**Revision:** 8  
 **Campaign:** PWR — Zero to Operator (`ui/campaign_data.js`) — **34 missions + 1 bonus**  
 **Manuals:** this `Manuals/` set (MODE naming Rev 2)  
 
@@ -29,8 +29,8 @@ Campaign `teaches` and procedure titles now use the manuals' **Mode N, Name** co
 | 1 | `pwr_hook` | [S] | Mode 1 | `02` SCRAM; `03` SCRAM |
 | 2 | `pwr_tour` | [S] | Mode 1 | `01` energy path; T07 load Manual |
 | 3 | `pwr_chain_reaction` | [S] | Mode 3 → 2 | N02 concepts; SUR |
-| 3a | `pwr_mode5_to_mode3` | [S] | **Mode 5 → 4 → 3** | **PWR-T20** Phase A–B, **PWR-N03** |
-| 4 | `pwr_startup` | [P] | Mode 3 → 1 | **PWR-N01**, **PWR-N02**, N06, T13 |
+| 3a | `pwr_mode5_to_mode3` | [S] | **Mode 5 → 4 → 3** | **PWR-T20** Phase A–B, **PWR-N01** |
+| 4 | `pwr_startup` | [P] | Mode 3 → 1 | **PWR-N02**, **PWR-N03**, N06, T13 |
 | 5 | `pwr_feedback` | [S] | Mode 1 | `01` Doppler/MTC |
 | 6 | `pwr_xenon` | [S] | post Mode 1 trip | **PWR-N09** |
 | 7 | `pwr_boron` | [S] | Mode 1 | **PWR-N09** |
@@ -72,7 +72,7 @@ authoritative order is `ui/campaign_data.js`; the round trip
 | Layer | Example |
 |-------|---------|
 | Campaign / in-product walkthrough | `pwr_startup` |
-| External manuals | **PWR-N02** |
+| External manuals | **PWR-N03** |
 
 ---
 
@@ -80,7 +80,7 @@ authoritative order is `ui/campaign_data.js`; the round trip
 
 | Manual | Topic |
 |--------|-------|
-| PWR-N03 / N15 / T20 / T21 | Full Mode 5 ↔ Mode 1 path — **now driven by missions 3a / 18a / 18b**; the procedures keep the step-level commercial detail (rate limits, exact lineups) beyond the missions' scope |
+| PWR-N01 / N15 / T20 / T21 | Full Mode 5 ↔ Mode 1 path — **now driven by missions 3a / 18a / 18b**; the procedures keep the step-level commercial detail (rate limits, exact lineups) beyond the missions' scope |
 | PWR-A01–A26 | Per-annunciator ARP |
 | PWR-E04–E06, E09–E18, E20–E21 | Failures not in syllabus |
 | PWR-N11, N13 | CVCS level detail; RCP normal ops |
