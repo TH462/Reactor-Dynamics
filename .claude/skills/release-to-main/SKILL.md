@@ -8,7 +8,9 @@ description: Cut a release — merge the worktree lanes, rebuild the offline sin
 > ## VERSIONING IS SUSPENDED — READ THIS BEFORE STEP 2
 >
 > *(OWNER DIRECTIVE, 2026-07-31: "we are not doing version bumps when releasing to main until
-> the public release.")*
+> the public release.")* Launch day — reset to `Alpha 1.0.0`, write the public changelog,
+> restamp the manual set — is tracked as **#282**. `site/release.js` reads `Pre Alpha`
+> until then, and `run_release.js` validates that empty-changelog state as correct.
 >
 > **Skip §2 and §3 entirely — but DO §4.** §4 is the offline-download build and has nothing
 > to do with versioning; skipping it ships a stale `latest.zip`. Until the public release, a

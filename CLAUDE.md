@@ -727,6 +727,11 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   `CHANGELOG.md`'s `## [Unreleased]` standing** — work accumulates there until the public
   release, which takes one version for the lot. `run_release.js` stays green because it
   gates *agreement* between the three, not the act of bumping, and none of them move.
+  **This was already true and this file did not say so** — `site/release.js` went to
+  `Pre Alpha` in `144a7e8` on 2026-07-31 and the release that afternoon shipped with no
+  bump, no entry and no tag, while the text here still demanded all three. Launch day is
+  tracked as **#282** (reset to `Alpha 1.0.0`, write the public changelog, restamp the
+  manual set); read that issue, not this paragraph, when the suspension lifts.
   The suspended procedure is below under *Website changelog & version numbers*; restore it
   at the public release, and read it then rather than now.
 
