@@ -591,9 +591,10 @@
     ims3xf18pk8: e('RHR',
       'Residual heat removal — the shutdown cooling path. An alignment, not a separate pump.',
       'ALIGN opens the hot-leg suction valve and puts the shared train on decay-heat removal; ISOLATE ' +
-      'shuts it; AUTO arms it to open itself after a trip once pressure allows. The valve is ' +
-      'interlocked at 400 psi (2.76 MPa) and force-closes if pressure comes back up — the low-pressure ' +
-      'piping cannot take RCS pressure.', CI, '11.2'),
+      'shuts it; AUTO arms it to open itself after a trip once pressure allows. Two setpoints, not one: ' +
+      'the valve will not open above 400 psi (2.76 MPa), and force-closes only if pressure comes back ' +
+      'up past 600 psi (4.14 MPa) — the low-pressure piping cannot take RCS pressure. The gap between ' +
+      'them is deliberate, so the valve does not chatter on a plant hunting around one number.', CI, '11.2'),
     ims3wg27iif: e('ALIGN (RHR)',
       'Opens the RHR hot-leg suction valve — puts the plant on shutdown cooling.',
       'Refused above the 400 psi interlock; the button visibly fails to latch rather than lying about ' +
@@ -601,8 +602,8 @@
       'Shutdown and holds it there.', MT, 'PWR-T21'),
     ims3xfeye1q: e('ISOLATE (RHR)',
       'Shuts the RHR suction valve — takes the train off shutdown cooling.',
-      'Necessary before repressurizing: the interlock will force the valve shut anyway, but doing it ' +
-      'deliberately is how a heatup starts.', MT, 'PWR-T20'),
+      'Necessary before repressurizing: the interlock will force the valve shut anyway once you pass ' +
+      '600 psi (4.14 MPa), but doing it deliberately is how a heatup starts.', MT, 'PWR-T20'),
     ims3xfl3xn6: e('AUTO (RHR)',
       'Arms the RHR valve to open itself when scrammed and pressure is below the interlock.',
       'Trimming the cooldown rate does NOT drop this arm — the rate knob is deliberately excluded from ' +

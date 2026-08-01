@@ -37,6 +37,73 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-31f — #288: one constant was blocking the open AND forcing the close, so the deadband was zero
+
+*(OWNER RULING, 2026-07-31: "issue 288, split them.")*
+
+### The decision: two setpoints, and the autoclose is the HIGHER one
+
+`emergency.rhr_valve_interlock_mpa` = 400 psi (2.76 MPa) gated the RHR hot-leg suction valve
+in both directions — the open permissive in `set_rhr`, the autoclosure in step 9b. A real
+plant separates the two by roughly 175 psi with the **autoclose above** the open block:
+
+> *"Two basic features are incorporated in the interlock design: (1) an automatic closure
+> signal on high RCS pressure (typically 600 psig), and (2) a block of the manual open
+> signal at a lower RCS pressure (typically 425 psig)."*
+> — NUREG-0933, Issue 99, *"RCS/RHR Suction Line Valve Interlock on PWRs"* (Rev. 3)
+
+WTSM §5.1 (ADAMS **ML11223A219**) gives the same structure for valves 8701/8702: 425 psig
+open block, ~585 psig autoclose. Added `emergency.rhr_autoclose_mpa` = **4.14 MPa
+(600 psig)** and pointed step 9b at it. The open permissive did **not** move.
+
+### Why not the other two options
+
+**Do not widen the band by raising the open permissive.** 400 psi is quoted by `04`, `05`,
+`09`, the campaign and the M4 actuation table, and it is inside the sourced range for a
+block-open setpoint. Moving it moves authored content for no fidelity gain (HR9 — the
+content follows the plant, but here the plant number is already right).
+
+**Do not remove the autoclosure.** Tempting on the evidence: GI-99's own resolution said
+*"removal of the ACI be recommended, but not required, for plant implementation"* — the
+autoclosure interlock was itself judged a net risk. But that is a design decision a
+licensee makes with its own PRA, ours is pinned by `rhr_valve_and_mode`, and deleting
+protection on the strength of a *recommended-not-required* line is a larger call than this
+issue needs. Left standing, at the sourced setpoint.
+
+### What it changes for the player
+
+Measured engine-direct (`cold_shutdown`, seed 42), aligning at 218 psi (1.5 MPa) then
+holding a rebound: **pre-split, every rebound above 400 psi shed the valve**, including the
+**409 psi (2.82 MPa)** case #287 documents — a cooldown whose pressure-control setpoint sat
+nine psi over the interlock, aligned RHR, bounced, and lost it permanently against the
+one-shot entry permissive. Post-split, 409 / 435 / 508 psi all hold and the valve lets go at
+its 600 psi setpoint. Losing shutdown cooling now requires a real excursion rather than a
+hunt, which is what makes `06 PWR-A33` an alarm about an event instead of about a boundary.
+
+### The measurement trap this pass walked into twice
+
+The first rig used `hot_full_power` and reported the valve closing at **377 psi** — *below*
+the configured 400. A 300 °C plant held at 2.6 MPa is so far off equilibrium that its own
+pressure surges across the interlock inside a single 0.02 s step. Moving to `cold_shutdown`
+fixed the gross error but not the class of it: the post-split table still shows a close at a
+commanded 4.00 MPa, because the engine reached **4.163 MPa (604 psi)** in the first step.
+The interlock fires exactly at its setpoint; the *rig* was lying about the input. **Read
+back the pressure the engine actually had — never the one you wrote in.** The new deadband
+check asserts `eOpen < s.pressure_mpa < eAuto` on the observed value for exactly this
+reason, so it cannot pass on a pressure that drifted out of the band it claims to test.
+
+### The gate
+
+`run_pwr` **237 → 240**. `rhr_valve_and_mode` gained the config ordering, a rebound into the
+deadband that must not close, and — the half that is easy to forget — an open that must
+still be **REFUSED** in that same band, since the block-open permissive is unchanged and a
+spent one-shot cannot be re-armed at 409 psi. Injection-verified both ways: reverting step
+9b to the open permissive reddens the load-bearing check; deleting `rhr_autoclose_mpa`
+reddens four (`undefined` makes the comparison always false, so the valve never closes at
+all). Manuals **Rev 25**.
+
+---
+
 ## 2026-07-31e — #137: rewind is a picker on a wall clock, and two of the issue's four items were wrong
 
 **Decision 1 — the free-play checkpoint cadence is measured in REAL time**

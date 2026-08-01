@@ -115,6 +115,61 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31k — #288: the RHR interlock was one setpoint doing two jobs; split  ✅
+
+*(OWNER RULING, 2026-07-31: "issue 288, split them.")* — the issue was filed
+`status-needs-ruling` by the 2026-07-31j evidence pass and this is the ruling on it.
+Implemented as recommended in the issue body.
+
+**The defect.** `emergency.rhr_valve_interlock_mpa` = 400 psi (2.76 MPa) was simultaneously
+the pressure below which the RHR hot-leg suction valve may **open** (`pwr_engine.js`
+`set_rhr`) and the pressure above which it **auto-closes** (`pwr_engine.js` step 9b). Zero
+deadband, so the valve chatters across a single boundary — and against the one-shot entry
+permissive kept by #287, the first chatter is permanent.
+
+**Measured, engine-direct, `cold_shutdown` IC, seed 42.** Align RHR at 218 psi (1.5 MPa),
+then hold a rebound pressure for 2 s of plant time and read the valve:
+
+| rebound | pre-split | post-split |
+|---|---|---|
+| 290 psi (2.00 MPa) | OPEN | OPEN |
+| **409 psi (2.82 MPa)** — the #287 cooldown's own setpoint | **CLOSED** | **OPEN** |
+| 435 psi (3.00 MPa) | CLOSED | OPEN |
+| 508 psi (3.50 MPa) | CLOSED | OPEN |
+| 580 psi (4.00 MPa) | CLOSED | CLOSED |
+| 725 psi (5.00 MPa) | CLOSED | CLOSED |
+
+**The fix.** New `emergency.rhr_autoclose_mpa` = **4.14 MPa (600 psig)**; step 9b points at
+it. The 400 psi block-open permissive is **unchanged**. Sourced both sides — NUREG-0933
+Issue 99 (*"an automatic closure signal on high RCS pressure (typically 600 psig), and …
+a block of the manual open signal at a lower RCS pressure (typically 425 psig)"*) and WTSM
+§5.1, ADAMS ML11223A219 (valves 8701/8702, 425 psig open block, ~585 psig autoclose).
+
+**Two things to know.**
+
+**The 580 psi row above is a RIG ARTIFACT, not a plant behaviour, and I nearly reported it
+as one.** The autoclose fires exactly at its setpoint: held at "4.00 MPa" the plant's own
+pressure rose to **4.163 MPa (604 psi)** inside the very first 0.02 s step, which is
+genuinely above 600 psig. The first cut of the rig was worse — it used `hot_full_power` and
+reported the valve closing at **377 psi**, *below* the configured 400, because a 300 °C
+plant held at 2.6 MPa is so far off equilibrium that it surges through the interlock
+mid-step. If you re-measure this, re-assert pressure every step and read back what the
+engine actually had; do not trust the value you wrote in.
+
+**The deadband cuts both ways and the manual now says so.** Losing RHR takes 600 psi;
+getting it back takes 400 psi. So after an autoclose you must come down **past** where you
+lost it — the open permissive is the lower of the two setpoints. `06 PWR-A33`'s "If it
+comes in with pressure ABOVE the interlock" row was written when one number did both jobs
+and would have been wrong about which one to steer to.
+
+**Gates.** `run_pwr` **237 → 240**. `rhr_valve_and_mode` gained three checks: the config
+ordering, a rebound into the deadband that must NOT close, and an open that must still be
+REFUSED in that same band (the other half of the split — a spent one-shot permissive cannot
+be re-armed at 409 psi). Injection-verified **both ways**: pointing the autoclose back at
+`rhr_valve_interlock_mpa` reddens the load-bearing deadband check, and deleting
+`rhr_autoclose_mpa` outright reddens four. Manuals **Rev 25** (`03`, `04` ×2, `06`, `09`
+new § RHR, `12` ×2).
+
 ### 2026-07-31j — #287 evidence pass: a real plant has NO automatic RHR open at all  ✅
 
 The #287 ruling was shipped with its prototypicality argument marked **recall, unverified**.

@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLX-100** (Single-Loop eXperimental, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 24  
+**Revision:** 25  
 
 ---
 
@@ -368,7 +368,7 @@ Because the two scales are independent, **no single RCS volume reconciles them**
 
 **All emergency injection water is borated to 2500 ppm** and mixes into the core concentration, so ECCS injection adds negative reactivity — the shutdown-margin role of borated safety injection. It also enters at **104 °F (40 °C)**, removing sensible heat as it mixes (§5.4).
 
-**RHR** takes suction from the **hot leg** through a valve interlocked to 400 psi (2.76 MPa) (400 psi): it can only be opened below that pressure and **auto-closes** if pressure climbs back above it. It recirculates — hot leg → heat exchanger → cold leg — so it changes no inventory. Cooldown rate is throttled by the heat-exchanger flow split, and its sink temperature **moves with circulating-water temperature**, so warm circ water raises the floor a cooldown can reach.
+**RHR** takes suction from the **hot leg** through a valve on **two interlock setpoints**: it can only be opened below **400 psi (2.76 MPa)**, and **auto-closes** only once pressure climbs back above **600 psi (4.14 MPa)**. The ~200 psi (1.38 MPa) of deadband is prototypical (NUREG-0933 Issue 99: autoclose typically 600 psig against a block-open at 425 psig) and it is what stops the valve chattering on a plant hunting near the lower setpoint. It recirculates — hot leg → heat exchanger → cold leg — so it changes no inventory. Cooldown rate is throttled by the heat-exchanger flow split, and its sink temperature **moves with circulating-water temperature**, so warm circ water raises the floor a cooldown can reach.
 
 ### 6.5 Two kinds of void, kept apart
 
@@ -636,7 +636,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 
 | Class | Trust | Examples |
 |---|---|---|
-| **Structural** — fixed physical constants and real-plant setpoints | High | β and Λ, six-group delayed data, fuel damage/melt thresholds, PORV and safety setpoints, the 600 psi (4.14 MPa) accumulator arming pressure, the 400 psi (2.76 MPa) RHR interlock |
+| **Structural** — fixed physical constants and real-plant setpoints | High | β and Λ, six-group delayed data, fuel damage/melt thresholds, PORV and safety setpoints, the 600 psi (4.14 MPa) accumulator arming pressure, the 400 psi (2.76 MPa) RHR block-open permissive and its 600 psi (4.14 MPa) autoclose |
 | **Calibrated** — arbitrated by the physics acceptance suites | Directionally right, magnitude roughly right | Heat-transfer coefficients, decay-heat constants, level coefficients, dump and AFW capacities |
 | **Compressed** — deliberately faster than reality for training | Right in behaviour, wrong in duration | Boron adjust rate, grab-sample turnaround, cold-plant pressurisation slew, mode-transition pacing, **ECCS injection pacing** and **cooldown depressurisation rate** — see §14.1 |
 | **Indicative** — display flavour derived from normalised internals | Illustrative | The gpm conversions (24 000 gpm RCS flow, 60 gpm charging, 30 gpm letdown, 100 gpm AFW) |

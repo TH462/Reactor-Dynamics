@@ -2,7 +2,7 @@
 
 **Document:** PWR-NOP-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Revision:** 24  
+**Revision:** 25  
 
 ---
 
@@ -126,7 +126,7 @@ Commercial heatup from **Mode 5, Cold Shutdown** through **Mode 4, Hot Shutdown*
 | Step | MODE | Action |
 |------|------|--------|
 | 1 | **Mode 5, Cold Shutdown** | Start from the `cold_shutdown` IC: subcritical, RCS cold (~363 psi (2.5 MPa)), RCPs secured, RHR aligned for shutdown cooling |
-| 2 | Mode 5, Cold Shutdown → **Mode 4, Hot Shutdown** | **Start the RCPs** (RCP → Run) — this is the heat source, and the SG needs the flow to see it; **raise the Pressure SP** toward NOP (2235 psi (15.41 MPa)) so the heaters pressurize (RHR auto-isolates above its 400 psi (2.76 MPa) interlock, removing the cold sink) |
+| 2 | Mode 5, Cold Shutdown → **Mode 4, Hot Shutdown** | **Start the RCPs** (RCP → Run) — this is the heat source, and the SG needs the flow to see it; **raise the Pressure SP** toward NOP (2235 psi (15.41 MPa)) so the heaters pressurize (RHR auto-isolates above its 600 psi (4.14 MPa) autoclosure interlock, removing the cold sink) |
 | 3 | **Mode 4, Hot Shutdown** | Keep the turbine off line and the dumps shut so the SG stays **bottled** — heat crossing the tubes then has nowhere to go but into secondary pressure, which rides up with Tavg. Monitor Tavg and its rate; **no rod motion, the reactor stays subcritical** |
 | 4 | **Mode 4, Hot Shutdown** | **Re-align the SI accumulators.** Once RCS pressure is above their **600 psi (4.14 MPa)** cover gas, open the discharge isolation valve. They must be aligned before **1000 psi (6.895 MPa)** — above that they are required OPERABLE (NUREG-1431 LCO 3.5.1) |
 | 5 | → **Mode 3, Hot Standby** | Arrive at NOP T/P (2235 psi (15.41 MPa), Tavg ≈ 548 °F (286.7 °C)) hot and still subcritical. Nothing to insert or borate — the bank never came out |
@@ -495,7 +495,7 @@ Cooldown from **Mode 3, Hot Standby** through **Mode 4, Hot Shutdown** to **Mode
 ### What is [sim]
 - Decay heat model active after power history.
 - **AFW** for secondary heat sink when main feed unavailable.
-- **RHR** control exists for low-pressure residual heat removal when permissives met (scrammed + low pressure band ~**400 psi (2.76 MPa)** / 400 psi for auto arm, tied to the suction-valve autoclosure interlock).
+- **RHR** control exists for low-pressure residual heat removal when permissives met (scrammed + below the **400 psi (2.76 MPa)** suction-valve block-open permissive for the auto arm). The **autoclosure** interlock is a separate, higher setpoint — **600 psi (4.14 MPa)**.
 - HPI/LPI and accumulators for inventory under low pressure / LOCA conditions.
 
 ### Narrative commercial path (Mode 3, Hot Standby → Mode 5, Cold Shutdown)

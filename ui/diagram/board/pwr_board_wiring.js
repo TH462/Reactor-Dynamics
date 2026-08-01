@@ -251,9 +251,10 @@
     // --- RHR (V2 board: its own card, separate from the ECCS pump triad) ---
     // RHR has NO pump of its own — it is a suction ALIGNMENT on the shared ECCS train
     // (rhr_active === rhr_valve_open, pwr_engine.js:319), which is why these are
-    // ALIGN/ISOLATE rather than START/STOP. The hot-leg suction valve is interlocked at
-    // emergency.rhr_valve_interlock_mpa (2.76 MPa / 400 psi): the engine REFUSES the open
-    // above it and force-closes on repressurization, so active() reads the true valve
+    // ALIGN/ISOLATE rather than START/STOP. The hot-leg suction valve has TWO interlock
+    // setpoints (#288): the engine REFUSES the open above emergency.rhr_valve_interlock_mpa
+    // (2.76 MPa / 400 psi) and force-closes a standing-open valve only above the separate
+    // emergency.rhr_autoclose_mpa (4.14 MPa / 600 psig). active() reads the true valve
     // state — a refused press visibly fails to latch instead of lying about the lineup.
     // Same triad convention as HPI: AUTO lights when the ESF arm is armed; ALIGN/ISOLATE
     // light only while in MANUAL.

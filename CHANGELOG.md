@@ -21,6 +21,38 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The RHR suction valve has two interlock setpoints now, not one** (#288)
+  *(OWNER RULING, 2026-07-31: "issue 288, split them.")*. One config constant,
+  `rhr_valve_interlock_mpa`, was doing two different jobs: blocking the valve **open** and
+  forcing it **closed** on repressurization. The deadband between them was therefore
+  **zero**, and the valve chattered across a single boundary. The autoclose now runs off a
+  new **600 psi (4.14 MPa)** `rhr_autoclose_mpa`, about 200 psi (1.38 MPa) above the
+  **unchanged** 400 psi (2.76 MPa) block-open permissive.
+  - **Both setpoints are sourced.** NUREG-0933 Issue 99, *"RCS/RHR Suction Line Valve
+    Interlock on PWRs"* (Rev. 3): *"Two basic features are incorporated in the interlock
+    design: (1) an automatic closure signal on high RCS pressure (typically 600 psig), and
+    (2) a block of the manual open signal at a lower RCS pressure (typically 425 psig)."*
+    The Westinghouse Technology Systems Manual §5.1 (ADAMS **ML11223A219**) gives the same
+    structure for valves 8701/8702 — 425 psig open block, ~585 psig autoclose.
+  - **What it fixes for the player.** Paired with the one-shot entry permissive kept by
+    #287, the first chatter was **permanent**. Measured engine-direct: before the split,
+    *every* rebound above 400 psi shed the valve — including the **409 psi (2.82 MPa)**
+    case #287 documents, a cooldown whose own pressure-control setpoint sat nine psi over
+    the interlock. After it, rebounds to 409 / 435 / 508 psi all hold, and the valve lets
+    go at its 600 psi setpoint (observed 604 psi — the plant's own pressure overshoots
+    inside the step). Losing RHR now takes a genuine excursion, not a hunt.
+  - The open permissive was deliberately **not** moved to widen the band: 400 psi is what
+    `04`, `05`, `09` and the campaign all quote, and it is inside the sourced range for a
+    block-open setpoint. The autoclosure was deliberately **not** removed either, though
+    GI-99's resolution called removal *"recommended, but not required"* — that is a
+    licensee's design decision, and this plant's is pinned by `rhr_valve_and_mode`.
+  - Manuals **Rev 25**: `09` gained a **§ RHR** note carrying both setpoints and the
+    sources; `03 §11.2`, `04` (×2), `06 PWR-A33` (three rows) and `12 §6.4 / §14` updated.
+  - `run_pwr` **237 → 240 checks**. Injection-verified both ways: pointing the autoclose
+    back at the open permissive reddens the load-bearing deadband check, and deleting
+    `rhr_autoclose_mpa` outright reddens four.
+
 ### Added
 - **Losing shutdown cooling now annunciates — `RHR NOT IN SERVICE` (06 PWR-A33)** (#287)
   *(OWNER RULING, 2026-07-31: "Keep it and enunciate")*. The RHR auto-entry permissive is

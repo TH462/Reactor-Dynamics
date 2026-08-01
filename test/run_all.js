@@ -63,7 +63,12 @@ var BASELINES = {
   // error path. save_migration also went from 8 asserted fields to 20 of the 29
   // _migrateState defaults, including the `rcp_secured` INFERENCE (#240), which is
   // the one judgement call in the migration and was unasserted both ways.
-  'run_pwr.js':            { code: 0, score: '36/36 237passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
+  // 237 → 240: #288 split the RHR suction-valve interlock into a 400 psi block-open
+  // permissive and a separate 600 psig autoclose; rhr_valve_and_mode gained the
+  // deadband pins. Injection-verified BOTH ways: pointing the autoclose back at the
+  // open permissive reddens the load-bearing check, and deleting rhr_autoclose_mpa
+  // outright reddens four.
+  'run_pwr.js':            { code: 0, score: '36/36 240passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
@@ -200,7 +205,11 @@ var BASELINES = {
   // 39 -> 41 on 2026-07-31 (#287): the gate counts dated owner quotes wherever they are
   // tracked, and "Keep it and enunciate" is cited at each site that acts on it — the
   // alarm definition, the probe that guards it, and the manual revision row.
-  'run_hardrules.js':      { code: 0, score: '43checks 0failed' },
+  // 43 -> 47 on 2026-07-31 (#288): same mechanism again — "issue 288, split them." is
+  // cited in the four tracked files that record the split (CHANGELOG, TUNING_LOG,
+  // BUILD_DECISIONS, the manual revision row). The engine/config change itself moves
+  // NOTHING here; writing it up is what moved the count.
+  'run_hardrules.js':      { code: 0, score: '47checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

@@ -237,9 +237,13 @@
     // regime follows physically from the two-segment pump curve.)
     // Residual Heat Removal permissive — auto-opens the RHR hot-leg suction valve
     // for cooldown once the reactor is tripped and depressurized below the 400 psi
-    // (2.76 MPa) valve interlock. Setpoint matches emergency.rhr_valve_interlock_mpa
-    // (the engine refuses the open above it). Armed via the 'rhr' ESF system so the
-    // synoptic's RHR "Auto" button can re-arm it.
+    // (2.76 MPa) valve interlock. Setpoint matches emergency.rhr_valve_interlock_mpa,
+    // the BLOCK-OPEN permissive — the engine refuses the open above it. It does NOT
+    // match the autoclosure interlock, which is the separate 600 psig (4.14 MPa)
+    // emergency.rhr_autoclose_mpa (#288): the valve shuts on repressurization ~175 psi
+    // higher than the pressure at which it may be opened, so this permissive and the
+    // autoclose cannot fight each other across one boundary. Armed via the 'rhr' ESF
+    // system so the synoptic's RHR "Auto" button can re-arm it.
     { instrument: 'primary_pressure', direction: 'low',  setpoint: 2.76,
       action: 'set_rhr', active: true, condition: 'rps_scrammed', arm: 'rhr' },
     // SR auto re-energize: when the IR falls below P-6 (deep shutdown) the
