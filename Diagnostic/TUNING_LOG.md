@@ -20,6 +20,78 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-01b (#289 — rods start in AUTO; ROD AUTO goes green, develop)
+
+*(OWNER RULING, 2026-08-01: "Let's start the rods in auto. Might as well, everything else
+starts in auto." and "the auto rod button doesn't follow the color convention. Auto on it
+should be green not white.")*
+
+**`rods_tavg` is `defaultOn` at power.** Gated on the **power-range instrument** > 10 % (the
+P-10 analogue), not on truth — the first cut read `true_state.power_pct` and `run_hardrules`
+**failed it as an undeclared HR1 read**, which is the same defect class as #220 (the P-9
+permissive reading the plant instead of the gauge). The guard earned its keep on a change
+whose author had just written up #220.
+
+**The gate is why it is gated.** A blanket `defaultOn` is not a stylistic difference: in Mode 5
+and during `pwr_heatup`, Tavg is hundreds of degrees below the no-load Tref the load program
+asks for, so the channel withdraws rods to close the error and takes the plant critical.
+Measured — `run_procedures_stack` `pwr_heatup` **SCRAMMED at step 6 on `source_range high`**,
+`run_m5` 23→22, `run_behavior` 42→35. At-power-gated it costs one runner, not three.
+
+**This closes the #289 symptom.** Full rejection to 0 MWe on the shipped lineup: dump reaches
+its 40 % stop, comes back off to ~6 %, the safeties **reseat**, core runs back below 5 %, Tavg
+returns to 299 °C. Relief still *occurs* briefly — prototypical, a real plant's design case is
+the 50 % loss of load — but it no longer **persists**, which was the filed defect.
+
+**The evidence pass that unblocked TR-1g — WTSM 11.2 (ML11223A294).** The dump is TRANSIENT
+and the document says so twice: *"The increased steam flow … dissipates the excess energy of
+the reactor coolant **until the power in the reactor is reduced to the same value as the
+secondary load**"* and *"the steam dumps act as an alternate heat sink (load) **until the rod
+control system returns Tavg to within 5°F of Tref**"*. So the 40 %+10 % split is the
+**instantaneous** accommodation of the step, **not an equilibrium**. TR-1g's old 85..93 %
+steady state was a rods-in-manual artefact pinned as if it were the design case; the rod
+channel following turbine-only `steam_flow` is **correct**. Re-authored, not re-banded:
+measured dump 40.00 % at 1 min → closed by 3 min, core 46.5 % against a 50 MWe ask, Tavg
+303.3 °C.
+
+**Five probes now stand rods down EXPLICITLY** (`rodsManual()` helper): EV-3 ("rod-less" by
+name), EV-11 ("slider-only"), TR-1 (the MTC handover past the dump's stop), TR-1c (hands-off
+to the PORV), and **TR-1e leg B**, which needs core and generator to DISAGREE by ~2x or it
+stops discriminating at all — on the shipped lineup the rods run the core to the turbine and
+the two AGREE. New **TR-1h** pins the shipped-lineup full rejection. `run_behavior` 42 → **43**.
+Injection-verified: **7 checks go red** on the pre-change lineup.
+
+**TR-1h's first draft was wrong and the harness caught it.** I banded "the safeties NEVER
+lift" off a **150-second sampling grid** from `measure_stack`; `h.range()` sees every step and
+reported peak pzr 91.9 %, steam 9.32 MPa, PORV 16.36. The claim is **permanence**, not
+occurrence — re-written to assert the safeties RESEAT.
+
+**ROD AUTO colour.** Authored `#9fb3c4` (pale grey) against `#5aad7c` on **all 8** other AUTO
+buttons; `buildButton` uses the authored item colour AS the lit colour, so it was invisible
+until engaged — and it is engaged on every start now. Fixed via `DOC_PATCHES` (re-export-safe,
+idempotent), pinned twice: the patched value **and the convention**, so a re-export that
+recolours any AUTO button fails.
+
+**`board_check` was NOT 143/143 — it was 1 FAILURE / 143, and had been for a while.** Two
+pre-existing harness bugs, neither a plant defect:
+1. The TRIP BLOCKS check **unblocked `ir_high` at full power and never restored it**. The IR
+   channel reads 2.0e-3 against a 1.67e-3 setpoint, so the trip condition is STANDING and the
+   block is the only thing holding it off — the plant scrammed instantly and every check below
+   ran on a dead reactor at ~3 %. Re-blocking cannot undo it either: `rps.scrammed` **latches**.
+   Fixed by asserting the block state from the kernel (immediate) and restoring it **before**
+   the plant is stepped.
+2. The **SCRAM two-step ran on an already-scrammed plant**, where the same two clicks are the
+   #75 RESET half — so it un-scrammed the reactor and then asserted a scram. Moved into the one
+   window where the plant is on line with no standing trip, after an explicit `reset_rps` (which
+   also covers the #75 reset path). Two traps inside that: the reset is refused
+   **RODS_NOT_INSERTED** until the rods seat (measured, the plant was still coasting at 95 %),
+   and the dual-mode SCRAM/RESET button reads its half off the **RENDERED** snapshot, so it
+   needs a re-render after the reset or the clicks land on the wrong half.
+
+**board_check 143 (1 red) → 149/149.** `run_all` **35 runners at baseline**.
+
+---
+
 ## Session log — 2026-08-01 (#289 — the pressurizer level program had no ceiling, develop)
 
 **What was filed vs what it was.** #289 was filed as *"a 0 MWe ask while synchronised parks

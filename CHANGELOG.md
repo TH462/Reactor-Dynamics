@@ -22,6 +22,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **`board_check` had a red nobody had run** — 1 failure / 143 while CLAUDE.md claimed
+  143/143. Two independent harness bugs, both pre-existing, neither a plant defect. The
+  TRIP BLOCKS check **unblocked `ir_high` at full power and never put it back**: the IR
+  channel reads 2.0e-3 against a 1.67e-3 setpoint, so the trip condition is standing and the
+  block is the only thing holding it off — the plant scrammed immediately and every check
+  below ran on a dead reactor at ~3 % power. And the **SCRAM two-step ran on an already-
+  scrammed plant**, where the same two clicks are the #75 RESET half, so it un-scrammed the
+  reactor and then asserted a scram. The plant was correct at every step. Now **149/149**.
+
 - **A load rejection no longer scrams the plant on the going-solid trip** (#289)
   *(OWNER RULING, 2026-08-01: selected "Add the program ceiling" from the options put to
   him — a selection, not a verbatim instruction)*. The pressurizer **level program had no
@@ -64,6 +73,34 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   this ceiling, since 92 alone is *lower* and would scram more.
 
 ### Changed
+
+- **Rod control starts in AUTO** (#289) *(OWNER RULING, 2026-08-01: "Let's start the rods in
+  auto. Might as well, everything else starts in auto.")*. `rods_tavg` is `defaultOn` at
+  power, joining `boron_conc`, `cvcs_makeup` and `feed_sg` in the free-play lineup. Instructed
+  content (`noDefaults`) is unaffected.
+  **At-power only, and that half is measured, not decorative.** A blanket default engages the
+  channel in Mode 5 and during `pwr_heatup`, where Tavg is hundreds of degrees below the
+  no-load Tref the load program asks for — so the channel withdraws rods to close the error
+  and takes the plant critical. `pwr_heatup` **scrammed at step 6 on `source_range high`** and
+  `run_behavior` SS-9 tripped the same way. Gated on the **power-range instrument** above
+  10 % (the P-10 analogue) it costs neither. The first cut read `true_state.power_pct` and
+  `run_hardrules` failed it — **the same defect class as #220**, where the P-9 permissive read
+  the plant instead of the gauge.
+  **This completes #289.** With rod control acting, a full load rejection no longer parks the
+  plant at 46 % with the dump saturated and the SG code safeties passing to atmosphere
+  indefinitely: the dump reaches its 40 % stop, comes back off it, the safeties reseat, the
+  core is run back and Tavg returns to the no-load anchor. Relief still *occurs* briefly on a
+  full rejection — prototypical, since a real Westinghouse plant's design case is the 50 %
+  loss of load — but it no longer **persists**, which was the filed defect.
+- **The ROD AUTO button lights green like every other AUTO control** *(OWNER, 2026-08-01:
+  "the auto rod button doesn't follow the color convention. Auto on it should be green not
+  white.")*. It was authored `#9fb3c4` (pale grey) against `#5aad7c` on all **8** other AUTO
+  buttons — and the board uses the authored item colour *as* the lit colour, so the mismatch
+  was invisible until the control was engaged. It now comes up engaged on every Mode 1 start,
+  so it is lit every session. Applied via `DOC_PATCHES` (re-export-safe, idempotent) and
+  pinned two ways in `board_check`: the patched value, and the **convention itself**, so a
+  re-export that recolours any AUTO button fails instead of shipping two meanings for green.
+
 - **The RHR suction valve has two interlock setpoints now, not one** (#288)
   *(OWNER RULING, 2026-07-31: "issue 288, split them.")*. One config constant,
   `rhr_valve_interlock_mpa`, was doing two different jobs: blocking the valve **open** and

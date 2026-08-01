@@ -37,6 +37,115 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-01b — #289: rod control joins the free-play lineup, and the dump turns out to be transient
+
+*(OWNER RULING, 2026-08-01: "Let's start the rods in auto. Might as well, everything else
+starts in auto."; and "the auto rod button doesn't follow the color convention. Auto on it
+should be green not white.")*
+
+### The decision
+
+`rods_tavg` is `defaultOn` **above 10 % indicated power**. Free-play Mode 1 presets come up with
+rod control in AUTO; Mode 3/5 and instructed content (`noDefaults`) do not.
+
+### Why the gate is not optional
+
+A blanket default engages the channel in Mode 5 and during `pwr_heatup`, where Tavg is
+hundreds of degrees below the no-load Tref the load program asks for. The channel closes that
+error the only way it can — by withdrawing rods — and takes the plant critical. **Measured**:
+`run_procedures_stack` `pwr_heatup` scrammed at step 6 on `source_range high` (22→21), `run_m5`
+23→22, `run_behavior` 42→35. Gated at power: **one** runner moves, not three. A real unit does
+not put rod control in automatic below the power range either.
+
+**It reads the power-range INSTRUMENT, not `true_state.power_pct`.** The first cut read truth
+and `run_hardrules` failed it as an undeclared HR1 site — the same defect class as **#220**,
+where the P-9 permissive read the plant instead of the gauge. Worth recording plainly: that
+mistake was made by the same session that had just written up #220, in a file it had just
+edited. The guard caught what the author's own fresh memory did not.
+
+### What it closes
+
+The #289 symptom. Full rejection to 0 MWe on the shipped lineup: the dump reaches its 40 %
+stop, comes back **off** it to ~6 %, the SG safeties **reseat**, the core runs back below 5 %
+and Tavg returns to the no-load anchor (299 °C). Relief still *occurs* briefly — prototypical,
+since a real Westinghouse plant's design case is the 50 % loss of load, not a full rejection —
+but it no longer **persists**, and permanence was the filed defect.
+
+### The evidence pass that settled TR-1g — and it went against my own probe
+
+**WTSM 11.2 Steam Dump Control System (ML11223A294).** The dump is TRANSIENT, stated twice:
+
+> *"The increased steam flow from the steam generators dissipates the excess energy of the
+> reactor coolant **until the power in the reactor is reduced to the same value as the
+> secondary load**."*
+> *"the steam dumps act as an alternate heat sink (load) **until the rod control system
+> returns Tavg to within 5°F of Tref**."*
+
+So the documented 40 % dump + 10 % rod step is the **instantaneous accommodation of the step,
+not an equilibrium**. TR-1g had asserted the core PARKED at 85..93 % with the dump held at its
+stop for 600 s and called that "the documented ~10 % step" — but a dump pinned at its stop
+forever is the signature of **rod control not acting**. It was a rods-in-manual artefact pinned
+as the design case. The rod channel following turbine-only `steam_flow` is **correct**, which
+resolves the open question from 2026-08-01a in favour of the channel and against the probe.
+
+Re-authored, not re-banded. Measured: dump 40.00 % at 1 min, backing off by 2 min, closed by
+3 min; core 46.5 % against a 50 MWe ask; Tavg 303.3 °C.
+
+### Rod-less probes now say so out loud
+
+Five probes are ABOUT the rod-less plant by name and intent, and a lineup change must not
+silently convert them into something else. A `rodsManual()` helper stands the channel down in
+EV-3 ("(rod-less)"), EV-11 ("slider-only ask"), TR-1 (the MTC handover past the dump's stop),
+TR-1c (the hands-off ride to the PORV), and **TR-1e leg B** — that one matters most, because it
+needs core and generator to DISAGREE by ~2x to discriminate at all, and on the shipped lineup
+the rods run the core down to the turbine so the two AGREE. New **TR-1h** pins the
+shipped-lineup full rejection, which nothing asserted. `run_behavior` 42 → **43**;
+injection-verified, **7 checks red** on the pre-change lineup.
+
+**TR-1h's first draft was wrong, and the harness caught it.** I banded *"the safeties NEVER
+lift"* from a `measure_stack` run sampled every **150 seconds**, which simply missed the peak;
+`h.range()` sees every step and reports peak pzr 91.9 %, steam 9.32 MPa, PORV 16.36 MPa. The
+defensible claim is permanence, not occurrence, and the probe says that now.
+
+### The board: ROD AUTO was the only AUTO that was not green
+
+Authored `#9fb3c4` (pale grey) against `#5aad7c` on **all 8** other AUTO buttons. `buildButton`
+uses the authored item colour AS the active-state colour, so an off-convention value is
+invisible until the control is engaged — and since this change it is engaged on every free-play
+start. Fixed through `DOC_PATCHES` (re-export-safe and idempotent, per the generated-file
+rule), and pinned **twice** in `board_check`: the patched value, and the convention itself, so
+a re-export that recolours any AUTO button fails rather than shipping two meanings for green.
+
+### `board_check` was never 143/143
+
+It was **1 FAILURE / 143**, and CLAUDE.md said otherwise. Two pre-existing harness bugs, both
+found while verifying this change, neither a plant defect:
+
+1. **The TRIP BLOCKS check unblocked `ir_high` at full power and never put it back.** The IR
+   channel reads 2.0e-3 against a 1.67e-3 setpoint, so the trip condition is STANDING and the
+   block is the only thing holding it off — the plant scrammed immediately, and because the
+   toggle was never undone, every check below it (ESF triad, pumps, feed, SCRAM) had been
+   running on a dead reactor at ~3 % power. Re-blocking after the fact cannot help either:
+   `rps.scrammed` **latches**. Fixed by reading the block state from the kernel (immediate, no
+   stepping) and restoring it **before** protection is ever allowed to look.
+2. **The SCRAM two-step ran on an already-scrammed plant**, where those two clicks are the #75
+   RESET half — so it un-scrammed the reactor and then asserted a scram. Moved into the single
+   window where the plant is on line with no standing trip, behind an explicit `reset_rps`
+   (which also gives the #75 reset path its first board-level coverage). Two traps inside that
+   move: the reset is refused **RODS_NOT_INSERTED** until the rods seat — measured, the plant
+   was still coasting at 95 % power a few ticks after the scram — and the dual-mode SCRAM/RESET
+   button reads which half it is off the **RENDERED** snapshot, so it needs a re-render after
+   the reset or the clicks land on the wrong half.
+
+**board_check 143 (1 red) → 149/149.**
+
+### The gates
+
+`node test/run_all.js` → **35 runners at baseline**, with `run_behavior` re-baselined 42 → 43.
+`board_check` **149/149** (headless Edge; not in `run_all`).
+
+---
+
 ## 2026-08-01a — #289: the pressurizer level program had no ceiling, so the plant scrammed itself on its own setpoint
 
 *(OWNER RULING, 2026-08-01: selected "Add the program ceiling" from four options put to him.

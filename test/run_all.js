@@ -122,7 +122,17 @@ var BASELINES = {
   // rest to 46 %, PORV lifts as the designed backstop, pressurizer safety does not — and
   // the PORV check is deliberately POSITIVE, so restoring enough capacity to suppress the
   // lift has to come and edit this line rather than sliding through a band.
-  'run_behavior.js':       { code: 0, score: '42pass 0xfail' },
+  // 42 → 43 (#289, 2026-08-01): TR-1h, the FULL rejection on the SHIPPED lineup — rod control
+  // is `defaultOn` at power now *(OWNER RULING, 2026-08-01: "Let's start the rods in auto.
+  // Might as well, everything else starts in auto.")*, and nothing asserted what a player
+  // actually gets from the event #289 was filed on. Five probes (EV-3, EV-11, TR-1, TR-1c,
+  // TR-1e leg B) now stand the rod channel DOWN explicitly via `rodsManual()` — they are
+  // rod-less BY NAME and intent, and inheriting the lineup would have quietly converted them
+  // into something else. TR-1g was RE-AUTHORED against WTSM 11.2 (the dump is transient:
+  // "until the power in the reactor is reduced to the same value as the secondary load"), not
+  // re-banded — its old 85..93 % steady state was a rods-in-manual artefact. Injection-checked:
+  // 7 of the new checks go red on the pre-#289 lineup.
+  'run_behavior.js':       { code: 0, score: '43pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -287,7 +297,12 @@ var BASELINES = {
   // recorded as a SELECTION ("selected 'Add the program ceiling' from four options put to
   // him"), not dressed as verbatim words, because that is what it was. This comment's
   // standing point again: the code change moved NOTHING here; the write-up moved it.
-  'run_hardrules.js':      { code: 0, score: '60checks 0failed' },
+  // 60 → 63 checks (#289, 2026-08-01b): three more citation sites for the rods-in-auto and
+  // ROD-AUTO-colour rulings. Same standing point as above — the CODE change moved nothing
+  // here; the write-up did. Worth knowing that this gate ALSO caught a real defect in that
+  // change: the first `defaultOn` read `true_state.power_pct` and failed as an undeclared
+  // HR1 site, the #220 class exactly, so the score went 61checks 1failed before it went 63/0.
+  'run_hardrules.js':      { code: 0, score: '63checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

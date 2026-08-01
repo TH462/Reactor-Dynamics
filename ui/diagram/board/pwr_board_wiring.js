@@ -1401,6 +1401,15 @@
       imrzmlyafa3: { props: { left: 1416, width: 72 } },
       // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
       imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
+      // ROD AUTO active colour: authored #9fb3c4 (pale grey — reads WHITE when lit) against
+      // #5aad7c on every other automation control *(OWNER, 2026-08-01: "the auto rod button
+      // doesn't follow the color convention. Auto on it should be green not white.")*.
+      // buildButton uses the authored item colour AS the active-state colour (--bd-color), so
+      // this one control announced "the controller has it" in a different colour from BORON ON,
+      // SG FEED AUTO and STEAM DUMP AUTO — and it is the control the #289 lineup change just
+      // made matter, since rods now come up engaged. #5aad7c is the same green as BD_OK above.
+      // Fold it into the builder and delete this entry; selfTest pins the value meanwhile.
+      ims5glucngg: { props: { color: '#5aad7c' } },
       // (TRIP BLOCKS carried a top/height patch here until the 2026-07-28t re-export —
       // the builder now authors it at 425/30, so the patch was pinning what the diagram
       // already says. Dropped rather than kept: a patch that agrees with the doc is a
@@ -1774,6 +1783,22 @@
       ck('driver: DOC_PATCHES shortened the SG FEED card title', (function () {
         var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === 'imrqxsodu5j'; })[0];
         return it && it.title === 'SG FEED' ? true : (it ? it.title : 'card missing');
+      })() === true);
+      // ---- ROD AUTO obeys the board's AUTO colour convention (2026-08-01) -----------------
+      // `buildButton` uses the authored item colour AS the lit colour, so an off-convention
+      // author value is invisible until the control is engaged — and since #289 the rods come
+      // up engaged, so it is lit on every free-play start. Pinned two ways: the patch applied,
+      // and the CONVENTION itself, so a re-export that re-authors ROD AUTO pale (or recolours
+      // any other AUTO) fails here instead of shipping a board with two meanings for "green".
+      ck('driver: ROD AUTO lights the standard AUTO green', (function () {
+        var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === 'ims5glucngg'; })[0];
+        return it ? it.color : 'ROD AUTO missing';
+      })() === '#5aad7c');
+      ck('driver: every AUTO button on the board shares that green', (function () {
+        var bad = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) {
+          return x.kind === 'button' && /\bAUTO\b/.test(String(x.label || '')) && x.color !== '#5aad7c';
+        }).map(function (x) { return x.id + '=' + x.color; });
+        return bad.length ? bad.join(',') : true;
       })() === true);
       // ---- power tile follows the ARMED power trip (#267) --------------------------------
       // The tile used to read 120 % in every state, because tripSp() took the first

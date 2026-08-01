@@ -190,11 +190,25 @@
       // ROD AUTO toggle (EXTRA_ITEMS, #237) — the rods_tavg channel's board control.
       // The toggle reads the channel state off the RENDERED snapshot (SR DET pattern),
       // so re-render between clicks — in the app every broadcast does this.
+      //
+      // STARTS ENGAGED since #289 *(OWNER RULING, 2026-08-01: "Let's start the rods in auto.
+      // Might as well, everything else starts in auto.")*, so the first click DISENGAGES.
+      // The old pair asserted engage-then-disengage and inverted the moment the lineup
+      // changed — they were reading the shipped default, not the toggle. Pinned as three
+      // now: the default itself, then both directions from it.
+      ck('func: ROD AUTO comes up ENGAGED on a Mode 1 start (#289)',
+        !!(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
       clickBtn('ims5glucngg'); ticks(2);
-      ck('func: ROD AUTO engages rods_tavg', !!(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
+      ck('func: ROD AUTO disengages rods_tavg', !(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
       RD.PwrBoard.render(svc.assembleSnapshot());
       clickBtn('ims5glucngg'); ticks(2);
-      ck('func: ROD AUTO again disengages rods_tavg', !(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
+      ck('func: ROD AUTO re-engages rods_tavg', !!(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
+      RD.PwrBoard.render(svc.assembleSnapshot());
+      // Leave it DISENGAGED for the rest of the harness: the physics-perturbing checks below
+      // were all authored against a hand-controlled plant, and an active rod controller would
+      // quietly change what they are measuring.
+      clickBtn('ims5glucngg'); ticks(2);
+      RD.PwrBoard.render(svc.assembleSnapshot());
 
       // rods: the WITHDRAW/INSERT buttons are momentary (tap-or-hold). A quick TAP
       // (pointerdown then pointerup before the hold threshold) nudges EXACTLY ONE step;
@@ -228,12 +242,36 @@
       ck('func: TRIP BLOCKS opens popover', popOpen);
       var beforeBlk = !!rps().trip_blocks.ir_high;
       var tb = document.querySelector('.bd-pop button[data-trip="ir_high"]');
+      // UNBLOCK, CHECK, RE-BLOCK — all WITHOUT stepping the plant. This ordering is
+      // load-bearing (pre-existing defect, found 2026-08-01), not style.
+      //
+      // At hot_full_power `ir_high` starts BLOCKED (the at-power lineup) and the IR channel
+      // reads 2.0e-3 against a 1.67e-3 setpoint — the trip condition is STANDING, and the
+      // block is the only thing holding it off. The old code unblocked it and then ran
+      // `ticks(2)`, which let protection evaluate and SCRAMMED the plant immediately
+      // (measured: `intermediate_range high`). The toggle was never undone, so every check
+      // below this line — the ESF triad, pumps, feed, the SCRAM two-step — had been running
+      // on a dead reactor at ~3 % power. It surfaced only as the SCRAM two-step "failing":
+      // on an already-scrammed plant those two clicks are the #75 RESET half, so the harness
+      // un-scrammed the reactor and then asserted it was scrammed. The plant was correct at
+      // every step; the harness was standing on its own foot.
+      //
+      // Re-blocking cannot undo it after the fact either — `rps.scrammed` LATCHES, and the
+      // reset is then refused while the plant is at 0 % with a standing trip. So the block
+      // state is asserted from the kernel (immediate, no stepping needed) and the block is
+      // restored BEFORE protection ever gets a chance to look.
       if (tb) tb.click();
-      ticks(2);
       ck('func: block ir_high toggles trip_blocks', (!!rps().trip_blocks.ir_high) !== beforeBlk, 'was ' + beforeBlk);
       RD.PwrBoard.render(svc.assembleSnapshot());
       var blk1 = Object.keys(rps().trip_blocks).filter(function (k) { return rps().trip_blocks[k]; }).length;
       ck('warn: badge tracks count after toggle', tripBadge() === (blk1 > 0 ? String(blk1) : null), tripBadge() + ' vs ' + blk1);
+      if (tb) tb.click();
+      ck('func: ir_high block RESTORED before the plant is stepped',
+        !!rps().trip_blocks.ir_high === beforeBlk, 'back to ' + beforeBlk);
+      ticks(2);
+      ck('func: …and the plant is still LIVE — unblocking at power would have scrammed it',
+        svc.assembleSnapshot().instruments.rps_scrammed === false);
+      RD.PwrBoard.render(svc.assembleSnapshot());
 
       // --- ESF AUTO/ON/OFF triad: AUTO re-arms; the AUTO tile lights when armed ---
       function esfState(id) { return (svc.assembleSnapshot().automation.esf || {})[id]; }
@@ -295,6 +333,40 @@
         g3.instruments.turbine_tripped === false, (g3.control_state || {}).load_mode);
       ck('feedback: FOLLOW tile lit back on line', tileActive('imro8ktzs3u'));
       ck('feedback: OFF tile dark back on line', !tileActive('imro8len0oi'));
+      // SCRAM two-step: arm then confirm. It lives HERE, in the one window where the plant is
+      // on line with no standing trip signal — this is the whole fix to a pre-existing red
+      // (found 2026-08-01, board_check had been 1 FAILURE/143 while CLAUDE.md claimed 143/143).
+      //
+      // It used to sit below the feed-collapse block, by which point the plant was ALREADY
+      // scrammed, and on an already-scrammed plant those two clicks are the #75 RESET half —
+      // so the check un-scrammed the reactor and then asserted it was scrammed. Two separate
+      // things put it there, and both are legitimate plant behaviour: the turbine trip a few
+      // lines up correctly scrams above P-9 (#216), and securing the condensate pump collapses
+      // main feed until the plant trips itself. The button was never at fault.
+      //
+      // The reset first is not a workaround — it covers the #75 reset path from the board,
+      // which nothing else here did. It only succeeds because FOLLOW re-synchronised the
+      // turbine above (no `turbine_tripped` signal standing); the deliberate re-trip that
+      // hands the block back tripped has to come AFTER this.
+      // Wait for the rods to SEAT first. The scram above is only a few ticks old and the
+      // reset permissive is `rods_fully_in` — measured, an immediate reset is refused
+      // RODS_NOT_INSERTED with the plant still coasting at 95 % power, which is the interlock
+      // doing its job, not a defect.
+      for (var rw = 0; rw < 400 && !svc.assembleSnapshot().instruments.rods_fully_in; rw++) ticks(1);
+      var rrsp = svc.handleCommand({ action: 'reset_rps' }); ticks(4);
+      ck('func: RPS reset clears the turbine-trip scram (#75 reset path)',
+        svc.assembleSnapshot().instruments.rps_scrammed === false,
+        (rrsp && rrsp.reason) || (rrsp && rrsp.message) || 'no refusal');
+      // RE-RENDER before clicking. The #75 SCRAM control is dual-mode — it is the RESET
+      // button while the plant is scrammed — and it reads which half it is off the RENDERED
+      // snapshot, not off the live service. Without this the button is still in RESET mode
+      // from the render above and the two clicks do nothing to an already-reset plant.
+      RD.PwrBoard.render(svc.assembleSnapshot());
+      var scr = document.querySelector('[data-item="imrqr8ecji6"] button');
+      if (scr) { scr.click(); scr.click(); }
+      ticks(3);
+      ck('func: SCRAM two-step trips the reactor', svc.assembleSnapshot().instruments.rps_scrammed === true);
+
       // hand the plant back tripped and off line, the way this block found it
       svc.handleCommand({ action: 'trip_turbine' }); ticks(4);
 
@@ -310,11 +382,7 @@
       ck('func: HPI discharge pressure real (>0 when injecting)', svc.assembleSnapshot().instruments.hpi_discharge_pressure > 0);
       svc.handleCommand({ action: 'set_hpi', active: false }); svc.handleCommand({ action: 'set_afw', active: false });
 
-      // SCRAM two-step: arm then confirm
-      var scr = document.querySelector('[data-item="imrqr8ecji6"] button');
-      if (scr) { scr.click(); scr.click(); }
-      ticks(3);
-      ck('func: SCRAM two-step trips the reactor', svc.assembleSnapshot().instruments.rps_scrammed === true);
+      // (The SCRAM two-step moved ABOVE the feed-collapse block — see the note there.)
 
       // ---- pipe animation vs plant state (#236) --------------------------------
       // The harness used to assert pipe EXISTENCE only, so a board showing forced
