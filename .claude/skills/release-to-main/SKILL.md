@@ -10,7 +10,9 @@ description: Cut a release — merge the worktree lanes, rebuild the offline sin
 > *(OWNER DIRECTIVE, 2026-07-31: "we are not doing version bumps when releasing to main until
 > the public release.")*
 >
-> **Skip §2, §3 and §4 entirely.** Until the public release, a release to `main` is:
+> **Skip §2 and §3 entirely — but DO §4.** §4 is the offline-download build and has nothing
+> to do with versioning; skipping it ships a stale `latest.zip`. Until the public release, a
+> release to `main` is:
 > lanes merged → gates green → offline build rebuilt → merge → push. That is all.
 >
 > - **No** new `Alpha X.Y.Z`.
@@ -24,10 +26,10 @@ description: Cut a release — merge the worktree lanes, rebuild the offline sin
 > `site/release.js`, `changelog.html` and `CHANGELOG.md` — and none of the three move.
 > **Still run it**, so a pre-existing disagreement cannot be blamed on the suspension later.
 >
-> §2–§4 are kept below, not deleted: they resume at the public release, which chooses **one**
+> §2–§3 are kept below, not deleted: they resume at the public release, which chooses **one**
 > version for everything accumulated rather than replaying the skipped bumps. The offline
-> build (§5) is **not** suspended — but note its filename comes from `site/release.js`, so it
-> will keep carrying the last released version. That is expected, not a bug to chase.
+> build (**§4**) is **not** suspended — but note its filename comes from `site/release.js`, so
+> it will keep carrying the last released version. That is expected, not a bug to chase.
 
 `develop` is the integration branch; `main` is what the public site deploys.
 
