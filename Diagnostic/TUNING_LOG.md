@@ -20,6 +20,63 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-01d (#303 — the 04 NOP review: the startup path did not join up, develop)
+
+**What was asked.** A review of the normal operating procedures chapter (`Manuals/04`,
+PWR-N01…N15). Findings filed as **#303**, then fixed in the same session on the owner's
+instruction.
+
+**The chapter's arithmetic was largely fine.** Measured and confirmed correct before anything
+was touched: the whole §3.0 HFP quick-reference table (100.0 MWe, 579.3 °F, 2235 psi, PZR
+55.00 %, SG 65.00 %, subcooling 73.75 °F, bank 92 %), the 32.7 °F/hr heatup rate, N14's 7.00 %
+decay heat, the low-flow trip (90 % of rated, ~2 s, blocked below P-7), SUR 1.0/1.5/0.8 DPM,
+P-6 at 1e-10 A, the SR 1e5 cps trip, P-10 at 10 %, PORV 2350 psi / safeties 2485 psi, and the
+30 s / 60 s boron lags. **The defects were path continuity and step ordering.**
+
+**The one that matters: N01 → N02 → N03 is discontinuous in boron.** N01 arrives at 856.8 ppm
+and dilutes nothing; N02 and N03 assumed 683 ppm, which is the `hot_zero_power` IC. Measured
+criticality at the N01 arrival: **~561 steps**, against 319 — outside the ±750 pcm band. **This
+is invisible to every gate by construction**: `pwr_heatup` runs `from: 'cold_shutdown'` and
+`pwr_startup` runs `from: 'hot_zero_power'`, so the app reloads the IC between them and no
+runner has ever crossed the seam. A player following the *manual*, or anyone in free play, does.
+
+**Fixed with a dilution step in N02** *(OWNER DIRECTIVE, 2026-08-01: "Add the dilute step in
+n02" / "In n02/n03.")*, not by moving an IC — diluting at the end of N01 would be a **cold**
+dilution, which 09 §7.5.1 forbids in a WARNING (806 ppm critical cold vs 588 hot). Measured
+validation of the new step: 857 → 683 ppm in ~58 plant-min, ρ = −1006 pcm; bank to 319 steps
+gives **ρ = −2.3 pcm**.
+
+**Four things worth keeping.**
+
+1. **The accumulator window is ~100 s wide and N01 missed it every time.** The WARNING said
+   "above 600 psi, before 1000 psi"; step 7 sat after a step whose acceptance is P > 2176 psi.
+   Measured from the Pressure SP command: 600 psi at **+24 s**, 1000 psi at **+122 s**, NOP at
+   **+213 s**. A warning that names a window is worth nothing if the step order closes it first.
+2. **The cooldown rig found a missing procedure step that reading could not.** PWR-N15 has no SI
+   block; the depressurization crosses 12.4 MPa and HPI injects. The tell was `boron_ppm` ending
+   at **2500** — the RWST concentration — which is the fingerprint of an unintended ECCS
+   injection anywhere in this plant. Look for it whenever a cooldown ends at the wrong boron.
+3. **A programmed cooldown is a RAMP, not a chase.** Driving Dump SP / Pressure SP at *present*
+   Tavg every 60 s produces a 0.38 MPa setpoint error against the dump's 0.25 MPa proportional
+   band, so the dump saturates: measured, 297 → 93 °C in **six plant-minutes**. Drive both off a
+   reference temperature falling at the rate you want and the dump opens only as far as it must.
+   The N15 table is measured on that cadence and the cadence is now printed with it.
+4. **`RD.pwrThermal` ships `T_sat(P)` only** — there is no `P_sat(T)`. Any rig that wants to
+   speak in temperatures through a pressure setpoint has to invert it (bisection is fine).
+
+**Also corrected in step:** `05` Phase A carried **ρ = −3377 pcm on 907 ppm** for the heatup
+endpoint, a pre-second-moderator-re-fit figure that contradicted N01's own correct one, plus an
+unfinished "→ Four" mode name; the executable checklist quoted the **400 psi** RHR interlock
+twice where the autoclose is **600 psi** (#288 leftover — measured, valve open at 572.5 psi,
+shut by 633.4 psi); and the ~90 °F/hr cooldown limit is now marked **UNVERIFIED**, since no
+source for it exists in this manual set and "commercial class" was recall.
+
+**Gates:** all **35 runners at baseline** (`run_all`). Manual set stamped and packed at **Rev 9**.
+
+**Still open:** 9 of 15 normal procedures have no executable checklist (N02–N06, N09, N11, N13,
+**N15**). N15 is the one that matters — its performance table is now measured, but nothing
+replays it. Belongs with #244 / #254.
+
 ## Session log — 2026-08-01c (trend graphs open on REAL data, develop)
 
 *(OWNER, 2026-08-01: "when you make preset starts, run them for 30 minutes to fill up the

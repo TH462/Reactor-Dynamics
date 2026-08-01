@@ -21,6 +21,63 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The documented startup path did not join up — PWR-N01 hands PWR-N03 a plant it cannot
+  start** (#303, review of `Manuals/04`; manual set **Rev 8 → Rev 9**). The pump-heat heatup
+  arrives at **856.8 ppm** and nothing in the path dilutes, but PWR-N02 and PWR-N03 both
+  assumed **~683 ppm** — which is the *shortcut* `hot_zero_power` lineup, not the heatup's own
+  arrival. **Measured full stack:** from the N01 end state the control bank reaches 456 steps
+  still at ρ = −794 pcm and goes critical near **561 steps**, against the **319** N03 states —
+  **242 steps / ~1830 pcm outside** the ±750 pcm acceptance band 09 §7.5.1 tells you to stop
+  and re-work the estimate at. Nothing caught it because the two legs are only ever exercised
+  separately: `pwr_heatup` starts cold and `pwr_startup` starts at `hot_zero_power`, so no
+  gate has ever crossed the seam.
+
+  **The fix is a dilution step, not a moved initial condition** *(OWNER DIRECTIVE, 2026-08-01:
+  "Add the dilute step in n02", refined moments later to "In n02/n03.")*. New **PWR-N02 step
+  15** works the ECC and adjusts boron to it — measured, 857 → 683 ppm takes ~58 plant-minutes
+  at the ~3 ppm/min make-up rate and lands ρ = −1006 pcm; the bank at 319 steps then reads
+  **ρ = −2.3 pcm**, critical on the reference position. Moving the boron the other way, at the
+  end of the heatup, would have been less writing and would have taught a **cold dilution** —
+  the one thing 09 §7.5.1 spends a WARNING forbidding, since critical boron with the bank in is
+  806 ppm cold against 588 ppm hot. N02 step 8 now *samples and records* boron as the ECC input
+  instead of asserting a figure, and N03's 683 ppm / 319 step / 1/M burst sizes are labelled
+  **the worked example for one boron**.
+
+  **Five more defects in the same chapter, all measured.** (1) **N01 aligned the SI
+  accumulators after the LCO deadline it cites** — step 7 followed a step whose acceptance is
+  P > 2176 psi, while the compliant 600–1000 psi window is only **~100 s wide** (600 psi at
+  +24 s from the Pressure SP command, 1000 psi at +122 s, NOP at +3.5 min); the alignment is
+  now an action *inside* the pressurization, here and in 05 Phase A and the executable
+  checklist. (2) **PWR-N05 is named for synchronizing the generator and never did** — its steps
+  selected a load mode, which does not close an open breaker; **Connect Grid** is now step 3.
+  (3) **PWR-N15 never blocked SI** — the cooldown crosses the 1798 psi (12.4 MPa) actuation
+  setpoint, and measured with SI armed the pumps inject, boron ends at **2500 ppm** instead of
+  857, and the plant cools **~10× faster than programmed** (566.6 → 199.4 °F in 23
+  plant-minutes); new step 1a. (4) Three stale numbers: the 5 % steam-dump demand reverses the
+  heatup at **−263 °F/hr (−146 °C/hr)**, not −83 — a figure inconsistent with its own sentence,
+  since 9× a +32.7 °F/hr heatup is ≈ −260 — and below ~219 °F it only *arrests* the climb; NOP
+  arrives in **~3.5 plant-minutes**, not ~20; and the milestone row calling 350 °F "Mode 4 /
+  Mode 3 entry" was wrong about Mode 4, whose boundary is **199.4 °F (93 °C)**, reached at ~18
+  plant-minutes. (5) **05 Phase A carried a stale −3377 pcm / 907 ppm heatup endpoint**
+  predating the second moderator re-fit, contradicting N01's own correct figures.
+
+  **N15's performance table is now MEASURED with its cadence stated**, which is what made the
+  old one unfalsifiable: accumulators isolated **1.9 h**, RHR placed **3.05 h**, Mode 5
+  **5.0 h**, ending on the `cold_shutdown` IC exactly — at a programmed −90 °F/hr with 63 °F of
+  subcooling held and the RHR HX split trimmed to the ramp. Two traps went in with it. **Step 2
+  is a ramp, not a chase**: walking the setpoints to track *present* Tavg in ~1-minute steps
+  gives a 55 psi error against a 36 psi proportional band, the dump saturates and the plant
+  free-falls — measured, 566.6 → 199.4 °F in **six plant-minutes**. And **the ~90 °F/hr cooldown
+  limit is now marked UNVERIFIED** in the procedure and the references table: no source for a
+  real-plant cooldown rate exists anywhere in this manual set and the previous "commercial
+  class" wording was recall, which the evidence-pass SOP does not accept.
+
+  Gates: all **35 runners at baseline**; `run_manual_units` 0 failed (334 pairs),
+  `run_manual_rev` 13/13 at Rev 9, `run_procdocs` 23/23, `run_manual_controls` 94/94.
+  **Still open:** 9 of the 15 normal procedures have no executable checklist (N02–N06, N09,
+  N11, N13, **N15**) — authoring one is a feature and belongs with #244 / #254.
+
 ### Added
 - **The PWR board reads SI now — the Settings units toggle works on it** (#238)
   *(OWNER RULING, 2026-08-01: selected "m³/h" from three options put to him for the SI flow

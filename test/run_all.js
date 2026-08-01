@@ -320,9 +320,16 @@ var BASELINES = {
   // copy, in the ui/diagram/board/ source comment, is NOT counted: this gate does not scan
   // ui/, so a citation living only there would be unguarded.
   //
-  // [merged] MEASURED 84 — not 63, not 80, and not 63+80 arithmetic. The #290 guard also sees develop's 2026-08-01b/c write-ups, which workbench's
-  // "measured on the merged tree" note predates. Re-measured here.
-  'run_hardrules.js':      { code: 0, score: '83checks 0failed' },
+  // [merged] MEASURED 83 — not 63, not 80, and not 63+80 arithmetic. The #290 guard also sees
+  // develop's 2026-08-01b/c write-ups, which workbench's "measured on the merged tree" note
+  // predates. Re-measured here. (The comment above this line read 84 for a while: that figure
+  // was taken off a tree that STILL HAD THE CONFLICT MARKERS IN IT, so both sides' citations
+  // were present at once and the duplicates were counted. Measure AFTER resolving, not during.)
+  //
+  // 83 -> 85 (#303, 2026-08-01d): the 04 NOP review. Pure write-up drift again — the manual
+  // and checklist edits moved nothing here; the two sites citing the owner's dilute-step
+  // directive (CHANGELOG, TUNING_LOG) are the whole delta. Re-run this AFTER the docs.
+  'run_hardrules.js':      { code: 0, score: '85checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
