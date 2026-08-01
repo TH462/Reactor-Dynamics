@@ -312,6 +312,208 @@ T.push(test('Alarm lifecycle — clear → unack → ack → clear', function (c
   ck('condition clears → clear', s.alarm('high_tavg').state, s.alarm('high_tavg').state === 'clear', 'clear');
 }));
 
+// --------------------------------------------------------------------------
+// Kernel internals that shipped with no test at all (#154 item 6). Each of the
+// four below guards a mechanism that was either fixed-but-unpinned or used by
+// several failures and never once observed.
+
+T.push(test('Actuation reset_below — the PORV holds open while pressure is high, and does NOT flap (#154)', function (ck) {
+  // The PWR PORV actuation is `direction: high, setpoint 16.20, reset_below 15.86`.
+  // The kernel comment records a shipped inversion — `value > reset_below` made it
+  // fire and reset in the SAME pass, flapping open/close on every evaluate while
+  // pressure stayed high — and nothing pinned the fix. Drive the INSTRUMENT (HR1)
+  // rather than the plant, so the band is exact and the probe cannot drift.
+  var s = new Stack('hot_full_power');
+  s.run(1);
+  ck('PORV shut at normal pressure', s.ts().porv_open, s.ts().porv_open === false, 'false');
+  // Above the setpoint: fires once and STAYS fired.
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'primary_pressure', mode: 'stuck', value: 16.5 });
+  s.run(0.5);
+  ck('opened above the 16.20 MPa (2350 psi) setpoint', s.ts().porv_open, s.ts().porv_open === true, 'true');
+  // 40 further evaluates with the reading still on the UNSAFE side of reset_below.
+  // The inverted form closes it on the very first one; the correct form cannot.
+  var flaps = 0, wasOpen = s.ts().porv_open;
+  for (var i = 0; i < 40; i++) {
+    s.run(0.1);
+    if (s.ts().porv_open !== wasOpen) { flaps++; wasOpen = s.ts().porv_open; }
+  }
+  ck('no flapping across 40 evaluates at 16.5 MPa', flaps, flaps === 0, '0 transitions');
+  ck('still open', s.ts().porv_open, s.ts().porv_open === true, 'true');
+  // Between reset_below and the setpoint the latch must STILL hold — this is the
+  // half a naive "reset when below setpoint" would get wrong.
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'primary_pressure', mode: 'stuck', value: 16.0 });
+  s.run(0.5);
+  ck('holds open between reset_below and setpoint (16.0 MPa)', s.ts().porv_open, s.ts().porv_open === true, 'true');
+  // Below reset_below: the reset_action fires and it shuts.
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'primary_pressure', mode: 'stuck', value: 15.5 });
+  s.run(0.5);
+  ck('recloses below 15.86 MPa (2300 psi)', s.ts().porv_open, s.ts().porv_open === false, 'false');
+
+  // The pressurizer CODE SAFETIES ride the same mechanism one band higher, and
+  // this is the half the engine-direct probe (run_pwr pzr_code_safeties)
+  // deliberately does not own: there the valve is a commanded state, here is
+  // where the setpoint lives. Worth pinning separately because a real transient
+  // cannot reach it — measured, the high-pressure reactor trip caps indicated
+  // pressure at 16.96 MPa (2460 psi), below the 17.13 pop, so only an ATWS or a
+  // failed instrument gets there.
+  var q = new Stack('hot_full_power');
+  q.run(1);
+  ck('code safeties shut to begin with', q.ins().safety_relief_active,
+    q.ins().safety_relief_active === false, 'false');
+  q.cmd({ action: 'set_instrument_failure', instrument_id: 'primary_pressure', mode: 'stuck', value: 17.5 });
+  q.run(0.5);
+  ck('pop above the 17.13 MPa (2484 psi) code setpoint', q.ins().safety_relief_active,
+    q.ins().safety_relief_active === true, 'true');
+  // Between the reseat and pop setpoints they must STAY lifted — same latch as
+  // the PORV, one band up.
+  q.cmd({ action: 'set_instrument_failure', instrument_id: 'primary_pressure', mode: 'stuck', value: 16.8 });
+  q.run(0.5);
+  ck('still lifted between reseat and pop (16.8 MPa)', q.ins().safety_relief_active,
+    q.ins().safety_relief_active === true, 'true');
+  q.cmd({ action: 'set_instrument_failure', instrument_id: 'primary_pressure', mode: 'stuck', value: 16.3 });
+  q.run(0.5);
+  ck('reseat below 16.55 MPa (2400 psi)', q.ins().safety_relief_active,
+    q.ins().safety_relief_active === false, 'false');
+}));
+
+T.push(test('Interception — override_value forces the NUMBER an operator commanded (#154)', function (ck) {
+  // Five PWR failures carry `override_value`, and the intercepted-command path was
+  // never observed: the failures get injected in other suites, but nothing issues
+  // the intercepted command and reads back the forced value. `loss_of_feedwater`
+  // pins feed to 0.0 however hard the operator drives it.
+  var s = new Stack('hot_full_power');
+  s.run(1);
+  s.cmd({ action: 'set_feed_pump_speed', pct: 80 });
+  s.run(0.5);
+  var freeRunning = s.engine.s.feed_pump_speed_pct;
+  ck('operator owns the pump with no failure active', freeRunning.toFixed(1), Math.abs(freeRunning - 80) < 1e-6, '80.0 %');
+  s.cmd({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+  s.cmd({ action: 'set_feed_pump_speed', pct: 80 });   // the operator fights it
+  s.run(0.5);
+  ck('override_value 0.0 forced the commanded 80 % to zero', s.engine.s.feed_pump_speed_pct.toFixed(1),
+    s.engine.s.feed_pump_speed_pct === 0, '0.0 %');
+  // The other direction: sg_overfeed forces feed UP to 120 %, so this is not just
+  // "the failure zeroes things".
+  s.cmd({ action: 'clear_failure', failure_id: 'loss_of_feedwater' });
+  s.cmd({ action: 'inject_failure', failure_id: 'sg_overfeed', severity: 1.0 });
+  s.cmd({ action: 'set_feed_pump_speed', pct: 10 });   // operator tries to throttle back
+  s.run(0.5);
+  ck('sg_overfeed forces the commanded 10 % UP to 120 %', s.engine.s.feed_pump_speed_pct.toFixed(1),
+    Math.abs(s.engine.s.feed_pump_speed_pct - 120) < 1e-6, '120.0 %');
+}));
+
+T.push(test('Interception precedence — at most one override, FIRST injected wins (#154)', function (ck) {
+  // §7: the kernel walks activeFailures in injection order and breaks on the first
+  // command_override matching the action. Both failures below intercept
+  // set_feed_pump_speed with different override_values (0.0 and 120), so the order
+  // is observable — and a change from first-wins to last-wins inverts both halves.
+  var a = new Stack('hot_full_power');
+  a.run(1);
+  a.cmd({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+  a.cmd({ action: 'inject_failure', failure_id: 'sg_overfeed', severity: 1.0 });
+  a.cmd({ action: 'set_feed_pump_speed', pct: 50 });
+  a.run(0.5);
+  ck('LOF injected first → 0 %, overfeed does not get a look in', a.engine.s.feed_pump_speed_pct.toFixed(1),
+    a.engine.s.feed_pump_speed_pct === 0, '0.0 %');
+  var b = new Stack('hot_full_power');
+  b.run(1);
+  b.cmd({ action: 'inject_failure', failure_id: 'sg_overfeed', severity: 1.0 });
+  b.cmd({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+  b.cmd({ action: 'set_feed_pump_speed', pct: 50 });
+  b.run(0.5);
+  ck('overfeed injected first → 120 %, with the SAME two failures active',
+    b.engine.s.feed_pump_speed_pct.toFixed(1), Math.abs(b.engine.s.feed_pump_speed_pct - 120) < 1e-6, '120.0 %');
+  // `effect: 'block'` DROPS the command outright rather than transforming it, and
+  // it returns before any later override can claim the action.
+  var c = new Stack('hot_full_power');
+  c.run(1);
+  c.cmd({ action: 'inject_failure', failure_id: 'failure_to_scram' });
+  c.cmd({ action: 'scram' });
+  c.run(1);
+  ck('a block-effect override drops the command (ATWS: no scram)', c.ts().scrammed,
+    c.ts().scrammed === false, 'false');
+}));
+
+T.push(test('acknowledge_all_alarms clears every standing alarm at once (#154)', function (ck) {
+  // Only ever asserted as "the instructor gate does not block it" (run_campaign) —
+  // the EFFECT was untested, so a no-op implementation passed.
+  var s = new Stack('hot_full_power');
+  s.run(1);
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'tavg', mode: 'stuck', value: 320 });
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'pzr_level', mode: 'stuck', value: 12 });
+  s.run(1);
+  var unack = function () {
+    return s.layer.getAlarms().filter(function (a) { return a.state === 'active_unacknowledged'; });
+  };
+  var before = unack();
+  ck('at least two alarms standing unacknowledged', before.length, before.length >= 2,
+    '≥ 2 (' + before.map(function (a) { return a.id; }).join(',') + ')');
+  s.cmd({ action: 'acknowledge_all_alarms' });
+  s.run(0.2);
+  ck('none left unacknowledged', unack().length, unack().length === 0, '0');
+  var acked = s.layer.getAlarms().filter(function (a) { return a.state === 'active_acknowledged'; });
+  ck('they are ACKNOWLEDGED, not cleared — the conditions still stand', acked.length,
+    acked.length >= before.length, '≥ ' + before.length);
+  // A NEW alarm after the sweep must still arrive unacknowledged: the command acks
+  // what is standing, it does not latch the board quiet.
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'sg_level', mode: 'stuck', value: 20 });
+  s.run(1);
+  ck('a later alarm still arrives unacknowledged', unack().length, unack().length >= 1, '≥ 1');
+}));
+
+T.push(test('#287 — losing shutdown cooling annunciates; the permissive stays one-shot', function (ck) {
+  // OWNER RULING, 2026-07-31: "Keep it and enunciate". The RHR auto-entry permissive
+  // fires once below the 400 psi (2.76 MPa) interlock and never re-arms, while the
+  // engine AUTO-CLOSES the suction valve on any repressurization above it. That pairing
+  // is deliberate — a real plant re-opens that valve on purpose, not automatically — so
+  // what was added is the INDICATION, not a re-arm.
+  //
+  // Gated on the MODE, not on the RPS latch. The first cut of this alarm asked for
+  // `rps_scrammed`, and measured, a Mode 5 plant reads `rps_scrammed = false` — it was
+  // never tripped, it is simply cold — so the alarm could not fire in the one regime
+  // where losing shutdown cooling is most dangerous. Mode is what says "RHR is the heat
+  // sink here".
+  var m5 = new Stack('cold_shutdown');
+  m5.run(3);
+  var st = function (s2) { return s2.alarm('rhr_not_aligned').state; };
+  ck('Mode 5 with cooling in service is quiet', m5.ins().plant_mode + '/' + st(m5),
+    m5.ins().plant_mode === 5 && st(m5) === 'clear', 'mode 5, clear');
+  m5.cmd({ action: 'set_rhr', active: false });        // the loss — however it arises
+  m5.run(3);
+  ck('losing RHR in Mode 5 ANNUNCIATES', st(m5), st(m5) !== 'clear', 'active');
+  ck('it is a warning on panel B, not a casualty alarm', m5.alarm('rhr_not_aligned').priority,
+    m5.alarm('rhr_not_aligned').priority === 'warning', 'warning');
+  ck('and it is NOT auto-acknowledged — this is news, not a lineup',
+    st(m5), st(m5) === 'active_unacknowledged', 'active_unacknowledged');
+  // Nothing re-aligns it on its own: the permissive is one-shot AND its condition
+  // (rps_scrammed) is false in Mode 5, so the operator owns the recovery.
+  ck('nothing re-aligns RHR by itself (the ruled-on one-shot)', m5.ts().rhr_active,
+    m5.ts().rhr_active === false, 'false');
+  m5.cmd({ action: 'set_rhr', active: true });
+  m5.run(3);
+  ck('operator re-alignment clears it', st(m5) + ' (rhr_active=' + m5.ts().rhr_active + ')',
+    st(m5) === 'clear' && m5.ts().rhr_active === true, 'clear');
+  // At power RHR is not aligned either, and that is entirely normal — the alarm must
+  // not fire outside the regime, or it is standing for the whole of Mode 1.
+  var hot = new Stack('hot_full_power');
+  hot.run(3);
+  ck('at power, RHR unaligned is NORMAL and stays quiet',
+    'mode ' + hot.ins().plant_mode + ', rhr_active=' + hot.ts().rhr_active + ', ' + st(hot),
+    hot.ts().rhr_active === false && st(hot) === 'clear', 'clear');
+  // The permissive is one-shot BY CONSTRUCTION, and that is now a ruled-on property:
+  // pin the absence of a reset so a later edit cannot quietly make it re-arm. (The
+  // engine's auto-close half is pinned engine-direct in run_pwr rhr_valve_and_mode.)
+  var acts = (RD.PWR_PROTECTION || RD.PWRControl || {}).actuations ||
+             (hot.layer.config && hot.layer.config.actuations) || [];
+  var rhrAct = acts.filter(function (a) { return a.action === 'set_rhr' && a.active === true; })[0];
+  ck('the RHR entry actuation exists', !!rhrAct, !!rhrAct, 'found');
+  if (rhrAct) {
+    ck('…and carries NO reset — it is one-shot by construction (#287 ruling)',
+      'reset_below=' + rhrAct.reset_below + ' reset_action=' + rhrAct.reset_action,
+      rhrAct.reset_below === undefined && rhrAct.reset_action === undefined, 'neither set');
+  }
+}));
+
 T.push(test('Failure bookkeeping — re-inject updates severity in place; snapshot {id,severity}', function (ck) {
   var s = new Stack('hot_full_power');
   s.cmd({ action: 'inject_failure', failure_id: 'sgtr', severity: 0.3 });

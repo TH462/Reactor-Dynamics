@@ -183,7 +183,7 @@ harnesses that actually gate the build: the engine suites (`run_pwr` / `run_rbmk
 the layer suites (`run_m4` / `run_m5` / `run_m6` / `run_m6ph` / `run_m7` — the last drives this
 module), and the system suites (`run_ops` + `ops_*` operational probes, `run_autoctl` automation
 channels, `run_campaign`, `run_scenarios`, `run_e2e_controls`, `run_procedures`,
-`verify_e2e_ui` / `verify_manual_follow` headless-browser harnesses, `audit_manual_controls`).
+`verify_e2e_ui` / `verify_manual_follow` headless-browser harnesses, `run_manual_controls`).
 Those suites own physics, content, and UI verification; this module still owns only the
 integration wiring described above.
 

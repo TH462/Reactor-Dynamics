@@ -2,7 +2,7 @@
 
 **Document:** PWR-SIM-01  
 **Title:** Reactor⚛️Dynamics — PWR Trainer Operation  
-**Revision:** 22  
+**Revision:** 8  
 
 ---
 
@@ -330,7 +330,7 @@ During missions:
 | 4 | Select **MAN** on the generator card → set load ≈ **90 MWe**; observe steam flow / Tavg | `03`, `05` |
 | 5 | Restore Follow | `05` |
 | 6 | Pause; open Manual (M); find trip setpoints | `09` |
-| 7 | Load Hot Standby (**Mode 3, Hot Standby**); practice criticality → **Mode 2, Startup** | PWR-N02, **PWR-T03** |
+| 7 | Load Hot Standby (**Mode 3, Hot Standby**); practice criticality → **Mode 2, Startup** | PWR-N03, **PWR-T03** |
 | 8 | Raise above 5 % into **Mode 1, At Power**; then shut down to Mode 3, Hot Standby | PWR-N06, N14 |
 | 9 | Read **PWR-T20** / **PWR-T21** for Mode 5, Cold Shutdown ↔ Mode 1, At Power full story | `05` |
 | 10 | Inject Loss of Feedwater in Mode 1, At Power; practice AFW | PWR-E01 |

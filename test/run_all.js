@@ -55,7 +55,20 @@ var BASELINES = {
   // floor would just need lowering again next retune; at power the turbine sets power and
   // the rods set temperature, so Tavg rising is the signature that STRENGTHENS as the
   // coefficient does. Both are pinned now.
-  'run_pwr.js':            { code: 0, score: '32/32 202passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
+  // 32 → 36 on 2026-07-31 (#154 item 11): four engine surfaces that shipped with no
+  // assertion anywhere — the pressurizer CODE SAFETIES (`s.safety_open` had zero
+  // references in the whole test tree; only the SG safeties were ever asserted),
+  // `porv_tailpipe_temp` (the TMI/Davis-Besse tell the flagship teaches), the
+  // TMI-2 blocked-AFW device (only ever asserted FALSE), and the unknown-command
+  // error path. save_migration also went from 8 asserted fields to 20 of the 29
+  // _migrateState defaults, including the `rcp_secured` INFERENCE (#240), which is
+  // the one judgement call in the migration and was unasserted both ways.
+  // 237 → 240: #288 split the RHR suction-valve interlock into a 400 psi block-open
+  // permissive and a separate 600 psig autoclose; rhr_valve_and_mode gained the
+  // deadband pins. Injection-verified BOTH ways: pointing the autoclose back at the
+  // open permissive reddens the load-bearing check, and deleting rhr_autoclose_mpa
+  // outright reddens four.
+  'run_pwr.js':            { code: 0, score: '36/36 240passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
@@ -89,11 +102,36 @@ var BASELINES = {
   // still on line; (b) `mwe_output` was derived from `power_pct`, ignoring the governor
   // and the dump, so a 50 MWe ask read 98.8 MWe indicated with the dump venting 48 %.
   // Fails 3 checks on the old engine (0 rpm end and minimum, 98.78 MWe vs a 50 ±3 band).
-  'run_behavior.js':       { code: 0, score: '40pass 0xfail' },
+  // 41 since 2026-07-31 (#220): +TR-1f — the P-9 permissive is an INSTRUMENT reading. It
+  // read true `power_pct`, so a permissive gating two reactor trips and the AFW start could
+  // not be fooled by the channel it reads. Verified by injection: 4 checks red on the old
+  // engine (a channel stuck at 40 % with the core at 100 % still scrammed at +0.5 s, and the
+  // SG hi-hi leg scrammed at +0.2 s). Legs A/C are the calibration pins — with a healthy
+  // channel NOTHING moves, which is what makes it a sensing fix rather than a protection one.
+  // 42 since 2026-07-31: the steam dump went 1.05 -> 0.40, the PROTOTYPICAL Westinghouse
+  // capacity *(OWNER RULING: "Let's change it to 40%.")*, and +TR-1g is the check that says
+  // 40 % is ENOUGH — a 50 % loss of load with no trip and no relief lift, which is the case
+  // the real capacity is sized for. Without it, lowering the dump further would go unnoticed
+  // until someone drove a full rejection.
+  //
+  // FIVE probes were re-banded, not weakened: TR-1, TR-1d, TR-1e, TR-1f, PI-8 all carried
+  // bands minted at the P4 freeze from a 105 % dump. TR-1 in particular asserted "dump
+  // carries near-full power (90..103 %)" and "no PORV lift" — i.e. it pinned a NON-EVENT
+  // (measured at 1.05: Tavg 305.3 °C, power 97.5 % through a total loss of load). It now
+  // asserts the defence-in-depth ladder running in order — dump saturates, core sheds the
+  // rest to 46 %, PORV lifts as the designed backstop, pressurizer safety does not — and
+  // the PORV check is deliberately POSITIVE, so restoring enough capacity to suppress the
+  // lift has to come and edit this line rather than sliding through a band.
+  'run_behavior.js':       { code: 0, score: '42pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
-  'run_meltdown.js':       { code: 0, score: '9pass 0xfail' },
+  // 9 → 10 on 2026-07-31 (#154 item 9): MD-10, feed and bleed. MD-6 took the total
+  // loss of the secondary heat sink to core damage; nothing anywhere exercised the
+  // RECOVERY, so the suite proved only that the plant can be lost that way. Measured:
+  // unmitigated damages at 4040 s peaking at 366 °C Tavg; with the PORV open and HPI
+  // running, peak fuel 628 °C, no damage, inventory held above 100 %.
+  'run_meltdown.js':       { code: 0, score: '10pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at
   // all, so its MD-4/MD-8 PROTECTION claims are proven with the operator hand-
@@ -176,7 +214,75 @@ var BASELINES = {
   // write-up did, by quoting #230's "Planned offline, no trip." ruling to explain why the
   // new `isOnLine` predicate deliberately EXCLUDES `turbine_tripped`. Another worked example
   // of the warning above: re-run this after the docs, not after the code.
-  'run_hardrules.js':      { code: 0, score: '40checks 0failed' },
+  // 40 -> 39 on 2026-07-31 (#153), and this one goes DOWN — the first time it has. Nothing
+  // was un-ruled: CLAUDE.md's "Recent themes" list is capped at 5 bullets, "adding one means
+  // deleting the oldest", and the bullet that aged out (#260/#263) carried a formally-marked
+  // `OWNER RULING, 2026-07-30: "for 263 item 1 fit the measurement."`. This gate counts
+  // OCCURRENCES of the uppercase marker, so a mandated rotation drops the count by one. The
+  // ruling itself is intact in four other tracked files (BUILD_DECISIONS.md, TUNING_LOG.md
+  // x2, Manuals/00 + 09), which is what was checked before accepting the drop. #153's own
+  // owner quote ("You can fix RBMK too") uses the plain `OWNER,` form the themes list already
+  // uses elsewhere, which this gate deliberately does not scan (see its SCOPE note).
+  // 39 -> 48 on 2026-07-31 (#220). TWO movements, opposite signs, and the net is what is
+  // baselined: +11 from a NEW HR1(b) block (code), then -2 when the CLAUDE.md themes list
+  // rotated its oldest bullet out and took two OWNER RULING markers with it (prose — both
+  // verified surviving in other tracked files before the drop was accepted, per the note
+  // above). Same rotation cost recorded at #153. The +11 half, and this one is a code
+  // check, not a prose count. The HR1 scan above declared in writing that "nothing that
+  // DECIDES can reach truth by a path this misses" — false. A trip's `condition:` key is a
+  // status word the ENGINE computes and hands over, so from inside layers/control/ it is
+  // indistinguishable from an instrument and the scan cannot see it. `above_p9` was
+  // computed from true `power_pct` and gated two reactor trips plus the loss-of-main-feed
+  // AFW start. Every permissive key is now declared with its provenance, and the ones
+  // declared instrument-derived are CHECKED against the engine line that defines them.
+  // Verified by injection three ways: the pre-#220 engine line reddens 3 checks naming the
+  // offending expression; an undeclared new permissive reddens 1; a declaration matching
+  // nothing is STALE and reddens too. The count moves when a permissive is added, not when
+  // a doc is written — unlike the HR11 half above.
+  // 48 -> 53 on 2026-07-31: the steam-dump resize, and this is the gate's documented
+  // prose behaviour rather than anything about the code — the OWNER RULING quote ("Let's
+  // change it to 40%.") is carried, dated, at the constant and in the manual revision row,
+  // and HR11 counts dated owner quotes wherever they are tracked. Re-run this AFTER the
+  // docs, not after the code.
+  // 40 -> 39 on 2026-07-31 (#286): the CLAUDE.md *Recent themes* list is capped at five
+  // bullets, and adding this session's meant dropping the oldest (#260/#263) — which
+  // carried the "for 263 item 1 fit the measurement." quote. That ruling is NOT lost; it
+  // still stands in BUILD_DECISIONS.md, TUNING_LOG.md and Manuals/00_REVISION_HISTORY.md,
+  // so this is one fewer CITATION SITE, not one fewer ruling. Worth knowing that the
+  // themes cap and this gate pull against each other: rotating a bullet out can redden a
+  // baseline with no change to the record. Check where else the quote lives before
+  // restoring a bullet to chase the number.
+  // 39 -> 41 on 2026-07-31 (#287): the gate counts dated owner quotes wherever they are
+  // tracked, and "Keep it and enunciate" is cited at each site that acts on it — the
+  // alarm definition, the probe that guards it, and the manual revision row.
+  // 43 -> 57 on 2026-07-31, and this one is a merge artefact by construction. The gate
+  // counts OCCURRENCES of dated owner quotes across tracked files, and the guaranteed
+  // conflict list (CHANGELOG, CLAUDE.md, TUNING_LOG, BUILD_DECISIONS, the manual set) is
+  // resolved by KEEPING BOTH SIDES — so merging two lanes that each cited a ruling adds
+  // citation sites without adding rulings. Expect this number to jump on every lane merge;
+  // it is not evidence that anything was decided.
+  // 43 -> 47 on 2026-07-31 (#288): same mechanism again — "issue 288, split them." is
+  // cited in the four tracked files that record the split (CHANGELOG, TUNING_LOG,
+  // BUILD_DECISIONS, the manual revision row). The engine/config change itself moves
+  // NOTHING here; writing it up is what moved the count.
+  // 47 -> 48 on 2026-07-31: the A33 keep-it ruling, recorded in TUNING_LOG so the
+  // "this alarm got rare, delete it" argument is not re-litigated from scratch.
+  // MERGED 2026-08-01 (develop <- workbench): the two lines above are the SAME baseline
+  // moved from 43 by two lanes independently — 57 on develop, 48 on workbench. Neither
+  // survives the merge, because the merged tree carries BOTH sets of citation sites. The
+  // number below is MEASURED on the merged tree, not arithmetic on the two: taking either
+  // side whole, or adding the deltas, is precisely the "mechanical BASELINES resolution
+  // silently takes the wrong number" failure CLAUDE.md warns about.
+  // Measured on the merged tree: 62. Not 57, not 48, and not 57+5 or 48+14 either.
+  // 62 -> 58 on 2026-08-01 (develop <- backshop): the pre-public revision reset collapsed
+  // 00_REVISION_HISTORY's 27 rows into a Rev 0 baseline, and three of them carried OWNER
+  // RULING citations ("for 263 item 1 fit the measurement.", "lets leave opening of the
+  // accumulators to the procedure instead of auto opening them.", "Let's change it to 40%.").
+  // CITATION SITES lost, not rulings — all three were confirmed still cited in other tracked
+  // files before this number was lowered (3, 1 and 4 files respectively). The accumulator one
+  // now survives in TUNING_LOG.md ALONE, which is thin; if that entry is ever rotated, the
+  // ruling goes with it.
+  'run_hardrules.js':      { code: 0, score: '58checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -190,7 +296,9 @@ var BASELINES = {
   // alarm on every plant must declare a `category` from a closed vocabulary. It used to
   // be keyword-matched off the alarm id in ui/app.js, wrong for 13 of the PWR's 33.
   // All three plants here, unlike the PWR-only §6.3 half.
-  'run_contract.js':       { code: 0, score: '138checks 0failed' },
+  // 138 -> 139 on 2026-07-31 (#287): the new `rhr_not_aligned` annunciator, which
+  // like every alarm must declare a `category` (#157).
+  'run_contract.js':       { code: 0, score: '139checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -199,6 +307,7 @@ var BASELINES = {
   // COVERAGE (47 procedures with no checklist) is REPORTED, not enforced — the number
   // is the work item, and a gate that failed on it would sit permanently red. Watch
   // that line, not just the score.
+  // 25 → 23 on 2026-07-31: nuclear-from-cold heatup checklist removed (not a commercial NOP).
   'run_procdocs.js':       { code: 0, score: '23checks 0failed' },
   // New 2026-07-29 — the manual quotes US customary first with SI in parentheses
   // (owner request). This re-derives the US value from the SI value in every pair
@@ -230,7 +339,25 @@ var BASELINES = {
   // that disagrees with itself — necessary, but a set can be perfectly self-consistent
   // and still describe last week's plant. What it CANNOT check is whether a row's prose
   // is true; that is HR10/HR12 territory and the runner header says so.
-  'run_manual_rev.js':     { code: 0, score: '12checks 0failed' },
+  // 12 -> 13 on 2026-07-31: +'exactly one Set revision header line'. The existing check
+  // matches the FIRST occurrence and the stamper rewrites the FIRST occurrence, so a second
+  // line was invisible to both while contradicting the set-wide revision in the one document
+  // whose job is to state it. Found carrying a stale 'Set revision: 20 (2026-07-30)' directly
+  // under the live 23 — hand-added in 85264ad (#277), survived three stampings. Verified by
+  // injection: restoring the second line reddens it.
+  'run_manual_rev.js':     { code: 0, score: '13checks 0failed' },
+  // NEW 2026-07-31 (#224) — was `test/audit_manual_controls.js`, which is exactly why it is
+  // here: not a `run_*.js`, so auto-discovery never saw it, so it had no baseline, so it sat
+  // at **32 mismatches / exit 1** through the #197 / #202 / #206 procedure re-authoring with
+  // nothing to say so. #159 predicted this about manual-run harnesses and fixed the cosmetic
+  // half; this is the half that mattered.
+  //
+  // It guards more than its name: `STEP_UI` is the COVERAGE LIST for verify_manual_follow,
+  // which iterates the table rather than the steps — so an unmapped step is UNVERIFIED, not
+  // merely unmapped. Count moves when a controlled procedure step is added or removed
+  // (2 checks per step: the mapping, and the reverse entry-has-a-step check).
+  // 128 → 94 on 2026-07-31: nuclear-from-cold heatup STEP_UI map removed (17 steps).
+  'run_manual_controls.js': { code: 0, score: '94checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -241,6 +368,7 @@ var BASELINES = {
   // scenario shifts this baseline, which is the intended nudge to decide its stage.
   // 290 -> 289 (bf41f67, the leaner control chrome): one flag-gated element left the board.
   // Verified as theirs by running this gate on backshop at its own commit before merging.
+  // 292 → 289 on 2026-07-31: procedure:pwr_heatup_nuclear flag removed.
   'run_flags.js':          { code: 0, score: '16/16 289/289' },
   // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
   // Every way this rots is silent: an item id changes and its entry describes
@@ -316,6 +444,10 @@ var BASELINES = {
   // thresholds were picked up by Part A automatically, without anyone adding a case. That is
   // the design — a new setpoint gets range-checked for free, and the count moving is the
   // nudge to notice it. 50 → 52 thresholds audited.
+  // Unmoved at 58 by #287's annunciator, and that is correct: Part A audits NUMERIC
+  // thresholds against their instrument's declared range, and `rhr_not_aligned` is a
+  // status alarm (`rhr_active` is_false, setpoint null) with no range to sit inside.
+  // It briefly read 59 while the alarm was drafted as a pressure threshold.
   'run_reachability.js':   { code: 0, score: '58checks 0failed' },
   // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
   // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
@@ -340,7 +472,19 @@ var BASELINES = {
   // automatic relief (`open_porv_manual` vs `open_porv`), so a scenario can lock the
   // operator out — TMI-2 does — without touching overpressure protection. The third
   // check is the one that matters: relief must still lift while the switch is locked.
-  'run_m4.js':             { code: 0, score: '28/28 156passed' },
+  // 28 → 32 on 2026-07-31 (#154 item 6): four kernel internals with no test at all —
+  // actuation `reset_below` (a comment recorded the shipped PORV-flapping inversion
+  // and nothing pinned the fix), numeric `override_value` interception (five PWR
+  // failures use it; the intercepted-command path was never once observed),
+  // interception PRECEDENCE (first-injected wins), and `acknowledge_all_alarms`,
+  // which was only ever asserted as "the instructor gate does not block it". All four
+  // verified red by injecting the defect they guard.
+  // 32 -> 33 on 2026-07-31 (#287): losing shutdown cooling annunciates. Gated on the
+  // MODE, not the RPS latch — measured, a Mode 5 plant reads `rps_scrammed = false`
+  // (it was never tripped, it is simply cold), so the first cut of this alarm could
+  // not fire in the one regime where losing RHR matters most. The probe also pins the
+  // permissive staying ONE-SHOT, which is now ruled-on behaviour.
+  'run_m4.js':             { code: 0, score: '33/33 185passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
@@ -348,14 +492,41 @@ var BASELINES = {
   // any acceleration. The added checks pile up 360 sim-s with the wall clock frozen
   // and require ZERO checkpoints — verified against the pre-fix service, where that
   // one alone lays 21 and 6 of the 8 checks in the suite go red.
-  'run_m5.js':             { code: 0, score: '19/19 83passed' },
+  // 19 -> 20 suites, 83 -> 90 checks 2026-07-31 (#153): protection is now evaluated on
+  // a SIM-time cadence (PROTECTION_DT 0.1 s) instead of once per broadcast, so trip
+  // latency no longer scales with the UI speed button. The new suite drives a rod
+  // runaway at 1x and 3600x and reads the RPS latch at PHYSICS rate — the snapshot
+  // reporting a scram is still once per broadcast and always will be, so asserting the
+  // reported latency would pin the board refresh, not the plant. Verified by injection
+  // against the pre-fix service: 5 of its 7 checks go red, including 'trips at all'
+  // (at 3600x the old service ran a 135.9 % excursion and NEVER tripped) and the
+  // evaluation rate at 0.003/sim-s against its >=5 floor. BOTH 1x checks stay green on
+  // the old body, which is the proof that 1x behaviour is unchanged.
+  // 19 → 22 on 2026-07-31 (#154 item 7): the `_rewindCursor` walk-back (#137 narrowed
+  // it to the beat path but did not remove it, and it had never had a test), world
+  // rewind `exact` at THIS level (it was covered only end-to-end in the browser gate,
+  // and this is where its semantics live), and `save_state` as a COMMAND — every
+  // other caller reaches for svc.saveState() directly, so that dispatch line was
+  // unexercised.
+  // 22/22 96 -> 23/23 103 on 2026-07-31: NOT a new test, a CONFLICT RESOLUTION correction.
+  // The `develop` <- `workbench` merge took this file's develop side, which predates the
+  // #154 service tests the merge itself brought in, so the gate read DRIFT on a tree where
+  // nothing was wrong. Re-measured on the merged tree. This is the exact failure CLAUDE.md
+  // names ("a mechanical BASELINES resolution can silently take the wrong number") — the
+  // instruction to re-run run_all AFTER resolving is what caught it.
+  'run_m5.js':             { code: 0, score: '23/23 103passed' },
   // 16 -> 17 suites, 94 -> 102 checks 2026-07-27 (#142): a new save/restore test for
   // the instructor's operator-action memory and follow acc streak, both of which
   // saveState dropped. Verified against the PRE-fix instructor, where 5 of its 8
   // checks fail — including the softlock itself (an `operator_action` beat could
   // never be credited after a restore). Its legacy-save check passes on both
   // versions, which is the point: old saves keep their old behaviour.
-  'run_m6.js':             { code: 0, score: '17/17 102passed' },
+  // 17 → 18 on 2026-07-31 (#154 item 7): chat-mode transcript mechanics. run_campaign
+  // drives a chat scenario and asserts the log grows — the story clock, the time-skip
+  // divider (first line of the beat only, or the UI repeats it down an ordinary
+  // exchange) and the CHAT_LOG_CAP ring had no unit coverage. The cap matters: the
+  // snapshot passes the log BY REFERENCE every broadcast.
+  'run_m6.js':             { code: 0, score: '18/18 117passed' },
   'run_m6ph.js':           { code: 0, score: '8/8 18passed' },
   'run_m7.js':             { code: 0, score: null },   // prints "M7 OK", no tally
 
@@ -365,7 +536,15 @@ var BASELINES = {
   // retired when its cause clears, without re-engaging the channel.
   // 21 -> 24 on 2026-07-31 (#228): the RPS reset, run for ALL THREE plants. The defect
   // hid for months because every test that touched reset_rps was PWR-only.
-  'run_autoctl.js':        { code: 0, score: '24/24' },
+  // 24 → 30 on 2026-07-31 (#154 item 10): six DISCRIMINATING per-channel probes.
+  // The suite engaged SEVEN channels at once and asserted aggregate plant state —
+  // power, Tavg, pressure, SG level — so a dead channel hid behind the others.
+  // MEASURED by neutering the kernel (channel reports `engaged`, does nothing):
+  // `cvcs_makeup`, `boron_trim`, `grid_follow`, `boron_conc` and the ENGAGE half of
+  // `steam_dump` were each a complete no-op at a green 24/24, and `boron_conc` is
+  // `defaultOn` — it shipped inert in every free-play preset lineup. Each new probe
+  // engages ONE channel and was verified red by injection.
+  'run_autoctl.js':        { code: 0, score: '30/30' },
   // Back to 51/51 2026-07-26 (#218): pwr_msiv re-authored for P-9. The mission had been
   // a RACE — reopen before an automatic low-SG trip — and with the scram now landing at
   // closure that race is gone; worse, the decision beat's `scram` branch fired instantly
@@ -417,7 +596,8 @@ var BASELINES = {
   //   +1 (#245) `pwr_stuck_porv` step 1 gained a `saw core_inventory_pct < 100`
   //      alongside its `acc`, which became a subcooling check — see the note on that
   //      step in ui/manual_procedures.js.
-  'run_procedures.js':     { code: 0, score: '22/22 102/102' },
+  // 23/23 115 → 22/22 99 on 2026-07-31: nuclear-from-cold heatup procedure removed.
+  'run_procedures.js':     { code: 0, score: '22/22 99/99' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -440,7 +620,8 @@ var BASELINES = {
   // did not), and +1 is the `pwr_stuck_porv` split above. Otherwise the rule still
   // holds — an xfail is a check either way, so clearing one moves no number here,
   // which is why the 2026-07-27b #218 fix cleared three and shifted nothing.
-  'run_procedures_stack.js': { code: 0, score: '22/22 178/178' },
+  // 23/23 196 → 22/22 176 on 2026-07-31: nuclear-from-cold heatup stack path removed.
+  'run_procedures_stack.js': { code: 0, score: '22/22 176/176' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
@@ -449,7 +630,33 @@ var BASELINES = {
     // (pinned at mass_max) with pressurizer level 7 %, and the probe printed both numbers
     // on an `info` line every run while asserting neither — which is exactly why it went
     // unnoticed. The defect itself was fixed by #249; this is the guard it never got.
-    code: 1, score: '57/68 335passed 12failed',
+    // 57/68 -> 58/68 on 2026-07-31 (#153): the deliberately-red C2 accel-latency probe
+    // went GREEN because the defect it guarded was fixed, not because the test was
+    // weakened — M5 now evaluates protection on a sim-time cadence (PROTECTION_DT) and
+    // ops_harness's evalEvery mirrors it, so latency no longer scales with `accel` on
+    // any plant. All THREE accel probes (PWR, RBMK [post], BWR) now report identical
+    // trip delay at 1x and 256x. Owner lifted the RBMK hold for this fix ("You can fix
+    // RBMK too", 2026-07-31).
+    // 57/68 -> 58/69 on 2026-07-31 (#154 item 9): +ops_shutdown_dilution. Every other
+    // reactivity probe in the file runs AT POWER, where the subcritical multiplication
+    // it measures does not exist — so the regime that produced the owner's free-play
+    // source-range trip (#260) had no probe at all. Measured: diluting Mode 5 at the
+    // tuned 0.05 ppm/s makeup rate and walking away, the source-range high-flux trip
+    // fires at 1248 s, 59 ppm removed, boron 857 -> 798. The failure count is unmoved.
+    // 344 -> 350 passed on 2026-07-31: ops_cooldown_to_rhr's three INFO lines became
+    // real checks. It is named 'toward RHR entry' and never got there — measured, it
+    // cooled at 103 C/h against the 50 C/h its own driver paces to, and the check that
+    // NAMED that ramp was `Tavg after 2 h < 275 C`, one-sided and landing at 90.7, so it
+    // could not see a doubled rate in either direction. The driver now throttles the RHR
+    // heat exchanger (the actual rate control below the interlock), isolates the
+    // accumulators at 1000 psig per #273, and runs 3 h because a properly paced cooldown
+    // only reaches the interlock at about two hours. Rate now 50 C/h exactly, RHR aligned
+    // at 103 min, boron 2270 -> 623 ppm, inventory 120 -> 100 %. Failure count unmoved.
+    // 58/69 350/12 -> 59/69 351/11 on 2026-07-31: same conflict-resolution correction as
+    // run_m5 above. The merge kept develop's baseline while bringing in workbench's
+    // `ops_cooldown_to_rhr` rework, which turns that probe green — a red going green is
+    // still drift, and it has to be acknowledged rather than absorbed.
+    code: 1, score: '59/69 351passed 11failed',
     note: 'Ops probes are tuning targets by design. Measured 2026-07-27b from ' +
           'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; all 11 reds are ' +
           '7 RBMK + 4 BWR, and the deliberately-red C2 accel-latency probe (#153, ' +
@@ -488,7 +695,29 @@ var BASELINES = {
   // data-flag, so it shows on both channels and the distinction they guarded is gone.
   'verify_flags_ui.js':      { code: 0, score: '42/42' },
   'verify_e2e_ui.js':        { code: 0, score: '16screenshots', slow: true },
-  'verify_manual_follow.js': { code: 0, score: '84checks', slow: true },
+  // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
+  // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
+  // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,
+  // and the table had not moved through three procedure re-authorings: it named 17 of the
+  // 45 controlled PWR steps, with `pwr_heatup` at ZERO, and this gate reported a confident
+  // PASS over the slice that was left. Filling the table is what moved the number.
+  //
+  // Runtime is 115 s -> 132 s for 2.1x the checks, because the per-entry page loads went
+  // with it: the bar loop re-navigated with `&view=`, a parameter ui/app.js does not read,
+  // so every load rendered the identical page; and the follow loop reloaded and re-clicked
+  // `next` i times per entry, O(n^2) in procedure length. Both walk once now. Filling the
+  // table WITHOUT that would have added minutes for no extra assurance.
+  // 174 -> 141 on 2026-08-01 (develop <- backshop): the commercial-NOP rewrite of
+  // 04_NORMAL_OPERATIONS consolidated procedure steps, so there are fewer steps to walk.
+  // Backshop updated run_procedures (102->99), run_procedures_stack (178->176) and
+  // run_manual_controls (116->94) for the same change but not this one, because it is a
+  // `slow: true` Playwright gate and --fast skips it. THE DROP WAS CHECKED, NOT ASSUMED:
+  // #224's whole lesson is that this gate iterates STEP_UI, so a smaller number can mean
+  // lost COVERAGE rather than less work. run_manual_controls is what tells the two apart
+  // and it reports "controlled procedure steps: 47, mapped: 47, all covered" — nothing is
+  // unmapped, so this is content shrink. Measured 141 on backshop at its own commit too,
+  // so the merge carried it faithfully.
+  'verify_manual_follow.js': { code: 0, score: '141checks', slow: true },
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run

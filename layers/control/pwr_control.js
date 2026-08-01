@@ -32,6 +32,15 @@
     { id: 'lo_press', instrument: 'primary_pressure', direction: 'low', setpoint: 12.41, action: 'scram', // MPa
       blockable: true, block_permissive: { instrument: 'primary_pressure', direction: 'low', setpoint: 13.6 } },
     { instrument: 'pzr_level',        direction: 'low',  setpoint: 12.0,   action: 'scram' }, // %
+    // SG lo-lo. AFW auto-starts 3 points ABOVE it, at 20 % — a DECLARED DEPARTURE
+    // (§8.19, #220 claim 6). The real plant uses ONE signal at ONE setpoint for both:
+    // *"1. Low-low water level in any single steam generator…"* is the first of the five
+    // AFW auto-start conditions (WTSM §5.7, ML11223A229), and it is the same low-low
+    // level function that trips the reactor (NUREG-1431 Tables 3.3.1-1 / 3.3.2-1). The
+    // offset is ours, and it buys the operator a visible "AFW started, level still
+    // falling" window that a single-setpoint plant does not give a lone trainee. Our
+    // other two starts DO match the real list — loss of main feed above P-9 is their
+    // condition 3, and the SI start is their condition 4.
     { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,   action: 'scram' }, // % lo-lo (AFW auto-starts just above, 20 %)
     // Low-flow reactor trip. Reads the `rcs_flow` ELBOW-TAP CHANNEL (% of rated) as of
     // 2026-07-29 (#247); until then it read true `pump_flow_pct` through a
@@ -93,9 +102,36 @@
   ];
 
   // ---- Reactor Trip on Turbine Trip (P-9) — the ANTICIPATORY trip. ON. ----
+  // SOURCED (#220 evidence pass; every claim below is quoted, none is recalled).
   // Real Westinghouse PWRs trip the reactor whenever the turbine trips above P-9 (~50 %
-  // power): losing the heat sink at high power is not something to wait out, so the trip
-  // anticipates the transient rather than waiting for a process limit to be exceeded.
+  // power) — sensed from 4/4 stop valves closed or 2/3 low autostop oil pressure, armed
+  // above P-9 (or above P-7 at ~10 % in units with no P-9 installed; WTSM §12.2,
+  // ML11223A301). It is classed ANTICIPATORY: *"provided to anticipate probable plant
+  // transients and to minimize the resulting thermal transient on the RCS"*, and it is
+  // NOT credited in the safety analyses — *"No credit was taken in the accident analyses
+  // for operation of these trips"* (Salem TS Bases, ML18093A272).
+  //
+  // THE REAL PLANT'S REASON NOW APPLIES HERE TOO, and for two days it did not. Theirs is
+  // dump capacity: P-9 sits at 50 % because *"for turbine trips from 50% power or less,
+  // sufficient steam dump capacity is available for excess energy removal"* (WTSM §12.2)
+  // — above that a 40 % dump cannot take it. This plant's dump was 105 %, so it could,
+  // and the interlock was something a student had to be TOLD rather than shown. The dump
+  // is **0.40** as of 2026-07-31 *(OWNER RULING: "Let's change it to 40%.")*, so the
+  // premise above is this plant's premise: drive a full rejection and watch the dump hit
+  // its stop.
+  //
+  // Two justifications stand alongside it and are worth keeping in view, because they are
+  // what make the trip defence-in-depth rather than arithmetic:
+  //   • the dump depends on the CONDENSER (real interlock C-9: vacuum + a circ-water
+  //     pump, or the valves lose their air), and a turbine trip's cause frequently
+  //     removes it — TR-8 is exactly that case, and it trips on a genuine limit instead;
+  //   • the trip is uncredited in the real safety analyses, so "the plant could survive
+  //     without it" was never the test.
+  // Owner's question that produced this note (2026-07-26): *"If the steam dump can handle
+  // a full load do we need the turbine trip? I thought those were related for some
+  // reason."* They are related, that IS the real justification, and the answer at the time
+  // was "kept for the residual two". Resizing the dump made the question moot instead of
+  // answered, which is the better outcome — see #220 and the config comment.
   //
   // THIS PLANT NOW HAS IT — `protection.turbine_trip_reactor_trip: true`
   // (`pwr_config.js:763`), adopted 2026-07-26f after the #216 audit. This header said
@@ -237,9 +273,13 @@
     // regime follows physically from the two-segment pump curve.)
     // Residual Heat Removal permissive — auto-opens the RHR hot-leg suction valve
     // for cooldown once the reactor is tripped and depressurized below the 400 psi
-    // (2.76 MPa) valve interlock. Setpoint matches emergency.rhr_valve_interlock_mpa
-    // (the engine refuses the open above it). Armed via the 'rhr' ESF system so the
-    // synoptic's RHR "Auto" button can re-arm it.
+    // (2.76 MPa) valve interlock. Setpoint matches emergency.rhr_valve_interlock_mpa,
+    // the BLOCK-OPEN permissive — the engine refuses the open above it. It does NOT
+    // match the autoclosure interlock, which is the separate 600 psig (4.14 MPa)
+    // emergency.rhr_autoclose_mpa (#288): the valve shuts on repressurization ~175 psi
+    // higher than the pressure at which it may be opened, so this permissive and the
+    // autoclose cannot fight each other across one boundary. Armed via the 'rhr' ESF
+    // system so the synoptic's RHR "Auto" button can re-arm it.
     { instrument: 'primary_pressure', direction: 'low',  setpoint: 2.76,
       action: 'set_rhr', active: true, condition: 'rps_scrammed', arm: 'rhr' },
     // SR auto re-energize: when the IR falls below P-6 (deep shutdown) the
@@ -447,6 +487,34 @@
     { id: 'accum_aligned',  instrument: 'primary_pressure', direction: 'low',      setpoint: 6.895, priority: 'caution',  panel: 'B', category: 'safety_system',
       condition: 'accum_valve_open',
       label_learning: 'Accumulators Still Lined Up — RCS Below Their Isolation Pressure', label_industry: 'SI ACCUM ALIGNED < 1000 PSI' },
+    // SHUTDOWN COOLING NOT IN SERVICE (#287) *(OWNER RULING, 2026-07-31: "Keep it and
+    // enunciate")*. The RHR auto-entry permissive is deliberately ONE-SHOT — it fires on
+    // the first crossing below the 400 psi (2.76 MPa) interlock and never re-arms — while
+    // the engine AUTO-CLOSES the suction valve on any repressurization back above it. Both
+    // halves are correct on their own and a real plant re-opens that valve deliberately,
+    // not automatically; what was missing was any indication that it had gone. SOURCED
+    // (evidence pass 2026-07-31, NUREG-0933 Issue 99, "RCS/RHR Suction Line Valve
+    // Interlock on PWRs", Rev. 3): "Two basic features are incorporated in the interlock
+    // design: (1) an automatic closure signal on high RCS pressure (typically 600 psig),
+    // and (2) a block of the MANUAL OPEN SIGNAL at a lower RCS pressure (typically 425
+    // psig)." A real plant has NO automatic open at all — the interlock only blocks the
+    // operator's open — so this permissive is already more automatic than the real thing
+    // and a one-shot is the closer of the two options. That issue's own resolution was
+    // Generic Letter 88-17: improved INSTRUMENTATION, procedures and administrative
+    // controls — i.e. tell the operator, which is what this annunciator does. Measured
+    // before this: a cooldown whose pressure controller sat just above the interlock ended
+    // scrammed at 1.95 MPa (283 psi) BELOW it with the arm still in AUTO, its permissive
+    // condition still true, RHR shut — and the only tell on the board was the ECCS card
+    // quietly reading LPI instead of RHR.
+    //
+    // Gated on the LINEUP plus the regime, like accum_aligned above: the reactor is
+    // tripped and the RCS is below the entry pressure, so shutdown cooling is what should
+    // be carrying decay heat, and it is not aligned. It stands in during a LOCA too, which
+    // is true and deliberate — there it reads "you are on injection, not on shutdown
+    // cooling", which is exactly what the operator needs to know before they stop injecting.
+    { id: 'rhr_not_aligned', instrument: 'rhr_active', direction: 'is_false', setpoint: null, priority: 'warning', panel: 'B', category: 'safety_system',
+      condition: { instrument: 'plant_mode', in: COLD_MODES },
+      label_learning: 'Shutdown Cooling Not In Service — RCS Is Below the RHR Entry Pressure', label_industry: 'RHR NOT IN SERVICE' },
     { id: 'sbo',            instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', category: 'safety_system', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
     // Turbine trip / low steam demand. Reclassified in Modes 4/5 ONLY: below the
     // hot band the machine is secured by design and RHR is the heat sink, so zero
@@ -603,6 +671,18 @@
   // genuine rate control matching the ≤1 DPM the startup checklist already
   // teaches; the by-the-book ascent peaks at 0.92 DPM, so the block is real
   // margin, not a nuisance. [tune]
+  //
+  // SOURCED (#220 claim 7): the ≤1 DPM half is prototypical and procedurally binding —
+  // *"Do not exceed a stable startup rate of 1 DPM."* (Duke McGuire OP/1/A/6100/05
+  // Limits & Precautions 2.1, ML20077E732), echoed at Turkey Point (*"establish a steady
+  // state SUR of 1.0 dpm or less"*, NRC Special Inspection ML20344A126). Our `sur_high`
+  // alarm sits exactly there. But the WITHDRAWAL BLOCK below is OURS — a DECLARED
+  // DEPARTURE (§8.18). Real plants have no automatic SUR trip or rate-based rod stop;
+  // the administrative limit is enforced by the operator and the automatic backstop is a
+  // flux level, not a rate. Turkey Point 2020 is the worked case: the crew went to 3.0
+  // DPM indicated against the 1.0 limit and the plant tripped on SOURCE-RANGE HIGH FLUX
+  // at 1e5 cps — which this plant also has. The block is a teaching aid that makes the
+  // administrative limit enforceable by a single operator with no shift behind them.
   var PWR_INTERLOCKS = [
     { instrument: 'startup_rate', direction: 'high', setpoint: 1.5, clears_below: 0.8,
       blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true,

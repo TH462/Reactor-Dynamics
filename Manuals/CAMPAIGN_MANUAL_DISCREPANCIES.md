@@ -72,7 +72,7 @@ Manuals Rev 2 closed naming + documentation gaps. Campaign Mode-N **strings are 
 | 1 | `pwr_hook` | [S] | `02` SCRAM / `03` SCRAM | Manuals don’t use a “hook” lesson format |
 | 2 | `pwr_tour` | [S] | `01` energy path | Campaign: Manual 900 MWe then Follow; manuals also use load examples |
 | 3 | `pwr_chain_reaction` | [S] | `01` / N02 concepts | Campaign starts subcritical; manuals Mode 3, Hot Standby→Two |
-| 4 | `pwr_startup` | [P] | **PWR-N02** (+ N01, T13) | Same intent; **IDs differ**; in-product steps shorter than N02 |
+| 4 | `pwr_startup` | [P] | **PWR-N03** (+ N01, T13) | Same intent; **IDs differ**; in-product steps shorter than N02 |
 | 5 | `pwr_feedback` | [S] | `01` Doppler/MTC | No dedicated N procedure |
 | 6 | `pwr_xenon` | [S] | **PWR-N09** | Campaign is post-scram xenon arc; N09 is broader chemistry/ops |
 | 7 | `pwr_boron` | [S] | **PWR-N09** | Campaign: dilute then borate from 50 % |
@@ -110,8 +110,8 @@ Manuals Rev 2 closed naming + documentation gaps. Campaign Mode-N **strings are 
 
 | Manual ID | Title | Notes |
 |-----------|-------|-------|
-| PWR-N01 | Mode 3, Hot Standby lineup | Implied by Free Play Hot Standby; not a campaign step |
-| PWR-N03 | Mode 5, Cold Shutdown → Three heatup | **[narr]**; campaign never teaches cold path |
+| PWR-N02 | Mode 3, Hot Standby lineup | Implied by Free Play Hot Standby; not a campaign step |
+| PWR-N01 | Mode 5, Cold Shutdown → Three heatup | **[narr]**; campaign never teaches cold path |
 | PWR-N04 | Mode 2, Startup / POAH | Partially inside startup/chain missions |
 | PWR-N05 | Turbine roll & sync | Partially inside load/tour missions |
 | PWR-N11 | PZR level / CVCS inventory | Not a dedicated mission (boron mission touches CVCS) |
@@ -126,7 +126,7 @@ Manuals Rev 2 closed naming + documentation gaps. Campaign Mode-N **strings are 
 | Layer | Example IDs |
 |-------|-------------|
 | Campaign / `MANUAL_PROCEDURES` | `pwr_startup`, `pwr_raise_power`, `pwr_stuck_porv` |
-| External manuals | `PWR-N02`, `PWR-N07`, `PWR-E07` |
+| External manuals | `PWR-N03`, `PWR-N07`, `PWR-E07` |
 | Operator Manual Plan (Blueprint) | Same N/E scheme as external manuals |
 
 **Discrepancy:** No table in either product maps `pwr_*` ↔ `PWR-N##` / `PWR-E##`. Trainers and learners must infer.

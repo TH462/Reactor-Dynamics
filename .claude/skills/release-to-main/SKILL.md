@@ -1,13 +1,39 @@
 ---
 name: release-to-main
-description: Cut a release — merge the worktree lanes, bump the version, write the player-facing changelog entry, build the offline single-file download, merge develop into main and push with a tag. Use when asked to "release", "cut a release", "ship it", "push to main", or "catch main up to develop".
+description: Cut a release — merge the worktree lanes, rebuild the offline single-file download, merge develop into main and push. Versioning and the player-facing changelog entry are SUSPENDED until the public release. Use when asked to "release", "cut a release", "ship it", "push to main", or "catch main up to develop".
 ---
 
 # Releasing to `main`
 
-`develop` is the integration branch; `main` is what the public site deploys. A release is
-not a merge — it is a merge **plus** a version, a player-facing changelog entry, a tag, and a
-regenerated offline build. Missing any of those ships something misleading.
+> ## VERSIONING IS SUSPENDED — READ THIS BEFORE STEP 2
+>
+> *(OWNER DIRECTIVE, 2026-07-31: "we are not doing version bumps when releasing to main until
+> the public release.")* Launch day — reset to `Alpha 1.0.0`, write the public changelog,
+> restamp the manual set — is tracked as **#282**. `site/release.js` reads `Pre Alpha`
+> until then, and `run_release.js` validates that empty-changelog state as correct.
+>
+> **Skip §2 and §3 entirely — but DO §4.** §4 is the offline-download build and has nothing
+> to do with versioning; skipping it ships a stale `latest.zip`. Until the public release, a
+> release to `main` is:
+> lanes merged → gates green → offline build rebuilt → merge → push. That is all.
+>
+> - **No** new `Alpha X.Y.Z`.
+> - **No** `changelog.html` entry.
+> - **No** `site/release.js` bump.
+> - **No** `CHANGELOG.md` `[Unreleased]` roll — leave the heading standing; work accumulates
+>   under it until the public release takes **one** version for the lot.
+> - **No** annotated version tag (there is no version to tag).
+>
+> `node test/run_release.js` stays green through this, because it gates *agreement* between
+> `site/release.js`, `changelog.html` and `CHANGELOG.md` — and none of the three move.
+> **Still run it**, so a pre-existing disagreement cannot be blamed on the suspension later.
+>
+> §2–§3 are kept below, not deleted: they resume at the public release, which chooses **one**
+> version for everything accumulated rather than replaying the skipped bumps. The offline
+> build (**§4**) is **not** suspended — but note its filename comes from `site/release.js`, so
+> it will keep carrying the last released version. That is expected, not a bug to chase.
+
+`develop` is the integration branch; `main` is what the public site deploys.
 
 **Never commit straight to `main`.**
 
@@ -195,20 +221,22 @@ git -C C:/grok_build/RD_backshop  merge --ff-only develop
 
 - [ ] Lanes merged, `develop` == `origin/develop`, working tree clean
 - [ ] `node test/run_all.js` → **OK**, on the exact commit being released
-- [ ] Version decided by **reading** `changelog.html` + `site/release.js`, and they agree
-- [ ] `changelog.html` entry added at the top, player-facing, dated both ways
-- [ ] `site/release.js` bumped to match
-- [ ] **`CHANGELOG.md`'s `## [Unreleased]` renamed to `## [Alpha X.Y.Z] — YYYY-MM-DD`**, same
-      date as the site entry, with a fresh empty `[Unreleased]` above it — skipped twice
-      before it was gated
-- [ ] `node test/run_release.js` → **OK** (all three files agree), run BEFORE the merge
-- [ ] **`make_portable.js` + `make_download.js` re-run after the bump**, `run_portable`
-      green, filename carries the new version — as VERIFICATION; neither artifact is
-      committed, the deploy builds the published one
+- [ ] ~~Version decided by **reading** `changelog.html` + `site/release.js`, and they agree~~
+      — **SUSPENDED**, see the banner at the top
+- [ ] ~~`changelog.html` entry added at the top, player-facing, dated both ways~~ — **SUSPENDED**
+- [ ] ~~`site/release.js` bumped to match~~ — **SUSPENDED**
+- [ ] ~~**`CHANGELOG.md`'s `## [Unreleased]` renamed to `## [Alpha X.Y.Z] — YYYY-MM-DD`**~~ —
+      **SUSPENDED**: leave `[Unreleased]` standing, work accumulates under it
+- [ ] `node test/run_release.js` → **OK**, run BEFORE the merge. **Not suspended** — it gates
+      agreement, and none of the three files move, so it must stay green on its own
+- [ ] **`make_portable.js` + `make_download.js` re-run**, `run_portable` green — as
+      VERIFICATION; neither artifact is committed, the deploy builds the published one. The
+      filename still carries the LAST released version, which is correct while versioning is
+      suspended
 - [ ] `download.html` still describes what actually ships, and the changelog says so if it changed
 - [ ] Ruleset checked, and a **403 read as “private repo, no ruleset”** rather than as an error
 - [ ] Merged the way the ruleset check indicated
-- [ ] Annotated tag pushed separately
+- [ ] ~~Annotated tag pushed separately~~ — **SUSPENDED**: there is no version to tag
 - [ ] All three lanes fast-forwarded to the released commit
 - [ ] **After the deploy lands:** confirm the live `site/version.js` carries the released
       commit FIRST, then that `download/latest.zip` exists and unzips. A 404 before the

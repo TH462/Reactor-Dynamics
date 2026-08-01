@@ -2,7 +2,7 @@
 
 **Document:** PWR-ARP-01  
 **Title:** Annunciator Response — PWR  
-**Revision:** 22  
+**Revision:** 8  
 
 ---
 
@@ -99,6 +99,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A30 | CHG FLOW HI | caution | A |
 | PWR-A31 | PZR LVL DEV LO | caution | A |
 | PWR-A32 | SI ACCUM ALIGNED &lt; 1000 PSI | caution | B |
+| PWR-A33 | RHR NOT IN SERVICE | warning | B |
 
 ---
 
@@ -451,7 +452,25 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **If it stays in after you isolate** | The valve did not shut. Check its position indication; the alarm reads valve position, not the command. |
 | **If you see it with the tanks already empty** | It came in about **1 minute of plant time** before the first discharge on a brisk cooldown, and it stays lit afterwards. Lit tile plus SIT fill at 0 % is the post-mortem: this is why the tanks emptied and why RCS boron rose toward the 2500 ppm accumulator charge. |
 | **Watch for** | **Time acceleration.** That ~1 plant-minute of warning is a couple of seconds of wall clock at 30×. Cooldown rates in this trainer are compressed (see **12** §14) — slow down through the band rather than relying on reaction time. |
-| **What this tile does NOT cover** | **The heatup.** There is no annunciator for accumulators left *isolated* on the way up, and no automatic open signal — re-alignment is procedural by design *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto opening them.")*. This tile is silent in that case, because shut tanks are the condition it clears on. **PWR-N03** step 4 is the only thing that catches it; run it. |
+| **What this tile does NOT cover** | **The heatup.** There is no annunciator for accumulators left *isolated* on the way up, and no automatic open signal — re-alignment is an operator action. This tile is silent in that case, because shut tanks are the condition it clears on. **PWR-N01** step 7 (re-align accumulators) is the step that catches it. |
+
+---
+
+## PWR-A33 — Shutdown Cooling Not In Service (RHR NOT IN SERVICE)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Plant in **Mode 4 or Mode 5** **and** the RHR hot-leg suction valve **not open** |
+| **Means** | The plant is in a mode where residual heat removal is the heat sink, and it is not aligned. Decay heat is going somewhere else — or nowhere. |
+| **Why gated on the mode** | Not on pressure, and not on the reactor-trip latch. RHR is correctly *unaligned* for the whole of Modes 1–3, so a pressure-only gate would stand in through every cooldown; and a Mode 5 plant reads **not tripped** — it was never scrammed, it is simply cold — so gating on the trip latch made the tile impossible to get in the one mode where it matters most. |
+| **Automatic actions** | **None.** The entry permissive that opened the valve is **one-shot**: it fires on the first crossing below **400 psi (2.76 MPa)** and does not re-arm *(OWNER RULING, 2026-07-31: "Keep it and enunciate")*. Nothing will re-align RHR for you. |
+| **How a real plant does this** | It has **no automatic open at all.** NUREG-0933 Issue 99: *"Two basic features are incorporated in the interlock design: (1) an automatic closure signal on high RCS pressure (typically 600 psig), and (2) a block of the manual open signal at a lower RCS pressure (typically 425 psig)."* The operator opens the suction valves; the interlock only **blocks** that open above the setpoint. This trainer's automatic entry is a simplification in the *permissive* direction, so a one-shot is the closer of the two behaviours. The **two separated setpoints** the same passage describes are now modelled: block-open **400 psi (2.76 MPa)**, autoclose **600 psi (4.14 MPa)** (#288). |
+| **This is a real event, not a contrivance** | Inadvertent RHR suction valve closure is one of the better-documented PWR nuisances: NUREG-0933 Issue 99 cites **27 events through 1981**, a frequency of **0.12 unplanned closures per plant-year**, with the consequence *"the potential for RHR pump damage and loss of decay heat removal by the RHR system."* The issue was resolved by **Generic Letter 88-17** through improved instrumentation, procedures and administrative controls — annunciation, not automation, which is why this tile exists. |
+| **Immediate operator actions** | Confirm RCS pressure is below **400 psi (2.76 MPa)** — the valve interlock refuses to open above it. Re-align RHR from the ECCS side of the board. Confirm the ECCS card reads **RHR** and that Tavg resumes falling. |
+| **The way this usually happens** | A **repressurization while aligned**, past **600 psi (4.14 MPa)**. The suction valve auto-closes there — that protection is real and stays — and because the entry permissive is spent, pressure coming back down does **not** bring RHR back. Note it takes a genuine 200 psi (1.38 MPa) excursion above the alignment pressure: a plant merely hunting around 400 psi no longer sheds the valve, which it did until 2026-07-31 (#288). |
+| **If it comes in with pressure ABOVE the interlock** | Expected, briefly. Losing the valve took **600 psi (4.14 MPa)**; getting it back takes **400 psi (2.76 MPa)** — the block-open permissive is the lower of the two setpoints, so you must come down past where you lost it. Get pressure down, then re-align. |
+| **What told you before this tile existed** | Nothing, directly. The only indication was the ECCS card quietly changing from **RHR** back to **LPI**, which is why this annunciator was added. |
+| **Watch for** | Losing RHR in **Mode 5 with the steam generators unavailable** — there is no other heat sink in that lineup, and the temperature rise is slow enough to be missed until it is not. |
 
 ---
 

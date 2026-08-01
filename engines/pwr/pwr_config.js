@@ -611,12 +611,42 @@
       // the setpoint opens the dump proportionally across the band. The program top
       // is the full-power coolant equilibrium; _buildState interpolates linearly in
       // load and DERIVES each state's secondary pressure to be a true steady state.
-      // steam_dump_max 1.05 (feel-plan P4, owner ruling 2026-07-21): the RIDE-OUT
-      // enabler (FG-4). This plant's dump swallows a full load rejection with a
-      // small margin, so a turbine trip is a transient the operator manages — not
-      // a scram. The stored-heat burst still swings Tavg visibly before settling
-      // (tempo principle). Unavailable when the condenser is lost (vacuum/SBO).
-      steam_dump_setpoint: 8.23, steam_dump_band: 0.25, steam_dump_max: 1.05, // [tune] = Psat(297 °C) anchor; ride-out capacity
+      // steam_dump_max 0.40 — THE PROTOTYPICAL CAPACITY *(OWNER RULING, 2026-07-31:
+      // "Let's change it to 40%.")*. Was 1.05 from 2026-07-21 (feel-plan P4) until #220's
+      // evidence pass sourced the real number and the coherence problem behind it.
+      //
+      // *"The capacity of the steam dump system depends on the individual plant's load
+      // rejection capability. In most Westinghouse units the capacity of the steam dump
+      // system is 40%."* (NRC Westinghouse Technology Systems Manual §11.2, ML11223A294).
+      // It is sized for a **50 % loss of load** — 40 % dump plus a 10 % step from rod
+      // control (STPEGS UFSAR §10.4.4, ML22140A078) — and to keep the SG safety valves
+      // seated on a trip from 100 %.
+      //
+      // MEASURED on this plant at 0.40, which is why 0.40 and not something between:
+      //   · 50 % loss of load  → no trip, no relief lift; the dump SATURATES at 40 % and
+      //     the core self-throttles to 89.3 % — a 10.7 % step. That is the documented
+      //     40 %+10 % split reproduced, by MTC here rather than by rod control.
+      //   · turbine trip @100 % → indistinguishable from 1.05 (P-9 scrams at +0.5 s and
+      //     decay heat is ~6 %, so the cap is never approached). SG pressure peaks at
+      //     8.08 MPa, well under the 9.31 safety — the real design intent, met.
+      //   · full 100 % rejection → still NO scram (FG-4 ride-out intact), but Tavg
+      //     reaches 321.2 °C and the ladder runs: dump saturates, core runs back to
+      //     46.3 %, PORV lifts at 16.37, SG safeties graze 9.32. A real Westinghouse
+      //     plant does not ride a full rejection either — it is beyond the 50 % design
+      //     case — so the noise is prototypical, not a defect.
+      //
+      // WHY IT MATTERS BEYOND THE NUMBER: at 105 % the P-9 reactor trip's own premise was
+      // false here — *"Above the P-9 setpoint, a turbine trip will cause a load rejection
+      // beyond the capacity of the Steam Dump System"* (NUREG-1431 Rev 4 Bases, Function
+      // 16, ML12100A228) — so the interlock was something the student had to be TOLD.
+      // At 40 % it is demonstrable. The dump is also a finite resource again: it can be
+      // driven to its stop, which is where the division of labour between dump and
+      // reactor becomes visible. Both are the teaching goal, not a tuning preference.
+      //
+      // Still unavailable when the condenser is lost (vacuum/SBO) — see the C-9 note in
+      // pwr_steam_generator.js. The stored-heat burst still swings Tavg visibly before
+      // settling (tempo principle), and rather more so now.
+      steam_dump_setpoint: 8.23, steam_dump_band: 0.25, steam_dump_max: 0.40, // [tune] = Psat(297 °C) anchor; WTSM §11.2 capacity
       // LOAD-REJECTION arm for the fast-open (Tavg-error) dump mode — the C-7 class
       // interlock. The fast mode used to arm on `turbine_tripped` ALONE, even though its
       // own comment said it was for "a turbine trip / load rejection" and that the
@@ -649,7 +679,7 @@
       // low enough to catch a 15 MWe cut vents forever (above). RULED 2026-07-27 (#219,
       // owner): KEEP 40 MWe and DECLARE the cliff. The sub-threshold rejection is a
       // manoeuvre the operator handles, and the PORV is the honest backstop when they
-      // don't. Recorded as a named simplification, DESIGN_COMPANION §8.8, catalog TR-1c,
+      // don't. Recorded as a named simplification, DESIGN_COMPANION §8.21, catalog TR-1c,
       // and pinned BOTH SIDES by behaviour probe TR-1c so it cannot move silently. [tune]
       dump_load_reject_mwe: 40.0,
       // ...and the mismatch below which the latch RESETS: the reactor has come back to
@@ -773,15 +803,33 @@
       eccs_cooling_gain: 0.08,     // dimensionless scale on the cold-injection mixing term [tune]
       // Residual Heat Removal (RHR, formerly DHR): the low-pressure shutdown-cooling
       // loop that doubles as LPI. Suction is taken from the HOT LEG through a valve
-      // interlocked to primary pressure — it can be opened only below
-      // rhr_valve_interlock_mpa (400 psi) and AUTO-CLOSES if pressure climbs back
-      // above it (the Westinghouse RHR autoclosure interlock). Aligned = suction
-      // valve open (rhr_active). It recirculates coolant hot leg → HX → cold leg
-      // (no net inventory change — the LPI/RHR pump moves RCS water, not RWST
-      // make-up), removing heat toward rhr_sink_c. Cooldown rate is throttled by the
-      // HX flow split (set_rhr_hx): the operator routes more/less of the constant
-      // loop flow through the heat exchanger vs. the bypass. Dormant at power. [tune]
-      rhr_valve_interlock_mpa: 2.76, // MPa (400 psi) — hot-leg suction valve open-permissive & autoclosure interlock
+      // interlocked to primary pressure. Aligned = suction valve open (rhr_active).
+      // It recirculates coolant hot leg → HX → cold leg (no net inventory change —
+      // the LPI/RHR pump moves RCS water, not RWST make-up), removing heat toward
+      // rhr_sink_c. Cooldown rate is throttled by the HX flow split (set_rhr_hx):
+      // the operator routes more/less of the constant loop flow through the heat
+      // exchanger vs. the bypass. Dormant at power. [tune]
+      //
+      // TWO SETPOINTS, NOT ONE (#288). The block-open permissive and the autoclosure
+      // interlock are separate values with ~175 psi between them, and the autoclose
+      // sits ABOVE the open block. Both are sourced — NUREG-0933 Issue 99, "RCS/RHR
+      // Suction Line Valve Interlock on PWRs" (Rev. 3): "Two basic features are
+      // incorporated in the interlock design: (1) an automatic closure signal on high
+      // RCS pressure (typically 600 psig), and (2) a block of the manual open signal
+      // at a lower RCS pressure (typically 425 psig)." Westinghouse Technology Systems
+      // Manual §5.1 (ADAMS ML11223A219) gives the same structure for valves 8701/8702,
+      // open block 425 psig against an autoclose at ~585 psig.
+      //
+      // This plant used ONE constant for both jobs until 2026-07-31, so the deadband
+      // was ZERO and the valve chattered across the boundary. Paired with the one-shot
+      // entry permissive kept by #287, the first chatter was PERMANENT: measured, a
+      // cooldown whose pressure-control setpoint sat at 409 psi (2.82 MPa) — just over
+      // the interlock — aligned RHR, rebounded, auto-closed, and never recovered.
+      // Do NOT re-merge these. Do NOT raise the open permissive to widen the band:
+      // 400 psi is what the manual, procedures 04/05 and the campaign all quote, and
+      // it is inside the sourced range for a block-open setpoint.
+      rhr_valve_interlock_mpa: 2.76, // MPa (400 psi) — hot-leg suction valve OPEN permissive (block-open)
+      rhr_autoclose_mpa: 4.14,       // MPa (600 psig) — autoclosure interlock: a standing-open valve shuts above this
       rhr_sink_c: 50.0,            // °C cooldown sink target
       rhr_gain: 0.03,              // heat-removal gain at full HX flow (Q per °C above sink)
     },

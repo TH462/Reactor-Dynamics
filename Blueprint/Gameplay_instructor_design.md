@@ -37,7 +37,7 @@ This philosophy takes precedence over "traditional training software" instincts 
 | **M6 Instructor (beat engine)** | **Built, tested 16/16** | `layers/instructor_layer.js`, `test/run_m6.js` |
 | Simulation Service + command path | Built (+ scenario/follow/rewind commands) | `layers/simulation_service.js` |
 | Manual procedures + acceptance predicates | **21/21 validated** | `ui/manual_procedures.js`, `test/run_procedures.js` |
-| Manual control-pill ↔ Plant Display audit | PASS | `test/audit_manual_controls.js`, `test/manual_ui_map.js` |
+| Manual control-pill ↔ Plant Display audit | PASS | `test/run_manual_controls.js`, `test/manual_ui_map.js` |
 | **Follow in Instructor** (Path 2) | **Instructor-driven: auto-advance, strict gating, instrument grading** | `start_follow`; `ui/app.js` `renderFollow` renders the snapshot `follow` block |
 | Save state (file download) | Built | M5 `save_state` / `load_state` |
 | **Rewind** (in-memory checkpoint ring) | **Built** (full + world scopes, cap 32) | M5 `rewind`; ⏪ button in the Instructor card |
@@ -356,7 +356,7 @@ Any M6 or Instructor-facing change must keep green:
 | Gate | Command |
 |------|---------|
 | Procedures | `node test/run_procedures.js` → 21/21 |
-| Control pills | `node test/audit_manual_controls.js` |
+| Control pills | `node test/run_manual_controls.js` |
 | UI follow | `node test/verify_manual_follow.js` |
 | Engine suites | PWR / RBMK / BWR scenario suites per CONTEXT §9 |
 | M6·PH / M5 / M7 | existing layer tests |

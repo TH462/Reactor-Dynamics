@@ -50,9 +50,13 @@
     // feed pumps are STEAM-DRIVEN off the main line downstream of the MSIV — closing
     // the MSIV starves them (the pwr_msiv decision-clock physics: bottle the boiler
     // and the feed dies with the steam). Both close the chain: heat-sink loss → MFW
-    // loss → SG inventory falls → lo-lo trip — the ride-out plant trips on a genuine
-    // limit, never on anticipation (FG-4). A plain turbine trip keeps the MSIV open,
-    // so the ride-out keeps its feed.
+    // loss → SG inventory falls → lo-lo trip — THESE paths trip on a genuine limit
+    // rather than on anticipation (FG-4). Narrowed from "never on anticipation" (#220):
+    // that was written before #216, and since then a turbine trip above P-9 IS an
+    // anticipatory scram (TR-1b). What survives is the FG-4 claim about these two chains
+    // specifically — a lost condenser or a bottled boiler kills the feed, and the plant
+    // then trips on SG lo-lo, which no anticipatory signal covers. A plain turbine trip
+    // keeps the MSIV open, so the load-rejection ride-out (TR-1) keeps its feed.
     var condOK = s.condensate_pump_running !== false && s.condenser_cooling_available !== false
               && s.msiv_open !== false;
     var main_feed = (s.main_feedwater_available && !s.feedwater_isolated && condOK) ? s.feedwater_demand_frac : 0.0;
@@ -171,11 +175,27 @@
       var tavg_err = (s._ins_tavg != null ? s._ins_tavg : s.tavg_c) - tref_dump;
       dump = Math.max(dump, clip(tavg_err / (sg.dump_trip_mode_band_c || 8.0), 0, 1));
     }
-    // Physical capacity of the turbine-bypass/dump. THIS PLANT (FG-4 ride-out,
-    // feel-plan P4): ~105 % of rated steam flow — a full load rejection is caught
-    // by the dump alone (no anticipatory reactor trip exists). The cap still
-    // rate-limits an operator slamming the dump open on a cooldown. Applies to
-    // both the manual override and the auto proportional demand.
+    // Physical capacity of the turbine-bypass/dump: **40 % of rated steam flow**, the
+    // prototypical value *(OWNER RULING, 2026-07-31: "Let's change it to 40%.")* —
+    // *"In most Westinghouse units the capacity of the steam dump system is 40%"* (NRC
+    // Westinghouse Technology Systems Manual §11.2, ML11223A294). Sized in the real plant
+    // for a 50 % loss of load (40 % dump + a 10 % rod step) and to keep the SG safeties
+    // seated on a trip from 100 %; measured, this plant reproduces both. Derivation,
+    // measurements and the teaching argument live at the constant, in `pwr_config.js`.
+    //
+    // THIS COMMENT HAS BEEN WRONG TWICE, which is worth a moment given what it guards.
+    // It read "(no anticipatory reactor trip exists)" — true when written, FALSE from
+    // 2026-07-26 when #216 turned Reactor Trip on Turbine Trip ON. Corrected by #220 to
+    // say the 105 % capacity spoke only to the load-rejection case. Then the capacity
+    // itself moved. A comment carrying a NUMBER and a CONSEQUENCE will rot at whichever
+    // of the two changes first; keep the number where the constant is.
+    //
+    // What survives unchanged: a turbine trip above P-9 scrams (TR-1b) and a load
+    // rejection with the turbine on line is ridden out (TR-1). Those are different design
+    // cases in the real plant too, and the capacity only ever spoke to the second.
+    //
+    // The cap still rate-limits an operator slamming the dump open on a cooldown. Applies
+    // to both the manual override and the auto proportional demand.
     dump = Math.min(dump, sg.steam_dump_max);
     // MSIV: both downstream paths (turbine steam + dump-to-condenser) are
     // behind the isolation valve; closing it bottles the steam generator.

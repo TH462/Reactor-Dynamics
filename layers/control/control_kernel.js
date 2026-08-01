@@ -625,6 +625,24 @@
     // last evaluated cycle — but at plant init lastInstruments is still empty ({}),
     // so _initialEsfArms MUST pass `ins` or a conditioned actuation's gate is dead.
     ins = ins || this.lastInstruments;
+    // An ARRAY is an AND over its terms, and a leading `!` negates one (#287). Both
+    // stay generic — the kernel still names no instrument (HR3); the plant supplies
+    // the words, exactly like the `_unavailable` convention below. Added because the
+    // RHR-not-in-service annunciator needs two facts at once ("the reactor is
+    // tripped" AND "shutdown cooling is NOT aligned"), and a single truthy status
+    // could express neither half.
+    if (Array.isArray(cond)) {
+      for (var ci = 0; ci < cond.length; ci++) if (!this._evaluateCondition(cond[ci], ins)) return false;
+      return true;
+    }
+    if (typeof cond === 'string' && cond.charAt(0) === '!') return !this._evaluateCondition(cond.slice(1), ins);
+    // { instrument, in: [...] } — that instrument's reading is one of the listed
+    // values. Same shape the reclassify rules already use (#240), so a plant
+    // expresses "while in these modes" the one way rather than two.
+    if (cond && typeof cond === 'object' && cond.instrument) {
+      if (!(cond.instrument in ins)) return false;
+      return !!(cond.in && cond.in.indexOf(ins[cond.instrument]) !== -1);
+    }
     if (cond in ins) return !!ins[cond];
     if (/_unavailable$/.test(cond)) {
       var base = cond.replace(/_unavailable$/, '_running');

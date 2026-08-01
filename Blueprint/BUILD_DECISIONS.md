@@ -37,6 +37,322 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-07-31i — the steam dump goes to 40 %: closing a departure instead of justifying it
+
+*(OWNER RULING, 2026-07-31: "Let's change it to 40%.")*
+
+### The decision
+
+`steam_dump_max` **1.05 → 0.40**, the prototypical Westinghouse capacity (WTSM §11.2,
+ML11223A294). §8.17 — declared as a named departure earlier the same day under #220 — is
+**retired**: the gap is closed rather than documented. The 1.05 was never sourced; it came
+from the 2026-07-21 feel pass as "Claude's call, playtest-adjustable, revisit after
+playtesting", and this is that revisit.
+
+### The argument that failed, recorded because it is the instructive part
+
+My first recommendation was **0.60**, on the reasoning that the real 40 % is sized for
+*their* plant while ours needs **58 %** for the same criterion — so 0.60 copied the design
+*criterion* rather than the *number*. The owner asked why not 40, and the argument did not
+survive: the real design is 40 % dump **plus a 10 % rod-control step** (STPEGS UFSAR
+§10.4.4, ML22140A078), and at 0.40 this plant reproduces that split — dump saturates, core
+settles at **89.3 %**, a 10.7 % step. The 58 % figure is what the dump peaks at when it does
+the whole job and no runback is required. It was a real measurement of the wrong quantity,
+and I had presented it as the load-bearing reason.
+
+### Measured
+
+| event | 1.05 | 0.40 |
+|---|---|---|
+| turbine trip @100 % | scram +0.5 s, Tavg 304.5 °C | **indifferent** — +0.5 s, 307.2 °C |
+| 50 % loss of load | no trip, dump 58 %, power 98.8 % | no trip, **no lift**, dump saturated, power 89.3 % |
+| full 100 % rejection | no trip, Tavg 305.3, power **97.5 %** | no trip, Tavg **321.2**, power 46.3 %, PORV **16.37**, SG safety graze 9.32 |
+
+Turbine trip never approaches the cap (P-9 scrams; decay heat ~6 %), and SG pressure peaks
+at 8.08 MPa either way — under the 9.31 safety, the other thing the real 40 % is sized for.
+**The only thing 105 % bought was a clean full rejection**, which is beyond a real
+Westinghouse plant's design case anyway.
+
+### Why this is the teaching choice, not a fidelity tax
+
+Two effects, both of which point the same way and neither of which is about the number:
+
+- **The P-9 trip becomes demonstrable.** Its premise is *"Above the P-9 setpoint, a turbine
+  trip will cause a load rejection beyond the capacity of the Steam Dump System"*
+  (NUREG-1431 Bases Function 16, ML12100A228). At 105 % that was false for this plant, so
+  the interlock could only be asserted. This is the coherence problem the owner spotted on
+  2026-07-26 — resized, the question is moot rather than answered.
+- **The dump becomes a finite resource.** It can be driven to its stop, and past it the core
+  has to shed the difference. That handover is the plant dynamics lesson, and at 105 % it
+  never occurred.
+
+**FG-4 is restored, not sacrificed.** `PLAYTEST_CHECKLIST` describes the approved signature
+as *"self-parks ~64 % power with Tavg ~319 and pzr level ~93-94 % (PZR LVL HI blaring, just
+under the 97 % going-solid trip)"*. At 1.05 nothing produced that. At 0.40 the rejection
+gives 46 % power, Tavg 320.1, pzr level 95.6 % against the 97 % trip. That row was also
+describing a *turbine trip*, which has scrammed since #216 — both corrections applied.
+
+### The gates
+
+**Authored content did not move**: `run_campaign` 51/51 (3038 checks) including the
+Mode 5 ↔ 1 cooldown and heatup missions, `run_procedures_stack` 22/22, `run_ops` 58/68. The
+cooldown was the one blast-radius unknown flagged as unmeasured before the ruling; it is
+measured now.
+
+Five probes re-banded — TR-1, TR-1d, TR-1e, TR-1f, PI-8, all carrying P4-freeze bands. **TR-1
+was pinning a non-event** ("dump carries near-full power (90..103 %)", "no PORV lift") and
+now pins the ladder running in order, with the **PORV assertion written POSITIVELY** so that
+restoring capacity enough to suppress the lift must edit the line rather than pass through a
+band. New **TR-1g** pins the 50 % design case and the documented 40 %+10 % split — the check
+that says 40 % is *enough*, without which a further reduction would go unnoticed until
+someone drove a full rejection. PI-8 now reports **margin to going-solid (1.4 points)** as an
+info line rather than burying it in a band.
+
+`run_behavior` 41 → **42**, `run_hardrules` 48 → **50** (prose: the dated owner quote),
+`run_manual_rev` 12 → **13** (below). Manual set **Rev 23** — 01, 09 and new 12 prose.
+
+### Found in passing: two `Set revision` lines
+
+`Manuals/00_REVISION_HISTORY.md` carried a stale `**Set revision:** 20 (2026-07-30)` directly
+under the live one, hand-added in 85264ad (#277). The `run_manual_rev` check matches the
+FIRST occurrence and `stamp_manual_revision.js` rewrites the FIRST occurrence, so it was
+invisible to both — through three stampings — while contradicting the set-wide revision in
+the one document whose job is to state it. Removed; the gate now counts them.
+
+---
+
+## 2026-07-31h — #224: a stale lookup table had quietly halved a browser gate
+
+**The filed defect was 32 mismatches in `STEP_UI`.** The real one is what `STEP_UI` is for:
+`verify_manual_follow.js` **iterates the table, not the procedure steps**, so it is that
+gate's coverage list. An unmapped step is **unverified**, not merely unmapped. Measured
+2026-07-31: **17 of 45** controlled PWR steps covered, `pwr_heatup` at **zero**, gate green.
+
+### The decision: PWR's control vocabulary is the board's, not a hand copy
+
+`VIEW_CONTROLS.pwr` mirrored `ui/app.js` PD[].controls by hand. The PWR plant display has
+had no view bar since the board replaced the V1 synoptic (#246) — app.js resolves a control
+through `RD.PwrBoard.revealControl`. So the mirror described a display that does not exist,
+and nine labels the authored procedures use (`RCP Run/Stop`, `Dump SP`, `Pressure SP`,
+`Accumulator valve`, `Trip Blocks`, `Boron control`, `1/M Plot`, `Turbine — Connect Grid`,
+`Rod AUTO`) were missing from it while being perfectly reachable. **Filling `STEP_UI`
+against that list would have produced 9 false failures and an argument about which was
+right.**
+
+PWR now reads `PwrBoardDriver.controlLabels()` — the board's own `CONTROL_LABEL_MAP`. That
+is the authority `revealControl` resolves against, and the one `run_campaign` already
+validates campaign beat highlights against, so this is a third consumer of one source
+rather than a fourth source. RBMK/BWR keep their listed view bars: those plants still have
+one, and are on hold.
+
+`view` becomes decorative for PWR (recorded `'board'`). `verify_manual_follow` already
+ignored it on this plant.
+
+### The finding that changed the shape of the fix
+
+Every one of the **45 controlled steps resolves** against the board vocabulary. There was
+never a procedure pointing at an unreachable control — the issue's caveat (*"some may be the
+map being right and the auditor being too strict"*) resolved to a third answer: the map was
+simply absent, and the auditor was right about that.
+
+### Why the loops had to be rewritten to accept the coverage
+
+Tripling `STEP_UI` triples what `verify_manual_follow` walks, and it walked expensively:
+
+| loop | was | why it was wasteful |
+|---|---|---|
+| bar check | one `goto(...&view=<v>)` per entry | **`&view=` is read by nothing in `ui/app.js`** — every load rendered the identical page |
+| follow check | reload + click `next` *i* times per entry | O(n²) in procedure length; `pwr_heatup` alone = 153 clicks, 17 loads |
+
+Both walk once now (the follow pane only moves forward, and entries are step-ordered —
+sorted defensively so an out-of-order entry cannot silently skip a step). **84 → 174 checks
+for 115 s → 132 s.** Filling the table without this would have added minutes and no
+assurance.
+
+### The gate
+
+`audit_manual_controls.js` → **`test/run_manual_controls.js`**, so auto-discovery finds it
+and it carries a baseline. That rename *is* the fix for the recurrence: #159 already
+observed that manual-run harnesses drift and fixed the cosmetic half (a report written into
+a dead scratch directory); the half that mattered was that nothing ran it.
+
+Injection-verified four ways: dropped entry → step reported UNVERIFIED; pill/entry mismatch;
+entry with no step behind it; procedure naming a control absent from the board. **Worth
+recording:** the first attempt at that last one used `Reactor Coolant Pumps (RCP)` as the
+"unreachable" label and stayed green — because that label *is* on the board. A negative
+assertion demonstrated with a name that exists demonstrates nothing.
+
+`run_all` **34 → 35 runners**; `run_manual_controls` 116 checks; `verify_manual_follow`
+84 → 174. Nothing else moved.
+
+---
+
+## 2026-07-31g — #220: the revisit. A permissive that could not be fooled, and a guard that said it could not exist
+
+**Context.** #220's evidence pass (2026-07-27) verdicted ten "real Westinghouse PWRs do X"
+claims against NRC primaries — 7 verified, 2 partly, 1 with a gap, **none wrong** — and was
+deliberately scoped to evidence only. This is the revisit it deferred.
+
+### The decision: a permissive is an instrument reading, and P-9 was not one
+
+`above_p9` was `(s.power_pct || 0) > 50` — **true** reactor power. It gates three protection
+decisions (SG hi-hi reactor trip, Reactor Trip on Turbine Trip, loss-of-main-feed AFW start).
+The real one is *"actuated at approximately 50% power as determined by two-out-of-four NIS
+power range detectors"* (NUREG-1431 Rev 4 Bases B 3.3.1, ML12100A228) — a nuclear-instrument
+reading and nothing else.
+
+**Measured before** (hot full power, seed 42, power-range channel stuck at 40 % with the core
+at 100 %): turbine trip → scram at **+0.5 s**; SG overfeed → scram on `sg_level high` at
+**+0.2 s**. **After**: neither. The turbine trip is ridden out on the 105 % dump; the hi-hi
+still isolates feed and trips the turbine, and the plant trips **59 s later on `sg_level low`**.
+
+Reads `_ins_power_pct` — the existing one-step-lag stash the AFW level hold, the CVCS level
+program and the dump's Tref program already sense through. No new instrument, no new PRNG
+draw. With a healthy channel the behaviour is unchanged, which is both the safety argument
+for the change and the reason 34 green runners never saw the defect.
+
+**Why this is a departure to declare rather than waive.** Combined with §8.11 (no sensor
+redundancy or voting), a **single** failed channel now defeats the permissive where a real
+2-of-4 arrangement out-votes it. §8.11 already took that trade explicitly — *"makes instrument
+failure more impactful — acceptable and arguably more educational"* — so this inherits it, and
+§8.20 records the inheritance rather than leaving it implied.
+
+### The guard blind spot: a decision can reach truth without naming it
+
+`run_hardrules.js` scans `layers/control/` for `getTrueState()` / `true_state`, and its
+SCOPE note asserted in writing that *"nothing that DECIDES can reach truth by a path this
+misses"*. That sentence was false when written. A trip's **`condition:` key is a status word
+the ENGINE computes and hands over** — inside the control layer there is no truth reference
+to see. `above_p9` was that path.
+
+New **HR1(b)** block: every `condition:` key gating a trip, actuation or alarm is declared as
+`instrument` / `lineup` / `latch` / `hold`, and the ones declared instrument-derived are
+**verified against the engine line that defines them** — a declaration alone would have been
+bookkeeping. Injection-verified three ways: the pre-fix engine line reddens 3 checks and
+prints the offending expression; an undeclared permissive reddens 1; a stale declaration
+reddens too. `run_hardrules` **39 → 50**.
+
+Kept as a separate block rather than folded into the HR1 scan because it walks a different
+surface (permissive keys, then engine definitions) and would otherwise vanish inside the
+other's tally — the same reasoning that split HR1_EXCEPTION from HR1_DEBT.
+
+### The comments that carried someone else's premise
+
+The drift class #220 exists to catch, found twice by the evidence pass and fixed here:
+
+| Site | Said | Why it was wrong |
+|---|---|---|
+| `pwr_steam_generator.js` | dump catches a full rejection *"(no anticipatory reactor trip exists)"* | True when written; **false since #216** turned Reactor Trip on Turbine Trip ON |
+| `pwr_config.js` | *"a turbine trip is a transient the operator manages — not a scram"* | Above P-9 it is a scram. Load rejection and turbine trip are distinct design cases in the real plant too (NUREG-1431 Bases, Function 16) |
+| `pwr_control.js` P-9 header | the real plant's justification, recited straight | Theirs is **dump capacity** — *"for turbine trips from 50% power or less, sufficient steam dump capacity is available"* (WTSM §12.2, ML11223A301). Ours is 105 %, so that argument is gone here |
+
+**The owner's question, settled** *(OWNER, 2026-07-26: "If the steam dump can handle a full
+load do we need the turbine trip? I thought those were related for some reason.")* — they
+are related, and that recollection was exactly right. Keep the trip, but for the two reasons
+that survive an oversized dump: the dump depends on the **condenser** (real interlock C-9; a
+turbine trip's cause frequently removes it — TR-8 is that case), and it is **uncredited
+anticipatory defence-in-depth** in reality too (*"No credit was taken in the accident analyses
+for operation of these trips"*, Salem TS Bases, ML18093A272). Written into the header where
+the code is read, not only into an issue thread.
+
+### Departures declared (DESIGN_COMPANION §8 — the HR9(c) home)
+
+**§8.17** steam dump 105 % vs the prototypical 40 % (WTSM §11.2, ML11223A294), with the
+AP1000 house-load analog · **§8.18** the 1.5 DPM rod-withdrawal block, which has no real
+analog while the 1.0 DPM administrative limit and the 1e5 cps source-range backstop either
+side of it both do · **§8.19** the AFW 20 % / scram 17 % offset against one real signal at
+one setpoint (WTSM §5.7, ML11223A229) · **§8.20** P-9 and turbine-trip sensing at status
+level rather than stop-valve position and autostop oil pressure.
+
+Housekeeping: the #219 dump-arm cliff was filed as a **duplicate §8.8** and cited by number
+from four places — renumbered **§8.21**, all four repointed.
+
+### Gates
+
+`run_behavior` 40 → **41** (**TR-1f**; 4 checks red on the old engine, and the probe must
+*fail the instrument* to observe anything at all — legs A and C are the calibration pins).
+`run_hardrules` 39 → **50**. Everything else unmoved: all 34 runners green at baseline before
+the new checks were added, which is the measurement that says this is a sensing fix.
+## 2026-07-31f — #288: one constant was blocking the open AND forcing the close, so the deadband was zero
+
+*(OWNER RULING, 2026-07-31: "issue 288, split them.")*
+
+### The decision: two setpoints, and the autoclose is the HIGHER one
+
+`emergency.rhr_valve_interlock_mpa` = 400 psi (2.76 MPa) gated the RHR hot-leg suction valve
+in both directions — the open permissive in `set_rhr`, the autoclosure in step 9b. A real
+plant separates the two by roughly 175 psi with the **autoclose above** the open block:
+
+> *"Two basic features are incorporated in the interlock design: (1) an automatic closure
+> signal on high RCS pressure (typically 600 psig), and (2) a block of the manual open
+> signal at a lower RCS pressure (typically 425 psig)."*
+> — NUREG-0933, Issue 99, *"RCS/RHR Suction Line Valve Interlock on PWRs"* (Rev. 3)
+
+WTSM §5.1 (ADAMS **ML11223A219**) gives the same structure for valves 8701/8702: 425 psig
+open block, ~585 psig autoclose. Added `emergency.rhr_autoclose_mpa` = **4.14 MPa
+(600 psig)** and pointed step 9b at it. The open permissive did **not** move.
+
+### Why not the other two options
+
+**Do not widen the band by raising the open permissive.** 400 psi is quoted by `04`, `05`,
+`09`, the campaign and the M4 actuation table, and it is inside the sourced range for a
+block-open setpoint. Moving it moves authored content for no fidelity gain (HR9 — the
+content follows the plant, but here the plant number is already right).
+
+**Do not remove the autoclosure.** Tempting on the evidence: GI-99's own resolution said
+*"removal of the ACI be recommended, but not required, for plant implementation"* — the
+autoclosure interlock was itself judged a net risk. But that is a design decision a
+licensee makes with its own PRA, ours is pinned by `rhr_valve_and_mode`, and deleting
+protection on the strength of a *recommended-not-required* line is a larger call than this
+issue needs. Left standing, at the sourced setpoint.
+
+### What it changes for the player
+
+Measured engine-direct (`cold_shutdown`, seed 42), aligning at 218 psi (1.5 MPa) then
+holding a rebound: **pre-split, every rebound above 400 psi shed the valve**, including the
+**409 psi (2.82 MPa)** case #287 documents — a cooldown whose pressure-control setpoint sat
+nine psi over the interlock, aligned RHR, bounced, and lost it permanently against the
+one-shot entry permissive. Post-split, 409 / 435 / 508 psi all hold and the valve lets go at
+its 600 psi setpoint. Losing shutdown cooling now requires a real excursion rather than a
+hunt, which is what makes `06 PWR-A33` an alarm about an event instead of about a boundary.
+
+### The measurement trap: `reset()` takes an OBJECT and silently ignores a string
+
+`PWREngine.prototype.reset = function (cmd)` reads `cmd.initial_state` and defaults to
+`hot_full_power`. So `eng.reset('cold_shutdown')` does not throw, does not warn, and gives
+you a **300 °C plant at 15.41 MPa** while your own log line says `cold_shutdown`. Three
+successive rigs in this pass ran that way, and the first version of this section was
+published from them.
+
+It produced two confident, wrong findings. One: the valve "closed at **377 psi**", *below*
+its configured 400 — a hot plant clamped to 2.6 MPa is so far off equilibrium that it surges
+through the interlock inside a single 0.02 s step. Two: the 580 psi row "closed because the
+plant overshot to **604 psi** mid-step" — same cause, dressed up as a physics explanation,
+which is the more dangerous of the two because it *reads* like a measurement result. On the
+genuine cold IC the pressure does not drift at all (max seen = value held, every row) and the
+boundary is exactly 600 psig: 595 psi holds, 609 psi lets go.
+
+**The generalisable rule: assert the IC, do not trust the argument.** One `console.log` of
+`s.pressure_mpa` immediately after `reset` catches this in seconds, and nothing else in the
+rig will — the engine is perfectly happy, the output is plausible, and the only tell is that
+the numbers are wrong. This is HR12's neighbouring failure: the claim *was* measured, and the
+measurement was of a different plant than the one named.
+
+The new deadband check asserts `eOpen < s.pressure_mpa < eAuto` on the **observed** value for
+the same reason, so it cannot pass on a pressure that drifted out of the band it tests.
+
+### The gate
+
+`run_pwr` **237 → 240**. `rhr_valve_and_mode` gained the config ordering, a rebound into the
+deadband that must not close, and — the half that is easy to forget — an open that must
+still be **REFUSED** in that same band, since the block-open permissive is unchanged and a
+spent one-shot cannot be re-armed at 409 psi. Injection-verified both ways: reverting step
+9b to the open permissive reddens the load-bearing check; deleting `rhr_autoclose_mpa`
+reddens four (`undefined` makes the comparison always false, so the valve never closes at
+all). Manuals **Rev 25**.
+
+---
+
 ## 2026-07-31e — #137: rewind is a picker on a wall clock, and two of the issue's four items were wrong
 
 **Decision 1 — the free-play checkpoint cadence is measured in REAL time**
@@ -2105,6 +2421,7 @@ The §18 flagship is the acceptance centerpiece; the numbers were tuned so the t
 |---|-----------|---------------|-----|
 | D1 | Engine handed `dt_effective = 0.02·time_acceleration`; loop runs a fixed step count of that dt (§3) | Engine always stepped at **fixed 0.02 s**; acceleration = **more steps per broadcast** | M1's Euler kinetics is only stable at 0.02 s and diverges at large dt (verified: 60× → dt 1.2 s blows up to 1e6 %). Step-count acceleration keeps every step stable and deterministic; at 1× it is identical to the spec (25 steps × 0.02 s / 500 ms). **→ Flag F6** (binds M2/M3). |
 | D2 | `stepsPerBroadcast = broadcastInterval / PHYSICS_DT` (§3) | `round(accel · (broadcastMs/1000) / 0.02)` | The literal formula is dimensionally off (500 ms / 0.02 s = 25000, not 25); converted ms→s and folded acceleration into the count per D1. |
+| D3 | Protection (M4 `evaluate`) runs **once per broadcast**, after the substep loop (§3) | Evaluated inside the loop whenever **`PROTECTION_DT` = 0.1 s of SIM time** has accumulated, plus the existing post-loop call on the final readings | **2026-07-31, #153.** The literal reading makes the interval between two protection evaluations `timeAcceleration × broadcastMs` — i.e. **a UI speed button decides how well the reactor is protected**. Measured full stack (PWR `50_percent`, `continuous_rod_withdrawal` sev 1.0, seed 42): indicated flux clears its 120 % setpoint for only **8.74 sim s**, so at 1×/60× the plant tripped on `power_range high` at **9.1 s**; at **256×/600× that trip was never evaluated** and the plant tripped 16.5 s / 50.9 s late on `primary_pressure high` — the wrong signal, after a **136 %** excursion; at **700× and above, including the 3600× the speed selector ships, nothing fired at all** (one evaluation per 360 sim s; the whole excursion inside a single broadcast, `scrammed` false on the far side). Post-fix, 1× → 3600×: scram **9.14 → 9.32 s**, always `power_range high`, peak **121.6 → 121.9 %**. **1× is byte-identical** — a 1× broadcast is exactly `PROTECTION_DT`, so the in-loop guard hands that evaluation to the post-loop call. Cost **+0.4 %** at 3600× (`evaluate` 7.85 µs vs `step` 18.80 µs). Safe because `getInstruments()` is a pure read (noise PRNG advances in `engine.step`) and `ControlLayer.evaluate` holds no per-call state. Guard: `run_m5`'s *Protection cadence* suite (5 of 7 red by injection). |
 
 ### Modeling decisions (spec left open)
 

@@ -43,10 +43,13 @@
     'EV-5': 'existing:run_campaign pwr_boron', 'EV-6': 'probe', 'EV-7': 'probe:EV-6',
     'EV-8': 'existing:run_ops xenon 8h', 'EV-9': 'existing:run_campaign startup ×2',
     'EV-10': 'existing:run_pwr transient_loss_vacuum',
-    'TR-1': 'probe (LOAD REJECTION — the ride-out case)', 'TR-1b': 'probe (turbine trip → P-9 scram, #216)',
-    'TR-1c': 'probe (sub-threshold rejection — the arm cliff, declared §8.8, #219)',
+    'TR-1': 'probe (FULL load rejection — the ride-out, past the dump\'s stop)',
+    'TR-1g': 'probe (50 % loss of load — the real Westinghouse design case, 40 % dump)',
+    'TR-1b': 'probe (turbine trip → P-9 scram, #216)',
+    'TR-1c': 'probe (sub-threshold rejection — the arm cliff, declared §8.21, #219)',
     'TR-1d': 'probe (PLANNED OFFLINE is not a turbine trip — #230)',
     'TR-1e': 'probe (grid holds the rotor at zero load; MWe follows the turbine — #284)',
+    'TR-1f': 'probe (P-9 reads the NIS channel, not truth — #220)',
     'TR-2': 'probe', 'TR-3': 'probe',
     'TR-4': 'probe (lumped-RCP model: total-loss trip; P-8 single-loop needs multi-loop model)',
     'TR-5': 'probe', 'TR-6': 'existing:run_ops grid step + steam_dump_capacity_cap',
@@ -229,39 +232,42 @@
 
     // =================================================== 3. anticipated transients
 
-    // Re-authored for the RIDE-OUT ruling (catalog v3 FG-4, feel-plan P4): this
-    // plant's ~105 % dump swallows a full load rejection — a turbine trip is a
-    // transient the operator manages, NOT a scram. The v2.0 anticipatory-trip
-    // expectation (P-9) is retired with the ruling.
-    /* TR-1 re-specified 2026-07-26 (#216, owner ruling): this probe used to inject a
-     * TURBINE TRIP and assert no scram. That conflated two events a real plant treats
-     * very differently:
-     *   • LOAD REJECTION — the grid demand collapses but the turbine stays available.
-     *     The dump catches it and the plant rides it out at power. THIS is the ride-out
-     *     case, and it is genuinely prototypical (plants are designed for it).
-     *   • TURBINE TRIP — the stop valves slam. Above P-9 (~50 % power) a real
-     *     Westinghouse plant trips the reactor immediately, because that is exactly
-     *     what the P-9 interlock arms the trip for.
-     * The plant previously had no turbine-trip reactor trip, so both events read the
-     * same and this probe pinned the wrong one. TR-1 now drives the ride-out with a
-     * real load rejection; the turbine-trip case is TR-1b below. */
+    /* TR-1 RE-BANDED 2026-07-31 for the 40 % dump *(OWNER RULING: "Let's change it to
+     * 40%.")*. The old bands were minted at the P4 freeze from a 105 % dump and encoded a
+     * plant where the dump could swallow a full rejection on its own: "dump carries
+     * near-full power (90..103 %)", "Tavg swells only gently (300..312)", "no PORV lift".
+     * At the prototypical capacity none of those describe the event any more, and the
+     * event they described was a non-event — measured at 1.05, Tavg reached 305.3 °C and
+     * power held 97.5 %, i.e. the plant barely noticed a total loss of load.
+     *
+     * WHAT THIS PROBE ASSERTS NOW is the DEFENCE-IN-DEPTH LADDER running in order, which
+     * is the thing a 40 % dump makes visible and a 105 % dump hides: the dump saturates at
+     * its stop, the core self-throttles to match, the PORV lifts as the designed backstop,
+     * and the pressurizer safety never has to. FG-4 is unchanged and still checked first —
+     * NO SCRAM, and the operator still walks it down at their own pace.
+     *
+     * A real Westinghouse plant does not ride a full rejection either (its design case is
+     * a 50 % loss of load), so the relief lifts here are prototypical rather than a
+     * defect. The 50 % case is the one that must stay clean, and TR-1g pins it. */
     'TR-1': function () {
-      return test('TR-1 load rejection @100% — RIDE-OUT: dump catches, operator recovers, no scram', function (ck) {
+      return test('TR-1 load rejection @100% — RIDE-OUT: the ladder runs in order, no scram', function (ck) {
         var h = H('hot_full_power');
         h.run(30);
         // Full load rejection: demand to zero with the turbine still on line.
         h.cmd('set_load_target', { mwe: 0 });
-        // Phase 1 — hands-off ride: the TRIP-OPEN dump (Tavg-error fast-open,
-        // real Westinghouse behavior) catches the rejected load immediately —
-        // the reactor keeps making near-full power straight into the condenser
-        // with only a gentle Tavg swell. Graceful catch, then YOUR recovery.
+        // Phase 1 — hands-off ride. The dump opens to its stop and STAYS there; from that
+        // point the reactor itself has to shed the difference, through MTC. That handover
+        // is the lesson, and at 105 % it never happened.
         h.run(180);
         var mid = h.ts();
+        var cap = 100 * RD.PWR_CONFIG.steam_generator.steam_dump_max;
         ck('no scram through the hands-off ride', h.tripReason || 'none', h.tripTime == null, 'none');
-        ck('dump carries near-full power (90..103 %)', fmt(mid.power_pct, 0),
-          mid.power_pct > 90 && mid.power_pct < 103, '90..103');
-        ck('Tavg swells only gently (300..312)', fmt(mid.tavg_c, 1),
-          mid.tavg_c > 300 && mid.tavg_c < 312, '300..312');
+        ck('the dump SATURATES — it is a finite resource now', fmt(h.range('steam_dump_valve_pct').max, 0),
+          h.range('steam_dump_valve_pct').max >= cap - 1, '≥ ' + fmt(cap - 1, 0) + ' % (its cap)');
+        ck('so the CORE sheds the rest — self-throttles toward the dump (40..55 %)', fmt(mid.power_pct, 0),
+          mid.power_pct > 40 && mid.power_pct < 55, '40..55');
+        ck('Tavg swells hard but stays under the 335 °C scram', fmt(mid.tavg_c, 1),
+          mid.tavg_c > 312 && mid.tavg_c < 335, '312..335');
         // Phase 2 — the operator recovers at their own pace: rods walk the
         // plant down to the no-load point on the dump.
         var guard = 0;
@@ -273,13 +279,58 @@
         var t = h.ts();
         ck('no scram through the recovery either', h.tripReason || 'none', h.tripTime == null, 'none');
         ck('Tavg settled to the no-load anchor (297 ±5 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 297, 5), '297 ±5');
-        ck('no PORV lift anywhere in the event', fmt(h.range('pressure_mpa').max, 2),
-          h.range('pressure_mpa').max < 16.20, '< 16.20');
-        ck('dump carried the rejected load (peak ≥ 55 %)', fmt(h.range('steam_dump_valve_pct').max, 0),
-          h.range('steam_dump_valve_pct').max >= 55, '≥ 55');
+        // The PORV is SUPPOSED to lift here — it is the next rung once the dump is at its
+        // stop. Asserted positively, so that a future change quietly restoring enough dump
+        // capacity to suppress it has to come and edit this line.
+        ck('the PORV lifts — the designed backstop, not a defect', fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max >= 16.20, '≥ 16.20 MPa');
+        ck('…and the pressurizer SAFETY never has to (17.13)', fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < 17.13, '< 17.13 MPa');
         ck('SG never approached the lo-lo trip (min ≥ 25 %)', fmt(h.range('sg_level_pct').min, 1),
           h.range('sg_level_pct').min >= 25, '≥ 25');
         ck.info('peak Tavg during the ride', fmt(h.range('tavg_c').max, 1) + ' °C');
+        ck.info('peak SG pressure (safeties at 9.31)', fmt(h.range('steam_pressure_mpa').max, 2) + ' MPa');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    /* TR-1g (NEW 2026-07-31, with the 40 % dump) — THE REAL DESIGN CASE, and the one that
+     * justifies the capacity. Westinghouse sizes a 40 % dump so that a **50 % loss of
+     * load** needs no reactor trip: *"the Turbine Bypass System, designed for 40 percent
+     * of rated steam flow, is provided to give a maximum load rejection capability, in
+     * conjunction with a 10 percent reactor power decrease, of 50 percent rated steam flow
+     * without a trip"* (STPEGS UFSAR §10.4.4, ML22140A078); *"The Westinghouse design
+     * criterion is that load rejections up to 50% should not require a reactor trip"*
+     * (Vogtle LAR, ML072470691).
+     *
+     * Measured, this plant reproduces the documented SPLIT, not just the outcome: the dump
+     * saturates at 40 % and the core runs back to 89.3 % — a 10.7 % step, against the real
+     * plant's 10 % from rod control. Ours comes from MTC rather than the rod controller,
+     * which is a mechanism difference worth knowing, but the division of labour is the
+     * same and that is what the capacity is sized for.
+     *
+     * This is the check that says 40 % is ENOUGH. TR-1 says what happens past it. Without
+     * this one, lowering the dump further would go unnoticed until a full rejection. */
+    'TR-1g': function () {
+      return test('TR-1g 50% loss of load — the real design case: no trip, no relief lift', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('set_load_target', { mwe: 50 });
+        h.run(600);
+        var t = h.ts();
+        var cap = 100 * RD.PWR_CONFIG.steam_generator.steam_dump_max;
+        ck('no reactor trip — the design criterion', h.tripReason || 'none', h.tripTime == null, 'none');
+        ck('no PORV lift', fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < 16.20, '< 16.20 MPa');
+        ck('no SG safety lift (the other thing 40 % is sized for)', fmt(h.range('steam_pressure_mpa').max, 2),
+          h.range('steam_pressure_mpa').max < 9.31, '< 9.31 MPa');
+        ck('the dump is AT its stop — 40 % is doing all it can', fmt(h.range('steam_dump_valve_pct').max, 0),
+          h.range('steam_dump_valve_pct').max >= cap - 1, '≥ ' + fmt(cap - 1, 0) + ' %');
+        // The documented split: dump 40 % + a ~10 % reactor step = 50 % of load absorbed.
+        ck('…and the core takes the documented ~10 % step (85..93 %)', fmt(t.power_pct, 1),
+          t.power_pct > 85 && t.power_pct < 93, '85..93 %');
+        ck('Tavg swells modestly and holds (300..315)', fmt(h.range('tavg_c').max, 1),
+          h.range('tavg_c').max > 300 && h.range('tavg_c').max < 315, '300..315');
         T.checkSanity(ck, h);
       });
     },
@@ -380,8 +431,13 @@
         var td = d.ts();
         ck('the dump is carrying the rejection', fmt(td.steam_dump_valve_pct, 0),
           td.steam_dump_valve_pct > 30, '> 30 %');
+        // 90 -> 85 with the 40 % dump (2026-07-31): at a prototypical capacity the dump
+        // saturates on a 50 % rejection and the core takes the documented ~10 % step, so it
+        // settles at 89.3 % rather than 98.8 %. What this leg needs is only that the core
+        // stays HIGH while the generator reads 50 — 89.3 vs 50 is still a 1.8x disagreement,
+        // so the check discriminates exactly as well as it did at 2x.
         ck('the reactor is still up near full power', fmt(td.power_pct, 1),
-          td.power_pct > 90, '> 90 %');
+          td.power_pct > 85, '> 85 %');
         ck('but the generator delivers what was ASKED, not what the core makes (was 98.8)',
           fmt(td.mwe_output, 2), near(td.mwe_output, 50, 3), '50 ±3 MWe');
 
@@ -400,7 +456,116 @@
         r.run(300);
         ck('rated output unchanged by the reformulation', fmt(r.ts().mwe_output, 2),
           near(r.ts().mwe_output, 100, 0.5), '100 ±0.5 MWe');
+
+        // ---- leg E: the SAME predicate, at the third site. `close_msiv` decided whether
+        // to trip the turbine with `generator_load > 0` — so isolating main steam while
+        // synchronised at a 0 MWe target left the machine UNtripped and still on line,
+        // and leg A's fix then held its rotor at rated with no admission steam at all: a
+        // generator motoring on the grid. Measured on the unfixed handler, that state ran
+        // 77 s until an unrelated `sg_level low` scram ended it. TR-5 never saw this
+        // because it isolates at 100 % load, where the load test and the breaker test
+        // agree — the same blind spot that hid legs A and B.
+        var m = H('hot_full_power');
+        m.run(30);
+        m.cmd('set_load_target', { mwe: 0 });
+        m.run(240);                                  // on line, synchronised, zero load
+        m.cmd('close_msiv');
+        m.run(10);
+        var tm = m.ts();
+        ck('no steam past the MSIV', fmt(tm.steam_flow_normalized, 3),
+          tm.steam_flow_normalized === 0, '0');
+        ck('isolating main steam trips the turbine at ZERO load too', String(!!tm.turbine_tripped),
+          tm.turbine_tripped === true, 'true');
+        ck('and the breaker opens with the trip', String(tm.load_mode),
+          tm.load_mode === 'disconnected', 'disconnected');
+        ck('so the rotor coasts — it does not motor on the grid (was 1800 rpm)',
+          fmt(tm.turbine_rpm, 0), tm.turbine_rpm < 1790, '< 1790 rpm and falling');
         T.checkSanity(ck, z);
+      });
+    },
+
+    /* TR-1f (#220) — the P-9 permissive is an INSTRUMENT reading. The real one is
+     * derived from the nuclear instrumentation and nothing else: *"The Power Range
+     * Neutron Flux, P-9 interlock is actuated at approximately 50% power as determined
+     * by two-out-of-four NIS power range detectors."* (NUREG-1431 Rev 4 Bases B 3.3.1,
+     * ML12100A228). Ours read `s.power_pct` — TRUE power — so a permissive that gates
+     * two reactor trips and an AFW auto-start could not be fooled by the channel it is
+     * supposed to be reading. HR1, in the one place it is most expensive.
+     *
+     * Asserts the CLAIM, not the code (HR10). Verified by injection: on the pre-fix
+     * engine leg B FAILS — the plant scrams on P-9 with the power-range channel reading
+     * 40 %. Legs A and C are the calibration pins: with a healthy channel NOTHING moves,
+     * which is what makes this a sensing fix rather than a protection change.
+     *
+     * DECLARED DEPARTURE (§8.11): one channel, not two-out-of-four, so a single failed
+     * channel defeats the permissive here where a real plant out-votes it. That is the
+     * lesson, not a defect — and it is the ONLY way the difference is observable. */
+    'TR-1f': function () {
+      return test('TR-1f P-9 reads the NIS channel — a failed power range defeats the permissive', function (ck) {
+        // ---- leg A: healthy channel, the TR-1b behaviour must be untouched.
+        var a = H('hot_full_power');
+        a.run(30);
+        ck('indicated power tracks truth when the channel is healthy',
+          fmt(a.ins().power_range, 1) + ' vs ' + fmt(a.ts().power_pct, 1),
+          Math.abs(a.ins().power_range - a.ts().power_pct) < 10, 'within 10 %');
+        a.cmd('inject_failure', { failure_id: 'turbine_trip' });
+        var dtA = a.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 120);
+        ck('turbine trip still scrams on P-9 (TR-1b unmoved)',
+          dtA >= 0 ? fmt(dtA, 1) + ' s — ' + (a.tripReason || '?') : 'no trip in 120 s',
+          dtA >= 0 && dtA <= 5 && /turbine_tripped/.test(a.tripReason || ''), '≤ 5 s on turbine_tripped');
+
+        // ---- leg B: the channel fails LOW, below the 50 % setpoint, while the reactor
+        // is genuinely at full power. P-9 must de-arm — the permissive believes its
+        // instrument. Above P-10 (10 %) deliberately, so the IR/SR trips stay bypassed
+        // and the only thing this leg can be measuring is P-9.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('set_instrument_failure', { instrument_id: 'power_range', mode: 'stuck', value: 40.0 });
+        b.run(20);
+        ck('channel stuck below the P-9 setpoint', fmt(b.ins().power_range, 1), b.ins().power_range < 50, '< 50 %');
+        ck('while the reactor is really at power', fmt(b.ts().power_pct, 1), b.ts().power_pct > 90, '> 90 %');
+        ck('not already scrammed by something else', String(!!b.ts().scrammed), !b.ts().scrammed, 'false');
+        b.cmd('inject_failure', { failure_id: 'turbine_trip' });
+        var dtB = b.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
+        ck('P-9 is DE-ARMED — no anticipatory scram (was: scram at +0.5 s)',
+          dtB >= 0 ? 'scram at +' + fmt(dtB, 1) + ' s on ' + b.tripReason : 'no scram in 300 s',
+          dtB < 0, 'no scram');
+        // …and the plant is then exactly the TR-1 ride-out case: dump to its stop, core
+        // sheds the rest, PORV as the backstop. Re-banded 2026-07-31 with the 40 % dump —
+        // what this leg needs is that the plant SURVIVES the un-anticipated turbine trip,
+        // not that it survives it quietly.
+        ck('the dump goes to its stop instead', fmt(b.range('steam_dump_valve_pct').max, 0),
+          b.range('steam_dump_valve_pct').max >= 100 * RD.PWR_CONFIG.steam_generator.steam_dump_max - 1,
+          '≥ its cap');
+        ck('and the pressurizer safety never lifts (PORV holds it)', fmt(b.range('pressure_mpa').max, 2),
+          b.range('pressure_mpa').max < 17.13, '< 17.13 MPa');
+
+        // ---- leg C: the OTHER P-9 consumer, the SG hi-hi (P-14) reactor trip. Same
+        // failed channel: the hi-hi must still isolate feed and trip the turbine, but
+        // must NOT scram, because P-9 is what arms that leg.
+        var c = H('hot_full_power');
+        c.run(30);
+        c.cmd('set_instrument_failure', { instrument_id: 'power_range', mode: 'stuck', value: 40.0 });
+        c.run(20);
+        c.cmd('inject_failure', { failure_id: 'sg_overfeed' });
+        // The hi-hi's un-gated half fires first: isolate feed + trip the turbine. Catch it
+        // there, because the feed isolation carries `reset_below: 85` and has already let
+        // go by the end of the run — asserting it at the end pins a transient that is gone.
+        var dtIso = c.runUntil(function (ts) { return !!ts.turbine_tripped; }, 600);
+        ck('hi-hi still did its un-gated half — turbine tripped',
+          dtIso >= 0 ? '+' + fmt(dtIso, 1) + ' s' : 'never', dtIso >= 0, 'yes');
+        ck('…and the reactor was NOT scrammed at that moment (P-14 is P-9-gated)',
+          String(!!c.ts().scrammed), !c.ts().scrammed, 'false');
+        var dtC = c.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 600);
+        // The P-14 leg is `sg_level high`. What DOES happen is the sub-P-9 behaviour —
+        // hi-hi isolates feed and trips the turbine, and the plant then trips ~2.5 min
+        // later on `sg_level low`, a genuine limit reached by draining the bottled SG.
+        // Measured: +153.0 s. That is the ride-out plant's honest failure path (FG-4),
+        // and it is what "anticipation removed" is supposed to look like.
+        ck('the P-14 leg did NOT scram — P-9 is what arms it',
+          dtC >= 0 ? 'scram at +' + fmt(dtC, 1) + ' s on ' + c.tripReason : 'no scram in 600 s',
+          !/sg_level high/.test(c.tripReason || ''), 'not sg_level high');
+        T.checkSanity(ck, a);
       });
     },
 
@@ -416,10 +581,16 @@
         ck('the turbine is NOT flagged tripped', String(!!t.turbine_tripped), !t.turbine_tripped, 'false');
         ck('the unit is off line', String(t.load_mode), t.load_mode === 'disconnected', 'disconnected');
         ck('the breaker is open — no electrical output', fmt(t.mwe_output, 1), t.mwe_output < 1, '≈ 0 MWe');
-        ck('the dump catches the rejected load', fmt(h.range('steam_dump_valve_pct').max, 0),
-          h.range('steam_dump_valve_pct').max >= 55, '≥ 55 %');
-        ck('no PORV lift through the evolution', fmt(h.range('pressure_mpa').max, 2),
-          h.range('pressure_mpa').max < 16.20, '< 16.20');
+        // A planned offline at 100 % IS a full load rejection, so it lands in TR-1's
+        // territory: dump to its stop, core sheds the rest, PORV as the backstop. Re-banded
+        // 2026-07-31 with the 40 % dump. TR-1d's CLAIM is about `disconnect_grid` not being
+        // a turbine trip (#230) — those four checks above are the ones that carry it, and
+        // they are untouched. These two only have to confirm it stayed survivable.
+        ck('the dump goes to its stop', fmt(h.range('steam_dump_valve_pct').max, 0),
+          h.range('steam_dump_valve_pct').max >= 100 * RD.PWR_CONFIG.steam_generator.steam_dump_max - 1,
+          '≥ its cap');
+        ck('the pressurizer safety never lifts', fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < 17.13, '< 17.13');
         ck('SG never approached the lo-lo trip', fmt(h.range('sg_level_pct').min, 1),
           h.range('sg_level_pct').min >= 25, '≥ 25 %');
         // The machine must be RE-SYNCHRONISABLE — a planned offline is reversible, which
@@ -531,12 +702,12 @@
      * to run power to 114 %. Any armed system has a threshold, and any threshold is a
      * discontinuity — so a rejection just UNDER `dump_load_reject_mwe` is a manoeuvre the
      * operator has to handle, and hands-off it ends at the PORV. That is a named
-     * simplification (DESIGN_COMPANION §8.8), not a defect, and this probe pins BOTH sides
+     * simplification (DESIGN_COMPANION §8.21), not a defect, and this probe pins BOTH sides
      * of the cliff so it cannot move silently. Lowering the arm is not the fix: an arm low
      * enough to catch an ordinary 15 MWe dispatch cut leaves the dump venting the difference
      * forever, holding the reactor at 100 % and destroying the EV-11 load-follow lesson. */
     'TR-1c': function () {
-      return test('TR-1c sub-threshold load rejection — the C-7 arm is a cliff (declared, §8.8)', function (ck) {
+      return test('TR-1c sub-threshold load rejection — the C-7 arm is a cliff (declared, §8.21)', function (ck) {
         var arm = RD.PWR_CONFIG.steam_generator.dump_load_reject_mwe;
         ck.info('arm threshold under test', fmt(arm, 0) + ' MWe');
 
@@ -1201,8 +1372,15 @@
         h2.run(30);
         h2.cmd('set_load_target', { mwe: 0 });
         h2.run(300);
-        ck('the ride-out swell stays well clear of it (< 90 %)', fmt(h2.range('pzr_level_pct').max, 1),
-          h2.range('pzr_level_pct').max < 90 && h2.tripTime == null, '< 90, no scram');
+        // Re-banded 2026-07-31 with the 40 % dump: the bigger Tavg swell drives a bigger
+        // insurge, so the ride-out peak went 88.x -> 95.6 % against the 97 % going-solid
+        // trip. It still does NOT trip, which is the claim — but the margin is now ~1.4
+        // points, and that is deliberately reported rather than hidden inside a band, so
+        // the next person tightening this knob can see how close it runs.
+        ck('the ride-out swell does NOT reach the going-solid trip', fmt(h2.range('pzr_level_pct').max, 1),
+          h2.range('pzr_level_pct').max < 97 && h2.tripTime == null, '< 97, no scram');
+        ck.info('margin to the 97 % trip on a full rejection',
+          fmt(97 - h2.range('pzr_level_pct').max, 1) + ' points');
       });
     },
 

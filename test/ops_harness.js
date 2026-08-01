@@ -12,9 +12,13 @@
  *
  * M5 parity: physics always steps at the fixed 0.02 s dt (M5 deviation note —
  * acceleration is MORE steps per broadcast, never a bigger dt), and protection
- * evaluates once per broadcast (100 ms of wall time). At `accel`× the harness
- * therefore evaluates M4 every accel·5 physics steps — reproducing the real
- * protection latency a player experiences under time acceleration.
+ * evaluates on a SIM-time cadence capped at M5's PROTECTION_DT (0.1 s) — so the
+ * harness evaluates M4 every 5 physics steps at EVERY acceleration, reproducing
+ * what a player gets. Until #153 this read `accel·5` steps, mirroring an M5 that
+ * evaluated once per broadcast; that made protection latency a function of the UI
+ * speed button, and above 600× the PWR's 120 % high-flux trip was never evaluated
+ * while the excursion was happening. `accel` still varies command timing and the
+ * automation/evaluation interleave, so it is not a no-op parameter.
  *
  * Recorder: every sample interval (0.5 sim-s default) the harness updates
  * min/max for every numeric true_state field, captures first-activation times
@@ -28,6 +32,7 @@
 
   var DT = 0.02;
   var BROADCAST_WALL_S = 0.1;   // M5 NORMAL_MS = 100 ms
+  var PROTECTION_DT = 0.1;      // M5 PROTECTION_DT — protection's sim-time cadence cap (#153)
 
   function engineCtor(plant) {
     if (plant === 'pwr') return RD.PWREngine;
@@ -49,7 +54,11 @@
     this.cfl = new RD.ControlFailureLayer(this.eng, this.eng.getProtectionConfig());
     this.dt = DT;
     this.accel = opts.accel || 1;
-    this.evalEvery = Math.max(1, Math.round(this.accel * BROADCAST_WALL_S / DT));
+    // M5 parity, post-#153: protection is on a SIM-time cadence capped at
+    // PROTECTION_DT, so the interval no longer scales with `accel` at all. Keeping
+    // the old `accel × broadcast` form here would leave the ops suites certifying a
+    // plant no player can produce — the inverse of #209, and the same class of error.
+    this.evalEvery = Math.max(1, Math.round(Math.min(this.accel * BROADCAST_WALL_S, PROTECTION_DT) / DT));
     this.sampleEvery = opts.sampleEvery != null ? opts.sampleEvery : 0.5;   // sim-s
     this._stepCount = 0;
     this._nextSample = 0;

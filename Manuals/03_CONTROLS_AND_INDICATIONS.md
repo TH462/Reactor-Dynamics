@@ -2,7 +2,7 @@
 
 **Document:** PWR-CI-01  
 **Title:** Control Station Inventory and Operating Instructions  
-**Revision:** 22  
+**Revision:** 8  
 
 ---
 
@@ -123,7 +123,7 @@ the heat sink is restored. **Recovery is procedural, not a button.**
 2. Verify rods at bottom.  
 3. Verify the caption reads **PRESS TO RESET**.  
 4. Press to reset; verify the **REACTOR TRIP** alarm clears.  
-5. Withdraw rods only under the startup net (**04 §PWR-N02**), and only if restart is
+5. Withdraw rods only under the startup net (**04 §PWR-N03**), and only if restart is
    intended — see the xenon caution in **04 §7.0**.
 
 ---
@@ -534,8 +534,8 @@ power is ~1000 gpm, at 6 % power it is ~50 gpm.
 
 | Control | Effect |
 |---------|--------|
-| **Suction valve Open / Shut** | The RHR hot-leg suction valve — the system's entry point. **Interlocked**: it will not open above ~**400 psi (2.76 MPa)** (400 psi) primary pressure, and autocloses if pressure rises back above the interlock (protects the low-pressure piping) |
-| **AUTO** | Arms the valve to open itself when scrammed and pressure is below the interlock |
+| **Suction valve Open / Shut** | The RHR hot-leg suction valve — the system's entry point. **Interlocked on two separate setpoints**: it will not **open** above **400 psi (2.76 MPa)**, and **autocloses** only once pressure rises back above **600 psi (4.14 MPa)** (protects the low-pressure piping). The ~200 psi (1.38 MPa) gap between them is deliberate — see **09 §RHR** |
+| **AUTO** | Arms the valve to open itself when scrammed and pressure is below the **400 psi (2.76 MPa)** block-open permissive |
 | **Cooldown Rate (HX flow split)** | Throttles how much RHR flow passes through the heat exchanger vs the bypass — this sets the **cooldown RATE without disturbing inventory**. Walk it up slowly to hold the ~**122 °F (50 °C)/h** cooldown limit; full HX flow on a hot plant overshoots the limit |
 | **Indication** | `eccs_mode` shows **RHR** while the system is in service; primary temperature trend is the rate instrument |
 | **Scope** | The Mode 4→5 decay-heat path: below the interlock pressure RHR carries the plant to Cold Shutdown and holds it there (see `05_MODE_TRANSITIONS.md` PWR-T21) |
@@ -744,7 +744,7 @@ These topics appear as dedicated **campaign** missions; manuals cover them here 
 ### 17.1 1/M and NIS handoff (Mode 3 → Mode 2)
 
 - Source Range counts show subcritical multiplication as rods withdraw (1/M idea: counts rise as you approach criticality).  
-- When Intermediate Range ≥ **1e-10 A** (P-6), secure **SR detector** — see **PWR-T13** / **PWR-N02**.  
+- When Intermediate Range ≥ **1e-10 A** (P-6), secure **SR detector** — see **PWR-T13** / **PWR-N03**.  
 - Campaign mission `pwr_startup` / `pwr_startup_challenge` grade this path; manuals do not auto-grade.
 
 ### 17.2 Rod AUTO — T-ref capture trap (Mode 1)
