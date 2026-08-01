@@ -36,12 +36,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
     The Westinghouse Technology Systems Manual §5.1 (ADAMS **ML11223A219**) gives the same
     structure for valves 8701/8702 — 425 psig open block, ~585 psig autoclose.
   - **What it fixes for the player.** Paired with the one-shot entry permissive kept by
-    #287, the first chatter was **permanent**. Measured engine-direct: before the split,
-    *every* rebound above 400 psi shed the valve — including the **409 psi (2.82 MPa)**
-    case #287 documents, a cooldown whose own pressure-control setpoint sat nine psi over
-    the interlock. After it, rebounds to 409 / 435 / 508 psi all hold, and the valve lets
-    go at its 600 psi setpoint (observed 604 psi — the plant's own pressure overshoots
-    inside the step). Losing RHR now takes a genuine excursion, not a hunt.
+    #287, the first chatter was **permanent**. Measured engine-direct from the
+    `cold_shutdown` IC: before the split, *every* rebound above 400 psi shed the valve —
+    including the **409 psi (2.82 MPa)** case #287 documents, a cooldown whose own
+    pressure-control setpoint sat nine psi over the interlock. After it, rebounds to 409 /
+    435 / 508 / 580 / 595 psi all hold, and the valve lets go between 595 and 609 psi — its
+    setpoint. Losing RHR now takes a genuine excursion, not a hunt. **Heatup is
+    unaffected**: RHR isolates 6 s later, at 605 psi instead of 413 psi, Tavg unmoved
+    (122 → 124 °F).
   - The open permissive was deliberately **not** moved to widen the band: 400 psi is what
     `04`, `05`, `09` and the campaign all quote, and it is inside the sourced range for a
     block-open setpoint. The autoclosure was deliberately **not** removed either, though

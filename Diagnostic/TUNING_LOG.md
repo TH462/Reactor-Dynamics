@@ -127,17 +127,29 @@ the pressure below which the RHR hot-leg suction valve may **open** (`pwr_engine
 deadband, so the valve chatters across a single boundary — and against the one-shot entry
 permissive kept by #287, the first chatter is permanent.
 
-**Measured, engine-direct, `cold_shutdown` IC, seed 42.** Align RHR at 218 psi (1.5 MPa),
-then hold a rebound pressure for 2 s of plant time and read the valve:
+**Measured, engine-direct, `cold_shutdown` IC** (2.50 MPa / 363 psi, 122 °F / 50 °C, RHR
+aligned at the IC). Hold a rebound pressure for 2 s of plant time and read the valve:
 
 | rebound | pre-split | post-split |
 |---|---|---|
-| 290 psi (2.00 MPa) | OPEN | OPEN |
+| 377 psi (2.60 MPa) | OPEN | OPEN |
 | **409 psi (2.82 MPa)** — the #287 cooldown's own setpoint | **CLOSED** | **OPEN** |
 | 435 psi (3.00 MPa) | CLOSED | OPEN |
 | 508 psi (3.50 MPa) | CLOSED | OPEN |
-| 580 psi (4.00 MPa) | CLOSED | CLOSED |
+| 580 psi (4.00 MPa) | CLOSED | OPEN |
+| 595 psi (4.10 MPa) | CLOSED | OPEN |
+| 609 psi (4.20 MPa) | CLOSED | CLOSED |
 | 725 psi (5.00 MPa) | CLOSED | CLOSED |
+
+The boundary sits exactly where it is configured: 595 psi holds, 609 psi lets go, and on a
+genuinely cold plant the pressure does not drift — the max the engine saw equals the value
+held, every row.
+
+**Heatup is unaffected.** Mode 5 → Mode 4 per `04` step 2 (start RCPs, raise the pressure SP
+to NOP): RHR isolates **6 s later** than before, at **605 psi** instead of 413 psi, with Tavg
+unmoved (**122 → 124 °F**, 50.1 → 50.9 °C). The pressurizer ramps away from the cold IC fast
+enough that the valve drops out almost immediately either way, which is why no procedure,
+mission or campaign gate moved.
 
 **The fix.** New `emergency.rhr_autoclose_mpa` = **4.14 MPa (600 psig)**; step 9b points at
 it. The 400 psi block-open permissive is **unchanged**. Sourced both sides — NUREG-0933
@@ -147,14 +159,17 @@ a block of the manual open signal at a lower RCS pressure (typically 425 psig)"*
 
 **Two things to know.**
 
-**The 580 psi row above is a RIG ARTIFACT, not a plant behaviour, and I nearly reported it
-as one.** The autoclose fires exactly at its setpoint: held at "4.00 MPa" the plant's own
-pressure rose to **4.163 MPa (604 psi)** inside the very first 0.02 s step, which is
-genuinely above 600 psig. The first cut of the rig was worse — it used `hot_full_power` and
-reported the valve closing at **377 psi**, *below* the configured 400, because a 300 °C
-plant held at 2.6 MPa is so far off equilibrium that it surges through the interlock
-mid-step. If you re-measure this, re-assert pressure every step and read back what the
-engine actually had; do not trust the value you wrote in.
+**`engine.reset()` TAKES AN OBJECT, AND A STRING IS SILENTLY IGNORED.**
+`reset('cold_shutdown')` does not throw, does not warn, and hands you **`hot_full_power`** —
+the signature is `reset(cmd)` reading `cmd.initial_state`, defaulting to `hot_full_power`.
+The first three rigs in this pass all ran on a 300 °C plant while their output said
+`cold_shutdown`, and the numbers *looked* plausible enough that a first version of this entry
+was published with them. Two false findings came out of it: a claim that the valve closed at
+**377 psi** — *below* the configured 400 — and a claim that the 580 psi row closed because
+the plant overshot to **604 psi** mid-step. Both were the wrong IC surging, not the
+interlock. On the real cold IC neither happens and the boundary is exactly 600 psig.
+**Assert your IC rather than trusting the argument**: one `console.log` of
+`s.pressure_mpa` after `reset` would have caught all three rigs.
 
 **The deadband cuts both ways and the manual now says so.** Losing RHR takes 600 psi;
 getting it back takes 400 psi. So after an autoclose you must come down **past** where you

@@ -2458,8 +2458,9 @@
         // both jobs ran off the one 400 psi constant: the deadband was zero, and a
         // rebound to 409 psi — the #287 cooldown's own pressure setpoint — shut the
         // valve for good against the one-shot entry permissive. These two checks
-        // fail on the pre-split engine (measured: CLOSED at every rebound above
-        // 400 psi, 409 psi included).
+        // fail on the pre-split engine (measured from the cold_shutdown IC: CLOSED at
+        // every rebound above 400 psi, 409 psi included; post-split the boundary is
+        // 595 psi holds / 609 psi lets go).
         var eOpen = h.eng.cfg.emergency.rhr_valve_interlock_mpa;
         var eAuto = h.eng.cfg.emergency.rhr_autoclose_mpa;
         ck('autoclose sits ABOVE the open permissive', eAuto + ' vs ' + eOpen,

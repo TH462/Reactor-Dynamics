@@ -80,17 +80,30 @@ one-shot entry permissive. Post-split, 409 / 435 / 508 psi all hold and the valv
 its 600 psi setpoint. Losing shutdown cooling now requires a real excursion rather than a
 hunt, which is what makes `06 PWR-A33` an alarm about an event instead of about a boundary.
 
-### The measurement trap this pass walked into twice
+### The measurement trap: `reset()` takes an OBJECT and silently ignores a string
 
-The first rig used `hot_full_power` and reported the valve closing at **377 psi** — *below*
-the configured 400. A 300 °C plant held at 2.6 MPa is so far off equilibrium that its own
-pressure surges across the interlock inside a single 0.02 s step. Moving to `cold_shutdown`
-fixed the gross error but not the class of it: the post-split table still shows a close at a
-commanded 4.00 MPa, because the engine reached **4.163 MPa (604 psi)** in the first step.
-The interlock fires exactly at its setpoint; the *rig* was lying about the input. **Read
-back the pressure the engine actually had — never the one you wrote in.** The new deadband
-check asserts `eOpen < s.pressure_mpa < eAuto` on the observed value for exactly this
-reason, so it cannot pass on a pressure that drifted out of the band it claims to test.
+`PWREngine.prototype.reset = function (cmd)` reads `cmd.initial_state` and defaults to
+`hot_full_power`. So `eng.reset('cold_shutdown')` does not throw, does not warn, and gives
+you a **300 °C plant at 15.41 MPa** while your own log line says `cold_shutdown`. Three
+successive rigs in this pass ran that way, and the first version of this section was
+published from them.
+
+It produced two confident, wrong findings. One: the valve "closed at **377 psi**", *below*
+its configured 400 — a hot plant clamped to 2.6 MPa is so far off equilibrium that it surges
+through the interlock inside a single 0.02 s step. Two: the 580 psi row "closed because the
+plant overshot to **604 psi** mid-step" — same cause, dressed up as a physics explanation,
+which is the more dangerous of the two because it *reads* like a measurement result. On the
+genuine cold IC the pressure does not drift at all (max seen = value held, every row) and the
+boundary is exactly 600 psig: 595 psi holds, 609 psi lets go.
+
+**The generalisable rule: assert the IC, do not trust the argument.** One `console.log` of
+`s.pressure_mpa` immediately after `reset` catches this in seconds, and nothing else in the
+rig will — the engine is perfectly happy, the output is plausible, and the only tell is that
+the numbers are wrong. This is HR12's neighbouring failure: the claim *was* measured, and the
+measurement was of a different plant than the one named.
+
+The new deadband check asserts `eOpen < s.pressure_mpa < eAuto` on the **observed** value for
+the same reason, so it cannot pass on a pressure that drifted out of the band it tests.
 
 ### The gate
 
