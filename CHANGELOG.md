@@ -22,6 +22,9 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Manual set revision counter reset to Rev 0.** Pre-public history zeroed; public
+  counting starts after go-public (next change is Rev 1). Development rows remain in git.
+
 - **Normal operating procedures renumbered to plant sequence** (manual redesign baseline).
   IDs now follow cold → power → continuous control → cold: **N01** heatup, **N01a** nuclear
   training heatup, **N02** Mode 3 lineup, **N03** approach to criticality; **N04–N15**

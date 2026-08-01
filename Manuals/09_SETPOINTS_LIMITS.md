@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-01  
 **Title:** Operating Limits and Protection Setpoints — PWR  
-**Revision:** 25  
+**Revision:** 0  
 **Source:** As-built `pwr_control.js`, `pwr_config.js`; normal values captured from the live engine  
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.

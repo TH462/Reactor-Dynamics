@@ -2,7 +2,7 @@
 
 **Document:** PWR-EOP-01  
 **Title:** Failure Response — PWR Trainer  
-**Revision:** 25  
+**Revision:** 0  
 
 ---
 
