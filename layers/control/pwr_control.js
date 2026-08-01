@@ -770,6 +770,23 @@
       label: 'Rod control → Tavg (AUTO)',
       hint: 'Automatic rod control — the reference temperature Tref is PROGRAMMED on turbine load (a sliding ~297 °C no-load → ~304 °C full-power line), and the rods drive indicated Tavg to it: a Tavg−Tref mismatch (e.g. after a load change) computes the required rod direction and a Westinghouse-style variable speed (bigger error → faster drive), locking up inside a ±0.8 °C (±1.5 °F) deadband. As load changes Tref slides with it, so the rods walk Tavg along the program. Any manual rod motion takes it back to MAN.',
       group_id: 'control_rods', offOnScram: true,
+      // Free-play preset starts come up with rod control in AUTO *(OWNER RULING, 2026-08-01:
+      // "Let's start the rods in auto. Might as well, everything else starts in auto.")*, which
+      // is also what a real unit runs at power. Instructed content (noDefaults) is unaffected.
+      //
+      // AT-POWER ONLY, and this half is NOT decorative — it is measured. A blanket `true`
+      // engages the channel in Mode 5 and during `pwr_heatup`, where Tavg (~60 °C cold) is
+      // hundreds of degrees below the no-load Tref the load program asks for, so the channel
+      // withdraws rods to close the error and takes the plant critical: `run_procedures_stack`
+      // `pwr_heatup` SCRAMMED at step 6 on `source_range high`, and `run_behavior` SS-9 (cold
+      // shutdown hands-off) tripped the same way. Gated here it costs neither. A real plant
+      // does not put rod control in automatic below the power range either.
+      //
+      // HR1: reads the POWER-RANGE INSTRUMENT, not `true_state.power_pct`. The first cut read
+      // truth and `run_hardrules` failed it — the same defect class as #220, where the P-9
+      // permissive read the plant instead of the gauge. This is the P-10 analogue and a real
+      // one is a NIS power-range permissive, so the instrument is also the prototypical read.
+      defaultOn: function (ctx) { return ((ctx.instruments || {}).power_range || 0) > 10; },
       manual_overrides: ['rod_nudge', 'rod_start'],   // operator rod motion on this group → MAN
       pv: function (s) { return s.instruments.tavg; },
       // T-ref := the load program (HR1: reads indicated steam flow). Re-evaluated each

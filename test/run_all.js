@@ -122,7 +122,17 @@ var BASELINES = {
   // rest to 46 %, PORV lifts as the designed backstop, pressurizer safety does not — and
   // the PORV check is deliberately POSITIVE, so restoring enough capacity to suppress the
   // lift has to come and edit this line rather than sliding through a band.
-  'run_behavior.js':       { code: 0, score: '42pass 0xfail' },
+  // 42 → 43 (#289, 2026-08-01): TR-1h, the FULL rejection on the SHIPPED lineup — rod control
+  // is `defaultOn` at power now *(OWNER RULING, 2026-08-01: "Let's start the rods in auto.
+  // Might as well, everything else starts in auto.")*, and nothing asserted what a player
+  // actually gets from the event #289 was filed on. Five probes (EV-3, EV-11, TR-1, TR-1c,
+  // TR-1e leg B) now stand the rod channel DOWN explicitly via `rodsManual()` — they are
+  // rod-less BY NAME and intent, and inheriting the lineup would have quietly converted them
+  // into something else. TR-1g was RE-AUTHORED against WTSM 11.2 (the dump is transient:
+  // "until the power in the reactor is reduced to the same value as the secondary load"), not
+  // re-banded — its old 85..93 % steady state was a rods-in-manual artefact. Injection-checked:
+  // 7 of the new checks go red on the pre-#289 lineup.
+  'run_behavior.js':       { code: 0, score: '43pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -282,7 +292,37 @@ var BASELINES = {
   // files before this number was lowered (3, 1 and 4 files respectively). The accumulator one
   // now survives in TUNING_LOG.md ALONE, which is thin; if that entry is ever rotated, the
   // ruling goes with it.
-  'run_hardrules.js':      { code: 0, score: '58checks 0failed' },
+  // 58 -> 60 on 2026-08-01 (#289): two new dated owner-ruling citations for the
+  // pressurizer level-program ceiling — CHANGELOG.md and BUILD_DECISIONS.md. Both are
+  // recorded as a SELECTION ("selected 'Add the program ceiling' from four options put to
+  // him"), not dressed as verbatim words, because that is what it was. This comment's
+  // standing point again: the code change moved NOTHING here; the write-up moved it.
+  // ---- run_hardrules: BOTH branches moved this, and NEITHER figure is right ----------
+  // develop took it 58 -> 60 -> 63 (#289) and workbench 43 -> 77 -> 80 (#290, #238), so a
+  // mechanical pick of either side ships a drift. The number below is MEASURED on the merged
+  // tree, which is the rule CLAUDE.md states for exactly this entry. Both histories kept:
+  //
+  // [develop] 60 -> 63 (#289, 2026-08-01b): three more citation sites for the rods-in-auto
+  // and ROD-AUTO-colour rulings. The CODE change moved nothing here; the write-up did. This
+  // gate ALSO caught a real defect in that change: the first `defaultOn` read
+  // `true_state.power_pct` and failed as an undeclared HR1 site, the #220 class exactly, so
+  // it scored 61checks 1failed before it scored 63/0.
+  //
+  // [workbench] 60 -> 77 (#290): HR11 matched the literal string `OWNER RULING` only, so
+  // ELEVEN in-scope `OWNER DIRECTIVE` citations were unguarded — including "never merge into
+  // develop", "never push the lanes", and the US-customary-units rule — and one was already
+  // malformed. NOT the usual write-up drift: no ruling was added, the guard grew to cover
+  // markers that were always there. Decomposed: 43 baseline, +11 the widened marker, +4 the
+  // corrected inline-code test (the marker sat BETWEEN two backtick spans rather than inside
+  // one), +2 bringing `.claude/skills/` into scope.
+  // [workbench] 77 -> 80 (#238): ordinary write-up drift — the SI display layer's code moved
+  // nothing; the three sites citing the flow-unit selection are the whole delta. The fourth
+  // copy, in the ui/diagram/board/ source comment, is NOT counted: this gate does not scan
+  // ui/, so a citation living only there would be unguarded.
+  //
+  // [merged] MEASURED 84 — not 63, not 80, and not 63+80 arithmetic. The #290 guard also sees develop's 2026-08-01b/c write-ups, which workbench's
+  // "measured on the merged tree" note predates. Re-measured here.
+  'run_hardrules.js':      { code: 0, score: '83checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -484,7 +524,16 @@ var BASELINES = {
   // (it was never tripped, it is simply cold), so the first cut of this alarm could
   // not fire in the one regime where losing RHR matters most. The probe also pins the
   // permissive staying ONE-SHOT, which is now ruled-on behaviour.
-  'run_m4.js':             { code: 0, score: '33/33 185passed' },
+  // 33 -> 34 on 2026-08-01 (#294): the MODE 4 half of `COLD_MODES = [4, 5]` was tested
+  // NOWHERE. Measured by injection — narrowing it to `[5]` left run_m4, run_pwr, run_ops,
+  // run_contract, run_reachability and run_hardrules all green at 185/240/351/139/58/75,
+  // so the Mode 4 half could have been deleted outright without a gate objecting. What it
+  // suppresses is real: on a correctly depressurized cold plant the injected form gives a
+  // spurious CRITICAL (`pzr_pressure_lolo`), three spurious warnings, and loses A33 — the
+  // one alarm carrying news — entirely. The probe reaches Mode 4 the way the plant really
+  // does, by losing the heat sink and heating on decay + pump heat, not by hand-setting a
+  // temperature; 5 checks red on the injected config.
+  'run_m4.js':             { code: 0, score: '34/34 194passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL

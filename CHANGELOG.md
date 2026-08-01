@@ -21,7 +21,233 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The PWR board reads SI now — the Settings units toggle works on it** (#238)
+  *(OWNER RULING, 2026-08-01: selected "m³/h" from three options put to him for the SI flow
+  unit — m³/h, L/min and kg/s. A selection, not verbatim words.)* The board was authored in
+  US customary at every readout, so #237 had to **disable the SI position while the PWR was
+  active**: a global SI selection put SI chart chips beside US board readouts, the one
+  indefensible state. Both halves move together now.
+
+  The board driver has a **display-unit layer** — one table of unit families
+  (`UNIT_FAMILIES` in `ui/diagram/board/pwr_board_wiring.js`), each declaring per mode its
+  conversion, unit string, display decimals, ▲▼ step and band quantum — and everything that
+  shows a number goes through it: **19 readouts**, the **6 vital tiles** (reading, unit,
+  decimals AND band edges) and all **5 unit-bearing setpoint boxes** (value, unit span,
+  decimals, step, valid range and range hint). `ui/app.js` passes `ctx.units` as an
+  **accessor**, so a units change is a re-render, not a remount.
+
+  Four things worth knowing.
+
+  **US mode is unchanged by construction, and that is measured rather than asserted.** Every
+  US entry reproduces the arithmetic and the rounding that was inline before, and the unit
+  STRING in US comes from the authored item rather than from the table — so the board's three
+  spelling quirks (`F` not `°F`, `GPM` uppercase on two items, `psig` on the accumulator)
+  survive, and switching back restores them. `board_check` renders **166 items** identically
+  before and after a round trip through SI, and its pre-existing check list is byte-identical
+  to the pre-change run.
+
+  **The band QUANTUM had to become per-unit, and the first cut of the new checks did not
+  catch it.** Tile band edges are rounded so the strip does not flicker at the render rate,
+  and the quantum was a whole display unit — fine at 1 psi, catastrophic at 1 MPa, which is
+  145 of them: the pressurizer's 15.20–15.76 control band and its 14.82/15.86 alarms all
+  collapse onto 15 and 16. Pressure quantises at **0.01 MPa**, temperature at **0.5 °C**.
+  Injecting the whole-unit quantum left every new check green, so one more was added that
+  asserts the seven regions stay nested — the coverage claim was worth more than the fix.
+
+  **Tile DECIMALS are a property of the unit, not of the instrument.** The measured sigma is
+  0.56 psi and 0.0039 MPa — the same noise — and it wants 0 decimals in one and 2 in the
+  other. Same for the charging box: 0–60 gpm becomes 0–13.6 m³/h, where a whole-unit ▲▼ would
+  nudge 4.4 gpm, so it gets 1 decimal and a 0.1 step.
+
+  **The unit trap is in here too.** Subcooling margin and leg ΔT are temperature
+  DIFFERENCES: 41 °C is 73.8 °F, not 105.8, and the absolute rule reads as a *healthier*
+  margin than the plant has. That is what `run_manual_units` gates in prose; the board can
+  make the same error, and two checks now say it does not.
+
+  Also: the dump-setpoint **range hint is derived from the bounds** in SI so it cannot drift
+  from them (US keeps its authored string, including its known 29-vs-30 psi off-by-one — a
+  board-data defect, not this layer's to fix), and the TRIP BLOCKS popover's `1800 psi`
+  caption reads the protection table instead of a hand-copied literal.
+
+  `board_check` **143 → 162** (+19; **18 new units checks, all injection-verified** against
+  seven separate faults — an absolute conversion on a difference, a missing inverse on
+  command, a one-way unit write, a dead unit span, a unit-blind quantum, unit-blind decimals,
+  and the seam itself removed). It is not in `run_all`; run it after any board change. Its
+  own ctx also stopped lying: it passed `unit: 'si'`, a string nothing has ever read, so it
+  claimed to test SI and rendered US for its whole life.
+
+### Fixed
+- **`board_check` had a red nobody had run** — 1 failure / 143 while CLAUDE.md claimed
+  143/143. Two independent harness bugs, both pre-existing, neither a plant defect. The
+  TRIP BLOCKS check **unblocked `ir_high` at full power and never put it back**: the IR
+  channel reads 2.0e-3 against a 1.67e-3 setpoint, so the trip condition is standing and the
+  block is the only thing holding it off — the plant scrammed immediately and every check
+  below ran on a dead reactor at ~3 % power. And the **SCRAM two-step ran on an already-
+  scrammed plant**, where the same two clicks are the #75 RESET half, so it un-scrammed the
+  reactor and then asserted a scram. The plant was correct at every step. Now **149/149**.
+- **Mode 4 alarm behaviour was tested nowhere** (#294). `COLD_MODES = [4, 5]` in
+  `layers/control/pwr_control.js` gates six alarm behaviours — the #287 RHR alarm's
+  `condition`, plus four reclassify rules that turn expected cold-plant indications into
+  `status` instead of leaving them as warnings. Every existing probe exercised **Mode 5
+  only**. Measured by injection: narrowing it to `[5]` left `run_m4`, `run_pwr`, `run_ops`,
+  `run_contract`, `run_reachability` and `run_hardrules` **all green** at 185/240/351/139/58/75
+  — the Mode 4 half could have been deleted outright without a gate objecting.
+  - **What it suppresses is not cosmetic.** On a correctly depressurized cold plant the
+    injected form raises a spurious **CRITICAL** (`pzr_pressure_lolo`) — a casualty alarm on
+    a plant depressurized exactly as the procedure intends — plus three spurious warnings,
+    **and loses `rhr_not_aligned` (06 PWR-A33) entirely**, the one alarm carrying real news,
+    because its condition stops matching.
+  - **Three of the five deltas are priority-only**, on alarms that still appear either way.
+    A presence check cannot see those, so the probe asserts the priority.
+  - **Mode 4 is where a plant spends most of a cooldown from power**, and where the #287
+    sequence actually lands (measured: that cooldown ends Mode 4 at 147.5 °C / 297 °F,
+    280 psi / 1.93 MPa). The existing #287 probe reaches its loss with an operator
+    `set_rhr active:false` in Mode 5; the new one reaches Mode 4 the way the plant really
+    does — **losing the heat sink and heating on decay + pump heat**, Mode 4 at 1000 sim s
+    for about a second of wall — so the mechanism under test is the engine's, not the
+    probe's, and no temperature is hand-set.
+  - No behaviour changed: the plant was already correct. `run_m4` **33/33 (185) → 34/34
+    (194)**; 5 checks red on the injected config.
+
+- **A load rejection no longer scrams the plant on the going-solid trip** (#289)
+  *(OWNER RULING, 2026-08-01: selected "Add the program ceiling" from the options put to
+  him — a selection, not a verbatim instruction)*. The pressurizer **level program had no
+  maximum**. It is `55 % + 2.5 %/°C × (Tavg − 304.1 °C)`, and with rod control in **manual** —
+  the shipped free-play lineup — the core can only run back on the moderator coefficient,
+  which *requires* Tavg to rise. Tavg parked at **319.6–321.3 °C (607.3–610.3 °F)**, the
+  program followed it to **~94 %**, and the plant tripped on the **97 %** going-solid
+  reactor trip **with inventory correct** — `pzr_level_dev` was **negative**, i.e. the
+  pressurizer was holding *less* water than its own program demanded. The trip that exists
+  to catch an overfill was being fired by the control program.
+
+  Measured, free-play lineup, `hot_full_power`, load ask at t+60 s, six instrument-noise
+  seeds: a **6–11 MWe** ask scrammed **6/6 seeds**, 5 MWe scrammed **1/6** (decided by
+  noise), while **0 MWe and 12 MWe did not scram at all** — a *smaller* load rejection
+  tripping when a larger one did not. After the fix: **0 trips in 42 runs**, peak level
+  89.7–95.1 % against the 97 % trip.
+
+  The program is now clamped at both ends via a new `level_prog_ceiling` (**61.5 %**) and a
+  single `pwrPressurizer.levelProgram()` that the CVCS setpoint and the deviation gauge both
+  read. Physics (`levelBase`) is deliberately **not** clamped — the coolant really does
+  expand, and the resulting level-above-program is exactly what the CVCS is meant to let
+  down. Sourced to **WTSM 10.3 Pressurizer Level Control System (ML11223A290)**: *"both
+  minimum and maximum level limitations are placed on the level program"* (low 25 %, high
+  61.5 %), whose stated purpose is our exact case — *"low enough to ensure that the
+  pressurizer does not go solid following a turbine trip from 100% power … assuming no
+  operator action and **no response by the automatic control systems (the rod control and
+  steam dump control systems)**."*
+
+  `pzr_level_dev` now reads against the **program**, not the physics line: it peaks at
+  **+29.3 %** on the insurge and decays to ~0 as make-up lets down. Reading the physics line
+  would have pegged `PZR LVL DEV LO` at ~−39 % for the whole transient while the controller
+  sat exactly on setpoint. All **35 runners at baseline**; no baseline moved.
+
+  Two things this does **not** fix, both deliberate. The **SG code safeties still pass steam**
+  in the 0–5 MWe band — that is the rods-in-manual consequence #289 was filed on, and whether
+  `rods_tavg` belongs in the free-play lineup is still open (auto rod control already exists
+  and is reachable: **ROD AUTO** on the board, `board_check`-pinned, Manuals 02/03/04). And
+  the going-solid trip is still **97 %, single channel, with no power permissive**, where the
+  real one is **92 %, 2/3, P-7 gated (≥10 % power)** — aligning it only makes sense after
+  this ceiling, since 92 alone is *lower* and would scram more.
+
+- **HR11's guard checked one of the two markers the repo uses** (#290). `run_hardrules.js`
+  requires every ruling citation to carry a date *and* the owner's verbatim words —
+  otherwise it is indistinguishable from an agent's own preference in authoritative voice.
+  It matched the literal string `OWNER RULING`. The repo also uses **`OWNER DIRECTIVE`**, and
+  all eleven in-scope occurrences were unguarded: *never merge into `develop`*, *never push
+  the lanes*, the brevity and STILL OUTSTANDING directives, and the US-customary-units rule
+  among them. One (`CLAUDE.md`'s `status-owner-review` / `status-work-next` labels) was
+  already malformed — a quote with no date — and nothing said so.
+  - **A second, quieter defect the issue had not found.** The skip for prose *about* the
+    marker was ``/`[^`]*OWNER RULING[^`]*`/``. That also matches when the marker merely sits
+    **between** two inline code spans, because the `[^`]*` gap is the text after one span
+    closes and before the next opens — which in this repo's heavily backticked prose is the
+    normal case. Measured: **four genuine citations silently skipped**, three `OWNER RULING`
+    (`RETIRED.md`'s retirement of the ship-review plan, `TUNING_LOG.md`'s *"249 - fit it."*,
+    `CLAUDE.md`'s steam-dump 40 %) and the US-customary-units directive. Worse than the
+    filed defect: an unmatched marker at least *looks* unmatched, whereas these read as
+    checked. The gate now tests the marker's own backtick parity — odd means genuinely
+    inside a span — and still excludes the three real `` `OWNER RULING` `` prose mentions.
+    Backtick **runs**, per CommonMark, not individual backticks: a run of N opens a span only
+    a run of exactly N closes. Counting singly was a third wrong answer, and this changelog
+    entry is what exposed it — quoting the old regex puts the marker inside a *double*-
+    backtick span, parity read even, and the gate flagged the paragraph explaining itself.
+  - **The lookahead window is bounded on both sides now.** It existed because a citation
+    routinely wraps its date onto the next line, but it accepted *any* quote mark within
+    three lines, so `release-to-main/SKILL.md`'s date-only citation passed by borrowing the
+    quote from the sentence after it. The window now stops where the citation's own
+    parenthetical closes. **Two wrong versions of that rule measured green first**: counting
+    depth from the marker sees the opening `(` behind it and reddens all nine legitimately
+    wrapped citations, and counting *absolute* depth never fires on a nested citation — so
+    deleting the date from `CLAUDE.md`'s steam-dump ruling, which sits inside
+    `(41 -> 42 on 2026-07-31: ...)`, changed nothing. Depth **relative to the marker** holds.
+  - **Scope widened to `.claude/skills/`.** Skill files cite rulings as authority exactly as
+    the docs do, and being outside the scanned list is why the malformed citation there
+    survived a gate believed to cover it.
+  - **Both malformed citations repaired**, neither invented: `CLAUDE.md`'s date is in its own
+    lead-in sentence, and `SKILL.md`'s missing quote is recorded in full at `CLAUDE.md`'s
+    versioning section.
+  - **Injection-verified against the pre-fix runner**, per the standing rule that a check
+    written beside its own fix proves nothing. Three malformations — an `OWNER DIRECTIVE`
+    losing its date, a backtick-flanked `OWNER RULING` losing its date, and the `SKILL.md`
+    citation losing its quote — each redden exactly one site now, and the pre-fix gate stayed
+    green at **43 sites / 0 undeclared** through all three.
+  - `run_hardrules` **58 → 75 checks** (HR11 43 → 60 sites: **+11** widened marker, **+4**
+    corrected span test, **+2** new scope). **This is not the usual write-up drift** that
+    moves this runner on every merge — no ruling was added; the guard grew to cover markers
+    that were always there.
+
 ### Changed
+
+- **The trend graphs open on a real 30 minutes, not a flat line** *(OWNER, 2026-08-01: "when
+  you make preset starts, run them for 30 minutes to fill up the graph with real data before
+  saving")*. A preset start seeded the chart's 30-minute record window with **360 identical
+  samples**, so a fresh plant showed a ruler-straight trace where a running plant shows
+  instrument texture. It now seeds flat instantly and swaps in a genuinely-run trace computed
+  in background slices, cached per plant + design version + initial state for the session.
+
+  **Flat-first is deliberate**: a 30-plant-minute full-stack run measures **1874 ms**, and a
+  fresh chart buffer happens on boot, reset, plant switch *and* every mission start — paying
+  that synchronously would freeze all four. Slices are 40 ticks (~42 ms) rather than 120
+  (~125 ms), which is the difference between smooth and visibly janky.
+
+  **What it does not do**: change the *shape*. The initial conditions are constructed as true
+  steady states, so 30 real minutes is a noisy flat line — measured at `hot_full_power`, power
+  99.78–100.2 %, Tavg 304.0–304.2 °C, pzr level 54.6–55.3 %. The gain is instrument texture
+  and the genuine slow drifts (xenon, boron) a synthetic seed cannot have.
+
+  Guarded by a new `verify_e2e_ui` section. A/B on the real page: with the swap the busiest
+  plotted series has **28 distinct y-values** across its 61 points; with the call neutered,
+  **exactly 1**. Injection-verified — the gate fails with that number in the message.
+
+- **Rod control starts in AUTO** (#289) *(OWNER RULING, 2026-08-01: "Let's start the rods in
+  auto. Might as well, everything else starts in auto.")*. `rods_tavg` is `defaultOn` at
+  power, joining `boron_conc`, `cvcs_makeup` and `feed_sg` in the free-play lineup. Instructed
+  content (`noDefaults`) is unaffected.
+  **At-power only, and that half is measured, not decorative.** A blanket default engages the
+  channel in Mode 5 and during `pwr_heatup`, where Tavg is hundreds of degrees below the
+  no-load Tref the load program asks for — so the channel withdraws rods to close the error
+  and takes the plant critical. `pwr_heatup` **scrammed at step 6 on `source_range high`** and
+  `run_behavior` SS-9 tripped the same way. Gated on the **power-range instrument** above
+  10 % (the P-10 analogue) it costs neither. The first cut read `true_state.power_pct` and
+  `run_hardrules` failed it — **the same defect class as #220**, where the P-9 permissive read
+  the plant instead of the gauge.
+  **This completes #289.** With rod control acting, a full load rejection no longer parks the
+  plant at 46 % with the dump saturated and the SG code safeties passing to atmosphere
+  indefinitely: the dump reaches its 40 % stop, comes back off it, the safeties reseat, the
+  core is run back and Tavg returns to the no-load anchor. Relief still *occurs* briefly on a
+  full rejection — prototypical, since a real Westinghouse plant's design case is the 50 %
+  loss of load — but it no longer **persists**, which was the filed defect.
+- **The ROD AUTO button lights green like every other AUTO control** *(OWNER, 2026-08-01:
+  "the auto rod button doesn't follow the color convention. Auto on it should be green not
+  white.")*. It was authored `#9fb3c4` (pale grey) against `#5aad7c` on all **8** other AUTO
+  buttons — and the board uses the authored item colour *as* the lit colour, so the mismatch
+  was invisible until the control was engaged. It now comes up engaged on every Mode 1 start,
+  so it is lit every session. Applied via `DOC_PATCHES` (re-export-safe, idempotent) and
+  pinned two ways in `board_check`: the patched value, and the **convention itself**, so a
+  re-export that recolours any AUTO button fails instead of shipping two meanings for green.
+
 - **The RHR suction valve has two interlock setpoints now, not one** (#288)
   *(OWNER RULING, 2026-07-31: "issue 288, split them.")*. One config constant,
   `rhr_valve_interlock_mpa`, was doing two different jobs: blocking the valve **open** and

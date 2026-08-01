@@ -472,6 +472,33 @@
                                    // +350 %/frac vs the −100 mass term: any voided state deceives. [tune]
       level_prog_floor: 28.0,      // % — base(Tavg) floor below the program band; 3 % above the
                                    // pzr_level_low alarm (25) so no-load/sagged states don't sit in alarm [tune]
+      // % — the CVCS level program's MAXIMUM (pwr_pressurizer.levelProgram). NOT a physics
+      // clamp: levelBase is unbounded upward, because the coolant really does expand.
+      //
+      // SOURCED (#289): WTSM 10.3 Pressurizer Level Control System (ML11223A290) — "both
+      // minimum and maximum level limitations are placed on the level program", low 25 % /
+      // high 61.5 %. The ceiling's stated purpose is exactly our failure: "This high level
+      // setpoint (61.5%) is low enough to ensure that the pressurizer does not go solid
+      // following a turbine trip from 100% power without a direct reactor trip, assuming no
+      // operator action and NO RESPONSE BY THE AUTOMATIC CONTROL SYSTEMS (the rod control and
+      // steam dump control systems)." Rod control in MANUAL is our shipped free-play lineup,
+      // so this is the case the real design guarantees and we did not. Without it the program
+      // chased Tavg to ~94 % on a load rejection and scrammed the plant on the 97 % going-
+      // solid trip with inventory CORRECT (pzr_level_dev NEGATIVE — holding less water than
+      // its own program demanded). Measured: 6-11 MWe tripped 6/6 seeds before, 0/42 after.
+      //
+      // WHY 61.5 AND NOT 55 (my call, not an owner ruling — the number over the rule). The
+      // real 61.5 % IS their full-power program value, so the structural rule is "ceiling =
+      // program level at full-power Tavg", which here would be pzr_level_nominal = 55. That
+      // was tried and is WRONG for this plant: at 55 the ceiling sits ON the normal operating
+      // point, so ordinary Tavg noise is clipped on its upper half and the setpoint is biased
+      // low all the time — measured, it shifted parked CVCS inventory 0.15 % and reddened
+      // run_e2e_controls' derived droop equilibrium (98.85 vs 99.00). A program MAXIMUM should
+      // be a limit, not part of the normal control law: at 61.5 it binds only when Tavg parks
+      // abnormally high, which is the whole job. Program-to-trip margin is 97 − 61.5 = 35.5 %
+      // here against the real design's 92 − 61.5 = 30.5 %, so the bound is not looser than
+      // theirs. [tune]
+      level_prog_ceiling: 61.5,
       pzr_level_nominal: 55.0,     // % at hot_full_power (the base-line anchor)
       // PORV tailpipe / quench-tank temperature (the discharge line downstream of
       // the PORV and code safeties). Reads WARM at baseline — the seat has always

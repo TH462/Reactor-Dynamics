@@ -140,22 +140,61 @@ async function testUnitsAndInstructor(page) {
   log.push('US manual setpoints doc length: ' + usDoc.length);
   if (usDoc.length < 500) throw new Error('setpoints document did not render (len ' + usDoc.length + ')');
 
-  // #237 (owner call 2026-07-28): SI is SCOPED on the PWR board — the board renders US
-  // customary throughout, so the SI position is DISABLED with a tooltip rather than
-  // producing the mixed SI-chips-beside-US-board display #235 measured. This used to
-  // assert the toggle converted the gauge to MPa — that was the half-feature; the
-  // assertion now pins the scoping: button disabled, click is a no-op, gauges stay US.
-  // When #238's display-unit layer lands, revert to a real convert-to-MPa assertion.
-  var siDisabled = await page.evaluate(function () {
+  // Units toggle on the PWR, end to end (#238). History matters for reading this block:
+  // it originally asserted the toggle converted the gauge to MPa; #237 replaced that with
+  // "the SI button is DISABLED", because the board rendered US customary throughout and a
+  // global SI selection produced SI chart chips beside US board readouts. #238 built the
+  // board's display-unit layer, so the real assertion is back — and it is stronger than
+  // the original, because it checks the BOARD, not just the (hidden) gauge strip.
+  //
+  // The point of doing it here rather than in board_check: this is the only gate that
+  // drives the actual Settings control through app.js. board_check calls the driver with
+  // its own ctx and would stay green if the button were never wired to it at all.
+  var usBoard = await page.evaluate(function () {
+    var t = document.querySelector('[data-item="imrr4fnxhlc"]');          // T-HOT readout
+    var d = document.querySelector('[data-item="ims31tq7mgc"] .bd-num-unit'); // DUMP SETPOINT box
+    return { thot: t && t.textContent.replace(/\s+/g, ' ').trim(), dump: d && d.textContent };
+  });
+  log.push('PWR board in US: T-hot "' + usBoard.thot + '", dump setpoint unit "' + usBoard.dump + '"');
+  if (!/F$/.test(usBoard.thot || '')) throw new Error('expected the US board to read °F, got: ' + usBoard.thot);
+
+  var siState = await page.evaluate(function () {
     var b = document.querySelector('#unitsSeg button[data-units="SI"]');
-    if (b) b.click();   // disabled → listeners don't fire; belt for the no-op assert below
-    return b ? b.disabled : null;
+    if (!b) return null;
+    var wasDisabled = b.disabled;
+    b.click();
+    return { wasDisabled: wasDisabled };
   });
   await page.waitForTimeout(400);
-  if (siDisabled !== true) throw new Error('PWR SI toggle expected DISABLED (scoped, #237/#238), got: ' + siDisabled);
+  if (!siState) throw new Error('SI units button not found');
+  if (siState.wasDisabled) throw new Error('PWR SI toggle expected ENABLED since #238, got disabled');
+  var siBoard = await page.evaluate(function () {
+    var t = document.querySelector('[data-item="imrr4fnxhlc"]');
+    var d = document.querySelector('[data-item="ims31tq7mgc"] .bd-num-unit');
+    return { thot: t && t.textContent.replace(/\s+/g, ' ').trim(), dump: d && d.textContent };
+  });
+  log.push('PWR board in SI: T-hot "' + siBoard.thot + '", dump setpoint unit "' + siBoard.dump + '"');
+  if (!/C$/.test(siBoard.thot || '')) throw new Error('PWR board expected to read °C in SI, got: ' + siBoard.thot);
+  // The setpoint BOX is the half that needed new renderer code — its unit span is built at
+  // mount and was never rewritten before #238, so a units change reached the readouts and
+  // left the boxes lying.
+  if (siBoard.dump !== 'MPa') throw new Error('PWR dump setpoint box expected MPa in SI, got: ' + siBoard.dump);
   var siUnit = await page.locator('#gauge-press [data-val]').textContent();
-  log.push('PWR pressure gauge with SI scoped (stays US): ' + siUnit);
-  if (!/psi/i.test(siUnit)) throw new Error('PWR gauge expected to stay US (psi) with SI scoped, got: ' + siUnit);
+  log.push('PWR pressure gauge in SI: ' + siUnit);
+  if (!/MPa/i.test(siUnit)) throw new Error('PWR gauge expected MPa in SI, got: ' + siUnit);
+
+  // …and back, because a one-way conversion looks perfect until someone switches back.
+  await page.evaluate(function () { document.querySelector('#unitsSeg button[data-units="US"]').click(); });
+  await page.waitForTimeout(400);
+  var backBoard = await page.evaluate(function () {
+    var t = document.querySelector('[data-item="imrr4fnxhlc"]');
+    var d = document.querySelector('[data-item="ims31tq7mgc"] .bd-num-unit');
+    return { thot: t && t.textContent.replace(/\s+/g, ' ').trim(), dump: d && d.textContent };
+  });
+  if (!/F$/.test(backBoard.thot || '') || backBoard.dump !== usBoard.dump) {
+    throw new Error('SI -> US did not restore the board: ' + JSON.stringify(backBoard) + ' vs ' + JSON.stringify(usBoard));
+  }
+  log.push('PWR board restored to US: T-hot "' + backBoard.thot + '", dump setpoint unit "' + backBoard.dump + '"');
 
   // The board/gauges honour the units toggle; the packed manual does NOT.
   // renderManualMd (ui/app.js) caches on `engineKey|docId` with no units key and
@@ -333,6 +372,58 @@ async function testSteamFeedPair(page) {
  * would pass on all three defects; only clicking a specific mark and reading back
  * the clock pins the mapping. It aims at the second-oldest mark on purpose — the
  * newest and the oldest are both reachable by a broken inversion that clamps. */
+/* The trend graphs open on a REAL 30 minutes, not a flat line *(OWNER, 2026-08-01: "when you
+ * make preset starts, run them for 30 minutes to fill up the graph with real data before
+ * saving")*.
+ *
+ * A preset start seeds the chart's 30-minute record window instantly with flat samples and
+ * then swaps in a genuinely-run trace, computed in setTimeout slices off the main thread and
+ * cached per plant+design-version+initial-state (ui/app.js `ensurePreseed`). Flat-first is
+ * deliberate — the real run costs ~1.9 s, and paying that synchronously would freeze boot,
+ * every reset, every plant switch and every mission start.
+ *
+ * THE CHECK IS THE SPREAD, and it discriminates hard. Measured by A/B on the real page,
+ * neutering only the `ensurePreseed` call: with the swap the busiest plotted series has
+ * **28 distinct y-values** across its 61 points; without it, **exactly 1** — a perfectly
+ * horizontal line, which is the defect this was raised about. Anything > 1 means the swap
+ * landed, so the band is wide but the negative control is unambiguous.
+ *
+ * Note what this canNOT be: an assertion about interesting SHAPE. The initial conditions are
+ * constructed as true steady states, so 30 real minutes is a noisy flat line — the gain is
+ * instrument texture and the genuine slow drifts (xenon, boron), not a different curve. */
+async function testTrendPreseed(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  // The run is sliced; give it room on a loaded CI box. It is ~1.9 s of work.
+  await page.waitForTimeout(12000);
+  var st = await page.evaluate(function () {
+    var svg = document.getElementById('chartCanvas');
+    if (!svg) return { found: false };
+    var best = 0, pts = 0;
+    Array.prototype.forEach.call(svg.querySelectorAll('polyline'), function (el) {
+      var raw = (el.getAttribute('points') || '').trim();
+      if (!raw) return;
+      var ys = raw.split(/\s+/).map(function (p) { return parseFloat(p.split(',')[1]); })
+                  .filter(function (y) { return isFinite(y); });
+      var seen = {}, n = 0;
+      ys.forEach(function (y) { var k = y.toFixed(3); if (!seen[k]) { seen[k] = 1; n++; } });
+      if (n > best) { best = n; pts = ys.length; }
+    });
+    return { found: true, distinct: best, points: pts,
+             series: svg.querySelectorAll('polyline').length };
+  });
+  if (!st.found) throw new Error('trend chart (#chartCanvas) did not render');
+  if (!st.series) throw new Error('trend chart rendered no series');
+  if (st.distinct <= 1) {
+    throw new Error('the trend graph opened FLAT — ' + st.distinct + ' distinct y-value(s) across ' +
+      st.points + ' points. The 30-minute preseed did not swap in real data (ui/app.js ensurePreseed).');
+  }
+  log.push('trend preseed: ' + st.series + ' series, busiest has ' + st.distinct +
+           ' distinct y over ' + st.points + ' points (flat seed scores 1)');
+  return log.join('\n') + '\n';
+}
+
 async function testRewindPicker(page) {
   var log = [];
   var VBW = 400, PLOT_FRAC = 0.86;                 // mirror ui/app.js drawChart
@@ -464,6 +555,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'steam-feed-pair.log'), sfLog);
     var rpLog = await testRewindPicker(page);
     fs.writeFileSync(path.join(SCRATCH, 'rewind-picker.log'), rpLog);
+    var tpLog = await testTrendPreseed(page);
+    fs.writeFileSync(path.join(SCRATCH, 'trend-preseed.log'), tpLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {

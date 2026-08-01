@@ -25,6 +25,29 @@
     return new RD.OpsHarness(opts);
   }
 
+  // Take ROD CONTROL to MANUAL on a harness that otherwise keeps the shipped lineup.
+  //
+  // WHY THIS EXISTS (2026-08-01, #289). `rods_tavg` became `defaultOn` at power *(OWNER
+  // RULING, 2026-08-01: "Let's start the rods in auto. Might as well, everything else starts
+  // in auto.")*, so the shipped free-play plant now answers a load change with the rod
+  // controller. Several probes here are ABOUT the rod-less plant by name and by intent —
+  // EV-3 "(rod-less)", EV-11 "slider-only ask", TR-1's MTC handover past the dump's stop,
+  // TR-1c's hands-off ride to the PORV, and TR-1e leg B, which needs core and generator to
+  // DISAGREE by ~2x or it stops discriminating at all.
+  //
+  // Those probes assert the underlying physics (MTC self-regulation, the relief ladder, the
+  // gauge source). The lineup changing must not silently convert them into something else,
+  // so they say "rods in manual" out loud instead of inheriting it. The SHIPPED-lineup
+  // answer to a load change is pinned separately, by TR-1g (50 % design case) and TR-1h
+  // (full rejection) — which is the division this change is built around.
+  //
+  // NOT `noDefaults`: these want the rest of the shipped lineup (feed_sg, cvcs_makeup,
+  // boron_conc). Only the rod channel stands down.
+  function rodsManual(h) {
+    h.cmd('set_auto_channel', { channel_id: 'rods_tavg', engaged: false });
+    return h;
+  }
+
   // ------------------------------------------------------------- XFAIL (strict)
   // id → why it is expected to fail today (catalog §8 decision that will fix it).
   var XFAIL = {
@@ -45,6 +68,7 @@
     'EV-10': 'existing:run_pwr transient_loss_vacuum',
     'TR-1': 'probe (FULL load rejection — the ride-out, past the dump\'s stop)',
     'TR-1g': 'probe (50 % loss of load — the real Westinghouse design case, 40 % dump)',
+    'TR-1h': 'probe (full rejection on the SHIPPED lineup — rods AUTO + clamped level program, #289)',
     'TR-1b': 'probe (turbine trip → P-9 scram, #216)',
     'TR-1c': 'probe (sub-threshold rejection — the arm cliff, declared §8.21, #219)',
     'TR-1d': 'probe (PLANNED OFFLINE is not a turbine trip — #230)',
@@ -173,7 +197,7 @@
     // Tavg down) is pinned in run_autoctl's demand-swing suite.
     'EV-3': function () {
       return test('EV-3 load ramp (rod-less) — power follows, Tavg carries the mismatch, no trip', function (ck) {
-        var h = H('hot_full_power');
+        var h = rodsManual(H('hot_full_power'));   // rod-less BY NAME — see rodsManual (#289)
         h.run(60);
         var t0 = h.ts().tavg_c;
         for (var i = 1; i <= 6; i++) {           // 100 → 70 MWe in 5 MWe steps, ~5 %/min
@@ -199,7 +223,7 @@
     // low on the M5 fallback coupling — is pinned by the pwr_shift_exam gates.)
     'EV-11': function () {
       return test('EV-11 manual dispatch shows its costs (slider-only ask)', function (ck) {
-        var h = H('hot_full_power');
+        var h = rodsManual(H('hot_full_power'));   // "slider-only" means slider only (#289)
         h.run(60);
         h.cmd('set_load_target', { mwe: 85 });
         h.run(900);
@@ -251,7 +275,9 @@
      * defect. The 50 % case is the one that must stay clean, and TR-1g pins it. */
     'TR-1': function () {
       return test('TR-1 load rejection @100% — RIDE-OUT: the ladder runs in order, no scram', function (ck) {
-        var h = H('hot_full_power');
+        // Rod-less on purpose: this probe is the MTC handover past the dump's stop and the
+        // relief ladder behind it (#289). TR-1h is the same event on the shipped auto lineup.
+        var h = rodsManual(H('hot_full_power'));
         h.run(30);
         // Full load rejection: demand to zero with the turbine still on line.
         h.cmd('set_load_target', { mwe: 0 });
@@ -303,17 +329,32 @@
      * criterion is that load rejections up to 50% should not require a reactor trip"*
      * (Vogtle LAR, ML072470691).
      *
-     * Measured, this plant reproduces the documented SPLIT, not just the outcome: the dump
-     * saturates at 40 % and the core runs back to 89.3 % — a 10.7 % step, against the real
-     * plant's 10 % from rod control. Ours comes from MTC rather than the rod controller,
-     * which is a mechanism difference worth knowing, but the division of labour is the
-     * same and that is what the capacity is sized for.
+     * RE-AUTHORED 2026-08-01 (#289) — and the old form was WRONG about the mechanism, not
+     * merely stale. It ran rod-less (the lineup of the day) and asserted the core PARKED at
+     * 85..93 % with the dump held at its 40 % stop for the whole 600 s, calling that "the
+     * documented ~10 % step". WTSM 11.2 (ML11223A294) says the dump is TRANSIENT and says so
+     * twice: *"The increased steam flow from the steam generators dissipates the excess energy
+     * of the reactor coolant **until the power in the reactor is reduced to the same value as
+     * the secondary load**"*, and *"the steam dumps act as an alternate heat sink (load)
+     * **until the rod control system returns Tavg to within 5°F of Tref**"*. A dump pinned at
+     * its stop forever is the signature of rod control NOT ACTING — it was an artefact of the
+     * shipped lineup, pinned as if it were the design case.
      *
-     * This is the check that says 40 % is ENOUGH. TR-1 says what happens past it. Without
-     * this one, lowering the dump further would go unnoticed until a full rejection. */
+     * So the 40 %+10 % split is the INSTANTANEOUS accommodation of the step, not an
+     * equilibrium, and this probe now asserts both halves on the SHIPPED lineup (rods AUTO
+     * since #289): the dump reaches its stop on the way through, then comes OFF it as the rod
+     * controller walks the core down to the secondary load and Tavg back to program.
+     *
+     * Measured: dump 40.00 % at 1 min, backing off by 2 min, fully closed by 3 min; core
+     * settles 46.5 % against a 50 MWe ask; Tavg 303.3 °C. Verified as a MECHANISM test, not
+     * refitted — on the pre-#289 rods-manual plant the three new checks all go red (dump ends
+     * at 40 %, core parks 89.3 %, Tavg parks 320 °C).
+     *
+     * This is still the check that says 40 % is ENOUGH. TR-1 says what happens past it
+     * rod-less; TR-1h is the full rejection on this same shipped lineup. */
     'TR-1g': function () {
-      return test('TR-1g 50% loss of load — the real design case: no trip, no relief lift', function (ck) {
-        var h = H('hot_full_power');
+      return test('TR-1g 50% loss of load — the real design case: dump carries it, then rods take it', function (ck) {
+        var h = H('hot_full_power');            // SHIPPED lineup — rod control in AUTO (#289)
         h.run(30);
         h.cmd('set_load_target', { mwe: 50 });
         h.run(600);
@@ -324,13 +365,84 @@
           h.range('pressure_mpa').max < 16.20, '< 16.20 MPa');
         ck('no SG safety lift (the other thing 40 % is sized for)', fmt(h.range('steam_pressure_mpa').max, 2),
           h.range('steam_pressure_mpa').max < 9.31, '< 9.31 MPa');
-        ck('the dump is AT its stop — 40 % is doing all it can', fmt(h.range('steam_dump_valve_pct').max, 0),
+        ck('the dump reaches its stop on the way through — 40 % is doing all it can',
+          fmt(h.range('steam_dump_valve_pct').max, 0),
           h.range('steam_dump_valve_pct').max >= cap - 1, '≥ ' + fmt(cap - 1, 0) + ' %');
-        // The documented split: dump 40 % + a ~10 % reactor step = 50 % of load absorbed.
-        ck('…and the core takes the documented ~10 % step (85..93 %)', fmt(t.power_pct, 1),
-          t.power_pct > 85 && t.power_pct < 93, '85..93 %');
-        ck('Tavg swells modestly and holds (300..315)', fmt(h.range('tavg_c').max, 1),
+        // The sourced half the old probe had backwards: the dump is an ALTERNATE HEAT SINK
+        // "until the rod control system returns Tavg", so it must come back OFF its stop.
+        ck('…then COMES OFF it — the dump is transient, not the new steady state (WTSM 11.2)',
+          fmt(t.steam_dump_valve_pct, 1), t.steam_dump_valve_pct < 5, '< 5 %');
+        ck('the core is reduced to the SECONDARY LOAD, not parked high', fmt(t.power_pct, 1),
+          t.power_pct > 40 && t.power_pct < 55, '40..55 % (ask = 50)');
+        ck('and Tavg is walked back to the 50 %-load program, not left swollen',
+          fmt(t.tavg_c, 1), t.tavg_c > 299 && t.tavg_c < 308, '299..308 °C');
+        ck('Tavg never swelled past the catalog band on the way (300..315)',
+          fmt(h.range('tavg_c').max, 1),
           h.range('tavg_c').max > 300 && h.range('tavg_c').max < 315, '300..315');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    /* TR-1h (NEW 2026-08-01, #289) — the FULL rejection on the SHIPPED lineup, which is the
+     * event this issue was actually filed on and which nothing asserted.
+     *
+     * #289 reported that a 0 MWe ask parked the plant with the dump saturated at 40 % and the
+     * SG code safeties passing steam to atmosphere INDEFINITELY, core stuck at 46 %. Two
+     * things were wrong and both are fixed: the pressurizer level program had no ceiling (it
+     * chased Tavg to ~94 % and scrammed the plant on the 97 % going-solid trip with inventory
+     * CORRECT), and rod control was not in the shipped lineup, so nothing brought the core
+     * down to what the dump could carry.
+     *
+     * WHAT THIS DOES NOT CLAIM, because the first draft got it wrong: the relief ladder still
+     * RUNS on a full rejection — measured, the PORV lifts (16.36 MPa) and the SG safeties just
+     * crack (9.32 vs the 9.31 setpoint). That is TR-1's already-recorded position: a real
+     * Westinghouse plant does not ride out a full rejection either, its design case is the
+     * 50 % loss of load (TR-1g), so relief here is prototypical rather than a defect. The
+     * first version of this probe asserted the safeties "NEVER lift" on the strength of a
+     * 150-second sampling grid, which simply missed the peak — `h.range()` sees every step.
+     *
+     * THE DEFECT #289 FILED WAS PERMANENCE, and that is what this pins: the dump comes back
+     * off its stop, the safeties RESEAT, the core is run back and Tavg returns to the no-load
+     * anchor, instead of parking at 46 % with the safeties passing to atmosphere forever.
+     * Measured: dump peaks at its 40 % stop then falls to ~6 %, safeties shut, core < 5 %,
+     * Tavg 299 °C, pzr peaks 91.9 % against the 97 % trip (the ceiling's 5 % of margin).
+     * TR-1 is the same event ROD-LESS and still pins the ladder itself. */
+    'TR-1h': function () {
+      return test('TR-1h full rejection on the SHIPPED lineup — rods take it back, relief RESEATS', function (ck) {
+        var h = H('hot_full_power');            // rods AUTO + the clamped level program
+        h.run(30);
+        h.cmd('set_load_target', { mwe: 0 });
+        h.run(900);
+        var t = h.ts();
+        var cap = 100 * RD.PWR_CONFIG.steam_generator.steam_dump_max;
+        ck('no scram — the whole point of #289', h.tripReason || 'none', h.tripTime == null, 'none');
+        ck('the dump did its transient job (reached its stop)',
+          fmt(h.range('steam_dump_valve_pct').max, 0),
+          h.range('steam_dump_valve_pct').max >= cap - 1, '≥ ' + fmt(cap - 1, 0) + ' %');
+        ck('…and came back OFF it — not parked on the stop forever (#289)',
+          fmt(t.steam_dump_valve_pct, 1), t.steam_dump_valve_pct < 15, '< 15 %');
+        // THE #289 PIN — permanence, not occurrence. The filed defect was a relieving state
+        // that never ended, so what matters is that the safeties RESEAT and the plant comes
+        // off the stop. Asserted at the end of a 15-minute ride, with the peaks reported.
+        ck('the SG code safeties are SHUT again — the relieving is transient, not permanent',
+          String(!!t.sg_safety_open), !t.sg_safety_open, 'false');
+        ck('steam pressure is back below the reseat setpoint, not sitting on it',
+          fmt(t.steam_pressure_mpa, 2),
+          t.steam_pressure_mpa < RD.PWR_CONFIG.steam_generator.sg_safety_reseat_mpa,
+          '< ' + fmt(RD.PWR_CONFIG.steam_generator.sg_safety_reseat_mpa, 2) + ' MPa');
+        ck('the core is run back — no 46 % plateau against a saturated dump',
+          fmt(t.power_pct, 2), t.power_pct < 5, '< 5 %');
+        ck('Tavg returns to the no-load anchor (297 ±6 °C)', fmt(t.tavg_c, 1),
+          near(t.tavg_c, 297, 6), '297 ±6');
+        // The level-program ceiling half of #289: the program can no longer chase Tavg into
+        // the going-solid trip. 91.9 measured against 97 — banded at 95 so the ~5 % of margin
+        // the ceiling bought has to actually be there, and eroding it reddens this line.
+        ck('pzr level stays clear of the going-solid trip (97 %) — the ceiling holds',
+          fmt(h.range('pzr_level_pct').max, 1),
+          h.range('pzr_level_pct').max < 95, '< 95 %');
+        ck.info('peak SG pressure (safeties 9.31 / reseat 9.00)',
+          fmt(h.range('steam_pressure_mpa').max, 2) + ' MPa — brief lift is prototypical past the design case, see TR-1');
+        ck.info('peak pressurizer pressure (PORV 16.20)', fmt(h.range('pressure_mpa').max, 2) + ' MPa');
         T.checkSanity(ck, h);
       });
     },
@@ -424,7 +536,10 @@
         // ---- leg B: the gauge must read the TURBINE, not the core. Above the C-7 arm the
         // dump carries the rejection and the reactor stays up — the one state where the two
         // numbers disagree by 2x, and the state the old formula got wrong.
-        var d = H('hot_full_power');
+        // Rods MANUAL for this leg (#289): the whole point is a state where the core and the
+        // generator disagree. On the shipped auto lineup the rods run the core down to the
+        // turbine (46 % vs 50 MWe — they AGREE), and the leg would stop discriminating.
+        var d = rodsManual(H('hot_full_power'));
         d.run(30);
         d.cmd('set_load_target', { mwe: 50 });
         d.run(600);
@@ -712,7 +827,11 @@
         ck.info('arm threshold under test', fmt(arm, 0) + ' MWe');
 
         // --- just UNDER the arm: no fast dump, operator's problem, PORV is the backstop
-        var lo = H('hot_full_power');
+        // Both legs rod-less (#289): this probe pins the ARM discontinuity, and "hands-off"
+        // is its premise. On the shipped auto lineup rod control absorbs a sub-arm rejection
+        // the way the real one does, which MITIGATES this declared cliff — recorded in the
+        // §8.21 write-up rather than smuggled in here by deleting the mechanism test.
+        var lo = rodsManual(H('hot_full_power'));
         lo.run(30);
         lo.cmd('set_load_target', { mwe: 100 - (arm - 1) });     // 39 MWe rejected
         var loArmed = false;
@@ -724,7 +843,7 @@
           fmt(lo.range('pressure_mpa').max, 2), lo.range('pressure_mpa').max >= 16.20, '≥ 16.20');
 
         // --- just OVER the arm: caught, and Tavg stays on program
-        var hi = H('hot_full_power');
+        var hi = rodsManual(H('hot_full_power'));
         hi.run(30);
         hi.cmd('set_load_target', { mwe: 100 - (arm + 1) });     // 41 MWe rejected
         var hiArmed = false;

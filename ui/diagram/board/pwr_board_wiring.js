@@ -16,13 +16,21 @@
   'use strict';
   var RD = window.RD = window.RD || {};
 
-  // ---- unit conversions (SI -> board US) ----
+  // ---- unit conversions ----
   function C2F(c) { return c * 9 / 5 + 32; }
   function F2C(f) { return (f - 32) * 5 / 9; }
   function Cd2F(c) { return c * 9 / 5; }
+  function Fd2C(f) { return f * 5 / 9; }
   function MPa2psi(p) { return p * 145.038; }
   function psi2MPa(p) { return p / 145.038; }
   function kPa2inHg(k) { return k * 0.2953; }
+  function inHg2kPa(i) { return i / 0.2953; }
+  // 1 US gal/min = 0.2271247 m³/h. The gpm scales below are AUTHORED display flavour, not a
+  // derived physical flow (Manuals/12 §646), so this is a scale factor on a scale factor —
+  // which is exactly why the flow family's BASE unit is gpm and not an SI quantity.
+  function gpm2m3h(g) { return g * 0.2271247; }
+  function m3h2gpm(q) { return q / 0.2271247; }
+  function sameUnit(v) { return v; }
   function satTempC(pMPa) { return pMPa > 0 ? 180 * Math.pow(pMPa, 0.245) : 15; } // Tsat approx, 0.1–10 MPa
   // Feedwater temperature proxy (no direct instrument): the final-feedwater temperature is
   // set by the FW-heater train, which is heated by turbine extraction steam — so it scales
@@ -39,39 +47,159 @@
   // Nominal full-scale flows for indications the engine exposes only as normalized/pct.
   var GPM_HPI = 600, GPM_AFW = 640, GPM_CHARGING = 1000, GPM_LETDOWN = 1000, GPM_FEED_PER_PCT = 10;
   var GPM_FEED = 1000;   // full-rated feed flow, for the measured fw_flow indication (normalized 0-1)
-  // Editable-input valid ranges [min, max], in the board's display (US) units — the
-  // renderer clamps every setpoint box to these and auto-corrects an out-of-range entry
-  // to the nearest bound (both min and max). Sourced from the engine limits so a retune
-  // keeps the UI honest; the board is US-only, so these are the only unit the box shows.
   var _CFG = (typeof RD !== 'undefined' && RD.PWR_CONFIG) || {};
   var _RX = _CFG.reactivity || {}, _PZ = _CFG.pressurizer || {}, _ID = _CFG.identity || {};
   var _SG = _CFG.steam_generator || {}, _EM = _CFG.emergency || {}, _TB = _CFG.turbine || {};
   // Charging: the normal make-up band (reactivity.charging_max 0.06) on the gpm scale = 60.
   var CHARGING_MAX_GPM = GPM_CHARGING * (_RX.charging_max || 0.06);
-  var NUM_BOUNDS = {
+
+  // ================================================== display-unit layer (#238)
+  // The board used to render US customary at every readout, which is why the Settings SI
+  // toggle was DISABLED while the PWR was active (#237): a global SI selection put SI chart
+  // chips beside US board readouts, the one indefensible state. This is the layer that
+  // closes it — ONE conversion point, keyed off the app's units mode, feeding every readout,
+  // every setpoint box (value, bounds, ▲▼ step, decimals, range hint) and every tile band.
+  //
+  // A family declares, per mode: the conversion FROM the family's base unit, its inverse,
+  // the unit string, display decimals, ▲▼ step, and `q` — the band-edge quantisation (see
+  // qz(), which exists to stop the tile strip flickering at the render rate).
+  //
+  // BASE UNIT IS NOT ALWAYS SI. Pressure/temperature carry the engine's SI, but `flow`'s
+  // base is GPM, because the gpm figures are an authored display scale over normalized
+  // engine internals rather than a modelled flow (Manuals/12 §646). US is therefore the
+  // identity on that family and SI is the converted one — the opposite of the others, and
+  // deliberate: it keeps GPM_HPI and friends meaning exactly what they always meant.
+  //
+  // US MODE IS UNCHANGED BY CONSTRUCTION. Every US entry reproduces the arithmetic and the
+  // rounding that was inline before, and the unit STRING in US mode comes from the authored
+  // item (`item.unit`), never from this table — so the board's three authored spelling
+  // quirks (`F` not `°F`, `GPM` uppercase on two items, `psig` on the accumulator) survive
+  // untouched, and switching SI→US restores them rather than leaving this table's guess.
+  // `u.US` below is documentation and the fallback for a caller with no authored string.
+  //
+  // SI flow is m³/h — the SI volumetric flow unit a real plant display carries
+  // (OWNER RULING, 2026-08-01: selected "m³/h" from three options put to him — m³/h, L/min
+  // and kg/s. A selection, not verbatim words, and recorded that way deliberately.)
+  var UNIT_FAMILIES = {
+    press: { US: { to: MPa2psi,  from: psi2MPa,  u: 'psi',  d: 0, step: 1,    q: 1    },
+             SI: { to: sameUnit, from: sameUnit, u: 'MPa',  d: 2, step: 0.01, q: 0.01 } },
+    // Absolute temperature. C2F carries the 32° offset...
+    temp:  { US: { to: C2F,      from: F2C,      u: 'F',    d: 0, step: 1,    q: 1    },
+             SI: { to: sameUnit, from: sameUnit, u: 'C',    d: 0, step: 1,    q: 0.5  } },
+    // ...and a temperature DIFFERENCE must not (subcooling margin, leg ΔT). 41 °C of
+    // subcooling is 73.8 °F, not 105.8 — and the wrong one reads as a HEALTHIER margin
+    // than the plant has, which is the trap `run_manual_units` exists to catch in prose.
+    tempd: { US: { to: Cd2F,     from: Fd2C,     u: 'F',    d: 0, step: 1,    q: 1    },
+             SI: { to: sameUnit, from: sameUnit, u: 'C',    d: 0, step: 1,    q: 0.5  } },
+    vac:   { US: { to: kPa2inHg, from: inHg2kPa, u: 'inHg', d: 0, step: 1,    q: 1    },
+             SI: { to: sameUnit, from: sameUnit, u: 'kPa',  d: 0, step: 1,    q: 1    } },
+    flow:  { US: { to: sameUnit, from: sameUnit, u: 'gpm',  d: 0, step: 1,    q: 1    },
+             SI: { to: gpm2m3h,  from: m3h2gpm,  u: 'm³/h', d: 0, step: 1,    q: 1    } }
+  };
+  // The active display mode. Comes from the app (ctx.units), which owns the Settings
+  // toggle; anything mounting the board without one — the board_check harness, a test
+  // stub — gets US, the authored board. (`ctxRef` is declared below this block; that is
+  // safe because U() is only ever CALLED from a render, long after onMount assigns it —
+  // the same hoisting shape tile() documents for TILE_BANDS.)
+  function U() {
+    var m = (ctxRef && typeof ctxRef.units === 'function') ? ctxRef.units() : null;
+    return m === 'SI' ? 'SI' : 'US';
+  }
+  function fam(name) { var f = UNIT_FAMILIES[name]; return f ? f[U()] : null; }
+  // Round to `d` display decimals. At d = 0 this is String(Math.round(v)) and NOT
+  // toFixed(0): they disagree on small negatives — Math.round(-0.18) is -0 and prints
+  // "0", while (-0.18).toFixed(0) prints "-0". Leg ΔT genuinely sits there on a cold
+  // plant, so the cheap-looking swap would have changed a US readout.
+  function fmtNum(v, d) {
+    if (v == null || !isFinite(v)) return null;
+    return d > 0 ? v.toFixed(d) : String(Math.round(v));
+  }
+  // Format a base-unit value for display, in the active mode's unit and resolution.
+  function fmtFam(name, v) {
+    var m = fam(name);
+    if (!m || v == null || !isFinite(v)) return null;
+    return fmtNum(m.to(v), m.d);
+  }
+  // Shortest exact rendering of a display value, for prose (range hints, popover captions)
+  // where a fixed decimal count would read as "0.0-13.6" or "1800.00 psi".
+  function trimNum(v) {
+    if (v == null || !isFinite(v)) return '';
+    return String(Math.round(v * 1000) / 1000);
+  }
+  function dP(mpa) { return fmtFam('press', mpa); }          // pressure, MPa in
+  function dT(c)   { return fmtFam('temp', c); }             // absolute temperature, °C in
+  function dTd(c)  { return fmtFam('tempd', c); }            // temperature DIFFERENCE, °C in
+  function dV(kpa) { return fmtFam('vac', kpa); }            // condenser vacuum, kPa in
+  function dQ(gpm) { return fmtFam('flow', gpm); }           // flow, gpm in
+  // The unit string for a family in the active mode. In US the AUTHORED string wins, so
+  // this can never overwrite the board's own spelling — and switching back restores it.
+  function uStr(name, authored) {
+    var f = UNIT_FAMILIES[name];
+    if (!f) return authored == null ? '' : authored;
+    if (U() === 'SI') return f.SI.u;
+    return authored == null ? f.US.u : authored;
+  }
+
+  // Which family each converting indication belongs to. Items absent from this map are
+  // unit-neutral (%, ppm, MW, rpm, cps, DPM, pcm, A, rod steps) and never convert.
+  var VALUE_UNIT = {
+    ims3w1cb6jc: 'flow',  ims3w1lj7n6: 'press',  imrmstovyli: 'flow',  imrmsu1bl4r: 'press',
+    imrzp89wdfu: 'flow',  imrzp8qps6u: 'flow',   ims5gq44zgr: 'temp',  imro6qpci2d: 'tempd',
+    imrppyp0wfo: 'press', imrqzuhzre3: 'vac',    ims3xp168iy: 'vac',   imrr1gwi93j: 'press',
+    imrr1hecwq7: 'temp',  imrr4fnxhlc: 'temp',   imrr4g29a7c: 'temp',  imrsgch20pv: 'temp',
+    imrsgkz4lq0: 'flow',  ims31ngjkf8: 'flow',   ims3wm0d0bu: 'flow'
+  };
+
+  // Editable-input valid ranges [min, max], in each box's family BASE unit — converted to
+  // the active display unit by boundsFor(). The renderer clamps every setpoint box to these
+  // and auto-corrects an out-of-range entry to the nearest bound (both min and max).
+  // Sourced from the engine limits so a retune keeps the UI honest.
+  var NUM_BOUNDS_BASE = {
     imro8rmka2y: [0, _ID.mwe_rated || 100],                          // generator load, MW (rated)
     imro8xhy2me: [0, 120 * GPM_FEED_PER_PCT],                        // SG feed, gpm (feed pump 0-120%)
     imro929i738: [0, 100],                                           // pzr spray, %
     imro96mj15p: [0, 100],                                           // pzr heater, %
     imrpq29jo7t: [0, 2500],                                          // boron target, ppm (channel sp.max)
     imrpq48hn3t: [0, CHARGING_MAX_GPM],                              // charging, gpm (0-60)
-    imrsg8b7b9o: [Math.ceil(MPa2psi(0.1)),                           // pressure setpoint, psi:
-                  Math.floor(MPa2psi(_PZ.safety_open_mpa || 17.13))], //   engine band 0.1 MPa .. pzr safety
-    // Steam dump SETPOINT, psi. The engine clips set_steam_dump_setpoint to
-    // [0.2 MPa, sg_safety_open_mpa] — 29..1350 psi — so the box refuses anything the
+    imrsg8b7b9o: [0.1, _PZ.safety_open_mpa || 17.13],                // pressure setpoint: engine band
+                                                                     //   0.1 MPa .. pzr safety (15..2484 psi)
+    // Steam dump SETPOINT. The engine clips set_steam_dump_setpoint to
+    // [0.2 MPa, sg_safety_open_mpa] — 30..1350 psi — so the box refuses anything the
     // engine would silently clamp. This is the secondary-cooldown control: lowering it
     // vents the SG down and cools the primary through it, and it also sets the no-load
     // bottom of the Tavg program (T_sat(steam_dump_setpoint), pwr_engine.js:1147).
-    ims31tq7mgc: [Math.ceil(MPa2psi(0.2)),
-                  Math.floor(MPa2psi(_SG.sg_safety_open_mpa || 9.31))],
+    ims31tq7mgc: [0.2, _SG.sg_safety_open_mpa || 9.31],
     ims3xu86zm5: [0, 100],                                           // RHR HX flow split, %
-    // Circulating-water inlet temperature, °F — the modelled range (engine clips to the
-    // same band in °C, so the box refuses what the engine would clamp).
-    ims3v42jghn: [Math.round(C2F(_TB.cw_inlet_min_c != null ? _TB.cw_inlet_min_c : 4.4)),
-                  Math.round(C2F(_TB.cw_inlet_max_c != null ? _TB.cw_inlet_max_c : 37.8))]
+    // Circulating-water inlet temperature — the modelled range (the engine clips to the
+    // same band, so the box refuses what the engine would clamp).
+    ims3v42jghn: [_TB.cw_inlet_min_c != null ? _TB.cw_inlet_min_c : 4.4,
+                  _TB.cw_inlet_max_c != null ? _TB.cw_inlet_max_c : 37.8]
   };
+  // Family per editable box, with optional per-mode overrides where the converted range
+  // needs a different resolution than the family default. Charging is the one that does:
+  // 0-60 gpm becomes 0-13.6 m³/h, and a whole-unit ▲▼ there would nudge 4.4 gpm at a time.
+  var NUM_UNIT = {
+    imro8xhy2me: { fam: 'flow' },
+    imrpq48hn3t: { fam: 'flow', SI: { d: 1, step: 0.1 } },
+    imrsg8b7b9o: { fam: 'press' },
+    ims31tq7mgc: { fam: 'press' },
+    ims3v42jghn: { fam: 'temp' }
+  };
+  // The active display spec for an editable box: its family's mode entry, with any
+  // per-box override applied. null for a unit-neutral box (%, ppm, MW).
+  function numFam(item) {
+    var n = NUM_UNIT[item && item.id];
+    if (!n) return null;
+    var base = UNIT_FAMILIES[n.fam][U()];
+    var ov = n[U()];
+    if (!ov) return base;
+    var out = {}; for (var k in base) out[k] = base[k];
+    for (var j in ov) out[j] = ov[j];
+    return out;
+  }
   // ▲/▼ nudge size overrides (the authored data step is a coarse default). Survives a
   // board-data regeneration, unlike editing the generated pwr_board_data.js by hand.
+  // Both boxes here are unit-neutral, so these are absolute and outrank the family step.
   var NUM_STEP = {
     imro8rmka2y: 1,    // generator load: nudge 1 MW per arrow press (authored default was 20)
     imrpq29jo7t: 1     // boron target: nudge 1 ppm per arrow press (authored default was 20)
@@ -399,32 +527,35 @@
 
   // ================================================================ NUMBERS (editable)
   // set(v): issue command from the typed value; get(s): reflect current sim state.
+  // BOTH WORK IN THE BOX'S BASE UNIT (see NUM_BOUNDS_BASE) — the display-unit conversion
+  // happens once, in the driver's onNumber/numberFor, so a formatter here never has to
+  // know which unit the operator is looking at.
   var NUMBERS = {
     imro8rmka2y: { set: function (v) { cmd({ action: 'set_load_target', mwe: v }); }, get: function (s) { return CS(s).load_target_mwe; } },              // Generator Load MW
     imro8xhy2me: { set: function (v) { cmd({ action: 'set_feed_pump_speed', pct: v / GPM_FEED_PER_PCT }); }, get: function (s) { return (CS(s).feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT; } }, // SG Feed rate gpm
     imro929i738: { set: function (v) { cmd({ action: 'set_spray', pct: v }); }, get: function (s) { return CS(s).spray_valve_pct; } },                    // spray %
     imro96mj15p: { set: function (v) { cmd({ action: 'set_heater', power_pct: v }); }, get: function (s) { return CS(s).heater_power_pct; } },             // heater %
     imrpq29jo7t: { set: function (v) { cmd({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: v }); }, get: function (s) { var c = chan(s, 'boron_conc'); return c && c.setpoint != null ? c.setpoint : null; } }, // boron target ppm (control-layer channel setpoint)
-    imrpq48hn3t: { set: function (v) { cmd({ action: 'set_charging_flow', normalized: v / GPM_CHARGING }); }, get: function (s) { return (CS(s).charging_flow_normalized || 0) * GPM_CHARGING; } }, // charging gpm (input clamped to NUM_BOUNDS)
-    imrsg8b7b9o: { set: function (v) { cmd({ action: 'set_pressure_setpoint', mpa: psi2MPa(v) }); }, get: function (s) { return MPa2psi(CS(s).pressure_setpoint || 0); } }, // plant pressure setpoint psi
-    // Steam dump setpoint, psi — the secondary-cooldown handle. Sits directly under the
+    imrpq48hn3t: { set: function (v) { cmd({ action: 'set_charging_flow', normalized: v / GPM_CHARGING }); }, get: function (s) { return (CS(s).charging_flow_normalized || 0) * GPM_CHARGING; } }, // charging, gpm base (clamped to NUM_BOUNDS_BASE)
+    imrsg8b7b9o: { set: function (v) { cmd({ action: 'set_pressure_setpoint', mpa: v }); }, get: function (s) { return CS(s).pressure_setpoint || 0; } }, // plant pressure setpoint
+    // Steam dump setpoint — the secondary-cooldown handle. Sits directly under the
     // STEAM PRESS indication on the card so the gap between the two is legible: at power
     // the SG runs ~819 psi against a 1194 psi setpoint, which is WHY the dump is shut.
-    ims31tq7mgc: { set: function (v) { cmd({ action: 'set_steam_dump_setpoint', mpa: psi2MPa(v) }); }, get: function (s) { return MPa2psi(CS(s).steam_dump_setpoint || 0); } },
+    ims31tq7mgc: { set: function (v) { cmd({ action: 'set_steam_dump_setpoint', mpa: v }); }, get: function (s) { return CS(s).steam_dump_setpoint || 0; } },
     // RHR heat-exchanger flow split, % — the cooldown-RATE knob (Q_rhr scales with it,
     // pwr_thermal.js:90-93). Deliberately NOT an alignment command: the control layer
     // excludes set_rhr_hx from the 'rhr' ESF arm's disarming command list, so trimming
     // the rate does not drop the auto-alignment (pwr_control.js:556-558). numberAuto()
     // therefore leaves this box editable even while RHR AUTO is lit.
     ims3xu86zm5: { set: function (v) { cmd({ action: 'set_rhr_hx', pct: v }); }, get: function (s) { var f = CS(s).rhr_hx_fraction; return f == null ? 100 : f * 100; } },
-    // Circulating-water inlet temperature, °F. Board is US, engine is SI. Sits next to the
-    // COND VAC readout because vacuum is the variable it moves: raise the water temperature
-    // and the condenser can only pull down to a warmer saturation, so vacuum falls, output
-    // falls at the same steam flow, and the 74.5 kPa turbine trip gets closer. It also
-    // raises the RHR heat exchanger's sink, so a Mode 5 cooldown bottoms out warmer.
+    // Circulating-water inlet temperature. Sits next to the COND VAC readout because
+    // vacuum is the variable it moves: raise the water temperature and the condenser can
+    // only pull down to a warmer saturation, so vacuum falls, output falls at the same
+    // steam flow, and the 74.5 kPa turbine trip gets closer. It also raises the RHR heat
+    // exchanger's sink, so a Mode 5 cooldown bottoms out warmer.
     ims3v42jghn: {
-      set: function (v) { cmd({ action: 'set_condenser_cw_temp', c: F2C(v) }); },
-      get: function (s) { var c = CS(s).cw_inlet_temp_c; return c == null ? null : C2F(c); }
+      set: function (v) { cmd({ action: 'set_condenser_cw_temp', c: v }); },
+      get: function (s) { var c = CS(s).cw_inlet_temp_c; return c == null ? null : c; }
     }
   };
 
@@ -434,8 +565,8 @@
     // --- ECCS (merged HPI/LPI): ONE pump on a dedicated RWST-sourced train (owner ruling
     //     2026-07-22, pwr_primary.js:56-60) — NOT the charging pump doing double duty, which
     //     is what justifies the two systems reading on different flow scales. ---
-    ims3w1cb6jc: function (s) { return r0((IN(s).hpi_flow || 0) * GPM_HPI); },                          // ECCS flow gpm (true hpi_flow)
-    ims3w1lj7n6: function (s) { return r0(MPa2psi(IN(s).hpi_discharge_pressure || 0)); },               // ECCS discharge psi (true pump head)
+    ims3w1cb6jc: function (s) { return dQ((IN(s).hpi_flow || 0) * GPM_HPI); },   // ECCS flow (true hpi_flow)
+    ims3w1lj7n6: function (s) { return dP(IN(s).hpi_discharge_pressure || 0); },  // ECCS discharge (true pump head)
     // Which alignment that one pump is in: RHR when the hot-leg suction valve is open, else
     // HPI/LPI by pressure regime, else off (pwr_engine.js:320). This is the readout that
     // makes the single-pump/two-suctions arrangement legible on the board.
@@ -443,8 +574,8 @@
     // reading instruments here left the readout at 'OFF' forever, including the shipped
     // Mode 5 lineup that spawns RHR-aligned (#235).
     ims3w61jjbi: function (s) { return String(CS(s).eccs_mode || 'off').toUpperCase(); },
-    imrmstovyli: function (s) { return r0((IN(s).afw_flow || 0) * GPM_AFW); },                          // AFW flow gpm (true afw_flow)
-    imrmsu1bl4r: function (s) { return r0(MPa2psi(IN(s).afw_discharge_pressure || 0)); },               // AFW discharge psi (true pump head)
+    imrmstovyli: function (s) { return dQ((IN(s).afw_flow || 0) * GPM_AFW); },   // AFW flow (true afw_flow)
+    imrmsu1bl4r: function (s) { return dP(IN(s).afw_discharge_pressure || 0); },  // AFW discharge (true pump head)
     // AFW pump state. The V2 board draws no AFW pump — the card is the pump — so this is
     // its run light, and it reads pump DEMAND (afw_pump_demand), not delivered flow. With
     // the block valve shut it says RUNNING while FLOW reads 0 and DISCG pins to the
@@ -455,8 +586,8 @@
       if (IN(s).afw_pump_running) return 'RUNNING';
       return esfAuto(s, 'afw') ? 'STANDBY' : 'SECURED';
     },
-    imrzp89wdfu: function (s) { return r0((IN(s).letdown_flow || 0) * GPM_LETDOWN); },                  // letdown flow gpm (readout)
-    imrzp8qps6u: function (s) { return r0((IN(s).charging_flow || 0) * GPM_CHARGING); },                // charging flow gpm (readout)
+    imrzp89wdfu: function (s) { return dQ((IN(s).letdown_flow || 0) * GPM_LETDOWN); },  // letdown flow (readout)
+    imrzp8qps6u: function (s) { return dQ((IN(s).charging_flow || 0) * GPM_CHARGING); },  // charging flow (readout)
     // PORV position light — the COMMANDED state, not the disc. This is the TMI-2 lie: it
     // reads CLOSED while a stuck valve keeps venting, and the tailpipe temperature below is
     // the only honest tell. The schematic PORV shows true disc position; this does not.
@@ -464,9 +595,9 @@
     // PZR temperature + live heater power (EXTRA_ITEMS pair, #237). Heater reads the
     // engine's ACTUAL output (heater_power_frac) — under AUTO this is the proportional
     // controller's live demand, which the panel's editable % box shows greyed.
-    ims5gq44zgr: function (s) { return r0(C2F(satTempC(IN(s).primary_pressure))); },
+    ims5gq44zgr: function (s) { return dT(satTempC(IN(s).primary_pressure)); },
     ims5gprvl7n: function (s) { return r0(CS(s).heater_power_pct || 0); },
-    imro6qpci2d: function (s) { return r0(Cd2F(IN(s).thot - IN(s).tcold)); },                           // dTavg °F
+    imro6qpci2d: function (s) { return dTd(IN(s).thot - IN(s).tcold); },   // leg dT (a DIFFERENCE - see the tempd family)
     // SUR, DPM (#271). NOT a log channel and it has no trip — the limits are the `sur_high`
     // ALARM at 1.0 and the rod-withdrawal INTERLOCK at 1.5 (clearing below 0.8), which is a
     // command block rather than a scram. Red therefore means "the withdrawal block is on", not
@@ -517,7 +648,7 @@
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
     imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
     bdFeedStatus: function (s) { return feedStatus(s); },                                              // SG feed controller status (#214)
-    imrppyp0wfo: function (s) { return accN2Psi(s); },                                                  // accumulator N2 psig
+    imrppyp0wfo: function (s) { return accN2Press(s); },   // accumulator N2 cover-gas pressure
     imrppztrng1: function (s) { return IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
     imrpq0n2ujv: function (s) { return r0(accFill(s)); },                                               // accumulator fill %
     ims3wy5oym4: function (s) {                                                                          // boron status (+ dose countdown)
@@ -544,25 +675,25 @@
     // Condenser vacuum, inHg. Two readouts on the V2 board: on the condenser itself, and
     // on the CONDENSER COOLING card next to the circulating-water temperature that drives
     // it — the pairing is the point, since vacuum is the variable that CW temperature moves.
-    imrqzuhzre3: function (s) { return r0(kPa2inHg(IN(s).condenser_vacuum)); },                         // condenser vacuum inHg (mimic)
-    ims3xp168iy: function (s) { return r0(kPa2inHg(IN(s).condenser_vacuum)); },                         // condenser vacuum inHg (cooling card)
-    imrr1gwi93j: function (s) { return r0(MPa2psi(IN(s).steam_pressure)); },                            // SG pressure psi
-    imrr1hecwq7: function (s) { return r0(C2F(satTempC(IN(s).steam_pressure))); },                      // steam temp °F (sat)
-    imrr4fnxhlc: function (s) { return r0(C2F(IN(s).thot)); },                                          // T-hot °F
-    imrr4g29a7c: function (s) { return r0(C2F(IN(s).tcold)); },                                         // T-cold °F
-    imrsgch20pv: function (s) {                                                                          // PORV tailpipe °F
+    imrqzuhzre3: function (s) { return dV(IN(s).condenser_vacuum); },  // condenser vacuum (mimic)
+    ims3xp168iy: function (s) { return dV(IN(s).condenser_vacuum); },  // condenser vacuum (cooling card)
+    imrr1gwi93j: function (s) { return dP(IN(s).steam_pressure); },  // SG pressure
+    imrr1hecwq7: function (s) { return dT(satTempC(IN(s).steam_pressure)); },  // steam temp (sat)
+    imrr4fnxhlc: function (s) { return dT(IN(s).thot); },  // T-hot
+    imrr4g29a7c: function (s) { return dT(IN(s).tcold); },  // T-cold
+    imrsgch20pv: function (s) {                                                                          // PORV tailpipe temp
       // The one honest tell in the TMI-2 sequence: a seated PORV leaves the tailpipe at its
       // ~180 °F leaky-seat baseline; a passing (stuck-open) valve cooks it toward ~300 °F.
       // The 1979 crew had this reading and misread it — so make the elevation legible: amber
       // once it climbs clear of baseline (issue #105 #6). SR_NORMAL_COLOR is the authored green.
       var c = IN(s).porv_tailpipe_temp;
       if (c == null) return null;
-      return { text: String(r0(C2F(c))), color: c > 100 ? SR_HANDOFF_COLOR : SR_NORMAL_COLOR };
+      return { text: dT(c), color: c > 100 ? SR_HANDOFF_COLOR : SR_NORMAL_COLOR };
     },
     // SG feed rate: MEASURED feed flow, not pump demand. This read control_state
     // feed_pump_speed_pct until 2026-07-25, so it showed what was asked for rather than what
     // the plant delivered — the indication stayed at demand through a feed-pump trip.
-    imrsgkz4lq0: function (s) { return r0((IN(s).fw_flow || 0) * GPM_FEED); },                          // SG feed rate gpm
+    imrsgkz4lq0: function (s) { return dQ((IN(s).fw_flow || 0) * GPM_FEED); },   // SG feed rate
     // Main steam line flow — the TOTAL SG draw (turbine + dump + safeties), which is what
     // feed has to match. NOT the `steam_flow` instrument: that is governor/turbine flow only
     // and reads ~0 whenever the turbine is offline and the dump is carrying the plant — the
@@ -572,13 +703,13 @@
     //   V2 shows it twice: at the SG steam head on the mimic, and — the one that matters —
     // directly above FEED FLOW on the STEAM GEN FEED card, so matching the two in MANUAL is
     // a visual comparison rather than arithmetic.
-    ims31ngjkf8: steamFlowGpm,                                                                          // steam flow gpm (SG head)
-    ims3wm0d0bu: steamFlowGpm                                                                           // steam flow gpm (feed card)
+    ims31ngjkf8: steamFlowDisp,   // steam flow (SG head)
+    ims3wm0d0bu: steamFlowDisp    // steam flow (feed card)
   };
 
-  function steamFlowGpm(s) {
+  function steamFlowDisp(s) {
     var f = IN(s).sg_steam_flow;
-    return f == null ? null : r0(f * GPM_FEED);
+    return f == null ? null : dQ(f * GPM_FEED);
   }
 
   // SR→IR handoff cue: turn the source-range indication amber at the SR high-flux caution
@@ -631,7 +762,7 @@
   function accFill(s) { var t = s.true_state || {}; return t.accumulator_volume_pct != null ? t.accumulator_volume_pct : 78; }
   // N2 cover-gas pressure. Older saves predate the engine field — show a dash rather than a
   // fabricated constant (this readout was pinned at a hard-coded 640 psig until 2026-07-25).
-  function accN2Psi(s) { var t = s.true_state || {}; return t.accumulator_pressure_mpa != null ? r0(MPa2psi(t.accumulator_pressure_mpa)) : null; }
+  function accN2Press(s) { var t = s.true_state || {}; return t.accumulator_pressure_mpa != null ? dP(t.accumulator_pressure_mpa) : null; }
 
   // ================================================================ COMPONENTS
   // compProps(item, s) -> props for the component's update()
@@ -698,6 +829,13 @@
     condenser: function (s) {
       // hotwell/condensate temperature rises modestly with load (higher backpressure) but
       // stays cold — the condensing side under vacuum, never primary-hot.
+      //
+      // `vacuumInHg` is deliberately left OUT of the #238 display-unit layer: the prop name
+      // bakes the unit into the component's contract, and the only thing that renders it
+      // (comp_condenser.js, its `showControls` text) is DORMANT — the board's condenser item
+      // is authored `showControls: false`. Renaming a component prop to fix a readout nobody
+      // can see would be the wrong trade. If that panel is ever turned on, it needs the
+      // family treatment and a prop name that does not claim a unit.
       return { steamLoad: IN(s).power_range, hotwellLevel: 55,
         coolingFlow: IN(s).condenser_cooling_available ? 80 : 0,
         temp: condTemp(s),
@@ -806,9 +944,12 @@
 
     // ---- vital-parameter tiles (Indicator Panel) -------------------------------------
     imrzl4b7g9m: tile('imrzl4b7g9m', function (s) { return IN(s).power_range; }),
-    ims2immk7ks: tile('ims2immk7ks', function (s) { return IN(s).tavg == null ? null : C2F(IN(s).tavg); }),
-    ims2immxl2s: tile('ims2immxl2s', function (s) { return IN(s).subcooling_margin == null ? null : Cd2F(IN(s).subcooling_margin); }),
-    ims2immsvn6: tile('ims2immsvn6', function (s) { return IN(s).primary_pressure == null ? null : MPa2psi(IN(s).primary_pressure); }),
+    // The readings are in BASE units (°C, MPa) — tile() converts them with the same family
+    // that converted the bands, so a reading can never be plotted against a band in a
+    // different unit. That coupling is the point of routing both through TILE_UNIT.
+    ims2immk7ks: tile('ims2immk7ks', function (s) { return IN(s).tavg; }),
+    ims2immxl2s: tile('ims2immxl2s', function (s) { return IN(s).subcooling_margin; }),
+    ims2immsvn6: tile('ims2immsvn6', function (s) { return IN(s).primary_pressure; }),
     ims2immon9z: tile('ims2immon9z', function (s) { return IN(s).pzr_level; }),
     ims2imn1nny: tile('ims2imn1nny', function (s) { return IN(s).sg_level; })
   };
@@ -874,32 +1015,60 @@
     return fallback;
   }
   var P_SET = _PZ.P_setpoint || 15.41;
+  // Family + per-mode display resolution for the three tiles that carry a convertible unit.
+  // `us` is the AUTHORED unit string on the item, repeated here because tile() is keyed by
+  // id and never sees the doc item — it is what US mode renders, unchanged.
+  //
+  // The DECIMALS are per-mode and not a free choice: the tile comment below records the
+  // measured sigma in display units, and the rule is that the last digit must be signal.
+  // Pressure needs 2 in MPa (0.0039 MPa sigma) where it needs 0 in psi (0.56 psi); Tavg and
+  // subcooling stay whole units in °C, where they are QUIETER than in °F (0.05 vs 0.09).
+  var TILE_UNIT = {
+    ims2immk7ks: { fam: 'temp',  us: 'F',   d: { US: 0, SI: 0 } },
+    ims2immxl2s: { fam: 'tempd', us: 'F',   d: { US: 0, SI: 0 } },
+    ims2immsvn6: { fam: 'press', us: 'psi', d: { US: 0, SI: 2 } }
+  };
+  function tileUnit(id) {
+    var t = TILE_UNIT[id];
+    return t ? uStr(t.fam, t.us) : null;
+  }
+  function tileDigits(id, b) {
+    var t = TILE_UNIT[id];
+    return t ? t.d[U()] : b.digits;
+  }
+  // Band edges live in the family's BASE unit here (°C, MPa, % — the same unit the
+  // protection tables publish), and bandsFor() converts the whole set to the active
+  // display unit in one place at the end. Before #238 these converted inline and the
+  // literals below were authored in °F/psi, which is what made the board US-only.
   var TILE_BANDS = {
-    // Reactor power, % rated. High side only — any power below rated is a legitimate state.
-    // tripHi is the BACKSTOP (120 %); the 25 % power-range low setpoint is armed during a
-    // startup and overrides it live — see powerBand().
+    // Reactor power, % rated — unit-neutral. High side only: any power below rated is a
+    // legitimate state. tripHi is the BACKSTOP (120 %); the 25 % power-range low setpoint
+    // is armed during a startup and overrides it live — see powerBand().
     imrzl4b7g9m: { min: 0, max: 130, digits: 1,
       tripLo: 0, alarmLo: 0, normLo: 0,
       normHi: 100, alarmHi: alarmSp('high_flux', 108), tripHi: tripBackstop('power_range', 'high', 120) },
-    // Tavg, °F. normHi is the top of the at-power Tavg program (~307 °C); below that covers
-    // every mode down to cold shutdown, so the low side collapses.
-    ims2immk7ks: { min: 50, max: 660, digits: 0,
-      tripLo: 50, alarmLo: C2F(alarmSp('low_tavg', 289)), normLo: 50,
-      normHi: 585, alarmHi: C2F(alarmSp('high_tavg', 312.2)), tripHi: C2F(tripSp('tavg', 'high', 335)) },
-    // Subcooling margin, °F — a DELTA, so Cd2F (no 32° offset). More is better: the high
-    // side collapses and the danger is all at the bottom, ending at 0 = coolant boiling.
-    ims2immxl2s: { min: -20, max: 150, digits: 0,
-      tripLo: Cd2F(alarmSp('subcooling_lost', 0)), alarmLo: Cd2F(alarmSp('subcooling_low', 11.1)), normLo: 40,
-      normHi: 150, alarmHi: 150, tripHi: 150 },
-    // Primary pressure, psi. NORMAL is the pressurizer control band itself — heaters come on
+    // Tavg, °C. normHi is the top of the at-power Tavg program (307.2 °C / 585 °F); below
+    // that covers every mode down to cold shutdown, so the low side collapses. The meter
+    // bottom is 10 °C (50 °F) — the F2C() form is deliberate, so the US display it has
+    // always shown round-trips back to exactly 50 rather than to a converted approximation.
+    ims2immk7ks: { min: F2C(50), max: F2C(660), digits: 0,
+      tripLo: F2C(50), alarmLo: alarmSp('low_tavg', 289), normLo: F2C(50),
+      normHi: F2C(585), alarmHi: alarmSp('high_tavg', 312.2), tripHi: tripSp('tavg', 'high', 335) },
+    // Subcooling margin, °C — a DIFFERENCE, so the `tempd` family (no 32° offset). More is
+    // better: the high side collapses and the danger is all at the bottom, ending at
+    // 0 = coolant boiling.
+    ims2immxl2s: { min: Fd2C(-20), max: Fd2C(150), digits: 0,
+      tripLo: alarmSp('subcooling_lost', 0), alarmLo: alarmSp('subcooling_low', 11.1), normLo: Fd2C(40),
+      normHi: Fd2C(150), alarmHi: Fd2C(150), tripHi: Fd2C(150) },
+    // Primary pressure, MPa. NORMAL is the pressurizer control band itself — heaters come on
     // below setpoint, spray above — so the green band is exactly where the controller holds it.
-    ims2immsvn6: { min: 0, max: 2600, digits: 0,
-      tripLo: MPa2psi(tripSp('primary_pressure', 'low', 12.41)),
-      alarmLo: MPa2psi(alarmSp('pzr_pressure_low', 14.82)),
-      normLo: MPa2psi(P_SET - (_PZ.heater_band_mpa || 0.207)),
-      normHi: MPa2psi(P_SET + (_PZ.spray_band_mpa || 0.345)),
-      alarmHi: MPa2psi(alarmSp('pzr_pressure_high', 15.86)),
-      tripHi: MPa2psi(tripSp('primary_pressure', 'high', 16.44)) },
+    ims2immsvn6: { min: 0, max: psi2MPa(2600), digits: 0,
+      tripLo: tripSp('primary_pressure', 'low', 12.41),
+      alarmLo: alarmSp('pzr_pressure_low', 14.82),
+      normLo: P_SET - (_PZ.heater_band_mpa || 0.207),
+      normHi: P_SET + (_PZ.spray_band_mpa || 0.345),
+      alarmHi: alarmSp('pzr_pressure_high', 15.86),
+      tripHi: tripSp('primary_pressure', 'high', 16.44) },
     // Pressurizer level, %. No high-level trip exists, so the top region collapses at 100 —
     // above the 75 % alarm is caution territory all the way up, which is the truth.
     ims2immon9z: { min: 0, max: 100, digits: 0,
@@ -953,21 +1122,33 @@
   // band in every mode the board can reach. Their references are the protection setpoints,
   // which is what TILE_BANDS already reads.
   var _CTL = (typeof RD !== 'undefined' && RD.PWR_CONTROL) || {};
-  // Band edges are QUANTISED to whole display units. They are recomputed every render from
-  // live signals (load for Tavg, the setpoint for pressure), and the tile rebuilds its gauge
-  // whenever a band edge changes — so unquantised edges churned at the ~10 Hz render rate and
-  // the whole strip flickered, worst exactly during a transient when load is moving. Rounding
-  // means an edge steps once per display unit instead of every frame.
-  function qz(v) { return Math.round(v); }
+  // Band edges are QUANTISED to a whole step of the DISPLAY unit. They are recomputed every
+  // render from live signals (load for Tavg, the setpoint for pressure), and the tile rebuilds
+  // its gauge whenever a band edge changes — so unquantised edges churned at the ~10 Hz render
+  // rate and the whole strip flickered, worst exactly during a transient when load is moving.
+  // Rounding means an edge steps once per quantum instead of every frame.
+  //
+  // The QUANTUM is per family per mode (`q`), not a whole unit, because "whole display unit"
+  // stops meaning anything once the unit changes: 1 psi is a sensible edge step and 1 MPa is
+  // 145 of them — quantising the pressurizer's ~80 psi control band to whole MPa would erase
+  // it. Pressure quantises at 0.01 MPa in SI (1.45 psi, comparable churn resistance) and
+  // temperature at 0.5 °C (0.9 °F). qz() is applied AFTER conversion, in bandsFor().
+  function qz(v, q) {
+    if (v == null || !isFinite(v)) return v;
+    if (!q || q === 1) return Math.round(v);
+    return Math.round(v / q) * q;
+  }
+  // Everything the mode-aware helpers below return is in the tile's BASE unit and
+  // UNQUANTISED — bandsFor() converts and quantises the merged set in one place.
   function tavgBand(s) {
     var mode = (s.true_state && s.true_state.plant_mode) || null;
     var b = TILE_BANDS.ims2immk7ks;
     if (mode != null && mode >= 5) {
       // Mode 5/6: no Tavg program. Normal is "cold" — RHR territory, below 200 °F. The
       // window closes down with it, or a cold plant reads against an at-power scale.
-      return { normLo: b.min, normHi: 200, alarmHi: 250, winLo: b.min, winHi: 350 };
+      return { normLo: b.min, normHi: F2C(200), alarmHi: F2C(250), winLo: b.min, winHi: F2C(350) };
     }
-    var out = { winLo: 540, winHi: 645 };   // the hot operating window, not the whole meter
+    var out = { winLo: F2C(540), winHi: F2C(645) };   // the hot operating window, not the whole meter
     if (!_CTL.trefProgram) { out.normLo = b.normLo; out.normHi = b.normHi; return out; }
     // Load reference is the same signal the rod channel uses (steam flow, 0..1).
     var load = Math.max(0, Math.min(1, IN(s).steam_flow || 0));
@@ -976,8 +1157,8 @@
     // legitimately wanders wider than the lockup band while load is moving, and a band
     // narrower than ~10 °F is a hairline on a 105 °F window — unreadable is not useful.
     var halfC = (_CTL.TAVG_DEADBAND_C || 0.8) * 3.5;
-    out.normLo = qz(C2F(ref - halfC));
-    out.normHi = qz(C2F(ref + halfC));
+    out.normLo = ref - halfC;
+    out.normHi = ref + halfC;
     return out;
   }
   // Reactor power — the band follows WHICH POWER TRIP IS ARMED (#267).
@@ -1038,15 +1219,15 @@
     var sp = CS(s).pressure_setpoint;
     if (sp == null || !isFinite(sp)) sp = P_SET;
     var out = {
-      normLo: qz(MPa2psi(sp - (_PZ.heater_band_mpa || 0.207))),
-      normHi: qz(MPa2psi(sp + (_PZ.spray_band_mpa || 0.345)))
+      normLo: sp - (_PZ.heater_band_mpa || 0.207),
+      normHi: sp + (_PZ.spray_band_mpa || 0.345)
     };
     if (!s || !s.rps_state) return out;                                // no RPS section → authored
     if (limitingArmedTrip('primary_pressure', 'low', s)) return out;   // armed → authored, red intact
     out.tripLo = b.min;
     out.alarmLo = b.min;
     out.winLo = b.min;
-    out.winHi = qz(out.normHi + 0.15 * (out.normHi - b.min));
+    out.winHi = out.normHi + 0.15 * (out.normHi - b.min);
     // `ok`, not `trip`: bypassed-for-the-mode is a status indication, and a red note here would
     // say the opposite of what the reclassified alarms say.
     out.note = 'LO TRIP BLKD';
@@ -1058,7 +1239,7 @@
     var mv = id === 'ims2immk7ks' ? tavgBand(s)
            : (id === 'ims2immsvn6' ? pressureBand(s)
            : (id === 'imrzl4b7g9m' ? powerBand(s) : null));
-    if (!mv) return b;
+    if (!mv) return toDisplayBands(id, b);
     var out = {}; for (var k in b) out[k] = b[k];
     if (mv.normLo != null) out.normLo = mv.normLo;
     if (mv.normHi != null) out.normHi = mv.normHi;
@@ -1086,6 +1267,31 @@
     // and painted a correct 363 psi red. A tile must not be able to say that, whichever band
     // moves next, so the inversion is closed here rather than in each mode-aware helper.
     if (out.normHi < out.normLo) out.normHi = out.normLo;
+    return toDisplayBands(id, out);
+  }
+  // The one place a tile band leaves base units (#238). Everything above works in °C / MPa /
+  // % — the unit the protection tables publish — and this converts the finished set and
+  // quantises it for the active display mode. A unit-neutral tile (reactor power, both
+  // levels) has no family and falls through with only the quantisation applied, which is
+  // exactly what it always had.
+  //
+  // Order matters and is safe in this direction only: the clamps above run in BASE units,
+  // which is legitimate because every conversion here is strictly increasing, so it commutes
+  // with a comparison. qz() is monotone non-decreasing, so an edge ordering established in
+  // base cannot invert on the way out either — but quantising BEFORE the clamps could round
+  // two edges onto each other and defeat the #270 inversion guard, so it happens last.
+  var BAND_KEYS = ['min', 'max', 'tripLo', 'alarmLo', 'normLo', 'normHi', 'alarmHi', 'tripHi', 'winLo', 'winHi'];
+  function toDisplayBands(id, b) {
+    var t = TILE_UNIT[id];
+    var m = t ? fam(t.fam) : null;
+    var q = m ? m.q : 1;
+    var out = {}, i, k, v;
+    for (k in b) out[k] = b[k];
+    for (i = 0; i < BAND_KEYS.length; i++) {
+      k = BAND_KEYS[i]; v = b[k];
+      if (v == null || !isFinite(v)) continue;
+      out[k] = qz(m ? m.to(v) : v, q);
+    }
     return out;
   }
 
@@ -1097,11 +1303,17 @@
   // they also have to be resolved per-snapshot anyway — see bandsFor.)
   function tile(id, read) {
     return function (s) {
-      var b = bandsFor(id, s);
+      var b = bandsFor(id, s);           // already in the active DISPLAY unit
       var sc = displayScale(b);
-      var v = read(s);
+      var t = TILE_UNIT[id], m = t ? fam(t.fam) : null;
+      var v = read(s);                   // …but the reading arrives in BASE units
+      if (v != null && isFinite(v) && m) v = m.to(v);
       return {
         value: (v == null || !isFinite(v)) ? null : v,
+        // The tile's unit follows the display mode too. In US this is the authored string
+        // (TILE_UNIT.us) and the write is a no-op; in SI it is what makes the tile agree
+        // with the chart chip beside it, which is the whole of #237.
+        unit: tileUnit(id),
         // Display resolution, set so the last digit is SIGNAL, not noise. At whole units a
         // tile flips occasionally, the way a real control-room indicator does; at one decimal
         // the tenths place was pure jitter and flipped on every render (~220 changes/minute,
@@ -1112,8 +1324,11 @@
         // pressure 0.56 psi, PZR level 0.12 %, SG level 0.31 %. Tavg/subcooling/PZR level
         // are ~3x quieter than when this was written (0.2–0.45 across the board), but even
         // 0.09 is close to a full 0.1 display step, so whole units still hold — do not add a
-        // decimal back without re-measuring the tile you are changing.
-        decimals: b.digits,
+        // decimal back without re-measuring the tile you are changing. Since #238 the
+        // resolution is PER DISPLAY UNIT (TILE_UNIT.d): the sigma above is a property of
+        // the instrument, but how many digits it hides behind is a property of the unit —
+        // 0.56 psi and 0.0039 MPa are the same noise and want 0 and 2 decimals.
+        decimals: tileDigits(id, b),
         // sim clock drives the tile's 3-minute sampling window (see comp_indicator_panel)
         t: (s.metadata && s.metadata.sim_time != null) ? s.metadata.sim_time : null,
         min: sc.min, max: sc.max,
@@ -1208,8 +1423,13 @@
 
   // ================================================================ TRIP BLOCKS menu (task #5)
   // Only the 4 blockable trips (owner ruling).
+  // `sub` may be a function (s) -> string where the caption carries a unit — it is rendered
+  // per popover open, so it follows the display mode like every other number on the board.
+  // The pressure one also stops the setpoint being a hand-copied literal: it read a flat
+  // "1800 psi" while the table said 12.41 MPa, which is 1799.9 and rounds there by luck.
   var BLOCKABLE_TRIPS = [
-    { id: 'lo_press', label: 'PZR PRESS LO-LO', sub: 'Reactor trip · 1800 psi (P-11 permissive)' },
+    { id: 'lo_press', label: 'PZR PRESS LO-LO',
+      sub: function () { return 'Reactor trip · ' + dP(tripSp('primary_pressure', 'low', 12.41)) + ' ' + uStr('press', 'psi') + ' (P-11 permissive)'; } },
     { id: 'lo_flow', label: 'RCS LOW FLOW', sub: 'Reactor trip · loss of flow (P-7 permissive)' },
     { id: 'ir_high', label: 'IR HIGH FLUX', sub: 'Startup trip · ~20% (P-10 permissive)' },
     { id: 'pr_low_setpoint', label: 'PR HIGH (LOW SETPT)', sub: 'Startup trip · 25% (P-10 permissive)' }
@@ -1233,7 +1453,7 @@
       var row = mk('div', 'bd-pop-row');
       var txt = mk('div', null);
       txt.appendChild(mk('div', 'lbl', t.label));
-      txt.appendChild(mk('div', 'sub', t.sub));
+      txt.appendChild(mk('div', 'sub', typeof t.sub === 'function' ? t.sub(snap) : t.sub));
       var b = mk('button', null, '');
       b.setAttribute('data-trip', t.id);
       b.addEventListener('click', function () {
@@ -1401,6 +1621,15 @@
       imrzmlyafa3: { props: { left: 1416, width: 72 } },
       // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
       imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
+      // ROD AUTO active colour: authored #9fb3c4 (pale grey — reads WHITE when lit) against
+      // #5aad7c on every other automation control *(OWNER, 2026-08-01: "the auto rod button
+      // doesn't follow the color convention. Auto on it should be green not white.")*.
+      // buildButton uses the authored item colour AS the active-state colour (--bd-color), so
+      // this one control announced "the controller has it" in a different colour from BORON ON,
+      // SG FEED AUTO and STEAM DUMP AUTO — and it is the control the #289 lineup change just
+      // made matter, since rods now come up engaged. #5aad7c is the same green as BD_OK above.
+      // Fold it into the builder and delete this entry; selfTest pins the value meanwhile.
+      ims5glucngg: { props: { color: '#5aad7c' } },
       // (TRIP BLOCKS carried a top/height patch here until the 2026-07-28t re-export —
       // the builder now authors it at 425/30, so the patch was pinning what the diagram
       // already says. Dropped rather than kept: a patch that agrees with the doc is a
@@ -1534,14 +1763,59 @@
       endHoldRod();
       return true;
     },
+    // The operator types in the DISPLAY unit; NUMBERS.set works in the box's base unit.
     onNumber: function (item, value) {
       var n = NUMBERS[item.id];
-      if (n && n.set) n.set(value);
+      if (!n || !n.set) return;
+      var m = numFam(item);
+      n.set(m ? m.from(value) : value);
     },
-    // Valid [min, max] for an editable box, so the renderer clamps out-of-range entries.
-    boundsFor: function (item) { return NUM_BOUNDS[item.id] || null; },
-    // ▲/▼ step override for an editable number box (null = use the authored it.step).
-    stepFor: function (item) { return NUM_STEP[item.id] != null ? NUM_STEP[item.id] : null; },
+    // Valid [min, max] for an editable box, in the ACTIVE display unit, so the renderer
+    // clamps out-of-range entries. Rounded INWARD at the box's display resolution — ceil the
+    // minimum, floor the maximum — so the box can never accept a value the engine would then
+    // silently clamp. (In US this reproduces the old inline arithmetic exactly: the pressure
+    // setpoint is still 15..2484 psi and the dump 30..1350.)
+    boundsFor: function (item) {
+      var b = NUM_BOUNDS_BASE[item.id];
+      if (!b) return null;
+      var m = numFam(item);
+      if (!m) return [b[0], b[1]];
+      var p = Math.pow(10, m.d);
+      return [Math.ceil(m.to(b[0]) * p) / p, Math.floor(m.to(b[1]) * p) / p];
+    },
+    // ▲/▼ step for an editable number box (null = use the authored it.step). NUM_STEP is an
+    // absolute override and outranks the family — both boxes in it are unit-neutral.
+    stepFor: function (item) {
+      if (NUM_STEP[item.id] != null) return NUM_STEP[item.id];
+      var m = numFam(item);
+      return m ? m.step : null;
+    },
+    // Display decimals for an editable box (null = the authored it.digits). Only moves in
+    // SI, and only where the converted range needs the resolution — a pressure setpoint
+    // typed to whole MPa would be a 145 psi granularity on a box the operator trims.
+    numberDigits: function (item) {
+      var m = numFam(item);
+      return m ? m.d : null;
+    },
+    // The unit string beside an editable box. Authored in US, converted in SI.
+    numberUnit: function (item) {
+      var n = NUM_UNIT[item.id];
+      return n ? uStr(n.fam, item.unit) : (item.unit == null ? null : item.unit);
+    },
+    // The box's range HINT (the small caption above it), which bakes in a unit on the two
+    // boxes that have one. In US the authored string stands verbatim — including the known
+    // off-by-one on the dump box, which reads "29-1350 psi" against a real 30 psi minimum;
+    // that is a board-data defect and correcting it here would put the fix somewhere nobody
+    // would look for it. In SI the hint is DERIVED from boundsFor(), so it cannot drift from
+    // the bounds it describes. A box with no authored hint stays without one in both modes.
+    numberHint: function (item) {
+      var lab = item.label == null ? '' : item.label;
+      var n = NUM_UNIT[item.id];
+      if (!lab || !n || U() !== 'SI') return lab;
+      var b = RD.PwrBoardDriver.boundsFor(item);
+      if (!b) return lab;
+      return trimNum(b[0]) + '-' + trimNum(b[1]) + ' ' + uStr(n.fam, item.unit);
+    },
     onControl: function (item, action, value) {
       // Only clickable valves emit control now — every pump is rendered art-only.
       if (action === 'toggle' && VALVE_TOGGLE[item.id]) VALVE_TOGGLE[item.id](!!value);
@@ -1570,13 +1844,26 @@
       if (v == null) return null;
       // A formatter may return { text, color, unit } to drive per-value colouring (e.g. the
       // SR indication going amber at the SR→IR handoff); otherwise it returns a plain value.
-      return (typeof v === 'object') ? v : { text: String(v) };
+      var out = (typeof v === 'object') ? v : { text: String(v) };
+      // #238: unless the formatter named its own unit (the boron sample's blank, the reactor
+      // period's 's'), the unit follows the display mode — VALUE_UNIT for the convertible
+      // indications, the AUTHORED string for everything else. Emitting the authored string
+      // rather than nothing is what RESTORES it when the operator switches SI → US: the unit
+      // span is a live text node, so leaving it alone would strand "MPa" over a psi reading.
+      if (out.unit == null) {
+        var famName = VALUE_UNIT[item.id];
+        out.unit = famName ? uStr(famName, item.unit) : (item.unit == null ? '' : item.unit);
+      }
+      return out;
     },
+    // Reflects sim state into the box, converted from the box's base unit to the display one.
     numberFor: function (item, s) {
       var n = NUMBERS[item.id];
       if (!n || !n.get) return null;
       var v = n.get(s);
-      return v == null ? null : v;
+      if (v == null) return null;
+      var m = numFam(item);
+      return m ? m.to(v) : v;
     },
     // True when a number box is currently AUTO-driven — the value is being set by an
     // automatic controller, so the operator can't meaningfully type into it. The renderer
@@ -1774,6 +2061,22 @@
       ck('driver: DOC_PATCHES shortened the SG FEED card title', (function () {
         var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === 'imrqxsodu5j'; })[0];
         return it && it.title === 'SG FEED' ? true : (it ? it.title : 'card missing');
+      })() === true);
+      // ---- ROD AUTO obeys the board's AUTO colour convention (2026-08-01) -----------------
+      // `buildButton` uses the authored item colour AS the lit colour, so an off-convention
+      // author value is invisible until the control is engaged — and since #289 the rods come
+      // up engaged, so it is lit on every free-play start. Pinned two ways: the patch applied,
+      // and the CONVENTION itself, so a re-export that re-authors ROD AUTO pale (or recolours
+      // any other AUTO) fails here instead of shipping a board with two meanings for "green".
+      ck('driver: ROD AUTO lights the standard AUTO green', (function () {
+        var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === 'ims5glucngg'; })[0];
+        return it ? it.color : 'ROD AUTO missing';
+      })() === '#5aad7c');
+      ck('driver: every AUTO button on the board shares that green', (function () {
+        var bad = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) {
+          return x.kind === 'button' && /\bAUTO\b/.test(String(x.label || '')) && x.color !== '#5aad7c';
+        }).map(function (x) { return x.id + '=' + x.color; });
+        return bad.length ? bad.join(',') : true;
       })() === true);
       // ---- power tile follows the ARMED power trip (#267) --------------------------------
       // The tile used to read 120 % in every state, because tripSp() took the first
