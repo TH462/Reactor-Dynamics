@@ -20,6 +20,42 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-01c (trend graphs open on REAL data, develop)
+
+*(OWNER, 2026-08-01: "when you make preset starts, run them for 30 minutes to fill up the
+graph with real data before saving")*
+
+**The preseed already existed and was synthetic.** `app.js` seeded the 30-minute record window
+with **360 identical rows** (#237). Now: seed flat instantly, run the real 30 minutes in
+`setTimeout` slices, swap it in, cache per `plant|design_version|initial_state` for the session
+(`ensurePreseed`). The live recorder and the preseed share one `chartSample()` so they cannot
+disagree about what a row contains.
+
+**Why async.** A 30-plant-minute full-stack run measures **1874 ms**, and a fresh chart buffer
+happens on boot, reset, plant switch AND every mission start. Slices are **40 ticks (~42 ms)**,
+not 120 (~125 ms) — a tick costs ~1.04 ms, and 125 ms is visible jank fifteen times over.
+
+**Two defects in my own first draft, both caught before running it.** (1) A same-key re-seed
+while a run is in flight (reset to the same IC, mission restart) would have applied the trace
+against the **old `t0`** — fixed with `preseed.pendingT0`, read at completion rather than
+closed over. (2) The 120-tick slice above.
+
+**What it does NOT change: the shape.** The ICs are constructed as true steady states, so 30
+real minutes is a *noisy flat line* — measured at `hot_full_power`: power 99.78–100.2 %, Tavg
+304.0–304.2 °C, pzr level 54.6–55.3 %, sg_level 64.25–65.28. The gain is instrument texture
+plus the genuine slow drifts a synthetic seed cannot have. Said plainly to the owner before
+building, because "real data" could reasonably have been expected to look more interesting.
+
+**The verification took three attempts and the first two proved nothing.** Counting distinct
+y-values across *all* SVG polylines returned **32 with the feature on AND off** — it was
+reading ~250 gauge sparklines, not the trend chart. Scoped to `#chartCanvas`, the A/B is
+unambiguous: **28 distinct y over 61 points with the swap, exactly 1 without** (a perfectly
+horizontal line — the reported defect). New `verify_e2e_ui` section `testTrendPreseed`;
+injection-verified, and the screenshot count is `ENGINES × VIEWS` so the **baseline does not
+move** (still 16).
+
+---
+
 ## Session log — 2026-08-01b (#289 — rods start in AUTO; ROD AUTO goes green, develop)
 
 *(OWNER RULING, 2026-08-01: "Let's start the rods in auto. Might as well, everything else

@@ -37,6 +37,65 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-01c — the trend preseed becomes real data, computed off the main thread
+
+*(OWNER, 2026-08-01: "when you make preset starts, run them for 30 minutes to fill up the graph
+with real data before saving")*
+
+### The decision
+
+Keep the instant flat seed, then **replace it** with a genuinely-run 30 minutes computed in
+`setTimeout` slices and cached per `plant|design_version|initial_state` for the session
+(`ui/app.js` `ensurePreseed`). The live recorder and the preseed now share one
+`chartSample(rawIns, trueState)` so they cannot drift apart about what a row contains.
+
+The preseed was not missing — it was **synthetic**: #237 seeded the 30-minute window with 360
+identical rows, so a fresh plant drew a ruler-straight line.
+
+### Why not synchronously, and why 40-tick slices
+
+A 30-plant-minute full-stack run measures **1874 ms**, and a fresh chart buffer happens on
+boot, reset, plant switch **and** every mission start — synchronous would freeze all four. A
+tick costs ~1.04 ms, so slices are **40 ticks (~42 ms)**, under the ~50 ms a user reads as a
+stutter; the first draft's 120 (~125 ms) would have been visible jank fifteen times over.
+
+Options weighed and rejected: a **baked generated table** (zero runtime cost, but a generated
+artifact that goes stale whenever physics moves and would need its own gate), and **synthetic
+noise over the flat seed** (instant, but a drawing of real data rather than real data, and it
+cannot show the genuine xenon/boron drifts).
+
+### What it does not do
+
+Change the **shape**. The initial conditions are constructed as true steady states, so 30 real
+minutes is a *noisy flat line* — measured at `hot_full_power`: power 99.78–100.2 %, Tavg
+304.0–304.2 °C, pzr level 54.6–55.3 %, sg_level 64.25–65.28. The gain is instrument texture and
+the genuine slow drifts. This was put to the owner **before** building, because "real data"
+could reasonably have been expected to look more interesting than it does.
+
+### Two defects in the first draft
+
+1. A same-key re-seed **while a run is in flight** — reset to the same IC, a mission restart —
+   would have applied the finished trace against the **`t0` it started with**, not the new one.
+   `preseed.pendingT0` is tracked separately and read at completion.
+2. The 120-tick slice above.
+
+Both were found by reading the code back rather than by running it, which is the only reason
+they are not in the history as symptoms.
+
+### The verification, and why the first two attempts were worthless
+
+Counting distinct y-values across **all** SVG polylines returned **32 with the feature on and
+32 with it off** — it was reading ~250 gauge sparklines, not the trend chart, and would have
+"passed" a completely broken implementation. Scoped to `#chartCanvas` the A/B is unambiguous:
+**28 distinct y over 61 points** with the swap, **exactly 1** with the `ensurePreseed` call
+neutered — a perfectly horizontal line, the reported defect.
+
+New `verify_e2e_ui` section `testTrendPreseed`, injection-verified (the gate fails with that
+number in its message). The screenshot score is `ENGINES × VIEWS`, so **the baseline does not
+move** — sections here are free to add.
+
+---
+
 ## 2026-08-01b — #289: rod control joins the free-play lineup, and the dump turns out to be transient
 
 *(OWNER RULING, 2026-08-01: "Let's start the rods in auto. Might as well, everything else

@@ -74,6 +74,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ### Changed
 
+- **The trend graphs open on a real 30 minutes, not a flat line** *(OWNER, 2026-08-01: "when
+  you make preset starts, run them for 30 minutes to fill up the graph with real data before
+  saving")*. A preset start seeded the chart's 30-minute record window with **360 identical
+  samples**, so a fresh plant showed a ruler-straight trace where a running plant shows
+  instrument texture. It now seeds flat instantly and swaps in a genuinely-run trace computed
+  in background slices, cached per plant + design version + initial state for the session.
+
+  **Flat-first is deliberate**: a 30-plant-minute full-stack run measures **1874 ms**, and a
+  fresh chart buffer happens on boot, reset, plant switch *and* every mission start — paying
+  that synchronously would freeze all four. Slices are 40 ticks (~42 ms) rather than 120
+  (~125 ms), which is the difference between smooth and visibly janky.
+
+  **What it does not do**: change the *shape*. The initial conditions are constructed as true
+  steady states, so 30 real minutes is a noisy flat line — measured at `hot_full_power`, power
+  99.78–100.2 %, Tavg 304.0–304.2 °C, pzr level 54.6–55.3 %. The gain is instrument texture
+  and the genuine slow drifts (xenon, boron) a synthetic seed cannot have.
+
+  Guarded by a new `verify_e2e_ui` section. A/B on the real page: with the swap the busiest
+  plotted series has **28 distinct y-values** across its 61 points; with the call neutered,
+  **exactly 1**. Injection-verified — the gate fails with that number in the message.
+
 - **Rod control starts in AUTO** (#289) *(OWNER RULING, 2026-08-01: "Let's start the rods in
   auto. Might as well, everything else starts in auto.")*. `rods_tavg` is `defaultOn` at
   power, joining `boron_conc`, `cvcs_makeup` and `feed_sg` in the free-play lineup. Instructed
