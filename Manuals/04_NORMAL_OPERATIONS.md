@@ -2,7 +2,7 @@
 
 **Document:** PWR-NOP-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Revision:** 3  
+**Revision:** 4  
 
 ---
 
@@ -27,37 +27,37 @@ Numbered in **plant sequence**.
 
 | ID | Title | MODE | Scope |
 |----|-------|------|-------|
-| PWR-N01 | Heatup Mode 5 → Mode 3 (pump heat) | 5 → 4 → 3 | [sim] |
-| PWR-N01a | Nuclear heatup Mode 5 → Mode 3 (training variant) | 5 → 4 → 3 | [sim] |
-| PWR-N02 | Mode 3 lineup / prerequisites | Mode 3 | [sim] |
-| PWR-N03 | Approach to criticality (Mode 3 → Mode 2) | 3 → 2 | [sim] |
-| PWR-N04 | Mode 2 low-power operation & POAH | Mode 2 | [sim] |
-| PWR-N05 | Turbine roll & generator synchronization | 2 → 1 | [sim] |
-| PWR-N06 | Power ascension Mode 1 to 100 % | Mode 1 | [sim] |
+| PWR-N01 | Heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby (pump heat) | 5 → 4 → 3 | [sim] |
+| PWR-N01a | Nuclear heatup Mode 5 → Mode 3 (**training only** — not commercial) | 5 → 4 → 3 | [sim] |
+| PWR-N02 | Mode 3, Hot Standby — plant lineup | Mode 3 | [sim] |
+| PWR-N03 | Approach to criticality (Mode 3, Hot Standby → Mode 2, Startup) | 3 → 2 | [sim] |
+| PWR-N04 | Mode 2, Startup — low-power operation and POAH | Mode 2 | [sim] |
+| PWR-N05 | Turbine roll and generator synchronization (Mode 2 → Mode 1) | 2 → 1 | [sim] |
+| PWR-N06 | Power ascension Mode 1, At Power to 100 % | Mode 1 | [sim] |
 
 ### B. At-power maneuvers
 
 | ID | Title | MODE | Scope |
 |----|-------|------|-------|
-| PWR-N07 | Raise power | Mode 1 | [sim] |
-| PWR-N08 | Lower power | Mode 1 | [sim] |
+| PWR-N07 | Power maneuvering — raise power (Mode 1, At Power) | Mode 1 | [sim] |
+| PWR-N08 | Power maneuvering — lower power (Mode 1, At Power) | Mode 1 | [sim] |
 
 ### C. Continuous control
 
 | ID | Title | MODE | Scope |
 |----|-------|------|-------|
-| PWR-N09 | Boron & reactivity (incl. xenon) | 1–3 | [sim] |
-| PWR-N10 | Pressurizer pressure | 1–3 | [sim] |
-| PWR-N11 | Pressurizer level (CVCS) | 1–3 | [sim] |
-| PWR-N12 | SG level & feedwater | 1–2 | [sim] |
-| PWR-N13 | Reactor Coolant Pump (RCP) | 1–3 | [sim, approx] |
+| PWR-N09 | Boron and reactivity management (including xenon) | 1–3 | [sim] |
+| PWR-N10 | Pressurizer pressure control | 1–3 | [sim] |
+| PWR-N11 | Pressurizer level control (CVCS) | 1–3 | [sim] |
+| PWR-N12 | Steam generator level and feedwater control | 1–2 | [sim] |
+| PWR-N13 | Reactor coolant pump (RCP) operation | 1–3 | [sim, approx] |
 
 ### D. Shutdown path (Mode 1 → Mode 5)
 
 | ID | Title | MODE | Scope |
 |----|-------|------|-------|
-| PWR-N14 | Normal shutdown Mode 1 → Mode 3 | 1 → 3 | [sim] |
-| PWR-N15 | Cooldown Mode 3 → Mode 5 (RHR) | 3 → 4 → 5 | [sim] |
+| PWR-N14 | Normal shutdown Mode 1, At Power → Mode 3, Hot Standby | 1 → 3 | [sim] |
+| PWR-N15 | Cooldown Mode 3, Hot Standby → Mode 5, Cold Shutdown (RHR) | 3 → 4 → 5 | [sim] |
 
 ---
 
@@ -123,13 +123,16 @@ Mode 3, Hot Standby — hot, pressurized, subcritical, zero rod motion.
 
 ---
 
-## PWR-N01a — Nuclear heatup Mode 5 → Mode 3 (training variant) **[sim]**
+## PWR-N01a — Nuclear heatup Mode 5 → Mode 3 (**training only**) **[sim]**
 
 ### Purpose
-Reach the same **Mode 3** end state as **PWR-N01**, but heat with **deliberate low-power fission** (criticality cold, dilution ride, insert and borate back). **Training only** — not the commercial heatup.
+Reach the same **Mode 3, Hot Standby** end state as **PWR-N01**, but heat with **deliberate low-power fission** (take critical while cold, dilute, ride temperature up, then insert and borate back).
+
+**This is not a commercial normal operating procedure.** Commercial PWR heatup to Hot Standby is **subcritical** (RCP / pressurizer heat — **PWR-N01**); the approach to criticality is done **hot** (**PWR-N03**). Taking critical cold and riding heatup on fission is kept here only as a **training exercise** (approach practice, trip-block practice, dilution discipline).
 
 ### Applicability
-- Training / practice only (approach, trip blocks, dilution discipline). Not the commercial heatup path.
+- **Training / practice only.** Do not treat as the plant’s commercial heatup path.
+- Not claimed as a naval propulsion plant procedure (naval heatup practice is different and is not modeled here).
 
 ### Prerequisites
 Same Mode 5 plant condition as **PWR-N01**; charging available for boron adjust.
@@ -167,11 +170,11 @@ Fission heat makes this path much shorter than **PWR-N01** (pump heat only). On 
 If dilution is left running past the hot band, power and temperature keep rising — secure it when Tavg enters the no-load band.
 
 ### Outcome
-Mode 3 via nuclear path with shutdown margin restored. Prefer **PWR-N01** for commercial heatup.
+Mode 3, Hot Standby via the nuclear training path, with shutdown margin restored. For a commercial heatup, use **PWR-N01**, then **PWR-N02** / **PWR-N03**.
 
 ---
 
-## PWR-N02 — Prerequisites & plant lineup (Mode 3, Hot Standby)
+## PWR-N02 — Mode 3, Hot Standby — plant lineup **[sim]**
 
 ### Purpose
 Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any approach to criticality. Commercial startups do not pull rods until the board is known.
@@ -267,7 +270,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 
 ---
 
-## PWR-N04 — Mode 2, Startup low-power operation & Point of Adding Heat (POAH)
+## PWR-N04 — Mode 2, Startup — low-power operation and POAH **[sim]**
 
 ### Purpose
 Operate stably in **Mode 2, Startup** (critical, ≤ 5 %) and recognize the **point of adding heat** — when fission heat exceeds losses and Tavg begins to respond.
@@ -302,7 +305,7 @@ Stable Mode 2; operator recognizes POAH; ready to roll turbine.
 
 ---
 
-## PWR-N05 — Turbine roll & generator synchronization (Mode 2 → Mode 1) **[sim]**
+## PWR-N05 — Turbine roll and generator synchronization (Mode 2, Startup → Mode 1, At Power) **[sim]**
 
 ### Purpose
 Place the turbine-generator on the grid and establish electrical output coordinated with reactor power while entering **Mode 1, At Power** (power > 5 %).
@@ -339,7 +342,7 @@ Generator carrying load; plant in **Mode 1, At Power**.
 
 ---
 
-## PWR-N06 — Power ascension in Mode 1, At Power to 100 %
+## PWR-N06 — Power ascension Mode 1, At Power to 100 % **[sim]**
 
 ### Purpose
 Raise reactor power and electrical output to full-power Mode 1 (~**100 MWe**) by coordinating rods, boron, and turbine load.
@@ -376,7 +379,7 @@ Full-power **Mode 1, At Power** equilibrium.
 
 ---
 
-## PWR-N07 — Power maneuvering — raise power (Mode 1)
+## PWR-N07 — Power maneuvering — raise power (Mode 1, At Power) **[sim]**
 
 ### Purpose
 Increase power and MWe within Mode 1 from a partial-power plateau.
@@ -402,7 +405,7 @@ Stable higher power and MWe.
 
 ---
 
-## PWR-N08 — Power maneuvering — lower power (Mode 1)
+## PWR-N08 — Power maneuvering — lower power (Mode 1, At Power) **[sim]**
 
 ### Purpose
 Reduce power and load within Mode 1 (or toward Mode 2 / Mode 3).
@@ -432,7 +435,7 @@ Stable lower plateau.
 
 ---
 
-## PWR-N09 — Boron & reactivity management (including xenon)
+## PWR-N09 — Boron and reactivity management (including xenon) **[sim]**
 
 ### Purpose
 Use CVCS boron and rods for long- and short-term reactivity control; manage xenon.
@@ -471,7 +474,7 @@ Operator balances rods (fast) vs boron (slow) and anticipates xenon.
 
 ---
 
-## PWR-N10 — Pressurizer pressure control
+## PWR-N10 — Pressurizer pressure control **[sim]**
 
 ### Purpose
 Hold primary pressure near **2235 psi (15.41 MPa)** with heaters (raise) and spray (lower).
@@ -498,7 +501,7 @@ Pressure controllable; subcooling protected.
 
 ---
 
-## PWR-N11 — Pressurizer level control (CVCS)
+## PWR-N11 — Pressurizer level control (CVCS) **[sim]**
 
 ### Purpose
 Control PZR level / primary inventory with charging and letdown.
@@ -524,7 +527,7 @@ Level controllable under normal (non-voiding) conditions.
 
 ---
 
-## PWR-N12 — Steam Generator level & feedwater control
+## PWR-N12 — Steam generator level and feedwater control **[sim]**
 
 ### Purpose
 Control SG level with feed; use three-element AUTO as the normal driver.
@@ -560,7 +563,7 @@ SG level controlled; MANUAL override semantics understood.
 
 ---
 
-## PWR-N13 — Reactor Coolant Pump (RCP) operation **[approx]**
+## PWR-N13 — Reactor coolant pump (RCP) operation **[sim, approx]**
 
 ### Purpose
 Operate and recognize limits of the (lumped) RCP model.
@@ -597,7 +600,7 @@ RCP treated as critical for at-power forced flow and for pump-heat heatup.
 
 ---
 
-## PWR-N14 — Normal shutdown Mode 1 → Mode 3, Hot Standby **[sim]**
+## PWR-N14 — Normal shutdown Mode 1, At Power → Mode 3, Hot Standby **[sim]**
 
 ### Purpose
 Shut down from **Mode 1** (or Mode 2) to **Mode 3, Hot Standby**; maintain decay-heat removal. First half of **PWR-T21**.

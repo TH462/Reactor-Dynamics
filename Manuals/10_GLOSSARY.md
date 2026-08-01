@@ -1,7 +1,7 @@
 # 10 — Glossary
 
 **Document:** PWR-GL-01  
-**Revision:** 3  
+**Revision:** 4  
 
 Terms used in the PWR manuals and on the simulator board. Acronym first, then plain meaning.
 
