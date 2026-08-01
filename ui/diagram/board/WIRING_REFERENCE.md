@@ -1,8 +1,15 @@
 # PWR board wiring reference (authoritative — from live snapshot 2026-07-20)
 
 Dumped from `SimulationService({plant_id:'pwr', initial_state:'hot_full_power'}).getSnapshot()`.
-ctx.unit selects display unit system ('si' or 'us'); board authored in US customary
-(psi/°F/gpm) but engine is SI, so value items convert.
+**`ctx.units()`** — an accessor returning `'US'` or `'SI'` — selects the display unit system
+(#238). The board is AUTHORED in US customary (psi/°F/gpm) and the engine is SI, so value
+items convert on the way out; `UNIT_FAMILIES` in `pwr_board_wiring.js` is the single place
+that happens, for readouts, tiles, setpoint boxes and range hints alike.
+
+*This line used to describe a `ctx.unit` STRING ('si' or 'us'). No such field was ever read:
+`ui/app.js` passes a `unit(dim)` FUNCTION under that name, and the driver read only
+`ctx.cmd`. `board_check.html` passed `unit: 'si'` on the strength of this sentence and
+rendered US for its whole life.*
 
 ## snapshot.instruments (SI)
 | id | unit | notes |

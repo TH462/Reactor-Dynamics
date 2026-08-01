@@ -237,26 +237,41 @@ walk('ui', /\.js$/).forEach(function (rel) {
 });
 
 // ============================================================ HR11
-// Every OWNER RULING in tracked markdown must carry a date AND a quotation.
-// Without both it is indistinguishable from an agent's own preference written in
-// authoritative voice — which has already happened at least twice (#216, and the
-// ship-review plan's "accepted — do not re-fix them").
+// Every OWNER RULING / OWNER DIRECTIVE in tracked markdown must carry a date AND a
+// quotation. Without both it is indistinguishable from an agent's own preference
+// written in authoritative voice — which has already happened at least twice (#216,
+// and the ship-review plan's "accepted — do not re-fix them").
 var DATE = /\d{4}-\d{2}-\d{2}/;
 var QUOTE = /["“”']/;
+// BOTH markers, not just one (#290). This matched `OWNER RULING` alone for its first
+// three weeks, while the repo used `OWNER DIRECTIVE` for eleven in-scope citations —
+// including `never merge into develop`, `never push the lanes`, the brevity and
+// STILL OUTSTANDING directives, and the US-customary-units rule. All eleven were
+// unguarded, and one of them (the status-owner-review labels) was already malformed.
+// The silence was the defect: CLAUDE.md's own baseline note describes this runner as
+// counting "dated owner quotes wherever they are tracked", so a directive added and
+// the count not moving reads as CHECKED, not as NOT LOOKED AT.
+var MARKER = /OWNER (RULING|DIRECTIVE)/;
 function trackedMd() {
   var out = [];
   ['Blueprint', 'Diagnostic', 'Manuals'].forEach(function (d) { walk(d, /\.md$/, out); });
   ['CLAUDE.md', 'CHANGELOG.md', 'README.md'].forEach(function (f) {
     if (fs.existsSync(path.join(ROOT, f))) out.push(f);
   });
+  // `.claude/skills/` too (#290). Skill files cite rulings as authority exactly like
+  // the docs do — release-to-main/SKILL.md rests the whole versioning-digit rule on
+  // one — and being outside this list is why the malformed citation there survived a
+  // gate that was believed to cover it. Local-only files are not exempt from HR11:
+  // an unverifiable directive misleads an agent whether or not it ships.
+  walk('.claude', /\.md$/, out);
   return out;
 }
-// SCOPE, deliberately narrow: only the FORMAL, uppercase marker `OWNER RULING`,
-// which is the format §3 prescribes for asserting a ruling as authority. The
-// case-insensitive version was tried first and matched 71 sites — narrative prose
-// in the tuning log and changelog ("many 'owner rulings' in this repo were written
-// by agents"), which are descriptions, not citations. A gate that cries wolf
-// seventy times gets ignored, and an ignored gate is worse than none.
+// SCOPE, deliberately narrow: only the FORMAL, uppercase markers, which are the
+// format §3 prescribes for asserting a ruling as authority. The case-insensitive
+// version was tried first and matched 71 sites — narrative prose in the tuning log
+// and changelog ("many 'owner rulings' in this repo were written by agents"), which
+// are descriptions, not citations. A gate that cries wolf seventy times gets
+// ignored, and an ignored gate is worse than none.
 //
 // KNOWN LIMITATION: this cannot catch authority laundered in lowercase. That is
 // covered by the other half of HR11 — an unattributed directive is advisory — which
@@ -268,15 +283,78 @@ function trackedMd() {
 // the same idiom run_hr3 uses for accepted couplings.
 var NO_VERBATIM = /verbatim not recorded/i;
 
+// Is the marker ITSELF inside an inline code span? Count backticks to its left:
+// odd means open. The first cut asked instead whether the LINE contained a code span
+// wrapping the marker (/`[^`]*MARKER[^`]*`/), which fires whenever the marker merely
+// sits BETWEEN two spans — the `[^`]*` gap is the text after one span closes and
+// before the next opens. Measured (#290): that silently dropped 4 genuine citations,
+// three OWNER RULING (RETIRED.md's retirement of the ship-review plan, TUNING_LOG's
+// "249 - fit it.", CLAUDE.md's steam-dump 40 %) and the US-customary-units DIRECTIVE,
+// all of which are heavily backticked prose. It is the worse half of #290: an
+// unmatched marker at least LOOKS unmatched, whereas these read as checked.
+// Backtick RUNS, per CommonMark: a run of N backticks opens a span that only a run of
+// EXACTLY N closes, which is how you write a code span containing backticks. Counting
+// individual backticks instead was the third wrong answer here, and this file's own
+// write-up is what caught it — describing the old regex as ``/`[^`]*OWNER RULING[^`]*`/``
+// puts the marker inside a DOUBLE-backtick span whose content holds two single ones, so
+// the parity count reads 4 (even, "not in code") and the gate flagged a paragraph about
+// itself. Same shape as the §3 self-match this exclusion was written for in the first
+// place; runs are what actually settle it.
+function markerInCodeSpan(line, pos) {
+  var open = 0;   // length of the run that opened the current span, 0 when outside
+  for (var j = 0; j < line.length; j++) {
+    if (line[j] !== '`') continue;
+    var n = 0;
+    while (line[j + n] === '`') n++;
+    if (j > pos) break;
+    if (!open) open = n;
+    else if (n === open) open = 0;
+    if (j + n > pos) return open > 0 && j < pos;   // the marker sits inside this run's span
+    j += n - 1;
+  }
+  return open > 0;
+}
+// Net parenthesis depth of a string — how the window knows the citation is still open.
+function parenDepth(s) {
+  var d = 0;
+  for (var j = 0; j < s.length; j++) { if (s[j] === '(') d++; else if (s[j] === ')') d--; }
+  return d;
+}
+// Truncate at the character that CLOSES the citation's parenthetical. Depth is counted
+// RELATIVE TO THE MARKER (0 on entry), so the first UNMATCHED `)` — one with no `(` to
+// pair with inside the window — is the citation's own closer. Returns the kept text and
+// whether the citation is still open at the end of it.
+//
+// The window has to be bounded on BOTH sides, not just extended forwards (#290). The
+// first cut ran from the marker to end of line, which is fine on a wrapped citation
+// and wrong on a long one: CLAUDE.md's run_behavior baseline is a single 1,400-char
+// paragraph carrying FOUR dates after its `(OWNER RULING, …: "Let's change it to
+// 40%.")`, so deleting that citation's own date changed nothing — a later, unrelated
+// date vouched for it. Found by injection; reading the code did not show it.
+//
+// Counting ABSOLUTE depth was the second wrong answer and it still measured green:
+// that same citation is nested inside `(41 → 42 on 2026-07-31: …)`, so its closing
+// paren only takes absolute depth 2 → 1 and the clip never fires. Relative is the
+// only count that does not care what the citation is nested in.
+function clipToCitation(s) {
+  var rel = 0;
+  for (var j = 0; j < s.length; j++) {
+    if (s[j] === '(') rel++;
+    else if (s[j] === ')') { rel--; if (rel < 0) return { text: s.slice(0, j + 1), open: false }; }
+  }
+  return { text: s, open: true };
+}
+
 trackedMd().forEach(function (rel) {
   var src = fs.readFileSync(path.join(ROOT, rel), 'utf8').split('\n');
   src.forEach(function (line, i) {
-    if (!/OWNER RULING/.test(line)) return;
+    if (!MARKER.test(line)) return;
     // The literal format template in §3 / SOP.md is not a ruling.
     if (/YYYY-MM-DD/.test(line)) return;
     // Nor is a backticked mention — that is prose ABOUT the marker (§3 describing
     // this very gate matched itself on the first run).
-    if (/`[^`]*OWNER RULING[^`]*`/.test(line)) return;
+    var pos = line.search(MARKER);
+    if (markerInCodeSpan(line, pos)) return;
     // Markdown wraps: a ruling routinely puts its date on one line and the quote on
     // the next, so inspect a small window from the marker rightward. The window must
     // not run past what the ruling could plausibly occupy — an unrelated date
@@ -284,12 +362,30 @@ trackedMd().forEach(function (rel) {
     // ruling sits mid-TABLE-ROW and the window borrowed the NEXT ROW's date, passing
     // a genuinely undated ruling. So a table row is its own window, and elsewhere the
     // window stops at a blank line or the start of a table.
-    var head = line.slice(line.search(/OWNER RULING/));
-    var win = [head];
-    if (!/^\s*\|/.test(line)) {
+    //
+    // AND it stops when the citation's own parenthetical closes (#290). A quote mark
+    // three lines down vouches for nothing if the `*(OWNER …)*` ended on line one —
+    // which is exactly how release-to-main/SKILL.md's quote-less citation passed,
+    // borrowing the `"a new *player-facing* feature"` from the sentence after it.
+    // Depth is counted from the START OF THE LINE, not from the marker: the opening
+    // `(` is BEFORE the marker in every citation here, so counting from the marker
+    // sees depth 0 and never opens the window at all — measured, that reddens all 9
+    // legitimately hard-wrapped citations in the repo.
+    //
+    // A citation NOT wrapped in parens at all cannot be clipped — there is nothing to
+    // clip to — so it keeps the old marker-rightward behaviour and is bounded only by
+    // the blank line / table rules. Every citation in the repo today is parenthesised;
+    // this is the honest fallback, not a case that fires.
+    var parenthesised = parenDepth(line.slice(0, pos)) > 0;
+    var clipped = parenthesised ? clipToCitation(line.slice(pos)) : { text: line.slice(pos), open: true };
+    var win = [clipped.text];
+    if (!/^\s*\|/.test(line) && clipped.open) {
       for (var k = i + 1; k < Math.min(i + 3, src.length); k++) {
         if (!src[k].trim() || /^\s*\|/.test(src[k])) break;
-        win.push(src[k]);
+        if (!parenthesised) { win.push(src[k]); continue; }
+        var next = clipToCitation(src[k]);
+        win.push(next.text);
+        if (!next.open) break;
       }
     }
     var window = win.join('\n');

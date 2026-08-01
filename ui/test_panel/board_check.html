@@ -76,9 +76,17 @@
     var snap = svc.assembleSnapshot();
 
     var sentCommands = [];
+    // Display units. This harness runs the board in US — the mode every check below was
+    // written against — and the SI block at the bottom flips it deliberately.
+    //
+    // It used to pass `unit: 'si'`, a STRING, which nothing has ever read: WIRING_REFERENCE
+    // described a `ctx.unit` selector that was never built, and app.js passes a `unit(dim)`
+    // FUNCTION under that name. So this harness claimed to be testing SI and rendered US
+    // for its whole life. The real accessor is `units()` (#238).
+    var unitsMode = 'US';
     var ctx = {
       cmd: function (c) { sentCommands.push(c); return (svc.command ? svc.command(c) : svc.handleCommand(c)); },
-      unit: 'si',
+      units: function () { return unitsMode; },
       mode: function () { return 'learning'; },
       overlay: function () { return false; }
     };
@@ -509,6 +517,179 @@
             return id && !B.inspect(id);
           });
           ck('inspect: every highlight target inspects', miss.length === 0, miss.join(','));
+        })();
+      })();
+
+      // ---- display units (#238): the SI half of the board -----------------------
+      // Runs LAST and restores US, because every check above was written against the
+      // US board and would read a different number under SI.
+      //
+      // What these pin is the SEAM, not the arithmetic: that flipping ctx.units()
+      // reaches all four surfaces (readouts, tiles, setpoint boxes, range hints), that
+      // it reaches them WITHOUT a remount, and that flipping back restores the authored
+      // board exactly. Before #238 the board had no such seam at all — the conversions
+      // were inline in ~30 formatters and the unit strings were baked into the
+      // generated board data — which is why the Settings SI position was disabled
+      // while the PWR was up (#237).
+      (function () {
+        var d = RD.PwrBoardDriver;
+        function item(id) { return (window.RD_PWR_BOARD_DOC.items || []).filter(function (i) { return i.id === id; })[0]; }
+        function valOf(id) {                      // "579 F" -> the rendered number+unit
+          var t = document.querySelector('[data-item="' + id + '"]');
+          return t ? t.textContent.replace(/\s+/g, ' ').trim() : null;
+        }
+        function numOf(id) {                      // a setpoint box: its value and its unit span
+          var t = document.querySelector('[data-item="' + id + '"]');
+          var i = t && t.querySelector('input'), u = t && t.querySelector('.bd-num-unit');
+          return { v: i && i.value, u: u && u.textContent };
+        }
+        // Every item whose text is a pure function of the snapshot. COMPONENTS are excluded
+        // on purpose: the indicator-panel tiles ANIMATE their reading toward the target, so
+        // two renders of the same snapshot legitimately paint different numbers and a text
+        // comparison over them tests the animation, not the units. Their restore is checked
+        // through compProps() below, which is deterministic.
+        function snapAll() {
+          var o = {};
+          document.querySelectorAll('.pwr-board-stage [data-item]').forEach(function (t) {
+            var it = item(t.getAttribute('data-item'));
+            if (it && it.kind === 'component') return;
+            o[t.getAttribute('data-item')] = t.textContent;
+          });
+          return o;
+        }
+        var TILES = ['imrzl4b7g9m', 'ims2immk7ks', 'ims2immxl2s', 'ims2immsvn6', 'ims2immon9z', 'ims2imn1nny'];
+        function tileProps(s) {
+          return TILES.map(function (id) { return id + '=' + JSON.stringify(d.compProps(item(id), s)); }).join('|');
+        }
+        var s0 = svc.assembleSnapshot();
+        unitsMode = 'US'; RD.PwrBoard.render(s0);
+        var beforeUS = snapAll(), beforeTiles = tileProps(s0);
+        var usTavg = valOf('ims2immk7ks'), usDT = valOf('imro6qpci2d'), usFeed = valOf('imrsgkz4lq0');
+        var usDump = numOf('ims31tq7mgc'), usPzrLvl = valOf('ims2immon9z');
+
+        // --- flip, WITHOUT remounting. A re-render is all the board ever gets.
+        unitsMode = 'SI'; RD.PwrBoard.render(s0);
+
+        ck('units: SI flips a readout without a remount', RD.PwrBoard.isMounted() && valOf('ims2immk7ks') !== usTavg,
+          usTavg + ' -> ' + valOf('ims2immk7ks'));
+        // Tavg, the tile: 304 °C is 579 °F. Read the tile props rather than the painted
+        // text so a font/rounding change cannot make this pass for the wrong reason.
+        (function () {
+          var p = d.compProps(item('ims2immk7ks'), s0);
+          ck('units: SI Tavg tile reads °C, not °F', p.unit === 'C' && p.value > 250 && p.value < 350,
+            p.unit + ' ' + p.value);
+          ck('units: SI Tavg tile bands are °C too (the band cannot be in a different unit than the reading)',
+            p.tripHi > 300 && p.tripHi < 400 && p.normHi < 320, p.tripHi + ' / ' + p.normHi);
+        })();
+        // Primary pressure: MPa needs TWO decimals or the pressurizer's whole control
+        // band collapses onto one displayed value (15.20-15.76 would both read "15").
+        (function () {
+          var p = d.compProps(item('ims2immsvn6'), s0);
+          ck('units: SI pressure tile is MPa at 2 decimals', p.unit === 'MPa' && p.decimals === 2 && p.value > 10 && p.value < 20,
+            p.unit + ' ' + p.decimals + ' ' + p.value);
+        })();
+        // THE UNIT TRAP. Subcooling margin is a temperature DIFFERENCE: 41 °C is 73.8 °F,
+        // NOT 105.8. The absolute rule reads as a HEALTHIER margin than the plant has, and
+        // it is the error `run_manual_units` exists to catch in prose — the board can make
+        // it too. Same for the NIS leg ΔT below.
+        (function () {
+          var us = d.compProps(item('ims2immxl2s'), s0);   // still SI right now
+          var si = us.value;
+          unitsMode = 'US'; RD.PwrBoard.render(s0);
+          var usv = d.compProps(item('ims2immxl2s'), s0).value;
+          unitsMode = 'SI'; RD.PwrBoard.render(s0);
+          ck('units: subcooling converts as a DIFFERENCE (x9/5, no 32° offset)',
+            Math.abs(usv - si * 9 / 5) < 0.5 && Math.abs(usv - (si * 9 / 5 + 32)) > 10,
+            si.toFixed(2) + ' C -> ' + usv.toFixed(2) + ' F');
+        })();
+        (function () {
+          var si = parseFloat(valOf('imro6qpci2d')), us = parseFloat(usDT);
+          ck('units: SI leg ΔT is a difference, not an absolute temperature',
+            / C$/.test(valOf('imro6qpci2d')) && Math.abs(us - si * 9 / 5) <= 1 && Math.abs(us - (si * 9 / 5 + 32)) > 10,
+            usDT + ' -> ' + valOf('imro6qpci2d'));
+        })();
+        // Flow. gpm is an authored display scale, so SI is m³/h (owner selection).
+        ck('units: SI flow reads m³/h', /m³\/h$/.test(valOf('imrsgkz4lq0')) && usFeed !== valOf('imrsgkz4lq0'),
+          usFeed + ' -> ' + valOf('imrsgkz4lq0'));
+        // A unit-NEUTRAL indication must not move. Half the board is %/ppm/MW/rpm, and a
+        // layer that converted those would be worse than no layer.
+        ck('units: a unit-neutral readout does not move', valOf('ims2immon9z') === usPzrLvl, usPzrLvl);
+
+        // --- setpoint boxes: value, unit span, decimals, ▲▼ step, bounds and the range hint
+        (function () {
+          var n = numOf('ims31tq7mgc');
+          ck('units: SI setpoint box shows MPa (the unit span is LIVE, not built once)',
+            n.u === 'MPa' && usDump.u === 'psi', usDump.u + ' -> ' + n.u);
+          ck('units: SI setpoint box gains decimals', /\./.test(n.v) && !/\./.test(usDump.v || '.'),
+            usDump.v + ' -> ' + n.v);
+          var it = item('ims31tq7mgc'), b = d.boundsFor(it);
+          ck('units: SI bounds are the engine clip in MPa', b[0] === 0.2 && b[1] === 9.31, JSON.stringify(b));
+          ck('units: SI ▲▼ step is 0.01 MPa, not 1', d.stepFor(it) === 0.01, d.stepFor(it));
+          // The hint is DERIVED from the bounds in SI, so it cannot drift from them.
+          ck('units: SI range hint is derived from the bounds', d.numberHint(it) === '0.2-9.31 MPa', d.numberHint(it));
+          ck('units: SI charging box keeps a usable resolution (0-13.6 m³/h at 0.1)',
+            d.numberDigits(item('imrpq48hn3t')) === 1 && d.stepFor(item('imrpq48hn3t')) === 0.1,
+            d.numberDigits(item('imrpq48hn3t')) + ' / ' + d.stepFor(item('imrpq48hn3t')));
+        })();
+        // A typed SI value must reach the engine as SI. If onNumber forwarded the raw box
+        // value, 6 MPa would be commanded as 6 psi-worth and the plant would depressurize.
+        (function () {
+          sentCommands.length = 0;
+          setNum('imrsg8b7b9o', 6);
+          var c = sentCommands.filter(function (x) { return x.action === 'set_pressure_setpoint'; }).pop();
+          ck('units: a value typed in MPa is commanded in MPa', !!c && Math.abs(c.mpa - 6) < 1e-9, c && c.mpa);
+          unitsMode = 'US'; RD.PwrBoard.render(svc.assembleSnapshot());
+          sentCommands.length = 0;
+          setNum('imrsg8b7b9o', 2235);
+          var c2 = sentCommands.filter(function (x) { return x.action === 'set_pressure_setpoint'; }).pop();
+          ck('units: the SAME box typed in psi is still commanded in MPa', !!c2 && Math.abs(c2.mpa - 15.41) < 0.01, c2 && c2.mpa);
+        })();
+
+        // --- back to US: the authored board must return EXACTLY, every tile.
+        // This is the check that catches a one-way conversion — a unit span overwritten
+        // with 'MPa' and never restored looks fine until someone switches back.
+        svc.command ? svc.command({ action: 'set_pressure_setpoint', mpa: 15.41 })
+                    : svc.handleCommand({ action: 'set_pressure_setpoint', mpa: 15.41 });
+        unitsMode = 'US'; RD.PwrBoard.render(s0);
+        (function () {
+          var after = snapAll(), diff = [];
+          Object.keys(beforeUS).forEach(function (k) { if (beforeUS[k] !== after[k]) diff.push(k); });
+          ck('units: SI -> US restores the authored board exactly (' + Object.keys(beforeUS).length + ' items)',
+            diff.length === 0, diff.slice(0, 6).join(','));
+          ck('units: SI -> US restores every vital tile band and unit',
+            tileProps(s0) === beforeTiles, 'tile props differ');
+        })();
+
+        // Band QUANTISATION has to be per-unit, and this is the check that says so. Band
+        // edges are rounded to stop the tile strip flickering at the render rate, and the
+        // quantum used to be a whole display unit — fine at 1 psi, catastrophic at 1 MPa,
+        // which is 145 of them: the pressurizer's 15.20-15.76 control band and its
+        // 14.82/15.86 alarms all collapse onto 15 and 16, and the seven regions the tile
+        // paints stop being distinguishable. Assert the nesting survives, in BOTH families
+        // that quantise (pressure at 0.01 MPa, temperature at 0.5 °C) — a tile whose normal
+        // band has merged into its alarm band is telling the operator nothing.
+        (function () {
+          // On a FRESH hot_full_power plant, not the one the checks above have driven
+          // around: by this point the pressure setpoint has been moved and the normal band
+          // legitimately clamps onto its own alarm, which is #270's guard doing its job and
+          // not a resolution defect. The claim here is about the design case.
+          //
+          // It runs AFTER the restore checks and re-asserts SI for itself, on purpose and in
+          // that order: assembling a foreign snapshot walks the driver's one-entry damping
+          // memo (IN()), so doing this mid-sequence perturbed the very tile values the
+          // restore comparison was about to check. Both halves of that are easy to get
+          // wrong — an SI check that silently ran in US measured nothing at all.
+          var s1 = new RD.SimulationService({ plant_id: 'pwr', initial_state: 'hot_full_power' }).assembleSnapshot();
+          unitsMode = 'SI';
+          var bad = [];
+          [['ims2immsvn6', 'pressure'], ['ims2immk7ks', 'Tavg']].forEach(function (e) {
+            var p = d.compProps(item(e[0]), s1);
+            if (!(p.alarmLo < p.normLo && p.normLo < p.normHi && p.normHi < p.alarmHi && p.alarmHi < p.tripHi)) {
+              bad.push(e[1] + ' ' + [p.tripLo, p.alarmLo, p.normLo, p.normHi, p.alarmHi, p.tripHi].join('/'));
+            }
+          });
+          ck('units: SI band quantisation keeps every region distinguishable', bad.length === 0, bad.join(' · '));
+          unitsMode = 'US'; RD.PwrBoard.render(s0);
         })();
       })();
 

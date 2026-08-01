@@ -140,22 +140,61 @@ async function testUnitsAndInstructor(page) {
   log.push('US manual setpoints doc length: ' + usDoc.length);
   if (usDoc.length < 500) throw new Error('setpoints document did not render (len ' + usDoc.length + ')');
 
-  // #237 (owner call 2026-07-28): SI is SCOPED on the PWR board — the board renders US
-  // customary throughout, so the SI position is DISABLED with a tooltip rather than
-  // producing the mixed SI-chips-beside-US-board display #235 measured. This used to
-  // assert the toggle converted the gauge to MPa — that was the half-feature; the
-  // assertion now pins the scoping: button disabled, click is a no-op, gauges stay US.
-  // When #238's display-unit layer lands, revert to a real convert-to-MPa assertion.
-  var siDisabled = await page.evaluate(function () {
+  // Units toggle on the PWR, end to end (#238). History matters for reading this block:
+  // it originally asserted the toggle converted the gauge to MPa; #237 replaced that with
+  // "the SI button is DISABLED", because the board rendered US customary throughout and a
+  // global SI selection produced SI chart chips beside US board readouts. #238 built the
+  // board's display-unit layer, so the real assertion is back — and it is stronger than
+  // the original, because it checks the BOARD, not just the (hidden) gauge strip.
+  //
+  // The point of doing it here rather than in board_check: this is the only gate that
+  // drives the actual Settings control through app.js. board_check calls the driver with
+  // its own ctx and would stay green if the button were never wired to it at all.
+  var usBoard = await page.evaluate(function () {
+    var t = document.querySelector('[data-item="imrr4fnxhlc"]');          // T-HOT readout
+    var d = document.querySelector('[data-item="ims31tq7mgc"] .bd-num-unit'); // DUMP SETPOINT box
+    return { thot: t && t.textContent.replace(/\s+/g, ' ').trim(), dump: d && d.textContent };
+  });
+  log.push('PWR board in US: T-hot "' + usBoard.thot + '", dump setpoint unit "' + usBoard.dump + '"');
+  if (!/F$/.test(usBoard.thot || '')) throw new Error('expected the US board to read °F, got: ' + usBoard.thot);
+
+  var siState = await page.evaluate(function () {
     var b = document.querySelector('#unitsSeg button[data-units="SI"]');
-    if (b) b.click();   // disabled → listeners don't fire; belt for the no-op assert below
-    return b ? b.disabled : null;
+    if (!b) return null;
+    var wasDisabled = b.disabled;
+    b.click();
+    return { wasDisabled: wasDisabled };
   });
   await page.waitForTimeout(400);
-  if (siDisabled !== true) throw new Error('PWR SI toggle expected DISABLED (scoped, #237/#238), got: ' + siDisabled);
+  if (!siState) throw new Error('SI units button not found');
+  if (siState.wasDisabled) throw new Error('PWR SI toggle expected ENABLED since #238, got disabled');
+  var siBoard = await page.evaluate(function () {
+    var t = document.querySelector('[data-item="imrr4fnxhlc"]');
+    var d = document.querySelector('[data-item="ims31tq7mgc"] .bd-num-unit');
+    return { thot: t && t.textContent.replace(/\s+/g, ' ').trim(), dump: d && d.textContent };
+  });
+  log.push('PWR board in SI: T-hot "' + siBoard.thot + '", dump setpoint unit "' + siBoard.dump + '"');
+  if (!/C$/.test(siBoard.thot || '')) throw new Error('PWR board expected to read °C in SI, got: ' + siBoard.thot);
+  // The setpoint BOX is the half that needed new renderer code — its unit span is built at
+  // mount and was never rewritten before #238, so a units change reached the readouts and
+  // left the boxes lying.
+  if (siBoard.dump !== 'MPa') throw new Error('PWR dump setpoint box expected MPa in SI, got: ' + siBoard.dump);
   var siUnit = await page.locator('#gauge-press [data-val]').textContent();
-  log.push('PWR pressure gauge with SI scoped (stays US): ' + siUnit);
-  if (!/psi/i.test(siUnit)) throw new Error('PWR gauge expected to stay US (psi) with SI scoped, got: ' + siUnit);
+  log.push('PWR pressure gauge in SI: ' + siUnit);
+  if (!/MPa/i.test(siUnit)) throw new Error('PWR gauge expected MPa in SI, got: ' + siUnit);
+
+  // …and back, because a one-way conversion looks perfect until someone switches back.
+  await page.evaluate(function () { document.querySelector('#unitsSeg button[data-units="US"]').click(); });
+  await page.waitForTimeout(400);
+  var backBoard = await page.evaluate(function () {
+    var t = document.querySelector('[data-item="imrr4fnxhlc"]');
+    var d = document.querySelector('[data-item="ims31tq7mgc"] .bd-num-unit');
+    return { thot: t && t.textContent.replace(/\s+/g, ' ').trim(), dump: d && d.textContent };
+  });
+  if (!/F$/.test(backBoard.thot || '') || backBoard.dump !== usBoard.dump) {
+    throw new Error('SI -> US did not restore the board: ' + JSON.stringify(backBoard) + ' vs ' + JSON.stringify(usBoard));
+  }
+  log.push('PWR board restored to US: T-hot "' + backBoard.thot + '", dump setpoint unit "' + backBoard.dump + '"');
 
   // The board/gauges honour the units toggle; the packed manual does NOT.
   // renderManualMd (ui/app.js) caches on `engineKey|docId` with no units key and

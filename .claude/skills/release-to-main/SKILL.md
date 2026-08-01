@@ -61,7 +61,10 @@ The scheme is **`Alpha X.Y.Z` = Platform . Feature . Refinement**:
 - **Z** — everything else, **including player-facing changes and fixes**, as long as they
   improve something the sim already did.
 
-**Y is for NEW things, not for VISIBLE things** *(OWNER DIRECTIVE, 2026-07-31)*. Y used to
+**Y is for NEW things, not for VISIBLE things** *(OWNER DIRECTIVE, 2026-07-31: "I think we
+should have the y part of the change number be for major changes or feature additions in
+order to reduce the change number blowup. Z is for smaller changes and fixes even if they
+are player facing.")*. Y used to
 read "a new *player-facing* feature", which caught nearly every release — the version ran
 **1.2.0 → 1.11.0 in eight days**. The operative test: **could you add it to the Roadmap as a
 line item?** New system/scenario/mode/page → Y. A better or fixed version of something

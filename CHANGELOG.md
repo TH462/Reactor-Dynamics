@@ -21,6 +21,62 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The PWR board reads SI now — the Settings units toggle works on it** (#238)
+  *(OWNER RULING, 2026-08-01: selected "m³/h" from three options put to him for the SI flow
+  unit — m³/h, L/min and kg/s. A selection, not verbatim words.)* The board was authored in
+  US customary at every readout, so #237 had to **disable the SI position while the PWR was
+  active**: a global SI selection put SI chart chips beside US board readouts, the one
+  indefensible state. Both halves move together now.
+
+  The board driver has a **display-unit layer** — one table of unit families
+  (`UNIT_FAMILIES` in `ui/diagram/board/pwr_board_wiring.js`), each declaring per mode its
+  conversion, unit string, display decimals, ▲▼ step and band quantum — and everything that
+  shows a number goes through it: **19 readouts**, the **6 vital tiles** (reading, unit,
+  decimals AND band edges) and all **5 unit-bearing setpoint boxes** (value, unit span,
+  decimals, step, valid range and range hint). `ui/app.js` passes `ctx.units` as an
+  **accessor**, so a units change is a re-render, not a remount.
+
+  Four things worth knowing.
+
+  **US mode is unchanged by construction, and that is measured rather than asserted.** Every
+  US entry reproduces the arithmetic and the rounding that was inline before, and the unit
+  STRING in US comes from the authored item rather than from the table — so the board's three
+  spelling quirks (`F` not `°F`, `GPM` uppercase on two items, `psig` on the accumulator)
+  survive, and switching back restores them. `board_check` renders **166 items** identically
+  before and after a round trip through SI, and its pre-existing check list is byte-identical
+  to the pre-change run.
+
+  **The band QUANTUM had to become per-unit, and the first cut of the new checks did not
+  catch it.** Tile band edges are rounded so the strip does not flicker at the render rate,
+  and the quantum was a whole display unit — fine at 1 psi, catastrophic at 1 MPa, which is
+  145 of them: the pressurizer's 15.20–15.76 control band and its 14.82/15.86 alarms all
+  collapse onto 15 and 16. Pressure quantises at **0.01 MPa**, temperature at **0.5 °C**.
+  Injecting the whole-unit quantum left every new check green, so one more was added that
+  asserts the seven regions stay nested — the coverage claim was worth more than the fix.
+
+  **Tile DECIMALS are a property of the unit, not of the instrument.** The measured sigma is
+  0.56 psi and 0.0039 MPa — the same noise — and it wants 0 decimals in one and 2 in the
+  other. Same for the charging box: 0–60 gpm becomes 0–13.6 m³/h, where a whole-unit ▲▼ would
+  nudge 4.4 gpm, so it gets 1 decimal and a 0.1 step.
+
+  **The unit trap is in here too.** Subcooling margin and leg ΔT are temperature
+  DIFFERENCES: 41 °C is 73.8 °F, not 105.8, and the absolute rule reads as a *healthier*
+  margin than the plant has. That is what `run_manual_units` gates in prose; the board can
+  make the same error, and two checks now say it does not.
+
+  Also: the dump-setpoint **range hint is derived from the bounds** in SI so it cannot drift
+  from them (US keeps its authored string, including its known 29-vs-30 psi off-by-one — a
+  board-data defect, not this layer's to fix), and the TRIP BLOCKS popover's `1800 psi`
+  caption reads the protection table instead of a hand-copied literal.
+
+  `board_check` **143 → 162** (+19; **18 new units checks, all injection-verified** against
+  seven separate faults — an absolute conversion on a difference, a missing inverse on
+  command, a one-way unit write, a dead unit span, a unit-blind quantum, unit-blind decimals,
+  and the seam itself removed). It is not in `run_all`; run it after any board change. Its
+  own ctx also stopped lying: it passed `unit: 'si'`, a string nothing has ever read, so it
+  claimed to test SI and rendered US for its whole life.
+
 ### Fixed
 - **`board_check` had a red nobody had run** — 1 failure / 143 while CLAUDE.md claimed
   143/143. Two independent harness bugs, both pre-existing, neither a plant defect. The
@@ -30,6 +86,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   below ran on a dead reactor at ~3 % power. And the **SCRAM two-step ran on an already-
   scrammed plant**, where the same two clicks are the #75 RESET half, so it un-scrammed the
   reactor and then asserted a scram. The plant was correct at every step. Now **149/149**.
+- **Mode 4 alarm behaviour was tested nowhere** (#294). `COLD_MODES = [4, 5]` in
+  `layers/control/pwr_control.js` gates six alarm behaviours — the #287 RHR alarm's
+  `condition`, plus four reclassify rules that turn expected cold-plant indications into
+  `status` instead of leaving them as warnings. Every existing probe exercised **Mode 5
+  only**. Measured by injection: narrowing it to `[5]` left `run_m4`, `run_pwr`, `run_ops`,
+  `run_contract`, `run_reachability` and `run_hardrules` **all green** at 185/240/351/139/58/75
+  — the Mode 4 half could have been deleted outright without a gate objecting.
+  - **What it suppresses is not cosmetic.** On a correctly depressurized cold plant the
+    injected form raises a spurious **CRITICAL** (`pzr_pressure_lolo`) — a casualty alarm on
+    a plant depressurized exactly as the procedure intends — plus three spurious warnings,
+    **and loses `rhr_not_aligned` (06 PWR-A33) entirely**, the one alarm carrying real news,
+    because its condition stops matching.
+  - **Three of the five deltas are priority-only**, on alarms that still appear either way.
+    A presence check cannot see those, so the probe asserts the priority.
+  - **Mode 4 is where a plant spends most of a cooldown from power**, and where the #287
+    sequence actually lands (measured: that cooldown ends Mode 4 at 147.5 °C / 297 °F,
+    280 psi / 1.93 MPa). The existing #287 probe reaches its loss with an operator
+    `set_rhr active:false` in Mode 5; the new one reaches Mode 4 the way the plant really
+    does — **losing the heat sink and heating on decay + pump heat**, Mode 4 at 1000 sim s
+    for about a second of wall — so the mechanism under test is the engine's, not the
+    probe's, and no temperature is hand-set.
+  - No behaviour changed: the plant was already correct. `run_m4` **33/33 (185) → 34/34
+    (194)**; 5 checks red on the injected config.
 
 - **A load rejection no longer scrams the plant on the going-solid trip** (#289)
   *(OWNER RULING, 2026-08-01: selected "Add the program ceiling" from the options put to
@@ -71,6 +150,53 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   the going-solid trip is still **97 %, single channel, with no power permissive**, where the
   real one is **92 %, 2/3, P-7 gated (≥10 % power)** — aligning it only makes sense after
   this ceiling, since 92 alone is *lower* and would scram more.
+
+- **HR11's guard checked one of the two markers the repo uses** (#290). `run_hardrules.js`
+  requires every ruling citation to carry a date *and* the owner's verbatim words —
+  otherwise it is indistinguishable from an agent's own preference in authoritative voice.
+  It matched the literal string `OWNER RULING`. The repo also uses **`OWNER DIRECTIVE`**, and
+  all eleven in-scope occurrences were unguarded: *never merge into `develop`*, *never push
+  the lanes*, the brevity and STILL OUTSTANDING directives, and the US-customary-units rule
+  among them. One (`CLAUDE.md`'s `status-owner-review` / `status-work-next` labels) was
+  already malformed — a quote with no date — and nothing said so.
+  - **A second, quieter defect the issue had not found.** The skip for prose *about* the
+    marker was ``/`[^`]*OWNER RULING[^`]*`/``. That also matches when the marker merely sits
+    **between** two inline code spans, because the `[^`]*` gap is the text after one span
+    closes and before the next opens — which in this repo's heavily backticked prose is the
+    normal case. Measured: **four genuine citations silently skipped**, three `OWNER RULING`
+    (`RETIRED.md`'s retirement of the ship-review plan, `TUNING_LOG.md`'s *"249 - fit it."*,
+    `CLAUDE.md`'s steam-dump 40 %) and the US-customary-units directive. Worse than the
+    filed defect: an unmatched marker at least *looks* unmatched, whereas these read as
+    checked. The gate now tests the marker's own backtick parity — odd means genuinely
+    inside a span — and still excludes the three real `` `OWNER RULING` `` prose mentions.
+    Backtick **runs**, per CommonMark, not individual backticks: a run of N opens a span only
+    a run of exactly N closes. Counting singly was a third wrong answer, and this changelog
+    entry is what exposed it — quoting the old regex puts the marker inside a *double*-
+    backtick span, parity read even, and the gate flagged the paragraph explaining itself.
+  - **The lookahead window is bounded on both sides now.** It existed because a citation
+    routinely wraps its date onto the next line, but it accepted *any* quote mark within
+    three lines, so `release-to-main/SKILL.md`'s date-only citation passed by borrowing the
+    quote from the sentence after it. The window now stops where the citation's own
+    parenthetical closes. **Two wrong versions of that rule measured green first**: counting
+    depth from the marker sees the opening `(` behind it and reddens all nine legitimately
+    wrapped citations, and counting *absolute* depth never fires on a nested citation — so
+    deleting the date from `CLAUDE.md`'s steam-dump ruling, which sits inside
+    `(41 -> 42 on 2026-07-31: ...)`, changed nothing. Depth **relative to the marker** holds.
+  - **Scope widened to `.claude/skills/`.** Skill files cite rulings as authority exactly as
+    the docs do, and being outside the scanned list is why the malformed citation there
+    survived a gate believed to cover it.
+  - **Both malformed citations repaired**, neither invented: `CLAUDE.md`'s date is in its own
+    lead-in sentence, and `SKILL.md`'s missing quote is recorded in full at `CLAUDE.md`'s
+    versioning section.
+  - **Injection-verified against the pre-fix runner**, per the standing rule that a check
+    written beside its own fix proves nothing. Three malformations — an `OWNER DIRECTIVE`
+    losing its date, a backtick-flanked `OWNER RULING` losing its date, and the `SKILL.md`
+    citation losing its quote — each redden exactly one site now, and the pre-fix gate stayed
+    green at **43 sites / 0 undeclared** through all three.
+  - `run_hardrules` **58 → 75 checks** (HR11 43 → 60 sites: **+11** widened marker, **+4**
+    corrected span test, **+2** new scope). **This is not the usual write-up drift** that
+    moves this runner on every merge — no ruling was added; the guard grew to cover markers
+    that were always there.
 
 ### Changed
 
