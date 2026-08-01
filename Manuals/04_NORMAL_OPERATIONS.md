@@ -150,10 +150,10 @@ Fission heat makes this path much shorter than **PWR-N01** (pump heat only). On 
 | Milestone | Typical plant time | Notes |
 |-----------|-------------------|--------|
 | Pressurized to NOP, RCPs on | ~0.2 plant-h | Same setup as N01 |
-| Core critical, power climbing | ~0.5 plant-h | Still cold-to-warm (~219 °F / 104 °C class) |
-| End of dilution ride (no-load Tavg) | ~1.6 plant-h | Tavg ≈ **568 °F (298 °C)**; power about **1–4 %** through the climb (peaks near **3–4 %** if dilution is secured on time); boron falls on the order of **150 ppm** from the cold inventory |
+| Core critical, power climbing | ~0.5 plant-h | Still cold-to-warm (~219 °F (104 °C) class) |
+| End of dilution ride (no-load Tavg) | ~1.6 plant-h | Tavg ≈ **568.4 °F (298.0 °C)**; power about **1–4 %** through the climb (peaks near **3–4 %** if dilution is secured on time); boron falls on the order of **150 ppm** from the cold inventory |
 | Bank inserted, Mode 3 | ~1.7 plant-h | Subcritical again |
-| Boration complete and settled | ~1.9 plant-h | Tavg ≈ **567 °F (297 °C)**; boron ≥ **~900 ppm**; large negative reactivity |
+| Boration complete and settled | ~1.9 plant-h | Tavg ≈ **567.0 °F (297.2 °C)**; boron ≥ **~900 ppm**; large negative reactivity |
 
 If dilution is left running past the hot band, power and temperature keep rising — secure it when Tavg enters the no-load band.
 
