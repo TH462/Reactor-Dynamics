@@ -22,6 +22,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Dropped the nuclear-from-cold heatup path** (was training-only N01a /
+  `pwr_heatup_nuclear`). Not a commercial NOP — heatup is subcritical (**N01**);
+  approach to criticality is hot (**N03**).
+
 - **04 Normal Operating Procedures rewritten in commercial NOP format (Rev 1).** Every
   N01–N15 procedure now has purpose / applicability / prerequisites / precautions /
   stepped acceptance / outcome. Heatup and approach aligned to WTSM / NUREG-1431 shape

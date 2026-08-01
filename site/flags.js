@@ -125,7 +125,6 @@
     'scenario:pwr_qualify': 'preview',
     // ---- PWR procedures (walkthrough + checklist) ----
     'procedure:pwr_heatup': 'preview',
-    'procedure:pwr_heatup_nuclear': 'preview',
     'procedure:pwr_startup': 'preview',
     'procedure:pwr_raise_power': 'preview',
     'procedure:pwr_lower_power': 'preview',

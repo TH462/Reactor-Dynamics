@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 4 (2026-07-31)  
+**Set revision:** 5 (2026-07-31)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -20,9 +20,10 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
-| 4 | 2026-07-31 | **N01a clarified as training-only (not commercial heatup); procedure titles aligned.** Index and H1 titles now match (e.g. N02 is *Mode 3, Hot Standby — plant lineup*, not “Prerequisites…”). N01a purpose states commercial path is subcritical heatup then hot approach (N01 → N03). | Titles + N01a |
-| 3 | 2026-07-31 | **Expected performance tables unified.** N01 heatup rewritten to the same milestone table form as N01a; **N15** cooldown gained matching expected performance (Mode 4, isolate at 1000 psi, RHR, cold end). | Expected performance |
-| 2 | 2026-07-31 | **PWR-N01a gained expected heatup performance** — nuclear training path milestones (pressurize, critical, end of dilution, Mode 3 settled) so it matches N01’s performance section. | N01a performance |
+| 5 | 2026-07-31 | **Removed the nuclear-from-cold heatup path** (was training-only N01a / live checklist). Not a commercial NOP — heatup is subcritical (N01); approach is hot (N03). | Drop nuclear heatup |
+| 4 | 2026-07-31 | **Training-only heatup variant clarified; procedure titles aligned.** Index and H1 titles now match (e.g. N02 is *Mode 3, Hot Standby — plant lineup*, not “Prerequisites…”). Commercial path is subcritical heatup then hot approach (N01 → N03). | Titles |
+| 3 | 2026-07-31 | **Expected performance tables unified.** N01 heatup rewritten to milestone table form; **N15** cooldown gained matching expected performance (Mode 4, isolate at 1000 psi, RHR, cold end). | Expected performance |
+| 2 | 2026-07-31 | **Training heatup variant gained expected performance** — nuclear-from-cold milestones (pressurize, critical, end of dilution, Mode 3 settled). *(That path was removed in Rev 5.)* | Heatup performance |
 | 1 | 2026-07-31 | **04 Normal Operating Procedures rewritten in commercial NOP format.** Every N01–N15 procedure now carries purpose / applicability / prerequisites / precautions / stepped procedure with acceptance / outcome. Heatup (N01) and approach (N03) aligned to commercial practice (WTSM heatup outline; NUREG-1431 accumulator LCO/SR; 1/M + SUR + ECC). Fixed HFP electrical band **1000 → 100 MWe**. Operator-facing prose only — no build notes or internal rulings. | NOP content rewrite |
 | 0 | 2026-07-31 | **Pre-public baseline.** Manual set reset to Rev 0 for a clean public revision counter. Current content includes the as-built PWR operator manuals through the normal-ops plant-sequence renumber (N01 heatup → N15 cooldown) and prior engine/procedure alignment. Development history before this baseline is in git, not listed here. | Public-rev reset |
 
@@ -51,12 +52,12 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 4 (2026-07-31). A mismatch means a chapter changed with no
+     Sealed at Rev 5 (2026-07-31). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md 084d5a7df10229c3
      02_SIMULATOR_USER_GUIDE.md 4fb25f478c3f767d
      03_CONTROLS_AND_INDICATIONS.md 807262dd36af8dfe
-     04_NORMAL_OPERATIONS.md 42761bb50975ae20
+     04_NORMAL_OPERATIONS.md d30cfb4fc32711b7
      05_MODE_TRANSITIONS.md ba7068295abb62cb
      06_ALARM_RESPONSE.md 2acccbd717a16f34
      07_ABNORMAL_EMERGENCY.md 5b597e8be620e445

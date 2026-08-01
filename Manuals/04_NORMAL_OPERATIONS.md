@@ -2,7 +2,7 @@
 
 **Document:** PWR-NOP-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Revision:** 4  
+**Revision:** 5  
 
 ---
 
@@ -28,7 +28,6 @@ Numbered in **plant sequence**.
 | ID | Title | MODE | Scope |
 |----|-------|------|-------|
 | PWR-N01 | Heatup Mode 5, Cold Shutdown → Mode 3, Hot Standby (pump heat) | 5 → 4 → 3 | [sim] |
-| PWR-N01a | Nuclear heatup Mode 5 → Mode 3 (**training only** — not commercial) | 5 → 4 → 3 | [sim] |
 | PWR-N02 | Mode 3, Hot Standby — plant lineup | Mode 3 | [sim] |
 | PWR-N03 | Approach to criticality (Mode 3, Hot Standby → Mode 2, Startup) | 3 → 2 | [sim] |
 | PWR-N04 | Mode 2, Startup — low-power operation and POAH | Mode 2 | [sim] |
@@ -120,56 +119,6 @@ To slow or hold the climb, secure an RCP (rate falls to essentially zero). Do no
 
 ### Outcome
 Mode 3, Hot Standby — hot, pressurized, subcritical, zero rod motion.
-
----
-
-## PWR-N01a — Nuclear heatup Mode 5 → Mode 3 (**training only**) **[sim]**
-
-### Purpose
-Reach the same **Mode 3, Hot Standby** end state as **PWR-N01**, but heat with **deliberate low-power fission** (take critical while cold, dilute, ride temperature up, then insert and borate back).
-
-**This is not a commercial normal operating procedure.** Commercial PWR heatup to Hot Standby is **subcritical** (RCP / pressurizer heat — **PWR-N01**); the approach to criticality is done **hot** (**PWR-N03**). Taking critical cold and riding heatup on fission is kept here only as a **training exercise** (approach practice, trip-block practice, dilution discipline).
-
-### Applicability
-- **Training / practice only.** Do not treat as the plant’s commercial heatup path.
-
-### Prerequisites
-Same Mode 5 plant condition as **PWR-N01**; charging available for boron adjust.
-
-### Precautions and limitations
-
-| Type | Text |
-|------|------|
-| **WARNING** | **Critical boron is higher cold than hot.** With bank inserted: about **806 ppm** at 122 °F (50 °C) vs about **588 ppm** at 566.6 °F (297 °C) (see **09 §7.5**). Diluting cold can take a concentration that is subcritical hot into critical. Prefer Tavg above about **541 °F** before computing an estimated critical condition; if you dilute cold, the source-range high-flux trip is the last backstop. |
-| **CAUTION** | Block **IR HIGH** and **PR low-setpoint** before the power ride (precautionary). |
-| **CAUTION** | Secure dilution when Tavg reaches the hot band — mixing lag about 30 s. A slow dilution rate is required; if left running after the hot band, power continues to climb with the turbine offline. |
-| **CAUTION** | Engage Feed AUTO early; standing manual feed floods the SG. |
-
-### Procedure (summary)
-
-| Phase | Action | Acceptance |
-|-------|--------|------------|
-| Setup | RCPs, grid off, Feed AUTO, Dump SP, Pressure SP to NOP, re-align accumulators | P at NOP; pumps on; accum open |
-| Protection | SR off; block IR HIGH and PR 25 % | Blocks set |
-| Criticality | Withdraw bank (bursts then creep) | ρ → 0; SUR stirs |
-| Nuclear ride | Dilute slowly until Tavg in no-load band | Tavg > 563 °F (295 °C); power typically a few % |
-| Shutdown margin | Secure dilution; drive bank in; borate ≥ ~900 ppm; settle | Mode 3; ρ ≪ 0 |
-
-### Expected heatup performance
-Fission heat makes this path much shorter than **PWR-N01** (pump heat only). On this plant, following the training sequence:
-
-| Milestone | Typical plant time | Notes |
-|-----------|-------------------|--------|
-| Pressurized to NOP, RCPs on | ~0.2 plant-h | Same setup as N01 |
-| Core critical, power climbing | ~0.5 plant-h | Still cold-to-warm (~219.2 °F (104.0 °C) class) |
-| End of dilution ride (no-load Tavg) | ~1.6 plant-h | Tavg ≈ **568.4 °F (298.0 °C)**; power about **1–4 %** through the climb (peaks near **3–4 %** if dilution is secured on time); boron falls on the order of **150 ppm** from the cold inventory |
-| Bank inserted, Mode 3 | ~1.7 plant-h | Subcritical again |
-| Boration complete and settled | ~1.9 plant-h | Tavg ≈ **567.0 °F (297.2 °C)**; boron ≥ **~900 ppm**; large negative reactivity |
-
-If dilution is left running past the hot band, power and temperature keep rising — secure it when Tavg enters the no-load band.
-
-### Outcome
-Mode 3, Hot Standby via the nuclear training path, with shutdown margin restored. For a commercial heatup, use **PWR-N01**, then **PWR-N02** / **PWR-N03**.
 
 ---
 
@@ -715,4 +664,4 @@ Target cooldown pace after RHR is in the commercial class of about **90 °F/h (5
 | Accumulator OPERABLE / isolate on cooldown | NUREG-1431 Rev 4.0 **LCO 3.5.1**, **SR 3.4.12.3** |
 | RHR placement near intermediate T/P on cooldown | Commercial SOP practice (e.g. plant procedures of the form in NRC ADAMS **ML13310A240**) |
 | Critical boron, ECC, and 1/M practice values | **09 §7.5** |
-| Heatup / cooldown plant-time milestones | **PWR-N01**, **PWR-N01a**, and **PWR-N15** expected performance |
+| Heatup / cooldown plant-time milestones | **PWR-N01** and **PWR-N15** expected performance |

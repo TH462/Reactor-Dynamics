@@ -249,9 +249,8 @@ var BASELINES = {
   // COVERAGE (47 procedures with no checklist) is REPORTED, not enforced — the number
   // is the work item, and a gate that failed on it would sit permanently red. Watch
   // that line, not just the score.
-  // +2 on 2026-07-31 (#255): pwr_heatup_nuclear / PWR-N01a adds one checklist pair
-  // (names a manual procedure + is defined). Coverage is still reported, not scored.
-  'run_procdocs.js':       { code: 0, score: '25checks 0failed' },
+  // 25 → 23 on 2026-07-31: nuclear-from-cold heatup checklist removed (not a commercial NOP).
+  'run_procdocs.js':       { code: 0, score: '23checks 0failed' },
   // New 2026-07-29 — the manual quotes US customary first with SI in parentheses
   // (owner request). This re-derives the US value from the SI value in every pair
   // and fails on bad arithmetic, on an SI quantity with no US partner, and on a
@@ -299,9 +298,8 @@ var BASELINES = {
   // which iterates the table rather than the steps — so an unmapped step is UNVERIFIED, not
   // merely unmapped. Count moves when a controlled procedure step is added or removed
   // (2 checks per step: the mapping, and the reverse entry-has-a-step check).
-  // 116 → 128 on 2026-07-31 (#255): pwr_heatup re-authored as pump-heat (6 mapped
-  // controls) and pwr_heatup_nuclear keeps the old 17 — STEP_UI coverage list grows.
-  'run_manual_controls.js': { code: 0, score: '128checks 0failed' },
+  // 128 → 94 on 2026-07-31: nuclear-from-cold heatup STEP_UI map removed (17 steps).
+  'run_manual_controls.js': { code: 0, score: '94checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -312,8 +310,8 @@ var BASELINES = {
   // scenario shifts this baseline, which is the intended nudge to decide its stage.
   // 290 -> 289 (bf41f67, the leaner control chrome): one flag-gated element left the board.
   // Verified as theirs by running this gate on backshop at its own commit before merging.
-  // 289 → 292 on 2026-07-31 (#255): procedure:pwr_heatup_nuclear registered.
-  'run_flags.js':          { code: 0, score: '16/16 292/292' },
+  // 292 → 289 on 2026-07-31: procedure:pwr_heatup_nuclear flag removed.
+  'run_flags.js':          { code: 0, score: '16/16 289/289' },
   // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
   // Every way this rots is silent: an item id changes and its entry describes
   // nothing; a new control inherits its card's summary and READS like a real
@@ -499,9 +497,8 @@ var BASELINES = {
   //   +1 (#245) `pwr_stuck_porv` step 1 gained a `saw core_inventory_pct < 100`
   //      alongside its `acc`, which became a subcooling check — see the note on that
   //      step in ui/manual_procedures.js.
-  // 22/22 102 → 23/23 115 on 2026-07-31 (#255): pwr_heatup is the pump-heat
-  // sequence; pwr_heatup_nuclear keeps the old nuclear training path as PWR-N01a.
-  'run_procedures.js':     { code: 0, score: '23/23 115/115' },
+  // 23/23 115 → 22/22 99 on 2026-07-31: nuclear-from-cold heatup procedure removed.
+  'run_procedures.js':     { code: 0, score: '22/22 99/99' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -524,10 +521,8 @@ var BASELINES = {
   // did not), and +1 is the `pwr_stuck_porv` split above. Otherwise the rule still
   // holds — an xfail is a check either way, so clearing one moves no number here,
   // which is why the 2026-07-27b #218 fix cleared three and shifted nothing.
-  // 22/22 178 → 23/23 196 on 2026-07-31 (#255): new pump-heat pwr_heatup (+18
-  // stack checks including auto_channels + never-critical guards) and the nuclear
-  // variant re-id'd as pwr_heatup_nuclear. Both measured green full-stack.
-  'run_procedures_stack.js': { code: 0, score: '23/23 196/196' },
+  // 23/23 196 → 22/22 176 on 2026-07-31: nuclear-from-cold heatup stack path removed.
+  'run_procedures_stack.js': { code: 0, score: '22/22 176/176' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {

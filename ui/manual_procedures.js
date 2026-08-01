@@ -28,17 +28,14 @@
 
   // ---- PWR -----------------------------------------------------------------
   var PWR = [
-    // PWR-N01 — prototypical pump-heat heatup (#255). Measured full-stack
-    // (measure_stack, cold_shutdown IC, default lineup, 2026-07-31): Mode 4 at
-    // ~20 plant-min (pressure already at 2235 psi / 15.41 MPa), Mode 3 entry at
-    // ~4.7 plant-h, 546.9 °F (286.0 °C) at 10.67 plant-h, settles 567.0 °F
-    // (297.2 °C) at 11.3 plant-h with ρ = −2828 pcm on 856.8 ppm, power 3.5e-5 %,
-    // control bank still at 0, SG level held ~65 % by feed_sg. Zero rod motion.
-    // The nuclear training variant is PWR-N01a / pwr_heatup_nuclear below.
+    // PWR-N01 — commercial pump-heat heatup. Measured full-stack (cold_shutdown
+    // IC, default lineup): settles 567.0 °F (297.2 °C) at ~11.3 plant-h, ρ ≈ −2828
+    // pcm, zero rod motion. The old nuclear-from-cold heatup path was removed —
+    // not a commercial NOP (heatup is subcritical; approach is hot, N03).
     {
       id: 'pwr_heatup', category: 'startup', manual_ref: 'PWR-N01',
       title: 'Mode 5, Cold Shutdown → Mode 3, Hot Standby — plant heatup (pump heat)',
-      purpose: 'Take the plant from Mode 5, Cold Shutdown to Mode 3, Hot Standby on reactor-coolant-pump heat alone: start the RCPs, pressurize to NOP, bottle the steam generator, re-align the SI accumulators, and ride temperature up with the reactor never critical. This is the prototypical heatup and what mission "The Big Warm-Up" drives. The nuclear training variant (PWR-N01a) is a separate checklist.',
+      purpose: 'Take the plant from Mode 5, Cold Shutdown to Mode 3, Hot Standby on reactor-coolant-pump heat alone: start the RCPs, pressurize to NOP, bottle the steam generator, re-align the SI accumulators, and ride temperature up with the reactor never critical. This is the commercial heatup and what mission "The Big Warm-Up" drives.',
       from: 'cold_shutdown',
       prereq: ['Plant in Mode 5, Cold Shutdown: cold (~122 °F / 50 °C), depressurized (~363 psi / 2.5 MPa), subcritical, RHR in service.', 'RCPs available to start (heat source).'],
       cautions: [
@@ -108,87 +105,6 @@
         ],
       },
       outcome: 'Plant at Mode 3, Hot Standby: hot, pressurized, subcritical with zero rod motion — ready for a reactor startup.',
-    },
-    // PWR-N01a — nuclear training heatup. Same end state as N03, but the heat
-    // source is deliberate low-power fission: block the startup trips, take the
-    // core critical cold, dilute to ride temperature up, then insert and borate
-    // back to subcritical. Run for the approach-to-criticality and protection-
-    // blocking practice; the prototypical heatup is PWR-N01 above.
-    // (Lowercase suffix matches the manual-id grammar: PWR-E19u is the prior case.)
-    {
-      id: 'pwr_heatup_nuclear', category: 'startup', manual_ref: 'PWR-N01a',
-      title: 'Mode 5, Cold Shutdown → Mode 3, Hot Standby — nuclear heatup (training variant)',
-      purpose: 'Take the plant from cold shutdown to Hot Standby the NUCLEAR way: start the Reactor Coolant Pumps, pressurize the primary, hand over the nuclear instruments, take the core critical for a low-power nuclear heatup, ride the temperature up to the no-load point, then settle back subcritical — hot, pressurized, and ready for a startup. This is a TRAINING VARIANT of PWR-N01: the prototypical heatup is pump heat with the reactor never critical. Run this one for the approach to criticality and the protection-blocking practice it puts around a deliberate power excursion.',
-      from: 'cold_shutdown',
-      prereq: ['Plant in Mode 5, Cold Shutdown: cold (~122 °F / 50 °C), depressurized (~363 psi / 2.5 MPa), subcritical, RHR in service.', 'Charging pump available (boron adjustments need it).'],
-      cautions: ['Rates are time-compressed for training — a real heatup takes many hours against brittle-fracture and pressurizer limits.', 'The heat source in THIS procedure is controlled fission — a deliberate training choice, not a plant limitation. The plant will heat itself cold-to-hot on pump heat alone with the reactor never critical (measured ~11.3 plant-hours to the no-load anchor) — that is PWR-N01. Keep the Startup Rate low and let the temperature defect regulate power on the ride. Re-measured on the recalibrated reactivity model (#260/#263): power sits around 1–2 % through most of the climb and reaches ~2.7 % as Tavg arrives at the no-load band. It is a GENTLE ride, and that is the prototypical shape of a real nuclear heatup — a few per cent, not tens. Secure the dilution when Tavg reaches the hot band, as the secure-dilution step says — left running it keeps adding reactivity the plant can no longer absorb as temperature. Measured: at −0.042 ppm/s the ride ends at 572.9 °F (300.5 °C) and 12 % power — already past the band top — and it climbs steeply from there, heading for the 50 % P-9 permissive, which would trip the reactor with the turbine offline. The authored −0.039 exists because the reactivity-balance answer alone (−0.0344) leaves the plant asymptoting toward 567 °F rather than arriving inside the step’s window; the extra ~13 % is arrival margin, not slack.', 'CRITICAL BORON IS HIGHER WHEN THE PLANT IS COLD, and this procedure dilutes while cold on purpose — that is the one place it can bite you. With the bank inserted, critical boron is 806 ppm at 122 °F (50 °C) and only 588 ppm at 566.6 °F (297 °C): a concentration that is comfortably subcritical hot is CRITICAL cold. Cold water is a better moderator, so a cold core needs more poison to stay shut down. Read the critical-boron table in manual 09 §7.5 for the value at YOUR Tavg before you order a dilution, and remember the differential worth is larger cold too (19.9 pcm/ppm at 122 °F against 10.5 at power), so each ppm buys more than you are used to. The real procedure sidesteps all of this by requiring Tavg above 541 °F before an estimated critical condition is computed at all (WTSM 2.2 Attachment 2.2-1); this plant will let you dilute cold anyway, and the source-range high-flux trip at 1e5 cps is the last backstop.', 'Boron moves through a mixing lag (~30 s) — dilution keeps adding reactivity briefly after you stop it. Stop early, never chase.', 'There is no live boron meter: concentration is known from CHEM SAMPLE grab results (~60 s compressed lab turnaround) and the change you have ordered. Sample to confirm a shutdown-margin boration; do not steer the ride off ppm you cannot yet see.', 'Mind the Steam Generator, and engage Feed AUTO at the start rather than setting a feed-pump demand by hand. A standing manual demand keeps filling a generator that is not yet boiling: measured, ~30 % pump for this heatup floods the SG past 90 %, isolates main feedwater and stands a SG LVL HI HI alarm for the rest of the run. Expect level to swell above its setpoint anyway as the primary heats — warming water expands and no controller can pump water out — and to come back down once the nuclear heatup starts drawing steam.',
-        'This heatup uses fission as its heat source, so it runs deliberately into the startup protection net: INTERMEDIATE RANGE HIGH at ~20 % and the POWER RANGE LOW SETPOINT at 25 %. Both are blocked as explicit steps before the ascent. On the authored dilution rate the ride now tops out around 7 %, so neither trip is actually reached — the blocks are PRECAUTIONARY here, not load-bearing. Keep setting them: they are what makes a heavier dilution survivable.'],
-      steps: [
-        obs('Confirm Mode 5, Cold Shutdown: Tavg ≈ 122 °F (50 °C), pressure ≈ 363 psi (2.5 MPa), reactivity well below zero, RHR aligned.', { p: 'tavg_c', op: '<', v: 95 }),
-        { text: 'Start the Reactor Coolant Pumps (RCP card → Run). Forced flow stirs the loop and adds a little pump heat; the RHR valve auto-isolates as pressure rises.', control: 'RCP Run/Stop',
-          target: 'flow ~100 %', cmd: { action: 'set_rcp', running: true }, hold: 30, acc: { p: 'pump_flow_pct', op: '>', v: 90 } },
-        { text: 'Confirm the generator is off line before you make any steam: Disconnect Grid. A cold plant has no business following load — and the moment the heatup starts raising power, a turbine left in FOLLOW opens its governor and takes the steam you are trying to heat the plant with.',
-          control: 'Turbine Load', target: 'generator disconnected, governor shut',
-          note: 'The cold_shutdown board now SPAWNS off line (#251 — breaker open, rotor at rest, load mode disconnected, as a Mode 5 plant physically is), so this step confirms rather than changes. It stays because the reason still bites the moment anyone reconnects: measured on the old board, left in FOLLOW the governor passed ~46 % steam flow by the end of the ride and the heatup stalled at 464 °F (240 °C), the turbine carrying heat away as fast as the core made it. On pump heat alone the same governor needs only ~6 % open to take the whole heat source. The steam dump, set to the no-load anchor two steps down, is what should be holding the secondary. You put the turbine back on line at the END of the startup checklist, not here.',
-          cmd: { action: 'disconnect_grid' }, hold: 10,
-          hl: ['Turbine Load', 'Main Breaker'] },
-        { text: 'Put steam-generator level control in AUTO now, while level is still at its cold 65 % (STEAM GEN FEED → AUTO on the board). The three-element channel captures the level it finds as its setpoint, so engaging it here — before anything moves — is what sets it to the right number.',
-          control: 'Feed Pumps', target: 'Feed AUTO engaged, SG level ≈ 65 %',
-          note: 'Level will still swell as the primary heats: warming water expands, and the controller cannot pump water out. That rise is real and it comes back down on its own once the nuclear heatup starts drawing steam. What AUTO prevents is the opposite problem — a standing manual feed demand that keeps filling a generator nobody is boiling.',
-          cmd: { action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true }, hold: 5,
-          hl: ['Feed Pumps', 'SG Level'] },
-        { text: 'Set the Steam Dump Setpoint back to the no-load anchor (1194 psi / 8.23 MPa) so the secondary bottles up with the heatup instead of dumping it.', control: 'Dump SP',
-          target: '1194 psi (8.23 MPa)', cmd: { action: 'set_steam_dump_setpoint', mpa: 8.23 }, hold: 5 },
-        { text: 'Raise the Pressurizer Pressure Setpoint to 2235 psi (15.41 MPa). The heaters run hard while pressure climbs at the plant\'s heatup pace (~2.9 psi/s / 0.02 MPa/s) — expect roughly ten minutes of sim time to reach normal operating pressure.', control: 'Pressure SP',
-          target: '2235 psi (15.41 MPa)', cmd: { action: 'set_pressure_setpoint', mpa: 15.41 }, hold: 720,
-          acc: { p: 'pressure_mpa', op: '>', v: 15.0 } },
-        { text: 'Re-align the Safety Injection accumulators (isolated for the cold lineup) — the RCS is now above their cover-gas pressure.', control: 'Accumulator valve',
-          target: 'accumulators armed', cmd: { action: 'open_accumulator_valve' }, hold: 5 },
-        { text: 'Perform the SR→IR handoff: switch the Source Range detector OFF before the ascent — its high-flux trip (1e5 cps) would end the startup.', control: 'SR detector',
-          target: 'SR de-energized', cmd: { action: 'set_sr_detector', on: false }, hold: 5,
-          acc: { p: 'sr_energized', op: '<', v: 1 } },
-        { text: 'Block the INTERMEDIATE RANGE HIGH trip before you start the ascent. This heatup runs the reactor at tens of per cent power on purpose — that is the heat source — and the IR trip sits at about 20 %. Block it now, while the reactor is still shut down and the trip is nowhere near asserted.',
-          control: 'Trip Blocks', target: 'IR HIGH blocked',
-          note: 'You can normally only block this above P-10 (10 % power), but the board also lets you block a trip PROACTIVELY any time it is not asserted — and an operator-set block survives the automatic reinstate that would otherwise drop it below P-10. That is the whole reason this step works here, cold and subcritical, and it is the honest way to set up for a deliberate power excursion: arrange your protection before you need it, not while it is tripping.',
-          cmd: { action: 'set_trip_block', trip_id: 'ir_high', blocked: true }, hold: 5,
-          hl: ['Trip Blocks', 'Intermediate Range'] },
-        { text: 'Block the POWER RANGE LOW SETPOINT trip (25 %) as well — the backstop behind the IR trip, and the next one the heatup would reach. With both blocked the power-range 120 % trip is what protects you.',
-          control: 'Trip Blocks', target: 'PR 25 % blocked',
-          note: 'Both blocks clear the moment you release them, and the plant re-arms instantly. Clearing is always allowed; it is only setting a block that has a rule.',
-          cmd: { action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true }, hold: 5,
-          hl: ['Trip Blocks'] },
-        { text: 'Withdraw the Control Bank in bursts toward criticality (Norm speed), plotting 1/M as you go. Stop short of the predicted critical position.', control: 'Control Bank',
-          target: 'near critical', cmd: { action: 'rod_nudge', group_id: 'control', steps: 330, speed: 'normal' }, hold: 180,
-          acc: { p: 'reactivity_pcm', op: '>', v: -600 } },
-        { text: 'Creep up on criticality with small single-step nudges at Slow — one fine step is ~1.5 ¢ here.', control: 'Control Bank',
-          target: 'reactivity approaching zero', cmd: { action: 'rod_nudge', group_id: 'control', steps: 18, speed: 'slow' }, hold: 300,
-          acc: { p: 'reactivity_pcm', op: '>', v: -150 } },
-        { text: 'Take the core critical: a few more fine steps, then watch the Startup Rate stir as the source multiplication climbs.', control: 'Control Bank',
-          target: 'critical', cmd: { action: 'rod_nudge', group_id: 'control', steps: 18, speed: 'slow' }, hold: 600,
-          saw: { p: 'startup_rate_dpm', op: '>', v: 0 }, acc: { p: 'reactivity_pcm', op: '>', v: -60 } },
-        { text: 'Commence the nuclear heatup with a slow DILUTION — lower the boron toward criticality (the walkthrough meters it for you). Power rises into the tens of percent and the temperature defect regulates it — the coolant warms toward the no-load point while the SG absorbs the heat. Watch SG level and trim feed as the steam draw grows.', control: 'Boron control',
-          target: 'Tavg up to the no-load band (~566.6–573.8 °F / 297–301 °C)', cmd: { action: 'set_boron_adjust', rate: -0.039 }, hold: 3900,
-          // Was `> 305`, which asked the ride to OVERSHOOT the 297 °C no-load anchor by
-          // 8 degrees — inconsistent with this step's own stated target and with where
-          // the plant correctly settles. Measured end-of-dilution: 301.2 °C, settling to
-          // 297.0 once the bank goes back in. 295 confirms the heatup actually happened
-          // (from 50 °C) without demanding an overshoot the dump then has to remove.
-          saw: { p: 'power_pct', op: '>', v: 5 }, acc: { p: 'tavg_c', op: '>', v: 295 } },
-        { text: 'Secure the dilution as Tavg reaches the hot band (remember the mixing lag — reactivity keeps drifting up briefly).', control: 'Boron control',
-          target: 'dilution stopped', cmd: { action: 'set_boron_adjust', rate: 0 }, hold: 60 },
-        { text: 'Drive the Control Bank back in — the reactor goes subcritical and the steam dump carries the plant to the no-load anchor.', control: 'Control Bank',
-          target: 'subcritical', cmd: { action: 'rod_nudge', group_id: 'control', steps: -400, speed: 'normal' }, hold: 240,
-          acc: { p: 'reactivity_pcm', op: '<', v: -500 } },
-        { text: 'Borate for shutdown margin — the heatup dilution must be restored before you call the plant shut down. Confirm the concentration with a CHEM SAMPLE (there is no live boron meter — the lab result is the reference).', control: 'Boron control',
-          target: 'boron ≥ ~900 ppm (confirm by CHEM SAMPLE)', cmd: { action: 'set_boron_adjust', rate: 1.2 }, hold: 200,
-          acc: { p: 'boron_ppm', op: '>', v: 900 } },
-        { text: 'Secure boration and let the plant settle: hot at the no-load point, subcritical, steam dump holding the secondary.', control: 'Boron control',
-          target: 'Mode 3, Hot Standby', cmd: { action: 'set_boron_adjust', rate: 0 }, hold: 500,
-          acc: { p: 'tavg_c', op: '>', v: 285 } },
-        obs('Confirm Mode 3, Hot Standby: subcritical, Tavg ≈ 566.6 °F (297 °C) (no-load), pressure ≈ 2235 psi (15.41 MPa). Ready for the approach to criticality (startup checklist).', { p: 'plant_mode', op: '~', v: 3, tol: 0.1 }),
-      ],
-      guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
-      outcome: 'Plant at Mode 3, Hot Standby: hot, pressurized, subcritical with shutdown margin — ready for a reactor startup. (Nuclear training path complete; prototypical heatup is PWR-N01.)',
     },
     {
       id: 'pwr_startup', category: 'startup', manual_ref: 'PWR-T03',
