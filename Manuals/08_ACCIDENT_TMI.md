@@ -2,7 +2,7 @@
 
 **Document:** PWR-X01  
 **Title:** Three Mile Island — An Accident of Information  
-**Revision:** 2  
+**Revision:** 3  
 **Category:** Accident case study (narrative + recoverable drill)  
 
 ---

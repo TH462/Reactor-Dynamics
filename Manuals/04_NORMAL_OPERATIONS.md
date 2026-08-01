@@ -2,7 +2,7 @@
 
 **Document:** PWR-NOP-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Revision:** 2  
+**Revision:** 3  
 
 ---
 
@@ -107,7 +107,16 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 - Ready for **PWR-N02** (lineup) then **PWR-N03** (approach to criticality).
 
 ### Expected heatup performance
-With no rod motion: pressure reaches NOP within about **20 plant-minutes**; Mode 3 entry (~350 °F (176.7 °C)) in about **4.7 plant-hours**; **546.8 °F (286.0 °C)** at about **10.7 plant-hours**; settles near **567.0 °F (297.2 °C)** at about **11.3 plant-hours**. Steady heatup rate after the first hour is about **32 °F/hr (17.8 °C/hr)**. Heat source is RCP work (about 0.55 % of rated core heat at full flow) plus pressurizer heaters.
+Pump heat only — no rod motion, no dilution. Heat source is RCP work (about 0.55 % of rated core heat at full flow) plus pressurizer heaters.
+
+| Milestone | Typical plant time | Notes |
+|-----------|-------------------|--------|
+| Pressurized to NOP, RCPs on | ~0.3 plant-h | ~20 plant-minutes; RHR isolates on the way up |
+| Mode 4 / Mode 3 entry (~350 °F (176.7 °C)) | ~4.7 plant-h | Still deeply subcritical |
+| Near no-load band (~546.8 °F (286.0 °C)) | ~10.7 plant-h | Steady rate after the first hour ~**32 °F/hr (17.8 °C/hr)** |
+| Settled no-load (~567.0 °F (297.2 °C)) | ~11.3 plant-h | ρ ≈ **−2800 pcm** on ~857 ppm; bank still fully inserted |
+
+To slow or hold the climb, secure an RCP (rate falls to essentially zero). Do not use the steam dump as a fine throttle.
 
 ### Outcome
 Mode 3, Hot Standby — hot, pressurized, subcritical, zero rod motion.
@@ -654,6 +663,19 @@ After **PWR-N14** or any hot, subcritical plant.
 | 6 | 4 → 5 | **Secure RCPs** once RHR carries heat | RCP Stop | Flow to RHR path |
 | 7 | Mode 5 | Arrive cold (≤ ~200 °F (93.3 °C) class), depressurized, RHR in service | (observe) | Mode 5 |
 
+### Expected cooldown performance
+Secondary-led cooldown with stepped depressurization, accumulator isolation at 1000 psi (6.895 MPa), then RHR. Training plant-time is compressed versus a commercial multi-shift cooldown; milestones below are typical for this plant when the dump setpoint and pressure setpoint are walked down together and subcooling is held.
+
+| Milestone | Typical plant time | Notes |
+|-----------|-------------------|--------|
+| Start Mode 3 | 0 | ~**566.6 °F (297 °C)**, **2235 psi (15.41 MPa)**; borate for cold shutdown margin first |
+| Mode 4 class (~350 °F (176.7 °C)) | ~2.0 plant-h | Tavg falling on steam dump; still pressurized |
+| Isolate accumulators at **1000 psi (6.895 MPa)** | ~3.4 plant-h | Valve shut; SIT inventory should still be full |
+| RHR in service, RCPs secured | ~5.1 plant-h | Below **400 psi (2.76 MPa)** interlock; RHR carries the rest |
+| Cold end (~**200 °F (93.3 °C)** class) | ~5.3 plant-h | Depressurized, RHR on, accumulators isolated |
+
+Target cooldown pace after RHR is in the commercial class of about **90 °F/h (50 °C/h)**; earlier legs are training-compressed. If accumulators are left open through 600 psi (4.14 MPa), they dump and boron/inventory end states are wrong.
+
 ### Outcome
 **Mode 5, Cold Shutdown** — cold, depressurized, RHR in service. Accumulators remain isolated until **PWR-N01** re-aligns on the next heatup.
 
@@ -691,4 +713,4 @@ After **PWR-N14** or any hot, subcritical plant.
 | Accumulator OPERABLE / isolate on cooldown | NUREG-1431 Rev 4.0 **LCO 3.5.1**, **SR 3.4.12.3** |
 | RHR placement near intermediate T/P on cooldown | Commercial SOP practice (e.g. plant procedures of the form in NRC ADAMS **ML13310A240**) |
 | Critical boron, ECC, and 1/M practice values | **09 §7.5** |
-| Heatup plant-time rates and milestones | **PWR-N01** and **PWR-N01a** expected performance |
+| Heatup / cooldown plant-time milestones | **PWR-N01**, **PWR-N01a**, and **PWR-N15** expected performance |

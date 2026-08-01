@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 2 (2026-07-31)  
+**Set revision:** 3 (2026-07-31)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -20,6 +20,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 3 | 2026-07-31 | **Expected performance tables unified.** N01 heatup rewritten to the same milestone table form as N01a; **N15** cooldown gained matching expected performance (Mode 4, isolate at 1000 psi, RHR, cold end). | Expected performance |
 | 2 | 2026-07-31 | **PWR-N01a gained expected heatup performance** — nuclear training path milestones (pressurize, critical, end of dilution, Mode 3 settled) so it matches N01’s performance section. | N01a performance |
 | 1 | 2026-07-31 | **04 Normal Operating Procedures rewritten in commercial NOP format.** Every N01–N15 procedure now carries purpose / applicability / prerequisites / precautions / stepped procedure with acceptance / outcome. Heatup (N01) and approach (N03) aligned to commercial practice (WTSM heatup outline; NUREG-1431 accumulator LCO/SR; 1/M + SUR + ECC). Fixed HFP electrical band **1000 → 100 MWe**. Operator-facing prose only — no build notes or internal rulings. | NOP content rewrite |
 | 0 | 2026-07-31 | **Pre-public baseline.** Manual set reset to Rev 0 for a clean public revision counter. Current content includes the as-built PWR operator manuals through the normal-ops plant-sequence renumber (N01 heatup → N15 cooldown) and prior engine/procedure alignment. Development history before this baseline is in git, not listed here. | Public-rev reset |
@@ -49,12 +50,12 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 2 (2026-07-31). A mismatch means a chapter changed with no
+     Sealed at Rev 3 (2026-07-31). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md 084d5a7df10229c3
      02_SIMULATOR_USER_GUIDE.md 4fb25f478c3f767d
      03_CONTROLS_AND_INDICATIONS.md 807262dd36af8dfe
-     04_NORMAL_OPERATIONS.md 2b5a4c8ee0f2860c
+     04_NORMAL_OPERATIONS.md eee305cc63186d8c
      05_MODE_TRANSITIONS.md ba7068295abb62cb
      06_ALARM_RESPONSE.md 2acccbd717a16f34
      07_ABNORMAL_EMERGENCY.md 5b597e8be620e445
