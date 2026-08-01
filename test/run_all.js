@@ -209,7 +209,9 @@ var BASELINES = {
   // cited in the four tracked files that record the split (CHANGELOG, TUNING_LOG,
   // BUILD_DECISIONS, the manual revision row). The engine/config change itself moves
   // NOTHING here; writing it up is what moved the count.
-  'run_hardrules.js':      { code: 0, score: '47checks 0failed' },
+  // 47 -> 48 on 2026-07-31: the A33 keep-it ruling, recorded in TUNING_LOG so the
+  // "this alarm got rare, delete it" argument is not re-litigated from scratch.
+  'run_hardrules.js':      { code: 0, score: '48checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

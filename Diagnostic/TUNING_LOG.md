@@ -177,6 +177,16 @@ lost it — the open permissive is the lower of the two setpoints. `06 PWR-A33`'
 comes in with pressure ABOVE the interlock" row was written when one number did both jobs
 and would have been wrong about which one to steer to.
 
+**`06 PWR-A33` was reviewed against this change and deliberately KEPT** *(OWNER RULING,
+2026-07-31: "Keep it")*. The question was fair: #287 added that annunciator one commit
+earlier **because** losing RHR was silent, and the failure it was written for — the 409 psi
+chatter — is exactly what #288 designs out. The alarm is now **rarer, not dead**: it still
+fires on a genuine repressurization past 600 psi while aligned, and the LOCA case ("you are
+on injection, not on shutdown cooling") is untouched. What changed is that it annunciates a
+real excursion instead of a boundary artifact, which is the better alarm and is what GL 88-17
+called for. **Do not remove it on reachability grounds** — that argument has been made and
+ruled on.
+
 **Gates.** `run_pwr` **237 → 240**. `rhr_valve_and_mode` gained three checks: the config
 ordering, a rebound into the deadband that must NOT close, and an open that must still be
 REFUSED in that same band (the other half of the split — a spent one-shot permissive cannot
