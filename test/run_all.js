@@ -282,7 +282,12 @@ var BASELINES = {
   // files before this number was lowered (3, 1 and 4 files respectively). The accumulator one
   // now survives in TUNING_LOG.md ALONE, which is thin; if that entry is ever rotated, the
   // ruling goes with it.
-  // 58 -> 75 on 2026-08-01 (#290): HR11 matched the literal string `OWNER RULING` only,
+  // 58 -> 60 on 2026-08-01 (#289): two new dated owner-ruling citations for the
+  // pressurizer level-program ceiling — CHANGELOG.md and BUILD_DECISIONS.md. Both are
+  // recorded as a SELECTION ("selected 'Add the program ceiling' from four options put to
+  // him"), not dressed as verbatim words, because that is what it was. This comment's
+  // standing point again: the code change moved NOTHING here; the write-up moved it.
+  // 60 -> 77 on 2026-08-01 (#290): HR11 matched the literal string `OWNER RULING` only,
   // so ELEVEN in-scope `OWNER DIRECTIVE` citations were unguarded — including "never merge
   // into develop", "never push the lanes", and the US-customary-units rule — and one of
   // them was already malformed. This delta is NOT the usual write-up drift: no ruling was
@@ -290,8 +295,9 @@ var BASELINES = {
   // measured: 43 baseline, +11 the widened marker, +4 the corrected inline-code test
   // (three OWNER RULING sites plus the units DIRECTIVE, all silently skipped because the
   // marker sat BETWEEN two backtick spans rather than inside one), +2 bringing
-  // `.claude/skills/` into scope. 60 HR11 sites + 15 HR1/HR5 = 75.
-  'run_hardrules.js':      { code: 0, score: '75checks 0failed' },
+  // `.claude/skills/` into scope. Measured on the MERGED tree (the #290 guard applied to
+  // #289's write-up too), not by adding the two branch figures: 62 HR11 sites + 15 HR1/HR5.
+  'run_hardrules.js':      { code: 0, score: '77checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

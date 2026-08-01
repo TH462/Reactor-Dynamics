@@ -160,18 +160,20 @@
       // lowers the level (see stepLevel: leak_flow is now an inventory-out term on the
       // level, as it physically is), so the servo charges up to hold level — no leak
       // detection needed. A HIGH level drives charging below letdown to bring it back down.
-      // PROGRAMMED level setpoint (catalog v3 FG-3): the same thermal-expansion base
-      // line the derived level rides (pwr_pressurizer.levelBase), computed from the
-      // INDICATED Tavg (HR1 — the program card reads a plant instrument, not truth).
-      // Because setpoint and physics share one line, a heat-up raises level AND
-      // setpoint together: the old #34 failure mode (auto charging draining the RCS
+      // PROGRAMMED level setpoint (catalog v3 FG-3): the thermal-expansion base line the
+      // derived level rides, CLAMPED at both ends (pwr_pressurizer.levelProgram), computed
+      // from the INDICATED Tavg (HR1 — the program card reads a plant instrument, not truth).
+      // Through the normal band setpoint and physics are the SAME line, so a heat-up raises
+      // level AND setpoint together: the old #34 failure mode (auto charging draining the RCS
       // to chase a thermally-high level) is structurally gone, and with DERIVED level
       // draining genuinely lowers level, so no mass floor is needed either.
+      // ABOVE THE CEILING THEY DIVERGE ON PURPOSE (#289) — physics keeps expanding, the
+      // program stops at level_prog_ceiling, and the resulting level-above-program is exactly
+      // what the CVCS is supposed to let down. That is what stops a load rejection with rod
+      // control in MANUAL from riding the program into the 97 % going-solid trip.
       var tavg_ind = (s._ins_tavg != null) ? s._ins_tavg : s.tavg_c;
-      var pz = cfg.pressurizer;
       var tref = (s._tavg_fp != null) ? s._tavg_fp : 304.0;
-      var level_sp = clip(pz.pzr_level_nominal + pz.level_per_tavg * (tavg_ind - tref),
-                          pz.level_prog_floor, 100);
+      var level_sp = RD.pwrPressurizer.levelProgram({ tavg_c: tavg_ind, _tavg_fp: tref }, cfg);
       // Sense the INDICATED pzr level (previous-step instrument, HR1) — NOT true level — so a
       // lagged/failed level sensor fools the level control like the operator. Falls back to
       // true level only before the first instrument reading exists.

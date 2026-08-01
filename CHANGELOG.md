@@ -46,6 +46,47 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   - No behaviour changed: the plant was already correct. `run_m4` **33/33 (185) → 34/34
     (194)**; 5 checks red on the injected config.
 
+- **A load rejection no longer scrams the plant on the going-solid trip** (#289)
+  *(OWNER RULING, 2026-08-01: selected "Add the program ceiling" from the options put to
+  him — a selection, not a verbatim instruction)*. The pressurizer **level program had no
+  maximum**. It is `55 % + 2.5 %/°C × (Tavg − 304.1 °C)`, and with rod control in **manual** —
+  the shipped free-play lineup — the core can only run back on the moderator coefficient,
+  which *requires* Tavg to rise. Tavg parked at **319.6–321.3 °C (607.3–610.3 °F)**, the
+  program followed it to **~94 %**, and the plant tripped on the **97 %** going-solid
+  reactor trip **with inventory correct** — `pzr_level_dev` was **negative**, i.e. the
+  pressurizer was holding *less* water than its own program demanded. The trip that exists
+  to catch an overfill was being fired by the control program.
+
+  Measured, free-play lineup, `hot_full_power`, load ask at t+60 s, six instrument-noise
+  seeds: a **6–11 MWe** ask scrammed **6/6 seeds**, 5 MWe scrammed **1/6** (decided by
+  noise), while **0 MWe and 12 MWe did not scram at all** — a *smaller* load rejection
+  tripping when a larger one did not. After the fix: **0 trips in 42 runs**, peak level
+  89.7–95.1 % against the 97 % trip.
+
+  The program is now clamped at both ends via a new `level_prog_ceiling` (**61.5 %**) and a
+  single `pwrPressurizer.levelProgram()` that the CVCS setpoint and the deviation gauge both
+  read. Physics (`levelBase`) is deliberately **not** clamped — the coolant really does
+  expand, and the resulting level-above-program is exactly what the CVCS is meant to let
+  down. Sourced to **WTSM 10.3 Pressurizer Level Control System (ML11223A290)**: *"both
+  minimum and maximum level limitations are placed on the level program"* (low 25 %, high
+  61.5 %), whose stated purpose is our exact case — *"low enough to ensure that the
+  pressurizer does not go solid following a turbine trip from 100% power … assuming no
+  operator action and **no response by the automatic control systems (the rod control and
+  steam dump control systems)**."*
+
+  `pzr_level_dev` now reads against the **program**, not the physics line: it peaks at
+  **+29.3 %** on the insurge and decays to ~0 as make-up lets down. Reading the physics line
+  would have pegged `PZR LVL DEV LO` at ~−39 % for the whole transient while the controller
+  sat exactly on setpoint. All **35 runners at baseline**; no baseline moved.
+
+  Two things this does **not** fix, both deliberate. The **SG code safeties still pass steam**
+  in the 0–5 MWe band — that is the rods-in-manual consequence #289 was filed on, and whether
+  `rods_tavg` belongs in the free-play lineup is still open (auto rod control already exists
+  and is reachable: **ROD AUTO** on the board, `board_check`-pinned, Manuals 02/03/04). And
+  the going-solid trip is still **97 %, single channel, with no power permissive**, where the
+  real one is **92 %, 2/3, P-7 gated (≥10 % power)** — aligning it only makes sense after
+  this ceiling, since 92 alone is *lower* and would scram more.
+
 - **HR11's guard checked one of the two markers the repo uses** (#290). `run_hardrules.js`
   requires every ruling citation to carry a date *and* the owner's verbatim words —
   otherwise it is indistinguishable from an agent's own preference in authoritative voice.

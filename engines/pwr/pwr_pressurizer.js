@@ -189,6 +189,22 @@
     return clip(base, p.level_prog_floor, 100);
   }
 
+  // The CVCS LEVEL PROGRAM — what the level controller holds, and what the deviation gauge
+  // reads against. The same line as levelBase, clamped at BOTH ends the way the real program
+  // is (#289; WTSM 10.3 Pressurizer Level Control System, ML11223A290: "both minimum and
+  // maximum level limitations are placed on the level program", low 25 % / high 61.5 %).
+  //
+  // PROGRAM AND PHYSICS ARE DIFFERENT LINES ABOVE THE CEILING, and that is the whole point.
+  // levelBase is unbounded upward because the coolant really does expand; the program stops,
+  // so a Tavg parked high reads as level ABOVE program and the CVCS lets it down — which is
+  // what stopped a load rejection with rods in MANUAL scramming on the 97 % going-solid trip.
+  // Every consumer of "the program" must call THIS, not levelBase, or the controller and the
+  // deviation gauge disagree about what the plant is being held to.
+  function levelProgram(s, cfg) {
+    var p = cfg.pressurizer;
+    return clip(levelBase(s, cfg), p.level_prog_floor, p.level_prog_ceiling);
+  }
+
   // Step 8 (pzr part) — pressurizer level, DERIVED from state (CC-10 rework):
   //   level = base(Tavg) + level_per_mass·(mass − 1) + level_per_void·void
   // No integrator: level and inventory cannot silently drift apart. The void term
@@ -217,6 +233,7 @@
     relief: relief,
     stepPressure: stepPressure,
     levelBase: levelBase,
+    levelProgram: levelProgram,
     stepLevel: stepLevel,
     stepTailpipe: stepTailpipe,
   };

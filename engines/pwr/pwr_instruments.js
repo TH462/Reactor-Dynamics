@@ -193,7 +193,11 @@
   // anchored to — computed at init rather than a config constant, so the engine stashes it
   // on state and hands it over in extras.
   PWRInstruments.prototype._levelDev = function (extras) {
-    var lb = RD.pwrPressurizer && RD.pwrPressurizer.levelBase;
+    // levelPROGRAM, not levelBase (#289): above the program ceiling the two are different
+    // lines on purpose, and this gauge reports the CONTROL deviation — level against what the
+    // CVCS is holding it to. Reading the physics line here would peg PZR LVL DEV LO at ~−39 %
+    // for the whole of a load rejection while the controller sat exactly on its setpoint.
+    var lb = RD.pwrPressurizer && RD.pwrPressurizer.levelProgram;
     if (!lb) return 0;
     var prog = lb({ tavg_c: this.reading.tavg, _tavg_fp: (extras || {}).tavg_fp }, this.cfg);
     var spec = this.specs.pzr_level_dev, dev = this.reading.pzr_level - prog;
