@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 25 (2026-07-31)  
+**Set revision:** 26 (2026-07-31)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -18,6 +18,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 26 | 2026-07-31 | **The RHR suction valve has two interlock setpoints now, not one** (#288) *(OWNER RULING, 2026-07-31: "issue 288, split them.")*. `rhr_valve_interlock_mpa` was doing two different jobs at once — blocking the **open** and forcing the **autoclose** — so the deadband was **zero** and the valve chattered across a single boundary. The autoclose now runs off a new **600 psi (4.14 MPa)** `rhr_autoclose_mpa`, ~200 psi (1.38 MPa) above the unchanged **400 psi (2.76 MPa)** block-open permissive, matching the structure NUREG-0933 Issue 99 describes (*"an automatic closure signal on high RCS pressure (typically 600 psig), and … a block of the manual open signal at a lower RCS pressure (typically 425 psig)"*) and the Westinghouse Technology Systems Manual §5.1 (ADAMS **ML11223A219**, valves 8701/8702, 425 psig open block against a ~585 psig autoclose). **Measured, engine-direct:** before the split *every* rebound above 400 psi shed the valve, including the **409 psi (2.82 MPa)** #287 case; after it, rebounds to 409/435/508 psi all hold and the valve lets go at its 600 psi setpoint (observed 604 psi — the plant's own pressure overshoots inside the step). The open permissive was deliberately **not** moved: 400 psi is what 04, 05, 09 and the campaign all quote. **09** gained a **§ RHR** note carrying both setpoints and the sources; **03 §11.2**, **04** (×2), **06 PWR-A33** (three rows) and **12 §6.4 / §14** updated. | RHR interlock deadband |
 | 25 | 2026-07-31 | **The RHR interlock card is sourced, and a real plant has no automatic open at all** (#287, evidence pass). **06 PWR-A33** gained two rows carrying the primary: NUREG-0933 **Issue 99, "RCS/RHR Suction Line Valve Interlock on PWRs" (Rev. 3)** — *"Two basic features are incorporated in the interlock design: (1) an automatic closure signal on high RCS pressure (typically 600 psig), and (2) a block of the manual open signal at a lower RCS pressure (typically 425 psig)."* The operator opens the suction valves; the interlock only **blocks** that open. This trainer's automatic entry is therefore already a simplification in the permissive direction, which settles the ruling on evidence rather than on recall: a **one-shot** is the closer of the two available behaviours. Two further findings recorded on the card — the real design separates its setpoints (**block-open ~425 psig, autoclose ~600 psig**) where this plant uses **one at 400 psi**, which is what let the valve chatter across the boundary; and inadvertent RHR suction valve closure is a well-documented event class (**27 events through 1981**, **0.12 unplanned closures per plant-year**, consequence *"the potential for RHR pump damage and loss of decay heat removal"*) whose NRC resolution was **Generic Letter 88-17** — improved instrumentation, procedures and administrative controls. Annunciation, not automation, which is what this tile is. | RHR interlock evidence pass |
 | 24 | 2026-07-31 | **Losing shutdown cooling now annunciates — new 06 PWR-A33 (RHR NOT IN SERVICE)** (#287). The RHR auto-entry permissive is **one-shot**: it fires on the first crossing below **400 psi (2.76 MPa)** and never re-arms, while the engine **auto-closes** the suction valve on any repressurization back above the interlock. Both halves are correct on their own — a real plant re-opens that valve deliberately, not automatically — but paired, a brief repressurization removed automatic RHR entry permanently with nothing to say so. Measured: a cooldown whose pressure-control setpoint sat just above the interlock finished **scrammed at 283 psi (1.95 MPa), below the entry pressure, with the arm still in AUTO, its permissive condition still true, and RHR shut** — the only board indication being the ECCS card quietly reading LPI instead of RHR. *(OWNER RULING, 2026-07-31: "Keep it and enunciate")* — so the permissive stays one-shot and the **indication** is what was missing. The tile is gated on **Mode 4/5 and the valve position**, not on pressure (RHR is correctly unaligned through all of Modes 1–3) and not on the reactor-trip latch: a Mode 5 plant reads **not tripped**, because it was never scrammed, which made the first cut of this alarm impossible to get in the one mode where losing RHR matters most. Index table extended to 33 cards. | Shutdown-cooling annunciation |
 | 23 | 2026-07-31 | **The steam dump is 40 % of rated steam flow, the prototypical Westinghouse capacity** *(OWNER RULING, 2026-07-31: "Let's change it to 40%.")*. Was 105 %, an unsourced feel value from the 2026-07-21 tuning pass; #220's evidence pass established the real one — *"In most Westinghouse units the capacity of the steam dump system is 40%"* (NRC Westinghouse Technology Systems Manual §11.2, ADAMS ML11223A294) — sized for a **50 % loss of load**: 40 % into the condenser plus about a 10 % reduction from the reactor (STPEGS UFSAR §10.4.4, ML22140A078). Measured, this plant reproduces that split: a 100 → 50 MWe rejection saturates the dump and settles the core at 89.3 %, nothing lifting. **01** and **09** carry the new capacity; **new 12 prose** describes what happens past it — a full rejection still does not scram, but the dump sits at its stop, the core runs back to ~46 %, Tavg peaks near **608 °F (320 °C)** and the **PORV lifts** as the designed backstop. A real plant of this class does not ride out a full rejection either, so this is the plant being honest about where its margins end. | Steam dump capacity |
@@ -70,19 +71,19 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 25 (2026-07-31). A mismatch means a chapter changed with no
+     Sealed at Rev 26 (2026-07-31). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md 084d5a7df10229c3
      02_SIMULATOR_USER_GUIDE.md 6e42c7bf1da77668
-     03_CONTROLS_AND_INDICATIONS.md 14ed5d898eacb8b0
-     04_NORMAL_OPERATIONS.md 2801fee62906b878
+     03_CONTROLS_AND_INDICATIONS.md aa470610437cccbb
+     04_NORMAL_OPERATIONS.md 211124704974d2c9
      05_MODE_TRANSITIONS.md 3b06dff310dcef99
-     06_ALARM_RESPONSE.md db20a80e2c06999c
+     06_ALARM_RESPONSE.md 6ea951921c4c7fba
      07_ABNORMAL_EMERGENCY.md 5b597e8be620e445
      08_ACCIDENT_TMI.md d6a3ff47c6786021
-     09_SETPOINTS_LIMITS.md 5087ad5b2fe38add
+     09_SETPOINTS_LIMITS.md cb75af7787c4f3cc
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md d9691773480afc25
-     12_SIM_PHYSICS.md ccc3022b353df42d
+     12_SIM_PHYSICS.md cf46ad1836525630
      README.md c5df6473d93e6a6e
 -->

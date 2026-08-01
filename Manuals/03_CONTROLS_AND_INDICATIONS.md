@@ -2,7 +2,7 @@
 
 **Document:** PWR-CI-01  
 **Title:** Control Station Inventory and Operating Instructions  
-**Revision:** 25  
+**Revision:** 26  
 
 ---
 
@@ -534,8 +534,8 @@ power is ~1000 gpm, at 6 % power it is ~50 gpm.
 
 | Control | Effect |
 |---------|--------|
-| **Suction valve Open / Shut** | The RHR hot-leg suction valve — the system's entry point. **Interlocked**: it will not open above ~**400 psi (2.76 MPa)** (400 psi) primary pressure, and autocloses if pressure rises back above the interlock (protects the low-pressure piping) |
-| **AUTO** | Arms the valve to open itself when scrammed and pressure is below the interlock |
+| **Suction valve Open / Shut** | The RHR hot-leg suction valve — the system's entry point. **Interlocked on two separate setpoints**: it will not **open** above **400 psi (2.76 MPa)**, and **autocloses** only once pressure rises back above **600 psi (4.14 MPa)** (protects the low-pressure piping). The ~200 psi (1.38 MPa) gap between them is deliberate — see **09 §RHR** |
+| **AUTO** | Arms the valve to open itself when scrammed and pressure is below the **400 psi (2.76 MPa)** block-open permissive |
 | **Cooldown Rate (HX flow split)** | Throttles how much RHR flow passes through the heat exchanger vs the bypass — this sets the **cooldown RATE without disturbing inventory**. Walk it up slowly to hold the ~**122 °F (50 °C)/h** cooldown limit; full HX flow on a hot plant overshoots the limit |
 | **Indication** | `eccs_mode` shows **RHR** while the system is in service; primary temperature trend is the rate instrument |
 | **Scope** | The Mode 4→5 decay-heat path: below the interlock pressure RHR carries the plant to Cold Shutdown and holds it there (see `05_MODE_TRANSITIONS.md` PWR-T21) |

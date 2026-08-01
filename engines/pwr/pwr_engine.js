@@ -379,12 +379,19 @@
     //    surge so void_surge reflects this step's voiding.
     PR.stepInventory(s, this.cfg, dt);
     // 9b. RHR hot-leg suction valve interlock + ECCS mode indication. The valve
-    //     AUTO-CLOSES if pressure has climbed back above the 400 psi interlock
-    //     (e.g. a repressurization while aligned); rhr_active mirrors the valve.
-    //     eccs_mode drives the single ECCS card: RHR when the valve is open, else
-    //     HPI/LPI by pressure regime (LPI = the low-head/high-flow regime below the
-    //     LPI pump shutoff head, the state a LOCA depressurizes into).
-    if (s.rhr_valve_open && s.pressure_mpa > this.cfg.emergency.rhr_valve_interlock_mpa) {
+    //     AUTO-CLOSES if pressure has climbed back above the 600 psig (4.14 MPa)
+    //     autoclosure interlock (e.g. a repressurization while aligned).
+    //     NOTE the setpoint: this is rhr_autoclose_mpa, NOT the 400 psi
+    //     rhr_valve_interlock_mpa that blocks the OPEN. They are separate values
+    //     with ~175 psi of deadband between them, sourced to NUREG-0933 Issue 99 —
+    //     see the config comment. Using the open permissive here gives a ZERO
+    //     deadband and the valve chatters across the boundary; with the one-shot
+    //     entry permissive (#287) the first chatter is permanent (#288).
+    //     rhr_active mirrors the valve. eccs_mode drives the single ECCS card: RHR
+    //     when the valve is open, else HPI/LPI by pressure regime (LPI = the
+    //     low-head/high-flow regime below the LPI pump shutoff head, the state a
+    //     LOCA depressurizes into).
+    if (s.rhr_valve_open && s.pressure_mpa > this.cfg.emergency.rhr_autoclose_mpa) {
       s.rhr_valve_open = false;
     }
     s.rhr_active = !!s.rhr_valve_open;
@@ -984,9 +991,12 @@
       case 'set_rhr':
       case 'set_dhr':   // set_dhr: one-release alias for save/restore compatibility (RHR was DHR)
         // The RHR hot-leg suction valve. Opening is honored only below the 400 psi
-        // (rhr_valve_interlock_mpa) interlock — above it the open is refused and a
-        // standing-open valve auto-closes each step (see step()). Closing is always
-        // honored. rhr_active mirrors the valve (RHR is aligned iff the valve is open).
+        // (rhr_valve_interlock_mpa) block-open permissive — above it the open is
+        // refused. A standing-open valve auto-closes only above the SEPARATE 600 psig
+        // (rhr_autoclose_mpa) autoclosure interlock, ~175 psi higher (see step() 9b
+        // and the config comment, #288): between the two the valve stays where it is,
+        // which is what stops it chattering across a single boundary. Closing is
+        // always honored. rhr_active mirrors the valve (RHR is aligned iff open).
         if (cmd.active) {
           if (s.pressure_mpa <= this.cfg.emergency.rhr_valve_interlock_mpa) s.rhr_valve_open = true;
           // else: interlock refuses the open (valve stays shut)
@@ -2486,9 +2496,34 @@
         ck('valve opens below interlock', s.rhr_valve_open, s.rhr_valve_open === true, 'true');
         ck('rhr_active mirrors the valve', s.rhr_active, s.rhr_active === true, 'true');
         ck('ECCS mode = RHR when valve open', s.eccs_mode, s.eccs_mode === 'RHR', 'RHR');
-        // Autoclosure: a repressurization above the interlock shuts the valve.
+        // DEADBAND (#288). The block-open permissive (400 psi) and the autoclosure
+        // interlock (600 psig) are SEPARATE setpoints ~175 psi apart, so a rebound
+        // that lands between them leaves the valve where it is. Before the split
+        // both jobs ran off the one 400 psi constant: the deadband was zero, and a
+        // rebound to 409 psi — the #287 cooldown's own pressure setpoint — shut the
+        // valve for good against the one-shot entry permissive. These two checks
+        // fail on the pre-split engine (measured from the cold_shutdown IC: CLOSED at
+        // every rebound above 400 psi, 409 psi included; post-split the boundary is
+        // 595 psi holds / 609 psi lets go).
+        var eOpen = h.eng.cfg.emergency.rhr_valve_interlock_mpa;
+        var eAuto = h.eng.cfg.emergency.rhr_autoclose_mpa;
+        ck('autoclose sits ABOVE the open permissive', eAuto + ' vs ' + eOpen,
+          eAuto > eOpen, 'autoclose > block-open');
+        // 2.82 MPa = 409 psi, above the open block and inside the deadband.
+        s.pressure_mpa = 2.82; h.eng.step(0.02);
+        ck('rebound into the deadband does NOT close the valve (#288)',
+          'p=' + s.pressure_mpa.toFixed(2) + ' MPa, open=' + s.rhr_valve_open,
+          s.rhr_valve_open === true && s.pressure_mpa > eOpen && s.pressure_mpa < eAuto,
+          'true, ' + eOpen + ' < p < ' + eAuto);
+        // Autoclosure: a repressurization above the AUTOCLOSE interlock shuts the
+        // valve. 5.0 MPa (725 psi) is clear of the 600 psig setpoint.
         s.pressure_mpa = 5.0; h.eng.step(0.02);
         ck('valve auto-closes on repressurization', s.rhr_valve_open, s.rhr_valve_open === false, 'false');
+        // …and the open stays refused in the deadband, which is the other half of the
+        // split: 409 psi is above the block-open permissive, so a spent one-shot
+        // permissive cannot be re-armed there by pressing ALIGN.
+        s.pressure_mpa = 2.82; h.cmd({ action: 'set_rhr', active: true }); h.eng.step(0.02);
+        ck('open still REFUSED in the deadband', s.rhr_valve_open, s.rhr_valve_open === false, 'false');
         // HX flow split scales heat removal — compare °C removed over one 1 s step
         // at full vs. quarter split from two identical fresh plants.
         function cooldownOverStep(frac) {

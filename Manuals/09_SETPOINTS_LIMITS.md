@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-01  
 **Title:** Operating Limits and Protection Setpoints — PWR  
-**Revision:** 25  
+**Revision:** 26  
 **Source:** As-built `pwr_control.js`, `pwr_config.js`; normal values captured from the live engine  
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
@@ -95,7 +95,7 @@
 | AFW start | sg_level | low | **20 %** | ESF arm must be AUTO |
 | AFW start (loss of MFW, PI-4) | fw_flow | low | **0.10** normalized | Above P-9 (≥50 % power) |
 | MFW isolation + AFW start (P-4) | tavg | low | **572 °F (300 °C)** | Condition: reactor tripped — the post-trip MFW→AFW handoff |
-| RHR start | primary_pressure | low | **400 psi (2.76 MPa)** (400 psi) | Condition: scrammed; ties to the RHR suction-valve autoclosure interlock |
+| RHR start | primary_pressure | low | **400 psi (2.76 MPa)** | Condition: scrammed; ties to the RHR suction-valve **block-open** permissive, not the autoclose — see **§ RHR** below |
 | SR re-energize assist | intermediate_range | low | **1e-10 A** | Actuation path as configured |
 | Open SG safety | steam_pressure | high | **1350 psi (9.31 MPa)** | Reseat **1305 psi (9.0 MPa)** |
 | Turbine trip (vacuum) | condenser_vacuum | low | **22 inHg (74.5 kPa)** | Reset region **25 inHg (84.7 kPa)** |
@@ -168,6 +168,10 @@
 | accum_aligned | SI ACCUM ALIGNED &lt; 1000 PSI | primary_pressure | low | **1000 psi (6.895 MPa)** § | caution |
 
 **§ The only annunciator gated on a LINEUP as well as a reading.** It requires the accumulator discharge isolation valve indication (`accum_valve_open`) to read **open** as well as pressure to be below setpoint, so a correctly-isolated Mode 5 plant — which sits below this pressure indefinitely — never sees it. The setpoint is where **LCO 3.5.1** stops requiring the accumulators OPERABLE (*"MODE 3 with RCS pressure &gt; [1000] psig"*) and LTOP **SR 3.4.12.3** starts requiring them isolated, leaving 400 psi (2.76 MPa) above their cover gas. **There is no autoclose interlock and that is deliberate** — see **06 PWR-A32**.
+
+**§ RHR — the suction valve has TWO setpoints, and the autoclose is the higher one.** The valve will not **open** above **400 psi (2.76 MPa)** (the block-open permissive, and what the RHR start actuation above is keyed to); a standing-open valve **autocloses** only once pressure rises back above **600 psi (4.14 MPa)**. Both are sourced. NUREG-0933 **Issue 99, "RCS/RHR Suction Line Valve Interlock on PWRs" (Rev. 3)**: *"Two basic features are incorporated in the interlock design: (1) an automatic closure signal on high RCS pressure (typically 600 psig), and (2) a block of the manual open signal at a lower RCS pressure (typically 425 psig)."* The Westinghouse Technology Systems Manual **§5.1** (ADAMS **ML11223A219**) gives the same structure for valves 8701/8702 — open block 425 psig, autoclose ~585 psig.
+
+**Why the gap matters to you.** Between the two setpoints the valve stays where it is. That is what keeps a plant hunting around 400 psi from chattering the valve — and because the automatic entry permissive is **one-shot** (**06 PWR-A33**), a single spurious closure would be permanent. Until 2026-07-31 this plant used one constant for both jobs, so the deadband was zero: a cooldown whose pressure-control setpoint sat at **409 psi (2.82 MPa)** aligned RHR, rebounded nine psi, auto-closed, and never recovered. **Practical consequence:** do not read "below 400 psi" as the condition for *keeping* RHR — it is the condition for *getting* it. Once aligned you have to reach **600 psi (4.14 MPa)** to lose it.
 
 **Setpoints do not move with plant mode — priorities do.** Every setpoint above is fixed in every mode. What changes is **classification**: the annunciators marked **†** drop to **Status** in **Mode 4 or 5**, where the condition is the planned lineup rather than a casualty, and **‡** drops to Status whenever the pumps were stopped **by the handswitch** rather than lost. The alarm still comes in and still reads its instrument; the priority, the wording, and — because Status-class annunciators arrive pre-acknowledged — the ACK demand are what change. Full table, the exclusions, and what it does *not* cover: **06 §2.0**.
 

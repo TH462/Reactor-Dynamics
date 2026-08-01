@@ -118,7 +118,7 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
-### 2026-07-31l — #284 evidence pass: the fix is prototypical, the comment justifying it was not  ✅
+### 2026-07-31m — #284 evidence pass: the fix is prototypical, the comment justifying it was not  ✅
 
 Owner asked for the evidence pass on #284. Five claims verdicted against WTSM primaries —
 **3 confirmed, 1 confirmed harder than claimed, 1 NOT SUPPORTED.** The not-supported one is a
@@ -185,7 +185,7 @@ a real unit can be held at zero load synchronised, and listing three candidate a
 source settles it on the first: it cannot, deliberately. Filing the uncertainty was right;
 the uncertainty was smaller than it looked, and one section of one manual closed it.
 
-### 2026-07-31k — reviewing #284 found the same predicate six lines away, and a plant that relieves forever  ✅
+### 2026-07-31l — reviewing #284 found the same predicate six lines away, and a plant that relieves forever  ✅
 
 **Task: review #284** (`status-owner-review`, already fixed and gated as `f79b46a`). The fix
 holds up. Re-measured independently, full stack, on `develop` at `5f4178c`: a 0 MWe ask on
@@ -247,6 +247,85 @@ each cited a ruling adds citation sites without adding rulings.
 
 Gates: `run_all` **35 runners at baseline**; `run_behavior` 42 pass / 0 xfail (leg E adds
 checks, not a probe); `run_pwr` 36/36, `run_scenarios` 3/3, `run_campaign` 51/51 unmoved.
+### 2026-07-31k — #288: the RHR interlock was one setpoint doing two jobs; split  ✅
+
+*(OWNER RULING, 2026-07-31: "issue 288, split them.")* — the issue was filed
+`status-needs-ruling` by the 2026-07-31j evidence pass and this is the ruling on it.
+Implemented as recommended in the issue body.
+
+**The defect.** `emergency.rhr_valve_interlock_mpa` = 400 psi (2.76 MPa) was simultaneously
+the pressure below which the RHR hot-leg suction valve may **open** (`pwr_engine.js`
+`set_rhr`) and the pressure above which it **auto-closes** (`pwr_engine.js` step 9b). Zero
+deadband, so the valve chatters across a single boundary — and against the one-shot entry
+permissive kept by #287, the first chatter is permanent.
+
+**Measured, engine-direct, `cold_shutdown` IC** (2.50 MPa / 363 psi, 122 °F / 50 °C, RHR
+aligned at the IC). Hold a rebound pressure for 2 s of plant time and read the valve:
+
+| rebound | pre-split | post-split |
+|---|---|---|
+| 377 psi (2.60 MPa) | OPEN | OPEN |
+| **409 psi (2.82 MPa)** — the #287 cooldown's own setpoint | **CLOSED** | **OPEN** |
+| 435 psi (3.00 MPa) | CLOSED | OPEN |
+| 508 psi (3.50 MPa) | CLOSED | OPEN |
+| 580 psi (4.00 MPa) | CLOSED | OPEN |
+| 595 psi (4.10 MPa) | CLOSED | OPEN |
+| 609 psi (4.20 MPa) | CLOSED | CLOSED |
+| 725 psi (5.00 MPa) | CLOSED | CLOSED |
+
+The boundary sits exactly where it is configured: 595 psi holds, 609 psi lets go, and on a
+genuinely cold plant the pressure does not drift — the max the engine saw equals the value
+held, every row.
+
+**Heatup is unaffected.** Mode 5 → Mode 4 per `04` step 2 (start RCPs, raise the pressure SP
+to NOP): RHR isolates **6 s later** than before, at **605 psi** instead of 413 psi, with Tavg
+unmoved (**122 → 124 °F**, 50.1 → 50.9 °C). The pressurizer ramps away from the cold IC fast
+enough that the valve drops out almost immediately either way, which is why no procedure,
+mission or campaign gate moved.
+
+**The fix.** New `emergency.rhr_autoclose_mpa` = **4.14 MPa (600 psig)**; step 9b points at
+it. The 400 psi block-open permissive is **unchanged**. Sourced both sides — NUREG-0933
+Issue 99 (*"an automatic closure signal on high RCS pressure (typically 600 psig), and …
+a block of the manual open signal at a lower RCS pressure (typically 425 psig)"*) and WTSM
+§5.1, ADAMS ML11223A219 (valves 8701/8702, 425 psig open block, ~585 psig autoclose).
+
+**Two things to know.**
+
+**`engine.reset()` TAKES AN OBJECT, AND A STRING IS SILENTLY IGNORED.**
+`reset('cold_shutdown')` does not throw, does not warn, and hands you **`hot_full_power`** —
+the signature is `reset(cmd)` reading `cmd.initial_state`, defaulting to `hot_full_power`.
+The first three rigs in this pass all ran on a 300 °C plant while their output said
+`cold_shutdown`, and the numbers *looked* plausible enough that a first version of this entry
+was published with them. Two false findings came out of it: a claim that the valve closed at
+**377 psi** — *below* the configured 400 — and a claim that the 580 psi row closed because
+the plant overshot to **604 psi** mid-step. Both were the wrong IC surging, not the
+interlock. On the real cold IC neither happens and the boundary is exactly 600 psig.
+**Assert your IC rather than trusting the argument**: one `console.log` of
+`s.pressure_mpa` after `reset` would have caught all three rigs.
+
+**The deadband cuts both ways and the manual now says so.** Losing RHR takes 600 psi;
+getting it back takes 400 psi. So after an autoclose you must come down **past** where you
+lost it — the open permissive is the lower of the two setpoints. `06 PWR-A33`'s "If it
+comes in with pressure ABOVE the interlock" row was written when one number did both jobs
+and would have been wrong about which one to steer to.
+
+**`06 PWR-A33` was reviewed against this change and deliberately KEPT** *(OWNER RULING,
+2026-07-31: "Keep it")*. The question was fair: #287 added that annunciator one commit
+earlier **because** losing RHR was silent, and the failure it was written for — the 409 psi
+chatter — is exactly what #288 designs out. The alarm is now **rarer, not dead**: it still
+fires on a genuine repressurization past 600 psi while aligned, and the LOCA case ("you are
+on injection, not on shutdown cooling") is untouched. What changed is that it annunciates a
+real excursion instead of a boundary artifact, which is the better alarm and is what GL 88-17
+called for. **Do not remove it on reachability grounds** — that argument has been made and
+ruled on.
+
+**Gates.** `run_pwr` **237 → 240**. `rhr_valve_and_mode` gained three checks: the config
+ordering, a rebound into the deadband that must NOT close, and an open that must still be
+REFUSED in that same band (the other half of the split — a spent one-shot permissive cannot
+be re-armed at 409 psi). Injection-verified **both ways**: pointing the autoclose back at
+`rhr_valve_interlock_mpa` reddens the load-bearing deadband check, and deleting
+`rhr_autoclose_mpa` outright reddens four. Manuals **Rev 25** (`03`, `04` ×2, `06`, `09`
+new § RHR, `12` ×2).
 
 ### 2026-07-31j — #287 evidence pass: a real plant has NO automatic RHR open at all  ✅
 

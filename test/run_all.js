@@ -63,7 +63,12 @@ var BASELINES = {
   // error path. save_migration also went from 8 asserted fields to 20 of the 29
   // _migrateState defaults, including the `rcp_secured` INFERENCE (#240), which is
   // the one judgement call in the migration and was unasserted both ways.
-  'run_pwr.js':            { code: 0, score: '36/36 237passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
+  // 237 → 240: #288 split the RHR suction-valve interlock into a 400 psi block-open
+  // permissive and a separate 600 psig autoclose; rhr_valve_and_mode gained the
+  // deadband pins. Injection-verified BOTH ways: pointing the autoclose back at the
+  // open permissive reddens the load-bearing check, and deleting rhr_autoclose_mpa
+  // outright reddens four.
+  'run_pwr.js':            { code: 0, score: '36/36 240passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
@@ -256,7 +261,20 @@ var BASELINES = {
   // resolved by KEEPING BOTH SIDES — so merging two lanes that each cited a ruling adds
   // citation sites without adding rulings. Expect this number to jump on every lane merge;
   // it is not evidence that anything was decided.
-  'run_hardrules.js':      { code: 0, score: '57checks 0failed' },
+  // 43 -> 47 on 2026-07-31 (#288): same mechanism again — "issue 288, split them." is
+  // cited in the four tracked files that record the split (CHANGELOG, TUNING_LOG,
+  // BUILD_DECISIONS, the manual revision row). The engine/config change itself moves
+  // NOTHING here; writing it up is what moved the count.
+  // 47 -> 48 on 2026-07-31: the A33 keep-it ruling, recorded in TUNING_LOG so the
+  // "this alarm got rare, delete it" argument is not re-litigated from scratch.
+  // MERGED 2026-08-01 (develop <- workbench): the two lines above are the SAME baseline
+  // moved from 43 by two lanes independently — 57 on develop, 48 on workbench. Neither
+  // survives the merge, because the merged tree carries BOTH sets of citation sites. The
+  // number below is MEASURED on the merged tree, not arithmetic on the two: taking either
+  // side whole, or adding the deltas, is precisely the "mechanical BASELINES resolution
+  // silently takes the wrong number" failure CLAUDE.md warns about.
+  // Measured on the merged tree: 62. Not 57, not 48, and not 57+5 or 48+14 either.
+  'run_hardrules.js':      { code: 0, score: '62checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

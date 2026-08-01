@@ -803,15 +803,33 @@
       eccs_cooling_gain: 0.08,     // dimensionless scale on the cold-injection mixing term [tune]
       // Residual Heat Removal (RHR, formerly DHR): the low-pressure shutdown-cooling
       // loop that doubles as LPI. Suction is taken from the HOT LEG through a valve
-      // interlocked to primary pressure — it can be opened only below
-      // rhr_valve_interlock_mpa (400 psi) and AUTO-CLOSES if pressure climbs back
-      // above it (the Westinghouse RHR autoclosure interlock). Aligned = suction
-      // valve open (rhr_active). It recirculates coolant hot leg → HX → cold leg
-      // (no net inventory change — the LPI/RHR pump moves RCS water, not RWST
-      // make-up), removing heat toward rhr_sink_c. Cooldown rate is throttled by the
-      // HX flow split (set_rhr_hx): the operator routes more/less of the constant
-      // loop flow through the heat exchanger vs. the bypass. Dormant at power. [tune]
-      rhr_valve_interlock_mpa: 2.76, // MPa (400 psi) — hot-leg suction valve open-permissive & autoclosure interlock
+      // interlocked to primary pressure. Aligned = suction valve open (rhr_active).
+      // It recirculates coolant hot leg → HX → cold leg (no net inventory change —
+      // the LPI/RHR pump moves RCS water, not RWST make-up), removing heat toward
+      // rhr_sink_c. Cooldown rate is throttled by the HX flow split (set_rhr_hx):
+      // the operator routes more/less of the constant loop flow through the heat
+      // exchanger vs. the bypass. Dormant at power. [tune]
+      //
+      // TWO SETPOINTS, NOT ONE (#288). The block-open permissive and the autoclosure
+      // interlock are separate values with ~175 psi between them, and the autoclose
+      // sits ABOVE the open block. Both are sourced — NUREG-0933 Issue 99, "RCS/RHR
+      // Suction Line Valve Interlock on PWRs" (Rev. 3): "Two basic features are
+      // incorporated in the interlock design: (1) an automatic closure signal on high
+      // RCS pressure (typically 600 psig), and (2) a block of the manual open signal
+      // at a lower RCS pressure (typically 425 psig)." Westinghouse Technology Systems
+      // Manual §5.1 (ADAMS ML11223A219) gives the same structure for valves 8701/8702,
+      // open block 425 psig against an autoclose at ~585 psig.
+      //
+      // This plant used ONE constant for both jobs until 2026-07-31, so the deadband
+      // was ZERO and the valve chattered across the boundary. Paired with the one-shot
+      // entry permissive kept by #287, the first chatter was PERMANENT: measured, a
+      // cooldown whose pressure-control setpoint sat at 409 psi (2.82 MPa) — just over
+      // the interlock — aligned RHR, rebounded, auto-closed, and never recovered.
+      // Do NOT re-merge these. Do NOT raise the open permissive to widen the band:
+      // 400 psi is what the manual, procedures 04/05 and the campaign all quote, and
+      // it is inside the sourced range for a block-open setpoint.
+      rhr_valve_interlock_mpa: 2.76, // MPa (400 psi) — hot-leg suction valve OPEN permissive (block-open)
+      rhr_autoclose_mpa: 4.14,       // MPa (600 psig) — autoclosure interlock: a standing-open valve shuts above this
       rhr_sink_c: 50.0,            // °C cooldown sink target
       rhr_gain: 0.03,              // heat-removal gain at full HX flow (Q per °C above sink)
     },
