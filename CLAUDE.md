@@ -720,12 +720,15 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   the history while ten chapters still read `Revision: 0`.
 - **Then update** `CHANGELOG.md`, the `Project status` section above, and
   `Blueprint/BUILD_DECISIONS.md` if a decision or flag changed.
-- **On release (merge `develop` → `main`)** → add the player-facing `changelog.html`
-  entry with the next **`Alpha X.Y.Z`** version (see below), bump `site/release.js`, **and
-  rename `CHANGELOG.md`'s `## [Unreleased]` to `## [Alpha X.Y.Z] — YYYY-MM-DD`** with a fresh
-  empty one above it. `run_release.js` fails until all three agree — **run it before the
-  merge**, because after it you have a red gate on `main`. That last step was skipped for
-  1.10.0 and again for 1.11.0, which is why it is gated rather than merely written down.
+- **On release (merge `develop` → `main`)** → **SUSPENDED, no version bump** *(OWNER
+  DIRECTIVE, 2026-07-31: "we are not doing version bumps when releasing to main until the
+  public release.")*. Merge to `main` with the gates green and **nothing else**: no new
+  `Alpha X.Y.Z`, no `changelog.html` entry, no `site/release.js` bump, and **leave
+  `CHANGELOG.md`'s `## [Unreleased]` standing** — work accumulates there until the public
+  release, which takes one version for the lot. `run_release.js` stays green because it
+  gates *agreement* between the three, not the act of bumping, and none of them move.
+  The suspended procedure is below under *Website changelog & version numbers*; restore it
+  at the public release, and read it then rather than now.
 
 ---
 
@@ -842,6 +845,15 @@ integration branch; `main` is stable/release. Do not commit straight to `main`.
 > until #196 step 3 lands, the direct merge is still correct.
 
 ### Website changelog & version numbers
+
+> **SUSPENDED until the public release — do not do any of this** *(OWNER DIRECTIVE,
+> 2026-07-31: "we are not doing version bumps when releasing to main until the public
+> release.")*. Everything in this subsection is on hold: no version bump, no
+> `changelog.html` entry, no `site/release.js` change, and no `CHANGELOG.md` `[Unreleased]`
+> roll. Merging `develop` → `main` is now gates-green-then-merge, nothing more. It is kept
+> here rather than deleted because it resumes at the public release — **which then takes ONE
+> version for everything that accumulated**, not a replay of the skipped bumps. The digit
+> rules below are what that one version will be chosen with.
 
 The public site has a **player-facing** changelog at **`changelog.html`** — separate
 from the developer `CHANGELOG.md`. **Every release gets a version number and a
