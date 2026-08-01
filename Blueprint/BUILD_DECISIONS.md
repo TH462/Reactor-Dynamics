@@ -37,6 +37,54 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-01a — #290: the provenance guard covered one marker of two, and three of its own rules were wrong
+
+**Decision: widen HR11's guard rather than narrow the repo's markers.** The alternative was
+to declare `OWNER RULING` the only legal marker and rewrite the eleven `OWNER DIRECTIVE`
+citations to match. Rejected: the two words mean different things in ordinary use — a ruling
+settles a question that was put to the owner, a directive is an instruction he volunteered —
+and collapsing them to satisfy a regex would lose that distinction to make a test easier,
+which is the tail wagging the dog. HR11's requirement (date + verbatim words) applies
+identically to both, so the guard is what should change.
+
+**Decision: `.claude/skills/` is in scope, even though it is agent-facing tooling rather than
+published documentation.** A skill file cites rulings as authority in exactly the way the docs
+do — `release-to-main/SKILL.md` rests its whole versioning-digit rule on one — and an
+unverifiable directive misleads an agent whether or not it ships to a reader. Being outside
+the scanned list is the reason the malformed citation there survived a gate believed to cover
+it.
+
+**Three implementation rules were wrong before one was right, and the suite was green for
+two of them.** Recorded because the pattern matters more than the guard:
+
+1. **Inline-code exclusion.** ``/`[^`]*OWNER RULING[^`]*`/`` was meant to skip prose *about*
+   the marker. It also fires when the marker sits **between** two code spans — the `[^`]*`
+   gap is the text after one closes and before the next opens. Four genuine citations
+   silently skipped. Replaced by testing the marker's own position.
+2. **Backtick parity** at that position — "odd means inside" — is false for a **double**-
+   backtick span. Found not by a test but by writing the changelog entry: quoting the old
+   regex put the marker inside one, and the gate flagged the paragraph explaining itself.
+   Now tokenizes backtick **runs** per CommonMark.
+3. **Window bounding.** The lookahead accepted any quote mark within three lines, so a
+   date-only citation borrowed a quote from the following sentence. Bounding by the
+   citation's parenthetical is right; **counting depth from the marker** misses the opening
+   `(` behind it and reddens all nine legitimately wrapped citations, and **counting absolute
+   depth** never clips a nested citation. Depth **relative to the marker** — first unmatched
+   `)` closes it — is the one that holds.
+
+**The general lesson, and it is not a new one here.** Rules 1 and 3-absolute both measured
+**green on the full suite**, and 3-absolute was green *on its own injection* — the injected
+malformation failed to redden and the natural reading was "the injection anchor missed".
+It had not; the rule was wrong. **An injection that fails to redden is a finding, not a
+misfire** — check which of the two it is before moving on. That is what separated this from
+shipping a guard that looked correct and covered nothing new.
+
+**Gate:** `run_hardrules` 58 → **75 checks** (HR11 43 → 60 sites: +11 widened marker, +4
+corrected span test, +2 new scope). Not the usual write-up drift that moves this runner on
+every lane merge — no ruling was added; the guard grew.
+
+---
+
 ## 2026-07-31i — the steam dump goes to 40 %: closing a departure instead of justifying it
 
 *(OWNER RULING, 2026-07-31: "Let's change it to 40%.")*

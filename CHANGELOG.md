@@ -21,6 +21,54 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **HR11's guard checked one of the two markers the repo uses** (#290). `run_hardrules.js`
+  requires every ruling citation to carry a date *and* the owner's verbatim words —
+  otherwise it is indistinguishable from an agent's own preference in authoritative voice.
+  It matched the literal string `OWNER RULING`. The repo also uses **`OWNER DIRECTIVE`**, and
+  all eleven in-scope occurrences were unguarded: *never merge into `develop`*, *never push
+  the lanes*, the brevity and STILL OUTSTANDING directives, and the US-customary-units rule
+  among them. One (`CLAUDE.md`'s `status-owner-review` / `status-work-next` labels) was
+  already malformed — a quote with no date — and nothing said so.
+  - **A second, quieter defect the issue had not found.** The skip for prose *about* the
+    marker was ``/`[^`]*OWNER RULING[^`]*`/``. That also matches when the marker merely sits
+    **between** two inline code spans, because the `[^`]*` gap is the text after one span
+    closes and before the next opens — which in this repo's heavily backticked prose is the
+    normal case. Measured: **four genuine citations silently skipped**, three `OWNER RULING`
+    (`RETIRED.md`'s retirement of the ship-review plan, `TUNING_LOG.md`'s *"249 - fit it."*,
+    `CLAUDE.md`'s steam-dump 40 %) and the US-customary-units directive. Worse than the
+    filed defect: an unmatched marker at least *looks* unmatched, whereas these read as
+    checked. The gate now tests the marker's own backtick parity — odd means genuinely
+    inside a span — and still excludes the three real `` `OWNER RULING` `` prose mentions.
+    Backtick **runs**, per CommonMark, not individual backticks: a run of N opens a span only
+    a run of exactly N closes. Counting singly was a third wrong answer, and this changelog
+    entry is what exposed it — quoting the old regex puts the marker inside a *double*-
+    backtick span, parity read even, and the gate flagged the paragraph explaining itself.
+  - **The lookahead window is bounded on both sides now.** It existed because a citation
+    routinely wraps its date onto the next line, but it accepted *any* quote mark within
+    three lines, so `release-to-main/SKILL.md`'s date-only citation passed by borrowing the
+    quote from the sentence after it. The window now stops where the citation's own
+    parenthetical closes. **Two wrong versions of that rule measured green first**: counting
+    depth from the marker sees the opening `(` behind it and reddens all nine legitimately
+    wrapped citations, and counting *absolute* depth never fires on a nested citation — so
+    deleting the date from `CLAUDE.md`'s steam-dump ruling, which sits inside
+    `(41 -> 42 on 2026-07-31: ...)`, changed nothing. Depth **relative to the marker** holds.
+  - **Scope widened to `.claude/skills/`.** Skill files cite rulings as authority exactly as
+    the docs do, and being outside the scanned list is why the malformed citation there
+    survived a gate believed to cover it.
+  - **Both malformed citations repaired**, neither invented: `CLAUDE.md`'s date is in its own
+    lead-in sentence, and `SKILL.md`'s missing quote is recorded in full at `CLAUDE.md`'s
+    versioning section.
+  - **Injection-verified against the pre-fix runner**, per the standing rule that a check
+    written beside its own fix proves nothing. Three malformations — an `OWNER DIRECTIVE`
+    losing its date, a backtick-flanked `OWNER RULING` losing its date, and the `SKILL.md`
+    citation losing its quote — each redden exactly one site now, and the pre-fix gate stayed
+    green at **43 sites / 0 undeclared** through all three.
+  - `run_hardrules` **58 → 75 checks** (HR11 43 → 60 sites: **+11** widened marker, **+4**
+    corrected span test, **+2** new scope). **This is not the usual write-up drift** that
+    moves this runner on every merge — no ruling was added; the guard grew to cover markers
+    that were always there.
+
 ### Changed
 - **The RHR suction valve has two interlock setpoints now, not one** (#288)
   *(OWNER RULING, 2026-07-31: "issue 288, split them.")*. One config constant,

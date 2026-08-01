@@ -20,6 +20,73 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-01 (#290 — HR11 guarded one marker of two, workbench)
+
+**The gate for "a ruling needs a date and the owner's verbatim words" matched
+`OWNER RULING` only.** The repo uses two markers; the other, `OWNER DIRECTIVE`, had
+**eleven in-scope citations and zero coverage** — `never merge into develop`, `never push
+the lanes`, the brevity and STILL OUTSTANDING directives, the US-customary-units rule.
+One was already malformed. `run_hardrules` **58 → 75 checks**, HR11 **43 → 60 sites**.
+
+**Four things worth carrying forward.**
+
+**1. The issue's numbers were wrong in three places, and checking cost one grep.** It
+counted 12 occurrences (14 — it missed `Blueprint/M8 UI HMI Spec Consolidated.md`), and
+predicted the one-line regex widening would redden **two** citations. It reddens **one**:
+`.claude/skills/` is outside `trackedMd()`, so the second malformed citation was invisible
+to the gate regardless of the regex, and even in scope the old window would have passed it
+anyway. Inherited claims are the risky ones — this one came from the issue I was sent to
+work.
+
+**2. The worse defect was not filed.** The skip meant to ignore prose *about* the marker was
+``/`[^`]*OWNER RULING[^`]*`/``. It fires whenever the marker sits **BETWEEN** two inline code
+spans — the `[^`]*` gap is the text after one closes and before the next opens — which in
+this repo's prose is the ordinary case, not an edge. Measured: **7 sites excluded, 4 of them
+genuine citations** (`RETIRED.md:29`, `TUNING_LOG.md:5741`, `CLAUDE.md:565`, plus the units
+DIRECTIVE at `CLAUDE.md:971`). Only 3 were the intended `` `OWNER RULING` `` prose mentions.
+This is the failure mode HR11 exists to prevent, running on HR11's own guard: an unmatched
+marker at least *looks* unmatched, whereas a silently skipped citation reads as checked.
+Fix is backtick **parity at the marker's own position** — odd means genuinely inside a span.
+
+**2b. And the parity fix was itself wrong — this write-up caught it.** Counting individual
+backticks says "odd = inside a span", which is false for a **double**-backtick span, the form
+you use to quote code containing backticks. Describing the old regex in this entry put the
+marker inside one, parity read 4 (even), and the gate flagged the paragraph explaining
+itself — the same self-match the exclusion was written for in the first place. The gate
+tokenizes backtick **runs** now, per CommonMark: a run of N opens a span only a run of
+exactly N closes. Third wrong answer in one guard, and the only one found by writing prose
+rather than by testing.
+
+**3. Two wrong window rules measured green before the right one.** The lookahead window
+exists because citations hard-wrap their date onto the next line, but it accepted any quote
+mark within three lines. Bounding it by the citation's parenthetical is the right idea and I
+got it wrong twice:
+- **Counting depth from the marker** → the opening `(` is *behind* the marker in every
+  citation here, so depth reads 0, the window never opens, and **all 9 legitimately wrapped
+  citations redden**.
+- **Counting absolute depth** → a citation nested inside another parenthetical never clips,
+  because its own `)` only takes depth 2 → 1. `CLAUDE.md`'s steam-dump ruling sits inside
+  `(41 → 42 on 2026-07-31: …)` **and its line carries five more dates**, so deleting the
+  citation's own date changed nothing and the gate stayed green.
+- **Depth relative to the marker** — first unmatched `)` closes the citation — holds all 60.
+
+The second one is the instructive one: it was green on the full suite *and* green on the
+injection, and only reading why the injection failed to redden exposed it.
+
+**4. Injection is what found #3, and reading the code did not.** Per the standing rule, each
+of the three malformations was run against the **pre-fix runner** as well: it stayed at
+**43 sites / 0 undeclared** through every one, which is the measurement that the sites were
+uncovered rather than merely believed to be. Gotcha for the next person doing this: a copy
+of the old runner executed from a temp directory reports **0 sites** and looks like a clean
+pass — `ROOT` is `path.join(__dirname, '..')`, so it scans the temp tree. Run the old copy
+from inside `test/`.
+
+**Both malformed citations repaired, neither invented.** `CLAUDE.md`'s missing date is in its
+own lead-in ("Two labels the owner added 2026-07-31"); `SKILL.md`'s missing quote is recorded
+in full in `CLAUDE.md`'s versioning section.
+
+---
+
 ## Session log — 2026-07-31 (04 NOP content rewrite, backshop)
 
 **Chapter 04 rewritten as commercial NOPs (Rev 1).** Real-plant shape from WTSM heatup
