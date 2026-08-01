@@ -21,6 +21,62 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The PWR board reads SI now — the Settings units toggle works on it** (#238)
+  *(OWNER RULING, 2026-08-01: selected "m³/h" from three options put to him for the SI flow
+  unit — m³/h, L/min and kg/s. A selection, not verbatim words.)* The board was authored in
+  US customary at every readout, so #237 had to **disable the SI position while the PWR was
+  active**: a global SI selection put SI chart chips beside US board readouts, the one
+  indefensible state. Both halves move together now.
+
+  The board driver has a **display-unit layer** — one table of unit families
+  (`UNIT_FAMILIES` in `ui/diagram/board/pwr_board_wiring.js`), each declaring per mode its
+  conversion, unit string, display decimals, ▲▼ step and band quantum — and everything that
+  shows a number goes through it: **19 readouts**, the **6 vital tiles** (reading, unit,
+  decimals AND band edges) and all **5 unit-bearing setpoint boxes** (value, unit span,
+  decimals, step, valid range and range hint). `ui/app.js` passes `ctx.units` as an
+  **accessor**, so a units change is a re-render, not a remount.
+
+  Four things worth knowing.
+
+  **US mode is unchanged by construction, and that is measured rather than asserted.** Every
+  US entry reproduces the arithmetic and the rounding that was inline before, and the unit
+  STRING in US comes from the authored item rather than from the table — so the board's three
+  spelling quirks (`F` not `°F`, `GPM` uppercase on two items, `psig` on the accumulator)
+  survive, and switching back restores them. `board_check` renders **166 items** identically
+  before and after a round trip through SI, and its pre-existing check list is byte-identical
+  to the pre-change run.
+
+  **The band QUANTUM had to become per-unit, and the first cut of the new checks did not
+  catch it.** Tile band edges are rounded so the strip does not flicker at the render rate,
+  and the quantum was a whole display unit — fine at 1 psi, catastrophic at 1 MPa, which is
+  145 of them: the pressurizer's 15.20–15.76 control band and its 14.82/15.86 alarms all
+  collapse onto 15 and 16. Pressure quantises at **0.01 MPa**, temperature at **0.5 °C**.
+  Injecting the whole-unit quantum left every new check green, so one more was added that
+  asserts the seven regions stay nested — the coverage claim was worth more than the fix.
+
+  **Tile DECIMALS are a property of the unit, not of the instrument.** The measured sigma is
+  0.56 psi and 0.0039 MPa — the same noise — and it wants 0 decimals in one and 2 in the
+  other. Same for the charging box: 0–60 gpm becomes 0–13.6 m³/h, where a whole-unit ▲▼ would
+  nudge 4.4 gpm, so it gets 1 decimal and a 0.1 step.
+
+  **The unit trap is in here too.** Subcooling margin and leg ΔT are temperature
+  DIFFERENCES: 41 °C is 73.8 °F, not 105.8, and the absolute rule reads as a *healthier*
+  margin than the plant has. That is what `run_manual_units` gates in prose; the board can
+  make the same error, and two checks now say it does not.
+
+  Also: the dump-setpoint **range hint is derived from the bounds** in SI so it cannot drift
+  from them (US keeps its authored string, including its known 29-vs-30 psi off-by-one — a
+  board-data defect, not this layer's to fix), and the TRIP BLOCKS popover's `1800 psi`
+  caption reads the protection table instead of a hand-copied literal.
+
+  `board_check` **143 → 162** (+19; **18 new units checks, all injection-verified** against
+  seven separate faults — an absolute conversion on a difference, a missing inverse on
+  command, a one-way unit write, a dead unit span, a unit-blind quantum, unit-blind decimals,
+  and the seam itself removed). It is not in `run_all`; run it after any board change. Its
+  own ctx also stopped lying: it passed `unit: 'si'`, a string nothing has ever read, so it
+  claimed to test SI and rendered US for its whole life.
+
 ### Fixed
 - **Mode 4 alarm behaviour was tested nowhere** (#294). `COLD_MODES = [4, 5]` in
   `layers/control/pwr_control.js` gates six alarm behaviours — the #287 RHR alarm's

@@ -3662,23 +3662,20 @@
     if (latest) render(latest);
     if ($('manualOverlay') && !$('manualOverlay').hidden) renderManual();
   }
-  // #237 (owner call 2026-07-28): the SI toggle is SCOPED rather than mixed. The
-  // PWR board renders US customary at every readout (its wiring converts inline,
-  // and the authored unit strings are US), so a global SI selection produced SI
-  // chart chips beside US board readouts — an actively inconsistent display,
-  // worse than no toggle. Until the board grows a display-unit layer (#238
-  // deferred-upgrades entry), the SI position is disabled while the PWR is the
-  // active plant — the same honest pattern as the disabled Realistic button.
-  // The RBMK/BWR classic panels render through conv() and keep the toggle.
+  // The units toggle is GLOBAL again as of #238. It was scoped from #237 (owner call
+  // 2026-07-28) until 2026-08-01: the PWR board rendered US customary at every readout, so
+  // a global SI selection put SI chart chips beside US board readouts — an actively
+  // inconsistent display, worse than no toggle — and the SI position was disabled while the
+  // PWR was active. The board has its own display-unit layer now (UNIT_FAMILIES in
+  // pwr_board_wiring.js, fed by the ctx.units accessor below), so both halves move together
+  // and there is nothing left to scope. This function stays because it also has to CLEAR the
+  // disabled state and tooltip on a session that stored them, and because the scope may come
+  // back for a plant whose board has no such layer — RBMK/BWR still render through conv().
   function syncUnitsScope() {
     var seg = $('unitsSeg'); if (!seg) return;
     var siBtn = seg.querySelector('[data-units="SI"]'); if (!siBtn) return;
-    var scoped = ui.plant === 'pwr';
-    siBtn.disabled = scoped;
-    siBtn.title = scoped
-      ? 'SI display is not available on the PWR board yet — the board reads US customary. SI board support is a tracked upgrade.'
-      : '';
-    if (scoped && ui.units === 'SI') applyUnitsMode('US');
+    siBtn.disabled = false;
+    siBtn.title = '';
   }
 
   // ============================================================ Operator's Manual (Phase 3)
@@ -4435,6 +4432,13 @@
       RD.PwrBoard.mount($('viewArea'), {
         cmd: cmd, conv: conv, unit: unit,
         dispP: dispP, dispT: dispT, dispTd: dispTd, dispV: dispV,
+        // The board's display-unit layer reads this and nothing else (#238). It is an
+        // ACCESSOR, not a value: the board is mounted once and re-rendered thereafter, so a
+        // captured 'US' would freeze the board in whichever mode it was mounted in. The
+        // conv/unit/disp* helpers above have been passed since the board was built and are
+        // still unused by it — the board converts through its own families, which know about
+        // flow and gpm and these do not.
+        units: function () { return ui.units; },
         mode: function () { return ui.diagMode; },
         overlay: function () { return ui.physOverlay; },
         // #237 (owner): the SIMULATION PAUSED veil is clickable to resume. Route

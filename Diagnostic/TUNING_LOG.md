@@ -20,6 +20,84 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-01 (#238 — full SI display support on the PWR board, workbench)
+
+**What the issue asked for and what it actually took.** #238's entry described the shape
+correctly — a display-unit layer in `pwr_board_wiring.js`, keyed off `ctx.unit`, covering
+(a) the ~30 inline `MPa2psi`/`C2F` call sites, (b) the NUMBERS inputs' ranges/steps/hints,
+(c) the vital-tile band math and (d) the authored `unit:` strings in the generated board
+data. All four were real. Two things it did not name turned out to be the interesting half:
+**band quantisation** and **display decimals**, neither of which is a conversion.
+
+**`ctx.unit` did not exist, and two documents said it did.** `WIRING_REFERENCE.md` describes
+*"ctx.unit selects display unit system ('si' or 'us')"*; `board_check.html` passed
+`unit: 'si'`. `ui/app.js` passes a `unit(dim)` **function** under that name, and the board
+driver reads exactly one field of ctx — `ctxRef.cmd`. So the string form was never read by
+anything, ever: **board_check has claimed to test SI and rendered US for its whole life.**
+The accessor is `ctx.units()` now, and it is an accessor rather than a value because the
+board mounts once and re-renders thereafter — a captured `'US'` freezes it.
+
+**US is unchanged BY CONSTRUCTION, and that is the load-bearing property.** Measured two
+ways rather than argued: `board_check`'s pre-existing check list is **byte-identical**
+before and after (145 lines diffed), and a headless probe renders **166 items** identically
+across a US→SI→US round trip. Two rules buy it — every US family entry reproduces the old
+arithmetic *and rounding*, and the US unit STRING comes from the authored item rather than
+from the table, which is also what restores it on the way back.
+
+**The rounding one is a trap worth writing down.** At zero decimals the layer uses
+`String(Math.round(v))`, not `toFixed(0)`. They disagree on small negatives:
+`Math.round(-0.18)` is `-0` and prints `"0"`, while `(-0.18).toFixed(0)` prints `"-0"`. Leg
+ΔT genuinely sits near zero on a cold plant, so the obvious-looking simplification would
+have changed a US readout.
+
+**Band quantisation had to become per-unit, and seventeen new checks did not notice.** Tile
+band edges are rounded so the strip does not rebuild every frame; the quantum was a whole
+display unit. At 1 MPa that is 145 psi — the pressurizer's 15.20–15.76 normal band and its
+14.82/15.86 alarms all land on 15 and 16, and the tile's seven regions stop being
+distinguishable. **Injected exactly that and every check stayed green**, which is the whole
+argument for injecting: the eighteenth check (regions stay nested) was written because of
+it, and it reddens on the injection. Quantum is 0.01 MPa / 0.5 °C.
+
+**Two false starts in the new checks, both worth knowing.** (1) The band check first ran on
+the harness's own plant, where earlier checks have moved the pressure setpoint and the normal
+band legitimately clamps onto its alarm — that is #270's inversion guard working, not a
+resolution defect, so it now uses a fresh `hot_full_power` service. (2) Assembling that
+foreign snapshot **walks the driver's one-entry damping memo** (`IN()` caches on snapshot
+identity), so running it mid-sequence perturbed the very tile values the restore comparison
+was about to check; it runs last. And moving it last silently put it in **US mode**, where
+the whole-unit quantum is correct — so for one run it measured nothing at all and passed.
+
+**Injection-verified, seven faults:** absolute conversion on a temperature difference (reds
+2), missing inverse on the command path (reds 1 — and only the *US* leg, because SI is the
+identity for pressure, so the pair of checks is doing real work), one-way unit write (reds
+1), dead number-box unit span (reds 1), unit-blind decimals (reds 1), unit-blind quantum
+(reds 1), `U()` seam removed (reds 14).
+
+**Gates.** `run_all` **OK, 35 runners at baseline**. `board_check` **143 → 162**, 1 failure —
+the pre-existing SCRAM two-step harness bug, which is fixed in `develop`'s uncommitted work
+and is not this change. `verify_e2e_ui` moved: it pinned *"PWR SI toggle expected DISABLED
+(scoped, #237/#238)"*, which was the #237 half-measure this issue exists to retire. It now
+drives the real Settings button and asserts the board converts and converts back — kept there
+rather than in `board_check` because it is the only gate that goes through `ui/app.js`, so it
+is the only one that would catch the button being unwired from the layer. Injection-verified
+(`ctx.units` pinned to 'US' → *"expected to read °C in SI, got: 609 F"*). `run_hardrules`
+77 → 80, ordinary write-up drift.
+
+**A process note that cost time.** Two `run_all` runs were left overlapping while I kept
+editing sources; they share `Diagnostic/*.json` and the Playwright browser, and a gate run
+straddling an edit certifies neither version. Stop the old one before starting a new one, and
+do not edit under a running gate. Related: `git checkout -- Diagnostic/` to drop the reports'
+line-ending churn also reverts **this file**, which lives there — it ate this entry once.
+
+**Deliberately NOT in scope, and why.** `pwr_board_inspect.js` carries ~76 hardcoded US
+numbers in static teaching prose, many already dual-unit; `ui/manual_procedures.js` is
+authored dual-unit. Both are prose quoting Manuals/03+09, not readouts, and converting prose
+is a different job from converting an indication — flagged, not touched. Same for
+`comp_condenser.js`'s `vacuumInHg` prop: the name bakes the unit into a component contract
+and the only thing that renders it is dormant (`showControls: false`).
+
+---
+
 ## Session log — 2026-08-01 (#287 verify + #294 — Mode 4 was tested nowhere, workbench)
 
 **#287 re-measured, not re-read.** The issue was `status-work-complete` with a ruling, a

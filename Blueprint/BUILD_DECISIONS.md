@@ -37,6 +37,82 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-01c — #238: full SI on the PWR board, and the decisions a display-unit layer forces
+
+*(OWNER RULING, 2026-08-01: selected "m³/h" from three options put to him for the SI flow
+unit — m³/h, L/min and kg/s. A selection, not verbatim words, recorded that way deliberately
+rather than dressed as a quote.)*
+
+**Decision: one conversion table in the driver, not a conversion at each of ~30 call sites.**
+The board converted SI→US inline in every formatter and carried US unit strings in the
+generated board data, which is why #237 could only *scope* the Settings toggle — disable SI
+while the PWR was up — rather than fix it. `UNIT_FAMILIES` now declares, per family per mode:
+the conversion from a base unit, its inverse, the unit string, display decimals, the ▲▼ step
+and the band quantum. Readouts, tiles, setpoint boxes and range hints all read it.
+
+**BASE UNIT IS NOT ALWAYS SI, and that was the first real decision.** Pressure and
+temperature carry the engine's SI. Flow does not: the gpm figures are an authored display
+scale over normalized engine internals (`Manuals/12` §646 calls them "indicative"), so the
+flow family's base is **gpm** and US is the identity on it. The alternative — declaring some
+notional SI base and making US a conversion — would have moved `GPM_HPI` and its four
+siblings off the numbers they have always meant, for no gain.
+
+**m³/h over L/min, and the cost was one extra hook.** m³/h is the SI volumetric flow unit a
+real plant display carries; L/min is the direct gpm analogue and would have needed no per-box
+overrides at all, because every box stays a whole number. The owner took m³/h. The cost is
+exactly one thing: the charging box is 0–60 gpm = 0–13.6 m³/h, where a whole-unit ▲▼ nudges
+4.4 gpm, so it carries a per-mode decimals+step override. kg/s was the third option and was
+the weakest — it is a MASS flow, and the sim models no density for the charging, letdown or
+ECCS paths.
+
+**US IS UNCHANGED BY CONSTRUCTION, which is a design property and not a hope.** Two rules do
+it. Every US family entry reproduces the arithmetic *and the rounding* that was inline before
+— including one that looks like a free simplification and is not: at zero decimals the layer
+formats with `String(Math.round(v))` and NOT `toFixed(0)`, because they disagree on small
+negatives (`Math.round(-0.18)` is `-0` and prints "0"; `(-0.18).toFixed(0)` prints "-0"), and
+leg ΔT genuinely sits there on a cold plant. And the unit STRING in US comes from the authored
+item, never from the table — so the board's three spelling quirks (`F` not `°F`, `GPM`
+uppercase on two items, `psig` on the accumulator) survive untouched, and — the part that is
+easy to miss — switching SI→US *restores* them, because the unit span is a live text node that
+would otherwise strand "MPa" over a psi reading. Measured: `board_check`'s entire pre-existing
+check list is byte-identical to the pre-change run, and 166 items render identically across a
+US→SI→US round trip.
+
+**Two things a unit layer forces that are not conversions at all.**
+
+*Band quantisation stops being a constant.* Tile band edges are rounded so the strip does not
+rebuild at the render rate, and the quantum was "a whole display unit" — which stops meaning
+anything once the unit changes. 1 psi is a sensible edge step; 1 MPa is 145 of them, and it
+collapses the pressurizer's 15.20–15.76 control band and its 14.82/15.86 alarms onto 15 and
+16, leaving the tile's seven regions indistinguishable. The quantum is per family per mode
+now: 0.01 MPa, 0.5 °C.
+
+*Display resolution is a property of the UNIT, not of the instrument.* The tile comment
+records measured sigmas in display units and the rule that the last digit must be signal.
+0.56 psi and 0.0039 MPa are the same noise, and they want 0 and 2 decimals. Tavg and
+subcooling go the other way — they are *quieter* in °C (0.05) than in °F (0.09) — so whole
+units still hold and no decimal was added.
+
+**What the checks caught, and what they did not.** 18 checks were added to `board_check`
+(143 → 162) and all were injection-verified against seven separate faults: an absolute
+conversion applied to a temperature difference, a missing inverse on the command path, a
+one-way unit write, a dead unit span, unit-blind decimals, a unit-blind quantum, and the
+`U()` seam itself removed. **The quantum injection was initially caught by nothing** — the
+first seventeen checks all stayed green with 1 MPa quantisation — so an eighteenth was
+written that asserts the regions stay nested. That is the same lesson as #286: a coverage
+claim is a measurable claim, and a check written beside its own fix proves nothing until it
+has been made to go red.
+
+**Two smaller calls.** The dump-setpoint range hint is *derived* from the bounds in SI so it
+cannot drift from them, but US keeps its authored string verbatim — including its known
+29-vs-30 psi off-by-one, which is a defect in the generated board data and fixing it here
+would put the fix where nobody would look for it. And `verify_e2e_ui` keeps the toggle
+assertion rather than delegating it to `board_check`: that gate is the only one that drives
+the real Settings control through `ui/app.js`, so it is the only one that would notice the
+button being unwired from the layer entirely.
+
+---
+
 ## 2026-08-01b — #289: the pressurizer level program had no ceiling, so the plant scrammed itself on its own setpoint
 
 *(OWNER RULING, 2026-08-01: selected "Add the program ceiling" from four options put to him.

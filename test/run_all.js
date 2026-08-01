@@ -297,7 +297,13 @@ var BASELINES = {
   // marker sat BETWEEN two backtick spans rather than inside one), +2 bringing
   // `.claude/skills/` into scope. Measured on the MERGED tree (the #290 guard applied to
   // #289's write-up too), not by adding the two branch figures: 62 HR11 sites + 15 HR1/HR5.
-  'run_hardrules.js':      { code: 0, score: '77checks 0failed' },
+  // 77 -> 80 on 2026-08-01 (#238): the ordinary write-up drift this comment keeps warning
+  // about. The SI display layer's code moved NOTHING here; the three sites citing the flow-
+  // unit selection ("selected 'm³/h' from three options put to him") — CHANGELOG,
+  // BUILD_DECISIONS and the CLAUDE.md themes bullet — are the whole delta. Note the fourth
+  // copy, in the ui/diagram/board/ source comment, is NOT counted: this gate does not scan
+  // ui/, so a citation living only there would be unguarded.
+  'run_hardrules.js':      { code: 0, score: '80checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

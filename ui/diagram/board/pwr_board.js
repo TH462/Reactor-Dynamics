@@ -413,25 +413,34 @@
 
   function buildNumber(it) {
     var el = tileBase(it, 'nohgt');
+    var labEl = null;
     if (it.label) {
       var lab = h('div', null, it.label);
       // letter-spacing 0.06em, not 0.14em: at fontSize 14 the wide tracking alone put the
       // DUMP SETPOINT hint "29-1350 psi" ~7 px past its authored box (#235 finding 5)
       lab.style.cssText = 'color:#6b8598;font-family:' + MONO + ';font-size:' + (it.fontSize || 10) + 'px;letter-spacing:0.06em;margin-bottom:3px;white-space:nowrap';
       el.appendChild(lab);
+      labEl = lab;
     }
-    var digits = it.digits == null ? 0 : it.digits;
-    var step = it.step == null ? 1 : it.step;
     var d0 = driver();
-    if (d0 && d0.stepFor) { var so = d0.stepFor(it); if (so != null) step = so; }
+    var digits = it.digits == null ? 0 : it.digits;
+    if (d0 && d0.numberDigits) { var dgo = d0.numberDigits(it); if (dgo != null) digits = dgo; }
     var editable = it.editable !== false;
     var input = h('input', { type: 'text', inputMode: 'decimal' });
     input.style.color = it.color || '#4fe3ff';
     input.style.fontSize = (it.fontSize || 10) + 'px';
     if (!editable) { input.readOnly = true; input.style.cursor = 'default'; }
     input.value = (it.value == null ? 0 : it.value).toFixed(digits);
-    var rec = { input: input, item: it, editing: false, digits: digits };
+    var rec = { input: input, item: it, editing: false, digits: digits, labelEl: labEl };
     numberEls[it.id] = rec;
+    // The ▲▼ step is read PER PRESS, not captured here: the display-unit layer (#238) can
+    // change it under a mounted board when the operator switches units, and a captured step
+    // would go on nudging 1 psi through a box now reading MPa.
+    function stepSize() {
+      var d = driver();
+      var so = (d && d.stepFor) ? d.stepFor(it) : null;
+      return so != null ? so : (it.step == null ? 1 : it.step);
+    }
 
     function commit(v) {
       var d = driver();
@@ -445,7 +454,7 @@
       var b = d && d.boundsFor && d.boundsFor(it);
       if (b) { if (v < b[0]) v = b[0]; else if (v > b[1]) v = b[1]; }
       rec.editing = false;
-      input.value = v.toFixed(digits);
+      input.value = v.toFixed(rec.digits);
       if (d && d.onNumber) d.onNumber(it, v);
     }
     input.addEventListener('focus', function () { rec.editing = true; rec.preEdit = input.value; });
@@ -453,14 +462,18 @@
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter') input.blur(); });
 
     var stepBox = h('div', { className: 'bd-num-steps' },
-      h('button', { type: 'button', onClick: function () { commit((parseFloat(input.value) || 0) + step); } }, '▲'),
-      h('button', { type: 'button', onClick: function () { commit((parseFloat(input.value) || 0) - step); } }, '▼'));
+      h('button', { type: 'button', onClick: function () { commit((parseFloat(input.value) || 0) + stepSize()); } }, '▲'),
+      h('button', { type: 'button', onClick: function () { commit((parseFloat(input.value) || 0) - stepSize()); } }, '▼'));
 
     var frame = h('div', { className: 'bd-num-frame' }, input);
+    // The unit span is built when the item declares one, and it is a LIVE text node from
+    // #238 on: the render loop rewrites it from driver.numberUnit so a units change reaches
+    // the setpoint boxes and not only the readouts.
     if (it.unit) {
       var u = h('span', { className: 'bd-num-unit' }, it.unit);
       u.style.fontSize = Math.max(8, Math.round((it.fontSize || 10) * 0.9)) + 'px';
       frame.appendChild(u);
+      rec.unitEl = u;
     }
     frame.appendChild(stepBox);
     el.appendChild(frame);
@@ -914,6 +927,23 @@
         var auto = d.numberAuto ? d.numberAuto(rec.item, s) : false;
         var col = auto ? BD_NUM_AUTO_COLOR : (rec.item.color || '#4fe3ff');
         if (rec._appliedCol !== col) { rec.input.style.color = col; rec._appliedCol = col; }
+        // Display unit, resolution and range hint (#238). Driven every frame like the value
+        // itself, because a units change is not an event the board is told about — it just
+        // renders again. All three are no-ops in US, where the driver hands back exactly what
+        // the item was authored with. Resolution is applied even mid-edit (it only changes
+        // how the NEXT reflected value is formatted), the value itself is not.
+        if (d.numberDigits) {
+          var dg = d.numberDigits(rec.item);
+          if (dg != null && dg !== rec.digits) rec.digits = dg;
+        }
+        if (rec.unitEl && d.numberUnit) {
+          var nu = d.numberUnit(rec.item);
+          if (nu != null && rec.unitEl.textContent !== nu) rec.unitEl.textContent = nu;
+        }
+        if (rec.labelEl && d.numberHint) {
+          var nh = d.numberHint(rec.item);
+          if (nh != null && rec.labelEl.textContent !== nh) rec.labelEl.textContent = nh;
+        }
         if (rec.editing) return;
         var v = d.numberFor ? d.numberFor(rec.item, s) : null;
         if (v == null || isNaN(v)) return;
