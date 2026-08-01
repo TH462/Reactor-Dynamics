@@ -2,7 +2,7 @@
 
 **Document:** PWR-ARP-01  
 **Title:** Annunciator Response — PWR  
-**Revision:** 23  
+**Revision:** 24  
 
 ---
 
@@ -451,7 +451,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **If it stays in after you isolate** | The valve did not shut. Check its position indication; the alarm reads valve position, not the command. |
 | **If you see it with the tanks already empty** | It came in about **1 minute of plant time** before the first discharge on a brisk cooldown, and it stays lit afterwards. Lit tile plus SIT fill at 0 % is the post-mortem: this is why the tanks emptied and why RCS boron rose toward the 2500 ppm accumulator charge. |
 | **Watch for** | **Time acceleration.** That ~1 plant-minute of warning is a couple of seconds of wall clock at 30×. Cooldown rates in this trainer are compressed (see **12** §14) — slow down through the band rather than relying on reaction time. |
-| **What this tile does NOT cover** | **The heatup.** There is no annunciator for accumulators left *isolated* on the way up, and no automatic open signal — re-alignment is procedural by design *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto opening them.")*. This tile is silent in that case, because shut tanks are the condition it clears on. **PWR-N03** step 4 is the only thing that catches it; run it. |
+| **What this tile does NOT cover** | **The heatup.** There is no annunciator for accumulators left *isolated* on the way up, and no automatic open signal — re-alignment is procedural by design *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto opening them.")*. This tile is silent in that case, because shut tanks are the condition it clears on. **PWR-N03** step 7 (re-align accumulators) is the only thing that catches it; run it. |
 
 ---
 

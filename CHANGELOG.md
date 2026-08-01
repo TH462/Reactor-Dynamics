@@ -22,6 +22,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **PWR-N03 is the pump-heat heatup; the nuclear path is PWR-N03a** (#255). The live
+  checklist `pwr_heatup` was still the 18-step nuclear ride from before pump heat worked.
+  It is now the commercial heatup: start the RCPs, confirm the grid off, Feed AUTO, Dump SP
+  to the no-load anchor, raise Pressure SP, re-align the SI accumulators, and ride Tavg up
+  with **zero rod motion**. The old nuclear sequence is kept as **PWR-N03a** /
+  `pwr_heatup_nuclear` for approach-to-criticality and trip-blocking practice. Measured
+  full-stack: settles **567.0 °F (297.2 °C)** at **11.3 plant-h**, **ρ = −2828 pcm** on
+  **856.8 ppm**, power **3.5e-5 %**. Both procedures green under `run_procedures` and
+  `run_procedures_stack`.
+
 - **The steam dump is 40 % of rated steam flow — the real Westinghouse capacity.** It was
   105 %, which meant the plant could swallow a total loss of load without noticing:
   measured, average coolant temperature rose to 305 °C (581 °F) and power held at 97.5 %.

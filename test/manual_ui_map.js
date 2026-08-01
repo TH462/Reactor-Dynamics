@@ -103,7 +103,17 @@ var STEP_UI = {
     { i: 15, view: 'board', control: 'Turbine — Connect Grid' },
     { i: 16, view: 'board', control: 'Turbine Load' },
   ],
+  // PWR-N03 pump-heat heatup (#255) — six controlled steps, then a long observe ride.
   pwr_heatup: [
+    { i: 1,  view: 'board', control: 'RCP Run/Stop' },
+    { i: 2,  view: 'board', control: 'Turbine Load' },
+    { i: 3,  view: 'board', control: 'Feed Pumps' },
+    { i: 4,  view: 'board', control: 'Dump SP' },
+    { i: 5,  view: 'board', control: 'Pressure SP' },
+    { i: 6,  view: 'board', control: 'Accumulator valve' },
+  ],
+  // PWR-N03A nuclear training variant — former pwr_heatup step map.
+  pwr_heatup_nuclear: [
     { i: 1,  view: 'board', control: 'RCP Run/Stop' },
     { i: 2,  view: 'board', control: 'Turbine Load' },
     { i: 3,  view: 'board', control: 'Feed Pumps' },
