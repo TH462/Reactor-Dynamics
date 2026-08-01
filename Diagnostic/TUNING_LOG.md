@@ -20,6 +20,89 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-01 (#289 — the pressurizer level program had no ceiling, develop)
+
+**What was filed vs what it was.** #289 was filed as *"a 0 MWe ask while synchronised parks
+the plant with the SG code safeties permanently passing steam"*. Reproduced exactly (46.2 %
+core, dump saturated at 40 %, safeties open, `scrammed` false at 20 min). But **0 MWe is the
+mildest reachable case**, and the issue plus all three of its comments only ever tested that
+one load ask. Sweeping the ask found the real defect.
+
+**The measurement that mattered** — full stack, `hot_full_power`, free-play lineup, accel 10×,
+load ask at t+60 s, 20-min ride, peak *indicated* pzr level vs the **97 %** going-solid trip,
+six instrument-noise seeds (`probe289b/d`, scratchpad):
+
+| ask | 0 | 2 | 5 | 7 | 10 | 12 | 15 MWe |
+|---|---|---|---|---|---|---|---|
+| trips (`pzr_level high`) | 0/6 | 0/6 | **1/6** | **6/6** | **6/6** | 0/6 | 0/6 |
+| peak level (no-trip seeds) | 96.0 | 96.0 | 96.3–96.8 | — | — | 95.2 | 92.8 |
+
+**Non-monotonic**: 6–11 MWe scrams, a *bigger* rejection to 0 MWe does not, and 12 MWe does
+not. At 5 MWe the outcome is decided by instrument noise. The whole 0–15 MWe band peaked
+within 1–4 % of the trip.
+
+**Root cause — the program, not the CVCS.** `pzr_level_dev` at the scram was **−0.99 %**
+(7 MWe) and **−0.15 %** (10 MWe): the pressurizer was holding *less* water than its own
+program demanded, so the going-solid trip was fired by the **control program** with inventory
+correct and make-up working. The program is `55 + 2.5 × (Tavg − 304.1)` and had **no maximum**
+(`clip(base, level_prog_floor, 100)`) — it crosses 97 % at **Tavg 320.9 °C (609.6 °F)**, and
+with rods in MANUAL the core can only run back on the MTC, which requires Tavg to rise; it
+parks at 319.6–321.3 °C. The plant routinely arrived within a degree of where its own program
+trips it.
+
+**Evidence pass — WTSM 10.3 Pressurizer Level Control System (ML11223A290).** *"both minimum
+and maximum level limitations are placed on the level program"*, low **25 %** / high
+**61.5 %**; the ceiling exists for our exact case — *"low enough to ensure that the
+pressurizer does not go solid following a turbine trip from 100% power without a direct
+reactor trip, assuming no operator action and no response by the automatic control systems
+(the rod control and steam dump control systems)"*. Real trip **92 %, 2/3, P-7 gated
+(≥10 % power)**; ours 97 %, single channel, **no permissive**. Our *slope* was already right:
+theirs is (61.5−25)/(584.7−557 °F) = **2.37 %/°C** vs our 2.5.
+
+**The fix.** New `level_prog_ceiling` **61.5** + `pwrPressurizer.levelProgram()`, called by the
+CVCS setpoint (`pwr_primary`) **and** the deviation gauge (`pwr_instruments._levelDev`).
+Physics (`levelBase`) deliberately **not** clamped. Result: **0 trips in 42 runs**, peak
+89.7–95.1 %. `run_all` **35 runners at baseline**, nothing moved.
+
+**Three traps, all of which cost a wrong turn first.**
+1. **`_levelDev` called `levelBase`** with a comment saying the two *"must not be able to
+   drift apart"*. Clamping only the CVCS setpoint made them drift: dev read **−38.5 %** with
+   the controller exactly on setpoint, which would have pegged `PZR LVL DEV LO` for the whole
+   transient. Program and physics are now different lines **on purpose** above the ceiling —
+   every consumer of "the program" must call `levelProgram`.
+2. **Ceiling 55 (the structural rule) is WRONG here.** The real 61.5 IS their full-power
+   program value, so "ceiling = program level at full-power Tavg" would give 55. At 55 the
+   ceiling sits **on the normal operating point**, so ordinary Tavg noise is clipped on its
+   upper half and the setpoint is biased low permanently — measured, it shifted parked CVCS
+   inventory 0.15 % and reddened `run_e2e_controls`' derived droop equilibrium (98.85 vs
+   99.00). **A program maximum should be a limit, not part of the normal control law.** Took
+   the number over the rule; my call, not an owner ruling.
+3. **A stale comment in `pwr_primary`** still said *"setpoint and physics share one line"*.
+   That premise is now false above the ceiling — the #220 drift class. Rewritten in the same
+   change.
+
+**Checked and cleared, NOT a defect.** With `rods_tavg` engaged, an 8–15 MWe ask scrams on
+`intermediate_range high` at 500–800 s. Traced before filing: `ir_high`/`pr_low_setpoint`
+start blocked at power, **auto-reinstate below P-10** (measured 220 s, 9.4 %), and the rod
+channel then drives power back *up* through the setpoint (3.6 % → 15.1 %) with nobody
+re-blocking. That is the startup net working exactly as its config comment describes.
+
+**Still open on #289.** The **SG code safeties still pass steam** at 0–5 MWe — the
+rods-in-manual consequence the issue was filed on. Whether `rods_tavg` should be `defaultOn`
+is the owner's, deferred: auto rod control already exists and is reachable (**ROD AUTO** on
+the board, `board_check`-pinned, Manuals 02/03/04), and the manuals treat engaging it as a
+deliberate optional step. Measured blast radius if it were flipped: blanket `defaultOn` costs
+**3 runners** (`run_behavior` 42→35, `run_m5` 23→22, `run_procedures_stack` 22→21 — the last
+two are `source_range high` trips, because rods in AUTO withdraw in Mode 5 / during a heatup);
+gated to at-power ICs only (`power_pct > 10`) it costs **1** (`run_behavior` 42→36, six probes
+whose premise is rods-in-manual). **Blocked on a second evidence pass**: `run_behavior` TR-1g
+pins the sourced WTSM 40 % dump + 10 % rod step case at core 89.3 %, and with rods engaged it
+goes to **46 %** — `steam_flow` is turbine-only by design, so the rods follow the turbine and
+the dump modulates shut. Whether WTSM's 40 %+10 % is the *initial* step response or a *steady
+state* is unresolved and decides which side is wrong.
+
+---
+
 ## Session log — 2026-07-31 (04 NOP content rewrite, backshop)
 
 **Chapter 04 rewritten as commercial NOPs (Rev 1).** Real-plant shape from WTSM heatup

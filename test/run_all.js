@@ -282,7 +282,12 @@ var BASELINES = {
   // files before this number was lowered (3, 1 and 4 files respectively). The accumulator one
   // now survives in TUNING_LOG.md ALONE, which is thin; if that entry is ever rotated, the
   // ruling goes with it.
-  'run_hardrules.js':      { code: 0, score: '58checks 0failed' },
+  // 58 → 60 checks (#289, 2026-08-01): two new dated owner-ruling citations for the
+  // pressurizer level-program ceiling — CHANGELOG.md and BUILD_DECISIONS.md. Both are
+  // recorded as a SELECTION ("selected 'Add the program ceiling' from four options put to
+  // him"), not dressed as verbatim words, because that is what it was. This comment's
+  // standing point again: the code change moved NOTHING here; the write-up moved it.
+  'run_hardrules.js':      { code: 0, score: '60checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
