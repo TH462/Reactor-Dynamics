@@ -8,18 +8,16 @@
 
 ## 1.0 Purpose
 
-Provide **normal operating procedures (NOPs)** for the Reactor⚛️Dynamics PWR, written in commercial plant format (purpose, applicability, prerequisites, precautions, steps with acceptance, outcome).
+Provide **normal operating procedures (NOPs)** for the Reactor⚛️Dynamics PWR in commercial plant format: purpose, applicability, prerequisites, precautions, steps with acceptance criteria, and outcome.
 
-**Authority for this chapter:** the plant is ground truth (HR9). Procedure steps and acceptance criteria that the board can execute are **[sim]** and have been plant-tested. Where a real plant does more (multi-loop, full CVCS lineup, multi-channel RPS), the simplification is stated.
+**Master MODE paths** (detail of each leg is in this chapter; path orchestration is in **05**):
+- **PWR-T20** — Mode 5, Cold Shutdown → Mode 1, At Power
+- **PWR-T21** — Mode 1, At Power → Mode 5, Cold Shutdown
+- **PWR-T03** — Mode 3, Hot Standby → Mode 1, At Power (N03 → N04 → N05 → N06)
 
-**Master MODE paths** (orchestration only — detail lives here):
-- **PWR-T20** — Mode 5, Cold Shutdown → Mode 1, At Power (`05`)
-- **PWR-T21** — Mode 1, At Power → Mode 5, Cold Shutdown (`05`)
-- **PWR-T03** — Mode 3 → Mode 1 short path (N03 → N04 → N05 → N06)
+Commercial heatup practice (Westinghouse technology training outline) is subcritical heatup and pressurization from cold to Hot Standby, then a separate evolution from Mode 3 to power. **PWR-N01** is that cold-to-hot leg on reactor coolant pump heat.
 
-**Commercial heatup reference shape** (Westinghouse technology training outline, NRC ADAMS ML023040286 — *Heatup from Cold Shutdown to Hot Shutdown / Hot Standby*): systems to normal configuration, heatup and pressurization with the reactor **subcritical**, then separate heatup from Mode 3 to power. This trainer’s **PWR-N01** is that cold-to-hot leg on pump heat.
-
-**Related:** `03` controls · `05` mode transitions · `06` alarms · `09` setpoints · `12` physics limits.
+**Related:** **03** Controls and Indications · **05** Mode Transitions · **06** Alarm Response · **09** Setpoints and Limits · **12** Simulation Physics
 
 ## 2.0 Procedure index
 
@@ -69,31 +67,31 @@ Numbered in **plant sequence**.
 Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot Shutdown** to **Mode 3, Hot Standby** with the reactor **subcritical throughout**. Heat source is **reactor coolant pump work** (and pressurizer heaters), not fission.
 
 ### Applicability
-- Initial condition: `cold_shutdown` (Mode 5).
-- Live checklist: `pwr_heatup`. Mission: `pwr_mode5_to_mode3`. Master path: **PWR-T20** Phase A.
+- Plant in **Mode 5, Cold Shutdown**.
+- Master path: **PWR-T20** Phase A.
 
 ### Prerequisites
 1. Plant in Mode 5: subcritical, RCS cold (~122 °F / 50 °C class), depressurized (~363 psi / 2.5 MPa).
-2. RHR aligned for shutdown cooling (cold IC).
+2. RHR aligned for shutdown cooling.
 3. SI accumulators **isolated** (correct Mode 5 lineup — plant is below cover-gas pressure).
-4. Generator **off line** (cold IC spawns disconnected).
+4. Generator **off line**.
 
 ### Precautions and limitations
 
 | Type | Text |
 |------|------|
 | **CAUTION** | Do **not** withdraw rods or dilute. Hot Standby is hot **and** subcritical. |
-| **CAUTION** | Keep the steam generator **bottled** (turbine off, dumps shut). Opening dump removes pump heat faster than the pumps can put it in. Measured: 5 % manual dump demand ≈ 10× pump-heat generation and cools at about **−83 °F/hr (−46 °C/hr)**. |
-| **CAUTION** | Rate control at these powers: **secure an RCP** to slow/hold (measured rate → ~0.1 °F/hr). Do not use the dump as a fine throttle. |
-| **WARNING** | **Re-align SI accumulators** once RCS is above **600 psi (4.14 MPa)** cover gas and before **1000 psi (6.895 MPa)**. There is **no automatic open**. Skip this and Mode 1 has no passive injection. *(OWNER RULING, 2026-07-30: open is procedural.)* Commercial basis for the pressure band: NUREG-1431 Rev 4.0 **LCO 3.5.1** (OPERABLE in MODE 3 with RCS pressure > ~1000 psig) and the isolation counterpart on cooldown (**SR 3.4.12.3**). |
+| **CAUTION** | Keep the steam generator **bottled** (turbine off, dumps shut). Opening dump removes pump heat faster than the pumps can put it in. A small manual dump demand (about 5 %) is roughly ten times pump-heat generation and cools at about **−83 °F/hr (−46 °C/hr)**. |
+| **CAUTION** | Rate control at these powers: **secure an RCP** to slow or hold the heatup (rate falls to essentially zero). Do not use the dump as a fine throttle. |
+| **WARNING** | **Re-align SI accumulators** once RCS is above **600 psi (4.14 MPa)** cover gas and before **1000 psi (6.895 MPa)**. There is **no automatic open** — re-alignment is an operator action. Skip this and the plant reaches power with no passive injection. Basis: NUREG-1431 Rev 4.0 **LCO 3.5.1** (OPERABLE in MODE 3 with RCS pressure > ~1000 psig) and the isolation counterpart on cooldown (**SR 3.4.12.3**). |
 | **NOTE** | RHR auto-isolates above its **400 psi (2.76 MPa)** suction interlock as you pressurize — expected. |
-| **NOTE** | Wall clock is time-compressed; **plant hours are real**. |
+| **NOTE** | Training time is accelerated; heatup **plant hours** and rates in this procedure are real plant-time figures. |
 
 ### Procedure
 
 | Step | MODE | Action | Control | Acceptance |
 |------|------|--------|---------|------------|
-| 1 | Mode 5 | Confirm cold IC: Tavg ~122 °F (50 °C), P ~363 psi (2.5 MPa), subcritical, RHR in service, RCPs secured | (observe) | Tavg < 203 °F (95 °C); Mode 5 |
+| 1 | Mode 5 | Confirm cold plant: Tavg ~122 °F (50 °C), P ~363 psi (2.5 MPa), subcritical, RHR in service, RCPs secured | (observe) | Tavg < 203 °F (95 °C); Mode 5 |
 | 2 | 5 → 4 | **Start RCPs** (RCP → Run). Forced flow is the heat source and couples the SG | RCP Run/Stop | Pump flow ~100 % |
 | 3 | 5 / 4 | Confirm generator **disconnected** (Disconnect Grid if needed). Do not reconnect | Turbine Load | Load mode disconnected; 0 MWe |
 | 4 | 5 / 4 | Engage **Feed AUTO** at cold SG level (~65 %) so three-element captures the right setpoint | Feed Pumps | Feed AUTO engaged |
@@ -104,12 +102,12 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 
 ### Acceptance (Mode 3 declared)
 - RCS at NOP T/P class: P ≈ **2235 psi (15.41 MPa)**, Tavg at no-load band ≈ **566.6 °F (297 °C)**.
-- Reactor **subcritical** (measured arrival ρ ≈ **−2828 pcm** on **857 ppm**, control bank still fully inserted).
+- Reactor **subcritical** (typical arrival on this plant: ρ ≈ **−2800 pcm** on ~857 ppm, control bank still fully inserted).
 - Accumulators **aligned**.
 - Ready for **PWR-N02** (lineup) then **PWR-N03** (approach to criticality).
 
-### Simulator note (measured full-stack)
-Cold_shutdown IC, default lineup, no rod motion: Mode 4 with pressure at NOP by ~20 plant-min; Mode 3 entry (~350 °F (176.7 °C)) ~4.7 plant-h; **546.8 °F (286.0 °C)** at 10.67 plant-h; settles **567.0 °F (297.2 °C)** at **11.3 plant-h**. Steady rate after first hour **~32 °F/hr (17.8 °C/hr)**. Heat source: `pump_heat_frac` 0.55 % of rated at full flow + heaters. Live checklist hold for the ride is 40 000 s after pressurization — plant-tested engine-direct and full-stack.
+### Expected heatup performance
+With no rod motion: pressure reaches NOP within about **20 plant-minutes**; Mode 3 entry (~350 °F (176.7 °C)) in about **4.7 plant-hours**; **546.8 °F (286.0 °C)** at about **10.7 plant-hours**; settles near **567.0 °F (297.2 °C)** at about **11.3 plant-hours**. Steady heatup rate after the first hour is about **32 °F/hr (17.8 °C/hr)**. Heat source is RCP work (about 0.55 % of rated core heat at full flow) plus pressurizer heaters.
 
 ### Outcome
 Mode 3, Hot Standby — hot, pressurized, subcritical, zero rod motion.
@@ -122,19 +120,18 @@ Mode 3, Hot Standby — hot, pressurized, subcritical, zero rod motion.
 Reach the same **Mode 3** end state as **PWR-N01**, but heat with **deliberate low-power fission** (criticality cold, dilution ride, insert and borate back). **Training only** — not the commercial heatup.
 
 ### Applicability
-- Live checklist: `pwr_heatup_nuclear`.
-- Use for: approach practice, trip-block practice, dilution discipline.
+- Training / practice only (approach, trip blocks, dilution discipline). Not the commercial heatup path.
 
 ### Prerequisites
-Same Mode 5 IC as N01; charging available for boron adjust.
+Same Mode 5 plant condition as **PWR-N01**; charging available for boron adjust.
 
 ### Precautions and limitations
 
 | Type | Text |
 |------|------|
-| **WARNING** | **Critical boron is higher cold than hot.** With bank inserted: ~806 ppm at 122 °F (50 °C) vs ~588 ppm at 566.6 °F (297 °C) (manual **09 §7.5**). Diluting cold can take a concentration that is subcritical hot into critical. Real plants require Tavg above ~541 °F before an ECC is computed for startup (WTSM 2.2 attachment practice); this trainer allows cold dilution and the SR high-flux trip is the last backstop. |
+| **WARNING** | **Critical boron is higher cold than hot.** With bank inserted: about **806 ppm** at 122 °F (50 °C) vs about **588 ppm** at 566.6 °F (297 °C) (see **09 §7.5**). Diluting cold can take a concentration that is subcritical hot into critical. Prefer Tavg above about **541 °F** before computing an estimated critical condition; if you dilute cold, the source-range high-flux trip is the last backstop. |
 | **CAUTION** | Block **IR HIGH** and **PR low-setpoint** before the power ride (precautionary). |
-| **CAUTION** | Secure dilution when Tavg reaches the hot band — mixing lag ~30 s. Authored rate **−0.039 ppm/s**; left high, power climbs toward P-9 territory with turbine offline. |
+| **CAUTION** | Secure dilution when Tavg reaches the hot band — mixing lag about 30 s. A slow dilution rate is required; if left running after the hot band, power continues to climb with the turbine offline. |
 | **CAUTION** | Engage Feed AUTO early; standing manual feed floods the SG. |
 
 ### Procedure (summary)
@@ -162,7 +159,7 @@ Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any appr
 - Post-trip recovery to hot, subcritical conditions (still Mode 3 by temperature class).
 
 ### Prerequisites
-- Simulator running; plant = PWR; operator control available.
+- Plant in Mode 3 (or post-trip recovery still hot and subcritical).
 
 ### Precautions and limitations
 
@@ -182,7 +179,7 @@ Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any appr
 | 5 | Confirm RCPs running | RCP / flow | Flow ~100 % |
 | 6 | Confirm control bank fully inserted | Rod control | Position at bottom |
 | 7 | Confirm shutdown bank parked withdrawn | Shutdown bank | Fully out (normal) |
-| 8 | Confirm boron holds the plant subcritical | Chem sample | Consistent with Mode 3 hold (~683 ppm class at HZP IC) |
+| 8 | Confirm boron holds the plant subcritical | Chem sample | Consistent with Mode 3 hold (~683 ppm class at Hot Standby) |
 | 9 | Confirm Source Range energized and counting | SR | SR On; hundreds of cps class |
 | 10 | Confirm Intermediate Range available for handoff | IR | IR on scale or ready as power rises |
 | 11 | Confirm SG heat sink | SG level | ~65 %; not LO-LO |
@@ -202,11 +199,11 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 
 ### Applicability
 - From Mode 3 after **PWR-N02**.
-- Live skill is also practiced inside checklist `pwr_startup` (master path **PWR-T03**, which continues through N04–N06).
+- Continues into **PWR-N04** / **PWR-N05** / **PWR-N06** on master path **PWR-T03**.
 
 ### Prerequisites
 1. **PWR-N02** complete.
-2. Estimated Critical Condition (ECC) worked for **this** Tavg and boron — manual **09 §7.5**. At the HZP IC (~683 ppm, bank in), criticality is near **~319 steps** (~35 % withdrawn). Acceptance band for a good ECC is roughly ±750 pcm (~159–421 steps here).
+2. Estimated Critical Condition (ECC) worked for **this** Tavg and boron — see **09 §7.5**. At Hot Standby with bank inserted (~683 ppm class), criticality is near **~319 steps** (~35 % withdrawn). Acceptance band for a good ECC is roughly ±750 pcm (~159–421 steps on this plant).
 3. RCPs running; SR energized; Feed AUTO recommended before POAH.
 
 ### Precautions and limitations
@@ -232,7 +229,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 | 7 | Creep to critical at **Slow** (single steps); watch SUR and period | Control Bank | Critical; SUR ≤ 1 DPM; period long |
 | 8 | Hold low power (Mode 2 band ≤ 5 %); let Doppler settle; trim | Rods | Stable Mode 2, Startup |
 
-### Typical 1/M burst sizes (this plant, HZP IC — measured)
+### Typical 1/M burst sizes (Hot Standby, bank starting fully inserted)
 
 | Burst | Steps (Norm) | Role |
 |-------|--------------|------|
@@ -241,7 +238,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 | 3 | 44 | Entering steep worth |
 | 4 | 22 | Inside ~12 steps |
 | 5 | 12 | Working prediction |
-| Creep | ~26 Slow | To critical + gentle excess for ~1 % (derived, plant-tested) |
+| Creep | ~26 Slow | To critical, then a small excess for a gentle rise toward ~1 % |
 
 ### Outcome
 **Mode 2, Startup** — critical, power ≤ 5 %. Ready for **PWR-N04** / **PWR-N05**.
@@ -300,7 +297,7 @@ Reactor critical (Mode 2 or early Mode 1); condenser vacuum healthy; MSIV open.
 | Type | Text |
 |------|------|
 | **CAUTION** | Large step loads can trip on secondary/primary upset. Step load modestly. |
-| **NOTE** | **Follow** tracks reactor power; **Manual** sets MWe. After sync, this plant’s startup path typically leaves load control in **Manual** so both routes into Mode 1 leave the same lineup. |
+| **NOTE** | **Follow** tracks reactor power; **Manual** sets MWe. After synchronization, prefer **Manual** until power and load are matched and stable. |
 
 ### Procedure
 
@@ -381,8 +378,6 @@ Mode 1: critical, power > 5 %, turbine on line, stable.
 ### Outcome
 Stable higher power and MWe.
 
-**Live checklist:** `pwr_raise_power` (from `50_percent`).
-
 ---
 
 ## PWR-N08 — Power maneuvering — lower power (Mode 1)
@@ -412,8 +407,6 @@ Mode 1 (or Mode 2) with turbine on line.
 
 ### Outcome
 Stable lower plateau.
-
-**Live checklist:** `pwr_lower_power`.
 
 ---
 
@@ -481,8 +474,6 @@ PZR in normal level band; RCP running for effective spray.
 ### Outcome
 Pressure controllable; subcooling protected.
 
-**Live checklist:** `pwr_pressure_control`.
-
 ---
 
 ## PWR-N11 — Pressurizer level control (CVCS)
@@ -545,8 +536,6 @@ Main feed available; reactor at power preferred for three-element behavior.
 ### Outcome
 SG level controlled; MANUAL override semantics understood.
 
-**Live checklist:** `pwr_sg_level`.
-
 ---
 
 ## PWR-N13 — Reactor Coolant Pump (RCP) operation **[approx]**
@@ -554,8 +543,8 @@ SG level controlled; MANUAL override semantics understood.
 ### Purpose
 Operate and recognize limits of the (lumped) RCP model.
 
-### Modeling note
-Single representative RCP. Multi-loop outage procedures are simplified.
+### Scope note
+This plant models a single representative RCP. Multi-loop outage procedures are simplified.
 
 ### Precautions and limitations
 
@@ -617,17 +606,15 @@ Mode 1 or Mode 2.
 ### Outcome
 **Mode 3, Hot Standby** — shut down, hot. Continue to Mode 5 via **PWR-N15**.
 
-**Live checklist:** `pwr_shutdown`.
-
 ---
 
 ## PWR-N15 — Cooldown Mode 3 → Mode 5, Cold Shutdown (RHR) **[sim]**
 
 ### Purpose
-Cool and depressurize from **Mode 3** through **Mode 4** to **Mode 5**. Driveable on the board; rates time-compressed. Completes **PWR-T21**. Mission: `pwr_mode3_to_mode5`.
+Cool and depressurize from **Mode 3** through **Mode 4** to **Mode 5**. Completes master path **PWR-T21**. Training time is accelerated; plant-time rates and endpoints apply.
 
 ### Applicability
-After **PWR-N14** or any hot, subcritical board.
+After **PWR-N14** or any hot, subcritical plant.
 
 ### Prerequisites
 - Mode 3 (hot, subcritical).
@@ -639,7 +626,7 @@ After **PWR-N14** or any hot, subcritical board.
 |------|------|
 | **WARNING** | **Isolate SI accumulators** at **1000 psi (6.895 MPa)** before cover-gas **600 psi (4.14 MPa)**. Nothing automatic shuts them. Failure dumps all four (empty SITs, boron dragged toward 2500 ppm, water-solid Mode 5). Basis: NUREG-1431 **LCO 3.5.1** / **SR 3.4.12.3**. |
 | **NOTE** | SI block entering cooldown blocks *pumps*, not passive tanks. |
-| **NOTE** | RHR arms/operates in the low-pressure band (~**400 psi (2.76 MPa)** interlock). Commercial SOPs place RHR in service near intermediate T/P (example structure: San Onofre SOP family, NRC ADAMS ML13310A240 — RHR near ~350 °F / ~350 psig class). This trainer uses its interlock band. |
+| **NOTE** | RHR is placed in service in the low-pressure band (~**400 psi (2.76 MPa)** interlock on this plant). Commercial SOPs place RHR near intermediate temperature and pressure (often on the order of ~350 °F / ~350 psig). |
 | **NOTE** | Secure RCPs once RHR carries the cooldown so the SG is not the only sink. |
 
 ### Procedure
@@ -655,7 +642,7 @@ After **PWR-N14** or any hot, subcritical board.
 | 7 | Mode 5 | Arrive cold (≤ ~200 °F (93.3 °C) class), depressurized, RHR in service | (observe) | Mode 5 |
 
 ### Outcome
-Genuine **Mode 5, Cold Shutdown** end state (rate-compressed). Accumulators remain isolated until **PWR-N01** re-aligns on the next heatup.
+**Mode 5, Cold Shutdown** — cold, depressurized, RHR in service. Accumulators remain isolated until **PWR-N01** re-aligns on the next heatup.
 
 ---
 
@@ -676,19 +663,19 @@ Genuine **Mode 5, Cold Shutdown** end state (rate-compressed). Accumulators rema
 
 ## 4.0 Related documents
 
-- `05_MODE_TRANSITIONS.md` — master paths T20 / T21 / T03  
-- `03_CONTROLS_AND_INDICATIONS.md` — control station  
-- `06_ALARM_RESPONSE.md` — ARP cards  
-- `07_ABNORMAL_EMERGENCY.md` — AOP / EOP  
-- `09_SETPOINTS_LIMITS.md` — trips, permissives, ECC tables  
-- `12_SIM_PHYSICS.md` — what is modeled  
+- **05** Mode Transition Procedures — master paths T20 / T21 / T03  
+- **03** Controls and Indications  
+- **06** Alarm Response Procedures  
+- **07** Abnormal and Emergency Operating Procedures  
+- **09** Setpoints, Limits, and Normal Values  
+- **12** Simulation Physics & Model Scope  
 
-## 5.0 Sources (procedure shape and limits)
+## 5.0 References
 
-| Claim | Source |
-|-------|--------|
-| Commercial heatup is subcritical; Mode 5→4→3 then separate Mode 3→ power | Westinghouse Technology Manual heatup outline (NRC ADAMS **ML023040286**) |
-| Accumulator OPERABLE band / isolate on cooldown | NUREG-1431 Rev 4.0 **LCO 3.5.1**, **SR 3.4.12.3** |
-| RHR placement on cooldown near intermediate T/P | Plant SOP structure e.g. San Onofre family (NRC ADAMS **ML13310A240**) — trainer uses its own interlock numbers |
-| Critical boron / ECC / 1/M practice numbers | This plant’s **09 §7.5** tables (BEAVRS / engine-verified); live checklist `pwr_startup` plant-tested |
-| N01 heatup timings | Measured full-stack on this plant (see N01 simulator note) |
+| Topic | Reference |
+|-------|-----------|
+| Commercial heatup subcritical; Mode 5→4→3 then Mode 3→ power | Westinghouse Technology Manual heatup outline (NRC ADAMS **ML023040286**) |
+| Accumulator OPERABLE / isolate on cooldown | NUREG-1431 Rev 4.0 **LCO 3.5.1**, **SR 3.4.12.3** |
+| RHR placement near intermediate T/P on cooldown | Commercial SOP practice (e.g. plant procedures of the form in NRC ADAMS **ML13310A240**) |
+| Critical boron, ECC, and 1/M practice values | **09 §7.5** |
+| Heatup plant-time rates and milestones | **PWR-N01** expected performance |

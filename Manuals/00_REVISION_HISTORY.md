@@ -20,7 +20,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
-| 1 | 2026-07-31 | **04 Normal Operating Procedures rewritten in commercial NOP format.** Every N01–N15 procedure now carries purpose / applicability / prerequisites / precautions / stepped procedure with acceptance / outcome. Heatup (N01) and approach (N03) aligned to real-plant shape (WTSM heatup outline ML023040286; NUREG-1431 accumulator LCO/SR; 1/M + SUR + ECC practice) and to plant-tested live checklists (`pwr_heatup`, `pwr_startup`). Fixed HFP electrical band **1000 → 100 MWe**. Sources table added. | NOP content rewrite |
+| 1 | 2026-07-31 | **04 Normal Operating Procedures rewritten in commercial NOP format.** Every N01–N15 procedure now carries purpose / applicability / prerequisites / precautions / stepped procedure with acceptance / outcome. Heatup (N01) and approach (N03) aligned to commercial practice (WTSM heatup outline; NUREG-1431 accumulator LCO/SR; 1/M + SUR + ECC). Fixed HFP electrical band **1000 → 100 MWe**. Operator-facing prose only — no build notes or internal rulings. | NOP content rewrite |
 | 0 | 2026-07-31 | **Pre-public baseline.** Manual set reset to Rev 0 for a clean public revision counter. Current content includes the as-built PWR operator manuals through the normal-ops plant-sequence renumber (N01 heatup → N15 cooldown) and prior engine/procedure alignment. Development history before this baseline is in git, not listed here. | Public-rev reset |
 
 ## Source documents (authoritative for content)
@@ -53,9 +53,9 @@
      01_GENERAL_DESCRIPTION.md 084d5a7df10229c3
      02_SIMULATOR_USER_GUIDE.md 4fb25f478c3f767d
      03_CONTROLS_AND_INDICATIONS.md 807262dd36af8dfe
-     04_NORMAL_OPERATIONS.md 1bb194fee5672789
+     04_NORMAL_OPERATIONS.md 838ec2fd6946e81f
      05_MODE_TRANSITIONS.md ba7068295abb62cb
-     06_ALARM_RESPONSE.md e0ffcc92915a7025
+     06_ALARM_RESPONSE.md 2acccbd717a16f34
      07_ABNORMAL_EMERGENCY.md 5b597e8be620e445
      08_ACCIDENT_TMI.md d6a3ff47c6786021
      09_SETPOINTS_LIMITS.md 5087ad5b2fe38add
