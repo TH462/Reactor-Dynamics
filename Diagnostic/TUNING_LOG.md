@@ -20,6 +20,19 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-07-31 (04 NOP content rewrite, backshop)
+
+**Chapter 04 rewritten as commercial NOPs (Rev 1).** Real-plant shape from WTSM heatup
+outline (ML023040286), NUREG-1431 accumulator LCO/SR, San Onofre-class cooldown SOP
+structure (ML13310A240), and this plant’s ECC/1/M numbers (09 §7.5 + `pwr_startup`).
+
+**Plant tests (after rewrite):** `run_procedures` **23/23 (115)**; stack green on
+`pwr_heatup` (18), `pwr_heatup_nuclear`, `pwr_startup` (21), `pwr_raise_power`,
+`pwr_lower_power`, `pwr_shutdown`, `pwr_pressure_control`, `pwr_sg_level`.
+`run_manual_units` 0 failed; `run_procdocs` 25/0; `run_manual_rev` 13/0.
+
+---
+
 ## Session log — 2026-07-31 (N-procedure renumber, backshop)
 
 **Option B: normal-ops IDs renumbered to plant sequence** (manual redesign baseline).

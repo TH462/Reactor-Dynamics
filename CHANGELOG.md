@@ -22,8 +22,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **04 Normal Operating Procedures rewritten in commercial NOP format (Rev 1).** Every
+  N01–N15 procedure now has purpose / applicability / prerequisites / precautions /
+  stepped acceptance / outcome. Heatup and approach aligned to WTSM / NUREG-1431 shape
+  and plant-tested checklists. HFP electrical band corrected to **100 MWe**.
+
 - **Manual set revision counter reset to Rev 0.** Pre-public history zeroed; public
-  counting starts after go-public (next change is Rev 1). Development rows remain in git.
+  counting starts after go-public. Development rows remain in git.
 
 - **Normal operating procedures renumbered to plant sequence** (manual redesign baseline).
   IDs now follow cold → power → continuous control → cold: **N01** heatup, **N01a** nuclear
