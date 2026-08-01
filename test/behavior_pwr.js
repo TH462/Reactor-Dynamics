@@ -456,6 +456,30 @@
         r.run(300);
         ck('rated output unchanged by the reformulation', fmt(r.ts().mwe_output, 2),
           near(r.ts().mwe_output, 100, 0.5), '100 ±0.5 MWe');
+
+        // ---- leg E: the SAME predicate, at the third site. `close_msiv` decided whether
+        // to trip the turbine with `generator_load > 0` — so isolating main steam while
+        // synchronised at a 0 MWe target left the machine UNtripped and still on line,
+        // and leg A's fix then held its rotor at rated with no admission steam at all: a
+        // generator motoring on the grid. Measured on the unfixed handler, that state ran
+        // 77 s until an unrelated `sg_level low` scram ended it. TR-5 never saw this
+        // because it isolates at 100 % load, where the load test and the breaker test
+        // agree — the same blind spot that hid legs A and B.
+        var m = H('hot_full_power');
+        m.run(30);
+        m.cmd('set_load_target', { mwe: 0 });
+        m.run(240);                                  // on line, synchronised, zero load
+        m.cmd('close_msiv');
+        m.run(10);
+        var tm = m.ts();
+        ck('no steam past the MSIV', fmt(tm.steam_flow_normalized, 3),
+          tm.steam_flow_normalized === 0, '0');
+        ck('isolating main steam trips the turbine at ZERO load too', String(!!tm.turbine_tripped),
+          tm.turbine_tripped === true, 'true');
+        ck('and the breaker opens with the trip', String(tm.load_mode),
+          tm.load_mode === 'disconnected', 'disconnected');
+        ck('so the rotor coasts — it does not motor on the grid (was 1800 rpm)',
+          fmt(tm.turbine_rpm, 0), tm.turbine_rpm < 1790, '< 1790 rpm and falling');
         T.checkSanity(ck, z);
       });
     },

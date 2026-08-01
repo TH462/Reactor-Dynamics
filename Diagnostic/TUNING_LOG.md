@@ -118,6 +118,69 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31k — reviewing #284 found the same predicate six lines away, and a plant that relieves forever  ✅
+
+**Task: review #284** (`status-owner-review`, already fixed and gated as `f79b46a`). The fix
+holds up. Re-measured independently, full stack, on `develop` at `5f4178c`: a 0 MWe ask on
+line holds **1800 rpm** for 20 plant-minutes with the breaker closed and untripped; a 50 MWe
+ask reads **50.00 MWe** with the dump at 40 % and the core at 89.3 %; `disconnect_grid` still
+coasts 1800 → 0 rpm in ~5 min (#235 intact); rated calibration **100.00 MWe**.
+
+The one thing #284 flagged for a second opinion — that `mwe_output` is now a *behaviour*
+change on a board gauge — is safe for a reason the issue did not state: **nothing in
+`layers/` reads `mwe_output` at all.** It is consumed by the board, the trend and seven
+scenario beat triggers, and by no control decision anywhere, which is why `run_campaign`
+could stay 51/51 through a reformulation of it.
+
+**What the review actually found — the third site.** `pwr_engine.js` `close_msiv` still asked
+`generator_load > 0` to decide whether to trip the turbine. #284's own note named open-coding
+that predicate "at a third site" as the failure mode it was introducing `RD.LoadMode.isOnLine`
+to prevent, and then did not sweep for it. Measured, hot full power, `set_load_target 0` then
+`close_msiv`: MSIVs shut, `steam_flow_normalized` exactly **0**, turbine **not** tripped,
+`load_mode` still `manual`, and #284's rated-speed hold sitting the rotor at **1800 rpm** —
+a machine motoring on the grid — for **77 s**, until an unrelated `sg_level low` scram at
+6m17s ended it. Fixed; **TR-1e leg E**; injection-verified 3 red on the old predicate with the
+MSIV-isolation check staying green, so the leg pins the trip rather than the valve.
+
+**The lesson, and it is not the code one.** The fix was right, the probe was good, the write-up
+was honest — and the defect it left behind was findable by `git grep` on the string its own
+comment quoted. A shared helper introduced to kill an idiom is only half a fix until the idiom
+is swept. The sweep is now clean: the only `generator_load` read that decides anything is the
+braking-torque term in `stepTurbine`, which is what the field means.
+
+**Filed, not fixed — #289.** Driving load to 0 MWe while synchronised parks the plant in a
+**permanent relieving state**: core settles **46.2 %** on inherent feedback alone (Tavg
+579.3 → 608.2 °F (304.1 → 320.1 °C), ~−429 pcm at the fitted −26.8 pcm/°C), the dump saturates
+at its 40 % capacity, and the **SG code safeties pass the balance indefinitely** —
+`steam_out_total` 0.49 = 0.40 dump + ~0.09 safety, pressure pinned at **1309 psi (9.02 MPa)**,
+which is the *reseat* setpoint (9.0) rather than the pop setpoint (**1350 psi / 9.31 MPa**), so
+the valve sits on its seat passing steam rather than popping and clearing. `scrammed` false
+throughout, 20+ plant-minutes, no resolution. Identical after `disconnect_grid` (46.3 %), so it
+is the plant's generic answer to "no turbine load".
+
+Two changes made it reachable and visible, neither of them wrong: #284 (before it, the rotor
+coasting to rest dominated the board and hid the secondary picture) and the dump going
+**1.05 → 0.40** — at 1.05 the dump carried a 46 % core alone and the safeties never lifted.
+`SG PRESS HI` stands throughout so the board is not silent, but nothing resolves the condition
+and there is **no alarm on the code safeties themselves**. Left unfixed deliberately: what a
+real unit does with a sustained 0 MWe ask while synchronised is a **sourced** question, and
+this plant has no reverse-power / anti-motoring protection modelled at all
+(`grep -rn "reverse_power|motoring"` → nothing). Evidence pass first; do **not** raise
+`steam_dump_max` to make the symptom go away, since that number is now sourced.
+
+**Also this session: the pending merge.** `develop` was carrying an **uncommitted** merge —
+`.git/MERGE_HEAD` present, ~20 conflicted files all resolved and staged, `git commit` never
+run, and nothing pushed (`origin/develop` four commits behind). Committed as `d0c9e7d`. Its
+`BASELINES` resolution had taken develop's side for three runners while the merge itself
+brought the work that moves them: `run_m5` 22/22 96 → **23/23 103**, `run_ops` 58/69 350/12 →
+**59/69 351/11**, `run_hardrules` 43 → **57**. Corrected into the merge commit. **Expect
+`run_hardrules` to jump on every lane merge** — it counts *occurrences* of dated owner quotes,
+and the guaranteed-conflict files are resolved by keeping both sides, so merging two lanes that
+each cited a ruling adds citation sites without adding rulings.
+
+Gates: `run_all` **35 runners at baseline**; `run_behavior` 42 pass / 0 xfail (leg E adds
+checks, not a probe); `run_pwr` 36/36, `run_scenarios` 3/3, `run_campaign` 51/51 unmoved.
+
 ### 2026-07-31j — #287 evidence pass: a real plant has NO automatic RHR open at all  ✅
 
 The #287 ruling was shipped with its prototypicality argument marked **recall, unverified**.

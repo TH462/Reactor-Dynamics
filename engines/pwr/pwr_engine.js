@@ -942,10 +942,20 @@
         s.msiv_open = true;
         break;
       case 'close_msiv':
-        // Isolating main steam with the turbine loaded trips it (real plants:
+        // Isolating main steam trips a turbine that is ON LINE (real plants:
         // MSIV closure = turbine trip) — the SG then bottles up to its safeties.
+        //
+        // THE TEST IS THE BREAKER, NOT THE LOAD. This was the third site carrying the
+        // `generator_load > 0` shortcut that #284 removed from stepTurbine, and it is the
+        // one that fix's own note warned about while leaving it standing. Measured: hot
+        // full power, `set_load_target 0` (still synchronised, breaker closed), then
+        // `close_msiv` — the turbine did NOT trip, `load_mode` stayed `manual`, and after
+        // #284 held the rotor at rated the machine sat at 1800 rpm with
+        // `steam_flow_normalized` exactly 0, motoring on the grid, until an unrelated
+        // `sg_level low` scram cleared it 77 s later. Before #284 the same missed trip was
+        // there; it merely presented as a coastdown instead of a healthy-looking machine.
         s.msiv_open = false;
-        if (!s.turbine_tripped && s.generator_load > 0) SG.tripTurbine(s);
+        if (!s.turbine_tripped && RD.LoadMode.isOnLine(s)) SG.tripTurbine(s);
         break;
       case 'set_sr_detector':
         // Source-range detector high voltage on/off. The P-6 interlock (control

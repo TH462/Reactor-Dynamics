@@ -163,6 +163,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   happens past the dump's limit.
 
 ### Fixed
+- **Isolating main steam trips the turbine even at zero load** (#284 follow-up). The
+  `close_msiv` handler decided whether to trip by asking whether the generator was carrying
+  **load**, not whether the **breaker** was closed — the same shortcut #284 removed from the
+  rotor model, left standing six lines away in a sibling file. Consequence: shut the MSIVs
+  while synchronised with the load target at 0 MWe and the turbine did not trip, the breaker
+  stayed closed, and #284's rated-speed hold then parked the machine at **1800 rpm with zero
+  admission steam** — a generator motoring on the grid. Measured at hot full power, that state
+  ran **77 s**, until an unrelated `sg_level low` scram ended it. It now trips on
+  `RD.LoadMode.isOnLine`, and the breaker opens with it.
+
+  Cold Modes 3 and 5 are unaffected: they are authored `load_mode: 'disconnected'`, so
+  isolating steam on a cold plant still does not trip a turbine that was never on line. The
+  one behaviour that changes in the other direction is an MSIV closure in the seconds after
+  `disconnect_grid`, while the load is still decaying — the breaker is already open, so the
+  turbine is no longer tripped, which is the #230 distinction rather than an exception to it.
+
+  `run_behavior` **TR-1e gains a fifth leg** and the probe count is unmoved at 42.
+  Injection-verified against the old predicate: 3 checks red (`turbine_tripped` false,
+  `load_mode` manual, 1800 rpm), while the *"no steam past the MSIV"* check stays green — so
+  the leg asserts the **trip**, not the valve. A sweep of the whole tree now finds no
+  remaining `generator_load` read that decides anything; the only one left is the braking
+  torque term in `stepTurbine`, which is what that field is for.
 - **The startup and heatup procedures are checked against the board again** (#224). The
   table that pins each procedure step to the control it names had not been updated through
   three rounds of procedure re-authoring — and that table is what the browser gate walks, so
