@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLX-100** (Single-Loop eXperimental, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 1  
+**Revision:** 2  
 
 ---
 

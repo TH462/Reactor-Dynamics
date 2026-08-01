@@ -2,7 +2,7 @@
 
 **Document:** PWR-NOP-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Revision:** 1  
+**Revision:** 2  
 
 ---
 
@@ -144,6 +144,19 @@ Same Mode 5 plant condition as **PWR-N01**; charging available for boron adjust.
 | Nuclear ride | Dilute slowly until Tavg in no-load band | Tavg > 563 °F (295 °C); power typically a few % |
 | Shutdown margin | Secure dilution; drive bank in; borate ≥ ~900 ppm; settle | Mode 3; ρ ≪ 0 |
 
+### Expected heatup performance
+Fission heat makes this path much shorter than **PWR-N01** (pump heat only). On this plant, following the training sequence:
+
+| Milestone | Typical plant time | Notes |
+|-----------|-------------------|--------|
+| Pressurized to NOP, RCPs on | ~0.2 plant-h | Same setup as N01 |
+| Core critical, power climbing | ~0.5 plant-h | Still cold-to-warm (~219 °F / 104 °C class) |
+| End of dilution ride (no-load Tavg) | ~1.6 plant-h | Tavg ≈ **568 °F (298 °C)**; power about **1–4 %** through the climb (peaks near **3–4 %** if dilution is secured on time); boron falls on the order of **150 ppm** from the cold inventory |
+| Bank inserted, Mode 3 | ~1.7 plant-h | Subcritical again |
+| Boration complete and settled | ~1.9 plant-h | Tavg ≈ **567 °F (297 °C)**; boron ≥ **~900 ppm**; large negative reactivity |
+
+If dilution is left running past the hot band, power and temperature keep rising — secure it when Tavg enters the no-load band.
+
 ### Outcome
 Mode 3 via nuclear path with shutdown margin restored. Prefer **PWR-N01** for commercial heatup.
 
@@ -155,7 +168,7 @@ Mode 3 via nuclear path with shutdown margin restored. Prefer **PWR-N01** for co
 Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any approach to criticality. Commercial startups do not pull rods until the board is known.
 
 ### Applicability
-- After **PWR-N01**, or Free Play / mission load of `hot_zero_power`.
+- After **PWR-N01**, or any plant already in **Mode 3, Hot Standby**.
 - Post-trip recovery to hot, subcritical conditions (still Mode 3 by temperature class).
 
 ### Prerequisites
@@ -678,4 +691,4 @@ After **PWR-N14** or any hot, subcritical plant.
 | Accumulator OPERABLE / isolate on cooldown | NUREG-1431 Rev 4.0 **LCO 3.5.1**, **SR 3.4.12.3** |
 | RHR placement near intermediate T/P on cooldown | Commercial SOP practice (e.g. plant procedures of the form in NRC ADAMS **ML13310A240**) |
 | Critical boron, ECC, and 1/M practice values | **09 §7.5** |
-| Heatup plant-time rates and milestones | **PWR-N01** expected performance |
+| Heatup plant-time rates and milestones | **PWR-N01** and **PWR-N01a** expected performance |
