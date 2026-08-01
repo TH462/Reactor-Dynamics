@@ -132,7 +132,6 @@ Reach the same **Mode 3, Hot Standby** end state as **PWR-N01**, but heat with *
 
 ### Applicability
 - **Training / practice only.** Do not treat as the plant’s commercial heatup path.
-- Not claimed as a naval propulsion plant procedure (naval heatup practice is different and is not modeled here).
 
 ### Prerequisites
 Same Mode 5 plant condition as **PWR-N01**; charging available for boron adjust.
