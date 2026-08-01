@@ -118,6 +118,73 @@ config/setpoint change also triggers the **manual maintenance rule**:
 
 ## Part 2 — Session log (newest first)
 
+### 2026-07-31l — #284 evidence pass: the fix is prototypical, the comment justifying it was not  ✅
+
+Owner asked for the evidence pass on #284. Five claims verdicted against WTSM primaries —
+**3 confirmed, 1 confirmed harder than claimed, 1 NOT SUPPORTED.** The not-supported one is a
+sentence that has been sitting in the engine since long before #284.
+
+**Sources.** WTSM §11.3 *Westinghouse Electrohydraulic Control System* (**ML11223A295**) and
+§7.1 *Main and Auxiliary Steam Systems* (**ML11223A244**), both via the Wayback + browser-UA
+workaround (nrc.gov still 403s non-browser fetches) and pypdf. §7.3/§7.4 are the *turbine*
+sections and carry nothing on synchronisation — §11.3 is where the control system lives, and
+it is the section to reach for on anything turbine-generator.
+
+**C1 — a synchronised machine holds rated speed at any load. CONFIRMED, and the real control
+system draws the line exactly where #284 drew it.** §11.3.2.3: *"Speed control is used to roll
+the turbine from turning gear speed (about 1 rpm) to synchronous speed (1800 rpm). **When the
+generator output breakers are closed, the EHC system automatically shifts from speed control
+to load control.** In load control, the EHC system controls the turbine's power output."* The
+purposes list says the same twice — *"to control the speed … from turning gear operation to
+synchronous speed"* and *"to control the load of the generator **from synchronization** to 100
+percent load"*. So on a real unit, speed stops being a controlled variable **at breaker
+closure**; after that the turbine controls load and the grid holds the speed. `isOnLine` is not
+an approximation of the real discriminator — it *is* the real discriminator.
+
+**C2 — the test is the breaker, not the load. CONFIRMED** (same quote). Nothing in §11.3 keys
+any speed/load behaviour on how much load the machine happens to be carrying.
+
+**C3 — "real plants: MSIV closure = turbine trip". NOT SUPPORTED.** The claim was in the
+`close_msiv` handler's comment and I inherited it while fixing the predicate beside it. §7.1
+describes manual MSIV operation from a control-room switch with **no turbine interlock**, and
+**neither** turbine-trip path in §11.3 lists MSIV position: the emergency trip solenoid takes
+*"Manual turbine trip (from the control board), Reactor trip signal (train B), High-high level
+in any steam generator, and Low auto-stop oil pressure"*, and the auto-stop oil block takes
+bearing / thrust / vibration / EH-fluid faults, loss of both main feed pumps, transformer
+relays, and *"Generator reverse power (with a 30-sec delay)"*. Declared as
+**DESIGN_COMPANION §8.22** and the comment rewritten. This is the #220 drift class again — a
+real-plant premise recited for behaviour this plant departs from — and it is worth noticing
+that it survived a fix *to the very line it annotates*.
+
+**C4 — output follows turbine admission, not reactor power. CONFIRMED.** §11.3.2.3 Load
+Control (Imp In): *"Impulse pressure is an indication of actual turbine load"* and *"Since
+impulse pressure is linear with respect to power, load reference becomes a linear function of
+power."* Impulse chamber pressure is a first-stage **steam-flow** measurement, so the real
+plant's own load feedback is turbine admission. #284's `steam_flow_normalized` reformulation is
+the prototypical form, not merely the more defensible one.
+
+**C5 — what a real plant does about motoring. This is the finding.** Two independent
+mechanisms, both explicit:
+- The plant **refuses to sit at zero load**. §11.3.2.3: on breaker closure *"The electronic
+  controller sets the reference load at 5%, with a load rate of 1%/min. **Increasing the load
+  of the turbine to 5% ensures that the generator does not motorize.**"* A real synchronised
+  unit has a ~5 % floor, by design, for exactly this reason.
+- If it motors anyway, the **generator reverse-power relay** trips it — *"Generator reverse
+  power (with a 30-sec delay)"*, on the auto-stop oil system (§11.3.2.1).
+
+**One missing protection accounts for the whole class.** This plant has **no reverse-power
+trip** and no minimum synchronised load, which is why the 77 s motoring window existed at all
+and why **#289**'s zero-load state is *permanent* rather than self-clearing. Modelling the
+relay would let the MSIV coupling be deleted (§8.22's v2 note) and would end #289 without
+touching a single tuned number. **Not built** — that is a new protection channel and the
+owner's call, and #289 said the answer needed sourcing before anything moved. It is sourced
+now.
+
+**Where the earlier judgement was too cautious.** #289 was filed saying it was unknown whether
+a real unit can be held at zero load synchronised, and listing three candidate answers. The
+source settles it on the first: it cannot, deliberately. Filing the uncertainty was right;
+the uncertainty was smaller than it looked, and one section of one manual closed it.
+
 ### 2026-07-31k — reviewing #284 found the same predicate six lines away, and a plant that relieves forever  ✅
 
 **Task: review #284** (`status-owner-review`, already fixed and gated as `f79b46a`). The fix

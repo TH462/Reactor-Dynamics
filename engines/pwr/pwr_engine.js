@@ -942,8 +942,19 @@
         s.msiv_open = true;
         break;
       case 'close_msiv':
-        // Isolating main steam trips a turbine that is ON LINE (real plants:
-        // MSIV closure = turbine trip) — the SG then bottles up to its safeties.
+        // Isolating main steam trips a turbine that is ON LINE — the SG then bottles up
+        // to its safeties.
+        //
+        // THIS COUPLING IS A DECLARED DEPARTURE, NOT PROTOTYPICALITY (DESIGN_COMPANION
+        // §8.22, sourced 2026-07-31 under #284). This comment used to assert "real plants:
+        // MSIV closure = turbine trip" and the evidence pass does not support it: WTSM §7.1
+        // (ML11223A244) attaches no turbine interlock to the control-room MSIV switch, and
+        // NEITHER turbine-trip path in WTSM §11.3 (ML11223A295) lists MSIV position. A real
+        // machine that loses steam with the breaker closed MOTORS, and the generator
+        // reverse-power relay — "Generator reverse power (with a 30-sec delay)" — ends it.
+        // We have no such relay, so we trip here instead: conservative in direction (the
+        // real plant's state clears too, 30 s later), but ours by choice. Model the
+        // reverse-power trip and this coupling should go.
         //
         // THE TEST IS THE BREAKER, NOT THE LOAD. This was the third site carrying the
         // `generator_load > 0` shortcut that #284 removed from stepTurbine, and it is the
