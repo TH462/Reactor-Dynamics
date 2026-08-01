@@ -483,6 +483,34 @@
     { id: 'accum_aligned',  instrument: 'primary_pressure', direction: 'low',      setpoint: 6.895, priority: 'caution',  panel: 'B', category: 'safety_system',
       condition: 'accum_valve_open',
       label_learning: 'Accumulators Still Lined Up — RCS Below Their Isolation Pressure', label_industry: 'SI ACCUM ALIGNED < 1000 PSI' },
+    // SHUTDOWN COOLING NOT IN SERVICE (#287) *(OWNER RULING, 2026-07-31: "Keep it and
+    // enunciate")*. The RHR auto-entry permissive is deliberately ONE-SHOT — it fires on
+    // the first crossing below the 400 psi (2.76 MPa) interlock and never re-arms — while
+    // the engine AUTO-CLOSES the suction valve on any repressurization back above it. Both
+    // halves are correct on their own and a real plant re-opens that valve deliberately,
+    // not automatically; what was missing was any indication that it had gone. SOURCED
+    // (evidence pass 2026-07-31, NUREG-0933 Issue 99, "RCS/RHR Suction Line Valve
+    // Interlock on PWRs", Rev. 3): "Two basic features are incorporated in the interlock
+    // design: (1) an automatic closure signal on high RCS pressure (typically 600 psig),
+    // and (2) a block of the MANUAL OPEN SIGNAL at a lower RCS pressure (typically 425
+    // psig)." A real plant has NO automatic open at all — the interlock only blocks the
+    // operator's open — so this permissive is already more automatic than the real thing
+    // and a one-shot is the closer of the two options. That issue's own resolution was
+    // Generic Letter 88-17: improved INSTRUMENTATION, procedures and administrative
+    // controls — i.e. tell the operator, which is what this annunciator does. Measured
+    // before this: a cooldown whose pressure controller sat just above the interlock ended
+    // scrammed at 1.95 MPa (283 psi) BELOW it with the arm still in AUTO, its permissive
+    // condition still true, RHR shut — and the only tell on the board was the ECCS card
+    // quietly reading LPI instead of RHR.
+    //
+    // Gated on the LINEUP plus the regime, like accum_aligned above: the reactor is
+    // tripped and the RCS is below the entry pressure, so shutdown cooling is what should
+    // be carrying decay heat, and it is not aligned. It stands in during a LOCA too, which
+    // is true and deliberate — there it reads "you are on injection, not on shutdown
+    // cooling", which is exactly what the operator needs to know before they stop injecting.
+    { id: 'rhr_not_aligned', instrument: 'rhr_active', direction: 'is_false', setpoint: null, priority: 'warning', panel: 'B', category: 'safety_system',
+      condition: { instrument: 'plant_mode', in: COLD_MODES },
+      label_learning: 'Shutdown Cooling Not In Service — RCS Is Below the RHR Entry Pressure', label_industry: 'RHR NOT IN SERVICE' },
     { id: 'sbo',            instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', category: 'safety_system', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
     // Turbine trip / low steam demand. Reclassified in Modes 4/5 ONLY: below the
     // hot band the machine is secured by design and RHR is the heat sink, so zero

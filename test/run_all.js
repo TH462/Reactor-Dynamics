@@ -55,7 +55,15 @@ var BASELINES = {
   // floor would just need lowering again next retune; at power the turbine sets power and
   // the rods set temperature, so Tavg rising is the signature that STRENGTHENS as the
   // coefficient does. Both are pinned now.
-  'run_pwr.js':            { code: 0, score: '32/32 202passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
+  // 32 → 36 on 2026-07-31 (#154 item 11): four engine surfaces that shipped with no
+  // assertion anywhere — the pressurizer CODE SAFETIES (`s.safety_open` had zero
+  // references in the whole test tree; only the SG safeties were ever asserted),
+  // `porv_tailpipe_temp` (the TMI/Davis-Besse tell the flagship teaches), the
+  // TMI-2 blocked-AFW device (only ever asserted FALSE), and the unknown-command
+  // error path. save_migration also went from 8 asserted fields to 20 of the 29
+  // _migrateState defaults, including the `rcp_secured` INFERENCE (#240), which is
+  // the one judgement call in the migration and was unasserted both ways.
+  'run_pwr.js':            { code: 0, score: '36/36 237passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
@@ -113,7 +121,12 @@ var BASELINES = {
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
-  'run_meltdown.js':       { code: 0, score: '9pass 0xfail' },
+  // 9 → 10 on 2026-07-31 (#154 item 9): MD-10, feed and bleed. MD-6 took the total
+  // loss of the secondary heat sink to core damage; nothing anywhere exercised the
+  // RECOVERY, so the suite proved only that the plant can be lost that way. Measured:
+  // unmitigated damages at 4040 s peaking at 366 °C Tavg; with the PORV open and HPI
+  // running, peak fuel 628 °C, no damage, inventory held above 100 %.
+  'run_meltdown.js':       { code: 0, score: '10pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at
   // all, so its MD-4/MD-8 PROTECTION claims are proven with the operator hand-
@@ -226,7 +239,24 @@ var BASELINES = {
   // change it to 40%.") is carried, dated, at the constant and in the manual revision row,
   // and HR11 counts dated owner quotes wherever they are tracked. Re-run this AFTER the
   // docs, not after the code.
-  'run_hardrules.js':      { code: 0, score: '53checks 0failed' },
+  // 40 -> 39 on 2026-07-31 (#286): the CLAUDE.md *Recent themes* list is capped at five
+  // bullets, and adding this session's meant dropping the oldest (#260/#263) — which
+  // carried the "for 263 item 1 fit the measurement." quote. That ruling is NOT lost; it
+  // still stands in BUILD_DECISIONS.md, TUNING_LOG.md and Manuals/00_REVISION_HISTORY.md,
+  // so this is one fewer CITATION SITE, not one fewer ruling. Worth knowing that the
+  // themes cap and this gate pull against each other: rotating a bullet out can redden a
+  // baseline with no change to the record. Check where else the quote lives before
+  // restoring a bullet to chase the number.
+  // 39 -> 41 on 2026-07-31 (#287): the gate counts dated owner quotes wherever they are
+  // tracked, and "Keep it and enunciate" is cited at each site that acts on it — the
+  // alarm definition, the probe that guards it, and the manual revision row.
+  // 43 -> 57 on 2026-07-31, and this one is a merge artefact by construction. The gate
+  // counts OCCURRENCES of dated owner quotes across tracked files, and the guaranteed
+  // conflict list (CHANGELOG, CLAUDE.md, TUNING_LOG, BUILD_DECISIONS, the manual set) is
+  // resolved by KEEPING BOTH SIDES — so merging two lanes that each cited a ruling adds
+  // citation sites without adding rulings. Expect this number to jump on every lane merge;
+  // it is not evidence that anything was decided.
+  'run_hardrules.js':      { code: 0, score: '57checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -240,7 +270,9 @@ var BASELINES = {
   // alarm on every plant must declare a `category` from a closed vocabulary. It used to
   // be keyword-matched off the alarm id in ui/app.js, wrong for 13 of the PWR's 33.
   // All three plants here, unlike the PWR-only §6.3 half.
-  'run_contract.js':       { code: 0, score: '138checks 0failed' },
+  // 138 -> 139 on 2026-07-31 (#287): the new `rhr_not_aligned` annunciator, which
+  // like every alarm must declare a `category` (#157).
+  'run_contract.js':       { code: 0, score: '139checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -383,6 +415,10 @@ var BASELINES = {
   // thresholds were picked up by Part A automatically, without anyone adding a case. That is
   // the design — a new setpoint gets range-checked for free, and the count moving is the
   // nudge to notice it. 50 → 52 thresholds audited.
+  // Unmoved at 58 by #287's annunciator, and that is correct: Part A audits NUMERIC
+  // thresholds against their instrument's declared range, and `rhr_not_aligned` is a
+  // status alarm (`rhr_active` is_false, setpoint null) with no range to sit inside.
+  // It briefly read 59 while the alarm was drafted as a pressure threshold.
   'run_reachability.js':   { code: 0, score: '58checks 0failed' },
   // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
   // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
@@ -407,7 +443,19 @@ var BASELINES = {
   // automatic relief (`open_porv_manual` vs `open_porv`), so a scenario can lock the
   // operator out — TMI-2 does — without touching overpressure protection. The third
   // check is the one that matters: relief must still lift while the switch is locked.
-  'run_m4.js':             { code: 0, score: '28/28 156passed' },
+  // 28 → 32 on 2026-07-31 (#154 item 6): four kernel internals with no test at all —
+  // actuation `reset_below` (a comment recorded the shipped PORV-flapping inversion
+  // and nothing pinned the fix), numeric `override_value` interception (five PWR
+  // failures use it; the intercepted-command path was never once observed),
+  // interception PRECEDENCE (first-injected wins), and `acknowledge_all_alarms`,
+  // which was only ever asserted as "the instructor gate does not block it". All four
+  // verified red by injecting the defect they guard.
+  // 32 -> 33 on 2026-07-31 (#287): losing shutdown cooling annunciates. Gated on the
+  // MODE, not the RPS latch — measured, a Mode 5 plant reads `rps_scrammed = false`
+  // (it was never tripped, it is simply cold), so the first cut of this alarm could
+  // not fire in the one regime where losing RHR matters most. The probe also pins the
+  // permissive staying ONE-SHOT, which is now ruled-on behaviour.
+  'run_m4.js':             { code: 0, score: '33/33 185passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
@@ -425,14 +473,31 @@ var BASELINES = {
   // (at 3600x the old service ran a 135.9 % excursion and NEVER tripped) and the
   // evaluation rate at 0.003/sim-s against its >=5 floor. BOTH 1x checks stay green on
   // the old body, which is the proof that 1x behaviour is unchanged.
-  'run_m5.js':             { code: 0, score: '20/20 90passed' },
+  // 19 → 22 on 2026-07-31 (#154 item 7): the `_rewindCursor` walk-back (#137 narrowed
+  // it to the beat path but did not remove it, and it had never had a test), world
+  // rewind `exact` at THIS level (it was covered only end-to-end in the browser gate,
+  // and this is where its semantics live), and `save_state` as a COMMAND — every
+  // other caller reaches for svc.saveState() directly, so that dispatch line was
+  // unexercised.
+  // 22/22 96 -> 23/23 103 on 2026-07-31: NOT a new test, a CONFLICT RESOLUTION correction.
+  // The `develop` <- `workbench` merge took this file's develop side, which predates the
+  // #154 service tests the merge itself brought in, so the gate read DRIFT on a tree where
+  // nothing was wrong. Re-measured on the merged tree. This is the exact failure CLAUDE.md
+  // names ("a mechanical BASELINES resolution can silently take the wrong number") — the
+  // instruction to re-run run_all AFTER resolving is what caught it.
+  'run_m5.js':             { code: 0, score: '23/23 103passed' },
   // 16 -> 17 suites, 94 -> 102 checks 2026-07-27 (#142): a new save/restore test for
   // the instructor's operator-action memory and follow acc streak, both of which
   // saveState dropped. Verified against the PRE-fix instructor, where 5 of its 8
   // checks fail — including the softlock itself (an `operator_action` beat could
   // never be credited after a restore). Its legacy-save check passes on both
   // versions, which is the point: old saves keep their old behaviour.
-  'run_m6.js':             { code: 0, score: '17/17 102passed' },
+  // 17 → 18 on 2026-07-31 (#154 item 7): chat-mode transcript mechanics. run_campaign
+  // drives a chat scenario and asserts the log grows — the story clock, the time-skip
+  // divider (first line of the beat only, or the UI repeats it down an ordinary
+  // exchange) and the CHAT_LOG_CAP ring had no unit coverage. The cap matters: the
+  // snapshot passes the log BY REFERENCE every broadcast.
+  'run_m6.js':             { code: 0, score: '18/18 117passed' },
   'run_m6ph.js':           { code: 0, score: '8/8 18passed' },
   'run_m7.js':             { code: 0, score: null },   // prints "M7 OK", no tally
 
@@ -442,7 +507,15 @@ var BASELINES = {
   // retired when its cause clears, without re-engaging the channel.
   // 21 -> 24 on 2026-07-31 (#228): the RPS reset, run for ALL THREE plants. The defect
   // hid for months because every test that touched reset_rps was PWR-only.
-  'run_autoctl.js':        { code: 0, score: '24/24' },
+  // 24 → 30 on 2026-07-31 (#154 item 10): six DISCRIMINATING per-channel probes.
+  // The suite engaged SEVEN channels at once and asserted aggregate plant state —
+  // power, Tavg, pressure, SG level — so a dead channel hid behind the others.
+  // MEASURED by neutering the kernel (channel reports `engaged`, does nothing):
+  // `cvcs_makeup`, `boron_trim`, `grid_follow`, `boron_conc` and the ENGAGE half of
+  // `steam_dump` were each a complete no-op at a green 24/24, and `boron_conc` is
+  // `defaultOn` — it shipped inert in every free-play preset lineup. Each new probe
+  // engages ONE channel and was verified red by injection.
+  'run_autoctl.js':        { code: 0, score: '30/30' },
   // Back to 51/51 2026-07-26 (#218): pwr_msiv re-authored for P-9. The mission had been
   // a RACE — reopen before an automatic low-SG trip — and with the scram now landing at
   // closure that race is gone; worse, the decision beat's `scram` branch fired instantly
@@ -533,11 +606,31 @@ var BASELINES = {
     // any plant. All THREE accel probes (PWR, RBMK [post], BWR) now report identical
     // trip delay at 1x and 256x. Owner lifted the RBMK hold for this fix ("You can fix
     // RBMK too", 2026-07-31).
-    code: 1, score: '58/68 336passed 11failed',
-    note: 'Ops probes are tuning targets by design. Measured 2026-07-31 from ' +
-          'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; the 10 reds are ' +
-          '6 RBMK + 4 BWR. The C2 accel-latency probe was the RBMK seventh and is now ' +
-          'green (#153 fixed). The old wording here named "P4" among the open targets — ' +
+    // 57/68 -> 58/69 on 2026-07-31 (#154 item 9): +ops_shutdown_dilution. Every other
+    // reactivity probe in the file runs AT POWER, where the subcritical multiplication
+    // it measures does not exist — so the regime that produced the owner's free-play
+    // source-range trip (#260) had no probe at all. Measured: diluting Mode 5 at the
+    // tuned 0.05 ppm/s makeup rate and walking away, the source-range high-flux trip
+    // fires at 1248 s, 59 ppm removed, boron 857 -> 798. The failure count is unmoved.
+    // 344 -> 350 passed on 2026-07-31: ops_cooldown_to_rhr's three INFO lines became
+    // real checks. It is named 'toward RHR entry' and never got there — measured, it
+    // cooled at 103 C/h against the 50 C/h its own driver paces to, and the check that
+    // NAMED that ramp was `Tavg after 2 h < 275 C`, one-sided and landing at 90.7, so it
+    // could not see a doubled rate in either direction. The driver now throttles the RHR
+    // heat exchanger (the actual rate control below the interlock), isolates the
+    // accumulators at 1000 psig per #273, and runs 3 h because a properly paced cooldown
+    // only reaches the interlock at about two hours. Rate now 50 C/h exactly, RHR aligned
+    // at 103 min, boron 2270 -> 623 ppm, inventory 120 -> 100 %. Failure count unmoved.
+    // 58/69 350/12 -> 59/69 351/11 on 2026-07-31: same conflict-resolution correction as
+    // run_m5 above. The merge kept develop's baseline while bringing in workbench's
+    // `ops_cooldown_to_rhr` rework, which turns that probe green — a red going green is
+    // still drift, and it has to be acknowledged rather than absorbed.
+    code: 1, score: '59/69 351passed 11failed',
+    note: 'Ops probes are tuning targets by design. Measured 2026-07-27b from ' +
+          'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; all 11 reds are ' +
+          '7 RBMK + 4 BWR, and the deliberately-red C2 accel-latency probe (#153, ' +
+          'status-deliberate) is one of the RBMK seven ("ABUSE [post] time-acceleration"), ' +
+          'not a twelfth item. The old wording here named "P4" among the open targets — ' +
           'a P-prefixed probe is PWR and P4 has passed since 2026-07-22 (#161(b)). It was ' +
           'wrong in CLAUDE.md and got copied into this note; both corrected together. ' +
           'See Diagnostic/OPS_TUNING_REPORT.md. ' +

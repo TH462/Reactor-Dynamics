@@ -520,6 +520,64 @@ T.push(test('Integration — swap invariant: real M6 free-play is byte-identical
   ck('identical physics-relevant snapshots', 'a==b', a === b, 'identical');
 }));
 
+// ============================== unit: chat mode (#154 item 7) ==============================
+// run_campaign drives a chat scenario end-to-end and asserts the log accumulates
+// and an interaction grants — a thin slice. The transcript's own mechanics had no
+// unit coverage: the story clock, the time-skip divider, and the ring cap that
+// keeps a long scenario from growing the log without bound.
+T.push(test('Chat — story clock, time-skip divider and the CHAT_LOG_CAP ring (#154)', function (ck) {
+  var x = instrWith({ id: '__m6chat', chat: true, beats: [
+    { id: 'b1', trigger: { type: 'time', value: 0 }, story_min: 0,
+      dialogue: [
+        { speaker: 'sup', learning: 'first', industry: 'FIRST' },
+        { speaker: 'op',  learning: 'second', industry: 'SECOND' },
+      ],
+      commentary: { learning: 'x', industry: 'X' } },
+    // A beat that deliberately compresses a stretch: the UI draws its elapsed-time
+    // divider ONLY on these, so `skip` must be set — and only on the FIRST line, or
+    // the divider repeats down an ordinary exchange.
+    { id: 'b2', trigger: { type: 'delay', value: 1 }, story_min: 80, time_skip: true,
+      dialogue: [
+        { speaker: 'sup', learning: 'much later', industry: 'MUCH LATER' },
+        { speaker: 'op',  learning: 'still later', industry: 'STILL LATER' },
+      ],
+      commentary: { learning: 'y', industry: 'Y' } },
+  ] });
+  x.it.step(snap({ metadata: { plant_id: 'pwr', sim_time: 0 } }), 0);
+  var log = x.it.chatLog;
+  ck('both lines of the first beat appended', log.length, log.length === 2, '2');
+  ck('speakers carried from the authored data', log[0].speaker + '/' + log[1].speaker,
+    log[0].speaker === 'sup' && log[1].speaker === 'op', 'sup/op');
+  ck('both registers carried', log[0].learning + '/' + log[0].industry,
+    log[0].learning === 'first' && log[0].industry === 'FIRST', 'first/FIRST');
+  ck('sim time stamped on each line', String(log[0].t), log[0].t === 0, '0');
+  // Story clock: the in-fiction anchor sits on the FIRST line of the beat only —
+  // the historical "it took 80 minutes" is a property of the beat, not of a line.
+  ck('story clock on the first line of the beat', String(log[0].story), log[0].story === 0, '0');
+  ck('and NOT on the second', String(log[1].story), log[1].story === null, 'null');
+  ck('no time-skip divider on an ordinary beat', String(log[0].skip), log[0].skip === null, 'null');
+  x.it.step(snap({ metadata: { plant_id: 'pwr', sim_time: 2 } }), 2);
+  log = x.it.chatLog;
+  ck('the second beat appended', log.length, log.length === 4, '4');
+  ck('story clock jumped to the authored 80 min', String(log[2].story), log[2].story === 80, '80');
+  ck('time_skip marks the divider on the first line', String(log[2].skip), log[2].skip === true, 'true');
+  ck('…and only the first', String(log[3].skip), log[3].skip === null, 'null');
+  var revBefore = x.it._chatRev;
+
+  // The ring cap. A long chat scenario must not grow the log without bound — the
+  // snapshot passes it BY REFERENCE every broadcast, so an uncapped log is a
+  // per-broadcast cost that climbs all session.
+  var many = [];
+  for (var i = 0; i < 400; i++) many.push({ speaker: 'sup', learning: 'line ' + i, industry: 'LINE ' + i });
+  x.it._appendChat(many, 3, null, false);
+  ck('log capped at CHAT_LOG_CAP', x.it.chatLog.length, x.it.chatLog.length === 300, '300');
+  // FIFO, not truncation: the OLDEST go, so the newest line is always present.
+  ck('the newest line survives', x.it.chatLog[299].learning, x.it.chatLog[299].learning === 'line 399', 'line 399');
+  ck('the oldest were evicted (FIFO)', x.it.chatLog[0].learning,
+    x.it.chatLog[0].learning === 'line 100', 'line 100');
+  ck('rev advanced — the UI change key', x.it._chatRev > revBefore, x.it._chatRev > revBefore, '> ' + revBefore);
+}));
+
 // -------- report --------
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', RST = '\x1b[0m', BOLD = '\x1b[1m';
 var pass = 0, fail = 0;

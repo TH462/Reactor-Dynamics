@@ -279,6 +279,14 @@ a handful of UI/doc items.
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
 anything here that is standing procedure rather than news belongs in the list below it.
 
+> **Evicting a bullet: RESCUE THE TRAP FIRST.** Before you delete the oldest, ask what in it
+> would still burn someone a month from now — a stale number that is still quoted in older
+> prose, a wrong premise that got copied, a gotcha with no other home. Move that to the
+> standing list below as **one line**, then drop the rest. The cap is there so the list stays
+> readable, not so knowledge expires with the news: on 2026-07-31 the #260/#263 bullet was
+> rotated out intact and took its "do not trust a 1400 ppm crossover" warning with it, which
+> is the failure this paragraph exists to stop.
+
 - **The steam dump was 2.6× the real capacity, and that made the P-9 trip un-teachable
   (2026-07-31).** `steam_dump_max` **1.05 → 0.40** *(OWNER RULING, 2026-07-31: "Let's change it to
   40%.")* — the prototypical value, *"In most Westinghouse units the capacity of the steam
@@ -304,6 +312,52 @@ anything here that is standing procedure rather than news belongs in the list be
   5 ↔ 1 cooldown/heatup missions, which was the one blast radius flagged unmeasured before
   the ruling. Five probes re-banded (TR-1 was pinning a NON-EVENT; its PORV check is written
   POSITIVELY now) and **TR-1g** added — the check that says 40 % is *enough*.
+
+
+- **Five automation channels could have been doing nothing, and the gate still read 24/24
+  (2026-07-31, #286, split from #154).** `run_autoctl` engaged **seven channels at once** and
+  asserted **aggregate** plant state — power, Tavg, pressure, SG level — so every band could
+  be held by a channel other than the one under test. Measured by neutering the kernel
+  (channel reports `engaged`, does nothing): `cvcs_makeup`, `boron_trim`, `grid_follow`,
+  `boron_conc` and the **engage** half of `steam_dump` were each a complete no-op at a green
+  **24/24**. Three things to know. **`boron_conc` is `defaultOn`** — it is in every free-play
+  preset lineup, so it could have shipped inert to players. **`steam_dump`'s one incidental
+  red was a different feature's test**: blanking it reddened only *"PWR · RPS reset works…
+  (#228)"*, and only via the **disengage** path, so engaging it could have done nothing at
+  all. And **the first injection LIED** — blanking a `mode` channel's disengage as well as
+  its engage leaves the plant in whatever AUTO the IC shipped with (the rig's own t=0
+  stand-down is what puts it in manual), so the `steam_dump` and `pzr_pressure` probes
+  **passed against a dead channel** until the injection was narrowed to engage only. Six
+  probes now engage **one** channel each and assert what nothing else in the lineup can
+  produce — `cvcs_makeup` holds pzr level **54.9 %** against **22.5 %** dead; `boron_trim`
+  recovers rods to **88.6 %** against **100.0 %**, out of travel; `steam_dump` holds a
+  turbine trip at **1121 psi (7.73 MPa)** against **1368 psi (9.43 MPa)** *with the code
+  safeties lifting*. `run_autoctl` **24 → 30**. The rest of #154 was re-verified in the same
+  pass: about half is dead (all five TMI-2 Part-3 endings, the follow-mode save/restore
+  branch, cold-init trip blocks, the PORV block valve), and what stands is `reset_below`,
+  `porv_tailpipe_temp`, the PZR code safeties, the RHR interlock, and 8-of-29 save migration.
+
+- **The map that pins procedure steps to controls was the browser gate's COVERAGE LIST, and
+  it had gone stale (2026-07-31, #224).** `STEP_UI` in `test/manual_ui_map.js` reported 32
+  mismatches — but the filed defect understated it: **`verify_manual_follow.js` iterates that
+  table, not the procedure steps**, so an unmapped step is **UNVERIFIED**, not merely unmapped.
+  Measured: **17 of the 45** controlled PWR steps covered, `pwr_heatup` at **zero**, and the
+  gate reporting a confident PASS over the slice that was left. Three things to know. **The
+  issue's own caveat resolved to a third answer** — it asked whether the 32 were real defects
+  or an over-strict auditor; neither, **all 45 steps resolve** against the board's control
+  vocabulary, so no procedure has ever named a control the player cannot reach.
+  **`VIEW_CONTROLS.pwr` was a hand copy of a display that no longer exists**: the PWR plant
+  display is the learning BOARD with no view bar, and nine labels the procedures use
+  (`RCP Run/Stop`, `Dump SP`, `Trip Blocks`, `1/M Plot`…) were absent from the copy while
+  being perfectly reachable — filling the table against it would have manufactured nine false
+  failures. PWR now reads `PwrBoardDriver.controlLabels()`, the same `CONTROL_LABEL_MAP`
+  `revealControl` resolves and `run_campaign` already validates beat highlights against. And
+  **the loops had to be rewritten to afford the coverage**: the bar check re-navigated per
+  entry with `&view=`, **a parameter nothing in `ui/app.js` reads**, and the follow check
+  reloaded and re-clicked `next` *i* times per entry (O(n²) — `pwr_heatup` alone: 153 clicks).
+  Both walk once now: **84 → 174 checks for 115 → 132 s**. The auditor is
+  `run_manual_controls.js` now so auto-discovery baselines it, which is the only thing that
+  stops a fourth recurrence (`run_all` **34 → 35 runners**).
 
 - **The P-9 permissive read the plant instead of the gauge, and the HR1 gate said that
   could not happen (2026-07-31, #220).** `above_p9` was `(s.power_pct || 0) > 50` — **true**
@@ -332,6 +386,7 @@ anything here that is standing procedure rather than news belongs in the list be
   prototypical 40 %, the 1.5 DPM withdrawal block, the AFW 20 %/17 % offset, status-level P-9
   sensing) — the evidence pass verdicted 7/2/1 with **none wrong**, so what it bought was the
   numbers and the qualifications, not a correction.
+
 
 - **Protection was evaluated once per broadcast, so a UI speed button set how well the
   reactor was protected (2026-07-31, #153).** `tick()` ran N physics steps and then called
@@ -363,57 +418,28 @@ anything here that is standing procedure rather than news belongs in the list be
   2026-07-31: "You can fix RBMK too")*. `run_campaign` 51/51 and `run_procedures_stack` 22/22
   are unmoved — ten times the evaluations perturbed no authored content.
 
-- **The rewind ring measured the wrong clock, so it evaporated exactly when you needed it
-  (2026-07-31, #137).** Free-play checkpoints were laid every 15 **sim** seconds, so the
-  32-slot ring always spanned the same slice of the *plant's* life and progressively less of
-  *yours*: measured at saturation, **465.9 real seconds at 1× but 9.3 at 60× and 3.1 at
-  600×** — gone in precisely the case (a long fast-forward) the feature exists for. The
-  cadence is **20 s of wall clock** now *(OWNER, 2026-07-31: "The rewind cadence should be 20
-  seconds real time not sim time.")*, so the ring spans **620.0 real seconds at every
-  acceleration** (measured 1×/10×/60×) and each slot just covers more sim — ~103 plant-hours
-  reachable at 600×. Three things to know. **The cadence fix alone would have shipped a
-  picker with nothing to click**: at 600× the slots are 12,000 sim s apart and the widest
-  chart window is 1800 s, so every mark it creates lands off the left edge — the plot now
-  widens to the whole ring while you are picking, which is the half of the ask that answers
-  *"for long fast forwards we need a way to go back far enough"*. **The picker was already
-  there and already wrong** — the issue said the `exact` path "has never had a player-facing
-  way in", but it shipped 2026-07-23, inverting `chartBuf`'s full 30-minute record while the
-  plot drew `ui.window`; measured, clicking the mark at **T+19 s** landed the plant at
-  **T+0**, and both sides now read one `chartExtent()`. And **the issue's item 2 was
-  declined**: it called the exact-time guard and the `_rewindCursor` walk-back dead weight
-  once the one-step button went, but they are the **beat** path's guards too — a `rewind:`
-  beat deliberately does not checkpoint, so consecutive ones hit the exact case they were
-  written for, and nothing would have caught the regression. **`_now()` is a prototype seam
-  because a headless runner burns no wall time**: without it the entire cadence is invisible
-  to every gate here. `run_m5` 79 → **83 checks** (injection: the pre-fix service lays 21
-  checkpoints where the new one requires zero), `verify_e2e_ui` gains a `testRewindPicker`
-  section whose load-bearing check clicks a specific mark and reads the clock back — pressing
-  the button and counting marks passes on all three defects.
-
-- **The map that pins procedure steps to controls was the browser gate's COVERAGE LIST, and
-  it had gone stale (2026-07-31, #224).** `STEP_UI` in `test/manual_ui_map.js` reported 32
-  mismatches — but the filed defect understated it: **`verify_manual_follow.js` iterates that
-  table, not the procedure steps**, so an unmapped step is **UNVERIFIED**, not merely unmapped.
-  Measured: **17 of the 45** controlled PWR steps covered, `pwr_heatup` at **zero**, and the
-  gate reporting a confident PASS over the slice that was left. Three things to know. **The
-  issue's own caveat resolved to a third answer** — it asked whether the 32 were real defects
-  or an over-strict auditor; neither, **all 45 steps resolve** against the board's control
-  vocabulary, so no procedure has ever named a control the player cannot reach.
-  **`VIEW_CONTROLS.pwr` was a hand copy of a display that no longer exists**: the PWR plant
-  display is the learning BOARD with no view bar, and nine labels the procedures use
-  (`RCP Run/Stop`, `Dump SP`, `Trip Blocks`, `1/M Plot`…) were absent from the copy while
-  being perfectly reachable — filling the table against it would have manufactured nine false
-  failures. PWR now reads `PwrBoardDriver.controlLabels()`, the same `CONTROL_LABEL_MAP`
-  `revealControl` resolves and `run_campaign` already validates beat highlights against. And
-  **the loops had to be rewritten to afford the coverage**: the bar check re-navigated per
-  entry with `&view=`, **a parameter nothing in `ui/app.js` reads**, and the follow check
-  reloaded and re-clicked `next` *i* times per entry (O(n²) — `pwr_heatup` alone: 153 clicks).
-  Both walk once now: **84 → 174 checks for 115 → 132 s**. The auditor is
-  `run_manual_controls.js` now so auto-discovery baselines it, which is the only thing that
-  stops a fourth recurrence (`run_all` **34 → 35 runners**).
-
 **Standing procedure — not part of the rotation above; these do not expire.**
 
+- **The moderator model was re-done TWICE, and older prose still quotes the dead numbers**
+  (#260 then #263; rescued from the themes rotation 2026-07-31). If you meet a **1400 ppm
+  boron crossover** or a **−20 pcm/°C** at-power moderator coefficient in any document, it is
+  stale — both were superseded. The live values are fitted to the three measured BEAVRS
+  Cycle 1 HZP isothermal coefficients: at-power **−26.8 pcm/°C**, HZP ARO critical boron
+  **986 ppm**, control bank **4068** / shutdown **3676** pcm. `run_reactivity` is what pins
+  them, and it reddens if a rod worth or `alpha_D` moves without a re-solve. Still open:
+  there is **no Estimated Critical Condition** anywhere, which is what would have stopped the
+  free-play event that started #260.
+- **Traps rescued from bullets rotated out on 2026-07-31** (per the eviction rule above).
+  **#137 rewind:** the free-play checkpoint cadence is **20 s of WALL clock**, not sim time, and
+  `_now()` is a prototype seam **because a headless runner burns no wall time** — without it the
+  cadence is invisible to every gate here, so do not simplify it away. **#284 turbine:** a
+  synchronised machine **motors, it does not decelerate** — test the BREAKER (`RD.LoadMode.isOnLine`),
+  never `generator_load > 0`, and that predicate deliberately EXCLUDES `turbine_tripped` because a
+  trip and an open breaker are different events (#230). `mwe_output` reads the TURBINE, not the core.
+  **#249 pressurizer:** `level_per_mass_surplus` is **776**, fitted to real geometry (pzr steam space
+  = 5.8 % of RCS volume); `cvcs_charge_per_level` was deliberately **NOT** scaled with it — the
+  documented 83 s loop τ is the *deficit* branch, so touching the shared gain to fix a surplus-side
+  number slows leak make-up to 215 s.
 - **The board is the V2 diagram, and `pwr_board_data.js` is GENERATED.** Edit in the Claude
   Design "PWR Reactor" builder, re-export to `inbox/Diagram V2.json`, run
   `node tools/gen_board_data.js`, then re-point ids in `pwr_board_wiring.js`. **The builder's
@@ -445,6 +471,20 @@ anything here that is standing procedure rather than news belongs in the list be
 - **Verify a claim before you act on it.** Roughly half the issues touched on 2026-07-27 were
   stale or mis-framed — leaks already fixed, "reasons" that measurement disproved, premises
   copied between files. Read `Diagnostic/TUNING_LOG.md`'s top entry, then check the code.
+- **A claim about COVERAGE is an unmeasured claim — prove it by injection** *(my call,
+  2026-07-31; not an owner ruling)*. HR12 binds assertions about plant dynamics: step the
+  plant, quote the number. The class that keeps going wrong is the neighbouring one it does
+  **not** name — *"X is untested"*, *"the gate covers Y"*, *"nothing asserts Z"* — and those
+  are just as measurable, with a tool the repo already uses. **To prove something is untested,
+  break it and run the gate.** Neuter the channel, invert the comparison, delete the config,
+  and see what reddens; if nothing does, it is untested as a *measurement* rather than as an
+  opinion. That is how #286 found five inert automation channels behind a green 24/24 — and
+  skipping it is how, the same day, I repeated this repo's own claim that the RHR 400 psi
+  (2.76 MPa) interlock was untested when `run_pwr` covers it fully, and predicted its cooldown
+  probe stopped at 10 MPa when it actually reaches **283 psi (1.95 MPa)**. One run caught both.
+  **Inherited claims are the risky ones**: a sentence from a review, an issue body or this file
+  has usually aged, and repeating it in your own voice launders it into a fresh assertion.
+  Either say "the 2026-07-19 review says X, unverified", or go and measure.
 - **Provenance matters more than it looks.** Many "owner rulings" in this repo were written by
   agents; all agent work commits under the owner's name, so git blame proves nothing. A ruling
   without a date and a verbatim owner quote is advisory — see `Blueprint/CONTEXT.md` §3.

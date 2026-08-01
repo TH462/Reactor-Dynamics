@@ -329,6 +329,50 @@
       });
     },
 
+    // MD-10 — FEED AND BLEED, the recovery MD-6 does not have (#154 item 9). MD-6
+    // is the total loss of the secondary heat sink taken to core damage; the
+    // trained response is to make a heat sink out of the PRIMARY — open the PORV
+    // (bleed) and run high-pressure injection (feed), carrying decay heat away as
+    // subcooled water in and hot water out. Same shape as MD-4's negative control:
+    // identical casualty, correct operator action, core saved. Without it the
+    // suite proved only that the plant CAN be lost this way.
+    'MD-10': function () {
+      return test('MD-10 Total loss of heat sink WITH feed and bleed → core protected', function (ck) {
+        function lossOfHeatSink() {
+          var h = new Harness('hot_full_power');
+          h.run(10);
+          h.cmd({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+          h.cmd({ action: 'inject_failure', failure_id: 'afw_failure' });
+          h.cmd({ action: 'scram' });
+          return h;
+        }
+        // Control: the MD-6 casualty with no operator action. Re-established here
+        // rather than assumed, so the comparison below is against a MEASURED
+        // outcome on today's plant, not against MD-6's recorded numbers.
+        var lost = lossOfHeatSink();
+        lost.cmd({ action: 'set_hpi', active: false });
+        var rl = driveDamage(lost, 8000);
+        ck('control — no action, the core is damaged (the MD-6 endpoint)',
+          rl.damagedAt < 0 ? 'never' : rl.damagedAt + ' s', rl.damagedAt >= 0, 'damaged');
+        // Recovery: bleed through the PORV, feed with HPI. The block valve stays
+        // OPEN — closing it is the TMI-2 recovery for a STUCK valve and exactly the
+        // wrong action here, where the open path IS the heat sink.
+        var h = lossOfHeatSink();
+        h.cmd({ action: 'open_porv' });
+        h.cmd({ action: 'set_hpi', active: true });
+        var r = driveDamage(h, 8000);
+        recordEndpoint(ck, r);
+        ck('feed and bleed protects the core', fmt(r.maxFuel, 0) + ' °C peak fuel',
+          r.t.fuel_damaged === false, 'no damage (< 1200 °C)');
+        ck('…and it never melts', r.meltAt < 0 ? 'never' : r.meltAt + ' s', r.meltAt < 0, 'never');
+        ck('inventory is HELD by the injection, not merely drained slower',
+          fmt(r.minInv, 1) + ' % minimum', r.minInv > 50, '> 50 %');
+        ck('the bleed path carried heat — primary stayed below the unmitigated peak',
+          fmt(r.maxTavg, 0) + ' vs ' + fmt(rl.maxTavg, 0) + ' °C unmitigated',
+          r.maxTavg < rl.maxTavg, '< ' + fmt(rl.maxTavg, 0) + ' °C');
+      });
+    },
+
   };
 
   function runAll() {
