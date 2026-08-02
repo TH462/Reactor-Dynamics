@@ -249,17 +249,33 @@ educational" is unfalsifiable and Q2 becomes a rubber stamp (§7).
 > demand. You see power drop to match demand and t-avg rise… These kind of dynamics,
 > relationships and physics of the plant are what I want to teach.")*
 
-**This is a relationship-shaped goal, not a skill-shaped one**, and the distinction decides what
-Q2 rewards. An earlier draft of this section listed operator competences — *read instruments,
-run a procedure, control reactivity*. Those are real, but they are what an operator **does**;
-the stated goal is what a player **understands**: component A moves, B responds, and here is the
-physics that couples them. A feature earns Q2 credit by making a coupling **visible**, not by
-adding something to do.
+**Dynamics is the PRIMARY goal — and procedure is a second one, not a subordinate one**
+*(OWNER, 2026-08-02: "Plant procedure is still something I want to teach so there are some
+systems that don't reveal dynamics in my pwr sim but I included them because they are important
+for procedure.")*. An earlier draft of this section listed only operator competences and was
+corrected for missing the couplings; the correction then over-swung, and this is the balance:
 
-**The unit of an objective is therefore a DEMONSTRATION**, and that is Q2's sharpened test:
+- **Tier A — dynamics.** What the player *understands*: component A moves, B responds, here is
+  the physics that couples them. This is what the name promises and it leads.
+- **Tier B — procedure & operations.** What the player *does*: run an evolution correctly, in
+  order, with the right systems lined up. Some systems **reveal no coupling at all** and are
+  here because a real plant's procedure needs them. That is a complete Q2 justification.
 
-> **State it as: [what you change] → [what responds] → [the mechanism], and give the board
-> actions plus MEASURED numbers.** If you cannot produce that, the objective is not real yet.
+**So a feature has TWO possible routes to Q2 credit, and needs exactly one of them:**
+
+> **DYNAMICS ROUTE — a DEMONSTRATION.** State it as [what you change] → [what responds] →
+> [the mechanism], with board actions and MEASURED numbers.
+>
+> **PROCEDURE ROUTE — a STEP.** It is required by a real plant procedure (sourced, per Q1) and
+> is named by an authored checklist, mission or beat.
+>
+> **Neither route ⇒ no Q2 credit**, and a non-prototypical, board-complicating feature with no
+> Q2 credit fails on Q3 alone.
+
+This is also what makes Q3's orphan-control test *precise* rather than blunt: an orphan is
+damning for a **procedure-bearing** system, because being named by a step IS its whole
+justification — while a dynamics-bearing control justifies itself by demonstration and may
+legitimately never appear in a checklist.
 
 ### 6.3 Tier A — the core dynamics (PROPOSED)
 
@@ -274,7 +290,23 @@ measured on the shipped plant (full stack, `hot_full_power`, accel 10×, free-pl
 | **A4** | **Level is not inventory** | shrink/swell; the level *program* moves with Tavg | pzr level rises on a load rejection with inventory unchanged |
 | **A5** | **The SG is the primary's only heat sink** | lose feed and Tavg climbs whatever the rods do | loss of feedwater; AFW starts |
 | **A6** | **A reactor cannot be switched off** | decay heat; subcritical ≠ cooled down | post-scram tail; the Mode 5 cooldown; SBO |
-| **A7** | **You see all of this through instruments that lag and can lie** | HR1 — the observation layer over every coupling above | TMI flagship; failed-channel probes |
+
+**Instrument DECEPTION is deliberately NOT a Tier A objective** *(OWNER, 2026-08-02: "I don't
+want to focus on instruments lying. It will come up in failure scenarios but I dont know if it
+should be a major focus.")*, and the reason is an ordering fact rather than a preference:
+**you cannot perceive a lying instrument without already knowing what the plant should be
+doing.** `DESIGN_COMPANION.md` §2 says so itself without noticing — the TMI dissonance arrives
+when *"the subcooling margin falls in a way that does not fit the story"*, and **the story is
+Tier A**. Taught before the couplings, it yields generalised distrust of gauges instead of
+diagnosis by cross-check. It is the **payoff** of the curriculum, not the curriculum: it belongs
+to Tier C, where TMI already carries it as *a failure of information*.
+
+**HR1 IS UNAFFECTED AND STAYS EXACTLY AS IT IS.** This is a statement about teaching emphasis,
+not about the model. Two reasons it must not be read as licence to soften the instrument layer:
+protection reading instruments rather than truth is what makes the failure scenarios possible at
+all, and **a HEALTHY channel's lag is itself part of the dynamics** — it changes what the
+operator sees during every transient in Tier A with no failure injected anywhere. The
+observation layer is in scope; *distrust* as a headline lesson is not.
 
 **A1's numbers reconcile, and the arithmetic is itself the lesson.** Tavg rose 12.6 °C against a
 measured MTC of **−26.8 pcm/°C** → **−338 pcm** from the moderator. The fuel *cooled* 693 → 551 °C
@@ -292,36 +324,65 @@ so there is essentially no bulk void at operating conditions and it is not what 
 Void *is* the actor on the RBMK (positive) and the BWR (negative), which is precisely the
 cross-plant contrast Tier B should carry.
 
-**Tier B — plant identity.** One coupling per plant that the others do not have. PWR: a
-pressurized, subcooled primary with the SG as its only heat sink. RBMK: a **positive** void
-coefficient, and what that does to a shutdown. BWR: a direct cycle boiling in the core, where
-void is both the power controller and the hazard.
+### 6.4 Tier B — procedure & operations (PROPOSED)
 
-**Tier C — accident lessons.** Already written: `DESIGN_COMPANION.md` §5 (TMI = information,
-Chernobyl = design, Fukushima = sustained support). Adopt as-is.
+**Some systems on this board reveal no coupling and are correct anyway.** They are here because
+running a plant is an ordered, lined-up activity and that is worth teaching in its own right.
+The PWR already carries several, and naming them stops a future reviewer "simplifying" them out
+on the grounds that they teach no physics:
 
-### 6.4 How Q2 changes once these are ruled
+| System | Coupling it reveals | Why it is here |
+|---|---|---|
+| **Trip blocks** (IR-high, PR-25, `lo_press`, `si_trip`) | none — a block changes nothing until a setpoint is crossed | protection is **staged to the evolution**: you block deliberately as a step, above P-10 on the way up and inside P-11 on the way down |
+| **ESF arms / HPI-LPI to OFF** | none in normal operation | the P-11 cold lineup; PWR-N15 measured what skipping it costs — 2500 ppm RWST injection instead of 857 |
+| **SR detector energize / secure** | none | the P-6 SR→IR handoff is a real procedural sequence |
+| **RHR suction valve interlock** | none until the setpoint | entry conditions for shutdown cooling |
+| **Accumulator isolation, MSIV** | little, in normal ops | lineup state that decides what happens *later* |
+
+**The Tier B objective, stated:** the player can run an evolution **in order**, put systems in
+the lineup the procedure calls for, and say **what each step is protecting against** — including
+steps whose effect is invisible at the moment they are performed.
+
+**That last clause is the teaching content**, and it is why these systems are not filler: a step
+with no immediate feedback is exactly the kind a real operator skips, and PWR-N15 is the worked
+case — the missing SI-block step produced a scram ~5 plant-minutes into the first leg, far enough
+downstream that the cause is not obvious from the effect.
+
+### 6.5 Tiers C and D
+
+**Tier C — plant identity.** One coupling per plant the others do not have. PWR: a pressurized,
+subcooled primary with the SG as its only heat sink. RBMK: a **positive** void coefficient, and
+what that does to a shutdown. BWR: a direct cycle boiling in the core, where void is both the
+power controller and the hazard.
+
+**Tier D — accident lessons.** Already written: `DESIGN_COMPANION.md` §5 (TMI = information,
+Chernobyl = design, Fukushima = sustained support). Adopt as-is — and this is where instrument
+deception lives, per §6.3.
+
+### 6.6 How Q2 changes once these are ruled
 
 Today Q2 asks *"is there educational value?"* — answerable "yes" for anything. With objectives it
 asks two checkable questions:
 
-1. **Which objective does this serve, and where is it exercised?** A feature serving none is not
-   thereby rejected, but it has no Q2 credit to spend against Q1 or Q3 — so a non-prototypical,
-   board-complicating feature with no objective behind it fails on Q3 alone.
+1. **Which objective does this serve, by which route — demonstration or step?** (§6.2.) A feature
+   with neither is not automatically rejected, but it has no Q2 credit to spend against Q1 or Q3,
+   so a non-prototypical, board-complicating feature with no objective fails on Q3 alone.
 2. **Is the objective under-served?** This is the direction that generates work rather than
-   filtering it, and it is the one an automated build needs: an objective with no mission, no
-   procedure and no board control is a **content gap**, findable mechanically.
+   filtering it, and it is the one an automated build needs: a Tier A coupling with no
+   demonstration, or a Tier B lineup step with no checklist, is a **content gap** — findable
+   mechanically, from the two artifacts each route already requires.
 
-Downstream of this ruling: **#283** (define BETA) gets its yardstick — "beta" is plausibly *every
-Tier A objective is exercised and gated on the PWR* — and **#253** (the lessons are stale) gets
-the standard to re-author against. Both are currently blocked on the same missing artifact.
+Downstream of this ruling: **#283** (define BETA) gets its yardstick — plausibly *every Tier A
+coupling has a demonstration and every Tier B system has a step, exercised and gated on the PWR*
+— and **#253** (the lessons are stale) gets the standard to re-author against. Both are currently
+blocked on the same missing artifact.
 
-### 6.5 My recommendation
+### 6.7 My recommendation
 
-**Adopt Tier C as-is, rule on Tier A, and defer Tier B until each plant is reopened.** Tier A is
-the load-bearing tier: it is plant-agnostic, so it is the part an automated RBMK/BWR build must
-satisfy, and it is what makes §5's table of prerequisites *purposeful* rather than mechanical.
-Tier B cannot be written honestly for RBMK/BWR before their evidence passes exist (§5, Q1).
+**Adopt Tier D as-is, rule on Tiers A and B, and defer Tier C until each plant is reopened.**
+A and B are the load-bearing pair and they are plant-agnostic, so they are what an automated
+RBMK/BWR build must satisfy; Tier C cannot be written honestly for those plants before their
+evidence passes exist (§5, Q1).
 
 **The gap Tier A exposes is a CONTENT gap, not a physics one.** Every coupling in §6.3 is already
 modelled and measurable — A1 was measured for this document in 2.5 s of wall clock. What is
