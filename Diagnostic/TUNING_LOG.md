@@ -20,6 +20,71 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-02a (#306 automatic rod control: the authority is right, the tracking is not — workbench)
+
+**Task: "Investigate issue 306" — *"How much control authority does the auto rod groups in a
+westinghouse reactor have? how much does ours have?"*** Evidence pass + measurement pass, no
+plant change. Full write-up on the issue; the four rigs are in the session scratchpad, not the
+repo. Layer: **engine + M4, SHIPPED lineup**, `hot_full_power`, accel 1×, IC printed and checked.
+
+**The sourced answer.** WTSM 8.1 Rod Control System (**ML11223A252**) is the document, and its
+§8.1.1 *is* the authority statement: *"a 10% step load increase or decrease, a 5% per minute
+ramp load increase or decrease, or a 50% step load decrease with the aid of the steam dump
+system… without actuating the pressurizer relief valves or generating a reactor trip"*, holding
+Tavg *"within ±5°F of the temperature program"* on the first two. Speed program (§8.1.4.5):
+deadband **±1.5 °F including a 0.5 °F lock-up**, then **8 steps/min** to ±3 °F, **32
+steps/min/°F** to ±5 °F, **72 steps/min** beyond. Rod insertion limits are **WTSM 8.4
+(ML11223A256)**: bank D floor = **1.99 × %power − 10 steps** → 189 of 228 at full power, and
+they are an **alarm plus a tech-spec LCO, not a rod stop** — *"The rods can always be inserted
+into the core."* Automatic control is **not provided below 15 % turbine power**.
+
+**Ours, measured.** Worth is right: 4068 pcm from the same WTSM 2.2 table, **730 pcm** of
+maneuvering band at full power (654 insert to the RIL + 76 withdraw) against a measured power
+defect of **97 pcm per 10 % of power** and **660 pcm over 100 → 30 %**. Rate is right too, which
+was the surprise: the ladder reads 8/48/72 equiv-steps/min, but `maxStep 8` per `period 5.0 s`
+throttles the *sustained* rate to **24 equiv-steps/min** — measured at exactly 24.0 on the 50 %
+step — and that works out to a **~9.5 min full-rod sweep against a real ~8.5–8.7 min**. The
+throttle is what makes the drive prototypical; the ladder alone would be 2.7× too fast.
+
+**Where it is not realistic: transient tracking.** Against the ±5 °F duty — 10 % step down
+**6.05 °F** MISS, 10 % step up 4.24 °F pass, 5 %/min ramp down **12.55 °F** MISS, ramp up
+**7.83 °F** MISS. The 50 % step with dump passes (that is TR-1g). Steady state is fine: 2 h
+soaks at seven loads settle **−0.56 to −0.98 °F** off program, inside our own deadband.
+
+**And the cause is NOT authority — injection says so.** Four variants on the same two duties:
+shipped 6.05/12.55; trim = 0 → 6.10/10.98; trim as a **rate comparator** → 6.30/**7.67**;
+**`maxStep` 8 → 32 (4× the drive) → 5.51/12.55, the ramp unchanged to the decimal.** Quadrupling
+the rod drive rate bought nothing, so the residual is the plant's own thermal lag, not the rods.
+Chasing the ±5 °F duty inside rod control would be fixing the wrong system.
+
+**The one real control defect found.** Our trim is `1.25 × (steam_flow×100 − power_range)` —
+**proportional**. The real one is a rate comparator, and WTSM 8.1.4.2 says why: *"provides an
+output if, and only if, there is a rate of change of the difference… This rate comparator
+prevents the power mismatch circuit from responding to steady state calibration differences
+between nuclear and turbine power."* Measured through our ramp the standing mismatch grows to
++6.8 and cancels the temperature error outright — at t = 360 s, error −4.64 against trim +4.41
+leaves eEff −0.04, so the channel commands **zero steps with Tavg 8.6 °F off program**. The rate
+form recovers 39 % of the ramp error.
+
+**Trap for whoever picks this up: I got the mechanism wrong first.** The ramp's growing
+deviation reads exactly like a permanent standing Tavg offset, and I wrote it up as one. The 2 h
+soaks disprove it — it closes. It cannot bias the endpoint because `_stepRods` tests the
+deadband against the **RAW** error, not `eEff`, so the trim can delay a correction but never hold
+the plant off program. Injection C is the other half of the same lesson: the obvious reading
+("the controller is rate-limited") survived three passes and died to one 4×-drive run.
+
+**Structural departures, filed on the issue, none actioned:** the RIL is a hard stop on our auto
+channel where a real one alarms (`control_kernel.js:1217`); `defaultOn` is consulted once by
+`engageDefaults()` so there is **no low-power stand-down** — measured, the channel took the
+reactor to **0.00 % power still engaged and still reporting "holding"**, no trip; five of the six
+real automatic rod withdrawal stops are absent, and **there is no OTΔT or OPΔT anywhere in the
+tree**, which is a protection gap wider than this issue; and our Tavg program spans **12.7 °F
+against a real 28 °F**, so our controller has the easier job and still misses.
+
+**Status:** `status-needs-ruling`. Recommended: do the rate comparator and nothing else — it is
+the only item both sourced verbatim and measured to matter, and it touches the control layer
+only. Explicitly recommended *against*: raising the drive rate.
+
 ## Session log — 2026-08-01d (the System Scanner was teaching five wrong things, workbench)
 
 **Task: "review the system scanner descriptions."** The board's inspection copy
