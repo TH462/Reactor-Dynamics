@@ -1548,8 +1548,11 @@
       var blocked = ts.blocked != null ? ts.blocked : isBlocked(s, id);
       btns[i].textContent = blocked ? 'BLOCKED' : 'BLOCK';
       btns[i].className = blocked ? 'bd-blocked' : '';
-      // Manual rule (kernel-evaluated): block unless the trip is asserted; while blocked,
-      // clearing is locked as long as the trip is asserted (removing it would scram now).
+      // Manual rule (kernel-evaluated, see getRpsState): BLOCK is offered while the trip is
+      // not yet asserted, or inside its permissive. CLEAR is never withheld — `can_clear` is
+      // just "there is a block to clear", so this button will happily scram the plant when
+      // the block it removes was the only thing holding an asserted trip off. That is
+      // deliberate and prototypical; the earlier comment here claimed the reverse.
       btns[i].disabled = blocked ? (ts.can_clear === false) : (ts.can_block === false);
     }
   }

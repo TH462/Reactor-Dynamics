@@ -141,11 +141,14 @@
       'should read.', CI, '3.3'),
 
     ims5glucngg: e('ROD AUTO',
-      'Hands the control bank to the Tavg automation channel — rods hold average coolant temperature.',
-      'Engaging captures the CURRENT indicated Tavg as the reference and then holds it with variable ' +
-      'rod speed inside a deadband of about ±1.4 °F (±0.8 °C). That capture is the trap: engage it while Tavg ' +
-      'is far from where you want it and the rods will drive hard toward the wrong number. Any manual ' +
-      'rod motion drops the channel to manual, and so does a scram.', CI, '14.3'),
+      'Hands the control bank to the Tavg automation channel — rods hold coolant temperature on the load program.',
+      'The reference is PROGRAMMED on turbine load, not captured: Tref slides along a line from ' +
+      '566.6 °F (297.0 °C) at no load to 579.2 °F (304.0 °C) at full power, and the rods drive indicated Tavg to ' +
+      'it at variable speed, locking up inside a deadband of about ±1.4 °F (±0.8 °C). Drop load from 100 to ' +
+      '60 MWe and the reference walks itself from 579.3 °F (304.07 °C) down to 574.2 °F (301.24 °C) — the ' +
+      'rods answer a load change before you do. On a free-play start it engages itself above P-10 (10 % ' +
+      'power), so at power it is already in. Any manual rod motion drops the channel to manual, and so ' +
+      'does a scram.', CI, '14.3'),
 
     imrqr8ecji6: e('SCRAM',
       'Manual reactor trip — drives every rod in. Arm, then confirm.',
@@ -155,10 +158,13 @@
       'REACTOR TRIP tile names the first-out cause.', CI, '3.5'),
     imrsk4xz2dm: e('TRIP BLOCKS',
       'Opens the startup trip-block panel — deliberately blocking a protection trip during startup.',
-      'Below P-10 (10 % power) the intermediate-range high-flux trip and the 25 % power-range trip ' +
+      'Above P-10 (10 % power) the intermediate-range high-flux trip and the 25 % power-range trip ' +
       'stand in the way of a normal ascent, so they are blocked on purpose and the badge counts how ' +
-      'many are blocked. A block is refused unless the trip is actually asserted, and cannot be ' +
-      'cleared while clearing it would scram the plant. Blocks auto-reinstate below P-10.', CI, '4.4'),
+      'many are blocked. Block them EARLY: a block is accepted any time the trip is not yet asserted, ' +
+      'and refused once it is — the message tells you to block it before the condition is reached. ' +
+      'Clearing is never refused, so clearing a block that is holding a trip off scrams the plant on ' +
+      'the spot. A block you set by hand survives; only the ones the plant established for itself ' +
+      'reinstate when power falls back below P-10.', CI, '4.4'),
 
     // -------------------------------------------------- nuclear instrumentation
     ims175lciah: e('Nuclear Instrumentation (NIS)',
@@ -216,8 +222,8 @@
       'measures the heat actually being removed. On natural circulation (RCPs stopped) it widens ' +
       'sharply, which is the tell that flow has fallen rather than that power has risen.', CI, '4.1'),
     imro6qpci2d: e('ΔT Average indication',
-      'Thot − Tcold across the core, in °F.',
-      'Roughly 60 °F at full power on this plant, near zero when the reactor is shut down and the ' +
+      'Thot − Tcold across the core — the rise the coolant picks up on its way through.',
+      'Runs 59.4 °F (33.0 °C) at full power on this plant, near zero when the reactor is shut down and the ' +
       'pumps are running. Both legs carry a 4-second instrument lag, so ΔT lags a load change.', CI, '4.1'),
     imro6rdwwdn: e('Reactivity',
       'Net core reactivity in pcm — a computed diagnostic, not a plant instrument.',
@@ -269,7 +275,7 @@
       'Under AUTO this box shows the controller\'s live demand, greyed, because it is an indication ' +
       'and not your command. Type a number and you take the heaters manual at that power.', CI, '5.2'),
     imrsg8b7b9o: e('Pressure Setpoint',
-      'The primary pressure the AUTO heaters and spray drive toward, in psi.',
+      'The primary pressure the AUTO heaters and spray drive toward.',
       'Normal operating pressure is 2235 psi (15.41 MPa). Raise the setpoint during a heatup ' +
       'and the heaters pressurize toward it; lower it on a cooldown and spray brings pressure down. ' +
       'The engine clamps the entry into the relief band, so you cannot set a target the safeties ' +
@@ -330,8 +336,8 @@
       'plant; the tailpipe temperature next to it is the honest tell. Instruments, not truth (HR1).', TMI, '4.0'),
     imrsgch20pv: e('PORV Tailpipe Temperature',
       'Discharge-line temperature downstream of the PORV — the tell that the valve is passing.',
-      'A seated valve leaves the tailpipe at a leaky-seat baseline around 180 °F; a passing valve ' +
-      'cooks it toward 300 °F and it turns amber as it climbs. The TMI-2 crew had this reading and ' +
+      'A seated valve leaves the tailpipe at a leaky-seat baseline around 180 °F (82.2 °C); a passing ' +
+      'valve cooks it toward 300 °F (148.9 °C) and it turns amber as it climbs. The TMI-2 crew had this reading and ' +
       'read it as normal residual heat. Compare it against the PORV light, never in isolation.', TMI, '4.0'),
     imrppb3kuav: e('PORV Block Valve',
       'Motor-operated isolation valve upstream of the PORV. Normally open.',
@@ -355,11 +361,12 @@
       'Neutron power as a percentage of rated — the power-range instrument.',
       'The scale and the coloured bands follow WHICH POWER TRIP IS ARMED. Through a startup the ' +
       'power-range LOW SETPOINT trip sits at 25 %, so the meter reads to 27 % and shows green to ' +
-      'P-10 (10 %), amber from there up to the trip — that amber band is the window in which you ' +
-      'are allowed to block it — and red above. Block it and the meter reopens to the at-power ' +
-      'scale with the 120 % trip at the top; drop back below P-10 and the block reinstates itself ' +
-      'and the 25 % band comes back. It measures FLUX, which leads thermal power — after a trip ' +
-      'flux collapses while decay heat does not.', CI, '4.1'),
+      'P-10 (10 %), amber from there up to the trip, and red above — the amber band is the stretch ' +
+      'you have to get the block in by, not the only place you are allowed to set it. Block it and ' +
+      'the meter reopens to the at-power scale with the 120 % trip at the top, and it stays there: ' +
+      'a block you set by hand is not undone by falling back below P-10, so the 25 % band comes back ' +
+      'only when you clear it. It measures FLUX, which leads thermal power — after a trip flux ' +
+      'collapses while decay heat does not.', CI, '4.1'),
     imrobpq4a70: e('Reactor Coolant Pump',
       'The RCP — forced primary flow. One representative pump on this plant.',
       'Running, it circulates coolant through the core and steam generator and provides the driving ' +
@@ -379,12 +386,12 @@
       'Deliberate on a cooldown (it decouples the steam generator once RHR is carrying the plant), ' +
       'catastrophic at power. Expect flow to coast down, ΔT to widen, and spray to stop working.', CI, '8.1'),
     imrr4fnxhlc: e('T-hot',
-      'Hot-leg temperature — coolant leaving the core, in °F.',
+      'Hot-leg temperature — coolant leaving the core.',
       'The hotter half of the pair that makes Tavg and ΔT. It is the temperature closest to ' +
       'saturation, so it is the leg that flashes first when pressure falls — which is why subcooling ' +
       'margin is computed against it.', CI, '4.1'),
     imrr4g29a7c: e('T-cold',
-      'Cold-leg temperature — coolant returning from the steam generator, in °F.',
+      'Cold-leg temperature — coolant returning from the steam generator.',
       'Set by how much heat the secondary side is removing. On a load increase T-cold falls first, ' +
       'and the reactor answers through moderator feedback before you touch a rod.', CI, '4.1'),
     ims2kt7fu64: e('Surge Line Tee',
@@ -418,9 +425,9 @@
       'against each other: what one adds, another removes.', CI, '7.0'),
     imrmslginf9: e('Charging',
       'The CVCS charging pump — make-up INTO the primary. Raises inventory and pressurizer level.',
-      'AUTO runs the pump with inventory make-up modulating the flow; MAN runs it at the gpm you set; ' +
+      'AUTO runs the pump with inventory make-up modulating the flow; MAN runs it at the flow you set; ' +
       'OFF secures it. Charging is also the carrier for boron: a boration or dilution is only ' +
-      'delivered while this pump runs. Normal band is 0–60 gpm.', CI, '7.1'),
+      'delivered while this pump runs. Normal band is 0–60 gpm (0–14 m³/h).', CI, '7.1'),
     imrmtg3r8ez: e('AUTO (charging)',
       'Charging pump runs with automatic inventory make-up.',
       'The controller modulates charging flow to hold inventory, which in practice holds pressurizer ' +
@@ -434,10 +441,12 @@
       'Stops make-up AND stops any boron dose in progress — the dose pauses and resumes when the pump ' +
       'restarts. With letdown still lined up, securing charging is a net drain on the primary.', CI, '7.1'),
     imrpq48hn3t: e('Charging flow',
-      'Charging flow setpoint in gpm — how fast make-up enters the cold leg.',
-      'The normal make-up band runs to 60 gpm. Against an isolated letdown, maximum charging raises ' +
-      'pressurizer level about 13 % a minute; against A+B letdown it barely holds. Typing here takes ' +
-      'CVCS inventory control to manual.', CI, '7.2'),
+      'Charging flow setpoint — how fast make-up enters the cold leg.',
+      'The normal make-up band runs to 60 gpm. Maximum charging is a lot of make-up: against an ' +
+      'isolated letdown it raises pressurizer level about 33 % a minute, so from a normal 55 % it ' +
+      'reaches the 97 % going-solid trip in a little over a minute. Against A+B letdown the same ' +
+      'flow barely holds, losing about 0.7 % a minute. Typing here takes CVCS inventory control to ' +
+      'manual.', CI, '7.2'),
     imrqp87ueqb: e('Charging Pump',
       'The positive-displacement pump that injects make-up into the primary.',
       'Drawn from the volume control tank, cold. Its art follows the pump\'s run state — the controls ' +
@@ -475,11 +484,11 @@
       'pressurizer level is the slow integral of the difference. The boron status line tells you ' +
       'whether a dose is riding in on that charging flow.', CI, '7.0'),
     imrzp89wdfu: e('Letdown Flow',
-      'Measured letdown flow in gpm — coolant leaving the primary.',
+      'Measured letdown flow — coolant leaving the primary.',
       'Pressure-driven flow: the number falls as RCS pressure falls, even with the same orifices ' +
       'lined up. Compare it against charging to know which way inventory is going.', CI, '7.3'),
     imrzp8qps6u: e('Charging Flow',
-      'Measured charging flow in gpm — make-up entering the primary.',
+      'Measured charging flow — make-up entering the primary.',
       'What the pump is actually delivering, not what you asked for. If charging reads zero with the ' +
       'pump commanded on, the boron dose sitting on it is not being delivered either.', CI, '7.2'),
 
@@ -544,12 +553,14 @@
       'doing: HPI/LPI on the injection alignment, RHR when the hot-leg suction valve is open, OFF ' +
       'when it is neither.', CI, '11.0'),
     ims3w1cb6jc: e('ECCS Flow',
-      'Emergency injection flow in gpm.',
-      'Zero at operating pressure even with the pump running — the pump cannot beat 2200 psi. Flow ' +
-      'climbs as the plant depressurizes, which is what makes injection effective exactly when it is ' +
-      'needed.', CI, '11.0'),
+      'Emergency injection flow — a trickle at operating pressure, real volume once the plant is down.',
+      'Not zero at operating pressure, which surprises people: the high-head segment still passes ' +
+      'about 1.7 % of rated against 2235 psi (15.41 MPa), because its shutoff head is ' +
+      '2384 psi (16.44 MPa). The curve is steep, so the number that matters arrives as the plant falls — near ' +
+      '60 % of rated by 360 psi (2.48 MPa). That is what makes injection effective exactly when it is ' +
+      'needed, and why a bare trickle here is not evidence the pump is failing.', CI, '11.0'),
     ims3w1lj7n6: e('ECCS Discharge Pressure',
-      'Injection pump discharge pressure in psi — the pump\'s head, not the plant\'s.',
+      'Injection pump discharge pressure — the pump\'s head, not the plant\'s.',
       'A running pump against a closed system sits at its shutoff head. Discharge high with flow at ' +
       'zero means the pump is healthy and the plant is simply at higher pressure than it can inject ' +
       'against.', CI, '11.0'),
@@ -570,7 +581,7 @@
       'valve. The water is cold and heavily borated, so a discharge cools Tavg as well as refilling ' +
       'the plant.', CI, '11.1'),
     imrppyp0wfo: e('Accumulator N₂ Pressure',
-      'Cover-gas pressure in the accumulators, psig — the driving head for passive injection.',
+      'Cover-gas pressure in the accumulators — the driving head for passive injection.',
       'It falls as the tanks empty, because the nitrogen expands into the space the water leaves. ' +
       'A dash means the save predates the field rather than a pressure of zero.', CI, '11.1'),
     imrppztrng1: e('Accumulator Status',
@@ -597,7 +608,7 @@
       'them is deliberate, so the valve does not chatter on a plant hunting around one number.', CI, '11.2'),
     ims3wg27iif: e('ALIGN (RHR)',
       'Opens the RHR hot-leg suction valve — puts the plant on shutdown cooling.',
-      'Refused above the 400 psi interlock; the button visibly fails to latch rather than lying about ' +
+      'Refused above the 400 psi (2.76 MPa) interlock; the button visibly fails to latch rather than lying about ' +
       'the lineup. Below it, aligning RHR is the step that carries the plant from Mode 4 to Cold ' +
       'Shutdown and holds it there.', MT, 'PWR-T21'),
     ims3xfeye1q: e('ISOLATE (RHR)',
@@ -626,17 +637,17 @@
       'temperature are the same measurement in two units. Steam flow is total draw from the ' +
       'generator, which is what feed has to match.', CI, '9.2'),
     imrr1gwi93j: e('SG Pressure',
-      'Steam generator pressure in psi — the secondary side\'s working pressure.',
-      'About 819 psi at full power. It rises when steam demand falls (a turbine trip bottles the ' +
+      'Steam generator pressure — the secondary side\'s working pressure.',
+      'About 819 psi (5.65 MPa) at full power. It rises when steam demand falls (a turbine trip bottles the ' +
       'generator) and falls when demand exceeds boiling. Its saturation temperature sets how much heat ' +
       'the primary can dump into it.', CI, '9.1'),
     imrr1hecwq7: e('Steam Temperature',
-      'Saturation temperature at SG pressure, in °F.',
+      'Saturation temperature at SG pressure — what the secondary side is boiling at.',
       'Not an independent measurement: on a boiling secondary side, temperature and pressure are one ' +
       'number. Its gap below T-hot is the temperature difference actually driving heat across the ' +
       'tubes.', CI, '9.1'),
     ims31ngjkf8: e('Steam Flow',
-      'Total main-steam-line flow in gpm-equivalent — everything leaving the generator.',
+      'Total main-steam-line flow, on the same scale as feed flow — everything leaving the generator.',
       'Turbine plus steam dump plus any lifted safety, not turbine flow alone. Through a turbine trip ' +
       'the governor shuts and the dump opens, and this number barely moves — which is exactly why feed ' +
       'must follow it rather than the governor.', CI, '9.2'),
@@ -645,8 +656,8 @@
       'Main feedwater control — AUTO is the three-element controller, MAN is a fixed pump speed.',
       'AUTO regulates level on three inputs: level, steam flow and feed flow. MAN holds the speed you ' +
       'set, with no level feedback at all, which is safe only while you keep feed matched to steam. ' +
-      'There is no speed that is safe at every power — matching flow is about 1000 gpm at full load ' +
-      'and 50 gpm at 6 %.', CI, '9.2'),
+      'There is no speed that is safe at every power — matching flow is about 1000 gpm (227 m³/h) at full load ' +
+      'and 50 gpm (11 m³/h) at 6 %.', CI, '9.2'),
     bdFeedStatus: e('SG FEED status',
       'What the feedwater controller is doing: HOLDING, SAT HI/LO, ISOLATED, MANUAL or OFF.',
       'The AUTO and MAN lamps tell you WHICH mode the controller is in; this tells you whether it is ' +
@@ -670,16 +681,16 @@
       'Level then falls at whatever rate the generator is boiling. AFW is the backup path, and it ' +
       'auto-starts at about 20 % level if it is armed.', CI, '9.2'),
     imro8xhy2me: e('SG Feed Rate setpoint',
-      'Commanded feed pump speed, shown as 0–1200 gpm. Typing here takes feed to MANUAL.',
-      'The scale is pump speed expressed as flow: 1200 gpm is 120 % speed. Arrows step by 20 gpm. ' +
+      'Commanded feed pump speed, shown as 0–1200 gpm (0–273 m³/h). Typing here takes feed to MANUAL.',
+      'The scale is pump speed expressed as flow: 1200 gpm (273 m³/h) is 120 % speed. Arrows step by 20 gpm (4.5 m³/h). ' +
       'Compare your setting against the STEAM FLOW indication above — matching them is what stops ' +
       'level moving.', CI, '9.2'),
     imrsgkz4lq0: e('Feed Flow',
-      'MEASURED feedwater flow in gpm — what is actually reaching the generator.',
+      'MEASURED feedwater flow — what is actually reaching the generator.',
       'Not pump demand. Through a feed pump trip the demand stays where you left it while this falls ' +
       'to zero, and that divergence is the point of having both numbers on the card.', CI, '9.2'),
     ims3wm0d0bu: e('Steam Flow',
-      'Total steam leaving the generator, on the same gpm scale as feed flow.',
+      'Total steam leaving the generator, on the same scale as feed flow.',
       'Deliberately stacked above FEED FLOW so matching them in MANUAL is a visual comparison rather ' +
       'than arithmetic. Feed below steam means level is falling, whatever level currently reads.', CI, '9.2'),
     imrobph7xrq: e('Feed Pump',
@@ -714,12 +725,12 @@
       'shut valve — the TMI-2 lineup, where the AFW block valves were closed and the crew had run ' +
       'lights but no water.', TMI, '4.0'),
     imrmstovyli: e('AFW Flow',
-      'Measured auxiliary feed flow in gpm.',
+      'Measured auxiliary feed flow — what AFW is actually delivering.',
       'The honest number in the AFW system: it reads what is being delivered, not what was demanded. ' +
       'If this is zero with the pump running, water is not reaching the generator.', CI, '10.0'),
     imrmsu1bl4r: e('AFW Discharge Pressure',
-      'AFW pump discharge pressure in psi.',
-      'A pump with nowhere to send water pins at its shutoff head — around 1500 psi. High discharge ' +
+      'AFW pump discharge pressure — read it against AFW FLOW, never alone.',
+      'A pump with nowhere to send water pins at its shutoff head — around 1500 psi (10.34 MPa). High discharge ' +
       'with zero flow is the signature of a shut block valve.', CI, '10.0'),
     ims3xw3vue6: e('AFW Status',
       'RUNNING, STANDBY or SECURED.',
@@ -746,7 +757,7 @@
       'through the steam generator on a controlled cooldown.', CI, '12.3'),
     imrppqg6mcc: e('AUTO (steam dump)',
       'Dump follows SG pressure toward the dump setpoint.',
-      'At power the generator sits about 819 psi against a setpoint near 1194 psi, which is why the ' +
+      'At power the generator sits about 819 psi (5.65 MPa) against a setpoint near 1194 psi (8.23 MPa), which is why the ' +
       'dump is shut: there is nothing to relieve. Drop the setpoint below actual pressure and it ' +
       'opens.', CI, '12.3'),
     imrppquqg16: e('OPEN (steam dump)',
@@ -758,7 +769,7 @@
       'Stops secondary heat removal through the bypass path. On a plant with the turbine offline, ' +
       'closing the dump with no other sink is how SG pressure climbs to the safeties.', CI, '12.3'),
     ims31tq7mgc: e('Dump Setpoint',
-      'The SG pressure the AUTO dump holds, in psi.',
+      'The SG pressure the AUTO dump holds.',
       'The cooldown handle: lower it and the dump vents the generator, pulling primary temperature ' +
       'down through the tubes; raise it back toward the no-load point on a heatup. The engine clamps ' +
       'the entry into the SG safety band.', MT, 'PWR-T21'),
@@ -767,9 +778,13 @@
       'NORMAL means the dump is in automatic and has nothing to do. DUMPING means it is passing steam. ' +
       'MANUAL means you own it, whatever pressure does.', CI, '12.3'),
     imrzmlyafa3: e('Steam Dump Position',
-      'Dump valve position, 0–100 %.',
-      'After a turbine trip this goes to nearly full open and stays there — it is the only path ' +
-      'carrying the generator\'s steam. Read it beside STEAM FLOW to see where the steam is going.', CI, '12.3'),
+      'Dump valve position on a 0–100 % scale — but 40 % is the stop, because that is the whole dump capacity.',
+      'A turbine trip drives it straight to that stop. It sits pinned at 40 % for about a minute while ' +
+      'stored heat comes off, then backs down as decay heat falls — near 9 % three minutes in, 7.5 % ' +
+      'after ten. Forty per cent is a real Westinghouse capacity, not a limitation of the model, which ' +
+      'is why a full load rejection needs a rod step as well as the dump. Pinned at 40 % with SG ' +
+      'pressure still climbing means the dump has run out and the safeties are next. Read it beside ' +
+      'STEAM FLOW to see where the steam is going.', CI, '12.3'),
     imrprmm4u5q: e('Steam Dump Valve',
       'The bypass valve itself — steam from the main line to the condenser.',
       'Position follows the dump command. Its schematic fills and animates only when it is actually ' +
@@ -825,7 +840,7 @@
       'steam does. Losing vacuum trips the turbine. The hotwell it collects into is the suction for ' +
       'the condensate pump.', CI, '13.0'),
     imrqzuhzre3: e('Condenser Vacuum',
-      'Condenser vacuum in inches of mercury — turbine backpressure.',
+      'Condenser vacuum — turbine backpressure.',
       'Deep vacuum is healthy. It degrades when circulating water warms or cooling is lost, and the ' +
       'turbine trips at the low-vacuum setpoint. It is also a slow instrument — about a 5-second lag.', CI, '13.0'),
     ims3v3lpw5v: e('Condenser Cooling',
@@ -834,11 +849,11 @@
       'water means the condenser can only pull down to a warmer saturation, so vacuum falls, output ' +
       'falls at the same steam flow, and the turbine trip gets closer.', CI, '13.0'),
     ims3v42jghn: e('CW Inlet Temperature',
-      'Circulating-water inlet temperature in °F — the ultimate heat sink\'s temperature.',
+      'Circulating-water inlet temperature — the ultimate heat sink\'s temperature.',
       'Raise it and vacuum falls, output falls, and the RHR heat exchanger\'s sink gets warmer too, so ' +
       'a Mode 5 cooldown bottoms out higher. It is the one number here that represents the weather.', CI, '13.0'),
     ims3xp168iy: e('Condenser Vacuum',
-      'Condenser vacuum in inches of mercury, beside the water temperature that drives it.',
+      'Condenser vacuum, beside the water temperature that drives it.',
       'The same instrument as on the condenser itself, repeated here so cause and effect sit together ' +
       'on one card.', CI, '13.0'),
     coolingTower: e('Cooling Tower',
@@ -867,18 +882,18 @@
       'whether reactor power and turbine load are matched. The coloured bands behind the trace are ' +
       'the live alarm and trip setpoints, so the tile agrees with the annunciator.', CI, '4.1'),
     ims2immsvn6: e('Primary Pressure',
-      'RCS pressure in psi — normally about 2235 psi at power.',
+      'RCS pressure — normally about 2235 psi (15.41 MPa) at power.',
       'Pressure keeps the coolant liquid. Read it with temperature rather than alone: the same ' +
-      'pressure is comfortable at 550 °F and boiling at 620 °F, which is what the subcooling margin ' +
+      'pressure is comfortable at 550 °F (287.8 °C) and boiling at 620 °F (326.7 °C), which is what the subcooling margin ' +
       'tile computes for you. The bands follow the protection that is actually in force: at power ' +
-      'the low-pressure reactor trip sits at 1800 psi in red, but on a depressurized plant the P-11 ' +
+      'the low-pressure reactor trip sits at 1800 psi (12.41 MPa) in red, but on a depressurized plant the P-11 ' +
       'permissive has BLOCKED that trip and the SI signal with it, so the low band goes away, the ' +
       'tile reads LO TRIP BLKD and rescales to the pressure you are actually holding on heaters. ' +
-      'Pressurize past 1972 psi and the block reinstates itself and the red band comes back. This ' +
-      'is why a cold plant at 363 psi reads green and a LOCA at 363 psi reads hard red — same ' +
+      'Pressurize past 1972 psi (13.60 MPa) and the block reinstates itself and the red band comes back. This ' +
+      'is why a cold plant at 363 psi (2.50 MPa) reads green and a LOCA at 363 psi (2.50 MPa) reads hard red — same ' +
       'number, opposite meanings, and the difference is which trips are armed.', CI, '5.1'),
     ims2immxl2s: e('Subcooling Margin',
-      'How far the coolant is from boiling, in °F. The primary accident diagnostic.',
+      'How far the coolant is from boiling. The primary accident diagnostic.',
       'It combines pressure and temperature into the one question that matters during a LOCA: is the ' +
       'coolant still liquid? Green is healthy, amber is approaching saturation, and below zero the ' +
       'core is boiling. Do not throttle injection while this is eroding, whatever pressurizer level ' +

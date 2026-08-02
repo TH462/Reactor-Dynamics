@@ -416,7 +416,10 @@ var BASELINES = {
   // answer; a manual citation outlives the section it names. All three are
   // failures here. The check count moves with the board — a new control or
   // indication shifts it, which is the intended nudge to write its copy.
-  'run_inspect.js':        { code: 0, score: '7/7 35/35' },
+  // 35 -> 36 on 2026-08-01: the board renders SI since #238 and this copy cannot, so
+  // an entry naming its display unit ("in °F") is contradicted the moment SI is picked.
+  // The new check found two sites the hand pass had missed, and reddens on the old text.
+  'run_inspect.js':        { code: 0, score: '8/8 36/36' },
   // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
   // The sim runs from file:// with no server only because nothing in the runtime loads
   // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no
