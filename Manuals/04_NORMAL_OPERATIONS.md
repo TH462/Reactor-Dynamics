@@ -300,6 +300,18 @@ Place the turbine-generator on the grid and establish electrical output coordina
 ### Applicability
 Reactor critical (Mode 2 or early Mode 1); condenser vacuum healthy; MSIV open.
 
+### Scope note — synchronization is ATOMIC here **[sim, approx]**
+This plant has **no turbine roll and no no-load speed hold**. A real unit rolls the machine on
+no-load steam, holds rated speed off line, matches speed and phase at the synchroscope, and
+*then* closes the generator breaker — four operator actions and the skill this procedure is
+named for. Here there is no no-load steam admission model, so an unloaded rotor with no steam
+coasts to rest, and one press of **FOLLOW** or **MAN** does the whole sequence at once.
+
+The **generator breaker is not a separate control**: on/off line *is* the load-mode selector —
+**FOLLOW** and **MAN** are on line, **OFF** is the open breaker. Everything downstream of
+synchronization — motoring at zero load, planned offline vs. turbine trip, load rejection, the
+P-9 interlock — is modelled properly; it is the roll and the synchroscope that are not.
+
 ### Prerequisites
 - **PWR-N04** complete or concurrent.
 - Condenser available; MSIV open.
@@ -309,8 +321,10 @@ Reactor critical (Mode 2 or early Mode 1); condenser vacuum healthy; MSIV open.
 | Type | Text |
 |------|------|
 | **CAUTION** | Large step loads can trip on secondary/primary upset. Step load modestly. |
-| **CAUTION** | **Selecting a load mode does not put the machine on the grid.** Coming up from Mode 5 the generator breaker is **open** and the rotor at rest; only **Connect Grid** closes it. Setting Follow or Manual on an open breaker changes nothing you can see on the MWe meter. |
-| **NOTE** | **Follow** tracks reactor power; **Manual** sets MWe. Synchronize in **Follow** — the turbine chases the reactor while you get on line — then take **Manual** once loaded, which is the lineup the rest of this manual assumes. |
+| **CAUTION** | **Synchronizing is ONE action on this plant, and there is no roll to do first.** Coming up from Mode 5 the generator is off line with the rotor at rest. Pressing **FOLLOW** or **MAN** takes it from there to synchronized and loaded in a single step — measured, the rotor goes to **1800 rpm** and load picks up matched to reactor power. See the scope note below: real turbine roll is not modelled. |
+| **CAUTION** | **A load-slider move will not recover a TRIPPED machine.** Both FOLLOW and MAN clear a prior turbine trip (they route through `connect_grid`, vacuum permitting); the slider alone does not. Measured after a scram: selecting a load mode by itself leaves the rotor at **0 rpm and 0 MWe** with the trip still latched. If the generator card looks unresponsive, that is what you are seeing — press **FOLLOW** or **MAN**. |
+| **NOTE** | **Follow** tracks reactor power; **Manual** sets MWe. Synchronize in **FOLLOW** — the turbine chases the reactor while you get on line — then take **MAN** once loaded, which is the lineup the rest of this manual assumes. Measured on a 4.7 % plant: FOLLOW picks up **5.26 MWe** matched to power; going straight to MAN synchronizes but leaves the load target at **0 MWe** until you move the slider. |
+| **NOTE** | The **OFF** lamp lights on either an open breaker *or* a tripped turbine — read **TURB TRIP** to tell a planned offline from a trip (**03** §12.1). |
 
 ### Procedure
 
@@ -318,8 +332,8 @@ Reactor critical (Mode 2 or early Mode 1); condenser vacuum healthy; MSIV open.
 |------|--------|---------|------------|
 | 1 | Verify condenser vacuum healthy | Condenser | Above trip region |
 | 2 | Verify MSIV **Open** | Steam | MSIV open |
-| 3 | **Put the turbine on line: Connect Grid.** The generator synchronizes and picks up load in **Follow** — the reactor's heat now has somewhere to go besides the steam dump | Turbine — Connect Grid | Breaker closed; MWe > 0 |
-| 3a | Take load control: select **Manual**. The setpoint stays where Follow left it, already matched to the power you are making | Turbine Load | Manual; setpoint matched |
+| 3 | **Put the turbine on line: press FOLLOW** on the generator selector. It synchronizes and picks up load matched to reactor power — the reactor's heat now has somewhere to go besides the steam dump | Turbine — Connect Grid | Rotor 1800 rpm; MWe > 0; OFF lamp out |
+| 3a | Take load control: press **MAN**. The setpoint stays where FOLLOW left it, already matched to the power you are making | Turbine Load | MAN; setpoint matched |
 | 4 | Raise Turbine Load in steps toward a low MWe target consistent with reactor power | Turbine Load | MWe rises; steam flow rises |
 | 5 | Match reactor power with rods (or Follow) so SG level stays controlled | Rods / Follow | No SG LO-LO / HI flood |
 | 6 | Confirm Feed AUTO holding | Feed | AUTO engaged |

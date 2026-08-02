@@ -49,8 +49,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   P > 2176 psi, while the compliant 600–1000 psi window is only **~100 s wide** (600 psi at
   +24 s from the Pressure SP command, 1000 psi at +122 s, NOP at +3.5 min); the alignment is
   now an action *inside* the pressurization, here and in 05 Phase A and the executable
-  checklist. (2) **PWR-N05 is named for synchronizing the generator and never did** — its steps
-  selected a load mode, which does not close an open breaker; **Connect Grid** is now step 3.
+  checklist. (2) **PWR-N05 is named for synchronizing the generator and had no step that did it.**
+  The first fix was wrong and is corrected here: it asserted that selecting a load mode does
+  not close the breaker. **There is no breaker in the engine** — `RD.LoadMode.isOnLine()` is
+  `load_mode !== 'disconnected'`, so on/off line *is* the selector, and the board's FOLLOW and
+  MAN both route through `connect_grid` (which also clears a prior trip). N05 now matches
+  **03** §12.1: FOLLOW takes the machine from at-rest to synchronized and loaded in one action
+  (measured, 1800 rpm and 5.26 MWe matched on a 4.7 % plant), and a slider move will not
+  recover a tripped machine (measured after a scram: 0 rpm, 0 MWe, trip still latched). A new
+  **scope note** records the real gap — this plant has **no turbine roll and no no-load speed
+  hold**, so the roll-and-synchroscope skill the procedure is named for is not modelled.
   (3) **PWR-N15 never blocked SI** — the cooldown crosses the 1798 psi (12.4 MPa) actuation
   setpoint, and measured with SI armed the pumps inject, boron ends at **2500 ppm** instead of
   857, and the plant cools **~10× faster than programmed** (566.6 → 199.4 °F in 23

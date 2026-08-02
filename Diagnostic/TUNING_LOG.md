@@ -40,6 +40,19 @@ is invisible to every gate by construction**: `pwr_heatup` runs `from: 'cold_shu
 `pwr_startup` runs `from: 'hot_zero_power'`, so the app reloads the IC between them and no
 runner has ever crossed the seam. A player following the *manual*, or anyone in free play, does.
 
+**A correction I had to make to my own fix (worth more than the fix).** The first N05 edit
+asserted *"selecting a load mode does not put the machine on the grid — only Connect Grid
+closes the breaker"*, sourced from a memory note (`set_load_mode` never un-trips) rather than
+measured. **It is wrong, and `Manuals/03` §12.1 already said so.** There is no breaker in the
+engine at all: `RD.LoadMode.isOnLine()` is literally `load_mode !== 'disconnected'`. Measured
+from a disconnected untripped plant — `connect_grid` → follow, rotor 372 → **1800 rpm**, load
+picks up **5.26 MWe** matched to 4.7 % power; raw `set_load_mode manual` also goes on line at
+1800 rpm but leaves the target at **0 MWe**. The memory note was about the TRIP latch, and
+that half holds: measured after a scram, a bare `set_load_mode` leaves 0 rpm / 0 MWe. On the
+BOARD it never bites, because MAN sends `connect_grid` *then* `set_load_mode` (`pwr_board_wiring`
+:457). Two lessons: an HR12 claim about a CONTROL is as measurable as one about dynamics and I
+did not measure it; and 03 was the cross-check I should have read before writing 04.
+
 **Fixed with a dilution step in N02** *(OWNER DIRECTIVE, 2026-08-01: "Add the dilute step in
 n02" / "In n02/n03.")*, not by moving an IC — diluting at the end of N01 would be a **cold**
 dilution, which 09 §7.5.1 forbids in a WARNING (806 ppm critical cold vs 588 hot). Measured
