@@ -9,11 +9,31 @@ the extra controls going to increase educational value or will they confuse the 
 should codify this decision making process. My goal is to eventually automate the building of
 the BWR and RBMK plants.")*.
 
-**Two audiences, one document.** §1–§4 are the decision procedure — apply them to any feature,
+**Three audiences, one document.** §1–§4 are the decision procedure — apply them to any feature,
 setpoint, control or behaviour change. §5 is what each criterion *needs in order to be
 answerable at all*, per plant, and is therefore the prerequisite list for automating a plant
-build. They are the same content from two ends: you cannot automate a judgement you cannot
-answer, and §5 is the list of what makes §1–§4 answerable without the owner in the loop.
+build. §6 is the **per-plant curriculum definition** the decisions are measured against. They
+are the same content from three ends: you cannot automate a judgement you cannot answer, §5 is
+what makes §1–§4 answerable without the owner in the loop, and §6 is what they are answerable
+*about*.
+
+**§6 defines four things PER PLANT** *(OWNER, 2026-08-02: "We should define several things for
+each of the plants. 1. The dynamics/interactions we want to show and their physics. 2. The
+normal operating procedures we want the user to be able to perform. 3. What casualties we want
+the user to be able to handle. 4. Defining/flagship scenarios (TMI, Chernobyl, etc.). These
+don't necessarily have to be real events.")*:
+
+| | Category | §6 section | Status |
+|---|---|---|---|
+| 1 | **Dynamics / interactions** and their physics | §6.3 (Tier A) | drafted, PWR only |
+| 2 | **Normal operating procedures** | §6.4 (Tier B) | drafted, PWR only |
+| 3 | **Casualties** the user should handle | §6.5 (Tier C) | drafted, PWR only |
+| 4 | **Flagship scenarios** — need not be real events | §6.6 (Tier D) | adopt existing |
+
+**The educational PRIORITY is fixed** *(OWNER RULING, 2026-08-02: "The most important ideas are
+plant dynamics followed by how to operate the plant.")* — category 1 leads, category 2 second.
+3 and 4 are where those two get exercised under stress. Instrument deception is **not** near the
+top of this list; see §6.3 and `DESIGN_COMPANION.md` §2.
 
 ---
 
@@ -348,18 +368,59 @@ with no immediate feedback is exactly the kind a real operator skips, and PWR-N1
 case — the missing SI-block step produced a scram ~5 plant-minutes into the first leg, far enough
 downstream that the cause is not obvious from the effect.
 
-### 6.5 Tiers C and D
+### 6.5 Tier C — casualties the player should be able to handle (PROPOSED)
 
-**Tier C — plant identity.** One coupling per plant the others do not have. PWR: a pressurized,
-subcooled primary with the SG as its only heat sink. RBMK: a **positive** void coefficient, and
-what that does to a shutdown. BWR: a direct cycle boiling in the core, where void is both the
-power controller and the hazard.
+**This category was missing from the first two drafts entirely**, and it is not a subset of
+either neighbour: a casualty is not a normal evolution (Tier B) and not a flagship scenario
+(Tier D). It is the middle band — something goes wrong, the player **diagnoses it and responds**,
+and the plant survives or does not depending on what they do.
 
-**Tier D — accident lessons.** Already written: `DESIGN_COMPANION.md` §5 (TMI = information,
-Chernobyl = design, Fukushima = sustained support). Adopt as-is — and this is where instrument
-deception lives, per §6.3.
+The engine already carries ~25 injectable failures. The curriculum question is **which of them
+the player is expected to handle**, because that decides what must have a response procedure, a
+cue on the board, and a mission. A defensible PWR starter set, in rough order of how often a real
+operator meets them:
 
-### 6.6 How Q2 changes once these are ruled
+| Casualty | What it teaches | Response exists? |
+|---|---|---|
+| Turbine trip / load rejection | the dump is finite; P-9; power must go somewhere | yes — measured, 40 % dump + 10 % rod step |
+| Loss of main feedwater | the SG is the only heat sink; AFW auto-start | yes |
+| RCP trip / loss of flow | flow → DNB margin; the P-7 gating | partial |
+| Small RCS leak (seal leak) | CVCS holds it, and *charging flow* is the cue, not level | yes (#262) |
+| Stuck-open PORV | the TMI opener; tailpipe temperature is the honest tell | yes |
+| SGTR | primary→secondary path; depressurize to stop the leak | yes |
+| Loss of offsite power / SBO | everything above at once, on batteries | partial |
+| Steam line break | overcooling is a reactivity event | **no auto isolation** (#295 F5) |
+| Loss of shutdown cooling in Mode 5 | decay heat with no SG | annunciator only (#287) |
+| Feed-and-bleed | last-resort heat removal | **conceptual only** (#140) |
+
+**Two are known-incomplete and this is the category that makes that a curriculum decision rather
+than a backlog item**: #140 (feed-and-bleed is not a validated procedure) and #295 F5 (no steam
+line isolation ESFAS). Either they are in the set and get built, or they are out and the omission
+is declared. Today they are neither.
+
+### 6.6 Tier D — flagship scenarios (PROPOSED)
+
+Already written for the three historical ones: `DESIGN_COMPANION.md` §5 — TMI = a failure of
+**information**, Chernobyl = a failure of **design**, Fukushima = a failure of **sustained
+support**. Adopt as-is. **This is also where instrument deception lives** (§6.3).
+
+**They need not be real events** *(OWNER, 2026-08-02: "Defining/flagship scenarios (TMI,
+Chernobyl, etc.). These don't necessarily have to be real events.")*. That is a genuine
+liberation and worth stating as design guidance rather than permission: a historical accident
+is constrained by what actually happened, including the parts that teach nothing, while an
+authored scenario can be built backwards from a coupling in Tier A and made to turn on exactly
+the decision worth teaching. The test is unchanged — a flagship must still be **physically
+honest** on this plant (Q0) and must not imply a real event occurred as depicted.
+
+### 6.7 Plant identity — folded in, not a separate tier
+
+An earlier draft had this as its own tier. It is not one: **each plant's Tier A list IS its
+identity.** PWR: a pressurized, subcooled primary with the SG as its only heat sink. RBMK: a
+**positive** void coefficient and what it does to a shutdown. BWR: a direct cycle boiling in the
+core, where void is both the power controller and the hazard. Writing them as a separate list
+duplicates the dynamics table and gives it a second place to rot.
+
+### 6.8 How Q2 changes once these are ruled
 
 Today Q2 asks *"is there educational value?"* — answerable "yes" for anything. With objectives it
 asks two checkable questions:
@@ -377,7 +438,7 @@ coupling has a demonstration and every Tier B system has a step, exercised and g
 — and **#253** (the lessons are stale) gets the standard to re-author against. Both are currently
 blocked on the same missing artifact.
 
-### 6.7 My recommendation
+### 6.9 My recommendation
 
 **Adopt Tier D as-is, rule on Tiers A and B, and defer Tier C until each plant is reopened.**
 A and B are the load-bearing pair and they are plant-agnostic, so they are what an automated

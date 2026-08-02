@@ -20,15 +20,31 @@ institutional environments.
 
 ---
 
-## The defining idea: instruments, not truth
+## The defining idea: plant dynamics
 
-In most simulators you see the true state of the machine. Here you don't. You operate
-on **instrument readings** — which lag, drift, fail, and occasionally lie — never on the
-underlying physical state. That gap between what is *true* and what is *indicated* is
-what made the real accidents possible: at Three Mile Island, operators watched a valve
-indicator that read "closed" while the valve was stuck open, and drew reasonable
-conclusions from unreasonable data. Diagnosing a casualty through imperfect instruments
-is the skill this simulator is built to teach.
+The point of the simulator is in the name. A power plant is a set of components that push
+on each other, and the thing worth learning is **how they are coupled** — change one, and
+know what responds, and why.
+
+The clearest example takes about a minute. Put the control rods in manual, then lower
+generator demand from 100 to 60 MWe. Nobody touches the reactor — and reactor power falls
+to **57.5 %** on its own, while average coolant temperature *rises* from 579 °F to 602 °F
+(304 → 317 °C). The plant did that itself: less steam drawn means less heat removed, so
+the coolant warms, and a warmer moderator is a less effective one, which pushes power down
+until it matches the load again. Power follows load, and the negative moderator temperature
+coefficient is why.
+
+Second comes **operating the plant** — running a real evolution in the right order, with the
+right systems lined up: an approach to criticality, a power ascension, a cooldown to cold
+shutdown. Some steps protect against things you cannot see happen at the moment you perform
+them, which is exactly why they are worth practising.
+
+Instruments are part of this, but as the layer you observe it *through*: readings lag, carry
+noise, and — in failure scenarios — can be flatly wrong. Every gauge, alarm and automatic
+protection here reads the instrument rather than the true state, exactly as in a real plant.
+That is what makes Three Mile Island reproducible, where operators watched a valve indicator
+reading "closed" while the valve was stuck open. It matters most when something breaks; it is
+not what the simulator is about.
 
 ## What's inside
 
