@@ -20,6 +20,53 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-01e (#304 — the 01 review: right numbers, wrong controls, develop)
+
+**What was asked.** A review of `Manuals/01_GENERAL_DESCRIPTION.md`, then fix it. Filed as #304.
+
+**The chapter's numbers are entirely sound** and are now recorded as measured so nobody re-checks
+them: §2.0's whole table (100.0 MWe, 2235 psi, Tavg 579.3 °F, hot/cold leg 609.0/549.6 °F, ΔT
+exactly 33.0 °C, PZR 55.00, SG 65.00, steam 819.5 psi, subcooling 73.75 °F), both ratings
+(`mwe_rated` 100.0, `mwt_rated` 300.0 — the 300 MWt figure IS backed by a constant), ~7 % decay
+heat, natural circulation not modelled, point kinetics, single instrument channels. Two things I
+suspected were wrong and were not: `PWR-X01` resolves (defined in **08** §6.0 — 04's index is
+N/T/E only, which is why it looked dangling), and §7.0's "fuel temperature is not an operator
+indication" is right, because **the PWR has no `fuel_temp` instrument at all** (the `fuel_temp`
+gauge at `ui/app.js:197` is the RBMK series block).
+
+**THE PATTERN IS THE FINDING. All five defects were control-surface claims, and `03` already
+documented every one of them correctly.** With #303's N05 breaker caution that is three in two
+days. 01, 04 and 05 were written as standalone prose about controls they do not own.
+
+1. **§4.1 said the shutdown bank was "read-only to operator" and SCRAM-only.** It has Withdraw /
+   Insert buttons (`pwr_board_wiring.js:438-439`, `toggleLatchRod('shutdown_rods', ±1)`), a
+   `Shutdown Bank` entry in `PwrBoardDriver.controlLabels()`, and a `SHUTDOWN_DRIVE` group in
+   `ui/app.js:229,296`. **03 §3.3** documents the full-stroke behaviour and cautions against
+   parking it in at power. The tell that this mattered: **PWR-N02 step 7** asks the operator to
+   confirm the bank parked withdrawn — a check with no purpose if it cannot move.
+2. **§6.0 called Follow the default load mode.** Measured at t=0: `hot_full_power` **manual**,
+   `50_percent` **manual** (`getStartupLineup`, `pwr_engine.js:1335`), `5_percent` follow,
+   `cold_shutdown` disconnected. Follow is `LoadMode.initState`'s fallback — the bare-engine
+   value, which is exactly the layer distinction CLAUDE.md warns about.
+3. **§6.0's coupled-feed rows outlive their own truth by ~3 minutes.** Measured,
+   `feed_auto_coupled` true at t=0 and **false by 3 min** at full power: `feed_sg` is `defaultOn`
+   and replaces coupled feed as the level backbone the moment it acts.
+4. **§5.0 defined Mode 3 as "RCS hot at NOP T/P".** `plantModeOf` (`pwr_engine.js:567`) is
+   `hot = tavg_c >= 177`, `cold = tavg_c <= 93` — **temperature alone**. A subcritical plant at
+   392 °F and 500 psi is Mode 3 here. The table now carries both boundaries.
+5. **§5.0's Mode 1 IC list omitted `5_percent`**, which measures Mode 1 at 6.00 % (authored just
+   above the boundary on purpose).
+
+**Recommended guard, not yet adopted:** when 01, 04 or 05 describe a control, the claim comes from
+**03** or from `pwr_board_wiring.js`, never from memory. Three instances now. It is not gateable
+as written — `run_manual_controls` checks that *procedure steps* name reachable controls, not that
+*prose* describes them correctly — so it is a habit, or it needs a new check.
+
+**Gates:** all **35 runners at baseline**. Manual set stamped and packed at **Rev 10**.
+
+**Still open:** turbine roll / no-load speed hold (the real gap behind #303's breaker question,
+not yet filed); N15 has no executable checklist (#244 / #254 lane).
+
 ## Session log — 2026-08-01d (#303 — the 04 NOP review: the startup path did not join up, develop)
 
 **What was asked.** A review of the normal operating procedures chapter (`Manuals/04`,

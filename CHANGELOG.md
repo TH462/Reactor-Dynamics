@@ -22,6 +22,43 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **01's numbers were all right and five of its control claims were wrong** (#304, review of
+  `Manuals/01_GENERAL_DESCRIPTION.md`; manual set **Rev 9 → Rev 10**). Measured full stack, every
+  row of the §2.0 parameter table lands — 100.0 MWe, 2235 psi (15.41 MPa), Tavg 579.3 °F
+  (304.1 °C), hot/cold leg **609.0 / 549.6 °F (320.6 / 287.6 °C)** with ΔT exactly **59.4 °F
+  (33 °C)**, PZR 55.00 %, SG 65.00 %, steam **819.5 psi (5.65 MPa)**, subcooling 73.75 °F
+  (40.97 °C) — as do both ratings, the ~7 % decay heat and the no-natural-circulation claim.
+  `PWR-X01` resolves too (it is defined in **08** §6.0, not in 04's N/T/E index).
+
+  **Every defect was a control-surface claim that `03` already documented correctly**, which is
+  the same failure as #303's N05 caution and makes three in two days. (1) §4.1 called the
+  **shutdown bank "read-only to operator"** and SCRAM-only. It is a full operator control —
+  Withdraw / Insert on the board (`pwr_board_wiring.js:438-439`), the `Shutdown Bank` control
+  label, a `SHUTDOWN_DRIVE` group in `ui/app.js` — and **03** §3.3 describes its full-stroke
+  behaviour and cautions against parking it in at power. **PWR-N02 step 7** asks the operator to
+  confirm its position precisely because it can be moved. (2) §6.0 called **Follow the default**
+  load mode; measured, `getStartupLineup` puts `hot_full_power` and `50_percent` in **MANUAL**,
+  which is what 03 §12.1 and the startup checklist both say the board hands you. Follow is the
+  bare-engine fallback. (3) §6.0's **coupled-feedwater** rows describe a state that lasts under
+  three plant-minutes — measured, `feed_auto_coupled` is true at t=0 and false by 3 min, because
+  the three-element `feed_sg` channel is `defaultOn` and takes SG level as soon as it acts. That
+  is the engine-direct-vs-full-stack trap appearing in the manual rather than in a test.
+  (4) §5.0 defined **Mode 3 as "RCS hot at NOP T/P"** when the trainer decides Modes 3/4/5 by
+  **temperature alone**; the table now carries the real boundaries — **199.4 °F (93 °C)** and
+  **350.6 °F (177 °C)** — with a note that pressure is not part of the definition. (5) §5.0's
+  Mode 1 row omitted **`5_percent`**, which measures Mode 1 at 6.00 %.
+
+  Also tightened: §4.3 described the **steam dump** as load-rejection-only, omitting the
+  continuous AUTO pressure mode that heatup, cooldown and hot standby all run on; §6.0's
+  Disconnected row conflated a **planned offline with a turbine trip** (#230 — two events, one
+  lamp); and §8.0's *"the simulation ends at fuel damage"* now says what actually ends there —
+  **consequences**, not the model, which simulates cladding failure at 2192 °F (1200 °C) and melt
+  at 5072 °F (2800 °C) across ten green meltdown paths.
+
+  Gates: all **35 runners at baseline**; `run_manual_units` 0 failed, `run_manual_rev` 13/13 at
+  Rev 10, `run_procdocs` 23/23, `run_manual_controls` 94/94.
+
+### Fixed
 - **The documented startup path did not join up — PWR-N01 hands PWR-N03 a plant it cannot
   start** (#303, review of `Manuals/04`; manual set **Rev 8 → Rev 9**). The pump-heat heatup
   arrives at **856.8 ppm** and nothing in the path dilutes, but PWR-N02 and PWR-N03 both

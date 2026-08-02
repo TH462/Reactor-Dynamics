@@ -4,7 +4,7 @@
 **Plant:** Pressurized Water Reactor (PWR)  
 **Plant:** **SLX-100** (Single-Loop eXperimental, 100 MWe)
 **Rating:** ≈ 100 MWe / ≈ 300 MWt — a compact **single-loop experimental PWR** (one reactor coolant pump, one U-tube steam generator, one main steam line). Small and generously margined by design, and reactor trips are reserved for genuine limits. The steam dump is sized at **40 %** of rated steam flow, the prototypical Westinghouse capacity: a **50 % loss of load** is absorbed with no trip and no relief lift, and a larger rejection is ridden out by the reactor itself running back, with the PORV as the backstop.  
-**Revision:** 9  
+**Revision:** 10  
 
 ---
 
@@ -56,7 +56,7 @@ FISSION HEAT (core)
 | System | Function |
 |--------|----------|
 | **Control bank** | Operable rods — withdraw to add reactivity, insert to remove |
-| **Shutdown bank** | Parked fully withdrawn at power; drives in on SCRAM only (read-only to operator) |
+| **Shutdown bank** | Emergency-protection group carrying shutdown margin — **operable**, with Withdraw / Insert on the board (one click drives the full stroke at fast speed). Parked fully withdrawn at power; SCRAM drives it in and overrides any manual command. Not for routine trim — see **03** §3.3 |
 | **Boron (CVCS chemical shim)** | Dissolved neutron absorber — borate lowers power, dilute raises power (slow) |
 | **Nuclear Instrumentation (NIS)** | Source Range (SR), Intermediate Range (IR), Power Range (PR) |
 
@@ -84,7 +84,7 @@ FISSION HEAT (core)
 | **AFW** | Auxiliary Feedwater when main feed is lost |
 | **MSIV** | Isolates SG from turbine — and from a steam line break downstream of it (PWR-E19) |
 | **Turbine-generator** | Electrical output; load modes Follow / Manual / Disconnected |
-| **Steam dump** | Bypass steam to condenser on load rejection |
+| **Steam dump** | Bypasses steam to the condenser. Two modes: a continuous **AUTO** mode holding secondary pressure at the dump setpoint — the mechanism behind heatup, cooldown and hot standby holding its own temperature — and a **fast-open** mode armed by a load rejection. Sized at 40 % of rated steam flow |
 | **Condenser** | Vacuum must be healthy or turbine trips |
 
 ### 4.4 Protection and safety automation
@@ -104,12 +104,17 @@ This trainer uses **commercial PWR MODE numbers**. In prose, say **Mode 1, At Po
 
 | MODE | Spoken name | Name | Definition (trainer) | Free Play / notes |
 |------|-------------|------|----------------------|-------------------|
-| **1** | **Mode 1, At Power** | Power Operation | Critical, thermal power **> 5 %**, RCS hot | `hot_full_power`, `50_percent` **[sim]** |
+| **1** | **Mode 1, At Power** | Power Operation | Critical, thermal power **> 5 %**, RCS hot | `hot_full_power`, `50_percent`, `5_percent` **[sim]** |
 | **2** | **Mode 2, Startup** | Startup | Critical, power **≤ 5 %**, RCS hot | After approach to criticality **[sim]** |
-| **3** | **Mode 3, Hot Standby** | Hot Standby | Subcritical, RCS hot at NOP T/P | `hot_zero_power` **[sim]** |
-| **4** | **Mode 4, Hot Shutdown** | Hot Shutdown | Subcritical, intermediate RCS temperature | Heatup / cooldown transit **[sim]** |
-| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical, RCS cold | `cold_shutdown` **[sim]** — a Free Play initial condition |
+| **3** | **Mode 3, Hot Standby** | Hot Standby | Subcritical, RCS **hot** (Tavg ≥ 350.6 °F (177 °C)) | `hot_zero_power` **[sim]** |
+| **4** | **Mode 4, Hot Shutdown** | Hot Shutdown | Subcritical, Tavg **between** 199.4 °F (93 °C) and 350.6 °F (177 °C) | Heatup / cooldown transit **[sim]** |
+| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical, RCS **cold** (Tavg ≤ 199.4 °F (93 °C)) | `cold_shutdown` **[sim]** — a Free Play initial condition |
 | **6** | **Mode 6, Refueling** | Refueling | Head detensioned / refueling | **Out of scope** |
+
+> **Modes 3/4/5 are decided by TEMPERATURE alone, not by pressure.** A subcritical plant at
+> 392 °F (200 °C) and 500 psi (3.45 MPa) is **Mode 3** here even though it is nowhere near normal
+> operating pressure — the boundaries above are the whole definition. `5_percent` is a **Mode 1**
+> initial condition: it is authored at ~6 % power, deliberately just above the 5 % boundary.
 
 **Full commercial paths** (see `05_MODE_TRANSITIONS.md`) — both run **on integrated physics**, end to end on the board:
 
@@ -130,9 +135,19 @@ Independent of plant MODE, the generator has three **load modes**:
 
 | Load mode | Behavior |
 |-----------|----------|
-| **Follow** (default) | Turbine load tracks reactor power (lagged); feed often coupled |
-| **Manual** | Operator sets MWe target; feed remains coupled unless decoupled |
-| **Disconnected** | 0 MWe — grid open / turbine trip; SCRAM forces this |
+| **Follow** | Turbine load tracks reactor power (lag ~45 s) |
+| **Manual** | Operator sets the MWe target. **This is the lineup Free Play hands you** at `hot_full_power` and `50_percent`, and what the rest of these manuals assume |
+| **Disconnected** | 0 MWe, generator off line. Reached by a **planned offline** (breaker opens, no trip latches) *or* by a **turbine trip** — two different events that share one lamp; read **TURB TRIP** to tell them apart (**03** §12.1). A SCRAM forces this |
+
+**Manual is the default you actually get, not Follow.** Follow is the engine's own fallback and is
+what `5_percent` starts in; the startup lineup overrides it to **Manual** at both main at-power
+initial conditions, and `cold_shutdown` spawns off line.
+
+**Coupled feedwater is a fallback, not the level control.** Feed is briefly tied to the load
+target, but the **three-element feed controller** (`STEAM GEN FEED → AUTO`) is engaged by default
+in Free Play and takes the steam generator level as soon as it acts — measured, the coupling drops
+out within about three minutes of a full-power start. Treat three-element AUTO as the level
+backbone (**PWR-N12**); coupled feed is what remains when it is off.
 
 **Rule of thumb:** Rods lead up; turbine leads down. Mismatch floods or drains the SG.
 
@@ -160,7 +175,7 @@ These are **never** called Mode 1, At Power / Mode 5, Cold Shutdown.
 | Rod banks | Multiple banks + overlap | One control + one shutdown |
 | RCS loops | Multi-loop with individual RCPs | Single lumped loop — and this plant genuinely *is* single-loop |
 | Cold ops (Mode 5 / Mode 4) | Multi-hour heatup/cooldown | **[sim]** on integrated physics — Free Play can start in **Mode 5, Cold Shutdown**; the full loop is **PWR-T20** / **PWR-T21**. Pacing is deliberately time-compressed. |
-| Containment / dose | Full models | Not modeled — the simulation ends at fuel damage |
+| Containment / dose | Full models | Not modeled. Core **damage and melt are** simulated — cladding failure at **2192 °F (1200 °C)**, fuel melt at **5072 °F (2800 °C)** — but nothing past them is: no containment, no source term, no release, no dose. **Consequences** end at fuel damage, not the model |
 | Instrument channels | Redundant trains | Single sensors (can fail) — so instrument failures bite *harder* here than in a voting plant |
 | Point kinetics | Spatial power shape | Point model (lumped) |
 | Decay heat | Detailed groups | Two-term model (~7 % at scram after power run) |
