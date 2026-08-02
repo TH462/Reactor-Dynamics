@@ -20,6 +20,72 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-01d (the System Scanner was teaching five wrong things, workbench)
+
+**Task: "review the system scanner descriptions."** The board's inspection copy
+(`ui/diagram/board/pwr_board_inspect.js`, ~160 entries) is a **third independent copy of
+every setpoint** — engine, then manual, then this — and it is the only one with no gate
+tying it back to the engine. `run_inspect` was **35/35 green** and `run_manual_units`
+**0 failed** throughout: they gate coverage, orphan keys, citations, duplicates and
+value/unit pairing, none of which can see a number that is simply wrong. Every figure
+below is measured full-stack (M4+M5+M6), seed 4242; the probes are in the session
+scratchpad, not the repo.
+
+**Five wrong, and the pattern is that each one is a change the copy did not follow.**
+
+| entry | said | measured | moved by |
+|---|---|---|---|
+| ROD AUTO | reference is CAPTURED on engage | `program: trefFromLoad` — 100→60 MWe slides Tref 579.3 °F (304.07 °C) → 574.2 °F (301.24 °C) unaided | the channel was always programmed; #289 also made it `defaultOn` |
+| ECCS FLOW | "zero at operating pressure", "cannot beat 2200 psi" | **1.7 % of rated** at 2235 psi (15.41 MPa); high-head shutoff **2384 psi (16.44 MPa)** | never true — and the ECCS Control entry on the same card said "trickle" |
+| STEAM DUMP POSITION | "nearly full open and stays there" | pins at **40.0 %** for ~1 min, then 8.9 % at +3 min, 7.5 % at +10 min | `steam_dump_max` 1.05 → 0.40 (2026-07-31) |
+| CHARGING FLOW | ~13 %/min against isolated letdown | **+33.5 %/min**, steady over four windows | #249 re-fit `level_per_mass_surplus`, deficit branch deliberately unscaled |
+| TRIP BLOCKS | 3 of 4 rules | see below | the hybrid block model |
+
+**TRIP BLOCKS is the worst entry in the file** — three inverted claims, and the REACTOR
+POWER entry carried two of them as well:
+- *"A block is refused unless the trip is actually asserted."* Measured at the 5 % IC
+  (`power_range` 5.92 %, `ir_high` asserted=false): the block is **ACCEPTED**. The kernel
+  refuses the opposite case — an already-asserted trip *outside* its permissive.
+- *"cannot be cleared while clearing it would scram the plant."* `can_clear: blocked`, i.e.
+  "is there a block to clear". Measured: clearing `ir_high` at full power **scrammed the
+  plant within 5 s** on `intermediate_range high`, 100 % → 4.0 %.
+- *"Blocks auto-reinstate below P-10."* `_autoReinstateTripBlocks` skips
+  `manualTripBlocks`. Measured: a hand-set block at 5.92 % power still `blocked=true` after
+  10 s, 60 s and 300 s below the permissive.
+
+**Where it came from: two code comments, and they are the #220 lesson a third time.**
+`getRpsState`'s header said *"block unless asserted; clear only while not asserted"* sitting
+**directly above** `can_clear: blocked   // clearing a block is always allowed`, and
+`refreshTripBlocks` in the board wiring repeated it. The copy was written from the comment,
+not the code. Both comments corrected; no behaviour changed.
+
+**#238 left the Scanner behind.** The board switched to SI on the same day this file was
+last touched, and the registry has **no access to `ctx.units()`** — 23 entries named their
+display unit in prose ("in psi", "in °F", "in gpm", "psig", "inches of mercury"), each one
+contradicted the instant SI is picked. Unit names removed where the readout labels itself;
+quoted values given their SI partner.
+
+**The guard (`run_inspect` 35 → 36).** A US unit token may appear only **after a number**,
+where `run_manual_units` then holds it to the dual-unit convention. Written because the
+hand pass is exactly the thing that rots. **It earned its place immediately** — it caught
+**two sites the hand pass had missed** (`imrmslginf9.detail` "at the gpm you set",
+`ims3wm0d0bu.brief` "on the same gpm scale"), and injection-verified: restoring one
+original string (`'…leaving the core, in °F.'`) reddens it.
+
+**Traps for the next session.**
+- **The gates here cannot see a wrong number.** `run_inspect` is structural by design and
+  `run_manual_units` only checks that a value carries its SI partner — *not* that either
+  half is right. If you change a setpoint, this file is stale in the same way the manual
+  is, and nothing will tell you.
+- **`run_manual_units` reads a pair only within ONE LINE.** Splitting `2384 psi ' +
+  '(16.44 MPa)` across the string concatenation makes the SI half an orphan and reddens the
+  gate — which is how my own first draft failed. Keep a pair on one line.
+- **Its °C/°F tolerance is 0.1 °F**, so round-number pairs mostly fail: `567 °F (297 °C)`
+  is off by 0.4 and is rejected. Quote the conversion, not a tidy number
+  (`566.6 °F (297.0 °C)`). MPa/psi is looser at 0.6 psi. **Flow is not checked at all** —
+  there is no gpm/m³/h rule, so an m³/h partner is on the author.
+- **`DIFF_ONLY` in that gate lists 33 as "leg ΔT at rated"**, so a `33 °C` pair must
+  validate as a DIFFERENCE — `59.4 °F (33.0 °C)`, not 60.
 ## Session log — 2026-08-01f (HR12 widened + the inoperable-claim gate, develop)
 
 **Why.** #303 and #304 were the same defect twice: a chapter asserting control behaviour that

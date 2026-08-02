@@ -170,6 +170,47 @@ test('copy quality', function (ck) {
   ck('no two entries share a detail', dupD.length === 0, dupD.join(', '));
 });
 
+// The board renders SI as well as US customary since #238 — nineteen readouts, six
+// tiles and five setpoint boxes switch on ctx.units(). THIS COPY DOES NOT: it is a
+// static registry with no access to the toggle. So a sentence that names the display
+// unit ("Hot-leg temperature, in °F") is a claim the board contradicts the moment the
+// player selects SI, and nothing else here can see it — run_manual_units checks that a
+// VALUE carries its SI partner, which a bare unit name never trips.
+//
+// The rule: a US unit token may appear only as the unit OF A QUOTED NUMBER ("2235 psi
+// (15.41 MPa)", "0–60 gpm (0–14 m³/h)"), where run_manual_units then holds it to the
+// dual-unit convention. Naming the unit on its own is what this forbids — the readout
+// already labels itself, in whichever unit is showing.
+test('copy never names the display unit on its own (#238)', function (ck) {
+  // psig before psi: the shorter token is a prefix of the longer one and would
+  // otherwise swallow it, reporting the wrong unit in the failure text.
+  var UNITS = ['psig', 'psi', '°F', 'gpm', 'inHg', 'inches of mercury'];
+  var offenders = [];
+  I.ids().forEach(function (id) {
+    var e = I.own(id);
+    if (typeof e === 'string') return;                 // alias — its target is checked
+    ['title', 'brief', 'detail'].forEach(function (field) {
+      var text = e[field] || '', seen = [];
+      UNITS.forEach(function (u) {
+        var at = 0, i;
+        while ((i = text.indexOf(u, at)) >= 0) {
+          at = i + u.length;
+          // Already reported under a longer unit covering this same span?
+          if (seen.some(function (s) { return i >= s[0] && i < s[1]; })) continue;
+          seen.push([i, at]);
+          // Preceded by a number (allowing "0–60 gpm", "±1.4 °F", "1e5 cps")? Then it
+          // is the unit of a quoted value, which is exactly what we want.
+          if (/[0-9]\s*$/.test(text.slice(0, i))) continue;
+          offenders.push(id + '.' + field + ': "…' +
+            text.slice(Math.max(0, i - 28), at + 2).replace(/\s+/g, ' ') + '…"');
+        }
+      });
+    });
+  });
+  ck('no entry names a US unit except after a number', offenders.length === 0,
+     offenders.join('  |  '));
+});
+
 // ============================================================== the citations
 var MD = (RD.MANUAL_MD && RD.MANUAL_MD.pwr) || null;
 test('manual citations resolve', function (ck) {

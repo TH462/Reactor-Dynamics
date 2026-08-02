@@ -2,7 +2,7 @@
 
 **Document:** PWR-SIM-01  
 **Title:** Reactor⚛️Dynamics — PWR Trainer Operation  
-**Revision:** 10  
+**Revision:** 11  
 
 ---
 
@@ -24,7 +24,7 @@ Provide step-by-step instructions to launch the simulator, navigate the human-ma
 1. Open `index.html` in the project root, **or** serve the folder with a static server:
    - `npx serve .`
    - `python -m http.server` / `python3 -m http.server`
-2. Confirm the plant control area, gauge strip, and right-column controls appear.
+2. Confirm the board fills the plant area with its **vital-parameter tiles** across the top, and that the right column shows the Instructor, the tool tabs, and the System Scanner.
 3. If the plant is not PWR, open **Plant & Mission** and select the **Pressurized Water Reactor**.
 
 ### 2.3 First actions (recommended)
@@ -41,68 +41,80 @@ Provide step-by-step instructions to launch the simulator, navigate the human-ma
 
 ## 3.0 Board layout (PWR)
 
-The PWR uses a **single full-plant synoptic diagram** as the sole control surface (margin cards + embedded panels). Legacy multi-view switchers apply to RBMK/BWR only.
+The PWR uses a **single full-plant synoptic board** as the sole control surface — one stage
+carrying the plant mimic, its control cards, and the vital-parameter tiles. **There is no view
+switcher and no separate gauge strip**: the tiles are part of the board. The legacy multi-view
+plant display with its own gauge strip applies to RBMK/BWR only.
 
 ```
-┌─ Vital-few gauges ──────────────────────────────────────────┐┌ Sim clock / Play / Speed ─┐
-│ Power · Grid · Press · Tavg · PZR Lvl · SG Lvl · Subcool    ││ 📖 Manual  ? Help         │
-├─────────────────────────────────────────────────────────────┤├ Instructor ───────────────┤
-│                                                             ││ commentary / gates        │
-│              PWR SYNOPTIC DIAGRAM                           │├ Tools ────────────────────┤
-│   (margin cards + CVCS / accumulator panels on equipment)   ││ Sim Failures Graph        │
-│                                                             ││ Settings                  │
+┌─ PWR BOARD (one stage) ─────────────────────────────────────┐┌ Sim clock / Play / Speed ─┐
+│ [Power][Tavg][Subcool][Pressure][PZR Lvl][SG Lvl]  ← tiles  ││ 📖 Manual  ? Help         │
+│                                                             │├ Instructor ───────────────┤
+│              PLANT MIMIC + CONTROL CARDS                    ││ commentary / gates        │
+│   (rod control, PZR, CVCS, ECCS/RHR/AFW, SG feed,           │├ Tools ────────────────────┤
+│    steam dump, turbine-generator, condenser cooling …)      ││ Operate  Inject Failure   │
+│                                                             ││ Graph    Settings         │
 ├──────────────────────────────┬──────────────────────────────┤├ System Scanner ───────────┤
 │ Strip chart (trends)         │ Alarm panel                  ││ hover = name; click = full │
 └──────────────────────────────┴──────────────────────────────┘└───────────────────────────┘
 ```
 
-### 3.1 Vital-few gauge strip
+### 3.1 Vital-parameter tiles
 
-Headline instruments (always instrument readings):
+Six tiles across the top of the board. Each shows the reading, a short trend trace, and the
+**seven protection regions** behind it — trip · alarm · acceptable · NORMAL · acceptable ·
+alarm · trip — drawn from the plant's live protection tables, so a retune moves the tile with
+it. Always instrument readings, never truth (HR1).
 
-| Gauge | Meaning |
-|-------|---------|
-| Reactor Power | Neutron power, % rated |
-| Grid Match | Electrical / load context |
-| Primary Pressure | RCS pressure (MPa) |
-| Tavg | Average primary temperature |
-| PZR Level | Pressurizer water level % |
-| SG Level | Steam Generator level % |
-| Subcooling | Margin to boiling (°C) — **TMI truth-teller** |
+| Tile | Meaning |
+|------|---------|
+| REACTOR POWER | Neutron power, % rated |
+| AVG COOLANT TEMPERATURE | Tavg — the band tracks the sliding Tavg program |
+| SUBCOOLING MARGIN | Margin to boiling — **TMI truth-teller** |
+| PRIMARY PRESSURE | RCS pressure; the green band is the pressurizer's own control band |
+| PRESSURIZER LEVEL | Pressurizer water level, % |
+| STEAM GENERATOR LEVEL | SG narrow-range level, % |
 
-### 3.2 Synoptic margin cards (control homes)
+**Units follow Settings → Units** (§7.5): US customary (psi / °F) or SI (MPa / °C), tiles and
+strip chart together.
 
-| Card / panel | Primary controls |
-|--------------|------------------|
-| **Rod Control** | Control bank Raise/Lower/Stop, speed, SCRAM; shutdown bank display |
-| **Power & Reactivity** | Power, Tavg, ΔT, SUR, **subcooling bar** |
-| **PZR Pressurizer** | Pressure, heaters, spray, level |
-| **Relief Valves** | PORV open/close, block valve isolate, safety status |
-| **Primary Flow & Inventory** | Flow / inventory context |
-| **CVCS panel** (embedded) | Charging pump, charge/letdown, AUTO make-up, borate/dilute |
-| **Emergency Cooling** (tabs) | HPI/LPI, AFW, RHR + ESF AUTO re-arm |
-| **RCP** | Coolant pump status / start-stop (as modeled) |
-| **SG Level** | Level, steam pressure |
-| **Steam & Flow** | Steam/feed flows, feed pump, MSIV |
-| **Turbine-Generator** | Load mode, MWe target, steam dump, RPM/MWe |
-| **Condenser** | Vacuum, cooling availability |
-| **Plant Status** | Scram / SBO / plant-level flags |
-| **Accumulators** (embedded) | Discharge status only (passive) |
+### 3.2 Board cards (control homes)
+
+The cards are laid out around the mimic. **Nothing on the board is tabbed** — every card is
+visible at once, which is the point of a single-stage board.
+
+| Card | Primary controls |
+|------|------------------|
+| **REACTOR / ROD CONTROL** | Control bank Raise/Lower, rod speed, nudge, SCRAM (+ RPS reset) |
+| **CONTROL** / **SHUTDOWN** | Control-bank and shutdown-bank position, insertion limit |
+| **NUCLEAR INSTRUMENTATION (NIS)** | Source/intermediate range, SUR, reactivity, period, SR detector, trip blocks, 1/M plot |
+| **PRESSURIZER** (+ **HEATER**, **SPRAY**) | Pressure, Pressure SP, heaters, spray, level |
+| **CHARGING** / **LETDOWN** / **BORON** | Charging pump and flow, CVCS Inventory Control AUTO, letdown orifices, borate/dilute and boron target |
+| **ECCS** (×2) / **RHR** / **AFW** / **AUX FEED WATER** | HPI/LPI, RHR alignment and HX flow split, AFW pump and throttle, ESF AUTO re-arm |
+| **SIT** | Accumulator status — passive, discharge indication only |
+| **STEAM GEN FEED** | SG level, steam flow / feed flow matched pair, feed pump, MSIV |
+| **STEAM DUMP** | Dump valve position, Dump SP, AUTO/MANUAL |
+| **TURBINE-GENERATOR** | Load mode (Follow / Manual / Off), Turbine Load MWe, main breaker, RPM/MWe |
+| **CONDENSER COOLING** | Condenser vacuum, circulating-water inlet temperature |
+
+PORV, block valve, RCPs, MSIV and the safety valves live **on the mimic itself** rather than
+on a card — click the component. `03_CONTROLS_AND_INDICATIONS.md` is the per-control reference.
 
 ### 3.3 Right column
 
 | Region | Function |
 |--------|----------|
-| **Sim controls** | Play/Pause, speed 1× / 10× / 60× / 600× / 3600×, Save, Manual, Help |
+| **Sim controls** | Play/Pause, speed 1× / 10× / 60× / 600× / 3600×, Manual, Help, Contact, and **Board focus (⛶)** — hides this column and enlarges the board |
+| **Plant & mission line** | Always visible under the sim controls: what is running now; click to change it (§5.0) |
 | **Instructor** | Scenario commentary, gates, walkthrough step grading |
-| **Tools** | Sim, Failures, Graph, Settings, Dev |
+| **Tools** | **Operate · Inject Failure · Graph · Settings** (§7.0) |
 | **System Scanner** | **The inspection surface — hover anything to name it; click the block to expand it** (§3.4) |
 
 ### 3.4 System Scanner — the inspection surface
 
 The Scanner answers "what is this?" in **two tiers**, and it covers the whole board: every
-card, control, component and indication, plus the shell chrome, the gauges and the active
-alarm tiles.
+card, control, component and indication, plus the shell chrome, the vital-parameter tiles and
+the active alarm tiles.
 
 | Tier | How | What you get |
 |------|-----|--------------|
@@ -155,21 +167,28 @@ through. Turn the whole behavior off at **Settings → Fast-forward dropout**.
 
 ### 4.3 Destructive control arming
 
-Critical actions use **two-press CONFIRM?** (≈ 3 s arm window):
+**SCRAM** is the one control on the PWR board that arms. It is a **two-press CONFIRM** with a
+**3 s** arm window: the first press reads `CONFIRM`, a second press inside the window trips the
+reactor, and letting the window expire disarms it with no action taken.
 
-- SCRAM (cover open + confirm pattern on rod card)
-- Breaker open / grid disconnect (as applicable)
-- MSIV Close
-- PORV Block Valve Isolate
-- Other armed actions per UI
+After the trip the same button becomes the **RPS reset** — it reads `PRESS TO RESET`, or names
+what is blocking the reset when the plant is not ready (see `03` §3.5.1). The reset is refused
+until the rods are seated.
 
-**NOTE:** First click arms; second click within the timeout fires. Timeout disarms without action.
+**NOTE:** every **other** control on the board acts on a **single press**, including ones with
+real consequences — **MSIV Close**, **PORV Block Valve Isolate**, and taking the generator
+**Off** (the planned offline). Read the control before you click it; there is no second-chance
+prompt. Save first (§11.0) if you are experimenting.
+
+The wider two-press convention belongs to the **classic control-bar panels** the RBMK and BWR
+still use, where breaker-open, PORV block close, ADS and SLC all arm. The PWR board replaced
+that bar, and only SCRAM carried the idiom across.
 
 ---
 
 ## 5.0 Plant & Mission window
 
-Entry: status line under sim controls, or **Sim** tab → Plant & Mission.
+Entry: the plant & mission status line under the sim controls, or **Operate** tab → **Change**.
 
 ### 5.1 Selection order
 
@@ -181,7 +200,7 @@ Entry: status line under sim controls, or **Sim** tab → Plant & Mission.
 
 | Mode | Use |
 |------|-----|
-| **Free Play** | Operator-driven; inject failures from Failures tab; practice procedures |
+| **Free Play** | Operator-driven; inject failures from the **Inject Failure** tab; practice procedures |
 | **Campaign missions** | Guided “Zero to Operator” curriculum (Acts I–VI) |
 | **Scenarios** | Flagship / library scripts (TMI, protection tours, etc.) |
 | **Procedure walkthroughs** | Step-graded from authored procedures |
@@ -205,19 +224,39 @@ Entry: status line under sim controls, or **Sim** tab → Plant & Mission.
 
 | Mode | What you see |
 |------|----------------|
-| **Learning** | Full teaching visuals, SUR, deception duals (Indicated vs Actual on the PORV when relevant), contextual xenon/fuel chips |
-| **Realistic** | Quiet board — indications and status only; no physics teaching overlays |
+| **Learning** | Full teaching visuals, SUR, deception duals (Indicated vs Actual on the PORV when relevant), contextual xenon/fuel chips. The strip chart traces the **true physics** |
+| **Realistic** | Quiet board — indications and status only, no teaching overlays. The strip chart traces the **instruments**, so a failed sensor lies on the trend exactly as it does on the gauge |
 | **Physics Overlay** | Learning only — reactivity (pcm), period, inventory, void, etc. |
 
-**Settings** tab holds units, fast-forward dropout, and About (disclaimer / license / changelog).
+**These are set by the CONTENT, not by you.** There is no display-mode selector: the Settings
+tab holds units, fast-forward dropout and About, and nothing else. A scenario declares the mode
+it needs, and the **TMI-2 module is the reason the mechanism exists** — Parts 1 and 3 run
+**Realistic**, so the board and the trend both keep the deception, and Part 2 switches to
+**Learning** so the reveal can show you the physics underneath. Free Play always runs Learning.
 
-**WARNING:** In Realistic mode, the PORV indicator can lie with **no** dual Actual column and **no** relief animation — exactly as at TMI. Practice there before qualification exams.
+Automatic protection and the alarms read the **instruments in both modes** (HR1). The mode
+changes what is *drawn*; it never changes what the plant decides.
+
+**WARNING:** in Realistic mode the PORV indicator can lie with **no** dual Actual column and
+**no** relief animation — exactly as at TMI-2. The tailpipe temperature is your only honest
+tell. Run the **TMI-2 module** (campaign Act V, missions 27–29) to practise it — see
+`08_ACCIDENT_TMI.md`. You cannot reach that board state from Free Play.
 
 ---
 
 ## 7.0 Tools tabs
 
-### 7.1 Failures
+**There are four:** **Operate · Inject Failure · Graph · Settings.** Plant automation is not
+among them — it lives on the board (§7.3).
+
+### 7.1 Operate
+
+- **Plant** and **Mode** readouts, and **Change** — the Plant & Mission window (§5.0).
+- **Reset** — return to the selected initial condition.
+- **Features** — optional plant features for the current session.
+- **Save / Load** — write or restore a plant state as JSON.
+
+### 7.2 Inject Failure
 
 - Browse injectable failures by category (coolant, power, safety, reactivity, instrument).
 - Inject / clear failures for drills.
@@ -225,7 +264,7 @@ Entry: status line under sim controls, or **Sim** tab → Plant & Mission.
 
 See `07_ABNORMAL_EMERGENCY.md` for response procedures per failure.
 
-### 7.2 Plant automation (board AUTO controls)
+### 7.3 Plant automation (board AUTO controls — not a tab)
 
 Per-channel **AUTO / MAN** controllers that read **instruments** and issue plant
 commands. They live on the board's control cards (there is no separate tab):
@@ -250,38 +289,32 @@ card (Tavg), **BORON → ON** (target ppm), **STEAM DUMP → AUTO**, **CHARGING 
 - Failed sensors **fool** automation (HR1).
 - Rod/power channels drop out on scram where configured.
 
-### 7.3 Graph
+### 7.4 Graph
 
 Strip / multi-parameter trends for post-event review and slow transients (xenon, boron).
+Pick which parameters plot under **Plot parameters**.
 
-**What the trend traces.** In **Teaching** mode the strip chart plots the **true physics** —
-sensor noise is not a lesson, and a clean trace is what makes a slow trend readable. In
-**Realistic** mode it plots the **instruments**, so a failed or drifting sensor shows up on
-the trend exactly as it does on the gauge, and must be caught by cross-checking diverse
-indications (see PWR-E20/E21/E22 in `07_ABNORMAL_EMERGENCY.md`). Alarms and automatic
-protection read the instruments in **both** modes (HR1) — the mode changes what is *drawn*,
-never what the plant decides.
+**What the trend traces** depends on the display mode the content set (§6.0). In **Learning**
+it plots the **true physics** — sensor noise is not a lesson, and a clean trace is what makes a
+slow trend readable. In **Realistic** it plots the **instruments**, so a failed or drifting
+sensor shows up on the trend exactly as it does on the gauge, and must be caught by
+cross-checking diverse indications (see PWR-E20/E21/E22 in `07_ABNORMAL_EMERGENCY.md`).
+Alarms and automatic protection read the instruments in **both** modes (HR1) — the mode
+changes what is *drawn*, never what the plant decides.
 
 The vertical scale auto-ranges to round numbers and is then **held**: it re-scales only when
 a trace leaves the band, so a line does not change shape once it has been drawn. A trace
-brightens when its parameter is in an alarm band.
-
-### 7.4 Sim
-
-- Save / load state (JSON).
-- Reset plant.
-- Plant & Mission entry.
-- Other session utilities.
+brightens when its parameter is in an alarm band. Chart units follow **Settings → Units**,
+the same selection the board tiles use.
 
 ### 7.5 Settings
 
-- Unit display (US / SI).
-- Fast-forward dropout (on / off).
-- About — Disclaimer, License, and Changelog (in-app; works offline in the portable build).
+- **Units** — US customary or SI, applied to the board tiles, the setpoint boxes, the readouts
+  and the strip chart together.
+- **Fast-forward dropout** — on / off (§4.1).
+- **About** — Disclaimer, License, and Changelog (in-app; works offline in the portable build).
 
-### 7.6 Dev
-
-Developer diagnostics — not required for operator training. Treat as out-of-scope for normal ops unless instructed.
+There is no display-mode, terminology or physics-overlay selector here — see §6.0.
 
 ---
 
@@ -290,8 +323,10 @@ Developer diagnostics — not required for operator training. Treat as out-of-sc
 ### 8.1 Alarm panel
 
 - Alarms stack when active; color/priority coded (critical / warning / caution / status).
-- Hover an alarm to highlight related diagram components.
-- **A** acknowledges all.
+- **Point** at an alarm for the Scanner account of it — including the **real setpoint**, read
+  from the plant's protection table in your selected units (§3.4). Pointing does not highlight
+  anything on the board.
+- **Click** a tile to acknowledge that alarm; **A** acknowledges all.
 - **Status**-class tiles arrive already acknowledged — they report a lineup, not a demand for action. See `06_ALARM_RESPONSE.md` §2.0.
 
 **Philosophy:** Alarms read instruments. A stuck sensor can **hide** a real condition or create a false one.
@@ -300,7 +335,11 @@ Developer diagnostics — not required for operator training. Treat as out-of-sc
 
 During missions:
 
-- Read commentary (Learning or Industry register).
+- Read the commentary. The plant vocabulary is authored in two registers — **Learning**
+  (plain language) and **Industry** (real plant terminology) — but the shipped board runs
+  **Learning** throughout: there is no register selector, and the industry labels sit in the
+  data against a future option. Alarm tiles are the visible case; `06_ALARM_RESPONSE.md`
+  carries both names for every card.
 - Follow **gates** — some actions blocked until the lesson allows them.
 - Procedure walkthroughs show step index and acceptance met/not met.
 - **Level complete** offers continue / retry / rewind when provided.
@@ -345,22 +384,22 @@ During missions:
 | **Load** | Restore a saved JSON state |
 | **Reset** | Return to selected initial condition |
 | **Rewind** | Mission checkpoint restore after failure |
-| **Clear failures** | Failures tab — end a drill without full reset |
+| **Clear failures** | **Inject Failure** tab — end a drill without a full reset |
 
 ---
 
 ## 12.0 Training campaign overview (optional path)
 
-Campaign **“Zero to Operator”** (six acts, ~31 missions) takes a novice from board familiarization through TMI and a senior operator exam. Recommended order is the campaign list; Free Play is always available.
+Campaign **“Zero to Operator”** (six acts, **34 missions** plus one bonus) takes a novice from board familiarization through TMI and a senior operator exam. Recommended order is the campaign list; Free Play is always available. The mission-by-mission map, with the procedure each one exercises, is `11_CAMPAIGN_CROSSWALK.md`.
 
-| Act | Theme |
-|-----|--------|
-| I | The Machine — energy path, chain reaction |
-| II | The Physics — criticality, feedback, xenon, boron |
-| III | The Controls — pressure, feed, rods AUTO, load follow, automation |
-| IV | When Things Go Wrong — protection, LOFW, RCP, LOCA-class drills |
-| V | TMI-2 multi-part module |
-| VI | Reckoning — compressed TMI + qualification |
+| Act | Missions | Theme |
+|-----|----------|-------|
+| I | 3 | The Machine — energy path, chain reaction |
+| II | 6 | The Physics — criticality, feedback, xenon, boron |
+| III | 12 | The Controls — pressure, feed, rods AUTO, load follow, automation |
+| IV | 8 | When Things Go Wrong — protection, LOFW, RCP, LOCA-class drills |
+| V | 3 | Three Mile Island — the TMI-2 module (Parts 1–3) |
+| VI | 2 | The Reckoning — compressed TMI + qualification exam |
 
 Details: `Blueprint/pwr_training_campaign.md` (design) and Plant & Mission UI (runtime).
 

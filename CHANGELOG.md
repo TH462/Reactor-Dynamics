@@ -238,6 +238,51 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   claimed to test SI and rendered US for its whole life.
 
 ### Fixed
+- **The board's System Scanner was teaching five things the plant does not do.** Hovering
+  any object writes a description into the inspection block; that copy is a static registry
+  (`ui/diagram/board/pwr_board_inspect.js`) and four separate changes moved numbers under it
+  without moving it. `run_inspect` was green at 35/35 throughout — it gates coverage, orphan
+  keys, citations and duplicates, **not arithmetic**, so none of this was visible. All
+  figures below re-measured full-stack (M4+M5+M6), seed 4242.
+  - **ROD AUTO described a captured reference; the reference is PROGRAMMED.** The entry
+    taught that engaging captures current Tavg and that the capture is the trap. The channel
+    carries `program: trefFromLoad` — measured, dropping load 100 → 60 MWe slides the
+    reference from 579.3 °F (304.07 °C) to 574.2 °F (301.24 °C) with nobody re-engaging it.
+    A captured reference would not have moved. The entry also never said the channel is now
+    **engaged on arrival** at power (#289), which the SG FEED entry does say of its own.
+  - **ECCS FLOW said "zero at operating pressure"; its own card said "trickle".** Measured
+    with `set_hpi` at 2235 psi (15.41 MPa): **1.7 % of rated**, which the gauge resolves.
+    The quoted 2200 psi was wrong too — the high-head shutoff is 2384 psi (16.44 MPa).
+  - **STEAM DUMP POSITION said "nearly full open and stays there"** — a sentence from when
+    `steam_dump_max` was 1.05. Measured on a turbine trip: P-9 scrams at +1 s, the valve pins
+    at its stop of **40.0 %** for about a minute, then backs down to 8.9 % at +3 min and
+    7.5 % at +10 min. 40 % is what the 0–100 % readout shows, so the old text described a
+    reading the player cannot get.
+  - **CHARGING FLOW said 13 %/min; it is 33 %/min.** Board-maximum charging against an
+    isolated letdown, measured steady over four windows: **+33.5 %/min** — from a normal
+    55 % that is the 97 % going-solid trip in a little over a minute. Consistent with #249
+    re-fitting `level_per_mass_surplus` and deliberately not scaling the deficit branch. Its
+    neighbours were right and are unchanged (letdown A −2.2 %/min, A+B −5.0 %/min).
+  - **TRIP BLOCKS had three of its four rules inverted.** Measured: a block of a NOT-yet-
+    asserted trip is **accepted** (the copy said blocks are refused unless asserted — the
+    kernel refuses only the opposite case, an already-asserted trip outside its permissive);
+    clearing is **never refused**, and clearing `ir_high` at full power scrammed the plant
+    within 5 s on `intermediate_range high` (the copy said it cannot be cleared when clearing
+    would scram); and a hand-set block **survives** falling below P-10, only plant-established
+    ones reinstate. The REACTOR POWER entry carried the last two errors as well.
+  - **Two code comments carried the same wrong premise** and are the likely source of the
+    copy — `getRpsState`'s header in `control_kernel.js` said "clear only while not asserted"
+    directly above `can_clear: blocked   // clearing a block is always allowed`, and
+    `refreshTripBlocks` in the board wiring repeated it. #220's lesson, third time: the
+    guard's own comment was the bug.
+- **The Scanner still spoke US customary after the board learned SI** (#238). 23 entries
+  named their display unit in prose ("in psi", "in °F", "in gpm", "psig", "inches of
+  mercury") and the registry has no access to `ctx.units()`, so every one of them was
+  contradicted the moment SI was selected. Unit names removed where the readout labels
+  itself; quoted values now carry their SI partner. **`run_inspect` grew the guard**
+  (35 → 36 checks): a US unit token may appear only after a number, where
+  `run_manual_units` then holds it to the dual-unit convention. It found two sites the hand
+  pass had missed, and reddens on the old text.
 - **`board_check` had a red nobody had run** — 1 failure / 143 while CLAUDE.md claimed
   143/143. Two independent harness bugs, both pre-existing, neither a plant defect. The
   TRIP BLOCKS check **unblocked `ir_high` at full power and never put it back**: the IR
