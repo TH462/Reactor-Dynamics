@@ -171,6 +171,79 @@ physical route is **diluting at constant power** (that is how the #306 screensho
 
 `run_m4` **34 → 36**, `board_check` **179 → 182**. Three injections, three reds.
 
+**The rate comparator, ruled and shipped** *(OWNER, 2026-08-02: selected "B — washout the trim"
+from four options put to him — declare-only, washout, full three-stage circuit, or pin-and-defer;
+a selection, not verbatim words)*. `rods_tavg`'s power-mismatch trim was PROPORTIONAL to the
+standing steam-vs-nuclear mismatch. WTSM 8.1.4.2 (ML11223A252) says the real one is a **rate
+comparator** and says why: *"provides an output if, and only if, there is a rate of change of the
+difference between the inputs… prevents the power mismatch circuit from responding to steady
+state calibration differences between nuclear and turbine power."* It is a washout now —
+`trimSlow` follows the standing part with `TRIM_TAU_S`, the controller sees only what is left.
+**Gain unchanged at 1.25**, so a STEP still produces the same initial push and everything tuned
+around it survives; only the standing component goes.
+
+**I told the owner no option would reach the ±5 °F duty. That was wrong for the ramp.** At τ = 5 s
+the 5 %/min ramp holds **4.77 °F** against 12.55 °F proportional. The 10 % step is unchanged at
+~6.3 °F, so the step half is still missed.
+
+**τ is bounded at BOTH ends** — swept 0.5 → 300 s over four transients plus a 2 h soak:
+
+| τ (s) | 5 %/min ramp | 50 % step | rod travel/h at a settled 75 % |
+|---|---|---|---|
+| 0 (proportional) | 12.55 °F | 10.59 | 34 |
+| 1 | 6.90 | 13.06 | **761** |
+| 3 | 4.77 | 10.82 | 17 |
+| **5 (shipped)** | **4.77** | **10.70** | **17** |
+| 8 | 4.88 | 10.65 | 21 |
+| 45 | 6.25 | 11.29 | — |
+| 300 | 8.16 | 12.67 | — |
+
+Too long and the standing mismatch returns; too short and it differentiates instrument noise —
+at 1 s the bank travels 761 fine steps an hour at a **settled** load and the 50 % step gets worse
+than the term it replaced. 5 s sits mid-band, 5× above the cliff. **Hunting IMPROVED** (17 vs 34);
+a first-pass "direction reversals" metric said the opposite and was simply noise.
+
+**`trimSlow` lives on the channel record**, not in the trim's closure — a closure is module scope,
+shared across engine instances, and invisible to save/restore/rewind. Serialized, restored,
+cleared on disengage; absent in an old save it re-seeds and outputs zero that step.
+
+**New probe TR-1i**, injection-verified three ways. Two probe-authoring corrections en route, both
+worth more than the probe: the first mechanism check counted how often the bank was STALLED while
+off program and measured **34 % on both trims** — it discriminated nothing; its replacement then
+passed **vacuously** on the proportional trim, because with no follower `maxOut` stays 0 and
+`0 < maxRaw/2` is true. It reads `trimSlow` directly now, guarded on having seen one.
+
+**TWO PRE-EXISTING DEFECTS FELL OUT, and neither was mine.** Both were masked by the old trim.
+
+1. **`_stepBang` was EDGE-TRIGGERED.** It sent one `set_boron_adjust` on the mode change and never
+   again, so anything writing that setting afterwards cancelled the channel silently while the
+   note still read "dilute…". Measured: `boron_trim` engaged, one operator stop command, then
+   **2400 s with `boron_adjust` = 0, the charging pump running, and the channel still reporting
+   "dilute…"**. The #210/#214 failure exactly. It re-asserts now, via a per-plant `output(ctx)`
+   read-back — `run_hr3` red-carded the first version for naming `boron_adjust` in the shared
+   kernel, which is the guard doing its job.
+2. **`boron_trim.rate` was a firehose.** Once the channel actually ran continuously, 0.5 ppm/s =
+   5 pcm/s **scrammed the plant**. Measured: 0.5 scrams, 0.1/0.05/0.02 hold. Now **0.05**, the
+   rate this repo already calls tuned — `run_autoctl`'s own probe borates by hand at 0.05 and
+   calls 0.5 *"a firehose that scrams the plant"*.
+
+**Why the `boron_trim` probe passed for months while measuring the wrong thing.** It credits the
+channel with walking the rods back into band. Traced: on the old trim the rods recovered from a
+**4.8 % power overshoot** that the proportional term corrected — boron never moved (613 ppm at
+every sample). The washout does not produce that overshoot, so the accidental mechanism vanished
+and the probe went red. #286 had "verified" this channel by neutering it and seeing 100.0 vs 88.6;
+that difference was real but came from the wrong mechanism. **Neutering proves a channel matters;
+it does not prove it does what its name says.**
+
+**TR-1g re-banded to the SOURCED criterion.** Its band was `299..308 °C` — one-sided (+7.5 °C of
+swell allowed, −1.5 °C of undershoot) and written around the old trim's overshoot. It is ±5 °F of
+the load program now, from WTSM 11.2's own words about what the dump waits for. **This is a
+tightening and it FAILS on the old plant** (+5.24 °F, outside the criterion it is meant to
+satisfy) — said out loud rather than implied, per HR10.
+
+`run_behavior` **43 → 44**, `run_hr3` **27 → 28**, everything else at baseline; authored content
+untouched (`run_campaign` 51/51, `run_procedures_stack` 22/22, `run_ops` at baseline).
+
 **Filed, not built: #311** — there is no **OTΔT or OPΔT** anywhere in the tree, so two of the four
 Westinghouse reactor trips are absent, along with the rod stops and runbacks they drive. The ΔI
 term may not be honestly buildable on a one-node core; a declared reduced form is probably the

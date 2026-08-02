@@ -21,6 +21,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Automatic rod control follows load changes the way the real one does** (#306) *(OWNER,
+  2026-08-02: selected "washout the trim" from four options put to him)*. The rod controller's
+  power-mismatch term was PROPORTIONAL to the standing steam-vs-nuclear mismatch; the real one is
+  a **rate comparator**, and WTSM 8.1.4.2 (ML11223A252) states why — it *"prevents the power
+  mismatch circuit from responding to steady state calibration differences between nuclear and
+  turbine power."* Ours could grow until it cancelled the temperature error outright: measured
+  mid-ramp, the two terms were −4.64 and +4.41 and the channel commanded **zero rod steps with
+  Tavg 8.6 °F off program**.
+  - **A 5 %/min load ramp now holds Tavg within 4.77 °F of program, against 12.55 °F before** —
+    inside the ±5 °F the real system is specified to. The 10 % step is unchanged at ~6.3 °F.
+  - The gain is untouched, so a step change still produces the same push and every scenario tuned
+    around it behaves as before. Only the standing component is removed.
+  - Steady state is unchanged in substance: a 2 h soak settles 0.72 °F off program, well inside
+    the real ±1.5 °F deadband — and the rods actually **hunt less** than before (17 vs 34 fine
+    steps an hour at a settled part load).
+
+### Fixed
+- **Automatic boron trim could stop working without saying so** (#306). The channel sent its
+  borate/dilute command once, when it changed mode, and never again — so anything that touched
+  the boron makeup rate afterwards cancelled it silently while the panel still read "dilute…".
+  Measured: one operator stop command left the plant sitting for 40 minutes with the channel
+  claiming to be diluting and nothing happening. It now re-asserts its output whenever the plant
+  no longer holds it.
+- **…and once it worked, it was far too fast.** At the shipped 0.5 ppm/s the trim channel drove
+  the plant to a **reactor trip**; the rate is now 0.05 ppm/s, the makeup rate the rest of the
+  plant already uses. Both faults were hidden behind the rod-control change above: the old
+  controller quietly recovered the rods off a 4.8 % power overshoot, so the trim channel appeared
+  to be doing a job it had actually stopped doing.
+
 ### Added
 - **A warning before the rod insertion limit, and a standing BLOCKED indication** (#306). A real
   board carries **two** insertion-limit annunciators and we shipped one, so the first notice a

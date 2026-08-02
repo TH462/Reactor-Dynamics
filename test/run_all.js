@@ -132,7 +132,7 @@ var BASELINES = {
   // "until the power in the reactor is reduced to the same value as the secondary load"), not
   // re-banded — its old 85..93 % steady state was a rods-in-manual artefact. Injection-checked:
   // 7 of the new checks go red on the pre-#289 lineup.
-  'run_behavior.js':       { code: 0, score: '43pass 0xfail' },
+  'run_behavior.js':       { code: 0, score: '44pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -169,7 +169,7 @@ var BASELINES = {
   // shared by all three plants now, so it stops being a finding — and the known-leak list
   // in run_hr3.js is EMPTY for the first time. Fewer checks means fewer leaks, not less
   // checking; the gate reddened on its own stale entry before anyone edited the list.
-  'run_hr3.js':            { code: 0, score: '27checks 0failed' },
+  'run_hr3.js':            { code: 0, score: '28checks 0failed' },
   // New 2026-07-29 — the guards for the OTHER hard rules. CONTEXT.md §3 now requires
   // every rule to name its guard, and three had none: HR1 (protection reads
   // instruments), HR5 (commands descend; the UI never touches the engine) and HR11 (a
