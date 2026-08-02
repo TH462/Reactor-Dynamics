@@ -112,6 +112,26 @@ var STEP_UI = {
     { i: 5,  view: 'board', control: 'Pressure SP' },
     { i: 6,  view: 'board', control: 'Accumulator valve' },
   ],
+  // PWR-N15 controlled cooldown (#310) — fourteen controlled steps. The four cooling
+  // legs are RAMP steps, but a ramp is still one control on the board: the player is
+  // walking the Dump SP box down, so the pill (and the browser gate's reachability
+  // check) is the same as for a stepped setpoint.
+  pwr_cooldown: [
+    { i: 1,  view: 'board', control: 'Boron control' },
+    { i: 2,  view: 'board', control: 'Pressure SP' },
+    { i: 3,  view: 'board', control: 'Trip Blocks' },
+    { i: 4,  view: 'board', control: 'Trip Blocks' },
+    { i: 5,  view: 'board', control: 'HPI/LPI' },
+    { i: 6,  view: 'board', control: 'Dump SP' },
+    { i: 7,  view: 'board', control: 'Dump SP' },
+    { i: 8,  view: 'board', control: 'Accumulator valve' },
+    { i: 9,  view: 'board', control: 'Dump SP' },
+    { i: 10, view: 'board', control: 'Dump SP' },
+    { i: 11, view: 'board', control: 'Residual Heat Removal (RHR)' },
+    { i: 12, view: 'board', control: 'Residual Heat Removal (RHR)' },
+    { i: 13, view: 'board', control: 'RCP Run/Stop' },
+    { i: 14, view: 'board', control: 'Residual Heat Removal (RHR)' },
+  ],
   pwr_raise_power: [{ i: 0, view: 'primary', control: 'Rod Speed' }, { i: 1, view: 'secondary', control: 'Turbine Load' }],
   pwr_lower_power: [{ i: 0, view: 'secondary', control: 'Turbine Load' }, { i: 1, view: 'primary', control: 'Rod Speed' }],
   pwr_pressure_control: [{ i: 1, view: 'primary', control: 'Pressurizer Spray (PZR)' }],

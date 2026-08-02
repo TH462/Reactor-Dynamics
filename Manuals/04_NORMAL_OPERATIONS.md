@@ -2,7 +2,7 @@
 
 **Document:** PWR-NOP-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Revision:** 11  
+**Revision:** 12  
 
 ---
 
@@ -654,7 +654,8 @@ After **PWR-N14** or any hot, subcritical plant.
 |------|------|
 | **WARNING** | **Block SI before you depressurize (step 1a).** The cooldown walks the primary down through the **1798 psi (12.4 MPa)** SI actuation setpoint, and an armed HPI reads that as a LOCA. Measured with SI left armed: the pumps inject, boron ends at **2500 ppm** instead of the ~857 ppm cold-shutdown figure, and the cold injection cools the plant about **ten times faster than you are asking for** — 566.6 °F to 199.4 °F (297 → 93 °C) in **23 plant-minutes** against a 90 °F/hr programme. |
 | **WARNING** | **Isolate SI accumulators** at **1000 psi (6.895 MPa)** before cover-gas **600 psi (4.14 MPa)**. Nothing automatic shuts them. Failure dumps all four (empty SITs, boron dragged toward 2500 ppm, water-solid Mode 5). Basis: NUREG-1431 **LCO 3.5.1** / **SR 3.4.12.3**. |
-| **NOTE** | The SI block of step 1a stops the *pumps*. It does nothing to the passive accumulators — those are a separate, manual isolation at step 4. Both are needed. |
+| **WARNING** | **Block BOTH low-pressure reactor trips (steps 1c/1d), not just SI.** Two entries in the trip table watch reactor coolant pressure downward: the **low-pressure reactor trip** at **1800 psi (12.41 MPa)** and the **reactor trip on safety injection** at the **1798 psi (12.4 MPa)** SI setpoint. Taking HPI/LPI to OFF stops the *pumps* and leaves both trips armed. Neither block is available until pressure is inside the **P-11** permissive (below **1972 psi / 13.6 MPa**), which is why step 1b lowers the Pressure SP first. Measured with the blocks missed: the plant scrams about five plant-minutes into the first leg, the resulting turbine trip drives the steam dump into its Tavg-error mode, and the cooldown runs away at **−551 °F/hr (−306 °C/hr)**. Measured with only the low-pressure trip blocked: it scrams anyway, one step later. |
+| **NOTE** | The SI block of step 1a stops the *pumps*. It does nothing to the passive accumulators — those are a separate, manual isolation at step 4 — and nothing to the two reactor trips above. All three are needed. |
 | **NOTE** | RHR is placed in service in the low-pressure band (~**400 psi (2.76 MPa)** block-open interlock on this plant). Commercial SOPs place RHR near intermediate temperature and pressure (often on the order of ~350 °F / ~350 psig). |
 | **NOTE** | Secure RCPs once RHR carries the cooldown so the SG is not the only sink. |
 | **NOTE** | **The ~90 °F/hr (50 °C/hr) figure used throughout this procedure is THIS PLANT'S programmed rate, and is UNVERIFIED as a commercial limit.** No source for a real-plant cooldown rate limit has been found for this manual set; earlier revisions called it "the commercial class" on recall, which is not evidence. Treat it as the training programme it is. Real Tech Spec RCS heatup/cooldown limits derive from the pressure–temperature curves in NUREG-1431 LCO 3.4.3, which this plant does not model. |
@@ -664,43 +665,66 @@ After **PWR-N14** or any hot, subcritical plant.
 | Step | MODE | Action | Control | Acceptance |
 |------|------|--------|---------|------------|
 | 1 | Mode 3 | Borate to cold-shutdown margin — **~857 ppm** on this plant (806 ppm critical cold with the bank in, **09 §7.5**, plus ~1000 pcm of margin). Measured, 683 → 857 ppm takes **~58 plant-minutes** at the ~3 ppm/min make-up rate | CVCS Borate | Boron at cold SDM before any cooling |
-| 1a | Mode 3 | **Block SI** — see the WARNING. Do this before the pressure setpoint moves | ESF / SI block | SI in MANUAL; HPI will not auto-actuate |
-| 2 | 3 → 4 | **Walk Dump SP and Pressure SP down TOGETHER along the saturation curve**, at the cooldown rate — Dump SP to Psat(target Tavg), Pressure SP to Psat(target Tavg + subcooling margin). Maintain AFW/feed for SG level | Dump SP / Pressure SP / Feed | Tavg falling at the programmed rate; subcooling held |
+| 1a | Mode 3 | **Block SI** — HPI/LPI to OFF. See the WARNING. Do this before the pressure setpoint moves | HPI/LPI | SI in MANUAL; HPI will not auto-actuate |
+| 1b | Mode 3 | Lower the **Pressure SP to 1901 psi (13.11 MPa)** — saturation for present Tavg plus the 63 °F (35 °C) subcooling margin this cooldown holds. It also puts you inside the **P-11** permissive, which is what makes 1c/1d possible | Pressure SP | Pressure below 1972 psi (13.6 MPa) |
+| 1c | Mode 3 | **Block the low-pressure reactor trip** (1800 psi / 12.41 MPa) | Trip Blocks | Trip BLOCKED |
+| 1d | Mode 3 | **Block the reactor trip on safety injection** (1798 psi / 12.4 MPa) — a second trip on the same channel | Trip Blocks | Trip BLOCKED |
+| 2 | 3 → 4 | **Walk Dump SP and Pressure SP down TOGETHER along the saturation curve**, at the cooldown rate — Dump SP to Psat(target Tavg), Pressure SP to Psat(target Tavg + subcooling margin). Four legs of ~46.8 °F (26 °C): **1194 → 814 → 580 → 347 → 197 psi** on the dump against **1901 → 1352 → 1004 → 641 → 395 psi** on the pressurizer. Maintain AFW/feed for SG level | Dump SP / Pressure SP / Feed | Tavg falling at the programmed rate; subcooling held |
 | 3 | Mode 4 | Keep the pressure walk-down *behind* the temperature — spray as needed, subcooling positive throughout | Pressure SP / Spray | P falling controlled; subcooling > 0 |
 | 4 | Mode 4 | At **1000 psi (6.895 MPa)**: **close accumulator discharge** | Accumulator valve | Valve shut; SIT fill holds |
-| 5 | Mode 4 | Below the **400 psi (2.76 MPa)** RHR block-open interlock: place **RHR On**, and set the **HX split low** (~10 %) rather than full-through on a hot plant | RHR / RHR HX | RHR active; rate still on programme |
-| 6 | 4 → 5 | **Secure RCPs** once RHR carries heat; from here the **HX split is the rate control** | RCP Stop / RHR HX | Flow to RHR path |
+| 5 | Mode 4 | Below the **400 psi (2.76 MPa)** RHR block-open interlock: **set the HX split to ~7 % FIRST**, then place **RHR On**. The split arrives at 100 % from the at-power lineup and 100 % onto a 379.4 °F (193 °C) plant is a **−1517.4 °F/hr (−843 °C/hr)** shock | RHR HX / RHR | RHR active; rate still on programme |
+| 6 | 4 → 5 | **Secure RCPs** once RHR carries heat; from here the **HX split is the rate control**, and it has to keep RISING — walk it **7 → 25 %** as the gap to the RHR sink closes | RCP Stop / RHR HX | Flow to RHR path |
 | 7 | Mode 5 | Arrive cold (≤ ~199.4 °F (93 °C)), depressurized, RHR in service, accumulators isolated | (observe) | Mode 5 |
 
-> **Step 2 is a ramp, not a chase.** Walking the setpoints down to track *present* Tavg in
-> ~1-minute steps looks gentle and is not: a 55 psi (0.38 MPa) setpoint error is wider than the
-> dump's 36 psi (0.25 MPa) proportional band, so the dump saturates and the plant free-falls —
-> measured, **566.6 → 199.4 °F (297 → 93 °C) in six plant-minutes**. Drive both setpoints off a
-> *reference temperature falling at the rate you want* and the dump only ever opens as far as it
-> must to keep up.
+> **Step 2 is a ramp, not a chase — and not a staircase either.** Both wrong ways have been
+> measured on this plant.
+>
+> *Chasing* — retyping the setpoints to track whatever Tavg reads right now, in ~1-minute
+> steps — is a positive feedback loop: a 55 psi (0.38 MPa) error is wider than the dump's
+> 36 psi (0.25 MPa) proportional band, the dump saturates, and the plant free-falls. Driven to
+> the setpoint's 29 psi (0.2 MPa) stop that is **−2340 °F/hr (−1300 °C/hr)** — from
+> 566.6 °F (297 °C) to 251.6 °F (122 °C) in eight plant-minutes, which is as far as the dump
+> alone can take you.
+>
+> *Stepping* — typing one new setpoint per leg and waiting — has the right average and the
+> wrong ride. The primary trails the secondary with a time constant of about 37 s, so a step
+> of ΔT bursts at roughly ΔT/τ: measured, an **18 °F (10 °C) step peaks at −1168.2 °F/hr (−649 °C/hr)**
+> over its first 30 s, and a whole 46.8 °F (26 °C) leg taken at once peaks at
+> **−2178 °F/hr (−1210 °C/hr)**. Holding −90 °F/hr (−50 °C/hr) with discrete steps needs them
+> no larger than about **1.4 °F (0.8 °C)** — roughly 250 of them for this cooldown.
+>
+> So *walk* it: hold the ▼ on each setpoint box and drive both off a reference temperature
+> falling at the rate you want. The dump then only ever opens as far as it must to keep up —
+> measured, **2–3 % demand** against its 40 % capacity for the whole of the secondary-led ride.
 
 ### Expected cooldown performance
 
-**The cadence is part of the answer.** Times below are measured full stack from `hot_zero_power`
-on the default lineup, driving the procedure above at a **programmed −90 °F/hr (−50 °C/hr)** with
-**63 °F (35 °C)** of subcooling held throughout, SI blocked at step 1a and the RHR HX split trimmed
-to the same ramp after step 5. Run it at a different rate and every row below moves — that is the
-point of a programmed cooldown, and the reason the previous version of this table could not be
-reproduced.
+**The cadence is part of the answer, and it is now executable.** The table below is produced by
+the **`pwr_cooldown` checklist** (`ui/manual_procedures.js`, `manual_ref: PWR-N15`), replayed
+through the full M4+M5+M6 stack by `test/run_procedures_stack.js` — so it is a gate, not a
+transcription. Conditions: `hot_zero_power`, free-play default lineup, seed 42, 10× acceleration,
+a **programmed −90 °F/hr (−50 °C/hr)** with **63 °F (35 °C)** of subcooling held throughout. Run
+it at a different rate and every row below moves; that is the point of a programmed cooldown.
 
 | Milestone | Plant time | Notes |
 |-----------|-----------|--------|
 | Start Mode 3 | 0 | **566.6 °F (297 °C)**, **2235 psi (15.41 MPa)**, 683 ppm |
 | Boration to cold SDM complete | ~1.0 plant-h | 857 ppm; **cooling does not start until this is done** |
-| Isolate accumulators at **1000 psi (6.895 MPa)** | **~1.9 plant-h** | Tavg **481.8 °F (249.9 °C)**; SIT inventory still 100 % |
-| RHR placed, below **400 psi (2.76 MPa)** | **~3.05 plant-h** | 392 psi (2.70 MPa), Tavg **379.1 °F (192.8 °C)** — close to the commercial ~350 °F / ~350 psig practice in the NOTE above |
-| RCPs secured | ~3.1 plant-h | RHR carries the heat from here |
-| **Mode 4 entry** (350 °F (176.7 °C)) | ~3.4 plant-h | |
-| Cold end, **Mode 5** (199.4 °F (93 °C)) | **~5.0 plant-h** | 231 psi (1.59 MPa), boron **857 ppm**, accumulators **100 % full and isolated**, RHR on, RCPs off — this is the `cold_shutdown` initial condition |
+| SI blocked, both reactor trips blocked | ~1.09 plant-h | 1901 psi (13.11 MPa), inside P-11 |
+| Isolate accumulators at **1000 psi (6.895 MPa)** | **~2.04 plant-h** | Tavg **482.7 °F (250.4 °C)**; SIT inventory still 100 % |
+| RHR permissive reached, **400 psi (2.76 MPa)** | **~3.16 plant-h** | Tavg **382.8 °F (194.9 °C)** — close to the commercial ~350 °F / ~350 psig practice in the NOTE above |
+| RHR aligned, RCPs secured | ~3.19 plant-h | HX split 7 %; RHR carries the heat from here |
+| **Mode 4 entry** (350 °F (176.7 °C)) | ~3.49 plant-h | 392 psi (2.70 MPa) |
+| Cold end, **Mode 5** (199.4 °F (93 °C)) | **~4.89 plant-h** | boron **857 ppm**, accumulators **100 % full and isolated**, RHR on, RCPs off. The checklist runs on to **177 °F (80.5 °C)** at **363 psi (2.50 MPa)** — the `cold_shutdown` initial condition's own pressure |
 
-Measured rate through the secondary-led legs: **−89 to −90 °F/hr (−49.5 to −49.9 °C/hr)**, i.e. on
-programme. If the accumulators are left open through 600 psi (4.14 MPa) they dump and the boron and
-inventory end states are wrong; if SI is left armed the cooldown is not yours to pace at all.
+Measured rate: **−85 to −100 °F/hr (−47 to −56 °C/hr)** through the secondary-led legs and
+**−65 to −118 °F/hr (−36 to −66 °C/hr)** on the RHR leg. The worst transient anywhere in the
+run is **−172 °F/hr (−95 °C/hr)** for about ten seconds as the RHR suction opens, which is why
+the checklist's guard sits at −270 °F/hr (−150 °C/hr): every known way to lose control of this
+evolution is far beyond it (see the injection table in `Diagnostic/TUNING_LOG.md`). If the
+accumulators are left open through 600 psi (4.14 MPa) they dump; if SI is left armed the
+pressurizer goes solid and trips the plant; if either reactor trip is left unblocked you scram
+in the first leg.
 
 ### Outcome
 **Mode 5, Cold Shutdown** — cold, depressurized, RHR in service. Accumulators remain isolated until **PWR-N01** re-aligns on the next heatup.
@@ -739,5 +763,5 @@ inventory end states are wrong; if SI is left armed the cooldown is not yours to
 | Accumulator OPERABLE / isolate on cooldown | NUREG-1431 Rev 4.0 **LCO 3.5.1**, **SR 3.4.12.3** |
 | RHR placement near intermediate T/P on cooldown | Commercial SOP practice (e.g. plant procedures of the form in NRC ADAMS **ML13310A240**) |
 | Critical boron, ECC, and 1/M practice values | **09 §7.5** |
-| Heatup / cooldown plant-time milestones | **PWR-N01** and **PWR-N15** expected performance — all MEASURED full stack, cadence stated with the table |
+| Heatup / cooldown plant-time milestones | **PWR-N01** and **PWR-N15** expected performance — all MEASURED full stack, cadence stated with the table. N15's is produced by the `pwr_cooldown` checklist under `test/run_procedures_stack.js`, so it is re-derived on every gate run rather than transcribed |
 | RCS cooldown-rate limit | **UNVERIFIED — no source found.** The 90 °F/hr (50 °C/hr) used here is this plant's programmed training rate, not a sourced commercial limit. See the NOTE in PWR-N15. |

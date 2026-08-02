@@ -21,6 +21,42 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The Mode 3 → Mode 5 cooldown is a runnable checklist now — and building it found a step the
+  written procedure was missing** (#310). PWR-N15 was one of 48 documented procedures with no
+  executable form, and the one worth doing next because #303 had just published a *measured*
+  performance table for it that nothing reproduced. `pwr_cooldown` is that table's source now:
+  the live walkthrough on the board, and a full-stack replay under `run_procedures_stack`
+  (23/23, **204 checks**), so every milestone in `Manuals/04` PWR-N15 is re-derived on each gate
+  run instead of transcribed from a throwaway rig.
+
+  **The finding: blocking SI is not enough.** Two entries in the trip table watch reactor coolant
+  pressure downward — the **low-pressure reactor trip** at 1800 psi (12.41 MPa) and the **reactor
+  trip on safety injection** at the 1798 psi (12.4 MPa) SI setpoint — and taking HPI/LPI to OFF
+  blocks neither. Measured, the plant scrams about five plant-minutes into the first cooling leg
+  with *either* one left armed; the resulting turbine trip then drives the steam dump into its
+  Tavg-error mode and the cooldown runs away at −550.8 °F/hr (−306 °C/hr). Neither block is even
+  available until pressure is inside the P-11 permissive, so the checklist lowers the Pressure SP
+  first. New steps in PWR-N15 (1b/1c/1d) and PWR-T21 (C1a).
+
+  **A checklist step had to learn to RAMP.** The obvious build — a handful of discrete Dump SP
+  steps with holds — measures badly here: the dump's proportional band is 36 psi (0.25 MPa)
+  against a 40 % capacity and the primary trails the secondary by about 37 s, so a step of ΔT
+  bursts at roughly ΔT/τ. An 18 °F (10 °C) step peaks at **−1168.2 °F/hr (−649 °C/hr)** and a
+  whole 46.8 °F (26 °C) leg at **−2178 °F/hr (−1210 °C/hr)**; holding the −90 °F/hr programme
+  with steps needs them under 1.4 °F, about 250 of them. Procedure steps can now carry
+  `ramp: [{action, arg, points}]` — a setpoint walked along an authored polyline across the
+  step's hold. It costs the UI **nothing**: the live checklist never issued `cmd` in the first
+  place (it renders text and highlights and grades off `acc`), so this is replay-side only, in
+  the two procedure gates.
+
+  Measured on the finished checklist: −85 to −100 °F/hr through the four secondary-led legs,
+  accumulators isolated at 1000 psi at 2.04 plant-h, RHR permissive at 3.16 h, Mode 4 at 3.49 h,
+  **Mode 5 at 4.89 h**, arriving on the `cold_shutdown` initial condition with the accumulators
+  100 % full and isolated and boron at 857 ppm. Verified by injection, seven ways — remove either
+  trip block, the SI block, the accumulator isolation, the boration or the RHR heat-exchanger
+  throttle, or flatten the ramps back into steps, and the gate reddens each time.
+
 ### Changed
 - **HR12 now covers control behaviour, and half of it is gated** *(OWNER RULING, 2026-08-01:
   "go with your recommendation.", on the recommendation to widen HR12 by one clause and add one

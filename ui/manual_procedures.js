@@ -11,11 +11,19 @@
  *   category: startup | power | control | shutdown | emergency | accident
  *   narrative:true  → an accident walkthrough; not run by the harness (the engine
  *                     flagship suite owns its physics, CONTEXT §9).
- * Step: { text, control, target, cmd, hold, acc, saw, note }
+ * Step: { text, control, target, cmd, hold, acc, saw, note, ramp }
  *   text    integrated-voice instruction     control  on-screen control to use
  *   target  the value/limit to drive to      cmd      command issued (rod group 'control'/'shutdown' resolved)
  *   hold    seconds to run after the command  acc      {p,op,v[,tol]} checked at END of the step
  *   saw     {p,op,v} true at least once during the step   note  caution / what to watch
+ *   ramp    [{action, arg, points:[…]}] — a setpoint WALKED along a polyline across
+ *           `hold` instead of stepped once: the operator holding the ▼ on a setpoint
+ *           box, not typing one number (#310, first used by PWR-N15's cooldown legs).
+ *           When present the step's `cmd` is NOT issued — `cmd` stays as the
+ *           REPRESENTATIVE action the instructor watches for, and the ramp is what
+ *           drives the plant. Replay-side only: the live checklist never issues `cmd`
+ *           either (ui/app.js renders text + highlights and grades off `acc`), so a
+ *           ramp costs the UI nothing. Both procedure gates implement it.
  * guard: { never_melted, never:[{p,op,v}] } checked across the whole run.
  * op ∈ >,<,>=,<=,~ (~ within tol of v).
  */
@@ -352,6 +360,162 @@
       ],
       guard: { never_melted: true },
       outcome: 'Reactor shut down at Mode 3, Hot Standby; decay heat being removed.',
+    },
+    // PWR-N15 — the controlled cooldown, and the first checklist to use RAMP steps
+    // (#310). Every number below is MEASURED full stack from `hot_zero_power` on the
+    // default lineup, seed 42, at the same 10x the gate runs: see the milestone table
+    // in Manuals/04 PWR-N15 "Expected cooldown performance".
+    //
+    // WHY THE LEGS ARE RAMPS AND NOT SETPOINT STEPS. It was tried the cheap way first.
+    // The steam dump's proportional band is 36 psi (0.25 MPa) against a 40 % capacity,
+    // and the primary trails the secondary with a time constant of about 37 s, so a
+    // step in the Dump SP bursts at roughly (step size)/tau. Measured: a 10 °C step
+    // peaks at -1168 °F/hr (-649 °C/hr) over its first 30 s and is finished in four
+    // minutes, after which the plant just sits — the average is on programme and the
+    // ride is a sawtooth. Holding -90 °F/hr (-50 °C/hr) with discrete steps needs
+    // them no bigger than ~1.4 °F (0.8 °C), i.e. about 250 of them. Four ramps do it.
+    {
+      id: 'pwr_cooldown', category: 'shutdown', manual_ref: 'PWR-N15',
+      // Cannot be replayed below M4 — the board's only boron control is the
+      // `boron_conc` channel target, so engine-direct runs it UNBORATED and the core
+      // goes critical on the way down. See the `stack_only` note in run_procedures.js.
+      stack_only: true,
+      title: 'Mode 3, Hot Standby → Mode 5, Cold Shutdown — controlled cooldown',
+      purpose: 'Take a hot, subcritical plant all the way to Mode 5, Cold Shutdown: borate for cold shutdown margin, block the protection that would trip you on the way down, walk the secondary down along the saturation curve so the steam generator draws the primary with it, isolate the accumulators before they can dump, then place Residual Heat Removal and secure the reactor coolant pumps so RHR carries the plant cold. This is PWR-N15 and the second half of master path PWR-T21.',
+      from: 'hot_zero_power',
+      prereq: [
+        'Plant at Mode 3, Hot Standby: hot (566.6 °F / 297 °C), at normal operating pressure (2235 psi / 15.41 MPa), subcritical with the control bank in.',
+        'Reactor coolant pumps running; steam generator level normal on the three-element feed channel.',
+        'Condenser available — the steam dump is the heat sink for the first half of this evolution, and the RHR heat exchanger rejects to the same circulating water.',
+      ],
+      cautions: [
+        'THE COOLDOWN IS A RAMP, NOT A CHASE. Walk the Dump SP down against a schedule and the dump only ever opens as far as it must to keep up. Chase it — retype the setpoint to track whatever Tavg reads right now — and you have built a positive feedback loop: a 55 psi (0.38 MPa) error is wider than the dump\'s 36 psi (0.25 MPa) proportional band, the dump saturates, and the plant free-falls. Measured with the setpoint driven to its 29 psi (0.2 MPa) stop: -2340 °F/hr (-1300 °C/hr), from 566.6 °F (297 °C) to 251.6 °F (122 °C) in eight plant-minutes.',
+        'THREE THINGS WOULD TRIP YOU ON THE WAY DOWN AND ONLY ONE OF THEM IS "SI". The depressurization crosses the 1798 psi (12.4 MPa) SI actuation setpoint and the 1800 psi (12.41 MPa) low-pressure reactor trip. Taking HPI/LPI to OFF stops the PUMPS; it does NOT stop the RPS. Both the low-pressure trip and the reactor-trip-on-SI have to be BLOCKED by hand at the Trip Blocks panel, and neither block is available until pressure is inside the P-11 permissive (below 1972 psi / 13.6 MPa) — which is why step 3 lowers the Pressure SP before steps 4 and 5 block anything. Measured with the blocks missed: the plant scrams at 1800 psi about six plant-minutes into the first leg, the turbine trip drives the dump into its Tavg-error mode, and the cooldown runs away at -550.8 °F/hr (-306 °C/hr).',
+        'The accumulators are PRESSURE and a check valve, not a pump — blocking SI does nothing to them. Isolate them at 1000 psi (6.895 MPa), where LCO 3.5.1 stops requiring them OPERABLE and 355 psi (2.45 MPa) above their 600 psi (4.14 MPa) cover gas. Miss it and all four dump into the RCS: empty tanks, boron dragged toward the 2500 ppm RWST charge, and a water-solid arrival at Mode 5.',
+        'PLACE RHR WITH THE HEAT EXCHANGER THROTTLED, and set the split BEFORE you open the suction. The split arrives at 100 % from the at-power lineup; measured, opening the hot-leg suction at full split on a 379.4 °F (193 °C) plant takes the rate to -1517.4 °F/hr (-843 °C/hr). At the 7 % of step 12 the placement transient peaks at -171 °F/hr (-95 °C/hr) for about ten seconds and then settles back on programme.',
+        'From the moment the pumps are secured the HX split IS the rate control, and it has to keep rising: RHR removes heat in proportion to (Tavg − sink), so a split that gives -90 °F/hr at 379 °F gives a third of that at 210 °F. Step 15 walks it 7 → 25 %. The sink is about 122 °F (50 °C) and moves with the circulating-water inlet temperature, so a warm summer river raises the floor this cooldown can reach.',
+        'The programmed -90 °F/hr (-50 °C/hr) is THIS PLANT\'S TRAINING RATE and is UNVERIFIED as a commercial limit — no source for a real-plant cooldown-rate limit has been found for this manual set. Real Tech Spec limits come from the RCS pressure–temperature curves (NUREG-1431 LCO 3.4.3), which this plant does not model.',
+      ],
+      auto_channels: ['feed_sg', 'cvcs_makeup', 'boron_conc'],
+      steps: [
+        obs('Confirm Mode 3, Hot Standby: Tavg at the no-load anchor 566.6 °F (297 °C), pressure 2235 psi (15.41 MPa), reactor subcritical with the control bank in, RCPs running.',
+          { p: 'tavg_c', op: '~', v: 297, tol: 3 }, null, ['Tavg', 'Plant Pressure', 'Reactor Coolant Pumps (RCP)']),
+        { text: 'BORATE FIRST — nothing cools until this is done. Cooling a core makes it MORE reactive (the cold moderator is denser), so the shutdown margin you have at 566.6 °F is not the margin you will have at 199 °F. Set the boron target to 857 ppm on the board (BORON CONTROL): 806 ppm is critical cold with the bank in (09 §7.5) and the rest is margin. The makeup panel meters it as a batch dose at about 3 ppm/min, so 683 → 857 ppm takes roughly an hour of plant time.',
+          control: 'Boron control', target: '857 ppm',
+          note: 'This is the same 857 ppm the cold_shutdown initial condition ships, and it is why a plant that came down this way goes critical near step 561 on the next startup rather than the 319 the startup checklist assumes (#303).',
+          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 857 }, hold: 3600,
+          acc: { p: 'boron_ppm', op: '>', v: 850 },
+          hl: ['Boron control', 'Boron (Reactivity) — CVCS'] },
+        { text: 'Lower the Pressurizer Pressure Setpoint to 1901 psi (13.11 MPa) — saturation for the temperature you are at plus the 63 °F (35 °C) of subcooling this cooldown holds throughout. It also puts you inside the P-11 permissive (below 1972 psi / 13.6 MPa), which is what makes the next two steps possible.',
+          control: 'Pressure SP', target: '1901 psi (13.11 MPa), below P-11',
+          cmd: { action: 'set_pressure_setpoint', mpa: 13.11 }, hold: 300,
+          acc: { p: 'pressure_mpa', op: '<', v: 13.6 },
+          hl: ['Pressure SP', 'Plant Pressure'] },
+        { text: 'BLOCK the low-pressure reactor trip (Trip Blocks → PZR PRESS LO LO). It is armed at 1800 psi (12.41 MPa) and you are about to drive straight through it. The block is a proactive manual one: it survives auto-reinstate and stands until you clear it or pressure climbs back above P-11 on the next heatup.',
+          control: 'Trip Blocks', target: 'lo-press trip BLOCKED',
+          cmd: { action: 'set_trip_block', trip_id: 'lo_press', blocked: true }, hold: 10,
+          hl: ['Trip Blocks'] },
+        { text: 'BLOCK the reactor trip on safety injection as well (Trip Blocks). This is a SECOND trip on the same channel, armed at the 1798 psi (12.4 MPa) SI setpoint — a real casualty means the reactor does not stay up, and a planned cooldown is not one. Blocking the SI pumps in the next step does nothing to this trip.',
+          control: 'Trip Blocks', target: 'SI reactor trip BLOCKED',
+          note: 'Found by building this checklist: with only the low-pressure trip blocked the plant still scrams on the way down, because two entries in the trip table watch the same instrument in the same direction. Both blocks are needed and both are the operator\'s.',
+          cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true }, hold: 10,
+          hl: ['Trip Blocks'] },
+        { text: 'Take HPI/LPI to OFF — the P-11 cold lineup. Armed, it reads the depressurization as a Loss-Of-Coolant Accident and injects 2500 ppm RWST water. Measured with it left in AUTO: boron ends at 2500 ppm instead of 857 and the cold injection cools the plant about ten times faster than you are asking for.',
+          control: 'HPI/LPI', target: 'HPI/LPI in MANUAL, OFF',
+          cmd: { action: 'set_hpi', active: false }, hold: 10,
+          acc: { p: 'hpi_active', op: '<', v: 0.5 },
+          hl: ['HPI/LPI', 'ECCS'] },
+        { text: 'LEG 1 — start the cooldown. Walk the Dump SP down from 1194 psi to 814 psi (8.23 → 5.61 MPa) and the Pressure SP from 1901 psi to 1352 psi (13.11 → 9.32 MPa) TOGETHER, over the next 31 plant-minutes, tracking the saturation curve. That is about 12 psi/min on the dump. The pair holds 63 °F (35 °C) of subcooling all the way down: the dump sets where the plant is going, the pressurizer keeps the coolant liquid while it gets there.',
+          control: 'Dump SP', target: 'Tavg 519.8 °F (271 °C) at -90 °F/hr (-50 °C/hr)',
+          note: 'Measured: -85 to -100 °F/hr (-47 to -56 °C/hr) through this leg, arriving 521.4 °F (271.9 °C). Do not retype the setpoint to match present Tavg — that is the chase the first caution describes.',
+          cmd: { action: 'set_steam_dump_setpoint', mpa: 5.61 }, hold: 1872,
+          ramp: [{ action: 'set_steam_dump_setpoint', arg: 'mpa', points: [8.23, 7.50, 6.82, 6.19, 5.61] },
+                 { action: 'set_pressure_setpoint',   arg: 'mpa', points: [13.11, 12.07, 11.10, 10.18, 9.32] }],
+          acc: { p: 'tavg_c', op: '~', v: 271, tol: 4 },
+          hl: ['Dump SP', 'Pressure SP', 'Tavg', 'Steam Dump'] },
+        { text: 'LEG 2 — continue to the accumulator isolation point. Dump SP 814 → 580 psi (5.61 → 4.00 MPa), Pressure SP 1352 → 1004 psi (9.32 → 6.92 MPa), over 25 plant-minutes. Watch the pressure: this leg ends AT 1000 psi, and the SI ACCUM annunciator comes in there.',
+          control: 'Dump SP', target: 'pressure 1000 psi (6.895 MPa), Tavg 482 °F (250 °C)',
+          cmd: { action: 'set_steam_dump_setpoint', mpa: 4.00 }, hold: 1512,
+          ramp: [{ action: 'set_steam_dump_setpoint', arg: 'mpa', points: [5.61, 5.17, 4.75, 4.37, 4.00] },
+                 { action: 'set_pressure_setpoint',   arg: 'mpa', points: [9.32, 8.67, 8.06, 7.47, 6.92] }],
+          acc: { p: 'pressure_mpa', op: '<', v: 7.0 },
+          hl: ['Dump SP', 'Pressure SP', 'Plant Pressure'] },
+        { text: 'ISOLATE THE SI ACCUMULATORS now, at 1000 psi (6.895 MPa) — close the discharge valve. Below their 600 psi (4.14 MPa) cover gas they dump whether you meant it or not, and nothing automatic shuts them. Basis: NUREG-1431 LCO 3.5.1 (OPERABLE only above 1000 psig) and SR 3.4.12.3 (the LTOP lineup verifies each accumulator isolated).',
+          control: 'Accumulator valve', target: 'discharge valve SHUT, tanks still 100 % full',
+          cmd: { action: 'close_accumulator_valve' }, hold: 20,
+          acc: { p: 'accumulator_valve_open', op: '<', v: 0.5 },
+          hl: ['Accumulator valve', 'ECCS'] },
+        { text: 'LEG 3 — Dump SP 580 → 347 psi (4.00 → 2.39 MPa), Pressure SP 1004 → 641 psi (6.92 → 4.42 MPa), over 35 plant-minutes. Same programme, same subcooling. Somewhere in here the plant passes the 600 psi (4.14 MPa) accumulator cover gas with the valve already shut, which is the point of having shut it.',
+          control: 'Dump SP', target: 'Tavg 429.8 °F (221 °C)',
+          cmd: { action: 'set_steam_dump_setpoint', mpa: 2.39 }, hold: 2088,
+          ramp: [{ action: 'set_steam_dump_setpoint', arg: 'mpa', points: [4.00, 3.54, 3.12, 2.73, 2.39] },
+                 { action: 'set_pressure_setpoint',   arg: 'mpa', points: [6.92, 6.22, 5.57, 4.97, 4.42] }],
+          acc: { p: 'tavg_c', op: '~', v: 221, tol: 4 },
+          hl: ['Dump SP', 'Pressure SP', 'Tavg'] },
+        { text: 'LEG 4 — the last secondary-led leg. Dump SP 347 → 197 psi (2.39 → 1.36 MPa), Pressure SP 641 → 395 psi (4.42 → 2.72 MPa), over 34 plant-minutes. You are driving to just under the 400 psi (2.76 MPa) RHR block-open permissive, because that is the only thing standing between you and shutdown cooling.',
+          control: 'Dump SP', target: 'pressure below 400 psi (2.76 MPa), Tavg 379.4 °F (193 °C)',
+          note: 'The dump on its own cannot take you much further: its setpoint clips at 29 psi (0.2 MPa), which is saturation for 251.6 °F (122 °C). Everything below that belongs to RHR.',
+          cmd: { action: 'set_steam_dump_setpoint', mpa: 1.36 }, hold: 2016,
+          ramp: [{ action: 'set_steam_dump_setpoint', arg: 'mpa', points: [2.39, 2.09, 1.82, 1.57, 1.36] },
+                 { action: 'set_pressure_setpoint',   arg: 'mpa', points: [4.42, 3.94, 3.49, 3.09, 2.72] }],
+          acc: { p: 'pressure_mpa', op: '<', v: 2.76 },
+          hl: ['Dump SP', 'Pressure SP', 'Plant Pressure'] },
+        { text: 'THROTTLE THE RHR HEAT EXCHANGER BEFORE YOU ALIGN IT: set the HX flow split to 7 % (RHR card). It is sitting at 100 % from the at-power lineup, and 100 % onto a 379.4 °F (193 °C) plant is a -1517.4 °F/hr (-843 °C/hr) shock.',
+          control: 'Residual Heat Removal (RHR)', target: 'HX split 7 %',
+          cmd: { action: 'set_rhr_hx', pct: 7 }, hold: 10,
+          hl: ['Residual Heat Removal (RHR)'] },
+        { text: 'Align RHR — open the hot-leg suction valve (RHR card → ALIGN). The engine refuses this above 400 psi (2.76 MPa), which is why leg 4 had to finish first. Note the two setpoints are not one number: the block-open permissive is 400 psi and the AUTOCLOSURE that would shut a standing-open valve is 600 psi (4.14 MPa), about 200 psi higher, so the valve does not chatter across a single boundary (#288).',
+          control: 'Residual Heat Removal (RHR)', target: 'RHR aligned, ECCS mode RHR',
+          cmd: { action: 'set_rhr', active: true }, hold: 20,
+          acc: { p: 'rhr_active', op: '>', v: 0 },
+          hl: ['Residual Heat Removal (RHR)', 'ECCS'] },
+        { text: 'SECURE THE REACTOR COOLANT PUMPS. RHR provides the circulation from here, and with the pumps stopped the steam generator decouples (flow → 0) so it stops feeding heat back into the loop. Losing the pump heat helps too. Note the board reads this as a planned securing, not a casualty — RCP TRIP annunciates as a status, not a critical (#240).',
+          control: 'RCP Run/Stop', target: 'pumps stopped, coasting down',
+          cmd: { action: 'set_rcp', running: false }, hold: 20,
+          acc: { p: 'pump_flow_pct', op: '<', v: 50 },
+          hl: ['RCP Run/Stop', 'Reactor Coolant Pumps (RCP)'] },
+        { text: 'RHR-LED COOLDOWN TO MODE 5. Walk the HX flow split up from 7 % to 25 % over the next two plant-hours and let the Pressure SP settle from 395 psi to 363 psi (2.72 → 2.50 MPa). The split has to keep rising because RHR removes heat in proportion to how far above its sink you are, and that gap is closing. Mode 4, Hot Shutdown is behind you at 350 °F (176.7 °C) and Mode 5, Cold Shutdown arrives at 199.4 °F (93 °C).',
+          control: 'Residual Heat Removal (RHR)', target: 'Tavg below 199.4 °F (93 °C) — Mode 5',
+          note: 'Measured: Mode 4 at 3.49 plant-h from the start, Mode 5 at 4.89 plant-h, 177 °F (80.5 °C) at the end of this step. Rate -65 to -118 °F/hr (-36 to -66 °C/hr) across the leg.',
+          cmd: { action: 'set_rhr_hx', pct: 25 }, hold: 7200,
+          ramp: [{ action: 'set_rhr_hx',            arg: 'pct', points: [7, 11.5, 16, 20.5, 25] },
+                 { action: 'set_pressure_setpoint', arg: 'mpa', points: [2.72, 2.50] }],
+          acc: { p: 'tavg_c', op: '<', v: 93 },
+          hl: ['Residual Heat Removal (RHR)', 'Tavg', 'Plant Pressure'] },
+        obs('Confirm Mode 5, Cold Shutdown: coolant below 199.4 °F (93 °C), pressure about 363 psi (2.50 MPa), RHR carrying the decay heat, pumps off.',
+          { p: 'plant_mode', op: '~', v: 5, tol: 0.1 }, null, ['Tavg', 'Plant Pressure']),
+        obs('Confirm the accumulators are still FULL and still isolated — 100 % inventory, discharge valve shut. They stay that way until PWR-N01 re-aligns them on the next heatup.',
+          { p: 'accumulator_volume_pct', op: '>', v: 99 }, null, ['Accumulator valve', 'ECCS']),
+        obs('Confirm RHR is the heat sink and the suction valve is still open — this is the lineup the plant will sit in until it is either refuelled or brought back up.',
+          { p: 'rhr_valve_open', op: '>', v: 0 }, null, ['Residual Heat Removal (RHR)']),
+      ],
+      guard: {
+        never_melted: true,
+        never: [
+          { p: 'fuel_temp_c', op: '>=', v: 1200 },
+          // Never uncover the core, never lose subcooling, never lift a relief — the
+          // three things a cooldown must not do. Measured minima on the authored
+          // ramps: inventory 100 %, subcooling 60.8 °F (33.8 °C), no lift.
+          { p: 'core_inventory_pct', op: '<', v: 95 },
+          { p: 'subcooling_c', op: '<', v: 5 },
+          { p: 'sg_safety_open', op: '>', v: 0 },
+          { p: 'porv_open', op: '>', v: 0 },
+          // Never dump the accumulators. This is the #273 defect: the cooldown used to
+          // walk past their 600 psi cover gas with the discharge valve open and empty
+          // all four, and indicated pzr level could not reach its trip to say so.
+          { p: 'accumulator_volume_pct', op: '<', v: 99 },
+          // ON PROGRAMME. -150 °C/hr is not the programme (-50) — it is the line that
+          // separates "a transient" from "the plant is running away", and it is set
+          // where it is because the three ways this evolution is known to run away all
+          // sit far beyond it: a missed trip block scrams and the dump goes to
+          // Tavg-error mode (-306), a 10 °C setpoint STEP instead of a ramp (-649),
+          // RHR aligned at a 100 % HX split (-843), and the setpoint driven to its
+          // stop (-1300). The worst transient the authored ramps produce is -95, at
+          // RHR placement, for about ten seconds.
+          { p: 'tavg_rate_c_per_hr', op: '<', v: -150 },
+        ],
+      },
+      outcome: 'Mode 5, Cold Shutdown: cold, depressurized to 363 psi (2.50 MPa), RHR in service, reactor coolant pumps secured, accumulators full and isolated, boron at the cold shutdown margin of 857 ppm. This is the `cold_shutdown` initial condition, reached on integrated physics. PWR-N01 takes it back up.',
     },
     {
       id: 'pwr_loss_of_feedwater', category: 'emergency', manual_ref: 'PWR-E01',

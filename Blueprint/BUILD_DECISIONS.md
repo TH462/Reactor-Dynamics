@@ -37,6 +37,91 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-02 — #310: a procedure step can RAMP, and PWR-N15 needed two more trip blocks
+
+### The decision
+
+Add `ramp: [{action, arg, points}]` to the authored-procedure step schema, and author PWR-N15
+as `pwr_cooldown` using it. **Chose option (b) from #310 over the recommended (a)**, on
+measurement.
+
+### Why (a) — a discrete Dump SP walk-down — cannot work here
+
+The steam dump is `clip((P_steam − SP)/steam_dump_band, 0, 1)` with `steam_dump_band` 0.25 MPa,
+capped at `steam_dump_max` 0.40, and the primary follows the secondary with τ ≈ 37 s. A setpoint
+step of ΔT therefore bursts at ≈ ΔT/τ. Measured full stack from `hot_zero_power`, 30 s window:
+an 18 °F (10 °C) step peaks at **−1168.2 °F/hr (−649 °C/hr)**; a whole 46.8 °F (26 °C) leg taken
+at once at **−2178 °F/hr (−1210 °C/hr)**; the setpoint at its 29 psi (0.2 MPa) stop at
+**−2340 °F/hr (−1300 °C/hr)**. Holding the −90 °F/hr programme with steps needs them ≤ 1.4 °F
+(0.8 °C) — about 250 steps. #310 anticipated this outcome and named it the argument for (b).
+
+### Why (b) is cheap — the fact that changed the estimate
+
+#310 costed (b) as "a schema change to the procedure runner **and to `verify_manual_follow`**".
+It is neither. **The live checklist never issues `cmd`.** `ui/app.js renderChecklist` draws the
+step text, its `control`/`target` pills and its `hl` highlights, and the instructor grades off
+`acc` while watching for the *player's own* command as evidence (`_cmdEvidence`). `cmd` and
+`hold` exist for the two replay gates and nowhere else, and `verify_manual_follow` iterates
+`STEP_UI` for control reachability without stepping the plant. So `ramp` is a replay-side field:
+~10 lines in `run_procedures.js`, ~15 in `run_procedures_stack.js`, no UI, no browser gate.
+
+Three sub-decisions inside it:
+
+- **`cmd` stays on a ramp step and is NOT issued.** It is the representative operator action —
+  what the instructor recognises, and what the player has typed by the end of the leg. Issuing
+  it as well would put the leg's end value on the board at t=0, i.e. exactly the step the ramp
+  exists to avoid.
+- **`points` (a polyline), not `from`/`to`.** The programme is linear in TEMPERATURE and the
+  setpoints are pressures, so a straight interpolation in MPa accelerates through a leg —
+  measured, −72 °C/hr at leg ends against a −50 programme. Five authored points per leg holds
+  ±11 %. Encoding the curve in the DATA keeps `Psat` out of a plant-agnostic runner.
+- **Re-issued every 10 sim-s**, and the last point is issued exactly at the end of the step so a
+  leg cannot stop a few tenths of a psi short of where the next leg starts.
+
+### The plant finding this produced
+
+"Block SI" is three actions and PWR-N15 named one. HPI/LPI OFF disarms the ESF arm and stops the
+pumps; it does not touch the RPS, and **two** entries in `PWR_TRIPS` watch `primary_pressure`
+downward — `lo_press` (12.41 MPa) and **`si_trip`** (PI-3, reactor trip on safety injection,
+12.4 MPa). Both are `blockable` behind the same P-11 permissive and neither auto-blocks on the
+way DOWN. Measured: unblocked, the plant scrams ~320 s into the first cooling leg; with only
+`lo_press` blocked it scrams one step later. The turbine trip then puts the dump into
+Tavg-error mode and the cooldown runs away at −306 °C/hr. Because the block needs the
+permissive, the checklist lowers the Pressure SP to 1901 psi (13.11 MPa) first — which is where
+the cooldown's own subcooling programme starts, so it costs nothing.
+
+### `stack_only`
+
+`run_procedures.js` gained a procedure-level `stack_only` flag. N15 cannot be replayed below
+M4: the board's only boron control is the `boron_conc` channel target box (`set_auto_setpoint`;
+there is no manual borate/dilute on the board at all), so engine-direct runs the cooldown
+unborated, the MTC takes the core critical and the plant heats back up to 292.6 °C — nine reds
+describing one missing layer. **It is guarded against becoming an escape hatch**: the flag's one
+check is that the procedure really does carry a NON_ENGINE_ACTION command, so it cannot be
+pinned onto a procedure engine-direct could run.
+
+### Guard bands, and the one check that distinguishes (a) from (b)
+
+`never tavg_rate_c_per_hr < -150` (°C/hr) is not the programme (−50) — it is the line between a
+transient and a runaway, placed where every known failure of this evolution sits far beyond it
+(−306 missed trip block, −649 a 10 °C step, −843 RHR at a 100 % HX split, −1300 setpoint at its
+stop) and the authored ramps' worst transient (−95 for ~10 s at RHR placement) sits inside.
+**Injection-verified, and the important row is the last:** flattening all four legs to a single
+step each leaves **27/28** — every acceptance still passes, because a staircase *arrives*
+everywhere the procedure says it will. The rate guard is the only check that can tell them
+apart.
+
+### Gate deltas
+
+`run_procedures_stack` 22/22 176 → **23/23 204**; `run_procedures` 22/22 99 → **23/23 100**;
+`run_manual_controls` 94 → **122**; `verify_manual_follow` 141 → **183**; `run_procdocs`
+23 → **25** (coverage 10 → 11 of 58 documented procedures); `run_flags` 289 → **292** — that
+last one was the registry gate catching a missing `procedure:pwr_cooldown` entry, which is
+exactly its job: a procedure the player can open with no flag behind it ships ungated.
+Manual set Rev 11 → **12**.
+
+---
+
 ## 2026-08-01c — the trend preseed becomes real data, computed off the main thread
 
 *(OWNER, 2026-08-01: "when you make preset starts, run them for 30 minutes to fill up the graph

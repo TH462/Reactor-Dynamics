@@ -20,6 +20,100 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-02 (PWR-N15 became executable, and the procedure was one step short)
+
+**Task: "work issue 310"** — PWR-N15 (Mode 3 → Mode 5 cooldown) had no executable checklist,
+so #303's measured performance table had no gate behind it. It has both now: `pwr_cooldown` in
+`ui/manual_procedures.js`, replayed full stack by `run_procedures_stack` at **28 checks**, and
+the manual's milestone table is re-derived from that run rather than transcribed.
+
+**1. The design question the issue posed, answered by measurement, and the answer was (b).**
+The issue offered **(a)** a stepped Dump SP walk-down (recommended, no schema change) or
+**(b)** a new `ramp` step capability, and asked for the step size to be measured. It cannot be
+found. The dump is `clip((P_steam − SP)/0.25, 0, 1)` capped at 0.40, and the primary trails the
+secondary with τ ≈ 37 s, so a setpoint step of ΔT bursts at roughly ΔT/τ. Measured full stack
+from `hot_zero_power`:
+
+| drive | peak Tavg rate (30 s window) |
+|---|---|
+| 18 °F (10 °C) Dump SP step | **−1168.2 °F/hr (−649 °C/hr)** |
+| 46.8 °F (26 °C) step — one per leg | **−2178 °F/hr (−1210 °C/hr)** |
+| Dump SP driven to its 29 psi (0.2 MPa) stop | **−2340 °F/hr (−1300 °C/hr)** |
+| the authored RAMP | −85 to −100 °F/hr, worst transient −171 °F/hr at RHR placement |
+
+Holding −90 °F/hr with discrete steps needs them ≤ **1.4 °F (0.8 °C)** — ~250 for this
+cooldown. So (a) is not authorable, which the issue itself said would be the argument for (b).
+
+**(b) turned out to be far cheaper than the issue feared.** It listed "a schema change to the
+procedure runner and to `verify_manual_follow`". In fact **the live checklist never issues
+`cmd` at all** — `ui/app.js renderChecklist` renders text + control + target + highlights and
+the instructor grades off `acc`, watching for the player's OWN command as evidence. `cmd`/`hold`
+exist only for the two replay gates. So `ramp: [{action, arg, points}]` is a replay-side field:
+`run_procedures.js` and `run_procedures_stack.js`, ~10 lines each, no UI, no browser gate. A
+ramp step keeps its `cmd` as the REPRESENTATIVE action (what the instructor watches for) and the
+gates do not issue it — issuing both would put the leg's end value on the board at t=0, i.e. the
+step the ramp exists to avoid. `points` is a polyline rather than from/to so the author can
+encode the Psat curve without the runner knowing any plant physics; measured, a straight
+from/to (linear in MPa) drifts to −72 °C/hr at leg ends, five points holds ±11 %.
+
+**2. THE FINDING — "block SI" is three different actions and the procedure named one.** N15 said
+block SI before depressurizing (#303's own addition). Taking HPI/LPI to OFF disarms the ESF arm
+and stops the pumps. It does **not** touch the RPS, and **two** entries in `PWR_TRIPS` watch
+`primary_pressure` downward: `lo_press` at 12.41 MPa and **`si_trip`** at the 12.4 MPa SI
+setpoint (PI-3, reactor trip on safety injection). Both are `blockable` behind the same P-11
+permissive, and neither auto-blocks on the way down — a plant that *initialises* depressurised
+starts blocked, but a plant walking down does not. Measured: with both unblocked the plant
+scrams at t≈320 s into leg 1; with only `lo_press` blocked it scrams one step later. Either way
+the turbine trip puts the dump in Tavg-error mode and the cooldown runs away at −306 °C/hr.
+Because the block needs the permissive, the checklist has to lower the Pressure SP to
+1901 psi (13.11 MPa) FIRST — which is where the cooldown's own subcooling programme starts
+anyway, so it costs nothing. New steps 1b/1c/1d in N15 and C1a in T21.
+
+**3. Verified by injection, seven ways.** Every new step and guard was made to go red
+(`scratchpad/n15_inject.js` mutates the procedure then requires the real gate):
+
+| injection | result |
+|---|---|
+| both trip blocks removed | scram at step 5 `primary_pressure low` — 24/28 |
+| only `si_trip` block removed | scram at step 6 — 24/28 (**the second block earns its place alone**) |
+| HPI/LPI left in AUTO | HPI injects, pzr goes solid, `pzr_level high` scram; Tavg 77 °C at end of leg 1 — 21/27 |
+| accumulator isolation removed | accumulators **0 %**, `pzr_level high` scram — 21/27 |
+| RHR aligned at the at-power 100 % HX split | rate guard red (−843 °C/hr) — 27/28 |
+| boration removed | MTC takes the core critical on the way down, `source_range high` scram — 23/27 |
+| all four legs flattened to a single step each | **27/28 — only the rate guard** |
+
+That last row is the one to keep: a staircase still *arrives* everywhere the procedure says, so
+every acceptance passes. The `never tavg_rate_c_per_hr < -150` guard is the only check that can
+tell (a) from (b), which is why it is in the guard list and why −150 rather than −50: every known
+way to lose this evolution sits far beyond it, and the authored ramps' worst transient is −95
+for about ten seconds at RHR placement.
+
+**4. `stack_only`.** N15 cannot be replayed engine-direct — the board's only boron control is
+the `boron_conc` channel target (`set_auto_setpoint`; there is no manual borate/dilute anywhere
+on the board), so below M4 the cooldown runs unborated and the plant heats back up to 292.6 °C.
+`run_procedures.js` now honours a `stack_only` flag, and the one check it contributes is that
+the flag is **justified** — the procedure must actually carry a NON_ENGINE_ACTION command — so
+it cannot be used to hide a procedure engine-direct could run.
+
+**5. Measured milestones** (`hot_zero_power`, free-play lineup, seed 42, 10×, −50 °C/hr
+programme, 35 °C subcooling): boration complete 1.00 h, both trips blocked 1.09 h, accumulators
+isolated at 1000 psi 2.04 h (Tavg 250.4 °C), RHR permissive 3.16 h (194.9 °C), RHR aligned +
+RCPs secured 3.19 h, Mode 4 3.49 h, **Mode 5 4.89 h**, ending 80.5 °C / 2.50 MPa with
+accumulators 100 % and boron 857 ppm. Min subcooling 33.8 °C, no relief lift, no scram, no
+standing alarm.
+
+**Gate deltas:** `run_procedures_stack` 22/22 176 → **23/23 204**, `run_procedures` 22/22 99 →
+**23/23 100**, `run_manual_controls` 94 → **122**, `verify_manual_follow` 141 → **183**,
+`run_procdocs` 23 → **25** (coverage 10 → 11 of 58), `run_flags` 289 → **292** (the registry
+gate caught the missing `procedure:pwr_cooldown` entry). Manual set Rev 11 → **12**.
+
+**Still open on N15:** the −90 °F/hr programme remains **UNVERIFIED** as a commercial limit —
+no source for a real-plant RCS cooldown-rate limit has been found for this manual set, and the
+real ones derive from P–T curves this plant does not model. That is recorded in the procedure,
+not fixed.
+
+---
+
 ## Session log — 2026-08-01d (the System Scanner was teaching five wrong things, workbench)
 
 **Task: "review the system scanner descriptions."** The board's inspection copy

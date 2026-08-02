@@ -361,7 +361,9 @@ var BASELINES = {
   // is the work item, and a gate that failed on it would sit permanently red. Watch
   // that line, not just the score.
   // 25 → 23 on 2026-07-31: nuclear-from-cold heatup checklist removed (not a commercial NOP).
-  'run_procdocs.js':       { code: 0, score: '23checks 0failed' },
+  // 23 → 25 on 2026-08-02 (#310): PWR-N15 gained the `pwr_cooldown` checklist — 2 checks per
+  // checklist (manual_ref present, manual_ref defined). COVERAGE 10 → 11 of 58 documented.
+  'run_procdocs.js':       { code: 0, score: '25checks 0failed' },
   // New 2026-07-29 — the manual quotes US customary first with SI in parentheses
   // (owner request). This re-derives the US value from the SI value in every pair
   // and fails on bad arithmetic, on an SI quantity with no US partner, and on a
@@ -410,7 +412,8 @@ var BASELINES = {
   // merely unmapped. Count moves when a controlled procedure step is added or removed
   // (2 checks per step: the mapping, and the reverse entry-has-a-step check).
   // 128 → 94 on 2026-07-31: nuclear-from-cold heatup STEP_UI map removed (17 steps).
-  'run_manual_controls.js': { code: 0, score: '94checks 0failed' },
+  // 94 → 122 on 2026-08-02 (#310): the PWR-N15 cooldown checklist adds 14 controlled steps.
+  'run_manual_controls.js': { code: 0, score: '122checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -422,7 +425,10 @@ var BASELINES = {
   // 290 -> 289 (bf41f67, the leaner control chrome): one flag-gated element left the board.
   // Verified as theirs by running this gate on backshop at its own commit before merging.
   // 292 → 289 on 2026-07-31: procedure:pwr_heatup_nuclear flag removed.
-  'run_flags.js':          { code: 0, score: '16/16 289/289' },
+  // 289 → 292 on 2026-08-02 (#310): the PWR-N15 `pwr_cooldown` checklist needs a registry
+  // entry (coverage + orphan + well-formed = 3 checks). The gate caught its absence, which
+  // is the point — a procedure the player can open with no flag behind it ships ungated.
+  'run_flags.js':          { code: 0, score: '16/16 292/292' },
   // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
   // Every way this rots is silent: an item id changes and its entry describes
   // nothing; a new control inherits its card's summary and READS like a real
@@ -662,7 +668,14 @@ var BASELINES = {
   //      alongside its `acc`, which became a subcooling check — see the note on that
   //      step in ui/manual_procedures.js.
   // 23/23 115 → 22/22 99 on 2026-07-31: nuclear-from-cold heatup procedure removed.
-  'run_procedures.js':     { code: 0, score: '22/22 99/99' },
+  // 22/22 99 → 23/23 100 on 2026-08-02 (#310). PWR-N15 arrives as ONE check here, not
+  // fifteen: it is `stack_only`, because the board's only boron control is the
+  // `boron_conc` channel target and below M4 there is no channel — measured, the
+  // engine-direct replay runs the cooldown UNBORATED, the MTC takes the core critical and
+  // the plant heats back up to 558.7 °F (292.6 °C). The one check is that the flag is
+  // JUSTIFIED (the procedure really does carry an M4-only command), so it cannot be
+  // pinned onto something engine-direct could run. Full coverage is in the stack gate.
+  'run_procedures.js':     { code: 0, score: '23/23 100/100' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -686,7 +699,14 @@ var BASELINES = {
   // holds — an xfail is a check either way, so clearing one moves no number here,
   // which is why the 2026-07-27b #218 fix cleared three and shifted nothing.
   // 23/23 196 → 22/22 176 on 2026-07-31: nuclear-from-cold heatup stack path removed.
-  'run_procedures_stack.js': { code: 0, score: '22/22 176/176' },
+  // 22/22 176 → 23/23 204 on 2026-08-02 (#310): the PWR-N15 `pwr_cooldown` checklist, 28
+  // checks. It is also the first procedure to use RAMP steps — a setpoint walked along an
+  // authored polyline across the step's hold rather than typed once. That schema addition
+  // is REPLAY-SIDE ONLY (the live checklist never issues `cmd`), and it exists because a
+  // discrete walk-down measures badly on this plant: an 18 °F (10 °C) Dump SP step bursts
+  // at -1168.2 °F/hr (-649 °C/hr). Seven injections were run against the finished
+  // checklist and all seven redden it — see Diagnostic/TUNING_LOG.md 2026-08-02.
+  'run_procedures_stack.js': { code: 0, score: '23/23 204/204' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
@@ -782,7 +802,10 @@ var BASELINES = {
   // and it reports "controlled procedure steps: 47, mapped: 47, all covered" — nothing is
   // unmapped, so this is content shrink. Measured 141 on backshop at its own commit too,
   // so the merge carried it faithfully.
-  'verify_manual_follow.js': { code: 0, score: '141checks', slow: true },
+  // 141 → 183 on 2026-08-02 (#310): 14 controlled steps of the PWR-N15 cooldown checklist,
+  // 3 checks each. Its STEP_UI map was written WITH the procedure, so unlike #224 this
+  // number and run_manual_controls' 122 moved together in one change.
+  'verify_manual_follow.js': { code: 0, score: '183checks', slow: true },
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run
