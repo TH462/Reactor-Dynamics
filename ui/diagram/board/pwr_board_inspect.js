@@ -804,7 +804,8 @@
     turbineGenerator: e('Turbine and Generator',
       'Steam turbine driving the generator — where thermal power becomes electrical power.',
       'Steam admitted through the governor valve turns the rotor; the generator converts that to ' +
-      'megawatts on the grid. It runs at synchronous speed when connected, and an overspeed trips it.', CI, '12.0'),
+      'megawatts on the grid. Blade motion tracks shaft speed (~1800 rpm when synchronized), so after ' +
+      'a trip or planned offline you can watch it coast down rather than freeze.', CI, '12.0'),
     imrppee04aj: e('Turbine RPM',
       'Turbine shaft speed.',
       'About 1800 rpm class when synchronized. On a trip it coasts down rather than stopping — the ' +

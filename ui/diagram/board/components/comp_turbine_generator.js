@@ -1,8 +1,16 @@
 /* comp_turbine_generator.js — ported from inbox/design_import/Turbine and Generator.dc.html
  *
  * Machine SVG only: the STEAM FLOW slider / TRIP / RESET control card was not ported
- * (board uses showControls:false). update({ flowFrac }) replaces the design's local
- * tcv state: 0..1 drives the blade/winding scroll speed (1.8s..0.2s; stopped <= 0.02).
+ * (board uses showControls:false).
+ *
+ * update({ flowFrac, rpmFrac }):
+ *   flowFrac 0..1 — steam through the machine (glow, steam fill, port activity).
+ *   rpmFrac  0..1 — rotor speed fraction of rated (blade + winding scroll). Falls back
+ *                   to flowFrac when omitted (legacy callers). Spin is keyed off RPM so
+ *                   a trip/offline coasts down with the engine (~40 s) instead of
+ *                   freezing the instant steam demand drops.
+ * Scroll period: 1.8 s (slow) … 0.2 s (fast); stopped at rpmFrac <= 0.01.
+ *
  * NOTE: the source has no flanges and no StdPipe usage in the machine (its kit handle
  * was created but never used), and defines no tcv-drain port — only steam-in and
  * exhaust-out port markers exist.
@@ -134,9 +142,10 @@
         h('g', { key: 'tgMachine' }, C)));
 
     // ---- dynamic state application ----
-    var lastDur = null, lastOpen = null, lastOp = null;
+    var lastDur = null, lastOpen = null, lastSpin = null, lastOp = null;
 
     function setScroll(el, name, dur) {
+      if (!el) return;
       if (dur > 0) {
         if (!el.__bdAnim) { el.style.animation = name + ' ' + dur + 's linear infinite'; el.__bdAnim = true; }
         else el.style.animationDuration = dur + 's'; // duration-only update: no scroll restart
@@ -145,10 +154,20 @@
 
     function update(props) {
       props = props || {};
+      // Steam admission (governor / demand) — drives the casing fill and steam ports.
       var frac = props.flowFrac;
       frac = frac == null ? 0 : Math.max(0, Math.min(1, frac));
-      var open = frac > 0.02;
-      var spinDur = open ? Math.max(0.2, 1.8 - frac * 1.5).toFixed(2) : 0;
+      // Rotor speed — drives the blade / winding scroll. Prefer the plant's RPM so a
+      // trip or planned offline coasts visually with the engine coastdown rather than
+      // freezing the frame the moment steam_demand_low goes true.
+      var rpm = props.rpmFrac;
+      if (rpm == null || !isFinite(rpm)) rpm = frac;
+      rpm = Math.max(0, Math.min(1.2, rpm));
+      var open = frac > 0.02;                 // steam present
+      var spinning = rpm > 0.01;             // ~1 % of rated still readable as a coast
+      // Period scales with speed: rated → 0.3 s, near-idle → ~1.8 s, then stop.
+      var spinCap = Math.min(1, rpm);
+      var spinDur = spinning ? Math.max(0.2, 1.8 - spinCap * 1.5).toFixed(2) : 0;
 
       if (spinDur !== lastDur) {
         lastDur = spinDur;
@@ -158,12 +177,17 @@
       if (open !== lastOpen) {
         lastOpen = open;
         turbGlow.style.display = (glowOn && open) ? '' : 'none';
-        genGlow.style.display = (glowOn && open) ? '' : 'none';
         turbSteam.style.display = open ? '' : 'none';
         // no steam through the machine → the inlet stub and exhaust line stop with it
         var act = open ? '1' : '0';
         if (portSteamIn) portSteamIn.setAttribute('data-active', act);
         if (portExhaust) portExhaust.setAttribute('data-active', act);
+      }
+      // Generator cyan glow tracks the rotor, not steam: after a trip the steam
+      // vanishes immediately but the shaft is still turning through the coastdown.
+      if (spinning !== lastSpin) {
+        lastSpin = spinning;
+        genGlow.style.display = (glowOn && spinning) ? '' : 'none';
       }
       var op = (0.3 + frac * 0.35).toFixed(3);
       if (op !== lastOp) { lastOp = op; turbSteam.setAttribute('opacity', op); }

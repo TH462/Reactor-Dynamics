@@ -20,6 +20,60 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-01f (HR12 widened + the inoperable-claim gate, develop)
+
+**Why.** #303 and #304 were the same defect twice: a chapter asserting control behaviour that
+`Manuals/03` already documented correctly. Asked how to stop it, I recommended widening HR12 by
+one clause and adding one narrow gate, and explicitly recommended AGAINST an eleventh rule
+*(OWNER RULING, 2026-08-01: "go with your recommendation.")*.
+
+**The diagnosis is the useful part.** The failure was **not** skipping a verification step. It
+was not classifying the claim as one that needed verifying: HR12 said *"an assertion about plant
+dynamics"* and every example under it is dynamics (coastdown, trip timing, survivability), so
+"does selecting a mode close the breaker" read as recall. Roughly **eight** verify-this
+instructions were loaded in context when #303 shipped — HR12, HR10, CLAUDE.md's *"Verify a claim
+before you act on it"* and *"Inherited claims are the risky ones"*, the coverage-by-injection
+rule, the evidence-pass SOP, and three memories. **More instruction was not the lever**; scope
+was. HR12 now reads *"plant dynamics **or control behaviour**"*, the count stays at ten, and the
+2026-07-27 "too many instructions" ruling is respected.
+
+**What I measured before recommending, which changed the recommendation.** I was about to propose
+a defaults/lineup contract gate (run_contract-shaped, diffing `getStartupLineup` and `defaultOn`
+against the manuals). Counted first: the manuals assert a shipped default in **3 places total**,
+two of which I had just written. Not worth a gate. I also dropped a "01/04/05 must cite 03 when
+naming a control" rule — measured, 01 names **15 of 52** board controls, 04 names 23, 05 names 11,
+and 04's procedure tables MUST name controls, so it would have been pure noise.
+
+**The gate that was worth building** — `run_manual_controls.js`, inoperable-claim scan. A manual
+may not call a named board control read-only / not operable / display-only while the wiring gives
+it a `press` or `hold` handler. New `PwrBoardDriver.pressableIds()`; `PwrBoardInspect.parentOf`
+walks a button to its card.
+
+**Three traps, and two were invisible without the injection test.**
+
+1. **The first cut was GREEN on the real defect.** `CONTROL_LABEL_MAP` has `Shutdown Bank`, the
+   manual writes `Shutdown bank`, and `indexOf` is case-sensitive. This is precisely the
+   "verify checks by injection" rule earning its place — reading the code showed nothing.
+2. **Case-insensitivity then broke it the other way.** `Mode` is a control label AND the plant's
+   own vocabulary: it fired on *"Training display only; does not change plant MODE"*. Fixed
+   structurally, not with a denylist — a single-word label is skipped **when a longer label shares
+   its card**, because the map deliberately carries a terse alias plus a full name for the same
+   card. Keeps `Turbine Load` / `Shutdown Bank`, drops `Mode` / `Load` / `Boron` / `Nudge` /
+   `NIS` / `HPI`, keeps `MSIV` / `SCRAM`, and needs no maintenance when an alias is added.
+   25 of 52 labels scanned.
+3. **`var D` inside the check shadowed the dim-colour constant** `D`, so the section header
+   printed `[object Object]`. Harmless, but it is the same class of bug as the rest of this
+   session: a name reused for two things.
+
+**Honest limit, written into HR12 rather than left implied.** Only the NEGATIVE claim is
+decidable. *"This control cannot be operated"* is checkable against the wiring; *"this control
+does X"* is not, so #303's invented breaker would still get through. The gate covers one of the
+three cases that motivated it and says so.
+
+**Gates:** all **35 runners at baseline**; `run_manual_controls` stays **94/94** (the scan adds
+no checks when clean, one per violation); `board_check` **168/168** unchanged after the
+`pressableIds` addition.
+
 ## Session log — 2026-08-01e (#304 — the 01 review: right numbers, wrong controls, develop)
 
 **What was asked.** A review of `Manuals/01_GENERAL_DESCRIPTION.md`, then fix it. Filed as #304.

@@ -21,6 +21,64 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **HR12 now covers control behaviour, and half of it is gated** *(OWNER RULING, 2026-08-01:
+  "go with your recommendation.", on the recommendation to widen HR12 by one clause and add one
+  narrow check rather than write an eleventh Hard Rule)*. Three times in two days a chapter
+  asserted control behaviour that `Manuals/03` — the control inventory, which owns it — already
+  had right: #303's *"selecting a load mode does not close the breaker"* (there is no breaker;
+  `isOnLine()` is `load_mode !== 'disconnected'`), #304's *"shutdown bank … read-only to
+  operator"* (it has Withdraw / Insert on the board and 03 §3.3 documents the full stroke), and
+  #304's *"Follow (default)"* (the shipped lineup is MANUAL).
+
+  **The diagnosis is what set the fix.** None of those was a skipped verification step — they
+  were claims never *classified* as needing verification, because **HR12 read "an assertion about
+  plant dynamics"** and its examples are all dynamics. A control-semantics claim felt like recall.
+  So the rule's SCOPE was the hole, not compliance with it: HR12 is now *"about plant dynamics
+  **or control behaviour**"*, which keeps the binding count at ten and respects the 2026-07-27
+  ruling that this repo already has too many instructions. **Adding an eleventh rule was
+  considered and rejected on evidence** — roughly eight "verify this" instructions were already
+  loaded in context when #303 shipped, including HR12, HR10 and CLAUDE.md's own *"Verify a claim
+  before you act on it"*.
+
+  **`run_manual_controls.js` gains an inoperable-claim scan**: a manual may not call a named
+  board control read-only / not operable / display-only while `pwr_board_wiring.js` gives it a
+  press or hold handler. New `PwrBoardDriver.pressableIds()` reports the ~47 worked items
+  (entries carrying only `active`/`warn`/`badge` are indication, not controls), and
+  `PwrBoardInspect.parentOf` walks a button up to the card its label points at.
+
+  **Three things learned building it, two of them only because it was injection-tested.**
+  (1) **The first cut stayed GREEN on the real #304 text.** `CONTROL_LABEL_MAP` holds
+  `Shutdown Bank`; the manual writes `Shutdown bank`; the match was case-sensitive. Reading the
+  check would never have shown that — re-injecting the defect did.
+  (2) **Case-insensitivity then produced a false positive**, and the fix is principled rather
+  than a denylist: the map deliberately points several names at one card (`Mode`, `Load`,
+  `Turbine Load`, `Main Breaker` are all the generator card) and the one-word ones are ordinary
+  English here — matching `Mode` fires on *"Training display only; does not change plant MODE"*.
+  A single-word label is now skipped **when a longer label shares its card**, which keeps
+  `Turbine Load` and `Shutdown Bank`, drops `Mode`/`Load`/`Boron`/`Nudge`/`NIS`/`HPI`, keeps
+  unambiguous singletons like `MSIV` and `SCRAM`, and is self-maintaining. 25 of 52 labels
+  scanned. (3) The check's own local `D` **shadowed the dim-colour constant**, so its header
+  printed a driver object.
+
+  **Scope is deliberately narrow, and the limit is written into HR12 rather than left implied:**
+  only the NEGATIVE claim is decidable. *"This control cannot be operated"* checks against the
+  wiring; *"this control does X"* does not — #303's invented breaker would still get past it.
+  Injection-verified both ways: the real #304 line fails exactly one check and nothing else;
+  restored, 94/94.
+
+  Gates: all **35 runners at baseline**, `board_check` **168/168** unchanged.
+
+### Fixed
+- **Turbine art froze on trip while the RPM readout coasted.** Blade/winding scroll is driven by
+  `turbine_rpm` (not steam demand alone), so a trip or generator OFF shows the ~40 s coastdown
+  instead of stopping the frame instantly. Steam fill/ports still track admission.
+
+### Changed
+- **Instructor minimize + right-column chrome tidy.** Explicit **−** minimize on the instructor
+  header (top-right of the title row); Checklists picker moved from under the instructor card into
+  **Operate**; **Contact** moved under Settings → About (duplicate "About" row label removed).
+
 ### Fixed
 - **01's numbers were all right and five of its control claims were wrong** (#304, review of
   `Manuals/01_GENERAL_DESCRIPTION.md`; manual set **Rev 9 → Rev 10**). Measured full stack, every

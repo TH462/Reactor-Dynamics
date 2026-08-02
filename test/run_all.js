@@ -329,7 +329,13 @@ var BASELINES = {
   // 83 -> 85 (#303, 2026-08-01d): the 04 NOP review. Pure write-up drift again — the manual
   // and checklist edits moved nothing here; the two sites citing the owner's dilute-step
   // directive (CHANGELOG, TUNING_LOG) are the whole delta. Re-run this AFTER the docs.
-  'run_hardrules.js':      { code: 0, score: '85checks 0failed' },
+  //
+  // 85 -> 88 (2026-08-01f): HR12 widened to cover CONTROL BEHAVIOUR, plus the two write-up
+  // sites citing that ruling. Note the rule TEXT is one of the three — this gate counts
+  // citation sites wherever they are tracked, and CONTEXT.md 3 is tracked, so editing a
+  // Hard Rule to carry its own dated quote moves this number. The count of BINDING rules is
+  // unchanged at ten, which was the point of widening one rather than adding an eleventh.
+  'run_hardrules.js':      { code: 0, score: '88checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

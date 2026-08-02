@@ -97,7 +97,6 @@
           <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant."
               data-scanner-detail="The manual set is written in commercial operator-manual format: general description, controls and indications, normal and emergency procedures, alarm response, setpoints and a glossary. Its procedures are replayed against the engine by the test suite, so the steps match the plant you are operating.">Manual</button>
           <button class="btn text-btn" id="helpBtn" title="How this control room works" data-scanner-hint="Help — a short guide to the board, the right-hand panels, and where to learn next.">Help</button>
-          <button class="btn text-btn" id="fbBtn" title="Send feedback by email" data-scanner-hint="Contact — email address for bug reports and feedback, plus optional session diagnostics to attach.">Contact</button>
           <button class="btn demo-btn" id="demoBtn" title="Board focus — hide the side panel and enlarge the plant diagram" data-scanner-hint="Board focus — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
         </div>
         <!-- What's running now — the always-visible mission entry point -->
@@ -114,17 +113,13 @@
           <div class="icon" id="instrIcon" aria-hidden="true"></div>
           <div class="role" id="instrRole">Instructor</div>
           <span class="instr-badge" id="instrBadge" hidden></span>
+          <button type="button" class="instr-min" id="instrMinBtn" title="Minimize instructor panel"
+            aria-label="Minimize instructor panel"
+            data-scanner-hint="Minimize — collapse the instructor panel so Operate and the other tools use the column.">−</button>
         </div>
         <div class="instr-body">
           <div class="instr-prev" id="instrPrev">— no prior messages —</div>
           <div class="instr-current instr-standby" id="instrCurrent">Standing by…</div>
-        </div>
-        <!-- Auto-checklist picker (Path 3) — free play only; runs a procedure as a
-             passive checklist whose steps check themselves off the instruments -->
-        <div class="instr-ckl" id="instrCklRow" hidden>
-          <button class="btn" id="cklOpenBtn" data-scanner-hint="Checklists — call up a procedure as a checklist in the chat; each step checks itself off the instruments while you operate."
-              data-scanner-detail="The checklist watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before.">Checklists</button>
-          <div class="ckl-menu" id="cklMenu" hidden></div>
         </div>
         <!-- Walkthrough (follow) nav — shown only while following a procedure -->
         <div class="instr-nav" id="instrNav" hidden>
@@ -172,6 +167,16 @@
             <div class="set-row"><span class="k">Mode</span><span class="mono" id="simModeLbl">Free Play</span></div>
             <div class="set-row" data-scanner-hint="Plant &amp; Mission — choose the reactor, then free play (with a starting condition) or any guided content this build offers.">
               <span class="k">Change</span><button class="btn" id="missionBtn">Plant &amp; Mission…</button></div>
+            <!-- Auto-checklist picker (Path 3) — free play only; procedure runs in the
+                 instructor card with steps that check themselves off the instruments -->
+            <div class="ckl-picker" id="instrCklRow" hidden>
+              <div class="set-row">
+                <span class="k">Checklists</span>
+                <button class="btn" id="cklOpenBtn" data-scanner-hint="Checklists — call up a procedure as a checklist in the chat; each step checks itself off the instruments while you operate."
+                    data-scanner-detail="The checklist watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before.">Checklists…</button>
+              </div>
+              <div class="ckl-menu" id="cklMenu" hidden></div>
+            </div>
             <div class="set-row"><span class="k">Reset</span><button class="btn" data-act="reset">Reset to initial state</button></div>
             <div class="set-row" id="featureRow" hidden data-scanner-hint="Features — which parts of the simulator this build offers. Preview features are playable here but hidden from the public website until they are vetted."
               data-scanner-detail="The same bundle ships everywhere; a release channel decides what it offers. Preview content is finished in the build but not yet played end to end by the author, so the public site shows a coming-soon panel in its place.">
@@ -192,11 +197,11 @@
             <div class="g-section-title" style="margin-top:12px">About</div>
             <div class="set-row" data-scanner-hint="About — the alpha disclaimer, the software licence, and what changed in each release. Works offline in the portable build too."
               data-scanner-detail="These open in-app popups packed from the site pages (legal.html, changelog.html). A single-file download has no sibling site pages, so the text ships inside the control room (#259).">
-              <span class="k">About</span>
               <span class="set-about-btns">
                 <button class="btn" type="button" data-site-doc="disclaimer">Disclaimer</button>
                 <button class="btn" type="button" data-site-doc="license">License</button>
                 <button class="btn" type="button" data-site-doc="changelog">Changelog</button>
+                <button class="btn" type="button" id="fbBtn" title="Send feedback by email" data-scanner-hint="Contact — email address for bug reports and feedback, plus optional session diagnostics to attach.">Contact</button>
               </span>
             </div>
           </div>
@@ -276,8 +281,8 @@
             <div class="help-sec">
               <h4>Where to start</h4>
               <p><b>Play</b> starts the clock (the board shows SIMULATION PAUSED until you do).<br>
-              <b>Instructor</b> (right column) — free-play coaching and, later, guided voices.<br>
-              <b>Checklists</b> — interactive procedures that check themselves off the instruments.<br>
+              <b>Instructor</b> (right column) — free-play coaching and, later, guided voices. Use <b>−</b> to minimize it.<br>
+              <b>Checklists</b> (Operate tab) — interactive procedures that check themselves off the instruments.<br>
               <b>Manual</b> — full operator reference and written procedures.<br>
               <b>Plant &amp; Mission</b> (under the clock) — starting condition and guided content.<br>
               <b>System Scanner</b> — hover anything on the board for what it is and how to use it.</p>
