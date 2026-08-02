@@ -88,10 +88,21 @@ on purpose, to a stated teaching reason, recorded in the departure register.
 
 Four tests, in decreasing order of how mechanical they are:
 
-1. **Orphan control.** Is the new control named by at least one authored procedure step, mission
-   or checklist — or explicitly declared a free-play affordance? A control nothing ever asks the
-   player to touch is clutter until someone says otherwise. (`run_manual_controls` walks
-   steps → controls today; the reverse direction is not audited.)
+1. **Orphan control** — *an AUDIT, not a gate; see the caveat.* Is the new control named by at
+   least one authored procedure step, mission or checklist — or explicitly declared a free-play
+   affordance? A control nothing ever asks the player to touch is clutter until someone says so.
+   `run_manual_controls` walks steps → controls; the reverse direction is not audited.
+   **Measured 2026-08-02 on the PWR board, and the measurement is why this is not yet a gate:**
+   52 labels resolve to **33 distinct targets** (so **19 labels are ALIASES** — `Rod motion`,
+   `HPI` and `NIS` point at the same targets as `Control Bank`, `HPI/LPI` and `SR detector`,
+   which content does use; a label-level audit reports 16 orphans where a target-level one
+   reports 10). Separating operable controls from indication cards then **fails**, because
+   `CONTROL_LABEL_MAP` targets *cards* while `pressableIds()` lists *buttons* — different
+   granularities, and intersecting them claims only 3 operable targets out of 33, which is
+   plainly wrong. A real gate needs the single classified inventory **#305** is open to produce.
+   The one clean finding today: **`Rod AUTO`** is reachable and named by nothing, which matters
+   because #289 made rods start in auto by owner ruling — default behaviour with no content
+   explaining its control.
 2. **Observability.** Does the board show its effect? If the player cannot see the result, the
    control teaches nothing and cannot be gated.
 3. **Duplicate authority.** Does it create a second way to ask one question? This is the #284
@@ -230,29 +241,66 @@ be able to do or explain afterwards.** That is the missing artifact, and it is w
 feature's educational value can only be argued against a stated objective. Without one, "it is
 educational" is unfalsifiable and Q2 becomes a rubber stamp (§7).
 
-### 6.2 Proposed shape — three tiers, each written as something the player can DO
+### 6.2 The goal, in the owner's words
 
-An objective is usable by Q2 only if *"which objective does this serve?"* has a checkable answer.
-So each is phrased as an observable capability and must name where it is exercised.
+> *(OWNER, 2026-08-02: "The point of the sim is in the name. I want to teach people plant
+> dynamics. They should learn the dynamics between the different components. For example, power
+> follows load in a PWR. You can demonstrate this with rods in manual and lowering the generator
+> demand. You see power drop to match demand and t-avg rise… These kind of dynamics,
+> relationships and physics of the plant are what I want to teach.")*
 
-**Tier A — transferable mental models** (plant-agnostic; the reason this is worth learning at all):
+**This is a relationship-shaped goal, not a skill-shaped one**, and the distinction decides what
+Q2 rewards. An earlier draft of this section listed operator competences — *read instruments,
+run a procedure, control reactivity*. Those are real, but they are what an operator **does**;
+the stated goal is what a player **understands**: component A moves, B responds, and here is the
+physics that couples them. A feature earns Q2 credit by making a coupling **visible**, not by
+adding something to do.
 
-| # | The player can… | Already exercised by |
-|---|---|---|
-| A1 | read the plant through **instruments that lag, drift and lie**, and cross-check rather than trust one channel | HR1 throughout; TMI flagship; the failed-channel probes |
-| A2 | explain why a reactor **cannot be switched off** — decay heat, and that subcritical ≠ cooled down | scram → decay-heat tail; Mode 5 cooldown; SBO |
-| A3 | treat protection as **permissives, interlocks and enables** rather than switches, and say what each trip is *for* | trip blocks, P-7/P-9/P-10/P-11, #295 F1's whole lesson |
-| A4 | control reactivity deliberately — rods, boron, temperature feedback — and predict the sign of a feedback | startup, 1/M, ECC, MTC on the cooldown |
-| A5 | run an evolution **to a procedure**, and recognise when the procedure's premise has failed | the checklist system; TMI part 1 |
-| A6 | compare two runs of the same conditions and attribute the difference to **design or decision** | §3's comparison principle; pre/post-1986 RBMK |
+**The unit of an objective is therefore a DEMONSTRATION**, and that is Q2's sharpened test:
 
-**Tier B — plant identity** (one per plant: what makes *this* machine behave the way it does).
-PWR: a pressurized, subcooled primary whose heat sink is the steam generator. RBMK: a positive
-void coefficient and what it does to a shutdown. BWR: a direct cycle boiling in the core.
+> **State it as: [what you change] → [what responds] → [the mechanism], and give the board
+> actions plus MEASURED numbers.** If you cannot produce that, the objective is not real yet.
 
-**Tier C — accident lessons.** Already written: `DESIGN_COMPANION.md` §5. Adopt as-is.
+### 6.3 Tier A — the core dynamics (PROPOSED)
 
-### 6.3 How Q2 changes once these are ruled
+Each is a coupling, its mechanism, and how it is demonstrated. A1 is the owner's own example,
+measured on the shipped plant (full stack, `hot_full_power`, accel 10×, free-play lineup).
+
+| # | Coupling | Mechanism | Demonstration |
+|---|---|---|---|
+| **A1** | **Power follows load** | negative **moderator temperature coefficient**, balanced by Doppler | rods to MANUAL, drop generator demand 100 → 60 MWe. **Measured:** power **100 → 57.5 %** with nobody touching the rods, Tavg **579.3 → 602.1 °F (304.1 → 316.7 °C)**, +22.8 °F (+12.6 °C) |
+| **A2** | **Tavg is the coupling variable** — it is what the rod controller exists to hold | the rod channel trades Tavg error for rod motion | run A1 again with rods in AUTO and compare the Tavg excursion (§3's comparison principle) |
+| **A3** | **Pressure follows temperature; subcooling is the margin** | pressurizer holds the primary liquid as Tavg moves | PWR-N15 walks Dump SP and Pressure SP down **together**, holding 63 °F (35 °C) subcooling |
+| **A4** | **Level is not inventory** | shrink/swell; the level *program* moves with Tavg | pzr level rises on a load rejection with inventory unchanged |
+| **A5** | **The SG is the primary's only heat sink** | lose feed and Tavg climbs whatever the rods do | loss of feedwater; AFW starts |
+| **A6** | **A reactor cannot be switched off** | decay heat; subcritical ≠ cooled down | post-scram tail; the Mode 5 cooldown; SBO |
+| **A7** | **You see all of this through instruments that lag and can lie** | HR1 — the observation layer over every coupling above | TMI flagship; failed-channel probes |
+
+**A1's numbers reconcile, and the arithmetic is itself the lesson.** Tavg rose 12.6 °C against a
+measured MTC of **−26.8 pcm/°C** → **−338 pcm** from the moderator. The fuel *cooled* 693 → 551 °C
+as power fell, and with `alpha_D` **−2.5e-5 K⁻¹** (−2.5 pcm/°C) that returns **+355 pcm**. They
+sum to ~+17 pcm — i.e. **≈ 0**, which is exactly where the plant settled (`reactivity_pcm` −53.3
+during the transient, back to ~0 by 8 min). *The moderator term drives power down; the Doppler
+term comes back as the fuel cools; equilibrium is where they cancel.* Rounding only — MTC varies
+with boron and temperature — but the mechanism is legible in the numbers, which is the point.
+
+**One correction for the record, because it changes what gets taught.** The actor here is the
+**moderator temperature coefficient** (moderator *density* falling as it heats), not the void
+coefficient. A PWR's void coefficient is also negative, but the primary is held **subcooled** —
+that is the defining feature of the plant and what the subcooling-margin instrument exists for —
+so there is essentially no bulk void at operating conditions and it is not what moves power here.
+Void *is* the actor on the RBMK (positive) and the BWR (negative), which is precisely the
+cross-plant contrast Tier B should carry.
+
+**Tier B — plant identity.** One coupling per plant that the others do not have. PWR: a
+pressurized, subcooled primary with the SG as its only heat sink. RBMK: a **positive** void
+coefficient, and what that does to a shutdown. BWR: a direct cycle boiling in the core, where
+void is both the power controller and the hazard.
+
+**Tier C — accident lessons.** Already written: `DESIGN_COMPANION.md` §5 (TMI = information,
+Chernobyl = design, Fukushima = sustained support). Adopt as-is.
+
+### 6.4 How Q2 changes once these are ruled
 
 Today Q2 asks *"is there educational value?"* — answerable "yes" for anything. With objectives it
 asks two checkable questions:
@@ -268,12 +316,19 @@ Downstream of this ruling: **#283** (define BETA) gets its yardstick — "beta" 
 Tier A objective is exercised and gated on the PWR* — and **#253** (the lessons are stale) gets
 the standard to re-author against. Both are currently blocked on the same missing artifact.
 
-### 6.4 My recommendation
+### 6.5 My recommendation
 
 **Adopt Tier C as-is, rule on Tier A, and defer Tier B until each plant is reopened.** Tier A is
 the load-bearing tier: it is plant-agnostic, so it is the part an automated RBMK/BWR build must
 satisfy, and it is what makes §5's table of prerequisites *purposeful* rather than mechanical.
 Tier B cannot be written honestly for RBMK/BWR before their evidence passes exist (§5, Q1).
+
+**The gap Tier A exposes is a CONTENT gap, not a physics one.** Every coupling in §6.3 is already
+modelled and measurable — A1 was measured for this document in 2.5 s of wall clock. What is
+missing is that **no procedure, mission or free-play beat demonstrates A1 or A2 deliberately.**
+The plant teaches power-follows-load to anyone who happens to drop load with rods in manual, and
+nothing ever suggests they try it. That is #253's real scope, and it is a stronger argument for
+re-authoring the lessons than "they are stale".
 
 **Absent a ruling this section stays advisory and Q2 keeps working as it does now** — which is
 the weakest part of the criteria, and the reason this was raised.
