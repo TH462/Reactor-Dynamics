@@ -114,6 +114,23 @@ the IN lamp **dark** (gravity is not a drive demand). `board_check` **168 → 17
 pins injection-verified: three defects injected (drop the scram guard, restore the long title,
 rank motion above the limit), three reds, one each.
 
+**Card spacing, same session** *(OWNER, 2026-08-02: "Can you adjust the speed buttons down so they
+have equal spacing above and below?", then "Shift the rod auto and trip blocks down slightly to
+give equal spacing above and below them.")*. **The two asks interact and must be solved as one
+stack** — centring SLOW/MED/FAST alone puts it at top 400; centring ROD AUTO alone puts it at
+427.5, which re-opens the speed row's lower gap to 7.5 and un-centres what the first move just
+centred. Measured as authored: the speed row was **flush against INSERT** (0 above, 10 below) and
+**straddled the CONTROL/SHUTDOWN sub-boxes**, whose bottom edge is 400 — half in, half out. The
+band 395→465 is 70 px holding 50 px of buttons, so the gaps want 6.67 and are **7 / 6 / 7**.
+
+**The bug this turned up is the reusable part: `DOC_PATCHES.items` is an OBJECT LITERAL, so a
+second entry for the same id silently REPLACES the first.** Adding `ims5glucngg: { props: { top:
+428 } }` next to the existing `ims5glucngg: { props: { color: '#5aad7c' } }` dropped the ROD AUTO
+green with no error at all — caught only because two unrelated colour-convention pins went red.
+Merge keys, never repeat them. The new spacing pin asserts the **relationship** (three gaps equal
+within 1 px) rather than the numbers, so it survives any of the five items moving and fails on
+the un-patched board_data, where the first gap is 0 and the last is 10.
+
 **Not shipped, and it is the one gap worth knowing:** the status word has no **BLOCKED** state,
 because the SUR rod-withdrawal interlock's live state is **not in the snapshot** — the kernel
 keeps `interlockActive` internally and only `trip_block_status` is published. Deriving it

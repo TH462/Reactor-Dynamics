@@ -1719,7 +1719,11 @@
       // SG FEED AUTO and STEAM DUMP AUTO — and it is the control the #289 lineup change just
       // made matter, since rods now come up engaged. #5aad7c is the same green as BD_OK above.
       // Fold it into the builder and delete this entry; selfTest pins the value meanwhile.
-      ims5glucngg: { props: { color: '#5aad7c' } },
+      // `top` is the 2026-08-02 re-spacing below — DO NOT split these into two entries: this
+      // is an object literal, so a second `ims5glucngg:` key silently REPLACES this one and
+      // the colour patch disappears with no error. That is exactly what happened while writing
+      // the re-spacing, and the two AUTO-green pins are what caught it.
+      ims5glucngg: { props: { color: '#5aad7c', top: 428 } },
       // (TRIP BLOCKS carried a top/height patch here until the 2026-07-28t re-export —
       // the builder now authors it at 425/30, so the patch was pinning what the diagram
       // already says. Dropped rather than kept: a patch that agrees with the doc is a
@@ -1757,7 +1761,30 @@
       // authored `left`, so even pinned at the card edge the word starts 14 px INSIDE the
       // title. 'ROD CONTROL' is 93 px and clears it. Nothing is lost by dropping 'REACTOR/':
       // everything on this card is a rod action, SCRAM included — it drops the banks.
-      ims14ylw4az: { props: { title: 'ROD CONTROL' } }
+      ims14ylw4az: { props: { title: 'ROD CONTROL' } },
+      // The bottom of the rod card re-spaced *(OWNER, 2026-08-02: "Can you adjust the speed
+      // buttons down so they have equal spacing above and below?", then "Shift the rod auto
+      // and trip blocks down slightly to give equal spacing above and below them.")*.
+      //
+      // THE TWO ASKS INTERACT, which is why this is one patch and not two. Centring SLOW/MED/
+      // FAST alone fixes its gaps at 5/5; centring ROD AUTO alone puts it at 427.5, which
+      // re-opens the speed row's lower gap to 7.5 and un-centres what the first ask just
+      // centred. Both are satisfied only by spacing the whole stack at once.
+      //
+      // MEASURED, as authored: INSERT ends at 395, the speed row was 395..415 (h 20), ROD AUTO
+      // 425..455 (h 30), card bottom 465. So the speed row sat FLUSH against INSERT — 0 px
+      // above, 10 below — and it STRADDLED the CONTROL/SHUTDOWN sub-boxes, whose bottom edge
+      // is 400, half in and half out. ROD AUTO had 10 above and 10 below but the 10 above was
+      // measured from a row that was itself in the wrong place.
+      //
+      // The band 395 → 465 is 70 px and holds 50 px of buttons, so the three gaps want 20/3 =
+      // 6.67 px each. Integers cannot do that, so they are 7 / 6 / 7 — symmetric top and
+      // bottom, one pixel tighter in the middle, which is the arrangement that reads level.
+      imrpk8169ds: { props: { top: 402 } },
+      imrpk8grvcz: { props: { top: 402 } },
+      imrpk8kjsjs: { props: { top: 402 } },
+      // (ROD AUTO's `top: 428` rides on its colour entry above — same key, one object.)
+      imrsk4xz2dm: { props: { top: 428 } }
     }
   };
   function applyDocPatches(doc) {
@@ -2234,6 +2261,30 @@
       ck('driver: DOC_PATCHES shortened the ROD CONTROL card title', (function () {
         var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === 'ims14ylw4az'; })[0];
         return it && it.title === 'ROD CONTROL' ? true : (it ? it.title : 'card missing');
+      })() === true);
+      // The bottom of the rod card is evenly spaced by a patch, so a re-export silently
+      // un-spaces it (owner, 2026-08-02). Pin the RELATIONSHIP, not the numbers: the three
+      // gaps below INSERT — to the speed row, to the AUTO row, and to the card's bottom edge —
+      // must stay within a pixel of each other. That survives any of the five items moving
+      // and states the thing that was actually asked for. As authored the first gap is 0 and
+      // the last is 10, so this fails on the shipped board_data without the patch.
+      ck('driver: the rod card bottom is evenly spaced (gaps equal within 1 px)', (function () {
+        function it(id) { return (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === id; })[0]; }
+        var card = it('ims14ylw4az'), ins = it('imrpk79mwng');
+        var spd = ['imrpk8169ds', 'imrpk8grvcz', 'imrpk8kjsjs'].map(it);
+        var aut = ['ims5glucngg', 'imrsk4xz2dm'].map(it);
+        if (!card || !ins || spd.concat(aut).some(function (r) { return !r; })) return 'item missing';
+        function level(row, name) {
+          return row.every(function (r) { return r.top === row[0].top; }) ? null
+            : name + ' not level: ' + row.map(function (r) { return r.top; }).join('/');
+        }
+        var bad = level(spd, 'speed row') || level(aut, 'auto row');
+        if (bad) return bad;
+        var g1 = spd[0].top - (ins.top + ins.height);
+        var g2 = aut[0].top - (spd[0].top + spd[0].height);
+        var g3 = (card.top + card.height) - (aut[0].top + aut[0].height);
+        var lo = Math.min(g1, g2, g3), hi = Math.max(g1, g2, g3);
+        return (hi - lo) <= 1 ? true : 'gaps ' + g1 + '/' + g2 + '/' + g3;
       })() === true);
       // ---- ROD AUTO obeys the board's AUTO colour convention (2026-08-01) -----------------
       // `buildButton` uses the authored item colour AS the lit colour, so an off-convention

@@ -45,6 +45,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
     withdraw at the same time, and the limit is the fact that says the controller has run out
     of room in the direction it normally corrects.
 
+  **The bottom of the card is evenly spaced now** *(OWNER, 2026-08-02: "Can you adjust the speed
+  buttons down so they have equal spacing above and below?", then "Shift the rod auto and trip
+  blocks down slightly to give equal spacing above and below them.")*. The two asks interact and
+  had to be solved together — centring SLOW/MED/FAST alone puts it at top 400, and centring ROD
+  AUTO alone puts it at 427.5, which re-opens the speed row's lower gap and un-centres what the
+  first move just centred. Measured as authored: the speed row sat **flush against INSERT (0 px
+  above, 10 below)** and straddled the CONTROL/SHUTDOWN sub-boxes, half in and half out. The
+  three gaps are **7 / 6 / 7** now (20 free px over three gaps will not divide evenly, so the
+  outer two match and the middle is a pixel tighter).
+
   The **REACTOR/ROD CONTROL card is titled ROD CONTROL** to make the room, the same trade #214
   made on the SG FEED card. Measured, not estimated — and the estimate was wrong twice: the
   authored title renders 161 px in a 195 px card, and an rAnchor item's right edge sits 41 px
