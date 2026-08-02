@@ -859,11 +859,53 @@
              reset_block: resetBlock };
   };
 
+  // Live interlock state, for surfaces that must report a standing BLOCK rather than
+  // only refuse the command that runs into it (#306).
+  //
+  // WHY THIS EXISTS. `interlockActive` was kernel-internal, so a board could learn about
+  // an interlock only by issuing a command and reading the refusal — which means a rod
+  // withdrawal block was invisible until the operator tried to withdraw and was told no.
+  // The alternative, deriving it board-side from the instrument and the config table, is a
+  // SECOND COPY of a latched, hysteretic condition (engage on setpoint, clear on
+  // clears_below), and a second copy of a threshold is the defect class this repo keeps
+  // finding — #294 and #303 are both that shape. So the kernel publishes it, exactly as it
+  // already publishes `trip_block_status` for the same reason.
+  //
+  // Keyed by INDEX into `config.interlocks`, which is the same handle `_evalInterlocks` and
+  // `_interlockBlocking` use, plus the identifying fields a consumer needs to find the one
+  // it cares about without matching prose. `blocks`/`withdrawal_only` are copied rather
+  // than referenced so a consumer cannot mutate the config through the snapshot.
+  ControlLayer.prototype.getInterlockState = function () {
+    var ils = this.config.interlocks || [], out = [];
+    for (var i = 0; i < ils.length; i++) {
+      var il = ils[i];
+      out.push({
+        index: i,
+        active: !!this.interlockActive[i],
+        instrument: il.instrument,
+        blocks: (il.blocks || []).slice(),
+        withdrawal_only: !!il.withdrawal_only,
+        message_learning: il.message_learning || '',
+        message_industry: il.message_industry || '',
+      });
+    }
+    return out;
+  };
+
+  // True when a standing interlock would refuse the given command RIGHT NOW — the
+  // question a board actually wants answered ("is withdrawal blocked?"), asked without
+  // issuing the command. Runs the same predicate the block itself uses, so the two cannot
+  // drift: `_interlockBlocking` is the single implementation.
+  ControlLayer.prototype.isCommandBlocked = function (cmd) {
+    return !!this._interlockBlocking(cmd);
+  };
+
   ControlLayer.prototype.getSnapshotSections = function () {
     return {
       rps_state: this.getRpsState(),
       alarms: this.getAlarms(),
       active_failures: this.getActiveFailures(),
+      interlocks: this.getInterlockState(),
     };
   };
 

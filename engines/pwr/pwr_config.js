@@ -1106,6 +1106,13 @@
       // Not in SOURCE, so it draws no PRNG number and the cross-step noise stream is
       // unchanged (the appended-instrument rule).
       pzr_level_dev:     { lag: 0,   noise: 0,     range: [-40, 40], derived: true },
+      // Control-bank steps remaining ABOVE the rod insertion limit — the authority-remaining
+      // signal the ROD LIMIT LO annunciator reads (#306). Range top is `rods.max_steps`, which
+      // is also the value the engine reports when the limit does not apply; `run_m4` pins the
+      // two together so the fine-step retune cannot silently peg this at 912 (they were 228
+      // before 2026-07-23). Not in SOURCE, so it draws no PRNG number and the cross-step noise
+      // stream is unchanged (the appended-instrument rule).
+      rod_limit_margin:  { lag: 0,   noise: 0,     range: [0, 912],  derived: true },
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running',
                // RCPs stopped by an operator lineup decision, not by a trip/

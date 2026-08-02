@@ -131,12 +131,50 @@ Merge keys, never repeat them. The new spacing pin asserts the **relationship** 
 within 1 px) rather than the numbers, so it survives any of the five items moving and fails on
 the un-patched board_data, where the first gap is 0 and the last is 10.
 
-**Not shipped, and it is the one gap worth knowing:** the status word has no **BLOCKED** state,
-because the SUR rod-withdrawal interlock's live state is **not in the snapshot** — the kernel
-keeps `interlockActive` internally and only `trip_block_status` is published. Deriving it
-board-side from the instrument would be a second copy of a latched, hysteretic condition, which
-is the defect class this repo keeps finding. It wants an `interlock_status` publication in the
-kernel, grouped with the #306 item-4 work.
+**Item 4, shipped the same session** *(OWNER, 2026-08-02: "Do next", on the recommendation to
+build the ROD LIMIT Lo annunciator together with the interlock publication)*. Two things, one
+change, because they are the same gap seen from two ends — the board could not tell you that the
+controller was running out of room, in either direction.
+
+**`ROD LIMIT LO`.** A real board carries TWO insertion-limit annunciators and we shipped one, so
+the first notice was the stop itself. WTSM 8.4 (ML11223A256): *"Rod Limit Low setpoint = RIL + 10
+steps"*, *"Rod Limit Low-Low setpoint = RIL"*, and the Lo-Lo is the **tech-spec violation**, not a
+deeper warning. New `rod_limit_margin` instrument (bank steps above the limit) and an alarm at
+**40 fine steps, which IS the real 10** — this drive is 912 fine to a real bank's 228. Do not
+"correct" it to 10; that is 2.5 real steps of warning on a bank the auto channel moves at 24
+equivalent steps a minute. `ROD INS LIMIT` is relabelled `ROD LIMIT LO-LO` so the pair reads as one.
+
+**The trap in the margin signal is the #202 nuisance coming back.** Below
+`insertion_limit_min_power_pct` there is NO limit — a startup drives the bank deliberately deep —
+so the margin reports **full travel, not zero**, or the annunciator would stand through every
+ascent. That is precisely the nuisance #202 removed by making the limit power-dependent, and a
+naive `steps − limit` would have undone it. Injection-verified: forcing 0 there reddens the cold
+probe AND four pre-existing alarm-census checks.
+
+**`interlock_status` published.** `interlockActive` was kernel-internal, so a surface could learn
+about a block only by issuing a command and reading the refusal — a rod-withdrawal block was
+invisible until you tried to withdraw. `getInterlockState()` + `isCommandBlocked()` now publish
+it (`snapshot.interlocks`), the same way `trip_block_status` already does, and the board's
+`BLOCKED` state reads it. Deriving it board-side was rejected on purpose: the block engages on
+`setpoint` and clears on `clears_below`, so a copy is a second implementation of a hysteretic
+latch — the #294/#303 shape. Consumers match on the **blocks list**, not on an index or on prose.
+
+**Two authoring traps found the hard way.** `getAlarms()` returns **every** configured alarm with
+a `state` field, not only the active ones, so `!!layer.getAlarms().find(...)` is ALWAYS true —
+the first draft of these probes "passed" four checks that were asserting nothing. Read `.state`.
+And **driving the bank to its limit does not work as a test**: insertion drops power, the
+power-dependent limit drops with it, and the margin OPENS instead of closing — measured, parking
+the bank 20 steps above the limit and stepping the plant left a margin of **299**. Same
+floor-runs-away effect that makes AT LIMIT unreachable by hand insertion in free play; the only
+physical route is **diluting at constant power** (that is how the #306 screenshot was produced —
+695 iterations to 69.6 % against a 69.6 % floor). For an annunciator test, drive the instrument.
+
+`run_m4` **34 → 36**, `board_check` **179 → 182**. Three injections, three reds.
+
+**Filed, not built: #311** — there is no **OTΔT or OPΔT** anywhere in the tree, so two of the four
+Westinghouse reactor trips are absent, along with the rod stops and runbacks they drive. The ΔI
+term may not be honestly buildable on a one-node core; a declared reduced form is probably the
+target, and that needs a ruling before any code.
 
 ## Session log — 2026-08-01d (the System Scanner was teaching five wrong things, workbench)
 

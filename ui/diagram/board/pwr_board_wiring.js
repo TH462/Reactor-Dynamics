@@ -359,6 +359,21 @@
   // AMBER for everything that is not "the controller has this and is regulating": a
   // tripped bank, an operator-driven one, and one pinned against its limit are all states
   // where nobody should read the green ROD AUTO lamp as "Tavg is being looked after".
+  // Is a standing interlock refusing rod WITHDRAWAL right now? Reads the kernel's published
+  // interlock state (#306) rather than re-deriving the latch from the instrument and the
+  // config table — the block engages on `setpoint` and clears on `clears_below`, so a
+  // board-side copy would be a second implementation of a hysteretic condition, which is
+  // the #294/#303 defect shape. Matches on the BLOCKS list, not on prose or on an index.
+  function rodWithdrawBlocked(s) {
+    var ils = (s && s.interlocks) || [];
+    for (var i = 0; i < ils.length; i++) {
+      var il = ils[i];
+      if (!il.active) continue;
+      var b = il.blocks || [];
+      if (b.indexOf('rod_start') >= 0 || b.indexOf('rod_nudge') >= 0) return true;
+    }
+    return false;
+  }
   function rodStatus(s) {
     var g = rodGroup(s, 'control_rods');
     if (!g) return { text: '—', color: BD_WARN };
@@ -366,6 +381,12 @@
     var c = chan(s, 'rods_tavg');
     if (!c || !c.engaged) return { text: 'MANUAL', color: BD_WARN };
     if (g.at_insertion_limit) return { text: 'AT LIMIT', color: BD_WARN };
+    // A withdrawal block outranks motion for the same reason AT LIMIT does — both say the
+    // controller has lost a direction — and it outranks AT LIMIT only in that it can be
+    // true while the bank is nowhere near its floor. Ordered after, because being ON the
+    // insertion limit is the more consequential of the two: the limit is a tech-spec floor,
+    // the SUR block is a transient rate guard that clears itself.
+    if (rodWithdrawBlocked(s)) return { text: 'BLOCKED', color: BD_WARN };
     if (g.moving && g.direction > 0) return { text: 'OUT', color: BD_OK };
     if (g.moving && g.direction < 0) return { text: 'IN', color: BD_OK };
     return { text: 'HOLDING', color: BD_OK };
@@ -2211,6 +2232,7 @@
         opts = opts || {};
         return rodStatus({
           automation: { channels: [{ id: 'rods_tavg', engaged: opts.engaged !== false }] },
+          interlocks: [{ active: !!opts.blocked, blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true }],
           control_state: { rod_groups: [{ id: 'control_rods',
             scrammed: !!opts.scrammed, moving: !!opts.moving, direction: opts.direction || 0,
             at_insertion_limit: !!opts.atLimit }] }
@@ -2230,10 +2252,19 @@
       ck('driver: rod status AT LIMIT outranks motion — the bank can withdraw off its limit',
         rs({ atLimit: true, moving: true, direction: 1 }).text === 'AT LIMIT',
         rs({ atLimit: true, moving: true, direction: 1 }).text);
+      ck('driver: rod status BLOCKED on a standing withdrawal interlock (#306)',
+        rs({ blocked: true }).text === 'BLOCKED' &&
+        rs({ blocked: true, moving: true, direction: -1 }).text === 'BLOCKED',
+        rs({ blocked: true }).text);
+      ck('driver: an INACTIVE interlock is not a block — the flag is read, not its presence',
+        rs({ blocked: false }).text === 'HOLDING', rs({ blocked: false }).text);
+      ck('driver: AT LIMIT still outranks BLOCKED — a tech-spec floor beats a rate guard',
+        rs({ blocked: true, atLimit: true }).text === 'AT LIMIT',
+        rs({ blocked: true, atLimit: true }).text);
       ck('driver: rod status is GREEN only while the controller is actually regulating',
         rs().color === BD_OK && rs({ moving: true, direction: -1 }).color === BD_OK &&
         rs({ engaged: false }).color === BD_WARN && rs({ atLimit: true }).color === BD_WARN &&
-        rs({ scrammed: true }).color === BD_WARN);
+        rs({ blocked: true }).color === BD_WARN && rs({ scrammed: true }).color === BD_WARN);
       // The IN-OUT lamps. A SCRAM must leave them DARK: the rods fall on gravity with the
       // drive de-energized, and a lit IN lamp there would say the drive is running when it
       // has just been dropped. This is the check that fails if someone "simplifies"

@@ -22,6 +22,31 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **A warning before the rod insertion limit, and a standing BLOCKED indication** (#306). A real
+  board carries **two** insertion-limit annunciators and we shipped one, so the first notice a
+  player got was the stop itself. WTSM 8.4 (ML11223A256): *"Rod Limit Low setpoint = RIL + 10
+  steps"*, *"Rod Limit Low-Low setpoint = RIL"* — and the Lo-Lo is not merely a deeper warning,
+  it is the tech-spec violation (*"the technical specification limit for rod insertion has been
+  violated"*).
+  - **`ROD LIMIT LO`** — new alarm on a new `rod_limit_margin` instrument (control-bank steps
+    remaining above the limit). The setpoint is **40 fine steps, which IS the real 10**: this
+    drive is 912 fine steps to a real bank's 228. It reads full travel — not zero — whenever the
+    limit does not apply, so it stays silent through a startup where the bank is deliberately
+    deep. That nuisance is exactly what #202 removed by making the limit power-dependent, and a
+    margin signal that reintroduced it would have undone that fix.
+  - **`ROD INS LIMIT` is now labelled `ROD LIMIT LO-LO`**, so the pair reads as a pair.
+  - **`BLOCKED`** on the rod status word, when a rod stop is standing. This needed the kernel to
+    **publish interlock state** (`snapshot.interlocks`, and `isCommandBlocked()`): `interlockActive`
+    was internal, so a surface could learn about a block only by issuing a command and reading
+    the refusal — a withdrawal block was invisible until you tried to withdraw. Deriving it
+    board-side was rejected as a second copy of a latched, hysteretic condition, which is the
+    #294/#303 defect shape.
+
+  `run_m4` **34 → 36**, `board_check` **179 → 182**, all injection-verified: three defects
+  injected (LO band 40 → 10, margin 0 instead of full travel when the limit is off, publish the
+  raw comparison instead of the latch) reddened their targets — and the margin one also tripped
+  four pre-existing alarm-census checks, which is the new alarm being properly counted.
+
 - **The board now shows what automatic rod control is DOING, not just that it is on** (#306).
   With rod control in AUTO the only evidence that anything was happening was the step count
   ticking — the ROD AUTO lamp said the channel was engaged, and nothing said what it was up

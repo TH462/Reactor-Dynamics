@@ -395,7 +395,20 @@
     { id: 'pzr_level_high',    instrument: 'pzr_level',        direction: 'high',    setpoint: 75.0,  priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level High',          label_industry: 'PZR LVL HI' },
     { id: 'pzr_level_low',     instrument: 'pzr_level',        direction: 'low',     setpoint: 25.0,  priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Low',           label_industry: 'PZR LVL LO' },
     { id: 'pzr_level_lolo',    instrument: 'pzr_level',        direction: 'low',     setpoint: 12.0,  priority: 'critical', panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Very Low',      label_industry: 'PZR LVL LO LO' },
-    { id: 'rod_limit',         instrument: 'rod_at_limit',     direction: 'is_true', setpoint: null,  priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Insertion Limit',  label_industry: 'ROD INS LIMIT' },
+    // ---- the insertion-limit PAIR (#306) ---------------------------------------------
+    // A real board carries two, and we shipped only the second, so the first thing a player
+    // learned about the limit was hitting it. WTSM 8.4 (ML11223A256): *"Rod Limit Low
+    // setpoint = RIL + 10 steps"*, *"Rod Limit Low-Low setpoint = RIL"* — and the Lo-Lo is
+    // the tech-spec violation, not merely a deeper warning: *"If the ROD LIMIT Lo-Lo alarm
+    // is alarming, the technical specification limit for rod insertion has been violated."*
+    //
+    // 40 fine steps IS the real 10. This drive is 912 fine steps against a real bank's 228
+    // (pwr_config §rods), so the prototypical 10-step approach band is 40 here. Do NOT
+    // "correct" it to 10: that is 2.5 real steps of warning on a bank the auto channel can
+    // move at 24 equivalent steps a minute — no warning at all. It reads `rod_limit_margin`,
+    // which is in the same fine steps.
+    { id: 'rod_limit_approach', instrument: 'rod_limit_margin', direction: 'low',     setpoint: 40,    priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Approaching Insertion Limit', label_industry: 'ROD LIMIT LO' },
+    { id: 'rod_limit',         instrument: 'rod_at_limit',     direction: 'is_true', setpoint: null,  priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Insertion Limit',  label_industry: 'ROD LIMIT LO-LO' },
     // ---- the small-leak cue pair (#262, owner ruling 2026-07-30) ----------------------
     // A leak inside CVCS make-up authority is HELD, and that is the problem: the plant
     // quietly loses inventory with charging near maximum and, before these two, nothing

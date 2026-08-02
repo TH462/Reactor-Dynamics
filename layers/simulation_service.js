@@ -396,6 +396,10 @@
       alarms: this.layer.getAlarms(),
       active_failures: this.layer.getActiveFailures(),
       automation: this.layer.getAutomationState ? this.layer.getAutomationState() : { channels: [] },
+      // Live interlock state (#306) — display-only, so a board can report a STANDING block
+      // instead of only the refusal you get by running into one. Not serialized: the kernel
+      // owns `interlockActive` and re-latches it from instruments on restore.
+      interlocks: this.layer.getInterlockState ? this.layer.getInterlockState() : [],
       instructor: this._instructorBlock(),
     };
   };

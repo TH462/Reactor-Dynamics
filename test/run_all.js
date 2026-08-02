@@ -351,7 +351,7 @@ var BASELINES = {
   // All three plants here, unlike the PWR-only §6.3 half.
   // 138 -> 139 on 2026-07-31 (#287): the new `rhr_not_aligned` annunciator, which
   // like every alarm must declare a `category` (#157).
-  'run_contract.js':       { code: 0, score: '139checks 0failed' },
+  'run_contract.js':       { code: 0, score: '140checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -504,7 +504,7 @@ var BASELINES = {
   // thresholds against their instrument's declared range, and `rhr_not_aligned` is a
   // status alarm (`rhr_active` is_false, setpoint null) with no range to sit inside.
   // It briefly read 59 while the alarm was drafted as a pressure threshold.
-  'run_reachability.js':   { code: 0, score: '58checks 0failed' },
+  'run_reachability.js':   { code: 0, score: '59checks 0failed' },
   // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
   // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
   // "## [Unreleased]" to the version) was skipped for Alpha 1.10.0 AND 1.11.0 — 434 lines of
@@ -549,7 +549,7 @@ var BASELINES = {
   // one alarm carrying news — entirely. The probe reaches Mode 4 the way the plant really
   // does, by losing the heat sink and heating on decay + pump heat, not by hand-setting a
   // temperature; 5 checks red on the injected config.
-  'run_m4.js':             { code: 0, score: '34/34 194passed' },
+  'run_m4.js':             { code: 0, score: '36/36 221passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
