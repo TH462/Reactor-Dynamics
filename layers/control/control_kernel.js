@@ -826,8 +826,16 @@
 
   ControlLayer.prototype.getRpsState = function () {
     // Per-trip block status for the UI: whether it's asserted now, and whether the
-    // operator may block / clear it under the manual rule (block unless asserted;
-    // clear only while not asserted). Keeps the UI from re-deriving trip physics.
+    // operator may block / clear it. Keeps the UI from re-deriving trip physics.
+    //
+    // The rule the two flags below actually implement — this comment said the OPPOSITE
+    // of the code under it until 2026-08-01, and the board's inspection copy was written
+    // from the comment (#220's lesson: the guard's own comment was the bug):
+    //   block — allowed inside the permissive, OR any time the trip is not YET asserted.
+    //           Refused only when it is already asserted outside its permissive.
+    //   clear — ALWAYS allowed, exactly like a real plant. Clearing a block that is
+    //           holding a trip off scrams on the spot; nothing here prevents that, and
+    //           `can_clear` is therefore just "is there a block to clear".
     var ins = this.lastInstruments, self = this, status = {};
     (this.config.trips || []).forEach(function (t) {
       if (!t.blockable || !t.id) return;

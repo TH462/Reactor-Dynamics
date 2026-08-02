@@ -232,9 +232,11 @@ owner's, and the next agent obeys it.
 **Guard:** `run_hardrules.js` — every `OWNER RULING` in tracked markdown must carry a date
 and a quotation.
 
-**HR12 — An assertion about plant dynamics must be MEASURED. Run the plant and quote the
-number.** *(OWNER RULING, 2026-07-29: "if you make assertions about plant dynamics, you must
-back it up by testing them.")*
+**HR12 — An assertion about plant dynamics *or control behaviour* must be MEASURED. Run the
+plant and quote the number.** *(OWNER RULING, 2026-07-29: "if you make assertions about plant
+dynamics, you must back it up by testing them."; scope widened to control behaviour 2026-08-01
+after #303/#304 — OWNER RULING, 2026-08-01: "go with your recommendation.", on the
+recommendation to widen HR12 by one clause rather than add an eleventh rule.)*
 
 If you write that flow coasts down in about ten seconds, that a trip fires before DNB, that a
 transient is survivable, that a change "won't move anything" — **step the plant and read it**,
@@ -254,6 +256,18 @@ right; HR12 says an unmeasured assertion is not evidence of anything at all.
   a later retuning by being checkable. "Trips well before DNB" does not.
 - **A scratch probe is enough** to make a decision; a claim that outlives the session belongs
   in a gate. Say which one you did.
+- **CONTROL BEHAVIOUR COUNTS, and this is the clause people skip.** "Selecting that mode does
+  not close the breaker", "that bank is read-only", "Follow is the default lineup" — these are
+  assertions about the plant, they are cheaper to check than any dynamics claim, and they were
+  the whole of #303 and #304. Three shipped in two days, each contradicting `Manuals/03`, which
+  had it right the whole time. The failure was **not** skipping a verification step; it was not
+  classifying the claim as one that needed verifying, because the rule used to say *dynamics*
+  and these felt like recall. They are not recall. **Drive the command and read the state**, or
+  read the wiring — `ui/diagram/board/pwr_board_wiring.js` is the authority on what a control
+  does, and `Manuals/03` is the authority on how it is documented.
+- **Guarded, partially:** `run_manual_controls.js` fails if any manual says a *named board
+  control* is inoperable while the wiring gives it a press handler. That catches the "read-only"
+  class only — a wrong claim about what a control **does** is still on you.
 
 **Guard:** none possible — a rule about honesty in prose cannot be gated, same as HR10, and
 saying so is better than implying a green run covers it. `run_pwr` / `run_behavior` /

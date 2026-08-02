@@ -20,6 +20,243 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-01d (the System Scanner was teaching five wrong things, workbench)
+
+**Task: "review the system scanner descriptions."** The board's inspection copy
+(`ui/diagram/board/pwr_board_inspect.js`, ~160 entries) is a **third independent copy of
+every setpoint** — engine, then manual, then this — and it is the only one with no gate
+tying it back to the engine. `run_inspect` was **35/35 green** and `run_manual_units`
+**0 failed** throughout: they gate coverage, orphan keys, citations, duplicates and
+value/unit pairing, none of which can see a number that is simply wrong. Every figure
+below is measured full-stack (M4+M5+M6), seed 4242; the probes are in the session
+scratchpad, not the repo.
+
+**Five wrong, and the pattern is that each one is a change the copy did not follow.**
+
+| entry | said | measured | moved by |
+|---|---|---|---|
+| ROD AUTO | reference is CAPTURED on engage | `program: trefFromLoad` — 100→60 MWe slides Tref 579.3 °F (304.07 °C) → 574.2 °F (301.24 °C) unaided | the channel was always programmed; #289 also made it `defaultOn` |
+| ECCS FLOW | "zero at operating pressure", "cannot beat 2200 psi" | **1.7 % of rated** at 2235 psi (15.41 MPa); high-head shutoff **2384 psi (16.44 MPa)** | never true — and the ECCS Control entry on the same card said "trickle" |
+| STEAM DUMP POSITION | "nearly full open and stays there" | pins at **40.0 %** for ~1 min, then 8.9 % at +3 min, 7.5 % at +10 min | `steam_dump_max` 1.05 → 0.40 (2026-07-31) |
+| CHARGING FLOW | ~13 %/min against isolated letdown | **+33.5 %/min**, steady over four windows | #249 re-fit `level_per_mass_surplus`, deficit branch deliberately unscaled |
+| TRIP BLOCKS | 3 of 4 rules | see below | the hybrid block model |
+
+**TRIP BLOCKS is the worst entry in the file** — three inverted claims, and the REACTOR
+POWER entry carried two of them as well:
+- *"A block is refused unless the trip is actually asserted."* Measured at the 5 % IC
+  (`power_range` 5.92 %, `ir_high` asserted=false): the block is **ACCEPTED**. The kernel
+  refuses the opposite case — an already-asserted trip *outside* its permissive.
+- *"cannot be cleared while clearing it would scram the plant."* `can_clear: blocked`, i.e.
+  "is there a block to clear". Measured: clearing `ir_high` at full power **scrammed the
+  plant within 5 s** on `intermediate_range high`, 100 % → 4.0 %.
+- *"Blocks auto-reinstate below P-10."* `_autoReinstateTripBlocks` skips
+  `manualTripBlocks`. Measured: a hand-set block at 5.92 % power still `blocked=true` after
+  10 s, 60 s and 300 s below the permissive.
+
+**Where it came from: two code comments, and they are the #220 lesson a third time.**
+`getRpsState`'s header said *"block unless asserted; clear only while not asserted"* sitting
+**directly above** `can_clear: blocked   // clearing a block is always allowed`, and
+`refreshTripBlocks` in the board wiring repeated it. The copy was written from the comment,
+not the code. Both comments corrected; no behaviour changed.
+
+**#238 left the Scanner behind.** The board switched to SI on the same day this file was
+last touched, and the registry has **no access to `ctx.units()`** — 23 entries named their
+display unit in prose ("in psi", "in °F", "in gpm", "psig", "inches of mercury"), each one
+contradicted the instant SI is picked. Unit names removed where the readout labels itself;
+quoted values given their SI partner.
+
+**The guard (`run_inspect` 35 → 36).** A US unit token may appear only **after a number**,
+where `run_manual_units` then holds it to the dual-unit convention. Written because the
+hand pass is exactly the thing that rots. **It earned its place immediately** — it caught
+**two sites the hand pass had missed** (`imrmslginf9.detail` "at the gpm you set",
+`ims3wm0d0bu.brief` "on the same gpm scale"), and injection-verified: restoring one
+original string (`'…leaving the core, in °F.'`) reddens it.
+
+**Traps for the next session.**
+- **The gates here cannot see a wrong number.** `run_inspect` is structural by design and
+  `run_manual_units` only checks that a value carries its SI partner — *not* that either
+  half is right. If you change a setpoint, this file is stale in the same way the manual
+  is, and nothing will tell you.
+- **`run_manual_units` reads a pair only within ONE LINE.** Splitting `2384 psi ' +
+  '(16.44 MPa)` across the string concatenation makes the SI half an orphan and reddens the
+  gate — which is how my own first draft failed. Keep a pair on one line.
+- **Its °C/°F tolerance is 0.1 °F**, so round-number pairs mostly fail: `567 °F (297 °C)`
+  is off by 0.4 and is rejected. Quote the conversion, not a tidy number
+  (`566.6 °F (297.0 °C)`). MPa/psi is looser at 0.6 psi. **Flow is not checked at all** —
+  there is no gpm/m³/h rule, so an m³/h partner is on the author.
+- **`DIFF_ONLY` in that gate lists 33 as "leg ΔT at rated"**, so a `33 °C` pair must
+  validate as a DIFFERENCE — `59.4 °F (33.0 °C)`, not 60.
+## Session log — 2026-08-01f (HR12 widened + the inoperable-claim gate, develop)
+
+**Why.** #303 and #304 were the same defect twice: a chapter asserting control behaviour that
+`Manuals/03` already documented correctly. Asked how to stop it, I recommended widening HR12 by
+one clause and adding one narrow gate, and explicitly recommended AGAINST an eleventh rule
+*(OWNER RULING, 2026-08-01: "go with your recommendation.")*.
+
+**The diagnosis is the useful part.** The failure was **not** skipping a verification step. It
+was not classifying the claim as one that needed verifying: HR12 said *"an assertion about plant
+dynamics"* and every example under it is dynamics (coastdown, trip timing, survivability), so
+"does selecting a mode close the breaker" read as recall. Roughly **eight** verify-this
+instructions were loaded in context when #303 shipped — HR12, HR10, CLAUDE.md's *"Verify a claim
+before you act on it"* and *"Inherited claims are the risky ones"*, the coverage-by-injection
+rule, the evidence-pass SOP, and three memories. **More instruction was not the lever**; scope
+was. HR12 now reads *"plant dynamics **or control behaviour**"*, the count stays at ten, and the
+2026-07-27 "too many instructions" ruling is respected.
+
+**What I measured before recommending, which changed the recommendation.** I was about to propose
+a defaults/lineup contract gate (run_contract-shaped, diffing `getStartupLineup` and `defaultOn`
+against the manuals). Counted first: the manuals assert a shipped default in **3 places total**,
+two of which I had just written. Not worth a gate. I also dropped a "01/04/05 must cite 03 when
+naming a control" rule — measured, 01 names **15 of 52** board controls, 04 names 23, 05 names 11,
+and 04's procedure tables MUST name controls, so it would have been pure noise.
+
+**The gate that was worth building** — `run_manual_controls.js`, inoperable-claim scan. A manual
+may not call a named board control read-only / not operable / display-only while the wiring gives
+it a `press` or `hold` handler. New `PwrBoardDriver.pressableIds()`; `PwrBoardInspect.parentOf`
+walks a button to its card.
+
+**Three traps, and two were invisible without the injection test.**
+
+1. **The first cut was GREEN on the real defect.** `CONTROL_LABEL_MAP` has `Shutdown Bank`, the
+   manual writes `Shutdown bank`, and `indexOf` is case-sensitive. This is precisely the
+   "verify checks by injection" rule earning its place — reading the code showed nothing.
+2. **Case-insensitivity then broke it the other way.** `Mode` is a control label AND the plant's
+   own vocabulary: it fired on *"Training display only; does not change plant MODE"*. Fixed
+   structurally, not with a denylist — a single-word label is skipped **when a longer label shares
+   its card**, because the map deliberately carries a terse alias plus a full name for the same
+   card. Keeps `Turbine Load` / `Shutdown Bank`, drops `Mode` / `Load` / `Boron` / `Nudge` /
+   `NIS` / `HPI`, keeps `MSIV` / `SCRAM`, and needs no maintenance when an alias is added.
+   25 of 52 labels scanned.
+3. **`var D` inside the check shadowed the dim-colour constant** `D`, so the section header
+   printed `[object Object]`. Harmless, but it is the same class of bug as the rest of this
+   session: a name reused for two things.
+
+**Honest limit, written into HR12 rather than left implied.** Only the NEGATIVE claim is
+decidable. *"This control cannot be operated"* is checkable against the wiring; *"this control
+does X"* is not, so #303's invented breaker would still get through. The gate covers one of the
+three cases that motivated it and says so.
+
+**Gates:** all **35 runners at baseline**; `run_manual_controls` stays **94/94** (the scan adds
+no checks when clean, one per violation); `board_check` **168/168** unchanged after the
+`pressableIds` addition.
+
+## Session log — 2026-08-01e (#304 — the 01 review: right numbers, wrong controls, develop)
+
+**What was asked.** A review of `Manuals/01_GENERAL_DESCRIPTION.md`, then fix it. Filed as #304.
+
+**The chapter's numbers are entirely sound** and are now recorded as measured so nobody re-checks
+them: §2.0's whole table (100.0 MWe, 2235 psi, Tavg 579.3 °F, hot/cold leg 609.0/549.6 °F, ΔT
+exactly 33.0 °C, PZR 55.00, SG 65.00, steam 819.5 psi, subcooling 73.75 °F), both ratings
+(`mwe_rated` 100.0, `mwt_rated` 300.0 — the 300 MWt figure IS backed by a constant), ~7 % decay
+heat, natural circulation not modelled, point kinetics, single instrument channels. Two things I
+suspected were wrong and were not: `PWR-X01` resolves (defined in **08** §6.0 — 04's index is
+N/T/E only, which is why it looked dangling), and §7.0's "fuel temperature is not an operator
+indication" is right, because **the PWR has no `fuel_temp` instrument at all** (the `fuel_temp`
+gauge at `ui/app.js:197` is the RBMK series block).
+
+**THE PATTERN IS THE FINDING. All five defects were control-surface claims, and `03` already
+documented every one of them correctly.** With #303's N05 breaker caution that is three in two
+days. 01, 04 and 05 were written as standalone prose about controls they do not own.
+
+1. **§4.1 said the shutdown bank was "read-only to operator" and SCRAM-only.** It has Withdraw /
+   Insert buttons (`pwr_board_wiring.js:438-439`, `toggleLatchRod('shutdown_rods', ±1)`), a
+   `Shutdown Bank` entry in `PwrBoardDriver.controlLabels()`, and a `SHUTDOWN_DRIVE` group in
+   `ui/app.js:229,296`. **03 §3.3** documents the full-stroke behaviour and cautions against
+   parking it in at power. The tell that this mattered: **PWR-N02 step 7** asks the operator to
+   confirm the bank parked withdrawn — a check with no purpose if it cannot move.
+2. **§6.0 called Follow the default load mode.** Measured at t=0: `hot_full_power` **manual**,
+   `50_percent` **manual** (`getStartupLineup`, `pwr_engine.js:1335`), `5_percent` follow,
+   `cold_shutdown` disconnected. Follow is `LoadMode.initState`'s fallback — the bare-engine
+   value, which is exactly the layer distinction CLAUDE.md warns about.
+3. **§6.0's coupled-feed rows outlive their own truth by ~3 minutes.** Measured,
+   `feed_auto_coupled` true at t=0 and **false by 3 min** at full power: `feed_sg` is `defaultOn`
+   and replaces coupled feed as the level backbone the moment it acts.
+4. **§5.0 defined Mode 3 as "RCS hot at NOP T/P".** `plantModeOf` (`pwr_engine.js:567`) is
+   `hot = tavg_c >= 177`, `cold = tavg_c <= 93` — **temperature alone**. A subcritical plant at
+   392 °F and 500 psi is Mode 3 here. The table now carries both boundaries.
+5. **§5.0's Mode 1 IC list omitted `5_percent`**, which measures Mode 1 at 6.00 % (authored just
+   above the boundary on purpose).
+
+**Recommended guard, not yet adopted:** when 01, 04 or 05 describe a control, the claim comes from
+**03** or from `pwr_board_wiring.js`, never from memory. Three instances now. It is not gateable
+as written — `run_manual_controls` checks that *procedure steps* name reachable controls, not that
+*prose* describes them correctly — so it is a habit, or it needs a new check.
+
+**Gates:** all **35 runners at baseline**. Manual set stamped and packed at **Rev 10**.
+
+**Still open:** turbine roll / no-load speed hold (the real gap behind #303's breaker question,
+not yet filed); N15 has no executable checklist (#244 / #254 lane).
+
+## Session log — 2026-08-01d (#303 — the 04 NOP review: the startup path did not join up, develop)
+
+**What was asked.** A review of the normal operating procedures chapter (`Manuals/04`,
+PWR-N01…N15). Findings filed as **#303**, then fixed in the same session on the owner's
+instruction.
+
+**The chapter's arithmetic was largely fine.** Measured and confirmed correct before anything
+was touched: the whole §3.0 HFP quick-reference table (100.0 MWe, 579.3 °F, 2235 psi, PZR
+55.00 %, SG 65.00 %, subcooling 73.75 °F, bank 92 %), the 32.7 °F/hr heatup rate, N14's 7.00 %
+decay heat, the low-flow trip (90 % of rated, ~2 s, blocked below P-7), SUR 1.0/1.5/0.8 DPM,
+P-6 at 1e-10 A, the SR 1e5 cps trip, P-10 at 10 %, PORV 2350 psi / safeties 2485 psi, and the
+30 s / 60 s boron lags. **The defects were path continuity and step ordering.**
+
+**The one that matters: N01 → N02 → N03 is discontinuous in boron.** N01 arrives at 856.8 ppm
+and dilutes nothing; N02 and N03 assumed 683 ppm, which is the `hot_zero_power` IC. Measured
+criticality at the N01 arrival: **~561 steps**, against 319 — outside the ±750 pcm band. **This
+is invisible to every gate by construction**: `pwr_heatup` runs `from: 'cold_shutdown'` and
+`pwr_startup` runs `from: 'hot_zero_power'`, so the app reloads the IC between them and no
+runner has ever crossed the seam. A player following the *manual*, or anyone in free play, does.
+
+**A correction I had to make to my own fix (worth more than the fix).** The first N05 edit
+asserted *"selecting a load mode does not put the machine on the grid — only Connect Grid
+closes the breaker"*, sourced from a memory note (`set_load_mode` never un-trips) rather than
+measured. **It is wrong, and `Manuals/03` §12.1 already said so.** There is no breaker in the
+engine at all: `RD.LoadMode.isOnLine()` is literally `load_mode !== 'disconnected'`. Measured
+from a disconnected untripped plant — `connect_grid` → follow, rotor 372 → **1800 rpm**, load
+picks up **5.26 MWe** matched to 4.7 % power; raw `set_load_mode manual` also goes on line at
+1800 rpm but leaves the target at **0 MWe**. The memory note was about the TRIP latch, and
+that half holds: measured after a scram, a bare `set_load_mode` leaves 0 rpm / 0 MWe. On the
+BOARD it never bites, because MAN sends `connect_grid` *then* `set_load_mode` (`pwr_board_wiring`
+:457). Two lessons: an HR12 claim about a CONTROL is as measurable as one about dynamics and I
+did not measure it; and 03 was the cross-check I should have read before writing 04.
+
+**Fixed with a dilution step in N02** *(OWNER DIRECTIVE, 2026-08-01: "Add the dilute step in
+n02" / "In n02/n03.")*, not by moving an IC — diluting at the end of N01 would be a **cold**
+dilution, which 09 §7.5.1 forbids in a WARNING (806 ppm critical cold vs 588 hot). Measured
+validation of the new step: 857 → 683 ppm in ~58 plant-min, ρ = −1006 pcm; bank to 319 steps
+gives **ρ = −2.3 pcm**.
+
+**Four things worth keeping.**
+
+1. **The accumulator window is ~100 s wide and N01 missed it every time.** The WARNING said
+   "above 600 psi, before 1000 psi"; step 7 sat after a step whose acceptance is P > 2176 psi.
+   Measured from the Pressure SP command: 600 psi at **+24 s**, 1000 psi at **+122 s**, NOP at
+   **+213 s**. A warning that names a window is worth nothing if the step order closes it first.
+2. **The cooldown rig found a missing procedure step that reading could not.** PWR-N15 has no SI
+   block; the depressurization crosses 12.4 MPa and HPI injects. The tell was `boron_ppm` ending
+   at **2500** — the RWST concentration — which is the fingerprint of an unintended ECCS
+   injection anywhere in this plant. Look for it whenever a cooldown ends at the wrong boron.
+3. **A programmed cooldown is a RAMP, not a chase.** Driving Dump SP / Pressure SP at *present*
+   Tavg every 60 s produces a 0.38 MPa setpoint error against the dump's 0.25 MPa proportional
+   band, so the dump saturates: measured, 297 → 93 °C in **six plant-minutes**. Drive both off a
+   reference temperature falling at the rate you want and the dump opens only as far as it must.
+   The N15 table is measured on that cadence and the cadence is now printed with it.
+4. **`RD.pwrThermal` ships `T_sat(P)` only** — there is no `P_sat(T)`. Any rig that wants to
+   speak in temperatures through a pressure setpoint has to invert it (bisection is fine).
+
+**Also corrected in step:** `05` Phase A carried **ρ = −3377 pcm on 907 ppm** for the heatup
+endpoint, a pre-second-moderator-re-fit figure that contradicted N01's own correct one, plus an
+unfinished "→ Four" mode name; the executable checklist quoted the **400 psi** RHR interlock
+twice where the autoclose is **600 psi** (#288 leftover — measured, valve open at 572.5 psi,
+shut by 633.4 psi); and the ~90 °F/hr cooldown limit is now marked **UNVERIFIED**, since no
+source for it exists in this manual set and "commercial class" was recall.
+
+**Gates:** all **35 runners at baseline** (`run_all`). Manual set stamped and packed at **Rev 9**.
+
+**Still open:** 9 of 15 normal procedures have no executable checklist (N02–N06, N09, N11, N13,
+**N15**). N15 is the one that matters — its performance table is now measured, but nothing
+replays it. Belongs with #244 / #254.
+
 ## Session log — 2026-08-01c (trend graphs open on REAL data, develop)
 
 *(OWNER, 2026-08-01: "when you make preset starts, run them for 30 minutes to fill up the

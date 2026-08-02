@@ -320,9 +320,22 @@ var BASELINES = {
   // copy, in the ui/diagram/board/ source comment, is NOT counted: this gate does not scan
   // ui/, so a citation living only there would be unguarded.
   //
-  // [merged] MEASURED 84 — not 63, not 80, and not 63+80 arithmetic. The #290 guard also sees develop's 2026-08-01b/c write-ups, which workbench's
-  // "measured on the merged tree" note predates. Re-measured here.
-  'run_hardrules.js':      { code: 0, score: '83checks 0failed' },
+  // [merged] MEASURED 83 — not 63, not 80, and not 63+80 arithmetic. The #290 guard also sees
+  // develop's 2026-08-01b/c write-ups, which workbench's "measured on the merged tree" note
+  // predates. Re-measured here. (The comment above this line read 84 for a while: that figure
+  // was taken off a tree that STILL HAD THE CONFLICT MARKERS IN IT, so both sides' citations
+  // were present at once and the duplicates were counted. Measure AFTER resolving, not during.)
+  //
+  // 83 -> 85 (#303, 2026-08-01d): the 04 NOP review. Pure write-up drift again — the manual
+  // and checklist edits moved nothing here; the two sites citing the owner's dilute-step
+  // directive (CHANGELOG, TUNING_LOG) are the whole delta. Re-run this AFTER the docs.
+  //
+  // 85 -> 88 (2026-08-01f): HR12 widened to cover CONTROL BEHAVIOUR, plus the two write-up
+  // sites citing that ruling. Note the rule TEXT is one of the three — this gate counts
+  // citation sites wherever they are tracked, and CONTEXT.md 3 is tracked, so editing a
+  // Hard Rule to carry its own dated quote moves this number. The count of BINDING rules is
+  // unchanged at ten, which was the point of widening one rather than adding an eleventh.
+  'run_hardrules.js':      { code: 0, score: '88checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -416,7 +429,10 @@ var BASELINES = {
   // answer; a manual citation outlives the section it names. All three are
   // failures here. The check count moves with the board — a new control or
   // indication shifts it, which is the intended nudge to write its copy.
-  'run_inspect.js':        { code: 0, score: '7/7 35/35' },
+  // 35 -> 36 on 2026-08-01: the board renders SI since #238 and this copy cannot, so
+  // an entry naming its display unit ("in °F") is contradicted the moment SI is picked.
+  // The new check found two sites the hand pass had missed, and reddens on the old text.
+  'run_inspect.js':        { code: 0, score: '8/8 36/36' },
   // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
   // The sim runs from file:// with no server only because nothing in the runtime loads
   // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no

@@ -2,7 +2,7 @@
 
 **Document:** PWR-NOP-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Revision:** 8  
+**Revision:** 11  
 
 ---
 
@@ -80,9 +80,9 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 | Type | Text |
 |------|------|
 | **CAUTION** | Do **not** withdraw rods or dilute. Hot Standby is hot **and** subcritical. |
-| **CAUTION** | Keep the steam generator **bottled** (turbine off, dumps shut). Opening dump removes pump heat faster than the pumps can put it in. A small manual dump demand (about 5 %) is roughly ten times pump-heat generation and cools at about **−83 °F/hr (−46 °C/hr)**. |
-| **CAUTION** | Rate control at these powers: **secure an RCP** to slow or hold the heatup (rate falls to essentially zero). Do not use the dump as a fine throttle. |
-| **WARNING** | **Re-align SI accumulators** once RCS is above **600 psi (4.14 MPa)** cover gas and before **1000 psi (6.895 MPa)**. There is **no automatic open** — re-alignment is an operator action. Skip this and the plant reaches power with no passive injection. Basis: NUREG-1431 Rev 4.0 **LCO 3.5.1** (OPERABLE in MODE 3 with RCS pressure > ~1000 psig) and the isolation counterpart on cooldown (**SR 3.4.12.3**). |
+| **CAUTION** | Keep the steam generator **bottled** (turbine off, dumps shut). Opening dump removes pump heat faster than the pumps can put it in. A small manual dump demand (about 5 %) is roughly ten times pump-heat generation, and it does not trim the heatup — it reverses it, measured at **−263 °F/hr (−146 °C/hr)** anywhere above about 302 °F (150 °C). Below roughly **219.2 °F (104 °C)** the same 5 % only *arrests* the climb; the secondary has too little steam to carry more. |
+| **CAUTION** | Rate control at these powers: **secure the RCP** to slow or hold the heatup — measured, the rate falls to **0.004 °F/hr (0.002 °C/hr)**, i.e. the heatup simply stops. This plant models one lumped RCP (see **PWR-N13** scope note), so securing it removes *all* forced flow and uncouples the steam generator; on a multi-loop plant you would secure one pump of four. Do not use the dump as a fine throttle. |
+| **WARNING** | **Re-align SI accumulators DURING the pressurization (step 6), not after it.** They must be open once RCS pressure is above their **600 psi (4.14 MPa)** cover gas and **before 1000 psi (6.895 MPa)** — and measured on this plant that window is only about **100 seconds wide**: from the moment the Pressure SP is raised, 600 psi is crossed at **+24 s**, 1000 psi at **+122 s**, and NOP at **+3.5 min**. There is **no automatic open** — re-alignment is an operator action. Skip it and the plant reaches power with no passive injection. Basis: NUREG-1431 Rev 4.0 **LCO 3.5.1** (OPERABLE in MODE 3 with RCS pressure > ~1000 psig) and the isolation counterpart on cooldown (**SR 3.4.12.3**). |
 | **NOTE** | RHR auto-isolates above its **600 psi (4.14 MPa)** autoclosure interlock as you pressurize — expected. That is a *separate* setpoint from the **400 psi (2.76 MPa)** block-open permissive that governs putting RHR *in* service (#288). |
 | **NOTE** | Training time is accelerated; heatup **plant hours** and rates in this procedure are real plant-time figures. |
 
@@ -95,27 +95,41 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 | 3 | 5 / 4 | Confirm generator **disconnected** (Disconnect Grid if needed). Do not reconnect | Turbine Load | Load mode disconnected; 0 MWe |
 | 4 | 5 / 4 | Engage **Feed AUTO** at cold SG level (~65 %) so three-element captures the right setpoint | Feed Pumps | Feed AUTO engaged |
 | 5 | 5 / 4 | Set **Dump SP** to no-load anchor **1194 psi (8.23 MPa)**; leave dump **shut** | Dump SP | SP set; dump demand ~0 |
-| 6 | 5 → 4 | Raise **Pressure SP** to **2235 psi (15.41 MPa)**. Heaters pressurize; RHR isolates past 600 psi (4.14 MPa) | Pressure SP | P > 2176 psi (15.0 MPa) |
-| 7 | Mode 4 | **Open SI accumulator discharge isolation** (re-align). Verify SIT fill on ECCS side | Accumulator valve | Valve open; P already > 600 psi (4.14 MPa) |
+| 6 | 5 → 4 | Raise **Pressure SP** to **2235 psi (15.41 MPa)** and stay on the board — the plant reaches NOP in about **3.5 plant-minutes**. RHR isolates on the way past its 600 psi (4.14 MPa) autoclosure interlock. **As pressure passes 600 psi, do step 7 without leaving this step** | Pressure SP | P > 2176 psi (15.0 MPa) |
+| 7 | Mode 4 | **Open SI accumulator discharge isolation** (re-align) *while pressure is between 600 psi (4.14 MPa) and 1000 psi (6.895 MPa)* — see the WARNING. Verify SIT fill on ECCS side | Accumulator valve | Valve open; opened below 1000 psi (6.895 MPa) |
 | 8 | 4 → 3 | Monitor heatup: Tavg and rate, SG pressure tracking Psat(Tavg), PZR level swelling, **reactivity still negative**. No rod motion. Arrive at no-load band | (observe) | Tavg ≥ 545 °F (285 °C); Mode 3; ρ ≪ 0; power ~0 |
 
 ### Acceptance (Mode 3 declared)
 - RCS at NOP T/P class: P ≈ **2235 psi (15.41 MPa)**, Tavg at no-load band ≈ **566.6 °F (297 °C)**.
-- Reactor **subcritical** (typical arrival on this plant: ρ ≈ **−2800 pcm** on ~857 ppm, control bank still fully inserted).
+- Reactor **subcritical** (measured arrival on this plant: ρ = **−2828 pcm** on **856.8 ppm**, control bank still fully inserted at 0 of 912 steps).
 - Accumulators **aligned**.
 - Ready for **PWR-N02** (lineup) then **PWR-N03** (approach to criticality).
+
+> **You arrive at cold-shutdown boron, and it is NOT the boron the approach to criticality
+> assumes.** The heatup dilutes nothing — 856.8 ppm in, 856.8 ppm out. That is ~174 ppm above
+> the **683 ppm** that puts criticality at the reference position, and measured it moves the
+> critical rod position from **319 steps to ~561** — outside the ±750 pcm acceptance band the
+> estimate is checked against. **PWR-N02 step 15 is the dilution that closes it.** Do not carry
+> 857 ppm into PWR-N03.
 
 ### Expected heatup performance
 Pump heat only — no rod motion, no dilution. Heat source is RCP work (about 0.55 % of rated core heat at full flow) plus pressurizer heaters.
 
-| Milestone | Typical plant time | Notes |
-|-----------|-------------------|--------|
-| Pressurized to NOP, RCPs on | ~0.3 plant-h | ~20 plant-minutes; RHR isolates on the way up |
-| Mode 4 / Mode 3 entry (~350 °F (176.7 °C)) | ~4.7 plant-h | Still deeply subcritical |
-| Near no-load band (~546.8 °F (286.0 °C)) | ~10.7 plant-h | Steady rate after the first hour ~**32 °F/hr (17.8 °C/hr)** |
-| Settled no-load (~567.0 °F (297.2 °C)) | ~11.3 plant-h | ρ ≈ **−2800 pcm** on ~857 ppm; bank still fully inserted |
+Measured full stack from the `cold_shutdown` initial condition on the default lineup, no rod
+motion. **Mode boundaries on this plant are by Tavg:** Mode 5 ≤ **199.4 °F (93 °C)**, Mode 3 ≥
+**350.6 °F (177 °C)**, Mode 4 between them — so on the way *up* 350 °F is the Mode 4 → 3
+boundary, not the Mode 5 → 4 one.
 
-To slow or hold the climb, secure an RCP (rate falls to essentially zero). Do not use the steam dump as a fine throttle.
+| Milestone | Plant time | Notes |
+|-----------|-----------|--------|
+| Pressurized to NOP, RCPs on | **~4 plant-min** | ~3.5 min from the Pressure SP command (≈ 8.9 psi/s / 0.061 MPa/s); RHR isolates at 600 psi (4.14 MPa) on the way up |
+| **Mode 4 entry** (199.4 °F (93 °C)) | **~18 plant-min** | The plant is only ~30 °F above cold — Mode 4 arrives long before it looks hot |
+| **Mode 3 entry** (350 °F (176.7 °C)) | ~4.7 plant-h | Still deeply subcritical |
+| Near no-load band (~546.8 °F (286.0 °C)) | ~10.7 plant-h | Steady rate after the first hour **32.7 °F/hr (18.2 °C/hr)** |
+| Settled no-load (~567.0 °F (297.2 °C)) | ~11.3 plant-h | ρ = **−2828 pcm** on **856.8 ppm**; bank still fully inserted |
+
+To slow or hold the climb, secure the RCP — measured, the rate falls to **0.004 °F/hr**. Do not
+use the steam dump as a fine throttle: at 5 % it reverses the heatup at **−263 °F/hr (−146 °C/hr)**.
 
 ### Outcome
 Mode 3, Hot Standby — hot, pressurized, subcritical, zero rod motion.
@@ -139,6 +153,8 @@ Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any appr
 | Type | Text |
 |------|------|
 | **CAUTION** | Do not withdraw rods until this checklist is complete. |
+| **CAUTION** | **Boron is a prerequisite, not an observation.** Step 8 samples it and step 15 adjusts it. A plant that arrived here from **PWR-N01** is at cold-shutdown boron (~857 ppm) and is *not* ready to start — see step 15. |
+| **NOTE** | **Dilute HOT, never cold.** This is the whole reason the dilution lives here in Mode 3 and not at the end of the heatup: critical boron with the bank inserted is **806 ppm at 122 °F** but only **588 ppm at 566.6 °F** (**09 §7.5**), so a figure that is comfortably subcritical hot is critical cold. Reaching the no-load temperature *before* you dilute is what makes the dilution safe. |
 | **NOTE** | Speed for the following approach should allow SUR to be followed (typically 1×–10×). |
 
 ### Procedure
@@ -152,16 +168,30 @@ Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any appr
 | 5 | Confirm RCPs running | RCP / flow | Flow ~100 % |
 | 6 | Confirm control bank fully inserted | Rod control | Position at bottom |
 | 7 | Confirm shutdown bank parked withdrawn | Shutdown bank | Fully out (normal) |
-| 8 | Confirm boron holds the plant subcritical | Chem sample | Consistent with Mode 3 hold (~683 ppm class at Hot Standby) |
+| 8 | **Sample boron and record it** — there is no live meter, and the number depends on how you reached Mode 3. Two normal arrivals: **~857 ppm** from a **PWR-N01** heatup (cold-shutdown boron, undiluted), **~683 ppm** on a plant already lined up at Hot Standby | CHEM SAMPLE | Result logged; it is the **E** input to the ECC (**09 §7.5.2**) |
 | 9 | Confirm Source Range energized and counting | SR | SR On; hundreds of cps class |
 | 10 | Confirm Intermediate Range available for handoff | IR | IR on scale or ready as power rises |
 | 11 | Confirm SG heat sink | SG level | ~65 %; not LO-LO |
 | 12 | Confirm turbine off line / 0 MWe | Turbine | Disconnected or zero load |
 | 13 | Review annunciators; clear spurious | Alarm panel | Board understood |
 | 14 | Confirm SI accumulators aligned if coming from heatup | Accumulator valve | Open (if heatup was done by the book) |
+| 15 | **Adjust boron to the estimated critical condition.** Work the ECC (**09 §7.5.2**) for the critical rod position you intend, then borate or dilute to it with charging **On**. For the reference startup — criticality at **319 steps (35 % withdrawn)** — the target is **683 ppm** | CVCS Borate/Dilute + CHEM SAMPLE | Sample confirms the ECC boron; ρ ≈ **−1000 pcm** with the bank still in |
+
+### Step 15 — the dilution, and why it is a step and not a note
+
+**Measured full stack.** From a **PWR-N01** arrival (856.8 ppm, ρ = −2828 pcm), diluting to
+**683 ppm** takes **~58 plant-minutes** at the plant's make-up rate (~3 ppm/min) and lands the
+reactor at **ρ = −1006 pcm** — the Hot Standby hold. Withdrawing the control bank to **319 steps**
+from there gives **ρ = −2.3 pcm**: critical, on the reference position, with SUR 0.065 DPM.
+
+**Skip it and the numbers in PWR-N03 stop being true.** Measured on the same plant at 856.8 ppm,
+the bank reaches 456 steps still at ρ = −794 pcm and goes critical near **561 steps (61.5 %
+withdrawn)** — **242 steps and ~1830 pcm outside** the ±750 pcm acceptance band (159–421 steps)
+that **09 §7.5.1** tells you to stop and re-work the estimate at. The 1/M burst sizes in PWR-N03
+are sized for the 683 ppm plant and will walk you past the band without ever looking wrong.
 
 ### Outcome
-Mode 3 lineup complete — ready for **PWR-N03**.
+Mode 3 lineup complete, boron at the ECC — ready for **PWR-N03**.
 
 ---
 
@@ -175,9 +205,15 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 - Continues into **PWR-N04** / **PWR-N05** / **PWR-N06** on master path **PWR-T03**.
 
 ### Prerequisites
-1. **PWR-N02** complete.
-2. Estimated Critical Condition (ECC) worked for **this** Tavg and boron — see **09 §7.5**. At Hot Standby with bank inserted (~683 ppm class), criticality is near **~319 steps** (~35 % withdrawn). Acceptance band for a good ECC is roughly ±750 pcm (~159–421 steps on this plant).
+1. **PWR-N02** complete — **including step 15**, the boron adjustment to the ECC. If you came from a **PWR-N01** heatup and skipped it you are ~174 ppm high and every number below is wrong.
+2. Estimated Critical Condition (ECC) worked for **this** Tavg and **this** boron — see **09 §7.5**. Acceptance band for a good ECC is roughly ±750 pcm.
 3. RCPs running; SR energized; Feed AUTO recommended before POAH.
+
+> **The worked example below is for the reference startup: 683 ppm, bank fully inserted, Tavg at
+> the no-load band.** There criticality is near **319 steps (~35 % withdrawn)** and the band is
+> ~159–421 steps. **These are not constants of the plant — they are the answer for one boron.**
+> At 857 ppm the same bank goes critical near **561 steps** (measured). Re-work the ECC for the
+> boron you actually sampled; the 1/M plot closes on your prediction, it does not replace it.
 
 ### Precautions and limitations
 
@@ -202,7 +238,10 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 | 7 | Creep to critical at **Slow** (single steps); watch SUR and period | Control Bank | Critical; SUR ≤ 1 DPM; period long |
 | 8 | Hold low power (Mode 2 band ≤ 5 %); let Doppler settle; trim | Rods | Stable Mode 2, Startup |
 
-### Typical 1/M burst sizes (Hot Standby, bank starting fully inserted)
+### Typical 1/M burst sizes — **the 683 ppm reference startup**, bank starting fully inserted
+
+Sized to land on **319 steps**. At a different boron the target moves and so do these; re-scale
+them to your own ECC rather than reading them as the plant's burst pattern.
 
 | Burst | Steps (Norm) | Role |
 |-------|--------------|------|
@@ -261,6 +300,18 @@ Place the turbine-generator on the grid and establish electrical output coordina
 ### Applicability
 Reactor critical (Mode 2 or early Mode 1); condenser vacuum healthy; MSIV open.
 
+### Scope note — synchronization is ATOMIC here **[sim, approx]**
+This plant has **no turbine roll and no no-load speed hold**. A real unit rolls the machine on
+no-load steam, holds rated speed off line, matches speed and phase at the synchroscope, and
+*then* closes the generator breaker — four operator actions and the skill this procedure is
+named for. Here there is no no-load steam admission model, so an unloaded rotor with no steam
+coasts to rest, and one press of **FOLLOW** or **MAN** does the whole sequence at once.
+
+The **generator breaker is not a separate control**: on/off line *is* the load-mode selector —
+**FOLLOW** and **MAN** are on line, **OFF** is the open breaker. Everything downstream of
+synchronization — motoring at zero load, planned offline vs. turbine trip, load rejection, the
+P-9 interlock — is modelled properly; it is the roll and the synchroscope that are not.
+
 ### Prerequisites
 - **PWR-N04** complete or concurrent.
 - Condenser available; MSIV open.
@@ -270,7 +321,10 @@ Reactor critical (Mode 2 or early Mode 1); condenser vacuum healthy; MSIV open.
 | Type | Text |
 |------|------|
 | **CAUTION** | Large step loads can trip on secondary/primary upset. Step load modestly. |
-| **NOTE** | **Follow** tracks reactor power; **Manual** sets MWe. After synchronization, prefer **Manual** until power and load are matched and stable. |
+| **CAUTION** | **Synchronizing is ONE action on this plant, and there is no roll to do first.** Coming up from Mode 5 the generator is off line with the rotor at rest. Pressing **FOLLOW** or **MAN** takes it from there to synchronized and loaded in a single step — measured, the rotor goes to **1800 rpm** and load picks up matched to reactor power. See the scope note below: real turbine roll is not modelled. |
+| **CAUTION** | **A load-slider move will not recover a TRIPPED machine.** Both FOLLOW and MAN clear a prior turbine trip (they route through `connect_grid`, vacuum permitting); the slider alone does not. Measured after a scram: selecting a load mode by itself leaves the rotor at **0 rpm and 0 MWe** with the trip still latched. If the generator card looks unresponsive, that is what you are seeing — press **FOLLOW** or **MAN**. |
+| **NOTE** | **Follow** tracks reactor power; **Manual** sets MWe. Synchronize in **FOLLOW** — the turbine chases the reactor while you get on line — then take **MAN** once loaded, which is the lineup the rest of this manual assumes. Measured on a 4.7 % plant: FOLLOW picks up **5.26 MWe** matched to power; going straight to MAN synchronizes but leaves the load target at **0 MWe** until you move the slider. |
+| **NOTE** | The **OFF** lamp lights on either an open breaker *or* a tripped turbine — read **TURB TRIP** to tell a planned offline from a trip (**03** §12.1). |
 
 ### Procedure
 
@@ -278,7 +332,8 @@ Reactor critical (Mode 2 or early Mode 1); condenser vacuum healthy; MSIV open.
 |------|--------|---------|------------|
 | 1 | Verify condenser vacuum healthy | Condenser | Above trip region |
 | 2 | Verify MSIV **Open** | Steam | MSIV open |
-| 3 | Select load mode **Manual** (or Follow if intentionally matching) | Turbine | Mode set |
+| 3 | **Put the turbine on line: press FOLLOW** on the generator selector. It synchronizes and picks up load matched to reactor power — the reactor's heat now has somewhere to go besides the steam dump | Turbine — Connect Grid | Rotor 1800 rpm; MWe > 0; OFF lamp out |
+| 3a | Take load control: press **MAN**. The setpoint stays where FOLLOW left it, already matched to the power you are making | Turbine Load | MAN; setpoint matched |
 | 4 | Raise Turbine Load in steps toward a low MWe target consistent with reactor power | Turbine Load | MWe rises; steam flow rises |
 | 5 | Match reactor power with rods (or Follow) so SG level stays controlled | Rods / Follow | No SG LO-LO / HI flood |
 | 6 | Confirm Feed AUTO holding | Feed | AUTO engaged |
@@ -597,35 +652,55 @@ After **PWR-N14** or any hot, subcritical plant.
 
 | Type | Text |
 |------|------|
+| **WARNING** | **Block SI before you depressurize (step 1a).** The cooldown walks the primary down through the **1798 psi (12.4 MPa)** SI actuation setpoint, and an armed HPI reads that as a LOCA. Measured with SI left armed: the pumps inject, boron ends at **2500 ppm** instead of the ~857 ppm cold-shutdown figure, and the cold injection cools the plant about **ten times faster than you are asking for** — 566.6 °F to 199.4 °F (297 → 93 °C) in **23 plant-minutes** against a 90 °F/hr programme. |
 | **WARNING** | **Isolate SI accumulators** at **1000 psi (6.895 MPa)** before cover-gas **600 psi (4.14 MPa)**. Nothing automatic shuts them. Failure dumps all four (empty SITs, boron dragged toward 2500 ppm, water-solid Mode 5). Basis: NUREG-1431 **LCO 3.5.1** / **SR 3.4.12.3**. |
-| **NOTE** | SI block entering cooldown blocks *pumps*, not passive tanks. |
-| **NOTE** | RHR is placed in service in the low-pressure band (~**400 psi (2.76 MPa)** interlock on this plant). Commercial SOPs place RHR near intermediate temperature and pressure (often on the order of ~350 °F / ~350 psig). |
+| **NOTE** | The SI block of step 1a stops the *pumps*. It does nothing to the passive accumulators — those are a separate, manual isolation at step 4. Both are needed. |
+| **NOTE** | RHR is placed in service in the low-pressure band (~**400 psi (2.76 MPa)** block-open interlock on this plant). Commercial SOPs place RHR near intermediate temperature and pressure (often on the order of ~350 °F / ~350 psig). |
 | **NOTE** | Secure RCPs once RHR carries the cooldown so the SG is not the only sink. |
+| **NOTE** | **The ~90 °F/hr (50 °C/hr) figure used throughout this procedure is THIS PLANT'S programmed rate, and is UNVERIFIED as a commercial limit.** No source for a real-plant cooldown rate limit has been found for this manual set; earlier revisions called it "the commercial class" on recall, which is not evidence. Treat it as the training programme it is. Real Tech Spec RCS heatup/cooldown limits derive from the pressure–temperature curves in NUREG-1431 LCO 3.4.3, which this plant does not model. |
 
 ### Procedure
 
 | Step | MODE | Action | Control | Acceptance |
 |------|------|--------|---------|------------|
-| 1 | Mode 3 | Borate to cold-shutdown margin | CVCS Borate | Boron rising toward cold SDM |
-| 2 | 3 → 4 | Lower **Dump SP** to cool secondary/primary; maintain AFW/feed for SG level | Dump SP / Feed | Tavg falling; heat sink present |
-| 3 | Mode 4 | Lower **Pressure SP**; use spray as needed; keep subcooling | Pressure SP / Spray | P falling controlled |
+| 1 | Mode 3 | Borate to cold-shutdown margin — **~857 ppm** on this plant (806 ppm critical cold with the bank in, **09 §7.5**, plus ~1000 pcm of margin). Measured, 683 → 857 ppm takes **~58 plant-minutes** at the ~3 ppm/min make-up rate | CVCS Borate | Boron at cold SDM before any cooling |
+| 1a | Mode 3 | **Block SI** — see the WARNING. Do this before the pressure setpoint moves | ESF / SI block | SI in MANUAL; HPI will not auto-actuate |
+| 2 | 3 → 4 | **Walk Dump SP and Pressure SP down TOGETHER along the saturation curve**, at the cooldown rate — Dump SP to Psat(target Tavg), Pressure SP to Psat(target Tavg + subcooling margin). Maintain AFW/feed for SG level | Dump SP / Pressure SP / Feed | Tavg falling at the programmed rate; subcooling held |
+| 3 | Mode 4 | Keep the pressure walk-down *behind* the temperature — spray as needed, subcooling positive throughout | Pressure SP / Spray | P falling controlled; subcooling > 0 |
 | 4 | Mode 4 | At **1000 psi (6.895 MPa)**: **close accumulator discharge** | Accumulator valve | Valve shut; SIT fill holds |
-| 5 | Mode 4 | Below RHR interlock: place **RHR On**; set HX split for cooldown pace (~90 °F/h / 50 °C/h class limit) | RHR / RHR HX | RHR active |
-| 6 | 4 → 5 | **Secure RCPs** once RHR carries heat | RCP Stop | Flow to RHR path |
-| 7 | Mode 5 | Arrive cold (≤ ~200 °F (93.3 °C) class), depressurized, RHR in service | (observe) | Mode 5 |
+| 5 | Mode 4 | Below the **400 psi (2.76 MPa)** RHR block-open interlock: place **RHR On**, and set the **HX split low** (~10 %) rather than full-through on a hot plant | RHR / RHR HX | RHR active; rate still on programme |
+| 6 | 4 → 5 | **Secure RCPs** once RHR carries heat; from here the **HX split is the rate control** | RCP Stop / RHR HX | Flow to RHR path |
+| 7 | Mode 5 | Arrive cold (≤ ~199.4 °F (93 °C)), depressurized, RHR in service, accumulators isolated | (observe) | Mode 5 |
+
+> **Step 2 is a ramp, not a chase.** Walking the setpoints down to track *present* Tavg in
+> ~1-minute steps looks gentle and is not: a 55 psi (0.38 MPa) setpoint error is wider than the
+> dump's 36 psi (0.25 MPa) proportional band, so the dump saturates and the plant free-falls —
+> measured, **566.6 → 199.4 °F (297 → 93 °C) in six plant-minutes**. Drive both setpoints off a
+> *reference temperature falling at the rate you want* and the dump only ever opens as far as it
+> must to keep up.
 
 ### Expected cooldown performance
-Secondary-led cooldown with stepped depressurization, accumulator isolation at 1000 psi (6.895 MPa), then RHR. Training plant-time is compressed versus a commercial multi-shift cooldown; milestones below are typical for this plant when the dump setpoint and pressure setpoint are walked down together and subcooling is held.
 
-| Milestone | Typical plant time | Notes |
-|-----------|-------------------|--------|
-| Start Mode 3 | 0 | ~**566.6 °F (297 °C)**, **2235 psi (15.41 MPa)**; borate for cold shutdown margin first |
-| Mode 4 class (~350 °F (176.7 °C)) | ~2.0 plant-h | Tavg falling on steam dump; still pressurized |
-| Isolate accumulators at **1000 psi (6.895 MPa)** | ~3.4 plant-h | Valve shut; SIT inventory should still be full |
-| RHR in service, RCPs secured | ~5.1 plant-h | Below **400 psi (2.76 MPa)** interlock; RHR carries the rest |
-| Cold end (~**200 °F (93.3 °C)** class) | ~5.3 plant-h | Depressurized, RHR on, accumulators isolated |
+**The cadence is part of the answer.** Times below are measured full stack from `hot_zero_power`
+on the default lineup, driving the procedure above at a **programmed −90 °F/hr (−50 °C/hr)** with
+**63 °F (35 °C)** of subcooling held throughout, SI blocked at step 1a and the RHR HX split trimmed
+to the same ramp after step 5. Run it at a different rate and every row below moves — that is the
+point of a programmed cooldown, and the reason the previous version of this table could not be
+reproduced.
 
-Target cooldown pace after RHR is in the commercial class of about **90 °F/h (50 °C/h)**; earlier legs are training-compressed. If accumulators are left open through 600 psi (4.14 MPa), they dump and boron/inventory end states are wrong.
+| Milestone | Plant time | Notes |
+|-----------|-----------|--------|
+| Start Mode 3 | 0 | **566.6 °F (297 °C)**, **2235 psi (15.41 MPa)**, 683 ppm |
+| Boration to cold SDM complete | ~1.0 plant-h | 857 ppm; **cooling does not start until this is done** |
+| Isolate accumulators at **1000 psi (6.895 MPa)** | **~1.9 plant-h** | Tavg **481.8 °F (249.9 °C)**; SIT inventory still 100 % |
+| RHR placed, below **400 psi (2.76 MPa)** | **~3.05 plant-h** | 392 psi (2.70 MPa), Tavg **379.1 °F (192.8 °C)** — close to the commercial ~350 °F / ~350 psig practice in the NOTE above |
+| RCPs secured | ~3.1 plant-h | RHR carries the heat from here |
+| **Mode 4 entry** (350 °F (176.7 °C)) | ~3.4 plant-h | |
+| Cold end, **Mode 5** (199.4 °F (93 °C)) | **~5.0 plant-h** | 231 psi (1.59 MPa), boron **857 ppm**, accumulators **100 % full and isolated**, RHR on, RCPs off — this is the `cold_shutdown` initial condition |
+
+Measured rate through the secondary-led legs: **−89 to −90 °F/hr (−49.5 to −49.9 °C/hr)**, i.e. on
+programme. If the accumulators are left open through 600 psi (4.14 MPa) they dump and the boron and
+inventory end states are wrong; if SI is left armed the cooldown is not yours to pace at all.
 
 ### Outcome
 **Mode 5, Cold Shutdown** — cold, depressurized, RHR in service. Accumulators remain isolated until **PWR-N01** re-aligns on the next heatup.
@@ -664,4 +739,5 @@ Target cooldown pace after RHR is in the commercial class of about **90 °F/h (5
 | Accumulator OPERABLE / isolate on cooldown | NUREG-1431 Rev 4.0 **LCO 3.5.1**, **SR 3.4.12.3** |
 | RHR placement near intermediate T/P on cooldown | Commercial SOP practice (e.g. plant procedures of the form in NRC ADAMS **ML13310A240**) |
 | Critical boron, ECC, and 1/M practice values | **09 §7.5** |
-| Heatup / cooldown plant-time milestones | **PWR-N01** and **PWR-N15** expected performance |
+| Heatup / cooldown plant-time milestones | **PWR-N01** and **PWR-N15** expected performance — all MEASURED full stack, cadence stated with the table |
+| RCS cooldown-rate limit | **UNVERIFIED — no source found.** The 90 °F/hr (50 °C/hr) used here is this plant's programmed training rate, not a sourced commercial limit. See the NOTE in PWR-N15. |

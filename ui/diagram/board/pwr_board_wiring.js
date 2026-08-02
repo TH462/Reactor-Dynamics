@@ -844,9 +844,18 @@
     coolingTower: function (s) {
       return { heatLoad: IN(s).power_range, coolingFlow: IN(s).condenser_cooling_available ? 80 : 0 };
     },
+    // flowFrac = steam admission (governor) — casing fill + steam ports stop with demand.
+    // rpmFrac  = rotor speed / rated — blade scroll coasts with the plant (~40 s τ after
+    // a trip or planned offline). Keying spin on steam_demand_low alone froze the art the
+    // instant the turbine unloaded while the RPM readout was still coasting down.
     turbineGenerator: function (s) {
       var gov = (IN(s).governor_valve || 0) / 100;
-      return { flowFrac: IN(s).steam_demand_low ? 0 : gov };
+      var rated = _TB.rpm_rated || 1800;
+      var rpm = IN(s).turbine_rpm || 0;
+      return {
+        flowFrac: IN(s).steam_demand_low ? 0 : gov,
+        rpmFrac: rated > 0 ? rpm / rated : 0
+      };
     },
     // pumps — the fluid-color temperature is LIVE where the pump moves plant fluid whose
     // temperature changes with state (RCP on the cold leg; feed pump = feedwater); cold
@@ -1548,8 +1557,11 @@
       var blocked = ts.blocked != null ? ts.blocked : isBlocked(s, id);
       btns[i].textContent = blocked ? 'BLOCKED' : 'BLOCK';
       btns[i].className = blocked ? 'bd-blocked' : '';
-      // Manual rule (kernel-evaluated): block unless the trip is asserted; while blocked,
-      // clearing is locked as long as the trip is asserted (removing it would scram now).
+      // Manual rule (kernel-evaluated, see getRpsState): BLOCK is offered while the trip is
+      // not yet asserted, or inside its permissive. CLEAR is never withheld — `can_clear` is
+      // just "there is a block to clear", so this button will happily scram the plant when
+      // the block it removes was the only thing holding an asserted trip off. That is
+      // deliberate and prototypical; the earlier comment here claimed the reverse.
       btns[i].disabled = blocked ? (ts.can_clear === false) : (ts.can_block === false);
     }
   }
@@ -1928,6 +1940,16 @@
     // instructor highlight vocabulary (consumed by pwr_board.revealControl / highlightLabels)
     controlLabelItem: function (label) { return CONTROL_LABEL_MAP[label] || null; },
     controlLabels: function () { return Object.keys(CONTROL_LABEL_MAP); },
+    // Board items the operator can actually WORK — a press handler or a tap-or-hold drive.
+    // Introspection for run_manual_controls, which fails if a manual calls a control
+    // "read-only" while this list says otherwise (#304). Entries carrying only `active`,
+    // `warn` or `badge` are indication and are deliberately excluded: those decorate a
+    // control, they are not one.
+    pressableIds: function () {
+      return Object.keys(BUTTONS).filter(function (k) {
+        return !!(BUTTONS[k] && (BUTTONS[k].press || BUTTONS[k].hold));
+      });
+    },
     // Inspection copy (#96) — what an item IS, in two tiers, resolved through the
     // registry's containment fallback so an unnamed sub-frame describes its card.
     // Kept in pwr_board_inspect.js rather than here: it is prose about the plant,

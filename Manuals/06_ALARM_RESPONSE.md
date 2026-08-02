@@ -2,7 +2,7 @@
 
 **Document:** PWR-ARP-01  
 **Title:** Annunciator Response — PWR  
-**Revision:** 8  
+**Revision:** 11  
 
 ---
 

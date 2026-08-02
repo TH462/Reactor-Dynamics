@@ -766,20 +766,26 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 /* the whole collapsed instructor is a click target to maximize (persona is hidden in chat-mode) */
 .instructor.collapsed { cursor: pointer; }
 .instructor .persona { cursor: pointer; }
-.instructor .persona::after {
-  content: '▸'; margin-left: 6px; color: var(--muted); font-size: 11px;
-  transition: transform .15s ease;
-}
-.instructor.expanded .persona::after { transform: rotate(90deg); }
 /* #237 attention cue: unseen-content badge + a brief pulse while collapsed —
-   the instructor cues instead of stealing the column. Badge takes the flexible
-   gap (margin-left:auto) so the chevron stays pinned at the right edge. */
+   the instructor cues instead of stealing the column. Role takes margin-right:auto
+   so badge + minimize sit at the right edge of the header. */
 .persona .instr-badge {
   background: var(--caution, #d9a441); color: #14181c;
   font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 6px; line-height: 1.4;
 }
 .persona .instr-badge[hidden] { display: none; }
-.persona .role { margin-right: auto; }   /* pushes badge + chevron to the right edge */
+.persona .role { margin-right: auto; }   /* pushes badge + minimize to the right edge */
+/* Explicit minimize — the old CSS ▸ chevron was easy to miss; this is a real button
+   at the top-right of the instructor header. Hidden while collapsed (the whole card
+   is already the expand target then). */
+.instr-min {
+  flex: 0 0 auto; width: 26px; height: 22px; padding: 0; margin: 0;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--bg-elevated); color: var(--text-2);
+  font-size: 16px; font-weight: 700; line-height: 1; cursor: pointer;
+}
+.instr-min:hover { color: var(--text); border-color: var(--text-2); background: color-mix(in srgb, var(--bg-elevated) 70%, var(--text-2)); }
+.instructor.collapsed .instr-min { display: none; }
 @keyframes instrAttnPulse {
   0%, 100% { box-shadow: none; }
   45% { box-shadow: inset 0 0 0 2px var(--caution, #d9a441); }
@@ -1499,10 +1505,8 @@ select.num-input { width: auto; }
 .chat-ff { text-align: center; color: var(--caution); font-size: 11px; font-style: italic; }
 
 /* ============================================================ auto-checklists (Path 3)
-   A procedure run as a passive checklist in the Instructor card: chat-style
-   bubbles, one per step, checking themselves off the instruments. */
-.instr-ckl { padding: 0 10px 8px; }
-.instr-ckl > .btn { width: 100%; }
+   Picker lives in Operate; the live checklist still renders in the Instructor card. */
+.ckl-picker { margin: 2px 0 4px; }
 .ckl-menu { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; max-height: 40vh; overflow-y: auto; }
 .ckl-menu[hidden] { display: none; }
 .ckl-menu button {

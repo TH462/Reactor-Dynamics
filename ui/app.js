@@ -1144,7 +1144,7 @@
     '<ol class="instr-idle-list">' +
     '<li><b>Play</b> starts the clock (or click SIMULATION PAUSED on the board).</li>' +
     '<li><b>System Scanner</b> (below) — hover anything on the board for what it is.</li>' +
-    '<li><b>Checklists</b> — interactive procedures that check themselves off the instruments.</li>' +
+    '<li><b>Checklists</b> (Operate tab) — interactive procedures that check themselves off the instruments.</li>' +
     '<li><b>Manual</b> — full operator reference and written procedures.</li>' +
     '<li><b>Plant &amp; Mission</b> (under the clock) — starting condition and guided training.</li>' +
     '</ol>' +
@@ -3042,12 +3042,19 @@
       document.querySelectorAll('.tabpane').forEach(function (p) { p.classList.toggle('on', p.getAttribute('data-pane') === b.getAttribute('data-tab')); });
       focusTools(again);
     });
-    // Persona header (now visible in every mode, chat included): the collapse/
-    // expand toggle. stopPropagation so the card-level expand below doesn't
-    // immediately re-expand a card the header just collapsed.
+    // Persona header (now visible in every mode, chat included): collapse/expand
+    // via the header or the explicit minimize button (top-right). stopPropagation
+    // so the card-level expand below doesn't immediately re-expand a card the
+    // header just collapsed.
     var personaEl = document.querySelector('#instructorCard .persona');
     if (personaEl) personaEl.addEventListener('click', function (e) {
       e.stopPropagation();
+      // Minimize is the dedicated collapse affordance while expanded; clicking the
+      // rest of the header still toggles (expand from collapsed / collapse from expanded).
+      if (e.target.closest('#instrMinBtn')) {
+        if ($('instructorCard').classList.contains('expanded')) toggleInstructorCard();
+        return;
+      }
       toggleInstructorCard();
     });
     // Expand a collapsed instructor by clicking anywhere on the collapsed card.
@@ -3145,8 +3152,9 @@
       }
       var b = e.target.closest('[data-lc]'); if (!b) return; levelCompleteAction(b.getAttribute('data-lc'));
     });
-    // Auto-checklists: picker row (free play) + the bubble list's own buttons.
-    $('instrCklRow').addEventListener('click', function (e) {
+    // Auto-checklists: picker in Operate (free play) + bubble-list buttons on the card.
+    var cklPicker = $('instrCklRow');
+    if (cklPicker) cklPicker.addEventListener('click', function (e) {
       var st = e.target.closest('[data-ckl-start]');
       if (st) { toggleCklMenu(false); startChecklist(st.getAttribute('data-ckl-start')); return; }
       if (e.target.closest('#cklOpenBtn')) toggleCklMenu();
@@ -3570,34 +3578,35 @@
       }
     },
     {
-      sel: '#cklOpenBtn',
-      place: 'left',
-      title: 'Checklists',
-      body: '<p>Interactive procedures that check themselves off the instruments. ' +
-        'Best next step after this tour — hover a step to glow the controls it names.</p>',
-      prep: function () {
-        var c = $('instructorCard');
-        if (c) { c.classList.remove('collapsed'); c.classList.add('expanded'); }
-        // Only unhide when this channel offers checklists (#241).
-        if (typeof flagOn === 'function' && flagOn('checklists')) {
-          var row = $('instrCklRow');
-          if (row) row.hidden = false;
-        }
-      },
-      // If checklists are gated off or the button is not visible, use Instructor.
-      fallback: '#instructorCard'
-    },
-    {
       sel: '#toolsCard',
       place: 'left',
       title: 'Operate &amp; tools',
-      body: '<p><b>Operate</b> — plant, mode, reset, save/load. ' +
+      body: '<p><b>Operate</b> — plant, mode, checklists, reset, save/load. ' +
         '<b>Inject Failure</b> when you are ready for casualties. ' +
         '<b>Graph</b> and <b>Settings</b> for trends and units.</p>',
       prep: function () {
         var t = document.querySelector('#tabbar [data-tab="operate"]');
         if (t) t.click();
       }
+    },
+    {
+      sel: '#cklOpenBtn',
+      place: 'left',
+      title: 'Checklists',
+      body: '<p>Interactive procedures that check themselves off the instruments. ' +
+        'Best next step after this tour — hover a step to glow the controls it names.</p>',
+      prep: function () {
+        // Checklists live in Operate now — expand tools and show the picker.
+        applyFocus(false, true);
+        var t = document.querySelector('#tabbar [data-tab="operate"]');
+        if (t) t.click();
+        if (typeof flagOn === 'function' && flagOn('checklists')) {
+          var row = $('instrCklRow');
+          if (row) row.hidden = false;
+        }
+      },
+      // If checklists are gated off or the button is not visible, use Operate.
+      fallback: '#toolsCard'
     },
     {
       sel: '#manualBtn',

@@ -74,6 +74,94 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
   });
 });
 
+// ============================================================================
+// INOPERABLE-CLAIM CHECK (#304) — a manual may not call a control read-only
+// while the board gives it a press handler.
+//
+// WHY. Three times in two days a chapter asserted control behaviour that
+// `Manuals/03` — the control inventory, which owns this — already had right:
+// N05's "selecting a load mode does not close the breaker" (#303, there is no
+// breaker), 01 4.1's "shutdown bank ... read-only to operator" (it has
+// Withdraw/Insert on the board and 03 3.3 documents the full stroke), and
+// 01 6.0's "Follow (default)" (the shipped lineup is MANUAL). HR12 was widened
+// to cover control behaviour in the same change; this is the half of it that
+// can be mechanised.
+//
+// SCOPE, deliberately narrow. Only the NEGATIVE claim is checkable: "this
+// control cannot be operated" is decidable against the wiring, whereas "this
+// control does X" is not. A wrong claim about what a control DOES still gets
+// past this — see the HR12 note. Narrow and silent beats broad and noisy: the
+// phrase list below is short on purpose, because "not used for routine trim"
+// (03 3.3, correct) must not fire while "read-only to operator" (01 4.1,
+// wrong) must.
+//
+// OPERABLE = the label's card, or anything inside it, has a `press` or `hold`
+// handler. `pressableIds()` excludes entries carrying only `active`/`warn`/
+// `badge` — those decorate a control, they are not one.
+// ============================================================================
+var INOPERABLE_PHRASES = [
+  'read-only', 'read only', 'not operable', 'cannot be operated', 'no operator control',
+  'observation only', 'display only', 'indication only', 'not adjustable',
+  'operator cannot', 'not an operator control',
+];
+
+(function inoperableClaims() {
+  if (!globalThis.RD || !globalThis.RD.PwrBoardDriver || !globalThis.RD.PwrBoardInspect) return;
+  var DRV = globalThis.RD.PwrBoardDriver, I = globalThis.RD.PwrBoardInspect;
+  if (!DRV.pressableIds) return;
+
+  // Every id that is, or is inside, something pressable.
+  var operableIds = {};
+  DRV.pressableIds().forEach(function (id) {
+    var cur = id, guard = 0;
+    while (cur && guard++ < 8) { operableIds[cur] = true; cur = I.parentOf(cur); }
+  });
+  var operable = DRV.controlLabels().filter(function (l) { return !!operableIds[DRV.controlLabelItem(l)]; });
+
+  // DROP TERSE ALIASES. CONTROL_LABEL_MAP deliberately points several names at one card —
+  // 'Mode', 'Load', 'Turbine Load' and 'Main Breaker' are all the generator card — and the
+  // one-word ones are ordinary English in this domain. Measured: keyword-matching 'Mode'
+  // fires on "Training display only; does not change plant MODE" (05), which is correct
+  // prose about a plant MODE and nothing to do with the load-mode control. So a single-word
+  // label is skipped WHEN A LONGER LABEL SHARES ITS CARD — that keeps 'Turbine Load' and
+  // 'Shutdown Bank' while dropping 'Mode', 'Load', 'Boron', 'Nudge', 'NIS', 'HPI'. It is
+  // self-maintaining: a new terse alias is excluded automatically. Unambiguous single words
+  // with no longer sibling ('MSIV', 'SCRAM') are kept.
+  operable = operable.filter(function (l) {
+    if (/\s/.test(l)) return true;
+    var card = DRV.controlLabelItem(l);
+    return !operable.some(function (o) { return o !== l && o.length > l.length && DRV.controlLabelItem(o) === card; });
+  });
+  // Longest label first so "Turbine Load" is preferred over "Load" on a line carrying both.
+  operable.sort(function (a, b) { return b.length - a.length; });
+  // CASE-INSENSITIVE, and this is not cosmetic: the defect that motivated the check writes
+  // "Shutdown bank" while CONTROL_LABEL_MAP holds "Shutdown Bank". The first cut matched
+  // exactly and stayed GREEN on the real #304 text — caught only by re-injecting it.
+  var operableLc = operable.map(function (l) { return l.toLowerCase(); });
+
+  var MANUAL_DIR = path.join(__dirname, '..', 'Manuals');
+  fs.readdirSync(MANUAL_DIR).filter(function (f) { return /\.md$/.test(f); }).forEach(function (f) {
+    // The revision history QUOTES the defects it records ("01 4.1 called the shutdown
+    // bank read-only"), so scanning it would fail the gate on its own changelog.
+    if (f === '00_REVISION_HISTORY.md') return;
+    var lines = fs.readFileSync(path.join(MANUAL_DIR, f), 'utf8').split(/\r?\n/);
+    lines.forEach(function (line, i) {
+      var low = line.toLowerCase();
+      var phrase = INOPERABLE_PHRASES.filter(function (ph) { return low.indexOf(ph) >= 0; })[0];
+      if (!phrase) return;
+      var li = operableLc.reduce(function (acc, l, n) { return acc >= 0 ? acc : (low.indexOf(l) >= 0 ? n : -1); }, -1);
+      if (li < 0) return;
+      var label = operable[li];
+      ck(f + ':' + (i + 1), false,
+        'calls "' + label + '" ' + phrase.toUpperCase() + ', but the board gives it a press handler' +
+        ' — see Manuals/03 and pwr_board_wiring.js (HR12: control behaviour is measurable)');
+    });
+  });
+  console.log('\n' + B + 'Inoperable-claim scan' + X + D + '  (#304 — negative control claims vs the wiring)' + X);
+  console.log('  operable board controls: ' + operable.length + ' of ' + DRV.controlLabels().length +
+    '   phrases watched: ' + INOPERABLE_PHRASES.length);
+})();
+
 fs.mkdirSync(SCRATCH, { recursive: true });
 fs.writeFileSync(path.join(SCRATCH, 'manual-audit.txt'),
   (mismatches.length ? mismatches.join('\n') : 'PASS — every controlled procedure step is mapped and reachable.') + '\n');
