@@ -103,6 +103,13 @@ var SEC_PER_TICK = 1.0;   // ACCEL(10) x broadcastMs(100ms) = 1 s of sim per tic
 // polyline across its `hold` instead of stepping it once — the operator holding the
 // ▼ on a setpoint box, not typing one number. Re-issued every RAMP_EVERY sim-seconds.
 //
+// KEEP IT *(OWNER RULING, 2026-08-02: "1 keep. 2. Keep. 3. Keep.", ruling on all three
+// #310 judgement calls after raising the concern "I don't want to make the sim more
+// complex. I don't think that['s] added features will help teach reactor dynamics more")*.
+// The answer to that concern is that this is NOT sim complexity: #310 changed no file in
+// `engines/`, `layers/` or `scenarios/`, and the player-facing surface is a checklist.
+// `ramp` is replay-side test-harness code. Do not re-litigate it as a plant feature.
+//
 // WHY THE SCHEMA HAD TO GROW, measured, because the cheap answer was tried first: a
 // DISCRETE walk-down of the steam-dump setpoint cannot hold a programmed cooldown on
 // this plant. The dump's proportional band is 0.25 MPa against a 40 % capacity, and

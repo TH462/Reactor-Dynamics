@@ -124,6 +124,10 @@ var KNOWN_FAILS = {
  * arriving in the 400s, with subcooling lost and RHR refused at 555 psi
  * (3.83 MPa) — nine reds describing one missing layer.
  *
+ * KEPT over the alternative *(OWNER RULING, 2026-08-02: "1 keep. 2. Keep. 3. Keep.")*.
+ * The option weighed against it was dropping the flag and carrying nine xfail strings in
+ * KNOWN_FAILS, all of them saying "no M4 below M4" — strictly more machinery.
+ *
  * NOT A GENERAL ESCAPE HATCH, and the check below is what keeps it that way: the
  * flag is only honoured if the procedure really does carry a NON_ENGINE_ACTION
  * command, so it cannot be pinned onto a procedure that engine-direct could run.

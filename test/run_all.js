@@ -335,7 +335,11 @@ var BASELINES = {
   // citation sites wherever they are tracked, and CONTEXT.md 3 is tracked, so editing a
   // Hard Rule to carry its own dated quote moves this number. The count of BINDING rules is
   // unchanged at ten, which was the point of widening one rather than adding an eleventh.
-  'run_hardrules.js':      { code: 0, score: '88checks 0failed' },
+    // 88 → 89 on 2026-08-02 (#310): ONE new citation site — the ruling that kept the three
+  // judgement calls. The three code-site citations that went with it moved NOTHING, because
+  // this gate scans tracked MARKDOWN only; a ruling recorded in a .js comment is invisible
+  // to it. Worth knowing before you go hunting for a missing delta.
+  'run_hardrules.js':      { code: 0, score: '89checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

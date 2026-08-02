@@ -107,6 +107,17 @@ standing alarm.
 `run_procdocs` 23 → **25** (coverage 10 → 11 of 58), `run_flags` 289 → **292** (the registry
 gate caught the missing `procedure:pwr_cooldown` entry). Manual set Rev 11 → **12**.
 
+**6. All three judgement calls RULED — keep** *(OWNER RULING, 2026-08-02: "1 keep. 2. Keep.
+3. Keep.")*, after the owner raised the concern *"I don't want to make the sim more complex. I
+don't think that['s] added features will help teach reactor dynamics more"*. The answer that
+settled it is a fact worth keeping: **#310 changed no file in `engines/`, `layers/` or
+`scenarios/`** — the plant is untouched, `ramp` and `stack_only` are replay-side test-harness
+code, and the player-facing surface is a checklist plus two steps the plant already required.
+The alternatives declined were: revert `ramp` and re-word the manual's rate row to what a
+staircase actually does (−2178 °F/hr bursts); drop `stack_only` for nine xfail strings; and
+tighten the rate guard to ~−198 °F/hr or delete it (measured, deleting it lets a staircase score
+28/28). Cited at the three decision sites so this is not re-litigated from scratch.
+
 **Still open on N15:** the −90 °F/hr programme remains **UNVERIFIED** as a commercial limit —
 no source for a real-plant RCS cooldown-rate limit has been found for this manual set, and the
 real ones derive from P–T curves this plant does not model. That is recorded in the procedure,

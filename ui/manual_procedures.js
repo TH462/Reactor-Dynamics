@@ -504,7 +504,12 @@
           // walk past their 600 psi cover gas with the discharge valve open and empty
           // all four, and indicated pzr level could not reach its trip to say so.
           { p: 'accumulator_volume_pct', op: '<', v: 99 },
-          // ON PROGRAMME. -150 °C/hr is not the programme (-50) — it is the line that
+          // ON PROGRAMME, and LEFT AT -150 rather than tightened *(OWNER RULING,
+          // 2026-08-02: "1 keep. 2. Keep. 3. Keep.")*. Tightening to ~-110 (15 % over the
+          // worst authored transient) was offered and declined: it buys almost nothing and
+          // risks flaking across instrument-noise seeds. Removing it was also offered —
+          // measured, a staircase then scores 28/28 and nothing distinguishes it.
+          // -150 °C/hr is not the programme (-50) — it is the line that
           // separates "a transient" from "the plant is running away", and it is set
           // where it is because the three ways this evolution is known to run away all
           // sit far beyond it: a missed trip block scrams and the dump goes to
