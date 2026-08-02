@@ -81,9 +81,45 @@ real automatic rod withdrawal stops are absent, and **there is no OTΔT or OPΔT
 tree**, which is a protection gap wider than this issue; and our Tavg program spans **12.7 °F
 against a real 28 °F**, so our controller has the easier job and still misses.
 
-**Status:** `status-needs-ruling`. Recommended: do the rate comparator and nothing else — it is
-the only item both sourced verbatim and measured to matter, and it touches the control layer
-only. Explicitly recommended *against*: raising the drive rate.
+**Status:** `status-needs-ruling` on the control-layer change. Recommended: do the rate
+comparator and nothing else — it is the only item both sourced verbatim and measured to matter,
+and it touches the control layer only. Explicitly recommended *against*: raising the drive rate.
+
+**Follow-on, same day — the board now SHOWS the rod controller** *(OWNER, 2026-08-02: "How can
+we show the user the rod authority and stops? Right now there's nothing showing what the auto is
+doing or can do other than watching the rods move in/out."; selected items 1–3 of four offered)*.
+WTSM 8.1 §8.1.7.1 lists what a real board carries — *"Rod speed indication and the IN-OUT
+lights"* — and §8.1.7.2 makes the lamps the automatic system's voice, not just the operator's:
+*"In-and-out lamps … indicate that rod motion has been requested by either the IN-HOLD-OUT
+switch **or the reactor control unit**."* We had neither. Shipped: IN-OUT lamps on the existing
+WITHDRAW/INSERT buttons, live speed indication on SLOW/MED/FAST (green = your selection, yellow
+= what the drive is doing), and a `HOLDING / IN / OUT / AT LIMIT / MANUAL / TRIPPED` status word
+in the card corner. No engine or config change — `control_state.rod_groups[]` already carried
+`moving`, `direction`, `speed` and `at_insertion_limit`; nothing rendered them.
+
+**Three traps, all of which cost a run.** `svc.tick()` **no-ops unless `this.running`** — a
+probe that drives it directly measures a frozen plant and reports every lamp dark; use
+`advanceCycles(n)`, which sets the flag around the loop. Writing `el.textContent` on a rendered
+board value **destroys the child nodes the renderer updates**, so the element freezes at
+whatever you last wrote and every later sample lies — measure widths on a `cloneNode(true)`.
+And the layout arithmetic was **wrong twice**: an rAnchor item's rendered right edge sits 41 px
+inside its authored `left`, so 'REACTOR CONTROL' looked like it left 68 px for a 61 px word and
+actually overlapped by 14 — with both still rendering, which is why only a ruler finds it. The
+card is titled **ROD CONTROL** now (93 px, clears the widest word by 15).
+
+Measured end-to-end through a 45 % load drop: status HOLDING → IN at cycle 60, INSERT lamp at
+60, and the speed indication stepping **FAST (60) → MED (595) → SLOW (645)** as the error
+closed — the channel's error ladder made visible. MANUAL on disengage, TRIPPED on scram with
+the IN lamp **dark** (gravity is not a drive demand). `board_check` **168 → 178**, and all ten
+pins injection-verified: three defects injected (drop the scram guard, restore the long title,
+rank motion above the limit), three reds, one each.
+
+**Not shipped, and it is the one gap worth knowing:** the status word has no **BLOCKED** state,
+because the SUR rod-withdrawal interlock's live state is **not in the snapshot** — the kernel
+keeps `interlockActive` internally and only `trip_block_status` is published. Deriving it
+board-side from the instrument would be a second copy of a latched, hysteretic condition, which
+is the defect class this repo keeps finding. It wants an `interlock_status` publication in the
+kernel, grouped with the #306 item-4 work.
 
 ## Session log — 2026-08-01d (the System Scanner was teaching five wrong things, workbench)
 

@@ -21,6 +21,38 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The board now shows what automatic rod control is DOING, not just that it is on** (#306).
+  With rod control in AUTO the only evidence that anything was happening was the step count
+  ticking — the ROD AUTO lamp said the channel was engaged, and nothing said what it was up
+  to. Three indications, all of them things a real Westinghouse board carries (*"Rod speed
+  indication and the IN-OUT lights"*, WTSM 8.1 §8.1.7.1, ML11223A252):
+  - **IN-OUT lamps.** WITHDRAW and INSERT light yellow while the bank is actually being driven
+    that way — by an operator hold, a tap, or the rod channel. That is the real lamps'
+    definition, verbatim: *"In-and-out lamps on the control board indicate that rod motion has
+    been requested by either the IN-HOLD-OUT switch **or the reactor control unit**."* A
+    **scram leaves them dark**, deliberately: the rods fall on gravity with the drive
+    de-energized, and a lit IN lamp would say the drive is running when it has just been
+    dropped.
+  - **Rod speed indication.** SLOW/MED/FAST was a selector only, so it showed the operator's
+    choice while AUTO drove at its own — actively misleading, not merely absent. It is both
+    now: green is what you selected, yellow is what the drive is doing this instant. Measured
+    through a 45 % load drop, the yellow steps **FAST → MED → SLOW** as the temperature error
+    closes, which is the channel's error ladder made visible.
+  - **A ROD status word** in the card corner — `HOLDING / IN / OUT / AT LIMIT / MANUAL /
+    TRIPPED` — the at-a-glance version of a note the board previously surfaced only on
+    inspection. **AT LIMIT outranks motion**: the bank can sit on its insertion limit and
+    withdraw at the same time, and the limit is the fact that says the controller has run out
+    of room in the direction it normally corrects.
+
+  The **REACTOR/ROD CONTROL card is titled ROD CONTROL** to make the room, the same trade #214
+  made on the SG FEED card. Measured, not estimated — and the estimate was wrong twice: the
+  authored title renders 161 px in a 195 px card, and an rAnchor item's right edge sits 41 px
+  inside its authored `left`, so even the intermediate 'REACTOR CONTROL' left the widest word
+  ('AT LIMIT', 61 px) overlapping by 14 px, with both still rendering so nothing else would
+  have caught it. `board_check` **168 → 178**, including a pin on the title patch; all of them
+  verified by injection — three defects injected, three reds, one each.
+
 ### Changed
 - **HR12 now covers control behaviour, and half of it is gated** *(OWNER RULING, 2026-08-01:
   "go with your recommendation.", on the recommendation to widen HR12 by one clause and add one
