@@ -43,15 +43,25 @@ asserted: 2235 psi (15.41 MPa) / 100.0 % / 304.1 °C):
 | same LOCA, three blocked | scram **68.1 s**, `pzr_level high`, 130 psi (0.90 MPa) — the accumulator refill |
 | F2: block the startup net at power, scram, 120 s | power 0.14 %, blocks **still** `{ir_high, pr_low_setpoint}`; untouched control reinstates to `{}` |
 
-**The fix, and why it is not a revert of an owner-confirmed design.** The engage rule is the
-permissive and nothing else (M4b §3c); manual blocks reinstate like any other and
-`manualTripBlocks` survives as provenance for the save format only. The 2026-07-24 rule bought
-the procedures nothing, because **both shipped evolutions already put the operator inside the
-permissive first** — the startup checklist blocks the net only after crossing P-10 and says *"the
-plant will not let you block them down there"*; PWR-N15 lowers the Pressure SP to 1901 psi
-(13.11 MPa) as its own step, *"which is what makes the next two steps possible"*. The kernel had
-been contradicting the manual, not serving it. Real plant: the P-11 bypass is physically enabled
-only below ~1970 psig (NUREG-1431 LCO 3.3.1/3.3.2).
+**The fix.** The engage rule is the permissive and nothing else (M4b §3c); manual blocks reinstate
+like any other and `manualTripBlocks` survives as provenance for the save format only.
+
+**What overturns the 2026-07-24 rule, in HR9 order — this write-up's first draft had it
+backwards and is corrected here.** (1) **MEASURED**: a reactor trip defeatable at 100 % power,
+64 s of unscrammed blowdown. That alone settles it. (2) **SPEC**: M4b §3c. (3)
+**PROTOTYPICALITY — UNVERIFIED**: the "P-11 is enabled only below ~1970 psig
+(NUREG-1431 LCO 3.3.1/3.3.2)" basis came from #295 F1, which flags its own NUREG references as
+part recall, and **there is no sourced P-11 citation in this repo** (#220 covered P-7/P-8/P-9
+only). That gap does not touch the finding; it does touch the **shape** chosen — full permissive
+gate vs. narrowing the proactive rule to trips lacking their own `block_permissive`. Evidence
+pass owed.
+
+**The authored content was a CANARY, not an authority.** The first draft argued the 2026-07-24
+premise "had not survived the content written since", which makes a checklist the arbiter of a
+control-layer design — an HR9 inversion. What the content legitimately gave: the *signal* that
+something had diverged (the startup checklist's *"the plant will not let you block them down
+there"* and PWR-N15's Pressure SP step were both false in the kernel), and *blast-radius
+evidence* that nothing authored breaks. See `Blueprint/DESIGN_CRITERIA.md` §1 Q1.
 
 **Three things worth carrying forward.**
 

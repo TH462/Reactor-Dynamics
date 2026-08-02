@@ -342,7 +342,10 @@ var BASELINES = {
   // 89 -> 90 on 2026-08-02 (#295 F1/F2): one new citation site, the TUNING_LOG entry
   // carrying the 2026-08-02 ruling. The KERNEL fix moved nothing here — this gate counts
   // dated owner-quote citations in tracked files, so writing the change up is what moves it.
-  'run_hardrules.js':      { code: 0, score: '90checks 0failed' },
+  // 90 -> 93 on 2026-08-02: `Blueprint/DESIGN_CRITERIA.md` (the four inclusion criteria, plus
+  // its §6 educational-goals proposal) and the binding pointer block in CLAUDE.md, each
+  // carrying the owner's verbatim directive.
+  'run_hardrules.js':      { code: 0, score: '93checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

@@ -44,16 +44,32 @@ operator-set blocks auto-reinstate exactly like automatic ones. This **supersede
 "hybrid model" of 2026-07-24**, which additionally allowed a block any time the trip was not
 already asserted and exempted manual blocks from reinstatement.
 
-**Why the supersession is not an owner-ruling reversal.** The hybrid rule was owner-confirmed
-to solve *"you couldn't block a trip proactively during an evolution"*. Measured against the
-two evolutions that exist, it solves nothing they need: the startup checklist blocks the net
-only **after** crossing P-10, and PWR-N15 lowers the Pressure SP to 1901 psi (13.11 MPa) —
-inside P-11 — as an explicit step *"which is what makes the next two steps possible"*. Both
-procedures also already **described** the permissive-gated, auto-reinstating plant in their own
-notes. So the rule's whole delivered effect was to make three reactor trips defeatable at power
-(#295 F1) and to strand blocks across regime changes (F2), while quietly falsifying the manual.
-The premise the 2026-07-24 confirmation rested on had not survived the content written since —
-recorded that way per the `question-owner-rulings` rule rather than treated as settled law.
+**Why the supersession is not an owner-ruling reversal — and the authority order, corrected.**
+The hybrid rule was owner-confirmed to solve *"you couldn't block a trip proactively during an
+evolution"*. What overturns it, in HR9 order:
+
+1. **MEASURED (Q0):** three reactor trips accepted blocks at 2235 psi (15.41 MPa) / 100 % power,
+   and a 20 % cold-leg LOCA rode **64 s unscrammed**. A defeatable reactor trip is wrong on its
+   own terms; this is a fact about the plant, not about any document.
+2. **SPEC:** M4b §3c — *"refused … unless `trip_block_permissive` is satisfied against the
+   CURRENT instruments"*. A module spec outranks authored content.
+3. **PROTOTYPICALITY — UNVERIFIED, and load-bearing.** The claim that the real P-11 bypass is
+   physically enabled only below ~1970 psig (attributed to NUREG-1431 LCO 3.3.1/3.3.2) came from
+   #295 F1, whose own coverage statement says its NUREG references were *"cited from repo-carried
+   citations plus recall"*. **Measured 2026-08-02: there is no sourced P-11 citation anywhere in
+   this repo** — #220 sourced P-7/P-8/P-9 and never covered P-11. This does not affect finding
+   (1); it does affect the **shape** chosen — full permissive gate vs. narrowing the proactive
+   rule to trips lacking their own `block_permissive`. An evidence pass is owed before this
+   shape hardens into precedent.
+
+**The authored content is a CANARY here, not an authority** (HR9), and the first draft of this
+entry got that backwards — it argued that the 2026-07-24 premise "had not survived the content
+written since", which makes a checklist the arbiter of a control-layer design. Corrected. What
+the content legitimately supplied was (a) the signal that something had diverged — the startup
+checklist says *"the plant will not let you block them down there"* and PWR-N15 lowers the
+Pressure SP inside P-11 *"which is what makes the next two steps possible"*, both false in the
+kernel at the time — and (b) **blast-radius evidence**, that the fix breaks nothing authored.
+Neither is a reason to change the plant. See `DESIGN_CRITERIA.md` §1 Q1.
 
 **What it cost the plant:** nothing authored. `run_procedures` 23/23, `run_procedures_stack`
 23/23 204 checks, `run_campaign` 51/51 unchanged.
