@@ -339,7 +339,10 @@ var BASELINES = {
   // judgement calls. The three code-site citations that went with it moved NOTHING, because
   // this gate scans tracked MARKDOWN only; a ruling recorded in a .js comment is invisible
   // to it. Worth knowing before you go hunting for a missing delta.
-  'run_hardrules.js':      { code: 0, score: '89checks 0failed' },
+  // 89 -> 90 on 2026-08-02 (#295 F1/F2): one new citation site, the TUNING_LOG entry
+  // carrying the 2026-08-02 ruling. The KERNEL fix moved nothing here — this gate counts
+  // dated owner-quote citations in tracked files, so writing the change up is what moves it.
+  'run_hardrules.js':      { code: 0, score: '90checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -559,7 +562,16 @@ var BASELINES = {
   // one alarm carrying news — entirely. The probe reaches Mode 4 the way the plant really
   // does, by losing the heat sink and heating on decay + pump heat, not by hand-setting a
   // temperature; 5 checks red on the injected config.
-  'run_m4.js':             { code: 0, score: '34/34 194passed' },
+  // 34 -> 35 on 2026-08-02 (#295 F1/F2, the audit's headline): a reactor trip was
+  // DEFEATABLE AT POWER. `setTripBlock` accepted a manual block on any blockable trip
+  // whenever it was not already asserted, ignoring the permissive, and manual blocks were
+  // exempt from auto-reinstate — so at 2235 psi (15.41 MPa) / 100 % power `lo_press`,
+  // `si_trip` and `lo_flow` were all accepted, and a 20 %-of-max cold-leg LOCA rode 64 s of
+  // unscrammed blowdown (scram at 68.1 s on `pzr_level high` at 130 psi (0.90 MPa)) against
+  // a baseline 4.2 s on `primary_pressure low` at 1782 psi (12.28 MPa). Two of the 16 new
+  // checks REPLACE checks that pinned the defect; the other 14 are the new suite. All 12
+  // affected checks verified red against the pre-fix kernel.
+  'run_m4.js':             { code: 0, score: '35/35 210passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL

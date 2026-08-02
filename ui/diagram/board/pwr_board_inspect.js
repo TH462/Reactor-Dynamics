@@ -160,11 +160,12 @@
       'Opens the startup trip-block panel — deliberately blocking a protection trip during startup.',
       'Above P-10 (10 % power) the intermediate-range high-flux trip and the 25 % power-range trip ' +
       'stand in the way of a normal ascent, so they are blocked on purpose and the badge counts how ' +
-      'many are blocked. Block them EARLY: a block is accepted any time the trip is not yet asserted, ' +
-      'and refused once it is — the message tells you to block it before the condition is reached. ' +
-      'Clearing is never refused, so clearing a block that is holding a trip off scrams the plant on ' +
-      'the spot. A block you set by hand survives; only the ones the plant established for itself ' +
-      'reinstate when power falls back below P-10.', CI, '4.4'),
+      'many are blocked. A block is an ENABLE, not a switch: it is accepted only while the plant is ' +
+      'inside that trip\'s permissive — above P-10 for these two, below P-11 for the pressure trips ' +
+      'on a cooldown — and refused anywhere else, whoever you are. That is why the reactor trips ' +
+      'cannot be switched off at power. Clearing is never refused, so clearing a block that is ' +
+      'holding a trip off scrams the plant on the spot. Every block reinstates itself the moment its ' +
+      'permissive drops, including one you set by hand.', CI, '4.4'),
 
     // -------------------------------------------------- nuclear instrumentation
     ims175lciah: e('Nuclear Instrumentation (NIS)',
@@ -362,10 +363,10 @@
       'The scale and the coloured bands follow WHICH POWER TRIP IS ARMED. Through a startup the ' +
       'power-range LOW SETPOINT trip sits at 25 %, so the meter reads to 27 % and shows green to ' +
       'P-10 (10 %), amber from there up to the trip, and red above — the amber band is the stretch ' +
-      'you have to get the block in by, not the only place you are allowed to set it. Block it and ' +
-      'the meter reopens to the at-power scale with the 120 % trip at the top, and it stays there: ' +
-      'a block you set by hand is not undone by falling back below P-10, so the 25 % band comes back ' +
-      'only when you clear it. It measures FLUX, which leads thermal power — after a trip flux ' +
+      'you have to get the block in by, and above P-10 is the only place you are allowed to set it. ' +
+      'Block it and the meter reopens to the at-power scale with the 120 % trip at the top — and the ' +
+      '25 % band comes back the moment power falls under P-10 again, because the block reinstates ' +
+      'itself down there. It measures FLUX, which leads thermal power — after a trip flux ' +
       'collapses while decay heat does not.', CI, '4.1'),
     imrobpq4a70: e('Reactor Coolant Pump',
       'The RCP — forced primary flow. One representative pump on this plant.',

@@ -106,6 +106,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   Gates: all **35 runners at baseline**, `board_check` **168/168** unchanged.
 
 ### Fixed
+- **Reactor trips could be switched off at full power.** The TRIP BLOCKS panel accepted a block on
+  any blockable trip as long as that trip was not *already* tripping — which meant the low-pressure
+  reactor trip, the trip on safety injection and the low-flow trip could all be blocked at 100 %
+  power, and the block then survived every regime change. Measured on a 20 % cold-leg LOCA, that
+  cost **64 seconds of unscrammed blowdown** (the plant finally tripped at 68.1 s on high
+  pressurizer level at 130 psi (0.90 MPa), where a correct plant trips at 4.2 s on low pressure at
+  1782 psi (12.28 MPa)). A block is an **enable**, not a switch: it is now accepted only while the
+  plant is inside that trip's permissive — above P-10 for the two startup trips, below P-11
+  (1972 psi / 13.6 MPa) for the pressure trips — and every block reinstates itself when its
+  permissive drops, including one you set by hand. **Nothing in the startup or cooldown checklists
+  changes**: both already put you inside the permissive before they ask you to block, and both
+  already described the plant this way. Found by the first slice of the independent audit
+  programme (#295 F1/F2, #221).
 - **Turbine art froze on trip while the RPM readout coasted.** Blade/winding scroll is driven by
   `turbine_rpm` (not steam demand alone), so a trip or generator OFF shows the ~40 s coastdown
   instead of stopping the frame instantly. Steam fill/ports still track admission.

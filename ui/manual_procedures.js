@@ -411,7 +411,7 @@
           cmd: { action: 'set_pressure_setpoint', mpa: 13.11 }, hold: 300,
           acc: { p: 'pressure_mpa', op: '<', v: 13.6 },
           hl: ['Pressure SP', 'Plant Pressure'] },
-        { text: 'BLOCK the low-pressure reactor trip (Trip Blocks → PZR PRESS LO LO). It is armed at 1800 psi (12.41 MPa) and you are about to drive straight through it. The block is a proactive manual one: it survives auto-reinstate and stands until you clear it or pressure climbs back above P-11 on the next heatup.',
+        { text: 'BLOCK the low-pressure reactor trip (Trip Blocks → PZR PRESS LO LO). It is armed at 1800 psi (12.41 MPa) and you are about to drive straight through it. You could not have blocked it a step ago: the block is an ENABLE, not a switch, and P-11 is what enables it — which is why the Pressure SP came down first. It stands as long as you stay below P-11, and reinstates itself when pressure climbs back through P-11 on the next heatup, whoever set it.',
           control: 'Trip Blocks', target: 'lo-press trip BLOCKED',
           cmd: { action: 'set_trip_block', trip_id: 'lo_press', blocked: true }, hold: 10,
           hl: ['Trip Blocks'] },

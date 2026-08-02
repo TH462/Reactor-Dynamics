@@ -228,14 +228,68 @@ T.push(test('NIS startup net — conditioned SR trip, P-6 switch interlocks, blo
   p.cmd({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: false });
   p.run(1);
   ck('unblocked PR-25 trips at power', p.layer.rps.last_trip_reason, p.layer.rps.scrammed === true, 'scrammed');
-  // Manual rule: below P-10 the automatic permissive is unmet, but the IR trip is not
-  // asserted at zero power, so the operator may block it PROACTIVELY — and it's tracked
-  // as a manual block (which survives auto-reinstate).
+  // Engage rule: THE PERMISSIVE. Below P-10 the IR trip is not asserted at zero power,
+  // and it is still refused — the startup checklist's own words, "the plant will not let
+  // you block them down there". These two checks asserted the OPPOSITE from 2026-07-24
+  // (they pinned the proactive-block rule that #295 F1 measured as a defeatable reactor
+  // trip at power); they are re-authored, not re-banded.
   var q = new Stack('hot_zero_power');
   q.run(1);
   var rb = q.cmd({ action: 'set_trip_block', trip_id: 'ir_high', blocked: true });
-  ck('proactive block allowed below P-10 (IR not asserted)', rb, rb == null && q.layer.tripBlocks.ir_high === true, 'blocked');
-  ck('operator block tracked as manual', String(q.layer.manualTripBlocks.ir_high), q.layer.manualTripBlocks.ir_high === true, 'true');
+  ck('block below P-10 REFUSED (permissive unmet, trip not asserted)', rb && rb.code,
+    rb != null && rb.code === 'INTERLOCK' && !q.layer.tripBlocks.ir_high, 'INTERLOCK');
+  ck('…and nothing was recorded as a manual block', String(q.layer.manualTripBlocks.ir_high),
+    q.layer.manualTripBlocks.ir_high === undefined, 'undefined');
+}));
+
+// #295 F1/F2 — the audit's headline protection defect. Kept as its own suite because it
+// is a claim about DEFEATABILITY, not about the startup net: the question is whether the
+// operator command path can switch a reactor trip off at power, and whether a block that
+// was legitimately set ever comes back.
+T.push(test('#295 F1/F2 — reactor trips are not defeatable at power, and blocks reinstate', function (ck) {
+  var p = new Stack('hot_full_power');
+  p.run(1);
+  ck('IC asserted: at power', p.ins().primary_pressure.toFixed(2) + ' MPa / ' + p.ins().power_range.toFixed(1) + ' %',
+    p.ins().power_range > 99 && p.ins().primary_pressure > 15, '~15.41 MPa / 100 %');
+  // F1 — the three trips that protect against a depressurization casualty. Each carries its
+  // own cold-regime permissive (P-11 pressure / P-7 low power); at power none is satisfied.
+  ['lo_press', 'si_trip', 'lo_flow'].forEach(function (id) {
+    var st = p.layer.getRpsState().trip_block_status[id];
+    var r = p.cmd({ action: 'set_trip_block', trip_id: id, blocked: true });
+    ck('block ' + id + ' at 100 % power is REFUSED', r && r.code, r != null && r.code === 'INTERLOCK', 'INTERLOCK');
+    // The board greys its button off can_block, so it must agree with the command path or
+    // the player gets a live button that does nothing (or a dead one that would have worked).
+    ck('…and can_block agrees with the command path', String(st.can_block), st.can_block === false, 'false');
+    ck('…and no block was set', String(p.layer.tripBlocks[id]), !p.layer.tripBlocks[id], 'undefined');
+  });
+  // …so the protection still stands. Written POSITIVELY (#220's lesson): restoring the
+  // defect has to move this number, it cannot slide through a band.
+  var loca = new Stack('hot_full_power');
+  loca.run(1);
+  ['lo_press', 'si_trip', 'lo_flow'].forEach(function (id) { loca.cmd({ action: 'set_trip_block', trip_id: id, blocked: true }); });
+  loca.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 0.2 });
+  var t = 0;
+  while (t < 300 && !loca.layer.rps.scrammed) { loca.run(0.1); t += 0.1; }
+  ck('a 20 % cold-leg LOCA still scrams on low pressure', loca.layer.rps.last_trip_reason + ' at t=' + t.toFixed(1) + ' s',
+    loca.layer.rps.scrammed === true && loca.layer.rps.last_trip_reason === 'primary_pressure low' && t < 10,
+    'primary_pressure low, < 10 s');
+  ck('…at the setpoint, not on the accumulator refill 60 s later',
+    (loca.ins().primary_pressure * 145.038).toFixed(0) + ' psi',
+    loca.ins().primary_pressure > 12.0, '~1782 psi (12.28 MPa)');
+  // F2 — a block the operator sets by hand is an ENABLE, not a latch. Re-setting the two
+  // auto blocks at power makes them `manual`; they must still reinstate below P-10.
+  var f = new Stack('hot_full_power');
+  f.run(1);
+  ['ir_high', 'pr_low_setpoint'].forEach(function (id) { f.cmd({ action: 'set_trip_block', trip_id: id, blocked: true }); });
+  ck('operator-set blocks are tracked as manual', String(f.layer.manualTripBlocks.ir_high === true && f.layer.manualTripBlocks.pr_low_setpoint === true),
+    f.layer.manualTripBlocks.ir_high === true && f.layer.manualTripBlocks.pr_low_setpoint === true, 'true');
+  f.cmd({ action: 'scram' });
+  f.run(120);
+  ck('P-10 has dropped', f.ins().power_range.toFixed(2) + ' %', f.ins().power_range < 10, '< 10 %');
+  ck('…so the manual blocks reinstated', JSON.stringify(f.layer.getRpsState().trip_blocks),
+    !f.layer.tripBlocks.ir_high && !f.layer.tripBlocks.pr_low_setpoint, '{}');
+  ck('…and the provenance went with them', JSON.stringify(f.layer.manualTripBlocks),
+    f.layer.manualTripBlocks.ir_high === undefined, '{}');
 }));
 
 T.push(test('P-11/P-7 trip bypass — cold init blocks, auto-reinstate on repressurization', function (ck) {

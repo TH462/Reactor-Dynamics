@@ -1396,10 +1396,19 @@
     'PI-3': function () {
       return test('PI-3 trip on SI — si_trip scrams with lo_press blocked; a cooldown must block both', function (ck) {
         // ---- leg 1: lo_press blocked, si_trip live → the depressurization still scrams.
-        var h = H('hot_full_power');
+        // THE SETUP IS THE COOLDOWN'S, and until 2026-08-02 it was not: this probe blocked
+        // lo_press straight from hot full power and its own label said "P-10 satisfied",
+        // which is the wrong permissive — lo_press and si_trip carry their OWN P-11 pressure
+        // permissive, not the plant-wide P-10. It passed because the kernel accepted a block
+        // outside the permissive at all (#295 F1, fixed). The behaviour under test is
+        // unchanged; only the way the plant is brought to it is, and it is now the way the
+        // PWR-N15 cooldown does it — Pressure SP down inside P-11 FIRST, then block.
+        var h = H('hot_zero_power');
         h.run(30);
+        h.cmd('set_pressure_setpoint', { mpa: 13.11 });        // 1901 psi — inside P-11 (1972 psi / 13.6 MPa)
+        h.runUntil(function (ts, ins) { return ins.primary_pressure < 13.5; }, 900);
         h.cmd('set_trip_block', { trip_id: 'lo_press', blocked: true });
-        ck('lo_press took a manual block at power (P-10 satisfied)',
+        ck('lo_press takes the block once inside P-11 (' + fmt(h.ins().primary_pressure, 2) + ' MPa)',
           String(h.rps().trip_blocks.lo_press), h.rps().trip_blocks.lo_press === true, 'true');
         h.cmd('inject_failure', { failure_id: 'stuck_porv_open' });
         h.cmd('open_porv');
@@ -1414,8 +1423,10 @@
 
         // ---- leg 2: BOTH blocked — the cooldown lineup. Pressure walks through
         // the SI setpoint with no reactor trip, but the ESF is untouched.
-        var h2 = H('hot_full_power');
+        var h2 = H('hot_zero_power');
         h2.run(30);
+        h2.cmd('set_pressure_setpoint', { mpa: 13.11 });
+        h2.runUntil(function (ts, ins) { return ins.primary_pressure < 13.5; }, 900);
         h2.cmd('set_trip_block', { trip_id: 'lo_press', blocked: true });
         h2.cmd('set_trip_block', { trip_id: 'si_trip', blocked: true });
         h2.cmd('inject_failure', { failure_id: 'stuck_porv_open' });

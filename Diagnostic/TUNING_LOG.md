@@ -20,6 +20,65 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-02b (#295 F1/F2 — a reactor trip was defeatable at power)
+
+**Task: the owner's rulings pass**, then *(OWNER RULING, 2026-08-02: "311: a. 221: fix as
+recommended.")* → #311 ruled option (a) (reduced-form OTΔT/OPΔT, no ΔI term, declared
+departure — recorded, not built), #221 pilot yield accepted and slices 2–7 (#296–#301)
+commissioned, and #295's F1/F2 fixed first as recommended.
+
+**What was wrong.** `control_kernel.js setTripBlock` accepted a manual block on any `blockable`
+trip whenever the trip was **not already asserted**, ignoring the block permissive, and
+`_autoReinstateTripBlocks` exempted `manualTripBlocks` from reinstatement. Both arrived
+2026-07-24 as the "hybrid model" to answer a complaint about not being able to block ahead of an
+evolution.
+
+**Measured on develop before touching anything** (engine+M4, 0.1 s protection cadence, IC
+asserted: 2235 psi (15.41 MPa) / 100.0 % / 304.1 °C):
+
+| | result |
+|---|---|
+| `set_trip_block lo_press` / `si_trip` / `lo_flow` at 100 % power | all **ACCEPTED** |
+| 20 %-of-max cold-leg LOCA, no blocks | scram **4.2 s**, `primary_pressure low`, 1782 psi (12.28 MPa) |
+| same LOCA, three blocked | scram **68.1 s**, `pzr_level high`, 130 psi (0.90 MPa) — the accumulator refill |
+| F2: block the startup net at power, scram, 120 s | power 0.14 %, blocks **still** `{ir_high, pr_low_setpoint}`; untouched control reinstates to `{}` |
+
+**The fix, and why it is not a revert of an owner-confirmed design.** The engage rule is the
+permissive and nothing else (M4b §3c); manual blocks reinstate like any other and
+`manualTripBlocks` survives as provenance for the save format only. The 2026-07-24 rule bought
+the procedures nothing, because **both shipped evolutions already put the operator inside the
+permissive first** — the startup checklist blocks the net only after crossing P-10 and says *"the
+plant will not let you block them down there"*; PWR-N15 lowers the Pressure SP to 1901 psi
+(13.11 MPa) as its own step, *"which is what makes the next two steps possible"*. The kernel had
+been contradicting the manual, not serving it. Real plant: the P-11 bypass is physically enabled
+only below ~1970 psig (NUREG-1431 LCO 3.3.1/3.3.2).
+
+**Three things worth carrying forward.**
+
+1. **The two fixes each heal F1 independently.** Injecting only the old engage rule left the LOCA
+   probe **green** — with auto-reinstate corrected, a block set outside its permissive is deleted
+   on the next `evaluate`. 8 checks red on that injection, **12** with both reverted. If you
+   re-verify this, revert both.
+2. **Two `run_m4` checks and one `run_behavior` probe were pinning the defect.** `run_m4`'s
+   "proactive block allowed below P-10" pair asserted the defect directly. PI-3's *fixture* was
+   the defect: it blocked `lo_press` straight from hot full power under the label "P-10
+   satisfied" — the **wrong permissive**, since `lo_press` and `si_trip` carry their own P-11.
+   Re-authored to reach the block the way the cooldown does; **it passes on the OLD kernel too**,
+   which is what makes it a better test rather than a refit (HR10).
+3. **Behaviour text is a third copy of the mechanism.** `pwr_board_inspect.js` described the
+   removed rule in two entries ("a block is accepted any time the trip is not yet asserted…",
+   "a block you set by hand is not undone by falling back below P-10") — the #308 class again,
+   and neither is reachable from the kernel diff.
+
+**Gates.** `run_all` **OK, 35 runners at baseline** (`run_m4` **34/34 194 → 35/35 210**,
+`run_behavior` back to **43 pass / 0 xfail**), both browser gates PASS (`verify_e2e_ui` 16
+screenshots, `verify_manual_follow` 183 checks), `board_check` **168/168**.
+
+**Still open on #295:** F3 (auto-SI never re-arms above P-11 through a heatup), F4 (no LTOP),
+F5 (no steam-line isolation ESFAS), F6 (→ #311, ruled), F7–F12.
+
+---
+
 ## Session log — 2026-08-02 (PWR-N15 became executable, and the procedure was one step short)
 
 **Task: "work issue 310"** — PWR-N15 (Mode 3 → Mode 5 cooldown) had no executable checklist,

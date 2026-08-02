@@ -37,6 +37,41 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-02b — #295 F1/F2: a trip block is an ENABLE, not a switch
+
+**Decision.** `setTripBlock` requires the trip's block permissive and nothing else, and
+operator-set blocks auto-reinstate exactly like automatic ones. This **supersedes the
+"hybrid model" of 2026-07-24**, which additionally allowed a block any time the trip was not
+already asserted and exempted manual blocks from reinstatement.
+
+**Why the supersession is not an owner-ruling reversal.** The hybrid rule was owner-confirmed
+to solve *"you couldn't block a trip proactively during an evolution"*. Measured against the
+two evolutions that exist, it solves nothing they need: the startup checklist blocks the net
+only **after** crossing P-10, and PWR-N15 lowers the Pressure SP to 1901 psi (13.11 MPa) —
+inside P-11 — as an explicit step *"which is what makes the next two steps possible"*. Both
+procedures also already **described** the permissive-gated, auto-reinstating plant in their own
+notes. So the rule's whole delivered effect was to make three reactor trips defeatable at power
+(#295 F1) and to strand blocks across regime changes (F2), while quietly falsifying the manual.
+The premise the 2026-07-24 confirmation rested on had not survived the content written since —
+recorded that way per the `question-owner-rulings` rule rather than treated as settled law.
+
+**What it cost the plant:** nothing authored. `run_procedures` 23/23, `run_procedures_stack`
+23/23 204 checks, `run_campaign` 51/51 unchanged.
+
+**Design note — `manualTripBlocks` is now PROVENANCE ONLY.** It still records who set a block,
+for the save format and the UI, and no longer changes behaviour. Kept rather than deleted
+because removing it is a save-format change (`run_m4`'s legacy-save probe deletes the key
+deliberately) for no behavioural gain.
+
+**Two properties worth knowing before re-verifying this.** (1) **The two halves each heal F1
+alone** — with auto-reinstate corrected, a block set outside its permissive is deleted on the
+next `evaluate`, so a single-sided injection leaves the LOCA probe green (8 checks red, vs 12
+with both reverted). (2) **`can_block` must track the engage rule exactly**, because the board
+greys the TRIP BLOCKS buttons off that flag; a divergence hands the player a live button the
+command path refuses.
+
+---
+
 ## 2026-08-02 — #310: a procedure step can RAMP, and PWR-N15 needed two more trip blocks
 
 ### The decision

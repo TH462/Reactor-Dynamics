@@ -495,12 +495,29 @@
   // Westinghouse auto-reinstate: a trip block clears itself the moment ITS permissive
   // is no longer satisfied — the startup net re-arms below P-10 on the way down, and
   // the cold-regime P-11/P-7 bypasses re-arm above their permissive on the way up.
+  //
+  // OPERATOR-SET BLOCKS REINSTATE TOO, and from 2026-07-24 to 2026-08-02 they did not
+  // (audit #295 finding F2). `manualTripBlocks` used to exempt them here, so a block set
+  // by hand outlived its permissive through every regime change: measured at full power,
+  // re-setting the two auto blocks on the startup net and then scramming left
+  // {ir_high, pr_low_setpoint} still blocked at 0.14 % power — a defeated startup net
+  // carried into the next ascent, where an untouched plant correctly reinstates to {}.
+  // A block is an ENABLE, not a latch: NUREG-1431 B 3.3.1 reinstates the IR and PR-low
+  // trips automatically below P-10 regardless of who set them, and M4b §3c has no manual
+  // exception. Both shipped procedures already taught the reinstating plant — the startup
+  // checklist says "Both blocks auto-reinstate the moment power falls back below P-10"
+  // and the cooldown says its block "stands until you clear it or pressure climbs back
+  // above P-11 on the next heatup". `manualTripBlocks` survives as PROVENANCE only (who
+  // set it, for the save format and the UI); it no longer changes behaviour.
   ControlLayer.prototype._autoReinstateTripBlocks = function (ins) {
     if (!this._anyTripBlocks()) return;
     var tps = this.config.trips || [];
     for (var i = 0; i < tps.length; i++) {
       var t = tps[i];
-      if (t.id && this.tripBlocks[t.id] && !this.manualTripBlocks[t.id] && !this._permTest(this._tripPermissive(t), ins)) delete this.tripBlocks[t.id];   // manual blocks survive
+      if (t.id && this.tripBlocks[t.id] && !this._permTest(this._tripPermissive(t), ins)) {
+        delete this.tripBlocks[t.id];
+        delete this.manualTripBlocks[t.id];
+      }
     }
   };
   ControlLayer.prototype._anyTripBlocks = function () {
@@ -512,19 +529,38 @@
     var trips = this.config.trips || [], t = null;
     for (var i = 0; i < trips.length; i++) if (trips[i].id === tripId && trips[i].blockable) { t = trips[i]; break; }
     if (!t) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown or unblockable trip', received: tripId };
-    var ins = this.lastInstruments, asserted = this._tripAsserted(t, ins);
+    var ins = this.lastInstruments;
     if (blocked) {
-      // Engage rule: inside the block permissive (the automatic regime) as before, OR
-      // proactively any time the trip is NOT asserted. A trip that is already asserted
-      // outside its permissive can't be blocked — block it before the condition is met.
-      if (!this._permTest(this._tripPermissive(t), ins) && asserted) {
+      // Engage rule: THE PERMISSIVE, and nothing else (M4b §3c — "refused … unless
+      // `trip_block_permissive` is satisfied against the CURRENT instruments").
+      //
+      // From 2026-07-24 this also allowed a block proactively any time the trip was not
+      // yet asserted, which was meant to let the operator block ahead of an evolution.
+      // Audit #295 finding F1 measured what it actually bought: at hot full power,
+      // 2235 psi (15.41 MPa), `lo_press`, `si_trip` and `lo_flow` were ALL accepted, so
+      // the low-pressure reactor trip, the SI trip and the low-flow trip were defeatable
+      // at 100 % power from the operator command path. Measured on a 20 %-of-max cold-leg
+      // LOCA: baseline scrams at 4.2 s on `primary_pressure low` at 1782 psi (12.28 MPa);
+      // with the three blocked it rode 64 s of unscrammed blowdown and finally scrammed
+      // at 68.1 s on `pzr_level high` at 130 psi (0.90 MPa) — the accumulator refill, not
+      // a function meant to catch this. The file's own comments claimed the opposite the
+      // whole time (`pwr_control.js`: "At power the permissive is not satisfied, so the
+      // trip is never blocked — a LOCA/TMI depressurization still trips").
+      //
+      // The proactive rule bought nothing the procedures need, because both put you INSIDE
+      // the permissive first: the startup checklist blocks the net only after crossing P-10
+      // ("the plant will not let you block them down there"), and the cooldown lowers the
+      // Pressure SP to 1901 psi (13.11 MPa) — below P-11 — as the step "which is what makes
+      // the next two steps possible". Real plant: the P-11 bypass is physically enabled only
+      // below ~1970 psig (NUREG-1431 LCO 3.3.1/3.3.2 P-11 interlock).
+      if (!this._permTest(this._tripPermissive(t), ins)) {
         return { type: 'blocked', code: 'INTERLOCK',
                  message: this.register === 'industry'
-                   ? 'TRIP BLOCK REFUSED: trip already asserted.'
-                   : 'Trip block refused — that trip is already tripping; block it before the condition is reached.' };
+                   ? 'TRIP BLOCK REFUSED: block permissive not satisfied.'
+                   : 'Trip block refused — the plant is not in the condition that allows this trip to be blocked.' };
       }
       this.tripBlocks[tripId] = true;
-      this.manualTripBlocks[tripId] = true;   // operator-set: survives auto-reinstate
+      this.manualTripBlocks[tripId] = true;   // provenance: operator-set rather than automatic
     } else {
       // Clearing is always allowed (like a real plant — remove the block and the trip
       // re-arms; it scrams immediately if it was being held off).
@@ -831,8 +867,10 @@
     // The rule the two flags below actually implement — this comment said the OPPOSITE
     // of the code under it until 2026-08-01, and the board's inspection copy was written
     // from the comment (#220's lesson: the guard's own comment was the bug):
-    //   block — allowed inside the permissive, OR any time the trip is not YET asserted.
-    //           Refused only when it is already asserted outside its permissive.
+    //   block — allowed inside the trip's block permissive, and nowhere else (#295 F1).
+    //           `can_block` MUST track `setTripBlock`'s engage rule exactly: the board
+    //           greys the button off this flag, so a divergence hands the player a live
+    //           button the command path refuses, or vice versa.
     //   clear — ALWAYS allowed, exactly like a real plant. Clearing a block that is
     //           holding a trip off scrams on the spot; nothing here prevents that, and
     //           `can_clear` is therefore just "is there a block to clear".
@@ -842,7 +880,7 @@
       var asserted = self._tripAsserted(t, ins), blocked = !!self.tripBlocks[t.id];
       status[t.id] = {
         blocked: blocked, asserted: asserted,
-        can_block: !blocked && (self._permTest(self._tripPermissive(t), ins) || !asserted),
+        can_block: !blocked && self._permTest(self._tripPermissive(t), ins),
         can_clear: blocked   // clearing a block is always allowed
       };
     });
