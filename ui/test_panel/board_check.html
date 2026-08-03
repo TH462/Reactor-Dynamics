@@ -452,6 +452,38 @@
         //    lines moved or the readout is reading the wrong channel.
         var num = parseFloat((txt.match(/-?\d+\.\d/) || ['0'])[0]);
         ck('readout: ΔT margin is comfortably clear at HFP (> rod stop)', num > 3.0, txt);
+        // GEOMETRY, measured rather than reasoned about. CLAUDE.md's standing warning is that
+        // an rAnchor item's rendered right edge sits ~41 px inside its authored `left`, so a
+        // corner that arithmetic says fits can still overlap — and BOTH elements still render,
+        // so only a ruler finds it. This readout was placed by copying bdRodStatus's geometry
+        // and checking the NIS corner was free using AUTHORED coordinates, which is exactly the
+        // reasoning that warning says is not good enough.
+        if (el) {
+          // CONTAINER BOXES ARE NOT OVERLAPS. The first cut of this flagged the NIS card the
+          // readout is deliberately inside, plus every backing panel behind it — three false
+          // positives that would have taught the next person to ignore the check. Only
+          // CONTENT items (value / text / number / button) can genuinely collide.
+          var KIND = {};
+          (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) { KIND[it.id] = it.kind; });
+          var me = el.getBoundingClientRect(), hits = [];
+          document.querySelectorAll('[data-item]').forEach(function (o) {
+            var oid = o.getAttribute('data-item');
+            if (oid === 'bdDtMargin') return;
+            if (KIND[oid] === 'box' || KIND[oid] === 'component') return;
+            var r = o.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) return;
+            if (r.left < me.right && r.right > me.left && r.top < me.bottom && r.bottom > me.top)
+              hits.push(oid + '(' + (KIND[oid] || 'extra') + ')');
+          });
+          ck('geom: ΔT margin readout overlaps no other board item', hits.length === 0, hits.join(','));
+          var card = document.querySelector('[data-item="ims175lciah"]');   // NUCLEAR INSTRUMENTATION
+          if (card) {
+            var c = card.getBoundingClientRect();
+            ck('geom: …and sits inside the NIS card it belongs to',
+              me.left >= c.left - 2 && me.right <= c.right + 2 && me.top >= c.top - 2 && me.bottom <= c.bottom + 2,
+              'readout ' + Math.round(me.left) + '-' + Math.round(me.right) + ' vs card ' + Math.round(c.left) + '-' + Math.round(c.right));
+          }
+        }
       })();
 
       // Cold Shutdown (Mode 5): RCPs secured, no steam, no feed — a dead plant must

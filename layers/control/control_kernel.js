@@ -1151,8 +1151,11 @@
   // of time acceleration, which is the #153 defect exactly. `stepAutomation` is called once
   // per physics step with a fixed dt, so a rate expressed here is sim-time correct at 1× and
   // at 3600×. The consequence, stated rather than discovered later: the runback is a
-  // FULL-STACK behaviour — `stepAutomation` has one production caller (the service), so
-  // engine+M4 harnesses do not see it. Probe it through SimulationService.
+  // NOT full-stack-only, and an earlier version of this comment claimed it was. `test/
+  // ops_harness.js` calls `stepAutomation` too (:134, :152, wired to the shipped lineup by
+  // #209), so `run_ops` and `run_behavior` DO see the runback. Verified by grepping every
+  // caller rather than inherited from CLAUDE.md's layer table, which is about `engageDefaults`
+  // and does not imply this.
   //
   // IT IS NOT AN AUTOMATION CHANNEL, deliberately, even though it shares this entry point.
   // Channels are operator-engageable; protection is not, and a runback the player could take

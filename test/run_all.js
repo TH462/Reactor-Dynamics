@@ -617,7 +617,11 @@ var BASELINES = {
   // steam line break MOVED out of the casualty block — the runback now saves it, so it is
   // asserted there as a save rather than here as a trip. What is left in the casualty block
   // is the pair the runback CANNOT save, which is the honest split.
-  'run_otdt.js':           { code: 0, score: '44checks 0failed' },
+  // 44 -> 45 (2026-08-03): +1 for the runback's NEVER-WORSE check. A/B'd across four seeds,
+  // the runback saves the 15 % steam line break on 3 and is NEUTRAL on the 4th (seed 7, where
+  // the casualty scrams at 66 s with and without it). Nothing else asserted that a protection
+  // action which takes load off cannot bring a trip FORWARD, which is the safety property.
+  'run_otdt.js':           { code: 0, score: '45checks 0failed' },
   // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
   // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
   // "## [Unreleased]" to the version) was skipped for Alpha 1.10.0 AND 1.11.0 — 434 lines of

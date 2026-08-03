@@ -1173,7 +1173,18 @@
         // between with room on both sides. On its real design duties the plant is nowhere
         // near this — the WTSM 8.1.1 10 % step peaks at 103.0 % — so what the delay actually
         // buys is immunity to a manoeuvre no real operator would make in one motion.
-        persist_s: 10.0,
+        // 8.5 s, CENTRED IN A MEASURED GAP rather than picked round. Accumulated dwell over
+        // four seeds: worst NORMAL ramp 6.40 s, worst 15 % steam line break 10.58 s — a gap of
+        // 4.18 s, and 8.5 sits ~2.1 s from each edge. It was 10.0, which left only 0.58 s on
+        // the CASUALTY side: on an unlucky seed the runback would never engage, the save would
+        // vanish, and no gate would notice because the probe ran at the comfortable seed.
+        // Widening the dwell-reset band does NOT help — measured, resetting above 10 instead of
+        // `clears_above` 6 lets the normal ramp accumulate 8.84 s too and SHRINKS the gap to
+        // 1.82 s. This band is already the best of the four tried.
+        // CAVEAT, stated because the sample is small: 4 seeds. The dwell is noise-driven and
+        // varies 10.58 → 248 s on the casualty across them, so a seed outside this sample could
+        // still land under 8.5. `run_otdt` pins the WORST seed measured (7), not the best.
+        persist_s: 8.5,
         rate_per_s: _rbRate * (RD.PWR_CONFIG.turbine.mwe_rated / 100),
         floor: 0,
         // Per-plant callbacks keep the kernel plant-agnostic (HR3) — it never names a
