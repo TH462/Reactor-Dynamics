@@ -270,17 +270,32 @@ is Core if it demonstrates a Tier A coupling under stress.** Everything else is 
 
 | Casualty | Tier A coupling it stresses | Response | Runnable? |
 |---|---|---|---|
-| Turbine trip / load rejection (E03) | **A1/A2** — the dump is finite; P-9; power must go somewhere | 40 % dump + 10 % rod step | **no** |
+| Turbine trip / load rejection (E03) | **A1/A2** — the dump is finite; P-9; power must go somewhere | 40 % dump + 10 % rod step | **yes** — `pwr_turbine_trip` |
 | Loss of main feedwater (E01) | **A5/A9** — the SG is the only heat sink; AFW auto-start | yes | yes |
 | RCP trip / loss of flow (E02) | **A1** — flow → DNB margin; the P-7 gating | partial | yes |
-| Small RCS leak, seal leak (E23) | **A4** — CVCS holds it, and *charging flow* is the cue, not level | yes (#262) | **no** |
+| Small RCS leak, seal leak (E23) | **A4** — CVCS holds it, and *charging flow* is the cue, not level | yes (#262) | **yes** — `pwr_seal_leak` |
 | Stuck-open PORV (E07) | **A3/A4** — the TMI opener; tailpipe temperature is the honest tell | yes | yes |
-| SGTR (E06) | **A3** — primary→secondary path; depressurize to stop the leak | yes | **no** |
+| SGTR (E06) | **A3** — primary→secondary path; depressurize to stop the leak | yes | **yes** — `pwr_sgtr` |
 | Loss of offsite power / SBO (E04/E05) | **A6** — everything at once, on batteries | partial | **no** |
-| Steam line break (E19/E19u) | **A9** — overcooling is a reactivity event | **no auto isolation** (#295 F5) | **no** |
+| Steam line break (E19/E19u) | **A1** — overcooling is a reactivity event, through the same moderator coefficient A1 runs on (was mis-cited as A9, which is the SG-level *instrument* effect) | **no auto isolation** (#295 F5) | **no** |
 | Loss of shutdown cooling, Mode 5 (#287) | **A6** — decay heat with no SG | annunciator only | **no** |
 | **ATWS** (E13, `failure_to_scram`) | **A6 inverted + A8** — the reactor that will *not* switch off; boration is the only reactivity control left | yes | **no** |
 | **Uncontrolled rod withdrawal** (E17) | **A8** — rods fast, boron slow, in its dangerous direction | 1.5 DPM block (§8.18) | **no** |
+
+**ONE CORE ROW DOES NOT SATISFY THE CORE TEST, and it is flagged rather than quietly rewritten**
+(found 2026-08-03 auditing this table against its own rule). **RCP trip / loss of flow (E02)** cites
+*"flow → DNB margin"* — and **DNB margin is not a Tier A coupling**. The nearest row, A3, is about
+*subcooling* margin, which is not the same quantity. So E02 sits in Core on prototypicality and on
+having a real automatic trip, not on the stated test. Two honest resolutions: add a Tier A row for
+flow → DNB margin (it is modelled — `dnb_margin_c` is a config constant and `hFcEffective`
+collapses on it), or say plainly that Core admits a casualty on **procedure** grounds as Tier B
+does. **Not resolved here** — it is a question about the ruling, not a typo in it.
+
+**The Runnable? column above went stale within hours of the ruling** — three checklists were built
+on 2026-08-03 (`pwr_turbine_trip`, `pwr_sgtr`, `pwr_seal_leak`) and this table still said "no".
+It is the same shape as the #224 trap: a hand-maintained list beside the artifact it describes.
+**Update it in the change that builds the checklist**, or `run_procdocs`' own coverage report is
+the only thing telling the truth.
 
 **The two additions are measured, and the measurement is why they are Core.** **ATWS** is the only
 reachable demonstration of the pressurizer **code safeties**: a real transient cannot reach them,
