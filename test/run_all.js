@@ -621,7 +621,11 @@ var BASELINES = {
   // the runback saves the 15 % steam line break on 3 and is NEUTRAL on the 4th (seed 7, where
   // the casualty scrams at 66 s with and without it). Nothing else asserted that a protection
   // action which takes load off cannot bring a trip FORWARD, which is the safety property.
-  'run_otdt.js':           { code: 0, score: '45checks 0failed' },
+  // 45 -> 46 (2026-08-03): the runback was rebuilt to the SOURCED law (WTSM 11.3, ML11223A295)
+  // and the extra check asserts its QUANTISATION — load lands on 5 % multiples because the real
+  // EHC steps 5 % at 200 %/min then holds 28.5 s. A continuous ramp cannot land on that grid, so
+  // this check fails on the implementation it replaced, which the old '< 90 MWe' band could not.
+  'run_otdt.js':           { code: 0, score: '46checks 0failed' },
   // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
   // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
   // "## [Unreleased]" to the version) was skipped for Alpha 1.10.0 AND 1.11.0 — 434 lines of

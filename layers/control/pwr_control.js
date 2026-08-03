@@ -1159,37 +1159,38 @@
     // DECLARED DEPARTURE: the real signal is *cyclic* (discrete pulses on the EHC load
     // reference); this is a continuous ramp. Same effect, and it reads better on a number
     // box that would otherwise jump. Rate 1.0 %/s of rated = the measured 2 %/2 s.
-    var _rbRate = 1.0;                                   // % of rated per second
+    // SOURCED LAW, WTSM 11.3 (ML11223A295): 5 % of rated delivered at 200 %/min (so 1.5 s),
+    // then hold 28.5 s, then re-assess and repeat while the condition stands. The 3 % trigger
+    // is the same C-3/C-4 line as the rod stop, from WTSM 12.2.
     ['otdt', 'opdt'].forEach(function (which) {
       PWR_RUNBACKS.push({
         id: which + '_runback',
         instrument: which + '_margin', direction: 'low',
         setpoint: _stop, clears_above: _stop * 2,
-        // DECLARED DEPARTURE — a 10 s persistence delay, which WTSM does not describe. It is
-        // not a refinement, it is what makes the function buildable here. MEASURED: an
-        // out-of-duty 30 % load step peaks at 109.1 % of rated ΔT and a 15 % steam line break
-        // at 109.8 % — indistinguishable to ANY ΔT setpoint, so no K4 separates them. Their
-        // DURATIONS do: 4.5 s of continuous dwell below the stop against 24.5 s. 10 s sits
-        // between with room on both sides. On its real design duties the plant is nowhere
-        // near this — the WTSM 8.1.1 10 % step peaks at 103.0 % — so what the delay actually
-        // buys is immunity to a manoeuvre no real operator would make in one motion.
-        // 8.5 s, CENTRED IN A MEASURED GAP rather than picked round. Accumulated dwell over
-        // four seeds: worst NORMAL ramp 6.40 s, worst 15 % steam line break 10.58 s — a gap of
-        // 4.18 s, and 8.5 sits ~2.1 s from each edge. It was 10.0, which left only 0.58 s on
-        // the CASUALTY side: on an unlucky seed the runback would never engage, the save would
-        // vanish, and no gate would notice because the probe ran at the comfortable seed.
-        // Widening the dwell-reset band does NOT help — measured, resetting above 10 instead of
-        // `clears_above` 6 lets the normal ramp accumulate 8.84 s too and SHRINKS the gap to
-        // 1.82 s. This band is already the best of the four tried.
-        // CAVEAT, stated because the sample is small: 4 seeds. The dwell is noise-driven and
-        // varies 10.58 → 248 s on the casualty across them, so a seed outside this sample could
-        // still land under 8.5. `run_otdt` pins the WORST seed measured (7), not the best.
+        step_pct_of_rated: 5.0,      // "a 5% load change"
+        step_s: 1.5,                 // "at 200%/min for 1.5 sec"
+        cycle_s: 30.0,               // "then holds the load constant for 28.5 sec" (1.5 + 28.5)
+        // DECLARED STOPGAP, NOT PART OF THE SOURCED LAW, and it has a removal condition.
+        // WTSM 11.3 describes no delay: the real runback acts as soon as the 3 % condition is
+        // met, because on a real unit that condition cannot be reached by an operator load
+        // change at all -- §11.3 shows load moved by selecting a TARGET and a RATE on a
+        // thumbwheel ("the system electronically changes the reference load from 50% to 100%
+        // at 1%/min"). This plant has NO load rate limit: `set_load_target` applies instantly,
+        // so a player can step 70 -> 100 MW in one action, which peaks loop dT at 109.1 % of
+        // rated -- indistinguishable from a 15 % steam line break at 109.8 % -- and the runback
+        // correctly fires on it. Measured without this delay: the normal ramp takes two 5 %
+        // steps to 90 MWe.
+        // DELETE THIS the moment a load rate limit lands (filed separately): the rate limit
+        // removes the dT excursion, and then the cycle alone is the restraint the source
+        // describes. The maximum load rate is NOT sourced -- §11.3 gives 1 %/min as an example
+        // of a selectable rate, not a limit -- which is why the rate limit is a separate,
+        // evidence-gated change rather than a number invented here.
         persist_s: 8.5,
-        rate_per_s: _rbRate * (RD.PWR_CONFIG.turbine.mwe_rated / 100),
+        rated: RD.PWR_CONFIG.turbine.mwe_rated,
         floor: 0,
-        // Per-plant callbacks keep the kernel plant-agnostic (HR3) — it never names a
-        // command or a state field. `read` is command READ-BACK of a setpoint the layer
-        // itself issues, not a sensed quantity, so HR1 is untouched.
+        // Per-plant callbacks keep the kernel plant-agnostic (HR3). `read` is command
+        // READ-BACK of a setpoint the layer issues, so HR1 is untouched; re-reading it every
+        // step is deliberate, so an operator who types a higher load has it walked back down.
         read: function (ctx) { return ctx.true_state ? ctx.true_state.load_target_mwe : null; },
         command: function (mwe) { return { action: 'set_load_target', mwe: mwe }; }
       });
