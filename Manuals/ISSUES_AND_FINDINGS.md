@@ -61,7 +61,7 @@ Sources include `Diagnostic/SPEC_AUDIT_2026-07-16.md` and campaign playtest note
 
 | ID | Sev | Finding | Operator impact | Status |
 |----|-----|---------|-----------------|--------|
-| I-17 | M | **Instruments can lie; automation reads instruments.** Failed Tavg or PZR level fools AUTO rods / CVCS. | E20/E21 and Automate cautions emphasize MAN on bad sensors. | Noted in manuals |
+| I-17 | M | **Automation acts on what it reads, not on the plant.** A failed Tavg or PZR level channel drives AUTO rods / CVCS the wrong way with full confidence — the controller's coupling to its input is the point, not the deception. | E20/E21 and Automate cautions emphasize MAN on bad sensors. | Noted in manuals |
 | I-18 | M | **AFW level-hold** historically read true SG level inside engine (HR1 tension). Audit claimed fix to instrument path — if regressed, AFW would not be fooled by stuck level the way a real controller would. | E12 still says verify **level response**, not run lights. | Re-verify if training on sensor failure + AFW |
 | I-19 | L | **SG imbalance annunciator** may use true power in load_mode (coaching indicator). | Filling/draining cue is advisory. | Open (minor) |
 | I-20 | M | **ESF one-shot latch:** AFW/HPI manual action disarms AUTO until re-arm; re-arm may fire immediately if condition stands. | PWR-T12 documents this. | Noted in manuals |

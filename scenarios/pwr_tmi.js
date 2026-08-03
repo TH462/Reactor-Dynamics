@@ -2,8 +2,12 @@
  * pwr_tmi.js — Three Mile Island (1979), the PWR flagship scenario (M6 §14.1).
  *
  * An accident of INFORMATION: a relief valve sticks open while its indicator
- * reads closed. The lesson is to distrust a single indication and read the
- * parameters that reveal the true state (subcooling margin above all).
+ * reads closed. The lesson is that the plant's own couplings — pressure against
+ * temperature, subcooling margin above all — keep telling the truth after one
+ * indication stops, and reading them is what resolves the contradiction. It is
+ * a Tier C payoff of the dynamics curriculum, NOT a lesson about distrusting
+ * gauges: you cannot see that an instrument is lying without already knowing
+ * what the plant should be doing (`Blueprint/DESIGN_CRITERIA.md` §6.3).
  *
  * Beats follow the M6 §14.1 outline and the trajectory proven by the engine's
  * own TMI flagship suite: loss of feedwater with AFW blocked (the historical

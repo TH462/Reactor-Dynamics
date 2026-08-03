@@ -3,9 +3,8 @@
 **Plant:** Pressurized Water Reactor (PWR)  
 **Trainer:** Reactor⚛️Dynamics educational plant simulator  
 **Document set:** Commercial-style operating manuals for training use  
-**Revision:** 12  
-**Date:** 2026-08-02  
-**Date:** 2026-07-30  
+**Revision:** 13  
+**Date:** 2026-08-03  
 
 ---
 
@@ -110,9 +109,13 @@ Reactivity (pcm, Δk/k), startup rate (DPM), counts (cps), currents (A) and time
 
 Two things stay SI, deliberately: **engine command payloads** (`cmd: { mpa: 8.23 }` is an argument, not a reading) and **developer comments** in those source files.
 
-### Instruments vs truth
+### What these manuals are teaching
 
-**You operate from instruments.** Gauges, alarms, and automatic protection read **instrumented** values (with lag, noise, and possible failure). True physical state is available only as an explicit diagnostic overlay. This is deliberate — it is how Three Mile Island is teachable.
+**Plant dynamics first** — how the components are coupled and what moves when: power follows load, Tavg is what the rod controller trades against, level is not inventory, the steam generator is the primary's only heat sink. **Operating procedure is the second goal**, not a lesser one: some systems reveal no coupling at all and are documented here because a real plant's procedure needs them.
+
+### Instruments
+
+**You operate from instruments.** Gauges, alarms, and automatic protection read **instrumented** values (with lag, noise, and possible failure). True physical state is available only as an explicit diagnostic overlay, exactly as in a real control room. A failed channel therefore misleads every layer above it, which is what makes Three Mile Island reproducible in `08_ACCIDENT_TMI.md`. **This is a statement about model fidelity, not about emphasis** — chasing lying gauges is not what the manual set is for, and you cannot recognise one without first knowing what the plant should be doing.
 
 ### Control names
 

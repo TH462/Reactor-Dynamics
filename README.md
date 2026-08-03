@@ -57,8 +57,8 @@ not what the simulator is about.
   maneuvers, cooldown, casualty response), culminating in a story module set during the
   night shift of March 28, 1979.
 - **Commercial-format operator manuals** built into the simulator's Training tab.
-- **Break it on purpose** — inject stuck valves, failed sensors, and pump trips, then
-  diagnose the casualty from a board that isn't telling you the whole truth.
+- **Break it on purpose** — inject stuck valves, failed sensors, and pump trips, then work out
+  what the plant is actually doing from the couplings that still hold.
 
 **Status:** the **PWR** control room is playable today (functional alpha). The BWR and
 RBMK physics engines are complete; their control rooms are under construction.

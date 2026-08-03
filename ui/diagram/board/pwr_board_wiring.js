@@ -1460,8 +1460,8 @@
     // pointer cursor and emitted onControl('toggle') — it was built to be operated and
     // then never wired, so the click landed on nothing. Opening uses the OPERATOR's
     // command (`open_porv_manual`), which a scenario can lock out; closing uses the shared
-    // `close_porv`, deliberately, because that is the TMI-2 action and a stuck valve
-    // defeating it is the lesson.
+    // `close_porv`, deliberately, because that is the TMI-2 action and a stuck valve must
+    // be able to defeat it. Do not route this around the failure.
     porv: function (open) { cmd({ action: open ? 'open_porv_manual' : 'close_porv' }); }
   };
   // EVERY pump renders art-only (no built-in toggle) — pump control lives entirely in the

@@ -72,7 +72,9 @@ accident runs on; only the situation changes.
 >
 > **Nothing below is retracted as ARCHITECTURE.** The separation is real, non-negotiable, and
 > load-bearing — it is what makes failure scenarios possible at all, and a healthy channel's lag
-> shapes every transient with nothing failed. What was wrong was the claim of *primacy*, and
+> shapes what the operator sees with nothing failed (measured: **4.00 s** behind the plant on
+> `tavg` during A1 — §6.3 has the table, and the size belongs to the channel, not the transient).
+> What was wrong was the claim of *primacy*, and
 > the ordering reason is in `DESIGN_CRITERIA.md` §6.3: you cannot perceive a lying instrument
 > without already knowing what the plant should be doing, so this idea depends on the dynamics
 > rather than outranking them.
@@ -134,11 +136,19 @@ scenario the PORV indicator shows closed; the alarm that would fire on an open P
 because it reads the indicator. The pressure is falling, which fits a reseated valve — a coherent
 story the instruments are telling. A user may not notice anything wrong for a minute or two. When
 they do — when the subcooling margin falls in a way that does not fit the story — there is a real
-moment of cognitive dissonance. **That dissonance is the lesson.** The simulator must not add a
-hint, a subtle warning, or make the stuck indicator visually distinguishable from a normal one. The
-point is that it *wasn't* distinguishable. Build something that can genuinely mislead an attentive
-user, and trust that the experience of being misled, then understanding why, teaches more than any
-explanation.
+moment of cognitive dissonance. The simulator must not add a hint, a subtle warning, or make the
+stuck indicator visually distinguishable from a normal one. The point is that it *wasn't*
+distinguishable. Build something that can genuinely mislead an attentive user, and trust that the
+experience of being misled, then understanding why, teaches more than any explanation.
+
+**But read what actually resolves that moment, because it is not distrust — it is the dynamics.**
+The user notices *"the subcooling margin falls in a way that does not fit the story"*, and **the
+story is the coupling between pressure, temperature and margin**. Instrument deception is therefore
+a **Tier C payoff of the dynamics curriculum, not the product's premise** *(OWNER, 2026-08-02: "I
+don't want to focus on instruments lying. It will come up in failure scenarios but I dont know if
+it should be a major focus.")*. Taught before the couplings it yields generalised distrust of gauges
+instead of diagnosis by cross-check. This section is a requirement on **fidelity** — do not soften a
+failed channel — not a statement about what the simulator is for. See `DESIGN_CRITERIA.md` §6.3.
 
 **The comparison scenarios are the emotional center of the product.** When Chernobyl runs on the
 pre-1986 reactor, the user presses the emergency shutdown — and the power *goes up*. It briefly,
@@ -238,9 +248,18 @@ which the build blueprint states tersely.*
   (HR2); the control/failure layer makes every protective decision from **instruments only** (HR1);
   the instructor scripts experience without touching physics; the UI shows the operator's view and
   reaches the engine only through commands (HR5).
-- **Why instruments-vs-truth is the keystone.** It is the one rule whose violation makes the whole
-  product pointless — break it (let a trip read true state) and the accidents become impossible to
-  reproduce. Hence its prominence and the dedicated protection-boundary checks in the Test Runner.
+- **Why instruments-vs-truth is load-bearing (HR1) — a rule about the MODEL, not the premise.**
+  Break it (let a trip read true state) and the accident scenarios become impossible to reproduce,
+  and **a healthy channel's lag is itself part of the dynamics** — measured, `tavg` (lag 4.0 s)
+  puts the gauge **4.00 s behind the plant during A1 itself**, with no failure injected anywhere.
+  The size of that belongs to the channel, not the transient: `power_range` (0.1 s) and
+  `primary_pressure` (0.5 s) stay within a sample even through a scram and a LOCA
+  (`DESIGN_CRITERIA.md` §6.3 has the table). That is why it earns dedicated protection-boundary
+  checks in the Test Runner. And it governs the **seam, not the roster** — which instruments exist
+  and what they are like is plant design (`CONTEXT.md` §3 HR1). It is **not** the product's educational premise:
+  the premise is plant dynamics (§2, `DESIGN_CRITERIA.md` §6). An earlier revision of this bullet
+  called it "the keystone… the one rule whose violation makes the whole product pointless", which
+  inverted the two.
 - **Why data, not hardcoded logic (HR3/HR8).** Plant-specific numbers live as structured
   configuration *in code* so the three plants share one set of machinery, and so a future
   externalization is an *extraction*, not a redesign. v1 keeps parameters in JavaScript (no external
@@ -395,9 +414,10 @@ A single place to see where v2 could go, drawn from the catalog above and the ex
 
 ## 10. The Principle Behind the Boundary
 
-v1's job is to prove the concept thoroughly: three real reactor types, each behaving correctly, each
-hosting its famous accident faithfully, with the instrument-versus-truth principle that makes those
-accidents meaningful fully realized, wrapped in an interface that teaches both beginners and
+v1's job is to prove the concept thoroughly: three real reactor types, each behaving correctly — the
+couplings between their components legible and demonstrable (`DESIGN_CRITERIA.md` §6.3) — each
+hosting its famous accident faithfully, with the instrument layer (HR1) modelled honestly enough
+that those accidents reproduce, wrapped in an interface that teaches both beginners and
 enthusiasts. Everything deferred here is an extension of a system that v1 establishes. **Build the
 core completely and well; resist the pull to build outward before the core is solid.** The deferred
 items will be far easier to add to a finished, coherent v1 than to a v1 that tried to do everything

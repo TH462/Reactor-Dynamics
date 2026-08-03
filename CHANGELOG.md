@@ -21,6 +21,59 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **HR1 stays a Hard Rule, and now says which half of the question it answers** *(OWNER RULING,
+  2026-08-03: "Apply the hr1 seam/roster sentence. Change design criteria as you suggest.")*.
+  Added to `CONTEXT.md` §3: **HR1 governs the SEAM, not the ROSTER** — which quantities have
+  instruments, their lag/noise/failure characteristics, and how many channels a trip votes are
+  **plant design**, decided by `DESIGN_CRITERIA.md`'s four questions, and **a missing instrument
+  is a design gap to be filed, never an HR1 exception.** It kept its place on §3's own admission
+  test — *"can this be violated silently?"* — which it passes on measured history: #220
+  (`above_p9` deciding three protection functions off true state with **all 34 runners green**),
+  #247 (the low-flow trip reading true pump flow for two years) and #289 (a new `defaultOn`
+  channel caught by the gate on 2026-08-01). The split exists because #247 was filed as *"the one
+  documented HR1 exception"* and was not one — it was an instrument nobody had built, and the
+  exception mechanism made a plant-design omission look settled.
+- **`DESIGN_CRITERIA` §6.3's healthy-channel claim is measured now, and it was overstated.** It
+  read *"a healthy channel's lag … changes what the operator sees during **every** transient in
+  Tier A"*. Measured full stack, seed 42, nothing failed: the shift belongs to the **channel**, not
+  the transient. `tavg` (lag 4.0 s) puts the gauge **4.00 s behind the plant during A1 itself** —
+  the slowest case measured — while `power_range` (0.1 s) stays within a sample through a **scram**
+  and `primary_pressure` (0.5 s) through a **20 % LOCA crossing the 1800 psi reactor trip**. The
+  fast casualties show no timing shift at all. *Value* divergence is the effect that does track
+  transient speed (that LOCA reaches 414 psi and 25.6 °F). Replaced with the table.
+- **The simulator's stated premise is PLANT DYNAMICS, and eleven documents said otherwise**
+  *(OWNER DIRECTIVE, 2026-08-03: "THR STATED PREMIS IS NOT INSTRUMENT VS TRUTH THE PREMIS IS TO
+  TEACH PLANT DYNAMICS!!! We must purge the idea of the instruments vs truth premise from all
+  documents.")*. `DESIGN_CRITERIA.md` §6 had already ruled it the day before — dynamics is Tier A,
+  procedure is a second goal, and instrument deception is explicitly **not** a Tier A objective —
+  but the older framing was still standing in the files that agents and players actually read.
+  Purged from: `CLAUDE.md` (*"the dissonance is the lesson"*), `CONTEXT.md` §"what it must feel
+  like", `DESIGN_COMPANION.md` ×3 (including *"why instruments-vs-truth is **the keystone** … the
+  one rule whose violation makes the whole product pointless"*, which inverts the two),
+  `M6_instructor.md`, the `M8` HMI spec, `Manuals/README.md`, `Manuals/ISSUES_AND_FINDINGS.md`
+  I-17, and `PWR_CURRICULUM_REDESIGN.md`, whose §5.4 proposed an entire new campaign act
+  (*"The Instruments Lie"*) as *"the one most aligned with what the project is for"* — now marked
+  **RULED AGAINST**, with its failure lessons redirected into Act V.
+- **Three player-facing surfaces changed with it**, which is the half that matters. The TMI-2
+  Part 2 briefing opened *"One rule runs this whole simulator, and tonight is its showcase"*; it
+  now names the couplings that catch the lie (P–T, level–Tavg, subcooling) and says the
+  relationships are what tell the truth. The Help panel's instrument section is now preceded by
+  **"Watch what moves together"**, which states the Tier A couplings outright. And the Failures
+  tab's Advanced-instrument-failure copy claimed *"every serious accident in this simulator turns
+  on an operator believing an instrument"* — **false on its own terms**, since `CONTEXT.md`
+  describes Chernobyl as an accident of *design* and Fukushima as one of *sustained support*.
+- **HR1 IS UNCHANGED AND STAYS EXACTLY AS IT IS.** Gauges, alarms and automatic protection still
+  read instrumented values; true state is still a diagnostic overlay only; a failed channel still
+  misleads every layer above it, and nothing was softened. `DESIGN_CRITERIA.md` §6.3 says so
+  itself: protection reading instruments is what makes the failure scenarios possible at all, and
+  **a healthy channel's lag is itself part of the dynamics**. What was retired is the *framing*
+  that made deception the point — the ordering fact behind the ruling being that you cannot
+  perceive a lying instrument without already knowing what the plant should be doing.
+- Manual set **Rev 12 → 13** (`Manuals/README.md` only; no setpoint, procedure, limit or number
+  moved anywhere in the set). Its stray duplicate `**Date:** 2026-07-30` header line — stale, and
+  invisible to `run_manual_rev` because the check reads the first match — was removed in passing.
+
 ### Added
 - **The Mode 3 → Mode 5 cooldown is a runnable checklist now — and building it found a step the
   written procedure was missing** (#310). PWR-N15 was one of 48 documented procedures with no

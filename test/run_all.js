@@ -297,6 +297,17 @@ var BASELINES = {
   // recorded as a SELECTION ("selected 'Add the program ceiling' from four options put to
   // him"), not dressed as verbatim words, because that is what it was. This comment's
   // standing point again: the code change moved NOTHING here; the write-up moved it.
+  // 100 -> 104 (2026-08-03b, HR1 seam-vs-roster): four more citation sites for the ruling that
+  // kept HR1 binding while handing the instrument ROSTER to DESIGN_CRITERIA. One of them is the
+  // RULE TEXT itself in CONTEXT.md §3 — this gate scans tracked markdown, and §3 is tracked, so
+  // editing a Hard Rule to carry its own dated quote moves the number. BINDING rules stay at ten.
+  // 95 -> 100 (2026-08-03, the premise purge): the instruments-vs-truth *framing* was removed
+  // from eleven documents and three player-facing surfaces, and every one of the five new
+  // citation sites is a write-up carrying the owner's words — CLAUDE.md, CHANGELOG,
+  // TUNING_LOG, BUILD_DECISIONS, PWR_CURRICULUM_REDESIGN. The behavioural change is ZERO:
+  // HR1 did not move, and `DESIGN_CRITERIA.md` §6.3 is explicit that it must not. Note the
+  // count was measured TWICE — 98 with the source/spec edits in and 100 after the logs — which
+  // is the standing warning three comments up, arriving on schedule.
   // ---- run_hardrules: BOTH branches moved this, and NEITHER figure is right ----------
   // develop took it 58 -> 60 -> 63 (#289) and workbench 43 -> 77 -> 80 (#290, #238), so a
   // mechanical pick of either side ships a drift. The number below is MEASURED on the merged
@@ -345,7 +356,7 @@ var BASELINES = {
   // 90 -> 95 on 2026-08-02: `Blueprint/DESIGN_CRITERIA.md` (the four inclusion criteria, its §6
   // per-plant curriculum, the priority ruling) plus the CLAUDE.md pointer and the
   // DESIGN_COMPANION §2 re-scope, each carrying the owner's verbatim words.
-  'run_hardrules.js':      { code: 0, score: '95checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '104checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

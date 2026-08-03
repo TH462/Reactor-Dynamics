@@ -386,8 +386,10 @@ marks. This keeps the commentary correct regardless of the player's display choi
 ### 14.1 Three Mile Island — `scenarios/pwr_tmi.js`
 Establishes a normal PWR, then runs the sequence: feedwater lost → reactor trips → PORV opens and
 sticks while its indicator reads closed → subcooling erodes while the indicator lies → a decision
-point: run injection (recovery) or not (damage). It teaches the operator to distrust a single
-indication and read the parameters that reveal the true state.
+point: run injection (recovery) or not (damage). It teaches the operator to read the plant's own
+couplings — pressure against temperature, subcooling above all — and to trust those when a single
+indication stops agreeing with them. Note the ordering: this is a **Tier C payoff of the dynamics
+curriculum, not a lesson about distrusting gauges** (`DESIGN_CRITERIA.md` §6.3).
 
 > ***(As built)*** the shipped `scenarios/pwr_tmi.js` supersedes the inline sketch below. It keeps
 > the same arc but adds the historical AFW blockage (injects `afw_failure` alongside

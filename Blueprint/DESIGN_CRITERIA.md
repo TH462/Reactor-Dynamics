@@ -324,9 +324,30 @@ to Tier C, where TMI already carries it as *a failure of information*.
 **HR1 IS UNAFFECTED AND STAYS EXACTLY AS IT IS.** This is a statement about teaching emphasis,
 not about the model. Two reasons it must not be read as licence to soften the instrument layer:
 protection reading instruments rather than truth is what makes the failure scenarios possible at
-all, and **a HEALTHY channel's lag is itself part of the dynamics** — it changes what the
-operator sees during every transient in Tier A with no failure injected anywhere. The
-observation layer is in scope; *distrust* as a headline lesson is not.
+all, and **a HEALTHY channel's lag is itself part of the dynamics**, with no failure injected
+anywhere.
+
+**The second reason is MEASURED, and the size of it belongs to the CHANNEL rather than to the
+transient** *(2026-08-03, full stack, seed 42, healthy channels throughout — an earlier draft of
+this paragraph said "changes what the operator sees during **every** transient in Tier A", which
+is not what the plant does)*. Timing the moment the indicated value crosses a threshold against
+the moment the plant does:
+
+| case | channel (lag) | gauge is behind |
+|---|---|---|
+| **A1 load drop 100 → 60 MWe, Tavg through 590 °F** | `tavg` (**4.0 s**) | **+4.00 s** |
+| A1 load drop, power through 80 % | `power_range` (0.1 s) | +0.00 s |
+| manual scram from HFP, power through 50 % | `power_range` (0.1 s) | +0.00 s |
+| 20 % LOCA, pressure through the **1800 psi reactor trip** | `primary_pressure` (0.5 s) | +0.00 s |
+
+**The slow demonstration shows the largest shift and the fast casualty shows none**, because
+`tavg` carries 40× `power_range`'s lag. So the claim holds squarely for **A1 — four seconds on
+the very variable A1 is about** — and does not generalise to every transient or every channel.
+Two effects are in play and they are not the same: **timing shift** follows the channel's time
+constant, while **value divergence** does follow transient speed (the LOCA reaches 414 psi and
+25.6 °F of it). Cite the right one.
+
+The observation layer is in scope; *distrust* as a headline lesson is not.
 
 **A1's numbers reconcile, and the arithmetic is itself the lesson.** Tavg rose 12.6 °C against a
 measured MTC of **−26.8 pcm/°C** → **−338 pcm** from the moderator. The fuel *cooled* 693 → 551 °C

@@ -3556,8 +3556,8 @@
       sel: '.alarm-panel',
       place: 'left',
       title: 'Alarms',
-      body: '<p>Annunciators read instruments (and can lie if a channel fails). ' +
-        'Click a tile to acknowledge. Empty is good news.</p>'
+      body: '<p>Annunciators read instruments, so a failed channel can raise one — or ' +
+        'withhold one. Click a tile to acknowledge. Empty is good news.</p>'
     },
     {
       sel: '.strip-chart',

@@ -20,6 +20,147 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03b (HR1 revisited: seam vs roster, and the lag claim measured — workbench)
+
+The owner asked whether HR1 should be a Hard Rule at all or part of designing the plant. Answer:
+both, and they were tangled *(OWNER RULING, 2026-08-03: "Apply the hr1 seam/roster sentence.
+Change design criteria as you suggest.")*.
+
+**It stays binding on §3's own admission test — *"can this be violated silently?"* — not on
+importance.** Rules argued from importance rot; this one is argued from three measured incidents.
+#220: `above_p9` decided three protection functions from `true_state.power_pct` with **all 34
+runners green**, and the fix moved nothing until the channel was failed. #247: the low-flow
+reactor trip read true pump flow for **two years**. #289, three days ago: a new `defaultOn`
+channel read `true_state.power_pct` and `run_hardrules` red-carded it. HR1 also has one of the
+few working guards — HR2's is *none*, HR4's *partial*.
+
+**The seam/roster sentence, and why #247 is its warrant.** HR1 was doing two jobs: the **seam**
+(protection decides from the instrument layer, never reaching around it — a layering invariant
+like HR2/HR5) and the **roster** (which quantities have instruments, their characteristics, how
+many channels vote — plant design). The gate fixed that conflation in 2026-07 with the
+EXCEPTION/DEBT split; **the rule text never did**, and still said a missing instrument was "a
+declared exception". #247 walked through exactly that door: *"carried for two years as 'the one
+documented HR1 exception'; it was not an exception, it was an instrument nobody had built."*
+Now: *a missing instrument is a design gap to be filed, never an HR1 exception*, and the roster
+goes through `DESIGN_CRITERIA`'s four questions.
+
+**The measurement inverted my own hypothesis, and corrected a claim I had already given the
+owner.** I predicted the healthy instrument layer would be transparent on slow transients and
+visible on fast ones, and recommended measuring a scram and a LOCA to find the threshold. **There
+is no threshold — the timing shift belongs to the CHANNEL.** Full stack, seed 42, nothing failed:
+
+| case | channel (lag) | gauge behind |
+|---|---|---|
+| **A1 load drop 100 → 60 MWe, Tavg through 590 °F** | `tavg` (**4.0 s**) | **+4.00 s** |
+| A1 load drop, power through 80 % | `power_range` (0.1 s) | +0.00 s |
+| manual scram from HFP, power through 50 % | `power_range` (0.1 s) | +0.00 s |
+| 20 % LOCA, pressure through the 1800 psi trip | `primary_pressure` (0.5 s) | +0.00 s |
+
+**The trap, and it is the reusable part:** I first timed A1 on `power_range` and reported "0.0 s,
+the instrument layer is nearly transparent" — but A1's subject variable is **Tavg**, which carries
+**40× the lag**. *Time the channel the lesson is about, not the one that is easy to threshold.*
+Two distinct effects, and §6.3 was conflating them: **timing shift** follows the channel's time
+constant, **value divergence** follows transient speed (the LOCA reaches 414 psi / 25.6 °F while
+showing no timing shift at all). §6.3's *"every transient in Tier A"* replaced by the table.
+
+**And the weaker the lag claim gets, the stronger the case for the rule** — a healthy channel is
+indistinguishable from truth on three of four cases, so a trip mis-wired to `true_state` behaves
+identically in normal operation. The defect class cannot be found by playing the sim, only by a
+gate. That is the admission test restated as a measurement.
+
+Probe: `inbox/probe_hr1_lag.js` (local, gitignored).
+
+---
+
+## Session log — 2026-08-03 (the premise purge, and #311's "unrunnable" evidence pass ran — workbench)
+
+Two things, and they are connected only by having both been believed on somebody else's say-so.
+
+**1. The instruments-vs-truth premise is retired from the documents** *(OWNER DIRECTIVE,
+2026-08-03: "THR STATED PREMIS IS NOT INSTRUMENT VS TRUTH THE PREMIS IS TO TEACH PLANT
+DYNAMICS!!! We must purge the idea of the instruments vs truth premise from all documents.")*.
+`DESIGN_CRITERIA.md` §6 had ruled this on 2026-08-02; the purge is the rest of the tree catching
+up. Eleven documents plus three player-facing surfaces — full list in `CHANGELOG.md`
+[Unreleased]. **The trap worth recording is the one I walked into myself an hour earlier**: I
+wrote *"on a plant whose stated premise is instruments-versus-truth"* into a recommendation, and
+I got it from **`CLAUDE.md`'s own Domain conventions block**, which still read *"Never soften the
+gap — the dissonance is the lesson"* a day after the ruling. A ruling that does not reach
+`CLAUDE.md` has not landed, because that file is the one every agent reads on every turn and it
+outvotes a Blueprint doc nobody opened.
+
+**The scope call: HR1 is untouched.** `DESIGN_CRITERIA.md` §6.3 states it outright — *"HR1 IS
+UNAFFECTED AND STAYS EXACTLY AS IT IS"* — and gives the two reasons: protection reading
+instruments is what makes the failure scenarios possible at all, and a **healthy** channel's lag
+is itself part of the dynamics. So this was surgery on *framing*, never on the model, and the
+distinction has to survive in the files or the next pass deletes the instrument layer. Every
+premise site was rewritten to subordinate the deception to the coupling rather than deleted:
+*you cannot perceive a lying instrument without already knowing what the plant should be doing.*
+
+**One site was factually wrong, not merely off-premise.** The Failures tab told players *"every
+serious accident in this simulator turns on an operator believing an instrument instead of
+cross-checking it against another one."* `CONTEXT.md` describes Chernobyl as an accident of
+**design** and Fukushima as one of **sustained support**. The premise had drifted far enough to
+start contradicting the product's own scope document.
+
+**Left deliberately:** `CHANGELOG.md:1530` and this log's own 2026-07-2x entries, which assert
+the old premise inside historical entries — that is RECORD, and rewriting it would falsify what
+was believed at the time. `M7_test_runner.md` §3.2 and `Gameplay_instructor_design.md` keep the
+instrument-vs-truth wording because both are describing the **architecture** (HR1 verification,
+layer boundaries), which is exactly what stays. `scenarios/bwr_isolation.js` says players should
+*"distrust their level gauge"* — that one is **doubly wrong** (BWR shrink/swell is real physics;
+the gauge is not lying) but BWR is ON HOLD, so it is flagged, not fixed.
+
+**2. #311's evidence pass was reported unrunnable and ran here in about four minutes.** The
+comment on the issue says every route to `nrc.gov` is refused by egress policy. That is true of
+**that agent's sandbox**, not this machine. The failure that matters is in our own memory recipe:
+`web.archive.org/web/2023id_/<url>` resolves to whichever snapshot is nearest 2023, and for
+ML11223A301 that is a **capture of NRC's Akamai denial page** — 404 bytes of `Access Denied`
+returned with `http=200` on the redirect chain, i.e. a fetch that looks like it worked. Query CDX
+first and take a snapshot whose `statuscode` is 200 **and** `mimetype` is `application/pdf`
+(20220126100937 and 20250206000813 both are); verify with `head -c 8` → `%PDF`. Memory
+`pwr-prototypicality-sources` corrected; extracted text in `inbox/sources/` (local).
+
+**What WTSM 12.2 settles for #311, and what it does not.** Settles: both setpoint equations
+verbatim, `T′ = 584.7 °F`, `P′ = 2235 psig`, the rod stop **and turbine runback** at 3 % below
+setpoint (twice — §12.2.3.7/.8 and Table 12.2-2 rows C-3/C-4), *"No Interlocks"* on both trips,
+and the design-basis event lists (OPΔT explicitly includes **steamline break**). Does **not**
+settle, and never will: K1–K6 are *"manually adjusted preset"* and τ₁/τ₂/τ₃ are named but never
+valued — Table 12.2-1 lists both setpoints as *"Variable (calculated)"*. They are plant Tech Spec
+Table 2.2-1 / COLR values. **The branch's departure note claiming "those τ values are in
+ML11223A301, which could not be fetched" is wrong on both halves**, and waiting on that document
+costs the plant its two core-protection trips indefinitely.
+
+**`pwr_lof` diagnosed — the blast-radius comment measured the wrong casualty.** It ran a bare
+`rcp_trip` (unmoved, scrams `rcs_flow low` at 7.5 s). The mission injects `rcp_trip` **and** sticks
+`rcs_flow` at 100 % in the same beat, which is the entire lesson. Measured full stack, seed 42:
+flag OFF → scram **58.5 s** `primary_pressure high` at 2466 psi (17.00 MPa), DNB onset 30.0 s,
+peak core void 0.628, fuel 1713 °F (934 °C) — reproducing the trajectory in the scenario header,
+so the probe is validated against the record. Flag ON → scram **24.5 s** (2.5 s after the pump)
+on `opdt_margin low` at 2241 psi (15.45 MPa), DNB **never**, peak void 0.000, fuel unmoved at
+1280 °F (693 °C). **The mission does not merely lose its lesson, it loses its ENDING**: the
+`boiling` beat's `core_void > 0.02` trigger never fires, so the automatics branch reaches no
+`level_complete` at all — which is why `run_campaign` shows 2 failures and not 3, the two
+`if (doneB)` checks never executing. And §12.2.3.12 says the mission is prototypically stale
+either way: a real plant has **three** diverse loss-of-flow trips — 2/3 low flow per loop, **RCP
+breaker position (≥2 breakers open)**, and **RCP bus undervoltage**. This plant has one, on one
+instrument. **Neither breaker trip exists here** — unfiled, and arguably a bigger finding than
+#311 itself.
+
+**Also measured (my own runs, not inherited):** with the flag ON, every WTSM 8.1.1 design duty
+stays clear of the rod stop (10 % step, 5 %/min ramps both ways, 50 % step) and so does the full
+load rejection — minimum OPΔT margins 4.6 / 6.5 / 8.2 / 6.5 against a stop at 3.0. Closest normal
+approach is the **50 → 100 % instantaneous step at 3.5**, half a percent of rated ΔT from losing
+rod withdrawal. Steady HFP bottoms at 5.4. Withdrawal is refused with the authored message at
+margin 3.0; insertion is accepted. **And `git grep -i "otdt|opdt|loop_delta_t" -- ui/` returns
+NOTHING** — five derived channels exist and not one is on the board, so the flag as it stands
+would give the player two trips and a rod block driven by a setpoint they cannot see.
+
+**Gates:** `run_all` 35 runners, all at baseline except `run_hardrules` **95 → 98** (write-up
+drift — the code changes moved it by zero), plus this entry's own citations. Manual set Rev 13.
+`verify_e2e_ui` PASS 16 screenshots with the shell.html help change.
+
+---
+
 ## Session log — 2026-08-02b (#295 F1/F2 — a reactor trip was defeatable at power)
 
 **Task: the owner's rulings pass**, then *(OWNER RULING, 2026-08-02: "311: a. 221: fix as

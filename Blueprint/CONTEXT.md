@@ -42,9 +42,16 @@ at will.
 
 - **Operating a plant feels like gaining real competence** — the plant has its own physics
   and pushes back; nothing is gamified into button-pushing.
-- **Being misled by an instrument feels genuinely unsettling** — and must not be softened.
-  No hint, no subtle warning, no visual tell that distinguishes a stuck indicator from a
-  normal one. The dissonance *is* the lesson.
+- **The couplings between components are the lesson** — power follows load, Tavg is what the
+  rod controller trades against, level is not inventory, the SG is the only heat sink. The
+  player should leave able to say *what moved and why*. See `DESIGN_CRITERIA.md` §6.
+- **Being misled by an instrument must not be softened** — no hint, no subtle warning, no
+  visual tell that distinguishes a stuck indicator from a normal one. This is a **modelling
+  requirement (HR1), not the product's premise**: instrument deception is a Tier C payoff of
+  the dynamics curriculum, not a headline objective *(OWNER, 2026-08-02: "I don't want to
+  focus on instruments lying. It will come up in failure scenarios but I dont know if it
+  should be a major focus.")*. You cannot perceive a lying instrument without already knowing
+  what the plant should be doing — so the couplings come first and this follows from them.
 - **The comparison runs are the emotional center** — the same Chernobyl conditions on the
   pre- vs post-1986 RBMK, the same Fukushima blackout with vs without intervention, the
   same hands on the same controls producing opposite outcomes.
@@ -129,8 +136,18 @@ and tuning log point at these numbers, and `test/run_hr3.js` is named for one.
 **HR1 — Protection and alarms read instruments, never true state.** Every automatic
 decision a real plant makes from sensor data — every trip, every safety actuation, every
 alarm — reads the **instrument reading**. Without it a stuck indicator cannot mask a real
-condition, and TMI cannot be reproduced. Where no instrument exists for a quantity the
-control layer genuinely needs, that is a **declared exception**, not a licence.
+condition, and TMI cannot be reproduced.
+
+**HR1 governs the SEAM, not the ROSTER** *(OWNER RULING, 2026-08-03: "Apply the hr1
+seam/roster sentence.")*. Which quantities have instruments, what their lag/noise/failure
+characteristics are, and how many channels a trip votes are **plant design** — decided by
+`DESIGN_CRITERIA.md`'s four questions, not by this rule. **A missing instrument is a design
+gap to be filed, never an HR1 exception.** That distinction is written here because its
+absence cost two years: the low-flow reactor trip read true pump flow while filed as *"the
+one documented HR1 exception"*, and it was not an exception — it was an instrument nobody
+had built (#247). The exception mechanism had absorbed a plant-design omission and made it
+look settled. Where the control layer genuinely needs a quantity that has **no instrument
+and should not have one**, that is a **declared exception**, not a licence.
 **Guard:** `run_hardrules.js` — every true-state read in `layers/control/` must be listed
 with a reason, in one of two categories. An **exception** is settled (snapshot plumbing,
 command read-back). **Debt** is a real violation that is tracked and carries an issue
