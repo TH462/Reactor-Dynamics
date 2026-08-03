@@ -162,6 +162,68 @@ would have read 91 and I would have shipped a false green).
 Pointers repointed: `CLAUDE.md` (the binding block and the map table, with a **do not merge it
 back** note), `DESIGN_COMPANION.md` ×2. §7 renumbered to §6.
 
+### Tier C RULED — and the binary in the question was the thing that was wrong
+
+*(OWNER RULING, 2026-08-03: "Do as you recommend.")*, on the recommendation below. Worth recording
+that the owner had to **ask** for a recommendation — I had put "the ten, or the twenty-four?" to
+him twice as a neutral menu, which is the exact shape `CLAUDE.md` forbids.
+
+**The framing was the error.** §6.5 defined "in Tier C" as carrying three consequences — a response
+procedure, a board cue, and a **mission** — so a single in-or-out list is unusable: all 24 in
+silently orders 21 missions, a ten-row subset discards ATWS. Splitting the tier costs nothing and
+makes both halves decidable:
+
+- **CORE (11)** — expected to handle; owes procedure + cue + **runnable checklist**.
+- **COVERED (12)** — documented, injectable, free play, instructor. Owes **no mission**.
+- **Test for Core, derived from the ruled priority (dynamics first):** it demonstrates a **Tier A
+  coupling under stress**.
+
+**Two additions, both measured — the measurement is why they are Core.** **ATWS** (E13) is the only
+reachable demonstration of the pressurizer code safeties: a real transient cannot reach them
+because the high-pressure trip caps indicated pressure at **2460 psi (16.96 MPa)** under the
+**2484 psi (17.13 MPa)** pop, so without the row an engine surface has no curriculum home.
+**Uncontrolled rod withdrawal** (E17) holds **114.8 % power for ~17 s with NO TRIP** (#311).
+
+**One demotion, and it is Q2 biting its own author.** **Feed-and-bleed** was in the drafted ten;
+verified 2026-08-03 it appears **only in `ui/manual_md.js`** — manual prose, nothing in `engines/`,
+`layers/` or `scenarios/`. A Core objective the plant cannot perform is the unreachable-capability
+failure Q2 exists to catch. Covered until #140 builds it.
+
+**What the ruling bought: the gap is bounded and ranked.** "21 of 24 have no runnable checklist"
+becomes **8 owed** against an 11-row Core, ranked most-built-first, with steam line break last
+because #295 F5 blocks an honest checklist. #311's flag and #140 resolve as consequences rather
+than as separate decisions.
+
+### The HR11 arithmetic did not add up, and chasing it found a gate false positive
+
+Adding a correctly-formatted `OWNER RULING` to `CURRICULUM.md` left `run_hardrules` at **98**.
+That should not happen — the total IS the sum of per-rule sites (HR1 15 + HR5 0 + HR11 83 = 98),
+verified by disabling both curriculum markers and watching it fall to **81 / 96**.
+
+**The cause: HR11's `/OWNER (RULING|DIRECTIVE)/` matched the PHRASE in ordinary prose.** The
+committed file's header read `**STATUS: PROPOSAL — NEEDS AN OWNER RULING.**` — not a citation, but
+a site, and it **PASSED** because the neighbouring real citation supplied a date and a quote inside
+the same window. My rewrite deleted that false positive and added a real ruling, so the count was a
+**wash**, not a miss. Filed separately; the guard over-reports its site count and a false positive
+can lend its window to a genuinely missing citation.
+
+**It reproduced while I was writing it up.** Recording the finding in `CLAUDE.md` — a sentence
+*describing* the false positive, quoting the header phrase in plain prose — created a **fresh
+site**, and that one had no neighbouring citation to lend it a date and quote: **FAIL, 86 sites, 1
+undeclared**, and `run_all` reported DRIFT. Fixed by backticking the quoted phrase, which the #290
+code-span exclusion already drops. The sharp version: **you cannot write about this guard in the
+documents it scans without tripping it**, so any fix has to be checked against prose that discusses
+the marker, not only against real citations.
+
+**Two method notes from the same half hour, both mine.** A `bash` `&&`-chain whose early command
+failed (`bc` not installed) fell through to a trailing `|| echo "NO — untracked"`, and I briefly
+believed the new file was untracked and the split had not shipped — **a short-circuit artifact
+reported as a finding**. Check the claim, not the last line of output. And I had twice written
+"writing a change up moves `run_hardrules`" into commit messages today on the strength of
+`CLAUDE.md` saying so; it is true, but only for **formal markers**, and I had not verified it
+before repeating it. Inherited claim, repeated in my own voice — the trap I had flagged an hour
+earlier.
+
 ---
 
 ## Session log — 2026-08-03a (#311 — OTΔT / OPΔT built, and the issue's own premise did not survive measurement)

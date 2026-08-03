@@ -352,7 +352,17 @@ var BASELINES = {
   // stripping the date and quote from the CLAUDE.md citation alone takes HR11 to 1 undeclared
   // and reddens the gate, so that site is genuinely seen and not silently skipped by the
   // markdown-wrap window.
-  'run_hardrules.js':      { code: 0, score: '98checks 0failed' },
+  // 98 -> 100 on 2026-08-03 (#312): the Tier C ruling, cited in CLAUDE.md and TUNING_LOG.
+  // THE ARITHMETIC IS WORTH READING BEFORE YOU TRUST THIS NUMBER. The total is the SUM of
+  // per-rule sites (HR1 15 + HR5 0 + HR11 85), and a third citation — the one in
+  // `Blueprint/CURRICULUM.md` itself — moved it by ZERO. Cause: HR11's marker regex matched
+  // the PHRASE in that file's old header, `STATUS: PROPOSAL - NEEDS AN OWNER RULING`, which
+  // is not a citation but counted as a site and PASSED, because the neighbouring real
+  // citation supplied a date and a quote inside the same window. Rewriting the header
+  // deleted the false positive and added a real ruling: a wash. So this gate over-reports
+  // its site count, and a false positive can lend its window to a genuinely missing
+  // citation. Do not infer "no citation was added" from a flat number here.
+  'run_hardrules.js':      { code: 0, score: '100checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

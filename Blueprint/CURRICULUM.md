@@ -1,9 +1,16 @@
 # CURRICULUM.md — what each plant is supposed to teach
 
-> **STATUS: PROPOSAL — NEEDS AN OWNER RULING.** *(OWNER, 2026-08-02: "We also need to define the
-> educational goals.")* Drafted **from what the repo already implies**, not invented. Not binding
-> until ruled on. **PWR only** — RBMK and BWR are on hold and their tiers cannot be written
-> honestly before their evidence passes exist (`DESIGN_CRITERIA.md` §5).
+> **STATUS — MIXED, read per tier.** *(OWNER, 2026-08-02: "We also need to define the educational
+> goals.")* Drafted **from what the repo already implies**, not invented. **PWR only** — RBMK and
+> BWR are on hold and their tiers cannot be written honestly before their evidence passes exist
+> (`DESIGN_CRITERIA.md` §5).
+>
+> | Tier | Status |
+> |---|---|
+> | **A** dynamics | **PROPOSAL** — not binding |
+> | **B** procedures | **PROPOSAL** — not binding |
+> | **C** casualties | **RULED 2026-08-03** — binding for the PWR. See the Core/Covered split below |
+> | **D** flagship | adopt as-is (`DESIGN_COMPANION.md` §5) |
 
 **What this is for.** `DESIGN_CRITERIA.md` Q2 asks *"what is the educational value?"* — a question
 that cannot be answered until there is a stated objective to answer it against. This file is that
@@ -20,7 +27,7 @@ be real events.")*:
 |---|---|---|---|
 | 1 | **Dynamics / interactions** and their physics | A | drafted, PWR only |
 | 2 | **Normal operating procedures** | B | drafted, PWR only |
-| 3 | **Casualties** the user should handle | C | drafted, PWR only |
+| 3 | **Casualties** the user should handle | C | **RULED 2026-08-03**, PWR |
 | 4 | **Flagship scenarios** — need not be real events | D | adopt existing |
 
 **The priority is fixed** *(OWNER RULING, 2026-08-02: "The most important ideas are plant dynamics
@@ -159,44 +166,102 @@ the missing SI-block step produced a scram ~5 plant-minutes into the first leg.
 
 A casualty is not a normal evolution (B) and not a flagship scenario (D). It is the middle band —
 something goes wrong, the player **diagnoses it and responds**, and the plant survives or does not
-depending on what they do. A defensible starter set, roughly by how often a real operator meets it:
+depending on what they do.
 
-| Casualty | What it teaches | Response exists? |
-|---|---|---|
-| Turbine trip / load rejection | the dump is finite; P-9; power must go somewhere | yes — 40 % dump + 10 % rod step |
-| Loss of main feedwater | the SG is the only heat sink; AFW auto-start | yes |
-| RCP trip / loss of flow | flow → DNB margin; the P-7 gating | partial |
-| Small RCS leak (seal leak) | CVCS holds it, and *charging flow* is the cue, not level | yes (#262) |
-| Stuck-open PORV | the TMI opener; tailpipe temperature is the honest tell | yes |
-| SGTR | primary→secondary path; depressurize to stop the leak | yes |
-| Loss of offsite power / SBO | everything above at once, on batteries | partial |
-| Steam line break | overcooling is a reactivity event | **no auto isolation** (#295 F5) |
-| Loss of shutdown cooling in Mode 5 | decay heat with no SG | annunciator only (#287) |
-| Feed-and-bleed | last-resort heat removal | **conceptual only** (#140) |
+**RULED: the tier has two bands, not one** *(OWNER RULING, 2026-08-03: "Do as you recommend." —
+selecting the Core/Covered split, the two additions and the feed-and-bleed demotion below)*.
 
-**Those ten are a SUBSET, and measuring the set changes the question** (#312). Counted 2026-08-03:
-the PWR carries **24 injectable failures**, and `Manuals/07_ABNORMAL_EMERGENCY.md` carries **24
-abnormal/emergency procedures** — PWR-E01…E23 plus E19u, **a complete one-to-one map**. Fourteen
-injectables have a documented procedure and no row here:
+**Why the tier is split rather than a single list.** Measured 2026-08-03: the PWR carries **24
+injectable failures**, and `Manuals/07_ABNORMAL_EMERGENCY.md` carries **24 abnormal/emergency
+procedures** — PWR-E01…E23 plus E19u, **a complete one-to-one map**. Every casualty already has a
+written response. But being "in Tier C" was defined to carry three consequences — a response
+procedure, a board cue, and a **mission** — so a single in-or-out list makes an unusable choice:
+all 24 in silently orders 21 missions, while a ten-row subset discards ATWS. The consequences are
+separable, so the tier is:
+
+> **CORE** — the player is *expected to handle* it. Owes a response procedure, a board cue **and a
+> runnable checklist**. This is what Tier C means for gating and for #283's BETA definition.
+>
+> **COVERED** — documented, injectable, live in free play and for the instructor. Owes **no
+> mission**. Not a curriculum objective; not an omission either.
+
+**The Core test, derived from the ruled priority** (dynamics first, procedure second): **a casualty
+is Core if it demonstrates a Tier A coupling under stress.** Everything else is Covered.
+
+### Core — 11 casualties
+
+| Casualty | Tier A coupling it stresses | Response | Runnable? |
+|---|---|---|---|
+| Turbine trip / load rejection (E03) | **A1/A2** — the dump is finite; P-9; power must go somewhere | 40 % dump + 10 % rod step | **no** |
+| Loss of main feedwater (E01) | **A5/A9** — the SG is the only heat sink; AFW auto-start | yes | yes |
+| RCP trip / loss of flow (E02) | **A1** — flow → DNB margin; the P-7 gating | partial | yes |
+| Small RCS leak, seal leak (E23) | **A4** — CVCS holds it, and *charging flow* is the cue, not level | yes (#262) | **no** |
+| Stuck-open PORV (E07) | **A3/A4** — the TMI opener; tailpipe temperature is the honest tell | yes | yes |
+| SGTR (E06) | **A3** — primary→secondary path; depressurize to stop the leak | yes | **no** |
+| Loss of offsite power / SBO (E04/E05) | **A6** — everything at once, on batteries | partial | **no** |
+| Steam line break (E19/E19u) | **A9** — overcooling is a reactivity event | **no auto isolation** (#295 F5) | **no** |
+| Loss of shutdown cooling, Mode 5 (#287) | **A6** — decay heat with no SG | annunciator only | **no** |
+| **ATWS** (E13, `failure_to_scram`) | **A6 inverted + A8** — the reactor that will *not* switch off; boration is the only reactivity control left | yes | **no** |
+| **Uncontrolled rod withdrawal** (E17) | **A8** — rods fast, boron slow, in its dangerous direction | 1.5 DPM block (§8.18) | **no** |
+
+**The two additions are measured, and the measurement is why they are Core.** **ATWS** is the only
+reachable demonstration of the pressurizer **code safeties**: a real transient cannot reach them,
+because the high-pressure reactor trip caps indicated pressure at **2460 psi (16.96 MPa)** under
+the **2484 psi (17.13 MPa)** pop — so without this row an engine surface has no curriculum home at
+all. **Uncontrolled rod withdrawal** holds **114.8 % power for ~17 s with NO TRIP** (#311),
+recovering only because the bank runs out of travel: a demonstrated protection gap on the shipped
+plant, and what §8.18's declared departure exists for.
+
+**Feed-and-bleed was DEMOTED to Covered, and this is the Q2 test biting.** Verified 2026-08-03: it
+appears **only in `ui/manual_md.js`** — manual prose, nothing in `engines/`, `layers/` or
+`scenarios/`. A Core objective the plant cannot perform is precisely the unreachable-capability
+failure Q2 exists to catch. It returns to Core when #140 builds it.
+
+### Covered — the rest of the catalog
 
 | | Failure | Procedure |
 |---|---|---|
-| **reactivity** | `continuous_rod_withdrawal` · `stuck_rod_on_scram` · `failure_to_scram` | PWR-E17 · E18 · **E13** |
-| **coolant** | `large_loca` · `stuck_open_spray` · `failed_pzr_heaters` | PWR-E09 · E14 · E15 |
+| **reactivity** | `stuck_rod_on_scram` | PWR-E18 |
+| **coolant** | `stuck_open_spray` · `failed_pzr_heaters` | PWR-E14 · E15 |
 | **secondary** | `loss_of_condenser_vacuum` · `sg_overfeed` | PWR-E10 · E16 |
 | **safety system** | `degraded_hpi` · `afw_failure` | PWR-E11 · E12 |
 | **instrument** | `tavg_sensor_failure` · `pzr_level_sensor_stuck` · `pzr_level_sensor_low` · `porv_indicator_stuck_closed` | PWR-E20 · E21 · E22 · E08 |
 
-**So the Tier C ruling is a SUBSETTING decision, not an authoring one** — every unlisted casualty
-already has a written response, so a row costs nothing. **The gap that actually bites is RUNNABLE,
-not documented:** only **three** of the 24 are runnable checklists — `pwr_loss_of_feedwater` (E01),
-`pwr_rcp_trip` (E02), `pwr_stuck_porv` (E07) — plus the TMI narrative, which is E07+E08 combined as
-the manual specifies. Q2's test is *can the player reach it*; **21 of 24 responses are prose only.**
+The four **instrument** drills are Covered rather than Core by the owner's own ruling that
+instrument deception is not a major focus (Tier A) — they ship, they are injectable, they are
+documented, and they simply owe no mission. **Large LOCA (E09)** is declared **Tier D-adjacent**:
+it is meltdown-path material and `run_meltdown` already covers it.
 
-**Three are known-incomplete, and this category is what makes those curriculum decisions rather
-than backlog items**: #140 (feed-and-bleed unvalidated), #295 F5 (no steam line isolation ESFAS),
-and the #311 OTΔT/OPΔT flag, which ships default OFF. Either they are in the set and get built, or
-they are out and the omission is declared. Today they are neither.
+**Promotion needs a Q0 pass.** What was measured here is the bookkeeping — 24 injectables, 24
+procedures, 3 runnable — **not** whether each Covered casualty produces a distinguishable,
+diagnosable response. **`loss_of_condenser_vacuum` (E10) is the strongest promotion candidate on
+argument** — it teaches the 40 % dump ruling in reverse, by removing the dump's sink — and it sits
+in Covered *only* because that has not been measured.
+
+### What the ruling settles
+
+**The gap is now bounded and ranked: 8 runnable checklists owed** (Core is 11; E01, E02 and E07
+already have one). Ranked cheapest-and-most-built first, blocked last:
+
+| | Checklist owed | Why here in the order |
+|---|---|---|
+| 1 | Turbine trip / load rejection (E03) | the plant's defining behaviour, fully built and measured |
+| 2 | SGTR (E06) | mechanism and response both exist |
+| 3 | Small RCS leak (E23) | mechanism exists; the charging-flow cue is authored (#262) |
+| 4 | ATWS (E13) | mechanism exists; unlocks the code-safety demonstration |
+| 5 | Uncontrolled rod withdrawal (E17) | casualty and the 1.5 DPM block exist today |
+| 6 | Loss of offsite power / SBO (E04/E05) | long evolution, response only partial |
+| 7 | Loss of shutdown cooling, Mode 5 (#287) | response is annunciator-only, so the checklist would be thin |
+| 8 | Steam line break (E19/E19u) | **blocked** — no auto isolation until #295 F5 |
+
+**Three open items resolve as consequences, not as separate decisions:**
+
+- **#311 OTΔT/OPΔT** — rod withdrawal being Core is the argument to turn the flag **ON**, but only
+  **after** the equation constants are sourced. The Core row is what makes that sourcing worth
+  doing; it does not license flipping an unsourced flag.
+- **#295 F5** — steam line break is Core, so the isolation ESFAS becomes work rather than an open
+  question.
+- **#140** — feed-and-bleed is Covered until built, then returns to Core.
 
 ---
 
@@ -238,14 +303,16 @@ Downstream: **#283** (define BETA) gets its yardstick — plausibly *every Tier 
 demonstration and every Tier B system has a step, exercised and gated on the PWR* — and **#253**
 (the lessons are stale) gets the standard to re-author against.
 
-**Recommendation: adopt Tier D as-is; rule on Tiers A, B and the PWR's Tier C now; defer only
-RBMK/BWR Tier C** until those plants reopen. The PWR needs no reopening, and deferring its Tier C
-re-creates the limbo that tier exists to end — three live decisions are already waiting on it.
+**Tier D is adopted as-is and the PWR's Tier C was RULED on 2026-08-03** (above). **Tiers A and B
+are still open**, and RBMK/BWR Tier C stays deferred until those plants reopen — it cannot be
+written honestly before their evidence passes exist.
 
 **The gap Tier A exposes is a CONTENT gap, not a physics one.** Every coupling above is already
 modelled and measurable. What is missing is that **no procedure, mission or free-play beat
 demonstrates A1 or A2 deliberately** — the plant teaches power-follows-load to anyone who happens
 to drop load with rods in manual, and nothing ever suggests they try it. That is #253's real scope.
 
-**Absent a ruling this file stays advisory and Q2 keeps working as it does now** — which is the
-weakest part of the criteria, and the reason this was raised.
+**Tiers A and B stay advisory until ruled**, so for those two Q2 keeps working as it does now —
+the weakest part of the criteria, and the reason this was raised. **Tier C no longer is:** a
+casualty change can be measured against Core/Covered today, and "should this casualty get a
+mission?" now has an answer instead of a discussion.
