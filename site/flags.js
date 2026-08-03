@@ -137,6 +137,7 @@
     'procedure:pwr_rcp_trip': 'preview',
     'procedure:pwr_stuck_porv': 'preview',
     'procedure:pwr_turbine_trip': 'preview',
+    'procedure:pwr_rod_withdrawal': 'preview',
     'procedure:pwr_sgtr': 'preview',
     'procedure:pwr_seal_leak': 'preview',
     'procedure:pwr_tmi': 'preview',

@@ -20,6 +20,43 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03t (#319 item 5 — PWR-E17, and the rod stop that cannot help)
+
+**Task:** #319 item 5, chosen because OTΔT/OPΔT went ON in the last release and that **is** this
+casualty's at-power protection — the casualty and its defence finally in one tree.
+
+### The direct before/after for #311
+
+| | |
+|---|---|
+| flag **OFF** (#311's own measurement) | **114.8 %** power held for ~**17 s**, **NO TRIP** — power-range high sits at 120 % and nothing else was watching |
+| flag **ON** (measured 2026-08-03, severity 0.5 = 3 steps/s) | `opdt_approach` at **t+6.1 s**; **SCRAM at t+7.9 s**, reason `opdt_margin low`, at **114.6 %** |
+
+**Same peak. The difference is that the plant stops there instead of riding it.** That is the
+clearest justification for the #311 work anywhere in the repo.
+
+### The rod stop never engages, and that is the lesson
+
+OPΔT's rod stop is an **interlock on `rod_start`/`rod_nudge`** — it blocks the **operator**. A
+runaway is not an operator. And `pwr_engine.js:796` refuses operator rod commands on the control
+bank outright while the failure is active:
+`if (g && !(g.id === 'control_rods' && s._fail.rod_runaway.active))`. So the control-grade defence
+is bypassed **by construction** and only the trip saves the core. Measured, the **1.5 DPM
+startup-rate block (§8.18) does not fire either** — SUR peaks at **0.46 DPM**, nowhere near it;
+that interlock is a startup defence, not this one. **At power, OPΔT is the whole defence.**
+
+The checklist has the operator attempt the insertion **and expect it to fail** — PWR-E17 step 1 as
+written — because the failed attempt is what tells them this is a protection problem, not a
+control problem.
+
+**No manual change** — E17 already documents the four actions. No revision bump.
+
+**Gates:** `run_procedures` 27/27 132 → **28/28 139**; `run_procedures_stack` 27/27 244 →
+**28/28 253**; `run_manual_controls` 158 → **164**; `run_flags` 304 → **307**; `run_procdocs`
+33 → **35**; `verify_manual_follow` 237 → **246**.
+
+---
+
 ## Session log — 2026-08-03s (the boration Tavg droop — NOT a defect, and it is a better A8 than the one in the table)
 
 **Task:** close the observation I had flagged five times and never chased — borating 618 → 700 ppm

@@ -149,6 +149,12 @@ var STEP_UI = {
   // PWR-E06 SGTR (#319 item 2, authored after #322 was ruled). Step 1 is a parenthesised
   // observe label and is exempt, same as pwr_rcp_trip step 1.
   // PWR-E03 turbine trip (#319 item 1). Step 1 is a parenthesised observe label, exempt.
+  // PWR-E17 rod withdrawal (#319 item 5). Step 1 is a parenthesised observe label, exempt.
+  // Step 2 is the FAILED insertion attempt — a real control the player must reach, even
+  // though the plant will refuse it.
+  pwr_rod_withdrawal: [{ i: 1, view: 'board', control: 'Control Bank' },
+                       { i: 2, view: 'scram', control: 'SCRAM' },
+                       { i: 3, view: 'board', control: 'Control Bank' }],
   pwr_turbine_trip: [{ i: 1, view: 'scram', control: 'SCRAM' },
                      { i: 2, view: 'board', control: 'Steam Dump' },
                      { i: 3, view: 'board', control: 'SG Level' }],

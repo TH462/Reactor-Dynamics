@@ -51,6 +51,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
     rewritten, §13 corrected (hydrogen *generation* is modelled; the *inventory* is what is absent).
 
 ### Added
+- **Continuous rod withdrawal is a runnable checklist — and it is the clearest demonstration of
+  why the new overpower protection exists** (#319). The bank starts withdrawing on its own and you
+  cannot rod your way out: the plant refuses operator rod commands on the control bank while the
+  runaway is active, so attempting to insert is a diagnosis rather than a fix. The OPΔT **rod
+  stop** does not help either — it is an interlock on operator motion, and a runaway is not an
+  operator. Only the trip stops it.
+  Measured with the protection **off**, the plant holds **114.8 % power for about 17 seconds and
+  never trips**, because the power-range high trip sits at 120 %. With it **on**, the approach
+  alarm comes in at 6.1 s and the reactor scrams at 7.9 s at **114.6 %**. Same peak — the plant
+  just stops there instead of riding it.
+
 - **`tools/perturb_sweep.js` — "which checks break if I retune this?"** Nudges `[tune]` constants
   by 2–3 %, runs a whole suite per nudge and diffs verdicts, so the question is answered *before*
   a retune instead of by a puzzling red afterwards. Built out of #321, where a check had been green
