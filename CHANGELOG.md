@@ -21,6 +21,44 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Overtemperature ΔT and Overpower ΔT are LIVE** (#311) *(OWNER RULING, 2026-08-03: "Let's go
+  with your recommendations for all these items", approving the flag ON once the board readout
+  landed)*. Two Westinghouse core-protection trips computed from loop ΔT against a setpoint that
+  **moves with Tavg and pressure** — the same ΔT is safe at one condition and a trip at another,
+  which is exactly what no single-parameter trip can see. The measured gap they close: before
+  OPΔT, a **30 % steam line break held the core at 114 % power for thirty minutes with no reactor
+  trip**, and steam line break is one of OPΔT's own design-basis events. Neither is blockable
+  (Table 12.2-1, *"No Interlocks"*).
+- **A board readout for it — `bdDtMargin`**, in the NIS card corner: the binding margin and which
+  trip it belongs to (`OPΔT 3.5`), turning amber at the **rod-stop** line rather than the trip
+  line, because *"the plant is about to stop taking rods out"* is the part the player can still
+  act on. **This is what made flipping the flag defensible** — without it the player carried two
+  reactor trips and a rod-withdrawal block driven by a number appearing nowhere on the diagram, a
+  `DESIGN_CRITERIA` Q3 observability failure. One readout rather than five channels: partly
+  because the board is **full** (measured — extent x 540–1945 / y 110–849, with no free 150×60
+  slot anywhere), but mainly because leg ΔT is already displayed and each setpoint is implied by
+  its margin. A margin that moves while ΔT holds steady **is** the moving trip line.
+
+### Changed
+- **`run_m5`'s attention-stop test was re-premised, and its fixture was the plant's slowness**
+  (#311). Its failure leg injected `stuck_porv_open`; with OTΔT live the plant scrams on that
+  depressurization at ~8.0 s instead of ~12.5 s, so at 60× the failure and the scram land in the
+  **same broadcast** and the snap correctly names the more urgent one. The check read 'scram' and
+  called it a regression. It uses an **instrument** failure now — no physics effect, cannot scram
+  at any speed — which isolates the failure→attention-stop path properly; the old form only ever
+  worked because nothing else fired first. A new guard asserts the injected failure did not scram,
+  so the fixture cannot drift back silently.
+- **The #295 F1/F2 probe asserts its intent now, not a reason string.** It pinned
+  `primary_pressure low`; OTΔT gets there earlier (~1.7 s) and cannot be blocked at all, so the
+  probe's claim — *a reactor trip is not defeatable at power* — is strengthened. **The
+  discriminator is the TIME**: the defect rode 64 s unscrammed, both healthy configurations land
+  inside 10 s (4.1 s flag-off, 1.7 s flag-on), and the check passes on both.
+- `board_check` **182 → 186** (four pins on the new readout, injection-verified), `run_inspect`
+  gains its System Scanner copy, `run_contract` 141 → 143 and `run_reachability` 62 → 66 — both
+  automatic, the new trips and alarms being picked up from the live protection tables. Manual set
+  **Rev 18**.
+
 ### Fixed
 - **A tripped reactor showed no hot/cold leg ΔT at all — the split was scaled by fission power**
   (#315). Heat leaving the core through the legs requires a temperature rise across them, and a

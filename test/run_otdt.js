@@ -91,12 +91,25 @@ function run(ic, cmds, dur, opts) {
   return r;
 }
 
-// =====================================================================  A. FLAG OFF
+// ==============================================================  A. THE SHIPPED PLANT
 console.log('\n' + B + 'A. The SHIPPED plant (flag as configured)' + X);
 console.log(D + '  These guard what players get. The channels are always built; only the trips are gated.' + X);
 
-ck('otdt_opdt_trips ships OFF — turning it on is the owner\'s call while K1/K4 are unsourced',
-  String(SHIPPED_FLAG), SHIPPED_FLAG === false, 'false');
+// RE-AUTHORED 2026-08-03. This asserted the flag ships OFF, reasoning "turning it on is the
+// owner's call while K1/K4 are unsourced". It was pinning a POLICY, and the policy has been
+// ruled on — so the check follows the plant (HR9) rather than the plant waiting on the check.
+//
+// K1/K4 ARE STILL UNSOURCED. That has not changed and is not being hidden. The evidence pass
+// on ML11223A301 RAN (#311): it settles the equation form, T' = 584.7 °F, P' = 2235 psig, the
+// 3 % rod stop and "No Interlocks" — but it does NOT contain K1–K6 or the τ's. Those are
+// "manually adjusted preset" plant Tech Spec values, and Table 12.2-1 lists both setpoints as
+// "Variable (calculated)". The original condition was therefore waiting on something the
+// document never had. What actually changed the answer was the OBSERVABILITY half —
+// `bdDtMargin` now puts the binding margin on the board — plus #314 landing first, so
+// `pwr_lof` is already re-authored around the RCP breaker trip and this flip cannot re-break
+// it (breaker 23.0 s beats OPΔT's 24.5 s on that casualty).
+ck('otdt_opdt_trips ships ON (OWNER RULING 2026-08-03, once the board readout landed)',
+  String(SHIPPED_FLAG), SHIPPED_FLAG === true, 'true');
 
 // The instrument SPECS are unconditional — the gauges exist whether or not the trips do,
 // which is what lets the board show ΔT and its limit line without the protection wired.

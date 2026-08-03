@@ -393,7 +393,10 @@ var BASELINES = {
   // THREE lanes moved this independently: develop 103, backshop 106, workbench 108.
   // MEASURED 124 on the fully merged tree. Adding them up gives 317, which is
   // the arithmetic this comment exists to stop.
-  'run_hardrules.js':      { code: 0, score: '124checks 0failed' },
+  // 124 -> 128 (2026-08-03, #311 flag ON): four citation sites, all WRITE-UPS again — the
+  // board readout, the flag and the three re-authored checks moved this by zero between them.
+  // Measured LAST, after the docs, which is this entry's own standing instruction.
+  'run_hardrules.js':      { code: 0, score: '128checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -413,7 +416,10 @@ var BASELINES = {
   // tail, the engine's `_Q_total`). Published for the Physics tab, which was
   // otherwise going to re-derive it from power_pct and a config constant, i.e.
   // keep a second copy of a formula that does not move itself.
-  'run_contract.js':       { code: 0, score: '141checks 0failed' },
+  // 141 -> 143 (2026-08-03, #311 flag ON): the two OTdT/OPdT approach ALARMS arrive, and
+  // this gate's second contract makes them declare a `category` — the design working, not
+  // drift. Enabling protection is expected to move this and run_reachability together.
+  'run_contract.js':       { code: 0, score: '143checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -572,7 +578,10 @@ var BASELINES = {
   // thresholds against their instrument's declared range, and `rhr_not_aligned` is a
   // status alarm (`rhr_active` is_false, setpoint null) with no range to sit inside.
   // It briefly read 59 while the alarm was drafted as a pressure threshold.
-  'run_reachability.js':   { code: 0, score: '62checks 0failed' },
+  // 62 -> 66 (2026-08-03, #311 flag ON): Part A iterates the live protection tables, so it
+  // picks up the two new trips and two new alarms automatically and asserts each sits
+  // strictly inside its instrument's range. Nothing was hand-added here.
+  'run_reachability.js':   { code: 0, score: '66checks 0failed' },
   // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
   // reactor trips this plant did not have. It needs its own runner because the trips ship
   // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so
@@ -675,7 +684,13 @@ var BASELINES = {
   // nothing was wrong. Re-measured on the merged tree. This is the exact failure CLAUDE.md
   // names ("a mechanical BASELINES resolution can silently take the wrong number") — the
   // instruction to re-run run_all AFTER resolving is what caught it.
-  'run_m5.js':             { code: 0, score: '23/23 103passed' },
+  // 103 -> 104 (2026-08-03, #311 flag ON): the attention-stop test's failure leg was
+  // re-premised. It injected `stuck_porv_open`, which with OTdT live now scrams inside the
+  // same 60x broadcast, so the snap correctly reported 'scram' and the check read that as a
+  // regression. It uses an INSTRUMENT failure now (no physics effect, cannot scram), which
+  // isolates the failure->attention-stop path properly, and the +1 is the new guard that
+  // asserts the injected failure did not scram — so the fixture can never drift back.
+  'run_m5.js':             { code: 0, score: '23/23 104passed' },
   // 16 -> 17 suites, 94 -> 102 checks 2026-07-27 (#142): a new save/restore test for
   // the instructor's operator-action memory and follow acc streak, both of which
   // saveState dropped. Verified against the PRE-fix instructor, where 5 of its 8

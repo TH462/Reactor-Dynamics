@@ -20,6 +20,70 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03i (#311 OTΔT/OPΔT turned ON, with the board readout that justifies it)
+
+*(OWNER RULING, 2026-08-03: "Let's go with your recommendations for all these items")* — approving
+the order **board wiring → flag → runback**, and the ordering earned its keep twice.
+
+**The board readout came first, deliberately.** `bdDtMargin` (NIS card corner) shows the binding
+margin and names its trip — `OPΔT 3.5` — amber at the **rod stop**, not the trip line, because
+"the plant is about to stop taking rods out" is the part the player can still act on. Without it,
+flipping the flag hands the player two reactor trips and a rod-withdrawal block driven by a number
+that appears nowhere on the diagram. That is a `DESIGN_CRITERIA` Q3 observability failure, and it
+was the real blocker — not the unsourced intercepts.
+
+**THE BOARD IS FULL, measured.** Extent x 540..1945 / y 110..849, and an occupancy scan returns
+**no free 150×60 slot** — every candidate was an edge artifact running off the right boundary. A
+first scan "found" a large free column at x < 540 and that was the scan being wrong, not the
+board: nothing exists left of 540. The free-corner survey is the useful artifact — of 20 card
+corners, 8 are free, and the NIS corner (995, 230) is the one that matters because that card
+already holds the leg ΔT readout. **So: ONE readout, not five channels.** The space argument is
+real but secondary; the Q3 argument stands on its own — leg ΔT is *already* displayed, so
+`loop_delta_t` in % of rated is a second copy of one measurement, and each setpoint is implied by
+its margin. **A margin that moves while ΔT holds steady IS the moving trip line**, which is the
+whole OTΔT lesson.
+
+**Flag ON. Blast radius exactly as #311 predicted, with one improvement it did not predict:**
+`run_campaign` stayed **51/51**. #311's own forecast was 50/51 on `pwr_lof` — but #314 landed
+first by recommendation, so the breaker trip catches that casualty at 23.0 s against OPΔT's 24.5 s
+and the mission I had just re-authored could not be re-broken. That is the sequencing paying off
+in a number.
+
+**THREE test-premise findings in one change, all the same shape — a test whose fixture was the
+plant not doing anything.**
+
+1. **`run_m4`'s #295 probe.** Pinned the reason string `primary_pressure low`; OTΔT now gets there
+   at ~1.7 s and carries "No Interlocks", so it cannot be blocked at all — the probe's claim is
+   *strengthened*. **My first re-authoring was WRONG and injection caught it**: it asserted the
+   survivor was "not one of the three trips the operator blocked", which is incoherent, because
+   #295's whole finding is that those block attempts are **refused** at power. Nothing is blocked,
+   so `primary_pressure low` is a valid survivor and the check failed on the pre-flag plant. **The
+   discriminator is the TIME** — the defect rode 64 s unscrammed; healthy is 4.1 s flag-off and
+   1.7 s flag-on. It passes on both now. I had already written "this also passes on the old plant"
+   into the comment *before* testing it; it did not.
+2. **`run_m5`'s attention-stop test.** Injected `stuck_porv_open` at 60× and expected the snap
+   reason `failure`. With OTΔT live the scram arrives inside the **same broadcast**, so the snap
+   correctly names the more urgent event. Switched to an **instrument** failure (no physics effect,
+   cannot scram at any speed), which isolates the failure→attention-stop path *properly* — the old
+   form only ever tested it because nothing else fired first. +1 check guarding that it did not
+   scram, so the fixture cannot drift back.
+3. **`run_inspect`.** Caught the new board item having no System Scanner copy. The #308 class
+   exactly: inspection text is a third copy of the mechanism and does not move itself.
+
+**`board_check` 182 → 186**, four pins on the readout, each aimed at a distinct failure and
+**injection-verified** — unwiring the value function reddens three (correctly not the "exists"
+pin). The one worth copying is *"shows a live number, not the '—' placeholder"*: that is what
+catches a value function never wired into the id map, where the item renders, shows its authored
+placeholder, and looks entirely fine.
+
+`run_contract` 141 → 143 and `run_reachability` 62 → 66 are the design working — both iterate the
+live protection tables and picked up the two new trips and two new alarms with nothing hand-added.
+Manual set **Rev 18** (09 §2.0 trips, §4.0 annunciators, the rod-stop interlock row with its
+source, and the two honesty notes: the turbine runback is not built (#318), and rod stops block
+withdrawal only).
+
+---
+
 ## Session log — 2026-08-03h (#314 the RCP breaker trip — and a comparator that silently ate it)
 
 *(OWNER RULING, 2026-08-03: "Build the breaker position trip as you recommend.")* Built, gated,

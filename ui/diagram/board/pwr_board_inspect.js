@@ -679,6 +679,20 @@
       'the controller cannot insert any further, so if Tavg is still high the answer has to come from ' +
       'boron, not from rods. BLOCKED means a rod stop is standing and outward motion is refused — you ' +
       'can always insert. MANUAL means nobody is regulating Tavg for you.', CI, '14.1'),
+    bdDtMargin: e('Core ΔT margin',
+      'How much loop ΔT is left before the nearer of the two core-protection trips, and which one it is.',
+      'The reactor has two trips computed from the temperature RISE across the core rather than from ' +
+      'any single reading: OTΔT protects against departure from nucleate boiling, OPΔT against ' +
+      'excessive heat rate in the fuel. Neither has a fixed setpoint — the trip line MOVES with ' +
+      'average temperature and with reactor coolant pressure, so the same ΔT can be perfectly safe at ' +
+      'one condition and a trip at another. That is exactly what no single-parameter gauge can show ' +
+      'you, and it is why this number exists: it is the distance to whichever line is closer, so if it ' +
+      'falls while ΔT holds steady, the LIMIT moved toward you. The name tells you which one is ' +
+      'binding, and that is the diagnosis — OTΔT closing means you are heading toward boiling in the ' +
+      'hot channel, OPΔT closing means the core is simply making more heat than it is rated for. It ' +
+      'turns amber at the ROD STOP line, three percent out, where the plant refuses to withdraw rods ' +
+      'any further and lights OTΔT or OPΔT ROD STOP on Panel A; insertion always works. Neither trip ' +
+      'can be blocked.', CI, '9.0'),
     imrsgjmrjfg: e('AUTO (feed)',
       'Engages the three-element feedwater controller.',
       'It captures current level as its setpoint on engage, so engage it at a level you are happy to ' +

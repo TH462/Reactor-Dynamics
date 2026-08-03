@@ -1234,10 +1234,25 @@
       // and every mirror are blocked by this environment's egress policy, so
       // ML11223A301 could not be fetched and the evidence-pass SOP could not run. They
       // are fitted to THIS plant's measured behaviour instead, which is defensible on
-      // its own terms (see below) but is not the same thing as sourced. Turning this on
-      // is the owner's call once the equation form and K1/K4 are checked against the
-      // document. See `otdt_opdt` below for what is measured and what is not.
-      otdt_opdt_trips: false,
+      // its own terms (see below) but is not the same thing as sourced.
+      //
+      // ON as of 2026-08-03 *(OWNER RULING, 2026-08-03: "Let's go with your recommendations
+      // for all these items", approving "turn it on, after the board wiring")*. Three things
+      // changed since it was written off:
+      //   1. THE EVIDENCE PASS RAN. ML11223A301 was fetched and read (#311 comment). It
+      //      settles the EQUATION FORM, T' = 584.7 °F, P' = 2235 psig, the 3 % rod stop and
+      //      "No Interlocks". It does NOT contain K1-K6 or the tau's — they are "manually
+      //      adjusted preset" plant Tech Spec values and Table 12.2-1 lists both setpoints as
+      //      "Variable (calculated)". So the comment above that says turning this on waits on
+      //      "the document" was waiting for something the document never had.
+      //   2. THE OBSERVABILITY GAP IS CLOSED. `bdDtMargin` puts the binding margin on the
+      //      board (NIS card corner). Before that, flipping this gave the player two reactor
+      //      trips and a rod-withdrawal block driven by a number nowhere on the diagram.
+      //   3. #314 LANDED FIRST, deliberately, so `pwr_lof` is already re-authored around the
+      //      RCP breaker trip — which catches that casualty at 23.0 s against OPΔT's 24.5 s,
+      //      so this flip does not re-break the mission. The trips stay UNSOURCED in their
+      //      intercepts and that is recorded in `otdt_opdt` below, not hidden by the flag.
+      otdt_opdt_trips: true,
     },
 
     // ------------------------------------------- OTΔT / OPΔT setpoint equations (#311)
