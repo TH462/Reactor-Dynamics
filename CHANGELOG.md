@@ -22,6 +22,77 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Zirconium-steam oxidation on the exposed-cladding hot node — the second heat source** (#238).
+  `Zr + 2H₂O → ZrO₂ + 2H₂`, 190 kJ/mol. Above ~2012 °F (1100 °C) the cladding burns in steam, and
+  that reaction is what carried the TMI-2 and Fukushima cores from *hot* to *melting* faster than
+  decay heat alone can.
+  - **It reverses the direction of the escalation, which is the real defect it fixes.** Decay heat
+    *falls*, so the node used to climb more and more slowly: measured on an unmitigated large break,
+    successive 720 °F (400 °C) bands took **218 / 334 / 378 / 428 s** — each slower than the last.
+    They now take **184 / 172 / 86 / 40 s**. Cladding failure → fuel melt goes **22.7 → 8.1 min**
+    (large LOCA), **32.8 → 4.9 min** (stuck-open PORV), **38.0 → 13.3 min** (station blackout).
+  - **The calibration is sourced, not fitted to a timescale.** At 2200 °F (1204.4 °C) — the
+    10 CFR 50.46(b)(1) peak-cladding limit — the oxidation heat equals the decay heat **8 hours
+    after shutdown**; on this plant's own two-group decay curve that is **1.1243 % of rated**, and
+    the algebra makes it hold exactly rather than by fit. The melt timescale is an *output*.
+  - **Arrhenius and parabolic, not the linear-above-an-onset shape #238 sketched.** Baker-Just
+    gives E/R = 22 898 K, so the exponential makes low temperatures negligible on its own — no
+    onset constant and no discontinuity at one. The parabolic half means the oxide layer is
+    protective and the term self-limits (it would otherwise be 3140× at the melt point), which is
+    why there is an oxide state. That state is also the hydrogen hook #238 asks for.
+  - Three of the four constants are sourced; only `zirc.tau_ref_s` is `[tune]`, and it is
+    corroborated — Baker-Just reaches 17 % ECR, the 50.46(b)(2) limit, in ~80 s at 1204 °C.
+  - **`run_meltdown` 10 → 11 (MD-11)**, and it asserts the **second derivative** rather than a
+    timing band: the battery was green with the term absent *and* with it in, because the MD-* paths
+    assert *that* the core melts and never how fast. Injection-verified — `q_ref: 0` reddens 5
+    checks and inverts the bands.
+  - Declared not built: hydrogen **mass** (needs a core Zircaloy inventory this plant does not have),
+    oxidation heat into the bulk core, and steam starvation. Manual set **Rev 18** — **12** §5.5
+    rewritten, §13 corrected (hydrogen *generation* is modelled; the *inventory* is what is absent).
+
+### Added
+- **`tools/perturb_sweep.js` — "which checks break if I retune this?"** Nudges `[tune]` constants
+  by 2–3 %, runs a whole suite per nudge and diffs verdicts, so the question is answered *before*
+  a retune instead of by a puzzling red afterwards. Built out of #321, where a check had been green
+  for the life of the project and a **3 % change to `thermal.h_sg`** — a constant it never mentions
+  — flipped it.
+  - **It refuses to report a bare "0 flips".** Every perturbation is scored for **discriminating
+    power** first (how many observed values it moved at all); one that moves nothing is reported
+    **INERT**, not as a clean bill. That guard exists because the first attempt at this sweep
+    perturbed the instrument *seed* — six seeds, 241 checks, zero flips, and the result was
+    worthless, since the known-defective check did not flip on noise either.
+  - **`--self-test` proves the pipeline end to end** by injecting a check fragile by construction.
+    A sweep that finds nothing has proved nothing until you show it could have found something.
+  - Reading the output: a flip on a constant the check never **names** is a check measuring the
+    wrong quantity (the #321 shape); a flip because the **band** is narrower than the nudge is a
+    tight band, which is a fact about the plant. **Do not widen a sourced band to make it quiet.**
+  - Lives in `tools/` deliberately — it has no stable score, so it is not a gate.
+
+### Changed
+- **The leg split stays on total core heat — the flux form is ruled out** (#315 §6 closed)
+  *(OWNER RULING, 2026-08-03: "Do as you recommend.")*. No plant behaviour changed; what changed is
+  that the question is settled and the reason is sourced to the primary.
+  - **WTSM 12.2 (ML11223A301) decides it.** The only dynamic compensation in either real equation is
+    on **Tavg** — *"the lead-lag controller for Tavg dynamic compensation"* and *"the rate-lag
+    controller for Tavg dynamic compensation"*. **Nothing compensates the measured ΔT**, and the
+    document carries no RTD, thermowell or transport-lag term at all: it calls loop ΔT *"a measure
+    of reactor power"* and reads it directly. Putting a ~20 s fuel lag into that signal makes it a
+    worse measure of core power, which is the one job the real design gives it.
+  - **Measured cost.** Corrected flux form, full load rejection: the plant still rides out, but the
+    OTΔT margin falls **18.4 % → 1.8 %** of rated ΔT. Not fixable by speeding the fuel node up —
+    `h_fc` 0.05 → 0.10 with `heat_gen_coeff` doubled to hold 389 °C at rated gives `run_otdt`
+    **21/39** and a scram at 1 s on `tavg high`.
+  - **The candidate form was wrong in its own right**, and TR-7b caught it: it included pump heat,
+    which is deposited *at the pump* and lifts both legs equally rather than creating a rise across
+    the core (+8.9 % at t+3 min).
+- **The "ML11223A301 could not be fetched" claim is retired from three sites** — `pwr_config.js`
+  (×2) and `DESIGN_COMPANION` §8.23. The document has been read, and the claim was wrong on both
+  halves: the τ values are **named and never valued** there (Table 12.2-1 lists both setpoints as
+  *"Variable (calculated)"*, K₁–K₆ as *"manually adjusted preset"*), so they are plant Tech
+  Spec / COLR numbers. The OTΔT/OPΔT dynamic-compensation departure is therefore **permanent unless
+  a plant-specific source turns up**, not a pending fetch — which is a different thing to tell the
+  next person.
+
 - **The OTΔT/OPΔT turbine runback — the plant takes load off by itself** (#318) *(OWNER RULING,
   2026-08-03: "Go with your recommendation")*. When the core ΔT margin has held below the rod stop
   for **10 s**, the plant starts walking the **generator load target** down and keeps walking it
@@ -85,6 +156,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   **Rev 18**.
 
 ### Fixed
+- **`run_pwr`'s "drifting pressure diverges" was measuring a blowdown depth, not the drift** (#321).
+  A drifting pressure gauge accumulates +2.0 MPa, which pushes the *indication* past the code-safety
+  setpoint; protection opens the safety on the instrument (HR1) and the plant really blows down
+  15.41 → 12.19 MPa. The check compared the indication against its own value 40 s earlier, so what
+  it actually asserted was how deep that blowdown went — at 22 % margin. Split into the offset it
+  names (exactly **2.0000 MPa** in every variant tried) plus a **positive** assertion of the HR1
+  chain it was accidentally covering. `run_pwr` **240 → 241**; each half injection-verified, and
+  they discriminate independently.
 - **A tripped reactor showed no hot/cold leg ΔT at all — the split was scaled by fission power**
   (#315). Heat leaving the core through the legs requires a temperature rise across them, and a
   scrammed core is still rejecting **~7 % of rated**. The split read `power_pct`, which is the

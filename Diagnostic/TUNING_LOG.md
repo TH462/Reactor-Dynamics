@@ -20,6 +20,209 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03r (#238 zirconium oxidation — the escalation was pointing the wrong way)
+
+**Built the #238 checklist entry.** The exposed-clad hot node (#213) has its second heat source:
+`Zr + 2H₂O → ZrO₂ + 2H₂`, 190 kJ/mol. Backshop lane. Rationale: `BUILD_DECISIONS.md` 2026-08-03e.
+
+**The entry undersold the defect, and measuring it is what showed that.** It said the node
+"understates how fast a very hot core accelerates to melt". Measured, the node does not accelerate
+at all — it **decelerates**, because decay heat is its only source and decay heat falls. On an
+unmitigated large break the successive 400 °C bands took **218 / 334 / 378 / 428 s**, each slower
+than the last. That is the opposite of a severe accident, and it is a CHARACTER defect rather than
+a timescale one. After: **184 / 172 / 86 / 40 s**, strictly decreasing, 4.6× end to end. Damage →
+melt: MD-1 **22.7 → 8.1 min**, MD-2 **32.8 → 4.9 min**, MD-3 **38.0 → 13.3 min**.
+
+**I did not build the shape the entry proposed, and the source is why.** It sketched
+`heat × (1 + zirc_gain · max(0, clad − zirc_onset_c))` — linear above ~1100 °C, gain fitted to a
+target timescale. Baker-Just is **Arrhenius and parabolic**, and using it directly is *simpler* as
+well as more prototypical: E/R = 45500/1.987 = **22 898 K**, so the exponential makes low
+temperatures negligible by itself — **the onset constant is not needed and neither is the
+discontinuity at it**. The parabolic half is why there is an oxide STATE and not a bare temperature
+factor: the rate constant is 228× its reference value at 2000 °C and **3140× at the melt point**, so
+an unbounded multiplier would slam the node to melt instantly; the protective oxide layer is what
+holds it. That state is also the hydrogen hook the entry asks for.
+
+**The calibration is SOURCED, so the melt timescale is an output rather than a target** — which is
+the part worth defending. *"At approximately 2200 °F, the oxidation heat … equals the decay heat
+generated after 8 hours from reactor shutdown."* 2200 °F is also the **10 CFR 50.46(b)(1)** limit,
+and near enough this plant's existing `fuel_damage_c` — **the model was stopping exactly where the
+second heat source turns on.** On our own two-group decay curve the 8-hour figure is **1.1243 % of
+rated**, and the algebra makes `Q_ox` equal it at the reference point by construction (verified,
+1.1243 % vs 1.1243 %). Three of four constants sourced; only `tau_ref_s` is `[tune]`, corroborated
+by Baker-Just reaching 17 % ECR — the 50.46(b)(2) limit — in ~80 s at 1204 °C.
+
+Measured crossover: **1.0×** the 8-hour decay heat at 1204 °C, **2.6×** at 1300, **13.3×** at 1500,
+doubling every **+66.7 °C** while decay heat falls. That is the self-sustaining signature.
+
+**A heat source that compresses melt by up to 6.7× moved ZERO existing gates**, which is the third
+time this session the suite has proved to test outcomes rather than mechanisms (cf. #315, #321).
+Ten meltdown paths assert THAT the core melts; none asserted how fast or which way the rate was
+going. **MD-11** therefore asserts the **second derivative** — each 400 °C band faster than the one
+below, by > 3× end to end — plus the anchor recomputed FROM CONFIG so it follows a re-fit of the
+decay groups instead of going stale. A timing band would have pinned one tuning; this pins the
+mechanism. Injection: `q_ref: 0` reddens **5 checks** and inverts the bands. `run_meltdown` 10 → 11.
+
+**Declared, not built:** hydrogen MASS (needs a core Zircaloy inventory this plant does not have —
+inventing one is worse than leaving the hook), oxidation heat into the bulk core, steam starvation.
+
+**Worth an eye, pre-existing but now easier to hit:** the clad node runs well past Zircaloy's
+~1850 °C melting point before `fuel_melt_c` (2800 °C, the UO₂ figure) declares melt — MD-1 ends at
+2859 °C clad against 1926 °C fuel. True on decay heat alone too; oxidation just gets there sooner.
+Separating clad melt/relocation from fuel melt is a bigger change and is not proposed.
+
+**Gates.** `run_all` **36 runners at baseline**, `run_meltdown` re-baselined 10 → 11. Manual set
+**Rev 18** — **12** §5.5 said the node heats "at the local decay-heat rate" and now carries the
+oxidation section with the numbers; §13 corrected (hydrogen GENERATION is modelled, the INVENTORY
+is what is absent). One trap on the way: `run_manual_units` red-carded four conversions in the new
+prose, including a bare "400 °C" with no US pair — the temperature-DIFFERENCE class again.
+
+---
+
+## Session log — 2026-08-03q (the sweep is a TOOL now — `tools/perturb_sweep.js`)
+
+**Built the throwaway rig from 2026-08-03j into `tools/perturb_sweep.js` + `_perturb_child.js`.**
+It nudges `[tune]` constants by 2–3 %, runs a suite per nudge and diffs verdicts — answering
+*"what will this retune break?"* before the retune rather than after a mystery red. Backshop lane.
+
+**The design is built around the mistake, not the success.** The first attempt at that sweep
+perturbed the instrument SEED and reported zero flips across 241 checks — a result that was
+worthless, because the known-defective check did not flip on noise either. So the tool **never
+prints a bare "0 flips"**: it scores every perturbation for DISCRIMINATING POWER first (how many
+observed values moved at all) and labels one that moves nothing **INERT**, explicitly excluded from
+any "no flips" claim. `--self-test` goes further and injects a check fragile by construction, to
+prove the pipeline can see a flip at all before a negative is believed.
+
+**Measured discriminating power, which is itself useful to have written down.** On the §14 suite:
+`h_sg` ×1.03 moves **40/241** observed values, `coolant_heat_capacity` **30/241**, `h_fc`
+**23/241** — while `delta_T_rated` ×1.02 moves **3** and `K_sg_level` **6**, and the instrument
+seeds move **1–8**. That last figure is the quantitative version of why the seed sweep proved
+nothing: it barely perturbs the suite at all.
+
+**It reproduces both known results exactly.** §14: 0 flips across 8 perturbations with real power.
+Behaviour battery: the same five flips as the hand-rolled sweep — SS-5 ×2, TR-1g ×2, TR-1i — with
+TR-1i flipping under BOTH `h_sg` and `coolant_heat_capacity`, which is the one to watch.
+
+**Reading the output is the part that needs judgement, and the tool says so on every run:** a flip
+on a constant the check never NAMES is a check measuring the wrong quantity (#321); a flip because
+the BAND is narrower than the nudge is a tight band, a fact about the plant. **Do not widen a
+sourced band to make it quiet** — that is refitting the test (HR10).
+
+**Deliberately in `tools/`, not `test/`.** `run_all` auto-discovers `test/run_*.js` and
+`test/verify_*.js` and demands a baseline for each; this has no stable score — its output is a diff
+against a change you are considering — so it is not a gate and must not become one.
+
+**Gates.** `run_all` **36 runners at baseline** (full, browser gates included).
+
+---
+
+## Session log — 2026-08-03p (#321 swept: the class is UNIQUE, and the detector was validated first)
+
+**No code change beyond two comments.** #321's body ended with *"worth a sweep for `now − then`
+comparisons on any channel that protection also reads"* — an unmeasured claim about coverage, which
+is exactly what CLAUDE.md says to prove by injection. Swept. Backshop lane.
+
+**Method, including the attempt that was the wrong instrument.** Perturb something no check's
+NAMED claim mentions, run the whole suite, diff verdicts; a verdict that moves is a check measuring
+something it does not name. **Attempt 1 was the instrument SEED** (noise realisation, no physics):
+six seeds × 241 §14 checks, **zero flips** — and worthless, because #321's check did not flip on
+noise either. Recorded so nobody repeats it. **Attempt 2 was small `[tune]` nudges** — 2–3 % on
+`coolant_heat_capacity`, `h_sg`, `K_sg_level`, `h_fc`, `delta_T_rated`.
+
+**THE DETECTOR WAS VALIDATED AGAINST THE KNOWN POSITIVE BEFORE THE NEGATIVE WAS BELIEVED**, which is
+the step that makes the result worth anything. Re-injecting the OLD #321 form alongside the new one:
+a **3 % nudge to `thermal.h_sg`** flips it **PASS (14.19) → FAIL (14.88)** — steam generator heat
+transfer, which has nothing to do with a drifting pressure gauge — and `delta_T_rated` ×1.02 moved
+it 0.83 MPa without quite breaking it, so it was fragile to at least two unrelated constants. The
+replacement reads **exactly 2.0000 under every perturbation**.
+
+**Result: the class is UNIQUE.** 241 §14 checks, **0 flips** across five physics nudges and six
+seeds. The static sweep surfaced 34 other `now − then` candidates and every one is a legitimate
+*plant-response* claim (power drifts, inventory falls, level falls) where comparing against an
+earlier value IS the point. #321 closed.
+
+**A DIFFERENT finding, recorded rather than fixed.** The same nudges over `run_behavior` (359
+checks) flip **five**, and they are not the #321 shape — they are catalog-band checks doing exactly
+what they name, with bands narrower than the nudge. Two matter:
+
+| check | baseline → nudged | nudge | headroom |
+|---|---|---|---|
+| **TR-1i** Tavg within the ±5 °F WTSM 8.1.1 duty | 4.77 → **5.02** / **5.12** | `h_sg`, `coolant_heat_capacity` | **0.23 °F (4.6 %)** |
+| **TR-1g** Tavg back within the sourced ±5 °F | −4.60 → **−5.25** | `h_sg` | 0.40 °F (8 %) |
+| **SS-5** no-load level ≤ 40 % | 38.2 → **40.6** | `h_sg` | 1.8 pts (4.5 %) |
+| **SS-5** program rises ≥ 15 % no-load → full | 16.8 → **14.4** | `h_sg` | 1.8 pts |
+| **TR-1g** core reduced to the SECONDARY LOAD | 44.6 → **33.5** | `coolant_heat_capacity` | large move |
+
+**Do not widen any of them.** The ±5 °F is the SOURCED WTSM duty; widening a sourced acceptance
+band because it is uncomfortable is refitting the test to the plant (HR10), and a thin margin is a
+fact about the plant rather than about the check. The margins are now recorded **in comments at
+TR-1g and TR-1i themselves**, where someone debugging a red will actually be looking: *if this
+reddens, ask what you changed that touches SG heat transfer before hunting the rod channel.*
+
+**Gates.** `run_behavior` 45/45 unchanged (comment-only edit).
+
+---
+
+## Session log — 2026-08-03o (#315 §6 CLOSED — and the primary corrected my own evidence)
+
+**Ruled: keep the leg split on total core heat, do not take the fuel→coolant flux form** *(OWNER
+RULING, 2026-08-03: "Do as you recommend.")*. No plant behaviour changed. Backshop lane. Full
+rationale: `Blueprint/BUILD_DECISIONS.md` 2026-08-03d; measurement packet on #315.
+
+**THE PROCESS FINDING IS THE ONE TO KEEP, because it is a near-miss.** nrc.gov 403s from this
+session, so the evidence pass went to an OPEN-ACCESS restatement of the Westinghouse equations
+(Li Gang, FMSMT 2017) which shows the trip comparing against **ΔT·(1+τ₄s)(1+τ₅s)** — a lead-lag on
+the MEASURED ΔT, labelled as compensating "RTD and thermowell thermal time constant plus fluid
+transport time". I built the whole §6 argument on it, wrote it into three source files and posted
+it to the issue: *the real channel compensates measurement lag out of ΔT, so adding a fuel lag is
+backwards.* **Then I read the primary.** The workbench session had already fetched ML11223A301 on
+2026-08-03 (corrected archive.org CDX recipe — their 2026-08-03f entry), and its extract is sitting
+in `RD_workbench/inbox/sources/`. WTSM 12.2 prints both equations, and the ONLY dynamic
+compensation in either is on **Tavg**: *"the lead-lag controller for Tavg dynamic compensation"*,
+*"the rate-lag controller for Tavg dynamic compensation"*. There is **no τ₄/τ₅**, and the document
+contains **no RTD, thermowell or transport wording anywhere**. The restatement describes a
+different design lineage (CNPEC), not the Westinghouse reference. **Everything built on it was
+reverted and rewritten against the primary before commit.**
+
+Two lessons, and the second is the sharper one. **A secondary restatement can be internally
+plausible, quotable and specific and still be describing a different plant** — the SOP's "another
+agent's summary is not evidence" extends to *any* non-primary, including a peer-reviewed paper
+restating someone else's equations. And **check what the other lanes already sourced before
+sourcing it yourself**: the primary had been in the tree since the morning merge, named in a
+TUNING_LOG entry I had not read, and reading it first would have saved the whole detour.
+
+**What the primary actually settles for §6, and it still closes the same way.** The real channel
+reads loop ΔT as *"a measure of reactor power"*, **directly and uncompensated**. Every compensation
+it does have is on Tavg. So a ΔT carrying a ~20 s fuel lag is a worse measure of core power — the
+one job the real design gives that signal. Measured cost of the flux form: full load rejection
+rides out either way, but the OTΔT margin falls **18.4 % → 1.8 %** of rated ΔT; and it is not
+rescuable by a faster fuel node — `h_fc` 0.05 → 0.10 with `heat_gen_coeff` doubled to hold 389 °C at
+rated gives `run_otdt` **21/39** and a scram at 1 s on `tavg high`. Those two constants are jointly
+calibrated.
+
+**The candidate form was ALSO wrong in its own right, and TR-7b caught it** — the probe written a
+session earlier for the *other* variant. My §6 formulation included `Q_pump`. Pump heat is
+deposited AT THE PUMP, between SG outlet and core inlet: it lifts both legs equally and creates no
+rise ACROSS THE CORE. It over-stated ΔT by exactly the pump-heat fraction (+8.9 % at t+3 min,
++14 % at t+30 min — a steady-state offset, not a transient). Corrected to flux alone, TR-7b passes.
+
+**Three reds re-diagnosed on the merged tree; only ONE was ever real.** `run_campaign` did not
+reproduce (51/51). `run_pwr`'s *"drifting pressure diverges"* is a defective check — spun out as
+**#321** and fixed here, `run_pwr` **240 → 241**. `run_otdt` is the real one, and it is the margin
+collapse above.
+
+**Three stale sourcing sites retired**, which the workbench entry diagnosed but did not fix:
+`pwr_config.js` ×2 and `DESIGN_COMPANION` §8.23 all still said ML11223A301 *"could not be fetched"*
+and that the τ values are in it. Both halves are wrong: the document has been read, and the τ's are
+**named and never valued** there (Table 12.2-1 lists both setpoints *"Variable (calculated)"*,
+K₁–K₆ *"manually adjusted preset"*). They are plant Tech Spec / COLR numbers, so the
+dynamic-compensation departure is **permanent unless a plant-specific source turns up** rather than
+a pending fetch — a different thing to tell the next person, and it stops the next agent waiting on
+a document that will never carry the answer.
+
+**Gates.** `run_all` **36 runners at baseline**, `run_pwr` re-baselined 240 → 241. No manual change
+(the OTΔT trips ship default OFF and `Manuals/12` carries no OTΔT content).
+
 ## Session log — 2026-08-03n (#318 the turbine runback — and "fix K4" turned out to be unfixable)
 
 *(OWNER RULING, 2026-08-03: "Go with your recommendation")* for the shape — the runback drives the

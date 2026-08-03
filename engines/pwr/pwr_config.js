@@ -345,6 +345,29 @@
       clad_heat_gain: 15.0,        // °C/s of exposed-clad heatup per unit total heat (_Q_total is FRACTIONAL, 1.0 = rated) at full uncovery — ~0.9 °C/s at early (6 %) decay heat, the observed TMI/severe-accident order [tune]
       clad_steam_h: 1.0e-4,        // 1/s — steam-convection cooling of the exposed clad toward Tsat; sets the equilibrium gradient (grazing uncovery late in decay stabilizes below damage; deep or early uncovery runs away) [tune]
       clad_quench_tau: 120.0,      // s — reflood/rewet relaxation of the hot node back to the wetted-core temperature (quench-front timescale, minutes) [tune]
+      // ZIRCONIUM-STEAM OXIDATION on the exposed-clad hot node (#238, built 2026-08-03).
+      // Zr + 2H2O -> ZrO2 + 2H2, Q = 190 kJ/mol (Baker and Just). Three of the four
+      // constants are SOURCED; only the timescale is [tune]. See pwr_thermal.stepCladding
+      // for the form and why it is Arrhenius + parabolic rather than the linear multiplier
+      // #238 originally sketched.
+      zirc: {
+        // Baker-Just: w^2 = 33.3e6 * t * exp(-45500/RT), w in mg/cm^2, R = 1.987 cal/mol/K.
+        // 45500 / 1.987 = 22898 K. SOURCED.
+        ea_over_r_k: 22898,
+        // 2200 °F — the 10 CFR 50.46(b)(1) peak-cladding-temperature limit, and the
+        // temperature the oxidation-vs-decay-heat crossover below is quoted at. SOURCED.
+        ref_temp_c: 1204,
+        // Oxidation heat at ref_temp_c, as a fraction of RATED core heat. The source says it
+        // equals the decay heat 8 hours after shutdown; on THIS plant's two-group decay curve
+        // that is 1.1243 %. SOURCED anchor, evaluated against our own decay model — so it
+        // moves if the decay groups are ever re-fitted, and should be re-derived if they are.
+        q_ref: 0.011243,
+        // s — time to grow the reference oxide at ref_temp_c; sets how fast the protective
+        // layer throttles the reaction. [tune], but corroborated rather than free: Baker-Just
+        // reaches 17 % ECR — the 10 CFR 50.46(b)(2) limit — in ~80 s at 1204 °C for typical
+        // Zircaloy geometry (0.057 cm wall, 6.56 g/cm^3, oxygen gain 32/91.22 of the metal).
+        tau_ref_s: 80.0,
+      },
       // Break blowdown flash-cooling (pwr_thermal.stepCoolant). Coolant leaving a primary
       // break (s.leak_flow) carries enthalpy, and the remaining inventory flashes to replace
       // it — removing latent heat as the break vents. Modeled as a self-limiting perfect-mixing
@@ -1323,10 +1346,21 @@
     // DECLARED DEPARTURES (DESIGN_COMPANION §8.23):
     //   · no f(ΔI) axial-offset term — the ruling;
     //   · no lead-lag on (Tavg − T′) and no rate term on OPΔT. The real equations carry
-    //     (1+τ₁s)/(1+τ₂s) and τ₃s/(1+τ₃s), and those τ values are in ML11223A301, which
-    //     could not be fetched. An INVENTED time constant on a protection channel is
-    //     worse than a declared absence, so the compensation is static here. The cost is
-    //     that OTΔT does not ANTICIPATE a fast Tavg ramp — it responds to one.
+    //     (1+τ₁s)/(1+τ₂s) and τ₃s/(1+τ₃s). This used to say the τ values "are in
+    //     ML11223A301, which could not be fetched"; the document HAS been read since
+    //     (2026-08-03) and it is wrong on both halves. The τ's are NAMED AND NEVER
+    //     VALUED there — they are plant Tech Spec / COLR numbers — so the departure is
+    //     PERMANENT unless a plant-specific source turns up, not a pending fetch. An
+    //     INVENTED time constant on a protection channel is still worse than a declared
+    //     absence, so the compensation stays static. The cost is that OTΔT does not
+    //     ANTICIPATE a fast Tavg ramp — it responds to one.
+    //     WHAT THE PRIMARY DOES SETTLE, and it decided #315 §6: BOTH compensations are
+    //     on TAVG — "the lead-lag controller for Tavg dynamic compensation" and "the
+    //     rate-lag controller for Tavg dynamic compensation". NOTHING compensates the
+    //     measured ΔT, and the document carries no RTD, thermowell or transport-lag
+    //     term at all: it calls loop ΔT "a measure of reactor power" and reads it
+    //     directly. That is why the leg split is driven by total core heat rather than
+    //     by the lagging fuel→coolant flux (see pwr_thermal.js stepCoolant).
     //   · one channel, not 2/4 — consistent with every other protection function here
     //     (same reasoning as the low-flow trip's recorded departure).
     otdt_opdt: {

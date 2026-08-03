@@ -68,7 +68,13 @@ var BASELINES = {
   // deadband pins. Injection-verified BOTH ways: pointing the autoclose back at the
   // open permissive reddens the load-bearing check, and deleting rhr_autoclose_mpa
   // outright reddens four.
-  'run_pwr.js':            { code: 0, score: '36/36 240passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
+  // 240 → 241 (2026-08-03, #321): "drifting pressure diverges" was measuring the DEPTH
+  // of the code-safety blowdown its own drift triggered, at 22 % margin — not the drift.
+  // Split into the offset it names (rate × elapsed, exactly 2.0000 MPa in every variant
+  // tried) plus a POSITIVE assertion of the HR1 half it was accidentally covering:
+  // protection acted on a reading the plant never had. Each half injection-verified and
+  // they discriminate independently.
+  'run_pwr.js':            { code: 0, score: '36/36 241passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
@@ -146,7 +152,12 @@ var BASELINES = {
   // RECOVERY, so the suite proved only that the plant can be lost that way. Measured:
   // unmitigated damages at 4040 s peaking at 366 °C Tavg; with the PORV open and HPI
   // running, peak fuel 628 °C, no damage, inventory held above 100 %.
-  'run_meltdown.js':       { code: 0, score: '10pass 0xfail' },
+  // 10 → 11 (2026-08-03, #238): MD-11, zirconium-steam oxidation. The whole battery
+  // was green with the term ABSENT and green with it IN — the MD-* paths assert THAT
+  // the core melts, never how fast or which way the rate is going. MD-11 asserts the
+  // SECOND DERIVATIVE instead: each 400 °C band must be crossed faster than the one
+  // below. Measured 184/172/86/40 s with oxidation, 218/334/378/428 s without.
+  'run_meltdown.js':       { code: 0, score: '11pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at
   // all, so its MD-4/MD-8 PROTECTION claims are proven with the operator hand-
@@ -393,9 +404,9 @@ var BASELINES = {
   // THREE lanes moved this independently: develop 103, backshop 106, workbench 108.
   // MEASURED 124 on the fully merged tree. Adding them up gives 317, which is
   // the arithmetic this comment exists to stop.
-  // BOTH lanes moved this independently — develop 125, workbench 132. MEASURED on the
-  // merged tree below, not added up.
-  'run_hardrules.js':      { code: 0, score: 'MEASURE_ME' },
+  // MEASURED 136 on the fully merged tree — develop 125, workbench 128, backshop 127.
+  // Adding them up gives 380. Three lanes, one measurement.
+  'run_hardrules.js':      { code: 0, score: '136checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

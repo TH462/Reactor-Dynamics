@@ -388,6 +388,9 @@
         // rate comparator lands at −2.06 °F. Both converge to program by 2 h, so what moved is
         // how fast the dump's own stated end condition is reached.
         var tref50 = RD.PWR_CONTROL.trefProgram(Math.max(0, Math.min(1, h.ins().steam_flow)));
+        // MARGIN, MEASURED (2026-08-03, #321 sweep): 0.40 °F of headroom — a 3 % nudge to
+        // `thermal.h_sg` takes it −4.60 → −5.25 °F. Same rule as TR-1i below: the ±5 °F is
+        // sourced (WTSM 11.2), so diagnose the change, do not widen the band.
         ck('and Tavg is back within the sourced ±5 °F of program (WTSM 11.2), not left swollen',
           fmt((t.tavg_c - tref50) * 9 / 5, 2) + ' °F', Math.abs(t.tavg_c - tref50) * 9 / 5 < 5.0,
           '|dev| < 5 °F of ' + fmt(tref50, 1) + ' °C');
@@ -493,6 +496,13 @@
           if (el <= 600) hh.cmd('set_load_target', { mwe: Math.max(50, 100 - 5 * (el / 60)) });
         });
         ck('5 %/min ramp down — no reactor trip', c.tripReason || 'none', c.tripTime == null, 'none');
+        // MARGIN, MEASURED (2026-08-03, #321 sweep): this band is TIGHT and it is the
+        // most likely source of a puzzling red. A 3 % nudge to `thermal.h_sg` or
+        // `thermal.coolant_heat_capacity` — neither of which this check names — takes it
+        // 4.77 → 5.02 / 5.12 °F against the ±5 °F limit, i.e. 0.23 °F of headroom (4.6 %).
+        // If this reddens, ask what you changed that touches SG heat transfer or coolant
+        // heat capacity BEFORE hunting the rod channel. Do NOT widen it: ±5 °F is the
+        // SOURCED WTSM 8.1.1 duty, and a thin margin is a fact about the plant.
         ck('Tavg holds within the ±5 °F DUTY through the ramp (was 12.55 °F proportional)',
           fmt(pc, 2), pc <= 5.0, '≤ 5.00 °F');
         ck('…and the dump stays shut throughout', fmt(c.range('steam_dump_valve_pct').max, 1),

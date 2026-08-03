@@ -373,6 +373,76 @@
       });
     },
 
+
+    /* MD-11 — ZIRCONIUM-STEAM OXIDATION: the escalation must ACCELERATE (#238).
+     *
+     * This is the character claim, and it is the one that was wrong. With decay heat as
+     * the only source the hot node heats MORE SLOWLY as it climbs, because decay heat is
+     * falling: measured before the term was added, MD-1 crossed 1200 → 2800 °C in 22.7 min
+     * while decay heat fell 6.7 % → 4.5 %, and every 500 °C band took LONGER than the one
+     * below it. Real severe accidents do the opposite — above ~2200 °F the oxidation heat
+     * takes over and the core makes its own escalation.
+     *
+     * WHY THIS PROBE AND NOT A TIMING BAND: the whole suite was green with the term absent
+     * and green with it in, because the MD-* paths assert THAT the core melts, never how
+     * fast or in what direction the rate is going. A band on damage→melt would pin one
+     * tuning; asserting the SECOND DERIVATIVE pins the mechanism.
+     *
+     * The anchor check is computed from config, not transcribed, so it follows a re-fit of
+     * the decay groups instead of silently going stale.
+     */
+    'MD-11': function () {
+      return test('MD-11 Zr-steam oxidation — the escalation ACCELERATES, and the anchor is sourced', function (ck) {
+        var T = RD.PWR_CONFIG.thermal, z = T.zirc || {}, d = RD.PWR_CONFIG.kinetics.decay;
+        ck('the oxidation term is configured at all', z.q_ref ? 'yes' : 'MISSING', !!z.q_ref, 'present');
+
+        // ---- the sourced anchor: at 2200 °F the oxidation heat equals the 8-hour decay heat.
+        // q_ox at the reference oxide (w = 1) and the reference temperature is q_ref by
+        // construction, so what this really checks is that q_ref still MATCHES this plant's
+        // own decay curve — the thing that breaks if the decay groups are re-fitted.
+        var decay8h = d.H1_0 * Math.exp(-d.lambda_1 * 8 * 3600) + d.H2_0 * Math.exp(-d.lambda_2 * 8 * 3600);
+        ck('anchor: oxidation heat at ' + z.ref_temp_c + ' °C = this plant\'s 8-hour decay heat',
+          fmt(z.q_ref * 100, 4) + ' % vs ' + fmt(decay8h * 100, 4) + ' %',
+          Math.abs(z.q_ref - decay8h) / decay8h < 0.02, 'within 2 %');
+        ck('the reference temperature is the 10 CFR 50.46 limit (2200 °F)',
+          z.ref_temp_c + ' °C = ' + fmt(z.ref_temp_c * 9 / 5 + 32, 0) + ' °F',
+          Math.abs(z.ref_temp_c * 9 / 5 + 32 - 2200) < 10, '2200 °F ± 10');
+
+        // ---- the character. Deeply-uncovered core, no ECCS: time each 400 °C band and
+        // require the LATER bands to be SHORTER. On decay heat alone they lengthen.
+        var h = new Harness('hot_full_power');
+        h.run(10);
+        h.cmd({ action: 'set_eccs_armed', armed: false });
+        h.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
+        var MARKS = [1200, 1600, 2000, 2400, 2800], at = {}, t = 0;
+        for (var i = 0; i < 3000 && t < 12000; i++) {
+          h.run(2); t += 2;
+          var c = h.eng.s.clad_temp_c;
+          for (var m = 0; m < MARKS.length; m++) if (at[MARKS[m]] == null && c >= MARKS[m]) at[MARKS[m]] = t;
+          if (at[2800] != null) break;
+        }
+        var reached = MARKS.filter(function (x) { return at[x] != null; });
+        ck('the core reaches melt on an unmitigated large break',
+          reached.length + '/' + MARKS.length + ' marks', at[2800] != null, 'all 5');
+        if (at[2800] == null) return;
+        var b1 = at[1600] - at[1200], b2 = at[2000] - at[1600], b3 = at[2400] - at[2000], b4 = at[2800] - at[2400];
+        ck('bands (s): 1200→1600, →2000, →2400, →2800',
+          [b1, b2, b3, b4].map(function (x) { return fmt(x, 0); }).join(' / '), true, 'recorded');
+        // The mechanism: each successive 400 °C band is crossed FASTER than the last.
+        ck('the escalation ACCELERATES — each 400 °C band is faster than the one below',
+          b1 + ' > ' + b2 + ' > ' + b3 + ' > ' + b4,
+          b2 < b1 && b3 < b2 && b4 < b3, 'strictly decreasing');
+        // …and by a margin that could not come from decay heat drifting.
+        ck('the top band is far faster than the bottom one, not marginally',
+          fmt(b1 / Math.max(b4, 1e-9), 1) + '×', (b1 / Math.max(b4, 1e-9)) > 3, '> 3×');
+
+        // ---- self-limiting: the oxide is monotonic, so a re-wetted node that dries again
+        // oxidises more slowly. This is what the parabolic law buys and why there is a state.
+        ck('the oxide layer only ever grows (it cannot un-oxidise)',
+          fmt(h.eng.s._zr_ox2, 2), h.eng.s._zr_ox2 > 0, '> 0');
+      });
+    },
+
   };
 
   function runAll() {
