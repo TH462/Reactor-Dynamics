@@ -309,6 +309,31 @@ anything here that is standing procedure rather than news belongs in the list be
 > rotated out intact and took its "do not trust a 1400 ppm crossover" warning with it, which
 > is the failure this paragraph exists to stop.
 
+- **The two missing Westinghouse reactor trips are built — and measuring the plant redrew the
+  issue that asked for them (2026-08-03, #311).** OTΔT/OPΔT ruled in as a pair *(OWNER RULING,
+  2026-08-02: "311: a.")*, reduced form, no ΔI term. **Shipped DEFAULT OFF**, and both reasons
+  matter. Four things to know. **The evidence pass COULD NOT RUN** — every outbound host is
+  refused by that environment's egress policy (nrc.gov, its mirrors, archive.org; WebFetch 403s
+  on all of them), so ML11223A301 is unread and the equation form, the τ lead-lag constants and
+  the two margin intercepts are **unsourced**. Search summaries existed and were not used: the
+  SOP names another agent's summary as not-evidence. **The pair is NOT symmetric, measured.**
+  Across 13 casualties and 8 normal evolutions, full stack, **no casualty on this plant reaches
+  DNB while un-scrammed** — the three that reach DNB get there by DEPRESSURIZING and have
+  already scrammed on low pressure (LOCA 6.0 s vs 6.5 s; PORV 12.5 s vs 18.0 s) — so #311's
+  "can be walked into a DNB-limited condition with every gauge in band" does **not** reproduce
+  here. OTΔT is prototypicality; **OPΔT is the one with bite**: a 30 % steam line break holds
+  **114.2 % power for 30 minutes with no reactor trip**, because power-range high sits at 120 %.
+  **The limit line must be SCALED, never re-anchored** — the first cut took this plant's
+  closed-form DNB slope (ΔT_DNB = 2·(T_sat(P) − dnb_margin_c − Tavg), which falls straight out
+  of `pwr_thermal.hFcEffective`) and paired it with a fitted intercept, which ROTATES the line:
+  a full load rejection lifts Tavg ~29 °F (16 °C), dropping the line 120 % → 23 % against a ΔT
+  of ~46 %, and **the plant scrammed at 55.0 s** — the ride-out the 40 % dump exists to teach.
+  Scaling by a margin factor instead puts the equivalent gradients **inside** the published real
+  bands (K₂ 0.0202 /°F, K₃ 0.00134 /psi) where the unscaled ones were 1.5–2× steeper than any
+  real value — **that steepness was the tell and it was visible before the measurement**.
+  And **the runback half is deliberately NOT built**: an actuation fires once, so a ramped load
+  reduction is a new actuation class, not a setpoint. `run_otdt` NEW at **39**, injection-verified
+  four ways; everything else unmoved, which is what the flag is for.
 - **A reactor trip could be switched off at full power, and 34 green runners never asked
   (2026-08-02, #295 F1/F2 — the audit programme's first slice).** `setTripBlock` accepted a
   manual block on any blockable trip whenever it was not *already asserted*, **ignoring the
@@ -356,32 +381,6 @@ anything here that is standing procedure rather than news belongs in the list be
   staircase**: flatten all four legs to single steps and the run still scores **27/28**,
   because a staircase arrives everywhere the procedure says it will. Only
   `never tavg_rate_c_per_hr < -150` notices.
-- **The two missing Westinghouse reactor trips are built — and measuring the plant redrew the
-  issue that asked for them (2026-08-03, #311).** OTΔT/OPΔT ruled in as a pair *(OWNER RULING,
-  2026-08-02: "311: a.")*, reduced form, no ΔI term. **Shipped DEFAULT OFF**, and both reasons
-  matter. Four things to know. **The evidence pass COULD NOT RUN** — every outbound host is
-  refused by that environment's egress policy (nrc.gov, its mirrors, archive.org; WebFetch 403s
-  on all of them), so ML11223A301 is unread and the equation form, the τ lead-lag constants and
-  the two margin intercepts are **unsourced**. Search summaries existed and were not used: the
-  SOP names another agent's summary as not-evidence. **The pair is NOT symmetric, measured.**
-  Across 13 casualties and 8 normal evolutions, full stack, **no casualty on this plant reaches
-  DNB while un-scrammed** — the three that reach DNB get there by DEPRESSURIZING and have
-  already scrammed on low pressure (LOCA 6.0 s vs 6.5 s; PORV 12.5 s vs 18.0 s) — so #311's
-  "can be walked into a DNB-limited condition with every gauge in band" does **not** reproduce
-  here. OTΔT is prototypicality; **OPΔT is the one with bite**: a 30 % steam line break holds
-  **114.2 % power for 30 minutes with no reactor trip**, because power-range high sits at 120 %.
-  **The limit line must be SCALED, never re-anchored** — the first cut took this plant's
-  closed-form DNB slope (ΔT_DNB = 2·(T_sat(P) − dnb_margin_c − Tavg), which falls straight out
-  of `pwr_thermal.hFcEffective`) and paired it with a fitted intercept, which ROTATES the line:
-  a full load rejection lifts Tavg ~29 °F (16 °C), dropping the line 120 % → 23 % against a ΔT
-  of ~46 %, and **the plant scrammed at 55.0 s** — the ride-out the 40 % dump exists to teach.
-  Scaling by a margin factor instead puts the equivalent gradients **inside** the published real
-  bands (K₂ 0.0202 /°F, K₃ 0.00134 /psi) where the unscaled ones were 1.5–2× steeper than any
-  real value — **that steepness was the tell and it was visible before the measurement**.
-  And **the runback half is deliberately NOT built**: an actuation fires once, so a ramped load
-  reduction is a new actuation class, not a setpoint. `run_otdt` NEW at **39**, injection-verified
-  four ways; everything else unmoved, which is what the flag is for.
-
 - **The board reads SI now, and the two hardest parts were not conversions (2026-08-01,
   #238).** The Settings SI position was DISABLED while the PWR was up (#237) because the
   board rendered US customary at every readout — ~30 inline `MPa2psi`/`C2F` calls plus US
@@ -431,30 +430,15 @@ anything here that is standing procedure rather than news belongs in the list be
   POSITIVELY now) and **TR-1g** added — the check that says 40 % is *enough*.
 
 
-- **Five automation channels could have been doing nothing, and the gate still read 24/24
-  (2026-07-31, #286, split from #154).** `run_autoctl` engaged **seven channels at once** and
-  asserted **aggregate** plant state — power, Tavg, pressure, SG level — so every band could
-  be held by a channel other than the one under test. Measured by neutering the kernel
-  (channel reports `engaged`, does nothing): `cvcs_makeup`, `boron_trim`, `grid_follow`,
-  `boron_conc` and the **engage** half of `steam_dump` were each a complete no-op at a green
-  **24/24**. Three things to know. **`boron_conc` is `defaultOn`** — it is in every free-play
-  preset lineup, so it could have shipped inert to players. **`steam_dump`'s one incidental
-  red was a different feature's test**: blanking it reddened only *"PWR · RPS reset works…
-  (#228)"*, and only via the **disengage** path, so engaging it could have done nothing at
-  all. And **the first injection LIED** — blanking a `mode` channel's disengage as well as
-  its engage leaves the plant in whatever AUTO the IC shipped with (the rig's own t=0
-  stand-down is what puts it in manual), so the `steam_dump` and `pzr_pressure` probes
-  **passed against a dead channel** until the injection was narrowed to engage only. Six
-  probes now engage **one** channel each and assert what nothing else in the lineup can
-  produce — `cvcs_makeup` holds pzr level **54.9 %** against **22.5 %** dead; `boron_trim`
-  recovers rods to **88.6 %** against **100.0 %**, out of travel; `steam_dump` holds a
-  turbine trip at **1121 psi (7.73 MPa)** against **1368 psi (9.43 MPa)** *with the code
-  safeties lifting*. `run_autoctl` **24 → 30**. The rest of #154 was re-verified in the same
-  pass: about half is dead (all five TMI-2 Part-3 endings, the follow-mode save/restore
-  branch, cold-init trip blocks, the PORV block valve), and what stands is `reset_below`,
-  `porv_tailpipe_temp`, the PZR code safeties, the RHR interlock, and 8-of-29 save migration.
-
 **Standing procedure — not part of the rotation above; these do not expire.**
+
+- **Neutering an automation channel: blank the ENGAGE direction ONLY** (rescued from the #286
+  bullet on eviction, 2026-08-03). Blanking a `mode` channel's disengage as well leaves the
+  plant in whatever AUTO the IC shipped with — the rig's own t=0 stand-down is what puts it in
+  manual — so `run_autoctl`'s `steam_dump` and `pzr_pressure` probes **passed against a dead
+  channel** until the injection was narrowed. The first injection LIED, in the exact direction
+  that makes an untested thing look tested. Same shape wherever you prove coverage by breaking
+  something that has an on and an off.
 
 - **A gate that iterates a MAP tests the map, not the thing** (rescued from the #224 bullet on
   eviction, 2026-08-02). `verify_manual_follow.js` walks `STEP_UI` in `test/manual_ui_map.js`,
