@@ -53,6 +53,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
     numbers. Manual set **Rev 15**.
 
 ### Added
+- **The turbine trip is a runnable checklist — and it is where you watch the steam dump reach its
+  stop** (#319). PWR-E03 completes the pair with the post-trip response: E03 is the procedure that
+  sends you there. Above 50 % power a turbine trip scrams the reactor automatically, so the
+  operator confirms rather than causes it, and then watches the dump take all the heat the turbine
+  is no longer taking. Measured, it **saturates at 40.00 % — its entire capacity — about half a
+  minute after the trip** and holds there before backing off as decay heat falls. Steam generator
+  level swells 65 → 72 % before settling near 36 %, and the plant stabilizes hot and subcritical
+  at 567.5 °F (297.5 °C). The checklist also carries the two warnings the procedure leads with:
+  do not plan to ride out a turbine trip at power, and a planned offline is not a turbine trip.
+
 - **The steam generator tube rupture is a runnable checklist — and the manual now says what the
   steam generator actually does, which is nothing** (#319, #322). PWR-E06 told you to identify the
   leak from "rising SG level on the affected generator". Measured, level does not move: with the

@@ -148,6 +148,10 @@ var STEP_UI = {
   // that changes the plant is putting CVCS in AUTO.
   // PWR-E06 SGTR (#319 item 2, authored after #322 was ruled). Step 1 is a parenthesised
   // observe label and is exempt, same as pwr_rcp_trip step 1.
+  // PWR-E03 turbine trip (#319 item 1). Step 1 is a parenthesised observe label, exempt.
+  pwr_turbine_trip: [{ i: 1, view: 'scram', control: 'SCRAM' },
+                     { i: 2, view: 'board', control: 'Steam Dump' },
+                     { i: 3, view: 'board', control: 'SG Level' }],
   pwr_sgtr: [{ i: 1, view: 'scram', control: 'SCRAM' },
              { i: 2, view: 'board', control: 'AFW' },
              { i: 3, view: 'board', control: 'HPI/LPI' },

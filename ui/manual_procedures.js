@@ -656,6 +656,57 @@
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
       outcome: 'Leak isolated with the block valve; core stays covered — the recovery TMI missed.',
     },
+    // PWR-E03 — turbine trip. Authored 2026-08-03 (#319 item 1). Pairs with PWR-T06: E03 is the
+    // procedure that SENDS you to the post-trip response, and until T06 was built there was
+    // nothing at the other end of that pointer.
+    //
+    // MEASURED full stack, `hot_full_power`, shipped lineup, `trip_turbine` at t = 60 s:
+    //   +31 s   reactor ALREADY SCRAMMED (P-9), MWe 0, steam dump SATURATED at 40.00 %
+    //           — its entire capacity — SG level swelled 65 → 72.1 %, pzr level 55 → 61.6 %
+    //   settles Tavg 567.5 °F (297.5 °C), SG level 36.5 %, pzr 38.6 %, dump modulating 4–9 %
+    //
+    // The dump pinning at exactly 40.00 % is the #220/40 % ruling made visible: this is the
+    // event where the operator SEES the dump reach its stop and stay there. At the old 1.05
+    // capacity it never saturated and the interlock could only be asserted, never demonstrated.
+    //
+    // STEP 2 CARRIES AN EXPLICIT SCRAM AND THE TEXT SAYS WHY. The P-9 reactor-trip-on-turbine-
+    // trip is an M4 function, so `run_procedures` (engine-direct) has no RPS and will not trip
+    // on its own — the same layer wall PWR-T06 and PWR-E06 hit. Rather than assert a trip the
+    // engine-direct plant cannot produce, the step does what PWR-E03 step 2 and the chapter's
+    // generic action 1 both say: CONFIRM the automatic trip, and manually scram if power should
+    // be down and is not. On the shipped plant the confirm is all the player does.
+    {
+      id: 'pwr_turbine_trip', category: 'emergency', manual_ref: 'PWR-E03',
+      title: 'Mode 1 emergency — turbine trip above P-9',
+      purpose: 'The turbine has tripped at power. Above 50 % power that scrams the reactor automatically — your job is to confirm it happened, watch the steam dump take the heat the turbine is no longer taking, and hand over to the post-trip response.',
+      from: 'hot_full_power',
+      prereq: ['At-power operation above P-9 (≥ 50 % power).'],
+      cautions: [
+        'DO NOT PLAN TO RIDE OUT A TURBINE TRIP AT POWER. This plant carries Reactor Trip on Turbine Trip (P-9, ≥ 50 %). What it rides out is a LOAD REJECTION — the generator taking less load with the turbine still on line — which is a different event and does not arm P-9.',
+        'A planned offline is not a turbine trip. Taking the generator off line with the OFF selector opens the breaker, leaves the stop valves open, latches nothing and never arms P-9. It is reversible; a trip is not.',
+        'The steam dump is finite. Measured, it saturates at its full 40 % capacity in this transient and stays there — watch it reach the stop, because that is the plant telling you it has nothing left to give.',
+      ],
+      steps: [
+        { text: 'The turbine trips. (Failures tab → inject Turbine Trip, or it arrives on its own.) Steam demand collapses to nothing and the generator drops off the grid.', control: '(observe MWe and turbine state)', target: 'turbine tripped, 0 MWe',
+          cmd: { action: 'trip_turbine' }, hold: 20, acc: { p: 'turbine_tripped', op: '>', v: 0 } },
+        { text: 'CONFIRM the reactor tripped. Above P-9 it goes automatically and immediately — you should be verifying a scram that has already happened, not causing one. If power is not collapsing, scram manually now.', control: 'SCRAM', target: 'reactor tripped, power collapsing',
+          note: 'On the shipped plant the trip is automatic and arrives with the turbine trip, not after it. The SCRAM command here is the "if it did not" half of the procedure.',
+          cmd: { action: 'scram' }, hold: 60, acc: { p: 'power_pct', op: '<', v: 5 },
+          saw: { p: 'steam_dump_valve_pct', op: '>', v: 35 } },
+        { text: 'Watch the steam dump. With the turbine gone it is the only path for the heat still coming out of the core, and it drives open on Tavg error. Measured, it goes to its stop — 40 % of rated steam flow, all of it — and holds there through the worst of the transient.', control: 'Steam Dump', target: 'dump at its stop',
+          note: 'The saturation is EARLY — measured, the dump is at 40.00 % about half a minute after the trip and has backed off to ~9 % by three minutes, so the assertion for it lives on the previous step. What you are watching here is it modulating back down as decay heat falls.',
+          hold: 120, acc: { p: 'melted', op: '<', v: 1 } },
+        { text: 'Control steam generator level through the swell. Losing steam demand swells the generator before decay heat brings it back down — the level you see first is not the level you will settle at.', control: 'SG Level', target: 'level swells then settles',
+          note: 'Measured: SG level swells 65 → 72.1 % in the first half-minute, then falls away to about 36.5 % as the plant settles on decay heat and auxiliary feedwater.',
+          hold: 300, acc: { p: 'melted', op: '<', v: 1 } },
+        obs('Confirm the plant is stable, hot and subcritical — this is Mode 3, Hot Standby, and from here you are in the post-trip response (PWR-T06).',
+          { p: 'plant_mode', op: '~', v: 3, tol: 0.5 },
+          'Measured settled condition: Tavg 567.5 °F (297.5 °C), steam dump modulating a few per cent, SG level near 36.5 %. PWR-T06 picks up from exactly here — including the RPS reset, which this procedure does not do.',
+          ['SCRAM', 'Steam Dump', 'Tavg']),
+      ],
+      guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
+      outcome: 'Turbine trip absorbed: reactor tripped automatically on P-9, the steam dump carried the transient at its full 40 % capacity, and the plant is stable in Mode 3, Hot Standby ready for the post-trip response.',
+    },
     // PWR-E06 — SGTR. Authored 2026-08-03 (#319 item 2), AFTER #322 was investigated and ruled.
     //
     // THIS PROCEDURE WAS BLOCKED FOR A DAY BECAUSE TWO OF ITS SIX STEPS TAUGHT THINGS THE PLANT

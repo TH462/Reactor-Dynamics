@@ -20,6 +20,50 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03l (#319 item 1 — PWR-E03 turbine trip, and a `saw` in the wrong window)
+
+**Task:** #319 item 1, the last of the "mechanism already exists" items. E03 is the procedure that
+**sends** the operator to PWR-T06, so until T06 was built there was nothing at the other end of
+that pointer; the pair is now complete.
+
+**Measured** full stack, `hot_full_power`, `trip_turbine` at t = 60 s:
+
+| | |
+|---|---|
+| +31 s | reactor **already scrammed** (P-9), MWe 0, steam dump **saturated at 40.00 %** |
+| | SG level swelled **65 → 72.1 %**, pzr level **55 → 61.6 %** |
+| settled | Tavg **567.5 °F (297.5 °C)**, SG level 36.5 %, pzr 38.6 %, dump modulating 4–9 % |
+
+**The dump pinning at exactly 40.00 % is the 40 % ruling made visible** — this is the event where
+the operator watches it reach its stop and stay there. At the old 1.05 capacity it never saturated,
+so the interlock could only be asserted, never demonstrated.
+
+### A `saw` is only as good as the window it sits in
+
+The dump-saturation assertion first went on step 3, and it **passed engine-direct and FAILED under
+the stack** — the opposite of the usual direction, and nothing to do with layers *per se*. The
+saturation is **early**: 40.00 % about half a minute after the trip, back to ~9 % by three minutes.
+Step 3's hold opened at t+80 s, by which time the stack plant had already backed the dump off;
+engine-direct the transient is slower, so the same window still caught it. Moved to the
+confirm-scram step, whose hold covers t+20…t+80 and catches the peak in **both** layers.
+Injection-checked at `> 99` to confirm it is not vacuous.
+
+**Step 2 carries an explicit scram and the text says why.** P-9 reactor-trip-on-turbine-trip is an
+M4 function, so `run_procedures` has no RPS and cannot trip on its own — the same wall PWR-T06 and
+PWR-E06 hit. Rather than assert a trip the engine-direct plant cannot produce, the step does what
+PWR-E03 step 2 and the chapter's generic action 1 both say: **confirm** the automatic trip, and
+scram manually if power should be down and is not. On the shipped plant the confirm is all the
+player does — and the note says so, so the lesson survives the layer accommodation.
+
+**No manual change** — E03 already documents all of this, including the P-9 warning and the
+planned-offline contrast. No revision bump.
+
+**Gates:** `run_procedures` 26/26 124 → **27/27 132**; `run_procedures_stack` 26/26 234 →
+**27/27 244**; `run_manual_controls` 152 → **158**; `run_flags` 301 → **304**; `run_procdocs`
+31 → **33**; `verify_manual_follow` 228 → **237**.
+
+---
+
 ## Session log — 2026-08-03k (#322 investigated and DECLARED; #319 item 2 unblocked and built)
 
 **Task:** investigate #322 (the SGTR mass path), then act on the ruling.

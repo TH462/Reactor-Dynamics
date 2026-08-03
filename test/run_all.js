@@ -432,7 +432,7 @@ var BASELINES = {
   // 25 -> 27 on 2026-08-03 (#319): pwr_post_trip's two cross-reference checks — the checklist
   // names a manual procedure, and PWR-T06 is defined in the index. This gate also REPORTS the
   // coverage number #319 tracks (58 documented, N 15 / T 19 / E 24) without enforcing it.
-  'run_procdocs.js':       { code: 0, score: '31checks 0failed' },
+  'run_procdocs.js':       { code: 0, score: '33checks 0failed' },
   // New 2026-07-29 — the manual quotes US customary first with SI in parentheses
   // (owner request). This re-derives the US value from the SI value in every pair
   // and fails on bad arithmetic, on an SI quantity with no US partner, and on a
@@ -483,7 +483,7 @@ var BASELINES = {
   // 128 → 94 on 2026-07-31: nuclear-from-cold heatup STEP_UI map removed (17 steps).
   // 94 → 122 on 2026-08-02 (#310): the PWR-N15 cooldown checklist adds 14 controlled steps.
   // 122 -> 132 on 2026-08-03 (#319): PWR-T06 post-trip, 5 controlled steps x 2 checks.
-  'run_manual_controls.js': { code: 0, score: '152checks 0failed' },
+  'run_manual_controls.js': { code: 0, score: '158checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -501,7 +501,7 @@ var BASELINES = {
   // 292 -> 295 on 2026-08-03 (#319): the `procedure:pwr_post_trip` registry entry. This gate
   // caught its absence, which is the job — a procedure the player can open with no flag
   // behind it ships ungated (#310 is the worked case).
-  'run_flags.js':          { code: 0, score: '16/16 301/301' },
+  'run_flags.js':          { code: 0, score: '16/16 304/304' },
   // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
   // Every way this rots is silent: an item id changes and its entry describes
   // nothing; a new control inherits its card's summary and READS like a real
@@ -798,7 +798,9 @@ var BASELINES = {
   // engine-direct (no ESF arming, no automation), and chasing that with extra procedure
   // steps was refitting content to a gate. The AFW and HPI steps STAYED because PWR-E06
   // asks for them (its steps 3 and 6); the severity is what moved.
-  'run_procedures.js':     { code: 0, score: '26/26 124/124' },
+  // 26/26 124 -> 27/27 132 on 2026-08-03 (#319 item 1): PWR-E03 turbine trip, the pair to
+  // PWR-T06 (E03 is the procedure that SENDS you to the post-trip response).
+  'run_procedures.js':     { code: 0, score: '27/27 132/132' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -838,7 +840,13 @@ var BASELINES = {
   // 25/25 223 -> 26/26 234 on 2026-08-03 (#319 item 2). The depressurization acceptance is
   // INJECTION-VERIFIED: delete the `set_pressure_setpoint` and step 6 goes red. Its first
   // form (`< 0.010`) was HOLLOW — the pre-depressurization value passed it too.
-  'run_procedures_stack.js': { code: 0, score: '26/26 234/234' },
+  // 26/26 234 -> 27/27 244 on 2026-08-03 (#319 item 1). THE DUMP-SATURATION `saw` HAD TO
+  // MOVE STEPS, and the reason is timing rather than layer: the dump pins at 40.00 % about
+  // HALF A MINUTE after the trip and is back to ~9 % by three minutes, so an assertion two
+  // steps later missed it under the stack while still passing engine-direct (where the
+  // transient is slower). It lives on the confirm-scram step now, whose hold covers the
+  // peak in both layers. A `saw` is only as good as the window it is placed in.
+  'run_procedures_stack.js': { code: 0, score: '27/27 244/244' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
@@ -940,7 +948,7 @@ var BASELINES = {
   // 183 -> 198 on 2026-08-03 (#319): PWR-T06's five controlled steps, 3 checks each. Its
   // STEP_UI entries went in with the procedure, so this number and run_manual_controls moved
   // together — the #224 trap is a step that lands WITHOUT its map entry and reads as covered.
-  'verify_manual_follow.js': { code: 0, score: '228checks', slow: true },
+  'verify_manual_follow.js': { code: 0, score: '237checks', slow: true },
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run
