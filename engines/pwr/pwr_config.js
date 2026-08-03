@@ -1113,6 +1113,31 @@
       // before 2026-07-23). Not in SOURCE, so it draws no PRNG number and the cross-step noise
       // stream is unchanged (the appended-instrument rule).
       rod_limit_margin:  { lag: 0,   noise: 0,     range: [0, 912],  derived: true },
+      // ------------------------------------------------ OTΔT / OPΔT channels (#311)
+      // The loop-ΔT protection set. All five are DERIVED from indicated `thot`,
+      // `tcold`, `tavg` and `primary_pressure`, so each inherits those channels' lag
+      // and any failure injected on them — the same construction as subcooling_margin,
+      // for the same HR1 reason. A drifting Tavg transmitter moves the COMPUTED
+      // SETPOINT here exactly as it does in a real protection rack, which is the
+      // teaching point #220 established on P-9.
+      //
+      // Not in SOURCE, so none of them draws a PRNG number and the cross-step noise
+      // stream is byte-identical to before they existed (the appended-instrument rule).
+      // What they DO inherit is the noise on thot and tcold — and ΔT is a DIFFERENCE
+      // of two noisy channels, so its sigma is ~√2× either one. MEASURED at steady
+      // hot full power over 3 seeds × 30 min: mean 100.00 %, σ 0.72 %, peak 102.6 %.
+      // That noise band is the floor under any setpoint here and it is why the
+      // %-of-rated normalization is the useful one — see `otdt_opdt` below.
+      loop_delta_t:      { lag: 0,   noise: 0,     range: [-20, 250], derived: true },   // indicated Thot−Tcold, % of ΔT rated
+      otdt_setpoint:     { lag: 0,   noise: 0,     range: [-400, 1500], derived: true }, // computed OTΔT trip line, % of ΔT rated
+      opdt_setpoint:     { lag: 0,   noise: 0,     range: [-400, 1500], derived: true }, // computed OPΔT trip line, % of ΔT rated
+      // The TRIP CHANNELS: setpoint − ΔT. Trip low at 0, rod stop low at the sourced
+      // 3 % offset. Range is symmetric and wide enough that neither the trip setpoint
+      // (0) nor the rod stop (3) can sit on a clamp — `run_reachability` Part A
+      // requires every threshold STRICTLY inside its instrument's range, and Part B
+      // requires the channel to actually get there.
+      otdt_margin:       { lag: 0,   noise: 0,     range: [-500, 1500], derived: true },
+      opdt_margin:       { lag: 0,   noise: 0,     range: [-500, 1500], derived: true },
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running',
                // RCPs stopped by an operator lineup decision, not by a trip/
@@ -1196,6 +1221,115 @@
       // and a planned offline (`disconnect_grid`, #230) is not a turbine trip at all.
       // Documented in Manuals 09 §2.0, 06 PWR-A22 and 07 PWR-E03.
       turbine_trip_reactor_trip: true,
+      // ---- Overtemperature ΔT / Overpower ΔT reactor trips (#311) — DEFAULT OFF ----
+      // Two of the four Westinghouse reactor trips, absent from this plant until now.
+      // The owner RULED them in, in reduced form *(OWNER RULING, 2026-08-02: "311: a.")*
+      // — no axial-offset (ΔI) term, because a one-node core cannot produce an honest
+      // axial offset and synthesizing one would be a fabricated instrument (HR1/HR9).
+      //
+      // SHIPPED OFF, and that is not the ruling being ignored — it is the #216 pattern
+      // the comment above describes: built default-OFF first so the blast radius could
+      // be MEASURED by flipping one flag rather than guessed at. Two of the constants
+      // below (K1, K4) could not be SOURCED in the session that built this — nrc.gov
+      // and every mirror are blocked by this environment's egress policy, so
+      // ML11223A301 could not be fetched and the evidence-pass SOP could not run. They
+      // are fitted to THIS plant's measured behaviour instead, which is defensible on
+      // its own terms (see below) but is not the same thing as sourced. Turning this on
+      // is the owner's call once the equation form and K1/K4 are checked against the
+      // document. See `otdt_opdt` below for what is measured and what is not.
+      otdt_opdt_trips: false,
+    },
+
+    // ------------------------------------------- OTΔT / OPΔT setpoint equations (#311)
+    // The REDUCED FORM ruled on 2026-08-02. Setpoints are in % OF RATED ΔT, computed
+    // from INDICATED Tavg and pressure (HR1) and compared against INDICATED loop ΔT.
+    //
+    //   OTΔT_sp[%] = 100 · dnb_margin_factor · ΔT_DNB(Tavg, P) / ΔT₀
+    //   OPΔT_sp[%] = 100 · ( K4 − K6·max(0, Tavg − T″) )
+    //
+    // OTΔT IS A SCALED COPY OF THIS PLANT'S OWN DNB SURFACE, and that construction is
+    // the whole design — read this before touching it, because the obvious alternative
+    // is what was built first and it was WRONG.
+    //
+    // `pwr_thermal.hFcEffective` collapses heat transfer when hot-leg subcooling falls
+    // to `thermal.dnb_margin_c`, and Thot = Tavg + ΔT/2, so the DNB-limiting ΔT is
+    // exactly, in closed form:
+    //     ΔT_DNB = 2·( T_sat(P) − dnb_margin_c − Tavg )
+    // The trip line is that surface multiplied by a margin factor < 1 — conceptually
+    // what DNBR margin does to a real plant's limit line. Because it SCALES the surface
+    // rather than re-anchoring it, both compensation gradients follow from the factor:
+    //     K2 = f·2/ΔT₀             = 0.0364 /°C  = 0.0202 /°F
+    //     K3 = f·2·(dT_sat/dP)/ΔT₀ = 0.1946 /MPa = 0.001342 /psi
+    // and both land INSIDE the ranges real Westinghouse units publish (K2 0.015–0.028
+    // /°F, K3 0.00079–0.00143 /psi). That is corroboration, not sourcing — but it is
+    // the strongest evidence available here that the shape is right, and it is not
+    // something the construction was fitted to produce.
+    //
+    // THE FIRST CUT ROTATED THE LINE INSTEAD OF SCALING IT, and it nuisance-tripped the
+    // plant's defining behaviour. It took the DNB surface's SLOPE (K2 = 2/ΔT₀ = 0.0606
+    // /°C, the unscaled gradient) and paired it with a fitted intercept of 1.20 — a line
+    // with boiling-onset steepness through a point far below boiling onset. MEASURED: a
+    // full load rejection raises Tavg ~16 °C, which at that slope drops the trip line by
+    // 97 points, from 120 % to 23 %, against a ΔT of ~46 %. The plant SCRAMMED at 55.0 s
+    // on `otdt_margin low` — a plant that is built to ride a rejection out, whose steam
+    // dump was resized to 40 % specifically to make that ride-out teachable (TR-1/TR-1g,
+    // owner ruling 2026-07-31). Scaling instead of rotating fixes it because the line
+    // and the plant's actual DNB margin then move together, which is what a limit line
+    // is supposed to do. The unscaled gradients were also 1.5–2× steeper than any
+    // published real value; that was the tell, and it was visible before the measurement.
+    //
+    // WHAT IS MEASURED AND WHAT IS NOT. `dnb_margin_factor` and K4 are the fitted, and
+    // therefore UNSOURCED, half — in a real plant these embed DNBR margin and instrument
+    // uncertainty, which is why the real K1 (1.117–1.31) sits far below the physical
+    // boiling point. This plant's raw DNB-onset intercept, measured, is 1.97–2.18, so a
+    // limit taken from boiling onset alone would be no protection at all. The numbers
+    // came from MEASUREMENT of this plant's own separation instead (HR12; full survey in
+    // Diagnostic/TUNING_LOG.md 2026-08-03a), indicated loop ΔT as % of rated:
+    //
+    //   steady hot full power, 3 seeds × 30 min      max 102.6   (mean 100.00, σ 0.72)
+    //   load ramps 3 %/min and 5 %/min, both ways    max 102.6
+    //   50 → 100 % INSTANTANEOUS load step           max 104.5   (power overshoots 103.3 %)
+    //   ── the gap ──
+    //   steam line break 15 %  (sustained 107.8 %)   peak 111.1  ← NO TRIP TODAY
+    //   continuous rod withdrawal at HFP (~17 s)     peak 114.8  ← NO TRIP TODAY
+    //   steam line break 30 %  (sustained 114.2 %)   peak 117.8  ← NO TRIP TODAY
+    //
+    // Any setpoint in 105–111 separates normal operation from every un-tripped casualty.
+    // K4 = 1.08 sits in the middle of that window with 3.5 % below and 3.1 % above — and
+    // 1.08 is ALSO the prototypical Westinghouse OPΔT intercept, which is again
+    // corroboration and not sourcing: the number was chosen from the measurement and
+    // then found to agree, not the other way round. `dnb_margin_factor` 0.60 puts OTΔT
+    // at 119.8 % of rated ΔT at nominal T and P — above OPΔT, preserving the real
+    // ordering (real units run K1 1.117–1.31 against K4 1.08–1.089), and just above the
+    // 120 % power-range trip, which is correct for a plant whose DNB line is measured at
+    // ~2× rated ΔT: OTΔT is not meant to bind at nominal. It binds when Tavg climbs or
+    // pressure falls — exactly the condition no single-parameter trip sees.
+    //
+    // DECLARED DEPARTURES (DESIGN_COMPANION §8.23):
+    //   · no f(ΔI) axial-offset term — the ruling;
+    //   · no lead-lag on (Tavg − T′) and no rate term on OPΔT. The real equations carry
+    //     (1+τ₁s)/(1+τ₂s) and τ₃s/(1+τ₃s), and those τ values are in ML11223A301, which
+    //     could not be fetched. An INVENTED time constant on a protection channel is
+    //     worse than a declared absence, so the compensation is static here. The cost is
+    //     that OTΔT does not ANTICIPATE a fast Tavg ramp — it responds to one.
+    //   · one channel, not 2/4 — consistent with every other protection function here
+    //     (same reasoning as the low-flow trip's recorded departure).
+    otdt_opdt: {
+      // T″ is NOT a constant: it is the plant's own full-power Tavg, computed at init
+      // (`_tavg_fp`, the same anchor the pressurizer level program uses) and handed to
+      // the instrument model in extras. Measured 304.1 °C (579.3 °F). OTΔT needs no
+      // such anchor — it reads the DNB surface directly, so its T′/P′ dependence is
+      // the T_sat correlation rather than a stored operating point.
+      dnb_margin_factor: 0.60,     // fraction of the plant's own DNB-limiting ΔT — UNVERIFIED, fitted (see above)
+      K4: 1.08,                    // OPΔT intercept — UNVERIFIED, fitted; agrees with the prototypical 1.08
+      K6_per_c: 0.00138 * 9 / 5,   // OPΔT Tavg penalty above T″, per °C — UNVERIFIED (real units publish 0.00138/°F)
+      // Rod stop / turbine runback offset below the trip line. SOURCED — this one is,
+      // and from the issue's own evidence: WTSM 8.1 §8.1.7.3 (ML11223A252) lists
+      // *"OTΔT rod stop and runback, 2/4, loop ΔT > (OTΔT trip setpoint − 3 %)"* and
+      // the same for OPΔT. The same section is why the stop blocks WITHDRAWAL ONLY:
+      // *"These interlocks or rod stops only prevent outward rod motion. The rods can
+      // always be inserted into the core using either manual or automatic rod control."*
+      rod_stop_offset_pct: 3.0,
     },
 
     initial_states: {

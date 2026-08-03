@@ -20,6 +20,178 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03a (#311 — OTΔT / OPΔT built, and the issue's own premise did not survive measurement)
+
+**Task:** build the two missing Westinghouse reactor trips in the reduced form the owner ruled
+*(OWNER RULING, 2026-08-02: "311: a.")*. Shipped **DEFAULT OFF**, for two reasons: the #216
+pattern (build off, measure the blast radius by flipping one flag), and a **sourcing block** —
+see the bottom of this entry.
+
+### The evidence pass could not run, and that is a hard blocker on half the ruling
+
+The ruling says the ΔT setpoint equations "must be **sourced** (WTSM 12.2 RPS Trip Signals,
+ML11223A301) and not recalled". **In this environment they cannot be.** Every outbound host is
+refused by the session's egress policy — `nrc.gov`, `pbadupws.nrc.gov`, `web.archive.org`,
+`osti.gov`, `atlantis-press.com`, and WebFetch 403s on all of them including Wikipedia. The
+proxy README is explicit that a 403 on CONNECT is an organisation policy denial and must be
+reported rather than routed around, so it was. Search-engine summaries were available and were
+**not** used as evidence: the SOP names "another agent's summary" as not-evidence, and that is
+exactly what they are.
+
+So the equation FORM, the τ lead-lag constants, and the K₁/K₄ margin intercepts are unsourced.
+What was done instead is *not* recall — see below — but it is not the evidence pass either, and
+the flag stays off until it runs.
+
+### ΔT₀ and this plant's DNB surface — both derivable here, no document needed
+
+Measured, full stack, `hot_full_power`, IC asserted (**2235 psi (15.41 MPa)**, 100.0 %):
+
+| | |
+|---|---|
+| Thot / Tcold | **609.0 °F (320.6 °C)** / **549.6 °F (287.6 °C)** |
+| ΔT₀ (rated loop ΔT) | **59.4 °F (33.0 °C)** — a difference, so ×9/5 with no offset |
+| Tavg | **579.3 °F (304.1 °C)** |
+
+ΔT₀ at 59.4 °F sits inside the real Westinghouse band, and 2235 psi is the real nominal exactly.
+
+The important find is that **this plant's DNB criterion is closed-form**.
+`pwr_thermal.hFcEffective` collapses heat transfer when hot-leg subcooling reaches
+`thermal.dnb_margin_c` = **14.4 °F (8.0 °C)**, and Thot = Tavg + ΔT/2, so
+
+    ΔT_DNB = 2·( T_sat(P) − dnb_margin_c − Tavg )
+
+exactly. The compensation gradients therefore **fall out of the plant's own physics** rather
+than being copied from a plant with a different DNBR surface — which is what makes them
+defensible without the document.
+
+### The first cut was WRONG, and the measurement is what said so
+
+The obvious construction — take that slope, pair it with a fitted intercept of 1.20 — **rotates**
+the limit line instead of scaling it. Measured: a full load rejection raises Tavg ~29 °F (16 °C),
+which at that slope drops the trip line by 97 points, 120 % → 23 %, against a ΔT of ~46 %. **The
+plant scrammed at 55.0 s on `otdt_margin low`** — the one behaviour this plant is built to ride
+out, and whose steam dump was resized to 40 % on 2026-07-31 specifically to make it teachable.
+
+The tell was visible before the measurement and was missed: the unscaled gradients were
+**1.5–2× steeper than any published real value**. The fix is to scale the DNB surface by a
+margin factor rather than re-anchor it —
+
+    OTΔT_sp[%] = 100 · dnb_margin_factor · ΔT_DNB(Tavg, P) / ΔT₀,   factor = 0.60
+
+— after which the equivalent linearized gradients land **inside** the ranges real Westinghouse
+units publish: **K₂ 0.0202 /°F** (real 0.015–0.028) and **K₃ 0.00134 /psi** (real
+0.00079–0.00143). That is corroboration, not sourcing, but the construction was not fitted to
+produce it and it is the strongest evidence available here that the shape is right.
+
+### THE ISSUE'S CENTRAL CLAIM IS NOT REPRODUCIBLE ON THIS PLANT, and the pair is not symmetric
+
+#311 argues a plant without these "can be walked into a DNB-limited condition with every
+individual gauge in band". Measured across **13 casualties and 8 normal evolutions**, full
+stack: **no casualty reaches DNB while un-scrammed.** The three that reach DNB at all (large
+LOCA, stuck-open PORV, 100 % steam line break) get there by **depressurizing**, and each has
+already scrammed on low pressure first — LOCA scram **6.0 s** against DNB onset **6.5 s**, PORV
+**12.5 s** against **18.0 s**. The plant's DNB line sits at **197–218 % of rated ΔT** at nominal
+T and P and nothing goes near it.
+
+So the two functions are **not** the symmetric pair the issue describes:
+
+- **OPΔT has four live cases and they are not marginal.** Indicated loop ΔT, % of rated:
+
+  | | ΔT | what happens today |
+  |---|---|---|
+  | steady HFP, 3 seeds × 30 min | max **102.6** (mean 100.00, σ 0.72) | — |
+  | load ramps 3 %/min and 5 %/min, both ways | max **102.6** | — |
+  | 50 → 100 % **instantaneous** load step | **104.5** | power overshoots 103.3 % |
+  | 15 % steam line break | **111.1** | **107.8 % power held 30 min, NO TRIP** |
+  | continuous rod withdrawal at HFP | **114.8** | transient ~17 s, **NO TRIP** |
+  | 30 % steam line break | **117.8** | **114.2 % power held 30 min, NO TRIP** |
+
+  Any setpoint in **105–111** separates normal operation from every un-tripped casualty. **K₄ =
+  1.08** sits mid-window (3.5 % below, 3.1 % above) — and 1.08 is also the prototypical OPΔT
+  intercept. The number was chosen from the measurement and *then* found to agree.
+
+- **OTΔT has nothing to catch as the plant stands.** It is here for prototypicality and because
+  it is the function that becomes binding the moment Tavg or pressure moves. Saying otherwise
+  would be the #220 class of claim again. #295 F6 found the fixed 635 °F (335 °C) Tavg-high trip
+  standing in for both; what it is actually standing in for is OPΔT, and it does not reach.
+
+### With the flag ON — blast radius
+
+Nothing in normal operation trips or rod-stops: HFP (2 seeds), 50 %, HZP, **Mode 5 cold
+shutdown**, 5 %, 100→50 % step, and the **full load rejection** (min OTΔT margin **+18.4**).
+Closest normal approach is the 50 → 100 % instantaneous step at OPΔT margin **+3.5**, just above
+the 3.0 rod stop. What changes:
+
+| casualty | before | with OTΔT/OPΔT |
+|---|---|---|
+| 30 % steam line break | no trip, 114 % for 30 min | **scram 22.0 s** `opdt_margin` |
+| 15 % steam line break | no trip, 108 % for 30 min | **scram 85.0 s** `opdt_margin` |
+| continuous rod withdrawal @HFP | no trip | **scram 11.5 s** `opdt_margin` |
+| 50 % steam line break | power_range high 25.5 s | **scram 17.0 s** (8.5 s earlier) |
+| stuck-open PORV | primary_pressure low 12.5 s | **scram 8.0 s** `otdt_margin` (4.5 s earlier) |
+| Tavg transmitter drift | no trip | **scram 17.0 s** `otdt_margin` — HR1, single channel believes it |
+| large LOCA, RCP trip, LOOP, SBO, turbine trip, loss of feed, SG overfeed, SGTR | unchanged | unchanged |
+
+The Tavg-drift row is a genuine behaviour change and is deliberate: the setpoint is computed
+from the **indicated** Tavg, so a lying transmitter moves the trip line. That is the #220 lesson
+made concrete, and it is asserted rather than tolerated.
+
+### What shipped
+
+`run_otdt.js`, **39 checks**, new runner (the trips ship off and `pwr_control.js` reads the flag
+at load time, so no existing suite can see them). Covers both flag states. **Injection-verified
+four ways** — restoring the rotated line reddens 3 and reproduces the original defect exactly
+(scram 55.0 s, margin 0.6); deleting the rod stops reddens 3; clearing `withdrawal_only` reddens
+2; walking the margin factor to 0.95 reddens the two K₂/K₃ band checks.
+
+Rod stops at **(trip setpoint − 3 %)**, withdrawal-only — the one genuinely **sourced** half,
+from the issue's own evidence (WTSM 8.1 §8.1.7.3, ML11223A252: *"OTΔT rod stop and runback, 2/4,
+loop ΔT > (OTΔT trip setpoint − 3 %)"* and *"These interlocks or rod stops only prevent outward
+rod motion. The rods can always be inserted…"*). **The runback half is NOT built** — the real
+signal also reduces turbine load, an actuation here fires once, so a ramped load reduction is a
+new actuation class. The ruling explicitly left the sequencing open; building it in the same
+change as two new trips on unsourced constants is the wrong order.
+
+### CONTENT blast radius with the flag ON — the ruling's other open item, now measured
+
+Fourteen suites re-run with `otdt_opdt_trips: true`. **Twelve are unmoved.** `run_reachability`
+59 → **63** and `run_contract` 140 → **142**, both of which are the design working: Part A picks
+up the two new trips and the two new alarms automatically, and every alarm declares a category.
+
+**Two go red, and neither is a plant defect** — both pin a trip REASON that OTΔT legitimately
+takes over:
+
+| | flag OFF | flag ON |
+|---|---|---|
+| 20 % cold-leg LOCA | scram **9.5 s** `primary_pressure low` @ 1717 psi (11.84 MPa), DNB 16.0 s | scram **7.0 s** `otdt_margin low` @ **2049 psi (14.13 MPa)**, DNB **92.5 s** |
+| stuck-open PORV | scram **12.5 s** `primary_pressure low` @ 1767 psi (12.18 MPa), DNB 18.0 s | scram **8.0 s** `otdt_margin low` @ **2058 psi (14.19 MPa)**, DNB **28.0 s** |
+| RCP trip | scram 7.5 s `rcs_flow low`, DNB never | **unchanged** |
+| small LOCA 5 % | scram 23.0 s `pzr_level low`, DNB never | **unchanged** |
+
+OTΔT trips **2.5–4.5 s earlier and ~300 psi higher**, and pushes DNB onset out by **76 s** on the
+LOCA. That is what the K₃ pressure term is FOR, and it is prototypical: the fixed low-pressure
+reactor trip is the backstop, not the first line. At rated ΔT the line reaches 100 % at ~2090 psi
+(14.4 MPa) — comfortably above the 12.41 MPa low-pressure trip, which is why it always wins a
+depressurization.
+
+- **`run_m4` 37/37 → 36/37.** The #295 F1/F2 probe asserts a blocked-trip LOCA still scrams
+  **`primary_pressure low`**. It now scrams `otdt_margin low`. The probe's INTENT is not just
+  intact but strengthened — OTΔT is not blockable at all — so this is a reason string to
+  re-author, HR9 content-follows-plant, exactly like `pwr_msiv` after #218.
+- **`run_campaign` 51/51 → 50/51 (2 checks).** `pwr_lof` asserts *"both branches reach an
+  endpoint, DNB physics fires"*. An RCP trip on its own is **unmoved** (measured above), so the
+  mission reaches DNB by some other path inside its own setup — **not diagnosed**, and it must be
+  before the flag is flipped. If OTΔT is pre-empting the DNB the mission teaches, the mission
+  needs re-authoring around the trip, not the trip narrowing around the mission (#218's ordering).
+
+**Neither is a reason to hold the flag on its own** — but the `pwr_lof` re-author is real work and
+it is now the third item, after the evidence pass and ahead of the runback.
+
+**Still open on #311:** the evidence pass (blocked — needs a machine with NRC access), the
+`pwr_lof` / #295-probe re-authoring above, the runback, and the owner's decision on the flag.
+
+---
+
 ## Session log — 2026-08-02b (#295 F1/F2 — a reactor trip was defeatable at power)
 
 **Task: the owner's rulings pass**, then *(OWNER RULING, 2026-08-02: "311: a. 221: fix as

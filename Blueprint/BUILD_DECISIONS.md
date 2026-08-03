@@ -37,6 +37,86 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-03a — #311: OTΔT / OPΔT, and why the limit line is SCALED rather than re-anchored
+
+### The decision
+
+Build Overtemperature ΔT and Overpower ΔT in the reduced form the owner ruled *(OWNER RULING,
+2026-08-02: "311: a.")* — no axial-offset term — and ship them **DEFAULT OFF**
+(`protection_options.otdt_opdt_trips`).
+
+Two reasons for OFF, and they are different in kind. The first is the #216 pattern: build off,
+measure the blast radius by flipping one flag rather than guessing at it. The second is a
+**sourcing block** — the ruling requires the equations to be sourced to WTSM 12.2 (ML11223A301),
+and in the session that built this **every outbound host was refused by the environment's egress
+policy** (nrc.gov, its mirrors, archive.org, and WebFetch on all of them). The proxy README says
+a policy 403 must be reported, not routed around. Search summaries existed and were deliberately
+not used: the SOP names another agent's summary as not-evidence.
+
+### Where the numbers come from, since the document could not be read
+
+| | source |
+|---|---|
+| ΔT₀ = **59.4 °F (33.0 °C)**, Tavg′ = **579.3 °F (304.1 °C)**, P′ = **2235 psi (15.41 MPa)** | MEASURED off this plant |
+| K₂, K₃ (the compensation gradients) | DERIVED in closed form from this engine's own DNB criterion |
+| `dnb_margin_factor` (≡ K₁), K₄ | **UNSOURCED** — fitted to this plant's measured separation |
+| lead-lag τ₁/τ₂, OPΔT rate term τ₃ | **NOT BUILT** — the values are in the unreachable document |
+| rod stop at (setpoint − 3 %), withdrawal-only | **SOURCED** — WTSM 8.1 §8.1.7.3, ML11223A252, quoted in the issue itself |
+
+The derivation matters because it is what makes the gradients defensible without the document.
+`pwr_thermal.hFcEffective` collapses heat transfer at `thermal.dnb_margin_c` of hot-leg
+subcooling, and Thot = Tavg + ΔT/2, so ΔT_DNB = 2·(T_sat(P) − dnb_margin_c − Tavg) **exactly**.
+Copying another plant's K₂/K₃ would have been positively wrong: they are gradients of *that*
+plant's DNBR surface.
+
+### Why SCALED and not re-anchored — the mistake, and what caught it
+
+The obvious construction takes that slope and pairs it with a fitted intercept. That **rotates**
+the limit line. Measured: a full load rejection lifts Tavg ~29 °F (16 °C), which at the unscaled
+slope drops the trip line 120 % → 23 % against a ΔT of ~46 %, and **the plant scrammed at 55.0 s
+on `otdt_margin low`** — the ride-out this plant exists to teach, whose dump was resized to 40 %
+eleven days ago for exactly that purpose.
+
+Scaling the surface instead —  OTΔT_sp = 100·f·ΔT_DNB(Tavg,P)/ΔT₀, f = 0.60 — keeps the line and
+the plant's actual DNB margin moving together, which is what a limit line is for. It also puts
+the equivalent linearized gradients **inside** the published real ranges (**K₂ 0.0202 /°F**
+against 0.015–0.028; **K₃ 0.00134 /psi** against 0.00079–0.00143) where the unscaled ones were
+1.5–2× steeper than any real value. That steepness was visible *before* the measurement and was
+missed — it is the cheapest tell available and it is now a gate check.
+
+### The plant finding this produced — the issue's pair is not symmetric
+
+Measured across 13 casualties and 8 normal evolutions, full stack: **no casualty on this plant
+reaches DNB while un-scrammed**, so #311's "can be walked into a DNB-limited condition with every
+gauge in band" does not reproduce here. The three that reach DNB get there by depressurizing and
+have already scrammed on low pressure (LOCA 6.0 s vs 6.5 s; PORV 12.5 s vs 18.0 s).
+
+**OPΔT is the one with bite.** A 30 % steam line break holds **114.2 % power for 30 minutes with
+no reactor trip** (power-range high is at 120 %); a 15 % break holds 107.8 % the same way. The
+measured separation — normal operation ≤ **104.5 %** of rated ΔT against a casualty floor of
+**111.1 %** — leaves a 105–111 window, and **K₄ = 1.08** sits mid-window. That it is also the
+prototypical intercept is corroboration arrived at afterwards, not the reason it was chosen.
+
+**OTΔT has nothing to catch as the plant stands**, and that is recorded rather than dressed up.
+It is here for prototypicality and because it becomes binding the moment Tavg or pressure moves.
+
+### What is deliberately NOT built
+
+The **turbine runback**. The real rod-stop signal also reduces load; an actuation here fires once
+(`actuationFired`), so a ramped load reduction is a new actuation class rather than a setpoint.
+The ruling left the sequencing open, and adding a new actuation class in the same change as two
+new trips, on constants that are not yet sourced, is the wrong order.
+
+### Gate deltas
+
+`run_otdt.js` **NEW, 39 checks** — its own runner because the trips ship off and `pwr_control.js`
+reads the flag at load time, so no existing suite can see them. Injection-verified four ways
+(rotated line → 3 red, reproducing the original defect's exact numbers; rod stops deleted → 3;
+`withdrawal_only` cleared → 2; margin factor to 0.95 → the 2 K-band checks). Everything else is
+**unmoved**, which is the point of the flag: `run_all --fast` is 33/33 at baseline with it off.
+
+---
+
 ## 2026-08-02b — #295 F1/F2: a trip block is an ENABLE, not a switch
 
 **Decision.** `setTripBlock` requires the trip's block permissive and nothing else, and
