@@ -69,6 +69,7 @@
     'TR-1': 'probe (FULL load rejection — the ride-out, past the dump\'s stop)',
     'TR-1g': 'probe (50 % loss of load — the real Westinghouse design case, 40 % dump)',
     'TR-1h': 'probe (full rejection on the SHIPPED lineup — rods AUTO + clamped level program, #289)',
+    'TR-1i': 'probe (load-follow tracking vs the WTSM ±5 °F duty — the rate comparator, #306)',
     'TR-1b': 'probe (turbine trip → P-9 scram, #216)',
     'TR-1c': 'probe (sub-threshold rejection — the arm cliff, declared §8.21, #219)',
     'TR-1d': 'probe (PLANNED OFFLINE is not a turbine trip — #230)',
@@ -374,8 +375,21 @@
           fmt(t.steam_dump_valve_pct, 1), t.steam_dump_valve_pct < 5, '< 5 %');
         ck('the core is reduced to the SECONDARY LOAD, not parked high', fmt(t.power_pct, 1),
           t.power_pct > 40 && t.power_pct < 55, '40..55 % (ask = 50)');
-        ck('and Tavg is walked back to the 50 %-load program, not left swollen',
-          fmt(t.tavg_c, 1), t.tavg_c > 299 && t.tavg_c < 308, '299..308 °C');
+        // RE-BANDED 2026-08-02 (#306) to the SOURCED criterion. WTSM 11.2 says the dump is an
+        // alternate heat sink *"until the rod control system returns Tavg to within 5°F of
+        // Tref"*, so ±5 °F of the LOAD PROGRAM is the number — not a hardcoded 299..308, which
+        // was one-sided (it allowed +7.5 °C of swell but only −1.5 °C of undershoot) and was
+        // written around the old proportional trim's overshoot.
+        //
+        // THIS IS A TIGHTENING, AND IT FAILS ON THE OLD PLANT — say so rather than imply the
+        // check is neutral (HR10). Measured at this sample point: the pre-#306 proportional
+        // trim leaves Tavg at +5.24 °F, OUTSIDE the criterion it is supposed to satisfy; the
+        // rate comparator lands at −2.06 °F. Both converge to program by 2 h, so what moved is
+        // how fast the dump's own stated end condition is reached.
+        var tref50 = RD.PWR_CONTROL.trefProgram(Math.max(0, Math.min(1, h.ins().steam_flow)));
+        ck('and Tavg is back within the sourced ±5 °F of program (WTSM 11.2), not left swollen',
+          fmt((t.tavg_c - tref50) * 9 / 5, 2) + ' °F', Math.abs(t.tavg_c - tref50) * 9 / 5 < 5.0,
+          '|dev| < 5 °F of ' + fmt(tref50, 1) + ' °C');
         ck('Tavg never swelled past the catalog band on the way (300..315)',
           fmt(h.range('tavg_c').max, 1),
           h.range('tavg_c').max > 300 && h.range('tavg_c').max < 315, '300..315');
@@ -407,6 +421,137 @@
      * Measured: dump peaks at its 40 % stop then falls to ~6 %, safeties shut, core < 5 %,
      * Tavg 299 °C, pzr peaks 91.9 % against the 97 % trip (the ceiling's 5 % of margin).
      * TR-1 is the same event ROD-LESS and still pins the ladder itself. */
+    /* TR-1i (NEW 2026-08-02, #306) — LOAD-FOLLOW TRACKING against the real design duty, and
+     * the first probe here to assert the ±5 °F criterion at all.
+     *
+     * WTSM 8.1 §8.1.1 (ML11223A252) is the spec: the rod control system handles *"a 10% step
+     * load increase or decrease, a 5% per minute ramp load increase or decrease, or a 50% step
+     * load decrease with the aid of the steam dump system"*, and on the first two *"the average
+     * temperature of the reactor coolant remains within ±5°F of the temperature program."*
+     * TR-1g already covers the 50 % case; nothing covered the other two.
+     *
+     * The mechanism under test is the power-mismatch RATE comparator. Ours was PROPORTIONAL to
+     * the standing steam-vs-nuclear mismatch, which is exactly what the real circuit's rate
+     * comparator exists to avoid — *"prevents the power mismatch circuit from responding to
+     * steady state calibration differences between nuclear and turbine power"* (§8.1.4.2).
+     * Measured on the old form, mid-ramp the standing term grew until it cancelled the
+     * temperature error outright and the channel commanded ZERO steps with Tavg 8.6 °F off
+     * program; the ramp peaked at 12.55 °F, 2.5× the duty.
+     *
+     * Injection-verified, not refitted: restoring the proportional trim reddens the DUTY check
+     * (12.55 °F against ≤ 5) and both mechanism checks (`trimSlow` is never populated).
+     *
+     * A first draft of the mechanism check counted how often the bank was STALLED while Tavg
+     * was off program. It measured 34 % on BOTH trims and so proved nothing — the cancellation
+     * is intermittent, and the channel still nudges whenever the residual clears the gain. It
+     * reads the controller's own follower state instead. */
+    'TR-1i': function () {
+      return test('TR-1i load-follow tracking — the WTSM ±5 °F duty on a 10 % step and a 5 %/min ramp', function (ck) {
+        var TREF = RD.PWR_CONTROL.trefProgram;
+        function devF(h) {
+          var ins = h.ins();
+          return Math.abs((ins.tavg - TREF(Math.max(0, Math.min(1, ins.steam_flow)))) * 9 / 5);
+        }
+        function ctlGroup(h) {
+          var rg = h.ctl().rod_groups || [];
+          for (var i = 0; i < rg.length; i++) if (rg[i].id === 'control_rods') return rg[i];
+          return null;
+        }
+        // Rod position is NOT in true_state, so h.range() cannot see it — track it here.
+        function peak(h, seconds, driver) {
+          var mx = 0;
+          h._rodMin = 999;
+          h.run(seconds, function (hh, t) {
+            if (driver) driver(hh, t);
+            var d = devF(hh); if (d > mx) mx = d;
+            var g = ctlGroup(hh); if (g && g.position_pct < hh._rodMin) hh._rodMin = g.position_pct;
+          });
+          return mx;
+        }
+
+        // --- 10 % step DOWN, 100 → 90 MWe. The dump must stay shut: WTSM is explicit that
+        // "As long as Tavg is within its program the steam dump system will not actuate."
+        var a = H('hot_full_power');            // SHIPPED lineup — rod control in AUTO
+        a.run(60);
+        ck('IC assert — the rig is on the hot plant', fmt(a.ts().pressure_mpa, 2),
+          a.ts().pressure_mpa > 15.0 && a.ts().power_pct > 95, '> 15.0 MPa, > 95 %');
+        a.cmd('set_load_target', { mwe: 90 });
+        var pa = peak(a, 900);
+        ck('10 % step down — no reactor trip', a.tripReason || 'none', a.tripTime == null, 'none');
+        ck('…the steam dump never actuates (WTSM: it does not, while Tavg is in program)',
+          fmt(a.range('steam_dump_valve_pct').max, 1), a.range('steam_dump_valve_pct').max < 1.0, '< 1 %');
+        ck('…and Tavg comes back ONTO program, not merely near it', fmt(devF(a), 2), devF(a) < 1.5, '< 1.5 °F');
+
+        // --- 5 %/min ramp DOWN, 100 → 50 MWe over 600 s, then a soak. THE duty case, and the
+        // one the proportional trim failed by 2.5×.
+        var c = H('hot_full_power');
+        c.run(60);
+        var t0 = c.t();
+        var pc = peak(c, 1500, function (hh, t) {
+          var el = t - t0;
+          if (el <= 600) hh.cmd('set_load_target', { mwe: Math.max(50, 100 - 5 * (el / 60)) });
+        });
+        ck('5 %/min ramp down — no reactor trip', c.tripReason || 'none', c.tripTime == null, 'none');
+        ck('Tavg holds within the ±5 °F DUTY through the ramp (was 12.55 °F proportional)',
+          fmt(pc, 2), pc <= 5.0, '≤ 5.00 °F');
+        ck('…and the dump stays shut throughout', fmt(c.range('steam_dump_valve_pct').max, 1),
+          c.range('steam_dump_valve_pct').max < 1.0, '< 1 %');
+        ck('…rods did the work — the bank walked well in', fmt(c._rodMin, 1),
+          c._rodMin < 80, '< 80 % withdrawn');
+
+        // --- THE MECHANISM, read off the controller's OWN state rather than inferred from
+        // the plant. `trimSlow` is the rate comparator's slow follower: it tracks the STANDING
+        // part of the steam-vs-nuclear mismatch, and what the controller actually sees is
+        // 1.25 x (d - trimSlow). Through a steady ramp the RAW mismatch d grows large while the
+        // washout output stays near zero — that gap IS the rate comparator working.
+        //
+        // This replaced a "how often was the bank stalled?" check, which MEASURED THE SAME on
+        // both trims (34 % stalled either way) and so proved nothing: the cancellation is
+        // intermittent, and the channel still nudges whenever the residual clears the gain.
+        // Reading trimSlow inverts cleanly instead — on the proportional form it is never even
+        // populated.
+        var d = H('hot_full_power');
+        d.run(60);
+        function rodChan(h) {
+          var a = h.cfl.channels || [];
+          for (var i = 0; i < a.length; i++) if (a[i].def && a[i].def.id === 'rods_tavg') return a[i];
+          return null;
+        }
+        var t1 = d.t(), maxRaw = 0, maxOut = 0, sawSlow = false;
+        d.run(700, function (hh, t) {
+          var el = t - t1;
+          if (el <= 600) hh.cmd('set_load_target', { mwe: Math.max(50, 100 - 5 * (el / 60)) });
+          var cc = rodChan(hh), ins = hh.ins();
+          if (!cc || !cc.engaged) return;
+          var raw = ins.steam_flow * 100 - ins.power_range;
+          if (Math.abs(raw) > maxRaw) maxRaw = Math.abs(raw);
+          if (cc.trimSlow == null) return;
+          sawSlow = true;
+          var out = Math.abs(raw - cc.trimSlow);
+          if (out > maxOut) maxOut = out;
+        });
+        ck('the rate comparator keeps its slow follower (a proportional trim has none)',
+          String(sawSlow), sawSlow === true, 'true');
+        ck('the ramp really did build a standing mismatch (else the next check is vacuous)',
+          fmt(maxRaw, 2), maxRaw > 3.0, '> 3 % power');
+        // `sawSlow &&` is load-bearing: with no follower, maxOut stays 0 and `0 < maxRaw/2`
+        // would pass VACUOUSLY on the very trim this check exists to reject. Caught by
+        // injection — the first form went green on the proportional trim.
+        ck('…and the controller sees only a FRACTION of it — the standing part is washed out',
+          sawSlow ? (fmt(maxOut, 2) + ' of ' + fmt(maxRaw, 2)) : 'no follower',
+          sawSlow && maxOut < maxRaw / 2, '< half the raw mismatch');
+
+        // --- Steady state must still land on program. A rate comparator that leaked a bias
+        // would show here, and the real deadband is ±1.5 °F.
+        var e = H('hot_full_power');
+        e.cmd('set_load_target', { mwe: 75 });
+        e.run(7200);
+        ck('2 h soak at 75 % load settles ON program, inside the real ±1.5 °F deadband',
+          fmt(devF(e), 2), devF(e) < 1.5, '< 1.5 °F');
+        T.checkSanity(ck, c);
+      });
+    },
+
     'TR-1h': function () {
       return test('TR-1h full rejection on the SHIPPED lineup — rods take it back, relief RESEATS', function (ck) {
         var h = H('hot_full_power');            // rods AUTO + the clamped level program
@@ -1396,10 +1541,19 @@
     'PI-3': function () {
       return test('PI-3 trip on SI — si_trip scrams with lo_press blocked; a cooldown must block both', function (ck) {
         // ---- leg 1: lo_press blocked, si_trip live → the depressurization still scrams.
-        var h = H('hot_full_power');
+        // THE SETUP IS THE COOLDOWN'S, and until 2026-08-02 it was not: this probe blocked
+        // lo_press straight from hot full power and its own label said "P-10 satisfied",
+        // which is the wrong permissive — lo_press and si_trip carry their OWN P-11 pressure
+        // permissive, not the plant-wide P-10. It passed because the kernel accepted a block
+        // outside the permissive at all (#295 F1, fixed). The behaviour under test is
+        // unchanged; only the way the plant is brought to it is, and it is now the way the
+        // PWR-N15 cooldown does it — Pressure SP down inside P-11 FIRST, then block.
+        var h = H('hot_zero_power');
         h.run(30);
+        h.cmd('set_pressure_setpoint', { mpa: 13.11 });        // 1901 psi — inside P-11 (1972 psi / 13.6 MPa)
+        h.runUntil(function (ts, ins) { return ins.primary_pressure < 13.5; }, 900);
         h.cmd('set_trip_block', { trip_id: 'lo_press', blocked: true });
-        ck('lo_press took a manual block at power (P-10 satisfied)',
+        ck('lo_press takes the block once inside P-11 (' + fmt(h.ins().primary_pressure, 2) + ' MPa)',
           String(h.rps().trip_blocks.lo_press), h.rps().trip_blocks.lo_press === true, 'true');
         h.cmd('inject_failure', { failure_id: 'stuck_porv_open' });
         h.cmd('open_porv');
@@ -1414,8 +1568,10 @@
 
         // ---- leg 2: BOTH blocked — the cooldown lineup. Pressure walks through
         // the SI setpoint with no reactor trip, but the ESF is untouched.
-        var h2 = H('hot_full_power');
+        var h2 = H('hot_zero_power');
         h2.run(30);
+        h2.cmd('set_pressure_setpoint', { mpa: 13.11 });
+        h2.runUntil(function (ts, ins) { return ins.primary_pressure < 13.5; }, 900);
         h2.cmd('set_trip_block', { trip_id: 'lo_press', blocked: true });
         h2.cmd('set_trip_block', { trip_id: 'si_trip', blocked: true });
         h2.cmd('inject_failure', { failure_id: 'stuck_porv_open' });

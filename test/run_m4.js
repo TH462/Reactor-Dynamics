@@ -228,14 +228,68 @@ T.push(test('NIS startup net — conditioned SR trip, P-6 switch interlocks, blo
   p.cmd({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: false });
   p.run(1);
   ck('unblocked PR-25 trips at power', p.layer.rps.last_trip_reason, p.layer.rps.scrammed === true, 'scrammed');
-  // Manual rule: below P-10 the automatic permissive is unmet, but the IR trip is not
-  // asserted at zero power, so the operator may block it PROACTIVELY — and it's tracked
-  // as a manual block (which survives auto-reinstate).
+  // Engage rule: THE PERMISSIVE. Below P-10 the IR trip is not asserted at zero power,
+  // and it is still refused — the startup checklist's own words, "the plant will not let
+  // you block them down there". These two checks asserted the OPPOSITE from 2026-07-24
+  // (they pinned the proactive-block rule that #295 F1 measured as a defeatable reactor
+  // trip at power); they are re-authored, not re-banded.
   var q = new Stack('hot_zero_power');
   q.run(1);
   var rb = q.cmd({ action: 'set_trip_block', trip_id: 'ir_high', blocked: true });
-  ck('proactive block allowed below P-10 (IR not asserted)', rb, rb == null && q.layer.tripBlocks.ir_high === true, 'blocked');
-  ck('operator block tracked as manual', String(q.layer.manualTripBlocks.ir_high), q.layer.manualTripBlocks.ir_high === true, 'true');
+  ck('block below P-10 REFUSED (permissive unmet, trip not asserted)', rb && rb.code,
+    rb != null && rb.code === 'INTERLOCK' && !q.layer.tripBlocks.ir_high, 'INTERLOCK');
+  ck('…and nothing was recorded as a manual block', String(q.layer.manualTripBlocks.ir_high),
+    q.layer.manualTripBlocks.ir_high === undefined, 'undefined');
+}));
+
+// #295 F1/F2 — the audit's headline protection defect. Kept as its own suite because it
+// is a claim about DEFEATABILITY, not about the startup net: the question is whether the
+// operator command path can switch a reactor trip off at power, and whether a block that
+// was legitimately set ever comes back.
+T.push(test('#295 F1/F2 — reactor trips are not defeatable at power, and blocks reinstate', function (ck) {
+  var p = new Stack('hot_full_power');
+  p.run(1);
+  ck('IC asserted: at power', p.ins().primary_pressure.toFixed(2) + ' MPa / ' + p.ins().power_range.toFixed(1) + ' %',
+    p.ins().power_range > 99 && p.ins().primary_pressure > 15, '~15.41 MPa / 100 %');
+  // F1 — the three trips that protect against a depressurization casualty. Each carries its
+  // own cold-regime permissive (P-11 pressure / P-7 low power); at power none is satisfied.
+  ['lo_press', 'si_trip', 'lo_flow'].forEach(function (id) {
+    var st = p.layer.getRpsState().trip_block_status[id];
+    var r = p.cmd({ action: 'set_trip_block', trip_id: id, blocked: true });
+    ck('block ' + id + ' at 100 % power is REFUSED', r && r.code, r != null && r.code === 'INTERLOCK', 'INTERLOCK');
+    // The board greys its button off can_block, so it must agree with the command path or
+    // the player gets a live button that does nothing (or a dead one that would have worked).
+    ck('…and can_block agrees with the command path', String(st.can_block), st.can_block === false, 'false');
+    ck('…and no block was set', String(p.layer.tripBlocks[id]), !p.layer.tripBlocks[id], 'undefined');
+  });
+  // …so the protection still stands. Written POSITIVELY (#220's lesson): restoring the
+  // defect has to move this number, it cannot slide through a band.
+  var loca = new Stack('hot_full_power');
+  loca.run(1);
+  ['lo_press', 'si_trip', 'lo_flow'].forEach(function (id) { loca.cmd({ action: 'set_trip_block', trip_id: id, blocked: true }); });
+  loca.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 0.2 });
+  var t = 0;
+  while (t < 300 && !loca.layer.rps.scrammed) { loca.run(0.1); t += 0.1; }
+  ck('a 20 % cold-leg LOCA still scrams on low pressure', loca.layer.rps.last_trip_reason + ' at t=' + t.toFixed(1) + ' s',
+    loca.layer.rps.scrammed === true && loca.layer.rps.last_trip_reason === 'primary_pressure low' && t < 10,
+    'primary_pressure low, < 10 s');
+  ck('…at the setpoint, not on the accumulator refill 60 s later',
+    (loca.ins().primary_pressure * 145.038).toFixed(0) + ' psi',
+    loca.ins().primary_pressure > 12.0, '~1782 psi (12.28 MPa)');
+  // F2 — a block the operator sets by hand is an ENABLE, not a latch. Re-setting the two
+  // auto blocks at power makes them `manual`; they must still reinstate below P-10.
+  var f = new Stack('hot_full_power');
+  f.run(1);
+  ['ir_high', 'pr_low_setpoint'].forEach(function (id) { f.cmd({ action: 'set_trip_block', trip_id: id, blocked: true }); });
+  ck('operator-set blocks are tracked as manual', String(f.layer.manualTripBlocks.ir_high === true && f.layer.manualTripBlocks.pr_low_setpoint === true),
+    f.layer.manualTripBlocks.ir_high === true && f.layer.manualTripBlocks.pr_low_setpoint === true, 'true');
+  f.cmd({ action: 'scram' });
+  f.run(120);
+  ck('P-10 has dropped', f.ins().power_range.toFixed(2) + ' %', f.ins().power_range < 10, '< 10 %');
+  ck('…so the manual blocks reinstated', JSON.stringify(f.layer.getRpsState().trip_blocks),
+    !f.layer.tripBlocks.ir_high && !f.layer.tripBlocks.pr_low_setpoint, '{}');
+  ck('…and the provenance went with them', JSON.stringify(f.layer.manualTripBlocks),
+    f.layer.manualTripBlocks.ir_high === undefined, '{}');
 }));
 
 T.push(test('P-11/P-7 trip bypass — cold init blocks, auto-reinstate on repressurization', function (ck) {
@@ -1051,6 +1105,127 @@ T.push(test('#273 — SI ACCUM ALIGNED annunciates on the lineup, not on pressur
   // _buildAlarmModel). If it had been, it would silently require their condition too.
   ck('not paired as an escalation of a pzr-pressure tile', String(d.layer._loSibling['accum_aligned']),
      !d.layer._loSibling['accum_aligned'], 'undefined');
+}));
+
+T.push(test('#306 — the insertion-limit PAIR: ROD LIMIT LO warns BEFORE the stop', function (ck) {
+  // A real board carries two insertion-limit annunciators and we shipped one, so the first
+  // notice a player got was the stop itself. WTSM 8.4 (ML11223A256): "Rod Limit Low setpoint
+  // = RIL + 10 steps", "Rod Limit Low-Low setpoint = RIL".
+  //
+  // The scale trap this pins: 40 fine steps IS the real 10, because the drive is 912 fine
+  // steps to a real bank's 228. If someone retunes `rods.max_steps` and leaves the setpoint,
+  // the warning band silently changes meaning — so the instrument's declared range top is
+  // checked against max_steps here rather than left as a hand-copied 912.
+  var cfg = RD.PWR_CONFIG;
+  var spec = cfg.instruments.rod_limit_margin;
+  ck('rod_limit_margin range top IS rods.max_steps (not a hand-copied number)',
+     spec.range[1], spec.range[1] === cfg.rods.max_steps, String(cfg.rods.max_steps));
+  var al = (cfg.protection.alarms || []).filter(function (a) { return a.id === 'rod_limit_approach'; });
+  ck('the ROD LIMIT LO alarm exists and reads the margin instrument',
+     al.length && al[0].instrument, al.length === 1 && al[0].instrument === 'rod_limit_margin', 'rod_limit_margin');
+  ck('its band is the prototypical 10 real steps, expressed in fine steps',
+     al[0].setpoint, al[0].setpoint === 40 && cfg.rods.max_steps === 4 * 228, '40 (= 10 x 4)');
+
+  // Physical half: at the shipped full-power lineup the bank sits well clear of its limit,
+  // so BOTH annunciators must be quiet. An alarm already standing at the initial condition
+  // proves nothing when it later "fires".
+  var d = new Stack('hot_full_power');
+  d.run(2);
+  ck('IC assert — hot and at power', d.ts().pressure_mpa.toFixed(2), d.ts().power_pct > 95, '> 95 % power');
+  var g = d.engine._controlGroup();
+  ck('the limit APPLIES at power (a null limit would make the rest vacuous)',
+     String(g.insertion_limit_steps), g.insertion_limit_steps != null && g.insertion_limit_steps > 0, '> 0');
+  ck('the bank ships clear of it, by more than the LO band',
+     d.ins().rod_limit_margin.toFixed(0), d.ins().rod_limit_margin > 40, '> 40');
+  ck('LO clear', d.alarm('rod_limit_approach').state, d.alarm('rod_limit_approach').state === 'clear', 'clear');
+  ck('LO-LO clear', d.alarm('rod_limit').state, d.alarm('rod_limit').state === 'clear', 'clear');
+
+  // Wiring half, driven through the INSTRUMENT rather than by moving rods. Moving the bank
+  // to its limit does not work as a test: insertion drops power, the power-dependent limit
+  // drops with it, and the margin OPENS UP instead of closing — measured, parking the bank
+  // 20 steps above the limit and stepping the plant left a margin of 299. That is the same
+  // "the floor runs away from you" effect that makes AT LIMIT unreachable by hand insertion
+  // in free play (#306 investigation); the only physical route is diluting at constant power.
+  // What is under test here is the annunciator pair, so drive the channel it reads.
+  var ins = d.engine.getInstruments();
+  ins.rod_limit_margin = 20;
+  d.layer.evaluate(ins);
+  ck('LO fires 20 steps above the limit', d.alarm('rod_limit_approach').state,
+     d.alarm('rod_limit_approach').state !== 'clear', 'active');
+  ck('and LO-LO is still clear — it warns BEFORE the stop', d.alarm('rod_limit').state,
+     d.alarm('rod_limit').state === 'clear', 'clear');
+
+  ins.rod_limit_margin = 0;
+  ins.rod_at_limit = true;
+  d.layer.evaluate(ins);
+  ck('on the limit, LO-LO fires', d.alarm('rod_limit').state, d.alarm('rod_limit').state !== 'clear', 'active');
+  ck('and LO is still up — the pair escalates, it does not hand over',
+     d.alarm('rod_limit_approach').state, d.alarm('rod_limit_approach').state !== 'clear', 'active');
+
+  // Just outside the band must NOT alarm — an off-by-one here would make LO useless or
+  // permanent, and `crossed()` is strict.
+  ins.rod_limit_margin = 41;
+  ins.rod_at_limit = false;
+  d.layer.evaluate(ins);
+  ck('41 steps of margin is outside the band — LO clears', d.alarm('rod_limit_approach').state,
+     d.alarm('rod_limit_approach').state === 'clear', 'clear');
+
+  // The nuisance case #202 removed: below min_power_pct there is NO limit, and a margin of
+  // zero there would annunciate through every startup. The engine reports full travel instead.
+  var c = new Stack('cold_shutdown');
+  c.run(2);
+  ck('IC assert — cold, so the limit does not apply', c.ts().pressure_mpa.toFixed(2), c.ts().power_pct < 5, '< 5 % power');
+  ck('no limit computed at all', String(c.engine._controlGroup().insertion_limit_steps),
+     c.engine._controlGroup().insertion_limit_steps == null, 'null');
+  ck('margin reads FULL TRAVEL, not zero', c.ins().rod_limit_margin,
+     c.ins().rod_limit_margin === cfg.rods.max_steps, String(cfg.rods.max_steps));
+  ck('so neither insertion-limit alarm annunciates on a cold plant',
+     c.alarm('rod_limit_approach').state + '/' + c.alarm('rod_limit').state,
+     c.alarm('rod_limit_approach').state === 'clear' && c.alarm('rod_limit').state === 'clear', 'clear/clear');
+}));
+
+T.push(test('#306 — the kernel PUBLISHES interlock state, so a board can show a standing block', function (ck) {
+  // `interlockActive` was kernel-internal, so a surface could learn about a block only by
+  // issuing a command and reading the refusal. Deriving it board-side would be a second copy
+  // of a latched hysteretic condition (engage on setpoint, clear on clears_below) — the
+  // #294/#303 defect shape. This pins the publication and the latch it reports.
+  var d = new Stack('hot_full_power');
+  d.run(2);
+  var st = d.layer.getInterlockState();
+  var nCfg = (d.layer.config.interlocks || []).length;
+  ck('published, one entry per configured interlock', st.length, st.length === nCfg && nCfg > 0, String(nCfg));
+  function rodNow() {
+    return d.layer.getInterlockState().filter(function (i) { return (i.blocks || []).indexOf('rod_nudge') >= 0; })[0];
+  }
+  var rod = rodNow();
+  ck('the rod-withdrawal interlock is findable by its BLOCKS list, not by index or prose',
+     rod && rod.instrument, !!rod && rod.instrument === 'startup_rate', 'startup_rate');
+  ck('it declares withdrawal_only — insertion is never blocked', String(rod.withdrawal_only), rod.withdrawal_only === true, 'true');
+  ck('inactive at steady full power', String(rod.active), rod.active === false, 'false');
+  ck('isCommandBlocked agrees, without issuing the command',
+     String(d.layer.isCommandBlocked({ action: 'rod_nudge', steps: 4 })),
+     d.layer.isCommandBlocked({ action: 'rod_nudge', steps: 4 }) === false, 'false');
+
+  // Latch it by forcing the instrument past the setpoint, the way the plant would.
+  var il = (d.layer.config.interlocks || []).filter(function (x) { return x.instrument === 'startup_rate'; })[0];
+  var ins = d.engine.getInstruments();
+  ins.startup_rate = il.setpoint + 0.5;
+  d.layer.evaluate(ins);
+  ck('a crossed setpoint shows as ACTIVE in the published state', String(rodNow().active), rodNow().active === true, 'true');
+  ck('withdrawal is refused', String(d.layer.isCommandBlocked({ action: 'rod_nudge', steps: 4 })),
+     d.layer.isCommandBlocked({ action: 'rod_nudge', steps: 4 }) === true, 'true');
+  ck('INSERTION is not — withdrawal_only, and this is the half that must never block',
+     String(d.layer.isCommandBlocked({ action: 'rod_nudge', steps: -4 })),
+     d.layer.isCommandBlocked({ action: 'rod_nudge', steps: -4 }) === false, 'false');
+
+  // Hysteresis: back under the setpoint but above clears_below — still latched.
+  ins.startup_rate = (il.setpoint + il.clears_below) / 2;
+  d.layer.evaluate(ins);
+  ck('still ACTIVE inside the hysteresis band — the flag reports the LATCH, not the reading',
+     String(rodNow().active), rodNow().active === true, 'true');
+  ins.startup_rate = il.clears_below - 0.1;
+  d.layer.evaluate(ins);
+  ck('clears below clears_below', String(rodNow().active), rodNow().active === false, 'false');
 }));
 
 // -------- report --------

@@ -21,6 +21,139 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The Mode 3 → Mode 5 cooldown is a runnable checklist now — and building it found a step the
+  written procedure was missing** (#310). PWR-N15 was one of 48 documented procedures with no
+  executable form, and the one worth doing next because #303 had just published a *measured*
+  performance table for it that nothing reproduced. `pwr_cooldown` is that table's source now:
+  the live walkthrough on the board, and a full-stack replay under `run_procedures_stack`
+  (23/23, **204 checks**), so every milestone in `Manuals/04` PWR-N15 is re-derived on each gate
+  run instead of transcribed from a throwaway rig.
+
+  **The finding: blocking SI is not enough.** Two entries in the trip table watch reactor coolant
+  pressure downward — the **low-pressure reactor trip** at 1800 psi (12.41 MPa) and the **reactor
+  trip on safety injection** at the 1798 psi (12.4 MPa) SI setpoint — and taking HPI/LPI to OFF
+  blocks neither. Measured, the plant scrams about five plant-minutes into the first cooling leg
+  with *either* one left armed; the resulting turbine trip then drives the steam dump into its
+  Tavg-error mode and the cooldown runs away at −550.8 °F/hr (−306 °C/hr). Neither block is even
+  available until pressure is inside the P-11 permissive, so the checklist lowers the Pressure SP
+  first. New steps in PWR-N15 (1b/1c/1d) and PWR-T21 (C1a).
+
+  **A checklist step had to learn to RAMP.** The obvious build — a handful of discrete Dump SP
+  steps with holds — measures badly here: the dump's proportional band is 36 psi (0.25 MPa)
+  against a 40 % capacity and the primary trails the secondary by about 37 s, so a step of ΔT
+  bursts at roughly ΔT/τ. An 18 °F (10 °C) step peaks at **−1168.2 °F/hr (−649 °C/hr)** and a
+  whole 46.8 °F (26 °C) leg at **−2178 °F/hr (−1210 °C/hr)**; holding the −90 °F/hr programme
+  with steps needs them under 1.4 °F, about 250 of them. Procedure steps can now carry
+  `ramp: [{action, arg, points}]` — a setpoint walked along an authored polyline across the
+  step's hold. It costs the UI **nothing**: the live checklist never issued `cmd` in the first
+  place (it renders text and highlights and grades off `acc`), so this is replay-side only, in
+  the two procedure gates.
+
+  Measured on the finished checklist: −85 to −100 °F/hr through the four secondary-led legs,
+  accumulators isolated at 1000 psi at 2.04 plant-h, RHR permissive at 3.16 h, Mode 4 at 3.49 h,
+  **Mode 5 at 4.89 h**, arriving on the `cold_shutdown` initial condition with the accumulators
+  100 % full and isolated and boron at 857 ppm. Verified by injection, seven ways — remove either
+  trip block, the SI block, the accumulator isolation, the boration or the RHR heat-exchanger
+  throttle, or flatten the ramps back into steps, and the gate reddens each time.
+
+### Changed
+- **Automatic rod control follows load changes the way the real one does** (#306) *(OWNER,
+  2026-08-02: selected "washout the trim" from four options put to him)*. The rod controller's
+  power-mismatch term was PROPORTIONAL to the standing steam-vs-nuclear mismatch; the real one is
+  a **rate comparator**, and WTSM 8.1.4.2 (ML11223A252) states why — it *"prevents the power
+  mismatch circuit from responding to steady state calibration differences between nuclear and
+  turbine power."* Ours could grow until it cancelled the temperature error outright: measured
+  mid-ramp, the two terms were −4.64 and +4.41 and the channel commanded **zero rod steps with
+  Tavg 8.6 °F off program**.
+  - **A 5 %/min load ramp now holds Tavg within 4.77 °F of program, against 12.55 °F before** —
+    inside the ±5 °F the real system is specified to. The 10 % step is unchanged at ~6.3 °F.
+  - The gain is untouched, so a step change still produces the same push and every scenario tuned
+    around it behaves as before. Only the standing component is removed.
+  - Steady state is unchanged in substance: a 2 h soak settles 0.72 °F off program, well inside
+    the real ±1.5 °F deadband — and the rods actually **hunt less** than before (17 vs 34 fine
+    steps an hour at a settled part load).
+
+### Fixed
+- **Automatic boron trim could stop working without saying so** (#306). The channel sent its
+  borate/dilute command once, when it changed mode, and never again — so anything that touched
+  the boron makeup rate afterwards cancelled it silently while the panel still read "dilute…".
+  Measured: one operator stop command left the plant sitting for 40 minutes with the channel
+  claiming to be diluting and nothing happening. It now re-asserts its output whenever the plant
+  no longer holds it.
+- **…and once it worked, it was far too fast.** At the shipped 0.5 ppm/s the trim channel drove
+  the plant to a **reactor trip**; the rate is now 0.05 ppm/s, the makeup rate the rest of the
+  plant already uses. Both faults were hidden behind the rod-control change above: the old
+  controller quietly recovered the rods off a 4.8 % power overshoot, so the trim channel appeared
+  to be doing a job it had actually stopped doing.
+
+### Added
+- **A warning before the rod insertion limit, and a standing BLOCKED indication** (#306). A real
+  board carries **two** insertion-limit annunciators and we shipped one, so the first notice a
+  player got was the stop itself. WTSM 8.4 (ML11223A256): *"Rod Limit Low setpoint = RIL + 10
+  steps"*, *"Rod Limit Low-Low setpoint = RIL"* — and the Lo-Lo is not merely a deeper warning,
+  it is the tech-spec violation (*"the technical specification limit for rod insertion has been
+  violated"*).
+  - **`ROD LIMIT LO`** — new alarm on a new `rod_limit_margin` instrument (control-bank steps
+    remaining above the limit). The setpoint is **40 fine steps, which IS the real 10**: this
+    drive is 912 fine steps to a real bank's 228. It reads full travel — not zero — whenever the
+    limit does not apply, so it stays silent through a startup where the bank is deliberately
+    deep. That nuisance is exactly what #202 removed by making the limit power-dependent, and a
+    margin signal that reintroduced it would have undone that fix.
+  - **`ROD INS LIMIT` is now labelled `ROD LIMIT LO-LO`**, so the pair reads as a pair.
+  - **`BLOCKED`** on the rod status word, when a rod stop is standing. This needed the kernel to
+    **publish interlock state** (`snapshot.interlocks`, and `isCommandBlocked()`): `interlockActive`
+    was internal, so a surface could learn about a block only by issuing a command and reading
+    the refusal — a withdrawal block was invisible until you tried to withdraw. Deriving it
+    board-side was rejected as a second copy of a latched, hysteretic condition, which is the
+    #294/#303 defect shape.
+
+  `run_m4` **34 → 36**, `board_check` **179 → 182**, all injection-verified: three defects
+  injected (LO band 40 → 10, margin 0 instead of full travel when the limit is off, publish the
+  raw comparison instead of the latch) reddened their targets — and the margin one also tripped
+  four pre-existing alarm-census checks, which is the new alarm being properly counted.
+
+- **The board now shows what automatic rod control is DOING, not just that it is on** (#306).
+  With rod control in AUTO the only evidence that anything was happening was the step count
+  ticking — the ROD AUTO lamp said the channel was engaged, and nothing said what it was up
+  to. Three indications, all of them things a real Westinghouse board carries (*"Rod speed
+  indication and the IN-OUT lights"*, WTSM 8.1 §8.1.7.1, ML11223A252):
+  - **IN-OUT lamps.** WITHDRAW and INSERT light yellow while the bank is actually being driven
+    that way — by an operator hold, a tap, or the rod channel. That is the real lamps'
+    definition, verbatim: *"In-and-out lamps on the control board indicate that rod motion has
+    been requested by either the IN-HOLD-OUT switch **or the reactor control unit**."* A
+    **scram leaves them dark**, deliberately: the rods fall on gravity with the drive
+    de-energized, and a lit IN lamp would say the drive is running when it has just been
+    dropped.
+  - **Rod speed indication.** SLOW/MED/FAST was a selector only, so it showed the operator's
+    choice while AUTO drove at its own — actively misleading, not merely absent. It is both
+    now: green is what you selected, yellow is what the drive is doing this instant. Measured
+    through a 45 % load drop, the yellow steps **FAST → MED → SLOW** as the temperature error
+    closes, which is the channel's error ladder made visible.
+  - **A ROD status word** in the card corner — `HOLDING / IN / OUT / AT LIMIT / MANUAL /
+    TRIPPED` — the at-a-glance version of a note the board previously surfaced only on
+    inspection. **AT LIMIT outranks motion**: the bank can sit on its insertion limit and
+    withdraw at the same time, and the limit is the fact that says the controller has run out
+    of room in the direction it normally corrects.
+
+  **The bottom of the card is evenly spaced now** *(OWNER, 2026-08-02: "Can you adjust the speed
+  buttons down so they have equal spacing above and below?", then "Shift the rod auto and trip
+  blocks down slightly to give equal spacing above and below them.")*. The two asks interact and
+  had to be solved together — centring SLOW/MED/FAST alone puts it at top 400, and centring ROD
+  AUTO alone puts it at 427.5, which re-opens the speed row's lower gap and un-centres what the
+  first move just centred. Measured as authored: the speed row sat **flush against INSERT (0 px
+  above, 10 below)** and straddled the CONTROL/SHUTDOWN sub-boxes, half in and half out. The
+  three gaps are **7 / 6 / 7** now (20 free px over three gaps will not divide evenly, so the
+  outer two match and the middle is a pixel tighter).
+
+  The **REACTOR/ROD CONTROL card is titled ROD CONTROL** to make the room, the same trade #214
+  made on the SG FEED card. Measured, not estimated — and the estimate was wrong twice: the
+  authored title renders 161 px in a 195 px card, and an rAnchor item's right edge sits 41 px
+  inside its authored `left`, so even the intermediate 'REACTOR CONTROL' left the widest word
+  ('AT LIMIT', 61 px) overlapping by 14 px, with both still rendering so nothing else would
+  have caught it. `board_check` **168 → 178**, including a pin on the title patch; all of them
+  verified by injection — three defects injected, three reds, one each.
+
 ### Changed
 - **HR12 now covers control behaviour, and half of it is gated** *(OWNER RULING, 2026-08-01:
   "go with your recommendation.", on the recommendation to widen HR12 by one clause and add one
@@ -70,6 +203,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   Gates: all **35 runners at baseline**, `board_check` **168/168** unchanged.
 
 ### Fixed
+- **Reactor trips could be switched off at full power.** The TRIP BLOCKS panel accepted a block on
+  any blockable trip as long as that trip was not *already* tripping — which meant the low-pressure
+  reactor trip, the trip on safety injection and the low-flow trip could all be blocked at 100 %
+  power, and the block then survived every regime change. Measured on a 20 % cold-leg LOCA, that
+  cost **64 seconds of unscrammed blowdown** (the plant finally tripped at 68.1 s on high
+  pressurizer level at 130 psi (0.90 MPa), where a correct plant trips at 4.2 s on low pressure at
+  1782 psi (12.28 MPa)). A block is an **enable**, not a switch: it is now accepted only while the
+  plant is inside that trip's permissive — above P-10 for the two startup trips, below P-11
+  (1972 psi / 13.6 MPa) for the pressure trips — and every block reinstates itself when its
+  permissive drops, including one you set by hand. **Nothing in the startup or cooldown checklists
+  changes**: both already put you inside the permissive before they ask you to block, and both
+  already described the plant this way. Found by the first slice of the independent audit
+  programme (#295 F1/F2, #221).
 - **Turbine art froze on trip while the RPM readout coasted.** Blade/winding scroll is driven by
   `turbine_rpm` (not steam demand alone), so a trip or generator OFF shows the ~40 s coastdown
   instead of stopping the frame instantly. Steam fill/ports still track admission.

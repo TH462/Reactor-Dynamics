@@ -131,6 +131,7 @@
     'procedure:pwr_pressure_control': 'preview',
     'procedure:pwr_sg_level': 'preview',
     'procedure:pwr_shutdown': 'preview',
+    'procedure:pwr_cooldown': 'preview',
     'procedure:pwr_loss_of_feedwater': 'preview',
     'procedure:pwr_rcp_trip': 'preview',
     'procedure:pwr_stuck_porv': 'preview',

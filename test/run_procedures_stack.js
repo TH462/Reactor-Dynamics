@@ -99,6 +99,39 @@ var POST_SCRAM_ALARMS = { reactor_trip: true };
 var ACCEL = 10;
 var SEC_PER_TICK = 1.0;   // ACCEL(10) x broadcastMs(100ms) = 1 s of sim per tick
 
+// RAMP steps (#310). A step carrying `ramp` walks a setpoint along an authored
+// polyline across its `hold` instead of stepping it once — the operator holding the
+// ▼ on a setpoint box, not typing one number. Re-issued every RAMP_EVERY sim-seconds.
+//
+// KEEP IT *(OWNER RULING, 2026-08-02: "1 keep. 2. Keep. 3. Keep.", ruling on all three
+// #310 judgement calls after raising the concern "I don't want to make the sim more
+// complex. I don't think that['s] added features will help teach reactor dynamics more")*.
+// The answer to that concern is that this is NOT sim complexity: #310 changed no file in
+// `engines/`, `layers/` or `scenarios/`, and the player-facing surface is a checklist.
+// `ramp` is replay-side test-harness code. Do not re-litigate it as a plant feature.
+//
+// WHY THE SCHEMA HAD TO GROW, measured, because the cheap answer was tried first: a
+// DISCRETE walk-down of the steam-dump setpoint cannot hold a programmed cooldown on
+// this plant. The dump's proportional band is 0.25 MPa against a 40 % capacity, and
+// the primary follows the secondary with tau ~ 37 s, so a step of dT bursts at
+// roughly dT/tau. Measured on `hot_zero_power`, full stack: a 10 °C step peaks at
+// **-649 °C/hr** (-1168 °F/hr) over its first 30 s and is done in four minutes, then
+// the plant sits. Holding the -50 °C/hr programme that way needs dT <= ~0.8 °C, i.e.
+// ~250 steps for the 297 -> 93 °C ride. The ramp does it in four.
+//
+// The LIVE checklist never issues `cmd` (ui/app.js renderChecklist is text +
+// highlights; the instructor grades off `acc` and watches for the player's own
+// command), so this is a REPLAY-side field only — no UI change, and the instructor
+// still recognises the step by its `cmd`.
+var RAMP_EVERY = 10;      // sim-s between re-issues
+// Piecewise-linear along `points` at fraction f of the step (equal time slices).
+function rampValue(points, f) {
+  if (points.length === 1) return points[0];
+  var x = Math.max(0, Math.min(1, f)) * (points.length - 1);
+  var i = Math.min(points.length - 2, Math.floor(x));
+  return points[i] + (points[i + 1] - points[i]) * (x - i);
+}
+
 function cmp(a, op, b, tol) {
   switch (op) { case '>': return a > b; case '<': return a < b; case '>=': return a >= b; case '<=': return a <= b;
     case '~': return Math.abs(a - b) <= (tol || 0); } return false;
@@ -188,16 +221,27 @@ function runProcedure(profKey, proc) {
   var curStep = 0, lastSnap = null;
   (proc.steps || []).forEach(function (st, idx) {
     curStep = idx + 1;
-    if (st.cmd) {
+    function issue(cmd) {
+      var why = refusal(svc.handleCommand(cmd));
+      if (why) refusals.push('step ' + curStep + ' ' + cmd.action + ' → ' + why);
+    }
+    // A ramp step's `cmd` is the REPRESENTATIVE action (what the instructor watches
+    // for); the ramp entries are what actually drives the plant, so issuing both
+    // would put the leg's end value on the board at t=0 — the step the ramp exists
+    // to avoid.
+    if (st.cmd && !st.ramp) {
       var cmd = {};
       for (var k in st.cmd) cmd[k] = st.cmd[k];
       if (cmd.group_id === 'control' || cmd.group_id === 'shutdown') cmd.group_id = groupId(svc, cmd.group_id);
       if (SCRAM_ACTIONS[cmd.action] && scramCmdStep === null) scramCmdStep = curStep;
-      var why = refusal(svc.handleCommand(cmd));
-      if (why) refusals.push('step ' + curStep + ' ' + cmd.action + ' → ' + why);
+      issue(cmd);
     }
     var sawHit = false, ticks = Math.round((st.hold || 0) / SEC_PER_TICK);
     for (var i = 0; i < ticks; i++) {
+      if (st.ramp && (i % RAMP_EVERY === 0)) {
+        var f = i / Math.max(1, ticks - 1);
+        st.ramp.forEach(function (r) { var c = { action: r.action }; c[r.arg] = rampValue(r.points, f); issue(c); });
+      }
       var s = svc.tick();
       if (!s) continue;
       lastSnap = s;
@@ -210,6 +254,10 @@ function runProcedure(profKey, proc) {
       observe(s);
       if (st.saw && pred(s.true_state, st.saw)) sawHit = true;
     }
+    // Land the ramp exactly on its last point: `f` never quite reaches 1 when
+    // `ticks` is not a multiple of RAMP_EVERY, and a leg that stops a few tenths of
+    // a psi short would leave the next leg's `from` wrong.
+    if (st.ramp) st.ramp.forEach(function (r) { var c = { action: r.action }; c[r.arg] = r.points[r.points.length - 1]; issue(c); });
     if (!lastSnap) lastSnap = svc._assembleWithInstructor();
     if (st.saw) checks.push({ d: 'step ' + curStep + ' saw ' + st.saw.p + ' ' + st.saw.op + ' ' + st.saw.v, pass: sawHit, obs: sawHit });
     if (st.acc) {

@@ -56,10 +56,28 @@ accident runs on; only the situation changes.
 
 ---
 
-## 2. The Defining Principle, In Depth
+## 2. The Instrument/Truth Separation, In Depth
 
-The single most important idea in this simulator is the separation between **true physical state**
-and **instrument readings**.
+> **THIS IS AN ARCHITECTURE PRINCIPLE, NOT THE PRODUCT'S CENTRAL TEACHING IDEA** *(OWNER RULING,
+> 2026-08-02, on the sentence this section opened with for most of the project's life — *"The
+> single most important idea in this simulator is the separation between true physical state and
+> instrument readings"*: **"This has never been the case for this sim… This is far from the most
+> important idea in this sim. It's very far down the list. The most important ideas are plant
+> dynamics followed by how to operate the plant."**)*
+>
+> The educational priority is **(1) plant dynamics — the couplings between components, and the
+> physics behind them; (2) how to operate the plant — normal evolutions, in order, correctly
+> lined up.** Instrument deception is a property of the observation layer that becomes the
+> *subject* only in casualties and flagship scenarios. See `Blueprint/DESIGN_CRITERIA.md` §6.
+>
+> **Nothing below is retracted as ARCHITECTURE.** The separation is real, non-negotiable, and
+> load-bearing — it is what makes failure scenarios possible at all, and a healthy channel's lag
+> shapes every transient with nothing failed. What was wrong was the claim of *primacy*, and
+> the ordering reason is in `DESIGN_CRITERIA.md` §6.3: you cannot perceive a lying instrument
+> without already knowing what the plant should be doing, so this idea depends on the dynamics
+> rather than outranking them.
+
+The simulator separates **true physical state** from **instrument readings**.
 
 In a real plant, operators never see reality directly. They see it through instruments — sensors
 with response lag, electrical noise, finite ranges, and the capacity to fail or lie. The history of

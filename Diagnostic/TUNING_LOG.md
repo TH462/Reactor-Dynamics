@@ -20,6 +20,408 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-02b (#295 F1/F2 — a reactor trip was defeatable at power)
+
+**Task: the owner's rulings pass**, then *(OWNER RULING, 2026-08-02: "311: a. 221: fix as
+recommended.")* → #311 ruled option (a) (reduced-form OTΔT/OPΔT, no ΔI term, declared
+departure — recorded, not built), #221 pilot yield accepted and slices 2–7 (#296–#301)
+commissioned, and #295's F1/F2 fixed first as recommended.
+
+**What was wrong.** `control_kernel.js setTripBlock` accepted a manual block on any `blockable`
+trip whenever the trip was **not already asserted**, ignoring the block permissive, and
+`_autoReinstateTripBlocks` exempted `manualTripBlocks` from reinstatement. Both arrived
+2026-07-24 as the "hybrid model" to answer a complaint about not being able to block ahead of an
+evolution.
+
+**Measured on develop before touching anything** (engine+M4, 0.1 s protection cadence, IC
+asserted: 2235 psi (15.41 MPa) / 100.0 % / 304.1 °C):
+
+| | result |
+|---|---|
+| `set_trip_block lo_press` / `si_trip` / `lo_flow` at 100 % power | all **ACCEPTED** |
+| 20 %-of-max cold-leg LOCA, no blocks | scram **4.2 s**, `primary_pressure low`, 1782 psi (12.28 MPa) |
+| same LOCA, three blocked | scram **68.1 s**, `pzr_level high`, 130 psi (0.90 MPa) — the accumulator refill |
+| F2: block the startup net at power, scram, 120 s | power 0.14 %, blocks **still** `{ir_high, pr_low_setpoint}`; untouched control reinstates to `{}` |
+
+**The fix.** The engage rule is the permissive and nothing else (M4b §3c); manual blocks reinstate
+like any other and `manualTripBlocks` survives as provenance for the save format only.
+
+**What overturns the 2026-07-24 rule, in HR9 order — this write-up's first draft had it
+backwards and is corrected here.** (1) **MEASURED**: a reactor trip defeatable at 100 % power,
+64 s of unscrammed blowdown. That alone settles it. (2) **SPEC**: M4b §3c. (3)
+**PROTOTYPICALITY — UNVERIFIED**: the "P-11 is enabled only below ~1970 psig
+(NUREG-1431 LCO 3.3.1/3.3.2)" basis came from #295 F1, which flags its own NUREG references as
+part recall, and **there is no sourced P-11 citation in this repo** (#220 covered P-7/P-8/P-9
+only). That gap does not touch the finding; it does touch the **shape** chosen — full permissive
+gate vs. narrowing the proactive rule to trips lacking their own `block_permissive`. Evidence
+pass owed.
+
+**The authored content was a CANARY, not an authority.** The first draft argued the 2026-07-24
+premise "had not survived the content written since", which makes a checklist the arbiter of a
+control-layer design — an HR9 inversion. What the content legitimately gave: the *signal* that
+something had diverged (the startup checklist's *"the plant will not let you block them down
+there"* and PWR-N15's Pressure SP step were both false in the kernel), and *blast-radius
+evidence* that nothing authored breaks. See `Blueprint/DESIGN_CRITERIA.md` §1 Q1.
+
+**Three things worth carrying forward.**
+
+1. **The two fixes each heal F1 independently.** Injecting only the old engage rule left the LOCA
+   probe **green** — with auto-reinstate corrected, a block set outside its permissive is deleted
+   on the next `evaluate`. 8 checks red on that injection, **12** with both reverted. If you
+   re-verify this, revert both.
+2. **Two `run_m4` checks and one `run_behavior` probe were pinning the defect.** `run_m4`'s
+   "proactive block allowed below P-10" pair asserted the defect directly. PI-3's *fixture* was
+   the defect: it blocked `lo_press` straight from hot full power under the label "P-10
+   satisfied" — the **wrong permissive**, since `lo_press` and `si_trip` carry their own P-11.
+   Re-authored to reach the block the way the cooldown does; **it passes on the OLD kernel too**,
+   which is what makes it a better test rather than a refit (HR10).
+3. **Behaviour text is a third copy of the mechanism.** `pwr_board_inspect.js` described the
+   removed rule in two entries ("a block is accepted any time the trip is not yet asserted…",
+   "a block you set by hand is not undone by falling back below P-10") — the #308 class again,
+   and neither is reachable from the kernel diff.
+
+**Gates.** `run_all` **OK, 35 runners at baseline** (`run_m4` **34/34 194 → 35/35 210**,
+`run_behavior` back to **43 pass / 0 xfail**), both browser gates PASS (`verify_e2e_ui` 16
+screenshots, `verify_manual_follow` 183 checks), `board_check` **168/168**.
+
+**Still open on #295:** F3 (auto-SI never re-arms above P-11 through a heatup), F4 (no LTOP),
+F5 (no steam-line isolation ESFAS), F6 (→ #311, ruled), F7–F12.
+
+---
+
+## Session log — 2026-08-02 (PWR-N15 became executable, and the procedure was one step short)
+
+**Task: "work issue 310"** — PWR-N15 (Mode 3 → Mode 5 cooldown) had no executable checklist,
+so #303's measured performance table had no gate behind it. It has both now: `pwr_cooldown` in
+`ui/manual_procedures.js`, replayed full stack by `run_procedures_stack` at **28 checks**, and
+the manual's milestone table is re-derived from that run rather than transcribed.
+
+**1. The design question the issue posed, answered by measurement, and the answer was (b).**
+The issue offered **(a)** a stepped Dump SP walk-down (recommended, no schema change) or
+**(b)** a new `ramp` step capability, and asked for the step size to be measured. It cannot be
+found. The dump is `clip((P_steam − SP)/0.25, 0, 1)` capped at 0.40, and the primary trails the
+secondary with τ ≈ 37 s, so a setpoint step of ΔT bursts at roughly ΔT/τ. Measured full stack
+from `hot_zero_power`:
+
+| drive | peak Tavg rate (30 s window) |
+|---|---|
+| 18 °F (10 °C) Dump SP step | **−1168.2 °F/hr (−649 °C/hr)** |
+| 46.8 °F (26 °C) step — one per leg | **−2178 °F/hr (−1210 °C/hr)** |
+| Dump SP driven to its 29 psi (0.2 MPa) stop | **−2340 °F/hr (−1300 °C/hr)** |
+| the authored RAMP | −85 to −100 °F/hr, worst transient −171 °F/hr at RHR placement |
+
+Holding −90 °F/hr with discrete steps needs them ≤ **1.4 °F (0.8 °C)** — ~250 for this
+cooldown. So (a) is not authorable, which the issue itself said would be the argument for (b).
+
+**(b) turned out to be far cheaper than the issue feared.** It listed "a schema change to the
+procedure runner and to `verify_manual_follow`". In fact **the live checklist never issues
+`cmd` at all** — `ui/app.js renderChecklist` renders text + control + target + highlights and
+the instructor grades off `acc`, watching for the player's OWN command as evidence. `cmd`/`hold`
+exist only for the two replay gates. So `ramp: [{action, arg, points}]` is a replay-side field:
+`run_procedures.js` and `run_procedures_stack.js`, ~10 lines each, no UI, no browser gate. A
+ramp step keeps its `cmd` as the REPRESENTATIVE action (what the instructor watches for) and the
+gates do not issue it — issuing both would put the leg's end value on the board at t=0, i.e. the
+step the ramp exists to avoid. `points` is a polyline rather than from/to so the author can
+encode the Psat curve without the runner knowing any plant physics; measured, a straight
+from/to (linear in MPa) drifts to −72 °C/hr at leg ends, five points holds ±11 %.
+
+**2. THE FINDING — "block SI" is three different actions and the procedure named one.** N15 said
+block SI before depressurizing (#303's own addition). Taking HPI/LPI to OFF disarms the ESF arm
+and stops the pumps. It does **not** touch the RPS, and **two** entries in `PWR_TRIPS` watch
+`primary_pressure` downward: `lo_press` at 12.41 MPa and **`si_trip`** at the 12.4 MPa SI
+setpoint (PI-3, reactor trip on safety injection). Both are `blockable` behind the same P-11
+permissive, and neither auto-blocks on the way down — a plant that *initialises* depressurised
+starts blocked, but a plant walking down does not. Measured: with both unblocked the plant
+scrams at t≈320 s into leg 1; with only `lo_press` blocked it scrams one step later. Either way
+the turbine trip puts the dump in Tavg-error mode and the cooldown runs away at −306 °C/hr.
+Because the block needs the permissive, the checklist has to lower the Pressure SP to
+1901 psi (13.11 MPa) FIRST — which is where the cooldown's own subcooling programme starts
+anyway, so it costs nothing. New steps 1b/1c/1d in N15 and C1a in T21.
+
+**3. Verified by injection, seven ways.** Every new step and guard was made to go red
+(`scratchpad/n15_inject.js` mutates the procedure then requires the real gate):
+
+| injection | result |
+|---|---|
+| both trip blocks removed | scram at step 5 `primary_pressure low` — 24/28 |
+| only `si_trip` block removed | scram at step 6 — 24/28 (**the second block earns its place alone**) |
+| HPI/LPI left in AUTO | HPI injects, pzr goes solid, `pzr_level high` scram; Tavg 77 °C at end of leg 1 — 21/27 |
+| accumulator isolation removed | accumulators **0 %**, `pzr_level high` scram — 21/27 |
+| RHR aligned at the at-power 100 % HX split | rate guard red (−843 °C/hr) — 27/28 |
+| boration removed | MTC takes the core critical on the way down, `source_range high` scram — 23/27 |
+| all four legs flattened to a single step each | **27/28 — only the rate guard** |
+
+That last row is the one to keep: a staircase still *arrives* everywhere the procedure says, so
+every acceptance passes. The `never tavg_rate_c_per_hr < -150` guard is the only check that can
+tell (a) from (b), which is why it is in the guard list and why −150 rather than −50: every known
+way to lose this evolution sits far beyond it, and the authored ramps' worst transient is −95
+for about ten seconds at RHR placement.
+
+**4. `stack_only`.** N15 cannot be replayed engine-direct — the board's only boron control is
+the `boron_conc` channel target (`set_auto_setpoint`; there is no manual borate/dilute anywhere
+on the board), so below M4 the cooldown runs unborated and the plant heats back up to 292.6 °C.
+`run_procedures.js` now honours a `stack_only` flag, and the one check it contributes is that
+the flag is **justified** — the procedure must actually carry a NON_ENGINE_ACTION command — so
+it cannot be used to hide a procedure engine-direct could run.
+
+**5. Measured milestones** (`hot_zero_power`, free-play lineup, seed 42, 10×, −50 °C/hr
+programme, 35 °C subcooling): boration complete 1.00 h, both trips blocked 1.09 h, accumulators
+isolated at 1000 psi 2.04 h (Tavg 250.4 °C), RHR permissive 3.16 h (194.9 °C), RHR aligned +
+RCPs secured 3.19 h, Mode 4 3.49 h, **Mode 5 4.89 h**, ending 80.5 °C / 2.50 MPa with
+accumulators 100 % and boron 857 ppm. Min subcooling 33.8 °C, no relief lift, no scram, no
+standing alarm.
+
+**Gate deltas:** `run_procedures_stack` 22/22 176 → **23/23 204**, `run_procedures` 22/22 99 →
+**23/23 100**, `run_manual_controls` 94 → **122**, `verify_manual_follow` 141 → **183**,
+`run_procdocs` 23 → **25** (coverage 10 → 11 of 58), `run_flags` 289 → **292** (the registry
+gate caught the missing `procedure:pwr_cooldown` entry). Manual set Rev 11 → **12**.
+
+**6. All three judgement calls RULED — keep** *(OWNER RULING, 2026-08-02: "1 keep. 2. Keep.
+3. Keep.")*, after the owner raised the concern *"I don't want to make the sim more complex. I
+don't think that['s] added features will help teach reactor dynamics more"*. The answer that
+settled it is a fact worth keeping: **#310 changed no file in `engines/`, `layers/` or
+`scenarios/`** — the plant is untouched, `ramp` and `stack_only` are replay-side test-harness
+code, and the player-facing surface is a checklist plus two steps the plant already required.
+The alternatives declined were: revert `ramp` and re-word the manual's rate row to what a
+staircase actually does (−2178 °F/hr bursts); drop `stack_only` for nine xfail strings; and
+tighten the rate guard to ~−198 °F/hr or delete it (measured, deleting it lets a staircase score
+28/28). Cited at the three decision sites so this is not re-litigated from scratch.
+
+**Still open on N15:** the −90 °F/hr programme remains **UNVERIFIED** as a commercial limit —
+no source for a real-plant RCS cooldown-rate limit has been found for this manual set, and the
+real ones derive from P–T curves this plant does not model. That is recorded in the procedure,
+not fixed.
+
+---
+## Session log — 2026-08-02a (#306 automatic rod control: the authority is right, the tracking is not — workbench)
+
+**Task: "Investigate issue 306" — *"How much control authority does the auto rod groups in a
+westinghouse reactor have? how much does ours have?"*** Evidence pass + measurement pass, no
+plant change. Full write-up on the issue; the four rigs are in the session scratchpad, not the
+repo. Layer: **engine + M4, SHIPPED lineup**, `hot_full_power`, accel 1×, IC printed and checked.
+
+**The sourced answer.** WTSM 8.1 Rod Control System (**ML11223A252**) is the document, and its
+§8.1.1 *is* the authority statement: *"a 10% step load increase or decrease, a 5% per minute
+ramp load increase or decrease, or a 50% step load decrease with the aid of the steam dump
+system… without actuating the pressurizer relief valves or generating a reactor trip"*, holding
+Tavg *"within ±5°F of the temperature program"* on the first two. Speed program (§8.1.4.5):
+deadband **±1.5 °F including a 0.5 °F lock-up**, then **8 steps/min** to ±3 °F, **32
+steps/min/°F** to ±5 °F, **72 steps/min** beyond. Rod insertion limits are **WTSM 8.4
+(ML11223A256)**: bank D floor = **1.99 × %power − 10 steps** → 189 of 228 at full power, and
+they are an **alarm plus a tech-spec LCO, not a rod stop** — *"The rods can always be inserted
+into the core."* Automatic control is **not provided below 15 % turbine power**.
+
+**Ours, measured.** Worth is right: 4068 pcm from the same WTSM 2.2 table, **730 pcm** of
+maneuvering band at full power (654 insert to the RIL + 76 withdraw) against a measured power
+defect of **97 pcm per 10 % of power** and **660 pcm over 100 → 30 %**. Rate is right too, which
+was the surprise: the ladder reads 8/48/72 equiv-steps/min, but `maxStep 8` per `period 5.0 s`
+throttles the *sustained* rate to **24 equiv-steps/min** — measured at exactly 24.0 on the 50 %
+step — and that works out to a **~9.5 min full-rod sweep against a real ~8.5–8.7 min**. The
+throttle is what makes the drive prototypical; the ladder alone would be 2.7× too fast.
+
+**Where it is not realistic: transient tracking.** Against the ±5 °F duty — 10 % step down
+**6.05 °F** MISS, 10 % step up 4.24 °F pass, 5 %/min ramp down **12.55 °F** MISS, ramp up
+**7.83 °F** MISS. The 50 % step with dump passes (that is TR-1g). Steady state is fine: 2 h
+soaks at seven loads settle **−0.56 to −0.98 °F** off program, inside our own deadband.
+
+**And the cause is NOT authority — injection says so.** Four variants on the same two duties:
+shipped 6.05/12.55; trim = 0 → 6.10/10.98; trim as a **rate comparator** → 6.30/**7.67**;
+**`maxStep` 8 → 32 (4× the drive) → 5.51/12.55, the ramp unchanged to the decimal.** Quadrupling
+the rod drive rate bought nothing, so the residual is the plant's own thermal lag, not the rods.
+Chasing the ±5 °F duty inside rod control would be fixing the wrong system.
+
+**The one real control defect found.** Our trim is `1.25 × (steam_flow×100 − power_range)` —
+**proportional**. The real one is a rate comparator, and WTSM 8.1.4.2 says why: *"provides an
+output if, and only if, there is a rate of change of the difference… This rate comparator
+prevents the power mismatch circuit from responding to steady state calibration differences
+between nuclear and turbine power."* Measured through our ramp the standing mismatch grows to
++6.8 and cancels the temperature error outright — at t = 360 s, error −4.64 against trim +4.41
+leaves eEff −0.04, so the channel commands **zero steps with Tavg 8.6 °F off program**. The rate
+form recovers 39 % of the ramp error.
+
+**Trap for whoever picks this up: I got the mechanism wrong first.** The ramp's growing
+deviation reads exactly like a permanent standing Tavg offset, and I wrote it up as one. The 2 h
+soaks disprove it — it closes. It cannot bias the endpoint because `_stepRods` tests the
+deadband against the **RAW** error, not `eEff`, so the trim can delay a correction but never hold
+the plant off program. Injection C is the other half of the same lesson: the obvious reading
+("the controller is rate-limited") survived three passes and died to one 4×-drive run.
+
+**Structural departures, filed on the issue, none actioned:** the RIL is a hard stop on our auto
+channel where a real one alarms (`control_kernel.js:1217`); `defaultOn` is consulted once by
+`engageDefaults()` so there is **no low-power stand-down** — measured, the channel took the
+reactor to **0.00 % power still engaged and still reporting "holding"**, no trip; five of the six
+real automatic rod withdrawal stops are absent, and **there is no OTΔT or OPΔT anywhere in the
+tree**, which is a protection gap wider than this issue; and our Tavg program spans **12.7 °F
+against a real 28 °F**, so our controller has the easier job and still misses.
+
+**Status:** `status-needs-ruling` on the control-layer change. Recommended: do the rate
+comparator and nothing else — it is the only item both sourced verbatim and measured to matter,
+and it touches the control layer only. Explicitly recommended *against*: raising the drive rate.
+
+**Follow-on, same day — the board now SHOWS the rod controller** *(OWNER, 2026-08-02: "How can
+we show the user the rod authority and stops? Right now there's nothing showing what the auto is
+doing or can do other than watching the rods move in/out."; selected items 1–3 of four offered)*.
+WTSM 8.1 §8.1.7.1 lists what a real board carries — *"Rod speed indication and the IN-OUT
+lights"* — and §8.1.7.2 makes the lamps the automatic system's voice, not just the operator's:
+*"In-and-out lamps … indicate that rod motion has been requested by either the IN-HOLD-OUT
+switch **or the reactor control unit**."* We had neither. Shipped: IN-OUT lamps on the existing
+WITHDRAW/INSERT buttons, live speed indication on SLOW/MED/FAST (green = your selection, yellow
+= what the drive is doing), and a `HOLDING / IN / OUT / AT LIMIT / MANUAL / TRIPPED` status word
+in the card corner. No engine or config change — `control_state.rod_groups[]` already carried
+`moving`, `direction`, `speed` and `at_insertion_limit`; nothing rendered them.
+
+**Three traps, all of which cost a run.** `svc.tick()` **no-ops unless `this.running`** — a
+probe that drives it directly measures a frozen plant and reports every lamp dark; use
+`advanceCycles(n)`, which sets the flag around the loop. Writing `el.textContent` on a rendered
+board value **destroys the child nodes the renderer updates**, so the element freezes at
+whatever you last wrote and every later sample lies — measure widths on a `cloneNode(true)`.
+And the layout arithmetic was **wrong twice**: an rAnchor item's rendered right edge sits 41 px
+inside its authored `left`, so 'REACTOR CONTROL' looked like it left 68 px for a 61 px word and
+actually overlapped by 14 — with both still rendering, which is why only a ruler finds it. The
+card is titled **ROD CONTROL** now (93 px, clears the widest word by 15).
+
+Measured end-to-end through a 45 % load drop: status HOLDING → IN at cycle 60, INSERT lamp at
+60, and the speed indication stepping **FAST (60) → MED (595) → SLOW (645)** as the error
+closed — the channel's error ladder made visible. MANUAL on disengage, TRIPPED on scram with
+the IN lamp **dark** (gravity is not a drive demand). `board_check` **168 → 178**, and all ten
+pins injection-verified: three defects injected (drop the scram guard, restore the long title,
+rank motion above the limit), three reds, one each.
+
+**Card spacing, same session** *(OWNER, 2026-08-02: "Can you adjust the speed buttons down so they
+have equal spacing above and below?", then "Shift the rod auto and trip blocks down slightly to
+give equal spacing above and below them.")*. **The two asks interact and must be solved as one
+stack** — centring SLOW/MED/FAST alone puts it at top 400; centring ROD AUTO alone puts it at
+427.5, which re-opens the speed row's lower gap to 7.5 and un-centres what the first move just
+centred. Measured as authored: the speed row was **flush against INSERT** (0 above, 10 below) and
+**straddled the CONTROL/SHUTDOWN sub-boxes**, whose bottom edge is 400 — half in, half out. The
+band 395→465 is 70 px holding 50 px of buttons, so the gaps want 6.67 and are **7 / 6 / 7**.
+
+**The bug this turned up is the reusable part: `DOC_PATCHES.items` is an OBJECT LITERAL, so a
+second entry for the same id silently REPLACES the first.** Adding `ims5glucngg: { props: { top:
+428 } }` next to the existing `ims5glucngg: { props: { color: '#5aad7c' } }` dropped the ROD AUTO
+green with no error at all — caught only because two unrelated colour-convention pins went red.
+Merge keys, never repeat them. The new spacing pin asserts the **relationship** (three gaps equal
+within 1 px) rather than the numbers, so it survives any of the five items moving and fails on
+the un-patched board_data, where the first gap is 0 and the last is 10.
+
+**Item 4, shipped the same session** *(OWNER, 2026-08-02: "Do next", on the recommendation to
+build the ROD LIMIT Lo annunciator together with the interlock publication)*. Two things, one
+change, because they are the same gap seen from two ends — the board could not tell you that the
+controller was running out of room, in either direction.
+
+**`ROD LIMIT LO`.** A real board carries TWO insertion-limit annunciators and we shipped one, so
+the first notice was the stop itself. WTSM 8.4 (ML11223A256): *"Rod Limit Low setpoint = RIL + 10
+steps"*, *"Rod Limit Low-Low setpoint = RIL"*, and the Lo-Lo is the **tech-spec violation**, not a
+deeper warning. New `rod_limit_margin` instrument (bank steps above the limit) and an alarm at
+**40 fine steps, which IS the real 10** — this drive is 912 fine to a real bank's 228. Do not
+"correct" it to 10; that is 2.5 real steps of warning on a bank the auto channel moves at 24
+equivalent steps a minute. `ROD INS LIMIT` is relabelled `ROD LIMIT LO-LO` so the pair reads as one.
+
+**The trap in the margin signal is the #202 nuisance coming back.** Below
+`insertion_limit_min_power_pct` there is NO limit — a startup drives the bank deliberately deep —
+so the margin reports **full travel, not zero**, or the annunciator would stand through every
+ascent. That is precisely the nuisance #202 removed by making the limit power-dependent, and a
+naive `steps − limit` would have undone it. Injection-verified: forcing 0 there reddens the cold
+probe AND four pre-existing alarm-census checks.
+
+**`interlock_status` published.** `interlockActive` was kernel-internal, so a surface could learn
+about a block only by issuing a command and reading the refusal — a rod-withdrawal block was
+invisible until you tried to withdraw. `getInterlockState()` + `isCommandBlocked()` now publish
+it (`snapshot.interlocks`), the same way `trip_block_status` already does, and the board's
+`BLOCKED` state reads it. Deriving it board-side was rejected on purpose: the block engages on
+`setpoint` and clears on `clears_below`, so a copy is a second implementation of a hysteretic
+latch — the #294/#303 shape. Consumers match on the **blocks list**, not on an index or on prose.
+
+**Two authoring traps found the hard way.** `getAlarms()` returns **every** configured alarm with
+a `state` field, not only the active ones, so `!!layer.getAlarms().find(...)` is ALWAYS true —
+the first draft of these probes "passed" four checks that were asserting nothing. Read `.state`.
+And **driving the bank to its limit does not work as a test**: insertion drops power, the
+power-dependent limit drops with it, and the margin OPENS instead of closing — measured, parking
+the bank 20 steps above the limit and stepping the plant left a margin of **299**. Same
+floor-runs-away effect that makes AT LIMIT unreachable by hand insertion in free play; the only
+physical route is **diluting at constant power** (that is how the #306 screenshot was produced —
+695 iterations to 69.6 % against a 69.6 % floor). For an annunciator test, drive the instrument.
+
+`run_m4` **34 → 36**, `board_check` **179 → 182**. Three injections, three reds.
+
+**The rate comparator, ruled and shipped** *(OWNER, 2026-08-02: selected "B — washout the trim"
+from four options put to him — declare-only, washout, full three-stage circuit, or pin-and-defer;
+a selection, not verbatim words)*. `rods_tavg`'s power-mismatch trim was PROPORTIONAL to the
+standing steam-vs-nuclear mismatch. WTSM 8.1.4.2 (ML11223A252) says the real one is a **rate
+comparator** and says why: *"provides an output if, and only if, there is a rate of change of the
+difference between the inputs… prevents the power mismatch circuit from responding to steady
+state calibration differences between nuclear and turbine power."* It is a washout now —
+`trimSlow` follows the standing part with `TRIM_TAU_S`, the controller sees only what is left.
+**Gain unchanged at 1.25**, so a STEP still produces the same initial push and everything tuned
+around it survives; only the standing component goes.
+
+**I told the owner no option would reach the ±5 °F duty. That was wrong for the ramp.** At τ = 5 s
+the 5 %/min ramp holds **4.77 °F** against 12.55 °F proportional. The 10 % step is unchanged at
+~6.3 °F, so the step half is still missed.
+
+**τ is bounded at BOTH ends** — swept 0.5 → 300 s over four transients plus a 2 h soak:
+
+| τ (s) | 5 %/min ramp | 50 % step | rod travel/h at a settled 75 % |
+|---|---|---|---|
+| 0 (proportional) | 12.55 °F | 10.59 | 34 |
+| 1 | 6.90 | 13.06 | **761** |
+| 3 | 4.77 | 10.82 | 17 |
+| **5 (shipped)** | **4.77** | **10.70** | **17** |
+| 8 | 4.88 | 10.65 | 21 |
+| 45 | 6.25 | 11.29 | — |
+| 300 | 8.16 | 12.67 | — |
+
+Too long and the standing mismatch returns; too short and it differentiates instrument noise —
+at 1 s the bank travels 761 fine steps an hour at a **settled** load and the 50 % step gets worse
+than the term it replaced. 5 s sits mid-band, 5× above the cliff. **Hunting IMPROVED** (17 vs 34);
+a first-pass "direction reversals" metric said the opposite and was simply noise.
+
+**`trimSlow` lives on the channel record**, not in the trim's closure — a closure is module scope,
+shared across engine instances, and invisible to save/restore/rewind. Serialized, restored,
+cleared on disengage; absent in an old save it re-seeds and outputs zero that step.
+
+**New probe TR-1i**, injection-verified three ways. Two probe-authoring corrections en route, both
+worth more than the probe: the first mechanism check counted how often the bank was STALLED while
+off program and measured **34 % on both trims** — it discriminated nothing; its replacement then
+passed **vacuously** on the proportional trim, because with no follower `maxOut` stays 0 and
+`0 < maxRaw/2` is true. It reads `trimSlow` directly now, guarded on having seen one.
+
+**TWO PRE-EXISTING DEFECTS FELL OUT, and neither was mine.** Both were masked by the old trim.
+
+1. **`_stepBang` was EDGE-TRIGGERED.** It sent one `set_boron_adjust` on the mode change and never
+   again, so anything writing that setting afterwards cancelled the channel silently while the
+   note still read "dilute…". Measured: `boron_trim` engaged, one operator stop command, then
+   **2400 s with `boron_adjust` = 0, the charging pump running, and the channel still reporting
+   "dilute…"**. The #210/#214 failure exactly. It re-asserts now, via a per-plant `output(ctx)`
+   read-back — `run_hr3` red-carded the first version for naming `boron_adjust` in the shared
+   kernel, which is the guard doing its job.
+2. **`boron_trim.rate` was a firehose.** Once the channel actually ran continuously, 0.5 ppm/s =
+   5 pcm/s **scrammed the plant**. Measured: 0.5 scrams, 0.1/0.05/0.02 hold. Now **0.05**, the
+   rate this repo already calls tuned — `run_autoctl`'s own probe borates by hand at 0.05 and
+   calls 0.5 *"a firehose that scrams the plant"*.
+
+**Why the `boron_trim` probe passed for months while measuring the wrong thing.** It credits the
+channel with walking the rods back into band. Traced: on the old trim the rods recovered from a
+**4.8 % power overshoot** that the proportional term corrected — boron never moved (613 ppm at
+every sample). The washout does not produce that overshoot, so the accidental mechanism vanished
+and the probe went red. #286 had "verified" this channel by neutering it and seeing 100.0 vs 88.6;
+that difference was real but came from the wrong mechanism. **Neutering proves a channel matters;
+it does not prove it does what its name says.**
+
+**TR-1g re-banded to the SOURCED criterion.** Its band was `299..308 °C` — one-sided (+7.5 °C of
+swell allowed, −1.5 °C of undershoot) and written around the old trim's overshoot. It is ±5 °F of
+the load program now, from WTSM 11.2's own words about what the dump waits for. **This is a
+tightening and it FAILS on the old plant** (+5.24 °F, outside the criterion it is meant to
+satisfy) — said out loud rather than implied, per HR10.
+
+`run_behavior` **43 → 44**, `run_hr3` **27 → 28**, everything else at baseline; authored content
+untouched (`run_campaign` 51/51, `run_procedures_stack` 22/22, `run_ops` at baseline).
+
+**Filed, not built: #311** — there is no **OTΔT or OPΔT** anywhere in the tree, so two of the four
+Westinghouse reactor trips are absent, along with the rod stops and runbacks they drive. The ΔI
+term may not be honestly buildable on a one-node core; a declared reduced form is probably the
+target, and that needs a ruling before any code.
+
 ## Session log — 2026-08-01d (the System Scanner was teaching five wrong things, workbench)
 
 **Task: "review the system scanner descriptions."** The board's inspection copy

@@ -2,7 +2,7 @@
 
 **Document:** PWR-MT-01  
 **Title:** Plant MODE Transitions (Mode 1, At Power through Mode 6, Refueling)  
-**Revision:** 11  
+**Revision:** 12  
 
 ---
 
@@ -201,6 +201,7 @@ This is the deepest **fully simulated** shutdown state.
 | Step | Action | MODE after step |
 |------|--------|-----------------|
 | C1 | Borate to cold-shutdown margin (commercial) | Mode 3, Hot Standby |
+| C1a | Set the cold lineup **before** the pressure setpoint moves: HPI/LPI OFF, then — once inside the **P-11** permissive — **block the low-pressure reactor trip AND the reactor trip on safety injection** | Mode 3, Hot Standby |
 | C2 | Cooldown and depressurize within limits using steam dump / AFW / secondary | Mode 4, Hot Shutdown |
 | C3 | **Isolate the SI accumulators** while descending through **1000 psi (6.895 MPa)** — before RCS pressure reaches their **600 psi (4.14 MPa)** cover gas | Mode 4, Hot Shutdown |
 | C4 | Place **RHR** in service when pressure/temperature permit | Mode 4, Hot Shutdown |
@@ -218,7 +219,7 @@ This is the deepest **fully simulated** shutdown state.
 > > [1000] psig"*; LTOP SR 3.4.12.3 *"Verify each accumulator is isolated."*). **Re-align them
 > on the way back up** — Phase A step A5.
 
-**Simulator:** This is now driveable to a genuine cold end state: borate for shutdown margin, **block SI before the pressure setpoint moves** (the depressurization crosses the 1798 psi (12.4 MPa) SI actuation setpoint; measured with SI armed the pumps inject and boron ends at 2500 ppm), lower the steam-dump setpoint (`set_steam_dump_setpoint`) to cool the secondary and with it the primary, depressurize in step (`set_pressure_setpoint`, spray) keeping subcooling positive, **isolate the accumulators at 1000 psi (6.895 MPa)** (discharge valve on the board's ECCS side, `close_accumulator_valve`), place **RHR On** below the 400 psi (2.76 MPa) interlock, and **secure the RCPs** (`set_rcp`) so RHR draws the RCS to cold. Once RHR carries the cooldown, set its pace with **RHR Cooldown Rate (HX flow split)** (`set_rhr_hx`) — walk it up to hold the ~**90 °F/h** (50 °C/h) cooldown limit rather than opening full-through-the-exchanger on a hot plant. The cold end state matches the `cold_shutdown` IC. Cooldown *rate* is time-compressed. **PWR-N15** is the companion procedure.
+**Simulator:** This is now driveable to a genuine cold end state, and there is a **runnable checklist** for it — `pwr_cooldown`, the live walkthrough on the board and the thing that reproduces N15's performance table on every gate run. Borate for shutdown margin, **block SI before the pressure setpoint moves** (the depressurization crosses the 1798 psi (12.4 MPa) SI actuation setpoint; measured with SI armed the pumps inject, the pressurizer goes solid and the plant trips), and **block BOTH low-pressure reactor trips** — the 1800 psi (12.41 MPa) low-pressure trip and the reactor-trip-on-SI are two separate entries on the same channel, and HPI/LPI OFF blocks neither (measured: the plant scrams in the first cooling leg with either one left armed). Then lower the steam-dump setpoint (`set_steam_dump_setpoint`) to cool the secondary and with it the primary, depressurize in step (`set_pressure_setpoint`, spray) keeping subcooling positive, **isolate the accumulators at 1000 psi (6.895 MPa)** (discharge valve on the board's ECCS side, `close_accumulator_valve`), place **RHR On** below the 400 psi (2.76 MPa) interlock, and **secure the RCPs** (`set_rcp`) so RHR draws the RCS to cold. Once RHR carries the cooldown, set its pace with **RHR Cooldown Rate (HX flow split)** (`set_rhr_hx`) — walk it up to hold the ~**90 °F/h** (50 °C/h) cooldown limit rather than opening full-through-the-exchanger on a hot plant. The cold end state matches the `cold_shutdown` IC. Cooldown *rate* is time-compressed. **PWR-N15** is the companion procedure.
 
 ---
 

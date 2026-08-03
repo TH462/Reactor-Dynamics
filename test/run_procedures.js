@@ -52,7 +52,24 @@ function pred(ts, c) { return cmp(ts[c.p], c.op, c.v, c.tol); }
 //   set_auto_channel — engages an M4 automation channel; below M4 there is no
 //                     channel to engage (the engine's own coupled-feed fallback
 //                     stands in, which is why the engine-only level still holds)
-var NON_ENGINE_ACTIONS = { plot_1m_point: true, set_trip_block: true, set_auto_channel: true };
+//   set_auto_setpoint — retargets an M4 automation channel (the board's boron
+//                     target box is the `boron_conc` channel setpoint). Below M4
+//                     there is no channel, so nothing borates — which is why
+//                     PWR-N15 is `stack_only`; see that note below. A LAYER
+//                     difference, not a plant defect.
+var NON_ENGINE_ACTIONS = { plot_1m_point: true, set_trip_block: true, set_auto_channel: true,
+                           set_auto_setpoint: true };
+
+// RAMP steps (#310) — see the long note in run_procedures_stack.js for why the
+// schema grew. Here `hold` is walked at 0.02 s per engine step, so the re-issue
+// cadence is expressed in engine steps rather than sim-seconds.
+var RAMP_EVERY_S = 10;    // sim-s between re-issues
+function rampValue(points, f) {
+  if (points.length === 1) return points[0];
+  var x = Math.max(0, Math.min(1, f)) * (points.length - 1);
+  var i = Math.min(points.length - 2, Math.floor(x));
+  return points[i] + (points[i + 1] - points[i]) * (x - i);
+}
 
 function runProcedure(prof, proc) {
   var P = PROFILES[prof];
@@ -64,11 +81,19 @@ function runProcedure(prof, proc) {
   function tick() { var ts = e.getTrueState(); if (ts.melted) meltHit = true; gNever.forEach(function (g) { if (pred(ts, g.c)) g.hit = true; }); }
 
   (proc.steps || []).forEach(function (st, idx) {
-    if (st.cmd && !NON_ENGINE_ACTIONS[st.cmd.action]) { var cmd = {}; for (var k in st.cmd) cmd[k] = st.cmd[k];
+    // A ramp step's `cmd` is the representative operator action, not the drive —
+    // issuing it here would put the leg's END value on the plant at t=0.
+    if (st.cmd && !st.ramp && !NON_ENGINE_ACTIONS[st.cmd.action]) { var cmd = {}; for (var k in st.cmd) cmd[k] = st.cmd[k];
       if (cmd.group_id === 'control' || cmd.group_id === 'shutdown') cmd.group_id = groupId(e, cmd.group_id);
       e.applyCommand(cmd); }
-    var sawHit = false, n = Math.round((st.hold || 0) / 0.02);
-    for (var i = 0; i < n; i++) { e.step(0.02); tick(); if (st.saw && pred(e.getTrueState(), st.saw)) sawHit = true; }
+    var sawHit = false, n = Math.round((st.hold || 0) / 0.02), every = Math.round(RAMP_EVERY_S / 0.02);
+    for (var i = 0; i < n; i++) {
+      if (st.ramp && (i % every === 0)) {
+        var f = i / Math.max(1, n - 1);
+        st.ramp.forEach(function (r) { var c = { action: r.action }; c[r.arg] = rampValue(r.points, f); e.applyCommand(c); });
+      }
+      e.step(0.02); tick(); if (st.saw && pred(e.getTrueState(), st.saw)) sawHit = true; }
+    if (st.ramp) st.ramp.forEach(function (r) { var c = { action: r.action }; c[r.arg] = r.points[r.points.length - 1]; e.applyCommand(c); });
     if (st.saw) checks.push({ d: 'step ' + (idx + 1) + ' saw ' + st.saw.p + ' ' + st.saw.op + ' ' + st.saw.v, pass: sawHit, obs: sawHit });
     if (st.acc) { var ts = e.getTrueState(); checks.push({ d: 'step ' + (idx + 1) + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: pred(ts, st.acc), obs: ts[st.acc.p] }); }
   });
@@ -86,11 +111,48 @@ var KNOWN_FAILS = {
   'bwr·bwr_sbo_rcic': { 'step 3 vessel_level_pct > 40': 'B3' },
 };
 
+/* `stack_only` — a procedure whose OPERATOR ACTIONS include an M4-only command that
+ * the rest of it depends on, so replaying it engine-direct does not test a weaker
+ * version of the same evolution: it tests a different plant.
+ *
+ * PWR-N15 is the case that forced this. The board's only boron control is the
+ * `boron_conc` channel's target box (`set_auto_setpoint` — there is no manual
+ * borate/dilute on the board at all), and below M4 there is no channel, so the
+ * cooldown runs UNBORATED. That is not a smaller failure, it is the physics the
+ * boration step exists to prevent: measured engine-direct, the MTC takes the core
+ * critical as it cools and the plant HEATS BACK UP to 558.7 °F (292.6 °C) after
+ * arriving in the 400s, with subcooling lost and RHR refused at 555 psi
+ * (3.83 MPa) — nine reds describing one missing layer.
+ *
+ * KEPT over the alternative *(OWNER RULING, 2026-08-02: "1 keep. 2. Keep. 3. Keep.")*.
+ * The option weighed against it was dropping the flag and carrying nine xfail strings in
+ * KNOWN_FAILS, all of them saying "no M4 below M4" — strictly more machinery.
+ *
+ * NOT A GENERAL ESCAPE HATCH, and the check below is what keeps it that way: the
+ * flag is only honoured if the procedure really does carry a NON_ENGINE_ACTION
+ * command, so it cannot be pinned onto a procedure that engine-direct could run.
+ * `run_procedures_stack.js` runs PWR-N15 in full (28 checks). */
+function stackOnlyJustified(proc) {
+  return (proc.steps || []).filter(function (st) { return st.cmd && NON_ENGINE_ACTIONS[st.cmd.action]; })
+    .map(function (st) { return st.cmd.action; });
+}
+
 var suites = 0, suitesPass = 0, total = 0, passed = 0, narr = 0, xfails = 0, xpassBad = 0;
 var Y = '\x1b[33m';
 Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
   RD.MANUAL_PROCEDURES[prof].forEach(function (proc) {
     if (proc.narrative) { narr++; console.log(C + 'NARR' + X + '  ' + B + prof + ' · ' + proc.id + X + D + ' (' + proc.category + ' — narrative; engine flagship suite owns validation)' + X); return; }
+    if (proc.stack_only) {
+      var m4 = stackOnlyJustified(proc);
+      suites++; total++;
+      var ok = m4.length > 0;
+      if (ok) { suitesPass++; passed++; }
+      console.log((ok ? G + 'PASS' : R + 'FAIL') + X + '  ' + B + prof + ' · ' + proc.id + X +
+        D + ' (' + proc.category + ' — stack_only; run_procedures_stack.js owns it)' + X);
+      console.log('  ' + (ok ? G + '✓' : R + '✗') + X + ' stack_only is justified — an M4-only command is load-bearing' +
+        D + '  (' + (ok ? m4.join(', ') : 'NO NON_ENGINE_ACTION in any step — this procedure runs engine-direct, drop the flag') + ')' + X);
+      return;
+    }
     var known = KNOWN_FAILS[prof + '·' + proc.id] || {};
     var r = runProcedure(prof, proc);
     var effectivePass = true;
