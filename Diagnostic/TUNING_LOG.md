@@ -20,6 +20,68 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03u (#319 item 4 — ATWS, and a claim this repo carried is FALSE)
+
+**Task:** #319 item 4, PWR-E13. Two findings, and the second is the one that matters.
+
+### `stack_only` is genuinely EARNED here — the first time in my work
+
+Emergency boration is the whole response and it runs through **`set_auto_setpoint`** on the
+`boron_conc` channel, which **is** in `NON_ENGINE_ACTIONS`. Below M4 there is no boration at all,
+so replaying this engine-direct would not test a weaker ATWS — it would test one with **no
+response**. That is exactly the PWR-N15 case the flag exists for, and the gate agrees:
+*"stack_only is justified — an M4-only command is load-bearing (set_auto_setpoint)"*.
+
+This also closes the loop on the doubt I investigated earlier: the flag was **unavailable** for
+T06/E03/E06/E23 because their operator actions really are engine commands, and it is **available**
+here because this one's is not. The rule works as designed; I had been right to not reach for it.
+
+### THE CODE-SAFETY CLAIM IS FALSE, AND IT WAS MINE
+
+`CLAUDE.md` said of the pressurizer code safeties that *"a real transient cannot reach them at all
+… so only an ATWS or a failed instrument gets there"*. **I repeated the ATWS half in my own voice**
+when ruling Tier C, and wrote it into `CURRICULUM.md` and issue #316 as the justification for ATWS
+being Core. Measured 2026-08-03, full stack, three ways:
+
+| case | peak pressure | safeties |
+|---|---|---|
+| ATWS from a turbine trip | **2321 psi (16.00 MPa)** | never lift |
+| + total loss of feedwater | **2293 psi (15.81 MPa)** | never lift |
+| + PORV block valve shut as well | never approaches the pop | never lift |
+
+The pop is **2484 psi (17.13 MPa)**. **An ATWS does not get there**, because the negative moderator
+coefficient collapses power long before pressure can run — 100 % → **43.6 % in five minutes** with
+nobody acting. Both files are corrected; `CLAUDE.md`'s line now reads *"only a failed instrument"*
+with the disproof attached.
+
+**I have NOT proven no ATWS could reach them** — only that these three do not. The code safeties'
+reachability is an open question again.
+
+**This is the inherited-claim trap, and I walked into it while citing it.** I have quoted
+*"repeating an inherited claim in your own voice launders it into a fresh assertion"* several times
+this session, and then did exactly that with a sentence from the file I was quoting.
+
+### What ATWS actually teaches is better than what I claimed
+
+**A1 at its most dramatic, then A8.** Measured mitigated (boron target 1400 ppm at t+2 min):
+
+| | | |
+|---|---|---|
+| 5 min | **43.6 %** | MTC alone, no operator action |
+| 25 min | 34.2 % | boron 684 ppm |
+| 35 min | 9.6 % | boron 714 ppm |
+| 45 min | **0.04 %** | boron **744 ppm** — subcritical |
+
+**126 ppm over ~44 minutes**, pressure never leaving 2235 psi (15.41 MPa). The negative moderator
+coefficient is *the* reason a PWR ATWS is survivable, and boron is what finishes it. ATWS stays
+Core on those merits, which are stronger than the claim I withdrew.
+
+**Gates:** `run_procedures` 28/28 139 → **29/29 140**; `run_procedures_stack` 28/28 253 →
+**29/29 261**; `run_manual_controls` 164 → **172**; `run_flags` 307 → **310**; `run_procdocs`
+35 → **37**; `verify_manual_follow` 246 → **258**.
+
+---
+
 ## Session log — 2026-08-03t (#319 item 5 — PWR-E17, and the rod stop that cannot help)
 
 **Task:** #319 item 5, chosen because OTΔT/OPΔT went ON in the last release and that **is** this

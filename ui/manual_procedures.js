@@ -707,6 +707,70 @@
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
       outcome: 'Turbine trip absorbed: reactor tripped automatically on P-9, the steam dump carried the transient at its full 40 % capacity, and the plant is stable in Mode 3, Hot Standby ready for the post-trip response.',
     },
+    // PWR-E13 — ATWS. Authored 2026-08-03 (#319 item 4). `stack_only`, and this is the first
+    // procedure I have authored where the flag is genuinely EARNED rather than unavailable:
+    // emergency boration is the whole response and it runs through `set_auto_setpoint` on the
+    // `boron_conc` channel, which is an M4-only command. Below M4 there is no boration at all,
+    // so replaying this engine-direct would not test a weaker ATWS — it would test one with no
+    // response. That is exactly the PWR-N15 case the flag exists for.
+    //
+    // A CLAIM THIS REPO CARRIED IS WRONG, AND THIS PROCEDURE IS WHERE IT WAS CAUGHT.
+    // `CLAUDE.md` says of the pressurizer code safeties that "a real transient cannot reach them
+    // at all ... so only an ATWS or a failed instrument gets there", and I repeated the ATWS half
+    // in my own voice when ruling Tier C. Measured 2026-08-03, three ways, full stack:
+    //   ATWS from a turbine trip                    peak 2321 psi (16.00 MPa), safeties NEVER lift
+    //   + total loss of feedwater                   peak 2293 psi (15.81 MPa), never lift
+    //   + PORV block valve shut as well             pressure never approaches the pop either
+    // The pop is 2484 psi (17.13 MPa). **An ATWS does not get there**, because the negative
+    // moderator coefficient collapses power before pressure can run: 100 % -> 43.6 % in five
+    // minutes with nobody touching anything. I have not proven NO ATWS could reach the safeties,
+    // only that these three do not. The code safeties' reachability is back to being an open
+    // question, and `CURRICULUM.md` no longer claims ATWS answers it.
+    //
+    // WHAT IT ACTUALLY TEACHES IS BETTER THAN WHAT I THOUGHT. This is A1 at its most dramatic —
+    // the negative MTC is *the* reason a PWR ATWS is survivable — followed by A8: boron is what
+    // finishes it. Measured mitigated, boron target to 1400 ppm at t+2 min:
+    //   5 min   43.6 %   (MTC alone, no operator action)
+    //   25 min  34.2 %   boron 684 ppm
+    //   35 min   9.6 %   boron 714 ppm
+    //   45 min   0.04 %  boron 744 ppm — subcritical
+    // 126 ppm and about 44 minutes, with pressure never leaving 2235 psi (15.41 MPa).
+    {
+      id: 'pwr_atws', category: 'emergency', manual_ref: 'PWR-E13', stack_only: true,
+      title: 'Mode 1 emergency — failure to scram (ATWS)',
+      purpose: 'A trip is demanded and the rods do not go in. The reactor will not be shut down by the control rods, so it has to be shut down chemically — boration is the response, and the negative temperature coefficient of the plant itself buys you the time to do it.',
+      from: 'hot_full_power',
+      prereq: ['At-power operation.'],
+      cautions: [
+        'THE PLANT SAVES ITSELF FIRST. Measured, power falls 100 % → 43.6 % in five minutes with nobody doing anything — the negative moderator coefficient. That is the margin you are working inside; it is not a fix.',
+        'BORATION IS THE ONLY REAL ACTION. Measured, 126 ppm over about 44 minutes takes it from full power to subcritical. Start it early: the clock is the response.',
+        'Keep the heat sink. An ATWS with a dry steam generator is the catastrophic version — feed or AFW is not optional here.',
+        'The pressurizer code safeties are NOT the story. Measured three ways, an ATWS peaks at 2321 psi (16.00 MPa) against a 2484 psi (17.13 MPa) pop and never lifts them.',
+      ],
+      steps: [
+        { text: 'A trip is demanded — here by a turbine trip above P-9 — and the rods do not go in. (Failures tab → inject Failure to Scram first, then Turbine Trip.) The board shows the trip and power does not collapse.', control: '(observe rods and power)', target: 'trip demanded, power holding',
+          cmd: { action: 'inject_failure', failure_id: 'failure_to_scram' }, hold: 20 },
+        { text: 'Trip the turbine to remove load, which is what demands the reactor trip above P-9. Watch the demand arrive and the rods stay out.', control: 'Main Breaker', target: 'reactor trip demanded, rods stay out',
+          cmd: { action: 'trip_turbine' }, hold: 60 },
+        { text: 'Attempt the manual SCRAM again. It will not work — but confirming that is what tells you this is an ATWS and not a slow trip.', control: 'SCRAM', target: 'scram refused, rods stay out',
+          cmd: { action: 'scram' }, hold: 240,
+          note: 'Meanwhile the plant is already helping: power falls toward 43 % on the moderator coefficient alone as Tavg rises. Do not mistake that for the trip working.',
+          acc: { p: 'power_pct', op: '<', v: 60 } },
+        { text: 'EMERGENCY BORATION — Boron control ON, target well above current. This is the actual shutdown mechanism: with the rods unavailable, boron is the only reactivity control you have left.', control: 'Boron control', target: 'boron rising toward shutdown',
+          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 1400 }, hold: 1500,
+          note: 'Measured: boron 618 → 744 ppm over about 44 minutes takes the core from 100 % to subcritical. It is slow by design — that is what the temperature coefficient is buying you.',
+          acc: { p: 'boron_ppm', op: '>', v: 660 } },
+        { text: 'Hold the heat sink while the boron works — auxiliary feedwater on the steam generator, steam dump carrying what the core is still making. An ATWS with a dry generator is the version that damages fuel.', control: 'AFW', target: 'heat sink maintained',
+          cmd: { action: 'set_afw', active: true }, hold: 1200,
+          acc: { p: 'power_pct', op: '<', v: 5 } },
+        obs('Confirm the core is subcritical on boron — power collapsing toward zero with the rods still out. The plant is shut down chemically, not mechanically, and it stays that way until the boron comes back out.',
+          { p: 'power_pct', op: '<', v: 1 },
+          'Measured end state: 0.04 % power at 744 ppm, Tavg 567.3 °F (297.4 °C), pressure never left 2235 psi (15.41 MPa) — the code safeties are not part of this event.',
+          ['Boron control', 'SCRAM', 'AFW']),
+      ],
+      guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
+      outcome: 'Reactor shut down CHEMICALLY with the rods unavailable: the moderator coefficient held power down while 126 ppm of boron over ~44 minutes took the core subcritical, heat sink maintained throughout and the pressurizer safeties never challenged.',
+    },
     // PWR-E17 — continuous rod withdrawal. Authored 2026-08-03 (#319 item 5). This one is the
     // direct BEFORE/AFTER for the #311 protection work, and it is worth having the pair:
     //   flag OFF (#311's own measurement): 114.8 % power held for ~17 s with NO TRIP, because

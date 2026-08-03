@@ -51,6 +51,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
     rewritten, §13 corrected (hydrogen *generation* is modelled; the *inventory* is what is absent).
 
 ### Added
+- **Failure to scram (ATWS) is a runnable checklist — and the reactor shuts down chemically**
+  (#319). A trip is demanded, the rods do not go in, and the plant saves itself first: measured,
+  power falls **100 % → 43.6 % in five minutes with nobody acting**, on the negative moderator
+  temperature coefficient alone. That is *the* reason a pressurized-water reactor survives an
+  ATWS. Boron finishes the job — **126 ppm over about 44 minutes** takes the core subcritical with
+  the control rods still unavailable.
+  **A claim the project carried turns out to be wrong, and this is where it was caught.** The
+  pressurizer code safeties were said to be reachable by an ATWS. Measured three ways — from a
+  turbine trip, with the feedwater also lost, and with the relief path isolated as well — an ATWS
+  peaks at **2321 psi (16.00 MPa)** against a **2484 psi (17.13 MPa)** pop and never lifts them.
+  Power collapses long before pressure can run. Corrected in the manuals and design notes.
+
 - **Continuous rod withdrawal is a runnable checklist — and it is the clearest demonstration of
   why the new overpower protection exists** (#319). The bank starts withdrawing on its own and you
   cannot rod your way out: the plant refuses operator rod commands on the control bank while the

@@ -152,6 +152,12 @@ var STEP_UI = {
   // PWR-E17 rod withdrawal (#319 item 5). Step 1 is a parenthesised observe label, exempt.
   // Step 2 is the FAILED insertion attempt — a real control the player must reach, even
   // though the plant will refuse it.
+  // PWR-E13 ATWS (#319 item 4). `stack_only` — the emergency boration runs through an M4-only
+  // command, so run_procedures_stack owns the replay. Step 1 is a parenthesised observe label.
+  pwr_atws: [{ i: 1, view: 'board', control: 'Main Breaker' },
+             { i: 2, view: 'scram', control: 'SCRAM' },
+             { i: 3, view: 'board', control: 'Boron control' },
+             { i: 4, view: 'board', control: 'AFW' }],
   pwr_rod_withdrawal: [{ i: 1, view: 'board', control: 'Control Bank' },
                        { i: 2, view: 'scram', control: 'SCRAM' },
                        { i: 3, view: 'board', control: 'Control Bank' }],

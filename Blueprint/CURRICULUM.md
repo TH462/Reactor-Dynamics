@@ -297,11 +297,21 @@ It is the same shape as the #224 trap: a hand-maintained list beside the artifac
 **Update it in the change that builds the checklist**, or `run_procdocs`' own coverage report is
 the only thing telling the truth.
 
-**The two additions are measured, and the measurement is why they are Core.** **ATWS** is the only
-reachable demonstration of the pressurizer **code safeties**: a real transient cannot reach them,
-because the high-pressure reactor trip caps indicated pressure at **2460 psi (16.96 MPa)** under
-the **2484 psi (17.13 MPa)** pop — so without this row an engine surface has no curriculum home at
-all. **Uncontrolled rod withdrawal** holds **114.8 % power for ~17 s with NO TRIP** (#311),
+**The two additions are measured, and the measurement is why they are Core.** **ATWS** is
+**A1 at its most dramatic followed by A8**: measured 2026-08-03, power falls **100 % → 43.6 % in
+five minutes with nobody acting** — the negative moderator coefficient is *the* reason a PWR ATWS
+is survivable — and then **126 ppm of boron over ~44 minutes** takes the core subcritical with the
+rods unavailable.
+
+> **CORRECTION, 2026-08-03.** This paragraph used to justify ATWS as *"the only reachable
+> demonstration of the pressurizer code safeties"*. **That is false, and it was my own claim,
+> inherited from `CLAUDE.md` and repeated in my own voice.** Measured three ways, full stack —
+> ATWS from a turbine trip (peak **2321 psi / 16.00 MPa**), ATWS plus total loss of feedwater
+> (**2293 psi / 15.81 MPa**), and both with the PORV block valve shut as well — **the safeties
+> never lift**, against a **2484 psi (17.13 MPa)** pop. The moderator coefficient collapses power
+> long before pressure can run. I have **not** proven no ATWS could reach them; only that these
+> three do not. **The code safeties' reachability is an open question again**, and ATWS is Core on
+> its own merits, which are stronger. **Uncontrolled rod withdrawal** holds **114.8 % power for ~17 s with NO TRIP** (#311),
 recovering only because the bank runs out of travel: a demonstrated protection gap on the shipped
 plant, and what §8.18's declared departure exists for.
 
