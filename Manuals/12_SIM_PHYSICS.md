@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLX-100** (Single-Loop eXperimental, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 17  
+**Revision:** 18  
 
 ---
 
@@ -304,6 +304,27 @@ Two of these deserve comment.
 The bulk fuel node averages the **whole** core. A core held *partially* uncovered — inventory between 70 % and 50 % — therefore read as fully cooled and could sit there indefinitely, while at TMI-2 exactly that condition failed the cladding and melted part of the core in under an hour.
 
 A separate node models the **peak cladding temperature of the exposed upper region**: steam-cooled only, heating at the local decay-heat rate scaled by the uncovered fraction, cooled weakly toward saturation. When the core re-covers it quenches back on a ~2-minute reflood timescale.
+
+#### Zirconium-steam oxidation — the second heat source
+
+Above about **2012 °F (1100 °C)** the zirconium cladding burns in steam: `Zr + 2H₂O → ZrO₂ + 2H₂`, releasing **190 kJ per mole** of zirconium. This is what carried the TMI-2 and Fukushima cores from *hot* to *melting* faster than decay heat alone can, and the hot node models it.
+
+**Why it matters more than the extra degrees suggest: it reverses the direction of the escalation.** Decay heat *falls* with time, so a core heating on decay heat alone climbs more and more slowly. Oxidation heat *rises* with temperature — steeply. The rate roughly **doubles every 120 °F (66.7 °C)**, so once the crossover is passed the core supplies its own escalation and restoring decay-heat-level cooling is no longer enough to stop it.
+
+The crossover is where the regulatory limit sits. At **2200 °F (1204.4 °C)** — the 10 CFR 50.46 peak-cladding-temperature limit, and near enough this trainer's own cladding-failure threshold — the oxidation heat equals the decay heat **8 hours after shutdown**. Measured on this plant:
+
+| Peak cladding temperature | Oxidation heat, as a multiple of the 8-hour decay heat |
+|---|---|
+| 2192 °F (1200 °C) | 1.0× |
+| 2372 °F (1300 °C) | 2.6× |
+| 2732 °F (1500 °C) | 13.3× |
+| 3632 °F (2000 °C) | 228× |
+
+The reaction is **self-limiting as well as self-accelerating**: the oxide layer it forms is protective, so the rate falls as the layer thickens (a parabolic rate law). The oxide never un-forms, so a node that is re-wetted and later uncovered again oxidises more slowly than it did the first time.
+
+Measured effect on an unmitigated large-break loss of coolant with no emergency injection: cladding failure to fuel melt went from **22.7 minutes to 8.1 minutes**, and the successive 720 °F (400 °C) temperature bands went from taking *longer* each time (218 / 334 / 378 / 428 s) to taking *less* (184 / 172 / 86 / 40 s).
+
+> **NOTE — what this does not model.** The heat goes onto the peak node only, not the whole uncovered region; the reaction is never steam-starved, where a real runaway can be; and the **hydrogen** it produces is counted only as oxide growth, not as a mass or a combustible inventory — there is no containment for it to collect in (§13).
 
 Damage is judged at the **peak** of the two nodes, because damage is local before it is average:
 
@@ -618,7 +639,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 
 **Containment and consequences**
 - No containment building, pressure, temperature or sump
-- No hydrogen generation, no combustion
+- No hydrogen **inventory** or combustion — the zirconium-steam reaction that produces it **is** modelled as a heat source on the cladding hot node (§5.5), but the H₂ has nowhere to go and is not tracked as a mass
 - No fission-product release, no source term, no dose, no radiation monitors
 - **The simulation ends at fuel damage.** Consequences beyond it are described in training commentary, never simulated
 

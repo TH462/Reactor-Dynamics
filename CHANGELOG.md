@@ -22,6 +22,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Zirconium-steam oxidation on the exposed-cladding hot node — the second heat source** (#238).
+  `Zr + 2H₂O → ZrO₂ + 2H₂`, 190 kJ/mol. Above ~2012 °F (1100 °C) the cladding burns in steam, and
+  that reaction is what carried the TMI-2 and Fukushima cores from *hot* to *melting* faster than
+  decay heat alone can.
+  - **It reverses the direction of the escalation, which is the real defect it fixes.** Decay heat
+    *falls*, so the node used to climb more and more slowly: measured on an unmitigated large break,
+    successive 720 °F (400 °C) bands took **218 / 334 / 378 / 428 s** — each slower than the last.
+    They now take **184 / 172 / 86 / 40 s**. Cladding failure → fuel melt goes **22.7 → 8.1 min**
+    (large LOCA), **32.8 → 4.9 min** (stuck-open PORV), **38.0 → 13.3 min** (station blackout).
+  - **The calibration is sourced, not fitted to a timescale.** At 2200 °F (1204.4 °C) — the
+    10 CFR 50.46(b)(1) peak-cladding limit — the oxidation heat equals the decay heat **8 hours
+    after shutdown**; on this plant's own two-group decay curve that is **1.1243 % of rated**, and
+    the algebra makes it hold exactly rather than by fit. The melt timescale is an *output*.
+  - **Arrhenius and parabolic, not the linear-above-an-onset shape #238 sketched.** Baker-Just
+    gives E/R = 22 898 K, so the exponential makes low temperatures negligible on its own — no
+    onset constant and no discontinuity at one. The parabolic half means the oxide layer is
+    protective and the term self-limits (it would otherwise be 3140× at the melt point), which is
+    why there is an oxide state. That state is also the hydrogen hook #238 asks for.
+  - Three of the four constants are sourced; only `zirc.tau_ref_s` is `[tune]`, and it is
+    corroborated — Baker-Just reaches 17 % ECR, the 50.46(b)(2) limit, in ~80 s at 1204 °C.
+  - **`run_meltdown` 10 → 11 (MD-11)**, and it asserts the **second derivative** rather than a
+    timing band: the battery was green with the term absent *and* with it in, because the MD-* paths
+    assert *that* the core melts and never how fast. Injection-verified — `q_ref: 0` reddens 5
+    checks and inverts the bands.
+  - Declared not built: hydrogen **mass** (needs a core Zircaloy inventory this plant does not have),
+    oxidation heat into the bulk core, and steam starvation. Manual set **Rev 18** — **12** §5.5
+    rewritten, §13 corrected (hydrogen *generation* is modelled; the *inventory* is what is absent).
+
+### Added
 - **`tools/perturb_sweep.js` — "which checks break if I retune this?"** Nudges `[tune]` constants
   by 2–3 %, runs a whole suite per nudge and diffs verdicts, so the question is answered *before*
   a retune instead of by a puzzling red afterwards. Built out of #321, where a check had been green

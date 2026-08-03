@@ -210,7 +210,42 @@
     var f_unc = (p.core_top_uncover - mass) / (p.core_top_uncover - p.significant_uncover);
     f_unc = f_unc < 0 ? 0 : (f_unc > 1 ? 1 : f_unc);
     if (f_unc > 0) {
-      var heat = (t.clad_heat_gain || 0) * (s._Q_total || 0) * f_unc;
+      // ZIRCONIUM-STEAM OXIDATION (#238, 2026-08-03). The second heat source, and the one
+      // that turns a hot core into a melting one: Zr + 2H2O -> ZrO2 + 2H2, Q = 190 kJ/mol
+      // (Baker and Just). Without it this node heats on DECAY HEAT ALONE, so it heats more
+      // SLOWLY as it climbs — measured before the change, MD-1 crossed 1200 -> 2800 °C in
+      // 22.7 min while decay heat FELL 6.7 % -> 4.5 %. Real severe accidents accelerate.
+      //
+      // ARRHENIUS, not the linear multiplier the #238 entry sketched. Baker-Just gives
+      // w^2 = 33.3e6 * t * exp(-45500/RT) (w mg/cm^2, R = 1.987 cal/mol/K), so E/R = 22898 K.
+      // The exponential makes low temperatures negligible on its own, so this needs NO onset
+      // constant and has no discontinuity at one — simpler than the sketch as well as more
+      // prototypical.
+      //
+      // PARABOLIC, which is why there is an oxide STATE and not just a temperature factor:
+      // the oxide layer is protective, so the rate falls as it thickens. Integrated as w^2
+      // (stable from zero, unlike dw/dt = K/2w) in NORMALIZED units — w = 1 is the reference
+      // oxide, reached in zirc_tau_ref_s at the reference temperature.
+      //
+      // CALIBRATION IS SOURCED, not fitted: "at approximately 2200 °F, the oxidation heat
+      // equals the decay heat generated after 8 hours from reactor shutdown". 2200 °F is
+      // also the 10 CFR 50.46(b)(1) limit. On THIS plant's decay curve the 8-hour figure is
+      // 1.1243 % of rated, which is zirc_q_ref — and the algebra below makes Q_ox equal it
+      // exactly at w = 1, T = T_ref, so the anchor holds by construction rather than by fit.
+      var z = t.zirc || {}, q_ox = 0;
+      if (z.q_ref) {
+        var T_K = s.clad_temp_c + 273.15, Tref_K = (z.ref_temp_c || 1204) + 273.15;
+        var tau = z.tau_ref_s || 80;
+        // 1.0 at the reference temperature; ~3140x at the melt point, but w grows with it,
+        // so dw/dt self-limits and the term never needs a cap.
+        var arr = Math.exp((z.ea_over_r_k || 22898) * (1 / Tref_K - 1 / T_K));
+        if (s._zr_ox2 == null) s._zr_ox2 = 0;          // lazy init (new field; old saves)
+        var w_old = Math.sqrt(s._zr_ox2);
+        s._zr_ox2 += (arr / tau) * f_unc * dt;          // d(w^2)/dt — MONOTONIC: oxide does not un-grow
+        var dw_dt = (Math.sqrt(s._zr_ox2) - w_old) / dt;
+        q_ox = z.q_ref * 2 * tau * dw_dt;               // = q_ref at w = 1, T = T_ref
+      }
+      var heat = (t.clad_heat_gain || 0) * ((s._Q_total || 0) + q_ox) * f_unc;
       var cool = (t.clad_steam_h || 0) * (s.clad_temp_c - T_sat(s.pressure_mpa));
       s.clad_temp_c += (heat - cool) * dt;
     } else {

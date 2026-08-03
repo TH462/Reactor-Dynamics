@@ -152,7 +152,12 @@ var BASELINES = {
   // RECOVERY, so the suite proved only that the plant can be lost that way. Measured:
   // unmitigated damages at 4040 s peaking at 366 °C Tavg; with the PORV open and HPI
   // running, peak fuel 628 °C, no damage, inventory held above 100 %.
-  'run_meltdown.js':       { code: 0, score: '10pass 0xfail' },
+  // 10 → 11 (2026-08-03, #238): MD-11, zirconium-steam oxidation. The whole battery
+  // was green with the term ABSENT and green with it IN — the MD-* paths assert THAT
+  // the core melts, never how fast or which way the rate is going. MD-11 asserts the
+  // SECOND DERIVATIVE instead: each 400 °C band must be crossed faster than the one
+  // below. Measured 184/172/86/40 s with oxidation, 218/334/378/428 s without.
+  'run_meltdown.js':       { code: 0, score: '11pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at
   // all, so its MD-4/MD-8 PROTECTION claims are proven with the operator hand-

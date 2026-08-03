@@ -37,6 +37,92 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-03e — #238: zirconium-steam oxidation, and why the sketched shape was not built
+
+### The change
+
+The exposed-clad hot node (#213) gains its second heat source: `Zr + 2H₂O → ZrO₂ + 2H₂`,
+190 kJ/mol (Baker and Just). Four constants in `thermal.zirc`, ~20 lines in
+`pwr_thermal.stepCladding`, one new internal state (`_zr_ox2`, lazy-initialised like
+`clad_temp_c`), and **MD-11** — `run_meltdown` 10 → 11.
+
+### The defect was the DIRECTION, not the magnitude
+
+#238's entry said the node "understates how fast a very hot core accelerates to melt". Measured,
+it does not accelerate at all. Decay heat is its only source and decay heat falls, so the node
+climbs **more and more slowly**: on an unmitigated large break the successive 400 °C bands took
+**218 / 334 / 378 / 428 s**. After: **184 / 172 / 86 / 40 s**, strictly decreasing, 4.6× end to end.
+
+| path | damage → melt, before | after |
+|---|---|---|
+| MD-1 large-break LOCA, no ECCS | 22.7 min | **8.1 min** |
+| MD-2 stuck-open PORV (TMI) | 32.8 min | **4.9 min** |
+| MD-3 station blackout | 38.0 min | **13.3 min** |
+
+### The sketched shape was rejected on the source, not on taste
+
+The entry proposed `heat × (1 + zirc_gain · max(0, clad − zirc_onset_c))` — linear above a
+~1100 °C onset, `zirc_gain` fitted to a target timescale. Two things are wrong with it, and the
+correct form is **simpler**, not more complex:
+
+- **Arrhenius, so no onset constant is needed.** Baker-Just gives E/R = 45500/1.987 = **22 898 K**.
+  At 900 °C the rate is 1.8 % of its 1204 °C value — the exponential retires low temperatures by
+  itself, with no threshold to place and no discontinuity at one. One fewer constant than the sketch.
+- **Parabolic, so there must be an oxide STATE.** The rate constant is 228× its reference value at
+  2000 °C and **3140× at the melt point**; a bare temperature multiplier is unbounded and would slam
+  the node to melt on contact. The protective oxide layer is what holds it, and modelling it is what
+  makes the term self-limiting — a re-wetted node that dries again oxidises more slowly, because the
+  oxide never un-forms. That state is also the **hydrogen hook** the entry explicitly wants.
+
+Integrated as `w²` rather than `w`, because `dw/dt = K/2w` is singular at zero.
+
+### The calibration is sourced, so the timescale is an OUTPUT
+
+> *"At approximately 2200 °F, the oxidation heat … equals the decay heat generated after 8 hours
+> from reactor shutdown."*
+
+2200 °F is also **10 CFR 50.46(b)(1)** — *"The calculated maximum fuel element cladding temperature
+shall not exceed 2200 °F"* — and near enough this plant's own `fuel_damage_c` (1200 °C). **The
+model was stopping exactly where the second heat source turns on.** On our two-group decay curve the
+8-hour figure is **1.1243 % of rated**; the algebra makes `Q_ox` equal it at the reference oxide and
+temperature by construction, verified 1.1243 % vs 1.1243 %. The melt timescales above are therefore
+*consequences*, not targets — which is the difference between this and a fitted `zirc_gain`.
+
+| constant | value | status |
+|---|---|---|
+| `zirc.ea_over_r_k` | 22898 | **SOURCED** — Baker-Just |
+| `zirc.ref_temp_c` | 1204 | **SOURCED** — 10 CFR 50.46(b)(1) |
+| `zirc.q_ref` | 0.011243 | **SOURCED anchor**, evaluated on our own decay model |
+| `zirc.tau_ref_s` | 80 | `[tune]`, corroborated — 17 % ECR (50.46(b)(2)) in ~80 s at 1204 °C |
+
+Crossover measured: 1.0× the 8-hour decay heat at 1204 °C, 2.6× at 1300, **13.3×** at 1500, doubling
+every **+66.7 °C** while decay heat falls.
+
+### MD-11 asserts the second derivative, and that is deliberate
+
+**A heat source that compresses melt by up to 6.7× moved zero existing gates.** Ten meltdown paths
+assert *that* the core melts; none asserted how fast or which way the rate was going — the same
+outcome-not-mechanism shape as #315 and #321 in the same session. A timing band would pin one
+tuning and go stale on the next; MD-11 requires each 400 °C band to be crossed faster than the one
+below (> 3× end to end) and recomputes the sourced anchor **from config**, so a re-fit of the decay
+groups moves the expectation with the plant. Injection: `q_ref: 0` reddens 5 checks and inverts the
+bands to 218/334/378/428.
+
+### Declared, not built
+
+Hydrogen **mass** (needs a core Zircaloy inventory this plant does not have; the entry itself calls
+it the hook for *if* containment lands — the oxide state is that hook), oxidation heat into the bulk
+core, and steam starvation. All three are in `Manuals/12` §5.5's NOTE.
+
+### Pre-existing, now easier to reach
+
+The clad node runs past **Zircaloy's ~1850 °C melting point** before `fuel_melt_c` (2800 °C, the
+UO₂ figure) declares melt — MD-1 ends at 2859 °C clad against 1926 °C fuel. True on decay heat
+alone; oxidation just gets there sooner. Separating clad melt/relocation from fuel melt is a larger
+change and is not proposed here.
+
+---
+
 ## 2026-08-03d — #315 §6 ruled: the leg split stays on total core heat
 
 ### The decision

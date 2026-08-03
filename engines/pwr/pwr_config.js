@@ -345,6 +345,29 @@
       clad_heat_gain: 15.0,        // °C/s of exposed-clad heatup per unit total heat (_Q_total is FRACTIONAL, 1.0 = rated) at full uncovery — ~0.9 °C/s at early (6 %) decay heat, the observed TMI/severe-accident order [tune]
       clad_steam_h: 1.0e-4,        // 1/s — steam-convection cooling of the exposed clad toward Tsat; sets the equilibrium gradient (grazing uncovery late in decay stabilizes below damage; deep or early uncovery runs away) [tune]
       clad_quench_tau: 120.0,      // s — reflood/rewet relaxation of the hot node back to the wetted-core temperature (quench-front timescale, minutes) [tune]
+      // ZIRCONIUM-STEAM OXIDATION on the exposed-clad hot node (#238, built 2026-08-03).
+      // Zr + 2H2O -> ZrO2 + 2H2, Q = 190 kJ/mol (Baker and Just). Three of the four
+      // constants are SOURCED; only the timescale is [tune]. See pwr_thermal.stepCladding
+      // for the form and why it is Arrhenius + parabolic rather than the linear multiplier
+      // #238 originally sketched.
+      zirc: {
+        // Baker-Just: w^2 = 33.3e6 * t * exp(-45500/RT), w in mg/cm^2, R = 1.987 cal/mol/K.
+        // 45500 / 1.987 = 22898 K. SOURCED.
+        ea_over_r_k: 22898,
+        // 2200 °F — the 10 CFR 50.46(b)(1) peak-cladding-temperature limit, and the
+        // temperature the oxidation-vs-decay-heat crossover below is quoted at. SOURCED.
+        ref_temp_c: 1204,
+        // Oxidation heat at ref_temp_c, as a fraction of RATED core heat. The source says it
+        // equals the decay heat 8 hours after shutdown; on THIS plant's two-group decay curve
+        // that is 1.1243 %. SOURCED anchor, evaluated against our own decay model — so it
+        // moves if the decay groups are ever re-fitted, and should be re-derived if they are.
+        q_ref: 0.011243,
+        // s — time to grow the reference oxide at ref_temp_c; sets how fast the protective
+        // layer throttles the reaction. [tune], but corroborated rather than free: Baker-Just
+        // reaches 17 % ECR — the 10 CFR 50.46(b)(2) limit — in ~80 s at 1204 °C for typical
+        // Zircaloy geometry (0.057 cm wall, 6.56 g/cm^3, oxygen gain 32/91.22 of the metal).
+        tau_ref_s: 80.0,
+      },
       // Break blowdown flash-cooling (pwr_thermal.stepCoolant). Coolant leaving a primary
       // break (s.leak_flow) carries enthalpy, and the remaining inventory flashes to replace
       // it — removing latent heat as the break vents. Modeled as a self-limiting perfect-mixing
