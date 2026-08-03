@@ -1230,13 +1230,17 @@
       // SHIPPED OFF, and that is not the ruling being ignored — it is the #216 pattern
       // the comment above describes: built default-OFF first so the blast radius could
       // be MEASURED by flipping one flag rather than guessed at. Two of the constants
-      // below (K1, K4) could not be SOURCED in the session that built this — nrc.gov
-      // and every mirror are blocked by this environment's egress policy, so
-      // ML11223A301 could not be fetched and the evidence-pass SOP could not run. They
-      // are fitted to THIS plant's measured behaviour instead, which is defensible on
-      // its own terms (see below) but is not the same thing as sourced. Turning this on
-      // is the owner's call once the equation form and K1/K4 are checked against the
-      // document. See `otdt_opdt` below for what is measured and what is not.
+      // below (K1, K4) are FITTED to this plant's measured behaviour, not sourced.
+      //
+      // ML11223A301 HAS BEEN READ SINCE (2026-08-03) — this comment used to say it
+      // could not be fetched, which was true of one sandbox and not of the machine.
+      // What it settles: both setpoint equations verbatim, T' = 584.7 °F, P' = 2235
+      // psig, the rod stop and turbine runback at 3 % below setpoint, and the
+      // design-basis event lists. What it does NOT settle, and never will: K1–K6 are
+      // "manually adjusted preset" and τ₁/τ₂/τ₃ are NAMED BUT NEVER VALUED — Table
+      // 12.2-1 lists both setpoints as "Variable (calculated)". They are plant Tech
+      // Spec / COLR numbers, so waiting on that document for them is waiting forever.
+      // Turning this on is the owner's call. See `otdt_opdt` below.
       otdt_opdt_trips: false,
     },
 
@@ -1308,10 +1312,21 @@
     // DECLARED DEPARTURES (DESIGN_COMPANION §8.23):
     //   · no f(ΔI) axial-offset term — the ruling;
     //   · no lead-lag on (Tavg − T′) and no rate term on OPΔT. The real equations carry
-    //     (1+τ₁s)/(1+τ₂s) and τ₃s/(1+τ₃s), and those τ values are in ML11223A301, which
-    //     could not be fetched. An INVENTED time constant on a protection channel is
-    //     worse than a declared absence, so the compensation is static here. The cost is
-    //     that OTΔT does not ANTICIPATE a fast Tavg ramp — it responds to one.
+    //     (1+τ₁s)/(1+τ₂s) and τ₃s/(1+τ₃s). This used to say the τ values "are in
+    //     ML11223A301, which could not be fetched"; the document HAS been read since
+    //     (2026-08-03) and it is wrong on both halves. The τ's are NAMED AND NEVER
+    //     VALUED there — they are plant Tech Spec / COLR numbers — so the departure is
+    //     PERMANENT unless a plant-specific source turns up, not a pending fetch. An
+    //     INVENTED time constant on a protection channel is still worse than a declared
+    //     absence, so the compensation stays static. The cost is that OTΔT does not
+    //     ANTICIPATE a fast Tavg ramp — it responds to one.
+    //     WHAT THE PRIMARY DOES SETTLE, and it decided #315 §6: BOTH compensations are
+    //     on TAVG — "the lead-lag controller for Tavg dynamic compensation" and "the
+    //     rate-lag controller for Tavg dynamic compensation". NOTHING compensates the
+    //     measured ΔT, and the document carries no RTD, thermowell or transport-lag
+    //     term at all: it calls loop ΔT "a measure of reactor power" and reads it
+    //     directly. That is why the leg split is driven by total core heat rather than
+    //     by the lagging fuel→coolant flux (see pwr_thermal.js stepCoolant).
     //   · one channel, not 2/4 — consistent with every other protection function here
     //     (same reasoning as the low-flow trip's recorded departure).
     otdt_opdt: {

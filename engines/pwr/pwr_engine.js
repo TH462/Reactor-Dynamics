@@ -2409,12 +2409,34 @@
         ck('stuck tavg instrument frozen', im.ins().tavg.toFixed(2), near(im.ins().tavg, held, 0.01), 'held=' + held.toFixed(2));
         ck('true Tavg moved', im.ts().tavg_c.toFixed(2), Math.abs(im.ts().tavg_c - held) > 0.2, 'diverged');
 
-        // Drifting primary_pressure diverges linearly from steady truth.
+        // Drifting primary_pressure diverges linearly from truth — and the plant BELIEVES it.
+        //
+        // RE-AUTHORED 2026-08-03 (#315 §6 fallout, #321). This check used to read
+        // `|indicated_now − indicated_at_t0| > 1.0`, which is NOT instrument divergence: the
+        // drift pushes the INDICATION past the code-safety setpoint, the harness's M4 opens
+        // the pressurizer safety ON THE INSTRUMENT (HR1), and the plant genuinely blows down
+        // 15.41 → 12.19 MPa — so what the old line actually measured was the DEPTH OF THAT
+        // BLOWDOWN, at 22 % margin. Any change to core thermal dynamics moved it: it went red
+        // under a candidate leg-split form that had shifted the blowdown by 0.35 MPa while
+        // leaving the drift itself untouched.
+        //
+        // The named claim is the offset, and the offset is exact — rate × elapsed, 0.05 × 40 s
+        // = 2.0 MPa, measured 2.0000 in every variant tried. Assert THAT. The blowdown is the
+        // more interesting half, so it is now asserted POSITIVELY as its own check rather than
+        // being the accidental subject of this one.
         var dr = new Harness('hot_full_power'); dr.run(5);
         var pr0 = dr.ins().primary_pressure;
         dr.cmd({ action: 'set_instrument_failure', instrument_id: 'primary_pressure', mode: 'drift', value: 0.05 });
         dr.run(40);
-        ck('drifting pressure diverges', dr.ins().primary_pressure.toFixed(2), Math.abs(dr.ins().primary_pressure - pr0) > 1.0, 'drifted');
+        var offset = dr.ins().primary_pressure - dr.ts().pressure_mpa;
+        ck('drifting pressure diverges FROM TRUTH (rate × elapsed)', offset.toFixed(4),
+          near(offset, 0.05 * 40, 0.05), '2.00 MPa ± 0.05');
+        // The HR1 half: a gauge reading 2 MPa high is enough to make protection act on a
+        // pressure the plant never had. Positive assertion — restoring a truth-reading
+        // actuation path has to edit this line rather than slide through a band.
+        ck('…and protection ACTED on the false reading — safety lifted, plant really blew down',
+          dr.ts().pressure_mpa.toFixed(2) + ' MPa true vs ' + dr.ins().primary_pressure.toFixed(2) + ' indicated',
+          dr.ts().pressure_mpa < pr0 - 1.0, 'true pressure < ' + (pr0 - 1.0).toFixed(2));
       });
     },
 

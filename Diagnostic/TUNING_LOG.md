@@ -20,6 +20,68 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03i (#315 §6 CLOSED — and the primary corrected my own evidence)
+
+**Ruled: keep the leg split on total core heat, do not take the fuel→coolant flux form** *(OWNER
+RULING, 2026-08-03: "Do as you recommend.")*. No plant behaviour changed. Backshop lane. Full
+rationale: `Blueprint/BUILD_DECISIONS.md` 2026-08-03d; measurement packet on #315.
+
+**THE PROCESS FINDING IS THE ONE TO KEEP, because it is a near-miss.** nrc.gov 403s from this
+session, so the evidence pass went to an OPEN-ACCESS restatement of the Westinghouse equations
+(Li Gang, FMSMT 2017) which shows the trip comparing against **ΔT·(1+τ₄s)(1+τ₅s)** — a lead-lag on
+the MEASURED ΔT, labelled as compensating "RTD and thermowell thermal time constant plus fluid
+transport time". I built the whole §6 argument on it, wrote it into three source files and posted
+it to the issue: *the real channel compensates measurement lag out of ΔT, so adding a fuel lag is
+backwards.* **Then I read the primary.** The workbench session had already fetched ML11223A301 on
+2026-08-03 (corrected archive.org CDX recipe — their 2026-08-03f entry), and its extract is sitting
+in `RD_workbench/inbox/sources/`. WTSM 12.2 prints both equations, and the ONLY dynamic
+compensation in either is on **Tavg**: *"the lead-lag controller for Tavg dynamic compensation"*,
+*"the rate-lag controller for Tavg dynamic compensation"*. There is **no τ₄/τ₅**, and the document
+contains **no RTD, thermowell or transport wording anywhere**. The restatement describes a
+different design lineage (CNPEC), not the Westinghouse reference. **Everything built on it was
+reverted and rewritten against the primary before commit.**
+
+Two lessons, and the second is the sharper one. **A secondary restatement can be internally
+plausible, quotable and specific and still be describing a different plant** — the SOP's "another
+agent's summary is not evidence" extends to *any* non-primary, including a peer-reviewed paper
+restating someone else's equations. And **check what the other lanes already sourced before
+sourcing it yourself**: the primary had been in the tree since the morning merge, named in a
+TUNING_LOG entry I had not read, and reading it first would have saved the whole detour.
+
+**What the primary actually settles for §6, and it still closes the same way.** The real channel
+reads loop ΔT as *"a measure of reactor power"*, **directly and uncompensated**. Every compensation
+it does have is on Tavg. So a ΔT carrying a ~20 s fuel lag is a worse measure of core power — the
+one job the real design gives that signal. Measured cost of the flux form: full load rejection
+rides out either way, but the OTΔT margin falls **18.4 % → 1.8 %** of rated ΔT; and it is not
+rescuable by a faster fuel node — `h_fc` 0.05 → 0.10 with `heat_gen_coeff` doubled to hold 389 °C at
+rated gives `run_otdt` **21/39** and a scram at 1 s on `tavg high`. Those two constants are jointly
+calibrated.
+
+**The candidate form was ALSO wrong in its own right, and TR-7b caught it** — the probe written a
+session earlier for the *other* variant. My §6 formulation included `Q_pump`. Pump heat is
+deposited AT THE PUMP, between SG outlet and core inlet: it lifts both legs equally and creates no
+rise ACROSS THE CORE. It over-stated ΔT by exactly the pump-heat fraction (+8.9 % at t+3 min,
++14 % at t+30 min — a steady-state offset, not a transient). Corrected to flux alone, TR-7b passes.
+
+**Three reds re-diagnosed on the merged tree; only ONE was ever real.** `run_campaign` did not
+reproduce (51/51). `run_pwr`'s *"drifting pressure diverges"* is a defective check — spun out as
+**#321** and fixed here, `run_pwr` **240 → 241**. `run_otdt` is the real one, and it is the margin
+collapse above.
+
+**Three stale sourcing sites retired**, which the workbench entry diagnosed but did not fix:
+`pwr_config.js` ×2 and `DESIGN_COMPANION` §8.23 all still said ML11223A301 *"could not be fetched"*
+and that the τ values are in it. Both halves are wrong: the document has been read, and the τ's are
+**named and never valued** there (Table 12.2-1 lists both setpoints *"Variable (calculated)"*,
+K₁–K₆ *"manually adjusted preset"*). They are plant Tech Spec / COLR numbers, so the
+dynamic-compensation departure is **permanent unless a plant-specific source turns up** rather than
+a pending fetch — a different thing to tell the next person, and it stops the next agent waiting on
+a document that will never carry the answer.
+
+**Gates.** `run_all` **36 runners at baseline**, `run_pwr` re-baselined 240 → 241. No manual change
+(the OTΔT trips ship default OFF and `Manuals/12` carries no OTΔT content).
+
+---
+
 ## Session log — 2026-08-03h (#314 the RCP breaker trip — and a comparator that silently ate it)
 
 *(OWNER RULING, 2026-08-03: "Build the breaker position trip as you recommend.")* Built, gated,

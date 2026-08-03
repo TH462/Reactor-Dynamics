@@ -68,7 +68,13 @@ var BASELINES = {
   // deadband pins. Injection-verified BOTH ways: pointing the autoclose back at the
   // open permissive reddens the load-bearing check, and deleting rhr_autoclose_mpa
   // outright reddens four.
-  'run_pwr.js':            { code: 0, score: '36/36 240passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
+  // 240 → 241 (2026-08-03, #321): "drifting pressure diverges" was measuring the DEPTH
+  // of the code-safety blowdown its own drift triggered, at 22 % margin — not the drift.
+  // Split into the offset it names (rate × elapsed, exactly 2.0000 MPa in every variant
+  // tried) plus a POSITIVE assertion of the HR1 half it was accidentally covering:
+  // protection acted on a reading the plant never had. Each half injection-verified and
+  // they discriminate independently.
+  'run_pwr.js':            { code: 0, score: '36/36 241passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
@@ -393,7 +399,12 @@ var BASELINES = {
   // THREE lanes moved this independently: develop 103, backshop 106, workbench 108.
   // MEASURED 124 on the fully merged tree. Adding them up gives 317, which is
   // the arithmetic this comment exists to stop.
-  'run_hardrules.js':      { code: 0, score: '124checks 0failed' },
+  // 124 → 127 (2026-08-03, #315 §6): THREE citation sites for the ruling that closed it
+  // — CHANGELOG, BUILD_DECISIONS and the CLAUDE.md themes bullet. The engine, config and
+  // spec edits moved this by ZERO; the delta is entirely write-up. Measured at 126 with
+  // two of the three in, then 127 after CLAUDE.md — which is this line's own standing
+  // warning arriving on schedule: re-run this gate AFTER the docs, not after the code.
+  'run_hardrules.js':      { code: 0, score: '127checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
