@@ -20,6 +20,75 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03d (#315 — a tripped reactor had no leg ΔT, and 44 green probes never asked)
+
+**Fixed on the owner's word** ("Fix it", 2026-08-03), after the investigation below. One line in
+`pwr_thermal.js` plus the probe that should have existed. Backshop lane. Full rationale:
+`Blueprint/BUILD_DECISIONS.md` 2026-08-03d; the measurement packet is the comment on #315.
+
+**The defect.** The hot/cold leg split was `delta_T_rated × power_pct/100 / max(flow, floor)`, and
+`power_pct` is **fission power alone**. Heat leaving the core through the legs requires a
+temperature rise across them; a scrammed core is still rejecting ~7 % of rated. Measured full
+stack, three plant-minutes after a manual trip with the pumps running: core removing **6.61 % of
+rated**, computed split **0.0 °F**. At thirty minutes, still 0.0 °F. Loss of forced flow after the
+trip: **3.8 °F against the 44.4 °F** the removed heat implies.
+
+**Why it survived: fission and total heat are EQUAL AT STEADY POWER, by construction** (engine
+step 4). Every probe in the tree measures at or near equilibrium, so 44 of them agreed with a
+formula that is wrong everywhere else. That is the general shape worth keeping — *a term that is
+an identity in the regime you test in is a term nothing tests*.
+
+**The board half is worse than the physics half.** With the true signal at exactly zero, instrument
+noise is all that is left: sampling indicated `thot − tcold` for 25 minutes after a trip,
+**724 of 1500 samples (48.3 %) read the COLD leg hotter than the HOT leg**. After the fix,
+**0 of 1500**, mean 3.02 °F. "Is the hot leg above the cold leg" is the operator's direct read on
+whether flow is still cooling the core, and it was a coin flip.
+
+**The fix is a CONSISTENCY fix, not a new claim.** `stepFuel` already runs on `_Q_total` and the
+Tavg balance already runs on the actual fuel→coolant flux — the split was the one line still
+reading flux. At rated `_Q_total` is exactly 1.0, so `delta_T_rated` needs no recalibration and
+at-power behaviour is byte-identical (verified 10 min at HFP, every end-state field equal).
+
+**NOT the instantaneous flux**, which is the more rigorous quantity. Measured, carrying the fuel
+node's stored-energy dump holds ΔT near rated for ~2 min after a trip and brings a full load
+rejection to **within 1.6 %** of an OTΔT trip — it reddens `run_pwr`, `run_otdt` and
+`run_campaign`. Real question, larger question; recorded in #315 §6, not taken.
+
+**TR-7b** — `run_behavior` **44 → 45**. It computes its band from `core_heat_pct` and
+`pump_flow_pct` every run rather than transcribing a number, so a retune of `delta_T_rated`, the
+decay fractions or `flow_floor` moves the expectation with the plant. Legs A/B/D assert the energy
+balance, the indicated sign and the flow term; **leg C is a calibration guard that passes on the
+OLD form too, deliberately** — a future edit that gets the normaliser wrong would otherwise break
+the at-power split silently. Injection-verified: **5 checks red** on the old form, control checks
+green.
+
+**The issue's second consumer is NOT a defect.** `pwr_steam_generator.js:321` (condenser
+backpressure load fraction) produced identical output A/B even with the CW inlet 8.3 °C off
+reference, because the load term sets a `span` added to **both** legs of
+`pSat(cw + span) − pSat(cwRef + span)` and nearly cancels. Quantified: **0.030 kPa** at 30 °C CW
+rising to **0.228 kPa** at 45 °C, against a **3.386 kPa** display digit. Left alone; that half of
+#315 closes.
+
+**And my own filing was wrong about the LOCA** — it guessed the saturation cap would mask the
+effect where it was largest. Measured on a 40 %-severity cold-leg break, the cap pins ΔT to
+**0.0 °F in both forms** for the whole event. A LOCA is not a case for this at all; the cases are
+post-trip with flow.
+
+**Gates.** `run_all` **36 runners at baseline**, `run_behavior` re-baselined 44 → 45. Manual set
+**Rev 15** — `12` §5.2 said "scaled by power/flow" and now says what that means, with the
+post-trip numbers and a note that an older screenshot showing the legs together after a trip is
+the defect rather than the plant.
+
+**One process note, because it is the second time the same guard has earned its keep.** Rotating
+the #238 bullet out of CLAUDE.md's *Recent themes* and rescuing its trap to the standing list
+**dropped the verbatim quote** out of its `OWNER RULING` citation — I paraphrased "selected m³/h
+from three options" instead of carrying the quoted `"m³/h"`. `run_hardrules` went red on it
+immediately (HR11, 1 undeclared, `CLAUDE.md:436`). The eviction rule and HR11 pull against each
+other exactly here: **when you rescue a bullet, rescue its quote verbatim or the ruling stops
+being a ruling.** Count restored to 106 with the quote back.
+
+---
+
 ## Session log — 2026-08-03c (Physics tab — and `power_pct` turned out not to be core thermal power)
 
 **Built to order** *(OWNER DIRECTIVE, 2026-08-03: "Add a tab to the tools block called Physics.

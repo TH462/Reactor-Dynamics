@@ -21,6 +21,37 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **A tripped reactor showed no hot/cold leg ΔT at all — the split was scaled by fission power**
+  (#315). Heat leaving the core through the legs requires a temperature rise across them, and a
+  scrammed core is still rejecting **~7 % of rated**. The split read `power_pct`, which is the
+  chain reaction alone.
+  - **Measured, full stack.** Three plant-minutes after a manual trip with the pumps running, the
+    core was removing **6.61 % of rated heat** and the model computed a **0.0 °F** split. At
+    thirty minutes, still 0.0 °F. Under a loss of forced flow it is **3.8 °F against the 44.4 °F**
+    the removed heat implies.
+  - **On the board it was worse than merely wrong.** With the true signal at exactly zero,
+    instrument noise was all that remained: sampling the indicated legs for 25 minutes after a
+    trip, the **cold leg read hotter than the hot leg in 724 of 1500 samples — 48.3 %**. After
+    the fix, **0 of 1500**, mean split 3.02 °F.
+  - **This is a consistency fix, not a new claim.** The fuel node and the Tavg balance already
+    ran on total core heat; the split was the one line still reading flux. At rated the two are
+    equal by construction, so `delta_T_rated` needs no recalibration and **at-power behaviour is
+    byte-identical** — verified over 10 minutes at hot full power, every end-state field equal.
+  - Not display-only: `loop_delta_t`, the protection input for the OTΔT and OPΔT trips (#311),
+    is computed from the indicated legs.
+  - **New behaviour probe TR-7b** — `run_behavior` 44 → 45. It computes its expectation from
+    `core_heat_pct` and `pump_flow_pct` on every run, so a retune of `delta_T_rated`, of the decay
+    fractions or of `flow_floor` moves the band with the plant. Injection-verified: 5 checks red
+    on the old form, and the two control checks (at-power calibration, the flow floor) stay green
+    by design.
+  - The second consumer named in the issue — the condenser backpressure load fraction — was
+    measured and **is not a defect**: the load term enters as a difference of two saturation
+    pressures at the same offset and nearly cancels, so the worst realistic effect is
+    **0.23 kPa** against a 3.39 kPa display digit. Left alone.
+  - **12** §5.2 said "scaled by power/flow" and now says what that means, with the post-trip
+    numbers. Manual set **Rev 15**.
+
 ### Added
 - **Physics tab — the true plant state, behind the instruments** *(OWNER DIRECTIVE, 2026-08-03:
   "Add a tab to the tools block called Physics. This will show the most important, under the hood

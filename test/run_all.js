@@ -132,7 +132,12 @@ var BASELINES = {
   // "until the power in the reactor is reduced to the same value as the secondary load"), not
   // re-banded — its old 85..93 % steady state was a rods-in-manual artefact. Injection-checked:
   // 7 of the new checks go red on the pre-#289 lineup.
-  'run_behavior.js':       { code: 0, score: '44pass 0xfail' },
+  // 44 → 45 (2026-08-03, #315): TR-7b, post-trip leg ΔT against the energy balance.
+  // The split read FISSION power, so a scrammed core removing 6.6 % of rated heat
+  // through full flow computed a 0.0 °F ΔT — and INDICATED, that put the cold leg
+  // above the hot leg in 48 % of samples. Fission and total heat are equal in steady
+  // state, which is why 44 probes measuring near equilibrium all agreed with it.
+  'run_behavior.js':       { code: 0, score: '45pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).

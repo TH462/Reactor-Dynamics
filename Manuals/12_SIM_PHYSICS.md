@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLX-100** (Single-Loop eXperimental, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 14  
+**Revision:** 15  
 
 ---
 
@@ -259,7 +259,11 @@ There are **no enthalpy tables, no density tables, and no two-phase property mod
 | **Coolant** | One average coolant temperature (Tavg), with hot/cold legs derived from it |
 | **Secondary** | SG saturation temperature from secondary pressure |
 
-Hot and cold legs are **derived**, not independent: `ΔT = 59.4 °F (33 °C) at rated`, scaled by power/flow, split symmetrically about Tavg. The split is **capped so the hot leg can never exceed saturation** — subcooled liquid cannot superheat. Any enthalpy rise beyond that cap is carried as core boiling instead of more temperature.
+Hot and cold legs are **derived**, not independent: `ΔT = 59.4 °F (33 °C) at rated`, scaled by **total core heat / flow**, split symmetrically about Tavg. The split is **capped so the hot leg can never exceed saturation** — subcooled liquid cannot superheat. Any enthalpy rise beyond that cap is carried as core boiling instead of more temperature.
+
+**"Total core heat" means fission PLUS the decay tail, and the distinction only shows after a trip.** The two are equal at steady power, so at power it makes no difference which you name. It makes all the difference afterwards: a scrammed core is still rejecting **~7 % of rated heat**, and heat leaving through the legs requires a temperature rise across them. Measured on this plant at three minutes after a manual trip with the pumps running, the split is **3.93 °F (2.18 °C)** — small, positive, and shrinking with the decay tail; at thirty minutes it is **2.35 °F (1.31 °C)**. Lose the reactor coolant pumps and the same heat has to leave through far less flow, so the split **opens** to about **37.4 °F (20.8 °C)**.
+
+That is why *"is the hot leg above the cold leg?"* is a live question after a trip and not a formality: it is the operator's direct read on whether the core is still being cooled by flow. Until **2026-08-03** this trainer scaled the split by **fission power alone**, which made the post-trip ΔT read exactly zero and left the indicated legs so close together that the *cold* leg read hotter roughly half the time. If you find a screenshot or an older note showing the legs together after a trip, that is the defect, not the plant.
 
 ### 5.3 Heat transfer, and the four ways it degrades
 

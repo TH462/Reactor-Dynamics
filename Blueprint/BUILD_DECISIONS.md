@@ -37,6 +37,88 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-03d — #315: the leg split read FISSION power, so a tripped reactor had no ΔT
+
+### The change
+
+`pwr_thermal.js` `stepCoolant`, one line: the hot/cold leg split is driven by **`_Q_total`**
+(total core heat — fission + the decay tail) instead of `power_pct` (fission alone). Plus
+**TR-7b** in the behaviour battery, `run_behavior` 44 → 45, and a catalog row for it.
+Owner-directed after the investigation ("Fix it", 2026-08-03).
+
+### Why it is a consistency fix rather than a new claim
+
+`stepFuel` already runs on `_Q_total`. The Tavg balance already runs on the actual fuel→coolant
+flux. The split was the **one line in that function still reading neutron flux** while the two
+above it ran on heat. Energy balance: heat removed = flow × leg ΔT, and that does not stop
+holding when the rods drop.
+
+At rated, `_Q_total` is exactly 1.0 (`_P·(1 − f₀) + decay`, f₀ = 0.07, and decay is at its 7 %
+equilibrium), so `delta_T_rated` keeps its meaning and **no at-power behaviour moves** — verified
+byte-identical over 10 minutes at HFP, every end-state field equal to 3 decimals.
+
+### Why it survived to now — the general shape
+
+**Fission and total core heat are equal by construction in steady state.** Every probe in this
+tree measures at or near equilibrium, so 44 of them agreed with a formula that is wrong
+everywhere else. *A term that is an identity in the regime you test in is a term nothing tests.*
+That is the same class as #295 (a permissive nothing exercised) and #286 (channels asserted only
+in aggregate), and it is why the injection proof came before the probe was written.
+
+### What was measured
+
+| case (full stack, free-play lineup) | ΔT shipped | ΔT fixed |
+|---|---|---|
+| HFP steady, 10 min | 59.4 °F | **59.4 °F — byte-identical** |
+| scram +3 min, full flow (6.61 % decay heat) | **0.0 °F** | 3.93 °F |
+| scram +30 min (4.0 %) | **0.0 °F** | 2.35 °F |
+| scram then RCP trip | 3.8 °F peak | 44.4 °F peak |
+| RCP trip at power (low-flow scram) | 9.9 °F peak | 50.5 °F peak |
+| 40 % cold-leg LOCA | 0.0 °F | **0.0 °F — the saturation cap dominates** |
+
+**The operator-facing half is the one that matters.** Indicated `thot − tcold`, 1500 samples over
+25 minutes after a trip: shipped, mean **0.000 °F**, and the **cold leg reads hotter than the hot
+leg in 724 of them (48.3 %)**. Fixed: mean 3.02 °F, **0 inversions**. That question — is the hot
+leg above the cold leg — is the direct read on whether flow is still cooling the core.
+
+### Not display-only
+
+`loop_delta_t`, the protection input for both OTΔT and OPΔT (#311), is
+`100 · (indicated thot − tcold) / ΔT₀`. With that flag on, the split is a protection input.
+`run_otdt` 39/39 under the fix.
+
+### The option NOT taken, and why it is recorded
+
+Driving the split from the **instantaneous flux** (`Q_fuel_to_coolant + Q_pump`, normalised) is
+the more rigorous quantity — it carries the fuel node's stored-energy dump, so ΔT decays over
+~2 minutes after a trip instead of following the neutron flux down, which is closer to a real
+trip. It is **not free**: measured, it brings a full load rejection to **within 1.6 % of an OTΔT
+trip** (`run_otdt` 38/39), and reddens `run_pwr` (35/36) and `run_campaign` (50/51). Those reds
+may be pinning the old behaviour rather than condemning it (HR10), but settling that needs an
+evidence pass on whether the leg-ΔT measurement should carry the fuel lag, plus a content re-band.
+Kept in #315 §6 as a separate question.
+
+### The issue's second consumer was measured and rejected
+
+`pwr_steam_generator.js:321`, the condenser backpressure load fraction, is **measurably inert**:
+identical output A/B even with the CW inlet 8.3 °C off reference through a scram. Structural
+reason — `loadFrac` sets a `span` added to *both* legs of `pSat(cw + span) − pSat(cwRef + span)`,
+so it enters only through the curvature of the saturation line. Quantified across the realistic
+divergence (loadFrac 0 vs 0.07): **0.030 kPa** at 30 °C CW to **0.228 kPa** at 45 °C, against a
+**3.386 kPa** (0.1 inHg) display digit. Not changed.
+
+### Honest caveats
+
+- **With the pumps off the split divides by `flow_floor` = 0.1**, so the fixed form reports ~37 °F
+  on a plant with no forced flow. That is internally consistent given the floor — 10 % flow really
+  would produce that ΔT — but the floor is a numerical guard, not a natural-circulation model, and
+  this plant has none. The old form read 0 °F there by accident, not by being right.
+- **The original issue was wrong about the LOCA.** It guessed the saturation cap would mask the
+  effect in the transients where it was largest; measured, the cap pins ΔT to 0.0 °F in *both*
+  forms for the whole break. The cases are post-trip with flow.
+
+---
+
 ## 2026-08-03c — Physics tab: the under-the-hood numbers, and the seam it exposed in `power_pct`
 
 ### What was built
