@@ -345,7 +345,14 @@ var BASELINES = {
   // 90 -> 95 on 2026-08-02: `Blueprint/DESIGN_CRITERIA.md` (the four inclusion criteria, its §6
   // per-plant curriculum, the priority ruling) plus the CLAUDE.md pointer and the
   // DESIGN_COMPANION §2 re-scope, each carrying the owner's verbatim words.
-  'run_hardrules.js':      { code: 0, score: '95checks 0failed' },
+  // 95 -> 98 on 2026-08-03 (#311): write-up drift again, and cleanly. The engine, config,
+  // instrument and control changes moved this by ZERO — the delta is entirely the three
+  // tracked-markdown sites citing the 2026-08-02 ruling (TUNING_LOG, BUILD_DECISIONS,
+  // DESIGN_COMPANION §8.23) plus the CLAUDE.md themes bullet. VERIFIED rather than assumed:
+  // stripping the date and quote from the CLAUDE.md citation alone takes HR11 to 1 undeclared
+  // and reddens the gate, so that site is genuinely seen and not silently skipped by the
+  // markdown-wrap window.
+  'run_hardrules.js':      { code: 0, score: '98checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -521,6 +528,21 @@ var BASELINES = {
   // status alarm (`rhr_active` is_false, setpoint null) with no range to sit inside.
   // It briefly read 59 while the alarm was drafted as a pressure threshold.
   'run_reachability.js':   { code: 0, score: '59checks 0failed' },
+  // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
+  // reactor trips this plant did not have. It needs its own runner because the trips ship
+  // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so
+  // no other suite can see them at all. This one sets the flag between loading the config
+  // and loading the control layer, and covers BOTH states — flag-off (the channels exist,
+  // nothing is wired: the half that guards the shipped plant) and flag-on (the trips, rod
+  // stops and annunciators, the normal-operations envelope, and the casualties that have no
+  // trip today).
+  // INJECTION-VERIFIED FOUR WAYS, which is the only reason to believe the coverage claim:
+  // restoring the rotated OTΔT line reddens 3 (and reproduces the original defect exactly —
+  // scram at 55.0 s, margin 0.6); deleting the rod stops reddens 3; clearing
+  // `withdrawal_only` reddens 2; walking `dnb_margin_factor` to 0.95 reddens the 2 checks
+  // that hold the equivalent K2/K3 inside the band real Westinghouse units publish.
+  // The count moves with the casualty list, 1–2 checks each.
+  'run_otdt.js':           { code: 0, score: '39checks 0failed' },
   // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
   // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
   // "## [Unreleased]" to the version) was skipped for Alpha 1.10.0 AND 1.11.0 — 434 lines of

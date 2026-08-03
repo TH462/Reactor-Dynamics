@@ -22,6 +22,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Overtemperature ΔT and Overpower ΔT — the two Westinghouse reactor trips this plant did not
+  have** (#311, ruled 2026-08-02, built 2026-08-03). Both are computed from loop ΔT with Tavg and
+  pressure compensation, so they trip on *combinations* no single gauge sees: OTΔT is the DNB
+  protection, OPΔT the linear-heat-rate protection. Built in the **reduced form the owner ruled**
+  — no axial-offset term, because a one-node core cannot produce an honest axial offset and
+  synthesizing one would be a fabricated instrument. Five new derived gauges (loop ΔT, both trip
+  lines, both margins), two rod stops at the sourced 3 % offset that refuse **withdrawal only**,
+  and two annunciators that light at the rod stop rather than at the breakers.
+  **They ship DEFAULT OFF**, and turning them on is the owner's call: the setpoint equations
+  could not be sourced in the session that built them (NRC document access is blocked from that
+  environment), so the two margin intercepts are fitted to this plant's own measured behaviour
+  rather than taken from the document. Fitted is defensible; sourced it is not.
+  New gate `run_otdt.js`, 39 checks, injection-verified four ways.
+
 - **The Mode 3 → Mode 5 cooldown is a runnable checklist now — and building it found a step the
   written procedure was missing** (#310). PWR-N15 was one of 48 documented procedures with no
   executable form, and the one worth doing next because #303 had just published a *measured*

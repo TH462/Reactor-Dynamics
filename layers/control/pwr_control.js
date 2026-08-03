@@ -992,6 +992,106 @@
     { id: 'rhr', label: 'Residual heat removal',       commands: ['set_rhr', 'set_dhr'] },
   ];
 
+  // ---- Overtemperature ΔT and Overpower ΔT (#311) — the two missing Westinghouse trips ----
+  //
+  // RULED IN, in reduced form *(OWNER RULING, 2026-08-02: "311: a.")* — selecting option (a),
+  // "no axial-offset (ΔI) term", from the three put to him. A one-node core cannot produce an
+  // honest axial offset, and synthesizing one would be a fabricated signal presented as an
+  // instrument: the thing HR1 and HR9 exist to stop.
+  //
+  // WHAT THESE TWO ARE FOR, and why no single-parameter trip substitutes. OTΔT is the DNB
+  // protection and OPΔT the linear-heat-rate protection. Both are computed from loop ΔT with
+  // Tavg and pressure compensation, so they trip on COMBINATIONS that no single gauge sees.
+  // The setpoint equations, what is measured in them and what is not, and the three declared
+  // departures all live in one place — `otdt_opdt` in pwr_config.js. Read that before moving
+  // any number here; this file only wires the channels the instrument model computes.
+  //
+  // MEASURED, AND IT REDREW THE ISSUE (HR12; full survey Diagnostic/TUNING_LOG.md 2026-08-03a).
+  // #311 files these as a pair and argues the plant "can be walked into a DNB-limited condition
+  // with every individual gauge in band". Measured across 13 casualties and 8 normal
+  // evolutions, full stack, that is NOT reproducible on this plant and the pair is NOT
+  // symmetric:
+  //
+  //   · OTΔT has NOTHING TO CATCH as the plant stands. Its DNB line sits at ~197–218 % of
+  //     rated ΔT at nominal T and P, and no measured casualty gets near it. The three that
+  //     reach DNB at all (large LOCA, stuck-open PORV, 100 % steam line break) get there by
+  //     DEPRESSURIZING, and each has already scrammed on low pressure first — LOCA scram 6.0 s
+  //     against DNB onset 6.5 s, PORV 12.5 s against 18.0 s. OTΔT is here for prototypicality
+  //     and because it is the function that BECOMES binding the moment Tavg or pressure moves;
+  //     it is not closing a demonstrated hole, and saying otherwise would be the #220 class of
+  //     claim all over again.
+  //
+  //   · OPΔT has FOUR live cases, and they are not marginal. A 30 % steam line break parks the
+  //     core at 114.2 % power with loop ΔT peaking at 117.8 % of rated and holds it there for the full
+  //     30-minute run with NO REACTOR TRIP, because the power-range high trip is at 120 %. A
+  //     15 % break holds 107.8 % the same way. A continuous rod withdrawal at full power peaks
+  //     at 114.8 % for ~17 s and recovers only because the bank runs out of travel. #295 F6
+  //     independently found the fixed 635 °F Tavg-high trip standing in for both functions;
+  //     what it is actually standing in for is THIS, and it does not reach.
+  //
+  // So the honest ordering, recorded because the next person will ask: OPΔT is the one with
+  // measured bite, OTΔT is the one with the prototypical case. Both ship together because they
+  // are one instrument set and one ruling, not because both were shown to be load-bearing.
+  //
+  // DEFAULT OFF (`protection_options.otdt_opdt_trips`), for the reason the P-9 comment above
+  // gives: built default-OFF first so the blast radius is measured by flipping one flag rather
+  // than guessed at (#216). The additional reason here is that K1 and K4 could NOT be sourced —
+  // the session that built this had no route to ML11223A301 (nrc.gov and every mirror blocked
+  // by egress policy), so the evidence-pass SOP could not run and the two intercepts are fitted
+  // to this plant's measurement instead. Fitted is defensible; sourced it is not. Flipping the
+  // flag is the owner's call once the equation form and the two intercepts are checked.
+  if ((RD.PWR_CONFIG.protection_options || {}).otdt_opdt_trips) {
+    var _ot = RD.PWR_CONFIG.otdt_opdt, _stop = _ot.rod_stop_offset_pct;
+    // The trip channels are MARGIN readings (setpoint − indicated ΔT), so the trip itself is
+    // the same plain data shape as every other trip here: cross zero from above and scram.
+    // Computing the setpoint inside an instrument rather than teaching the kernel a new
+    // `setpoint_fn` keeps HR3 intact — the kernel still names no instrument and still knows
+    // only "compare a reading to a number" — and it means the board can show the operator the
+    // same three numbers the trip is using (ΔT, the setpoint, the margin between them).
+    PWR_TRIPS.push(
+      { id: 'otdt', instrument: 'otdt_margin', direction: 'low', setpoint: 0.0, action: 'scram' },
+      { id: 'opdt', instrument: 'opdt_margin', direction: 'low', setpoint: 0.0, action: 'scram' }
+    );
+    // Rod stops at (trip setpoint − 3 %). SOURCED, and this half genuinely is: WTSM 8.1
+    // §8.1.7.3 (ML11223A252) — *"OTΔT rod stop and runback, 2/4, loop ΔT > (OTΔT trip setpoint
+    // − 3 %)"*, and the same entry for OPΔT. `withdrawal_only` is that section's closing
+    // sentence, not an invention: *"These interlocks or rod stops only prevent OUTWARD rod
+    // motion. The rods can always be inserted into the core using either manual or automatic
+    // rod control."* Same mechanism as the SUR withdrawal block above, so a plant with two
+    // rate-limiting stops expresses them one way rather than two.
+    //
+    // THE RUNBACK HALF IS NOT BUILT, deliberately, and it is the open item on #311. The real
+    // signal reduces TURBINE LOAD as well as stopping the rods, and this plant has no runback
+    // mechanism at all — an actuation here fires ONCE (`actuationFired`), so a ramped load
+    // reduction is a new actuation class rather than a setpoint. The ruling explicitly left
+    // "whether the rod stop + runback pair ships with the trips or after them" open; building
+    // a new actuation class in the same change as two new trips, on constants that are not yet
+    // sourced, is the wrong order. Rod stop now, runback tracked separately.
+    PWR_INTERLOCKS.push(
+      { instrument: 'otdt_margin', direction: 'low', setpoint: _stop, clears_above: _stop * 2,
+        blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true,
+        on_engage: { action: 'rod_stop_all' },
+        message_learning: 'Rod withdrawal blocked — the loop temperature rise is close to the overtemperature trip. Withdrawing further would take the core toward boiling in the hot channel. Reduce load or insert rods; insertion always works.',
+        message_industry: 'ROD WITHDRAWAL BLOCK: OTΔT rod stop — loop ΔT within ' + _stop + ' % of the OTΔT trip setpoint. Withdrawal inhibited. Insertion available.' },
+      { instrument: 'opdt_margin', direction: 'low', setpoint: _stop, clears_above: _stop * 2,
+        blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true,
+        on_engage: { action: 'rod_stop_all' },
+        message_learning: 'Rod withdrawal blocked — the loop temperature rise is close to the overpower trip. The core is already making more heat than it is rated for. Reduce load or insert rods; insertion always works.',
+        message_industry: 'ROD WITHDRAWAL BLOCK: OPΔT rod stop — loop ΔT within ' + _stop + ' % of the OPΔT trip setpoint. Withdrawal inhibited. Insertion available.' }
+    );
+    // Annunciation. Set at the ROD STOP line, not the trip line: an annunciator that first
+    // lights as the breakers open teaches nothing. Panel A (reactor), category `reactivity` —
+    // both are power-distribution protection, not a coolant fault.
+    PWR_ALARMS_A.push(
+      { id: 'otdt_approach', instrument: 'otdt_margin', direction: 'low', setpoint: _stop,
+        priority: 'warning', panel: 'A', category: 'reactivity',
+        label_learning: 'Overtemperature Limit Approaching', label_industry: 'OTΔT ROD STOP' },
+      { id: 'opdt_approach', instrument: 'opdt_margin', direction: 'low', setpoint: _stop,
+        priority: 'warning', panel: 'A', category: 'reactivity',
+        label_learning: 'Overpower Limit Approaching', label_industry: 'OPΔT ROD STOP' }
+    );
+  }
+
   var PWR_PROTECTION = {
     trips: PWR_TRIPS,
     trip_block_permissive: PWR_TRIP_BLOCK_PERMISSIVE,

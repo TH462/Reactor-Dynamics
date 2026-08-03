@@ -180,6 +180,7 @@
     this.reading.subcooling_margin = T_sat(this.reading.primary_pressure) - this.reading.tavg;
     this.reading.pzr_level_dev = this._levelDev(extras);
     this.reading.rod_limit_margin = this._rodLimitMargin(extras);
+    this._deltaTChannels(extras);
     this._copyStatus(extras);
   };
 
@@ -214,6 +215,53 @@
     var prog = lb({ tavg_c: this.reading.tavg, _tavg_fp: (extras || {}).tavg_fp }, this.cfg);
     var spec = this.specs.pzr_level_dev, dev = this.reading.pzr_level - prog;
     return spec ? clip(dev, spec.range[0], spec.range[1]) : dev;
+  };
+
+  // ---------------------------------------------------------------------------
+  // OTΔT / OPΔT protection channels (#311). Five derived readings, all in % OF
+  // RATED ΔT, computed from INDICATED thot/tcold/tavg/primary_pressure — so each
+  // inherits those channels' lag and any injected failure. Same construction as
+  // subcooling_margin and pzr_level_dev, for the same HR1 reason: a real
+  // protection rack computes this setpoint from transmitters, and a drifting Tavg
+  // transmitter moves the trip line. That is the teaching case, not a defect.
+  //
+  //   OTΔT_sp = 100 · f · 2·( T_sat(P) − dnb_margin_c − Tavg ) / ΔT₀
+  //   OPΔT_sp = 100 · ( K4 − K6·max(0, Tavg − T″) )
+  //   margin  = setpoint − loop ΔT      (trip low at 0; rod stop low at 3)
+  //
+  // OTΔT reads the ENGINE'S OWN DNB criterion, scaled by the margin factor — it is
+  // not a linearization with stored K1/K2/K3, and that is deliberate. Writing the
+  // gradients down would put this plant's DNB physics in a second place, where a
+  // retune of `dnb_margin_c` or `delta_T_rated` would silently leave the trip line
+  // behind. Computing it here means the limit line tracks the physics it limits.
+  // The equivalent K1/K2/K3 (for comparison with published real values) are worked
+  // out in the `otdt_opdt` block comment in pwr_config.js.
+  //
+  // T_sat is the same correlation the thermal model uses — already duplicated at the
+  // top of this file for the subcooling margin, for the same no-cross-file-dependency
+  // reason, so this adds no new copy.
+  // ---------------------------------------------------------------------------
+  PWRInstruments.prototype._deltaTChannels = function (extras) {
+    var o = this.cfg.otdt_opdt, sp = this.specs;
+    if (!o || !sp.loop_delta_t) return;
+    var dt0 = this.cfg.thermal.delta_T_rated;                 // °C at rated
+    var Tpp = (extras || {}).tavg_fp;                         // T″ = full-power Tavg (OPΔT only)
+    if (Tpp == null) Tpp = this.reading.tavg;                  // pre-init fallback: zero penalty
+    var T = this.reading.tavg, P = this.reading.primary_pressure;
+    var dT = 100 * (this.reading.thot - this.reading.tcold) / dt0;
+    // This plant's DNB-limiting ΔT at the INDICATED T and P, scaled by the margin factor.
+    var ot = 100 * o.dnb_margin_factor * 2 * (T_sat(P) - this.cfg.thermal.dnb_margin_c - T) / dt0;
+    var op = 100 * (o.K4 - (o.K6_per_c || 0) * Math.max(0, T - Tpp));
+    this.reading.loop_delta_t  = clip(dT, sp.loop_delta_t.range[0], sp.loop_delta_t.range[1]);
+    this.reading.otdt_setpoint = clip(ot, sp.otdt_setpoint.range[0], sp.otdt_setpoint.range[1]);
+    this.reading.opdt_setpoint = clip(op, sp.opdt_setpoint.range[0], sp.opdt_setpoint.range[1]);
+    // Margins read the CLIPPED setpoint and the CLIPPED ΔT, so what the trip sees is
+    // what the gauge shows — an operator can always reproduce the trip's arithmetic
+    // from the board, which is not true if the trip reads an unclipped intermediate.
+    this.reading.otdt_margin = clip(this.reading.otdt_setpoint - this.reading.loop_delta_t,
+      sp.otdt_margin.range[0], sp.otdt_margin.range[1]);
+    this.reading.opdt_margin = clip(this.reading.opdt_setpoint - this.reading.loop_delta_t,
+      sp.opdt_margin.range[0], sp.opdt_margin.range[1]);
   };
 
   PWRInstruments.prototype._copyStatus = function (extras) {
@@ -275,6 +323,7 @@
     // Level deviation from program (#262) — the inventory cue. See _levelDev.
     this.reading.pzr_level_dev = this._levelDev(extras);
     this.reading.rod_limit_margin = this._rodLimitMargin(extras);
+    this._deltaTChannels(extras);
 
     this._copyStatus(extras);
     return this.reading;
