@@ -132,7 +132,9 @@ Visually continuous with the gauge strip (same height band), slightly lighter ba
   Indications, Setpoints & Limits, Normal Values, Failures, Glossary), register- and unit-aware,
   rendered from `RD.MANUAL` / `RD.MANUAL_PROCEDURES` (`ui/app.js` `openManual`; keyboard shortcut `M`).
 - **Help (?)** *(as built)* — top-bar button toggling a one-screen guide to the board (quiet-board
-  colors, why instruments can lie, where the missions live, keyboard shortcuts).
+  colors, **the couplings to watch for** — the Tier A dynamics this plant is *for*
+  (`DESIGN_CRITERIA.md` §6.3) — instrument lag and failure, where the missions live, keyboard
+  shortcuts).
 - **Mission status line** *(as built)* — an always-visible "what's running now" strip under the sim
   controls (`#simStatus`: plant · mode); clicking it opens the Plant & Mission window (§10.7).
 

@@ -149,8 +149,8 @@
           <!-- Inject Failure — built by app.js from M4's catalog -->
           <div class="tabpane" data-pane="failures">
             <div id="failList"></div>
-            <div class="advanced-exp" id="advExpToggle" data-scanner-hint="Advanced instrument failure — fail any single instrument (stuck, drifting, noisy, or dead) while the plant behind it stays real. The board will lie to you (HR1)."
-              data-scanner-detail="The plant keeps behaving correctly; only the reading changes. That gap is the lesson — every serious accident in this simulator turns on an operator believing an instrument instead of cross-checking it against another one.">▸ Advanced instrument failure (instrument × mode × value)</div>
+            <div class="advanced-exp" id="advExpToggle" data-scanner-hint="Advanced instrument failure — fail any single instrument (stuck, drifting, noisy, or dead) while the plant behind it stays real. Indications and protection read the channel, not the physics (HR1)."
+              data-scanner-detail="The plant keeps behaving correctly; only the reading changes. Use it to test how well you know the couplings: pressure and temperature move together, pressurizer level tracks Tavg, the steam generator is the only heat sink. Those relationships keep holding when one channel stops, which is how you find the bad channel.">▸ Advanced instrument failure (instrument × mode × value)</div>
             <div class="adv-fail" id="advFailPanel" hidden></div>
           </div>
           <!-- Graph tab — parameter toggles for the strip chart -->
@@ -309,10 +309,18 @@
               <b>Grey</b> numbers — OK but not ideal, no alarm yet.</p>
             </div>
             <div class="help-sec">
-              <h4>Instruments can lag or lie</h4>
-              <p>You operate through instruments, and protection reads those same instruments.
-              A failed or stuck channel can mislead you on purpose — cross-check readings. That
-              is part of how real plants are run, not a game trick.</p>
+              <h4>Watch what moves together</h4>
+              <p>This plant is about the <b>couplings</b>: drop the generator load and power
+              follows it down while Tavg rises; pressurizer level tracks Tavg, not inventory;
+              the steam generator is the primary's only heat sink. Change one thing and watch
+              what answers — that is the whole exercise.</p>
+            </div>
+            <div class="help-sec">
+              <h4>Instruments lag, and can fail</h4>
+              <p>You operate through instruments, and protection reads those same instruments —
+              with lag, noise, and, in failure scenarios, a channel that has stopped reporting
+              honestly. That is how real plants are run. Cross-check a doubtful reading against
+              the couplings above; they keep holding when one gauge stops.</p>
             </div>
             <div class="help-sec">
               <h4>Rewind &amp; speed</h4>

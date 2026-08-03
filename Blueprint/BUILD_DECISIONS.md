@@ -37,6 +37,157 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-03c — #314: the RCP breaker-position trip, and two comparators that disagreed
+
+**Decision.** Build the **RCP breaker-position reactor trip** (1-of-1, blocked below P-7); decline
+the RCP bus **under-voltage** and **under-frequency** trips as declared departures
+(`DESIGN_COMPANION` §8.24) *(OWNER RULING, 2026-08-03: "Build the breaker position trip as you
+recommend.")*.
+
+**Why this one and not the other two — the split is HR1's new seam/roster line doing its job.**
+All three are equally sourced (WTSM 12.2 §12.2.3.12). The breaker trip's signal **genuinely
+exists**: `rcp_running` is already an instrument driving the RCP TRIP annunciator. The two bus
+trips sense an **RCP electrical bus** this plant does not model, so building them means inventing
+a signal and presenting it as an instrument — the #220 defect class. Note this is a **roster**
+decision, exactly the kind HR1 stopped adjudicating on 2026-08-03b; it went through
+`DESIGN_CRITERIA`'s four questions instead.
+
+**Coincidence is 1-of-1, a declared adaptation.** The real rule is 2-of-4 and means *half the
+pumps are gone*; this plant is single-loop with one RCP, so its analog is *the pump is gone*.
+Inventing a second pump to vote with would be the same defect as inventing the bus.
+
+**THE FINDING is worth more than the trip: `crossed()` and `_alarmRaw` had different
+vocabularies.** Alarms have understood `is_false`/`is_open` since alarms existed; `crossed()` —
+the path for every **trip and actuation** — knew only `high`/`low`/`is_true` and fell through to
+`return false`. A trip authored with `is_false` was therefore **structurally incapable of firing,
+with no throw, no warning, and green gates**. The new trip was inert on its first run and the tell
+was a measurement, not an error: the plant rode the full 36-second loss-of-flow casualty to peak
+core void 0.628 with the trip installed. `ui/app.js` already advertised `is_false: 'goes false'`
+in its player-facing setpoint vocabulary, so the UI described a capability the kernel lacked.
+**Rule: a direction word goes in both comparators, and a new trip is not built until you have
+watched it fire** — no gate here can distinguish "correctly not firing" from "cannot fire".
+
+**Blast radius, measured and small.** `pwr_lof` casualty **58.5 s → 23.0 s**, peak core void
+**0.628 → 0.000**, fuel unchanged at 1279.4 °F (693 °C). Mode 5, Mode 3, HFP steady and the full
+load rejection all unmoved; `run_pwr`, `run_m4`, `run_meltdown`, `run_reachability`,
+`run_contract`, `run_scenarios`, `run_hr3`, `run_autoctl` all at baseline first time. Exactly one
+gate moved: `run_campaign`, and only `pwr_lof`.
+
+**A SECOND test-premise finding, and it outlives this change.** `run_m5`'s determinism check
+required true power to match across two seeds within **1e-9** — *"true power identical
+(noise-free)"*. **That is not a property of this plant.** HR1 means protection and every AUTO
+channel decide from NOISY instruments, so as soon as an actuator moves, noise reaches TRUE STATE.
+The check only held because its sequence was quiet: `rcp_trip` produced no protection action
+inside 5 cycles. It does now, and the post-scram pressurizer/feed/dump channels immediately act on
+their own noise. Traced rather than assumed — the scram fires on the **same cycle** in both seeds
+(a boolean trip carries no noise), power stays bit-identical two cycles more, then diverges
+1.7e-6 → 7.6e-6 → **1.8e-5 % power**, four orders below the power-range channel's own noise.
+Re-banded to `< 0.01`, which still catches a real divergence and **passes on the pre-#314 engine
+too**. Bit-identity for the SAME seed is the real determinism property and is untouched. The
+generalisable part: **a test whose premise is "nothing happens" acquires a fixture nobody
+declared**, and the first change that makes something happen looks like the culprit.
+
+**`pwr_lof` re-authored, with a flag for the owner.** Its decision window is now one second, so it
+is a demonstration rather than a choice, and **its premise has been invalidated three times** by
+fidelity work. The new lesson — diverse *signals*, not redundant *channels* — is the right side of
+`DESIGN_CRITERIA` §6, but three re-premisings is a fair argument for retiring the mission instead
+of authoring a fourth. Recorded in the scenario file; not decided here.
+
+---
+
+## 2026-08-03b — HR1 stays binding, and it governs the SEAM rather than the ROSTER
+
+**Decision.** HR1 remains a Hard Rule, with one sentence added separating what it governs from
+what it does not *(OWNER RULING, 2026-08-03: "Apply the hr1 seam/roster sentence. Change design
+criteria as you suggest.")*:
+
+> **HR1 governs the SEAM, not the ROSTER.** Which quantities have instruments, what their
+> lag/noise/failure characteristics are, and how many channels a trip votes are **plant design** —
+> decided by `DESIGN_CRITERIA.md`'s four questions. A missing instrument is a design gap to be
+> filed, **never an HR1 exception.**
+
+**Why it stays binding, on §3's own admission test** (*"can this be violated silently?"*) rather
+than on importance. Three measured cases: **#220**, `above_p9` deciding three protection functions
+off `true_state.power_pct` with **all 34 runners green** — the fix moves nothing unless you FAIL
+the channel; **#247**, the low-flow reactor trip reading true pump flow for two years; **#289**
+(2026-08-01), a new `defaultOn` channel reading `true_state.power_pct`, caught by the gate. HR1 is
+also one of the few rules with a working guard at all — HR2's is *none*, HR4's *partial*.
+
+**Why the seam/roster split was needed, and it is #247 again.** That trip was filed as *"the one
+documented HR1 exception"* and was not an exception — it was an instrument nobody had built. The
+exception mechanism absorbed a **plant-design omission** and made it look settled;
+`run_hardrules`' own comment names the failure — *"the honest reason was 'the instrument does not
+exist' … that is laundering debt as compliance."* The **EXCEPTION/DEBT split fixed that at the
+gate in 2026-07; the rule TEXT never got the same fix**, and still invited a missing instrument to
+be filed as an exception. Now it cannot be.
+
+**The measurement that came out of this, and it inverted the hypothesis.** I predicted the healthy
+instrument layer would be transparent on slow transients and visible on fast ones, and recommended
+measuring a scram and a LOCA to find the threshold. **There is no such threshold — the timing
+shift belongs to the CHANNEL, not to the transient.** Full stack, seed 42, nothing failed:
+
+| case | channel (lag) | gauge behind the plant |
+|---|---|---|
+| **A1 load drop 100 → 60 MWe, Tavg through 590 °F** | `tavg` (**4.0 s**) | **+4.00 s** |
+| A1 load drop, power through 80 % | `power_range` (0.1 s) | +0.00 s |
+| manual scram from HFP, power through 50 % | `power_range` (0.1 s) | +0.00 s |
+| 20 % LOCA, pressure through the 1800 psi reactor trip | `primary_pressure` (0.5 s) | +0.00 s |
+
+The **slow** demonstration shows the largest shift and the **fast** casualty shows none. It also
+corrects a claim I made to the owner hours earlier — that the instrument layer is "nearly
+transparent" during A1 — which was measured on `power_range` (0.1 s lag) when A1's subject
+variable is Tavg (4.0 s). **Timing shift** follows the channel's time constant; **value
+divergence** does follow transient speed (the LOCA reaches 414 psi and 25.6 °F). `DESIGN_CRITERIA`
+§6.3's *"every transient in Tier A"* is replaced by the table.
+
+**And this strengthens rather than weakens the case for the rule.** Because a healthy channel is
+indistinguishable from truth on three of the four cases, a trip mis-wired to `true_state` behaves
+identically in normal operation — the defect class cannot be found by playing the sim, only by a
+gate.
+
+**Blast radius:** documentation and one rule text; no code, no plant behaviour. Probe kept local
+at `inbox/probe_hr1_lag.js` (gitignored).
+
+---
+
+## 2026-08-03 — the stated premise is PLANT DYNAMICS; instruments-vs-truth is a MODEL rule
+
+**Decision.** The instruments-versus-truth framing is removed from every document that presented
+it as the simulator's *premise, lesson, keystone or point*. **HR1 itself does not move** *(OWNER
+DIRECTIVE, 2026-08-03: "THR STATED PREMIS IS NOT INSTRUMENT VS TRUTH THE PREMIS IS TO TEACH PLANT
+DYNAMICS!!! We must purge the idea of the instruments vs truth premise from all documents.")*.
+
+**Why this is a documentation change and not a model change.** `DESIGN_CRITERIA.md` §6.3 already
+ruled the substance on 2026-08-02 and stated the boundary in terms: *"HR1 IS UNAFFECTED AND STAYS
+EXACTLY AS IT IS. This is a statement about teaching emphasis, not about the model."* Two reasons
+it must not be read as licence to soften the instrument layer, both from that section: protection
+reading instruments rather than truth is what makes the failure scenarios possible at all, and **a
+healthy channel's lag is itself part of the dynamics**, with no failure injected anywhere. **That
+second reason was itself overstated as "every Tier A transient", and is now MEASURED and scoped**
+— see the 2026-08-03b entry below: the shift belongs to the CHANNEL, and it is **4.00 s on `tavg`
+during A1** against +0.00 s on power range through a scram and on pressure through a LOCA. So the edit is uniformly *subordination*,
+never deletion: each site now says the coupling is what catches the bad channel, on the ordering
+fact that you cannot perceive a lying instrument without already knowing what the plant should be
+doing.
+
+**The failure mode this exposes, and it is structural.** The ruling landed in
+`DESIGN_CRITERIA.md` on 2026-08-02 and `CLAUDE.md`'s Domain conventions block still read *"Never
+soften the gap — the dissonance is the lesson"* on 2026-08-03 — and an agent (me) read that line
+and repeated the retired premise back to the owner in a recommendation the same morning. **A
+ruling that does not reach `CLAUDE.md` has not landed**, because that file is loaded on every turn
+and outvotes a Blueprint document nobody opened. Treat the CLAUDE.md edit as part of the ruling,
+not as follow-up work.
+
+**What was deliberately left.** Historical assertions of the old premise inside `CHANGELOG.md` and
+`Diagnostic/TUNING_LOG.md` entries are RECORD; rewriting them would falsify what was believed at
+the time. `M7_test_runner.md` §3.2 and `Gameplay_instructor_design.md` keep the phrase because both
+describe the **architecture** — HR1 verification and the layer boundary — which is what stays.
+`scenarios/bwr_isolation.js` (*"distrust their level gauge"*) is wrong twice over, since BWR
+shrink/swell is real physics and the gauge is not lying, but BWR is ON HOLD.
+
+**Blast radius:** `run_all` 35 runners at baseline except `run_hardrules` (write-up drift only —
+the behavioural change is zero). Manual set Rev 12 → 13, `README.md` only, no number moved.
+
 ## 2026-08-03d — #315: the leg split read FISSION power, so a tripped reactor had no ΔT
 
 ### The change
@@ -276,7 +427,7 @@ for `dt < 2·sync_tau`, so it cannot overshoot; the off-line branch cannot start
 **Part A passed it** — 1980 sits strictly inside `turbine_rpm`'s [0, 2000] — which is that runner's
 own hollow-assertion shape, one instrument short of its coverage. Now **B3**, and deliberately
 **inverted**: it asserts the trip cannot fire, so it **goes red when the roll is built** and forces
-§8.23 to be retired rather than absorbed (the §8.17 pattern). 59 → **62 checks**.
+§8.25 to be retired rather than absorbed (the §8.17 pattern). 59 → **62 checks**.
 
 **The first injection was a bad test, and that is the lesson.** Forcing an overshoot by taking
 `sync_tau` 0.5 → 0.005 changed nothing — peak 1801.02 either way — because `hot_full_power`

@@ -1009,40 +1009,45 @@ test('pwr_slb — steam line break: both branches reach an endpoint', function (
   }
 });
 
-test('pwr_lof — loss of flow: both branches reach an endpoint, DNB physics fires', function (ck) {
-  // Craft branch: trip immediately on the pump loss — DNB is avoided entirely.
+test('pwr_lof — loss of flow: the DIVERSE trip catches it, not the assigned one', function (ck) {
+  // RE-AUTHORED 2026-08-03 (#314). This mission lost its branch when the plant gained the
+  // real RCP breaker-position reactor trip: the decision window went from ~36 s to ~1 s, so
+  // there is nothing to decide and it is a demonstration now. What it asserts is the
+  // MECHANISM, and the assertions are chosen so they cannot pass on the old plant:
+  //
+  //   · the trip REASON must be the breaker contact. On the pre-#314 engine this read
+  //     `primary_pressure high` (a backup catching a consequence 36 s late), so this check
+  //     fails there — it is not a refit of the old assertion to the new number, it is the
+  //     opposite claim.
+  //   · core void must stay ZERO. The old plant reached 0.628 here, and the old test
+  //     REQUIRED > 0.02. Inverting a check that a fix makes false is the HR10-correct move
+  //     only when the fix is the point, and it is: the boil-off was reachable only because
+  //     two of the real plant's four loss-of-flow trips were missing.
+  //   · the assigned trip must STILL not fire. That half is unchanged from the old test and
+  //     passes on both engines — it is what makes this a diversity lesson rather than a
+  //     "the trip works now" lesson.
   var s = startScenario('pwr_lof');
-  var dec = runUntil(s, function () { return s.instructor.firedBeats.has('pump_trips'); }, 120);
-  ck('pump-trip decision beat fires', !!dec, !!dec, 'pump_trips fired');
-  if (dec) {
-    s.handleCommand({ action: 'scram' });
-    var doneA = runUntil(s, function (sn) { return lc(sn); }, 120);
-    ck('immediate trip → Tripped in Time endpoint', doneA ? lc(doneA).title : 'never', !!doneA && /Tripped in Time/.test(lc(doneA).title), 'Tripped in Time');
-    if (doneA) {
-      ck('DNB avoided (took the no-boil branch)', s.instructor.firedBeats.has('tripped_fast') && !s.instructor.firedBeats.has('boiling'), s.instructor.firedBeats.has('tripped_fast') && !s.instructor.firedBeats.has('boiling'), 'tripped_fast, not boiling');
-      ck('core exit stayed subcooled (no core void)', doneA.true_state.core_void_fraction.toFixed(3), doneA.true_state.core_void_fraction < 0.01, '< 0.01');
-    }
-  }
-
-  // Automatics branch: do nothing. The scenario injects a STUCK-HIGH flow channel
-  // alongside the pump trip (#248), so the low-flow trip is fed a healthy signal and
-  // never actuates at all — the hot channel boils and the reactor is finally caught by
-  // the HIGH-PRESSURE trip ~35 s in. Assert the reason, not just that something
-  // scrammed: "a backup caught it" and "the assigned protection worked" are the two
-  // outcomes this lesson exists to tell apart, and only the trip reason distinguishes
-  // them. Track peak core void to prove the DNB physics actually engaged.
-  var s2 = startScenario('pwr_lof');
   var peakVoid = 0;
-  s2.subscribe(function (sn) { if (sn.true_state.core_void_fraction > peakVoid) peakVoid = sn.true_state.core_void_fraction; });
-  var dec2 = runUntil(s2, function () { return s2.instructor.firedBeats.has('pump_trips'); }, 120);
-  ck('decision beat fires (automatics run)', !!dec2, !!dec2, 'pump_trips fired');
-  if (dec2) {
-    var doneB = runUntil(s2, function (sn) { return lc(sn); }, 300);
-    ck('inaction → DNB then backup-trip endpoint', doneB ? lc(doneB).title : 'never (fired: ' + Array.from(s2.instructor.firedBeats) + ')', !!doneB && /Backup Trip/.test(lc(doneB).title), 'Caught by a Backup Trip');
-    ck('the hot channel actually boiled (DNB / core_void engaged)', 'peak core_void=' + peakVoid.toFixed(3), peakVoid > 0.02, '> 0.02');
-    // The point of the lesson: the trip assigned to this event did NOT fire.
-    if (doneB) ck('the low-flow trip never actuated — a backup caught it', doneB.rps_state.last_trip_reason, doneB.rps_state.last_trip_reason === 'primary_pressure high', 'primary_pressure high, not rcs_flow low');
-    if (doneB) ck('endpoint arrives scrammed and undamaged', 'scram=' + doneB.rps_state.scrammed + ' melted=' + doneB.true_state.melted, doneB.rps_state.scrammed === true && doneB.true_state.melted === false, 'scrammed, not melted');
+  s.subscribe(function (sn) { if (sn.true_state.core_void_fraction > peakVoid) peakVoid = sn.true_state.core_void_fraction; });
+  var dec = runUntil(s, function () { return s.instructor.firedBeats.has('pump_trips'); }, 120);
+  ck('pump-trip beat fires', !!dec, !!dec, 'pump_trips fired');
+  if (dec) {
+    var done = runUntil(s, function (sn) { return lc(sn); }, 300);
+    ck('reaches the endpoint', done ? lc(done).title : 'never (fired: ' + Array.from(s.instructor.firedBeats) + ')',
+      !!done && /Caught by a Contact/.test(lc(done).title), 'Caught by a Contact');
+    // THE lesson: a diverse signal caught it, and the assigned one never did.
+    if (done) ck('tripped on the BREAKER CONTACT, not the flow channel', done.rps_state.last_trip_reason,
+      done.rps_state.last_trip_reason === 'rcp_running is_false', 'rcp_running is_false');
+    if (done) ck('the assigned low-flow trip never actuated', done.rps_state.last_trip_reason,
+      done.rps_state.last_trip_reason !== 'rcs_flow low', 'not rcs_flow low');
+    // And the flow gauge is STILL lying at the endpoint — the tell the closing beat asks
+    // the player to read. Without this the mission could pass with a healthy channel.
+    if (done) ck('flow indication still pegged at 100 % post-trip', done.instruments.rcs_flow.toFixed(1),
+      done.instruments.rcs_flow > 99.0, '> 99 (stuck channel)');
+    ck('NO DNB — the core never boiled (was 0.628 pre-#314)', 'peak core_void=' + peakVoid.toFixed(3),
+      peakVoid < 0.01, '< 0.01');
+    if (done) ck('endpoint arrives scrammed and undamaged', 'scram=' + done.rps_state.scrammed + ' melted=' + done.true_state.melted,
+      done.rps_state.scrammed === true && done.true_state.melted === false, 'scrammed, not melted');
   }
 });
 

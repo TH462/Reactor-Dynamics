@@ -302,6 +302,19 @@ var BASELINES = {
   // recorded as a SELECTION ("selected 'Add the program ceiling' from four options put to
   // him"), not dressed as verbatim words, because that is what it was. This comment's
   // standing point again: the code change moved NOTHING here; the write-up moved it.
+  // 104 -> 108 (2026-08-03c, #314 the RCP breaker trip): four more citation sites, again all
+  // write-ups — the trip itself is one row of data and moved this by zero.
+  // 100 -> 104 (2026-08-03b, HR1 seam-vs-roster): four more citation sites for the ruling that
+  // kept HR1 binding while handing the instrument ROSTER to DESIGN_CRITERIA. One of them is the
+  // RULE TEXT itself in CONTEXT.md §3 — this gate scans tracked markdown, and §3 is tracked, so
+  // editing a Hard Rule to carry its own dated quote moves the number. BINDING rules stay at ten.
+  // 95 -> 100 (2026-08-03, the premise purge): the instruments-vs-truth *framing* was removed
+  // from eleven documents and three player-facing surfaces, and every one of the five new
+  // citation sites is a write-up carrying the owner's words — CLAUDE.md, CHANGELOG,
+  // TUNING_LOG, BUILD_DECISIONS, PWR_CURRICULUM_REDESIGN. The behavioural change is ZERO:
+  // HR1 did not move, and `DESIGN_CRITERIA.md` §6.3 is explicit that it must not. Note the
+  // count was measured TWICE — 98 with the source/spec edits in and 100 after the logs — which
+  // is the standing warning three comments up, arriving on schedule.
   // ---- run_hardrules: BOTH branches moved this, and NEITHER figure is right ----------
   // develop took it 58 -> 60 -> 63 (#289) and workbench 43 -> 77 -> 80 (#290, #238), so a
   // mechanical pick of either side ships a drift. The number below is MEASURED on the merged
@@ -377,8 +390,10 @@ var BASELINES = {
   // The ruling still stands in three other tracked files; this is one fewer SITE.
   // MERGED 2026-08-03: both lanes moved this independently, so neither figure above is the
   // merged one. MEASURED on the merged tree, not added up — the standing warning in CLAUDE.md.
-  // MEASURED 111 on the backshop merge (develop 103 + backshop 106 -> 111, not 209).
-  'run_hardrules.js':      { code: 0, score: '111checks 0failed' },
+  // THREE lanes moved this independently: develop 103, backshop 106, workbench 108.
+  // MEASURED 124 on the fully merged tree. Adding them up gives 317, which is
+  // the arithmetic this comment exists to stop.
+  'run_hardrules.js':      { code: 0, score: '124checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -715,7 +730,18 @@ var BASELINES = {
   // not catch it, because indicated pzr level could not reach its 97 % trip (#249). The
   // new checks assert the ENDPOINT STATE rather than the absence of a trip; all three
   // go red with the isolation removed.
-  'run_campaign.js':       { code: 0, score: '51/51 3038passed' },
+  // 3038 → 3017 (2026-08-03, #314) — a DROP, and it is coverage genuinely removed rather
+  // than coverage lost. `pwr_lof` was a two-branch decision mission; the new RCP
+  // breaker-position reactor trip cuts its decision window from ~36 s to ~1 s, so it is a
+  // demonstration now and the whole "you waited → the core boils" branch, with its beats
+  // and its endpoint, no longer exists to assert. The 21 checks went with it. What replaced
+  // them is SHARPER, not weaker: the surviving checks pin the trip REASON (`rcp_running
+  // is_false`, where the old plant read `primary_pressure high`) and require core void to
+  // stay BELOW 0.01 where the old test required it ABOVE 0.02 — an inversion, legal under
+  // HR10 only because that boil-off was reachable solely through the missing trips.
+  // Injection-verified: restoring the old `crossed()` comparator reddens exactly those two.
+  // If this number rises again, check it is not the branch coming back by accident.
+  'run_campaign.js':       { code: 0, score: '51/51 3017passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they

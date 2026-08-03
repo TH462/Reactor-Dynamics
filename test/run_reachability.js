@@ -143,7 +143,7 @@ ck('B2 — an inventory loss can reach the ' + loSp + ' % pzr lo-lo scram',
 
 // B3 — THE ONE INVERTED CASE. Every other check here asserts a channel CAN reach its
 // setpoint. This one asserts the opposite, on purpose, and it is a DEPARTURE FENCE rather
-// than a reachability proof (#307, ruled 2026-08-03; declared at DESIGN_COMPANION §8.23).
+// than a reachability proof (#307, ruled 2026-08-03; declared at DESIGN_COMPANION §8.25).
 //
 // The 1980 rpm overspeed trip is UNREACHABLE on this plant and that is deliberate, because
 // there is no turbine roll model. Measured 2026-08-03, peak TRUE rpm: 1800.00 on line in
@@ -160,7 +160,7 @@ ck('B2 — an inventory loss can reach the ' + loSp + ' % pzr lo-lo scram',
 //
 // SO THIS CHECK IS WRITTEN TO GO RED WHEN THE PLANT GETS BETTER. Build the roll model
 // (#307 / #238) and the rotor can pass 1980; this fails, and whoever built it must retire
-// §8.23 rather than absorb the change silently. That is the §8.17 pattern — a departure is
+// §8.25 rather than absorb the change silently. That is the §8.17 pattern — a departure is
 // closed by fixing the gap, not by justifying it. Symmetric drift, same as BASELINES.
 var ospSp = null;
 (P.actuations || []).forEach(function (a) {
@@ -178,7 +178,7 @@ var r3 = peakIndicated(svc3, 'turbine_rpm', 900, function (s, i) {
   if (i === 20) { s.handleCommand({ action: 'set_load_target', mwe: 2 * (RD.PWR_CONFIG.turbine.mwe_rated || 100) }); }
   if (i === 500) { s.handleCommand({ action: 'close_msiv' }); }
 });
-ck('B3 — the ' + ospSp + ' RPM overspeed trip is UNREACHABLE (declared: no roll model, §8.23)',
+ck('B3 — the ' + ospSp + ' RPM overspeed trip is UNREACHABLE (declared: no roll model, §8.25)',
   'peak indicated ' + r3.peak.toFixed(2) + ' RPM', ospSp != null && r3.peak < ospSp, '< ' + ospSp + ' RPM');
 ck('B3 — …because the grid pins the rotor at rated, so nothing on line can overshoot it',
   'peak ' + r3.peak.toFixed(2) + ' vs rated ' + ratedRpm, r3.peak < ratedRpm * 1.02, '< rated + 2 %');

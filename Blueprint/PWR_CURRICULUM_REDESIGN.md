@@ -3,6 +3,17 @@
 **Status: PROPOSAL, awaiting owner decisions.** Nothing here binds. It exists to be argued
 with, and §5 lists the calls that are the owner's to make.
 
+> **§5.4 IS OVERTAKEN — "The Instruments Lie" was RULED AGAINST, 2026-08-02/03.** This document
+> calls that act "the one most aligned with what the project is *for*" and makes it its strongest
+> recommendation. That premise is retired: the educational goal is **plant dynamics**, and
+> instrument deception is explicitly **not** a Tier A objective *(OWNER, 2026-08-02: "I don't
+> want to focus on instruments lying. It will come up in failure scenarios but I dont know if it
+> should be a major focus."; OWNER DIRECTIVE, 2026-08-03: "THR STATED PREMIS IS NOT INSTRUMENT VS
+> TRUTH THE PREMIS IS TO TEACH PLANT DYNAMICS!!! We must purge the idea of the instruments vs
+> truth premise from all documents.")*. See `DESIGN_CRITERIA.md` §6. The individual failure
+> lessons may still have a home under Act V; **a dedicated act built on the premise does not.**
+> The rest of this document (acts, gating, the Mode 5↔1 restructure, §5.5) is unaffected.
+
 *(OWNER DIRECTIVE, 2026-07-29: "We need to redo all the lessons. They are all out of date and
 have a lot of issues." Scope chosen by the owner the same day: a full rethink of content **and**
 structure, not only a correctness sweep.)*
@@ -147,17 +158,26 @@ Act III with ten missions in between. Proposed:
 | III — The Controls | pressure, level, feed, rods, load, automation | at-power only (~9) |
 | **IV — Cold to Hot and Back (new)** | the full Mode 5 ↔ Mode 1 round trip, **incl. RHR** | gathers the 3 transition missions + `pwr_heatup`, finally sequenced |
 | V — When Things Go Wrong | protection, ESF, casualties | unchanged (8) |
-| **VI — The Instruments Lie (new)** | PWR-E20/E21/E22, the stuck flow channel | the missing act — see below |
+| ~~VI — The Instruments Lie (new)~~ | PWR-E20/E21/E22, the stuck flow channel | **RULED AGAINST 2026-08-02/03** — fold into Act V; see §5.4 |
 | VII — Three Mile Island | the 3-part module | unchanged |
 | VIII — The Reckoning | qualification | see §5.5 |
 
-### 5.4 Add the missing act — "The Instruments Lie"
+### 5.4 ~~Add the missing act — "The Instruments Lie"~~ — RULED AGAINST, see the banner at the top
 
-This is the biggest content gap and the one most aligned with what the project is *for*. The
-material already exists in the plant and is documented in `Manuals/07`; only the lessons are
-missing. Three or four missions: a drifting Tavg sensor, a stuck pressurizer level, the
-failed-low level sensor, and the stuck-high flow channel that `pwr_lof` now demonstrates. It
-also gives Act VII (TMI) its proper set-up — TMI *is* this lesson, at full scale.
+**Superseded 2026-08-02/03.** The claim below — that this is "the one most aligned with what the
+project is *for*" — is exactly the premise the owner retired. Instrument deception is a Tier C
+payoff, not a Tier A objective, because you cannot perceive a lying instrument without already
+knowing what the plant should be doing (`DESIGN_CRITERIA.md` §6.3). **Do not build this act.**
+The failure material (drifting Tavg, stuck pzr level, failed-low level, the stuck-high flow
+channel) is still legitimate content and belongs under **Act V — When Things Go Wrong**, taught
+as *"here is the coupling, and here is what it looks like when one channel stops reporting it"*.
+Original text, kept for the record:
+
+> This is the biggest content gap and the one most aligned with what the project is *for*. The
+> material already exists in the plant and is documented in `Manuals/07`; only the lessons are
+> missing. Three or four missions: a drifting Tavg sensor, a stuck pressurizer level, the
+> failed-low level sensor, and the stuck-high flow channel that `pwr_lof` now demonstrates. It
+> also gives Act VII (TMI) its proper set-up — TMI *is* this lesson, at full scale.
 
 ### 5.5 Resolve the TMI duplication
 
@@ -174,8 +194,9 @@ immediately after the other, is the clearest redundancy in the campaign.
    accept that the Mode transitions are unassessed?
 2. **The act restructure** (§5.3) — in particular pulling the Mode 5↔1 round trip into its own
    act and finally sequencing `pwr_heatup`.
-3. **Add "The Instruments Lie"** (§5.4) — the largest new-content item, and my strongest
-   recommendation.
+3. ~~**Add "The Instruments Lie"** (§5.4)~~ — **ANSWERED, and against**: the owner ruled the
+   premise out on 2026-08-02/03. Fold the failure lessons into Act V instead. No longer a
+   decision needed.
 4. **Retire `pwr_tmi`** in favour of the Act V module (§5.5)?
 5. Anything here that is wrong about intent rather than about the code — this is an assessment
    of what the lessons *do*, not of what they were meant to do.

@@ -43,6 +43,17 @@
     // unused. Already the alarm convention; trips gained it with the P-9 reactor
     // trip on turbine trip, which is keyed on a state, not a threshold.
     if (direction === 'is_true') return !!value;
+    // `is_false` was MISSING here until 2026-08-03 (#314), and its absence was silent:
+    // `_alarmRaw` below has understood `is_false`/`is_open` since alarms existed, so the
+    // two comparators in this one kernel had DIFFERENT vocabularies, and a trip or
+    // actuation authored with a direction only the alarm side knew fell through to
+    // `return false` and never fired — no throw, no warning, a green gate. Found by
+    // building the RCP breaker-position reactor trip (`rcp_running is_false`), whose
+    // first cut measured as a complete no-op: the plant rode the full 36 s loss-of-flow
+    // casualty to peak core void 0.628 with the new trip installed and inert. `ui/app.js`
+    // already listed `is_false: 'goes false'` in its user-facing setpoint vocabulary, so
+    // the UI was describing a capability the trip path did not have.
+    if (direction === 'is_false') return value === false;
     return false;
   }
 

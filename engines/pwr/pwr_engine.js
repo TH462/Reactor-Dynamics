@@ -883,7 +883,7 @@
         // The DEMAND always moves — but it is ineffective while spray_stuck, exactly
         // as close_porv is while porv_stuck: pressurize() forces the valve open. The
         // controller genuinely returns to AUTO (spray_auto reads true) while the valve
-        // sits open regardless — that gap is the lesson, not a bug (HR1).
+        // sits open regardless — that gap is DELIBERATE, not a bug (HR1). Do not "fix" it.
         s.spray_override = cmd.auto ? null : (cmd.pct != null ? clip(cmd.pct / 100, 0, 1) : (cmd.open ? 1 : 0));
         break;
       case 'set_pressure_setpoint':
