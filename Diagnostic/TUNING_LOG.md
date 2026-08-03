@@ -20,6 +20,54 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03s (the boration Tavg droop — NOT a defect, and it is a better A8 than the one in the table)
+
+**Task:** close the observation I had flagged five times and never chased — borating 618 → 700 ppm
+at full power cooled the plant **43.3 °F (24.1 °C)** with `rods_tavg` in AUTO. Was the rod
+controller failing?
+
+**No. It ran out of travel, which is exactly what should happen.** Measured full stack,
+`hot_full_power`, shipped lineup:
+
+| | power | steam | Tavg | T-ref | dev | bank |
+|---|---|---|---|---|---|---|
+| t=0 | 100.0 | 1.000 | 579.3 °F | 579.3 °F | 0.0 | **839/912** |
+| 10 min | 94.2 | 0.963 | 572.9 | 578.9 | −6.0 | **912/912** |
+| 20 min | 84.4 | 0.875 | 556.6 | 577.7 | −21.1 | 912/912 |
+| 30 min | 74.7 | 0.775 | 537.3 | 576.5 | −39.2 | 912/912 |
+| 40 min | 75.5 | 0.769 | 535.8 | 576.4 | **−40.6** | 912/912, still |
+
+`rods_tavg` is **ON** the whole way. The bank withdraws to its stop inside ten minutes and then
+sits there: **82 ppm of boron outruns the entire remaining rod authority**, and the controller has
+nothing left to give. The droop is the plant telling the truth.
+
+**Two things I had wrong on the way in.** First I assumed the sliding Tavg program explained it —
+`trefFromLoad` drives T-ref off **`steam_flow`**, so a falling power does lower the target. It
+does, but only by **2.9 °F** (579.3 → 576.4): the program band is 7 °C across the whole load range,
+so it accounts for a fourteenth of the observed drop. Second I assumed the bank must already be at
+ARO at full power. It is **not** — 839/912, with 73 steps of margin — which is why the first ten
+minutes look like the controller working before it stops mattering.
+
+**IT IS ANNUNCIATED, but the CAUSE is not.** At the settled condition the board raises
+`low_tavg` and `load_imbalance` — the operator is told. What nothing says is *why*: `rod_at_limit`
+is **false** and `rod_limit_margin` reads **426**, because both are the **LOW** (insertion) limit
+from #306. There is no high-end "bank at its withdrawal stop" indication, even with the bank
+literally at 912/912. The information is on the board — the Control Bank card reads 912/912 — but
+the operator has to infer the link. Filed; it is an asymmetry against #306's ROD LIMIT LO, not
+obviously a defect, since the low limit guards shutdown margin and the high limit only guards
+control authority.
+
+**The payoff: `CURRICULUM.md` A8 has a better demonstration now.** It used to cite the #303 record
+— two Hot Standby ICs compared, 857 ppm → 561 steps against 683 → 319. That is a fact about two
+save files. **This is live and board-reachable**: set the boron target up 82 ppm at power and watch
+the bank walk to its stop and lose. *Boron won.* The static comparison is kept as the second half.
+
+**Five flags and no investigation is its own lesson.** I carried this forward through four
+checklists, each time saying "not chased", while authoring content on the same plant. It cost
+about fifteen minutes to settle.
+
+---
+
 ## Session log — 2026-08-03r (#238 zirconium oxidation — the escalation was pointing the wrong way)
 
 **Built the #238 checklist entry.** The exposed-clad hot node (#213) has its second heat source:
