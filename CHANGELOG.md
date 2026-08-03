@@ -21,7 +21,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The manual's turbine-roll scope note was wrong about the real plant, and the overspeed trip
+  is documented as unreachable** (#307 — deferred, not built) *(OWNER RULING, 2026-08-03: "Let's
+  go with your recommendation and defer it.")*. Turbine roll and a no-load speed hold stay
+  **out of scope**; what changed is the honesty around them.
+  - **PWR-N05's scope note** described a real synchronization as *"matches speed and phase at the
+    synchroscope — four operator actions"*. On an EHC machine the operator instead selects a
+    **speed setpoint** (Close Valves / 100 / 800 / 1500 / **1800 RPM** / Overspeed Test) and an
+    **acceleration rate** — the SLOW rate takes about **30 minutes** to reach 1800 rpm — and the
+    EHC holds no-load speed automatically, synchronizes (optionally automatically), and shifts to
+    load control on its own once the breaker closes. The note now says that, and points out the
+    real operator's job is much closer to this board's **Pressure SP** / **Dump SP** boxes than to
+    a synchroscope.
+  - **The 1980 RPM overspeed trip cannot fire on this plant** and three places said it could
+    (**09** setpoint table, **03** §12.1 and §12.4, the instrument table). Measured peak: 1800 RPM
+    synchronized in Follow, 1800 in Manual against a 2×-rated demand, 1799 with the MSIVs shut.
+    New **12** §12.14 carries the departure; **12** §9.0 and §13.0 say plainly that shaft speed is
+    never an independent variable here.
+  - **12** §9.0 also documented the **pre-#284** electrical-output formula (core power rather than
+    turbine steam admission) — corrected, with the case where the two diverge.
+  - Manual set **Rev 13**.
+
 ### Added
+- **`run_reachability` B3 — the turbine overspeed fence** (#307). The suite's first *inverted*
+  case: it asserts the 1980 RPM trip **cannot** be reached, because there is no roll model, and is
+  written to go **red when the plant gets better** so that building the roll forces the declared
+  departure to be retired rather than silently absorbed. Part A was already happy (1980 sits
+  inside the instrument's [0, 2000] range), which is exactly the hollow-assertion shape this
+  runner exists to catch. 59 → **62 checks**.
 - **Overtemperature ΔT and Overpower ΔT — the two Westinghouse reactor trips this plant did not
   have** (#311, ruled 2026-08-02, built 2026-08-03). Both are computed from loop ΔT with Tavg and
   pressure compensation, so they trip on *combinations* no single gauge sees: OTΔT is the DNB

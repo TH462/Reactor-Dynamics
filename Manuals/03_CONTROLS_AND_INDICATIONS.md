@@ -2,7 +2,7 @@
 
 **Document:** PWR-CI-01  
 **Title:** Control Station Inventory and Operating Instructions  
-**Revision:** 12  
+**Revision:** 13  
 
 ---
 
@@ -559,8 +559,10 @@ The generator card carries a three-position selector: **FOLLOW / MAN / OFF**.
 **A planned offline is NOT a turbine trip.** Pressing **OFF** opens the generator breaker:
 load goes to zero, but the **stop valves stay open**, no trip latches, and **P-9 is never
 armed** — so it does not scram the reactor and it is fully reversible with FOLLOW or MAN.
-A real turbine trip arrives by its own routes: low vacuum, overspeed, the P-14 high-high SG
-level actuation, a reactor trip, MSIV closure at load, or the injected `turbine_trip` failure.
+A real turbine trip arrives by its own routes: low vacuum, the P-14 high-high SG level
+actuation, a reactor trip, MSIV closure at load, or the injected `turbine_trip` failure.
+Overspeed is configured as a sixth route but **cannot occur here** — this plant has no turbine
+roll model, so the rotor never exceeds the rated speed the grid holds it at (**12** §12.14).
 
 **WARNING:** a genuine **turbine trip above 50 % power (P-9) scrams the reactor** — see `09`
 §2.0 and **PWR-E03**. What this plant rides out is a *load rejection*, not a turbine trip.
@@ -604,7 +606,7 @@ The **OFF** lamp lights on either condition — breaker open *or* turbine trippe
 
 | Indication | Meaning |
 |------------|---------|
-| Turbine RPM | ~1800 class when synchronized; overspeed trips turbine |
+| Turbine RPM | ~1800 when synchronized (the grid holds it there at any load, including zero); falls to zero on a coastdown. The overspeed trip is configured but unreachable — no roll model, **12** §12.14 |
 | MWe output | Gross electrical output |
 | Governor valve % | Steam admission position |
 | TURB TRIP / steam demand low | Turbine not accepting load |
@@ -722,7 +724,7 @@ meter can still cross the 120 % trip.
 | steam_dump_valve | % | 0 – 100 | 0.3 s | Dump/bypass position | — |
 | governor_valve | % | 0 – 100 | 0.3 s | Turbine admission | — |
 | mwe_output | MWe | 0 – 130 | 0.2 s | Grid | — |
-| turbine_rpm | RPM | 0 – 2000 | 0.5 s | Sync / overspeed | — |
+| turbine_rpm | RPM | 0 – 2000 | 0.5 s | Sync (overspeed unreachable — **12** §12.14) | — |
 | condenser_vacuum | inHg (kPa) | 0 – 30.1 (0 – 102) | 5 s | Turbine health | COND VAC LO / TRIP |
 | boron_sample (CHEM) | ppm | 0 – 2500 | ~60 s lab | Chemistry grab sample — the boron reference | — |
 | charging_flow / letdown_flow | norm | 0 – 0.12 | 2 s | CVCS lineup | — |

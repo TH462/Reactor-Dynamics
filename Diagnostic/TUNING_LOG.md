@@ -20,6 +20,121 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03b (#307 turbine roll DEFERRED — and the honest declaration was wrong about the real plant)
+
+**Ruled, and the ruling was to not build it** *(OWNER RULING, 2026-08-03: "Let's go with your
+recommendation and defer it.")* — on a recommendation to defer the roll but fix two things that
+did not depend on the answer. No engine or control code changed. Backshop lane.
+
+**Why defer, in the language of the criteria.** #307's own recommendation argued cost and blast
+radius. That is not the load-bearing argument. Measured against `DESIGN_CRITERIA` §6, turbine
+roll earns **no Tier A credit at all**: the one coupling it would add — no-load steam as a heat
+sink at zero MWe — is the *"steam flow ≠ electrical output"* lesson the steam dump and #284's
+`mwe_output` fix already carry. It is a **Tier B procedure skill**, and the ruled priority is
+dynamics first *(OWNER RULING, 2026-08-02: "The most important ideas are plant dynamics followed
+by how to operate the plant.")*. Meanwhile §6.9 records that **A1 and A2 have no deliberate
+demonstration anywhere** — a gap in the top-priority category. Spending the next build on Tier B
+while Tier A has undemonstrated couplings inverts the ruling that had just been made.
+
+**FOUR things worth knowing, and three of them are not in the issue.**
+
+**1. The off-line rotor branch is not a physics model, and it cannot be retuned into one.**
+Measured engine-direct by injecting admission steam straight into the rotor ODE: rated flow buys
+**0.8 rpm** (0.044 % of rated speed), and holding 1800 rpm needs **2250× rated** admission. #238's
+parked entry records that much ("inert at the authored constants"). What it does not record is
+the **`if (rpm < 1) rpm = 0` floor**, which at the shipped 0.02 s `PHYSICS_DT` needs
+**> 50 rpm/s** — i.e. **> 2500× rated** — just to leave standstill. So:
+
+| admission (× rated) | rpm from rest, 600 s |
+|---|---|
+| 1 (rated) · 100 · 1000 · **2250** | **0** |
+| 2500 | **2000** |
+| 3000 | 2400 |
+
+**The first admission that can start the rotor settles it at exactly 2000 rpm — past the 1980 rpm
+overspeed trip.** There is no operating point between "will not turn" and "overspeed", so this is
+a **replacement**, not a tuning fix. (The floor and the torque scale pull against each other:
+start needs `flow·tpf/inertia > 1/dt`, hold needs `= rpm_rated/coastdown_tau`. At the shipped
+coastdown_tau of 40 s those are 50 and 45.)
+
+**2. Issue steps 1 and 2 are one change.** Off line, `load_target_mwe = 0` → `turbine_demand_frac
+= 0` → measured after 60 s at `hot_zero_power`: `governor_valve_pct` **0.000**,
+`steam_flow_normalized` **0.0000**. There is no steam path off line *by construction*, so
+"add no-load admission" **is** "drive the governor from speed instead of load when the breaker is
+open". Recorded because the issue's cost estimate counts them separately.
+
+**3. The 1980 rpm overspeed trip is UNREACHABLE, and it was documented as live protection.**
+Peak true rpm: **1800.00** on line in Follow, **1800.00** in Manual against a 2×-rated MWe demand,
+**1799.10** with the MSIVs shut and the breaker closed. The sync branch is
+`rpm += (rated − rpm)/sync_tau·dt`, monotone for `dt < 2·sync_tau`, so it cannot overshoot; the
+off-line branch cannot start (1). `run_reachability` **Part A passes it** — 1980 sits strictly
+inside `turbine_rpm`'s [0, 2000] — which is the hollow-assertion shape that runner exists for,
+**one instrument short of its own coverage**. Now `run_reachability` **B3**, and it is deliberately
+**INVERTED**: it asserts the trip *cannot* fire and therefore **goes RED when someone builds the
+roll**, forcing §8.23 to be retired rather than absorbed. 59 → **62 checks**.
+
+**Injection-verified, and the first injection was a bad test.** Setting `sync_tau` 0.5 → 0.005 to
+force an overshoot changed nothing (peak 1801.02 either way) — because `hot_full_power` *starts*
+at rated, so `(1800 − 1800)` is zero and there is nothing to overshoot. The valid injections:
+moving the setpoint to 1700 reddens the first check (peak 1800.12 > 1700), and pointing the sync
+branch at 2100 rpm reddens **both** (peak indicated **2000.00** — itself worth knowing, because
+the *instrument* clamps at its 2000 range top, so `turbine_rpm`'s range needs widening the day a
+roll model lands).
+
+**4. The scope note was wrong about the real plant — the #220 class, in a document written to be
+honest.** `21baf03` added a PWR-N05 scope note declaring the gap, and it described the real
+evolution as *"matches speed and phase at the synchroscope — four operator actions"*. Sourced,
+that is not what an EHC machine does: the operator selects a **speed setpoint** from a pushbutton
+list (*Close Valves, 100, 800, 1500, **1800 RPM**, Overspeed Test*) plus an **acceleration rate**
+(SLOW ≈ **30 min** to 1800 rpm); the EHC's speed control section takes over near rated and **holds
+no-load speed automatically**; synchronising *"can be carried out by the operator, or in the
+coordinated control mode … automatically initiated"*; and after breaker closure the system
+*"automatically shifts to load control"*.
+
+That changes the *shape* of any future build, which is why it is not cosmetic: the prototypical
+control is a **speed setpoint box + an acceleration rate**, the same idiom as Pressure SP and Dump
+SP — **not** a synchroscope. Building the synchroscope would be *less* prototypical and cost more
+controls. Recommended shape if it is ever built: speed controller on the governor when off line,
+one **Turbine Speed SP** box, and a **synchronising permissive** on `connect_grid` refused with a
+reason (the `reset_rps` / `RODS_NOT_INSERTED` pattern) — **not** a `breaker_closed` field, which is
+the #284 shape #307 correctly declines. Blast radius measured: **17 `connect_grid` sites** (2
+scenarios, 2 procedure steps, 5 wiring, 8 behaviour probes).
+
+**Citation strength, stated plainly.** WTSM §11.3 (ML11223A295) / §19.0 (ML11223A342), and the
+discrete setpoint list from **GE** EHC documentation (ML11258A318) — *not* Westinghouse, and not
+laundered as such. All are **search-index extracts**: nrc.gov 403s every direct fetch (`curl` with
+a browser UA, WebFetch, and the `web.archive.org/web/2023id_/` workaround all failed), which is
+the ML11223A219 precedent from 2026-07-28q. The weaker citation class, marked as such in
+`04` and in §8.23. **§8.22 already quotes WTSM §11.3** on the far end of the same evolution
+(the EHC's 5 % / 1 %-per-min load floor at breaker closure), which is corroboration that the
+document is the right one.
+
+**One more find, incidental but the same class.** `Manuals/12` §9.0 still documented the
+**pre-#284** `mwe_output`: *"MWe = (core power) × 100 MWe × (rpm/1800) × (vacuum/rated)"*. The
+engine has read **turbine steam admission** since #284 — the whole point of that fix, whose own
+code comment records the 50 MWe ask that indicated 98.8 MWe. The code moved and the manual kept
+reciting the defect. Corrected, with the divergence case spelled out.
+
+**What did NOT change.** No engine, config, control or scenario code. The atomic sync is left
+exactly as it is, and it is worth recording *why* it is defensible: measured full stack from
+`5_percent` at accel 10×, `connect_grid` puts the rotor at **1800 rpm** and **4.68 MWe** inside one
+30 s sample, the dump hands off **5.13 % → 0.54 %**, Tavg moves **0.1 °F** and steam pressure
+**1196 → 1194 psi (8.24 → 8.23 MPa)**. The outcome of the evolution is already right; what is
+missing is the operator's half of it.
+
+**Gates:** `run_all` green, 36 runners. `run_reachability` 59 → **62**, `run_hardrules` 98 → **103**,
+`run_manual_rev` 13/13, `run_manual_units` 0 failed. Manual set **Rev 13**.
+
+**Correction worth keeping, because it is the rule biting its author.** This entry first said
+`run_hardrules` **98 → 100** — a number I wrote from expectation *before running the gate*, which
+is precisely the unmeasured-claim habit HR12 exists to stop. Measured, it is **103**: five citation
+sites, not two. `run_all` caught it as symmetric drift, which is the only reason it did not ship.
+The general shape is the one this file already records — **write-ups move `run_hardrules`, not just
+code, so re-run it AFTER the docs** — but the specific lesson is narrower and worse: do not predict
+a gate score in prose you are writing next to the gate.
+
+---
+
 ## Session log — 2026-08-03a (#311 — OTΔT / OPΔT built, and the issue's own premise did not survive measurement)
 
 **Task:** build the two missing Westinghouse reactor trips in the reduced form the owner ruled

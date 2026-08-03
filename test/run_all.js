@@ -352,7 +352,7 @@ var BASELINES = {
   // stripping the date and quote from the CLAUDE.md citation alone takes HR11 to 1 undeclared
   // and reddens the gate, so that site is genuinely seen and not silently skipped by the
   // markdown-wrap window.
-  'run_hardrules.js':      { code: 0, score: '98checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '103checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -527,7 +527,7 @@ var BASELINES = {
   // thresholds against their instrument's declared range, and `rhr_not_aligned` is a
   // status alarm (`rhr_active` is_false, setpoint null) with no range to sit inside.
   // It briefly read 59 while the alarm was drafted as a pressure threshold.
-  'run_reachability.js':   { code: 0, score: '59checks 0failed' },
+  'run_reachability.js':   { code: 0, score: '62checks 0failed' },
   // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
   // reactor trips this plant did not have. It needs its own runner because the trips ship
   // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so

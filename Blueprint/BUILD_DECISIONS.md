@@ -37,6 +37,104 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-03b — #307: turbine roll DEFERRED, and the declaration that was wrong about the real plant
+
+### The decision
+
+**Do not build turbine roll or a no-load speed hold** *(OWNER RULING, 2026-08-03: "Let's go with
+your recommendation and defer it.")*. No engine, config, control or scenario code changed. Two
+things that did **not** depend on the ruling were fixed in the same pass: the PWR-N05 scope note,
+which misdescribed the real plant, and the overspeed trip, which was documented as live
+protection the plant cannot reach.
+
+### Why defer — the criteria argument, not the cost argument
+
+#307's own recommendation argued build cost and blast radius. That is the weaker case. Measured
+against `DESIGN_CRITERIA` §6, turbine roll takes the **procedure route** to Q2 credit and earns
+**nothing on the dynamics route**: the one coupling it would add — no-load steam as a heat sink at
+zero MWe — is the *"steam flow ≠ electrical output"* lesson the steam dump and #284's `mwe_output`
+fix already carry. The ruled priority is dynamics first *(OWNER RULING, 2026-08-02: "The most
+important ideas are plant dynamics followed by how to operate the plant.")*, and §6.9 already
+records that **A1 and A2 have no deliberate demonstration anywhere**. Building a Tier B skill while
+the top-priority tier has undemonstrated couplings inverts the ruling made the day before.
+
+Q3 did **not** veto — the honest shape is one setpoint box and one permissive, below — so this is
+Q2 ordering, not a complexity refusal. That distinction matters if it is ever re-opened.
+
+### Three measurements the issue did not have
+
+**1. The off-line rotor branch cannot be retuned; it has to be replaced.** Rated flow buys
+**0.8 rpm** (0.044 % of rated) and holding 1800 needs **2250× rated** admission — #238 records
+that much. It does *not* record the **`if (rpm < 1) rpm = 0` floor**, which at the shipped 0.02 s
+`PHYSICS_DT` needs **> 2500× rated** just to leave standstill. So the first admission that can
+start the rotor settles it at **exactly 2000 rpm**, past the 1980 rpm overspeed trip: there is no
+operating point between "will not turn" and "overspeed". Start needs `flow·tpf/inertia > 1/dt`
+(50); hold needs `= rpm_rated/coastdown_tau` (45). The two constraints are the wrong way round.
+
+**2. "No-load admission" and "a speed controller" are ONE change.** Off line,
+`load_target_mwe = 0` → `turbine_demand_frac = 0` → measured `governor_valve_pct` **0.000**,
+`steam_flow_normalized` **0.0000**. There is no steam path off line by construction, so the
+governor must be driven by *speed* rather than load when the breaker is open. The issue's plan
+costs steps 1 and 2 separately; they are the same edit.
+
+**3. The atomic sync is thermally a non-event, which is why leaving it is defensible.** Full stack
+from `5_percent` at accel 10×: `connect_grid` puts the rotor at **1800 rpm** and **4.68 MWe**
+inside one 30 s sample, the dump hands off **5.13 % → 0.54 %**, Tavg moves **0.1 °F**, steam
+pressure **1196 → 1194 psi (8.24 → 8.23 MPa)**. The *outcome* of the evolution is already right.
+What is missing is the operator's half — which is exactly what makes it Tier B and not Tier A.
+
+### The shape to build, if it is ever re-opened — and it is NOT a synchroscope
+
+The scope note added in `21baf03` described the real evolution as *"matches speed and phase at the
+synchroscope — four operator actions"*. That was **recall**, and it is wrong for an EHC machine.
+Sourced: the operator selects a **discrete speed setpoint** by pushbutton — *CLOSE VALVES, 100,
+800, 1500, **1800 RPM**, OVERSPEED TEST* — plus an **acceleration rate** (SLOW ≈ **30 min** to
+1800 rpm); the EHC's speed control section takes over near rated and **holds no-load speed
+automatically**; synchronising *"can be carried out by the operator, or in the coordinated control
+mode … automatically initiated and implemented"*; and after breaker closure the system
+*"automatically shifts to load control"*.
+
+So the prototypical control is a **speed setpoint + a rate** — the same idiom as Pressure SP and
+Dump SP — and building the synchroscope would be *less* prototypical for *more* board complexity.
+Recommended shape: drive the governor from a speed controller when the breaker is open, add one
+**Turbine Speed SP** box, and gate `connect_grid` on a **synchronising permissive** refused with a
+reason (`reset_rps` / `RODS_NOT_INSERTED` pattern). **Do not add a `breaker_closed` field** — that
+is the #284 shape and #307 correctly declines it. Blast radius measured at **17 `connect_grid`
+sites**. Widen `turbine_rpm`'s [0, 2000] range when you do.
+
+**Citation strength.** WTSM §11.3 (ML11223A295) / §19.0 (ML11223A342); the discrete setpoint list
+is **GE** EHC (ML11258A318), *not* Westinghouse, and is not laundered as such. All are
+**search-index extracts** — nrc.gov 403s every direct fetch, including `curl` with a browser UA and
+the `web.archive.org/web/2023id_/` workaround — i.e. the weaker class, per the ML11223A219
+precedent of 2026-07-28q. Corroboration that it is the right document: **§8.22 already quotes WTSM
+§11.3** on the far end of the same evolution (the EHC's 5 % / 1 %-per-min load floor at breaker
+closure).
+
+### The overspeed trip was unreachable and documented as live
+
+Peak true rpm: **1800.00** on line in Follow, **1800.00** in Manual against a 2×-rated MWe demand,
+**1799.10** with the MSIVs shut and the breaker closed. The sync branch is monotone toward rated
+for `dt < 2·sync_tau`, so it cannot overshoot; the off-line branch cannot start. `run_reachability`
+**Part A passed it** — 1980 sits strictly inside `turbine_rpm`'s [0, 2000] — which is that runner's
+own hollow-assertion shape, one instrument short of its coverage. Now **B3**, and deliberately
+**inverted**: it asserts the trip cannot fire, so it **goes red when the roll is built** and forces
+§8.23 to be retired rather than absorbed (the §8.17 pattern). 59 → **62 checks**.
+
+**The first injection was a bad test, and that is the lesson.** Forcing an overshoot by taking
+`sync_tau` 0.5 → 0.005 changed nothing — peak 1801.02 either way — because `hot_full_power`
+*starts* at rated, so `(rated − rpm)` is zero and there is nothing to overshoot. Valid injections:
+setpoint → 1700 reddens one check; sync target → 2100 rpm reddens both, at a peak indicated
+**2000.00**, which is the instrument range clamping and is itself the note above about widening it.
+
+### Incidental, same class
+
+`Manuals/12` §9.0 documented the **pre-#284** `mwe_output` — *"(core power) × 100 MWe × …"* — when
+the engine has read **turbine steam admission** since that fix, whose own comment records the
+50 MWe ask that indicated 98.8 MWe. The code moved; the manual kept reciting the removed defect.
+Corrected, with the divergence case stated. Manual set **Rev 13**.
+
+---
+
 ## 2026-08-03a — #311: OTΔT / OPΔT, and why the limit line is SCALED rather than re-anchored
 
 ### The decision
