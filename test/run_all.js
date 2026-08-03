@@ -362,7 +362,10 @@ var BASELINES = {
   // deleted the false positive and added a real ruling: a wash. So this gate over-reports
   // its site count, and a false positive can lend its window to a genuinely missing
   // citation. Do not infer "no citation was added" from a flat number here.
-  'run_hardrules.js':      { code: 0, score: '100checks 0failed' },
+  // 100 -> 103 on 2026-08-03 (#312): the Tier A/B ruling, cited in CURRICULUM.md, CLAUDE.md and
+  // the TUNING_LOG write-up. The third site is the standing lesson — WRITING THE CHANGE UP moves
+  // this gate, so re-run it AFTER the docs, not after the code.
+  'run_hardrules.js':      { code: 0, score: '103checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

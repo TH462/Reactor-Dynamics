@@ -7,15 +7,18 @@
 >
 > | Tier | Status |
 > |---|---|
-> | **A** dynamics | **PROPOSAL** — not binding |
-> | **B** procedures | **PROPOSAL** — not binding |
+> | **A** dynamics | **RULED 2026-08-03** — binding for the PWR, all nine couplings |
+> | **B** procedures | **RULED 2026-08-03** — binding for the PWR. **Read the completeness note**: the evolution list is a subset and a second pass is owed |
 > | **C** casualties | **RULED 2026-08-03** — binding for the PWR. See the Core/Covered split below |
 > | **D** flagship | adopt as-is (`DESIGN_COMPANION.md` §5) |
+>
+> **All four tiers are now settled for the PWR** *(OWNER RULING, 2026-08-03: "Tier A looks good,
+> make it so. Tier b looks good, also make it so.")*. RBMK and BWR remain undrafted and on hold.
 
 **What this is for.** `DESIGN_CRITERIA.md` Q2 asks *"what is the educational value?"* — a question
 that cannot be answered until there is a stated objective to answer it against. This file is that
 objective. Split out of `DESIGN_CRITERIA.md` §6 on 2026-08-03 because it is a different artifact:
-that document is BINDING and plant-agnostic, this one is a PROPOSAL and grows with every plant.
+that document is plant-agnostic, this one is **per-plant** and grows with every plant added.
 
 **Four things, per plant** *(OWNER, 2026-08-02: "We should define several things for each of the
 plants. 1. The dynamics/interactions we want to show and their physics. 2. The normal operating
@@ -25,8 +28,8 @@ be real events.")*:
 
 | | Category | Tier | Status |
 |---|---|---|---|
-| 1 | **Dynamics / interactions** and their physics | A | drafted, PWR only |
-| 2 | **Normal operating procedures** | B | drafted, PWR only |
+| 1 | **Dynamics / interactions** and their physics | A | **RULED 2026-08-03**, PWR |
+| 2 | **Normal operating procedures** | B | **RULED 2026-08-03**, PWR |
 | 3 | **Casualties** the user should handle | C | **RULED 2026-08-03**, PWR |
 | 4 | **Flagship scenarios** — need not be real events | D | adopt existing |
 
@@ -139,9 +142,65 @@ runnable on the board and replayed by `run_procedures_stack`:
 | Shutdown to Hot Standby | PWR-N14 | `pwr_shutdown` |
 | Cooldown, Mode 3 → Mode 5 | PWR-N15 | `pwr_cooldown` |
 
-Two gaps the list makes visible: the approach to critical is a **T**-numbered *training* procedure,
-not an N-numbered normal one, and there is **no boration/dilution evolution** — the content-end
-face of the missing manual borate control.
+**THE LIST ABOVE IS A SUBSET, and how it was built is the reason** *(the same methodological error
+as Tier A and Tier C — see the note under Tier A)*. The eight are **exactly the eight normal
+evolutions that already have a runnable checklist**, so the list was derived from what is *built*
+rather than from what the plant should teach — which makes ratifying it very nearly a rubber stamp.
+
+**Enumerated from the ENGINE and the full manual set, 2026-08-03** *(OWNER, 2026-08-03: "The
+checklists and manuals may not be complete. Check the actual engine to see what it's capable of.")*
+— the coverage is wider than the normal-procedure index alone shows:
+
+| | Documented | Runnable checklists |
+|---|---|---|
+| **N** normal operations | 15 | 7 |
+| **T** mode transitions | **19** | **1** (T03) |
+| **E** abnormal / emergency | 24 | 3 + the TMI narrative |
+| **X** combined | 1 | 0 |
+| **total** | **59** | **12** |
+
+**The T family was invisible to the first pass** and it is the one that matters most here:
+**PWR-T06, the post-trip response**, is documented and is where PWR-E03 explicitly sends the
+operator after a turbine trip above P-9 — with **no runnable checklist**. A reactor trip is the most
+common significant event on any plant, and recovering from one is not an authored evolution.
+
+**Engine-side, 63 commands exist and 17 are named by no authored content.** Most are correctly
+orphaned — instructor and failure machinery (`inject_failure`, `stuck_control_rod`,
+`secondary_depressurize`), the code safeties (deliberately not operator switches) and `set_lpi`
+(merged with HPI by a Q3 decision). **Three are real operator capabilities with nothing behind
+them**: **`reset_rps`** — board-reachable since #75 and required after *every* scram, named by no
+checklist; **`isolate_feedwater`**, which latches with **no board control to restore it** (#305);
+and **`set_condensate_pump`**, an engine capability with no board face at all.
+
+Seven documented *normal* evolutions have no row:
+
+| Procedure | | Note |
+|---|---|---|
+| **PWR-N02** | Mode 3, Hot Standby — plant lineup | |
+| **PWR-N04** | Mode 2, Startup — low-power operation and POAH | |
+| **PWR-N05** | Turbine roll and generator synchronization | **open by design** — #307 asks whether this should be a taught evolution at all; `DESIGN_CRITERIA.md` §4 names it an escalation case |
+| **PWR-N06** | Power ascension Mode 1 to 100 % | distinct from N07's power *maneuvering* |
+| **PWR-N09** | **Boron and reactivity management (including xenon)** | the natural home for demonstrating **A7 and A8**, neither of which any content demonstrates today |
+| **PWR-N11** | Pressurizer level control (CVCS) | |
+| **PWR-N13** | Reactor coolant pump (RCP) operation | |
+
+(PWR-N03, approach to criticality, *is* covered — `pwr_startup` carries it under the PWR-T03
+training reference. Complete in substance, inconsistent in numbering: it is the one **T**-numbered
+entry in an otherwise **N**-numbered loop.)
+
+**A second pass over this list is owed** — the ruling settles the eight, not the shape of the tier.
+
+**PWR-N09 is the strongest candidate, and the board already supports it.** An earlier draft of this
+section claimed there was "no boration/dilution evolution — the content-end face of the missing
+manual borate control". **That was wrong** *(OWNER, 2026-08-03: "The board has boration/dilution
+it's just the auto borate/dilute to meet the ppm setpoint.")*. The board carries a full
+borate/dilute affordance: **BORON CONTROL ON/OFF + target ppm**, where raising the target borates
+and lowering it dilutes, metered as a **batch dose at ~0.05 ppm/s** and stopped by a flow
+totalizer (`Manuals/03` §7.5). What has no board face is the *rate* path (`set_boron_adjust`), not
+boration itself — and the batch-to-a-target model is how a real makeup panel works, as is knowing
+concentration from **chemistry grab samples** rather than a boronometer. Measured 2026-08-03, full
+stack: borating **617.8 → 700 ppm takes ~28 plant-minutes** and walks the plant **100 → 75.5 %
+power** with the operator touching nothing else — which is A8, demonstrated, in half an hour.
 
 **Some systems reveal no coupling and are correct anyway.** Naming them stops a future reviewer
 "simplifying" them out on the grounds that they teach no physics:

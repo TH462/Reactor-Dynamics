@@ -194,6 +194,81 @@ becomes **8 owed** against an 11-row Core, ranked most-built-first, with steam l
 because #295 F5 blocks an honest checklist. #311's flag and #140 resolve as consequences rather
 than as separate decisions.
 
+### Tiers A and B RULED — and the owner's correction exposed how Tier B was built
+
+*(OWNER RULING, 2026-08-03: "Tier A looks good, make it so. Tier b looks good, also make it so.")*
+All four PWR tiers are now settled.
+
+**The owner corrected a claim I had written into Tier B twice** *(OWNER, 2026-08-03: "The board has
+boration/dilution it's just the auto borate/dilute to meet the ppm setpoint.")*. I had recorded
+"**no boration/dilution evolution** — the content-end face of the missing manual borate control".
+Wrong on both halves. `Manuals/03` §7.5 documents the board affordance plainly: **BORON CONTROL
+ON/OFF + target ppm**, raise the target to borate and lower it to dilute, metered as a **batch dose
+at ~0.05 ppm/s** stopped by a flow totalizer. What has no board face is the **rate** path
+(`set_boron_adjust`) — not boration. And the batch-to-a-target model *is* how a real makeup panel
+works, as is reading concentration from **chemistry grab samples** rather than a boronometer, so
+the design is more prototypical than my note implied, not less.
+
+**And `PWR-N09 — Boron and reactivity management (including xenon)` was already written.** I called
+it a missing evolution without opening the procedure index. That is **the third instance today of
+the same error** — asserting a coverage gap from reasoning instead of from the artifact (the first
+two: the Tier C "modifiers" taxonomy invented over an unread manual index, and the Tier A table
+derived from what is demonstrated). The artifact was one `grep` away every time.
+
+**Measured, so the evolution is not hypothetical** (full stack, `hot_full_power`, shipped lineup):
+borating **617.8 → 700 ppm takes ~28 plant-minutes** and walks the plant **100 → 75.5 % power**,
+Tavg **579.3 → 536.0 °F (304.1 → 280.0 °C)**, with the operator touching nothing else. That is
+**A8 demonstrated in half an hour**, and PWR-N09 covers **A7 as well** — the two Tier A couplings
+no content demonstrates today.
+
+**THE STRUCTURAL FINDING: Tier B's evolution list was derived from what is BUILT.**
+`Manuals/04_NORMAL_OPERATIONS.md` documents **15** normal procedures (PWR-N01…N15); the tier listed
+**8**, and those eight are **exactly the eight with a runnable checklist**. Ratifying that list is
+very nearly a rubber stamp — §7's named failure mode, reached from a different direction. Seven
+documented evolutions have no row: **N02** (Mode 3 lineup), **N04** (Mode 2 low power / POAH),
+**N05** (turbine roll & sync — open by design, #307), **N06** (power ascension to 100 %), **N09**
+(boron & reactivity), **N11** (pzr level / CVCS), **N13** (RCP operation). N03 is covered in
+substance by `pwr_startup` under the **T**03 reference — the one T-numbered entry in an otherwise
+N-numbered loop. **The ruling stands for the eight; a second pass over the shape of the tier is
+owed** and is recorded in the file and in `CLAUDE.md`.
+
+**THEN THE OWNER SENT ME TO THE ENGINE, and the picture got bigger again** *(OWNER, 2026-08-03:
+"The checklists and manuals may not be complete. Check the actual engine to see what it's capable
+of.")*. I had enumerated the **N** index and stopped. Enumerated properly:
+
+| | Documented | Runnable |
+|---|---|---|
+| **N** normal | 15 | 7 |
+| **T** mode transitions | **19** | **1** |
+| **E** abnormal/emergency | 24 | 3 + TMI |
+| **X** combined | 1 | 0 |
+| | **59** | **12** |
+
+**The whole T family was invisible to me**, and I had even noticed its tell — `pwr_startup` carries
+the ref **PWR-T03**, which I wrote up twice as "a numbering inconsistency" instead of pulling the
+thread. The sharpest item in it: **PWR-T06, the post-trip response**, documented, and the place
+`PWR-E03` explicitly sends the operator after a turbine trip above P-9 — **no runnable checklist**.
+A reactor trip is the most common significant event on a plant and recovering from one is not an
+authored evolution.
+
+**Engine side: 63 commands, 17 named by no authored content.** Most are correctly orphaned
+(instructor/failure machinery, the code safeties, `set_lpi` merged by a Q3 decision). **Three are
+real operator capabilities with nothing behind them:** **`reset_rps`** — board-reachable since #75,
+required after *every* scram, named by no checklist; **`isolate_feedwater`**, which latches with
+**no board control to restore it** (#305); and **`set_condensate_pump`**, no board face at all.
+
+**The standing lesson, now earned three times in one session:** a coverage list built from
+*authored content* measures the content, not the plant. Enumerate the **engine** and the **whole**
+document set, then subtract. I wrote exactly that into Tier A for the RBMK/BWR builds and then
+failed to apply it to the PWR's own Tier B.
+
+**One measurement I could not explain and did NOT chase.** Through that boration the plant cooled
+**43.3 °F (24.1 °C)** with `rods_tavg` in the shipped lineup, `load_mode` **manual**, and MWe
+tracking power down 100 → 76.9. Whether the rod channel should have held Tavg against a 28-minute
+boration, or whether Tavg correctly tracks its program down as power falls, is **unresolved** —
+stated here as an observation, not a defect, because I have not measured the Tavg program. Worth a
+look before PWR-N09 is authored, since the answer decides what that procedure teaches.
+
 ### The HR11 arithmetic did not add up, and chasing it found a gate false positive
 
 Adding a correctly-formatted `OWNER RULING` to `CURRICULUM.md` left `run_hardrules` at **98**.
