@@ -179,7 +179,19 @@
     this.reading.porv_indicator = (extras && extras.porv_commanded_open) ? 'open' : 'closed';
     this.reading.subcooling_margin = T_sat(this.reading.primary_pressure) - this.reading.tavg;
     this.reading.pzr_level_dev = this._levelDev(extras);
+    this.reading.rod_limit_margin = this._rodLimitMargin(extras);
     this._copyStatus(extras);
+  };
+
+  // Steps of control-bank travel remaining above the rod insertion limit (#306). A
+  // passthrough of the engine's own subtraction rather than a second computation of it —
+  // `insertion_limit_steps` is power-dependent and re-derived every tick, and a copy here
+  // would be a second place for the RIL curve to live. Clipped to the declared range so a
+  // fine-step retune cannot push the reading past its own instrument span.
+  PWRInstruments.prototype._rodLimitMargin = function (extras) {
+    var sp = this.specs.rod_limit_margin, v = (extras || {}).rod_limit_margin;
+    if (v == null || !isFinite(v)) return sp.range[1];
+    return clip(v, sp.range[0], sp.range[1]);
   };
 
   // Pressurizer level deviation from PROGRAM (#262), in % of span. Derived from the
@@ -262,6 +274,7 @@
 
     // Level deviation from program (#262) — the inventory cue. See _levelDev.
     this.reading.pzr_level_dev = this._levelDev(extras);
+    this.reading.rod_limit_margin = this._rodLimitMargin(extras);
 
     this._copyStatus(extras);
     return this.reading;

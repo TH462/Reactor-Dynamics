@@ -103,6 +103,12 @@
       // caused it clears. Without it the note is write-once — see stepAutomation.
       var ch = { def: chDefs[ci], engaged: false, sp: null, spEff: null, I: 0, lastAct: null,
                  lastSent: null, note: '', standDown: null, sat: null, bangMode: 'idle', pvF: null, pvNow: null, rate: null,
+                 // `trimSlow` is the slow-follower state a RATE-comparator trim keeps (#306).
+                 // It lives on the channel, not in the trim's closure: a closure variable would
+                 // be module scope, shared across engine instances, and invisible to save /
+                 // restore / rewind — the plant would come back from a checkpoint with a
+                 // controller mid-transient in a way nothing recorded.
+                 trimSlow: null,
                  concMode: 'hold', concBasis: null, concLastSp: null, concSampleSeq: null };
       this.channels.push(ch);
       this.byId[chDefs[ci].id] = ch;
@@ -897,11 +903,53 @@
              reset_block: resetBlock };
   };
 
+  // Live interlock state, for surfaces that must report a standing BLOCK rather than
+  // only refuse the command that runs into it (#306).
+  //
+  // WHY THIS EXISTS. `interlockActive` was kernel-internal, so a board could learn about
+  // an interlock only by issuing a command and reading the refusal — which means a rod
+  // withdrawal block was invisible until the operator tried to withdraw and was told no.
+  // The alternative, deriving it board-side from the instrument and the config table, is a
+  // SECOND COPY of a latched, hysteretic condition (engage on setpoint, clear on
+  // clears_below), and a second copy of a threshold is the defect class this repo keeps
+  // finding — #294 and #303 are both that shape. So the kernel publishes it, exactly as it
+  // already publishes `trip_block_status` for the same reason.
+  //
+  // Keyed by INDEX into `config.interlocks`, which is the same handle `_evalInterlocks` and
+  // `_interlockBlocking` use, plus the identifying fields a consumer needs to find the one
+  // it cares about without matching prose. `blocks`/`withdrawal_only` are copied rather
+  // than referenced so a consumer cannot mutate the config through the snapshot.
+  ControlLayer.prototype.getInterlockState = function () {
+    var ils = this.config.interlocks || [], out = [];
+    for (var i = 0; i < ils.length; i++) {
+      var il = ils[i];
+      out.push({
+        index: i,
+        active: !!this.interlockActive[i],
+        instrument: il.instrument,
+        blocks: (il.blocks || []).slice(),
+        withdrawal_only: !!il.withdrawal_only,
+        message_learning: il.message_learning || '',
+        message_industry: il.message_industry || '',
+      });
+    }
+    return out;
+  };
+
+  // True when a standing interlock would refuse the given command RIGHT NOW — the
+  // question a board actually wants answered ("is withdrawal blocked?"), asked without
+  // issuing the command. Runs the same predicate the block itself uses, so the two cannot
+  // drift: `_interlockBlocking` is the single implementation.
+  ControlLayer.prototype.isCommandBlocked = function (cmd) {
+    return !!this._interlockBlocking(cmd);
+  };
+
   ControlLayer.prototype.getSnapshotSections = function () {
     return {
       rps_state: this.getRpsState(),
       alarms: this.getAlarms(),
       active_failures: this.getActiveFailures(),
+      interlocks: this.getInterlockState(),
     };
   };
 
@@ -1052,7 +1100,7 @@
       // conc: open the books at the captured target — no dose pending on engage;
       // sample seq re-latches on the first evaluation (a stale result must not fire).
       c.concBasis = c.sp; c.concLastSp = c.sp; c.concSampleSeq = null;
-      c.pvF = null; c.rate = null;
+      c.pvF = null; c.rate = null; c.trimSlow = null;
     } else {
       // Leave the plant exactly where automation had it — plus safe stand-down.
       if (def.kind === 'rods') this._sendInternal({ action: 'rod_stop', group_id: def.group_id });
@@ -1244,7 +1292,10 @@
     // the lumped rod group is coarse and the instruments lag, so undamped
     // stepping limit-cycles.
     var e = (c.spEff != null ? c.spEff : c.sp) - c.pvF;
-    var eEff = e + (def.trim ? def.trim(ctx) : 0) - (def.kd || 0) * (c.rate || 0);
+    // trim(ctx, c, dt): the channel record and the step are passed so a trim can be
+    // STATEFUL (the #306 rate comparator keeps a slow follower on `c.trimSlow`). A pure
+    // trim simply ignores them.
+    var eEff = e + (def.trim ? def.trim(ctx, c, dt) : 0) - (def.kd || 0) * (c.rate || 0);
     if (Math.abs(e) <= def.db) { c.note = 'holding'; return; }
     if (c.lastAct != null && t - c.lastAct < def.period) return;
     var g = rodGroupById(ctx, def.group_id) || rodGroup(ctx, 'control');
@@ -1286,6 +1337,31 @@
     } else if (c.bangMode === 'dilute' && pos <= def.hiStop) want = 'idle';
     else if (c.bangMode === 'borate' && pos >= def.loStop) want = 'idle';
     if (want === c.bangMode) {
+      // RE-ASSERT (#306). This channel's output is a LATCHED plant setting, not a
+      // continuous demand, and this branch is its steady state — so without this the
+      // channel sends once on the mode EDGE and never again. Anything that writes the
+      // same setting afterwards silently cancels it while `bangMode` still says 'dilute',
+      // and the note goes on claiming the channel has the plant.
+      //
+      // MEASURED, and not hypothetical: with `boron_trim` engaged and diluting, a single
+      // operator `set_boron_adjust rate: 0` cancelled it, and the plant then sat for
+      // 2400 s with boron_adjust = 0, the charging pump running, and the channel reporting
+      // "dilute…" throughout. Found because the #306 rod change stopped MASKING it — the
+      // old proportional trim recovered the rods off a 4.8 % power overshoot within 300 s,
+      // so the channel went 'in band' before anyone could notice its output was dead.
+      //
+      // Same family as `_stepPid`'s atRail send below: re-sending a value the plant already
+      // holds is not chatter, and a silently-cancelled controller is the #210/#214 failure.
+      // `def.output(ctx)` reads back what the PLANT currently holds. It is a per-plant
+      // callback for the same reason `busyNote` is one — HR3: no plant field names in the
+      // shared kernel. Omit it and the channel keeps the old edge-triggered behaviour.
+      var wantRate = c.bangMode === 'borate' ? def.rate : c.bangMode === 'dilute' ? -def.rate : 0;
+      if (c.bangMode !== 'idle' && def.output) {
+        var actual = def.output(ctx);
+        if (actual != null && Math.abs(actual - wantRate) > 1e-9) {
+          this._sendInternal({ action: 'set_boron_adjust', rate: wantRate });
+        }
+      }
       // busyNote: optional per-plant status suffix (HR3 — no plant fields here).
       c.note = c.bangMode === 'idle' ? 'in band' : (c.bangMode + '…' +
         (def.busyNote ? def.busyNote(ctx) : ''));
@@ -1443,7 +1519,7 @@
     var ch = {};
     for (var i = 0; i < this.channels.length; i++) {
       var c = this.channels[i];
-      ch[c.def.id] = { engaged: c.engaged, sp: c.sp, spEff: c.spEff, I: c.I, lastAct: c.lastAct,
+      ch[c.def.id] = { engaged: c.engaged, sp: c.sp, spEff: c.spEff, I: c.I, lastAct: c.lastAct, trimSlow: c.trimSlow,
                        lastSent: c.lastSent, note: c.note, standDown: c.standDown, sat: c.sat, bangMode: c.bangMode, pvF: c.pvF, rate: c.rate,
                        concMode: c.concMode, concBasis: c.concBasis, concLastSp: c.concLastSp,
                        concSampleSeq: c.concSampleSeq };
@@ -1474,6 +1550,10 @@
         c.note = sv.note || ''; c.standDown = sv.standDown || null; c.sat = sv.sat || null;
         c.bangMode = sv.bangMode || 'idle';
         c.pvF = sv.pvF != null ? sv.pvF : null; c.rate = sv.rate != null ? sv.rate : null;
+        // Absent in a pre-#306 save. null re-seeds the follower on the next evaluation,
+        // which outputs ZERO that step — the same thing engaging the channel does, and the
+        // safe migration: a restored plant must not be handed a phantom rate signal.
+        c.trimSlow = sv.trimSlow != null ? sv.trimSlow : null;
         // conc batch state: an old save (pre-batch) has none — open the books at
         // the saved target so no phantom dose starts on load.
         c.concMode = sv.concMode || 'hold';

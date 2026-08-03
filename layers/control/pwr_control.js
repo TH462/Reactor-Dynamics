@@ -395,7 +395,20 @@
     { id: 'pzr_level_high',    instrument: 'pzr_level',        direction: 'high',    setpoint: 75.0,  priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level High',          label_industry: 'PZR LVL HI' },
     { id: 'pzr_level_low',     instrument: 'pzr_level',        direction: 'low',     setpoint: 25.0,  priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Low',           label_industry: 'PZR LVL LO' },
     { id: 'pzr_level_lolo',    instrument: 'pzr_level',        direction: 'low',     setpoint: 12.0,  priority: 'critical', panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Very Low',      label_industry: 'PZR LVL LO LO' },
-    { id: 'rod_limit',         instrument: 'rod_at_limit',     direction: 'is_true', setpoint: null,  priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Insertion Limit',  label_industry: 'ROD INS LIMIT' },
+    // ---- the insertion-limit PAIR (#306) ---------------------------------------------
+    // A real board carries two, and we shipped only the second, so the first thing a player
+    // learned about the limit was hitting it. WTSM 8.4 (ML11223A256): *"Rod Limit Low
+    // setpoint = RIL + 10 steps"*, *"Rod Limit Low-Low setpoint = RIL"* — and the Lo-Lo is
+    // the tech-spec violation, not merely a deeper warning: *"If the ROD LIMIT Lo-Lo alarm
+    // is alarming, the technical specification limit for rod insertion has been violated."*
+    //
+    // 40 fine steps IS the real 10. This drive is 912 fine steps against a real bank's 228
+    // (pwr_config §rods), so the prototypical 10-step approach band is 40 here. Do NOT
+    // "correct" it to 10: that is 2.5 real steps of warning on a bank the auto channel can
+    // move at 24 equivalent steps a minute — no warning at all. It reads `rod_limit_margin`,
+    // which is in the same fine steps.
+    { id: 'rod_limit_approach', instrument: 'rod_limit_margin', direction: 'low',     setpoint: 40,    priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Approaching Insertion Limit', label_industry: 'ROD LIMIT LO' },
+    { id: 'rod_limit',         instrument: 'rod_at_limit',     direction: 'is_true', setpoint: null,  priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Insertion Limit',  label_industry: 'ROD LIMIT LO-LO' },
     // ---- the small-leak cue pair (#262, owner ruling 2026-07-30) ----------------------
     // A leak inside CVCS make-up authority is HELD, and that is the problem: the plant
     // quietly loses inventory with charging near maximum and, before these two, nothing
@@ -724,6 +737,22 @@
   var TAVG_FULLPOWER = _tsat((_sg && _sg.steam_p_rated) || 5.65)
     + (_thm.heat_gen_coeff * (1 + (_thm.pump_heat_frac || 0))) / _thm.h_sg;
   function trefProgram(loadFrac) { return TAVG_NOLOAD + (TAVG_FULLPOWER - TAVG_NOLOAD) * clip(loadFrac, 0, 1); }
+
+  // Washout time constant for the rod channel's power-mismatch RATE comparator (#306).
+  // TUNED, not sourced — WTSM 8.1.4.2 describes the circuit but publishes no time constant.
+  //
+  // SWEPT, 0.5 → 300 s, on the four load transients plus a 2 h soak (full table in
+  // Diagnostic/TUNING_LOG.md 2026-08-02b). The usable band is 3–8 s and it is bounded at BOTH
+  // ends, which is why this is not "as small as possible":
+  //   - too LONG and the standing mismatch comes back — the 5 %/min ramp degrades steadily,
+  //     6.25 °F at 45 s and 8.16 °F at 300 s against 12.55 °F for the old proportional term.
+  //   - too SHORT and it differentiates instrument noise. At 1 s the bank travels **761 fine
+  //     steps an hour** at a settled 75 % load (against 17 here) and the 50 % step gets WORSE
+  //     than the term it replaced, 13.06 °F vs 10.59 °F. That is the cliff, and 5 s sits 5×
+  //     above it.
+  // At 5 s the 5 %/min ramp holds **4.77 °F**, inside the WTSM 8.1.1 ±5 °F duty, which the
+  // proportional form missed by 2.5×. [tune]
+  var TRIM_TAU_S = 5;
   function trefFromLoad(s) { return trefProgram(clip(s.instruments.steam_flow, 0, 1)); }
 
   // ---- Post-trip feedwater handoff + heat-sink protections (feel-plan P4) ----
@@ -798,7 +827,36 @@
       // real system's power-mismatch channel) with the Tavg−Tref error as the
       // slow trim. Tavg integrates the mismatch, so a Tavg-dominant loop
       // limit-cycles for minutes; mismatch-dominant glides.
-      trim: function (s) { return 1.25 * (s.instruments.steam_flow * 100 - s.instruments.power_range); },
+      // The mismatch term is a RATE COMPARATOR (#306, 2026-08-02), which is what the real one
+      // is — and WTSM 8.1.4.2 (ML11223A252) states the reason in as many words: *"The rate
+      // comparator of the power mismatch circuit monitors the two power inputs and provides an
+      // output if, and only if, there is a rate of change of the difference between the inputs.
+      // **This rate comparator prevents the power mismatch circuit from responding to steady
+      // state calibration differences between nuclear and turbine power.**"*
+      //
+      // Ours was PROPORTIONAL to the standing mismatch and the measured consequence was not
+      // subtle: through a 5 %/min ramp the standing term grew until it CANCELLED the
+      // temperature error outright — at t = 360 s the two were −4.64 and +4.41, leaving
+      // eEff = −0.04, so the channel commanded ZERO rod steps with Tavg 8.6 °F off program.
+      //
+      // Implementation is a washout. `trimSlow` follows the standing part of the mismatch with
+      // time constant TRIM_TAU_S; the controller sees only what is LEFT, i.e. the part that is
+      // changing. A steady mismatch decays to nothing; a changing one passes through. Seeded on
+      // the first evaluation — and re-seeded on engage and on restore — which outputs zero that
+      // step: engaging mid-transient must not hand the controller a phantom rate signal.
+      //
+      // GAIN IS UNCHANGED at 1.25, deliberately. A STEP change in mismatch still produces the
+      // same initial push it always did, so the step-change response every scenario is tuned
+      // around is preserved; only the STANDING component is removed. TRIM_TAU_S is the one new
+      // number, and it is TUNED, not sourced — WTSM describes the circuit but gives no time
+      // constant. The sweep behind the value is in Diagnostic/TUNING_LOG.md 2026-08-02b.
+      trim: function (s, c, dt) {
+        var d = s.instruments.steam_flow * 100 - s.instruments.power_range;
+        if (c.trimSlow == null) { c.trimSlow = d; return 0; }
+        var a = dt / (TRIM_TAU_S + dt);
+        c.trimSlow += a * (d - c.trimSlow);
+        return 1.25 * (d - c.trimSlow);
+      },
       // ±0.8 °C (±1.5 °F) lockup band; error-proportional speed ladder [tune].
       speeds: [{ above: 0.8, speed: 'slow' }, { above: 2.0, speed: 'normal' }, { above: 4.0, speed: 'fast' }],
       // gain/maxStep are in FINE steps (912-step drive, 2026-07-23): ×4 the old
@@ -810,7 +868,22 @@
       hint: 'CVCS chemistry trim — borates when the auto rods sit too deep, dilutes when they run out of travel, so rod control keeps its authority through xenon and load drifts. Needs the rod channel engaged and the charging pump running.',
       requires: 'rods_tavg', offOnScram: true,
       busyNote: function (s) { return s.control_state.charging_pump_running === false ? ' (charging pump OFF)' : ''; },
-      hi: 96.0, lo: 55.0, hiStop: 90.0, loStop: 62.0, rate: 0.5 },
+      // Read-back of what the PLANT currently holds, so the kernel can notice its output has
+      // been cancelled and re-assert it (#306). A per-plant callback, like `busyNote` above,
+      // because the kernel may not name a plant field (HR3) — `run_hr3` caught the first
+      // version of this doing exactly that.
+      output: function (s) { return s.control_state.boron_adjust; },
+      // `rate` 0.5 → 0.05 ppm/s (#306, 2026-08-02). 0.5 was never actually delivered: the
+      // kernel's bang step was EDGE-triggered, so the channel sent one `set_boron_adjust` on
+      // the mode change and never again, and anything that wrote that setting afterwards
+      // cancelled it silently while the note still read "dilute…". Once the kernel was made to
+      // re-assert, the real 0.5 ppm/s ran continuously — 5 pcm/s — and SCRAMMED the plant.
+      // Measured: 0.5 scrams, 0.1 / 0.05 / 0.02 all hold. 0.05 is the rate this repo already
+      // calls the tuned makeup rate (run_autoctl's own probe borates by hand at 0.05 and calls
+      // 0.5 "a firehose that scrams the plant"), and it leaves 2× margin under the first value
+      // that still works. Both halves were hidden until the #306 rod change stopped masking
+      // them — see the TUNING_LOG entry. [tune]
+      hi: 96.0, lo: 55.0, hiStop: 90.0, loStop: 62.0, rate: 0.05 },
 
     { id: 'boron_conc', kind: 'conc', group: 'Reactor',
       label: 'Boron concentration (target)',

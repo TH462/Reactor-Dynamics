@@ -307,6 +307,7 @@
   // just stood DOWN. Disengaged channels are reported here deliberately.
   var ITEM_CHANNEL = {
     ims5glucngg: 'rods_tavg',                                                  // ROD AUTO
+    bdRodStatus: 'rods_tavg',                                                  // the rod status word itself (#306)
     imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc',                      // boron ON / OFF
     imrpq29jo7t: 'boron_conc',                                                 // boron target ppm
     imrsgjmrjfg: 'feed_sg', imrsgjuh7l0: 'feed_sg', imrsgjwq1q0: 'feed_sg',    // feed AUTO / MAN / OFF
@@ -341,6 +342,55 @@
     if (c.saturated === 'lo') return { text: 'SAT LO', color: BD_WARN };
     return { text: 'HOLDING', color: BD_OK };
   }
+  // ---- the ROD status word (#306) --------------------------------------------------
+  // Same shape and the same discipline as feedStatus above: switched on CODES
+  // (`scrammed`, `engaged`, `at_insertion_limit`, `moving`/`direction`), never on the
+  // channel's note, which is prose written for a human and would break silently the
+  // first time someone reworded it.
+  //
+  // ORDER IS DELIBERATE, and AT LIMIT deliberately outranks motion. The bank can be
+  // sitting on the insertion limit and withdrawing at the same time — the limit only
+  // stops INWARD motion — so the two facts are not exclusive, and the limit is the one
+  // that says the controller has run out of room in the direction it normally corrects.
+  // Nothing is lost by ranking it first: the IN-OUT lamps on the WITHDRAW/INSERT buttons
+  // report the motion at the same instant, which is exactly the division a real board
+  // uses (the ROD LIMIT annunciators are independent of the in-out lamps, WTSM 8.4).
+  //
+  // AMBER for everything that is not "the controller has this and is regulating": a
+  // tripped bank, an operator-driven one, and one pinned against its limit are all states
+  // where nobody should read the green ROD AUTO lamp as "Tavg is being looked after".
+  // Is a standing interlock refusing rod WITHDRAWAL right now? Reads the kernel's published
+  // interlock state (#306) rather than re-deriving the latch from the instrument and the
+  // config table — the block engages on `setpoint` and clears on `clears_below`, so a
+  // board-side copy would be a second implementation of a hysteretic condition, which is
+  // the #294/#303 defect shape. Matches on the BLOCKS list, not on prose or on an index.
+  function rodWithdrawBlocked(s) {
+    var ils = (s && s.interlocks) || [];
+    for (var i = 0; i < ils.length; i++) {
+      var il = ils[i];
+      if (!il.active) continue;
+      var b = il.blocks || [];
+      if (b.indexOf('rod_start') >= 0 || b.indexOf('rod_nudge') >= 0) return true;
+    }
+    return false;
+  }
+  function rodStatus(s) {
+    var g = rodGroup(s, 'control_rods');
+    if (!g) return { text: '—', color: BD_WARN };
+    if (g.scrammed) return { text: 'TRIPPED', color: BD_WARN };
+    var c = chan(s, 'rods_tavg');
+    if (!c || !c.engaged) return { text: 'MANUAL', color: BD_WARN };
+    if (g.at_insertion_limit) return { text: 'AT LIMIT', color: BD_WARN };
+    // A withdrawal block outranks motion for the same reason AT LIMIT does — both say the
+    // controller has lost a direction — and it outranks AT LIMIT only in that it can be
+    // true while the bank is nowhere near its floor. Ordered after, because being ON the
+    // insertion limit is the more consequential of the two: the limit is a tech-spec floor,
+    // the SUR block is a transient rate guard that clears itself.
+    if (rodWithdrawBlocked(s)) return { text: 'BLOCKED', color: BD_WARN };
+    if (g.moving && g.direction > 0) return { text: 'OUT', color: BD_OK };
+    if (g.moving && g.direction < 0) return { text: 'IN', color: BD_OK };
+    return { text: 'HOLDING', color: BD_OK };
+  }
   // Module scope so selfTest can reach it — the driver object literal cannot call its
   // own methods from inside selfTest.
   function liveNoteFor(id, s) {
@@ -360,6 +410,34 @@
     var g = (CS(s).rod_groups || []);
     for (var i = 0; i < g.length; i++) if (g[i].id === id) return g[i];
     return null;
+  }
+  // ---- IN-OUT lamps and rod speed indication (#306) --------------------------------
+  // A real Westinghouse board carries *"Rod speed indication and the IN-OUT lights"*
+  // among its rod controls, and the lamps are the AUTOMATIC system's voice as much as
+  // the operator's: *"In-and-out lamps on the control board indicate that rod motion has
+  // been requested by either the IN-HOLD-OUT switch **or the reactor control unit**"*
+  // (WTSM 8.1 §8.1.7.1/§8.1.7.2, ML11223A252). We had neither — the control WITHDRAW /
+  // INSERT buttons carried no lit state at all, so with rod control in AUTO the only
+  // evidence that anything was happening was the step count ticking.
+  //
+  // `direction` is +1 out / -1 in. SCRAM IS EXCLUDED DELIBERATELY: on a trip the rods
+  // fall on gravity with the drive de-energized, which is not a demand from the switch
+  // or from the reactor control unit, and lighting IN there would say the drive is
+  // running when it has just been dropped.
+  function rodDriving(s, dir) {
+    var g = rodGroup(s, 'control_rods');
+    return !!(g && g.moving && !g.scrammed && g.direction === dir);
+  }
+  // The speed the DRIVE is running at right now, or null when it is not driving. This is
+  // the indication half of the SLOW/MED/FAST row; the row keeps its authored green for
+  // the operator's own selection (`rodSpeed`) and takes the board's yellow "moving right
+  // now" class for this. Two colours because they are two different facts: with the
+  // channel in AUTO the speed it picks off its own error ladder is frequently NOT the one
+  // the operator last selected, and painting the auto's choice green would read as though
+  // their selection had been changed under them.
+  function rodDrivingSpeed(s) {
+    var g = rodGroup(s, 'control_rods');
+    return (g && g.moving && !g.scrammed && g.speed) ? g.speed : null;
   }
   function pumpRec(s, id) {
     var p = (CS(s).pumps || []);
@@ -425,11 +503,21 @@
     // --- Control rods: WITHDRAW / INSERT — momentary (tap-or-hold). A quick TAP
     // moves ONE step; HOLDING drives the bank at the selected speed until release
     // (rod_start / rod_stop). See the hold state machine in the driver API below. ---
-    imrpk6qzjq8: { hold: { group: 'control_rods', direction: 1 } },
-    imrpk79mwng: { hold: { group: 'control_rods', direction: -1 } },
-    imrpk8169ds: { press: function () { rodSpeed = 'slow'; }, active: function () { return rodSpeed === 'slow'; } },
-    imrpk8grvcz: { press: function () { rodSpeed = 'normal'; }, active: function () { return rodSpeed === 'normal'; } },
-    imrpk8kjsjs: { press: function () { rodSpeed = 'fast'; }, active: function () { return rodSpeed === 'fast'; } },
+    // The IN-OUT lamps (#306): yellow while the bank is actually being driven that way,
+    // whoever asked — an operator hold, a tap, or the rod channel in AUTO. See rodDriving.
+    imrpk6qzjq8: { hold: { group: 'control_rods', direction: 1 },
+                   warn: function (s) { return rodDriving(s, 1); } },
+    imrpk79mwng: { hold: { group: 'control_rods', direction: -1 },
+                   warn: function (s) { return rodDriving(s, -1); } },
+    // SLOW/MED/FAST is now BOTH a selector and an indication (#306). Green = the speed the
+    // operator selected for their own rod motion; yellow = the speed the drive is running
+    // at this instant, which under AUTO comes off the channel's error ladder.
+    imrpk8169ds: { press: function () { rodSpeed = 'slow'; }, active: function () { return rodSpeed === 'slow'; },
+                   warn: function (s) { return rodDrivingSpeed(s) === 'slow'; } },
+    imrpk8grvcz: { press: function () { rodSpeed = 'normal'; }, active: function () { return rodSpeed === 'normal'; },
+                   warn: function (s) { return rodDrivingSpeed(s) === 'normal'; } },
+    imrpk8kjsjs: { press: function () { rodSpeed = 'fast'; }, active: function () { return rodSpeed === 'fast'; },
+                   warn: function (s) { return rodDrivingSpeed(s) === 'fast'; } },
     // --- Shutdown rods — LATCHED full-travel drive, not tap-or-hold (owner, 2026-07-28).
     // The shutdown bank is not a trim control: it is parked fully out or driven fully in,
     // so making the operator hold a button for the entire travel was the wrong affordance.
@@ -522,7 +610,17 @@
     // could shorten STEAM GEN to SG and fit it in the corner just like steam dump."
     { id: 'bdFeedStatus', kind: 'value',
       name: 'SG feed controller status  ·  sim: automation feed_sg engaged / stand_down / saturated',
-      left: 1855, top: 548, value: 'HOLDING', unit: '', color: '#5aad7c', fontSize: 15, rAnchor: true }
+      left: 1855, top: 548, value: 'HOLDING', unit: '', color: '#5aad7c', fontSize: 15, rAnchor: true },
+    // Rod controller status, in the REACTOR CONTROL card's top-right corner (#306) — the
+    // at-a-glance half of what `liveNote` already reported only on inspection. The ROD AUTO
+    // lamp says the channel is engaged; it never said what it was DOING, so a player in AUTO
+    // had nothing but the step count ticking to go on.
+    //
+    // It fits only because DOC_PATCHES shortens the card title to 'ROD CONTROL' — see the
+    // measured widths there. Same trade #214 made on the SG FEED card.
+    { id: 'bdRodStatus', kind: 'value',
+      name: 'Rod controller status  ·  sim: automation rods_tavg engaged + control bank scrammed / at_insertion_limit / moving',
+      left: 730, top: 243, value: 'HOLDING', unit: '', color: '#5aad7c', fontSize: 13, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -648,6 +746,7 @@
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
     imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
     bdFeedStatus: function (s) { return feedStatus(s); },                                              // SG feed controller status (#214)
+    bdRodStatus: function (s) { return rodStatus(s); },                                                // rod controller status (#306)
     imrppyp0wfo: function (s) { return accN2Press(s); },   // accumulator N2 cover-gas pressure
     imrppztrng1: function (s) { return IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
     imrpq0n2ujv: function (s) { return r0(accFill(s)); },                                               // accumulator fill %
@@ -1641,7 +1740,11 @@
       // SG FEED AUTO and STEAM DUMP AUTO — and it is the control the #289 lineup change just
       // made matter, since rods now come up engaged. #5aad7c is the same green as BD_OK above.
       // Fold it into the builder and delete this entry; selfTest pins the value meanwhile.
-      ims5glucngg: { props: { color: '#5aad7c' } },
+      // `top` is the 2026-08-02 re-spacing below — DO NOT split these into two entries: this
+      // is an object literal, so a second `ims5glucngg:` key silently REPLACES this one and
+      // the colour patch disappears with no error. That is exactly what happened while writing
+      // the re-spacing, and the two AUTO-green pins are what caught it.
+      ims5glucngg: { props: { color: '#5aad7c', top: 428 } },
       // (TRIP BLOCKS carried a top/height patch here until the 2026-07-28t re-export —
       // the builder now authors it at 425/30, so the patch was pinning what the diagram
       // already says. Dropped rather than kept: a patch that agrees with the doc is a
@@ -1666,7 +1769,43 @@
       // shorten STEAM GEN to SG and fit it in the corner just like steam dump." A patch
       // rather than a builder edit because pwr_board_data.js is REGENERATED — the same
       // change made in the builder is lost the next time anyone re-exports.
-      imrqxsodu5j: { props: { title: 'SG FEED' } }
+      imrqxsodu5j: { props: { title: 'SG FEED' } },
+      // REACTOR/ROD CONTROL card title, shortened to free its top-right corner for the rod
+      // controller status word (#306, bdRodStatus in EXTRA_ITEMS). A patch and not a builder
+      // edit for the same reason as the SG FEED one above — pwr_board_data.js is REGENERATED.
+      //
+      // MEASURED headless in US mode, and the arithmetic was wrong TWICE before the ruler
+      // settled it. The authored 'REACTOR/ROD CONTROL' renders 161 px at fontSize 12 in a
+      // 195 px card — 34 px of corner, against 54 px for 'HOLDING'. 'REACTOR CONTROL' is
+      // 127 px and looks like it leaves 68 px, but it does not: the widest word is
+      // 'AT LIMIT' at 61 px, and an rAnchor item's rendered right edge sits 41 px inside its
+      // authored `left`, so even pinned at the card edge the word starts 14 px INSIDE the
+      // title. 'ROD CONTROL' is 93 px and clears it. Nothing is lost by dropping 'REACTOR/':
+      // everything on this card is a rod action, SCRAM included — it drops the banks.
+      ims14ylw4az: { props: { title: 'ROD CONTROL' } },
+      // The bottom of the rod card re-spaced *(OWNER, 2026-08-02: "Can you adjust the speed
+      // buttons down so they have equal spacing above and below?", then "Shift the rod auto
+      // and trip blocks down slightly to give equal spacing above and below them.")*.
+      //
+      // THE TWO ASKS INTERACT, which is why this is one patch and not two. Centring SLOW/MED/
+      // FAST alone fixes its gaps at 5/5; centring ROD AUTO alone puts it at 427.5, which
+      // re-opens the speed row's lower gap to 7.5 and un-centres what the first ask just
+      // centred. Both are satisfied only by spacing the whole stack at once.
+      //
+      // MEASURED, as authored: INSERT ends at 395, the speed row was 395..415 (h 20), ROD AUTO
+      // 425..455 (h 30), card bottom 465. So the speed row sat FLUSH against INSERT — 0 px
+      // above, 10 below — and it STRADDLED the CONTROL/SHUTDOWN sub-boxes, whose bottom edge
+      // is 400, half in and half out. ROD AUTO had 10 above and 10 below but the 10 above was
+      // measured from a row that was itself in the wrong place.
+      //
+      // The band 395 → 465 is 70 px and holds 50 px of buttons, so the three gaps want 20/3 =
+      // 6.67 px each. Integers cannot do that, so they are 7 / 6 / 7 — symmetric top and
+      // bottom, one pixel tighter in the middle, which is the arrangement that reads level.
+      imrpk8169ds: { props: { top: 402 } },
+      imrpk8grvcz: { props: { top: 402 } },
+      imrpk8kjsjs: { props: { top: 402 } },
+      // (ROD AUTO's `top: 428` rides on its colour entry above — same key, one object.)
+      imrsk4xz2dm: { props: { top: 428 } }
     }
   };
   function applyDocPatches(doc) {
@@ -2083,6 +2222,100 @@
       ck('driver: DOC_PATCHES shortened the SG FEED card title', (function () {
         var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === 'imrqxsodu5j'; })[0];
         return it && it.title === 'SG FEED' ? true : (it ? it.title : 'card missing');
+      })() === true);
+      // ---- the ROD status word and the IN-OUT lamps (#306) --------------------------------
+      // Same discipline as the feed block above: switched on CODES. The ordering checks are
+      // the load-bearing ones — AT LIMIT must outrank motion (the bank can be on its limit
+      // and withdrawing at the same time, and the limit is the fact that says the controller
+      // has run out of room), and SCRAM must outrank everything.
+      function rs(opts) {
+        opts = opts || {};
+        return rodStatus({
+          automation: { channels: [{ id: 'rods_tavg', engaged: opts.engaged !== false }] },
+          interlocks: [{ active: !!opts.blocked, blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true }],
+          control_state: { rod_groups: [{ id: 'control_rods',
+            scrammed: !!opts.scrammed, moving: !!opts.moving, direction: opts.direction || 0,
+            at_insertion_limit: !!opts.atLimit }] }
+        });
+      }
+      ck('driver: rod status HOLDING when engaged, still, and off its limit',
+        rs().text === 'HOLDING', rs().text);
+      ck('driver: rod status IN / OUT follows the drive direction',
+        rs({ moving: true, direction: -1 }).text === 'IN' &&
+        rs({ moving: true, direction: 1 }).text === 'OUT',
+        rs({ moving: true, direction: -1 }).text + '/' + rs({ moving: true, direction: 1 }).text);
+      ck('driver: rod status MANUAL when the operator has the bank',
+        rs({ engaged: false }).text === 'MANUAL', rs({ engaged: false }).text);
+      ck('driver: rod status TRIPPED outranks everything, including a disengaged channel',
+        rs({ scrammed: true, engaged: false, moving: true, direction: -1 }).text === 'TRIPPED',
+        rs({ scrammed: true, engaged: false, moving: true, direction: -1 }).text);
+      ck('driver: rod status AT LIMIT outranks motion — the bank can withdraw off its limit',
+        rs({ atLimit: true, moving: true, direction: 1 }).text === 'AT LIMIT',
+        rs({ atLimit: true, moving: true, direction: 1 }).text);
+      ck('driver: rod status BLOCKED on a standing withdrawal interlock (#306)',
+        rs({ blocked: true }).text === 'BLOCKED' &&
+        rs({ blocked: true, moving: true, direction: -1 }).text === 'BLOCKED',
+        rs({ blocked: true }).text);
+      ck('driver: an INACTIVE interlock is not a block — the flag is read, not its presence',
+        rs({ blocked: false }).text === 'HOLDING', rs({ blocked: false }).text);
+      ck('driver: AT LIMIT still outranks BLOCKED — a tech-spec floor beats a rate guard',
+        rs({ blocked: true, atLimit: true }).text === 'AT LIMIT',
+        rs({ blocked: true, atLimit: true }).text);
+      ck('driver: rod status is GREEN only while the controller is actually regulating',
+        rs().color === BD_OK && rs({ moving: true, direction: -1 }).color === BD_OK &&
+        rs({ engaged: false }).color === BD_WARN && rs({ atLimit: true }).color === BD_WARN &&
+        rs({ blocked: true }).color === BD_WARN && rs({ scrammed: true }).color === BD_WARN);
+      // The IN-OUT lamps. A SCRAM must leave them DARK: the rods fall on gravity with the
+      // drive de-energized, and a lit IN lamp there would say the drive is running when it
+      // has just been dropped. This is the check that fails if someone "simplifies"
+      // rodDriving to `g.moving && g.direction === dir`.
+      function rd(opts, dir) {
+        return rodDriving({ control_state: { rod_groups: [{ id: 'control_rods',
+          moving: !!opts.moving, direction: opts.direction || 0, scrammed: !!opts.scrammed }] } }, dir);
+      }
+      ck('driver: IN-OUT lamps follow the commanded direction',
+        rd({ moving: true, direction: -1 }, -1) === true && rd({ moving: true, direction: -1 }, 1) === false &&
+        rd({ moving: true, direction: 1 }, 1) === true);
+      ck('driver: IN-OUT lamps stay DARK on a scram — gravity is not a drive demand',
+        rd({ moving: true, direction: -1, scrammed: true }, -1) === false);
+      ck('driver: rod speed indication reports the DRIVE speed, and nothing while stopped',
+        (function () {
+          function sp(o) { return rodDrivingSpeed({ control_state: { rod_groups: [{ id: 'control_rods',
+            moving: !!o.moving, scrammed: !!o.scrammed, speed: o.speed }] } }); }
+          return sp({ moving: true, speed: 'fast' }) === 'fast' &&
+                 sp({ moving: false, speed: 'fast' }) === null &&
+                 sp({ moving: true, scrammed: true, speed: 'fast' }) === null;
+        })());
+      // The corner only exists because the card title was shortened — same trap as SG FEED.
+      // MEASURED: at the authored 'REACTOR/ROD CONTROL' (161 px in a 195 px card) the widest
+      // status word overlaps the title by 34 px and BOTH still render, so nothing else fails.
+      ck('driver: DOC_PATCHES shortened the ROD CONTROL card title', (function () {
+        var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === 'ims14ylw4az'; })[0];
+        return it && it.title === 'ROD CONTROL' ? true : (it ? it.title : 'card missing');
+      })() === true);
+      // The bottom of the rod card is evenly spaced by a patch, so a re-export silently
+      // un-spaces it (owner, 2026-08-02). Pin the RELATIONSHIP, not the numbers: the three
+      // gaps below INSERT — to the speed row, to the AUTO row, and to the card's bottom edge —
+      // must stay within a pixel of each other. That survives any of the five items moving
+      // and states the thing that was actually asked for. As authored the first gap is 0 and
+      // the last is 10, so this fails on the shipped board_data without the patch.
+      ck('driver: the rod card bottom is evenly spaced (gaps equal within 1 px)', (function () {
+        function it(id) { return (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === id; })[0]; }
+        var card = it('ims14ylw4az'), ins = it('imrpk79mwng');
+        var spd = ['imrpk8169ds', 'imrpk8grvcz', 'imrpk8kjsjs'].map(it);
+        var aut = ['ims5glucngg', 'imrsk4xz2dm'].map(it);
+        if (!card || !ins || spd.concat(aut).some(function (r) { return !r; })) return 'item missing';
+        function level(row, name) {
+          return row.every(function (r) { return r.top === row[0].top; }) ? null
+            : name + ' not level: ' + row.map(function (r) { return r.top; }).join('/');
+        }
+        var bad = level(spd, 'speed row') || level(aut, 'auto row');
+        if (bad) return bad;
+        var g1 = spd[0].top - (ins.top + ins.height);
+        var g2 = aut[0].top - (spd[0].top + spd[0].height);
+        var g3 = (card.top + card.height) - (aut[0].top + aut[0].height);
+        var lo = Math.min(g1, g2, g3), hi = Math.max(g1, g2, g3);
+        return (hi - lo) <= 1 ? true : 'gaps ' + g1 + '/' + g2 + '/' + g3;
       })() === true);
       // ---- ROD AUTO obeys the board's AUTO colour convention (2026-08-01) -----------------
       // `buildButton` uses the authored item colour AS the lit colour, so an off-convention

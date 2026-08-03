@@ -504,6 +504,23 @@
       // instruments from truth anyway).
       above_p9: (s._ins_power_pct != null ? s._ins_power_pct : (s.power_pct || 0)) > 50,
       rod_at_limit: this._controlGroup().at_insertion_limit,
+      // Steps of travel the control bank has left ABOVE its rod insertion limit — the
+      // "authority remaining" signal, and what the ROD LIMIT LO annunciator reads (#306).
+      // A real board carries TWO insertion-limit alarms, not one: *"Rod Limit Low setpoint
+      // = RIL + 10 steps"* and *"Rod Limit Low-Low setpoint = RIL"* (WTSM 8.4, ML11223A256).
+      // We had only the Lo-Lo (`rod_at_limit` → ROD INS LIMIT), so the first warning a
+      // player got was the stop itself.
+      //
+      // `max_steps` when the limit does not APPLY — below `insertion_limit_min_power_pct`
+      // there is no limit at all (a startup drives the bank deliberately deep), and the
+      // alarm has to stay silent there rather than read a margin of zero and annunciate
+      // continuously. That nuisance is exactly what #202 removed by making the limit
+      // power-dependent; a margin signal that reintroduced it would undo that fix. Full
+      // travel is the honest "unbounded" value — the most margin the bank can have.
+      rod_limit_margin: (function (g) {
+        return g.insertion_limit_steps == null ? g.max_steps
+          : Math.max(0, g.steps - g.insertion_limit_steps);
+      })(this._controlGroup()),
       // Rod bottom — every group at or below RODS_IN_PCT. A real board carries a rod
       // bottom light per rod and the operator reads them before attempting an RPS
       // reset; this is the lumped equivalent, and it is what makes the reset permissive

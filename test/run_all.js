@@ -132,7 +132,7 @@ var BASELINES = {
   // "until the power in the reactor is reduced to the same value as the secondary load"), not
   // re-banded — its old 85..93 % steady state was a rods-in-manual artefact. Injection-checked:
   // 7 of the new checks go red on the pre-#289 lineup.
-  'run_behavior.js':       { code: 0, score: '43pass 0xfail' },
+  'run_behavior.js':       { code: 0, score: '44pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -169,7 +169,7 @@ var BASELINES = {
   // shared by all three plants now, so it stops being a finding — and the known-leak list
   // in run_hr3.js is EMPTY for the first time. Fewer checks means fewer leaks, not less
   // checking; the gate reddened on its own stale entry before anyone edited the list.
-  'run_hr3.js':            { code: 0, score: '27checks 0failed' },
+  'run_hr3.js':            { code: 0, score: '28checks 0failed' },
   // New 2026-07-29 — the guards for the OTHER hard rules. CONTEXT.md §3 now requires
   // every rule to name its guard, and three had none: HR1 (protection reads
   // instruments), HR5 (commands descend; the UI never touches the engine) and HR11 (a
@@ -361,7 +361,7 @@ var BASELINES = {
   // All three plants here, unlike the PWR-only §6.3 half.
   // 138 -> 139 on 2026-07-31 (#287): the new `rhr_not_aligned` annunciator, which
   // like every alarm must declare a `category` (#157).
-  'run_contract.js':       { code: 0, score: '139checks 0failed' },
+  'run_contract.js':       { code: 0, score: '140checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -520,7 +520,7 @@ var BASELINES = {
   // thresholds against their instrument's declared range, and `rhr_not_aligned` is a
   // status alarm (`rhr_active` is_false, setpoint null) with no range to sit inside.
   // It briefly read 59 while the alarm was drafted as a pressure threshold.
-  'run_reachability.js':   { code: 0, score: '58checks 0failed' },
+  'run_reachability.js':   { code: 0, score: '59checks 0failed' },
   // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
   // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
   // "## [Unreleased]" to the version) was skipped for Alpha 1.10.0 AND 1.11.0 — 434 lines of
@@ -574,7 +574,11 @@ var BASELINES = {
   // a baseline 4.2 s on `primary_pressure low` at 1782 psi (12.28 MPa). Two of the 16 new
   // checks REPLACE checks that pinned the defect; the other 14 are the new suite. All 12
   // affected checks verified red against the pre-fix kernel.
-  'run_m4.js':             { code: 0, score: '35/35 210passed' },
+  // 34 -> 36 on 2026-08-02 (#306 item 4, workbench, INDEPENDENTLY): the ROD LIMIT LO
+  // approach annunciator and the kernel's published interlock state (`snapshot.interlocks`).
+  // MERGED FIGURE MEASURED, not added up — both lanes moved this line from the same 34/194
+  // base, so neither branch's number is right and arithmetic on them is how a drift ships.
+  'run_m4.js':             { code: 0, score: '37/37 237passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
