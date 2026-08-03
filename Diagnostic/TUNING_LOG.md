@@ -20,6 +20,43 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03k (the sweep is a TOOL now — `tools/perturb_sweep.js`)
+
+**Built the throwaway rig from 2026-08-03j into `tools/perturb_sweep.js` + `_perturb_child.js`.**
+It nudges `[tune]` constants by 2–3 %, runs a suite per nudge and diffs verdicts — answering
+*"what will this retune break?"* before the retune rather than after a mystery red. Backshop lane.
+
+**The design is built around the mistake, not the success.** The first attempt at that sweep
+perturbed the instrument SEED and reported zero flips across 241 checks — a result that was
+worthless, because the known-defective check did not flip on noise either. So the tool **never
+prints a bare "0 flips"**: it scores every perturbation for DISCRIMINATING POWER first (how many
+observed values moved at all) and labels one that moves nothing **INERT**, explicitly excluded from
+any "no flips" claim. `--self-test` goes further and injects a check fragile by construction, to
+prove the pipeline can see a flip at all before a negative is believed.
+
+**Measured discriminating power, which is itself useful to have written down.** On the §14 suite:
+`h_sg` ×1.03 moves **40/241** observed values, `coolant_heat_capacity` **30/241**, `h_fc`
+**23/241** — while `delta_T_rated` ×1.02 moves **3** and `K_sg_level` **6**, and the instrument
+seeds move **1–8**. That last figure is the quantitative version of why the seed sweep proved
+nothing: it barely perturbs the suite at all.
+
+**It reproduces both known results exactly.** §14: 0 flips across 8 perturbations with real power.
+Behaviour battery: the same five flips as the hand-rolled sweep — SS-5 ×2, TR-1g ×2, TR-1i — with
+TR-1i flipping under BOTH `h_sg` and `coolant_heat_capacity`, which is the one to watch.
+
+**Reading the output is the part that needs judgement, and the tool says so on every run:** a flip
+on a constant the check never NAMES is a check measuring the wrong quantity (#321); a flip because
+the BAND is narrower than the nudge is a tight band, a fact about the plant. **Do not widen a
+sourced band to make it quiet** — that is refitting the test (HR10).
+
+**Deliberately in `tools/`, not `test/`.** `run_all` auto-discovers `test/run_*.js` and
+`test/verify_*.js` and demands a baseline for each; this has no stable score — its output is a diff
+against a change you are considering — so it is not a gate and must not become one.
+
+**Gates.** `run_all` **36 runners at baseline** (full, browser gates included).
+
+---
+
 ## Session log — 2026-08-03j (#321 swept: the class is UNIQUE, and the detector was validated first)
 
 **No code change beyond two comments.** #321's body ended with *"worth a sweep for `now − then`

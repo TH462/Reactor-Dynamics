@@ -21,6 +21,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **`tools/perturb_sweep.js` — "which checks break if I retune this?"** Nudges `[tune]` constants
+  by 2–3 %, runs a whole suite per nudge and diffs verdicts, so the question is answered *before*
+  a retune instead of by a puzzling red afterwards. Built out of #321, where a check had been green
+  for the life of the project and a **3 % change to `thermal.h_sg`** — a constant it never mentions
+  — flipped it.
+  - **It refuses to report a bare "0 flips".** Every perturbation is scored for **discriminating
+    power** first (how many observed values it moved at all); one that moves nothing is reported
+    **INERT**, not as a clean bill. That guard exists because the first attempt at this sweep
+    perturbed the instrument *seed* — six seeds, 241 checks, zero flips, and the result was
+    worthless, since the known-defective check did not flip on noise either.
+  - **`--self-test` proves the pipeline end to end** by injecting a check fragile by construction.
+    A sweep that finds nothing has proved nothing until you show it could have found something.
+  - Reading the output: a flip on a constant the check never **names** is a check measuring the
+    wrong quantity (the #321 shape); a flip because the **band** is narrower than the nudge is a
+    tight band, which is a fact about the plant. **Do not widen a sourced band to make it quiet.**
+  - Lives in `tools/` deliberately — it has no stable score, so it is not a gate.
+
 ### Changed
 - **The leg split stays on total core heat — the flux form is ruled out** (#315 §6 closed)
   *(OWNER RULING, 2026-08-03: "Do as you recommend.")*. No plant behaviour changed; what changed is
