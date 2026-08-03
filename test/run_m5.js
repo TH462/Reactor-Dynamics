@@ -149,12 +149,27 @@ T.push(test('Attention stop — a plant event snaps fast-forward back to real ti
   ck('the snap carries its reason', snap.metadata.speed_snap && snap.metadata.speed_snap.reason, snap.metadata.speed_snap && snap.metadata.speed_snap.reason === 'scram', 'scram');
 
   // A newly-injected failure is also an attention stop.
+  //
+  // RE-PREMISED 2026-08-03 (#311 flag ON). This used `stuck_porv_open`, and that stopped
+  // isolating the failure path: with the OTΔT trip live the plant now scrams on the
+  // depressurization at ~8.0 s instead of ~12.5 s, so at 60× the failure AND the scram land
+  // inside the same broadcast and the snap correctly reports the more urgent one — 'scram'.
+  // The check was reading 'scram' and calling it a failure regression.
+  //
+  // Switched to `porv_indicator_stuck_closed`, an INSTRUMENT failure with no physics effect
+  // at all, which cannot cause a scram at any speed. That makes this a better test than it
+  // was: it now asserts the failure→attention-stop path in isolation, where the old form was
+  // only ever testing it by accident — it worked because the plant happened to be slow enough
+  // that nothing else fired first. Same class as the determinism check two tests up: the
+  // fixture was the plant's quietness, and neither test declared it.
   var f = svc();
   f.advanceCycles(3);
   f.handleCommand({ action: 'set_speed', value: 60 });
   f.advanceCycles(1);
-  f.handleCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+  f.handleCommand({ action: 'inject_failure', failure_id: 'porv_indicator_stuck_closed' });
   var fsnap = f.advanceCycles(1);
+  ck('…and the injected failure did NOT scram (isolating the failure path)',
+    String(fsnap.rps_state && fsnap.rps_state.scrammed), !(fsnap.rps_state && fsnap.rps_state.scrammed), 'false');
   ck('failure snaps back to real time', fsnap.metadata.time_acceleration, fsnap.metadata.time_acceleration === 1, '1');
   ck('failure reason reported', fsnap.metadata.speed_snap && fsnap.metadata.speed_snap.reason, fsnap.metadata.speed_snap && fsnap.metadata.speed_snap.reason === 'failure', 'failure');
 

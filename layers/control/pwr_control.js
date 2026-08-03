@@ -730,6 +730,11 @@
   // DPM indicated against the 1.0 limit and the plant tripped on SOURCE-RANGE HIGH FLUX
   // at 1e5 cps — which this plant also has. The block is a teaching aid that makes the
   // administrative limit enforceable by a single operator with no shift behind them.
+  // Sustained setpoint drives held by a condition (#318). EMPTY unless the OTΔT/OPΔT trips
+  // are enabled — the runback is half of their C-3/C-4 interlock and has nothing to hold
+  // without them. Populated beside the rod stops below, where the source is quoted.
+  var PWR_RUNBACKS = [];
+
   var PWR_INTERLOCKS = [
     { instrument: 'startup_rate', direction: 'high', setpoint: 1.5, clears_below: 0.8,
       blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true,
@@ -1124,6 +1129,60 @@
         priority: 'warning', panel: 'A', category: 'reactivity',
         label_learning: 'Overpower Limit Approaching', label_industry: 'OPΔT ROD STOP' }
     );
+    // TURBINE RUNBACK (#318) — the other half of C-3/C-4, and it arrives with the rod stop
+    // because they are one interlock. SOURCED: WTSM 12.2 §12.2.3.7/.8, *"both automatic and
+    // manual control rod withdrawal is inhibited, and a cyclic turbine runback is initiated,
+    // as long as the overtemperature condition exists"*, and Table 12.2-2 rows C-3/C-4,
+    // *"Stops control rod outward motion (manual & automatic) and initiates a turbine
+    // runback."* Same 3 % line as the rod stop, by the same source.
+    //
+    // WHY THIS TEACHES DYNAMICS, which is why it is here at all *(OWNER, 2026-08-03: "I'm
+    // not sure if I want to add another thing for the player to learn if it doesn't teach
+    // dynamics.")*: it is the only protection function on this plant that works THROUGH a
+    // Tier A coupling instead of around it. It never touches the reactor — it takes load
+    // off, and A1 (power follows load, via the negative MTC) brings the core down. And it
+    // makes A1's TIME CONSTANT visible, which nothing else does: measured, it saves the
+    // 15 % steam line break (scram at 200 s → no scram, settling at 80 % load) and CANNOT
+    // save the 30 % break or a continuous rod withdrawal — and a 5 %/2 s runback is no
+    // better than 2 %/2 s on those, because the limit is how fast power follows load, not
+    // the ramp rate. That is why WTSM classes both ΔT trips as "relatively slow transients".
+    //
+    // NO REFUSAL, NO CEILING — it just drives the load setpoint down, visibly, in the box
+    // the player already uses *(OWNER RULING, 2026-08-03: "Go with your recommendation",
+    // choosing the shape with zero new player-facing rules)*. A refusal message would teach an
+    // interface rule rather than a coupling. If the operator types a higher load, the next
+    // step reads it and walks it back down where they can watch it happen. `set_load_target`
+    // also forces MANUAL, so a unit in FOLLOW visibly drops to MAN — the load-mode lamp and
+    // the moving number carry the whole story between them, using two indications the player
+    // already knows.
+    //
+    // DECLARED DEPARTURE: the real signal is *cyclic* (discrete pulses on the EHC load
+    // reference); this is a continuous ramp. Same effect, and it reads better on a number
+    // box that would otherwise jump. Rate 1.0 %/s of rated = the measured 2 %/2 s.
+    var _rbRate = 1.0;                                   // % of rated per second
+    ['otdt', 'opdt'].forEach(function (which) {
+      PWR_RUNBACKS.push({
+        id: which + '_runback',
+        instrument: which + '_margin', direction: 'low',
+        setpoint: _stop, clears_above: _stop * 2,
+        // DECLARED DEPARTURE — a 10 s persistence delay, which WTSM does not describe. It is
+        // not a refinement, it is what makes the function buildable here. MEASURED: an
+        // out-of-duty 30 % load step peaks at 109.1 % of rated ΔT and a 15 % steam line break
+        // at 109.8 % — indistinguishable to ANY ΔT setpoint, so no K4 separates them. Their
+        // DURATIONS do: 4.5 s of continuous dwell below the stop against 24.5 s. 10 s sits
+        // between with room on both sides. On its real design duties the plant is nowhere
+        // near this — the WTSM 8.1.1 10 % step peaks at 103.0 % — so what the delay actually
+        // buys is immunity to a manoeuvre no real operator would make in one motion.
+        persist_s: 10.0,
+        rate_per_s: _rbRate * (RD.PWR_CONFIG.turbine.mwe_rated / 100),
+        floor: 0,
+        // Per-plant callbacks keep the kernel plant-agnostic (HR3) — it never names a
+        // command or a state field. `read` is command READ-BACK of a setpoint the layer
+        // itself issues, not a sensed quantity, so HR1 is untouched.
+        read: function (ctx) { return ctx.true_state ? ctx.true_state.load_target_mwe : null; },
+        command: function (mwe) { return { action: 'set_load_target', mwe: mwe }; }
+      });
+    });
   }
 
   var PWR_PROTECTION = {
@@ -1137,6 +1196,7 @@
     alarms_panel_b: PWR_ALARMS_B,
     failures: PWR_FAILURES,
     interlocks: PWR_INTERLOCKS,
+    runbacks: PWR_RUNBACKS,
     channels: PWR_CHANNELS,
     esf_systems: PWR_ESF_SYSTEMS,
   };

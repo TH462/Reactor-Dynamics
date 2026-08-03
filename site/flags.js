@@ -132,9 +132,13 @@
     'procedure:pwr_sg_level': 'preview',
     'procedure:pwr_shutdown': 'preview',
     'procedure:pwr_cooldown': 'preview',
+    'procedure:pwr_post_trip': 'preview',
     'procedure:pwr_loss_of_feedwater': 'preview',
     'procedure:pwr_rcp_trip': 'preview',
     'procedure:pwr_stuck_porv': 'preview',
+    'procedure:pwr_turbine_trip': 'preview',
+    'procedure:pwr_sgtr': 'preview',
+    'procedure:pwr_seal_leak': 'preview',
     'procedure:pwr_tmi': 'preview',
     // ---- RBMK (plant on hold; its control room is not built) ----
     'scenario:rbmk_tour': 'preview',

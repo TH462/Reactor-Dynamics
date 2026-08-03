@@ -2,7 +2,7 @@
 
 **Document:** PWR-MT-01  
 **Title:** Plant MODE Transitions (Mode 1, At Power through Mode 6, Refueling)  
-**Revision:** 17  
+**Revision:** 22  
 
 ---
 
@@ -274,10 +274,20 @@ Raise power within Mode 1, At Power (e.g. 50 % → 100 %). See **PWR-N06** / **N
 | Step | Action |
 |------|--------|
 | 1 | Verify SCRAM — rods in, power falling |
-| 2 | Verify turbine **Disconnected** |
-| 3 | Heat sink: SG level / **AFW** |
-| 4 | Inventory / subcooling / HPI as needed |
-| 5 | Declare **Mode 3, Hot Standby** when subcritical and RCS still hot |
+| 2 | **Reset the RPS** — the SCRAM control reads `PRESS TO RESET`. Press it **once the rods are seated**; it is refused `RODS_NOT_INSERTED` before that. Resetting re-closes the trip breakers and does **not** withdraw the rods |
+| 3 | Verify turbine **Disconnected** |
+| 4 | Heat sink: SG level / **AFW**. Main feedwater **isolates on the trip and cannot be restored from the board** — AFW is the heat sink from here |
+| 5 | Inventory / subcooling / HPI as needed |
+| 6 | Declare **Mode 3, Hot Standby** when subcritical and RCS still hot |
+
+**Simulator:** there is a **runnable checklist** for this — `pwr_post_trip`, the live walkthrough
+on the board. Measured full stack from `hot_full_power` (scram at t = 60 s): the reset is refused
+at **t+1 s** with power still at 33 %, and accepted at **t+3 s** once the rods seat; Mode 3 is
+reached inside a minute; main feedwater isolates and AFW auto-starts by about t+3 min, holding SG
+level near **37 %** after it falls from 65 %; the plant settles hot and subcritical at
+**567.3 °F (297.4 °C)** and **2235 psi (15.41 MPa)**. **Step 2 did not exist in this procedure
+until 2026-08-03** — authoring the checklist found it missing, and `reset_rps` had been reachable
+on the board since #75 while being named by no procedure, mission or checklist at all.
 
 ### PWR-T20 — Mode 5, Cold Shutdown → Mode 1, At Power
 

@@ -68,7 +68,13 @@ var BASELINES = {
   // deadband pins. Injection-verified BOTH ways: pointing the autoclose back at the
   // open permissive reddens the load-bearing check, and deleting rhr_autoclose_mpa
   // outright reddens four.
-  'run_pwr.js':            { code: 0, score: '36/36 240passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
+  // 240 → 241 (2026-08-03, #321): "drifting pressure diverges" was measuring the DEPTH
+  // of the code-safety blowdown its own drift triggered, at 22 % margin — not the drift.
+  // Split into the offset it names (rate × elapsed, exactly 2.0000 MPa in every variant
+  // tried) plus a POSITIVE assertion of the HR1 half it was accidentally covering:
+  // protection acted on a reading the plant never had. Each half injection-verified and
+  // they discriminate independently.
+  'run_pwr.js':            { code: 0, score: '36/36 241passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
@@ -146,7 +152,12 @@ var BASELINES = {
   // RECOVERY, so the suite proved only that the plant can be lost that way. Measured:
   // unmitigated damages at 4040 s peaking at 366 °C Tavg; with the PORV open and HPI
   // running, peak fuel 628 °C, no damage, inventory held above 100 %.
-  'run_meltdown.js':       { code: 0, score: '10pass 0xfail' },
+  // 10 → 11 (2026-08-03, #238): MD-11, zirconium-steam oxidation. The whole battery
+  // was green with the term ABSENT and green with it IN — the MD-* paths assert THAT
+  // the core melts, never how fast or which way the rate is going. MD-11 asserts the
+  // SECOND DERIVATIVE instead: each 400 °C band must be crossed faster than the one
+  // below. Measured 184/172/86/40 s with oxidation, 218/334/378/428 s without.
+  'run_meltdown.js':       { code: 0, score: '11pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at
   // all, so its MD-4/MD-8 PROTECTION claims are proven with the operator hand-
@@ -393,7 +404,9 @@ var BASELINES = {
   // THREE lanes moved this independently: develop 103, backshop 106, workbench 108.
   // MEASURED 124 on the fully merged tree. Adding them up gives 317, which is
   // the arithmetic this comment exists to stop.
-  'run_hardrules.js':      { code: 0, score: '124checks 0failed' },
+  // MEASURED 136 on the fully merged tree — develop 125, workbench 128, backshop 127.
+  // Adding them up gives 380. Three lanes, one measurement.
+  'run_hardrules.js':      { code: 0, score: '136checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -413,7 +426,10 @@ var BASELINES = {
   // tail, the engine's `_Q_total`). Published for the Physics tab, which was
   // otherwise going to re-derive it from power_pct and a config constant, i.e.
   // keep a second copy of a formula that does not move itself.
-  'run_contract.js':       { code: 0, score: '141checks 0failed' },
+  // 141 -> 143 (2026-08-03, #311 flag ON): the two OTdT/OPdT approach ALARMS arrive, and
+  // this gate's second contract makes them declare a `category` — the design working, not
+  // drift. Enabling protection is expected to move this and run_reachability together.
+  'run_contract.js':       { code: 0, score: '143checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -425,7 +441,10 @@ var BASELINES = {
   // 25 → 23 on 2026-07-31: nuclear-from-cold heatup checklist removed (not a commercial NOP).
   // 23 → 25 on 2026-08-02 (#310): PWR-N15 gained the `pwr_cooldown` checklist — 2 checks per
   // checklist (manual_ref present, manual_ref defined). COVERAGE 10 → 11 of 58 documented.
-  'run_procdocs.js':       { code: 0, score: '25checks 0failed' },
+  // 25 -> 27 on 2026-08-03 (#319): pwr_post_trip's two cross-reference checks — the checklist
+  // names a manual procedure, and PWR-T06 is defined in the index. This gate also REPORTS the
+  // coverage number #319 tracks (58 documented, N 15 / T 19 / E 24) without enforcing it.
+  'run_procdocs.js':       { code: 0, score: '33checks 0failed' },
   // New 2026-07-29 — the manual quotes US customary first with SI in parentheses
   // (owner request). This re-derives the US value from the SI value in every pair
   // and fails on bad arithmetic, on an SI quantity with no US partner, and on a
@@ -475,7 +494,8 @@ var BASELINES = {
   // (2 checks per step: the mapping, and the reverse entry-has-a-step check).
   // 128 → 94 on 2026-07-31: nuclear-from-cold heatup STEP_UI map removed (17 steps).
   // 94 → 122 on 2026-08-02 (#310): the PWR-N15 cooldown checklist adds 14 controlled steps.
-  'run_manual_controls.js': { code: 0, score: '122checks 0failed' },
+  // 122 -> 132 on 2026-08-03 (#319): PWR-T06 post-trip, 5 controlled steps x 2 checks.
+  'run_manual_controls.js': { code: 0, score: '158checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -490,7 +510,10 @@ var BASELINES = {
   // 289 → 292 on 2026-08-02 (#310): the PWR-N15 `pwr_cooldown` checklist needs a registry
   // entry (coverage + orphan + well-formed = 3 checks). The gate caught its absence, which
   // is the point — a procedure the player can open with no flag behind it ships ungated.
-  'run_flags.js':          { code: 0, score: '16/16 292/292' },
+  // 292 -> 295 on 2026-08-03 (#319): the `procedure:pwr_post_trip` registry entry. This gate
+  // caught its absence, which is the job — a procedure the player can open with no flag
+  // behind it ships ungated (#310 is the worked case).
+  'run_flags.js':          { code: 0, score: '16/16 304/304' },
   // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
   // Every way this rots is silent: an item id changes and its entry describes
   // nothing; a new control inherits its card's summary and READS like a real
@@ -572,7 +595,10 @@ var BASELINES = {
   // thresholds against their instrument's declared range, and `rhr_not_aligned` is a
   // status alarm (`rhr_active` is_false, setpoint null) with no range to sit inside.
   // It briefly read 59 while the alarm was drafted as a pressure threshold.
-  'run_reachability.js':   { code: 0, score: '62checks 0failed' },
+  // 62 -> 66 (2026-08-03, #311 flag ON): Part A iterates the live protection tables, so it
+  // picks up the two new trips and two new alarms automatically and asserts each sits
+  // strictly inside its instrument's range. Nothing was hand-added here.
+  'run_reachability.js':   { code: 0, score: '66checks 0failed' },
   // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
   // reactor trips this plant did not have. It needs its own runner because the trips ship
   // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so
@@ -587,7 +613,11 @@ var BASELINES = {
   // `withdrawal_only` reddens 2; walking `dnb_margin_factor` to 0.95 reddens the 2 checks
   // that hold the equivalent K2/K3 inside the band real Westinghouse units publish.
   // The count moves with the casualty list, 1–2 checks each.
-  'run_otdt.js':           { code: 0, score: '39checks 0failed' },
+  // 39 -> 44 (2026-08-03, #318 the turbine runback): +7 for section D, -2 because the 15 %
+  // steam line break MOVED out of the casualty block — the runback now saves it, so it is
+  // asserted there as a save rather than here as a trip. What is left in the casualty block
+  // is the pair the runback CANNOT save, which is the honest split.
+  'run_otdt.js':           { code: 0, score: '44checks 0failed' },
   // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
   // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
   // "## [Unreleased]" to the version) was skipped for Alpha 1.10.0 AND 1.11.0 — 434 lines of
@@ -675,7 +705,13 @@ var BASELINES = {
   // nothing was wrong. Re-measured on the merged tree. This is the exact failure CLAUDE.md
   // names ("a mechanical BASELINES resolution can silently take the wrong number") — the
   // instruction to re-run run_all AFTER resolving is what caught it.
-  'run_m5.js':             { code: 0, score: '23/23 103passed' },
+  // 103 -> 104 (2026-08-03, #311 flag ON): the attention-stop test's failure leg was
+  // re-premised. It injected `stuck_porv_open`, which with OTdT live now scrams inside the
+  // same 60x broadcast, so the snap correctly reported 'scram' and the check read that as a
+  // regression. It uses an INSTRUMENT failure now (no physics effect, cannot scram), which
+  // isolates the failure->attention-stop path properly, and the +1 is the new guard that
+  // asserts the injected failure did not scram — so the fixture can never drift back.
+  'run_m5.js':             { code: 0, score: '23/23 104passed' },
   // 16 -> 17 suites, 94 -> 102 checks 2026-07-27 (#142): a new save/restore test for
   // the instructor's operator-action memory and follow acc streak, both of which
   // saveState dropped. Verified against the PRE-fix instructor, where 5 of its 8
@@ -776,7 +812,20 @@ var BASELINES = {
   // the plant heats back up to 558.7 °F (292.6 °C). The one check is that the flag is
   // JUSTIFIED (the procedure really does carry an M4-only command), so it cannot be
   // pinned onto something engine-direct could run. Full coverage is in the stack gate.
-  'run_procedures.js':     { code: 0, score: '23/23 100/100' },
+  // 23/23 100 -> 24/24 108 on 2026-08-03 (#319): PWR-T06, the post-trip response. Its
+  // acceptances are deliberately LAYER-ROBUST — AFW auto-start and the feedwater isolation
+  // are M4 actuations that do not happen in this engine-direct runner, so they are carried
+  // as cautions and every `acc` is a truth both layers produce.
+  // 24/24 108 -> 25/25 115 on 2026-08-03 (#319 item 3): PWR-E23 seal leak, which had NO
+  // test coverage of any kind before — not a probe, not a scenario.
+  // 25/25 115 -> 26/26 124 on 2026-08-03 (#319 item 2): PWR-E06 SGTR, unblocked by the #322
+  // ruling. Severity is 0.25, not the ops probe's 0.5 — a half rupture is NOT survivable
+  // engine-direct (no ESF arming, no automation), and chasing that with extra procedure
+  // steps was refitting content to a gate. The AFW and HPI steps STAYED because PWR-E06
+  // asks for them (its steps 3 and 6); the severity is what moved.
+  // 26/26 124 -> 27/27 132 on 2026-08-03 (#319 item 1): PWR-E03 turbine trip, the pair to
+  // PWR-T06 (E03 is the procedure that SENDS you to the post-trip response).
+  'run_procedures.js':     { code: 0, score: '27/27 132/132' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -807,7 +856,22 @@ var BASELINES = {
   // discrete walk-down measures badly on this plant: an 18 °F (10 °C) Dump SP step bursts
   // at -1168.2 °F/hr (-649 °C/hr). Seven injections were run against the finished
   // checklist and all seven redden it — see Diagnostic/TUNING_LOG.md 2026-08-02.
-  'run_procedures_stack.js': { code: 0, score: '23/23 204/204' },
+  // 23/23 204 -> 24/24 214 on 2026-08-03 (#319): PWR-T06 under the stack, where AFW really
+  // does auto-start and main feedwater really does isolate.
+  // 24/24 214 -> 25/25 223 on 2026-08-03 (#319 item 3). THE CHARGING CUE IS M4-DEPENDENT:
+  // measured on the same leak, charging settles 0.042 under the stack and 0.010
+  // engine-direct, so the acceptance is only `> 0.005` and the tight numbers live in the
+  // step notes. The OUTCOME is layer-robust — pzr level parks at 53.8 % in both.
+  // 25/25 223 -> 26/26 234 on 2026-08-03 (#319 item 2). The depressurization acceptance is
+  // INJECTION-VERIFIED: delete the `set_pressure_setpoint` and step 6 goes red. Its first
+  // form (`< 0.010`) was HOLLOW — the pre-depressurization value passed it too.
+  // 26/26 234 -> 27/27 244 on 2026-08-03 (#319 item 1). THE DUMP-SATURATION `saw` HAD TO
+  // MOVE STEPS, and the reason is timing rather than layer: the dump pins at 40.00 % about
+  // HALF A MINUTE after the trip and is back to ~9 % by three minutes, so an assertion two
+  // steps later missed it under the stack while still passing engine-direct (where the
+  // transient is slower). It lives on the confirm-scram step now, whose hold covers the
+  // peak in both layers. A `saw` is only as good as the window it is placed in.
+  'run_procedures_stack.js': { code: 0, score: '27/27 244/244' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
@@ -906,7 +970,10 @@ var BASELINES = {
   // 141 → 183 on 2026-08-02 (#310): 14 controlled steps of the PWR-N15 cooldown checklist,
   // 3 checks each. Its STEP_UI map was written WITH the procedure, so unlike #224 this
   // number and run_manual_controls' 122 moved together in one change.
-  'verify_manual_follow.js': { code: 0, score: '183checks', slow: true },
+  // 183 -> 198 on 2026-08-03 (#319): PWR-T06's five controlled steps, 3 checks each. Its
+  // STEP_UI entries went in with the procedure, so this number and run_manual_controls moved
+  // together — the #224 trap is a step that lands WITHOUT its map entry and reads as covered.
+  'verify_manual_follow.js': { code: 0, score: '237checks', slow: true },
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run

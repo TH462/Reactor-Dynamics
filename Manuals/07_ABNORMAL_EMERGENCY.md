@@ -2,7 +2,7 @@
 
 **Document:** PWR-EOP-01  
 **Title:** Failure Response — PWR Trainer  
-**Revision:** 17  
+**Revision:** 22  
 
 ---
 
@@ -246,19 +246,31 @@ Best achievable: core covered as long as secondary heat removal works. Document 
 `sgtr` — primary-to-secondary leak; severity = leak rate % rated flow (default ~3 %, max 8 %).
 
 ### Symptoms
-- Primary inventory dropping; charging may rise  
-- Secondary activity not modeled in detail — use **inventory, pressure, SG level/pressure** mismatches  
-- Possible rising SG level on affected generator (single-SG model: SG level behavior + primary loss)  
+- Primary inventory dropping; charging rises and then saturates  
+- Pressurizer level falling through the trip despite full charging — make-up cannot hold it  
+- Subcooling eroding as the primary depressurizes  
+- **The steam generator tells you NOTHING.** SG level does not rise, and secondary pressure follows
+  primary *temperature* rather than the leak — see the declared departure below. **Diagnose this on
+  the PRIMARY side.**
+
+> **DECLARED DEPARTURE — the secondary does not receive the leak** (`DESIGN_COMPANION.md` §8.26,
+> ruled 2026-08-03). On a real plant a tube rupture raises level and activity in the **affected**
+> generator, and that is how you identify *which* one. This trainer models **one** steam generator,
+> so that lesson cannot exist here at all — and the leak is modelled as a primary-side mass sink
+> with ΔP modulation, delivering neither mass nor energy to the secondary. Measured: with the leak
+> at 0.011–0.015 frac/s and feed, AFW and steam flow all at zero, SG level held at **67.98 %**
+> constant for four minutes. **An earlier revision of this page listed "possible rising SG level"
+> as a symptom. It does not happen; that line is withdrawn.**
 
 ### Immediate actions
 
 | Step | Action |
 |------|--------|
 | 1 | SCRAM if not automatic / as pressure falls |
-| 2 | Identify primary leak direction (inventory + SG response) |
+| 2 | Identify the leak on the PRIMARY side — inventory falling with charging saturated, level below program and still going, subcooling eroding. The steam generator will not confirm it for you (see the departure above) |
 | 3 | Maximize charging / ensure HPI as needed |
 | 4 | Depressurize primary carefully toward secondary pressure to reduce break flow (heaters off, spray if available, PORV only with care) |
-| 5 | Isolate / control steam paths per training objective (MSIV strategy if used) |
+| 5 | Isolate / control steam paths per training objective (MSIV strategy if used). **On this trainer the MSIV does not change the secondary pressure trend** — SG pressure is capped at Psat(Tavg), so it tracks primary temperature rather than steam inventory. Measured: 134.6 psi with the MSIV open against 134.0 psi shut, at the same point in the transient |
 | 6 | Maintain heat sink and subcooling |
 
 ### Acceptance

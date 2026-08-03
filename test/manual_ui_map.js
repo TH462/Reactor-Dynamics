@@ -140,6 +140,33 @@ var STEP_UI = {
   pwr_loss_of_feedwater: [{ i: 1, view: 'scram', control: 'SCRAM' }, { i: 2, view: 'secondary', control: 'Turbine Load' }, { i: 3, view: 'secondary', control: 'AFW' }],
   pwr_rcp_trip: [{ i: 1, view: 'scram', control: 'SCRAM' }],
   pwr_stuck_porv: [{ i: 2, view: 'primary', control: 'PORV Block Valve' }],
+  // PWR-T06 post-trip (#319). Steps 1 and 2 are the SAME control in its two states —
+  // the dual SCRAM / PRESS-TO-RESET button (#75). Step 2 is the first authored content
+  // anywhere to name `reset_rps`, which has been board-reachable and taught by nothing.
+  // PWR-E23 seal leak (#319 item 3). Four of its five controlled steps are CVCS or
+  // pressurizer readouts — this procedure is diagnosis, not manipulation: the only command
+  // that changes the plant is putting CVCS in AUTO.
+  // PWR-E06 SGTR (#319 item 2, authored after #322 was ruled). Step 1 is a parenthesised
+  // observe label and is exempt, same as pwr_rcp_trip step 1.
+  // PWR-E03 turbine trip (#319 item 1). Step 1 is a parenthesised observe label, exempt.
+  pwr_turbine_trip: [{ i: 1, view: 'scram', control: 'SCRAM' },
+                     { i: 2, view: 'board', control: 'Steam Dump' },
+                     { i: 3, view: 'board', control: 'SG Level' }],
+  pwr_sgtr: [{ i: 1, view: 'scram', control: 'SCRAM' },
+             { i: 2, view: 'board', control: 'AFW' },
+             { i: 3, view: 'board', control: 'HPI/LPI' },
+             { i: 4, view: 'board', control: 'Plant Pressure' },
+             { i: 5, view: 'board', control: 'Pressure SP' }],
+  pwr_seal_leak: [{ i: 0, view: 'board', control: 'CVCS Inventory Control' },
+                  { i: 1, view: 'board', control: 'CVCS Inventory Control' },
+                  { i: 2, view: 'board', control: 'Pressurizer Heaters (PZR)' },
+                  { i: 3, view: 'board', control: 'Plant Pressure' },
+                  { i: 4, view: 'board', control: 'CVCS Inventory Control' }],
+  pwr_post_trip: [{ i: 0, view: 'scram',  control: 'SCRAM' },
+                  { i: 1, view: 'scram',  control: 'SCRAM' },
+                  { i: 2, view: 'board',  control: 'Main Breaker' },
+                  { i: 3, view: 'board',  control: 'AFW' },
+                  { i: 4, view: 'board',  control: 'Plant Pressure' }],
   rbmk_startup: [{ i: 1, view: 'primary', control: 'Control Bank' }],
   rbmk_raise_power: [{ i: 0, view: 'primary', control: 'MCP / Channel Flow' }],
   rbmk_shutdown: [{ i: 0, view: 'scram', control: 'AZ-5' }],

@@ -342,6 +342,27 @@
     if (c.saturated === 'lo') return { text: 'SAT LO', color: BD_WARN };
     return { text: 'HOLDING', color: BD_OK };
   }
+  // ---- core ΔT margin (#311 observability) -----------------------------------------
+  // Reports the BINDING limit — whichever of OTΔT / OPΔT is closest to zero — and names it.
+  // Both channels are DERIVED instruments and are computed whether or not the trips are
+  // installed, so this reads sensibly with `otdt_opdt_trips` off too: informational DNB /
+  // overpower margin then, protection margin once the flag is on. It degrades to '—' rather
+  // than throwing if the channels are absent, because a board that dies on a missing
+  // instrument is worse than one that admits it.
+  //
+  // Colour is keyed to the ROD STOP line, not the trip line — amber means "the plant is
+  // about to stop taking rods out", which is the thing the player can still act on. Red is
+  // reserved for margin actually gone.
+  function dtMargin(s) {
+    var ot = IN(s).otdt_margin, op = IN(s).opdt_margin;
+    if (ot == null || op == null || isNaN(ot) || isNaN(op)) return { text: '—', color: '#7f95a5' };
+    var bindName = (op < ot) ? 'OPΔT' : 'OTΔT', bindVal = (op < ot) ? op : ot;
+    var stop = ((RD.PWR_CONFIG && RD.PWR_CONFIG.otdt_opdt) || {}).rod_stop_offset_pct;
+    if (stop == null) stop = 3.0;
+    var col = bindVal <= 0 ? '#ff6a4d' : (bindVal < stop ? BD_WARN : BD_OK);
+    return { text: bindName + ' ' + bindVal.toFixed(1), color: col };
+  }
+
   // ---- the ROD status word (#306) --------------------------------------------------
   // Same shape and the same discipline as feedStatus above: switched on CODES
   // (`scrammed`, `engaged`, `at_insertion_limit`, `moving`/`direction`), never on the
@@ -620,7 +641,29 @@
     // measured widths there. Same trade #214 made on the SG FEED card.
     { id: 'bdRodStatus', kind: 'value',
       name: 'Rod controller status  ·  sim: automation rods_tavg engaged + control bank scrammed / at_insertion_limit / moving',
-      left: 730, top: 243, value: 'HOLDING', unit: '', color: '#5aad7c', fontSize: 13, rAnchor: true }
+      left: 730, top: 243, value: 'HOLDING', unit: '', color: '#5aad7c', fontSize: 13, rAnchor: true },
+    // Core ΔT margin, in the NIS card's top-right corner (#311 observability). The OTΔT and
+    // OPΔT trips are computed from a setpoint that MOVES with Tavg and pressure, so without
+    // this the player carries two reactor trips and a rod-withdrawal block driven by a number
+    // they cannot see — reachable on the board, but with nothing visible changing until the
+    // 3 %-out annunciator. That is a DESIGN_CRITERIA Q3 observability failure.
+    //
+    // ONE readout, not the five channels that exist (ΔT, two setpoints, two margins), and the
+    // board being FULL is only half the reason. Measured 2026-08-03: the diagram extent is
+    // x 540..1945 / y 110..849 and it has NO free 150x60 slot — every candidate the scan
+    // returned was an edge artifact running off the right boundary. But the Q3 argument is
+    // independent of that: leg ΔT is ALREADY displayed (imro6qpci2d, °F), so `loop_delta_t`
+    // in % of rated would be a second copy of one measurement, and each setpoint is implied
+    // by its margin. A margin that moves while ΔT holds steady IS the moving trip line, which
+    // is the whole OTΔT lesson.
+    //
+    // It names the BINDING limit rather than combining them, because the two protect
+    // different things — OTΔT is DNB, OPΔT is linear heat rate — and which one is closing is
+    // the diagnosis. Corner idiom and geometry copied from bdRodStatus/bdFeedStatus: rAnchor,
+    // so `left` is the RIGHT edge, card right minus 5; `top` is card top plus 13.
+    { id: 'bdDtMargin', kind: 'value',
+      name: 'Core ΔT margin to the nearer of the OTΔT / OPΔT trip lines  ·  sim: in.otdt_margin / in.opdt_margin, % of rated ΔT',
+      left: 990, top: 243, value: '—', unit: '', color: '#5aad7c', fontSize: 13, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -747,6 +790,7 @@
     imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
     bdFeedStatus: function (s) { return feedStatus(s); },                                              // SG feed controller status (#214)
     bdRodStatus: function (s) { return rodStatus(s); },                                                // rod controller status (#306)
+    bdDtMargin: function (s) { return dtMargin(s); },                                                  // core ΔT margin, OTΔT/OPΔT (#311)
     imrppyp0wfo: function (s) { return accN2Press(s); },   // accumulator N2 cover-gas pressure
     imrppztrng1: function (s) { return IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
     imrpq0n2ujv: function (s) { return r0(accFill(s)); },                                               // accumulator fill %

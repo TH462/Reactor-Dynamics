@@ -270,9 +270,28 @@ T.push(test('#295 F1/F2 — reactor trips are not defeatable at power, and block
   loca.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 0.2 });
   var t = 0;
   while (t < 300 && !loca.layer.rps.scrammed) { loca.run(0.1); t += 0.1; }
-  ck('a 20 % cold-leg LOCA still scrams on low pressure', loca.layer.rps.last_trip_reason + ' at t=' + t.toFixed(1) + ' s',
-    loca.layer.rps.scrammed === true && loca.layer.rps.last_trip_reason === 'primary_pressure low' && t < 10,
-    'primary_pressure low, < 10 s');
+  // RE-AUTHORED 2026-08-03 when the OTΔT/OPΔT trips were enabled (#311). This used to pin the
+  // reason string `primary_pressure low`; with those trips live the plant scrams EARLIER, at
+  // ~1.7 s on `otdt_margin low` — a trip carrying "No Interlocks" (WTSM 12.2 Table 12.2-1),
+  // so it cannot be blocked even in principle. The probe's intent, "a reactor trip is not
+  // defeatable at power", is strengthened rather than broken: HR9, content follows the plant.
+  //
+  // THE DISCRIMINATOR IS THE TIME, NOT THE REASON, and getting that wrong cost a run. The
+  // first re-authoring asserted the survivor was "not one of the three trips the operator
+  // blocked" — incoherent, because #295's whole finding is that those three block attempts
+  // are REFUSED at power. Nothing is blocked, so `primary_pressure low` is a perfectly valid
+  // survivor, and the check failed on the pre-#311 plant. Injection is what caught it.
+  //
+  // What actually separates the fixed plant from the defect is WHEN: #295 F1 measured the
+  // defective kernel riding 64 s of unscrammed blowdown (scram 68.1 s on `pzr_level high`).
+  // Both healthy configurations land inside 10 s — 4.1 s flag-off, 1.7 s flag-on — so this
+  // form passes on BOTH and still fails hard on the defect. The reason string is reported for
+  // diagnosis, deliberately not asserted: it is a fact about which trip got there first, and
+  // that legitimately changes when protection is added.
+  ck('a 20 % cold-leg LOCA still scrams PROMPTLY (the defect rode 64 s unscrammed)',
+    loca.layer.rps.last_trip_reason + ' at t=' + t.toFixed(1) + ' s',
+    loca.layer.rps.scrammed === true && t < 10,
+    'scrammed, < 10 s');
   ck('…at the setpoint, not on the accumulator refill 60 s later',
     (loca.ins().primary_pressure * 145.038).toFixed(0) + ' psi',
     loca.ins().primary_pressure > 12.0, '~1782 psi (12.28 MPa)');

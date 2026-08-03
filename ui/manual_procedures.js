@@ -522,6 +522,64 @@
       },
       outcome: 'Mode 5, Cold Shutdown: cold, depressurized to 363 psi (2.50 MPa), RHR in service, reactor coolant pumps secured, accumulators full and isolated, boron at the cold shutdown margin of 857 ppm. This is the `cold_shutdown` initial condition, reached on integrated physics. PWR-N01 takes it back up.',
     },
+    // PWR-T06 — the post-trip response. Authored 2026-08-03 (#319): the procedure was
+    // documented but had NO runnable checklist, while PWR-E03 (turbine trip) explicitly
+    // sends the operator to it — *"Above P-9: confirm the automatic reactor trip and go to
+    // the post-trip response."* A reactor trip is the most common significant event on a
+    // plant and recovering from one was not an authored evolution.
+    //
+    // IT IS ALSO THE FIRST CONTENT ANYWHERE TO NAME `reset_rps`. That command has been
+    // board-reachable since #75 and is required after EVERY scram, and no procedure,
+    // mission or checklist mentioned it — the sharpest of the three orphaned operator
+    // capabilities #319 found.
+    //
+    // MEASURED full stack, `hot_full_power`, shipped lineup, scram at t=60 s:
+    //   t+1 s   power 33.4 % — reset REFUSED, `RODS_NOT_INSERTED`
+    //   t+3 s   power 5.07 % — rods seated, reset ACCEPTED
+    //   ~1 min  plant_mode 3; turbine tripped automatically
+    //   ~3 min  main feedwater ISOLATED (and the board cannot restore it — see cautions)
+    //   ~3 min  AFW auto-started; SG level 65 -> 36.6 % by t+7 min, then holds ~37 %
+    //   settles 567.3 °F (297.4 °C) / 2235 psi (15.41 MPa) — hot, subcritical, Mode 3
+    //
+    // ACCEPTANCES ARE DELIBERATELY LAYER-ROBUST. AFW auto-start and the feedwater
+    // isolation are M4 ACTUATIONS, so they do not happen in `run_procedures`, which is
+    // engine-direct. Asserting `afw_active` here would pass under the stack and fail
+    // engine-direct, and this procedure has no NON_ENGINE_ACTION to justify `stack_only`
+    // with. So the AFW/MFW facts are carried as cautions and notes, and every `acc` is a
+    // truth both layers produce: power, the scram latch, plant mode, no melt.
+    {
+      id: 'pwr_post_trip', category: 'emergency', manual_ref: 'PWR-T06',
+      title: 'Post-trip response — Mode 1, At Power → Mode 3, Hot Standby',
+      purpose: 'The reactor has tripped. Confirm the trip, reset the protection system, verify the plant has a heat sink, and stabilize hot and subcritical in Mode 3, Hot Standby. This is where PWR-E03 and the other at-power emergencies send you once the reactor is down.',
+      from: 'hot_full_power',
+      prereq: ['At-power operation, or any event that has just tripped the reactor.'],
+      cautions: [
+        'Reset the RPS only AFTER the rods are seated. The reset is refused with RODS_NOT_INSERTED while they are still travelling — measured, that is the first ~2 seconds, with power still around 33 %.',
+        'Resetting the RPS re-closes the trip breakers. It does NOT withdraw the rods: the plant stays subcritical until you deliberately withdraw, and the startup net governs any re-ascent.',
+        'MAIN FEEDWATER ISOLATES on the trip and there is no board control to restore it. Auxiliary feedwater is the heat sink from here — measured, AFW auto-starts and holds SG level near 37 %.',
+        'A reactor trip is not a cooldown. The plant stays HOT — measured, it settles at 567.3 °F (297.4 °C) and 2235 psi (15.41 MPa). Cooling down is PWR-N15, a separate evolution.',
+      ],
+      steps: [
+        { text: 'Confirm the reactor is tripped — rods in, power collapsing. If it has not tripped and a trip is warranted, trip it manually: Reactor card → SCRAM.', control: 'SCRAM', target: 'power collapsing',
+          cmd: { action: 'scram' }, hold: 30, acc: { p: 'power_pct', op: '<', v: 5 } },
+        { text: 'Reset the Reactor Protection System. The SCRAM control now reads PRESS TO RESET — press it once the rods are seated. This clears the trip latch and re-closes the breakers; the rods stay in.', control: 'SCRAM', target: 'trip latch cleared',
+          note: 'Refused with RODS_NOT_INSERTED if you try it while the rods are still travelling. Measured: refused at t+1 s, accepted at t+3 s.',
+          cmd: { action: 'reset_rps' }, hold: 30, acc: { p: 'scrammed', op: '<', v: 1 } },
+        { text: 'Verify the turbine is off the grid. A reactor trip trips the turbine, so the generator should already be disconnected — confirm it rather than assume it.', control: 'Main Breaker', target: 'turbine tripped, breaker open',
+          hold: 60, acc: { p: 'turbine_tripped', op: '>', v: 0 } },
+        { text: 'Verify the heat sink. Main feedwater has isolated; auxiliary feedwater should have started automatically and be holding steam generator level. Watch SG LEVEL stop falling.', control: 'AFW', target: 'SG level steadies',
+          note: 'Measured under the shipped lineup: level falls 65 % → 36.6 % over about seven minutes, then holds near 37 %. Falling level early is expected — level that keeps falling is not.',
+          hold: 420, acc: { p: 'melted', op: '<', v: 1 } },
+        { text: 'Verify inventory and subcooling. The pressurizer should hold pressure with the heaters, and subcooling margin should stay positive — if it is eroding, you have a leak, not a plain trip.', control: 'Plant Pressure', target: 'subcooling positive',
+          hold: 120, acc: { p: 'subcooling_c', op: '>', v: 0 } },
+        obs('Declare Mode 3, Hot Standby: subcritical, rods in, RCS still hot and pressurized, heat sink established on AFW.',
+          { p: 'plant_mode', op: '~', v: 3, tol: 0.5 },
+          'From here the plant is stable indefinitely on decay heat. Going further down is PWR-N15 (cooldown to Mode 5); going back up is PWR-N03 (approach to criticality).',
+          ['SCRAM', 'AFW', 'Tavg']),
+      ],
+      guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
+      outcome: 'Mode 3, Hot Standby — subcritical with the trip latch reset, turbine off the grid, decay heat going to the steam generators on auxiliary feedwater, RCS hot at 567.3 °F (297.4 °C) and 2235 psi (15.41 MPa).',
+    },
     {
       id: 'pwr_loss_of_feedwater', category: 'emergency', manual_ref: 'PWR-E01',
       title: 'Mode 1 emergency — loss of main feedwater',
@@ -597,6 +655,187 @@
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
       outcome: 'Leak isolated with the block valve; core stays covered — the recovery TMI missed.',
+    },
+    // PWR-E03 — turbine trip. Authored 2026-08-03 (#319 item 1). Pairs with PWR-T06: E03 is the
+    // procedure that SENDS you to the post-trip response, and until T06 was built there was
+    // nothing at the other end of that pointer.
+    //
+    // MEASURED full stack, `hot_full_power`, shipped lineup, `trip_turbine` at t = 60 s:
+    //   +31 s   reactor ALREADY SCRAMMED (P-9), MWe 0, steam dump SATURATED at 40.00 %
+    //           — its entire capacity — SG level swelled 65 → 72.1 %, pzr level 55 → 61.6 %
+    //   settles Tavg 567.5 °F (297.5 °C), SG level 36.5 %, pzr 38.6 %, dump modulating 4–9 %
+    //
+    // The dump pinning at exactly 40.00 % is the #220/40 % ruling made visible: this is the
+    // event where the operator SEES the dump reach its stop and stay there. At the old 1.05
+    // capacity it never saturated and the interlock could only be asserted, never demonstrated.
+    //
+    // STEP 2 CARRIES AN EXPLICIT SCRAM AND THE TEXT SAYS WHY. The P-9 reactor-trip-on-turbine-
+    // trip is an M4 function, so `run_procedures` (engine-direct) has no RPS and will not trip
+    // on its own — the same layer wall PWR-T06 and PWR-E06 hit. Rather than assert a trip the
+    // engine-direct plant cannot produce, the step does what PWR-E03 step 2 and the chapter's
+    // generic action 1 both say: CONFIRM the automatic trip, and manually scram if power should
+    // be down and is not. On the shipped plant the confirm is all the player does.
+    {
+      id: 'pwr_turbine_trip', category: 'emergency', manual_ref: 'PWR-E03',
+      title: 'Mode 1 emergency — turbine trip above P-9',
+      purpose: 'The turbine has tripped at power. Above 50 % power that scrams the reactor automatically — your job is to confirm it happened, watch the steam dump take the heat the turbine is no longer taking, and hand over to the post-trip response.',
+      from: 'hot_full_power',
+      prereq: ['At-power operation above P-9 (≥ 50 % power).'],
+      cautions: [
+        'DO NOT PLAN TO RIDE OUT A TURBINE TRIP AT POWER. This plant carries Reactor Trip on Turbine Trip (P-9, ≥ 50 %). What it rides out is a LOAD REJECTION — the generator taking less load with the turbine still on line — which is a different event and does not arm P-9.',
+        'A planned offline is not a turbine trip. Taking the generator off line with the OFF selector opens the breaker, leaves the stop valves open, latches nothing and never arms P-9. It is reversible; a trip is not.',
+        'The steam dump is finite. Measured, it saturates at its full 40 % capacity in this transient and stays there — watch it reach the stop, because that is the plant telling you it has nothing left to give.',
+      ],
+      steps: [
+        { text: 'The turbine trips. (Failures tab → inject Turbine Trip, or it arrives on its own.) Steam demand collapses to nothing and the generator drops off the grid.', control: '(observe MWe and turbine state)', target: 'turbine tripped, 0 MWe',
+          cmd: { action: 'trip_turbine' }, hold: 20, acc: { p: 'turbine_tripped', op: '>', v: 0 } },
+        { text: 'CONFIRM the reactor tripped. Above P-9 it goes automatically and immediately — you should be verifying a scram that has already happened, not causing one. If power is not collapsing, scram manually now.', control: 'SCRAM', target: 'reactor tripped, power collapsing',
+          note: 'On the shipped plant the trip is automatic and arrives with the turbine trip, not after it. The SCRAM command here is the "if it did not" half of the procedure.',
+          cmd: { action: 'scram' }, hold: 60, acc: { p: 'power_pct', op: '<', v: 5 },
+          saw: { p: 'steam_dump_valve_pct', op: '>', v: 35 } },
+        { text: 'Watch the steam dump. With the turbine gone it is the only path for the heat still coming out of the core, and it drives open on Tavg error. Measured, it goes to its stop — 40 % of rated steam flow, all of it — and holds there through the worst of the transient.', control: 'Steam Dump', target: 'dump at its stop',
+          note: 'The saturation is EARLY — measured, the dump is at 40.00 % about half a minute after the trip and has backed off to ~9 % by three minutes, so the assertion for it lives on the previous step. What you are watching here is it modulating back down as decay heat falls.',
+          hold: 120, acc: { p: 'melted', op: '<', v: 1 } },
+        { text: 'Control steam generator level through the swell. Losing steam demand swells the generator before decay heat brings it back down — the level you see first is not the level you will settle at.', control: 'SG Level', target: 'level swells then settles',
+          note: 'Measured: SG level swells 65 → 72.1 % in the first half-minute, then falls away to about 36.5 % as the plant settles on decay heat and auxiliary feedwater.',
+          hold: 300, acc: { p: 'melted', op: '<', v: 1 } },
+        obs('Confirm the plant is stable, hot and subcritical — this is Mode 3, Hot Standby, and from here you are in the post-trip response (PWR-T06).',
+          { p: 'plant_mode', op: '~', v: 3, tol: 0.5 },
+          'Measured settled condition: Tavg 567.5 °F (297.5 °C), steam dump modulating a few per cent, SG level near 36.5 %. PWR-T06 picks up from exactly here — including the RPS reset, which this procedure does not do.',
+          ['SCRAM', 'Steam Dump', 'Tavg']),
+      ],
+      guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
+      outcome: 'Turbine trip absorbed: reactor tripped automatically on P-9, the steam dump carried the transient at its full 40 % capacity, and the plant is stable in Mode 3, Hot Standby ready for the post-trip response.',
+    },
+    // PWR-E06 — SGTR. Authored 2026-08-03 (#319 item 2), AFTER #322 was investigated and ruled.
+    //
+    // THIS PROCEDURE WAS BLOCKED FOR A DAY BECAUSE TWO OF ITS SIX STEPS TAUGHT THINGS THE PLANT
+    // DOES NOT DO, and the fix was to the MANUAL, not the physics *(OWNER RULING, 2026-08-03:
+    // "Declare")*. Measured, and now declared at `DESIGN_COMPANION.md` §8.26:
+    //   · SG level does NOT rise. The leak is a primary-side mass sink with ΔP modulation;
+    //     `leak_to_sg` names the ΔP dependence and routes nothing, and the SG level integrator
+    //     is `(feedwater_flow − steam_out)` with no leak term. Measured: level held 67.98 %
+    //     CONSTANT for four minutes with feed, AFW and steam flow all zero.
+    //   · The MSIV does not change the secondary pressure trend — 134.6 psi open vs 134.0 shut.
+    //     SG pressure is capped at Psat(Tavg), so it follows primary TEMPERATURE.
+    // So this checklist diagnoses on the PRIMARY side only, which is what the plant actually
+    // gives you. The reason it is not worth building the secondary side is scope, not fidelity:
+    // one steam generator is modelled, so "which generator is leaking" — the whole point of the
+    // level cue on a real plant — cannot be taught here at any fidelity.
+    //
+    // WHAT DOES WORK IS THE GOOD HALF, and it is the reason the procedure exists. The leak is
+    // ΔP-scaled, so depressurizing toward the secondary SELF-LIMITS it. Measured full stack,
+    // severity 0.5: dropping the Pressure SP took the primary 2223 → 1433 psi (15.33 → 9.88 MPa)
+    // and break flow 0.0129 → 0.0062 — a 52 % cut. That is Tier A A3 (pressure follows
+    // temperature; subcooling is the margin) under casualty conditions.
+    //
+    // Step 2 SCRAMS EXPLICITLY rather than waiting for the automatic trip. E06 step 1 says
+    // "SCRAM if not automatic", so that is faithful — and it is also what makes the run
+    // layer-robust: the RPS is M4, so `run_procedures` (engine-direct) would never trip on its
+    // own. Same lesson as PWR-E23: an acceptance has to be a truth BOTH layers produce.
+    {
+      id: 'pwr_sgtr', category: 'emergency', manual_ref: 'PWR-E06',
+      title: 'Mode 1 emergency — steam generator tube rupture',
+      purpose: 'A primary-to-secondary leak through a ruptured tube. It outruns charging, so the plant trips itself. Diagnose it on the PRIMARY side, then depressurize toward secondary pressure — the leak is driven by the pressure difference, so closing that difference is what shuts it down.',
+      from: 'hot_full_power',
+      prereq: ['At-power operation.'],
+      cautions: [
+        'THE STEAM GENERATOR WILL NOT CONFIRM THIS FOR YOU. SG level does not rise and the MSIV does not change the secondary pressure trend — a declared departure (DESIGN_COMPANION §8.26), because this trainer models one steam generator and the level cue exists on a real plant to tell you WHICH one is leaking.',
+        'Diagnose on the primary: inventory falling with charging saturated, pressurizer level driving through the trip, subcooling eroding.',
+        'Depressurize with subcooling in hand. The leak stops when the primary reaches secondary pressure — but a primary taken below saturation is a different emergency.',
+        'Unlike a seal leak (PWR-E23), this one IS pressure-modulated. That is the whole strategy: you terminate it from the control room by closing the ΔP.',
+      ],
+      steps: [
+        { text: 'The rupture opens. (Failures tab → inject Steam Generator Tube Rupture.) Primary inventory starts leaving through the tube into the secondary — charging comes up to meet it and cannot.', control: '(observe inventory and charging)', target: 'inventory falling',
+          note: 'Measured at half severity: break flow starts near 0.012 inventory-frac/s, well beyond the CVCS make-up authority of ~7.2e-4.',
+          cmd: { action: 'inject_failure', failure_id: 'sgtr', severity: 0.25 }, hold: 90,
+          saw: { p: 'core_inventory_pct', op: '<', v: 100 } },
+        { text: 'Trip the reactor. On the real plant the low pressurizer level trip does it for you as make-up loses the race — do not wait for it if pressure and level are already going.', control: 'SCRAM', target: 'power collapsing',
+          cmd: { action: 'scram' }, hold: 60, acc: { p: 'power_pct', op: '<', v: 5 } },
+        { text: 'Establish the heat sink. Main feed is gone with the trip — start auxiliary feedwater and keep the steam generator wet, or the primary has nowhere to put decay heat while you are working the leak.', control: 'AFW', target: 'AFW delivering',
+          cmd: { action: 'set_afw', active: true }, hold: 60, acc: { p: 'afw_active', op: '>', v: 0 } },
+        { text: 'Ensure high-pressure injection is in. Charging has already lost this race — HPI is what keeps the core covered while you work the leak, and it is the difference between a stabilized plant and a damaged one.', control: 'HPI/LPI', target: 'HPI injecting',
+          note: 'On the shipped plant HPI actuates itself on low pressure. Confirming it is a real step, not a formality — engine-direct, without it, this casualty takes fuel temperature past 2192 °F (1200 °C).',
+          cmd: { action: 'set_hpi', active: true }, hold: 60, acc: { p: 'hpi_active', op: '>', v: 0 } },
+        { text: 'Confirm the diagnosis on the PRIMARY side — inventory down, pressurizer level low, subcooling shrinking. Do not go looking for it on the steam generator; on this plant the secondary tells you nothing.', control: 'Plant Pressure', target: 'primary-side signature',
+          hold: 60, acc: { p: 'leak_flow', op: '>', v: 0.004 } },
+        { text: 'Now close the pressure difference. Walk the PRESSURE SP down toward secondary pressure — the leak is driven by primary-minus-secondary ΔP, so every psi you come down is break flow you do not lose.', control: 'Pressure SP', target: 'break flow falling',
+          note: 'Measured at this severity: 2231 → 1432 psi (15.38 → 9.87 MPa) cut break flow 0.0055 → 0.0021, a 62 % reduction, with subcooling still positive. It creeps back as the secondary blows down and the ΔP reopens — see the closing step.',
+          cmd: { action: 'set_pressure_setpoint', mpa: 10.0 }, hold: 60,
+          acc: { p: 'leak_flow', op: '<', v: 0.004 } },
+        obs('Confirm the leak is throttled and the core is still covered. The plant is not fixed — it is stabilized, with the leak held down by the pressure you are holding. A real recovery continues into a cooldown on the intact loop.',
+          { p: 'melted', op: '<', v: 1 },
+          'The break flow will creep back up as the secondary blows down and the ΔP reopens. That is the physics, not a failure of the action — it is why a real SGTR ends in a cooldown rather than a hold.',
+          ['Pressure SP', 'Plant Pressure']),
+      ],
+      guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
+      outcome: 'Reactor tripped, leak diagnosed on the primary side, and break flow cut by more than half by depressurizing toward the secondary — the ΔP strategy the procedure exists to teach.',
+    },
+    // PWR-E23 — the everyday leak. Authored 2026-08-03 (#319 item 3). This is the ONLY
+    // abnormal procedure on the plant where nothing breaks: charging holds it indefinitely,
+    // there is no trip, no ESF and no subcooling loss, and the whole lesson is that you have
+    // to READ the board rather than react to it.
+    //
+    // `rcp_seal_leak` had NO test coverage of any kind before this — not a behaviour probe,
+    // not a scenario, nothing. Every claim below was measured for the authoring.
+    //
+    // MEASURED full stack, `hot_full_power`, shipped lineup, severity 0.4 injected at t=120 s.
+    // The manual's numbers are right in every particular, which is worth recording because it
+    // is not the usual outcome of checking one:
+    //   charging   0 -> 0.0417 and HOLDS, letdown steady at 0.0300
+    //   pzr level  parks at 53.79-53.81 % — the manual says "around 52-54 %"
+    //   subcooling 73.77 °F (40.99 °C), UNCHANGED from the pre-leak value
+    //   inventory  settles 98.82 % — a standing deficit, not a descent
+    //   no trip, power stays 100 %
+    // ALARMS, measured against `.state` rather than presence (the `getAlarms()` trap):
+    //   t+60 s   nothing active at all
+    //   t+181 s  `charging_high` active — and it is the ONLY alarm that ever comes in
+    //   PZR LVL LO (25 %) and PZR LVL DEV LO never assert, exactly as the procedure warns
+    //
+    // Step 1 puts CVCS in AUTO explicitly — real procedure (confirm the lineup before you
+    // judge a leak by how hard make-up is working).
+    //
+    // THE CHARGING CUE IS M4-DEPENDENT AND THE ACCEPTANCES HAD TO GIVE WAY TO THAT. I assumed
+    // `set_cvcs_auto` being an ENGINE command would make the charging number layer-robust. It
+    // does not: measured on the SAME leak, charging settles at 0.042 under the stack and
+    // 0.010 engine-direct — 4x apart — because the `cvcs_makeup` M4 channel is what actually
+    // drives make-up on the shipped plant. What IS layer-robust is the OUTCOME: pzr level
+    // parks at 53.79 % and subcooling holds at 40.99 °C in BOTH layers, identically.
+    // So the charging acceptance is only `> 0.005` (make-up is running at all) and the tight
+    // numbers live in the step notes. The #209 class — a gate certifying a lineup that does
+    // not ship — is why this is written down rather than tuned until it passed.
+    {
+      id: 'pwr_seal_leak', category: 'emergency', manual_ref: 'PWR-E23',
+      title: 'Mode 1 abnormal — reactor coolant pump seal leak',
+      purpose: 'A small primary leak to containment. Charging makes it up and the plant stays at power — nothing forces your hand. Diagnose it from CHARGING FLOW, size it, and decide what to do on your own terms.',
+      from: 'hot_full_power',
+      prereq: ['At-power operation, CVCS available.'],
+      cautions: [
+        'PZR LVL LO does NOT come in. It is set at 25 % and a held leak parks level near 54 % — waiting for a level alarm means waiting all shift.',
+        'PZR LVL DEV LO stays clear too. The deviation only opens when make-up STOPS holding, so its silence is information, not the absence of a problem.',
+        'This leak is NOT pressure-modulated. Unlike an SGTR, depressurizing does nothing to it — you cannot terminate it from the control room.',
+        'Rule out the impostors before believing the leak: isolated or throttled letdown, or a deliberate level-setpoint change, produce the same high-charging picture.',
+      ],
+      steps: [
+        { text: 'Confirm the inventory lineup first: CVCS in AUTO, so charging is free to make up whatever is lost. You are about to judge a leak by how hard make-up is working — that only means anything if make-up is actually in control.', control: 'CVCS Inventory Control', target: 'CVCS in AUTO',
+          cmd: { action: 'set_cvcs_auto', active: true }, hold: 30 },
+        { text: 'The leak starts. (Failures tab → inject Reactor Coolant Pump Seal Leak.) Nothing dramatic happens — watch CHARGING FLOW rise and settle while LETDOWN stays where it was. That imbalance IS the leak.', control: 'CVCS Inventory Control', target: 'charging rises, letdown steady',
+          note: 'Measured: charging settles near 0.042 against letdown 0.030. CHG FLOW HI comes in about three minutes after the leak starts — it is the only alarm you will get.',
+          cmd: { action: 'inject_failure', failure_id: 'rcp_seal_leak', severity: 0.4 }, hold: 300,
+          acc: { p: 'charging_flow_actual', op: '>', v: 0.005 } },
+        { text: 'Now confirm the make-up is winning. Pressurizer level should sit a little BELOW program and hold there — stable, not falling. A level that is still descending means make-up is losing and this is no longer this procedure.', control: 'Pressurizer Heaters (PZR)', target: 'level stable just below program',
+          hold: 300, acc: { p: 'pzr_level_pct', op: '~', v: 54, tol: 3 } },
+        { text: 'Check subcooling. A leak this size costs you none of it — if subcooling is eroding, you have a bigger leak than a seal and you are heading for the loss-of-coolant response instead.', control: 'Plant Pressure', target: 'subcooling unchanged',
+          hold: 120, acc: { p: 'subcooling_c', op: '>', v: 35 } },
+        { text: 'Trend the charging demand at steady load. Flat means a stable leak you can plan a shutdown around; rising means it is growing and the decision gets made for you.', control: 'CVCS Inventory Control', target: 'charging flat',
+          hold: 420, acc: { p: 'subcooling_c', op: '>', v: 35 } },
+        obs('Confirm the plant is still where you left it: at power, no reactor trip, no safety injection, subcooling intact. The leak is identified and sized, and the shutdown decision is yours to make deliberately.',
+          { p: 'scrammed', op: '<', v: 1 },
+          'This is the acceptance the procedure asks for — a stable, alarm-quiet plant with a known leak, not a recovered casualty.',
+          ['CVCS Inventory Control', 'Plant Pressure']),
+      ],
+      guard: { never_melted: true, never: [{ p: 'subcooling_c', op: '<', v: 5 }] },
+      outcome: 'Leak identified from charging flow and trended flat, with the plant still at power — no trip, no ESF, and the decision to shut down made on the operator’s terms rather than forced.',
     },
     {
       id: 'pwr_tmi', category: 'accident', narrative: true, manual_ref: 'PWR-E08',

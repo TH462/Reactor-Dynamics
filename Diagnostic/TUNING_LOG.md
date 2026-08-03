@@ -20,6 +20,544 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03r (#238 zirconium oxidation — the escalation was pointing the wrong way)
+
+**Built the #238 checklist entry.** The exposed-clad hot node (#213) has its second heat source:
+`Zr + 2H₂O → ZrO₂ + 2H₂`, 190 kJ/mol. Backshop lane. Rationale: `BUILD_DECISIONS.md` 2026-08-03e.
+
+**The entry undersold the defect, and measuring it is what showed that.** It said the node
+"understates how fast a very hot core accelerates to melt". Measured, the node does not accelerate
+at all — it **decelerates**, because decay heat is its only source and decay heat falls. On an
+unmitigated large break the successive 400 °C bands took **218 / 334 / 378 / 428 s**, each slower
+than the last. That is the opposite of a severe accident, and it is a CHARACTER defect rather than
+a timescale one. After: **184 / 172 / 86 / 40 s**, strictly decreasing, 4.6× end to end. Damage →
+melt: MD-1 **22.7 → 8.1 min**, MD-2 **32.8 → 4.9 min**, MD-3 **38.0 → 13.3 min**.
+
+**I did not build the shape the entry proposed, and the source is why.** It sketched
+`heat × (1 + zirc_gain · max(0, clad − zirc_onset_c))` — linear above ~1100 °C, gain fitted to a
+target timescale. Baker-Just is **Arrhenius and parabolic**, and using it directly is *simpler* as
+well as more prototypical: E/R = 45500/1.987 = **22 898 K**, so the exponential makes low
+temperatures negligible by itself — **the onset constant is not needed and neither is the
+discontinuity at it**. The parabolic half is why there is an oxide STATE and not a bare temperature
+factor: the rate constant is 228× its reference value at 2000 °C and **3140× at the melt point**, so
+an unbounded multiplier would slam the node to melt instantly; the protective oxide layer is what
+holds it. That state is also the hydrogen hook the entry asks for.
+
+**The calibration is SOURCED, so the melt timescale is an output rather than a target** — which is
+the part worth defending. *"At approximately 2200 °F, the oxidation heat … equals the decay heat
+generated after 8 hours from reactor shutdown."* 2200 °F is also the **10 CFR 50.46(b)(1)** limit,
+and near enough this plant's existing `fuel_damage_c` — **the model was stopping exactly where the
+second heat source turns on.** On our own two-group decay curve the 8-hour figure is **1.1243 % of
+rated**, and the algebra makes `Q_ox` equal it at the reference point by construction (verified,
+1.1243 % vs 1.1243 %). Three of four constants sourced; only `tau_ref_s` is `[tune]`, corroborated
+by Baker-Just reaching 17 % ECR — the 50.46(b)(2) limit — in ~80 s at 1204 °C.
+
+Measured crossover: **1.0×** the 8-hour decay heat at 1204 °C, **2.6×** at 1300, **13.3×** at 1500,
+doubling every **+66.7 °C** while decay heat falls. That is the self-sustaining signature.
+
+**A heat source that compresses melt by up to 6.7× moved ZERO existing gates**, which is the third
+time this session the suite has proved to test outcomes rather than mechanisms (cf. #315, #321).
+Ten meltdown paths assert THAT the core melts; none asserted how fast or which way the rate was
+going. **MD-11** therefore asserts the **second derivative** — each 400 °C band faster than the one
+below, by > 3× end to end — plus the anchor recomputed FROM CONFIG so it follows a re-fit of the
+decay groups instead of going stale. A timing band would have pinned one tuning; this pins the
+mechanism. Injection: `q_ref: 0` reddens **5 checks** and inverts the bands. `run_meltdown` 10 → 11.
+
+**Declared, not built:** hydrogen MASS (needs a core Zircaloy inventory this plant does not have —
+inventing one is worse than leaving the hook), oxidation heat into the bulk core, steam starvation.
+
+**Worth an eye, pre-existing but now easier to hit:** the clad node runs well past Zircaloy's
+~1850 °C melting point before `fuel_melt_c` (2800 °C, the UO₂ figure) declares melt — MD-1 ends at
+2859 °C clad against 1926 °C fuel. True on decay heat alone too; oxidation just gets there sooner.
+Separating clad melt/relocation from fuel melt is a bigger change and is not proposed.
+
+**Gates.** `run_all` **36 runners at baseline**, `run_meltdown` re-baselined 10 → 11. Manual set
+**Rev 18** — **12** §5.5 said the node heats "at the local decay-heat rate" and now carries the
+oxidation section with the numbers; §13 corrected (hydrogen GENERATION is modelled, the INVENTORY
+is what is absent). One trap on the way: `run_manual_units` red-carded four conversions in the new
+prose, including a bare "400 °C" with no US pair — the temperature-DIFFERENCE class again.
+
+---
+
+## Session log — 2026-08-03q (the sweep is a TOOL now — `tools/perturb_sweep.js`)
+
+**Built the throwaway rig from 2026-08-03j into `tools/perturb_sweep.js` + `_perturb_child.js`.**
+It nudges `[tune]` constants by 2–3 %, runs a suite per nudge and diffs verdicts — answering
+*"what will this retune break?"* before the retune rather than after a mystery red. Backshop lane.
+
+**The design is built around the mistake, not the success.** The first attempt at that sweep
+perturbed the instrument SEED and reported zero flips across 241 checks — a result that was
+worthless, because the known-defective check did not flip on noise either. So the tool **never
+prints a bare "0 flips"**: it scores every perturbation for DISCRIMINATING POWER first (how many
+observed values moved at all) and labels one that moves nothing **INERT**, explicitly excluded from
+any "no flips" claim. `--self-test` goes further and injects a check fragile by construction, to
+prove the pipeline can see a flip at all before a negative is believed.
+
+**Measured discriminating power, which is itself useful to have written down.** On the §14 suite:
+`h_sg` ×1.03 moves **40/241** observed values, `coolant_heat_capacity` **30/241**, `h_fc`
+**23/241** — while `delta_T_rated` ×1.02 moves **3** and `K_sg_level` **6**, and the instrument
+seeds move **1–8**. That last figure is the quantitative version of why the seed sweep proved
+nothing: it barely perturbs the suite at all.
+
+**It reproduces both known results exactly.** §14: 0 flips across 8 perturbations with real power.
+Behaviour battery: the same five flips as the hand-rolled sweep — SS-5 ×2, TR-1g ×2, TR-1i — with
+TR-1i flipping under BOTH `h_sg` and `coolant_heat_capacity`, which is the one to watch.
+
+**Reading the output is the part that needs judgement, and the tool says so on every run:** a flip
+on a constant the check never NAMES is a check measuring the wrong quantity (#321); a flip because
+the BAND is narrower than the nudge is a tight band, a fact about the plant. **Do not widen a
+sourced band to make it quiet** — that is refitting the test (HR10).
+
+**Deliberately in `tools/`, not `test/`.** `run_all` auto-discovers `test/run_*.js` and
+`test/verify_*.js` and demands a baseline for each; this has no stable score — its output is a diff
+against a change you are considering — so it is not a gate and must not become one.
+
+**Gates.** `run_all` **36 runners at baseline** (full, browser gates included).
+
+---
+
+## Session log — 2026-08-03p (#321 swept: the class is UNIQUE, and the detector was validated first)
+
+**No code change beyond two comments.** #321's body ended with *"worth a sweep for `now − then`
+comparisons on any channel that protection also reads"* — an unmeasured claim about coverage, which
+is exactly what CLAUDE.md says to prove by injection. Swept. Backshop lane.
+
+**Method, including the attempt that was the wrong instrument.** Perturb something no check's
+NAMED claim mentions, run the whole suite, diff verdicts; a verdict that moves is a check measuring
+something it does not name. **Attempt 1 was the instrument SEED** (noise realisation, no physics):
+six seeds × 241 §14 checks, **zero flips** — and worthless, because #321's check did not flip on
+noise either. Recorded so nobody repeats it. **Attempt 2 was small `[tune]` nudges** — 2–3 % on
+`coolant_heat_capacity`, `h_sg`, `K_sg_level`, `h_fc`, `delta_T_rated`.
+
+**THE DETECTOR WAS VALIDATED AGAINST THE KNOWN POSITIVE BEFORE THE NEGATIVE WAS BELIEVED**, which is
+the step that makes the result worth anything. Re-injecting the OLD #321 form alongside the new one:
+a **3 % nudge to `thermal.h_sg`** flips it **PASS (14.19) → FAIL (14.88)** — steam generator heat
+transfer, which has nothing to do with a drifting pressure gauge — and `delta_T_rated` ×1.02 moved
+it 0.83 MPa without quite breaking it, so it was fragile to at least two unrelated constants. The
+replacement reads **exactly 2.0000 under every perturbation**.
+
+**Result: the class is UNIQUE.** 241 §14 checks, **0 flips** across five physics nudges and six
+seeds. The static sweep surfaced 34 other `now − then` candidates and every one is a legitimate
+*plant-response* claim (power drifts, inventory falls, level falls) where comparing against an
+earlier value IS the point. #321 closed.
+
+**A DIFFERENT finding, recorded rather than fixed.** The same nudges over `run_behavior` (359
+checks) flip **five**, and they are not the #321 shape — they are catalog-band checks doing exactly
+what they name, with bands narrower than the nudge. Two matter:
+
+| check | baseline → nudged | nudge | headroom |
+|---|---|---|---|
+| **TR-1i** Tavg within the ±5 °F WTSM 8.1.1 duty | 4.77 → **5.02** / **5.12** | `h_sg`, `coolant_heat_capacity` | **0.23 °F (4.6 %)** |
+| **TR-1g** Tavg back within the sourced ±5 °F | −4.60 → **−5.25** | `h_sg` | 0.40 °F (8 %) |
+| **SS-5** no-load level ≤ 40 % | 38.2 → **40.6** | `h_sg` | 1.8 pts (4.5 %) |
+| **SS-5** program rises ≥ 15 % no-load → full | 16.8 → **14.4** | `h_sg` | 1.8 pts |
+| **TR-1g** core reduced to the SECONDARY LOAD | 44.6 → **33.5** | `coolant_heat_capacity` | large move |
+
+**Do not widen any of them.** The ±5 °F is the SOURCED WTSM duty; widening a sourced acceptance
+band because it is uncomfortable is refitting the test to the plant (HR10), and a thin margin is a
+fact about the plant rather than about the check. The margins are now recorded **in comments at
+TR-1g and TR-1i themselves**, where someone debugging a red will actually be looking: *if this
+reddens, ask what you changed that touches SG heat transfer before hunting the rod channel.*
+
+**Gates.** `run_behavior` 45/45 unchanged (comment-only edit).
+
+---
+
+## Session log — 2026-08-03o (#315 §6 CLOSED — and the primary corrected my own evidence)
+
+**Ruled: keep the leg split on total core heat, do not take the fuel→coolant flux form** *(OWNER
+RULING, 2026-08-03: "Do as you recommend.")*. No plant behaviour changed. Backshop lane. Full
+rationale: `Blueprint/BUILD_DECISIONS.md` 2026-08-03d; measurement packet on #315.
+
+**THE PROCESS FINDING IS THE ONE TO KEEP, because it is a near-miss.** nrc.gov 403s from this
+session, so the evidence pass went to an OPEN-ACCESS restatement of the Westinghouse equations
+(Li Gang, FMSMT 2017) which shows the trip comparing against **ΔT·(1+τ₄s)(1+τ₅s)** — a lead-lag on
+the MEASURED ΔT, labelled as compensating "RTD and thermowell thermal time constant plus fluid
+transport time". I built the whole §6 argument on it, wrote it into three source files and posted
+it to the issue: *the real channel compensates measurement lag out of ΔT, so adding a fuel lag is
+backwards.* **Then I read the primary.** The workbench session had already fetched ML11223A301 on
+2026-08-03 (corrected archive.org CDX recipe — their 2026-08-03f entry), and its extract is sitting
+in `RD_workbench/inbox/sources/`. WTSM 12.2 prints both equations, and the ONLY dynamic
+compensation in either is on **Tavg**: *"the lead-lag controller for Tavg dynamic compensation"*,
+*"the rate-lag controller for Tavg dynamic compensation"*. There is **no τ₄/τ₅**, and the document
+contains **no RTD, thermowell or transport wording anywhere**. The restatement describes a
+different design lineage (CNPEC), not the Westinghouse reference. **Everything built on it was
+reverted and rewritten against the primary before commit.**
+
+Two lessons, and the second is the sharper one. **A secondary restatement can be internally
+plausible, quotable and specific and still be describing a different plant** — the SOP's "another
+agent's summary is not evidence" extends to *any* non-primary, including a peer-reviewed paper
+restating someone else's equations. And **check what the other lanes already sourced before
+sourcing it yourself**: the primary had been in the tree since the morning merge, named in a
+TUNING_LOG entry I had not read, and reading it first would have saved the whole detour.
+
+**What the primary actually settles for §6, and it still closes the same way.** The real channel
+reads loop ΔT as *"a measure of reactor power"*, **directly and uncompensated**. Every compensation
+it does have is on Tavg. So a ΔT carrying a ~20 s fuel lag is a worse measure of core power — the
+one job the real design gives that signal. Measured cost of the flux form: full load rejection
+rides out either way, but the OTΔT margin falls **18.4 % → 1.8 %** of rated ΔT; and it is not
+rescuable by a faster fuel node — `h_fc` 0.05 → 0.10 with `heat_gen_coeff` doubled to hold 389 °C at
+rated gives `run_otdt` **21/39** and a scram at 1 s on `tavg high`. Those two constants are jointly
+calibrated.
+
+**The candidate form was ALSO wrong in its own right, and TR-7b caught it** — the probe written a
+session earlier for the *other* variant. My §6 formulation included `Q_pump`. Pump heat is
+deposited AT THE PUMP, between SG outlet and core inlet: it lifts both legs equally and creates no
+rise ACROSS THE CORE. It over-stated ΔT by exactly the pump-heat fraction (+8.9 % at t+3 min,
++14 % at t+30 min — a steady-state offset, not a transient). Corrected to flux alone, TR-7b passes.
+
+**Three reds re-diagnosed on the merged tree; only ONE was ever real.** `run_campaign` did not
+reproduce (51/51). `run_pwr`'s *"drifting pressure diverges"* is a defective check — spun out as
+**#321** and fixed here, `run_pwr` **240 → 241**. `run_otdt` is the real one, and it is the margin
+collapse above.
+
+**Three stale sourcing sites retired**, which the workbench entry diagnosed but did not fix:
+`pwr_config.js` ×2 and `DESIGN_COMPANION` §8.23 all still said ML11223A301 *"could not be fetched"*
+and that the τ values are in it. Both halves are wrong: the document has been read, and the τ's are
+**named and never valued** there (Table 12.2-1 lists both setpoints *"Variable (calculated)"*,
+K₁–K₆ *"manually adjusted preset"*). They are plant Tech Spec / COLR numbers, so the
+dynamic-compensation departure is **permanent unless a plant-specific source turns up** rather than
+a pending fetch — a different thing to tell the next person, and it stops the next agent waiting on
+a document that will never carry the answer.
+
+**Gates.** `run_all` **36 runners at baseline**, `run_pwr` re-baselined 240 → 241. No manual change
+(the OTΔT trips ship default OFF and `Manuals/12` carries no OTΔT content).
+
+## Session log — 2026-08-03n (#318 the turbine runback — and "fix K4" turned out to be unfixable)
+
+*(OWNER RULING, 2026-08-03: "Go with your recommendation")* for the shape — the runback drives the
+load setpoint visibly, no refusal, no ceiling, **zero new player-facing rules** — after the owner
+pushed back on my first design: *"I'm not sure if I want to add another thing for the player to
+learn if it doesn't teach dynamics."* He was right about the authority model and wrong about
+nothing: a refusal message teaches an interface rule, not a coupling.
+
+**Then the build found something bigger, and the owner's instruction could not be carried out as
+given.** Told to *"Fix k4"* — my own diagnosis, that the OPΔT intercept was too tight because a
+70 → 100 MW load increase came within **0.51** of the trip. Measured the natural ΔT peaks with the
+trips off, and there is no K4 to fix:
+
+| | peak ΔT | peak power |
+|---|---|---|
+| 70 → 100 MW increase (normal) | **109.1 %** | 109.7 % |
+| **15 % steam line break (casualty)** | **109.8 %** | 109.4 % |
+| 90 → 100 MW (the WTSM 10 % duty) | 103.0 % | 102.5 % |
+| 30 % steam line break | 116.7 % | 116.6 % |
+
+**A normal 30 % load step and a 15 % steam line break are indistinguishable to any ΔT setpoint** —
+0.7 % of rated ΔT apart. Raise K4 to clear the ramp and OPΔT stops catching the break; lower it and
+the ramp trips. There is no window. Reported that rather than doing something and calling it done.
+
+**What separates them is DURATION, so the fix is a persistence delay** — 10 s, a declared departure
+(WTSM describes none). On the plant's actual design duty the question does not even arise: the
+10 % step peaks at 103.0 %.
+
+**THE TRAP, and it cost two wrong mechanisms: the margin is NOISY and my dwell measurement was a
+SAMPLING ARTIFACT.** I measured "longest continuous dwell below the stop" as 4.5 s for the ramp and
+**24.5 s** for the break, and sized the delay from that. Built the obvious counter — accumulate
+below the setpoint, reset above it — and it **never reached 10 s on any case, maximum 0.40 s.** The
+margin chatters across the threshold many times a second on instrument noise; my 24.5 s figure was
+measured at BROADCAST resolution, which smooths the chatter away, while the kernel runs at physics
+resolution where no such continuous window exists. **Both numbers were "measured" and one of them
+was still wrong** — resolution is part of a measurement, and I did not state it.
+
+The working mechanism applies the hysteresis pair to the TIMER, not just to the latch: accumulate
+below the setpoint, **hold** in the band between setpoint and `clears_above`, zero only on a real
+recovery. Same shape the engage/disengage logic already used.
+
+**Measured, final:** normal 70 → 100 ramp — runback **never engages**, load target stays 100.0 MWe.
+15 % steam line break — engages, drives load **100 → 76 MWe**, scram at 200 s becomes a **ride-out**.
+30 % break and continuous rod withdrawal — **unchanged, still scram**, and that is the dynamics
+lesson rather than a tuning failure: the runback works THROUGH A1, and a transient faster than the
+moderator feedback outruns it. Rate is nearly irrelevant to that (5 %/s is no better than 2 %/s),
+which is the same finding stated two ways.
+
+**Where it lives.** `stepAutomation(dt)`, not `evaluate()` — `evaluate` is called on a variable
+cadence (in-loop on `sinceEval >= PROTECTION_DT` plus one unconditional post-loop call), so a rate
+driven from it would scale with time acceleration: the #153 defect. Consequence stated in the code:
+the runback is a **full-stack behaviour** and engine+M4 harnesses do not see it. It is NOT an
+automation channel — channels are operator-engageable and protection is not — it merely shares that
+entry point because that is the fixed-dt seam.
+
+`run_otdt` **39 → 44** (+7 section D, −2 because the 15 % break MOVED from the casualty block to a
+save). `run_autoctl` 30/30 and `run_campaign` 51/51 both went red mid-build and are green — they
+were the gates that caught the runback firing on a normal ramp, which no probe of mine had.
+
+---
+
+## Session log — 2026-08-03m (#311 OTΔT/OPΔT turned ON, with the board readout that justifies it)
+
+*(OWNER RULING, 2026-08-03: "Let's go with your recommendations for all these items")* — approving
+the order **board wiring → flag → runback**, and the ordering earned its keep twice.
+
+**The board readout came first, deliberately.** `bdDtMargin` (NIS card corner) shows the binding
+margin and names its trip — `OPΔT 3.5` — amber at the **rod stop**, not the trip line, because
+"the plant is about to stop taking rods out" is the part the player can still act on. Without it,
+flipping the flag hands the player two reactor trips and a rod-withdrawal block driven by a number
+that appears nowhere on the diagram. That is a `DESIGN_CRITERIA` Q3 observability failure, and it
+was the real blocker — not the unsourced intercepts.
+
+**THE BOARD IS FULL, measured.** Extent x 540..1945 / y 110..849, and an occupancy scan returns
+**no free 150×60 slot** — every candidate was an edge artifact running off the right boundary. A
+first scan "found" a large free column at x < 540 and that was the scan being wrong, not the
+board: nothing exists left of 540. The free-corner survey is the useful artifact — of 20 card
+corners, 8 are free, and the NIS corner (995, 230) is the one that matters because that card
+already holds the leg ΔT readout. **So: ONE readout, not five channels.** The space argument is
+real but secondary; the Q3 argument stands on its own — leg ΔT is *already* displayed, so
+`loop_delta_t` in % of rated is a second copy of one measurement, and each setpoint is implied by
+its margin. **A margin that moves while ΔT holds steady IS the moving trip line**, which is the
+whole OTΔT lesson.
+
+**Flag ON. Blast radius exactly as #311 predicted, with one improvement it did not predict:**
+`run_campaign` stayed **51/51**. #311's own forecast was 50/51 on `pwr_lof` — but #314 landed
+first by recommendation, so the breaker trip catches that casualty at 23.0 s against OPΔT's 24.5 s
+and the mission I had just re-authored could not be re-broken. That is the sequencing paying off
+in a number.
+
+**THREE test-premise findings in one change, all the same shape — a test whose fixture was the
+plant not doing anything.**
+
+1. **`run_m4`'s #295 probe.** Pinned the reason string `primary_pressure low`; OTΔT now gets there
+   at ~1.7 s and carries "No Interlocks", so it cannot be blocked at all — the probe's claim is
+   *strengthened*. **My first re-authoring was WRONG and injection caught it**: it asserted the
+   survivor was "not one of the three trips the operator blocked", which is incoherent, because
+   #295's whole finding is that those block attempts are **refused** at power. Nothing is blocked,
+   so `primary_pressure low` is a valid survivor and the check failed on the pre-flag plant. **The
+   discriminator is the TIME** — the defect rode 64 s unscrammed; healthy is 4.1 s flag-off and
+   1.7 s flag-on. It passes on both now. I had already written "this also passes on the old plant"
+   into the comment *before* testing it; it did not.
+2. **`run_m5`'s attention-stop test.** Injected `stuck_porv_open` at 60× and expected the snap
+   reason `failure`. With OTΔT live the scram arrives inside the **same broadcast**, so the snap
+   correctly names the more urgent event. Switched to an **instrument** failure (no physics effect,
+   cannot scram at any speed), which isolates the failure→attention-stop path *properly* — the old
+   form only ever tested it because nothing else fired first. +1 check guarding that it did not
+   scram, so the fixture cannot drift back.
+3. **`run_inspect`.** Caught the new board item having no System Scanner copy. The #308 class
+   exactly: inspection text is a third copy of the mechanism and does not move itself.
+
+**`board_check` 182 → 186**, four pins on the readout, each aimed at a distinct failure and
+**injection-verified** — unwiring the value function reddens three (correctly not the "exists"
+pin). The one worth copying is *"shows a live number, not the '—' placeholder"*: that is what
+catches a value function never wired into the id map, where the item renders, shows its authored
+placeholder, and looks entirely fine.
+
+`run_contract` 141 → 143 and `run_reachability` 62 → 66 are the design working — both iterate the
+live protection tables and picked up the two new trips and two new alarms with nothing hand-added.
+Manual set **Rev 18** (09 §2.0 trips, §4.0 annunciators, the rod-stop interlock row with its
+source, and the two honesty notes: the turbine runback is not built (#318), and rod stops block
+withdrawal only).
+
+---
+
+## Session log — 2026-08-03l (#319 item 1 — PWR-E03 turbine trip, and a `saw` in the wrong window)
+
+**Task:** #319 item 1, the last of the "mechanism already exists" items. E03 is the procedure that
+**sends** the operator to PWR-T06, so until T06 was built there was nothing at the other end of
+that pointer; the pair is now complete.
+
+**Measured** full stack, `hot_full_power`, `trip_turbine` at t = 60 s:
+
+| | |
+|---|---|
+| +31 s | reactor **already scrammed** (P-9), MWe 0, steam dump **saturated at 40.00 %** |
+| | SG level swelled **65 → 72.1 %**, pzr level **55 → 61.6 %** |
+| settled | Tavg **567.5 °F (297.5 °C)**, SG level 36.5 %, pzr 38.6 %, dump modulating 4–9 % |
+
+**The dump pinning at exactly 40.00 % is the 40 % ruling made visible** — this is the event where
+the operator watches it reach its stop and stay there. At the old 1.05 capacity it never saturated,
+so the interlock could only be asserted, never demonstrated.
+
+### A `saw` is only as good as the window it sits in
+
+The dump-saturation assertion first went on step 3, and it **passed engine-direct and FAILED under
+the stack** — the opposite of the usual direction, and nothing to do with layers *per se*. The
+saturation is **early**: 40.00 % about half a minute after the trip, back to ~9 % by three minutes.
+Step 3's hold opened at t+80 s, by which time the stack plant had already backed the dump off;
+engine-direct the transient is slower, so the same window still caught it. Moved to the
+confirm-scram step, whose hold covers t+20…t+80 and catches the peak in **both** layers.
+Injection-checked at `> 99` to confirm it is not vacuous.
+
+**Step 2 carries an explicit scram and the text says why.** P-9 reactor-trip-on-turbine-trip is an
+M4 function, so `run_procedures` has no RPS and cannot trip on its own — the same wall PWR-T06 and
+PWR-E06 hit. Rather than assert a trip the engine-direct plant cannot produce, the step does what
+PWR-E03 step 2 and the chapter's generic action 1 both say: **confirm** the automatic trip, and
+scram manually if power should be down and is not. On the shipped plant the confirm is all the
+player does — and the note says so, so the lesson survives the layer accommodation.
+
+**No manual change** — E03 already documents all of this, including the P-9 warning and the
+planned-offline contrast. No revision bump.
+
+**Gates:** `run_procedures` 26/26 124 → **27/27 132**; `run_procedures_stack` 26/26 234 →
+**27/27 244**; `run_manual_controls` 152 → **158**; `run_flags` 301 → **304**; `run_procdocs`
+31 → **33**; `verify_manual_follow` 228 → **237**.
+
+---
+
+## Session log — 2026-08-03k (#322 investigated and DECLARED; #319 item 2 unblocked and built)
+
+**Task:** investigate #322 (the SGTR mass path), then act on the ruling.
+
+### #322 was not a defect, and my own filing's first candidate was wrong
+
+Read-only investigation. Three findings:
+
+1. **`leak_to_sg` is not a routing flag** — one consumer, `pwr_primary.js:139`, and it only
+   **ΔP-modulates the leak RATE**. The name reads like "route this into the SG"; it means "this
+   leak's rate depends on primary−secondary ΔP". **Nothing was dropped.** My filing's candidate (1)
+   implied a missing line and there is none.
+2. **SG level cannot see the leak by construction** — the integrator is
+   `(feedwater_flow − steam_out)`, two terms, and the string `leak` appears **nowhere** in
+   `pwr_steam_generator.js`. Candidate (2) was right.
+3. **The MSIV half is structural too, by a mechanism I had not guessed.** SG pressure is **capped
+   at Psat(Tavg)** (`pwr_steam_generator.js:279-280`) — *"it can never sit hotter than the coolant
+   heating it"*. Tavg was falling as the primary lost hot inventory and was refilled by cold HPI,
+   so the **cap** came down and dragged secondary pressure with it. Pressure was **cap-limited, not
+   inventory-limited**, which is exactly why isolating the steam path changed nothing. **The MSIV
+   is not broken and I should not have implied it was.**
+
+**Ruled: declare, do not build** *(OWNER RULING, 2026-08-03: "Declare")*. The deciding argument is
+scope, not fidelity: **this plant models ONE steam generator**, so the lesson the level rise exists
+to teach on a real plant — *which* generator is leaking — cannot exist here at any fidelity.
+Building the term would cost a new fitted constant on the secondary mass balance (SG flows are
+normalized 0–1; `leak_flow` is primary-inventory-frac/s) to buy a cue that teaches materially less.
+`DESIGN_COMPANION.md` **§8.26**; `Manuals/07` PWR-E06 corrected, manual set to **Rev 19**.
+
+### Then the checklist — and the layer trap bit again, in a new place
+
+`pwr_sgtr` is authored. Two things worth keeping:
+
+**I started adding procedure steps to make a gate pass, which is backwards.** At severity 0.5 the
+run failed engine-direct on `never fuel_temp_c >= 1200`. I added an HPI step; still failed. I added
+an AFW step; still failed. Both steps are **legitimate** — PWR-E06 asks for them at its steps 3 and
+6, so they stayed — but I was reaching for them for the wrong reason. **The real answer was that a
+HALF rupture is not survivable engine-direct at all** (no ESF arming, no automation, no shipped
+lineup), so the severity moved to **0.25**, which both layers ride out. Ask *"is this casualty
+survivable in this layer"* before *"what step is missing"*.
+
+**The first depressurization acceptance was HOLLOW and injection caught it.** `leak_flow < 0.010`
+after a 240 s hold passed — but so did the **pre**-depressurization value of 0.0055, so the check
+could not tell whether the operator had done anything. Re-measured at the authored severity:
+**0.0055 → 0.0021** thirty seconds after the setpoint drop (2231 → 1432 psi), a **62 % cut**,
+creeping back to 0.0067 by 12 min as the secondary blows down and the ΔP reopens. The acceptance is
+now `< 0.004` at `hold: 60`, and **deleting the `set_pressure_setpoint` command reddens it** —
+verified, not assumed. The step-5/step-6 pair (`> 0.004` before, `< 0.004` after) is what makes it
+a measurement of the action rather than of the fixture.
+
+**The note quoted the wrong severity for a while too** — 0.0129 → 0.0062 is the severity-0.5 pair,
+left in place after the procedure moved to 0.25. Corrected to the measured 0.25 numbers.
+
+**Gates:** `run_procedures` 25/25 115 → **26/26 124**; `run_procedures_stack` 25/25 223 →
+**26/26 234**; `run_manual_controls` 142 → **152**; `run_flags` 298 → **301**; `run_procdocs`
+29 → **31**; `verify_manual_follow` 213 → **228**; `run_manual_rev` 13/13 at Rev 19.
+
+---
+
+## Session log — 2026-08-03j (#319 item 3 — PWR-E23 seal leak, and the manual was right about everything)
+
+**Task:** continue #319. Item 2 (SGTR) was **blocked** first — see #322 — so this is item 3.
+
+### The manual's numbers all held, which is not the usual outcome of checking one
+
+Measured full stack, `hot_full_power`, shipped lineup, `rcp_seal_leak` severity 0.4 at t = 120 s:
+
+| claim in `Manuals/07` PWR-E23 | measured |
+|---|---|
+| level parks "around 52–54 %" | **53.79–53.81 %**, flat for 22 min |
+| charging high, letdown unchanged | charging 0 → **0.0417**, letdown steady **0.0300** |
+| no subcooling loss | **73.77 °F (40.99 °C)**, unchanged from pre-leak |
+| no trip, no ESF | `scrammed` false, power 100 % throughout |
+| **CHG FLOW HI is the cue, and usually the only alarm** | `charging_high` at **t+181 s** — and the ONLY alarm active, ever |
+| PZR LVL LO (25 %) does not come in | never asserts |
+| PZR LVL DEV LO stays clear | never asserts |
+
+Alarms were read off **`.state`**, not presence — `getAlarms()` returns every configured alarm
+with a state, which is the trap CLAUDE.md already records.
+
+**`rcp_seal_leak` had NO coverage before this** — no behaviour probe, no scenario, nothing. A
+failure the manual documents in that much detail, with nothing asserting any of it.
+
+### The authoring mistake worth keeping: I assumed an ENGINE command made the run layer-robust
+
+Step 1 puts CVCS in AUTO via `set_cvcs_auto`, which **is** an engine command, and I reasoned from
+that the charging numbers would hold in both layers. **They do not.** Measured on the same leak:
+
+- **stack:** charging settles **0.042**
+- **engine-direct:** charging settles **0.010** — 4× lower
+
+because `cvcs_makeup` (M4, `defaultOn`) is what actually drives make-up on the shipped plant. The
+first acceptances (`> 0.035`, `~ 0.042 ± 0.012`) passed under the stack and **failed engine-direct**.
+
+What IS layer-robust is the **outcome**: pzr level parks at **53.79 %** and subcooling holds at
+**40.99 °C** in both, identically. So the charging acceptance is now only `> 0.005` — make-up is
+running at all — and the tight numbers live in the step notes. **Recorded rather than tuned until
+it passed**, because a gate certifying a lineup that does not ship is the #209 class.
+
+The general lesson, and it is not the one I had: *an engine command does not make a MEASUREMENT
+layer-robust.* The command being engine-direct says nothing about whether the quantity you are
+asserting is produced by the engine or by a control channel above it.
+
+**No manual change** — E23 already documents everything and every claim checked out, so no
+revision bump and no collision with the live `workbench` session, which is editing the manual set.
+
+**Gates:** `run_procedures` 24/24 108 → **25/25 115**; `run_procedures_stack` 24/24 214 →
+**25/25 223**; `run_manual_controls` 132 → **142**; `run_flags` 295 → **298**; `run_procdocs`
+27 → **29**; `verify_manual_follow` 198 → **213**.
+
+---
+
+## Session log — 2026-08-03i (#319 — PWR-T06 post-trip is runnable, and the procedure was missing a step)
+
+**Task:** the first item of #319, picked up on "work next". A reactor trip is the most common
+significant event on a plant and **recovering from one was not an authored evolution**: PWR-T06
+was documented, `PWR-E03` explicitly sends the operator to it — *"Above P-9: confirm the automatic
+reactor trip and go to the post-trip response"* — and there was no checklist at the other end of
+that pointer.
+
+### Measured first, authored second
+
+Full stack, `hot_full_power`, shipped lineup, scram at t = 60 s:
+
+| | |
+|---|---|
+| t+1 s | power **33.4 %**, reset **REFUSED** `RODS_NOT_INSERTED` |
+| t+3 s | power **5.07 %**, rods seated, reset **ACCEPTED** |
+| ~1 min | `plant_mode` **3**; turbine tripped automatically |
+| ~3 min | main feedwater **ISOLATED**; AFW auto-started |
+| ~7 min | SG level bottoms **36.6 %** (from 65 %), then holds ~**37 %** |
+| settled | **567.3 °F (297.4 °C)** / **2235 psi (15.41 MPa)** — hot, subcritical, Mode 3 |
+
+### The procedure was missing the RPS reset, and that is the #310 pattern again
+
+PWR-T06's step table went straight from *"verify SCRAM"* to *"verify turbine Disconnected"*.
+**`reset_rps` has been board-reachable since #75, is required after EVERY scram, and was named by
+no procedure, mission or checklist anywhere** — the sharpest of the three orphaned operator
+capabilities #319 found. The manual now carries it as step 2, with the refusal condition, and
+records that **main feedwater isolates on the trip and cannot be restored from the board**. Manual
+set to **Rev 18**.
+
+### The one authoring decision worth keeping: ACCEPTANCES MUST BE LAYER-ROBUST
+
+`run_procedures` is **engine-direct**. AFW auto-start and the feedwater isolation are **M4
+actuations**, so neither happens there — an `acc` on `afw_active` would pass under the stack and
+fail engine-direct. And this procedure has **no NON_ENGINE_ACTION command** to justify
+`stack_only` with (its commands are `scram` and `reset_rps`, both engine-direct), so that escape
+was not available either. Every `acc` is therefore a truth both layers produce — power, the scram
+latch, `turbine_tripped`, `subcooling_c`, `plant_mode`, no melt — and the AFW/MFW facts are
+carried as **cautions and notes**. Both gates pass unmodified.
+
+### Two gates caught their own omissions, which is the job
+
+`run_flags` flagged the missing `procedure:pwr_post_trip` registry entry (a procedure the player
+can open with no flag behind it ships ungated — #310's lesson), and `run_manual_controls` flagged
+**5 unverified steps** with no `STEP_UI` entry. Both fixed in the same change, so
+`verify_manual_follow` and `run_manual_controls` moved **together** — the #224 trap is a step that
+lands *without* its map entry and then reads as covered.
+
+**Gates:** `run_procedures` 23/23 100 → **24/24 108**; `run_procedures_stack` 23/23 204 →
+**24/24 214**; `run_manual_controls` 122 → **132**; `run_flags` 292 → **295**;
+`verify_manual_follow` 183 → **198**; `run_manual_rev` 13/13 at Rev 18.
+
+---
+
 ## Session log — 2026-08-03h (#314 the RCP breaker trip — and a comparator that silently ate it)
 
 *(OWNER RULING, 2026-08-03: "Build the breaker position trip as you recommend.")* Built, gated,
