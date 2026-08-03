@@ -20,6 +20,53 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03j (#321 swept: the class is UNIQUE, and the detector was validated first)
+
+**No code change beyond two comments.** #321's body ended with *"worth a sweep for `now − then`
+comparisons on any channel that protection also reads"* — an unmeasured claim about coverage, which
+is exactly what CLAUDE.md says to prove by injection. Swept. Backshop lane.
+
+**Method, including the attempt that was the wrong instrument.** Perturb something no check's
+NAMED claim mentions, run the whole suite, diff verdicts; a verdict that moves is a check measuring
+something it does not name. **Attempt 1 was the instrument SEED** (noise realisation, no physics):
+six seeds × 241 §14 checks, **zero flips** — and worthless, because #321's check did not flip on
+noise either. Recorded so nobody repeats it. **Attempt 2 was small `[tune]` nudges** — 2–3 % on
+`coolant_heat_capacity`, `h_sg`, `K_sg_level`, `h_fc`, `delta_T_rated`.
+
+**THE DETECTOR WAS VALIDATED AGAINST THE KNOWN POSITIVE BEFORE THE NEGATIVE WAS BELIEVED**, which is
+the step that makes the result worth anything. Re-injecting the OLD #321 form alongside the new one:
+a **3 % nudge to `thermal.h_sg`** flips it **PASS (14.19) → FAIL (14.88)** — steam generator heat
+transfer, which has nothing to do with a drifting pressure gauge — and `delta_T_rated` ×1.02 moved
+it 0.83 MPa without quite breaking it, so it was fragile to at least two unrelated constants. The
+replacement reads **exactly 2.0000 under every perturbation**.
+
+**Result: the class is UNIQUE.** 241 §14 checks, **0 flips** across five physics nudges and six
+seeds. The static sweep surfaced 34 other `now − then` candidates and every one is a legitimate
+*plant-response* claim (power drifts, inventory falls, level falls) where comparing against an
+earlier value IS the point. #321 closed.
+
+**A DIFFERENT finding, recorded rather than fixed.** The same nudges over `run_behavior` (359
+checks) flip **five**, and they are not the #321 shape — they are catalog-band checks doing exactly
+what they name, with bands narrower than the nudge. Two matter:
+
+| check | baseline → nudged | nudge | headroom |
+|---|---|---|---|
+| **TR-1i** Tavg within the ±5 °F WTSM 8.1.1 duty | 4.77 → **5.02** / **5.12** | `h_sg`, `coolant_heat_capacity` | **0.23 °F (4.6 %)** |
+| **TR-1g** Tavg back within the sourced ±5 °F | −4.60 → **−5.25** | `h_sg` | 0.40 °F (8 %) |
+| **SS-5** no-load level ≤ 40 % | 38.2 → **40.6** | `h_sg` | 1.8 pts (4.5 %) |
+| **SS-5** program rises ≥ 15 % no-load → full | 16.8 → **14.4** | `h_sg` | 1.8 pts |
+| **TR-1g** core reduced to the SECONDARY LOAD | 44.6 → **33.5** | `coolant_heat_capacity` | large move |
+
+**Do not widen any of them.** The ±5 °F is the SOURCED WTSM duty; widening a sourced acceptance
+band because it is uncomfortable is refitting the test to the plant (HR10), and a thin margin is a
+fact about the plant rather than about the check. The margins are now recorded **in comments at
+TR-1g and TR-1i themselves**, where someone debugging a red will actually be looking: *if this
+reddens, ask what you changed that touches SG heat transfer before hunting the rod channel.*
+
+**Gates.** `run_behavior` 45/45 unchanged (comment-only edit).
+
+---
+
 ## Session log — 2026-08-03i (#315 §6 CLOSED — and the primary corrected my own evidence)
 
 **Ruled: keep the leg split on total core heat, do not take the fuel→coolant flux form** *(OWNER
