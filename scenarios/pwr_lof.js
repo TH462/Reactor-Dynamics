@@ -27,11 +27,15 @@
  *
  * THE MISSION LOST ITS BRANCH, deliberately. It was a decision scenario ("trip it
  * yourself, or wait?") and the decision window is now one second, so there is nothing to
- * decide — it is a demonstration. Flagged for the owner rather than papered over: this
- * premise has now been invalidated THREE times by fidelity work (#248, #248 again, #314),
- * which is a reasonable argument for retiring the mission rather than re-premising it a
- * fourth time. Kept for now because the diverse-protection lesson is real and nothing
- * else in the campaign teaches it.
+ * decide — it is a demonstration. This premise has now been invalidated THREE times by
+ * fidelity work (#248 twice, #314), which was put to the owner as an argument for
+ * retiring the mission rather than re-premising it a fourth time.
+ *
+ * RULED: KEEP IT *(OWNER RULING, 2026-08-03: "Let's go with your recommendations for all
+ * these items", approving "keep — nothing else teaches diverse protection, and retire only
+ * if a FOURTH re-premise is needed")*. So the standing instruction for whoever gets here
+ * next: if a plant change invalidates this lesson again, **retire the mission**, do not
+ * author a fourth premise. The diverse-protection lesson is the last one it gets.
  *
  * WHY THE STUCK CHANNEL IS THE SCENARIO, rewritten 2026-07-29 (#248). Two changes
  * landed under this lesson and both invalidated it:
