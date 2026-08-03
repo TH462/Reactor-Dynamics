@@ -68,12 +68,12 @@ accident runs on; only the situation changes.
 > The educational priority is **(1) plant dynamics — the couplings between components, and the
 > physics behind them; (2) how to operate the plant — normal evolutions, in order, correctly
 > lined up.** Instrument deception is a property of the observation layer that becomes the
-> *subject* only in casualties and flagship scenarios. See `Blueprint/DESIGN_CRITERIA.md` §6.
+> *subject* only in casualties and flagship scenarios. See `Blueprint/CURRICULUM.md`.
 >
 > **Nothing below is retracted as ARCHITECTURE.** The separation is real, non-negotiable, and
 > load-bearing — it is what makes failure scenarios possible at all, and a healthy channel's lag
 > shapes every transient with nothing failed. What was wrong was the claim of *primacy*, and
-> the ordering reason is in `DESIGN_CRITERIA.md` §6.3: you cannot perceive a lying instrument
+> the ordering reason is in `CURRICULUM.md` (Tier A): you cannot perceive a lying instrument
 > without already knowing what the plant should be doing, so this idea depends on the dynamics
 > rather than outranking them.
 

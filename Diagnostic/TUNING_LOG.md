@@ -119,6 +119,49 @@ first and subtract.**
 citations — the fix added none), `run_manual_units` 0 failed. The `pwr_control.js` change is
 comment-only.
 
+### Then the owner called the length, and the measurement agreed with him
+
+*(OWNER, 2026-08-03: "This document seems quite long for what it is. My original premise was only
+a few paragraphs. Should we try to trim it down?")* — measured, he was right and the shape of the
+problem was not what "too long" usually means:
+
+| | lines | |
+|---|---|---|
+| §1–4, the four questions (**his actual premise**) | 175 | 27 % |
+| §5, automation prerequisites | 67 | 10 % |
+| **§6, per-plant curriculum** | **330** | **51 %** |
+| §7, failure mode | 33 | 5 % |
+
+**§6 was half the document, and 284 of its 330 lines were prose wrapped around 47 table rows** —
+the deliverable was 15 % of its own section. Three structural problems, not one:
+
+1. **Two statuses in one file.** §1–4 is BINDING via `CLAUDE.md`; §6 was `PROPOSAL`. That is how a
+   proposal gets cited as law.
+2. **It grows with every plant.** §6 is PWR-only and will roughly triple at RBMK/BWR, so the
+   *binding decision procedure* would grow each time a plant is added. Backwards.
+3. **A good share of the bloat was mine, from this same session** — 469 → 645 lines, much of it
+   record prose (why a draft was wrong, what a review found) that I had **already written into
+   this file**. §7 named that failure mode and I walked into it the same day.
+
+**Ruled: split, then cut** *(OWNER, 2026-08-03: selected "Split §6 out, then cut prose" from four
+options put to him — a selection, not verbatim words)*. §6 → **`Blueprint/CURRICULUM.md`**.
+Measured result: **645 → 521 lines, 7,682 → 5,861 words** (−19 % lines, −24 % words), split 270
+criteria + 251 curriculum. The prose:table ratio in the curriculum went **6:1 → 3.7:1**.
+
+**I projected ~350 lines and delivered 521 — the projection was wrong and worth recording as
+such.** It ignored that the curriculum's tables are 53 rows and 53 lines, and they are the
+artifact: they cannot be compressed without deleting the deliverable. When estimating a doc trim,
+**subtract the tables first** — only the prose is compressible.
+
+**The hard constraint on any cut here: 9 dated owner citations.** `run_hardrules` counts them and
+they are the record of his rulings, so the rule was *cut prose, never a quote*. Verified after the
+split: 2 in the criteria + 7 in the curriculum = **9**, and the gate held at **98** both before and
+after `git add` (checked explicitly — if it had scanned tracked files only, an unstaged new file
+would have read 91 and I would have shipped a false green).
+
+Pointers repointed: `CLAUDE.md` (the binding block and the map table, with a **do not merge it
+back** note), `DESIGN_COMPANION.md` ×2. §7 renumbered to §6.
+
 ---
 
 ## Session log — 2026-08-03a (#311 — OTΔT / OPΔT built, and the issue's own premise did not survive measurement)

@@ -193,6 +193,12 @@ docs.
 > The doc also carries §5, the per-plant artifacts each question needs to be answerable at all —
 > the prerequisite list for automating the RBMK/BWR builds *(OWNER, 2026-08-02: "My goal is to
 > eventually automate the building of the BWR and RBMK plants.")*. Those plants stay ON HOLD.
+>
+> **Q2's yardstick is `Blueprint/CURRICULUM.md`** — the per-plant educational goals (dynamics,
+> procedures, casualties, flagship scenarios). It was DESIGN_CRITERIA §6 until 2026-08-03 and is
+> split out because it is a **PROPOSAL awaiting a ruling**, PWR-only, and grows with every plant,
+> while the criteria are binding and plant-agnostic. **Do not merge it back**: one file with two
+> statuses is how a proposal gets cited as law.
 
 > **The plant is the ground truth (HR9).** The only question that decides a tuning or
 > behaviour change is **"what should this plant actually do?"** — never "what keeps this
@@ -270,6 +276,7 @@ to read everything.
 | **Understand the whole system** | `README.md`, then `Blueprint/CONTEXT.md` (interfaces, hard rules, data contract). |
 | **Understand *why* it's built this way** | `Blueprint/DESIGN_COMPANION.md` (vision, rationale, deliberate exclusions, v2 roadmap). |
 | **Decide whether a feature or change goes in** | **`Blueprint/DESIGN_CRITERIA.md`** — the four questions (binding; summarized in the block above). §5 is the per-plant artifact list they need to be answerable, i.e. the automation prerequisites. |
+| **Argue a feature's EDUCATIONAL value (Q2)** | **`Blueprint/CURRICULUM.md`** — what each plant is meant to teach, in four tiers. **PROPOSAL, not binding**; PWR only. |
 | **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 10 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
 | **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
