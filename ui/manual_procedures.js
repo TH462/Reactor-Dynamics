@@ -656,6 +656,70 @@
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
       outcome: 'Leak isolated with the block valve; core stays covered — the recovery TMI missed.',
     },
+    // PWR-E06 — SGTR. Authored 2026-08-03 (#319 item 2), AFTER #322 was investigated and ruled.
+    //
+    // THIS PROCEDURE WAS BLOCKED FOR A DAY BECAUSE TWO OF ITS SIX STEPS TAUGHT THINGS THE PLANT
+    // DOES NOT DO, and the fix was to the MANUAL, not the physics *(OWNER RULING, 2026-08-03:
+    // "Declare")*. Measured, and now declared at `DESIGN_COMPANION.md` §8.26:
+    //   · SG level does NOT rise. The leak is a primary-side mass sink with ΔP modulation;
+    //     `leak_to_sg` names the ΔP dependence and routes nothing, and the SG level integrator
+    //     is `(feedwater_flow − steam_out)` with no leak term. Measured: level held 67.98 %
+    //     CONSTANT for four minutes with feed, AFW and steam flow all zero.
+    //   · The MSIV does not change the secondary pressure trend — 134.6 psi open vs 134.0 shut.
+    //     SG pressure is capped at Psat(Tavg), so it follows primary TEMPERATURE.
+    // So this checklist diagnoses on the PRIMARY side only, which is what the plant actually
+    // gives you. The reason it is not worth building the secondary side is scope, not fidelity:
+    // one steam generator is modelled, so "which generator is leaking" — the whole point of the
+    // level cue on a real plant — cannot be taught here at any fidelity.
+    //
+    // WHAT DOES WORK IS THE GOOD HALF, and it is the reason the procedure exists. The leak is
+    // ΔP-scaled, so depressurizing toward the secondary SELF-LIMITS it. Measured full stack,
+    // severity 0.5: dropping the Pressure SP took the primary 2223 → 1433 psi (15.33 → 9.88 MPa)
+    // and break flow 0.0129 → 0.0062 — a 52 % cut. That is Tier A A3 (pressure follows
+    // temperature; subcooling is the margin) under casualty conditions.
+    //
+    // Step 2 SCRAMS EXPLICITLY rather than waiting for the automatic trip. E06 step 1 says
+    // "SCRAM if not automatic", so that is faithful — and it is also what makes the run
+    // layer-robust: the RPS is M4, so `run_procedures` (engine-direct) would never trip on its
+    // own. Same lesson as PWR-E23: an acceptance has to be a truth BOTH layers produce.
+    {
+      id: 'pwr_sgtr', category: 'emergency', manual_ref: 'PWR-E06',
+      title: 'Mode 1 emergency — steam generator tube rupture',
+      purpose: 'A primary-to-secondary leak through a ruptured tube. It outruns charging, so the plant trips itself. Diagnose it on the PRIMARY side, then depressurize toward secondary pressure — the leak is driven by the pressure difference, so closing that difference is what shuts it down.',
+      from: 'hot_full_power',
+      prereq: ['At-power operation.'],
+      cautions: [
+        'THE STEAM GENERATOR WILL NOT CONFIRM THIS FOR YOU. SG level does not rise and the MSIV does not change the secondary pressure trend — a declared departure (DESIGN_COMPANION §8.26), because this trainer models one steam generator and the level cue exists on a real plant to tell you WHICH one is leaking.',
+        'Diagnose on the primary: inventory falling with charging saturated, pressurizer level driving through the trip, subcooling eroding.',
+        'Depressurize with subcooling in hand. The leak stops when the primary reaches secondary pressure — but a primary taken below saturation is a different emergency.',
+        'Unlike a seal leak (PWR-E23), this one IS pressure-modulated. That is the whole strategy: you terminate it from the control room by closing the ΔP.',
+      ],
+      steps: [
+        { text: 'The rupture opens. (Failures tab → inject Steam Generator Tube Rupture.) Primary inventory starts leaving through the tube into the secondary — charging comes up to meet it and cannot.', control: '(observe inventory and charging)', target: 'inventory falling',
+          note: 'Measured at half severity: break flow starts near 0.012 inventory-frac/s, well beyond the CVCS make-up authority of ~7.2e-4.',
+          cmd: { action: 'inject_failure', failure_id: 'sgtr', severity: 0.25 }, hold: 90,
+          saw: { p: 'core_inventory_pct', op: '<', v: 100 } },
+        { text: 'Trip the reactor. On the real plant the low pressurizer level trip does it for you as make-up loses the race — do not wait for it if pressure and level are already going.', control: 'SCRAM', target: 'power collapsing',
+          cmd: { action: 'scram' }, hold: 60, acc: { p: 'power_pct', op: '<', v: 5 } },
+        { text: 'Establish the heat sink. Main feed is gone with the trip — start auxiliary feedwater and keep the steam generator wet, or the primary has nowhere to put decay heat while you are working the leak.', control: 'AFW', target: 'AFW delivering',
+          cmd: { action: 'set_afw', active: true }, hold: 60, acc: { p: 'afw_active', op: '>', v: 0 } },
+        { text: 'Ensure high-pressure injection is in. Charging has already lost this race — HPI is what keeps the core covered while you work the leak, and it is the difference between a stabilized plant and a damaged one.', control: 'HPI/LPI', target: 'HPI injecting',
+          note: 'On the shipped plant HPI actuates itself on low pressure. Confirming it is a real step, not a formality — engine-direct, without it, this casualty takes fuel temperature past 2192 °F (1200 °C).',
+          cmd: { action: 'set_hpi', active: true }, hold: 60, acc: { p: 'hpi_active', op: '>', v: 0 } },
+        { text: 'Confirm the diagnosis on the PRIMARY side — inventory down, pressurizer level low, subcooling shrinking. Do not go looking for it on the steam generator; on this plant the secondary tells you nothing.', control: 'Plant Pressure', target: 'primary-side signature',
+          hold: 60, acc: { p: 'leak_flow', op: '>', v: 0.004 } },
+        { text: 'Now close the pressure difference. Walk the PRESSURE SP down toward secondary pressure — the leak is driven by primary-minus-secondary ΔP, so every psi you come down is break flow you do not lose.', control: 'Pressure SP', target: 'break flow falling',
+          note: 'Measured at this severity: 2231 → 1432 psi (15.38 → 9.87 MPa) cut break flow 0.0055 → 0.0021, a 62 % reduction, with subcooling still positive. It creeps back as the secondary blows down and the ΔP reopens — see the closing step.',
+          cmd: { action: 'set_pressure_setpoint', mpa: 10.0 }, hold: 60,
+          acc: { p: 'leak_flow', op: '<', v: 0.004 } },
+        obs('Confirm the leak is throttled and the core is still covered. The plant is not fixed — it is stabilized, with the leak held down by the pressure you are holding. A real recovery continues into a cooldown on the intact loop.',
+          { p: 'melted', op: '<', v: 1 },
+          'The break flow will creep back up as the secondary blows down and the ΔP reopens. That is the physics, not a failure of the action — it is why a real SGTR ends in a cooldown rather than a hold.',
+          ['Pressure SP', 'Plant Pressure']),
+      ],
+      guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
+      outcome: 'Reactor tripped, leak diagnosed on the primary side, and break flow cut by more than half by depressurizing toward the secondary — the ΔP strategy the procedure exists to teach.',
+    },
     // PWR-E23 — the everyday leak. Authored 2026-08-03 (#319 item 3). This is the ONLY
     // abnormal procedure on the plant where nothing breaks: charging holds it indefinitely,
     // there is no trip, no ESF and no subcooling loss, and the whole lesson is that you have

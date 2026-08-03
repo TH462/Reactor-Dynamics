@@ -20,6 +20,65 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03k (#322 investigated and DECLARED; #319 item 2 unblocked and built)
+
+**Task:** investigate #322 (the SGTR mass path), then act on the ruling.
+
+### #322 was not a defect, and my own filing's first candidate was wrong
+
+Read-only investigation. Three findings:
+
+1. **`leak_to_sg` is not a routing flag** — one consumer, `pwr_primary.js:139`, and it only
+   **ΔP-modulates the leak RATE**. The name reads like "route this into the SG"; it means "this
+   leak's rate depends on primary−secondary ΔP". **Nothing was dropped.** My filing's candidate (1)
+   implied a missing line and there is none.
+2. **SG level cannot see the leak by construction** — the integrator is
+   `(feedwater_flow − steam_out)`, two terms, and the string `leak` appears **nowhere** in
+   `pwr_steam_generator.js`. Candidate (2) was right.
+3. **The MSIV half is structural too, by a mechanism I had not guessed.** SG pressure is **capped
+   at Psat(Tavg)** (`pwr_steam_generator.js:279-280`) — *"it can never sit hotter than the coolant
+   heating it"*. Tavg was falling as the primary lost hot inventory and was refilled by cold HPI,
+   so the **cap** came down and dragged secondary pressure with it. Pressure was **cap-limited, not
+   inventory-limited**, which is exactly why isolating the steam path changed nothing. **The MSIV
+   is not broken and I should not have implied it was.**
+
+**Ruled: declare, do not build** *(OWNER RULING, 2026-08-03: "Declare")*. The deciding argument is
+scope, not fidelity: **this plant models ONE steam generator**, so the lesson the level rise exists
+to teach on a real plant — *which* generator is leaking — cannot exist here at any fidelity.
+Building the term would cost a new fitted constant on the secondary mass balance (SG flows are
+normalized 0–1; `leak_flow` is primary-inventory-frac/s) to buy a cue that teaches materially less.
+`DESIGN_COMPANION.md` **§8.26**; `Manuals/07` PWR-E06 corrected, manual set to **Rev 19**.
+
+### Then the checklist — and the layer trap bit again, in a new place
+
+`pwr_sgtr` is authored. Two things worth keeping:
+
+**I started adding procedure steps to make a gate pass, which is backwards.** At severity 0.5 the
+run failed engine-direct on `never fuel_temp_c >= 1200`. I added an HPI step; still failed. I added
+an AFW step; still failed. Both steps are **legitimate** — PWR-E06 asks for them at its steps 3 and
+6, so they stayed — but I was reaching for them for the wrong reason. **The real answer was that a
+HALF rupture is not survivable engine-direct at all** (no ESF arming, no automation, no shipped
+lineup), so the severity moved to **0.25**, which both layers ride out. Ask *"is this casualty
+survivable in this layer"* before *"what step is missing"*.
+
+**The first depressurization acceptance was HOLLOW and injection caught it.** `leak_flow < 0.010`
+after a 240 s hold passed — but so did the **pre**-depressurization value of 0.0055, so the check
+could not tell whether the operator had done anything. Re-measured at the authored severity:
+**0.0055 → 0.0021** thirty seconds after the setpoint drop (2231 → 1432 psi), a **62 % cut**,
+creeping back to 0.0067 by 12 min as the secondary blows down and the ΔP reopens. The acceptance is
+now `< 0.004` at `hold: 60`, and **deleting the `set_pressure_setpoint` command reddens it** —
+verified, not assumed. The step-5/step-6 pair (`> 0.004` before, `< 0.004` after) is what makes it
+a measurement of the action rather than of the fixture.
+
+**The note quoted the wrong severity for a while too** — 0.0129 → 0.0062 is the severity-0.5 pair,
+left in place after the procedure moved to 0.25. Corrected to the measured 0.25 numbers.
+
+**Gates:** `run_procedures` 25/25 115 → **26/26 124**; `run_procedures_stack` 25/25 223 →
+**26/26 234**; `run_manual_controls` 142 → **152**; `run_flags` 298 → **301**; `run_procdocs`
+29 → **31**; `verify_manual_follow` 213 → **228**; `run_manual_rev` 13/13 at Rev 19.
+
+---
+
 ## Session log — 2026-08-03j (#319 item 3 — PWR-E23 seal leak, and the manual was right about everything)
 
 **Task:** continue #319. Item 2 (SGTR) was **blocked** first — see #322 — so this is item 3.

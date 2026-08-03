@@ -146,6 +146,13 @@ var STEP_UI = {
   // PWR-E23 seal leak (#319 item 3). Four of its five controlled steps are CVCS or
   // pressurizer readouts — this procedure is diagnosis, not manipulation: the only command
   // that changes the plant is putting CVCS in AUTO.
+  // PWR-E06 SGTR (#319 item 2, authored after #322 was ruled). Step 1 is a parenthesised
+  // observe label and is exempt, same as pwr_rcp_trip step 1.
+  pwr_sgtr: [{ i: 1, view: 'scram', control: 'SCRAM' },
+             { i: 2, view: 'board', control: 'AFW' },
+             { i: 3, view: 'board', control: 'HPI/LPI' },
+             { i: 4, view: 'board', control: 'Plant Pressure' },
+             { i: 5, view: 'board', control: 'Pressure SP' }],
   pwr_seal_leak: [{ i: 0, view: 'board', control: 'CVCS Inventory Control' },
                   { i: 1, view: 'board', control: 'CVCS Inventory Control' },
                   { i: 2, view: 'board', control: 'Pressurizer Heaters (PZR)' },

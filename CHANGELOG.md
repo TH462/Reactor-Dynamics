@@ -53,6 +53,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
     numbers. Manual set **Rev 15**.
 
 ### Added
+- **The steam generator tube rupture is a runnable checklist — and the manual now says what the
+  steam generator actually does, which is nothing** (#319, #322). PWR-E06 told you to identify the
+  leak from "rising SG level on the affected generator". Measured, level does not move: with the
+  leak running and feed, auxiliary feed and steam flow all at zero, it held **67.98 % constant for
+  four minutes**. Closing the main steam isolation valve changes the secondary pressure trend by
+  **0.4 %**. Both are declared departures now, and the reason is scope rather than fidelity — this
+  trainer models **one** steam generator, so the lesson that cue exists to teach on a real plant
+  (*which* generator is leaking) cannot exist here at any fidelity.
+  The checklist teaches what the plant does give you: diagnose on the **primary** side, then
+  **depressurize toward secondary pressure** — the leak is driven by the pressure difference, so
+  closing that difference throttles it. Measured, dropping the pressure setpoint cut break flow
+  **0.0055 → 0.0021**, a 62 % reduction, with subcooling still positive. Manual set to Rev 19.
+
 - **The everyday leak is a runnable checklist now — the one abnormal procedure where nothing
   breaks** (#319). `pwr_seal_leak` (PWR-E23): a reactor coolant pump seal leak that charging makes
   up indefinitely. No trip, no safety injection, no loss of subcooling — the plant just sits there

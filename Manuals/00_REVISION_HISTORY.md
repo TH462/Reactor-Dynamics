@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 18 (2026-08-03)  
+**Set revision:** 19 (2026-08-03)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -20,6 +20,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 19 | 2026-08-03 | **PWR-E06 (SGTR) said the steam generator would tell you something. It does not** (#322, ruled 2026-08-03). The symptom *"possible rising SG level on affected generator"* is **withdrawn** — measured, with the leak at 0.011–0.015 frac/s and feed, AFW and steam flow all at zero, SG level held **67.98 % constant for four minutes**. Step 2 now diagnoses on the **primary** side (inventory falling with charging saturated, level through the trip, subcooling eroding), and step 5 records that **the MSIV does not change the secondary pressure trend** (134.6 psi open vs 134.0 shut) because SG pressure is capped at Psat(Tavg) and follows primary temperature. Declared as `DESIGN_COMPANION.md` **§8.26**: this plant models one steam generator, so the lesson the level rise teaches — *which* generator — cannot exist here. 07 revised. | Claude |
 | 18 | 2026-08-03 | **PWR-T06, the post-trip response, gained the step it was missing — reset the RPS** (#319). Building the runnable checklist `pwr_post_trip` found it: the procedure went straight from "verify SCRAM" to "verify turbine disconnected", while `reset_rps` has been reachable on the board since #75 and was named by **no procedure, mission or checklist anywhere**. Measured full stack from `hot_full_power`: the reset is refused `RODS_NOT_INSERTED` at t+1 s with power still 33 %, and accepted at t+3 s once the rods seat. The step table also now records that **main feedwater isolates on the trip and cannot be restored from the board**, so AFW is the heat sink from that point. 05 revised. | Claude |
 | 17 | 2026-08-03 | **The plant had one loss-of-flow reactor trip where a real one has four, and #314 built the second** *(OWNER RULING, 2026-08-03: "Build the breaker position trip as you recommend.")*. **09 §2.0** gains the **RCP breaker position** reactor trip — sensed from a breaker auxiliary **contact** rather than a process measurement, so a failed flow transmitter cannot defeat it; blockable below **P-7 (10 % power)** on the same permissive as the low-flow trip, and auto-blocked at any initial condition where the pumps are legitimately secured, so **Mode 5, Cold Shutdown** carries no standing trip. **1-out-of-1, not the real 2-of-4** — this plant is single-loop with one RCP. **12 §10.7 is rewritten**, because its measured blockquote described behaviour the plant no longer has: with the flow channel stuck at 100 % and the pump tripped, the reactor used to ride to **~35 s** and be caught by *high primary pressure* with peak core void **0.60** and fuel at ~1706 °F (930 °C); it now trips at **1 s** on the breaker with peak core void **0.000** and fuel unchanged at 1279.4 °F (693 °C). The section's point moves with it — the fix was **not more channels but a different KIND of signal**, which is why WTSM 12.2 §12.2.3.12 lists four diverse trips. The single-channel flow departure still stands; it is simply no longer the only thing between this plant and DNB. The two **RCP bus** trips (under-voltage, under-frequency) remain unmodelled and are now a declared departure — this plant has no RCP electrical bus, so building them would mean inventing the signal. | #314 breaker trip |
 | 16 | 2026-08-03 | **The manual set said the wrong thing about what it is teaching.** The Conventions section led with an *Instruments vs truth* heading whose closing sentence — *"This is deliberate — it is how Three Mile Island is teachable"* — presented the instrument layer as the set's reason for existing. It is not *(OWNER DIRECTIVE, 2026-08-03: "THR STATED PREMIS IS NOT INSTRUMENT VS TRUTH THE PREMIS IS TO TEACH PLANT DYNAMICS!!! We must purge the idea of the instruments vs truth premise from all documents."; and OWNER, 2026-08-02: "I don't want to focus on instruments lying. It will come up in failure scenarios but I dont know if it should be a major focus.")*. `README.md` now opens that section with **what these manuals teach** — the Tier A couplings (power follows load, Tavg as the coupling variable, level is not inventory, the SG is the only heat sink) first, **operating procedure as a second goal and not a lesser one** — and the instrument note that follows is scoped to **model fidelity**: a failed channel misleads every layer above it, which is what makes `08_ACCIDENT_TMI.md` reproducible, and you cannot recognise one without already knowing what the plant should be doing. **No setpoint, procedure, limit or number changed anywhere in the set** — this is a framing correction to `README.md` only, and the authority for it is `Blueprint/DESIGN_CRITERIA.md` §6. | premise correction |
@@ -65,7 +66,7 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 18 (2026-08-03). A mismatch means a chapter changed with no
+     Sealed at Rev 19 (2026-08-03). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md b0657dc935d36cbb
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
@@ -73,7 +74,7 @@
      04_NORMAL_OPERATIONS.md d42cd39fc1fc676b
      05_MODE_TRANSITIONS.md 04a8013bad9ca00f
      06_ALARM_RESPONSE.md 51f2004b1bb8bc9b
-     07_ABNORMAL_EMERGENCY.md 5b597e8be620e445
+     07_ABNORMAL_EMERGENCY.md 9fe261b35b98e5d1
      08_ACCIDENT_TMI.md d6a3ff47c6786021
      09_SETPOINTS_LIMITS.md 8a489790bb6f7f9b
      10_GLOSSARY.md 2e16faf4275c172b
