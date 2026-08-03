@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-01  
 **Title:** Operating Limits and Protection Setpoints — PWR  
-**Revision:** 19  
+**Revision:** 21  
 **Source:** As-built `pwr_control.js`, `pwr_config.js`; normal values captured from the live engine  
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
@@ -59,6 +59,8 @@
 | Intermediate range | high | **1.67e-3 A** | ~20 % class over-range; blockable above P-10 |
 | Primary pressure (SI trip, PI-3) | low | **1798 psi (12.4 MPa)** | Reactor trip on safety injection; blockable below P-11 (1973 psi (13.6 MPa)), auto-reinstates |
 | PZR level (PI-8) | high | **97 %** | Going-solid backstop; the 75 % alarm warns first |
+| **Overtemperature ΔT (OTΔT)** | low margin | **variable (calculated)** | **Core protection against departure from nucleate boiling.** Compares indicated loop ΔT against a setpoint that MOVES with average temperature and reactor coolant pressure — the same ΔT is safe at one condition and a trip at another, which is what no single-parameter trip can see. **Cannot be blocked** (WTSM 12.2 Table 12.2-1, *"No Interlocks"*). Board readout: **core ΔT margin**, NIS card |
+| **Overpower ΔT (OPΔT)** | low margin | **variable (calculated)** | **Core protection against excessive heat rate in the fuel** (kW/ft). Same loop-ΔT signal, compensated for average temperature only. **Cannot be blocked.** Its design-basis events include the **steam line break** — before it existed, a 30 % break held the core at 114 % power for thirty minutes with no reactor trip |
 
 ### Permissives / blocks
 
@@ -78,7 +80,10 @@
 |-----------|-------|
 | Block withdrawal when SUR ≥ | **1.5 DPM** |
 | Clear when SUR &lt; | **0.8 DPM** |
+| **Block withdrawal when OTΔT or OPΔT margin ≤** | **3 % of rated ΔT** (clears above 6 %) |
 | Insertion | Always allowed |
+
+**The ΔT rod stops are the OTΔT / OPΔT trip's own early warning**, three percent before it fires, and they annunciate as **OTΔT ROD STOP** / **OPΔT ROD STOP** on Panel A. Sourced: WTSM 12.2 §12.2.3.7–.8 and Table 12.2-2 rows C-3/C-4 — *"Loop ΔT > (OTΔT reactor trip setpoint − 3%)… Stops control rod outward motion (manual & automatic) and initiates a turbine runback."* **The turbine runback is built** (#318) and it is the half that acts rather than refuses: when the ΔT margin has held below the rod stop for **10 seconds**, the plant begins walking the **generator load target** down by itself — you will see the number in the Generator Load box falling with nobody touching it — and keeps walking it down until the margin recovers. It does **not** put the load back afterwards; that is yours to do once the condition is fixed. It never touches the reactor: it reduces LOAD, and the core follows the load down through the moderator coefficient, which is why it works and also why it is not instant. Measured: it converts a **15 % steam line break** from a reactor trip at 200 s into a ride-out at about 76 MWe, and it **cannot** save a 30 % break or a continuous rod withdrawal — those outrun the coupling it works through. **The 10-second delay is a declared departure** (WTSM describes no such delay): without it, an out-of-duty load step is transiently indistinguishable from a casualty. Like every rod stop here, it blocks **withdrawal only** — *"The rods can always be inserted into the core using either manual or automatic rod control"* (WTSM 8.1 §8.1.7.3).
 
 ---
 
@@ -146,6 +151,8 @@
 | pzr_level_low | PZR LVL LO | pzr_level | low | **25 %** | warning |
 | pzr_level_lolo | PZR LVL LO LO | pzr_level | low | **12 %** | critical |
 | rod_limit | ROD INS LIMIT | rod_at_limit | true | — | warning |
+| otdt_approach | OTΔT ROD STOP | otdt_margin | low | **3 % of rated ΔT** | warning |
+| opdt_approach | OPΔT ROD STOP | opdt_margin | low | **3 % of rated ΔT** | warning |
 
 ### Panel B — Secondary / systems
 

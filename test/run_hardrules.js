@@ -84,6 +84,7 @@ function check(rule, file, line, text, why) {
 var HR1_EXCEPTION = {
   'control_kernel.js:ctx': 'assembling the ctx object handed to channel callbacks — plumbing, not a decision. The rule binds what a callback READS from it.',
   'control_kernel.js:readback': 'reading back whether a COMMAND took effect (RPS reset confirms truth.scrammed cleared), not deciding from a sensor. Same pattern as the rods-fully-inserted interlock. HR1 governs what protection DECIDES from; a command that lies about its own success would make the reset latch unfalsifiable.',
+  'pwr_control.js:runback_readback': 'the turbine runback (#318) reading back the LOAD SETPOINT it drives. HR1 governs what protection DECIDES from, and this runback decides from `otdt_margin`/`opdt_margin` — instruments. `load_target_mwe` is a commanded value the control layer issues itself, the same category as control_kernel.js:readback, not a measurement of the plant. It is re-read every step deliberately: if the operator types a higher load the runback picks it up and walks it back down, which IS the authored behaviour.',
   'control_kernel.js:melted': 'no core-damage instrument exists, deliberately — a damage indication is post-ship scope. Used only to stop automation acting on a destroyed core, never to decide protection.',
 };
 // PWR DEBT: PAID 2026-07-29 (#247). Both PWR entries came off this list when the
@@ -106,6 +107,10 @@ function hr1Key(file, text) {
   if (/melted/.test(text) && base === 'control_kernel.js') return 'control_kernel.js:melted';
   if (/var truth\s*=\s*this\.engine\.getTrueState\(\)/.test(text)) return 'control_kernel.js:readback';
   if (base === 'rbmk_control.js') return 'rbmk_control.js:scrammed_melted';
+  // The runback's `read` callback (#318) returns the load SETPOINT the control layer itself
+  // issues — command read-back, not a sensed quantity. Keyed on the field so a future callback
+  // reading something genuinely sensed does NOT inherit this exception.
+  if (/load_target_mwe/.test(text)) return 'pwr_control.js:runback_readback';
   return null;
 }
 var hr1Used = {};

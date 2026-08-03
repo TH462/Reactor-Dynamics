@@ -679,6 +679,20 @@
       'the controller cannot insert any further, so if Tavg is still high the answer has to come from ' +
       'boron, not from rods. BLOCKED means a rod stop is standing and outward motion is refused — you ' +
       'can always insert. MANUAL means nobody is regulating Tavg for you.', CI, '14.1'),
+    bdDtMargin: e('Core ΔT margin',
+      'How much loop ΔT is left before the nearer of the two core-protection trips, and which one it is.',
+      'The reactor has two trips computed from the temperature RISE across the core rather than from ' +
+      'any single reading: OTΔT protects against departure from nucleate boiling, OPΔT against ' +
+      'excessive heat rate in the fuel. Neither has a fixed setpoint — the trip line MOVES with ' +
+      'average temperature and with reactor coolant pressure, so the same ΔT can be perfectly safe at ' +
+      'one condition and a trip at another. That is exactly what no single-parameter gauge can show ' +
+      'you, and it is why this number exists: it is the distance to whichever line is closer, so if it ' +
+      'falls while ΔT holds steady, the LIMIT moved toward you. The name tells you which one is ' +
+      'binding, and that is the diagnosis — OTΔT closing means you are heading toward boiling in the ' +
+      'hot channel, OPΔT closing means the core is simply making more heat than it is rated for. It ' +
+      'turns amber at the ROD STOP line, three percent out, where the plant refuses to withdraw rods ' +
+      'any further and lights OTΔT or OPΔT ROD STOP on Panel A; insertion always works. Neither trip ' +
+      'can be blocked.', CI, '9.0'),
     imrsgjmrjfg: e('AUTO (feed)',
       'Engages the three-element feedwater controller.',
       'It captures current level as its setpoint on engage, so engage it at a level you are happy to ' +
@@ -825,9 +839,16 @@
       'Load goes to zero and the steam dump takes over the generator\'s output. The lamp reads the ' +
       'actual offline state, so it lights for both a planned disconnect and a trip.', CI, '12.1'),
     imro8rmka2y: e('Generator Load',
-      'Electrical load target in MWe, up to about 100 MWe rated.',
+      'Electrical load target in MWe, up to about 100 MWe rated. The plant will drive this number down itself if the core gets close to a ΔT limit.',
       'Setting a target forces MANUAL mode. Raise load before, or together with, adding reactivity — ' +
-      'load and reactor power have to move together or Tavg walks off program.', CI, '12.2'),
+      'load and reactor power have to move together or Tavg walks off program. ' +
+      'AND THE PLANT CAN MOVE THIS NUMBER WITHOUT YOU: if the core ΔT margin falls to the rod stop, ' +
+      'a turbine runback starts walking load down and keeps walking it down until the margin ' +
+      'recovers — so if you see the target falling on its own, check the ΔT margin on the NIS card ' +
+      'and the OTΔT / OPΔT ROD STOP annunciators. It is not reducing reactor power directly; it is ' +
+      'reducing LOAD, and the reactor follows the load down on its own through the moderator ' +
+      'coefficient. That is why it works, and also why it is not instant. Type a higher number and ' +
+      'it will be walked back down while the condition stands — fix the condition, not the number.', CI, '12.2'),
     turbineGenerator: e('Turbine and Generator',
       'Steam turbine driving the generator — where thermal power becomes electrical power.',
       'Steam admitted through the governor valve turns the rotor; the generator converts that to ' +

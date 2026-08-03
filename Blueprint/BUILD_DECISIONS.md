@@ -37,6 +37,52 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-03d — #311: OTΔT/OPΔT ON, and why the board readout was the real precondition
+
+**Decision.** Wire the core ΔT margin to the board, then enable `otdt_opdt_trips`
+*(OWNER RULING, 2026-08-03: "Let's go with your recommendations for all these items")*.
+
+**What actually unblocked the flag was NOT the sourcing.** The shipped comment said turning it on
+waited on "the equation form and K1/K4 checked against the document". The evidence pass ran (#311)
+and settled the form, T′, P′, the 3 % rod stop and "No Interlocks" — but ML11223A301 **does not
+contain K1–K6 or the τ's**; they are "manually adjusted preset" plant Tech Spec values, and Table
+12.2-1 lists both setpoints as "Variable (calculated)". **The condition was waiting on something
+the document never had**, and would have waited forever. The intercepts remain UNVERIFIED and are
+declared as such in `otdt_opdt`, not hidden behind the flag.
+
+**The real precondition was OBSERVABILITY, and it is a Q3 argument.** With the flag on and nothing
+on the board, the player carries two reactor trips and a rod-withdrawal block driven by a
+continuously computed setpoint they cannot see, watch move, or anticipate beyond a 3 %-out
+annunciator. `bdDtMargin` closes it: binding margin plus the name of the trip it belongs to, amber
+at the **rod stop** rather than the trip, because that is the boundary the player can still act
+before.
+
+**ONE readout, not five channels — and the space constraint is the weaker half of the reason.**
+The board *is* full (measured: extent x 540..1945 / y 110..849; an occupancy scan returns no free
+150×60 slot, and the free-corner survey shows 8 of 20 card corners open, of which NIS at (995,230)
+is the one that already holds leg ΔT). But the design argument stands without that: **leg ΔT is
+already displayed**, so `loop_delta_t` in % of rated would be a second copy of one measurement,
+and each setpoint is implied by its margin — *a margin that moves while ΔT holds steady is the
+moving trip line*, which is the entire OTΔT lesson. Naming the binding trip rather than combining
+the two is deliberate: OTΔT is DNB, OPΔT is linear heat rate, and which one is closing is the
+diagnosis.
+
+**Sequencing paid off in a measurable way.** #311 forecast `run_campaign` 51/51 → 50/51 on
+`pwr_lof`. It stayed **51/51**, because #314 was built first on recommendation and its breaker
+trip catches that casualty at 23.0 s against OPΔT's 24.5 s — so the mission re-authored hours
+earlier could not be re-broken by this flip.
+
+**Three test-premise findings, one shape: a fixture nobody declared.** `run_m4`'s #295 probe
+pinned a reason string; `run_m5`'s attention-stop test assumed an injected failure would not also
+scram; `run_inspect` caught the new board item having no Scanner copy (the #308 class). The first
+of those also caught **me**: my initial re-authoring asserted the survivor was "not one of the
+three blocked trips", which is incoherent — #295's finding is that those block attempts are
+*refused*, so nothing is blocked. I had written "this also passes on the old plant" into the
+comment before testing it. It did not. **The discriminator is the TIME** (defect 64 s unscrammed
+vs 4.1 s / 1.7 s healthy), and the corrected form passes on both configurations.
+
+---
+
 ## 2026-08-03c — #314: the RCP breaker-position trip, and two comparators that disagreed
 
 **Decision.** Build the **RCP breaker-position reactor trip** (1-of-1, blocked below P-7); decline

@@ -20,6 +20,131 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03n (#318 the turbine runback — and "fix K4" turned out to be unfixable)
+
+*(OWNER RULING, 2026-08-03: "Go with your recommendation")* for the shape — the runback drives the
+load setpoint visibly, no refusal, no ceiling, **zero new player-facing rules** — after the owner
+pushed back on my first design: *"I'm not sure if I want to add another thing for the player to
+learn if it doesn't teach dynamics."* He was right about the authority model and wrong about
+nothing: a refusal message teaches an interface rule, not a coupling.
+
+**Then the build found something bigger, and the owner's instruction could not be carried out as
+given.** Told to *"Fix k4"* — my own diagnosis, that the OPΔT intercept was too tight because a
+70 → 100 MW load increase came within **0.51** of the trip. Measured the natural ΔT peaks with the
+trips off, and there is no K4 to fix:
+
+| | peak ΔT | peak power |
+|---|---|---|
+| 70 → 100 MW increase (normal) | **109.1 %** | 109.7 % |
+| **15 % steam line break (casualty)** | **109.8 %** | 109.4 % |
+| 90 → 100 MW (the WTSM 10 % duty) | 103.0 % | 102.5 % |
+| 30 % steam line break | 116.7 % | 116.6 % |
+
+**A normal 30 % load step and a 15 % steam line break are indistinguishable to any ΔT setpoint** —
+0.7 % of rated ΔT apart. Raise K4 to clear the ramp and OPΔT stops catching the break; lower it and
+the ramp trips. There is no window. Reported that rather than doing something and calling it done.
+
+**What separates them is DURATION, so the fix is a persistence delay** — 10 s, a declared departure
+(WTSM describes none). On the plant's actual design duty the question does not even arise: the
+10 % step peaks at 103.0 %.
+
+**THE TRAP, and it cost two wrong mechanisms: the margin is NOISY and my dwell measurement was a
+SAMPLING ARTIFACT.** I measured "longest continuous dwell below the stop" as 4.5 s for the ramp and
+**24.5 s** for the break, and sized the delay from that. Built the obvious counter — accumulate
+below the setpoint, reset above it — and it **never reached 10 s on any case, maximum 0.40 s.** The
+margin chatters across the threshold many times a second on instrument noise; my 24.5 s figure was
+measured at BROADCAST resolution, which smooths the chatter away, while the kernel runs at physics
+resolution where no such continuous window exists. **Both numbers were "measured" and one of them
+was still wrong** — resolution is part of a measurement, and I did not state it.
+
+The working mechanism applies the hysteresis pair to the TIMER, not just to the latch: accumulate
+below the setpoint, **hold** in the band between setpoint and `clears_above`, zero only on a real
+recovery. Same shape the engage/disengage logic already used.
+
+**Measured, final:** normal 70 → 100 ramp — runback **never engages**, load target stays 100.0 MWe.
+15 % steam line break — engages, drives load **100 → 76 MWe**, scram at 200 s becomes a **ride-out**.
+30 % break and continuous rod withdrawal — **unchanged, still scram**, and that is the dynamics
+lesson rather than a tuning failure: the runback works THROUGH A1, and a transient faster than the
+moderator feedback outruns it. Rate is nearly irrelevant to that (5 %/s is no better than 2 %/s),
+which is the same finding stated two ways.
+
+**Where it lives.** `stepAutomation(dt)`, not `evaluate()` — `evaluate` is called on a variable
+cadence (in-loop on `sinceEval >= PROTECTION_DT` plus one unconditional post-loop call), so a rate
+driven from it would scale with time acceleration: the #153 defect. Consequence stated in the code:
+the runback is a **full-stack behaviour** and engine+M4 harnesses do not see it. It is NOT an
+automation channel — channels are operator-engageable and protection is not — it merely shares that
+entry point because that is the fixed-dt seam.
+
+`run_otdt` **39 → 44** (+7 section D, −2 because the 15 % break MOVED from the casualty block to a
+save). `run_autoctl` 30/30 and `run_campaign` 51/51 both went red mid-build and are green — they
+were the gates that caught the runback firing on a normal ramp, which no probe of mine had.
+
+---
+
+## Session log — 2026-08-03m (#311 OTΔT/OPΔT turned ON, with the board readout that justifies it)
+
+*(OWNER RULING, 2026-08-03: "Let's go with your recommendations for all these items")* — approving
+the order **board wiring → flag → runback**, and the ordering earned its keep twice.
+
+**The board readout came first, deliberately.** `bdDtMargin` (NIS card corner) shows the binding
+margin and names its trip — `OPΔT 3.5` — amber at the **rod stop**, not the trip line, because
+"the plant is about to stop taking rods out" is the part the player can still act on. Without it,
+flipping the flag hands the player two reactor trips and a rod-withdrawal block driven by a number
+that appears nowhere on the diagram. That is a `DESIGN_CRITERIA` Q3 observability failure, and it
+was the real blocker — not the unsourced intercepts.
+
+**THE BOARD IS FULL, measured.** Extent x 540..1945 / y 110..849, and an occupancy scan returns
+**no free 150×60 slot** — every candidate was an edge artifact running off the right boundary. A
+first scan "found" a large free column at x < 540 and that was the scan being wrong, not the
+board: nothing exists left of 540. The free-corner survey is the useful artifact — of 20 card
+corners, 8 are free, and the NIS corner (995, 230) is the one that matters because that card
+already holds the leg ΔT readout. **So: ONE readout, not five channels.** The space argument is
+real but secondary; the Q3 argument stands on its own — leg ΔT is *already* displayed, so
+`loop_delta_t` in % of rated is a second copy of one measurement, and each setpoint is implied by
+its margin. **A margin that moves while ΔT holds steady IS the moving trip line**, which is the
+whole OTΔT lesson.
+
+**Flag ON. Blast radius exactly as #311 predicted, with one improvement it did not predict:**
+`run_campaign` stayed **51/51**. #311's own forecast was 50/51 on `pwr_lof` — but #314 landed
+first by recommendation, so the breaker trip catches that casualty at 23.0 s against OPΔT's 24.5 s
+and the mission I had just re-authored could not be re-broken. That is the sequencing paying off
+in a number.
+
+**THREE test-premise findings in one change, all the same shape — a test whose fixture was the
+plant not doing anything.**
+
+1. **`run_m4`'s #295 probe.** Pinned the reason string `primary_pressure low`; OTΔT now gets there
+   at ~1.7 s and carries "No Interlocks", so it cannot be blocked at all — the probe's claim is
+   *strengthened*. **My first re-authoring was WRONG and injection caught it**: it asserted the
+   survivor was "not one of the three trips the operator blocked", which is incoherent, because
+   #295's whole finding is that those block attempts are **refused** at power. Nothing is blocked,
+   so `primary_pressure low` is a valid survivor and the check failed on the pre-flag plant. **The
+   discriminator is the TIME** — the defect rode 64 s unscrammed; healthy is 4.1 s flag-off and
+   1.7 s flag-on. It passes on both now. I had already written "this also passes on the old plant"
+   into the comment *before* testing it; it did not.
+2. **`run_m5`'s attention-stop test.** Injected `stuck_porv_open` at 60× and expected the snap
+   reason `failure`. With OTΔT live the scram arrives inside the **same broadcast**, so the snap
+   correctly names the more urgent event. Switched to an **instrument** failure (no physics effect,
+   cannot scram at any speed), which isolates the failure→attention-stop path *properly* — the old
+   form only ever tested it because nothing else fired first. +1 check guarding that it did not
+   scram, so the fixture cannot drift back.
+3. **`run_inspect`.** Caught the new board item having no System Scanner copy. The #308 class
+   exactly: inspection text is a third copy of the mechanism and does not move itself.
+
+**`board_check` 182 → 186**, four pins on the readout, each aimed at a distinct failure and
+**injection-verified** — unwiring the value function reddens three (correctly not the "exists"
+pin). The one worth copying is *"shows a live number, not the '—' placeholder"*: that is what
+catches a value function never wired into the id map, where the item renders, shows its authored
+placeholder, and looks entirely fine.
+
+`run_contract` 141 → 143 and `run_reachability` 62 → 66 are the design working — both iterate the
+live protection tables and picked up the two new trips and two new alarms with nothing hand-added.
+Manual set **Rev 18** (09 §2.0 trips, §4.0 annunciators, the rod-stop interlock row with its
+source, and the two honesty notes: the turbine runback is not built (#318), and rod stops block
+withdrawal only).
+
+---
+
 ## Session log — 2026-08-03l (#319 item 1 — PWR-E03 turbine trip, and a `saw` in the wrong window)
 
 **Task:** #319 item 1, the last of the "mechanism already exists" items. E03 is the procedure that

@@ -2,7 +2,7 @@
 
 **Document:** PWR-NOP-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Revision:** 19  
+**Revision:** 21  
 
 ---
 

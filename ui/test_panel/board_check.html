@@ -429,6 +429,31 @@
         ck('readout: PZR HTR PWR live indication numeric', !!ht && /\d/.test(ht.textContent), ht && ht.textContent);
       })();
 
+      // Core ΔT margin (EXTRA_ITEMS, #311 observability). This readout is the ONLY thing on
+      // the board that makes the OTΔT/OPΔT trips visible before their 3 %-out annunciator, so
+      // it is pinned rather than trusted. Three checks, and each is chosen to fail a specific
+      // way of breaking it — a bare "is it present" check would pass on all three defects.
+      (function () {
+        var el = document.querySelector('[data-item="bdDtMargin"]');
+        ck('readout: core ΔT margin exists on the board', !!el, String(el));
+        var txt = el ? el.textContent : '';
+        // 1. It NAMES which limit is binding. Drop the name and the player cannot tell DNB
+        //    protection from linear-heat-rate protection, which is the diagnosis.
+        ck('readout: ΔT margin names the binding trip (OTΔT or OPΔT)',
+          /OT[ΔD]T|OP[ΔD]T/.test(txt), txt);
+        // 2. It carries a LIVE NUMBER, not the authored placeholder '—'. This is the check
+        //    that catches a value function that never got wired into the id map: the item
+        //    would render, with its placeholder, and look fine.
+        ck('readout: ΔT margin shows a live number, not the "—" placeholder',
+          /-?\d+\.\d/.test(txt) && txt.indexOf('—') === -1, txt);
+        // 3. At hot full power the plant is nowhere near either limit, so the margin must be
+        //    comfortably positive. Measured 2026-08-03: OPΔT binds at HFP with ~5.4 % of rated
+        //    ΔT in hand. A margin at or below the 3.0 rod stop here means either the trip
+        //    lines moved or the readout is reading the wrong channel.
+        var num = parseFloat((txt.match(/-?\d+\.\d/) || ['0'])[0]);
+        ck('readout: ΔT margin is comfortably clear at HFP (> rod stop)', num > 3.0, txt);
+      })();
+
       // Cold Shutdown (Mode 5): RCPs secured, no steam, no feed — a dead plant must
       // read STILL. 23 of 37 pipes animated here before #236.
       var svc5 = new RD.SimulationService({ plant_id: 'pwr', initial_state: 'cold_shutdown' });
