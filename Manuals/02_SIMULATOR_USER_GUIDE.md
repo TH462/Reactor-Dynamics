@@ -2,7 +2,7 @@
 
 **Document:** PWR-SIM-01  
 **Title:** Reactor⚛️Dynamics — PWR Trainer Operation  
-**Revision:** 12  
+**Revision:** 17  
 
 ---
 
@@ -53,7 +53,7 @@ plant display with its own gauge strip applies to RBMK/BWR only.
 │              PLANT MIMIC + CONTROL CARDS                    ││ commentary / gates        │
 │   (rod control, PZR, CVCS, ECCS/RHR/AFW, SG feed,           │├ Tools ────────────────────┤
 │    steam dump, turbine-generator, condenser cooling …)      ││ Operate  Inject Failure   │
-│                                                             ││ Graph    Settings         │
+│                                                             ││ Graph  Physics  Settings  │
 ├──────────────────────────────┬──────────────────────────────┤├ System Scanner ───────────┤
 │ Strip chart (trends)         │ Alarm panel                  ││ hover = name; click = full │
 └──────────────────────────────┴──────────────────────────────┘└───────────────────────────┘
@@ -75,7 +75,7 @@ it. Always instrument readings, never truth (HR1).
 | PRESSURIZER LEVEL | Pressurizer water level, % |
 | STEAM GENERATOR LEVEL | SG narrow-range level, % |
 
-**Units follow Settings → Units** (§7.5): US customary (psi / °F) or SI (MPa / °C), tiles and
+**Units follow Settings → Units** (§7.6): US customary (psi / °F) or SI (MPa / °C), tiles and
 strip chart together.
 
 ### 3.2 Board cards (control homes)
@@ -107,7 +107,7 @@ on a card — click the component. `03_CONTROLS_AND_INDICATIONS.md` is the per-c
 | **Sim controls** | Play/Pause, speed 1× / 10× / 60× / 600× / 3600×, Manual, Help, Contact, and **Board focus (⛶)** — hides this column and enlarges the board |
 | **Plant & mission line** | Always visible under the sim controls: what is running now; click to change it (§5.0) |
 | **Instructor** | Scenario commentary, gates, walkthrough step grading |
-| **Tools** | **Operate · Inject Failure · Graph · Settings** (§7.0) |
+| **Tools** | **Operate · Inject Failure · Graph · Physics · Settings** (§7.0) |
 | **System Scanner** | **The inspection surface — hover anything to name it; click the block to expand it** (§3.4) |
 
 ### 3.4 System Scanner — the inspection surface
@@ -226,7 +226,7 @@ Entry: the plant & mission status line under the sim controls, or **Operate** ta
 |------|----------------|
 | **Learning** | Full teaching visuals, SUR, deception duals (Indicated vs Actual on the PORV when relevant), contextual xenon/fuel chips. The strip chart traces the **true physics** |
 | **Realistic** | Quiet board — indications and status only, no teaching overlays. The strip chart traces the **instruments**, so a failed sensor lies on the trend exactly as it does on the gauge |
-| **Physics Overlay** | Learning only — reactivity (pcm), period, inventory, void, etc. |
+| **Physics Overlay** | Learning only — reactivity (pcm), period, inventory, void, etc., drawn **on the board**. Not the same thing as the **Physics tab** (§7.5), which is always available and is a panel of its own |
 
 **These are set by the CONTENT, not by you.** There is no display-mode selector: the Settings
 tab holds units, fast-forward dropout and About, and nothing else. A scenario declares the mode
@@ -246,8 +246,8 @@ tell. Run the **TMI-2 module** (campaign Act V, missions 27–29) to practise it
 
 ## 7.0 Tools tabs
 
-**There are four:** **Operate · Inject Failure · Graph · Settings.** Plant automation is not
-among them — it lives on the board (§7.3).
+**There are five:** **Operate · Inject Failure · Graph · Physics · Settings.** Plant automation
+is not among them — it lives on the board (§7.3).
 
 ### 7.1 Operate
 
@@ -307,7 +307,48 @@ a trace leaves the band, so a line does not change shape once it has been drawn.
 brightens when its parameter is in an alarm band. Chart units follow **Settings → Units**,
 the same selection the board tiles use.
 
-### 7.5 Settings
+### 7.5 Physics
+
+**The true plant state, behind the instruments.** Everything on this tab is what the
+simulator is actually computing — no lag, no noise, and a failed sensor does not change a
+single figure on it. It is an engineering display, not a second board: nothing here alarms,
+nothing here is what protection reads, and a real control room has none of it.
+
+Rows are chosen for what the board **cannot** show — quantities with no instrument at all,
+or none wired to a readout — and are ordered along the energy path. Five groups:
+
+| Group | What is in it |
+|-------|---------------|
+| **Reactivity** | Net reactivity (pcm) · fuel temperature (the Doppler driver) · xenon (% eq) · true RCS boron |
+| **Core heat** | Fission power · decay heat (% and MWt) · **total core heat** · peak clad temperature · core void fraction |
+| **Primary coolant** | Core ΔT (hot − cold) · true subcooling margin · heatup/cooldown rate · RCS inventory · loop void fraction · loop flow |
+| **Loop pressure** | Hot leg (the pressurizer datum) · cold leg (pump discharge) · pump suction · suction subcooling · RCP cavitation · primary leak flow |
+| **Heat sink & output** | Steam − feed mismatch · turbine steam demand · gross electrical · cycle efficiency |
+
+Three of those repay a second look:
+
+- **Fission power is not total core heat.** The first is the chain reaction alone; the second
+  adds the decay tail. At steady power they are the same number, which is why one gauge is
+  enough on a real board — but a scram drops fission through the floor while the core is still
+  making about **7 %** of rated. The plant is cooled against the second figure, never the first.
+- **The loop pressure split.** There is no per-node pressure gauge on this plant; the single
+  primary-pressure instrument reads the hot-leg/pressurizer datum. The cold leg runs highest
+  (pump discharge — the ECCS and letdown datum) and the pump suction lowest, and at power the
+  spread is about **80 psi (0.55 MPa)** end to end. It is why the pump suction flashes and
+  cavitates before anything on the board says so.
+- **Values marked in colour** are states that should read exactly zero on a healthy plant —
+  voiding, RCP cavitation, leak flow — or that have crossed a threshold the engine itself
+  uses (clad temperature against the fuel-damage limit; subcooling against saturation). This
+  is not an alarm system. The alarm panel is the alarm system.
+
+**Use it after a transient, not during one.** Operating from the true values instead of the
+instruments teaches the wrong habit and skips the lesson the sensor-failure drills exist for
+(PWR-E20/E21/E22 in `07_ABNORMAL_EMERGENCY.md`). Reading it afterwards to find out *why* the
+plant did what it did is the point.
+
+Units follow **Settings → Units** (§7.6). RBMK and BWR have no physics panel authored yet.
+
+### 7.6 Settings
 
 - **Units** — US customary or SI, applied to the board tiles, the setpoint boxes, the readouts
   and the strip chart together.

@@ -332,9 +332,10 @@
       'light reading closed drained the core.', CI, '6.1'),
     ims2jf7fv7m: e('PORV Status',
       'The PORV position light — it shows the COMMANDED position, not the disc.',
-      'The most important instrument on the board to distrust. It reports what the valve was told to ' +
-      'do. A valve that fails to reseat leaves this reading CLOSED while steam keeps leaving the ' +
-      'plant; the tailpipe temperature next to it is the honest tell. Instruments, not truth (HR1).', TMI, '4.0'),
+      'It reports what the valve was told to do, not what the disc did. A valve that fails to reseat ' +
+      'leaves this reading CLOSED while steam keeps leaving the plant — so read it against what the ' +
+      'plant is doing: pressure that will not come back up, and the tailpipe temperature next to it ' +
+      'climbing. Indications and protection read instruments, not truth (HR1).', TMI, '4.0'),
     imrsgch20pv: e('PORV Tailpipe Temperature',
       'Discharge-line temperature downstream of the PORV — the tell that the valve is passing.',
       'A seated valve leaves the tailpipe at a leaky-seat baseline around 180 °F (82.2 °C); a passing ' +

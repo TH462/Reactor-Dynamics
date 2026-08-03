@@ -140,8 +140,30 @@
     // core exit therefore pins at saturation (Tsat): the split is capped at the value
     // that puts thot exactly there, keeping both legs consistent around tavg, while the
     // raw exit overshoot (below) is carried as the DNB / core-boiling driver.
+    //
+    // THE DRIVER IS TOTAL CORE HEAT (_Q_total), NOT power_pct (#315, 2026-08-03).
+    // power_pct is FISSION power alone. In steady state the two are equal by
+    // construction (engine step 4), so this read correctly at power for the life of
+    // the project — and wrongly the instant the rods dropped. Measured, full stack,
+    // three plant-minutes after a scram with full forced flow: the core was removing
+    // 6.6 % of rated heat and the split computed 0.0 °F. Indicated, that put the COLD
+    // leg above the HOT leg in 48.3 % of 1500 samples — the true signal was exactly
+    // zero and instrument noise was all that was left. Under loss of flow it is worse:
+    // 3.8 °F against the 44.4 °F the removed heat implies.
+    //
+    // This makes the split CONSISTENT WITH THE TWO LINES ABOVE IT rather than adding a
+    // claim: stepFuel already runs on _Q_total, and the Tavg balance already runs on
+    // the actual fuel→coolant flux. The split was the one line still reading flux.
+    // At rated _Q_total is exactly 1.0, so delta_T_rated needs no recalibration and
+    // no at-power behaviour moves — measured byte-identical over 10 min at HFP.
+    //
+    // NOT the instantaneous flux (Q_fuel_to_coolant + Q_pump), which is the more
+    // rigorous quantity and carries the fuel node's stored-energy dump: measured, that
+    // holds ΔT near rated for ~2 min after a trip and brings a full load rejection to
+    // within 1.6 % of an OTΔT trip. It is a real question, but a larger one — #315 §6.
     var Tsat = T_sat(s.pressure_mpa);
-    var delta_T_raw = t.delta_T_rated * s.power_pct / 100 / Math.max(s.flow_frac, t.flow_floor);
+    var delta_T_raw = t.delta_T_rated * (s._Q_total != null ? s._Q_total : s.power_pct / 100)
+                    / Math.max(s.flow_frac, t.flow_floor);
     var thot_raw = s.tavg_c + delta_T_raw / 2.0;
     s._subcool_hot_c = Tsat - thot_raw;                     // exit margin to saturation (may go < 0)
     var delta_T = Math.min(delta_T_raw, Math.max(2 * (Tsat - s.tavg_c), 0));

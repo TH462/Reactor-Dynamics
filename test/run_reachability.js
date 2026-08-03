@@ -141,6 +141,48 @@ var loSp = null;
 ck('B2 — an inventory loss can reach the ' + loSp + ' % pzr lo-lo scram',
   'trough ' + r2.trough.toFixed(2) + ' %', loSp != null && r2.trough < loSp, '< ' + loSp + ' %');
 
+// B3 — THE ONE INVERTED CASE. Every other check here asserts a channel CAN reach its
+// setpoint. This one asserts the opposite, on purpose, and it is a DEPARTURE FENCE rather
+// than a reachability proof (#307, ruled 2026-08-03; declared at DESIGN_COMPANION §8.25).
+//
+// The 1980 rpm overspeed trip is UNREACHABLE on this plant and that is deliberate, because
+// there is no turbine roll model. Measured 2026-08-03, peak TRUE rpm: 1800.00 on line in
+// follow, 1800.00 in manual with a 2x-rated MWe ask, 1799.10 with the MSIVs shut and the
+// breaker closed. The sync branch is `rpm += (rated - rpm)/sync_tau * dt` — monotone toward
+// rated for dt < 2*sync_tau, so it cannot overshoot — and the off-line branch cannot start
+// the rotor from rest at all (the `if (rpm < 1) rpm = 0` floor needs > 50 rpm/s at the
+// shipped 0.02 s PHYSICS_DT, i.e. > 2500x rated admission; the first admission that clears
+// it settles at 2000 rpm, past this very trip).
+//
+// Part A is happy — 1980 sits strictly inside turbine_rpm's [0, 2000] range — which is
+// exactly the hollow-assertion shape this runner exists for, one instrument short of its
+// own coverage.
+//
+// SO THIS CHECK IS WRITTEN TO GO RED WHEN THE PLANT GETS BETTER. Build the roll model
+// (#307 / #238) and the rotor can pass 1980; this fails, and whoever built it must retire
+// §8.25 rather than absorb the change silently. That is the §8.17 pattern — a departure is
+// closed by fixing the gap, not by justifying it. Symmetric drift, same as BASELINES.
+var ospSp = null;
+(P.actuations || []).forEach(function (a) {
+  if (a.instrument === 'turbine_rpm' && a.direction === 'high') ospSp = a.setpoint;
+});
+ck('the turbine overspeed setpoint is still where this probe thinks it is',
+  ospSp == null ? 'not found' : ospSp + ' RPM', ospSp != null, 'a turbine_rpm high actuation exists');
+
+var ratedRpm = (RD.PWR_CONFIG.turbine || {}).rpm_rated || 1800;
+var svc3 = stack('hot_full_power');
+var r3 = peakIndicated(svc3, 'turbine_rpm', 900, function (s, i) {
+  // The hardest drivers measured: an above-rated load ask, then steam cut with the breaker
+  // still closed. Neither can spin the machine past what the grid holds it at.
+  if (i === 10) { s.handleCommand({ action: 'set_load_mode', mode: 'manual' }); }
+  if (i === 20) { s.handleCommand({ action: 'set_load_target', mwe: 2 * (RD.PWR_CONFIG.turbine.mwe_rated || 100) }); }
+  if (i === 500) { s.handleCommand({ action: 'close_msiv' }); }
+});
+ck('B3 — the ' + ospSp + ' RPM overspeed trip is UNREACHABLE (declared: no roll model, §8.25)',
+  'peak indicated ' + r3.peak.toFixed(2) + ' RPM', ospSp != null && r3.peak < ospSp, '< ' + ospSp + ' RPM');
+ck('B3 — …because the grid pins the rotor at rated, so nothing on line can overshoot it',
+  'peak ' + r3.peak.toFixed(2) + ' vs rated ' + ratedRpm, r3.peak < ratedRpm * 1.02, '< rated + 2 %');
+
 // ---------------------------------------------------------------- tally
 // Tally line matches the run_reactivity / run_contract convention so run_all's score
 // parser reads it ("N checks passed / M failed"), not a shape of my own invention.

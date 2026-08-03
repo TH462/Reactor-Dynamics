@@ -290,7 +290,24 @@ T.push(test('Determinism — same seed + same commands → identical snapshots',
   var a = run(123), b = run(123), c = run(999);
   ck('identical for equal seed', 'a==b', physics(a) === physics(b), 'physics(a)===physics(b)');
   ck('noise differs for different seed', 'a!=c', a.instruments.power_range !== c.instruments.power_range, 'instrument noise differs');
-  ck('but physics trajectory same magnitude', (a.true_state.power_pct - c.true_state.power_pct).toFixed(3), Math.abs(a.true_state.power_pct - c.true_state.power_pct) < 1e-9, 'true power identical (noise-free)');
+  // RE-BANDED 2026-08-03 (#314), and the check's own LABEL was always the honest claim —
+  // "same magnitude", not "identical". The 1e-9 tolerance was asserting bit-identity, which
+  // is NOT a property of this plant: HR1 means protection and every AUTO channel decide from
+  // NOISY instruments, so the moment an actuator moves, noise reaches true state. It only
+  // held here because the sequence was quiet — `rcp_trip` used to produce no protection
+  // action within 5 cycles. It does now (the RCP breaker-position trip scrams the plant), so
+  // the post-scram pressurizer/feed/dump channels start acting on their own noise.
+  //
+  // MEASURED across the two seeds: the scram fires on the SAME cycle in both (the breaker
+  // trip reads a boolean — no noise), power is bit-identical for two more cycles, then
+  // diverges 1.7e-6 → 7.6e-6 → 1.8e-5 % power. That is four orders below the power-range
+  // channel's own noise and is noise-scale by construction, not a trajectory difference.
+  //
+  // The band still discriminates: a genuinely divergent trajectory moves whole percent, and
+  // 0.01 is ~500× the measured value. It also passes on the PRE-#314 engine, where the diff
+  // was < 1e-9 — so this is a better test rather than a refit. Bit-identity for the SAME
+  // seed is the real determinism property and is asserted unweakened, one line above.
+  ck('but physics trajectory same magnitude', (a.true_state.power_pct - c.true_state.power_pct).toExponential(2), Math.abs(a.true_state.power_pct - c.true_state.power_pct) < 0.01, 'noise-scale only (< 0.01 % power)');
 }));
 
 T.push(test('Save / restore — full simulation round-trips identically', function (ck) {

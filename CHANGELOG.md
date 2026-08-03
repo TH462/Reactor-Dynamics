@@ -21,7 +21,208 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **A tripped reactor showed no hot/cold leg ΔT at all — the split was scaled by fission power**
+  (#315). Heat leaving the core through the legs requires a temperature rise across them, and a
+  scrammed core is still rejecting **~7 % of rated**. The split read `power_pct`, which is the
+  chain reaction alone.
+  - **Measured, full stack.** Three plant-minutes after a manual trip with the pumps running, the
+    core was removing **6.61 % of rated heat** and the model computed a **0.0 °F** split. At
+    thirty minutes, still 0.0 °F. Under a loss of forced flow it is **3.8 °F against the 44.4 °F**
+    the removed heat implies.
+  - **On the board it was worse than merely wrong.** With the true signal at exactly zero,
+    instrument noise was all that remained: sampling the indicated legs for 25 minutes after a
+    trip, the **cold leg read hotter than the hot leg in 724 of 1500 samples — 48.3 %**. After
+    the fix, **0 of 1500**, mean split 3.02 °F.
+  - **This is a consistency fix, not a new claim.** The fuel node and the Tavg balance already
+    ran on total core heat; the split was the one line still reading flux. At rated the two are
+    equal by construction, so `delta_T_rated` needs no recalibration and **at-power behaviour is
+    byte-identical** — verified over 10 minutes at hot full power, every end-state field equal.
+  - Not display-only: `loop_delta_t`, the protection input for the OTΔT and OPΔT trips (#311),
+    is computed from the indicated legs.
+  - **New behaviour probe TR-7b** — `run_behavior` 44 → 45. It computes its expectation from
+    `core_heat_pct` and `pump_flow_pct` on every run, so a retune of `delta_T_rated`, of the decay
+    fractions or of `flow_floor` moves the band with the plant. Injection-verified: 5 checks red
+    on the old form, and the two control checks (at-power calibration, the flow floor) stay green
+    by design.
+  - The second consumer named in the issue — the condenser backpressure load fraction — was
+    measured and **is not a defect**: the load term enters as a difference of two saturation
+    pressures at the same offset and nearly cancels, so the worst realistic effect is
+    **0.23 kPa** against a 3.39 kPa display digit. Left alone.
+  - **12** §5.2 said "scaled by power/flow" and now says what that means, with the post-trip
+    numbers. Manual set **Rev 15**.
+
 ### Added
+- **The RCP breaker-position reactor trip — a protection function that reads a CONTACT, not a
+  measurement** (#314) *(OWNER RULING, 2026-08-03: "Build the breaker position trip as you
+  recommend.")*. This plant had **one** loss-of-flow reactor trip where a real Westinghouse unit
+  has **four** (WTSM 12.2 §12.2.3.12, ML11223A301): low loop flow, breaker position, RCP bus
+  under-voltage, RCP bus under-frequency. The one we had reads a single elbow-tap channel, so a
+  stuck transmitter defeated it completely. Measured on the `pwr_lof` casualty — pump tripped with
+  its flow channel stuck at 100 %: the reactor used to ride **58.5 s** to a *high-pressure* trip
+  with peak core void **0.628** and fuel at 1713 °F (934 °C); it now trips at **23.0 s — one second
+  after the pump** — on the breaker contact, peak core void **0.000**, fuel unchanged. Blocked
+  below **P-7** on the same permissive as the low-flow trip (sourced: *"All the reactor coolant low
+  flow trips are automatically blocked below the P-7 setpoint (10% power)"*), so Mode 5 with the
+  pumps secured carries no standing trip — verified across all three initial conditions and the
+  full load rejection, none of which move.
+- **`is_false` now works for trips and actuations, and its absence was silent** (#314). The kernel
+  carried **two comparators with different vocabularies**: `_alarmRaw` has understood
+  `is_false`/`is_open` since alarms existed, while `crossed()` — which trips and actuations use —
+  knew only `high`/`low`/`is_true` and fell through to `return false`. Any trip authored with
+  `is_false` was therefore a **complete no-op with no throw, no warning and a green gate**. Found
+  because the new breaker trip was inert on its first run: the plant rode the entire 36-second
+  loss-of-flow casualty to peak void 0.628 with the trip installed and doing nothing. `ui/app.js`
+  already listed `is_false: 'goes false'` in its player-facing setpoint vocabulary, so the UI was
+  describing a capability the trip path did not have.
+
+### Changed
+- **`pwr_lof` re-authored — it lost its branch, and this is the THIRD time its premise has been
+  invalidated by fidelity work** (#314). The decision window went from ~36 s to ~1 s, so the
+  mission is a demonstration now rather than a choice. The lesson is better for it and it is a
+  *coupling* rather than a deception: the gauge still lies, the trip assigned to this casualty
+  still never fires, and the reactor trips anyway — because protection is built from **diverse
+  signals**, four physical quantities, so no single failure removes the function. Flagged in the
+  file: three re-premisings is a reasonable argument for retiring the mission rather than doing a
+  fourth, and that is the owner's call. Its campaign check was re-authored to assert the new
+  mechanism and **injection-verified against the pre-fix plant** — restoring the old comparator
+  reddens exactly the two discriminating checks (trip reason, and core void, which the old test
+  *required* to exceed 0.02 and the new one requires to stay under 0.01).
+- Manual set **Rev 13 → 14**: `09` gains the trip; **`12` §10.7 rewritten**, because its measured
+  blockquote described behaviour the plant no longer has. Its point moves too — the fix was **not
+  more channels but a different kind of signal**. `DESIGN_COMPANION` **§8.24** declares the two
+  unmodelled RCP **bus** trips: this plant has no RCP electrical bus, so building them would mean
+  inventing the signal, and the 1-out-of-1 coincidence (against the real 2-of-4) is declared in the
+  same row — the real rule means *half the pumps are gone*, and this plant has one RCP.
+- **HR1 stays a Hard Rule, and now says which half of the question it answers** *(OWNER RULING,
+  2026-08-03: "Apply the hr1 seam/roster sentence. Change design criteria as you suggest.")*.
+  Added to `CONTEXT.md` §3: **HR1 governs the SEAM, not the ROSTER** — which quantities have
+  instruments, their lag/noise/failure characteristics, and how many channels a trip votes are
+  **plant design**, decided by `DESIGN_CRITERIA.md`'s four questions, and **a missing instrument
+  is a design gap to be filed, never an HR1 exception.** It kept its place on §3's own admission
+  test — *"can this be violated silently?"* — which it passes on measured history: #220
+  (`above_p9` deciding three protection functions off true state with **all 34 runners green**),
+  #247 (the low-flow trip reading true pump flow for two years) and #289 (a new `defaultOn`
+  channel caught by the gate on 2026-08-01). The split exists because #247 was filed as *"the one
+  documented HR1 exception"* and was not one — it was an instrument nobody had built, and the
+  exception mechanism made a plant-design omission look settled.
+- **`DESIGN_CRITERIA` §6.3's healthy-channel claim is measured now, and it was overstated.** It
+  read *"a healthy channel's lag … changes what the operator sees during **every** transient in
+  Tier A"*. Measured full stack, seed 42, nothing failed: the shift belongs to the **channel**, not
+  the transient. `tavg` (lag 4.0 s) puts the gauge **4.00 s behind the plant during A1 itself** —
+  the slowest case measured — while `power_range` (0.1 s) stays within a sample through a **scram**
+  and `primary_pressure` (0.5 s) through a **20 % LOCA crossing the 1800 psi reactor trip**. The
+  fast casualties show no timing shift at all. *Value* divergence is the effect that does track
+  transient speed (that LOCA reaches 414 psi and 25.6 °F). Replaced with the table.
+- **The simulator's stated premise is PLANT DYNAMICS, and eleven documents said otherwise**
+  *(OWNER DIRECTIVE, 2026-08-03: "THR STATED PREMIS IS NOT INSTRUMENT VS TRUTH THE PREMIS IS TO
+  TEACH PLANT DYNAMICS!!! We must purge the idea of the instruments vs truth premise from all
+  documents.")*. `DESIGN_CRITERIA.md` §6 had already ruled it the day before — dynamics is Tier A,
+  procedure is a second goal, and instrument deception is explicitly **not** a Tier A objective —
+  but the older framing was still standing in the files that agents and players actually read.
+  Purged from: `CLAUDE.md` (*"the dissonance is the lesson"*), `CONTEXT.md` §"what it must feel
+  like", `DESIGN_COMPANION.md` ×3 (including *"why instruments-vs-truth is **the keystone** … the
+  one rule whose violation makes the whole product pointless"*, which inverts the two),
+  `M6_instructor.md`, the `M8` HMI spec, `Manuals/README.md`, `Manuals/ISSUES_AND_FINDINGS.md`
+  I-17, and `PWR_CURRICULUM_REDESIGN.md`, whose §5.4 proposed an entire new campaign act
+  (*"The Instruments Lie"*) as *"the one most aligned with what the project is for"* — now marked
+  **RULED AGAINST**, with its failure lessons redirected into Act V.
+- **Three player-facing surfaces changed with it**, which is the half that matters. The TMI-2
+  Part 2 briefing opened *"One rule runs this whole simulator, and tonight is its showcase"*; it
+  now names the couplings that catch the lie (P–T, level–Tavg, subcooling) and says the
+  relationships are what tell the truth. The Help panel's instrument section is now preceded by
+  **"Watch what moves together"**, which states the Tier A couplings outright. And the Failures
+  tab's Advanced-instrument-failure copy claimed *"every serious accident in this simulator turns
+  on an operator believing an instrument"* — **false on its own terms**, since `CONTEXT.md`
+  describes Chernobyl as an accident of *design* and Fukushima as one of *sustained support*.
+- **HR1 IS UNCHANGED AND STAYS EXACTLY AS IT IS.** Gauges, alarms and automatic protection still
+  read instrumented values; true state is still a diagnostic overlay only; a failed channel still
+  misleads every layer above it, and nothing was softened. `DESIGN_CRITERIA.md` §6.3 says so
+  itself: protection reading instruments is what makes the failure scenarios possible at all, and
+  **a healthy channel's lag is itself part of the dynamics**. What was retired is the *framing*
+  that made deception the point — the ordering fact behind the ruling being that you cannot
+  perceive a lying instrument without already knowing what the plant should be doing.
+- Manual set **Rev 12 → 13** (`Manuals/README.md` only; no setpoint, procedure, limit or number
+  moved anywhere in the set). Its stray duplicate `**Date:** 2026-07-30` header line — stale, and
+  invisible to `run_manual_rev` because the check reads the first match — was removed in passing.
+
+### Added
+
+- **Physics tab — the true plant state, behind the instruments** *(OWNER DIRECTIVE, 2026-08-03:
+  "Add a tab to the tools block called Physics. This will show the most important, under the hood
+  physics numbers. Group and order them logically.")*. A fifth tab in
+  the Tools block (**Operate · Inject Failure · Graph · Physics · Settings**) showing what the
+  simulator is actually computing: no lag, no noise, and a failed sensor does not move a figure
+  on it. It is an engineering display, not a second board — nothing there alarms and nothing
+  there is what protection reads.
+  - **What earns a row is what the board cannot show.** Chosen against the board's own reads:
+    fuel and clad temperature, decay heat, xenon, both void fractions, RCS inventory, the
+    three-node loop pressure split, suction subcooling, RCP cavitation, leak flow and cycle
+    efficiency have no board readout at all. 24 rows in five groups, ordered along the energy
+    path — **Reactivity · Core heat · Primary coolant · Loop pressure · Heat sink & output**.
+  - **Building it found a real seam: `power_pct` is FISSION power alone.** Measured a few
+    seconds into a 20 %-of-rated cold-leg LOCA, it reads **11.0 MWt while decay heat is
+    21.0 MWt** — a core apparently making less heat than its own decay tail. At steady power the
+    two are equal by construction, so nothing had ever noticed; after a scram, fission falls
+    straight through the decay floor while the core still makes ~7 % of rated. The quantity every
+    thermal path actually burns is the engine's `_Q_total`, and it was never published.
+    **New `true_state.core_heat_pct`** (31.2 MWt in that same sample) — documented in
+    `CONTEXT.md` §6.3, so `run_contract` guards it, and the tab reads it rather than keeping a
+    second copy of the formula. Fission, decay and total are three separate rows.
+  - **Two display defects the measurement caught and the eye would not.** `toFixed(0)` on MPa
+    collapsed the entire loop-pressure split — 2235 / 2279 / 2199 psi all printed as "15 MPa",
+    when that ~80 psi (0.55 MPa) spread is the one thing the group exists to show (it is
+    2 decimals in SI now, the #238 quantisation trap in a new place). And a critical reactor
+    printed **"-0 pcm"**, which reads as slightly subcritical and means exactly on.
+  - Values are marked in colour only for states that should read exactly zero on a healthy plant
+    (voiding, cavitation, leak flow) or that cross a threshold the engine itself uses (clad
+    against `fuel_damage_c`, subcooling against saturation). Units follow **Settings → Units**.
+    RBMK and BWR have no panel authored — the tab says so rather than showing an empty box.
+  - Documented in **02** §7.5 (Settings renumbered to §7.6), with a note in §6.0 disambiguating
+    the board's **Physics Overlay** display mode from this tab. Manual set **Rev 14**.
+
+### Changed
+- **The manual's turbine-roll scope note was wrong about the real plant, and the overspeed trip
+  is documented as unreachable** (#307 — deferred, not built) *(OWNER RULING, 2026-08-03: "Let's
+  go with your recommendation and defer it.")*. Turbine roll and a no-load speed hold stay
+  **out of scope**; what changed is the honesty around them.
+  - **PWR-N05's scope note** described a real synchronization as *"matches speed and phase at the
+    synchroscope — four operator actions"*. On an EHC machine the operator instead selects a
+    **speed setpoint** (Close Valves / 100 / 800 / 1500 / **1800 RPM** / Overspeed Test) and an
+    **acceleration rate** — the SLOW rate takes about **30 minutes** to reach 1800 rpm — and the
+    EHC holds no-load speed automatically, synchronizes (optionally automatically), and shifts to
+    load control on its own once the breaker closes. The note now says that, and points out the
+    real operator's job is much closer to this board's **Pressure SP** / **Dump SP** boxes than to
+    a synchroscope.
+  - **The 1980 RPM overspeed trip cannot fire on this plant** and three places said it could
+    (**09** setpoint table, **03** §12.1 and §12.4, the instrument table). Measured peak: 1800 RPM
+    synchronized in Follow, 1800 in Manual against a 2×-rated demand, 1799 with the MSIVs shut.
+    New **12** §12.14 carries the departure; **12** §9.0 and §13.0 say plainly that shaft speed is
+    never an independent variable here.
+  - **12** §9.0 also documented the **pre-#284** electrical-output formula (core power rather than
+    turbine steam admission) — corrected, with the case where the two diverge.
+  - Manual set **Rev 13**.
+
+### Added
+- **`run_reachability` B3 — the turbine overspeed fence** (#307). The suite's first *inverted*
+  case: it asserts the 1980 RPM trip **cannot** be reached, because there is no roll model, and is
+  written to go **red when the plant gets better** so that building the roll forces the declared
+  departure to be retired rather than silently absorbed. Part A was already happy (1980 sits
+  inside the instrument's [0, 2000] range), which is exactly the hollow-assertion shape this
+  runner exists to catch. 59 → **62 checks**.
+- **Overtemperature ΔT and Overpower ΔT — the two Westinghouse reactor trips this plant did not
+  have** (#311, ruled 2026-08-02, built 2026-08-03). Both are computed from loop ΔT with Tavg and
+  pressure compensation, so they trip on *combinations* no single gauge sees: OTΔT is the DNB
+  protection, OPΔT the linear-heat-rate protection. Built in the **reduced form the owner ruled**
+  — no axial-offset term, because a one-node core cannot produce an honest axial offset and
+  synthesizing one would be a fabricated instrument. Five new derived gauges (loop ΔT, both trip
+  lines, both margins), two rod stops at the sourced 3 % offset that refuse **withdrawal only**,
+  and two annunciators that light at the rod stop rather than at the breakers.
+  **They ship DEFAULT OFF**, and turning them on is the owner's call: the setpoint equations
+  could not be sourced in the session that built them (NRC document access is blocked from that
+  environment), so the two margin intercepts are fitted to this plant's own measured behaviour
+  rather than taken from the document. Fitted is defensible; sourced it is not.
+  New gate `run_otdt.js`, 39 checks, injection-verified four ways.
 - **The Mode 3 → Mode 5 cooldown is a runnable checklist now — and building it found a step the
   written procedure was missing** (#310). PWR-N15 was one of 48 documented procedures with no
   executable form, and the one worth doing next because #303 had just published a *measured*

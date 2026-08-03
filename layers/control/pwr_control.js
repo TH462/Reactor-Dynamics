@@ -74,6 +74,35 @@
     // mattering, which would delete the stuck-high teaching case #247 built this for.
     { id: 'lo_flow', instrument: 'rcs_flow', direction: 'low', setpoint: 90.0, action: 'scram', // % of rated
       blockable: true, block_permissive: { instrument: 'power_range', direction: 'low', setpoint: 10.0 } },
+    // RCP BREAKER POSITION reactor trip (#314). SOURCED, WTSM 12.2 §12.2.3.12 item 2
+    // (ML11223A301): *"A contact associated with each reactor coolant pump power supply
+    // breaker supplies a signal to the logic section of the reactor protection system.
+    // The reactor trips if at least two reactor coolant pump breakers open."*
+    //
+    // WHY IT EXISTS ALONGSIDE lo_flow, and it is the whole point: this is a CONTACT, not
+    // a process measurement. `lo_flow` is one elbow-tap channel and a stuck transmitter
+    // defeats it completely — measured, `pwr_lof` rode 36 s of core boiling to peak void
+    // 0.628 and fuel 1713 °F (934 °C) before an unrelated backstop caught it. A breaker
+    // auxiliary contact cannot be fooled by that transmitter. Diverse protection paths,
+    // which is why the real plant carries four loss-of-flow trips and not one.
+    //
+    // COINCIDENCE — 1/1, a DECLARED adaptation, not the real 2-of-4. The real rule means
+    // "half the pumps are gone"; this plant is single-loop with one RCP, so its analog is
+    // "the pump is gone". Inventing a second pump to vote with would be a fabricated
+    // signal (the #220 class).
+    //
+    // BLOCKED BELOW P-7, and this half is sourced VERBATIM from the same section:
+    // *"All the reactor coolant low flow trips are automatically blocked below the P-7
+    // setpoint (10% power)."* It rides the identical permissive as `lo_flow` above, so
+    // `_initialTripBlocks` auto-blocks it at any init where the pumps are legitimately
+    // secured — Mode 5 cold shutdown ships `rcp_running` false and `rcs_flow` 0.0, and
+    // would otherwise carry a standing trip.
+    //
+    // NOT BUILT, deliberately (DESIGN_COMPANION §8.24): the RCP bus UNDER-VOLTAGE (item 3)
+    // and UNDER-FREQUENCY (item 4) trips. Both sense an RCP electrical bus this plant does
+    // not model, so building them means inventing the signal rather than reading one.
+    { id: 'rcp_breaker', instrument: 'rcp_running', direction: 'is_false', setpoint: null, action: 'scram',
+      blockable: true, block_permissive: { instrument: 'power_range', direction: 'low', setpoint: 10.0 } },
     // Startup nuclear-instrumentation trips (the startup safety net):
     // SR high flux at shutdown — 1e5 cps ≈ 0.02 % power; live only while the
     // detector is energized (secure the SR during the SR→IR handoff or trip).
@@ -159,7 +188,12 @@
   // power the trip is bypassed AUTOMATICALLY, because there the plant genuinely can ride
   // a turbine trip out on the dump. That is the whole of the interlock — P-9 is a power
   // permissive, not an operator-selectable bypass like P-11/P-7/P-10 (which really are
-  // operator-selectable, and are the four trips carrying `blockable`).
+  // operator-selectable). There are FIVE trips carrying `blockable` — `lo_press` and
+  // `si_trip` (both P-11, below 13.6 MPa), `ir_high` and `pr_low_setpoint` (the default
+  // P-10 permissive, above 10 % power) and `lo_flow` (below 10 % power). This comment
+  // said "four" until 2026-08-03: `si_trip` is pushed further down this file rather than
+  // into the array literal above, so a reader counting the literal gets four and stops
+  // (#312). Count `blockable` across the whole file, not the first table in it.
   //
   // It was briefly shipped `blockable` with a redundant `power_range < 50` permissive.
   // Measured, that produced three defects, and the middle one is the reason the rule
@@ -991,6 +1025,106 @@
     // command — it deliberately does not disarm the RHR valve auto-open.
     { id: 'rhr', label: 'Residual heat removal',       commands: ['set_rhr', 'set_dhr'] },
   ];
+
+  // ---- Overtemperature ΔT and Overpower ΔT (#311) — the two missing Westinghouse trips ----
+  //
+  // RULED IN, in reduced form *(OWNER RULING, 2026-08-02: "311: a.")* — selecting option (a),
+  // "no axial-offset (ΔI) term", from the three put to him. A one-node core cannot produce an
+  // honest axial offset, and synthesizing one would be a fabricated signal presented as an
+  // instrument: the thing HR1 and HR9 exist to stop.
+  //
+  // WHAT THESE TWO ARE FOR, and why no single-parameter trip substitutes. OTΔT is the DNB
+  // protection and OPΔT the linear-heat-rate protection. Both are computed from loop ΔT with
+  // Tavg and pressure compensation, so they trip on COMBINATIONS that no single gauge sees.
+  // The setpoint equations, what is measured in them and what is not, and the three declared
+  // departures all live in one place — `otdt_opdt` in pwr_config.js. Read that before moving
+  // any number here; this file only wires the channels the instrument model computes.
+  //
+  // MEASURED, AND IT REDREW THE ISSUE (HR12; full survey Diagnostic/TUNING_LOG.md 2026-08-03a).
+  // #311 files these as a pair and argues the plant "can be walked into a DNB-limited condition
+  // with every individual gauge in band". Measured across 13 casualties and 8 normal
+  // evolutions, full stack, that is NOT reproducible on this plant and the pair is NOT
+  // symmetric:
+  //
+  //   · OTΔT has NOTHING TO CATCH as the plant stands. Its DNB line sits at ~197–218 % of
+  //     rated ΔT at nominal T and P, and no measured casualty gets near it. The three that
+  //     reach DNB at all (large LOCA, stuck-open PORV, 100 % steam line break) get there by
+  //     DEPRESSURIZING, and each has already scrammed on low pressure first — LOCA scram 6.0 s
+  //     against DNB onset 6.5 s, PORV 12.5 s against 18.0 s. OTΔT is here for prototypicality
+  //     and because it is the function that BECOMES binding the moment Tavg or pressure moves;
+  //     it is not closing a demonstrated hole, and saying otherwise would be the #220 class of
+  //     claim all over again.
+  //
+  //   · OPΔT has FOUR live cases, and they are not marginal. A 30 % steam line break parks the
+  //     core at 114.2 % power with loop ΔT peaking at 117.8 % of rated and holds it there for the full
+  //     30-minute run with NO REACTOR TRIP, because the power-range high trip is at 120 %. A
+  //     15 % break holds 107.8 % the same way. A continuous rod withdrawal at full power peaks
+  //     at 114.8 % for ~17 s and recovers only because the bank runs out of travel. #295 F6
+  //     independently found the fixed 635 °F Tavg-high trip standing in for both functions;
+  //     what it is actually standing in for is THIS, and it does not reach.
+  //
+  // So the honest ordering, recorded because the next person will ask: OPΔT is the one with
+  // measured bite, OTΔT is the one with the prototypical case. Both ship together because they
+  // are one instrument set and one ruling, not because both were shown to be load-bearing.
+  //
+  // DEFAULT OFF (`protection_options.otdt_opdt_trips`), for the reason the P-9 comment above
+  // gives: built default-OFF first so the blast radius is measured by flipping one flag rather
+  // than guessed at (#216). The additional reason here is that K1 and K4 could NOT be sourced —
+  // the session that built this had no route to ML11223A301 (nrc.gov and every mirror blocked
+  // by egress policy), so the evidence-pass SOP could not run and the two intercepts are fitted
+  // to this plant's measurement instead. Fitted is defensible; sourced it is not. Flipping the
+  // flag is the owner's call once the equation form and the two intercepts are checked.
+  if ((RD.PWR_CONFIG.protection_options || {}).otdt_opdt_trips) {
+    var _ot = RD.PWR_CONFIG.otdt_opdt, _stop = _ot.rod_stop_offset_pct;
+    // The trip channels are MARGIN readings (setpoint − indicated ΔT), so the trip itself is
+    // the same plain data shape as every other trip here: cross zero from above and scram.
+    // Computing the setpoint inside an instrument rather than teaching the kernel a new
+    // `setpoint_fn` keeps HR3 intact — the kernel still names no instrument and still knows
+    // only "compare a reading to a number" — and it means the board can show the operator the
+    // same three numbers the trip is using (ΔT, the setpoint, the margin between them).
+    PWR_TRIPS.push(
+      { id: 'otdt', instrument: 'otdt_margin', direction: 'low', setpoint: 0.0, action: 'scram' },
+      { id: 'opdt', instrument: 'opdt_margin', direction: 'low', setpoint: 0.0, action: 'scram' }
+    );
+    // Rod stops at (trip setpoint − 3 %). SOURCED, and this half genuinely is: WTSM 8.1
+    // §8.1.7.3 (ML11223A252) — *"OTΔT rod stop and runback, 2/4, loop ΔT > (OTΔT trip setpoint
+    // − 3 %)"*, and the same entry for OPΔT. `withdrawal_only` is that section's closing
+    // sentence, not an invention: *"These interlocks or rod stops only prevent OUTWARD rod
+    // motion. The rods can always be inserted into the core using either manual or automatic
+    // rod control."* Same mechanism as the SUR withdrawal block above, so a plant with two
+    // rate-limiting stops expresses them one way rather than two.
+    //
+    // THE RUNBACK HALF IS NOT BUILT, deliberately, and it is the open item on #311. The real
+    // signal reduces TURBINE LOAD as well as stopping the rods, and this plant has no runback
+    // mechanism at all — an actuation here fires ONCE (`actuationFired`), so a ramped load
+    // reduction is a new actuation class rather than a setpoint. The ruling explicitly left
+    // "whether the rod stop + runback pair ships with the trips or after them" open; building
+    // a new actuation class in the same change as two new trips, on constants that are not yet
+    // sourced, is the wrong order. Rod stop now, runback tracked separately.
+    PWR_INTERLOCKS.push(
+      { instrument: 'otdt_margin', direction: 'low', setpoint: _stop, clears_above: _stop * 2,
+        blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true,
+        on_engage: { action: 'rod_stop_all' },
+        message_learning: 'Rod withdrawal blocked — the loop temperature rise is close to the overtemperature trip. Withdrawing further would take the core toward boiling in the hot channel. Reduce load or insert rods; insertion always works.',
+        message_industry: 'ROD WITHDRAWAL BLOCK: OTΔT rod stop — loop ΔT within ' + _stop + ' % of the OTΔT trip setpoint. Withdrawal inhibited. Insertion available.' },
+      { instrument: 'opdt_margin', direction: 'low', setpoint: _stop, clears_above: _stop * 2,
+        blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true,
+        on_engage: { action: 'rod_stop_all' },
+        message_learning: 'Rod withdrawal blocked — the loop temperature rise is close to the overpower trip. The core is already making more heat than it is rated for. Reduce load or insert rods; insertion always works.',
+        message_industry: 'ROD WITHDRAWAL BLOCK: OPΔT rod stop — loop ΔT within ' + _stop + ' % of the OPΔT trip setpoint. Withdrawal inhibited. Insertion available.' }
+    );
+    // Annunciation. Set at the ROD STOP line, not the trip line: an annunciator that first
+    // lights as the breakers open teaches nothing. Panel A (reactor), category `reactivity` —
+    // both are power-distribution protection, not a coolant fault.
+    PWR_ALARMS_A.push(
+      { id: 'otdt_approach', instrument: 'otdt_margin', direction: 'low', setpoint: _stop,
+        priority: 'warning', panel: 'A', category: 'reactivity',
+        label_learning: 'Overtemperature Limit Approaching', label_industry: 'OTΔT ROD STOP' },
+      { id: 'opdt_approach', instrument: 'opdt_margin', direction: 'low', setpoint: _stop,
+        priority: 'warning', panel: 'A', category: 'reactivity',
+        label_learning: 'Overpower Limit Approaching', label_industry: 'OPΔT ROD STOP' }
+    );
+  }
 
   var PWR_PROTECTION = {
     trips: PWR_TRIPS,

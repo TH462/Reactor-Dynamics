@@ -2,7 +2,7 @@
 
 **Document:** PWR-NOP-01  
 **Plant:** Pressurized Water Reactor (PWR)  
-**Revision:** 12  
+**Revision:** 17  
 
 ---
 
@@ -301,11 +301,27 @@ Place the turbine-generator on the grid and establish electrical output coordina
 Reactor critical (Mode 2 or early Mode 1); condenser vacuum healthy; MSIV open.
 
 ### Scope note — synchronization is ATOMIC here **[sim, approx]**
-This plant has **no turbine roll and no no-load speed hold**. A real unit rolls the machine on
-no-load steam, holds rated speed off line, matches speed and phase at the synchroscope, and
-*then* closes the generator breaker — four operator actions and the skill this procedure is
-named for. Here there is no no-load steam admission model, so an unloaded rotor with no steam
-coasts to rest, and one press of **FOLLOW** or **MAN** does the whole sequence at once.
+This plant has **no turbine roll and no no-load speed hold**. A real unit rolls the machine off
+the turning gear on no-load steam, holds rated speed off line, and synchronizes before the
+generator breaker closes. Here there is no no-load steam admission model, so an unloaded rotor
+with no steam coasts to rest, and one press of **FOLLOW** or **MAN** does the whole sequence at
+once.
+
+**What the real evolution actually looks like** — worth knowing, because it is *not* the
+hand-throttled synchroscope drill it is often described as. On an EHC machine the operator
+selects a **speed setpoint** from a short list of pushbuttons — *Close Valves, 100, 800, 1500,
+**1800 RPM**, Overspeed Test* — together with an **acceleration rate**; on the SLOW rate the
+roll to 1800 rpm takes about **30 minutes**. As the machine approaches rated, the EHC's speed
+control section takes over and **holds no-load speed automatically**. Synchronizing may be done
+by the operator or, in coordinated control, initiated automatically; once the breaker closes the
+system **shifts to load control on its own**. So the operator's real job is *selecting a target
+speed and a rate and supervising the roll* — which is much closer to how this plant's **Pressure
+SP** and **Dump SP** boxes already work than to matching needles on a scope.
+
+*(Sources: Westinghouse Technology Systems Manual §11.3 / §19.0, ADAMS ML11223A295 /
+ML11223A342; the speed-setpoint list is from GE EHC documentation, ML11258A318. These are search
+index extracts — the NRC document server refuses direct retrieval — so they are cited at this
+manual's weaker evidence class, per **12** §8.)*
 
 The **generator breaker is not a separate control**: on/off line *is* the load-mode selector —
 **FOLLOW** and **MAN** are on line, **OFF** is the open breaker. Everything downstream of
@@ -321,7 +337,7 @@ P-9 interlock — is modelled properly; it is the roll and the synchroscope that
 | Type | Text |
 |------|------|
 | **CAUTION** | Large step loads can trip on secondary/primary upset. Step load modestly. |
-| **CAUTION** | **Synchronizing is ONE action on this plant, and there is no roll to do first.** Coming up from Mode 5 the generator is off line with the rotor at rest. Pressing **FOLLOW** or **MAN** takes it from there to synchronized and loaded in a single step — measured, the rotor goes to **1800 rpm** and load picks up matched to reactor power. See the scope note below: real turbine roll is not modelled. |
+| **CAUTION** | **Synchronizing is ONE action on this plant, and there is no roll to do first.** Coming up from Mode 5 the generator is off line with the rotor at rest. Pressing **FOLLOW** or **MAN** takes it from there to synchronized and loaded in a single step — measured, the rotor goes to **1800 rpm** and load picks up matched to reactor power. See the scope note above: real turbine roll is not modelled. |
 | **CAUTION** | **A load-slider move will not recover a TRIPPED machine.** Both FOLLOW and MAN clear a prior turbine trip (they route through `connect_grid`, vacuum permitting); the slider alone does not. Measured after a scram: selecting a load mode by itself leaves the rotor at **0 rpm and 0 MWe** with the trip still latched. If the generator card looks unresponsive, that is what you are seeing — press **FOLLOW** or **MAN**. |
 | **NOTE** | **Follow** tracks reactor power; **Manual** sets MWe. Synchronize in **FOLLOW** — the turbine chases the reactor while you get on line — then take **MAN** once loaded, which is the lineup the rest of this manual assumes. Measured on a 4.7 % plant: FOLLOW picks up **5.26 MWe** matched to power; going straight to MAN synchronizes but leaves the load target at **0 MWe** until you move the slider. |
 | **NOTE** | The **OFF** lamp lights on either an open breaker *or* a tripped turbine — read **TURB TRIP** to tell a planned offline from a trip (**03** §12.1). |

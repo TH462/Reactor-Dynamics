@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLX-100** (Single-Loop eXperimental, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 12  
+**Revision:** 17  
 
 ---
 
@@ -259,7 +259,11 @@ There are **no enthalpy tables, no density tables, and no two-phase property mod
 | **Coolant** | One average coolant temperature (Tavg), with hot/cold legs derived from it |
 | **Secondary** | SG saturation temperature from secondary pressure |
 
-Hot and cold legs are **derived**, not independent: `ΔT = 59.4 °F (33 °C) at rated`, scaled by power/flow, split symmetrically about Tavg. The split is **capped so the hot leg can never exceed saturation** — subcooled liquid cannot superheat. Any enthalpy rise beyond that cap is carried as core boiling instead of more temperature.
+Hot and cold legs are **derived**, not independent: `ΔT = 59.4 °F (33 °C) at rated`, scaled by **total core heat / flow**, split symmetrically about Tavg. The split is **capped so the hot leg can never exceed saturation** — subcooled liquid cannot superheat. Any enthalpy rise beyond that cap is carried as core boiling instead of more temperature.
+
+**"Total core heat" means fission PLUS the decay tail, and the distinction only shows after a trip.** The two are equal at steady power, so at power it makes no difference which you name. It makes all the difference afterwards: a scrammed core is still rejecting **~7 % of rated heat**, and heat leaving through the legs requires a temperature rise across them. Measured on this plant at three minutes after a manual trip with the pumps running, the split is **3.93 °F (2.18 °C)** — small, positive, and shrinking with the decay tail; at thirty minutes it is **2.35 °F (1.31 °C)**. Lose the reactor coolant pumps and the same heat has to leave through far less flow, so the split **opens** to about **37.4 °F (20.8 °C)**.
+
+That is why *"is the hot leg above the cold leg?"* is a live question after a trip and not a formality: it is the operator's direct read on whether the core is still being cooled by flow. Until **2026-08-03** this trainer scaled the split by **fission power alone**, which made the post-trip ΔT read exactly zero and left the indicated legs so close together that the *cold* leg read hotter roughly half the time. If you find a screenshot or an older note showing the legs together after a trip, that is the defect, not the plant.
 
 ### 5.3 Heat transfer, and the four ways it degrades
 
@@ -493,14 +497,23 @@ These are **behavioural, not thermodynamic**. There are no stage efficiencies, n
 Electrical output is a product of factors:
 
 ```
-MWe = (core power) × 100 MWe × (rpm / 1800) × (vacuum / rated vacuum)
+MWe = (turbine steam admission) × 100 MWe × (rpm / 1800) × (vacuum / rated vacuum)
 ```
 
 A disconnected or tripped generator produces zero regardless of shaft speed.
 
+**The first factor is what the turbine is ADMITTED, not what the reactor makes** — governor
+position, not core power. The two are the same number in steady state and diverge in exactly
+the states that matter: through a load rejection the steam dump vents the difference to the
+condenser, so electrical output falls with the *turbine's* steam while core power is still
+coming down. Read against core power instead, a 50 MWe demand at full power indicated
+**98.8 MWe** with the dump at 48 % — the operator asked for 50 and the gauge said 99.
+
 **Condenser vacuum is genuinely modelled against circulating-water temperature.** The condenser pulls exhaust down to saturation at the condensing temperature, which sits a terminal difference above the circ-water outlet — and the temperature rise across the tubes grows with load, so the derate bites hardest at full power. Warm circ water means less vacuum, less output at the same steam flow, and a shorter walk to the vacuum trip. Cold circ water buys vacuum **above** nameplate: the winter uprate is real here, capped at a practical condenser floor.
 
 **The rotor coasts down on windage and bearing friction** toward rest when tripped or unloaded. Synchronised to the grid, it holds rated speed at any load, because a synchronous machine does.
+
+**There is no turbine roll and no no-load speed hold, so the rotor never turns off line** (§12.14). A real machine is rolled to rated speed on no-load steam and held there ready to synchronise; here an unloaded rotor with no steam simply coasts to rest, and going on line takes it from wherever it is to rated in one step. The consequence to know is that **shaft speed is never an independent variable**: it is 1800 when synchronised, falling when not, and nothing in between that you can drive.
 
 ---
 
@@ -594,6 +607,7 @@ Each of these is intentional, acceptable for the educational purpose, and stated
 | 12.10 | **Boron chemistry is an idealised rate** | Blender dynamics, VCT mixing, real makeup-flow chemistry | **No**, but note the compressed time scale: borating/diluting runs at 2 ppm/s, and a grab sample returns in 60 s against a real lab's 30–60 min. |
 | 12.11 | **One control group and one shutdown group** | Multi-bank sequencing, programmed overlap, bank overlap indication, core maps | **Not for operating**, but the single bank carries the *whole* control worth, which is why its worth curve is deliberately flattened (§4.3). |
 | 12.12 | **Pressurizer level is geometric, not a calibrated span** | Reference-leg behaviour and a true narrow/wide calibration | **No.** Note this does **not** apply to SG level, which *does* have a real narrow/wide window (§8.1). |
+| 12.14 | **No turbine roll or no-load speed hold — and the overspeed trip therefore cannot fire** | The whole off-line half of a real startup: rolling off the turning gear, holding rated speed on no-load steam, and synchronising before the breaker closes. On a real EHC machine that is a *setpoint-and-rate* evolution (select 1800 RPM and an acceleration rate; SLOW takes ~30 min), not a hand-throttled one — see **04** PWR-N05. | **Yes, for one procedure and one trip.** PWR-N05's synchronisation is **one action**: the rotor goes from rest to 1800 RPM and picks up load in a single press of FOLLOW or MAN, and measured, the plant barely notices (Tavg moves 0.1 °F, steam pressure 1196 → 1194 psi). And the **1980 RPM overspeed trip in §09 is configured but unreachable** — the rotor is either pinned at rated by the grid or coasting down, so nothing can drive it there. Do not read "no overspeed trip occurred" as evidence about a real machine. |
 | 12.13 | **Cold-plant mass bookkeeping is normalised** | The real cold-plant mass surplus | Level in the cold modes rests on a program floor standing in for CVCS keeping the pressurizer on span. Visible only in Mode 5. |
 
 ---
@@ -621,6 +635,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 - No pressurizer relief tank or rupture disk — the stuck PORV and the lying indicator are the lesson; the tank filling and rupturing is not modelled
 
 **Balance of plant**
+- No turbine roll, no no-load speed hold, and no synchroscope — synchronising is one action and the generator breaker is not a separate control (§12.14, **04** PWR-N05)
 - No feedwater heater train, no extraction stages, no hotwell level
 - No secondary chemistry, no condenser tube leaks
 - No grid model — the grid is an infinite bus that accepts what you generate
