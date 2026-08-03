@@ -21,7 +21,100 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **A tripped reactor showed no hot/cold leg ΔT at all — the split was scaled by fission power**
+  (#315). Heat leaving the core through the legs requires a temperature rise across them, and a
+  scrammed core is still rejecting **~7 % of rated**. The split read `power_pct`, which is the
+  chain reaction alone.
+  - **Measured, full stack.** Three plant-minutes after a manual trip with the pumps running, the
+    core was removing **6.61 % of rated heat** and the model computed a **0.0 °F** split. At
+    thirty minutes, still 0.0 °F. Under a loss of forced flow it is **3.8 °F against the 44.4 °F**
+    the removed heat implies.
+  - **On the board it was worse than merely wrong.** With the true signal at exactly zero,
+    instrument noise was all that remained: sampling the indicated legs for 25 minutes after a
+    trip, the **cold leg read hotter than the hot leg in 724 of 1500 samples — 48.3 %**. After
+    the fix, **0 of 1500**, mean split 3.02 °F.
+  - **This is a consistency fix, not a new claim.** The fuel node and the Tavg balance already
+    ran on total core heat; the split was the one line still reading flux. At rated the two are
+    equal by construction, so `delta_T_rated` needs no recalibration and **at-power behaviour is
+    byte-identical** — verified over 10 minutes at hot full power, every end-state field equal.
+  - Not display-only: `loop_delta_t`, the protection input for the OTΔT and OPΔT trips (#311),
+    is computed from the indicated legs.
+  - **New behaviour probe TR-7b** — `run_behavior` 44 → 45. It computes its expectation from
+    `core_heat_pct` and `pump_flow_pct` on every run, so a retune of `delta_T_rated`, of the decay
+    fractions or of `flow_floor` moves the band with the plant. Injection-verified: 5 checks red
+    on the old form, and the two control checks (at-power calibration, the flow floor) stay green
+    by design.
+  - The second consumer named in the issue — the condenser backpressure load fraction — was
+    measured and **is not a defect**: the load term enters as a difference of two saturation
+    pressures at the same offset and nearly cancels, so the worst realistic effect is
+    **0.23 kPa** against a 3.39 kPa display digit. Left alone.
+  - **12** §5.2 said "scaled by power/flow" and now says what that means, with the post-trip
+    numbers. Manual set **Rev 15**.
+
 ### Added
+- **Physics tab — the true plant state, behind the instruments** *(OWNER DIRECTIVE, 2026-08-03:
+  "Add a tab to the tools block called Physics. This will show the most important, under the hood
+  physics numbers. Group and order them logically.")*. A fifth tab in
+  the Tools block (**Operate · Inject Failure · Graph · Physics · Settings**) showing what the
+  simulator is actually computing: no lag, no noise, and a failed sensor does not move a figure
+  on it. It is an engineering display, not a second board — nothing there alarms and nothing
+  there is what protection reads.
+  - **What earns a row is what the board cannot show.** Chosen against the board's own reads:
+    fuel and clad temperature, decay heat, xenon, both void fractions, RCS inventory, the
+    three-node loop pressure split, suction subcooling, RCP cavitation, leak flow and cycle
+    efficiency have no board readout at all. 24 rows in five groups, ordered along the energy
+    path — **Reactivity · Core heat · Primary coolant · Loop pressure · Heat sink & output**.
+  - **Building it found a real seam: `power_pct` is FISSION power alone.** Measured a few
+    seconds into a 20 %-of-rated cold-leg LOCA, it reads **11.0 MWt while decay heat is
+    21.0 MWt** — a core apparently making less heat than its own decay tail. At steady power the
+    two are equal by construction, so nothing had ever noticed; after a scram, fission falls
+    straight through the decay floor while the core still makes ~7 % of rated. The quantity every
+    thermal path actually burns is the engine's `_Q_total`, and it was never published.
+    **New `true_state.core_heat_pct`** (31.2 MWt in that same sample) — documented in
+    `CONTEXT.md` §6.3, so `run_contract` guards it, and the tab reads it rather than keeping a
+    second copy of the formula. Fission, decay and total are three separate rows.
+  - **Two display defects the measurement caught and the eye would not.** `toFixed(0)` on MPa
+    collapsed the entire loop-pressure split — 2235 / 2279 / 2199 psi all printed as "15 MPa",
+    when that ~80 psi (0.55 MPa) spread is the one thing the group exists to show (it is
+    2 decimals in SI now, the #238 quantisation trap in a new place). And a critical reactor
+    printed **"-0 pcm"**, which reads as slightly subcritical and means exactly on.
+  - Values are marked in colour only for states that should read exactly zero on a healthy plant
+    (voiding, cavitation, leak flow) or that cross a threshold the engine itself uses (clad
+    against `fuel_damage_c`, subcooling against saturation). Units follow **Settings → Units**.
+    RBMK and BWR have no panel authored — the tab says so rather than showing an empty box.
+  - Documented in **02** §7.5 (Settings renumbered to §7.6), with a note in §6.0 disambiguating
+    the board's **Physics Overlay** display mode from this tab. Manual set **Rev 14**.
+
+### Changed
+- **The manual's turbine-roll scope note was wrong about the real plant, and the overspeed trip
+  is documented as unreachable** (#307 — deferred, not built) *(OWNER RULING, 2026-08-03: "Let's
+  go with your recommendation and defer it.")*. Turbine roll and a no-load speed hold stay
+  **out of scope**; what changed is the honesty around them.
+  - **PWR-N05's scope note** described a real synchronization as *"matches speed and phase at the
+    synchroscope — four operator actions"*. On an EHC machine the operator instead selects a
+    **speed setpoint** (Close Valves / 100 / 800 / 1500 / **1800 RPM** / Overspeed Test) and an
+    **acceleration rate** — the SLOW rate takes about **30 minutes** to reach 1800 rpm — and the
+    EHC holds no-load speed automatically, synchronizes (optionally automatically), and shifts to
+    load control on its own once the breaker closes. The note now says that, and points out the
+    real operator's job is much closer to this board's **Pressure SP** / **Dump SP** boxes than to
+    a synchroscope.
+  - **The 1980 RPM overspeed trip cannot fire on this plant** and three places said it could
+    (**09** setpoint table, **03** §12.1 and §12.4, the instrument table). Measured peak: 1800 RPM
+    synchronized in Follow, 1800 in Manual against a 2×-rated demand, 1799 with the MSIVs shut.
+    New **12** §12.14 carries the departure; **12** §9.0 and §13.0 say plainly that shaft speed is
+    never an independent variable here.
+  - **12** §9.0 also documented the **pre-#284** electrical-output formula (core power rather than
+    turbine steam admission) — corrected, with the case where the two diverge.
+  - Manual set **Rev 13**.
+
+### Added
+- **`run_reachability` B3 — the turbine overspeed fence** (#307). The suite's first *inverted*
+  case: it asserts the 1980 RPM trip **cannot** be reached, because there is no roll model, and is
+  written to go **red when the plant gets better** so that building the roll forces the declared
+  departure to be retired rather than silently absorbed. Part A was already happy (1980 sits
+  inside the instrument's [0, 2000] range), which is exactly the hollow-assertion shape this
+  runner exists to catch. 59 → **62 checks**.
 - **Overtemperature ΔT and Overpower ΔT — the two Westinghouse reactor trips this plant did not
   have** (#311, ruled 2026-08-02, built 2026-08-03). Both are computed from loop ΔT with Tavg and
   pressure compensation, so they trip on *combinations* no single gauge sees: OTΔT is the DNB

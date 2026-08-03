@@ -15,8 +15,9 @@ per plant, and is therefore the prerequisite list for automating a plant build.
 
 **The yardstick Q2 is measured against lives in `Blueprint/CURRICULUM.md`** — the per-plant
 educational goals (dynamics, procedures, casualties, flagship scenarios). It was §6 of this file
-until 2026-08-03 and was split out because it is a different artifact: this document is BINDING
-and plant-agnostic, that one is a **PROPOSAL** awaiting a ruling and grows with every plant.
+until 2026-08-03 and was split out because it is a different artifact: this document is
+plant-agnostic, that one is **per-plant** and grows with every plant added. All four PWR tiers
+were RULED on 2026-08-03; read its per-tier status table before citing it.
 
 ---
 
@@ -78,7 +79,7 @@ while the board carries only the batch `boron_conc` channel.
 > pipe colour"* — **false**; the board has T-hot, T-cold and leg-ΔT readouts and selectable trend
 > series. An unmeasured coverage claim, sitting inside the section that forbids them. It also read
 > *"unborated below **Mode 4**"* when it meant below the **M4 control layer** — module M4 is not
-> Mode 4. Both found by the #312 review; full account in `Diagnostic/TUNING_LOG.md` 2026-08-03b.
+> Mode 4. Both found by the #312 review; full account in `Diagnostic/TUNING_LOG.md` 2026-08-03e.
 
 **Q2 is the ONLY legitimate reason to depart from Q1.** The house pattern is the model to copy —
 the AFW auto-start sits 3 points above the SG lo-lo trip rather than on it (declared departure

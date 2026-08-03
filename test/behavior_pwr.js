@@ -79,6 +79,7 @@
     'TR-4': 'probe (lumped-RCP model: total-loss trip; P-8 single-loop needs multi-loop model)',
     'TR-5': 'probe', 'TR-6': 'existing:run_ops grid step + steam_dump_capacity_cap',
     'TR-7': 'probe', 'TR-8': 'probe',
+    'TR-7b': 'probe (post-trip leg ΔT vs the energy balance — the split read FISSION power, #315)',
     'TR-9': 'existing:run_ops sg_overfeed_p14 + run_pwr feedwater_isolation',
     'TR-14': 'probe (LOFW drain rate vs Ginna UFSAR Table 15.2-4 — the SOURCED anchor, #135)',
     // TR-11: the catalog row ("heaters lose, low-P trip unless isolated") predates
@@ -902,6 +903,100 @@
      * That is correct and prototypical; a real loss of normal feedwater trips the reactor
      * on lo-lo level, and it is the credited trip in the analysis above. The window is for
      * reading the board, not for preventing the trip. */
+    /* TR-7b — the post-trip half of TR-7, which nothing asserted (#315, 2026-08-03).
+     *
+     * THE CLAIM IS AN ENERGY BALANCE, not an observation: heat removed from the core
+     * equals flow × the leg ΔT, so a core rejecting X % of rated heat through Y of rated
+     * flow develops (X / Y) of the rated leg ΔT. It holds at power, and it does not stop
+     * holding when the rods drop — decay heat is still heat and it still leaves through
+     * the legs. That is what makes this catalog-level rather than regression: the band
+     * below is computed from `core_heat_pct` and `pump_flow_pct` every time it runs, so
+     * a retune of `delta_T_rated`, of the decay fractions or of `flow_floor` moves the
+     * expectation with the plant instead of stranding a transcribed number.
+     *
+     * WHY IT DID NOT EXIST. The split read `power_pct` — FISSION power — and fission and
+     * total heat are equal by construction in steady state, so every probe that measures
+     * at or near equilibrium agreed with a formula that is wrong everywhere else. The gap
+     * was proved by injection before this was written: restoring `power_pct` moves the
+     * post-trip ΔT by up to 41 °F and the indicated sign from right to a coin flip, and
+     * the OTHER 44 probes stay green.
+     *
+     * Leg C is the calibration guard and passes on BOTH forms deliberately — at rated,
+     * _Q_total is exactly 1.0, and a future edit that gets the normaliser wrong would
+     * break the at-power split silently otherwise. */
+    'TR-7b': function () {
+      return test('TR-7b post-trip leg ΔT — decay heat still leaves through the legs (#315)', function (ck) {
+        var dt0 = RD.PWR_CONFIG.thermal.delta_T_rated;              // °C at rated
+        var floor = RD.PWR_CONFIG.thermal.flow_floor;
+        var F = function (c) { return c * 9 / 5; };                 // ΔT: ×9/5, NO offset
+
+        // ---- leg A: scram from HFP, RCPs left running. The energy balance, twice.
+        var a = H('hot_full_power');
+        a.run(30);
+        a.cmd('scram');
+        a.run(180);
+        var expA = dt0 * (a.ts().core_heat_pct / 100) / Math.max(a.ts().pump_flow_pct / 100, floor);
+        var obsA = a.ts().thot_c - a.ts().tcold_c;
+        ck('t+3 min: the core is still making decay heat', fmt(a.ts().core_heat_pct, 2) + ' % of rated',
+          a.ts().core_heat_pct > 5 && a.ts().core_heat_pct < 9, '5–9 %');
+        ck('…and flow is unchanged', fmt(a.ts().pump_flow_pct, 0) + ' %', a.ts().pump_flow_pct > 95, '> 95 %');
+        ck('t+3 min: leg ΔT matches the heat being removed',
+          fmt(F(obsA), 2) + ' °F vs ' + fmt(F(expA), 2) + ' °F expected',
+          expA > 0 && Math.abs(obsA / expA - 1) < 0.05, 'within 5 % of Q/flow');
+
+        a.run(1620);                                                // out to t+30 min
+        var expA2 = dt0 * (a.ts().core_heat_pct / 100) / Math.max(a.ts().pump_flow_pct / 100, floor);
+        var obsA2 = a.ts().thot_c - a.ts().tcold_c;
+        ck('t+30 min: still matches as the decay tail falls',
+          fmt(F(obsA2), 2) + ' °F vs ' + fmt(F(expA2), 2) + ' °F expected',
+          expA2 > 0 && Math.abs(obsA2 / expA2 - 1) < 0.05, 'within 5 % of Q/flow');
+
+        // ---- leg B: what the OPERATOR sees. The split has to clear instrument noise,
+        // or the board shows a hot leg colder than the cold leg — which is what it did.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('scram');
+        b.run(300);                                                 // settle past the trip transient
+        var inverted = 0, samples = 0, sum = 0;
+        for (var i = 0; i < 250; i++) {
+          b.run(6);
+          var d = b.ins().thot - b.ins().tcold;
+          samples++; sum += d; if (d < 0) inverted++;
+        }
+        ck('indicated ΔT stays POSITIVE for 25 min after the trip',
+          inverted + ' of ' + samples + ' samples read the cold leg hotter',
+          inverted === 0, '0 inversions');
+        ck('…and the signal clears the noise rather than sitting in it',
+          fmt(F(sum / samples), 2) + ' °F mean', F(sum / samples) > 2.0, '> 2 °F');
+
+        // ---- leg C: THE CALIBRATION GUARD. Passes on the old form too, by design —
+        // at rated, fission and total heat are equal, and that identity is what lets
+        // delta_T_rated stay a directly-meaningful number.
+        var c = H('hot_full_power');
+        c.run(60);
+        ck('at power the split is still exactly rated (nothing moved)',
+          fmt(F(c.ts().thot_c - c.ts().tcold_c), 2) + ' °F', near(c.ts().thot_c - c.ts().tcold_c, dt0, 0.5),
+          fmt(F(dt0), 1) + ' °F ± 0.9');
+
+        // ---- leg D: the flow term. Lose the pumps after the trip and the same heat has
+        // to leave through less flow, so the split OPENS. `flow_floor` bounds it.
+        var d = H('hot_full_power');
+        d.run(30);
+        d.cmd('scram');
+        d.run(60);
+        d.cmd('set_rcp', { running: false });
+        d.run(240);
+        ck('flow is at or below the modelling floor', fmt(d.ts().pump_flow_pct, 1) + ' %',
+          d.ts().pump_flow_pct / 100 <= floor, '≤ ' + (floor * 100) + ' %');
+        var expD = dt0 * (d.ts().core_heat_pct / 100) / floor;
+        var obsD = d.ts().thot_c - d.ts().tcold_c;
+        ck('losing forced flow OPENS the split — same heat, less flow',
+          fmt(F(obsD), 1) + ' °F vs ' + fmt(F(expD), 1) + ' °F expected',
+          expD > 0 && Math.abs(obsD / expD - 1) < 0.05, 'within 5 % of Q/floor');
+        T.checkSanity(ck, a);
+      });
+    },
+
     'TR-14': function () {
       return test('TR-14 loss of feedwater — SG drains on a real plant timescale (Ginna Tbl 15.2-4)', function (ck) {
         var h = H('hot_full_power');

@@ -20,7 +20,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-08-03b (#312 — the DESIGN_CRITERIA review's fixes, and the finding that neither the review nor my first draft got right)
+## Session log — 2026-08-03e (#312 — the DESIGN_CRITERIA review's fixes, and the finding that neither the review nor my first draft got right)
 
 **Task:** fix the issues raised by the fresh-agent adversarial review of
 `Blueprint/DESIGN_CRITERIA.md` filed on #312. Four ranked errors, plus a "what is missing" pass.
@@ -298,6 +298,256 @@ reported as a finding**. Check the claim, not the last line of output. And I had
 `CLAUDE.md` saying so; it is true, but only for **formal markers**, and I had not verified it
 before repeating it. Inherited claim, repeated in my own voice — the trap I had flagged an hour
 earlier.
+
+---
+
+## Session log — 2026-08-03d (#315 — a tripped reactor had no leg ΔT, and 44 green probes never asked)
+
+**Fixed on the owner's word** ("Fix it", 2026-08-03), after the investigation below. One line in
+`pwr_thermal.js` plus the probe that should have existed. Backshop lane. Full rationale:
+`Blueprint/BUILD_DECISIONS.md` 2026-08-03d; the measurement packet is the comment on #315.
+
+**The defect.** The hot/cold leg split was `delta_T_rated × power_pct/100 / max(flow, floor)`, and
+`power_pct` is **fission power alone**. Heat leaving the core through the legs requires a
+temperature rise across them; a scrammed core is still rejecting ~7 % of rated. Measured full
+stack, three plant-minutes after a manual trip with the pumps running: core removing **6.61 % of
+rated**, computed split **0.0 °F**. At thirty minutes, still 0.0 °F. Loss of forced flow after the
+trip: **3.8 °F against the 44.4 °F** the removed heat implies.
+
+**Why it survived: fission and total heat are EQUAL AT STEADY POWER, by construction** (engine
+step 4). Every probe in the tree measures at or near equilibrium, so 44 of them agreed with a
+formula that is wrong everywhere else. That is the general shape worth keeping — *a term that is
+an identity in the regime you test in is a term nothing tests*.
+
+**The board half is worse than the physics half.** With the true signal at exactly zero, instrument
+noise is all that is left: sampling indicated `thot − tcold` for 25 minutes after a trip,
+**724 of 1500 samples (48.3 %) read the COLD leg hotter than the HOT leg**. After the fix,
+**0 of 1500**, mean 3.02 °F. "Is the hot leg above the cold leg" is the operator's direct read on
+whether flow is still cooling the core, and it was a coin flip.
+
+**The fix is a CONSISTENCY fix, not a new claim.** `stepFuel` already runs on `_Q_total` and the
+Tavg balance already runs on the actual fuel→coolant flux — the split was the one line still
+reading flux. At rated `_Q_total` is exactly 1.0, so `delta_T_rated` needs no recalibration and
+at-power behaviour is byte-identical (verified 10 min at HFP, every end-state field equal).
+
+**NOT the instantaneous flux**, which is the more rigorous quantity. Measured, carrying the fuel
+node's stored-energy dump holds ΔT near rated for ~2 min after a trip and brings a full load
+rejection to **within 1.6 %** of an OTΔT trip — it reddens `run_pwr`, `run_otdt` and
+`run_campaign`. Real question, larger question; recorded in #315 §6, not taken.
+
+**TR-7b** — `run_behavior` **44 → 45**. It computes its band from `core_heat_pct` and
+`pump_flow_pct` every run rather than transcribing a number, so a retune of `delta_T_rated`, the
+decay fractions or `flow_floor` moves the expectation with the plant. Legs A/B/D assert the energy
+balance, the indicated sign and the flow term; **leg C is a calibration guard that passes on the
+OLD form too, deliberately** — a future edit that gets the normaliser wrong would otherwise break
+the at-power split silently. Injection-verified: **5 checks red** on the old form, control checks
+green.
+
+**The issue's second consumer is NOT a defect.** `pwr_steam_generator.js:321` (condenser
+backpressure load fraction) produced identical output A/B even with the CW inlet 8.3 °C off
+reference, because the load term sets a `span` added to **both** legs of
+`pSat(cw + span) − pSat(cwRef + span)` and nearly cancels. Quantified: **0.030 kPa** at 30 °C CW
+rising to **0.228 kPa** at 45 °C, against a **3.386 kPa** display digit. Left alone; that half of
+#315 closes.
+
+**And my own filing was wrong about the LOCA** — it guessed the saturation cap would mask the
+effect where it was largest. Measured on a 40 %-severity cold-leg break, the cap pins ΔT to
+**0.0 °F in both forms** for the whole event. A LOCA is not a case for this at all; the cases are
+post-trip with flow.
+
+**Gates.** `run_all` **36 runners at baseline**, `run_behavior` re-baselined 44 → 45. Manual set
+**Rev 15** — `12` §5.2 said "scaled by power/flow" and now says what that means, with the
+post-trip numbers and a note that an older screenshot showing the legs together after a trip is
+the defect rather than the plant.
+
+**One process note, because it is the second time the same guard has earned its keep.** Rotating
+the #238 bullet out of CLAUDE.md's *Recent themes* and rescuing its trap to the standing list
+**dropped the verbatim quote** out of its `OWNER RULING` citation — I paraphrased "selected m³/h
+from three options" instead of carrying the quoted `"m³/h"`. `run_hardrules` went red on it
+immediately (HR11, 1 undeclared, `CLAUDE.md:436`). The eviction rule and HR11 pull against each
+other exactly here: **when you rescue a bullet, rescue its quote verbatim or the ruling stops
+being a ruling.** Count restored to 106 with the quote back.
+
+---
+
+## Session log — 2026-08-03c (Physics tab — and `power_pct` turned out not to be core thermal power)
+
+**Built to order** *(OWNER DIRECTIVE, 2026-08-03: "Add a tab to the tools block called Physics.
+This will show the most important, under the hood physics numbers. Group and order them
+logically.")* — a fifth tab in the Tools block — **Operate · Inject Failure · Graph ·
+Physics · Settings** — showing **true plant state**, 24 rows in five groups ordered along the
+energy path (Reactivity · Core heat · Primary coolant · Loop pressure · Heat sink & output).
+Data in `PROFILES.pwr.physics` (`ui/app.js`); `buildPhysics()` caches cells at build, and
+`renderPhysics()` only runs while the pane is on screen. Backshop lane. Full rationale:
+`Blueprint/BUILD_DECISIONS.md` 2026-08-03c.
+
+**Row selection was measured, not chosen by taste.** Candidates were filtered against the board's
+own reads — the `IN()` / `TS()` calls in `pwr_board_wiring.js`, 46 instrument keys and 3
+true_state keys. What survives is the set with **no instrument at all, or none wired to a
+readout**: fuel and clad temperature, decay heat, xenon, both void fractions, RCS inventory, the
+three-node loop pressure split, suction subcooling, RCP cavitation, leak flow, cycle efficiency.
+A few board-visible anchors stay as the denominators their group is read against.
+
+**THE FINDING — `power_pct` is FISSION power alone, and nothing in the tree said so.**
+`s.power_pct` is `_P × 100`; total core heat is `_Q_total = _P·(1 − f₀) + (H1 + H2)`, f₀ = 0.07
+(`pwr_engine.js:363`, burned at `pwr_thermal.js:42` and `:172`). **At steady power the two are
+equal by construction**, which is exactly why this survived — every gate that reads power reads
+it at or near equilibrium. Measured a few seconds into a 20 %-of-rated cold-leg LOCA, full stack
+in the browser: **fission 11.0 MWt against decay heat 21.0 MWt**, a core apparently making less
+heat than its own decay tail. `_Q_total` was never published, so the first draft of the tab was
+going to re-derive it in the UI from `power_pct` + `decay_heat_pct` + a config constant — a
+second copy of a formula that does not move itself, the #308 shape. It is
+**`true_state.core_heat_pct`** now (31.2 MWt in that same sample), documented in `CONTEXT.md`
+§6.3 so `run_contract` guards it both ways. `run_contract` **140 → 141**. Anything anywhere that
+reads `power_pct` as "core thermal power" is wrong from the moment the rods drop.
+
+**Two display defects that only a DUMP finds, not a look.** Both were caught by rendering the
+pane headless and reading the strings back. **(1)** `toFixed(0)` on MPa collapsed the whole loop
+pressure split: **2235 / 2279 / 2199 psi all printed as "15 MPa"**, and that ~80 psi (0.55 MPa)
+spread is the entire reason the group exists — the cold leg reaches an ECCS setpoint before the
+one gauge does, and the pump suction cavitates first. `physP()` is per-unit now, 0 decimals in
+psi and 2 in MPa. This is **#238's quantisation trap in a new place**, and the tell was the same:
+the number renders, it just is not the number. **(2)** A critical reactor printed **"-0 pcm"** —
+`toFixed(0)` on −0.004 — which reads as slightly subcritical and means exactly on.
+
+**And one wrong premise of my own, killed by the measurement.** The first `Peak clad temp` colour
+rule cautioned when clad exceeded the hot leg, reasoning that a node above the coolant is
+uncovered. It fires **at hot full power**: on a covered core `stepCladding` floors the hot node at
+the fuel temperature, so clad == fuel (693 °C / 1280 °F at HFP) and both sit far above the legs.
+The node only *separates from the fuel* once uncovery starts (#213) — that is the state worth
+marking, and the alarm step is `checkDamage`'s own `fuel_damage_c`.
+
+**Injection-verified.** LOCA at 20 % of rated: every row moves and each conditional colour fires
+where it should — RCS inventory 0.0 % alarm, loop void 100.0 %, RCP cavitation 100 %, leak flow
+20.00 %, suction subcooling −1 °F alarm, and `Peak clad temp` cautions only in the window where
+the hot node separates, clearing again when it re-merges. Zero page errors. Tab strip measured at
+1280 / 1440 / 1920 px: five tabs, one line, no overflow (worst case 71.6 px box against 63.0 px
+of text for "Inject Failure") — which is why the label was not shortened.
+
+**Gates.** `run_all` **36 runners at baseline**, exit 0, with `run_contract` re-baselined
+140 → 141 and `run_hardrules` **103 → 106** — the usual write-up drift, except the net hides two
+moves in opposite directions: **four** new citation sites for the directive above against **one**
+removed, because the *Recent themes* cap evicted the steam-dump bullet and took
+`"Let's change it to 40%."` out with it (that ruling still stands in three other tracked files —
+one fewer SITE, not one fewer ruling). Measured after the docs were written, not predicted from
+them. `board_check` **182/182** (shell chrome changed, the board did not). Manual set
+**Rev 14** — 02 §7.5 is the new section, Settings renumbered §7.6, §6.0 gained a line separating
+the board's *Physics Overlay* display mode from this tab.
+
+---
+
+## Session log — 2026-08-03b (#307 turbine roll DEFERRED — and the honest declaration was wrong about the real plant)
+
+**Ruled, and the ruling was to not build it** *(OWNER RULING, 2026-08-03: "Let's go with your
+recommendation and defer it.")* — on a recommendation to defer the roll but fix two things that
+did not depend on the answer. No engine or control code changed. Backshop lane.
+
+**Why defer, in the language of the criteria.** #307's own recommendation argued cost and blast
+radius. That is not the load-bearing argument. Measured against `DESIGN_CRITERIA` §6, turbine
+roll earns **no Tier A credit at all**: the one coupling it would add — no-load steam as a heat
+sink at zero MWe — is the *"steam flow ≠ electrical output"* lesson the steam dump and #284's
+`mwe_output` fix already carry. It is a **Tier B procedure skill**, and the ruled priority is
+dynamics first *(OWNER RULING, 2026-08-02: "The most important ideas are plant dynamics followed
+by how to operate the plant.")*. Meanwhile §6.9 records that **A1 and A2 have no deliberate
+demonstration anywhere** — a gap in the top-priority category. Spending the next build on Tier B
+while Tier A has undemonstrated couplings inverts the ruling that had just been made.
+
+**FOUR things worth knowing, and three of them are not in the issue.**
+
+**1. The off-line rotor branch is not a physics model, and it cannot be retuned into one.**
+Measured engine-direct by injecting admission steam straight into the rotor ODE: rated flow buys
+**0.8 rpm** (0.044 % of rated speed), and holding 1800 rpm needs **2250× rated** admission. #238's
+parked entry records that much ("inert at the authored constants"). What it does not record is
+the **`if (rpm < 1) rpm = 0` floor**, which at the shipped 0.02 s `PHYSICS_DT` needs
+**> 50 rpm/s** — i.e. **> 2500× rated** — just to leave standstill. So:
+
+| admission (× rated) | rpm from rest, 600 s |
+|---|---|
+| 1 (rated) · 100 · 1000 · **2250** | **0** |
+| 2500 | **2000** |
+| 3000 | 2400 |
+
+**The first admission that can start the rotor settles it at exactly 2000 rpm — past the 1980 rpm
+overspeed trip.** There is no operating point between "will not turn" and "overspeed", so this is
+a **replacement**, not a tuning fix. (The floor and the torque scale pull against each other:
+start needs `flow·tpf/inertia > 1/dt`, hold needs `= rpm_rated/coastdown_tau`. At the shipped
+coastdown_tau of 40 s those are 50 and 45.)
+
+**2. Issue steps 1 and 2 are one change.** Off line, `load_target_mwe = 0` → `turbine_demand_frac
+= 0` → measured after 60 s at `hot_zero_power`: `governor_valve_pct` **0.000**,
+`steam_flow_normalized` **0.0000**. There is no steam path off line *by construction*, so
+"add no-load admission" **is** "drive the governor from speed instead of load when the breaker is
+open". Recorded because the issue's cost estimate counts them separately.
+
+**3. The 1980 rpm overspeed trip is UNREACHABLE, and it was documented as live protection.**
+Peak true rpm: **1800.00** on line in Follow, **1800.00** in Manual against a 2×-rated MWe demand,
+**1799.10** with the MSIVs shut and the breaker closed. The sync branch is
+`rpm += (rated − rpm)/sync_tau·dt`, monotone for `dt < 2·sync_tau`, so it cannot overshoot; the
+off-line branch cannot start (1). `run_reachability` **Part A passes it** — 1980 sits strictly
+inside `turbine_rpm`'s [0, 2000] — which is the hollow-assertion shape that runner exists for,
+**one instrument short of its own coverage**. Now `run_reachability` **B3**, and it is deliberately
+**INVERTED**: it asserts the trip *cannot* fire and therefore **goes RED when someone builds the
+roll**, forcing §8.23 to be retired rather than absorbed. 59 → **62 checks**.
+
+**Injection-verified, and the first injection was a bad test.** Setting `sync_tau` 0.5 → 0.005 to
+force an overshoot changed nothing (peak 1801.02 either way) — because `hot_full_power` *starts*
+at rated, so `(1800 − 1800)` is zero and there is nothing to overshoot. The valid injections:
+moving the setpoint to 1700 reddens the first check (peak 1800.12 > 1700), and pointing the sync
+branch at 2100 rpm reddens **both** (peak indicated **2000.00** — itself worth knowing, because
+the *instrument* clamps at its 2000 range top, so `turbine_rpm`'s range needs widening the day a
+roll model lands).
+
+**4. The scope note was wrong about the real plant — the #220 class, in a document written to be
+honest.** `21baf03` added a PWR-N05 scope note declaring the gap, and it described the real
+evolution as *"matches speed and phase at the synchroscope — four operator actions"*. Sourced,
+that is not what an EHC machine does: the operator selects a **speed setpoint** from a pushbutton
+list (*Close Valves, 100, 800, 1500, **1800 RPM**, Overspeed Test*) plus an **acceleration rate**
+(SLOW ≈ **30 min** to 1800 rpm); the EHC's speed control section takes over near rated and **holds
+no-load speed automatically**; synchronising *"can be carried out by the operator, or in the
+coordinated control mode … automatically initiated"*; and after breaker closure the system
+*"automatically shifts to load control"*.
+
+That changes the *shape* of any future build, which is why it is not cosmetic: the prototypical
+control is a **speed setpoint box + an acceleration rate**, the same idiom as Pressure SP and Dump
+SP — **not** a synchroscope. Building the synchroscope would be *less* prototypical and cost more
+controls. Recommended shape if it is ever built: speed controller on the governor when off line,
+one **Turbine Speed SP** box, and a **synchronising permissive** on `connect_grid` refused with a
+reason (the `reset_rps` / `RODS_NOT_INSERTED` pattern) — **not** a `breaker_closed` field, which is
+the #284 shape #307 correctly declines. Blast radius measured: **17 `connect_grid` sites** (2
+scenarios, 2 procedure steps, 5 wiring, 8 behaviour probes).
+
+**Citation strength, stated plainly.** WTSM §11.3 (ML11223A295) / §19.0 (ML11223A342), and the
+discrete setpoint list from **GE** EHC documentation (ML11258A318) — *not* Westinghouse, and not
+laundered as such. All are **search-index extracts**: nrc.gov 403s every direct fetch (`curl` with
+a browser UA, WebFetch, and the `web.archive.org/web/2023id_/` workaround all failed), which is
+the ML11223A219 precedent from 2026-07-28q. The weaker citation class, marked as such in
+`04` and in §8.23. **§8.22 already quotes WTSM §11.3** on the far end of the same evolution
+(the EHC's 5 % / 1 %-per-min load floor at breaker closure), which is corroboration that the
+document is the right one.
+
+**One more find, incidental but the same class.** `Manuals/12` §9.0 still documented the
+**pre-#284** `mwe_output`: *"MWe = (core power) × 100 MWe × (rpm/1800) × (vacuum/rated)"*. The
+engine has read **turbine steam admission** since #284 — the whole point of that fix, whose own
+code comment records the 50 MWe ask that indicated 98.8 MWe. The code moved and the manual kept
+reciting the defect. Corrected, with the divergence case spelled out.
+
+**What did NOT change.** No engine, config, control or scenario code. The atomic sync is left
+exactly as it is, and it is worth recording *why* it is defensible: measured full stack from
+`5_percent` at accel 10×, `connect_grid` puts the rotor at **1800 rpm** and **4.68 MWe** inside one
+30 s sample, the dump hands off **5.13 % → 0.54 %**, Tavg moves **0.1 °F** and steam pressure
+**1196 → 1194 psi (8.24 → 8.23 MPa)**. The outcome of the evolution is already right; what is
+missing is the operator's half of it.
+
+**Gates:** `run_all` green, 36 runners. `run_reachability` 59 → **62**, `run_hardrules` 98 → **103**,
+`run_manual_rev` 13/13, `run_manual_units` 0 failed. Manual set **Rev 13**.
+
+**Correction worth keeping, because it is the rule biting its author.** This entry first said
+`run_hardrules` **98 → 100** — a number I wrote from expectation *before running the gate*, which
+is precisely the unmeasured-claim habit HR12 exists to stop. Measured, it is **103**: five citation
+sites, not two. `run_all` caught it as symmetric drift, which is the only reason it did not ship.
+The general shape is the one this file already records — **write-ups move `run_hardrules`, not just
+code, so re-run it AFTER the docs** — but the specific lesson is narrower and worse: do not predict
+a gate score in prose you are writing next to the gate.
 
 ---
 

@@ -132,7 +132,12 @@ var BASELINES = {
   // "until the power in the reactor is reduced to the same value as the secondary load"), not
   // re-banded — its old 85..93 % steady state was a rods-in-manual artefact. Injection-checked:
   // 7 of the new checks go red on the pre-#289 lineup.
-  'run_behavior.js':       { code: 0, score: '44pass 0xfail' },
+  // 44 → 45 (2026-08-03, #315): TR-7b, post-trip leg ΔT against the energy balance.
+  // The split read FISSION power, so a scrammed core removing 6.6 % of rated heat
+  // through full flow computed a 0.0 °F ΔT — and INDICATED, that put the cold leg
+  // above the hot leg in 48 % of samples. Fission and total heat are equal in steady
+  // state, which is why 44 probes measuring near equilibrium all agreed with it.
+  'run_behavior.js':       { code: 0, score: '45pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -365,7 +370,15 @@ var BASELINES = {
   // 100 -> 103 on 2026-08-03 (#312): the Tier A/B ruling, cited in CURRICULUM.md, CLAUDE.md and
   // the TUNING_LOG write-up. The third site is the standing lesson — WRITING THE CHANGE UP moves
   // this gate, so re-run it AFTER the docs, not after the code.
-  'run_hardrules.js':      { code: 0, score: '103checks 0failed' },
+  // 103 → 106 (2026-08-03): write-up drift, and the net hides two moves. FOUR new
+  // citation sites for the Physics-tab directive (CLAUDE.md, CHANGELOG,
+  // BUILD_DECISIONS, TUNING_LOG) against ONE removed — the *Recent themes* cap
+  // evicted the steam-dump bullet and its `"Let's change it to 40%."` with it.
+  // The ruling still stands in three other tracked files; this is one fewer SITE.
+  // MERGED 2026-08-03: both lanes moved this independently, so neither figure above is the
+  // merged one. MEASURED on the merged tree, not added up — the standing warning in CLAUDE.md.
+  // MEASURED 111 on the backshop merge (develop 103 + backshop 106 -> 111, not 209).
+  'run_hardrules.js':      { code: 0, score: '111checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -381,7 +394,11 @@ var BASELINES = {
   // All three plants here, unlike the PWR-only §6.3 half.
   // 138 -> 139 on 2026-07-31 (#287): the new `rhr_not_aligned` annunciator, which
   // like every alarm must declare a `category` (#157).
-  'run_contract.js':       { code: 0, score: '140checks 0failed' },
+  // 140 → 141 (2026-08-03): `core_heat_pct` — TOTAL core heat (fission + decay
+  // tail, the engine's `_Q_total`). Published for the Physics tab, which was
+  // otherwise going to re-derive it from power_pct and a config constant, i.e.
+  // keep a second copy of a formula that does not move itself.
+  'run_contract.js':       { code: 0, score: '141checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -540,7 +557,7 @@ var BASELINES = {
   // thresholds against their instrument's declared range, and `rhr_not_aligned` is a
   // status alarm (`rhr_active` is_false, setpoint null) with no range to sit inside.
   // It briefly read 59 while the alarm was drafted as a pressure threshold.
-  'run_reachability.js':   { code: 0, score: '59checks 0failed' },
+  'run_reachability.js':   { code: 0, score: '62checks 0failed' },
   // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
   // reactor trips this plant did not have. It needs its own runner because the trips ship
   // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so
