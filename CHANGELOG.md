@@ -53,6 +53,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
     numbers. Manual set **Rev 15**.
 
 ### Added
+- **The post-trip response is a runnable checklist now — and building it found the step the
+  procedure was missing** (#319). A reactor trip is the most common significant event on a plant,
+  and recovering from one was not an authored evolution: **PWR-T06** was documented, and **PWR-E03**
+  (turbine trip) explicitly sends the operator to it, but there was no checklist at the other end of
+  that pointer. `pwr_post_trip` is that checklist — confirm the trip, reset the protection system,
+  verify the turbine is off the grid and the heat sink is established, and stabilize hot and
+  subcritical in Mode 3, Hot Standby.
+  **It is also the first content anywhere to name the RPS reset.** `reset_rps` has been on the board
+  since the SCRAM control became dual-mode, is required after *every* scram, and was named by no
+  procedure, mission or checklist — one of three orphaned operator capabilities the #319 audit found.
+  The written procedure went straight from "verify SCRAM" to "verify turbine disconnected"; it now
+  carries the reset, and the warning that **main feedwater isolates on the trip and cannot be
+  restored from the board**, so AFW is the heat sink from that point.
+  Measured full stack from `hot_full_power`: the reset is refused `RODS_NOT_INSERTED` at t+1 s with
+  power still 33 %, and accepted at t+3 s once the rods seat; Mode 3 inside a minute; AFW holds SG
+  level near 37 % after it falls from 65 %; the plant settles at 567.3 °F (297.4 °C) and 2235 psi
+  (15.41 MPa). Manual set to Rev 18.
+
 - **The RCP breaker-position reactor trip — a protection function that reads a CONTACT, not a
   measurement** (#314) *(OWNER RULING, 2026-08-03: "Build the breaker position trip as you
   recommend.")*. This plant had **one** loss-of-flow reactor trip where a real Westinghouse unit

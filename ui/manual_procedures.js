@@ -522,6 +522,64 @@
       },
       outcome: 'Mode 5, Cold Shutdown: cold, depressurized to 363 psi (2.50 MPa), RHR in service, reactor coolant pumps secured, accumulators full and isolated, boron at the cold shutdown margin of 857 ppm. This is the `cold_shutdown` initial condition, reached on integrated physics. PWR-N01 takes it back up.',
     },
+    // PWR-T06 — the post-trip response. Authored 2026-08-03 (#319): the procedure was
+    // documented but had NO runnable checklist, while PWR-E03 (turbine trip) explicitly
+    // sends the operator to it — *"Above P-9: confirm the automatic reactor trip and go to
+    // the post-trip response."* A reactor trip is the most common significant event on a
+    // plant and recovering from one was not an authored evolution.
+    //
+    // IT IS ALSO THE FIRST CONTENT ANYWHERE TO NAME `reset_rps`. That command has been
+    // board-reachable since #75 and is required after EVERY scram, and no procedure,
+    // mission or checklist mentioned it — the sharpest of the three orphaned operator
+    // capabilities #319 found.
+    //
+    // MEASURED full stack, `hot_full_power`, shipped lineup, scram at t=60 s:
+    //   t+1 s   power 33.4 % — reset REFUSED, `RODS_NOT_INSERTED`
+    //   t+3 s   power 5.07 % — rods seated, reset ACCEPTED
+    //   ~1 min  plant_mode 3; turbine tripped automatically
+    //   ~3 min  main feedwater ISOLATED (and the board cannot restore it — see cautions)
+    //   ~3 min  AFW auto-started; SG level 65 -> 36.6 % by t+7 min, then holds ~37 %
+    //   settles 567.3 °F (297.4 °C) / 2235 psi (15.41 MPa) — hot, subcritical, Mode 3
+    //
+    // ACCEPTANCES ARE DELIBERATELY LAYER-ROBUST. AFW auto-start and the feedwater
+    // isolation are M4 ACTUATIONS, so they do not happen in `run_procedures`, which is
+    // engine-direct. Asserting `afw_active` here would pass under the stack and fail
+    // engine-direct, and this procedure has no NON_ENGINE_ACTION to justify `stack_only`
+    // with. So the AFW/MFW facts are carried as cautions and notes, and every `acc` is a
+    // truth both layers produce: power, the scram latch, plant mode, no melt.
+    {
+      id: 'pwr_post_trip', category: 'emergency', manual_ref: 'PWR-T06',
+      title: 'Post-trip response — Mode 1, At Power → Mode 3, Hot Standby',
+      purpose: 'The reactor has tripped. Confirm the trip, reset the protection system, verify the plant has a heat sink, and stabilize hot and subcritical in Mode 3, Hot Standby. This is where PWR-E03 and the other at-power emergencies send you once the reactor is down.',
+      from: 'hot_full_power',
+      prereq: ['At-power operation, or any event that has just tripped the reactor.'],
+      cautions: [
+        'Reset the RPS only AFTER the rods are seated. The reset is refused with RODS_NOT_INSERTED while they are still travelling — measured, that is the first ~2 seconds, with power still around 33 %.',
+        'Resetting the RPS re-closes the trip breakers. It does NOT withdraw the rods: the plant stays subcritical until you deliberately withdraw, and the startup net governs any re-ascent.',
+        'MAIN FEEDWATER ISOLATES on the trip and there is no board control to restore it. Auxiliary feedwater is the heat sink from here — measured, AFW auto-starts and holds SG level near 37 %.',
+        'A reactor trip is not a cooldown. The plant stays HOT — measured, it settles at 567.3 °F (297.4 °C) and 2235 psi (15.41 MPa). Cooling down is PWR-N15, a separate evolution.',
+      ],
+      steps: [
+        { text: 'Confirm the reactor is tripped — rods in, power collapsing. If it has not tripped and a trip is warranted, trip it manually: Reactor card → SCRAM.', control: 'SCRAM', target: 'power collapsing',
+          cmd: { action: 'scram' }, hold: 30, acc: { p: 'power_pct', op: '<', v: 5 } },
+        { text: 'Reset the Reactor Protection System. The SCRAM control now reads PRESS TO RESET — press it once the rods are seated. This clears the trip latch and re-closes the breakers; the rods stay in.', control: 'SCRAM', target: 'trip latch cleared',
+          note: 'Refused with RODS_NOT_INSERTED if you try it while the rods are still travelling. Measured: refused at t+1 s, accepted at t+3 s.',
+          cmd: { action: 'reset_rps' }, hold: 30, acc: { p: 'scrammed', op: '<', v: 1 } },
+        { text: 'Verify the turbine is off the grid. A reactor trip trips the turbine, so the generator should already be disconnected — confirm it rather than assume it.', control: 'Main Breaker', target: 'turbine tripped, breaker open',
+          hold: 60, acc: { p: 'turbine_tripped', op: '>', v: 0 } },
+        { text: 'Verify the heat sink. Main feedwater has isolated; auxiliary feedwater should have started automatically and be holding steam generator level. Watch SG LEVEL stop falling.', control: 'AFW', target: 'SG level steadies',
+          note: 'Measured under the shipped lineup: level falls 65 % → 36.6 % over about seven minutes, then holds near 37 %. Falling level early is expected — level that keeps falling is not.',
+          hold: 420, acc: { p: 'melted', op: '<', v: 1 } },
+        { text: 'Verify inventory and subcooling. The pressurizer should hold pressure with the heaters, and subcooling margin should stay positive — if it is eroding, you have a leak, not a plain trip.', control: 'Plant Pressure', target: 'subcooling positive',
+          hold: 120, acc: { p: 'subcooling_c', op: '>', v: 0 } },
+        obs('Declare Mode 3, Hot Standby: subcritical, rods in, RCS still hot and pressurized, heat sink established on AFW.',
+          { p: 'plant_mode', op: '~', v: 3, tol: 0.5 },
+          'From here the plant is stable indefinitely on decay heat. Going further down is PWR-N15 (cooldown to Mode 5); going back up is PWR-N03 (approach to criticality).',
+          ['SCRAM', 'AFW', 'Tavg']),
+      ],
+      guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
+      outcome: 'Mode 3, Hot Standby — subcritical with the trip latch reset, turbine off the grid, decay heat going to the steam generators on auxiliary feedwater, RCS hot at 567.3 °F (297.4 °C) and 2235 psi (15.41 MPa).',
+    },
     {
       id: 'pwr_loss_of_feedwater', category: 'emergency', manual_ref: 'PWR-E01',
       title: 'Mode 1 emergency — loss of main feedwater',

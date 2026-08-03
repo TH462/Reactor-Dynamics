@@ -20,6 +20,60 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03i (#319 — PWR-T06 post-trip is runnable, and the procedure was missing a step)
+
+**Task:** the first item of #319, picked up on "work next". A reactor trip is the most common
+significant event on a plant and **recovering from one was not an authored evolution**: PWR-T06
+was documented, `PWR-E03` explicitly sends the operator to it — *"Above P-9: confirm the automatic
+reactor trip and go to the post-trip response"* — and there was no checklist at the other end of
+that pointer.
+
+### Measured first, authored second
+
+Full stack, `hot_full_power`, shipped lineup, scram at t = 60 s:
+
+| | |
+|---|---|
+| t+1 s | power **33.4 %**, reset **REFUSED** `RODS_NOT_INSERTED` |
+| t+3 s | power **5.07 %**, rods seated, reset **ACCEPTED** |
+| ~1 min | `plant_mode` **3**; turbine tripped automatically |
+| ~3 min | main feedwater **ISOLATED**; AFW auto-started |
+| ~7 min | SG level bottoms **36.6 %** (from 65 %), then holds ~**37 %** |
+| settled | **567.3 °F (297.4 °C)** / **2235 psi (15.41 MPa)** — hot, subcritical, Mode 3 |
+
+### The procedure was missing the RPS reset, and that is the #310 pattern again
+
+PWR-T06's step table went straight from *"verify SCRAM"* to *"verify turbine Disconnected"*.
+**`reset_rps` has been board-reachable since #75, is required after EVERY scram, and was named by
+no procedure, mission or checklist anywhere** — the sharpest of the three orphaned operator
+capabilities #319 found. The manual now carries it as step 2, with the refusal condition, and
+records that **main feedwater isolates on the trip and cannot be restored from the board**. Manual
+set to **Rev 18**.
+
+### The one authoring decision worth keeping: ACCEPTANCES MUST BE LAYER-ROBUST
+
+`run_procedures` is **engine-direct**. AFW auto-start and the feedwater isolation are **M4
+actuations**, so neither happens there — an `acc` on `afw_active` would pass under the stack and
+fail engine-direct. And this procedure has **no NON_ENGINE_ACTION command** to justify
+`stack_only` with (its commands are `scram` and `reset_rps`, both engine-direct), so that escape
+was not available either. Every `acc` is therefore a truth both layers produce — power, the scram
+latch, `turbine_tripped`, `subcooling_c`, `plant_mode`, no melt — and the AFW/MFW facts are
+carried as **cautions and notes**. Both gates pass unmodified.
+
+### Two gates caught their own omissions, which is the job
+
+`run_flags` flagged the missing `procedure:pwr_post_trip` registry entry (a procedure the player
+can open with no flag behind it ships ungated — #310's lesson), and `run_manual_controls` flagged
+**5 unverified steps** with no `STEP_UI` entry. Both fixed in the same change, so
+`verify_manual_follow` and `run_manual_controls` moved **together** — the #224 trap is a step that
+lands *without* its map entry and then reads as covered.
+
+**Gates:** `run_procedures` 23/23 100 → **24/24 108**; `run_procedures_stack` 23/23 204 →
+**24/24 214**; `run_manual_controls` 122 → **132**; `run_flags` 292 → **295**;
+`verify_manual_follow` 183 → **198**; `run_manual_rev` 13/13 at Rev 18.
+
+---
+
 ## Session log — 2026-08-03h (#314 the RCP breaker trip — and a comparator that silently ate it)
 
 *(OWNER RULING, 2026-08-03: "Build the breaker position trip as you recommend.")* Built, gated,

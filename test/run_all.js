@@ -425,7 +425,10 @@ var BASELINES = {
   // 25 → 23 on 2026-07-31: nuclear-from-cold heatup checklist removed (not a commercial NOP).
   // 23 → 25 on 2026-08-02 (#310): PWR-N15 gained the `pwr_cooldown` checklist — 2 checks per
   // checklist (manual_ref present, manual_ref defined). COVERAGE 10 → 11 of 58 documented.
-  'run_procdocs.js':       { code: 0, score: '25checks 0failed' },
+  // 25 -> 27 on 2026-08-03 (#319): pwr_post_trip's two cross-reference checks — the checklist
+  // names a manual procedure, and PWR-T06 is defined in the index. This gate also REPORTS the
+  // coverage number #319 tracks (58 documented, N 15 / T 19 / E 24) without enforcing it.
+  'run_procdocs.js':       { code: 0, score: '27checks 0failed' },
   // New 2026-07-29 — the manual quotes US customary first with SI in parentheses
   // (owner request). This re-derives the US value from the SI value in every pair
   // and fails on bad arithmetic, on an SI quantity with no US partner, and on a
@@ -475,7 +478,8 @@ var BASELINES = {
   // (2 checks per step: the mapping, and the reverse entry-has-a-step check).
   // 128 → 94 on 2026-07-31: nuclear-from-cold heatup STEP_UI map removed (17 steps).
   // 94 → 122 on 2026-08-02 (#310): the PWR-N15 cooldown checklist adds 14 controlled steps.
-  'run_manual_controls.js': { code: 0, score: '122checks 0failed' },
+  // 122 -> 132 on 2026-08-03 (#319): PWR-T06 post-trip, 5 controlled steps x 2 checks.
+  'run_manual_controls.js': { code: 0, score: '132checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -490,7 +494,10 @@ var BASELINES = {
   // 289 → 292 on 2026-08-02 (#310): the PWR-N15 `pwr_cooldown` checklist needs a registry
   // entry (coverage + orphan + well-formed = 3 checks). The gate caught its absence, which
   // is the point — a procedure the player can open with no flag behind it ships ungated.
-  'run_flags.js':          { code: 0, score: '16/16 292/292' },
+  // 292 -> 295 on 2026-08-03 (#319): the `procedure:pwr_post_trip` registry entry. This gate
+  // caught its absence, which is the job — a procedure the player can open with no flag
+  // behind it ships ungated (#310 is the worked case).
+  'run_flags.js':          { code: 0, score: '16/16 295/295' },
   // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
   // Every way this rots is silent: an item id changes and its entry describes
   // nothing; a new control inherits its card's summary and READS like a real
@@ -776,7 +783,11 @@ var BASELINES = {
   // the plant heats back up to 558.7 °F (292.6 °C). The one check is that the flag is
   // JUSTIFIED (the procedure really does carry an M4-only command), so it cannot be
   // pinned onto something engine-direct could run. Full coverage is in the stack gate.
-  'run_procedures.js':     { code: 0, score: '23/23 100/100' },
+  // 23/23 100 -> 24/24 108 on 2026-08-03 (#319): PWR-T06, the post-trip response. Its
+  // acceptances are deliberately LAYER-ROBUST — AFW auto-start and the feedwater isolation
+  // are M4 actuations that do not happen in this engine-direct runner, so they are carried
+  // as cautions and every `acc` is a truth both layers produce.
+  'run_procedures.js':     { code: 0, score: '24/24 108/108' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -807,7 +818,9 @@ var BASELINES = {
   // discrete walk-down measures badly on this plant: an 18 °F (10 °C) Dump SP step bursts
   // at -1168.2 °F/hr (-649 °C/hr). Seven injections were run against the finished
   // checklist and all seven redden it — see Diagnostic/TUNING_LOG.md 2026-08-02.
-  'run_procedures_stack.js': { code: 0, score: '23/23 204/204' },
+  // 23/23 204 -> 24/24 214 on 2026-08-03 (#319): PWR-T06 under the stack, where AFW really
+  // does auto-start and main feedwater really does isolate.
+  'run_procedures_stack.js': { code: 0, score: '24/24 214/214' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
@@ -906,7 +919,10 @@ var BASELINES = {
   // 141 → 183 on 2026-08-02 (#310): 14 controlled steps of the PWR-N15 cooldown checklist,
   // 3 checks each. Its STEP_UI map was written WITH the procedure, so unlike #224 this
   // number and run_manual_controls' 122 moved together in one change.
-  'verify_manual_follow.js': { code: 0, score: '183checks', slow: true },
+  // 183 -> 198 on 2026-08-03 (#319): PWR-T06's five controlled steps, 3 checks each. Its
+  // STEP_UI entries went in with the procedure, so this number and run_manual_controls moved
+  // together — the #224 trap is a step that lands WITHOUT its map entry and reads as covered.
+  'verify_manual_follow.js': { code: 0, score: '198checks', slow: true },
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run
