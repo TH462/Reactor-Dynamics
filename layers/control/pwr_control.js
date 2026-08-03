@@ -159,7 +159,12 @@
   // power the trip is bypassed AUTOMATICALLY, because there the plant genuinely can ride
   // a turbine trip out on the dump. That is the whole of the interlock — P-9 is a power
   // permissive, not an operator-selectable bypass like P-11/P-7/P-10 (which really are
-  // operator-selectable, and are the four trips carrying `blockable`).
+  // operator-selectable). There are FIVE trips carrying `blockable` — `lo_press` and
+  // `si_trip` (both P-11, below 13.6 MPa), `ir_high` and `pr_low_setpoint` (the default
+  // P-10 permissive, above 10 % power) and `lo_flow` (below 10 % power). This comment
+  // said "four" until 2026-08-03: `si_trip` is pushed further down this file rather than
+  // into the array literal above, so a reader counting the literal gets four and stops
+  // (#312). Count `blockable` across the whole file, not the first table in it.
   //
   // It was briefly shipped `blockable` with a redundant `power_range < 50` permissive.
   // Measured, that produced three defects, and the middle one is the reason the rule

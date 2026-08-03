@@ -20,6 +20,107 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03b (#312 — the DESIGN_CRITERIA review's fixes, and the finding that neither the review nor my first draft got right)
+
+**Task:** fix the issues raised by the fresh-agent adversarial review of
+`Blueprint/DESIGN_CRITERIA.md` filed on #312. Four ranked errors, plus a "what is missing" pass.
+Every claim was re-verified against the code before editing — the review measured on a detached
+worktree at `9306952` and this tree has since taken #295, #306, #310 and #311, so **its line
+numbers were stale even where its substance held** (`thot`/`tcold` readouts are at
+`pwr_board_wiring.js:781,782`, not `:682,683`). Verify by content, never by line number.
+
+### The three factual errors — all confirmed, all real
+
+1. **`thot`/`tcold` "read by nothing but pipe colour" was FALSE.** The board has dedicated T-hot
+   and T-cold readouts (`:781,782`) **and** a leg-ΔT readout (`:698`), and `ui/app.js` carries
+   selectable Hot Leg / Cold Leg trend series. It was an **unmeasured coverage claim sitting
+   inside the Q0 section that forbids them** — the document did not bind itself. Replaced with two
+   verified #305 rows; the retraction is kept in the file because it is the mistake the section
+   exists to prevent.
+2. **"PWR-N15 runs unborated below Mode 4" was a layer/mode collision.** It runs unborated below
+   the **M4 control layer** — the engine-direct `run_procedures` replay, where the `boron_conc`
+   channel does not exist, which is why the procedure is registered `stack_only`. The full-stack
+   plant can borate in any mode. Module M4 ≠ Mode 4.
+3. **§6.4 listed four blockable trips; the kernel carries five.** `lo_flow` was missing — one of
+   the three #295 measured as wrongly ACCEPTED. Each of the five has a **different permissive**,
+   which the row now states: `ir_high`/`pr_low_setpoint` above P-10, `lo_press`/`si_trip` below
+   P-11 (13.6 MPa), `lo_flow` below 10 % power.
+
+**The same "four" was stale in the CODE** (`layers/control/pwr_control.js`, the #216 comment), and
+the reason is structural: **`si_trip` is pushed further down the file rather than into the array
+literal**, so a reader counting the literal gets four and stops. Fixed with the trap written into
+the comment — count `blockable` across the whole file.
+
+### The Tier C finding — the review undercounted it and my first draft got it WRONG
+
+The review reported "four modelled casualty classes absent from Tier C". Measured on this tree,
+the picture is different and larger: the PWR carries **24 injectable failures**, and
+`Manuals/07_ABNORMAL_EMERGENCY.md` carries **24 abnormal/emergency procedures (PWR-E01…E23 +
+E19u)** — **a complete one-to-one map**. The curriculum table named 10. So Tier C's ruling is a
+**subsetting decision, not an authoring one**: every unlisted casualty already has a written
+response, and adding a row costs nothing.
+
+**The gap that actually bites is RUNNABLE, not documented** — only **3 of the 24** are runnable
+checklists (`pwr_loss_of_feedwater` E01, `pwr_rcp_trip` E02, `pwr_stuck_porv` E07, plus the TMI
+narrative which is E07+E08 combined, as the manual itself specifies). Q2's test is *can the player
+reach it*; 21 of 24 responses exist only as prose.
+
+**MY FIRST DRAFT INVENTED A TAXONOMY ON TOP OF AN UNREAD ARTIFACT, and that is the trap worth
+keeping.** It classified `afw_failure`, `degraded_hpi` and `stuck_rod_on_scram` as *"modifiers,
+not casualties"* to be folded into other rows as severity axes, and asserted ATWS had *"no
+procedure"*. Each of those four has its own procedure — **E12, E11, E18 and E13**. The repo had
+already ruled them standalone. Nothing was measured wrongly; **the artifact was never opened**,
+and it was one `grep` away. A curriculum claim is a coverage claim, and coverage claims get
+proved, not reasoned out.
+
+### Tier A gained three rows, all measured, all previously modelled
+
+| Row | Measured (full stack, `hot_full_power`) |
+|---|---|
+| **A7 xenon** | 100 → 60 MWe: `xenon_pct_eq` **100.0 → 104.9 %** peaking at **4–5 h**, back through **98.6 %** at 12 h. At `xenon_worth` 0.025 Δk/k that is **−123 pcm** at the peak, **+159 pcm** returning — ~4 % of the 4068 pcm bank. **No xenon gauge exists**: the player sees the rods walk out |
+| **A8 boron sets where critical is** | #303's record, cited as record and **not re-measured**: 857 ppm → ~**561 steps**, 683 ppm → **319**, ~1830 pcm apart |
+| **A9 secondary shrink/swell** | the A1 load drop: at t+10 s the gauge reads **66.40 %** while truth is **68.85 %** and still *rising* to 70.44 — **−2.45 %**, against a ±0.6 % steady-state noise band (~4×). Instrument-layer (`swell_factor` 0.8, M1 §8.4), not SG void physics |
+
+**Why a "derive from what the repo implies" method missed all three:** it derives from what is
+**demonstrated**, so it silently drops every coupling the plant models and no content ever shows —
+which is the exact class §6.9 calls a content gap. For the RBMK/BWR builds, **enumerate the engine
+first and subtract.**
+
+### The rest
+
+- **A third Q2 route: TRAINER AFFORDANCE.** With only demonstration/step, the document
+  retroactively condemned the true-state overlay, the trend graphs, the Learning register and
+  instructor highlights. The tell that the route was already in use: **A2's own demonstration
+  invokes "§3's comparison principle"**, and the board's reactivity readout (`imro6rdwwdn`) reads
+  `true_state` directly. Also narrowed the dynamics route so a pure **indication** can earn credit
+  as the named cue of a Tier C diagnosis (tailpipe temp; charging flow, #262).
+- **Tier B gained the evolution list** the owner's category 2 actually asks for — eight authored
+  evolutions, the Mode 5 ↔ 1 loop. Two observations fell out: the approach to critical is a
+  **T**-numbered training procedure, not an N-numbered normal one, and there is **no
+  boration/dilution evolution** — the content-end face of the missing manual borate control.
+- **§6.9 split.** It deferred Tier C "until each plant is reopened", which **re-creates the limbo
+  §6.5 exists to end** — the PWR needs no reopening. Now: rule A, B and PWR Tier C; defer only
+  RBMK/BWR Tier C.
+- **§7 names the failure mode that actually happens.** Not *faking* Q0 — **satisfying it
+  wrongly**: wrong layer (#266, one figure 13× off), wrong IC (the `engine.reset` string trap, two
+  wrong findings published), wrong channel (#220). A Q0 answer must carry **layer + IC + lineup**,
+  the way `measure_stack` stamps them. Also states the residual risk plainly: **Q1's citation
+  requirement has no mechanical check** — `run_hardrules` counts owner-ruling citations, not
+  evidence citations, and #311 is the worked case for why an automated one is not available.
+- **A cheaper orphan classification than #305, recorded as unimplemented.** Classify at the
+  **command** level: HR5 means every operable control terminates in a service command and authored
+  content already names commands, so both sides have uniform granularity — which is exactly what
+  the card-vs-button attempt lacked. Needs a handler→command registry or a `selfTest` sweep,
+  because the press handlers are closures. **Not built, not measured.**
+- **`Rod AUTO` "named by nothing" → "named by no authored content"** — it *is* documented, in
+  `Manuals/03` §14.3/§17.2.
+
+**Gates:** `run_all` **36 runners at baseline**; `run_hardrules` unmoved at **98** (no new owner
+citations — the fix added none), `run_manual_units` 0 failed. The `pwr_control.js` change is
+comment-only.
+
+---
+
 ## Session log — 2026-08-03a (#311 — OTΔT / OPΔT built, and the issue's own premise did not survive measurement)
 
 **Task:** build the two missing Westinghouse reactor trips in the reduced form the owner ruled
