@@ -152,8 +152,43 @@ signal also reduces turbine load, an actuation here fires once, so a ramped load
 new actuation class. The ruling explicitly left the sequencing open; building it in the same
 change as two new trips on unsourced constants is the wrong order.
 
+### CONTENT blast radius with the flag ON — the ruling's other open item, now measured
+
+Fourteen suites re-run with `otdt_opdt_trips: true`. **Twelve are unmoved.** `run_reachability`
+59 → **63** and `run_contract` 140 → **142**, both of which are the design working: Part A picks
+up the two new trips and the two new alarms automatically, and every alarm declares a category.
+
+**Two go red, and neither is a plant defect** — both pin a trip REASON that OTΔT legitimately
+takes over:
+
+| | flag OFF | flag ON |
+|---|---|---|
+| 20 % cold-leg LOCA | scram **9.5 s** `primary_pressure low` @ 1717 psi (11.84 MPa), DNB 16.0 s | scram **7.0 s** `otdt_margin low` @ **2049 psi (14.13 MPa)**, DNB **92.5 s** |
+| stuck-open PORV | scram **12.5 s** `primary_pressure low` @ 1767 psi (12.18 MPa), DNB 18.0 s | scram **8.0 s** `otdt_margin low` @ **2058 psi (14.19 MPa)**, DNB **28.0 s** |
+| RCP trip | scram 7.5 s `rcs_flow low`, DNB never | **unchanged** |
+| small LOCA 5 % | scram 23.0 s `pzr_level low`, DNB never | **unchanged** |
+
+OTΔT trips **2.5–4.5 s earlier and ~300 psi higher**, and pushes DNB onset out by **76 s** on the
+LOCA. That is what the K₃ pressure term is FOR, and it is prototypical: the fixed low-pressure
+reactor trip is the backstop, not the first line. At rated ΔT the line reaches 100 % at ~2090 psi
+(14.4 MPa) — comfortably above the 12.41 MPa low-pressure trip, which is why it always wins a
+depressurization.
+
+- **`run_m4` 37/37 → 36/37.** The #295 F1/F2 probe asserts a blocked-trip LOCA still scrams
+  **`primary_pressure low`**. It now scrams `otdt_margin low`. The probe's INTENT is not just
+  intact but strengthened — OTΔT is not blockable at all — so this is a reason string to
+  re-author, HR9 content-follows-plant, exactly like `pwr_msiv` after #218.
+- **`run_campaign` 51/51 → 50/51 (2 checks).** `pwr_lof` asserts *"both branches reach an
+  endpoint, DNB physics fires"*. An RCP trip on its own is **unmoved** (measured above), so the
+  mission reaches DNB by some other path inside its own setup — **not diagnosed**, and it must be
+  before the flag is flipped. If OTΔT is pre-empting the DNB the mission teaches, the mission
+  needs re-authoring around the trip, not the trip narrowing around the mission (#218's ordering).
+
+**Neither is a reason to hold the flag on its own** — but the `pwr_lof` re-author is real work and
+it is now the third item, after the evidence pass and ahead of the runback.
+
 **Still open on #311:** the evidence pass (blocked — needs a machine with NRC access), the
-runback, and the owner's decision on the flag.
+`pwr_lof` / #295-probe re-authoring above, the runback, and the owner's decision on the flag.
 
 ---
 
