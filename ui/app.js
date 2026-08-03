@@ -90,6 +90,42 @@
   function bool(v, onWord, offWord) { return { b: !!v, t: v ? (onWord || 'yes') : (offWord || 'no') }; }
   function pct(v, dp) { return v == null ? '—' : (v).toFixed(dp == null ? 0 : dp) + ' %'; }
   function pctOf(frac, dp) { return frac == null ? '—' : (frac * 100).toFixed(dp == null ? 0 : dp) + ' %'; }
+  // Signed fixed-point — a reactivity, a cooldown rate and a mass-balance mismatch
+  // all read wrong without the sign. The rounding guard is not cosmetic: a critical
+  // reactor sits a hair either side of zero, and toFixed(0) on -0.004 prints "-0",
+  // which reads as "slightly subcritical" when it means "exactly on".
+  function sgnFix(v, dp) {
+    if (v == null || !isFinite(v)) return '—';
+    dp = dp == null ? 0 : dp;
+    if (Math.abs(v) < 0.5 * Math.pow(10, -dp)) v = 0;
+    return (v > 0 ? '+' : '') + v.toFixed(dp);
+  }
+  // Pressure for the Physics tab, with the decimals the UNIT needs rather than the
+  // ones the instrument needs (#238's quantisation trap). 1 psi is a sensible step;
+  // 1 MPa is 145 of them, and rounding there collapses the whole loop pressure
+  // SPLIT — 2235/2279/2199 psi all print as "15 MPa" — which is the one thing that
+  // group exists to show.
+  function physP(mpa) { return mpa == null ? '—' : conv(mpa, 'pressure').toFixed(ui.units === 'SI' ? 2 : 0) + ' ' + unit('pressure'); }
+  // Temperature DIFFERENCE without the "-0" artefact. A subcooling margin sitting
+  // a hundredth of a degree below saturation is 0, not "-0 °F" — the minus sign is
+  // the only thing on that line, and it is noise.
+  function physTd(c) {
+    if (c == null) return '—';
+    var v = conv(c, 'tempdiff');
+    return (Math.abs(v) < 0.5 ? 0 : v).toFixed(0) + ' ' + unit('tempdiff');
+  }
+  // % of rated thermal → MW. The rating lives in ONE place (identity.mwt_rated);
+  // read it rather than restating it, or this is the next number to drift.
+  function mwtOf(pctRated) {
+    var id = RD.PWR_CONFIG && RD.PWR_CONFIG.identity;
+    return ((pctRated || 0) / 100) * ((id && id.mwt_rated) || 0);
+  }
+  function fuelDamageC() {
+    var th = RD.PWR_CONFIG && RD.PWR_CONFIG.thermal;
+    return (th && th.fuel_damage_c) || 1200;
+  }
+  // "should be exactly zero on a healthy plant" — voiding, cavitation, leakage
+  function nzCls(key) { return function (t) { return (t[key] || 0) > 0 ? 'q-caution' : ''; }; }
 
   // ====================================================================== engines
   // Selector key → plant + design_version + default initial state, plus the
@@ -171,6 +207,89 @@
         // RBMK has Channel Flow and BWR has Recirc Flow — which is what an unbuilt
         // instrument looks like from the UI side. dLo marks the low-flow trip setpoint.
         { id: 'rcs_flow', label: 'RCS Flow', c: '#5a8a9a', get: function (i) { return i.rcs_flow; }, tru: function (t) { return t.pump_flow_pct; }, range: [0, 120], dLo: 90, fmt: function (v) { return v.toFixed(0) + '%'; } },
+      ],
+      // ------------------------------------------------------------ Physics tab
+      // TRUE plant state — HR1's sanctioned explicit diagnostic overlay, NOT a
+      // second set of gauges. Every row reads true_state; nothing here drives
+      // anything, and no row is an instrument.
+      //
+      // WHAT EARNS A ROW: the bias is toward quantities the BOARD CANNOT SHOW —
+      // no instrument exists for them, or none is wired to a readout. Measured
+      // against the board's own reads (the IN()/TS() calls in pwr_board_wiring.js):
+      // fuel and clad temperature, decay heat, xenon, both void fractions, RCS
+      // inventory, the three-node loop pressure split, suction subcooling, RCP
+      // cavitation, leak flow and cycle efficiency have no board readout at all.
+      // A few board-visible anchors stay where a group would otherwise be
+      // incoherent (fission power, MWe out) — they are the denominators the rest
+      // of the group is read against.
+      //
+      // ORDER IS THE ENERGY PATH: neutrons → fuel → coolant → pressure boundary →
+      // heat sink and output. Read top to bottom and you have walked the plant.
+      //
+      // `cls` marks states that should be ZERO on a healthy plant (voiding,
+      // cavitation, leakage) or that have a threshold already in the code
+      // (fuel_damage_c; the 22.2/11.1 °C subcooling steps are renderSubcool's).
+      // It is not a second alarm system — the alarm panel is the alarm panel.
+      physics: [
+        { title: 'Reactivity', rows: [
+          { k: 'Net reactivity',      v: function (t) { return sgnFix(t.reactivity_pcm, 0) + ' pcm'; } },
+          { k: 'Fuel temp (Doppler)', v: function (t) { return dispT(t.fuel_temp_c); } },
+          { k: 'Xenon',               v: function (t) { return t.xenon_pct_eq.toFixed(0) + ' % eq'; } },
+          { k: 'RCS boron',           v: function (t) { return t.boron_ppm.toFixed(0) + ' ppm'; } },
+        ] },
+        // MEASURED, and the reason this group is split three ways: `power_pct` is
+        // FISSION power alone. A few seconds into a 20 %-of-rated cold-leg LOCA it
+        // read 11.0 MWt while decay heat was 21.0 MWt — a core apparently making
+        // less heat than its own decay tail. `core_heat_pct` is the sum the thermal
+        // paths actually burn (31.2 MWt in that same sample), and it is the honest
+        // denominator for efficiency.
+        { title: 'Core heat', rows: [
+          { k: 'Fission power',      v: function (t) { return mwtOf(t.power_pct).toFixed(1) + ' MWt'; } },
+          { k: 'Decay heat',         v: function (t) { return t.decay_heat_pct.toFixed(2) + ' % · ' + mwtOf(t.decay_heat_pct).toFixed(1) + ' MWt'; } },
+          { k: 'Total core heat',    v: function (t) { return mwtOf(t.core_heat_pct).toFixed(1) + ' MWt'; } },
+          // MEASURED: on a covered core `stepCladding` floors the hot node at the
+          // fuel temperature, so clad == fuel at power (both 693 °C / 1280 °F at
+          // HFP) and sits far above the hot leg — a "clad above coolant" rule
+          // cautions the whole time. The node only SEPARATES from the fuel once
+          // uncovery starts (#213), which is the state worth marking; the alarm
+          // step is checkDamage's own criterion, fuel_damage_c.
+          { k: 'Peak clad temp',     v: function (t) { return dispT(t.clad_temp_c); },
+            cls: function (t) { return t.clad_temp_c >= fuelDamageC() ? 'q-alarm' : t.clad_temp_c > t.fuel_temp_c + 1 ? 'q-caution' : ''; } },
+          { k: 'Core void (boiling)', v: function (t) { return pctOf(t.core_void_fraction, 1); }, cls: nzCls('core_void_fraction') },
+        ] },
+        { title: 'Primary coolant', rows: [
+          { k: 'Core ΔT (hot − cold)',   v: function (t) { return physTd(t.thot_c - t.tcold_c); } },
+          { k: 'Subcooling margin',      v: function (t) { return physTd(t.subcooling_c) + (t.subcooling_c <= 0 ? ' · SATURATED' : ''); },
+            cls: function (t) { return t.subcooling_c < 11.1 ? 'q-alarm' : t.subcooling_c < 22.2 ? 'q-caution' : ''; } },
+          { k: 'Heatup / cooldown rate', v: function (t) { return sgnFix(conv(t.tavg_rate_c_per_hr, 'tempdiff'), 0) + ' ' + unit('tempdiff') + '/hr'; } },
+          { k: 'RCS inventory',          v: function (t) { return t.core_inventory_pct.toFixed(1) + ' %'; },
+            cls: function (t) { return t.core_inventory_pct < 90 ? 'q-alarm' : t.core_inventory_pct < 99 ? 'q-caution' : ''; } },
+          { k: 'Loop void (inventory)',  v: function (t) { return pctOf(t.primary_void_fraction, 1); }, cls: nzCls('primary_void_fraction') },
+          { k: 'RCS loop flow',          v: function (t) { return t.pump_flow_pct.toFixed(0) + ' %'; } },
+        ] },
+        // There are no per-node pressure GAUGES on this plant — the one
+        // primary_pressure instrument reads the hot-leg/pressurizer datum. The
+        // split is why the cold leg reaches an ECCS setpoint before the gauge does
+        // and why the pump suction cavitates first.
+        { title: 'Loop pressure', rows: [
+          { k: 'Hot leg (pzr datum)',     v: function (t) { return physP(t.p_hotleg); } },
+          { k: 'Cold leg (pump disch)',   v: function (t) { return physP(t.p_coldleg); } },
+          { k: 'Pump suction',            v: function (t) { return physP(t.p_pumpsuction); } },
+          { k: 'Suction subcooling',      v: function (t) { return physTd(t.suction_subcool_c); },
+            cls: function (t) { return t.suction_subcool_c <= 0 ? 'q-alarm' : t.suction_subcool_c < 11.1 ? 'q-caution' : ''; } },
+          { k: 'RCP cavitation',          v: function (t) { return pctOf(t.rcp_cavitation_frac, 0); }, cls: nzCls('rcp_cavitation_frac') },
+          { k: 'Primary leak flow',       v: function (t) { return pctOf(t.leak_flow, 2); }, cls: nzCls('leak_flow') },
+        ] },
+        // fw_flow_normalized is TOTAL feed (main + AFW — pwr_steam_generator.js:83),
+        // and steam_out_total is everything leaving the SG (turbine + dump + safeties),
+        // so the difference is the SG's mass balance: positive = boiling off faster
+        // than it is being fed, i.e. the level is going down.
+        { title: 'Heat sink & output', rows: [
+          { k: 'Steam − feed mismatch', v: function (t) { return sgnFix((t.steam_out_total - t.fw_flow_normalized) * 100, 1) + ' %'; } },
+          { k: 'Turbine steam demand',  v: function (t) { return t.steam_demand_mwe.toFixed(1) + ' MWe'; } },
+          { k: 'Gross electrical',      v: function (t) { return t.mwe_output.toFixed(1) + ' MWe'; } },
+          { k: 'Cycle efficiency',      v: function (t) { var q = mwtOf(t.core_heat_pct); return q > 1 ? (t.mwe_output / q * 100).toFixed(1) + ' %' : '—'; } },
+        ] },
       ],
     },
 
@@ -513,6 +632,53 @@
     });
   }
 
+  // ------------------------------------------------------------- physics tab
+  // Built once per plant, updated from the same snapshot as everything else —
+  // but ONLY while the pane is actually on screen. The rows are formatted
+  // strings, so a hidden pane would burn ~24 of them a frame for nobody.
+  // Element references are cached at build time: the frame path does no DOM
+  // queries at all (the All-view grid re-queries per row per frame, and this
+  // pane updates on every broadcast, fast-forward included).
+  var physRows = [];   // [{ el, row }] in profile order
+  function buildPhysics() {
+    var box = $('physicsPane'); if (!box) return;
+    physRows = [];
+    var groups = prof().physics;
+    if (!groups) {
+      // RBMK/BWR: no panel authored (those plants are on hold). Say so rather
+      // than showing an empty box that reads like a broken tab.
+      box.innerHTML = '<div class="phys-none">No physics panel is built for this plant yet.</div>';
+      return;
+    }
+    var html = '';
+    groups.forEach(function (g) {
+      html += '<div class="phys-grp"><h4>' + g.title + '</h4>';
+      g.rows.forEach(function (r) {
+        html += '<div class="num-line"><span class="nk">' + r.k + '</span><span class="nv">—</span></div>';
+      });
+      html += '</div>';
+    });
+    box.innerHTML = html;
+    var cells = box.querySelectorAll('.nv'), n = 0;
+    groups.forEach(function (g) { g.rows.forEach(function (r) { physRows.push({ el: cells[n++], row: r }); }); });
+  }
+  function physicsVisible() {
+    var card = $('toolsCard'), pane = document.querySelector('.tabpane[data-pane="physics"]');
+    return !!(pane && pane.classList.contains('on') && card && !card.classList.contains('collapsed'));
+  }
+  function renderPhysics(s) {
+    if (!physRows.length || !physicsVisible()) return;
+    var t = s.true_state; if (!t) return;
+    physRows.forEach(function (p) {
+      var txt, cls = '';
+      // A row that throws is a missing true_state field on this plant, not a
+      // reason to take the whole frame down with it.
+      try { txt = p.row.v(t, s); cls = p.row.cls ? p.row.cls(t, s) : ''; } catch (e) { txt = '—'; }
+      p.el.textContent = (txt == null ? '—' : txt);
+      p.el.className = 'nv ' + cls;
+    });
+  }
+
   function buildFailures() {
     var list = $('failList'); list.innerHTML = '';
     var cat = service.layer.getFailureCatalog();
@@ -707,6 +873,7 @@
     var scramInd = !!(s.instruments.rps_scrammed != null ? s.instruments.rps_scrammed : s.rps_state.scrammed);
     if (ui.plant !== 'pwr' && scramInd && !lastScrammed && ui.view !== 'diagram') setView('diagram');
     renderPlantDisplay(s);
+    renderPhysics(s);
     lastScrammed = scramInd;
 
     // Time moved backwards (a rewind, or a walkthrough/scenario reset): drop the
@@ -2135,6 +2302,11 @@
     // Keep the transcript sliver pinned to its latest lines when the chat card
     // collapses (the collapsed chat card shows the tail, not the top).
     var cur = $('instrCurrent'); if (cur) cur.scrollTop = cur.scrollHeight;
+    // The Physics pane only paints while it is visible, and this is the one choke
+    // point every reveal goes through (tab click, card expand, accordion). Without
+    // it, opening Physics on a PAUSED plant shows em-dashes until a broadcast that
+    // never comes.
+    if (tExp && latest) renderPhysics(latest);
   }
   function setFocus(which) {
     applyFocus(which === 'instructor', which !== 'instructor');
@@ -4121,7 +4293,7 @@
   function rebuildPlantUI() {
     chartBuf = []; smoothed = {}; seriesHot = {};
     syncUnitsScope();
-    buildGauges(); buildGraphParams(); updateSimSummary(); buildFailures();
+    buildGauges(); buildGraphParams(); buildPhysics(); updateSimSummary(); buildFailures();
     // The control layer already reset its channels and engaged the plant's
     // normal lineup (M5 selectPlant → engageDefaults); the tab just rebuilds.
     buildAutomate();
@@ -4585,7 +4757,7 @@
     if (initm && (prof().initStates || []).some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
     ui.series = Object.assign({}, prof().defaultSeries);
     syncUnitsScope();
-    buildGauges(); buildGraphParams(); updateSimSummary();
+    buildGauges(); buildGraphParams(); buildPhysics(); updateSimSummary();
     buildPlantDisplay();
     service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });

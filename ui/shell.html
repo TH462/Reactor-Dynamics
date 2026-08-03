@@ -142,6 +142,7 @@
           <button class="on" data-tab="operate">Operate</button>
           <button data-tab="failures">Inject Failure</button>
           <button data-tab="graph">Graph</button>
+          <button data-tab="physics">Physics</button>
           <button data-tab="settings">Settings</button>
         </div>
         <div class="tab-body">
@@ -160,6 +161,18 @@
               <div class="seg" id="graphWindow"><button data-win="60">1m</button><button class="on" data-win="300">5m</button><button data-win="600">10m</button><button data-win="1800">30m</button></div>
             </div>
             <div class="set-row"><span class="k">Export</span><button class="btn" data-act="export-csv">CSV ⭳</button></div>
+          </div>
+          <!-- Physics — the TRUE plant state behind the instruments. This is HR1's
+               sanctioned explicit diagnostic overlay, not a second set of gauges:
+               every row reads true_state and nothing here drives anything. Built by
+               app.js from the active plant's profile (PROFILES[plant].physics). -->
+          <div class="tabpane" data-pane="physics"
+            data-scanner-hint="Physics — the true plant state behind the gauges: reactivity, decay heat, clad temperature, voiding, the loop pressure split. Engineering values, not instrument readings."
+            data-scanner-detail="A real control room has none of this — the operator has instruments, and instruments lag, drift and fail. These numbers are what the simulator is actually computing, so use them to understand a transient after the fact rather than to check a gauge during one.">
+            <div class="phys-note">True plant state — what the physics is actually doing.
+              These are <b>not</b> instrument readings: no lag, no noise, and a failed
+              sensor does not change them.</div>
+            <div id="physicsPane"></div>
           </div>
           <!-- Operate — session controls (default tab) -->
           <div class="tabpane on" data-pane="operate">

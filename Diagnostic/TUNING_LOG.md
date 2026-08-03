@@ -20,6 +20,72 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03c (Physics tab — and `power_pct` turned out not to be core thermal power)
+
+**Built to order** *(OWNER DIRECTIVE, 2026-08-03: "Add a tab to the tools block called Physics.
+This will show the most important, under the hood physics numbers. Group and order them
+logically.")* — a fifth tab in the Tools block — **Operate · Inject Failure · Graph ·
+Physics · Settings** — showing **true plant state**, 24 rows in five groups ordered along the
+energy path (Reactivity · Core heat · Primary coolant · Loop pressure · Heat sink & output).
+Data in `PROFILES.pwr.physics` (`ui/app.js`); `buildPhysics()` caches cells at build, and
+`renderPhysics()` only runs while the pane is on screen. Backshop lane. Full rationale:
+`Blueprint/BUILD_DECISIONS.md` 2026-08-03c.
+
+**Row selection was measured, not chosen by taste.** Candidates were filtered against the board's
+own reads — the `IN()` / `TS()` calls in `pwr_board_wiring.js`, 46 instrument keys and 3
+true_state keys. What survives is the set with **no instrument at all, or none wired to a
+readout**: fuel and clad temperature, decay heat, xenon, both void fractions, RCS inventory, the
+three-node loop pressure split, suction subcooling, RCP cavitation, leak flow, cycle efficiency.
+A few board-visible anchors stay as the denominators their group is read against.
+
+**THE FINDING — `power_pct` is FISSION power alone, and nothing in the tree said so.**
+`s.power_pct` is `_P × 100`; total core heat is `_Q_total = _P·(1 − f₀) + (H1 + H2)`, f₀ = 0.07
+(`pwr_engine.js:363`, burned at `pwr_thermal.js:42` and `:172`). **At steady power the two are
+equal by construction**, which is exactly why this survived — every gate that reads power reads
+it at or near equilibrium. Measured a few seconds into a 20 %-of-rated cold-leg LOCA, full stack
+in the browser: **fission 11.0 MWt against decay heat 21.0 MWt**, a core apparently making less
+heat than its own decay tail. `_Q_total` was never published, so the first draft of the tab was
+going to re-derive it in the UI from `power_pct` + `decay_heat_pct` + a config constant — a
+second copy of a formula that does not move itself, the #308 shape. It is
+**`true_state.core_heat_pct`** now (31.2 MWt in that same sample), documented in `CONTEXT.md`
+§6.3 so `run_contract` guards it both ways. `run_contract` **140 → 141**. Anything anywhere that
+reads `power_pct` as "core thermal power" is wrong from the moment the rods drop.
+
+**Two display defects that only a DUMP finds, not a look.** Both were caught by rendering the
+pane headless and reading the strings back. **(1)** `toFixed(0)` on MPa collapsed the whole loop
+pressure split: **2235 / 2279 / 2199 psi all printed as "15 MPa"**, and that ~80 psi (0.55 MPa)
+spread is the entire reason the group exists — the cold leg reaches an ECCS setpoint before the
+one gauge does, and the pump suction cavitates first. `physP()` is per-unit now, 0 decimals in
+psi and 2 in MPa. This is **#238's quantisation trap in a new place**, and the tell was the same:
+the number renders, it just is not the number. **(2)** A critical reactor printed **"-0 pcm"** —
+`toFixed(0)` on −0.004 — which reads as slightly subcritical and means exactly on.
+
+**And one wrong premise of my own, killed by the measurement.** The first `Peak clad temp` colour
+rule cautioned when clad exceeded the hot leg, reasoning that a node above the coolant is
+uncovered. It fires **at hot full power**: on a covered core `stepCladding` floors the hot node at
+the fuel temperature, so clad == fuel (693 °C / 1280 °F at HFP) and both sit far above the legs.
+The node only *separates from the fuel* once uncovery starts (#213) — that is the state worth
+marking, and the alarm step is `checkDamage`'s own `fuel_damage_c`.
+
+**Injection-verified.** LOCA at 20 % of rated: every row moves and each conditional colour fires
+where it should — RCS inventory 0.0 % alarm, loop void 100.0 %, RCP cavitation 100 %, leak flow
+20.00 %, suction subcooling −1 °F alarm, and `Peak clad temp` cautions only in the window where
+the hot node separates, clearing again when it re-merges. Zero page errors. Tab strip measured at
+1280 / 1440 / 1920 px: five tabs, one line, no overflow (worst case 71.6 px box against 63.0 px
+of text for "Inject Failure") — which is why the label was not shortened.
+
+**Gates.** `run_all` **36 runners at baseline**, exit 0, with `run_contract` re-baselined
+140 → 141 and `run_hardrules` **103 → 106** — the usual write-up drift, except the net hides two
+moves in opposite directions: **four** new citation sites for the directive above against **one**
+removed, because the *Recent themes* cap evicted the steam-dump bullet and took
+`"Let's change it to 40%."` out with it (that ruling still stands in three other tracked files —
+one fewer SITE, not one fewer ruling). Measured after the docs were written, not predicted from
+them. `board_check` **182/182** (shell chrome changed, the board did not). Manual set
+**Rev 14** — 02 §7.5 is the new section, Settings renumbered §7.6, §6.0 gained a line separating
+the board's *Physics Overlay* display mode from this tab.
+
+---
+
 ## Session log — 2026-08-03b (#307 turbine roll DEFERRED — and the honest declaration was wrong about the real plant)
 
 **Ruled, and the ruling was to not build it** *(OWNER RULING, 2026-08-03: "Let's go with your

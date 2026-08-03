@@ -352,7 +352,12 @@ var BASELINES = {
   // stripping the date and quote from the CLAUDE.md citation alone takes HR11 to 1 undeclared
   // and reddens the gate, so that site is genuinely seen and not silently skipped by the
   // markdown-wrap window.
-  'run_hardrules.js':      { code: 0, score: '103checks 0failed' },
+  // 103 → 106 (2026-08-03): write-up drift, and the net hides two moves. FOUR new
+  // citation sites for the Physics-tab directive (CLAUDE.md, CHANGELOG,
+  // BUILD_DECISIONS, TUNING_LOG) against ONE removed — the *Recent themes* cap
+  // evicted the steam-dump bullet and its `"Let's change it to 40%."` with it.
+  // The ruling still stands in three other tracked files; this is one fewer SITE.
+  'run_hardrules.js':      { code: 0, score: '106checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -368,7 +373,11 @@ var BASELINES = {
   // All three plants here, unlike the PWR-only §6.3 half.
   // 138 -> 139 on 2026-07-31 (#287): the new `rhr_not_aligned` annunciator, which
   // like every alarm must declare a `category` (#157).
-  'run_contract.js':       { code: 0, score: '140checks 0failed' },
+  // 140 → 141 (2026-08-03): `core_heat_pct` — TOTAL core heat (fission + decay
+  // tail, the engine's `_Q_total`). Published for the Physics tab, which was
+  // otherwise going to re-derive it from power_pct and a config constant, i.e.
+  // keep a second copy of a formula that does not move itself.
+  'run_contract.js':       { code: 0, score: '141checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can

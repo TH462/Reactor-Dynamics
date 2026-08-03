@@ -641,6 +641,14 @@
       primary_void_fraction: s.primary_void_fraction,   // inventory-driven (TMI) void — the FG-3 deception gate
 
       fuel_temp_c: s.fuel_temp_c, decay_heat_pct: s.decay_heat_pct, xenon_pct_eq: s.xenon_pct_eq,
+      // TOTAL core heat (% of rated) = fission + the decay tail — `_Q_total`, the
+      // quantity every thermal path actually burns (pwr_thermal:42, :172). NOT the
+      // same as power_pct, which is FISSION ALONE: at steady state the two are
+      // equal by construction (step 4), but after a scram power_pct falls straight
+      // through the decay floor while the core is still making ~7 % of rated. The
+      // seam is why anything reading power_pct as "core thermal power" is wrong the
+      // moment the rods drop. Same pre-first-step guard as the §8.8 consumer above.
+      core_heat_pct: (s._Q_total != null ? s._Q_total : (s._P || 0)) * 100,
       clad_temp_c: s.clad_temp_c,   // PEAK exposed-clad temp — the partial-uncovery damage driver (#213)
       boron_ppm: s.boron_ppm, porv_open: s.porv_open, porv_stuck: s.porv_stuck, spray_stuck: !!s.spray_stuck,
       block_valve_open: s.block_valve_open,   // scenario-trigger hook (memory-free isolation grading)

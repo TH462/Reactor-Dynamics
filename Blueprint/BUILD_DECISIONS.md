@@ -37,6 +37,82 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-03c — Physics tab: the under-the-hood numbers, and the seam it exposed in `power_pct`
+
+### What was built
+
+A fifth tab in the Tools block — **Operate · Inject Failure · Graph · Physics · Settings** —
+showing **true plant state**, 24 rows in five groups, ordered along the energy path
+(Reactivity · Core heat · Primary coolant · Loop pressure · Heat sink & output)
+*(OWNER DIRECTIVE, 2026-08-03: "Add a tab to the tools block called Physics. This will show the
+most important, under the hood physics numbers. Group and order them logically.")*. Data lives in
+`PROFILES.pwr.physics` (`ui/app.js`); `buildPhysics()` caches its cells at build time and
+`renderPhysics()` updates them only while the pane is on screen.
+
+### Why it is not an HR1 problem
+
+HR1 permits true state **as an explicit diagnostic overlay**; the RBMK/BWR All view has carried
+an Instruments / True / Both selector for as long as it has existed, and the strip chart already
+traces true physics in Learning mode. The tab is that overlay, labelled as such, and it is
+**inert**: nothing on it alarms, nothing on it is what protection reads. The manual (§7.5) says
+plainly to read it *after* a transient rather than during one.
+
+### What earns a row — measured, not chosen by taste
+
+Rows were selected against the board's own reads (the `IN()` / `TS()` calls in
+`pwr_board_wiring.js`, 46 instrument keys and 3 true_state keys). Everything the board can
+already show was a candidate for exclusion; what is left is the set with **no instrument at all,
+or none wired to a readout**: fuel and clad temperature, decay heat, xenon, both void fractions,
+RCS inventory, the three-node loop pressure split, suction subcooling, RCP cavitation, leak flow,
+cycle efficiency. A few board-visible anchors stay as the denominators their group is read
+against (fission power, MWe out).
+
+### The finding: `power_pct` is FISSION power, and nothing said so
+
+`s.power_pct` is `_P × 100` — the chain reaction alone. Total core heat is
+`_Q_total = _P·(1 − f₀) + (H1 + H2)`, f₀ = 0.07, computed at `pwr_engine.js:363` and burned by
+`pwr_thermal.js:42` and `:172`. **At steady power the two are equal by construction**, which is
+why nothing had ever tripped over it. Measured a few seconds into a 20 %-of-rated cold-leg LOCA:
+**fission 11.0 MWt against decay heat 21.0 MWt** — a core apparently making less heat than its
+own decay tail. `_Q_total` was never published, so the first draft of the tab was going to
+re-derive it in the UI from `power_pct`, `decay_heat_pct` and a config constant — a second copy
+of a formula that does not move itself (#308's shape). **New `true_state.core_heat_pct`**
+(31.2 MWt in that sample), documented in `CONTEXT.md` §6.3 so `run_contract` guards it both ways;
+`run_contract` 140 → 141. The tab shows fission, decay and total as three separate rows, and
+cycle efficiency divides by the total.
+
+### Two display defects the eye would not have caught
+
+Both found by dumping the rendered pane rather than looking at it.
+
+- **`toFixed(0)` on MPa collapsed the loop pressure split.** 2235 / 2279 / 2199 psi all printed
+  as **"15 MPa"** in SI. The spread is ~80 psi (0.55 MPa) end to end and it is the entire point
+  of that group — the cold leg reaches an ECCS setpoint before the gauge does, and the pump
+  suction cavitates first. `physP()` is per-unit: 0 decimals in psi, 2 in MPa. This is #238's
+  quantisation trap in a new place, and it landed the same way — a number that renders fine.
+- **A critical reactor printed "-0 pcm."** `toFixed(0)` on −0.004. It reads as slightly
+  subcritical and means exactly on.
+
+### And one wrong premise of my own, caught by measuring
+
+The first `Peak clad temp` colour rule cautioned when clad exceeded the hot leg, on the reasoning
+that a node above the coolant is uncovered. Measured, that fires **at hot full power**: on a
+covered core `stepCladding` floors the hot node at the fuel temperature, so clad == fuel (693 °C
+/ 1280 °F at HFP) and both sit far above the legs. The node only *separates from the fuel* once
+uncovery starts (#213), which is the state worth marking; the alarm step is `checkDamage`'s own
+criterion, `fuel_damage_c`.
+
+### Injection-verified
+
+LOCA at 20 % of rated, full stack in the browser: every row moves, and the conditional colours
+fire where they should — `RCS inventory 0.0 %` alarm, `Loop void 100.0 %`, `RCP cavitation
+100 %`, `Primary leak flow 20.00 %`, `Suction subcooling −1 °F` alarm, `Peak clad temp` caution
+in the window where the hot node separates and clear again once it re-merges. Zero page errors.
+Tab strip measured at 1280 / 1440 / 1920 px: five tabs, one line, no overflow (worst case 71.6 px
+box against 63.0 px of text for "Inject Failure").
+
+---
+
 ## 2026-08-03b — #307: turbine roll DEFERRED, and the declaration that was wrong about the real plant
 
 ### The decision

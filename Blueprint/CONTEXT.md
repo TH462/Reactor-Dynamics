@@ -472,6 +472,13 @@ physical-quantity vocabulary.
     "primary_void_fraction": number,  // INVENTORY-driven void (loop voiding, TMI) — the FG-3 deception gate.
                                       //   Distinct from core_void_fraction: different cause, different lesson.
     "fuel_temp_c": number, "decay_heat_pct": number, "xenon_pct_eq": number, "boron_ppm": float,
+    "core_heat_pct": number,          // TOTAL core heat, % of rated = fission + the decay tail (the engine's
+                                      //   `_Q_total`, which is what every thermal path burns). TRAP: this is NOT
+                                      //   power_pct. power_pct is FISSION ALONE; the two are equal in steady
+                                      //   state by construction, but after a scram power_pct falls straight
+                                      //   through the decay floor while the core still makes ~7 % of rated.
+                                      //   Anything that reads power_pct as "core thermal power" is wrong from
+                                      //   the moment the rods drop. There is no gauge for either.
     "clad_temp_c": number,            // PEAK exposed-clad temperature — the partial-uncovery damage driver (#213).
                                       //   Above fuel/coolant temps whenever the core is partly uncovered.
     "porv_open": bool,                // actual valve position

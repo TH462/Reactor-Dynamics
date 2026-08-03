@@ -21,6 +21,40 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Physics tab — the true plant state, behind the instruments** *(OWNER DIRECTIVE, 2026-08-03:
+  "Add a tab to the tools block called Physics. This will show the most important, under the hood
+  physics numbers. Group and order them logically.")*. A fifth tab in
+  the Tools block (**Operate · Inject Failure · Graph · Physics · Settings**) showing what the
+  simulator is actually computing: no lag, no noise, and a failed sensor does not move a figure
+  on it. It is an engineering display, not a second board — nothing there alarms and nothing
+  there is what protection reads.
+  - **What earns a row is what the board cannot show.** Chosen against the board's own reads:
+    fuel and clad temperature, decay heat, xenon, both void fractions, RCS inventory, the
+    three-node loop pressure split, suction subcooling, RCP cavitation, leak flow and cycle
+    efficiency have no board readout at all. 24 rows in five groups, ordered along the energy
+    path — **Reactivity · Core heat · Primary coolant · Loop pressure · Heat sink & output**.
+  - **Building it found a real seam: `power_pct` is FISSION power alone.** Measured a few
+    seconds into a 20 %-of-rated cold-leg LOCA, it reads **11.0 MWt while decay heat is
+    21.0 MWt** — a core apparently making less heat than its own decay tail. At steady power the
+    two are equal by construction, so nothing had ever noticed; after a scram, fission falls
+    straight through the decay floor while the core still makes ~7 % of rated. The quantity every
+    thermal path actually burns is the engine's `_Q_total`, and it was never published.
+    **New `true_state.core_heat_pct`** (31.2 MWt in that same sample) — documented in
+    `CONTEXT.md` §6.3, so `run_contract` guards it, and the tab reads it rather than keeping a
+    second copy of the formula. Fission, decay and total are three separate rows.
+  - **Two display defects the measurement caught and the eye would not.** `toFixed(0)` on MPa
+    collapsed the entire loop-pressure split — 2235 / 2279 / 2199 psi all printed as "15 MPa",
+    when that ~80 psi (0.55 MPa) spread is the one thing the group exists to show (it is
+    2 decimals in SI now, the #238 quantisation trap in a new place). And a critical reactor
+    printed **"-0 pcm"**, which reads as slightly subcritical and means exactly on.
+  - Values are marked in colour only for states that should read exactly zero on a healthy plant
+    (voiding, cavitation, leak flow) or that cross a threshold the engine itself uses (clad
+    against `fuel_damage_c`, subcooling against saturation). Units follow **Settings → Units**.
+    RBMK and BWR have no panel authored — the tab says so rather than showing an empty box.
+  - Documented in **02** §7.5 (Settings renumbered to §7.6), with a note in §6.0 disambiguating
+    the board's **Physics Overlay** display mode from this tab. Manual set **Rev 14**.
+
 ### Changed
 - **The manual's turbine-roll scope note was wrong about the real plant, and the overspeed trip
   is documented as unreachable** (#307 — deferred, not built) *(OWNER RULING, 2026-08-03: "Let's
