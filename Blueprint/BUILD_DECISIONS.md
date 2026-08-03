@@ -90,10 +90,12 @@ temperature by construction, verified 1.1243 % vs 1.1243 %. The melt timescales 
 
 | constant | value | status |
 |---|---|---|
-| `zirc.ea_over_r_k` | 22898 | **SOURCED** — Baker-Just |
-| `zirc.ref_temp_c` | 1204 | **SOURCED** — 10 CFR 50.46(b)(1) |
-| `zirc.q_ref` | 0.011243 | **SOURCED anchor**, evaluated on our own decay model |
-| `zirc.tau_ref_s` | 80 | `[tune]`, corroborated — 17 % ECR (50.46(b)(2)) in ~80 s at 1204 °C |
+| `zirc.ea_over_r_k` | 22898 | **SECONDARY** — Baker-Just as reproduced; ANL-6548 named but not retrieved |
+| `zirc.ref_temp_c` | 1204 | **REGULATORY PRIMARY**, retrieved — 10 CFR 50.46(b)(1) |
+| `zirc.q_ref` | 0.011243 | **SECONDARY**, and load-bearing — no primary retrieved for the crossover |
+| `zirc.tau_ref_s` | 80 | `[tune]`; corroboration uses the 50.46(b)(2) ECR limit (primary) with **recalled** clad geometry |
+
+**PROVENANCE CORRECTED 2026-08-03.** The first version of this row said "three of four sourced"; an audit found only **one** was anchored to a primary that had actually been retrieved. Restated above. Two things soften it and one hardens it. Softening: **choosing** Baker-Just is not a judgement call at all — **10 CFR 50 Appendix K §5 REQUIRES it**, *"The rate of energy release, hydrogen generation, and cladding oxidation from the metal/water reaction shall be calculated using the Baker-Just equation"* (regulatory primary, retrieved) — and Appendix K incorporates ANL-6548 by reference without printing its constants, which is exactly why the numbers are a weaker class than the correlation choice. Also **"never steam-starved" was wrongly listed below as one of our simplifications**: Appendix K §5 says *"The reaction shall be assumed not to be steam limited"*, so it is the required model. Hardening: **`q_ref` carries the whole calibration and has no primary at all**, and it transfers a ratio stated for a real core onto our own decay curve — so "the melt timescale is an output, not a target" is true only *conditional on that number*. Weaker than first written.
 
 Crossover measured: 1.0× the 8-hour decay heat at 1204 °C, 2.6× at 1300, **13.3×** at 1500, doubling
 every **+66.7 °C** while decay heat falls.

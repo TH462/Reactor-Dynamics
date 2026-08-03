@@ -172,6 +172,20 @@ docs.
 >   in `test/run_all.js`. Keep both sides, then **re-run `run_all`** — a mechanical
 >   BASELINES resolution can silently take the wrong number, and that one will not
 >   announce itself.
+> - **`Manuals/` IS ON THIS LIST TOO, and it is the DANGEROUS one** *(added 2026-08-03,
+>   after it happened)*. The four files above conflict LOUDLY — they are append-at-top logs,
+>   so git stops and makes you choose. A manual chapter is edited in the MIDDLE by both
+>   lanes, so a merge can resolve it in one lane's favour and **say nothing**. Measured: the
+>   2026-08-03 backshop merge silently dropped an entire `Manuals/12` §5.5 section — the
+>   documentation of a physics change whose ENGINE half merged fine. The manual then said
+>   the clad node "heats at the local decay-heat rate" and "No hydrogen generation" while
+>   the engine did neither.
+>   **Nothing catches this.** `run_manual_rev` checks the revision TABLE, the set-wide stamp
+>   and the content digests — and the digests were re-sealed by the merge, so they agreed
+>   with the surviving text. The revision-history row still claimed the change, which is
+>   worse than silence: **the record said it was documented and it was not.**
+>   **After any merge that touches `Manuals/`, grep the chapter for the thing you wrote.**
+>   One `grep -c` per claim is the whole check.
 
 > **Four questions decide whether a feature or change goes in — `Blueprint/DESIGN_CRITERIA.md`
 > is BINDING** *(OWNER DIRECTIVE, 2026-08-02: "I think there are a few important criteria on
