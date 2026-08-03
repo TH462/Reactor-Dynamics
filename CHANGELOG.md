@@ -53,6 +53,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
     numbers. Manual set **Rev 15**.
 
 ### Added
+- **The everyday leak is a runnable checklist now — the one abnormal procedure where nothing
+  breaks** (#319). `pwr_seal_leak` (PWR-E23): a reactor coolant pump seal leak that charging makes
+  up indefinitely. No trip, no safety injection, no loss of subcooling — the plant just sits there
+  losing coolant to containment for as long as you let it. The whole lesson is reading the board
+  rather than reacting to it: **CHARGING FLOW is the cue**, and the alarms you would expect stay
+  silent. Measured, the pressurizer level alarm never comes in — it is set at 25 % and a held leak
+  parks level near **54 %** — so waiting for a level alarm means waiting all shift.
+  `rcp_seal_leak` had **no test coverage of any kind** before this, despite the manual documenting
+  its symptoms in detail. Every one of those claims was measured for the authoring and every one
+  held: charging 0 → 0.042 against letdown 0.030, level flat at 53.8 %, subcooling unchanged at
+  73.8 °F (41.0 °C), and `CHG FLOW HI` the only alarm that ever activates.
+
 - **The post-trip response is a runnable checklist now — and building it found the step the
   procedure was missing** (#319). A reactor trip is the most common significant event on a plant,
   and recovering from one was not an authored evolution: **PWR-T06** was documented, and **PWR-E03**

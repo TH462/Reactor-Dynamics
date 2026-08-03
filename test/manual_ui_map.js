@@ -143,6 +143,14 @@ var STEP_UI = {
   // PWR-T06 post-trip (#319). Steps 1 and 2 are the SAME control in its two states —
   // the dual SCRAM / PRESS-TO-RESET button (#75). Step 2 is the first authored content
   // anywhere to name `reset_rps`, which has been board-reachable and taught by nothing.
+  // PWR-E23 seal leak (#319 item 3). Four of its five controlled steps are CVCS or
+  // pressurizer readouts — this procedure is diagnosis, not manipulation: the only command
+  // that changes the plant is putting CVCS in AUTO.
+  pwr_seal_leak: [{ i: 0, view: 'board', control: 'CVCS Inventory Control' },
+                  { i: 1, view: 'board', control: 'CVCS Inventory Control' },
+                  { i: 2, view: 'board', control: 'Pressurizer Heaters (PZR)' },
+                  { i: 3, view: 'board', control: 'Plant Pressure' },
+                  { i: 4, view: 'board', control: 'CVCS Inventory Control' }],
   pwr_post_trip: [{ i: 0, view: 'scram',  control: 'SCRAM' },
                   { i: 1, view: 'scram',  control: 'SCRAM' },
                   { i: 2, view: 'board',  control: 'Main Breaker' },

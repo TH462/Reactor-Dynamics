@@ -656,6 +656,72 @@
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
       outcome: 'Leak isolated with the block valve; core stays covered — the recovery TMI missed.',
     },
+    // PWR-E23 — the everyday leak. Authored 2026-08-03 (#319 item 3). This is the ONLY
+    // abnormal procedure on the plant where nothing breaks: charging holds it indefinitely,
+    // there is no trip, no ESF and no subcooling loss, and the whole lesson is that you have
+    // to READ the board rather than react to it.
+    //
+    // `rcp_seal_leak` had NO test coverage of any kind before this — not a behaviour probe,
+    // not a scenario, nothing. Every claim below was measured for the authoring.
+    //
+    // MEASURED full stack, `hot_full_power`, shipped lineup, severity 0.4 injected at t=120 s.
+    // The manual's numbers are right in every particular, which is worth recording because it
+    // is not the usual outcome of checking one:
+    //   charging   0 -> 0.0417 and HOLDS, letdown steady at 0.0300
+    //   pzr level  parks at 53.79-53.81 % — the manual says "around 52-54 %"
+    //   subcooling 73.77 °F (40.99 °C), UNCHANGED from the pre-leak value
+    //   inventory  settles 98.82 % — a standing deficit, not a descent
+    //   no trip, power stays 100 %
+    // ALARMS, measured against `.state` rather than presence (the `getAlarms()` trap):
+    //   t+60 s   nothing active at all
+    //   t+181 s  `charging_high` active — and it is the ONLY alarm that ever comes in
+    //   PZR LVL LO (25 %) and PZR LVL DEV LO never assert, exactly as the procedure warns
+    //
+    // Step 1 puts CVCS in AUTO explicitly — real procedure (confirm the lineup before you
+    // judge a leak by how hard make-up is working).
+    //
+    // THE CHARGING CUE IS M4-DEPENDENT AND THE ACCEPTANCES HAD TO GIVE WAY TO THAT. I assumed
+    // `set_cvcs_auto` being an ENGINE command would make the charging number layer-robust. It
+    // does not: measured on the SAME leak, charging settles at 0.042 under the stack and
+    // 0.010 engine-direct — 4x apart — because the `cvcs_makeup` M4 channel is what actually
+    // drives make-up on the shipped plant. What IS layer-robust is the OUTCOME: pzr level
+    // parks at 53.79 % and subcooling holds at 40.99 °C in BOTH layers, identically.
+    // So the charging acceptance is only `> 0.005` (make-up is running at all) and the tight
+    // numbers live in the step notes. The #209 class — a gate certifying a lineup that does
+    // not ship — is why this is written down rather than tuned until it passed.
+    {
+      id: 'pwr_seal_leak', category: 'emergency', manual_ref: 'PWR-E23',
+      title: 'Mode 1 abnormal — reactor coolant pump seal leak',
+      purpose: 'A small primary leak to containment. Charging makes it up and the plant stays at power — nothing forces your hand. Diagnose it from CHARGING FLOW, size it, and decide what to do on your own terms.',
+      from: 'hot_full_power',
+      prereq: ['At-power operation, CVCS available.'],
+      cautions: [
+        'PZR LVL LO does NOT come in. It is set at 25 % and a held leak parks level near 54 % — waiting for a level alarm means waiting all shift.',
+        'PZR LVL DEV LO stays clear too. The deviation only opens when make-up STOPS holding, so its silence is information, not the absence of a problem.',
+        'This leak is NOT pressure-modulated. Unlike an SGTR, depressurizing does nothing to it — you cannot terminate it from the control room.',
+        'Rule out the impostors before believing the leak: isolated or throttled letdown, or a deliberate level-setpoint change, produce the same high-charging picture.',
+      ],
+      steps: [
+        { text: 'Confirm the inventory lineup first: CVCS in AUTO, so charging is free to make up whatever is lost. You are about to judge a leak by how hard make-up is working — that only means anything if make-up is actually in control.', control: 'CVCS Inventory Control', target: 'CVCS in AUTO',
+          cmd: { action: 'set_cvcs_auto', active: true }, hold: 30 },
+        { text: 'The leak starts. (Failures tab → inject Reactor Coolant Pump Seal Leak.) Nothing dramatic happens — watch CHARGING FLOW rise and settle while LETDOWN stays where it was. That imbalance IS the leak.', control: 'CVCS Inventory Control', target: 'charging rises, letdown steady',
+          note: 'Measured: charging settles near 0.042 against letdown 0.030. CHG FLOW HI comes in about three minutes after the leak starts — it is the only alarm you will get.',
+          cmd: { action: 'inject_failure', failure_id: 'rcp_seal_leak', severity: 0.4 }, hold: 300,
+          acc: { p: 'charging_flow_actual', op: '>', v: 0.005 } },
+        { text: 'Now confirm the make-up is winning. Pressurizer level should sit a little BELOW program and hold there — stable, not falling. A level that is still descending means make-up is losing and this is no longer this procedure.', control: 'Pressurizer Heaters (PZR)', target: 'level stable just below program',
+          hold: 300, acc: { p: 'pzr_level_pct', op: '~', v: 54, tol: 3 } },
+        { text: 'Check subcooling. A leak this size costs you none of it — if subcooling is eroding, you have a bigger leak than a seal and you are heading for the loss-of-coolant response instead.', control: 'Plant Pressure', target: 'subcooling unchanged',
+          hold: 120, acc: { p: 'subcooling_c', op: '>', v: 35 } },
+        { text: 'Trend the charging demand at steady load. Flat means a stable leak you can plan a shutdown around; rising means it is growing and the decision gets made for you.', control: 'CVCS Inventory Control', target: 'charging flat',
+          hold: 420, acc: { p: 'subcooling_c', op: '>', v: 35 } },
+        obs('Confirm the plant is still where you left it: at power, no reactor trip, no safety injection, subcooling intact. The leak is identified and sized, and the shutdown decision is yours to make deliberately.',
+          { p: 'scrammed', op: '<', v: 1 },
+          'This is the acceptance the procedure asks for — a stable, alarm-quiet plant with a known leak, not a recovered casualty.',
+          ['CVCS Inventory Control', 'Plant Pressure']),
+      ],
+      guard: { never_melted: true, never: [{ p: 'subcooling_c', op: '<', v: 5 }] },
+      outcome: 'Leak identified from charging flow and trended flat, with the plant still at power — no trip, no ESF, and the decision to shut down made on the operator’s terms rather than forced.',
+    },
     {
       id: 'pwr_tmi', category: 'accident', narrative: true, manual_ref: 'PWR-E08',
       title: 'Three Mile Island (1979) — an accident of information',

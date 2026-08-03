@@ -20,6 +20,59 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03j (#319 item 3 — PWR-E23 seal leak, and the manual was right about everything)
+
+**Task:** continue #319. Item 2 (SGTR) was **blocked** first — see #322 — so this is item 3.
+
+### The manual's numbers all held, which is not the usual outcome of checking one
+
+Measured full stack, `hot_full_power`, shipped lineup, `rcp_seal_leak` severity 0.4 at t = 120 s:
+
+| claim in `Manuals/07` PWR-E23 | measured |
+|---|---|
+| level parks "around 52–54 %" | **53.79–53.81 %**, flat for 22 min |
+| charging high, letdown unchanged | charging 0 → **0.0417**, letdown steady **0.0300** |
+| no subcooling loss | **73.77 °F (40.99 °C)**, unchanged from pre-leak |
+| no trip, no ESF | `scrammed` false, power 100 % throughout |
+| **CHG FLOW HI is the cue, and usually the only alarm** | `charging_high` at **t+181 s** — and the ONLY alarm active, ever |
+| PZR LVL LO (25 %) does not come in | never asserts |
+| PZR LVL DEV LO stays clear | never asserts |
+
+Alarms were read off **`.state`**, not presence — `getAlarms()` returns every configured alarm
+with a state, which is the trap CLAUDE.md already records.
+
+**`rcp_seal_leak` had NO coverage before this** — no behaviour probe, no scenario, nothing. A
+failure the manual documents in that much detail, with nothing asserting any of it.
+
+### The authoring mistake worth keeping: I assumed an ENGINE command made the run layer-robust
+
+Step 1 puts CVCS in AUTO via `set_cvcs_auto`, which **is** an engine command, and I reasoned from
+that the charging numbers would hold in both layers. **They do not.** Measured on the same leak:
+
+- **stack:** charging settles **0.042**
+- **engine-direct:** charging settles **0.010** — 4× lower
+
+because `cvcs_makeup` (M4, `defaultOn`) is what actually drives make-up on the shipped plant. The
+first acceptances (`> 0.035`, `~ 0.042 ± 0.012`) passed under the stack and **failed engine-direct**.
+
+What IS layer-robust is the **outcome**: pzr level parks at **53.79 %** and subcooling holds at
+**40.99 °C** in both, identically. So the charging acceptance is now only `> 0.005` — make-up is
+running at all — and the tight numbers live in the step notes. **Recorded rather than tuned until
+it passed**, because a gate certifying a lineup that does not ship is the #209 class.
+
+The general lesson, and it is not the one I had: *an engine command does not make a MEASUREMENT
+layer-robust.* The command being engine-direct says nothing about whether the quantity you are
+asserting is produced by the engine or by a control channel above it.
+
+**No manual change** — E23 already documents everything and every claim checked out, so no
+revision bump and no collision with the live `workbench` session, which is editing the manual set.
+
+**Gates:** `run_procedures` 24/24 108 → **25/25 115**; `run_procedures_stack` 24/24 214 →
+**25/25 223**; `run_manual_controls` 132 → **142**; `run_flags` 295 → **298**; `run_procdocs`
+27 → **29**; `verify_manual_follow` 198 → **213**.
+
+---
+
 ## Session log — 2026-08-03i (#319 — PWR-T06 post-trip is runnable, and the procedure was missing a step)
 
 **Task:** the first item of #319, picked up on "work next". A reactor trip is the most common
