@@ -22,6 +22,31 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **The OTΔT/OPΔT turbine runback — the plant takes load off by itself** (#318) *(OWNER RULING,
+  2026-08-03: "Go with your recommendation")*. When the core ΔT margin has held below the rod stop
+  for **10 s**, the plant starts walking the **generator load target** down and keeps walking it
+  down until the margin recovers. It does not restore load afterwards — that is the operator's.
+  **Zero new player-facing rules**: no refusal message, no ceiling, no new indication. The number
+  in the Generator Load box simply falls with nobody touching it, which is a thing the player has
+  already seen automation do. Chosen that way after the owner asked whether it was worth adding
+  something to learn that does not teach dynamics — a refusal would have taught an interface rule.
+  **What it does teach is the coupling**: it never touches the reactor, it reduces LOAD, and the
+  core follows through the moderator coefficient. Measured: it converts a **15 % steam line break**
+  from a reactor trip at 200 s into a ride-out at ~76 MWe, and it **cannot** save a 30 % break or a
+  continuous rod withdrawal — those outrun the very coupling it works through, which is why rate
+  barely matters (5 %/s is no better than 2 %/s).
+
+### Changed
+- **"Fix K4" could not be done, and the measurement is why.** OPΔT's intercept looked too tight — a
+  70 → 100 MW load increase came within **0.51** of the trip. But measured with the trips off, that
+  normal step peaks at **109.1 %** of rated ΔT and a **15 % steam line break at 109.8 %**: they are
+  indistinguishable to any ΔT setpoint. Raise K4 and OPΔT stops catching the break; lower it and the
+  ramp trips. K4 is unchanged. What separates them is **duration**, so the runback carries a 10 s
+  persistence delay — a declared departure, and the thing that makes the function buildable. On the
+  plant's real design duty the question does not arise: the WTSM 10 % step peaks at 103.0 %.
+
+
+### Added
 - **Overtemperature ΔT and Overpower ΔT are LIVE** (#311) *(OWNER RULING, 2026-08-03: "Let's go
   with your recommendations for all these items", approving the flag ON once the board readout
   landed)*. Two Westinghouse core-protection trips computed from loop ΔT against a setpoint that

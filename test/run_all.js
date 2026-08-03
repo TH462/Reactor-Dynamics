@@ -396,7 +396,12 @@ var BASELINES = {
   // 124 -> 128 (2026-08-03, #311 flag ON): four citation sites, all WRITE-UPS again — the
   // board readout, the flag and the three re-authored checks moved this by zero between them.
   // Measured LAST, after the docs, which is this entry's own standing instruction.
-  'run_hardrules.js':      { code: 0, score: '128checks 0failed' },
+  // 128 -> 132 (2026-08-03, #318 the runback): three write-up sites plus ONE REAL ONE — a new
+  // declared HR1 exception for the runback's `read` callback. It returns the load SETPOINT
+  // the layer itself issues (command read-back, the control_kernel.js:readback category);
+  // the runback DECIDES from otdt_margin/opdt_margin, which are instruments. The gate caught
+  // it undeclared, which is the guard doing its job on the first new true_state read in weeks.
+  'run_hardrules.js':      { code: 0, score: '132checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -596,7 +601,11 @@ var BASELINES = {
   // `withdrawal_only` reddens 2; walking `dnb_margin_factor` to 0.95 reddens the 2 checks
   // that hold the equivalent K2/K3 inside the band real Westinghouse units publish.
   // The count moves with the casualty list, 1–2 checks each.
-  'run_otdt.js':           { code: 0, score: '39checks 0failed' },
+  // 39 -> 44 (2026-08-03, #318 the turbine runback): +7 for section D, -2 because the 15 %
+  // steam line break MOVED out of the casualty block — the runback now saves it, so it is
+  // asserted there as a save rather than here as a trip. What is left in the casualty block
+  // is the pair the runback CANNOT save, which is the honest split.
+  'run_otdt.js':           { code: 0, score: '44checks 0failed' },
   // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
   // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
   // "## [Unreleased]" to the version) was skipped for Alpha 1.10.0 AND 1.11.0 — 434 lines of

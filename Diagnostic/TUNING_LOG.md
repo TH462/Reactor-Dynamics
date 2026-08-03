@@ -20,6 +20,67 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03j (#318 the turbine runback — and "fix K4" turned out to be unfixable)
+
+*(OWNER RULING, 2026-08-03: "Go with your recommendation")* for the shape — the runback drives the
+load setpoint visibly, no refusal, no ceiling, **zero new player-facing rules** — after the owner
+pushed back on my first design: *"I'm not sure if I want to add another thing for the player to
+learn if it doesn't teach dynamics."* He was right about the authority model and wrong about
+nothing: a refusal message teaches an interface rule, not a coupling.
+
+**Then the build found something bigger, and the owner's instruction could not be carried out as
+given.** Told to *"Fix k4"* — my own diagnosis, that the OPΔT intercept was too tight because a
+70 → 100 MW load increase came within **0.51** of the trip. Measured the natural ΔT peaks with the
+trips off, and there is no K4 to fix:
+
+| | peak ΔT | peak power |
+|---|---|---|
+| 70 → 100 MW increase (normal) | **109.1 %** | 109.7 % |
+| **15 % steam line break (casualty)** | **109.8 %** | 109.4 % |
+| 90 → 100 MW (the WTSM 10 % duty) | 103.0 % | 102.5 % |
+| 30 % steam line break | 116.7 % | 116.6 % |
+
+**A normal 30 % load step and a 15 % steam line break are indistinguishable to any ΔT setpoint** —
+0.7 % of rated ΔT apart. Raise K4 to clear the ramp and OPΔT stops catching the break; lower it and
+the ramp trips. There is no window. Reported that rather than doing something and calling it done.
+
+**What separates them is DURATION, so the fix is a persistence delay** — 10 s, a declared departure
+(WTSM describes none). On the plant's actual design duty the question does not even arise: the
+10 % step peaks at 103.0 %.
+
+**THE TRAP, and it cost two wrong mechanisms: the margin is NOISY and my dwell measurement was a
+SAMPLING ARTIFACT.** I measured "longest continuous dwell below the stop" as 4.5 s for the ramp and
+**24.5 s** for the break, and sized the delay from that. Built the obvious counter — accumulate
+below the setpoint, reset above it — and it **never reached 10 s on any case, maximum 0.40 s.** The
+margin chatters across the threshold many times a second on instrument noise; my 24.5 s figure was
+measured at BROADCAST resolution, which smooths the chatter away, while the kernel runs at physics
+resolution where no such continuous window exists. **Both numbers were "measured" and one of them
+was still wrong** — resolution is part of a measurement, and I did not state it.
+
+The working mechanism applies the hysteresis pair to the TIMER, not just to the latch: accumulate
+below the setpoint, **hold** in the band between setpoint and `clears_above`, zero only on a real
+recovery. Same shape the engage/disengage logic already used.
+
+**Measured, final:** normal 70 → 100 ramp — runback **never engages**, load target stays 100.0 MWe.
+15 % steam line break — engages, drives load **100 → 76 MWe**, scram at 200 s becomes a **ride-out**.
+30 % break and continuous rod withdrawal — **unchanged, still scram**, and that is the dynamics
+lesson rather than a tuning failure: the runback works THROUGH A1, and a transient faster than the
+moderator feedback outruns it. Rate is nearly irrelevant to that (5 %/s is no better than 2 %/s),
+which is the same finding stated two ways.
+
+**Where it lives.** `stepAutomation(dt)`, not `evaluate()` — `evaluate` is called on a variable
+cadence (in-loop on `sinceEval >= PROTECTION_DT` plus one unconditional post-loop call), so a rate
+driven from it would scale with time acceleration: the #153 defect. Consequence stated in the code:
+the runback is a **full-stack behaviour** and engine+M4 harnesses do not see it. It is NOT an
+automation channel — channels are operator-engageable and protection is not — it merely shares that
+entry point because that is the fixed-dt seam.
+
+`run_otdt` **39 → 44** (+7 section D, −2 because the 15 % break MOVED from the casualty block to a
+save). `run_autoctl` 30/30 and `run_campaign` 51/51 both went red mid-build and are green — they
+were the gates that caught the runback firing on a normal ramp, which no probe of mine had.
+
+---
+
 ## Session log — 2026-08-03i (#311 OTΔT/OPΔT turned ON, with the board readout that justifies it)
 
 *(OWNER RULING, 2026-08-03: "Let's go with your recommendations for all these items")* — approving

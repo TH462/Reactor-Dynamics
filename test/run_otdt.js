@@ -206,8 +206,12 @@ ck('  …and OTΔT margin never gets close (the rotated line reached 0.6)',
 // ---- the casualties. This is what the function is FOR. ----
 console.log('\n' + B + '  Casualties that have NO reactor trip without these functions' + X);
 console.log(D + '  Measured on the un-flagged plant: each ran the full 30 min with no scram at all.' + X);
+// RE-AUTHORED 2026-08-03 when the turbine runback landed (#318). The 15 % break USED to
+// belong here — it scrammed on `opdt_margin` at ~200 s. The runback now saves it, which is
+// the feature working, so it moved to section D where the save is asserted positively. What
+// is left here is the pair the runback CANNOT save, and that is the honest split: the
+// runback works through A1, and a transient faster than the moderator feedback outruns it.
 [['30 % steam line break — 114 % power, held', 'steam_line_break', 0.30, 60, 'opdt'],
- ['15 % steam line break — 108 % power, held', 'steam_line_break', 0.15, 200, 'opdt'],
  ['continuous rod withdrawal at full power', 'continuous_rod_withdrawal', 1.0, 40, 'opdt']
 ].forEach(function (c) {
   var r = run('hot_full_power', [[5, { action: 'inject_failure', failure_id: c[1], severity: c[2] }]], 900);
@@ -273,6 +277,75 @@ ck('  …and the refusal names the OPΔT rod stop, not some other interlock',
 // refusal above, both issued into the same live interlock one tick apart.
 ck('INSERTION is accepted — "the rods can always be inserted"', inRes ? (inRes.type + ' ' + (inRes.code || '')) : 'accepted (null)',
   inRes == null, 'accepted (null)');
+
+// ======================================================= D. THE TURBINE RUNBACK (#318)
+console.log('\n' + B + 'D. The turbine runback — the other half of C-3/C-4' + X);
+console.log(D + '  Full stack only: it is driven from stepAutomation, which has one caller (the service).' + X);
+
+// A runback run reports the load TARGET, because that is the thing it drives and the thing
+// the player watches move. `load_target_mwe` is a commanded setpoint (read-back), not a
+// sensed quantity — see the HR1 note over _stepRunbacks.
+function runback(ic, cmds, dur) {
+  var svc = new RD.SimulationService({ seed: 42 });
+  svc.selectPlant('pwr', ic, undefined, undefined);
+  svc.running = true; svc.timeAcceleration = 10; svc.attentionStops = false;
+  var q = (cmds || []).map(function (x) { return { at: x[0], body: x[1], sent: false }; });
+  var r = { minLoad: 1e9, minMargin: 1e9, scram_t: null, injected_at: null, loadAtInject: null };
+  while (svc.simTime < dur) {
+    for (var i = 0; i < q.length; i++) if (!q[i].sent && svc.simTime >= q[i].at) {
+      q[i].sent = true; svc.handleCommand(q[i].body);
+      if (r.injected_at == null) r.injected_at = svc.simTime;
+    }
+    var s = svc.tick(); if (!s) continue;
+    var lt = s.true_state.load_target_mwe;
+    if (r.injected_at != null && r.loadAtInject == null) r.loadAtInject = lt;
+    if (r.injected_at != null && lt < r.minLoad) r.minLoad = lt;
+    var m = Math.min(s.instruments.otdt_margin, s.instruments.opdt_margin);
+    if (m < r.minMargin) r.minMargin = m;
+    if (r.scram_t == null && s.rps_state && s.rps_state.scrammed) r.scram_t = svc.simTime;
+  }
+  return r;
+}
+
+// 1. IT MUST NOT FIRE IN NORMAL OPERATION. The load target is the operator's control; a
+//    runback that nudges it during ordinary work would be indistinguishable from a bug.
+//    Asserted on the load TARGET rather than on the margin, because "margin stayed high" is
+//    a weaker claim than "the plant never touched the number".
+var quiet = runback('hot_full_power', [[60, { action: 'set_steam_demand', mwe: 100 }]], 600);
+ck('steady HFP — the runback never touches the load target',
+  quiet.minLoad.toFixed(1) + ' MWe (min after t=60)', quiet.minLoad > 99.9, '100 MWe, untouched');
+
+// 2. THE RIDE-OUT IS UNTOUCHED. This plant's defining behaviour, and the runback triggers on
+//    the same 3 % line as the rod stop — so the check that matters is that a full rejection
+//    never gets near it. MEASURED: margin bottoms at 6.5, more than double the trigger.
+var rej = runback('hot_full_power', [[60, { action: 'set_steam_demand', mwe: 0 }]], 900);
+ck('FULL load rejection — margin never reaches the runback line',
+  rej.minMargin.toFixed(1) + ' vs trigger ' + STOP.toFixed(1), rej.minMargin > STOP * 1.5, '> ' + (STOP * 1.5).toFixed(1));
+ck('  …and it rides out without a scram', rej.scram_t == null ? 'no scram' : 'SCRAM ' + rej.scram_t + 's',
+  rej.scram_t == null, 'no scram');
+
+// 3. IT SAVES THE SLOW CASUALTY. This is the whole point of the feature, and it is the check
+//    that fails if the runback is removed: WITHOUT it the 15 % steam line break scrams at
+//    ~200 s on opdt_margin. Two assertions, because "no scram" alone would also pass on a
+//    plant where the trips were simply deleted — the load having been DRIVEN DOWN is what
+//    says the runback specifically did it.
+var slb15 = runback('hot_full_power', [[30, { action: 'inject_failure', failure_id: 'steam_line_break', severity: 0.15 }]], 500);
+ck('15 % steam line break — the runback drove load DOWN',
+  slb15.loadAtInject.toFixed(0) + ' → ' + slb15.minLoad.toFixed(0) + ' MWe', slb15.minLoad < 90, '< 90 MWe');
+ck('  …and that converts a scram into a ride-out (was SCRAM ~200 s)',
+  slb15.scram_t == null ? 'no scram' : 'SCRAM ' + slb15.scram_t.toFixed(0) + 's', slb15.scram_t == null, 'no scram');
+ck('  …margin RECOVERS rather than hunting (stays above the trip line)',
+  slb15.minMargin.toFixed(1), slb15.minMargin > 0, '> 0');
+
+// 4. IT CANNOT SAVE THE FAST ONE, AND THAT IS THE DYNAMICS LESSON — not a tuning failure.
+//    The runback works THROUGH A1 (power follows load), and A1 has a thermal time constant,
+//    so a transient faster than the moderator feedback outruns any runback. Measured: a
+//    5 %/2 s runback is no better than 2 %/2 s here. Pinned POSITIVELY so that "we made the
+//    runback faster and it started saving this" has to edit the line rather than slide past.
+var slb30 = runback('hot_full_power', [[30, { action: 'inject_failure', failure_id: 'steam_line_break', severity: 0.30 }]], 400);
+ck('30 % steam line break — still scrams; the runback cannot outrun A1\'s lag',
+  slb30.scram_t == null ? 'no scram' : 'SCRAM ' + slb30.scram_t.toFixed(0) + 's',
+  slb30.scram_t != null && slb30.scram_t < 120, 'SCRAM, < 120 s');
 
 // ---------------------------------------------------------------------------- tally
 // Matches the run_reachability / run_reactivity / run_contract convention so run_all's
