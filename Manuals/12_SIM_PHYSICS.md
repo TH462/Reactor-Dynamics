@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLX-100** (Single-Loop eXperimental, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 13  
+**Revision:** 14  
 
 ---
 
@@ -553,9 +553,23 @@ The **setpoint is the real one — 90 % of rated, blocked below P-7 (10 % power)
 
 **One departure remains, and it is deliberate: this plant has ONE flow channel**, where a real Westinghouse unit has **three detectors per loop and trips on 2-of-3**. That follows from the plant being single-loop and from every other protection function here being single-channel too — but be clear about what it costs, because it is the thing this event is now built to teach:
 
-> A **stuck-high flow transmitter defeats the low-flow trip completely.** Measured, with the channel stuck at 100 % and the pump tripped: DNB onset at 9 s, core void peaking at 0.60, fuel reaching ~1706 °F (930 °C) against a damage threshold of 2192 °F (1200 °C), and the reactor finally scrammed at **~35 s on HIGH PRIMARY PRESSURE** — a different channel, a different instrument, catching a *consequence*. RCS Flow - Low never actuates at all. 2-of-3 coincidence exists precisely to stop one lying transmitter from doing this.
+> A **stuck-high flow transmitter defeats the low-flow trip completely.** It never actuates — its one channel reads 100 % throughout the event, and it still reads 100 % after the reactor is down. 2-of-3 coincidence exists precisely to stop one lying transmitter from doing this.
 
-The surviving indication in that event is **subcooling margin**, which falls to 11.2 °F (6.2 °C) — below its 19.8 °F (11 °C) caution — while the flow gauge still reads 100 %. That is the cross-check the scenario asks for; see `04` PWR-N13 and `06` PWR-E02.
+**But that is no longer the end of the story, and the fix was not more channels — it was a different KIND of signal (2026-08-03).** A real Westinghouse plant detects a loss of forced flow **four** ways, not one: low loop flow (2/3 per loop), **RCP breaker position**, **RCP bus under-voltage**, and **RCP bus under-frequency** (WTSM 12.2 §12.2.3.12). This plant now models the second of those as well — a reactor trip on a breaker **auxiliary contact**, which is not a measurement of the coolant at all and therefore cannot be reached by a failed flow transmitter.
+
+Measured, same casualty — pump tripped with its flow channel stuck at 100 %:
+
+| | before | with the breaker trip |
+|---|---|---|
+| reactor trip | ~35 s, **high primary pressure** — a backup catching a *consequence* | **1 s**, **RCP breaker position** |
+| peak core void | 0.60 | **0.000** — no DNB at any point |
+| peak fuel | ~1706 °F (930 °C) | **1279.4 °F (693 °C)**, unchanged from normal |
+
+The lesson moved with it. It is no longer *"a lying gauge can cost you the core"* — it is **why protection is built from diverse signals**: four different physical quantities, so that no single failure removes the function. The single-channel departure above still stands and still matters; what changed is that it is no longer the only thing between this plant and DNB.
+
+**Blocked below P-7 (10 % power)** on the same permissive as the low-flow trip — WTSM 12.2 blocks all of the loss-of-flow trips together — so a plant in **Mode 5, Cold Shutdown** with its pumps legitimately secured does not carry a standing trip. **One-out-of-one here, not the real 2-of-4:** the real rule means *half the pumps are gone*, and this plant is single-loop with one RCP. The two **bus** trips are not modelled at all, because this plant has no RCP electrical bus — a declared departure, not an oversight.
+
+The surviving *indication* in that event is still **subcooling margin**, and the cross-check the scenario asks for is unchanged; see `04` PWR-N13 and `06` PWR-E02.
 
 ---
 

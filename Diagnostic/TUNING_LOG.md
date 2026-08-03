@@ -20,6 +20,78 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03c (#314 the RCP breaker trip — and a comparator that silently ate it)
+
+*(OWNER RULING, 2026-08-03: "Build the breaker position trip as you recommend.")* Built, gated,
+and the most valuable thing in it is not the trip.
+
+**The trip.** One row of data on an existing pattern: `{ id: 'rcp_breaker', instrument:
+'rcp_running', direction: 'is_false', action: 'scram', blockable: true, block_permissive:
+{ power_range, low, 10 } }`. Both halves sourced — WTSM 12.2 §12.2.3.12 item 2 for the trip, and
+its closing sentence for the permissive: *"All the reactor coolant low flow trips are
+automatically blocked below the P-7 setpoint (10% power)."* `_initialTripBlocks` is generic, so
+the cold IC auto-blocks it with no special-casing — Mode 5 ships `rcp_running` false and would
+otherwise carry a standing trip.
+
+**THE FINDING, and it is a defect class rather than a bug: this kernel has TWO comparators with
+DIFFERENT vocabularies.** `_alarmRaw` has understood `is_false`/`is_open` since alarms existed.
+`crossed()` — which every **trip and actuation** goes through — knew `high`/`low`/`is_true` and
+nothing else, falling through to `return false`. So a trip authored with `is_false` is a
+**complete no-op**: no throw, no warning, green gates. Mine was, and the tell was not an error
+but a *measurement* — the plant rode the whole 36-second loss-of-flow casualty to peak core void
+**0.628** with the new trip installed and inert. `ui/app.js` already listed `is_false: 'goes
+false'` in its player-facing setpoint vocabulary, so the UI had been describing a capability the
+trip path did not have. **If you add a direction word, add it to BOTH comparators**, and prove a
+new trip fires before believing it exists — the gates cannot tell "correctly not firing" from
+"structurally incapable of firing".
+
+**Measured, all full stack, seed 42.** `pwr_lof` casualty (pump trip + flow stuck at 100 %):
+**58.5 s / `primary_pressure high` / peak void 0.628 / fuel 1713 °F (934 °C)** → **23.0 s /
+`rcp_running is_false` / peak void 0.000 / fuel 1279.4 °F (693 °C), unchanged**. Bare RCP trip
+24.5 s → 23.0 s. Loss of offsite power → 23.0 s. **Nothing else moves**: Mode 5, Mode 3, HFP
+steady and the **full load rejection** all no-scram, and `run_pwr` 36/36, `run_m4` 37/37,
+`run_meltdown`, `run_reachability`, `run_contract`, `run_scenarios`, `run_hr3`, `run_autoctl` all
+at baseline on the first run. The entire blast radius was **one** thing: `run_campaign` 50/51.
+
+**`pwr_lof` re-authored, and its premise has now died THREE times** (#248 twice, #314). The
+decision window is one second, so it is a demonstration rather than a choice — recorded in the
+file, along with the honest consequence: three re-premisings is an argument for retiring the
+mission rather than writing a fourth, and that is the owner's call. The new lesson is a coupling
+rather than a deception, which is the right side of `DESIGN_CRITERIA` §6: the gauge still lies,
+the assigned trip still never fires, and the reactor trips anyway **because protection is built
+from diverse signals**. **Its campaign check was injection-verified** — restoring the old
+comparator reddens exactly 2 checks, the trip reason and the core void. Note the void check is an
+*inversion*: the old test REQUIRED `> 0.02`, the new one requires `< 0.01`. That is HR10-legal
+only because the boil-off was reachable solely through the missing trips, and it is called out at
+the check site so nobody reads it as a refit.
+
+**A SECOND test-premise finding, from the one gate that reddened late: `run_m5`'s determinism
+check was asserting something this plant does not do.** It ran the same command sequence on two
+seeds and required true power to match within **1e-9** — *"true power identical (noise-free)"*.
+That is not a property of the plant. **HR1 means protection and every AUTO channel decide from
+NOISY instruments, so the moment an actuator moves, noise reaches TRUE STATE.** It only held
+because the sequence was quiet: `rcp_trip` used to produce no protection action inside its 5
+cycles. It does now, and the post-scram pressurizer/feed/dump channels immediately start acting
+on their own noise. **Traced rather than assumed** — the scram fires on the SAME cycle in both
+seeds (the breaker trip reads a boolean, so no noise), power stays bit-identical two cycles more,
+then diverges 1.7e-6 → 7.6e-6 → **1.8e-5 % power**: four orders below the power-range channel's
+own noise. Re-banded to `< 0.01` — ~500× the measured value, still catches a real divergence, and
+**it passes on the PRE-#314 engine too**, so it is a better test rather than a refit. The check's
+own LABEL was always the honest claim ("same magnitude"); only its tolerance said "identical".
+Same class as the `test-preconditions-vs-assertions` memory, one level up: **the test's FIXTURE
+was the plant's quietness.**
+
+**Manual set Rev 13 → 14.** `12` §10.7's measured blockquote described a plant that no longer
+exists; rewritten, and its *point* moved with it — the fix was **not more channels but a different
+KIND of signal**. `run_manual_units` caught `1280 °F (693 °C)` in two places (should be 1279.4),
+which is precisely the arithmetic the gate exists for. `DESIGN_COMPANION` **§8.24** declares the
+two unmodelled RCP **bus** trips — no bus model, so building them means inventing the signal
+(#220 class) — and the **1-of-1 coincidence** against the real 2-of-4, since the real rule means
+*half the pumps are gone* and this plant has one RCP. **§8.24, not §8.23**: develop's #311 merge
+has taken 8.23, and picking it here would have been a merge collision.
+
+---
+
 ## Session log — 2026-08-03b (HR1 revisited: seam vs roster, and the lag claim measured — workbench)
 
 The owner asked whether HR1 should be a Hard Rule at all or part of designing the plant. Answer:

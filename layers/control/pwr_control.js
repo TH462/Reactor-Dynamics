@@ -74,6 +74,35 @@
     // mattering, which would delete the stuck-high teaching case #247 built this for.
     { id: 'lo_flow', instrument: 'rcs_flow', direction: 'low', setpoint: 90.0, action: 'scram', // % of rated
       blockable: true, block_permissive: { instrument: 'power_range', direction: 'low', setpoint: 10.0 } },
+    // RCP BREAKER POSITION reactor trip (#314). SOURCED, WTSM 12.2 §12.2.3.12 item 2
+    // (ML11223A301): *"A contact associated with each reactor coolant pump power supply
+    // breaker supplies a signal to the logic section of the reactor protection system.
+    // The reactor trips if at least two reactor coolant pump breakers open."*
+    //
+    // WHY IT EXISTS ALONGSIDE lo_flow, and it is the whole point: this is a CONTACT, not
+    // a process measurement. `lo_flow` is one elbow-tap channel and a stuck transmitter
+    // defeats it completely — measured, `pwr_lof` rode 36 s of core boiling to peak void
+    // 0.628 and fuel 1713 °F (934 °C) before an unrelated backstop caught it. A breaker
+    // auxiliary contact cannot be fooled by that transmitter. Diverse protection paths,
+    // which is why the real plant carries four loss-of-flow trips and not one.
+    //
+    // COINCIDENCE — 1/1, a DECLARED adaptation, not the real 2-of-4. The real rule means
+    // "half the pumps are gone"; this plant is single-loop with one RCP, so its analog is
+    // "the pump is gone". Inventing a second pump to vote with would be a fabricated
+    // signal (the #220 class).
+    //
+    // BLOCKED BELOW P-7, and this half is sourced VERBATIM from the same section:
+    // *"All the reactor coolant low flow trips are automatically blocked below the P-7
+    // setpoint (10% power)."* It rides the identical permissive as `lo_flow` above, so
+    // `_initialTripBlocks` auto-blocks it at any init where the pumps are legitimately
+    // secured — Mode 5 cold shutdown ships `rcp_running` false and `rcs_flow` 0.0, and
+    // would otherwise carry a standing trip.
+    //
+    // NOT BUILT, deliberately (DESIGN_COMPANION §8.24): the RCP bus UNDER-VOLTAGE (item 3)
+    // and UNDER-FREQUENCY (item 4) trips. Both sense an RCP electrical bus this plant does
+    // not model, so building them means inventing the signal rather than reading one.
+    { id: 'rcp_breaker', instrument: 'rcp_running', direction: 'is_false', setpoint: null, action: 'scram',
+      blockable: true, block_permissive: { instrument: 'power_range', direction: 'low', setpoint: 10.0 } },
     // Startup nuclear-instrumentation trips (the startup safety net):
     // SR high flux at shutdown — 1e5 cps ≈ 0.02 % power; live only while the
     // detector is energized (secure the SR during the SR→IR handoff or trip).

@@ -37,6 +37,64 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-03c — #314: the RCP breaker-position trip, and two comparators that disagreed
+
+**Decision.** Build the **RCP breaker-position reactor trip** (1-of-1, blocked below P-7); decline
+the RCP bus **under-voltage** and **under-frequency** trips as declared departures
+(`DESIGN_COMPANION` §8.24) *(OWNER RULING, 2026-08-03: "Build the breaker position trip as you
+recommend.")*.
+
+**Why this one and not the other two — the split is HR1's new seam/roster line doing its job.**
+All three are equally sourced (WTSM 12.2 §12.2.3.12). The breaker trip's signal **genuinely
+exists**: `rcp_running` is already an instrument driving the RCP TRIP annunciator. The two bus
+trips sense an **RCP electrical bus** this plant does not model, so building them means inventing
+a signal and presenting it as an instrument — the #220 defect class. Note this is a **roster**
+decision, exactly the kind HR1 stopped adjudicating on 2026-08-03b; it went through
+`DESIGN_CRITERIA`'s four questions instead.
+
+**Coincidence is 1-of-1, a declared adaptation.** The real rule is 2-of-4 and means *half the
+pumps are gone*; this plant is single-loop with one RCP, so its analog is *the pump is gone*.
+Inventing a second pump to vote with would be the same defect as inventing the bus.
+
+**THE FINDING is worth more than the trip: `crossed()` and `_alarmRaw` had different
+vocabularies.** Alarms have understood `is_false`/`is_open` since alarms existed; `crossed()` —
+the path for every **trip and actuation** — knew only `high`/`low`/`is_true` and fell through to
+`return false`. A trip authored with `is_false` was therefore **structurally incapable of firing,
+with no throw, no warning, and green gates**. The new trip was inert on its first run and the tell
+was a measurement, not an error: the plant rode the full 36-second loss-of-flow casualty to peak
+core void 0.628 with the trip installed. `ui/app.js` already advertised `is_false: 'goes false'`
+in its player-facing setpoint vocabulary, so the UI described a capability the kernel lacked.
+**Rule: a direction word goes in both comparators, and a new trip is not built until you have
+watched it fire** — no gate here can distinguish "correctly not firing" from "cannot fire".
+
+**Blast radius, measured and small.** `pwr_lof` casualty **58.5 s → 23.0 s**, peak core void
+**0.628 → 0.000**, fuel unchanged at 1279.4 °F (693 °C). Mode 5, Mode 3, HFP steady and the full
+load rejection all unmoved; `run_pwr`, `run_m4`, `run_meltdown`, `run_reachability`,
+`run_contract`, `run_scenarios`, `run_hr3`, `run_autoctl` all at baseline first time. Exactly one
+gate moved: `run_campaign`, and only `pwr_lof`.
+
+**A SECOND test-premise finding, and it outlives this change.** `run_m5`'s determinism check
+required true power to match across two seeds within **1e-9** — *"true power identical
+(noise-free)"*. **That is not a property of this plant.** HR1 means protection and every AUTO
+channel decide from NOISY instruments, so as soon as an actuator moves, noise reaches TRUE STATE.
+The check only held because its sequence was quiet: `rcp_trip` produced no protection action
+inside 5 cycles. It does now, and the post-scram pressurizer/feed/dump channels immediately act on
+their own noise. Traced rather than assumed — the scram fires on the **same cycle** in both seeds
+(a boolean trip carries no noise), power stays bit-identical two cycles more, then diverges
+1.7e-6 → 7.6e-6 → **1.8e-5 % power**, four orders below the power-range channel's own noise.
+Re-banded to `< 0.01`, which still catches a real divergence and **passes on the pre-#314 engine
+too**. Bit-identity for the SAME seed is the real determinism property and is untouched. The
+generalisable part: **a test whose premise is "nothing happens" acquires a fixture nobody
+declared**, and the first change that makes something happen looks like the culprit.
+
+**`pwr_lof` re-authored, with a flag for the owner.** Its decision window is now one second, so it
+is a demonstration rather than a choice, and **its premise has been invalidated three times** by
+fidelity work. The new lesson — diverse *signals*, not redundant *channels* — is the right side of
+`DESIGN_CRITERIA` §6, but three re-premisings is a fair argument for retiring the mission instead
+of authoring a fourth. Recorded in the scenario file; not decided here.
+
+---
+
 ## 2026-08-03b — HR1 stays binding, and it governs the SEAM rather than the ROSTER
 
 **Decision.** HR1 remains a Hard Rule, with one sentence added separating what it governs from

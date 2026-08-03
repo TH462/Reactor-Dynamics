@@ -21,7 +21,48 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The RCP breaker-position reactor trip — a protection function that reads a CONTACT, not a
+  measurement** (#314) *(OWNER RULING, 2026-08-03: "Build the breaker position trip as you
+  recommend.")*. This plant had **one** loss-of-flow reactor trip where a real Westinghouse unit
+  has **four** (WTSM 12.2 §12.2.3.12, ML11223A301): low loop flow, breaker position, RCP bus
+  under-voltage, RCP bus under-frequency. The one we had reads a single elbow-tap channel, so a
+  stuck transmitter defeated it completely. Measured on the `pwr_lof` casualty — pump tripped with
+  its flow channel stuck at 100 %: the reactor used to ride **58.5 s** to a *high-pressure* trip
+  with peak core void **0.628** and fuel at 1713 °F (934 °C); it now trips at **23.0 s — one second
+  after the pump** — on the breaker contact, peak core void **0.000**, fuel unchanged. Blocked
+  below **P-7** on the same permissive as the low-flow trip (sourced: *"All the reactor coolant low
+  flow trips are automatically blocked below the P-7 setpoint (10% power)"*), so Mode 5 with the
+  pumps secured carries no standing trip — verified across all three initial conditions and the
+  full load rejection, none of which move.
+- **`is_false` now works for trips and actuations, and its absence was silent** (#314). The kernel
+  carried **two comparators with different vocabularies**: `_alarmRaw` has understood
+  `is_false`/`is_open` since alarms existed, while `crossed()` — which trips and actuations use —
+  knew only `high`/`low`/`is_true` and fell through to `return false`. Any trip authored with
+  `is_false` was therefore a **complete no-op with no throw, no warning and a green gate**. Found
+  because the new breaker trip was inert on its first run: the plant rode the entire 36-second
+  loss-of-flow casualty to peak void 0.628 with the trip installed and doing nothing. `ui/app.js`
+  already listed `is_false: 'goes false'` in its player-facing setpoint vocabulary, so the UI was
+  describing a capability the trip path did not have.
+
 ### Changed
+- **`pwr_lof` re-authored — it lost its branch, and this is the THIRD time its premise has been
+  invalidated by fidelity work** (#314). The decision window went from ~36 s to ~1 s, so the
+  mission is a demonstration now rather than a choice. The lesson is better for it and it is a
+  *coupling* rather than a deception: the gauge still lies, the trip assigned to this casualty
+  still never fires, and the reactor trips anyway — because protection is built from **diverse
+  signals**, four physical quantities, so no single failure removes the function. Flagged in the
+  file: three re-premisings is a reasonable argument for retiring the mission rather than doing a
+  fourth, and that is the owner's call. Its campaign check was re-authored to assert the new
+  mechanism and **injection-verified against the pre-fix plant** — restoring the old comparator
+  reddens exactly the two discriminating checks (trip reason, and core void, which the old test
+  *required* to exceed 0.02 and the new one requires to stay under 0.01).
+- Manual set **Rev 13 → 14**: `09` gains the trip; **`12` §10.7 rewritten**, because its measured
+  blockquote described behaviour the plant no longer has. Its point moves too — the fix was **not
+  more channels but a different kind of signal**. `DESIGN_COMPANION` **§8.24** declares the two
+  unmodelled RCP **bus** trips: this plant has no RCP electrical bus, so building them would mean
+  inventing the signal, and the 1-out-of-1 coincidence (against the real 2-of-4) is declared in the
+  same row — the real rule means *half the pumps are gone*, and this plant has one RCP.
 - **HR1 stays a Hard Rule, and now says which half of the question it answers** *(OWNER RULING,
   2026-08-03: "Apply the hr1 seam/roster sentence. Change design criteria as you suggest.")*.
   Added to `CONTEXT.md` §3: **HR1 governs the SEAM, not the ROSTER** — which quantities have

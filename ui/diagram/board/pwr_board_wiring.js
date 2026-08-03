@@ -1539,6 +1539,10 @@
     { id: 'lo_press', label: 'PZR PRESS LO-LO',
       sub: function () { return 'Reactor trip · ' + dP(tripSp('primary_pressure', 'low', 12.41)) + ' ' + uStr('press', 'psi') + ' (P-11 permissive)'; } },
     { id: 'lo_flow', label: 'RCS LOW FLOW', sub: 'Reactor trip · loss of flow (P-7 permissive)' },
+    // #314. Blockable, so it MUST be listed here or the player carries a reactor trip they
+    // cannot see or manage — and it shares lo_flow's P-7 permissive because WTSM 12.2
+    // §12.2.3.12 blocks ALL the loss-of-flow trips together below P-7.
+    { id: 'rcp_breaker', label: 'RCP BREAKER', sub: 'Reactor trip · pump breaker open (P-7 permissive)' },
     { id: 'ir_high', label: 'IR HIGH FLUX', sub: 'Startup trip · ~20% (P-10 permissive)' },
     { id: 'pr_low_setpoint', label: 'PR HIGH (LOW SETPT)', sub: 'Startup trip · 25% (P-10 permissive)' }
   ];

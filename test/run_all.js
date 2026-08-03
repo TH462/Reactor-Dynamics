@@ -297,6 +297,8 @@ var BASELINES = {
   // recorded as a SELECTION ("selected 'Add the program ceiling' from four options put to
   // him"), not dressed as verbatim words, because that is what it was. This comment's
   // standing point again: the code change moved NOTHING here; the write-up moved it.
+  // 104 -> 108 (2026-08-03c, #314 the RCP breaker trip): four more citation sites, again all
+  // write-ups — the trip itself is one row of data and moved this by zero.
   // 100 -> 104 (2026-08-03b, HR1 seam-vs-roster): four more citation sites for the ruling that
   // kept HR1 binding while handing the instrument ROSTER to DESIGN_CRITERIA. One of them is the
   // RULE TEXT itself in CONTEXT.md §3 — this gate scans tracked markdown, and §3 is tracked, so
@@ -356,7 +358,7 @@ var BASELINES = {
   // 90 -> 95 on 2026-08-02: `Blueprint/DESIGN_CRITERIA.md` (the four inclusion criteria, its §6
   // per-plant curriculum, the priority ruling) plus the CLAUDE.md pointer and the
   // DESIGN_COMPANION §2 re-scope, each carrying the owner's verbatim words.
-  'run_hardrules.js':      { code: 0, score: '104checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '108checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -674,7 +676,18 @@ var BASELINES = {
   // not catch it, because indicated pzr level could not reach its 97 % trip (#249). The
   // new checks assert the ENDPOINT STATE rather than the absence of a trip; all three
   // go red with the isolation removed.
-  'run_campaign.js':       { code: 0, score: '51/51 3038passed' },
+  // 3038 → 3017 (2026-08-03, #314) — a DROP, and it is coverage genuinely removed rather
+  // than coverage lost. `pwr_lof` was a two-branch decision mission; the new RCP
+  // breaker-position reactor trip cuts its decision window from ~36 s to ~1 s, so it is a
+  // demonstration now and the whole "you waited → the core boils" branch, with its beats
+  // and its endpoint, no longer exists to assert. The 21 checks went with it. What replaced
+  // them is SHARPER, not weaker: the surviving checks pin the trip REASON (`rcp_running
+  // is_false`, where the old plant read `primary_pressure high`) and require core void to
+  // stay BELOW 0.01 where the old test required it ABOVE 0.02 — an inversion, legal under
+  // HR10 only because that boil-off was reachable solely through the missing trips.
+  // Injection-verified: restoring the old `crossed()` comparator reddens exactly those two.
+  // If this number rises again, check it is not the branch coming back by accident.
+  'run_campaign.js':       { code: 0, score: '51/51 3017passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
