@@ -37,6 +37,221 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04 — #325: natural circulation, and the cheap version that was measured and refused
+
+### The change
+
+`pwr_primary.naturalCircFlow` + three config constants; `stepFlow` coasts toward it instead of toward zero.
+`flow_floor` 0.1 → 0.015. `true_state.natural_circulation`. New probe **TR-15**; TR-7b leg D re-authored.
+`DESIGN_COMPANION` §8.6 **retired**; manual set Rev 26. *(OWNER RULING, 2026-08-04: "Go with one B")*.
+
+### Q0 first, and it redrew the options
+
+#325 rated option (1) *"the largest change"*. It was not: `natural_circ_flow` already existed as the
+coastdown target at `0.0`, and flipping it to a constant 0.03 made a LOOP survivable with **nine runners
+unmoved**. The issue's own cost estimate was the thing that most needed measuring, and measuring it is what
+made (1) affordable enough to rule on at all.
+
+### Why (1b) and not (1a) — this is the decision worth recording
+
+The constant floor was **built and measured before being rejected**. It circulates through a fully voided
+loop: `primary_void_fraction` **1.00** with 3.00 % flow, Tavg dragged to 245 °F while the clad melted at
+3827 °F. The *outcomes* stayed right in every case tested — uncovery dominates, so the core still melts —
+which is exactly why it would have shipped. HR10: right answer, wrong mechanism, and the only thing that
+catches it is asking what the mechanism *is*.
+
+The void gate is also what preserves TMI-2, where tripping the pumps into a voided loop established nothing.
+
+### The law is solved, not iterated, and that is a correctness choice
+
+W = C·√ΔT closed against ΔT = `delta_T_rated`·Q/W gives W ∝ Q^⅓. The fixed-point form would have read a ΔT
+that `flow_floor` clamps below 10 % flow — the exact band circulation lives in — and a self-referential
+lagged flow term rings. Getting the cube root out of two independently-motivated relations is the internal
+validation; measured 1.343 against 1.342 predicted.
+
+### Sourced shape, fitted scale, and the distinction is declared
+
+WTSM 3.2.6.3 (ML11223A213) gives the driving head and *"sufficient only for decay heat removal … not for
+power operation"*. It does **not** give a magnitude, and neither did anything else reachable from this
+environment. The *"2–5 %"* in old §8.6 and `Manuals/01` was **uncited inherited prose** and was deliberately
+not used as the anchor — CLAUDE.md's "inherited claims are the risky ones" applied to this repo's own text.
+C is fitted to the plant's own energy balance instead, and `Manuals/12` §12.4 replaces §8.6 as the declared
+departure, naming the *magnitude* rather than the mechanism.
+
+### `flow_floor` had to move, and it is the #315 lesson recurring
+
+The leg split under-read **2.4×** under natural circulation because the floor clamped at 10 %. Loop ΔT is
+the real-plant verification cue for exactly this condition, so leaving it clamped would have shipped the
+feature with its indication broken — a term wrong in the one regime the change creates. Lowered to 1.5 %,
+below the weakest circulation the plant can make.
+
+### Deliberately not built
+
+| | why |
+|---|---|
+| A board "NATURAL CIRC" lamp | Q4 duplicate authority. A real crew verifies it from loop ΔT + subcooling + stable SG pressure, all already on the board. The `true_state` field is diagnostic, for the Physics tab and probes. |
+| PWR-E04/E05 checklists | Unblocked by this, but separate work (#319 item 6). E05's manual acceptance was corrected to match the plant; a checklist was not invented alongside it. |
+| Two-phase / reflux circulation | The void gate ramps to zero rather than modelling degraded two-phase circulation. Declared in `Manuals/12` §12.4's neighbourhood; the lesson is "it stops", not how it stops. |
+
+## 2026-08-03f — #332: `ac_available`, or what a bare boolean costs when nobody names the question
+
+### The change
+
+`true_state.ac_available` — one derived field, set at the top of `PWREngine.step()` (0a), read by
+every AC load. `engines/pwr/pwr_engine.js` (derivation + roster + `boron_adjust` + two indications),
+`engines/pwr/pwr_primary.js` (`acAvailable`/`chargingPumpPowered` predicates; letdown, charging and
+the ECCS pump), `engines/pwr/pwr_pressurizer.js` (#329's heater guard re-expressed through it),
+`Blueprint/CONTEXT.md` §6.3, new probe **CA-8**. `run_behavior` **46 → 47**.
+
+### Why (2) and not (1), and why not "wait for #325"
+
+#332 offered three options: point-fix each component, build an `ac_available` concept, or leave it.
+It recommended (2) *"but not urgently, and not before #325 is ruled"*. #325 is still unruled and
+this was taken anyway, on two grounds.
+
+**#325 decides a different question.** What it settles is whether the PWR blackout is a survivable
+evolution worth modelling in detail or a documented terminal path. Neither answer makes a motor turn
+without electricity. The correctness of the fix does not depend on it, and its *scope* barely does:
+`ac_available` is a name and a read, not a coping model.
+
+**(1) had already failed once, and measuring it showed it would fail again.** The heaters were
+missed in the first place because no list existed. Working this issue found a **third** load nobody
+had filed — the ECCS pump injecting the RCS solid with every bus dead — which point-fixing the two
+systems #332 named would have shipped untouched. That is the argument for (2) restated as a
+measurement rather than an aesthetic.
+
+### The design decisions worth recording
+
+**A boolean mirror is not a useless abstraction, and the comment says so out loud.** Today
+`ac_available === !station_blackout` exactly. The defect was never a wrong formula; it was that the
+question had no name, so nobody asked it. A load now reads `ac_available` *because it needs power*,
+rather than reading a casualty flag and inferring power from it. The derivation site carries the
+roster of what dies and what lives, with both source quotes, so "what does a blackout take?" is
+answerable in one place instead of by grepping for a flag.
+
+**Letdown is gated on the CHARGING PUMP, not on `ac_available`** — WTSM 4.1.3.1 (ML11223A214,
+p. 4.1-7) interlock 2, verbatim in `TUNING_LOG` 2026-08-03w. This was the evidence pass changing the
+shape of the fix rather than merely blessing it: the obvious guard would have left a real defect
+standing (grid up, charging pump secured → letdown drains 100 → 79.5 % in 13 minutes). Sourcing the
+mechanism rather than the outcome is what caught it.
+
+**Read predicates default to POWERED when the field is absent** (`s.ac_available !== false`, not
+`!s.ac_available`). `letdownFlow`, `injectionFlowInv` and `pwrPressurizer.autoControl` are all called
+directly with hand-built state objects by the engine's `selfTest` and by ad-hoc physics rigs; a bare
+negation de-energizes every one of them, and an isolated-physics rig would start reporting zero
+letdown and no injection with nothing in the fixture to explain it. Same convention in all three.
+
+**`_migrateState` recomputes rather than defaulting.** A save taken mid-blackout would otherwise
+reload with the plant electrified for one step.
+
+**Selectors are never written.** `charging_pump_running`, `heater_auto` and `hpi_active` stay exactly
+where the operator put them; only delivered flow/power/head go to zero. This is the #200 trap — a
+de-energization parked in the operator's demand heals itself on the next button press — and CA-8
+leg A pins it with a *positive* check that the 0.05 manual charging demand is still latched.
+
+### Deliberately not built
+
+| | why |
+|---|---|
+| RHR pump guard | Heat removal is already zero in an SBO (`condenser_cooling_available`). There is **no reachable state** where AC is out and condenser cooling is up, so the guard could not be injection-verified — and an unfalsifiable guard is worse than a filed gap. |
+| Condensate pump / main feed on LOOP | Both are **nonvital** loads, lost on a plain LOOP as well as an SBO, so `ac_available` (which a LOOP keeps) is the wrong gate. Wants a second, non-1E bus. |
+| A two-bus model | The honest structure, and where the two rows above go. Out of scope here: it changes LOOP behaviour, which moves #325's picture, and #325 is the owner's call. |
+
+### The flag this leaves
+
+**Adding an AC load is now a two-line obligation** — gate it at the read site and add a CA-8 leg.
+The derivation comment says so at the point of temptation. That is a convention, not a gate: nothing
+can statically detect a motor, and the only mechanised half is CA-8 itself.
+## 2026-08-04a — board_check joins `run_all`: retiring a number that rotted twice
+
+**Decision: a harness score may not live in prose.** `ui/test_panel/board_check.html` was the
+last check-bearing artifact outside `run_all`, and its count was wrong twice in the same
+direction — CLAUDE.md read "143/143" against 1 FAILURE / 143 before #289, and "188/188" against
+1 FAILURE / 188 through 2026-08-03. Both were a pin added without running the file. **What made
+them survivable is the part worth recording**: `discover()` globs `test/(run|verify)_*.js`, so an
+HTML page under `ui/` is invisible to it, so there was no `BASELINES` entry, so the only record
+was a sentence — and `run_all`'s own doc block says prose baselines are what rot.
+
+`test/verify_board_check.js` is a RUNNER and adds no checks. Every assertion stays in the HTML
+harness, which mounts the real board with the real driver and service; the runner loads it, waits
+for the harness to stamp its title, reads the harness's own summary line, and exits on it.
+
+**Three properties were chosen deliberately.**
+- **Not `slow`.** It is a playwright gate, and #241 is the cautionary tale (an unmarked playwright
+  gate under `--fast` was red in CI for 32 runs). Kept unmarked anyway: `--fast` is the invocation
+  an agent runs mid-change, and hiding the count from it gives back most of what this buys. CI
+  installs playwright; if this ever reddens on a fresh checkout, fix the install, do not add `slow`.
+- **A partial run is a HARD failure (exit 2), not a low score.** board_check accumulates its own
+  tally, so an exception thrown halfway leaves a smaller count that would otherwise read as a pass.
+- **The viewport is pinned (1400x900).** The harness measures rendered rects, which depend on the
+  stage scale, which depends on the viewport — an unpinned geometry check passes or fails on the
+  window size it happened to get.
+
+**And the prose copy was deleted rather than corrected.** The CLAUDE.md paragraph now points at
+`BASELINES` and says explicitly not to restore a count there; ~3.6 kB of stale count history went
+with it. The durable board-editing traps were carried forward, plus two new ones (a card TITLE is
+not an item — it is a `.bd-box-title` child of the box, which is why the item-vs-item overlap scan
+could not see `bdDtMargin` on the NIS title; and `NUDGE_KINDS` components quantise their ports to
+the 5 px doc grid).
+
+`run_all` 36 -> 37 runners. Injection-verified four ways.
+
+---
+
+## 2026-08-03f — Owner's board walk-round; Physics/Graph expansion
+
+**Six owner items, all UI/board.** The engineering worth keeping is in four places.
+
+**1. A pipe whose only gate is a fitting leg.** The ECCS panel's RWST cross-tie animated in every
+state of the plant (measured at HFP: `eccs_mode=off`, `hpi_flow=0`, `hpi_active=false`, pipe
+**running**) because its tee leg was gated on the charging PUMP, which never stops at power. The
+generalisable part: a pipe animates only when BOTH endpoint ports report `data-active !== '0'`,
+and a plain BOX port has no element at all — `portActive` returns `true` unconditionally for it.
+So for **any pipe from a card edge to a fitting, the fitting leg is the entire gate.** Fixed to
+follow the ECCS train; leg B (VCT) follows charging FLOW. Both directions pinned, because a leg
+stuck at `'off'` passes the "dark at power" check perfectly.
+
+**2. `Pump` is a NUDGE_KIND, so pump ports quantise to the doc grid.** The owner asked to move
+the condensate/feed pumps and the polisher right to plumb three drops. Measured, only ONE was
+crooked (condenser→condensate pump, 1527 vs 1525) — and the pumps could not fix it: `gridNudge`
+snaps their flange faces onto the 5 px grid, so `left` 1480→1482 moved the suction **1525→1530**.
+The condenser is not a nudged kind and is what moved. **Before nudging a component into
+alignment, check whether its ports can land where you need them.**
+
+**3. A card TITLE is not an item, and the overlap ruler was told to ignore it.** `bdDtMargin`
+overlapped `NUCLEAR INSTRUMENTATION (NIS)` by 58.8 px. `board_check`'s geometry pin skips `box`
+and `component` kinds (a readout deliberately sits inside its card) and a title renders as a
+`.bd-box-title` CHILD of the box — so the only element it could hit was excluded by construction.
+The #311 comment that placed the readout also had the title's end wrong by **84 px**, which is
+what authored-coordinate arithmetic buys. Title → `NUC INSTR (NIS)`, sized against the widest
+value the field can print (11 chars over a [-500, 1500] instrument), not the one on screen;
+`NUCLEAR INSTR (NIS)` would have cleared by 3.7 px, i.e. one retune from failing. Card titles are
+pinned now, for all three corner status words.
+
+**4. Tripling the chart series is a MEMORY decision, and the naive version was a 7× regression.**
+16 series → 51. Measured at the buffer's cap (1800 s of sim time at the 10 Hz broadcast = 18000
+rows): 16 series **10.2 MB**, 51 series **75.8 MB**. Two changes bring it to **8.8 MB**, below the
+original: `chartSample` writes only the sides a series HAS (a `null` in `v` costs what a number
+costs, and 19 of the 51 have no instrument), and the record path takes one row per **0.5 s of SIM
+time** rather than one per broadcast, capping at 3600 rows. Keyed on sim time and not a broadcast
+count, so it is invariant under `timeAcceleration` and the 100→50 ms transient cadence — above 5×
+nothing is dropped at all. The widest window is 1800 s across ~400 px, so 2 Hz remains ~9×
+oversampled.
+
+**Engine, contract:** `core_uncovered_frac` and `zirc_heat_pct` published from `stepCladding`
+(they were locals). They are the mechanism between the symptom the Physics tab already showed
+(peak clad temperature) and the verdict it did not (`fuel_damaged`). Published rather than
+re-derived in the UI — between them they read eight config constants. `run_contract` 143 → 145.
+
+**Also fixed, out of band:** `board_check` was 187/188 on the untouched tree while CLAUDE.md
+recorded 188/188. Two harness causes — the LOAD TARGET checks sat after the RCP OFF/ON pair that
+#314 turned into an immediate scram, and they read the snapshot without stepping (`set_load_target`
+goes through the load-mode controller). The clamp half was also passing vacuously, and cannot use
+a settled value at all, because **#318's rate limit is one-sided**: measured, 100 → 80 MW lands
+inside 3 cycles while 80 → 100 crawls at 10 %/min. Now **202/202** with 14 new pins.
+
+---
+
 ## 2026-08-03e — #238: zirconium-steam oxidation, and why the sketched shape was not built
 
 ### The change

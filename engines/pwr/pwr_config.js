@@ -296,7 +296,7 @@
       // no-load (heats the plant with the heat sink isolated) and post-trip. [tune]
       pump_heat_frac: 0.0055,      // fraction of rated core heat at full flow
       delta_T_rated: 33.0,         // hot/cold leg split at rated, °C [tune]
-      flow_floor: 0.1,             // delta_T saturates: max(flow_frac, 0.1)
+      flow_floor: 0.015,           // delta_T saturates: max(flow_frac, 0.015) [tune]
       // DNB / core-exit boiling (steam-line-break / loss-of-flow AT POWER). The hot
       // leg (core exit) is the DNB datum: subcooled liquid cannot superheat, so thot
       // is clamped at Tsat and the raw enthalpy rise beyond saturation drives core
@@ -567,7 +567,58 @@
       // Uncovery thresholds (fraction of full inventory).
       void_onset: 0.85, core_top_uncover: 0.70, significant_uncover: 0.50,
       pump_spinup_tau: 3.0, pump_coastdown_tau: 8.0, // s [tune]
-      natural_circ_flow: 0.0,      // v1 does not model PWR natural circ [tune]
+      // ----------------------------------------------------------------- NATURAL CIRCULATION
+      // (#325, ruled 2026-08-04. `natural_circ_flow: 0.0` lived here from v1 to 2026-08-04
+      // and was the whole of the departure DESIGN_COMPANION §8.6 declared.)
+      //
+      // SOURCED MECHANISM — WTSM 3.2.6.3 (ML11223A213, p. 3.2-26): "It is essential to
+      // ensure sufficient flow to remove reactor decay heat even when reactor coolant pumps
+      // are not operating. The higher elevation of the steam generators relative to the
+      // reactor vessel produces a THERMAL DRIVING HEAD to establish and maintain flow in the
+      // RCS when heat is removed from the steam generators by dumping steam. Natural
+      // circulation flow is sufficient only for DECAY HEAT REMOVAL of a shutdown reactor,
+      // not for power operation."
+      //
+      // THE LAW. Buoyancy head ∝ ΔH·β·ΔT; loop resistance ∝ W². So W = C·√ΔT — the standard
+      // single-phase relation, and the elevation/geometry terms are all folded into C because
+      // this plant has no loop geometry to carry them separately. The core rise is itself
+      // ΔT = delta_T_rated·Q/W (pwr_thermal, the #315 form), so the loop CLOSES:
+      //
+      //     W = C·√(delta_T_rated·Q/W)   ⇒   W³ = C²·delta_T_rated·Q   ⇒   W ∝ Q^(1/3)
+      //
+      // Solved rather than iterated, for two reasons that are not style: the fixed-point
+      // form would read a ΔT that `flow_floor` CLAMPS below 10 % flow — exactly the band
+      // natural circulation lives in — and a lagged self-referential flow term rings. The
+      // cube root is not a fudge; it is the classic natural-circulation result, and getting
+      // it out of two independently-motivated relations is the internal check on both.
+      //
+      // C IS FITTED, AND THE 2–5 % FIGURE THIS REPO USED TO QUOTE IS UNVERIFIED. Every
+      // outbound attempt at a primary for the MAGNITUDE failed from this environment
+      // (nrc.gov 403s; the ERG/EOP verification criteria are not public), and the "2–5 %"
+      // in the old §8.6 and Manuals/01 was inherited prose with no citation — so it is NOT
+      // being used as an anchor. C is fitted so the plant lands where its OWN energy balance
+      // says it must: ~4 % flow against ~5 % decay heat a few minutes post-trip, which the
+      // ΔT relation then puts at a loop split of ~41 °C (74 °F) — larger than the 33 °C
+      // (59 °F) rated split, as it must be when the same heat moves on a twentieth of the
+      // flow. The claim being made is the SHAPE (W ∝ Q^⅓, and "decay heat only") which is
+      // sourced; the SCALE is this plant's, and is marked as such in §8.6's replacement row.
+      natural_circ_coeff: 6.228e-3,   // C in W = C·√ΔT  [tune] — see the fit above
+      natural_circ_max: 0.08,         // hard cap, frac of rated. WTSM: "not for power operation" [tune]
+      // VOID CUTOFF. Natural circulation needs a CONTINUOUS LIQUID PATH; once the loop
+      // voids the driving column is gone and flow stops — which is why tripping the pumps
+      // into a voided loop at TMI-2 did not establish it. Ramps to zero across this void
+      // fraction rather than switching, so a partially-voided loop circulates weakly.
+      // NOT a second heat-sink gate: losing the SG raises Tavg, boils the core and voids
+      // the loop, so the sink dependence WTSM names arrives through this one term.
+      natural_circ_void_cutoff: 0.25, // primary void fraction at which circulation is lost [tune]
+      // Threshold for CLAIMING natural circulation is established (frac of rated), same
+      // idiom as `cavitation_indicate_frac` above. It is not zero because
+      // `primary_void_fraction` is a threshold function of subcooling and CHATTERS as the
+      // bulk crosses saturation — measured, a fully-voided loop still leaks ~0.03 % through
+      // the 8 s coastdown τ between flickers. The weakest real circulation this plant can
+      // make is ~1.9 % (a fully decayed core), so 1 % excludes the residue without ever
+      // suppressing the real thing.
+      natural_circ_indicate_frac: 0.01,   // [tune]
       low_flow_trip: 0.25,         // true-flow trip (documented HR1 exception)
       mass_max: 1.2,               // clip ceiling for primary_mass
       // Loop pressure distribution (pwr_primary.computeNodePressures). The primary
@@ -813,7 +864,20 @@
       // 2.07 and the runback fires on a normal ramp; at 10 %/min it is 4.57 and the runback
       // stays silent; 5 %/min buys only 4.72 for double the wait. The source's own 1 %/min is
       // an EXAMPLE of a selectable rate, not a maximum, so it is not a candidate.
-      load_rate_pct_per_min: 10.0,   // [tune]
+      //
+      // OFF *(OWNER DIRECTIVE, 2026-08-03: "I dont like the new load increase rate limite;
+      // turn it off.")*. 0 disables it: `load_mode.js` gates the ramp on `rate > 0` and
+      // otherwise assigns the commanded load straight through, which is the pre-#318 path
+      // and the one RBMK/BWR have always taken (the option is absent there). The machinery
+      // stays because the sourcing is good and re-enabling it is this one number.
+      //
+      // WHAT TURNING IT OFF COSTS, measured rather than assumed — the excursion above is
+      // real and comes back: an instantaneous 70 -> 100 MW step is again available to the
+      // player, and it again takes loop dT to within ~0.5 of the OPdT trip. That is a trip
+      // the player can walk into with one box entry. It is the owner's call and it is not a
+      // defect; note it here so the next agent does not "fix" the excursion by restoring
+      // the limit.
+      load_rate_pct_per_min: 0,      // [tune] — 0 = no limit; 10.0 was the #318 value
       // Turbine governor / control valve: EHC load-control mode — the valve
       // TARGET is pressure-compensated (demand ÷ P/P_rated, clamped fully open)
       // so steady-state delivered steam equals the load demand at any secondary

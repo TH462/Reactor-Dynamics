@@ -69,6 +69,21 @@
   // s.hpi_flow_normalized is this over the combined rated total.
   function injectionFlowInv(s, cfg) {
     if (!s.hpi_active) return 0;
+    // NO AC, NO SAFETY INJECTION (#332). Both segments of this curve are motor-driven
+    // pumps on the vital buses — on a real Westinghouse plant the high-head segment IS
+    // the centrifugal charging pump ("The centrifugal charging pumps also serve as the
+    // high head safety injection pumps of the emergency core cooling systems", WTSM
+    // 4.1.3.4, ML11223A214 p. 4.1-16; this plant gives ECCS its own train by the
+    // 2026-07-22 owner ruling, which changes the flow scale, not the power supply).
+    // WTSM 5.7.5 (ML11223A229, p. 5.7-6) states the general case: a blackout fails "all
+    // decay heat removal systems, except the turbine-driven AFW pump".
+    //
+    // MEASURED before this guard, full stack: SBO at 60 s, `set_hpi active:true` at
+    // 300 s, and the dead pump injected the RCS from 100 % to 120 % inventory — solid —
+    // inside five minutes. The ACCUMULATORS deliberately keep working through all of
+    // this (stepAccumulators below): they are pressurized N2 behind a check valve and
+    // owe nothing to the switchgear, which is the contrast worth teaching.
+    if (!acAvailable(s)) return 0;
     var e = cfg.emergency;
     // ECCS discharges into the COLD leg (pump discharge), so injection works against
     // the cold-leg node — higher than the pressurizer reference at power, converging
@@ -116,6 +131,20 @@
     return flow * e.accumulator_inventory_gain;   // inventory-fraction rate for the mass balance
   }
 
+  // AC availability predicates (#332). The engine derives s.ac_available once per step
+  // (pwr_engine step 0a, which also carries the bus description and the source); these
+  // are the READ side, and they live here because pwr_primary owns three of the four
+  // loads that consult them.
+  //
+  // BOTH DEFAULT TO POWERED when the field is absent. That is deliberate: these functions
+  // are called directly with hand-built state objects by the engine's own selfTest and by
+  // ad-hoc physics rigs, and `!undefined` would silently de-energize the plant in every
+  // one of them — an isolated-physics rig would start reporting zero letdown and no
+  // injection with nothing in the fixture to explain it. Absent means energized.
+  function acAvailable(s) { return s.ac_available !== false; }
+  // The charging pump turns iff the operator has it selected AND the bus is alive.
+  function chargingPumpPowered(s) { return s.charging_pump_running !== false && acAvailable(s); }
+
   // Two-orifice letdown flow: a pressure-driven bleed from the cold leg through
   // the in-service orifice(s) to the letdown HX / VCT. Each orifice passes
   // C·√(p_coldleg − backpressure); s.letdown_flow is the TRUE flow (what the
@@ -124,6 +153,26 @@
   // toward the backpressure on a cooldown, unlike the old commanded constant.
   function letdownFlow(s, cfg) {
     var rc = cfg.reactivity;
+    // NO CHARGING PUMP, NO LETDOWN (#332). The orifice needs no pump — that is exactly
+    // why letdown used to run through a station blackout and drain the plant — but the
+    // orifice ISOLATION valves are interlocked to the charging pumps, and that interlock
+    // is sourced, not inferred. WTSM 4.1.3.1 (ML11223A214, p. 4.1-7), letdown orifice
+    // isolation valve interlock 2: "At least one charging pump must be running in order
+    // to open any letdown orifice isolation valve. If the running charging pump(s) is
+    // lost, then the letdown orifice isolation valves close. This interlock ensures that
+    // cooling water (charging) is available to the regenerative heat exchanger prior to
+    // the establishment of letdown flow."
+    //
+    // Gating on the PUMP rather than on the blackout flag directly is what makes this one
+    // guard cover two defects. The blackout case is #332's headline; the other is that
+    // securing the charging pump with the grid up ALSO left letdown flowing — measured,
+    // that bled 100 → 79.5 % inventory in 13 minutes before the low-pzr-level isolation
+    // (the OTHER real interlock, in pwr_control) caught it at 17 %.
+    //
+    // DECLARED SIMPLIFICATION: the real valves CLOSE and stay closed — restoring the pump
+    // does not reopen them, the operator does. Here the gate is live, so letdown returns
+    // with the pump. One operator action, not a different behaviour.
+    if (!chargingPumpPowered(s)) return 0;
     var pd = (s.p_coldleg != null) ? s.p_coldleg : s.pressure_mpa;
     var sq = Math.sqrt(Math.max(0, pd - rc.letdown_backpressure_mpa));
     return (s.letdown_orifice_a ? rc.letdown_orifice_a_coeff : 0) * sq
@@ -199,7 +248,12 @@
     // whole RCS — so they enter the mass balance through cvcs_inventory_gain
     // (frac/s per unit normalized flow, P7 retune) instead of 1:1 like the
     // accident-scale flows (leak/ECCS/relief keep the lumped fast scale).
-    var charging = (s.charging_pump_running === false) ? 0 : s.charging_flow;
+    // `chargingPumpPowered` = the operator has it selected AND the 1E bus is alive
+    // (pwr_engine step 0a). The centrifugal charging pumps are ac motor loads: WTSM
+    // 4.1.3.4 (ML11223A214, p. 4.1-16) — "Two of the pumps are single-speed, horizontal
+    // centrifugal pumps powered from vital (Class 1E) ac power" — so a blackout stops
+    // them, and #332 measured them pumping for three hours without it.
+    var charging = chargingPumpPowered(s) ? s.charging_flow : 0;
     var g_cvcs = rc.cvcs_inventory_gain != null ? rc.cvcs_inventory_gain : 1.0;
     var dm = (charging * g_cvcs + inj_inv + accum_inv)
            - (s.letdown_flow * g_cvcs + s.porv_flow + s.safety_flow + s.leak_flow);
@@ -252,6 +306,34 @@
       + (core_void_eq - (s.core_void_fraction || 0)) / (th.void_flux_tau || 3.0) * dt, 0, 1);
   }
 
+  // Natural-circulation flow, fraction of rated (#325). Zero until 2026-08-04, when
+  // `natural_circ_flow: 0.0` was replaced by this; DESIGN_COMPANION §8.6 was the
+  // departure it declared, and §8.6 is retired rather than justified.
+  //
+  // W = C·√ΔT with ΔT = delta_T_rated·Q/W, solved: W = (C²·delta_T_rated·Q)^⅓. The
+  // derivation, the source (WTSM 3.2.6.3) and why the fixed-point form is NOT used are in
+  // the `natural_circ_coeff` comment in pwr_config — read that before touching this.
+  //
+  // Q IS TOTAL CORE HEAT, not fission power (#315). Post-trip that IS the decay tail, and
+  // decay heat is the entire point of this function: reading `power_pct` here would compute
+  // zero circulation for a scrammed core, which is the exact defect #315 found in the leg
+  // split one function away.
+  function naturalCircFlow(s, cfg) {
+    var pr = cfg.primary, t = cfg.thermal;
+    if (!pr.natural_circ_coeff) return 0;          // 0 restores the pre-#325 plant exactly
+    var Q = (s._Q_total != null) ? s._Q_total : (s.power_pct || 0) / 100;
+    if (!(Q > 0)) return 0;
+    var w = Math.pow(pr.natural_circ_coeff * pr.natural_circ_coeff * t.delta_T_rated * Q, 1 / 3);
+    // A voided loop has no continuous liquid column to drive: ramp to zero across the
+    // cutoff. This is the TMI-2 discriminator — pumps off into a voided loop circulates
+    // nothing — and it is also how losing the heat sink stops circulation, since that
+    // route runs Tavg up, boils the core and voids the loop.
+    var voidf = s.primary_void_fraction || 0;
+    var cut = pr.natural_circ_void_cutoff || 0.25;
+    w *= clip(1 - voidf / cut, 0, 1);
+    return clip(w, 0, pr.natural_circ_max != null ? pr.natural_circ_max : 0.08);
+  }
+
   // Step 10 — reactor coolant pumps and flow.
   function stepFlow(s, cfg, dt) {
     var pr = cfg.primary;
@@ -262,16 +344,29 @@
       var target = 1.0 - pr.cavitation_flow_loss * (s.rcp_cavitation_frac || 0);
       s.flow_frac += (target - s.flow_frac) / pr.pump_spinup_tau * dt;
     } else {
-      s.flow_frac += (pr.natural_circ_flow - s.flow_frac) / pr.pump_coastdown_tau * dt;
+      // Coasting down TOWARD natural circulation, not toward zero. WTSM 3.2 (ML11223A213,
+      // p. 3.2-17) says the flywheel is there for exactly this handover — the coastdown
+      // "assures adequate heat removal during a plant trip and loss of power to the RCPs"
+      // and "also assists in INITIATING natural circulation flow" — so the same τ carrying
+      // the coastdown carrying it into the buoyancy-driven regime is the real sequence.
+      s.flow_frac += (naturalCircFlow(s, cfg) - s.flow_frac) / pr.pump_coastdown_tau * dt;
     }
     s.flow_frac = clip(s.flow_frac, 0.0, 1.0);
     s.pump_flow_pct = s.flow_frac * 100;
+    // Published so the board and the probes can tell buoyancy-driven flow from a coasting
+    // rotor: same number of percent, completely different plant state. Keyed on what the
+    // BUOYANCY LAW is producing, not on `flow_frac` — during a coastdown flow_frac is still
+    // mostly rotor inertia, and in a voided loop it is decaying residue. Both would read
+    // true off flow_frac and neither is natural circulation.
+    s.natural_circulation = !s.pump_running
+      && naturalCircFlow(s, cfg) > (pr.natural_circ_indicate_frac || 0.01);
   }
 
   RD.pwrPrimary = {
     computeNodePressures: computeNodePressures,
     stepCavitation: stepCavitation,
-    letdownFlow: letdownFlow,
+    letdownFlow: letdownFlow, naturalCircFlow: naturalCircFlow,
+    acAvailable: acAvailable, chargingPumpPowered: chargingPumpPowered,   // #332 — see step 0a
     injectionFlowInv: injectionFlowInv,
     stepInventory: stepInventory,
     stepFlow: stepFlow,

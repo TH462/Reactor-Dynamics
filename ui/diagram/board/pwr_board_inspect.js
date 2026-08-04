@@ -669,16 +669,10 @@
       'lamp still reads AUTO, but the pump is against a stop with no authority left to correct with, ' +
       'so level keeps going the way it is already going. Hover any feed control for the full ' +
       'sentence.', CI, '14.1'),
-    bdRodStatus: e('ROD status',
-      'What the rod controller is doing right now: HOLDING, IN, OUT, AT LIMIT, BLOCKED, MANUAL or TRIPPED.',
-      'The ROD AUTO lamp tells you the controller is engaged; this tells you what it is doing with the ' +
-      'bank. HOLDING (green) means Tavg is inside the controller\'s deadband and it is deliberately not ' +
-      'stepping. IN and OUT show while it drives, and the WITHDRAW / INSERT lamps light with them — on a ' +
-      'real board those in-out lamps report motion asked for by the operator OR by the automatic system, ' +
-      'which is what these do. AT LIMIT is the one to watch: the bank is on its rod insertion limit and ' +
-      'the controller cannot insert any further, so if Tavg is still high the answer has to come from ' +
-      'boron, not from rods. BLOCKED means a rod stop is standing and outward motion is refused — you ' +
-      'can always insert. MANUAL means nobody is regulating Tavg for you.', CI, '14.1'),
+    // (A `bdRodStatus` entry stood here for the #306 rod status word, removed 2026-08-03 as
+    // redundant against the IN-OUT lamps. This file is a THIRD independent copy of the
+    // board's meaning — an orphan entry here describes an item nobody can click, which is
+    // the rot `run_inspect` exists to catch, so it goes out with the item.)
     bdDtMargin: e('Core ΔT margin',
       'How much loop ΔT is left before the nearer of the two core-protection trips, and which one it is.',
       'The reactor has two trips computed from the temperature RISE across the core rather than from ' +

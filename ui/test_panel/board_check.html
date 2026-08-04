@@ -141,6 +141,100 @@
         plumb('geom: pressurizer PORV tap plumb to the block valve', 'pressurizer/pressure-tap', 'imrppb3kuav/b', 'x');
         plumb('geom: pressurizer relief nozzle on the vessel axis', 'pressurizer/relief-out', 'pressurizer/surge', 'x');
         plumb('geom: SG feed line level with the feed tee (#237)', 'steamGenerator/fw-in', 'ims31q71cmu/a', 'y');
+
+        // --- 2026-08-03 owner board walk-round -------------------------------------
+        // The spray stub. `pressurizer/spray-in` scanned at y=332 against a run whose
+        // first waypoint is authored at y=335, so the 17 px stub leaned 3 px — 10°, and
+        // the one segment of that run the eye reads against the vessel top. The
+        // PRESSURIZER moved down 3 (DOC_PATCHES), which is why the three x-plumb pins
+        // above must still pass: a pure Y shift cannot move them.
+        //
+        // Pinned against the WAYPOINT, not a literal, so re-routing the spray line in
+        // the builder moves the expectation with it.
+        (function () {
+          var wp = null;
+          (window.RD_PWR_BOARD_DOC.pipes || []).forEach(function (p) {
+            if (p.id === 'pms3ytzwwqw' && p.waypoints && p.waypoints.length) wp = p.waypoints[0];
+          });
+          var pa = P['pressurizer/spray-in'];
+          ck('geom: pressurizer spray stub runs level (y ' + (pa ? pa.y : '?') + ' vs waypoint ' + (wp ? wp[1] : '?') + ')',
+            !!(pa && wp) && Math.abs(pa.y - wp[1]) <= 1, pa && wp ? 'off by ' + (pa.y - wp[1]) : 'missing');
+        })();
+        // The condensate train's three drops. Only the FIRST was ever crooked (1527 vs
+        // 1525) — the other two were already plumb, so this pins all three or a "fix" that
+        // straightens one by bending the others goes unnoticed. The condenser is what
+        // moved: `Pump` is in NUDGE_KINDS, so pump flange faces snap to the 5 px doc grid
+        // and can never land on 1527.
+        plumb('geom: condenser drop into the condensate pump', 'condenser/condensate-out', 'imrqvzbd9hd/suction', 'x');
+        plumb('geom: condensate pump up to the polisher', 'imrqvzbd9hd/discharge', 'imrqrnclhn/~ptmrqteexd9e', 'x');
+        plumb('geom: polisher down to the feed pump', 'imrqrnclhn/~ptmrqted2hiw', 'imrobph7xrq/suction', 'x');
+        // Moving the condenser drags `steam-in`, whose riser waypoint is pinned in
+        // DOC_PATCHES.pipes — the two have to travel together or the turbine exhaust leans.
+        (function () {
+          var wp = null;
+          (window.RD_PWR_BOARD_DOC.pipes || []).forEach(function (p) {
+            if (p.id === 'pmrr14xbt2h' && p.waypoints && p.waypoints.length) wp = p.waypoints[p.waypoints.length - 1];
+          });
+          var pa = P['condenser/steam-in'];
+          ck('geom: turbine exhaust riser plumb into the condenser (x ' + (pa ? pa.x : '?') + ' vs waypoint ' + (wp ? wp[0] : '?') + ')',
+            !!(pa && wp) && Math.abs(pa.x - wp[0]) <= 1, pa && wp ? 'off by ' + (pa.x - wp[0]) : 'missing');
+        })();
+      })();
+
+      // ---- geometry: a card TITLE is not an item, and the overlap pin cannot see it ----
+      // The bdDtMargin readout was printing on top of 'NUCLEAR INSTRUMENTATION (NIS)'
+      // (owner, 2026-08-03). It survived the #311 geometry pins because those skip `box`
+      // and `component` kinds — a readout deliberately sits INSIDE its card — and a card
+      // title is rendered as a `.bd-box-title` CHILD of the box, so the one element it
+      // could collide with was the one element the ruler was told to ignore.
+      //
+      // Measured, not arithmetic: the #311 comment put the title's end at authored x≈905
+      // when it ran to x≈989, an 84 px error, which is exactly the class of mistake a
+      // rendered-rect check exists to catch. Every rAnchor status word in a card corner
+      // gets a pin here, not just the one that failed.
+      (function () {
+        var stg = document.querySelector('.pwr-board-stage');
+        function noTitleOverlap(name, itemId, cardId) {
+          var v = stg && stg.querySelector('[data-item="' + itemId + '"]');
+          var t = stg && stg.querySelector('[data-item="' + cardId + '"] .bd-box-title');
+          if (!v || !t) { ck(name, false, 'missing ' + (v ? cardId + ' title' : itemId)); return; }
+          var a = v.getBoundingClientRect(), b = t.getBoundingClientRect();
+          var gap = a.left - b.right;
+          var clear = gap > 0 || a.right < b.left || a.bottom <= b.top || a.top >= b.bottom;
+          ck(name + ' (gap ' + gap.toFixed(1) + ' px)', clear, 'overlaps by ' + (-gap).toFixed(1));
+        }
+        noTitleOverlap('geom: core ΔT margin clears the NIS card title', 'bdDtMargin', 'ims175lciah');
+        // (There was a third: bdRodStatus against the ROD CONTROL title. The ROD status word
+        //  itself was removed on the develop lane *(OWNER DIRECTIVE, 2026-08-03: "the new rod
+        //  control indication that says 'manual', 'in', 'out, is redundant. when in rod auto
+        //  the withdraw or insert buttons glow amber when its automatically moving the rods.
+        //  remove it")*, and the two changes met at the 2026-08-04 merge. The pin is DELETED,
+        //  not made tolerant of a missing element: a clearance check whose subject no longer
+        //  exists would pass forever and assert nothing, which is the vacuous shape this file
+        //  keeps finding. It failed loudly at the merge, which is what a pin is for.)
+        noTitleOverlap('geom: feed status clears the SG FEED title', 'bdFeedStatus', 'imrqxsodu5j');
+        // The gap has to survive the WIDEST value the field can print, not the one that
+        // happens to be on screen. `dtMargin` renders `name + ' ' + margin.toFixed(1)` over
+        // a [-500, 1500] instrument, so 11 characters is the bound. Measured on a CLONE —
+        // writing textContent on a live board value destroys the child nodes the renderer
+        // updates, and every later sample then lies.
+        (function () {
+          var v = stg && stg.querySelector('[data-item="bdDtMargin"]');
+          var t = stg && stg.querySelector('[data-item="ims175lciah"] .bd-box-title');
+          if (!v || !t) { ck('geom: core ΔT margin clears the title at full width', false, 'missing element'); return; }
+          var live = v.getBoundingClientRect(), c = v.cloneNode(true);
+          var span = c.querySelector('span') || c;
+          var was = span.textContent;
+          span.textContent = 'OPΔT 8.3'; c.style.visibility = 'hidden'; c.style.position = 'static';
+          v.parentNode.appendChild(c);
+          var base = c.getBoundingClientRect().width;
+          span.textContent = 'OTΔT -125.4';
+          var wide = c.getBoundingClientRect().width;
+          c.parentNode.removeChild(c); span.textContent = was;
+          var leftAtWidest = live.right - (live.width + (wide - base));
+          var gap = leftAtWidest - t.getBoundingClientRect().right;
+          ck('geom: core ΔT margin clears the title at full width (gap ' + gap.toFixed(1) + ' px)', gap > 0, 'overlaps by ' + (-gap).toFixed(1));
+        })();
       })();
 
       if (RD.PwrBoardDriver && RD.PwrBoardDriver.selfTest) {
@@ -161,6 +255,48 @@
       clickBtn('imrmtimrch3'); ck('func: letdown A -> orifice A on / B off', cs().letdown_orifice_a === true && cs().letdown_orifice_b === false);
       clickBtn('imrmtimyxef'); ck('func: letdown A+B -> both on', cs().letdown_orifice_a === true && cs().letdown_orifice_b === true);
       clickBtn('imro8lddxi'); ck('func: generator MAN -> load_mode manual', cs().load_mode === 'manual');
+      // The two LOAD TARGET checks. They were red on 2026-08-03 for TWO independent
+      // reasons, both in the harness — the board was correct throughout.
+      //
+      // 1. THEY SAT AFTER THE RCP OFF/ON PAIR, and #314 made that fatal: the RCP breaker
+      //    position is a reactor trip now, so clicking RCP OFF at hot full power scrams
+      //    the plant in ~0.5 s. MEASURED: scrammed=true, turbine_tripped=true five cycles
+      //    after the click, and `set_load_target` on a tripped turbine settles at 0. They
+      //    run BEFORE the trip now.
+      // 2. THEY READ THE SNAPSHOT WITHOUT STEPPING. Unlike the spray/heater/letdown
+      //    commands above, `set_load_target` reaches the plant through the LOAD MODE
+      //    controller, which runs in the step — MEASURED: the command is issued (the
+      //    board really does emit set_load_target mwe:80), `load_target_mwe` still reads
+      //    100 on the same tick, and 80 five cycles later. Hence ticks(3).
+      //
+      // The clamp check is deliberately SECOND: the plant ships at 100 MW, so asking it
+      // to clamp 850 → 100 first would have passed without the box doing anything at all.
+      //
+      // ...and it asserts the COMMAND the board emitted, not the settled target, because
+      // #318's operator load rate limit is ONE-SIDED. MEASURED: from 100 MW, a demand of
+      // 80 lands in full inside 3 cycles, but the way back up crawls at `load_rate_pct_per_min`
+      // 10 %/min — 80.05 after 3 cycles, 81.05 after 63. That is correct (the limit exists
+      // to stop a fast load RISE walking the plant into OPΔT), and it means a settled-value
+      // check of an upward step is really a check of the ramp. The clamp is a BOARD
+      // concern — NUM_BOUNDS_BASE — so read it where the board speaks.
+      // 3. AND THE MECHANISM, from the develop lane that found it independently: #318 split
+      //    the operator's ASK from the EHC reference — `set_load_target` writes
+      //    `load_cmd_mwe`, and `LoadMode.step` brings `load_target_mwe` to it on the next
+      //    step — so the
+      //    command no longer writes the reference through. Nothing on the board is wrong; a
+      //    player never observes the gap, because the plant steps continuously underneath
+      //    them. The tick is a BETTER test rather than a refit: it passes on the pre-#318
+      //    engine too, where the command wrote the reference directly and a step left it be.
+      //    That lane fixed it in place with ticks(1); this copy also sits BEFORE the RCP
+      //    pair, so it is robust to cause 1 as well. Two sessions, one surviving copy.
+      setNum('imro8rmka2y', 80); ticks(3);
+      ck('func: generator load 80 MW -> load_target', Math.abs(cs().load_target_mwe - 80) < 1, cs().load_target_mwe);
+      setNum('imro8rmka2y', 850);
+      (function () {
+        var last = null;
+        sentCommands.forEach(function (c) { if (c && c.action === 'set_load_target') last = c; });
+        ck('func: generator load clamps to rated (100 MW)', !!last && Math.abs(last.mwe - 100) < 1, last && last.mwe);
+      })();
       clickBtn('imrsjy59pnu'); ck('func: RCP OFF button -> rcp not running', cs().pumps.filter(function (p) { return p.id === 'rcp'; })[0].running === false);
       clickBtn('imrsjy1m9g'); ck('func: RCP ON button -> rcp running', cs().pumps.filter(function (p) { return p.id === 'rcp'; })[0].running === true);
       // charging panel is the charging pump's control (OFF = pump off)
@@ -172,8 +308,6 @@
         return RD.PwrBoardDriver.suppressBuiltInControls(id);
       }));
       clickBtn('imrppquqg16'); ck('func: steam dump OPEN -> not auto', cs().steam_dump_auto === false);
-      setNum('imro8rmka2y', 80); ck('func: generator load 80 MW -> load_target', Math.abs(cs().load_target_mwe - 80) < 1);
-      setNum('imro8rmka2y', 850); ck('func: generator load clamps to rated (100 MW)', Math.abs(cs().load_target_mwe - 100) < 1);
       setNum('imrsg8b7b9o', 2100); ck('func: pressure setpoint 2100 psi -> ~14.48 MPa', Math.abs(cs().pressure_setpoint - 2100 / 145.038) < 0.05);
 
       // --- instructor glow ---
@@ -419,6 +553,52 @@
         pipeState('pms3tda86bw') === 'paused', pipeState('pms3tda86bw'));
       ck('pipe: full power steam dump branch PAUSED (dump shut at power)',
         pipeState('pmrr46oahnx') === 'paused', pipeState('pmrr46oahnx'));
+      // The RWST → charging-pump-suction cross-tie, out of the ECCS panel's RIGHT side.
+      // Owner, 2026-08-03: "the pipe coming out of the right of the ECCS shows flow when
+      // the ECCS is off or not flowing" — and it did, in EVERY state of the plant, because
+      // its tee leg was gated on the charging PUMP (which runs continuously at power)
+      // rather than on the ECCS train.
+      //
+      // The other endpoint is a plain BOX port, which carries no `data-active` at all, so
+      // `portActive` returns true for it unconditionally and the tee leg is this pipe's
+      // only gate. That is why the sibling checks matter: the two normal CVCS suction
+      // lines must stay RUNNING through the fix, or "stop the lie" has just stopped the
+      // whole card.
+      //
+      // BOTH states are asserted, on their OWN services, and both need stepping — the
+      // whole block restores the svcHfp render on the way out so the units section below
+      // still measures the state it was written against.
+      //   · CVCS: t=0 instruments have not converged, so `charging_flow` reads exactly 0
+      //     and every gate reading it is off. 20 cycles is 2 plant-seconds.
+      //   · ECCS: a LOCA, not a bare `set_hpi active:true`, and that is physics rather
+      //     than convenience — the HPI pump has a shutoff head, so at 2235 psi commanding
+      //     it on delivers hpi_flow ≈ 0.014, under comp_pump's own 2 % spin threshold, so
+      //     the pump renders STOPPED and correctly gates its pipes off. MEASURED on a 0.2
+      //     large LOCA: HPI arms at ~8 s / 12.1 MPa and flow reaches 0.198 by 20 s. The
+      //     first draft used set_hpi and read the resulting dead pipe as a defect.
+      (function () {
+        var svcCvcs = new RD.SimulationService({ plant_id: 'pwr', initial_state: 'hot_full_power' });
+        svcCvcs.running = true; for (var k = 0; k < 20; k++) svcCvcs.tick(); svcCvcs.running = false;
+        RD.PwrBoard.render(svcCvcs.assembleSnapshot());
+        ck('pipe: full power RWST->charging cross-tie PAUSED (ECCS off)',
+          pipeState('pms3xe4ia7n') === 'paused', pipeState('pms3xe4ia7n'));
+        ck('pipe: full power VCT->charging suction RUNNING (normal make-up)',
+          pipeState('pms3x28fhhm') === 'running', pipeState('pms3x28fhhm'));
+        ck('pipe: full power charging pump suction RUNNING',
+          pipeState('pms3x29yoq0') === 'running', pipeState('pms3x29yoq0'));
+
+        var svcEccs = new RD.SimulationService({ plant_id: 'pwr', initial_state: 'hot_full_power' });
+        svcEccs.handleCommand({ action: 'inject_failure', failure_id: 'large_loca', severity: 0.2 });
+        svcEccs.running = true; for (var i = 0; i < 200; i++) svcEccs.tick(); svcEccs.running = false;
+        var sn = svcEccs.assembleSnapshot();
+        RD.PwrBoard.render(sn);
+        var f = (sn.instruments.hpi_flow || 0).toFixed(3);
+        ck('pipe: ECCS injecting -> RWST->charging cross-tie RUNNING (hpi_flow ' + f + ')',
+          pipeState('pms3xe4ia7n') === 'running', pipeState('pms3xe4ia7n'));
+        ck('pipe: ECCS injecting -> RWST->ECCS pump suction RUNNING (hpi_flow ' + f + ')',
+          pipeState('pms3x1rbkod') === 'running', pipeState('pms3x1rbkod'));
+        RD.PwrBoard.render(svcHfp.assembleSnapshot());
+      })();
       // PZR indication pair (EXTRA_ITEMS, #237): temperature = saturation at RCS
       // pressure (~653 °F at operating pressure), heater power = live actual output.
       (function () {

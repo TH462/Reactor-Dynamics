@@ -3,8 +3,8 @@
 **Plant:** Pressurized Water Reactor (PWR)  
 **Trainer:** Reactor⚛️Dynamics educational plant simulator  
 **Document set:** Commercial-style operating manuals for training use  
-**Revision:** 25  
-**Date:** 2026-08-03  
+**Revision:** 26  
+**Date:** 2026-08-04  
 **Date:** 2026-07-30  
 
 ---

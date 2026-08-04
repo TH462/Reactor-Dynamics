@@ -66,6 +66,39 @@
       var err = setpoint - s.pressure_mpa;
       s._heater_dp_frac = err > 0 ? clip(err / p.heater_band_mpa, 0, 1) : 0;
     }
+    // NO AC, NO HEATERS. The pressurizer heaters are a ~1 MW resistance load on the
+    // plant's AC switchgear, and a station blackout is DEFINED as not having any.
+    // 10 CFR 50.2: station blackout is "the complete loss of alternating current (ac)
+    // electric power to the essential and nonessential switchgear buses in a nuclear
+    // power plant (i.e., loss of offsite electric power system concurrent with turbine
+    // trip and unavailability of the onsite emergency ac power system)", and it "does
+    // not include the loss of available ac power to buses fed by station batteries
+    // through inverters" — that exclusion is the vital instrument AC, which is why the
+    // board keeps reading through a blackout while the heater banks do not run off it.
+    //
+    // DELIBERATELY NOT LOSS OF OFFSITE POWER. NUREG-0578 Item 2.1.1 / NUREG-0737 Item
+    // II.E.3.1 put the minimum heater group needed to hold pressure in Mode 3 on
+    // redundant emergency diesel-backed buses precisely so it SURVIVES a LOOP; the
+    // blackout is the event that takes the diesels with it. `loss_of_offsite_power`
+    // carries effect `coast_down_pumps` and never sets this flag, so its heaters keep
+    // working — which is the whole distinction between the two casualties.
+    //
+    // This is a PHYSICAL de-energization, not a value written into the operator's
+    // demand. Setting `heater_override = 0` instead would be undone by the very next
+    // set_heater — the HEATER AUTO button or the % box on the board — which is exactly
+    // the defect #200 found in stuck_open_spray. The selector position (`heater_auto`)
+    // and the operator's demand are left as the operator set them; what goes to zero is
+    // the power actually delivered, so the board's heater % reads the honest zero amps.
+    // Same class as the spray's `flow_frac` scaling in stepPressure: an electrical/
+    // hydraulic reality, not a control decision (HR2).
+    // Reads `ac_available` rather than `station_blackout` since #332 — same value, but
+    // the heaters are off because there is no ELECTRICITY, not because a casualty flag is
+    // set. pwr_engine step 0a derives it and lists everything else on that bus.
+    // `=== false`, not `!s.ac_available` — autoControl is called directly with hand-built
+    // state objects by the engine's selfTest and ad-hoc pressurizer rigs, and a bare
+    // negation would de-energize every one of them. Absent means energized, same
+    // convention as pwr_primary.acAvailable.
+    if (s.ac_available === false) { s.heater_power_frac = 0; s._heater_dp_frac = 0; }
     // A spray valve stuck open is mechanical: it beats BOTH the auto controller and
     // any operator demand, the way porv_stuck beats porv_demand in relief() (#200).
     if (s.spray_stuck) { s.spray_flow_frac = 1; }

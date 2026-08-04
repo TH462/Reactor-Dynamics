@@ -20,6 +20,586 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04 (#325 — natural circulation, and a LOOP stops being terminal)
+
+**Task:** owner asked for the options on #325 and then ruled *(OWNER RULING, 2026-08-04: "Go with one B")* —
+build it as the void-gated ΔT-driven form, not a constant floor. `engines/pwr/pwr_config.js`,
+`pwr_primary.js` (`naturalCircFlow` + `stepFlow`), new probe **TR-15**, `run_behavior` **47 → 48**,
+`run_contract` **144 → 145**, manual set **Rev 25 → 26**.
+
+### The options brief was wrong about the cost, and measuring said so
+
+#325 costed option (1) as *"the largest change; a real physics addition (flow as a function of core ΔT and
+loop geometry)"*. **`natural_circ_flow` already existed** as the pump-coastdown target in `pwr_config.js`,
+set to `0.0`, and `Q_coolant_to_sg` was already proportional to `flow_frac`. Flipping that one constant to
+0.03 made a LOOP fully survivable and **broke nothing** — nine runners (`run_pwr`, `run_meltdown` ×2,
+`run_behavior`, `run_campaign`, `run_procedures` ×2, `run_ops`, `run_scenarios`) all at baseline.
+
+**That zero is itself the finding.** Nothing in the suite asserted the terminal behaviour — the #315/#329
+shape a third time.
+
+### Why the cheap version was rejected, measured
+
+A constant floor **circulates through a fully voided loop**. Measured, SBO + large LOCA:
+`primary_void_fraction` **1.00** with `pump_flow_pct` reading **3.00**, Tavg driven to **245 °F (119 °C)**
+while the clad melted at **3827 °F (2108 °C)** — an incoherent picture, and precisely the TMI-2 case, where
+tripping the pumps into a voided loop established nothing. Right outcomes (the core still melts, because
+uncovery dominates), wrong mechanism: HR10. `_dry_factor` gates on *secondary* dryout only, so nothing else
+would have caught it.
+
+### The law, and why it is solved rather than iterated
+
+Sourced — WTSM 3.2.6.3 (**ML11223A213**, p. 3.2-26), fetched via the Wayback + browser-UA workaround:
+
+> *"It is essential to ensure sufficient flow to remove reactor decay heat even when reactor coolant pumps
+> are not operating. **The higher elevation of the steam generators relative to the reactor vessel produces
+> a thermal driving head** to establish and maintain flow in the RCS when heat is removed from the steam
+> generators by dumping steam. Natural circulation flow is sufficient only for **decay heat removal of a
+> shutdown reactor, not for power operation**."*
+
+Buoyancy head ∝ ΔH·β·ΔT, loop resistance ∝ W², so **W = C·√ΔT**. The core rise is itself
+ΔT = `delta_T_rated`·Q/W (the #315 form), so the loop closes:
+
+> W = C·√(delta_T_rated·Q/W) ⇒ W³ = C²·delta_T_rated·Q ⇒ **W ∝ Q^⅓**
+
+**Solved, not iterated, for two reasons that are not style.** The fixed-point form would read a ΔT that
+`flow_floor` CLAMPS below 10 % flow — exactly the band natural circulation lives in — and a lagged
+self-referential flow term rings. The cube root is not a fudge: it falls out of two independently-motivated
+relations, which is the internal check on both. Measured **1.343 observed vs 1.342 predicted**.
+
+**Q is `_Q_total`, not `power_pct`** — decay heat IS the point, and reading fission power would compute zero
+circulation for a scrammed core. That is #315's exact defect one function away, and the injection table
+below shows TR-15 catches it.
+
+### `flow_floor` 0.1 → 0.015, and why it was not optional
+
+`delta_T_raw = delta_T_rated·Q / max(flow_frac, flow_floor)`. With circulation at ~4 % and the floor at
+10 %, **the leg split under-read by 2.4×**: measured 34.5 °F where the energy balance says 81.9 °F. That is
+#315 again, in the regime this change exists to create — and **loop ΔT is the cue a real crew uses to verify
+natural circulation**, so shipping it clamped would have half-built the feature. 0.015 sits below the
+weakest circulation this plant can make (~1.9 % at a fully decayed core), so it never binds where it
+matters and still guards flow → 0. Blast radius measured: `run_otdt` unmoved at 46, everything else green,
+**one** probe red — TR-7b, which was pinning the defect.
+
+### TR-7b leg D was pinning the ABSENCE of the mechanism
+
+It asserted *"flow is at or below the modelling floor"* and computed its expectation as `Q / floor`. Both
+were true only because losing the pumps drove flow to zero. Re-authored: the energy balance now divides by
+`max(flow, floor)` exactly as legs A/A2 do — **and passes on the OLD plant too**, since flow → 0 there and
+the max picks the floor, making it the previous check verbatim. The new assertion is a separate check that
+fails on the old plant by construction: the flow it divides by is in the natural-circulation band. Two
+checks, one improved and one genuinely new, rather than one refitted (HR10).
+
+### TR-15, injection-verified six ways
+
+| injection | reddens |
+|---|---|
+| `natural_circ_coeff: 0` (the pre-#325 plant) | **9 checks** — TR-7b ×2, TR-15 ×7, incl. damaged **and** melted at 675 °F |
+| constant floor instead of the law | cube-root check (1.000 vs 1.342) + the SBO leg |
+| linear in Q instead of Q^⅓ | cube-root check (**2.423** vs 1.342) + the SBO leg |
+| void gate removed | **leg C only** — a fully voided loop circulates **4.178 %** |
+| `power_pct` instead of `_Q_total` | **8 checks** — reproduces the terminal plant exactly (#315's defect) |
+| `flow_floor` back to 0.1 | TR-7b's natural-circulation band check — the band is derived FROM the floor |
+
+**Leg E exists so this does not read as immunity**: circulation moves heat to the SG, it does not remove it,
+so a LOOP with AFW blocked must still reach damage. **Its 90-minute ride is load-bearing** — trimmed to 60
+to save gate time and it went red at Tavg 660 °F still climbing, because circulation distributes the heat
+while it has somewhere to put it, so losing the sink now takes LONGER than the pre-fix 30 minutes.
+
+**Runtime:** TR-15 costs **18 s** (`run_behavior` 64 → 82 s). The first draft cost 98 s; three of its four
+long rides were trimmed after measuring which margins were real.
+
+### The SBO picture is now worth having
+
+Measured, four hours, full stack, AFW started: subcooling squeezes to **9.2 °F (5.1 °C) at 30 min** — the
+real early pinch, before decay heat falls — then recovers to 14.8 → 24.7 → 30.9 → **39.0 °F**. Void stays 0,
+flow decays 3.72 → 2.68 % on the cube root, no damage. Inventory drifts **100 → 90.9 %**, because #332 took
+charging and SI away, which makes **inventory** the live concern rather than temperature. That is the RCP
+seal-LOCA lesson #332 named, now reachable.
+
+### Not built here
+
+- **PWR-E04/E05 checklists** (#319 item 6) are **unblocked** but not authored — separate work, and E05's
+  manual acceptance was rewritten to match the plant rather than a checklist being invented alongside it.
+- **No board indicator.** `true_state.natural_circulation` is diagnostic only. A real crew verifies
+  circulation from loop ΔT, subcooling and stable SG pressure, all of which this board already has; a
+  dedicated lamp would be duplicate authority (DESIGN_CRITERIA Q4). The field exists because
+  `pump_flow_pct` alone cannot tell 4 % of buoyancy from 4 % of a coasting rotor.
+
+---
+
+## Session log — 2026-08-03w (#332 — the whole CVCS and the ECCS pump ran through a blackout too)
+
+**Task:** *"investigate then work issue 332."* #332 was filed by the #329 session, `status-needs-ruling`,
+recommending option **(2) an `ac_available` engine concept** but "not before #325 is ruled". #325 is
+still unruled; taken anyway, because what #325 decides is how much *detail* an SBO deserves, not
+whether a motor turns without electricity. Sourced, fixed, gated. `engines/pwr/pwr_engine.js` (step 0a),
+`pwr_primary.js`, `pwr_pressurizer.js`, new probe **CA-8**, `run_behavior` **46 → 47**.
+
+### The defect, and it is bigger than the issue said
+
+The plant had **no concept of AC availability at all**. `station_blackout` was a bare boolean on
+engine state that four call sites happened to consult; everything else with a motor kept turning.
+Measured full stack, `hot_zero_power`, SBO at t = 60 s — the issue's own table, reproduced exactly:
+
+| time | letdown | charging | core inventory |
+|---|---|---|---|
+| 30m | 0.0298 | 0.0297 | 99.98 % |
+| 1h | 0.0297 | 0.0268 | 99.51 % |
+| 3h | **0.0297** | **0.0275** | **76.55 %** |
+
+**And a third load the issue did not know about.** With the blackout in and the operator pressing
+SI (`set_hpi active:true` at 300 s), the de-energized ECCS pump injected the RCS from **100 % to
+120 % — solid — in under five minutes**, reading a full pump-curve discharge pressure the whole
+time. Point-fixing the two systems #332 named would have shipped that one untouched, which is the
+argument for (2) over (1) restated as a measurement.
+
+**After:** inventory holds at **99.99 %** over the same three hours; the ECCS pump delivers 0 flow
+at 0 MPa discharge.
+
+### The evidence pass changed the shape of the fix twice
+
+Both primaries fetched via the Wayback `2023id_` + browser-UA workaround (nrc.gov still 403s
+direct), saved to `inbox/sources/`. **Check the other lanes first** — this lane already had
+10 CFR 50.2 and ML003735234 from #329, so only two new documents were needed.
+
+**WTSM §4.1 Chemical and Volume Control System — ADAMS `ML11223A214`.** Two quotes, both
+load-bearing:
+
+> §4.1.3.4, p. 4.1-16: *"Two of the pumps are single-speed, horizontal centrifugal pumps **powered
+> from vital (Class 1E) ac power**, and the third is a positive displacement (reciprocating) pump…
+> powered from a nonvital ac source."* — and *"The centrifugal charging pumps also serve as the
+> **high head safety injection pumps** of the emergency core cooling systems."*
+
+> §4.1.3.1, p. 4.1-7, letdown orifice isolation interlock 2: *"**At least one charging pump must be
+> running in order to open any letdown orifice isolation valve. If the running charging pump(s) is
+> lost, then the letdown orifice isolation valves close.** This interlock ensures that cooling water
+> (charging) is available to the regenerative heat exchanger prior to the establishment of letdown
+> flow."*
+
+That second quote is the one that earned its fetch. The obvious fix — gate letdown on
+`ac_available` alongside everything else — would have been **wrong in a way no leg of the probe as
+first drafted could see.** Letdown follows the PUMP, and measured with the grid fully up, securing
+the charging pump left letdown flowing and drained inventory **100 % → 79.5 % in 13 minutes**,
+until the low-pzr-level isolation (the *other* real interlock, already modelled in `pwr_control`)
+caught it at 17 %. One sourced guard fixes both; a blackout-shaped guard fixes one and hides the
+other. That is CA-8 leg C, and injecting `acAvailable(s)` in place of `chargingPumpPowered(s)`
+reddens **leg C and nothing else in the suite**.
+
+**WTSM §5.7 Generic Auxiliary Feedwater — ADAMS `ML11223A229`**, §5.7.5 PRA Insights, p. 5.7-6:
+
+> *"A station blackout fails all ac power except the vital Class IE ac busses from the dc invertors.
+> **All decay heat removal systems, except the turbine-driven AFW pump, also fail.**"*
+
+One sentence that is legs A/B/D at once: everything motor-driven stops, AFW does not. It is also
+why AFW carries a **do not gate this** note at the derivation site.
+
+### The fix — `ac_available`, and why a boolean mirror is worth having
+
+`s.ac_available = !s.station_blackout`, derived at the top of `step()` (0a), published in
+`true_state`, documented in `CONTEXT.md` §6.3. Today it is *exactly* the negation and the comment
+says so — **the defect was never a wrong formula, it was that the question had no name.** A load
+reads `ac_available` because it needs power; it does not read a casualty flag and infer power from
+it. The derivation site carries the roster (dies: RCPs, heaters, charging + letdown + borate/dilute,
+ECCS pump; lives: AFW, accumulators, the board, spray-already-dead-with-the-RCPs) and the two
+source quotes.
+
+Read side is two predicates in `pwr_primary`, `acAvailable(s)` and `chargingPumpPowered(s)`, both
+of which **default to POWERED when the field is absent** — the engine's own `selfTest` and ad-hoc
+physics rigs call `letdownFlow`/`injectionFlowInv`/`autoControl` with hand-built state objects, and
+a bare `!s.ac_available` would have silently de-energized every one of them. Same reason the
+pressurizer guard is written `=== false`.
+
+Selectors are never touched (`charging_pump_running`, `heater_auto`, `hpi_active` stay where the
+operator put them) — the #200 trap #329 also had to dodge. `_migrateState` **recomputes** rather
+than defaulting to true, or a save taken mid-blackout reloads electrified for one step.
+
+### CA-8, and the two legs the first draft got wrong
+
+Five legs, 22 checks. A = the CVCS through a three-hour blackout, B = SI pressed with no AC,
+C = the sourced pump interlock **with the grid up**, D = the survivors, E = LOOP is not a blackout.
+
+**Injection-verified six ways, each with a distinct signature:**
+
+| injection | reddens |
+|---|---|
+| revert the letdown guard | 4 checks — legs A and C, incl. the 71.79 % and 79.54 % drains |
+| revert the charging mass-balance guard | 1 check — leg A inventory *max*, 120.00 % |
+| revert the ECCS guard | 3 checks — legs B and D, incl. `hpi_flow` peak 0.9838 → 120 % solid |
+| letdown on `ac_available` instead of the pump | **leg C only** (2 checks) |
+| `ac_available` := a LOOP-true proxy (`!!s.pump_running`) | **CA-7 leg C + CA-8 leg E only** (3 checks) |
+| gate the AFW pump on `ac_available` | **leg D AFW only** (1 check) |
+
+**Two authoring traps, both found by injection rather than by reading.**
+
+**(1) `h.range()` spans the WHOLE run, including the settle before the injection.** Legs A and C
+run 60 s of healthy plant first, so the bare range peak reported the *pre-event* letdown of 0.0300
+and the checks failed against their own fixture. Fixed with a `peakAfter()` sampler attached to the
+post-injection `run()` only — the same shape CA-7's `watchHeater` uses, for the same reason.
+
+**(2) The charging mass-balance guard was UNOBSERVABLE and the probe was green anyway.** Reverting
+it left **all 47 probes passing**: with the CVCS in AUTO the law targets `letdown_flow +
+level_demand`, letdown is already zero on the interlock, and an SBO *repressurizes* so the level
+servo asks for nothing either. Two changes make it bite — park a real demand with
+`set_charging_flow normalized: 0.05`, and assert inventory in **both directions**, since a dead
+pump that still moves water pushes it UP and every other check here watches it go down. *A guard
+you cannot make red is a guard you have not tested* — and the first draft of this probe had four
+checks covering three guards, one of which was decorative.
+
+**(3) AFW delivered flow is UNREACHABLE, so leg D asserts discharge pressure instead.** The first
+draft asserted `afw_flow_normalized > 0.01` and it read **0.000**. Not a defect: measured, a
+blackout at full power parks SG level at **61.6 % and holds it there for 25 minutes**, because with
+the RCPs stopped there is no core→SG heat path (#325) — the generator never boils down and the
+level-hold valve correctly throttles AFW shut. Asserting flow would have pinned a **non-event** and
+gone green the day natural circulation is built. `afw_discharge_pressure_mpa` is driven by pump
+demand alone, reads **8.96 MPa** with every bus dead, and collapses to 0 if anyone gates the AFW
+pump on AC — which the injection table above confirms.
+
+### Left alone, deliberately
+
+- **RHR** — its heat removal is already zero in an SBO (gated on `condenser_cooling_available`,
+  which `full_blackout` clears), and there is **no way to reach a state where AC is out and
+  condenser cooling is available**, so an extra guard there would be untestable by injection. The
+  `rhr_active` indication does still read true on a dead pump; filed rather than patched blind.
+- **`condensate_pump_running`** reads true through a blackout. The feed path is already dead
+  (`condOK` also needs `condenser_cooling_available`), so this is indication-only — and the
+  condensate pumps are **nonvital**, lost on a plain LOOP too, so `ac_available` is the wrong gate
+  for them. Wants the non-1E half of the bus model, which this change does not build.
+- **`loss_of_offsite_power` does not clear `main_feedwater_available`/`condenser_cooling_available`**
+  either, for the same missing-non-1E-bus reason. Out of scope; it would move #325's picture.
+
+### Not affected
+
+`ac_available` is `true` in every scenario, procedure, mission and probe that does not inject a
+blackout, so the at-power plant is byte-identical. The SBO **outcome** is unchanged — it stays
+terminal for #325's reason — this is a correctness and indication fix, not a save.
+
+---
+
+## Session log — 2026-08-03v (#329 — pressurizer heaters ran through a station blackout)
+
+**Task:** owner report — *"the pressurizer heater was still on when i injected a station blackout
+failure."* Reproduced, sourced, fixed, gated. `engines/pwr/pwr_pressurizer.js:autoControl`,
+new probe **CA-7** in `test/behavior_pwr.js`, `run_behavior` **45 → 46**.
+
+### The defect
+
+`autoControl()` resolved heater demand from `heater_override` or the proportional band and
+`stepPressure()` applied it through `K_heater`, with **nothing anywhere asking whether the plant
+had electrical power**. The pressurizer *spray* was already right — `spray_eff` is scaled by
+`flow_frac` in `stepPressure`, so it dies with the RCPs — and the heaters had no equivalent.
+
+Measured full stack, `hot_full_power`, SBO at t = 60 s: heater power **100.0 % at 17m15s** and
+68.5 % at 18m00s. With the operator calling for heat (`hot_zero_power`, SBO at 60 s, `set_heater
+power_pct: 100` at 120 s) it is immediate: **100 % sustained**, pressure walked to 2352 psi
+(16.22 MPa), and a **spurious `pzr_level low` reactor trip at 5m27s** — phantom heat boiling
+liquid out of the pressurizer until the level channel tripped the plant.
+
+### Why 36 green runners never asked — the #315 shape again
+
+**The heaters are only DEMANDED below setpoint, and a blackout on this plant repressurizes.** A
+Mode 3 blackout A/Bs **byte-identical** across the fix, measured over an hour: the auto controller
+never asked for a single percent, because Tavg drifts up and pressure with it. The defect is only
+reachable once the code safeties have cycled pressure back down (17 min at full power) — or the
+instant an operator touches the heater controls, which is what free play did and no probe did.
+*A term that is never exercised in the regime you test in is a term nothing tests.*
+
+### Sourced, and the LOOP distinction is the design of the fix
+
+**10 CFR 50.2** (PRIMARY, saved `inbox/sources/10CFR50.2_CFR-2023-title10-vol1.xml`, fetched from
+**govinfo.gov** — see the fetch note below):
+
+> *"Station blackout means the complete loss of alternating current (ac) electric power to the
+> essential and nonessential switchgear buses in a nuclear power plant (i.e., loss of offsite
+> electric power system concurrent with turbine trip and unavailability of the onsite emergency ac
+> power system). Station blackout does not include the loss of available ac power to buses fed by
+> station batteries through inverters or by alternate ac sources as defined in this section, nor
+> does it assume a concurrent single failure or design basis accident."*
+
+The exclusion is what makes the fix's shape right: what survives is **vital instrument AC through
+the battery inverters** — which is why the board keeps reading through a blackout, and why nobody
+runs ~1 MW of resistance heating off it.
+
+**NUREG-0578 Item 2.1.1 / NUREG-0737 Item II.E.3.1** — the minimum heater group needed to hold
+pressure in Mode 3 is on *redundant, emergency diesel-generator-backed* buses, so it **survives a
+LOOP**. **Source class stated honestly: this is a DOCKETED RESTATEMENT, not the NUREG** — ADAMS
+**ML003735234** (Florida Power Corp → NRC, 2000-07-20, Crystal River 3), saved locally, quoting the
+requirement verbatim. NUREG-0737 itself (ML051400209) is **unread**: nrc.gov 403s and Wayback has no
+copy. It is not load-bearing — 10 CFR 50.2 alone settles the question — and II.E.3.1 only supplies
+the LOOP/SBO split. Flagged rather than laundered, per the #315 §6 lesson.
+
+**So a plain LOOP must KEEP the heaters.** `loss_of_offsite_power` carries effect
+`coast_down_pumps` and never sets `station_blackout`, so gating on that flag gets the
+discrimination for free. Measured: LOOP + heaters demanded → **100.0 %**, flag false.
+
+### The fix is a PHYSICAL de-energization, not a value in the operator's demand (#200)
+
+```js
+if (s.station_blackout) { s.heater_power_frac = 0; s._heater_dp_frac = 0; }
+```
+
+The obvious fix — `heater_override = 0` on injection — **repeats #200 exactly**. `set_heater`
+writes `s.heater_override` directly (`pwr_engine.js:894`), so a blackout parked in the operator's
+demand is wiped by the next press of HEATER AUTO or the % box, the way the stuck-open spray used to
+heal itself. The selector (`heater_auto`) and latched demand are left as the operator set them;
+what goes to zero is the power **delivered**, so the board reads an honest zero and restoring AC
+gives the heaters back with no re-selection. Same class as the spray's `flow_frac` scaling twenty
+lines below: an electrical reality, not a control decision (HR2).
+
+### CA-7, and leg C is the whole point
+
+Three legs — **A** operator demands 100 % with no AC (also the #200 regression guard, driven
+through `set_heater` deliberately); **B** heaters in AUTO with the setpoint raised to 16.5 MPa so
+the controller is genuinely asking, without which a guard placed after the override branch would
+pass; **C** **LOOP is not a blackout**, full authority.
+
+**Injection-verified BOTH WAYS, and the second injection is the one worth copying.** On the
+pre-fix engine 4 checks red (`peak 100.0 % @ 61 s`, `16.50 MPa max`, the `pzr_level low` trip, the
+AUTO leg) — **and leg C passes on both**, which is what makes it a discriminator rather than a
+second copy of leg A. Then replace the guard with the plausible simplification `!s.pump_running`:
+legs A and B stay **GREEN** and **only leg C reddens** (`expected 100 %, observed 0.0 %`). Any
+proxy that is also true in a LOOP — pumps stopped, turbine tripped, reactor scrammed — is caught by
+that one check and by nothing else here.
+
+**Harness trap:** `heater_power_pct` is **control_state**, and `OpsHarness._sample` only records
+numeric **true_state** fields — so `h.range('heater_power_pct')` hands back a silent `NaN`, and
+`NaN < 0.01` is *false*, so the check fails for the wrong reason instead of passing vacuously.
+Sampled through the `h.run(sec, cb)` callback instead. Check any `range()` call against
+`getTrueState()`'s key list before trusting it.
+
+### What this does NOT change — stated rather than claimed
+
+**The SBO outcome is unaffected.** A/B from `hot_full_power` over an hour: core inventory 70.8 vs
+70.83 % at 10 min, **0 % at 20 min in both**, `fuel_damaged` at 30 min in both. The blackout is
+terminal here for the reason **#325** documents — no natural circulation, so no core→SG heat path —
+and the heaters never mattered to that. This is a correctness and indication fix.
+
+### Fetch note
+
+**govinfo.gov works from this environment and nrc.gov does not.** Measured: `www.nrc.gov` **403**,
+`www.ecfr.gov` **302** (to an `unblock.federalregister.gov` interstitial), `www.govinfo.gov`
+**200**, `web.archive.org` **200** but intermittent DNS failures and no copy of ML051400209. For
+**CFR primaries specifically, go to govinfo first** — `https://www.govinfo.gov/content/pkg/
+CFR-<year>-title<N>-vol<V>/xml/CFR-<year>-title<N>-vol<V>-sec<S>.xml` is the official XML and needs
+no UA spoofing. The Wayback `2023id_` + browser-UA workaround still works for ADAMS PDFs
+(ML003735234 came through it); `pypdf` is not installed by default, `pip install pypdf` is fine.
+
+### Found, filed, NOT fixed
+
+1. **Letdown flows through the blackout** — ~0.030 normalized, steady over 40 min, with no
+   charging. Orifice flow needs no pump, but the isolation valves are air/AC operated and a real
+   plant isolates letdown on loss of power. A slow inventory drain that should not be there.
+2. **`behavior_pwr.js` COVERAGE has a DUPLICATE `TR-14` key** (lines 84 and 92). The catalog's
+   TR-14 is the *station blackout* row; #135's loss-of-feedwater drain-rate probe was given the
+   same id. Object literal, so line 92 **silently replaces** line 84 and the #135 probe's coverage
+   string is gone — the `DOC_PATCHES.items` trap from CLAUDE.md, in a new place. The probe runs;
+   the gap report is wrong.
+3. **`pwr_board_inspect.js` does not mention the AC dependence.** Not contradicted, so no
+   correction is *owed* — but it is where the teaching point belongs. Deliberately not edited: that
+   file is modified in the `develop` lane right now, and a mid-file merge there is the silent-loss
+   case CLAUDE.md warns about.
+## Session log — 2026-08-04a (board_check joins run_all — a number that rotted twice)
+
+**Task:** the owner asked, of the board_check count being wrong twice in a row, *"how can you
+keep that from happening again?"*
+
+**The answer is structural, and diligence is not it.** Both failures have the same shape:
+
+| when | CLAUDE.md said | the harness was at |
+|---|---|---|
+| before #289 | 143/143 | **1 FAILURE / 143** |
+| through 2026-08-03 | 188/188 | **1 FAILURE / 188** |
+
+Each time a pin was added and the file was not run. **The reason it survived is that nothing
+could contradict it.** `run_all`'s `discover()` globs `test/(run|verify)_*.js`; board_check is an
+HTML page under `ui/test_panel/`, so it was never discovered, never had a `BASELINES` entry, and
+its only record was prose — in the same document whose own gate-baseline section says *"Prose
+baselines are what rotted"*. A second, unverifiable copy of a number is the defect; asking people
+to be more careful with it is not a fix.
+
+**`test/verify_board_check.js`** — a RUNNER, not new coverage. It adds no checks; every assertion
+stays in the HTML harness, which is the right place for them (it mounts the real board with the
+real driver and service). It loads the page, waits for the harness to stamp `document.title`,
+reads the harness's own summary line, prints a scrapeable tally and exits on it. `BASELINES` gets
+`202checks 0failed`, so the count is DATA, drift is symmetric, and **a pin added without running
+the file now reddens `run_all` for whoever added it.**
+
+Precedent, and it is the same failure: `audit_manual_controls.js` was not a `run_*.js`, so
+auto-discovery never saw it, so it had no baseline, so it sat at **32 mismatches / exit 1**
+through three procedure re-authorings (#224). Renaming it to `run_manual_controls.js` fixed that
+class permanently. This is that move for the board.
+
+**Injection-verified four ways**, and the fourth is the one worth keeping:
+1. revert the ECCS leg gate → 1 red (`cross-tie PAUSED` reports `[running]`)
+2. restore the long NIS card title → 2 red, at the original **−58.8 px**
+3. put the pressurizer back to `top: 230` → 1 red, at the original **y 332 vs 335**
+4. throw an exception mid-harness → **exit 2, "DID NOT COMPLETE"**, not a smaller-but-green
+   tally. board_check builds its own count, so a partial run would otherwise look like a pass
+   with fewer checks — the silent-truncation shape this runner exists to stop.
+
+**A wiring trap, caught on the first run.** `run_all`'s scraper matches
+`/(^|[\s(])(\d+)\s+(pass|xfail|passed|failed|checks|screenshots)/` and strips whitespace
+*after* matching, so the `BASELINES` string reads `202checks 0failed` while the line the runner
+prints must be `202 checks, 0 failed`. Printing it closed up scrapes to `?`, which `run_all`
+reports as DRIFT against every possible baseline.
+
+**And the prose copy is GONE, not corrected.** The CLAUDE.md paragraph now points at `BASELINES`
+and says *do not restore a count here*; ~3.6 kB of stale count history went with it, which the
+"keep it SHORT" rule wanted anyway. The durable board-editing traps were carried forward rather
+than deleted — including two from this week that are not board-specific (`svc.tick()` no-ops
+unless `this.running`; writing `textContent` on a rendered board value destroys the child nodes
+the renderer updates).
+
+`run_all` **36 → 37 runners**. Not marked `slow`: it takes ~2 s, and hiding it from `--fast` —
+the invocation an agent actually runs mid-change — would give back most of what this buys. The
+#241 CI trap is real but already handled (CI installs playwright), and `gates.yml` now names four
+playwright runners instead of three.
+
+---
+
+## Session log — 2026-08-03v (owner's board walk-round + the Physics/Graph expansion)
+
+**Task:** six items straight from the owner, all UI/board. Every geometry claim below is
+measured off a mounted headless board (`RD.PwrBoard.ports()` + `getBoundingClientRect`),
+never off authored coordinates — which is the trap two of these were.
+
+### The ECCS card was showing emergency suction lined up at 100 % power
+
+*(OWNER: "the pipe coming out of the right of the ECCS shows flow when the ECCS is off or
+not flowing")*. MEASURED at hot full power, `eccs_mode=off`, `hpi_flow=0.0000`,
+`hpi_active=false`: `pms3xe4ia7n` (ECCS PANEL RIGHT → charging-suction tee leg C) came back
+**running**. It had to — leg C was gated on `charging_pump_running`, and the charging pump
+runs continuously at power, so that pipe animated in every state the plant can be in.
+
+**Why that leg was the pipe's ONLY gate, and this generalises.** A pipe animates when BOTH
+endpoints' ports report `data-active !== '0'`. This one's other endpoint is a plain BOX port,
+and box ports have no element at all (`portActive` returns `true` when `!p.el`). So for any
+pipe running from a card edge to a fitting, **the fitting leg is the entire gate** — there is
+no second opinion. Worth checking the other box-port pipes for the same shape.
+
+Fixed by following the ECCS train (`hpi_active && hpi_flow > 1e-4`), the same predicate the
+ECCS pump's own suction line already used, with leg B (VCT → charging) on charging FLOW. Both
+states pinned in `board_check`, because a gate stuck at `'off'` would pass the "is it dark at
+power" check perfectly.
+
+**A trap that cost a run:** the first ECCS-injecting pin used `set_hpi active:true` at 2235 psi
+and read the resulting dead pipe as a defect. It is not — the HPI pump has a shutoff head, so
+at full RCS pressure it delivers `hpi_flow ≈ 0.014`, under `comp_pump`'s own 2 % spin
+threshold, and the pump correctly renders STOPPED. A real injection needs a depressurized RCS:
+on a 0.2 `large_loca`, HPI arms at ~8 s / 12.1 MPa and reaches 0.198 by 20 s.
+
+### Two geometry fixes, and the pumps were the wrong thing to move
+
+**Spray stub:** `pressurizer/spray-in` scans at y=332 against a first waypoint authored at
+y=335 — a 3 px drop over a 17 px run. The PRESSURIZER moved down 3 (as the owner asked); its
+other three ports sit on VERTICAL runs, so a pure Y shift cannot break the #231 x-plumb pins,
+and re-running `board_check` confirmed it rather than arithmetic.
+
+**Condensate train:** the owner asked to move the condensate pump, feed pump and polisher
+right. MEASURED, only ONE of the three drops was crooked — condenser→condensate pump at 1527
+vs 1525; pump→polisher (1525/1525) and polisher→feed pump (1455/1455) were already plumb, so
+moving all three would have straightened one and bent two.
+
+**And the pumps CANNOT be the tile that moves.** `Pump` is in `NUDGE_KINDS`, so `gridNudge`
+snaps its flange faces onto the doc grid (5 px): every pump port lands on a multiple of 5,
+which 1527 is not. Measured on the attempt — condensate pump `left` 1480→1482 moved its
+suction **1525→1530**, a 5 px jump for a 2 px shift. The condenser is not a nudged kind, so
+it is what can land on 1525. It moved left 2, and its patched `steam-in` riser waypoint moved
+with it.
+
+### The core ΔT margin readout was printing on the NIS card title
+
+*(OWNER: "The OP(delta)T indication is on top of the 'NUCLEAR INSTRUMENTATION' text.")*
+MEASURED: title 708.9→933.5, readout 874.7→934.5 — **58.8 px of overlap**.
+
+**The #311 comment that placed it had the title's end wrong by 84 px** (it recorded "ends near
+x=905" authored; it runs to x≈989, essentially the full 255 px card). And **nothing caught it**:
+`board_check`'s overlap pin skips `box` and `component` kinds, because a readout deliberately
+sits inside its card — and **a card title is not an item**, it is a `.bd-box-title` child OF the
+box. So the one element it could collide with was the one element the ruler was told to ignore.
+
+Title → `NUC INSTR (NIS)`, and it is sized against the WIDEST value the field can print rather
+than the one on screen: `dtMargin` renders `name + ' ' + margin.toFixed(1)` over a [-500, 1500]
+instrument, so 11 characters is the bound. Measured ends — `NUCLEAR INSTRUMENTATION` 887.1 (still
+overlaps), `NUCLEAR INSTR (NIS)` 856.1 (**3.7 px** — one retune from failing), `NUC INSTR (NIS)`
+825.1. `board_check` pins card titles now, for all three corner status words, plus a full-width
+variant measured on a CLONE.
+
+**On whether to keep the readout at all** (the owner asked what it is for): keep. OTΔT/OPΔT are
+the only two reactor trips on this plant whose setpoint MOVES — every other trip has a fixed
+number a player can memorise — and since #311 went ON by default they drive a reactor trip, a
+rod-withdrawal block and (since #318) a turbine runback. Without it, a rod stop and an automatic
+load runback happen with no visible cause, which is a DESIGN_CRITERIA Q3 observability failure.
+
+### `board_check` was carrying a red the docs recorded as green
+
+187/188, not the 188/188 in CLAUDE.md, and reproducible on the untouched tree. TWO independent
+causes, both in the harness:
+1. The LOAD TARGET checks sat AFTER the RCP OFF/ON pair, and **#314 turned that fatal** — the RCP
+   breaker position is a reactor trip now, so RCP OFF at hot full power scrams the plant in
+   ~0.5 s (measured: `scrammed=true, turbine_tripped=true` five cycles after the click).
+2. They read the snapshot **without stepping**, and unlike spray/heater/letdown, `set_load_target`
+   reaches the plant through the load-mode controller, which runs in the step.
+
+The clamp check now asserts the emitted COMMAND, because **#318's rate limit is one-sided** —
+measured, a demand of 80 MW from 100 lands in full inside 3 cycles, but the way back up crawls
+at 10 %/min (80.05 after 3 cycles, 81.05 after 63). A settled-value check of an upward step is
+really a check of the ramp. And it was passing VACUOUSLY before: the plant ships at 100 MW, so
+"clamps 850 → 100" was true without the box doing anything.
+
+**`board_check` 187/188 → 202/202** (14 new pins).
+
+### Physics tab: core damage, and the mechanism behind it
+
+*(OWNER: "the physics tab should also show core damage. are there any other physics things the
+user might want to see?")* A new **Core damage** group, split out of Core heat rather than
+appended, because the four rows are a CHAIN: inventory falls → the top of the core goes
+steam-cooled → zirconium oxidation adds its own heat → peak temperature crosses a threshold.
+
+Two of the four are NEW `true_state`, and they were the missing middle: `core_uncovered_frac`
+and `zirc_heat_pct` were **locals inside `stepCladding`**, so the panel could show the symptom
+(peak clad temperature) and the verdict, with nothing in between. Published rather than
+re-derived in the UI — f_unc reads three config constants and q_ox five more, and a formula
+copied into a consumer does not move itself.
+
+MEASURED on a 0.8 `large_loca`: uncovery hits 100 % by 50 s, and the oxidation term climbs
+**0.077 → 0.943 % of rated** between 50 s and 400 s *while the decay tail is falling*. That is
+the whole #238 result and it was not visible anywhere.
+
+The damage row reports **margin while intact** (`intact · 912 °F to damage`) rather than a
+boolean — a false-for-the-whole-run boolean teaches nothing, and the distance to
+`fuel_damage_c` is the number that moves. Also added **accumulator inventory**: the ECCS card
+shows flow, discharge pressure and alignment, and nothing anywhere shows how much passive shot
+is left. `run_contract` **143 → 145**.
+
+### Graph tab: 16 series → 51, grouped, and the buffer got CHEAPER
+
+*(OWNER: "add all these physics indications to the graph tab… add rod steps and other controls
+like pzr heater, spray, etc… organize the graph list in an intelligent order and group them in
+groups.")* Seven groups along the energy path — the same spine the Physics tab uses. Group order
+is first-seen order in the profile array, so there is no second list to keep in step.
+
+**Three kinds of series, distinguished by their ACCESSORS rather than a flag**: `get`+`tru` is
+instrumented; `tru` alone is a quantity with no instrument on this plant; `ctl` alone is a
+commanded position. The `tru`-alone ones now trace in **Realistic** mode too — they used to draw
+nothing, because `seriesVal` only reached for truth in Learning. That is not a softening of HR1:
+there is no channel to plot, and they carry no channel, which is visible.
+
+**The memory was the real work.** MEASURED at the buffer's cap (1800 s of sim time at the 10 Hz
+normal broadcast = 18000 rows): 16 series cost **10.2 MB**, and the naive 51-series version cost
+**75.8 MB** — a 7× regression, and the old code comment names ~100 MB as the reason it does not
+store full dicts. Two changes:
+- `chartSample` writes only the sides a series HAS. Writing `null` into `v` for the 19
+  uninstrumented series cost exactly as much as a real number.
+- One row per **0.5 s of SIM time** rather than one per broadcast, capping the buffer at 3600
+  rows. Keyed on sim time, not a broadcast count, so it is invariant under `timeAcceleration`
+  and under the 100→50 ms transient cadence — above 5× nothing is dropped at all.
+
+Re-measured: **8.8 MB for 51 series**, i.e. *less* than the old 16-series buffer. Resolution cost
+is nil — the widest window is 1800 s across ~400 px, so 2 Hz is still ~9× oversampled.
+
+---
+
 ## Session log — 2026-08-03u (#319 item 4 — ATWS, and a claim this repo carried is FALSE)
 
 **Task:** #319 item 4, PWR-E13. Two findings, and the second is the one that matters.

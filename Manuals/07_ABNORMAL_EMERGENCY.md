@@ -2,7 +2,7 @@
 
 **Document:** PWR-EOP-01  
 **Title:** Failure Response — PWR Trainer  
-**Revision:** 25  
+**Revision:** 26  
 
 ---
 
@@ -233,10 +233,13 @@ Distinct from full **SBO** (E05); still treat heat sink as priority.
 | 2 | Start/verify **AFW** if available under blackout model |
 | 3 | Minimize DC/control load conceptually; act quickly |
 | 4 | Natural circulation / secondary heat removal focus |
-| 5 | Recognize trainer limitation: SBO may be unsurvivable under some physics configurations |
+| 5 | Verify natural circulation is established — loop ΔT steady, subcooling positive, SG pressure stable. It needs a **liquid-filled loop**: if the primary voids, circulation stops and does not come back |
 
 ### Acceptance
-Best achievable: core covered as long as secondary heat removal works. Document outcome honestly if core damage occurs.
+Core covered and cooled on natural circulation with AFW. **This is achievable** — measured, an SBO holds the core with subcooling squeezing to 9 °F (5 °C) around 30 minutes and recovering thereafter.
+
+### Note
+**The blackout takes the CVCS and the ECCS pump with it** (#332) — charging, letdown and safety injection are all Class 1E ac loads, so inventory only falls. AFW is turbine-driven and keeps running. Natural circulation *moves* heat to the steam generator; it does not remove it, so the secondary heat sink stays the priority.
 
 ---
 

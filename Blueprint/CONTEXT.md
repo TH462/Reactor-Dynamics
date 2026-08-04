@@ -498,6 +498,14 @@ physical-quantity vocabulary.
                                       //   the moment the rods drop. There is no gauge for either.
     "clad_temp_c": number,            // PEAK exposed-clad temperature — the partial-uncovery damage driver (#213).
                                       //   Above fuel/coolant temps whenever the core is partly uncovered.
+    "core_uncovered_frac": number,    // 0..1 — the fraction of the core the hot node treats as steam-cooled.
+                                      //   Ramps from 0 at core_top_uncover (70 % inventory) to 1 at
+                                      //   significant_uncover (50 %). The DRIVER behind clad_temp_c: it is what
+                                      //   exposes the hot node at all, and it has no instrument of any kind.
+    "zirc_heat_pct": number,          // Zr + 2H2O oxidation heat, % of RATED (#238). The second heat source, and
+                                      //   the one that makes core damage ACCELERATE rather than decay with the
+                                      //   decay tail. Exactly 0 on a covered core — the OXIDE state behind it is
+                                      //   monotonic and does not un-grow, but the heat release stops.
     "porv_open": bool,                // actual valve position
     "spray_stuck": bool,              // pressurizer spray valve mechanically stuck open — beats the auto
                                       //   controller AND any operator demand, the way porv_stuck beats
@@ -519,6 +527,15 @@ physical-quantity vocabulary.
     "porv_tailpipe_temp_c": number,   // PORV discharge/quench-tank line temperature — warm baseline (seat leakage), hot while relief flows; feeds instruments.porv_tailpipe_temp (the TMI-2 tell)
     "fuel_damaged": bool,             // latched when fuel exceeds fuel_damage_c — scenario outcome-grading hook
     "pump_running": bool, "pump_flow_pct": number, "station_blackout": bool,
+    "natural_circulation": bool,      // buoyancy-driven flow with the RCPs stopped (#325). W = C·√ΔT closed against the
+                                      //   core rise ⇒ W ∝ Q^⅓; gated to zero by loop voiding (a voided loop has no liquid
+                                      //   column — the TMI-2 case). Diagnostic only: no board lamp, because a real crew
+                                      //   verifies it from loop ΔT + subcooling + stable SG pressure, which the board has.
+    "ac_available": bool,             // Class 1E (vital) ac switchgear energized (#332). Today exactly !station_blackout —
+                                      //   a plain LOOP KEEPS it (the diesels pick the 1E buses up). Every ac load reads THIS,
+                                      //   not the casualty flag: RCPs, pressurizer heaters, the CVCS charging pump (and with it
+                                      //   letdown and borate/dilute), the ECCS injection pump. AFW is turbine-driven and the
+                                      //   accumulators are passive N2, so both deliberately survive it. See pwr_engine step 0a.
     "turbine_rpm": float, "condenser_vacuum_kpa": number,
     "turbine_tripped": bool,          // turbine trip LATCHED. Arms the P-9 anticipatory scram and is what the
                                       //   board's lit states key on. A planned `disconnect_grid` is NOT a trip (#230).

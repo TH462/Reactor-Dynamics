@@ -216,11 +216,17 @@
       // advances inside `engine.step`, so evaluating more often perturbs no stream.
       sinceEval += PHYSICS_DT;
       if (sinceEval >= PROTECTION_DT && i < steps - 1) {
-        this.layer.evaluate(this.engine.getInstruments());
+        // `sinceEval` is the SIM time this evaluation covers, and it is passed so the alarm
+        // minimum on-time accrues in plant seconds rather than in evaluations. That is what
+        // makes the hold identical at 1x and at 3600x — the same property #153 established
+        // for the protection cadence itself, and for the same reason.
+        this.layer.evaluate(this.engine.getInstruments(), sinceEval);
         sinceEval = 0;
       }
     }
-    this.layer.evaluate(this.engine.getInstruments());      // trips/actuations/alarms on the new readings (HR1)
+    // The final evaluation covers whatever sim time has accrued since the last one — NOT
+    // PROTECTION_DT, which would over-count at 1x where the loop above never fires.
+    this.layer.evaluate(this.engine.getInstruments(), sinceEval);   // trips/actuations/alarms on the new readings (HR1)
     this.simTime += steps * PHYSICS_DT;
 
     var snap = this._assembleWithInstructor();
